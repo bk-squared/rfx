@@ -39,6 +39,7 @@ import pytest
 from rfx import Simulation, Box
 from rfx.sources.sources import GaussianPulse
 from rfx.auto_config import smooth_grading
+from tests._realized_geometry import assert_sheet_planes, assert_wall_planes
 
 
 def _build_line(with_port2_excite: bool = False, with_direction: bool = True):
@@ -75,8 +76,13 @@ def _build_line(with_port2_excite: bool = False, with_direction: bool = True):
     line_w = 0.5e-3
     line_y_lo = dom_y / 2 - line_w / 2
     line_y_hi = dom_y / 2 + line_w / 2
+    # 35 um foil: a SHEET (#931 §1.3), declared by a zero-thickness Box on
+    # the laminate top. The z spine puts three dz_sub cells under
+    # substrate_thickness, so that face is a node line of the graded mesh
+    # and the sheet lands on it. One cell thick it would be a VOLUME:
+    # walls at both faces, Ez shorted between them.
     sim.add(Box((0, line_y_lo, substrate_thickness),
-                (dom_x, line_y_hi, substrate_thickness + dz_sub)),
+                (dom_x, line_y_hi, substrate_thickness)),
             material="pec")
 
     pulse = GaussianPulse(f0=4e9, bandwidth=1.0)
@@ -259,3 +265,18 @@ def test_direction_does_not_change_the_s_matrix():
     S_exp = np.asarray(r_exp.s_params)
     S_auto = np.asarray(r_auto.s_params)
     np.testing.assert_allclose(S_exp, S_auto, rtol=1e-5, atol=1e-8)
+
+
+def test_realized_conductor_planes_equal_the_declaration():
+    """Build-time witness (no solve) for the #931 ownership contract.
+
+    The foil is declared as a SHEET, so the lattice must give it exactly
+    ONE wall plane, on the node line of the laminate face it was drawn on,
+    with the normal Ez edge through it left live. Drawn one cell thick it
+    was a volume: two walls, and the Ez edge between them shorted. This
+    assertion is what keeps the declaration and the realization the same
+    statement.
+    """
+    sim = _build_line()
+    assert_sheet_planes(sim, 2, [0.25e-3], what="MSL line foil")
+    assert_wall_planes(sim, 2, [0.25e-3], what="MSL line foil")

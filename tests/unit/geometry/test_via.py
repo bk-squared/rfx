@@ -113,7 +113,16 @@ class TestViaShapes:
         assert pad.corner_hi[1] == pytest.approx(y + r_pad)
 
     def test_pads_are_zero_thickness(self):
-        """Pads should have corner_lo[z] == corner_hi[z]."""
+        """Pads declare zero thickness — a SHEET (#931 §1.5); the barrel is
+        a volume.
+
+        One primitive emits both declarations, which is why ``Via`` is the
+        clearest case in the contract: the drill-radius conductor spans the
+        layers and owns cells, each pad is a footprint on the layer face it
+        was drawn on and owns none. Realization pinned in
+        ``test_realized_edges_per_primitive.py::
+        test_via_barrel_is_a_volume_and_its_pads_are_sheets``.
+        """
         via = Via(
             center=(0, 0),
             drill_radius=0.1e-3,

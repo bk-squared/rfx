@@ -794,6 +794,13 @@ def test_distributed_pec_only_seam_no_double_zeroing():
 
     Verification: the distributed run must match the single-device
     reference (which applies the mask exactly once).
+
+    This one-cell fixture carried ``xfail(strict=True)`` under #931 (T3
+    measured 2.107e-01 against the 5e-5 gate): the runner exchanged the E
+    ghosts BEFORE the PEC stages, so rank 0's ghost copy of the seam plane
+    kept the ``Ey``/``Ez`` that rank 1 zeroed a stage later.  The exchange
+    now runs last in the E half-step; re-measured, this row reads 7.8e-08
+    (the no-body baseline of the lane is 9.4e-06, float32 rounding).
     """
     devices = jax.devices()[:2]
     n_devices = 2
@@ -809,12 +816,15 @@ def test_distributed_pec_only_seam_no_double_zeroing():
     seam_j = ny // 2
     seam_k = nz // 2
     pec_mask = jnp.zeros((nx, ny, nz), dtype=jnp.bool_)
-    # Mark a 1x1x1 PEC cell + its left neighbour so the tangential mask
-    # in apply_pec_mask sees a PEC neighbour (otherwise the thin-sheet
-    # rule preserves the field — no double-zeroing risk to detect).
+    # ONE cell, exactly at the seam. #931: an occupied cell owns every edge
+    # incident to it (§1.2), so a single cell is a real conductor and the
+    # double-zeroing risk this test looks for is present. The fixture used
+    # to mark three consecutive cells with the comment "so the tangential
+    # mask in apply_pec_mask sees a PEC neighbour (otherwise the thin-sheet
+    # rule preserves the field)" — padding whose only purpose was to make
+    # the pre-#931 neighbour rule fire, and which spread the body over the
+    # seam it was supposed to sit on.
     pec_mask = pec_mask.at[seam_i, seam_j, seam_k].set(True)
-    pec_mask = pec_mask.at[seam_i - 1, seam_j, seam_k].set(True)
-    pec_mask = pec_mask.at[seam_i + 1, seam_j, seam_k].set(True)
 
     src_idx = (4, 4, 4)
     src_si, src_sj, src_sk, src_comp, src_wf = _phase2b_make_current_source(
@@ -877,7 +887,15 @@ def test_distributed_pec_mask_override_union_semantics():
     materials = _phase2b_make_materials(grid)
     nx, ny, nz = grid.nx, grid.ny, grid.nz
 
-    # "Geometry" PEC slab: a thin sheet at x=10
+    # "Geometry" PEC: a 2-cell block at x = 10..11. Both masks below are
+    # CELL occupancy, i.e. VOLUME declarations (#931 §1.2): the block
+    # realizes walls at x = 10 and x = 12 and shorts Ex between them. It
+    # was labelled "a thin sheet at x=10" and spelled with two cells so the
+    # pre-#931 neighbour rule would fire on it — a sheet owns no cell and
+    # cannot be expressed as a cell mask at all, so the label was wrong for
+    # the object in both directions. ``pec_mask_override`` is a VOLUME
+    # override and stays one (design note §1.8), so the union below is a
+    # union of cell occupancies, which is exactly what it always was.
     geom_mask = jnp.zeros((nx, ny, nz), dtype=jnp.bool_)
     geom_mask = geom_mask.at[10, 2:6, 2:6].set(True)
     geom_mask = geom_mask.at[11, 2:6, 2:6].set(True)
@@ -1899,14 +1917,22 @@ def test_distributed_pec_occupancy_seam_no_double_application():
     slab seam must be applied exactly once.
 
     Place ``occ=1.0`` at global x-index ``nx_per_rank`` (rank 1's first
-    real cell) along with neighbouring occupancy so the per-component
-    tangential rule (``occ * jnp.maximum(roll(+1), roll(-1))``) yields
-    a non-zero contribution.  The distributed run must match the
-    single-device reference, which applies the field once.
+    real cell).  The distributed run must match the single-device
+    reference, which applies the field once.
 
     If the seam cell were double-applied, the multiplicative
     soft-zeroing factor at the seam would compound, producing a
     distinguishable probe trace.
+
+    #931 §1.6: the soft rule is the noisy-OR of the four cells incident to
+    each edge, so ONE occupied cell already contributes on its own — the
+    neighbour product ``occ * max(roll(+1), roll(-1))`` this docstring used
+    to name is the pre-#931 rule and is gone. The neighbouring occupancy
+    the fixture set purely to make that product non-zero goes with it.
+
+    Carried ``xfail(strict=True)`` with the hard-mask twin above (same
+    2.107e-01, same cause: E ghosts exchanged before the PEC stages); fixed
+    by moving the exchange after them.
     """
     devices = jax.devices()[:2]
     n_devices = 2
@@ -1921,13 +1947,11 @@ def test_distributed_pec_occupancy_seam_no_double_application():
     seam_j = ny // 2
     seam_k = nz // 2
 
-    # Soft-PEC at the seam plus its left/right neighbours so the
-    # tangential occupancy rule sees a non-zero neighbour and does not
-    # silently cancel (otherwise no double-application would be visible).
+    # ONE soft-PEC cell, exactly at the seam (#931 §1.6: an occupied cell
+    # owns its incident edges on its own, so this is visible without the
+    # left/right padding the pre-#931 neighbour product needed).
     occ = jnp.zeros((nx, ny, nz), dtype=jnp.float32)
-    occ = occ.at[seam_i - 1, seam_j, seam_k].set(1.0)
     occ = occ.at[seam_i, seam_j, seam_k].set(1.0)
-    occ = occ.at[seam_i + 1, seam_j, seam_k].set(1.0)
 
     src_idx = (4, 4, 4)
     src_si, src_sj, src_sk, src_comp, src_wf = _phase2b_make_current_source(

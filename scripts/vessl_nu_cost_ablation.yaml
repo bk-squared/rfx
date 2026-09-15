@@ -1,0 +1,38 @@
+name: rfx-nu-cost-ablation
+description: "NU cost-reduction lane G1: kernel ablation bench on RTX 4090 (validation/research/nu_cost/w8_nu_kernel_ablation.py -- bare / nu-uniform / nu-z / nu-z-hoist / bare-hoist / nu-z-nopec / nu-z-scalar-inv, in-process bit-identity checks before timing; plan section 'G1 ablation -- pre-declared'). Launch from OUTSIDE any git worktree: vessl run create -f scripts/vessl_nu_cost_ablation.yaml --project byungkwan. Code staged by rsync to claude-workspace/rfx/checkouts/nu-cost (.staged-commit records the sha). Harvest: ~/Documents/vessl-run-logs/harvest.sh RUN_ID rfx-nu-cost-ablation"
+tags: [rfx, nu-cost, gpu-throughput, ablation, gpu]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  LANG: "C.UTF-8"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -euo pipefail
+  SRC=/root/workspace/claude-workspace/rfx/checkouts/nu-cost
+  STAMP="$(date -u +%Y%m%dT%H%M%SZ)-$(cat "$SRC/.staged-commit" 2>/dev/null | cut -c1-8 || echo unknown)"
+  OUT=/root/workspace/claude-workspace/rfx/runs/nu-cost-ablation/$STAMP
+  mkdir -p "$OUT"
+  cd "$SRC"
+  echo "=== NU cost lane: G1 kernel ablation bench (W8) ==="
+  date
+  python -m pip install -q "scipy>=1.11"
+  export PYTHONPATH="$SRC:${PYTHONPATH:-}"
+  echo "staged commit: $(cat "$SRC/.staged-commit" 2>/dev/null || echo unknown)"
+  python -c "import jax, rfx; print('backend', jax.default_backend(), jax.devices(), '| rfx', rfx.__file__)"
+  nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv || true
+  # The rsync-staged checkout is not writable by the container
+  # (PermissionError on the baseline run 369367259061), so run a COPY of
+  # the instrument from $OUT and let it write its JSON there. The copy
+  # carries the staged sha via .staged-commit next to it.
+  cp validation/research/nu_cost/w8_nu_kernel_ablation.py "$OUT/w8_nu_kernel_ablation.py"
+  cat "$SRC/.staged-commit" > "$OUT/.staged-commit" 2>/dev/null || true
+  python "$OUT/w8_nu_kernel_ablation.py" --out "$OUT/w8_nu_kernel_ablation_results.json" 2>&1 | tee "$OUT/w8_nu_kernel_ablation.log"
+  cat "$SRC/.staged-commit" > "$OUT/staged-commit" 2>/dev/null || true
+  echo "artifacts: $OUT"
+  echo "=== DONE ==="
+  date

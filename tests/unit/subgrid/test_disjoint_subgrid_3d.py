@@ -136,6 +136,42 @@ def test_disjoint_topology_step_keeps_coarse_hole_zero_and_finite():
     assert final_energy <= initial_energy * 1.05
 
 
+def test_a_subgrid_interface_plane_is_in_no_realized_edge_set():
+    """The companion of the topology test below, at the level of the ONE
+    realized-edge-set function (#931 §1.7).
+
+    ``realized_pec_edge_masks`` is the only thing that says which planes
+    are walls. An artificial refinement interface is not a conductor and
+    must never appear in its answer — otherwise "which planes are walls"
+    and "where does the mesh change resolution" become the same question,
+    and every consumer that reads the realized planes (preflight cavity
+    checks, guide widths, the MSL trace detector) starts finding metal at
+    the refinement boundary. The test below asserts the same invariant on
+    the fields; this one asserts it on the geometry, before any step.
+    """
+    from rfx import Box, Simulation
+    from tests._realized_geometry import (
+        assert_wall_planes, node_index, realized)
+
+    dx = 2e-3
+    sim = Simulation(freq_max=8e9, domain=(0.04, 0.04, 0.024),
+                     boundary="pec", dx=dx)
+    sim.add(Box((0.010, 0.010, 0.004), (0.030, 0.030, 0.008)), material="pec")
+    sim.add_refinement(z_range=(0.0, 0.016), ratio=2, validation="production")
+    sim.add_source((0.006, 0.006, 0.010), "ez")
+    sim.add_probe((0.008, 0.006, 0.012), "ez")
+
+    assert not realized(sim).sheets
+    zs = assert_wall_planes(
+        sim, 2, [0.004, 0.006, 0.008],
+        what="PEC body inside a refined block")
+    interface_planes = {node_index(realized(sim).grid, 2, z)
+                        for z in (0.0, 0.016)}
+    assert not (set(zs) & interface_planes), (
+        f"realized wall planes {zs} include a refinement interface plane "
+        f"{sorted(interface_planes)}; an artificial interface is not a wall")
+
+
 def test_fine_interface_faces_are_not_clamped_as_pec_boundaries():
     """The fine block boundary is an interface, not a physical PEC wall."""
     config, state = init_disjoint_subgrid_3d(

@@ -332,11 +332,11 @@ row); each now carries the correction and the keys.
 **3.6 (B2) Two headline numbers were restated without an artifact key.** The audit's
 own blindness construction (scale the de-embedded phase, which scales the extraction
 residual with it) is now
-`validation/crossval/_issue812_phase_identity/regate_evidence.json::cv20.blindness.audit_construction_e1_max_phase_dev_deg = 0.2414` deg, passing at
+`validation/crossval/_issue812_phase_identity/regate_evidence.json::cv20.blindness.audit_construction_e1_max_phase_dev_deg = 0.0647` deg, passing at
 `validation/crossval/_issue812_phase_identity/regate_evidence.json::cv20.blindness.e1_tol_deg = 3.0`; the dispersion-corrected residual is
-`validation/crossval/_issue812_phase_identity/regate_evidence.json::cv20.blindness.dispersion_corrected_residual_max_abs_deg_baseline = 0.715345` deg
+`validation/crossval/_issue812_phase_identity/regate_evidence.json::cv20.blindness.dispersion_corrected_residual_max_abs_deg_baseline = 0.7917115` deg
 at baseline and
-`validation/crossval/_issue812_phase_identity/regate_evidence.json::cv20.blindness.dispersion_corrected_residual_max_abs_deg_k2 = 0.715345` deg with
+`validation/crossval/_issue812_phase_identity/regate_evidence.json::cv20.blindness.dispersion_corrected_residual_max_abs_deg_k2 = 0.7917115` deg with
 the rfx phase velocity halved, a per-bin change of
 `validation/crossval/_issue812_phase_identity/regate_evidence.json::cv20.blindness.dispersion_corrected_residual_max_abs_change_deg_k2 = 0.00000` deg.
 The manifest, README, public benchmarks row, support-matrix guide and the script's three

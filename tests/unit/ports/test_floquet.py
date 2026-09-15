@@ -387,11 +387,16 @@ def test_unit_cell_with_floquet():
     sim.add_material("substrate", eps_r=2.2)
     sim.add(Box((0, 0, Lz / 2 - 0.001), (Lx, Ly, Lz / 2)), material="substrate")
 
-    # PEC patch (8mm x 8mm, 1 cell thick to avoid zero-thickness rasterization)
+    # PEC patch, 8 mm x 8 mm of foil on the substrate top: a SHEET
+    # (#931 §1.3), declared by a zero-thickness Box. It used to be drawn
+    # one cell thick "to avoid zero-thickness rasterization" — that
+    # workaround is exactly what the sheet primitive replaces, and under
+    # the ownership contract it would now realize a 1 mm slab of metal
+    # (walls at both z faces, Ez shorted between) on a 1 mm substrate.
     patch_w = 0.008
     x0 = (Lx - patch_w) / 2
     y0 = (Ly - patch_w) / 2
-    sim.add(Box((x0, y0, Lz / 2), (x0 + patch_w, y0 + patch_w, Lz / 2 + 0.001)), material="pec")
+    sim.add(Box((x0, y0, Lz / 2), (x0 + patch_w, y0 + patch_w, Lz / 2)), material="pec")
 
     # Floquet port
     sim.add_floquet_port(

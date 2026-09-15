@@ -3,42 +3,52 @@
 Two helpers were factored out so the surface-impedance sheet operator can
 share them with the validated kernels instead of carrying gated copies:
 
-* ``rfx.boundaries.pec.tangential_edge_masks`` — the thin-sheet neighbor
-  rule, out of ``apply_pec_mask``;
+* ``rfx.boundaries.pec`` — the conductor edge rule, out of
+  ``apply_pec_mask``;
 * ``rfx.core.yee.curl_h`` / ``curl_h_nu`` — the curl(H) stencils, out of
   ``update_e`` / ``update_e_nu``.
 
 These tests pin the refactored functions BYTE-EXACTLY to an inline copy of
-the pre-refactor expressions (development-methodology refactor rule: a
+the expressions they replaced (development-methodology refactor rule: a
 code-motion refactor is gated by bit identity, not tolerance). If either
 helper's algebra drifts, the drift shows up here before it shows up as a
 subtle sheet-vs-kernel stencil mismatch in physics.
 
-#689 moved one of the two references, and it is worth being explicit about
-what moved and what did not. ``tangential_edge_masks`` used ``jnp.roll`` on
-every axis; the wrap is correct only where cell 0 and cell n-1 really are
-neighbours, so it now applies on a PERIODIC axis or a length-1 (2-D) axis
-and a zero pad applies otherwise. The gate below is rewritten, not
-loosened, and it got teeth rather than losing them:
+The conductor half of this lock was rewritten twice, and it is worth being
+explicit about what moved.
 
-  * the ``jnp.roll`` reference is kept and now pins the PERIODIC branch
-    byte-exactly, so that branch is still literally the pre-#689 rule;
-  * a second reference built from ``_shift_bwd`` / ``_shift_fwd`` pins the
-    non-periodic branch byte-exactly;
-  * an interior-slice comparison pins that the change is confined to the
-    two boundary slices of each axis — which is why no committed physics
-    number moves.
+* #689 replaced ``jnp.roll`` on every axis with a wrap only where cell 0
+  and cell n-1 really are neighbours (a PERIODIC axis or a length-1 2-D
+  axis) and a zero pad otherwise.
+* #931 replaced the rule itself. ``tangential_edge_masks`` — masked cell
+  AND a masked neighbour along the component's own axis — was a SHEET
+  classification applied to volumes, so a body's far face was never a wall.
+  It is deleted; :func:`rfx.boundaries.pec.realized_pec_edge_masks` is the
+  one realization, and the volume branch is "an edge is PEC iff it is
+  incident to an occupied cell" (four cells, backward shifts along the two
+  axes transverse to the component).
 
-The boundary behaviour itself (the defect, both wrap-keeping guards, and
-the 2-D end-to-end witness) is pinned in
-``tests/unit/boundaries/test_pec_mask_boundary_convention.py``.
+The gate below follows the rule, not the old expression, and keeps its
+teeth on the part that did NOT change — the #689 boundary convention:
+
+  * the ``jnp.roll`` reference pins the PERIODIC branch byte-exactly;
+  * a second reference built from ``_shift_bwd`` pins the non-periodic
+    branch byte-exactly;
+  * an interior-slice comparison pins that the periodic/non-periodic
+    difference is confined to the boundary slices of each axis.
+
+The boundary behaviour itself (both wrap-keeping guards and the 2-D
+end-to-end witness) is pinned in
+``tests/unit/boundaries/test_pec_mask_boundary_convention.py``; the
+realization contract itself is
+``tests/contracts/test_lattice_ownership_contract.py``.
 """
 
 LOCK_PROVENANCE = {
     "fixture": "none",
-    "generator": "hand-derived (inline copy of the pre-refactor expressions)",
-    "commit": "13de212",
-    "date": "2026-08-20",
+    "generator": "hand-derived (inline copy of the refactored expressions)",
+    "commit": "f31ab907",
+    "date": "2026-09-07",
     "run_id": "local",
     "host": "JAX cpu float32 (os / jax version not recorded in #678)",
     "pinned_until": "2027-02-16",
@@ -51,7 +61,6 @@ from rfx.core.yee import (
     MaterialArrays,
     _diff_bwd_o,
     _shift_bwd,
-    _shift_fwd,
     curl_h,
     curl_h_nu,
     init_state,
@@ -59,7 +68,7 @@ from rfx.core.yee import (
     update_e_nu,
     EPS_0,
 )
-from rfx.boundaries.pec import apply_pec_mask, tangential_edge_masks
+from rfx.boundaries.pec import apply_pec_mask, realized_pec_edge_masks
 
 _SHAPE = (9, 8, 7)
 
@@ -78,55 +87,69 @@ def _rand_materials(rng):
     )
 
 
-def test_tangential_edge_masks_bit_identity_with_inline_rule():
-    """Periodic branch == the pre-#677/#689 inline roll rule, exact booleans.
+def _inline_volume_rule(mask, shift):
+    """The §1.2 rule spelled out: the four cells incident to each edge.
+
+    ``shift(arr, ax)`` is the BACKWARD neighbour along ``ax`` under the
+    caller's chosen boundary convention. Written as an explicit four-term
+    OR (not the chained form the implementation uses) so the two spellings
+    are genuinely independent.
+    """
+    out = []
+    for c in range(3):
+        t1, t2 = [t for t in range(3) if t != c]
+        out.append(mask | shift(mask, t1) | shift(mask, t2)
+                   | shift(shift(mask, t1), t2))
+    return out
+
+
+def test_realized_edges_bit_identity_with_inline_periodic_rule():
+    """Periodic branch == an inline roll spelling of §1.2, exact booleans.
 
     ``_SHAPE`` is (9,8,7) with a random 30%-fill mask, so index 0 and index
     n-1 are populated on all three axes — the fixture DOES exercise the
-    boundary, which is what made this gate the one that encoded the defect.
+    boundary, which is what made this gate the one that encoded the #689
+    defect.
     """
     rng = np.random.default_rng(677)
     mask = jnp.asarray(rng.random(_SHAPE) < 0.3)
 
-    # Inline copy of the pre-refactor apply_pec_mask expressions.
-    ref_ex = mask & (jnp.roll(mask, 1, axis=0) | jnp.roll(mask, -1, axis=0))
-    ref_ey = mask & (jnp.roll(mask, 1, axis=1) | jnp.roll(mask, -1, axis=1))
-    ref_ez = mask & (jnp.roll(mask, 1, axis=2) | jnp.roll(mask, -1, axis=2))
-
-    got_ex, got_ey, got_ez = tangential_edge_masks(mask, (True, True, True))
-    assert np.array_equal(np.asarray(got_ex), np.asarray(ref_ex))
-    assert np.array_equal(np.asarray(got_ey), np.asarray(ref_ey))
-    assert np.array_equal(np.asarray(got_ez), np.asarray(ref_ez))
-
-
-def test_tangential_edge_masks_bit_identity_with_inline_zero_pad_rule():
-    """Non-periodic branch == an inline zero-pad rule, exact booleans (#689)."""
-    rng = np.random.default_rng(677)
-    mask = jnp.asarray(rng.random(_SHAPE) < 0.3)
-
-    ref = [mask & (_shift_bwd(mask, ax) | _shift_fwd(mask, ax))
-           for ax in range(3)]
-    got = tangential_edge_masks(mask)          # default: non-periodic
+    ref = _inline_volume_rule(mask, lambda a, ax: jnp.roll(a, 1, axis=ax))
+    got = realized_pec_edge_masks(mask, periodic=(True, True, True))
     for ax in range(3):
         assert np.array_equal(np.asarray(got[ax]), np.asarray(ref[ax])), ax
 
 
-def test_tangential_edge_masks_interior_bit_identity_with_the_pre_689_rule():
-    """The #689 change is confined to the two boundary slices of each axis,
-    which is the 'no committed number moves' gate."""
+def test_realized_edges_bit_identity_with_inline_zero_pad_rule():
+    """Non-periodic branch == an inline zero-pad spelling of §1.2 (#689)."""
     rng = np.random.default_rng(677)
     mask = jnp.asarray(rng.random(_SHAPE) < 0.3)
-    got = tangential_edge_masks(mask)
+
+    ref = _inline_volume_rule(mask, _shift_bwd)
+    got = realized_pec_edge_masks(mask)        # default: non-periodic
     for ax in range(3):
-        old = mask & (jnp.roll(mask, 1, axis=ax) | jnp.roll(mask, -1, axis=ax))
+        assert np.array_equal(np.asarray(got[ax]), np.asarray(ref[ax])), ax
+
+
+def test_realized_edges_interior_is_convention_independent():
+    """The #689 wrap-vs-pad choice is confined to the boundary slices of the
+    two axes TRANSVERSE to each component — the 'no interior number moves'
+    gate."""
+    rng = np.random.default_rng(677)
+    mask = jnp.asarray(rng.random(_SHAPE) < 0.3)
+    pad = realized_pec_edge_masks(mask)
+    wrap = realized_pec_edge_masks(mask, periodic=(True, True, True))
+    for c in range(3):
         sl = [slice(None)] * 3
-        sl[ax] = slice(1, -1)
+        for t in range(3):
+            if t != c:
+                sl[t] = slice(1, None)
         sl = tuple(sl)
-        assert np.array_equal(np.asarray(got[ax][sl]),
-                              np.asarray(old[sl])), ax
+        assert np.array_equal(np.asarray(pad[c][sl]),
+                              np.asarray(wrap[c][sl])), c
         # ... and it is NOT a no-op overall on this fixture, so the gate has
-        # teeth: index 0 / n-1 do differ.
-        assert not np.array_equal(np.asarray(got[ax]), np.asarray(old)), ax
+        # teeth: the transverse index-0 slices do differ.
+        assert not np.array_equal(np.asarray(pad[c]), np.asarray(wrap[c])), c
 
 
 def test_apply_pec_mask_uses_shared_rule_bit_identity():
@@ -134,7 +157,7 @@ def test_apply_pec_mask_uses_shared_rule_bit_identity():
     rng = np.random.default_rng(678)
     st = _rand_state(rng)
     mask = jnp.asarray(rng.random(_SHAPE) < 0.3)
-    mex, mey, mez = tangential_edge_masks(mask)
+    mex, mey, mez = realized_pec_edge_masks(mask)
     out = apply_pec_mask(st, mask)
     ref_ex = st.ex * (1.0 - mex.astype(st.ex.dtype))
     ref_ey = st.ey * (1.0 - mey.astype(st.ey.dtype))

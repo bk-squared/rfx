@@ -3,6 +3,14 @@
 These tests exercise only the public ``Simulation`` construction and preflight
 API.  They deliberately keep the source farther from the relevant NTFF face
 than the PEC sheet edge so a warning cannot be attributed to the source.
+
+Ownership (#931 §1.3): the plate really is a sheet, so it is DECLARED one —
+a zero-thickness Box on the z = 50 mm node plane. It used to be drawn one cell
+thick, which the contract reads as a volume with walls on both bounding
+planes. Every distance this file gates is measured to the z = 50 mm face or to
+a lateral edge, and none of them moves under the sheet declaration: that is
+why this fixture is the cheap regression case for re-pointing the clearance
+check at realized wall planes rather than the declared bounding box.
 """
 
 from __future__ import annotations
@@ -13,7 +21,7 @@ from rfx import Box, Simulation
 FREQ = 10e9
 DOMAIN = (0.120, 0.120, 0.120)
 SHEET_LO = (0.040, 0.040, 0.050)
-SHEET_HI = (0.080, 0.080, 0.052)
+SHEET_HI = (0.080, 0.080, 0.050)      # zero thickness = a sheet declaration
 SOURCE = (0.060, 0.060, 0.056)
 
 
@@ -71,7 +79,7 @@ def test_ntff_box_clear_of_every_pec_edge_has_no_clearance_warning():
 
 
 def test_ntff_z_face_warns_near_pec_sheet_broad_side():
-    """Control: z_lo is 4 mm below the sheet's broad lower side."""
+    """Control: z_lo is 4 mm below the sheet's broad side (z = 50 mm)."""
     report = _preflight_with_ntff(
         corner_lo=(0.020, 0.020, 0.046),
         corner_hi=(0.100, 0.100, 0.085),
@@ -83,3 +91,18 @@ def test_ntff_z_face_warns_near_pec_sheet_broad_side():
         "expected z_lo clearance warning anchored on the PEC broad side; "
         f"got: {issues!r}"
     )
+
+
+def test_the_plate_realizes_on_the_plane_it_was_drawn_on():
+    """Build-time (no solve) ownership check: one sheet, one wall plane at
+    z = 50 mm, no cell — the geometry every clearance number above is
+    measured against."""
+    from tests._realized_geometry import (
+        assert_sheet_planes, assert_wall_planes, realized)
+
+    sim = Simulation(freq_max=FREQ, domain=DOMAIN, dx=2e-3,
+                     boundary="cpml", cpml_layers=4)
+    sim.add(Box(SHEET_LO, SHEET_HI), material="pec")
+    assert realized(sim).pec_mask is None, "a sheet owns no cell"
+    assert_sheet_planes(sim, 2, expected_m=(SHEET_LO[2],), what="the plate")
+    assert_wall_planes(sim, 2, expected_m=(SHEET_LO[2],), what="the plate")

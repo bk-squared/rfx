@@ -113,7 +113,13 @@ port_kwargs = dict(mode=(1, 0), mode_type="TE", f0=6e9,
 
 def three_port_guide(walls):
     """Same domain, dx and boundary for the device and every reference —
-    only the interior PEC walls differ."""
+    only the interior PEC walls differ.
+
+    Guide walls are conductor VOLUMES: each `Box` realizes tangential walls at
+    both of its drawn faces and shorts the normal edges between them, so the
+    guide width the solver sees is the width that was drawn. Foil would be a
+    sheet declaration instead; see the materials-and-geometry guide.
+    """
     s = Simulation(freq_max=10e9, domain=(0.12, 0.12, 0.02),
                    boundary="cpml", cpml_layers=10, dx=0.002)
     for corner_lo, corner_hi in walls:

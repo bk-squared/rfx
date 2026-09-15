@@ -254,8 +254,9 @@ with tab_results:
 
             # Determine actual step count for progress display
             if n_steps_val is None:
-                grid_preview = sim._build_grid()
-                actual_steps = grid_preview.num_timesteps(num_periods=num_periods)
+                grid_preview = sim._build_realized_grid()
+                actual_steps = (sim._nu_n_steps(num_periods) if sim._uses_nonuniform_mesh
+                                else grid_preview.num_timesteps(num_periods=num_periods))
             else:
                 actual_steps = n_steps_val
 
@@ -317,7 +318,7 @@ with tab_results:
                     ["z", "x", "y"],
                     key="field_axis",
                 )
-            grid = sim._build_grid()
+            grid = sim._build_realized_grid()
             display_field_slice(result.state, grid, component=field_comp, axis=field_axis)
 
         # Time series

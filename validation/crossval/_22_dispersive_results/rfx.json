@@ -2,7 +2,7 @@
  "schema": "cv22-dispersive-slab/v1",
  "case_id": "22_dispersive_slab_fresnel",
  "commit": "unknown",
- "date_utc": "2026-09-02T10:57:37+00:00",
+ "date_utc": "2026-09-07T12:50:44+00:00",
  "falsifier": null,
  "smoke": false,
  "tag": null,
@@ -5450,12 +5450,12 @@
      0.0027562571752377026,
      0.0027007158062159055
     ],
-    "fitted_rate_scat_refl_1_s": 8821615702.722586,
-    "fitted_rate_total_trans_1_s": 8051643183.107595,
-    "fitted_rate_blocks": 3,
     "envelope_start_step": 808,
     "fit_start_step": 958,
-    "fit_note": "fitted_rate_* recomputed from the stored envelope with the fit starting at n_pulse_end (review finding 1); no FDTD rerun"
+    "fitted_rate_scat_refl_1_s": 8821615702.72259,
+    "fitted_rate_total_trans_1_s": 8051643183.107597,
+    "fitted_rate_blocks": 3,
+    "fit_reliable": true
    },
    "gates": {
     "G1_R": true,
@@ -5824,7 +5824,7 @@
      45,
      1
     ],
-    "elapsed_s": 0.840024471282959,
+    "elapsed_s": 0.4232821464538574,
     "dx_m": 0.001,
     "dx_div": 1,
     "n_cpml": 20,
@@ -10765,6 +10765,7 @@
     "mean_window5_R": 0.020230684700736,
     "mean_window5_T": 0.034978639556101136,
     "gates": {
+     "precheck_passed": true,
      "band_covered": true,
      "G4_R": true,
      "G4_T": true,
@@ -16200,12 +16201,12 @@
      0.0003590162105026646,
      0.0003719805157406656
     ],
-    "fitted_rate_scat_refl_1_s": 7073777515.481599,
-    "fitted_rate_total_trans_1_s": 8970592127.455292,
-    "fitted_rate_blocks": 5,
     "envelope_start_step": 928,
     "fit_start_step": 958,
-    "fit_note": "fitted_rate_* recomputed from the stored envelope with the fit starting at n_pulse_end (review finding 1); no FDTD rerun"
+    "fitted_rate_scat_refl_1_s": 7073777515.481603,
+    "fitted_rate_total_trans_1_s": 8970592127.4553,
+    "fitted_rate_blocks": 5,
+    "fit_reliable": true
    },
    "gates": {
     "G1_R": true,
@@ -16575,7 +16576,7 @@
      45,
      1
     ],
-    "elapsed_s": 0.838709831237793,
+    "elapsed_s": 0.4339315891265869,
     "dx_m": 0.001,
     "dx_div": 1,
     "n_cpml": 20,
@@ -21504,6 +21505,7 @@
     "mean_window5_R": 0.020389313912266158,
     "mean_window5_T": 0.03457702697467098,
     "gates": {
+     "precheck_passed": true,
      "band_covered": true,
      "G4_R": true,
      "G4_T": true,
@@ -26938,12 +26940,12 @@
      3.0468130895748966e-05,
      2.9925266334893727e-05
     ],
-    "fitted_rate_scat_refl_1_s": 13065106004.435501,
-    "fitted_rate_total_trans_1_s": 16042555653.222027,
-    "fitted_rate_blocks": 4,
     "envelope_start_step": 868,
     "fit_start_step": 958,
-    "fit_note": "fitted_rate_* recomputed from the stored envelope with the fit starting at n_pulse_end (review finding 1); no FDTD rerun"
+    "fitted_rate_scat_refl_1_s": 13065106004.435495,
+    "fitted_rate_total_trans_1_s": 16042555653.222025,
+    "fitted_rate_blocks": 4,
+    "fit_reliable": true
    },
    "gates": {
     "G1_R": true,
@@ -27312,7 +27314,7 @@
      45,
      1
     ],
-    "elapsed_s": 0.7948386669158936,
+    "elapsed_s": 0.4261960983276367,
     "dx_m": 0.001,
     "dx_div": 1,
     "n_cpml": 20,
@@ -32241,6 +32243,7 @@
     "mean_window5_R": 0.02003733064712557,
     "mean_window5_T": 0.03408557832037497,
     "gates": {
+     "precheck_passed": true,
      "band_covered": true,
      "G4_R": true,
      "G4_T": true,

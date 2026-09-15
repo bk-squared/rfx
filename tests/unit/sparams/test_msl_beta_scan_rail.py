@@ -140,6 +140,9 @@ def test_warn_helper_aggregates_and_names_ports():
     assert "pinned at its own window limit" in msgs[0]
     assert "2 bins in [2.0000, 3.0000] GHz" in msgs[0]
     assert "'msl_0'" in msgs[0] and "'msl_1'" not in msgs[0]
+    assert "Fitted Z0/beta are not used in S11/S21" in msgs[0]
+    assert "measured V/I" in msgs[0] and "does not certify those inputs" in msgs[0]
+    assert "S11/S21 are unaffected" not in msgs[0]
 
 
 def test_warn_helper_silent_when_clean():

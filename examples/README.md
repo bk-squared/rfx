@@ -7,21 +7,29 @@ New to rfx? Run these in order; each teaches one decision a real design needs.
 | Step | Script | You learn |
 | --- | --- | --- |
 | 1 | `quickstart/hello_world.py` | install check, the minimal Simulation -> run -> probe loop |
-| 2 | `tutorials/boundary_spec_demo.py` | choosing boundaries: CPML=open, PEC=closed (never mix roles), PMC symmetry, periodic cells |
+| 2 | `tutorials/boundary_spec_demo.py` | choosing boundaries: CPML=open, PEC=closed (never mix roles), PMC symmetry, periodic cells — and the rule that a boundary is not a body: metal drawn inside the domain is a sheet (foil), a volume (a plate) or a wire |
 | 3 | `tutorials/slab_rt_flux_monitor.py` | R(f)/T(f) the right way: `add_flux_monitor` + two-run reference (why probe-FFT lies) |
-| 4 | `tutorials/nonuniform_patch_demo.py` | graded z-mesh for thin substrates + verifying where your layers actually landed |
+| 4 | `tutorials/nonuniform_patch_demo.py` | graded z-mesh for thin substrates + verifying where your layers actually landed; the fine band carries the substrate only, because the foils are sheets |
 | 5 | `tutorials/materials_and_dispersion.py` | library + custom materials, why loss matters (the infinite-Q trap), Debye/Lorentz dispersion |
 | 6 | `tutorials/run_control_and_fields.py` | `n_steps` vs `num_periods` vs `until_decay`, reading the truncation warning, extracting field slices |
 | 7 | `tutorials/ports_and_sparams_101.py` | which port for which structure (all five), S11 basics, real-world pitfalls |
 | 8 | `tutorials/resonance_harminv.py` | ring-down resonance extraction, picking modes by physics (not loudness), record-length vs resolution |
 | 9 | `tutorials/antenna_farfield_pattern.py` | far-field boxes done right (half-wavelength rule), directivity vs the textbook dipole |
-| 10 | `tutorials/patch_antenna_demo.py` | a real antenna end to end: mesh-registered stack, picking the radiating mode by its far field (not loudness), settling witness, error budget vs openEMS |
+| 10 | `tutorials/patch_antenna_demo.py` | a real antenna end to end: mesh-registered stack with the ground and patch declared as sheets, picking the radiating mode by its far field (not loudness), settling witness, error budget vs openEMS |
 | 11 | `tutorials/rcs_scattering.py` | radar cross-section with incident-reference subtraction |
 | 12 | `inverse_design/differentiable_s11_design.py` | end-to-end `jax.grad` through the public `compute_waveguide_s_matrix`, cross-checked against central finite differences |
 | 13 | `tutorials/artifact_report_demo.py` | exporting a shareable scene/mesh/report bundle |
 
 `config/microstrip_thru.yaml` shows the declarative YAML front-end for the same
-Simulation API.
+Simulation API, including the `thin_conductors:` block that declares a sheet
+(the YAML spelling of `add_thin_conductor`).
+
+Every conductor in this repository is declared as exactly one of three things,
+and the declaration — not the mesh — decides which: a **sheet** for foil
+(`add_thin_conductor`, one node plane, no cell), a **volume** for a plate, iris
+or post (`add(..., material="pec")`, walls on both drawn faces, interior
+shorted), or a **wire** for a filament. `tutorials/boundary_spec_demo.py` (step
+2) teaches the choice with two worked contrasts.
 
 Read the preflight output every time. Its advisories name conditions that
 invalidate a result: lossless-dielectric Q traps, graded-mesh rasterization

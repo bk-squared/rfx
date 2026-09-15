@@ -17,10 +17,23 @@ import jax.numpy as jnp
 
 from rfx import Simulation, Box
 from rfx.boundaries.spec import BoundarySpec, Boundary
+from tests._realized_geometry import assert_wall_planes
 
 
 def _wr90_pec_short_sim():
-    """WR-90 waveguide with PEC short at x=84–87 mm, two ports."""
+    """WR-90 waveguide with a PEC short at x = 84-87 mm, two ports.
+
+    The short is a VOLUME (#931 §1.2): 3 mm at dx = 3 mm is one primal
+    cell, and the contract realizes it as a filled cell with tangential
+    walls on BOTH drawn faces, x = 84 mm and x = 87 mm, with the normal
+    Ex between them shorted. Before the contract the far face was never
+    a wall at any thickness, so the same declaration realized a single
+    wall at 84 mm — a short is still a short either way (|S11| >= 0.99
+    survives), but the reflection reference plane moves by one cell, and
+    that is why the phase-sensitive siblings are re-read alongside this
+    one. ``test_wr90_short_realizes_both_drawn_faces`` below is the
+    build-time witness.
+    """
     sim = Simulation(
         freq_max=10e9,
         domain=(0.12, 0.04, 0.02),
@@ -93,3 +106,27 @@ def test_normalize_flux_pec_short_s11():
         f"(gate 0.99). Flux extraction is leaking energy or mis-attributing "
         f"reflection."
     )
+
+
+def test_wr90_short_realizes_both_drawn_faces():
+    """Build-time witness (no solve): a volume's far face IS a wall.
+
+    Nothing in the S-parameter or port suite asserted this before #931 —
+    the nearest thing asserted the opposite (the hi node plane carries no
+    cell). The short is drawn 84 -> 87 mm on node lines at dx = 3 mm, so
+    the realized wall planes along x are exactly those two, and the Ex
+    edge in the cell between them is PEC.
+    """
+    import numpy as _np
+
+    from tests._realized_geometry import realized
+
+    sim = _wr90_pec_short_sim()
+    rz = realized(sim)
+    assert_wall_planes(sim, 0, [0.084, 0.087], what="WR-90 PEC short")
+    pad = rz.grid.axis_pads[0]
+    k_lo = pad + int(round(0.084 / rz.grid.dx))
+    assert bool(_np.asarray(rz.edge_masks[0])[k_lo, rz.grid.ny // 2,
+                                              rz.grid.nz // 2]), (
+        "the Ex edge inside the short must be PEC: a volume shorts every "
+        "normal edge between its faces (#931 §1.2)")

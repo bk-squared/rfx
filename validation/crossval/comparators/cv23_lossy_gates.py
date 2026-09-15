@@ -29,6 +29,7 @@ for _p in (_HERE, _REPO_ROOT):
 
 import cv22_dispersive_gates as G  # noqa: E402
 import dispersive_eps as de  # noqa: E402
+import slab_family  # noqa: E402
 from tests._gate_policy import gate_from_envelope  # noqa: E402
 
 MODEL = "conductive"
@@ -86,15 +87,57 @@ API_MATERIAL_NAME = "lossy_slab"
 # the triangle-inequality sums (DECLARED gate). The closure-derived tighter A
 # window is REPORTED (A_tight_ok), never gated.
 # ---------------------------------------------------------------------------
-W_BIN = G.W_BIN                    # 0.074
-W_MEAN_R = G.W_MEAN_R              # 0.010
-W_MEAN_T = G.W_MEAN_T              # 0.017
-W_BIN_A = 2.0 * G.W_BIN            # 0.148   |dA| <= |dR| + |dT|
-W_MEAN_A = G.W_MEAN_R + G.W_MEAN_T  # 0.027
-# tests/fixtures/golden_workflows/multilayer_fresnel.json::expected_metrics[id=mean_energy_closure_error].observed_baseline
-CV04_MEAN_CLOSURE = 0.0091
-W_BIN_A_TIGHT = gate_from_envelope(G.CV04_ENVELOPE["per_bin_max_RT_closure"], quantum=1000)   # 0.074
-W_MEAN_A_TIGHT = gate_from_envelope(CV04_MEAN_CLOSURE, quantum=1000)                         # 0.014
+# This case adopts the SAME cv04 revision cv22 does, and says so in its own
+# declaration rather than inheriting the adoption silently (#928). Every window
+# below is DERIVED from that adoption -- including the three R/T ones, which
+# used to be `G.W_BIN` and friends. Re-exporting them made this module a
+# consumer of a consumer: a review re-pointed cv22 at a doubled revision and
+# cv23's windows doubled with it, silently, with cv23's own record untouched.
+#
+# 2026-09-10 disclosure (PR #974): the adopted r1 values are NOT measured on
+# cv04's settled record -- cv04 got its own settling-extension fix that day
+# (docs/design_notes/20260903_lattice_witness_standard.md section 5.3's
+# 2026-09-10 UPDATE, and its section 10 item 4 for the settled numbers), but
+# r1 in `envelope.json` is unchanged and this adoption is still pinned to it;
+# r1's per-bin closure was a truncation artefact of cv04's pre-fix record,
+# the settled run measures far tighter (same note, same sections -- not
+# restated here, to keep this file free of a second copy of the number).
+# DIRECTION (S6, PR #974 round 2, not the literals): a re-adoption of the
+# settled revision would move the band-mean R residual UP slightly (widening
+# W_MEAN_R a little) while the band-mean T residual and the per-bin closure
+# both move DOWN (narrowing W_MEAN_T and W_BIN) -- not a uniform tightening.
+# Whether to re-adopt a settled revision, and whether W_BIN's own recipe
+# should track it, is open under issue #928 -- not decided here, and not
+# something a producer re-run may do to this file silently either way.
+CV04_ADOPTION = {
+    "envelope": slab_family.CV04_ENVELOPE_REL,
+    "adopted_revision": "r1",
+    "revision_sha256": "sha256:59dafc9ab63239d74d6fec16fa4e89f7c055636fb6e14bf4123d724c05635686",
+    "rig_hash": "sha256:24164f616573af51b91f5c596e7b79e521005c4a872218fede25d009ed9dd211",
+    "gate_policy": {"multiplier": 1.5, "quantum": 1000},
+    "adopted_in": "docs/design_notes/20260902_cv23_lossy_slab_predeclaration.md",
+    "adopted_by_reviewer": "cv23 pre-declaration review, 2026-09-02",
+}
+CV04_ADOPTED = slab_family.load_adopted_envelope(CV04_ADOPTION)
+_QUANTUM = CV04_ADOPTION["gate_policy"]["quantum"]
+_VALUES = CV04_ADOPTED["values"]
+CV04_MEAN_CLOSURE = _VALUES["mean_closure"]
+# The R/T windows: this case's own derivation from its own adoption.
+W_BIN = gate_from_envelope(_VALUES["per_bin_max_RT_closure"], quantum=_QUANTUM)
+W_MEAN_R = gate_from_envelope(_VALUES["mean_dR"], quantum=_QUANTUM)
+W_MEAN_T = gate_from_envelope(_VALUES["mean_dT"], quantum=_QUANTUM)
+# The absorption windows: triangle-inequality sums of the above (DECLARED
+# gate), |dA| <= |dR| + |dT|. The closure-derived tighter pair is REPORTED
+# (A_tight_ok), never gated.
+W_BIN_A = 2.0 * W_BIN
+W_MEAN_A = W_MEAN_R + W_MEAN_T
+W_BIN_A_TIGHT = gate_from_envelope(_VALUES["per_bin_max_RT_closure"], quantum=_QUANTUM)
+W_MEAN_A_TIGHT = gate_from_envelope(CV04_MEAN_CLOSURE, quantum=_QUANTUM)
+# THIS case's R/T windows, handed to the shared evaluator. Before #928
+# round 2 the evaluator read cv22's module-level constants, so cv23's
+# G1_R/G1_T/G2_R/G2_T were judged by cv22's adoption and the derivations
+# above were dead code for everything except the A gates.
+WINDOWS = slab_family.Windows(W_BIN, W_MEAN_R, W_MEAN_T)
 
 # ---------------------------------------------------------------------------
 # Falsifiers (note section 6)
@@ -173,13 +216,24 @@ def _f(x):
     return float(x)
 
 
+# cv22's six plus this case's absorption pair (#928).
+DECLARED_GATES = G.DECLARED_GATES + ("G1_A", "G2_A")
+
+
 def evaluate_e2(freqs_hz, R_rfx, T_rfx, params: dict, dt: float, *, tail: dict | None = None,
-                dx: float | None = None) -> dict:
+                dx: float | None = None, require_complete: bool = False) -> dict:
     """E2 gates G1 (per-bin R, T, A), G2 (band-mean R, T, A), G3 (witnesses).
     With ``dx`` given, the exact Yee-lattice solution at (dx, dt) is added as
-    a REPORTED witness (``lattice``: W_lat per bin and |rfx - lattice|; note
-    section 13) -- it enters no gate."""
-    out = G.evaluate_e2(freqs_hz, R_rfx, T_rfx, MODEL, params, dt, tail=tail)
+    a witness (``lattice``: W_lat per bin and |rfx - lattice|; note section
+    13) -- THIS FUNCTION does not gate on it (no run/record is available at
+    this scope to derive W_witness from). The caller
+    (validation/crossval/23_lossy_slab_fresnel.py's main(), which has the
+    run's record) wires it into the live verdict via
+    comparators/lattice_witness.py's evaluate(), re-aggregating gates with
+    GL_witness added -- issue #970. Do not re-describe it as reported-only
+    here without checking that caller first."""
+    out = G.evaluate_e2(freqs_hz, R_rfx, T_rfx, MODEL, params, dt, tail=tail,
+                        require_complete=require_complete, windows=WINDOWS)
     f = np.asarray(freqs_hz, dtype=float)
     g = np.asarray(out["gated"], dtype=bool)
     R_x = np.asarray(out["R_rfx"]); T_x = np.asarray(out["T_rfx"])
@@ -222,13 +276,16 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, params: dict, dt: float, *, tail: dict |
             "mean_dT_lattice_gated": _f(rl_T[g].mean()), "max_dT_lattice_gated": _f(rl_T[g].max()),
             "mean_dA_lattice_gated": _f(rl_A[g].mean()), "max_dA_lattice_gated": _f(rl_A[g].max()),
         }
-    out["e2_ok"] = bool(all(v for v in out["gates"].values() if v is not None))
+    # Re-aggregated because the A gates were added after cv22 aggregated its
+    # own; the completeness rule (#928) applies to the whole set.
+    out.update(G.aggregate_gates(out["gates"], declared=DECLARED_GATES,
+                                 require_complete=require_complete))
     return out
 
 
 def evaluate_e4(e2: dict, meep_doc: dict) -> dict:
     """E4 gates G4 (Meep vs TMM) and G5 (rfx vs Meep) on R, T and A."""
-    out = G.evaluate_e4(e2, meep_doc)
+    out = G.evaluate_e4(e2, meep_doc, windows=WINDOWS)
     f = np.asarray(e2["freqs_hz"], dtype=float)
     g = np.asarray(e2["gated"], dtype=bool)
     params = e2["params"]

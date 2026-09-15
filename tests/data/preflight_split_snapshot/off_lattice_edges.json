@@ -1,0 +1,37 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "mesh_resolution",
+        "loc": null,
+        "message": "PEC 'pec' y-extent 3mm = 3.0 cells \u2014 volume under-resolved (a PEC volume's curved/edge features need \u22655 cells; a 1-2 cell slab is realized as drawn, with walls on both faces).",
+        "severity": "warning",
+        "source": "_validate_mesh_quality"
+      },
+      {
+        "code": "mesh_resolution",
+        "loc": null,
+        "message": "PEC 'pec' z-extent 3mm = 3.0 cells \u2014 volume under-resolved (a PEC volume's curved/edge features need \u22655 cells; a 1-2 cell slab is realized as drawn, with walls on both faces).",
+        "severity": "warning",
+        "source": "_validate_mesh_quality"
+      },
+      {
+        "code": "no_sources",
+        "loc": null,
+        "message": "No sources, ports, TFSF, or waveguide/Floquet/MSL ports configured. Simulation will produce zero fields.",
+        "severity": "warning",
+        "source": "_validate_cfg_no_sources"
+      },
+      {
+        "code": "off_lattice_design_edges",
+        "loc": null,
+        "message": "1 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 1 listed): geometry[0] 'pec' (volume) x: extent 9mm, worst face residual 300\u00b5m (3.33% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: choose dx commensurate with the patterned dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on the design edges. COVERAGE: examined 3 axis extent(s) on 1 conductor Box declaration(s) on the uniform lane; 0 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
+        "severity": "warning",
+        "source": "_validate_cfg_off_lattice_design_edges"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 4,
+    "ok": true
+  }
+}

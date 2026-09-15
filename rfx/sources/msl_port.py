@@ -257,6 +257,145 @@ def msl_port_from_entry(pe) -> "MSLPort":
 # ---------------------------------------------------------------------------
 
 
+def _msl_grid_geometry(grid):
+    from rfx.core.jax_utils import is_tracer
+    from rfx.geometry.rasterize_grid import (
+        coords_from_nonuniform_grid, coords_from_uniform_grid,
+        cell_sizes_from_nonuniform_grid, cell_sizes_from_uniform_grid,
+    )
+    from rfx.nonuniform import NonUniformGrid
+    coords = (coords_from_nonuniform_grid(grid) if isinstance(grid, NonUniformGrid)
+              else coords_from_uniform_grid(grid))
+    if any(is_tracer(x) for x in coords[:3]):
+        raise NotImplementedError("MSL conductor-plane validation requires concrete mesh coordinates")
+    sizes = (cell_sizes_from_nonuniform_grid(grid) if isinstance(grid, NonUniformGrid)
+             else cell_sizes_from_uniform_grid(grid))
+    return tuple(np.asarray(x, dtype=np.float64) for x in coords[:3]), sizes
+
+
+def _msl_normal_bounds(grid, port):
+    """Snap the two physical conductor planes by the #931 sheet rule."""
+    from rfx.geometry.rasterize_grid import _local_cell, _nearest_plane
+    axes, sizes = _msl_grid_geometry(grid)
+    nodes = axes[2]
+    if len(nodes) < 2 or not np.isfinite([port.z_lo, port.z_hi]).all():
+        raise ValueError("MSL port requires finite ground/trace planes on a resolved normal axis")
+    if port.z_hi <= port.z_lo:
+        raise ValueError("MSL port trace plane must be above its ground plane")
+    indices = []
+    for label, position in (("ground", port.z_lo), ("trace", port.z_hi)):
+        local = _local_cell(nodes, sizes[2], position)
+        indices.append(_nearest_plane(nodes, position, local,
+                                       what=f"MSL port {label}", axis=2))
+    return tuple(indices)
+
+
+def validate_msl_port_geometry(grid, port, *, pec_edge_masks=None,
+                               sheet_specs=(), sheet_impedance=None,
+                               pec_faces=(), periodic=(False, False, False),
+                               name=None):
+    """Require the source interval to meet its actual conductor surfaces.
+
+    Read ORIGINAL geometry before any port clearing. Lossy sheet edges are
+    observation-only; they must never be returned to the PEC zeroing path.
+    This validates attachment and the open substrate interval, not modal
+    accuracy or the approximation of a coarse trace width.
+    """
+    from rfx.boundaries.pec import realized_wall_planes
+    from rfx.geometry.rasterize_grid import _box_axis_closed, _local_cell
+    from rfx.materials.thin_conductor import build_sheet_impedance_ctx
+
+    nodes, sizes = _msl_grid_geometry(grid)
+    span = msl_cross_section_span(grid, port)
+    ip, iw = span["prop_idx"], span["width_idx"]
+    p, lower, upper = span["i_feed"], span["n_lo"], span["n_hi"]
+    label = f"MSL port {name!r}" if name is not None else "MSL port"
+    if len(nodes[ip]) < 2 or len(nodes[iw]) < 2:
+        raise ValueError(f"{label}: propagation and width axes must both be resolved")
+    hard = (tuple(np.zeros(grid.shape, dtype=bool) for _ in range(3))
+            if pec_edge_masks is None else tuple(np.asarray(m, dtype=bool) for m in pec_edge_masks))
+    if sheet_impedance is None and sheet_specs:
+        sheet_impedance = build_sheet_impedance_ctx(
+            sheet_specs, pec_edge_masks=pec_edge_masks, periodic=periodic)
+    observed = hard
+    if sheet_impedance is not None:
+        observed = tuple(h | np.asarray(getattr(sheet_impedance, f"mask_e{ax}"), dtype=bool)
+                         for h, ax in zip(hard, "xyz"))
+    faces = set(pec_faces or ())
+    domain_planes = set()
+    if "z_lo" in faces:
+        domain_planes.add(0)
+    if "z_hi" in faces:
+        domain_planes.add(grid.shape[2]-1)
+
+    # Sheet footprints are CLOSED node intervals. Do not demand conductor
+    # beneath the intentional lateral fringing part of a Laplace source.
+    width_nodes = nodes[iw]
+    local = _local_cell(width_nodes, sizes[iw], .5*(port.y_lo+port.y_hi))
+    widths = np.flatnonzero(_box_axis_closed(width_nodes, port.y_lo, port.y_hi, local))
+    if not len(widths):
+        raise ValueError(f"{label}: the declared width contains no grid node")
+    widths = sorted(set(map(int, widths)) | {span["w_centre"]})
+    for axis, indices in ((ip, [p]), (iw, widths)):
+        for side, boundary_node in (("lo", 0), ("hi", grid.shape[axis]-1)):
+            face = f"{'xyz'[axis]}_{side}"
+            if face in faces and boundary_node in indices:
+                raise ValueError(
+                    f"{label}: the source touches domain PEC face {face}, which "
+                    "zeros its substrate-normal E component. Move the port off that wall.")
+
+    def along_trace(w, k):
+        if k in domain_planes:
+            return True
+        idx = list(msl_cell(port.direction, p, w, k))
+        found = bool(observed[ip][tuple(idx)])
+        if p > 0:
+            idx[ip] = p-1
+            found = found or bool(observed[ip][tuple(idx)])
+        elif periodic[ip]:
+            idx[ip] = grid.shape[ip]-1
+            found = found or bool(observed[ip][tuple(idx)])
+        return found
+
+    for w in widths:
+        for role, k, declared in (("ground", lower, port.z_lo), ("trace", upper, port.z_hi)):
+            if not along_trace(w, k):
+                ij = msl_cell(port.direction, p, w, k)[:2]
+                alternatives = sorted(set(realized_wall_planes(
+                    observed, 2, ij=ij, periodic=periodic)) | domain_planes)
+                locations = [float(nodes[2][j]) for j in alternatives]
+                raise ValueError(
+                    f"{label}: declared {role} at z={declared:.9g} m maps to node "
+                    f"{k} (z={nodes[2][k]:.9g} m), but no longitudinal conductor "
+                    f"edge meets it at width node {w}. Observed conductor planes "
+                    f"on this column are {locations} m. Make the port ground/trace "
+                    "declarations agree with the realized conductor surfaces.")
+        # A volume owns internal planes too. Its substrate-facing surface
+        # must leave ALL normal source edges live, not merely appear in a
+        # tangential-wall census. Also catches posts crossing the port.
+        occupied = [k for k in range(lower, upper)
+                    if hard[2][msl_cell(port.direction, p, w, k)]]
+        if occupied:
+            raise ValueError(
+                f"{label}: substrate interval [{lower}, {upper}) intersects PEC "
+                f"normal edges {occupied} at width node {w}; use the substrate-facing "
+                "surfaces, not a plane inside the ground/trace volume.")
+        loaded = [k for k in range(lower, upper)
+                  if observed[2][msl_cell(port.direction, p, w, k)]]
+        if loaded:
+            raise ValueError(
+                f"{label}: surface-impedance sheet edges {loaded} load the "
+                f"substrate-normal source at width node {w}. Move the port "
+                "off the intersecting sheet.")
+        ij = msl_cell(port.direction, p, w, lower)[:2]
+        intervening = [k for k in realized_wall_planes(observed, 2, ij=ij, periodic=periodic)
+                      if lower < k < upper]
+        if intervening:
+            raise ValueError(
+                f"{label}: additional conductor planes {intervening} lie inside "
+                f"the substrate interval [{lower}, {upper}); the port cannot span them.")
+
+
 def _axis_cell_size(grid, axis: str, idx: int) -> float:
     """Return the cell size at index ``idx`` along ``axis``.
 
@@ -316,7 +455,7 @@ def _axis_dual_size(grid, axis: str, idx: int) -> float:
 
 
 def _msl_yz_cells(grid, port: MSLPort) -> list[tuple[int, int, int]]:
-    """Return the (i, j, k) grid indices spanning the MSL cross-section.
+    """Return substrate-normal E-edge indices spanning the MSL cross-section.
 
     The cross-section is the plane normal to the PROPAGATION axis at the
     feed coordinate, spanning the trace WIDTH axis and the substrate
@@ -337,11 +476,19 @@ def _msl_yz_cells(grid, port: MSLPort) -> list[tuple[int, int, int]]:
     )
     i_feed = int(lo_idx[ip])
     w_a, w_b = sorted((int(lo_idx[iw]), int(hi_idx[iw])))
-    n_a, n_b = sorted((int(lo_idx[inr]), int(hi_idx[inr])))
+    n_a, n_b = _msl_normal_bounds(grid, port)
 
+    if n_b <= n_a:
+        raise ValueError(
+            "MSL port has no substrate-normal edge between its ground and "
+            "trace planes; resolve the substrate on the mesh."
+        )
     cells = []
     for w in range(w_a, w_b + 1):
-        for n in range(n_a, n_b + 1):
+        # E_normal[n] lives on [node n, node n+1]. The trace-plane node
+        # is the EXCLUSIVE edge bound; including it injects/loads above
+        # the trace. Width coordinates of E_normal remain nodal/inclusive.
+        for n in range(n_a, n_b):
             cell = [0, 0, 0]
             cell[ip] = i_feed
             cell[iw] = int(w)
@@ -351,13 +498,17 @@ def _msl_yz_cells(grid, port: MSLPort) -> list[tuple[int, int, int]]:
 
 
 def msl_cross_section_span(grid, port: MSLPort) -> dict:
-    """Feed index plus the width / normal cell spans of the cross-section.
+    """Feed index, width nodes and normal bounding planes of the cross-section.
 
     Returns a dict with ``i_feed``, ``w_lo``/``w_hi``, ``w_centre``,
-    ``n_lo``/``n_hi`` (all ints, inclusive spans) and the resolved axis
+    ``n_lo``/``n_hi`` (all ints) and the resolved axis
     names/indices. Every consumer that used to unpack ``c[0]``/``c[1]``/
     ``c[2]`` from :func:`_msl_yz_cells` should read this instead, so the
     axis projection lives in one place.
+
+    Width nodes are inclusive. Normal E edges use ``n_lo <= k < n_hi``;
+    ``n_hi`` is the upper bounding NODE (trace plane), as extraction and
+    trace searches require. ``cells`` contains edges, not that upper node.
     """
     prop, width, normal, sign = msl_axis_roles(port.direction)
     ip = _MSL_AXIS_INDEX[prop]
@@ -366,15 +517,31 @@ def msl_cross_section_span(grid, port: MSLPort) -> dict:
     cells = _msl_yz_cells(grid, port)
     ws = sorted({c[iw] for c in cells})
     ns = sorted({c[inr] for c in cells})
+    centre = _msl_position_to_index(grid, msl_physical_point(
+        port.direction, port.feed_x, .5*(port.y_lo+port.y_hi), port.z_lo))[iw]
     return dict(
         prop_axis=prop, width_axis=width, normal_axis=normal, sign=sign,
         prop_idx=ip, width_idx=iw, normal_idx=inr,
         i_feed=int(cells[0][ip]),
         w_lo=int(ws[0]), w_hi=int(ws[-1]),
-        w_centre=int((ws[0] + ws[-1]) // 2),
-        n_lo=int(ns[0]), n_hi=int(ns[-1]),
+        w_centre=int(centre),
+        n_lo=int(ns[0]), n_hi=int(ns[-1]) + 1,
         cells=cells,
     )
+
+
+def msl_normal_component(port: MSLPort) -> str:
+    """The E component the MSL modal source drives: the SUBSTRATE NORMAL.
+
+    The modal voltage is ``V = sum(E_normal * d_normal)`` down the column
+    between ground and trace, so the normal component is the one the port
+    must be able to drive — and the only one the runner releases from the
+    realized PEC edges at the feed cross-section (#931 §1.9).  Releasing
+    the two in-plane components as well opens the ground plane and the
+    trace along the whole port width.
+    """
+    _prop, _width, normal, _sign = msl_axis_roles(port.direction)
+    return "e" + normal
 
 
 def msl_cell(direction: str, i_prop: int, i_width: int, i_normal: int
@@ -596,7 +763,7 @@ def compute_msl_mode_profile(
     i_feed = span["i_feed"]
 
     n_y_trace = j_trace_hi - j_trace_lo + 1
-    n_z_sub = span["n_hi"] - k_sub_lo + 1
+    n_z_sub = span["n_hi"] - k_sub_lo
     dy = float(_axis_cell_size(grid, width_axis, j_trace_lo))
     dz = float(_axis_cell_size(grid, normal_axis, k_sub_lo))
 
@@ -739,8 +906,7 @@ def compute_msl_mode_profile(
     # Measured on a 2:1 z-graded substrate, realized termination impedance
     # against a nominal 50 Ω: 135.56 Ω with the scalar, 50.00 Ω with this.
     j_trace_coarse_lo = laplace_pad_y_coarse
-    j_trace_coarse_hi = laplace_pad_y_coarse + (n_y_trace - 1)
-    j_centre_coarse = (j_trace_coarse_lo + j_trace_coarse_hi) // 2
+    j_centre_coarse = j_trace_coarse_lo + span["w_centre"] - j_trace_lo
     dz_span = np.array(
         [_axis_cell_size(grid, normal_axis, k_grid_lo + k_c)
          for k_c in range(n_z_sub)], dtype=np.float64)
@@ -809,10 +975,16 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
 
           σ_cell = (N_z · dz_cell) / (Z0 · N_y · dx_cell · dy_cell)
 
-    - **Eigenmode** (``mode_profile`` from
-      :func:`compute_msl_mode_profile`): σ ∝ |Ez(y,z)|² with the
-      proportionality chosen so the total (y,z)-integrated admittance
-      ``Y = ∫∫ σ·dy·dz / dx_feed = 1/Z0``.
+    - **Laplace profile** (``mode_profile`` from
+      :func:`compute_msl_mode_profile`): constant added scalar conductivity
+      ``sigma_port = 1 / (Z0 * N)`` on the nonzero source support, where
+      ``N = sum(volume * ez_profile**2)`` uses the Ez control volumes.
+      For ``Ez = ez_profile * V`` this dissipates ``V**2 / Z0``.
+
+    The scalar conductivity also damps Ex and Ey. The stated resistance
+    describes the supplied Ez profile; other field components add loss.
+    It does not establish a matched termination for an arbitrary field or
+    certify that the Laplace profile is a propagating Maxwell mode.
 
     Returns the updated ``materials`` NamedTuple.
     """
@@ -822,7 +994,7 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
         if not cells:
             return materials
         n_y = span["w_hi"] - span["w_lo"] + 1
-        n_z = span["n_hi"] - span["n_lo"] + 1
+        n_z = span["n_hi"] - span["n_lo"]
         # Issue #661: these three cell sizes are the PROPAGATION, WIDTH
         # and NORMAL cell sizes -- not literally dx/dy/dz. sigma scales as
         # 1/d_prop (measured: halving the propagation-axis cell doubles
@@ -856,9 +1028,11 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
             sigma = sigma.at[i, j, k].add(sigma_cell)
         return materials._replace(sigma=sigma)
 
-    # Eigenmode termination: uniform σ across the (extended) port
-    # cross-section, magnitude chosen so that the time-averaged power
-    # dissipated equals V²/Z0 when V is the TEM voltage.
+    # Laplace-profile termination: uniform σ across the (extended) port
+    # cross-section. For real Ez = ez_w * V on this support, its added
+    # instantaneous Joule loss is V²/Z0. At an electric substep use the
+    # midpoint field. A peak-phasor time average has a factor 1/2 on both
+    # sides; this identity does not qualify an arbitrary TEM field.
     #
     #     P_diss  = σ · dual_prop · ∫∫ |Ez(y,z)|² dual_w dy · d_norm dz
     #     V²/Z0   = matched-load power
@@ -872,8 +1046,9 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
     # a mesh graded across the cross-section — the sum below is per-cell.
     #
     # ez_w is the normalised mode shape (∫ez_w·dz = 1V at trace centre),
-    # so V_TEM = V_src and the integral is taken over the full fringing
-    # footprint that compute_msl_mode_profile returned.
+    # so its coefficient V is the centre-line voltage for a field exactly
+    # proportional to that profile. It is not the excitation waveform's
+    # amplitude. The integral covers the returned fringing footprint.
     ez_profile = np.asarray(mode_profile["ez_profile"], dtype=np.float64)
     cell_indices = mode_profile["cell_indices"]
     j_box_lo = int(mode_profile["j_grid_lo"])
@@ -916,9 +1091,8 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
             continue
         if not (0 <= j_loc < ez_profile.shape[0]):
             continue
-        # Only load cells where the mode actually carries energy. Cells
-        # with |Ez|·dz ≪ V_src contribute nothing physical and adding σ
-        # there would just damp evanescent fringing.
+        # Match the source's exact nonzero profile support. This is not
+        # an amplitude threshold or a propagating/evanescent-mode filter.
         if float(ez_profile[j_loc, k_loc]) == 0.0:
             continue
         sigma = sigma.at[i, j, k].add(sigma_uniform)
@@ -947,16 +1121,21 @@ def make_msl_port_sources(grid, port: MSLPort, materials, n_steps,
 
     Two modes:
 
-    - **Uniform** (``mode_profile is None``, legacy): every cell in the
-      port cross-section gets an Ez source with amplitude
-      ``V_src / N_z`` (voltage division along z).
+    - **Uniform** (``mode_profile is None``, legacy): each cell gets the
+      electric-field increment ``Cb * u / (N_z * d_normal)``.
 
-    - **Eigenmode** (``mode_profile`` from
-      :func:`compute_msl_mode_profile`): each cell gets an Ez source
-      proportional to the static-Laplace ``Ez(y,z)`` profile. The
-      profile is normalised so ``∫Ez·dz`` at the trace centre equals
-      ``V_src``, matching the legacy convention. Sources extend
-      laterally beyond the trace footprint to inject the fringing field.
+    - **Laplace profile** (``mode_profile`` from
+      :func:`compute_msl_mode_profile`): each cell gets the increment
+      ``Cb * ez_profile * u``. The profile has unit centre-line integral
+      and extends laterally beyond the trace footprint.
+
+    Here ``u`` is the sampled excitation and
+    ``Cb = dt / (epsilon + sigma_total * dt / 2)``. Thus the imposed term
+    in the electric update equation is ``ez_profile * u``. The waveform
+    amplitude is not a prescribed terminal voltage. For the shaped load
+    with ``N = sum(volume * ez_profile**2)``, the source-conjugate current
+    is ``N * u`` and its equivalent Thevenin voltage is ``Z0 * N * u``.
+    These work variables do not define the downstream MSL probe voltage.
 
     The port impedance must already be folded into ``materials`` via
     :func:`setup_msl_port` (with the same ``mode_profile``).
@@ -973,7 +1152,7 @@ def make_msl_port_sources(grid, port: MSLPort, materials, n_steps,
         cells = span["cells"]
         if not cells:
             return []
-        n_z = span["n_hi"] - span["n_lo"] + 1
+        n_z = span["n_hi"] - span["n_lo"]
         ax_n = span["normal_axis"]
         inr = span["normal_idx"]
         specs = []
@@ -990,9 +1169,8 @@ def make_msl_port_sources(grid, port: MSLPort, materials, n_steps,
             specs.append(SourceSpec(i=i, j=j, k=k, component="ez", waveform=waveform))
         return specs
 
-    # Eigenmode-shaped Ez source. Profile is normalised so that
-    # ∫ Ez·dz at the trace centre = 1 V; multiply by the desired V_src
-    # delivered by base_wave (the excitation already carries amplitude).
+    # Laplace-shaped force in the electric update. The profile has unit
+    # centre-line integral; base_wave supplies u, not a terminal voltage.
     ez_profile = np.asarray(mode_profile["ez_profile"], dtype=np.float64)
     cell_indices = mode_profile["cell_indices"]
     j_box_lo = int(mode_profile["j_grid_lo"])
@@ -1017,11 +1195,9 @@ def make_msl_port_sources(grid, port: MSLPort, materials, n_steps,
         sigma = materials.sigma[i, j, k]
         loss = sigma * grid.dt / (2.0 * eps)
         cb = (grid.dt / eps) / (1.0 + loss)
-        # ez_w has units V/m (∂φ/∂z with φ ∈ [0,1]V then renormalised so
-        # ∫Ez dz = 1V). The legacy uniform path used (cb/d_par)*base/n_z;
-        # here we use cb·ez_w·base — the d_par cancels because we
-        # injected ε·∂E/∂t = J = -σ_src*Ez_inc with Ez_inc = ez_w·V_src.
-        # Equivalent to legacy when ez_w = 1/H_sub and dz uniform.
+        # Add Cb * ez_w * u after the electric update. There is no extra
+        # sigma_port factor or negative sign in this force. This equals
+        # the uniform branch when ez_w = 1/H_sub and dz is uniform.
         waveform = cb * ez_w * base_wave
         specs.append(SourceSpec(i=int(i), j=int(j), k=int(k),
                                 component="ez", waveform=waveform))
@@ -1236,6 +1412,107 @@ def _msl_x_for_index(grid, target_i: int) -> float:
     return _msl_coord_for_index(grid, "x", target_i)
 
 
+def msl_sampled_node_coordinates(grid, port: MSLPort, coordinates) -> tuple[float, ...]:
+    """Physical E nodes selected by the DFT registration index lookup.
+
+    The registration's nominal coordinate can differ slightly from the
+    float64 geometry spine. Report the node actually sampled, without
+    changing the registration or the numerical fields.
+    """
+    from rfx.geometry.rasterize_grid import (
+        coords_from_nonuniform_grid, coords_from_uniform_grid,
+    )
+    from rfx.nonuniform import NonUniformGrid
+
+    axis, _, _, _ = msl_axis_roles(port.direction)
+    axes = (coords_from_nonuniform_grid(grid) if isinstance(grid, NonUniformGrid)
+            else coords_from_uniform_grid(grid))
+    nodes = np.asarray(getattr(axes, axis), dtype=float)
+    result = []
+    for coordinate in coordinates:
+        if not np.isfinite(float(coordinate)):
+            raise ValueError("MSL probe coordinate must be finite")
+        point = msl_physical_point(port.direction, coordinate, port.y_lo, port.z_lo)
+        index = _msl_position_to_index(grid, point)[_MSL_AXIS_INDEX[axis]]
+        result.append(float(nodes[index]))
+    return tuple(result)
+
+
+def msl_h_plane_stencil(grid, port: MSLPort, e_plane_coordinate: float) -> dict:
+    """Resolve the H samples bracketing the actual voltage E-node plane.
+
+    DFT registration uses E-node coordinates for every component. H with
+    index i is physically at the propagation-axis cell centre i, not at
+    E-node i. Return both registration coordinates and physical H locations
+    so the distinction is explicit. Direction changes the current sign,
+    not the underlying Yee placement of these samples.
+    """
+    from rfx.geometry.rasterize_grid import (
+        centres_from_nonuniform_grid,
+        centres_from_uniform_grid,
+        coords_from_nonuniform_grid,
+        coords_from_uniform_grid,
+    )
+    from rfx.nonuniform import NonUniformGrid
+
+    coordinate = float(e_plane_coordinate)
+    if not np.isfinite(coordinate):
+        raise ValueError("MSL voltage plane coordinate must be finite")
+    axis, _, _, _ = msl_axis_roles(port.direction)
+    axis_index = _MSL_AXIS_INDEX[axis]
+    if isinstance(grid, NonUniformGrid):
+        coords = coords_from_nonuniform_grid(grid)
+        centres = centres_from_nonuniform_grid(grid, coords)
+    else:
+        coords = coords_from_uniform_grid(grid)
+        centres = centres_from_uniform_grid(grid)
+    nodes = np.asarray(getattr(coords, axis), dtype=float)
+    h_coords = np.asarray(getattr(centres, axis), dtype=float)
+    if not nodes[0] <= coordinate <= nodes[-1]:
+        raise ValueError("MSL voltage plane must lie inside the grid")
+    point = msl_physical_point(port.direction, coordinate, port.y_lo, port.z_lo)
+    index = int(_msl_position_to_index(grid, point)[axis_index])
+    if not 0 < index < len(nodes) - 1:
+        raise ValueError(
+            "MSL current needs two H planes bracketing the voltage plane; "
+            "move the first probe inside the grid")
+    indices = (index - 1, index)
+    registration = tuple(float(nodes[i]) for i in indices)
+    samples = tuple(float(h_coords[i]) for i in indices)
+    target = float(nodes[index])
+    if not (np.isfinite(samples).all() and samples[0] < target < samples[1]):
+        raise ValueError("MSL H samples do not bracket the voltage E-node")
+    for expected, position in zip(indices, registration):
+        point = msl_physical_point(port.direction, position, port.y_lo, port.z_lo)
+        if int(_msl_position_to_index(grid, point)[axis_index]) != expected:
+            raise ValueError(
+                "MSL H-plane coordinate resolves to a different grid index; "
+                "the required current stencil is not addressable")
+    span = samples[1] - samples[0]
+    weights = ((samples[1] - target) / span, (target - samples[0]) / span)
+    return dict(axis=axis, e_index=index, h_indices=indices,
+                registration_coordinates=registration, sample_coordinates=samples,
+                voltage_coordinate=target, weights=weights)
+
+
+def msl_collocate_h_planes(left, right, weights):
+    """Interpolate equal-shaped H phasors while preserving dtype and AD.
+
+    Geometry supplies physical-coordinate weights. There is no beta/model
+    dependent phase correction: both travelling directions are retained.
+    """
+    left = jnp.asarray(left)
+    right = jnp.asarray(right)
+    if left.shape != right.shape:
+        raise ValueError("MSL bracketing H planes must have identical shapes")
+    if left.dtype != right.dtype:
+        raise ValueError("MSL bracketing H planes must have identical dtypes")
+    if not jnp.issubdtype(left.dtype, jnp.inexact):
+        raise ValueError("MSL bracketing H planes must use floating or complex data")
+    w_left, w_right = (jnp.asarray(w, dtype=left.dtype) for w in weights)
+    return w_left * left + w_right * right
+
+
 def msl_probe_x_coords(
     grid,
     port: MSLPort,
@@ -1388,10 +1665,17 @@ def msl_loop_current(
         ``|alpha| >> |gamma|`` at both ports on drive 0 and the reverse
         on drive 1.
 
-        Only the docstring was wrong; no code changed for this. The
-        other two items on issue #524 — the passive port's ~30 ohm
-        termination reading and the 0.194-vs-0.073 drive asymmetry — are
-        untouched here and keep that issue open.
+        Only the docstring was wrong; no code changed for this. Of the
+        other two items on issue #524, both were re-measured on current
+        main on 2026-08-30 (VESSL 369367257265, PR #799): the drive
+        asymmetry is CLOSED (the two ports read |Gamma| 0.1799 and 0.1759
+        on the shipped fixture, reproduced to 4 decimals by the
+        cell-aligned and ±y-rotated variants, so the July 0.194-vs-0.073
+        split does not exist here), and the "~30 Ω termination" inference
+        is WITHDRAWN (it rested on a July line Zc of 38.75 Ω; the fitted
+        Zc is 41.9 Ω against the Hammerstad-Jensen 47.9 Ω, which is the
+        #487 dx bias, not a termination error). #524 stays open for the
+        passive port's unexplained reflection alone.
 
     Axis generality (issue #661)
     ----------------------------

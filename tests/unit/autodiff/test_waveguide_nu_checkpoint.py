@@ -100,6 +100,12 @@ def _eps_override(sim, deps):
     (0.00% difference) — this rewrite is latent-divergence cleanup (the
     same class of hand-rolled comparator removed before it COULD go stale
     under a future change), not a fix for a live defect on this fixture.
+
+    #931: the half-open ``[lo, hi)`` rule quoted above is the DIELECTRIC
+    node sampler, which §1.8 leaves untouched, so 114 is unchanged. This
+    helper builds an ``eps_override``, not a conductor; a PEC entry is
+    centre-sampled and realized by ``realized_pec_edge_masks`` and would
+    own both hi-face planes.
     """
     from rfx.runners.nonuniform import assemble_materials_nu
     from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid

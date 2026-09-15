@@ -121,7 +121,16 @@ class TestCurvedPatch:
         assert abs(x_hi - 10e-3) < 1e-12
 
     def test_thin_z_extent(self):
-        """Each segment is a thin sheet (corner_lo[2] == corner_hi[2])."""
+        """Each segment has zero z extent — a SHEET declaration (#931 §1.5).
+
+        Zero thickness is a statement of intent, not an inference from
+        raster thickness: ``sim.add(seg, material="pec")`` realizes each
+        segment on the node plane nearest its own arc height, with the
+        normal E edge left live. ``test_realized_edges_per_primitive.py::
+        test_curved_patch_segments_are_sheets_on_their_own_planes`` pins
+        that realization; this test pins the declaration the staircase
+        emits.
+        """
         patch = CurvedPatch(
             center=(0, 0, 0),
             length=20e-3,
@@ -131,7 +140,8 @@ class TestCurvedPatch:
         )
         boxes = patch.to_staircase(dx=1e-3)
         for box in boxes:
-            assert box.corner_lo[2] == box.corner_hi[2], "Segment should be a thin sheet"
+            assert box.corner_lo[2] == box.corner_hi[2], \
+                "segment must declare zero thickness (a sheet, #931 §1.5)"
 
     def test_z_offset_formula(self):
         """Verify the arc height formula: z = R - sqrt(R^2 - s^2)."""

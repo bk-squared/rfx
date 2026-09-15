@@ -265,15 +265,22 @@ def _cv21_block(cv21: ModuleType) -> dict:
 # ---------------------------------------------------------------------------
 # cv20 -- MSL phase referee
 # ---------------------------------------------------------------------------
-def _cv20_legs(cv20: ModuleType, result_path: pathlib.Path, eps_eff_openems: float) -> dict:
+def _cv20_legs(cv20: ModuleType, result_path: pathlib.Path, eps_eff_openems: float,
+               eps_eff_rfx: float) -> dict:
+    """Replay one committed run artifact through the three legs.
+
+    #931: ``eps_eff_rfx`` is passed in rather than derived from today's
+    fixture. ``cross["beta_rfx_real"]`` in these artifacts is the beta of
+    the fixture AS IT WAS WHEN THE RUN WAS MADE -- a trace realized as one
+    zero-thickness wall on the full 300um substrate. Judging it against the
+    current fixture's board (250um of dielectric under a one-cell volume
+    strip) would grade a historical measurement on a board it never had.
+    """
     stage_b = json.loads(result_path.read_text())["stage_b"]
     freqs = np.asarray(stage_b["freqs_hz"], dtype=float)
     cross = stage_b["cross_solver_report"]
-    fixture = cv20._load_rfx_fixture(str(CV20_RFX_FIXTURE))
-    eps_rfx = cv20._hammerstad_jensen_eps_eff(
-        fixture["meta"]["w_trace_realized_m"], fixture["meta"]["h_sub_realized_m"], cv20.B_EPS_R)
     rfx = cv20._analytic_beta_witness(
-        freqs, np.asarray(cross["beta_rfx_real"], dtype=float), eps_eff=eps_rfx,
+        freqs, np.asarray(cross["beta_rfx_real"], dtype=float), eps_eff=eps_eff_rfx,
         tol_frac=cv20.B_BETA_ANALYTIC_TOL_FRAC, label="replay", solver="rfx")
     oe = cv20._analytic_beta_witness(
         freqs, np.asarray(cross["beta_openems_real"], dtype=float), eps_eff=eps_eff_openems,
@@ -296,11 +303,55 @@ def _cv20_legs(cv20: ModuleType, result_path: pathlib.Path, eps_eff_openems: flo
 def _cv20_block(cv20: ModuleType) -> dict:
     eps_declared = cv20._hammerstad_jensen_eps_eff(600e-6, 254e-6, cv20.B_EPS_R)
     fixture = cv20._load_rfx_fixture(str(CV20_RFX_FIXTURE))
+    # The 300um board: openEMS's own in run-2, and the board the rfx fixture
+    # had when BOTH committed runs were made (pre-#931, one zero-thickness
+    # wall on the full substrate).
     eps_realized = cv20._hammerstad_jensen_eps_eff(
         fixture["meta"]["w_trace_realized_m"], fixture["meta"]["h_sub_realized_m"], cv20.B_EPS_R)
+    # #931: the board TODAY'S fixture describes -- 250um of dielectric under
+    # a one-cell PEC volume strip inlaid in the substrate's top cell. This is
+    # what criterion (B) below judges, because criterion (B) perturbs the
+    # CURRENT fixture's own arrays.
+    eps_rfx_current = cv20._hammerstad_jensen_eps_eff(
+        fixture["meta"]["w_trace_realized_m"],
+        cv20._h_dielectric_under_strip(fixture["meta"]), cv20.B_EPS_R)
 
-    run1 = _cv20_legs(cv20, CV20_RUN1, eps_declared)
-    run2 = _cv20_legs(cv20, CV20_RUN2, eps_realized)
+    run1 = _cv20_legs(cv20, CV20_RUN1, eps_declared, eps_realized)
+    run2 = _cv20_legs(cv20, CV20_RUN2, eps_realized, eps_realized)
+
+    # #931: what ``_run_stage_b`` produces TODAY when run-2's openEMS field
+    # data is replayed against the CURRENT rfx fixture -- which is what the
+    # header test's replay harness exercises. Until the fixture was re-solved
+    # (86cca38e) this was the same thing as ``run2`` above; it is not any
+    # more, because run-2's stored ``beta_rfx_real`` is the pre-contract
+    # fixture's and the openEMS side is unchanged. Recording both keeps the
+    # historical replay honest AND gives the wiring test a checked oracle.
+    _run2_sb = json.loads(CV20_RUN2.read_text())["stage_b"]
+    _fr2 = np.asarray(_run2_sb["freqs_hz"], dtype=float)
+    _beta_oe2 = np.asarray(_run2_sb["cross_solver_report"]["beta_openems_real"], dtype=float)
+    _rfx_now = cv20._analytic_beta_witness(
+        _fr2, np.real(_cx(fixture["beta_first_port"])), eps_eff=eps_rfx_current,
+        tol_frac=cv20.B_BETA_ANALYTIC_TOL_FRAC, label="replay", solver="rfx")
+    _oe_now = cv20._analytic_beta_witness(
+        _fr2, _beta_oe2, eps_eff=eps_realized,
+        tol_frac=cv20.B_BETA_ANALYTIC_TOL_FRAC, label="replay", solver="openems")
+    _raw_now = np.degrees(np.angle(np.exp(1j * (
+        np.unwrap(np.angle(_cx(fixture["s21"])))
+        - np.unwrap(np.angle(_cx(_run2_sb["s21"])))))))
+    _xs_now = cv20._cross_solver_phase_witness(
+        _fr2, _raw_now, tol_deg=cv20.B_CROSS_SOLVER_PHASE_TOL_DEG, label="replay")
+    run2_current_fixture = {
+        "analytic_beta_rfx_max_abs_dev_frac": _rfx_now["max_abs_dev_frac"],
+        "analytic_beta_openems_max_abs_dev_frac": _oe_now["max_abs_dev_frac"],
+        "analytic_beta_tol_frac": float(cv20.B_BETA_ANALYTIC_TOL_FRAC),
+        "cross_solver_max_abs_raw_phase_diff_deg": _xs_now["max_abs_raw_phase_diff_deg"],
+        "cross_solver_tol_deg": float(cv20.B_CROSS_SOLVER_PHASE_TOL_DEG),
+        "cross_solver_margin_x": (
+            float(cv20.B_CROSS_SOLVER_PHASE_TOL_DEG)
+            / _xs_now["max_abs_raw_phase_diff_deg"]),
+        "all_three_passed": bool(
+            _rfx_now["passed"] and _oe_now["passed"] and _xs_now["passed"]),
+    }
 
     # Criterion (B), on run-2: the rfx side's phase velocity scaled coherently.
     stage_b = json.loads(CV20_RUN2.read_text())["stage_b"]
@@ -317,7 +368,7 @@ def _cv20_block(cv20: ModuleType) -> dict:
         e2_reason = None
         try:
             e2 = cv20._analytic_beta_witness(
-                freqs, beta_bad, eps_eff=eps_realized,
+                freqs, beta_bad, eps_eff=eps_rfx_current,
                 tol_frac=cv20.B_BETA_ANALYTIC_TOL_FRAC, label="perturbed", solver="rfx")
             e2_fired = False
         except RuntimeError as exc:
@@ -387,8 +438,10 @@ def _cv20_block(cv20: ModuleType) -> dict:
         "blindness": blindness,
         "eps_eff_hammerstad_jensen_declared_board": eps_declared,
         "eps_eff_hammerstad_jensen_realized_board": eps_realized,
+        "eps_eff_hammerstad_jensen_rfx_board_post_931": eps_rfx_current,
         "run1_declared_board": run1,
         "run2_realized_board": run2,
+        "run2_openems_with_current_rfx_fixture": run2_current_fixture,
         "criterion_b": criterion_b,
         "cross_solver_raw_phase_difference_is_gated": True,
         "evidence_levels_supported_by_a_leg_in_this_case": ["E1", "E2", "E4"],

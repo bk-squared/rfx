@@ -66,6 +66,7 @@ from __future__ import annotations
 import ast
 import inspect
 import textwrap
+from collections import Counter
 from pathlib import Path
 
 from rfx.optimize import optimize as _optimize_fn
@@ -73,10 +74,23 @@ from rfx.topology import topology_optimize as _topology_optimize_fn
 from rfx import Simulation
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
-_PREFLIGHT_SRC = _REPO_ROOT / "rfx" / "api" / "_preflight.py"
+# The preflight check sites. #980 Phase 3 takes rfx/api/_preflight.py apart a
+# family at a time into rfx/preflight/, so the scan has to follow the code:
+# a moved check takes its emission sites out of the facade, and a scan that
+# still reads only the facade would record that as a SHRINKING surface and
+# invite someone to re-freeze the counts downward -- the surface would then be
+# unpinned wherever the code actually lives. Both paths are read and the sites
+# summed, so pure code motion leaves the frozen numbers below unchanged and
+# only a real new advisory moves them. Globbed, not listed, for the reason
+# tests/unit/nonuniform/test_dz_only_dispatch_contract.py gives at its own
+# rfx/preflight/ row: a later leg must not have to remember this file.
+_PREFLIGHT_SRCS = (
+    _REPO_ROOT / "rfx" / "api" / "_preflight.py",
+    *sorted((_REPO_ROOT / "rfx" / "preflight").glob("*.py")),
+)
 
 # ---------------------------------------------------------------------------
-# S1: frozen check-site surface (rfx/api/_preflight.py).
+# S1: frozen check-site surface (rfx/api/_preflight.py + rfx/preflight/).
 # ---------------------------------------------------------------------------
 
 _ISSUE_CLASSES = {
@@ -86,12 +100,16 @@ _ISSUE_CLASSES = {
 
 
 def _enumerate_emission_sites():
-    """AST walk over ``rfx/api/_preflight.py``: every construction of an
+    """AST walk over the preflight sources: every construction of an
     issue-carrying class, with its line, enclosing function, and whether
     its ``code=`` is a source literal or computed at runtime (``getattr``
     off a caught exception -- ``preflight()``'s own uncoded fallback).
+
+    Walks ``rfx/api/_preflight.py`` and every module of ``rfx/preflight/``
+    and returns one flat list, so a site that changes FILE under #980 Phase
+    3 does not change the totals frozen below. Line numbers are per file and
+    were never part of the freeze anyway.
     """
-    tree = ast.parse(_PREFLIGHT_SRC.read_text())
     sites = []
 
     class _V(ast.NodeVisitor):
@@ -118,7 +136,8 @@ def _enumerate_emission_sites():
                 sites.append((node.lineno, name, code, dynamic, enclosing))
             self.generic_visit(node)
 
-    _V().visit(tree)
+    for src in _PREFLIGHT_SRCS:
+        _V().visit(ast.parse(src.read_text()))
     return sites
 
 
@@ -272,8 +291,88 @@ def _enumerate_emission_sites():
 # to the AST walk above and impossible as a preflight check either way, since
 # it is measured on the extracted S-matrix -- the same boundary the #854 block
 # above records for the reciprocity advisory.
-_FROZEN_TOTAL_SITES = 99
-_FROZEN_LITERAL_CODE_COUNT = 66
+#
+# 99 -> 105 sites / 66 -> 71 literal codes, issue #931 (the lattice ownership
+# contract, preflight stage; design note
+# docs/design_notes/20260906_plan_realign_lattice_ownership.md §3). Re-derived
+# with the AST walk above against the core branch feat/931-lattice-ownership:
+#   + pec_box_subcell, pec_zero_cells, pec_realization_refused — three literal
+#     ERROR sites in _validate_cfg_pec_realization (the §1.5 refusals, reported
+#     before run() raises them; three explicit constructions rather than one
+#     computed slug, so none registers as a dynamic site);
+#   + pec_box_one_cell (1 site, warning) — a PEC volume one cell thick is a
+#     slab with walls on both faces;
+#   + sheet_plane_realized (2 sites: info per run, warning on a half-cell tie);
+#   + sheet_slot_vacuum (1 site, error-grade warning) — the #702 slot, now
+#     reported instead of re-sampled;
+#   - sheet_live_edge_material_mismatch (1 site) and its own
+#     campaign_statics_unavailable site: #703 check 2 guarded the #702
+#     resample, which the contract deleted (a sheet owns no cell);
+#   + 1 campaign_statics_unavailable site in the umbrella (the assembly-failed
+#     branch, silent when a refusal already explains it) — same slug, no new
+#     code.
+# Net: +6 sites, +6 -1 = +5 literal codes. _FROZEN_DYNAMIC_SITES_BY_FUNCTION
+# is unchanged. EMISSION_CLASSIFICATION is unchanged: no entry point gained or
+# lost a preflight call.
+#
+# 105 -> 106 sites / 71 -> 72 literal codes, issue #931 (design note §6, the
+# 2026-09-07 cv11 pec-short adjudication):
+#   + pec_face_short_of_domain_wall (1 site, warning) — a PEC VOLUME's
+#     realized face sits exactly one node inside a non-absorbing domain wall.
+#     Grid realizes a declared domain by ceil(extent/dx) and a volume's face
+#     rounds to the nearest node, so a plug drawn to the DECLARED
+#     cross-section stops short of the realized wall and the cell between
+#     them is a parallel-plate line. A new check family speaking a
+#     conductor-to-BOUNDARY relation — the other §3 findings all speak about
+#     one declaration in isolation — so it does not reuse one of their slugs.
+#     Input-side by construction: it reads the entry's own realized wall
+#     planes and the grid's interior slices, never a solved field.
+# _FROZEN_DYNAMIC_SITES_BY_FUNCTION is unchanged (no new bare except).
+# EMISSION_CLASSIFICATION is unchanged: the check hangs off the same
+# _validate_cfg_campaign_statics umbrella as the other §3 findings.
+# #931 P1: one named error for unsupported interior PEC on both ADI lanes.
+# #729: two blocking sites under one new code -- assembly unavailable and
+# a concrete conductor-plane mismatch. Both remain input-side diagnostics.
+# #726 adds three msl_port_geometry sites: resolved-placement warnings,
+# a failed placement resolution, and unavailable reflector assessment.
+# No new code slug or public compute entry point is introduced.
+# #910 adds one shared finite-flux finding constructor. Its three explicit
+# slugs are passed to that dynamic-code emitter; they are frozen separately
+# below instead of being mistaken for constructor-local literal codes.
+# 113 -> 113 sites / 74 -> 74 literal codes, UNCHANGED, issue #980 Phase 3.
+# Recorded here because the scan's INPUT changed and the numbers did not.
+# The split moves whole check bodies out of rfx/api/_preflight.py into
+# rfx/preflight/, so the walk above now reads both paths and sums them. A
+# scan left on the facade alone would have watched this surface shrink by 17
+# sites on the MSL leg and by comparable counts on each leg after it, and the
+# only way to keep it green would have been to re-freeze the counts downward
+# -- which is how a surface stops being pinned where the code actually is.
+# Measured before and after the widening on the pre-move tree: 113 / 74 /
+# {preflight: 2, preflight_sparameters: 2, finding: 1} either way.
+# 113 -> 112, 2026-09-15 (#1043 / PR #1047). One site left, deliberately:
+# ``_validate_cfg_conformal_fine_dx``'s ``conformal_nan`` warning was
+# DELETED with the check. Its own comment named
+# ``test_mesh_convergence_s21_with_conformal_pec`` (xfail strict=True) as
+# the tripwire that would say the advisory had gone stale, and that test
+# XPASSed once the CPML psi coefficient read the permittivity the E update
+# uses. A SHRINKING surface is the direction this pin is least worried
+# about, but it is re-frozen here rather than left to drift, because the
+# point of the number is that every move is a conscious edit.
+# 112 -> 113, 2026-09-15 (#1043 stage B). One site added:
+# ``_validate_cfg_dielectric_at_absorber_seam``'s ``dielectric_at_absorber_seam``
+# warning in ``rfx/preflight/absorber.py`` -- the seam counterpart of
+# ``geometry_in_absorber``, reporting a dielectric that ends AT the pad
+# boundary in a shape the smoothed lane cannot continue into it. A GROWING
+# surface is the direction this pin exists for, so the number moves here in
+# the same change that adds the site, never afterwards.
+_FROZEN_TOTAL_SITES = 113
+# 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
+# site emitting that code, and the check was deleted when its own tripwire
+# XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
+# 73 -> 74, 2026-09-15 (#1043 stage B): the new advisory kind
+# ``dielectric_at_absorber_seam``. A new code is a new advisory kind, which is
+# what this count is for.
+_FROZEN_LITERAL_CODE_COUNT = 74
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site
@@ -290,14 +389,16 @@ _FROZEN_LITERAL_CODE_COUNT = 66
 _FROZEN_DYNAMIC_SITES_BY_FUNCTION = {
     "preflight": 2,
     "preflight_sparameters": 2,
+    "finding": 1,
 }
 
 
 def test_preflight_emission_site_surface_is_frozen():
     sites = _enumerate_emission_sites()
     assert len(sites) == _FROZEN_TOTAL_SITES, (
-        f"rfx/api/_preflight.py now has {len(sites)} PreflightWarning/"
-        "PreflightErrorWarning/PreflightIssue/PreflightConfigError "
+        f"rfx/api/_preflight.py + rfx/preflight/ now have {len(sites)} "
+        "PreflightWarning/PreflightErrorWarning/PreflightIssue/"
+        "PreflightConfigError "
         f"construction sites, not the frozen {_FROZEN_TOTAL_SITES} (issue "
         "#737/#742). Update _FROZEN_TOTAL_SITES in this file -- widening "
         "this surface without a conscious edit here is the failure mode "
@@ -325,6 +426,29 @@ def test_preflight_emission_site_surface_is_frozen():
         "freeze: they drift on any insertion above and say nothing about "
         "the surface."
     )
+
+
+def test_finite_flux_emitter_has_a_bounded_explicit_code_surface():
+    """A shared constructor must not hide new or dynamically chosen slugs."""
+    tree = ast.parse(textwrap.dedent(inspect.getsource(Simulation._collect_flux_regions)))
+    calls = [node for node in ast.walk(tree)
+             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+             and node.func.id == "finding"]
+    uses = [node for node in ast.walk(tree)
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+            and node.id == "finding"]
+    assert len(uses) == len(calls), "finding must be called directly, not passed through an alias"
+    codes = []
+    for call in calls:
+        assert not any(isinstance(arg, ast.Starred) for arg in call.args)
+        assert len(call.args) >= 3 and isinstance(call.args[2], ast.Constant)
+        assert isinstance(call.args[2].value, str)
+        codes.append(call.args[2].value)
+    assert Counter(codes) == {
+        "flux_region_unavailable": 2,
+        "flux_region_invalid": 2,
+        "flux_region_clamped": 1,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -389,6 +513,24 @@ EMISSION_CLASSIFICATION = {
         DIAGNOSTIC_ONLY,
         "measured: no preflight()/_auto_preflight() call in this method; "
         "EXPERIMENTAL per its own docstring"),
+    "Simulation.compute_s_matrix": (
+        AUTO,
+        "issue #980 Phase 1 dispatcher (rfx/sparams/dispatch.py): calls no "
+        "preflight of its own, and its ACTUAL emission behaviour is whatever "
+        "the lane it selects does -- which this binary table cannot express. "
+        "AUTO is the MEASURED value and is recorded as such rather than "
+        "argued: the dispatcher reaches preflight through the "
+        "self.compute_msl_s_matrix()/self.compute_mixed_s_matrix() branches "
+        "of its own if-chain (both AUTO above), so _reaches_preflight is "
+        "True. READ IT AS: preflight runs on SOME lanes this method can "
+        "select, not on all of them. On the waveguide and the three coaxial "
+        "lanes -- each DIAGNOSTIC_ONLY in its own row above -- routing "
+        "through compute_s_matrix() adds no preflight, exactly as calling "
+        "them directly adds none. The dispatch is deliberately written as "
+        "explicit self.<method>(...) calls rather than a getattr lookup so "
+        "that this gate can measure it at all; a getattr indirection would "
+        "have hidden every branch and let the method sit here as "
+        "DIAGNOSTIC_ONLY on a technicality."),
 }
 
 _PREFLIGHT_CALL_NAMES = {"preflight", "_auto_preflight", "preflight_sparameters"}

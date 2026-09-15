@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
-from typing import Mapping, NamedTuple
+from typing import Literal, Mapping, NamedTuple
 
 import jax.numpy as jnp
 import numpy as np
@@ -1044,7 +1044,14 @@ class ForwardResult(NamedTuple):
     """Minimal differentiable simulation result.
 
     Carries only the observables needed by gradient-based objectives,
-    avoiding the broader stateful surface of :class:`Result`.
+    avoiding the broader stateful surface of :class:`Result`. The
+    ``settling_db`` and ``settling_witness`` properties score the concrete
+    user-probe record using the same host diagnostic as ``run()``. They
+    report absence while records are traced; read them on the returned
+    concrete result, not as gradient objectives. Numeric
+    ``settling_probe_info`` preserves the selected columns and component
+    labels without inserting strings into a JAX result tree. These lazy
+    properties are not stored fields in ``_asdict()``.
 
     ``lumped_port_sparams`` exposes the raw per-port (V_dft, I_dft) tuples
     accumulated inside the JIT scan body when ``forward(port_s11_freqs=...)``
@@ -1072,6 +1079,28 @@ class ForwardResult(NamedTuple):
     lumped_port_sparams: object = None
     wire_port_sparams: object = None
     dft_planes: object = None
+    settling_probe_info: object = None
+
+    @property
+    def settling_db(self) -> float | None:
+        """Host ring-down diagnostic from the concrete recorded user probes.
+
+        None means absent, including during tracing. This is a diagnostic,
+        not a differentiable objective. A returned JIT result can be scored
+        once its time series is concrete. Other result fields retain their
+        existing JIT restrictions (for example the host Grid object).
+        Use ``settling_verdict`` to judge the diagnostic.
+        """
+        from rfx.probes.settling import probe_record_settling_witness
+        return probe_record_settling_witness(
+            self.time_series, self.settling_probe_info, warn=False)[0]
+
+    @property
+    def settling_witness(self) -> dict:
+        """Provenance for ``settling_db``, without string leaves in JAX trees."""
+        from rfx.probes.settling import probe_record_settling_witness
+        return probe_record_settling_witness(
+            self.time_series, self.settling_probe_info, warn=False)[1]
 
 
 # ---------------------------------------------------------------------------
@@ -1097,10 +1126,6 @@ class MaterialSpec:
 class _GeometryEntry:
     shape: Shape
     material_name: str
-    # Issue #706: opt-in two-plane realization for a PEC body that fills
-    # exactly one cell along its normal axis. Default False = the
-    # load-bearing one-plane behaviour (#677-validated).
-    two_plane: bool = False
 
 
 @dataclass(frozen=True)
@@ -1509,6 +1534,38 @@ class _MSLPortEntry:
     eps_r_sub: float | None = None
 
 
+@dataclass(frozen=True)
+class MSLProbeClearance:
+    """Per-MSL-port downstream-reflector layout diagnosis, in metres.
+
+    ``satisfied`` means no considered conductor candidate violates the
+    existing recommendation. ``insufficient`` records a known violation;
+    ``unavailable`` means missing coordinates or unevaluated conductors
+    prevent that conclusion. A known violation remains insufficient even
+    when other conductors could not be evaluated.
+
+    This uses registered conductor bounds and the existing candidate scan,
+    not a modal-purity or S-accuracy test. It does not replace source/absorber,
+    settling or low-signal checks. Negative gaps mean the probe has passed
+    the candidate's first boundary along the port direction. ``None`` gaps
+    with satisfied status mean the scan found no candidate. Probe coordinates
+    are scalar positions on ``axis``. The threshold is evaluated at the
+    simulation's design frequency, not independently at every result bin.
+    """
+    port_name: str
+    axis: str
+    status: Literal["satisfied", "insufficient", "unavailable"]
+    rule_frequency_hz: float
+    recommended_gap_m: float | None
+    first_probe_m: float | None = None
+    deepest_probe_m: float | None = None
+    first_gap_m: float | None = None
+    deepest_gap_m: float | None = None
+    reflector: str | None = None
+    unevaluated_conductors: tuple[str, ...] = ()
+    note: str | None = None
+
+
 @dataclass
 class MSLSMatrixResult:
     """MSL S-matrix result.
@@ -1516,7 +1573,18 @@ class MSLSMatrixResult:
     Attributes
     ----------
     S : (n_ports, n_ports, n_freqs) complex
-        Full S-matrix.
+        Power-wave S-matrix at each port's FIRST probe plane, formed from
+        a=(V+R*I)/(2*sqrt(R)), b=(V-R*I)/(2*sqrt(R)) with the positive real
+        analytic Hammerstad-Jensen reference R of each port. There
+        is no translation back to the physical feed planes. Bracketing H
+        samples are interpolated to this E-node plane using physical
+        coordinates, with the temporal leapfrog offset corrected separately.
+        The fitted ``Z0`` below is a diagnostic, not the reference used to form S.
+    reference_impedances : (n_ports,) float, optional
+        Actual positive real R values used to define S, in ohms and in
+        port_names order. These are distinct from fitted Z0 and the
+        source/load resistances. Present on generated results; None is
+        retained for manually constructed legacy result objects.
     freqs : (n_freqs,) float
         Frequency grid in Hz.
     Z0 : (n_ports, n_freqs) complex
@@ -1527,46 +1595,23 @@ class MSLSMatrixResult:
         Propagation constant β from the N-probe least-squares fit
         (issue #80 Fix C) at the first port's run.
     reliable : (n_ports, n_freqs) bool, optional
-        Per-port wave-split reliability. False marks standing-wave-null bins
-        where both voltage and current collapse below 10% of their band
-        medians. S values at those bins are retained unchanged.
+        Relative low-signal mask. ``reliable[p, k]`` is False when both
+        |V| and |I| at port p fall below 10% of that record's own band
+        medians in at least one driven run. All drive/port records used by
+        the solve are covered; S is retained unchanged.
 
-        ``reliable[p, k]`` is False when PORT ``p``'s probe plane collapsed
-        at bin ``k`` in AT LEAST ONE drive.  Every ``(driven, port)`` record
-        the solve consumes is covered, not only the own-drive diagonal
-        (issue #522) — a collapse at a *passive* port's plane during
-        someone else's drive used to be invisible here while still
-        corrupting the result.
-
-        *What a False entry condemns*: the ENTIRE frequency slice
-        ``S[:, :, k]``, not just the column ``S[:, p, k]`` the pre-#507
-        single-ratio assembly confined it to.  ``S`` is ``B·A⁻¹`` over all
-        drives, so one collapsed wave pair contaminates the whole slice.
-        Drop the bin; the index tells you which plane to investigate.
-
-        *What a True entry does not certify*: accuracy.  It means the
-        low-signal threshold did not fire, nothing more.
-
-        *Cost of the widened coverage, measured*: the threshold is relative
-        to each record's OWN band median, so a port sitting in a deep
-        stopband is not flagged wholesale — but individual deep bins ARE
-        flagged.  Live extractor runs on the two filter geometries flagged 2
-        bins of 100 on the ``msl_notch_e4`` fixture and 12 of 120 on the
-        Sheen LPF leg (``validation/crossval/07_sheen_lpf.py`` at its
-        ``--n-freqs`` default), and the notch fixture's two ARE the notch
-        centre — 3.6273 GHz, which the committed fixture meta records at
-        −30.66 dB.  The two COUNTS are not recomputable from the committed
-        JSON: those fixtures store S magnitudes only, with no V/I dump, so
-        checking them means re-running the extractor and reading
-        ``reliable``.  That is not a false alarm
-        — at a −30 dB notch the passive port's wave split really is
-        low-signal and the extractor cannot certify the depth — but a filter
-        user loses exactly the bin they care about and should read the depth
-        from ``S_raw`` or the flux channel with that caveat.
-
-        ``np.all(reliable, axis=0)`` is therefore the right per-bin screen:
-        it keeps exactly the bins where no plane the solve reads had
-        collapsed.
+        A False entry does not by itself prove matrix corruption: a true
+        transmission zero can have zero passive-port phasors with a
+        well-conditioned drive matrix. Inspect absolute signal uncertainty,
+        settling and drive conditioning before interpreting those bins.
+        A True entry is not an accuracy certificate either. The numerical
+        threshold and the policies used by callers are unchanged.
+    probe_clearance : tuple[MSLProbeClearance, ...], optional
+        Separate downstream-reflector layout diagnosis in port order, using
+        the resolved probe ladder. Status is satisfied, insufficient or
+        unavailable; physical probe coordinates and signed gap estimates
+        accompany it. This is independent of ``reliable`` and does not
+        certify mode purity or S accuracy.
     settling_db : (n_ports,) float, optional
         Ring-down settling witness per driven-port run: the WORST (largest)
         over ALL port probe planes of ``10*log10(mean Ez^2 over the last 10%
@@ -1615,7 +1660,8 @@ class MSLSMatrixResult:
         disambiguates. ``None`` while tracing (the finiteness test cannot run
         on a tracer, so the solve result is taken as-is — see ``cond_a``).
     cond_a : (n_freqs,) float, optional
-        Per-frequency condition number of the drive matrix ``A``. Bounds
+        Per-frequency condition number of the power-wave drive matrix ``A``
+        (one common row scale cancels from this condition number). Bounds
         DEGENERACY of the drive system only — it is **not** a reliability
         or accuracy score, and a low value does not certify the result
         (same contract as the coax lane's
@@ -1629,8 +1675,10 @@ class MSLSMatrixResult:
         Hammerstad-Jensen guess, or the refined β landed within half a
         grid step of a window limit.  ``Z0[p, k]`` (and ``beta[k]`` for
         ``p = 0``) at such a bin is the scan-window limit, NOT a
-        measurement — do not quote it.  ``S`` is NOT condemned: S11/S21
-        ride on the analytic Z0 anchor, never on the fitted β.  The
+        measurement — do not quote it. Fitted Z0/beta do not enter S11/S21,
+        which use the analytic Z0 anchor and measured V/I. This separation
+        does not certify the V/I or reference impedance: shared record
+        contamination can affect both the fit and S. The
         own-drive diagonal is exactly the provenance of every fitted
         number this result carries (``Z0[i, :]`` comes from port *i*'s
         own driven run).  ``None`` while tracing.
@@ -1647,13 +1695,16 @@ class MSLSMatrixResult:
     assembly: str | None = None
     cond_a: np.ndarray | None = None
     beta_railed: np.ndarray | None = None
+    # Same order as port_names; independent of the frequency-wise signal mask.
+    probe_clearance: tuple[MSLProbeClearance, ...] | None = None
+    reference_impedances: np.ndarray | None = None
 
 
 @dataclass
 class MixedSMatrixResult:
     """Mixed-family S-matrix result (issue #488, lumped/wire + MSL v1).
 
-    Unlike the per-family extractors, ``S`` here is in the **Kurokawa
+    ``S`` here is in the **Kurokawa
     power-wave convention** (every wave amplitude divided by
     ``sqrt(Re(Z0_port))``): with unequal reference impedances across
     families a pseudo-wave ``b/a`` ratio is off by ``sqrt(Z_j/Z_i)``
@@ -1690,15 +1741,20 @@ class MixedSMatrixResult:
         ``(1 - |S_jj|^2)`` (does not trust the port-cell a-wave
         magnitude; issue #313 triangulation).
     reliable : np.ndarray | None
-        (n_msl, n_freqs) bool — MSL standing-wave-null reliability mask
-        from each MSL port's own driven run (False = ill-conditioned bin).
+        (n_msl, n_freqs) bool — relative low-signal mask from each MSL
+        port's own driven run. A False entry is not by itself proof of
+        an incorrect S-matrix; see :class:`MSLSMatrixResult`.
+    probe_clearance : tuple[MSLProbeClearance, ...], optional
+        MSL-only downstream layout diagnoses, in MSL registration order.
+        Lumped/wire ports have no entries here, as with ``reliable``.
     beta_railed : np.ndarray | None
         (n_msl, n_freqs) bool — β-scan rail mask from each MSL port's
         own driven run, same criterion as
         :attr:`MSLSMatrixResult.beta_railed` (issue #681).  In this lane
         the N-probe fit is DIAGNOSTIC ONLY (the |Zc| deviation warning);
         a True bin means that diagnostic's β/|Zc| are the scan-window
-        limit, not a measurement.  ``S`` is unaffected.
+        limit, not a measurement. Fitted beta/Z0 do not enter S, but
+        this does not certify their shared measured V/I.
     S_raw / passivity_correction :
         As in :class:`MSLSMatrixResult` — set only when the passivity
         projection touched at least one bin.
@@ -1719,6 +1775,8 @@ class MixedSMatrixResult:
     # matrix for comparison (None when magnitude_channel="wave").
     S_wave: np.ndarray | None = None
     magnitude_channel: str = "wave"
+    # MSL records only, in MSL registration order (as with reliable/beta_railed).
+    probe_clearance: tuple[MSLProbeClearance, ...] | None = None
 
 
 @dataclass
@@ -2099,6 +2157,7 @@ __all__ = [
     "CoaxialLineReflectionResult",
     "CoaxialTwoPortResult",
     "_MSLPortEntry",
+    "MSLProbeClearance",
     "MSLSMatrixResult",
     "MixedSMatrixResult",
     "CoaxMSLTransitionResult",

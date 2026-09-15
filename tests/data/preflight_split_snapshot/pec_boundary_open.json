@@ -1,0 +1,30 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "settling_witness_will_be_absent",
+        "loc": null,
+        "message": "this simulation requests NTFF far-field output but registers no point probe. run() and forward() score their ring-down settling witness from the recorded probe time series, so the result will carry settling_db=None and those DFT numbers will have no truncation guard (#885); add sim.add_probe(position, component) somewhere the field is live and retain its time series. Inspect forward's diagnostic on the concrete result after JIT/AD evaluation.",
+        "severity": "warning",
+        "source": "_validate_cfg_settling_witness_present"
+      },
+      {
+        "code": "pec_boundary_open",
+        "loc": null,
+        "message": "PEC boundary with NTFF far-field: PEC reflects all energy back into domain. Use boundary='cpml' or boundary='upml' for open structures (antennas, scatterers).",
+        "severity": "warning",
+        "source": "_validate_cfg_pec_boundary_open_structure"
+      },
+      {
+        "code": "ntff_near_field",
+        "loc": null,
+        "message": "NTFF face z_lo is 10.00mm from geometry 'pec' \u2014 below \u03bb/2 = 14.99mm at f_max=10.00GHz. Close to reactive near-field; far-field pattern accuracy may degrade. Move NTFF box \u2265 \u03bb/2 from radiating/scattering structures.",
+        "severity": "warning",
+        "source": "_validate_ntff_inverse_design"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 3,
+    "ok": true
+  }
+}

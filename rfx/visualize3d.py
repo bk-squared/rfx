@@ -335,7 +335,8 @@ def _plot_field_mpl(field, grid, component, threshold, title, figsize, cmap, sca
     _require_mpl()
 
     nx, ny, nz = field.shape
-    dx = grid.dx * scale
+    from rfx.visualize import _slice_coords
+    coords = [values * scale for values in _slice_coords(None, grid)]
     vmax = float(np.max(np.abs(field))) or 1.0
 
     if HAS_MPL3D:
@@ -350,20 +351,17 @@ def _plot_field_mpl(field, grid, component, threshold, title, figsize, cmap, sca
 
         for name, slc, normal_axis, idx in slices:
             if normal_axis == 2:
-                x = np.arange(slc.shape[0]) * dx
-                y = np.arange(slc.shape[1]) * dx
+                x, y = coords[0], coords[1]
                 X, Y = np.meshgrid(x, y, indexing="ij")
-                Z = np.full_like(X, idx * dx)
+                Z = np.full_like(X, coords[2][idx])
             elif normal_axis == 1:
-                x = np.arange(slc.shape[0]) * dx
-                z = np.arange(slc.shape[1]) * dx
+                x, z = coords[0], coords[2]
                 X, Z = np.meshgrid(x, z, indexing="ij")
-                Y = np.full_like(X, idx * dx)
+                Y = np.full_like(X, coords[1][idx])
             else:
-                y = np.arange(slc.shape[0]) * dx
-                z = np.arange(slc.shape[1]) * dx
+                y, z = coords[1], coords[2]
                 Y, Z = np.meshgrid(y, z, indexing="ij")
-                X = np.full_like(Y, idx * dx)
+                X = np.full_like(Y, coords[0][idx])
 
             colors = plt.get_cmap(cmap)((slc / vmax + 1) / 2)
             ax.plot_surface(X, Y, Z, facecolors=colors, alpha=0.5,
@@ -379,17 +377,20 @@ def _plot_field_mpl(field, grid, component, threshold, title, figsize, cmap, sca
     # --- 2D tri-panel fallback ---
     fig, axes = plt.subplots(1, 3, figsize=figsize)
     slices_2d = [
-        (field[:, :, nz // 2], "x", "y", f"z={nz // 2}"),
-        (field[:, ny // 2, :], "x", "z", f"y={ny // 2}"),
-        (field[nx // 2, :, :], "y", "z", f"x={nx // 2}"),
+        (field[:, :, nz // 2], 0, 1, f"z={coords[2][nz // 2]:g}"),
+        (field[:, ny // 2, :], 0, 2, f"y={coords[1][ny // 2]:g}"),
+        (field[nx // 2, :, :], 1, 2, f"x={coords[0][nx // 2]:g}"),
     ]
 
-    for ax, (slc, xlabel, ylabel, slice_label) in zip(axes, slices_2d):
-        im = ax.imshow(slc.T, origin="lower", cmap=cmap,
-                        vmin=-vmax, vmax=vmax, aspect="equal",
-                        extent=[0, slc.shape[0] * dx, 0, slc.shape[1] * dx])
-        ax.set_xlabel(f"{xlabel} ({scale_label})")
-        ax.set_ylabel(f"{ylabel} ({scale_label})")
+    from rfx.visualize import _axis_edges
+    for ax, (slc, xaxis, yaxis, slice_label) in zip(axes, slices_2d):
+        xe = _axis_edges(grid, xaxis, coords[xaxis] / scale) * scale
+        ye = _axis_edges(grid, yaxis, coords[yaxis] / scale) * scale
+        im = ax.pcolormesh(xe, ye, slc[:xe.size - 1, :ye.size - 1].T,
+                           cmap=cmap, vmin=-vmax, vmax=vmax, shading="flat")
+        ax.set_aspect("equal")
+        ax.set_xlabel(f"{'xyz'[xaxis]} ({scale_label})")
+        ax.set_ylabel(f"{'xyz'[yaxis]} ({scale_label})")
         ax.set_title(f"{component} @ {slice_label}")
         fig.colorbar(im, ax=ax, shrink=0.6)
 
@@ -636,7 +637,7 @@ def save_screenshot(
     str : path to saved image
     """
     if state is not None:
-        fig = plot_field_3d(state, sim._build_grid(), component=component,
+        fig = plot_field_3d(state, sim._build_realized_grid(), component=component,
                             figsize=figsize, scale=scale, backend="matplotlib")
     else:
         fig = plot_geometry_3d(sim, figsize=figsize, scale=scale,

@@ -445,10 +445,17 @@ class TestAutoConfigNonUniform:
 
     def test_thin_substrate_triggers_nonuniform(self):
         """Substrate thinner than 4*dx should trigger non-uniform z."""
+        # #931: both foils are drawn with ZERO extent in z, which IS the
+        # sheet declaration (§1.5) — the ground on the substrate floor, the
+        # patch on its top face. That spelling was already what this test
+        # used; before the contract it realized nothing at all (a half-open
+        # ``[lo, hi)`` node window with lo == hi masks no node), and only
+        # ``auto_configure`` reads these entries, so the emptiness never
+        # bit here. Under the contract they are sheets on real node planes.
         geometry = [
             (Box((0, 0, 0), (0.03, 0.03, 0.0016)), "fr4"),
-            (Box((0, 0, 0), (0.03, 0.03, 0)), "pec"),     # ground
-            (Box((0.005, 0.005, 0.0016), (0.025, 0.025, 0.0016)), "pec"),  # patch
+            (Box((0, 0, 0), (0.03, 0.03, 0)), "pec"),     # ground sheet
+            (Box((0.005, 0.005, 0.0016), (0.025, 0.025, 0.0016)), "pec"),  # patch sheet
         ]
         materials = {
             "fr4": {"eps_r": 4.4, "sigma": 0.025},

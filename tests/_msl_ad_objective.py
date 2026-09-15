@@ -7,6 +7,12 @@ two hand-written copies that can drift -- the same defect class
 ``tests/_gate_policy.py`` exists to prevent for the envelope->gate multiplier
 (issue #528).
 
+The numerical measurements and #560 mechanism attribution below describe
+the historical fixture. #729 repaired its port height, excitation coverage
+and FD field precision; those old numbers do not qualify the repaired
+fixture or establish its dominant gradient mechanism. Current evidence is
+in docs/research_notes/issue729/ad-referee-diagnosis.md.
+
 WHY BAND-MEAN |S21|^2, NOT sum_ij|S_ij|^2 (issue #530)
 --------------------------------------------------------
 ``test_msl_ad_fd_converged_tight`` used to differentiate

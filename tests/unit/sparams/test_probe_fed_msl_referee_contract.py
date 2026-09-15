@@ -1,7 +1,12 @@
 """Contract tests for the #498 openEMS referee lane.
 
-openEMS is NOT installed on this pod, so everything here is either pure
-arithmetic or a subprocess of the script's own openEMS-free paths. The
+Everything here is either pure arithmetic or a subprocess of the script's
+own openEMS-free paths. Nothing in this file requires openEMS, and nothing
+in it may assume openEMS is ABSENT either (#955): the gate image
+``ghcr.io/bk-squared/rfx-openems`` ships it, a dev pod does not, and a test
+that reads the ambient environment instead of controlling it is green on one
+and red on the other. Where a test needs the solver to be unimportable it
+installs ``_solver_shadow`` on the child's ``PYTHONPATH``. The
 tests that matter:
 
   * the STAGE CONTRACT -- Stage 2 refuses to run unless Stage 1 ran and
@@ -11,7 +16,7 @@ tests that matter:
     body for the quoted red run);
   * the DE-EMBEDDING arithmetic, on planted data with a known answer;
   * the MESH/GEOMETRY self-check, pure numpy;
-  * that the module imports and ``--dry-run``s with no openEMS present.
+  * that the module imports and ``--dry-run``s without pulling in openEMS.
 
 Nothing here asserts a physics number. No lumped/wire diagonal value is
 pinned by any test in this file.
@@ -49,8 +54,11 @@ def _smoother():
     return _SMOOTHER_CACHE[0]
 
 
+_REFEREE_MODULE_NAME = "_probe_fed_msl_referee_under_test"
+
+
 def _load_referee():
-    spec = importlib.util.spec_from_file_location("_probe_fed_msl_referee_under_test", _SCRIPT)
+    spec = importlib.util.spec_from_file_location(_REFEREE_MODULE_NAME, _SCRIPT)
     assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -62,15 +70,77 @@ def ref():
     return _load_referee()
 
 
+_SOLVER_ROOTS = ("openEMS", "CSXCAD")
+
+
+def _is_solver_module(name: str) -> bool:
+    return name.split(".")[0] in _SOLVER_ROOTS
+
+
+def _solver_shadow(tmp_path: Path) -> Path:
+    """Build a directory that makes openEMS and CSXCAD unimportable.
+
+    Placed first on a child process's ``PYTHONPATH`` it shadows any real
+    install (PYTHONPATH entries precede site-packages), so a test of the
+    script's "cannot import the solver" path walks that path on the openEMS
+    gate image exactly as it does on a pod without openEMS (#955).
+    ``_import_openems`` reaches CSXCAD first, then openEMS; both are shadowed
+    so it does not matter which one it tries.
+    """
+    shadow = tmp_path / "no_solver"
+    for package in _SOLVER_ROOTS:
+        pkg_dir = shadow / package
+        pkg_dir.mkdir(parents=True)
+        (pkg_dir / "__init__.py").write_text(
+            f'raise ImportError("{package} is shadowed by '
+            'test_probe_fed_msl_referee_contract (#955)")\n')
+    return shadow
+
+
+def _env_without_solver(tmp_path: Path) -> dict:
+    """The current environment, with the solver shadow prepended to PYTHONPATH."""
+    env = dict(os.environ)
+    existing = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = os.pathsep.join(
+        [str(_solver_shadow(tmp_path))] + ([existing] if existing else []))
+    return env
+
+
 # ---------------------------------------------------------------------------
 # Import-guarded structure
 # ---------------------------------------------------------------------------
-def test_module_imports_without_openems(ref):
-    """The referee must be importable (and therefore testable) on a pod
-    with no openEMS: the solver import is deferred into _import_openems."""
-    assert "openEMS" not in sys.modules
-    assert "CSXCAD" not in sys.modules
-    assert callable(ref._import_openems)
+def test_module_import_does_not_pull_in_the_solver():
+    """Importing the referee must not eagerly import the solver: it is
+    reached only through _import_openems, which is what keeps this file
+    testable on a pod with no openEMS.
+
+    Stated as the DELTA of ``sys.modules`` across this one import, not as the
+    global fact ``"openEMS" not in sys.modules`` (#955) — the latter is a
+    claim about the whole process that any sibling test, or an image that
+    ships openEMS, falsifies without the referee having misbehaved.
+    """
+    # Evict the referee module (it is loaded by path, so normally absent) and
+    # any solver module already imported, so a solver import performed by the
+    # exec_module below actually appears in the delta instead of being served
+    # from the module cache. Everything evicted is put back afterwards.
+    evicted = {name: mod for name, mod in sys.modules.items()
+               if _is_solver_module(name) or name == _REFEREE_MODULE_NAME}
+    for name in evicted:
+        del sys.modules[name]
+    try:
+        before = set(sys.modules)
+        mod = _load_referee()
+        added = sorted(n for n in set(sys.modules) - before
+                       if _is_solver_module(n))
+    finally:
+        for name in [n for n in sys.modules if _is_solver_module(n)]:
+            del sys.modules[name]
+        sys.modules.update(evicted)
+
+    assert not added, (
+        "importing the referee eagerly imported the solver: "
+        + ", ".join(added))
+    assert callable(mod._import_openems)
 
 
 def test_dry_run_prints_stage_plan_and_geometry_without_openems():
@@ -190,13 +260,19 @@ def test_cli_stage_2_with_a_failing_stage1_json_exits_4(tmp_path):
 
 
 def test_cli_stage_1_without_openems_exits_2_and_writes_no_number(tmp_path):
-    """On this pod openEMS is absent: Stage 1 must exit 2 with the
-    VESSL-only message and must NOT write an artifact carrying a
-    reproduced number it never measured."""
+    """With openEMS unimportable, Stage 1 must exit 2 with the VESSL-only
+    message and must NOT write an artifact carrying a reproduced number it
+    never measured.
+
+    The absence is imposed on the child process (#955), not read off the
+    host: on the gate image openEMS imports fine and Stage 1 would run its
+    self-check and exit 0.
+    """
     out = tmp_path / "referee.json"
     proc = subprocess.run(
         [sys.executable, str(_SCRIPT), "--stage", "1", "--output", str(out)],
-        capture_output=True, text=True, cwd=str(_REPO_ROOT))
+        capture_output=True, text=True, cwd=str(_REPO_ROOT),
+        env=_env_without_solver(tmp_path))
     assert proc.returncode == 2, (proc.returncode, proc.stdout, proc.stderr)
     assert "openEMS Python bindings not importable" in proc.stderr
     assert "vessl_probe_fed_msl_referee.yaml" in proc.stderr
@@ -204,10 +280,13 @@ def test_cli_stage_1_without_openems_exits_2_and_writes_no_number(tmp_path):
 
 
 def test_cli_stage_both_without_openems_never_reaches_stage_2(tmp_path):
+    # Same environment dependence as the Stage-1 test above (#955): the
+    # solver is shadowed for this child rather than assumed missing.
     out = tmp_path / "referee.json"
     proc = subprocess.run(
         [sys.executable, str(_SCRIPT), "--stage", "both", "--output", str(out)],
-        capture_output=True, text=True, cwd=str(_REPO_ROOT))
+        capture_output=True, text=True, cwd=str(_REPO_ROOT),
+        env=_env_without_solver(tmp_path))
     assert proc.returncode == 2
     assert "STAGE 2" not in proc.stdout.split(
         "--- STAGE 1: reproduce-gate (openEMS's own canonical examples) ---")[-1]
@@ -392,6 +471,107 @@ def test_reported_only_dx80_leg_is_labelled_and_not_the_comparator(ref):
     assert ref.B_DX_REPORTED_ONLY_M == pytest.approx(80e-6)
     assert "dx=50 um" in ref.REPRODUCE_GATE_RECORD["do_not_repeat"]
     assert "REPORTED ONLY" in ref.REPRODUCE_GATE_RECORD["do_not_repeat"]
+
+
+# ---------------------------------------------------------------------------
+# The comparator must redraw the board rfx SOLVES, not the one it declares
+# (#931). Both checks below are build-time, no openEMS and no solve.
+# ---------------------------------------------------------------------------
+@pytest.mark.xfail(
+    reason="the referee's RFX_REALIZED_RECORD and rfx_node_index were "
+           "measured on the pre-#931 fixture (dx = 80 um, h_sub realized "
+           "320 um, trace 480-560 um); the fixture is now on-lattice at "
+           "dx = h_sub/3 = 84.667 um with the foil declared as a sheet. "
+           "ATTEMPTED at the phase-2b ingest and BACKED OUT, with the "
+           "reason measured: refreshing the record's numbers alone is not "
+           "enough. Every plane of record (1.44, 1.76, 2.00, 2.24, 2.80, "
+           "3.60, 4.08, 4.40, 4.72 mm) is an exact multiple of 80 um and "
+           "NONE is a multiple of 84.667 um, so the referee's own "
+           "plane_on_grid self-check fails on all of them and the Stage-2 "
+           "mesh has to be re-planned, not re-typed -- a comparator design "
+           "decision plus an openEMS Stage-1/Stage-2 re-run, neither of "
+           "which is available on this pod. Replacement text and the "
+           "measured tables: docs/design_notes/931_migration/"
+           "T2-probe_fed_msl_openems_referee.md. Pre-declared falsifier for "
+           "that work: this goes green and the xfail comes off.",
+    strict=True,
+)
+def test_referee_record_still_describes_the_fixture_it_names(ref):
+    """The record's board vs the board its named fixture realizes today.
+
+    ``RFX_REALIZED_RECORD['fixture']`` points at
+    ``tests/unit/sparams/test_mixed_port_sparam.py::_base_sim``, and the
+    referee builds its openEMS board from the REALIZED numbers in that
+    record — which is the right discipline (an external comparator must
+    redraw what rfx solves, not what rfx declares).  It also means the
+    record is a copy, and a copy of a measurement rots the moment the
+    measurement moves.  Nothing red when this branch moved that fixture,
+    so this is the missing gate.
+
+    Measured here, one grid build, no solve:
+
+    ==========================  =====================  ====================
+    quantity                    record (pre-#931)      live (post-#931)
+    ==========================  =====================  ====================
+    dx                          80.000 um              84.667 um (h_sub/3)
+    grid shape                  (117, 55, 19)          (112, 53, 18)
+    realized h_sub              4 cells = 320 um       3 cells = 254 um
+    conductor plane k           4                      3
+    trace: edge span            6 cells = 480 um       6 cells = 508 um
+    trace: node span            7 cells = 560 um       7 cells = 592.67 um
+    node index of x = 2.00 mm   33                     32
+    node index of x = 5.50 mm   77                     73
+    ==========================  =====================  ====================
+
+    The consequence the record itself says it must state up front, because
+    it sets the anchor term in the predeclaration's budget B: rfx anchors
+    its MSL port to the Hammerstad-Jensen Z0 of the DECLARED board,
+    47.895 ohm (W = 600, h = 254).  The HJ Z0 of the board it actually
+    solves was 57.5-62.7 ohm (+20 % to +31 % against the anchor) and is now
+    48.3-53.1 ohm (+0.8 % to +10.9 %) — because the realized substrate
+    stopped being 26 % too thick.  Still REPORTED, NEVER GATED, and it
+    still must not replace the analytic anchor in shipped code; the point
+    is that the number moved and the referee has not been told.
+    """
+    import importlib
+
+    import numpy as _np
+
+    from tests._realized_geometry import node_index, realized
+
+    fx = importlib.import_module(
+        "tests.unit.sparams.test_mixed_port_sparam")
+    sim, y_c = fx._base_sim()
+    fx._add_msl(sim, y_c)
+    fx._add_feed(sim, y_c)
+    rz = realized(sim)
+    grid = rz.grid
+
+    rec = ref.RFX_REALIZED_RECORD
+    assert rec["declared"]["dx_m"] == pytest.approx(float(grid.dx)), (
+        "the referee's declared dx is not the fixture's dx: record "
+        f"{rec['declared']['dx_m']*1e6:.3f} um, live "
+        f"{float(grid.dx)*1e6:.3f} um")
+
+    # the realized conductor plane, from the single owner
+    planes = rz.wall_planes(2)
+    assert len(planes) == 1, f"the foil must realize ONE plane, got {planes}"
+    k = planes[0]
+    assert ref.rfx_node_index(0.0) == node_index(grid, 0, 0.0)
+    assert ref.rfx_node_index(2.00e-3) == node_index(grid, 0, 2.00e-3)
+    assert ref.rfx_node_index(5.50e-3) == node_index(grid, 0, 5.50e-3)
+
+    # the realized board the referee has to redraw
+    my = _np.asarray(rz.edge_masks[1], dtype=bool)
+    js = _np.where(my[:, :, k].any(axis=0))[0]
+    w_edge_m = (js.max() - js.min() + 1) * float(grid.dx)
+    h_realized_m = k * float(grid.dx)
+    assert rec["realized"]["h_sub_m"] == pytest.approx(h_realized_m, rel=1e-9), (
+        f"realized h_sub moved: record {rec['realized']['h_sub_m']*1e6:.1f} um, "
+        f"live {h_realized_m*1e6:.1f} um")
+    assert rec["realized"]["w_trace_edge_span_m"] == pytest.approx(
+        w_edge_m, rel=1e-9), (
+        f"realized trace width moved: live {w_edge_m*1e6:.2f} um")
 
 
 def test_rfx_node_index_matches_the_measured_grid(ref):

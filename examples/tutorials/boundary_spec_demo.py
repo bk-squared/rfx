@@ -17,6 +17,39 @@ THE RULE:
   * **periodic** for infinite arrays (metasurfaces, frequency-selective
     surfaces); the paired faces must be used together.
 
+A BOUNDARY IS NOT A BODY.  ``BoundarySpec`` PEC is a condition on the domain's
+own faces: E tangential to the face is zeroed at the face plane, and the wall
+is infinite in its own plane.  Metal drawn INSIDE the domain is a different
+operator with its own rule — the lattice ownership contract (#931).  A
+conductor there is exactly one of three things, and the declaration says which:
+
+  * a **sheet** — ``sim.add_thin_conductor(shape)`` — a footprint on ONE node
+    plane, zero thickness, owning no cell.  The two in-plane E components on
+    that plane are zeroed and the E through the plane stays live.  This is the
+    declaration for etched copper: a ground plane, a patch, a microstrip
+    trace.  35 um of copper on a 1.5 mm board is a sheet, and the mesh does not
+    have to resolve it.
+  * a **volume** — ``sim.add(shape, material="pec")`` — the primal cells whose
+    CENTRES lie inside the shape, with every E edge incident to one of them
+    zeroed.  A drawn slab therefore realizes walls on BOTH of its faces with
+    the interior shorted, and realized thickness = drawn thickness.  This is
+    the declaration for a plate, an iris, a post, a machined cavity wall.
+  * a **wire** — ``PolylineWire`` thinner than half a cell — the E edges of a
+    lattice path.
+
+The two worked contrasts, on the same 1 mm mesh:
+
+  * a ground plane declared ``add_thin_conductor(Box((0,0,z0), (Lx,Ly,z0)))``
+    realizes ONE wall plane at ``z0`` and adds no cell to the stack-up;
+  * a 2 mm aluminium plate declared ``add(Box((0,0,z0), (Lx,Ly,z0+2mm)),
+    material="pec")`` realizes walls at ``z0`` AND ``z0+2mm`` with the two
+    cells between them shorted.
+
+Declaring foil as a Box is the mistake this contract exists to stop: it puts
+the metal's own cell into the board, and a one-cell Box is a filled slab, not a
+film.  A PEC Box whose drawn extent is thinner than one local cell is refused
+outright, with the physical thickness named in the message.
+
 Run as::
 
     python examples/tutorials/boundary_spec_demo.py
@@ -58,9 +91,12 @@ if __name__ == "__main__":
 
     # 2) Antenna over a ground plane — one PEC face (the ground), open
     #    everywhere else. Per-face control uses Boundary(lo=..., hi=...).
-    #    For a FINITE ground plane use a PEC Box inside an all-CPML domain
-    #    instead: a boundary ground is infinite, which turns the antenna into
-    #    a cavity and shifts its resonance.
+    #    For a FINITE ground plane declare a SHEET inside an all-CPML domain
+    #    instead — sim.add_thin_conductor(Box(...)) with the two corners on the
+    #    ground plane's own z, i.e. zero thickness (see the header).  A
+    #    boundary ground is infinite, which turns the antenna into a cavity and
+    #    shifts its resonance.  Do not reach for a PEC Box here: a Box is a
+    #    VOLUME and a ground plane is foil.
     _run_and_report("ground plane", BoundarySpec(
         x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml")))
 

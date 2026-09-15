@@ -99,6 +99,7 @@ diff (2026-08-27 review, required change #2 -- verified in this file's own
 from __future__ import annotations
 
 import sys
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -109,6 +110,31 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import _example_fidelity_lib as lib  # noqa: E402
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _preserve_crossval_evidence():
+    """Detect even native/child-process writes the Python guard cannot see.
+
+    Compare with the user's starting bytes, not HEAD: existing local work
+    must remain valid and must never be restored or overwritten by a test.
+    """
+    root = lib.REPO_ROOT / "validation" / "crossval"
+
+    def hashes():
+        return {
+            str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in root.rglob("*")
+            if p.is_file() and "__pycache__" not in p.parts
+        }
+
+    before = hashes()
+    with lib.build_only():
+        yield
+    after = hashes()
+    changed = sorted(p for p in before.keys() | after.keys()
+                     if before.get(p) != after.get(p))
+    assert not changed, f"build-only audit changed crossval evidence: {changed}"
 
 
 def _load_snapshot() -> dict[str, dict]:

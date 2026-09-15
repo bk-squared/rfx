@@ -158,6 +158,7 @@ def test_fresnel_phase_offset_is_reference_plane_constant(fresnel_run):
 
 
 @pytest.mark.slow
+@pytest.mark.highmem
 def test_fresnel_gamma_differentiable(fresnel_run):
     """d|Γ|/dε flows through the checkpointed forward and matches finite difference."""
     sim, shape, xi, xe = fresnel_run["sim"], fresnel_run["shape"], fresnel_run["xi"], fresnel_run["xe"]

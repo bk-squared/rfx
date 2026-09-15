@@ -1,0 +1,594 @@
+{
+  "measurement_artifact": "fixture_931_realized_pec_forward2_run369367259427.json",
+  "measurement_sha256": "fcfef5cf89b0a736f187e358c6c73f4613521d6cbcee2bb0d556487400c0bf61",
+  "policy": "Existing pin_fixture and shared gate policy; every numeric pin equals fixture_v18_close.json; no widening",
+  "checks": [
+    {
+      "key": "gradient_invariance|pec_short|false|eps:s11_complex",
+      "path": [
+        "plane_shift",
+        "pec_short|false",
+        "gradient_invariance",
+        "eps:s11_complex"
+      ],
+      "pin_field": "pinned_gate",
+      "pin": 0.001,
+      "measurement": 1.412798954923312e-05,
+      "disposition": "restored_from_artifact"
+    },
+    {
+      "key": "gradient_invariance|pec_short|false|sigma:s11_mag2",
+      "path": [
+        "plane_shift",
+        "pec_short|false",
+        "gradient_invariance",
+        "sigma:s11_mag2"
+      ],
+      "pin_field": "pinned_gate",
+      "pin": 0.001,
+      "measurement": 7.417789015233616e-08,
+      "disposition": "restored_from_artifact"
+    },
+    {
+      "key": "gradient_invariance|pec_short|flux|eps:s11_complex",
+      "path": [
+        "plane_shift",
+        "pec_short|flux",
+        "gradient_invariance",
+        "eps:s11_complex"
+      ],
+      "pin_field": "pinned_gate",
+      "pin": 0.001,
+      "measurement": 2.9800595946413274e-06,
+      "disposition": "restored_from_artifact"
+    },
+    {
+      "key": "gradient_invariance|pec_short|flux|sigma:s11_mag2",
+      "path": [
+        "plane_shift",
+        "pec_short|flux",
+        "gradient_invariance",
+        "sigma:s11_mag2"
+      ],
+      "pin_field": "pinned_gate",
+      "pin": 0.001,
+      "measurement": 7.42567622106149e-08,
+      "disposition": "restored_from_artifact"
+    },
+    {
+      "key": "gradient_invariance|slab|false|eps:s11_mag2",
+      "path": [
+        "plane_shift",
+        "slab|false",
+        "gradient_invariance",
+        "eps:s11_mag2"
+      ],
+      "pin_field": "pinned_gate",
+      "pin": 0.001,
+      "measurement": 0.0,
+      "disposition": "restored_from_artifact"
+    },
+    {
+      "key": "gradient_invariance|slab|false|eps:s21_complex",
+      "path": [
+        "plane_shift",
+        "slab|false",
+        "gradient_invariance",
+        "eps:s21_complex"
+      ],
+      "pin_field": "pinned_gate",
+      "pin": 0.001,
+      "measurement": 3.581105693480858e-06,
+      "disposition": "restored_from_artifact"
+    },
+    {
+      "key": "gradient_invariance|slab|false|eps:s21_mag2",
+      "path": [
+        "plane_shift",
+        "slab|false",
+        "gradient_invariance",
+        "eps:s21_mag2"
+      ],
+      "pin_field": "pinned_gate",
+      "pin": 0.001,
+      "measurement": 0.0,
+      "disposition": "restored_from_artifact"
+    },
+    {
+      "key": "gradient_invariance|slab|flux|eps:s11_mag2",
+      "path": [
+        "plane_shift",
+        "slab|flux",
+        "gradient_invariance",
+        "eps:s11_mag2"
+      ],
+      "pin_field": "pinned_gate",
+      "pin": 0.001,
+      "measurement": 9.461825555160787e-08,
+      "disposition": "restored_from_artifact"
+    },
+    {
+      "key": "gradient_invariance|slab|flux|eps:s21_complex",
+      "path": [
+        "plane_shift",
+        "slab|flux",
+        "gradient_invariance",
+        "eps:s21_complex"
+      ],
+      "pin_field": "pinned_gate",
+      "pin": 0.001,
+      "measurement": 2.1709873162213223e-06,
+      "disposition": "restored_from_artifact"
+    },
+    {
+      "key": "gradient_invariance|slab|flux|eps:s21_mag2",
+      "path": [
+        "plane_shift",
+        "slab|flux",
+        "gradient_invariance",
+        "eps:s21_mag2"
+      ],
+      "pin_field": "pinned_gate",
+      "pin": 0.001,
+      "measurement": 0.0,
+      "disposition": "restored_from_artifact"
+    },
+    {
+      "key": "ladder_monotone|pec_short_s11_mag|false",
+      "path": [
+        "ladder",
+        "pec_short_s11_mag|false"
+      ],
+      "pin_field": "pinned_monotone_fraction_min",
+      "pin": 0.66,
+      "measurement": 1.0,
+      "disposition": "restored_from_artifact"
+    },
+    {
+      "key": "ladder_monotone|pec_short_s11_mag|flux",
+      "path": [
+        "ladder",
+        "pec_short_s11_mag|flux"
+      ],
+      "pin_field": "pinned_monotone_fraction_min",
+      "pin": 0.66,
+      "measurement": 1.0,
+      "disposition": "restored_from_artifact"
+    },
+    {
+      "key": "ladder_monotone|pec_short_s11_phase_deg|false",
+      "path": [
+        "ladder",
+        "pec_short_s11_phase_deg|false"
+      ],
+      "pin_field": "pinned_monotone_fraction_min",
+      "pin": 0.66,
+      "measurement": 1.0,
+      "disposition": "restored_from_artifact"
+    },
+    {
+      "key": "ladder_monotone|pec_short_s11_phase_deg|flux",
+      "path": [
+        "ladder",
+        "pec_short_s11_phase_deg|flux"
+      ],
+      "pin_field": "pinned_monotone_fraction_min",
+      "pin": 0.66,
+      "measurement": 1.0,
+      "disposition": "restored_from_artifact"
+    },
+    {
+      "key": "ladder_monotone|slab_s11_mag|false",
+      "path": [
+        "ladder",
+        "slab_s11_mag|false"
+      ],
+      "pin_field": "pinned_monotone_fraction_min",
+      "pin": 0.66,
+      "measurement": 1.0,
+      "disposition": "restored_from_artifact"
+    },
+    {
+      "key": "ladder_monotone|slab_s11_mag|flux",
+      "path": [
+        "ladder",
+        "slab_s11_mag|flux"
+      ],
+      "pin_field": "pinned_monotone_fraction_min",
+      "pin": 0.66,
+      "measurement": 1.0,
+      "disposition": "restored_from_artifact"
+    },
+    {
+      "key": "ladder_monotone|slab_s21_mag|false",
+      "path": [
+        "ladder",
+        "slab_s21_mag|false"
+      ],
+      "pin_field": "pinned_monotone_fraction_min",
+      "pin": 0.66,
+      "measurement": 1.0,
+      "disposition": "restored_from_artifact"
+    },
+    {
+      "key": "ladder_monotone|slab_s21_mag|flux",
+      "path": [
+        "ladder",
+        "slab_s21_mag|flux"
+      ],
+      "pin_field": "pinned_monotone_fraction_min",
+      "pin": 0.66,
+      "measurement": 1.0,
+      "disposition": "restored_from_artifact"
+    },
+    {
+      "key": "ladder_monotone|slab_s21_phase_deg|false",
+      "path": [
+        "ladder",
+        "slab_s21_phase_deg|false"
+      ],
+      "pin_field": "pinned_monotone_fraction_min",
+      "pin": 0.66,
+      "measurement": 1.0,
+      "disposition": "restored_from_artifact"
+    },
+    {
+      "key": "ladder_monotone|slab_s21_phase_deg|flux",
+      "path": [
+        "ladder",
+        "slab_s21_phase_deg|flux"
+      ],
+      "pin_field": "pinned_monotone_fraction_min",
+      "pin": 0.66,
+      "measurement": 1.0,
+      "disposition": "restored_from_artifact"
+    },
+    {
+      "key": "ladder_richardson|pec_short_s11_phase_deg|false",
+      "path": [
+        "ladder",
+        "pec_short_s11_phase_deg|false"
+      ],
+      "pin_field": "pinned_richardson_gate",
+      "pin": 1.5,
+      "measurement": 0.9949979289595775,
+      "disposition": "restored_from_artifact"
+    },
+    {
+      "key": "ladder_richardson|pec_short_s11_phase_deg|flux",
+      "path": [
+        "ladder",
+        "pec_short_s11_phase_deg|flux"
+      ],
+      "pin_field": "pinned_richardson_gate",
+      "pin": 1.4,
+      "measurement": 0.8839434778087281,
+      "disposition": "restored_from_artifact"
+    },
+    {
+      "key": "ladder_richardson|slab_s11_mag|false",
+      "path": [
+        "ladder",
+        "slab_s11_mag|false"
+      ],
+      "pin_field": "pinned_richardson_gate",
+      "pin": 0.03,
+      "measurement": 0.017589085371568225,
+      "disposition": "restored_from_artifact"
+    },
+    {
+      "key": "ladder_richardson|slab_s11_mag|flux",
+      "path": [
+        "ladder",
+        "slab_s11_mag|flux"
+      ],
+      "pin_field": "pinned_richardson_gate",
+      "pin": 0.03,
+      "measurement": 0.018111801587666176,
+      "disposition": "restored_from_artifact"
+    },
+    {
+      "key": "ladder_richardson|slab_s21_mag|false",
+      "path": [
+        "ladder",
+        "slab_s21_mag|false"
+      ],
+      "pin_field": "pinned_richardson_gate",
+      "pin": 0.02,
+      "measurement": 0.01311268949325961,
+      "disposition": "restored_from_artifact"
+    },
+    {
+      "key": "ladder_richardson|slab_s21_mag|flux",
+      "path": [
+        "ladder",
+        "slab_s21_mag|flux"
+      ],
+      "pin_field": "pinned_richardson_gate",
+      "pin": 0.02,
+      "measurement": 0.011688535243261966,
+      "disposition": "restored_from_artifact"
+    },
+    {
+      "key": "ladder_richardson|slab_s21_phase_deg|false",
+      "path": [
+        "ladder",
+        "slab_s21_phase_deg|false"
+      ],
+      "pin_field": "pinned_richardson_gate",
+      "pin": 3.1,
+      "measurement": 2.0512656222023242,
+      "disposition": "restored_from_artifact"
+    },
+    {
+      "key": "ladder_richardson|slab_s21_phase_deg|flux",
+      "path": [
+        "ladder",
+        "slab_s21_phase_deg|flux"
+      ],
+      "pin_field": "pinned_richardson_gate",
+      "pin": 2.9,
+      "measurement": 1.9126362932646097,
+      "disposition": "restored_from_artifact"
+    }
+  ],
+  "cheap_refute": {
+    "refute": "stored S translated through _shift_modal_waves with reversed step_sign",
+    "recovery": "post-solve modal operator replay; no new field measurement",
+    "resid_yee_min_over_entries": 116.7768105912848,
+    "resid_yee_max_over_entries": 177.7325612499443,
+    "rotation_gate_would_pass": false,
+    "abs_s_still_invariant": true,
+    "per_case": [
+      {
+        "dut": "pec_short",
+        "lane": "false",
+        "resid_yee_per_entry": {
+          "S11": 177.7325612499443,
+          "S22": 116.7768105912848,
+          "S21": null,
+          "S12": null
+        },
+        "entries_measurable": [
+          "S11",
+          "S22"
+        ],
+        "abs_s_still_invariant": true,
+        "max_abs_diff_from_stored_shift": 1.9995379960892254
+      },
+      {
+        "dut": "pec_short",
+        "lane": "flux",
+        "resid_yee_per_entry": {
+          "S11": 177.7325612499443,
+          "S22": 116.7768105912848,
+          "S21": null,
+          "S12": null
+        },
+        "entries_measurable": [
+          "S11",
+          "S22"
+        ],
+        "abs_s_still_invariant": true,
+        "max_abs_diff_from_stored_shift": 1.999617248964764
+      },
+      {
+        "dut": "slab",
+        "lane": "false",
+        "resid_yee_per_entry": {
+          "S11": 177.7325612499443,
+          "S22": 116.7768105912848,
+          "S21": 175.16521345913947,
+          "S12": 175.16521345913947
+        },
+        "entries_measurable": [
+          "S11",
+          "S22",
+          "S21",
+          "S12"
+        ],
+        "abs_s_still_invariant": true,
+        "max_abs_diff_from_stored_shift": 1.4935178684082708
+      },
+      {
+        "dut": "slab",
+        "lane": "flux",
+        "resid_yee_per_entry": {
+          "S11": 177.7325612499443,
+          "S22": 116.7768105912848,
+          "S21": 175.16521345913947,
+          "S12": 175.16521345913947
+        },
+        "entries_measurable": [
+          "S11",
+          "S22",
+          "S21",
+          "S12"
+        ],
+        "abs_s_still_invariant": true,
+        "max_abs_diff_from_stored_shift": 1.4924426184677881
+      }
+    ]
+  },
+  "verdicts": {
+    "settling|pec_short|coarse|false": "pass",
+    "settling|pec_short|coarse|flux": "pass",
+    "settling|pec_short|fine|false": "pass",
+    "settling|pec_short|fine|flux": "pass",
+    "settling|pec_short|mid|false": "pass",
+    "settling|pec_short|mid|flux": "pass",
+    "settling|slab|coarse|false": "pass",
+    "settling|slab|coarse|flux": "pass",
+    "settling|slab|fine|false": "pass",
+    "settling|slab|fine|flux": "pass",
+    "settling|slab|mid|false": "pass",
+    "settling|slab|mid|flux": "pass",
+    "settling|thru|coarse|false": "pass",
+    "settling|thru|coarse|flux": "pass",
+    "settling|thru|fine|false": "pass",
+    "settling|thru|fine|flux": "pass",
+    "settling|thru|mid|false": "pass",
+    "settling|thru|mid|flux": "pass",
+    "non_vacuity|pec_short|coarse|false": "pass",
+    "non_vacuity|pec_short|coarse|flux": "pass",
+    "non_vacuity|pec_short|fine|false": "pass",
+    "non_vacuity|pec_short|fine|flux": "pass",
+    "non_vacuity|pec_short|mid|false": "pass",
+    "non_vacuity|pec_short|mid|flux": "pass",
+    "non_vacuity|slab|coarse|false": "pass",
+    "non_vacuity|slab|coarse|flux": "pass",
+    "non_vacuity|slab|fine|false": "pass",
+    "non_vacuity|slab|fine|flux": "pass",
+    "non_vacuity|slab|mid|false": "pass",
+    "non_vacuity|slab|mid|flux": "pass",
+    "column_power|pec_short|coarse|false": "report_only",
+    "reciprocity_mag|pec_short|coarse|false": "report_only",
+    "reciprocity_complex|pec_short|coarse|false": "report_only",
+    "power_closure|pec_short|coarse|false": "report_only",
+    "column_power|pec_short|coarse|flux": "report_only",
+    "reciprocity_mag|pec_short|coarse|flux": "report_only",
+    "reciprocity_complex|pec_short|coarse|flux": "report_only",
+    "power_closure|pec_short|coarse|flux": "report_only",
+    "column_power|pec_short|fine|false": "pass",
+    "reciprocity_mag|pec_short|fine|false": "pass",
+    "reciprocity_complex|pec_short|fine|false": "pass",
+    "power_closure|pec_short|fine|false": "report_only",
+    "column_power|pec_short|fine|flux": "pass",
+    "reciprocity_mag|pec_short|fine|flux": "pass",
+    "reciprocity_complex|pec_short|fine|flux": "pass",
+    "power_closure|pec_short|fine|flux": "report_only",
+    "column_power|pec_short|mid|false": "report_only",
+    "reciprocity_mag|pec_short|mid|false": "report_only",
+    "reciprocity_complex|pec_short|mid|false": "report_only",
+    "power_closure|pec_short|mid|false": "report_only",
+    "column_power|pec_short|mid|flux": "report_only",
+    "reciprocity_mag|pec_short|mid|flux": "report_only",
+    "reciprocity_complex|pec_short|mid|flux": "report_only",
+    "power_closure|pec_short|mid|flux": "report_only",
+    "column_power|slab|coarse|false": "report_only",
+    "reciprocity_mag|slab|coarse|false": "report_only",
+    "reciprocity_complex|slab|coarse|false": "report_only",
+    "power_closure|slab|coarse|false": "report_only",
+    "column_power|slab|coarse|flux": "report_only",
+    "reciprocity_mag|slab|coarse|flux": "report_only",
+    "reciprocity_complex|slab|coarse|flux": "report_only",
+    "power_closure|slab|coarse|flux": "report_only",
+    "column_power|slab|fine|false": "pass",
+    "reciprocity_mag|slab|fine|false": "pass",
+    "reciprocity_complex|slab|fine|false": "pass",
+    "power_closure|slab|fine|false": "report_only",
+    "column_power|slab|fine|flux": "pass",
+    "reciprocity_mag|slab|fine|flux": "pass",
+    "reciprocity_complex|slab|fine|flux": "pass",
+    "power_closure|slab|fine|flux": "report_only",
+    "column_power|slab|mid|false": "report_only",
+    "reciprocity_mag|slab|mid|false": "report_only",
+    "reciprocity_complex|slab|mid|false": "report_only",
+    "power_closure|slab|mid|false": "report_only",
+    "column_power|slab|mid|flux": "report_only",
+    "reciprocity_mag|slab|mid|flux": "report_only",
+    "reciprocity_complex|slab|mid|flux": "report_only",
+    "power_closure|slab|mid|flux": "report_only",
+    "referee_pec_short|pec_short|coarse|false": "report_only",
+    "referee_pec_short|pec_short|coarse|flux": "report_only",
+    "referee_pec_short|pec_short|fine|false": "pass",
+    "referee_pec_short|pec_short|fine|flux": "pass",
+    "referee_pec_short|pec_short|mid|false": "report_only",
+    "referee_pec_short|pec_short|mid|flux": "report_only",
+    "referee_slab_airy_mag|slab|coarse|false": "report_only",
+    "referee_slab_airy_phase|slab|coarse|false": "report_only",
+    "referee_slab_airy_mag|slab|coarse|flux": "report_only",
+    "referee_slab_airy_phase|slab|coarse|flux": "report_only",
+    "referee_slab_airy_mag|slab|fine|false": "pass",
+    "referee_slab_airy_phase|slab|fine|false": "pass",
+    "referee_slab_airy_mag|slab|fine|flux": "pass",
+    "referee_slab_airy_phase|slab|fine|flux": "pass",
+    "referee_slab_airy_mag|slab|mid|false": "report_only",
+    "referee_slab_airy_phase|slab|mid|false": "report_only",
+    "referee_slab_airy_mag|slab|mid|flux": "report_only",
+    "referee_slab_airy_phase|slab|mid|flux": "report_only",
+    "ad_vs_fd|pec_short|false|eps|re_s11": "pass",
+    "forward_identity|pec_short|false|eps|re_s11": "pass",
+    "ad_vs_fd|pec_short|false|eps|im_s11": "pass",
+    "forward_identity|pec_short|false|eps|im_s11": "pass",
+    "ad_vs_fd|pec_short|false|sigma|s11_mag2": "pass",
+    "forward_identity|pec_short|false|sigma|s11_mag2": "pass",
+    "ad_vs_fd|pec_short|flux|eps|re_s11": "pass",
+    "forward_identity|pec_short|flux|eps|re_s11": "pass",
+    "ad_vs_fd|pec_short|flux|eps|im_s11": "pass",
+    "forward_identity|pec_short|flux|eps|im_s11": "pass",
+    "ad_vs_fd|pec_short|flux|sigma|s11_mag2": "pass",
+    "forward_identity|pec_short|flux|sigma|s11_mag2": "pass",
+    "ad_vs_fd|slab|false|eps|s11_mag2": "pass",
+    "forward_identity|slab|false|eps|s11_mag2": "pass",
+    "ad_vs_fd|slab|false|eps|s21_mag2": "pass",
+    "forward_identity|slab|false|eps|s21_mag2": "pass",
+    "ad_vs_fd|slab|false|eps|re_s21": "pass",
+    "forward_identity|slab|false|eps|re_s21": "pass",
+    "ad_vs_fd|slab|false|eps|im_s21": "pass",
+    "forward_identity|slab|false|eps|im_s21": "pass",
+    "ad_vs_fd|slab|flux|eps|s11_mag2": "pass",
+    "forward_identity|slab|flux|eps|s11_mag2": "pass",
+    "ad_vs_fd|slab|flux|eps|s21_mag2": "pass",
+    "forward_identity|slab|flux|eps|s21_mag2": "pass",
+    "ad_vs_fd|slab|flux|eps|re_s21": "pass",
+    "forward_identity|slab|flux|eps|re_s21": "pass",
+    "ad_vs_fd|slab|flux|eps|im_s21": "pass",
+    "forward_identity|slab|flux|eps|im_s21": "pass",
+    "plane_shift_abs_s|pec_short|false": "pass",
+    "plane_shift_rotation_yee|pec_short|false": "pass",
+    "plane_shift_rotation_continuous|pec_short|false": "pass",
+    "plane_shift_wrong_sign|pec_short|false": "pass",
+    "gradient_invariance|pec_short|false|sigma:s11_mag2": "pass",
+    "gradient_invariance|pec_short|false|eps:s11_complex": "pass",
+    "plane_shift_abs_s|pec_short|flux": "pass",
+    "plane_shift_rotation_yee|pec_short|flux": "pass",
+    "plane_shift_rotation_continuous|pec_short|flux": "pass",
+    "plane_shift_wrong_sign|pec_short|flux": "pass",
+    "gradient_invariance|pec_short|flux|sigma:s11_mag2": "pass",
+    "gradient_invariance|pec_short|flux|eps:s11_complex": "pass",
+    "plane_shift_abs_s|slab|false": "pass",
+    "plane_shift_rotation_yee|slab|false": "pass",
+    "plane_shift_rotation_continuous|slab|false": "pass",
+    "plane_shift_wrong_sign|slab|false": "pass",
+    "gradient_invariance|slab|false|eps:s11_mag2": "pass",
+    "gradient_invariance|slab|false|eps:s21_mag2": "pass",
+    "gradient_invariance|slab|false|eps:s21_complex": "pass",
+    "plane_shift_abs_s|slab|flux": "pass",
+    "plane_shift_rotation_yee|slab|flux": "pass",
+    "plane_shift_rotation_continuous|slab|flux": "pass",
+    "plane_shift_wrong_sign|slab|flux": "pass",
+    "gradient_invariance|slab|flux|eps:s11_mag2": "pass",
+    "gradient_invariance|slab|flux|eps:s21_mag2": "pass",
+    "gradient_invariance|slab|flux|eps:s21_complex": "pass",
+    "cheap_refute_flip_shift_sign": "pass",
+    "ladder|slab_s11_mag|false": "pass",
+    "ladder_richardson|slab_s11_mag|false": "pass",
+    "ladder_monotone|slab_s11_mag|false": "pass",
+    "ladder|slab_s11_mag|flux": "pass",
+    "ladder_richardson|slab_s11_mag|flux": "pass",
+    "ladder_monotone|slab_s11_mag|flux": "pass",
+    "ladder|slab_s21_mag|false": "pass",
+    "ladder_richardson|slab_s21_mag|false": "pass",
+    "ladder_monotone|slab_s21_mag|false": "pass",
+    "ladder|slab_s21_mag|flux": "pass",
+    "ladder_richardson|slab_s21_mag|flux": "pass",
+    "ladder_monotone|slab_s21_mag|flux": "pass",
+    "ladder|slab_s21_phase_deg|false": "pass",
+    "ladder_richardson|slab_s21_phase_deg|false": "pass",
+    "ladder_monotone|slab_s21_phase_deg|false": "pass",
+    "ladder|slab_s21_phase_deg|flux": "pass",
+    "ladder_richardson|slab_s21_phase_deg|flux": "pass",
+    "ladder_monotone|slab_s21_phase_deg|flux": "pass",
+    "ladder|pec_short_s11_mag|false": "pass",
+    "ladder_monotone|pec_short_s11_mag|false": "pass",
+    "ladder|pec_short_s11_mag|flux": "pass",
+    "ladder_monotone|pec_short_s11_mag|flux": "pass",
+    "ladder|pec_short_s11_phase_deg|false": "pass",
+    "ladder_richardson|pec_short_s11_phase_deg|false": "pass",
+    "ladder_monotone|pec_short_s11_phase_deg|false": "pass",
+    "ladder|pec_short_s11_phase_deg|flux": "pass",
+    "ladder_richardson|pec_short_s11_phase_deg|flux": "pass",
+    "ladder_monotone|pec_short_s11_phase_deg|flux": "pass"
+  }
+}

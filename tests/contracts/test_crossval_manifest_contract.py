@@ -10,6 +10,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Literal, TypedDict
 
+from tests._git_tracked import git_available, is_tracked
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CROSSVAL_DIR = REPO_ROOT / "validation" / "crossval"
@@ -26,6 +27,13 @@ ExecutionTier = Literal[
     "gpu-manual",
     "external-manual",
 ]
+# Where a case's evidence actually IS (issue #928):
+#   committed          - git-tracked artifact_paths hold the measured record;
+#   external-scheduled - nothing is retained here, and a named scheduled job
+#                        recomputes it. A schedule is not evidence: the run's
+#                        output expires with the runner and no clone can read
+#                        it, so a claims-bearing case may not sit here.
+EvidenceStatus = Literal["committed", "external-scheduled"]
 
 
 class ReferenceEntry(TypedDict):
@@ -60,6 +68,8 @@ class CrossvalCase(TypedDict):
     artifact_paths: list[str]
     cpu_runner: CpuRunnerEntry
     scheduled_external_order: int | None
+    evidence_status: EvidenceStatus
+    evidence_producer: str | None
     failure_sentinel: str | None
 
 
@@ -95,8 +105,11 @@ def test_manifest_covers_every_crossval_script_exactly_once() -> None:
     assert (REPO_ROOT / manifest["evidence_rule"]).is_file()
     assert set(manifest["exit_codes"]) == {"0", "1", "2"}
 
+    # underscore-prefixed modules are shared helpers (e.g. _wr90_iris_realized.py,
+    # the cv18/cv19 realized-geometry reader, #931), not cases
     actual_scripts = {
         path.relative_to(REPO_ROOT).as_posix() for path in CROSSVAL_DIR.glob("*.py")
+        if not path.name.startswith("_")
     }
     registered_scripts = [case["script"] for case in manifest["cases"]]
     assert len(registered_scripts) == len(set(registered_scripts))
@@ -145,6 +158,8 @@ def test_manifest_entries_are_self_consistent_and_grounded() -> None:
             "artifact_paths",
             "cpu_runner",
             "scheduled_external_order",
+            "evidence_status",
+            "evidence_producer",
             "failure_sentinel",
         }
         ids.append(case["id"])
@@ -193,12 +208,49 @@ def test_manifest_entries_are_self_consistent_and_grounded() -> None:
         if case["role"] == "claims-bearing":
             assert set(case["evidence_levels"]) & {"E2", "E3", "E4", "E5"}
 
+        # #928, the evidence rule. A claim needs a record a clone can read.
+        assert case["evidence_status"] in ("committed", "external-scheduled"), case["id"]
+        if case["evidence_status"] == "committed":
+            assert case["artifact_paths"], (
+                f"{case['id']} claims committed evidence and lists no artifact")
+            assert case["evidence_producer"] is None, case["id"]
+        else:
+            assert not case["artifact_paths"], (
+                f"{case['id']} is external-scheduled but DOES retain artifacts; "
+                f"that is committed evidence")
+            assert case["role"] == "diagnostic-reporter", (
+                f"{case['id']} is claims-bearing with no retained output. A "
+                f"scheduled job is an execution plan, not evidence: its log "
+                f"expires with the runner and no clone can read it. Commit the "
+                f"lane's output for this case, or demote it.")
+            producer = case["evidence_producer"]
+            assert producer and "::" in producer, case["id"]
+            workflow, _, job = producer.partition("::")
+            workflow_path = REPO_ROOT / workflow
+            assert workflow_path.is_file(), producer
+            workflow_text = workflow_path.read_text(encoding="utf-8")
+            assert f"\n  {job}:" in workflow_text, (
+                f"{case['id']} names job {job!r} in {workflow}, which has no "
+                f"such job")
+            assert "\n  schedule:" in workflow_text, (
+                f"{workflow} is not a scheduled workflow")
+            assert case["scheduled_external_order"] is not None, case["id"]
+
+        # #928: existence is not evidence of a COMMITTED artifact. A path that
+        # exists only in the checkout that wrote it (gitignored scratch, an
+        # un-added pod leftover) satisfies exists() here and nothing in a fresh
+        # clone. Tracking is asked whenever git can answer.
         for relative_path in [
             case["script"],
             *case["gate_paths"],
             *case["artifact_paths"],
         ]:
             assert (REPO_ROOT / relative_path).exists(), relative_path
+            if git_available(REPO_ROOT):
+                assert is_tracked(relative_path, REPO_ROOT), (
+                    f"{case['id']} lists {relative_path}, which exists but is "
+                    f"NOT git-tracked: a fresh clone does not have it."
+                )
 
         cpu_entry = case["cpu_runner"]
         assert set(cpu_entry) in ({"order"}, {"excluded_reason"})

@@ -1,5 +1,17 @@
 # Issue #782 — retiring the 9.32/9.21 GHz patch numbers: predeclaration
 
+> **SUPERSEDED IN PART by #931 (the lattice ownership contract), 2026-09-07.**
+> Kept as dated history and deliberately NOT rewritten.
+> Its statement that "#702 gave a node-thin conductor's cell the material at
+> its live edge", and the reproduction leg built on
+> `resample_sheet_node_materials`, refer to a mechanism deleted by #931. The
+> one physical case #702 served — a stack-up drawn with a slot for the foil —
+> is now a preflight finding (`sheet_slot_vacuum`), not a silent re-sample.
+> The current rule is
+> `docs/design_notes/20260906_plan_realign_lattice_ownership.md` §1, and for
+> users `docs/public/guide/materials-geometry.mdx` ("How conductors land on
+> the lattice").
+
 Date 2026-09-01. Baseline tree `635ab2e3` (origin/main, verified same-day). Written
 BEFORE any verification arm ran; the measurement plan, expected values and falsifiers
 below are pre-declared. Implementer worktree `wf_b56f9a1c-177-4`.
@@ -412,3 +424,109 @@ separation) and the surface sweep. Two findings applied:
    (house pattern: bounds imported, not restated), and adding the (2b)/(2c)
    witnesses. That file is gpu+slow; the re-pinned band's first NU execution rides
    the next VESSL validation-harness run.
+
+## 12. Discharge (#931, 2026-09-07) — what happened to the arms, the band and F1
+
+The header above says this note is superseded in part. This section says what
+that cost and what replaced it, so a reader does not have to reconstruct it
+from the gate modules.
+
+**The retired arm is unbuildable, twice over.** Section 4's arm pair was
+`main` against `resample_sheet_node_materials` replaced by the identity. The
+lattice ownership contract deletes that function — a sheet owns no cell, so
+there is no own-cell material to re-sample — and it also removed the geometry
+the re-sample acted on: both gate boards drew each foil in a cell RESERVED for
+it, and they now draw each foil ON the laminate face it bounds. So the arm
+cannot be built by monkeypatch (the name is gone) and would not differ if it
+could (there is no reserved cell). `patch_edgefed_s11_band_repin.py` refuses
+that arm by name rather than reporting `main`'s numbers under the `retired`
+label; the committed `patch_edgefed_s11_band_repin_retired.json` stays as
+dated evidence and is not regenerable.
+
+**The question the arm pair asked has no object left.** It asked what the #702
+own-cell re-sample changes on this board. Under the contract a foil is declared as
+a SHEET, a sheet owns no cell, and the three lock boards are redrawn with each foil
+ON the laminate face it bounds — so there is no own cell to re-sample and both arms
+would be the same build. The honest successor is a DRAWING A/B (the board as drawn
+now against a board that reserves a vacuum cell for each foil), i.e. the same
+physics question asked in the declaration instead of in a monkeypatch. Its expected
+size is already on the record: preflight's #703 check read `+84.5 %` on `sum(d/eps)`
+for the reserved-cell board (Board H) and `+45.9 %` (Board S), and Leg A measured
+`+10.365 %` against a window centred on `-6.17`.
+
+**What the reserved cell was worth.** Preflight's own #703 cavity check reads
+it directly on the pre-redraw boards:
+
+    Board H   walls 29/34, five cells, eps_r [1.0, 3.38, 3.38, 3.38, 3.38]
+              sum(d/eps) mesh 429.6 um vs physical 232.8 um   (+84.5 %)
+    Board S   walls 29/34, sum(d/eps) mesh 627.1 um vs physical 429.8 um (+45.9 %)
+
+After the redraw: walls 28/32, four cells, all `eps_r = 3.38`, node-to-node
+787.000 um = `H_SUB` (788.0 on Board S, the 0.005-cell mesh
+incommensurability). The cavity advisory is silent and the advisory count
+falls 6 -> 3.
+
+**The bands, re-pinned from runs and not from this note.** Every number below
+is read off a VESSL run's log; none is arithmetic performed here.
+
+    Board S (S11 passivity gate)   evidence 369367259226, confirm 369367259239
+      RES_BAND_GHZ            (8.4, 9.2)  ->  (7.4, 8.2)   same +-0.4 GHz
+                                   half-width, re-centred on the measured
+                                   crossing and rounded to the 0.1 GHz DFT bins
+      Im(Zin)=0 crossing      8.8189 GHz  ->  7.7620 GHz
+      in-band max Re(Zin)     4326 ohm    ->  4157 ohm   (floor 500, unchanged)
+      in-band min |S11|       0.8794      ->  0.9096     (floor 0.70, unchanged)
+      max |S11|               0.9921      ->  0.9837     (cap 1.05, unchanged)
+      global dip              10.100 GHz  ->  8.800 GHz  (still above the band)
+
+    Board H (harminv gate)         evidence 369367259225, settled re-run
+                                   369367259237, confirm 369367259250
+      Leg A centre            -6.17 %     ->  -1.886 %  (measured 9.15448 GHz
+                                   against realized-raster Balanis 9.3305)
+      Leg A half-width        1.125 pp    ->  1.125 pp  UNCHANGED, so the window
+                                   is [-3.011, -0.761]: re-centred on the
+                                   measurement, not widened
+      Leg B centre/half-width -6.109 % +- 0.986 pp, BOTH UNCHANGED — the measured
+                                   feed pull moved -6.109 -> -7.061 % and stayed
+                                   inside the window it already had, at 97 % of it
+      NUM_PERIODS             120         ->  200 (the unfed ring-down ended at
+                                   -35.43 dB against this module's own -40 dB
+                                   truncation bar at 120; -58.30 dB at 200. The
+                                   bar was not touched; the record was lengthened,
+                                   which is what the assertion message prescribes)
+
+    NU twin (test_msl_nu_sparam_gate)  369367259240, imports Board S's band
+
+Only thresholds' TARGETS moved; not one threshold was widened. The two boards
+moved in opposite directions and that is the check, not a puzzle: Board H's
+Leg A is the isolated patch mode, which rises because a thinner cavity fringes
+less, and Board S's number is the port-plane antiresonance of that patch
+loaded by a 13.18 mm open feed stub, which falls because a thinner substrate
+raises eps_eff and lengthens the stub electrically. A single spurious global
+shift cannot move two features in opposite directions.
+
+**F1 is discharged, not merely stale.** Section 5's F1 scored the rewritten
+gate's assertions on the two saved arms. The mechanism it discriminated is
+gone, and the gate constants it imports now belong to the redrawn board, so
+running it as written would score the pre-#931 arms against the post-#931 band
+— two different boards — and report a failure about arithmetic.
+`patch_edgefed_s11_band_repin_replay.py` therefore refuses by default (exit 2)
+and keeps the historical replay behind `--historical-band`, which reproduces
+the recorded scoring exactly: main arm all-PASS (crossing 8.8189, in-band max
+Re(Zin) 4325.9 ohm), retired arm red on (2c) at 9.2 ohm against the 500-ohm
+floor, verdict SATISFIED. The Review-round addendum's correction — that (2c),
+not (2b), carries the discrimination — is what that replay still shows.
+
+**F2 and F3 are unaffected**: they are about the retired 9.32 / 9.21 GHz
+numbers not being quoted as current, and nothing in #931 re-introduces them.
+
+Two figures the docs group read from the same runs and this section did not
+list: Board H Leg A `-1.871 %` at 120 periods (the `-1.886 %` above is the
+200-period settled re-run); Board S `Z0` median `60.87 ohm` with `Re(Zin)`
+positive across the band (369367259226).
+
+Nothing in §§1–8 above is rewritten: they are the dated record of a pre-declaration
+that was made, run and scored under the pre-2.0 realization.
+
+Ledger: `docs/design_notes/931_migration/T6-RECOMPUTE.md` (rounds 2 and 3
+carry the pre-declarations these runs answered).

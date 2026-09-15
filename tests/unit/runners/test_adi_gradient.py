@@ -20,9 +20,11 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
 from rfx.core.yee import EPS_0, MU_0
 from rfx.adi import adi_step_3d
+from rfx.boundaries.pec import realized_pec_edge_masks
 
 C0 = 1.0 / np.sqrt(EPS_0 * MU_0)
 
@@ -54,7 +56,8 @@ def test_adi_step_3d_gradient_is_finite_and_nonzero():
         return jnp.sum(ex ** 2) + jnp.sum(ey ** 2) + jnp.sum(ez ** 2)
 
     amplitude = jnp.float32(1.0)
-    val, grad = jax.value_and_grad(loss)(amplitude)
+    # Compile the small AD witness as one program for the shared CPU pod.
+    val, grad = jax.jit(jax.value_and_grad(loss))(amplitude)
 
     val = float(val)
     grad = float(grad)
@@ -66,43 +69,39 @@ def test_adi_step_3d_gradient_is_finite_and_nonzero():
     assert abs(grad) > 0.0, "gradient through adi_step_3d is exactly zero"
 
 
-def test_adi_step_3d_gradient_with_internal_pec_mask_is_finite():
-    """The same AD path with an internal pec_mask applied (rfx/adi.py:748-750
-    post-solve-projection path) must also stay finite — the jnp.where-based
-    masking is the mechanism most likely to break reverse-mode AD if it were
-    ever changed to a non-differentiable indexing form.
+@pytest.mark.parametrize("transform", ["jit", "grad", "jit_grad"])
+def test_adi_step_3d_refuses_internal_pec_under_transformations(transform):
+    """Ten finite steps never certified projected-PEC stability.
+
+    Passing the masks as transformed-function arguments makes them tracers
+    under JIT. Refusal must survive tracing without a boolean conversion
+    error, an ignored mask, or an attempt to execute unstable numerics.
     """
     nx = ny = nz = 8
     dx = dy = dz = 2e-3
     dt_yee = dx / (C0 * np.sqrt(3.0)) * 0.99
-    dt = dt_yee * 2.0
-    n_steps = 10
+    dt = dt_yee * 5.0
 
     eps_r = jnp.ones((nx, ny, nz), dtype=jnp.float32)
     sigma = jnp.zeros((nx, ny, nz), dtype=jnp.float32)
-    pec_mask = jnp.zeros((nx, ny, nz), dtype=bool)
-    pec_mask = pec_mask.at[nx // 2, ny // 2, :].set(True)  # a thin internal post
+    cell_mask = jnp.zeros((nx, ny, nz), dtype=bool)
+    cell_mask = cell_mask.at[nx // 2, ny // 2, :].set(True)  # internal post
+    pec_edge_masks = realized_pec_edge_masks(cell_mask)
 
-    def loss(amplitude):
+    def loss(amplitude, masks):
         zeros = jnp.zeros((nx, ny, nz), dtype=jnp.float32)
         ex, ey, ez, hx, hy, hz = zeros, zeros, zeros, zeros, zeros, zeros
         ez = ez.at[nx // 4, ny // 2, nz // 2].set(amplitude)
-        for _ in range(n_steps):
-            ex, ey, ez, hx, hy, hz = adi_step_3d(
-                ex, ey, ez, hx, hy, hz, eps_r, sigma, dt, dx, dy, dz,
-                pec_mask=pec_mask,
-            )
+        ex, ey, ez, hx, hy, hz = adi_step_3d(
+            ex, ey, ez, hx, hy, hz, eps_r, sigma, dt, dx, dy, dz,
+            pec_edge_masks=masks,
+        )
         return jnp.sum(ex ** 2) + jnp.sum(ey ** 2) + jnp.sum(ez ** 2)
 
-    amplitude = jnp.float32(1.0)
-    val, grad = jax.value_and_grad(loss)(amplitude)
-
-    val = float(val)
-    grad = float(grad)
-    print(f"\nadi_step_3d AD (with pec_mask): loss={val:.6e}, grad={grad:.6e}")
-
-    assert np.isfinite(val), f"loss is not finite: {val}"
-    assert np.isfinite(grad), (
-        f"gradient through adi_step_3d with an internal pec_mask is not "
-        f"finite: {grad}"
-    )
+    transformed = {
+        "jit": jax.jit(loss),
+        "grad": jax.grad(loss),
+        "jit_grad": jax.jit(jax.grad(loss)),
+    }[transform]
+    with pytest.raises(ValueError, match="adi_interior_pec_unsupported"):
+        transformed(jnp.float32(1.0), pec_edge_masks)

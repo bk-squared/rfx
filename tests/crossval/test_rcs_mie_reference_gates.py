@@ -28,6 +28,18 @@ reaches ~0.06 dB at ka~1, lambda/40 -- resolution, not extraction direction, is
 now the driver of this envelope. Residual coarse-regime diagnostic: issue #280.
 These gates lock the honest test-scale record; they must not be re-tuned to
 look tighter than the physics.
+
+
+#931 SCOPE, measured not assumed: the rfx scatterer on this lane is built with
+the low-level ``rasterize(grid, [(shape, 1.0, PEC_SIGMA)])`` — a sigma = 1e7
+CELL FILL. Design note §1.8 fences that model out of the lattice ownership
+contract (it is a lossy volume, not a realized PEC edge set), so nothing here
+moves under #931 and no re-run is scheduled. The two models are NOT the same
+object: at the cube fixture's mesh, node- and centre-sampling put a sphere at
+3023 vs 3082 cells. That difference is pinned in
+``tests/crossval/test_rcs_cube_bem_gates.py::test_the_sigma_fill_and_the_pec_contract_are_not_the_same_object``,
+so this lane's agreement figures must not be read as evidence about conductor
+realization.
 """
 from __future__ import annotations
 

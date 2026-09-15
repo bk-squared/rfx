@@ -73,6 +73,22 @@ measured_common_mode_dilation`` -- so it moves every member nearly together and
 this identification PASSES on it.  #740's detector is the realized-geometry
 check ``assert_realized_stack`` (PR #768), not this module.
 
+Under the lattice ownership contract (#931) the #740 defect class is no longer
+representable the way it was: a ground foil is declared as a SHEET on the
+substrate floor and realizes ONE wall plane THERE, and a plate drawn as a
+volume realizes walls at both of its drawn faces -- so "the ground wall landed
+one plane away from the interface and left a vacuum cell in the cavity" stops
+being something a correct declaration can produce.  What does NOT change is
+this module's blind spot: it is still a ratio instrument, still blind to an
+exact common-mode dilation, and still not the detector for a realization
+error.  The detector is now the shared realized-edge owner
+(``rfx.boundaries.pec.realized_wall_planes``, contract section 1.7) that
+``assert_realized_stack`` reads.  The committed fixtures named below --
+``cv15_ringdown_spectra.json`` and ``cv15_mode_pair_ratio_band.json`` -- were
+measured on the pre-contract realization and must be regenerated from a
+post-contract cv15 run, together with cv15 itself (cv15 is migrated in its own
+group; this note records the coupling rather than pre-empting it).
+
 Do NOT read that as "no dimensionless spectral test can see #740": the dilation
 is not exact, the mode-pair ratio does move, and the band half-widths that would
 separate the two realizations are enumerated in

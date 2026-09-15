@@ -1,0 +1,25 @@
+{
+  "rfx_import": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/__init__.py",
+  "sheet": {
+    "shape": [
+      159,
+      53,
+      30
+    ],
+    "dt": 1.6142333895362515e-13,
+    "n_steps": 3717,
+    "segments": 59,
+    "steps_per_segment": 63
+  },
+  "sibling": {
+    "shape": [
+      142,
+      54,
+      19
+    ],
+    "dt": 1.5252598956248049e-13,
+    "n_steps": 3934,
+    "segments": 14,
+    "steps_per_segment": 281
+  }
+}

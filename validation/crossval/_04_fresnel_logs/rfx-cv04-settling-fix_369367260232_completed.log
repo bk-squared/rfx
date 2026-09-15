@@ -1,0 +1,149 @@
+Organization: remilab
+Project: byungkwan
+Displayed last 146 lines of #369367260232.
+[16:44:31.394917] workload awaiting to start
+[16:44:31.395017] Workload status changed to pending
+[16:44:35.574942] Event Reason: FailedScheduling, Event Note: 0/14 nodes are available: pod has unbound immediate PersistentVolumeClaims. preemption: 0/14 nodes are available: 14 Preemption is not helpful for scheduling.
+[16:44:35.574942] Workload is in queue for scheduling. Please wait...
+[16:44:37.514200] VESSL Workload assigned successfully. Starting soon.
+[16:44:38.000000] Starting VESSL Workload...
+[16:44:38.000000] Created container run-exec
+[16:44:38.000000] Container image "quay.io/vessl-ai/kernels-toolbox:0.1.188" already present on machine
+[16:44:38.000000] Created container vops-init
+[16:44:38.000000] Started container vops-init
+[16:44:38.000000] Container image "ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8" already present on machine
+[16:44:38.000000] Created container run-sidecar
+[16:44:38.001000] Container image "ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8" already present on machine
+[16:44:39.000000] Created container ttyd-sidecar
+[16:44:39.000000] Started container vops-sidecar
+[16:44:39.000000] Container image "quay.io/vessl-ai/kernels-toolbox:0.1.188" already present on machine
+[16:44:39.000000] Started container fluentbit
+[16:44:39.000000] Created container fluentbit
+[16:44:39.000000] Started container ttyd-sidecar
+[16:44:39.374196] Installing VESSL CLI...
+[16:44:45.946526] workload reported alive as pod run-execution-mm36sof6nm7q-0
+[16:44:45.946626] Workload status changed to initializing
+[16:44:47.025830] + set +x
+[16:44:55.946965] vessl, version 0.1.199
+[16:44:57.058320] workload reported alive as pod run-execution-mm36sof6nm7q-0
+[16:44:57.058420] Workload status changed to running
+[16:44:57.145818] + mkdir -p /root
+[16:44:57.147089] + cd /root
+[16:44:57.147343] + set -eux
+[16:44:57.147354] + echo '=== rfx cv04 settling-extension fix: canonical regeneration ==='
+[16:44:57.147358] === rfx cv04 settling-extension fix: canonical regeneration ===
+[16:44:57.147361] + date
+[16:44:57.148012] Thu Sep 10 16:44:57 UTC 2026
+[16:44:57.148251] + date -u '+%Y%m%dT%H%M%SZ'
+[16:44:57.148973] + STAMP=20260910T164457Z
+[16:44:57.148985] + OUT=/root/workspace/claude-workspace/rfx/runs/cv04-settling-fix-20260910T164457Z
+[16:44:57.148991] + mkdir -p /root/workspace/claude-workspace/rfx/runs/cv04-settling-fix-20260910T164457Z
+[16:44:57.160547] + echo /root/workspace/claude-workspace/rfx/runs/cv04-settling-fix-20260910T164457Z
+[16:44:57.162749] + trap 'chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
+[16:44:57.162759] + test -d /root/workspace/claude-workspace/rfx/checkouts/cv04-settling-fix
+[16:44:57.164604] + WORK=/tmp/rfx-cv04-settling-fix
+[16:44:57.164619] + rm -rf /tmp/rfx-cv04-settling-fix
+[16:44:57.165587] + mkdir -p /tmp/rfx-cv04-settling-fix
+[16:44:57.166902] + cp -a /root/workspace/claude-workspace/rfx/checkouts/cv04-settling-fix/. /tmp/rfx-cv04-settling-fix/
+[16:45:08.528265] + cd /tmp/rfx-cv04-settling-fix
+[16:45:08.528295] + git config --global --add safe.directory /tmp/rfx-cv04-settling-fix
+[16:45:08.530568] + test -s /tmp/rfx-cv04-settling-fix/.staged_commit
+[16:45:08.531922] + cat /tmp/rfx-cv04-settling-fix/.staged_commit
+[16:45:08.534996] + cat /root/workspace/claude-workspace/rfx/runs/cv04-settling-fix-20260910T164457Z/commit.txt
+[16:45:08.537566] + echo 'commit: 0c66b8c1d4713ac791a919876606e9b63f2e6c75'
+[16:45:08.537568] commit: 0c66b8c1d4713ac791a919876606e9b63f2e6c75
+[16:45:08.537583] + test -f /tmp/rfx-cv04-settling-fix/validation/crossval/04_multilayer_fresnel.py
+[16:45:08.537596] + grep -q _run_slab_fdtd /tmp/rfx-cv04-settling-fix/validation/crossval/04_multilayer_fresnel.py
+[16:45:08.539386] + RES04=/tmp/rfx-cv04-settling-fix/validation/crossval/_04_fresnel_results
+[16:45:08.539400] + mkdir -p /tmp/rfx-cv04-settling-fix/validation/crossval/_04_fresnel_results
+[16:45:08.540976] + PY=python
+[16:45:08.541000] + command -v python
+[16:45:08.541060] + python -m pip install -q 'jax[cpu]==0.6.2' 'numpy<2' 'scipy>=1.11' 'h5py>=3.8' 'matplotlib>=3.7' 'pytest>=7'
+[16:45:13.956196] WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+[16:45:14.009554] + export 'RFX_REPO_ROOT=/tmp/rfx-cv04-settling-fix'
+[16:45:14.009578] + export 'PYTHONPATH=/tmp/rfx-cv04-settling-fix'
+[16:45:14.009584] + python -c 'import jax, rfx; print('"'"'rfx probe ok'"'"', jax.__version__)'
+[16:45:14.978705] rfx probe ok 0.6.2
+[16:45:15.110677] + cv04_rc=0
+[16:45:15.111962] + python validation/crossval/04_multilayer_fresnel.py --lattice-witness
+[16:45:46.258293] + cv04_rc=2
+[16:45:46.258325] + tee -a /root/workspace/claude-workspace/rfx/runs/cv04-settling-fix-20260910T164457Z/cv04.log
+[16:45:46.264038] + echo 2
+[16:45:46.265454] + grep -E 'SETTLED|Tail witness|gated_here|cv04-lattice-witness|cv04-aux-echo|mean err|Fringe|verdict|rfx accuracy|wrote|Meep' /root/workspace/claude-workspace/rfx/runs/cv04-settling-fix-20260910T164457Z/cv04.log
+[16:45:46.265620] + tail -n 40
+[16:45:46.267998]   Tail witness (last 50 steps, rel. to incident peak): scat_refl=0.0363, trans=0.0514 (this case's own limit 0.1, family -40dB bar 0.01)
+[16:45:46.268018]   Tail witness (last 50 steps, rel. to incident peak): scat_refl=0.0004, trans=0.0001 (this case's own limit 0.1, family -40dB bar 0.01)
+[16:45:46.268023]   SETTLED at nx_interior=800 (declared 600, 1 grow attempt(s)): n_steps=990, tail scat_refl/trans = 0.0004/0.0001 (family bar 0.01)
+[16:45:46.268028]   T(f) mean err: 0.0073, max: 0.0190
+[16:45:46.268032]   R(f) mean err: 0.0073, max: 0.0185
+[16:45:46.268036]   Fringe-resolved gate (rfx vs analytic) — issue #812, per-extremum, not a band mean:
+[16:45:46.268040]     kind  f_ref(GHz)  f_meas(GHz)   df(MHz)   W(MHz)    R_ref   R_meas       dR   verdict
+[16:45:46.268045]   cv04-aux-echo-invariant slab_eps4 (#888): record 990 steps / echo arrival 1624 = 0.610 (limit 1.0); ok=True
+[16:45:46.268050]   cv04-lattice-witness slab_eps4: |rfx-lattice| mean R 2.01e-05 vs W 6.35e-04 (ceiling 1.49e-02); reported, not gated
+[16:45:46.268054]   wrote /tmp/rfx-cv04-settling-fix/validation/crossval/_04_fresnel_results/lattice_witness.json
+[16:45:46.268059] PART 3: Meep simulation (optional secondary cross-check)
+[16:45:46.268064] [SKIP] external reference unavailable (Meep: ModuleNotFoundError: No module named 'meep') — exit 2
+[16:45:46.268068] PART 4: rfx vs Analytic comparison (Meep reference unavailable)
+[16:45:46.268072]   T(f) mean error               0.0073     0.0500
+[16:45:46.268077]   R(f) mean error               0.0073     0.0500
+[16:45:46.268081]   rfx accuracy: PASS
+[16:45:46.268086] [SKIP] Meep secondary reference unavailable — crossval inconclusive (exit 2)
+[16:45:46.268183] cv04_rc=2
+[16:45:46.268209] + echo 'cv04_rc=2'
+[16:45:46.268229] + fringe_rc=0
+[16:45:46.268958] + python validation/crossval/comparators/emit_cv04_fringe_gate_evidence.py
+[16:45:46.579334] + echo 0
+[16:45:46.581203] + tail -n 20 /root/workspace/claude-workspace/rfx/runs/cv04-settling-fix-20260910T164457Z/fringe_evidence.log
+[16:45:46.583317] wrote /tmp/rfx-cv04-settling-fix/validation/crossval/_04_fresnel_results/fringe_gate_geometry.json
+[16:45:46.583393] + echo 'fringe_evidence_rc=0'
+[16:45:46.583402] + '[' 0 -eq 0 ]
+[16:45:46.583402] fringe_evidence_rc=0
+[16:45:46.584458] + python scripts/diagnostics/cv04_settled_summary.py /tmp/rfx-cv04-settling-fix/validation/crossval/_04_fresnel_results/lattice_witness.json /root/workspace/claude-workspace/rfx/runs/cv04-settling-fix-20260910T164457Z/cv04.log
+[16:45:46.604946] + cat /root/workspace/claude-workspace/rfx/runs/cv04-settling-fix-20260910T164457Z/cv04_settled_summary.json
+[16:45:46.606387] {
+[16:45:46.606399]   "gated_here": true,
+[16:45:46.606403]   "n_steps": 990,
+[16:45:46.606407]   "nx_interior": 800,
+[16:45:46.606411]   "tail_refl_rel": 0.0004,
+[16:45:46.606414]   "tail_trans_rel": 0.0001,
+[16:45:46.606419]   "witness_ok": true,
+[16:45:46.606432]   "mean_dR_lattice_gated": 2.0118006665268482e-05,
+[16:45:46.606436]   "mean_dT_lattice_gated": 9.52105772875556e-05,
+[16:45:46.606439]   "mean_W_witness_R_gated": 0.0006346269931565298,
+[16:45:46.606442]   "mean_W_witness_T_gated": 0.0002910297595034028,
+[16:45:46.606446]   "T_mean_err": 0.0073,
+[16:45:46.606449]   "R_mean_err": 0.0073,
+[16:45:46.606452]   "RT_mean_dev_energy": 0.0002,
+[16:45:46.606455]   "max_RT_minus_1_per_bin": 0.001
+[16:45:46.606458] }
+[16:45:46.607178] + cp -r '--no-preserve=ownership,mode' /tmp/rfx-cv04-settling-fix/validation/crossval/_04_fresnel_results /root/workspace/claude-workspace/rfx/runs/cv04-settling-fix-20260910T164457Z/_04_fresnel_results
+[16:45:46.624035] + cp /tmp/rfx-cv04-settling-fix/validation/crossval/04_fresnel_slab.png /root/workspace/claude-workspace/rfx/runs/cv04-settling-fix-20260910T164457Z/
+[16:45:46.633529] + cp /tmp/rfx-cv04-settling-fix/validation/crossval/04_time_domain.png /root/workspace/claude-workspace/rfx/runs/cv04-settling-fix-20260910T164457Z/
+[16:45:46.642629] + ls -la /root/workspace/claude-workspace/rfx/runs/cv04-settling-fix-20260910T164457Z
+[16:45:46.646747] total 392
+[16:45:46.646755] drwxr-xr-x   3 nobody nogroup   4096 Sep 10 16:45 .
+[16:45:46.646759] drwxrwxrwx 255 nobody nogroup  28672 Sep 10 16:44 ..
+[16:45:46.646762] -rw-r--r--   1 nobody nogroup 183858 Sep 10 16:45 04_fresnel_slab.png
+[16:45:46.646765] -rw-r--r--   1 nobody nogroup 144542 Sep 10 16:45 04_time_domain.png
+[16:45:46.646769] drwxr-xr-x   2 nobody nogroup   4096 Sep 10 16:45 _04_fresnel_results
+[16:45:46.646772] -rw-r--r--   1 nobody nogroup     41 Sep 10 16:45 commit.txt
+[16:45:46.646775] -rw-r--r--   1 nobody nogroup   4976 Sep 10 16:45 cv04.log
+[16:45:46.646779] -rw-r--r--   1 nobody nogroup      2 Sep 10 16:45 cv04.rc
+[16:45:46.646783] -rw-r--r--   1 nobody nogroup    459 Sep 10 16:45 cv04_settled_summary.json
+[16:45:46.646786] -rw-r--r--   1 nobody nogroup     99 Sep 10 16:45 fringe_evidence.log
+[16:45:46.646791] -rw-r--r--   1 nobody nogroup      2 Sep 10 16:45 fringe_evidence.rc
+[16:45:46.646795] -rw-r--r--   1 nobody nogroup     13 Sep 10 16:44 run_id.txt
+[16:45:46.646955] + echo '=== done ==='
+[16:45:46.646967] === done ===
+[16:45:46.646989] + chmod -R a+rX /root/workspace/claude-workspace/rfx/runs/cv04-settling-fix-20260910T164457Z
+[16:45:46.679060] workload reported done
+[16:45:46.679161] Workload status changed to stopping
+[16:45:57.165877] + set +x
+[16:46:02.193073] workload reported done
+[16:46:02.193173] Workload status changed to waitToBeKilled
+[16:46:05.000000] Stopping container run-exec
+[16:46:05.000000] Terminating VESSL Workload...
+[16:46:05.000000] Stopping container ttyd-sidecar
+[16:46:05.000000] Stopping container fluentbit
+[16:46:05.755925] workload completed
+[16:46:05.756026] Workload status changed to completed

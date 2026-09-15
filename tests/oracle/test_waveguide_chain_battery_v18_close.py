@@ -28,7 +28,9 @@ This module holds three things:
   value this run measured, one test per §3 row of the note pinning the number
   the row rests on, and the §4 falsifier replayed at zero cost from the stored
   float32 readings (must give exactly run 2's 9 red);
-* the **live layer** (§5.11 of the run-2 note), moved here from run 2's module.
+* the **live layer** (§5.11 of the run-2 note), now using the schema-4
+  realized-PEC / forward2 artifact from run 369367259427; the run-3 replay
+  above stays bound to its historical sigma=1e10 device operator.
 
 Three things found after the run are recorded in the note's §6 and pinned
 below rather than smoothed over: the gate module's ``recompute_verdicts``
@@ -47,6 +49,7 @@ from __future__ import annotations
 import json
 import math
 import warnings
+from copy import deepcopy
 from pathlib import Path
 
 import numpy as np
@@ -54,6 +57,7 @@ import pytest
 
 from tests import _waveguide_chain_battery_fixture as F
 from tests import _waveguide_chain_battery_gates as G
+from tests import _waveguide_chain_battery_enforcement as E
 from tests._gate_policy import gate_from_envelope
 from tests.oracle import test_waveguide_chain_battery as RUN1
 from tests.oracle.test_waveguide_chain_battery import (
@@ -64,6 +68,7 @@ from tests.oracle.test_waveguide_chain_battery import (
 
 REPO = Path(__file__).resolve().parents[2]
 FIXTURE = REPO / "tests" / "fixtures" / "waveguide_chain_battery" / "fixture_v18_close.json"
+LIVE_FIXTURE = FIXTURE.with_name("fixture_931_realized_pec_forward2_run369367259427.json")
 RUN2 = REPO / "tests" / "fixtures" / "waveguide_chain_battery" / "fixture_guide_cell_aperture.json"
 FROZEN = REPO / "tests" / "fixtures" / "waveguide_chain_battery" / "fixture.json"
 PREDECLARATION = "docs/design_notes/20260905_v18_close_predeclaration.md"
@@ -295,6 +300,12 @@ def fx() -> dict:
     if _FX is None:
         pytest.skip(f"{FIXTURE} missing")
     return _FX
+
+
+@pytest.fixture(scope="module")
+def live_fx() -> dict:
+    # A missing live reference is an ingest defect, not a reason to skip.
+    return E.load_enforced_fixture()
 
 
 @pytest.fixture(scope="module")
@@ -759,7 +770,7 @@ def test_physics_gates_at_the_claims_rung(fx):
 
 
 # ===========================================================================
-# LIVE layer — §5.11 of the run-2 note, re-pointed at THIS artifact
+# LIVE layer — §5.11, re-pointed at the schema-4 contract-build artifact
 # ===========================================================================
 # Moved from tests/oracle/test_waveguide_chain_battery_guide_cell_aperture.py.
 # LIVE_ABS_S_ENVELOPE (5.000e-6) and the derived LIVE_ABS_S_TOL (1e-4) are
@@ -788,16 +799,16 @@ def _live_compare(fx_, rung: str):
 
 @pytest.mark.slow
 @pytest.mark.parametrize("rung", ["coarse", "mid"])
-def test_live_cells_reproduce_the_fixture_cpu(fx, rung):
-    """§5.11 row 1 against this artifact (cells bit-identical to run 2's)."""
-    _live_compare(fx, rung)
+def test_live_cells_reproduce_the_fixture_cpu(live_fx, rung):
+    """§5.11 row 1 against the realized-PEC contract-build measurement."""
+    _live_compare(live_fx, rung)
 
 
 @pytest.mark.slow
 @pytest.mark.gpu
-def test_live_cells_reproduce_the_fixture_fine_rung(fx):
+def test_live_cells_reproduce_the_fixture_fine_rung(live_fx):
     """§5.11 row 2, on the GPU lane (the fine rung is 4x the steps)."""
-    _live_compare(fx, "fine")
+    _live_compare(live_fx, "fine")
 
 
 @pytest.mark.slow
@@ -821,6 +832,119 @@ def test_live_plane_shift_rotation_coarse_rung(lane):
     assert rot["resid_yee_max"] <= G.ROTATION_TOL_YEE_DEG
     assert rot["resid_cont_max"] <= G.ROTATION_TOL_CONTINUOUS_DEG
     assert rot["wrong_sign_resid_min"] > G.WRONG_SIGN_MIN_DEG
+
+
+def test_live_fixture_preserves_the_declared_measurement(live_fx):
+    """Keep the new reference distinct and replay its schema-4 validity gates."""
+    assert live_fx["schema_version"] == 4
+    assert live_fx["predeclaration"] == "docs/design_notes/waveguide_chain_battery_predeclaration.md"
+    assert live_fx["predeclaration_sha"] == "bcce73c9"
+    assert live_fx["provenance"]["commit"] == "6df7ccaf20d572e0c58c194c12bc63467d4ef360"
+    assert live_fx["supersedes"] == str(FIXTURE.relative_to(REPO))
+    assert len(live_fx["cells"]) == 18
+    assert len(live_fx["ad_vs_fd"]) == 14
+    verdicts = G.recompute_verdicts(live_fx)
+    assert verdicts == live_fx["verdicts"]
+    authorized_removals = {
+        f"{gate}|pec_short|{lane}|eps{separator}s11_mag2"
+        for gate, separator in (("ad_vs_fd", "|"), ("forward_identity", "|"),
+                                ("gradient_invariance", ":"))
+        for lane in ("false", "flux")
+    }
+    retained = {k: v for k, v in ADJUDICATED_VERDICTS.items() if k not in authorized_removals}
+    assert verdicts == retained
+    assert len(verdicts) == 179  # 185 minus exactly six authorized lossless legs
+    assert sum(v == "pass" for v in verdicts.values()) == 131
+    assert sum(v == "report_only" for v in verdicts.values()) == 48
+
+
+_ENFORCEMENT = json.loads(E.ENFORCEMENT.read_text())
+
+
+def _enforcement_row(fixture, check):
+    row = fixture
+    for part in check["path"]:
+        row = row[part]
+    return row
+
+
+def test_retained_pins_are_recovered_without_widening(fx, live_fx):
+    """Independent pin derivation is an audit, never the replay gate source."""
+    raw = json.loads(LIVE_FIXTURE.read_text())
+    derived = G.pin_fixture(deepcopy(raw))
+    checks = _ENFORCEMENT["checks"]
+    expected_keys = {key for key, verdict in ADJUDICATED_VERDICTS.items()
+                     if verdict == "pass" and key.startswith(
+                         ("gradient_invariance|", "ladder_richardson|", "ladder_monotone|"))}
+    assert len(checks) == len(expected_keys) == 28
+    assert {check["key"] for check in checks} == expected_keys
+    for check in checks:
+        field = check["pin_field"]
+        assert _enforcement_row(raw, check)[field] is None
+        assert check["disposition"] == "restored_from_artifact"
+        assert check["pin"] == _enforcement_row(derived, check)[field]
+        assert check["pin"] == _enforcement_row(fx, check)[field]
+        assert check["pin"] == _enforcement_row(live_fx, check)[field]
+        row = _enforcement_row(raw, check)
+        measured = (row["rel_change"] if field == "pinned_gate" else
+                    row["richardson"]["mid-fine"]["max_abs_diff"]
+                    if field == "pinned_richardson_gate" else
+                    row["monotone_fraction_of_bins"])
+        assert check["measurement"] == measured
+
+
+@pytest.mark.parametrize("check", _ENFORCEMENT["checks"], ids=lambda c: c["key"])
+def test_retained_check_rejects_a_bad_measurement(live_fx, check):
+    changed = deepcopy(live_fx)
+    row = _enforcement_row(changed, check)
+    if check["pin_field"] == "pinned_gate":
+        row["rel_change"] = 1.0
+    elif check["pin_field"] == "pinned_richardson_gate":
+        row["richardson"]["mid-fine"]["max_abs_diff"] = 2 * check["pin"]
+    else:
+        row["monotone_fraction_of_bins"] = 0.0
+    assert G.recompute_verdicts(changed)[check["key"]] == "fail"
+
+
+@pytest.mark.parametrize("check", _ENFORCEMENT["checks"], ids=lambda c: c["key"])
+def test_retained_check_with_missing_pin_is_owed(live_fx, check):
+    changed = deepcopy(live_fx)
+    _enforcement_row(changed, check)[check["pin_field"]] = None
+    assert G.recompute_verdicts(changed)[check["key"]] == "owed"
+
+
+def test_unpinned_ingest_reports_the_whole_enforcement_debt():
+    verdicts = G.recompute_verdicts(json.loads(LIVE_FIXTURE.read_text()))
+    assert {k for k, v in verdicts.items() if v == "owed"} == {
+        c["key"] for c in _ENFORCEMENT["checks"]
+    } | {"cheap_refute_flip_shift_sign"}
+
+
+def test_shift_sign_falsifier_uses_the_measured_operator_and_has_a_control(live_fx):
+    control = E.replay_shift_sign_refute(live_fx, flip_sign=False)
+    refute = E.replay_shift_sign_refute(live_fx)
+    for case in control["per_case"]:
+        assert case["max_abs_diff_from_stored_shift"] <= LIVE_ABS_S_TOL
+    assert control["abs_s_still_invariant"]
+    assert refute["abs_s_still_invariant"]
+    stored = live_fx["plane_shift"]["cheap_refute"]
+    for case, expected in zip(refute["per_case"], stored["per_case"], strict=True):
+        assert (case["dut"], case["lane"]) == (expected["dut"], expected["lane"])
+        assert case["entries_measurable"] == expected["entries_measurable"]
+        for entry, residual in case["resid_yee_per_entry"].items():
+            if residual is None:
+                assert expected["resid_yee_per_entry"][entry] is None
+            else:
+                assert residual == pytest.approx(expected["resid_yee_per_entry"][entry])
+                assert residual > G.WRONG_SIGN_MIN_DEG
+    changed = deepcopy(live_fx)
+    key = "cheap_refute_flip_shift_sign"
+    changed["plane_shift"]["cheap_refute"] = refute
+    assert G.recompute_verdicts(changed)[key] == "pass"
+    changed["plane_shift"]["cheap_refute"] = control
+    assert G.recompute_verdicts(changed)[key] == "fail"
+    del changed["plane_shift"]["cheap_refute"]
+    assert G.recompute_verdicts(changed)[key] == "owed"
 
 
 def test_the_live_pin_is_the_committed_one():

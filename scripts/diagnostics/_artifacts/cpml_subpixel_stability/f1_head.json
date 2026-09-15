@@ -1,0 +1,481 @@
+{
+  "label": "head",
+  "provenance": {
+    "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-ac585302d6176235b/rfx/__init__.py",
+    "rfx_under_repo_root": true,
+    "driver_commit": "58b7198a65a7cd9a179696f5ac6c84162a1790c3"
+  },
+  "gate": 0.99,
+  "arms": {
+    "cpml": {
+      "label": "cpml",
+      "boundary_x": "cpml",
+      "num_periods": 40,
+      "dev_from_unity_per_bin": [
+        0.014509155492561598,
+        0.001676050059999934,
+        0.0011508904628505512,
+        0.001857852599204457,
+        0.002305634796073708,
+        0.012303865225589461
+      ],
+      "D_max_dev_from_unity": 0.014509155492561598,
+      "D_rms_dev_from_unity": 0.00790360627974284,
+      "restrict_pads": false,
+      "n_pad_cells": null,
+      "restricted_cells": null,
+      "port_names": [
+        "left",
+        "right"
+      ],
+      "s11_per_bin": [
+        1.0145091554925616,
+        1.00167605006,
+        0.9988491095371494,
+        0.9981421474007955,
+        1.0023056347960737,
+        0.9876961347744105
+      ],
+      "s11_min": 0.9876961347744105,
+      "s11_max": 1.0145091554925616,
+      "s11_mean": 1.0005297053434987,
+      "gate_min_0p99_passes": false,
+      "col_power_per_port_per_bin": [
+        [
+          2.09898588958168,
+          2.005080055024246,
+          1.9957414965900602,
+          2.017897975234638,
+          2.0339656892666547,
+          1.9763517775993529
+        ],
+        [
+          3.6886878711947952,
+          4.651144682608902,
+          5.0473842222016785,
+          3.900336198966714,
+          3.4956271845056723,
+          5.622588134954099
+        ]
+      ],
+      "max_col_power": 5.622588134954099,
+      "max_abs_S": 2.163025995295234,
+      "max_abs_S_at": {
+        "row": 0,
+        "col": 1,
+        "bin": 5
+      },
+      "abs_S_all": [
+        [
+          [
+            1.0145091554925616,
+            1.00167605006,
+            0.9988491095371494,
+            0.9981421474007955,
+            1.0023056347960737,
+            0.9876961347744105
+          ],
+          [
+            1.654443312378691,
+            1.9298439923996384,
+            2.034132621855904,
+            1.7246071533589544,
+            1.599284925051549,
+            2.163025995295234
+          ]
+        ],
+        [
+          [
+            1.0342906085832209,
+            1.0008622011847796,
+            0.9990204967701632,
+            1.0107473615185778,
+            1.0145684322522037,
+            1.0004039798756512
+          ],
+          [
+            0.975451278803929,
+            0.9627288546667365,
+            0.9537760213505597,
+            0.9623234204516888,
+            0.9684600730069016,
+            0.9715485981829017
+          ]
+        ]
+      ],
+      "settling_db": [
+        -40.05279771087311,
+        -15.00507237362855
+      ],
+      "warnings": [
+        "compute_waveguide_s_matrix(normalize=False): S21 and S-parameter phase include Yee numerical dispersion. For S21 accuracy and reciprocity use normalize=True. For |S11| of strong reflectors (PEC short, resonators) normalize=False is more accurate \u2014 see the normalize parameter docstring.",
+        "compute_waveguide_s_matrix: absorber on the x propagation axis is thinner than the documented 0.5 guide-wavelength far-port discipline at the lowest measured frequency 5.000 GHz (mode cutoff 3.561 GHz, lambda_g = 85.4 mm): x-lo 10 cells = 30.0 mm (0.35 lambda_g), x-hi 10 cells = 30.0 mm (0.35 lambda_g), against a required 42.7 mm. A thin absorber reflects guided energy and can set the accuracy env",
+        "the record is shorter than 3 x the far-boundary round trip \u2014 waveguide_port[0] (+x): T/tau_far = 2.987. T = 4.0038 ns (700 steps x dt = 5.7197 ps; num_periods = 40 at freq_max = 10 GHz), tau_far = 2 x far_path / v_g = 1.3402 ns. far_path = 141 mm (port plane 9 mm to the x-hi outer wall on a 120 mm domain, absorber pad 30 mm included); v_g(f_min)/c = 0.70188 at f_min = 5 GHz with the port's discret",
+        "waveguide port index mirror audit, source E plane (x-axis): i(+) = 13, i(-) = 41, sum = 54, but the covariant sum is 61 on n_axis = 61 (primal lattice, including the known +1 shipped E-plane offset). The two ports are not mirror images on this plane; check x_position, ref_offset / probe_offset and reference_plane.",
+        "waveguide port index mirror audit, source H plane (x-axis): i(+) = 12, i(-) = 40, sum = 52, but the covariant sum is 59 on n_axis = 61 (dual lattice). The two ports are not mirror images on this plane; check x_position, ref_offset / probe_offset and reference_plane.",
+        "waveguide port index mirror audit, reference probe plane (x-axis): i(+) = 16, i(-) = 37, sum = 53, but the covariant sum is 60 on n_axis = 61 (primal lattice). The two ports are not mirror images on this plane; check x_position, ref_offset / probe_offset and reference_plane.",
+        "waveguide port index mirror audit, measurement probe plane (x-axis): i(+) = 23, i(-) = 30, sum = 53, but the covariant sum is 60 on n_axis = 61 (primal lattice). The two ports are not mirror images on this plane; check x_position, ref_offset / probe_offset and reference_plane.",
+        "waveguide port index mirror audit, reference plane (x-axis, metres): 10 mm + 90 mm = 100 mm, but a mirror-symmetric pair sums to the domain extent 120 mm (tolerance 1.5 mm). Check reference_plane / x_position.",
+        "scatter inputs have incompatible types: cannot safely cast value from dtype=float64 to dtype=float32 with jax_numpy_dtype_promotion='standard'. In future JAX releases this will result in an error.",
+        "scatter inputs have incompatible types: cannot safely cast value from dtype=float64 to dtype=float32 with jax_numpy_dtype_promotion='standard'. In future JAX releases this will result in an error.",
+        "scatter inputs have incompatible types: cannot safely cast value from dtype=float64 to dtype=float32 with jax_numpy_dtype_promotion='standard'. In future JAX releases this will result in an error.",
+        "scatter inputs have incompatible types: cannot safely cast value from dtype=float64 to dtype=float32 with jax_numpy_dtype_promotion='standard'. In future JAX releases this will result in an error."
+      ],
+      "stdout_tail": "  [WAVEGUIDE S-MATRIX] S21 phase residual vs -beta*L: 16.89 deg rms over 6 bins (beta from the port's discrete cutoff 3.5615 GHz, L = 0.081 m; port discretization witness for an EMPTY or matched guide between the planes -- a device between them adds its own transmission phase; not a gate)\n"
+    },
+    "upml": {
+      "label": "upml",
+      "boundary_x": "upml",
+      "num_periods": 40,
+      "not_constructible": "Waveguide port requires boundary='cpml'"
+    },
+    "cpml_pads_excluded": {
+      "label": "cpml_pads_excluded",
+      "boundary_x": "cpml",
+      "num_periods": 40,
+      "dev_from_unity_per_bin": [
+        0.017067635383942736,
+        0.0010299312124578686,
+        0.001432012027261731,
+        0.000653423232151007,
+        0.002107306075991522,
+        0.015641848181958795
+      ],
+      "D_max_dev_from_unity": 0.017067635383942736,
+      "D_rms_dev_from_unity": 0.009521473185327856,
+      "restrict_pads": true,
+      "n_pad_cells": 10,
+      "restricted_cells": 1240,
+      "port_names": [
+        "left",
+        "right"
+      ],
+      "s11_per_bin": [
+        1.0170676353839427,
+        0.9989700687875421,
+        0.9985679879727383,
+        0.999346576767849,
+        1.0021073060759915,
+        0.9843581518180412
+      ],
+      "s11_min": 0.9843581518180412,
+      "s11_max": 1.0170676353839427,
+      "s11_mean": 1.0000696211343507,
+      "gate_min_0p99_passes": false,
+      "col_power_per_port_per_bin": [
+        [
+          2.1014587334701575,
+          1.9990653665950773,
+          1.9952291773025683,
+          2.0204638166777174,
+          2.0329579064215073,
+          1.9781760441189564
+        ],
+        [
+          4.570320380619277,
+          5.628893582093421,
+          5.209861567819501,
+          3.596326899885785,
+          3.4567195525843406,
+          37.275302057371015
+        ]
+      ],
+      "max_col_power": 37.275302057371015,
+      "max_abs_S": 6.040074914451219,
+      "max_abs_S_at": {
+        "row": 0,
+        "col": 1,
+        "bin": 5
+      },
+      "abs_S_all": [
+        [
+          [
+            1.0170676353839427,
+            0.9989700687875421,
+            0.9985679879727383,
+            0.999346576767849,
+            1.0021073060759915,
+            0.9843581518180412
+          ],
+          [
+            1.9172285066320212,
+            2.172182517763516,
+            2.0737855487488766,
+            1.6310829514326008,
+            1.5793371503051372,
+            6.040074914451219
+          ]
+        ],
+        [
+          [
+            1.0329724868188275,
+            1.0005619262502898,
+            0.9990451194508913,
+            1.0108265114153363,
+            1.0142676439336051,
+            1.0045969704654332
+          ],
+          [
+            0.9458093010627604,
+            0.9542099829785755,
+            0.9535591568538482,
+            0.967416820936922,
+            0.9810268692805457,
+            0.8903915347688981
+          ]
+        ]
+      ],
+      "settling_db": [
+        -41.73805140759864,
+        -4.693136184873213
+      ],
+      "warnings": [
+        "compute_waveguide_s_matrix(normalize=False): S21 and S-parameter phase include Yee numerical dispersion. For S21 accuracy and reciprocity use normalize=True. For |S11| of strong reflectors (PEC short, resonators) normalize=False is more accurate \u2014 see the normalize parameter docstring.",
+        "compute_waveguide_s_matrix: absorber on the x propagation axis is thinner than the documented 0.5 guide-wavelength far-port discipline at the lowest measured frequency 5.000 GHz (mode cutoff 3.561 GHz, lambda_g = 85.4 mm): x-lo 10 cells = 30.0 mm (0.35 lambda_g), x-hi 10 cells = 30.0 mm (0.35 lambda_g), against a required 42.7 mm. A thin absorber reflects guided energy and can set the accuracy env",
+        "the record is shorter than 3 x the far-boundary round trip \u2014 waveguide_port[0] (+x): T/tau_far = 2.987. T = 4.0038 ns (700 steps x dt = 5.7197 ps; num_periods = 40 at freq_max = 10 GHz), tau_far = 2 x far_path / v_g = 1.3402 ns. far_path = 141 mm (port plane 9 mm to the x-hi outer wall on a 120 mm domain, absorber pad 30 mm included); v_g(f_min)/c = 0.70188 at f_min = 5 GHz with the port's discret",
+        "waveguide port index mirror audit, source E plane (x-axis): i(+) = 13, i(-) = 41, sum = 54, but the covariant sum is 61 on n_axis = 61 (primal lattice, including the known +1 shipped E-plane offset). The two ports are not mirror images on this plane; check x_position, ref_offset / probe_offset and reference_plane.",
+        "waveguide port index mirror audit, source H plane (x-axis): i(+) = 12, i(-) = 40, sum = 52, but the covariant sum is 59 on n_axis = 61 (dual lattice). The two ports are not mirror images on this plane; check x_position, ref_offset / probe_offset and reference_plane.",
+        "waveguide port index mirror audit, reference probe plane (x-axis): i(+) = 16, i(-) = 37, sum = 53, but the covariant sum is 60 on n_axis = 61 (primal lattice). The two ports are not mirror images on this plane; check x_position, ref_offset / probe_offset and reference_plane.",
+        "waveguide port index mirror audit, measurement probe plane (x-axis): i(+) = 23, i(-) = 30, sum = 53, but the covariant sum is 60 on n_axis = 61 (primal lattice). The two ports are not mirror images on this plane; check x_position, ref_offset / probe_offset and reference_plane.",
+        "waveguide port index mirror audit, reference plane (x-axis, metres): 10 mm + 90 mm = 100 mm, but a mirror-symmetric pair sums to the domain extent 120 mm (tolerance 1.5 mm). Check reference_plane / x_position.",
+        "scatter inputs have incompatible types: cannot safely cast value from dtype=float64 to dtype=float32 with jax_numpy_dtype_promotion='standard'. In future JAX releases this will result in an error.",
+        "scatter inputs have incompatible types: cannot safely cast value from dtype=float64 to dtype=float32 with jax_numpy_dtype_promotion='standard'. In future JAX releases this will result in an error.",
+        "scatter inputs have incompatible types: cannot safely cast value from dtype=float64 to dtype=float32 with jax_numpy_dtype_promotion='standard'. In future JAX releases this will result in an error.",
+        "scatter inputs have incompatible types: cannot safely cast value from dtype=float64 to dtype=float32 with jax_numpy_dtype_promotion='standard'. In future JAX releases this will result in an error."
+      ],
+      "stdout_tail": "  [WAVEGUIDE S-MATRIX] S21 phase residual vs -beta*L: 16.86 deg rms over 6 bins (beta from the port's discrete cutoff 3.5615 GHz, L = 0.081 m; port discretization witness for an EMPTY or matched guide between the planes -- a device between them adds its own transmission phase; not a gate)\n"
+    },
+    "cpml_80periods": {
+      "label": "cpml_80periods",
+      "boundary_x": "cpml",
+      "num_periods": 80,
+      "dev_from_unity_per_bin": [
+        0.003078919832832927,
+        0.0001284656953911556,
+        0.0014330870703498366,
+        1.3992218300451498e-05,
+        0.0019081739082373872,
+        0.04481852909392936
+      ],
+      "D_max_dev_from_unity": 0.04481852909392936,
+      "D_rms_dev_from_unity": 0.01836614577110447,
+      "restrict_pads": false,
+      "n_pad_cells": null,
+      "restricted_cells": null,
+      "port_names": [
+        "left",
+        "right"
+      ],
+      "s11_per_bin": [
+        0.9969210801671671,
+        0.9998715343046088,
+        1.0014330870703498,
+        0.9999860077816995,
+        0.9980918260917626,
+        0.9551814709060706
+      ],
+      "s11_min": 0.9551814709060706,
+      "s11_max": 1.0014330870703498,
+      "s11_mean": 0.9919141677202763,
+      "gate_min_0p99_passes": false,
+      "col_power_per_port_per_bin": [
+        [
+          2.0499308989082388,
+          2.0024907562472634,
+          2.0024495951947943,
+          2.02280033455696,
+          2.0237976911371893,
+          1.872907293905815
+        ],
+        [
+          3.3899100889648874,
+          4.7844914991945675,
+          5.154219097988448,
+          4.170821208231247,
+          3.133733593318968,
+          3.323088660744689
+        ]
+      ],
+      "max_col_power": 5.154219097988448,
+      "max_abs_S": 2.059097321997293,
+      "max_abs_S_at": {
+        "row": 0,
+        "col": 1,
+        "bin": 2
+      },
+      "abs_S_all": [
+        [
+          [
+            0.9969210801671671,
+            0.9998715343046088,
+            1.0014330870703498,
+            0.9999860077816995,
+            0.9980918260917626,
+            0.9551814709060706
+          ],
+          [
+            1.5576808179522819,
+            1.964694793605482,
+            2.059097321997293,
+            1.8019890010035082,
+            1.4824721675021215,
+            1.537352394370276
+          ]
+        ],
+        [
+          [
+            1.0276571698901185,
+            1.0013728931495054,
+            0.9997906617465194,
+            1.011349750975289,
+            1.0137112004047308,
+            0.9800692075274736
+          ],
+          [
+            0.9816010179030977,
+            0.9614914805520016,
+            0.9562098705472691,
+            0.9610706781988644,
+            0.9674760285921972,
+            0.9796102675394273
+          ]
+        ]
+      ],
+      "settling_db": [
+        -66.25775769253838,
+        -22.536388829323716
+      ],
+      "warnings": [
+        "compute_waveguide_s_matrix(normalize=False): S21 and S-parameter phase include Yee numerical dispersion. For S21 accuracy and reciprocity use normalize=True. For |S11| of strong reflectors (PEC short, resonators) normalize=False is more accurate \u2014 see the normalize parameter docstring.",
+        "compute_waveguide_s_matrix: absorber on the x propagation axis is thinner than the documented 0.5 guide-wavelength far-port discipline at the lowest measured frequency 5.000 GHz (mode cutoff 3.561 GHz, lambda_g = 85.4 mm): x-lo 10 cells = 30.0 mm (0.35 lambda_g), x-hi 10 cells = 30.0 mm (0.35 lambda_g), against a required 42.7 mm. A thin absorber reflects guided energy and can set the accuracy env",
+        "waveguide port index mirror audit, source E plane (x-axis): i(+) = 13, i(-) = 41, sum = 54, but the covariant sum is 61 on n_axis = 61 (primal lattice, including the known +1 shipped E-plane offset). The two ports are not mirror images on this plane; check x_position, ref_offset / probe_offset and reference_plane.",
+        "waveguide port index mirror audit, source H plane (x-axis): i(+) = 12, i(-) = 40, sum = 52, but the covariant sum is 59 on n_axis = 61 (dual lattice). The two ports are not mirror images on this plane; check x_position, ref_offset / probe_offset and reference_plane.",
+        "waveguide port index mirror audit, reference probe plane (x-axis): i(+) = 16, i(-) = 37, sum = 53, but the covariant sum is 60 on n_axis = 61 (primal lattice). The two ports are not mirror images on this plane; check x_position, ref_offset / probe_offset and reference_plane.",
+        "waveguide port index mirror audit, measurement probe plane (x-axis): i(+) = 23, i(-) = 30, sum = 53, but the covariant sum is 60 on n_axis = 61 (primal lattice). The two ports are not mirror images on this plane; check x_position, ref_offset / probe_offset and reference_plane.",
+        "waveguide port index mirror audit, reference plane (x-axis, metres): 10 mm + 90 mm = 100 mm, but a mirror-symmetric pair sums to the domain extent 120 mm (tolerance 1.5 mm). Check reference_plane / x_position.",
+        "scatter inputs have incompatible types: cannot safely cast value from dtype=float64 to dtype=float32 with jax_numpy_dtype_promotion='standard'. In future JAX releases this will result in an error.",
+        "scatter inputs have incompatible types: cannot safely cast value from dtype=float64 to dtype=float32 with jax_numpy_dtype_promotion='standard'. In future JAX releases this will result in an error.",
+        "scatter inputs have incompatible types: cannot safely cast value from dtype=float64 to dtype=float32 with jax_numpy_dtype_promotion='standard'. In future JAX releases this will result in an error.",
+        "scatter inputs have incompatible types: cannot safely cast value from dtype=float64 to dtype=float32 with jax_numpy_dtype_promotion='standard'. In future JAX releases this will result in an error.",
+        "scatter inputs have incompatible types: cannot safely cast value from dtype=float64 to dtype=float32 with jax_numpy_dtype_promotion='standard'. In future JAX releases this will result in an error."
+      ],
+      "stdout_tail": "  [WAVEGUIDE S-MATRIX] S21 phase residual vs -beta*L: 16.85 deg rms over 6 bins (beta from the port's discrete cutoff 3.5615 GHz, L = 0.081 m; port discretization witness for an EMPTY or matched guide between the planes -- a device between them adds its own transmission phase; not a gate)\n"
+    },
+    "cpml_160periods": {
+      "label": "cpml_160periods",
+      "boundary_x": "cpml",
+      "num_periods": 160,
+      "dev_from_unity_per_bin": [
+        0.0028698846168251357,
+        0.00021616249582046,
+        0.0014447029351611906,
+        1.73187692065202e-05,
+        0.001751194409520762,
+        0.036316631552688716
+      ],
+      "D_max_dev_from_unity": 0.036316631552688716,
+      "D_rms_dev_from_unity": 0.01490153705518775,
+      "restrict_pads": false,
+      "n_pad_cells": null,
+      "restricted_cells": null,
+      "port_names": [
+        "left",
+        "right"
+      ],
+      "s11_per_bin": [
+        0.9971301153831749,
+        0.9997838375041795,
+        1.0014447029351612,
+        1.0000173187692065,
+        0.9982488055904792,
+        0.9636833684473113
+      ],
+      "s11_min": 0.9636833684473113,
+      "s11_max": 1.0014447029351612,
+      "s11_mean": 0.9933846914382521,
+      "gate_min_0p99_passes": false,
+      "col_power_per_port_per_bin": [
+        [
+          2.0508361984544585,
+          2.0022647921278307,
+          2.002515740791233,
+          2.022713795562871,
+          2.025122463192002,
+          1.898480583763937
+        ],
+        [
+          3.3878668927835784,
+          4.805360421178438,
+          5.0737976949638215,
+          4.132910441449209,
+          3.326720025223549,
+          3.529944796087276
+        ]
+      ],
+      "max_col_power": 5.0737976949638215,
+      "max_abs_S": 2.0406902121355444,
+      "max_abs_S_at": {
+        "row": 0,
+        "col": 1,
+        "bin": 2
+      },
+      "abs_S_all": [
+        [
+          [
+            0.9971301153831749,
+            0.9997838375041795,
+            1.0014447029351612,
+            1.0000173187692065,
+            0.9982488055904792,
+            0.9636833684473113
+          ],
+          [
+            1.5570266838324025,
+            1.9697122941841507,
+            2.0406902121355444,
+            1.7902796173333353,
+            1.546853451748056,
+            1.6051592745817116
+          ]
+        ],
+        [
+          [
+            1.027894805634504,
+            1.0013476271471597,
+            0.9998121062251346,
+            1.0112760047210247,
+            1.0142099315867419,
+            0.9847816758764253
+          ],
+          [
+            0.9815980840534736,
+            0.9620779070939357,
+            0.9536147823193643,
+            0.9632285986254846,
+            0.966418348355759,
+            0.9764263921625579
+          ]
+        ]
+      ],
+      "settling_db": [
+        -76.56849365461886,
+        -26.619308467453
+      ],
+      "warnings": [
+        "compute_waveguide_s_matrix(normalize=False): S21 and S-parameter phase include Yee numerical dispersion. For S21 accuracy and reciprocity use normalize=True. For |S11| of strong reflectors (PEC short, resonators) normalize=False is more accurate \u2014 see the normalize parameter docstring.",
+        "compute_waveguide_s_matrix: absorber on the x propagation axis is thinner than the documented 0.5 guide-wavelength far-port discipline at the lowest measured frequency 5.000 GHz (mode cutoff 3.561 GHz, lambda_g = 85.4 mm): x-lo 10 cells = 30.0 mm (0.35 lambda_g), x-hi 10 cells = 30.0 mm (0.35 lambda_g), against a required 42.7 mm. A thin absorber reflects guided energy and can set the accuracy env",
+        "waveguide port index mirror audit, source E plane (x-axis): i(+) = 13, i(-) = 41, sum = 54, but the covariant sum is 61 on n_axis = 61 (primal lattice, including the known +1 shipped E-plane offset). The two ports are not mirror images on this plane; check x_position, ref_offset / probe_offset and reference_plane.",
+        "waveguide port index mirror audit, source H plane (x-axis): i(+) = 12, i(-) = 40, sum = 52, but the covariant sum is 59 on n_axis = 61 (dual lattice). The two ports are not mirror images on this plane; check x_position, ref_offset / probe_offset and reference_plane.",
+        "waveguide port index mirror audit, reference probe plane (x-axis): i(+) = 16, i(-) = 37, sum = 53, but the covariant sum is 60 on n_axis = 61 (primal lattice). The two ports are not mirror images on this plane; check x_position, ref_offset / probe_offset and reference_plane.",
+        "waveguide port index mirror audit, measurement probe plane (x-axis): i(+) = 23, i(-) = 30, sum = 53, but the covariant sum is 60 on n_axis = 61 (primal lattice). The two ports are not mirror images on this plane; check x_position, ref_offset / probe_offset and reference_plane.",
+        "waveguide port index mirror audit, reference plane (x-axis, metres): 10 mm + 90 mm = 100 mm, but a mirror-symmetric pair sums to the domain extent 120 mm (tolerance 1.5 mm). Check reference_plane / x_position.",
+        "scatter inputs have incompatible types: cannot safely cast value from dtype=float64 to dtype=float32 with jax_numpy_dtype_promotion='standard'. In future JAX releases this will result in an error.",
+        "scatter inputs have incompatible types: cannot safely cast value from dtype=float64 to dtype=float32 with jax_numpy_dtype_promotion='standard'. In future JAX releases this will result in an error.",
+        "scatter inputs have incompatible types: cannot safely cast value from dtype=float64 to dtype=float32 with jax_numpy_dtype_promotion='standard'. In future JAX releases this will result in an error.",
+        "scatter inputs have incompatible types: cannot safely cast value from dtype=float64 to dtype=float32 with jax_numpy_dtype_promotion='standard'. In future JAX releases this will result in an error.",
+        "scatter inputs have incompatible types: cannot safely cast value from dtype=float64 to dtype=float32 with jax_numpy_dtype_promotion='standard'. In future JAX releases this will result in an error."
+      ],
+      "stdout_tail": "  [WAVEGUIDE S-MATRIX] S21 phase residual vs -beta*L: 16.83 deg rms over 6 bins (beta from the port's discrete cutoff 3.5615 GHz, L = 0.081 m; port discretization witness for an EMPTY or matched guide between the planes -- a device between them adds its own transmission phase; not a gate)\n"
+    }
+  }
+}

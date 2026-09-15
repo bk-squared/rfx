@@ -274,7 +274,7 @@ and ``lam`` came back bit-identical to the recorded run (0.0e0 relative).
 writes ``spiral_design.json`` and ``spiral_design.png`` next to this file.
 The JSON is rewritten after every block AND after every objective
 evaluation, so an interrupted run keeps everything already measured.
-``tests/test_fdfd_spiral_design.py`` asserts the gates from that JSON and
+``tests/unit/fdfd/test_fdfd_spiral_design.py`` asserts the gates from that JSON and
 re-runs a 2-iterate smoke test of the same driver on a cheap model
 (8 tests, 56.7 s measured in this session, of which 55.4 s is that live
 smoke test and 0.8 s the seven JSON gates).

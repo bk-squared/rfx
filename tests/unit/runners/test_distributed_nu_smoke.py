@@ -49,12 +49,25 @@ def test_degenerate_uniform_matches_single_device_nu():
     match the single-device NU runner to machine precision. This is the
     cleanest equivalence check because both paths share the NU kernel.
 
-    Source is placed in the interior of device 0 (global x-index < nx_per)
-    to avoid the known Phase B seam-injection staleness: the step order
-    is H → exch H → E → exch E → PEC → source, so a source injected at
-    the first cell of device d>0 is not seen by device d-1's H update
-    until the next-next step's exchange. Interior placement sidesteps
-    this.
+    Source placement: interior of device 0 (global x-index < nx_per).
+
+    This used to be a WORKAROUND. ``sim.run(devices=...)`` dispatches to
+    ``rfx/runners/distributed_v2.py``, whose step order was
+    ``H → exch H → E → exch E → PEC → source``, so a source injected at
+    the first cell of device d>0 was not seen by device d-1's H update
+    until the next step's exchange, and interior placement sidestepped it.
+    #1041 measured that lag against the same model on one device -- 1.859e-01
+    relative on a probe 4 cells into the neighbouring rank, first divergent
+    step 4 -- and moved the E exchange to the END of the E half-step in both
+    v2 bodies, the placement ``distributed_nu.py`` already had since
+    ``ac782d4f``. The seam error is now 4.858e-06, the interior-source
+    control's own lane-difference floor.
+
+    So the interior placement here is no longer load-bearing; it is kept
+    because this fixture also backs a #1038 bit-identity baseline
+    (``tests/locks/test_runner_split_bit_identity.py`` fixtures 4 and 8) and
+    moving it would invalidate that. The seam case has its own gate in
+    ``tests/unit/runners/test_distributed_v2_seam_source_order.py``.
     """
     devices = jax.devices()[:2]
     n_steps = 40

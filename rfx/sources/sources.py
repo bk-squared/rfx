@@ -401,7 +401,31 @@ class WirePort:
 
 
 def _wire_port_cells(grid, port):
-    """Return list of (i, j, k) cell indices along the wire."""
+    """The E edges the wire port drives — the extent, HALF-OPEN in edges.
+
+    The port's declared extent is the node interval ``[start, end)`` along
+    its axis, and the edges it drives are the ones whose OWN location lies
+    inside that interval. The port's component is staggered half a cell
+    along the axis, so edge ``a`` sits between node ``a`` and node
+    ``a + 1``: it lies inside ``[start, end)`` exactly for
+    ``lo <= a <= hi - 1``, where ``lo``/``hi`` are the endpoints' node
+    indices. An extent of n cells therefore drives n edges.
+
+    This used to be endpoint-INCLUSIVE (``range(lo, hi + 1)``), which
+    drove n + 1 edges — the last one spanning one cell ABOVE the declared
+    end. On the issue-#313 THRU that surplus Ez edge sits above the
+    microstrip trace: while the trace was drawn as a one-cell PEC Box the
+    edge was shorted and ``_wire_port_live_cells`` reported the right
+    ``n_live`` by accident, so the off-by-one was invisible. Under the
+    lattice ownership contract the trace is a sheet, which does not short
+    the edge above it, and the port drove one cell too many
+    (``n_live`` 2 -> 3, i.e. ``Z0_cell = Z0 / n_live`` off by 3/2).
+
+    An extent shorter than the cell it lands in snaps to a single node
+    (``lo == hi``) and would give NO edge. That port still drives exactly
+    one edge — the one its extent lies in — chosen on the side of the node
+    the extent occupies; it is a sub-cell declaration, not an empty one.
+    """
     import numpy as np
     s = np.array(port.start)
     e = np.array(port.end)
@@ -416,31 +440,80 @@ def _wire_port_cells(grid, port):
 
     lo = min(idx_s[axis], idx_e[axis])
     hi = max(idx_s[axis], idx_e[axis])
+    first, last = wire_port_edge_span(
+        grid, axis, lo, hi, float(s[axis]), float(e[axis]))
 
     cells = []
-    for a in range(lo, hi + 1):
+    for a in range(first, last + 1):
         cell = list(idx_s)
         cell[axis] = a
         cells.append(tuple(cell))
     return cells
 
 
-def _wire_port_live_cells(grid, port, pec_mask=None):
+def wire_port_edge_span(grid, axis: int, lo: int, hi: int,
+                        start_pos: float, end_pos: float) -> tuple[int, int]:
+    """``(first, last)`` E-edge index of a wire port extent — ONE spelling.
+
+    ``lo``/``hi`` are the extent endpoints' node indices (ordered). The
+    span is HALF-OPEN in edges: ``lo .. hi - 1``. Both the uniform lane
+    (:func:`_wire_port_cells`) and the non-uniform runner call this, so
+    the same declaration cannot rasterize to a different number of driven
+    edges on the two lanes.
+
+    ``start_pos``/``end_pos`` are the declared endpoint coordinates on
+    ``axis`` and are used only for the sub-cell case below.
+    """
+    if hi > lo:
+        return lo, hi - 1
+    # Sub-cell extent: both ends snapped to node ``lo``, so the half-open
+    # span is empty. The port still drives exactly one edge — the one its
+    # extent lies in — chosen on the side of the node the extent occupies.
+    # A tie (an extent centred on the node) takes the upper edge, which is
+    # what the half-open rule would give for a one-cell extent.
+    mid = 0.5 * (float(start_pos) + float(end_pos))
+    node_pos = _axis_node_position(grid, axis, lo)
+    k = lo if mid >= node_pos else max(lo - 1, 0)
+    return k, k
+
+
+def _axis_node_position(grid, axis: int, index: int) -> float:
+    """Physical position of node ``index`` on ``axis``, in DOMAIN metres.
+
+    Read from the library's own node-line producers so this does not
+    become a second spelling of where a node is (the #562 class).
+    """
+    from rfx.geometry.rasterize_grid import (
+        coords_from_nonuniform_grid, coords_from_uniform_grid)
+    from rfx.nonuniform import NonUniformGrid
+    import numpy as np
+
+    coords = (coords_from_nonuniform_grid(grid)
+              if isinstance(grid, NonUniformGrid)
+              else coords_from_uniform_grid(grid))
+    line = np.asarray((coords.x, coords.y, coords.z)[axis], dtype=np.float64)
+    return float(line[int(np.clip(index, 0, line.size - 1))])
+
+
+def _wire_port_live_cells(grid, port, pec_edge_masks=None):
     """Split the wire cells into (cells, live_flags, n_live) — issue #318.
 
-    A cell is *live* when the assembled-geometry PEC mask (geometry PEC +
-    PEC thin conductors, read BEFORE the runner's port-cell clearing) is
-    False there.  A dead cell — one whose extent lies inside a PEC
-    conductor — carries essentially no port current (measured on the
-    issue-#313 thru: |I_dead|/|I_mid| = 0.003-0.03), so its per-cell port
-    resistor is bypassed and it must not be counted in the series
-    impedance distribution or the drive/normalization cell counts.
+    A cell is *live* when the port's OWN E edge at that index is not a
+    realized PEC edge (#931 §1.9: ``edge_is_pec(edge_masks, component, i,
+    j, k)``, read BEFORE the runner's port-cell clearing).  A dead cell —
+    one whose edge is shorted by a conductor — carries essentially no port
+    current (measured on the issue-#313 thru: |I_dead|/|I_mid| =
+    0.003-0.03), so its per-cell port resistor is bypassed and it must not
+    be counted in the series impedance distribution or the
+    drive/normalization cell counts.  Reading the component's own edge, not
+    a cell mask, is what makes a sheet trace (which owns no cell) visible
+    here.
 
-    ``pec_mask=None`` treats every cell as live — identical to the
+    ``pec_edge_masks=None`` treats every cell as live — identical to the
     historical behaviour, and the degenerate case n_live == n makes every
     caller's formula bit-identical to the pre-#318 one.
 
-    The mask must be concrete (host-readable): the live split is a static
+    The masks must be concrete (host-readable): the live split is a static
     geometry decision, made once at setup time, mirroring the
     reference-plane spec builder's concreteness requirement.
 
@@ -450,19 +523,23 @@ def _wire_port_live_cells(grid, port, pec_mask=None):
         When every extent cell is inside PEC (n_live == 0): such a port
         has no live cell to terminate or drive.
     """
-    import numpy as np
+    from rfx.boundaries.pec import edges_are_pec
 
     cells = _wire_port_cells(grid, port)
-    if pec_mask is None:
+    if pec_edge_masks is None:
         return cells, [True] * len(cells), max(len(cells), 1)
 
-    mask_np = np.asarray(pec_mask)
-    live_flags = [not bool(mask_np[c[0], c[1], c[2]]) for c in cells]
+    # One host transfer for the whole extent (``edge_is_pec`` pulls the
+    # full component mask per call, and the eager S-param loops read this
+    # three times per port per step).
+    live_flags = [not d for d in
+                  edges_are_pec(pec_edge_masks, port.component, cells)]
     n_live = sum(live_flags)
     if n_live == 0:
         raise ValueError(
             f"WirePort {port.start} -> {port.end} ({port.component}): all "
-            f"{len(cells)} extent cells land inside PEC geometry, so the "
+            f"{len(cells)} extent cells have their {port.component} edge "
+            "shorted by realized PEC, so the "
             "port has no live cell to terminate or drive (issue #318). "
             "Shorten the extent or move the port so at least one of its "
             "rasterized cells is not PEC (per the assembled geometry -- "
@@ -471,7 +548,7 @@ def _wire_port_live_cells(grid, port, pec_mask=None):
     return cells, live_flags, n_live
 
 
-def setup_wire_port(grid, port, materials, pec_mask=None):
+def setup_wire_port(grid, port, materials, pec_edge_masks=None):
     """Distribute port impedance across the LIVE wire cells (issue #318).
 
     For n_live live cells in series with total impedance Z0:
@@ -482,10 +559,10 @@ def setup_wire_port(grid, port, materials, pec_mask=None):
     their resistor is bypassed by the surrounding conductor, so counting
     them made the physical series termination Z0·(n_live/n) instead of Z0
     (issue #318; measured 33.3 ohm on the issue-#313 thru, n=3 with one
-    dead cell).  With ``pec_mask=None`` — or no dead cells — this is
+    dead cell).  With ``pec_edge_masks=None`` — or no dead cells — this is
     bit-identical to the historical all-cells formula.
     """
-    cells, live_flags, n_live = _wire_port_live_cells(grid, port, pec_mask)
+    cells, live_flags, n_live = _wire_port_live_cells(grid, port, pec_edge_masks)
 
     sigma = materials.sigma
     for cell, live in zip(cells, live_flags):
@@ -496,7 +573,7 @@ def setup_wire_port(grid, port, materials, pec_mask=None):
     return materials._replace(sigma=sigma)
 
 
-def apply_wire_port(state, grid, port, t, materials, pec_mask=None):
+def apply_wire_port(state, grid, port, t, materials, pec_edge_masks=None):
     """Inject source voltage distributed across the LIVE wire cells.
 
     Each live cell gets V_src / n_live, with Cb computed from local
@@ -504,7 +581,7 @@ def apply_wire_port(state, grid, port, t, materials, pec_mask=None):
     injection — pre-#318 they accumulated phantom EMF on an edge whose
     only discharge path was the port sigma folded at that cell.
     """
-    cells, live_flags, n_live = _wire_port_live_cells(grid, port, pec_mask)
+    cells, live_flags, n_live = _wire_port_live_cells(grid, port, pec_edge_masks)
     v_src = port.excitation(t) / n_live
     dt = grid.dt
 

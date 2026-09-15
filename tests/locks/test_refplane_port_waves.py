@@ -87,7 +87,6 @@ _Y_MID = _DOMAIN[1] / 2
 _L = _X2 - _X1
 _FREQS = np.linspace(3e9, 7e9, 9)
 _N_STEPS = 4000
-_PEC_FACES_ADVISORY_SNIPPET = "INFINITE PEC boundary"
 
 
 def _build_thru(reference_plane_cells: int | None = None) -> Simulation:
@@ -98,10 +97,28 @@ def _build_thru(reference_plane_cells: int | None = None) -> Simulation:
                               z=Boundary(lo="pec", hi="cpml")),
         cpml_layers=8,
     )
-    sim.add(
+    # The microstrip TRACE is a FOIL: a footprint on one node plane with
+    # its normal E live, declared as a sheet (lattice ownership contract
+    # #931 §1.3). It used to be a one-cell PEC Box, which the contract
+    # reads as a VOLUME — walls on both bounding z planes and the interior
+    # shorted, i.e. a 0.5 mm thick slab of copper on a 1 mm substrate.
+    # Nothing about this line ever meant that.
+    #
+    # What moves and what does not, measured on this grid before the
+    # change (dx = 0.5 mm, all four in-plane faces on node lines):
+    #   plane  z = 1.0 mm, node k=2, unchanged — the zero-thickness foil
+    #          declares that exact node plane, with no snapping offset;
+    #   width  the footprint is now sampled CLOSED on the two in-plane
+    #          axes, so the drawn 5.0 mm strip realizes 5.0 mm (11 nodes,
+    #          10 edges). The old half-open rule dropped the hi row and
+    #          realized 4.5 mm — a -10% width the line constants below were
+    #          measured through. Zc therefore FALLS and beta rises; the
+    #          bands are re-derived from a fresh measurement (RECOMPUTE.md),
+    #          never re-centred by hand.
+    sim.add_thin_conductor(
         Box((_X1 - _DX, _Y_MID - _W / 2, _H),
-            (_X2 + _DX, _Y_MID + _W / 2, _H + _DX)),
-        material="pec",
+            (_X2 + _DX, _Y_MID + _W / 2, _H)),
+        sigma_bulk=5.8e7,
     )
     pulse = GaussianPulse(f0=5e9, bandwidth=0.8)
     kw = {}
@@ -112,6 +129,47 @@ def _build_thru(reference_plane_cells: int | None = None) -> Simulation:
     sim.add_port(position=(_X2, _Y_MID, 0.0), component="ez", impedance=50.0,
                  extent=_H, waveform=pulse, direction="+x", **kw)
     return sim
+
+
+def test_the_thru_trace_realizes_the_drawn_foil():
+    """Build-time (no solve): the trace is one plane and the drawn width.
+
+    Every number in this module is measured THROUGH this strip, so the
+    strip's realization is the first thing that must be right. The
+    contract's claim is drawn == realized (#931 §1.3); this reads it back
+    off the single owner rather than trusting the declaration.
+
+    Measured on this grid: plane z-node 2 (z = 1.0 mm, exactly the
+    declared foil plane at the substrate top), footprint
+    x nodes 23..57 and y nodes 23..33, i.e. 10 Ey edges across the strip
+    = 5.0 mm, the drawn width. The pre-#931 half-open sampler dropped the
+    hi row and realized 4.5 mm.
+    """
+    _assert_thru_trace_realization(_build_thru())
+
+
+def _assert_thru_trace_realization(sim):
+    """Pin the foil itself, independently of conditional preflight notices."""
+    from rfx.boundaries.pec import realized_wall_planes
+    from rfx.geometry.rasterize_grid import coords_from_uniform_grid
+    from tests._realized_geometry import realized
+
+    assert sim._pec_faces == {"z_lo"}, "the declared ground must be the z_lo PEC face"
+    rz = realized(sim)
+    assert rz.sheet_planes == {2: [2]}, rz.sheet_planes
+    assert rz.pec_mask is None or not bool(np.asarray(rz.pec_mask).any()), (
+        "a foil owns no cell — the trace must not be in the volume mask")
+    assert realized_wall_planes(rz.edge_masks, 2) == [2]
+
+    (sheet,) = rz.sheets
+    z_realized = float(coords_from_uniform_grid(rz.grid).z[sheet.plane])
+    assert abs(z_realized - _H) < 1e-12, (
+        f"trace plane {z_realized} differs from declared height {_H}")
+    occ = np.argwhere(np.asarray(sheet.footprint))
+    ny = int(occ[:, 1].max() - occ[:, 1].min())     # Ey edges across the strip
+    nx = int(occ[:, 0].max() - occ[:, 0].min())
+    assert abs(ny * _DX - _W) < 1e-12, (ny, ny * _DX, _W)
+    assert abs(nx * _DX - ((_X2 + _DX) - (_X1 - _DX))) < 1e-12, nx
 
 
 # ===========================================================================
@@ -369,11 +427,21 @@ def test_nonuniform_lane_guard_fails_loudly():
 # ===========================================================================
 
 def _raw_drive(sim, n_steps=8, drive_idx=0):
+    # The trace is a SHEET, and a sheet owns no cell (#931 §1.3), so it is
+    # not in ``pec_mask``. This helper must collect it and hand it on, or
+    # the reference-plane machinery scans a bare cell mask, finds no metal
+    # on a perfectly healthy board and raises. ``_assemble_materials``
+    # warns when a caller drops a classified sheet; that warning was this
+    # helper's, not the library's.
     grid = sim._build_grid()
-    mats, dsp, lsp, pm, _, _, _ = sim._assemble_materials(grid)
+    pec_sheets: list = []
+    pec_wires: list = []
+    mats, dsp, lsp, pm, _, _, _ = sim._assemble_materials(
+        grid, pec_sheets=pec_sheets, pec_wires=pec_wires)
     return sim._forward_from_materials(
         grid, mats, dsp, lsp, n_steps=n_steps, checkpoint=False,
-        pec_mask=pm, port_s11_freqs=_FREQS,
+        pec_mask=pm, pec_sheets=tuple(pec_sheets),
+        pec_wires=tuple(pec_wires), port_s11_freqs=_FREQS,
         _sparam_drive_idx=drive_idx, _return_raw_port_sparams=True)
 
 
@@ -384,9 +452,12 @@ def test_refplane_registers_two_planes_per_port_with_phase0_geometry():
     x/y, PEC z_lo): port 1 at x=8mm -> i=24; planes at 9.5/11.0mm ->
     27/30; port 2 at 24mm -> i=56; planes at 22.5/21.0mm -> 53/50.  Ampere
     loop legs half a cell outside the trace bbox (y 7.5..12.5mm -> j
-    23..32 padded; z 1.0..1.5mm -> k 2): Hz columns at j=22/33 spanning
-    k=[2,4), Hy rows at k=1/3 spanning j=[23,34) — the exact Phase-0
-    probe layout (x=9.5mm plane: legs at y=7.25/12.75mm, z=0.75/1.75mm).
+    23..33 realized; z 1.0..1.5mm -> k 2): Hz columns at j=22/34 spanning
+    k=[2,4), Hy rows at k=1/3 spanning j=[23,35) — the Phase-0 probe
+    layout with the hi leg one node out (#931: the trace footprint is
+    sampled CLOSED, so the drawn 5.0 mm strip realizes y 23..33 where the
+    old half-open rule stopped at 32, and the loop leg half a cell outside
+    the bbox follows it).
     """
     raw = _raw_drive(_build_thru(reference_plane_cells=3))
     rp = raw["wire_refplane"]
@@ -409,9 +480,16 @@ def test_refplane_registers_two_planes_per_port_with_phase0_geometry():
         # 2-cell integral that measured Zc = 47.9-48.6 ohm.
         assert (spec.e_lo, spec.e_hi) == (0, 2)
         assert spec.third_index == 28                # y = 10mm (padded)
-        assert (spec.u_lo_leg, spec.u_hi_leg) == (22, 33)
+        # #931: the trace footprint is sampled CLOSED, so the drawn
+        # 5.0 mm strip realizes y-nodes 23..33 where the old half-open
+        # rule stopped at 32. The whole Ampere loop follows it — the leg
+        # half a cell OUTSIDE the bbox moves 33 -> 34 and the integration
+        # span 34 -> 35. Measured, not predicted: the first re-derivation
+        # here assumed u_span was already padded far enough and it was
+        # not.
+        assert (spec.u_lo_leg, spec.u_hi_leg) == (22, 34)
         assert (spec.v_lo_leg, spec.v_hi_leg) == (1, 3)
-        assert (spec.u_span_lo, spec.u_span_hi) == (23, 34)
+        assert (spec.u_span_lo, spec.u_span_hi) == (23, 35)
         assert (spec.v_span_lo, spec.v_span_hi) == (2, 4)
         assert spec.hu_component == "hy" and spec.hv_component == "hz"
 
@@ -443,10 +521,12 @@ def test_refplane_requires_pec_trace_at_plane():
                               z=Boundary(lo="pec", hi="cpml")),
         cpml_layers=8,
     )
-    sim.add(
+    # Same foil sheet as ``_build_thru`` (#931 §1.3) — see the comment
+    # there for what the closed footprint moved and what it did not.
+    sim.add_thin_conductor(
         Box((_X1 - _DX, _Y_MID - _W / 2, _H),
-            (_X2 + _DX, _Y_MID + _W / 2, _H + _DX)),
-        material="pec",
+            (_X2 + _DX, _Y_MID + _W / 2, _H)),
+        sigma_bulk=5.8e7,
     )
     pulse = GaussianPulse(f0=5e9, bandwidth=0.8)
     # direction "+x" on port 1: outboard becomes -x, off the trace end
@@ -612,10 +692,12 @@ def test_preflight_partial_optin_advisory():
                               z=Boundary(lo="pec", hi="cpml")),
         cpml_layers=8,
     )
-    sim.add(
+    # Same foil sheet as ``_build_thru`` (#931 §1.3) — see the comment
+    # there for what the closed footprint moved and what it did not.
+    sim.add_thin_conductor(
         Box((_X1 - _DX, _Y_MID - _W / 2, _H),
-            (_X2 + _DX, _Y_MID + _W / 2, _H + _DX)),
-        material="pec",
+            (_X2 + _DX, _Y_MID + _W / 2, _H)),
+        sigma_bulk=5.8e7,
     )
     pulse = GaussianPulse(f0=5e9, bandwidth=0.8)
     sim.add_port(position=(_X1, _Y_MID, 0.0), component="ez", impedance=50.0,
@@ -658,10 +740,12 @@ def test_nonuniform_lane_end_to_end_raises():
                               z=Boundary(lo="pec", hi="cpml")),
         cpml_layers=8,
     )
-    sim.add(
+    # Same foil sheet as ``_build_thru`` (#931 §1.3) — see the comment
+    # there for what the closed footprint moved and what it did not.
+    sim.add_thin_conductor(
         Box((_X1 - _DX, _Y_MID - _W / 2, _H),
-            (_X2 + _DX, _Y_MID + _W / 2, _H + _DX)),
-        material="pec",
+            (_X2 + _DX, _Y_MID + _W / 2, _H)),
+        sigma_bulk=5.8e7,
     )
     pulse = GaussianPulse(f0=5e9, bandwidth=0.8)
     sim.add_port(position=(_X1, _Y_MID, 0.0), component="ez", impedance=50.0,
@@ -702,6 +786,13 @@ _REFEREE_S21 = np.array([1.0066, 1.0052, 1.0033, 1.0007, 0.99775,
 #   |S21| = 0.98251..0.99840; |S21|/referee - 1 = -0.82%..-0.18% per bin
 #   reciprocity rel <= 0.38%; Zc Re 47.94..48.62 ohm (both ports),
 #   Im/Re <= 1.2%; beta/(w/c) = 1.0465..1.0589;
+# RE-MEASURED 2026-09-07 for #931 (VESSL 369367259283), same config, the
+# trace declared a FOIL and realizing the drawn 5.0 mm instead of 4.5:
+#   |S21| = 0.98179..0.99846; |S21|/referee = 0.99192..0.99744 (still the
+#   Phase-0 arch class); Zc Re 46.5691..47.0366 (port 0) and
+#   46.6389..46.9445 (port 1), Im/Re <= 1.06%; beta/(w/c) =
+#   1.01115..1.02432 (port 0). Five of the six physics legs pass on the
+#   UNCHANGED gates — only the beta band moved, below.
 #   |arg(S21) + beta_meas*L| <= 8.4e-4 rad; max singular value of the
 #   mixed matrix 1.0663 max (post-#318 rerun 2026-07-11; was 1.0299 —
 #   see the SV gate note); |S11|^2+|S21|^2 <= 0.99995 (post-#318).
@@ -715,7 +806,38 @@ _ZC_RE_BAND = (46.0, 50.5)     # measured 47.9-48.6; Phase-0 mid-line
                                # 47.85-48.63; Phase-0 pair-dependence
                                # spread across plane pairs 44.5-51.0
 _ZC_IM_OVER_RE_MAX = 0.03      # measured <= 0.012
-_BETA_OVER_WC_BAND = (1.03, 1.08)   # measured 1.0465-1.0589. Mechanism
+# RE-DERIVED 2026-09-07 for #931 from VESSL 369367259283, and the
+# pre-declaration it answers was WRONG about the direction: it said beta
+# would RISE above the old band because the strip got wider. It fell.
+#
+# The reason was already written in this file before the run. The paragraph
+# below attributes the slow-wave excess to the FINITE-THICKNESS trace and
+# its non-TEM fringing, and rules out discretization with a dx/2 check
+# (excess 0.0781 -> 0.0756, ratio 0.97). The contract removes the finite
+# thickness — the trace is a foil, one node plane with its normal E live —
+# so the named cause is mostly gone and the excess falls with it:
+#     mean excess over the vacuum limit   0.0527  ->  0.0201   (x0.38)
+# The width change (4.5 -> 5.0 mm) pulls the same way on Zc, which fell
+# 47.94-48.62 -> 46.57-47.04 and stayed INSIDE its unchanged band. Two
+# constants moved in the directions one redraw predicts; only one of them
+# left its band.
+#
+# The band, by this module's own margin rule (the retired band sat 0.0165
+# below the measured min and 0.0211 above the measured max):
+#   floor   1.01115 - 0.0165 = 0.9947, which is BELOW the vacuum limit. An
+#           air line over ground cannot carry a wave faster than c, so the
+#           floor is set at the physical limit 1.00 — TIGHTER than the rule
+#           would give, and a statement rather than a fitted number.
+#   ceiling 1.02432 + 0.0211 = 1.0454, rounded up to the 0.01 grid -> 1.05.
+#   width   0.05, IDENTICAL to the retired band's.
+# Port 1's beta was not reached in 369367259283 (port 0's assertion failed
+# first). PRE-DECLARED before the confirm run 369367259299: port 1 lands
+# inside [1.00, 1.05] as port 0 does, and within 0.005 of it — the two Zc
+# arrays agree to 0.3 ohm, so a port asymmetry that large would be a
+# separate finding.
+_BETA_OVER_WC_BAND = (1.00, 1.05)   # #931: measured 1.01115-1.02432 (port
+# 0, VESSL 369367259283). Retired band (1.03, 1.08), measured 1.0465-1.0589
+# on the 0.5 mm-thick trace. Mechanism
 # check (2026-07-10, one dx/2 rerun at fixed physical geometry and
 # identical physical plane locations on a shortened 12 mm line): the
 # slow-wave excess is dx-STABLE — 0.0781 (dx=0.5mm) -> 0.0756 (dx=0.25mm),
@@ -754,22 +876,11 @@ def refplane_thru():
     issues = [str(i) for i in report]
     for msg in issues:
         print(f"\n[refplane thru] preflight (verbatim): {msg}")
-    # Exact known advisory set (re-pinned 2026-07-11 for issue #319):
-    # pec_faces (the infinite ground plane IS the microstrip return)
-    # PLUS one wire_port_dead_extent_cells advisory per port — the
-    # canonical thru's top extent cell GENUINELY sits inside the PEC
-    # trace. Post-#318 the dead cell is excluded from the sigma/drive/Z0
-    # fold, so each port terminates at 50 ohm across its 2 live cells
-    # (the pre-#318 33.3-ohm Z0*(n_live/n) reading is the historical
-    # issue #313 finding). Every gate in this module was measured on this
-    # exact fixture, dead cell included, so the gates stay valid as-is.
-    # Anything else = fixture drift, stop.
-    codes = sorted(getattr(i, "code", None) for i in report)
-    assert codes == ["pec_faces_finite_pec",
-                     "wire_port_dead_extent_cells",
-                     "wire_port_dead_extent_cells"], (
-        f"refplane thru preflight drifted from the baseline: {issues}")
-    assert any(_PEC_FACES_ADVISORY_SNIPPET in m for m in issues)
+    # Exact-plane sheets are intentionally silent (#931 section 6). The
+    # numerical lock depends on the realized foil, not an advisory census.
+    errors = [str(i) for i in report if i.severity == "error"]
+    assert not errors, errors
+    _assert_thru_trace_realization(sim)
     S, freqs, diag = compute_lumped_wire_s_matrix_via_scan(
         sim, _FREQS, n_steps=_N_STEPS, return_refplane_diagnostics=True)
     S = np.asarray(S).astype(np.complex128)
@@ -782,6 +893,10 @@ def refplane_thru():
         print(f"[refplane thru] Zc1={diag['zc'][1]}")
         w = 2 * np.pi * _FREQS
         print(f"[refplane thru] beta0/(w/c)={diag['beta'][0] / (w / C0)}")
+        # Port 1 too (#931): the band re-derivation had only port 0 to read
+        # because port 0's assertion failed first, and a two-port fixture
+        # should print both before anything asserts.
+        print(f"[refplane thru] beta1/(w/c)={diag['beta'][1] / (w / C0)}")
     return S, diag
 
 
@@ -833,11 +948,16 @@ def test_refplane_thru_measured_line_constants(refplane_thru):
     pair-to-pair spread across plane pairs is 44.5-51.0 ohm (the open
     radiating microstrip is not a perfect two-wave line), so the band is
     a placement-sensitive consistency gate, not a universal constant.
-    beta/(w/c) gate [1.03, 1.08]: measured 1.0465-1.0589; Phase-0
-    1.048-1.061 — the slow wave is attributed PHYSICAL for this open
-    line by the one dx/2 mechanism check (excess dx-stable, ratio 0.97;
-    see the band comment above), so this gate locks a physical measured
-    class, not a discretization artefact."""
+    beta/(w/c) gate [1.00, 1.05] since #931: measured 1.01115-1.02432
+    (VESSL 369367259283) with the trace declared a foil. The retired band
+    was [1.03, 1.08] on 1.0465-1.0589, measured through a 0.5 mm-THICK
+    trace; Phase-0 read 1.048-1.061 on the same thick geometry. The slow
+    wave is attributed PHYSICAL for this open line by the one dx/2
+    mechanism check (excess dx-stable, ratio 0.97) — and the excess
+    dropped x0.38 when the thickness it was attributed to went away, which
+    is that attribution being tested rather than restated. The floor is the
+    vacuum limit, not a fitted number: this gate cannot be satisfied by a
+    wave faster than c."""
     _, diag = refplane_thru
     w = 2 * np.pi * _FREQS
     for p in (0, 1):

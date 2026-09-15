@@ -102,6 +102,22 @@ AD_CLASSIFICATION = {
         "tracer dispatch, unlike compute_coaxial_two_port); no eps_scale "
         "or other design channel is wired for this leg",
     ),
+    "Simulation.compute_s_matrix": (
+        UNTESTED,
+        "issue #980 Phase 1 dispatcher (rfx/sparams/dispatch.py): it adds no "
+        "AD channel of its own and no numpy step of its own -- it forwards "
+        "**kwargs unchanged to one of the six rows above, so the tape either "
+        "survives or breaks exactly where that delegate's own row says it "
+        "does. There is therefore nothing here to classify GRAD_SAFE or "
+        "NOT_TRACEABLE: a single verdict would be wrong on some lane either "
+        "way (compute_waveguide_s_matrix is GRAD_SAFE, compute_mixed_s_matrix "
+        "is NOT_TRACEABLE, and both are reachable through this one name). "
+        "Tracking pointer: the per-lane rows above ARE the classification; "
+        "the routing itself is gated for bit identity against the direct call "
+        "on four lanes by tests/unit/sparams/"
+        "test_compute_s_matrix_dispatch.py. Revisit if the dispatcher ever "
+        "grows a body that touches arrays.",
+    ),
     # --- top-level exports --------------------------------------------------
     "compute_error_indicator": (
         NOT_TRACEABLE,

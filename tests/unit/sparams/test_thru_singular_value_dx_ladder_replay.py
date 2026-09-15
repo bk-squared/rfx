@@ -170,9 +170,36 @@ def test_g3_settling_below_minus_40_db_at_every_rung() -> None:
 
 
 def test_g4_rasterization_scales_as_a_sheet() -> None:
+    """The trace's realized size scales dx^-2 across the ladder.
+
+    #931 RECAPTURE PENDING. These three rungs are frozen records of VESSL
+    run 369367257803, taken when the trace was a one-cell PEC Box. Under
+    the ownership contract that declaration is a VOLUME whose realized
+    thickness follows the mesh (0.5 / 0.25 / 0.125 mm) — the ladder's own
+    independent variable — so the producer declares it a SHEET instead,
+    and a sheet owns NO cell. ``finite_pec_cells`` therefore goes to zero
+    on every rung and stops carrying the property; the same dx^-2 law
+    lives on the realized sheet FOOTPRINT node count, which the producer
+    must record as ``sheet_footprint_nodes``. The wire-port half moves
+    too: the port's Ez is NORMAL to the sheet and stays live by contract
+    (§1.3), so ``live_flags[-1]`` becomes True and ``n_live == n_cells``.
+
+    The replacement text for the producer, and the exact new record keys,
+    are in ``docs/design_notes/931_migration/T2-thru_singular_value_dx_ladder.md``;
+    the recapture is tracked as R5 in
+    ``tests/unit/sparams/_results_931/RECOMPUTE.md``.
+
+    The assertions below are UNCHANGED and still green, because the rung
+    JSONs are unchanged: they are a faithful reading of a pre-#931 record.
+    They must be re-derived from the recaptured rungs when R5 lands, not
+    re-pinned by hand onto the numbers a new run happens to print.
+    """
     rungs = _rungs()
     pec = [rungs[d]["rasterization"]["finite_pec_cells"] for d in DIVISORS]
-    assert pec == [340, 1360, 5440]
+    assert pec == [340, 1360, 5440], (
+        "these are pre-#931 records (the trace was a one-cell PEC Box). "
+        "Re-capture the rungs with the sheet declaration — RECOMPUTE.md R5 "
+        "— rather than re-pinning this table by hand.")
     assert pec[1] == 4 * pec[0] and pec[2] == 4 * pec[1]
     for d in DIVISORS:
         for port in rungs[d]["rasterization"]["wire_ports"]:
@@ -180,6 +207,7 @@ def test_g4_rasterization_scales_as_a_sheet() -> None:
             assert port["n_live"] == 2 * d, d
             flags = port["live_flags"]
             assert flags[-1] is False and all(flags[:-1]), (d, flags)
+    for d in DIVISORS:
         assert rungs[d]["rasterization"]["grid_shape"] == {
             1: [81, 57, 29], 2: [161, 113, 57], 4: [321, 225, 113]}[d]
 

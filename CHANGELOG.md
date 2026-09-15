@@ -4,7 +4,932 @@ All notable changes to `rfx-fdtd` that affect user-visible behaviour are
 recorded here. Dates follow local (KST) convention. Version bumps follow
 SemVer — **BREAKING** entries are flagged in upper-case.
 
-## [Unreleased]
+## [Unreleased — 2.0.0]
+
+The #931 artifact-to-carrier sweep, complete field ledger, and named unresolved
+fixture findings are recorded in the [docs-truth audit](docs/design_notes/20260908_docs_truth_audit.md).
+
+### BREAKING — `rfx.runners.run_distributed` is no longer exported (#1038)
+
+- The `rfx.runners` package no longer re-exports `run_distributed`, and the
+  name is gone from its `__all__`. The module it came from,
+  `rfx.runners.distributed`, is **unchanged and still supported**; only the
+  package-level shortcut is retired.
+- Why: two modules define `run_distributed`, and the package exported the wrong
+  one. `Simulation.run(devices=[...])` dispatches to
+  `rfx.runners.distributed_v2.run_distributed` (the `shard_map` runner) for
+  uniform and non-uniform grids alike, and reaches the v1 `jax.pmap` runner
+  only as v2's `n_devices == 1` fast path. So the public name resolved to a
+  runner the public API does not use. The two are not interchangeable: they are
+  not bit-identical (max |Δ| 2.794e-09 on a 9.4145e-03 peak) and they disagree
+  on odd `nx` — v1 refuses it, v2 pads. Exporting neither was chosen over
+  quietly repointing the name at v2, which would have changed numbers under
+  existing callers without a diff to read.
+- Migration, in order of preference: use `Simulation.run(devices=[...])`, which
+  gets you the production runner; or, if you specifically want the legacy pmap
+  runner, import it by full path —
+  `from rfx.runners.distributed import run_distributed`.
+- Side effect worth knowing about if you inspect import state: `import
+  rfx.runners` no longer loads `rfx.runners.distributed`, nor
+  `rfx.runners._distributed_common` (which only `distributed.py` imported
+  eagerly). Both still import on demand by full path.
+
+### Added — `sim.run(devices=...)` realizes declared PEC volumes (#1053)
+
+- The `shard_map` distributed lane (`rfx.runners.distributed_v2`) now realizes a
+  declared PEC **volume**. `pec_mask` is sharded alongside the material arrays
+  and applied in both step bodies through the shared
+  `_distributed_common.apply_pec_mask_shmap`, after source injection and the
+  domain faces and immediately **before** the E ghost exchange — the same stage
+  and the same position `distributed_nu` uses, at the #1041 ordering.
+- Before this, the lane assembled `pec_mask` and dropped it: its step bodies
+  applied the domain-face PEC alone. Rather than solve a board without its
+  metal it refused every kind of declared PEC, so a PEC `Box` could not run on
+  `devices=` at all.
+- Gate, `tests/unit/runners/test_distributed_v2_pec_body_seam.py`: three bodies
+  on a 31×15×15-cell domain at dx = 1 mm split across 2 ranks, each compared to
+  the same model on one device, `max|multi − single| / peak(|single|)`. Seam-face
+  body (metal face on rank 1's first real cell) **3.074e-05**, straddling body
+  **3.483e-05**, interior control **4.148e-05** with `boundary="pec"`; 1.954e-05
+  / 1.385e-05 / 3.826e-05 with CPML. The gate is **1e-3**, eleven times the
+  8.889e-05 no-body lane floor. With the stage removed the same three read
+  1.375e+00 / 1.435e+00 / 1.062e+00 (pec), and with it moved one step later, to
+  after the ghost exchange, the seam-face body reads 3.203e-01 — the placement
+  is load-bearing, and only a body whose face lands on rank 1's first real cell
+  witnesses it.
+- On the lane parity contract (`tests/contracts/test_pec_lane_parity_numeric.py`)
+  the distributed lane reads 5.48792118e-03 where the uniform lane reads
+  5.48786437e-03 for the same declared volume, 1.035e-05 relative over a
+  1.472e-06 empty-domain floor.
+- **Still refused on this lane**: declared PEC **sheets** and sub-cell **wires**.
+  Each owns no cell, the cell mask is the lane's only carrier, and nothing else
+  there realizes them. The refusal message now names those two kinds, says that
+  a volume does run, and warns that a volume is not the same conductor as a
+  sheet (it shorts the normal E edge between its two faces, #690). Use `sim.run()`
+  without `devices=`, which realizes all three.
+- The `jax.pmap` runner `rfx.runners.distributed` is unchanged: it still drops
+  the mask, so it still refuses all three kinds (#1055). One consequence is
+  visible only to direct callers of `rfx.runners.distributed_v2.run_distributed`:
+  its `n_devices == 1` fast path delegates to that pmap runner, so the same
+  call refuses a declared volume at one device and runs it at two.
+  `Simulation.run(devices=...)` is unaffected — it dispatches to this lane only
+  for `len(devices) > 1`, and one device takes the ordinary single-device lane,
+  which realizes the volume.
+
+### BREAKING — `PreflightReport` refuses boolean evaluation (#980)
+
+- `bool(report)` now raises `TypeError`. `PreflightReport` is a `list` of
+  findings, so inherited truthiness is inverted for what the report means: a
+  clean report is EMPTY and therefore falsy, while a report carrying nothing
+  but advisories is truthy. `if not sim.preflight(): raise ...` and
+  `assert sim.preflight()` both read as "stop unless this passed" and did the
+  reverse — the assert passed exactly when preflight found problems and failed
+  on a clean run, so a gate could be skipped without a trace.
+- The raised message names the replacements: `report.ok` (no error-severity
+  finding), `report.errors`, `report.raise_for_failure()` for a gate, and
+  `len(report)` / `report.issues` when the item count is what you want. Note
+  the two are different predicates — `len(report)` also rejects advisories,
+  `.ok` does not.
+- Every other list operation is unchanged: `len`, iteration, indexing,
+  slicing, membership, `==` against a report or a plain list, `"\n".join`,
+  `append` / `extend`. `any(report)` / `all(report)` consume the report's
+  string items, never the report, so they keep working too.
+- Migration is mechanical. A call site that meant "did preflight find
+  anything" becomes `len(report)`; one that meant "is this safe to run"
+  becomes `report.ok` or `report.raise_for_failure()`.
+
+### Added — `sim.compute_s_matrix(...)`, one entry point over the S-parameter lanes (#980)
+
+- `Simulation.compute_s_matrix(**kwargs)` reads the registered ports, selects
+  exactly one of the per-family calculators, and forwards every keyword
+  argument to it unchanged, so the delegate's defaults, preconditions,
+  warnings and result type are identical to calling it directly. Four lanes
+  (waveguide, MSL, coaxial two-port, coax↔MSL) are gated bit-identical against
+  the direct call, `np.array_equal` with no tolerance.
+  `Simulation.s_matrix_lane()` returns the same choice as a string and runs no
+  FDTD, so routing is checkable on a half-built simulation. Both are new
+  surface; nothing existing changed behaviour.
+- It refuses rather than guesses in three places. A single `add_coaxial_port()`
+  is ambiguous — `compute_coaxial_line_reflection` and
+  `compute_coaxial_two_port` have identical registration footprints, since the
+  two-port method mirrors that one port into a through-line internally rather
+  than consuming a second registration — so pass
+  `lane="compute_coaxial_two_port"` to choose. Lumped/wire-only raises and
+  names `run(compute_s_params=True)` instead of calling `run()`, whose return
+  type differs and whose `n_steps` has no default to supply. And the
+  deprecated `compute_coaxial_s_matrix` is never selected, by the dispatcher
+  or by `lane=`.
+- Preflight behaviour is inherited from the chosen lane and is not uniform:
+  the MSL and mixed lanes run preflight automatically, the waveguide and
+  coaxial lanes do not. Routing through `compute_s_matrix` adds none.
+
+### Fixed — a dielectric touching the domain boundary was solved with vacuum in the absorber pad whenever subpixel smoothing was on (#1043, #831)
+
+- The CPML/UPML pad material extension — on by default, and there "so that
+  guided modes in dielectric waveguides see an impedance-matched absorber" —
+  reached the staircase material arrays and not the subpixel-smoothed update
+  permittivity, which `run(subpixel_smoothing=…)` rebuilds from the declared
+  geometry. Every structure touching a domain face was solved with `eps_r = 1`
+  in its own absorber and a Kottke half-cell at the seam, i.e. terminated by an
+  end facet. Fixed at all three sites that rebuild that array (Stage-1,
+  Stage-2 `kottke_pec`, and the non-uniform mirror) through one shared builder.
+- **This changes solved numbers for dielectrics that REACH an absorber pad
+  under subpixel smoothing** — which includes one case the first draft of this
+  entry did not say out loud: a `Box` whose corner already sits *inside* the
+  pad is continued to the array edge and fills the whole pad, where before it
+  filled only the cells it was drawn across. That is deliberate — it is what
+  the staircase lane's interior-edge replication already did for the same
+  geometry, so the two lanes now agree where they disagreed — and
+  `geometry_in_absorber` (#61) has always warned about that configuration
+  independently. Everything that reaches no pad is untouched. Measured: crossval 03's straight
+  guide `|B/A|` 0.531 → 0.030 at 20 absorber cells, with the depth trend
+  inverted back (it rose 0.53 → 0.59 → 0.62 over 20/40/60 cells and now falls
+  0.030 → 0.012 → 0.002) and the ring-down settling witness −37.3 → −138.3 dB;
+  band-mean `T` 0.9657 → 0.9682, which is **not** a recovery to 1 and was not
+  expected to be. crossval 01's straight-guide flux self-check under CPML
+  0.7489 → 0.9876, which moves it inside its own 0.95–1.05 gate, and its
+  absorber-depth ladder goes flat (0.9876 / 0.9890 / 0.9894 / 0.9889 at 10 / 16
+  / 20 / 40 cells, spread 0.0018, against 0.7489 → 0.9473 before): the depth
+  dependence was the facet, not the absorber.
+- Everything that reaches no absorber pad is **bit-identical** — eight
+  configurations (vacuum pads, interior dielectric under CPML and UPML,
+  `subpixel_smoothing=False` on the same touching geometry, PEC walls, 3-D,
+  `kottke_pec`, non-uniform) SHA-256-identical over the six final field arrays
+  and the probe trace, in both the x64 and float32 lanes. A ninth
+  configuration — the `Box` drawn into the pad above — is carried in the same
+  harness as a **declared mover** and differs in both lanes, so the table
+  demonstrates that it can tell the two apart rather than only that nothing
+  moved.
+- Not continued into a pad, each for a measured reason: PEC volumes (the
+  staircase lane does not extend `pec_mask` either), dispersive materials
+  (#627b: a high-Q pole in a pad turns a stable run divergent with no NaN;
+  #808: promoting such a column's statics moved a committed Debye recovery past
+  its gate), and shapes with no continuation across the reached face — a
+  sphere's tangency, a cylinder reached across its axis, an imported mesh.
+- **New preflight advisory** `dielectric_at_absorber_seam`: a dielectric that
+  ends at an absorber seam in one of those un-continuable shapes is reported,
+  with the permittivity its pad will hold. It is the complement of
+  `geometry_in_absorber`, which reports geometry standing *inside* the
+  absorber.
+- Depends on the same issue's stage A (#1047): landing this before the CPML psi
+  coefficient and the Yee update read the same epsilon made the simulation
+  divergent rather than merely wrong.
+
+### Fixed — the TF/SF auxiliary grid's own absorber reflected 4–6 % (#888)
+
+- Both auxiliary grids now build their absorber through the same
+  `rfx.boundaries.cpml._cpml_profile` law the 3-D absorber uses, with `sigma_max`
+  derived from a declared reflection target instead of a standalone heuristic:
+  1-D (`rfx/sources/tfsf.py`) 20 → 200 cells at `R_asym = 1e-6`, 2-D Bloch
+  (`rfx/sources/tfsf_2d.py`) 30 → 200 cells at `R_asym = 1e-28`. Measured `|B/A|`
+  falls from 4.4e-02 to 9.4e-06 on the 1-D path and to 2.3e-06 … 2.9e-05 over
+  0–70° on the 2-D one. `init_tfsf` / `init_tfsf_2d` take `aux_n_cpml`,
+  `aux_cpml_order`, `aux_cpml_kappa_max` and `aux_cpml_r_asymptotic` overrides.
+- **This changes the injected incident field for every TF/SF consumer.** The
+  measured effect on the validated RCS path: the PEC-sphere monostatic fixture
+  moved 0.57 dB, and its previous 0.06 dB agreement with the exact Mie series
+  turned out to be a cancellation against an 8-cell CPML. Both sphere fixtures
+  are regenerated on a converged 24-cell absorber (0.185 dB from Mie, unchanged
+  1.0 dB gate). The #280 reference-subtracted bistatic pattern agrees *worse*
+  with Mie on the clean injection (0.42 → 0.70 dB mean); its bar is re-derived
+  from that measurement through the shared envelope policy to 1.06 dB, with a
+  new falsifier asserting the uncorrected path still fails it.
+- **Validity domain, gated:** the 2-D absorber meets the 1e-3 leakage bar for
+  incidence up to 80° and does NOT at 82°, measured at 29.98 cells per
+  free-space wavelength. Both halves of the angle domain are asserted and the
+  resolution is pinned, so neither can widen silently. A cells-per-wavelength
+  sweep is not run: the declared domain is one angle range at one mesh density.
+- The committed cv04 / cv22 / cv23 slab-family records were produced with the
+  20-cell absorber and are declared pending recompute; their echo-arrival
+  witnesses are replayed against the layout each record declares, and the
+  shipped absorber's arrival is earlier at every rung, so each stays admissible.
+
+### Fixed — cv05 external geometry handoff (#959)
+
+- Transfer complete realized sheet edges, substrate bounds and wire terminals
+  to openEMS with one coordinate translation. Check finite-sheet contact before
+  solving; the 28×37 mm patch and its feed now describe the same realized board.
+- Preserve the realized faces in the external mesh, keep the finite antenna
+  outside PML cells, and use a fresh retained output directory per external run
+  so old reference files cannot silently describe a different board.
+
+### Fixed — cv11 realized dielectric slab geometry (#812)
+
+- Align the analytic slab fixture's dielectric Box faces to explicit lattice
+  nodes, preventing a one-ulp high-face inclusion from solving an 11-node slab
+  while the reference describes 10 mm. Add a build-only ten-cell contract and
+  retain the VESSL failure evidence that identified the mismatch.
+- Correct the refreshed artifact's extraction label: empty/slab use two-run
+  modal normalization and PEC short uses single-run V/I. Future stdout records
+  the actual mode; the June-to-August historical attribution remains unresolved.
+
+### Fixed — cv02 retained verdict exit contract (#946)
+
+- Add a source contract that requires the persisted `exit_code` and every
+  `sys.exit` path in the ring-resonator crossval to use the same `_rc` value,
+  preventing a later exit branch from contradicting retained evidence.
+
+### Changed — cv02 Q gate states which of its inputs are derived (#907)
+
+- Split the ring-resonator Q gate into three named ingredients with an explicit
+  epistemic status (`Q_GATE_INGREDIENTS`): the `tau_ref/T` scale is declared
+  policy, the transform into log-Q bounds is derived, and a discretization
+  budget is absent. The report prints the split and the crossval record
+  persists it, so a `Q` PASS reads as two-solver consistency rather than as a
+  Q-accuracy guarantee. Withdraws the `1/T` resolution argument the window's
+  docstring made, which was measured false for this estimator. No gate value,
+  admission cut or verdict changed.
+- Expose the interval inversion as `rate_interval_to_log_q_bounds(s)`, a pure
+  function of the rate scale, and retain the signed log-Q ratio with the bounds
+  that judged it on every gated row.
+- Withdraw two claims the same docstring was still making, both flagged by
+  independent review. (a) "The decimated path cv02 actually runs degrades at
+  short records (3.49% there, 0.24% at the 0.25 cut)" does not reproduce: at
+  the shorter rung no decimation stage fires at all, and where one does the
+  decimated path is not worse. The ladder that measures it is committed as
+  `tests/fixtures/cv02_ring_judge/harminv_decimation_ladder.json` (generator:
+  `scripts/diagnostics/cv02_harminv_decimation_ladder.py`), so the envelope's
+  provenance is now #812's published bracket alone. (b) The Q gap's attribution
+  to a staircased ring boundary and subpixel treatment, which #907 retracted as
+  an overclaim, is removed from all three surfaces that carried it — including
+  the weaker restatement ("a property of the two discretizations rather than of
+  the record"), which the same evidence does not support either: rfx's Q being
+  stable across record lengths rules out a record artefact, not the two
+  estimators. No gate value, admission cut or verdict changed.
+- Pin which retained cv02 record the "the transform moved no committed verdict"
+  guard was established against, so regenerating that record reds the guard
+  instead of silently turning it into the judge checking its own output. That
+  record predates the correction and still calls the Q window "not a chosen
+  number"; since it cannot be regenerated without voiding the guard, the
+  manifest's `claim_scope` and the pre-declaration's Correction 4(d) record
+  that the note is superseded by `Q_GATE_INGREDIENTS`.
+- Withdraw the decimation ladder's claim that its two frequency bands are an
+  independent witness for each other. Both bands resolve to the same decimation
+  plan, so the two columns are one computation and agree by construction; the
+  band pair is a plan-stability check, and the independent witness is
+  `decimate='auto'` against `decimate=False`.
+
+### Fixed — cv02 Q-rate interval transform (#945)
+
+- Transform the declared decay-rate interval into its exact asymmetric log-Q
+  bounds, including an unbounded high-Q side when the rate interval reaches
+  zero. Keep the existing record-resolution policy and public scalar window,
+  while removing the false symmetric upper restriction.
+
+### Fixed — TMTT paper settling witnesses (#918)
+
+- Add passive Ex, Ez and Hy point records to the beam-steering and MSL-notch
+  paper builders so NTFF and field-DFT results carry the shared ring-down
+  witness without changing their solve or AD observables.
+
+### Fixed — shared coordinates for Kottke smoothing (#833)
+
+- Build uniform-grid smoothing coordinates from the same exact host-float64
+  node spine used by rasterization, removing a separate `jnp.arange` path
+  whose positions varied with the active JAX precision setting.
+
+### Fixed — MSL geometry and historical Z0 provenance (#752)
+
+- Distinguish the validated conductor-plane gap from dielectric material
+  extent in preflight, without predicting Z0 accuracy from either metric.
+- Locate declared faces on canonical absolute coordinates independently of
+  material availability; use both absolute faces in offset/graded-grid advice.
+- Retire legacy sweep/anchor generation that could overwrite frozen records
+  or combine old Z0 with current geometry. `--show-archive` provides explicit,
+  hash-verified historical inspection; the original data remain unchanged.
+- Provide a separate matched-geometry six-point measurement recipe with raw
+  records and explicit quality screens. Clarify that the historically named
+  HJ helper is a simplified formula; its API and numerical behavior are unchanged.
+
+### Fixed — weekly fixture and verdict regressions (#940)
+
+- Address the two-slab guide's material override on the padded grid so the
+  declared slabs clear its vacuum-mode sources and reference stencils.
+- Judge the ordered pytest subprocess by its exit code; expected warning
+  prose containing `failed` no longer turns a passing run into a failure.
+- Qualify the coax silence control with two finite records at the existing
+  inclusive -40 dB threshold, removing its auxiliary -60 dB fixture margin.
+  Retain the run length, hot/AD controls and unexplained historical decay shift.
+
+### Fixed — Leontovich oracle fixture and observable pairing (#947)
+
+- Tile the guide's graded absorber with canonical node bounds, removing a
+  zero-conductivity gap and eight displaced ramp values introduced during
+  the #834 coordinate transition. Restore the original endpoint diagnostic
+  after a controlled comparison, keeping the 1% field-fit and 9% alpha gates.
+- Predict Ez from the Hy-fitted modes using each mode's wave impedance and
+  actual Yee sample coordinates. Add fast full-ramp and analytic comparator
+  checks; clarify the existing weekly `slow_physics` coverage.
+
+### Fixed — forward results expose recorded-probe settling (#919)
+
+- Expose `ForwardResult.settling_db` and `settling_witness` from retained
+  user-probe records, using the same decay ratio and coverage floor as
+  `run()`. Missing, short or underflowed records report absence. Automatic
+  source-position records and driver-internal probes do not supply coverage.
+- Keep the host diagnostic outside the differentiated solver, with numeric
+  probe provenance in the result and quiet lazy property reads. Eager
+  forward calls retain the existing NTFF/field-DFT warning scope.
+- Include both quadratures of complex records in the shared power ratio,
+  so a phase rotation cannot erase a settling witness. Normalize amplitude
+  before squaring to avoid overflow/underflow; any selected NaN/Inf record
+  makes the witness unavailable and is named separately from underflow skips.
+
+### Fixed — cv06b falsifier inputs and scope (#953)
+
+- Realize the narrow stub on five geometric intervals with the baseline centre,
+  and hold grid, materials and resolved probes fixed across geometry controls.
+- Apply the unchanged G1 frequency gate only to baseline; report perturbed-arm
+  frequency diagnostics while preserving the narrow bandwidth/depth criterion.
+- Preserve historical outputs, qualify the controlled arms with retained raw
+  records, and clarify that nearest-node residuals are not extent-error bounds.
+
+### Fixed — finite flux windows exclude absorber cells (#910)
+
+- Clamp explicit `add_flux_monitor(size=...)` windows to physical interior
+  cells on both grid lanes, excluding CPML and the trailing bounding-node
+  slot. Warn on physical endpoint overflow, distinguish coordinate roundoff,
+  and reject empty apertures or malformed size/centre pairs before stepping.
+- Preflight exposes requested/realized bounds in metres through
+  `report.flux_regions`, using the same cell selection as the runners.
+  `size=None` retains the legacy full allocated plane.
+
+### Fixed — MSL clearance and accuracy claims (#726)
+
+- **BREAKING for unequal MSL reference impedances:** return standard power-wave
+  S and expose the actual per-port `reference_impedances`, separately from
+  fitted Z0 and load resistance. Equal-reference wave scaling is unchanged.
+  Raw dump v4 declares power waves; replay preserves v3 voltage-wave semantics
+  and refuses historical records lacking verified S references.
+- Interpolate bracketing transverse H samples to the existing voltage E-node
+  plane using physical grid coordinates before forming MSL current and S.
+  Preserve the temporal correction, port signs and reference impedances.
+- Expose `probe_clearance` separately from the relative low-signal `reliable`
+  mask; report resolved probe positions and signed reflector gaps without
+  treating the layout recommendation as an accuracy certificate.
+- Qualify layout and fitted-Z0/beta warnings, and document the first-probe
+  reference planes and analytic S normalization separately from fitted Z0.
+- The cv06b comparison holds source/DUT fixed, checks both realized probe
+  ladders before solving, preserves unprojected results, and refuses a numeric
+  comparison when settling fails. Retire the historical short experiment's
+  unsupported unit-reflection verdict; report observation sensitivity without
+  an exact-unit-reflection or blanket accuracy claim.
+
+### Fixed — experiment deadlines survive blocked native execution (#790, #978)
+
+- A supervisor enforces the submitted timeout independently of the computation
+  process, then reaps it before recording failure/cancellation or releasing CPU
+  capacity. The budget includes child startup, preflight, solve and export.
+- Successful artifacts, final progress and terminal state are published in one
+  transaction; an already-recorded cancellation wins. Retried diagnostics keep
+  their originally registered bytes and hashes.
+- Reopened-service cancellation uses the same durable request. Windows avoids
+  terminating its supervisor to send that request; Linux also kills native
+  execution if its supervisor dies unexpectedly.
+
+### Fixed — wire-port gaps follow realized terminal geometry (#929)
+
+- Uniform-grid preflight finds the nearest in-column PEC contact beyond one
+  cell, including filament endpoints, and reports the measured distance.
+  A gap remains a warning; its coupling mechanism is not inferred.
+- cv05/cv15 require the registered feed's actual source span to meet their
+  identified ground and patch planes before field solves. Stale geometry
+  metadata, an intermediate conductor, or an entirely shorted source cannot
+  certify these explicitly galvanic validation cases.
+
+### Removed — unused stage-6 voltage de-embedding prototype (#794)
+
+- Retired the standalone prototype and its duplicate inclusive-edge voltage
+  integrators. Its numerical reports remain historical; the retained plane
+  diagnostics use the production modal-voltage primitive.
+
+### Fixed — MSL sources distinguish bounding nodes from driven edges (#729)
+
+- Microstrip source and load support now excludes the normal edge above
+  the substrate's upper bounding node. Mode normalization uses that cell
+  count, and port clearing preserves normal PEC edges inside a volume trace.
+- The uniform forward path uses the shared port-frame conversion for both
+  x- and y-directed feeds, matching the run path's physical source position.
+- MSL ports reject missing or displaced conductor planes and metal crossing
+  the source interval before stepping, including when preflight is skipped.
+  Plane rounding follows the conductor rule; Kottke runs check their actual
+  frozen edges. Forward density reservation includes every source-edge owner.
+- Direct coax-to-MSL setup preserves registered junction materials at and
+  above the junction node and refuses unsupported lossy sheets. Its MSL
+  reader shares the registered centre and bounding planes with other paths.
+
+### Fixed — GPU passivity projection honors its reconstruction precision (#729)
+
+- The concrete S-matrix projection now factors and reconstructs its small
+  matrices with host double-precision LAPACK. GPU multiplication and SVD
+  factor errors could exceed the clipping margin, return an active matrix,
+  and amplify small differences between rotated MSL fixtures. The clipping
+  rule, returned dtype and device placement, raw measurement retention, and
+  AD-path exclusion are preserved; nonfinite bins still reach their audit.
+
+### Fixed — resonance extraction preserves finite-record modal content (#872)
+
+- Harminv excludes FIR boundary transients during automatic decimation and
+  retains the caller's relative rank threshold. Joint complex amplitude fits
+  prevent overlapping modes from corrupting the reported dominant mode;
+  real records retain the positive-frequency conjugate's phase. cv02 uses the
+  actual retained analysis duration in its existing Q gates and record planner.
+- Automatic decimation preserves the pencil capacity requested by `max_modes`
+  and `pencil_parameter`, preventing short multi-mode records from shrinking
+  below the dimensions needed for their fit.
+- The discrete NU chain model balances its recurrence and boundary equations
+  before solving, preserving the existing replay tolerance across BLAS kernels.
+
+### Fixed — public validation numbers follow the regenerated #931 artifacts
+
+- cv07 Sheen LPF now reports the shipped rfx passivity-correction footprint:
+  **3/120 bins above 0.05, worst 0.6571609**, all above **17 GHz** and none in
+  the **5–15 GHz** null band. The realized strip is coarser at unchanged
+  **dx = 200 µm**, so this high-band extraction change does not establish an
+  in-band physics regression. Passband median Re(Z0) is **51.91227 Ω**;
+  Palace structure distance is **2.8668 %** for rfx versus **0.6644 %** for
+  OpenEMS. The separate first-null argmin distance is **2.3756 %**.
+- Carrier assertions are tied to committed evidence, and the sweep covers
+  regenerated patch, notch, MSL phase, waveguide, iris, dispersive-slab and
+  nonuniform-cavity artifacts. Dated measurements retain their original
+  values with current-path qualifications where regenerated files replaced
+  the evidence at the same path.
+
+### BREAKING — the lattice ownership contract: a conductor is a volume, a sheet or a wire, and the declaration says which (#931)
+
+`two_plane` is **removed**. Passing it raises `TypeError` — no deprecation
+period, no replacement keyword. Realized PEC geometry changes on every lane.
+Models with no conductor body are bit-identical to 1.x.
+
+**The contract.** An E component is PEC if and only if its own location lies
+inside the closed conductor region. That one sentence, evaluated for a 3-D, 2-D
+and 1-D region on the Yee lattice, gives the three rows:
+
+| kind | what it is | declared by | E edge is PEC iff |
+|---|---|---|---|
+| volume | a set of primal cells | `sim.add(shape, material=<pec>)` — Box, Sphere, Cylinder | the edge is incident to an occupied cell |
+| sheet | a footprint on ONE node plane, zero thickness | `sim.add_thin_conductor(shape, ...)`, or a zero-thickness `Box` through `sim.add()` | the edge lies in the plane and both of its end nodes are in the footprint |
+| wire | a 1-D path of edges | `PolylineWire` below half a local cell in radius | the edge lies on the path |
+
+Full normative statement, index conventions and worked contrasts:
+`docs/design_notes/20260906_plan_realign_lattice_ownership.md` and the public
+page [How conductors land on the
+lattice](docs/public/guide/materials-geometry.mdx).
+
+**What changed in realization.**
+
+- A PEC **volume** realizes tangential walls at **both** of its drawn faces and
+  shorts every normal edge between them, at every thickness, on every axis, with
+  no flag. Drawn extent equals realized extent. Before 2.0 the far (`hi`) face
+  was never a wall at any thickness, and `two_plane=True` put it back for one
+  cell only.
+- PEC volumes are sampled at **cell centres**, half-open at the tie
+  (`lo ≤ x_{i+½} < hi`), instead of at node coordinates. On node planes this
+  gives the same cells as before; off-lattice it rounds each face to the
+  **nearest** plane instead of always outward or always inward. A Sphere centred
+  on a node now realizes symmetric about that node (the old rule was one cell
+  short on every `+` side). **Dielectric sampling is untouched** — node
+  coordinates, half-open — so every dielectric-only fixture is unchanged.
+- A **sheet owns no cell**: it contributes nothing to the PEC cell mask, writes
+  no `eps_r`/`sigma`, and is realized on exactly one node plane — the plane
+  nearest the shape's mid-plane, an exact half-cell tie resolving to the LOWER
+  plane. The E component normal to a sheet stays live. Footprints on the same
+  plane are unioned before the edge rule, so abutting sheets realize seamlessly
+  instead of leaving a slit. For a Box shape the footprint is sampled **closed**
+  `[lo, hi]` on the two in-plane axes, so the drawn rectangle is realized
+  exactly, including its `hi` row.
+- A lossy (`surface_impedance_f0`) sheet uses the SAME footprint and the SAME
+  edge set as a PEC sheet, so the #677 G4 identity — `f0` toggles loss, never
+  geometry — holds by construction rather than by a test comparing two rules.
+- `PolylineWire` with radius below half a local cell is a filament on the
+  lattice path joining the nearest nodes of consecutive vertices; a diagonal
+  segment now raises instead of silently rasterizing to disconnected nodes.
+
+**New refusals, raised when the grid exists** (nothing is inferred from raster
+thickness or drawing direction). They fire at `run()` / `forward()` / `preflight()`,
+NOT at `add()`: whether a shape is thinner than one cell is a question about the
+LATTICE, and `add()` has no grid to ask. A `try` around `sim.add()` catches
+nothing; put it around the call that builds the grid.
+
+- a PEC shape with `0 < extent < one local cell` on any axis of its drawn
+  bounding box raises — declare a sheet or resolve the thickness;
+- a PEC shape that rasterizes to ZERO cells raises, naming `PolylineWire` for a
+  filament and the minimum radius for a volume (the #369 silently-vaporized-metal
+  class);
+- a `Box` with exactly one zero-extent axis IS a sheet declaration and is
+  realized as `add_thin_conductor` would realize it; two or three zero-extent
+  axes raise;
+- `add_thin_conductor()` with a shape thicker than one local cell along its
+  normal raises.
+
+**One source, every consumer.** `rfx.boundaries.pec.realized_pec_edge_masks(
+cell_mask, sheets, wires, periodic)` is the only function that turns geometry
+into PEC edges, with two helpers on top: `realized_wall_planes(edge_masks, axis,
+...)` and `edge_is_pec(edge_masks, component, i, j, k)`. Consumers that
+re-derived metal from `pec_mask` read these instead. Classification lives in
+`rfx.geometry.rasterize_grid.classify_pec_entry` / `sheet_spec_from_shape`.
+`clear_edges(edge_masks, cells, component=)` replaces the old
+`pec_mask[cell] = False` port clearing, and a port releases **the one component
+it drives** — releasing all three opens the two edges tangential to the port at
+its foot, which where the foot stands on a conductor's node plane are that
+conductor's wall (measured: 2 of 40 wall edges on a PEC block's top face, 7/7 Ex
+and 7/7 Ey along an MSL feed width on the ground plane).
+
+**Sheets and wires leave the assembler through collectors, and no lane drops
+one.** Because a sheet owns no cell it cannot be returned in the PEC cell mask;
+it comes back through the `pec_sheets=` / `pec_wires=` out-parameters. Omitting
+them on a model that has one is now an error naming the caller, so a path that
+would step or report a conductor-free model cannot be written by accident.
+Every lane either realizes what it collected or refuses by name: the three
+coaxial S-parameter helpers (`compute_coaxial_s_matrix`,
+`compute_coaxial_line_reflection`, `compute_coaxial_two_port`) step from
+material arrays only and raise `NotImplementedError` on a declared sheet or
+wire, and `validate_subgrid()` reports
+`subgrid_pec_sheet_or_wire_unsupported` for the model
+`run(solver="subgridded")` refuses. Reads follow the same source:
+`conductor_mask()` now includes a filament's path nodes (new helper
+`rfx.boundaries.pec.wire_node_footprint`), `fidelity_report()` cross-checks its
+own sheet resolution against the assembly's and reports a drift finding, and
+`plot_geometry_2d_slice()` overlays the realized conductor footprint and picks
+the slice carrying the metal — a sheet writes no `eps_r`, so the permittivity
+cross-section of a clad board used to come back as bare laminate.
+
+**Removed surfaces.** `two_plane` on `sim.add()` and `_GeometryEntry`, the IR
+field, `_two_plane_cell_mask`, `_refuse_two_plane`, `two_plane_extension_masks`,
+`_place_at_next_plane` and the per-lane ctx fields; `resample_sheet_node_materials`,
+`sheet_normal_live_axis_masks`, `_subcell_box_axis_window`, `_statics_on_coords`,
+`collect_thin_conductor_sheet_inputs` (a sheet has no "own cell" to re-sample);
+`tests/locks/test_two_plane_pec_slab.py` and the resample tests. There are no
+per-entry realization knobs: a test greps `rfx/` for `two_plane` and for
+`realization=`-style keywords on geometry entries and fails on a hit.
+
+**What the contract does NOT cover.** Three paths put metal in a domain
+without a conductor declaration, and confusing one of them with the contract is
+the easiest way to misread a 2.0 result:
+
+- **domain-boundary PEC** (`boundary="pec"`, `BoundarySpec` faces) is a wall of
+  the box, not a body — tangential E is zeroed on the face plane itself.
+  Unchanged; the boundary-PEC crossval cases are the controls for this release
+  and must come back bit-identical.
+- **a σ fill through the low-level rasterizer** —
+  `rasterize(grid, [(shape, 1.0, 1e7)])`, and the shell and pin
+  `stamp_coaxial_line()` stamps. A lossy VOLUME model: it damps the field
+  inside conductive cells, zeroes no edge, reports no wall plane, and samples
+  its cells at NODES rather than at cell centres. Unchanged. Bringing this
+  family under the contract is a follow-up, not part of 2.0 — measured price on
+  the Mie sphere at ka = 0.5: 1082 σ-filled cells against 1123 for the same
+  sphere declared as a PEC volume, an a_eff shift of about 1.2 %.
+- **subpixel smoothing** (`subpixel_smoothing="kottke_pec"`, Dey–Mittra
+  conformal) keeps its own interior selection and its own weights. One
+  composition did change: on the waveguide lane the conformal path now applies
+  the realized PEC edges together with Dey–Mittra where it previously applied a
+  σ fold and Dey–Mittra. That is the σ fold this release replaces, but no test
+  covers a curved conformal body, so treat it as an untested edge.
+
+**IR.** The design-interop IR is at v2: the required `two_plane` boolean is gone
+and sheets are expressed directly. A document carrying `two_plane` is refused
+with a message rather than ignored.
+
+**Reporting.** `fidelity_report()` prints, per PEC entry, the drawn extent
+against the realized wall planes on each axis, in input units.
+
+**Migrating a 1.x model**, in priority order:
+
+1. foil drawn as a one-cell PEC Box (ground planes, patches, traces) →
+   `add_thin_conductor` with the SAME physical corners. The realized plane is
+   the one it lands on today for a face-registered one-cell Box;
+2. foil drawn one cell OUTSIDE its interface to park the wall on that interface
+   → draw it AT the interface as a sheet and delete the `two_plane` flag;
+3. walls, irises, posts and plates drawn as volumes → drawing unchanged; the
+   realization gains its far face. Every number derived from the old
+   realization — oracle inputs, fixture values, lock values, gate bounds — is
+   recomputed from the drawn geometry, and the compensation that produced it is
+   deleted, not re-tuned;
+4. anything that pinned the old mechanics is rewritten against the contract or
+   deleted with it.
+
+**Earlier entries this supersedes** (left in place as dated history; a reader
+grepping the CHANGELOG should not follow their recipes):
+
+- **#493** — the waveguide-obstacle drawing recipe: "the realized extent is one
+  cell short of the drawn extent, entirely at the hi face", the transverse
+  identity `(n_open + 1) * dx`, and the two-condition recipe (interior corners on
+  cell midpoints AND metal depth an exact number of cells). Under the volume rule
+  the realized aperture is the drawn one, transverse and longitudinal alike;
+  midpoint corners remain harmless but are no longer load-bearing. Its live
+  hand-copy in `docs/guides/sparameter_support_matrix.md` was rewritten in the
+  same change.
+- **#740** — cv15's `two_plane=True` ground fix and the +55.0 % electrical
+  thickness it corrected. The keyword no longer exists; the ground is declared as
+  a sheet at the substrate floor and cv15's numbers are re-measured for this release. #767 (the
+  checker that could not see a sheet's cavity) is closed by construction: the
+  cavity check reads `realized_wall_planes`.
+- **#802/#807** — "a `Box` face declared on a node multiple realizes per the
+  half-open `[lo, hi)` convention — the lo-face node kept, the hi-face node
+  dropped". This still describes **dielectric** sampling, which is unchanged. It
+  no longer describes conductors. The one-cell tie rule in that entry **survives**
+  as the sheet plane-selection rule, deliberately, so existing one-cell sheet
+  declarations land where they landed.
+- **#674** — "the shape must rasterize to exactly one cell layer along its normal
+  and at least one cell". The requirement is now plane-based: no thicker than one
+  local cell along the normal, realized on one plane.
+- **#702** — re-sampling a one-node sheet's own cell material at its live edge.
+  Deleted with the mechanism. The one physical case it served — a stack-up drawn
+  with a slot for the foil — becomes a preflight finding (`sheet_slot_vacuum`)
+  instead of a silent re-sample.
+- **#544/#556** — the wire-port dead-cell advisory against "the SAME assembled
+  `pec_mask`", and port-cell clearing "unaffected under the thin-sheet rule".
+  Live/dead is now `edge_is_pec` on the port's own component; clearing is
+  `clear_edges`. "The thin-sheet rule" names the deleted rule.
+
+**Landed with the phase-2a migration branches (2026-09-07).** Per-area entries
+contributed by the migration groups; every number below is measured on the
+merged tree, and each artifact it names is re-solved or it does not ship.
+
+*Preflight* (input-fidelity only; owns no solved artifact):
+
+- NEW findings `pec_box_subcell`, `pec_zero_cells`, `pec_realization_refused`
+  (errors), `pec_box_one_cell` (warning), `sheet_plane_realized` (info; warning
+  on a half-cell tie), `sheet_slot_vacuum` (warning, error-grade) — the lattice
+  ownership contract's per-declaration realization report (#931 §3).
+- REMOVED `sheet_live_edge_material_mismatch` (#703 check 2) with the #702
+  resample it guarded; `_LIVE_EDGE_RTOL`, `_CAVITY_SHEET_CELL_FILL_FRAC`,
+  `_CAMPAIGN_SUBCELL_FACTOR` gone; `_CONGRUENCE_SPREAD_TOL_CELLS` →
+  `_CONGRUENCE_SPREAD_TOL_EDGES`.
+- Every conductor-reading preflight check (`port_in_pec`, the wire-port
+  advisories, the waveguide guide width, the coax junction ring, the NTFF wall
+  test, the sheet-cavity report, thin metal on NU) reads
+  `realized_pec_edge_masks` / `realized_wall_planes` / `edge_is_pec` instead of
+  a cell mask or a bounding box; the `≤ 1.5·dx` thin-PEC H exemption is gone
+  (#929); a sub-aperture waveguide fixture's guide reads 40 mm, not 42 (#868).
+- Preflight builds its conductor context once per configuration
+  (`Simulation._campaign_ctx`).
+
+*Examples and the declarative front end* (BREAKING):
+
+- Every etched conductor in `examples/` is now declared with
+  `add_thin_conductor` on a zero-thickness Box — a SHEET, one node plane, no
+  cell — instead of a one- or two-cell `Box(..., material="pec")`. Affected:
+  `patch_antenna_demo` (ground, patch), `nonuniform_patch_demo` (ground,
+  patch), `ports_and_sparams_101` (microstrip ground, trace),
+  `examples/config/microstrip_thru.yaml` (ground, trace). A conductor with
+  physical thickness — an imported CAD solid, a plate, a PEC sphere — stays a
+  Box and gains its far wall.
+- `examples/config/microstrip_thru.yaml` gains a `thin_conductors:` block. A
+  config file that declares foil as a `geometry:` PEC box now gets a VOLUME,
+  and a box thinner than one cell is refused outright.
+- Two shipped tutorials solved a board thicker than the one they declared,
+  because the mesh reserved a cell for a foil that the old rule realized as a
+  plane: `patch_antenna_demo` solved 1.905 mm against a declared 1.524 mm,
+  `nonuniform_patch_demo` 2.0 mm against 1.5 mm. Their recorded frequencies
+  and mode lists move (VESSL 369367259175 / 369367259177).
+- `examples/tutorials/ports_and_sparams_101.py` reports microstrip readiness
+  from `report.ok` rather than an empty report, matching its waveguide leg.
+- Fixed: `examples/tutorials/slab_rt_flux_monitor.py` no longer nudges its
+  slab's upper corner down by `dx/2`. The stated reason ("an inclusive-bounds
+  Box") named a convention that does not exist; what the nudge actually dodged
+  was a float knife edge — `CENTER_X + D_SLAB/2` lands one ulp above the node
+  and the slab realizes eleven cells against a ten-cell Fresnel oracle. The
+  corners are built from cell indices and the realized extent is asserted.
+- Fixed: `scripts/msl_flux_ratio_dof.py` imported rfx from a hard-coded clone
+  path, which is a prefix of every sibling worktree's path, so its "is this
+  checkout" guard passed while running a different tree's rfx.
+- Changed: `scripts/_gallery_v3_patch_figs.py` moves from 1 mm to 0.5 mm cells
+  so both faces of the 1.5 mm board are node planes (its ground and patch were
+  half-cell PEC Boxes, which §1.5 refuses; the old rule realized a 2.0 mm board
+  while every label said 1.5 mm; gallery assets cost ~10x per case).
+  `scripts/patch_edgefed_s11_validation.py` moves from dx = 0.197 mm to
+  dx = h_sub/4 = 0.19675 mm with its three foils ON the board faces (realized
+  board 788 µm with a buried trace sheet → 787.0 µm = declared; its committed
+  locks move). `scripts/precompute_gallery_artifacts.py` reads its stack
+  coordinates back from the built graded mesh (fixed coordinates realized a
+  1.361 mm cavity against a declared 1.5 mm).
+
+*Validation scripts under `validation/research/` and `validation/tmtt_paper/`*:
+
+- BREAKING: `validation/crossval/20_msl_phase_referee.py` refuses a pre-#931
+  rfx fixture by name (`_stage_b_layout` raises when `meta` carries no
+  `trace_wall_planes_realized`) instead of falling back to the declared board,
+  and `scripts/diagnostics/build_msl_thru_phase_dx50um_reference.py` refuses
+  `--patch-realized-only` on one. Both re-pins are a re-solve: the contract
+  changed rfx's realized MSL trace, so the committed arrays are stale physics
+  and a metadata patch would label them as current.
+- Every microstrip foil in `validation/research/` and `validation/tmtt_paper/`
+  is declared as a sheet (a zero-thickness Box) at the interface it sits on,
+  instead of a 1-cell PEC Box that used to realize as a single wall plane and
+  now realizes as a slab of metal: `thru_feedpost_deembed.build_thru`,
+  `thru_feedpost_twoseg_extraction.build_singlepost`,
+  `issue770_offdiag_adjudication.build_fix_t`, `msl_stub_notch_tuning.build_sim`.
+- The beam-steering reflector plate is declared on the simulation
+  (`validation/tmtt_paper/beam_steering_superstrate.py`) instead of being
+  injected as `forward(pec_mask_override=)`. Preflight now sees it, and its
+  realized aperture is the declared 1.5 λ exactly — the cell write was one
+  cell too wide.
+- The P-C trace in `validation/research/convergence_floor/fixture.py` and
+  `validation/research/multiband_nu/w4r_port_supraconvergence.py` is drawn on
+  NODE planes; the half-cell "knife-edge-free" margins are deleted. They were
+  a workaround for the old node sampler dropping a face exactly on a node, and
+  under centre sampling they shift the body by a cell.
+- The rfx MSL phase-referee trace (cv20) stays a VOLUME by decision, with the
+  measurement that forced it recorded in the script: a sheet at the declared
+  254 µm snaps to the 250 µm node on this off-lattice board and ends up buried
+  under 50 µm of realized laminate.
+- Known issue, not fixed here: `rfx/fidelity.py` audits a PEC VOLUME's
+  declared-vs-realized bounds with the shape's NODE sampler (`_entity_mask`
+  calls `entry.shape.mask(grid)`) while the solver realizes PEC volumes from
+  cell CENTRES (`pec_volume_cell_mask`). Measured on the cv20 board they
+  disagree by exactly one cell on both y and z. Consumers that need a
+  conductor's realized bounds must read `realized_pec_edge_masks` /
+  `realized_wall_planes` (design note §1.7); the cv20 fixture producer was
+  switched to it.
+
+*Tests, locks and measured consequences*:
+
+- BREAKING (measured on the workspace's own patch board, `dx = 196.75 µm`): a
+  fixture that drew a foil as a one-cell PEC Box gets two walls where it had
+  one unless it is migrated — as one-cell Boxes the ground and patch realize z
+  walls `{28, 29, 33, 34}` and a patch 44 × 52 edges wide; declared as sheets,
+  `{29, 34}` and 42 × 50, which is what the pre-2.0 rule gave the same
+  declaration.
+- A sheet's closed in-plane footprint moves in-plane extents: a 5.0 mm strip on
+  a 0.5 mm cell realizes 5.0 mm where it realized 4.5 mm before. Boards whose
+  in-plane faces are OFF-lattice are unaffected (closed and half-open pick the
+  same nodes).
+- The waveguide S-parameter lane applies the realized PEC edges instead of
+  folding the PEC cell mask back into a `sigma = 1e10` fill. A hard electric
+  wall and a 1e10 S/m lossy volume both reflect with magnitude ~1 and not with
+  the same phase; measured on the chain battery's `pec_short` DUT,
+  `max|ΔS| = 0.938` (coarse rung) and `0.498` (mid rung), while the empty
+  guide reproduces to 2.5e-6. On the same lane cv11's pec-short |S11|
+  magnitude deficit moved 0.0146 → 0.0560 (VESSL 369367259194; the trim A/B
+  369367259198 attributes it to this change, not to the script) — an open
+  item for the core, recorded, not absorbed into a gate.
+  **Adjudicated 2026-09-07** (`scripts/diagnostics/pec_short_lane_ab.py`,
+  per-bin |S11| + port time records, both checkouts): the 0.0560 was NOT the
+  lane. cv11 drew its shorting plug to the DECLARED 22.86 × 10.16 mm
+  cross-section; the grid realizes the guide as 23 × 11 mm and a volume's
+  face rounds to the nearest node (§1.1), so the plug's top face landed at
+  10.000 mm under a wall at 11.000 mm — a one-cell vacuum slot along the
+  top broad wall that carried Ez past the "short" (single-run |S21|
+  0.22–0.33; the pre-#931 node sampler had filled that row by accident).
+  Drawn to the realized walls the leg reads [0.9980, 1.0019] / 3.26°,
+  equal to the pre-change baseline to four decimals; the far face and the
+  window do not matter, a sheet-declared short drawn to the walls reads the
+  same, so the lane applies sheets. cv11, the validation battery's
+  `test_pec_short_s11_magnitude` (same slot on its 2.14 mm auto mesh) and
+  the broad-E5 live anchor now draw their shorts to the grid's realized
+  walls and assert a full-cross-section front wall at build time. The
+  preflight finding this adjudication owed — "conductor face rounds away
+  from a domain wall it was drawn to" — LANDED, see the next block.
+- Microstrip trace width (BREAKING for quoted numbers): a trace declared as
+  foil is a sheet, and a sheet's footprint is the closed node rectangle. On the
+  canonical dx = 63.5 µm / 254 µm board the realized GEOMETRIC width (node
+  span, what `fidelity_report` prints) is 571.5 µm where the pre-2.0 rule
+  reported 635.0 µm for the same drawing. Which width a quasi-TEM formula
+  should take is a measurement, not a translation, and two groups read it
+  differently: crossval-B takes the ELECTRICAL width n_rows·dx = 635.0 µm
+  (historically, Re(Z0) 46.48 Ω on the pre-#931 cv06b run matched Hammerstad-Jensen at 635
+  µm to 0.65 % and at 571.5 µm by 5.9 %), tests-crossval takes 571.5 µm
+  (HJ 49.39 Ω). The cv06b re-solve (VESSL 369367259191) now measures
+  **48.19205 Ω** (`cv06b_build_falsifiers_summary.json::criterion_A_baseline.z0_median_ohm`),
+  so the old 46.48 Ω agreement is historical evidence, not the current leg.
+  The electrical-width attribution remains a separate physics question; this
+  docs correction does not settle it.
+- Added: `tests/locks/test_volume_sheet_cavity_ladder.py` — the eigenmode
+  witness for the two declarations. One parallel-plate cavity, metal starting
+  at the same coordinates, declared twice: volume 52.3341 GHz on the 16-cell
+  ladder, sheet 49.8924 GHz on the 17-cell ladder, each within 0.07 % of its
+  own prediction and more than 4.7 % from the other.
+- The three patch lock boards (`tests/locks/test_patch_edgefed_*`, the NU twin)
+  are redrawn with each foil ON the laminate face it bounds: their reserved
+  foil cell was vacuum in series with the cavity once the #702 resample went
+  (preflight's #703 check read +84.5 % / +45.9 % on `sum(d/eps)`). Locks
+  re-pinned from confirm runs: Board H Leg A −6.17 → −1.886 % (`NUM_PERIODS`
+  120 → 200), Board S crossing 8.8189 → 7.7620 GHz, sheet-cavity pair
+  (25.1741, 30.2153) GHz, Leontovich endpoint 0.87333.
+
+**Known issues fixed after the phase-2a merge (2026-09-07).** Two defects the
+migration surfaced are closed on this branch, both with the measurement that
+closed them:
+
+- Fixed — distributed non-uniform lane: a body whose cell was a rank's FIRST
+  real cell reached its neighbour un-zeroed. The scan body exchanged the E ghost
+  rows BEFORE the PEC mask and soft-occupancy stages, and those stages act on
+  real cells only (ghost rows forced False by design, one owner per cell), so
+  rank 0's ghost copy of the seam plane was taken before rank 1 zeroed it and
+  rank 0's next H update read a stale, non-zero plane. Hard mask and soft
+  occupancy failed identically, because the stale value came from the exchange
+  rather than from either rule. The E ghost exchange is now the LAST stage of
+  the E half-step, so a ghost row is a copy of the owner's finished real row —
+  the placement the H half already gives the PMC face. Measured (Class B
+  final-step relative error, gate `5e-5`, 16x8x8, 2 ranks, 30 steps): one cell
+  AT the seam `2.107e-01` → `7.773e-08`; one cell 3 inside rank 0
+  `4.897e-06` unchanged; three cells straddling the seam `2.131e-06` unchanged;
+  no body at all `9.437e-06`. The three-cell fixtures never saw it: with body
+  cells on both sides of the seam the H that reads the stale ghost sits inside
+  the body and feeds only PEC edges. The T3 group's two seam fixtures lose their
+  `xfail(strict=True)` markers and pass
+  (`tests/unit/runners/test_distributed_nu_kernel.py`).
+- Added / fixed — preflight finding `pec_face_short_of_domain_wall` (WARNING):
+  a PEC VOLUME whose own realized wall plane sits exactly one node inside a
+  NON-absorbing domain face. `Grid` realizes a declared domain by
+  `ceil(extent/dx)` while a volume's face rounds to the NEAREST node, and the
+  cell left between them is a parallel-plate line along that wall, open at both
+  ends — the cv11 pec-short slot above, worth the whole `0.0146 → 0.0560`
+  step. The check reads the entry's own `realized_wall_planes` against the
+  grid's `interior` slices, per volume, per axis, per side: on cv11's drawing at
+  `dx = 1 mm` it fires once on `z_hi` (10.16 mm rounds DOWN off the 11 mm wall)
+  and not on `y_hi` (22.86 mm rounds UP onto the 23 mm wall). Silent on a patch
+  in a CPML box, on a post inside a PEC cavity and on a slab drawn wall to wall.
+  Before 2.0 the node-half-open sampler happened to include the top node, so
+  nothing had ever had to say it.
+
+**Recomputed artifacts.** No number in this repository was translated,
+re-tuned or hand-edited for this release: a crossval case, example, fixture or
+lock with a conductor body is re-solved from its migrated declaration or it
+does not ship. Each case's before/after values and its VESSL run id live in
+that case's results directory and its commit, not here. Dielectric-only cases
+(cv04, cv17, cv22, cv23 and every example without a conductor body) must come
+back bit-identical, and that identity is the change's own falsifier.
+
+### Added — `make_band_profile`: interface-exact, ratio-law-exact band profiles on any axis
+
+`rfx.make_band_profile(edges, cell_sizes, *, max_ratio=1.4, protected=None,
+boundary_cell=None, min_cells=1)` (in `rfx.nonuniform`, exported on `rfx`)
+realizes a declared 1-D stack as a cell-size profile whose every interface
+lands on a node plane (to 1e-12 m), whose every adjacent-cell ratio is at
+most `max_ratio` — including the seam between two PROTECTED segments, where
+the coarser one is refined (more cells) because no ramp can sit between
+them — and whose sum equals the declared span exactly. Ramps are geometric,
+placed inside the coarser free segment on whichever side needs one, ascending
+and descending, and a free run's plateau is solved so the run fits its span
+without a rescale. `boundary_cell` pins both end cells bit-exactly, which is
+the `dx_profile` / `dy_profile` CPML contract, so the same function serves
+all three axes. Pre-declared falsifiers and measurements:
+`docs/design_notes/20260907_nu_band_profile_predeclaration.md`; pins in
+`tests/unit/nonuniform/test_band_profile_builder.py` (a 5-layer PCB stack,
+a seeded 400-stack fuzz, an in-plane round trip through `Simulation`).
+Measured on the PCB stack (core 0.8 | prepreg 0.1 | core | prepreg | core mm,
+dx 0.2 mm): the old auto-z smoothing left a core|prepreg seam at ratio
+8.000 (66.7 um beside 8.33 um, 25 ratios above 1.4); the builder realizes
+it at <= 1.4 everywhere (23-cell cores of 34.783 um beside 4-cell prepregs).
+
+Review pass (same lane, second pass): `boundary_cell` with an end segment
+whose span equals the pin now ramps the neighbour from the pin or raises
+(it returned a ratio-10 seam silently); `max_ratio` must be finite and
+`>= 1.0001` (NaN and inf were accepted; the plateau solve now uses
+closed-form ramp sums — 1.0001 on a 40-cell profile 8.5 s -> 0.03 s); two
+edges closer than 1e-12 m or a profile past 1,000,000 cells raise instead
+of looping (a 1e-9 m protected sliver between 1 mm blocks asks for 1.4e6
+cells); columns of tens of metres with a seam exactly on the ratio law no
+longer raise a false "cannot hold its ramps" (step-count slack 1e-12 ->
+1e-10). The refinement of a coarser protected block costs cells AND, when
+that block held the coarsest declared cell, a smaller minimum cell (dt):
+410 of 3000 seeded stacks realize below their declared minimum, worst
+0.31x (docstring, design note).
+
+### Changed — `make_z_profile` and the auto-configured z mesh now run on that engine
+
+- `make_z_profile` (same signature) is now what its docstring said:
+  fine -> coarse -> fine inside every segment, `dx_fine` at every feature
+  plane and at both domain ends. Measured on
+  `make_z_profile([1.0, 1.2, 2.5, 2.7] mm, 4 mm, 50 um, 200 um, 1.4)`: the
+  old loop emitted a 4.527 jump (226.4 -> 50 um) and ended on a 188 um cell;
+  now max ratio 1.352, both ends 50 um, all features on nodes. The public
+  guide no longer tells you to run `smooth_grading` on its output.
+  `grading <= 1` still means no grading (uniform `dx_fine`, as before); a
+  feature outside `[0, domain_z]` now raises (the old loop extended the
+  column past `domain_z`: sum 5 mm for a 4 mm domain) and features closer
+  than 1e-12 m are one plane (0.1 + 0.2 mm beside 0.3 mm used to become a
+  5e-20 m cell).
+- `auto_configure` z meshes, assembly step (defect present on main): an air
+  gap narrower than dx/2 between or around dielectric layers was DROPPED
+  from the column (two 0.8 mm cores 50 um apart at dx 0.2 mm gave a
+  3.95 mm column for a 4.0 mm domain, interfaces off by up to 50 um; dx
+  10 mm on a 4 mm domain gave a 0.8 mm column of 4 cells) and overlapping
+  z features — bounding boxes of any two non-PEC shapes — EXTENDED it. The
+  column is now partitioned at every distinct feature boundary, every gap
+  is an air run of whatever width, and a feature outside the column
+  raises. Stacks of disjoint layers with gaps wider than dx/2 realize as
+  before.
+- `auto_configure` z meshes (`_make_dz_profile`): the thirds rule is applied
+  exactly as before, then the band engine smooths at 1.3 with every
+  post-thirds block passed through verbatim, every air run ramped from the
+  block's actual edge cell and renormalized to its declared length, and —
+  new — a seam between two ADJACENT dielectric blocks refined to the cap.
+  The #763 locks hold unchanged (demo block bit-identical, dz_min 21.167 um,
+  column 1.754 mm). On the PCB stack: nz 45 -> 115, dz_min 8.333 um
+  unchanged (it is the prepreg's thirds sub-cell — an ownership question
+  handed to #931), every block seam 1.280. A float-ceil quirk that gave one
+  0.8 mm core 5 cells and its identical neighbours 4 is fixed (1e-9 relative
+  tolerance on the quotient).
+- Support matrix: the multi-band row now states the transition law (ratio,
+  local cells per wavelength, band width) instead of "up to 3 fine bands",
+  with a new witness (W6, `results/w6_band_builder.json`): fine bands of
+  2-64 cells between ratio-1.4 ramps, measured against the exact discrete
+  chain model, every row inside its pre-declared window (gate row, 4 cells:
+  1.0063e-2 vs 1.0141e-2). Bands narrower than 2 cells and in-plane grading
+  remain unwitnessed.
 
 ### Added — `rfx.fdfd.spiral`: differentiable rectangular spiral inductor, validated against an independent referee
 
@@ -123,7 +1048,7 @@ for RFIC-scale grids.
   pairs of the stretched grid do not produce nan. All three gradients are
   checked against 4th-order finite differences, and the width derivative
   for smoothness across nodes and convergence under refinement, in
-  `tests/test_fdfd_hplane.py`. Same scope fence as the referee: H-plane
+  `tests/unit/fdfd/test_fdfd_hplane.py`. Same scope fence as the referee: H-plane
   only; magnitudes validated; Richardson over ≥ 2 levels.
 
 ### Added — near-cutoff layout note, and the S21 phase residual on waveguide S-matrix results
@@ -251,6 +1176,96 @@ and reports each pair sum against the covariant value for that plane's lattice
 `apply_waveguide_port_e` placing the `-` port's E correction at `x_index + 1`,
 is reported separately as `port_index_mirror_known_e_plane_offset` at `info`
 severity rather than counted as an asymmetry.
+
+### Fixed — cv15's probe feed is galvanic; its |S11| dip was measuring a floating post (#920)
+
+`validation/crossval/15_patch_antenna_rt5880.py` fed its patch with a wire port
+that touched neither conductor. The span ran from `z_sub_lo + DX` for `2*DX` —
+the two INTERIOR cells of the 4-cell substrate — while openEMS's
+`AddLumpedPort`, the reference this case compares against, bridges ground plane
+to patch conductively. The two solvers were not modelling the same feed.
+
+- **Root cause and its signature.** A floating post adds a series gap
+  capacitance (~0.20 pF, ~-347j ohm at 2.32 GHz) that never resonates out.
+  `Re(Z_in)` still peaked at ~46 ohm on the patch resonance — the resonance was
+  there and near-matched — but the reactance held |S11| at 0.964..0.998 across
+  the whole band, so the dip filled in to -0.32 dB against openEMS's -20.1 dB.
+  The number was a correct extraction of the wrong circuit. rfx's `#556`
+  preflight advisory named the defect verbatim on every run ("the feed never
+  galvanically reaches it and coupling is capacitive only"); nothing gated on
+  it, and the module docstring instead described the shallow dip as a property
+  of the rfx lumped port.
+- **Fix.** The port is anchored on the two conductors' own realized node planes
+  — the ground body's `corner_lo` to the patch body's — derived from the
+  assembled geometry, not typed. Its first and last cells then land inside the
+  two sheets, are classified dead, and are left PEC by `run()`'s live-only
+  clearing, so the feed shorts into each sheet without punching a hole in it.
+  A new `assert_galvanic_feed()` re-derives that from the assembled PEC mask
+  and refuses to quote a number otherwise; `#556` is now silent at both ends.
+  The criterion it enforces — first and last cell INSIDE a conductor — is
+  deliberately stricter than galvanic contact: a post ending on the two
+  conductors' tangential node planes with no dead cells solves to bit-identical
+  fields and is still refused, because that form fires `#556` at both ends and
+  leaves a reviewer nothing to tell it from the floating post by. Its docstring
+  says so, so a refusal is not read as a physics verdict.
+- **`compare()` gates on it too.** `assert_galvanic_feed` runs inside
+  `run_rfx()`, so it only ever sees the leg it is producing, while `compare()`
+  is the path crossval consumes. A new `galvanic feed fidelity (probe shorted
+  GP->patch, #920)` gate re-derives the recorded `feed_check` against the
+  script's own `AIR_BELOW`/`H_SUB`/`DX`/`N_SUB` — no cell index typed for this
+  board — and treats a missing `feed_check` as FAIL, not skip. Measured before
+  it existed: the archived floating-post leg went through `compare()` with
+  `ALL GATES PASSED`; it now reports `[FAIL] galvanic feed fidelity … missing
+  feed_check (leg predates the #920 galvanic-feed self-check)` and
+  `compare()` returns False, while the shipping leg still passes all seven.
+- **Before / after** (CPU, `rfx --num-periods 45 --n-freqs 181 --gain`;
+  settling -52.6 dB, SETTLED; all gates PASS):
+
+  | | dip depth | f_dip | f0 ring-down | Q | max\|S11\| | D |
+  |---|---|---|---|---|---|---|
+  | floating post (`_15_patch_results/rfx_floating_post_1f005d0d.json`) | -4.43 dB | 2.310 GHz | 2.3139 GHz | 18.90 | 0.787 | 7.24 dBi |
+  | galvanic (`_15_patch_results/rfx.json`) | **-21.92 dB** | 2.360 GHz | 2.3646 GHz | 10.30 | 0.989 | 7.24 dBi |
+  | openEMS (`_15_patch_results/openems.json`) | -20.10 dB | 2.330 GHz | — | — | 0.992 | 7.34 dBi |
+
+  The archived row is that leg exactly as committed at `1f005d0d`, i.e. under
+  the pre-#776 extractor. Re-running the same floating-post fixture on a later
+  extractor gives a dip of about -0.3 dB, not -4.43 dB, which is the bullet
+  below. Two measurements, one code state apart, and neither is "today's":
+  -0.3448 dB was measured 2026-09-01 (design note
+  `20260901_patch_mode_identification_predeclaration.md` section 6.6, `main`
+  today row) and -0.3182 dB on 2026-09-06 at `495e180c`
+  (`docs/research_notes/audit-2026-09-02/i920/solve/A2_pre920_span_495e180c.json`,
+  Z_in 45.77 - 347.00j at 2.320 GHz, settling -54.0 dB SETTLED; independently
+  the #920 spot-check's E1_a run reads the same to four digits). The 2.7 mdB
+  between them is the extractor moving again, not the fixture; it is not
+  bisected and does not need to be, the fixture being retired.
+
+  The f0 gate moves from 0.69 % to 1.49 % versus openEMS (bar 8 %), which is
+  the honest cost of the fix: `Q` 18.90 -> 10.30 is the patch finally being
+  loaded by its probe, and a loaded resonance sits higher. Directivity agrees
+  to 0.09 dB.
+- **#776 / #777 were right.** Those wire-port PRs changed how fully the frame
+  reports a gap reactance (-56j -> -347j), which is why the dip collapsed from
+  -4.43 to -0.32 dB on `main` after they merged. On a galvanic feed the same
+  frame reads 52.1 + 7.9j and -21.92 dB. The extractor was reporting the
+  fixture correctly both times.
+
+### Changed — cv05's wire-port record regenerated on the corrected extractor (#912)
+
+`validation/crossval/_05_patch_results/cv05_run_openems_369367258715.json` replaces the
+2026-09-02 record as CURRENT (VESSL 369367258715, remilab-c0, SHA-guarded clone at
+`f5ee3b59`, openEMS image `ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8`). PR #897 advanced
+the H-derived port current DFT by `exp(+j*omega*dt/2)`, so every wire-port record taken
+before it is stale. Measured delta against the superseded leg: `max|dS11| = 0.006850`
+against a mechanism prediction of `0.006841`, **0 Hz dip shift**, dip depth
+−1.614843 → −1.583059 dB. The control leg at #897's parent reproduces the old record's
+`rfx_s11` bit-identically and its openEMS leg to 0.0, so the change is PR #897 alone.
+No committed gate asserts on these values; the 369367257743 file is kept as the artifact
+`manifest.json` and the #812 mode-identification note cite by name.
+
+cv06b is NOT regenerated here — issue #912 assigns it to the #812 regate lane. cv15's leg
+was regenerated separately and then superseded by the #920 galvanic-feed fix (PR #932).
+
 
 ## [1.8.0] - 2026-09-06
 

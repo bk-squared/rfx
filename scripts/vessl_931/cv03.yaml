@@ -1,0 +1,86 @@
+name: rfx-931-post-cv03
+description: "cv03 straight-waveguide flux, DIELECTRIC CONTROL. Its |n_eff| <= 2% gate against a closed-form slab TE0 oracle is the group's most sensitive detector of any accidental change to dielectric Box occupancy. Meep absent, exit 2 expected. POST-change arm of the #931 lattice ownership contract, group X-A. Reads the branch worktree /root/workspace/byungkwan-workspace/research/rfx-931-XA-crossval-a (feat/931-crossval-a) IN PLACE over the NFS mount, so the checkout the job runs is the one on the branch. Pairs with the pre-change baseline job rfx-931-base-cv03. Submit: vessl run create -f cv03.yaml"
+tags: [rfx, issue-931, post, cv03, crossval-a]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_PLATFORMS: "cpu"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  echo "=== rfx #931 POST-change: cv03 (branch feat/931-crossval-a) ==="
+  date
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  WORK=/root/workspace/byungkwan-workspace/research/rfx-931-XA-crossval-a
+  test -d "$WORK" || { echo "ERROR: branch worktree missing at $WORK"; exit 3; }
+  RUNS=/root/workspace/claude-workspace/rfx/runs
+  OUT=$RUNS/issue931-post-cv03-$(date -u +%Y%m%dT%H%M%SZ)
+  mkdir -p "$OUT"
+  echo "$OUT" > "$RUNS/issue931-post-cv03.latest"
+  trap 'chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
+  echo "artifacts: $OUT"
+  # git may be absent from the image and an NFS worktree is "dubious ownership"
+  # to a modern git; neither is fatal to the run, so every git call is guarded.
+  # HAVE_GIT decides whether the artifact-diff control below can be trusted.
+  HAVE_GIT=0
+  if command -v git >/dev/null 2>&1; then
+    git config --global --add safe.directory '*' >/dev/null 2>&1 || true
+    if git -C "$WORK" rev-parse --git-dir >/dev/null 2>&1; then HAVE_GIT=1; fi
+  fi
+  echo "HAVE_GIT=$HAVE_GIT" | tee "$OUT/have_git.txt"
+  if [ "$HAVE_GIT" -eq 1 ]; then
+    git -C "$WORK" log --oneline -1 | tee "$OUT/commit.txt"
+    git -C "$WORK" status --porcelain | tee "$OUT/worktree_status_before.txt"
+  else
+    echo "git unavailable in image; commit identity not recorded" | tee "$OUT/commit.txt"
+  fi
+  cd "$WORK"
+  touch "$OUT/.tstamp"
+  "$PY" -m pip uninstall -y -q jax-cuda12-plugin jax-cuda12-pjrt 2>/dev/null || true
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7"
+  export RFX_REPO_ROOT="$WORK"
+  export PYTHONPATH="$WORK"
+  export MPLBACKEND=Agg
+  "$PY" -c "import jax, rfx, os; print('probe ok | jax', jax.__version__, '| backend', jax.default_backend(), '| rfx', getattr(rfx, '__version__', '?'), '| from', os.path.dirname(rfx.__file__))"
+  echo "=== step cv03 ==="
+  set +e
+  timeout 5400 "$PY" -u validation/crossval/03_straight_waveguide_flux.py > "$OUT/cv03.log" 2>&1
+  rc=$?
+  set -e
+  echo "$rc" > "$OUT/cv03.rc"
+  tail -n 40 "$OUT/cv03.log" || true
+  echo "cv03_rc=$rc"
+  if [ "$rc" -eq 2 ]; then
+    echo "NOTE: exit 2 = the external Meep reference is unavailable in this image."
+    echo "NOTE: the rfx leg ran and its numbers are the control; treating as OK."
+    rc=0
+  fi
+
+  echo "=== worktree files this run touched ==="
+  if [ "$HAVE_GIT" -eq 1 ]; then
+    git -C "$WORK" status --porcelain | tee "$OUT/worktree_status_after.txt"
+  fi
+  mkdir -p "$OUT/produced"
+  find "$WORK/validation" "$WORK/tests/fixtures" -type f -newer "$OUT/.tstamp" \
+      -not -path "*/.git/*" -not -path "*/__pycache__/*" -not -name "*.pyc" \
+      > "$OUT/produced_files.txt" 2>/dev/null || true
+  while IFS= read -r f; do
+    rel=${f#$WORK/}
+    d=$(dirname "$rel")
+    mkdir -p "$OUT/produced/$d"
+    cp -p "$f" "$OUT/produced/$rel" 2>/dev/null || true
+  done < "$OUT/produced_files.txt"
+  echo "harvested $(wc -l < "$OUT/produced_files.txt") file(s)"
+  ls -la "$OUT"
+  chmod -R a+rX "$OUT" 2>/dev/null || true
+  echo "POST_CASE=cv03 RC=$rc"
+  exit "$rc"

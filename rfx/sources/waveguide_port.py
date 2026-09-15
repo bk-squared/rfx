@@ -1878,9 +1878,11 @@ def _settling_db_for_record(peak_power: float,
     underflowed to exactly zero. The caller drops such a record from the
     worst-over-records and reports it by name; it must never be scored.
 
-    On a record that clears the floor the arithmetic is the original
-    ``10*log10((end + tiny)/(peak + tiny))``, unchanged, so a run whose
-    records all clear the floor returns the same number it always did.
+    The arithmetic is ``10*log10((end + tiny)/(peak + tiny))``. The public
+    record scorer tests the storage floor in amplitude units first, then
+    supplies normalized powers and a zero floor here to avoid overflowing
+    or underflowing a square. The regularizer then bounds an unrepresentable
+    tail ratio independently of the record's amplitude units.
     """
     if not (peak_power > 0.0):
         return None
@@ -1909,27 +1911,37 @@ def settling_db_from_named_records(named_records,
     Per record: peak power over the whole record, mean power over the last
     tenth, ``10*log10(end/peak)``; records below
     :func:`_settling_record_floor_amplitude` are SKIPPED (not scored) and
-    named. The return is the WORST (largest) surviving ratio.
+    named. Powers are normalized before reduction to keep the ratio
+    independent of amplitude units and avoid squared-value overflow or
+    underflow. The return is the WORST (largest) surviving ratio.
 
     Returns NaN when the witness has no coverage at all: a traced record, a
-    record shorter than 10 samples, or every record under the floor (which
-    also warns). NaN is the "no witness value" state and must never be read
+    record shorter than 10 samples, any invalid selected record, or every
+    record under the floor. Invalid records are named separately from
+    underflow skips and make the whole witness unavailable, with a warning.
+    NaN is the "no witness value" state and must never be read
     as a pass -- route every comparison through
     ``rfx.api._sparams.settling_verdict``.
 
     ``return_detail=True`` returns ``(worst_db, detail)`` with
     ``skipped_records``, ``n_witnessed``, ``floor_amplitude`` and
-    ``per_record_db`` (name -> dB for every scored record).
+    ``per_record_db`` (name -> dB for every scored record). Invalid input
+    additionally supplies ``invalid_records`` (name -> reason).
     """
     from rfx.core.jax_utils import is_tracer
+
+    invalid_records = {}
 
     def _out(value, skipped, n_witnessed, floor, per_record):
         if not return_detail:
             return value
-        return value, {"skipped_records": skipped,
-                       "n_witnessed": n_witnessed,
-                       "floor_amplitude": floor,
-                       "per_record_db": per_record}
+        detail = {"skipped_records": skipped,
+                  "n_witnessed": n_witnessed,
+                  "floor_amplitude": floor,
+                  "per_record_db": per_record}
+        if invalid_records:
+            detail["invalid_records"] = dict(invalid_records)
+        return value, detail
 
     worst = -np.inf
     skipped: list[str] = []
@@ -1940,20 +1952,58 @@ def settling_db_from_named_records(named_records,
         if is_tracer(ts):
             return _out(float("nan"), skipped, n_witnessed, floor, per_record)
         raw = np.asarray(ts)
-        if raw.shape[0] < 10:
+        if raw.ndim == 0 or raw.shape[0] < 10:
             return _out(float("nan"), skipped, n_witnessed, floor, per_record)
         floor = _settling_record_floor_amplitude(np.finfo(raw.dtype).tiny)
-        amp = np.abs(raw.astype(np.float64))
-        p = amp ** 2
-        tail = max(1, p.shape[0] // 10)
-        db = _settling_db_for_record(float(p.max()),
-                                     float(p[-tail:].mean()), floor)
-        if db is None:
+        if not np.isfinite(raw).all():
+            invalid_records[record_name] = "non-finite samples"
+            continue
+        # Complex Bloch/TFSF records carry both quadratures. Widen before
+        # taking the magnitude so a global phase cannot change coverage or
+        # ring-down; casting to real first discards physical signal content.
+        dtype = np.complex128 if np.iscomplexobj(raw) else np.float64
+        with np.errstate(over="ignore", invalid="ignore"):
+            wide = raw.astype(dtype)
+        if not np.isfinite(wide).all():
+            invalid_records[record_name] = "samples exceed the diagnostic precision range"
+            continue
+        complex_record = np.iscomplexobj(wide)
+        scale = float(np.max(np.abs(wide.real)))
+        if complex_record:
+            scale = max(scale, float(np.max(np.abs(wide.imag))))
+        # Use a component scale so even a finite complex record whose
+        # magnitude exceeds float64 max remains representable. A value
+        # below this bound cannot clear the amplitude floor on either
+        # quadrature, so subnormal division is unnecessary.
+        if scale == 0.0 or scale < floor / (np.sqrt(2.) if complex_record else 1.):
             skipped.append(record_name)
+            continue
+        p = (wide.real / scale)**2
+        if complex_record:
+            p = p + (wide.imag / scale)**2
+        peak = float(p.max())
+        if scale < floor / np.sqrt(peak):
+            skipped.append(record_name)
+            continue
+        tail = max(1, p.shape[0] // 10)
+        ratio = float((p[-tail:] / peak).mean())
+        db = _settling_db_for_record(1., ratio, 0.)
+        if db is None or not np.isfinite(db):
+            invalid_records[record_name] = "non-finite power-ratio calculation"
             continue
         n_witnessed += 1
         per_record[record_name] = db
         worst = max(worst, db)
+
+    if invalid_records:
+        import warnings
+        warnings.warn(
+            "ring-down settling witness has INVALID RECORDS: "
+            + "; ".join(f"{name}: {reason}" for name, reason in invalid_records.items())
+            + ". The witness is unavailable; other records cannot establish a pass.",
+            stacklevel=_warn_stacklevel,
+        )
+        return _out(float("nan"), skipped, n_witnessed, floor, per_record)
 
     if n_witnessed == 0:
         import warnings
@@ -2077,8 +2127,20 @@ def extract_waveguide_s_matrix(
     checkpoint_segments: int | None = None,
     return_settling: bool = False,
     sheet_impedance: object | None = None,
+    pec_edge_masks: tuple | None = None,
 ) -> "jnp.ndarray | tuple[jnp.ndarray, np.ndarray]":
     """Assemble an x-directed waveguide S-matrix via one-driven-port-at-a-time runs.
+
+    PEC realization (#931 §1.7): interior ``Box(material='pec')`` walls
+    reach this lane as the realized edge masks ``pec_edge_masks``
+    (``rfx.boundaries.pec.realized_pec_edge_masks``), applied per step by
+    the shared ``apply_pec_edges``.  Until #931 the caller folded the PEC
+    CELL mask into ``sigma = 1e10`` instead — a fourth realization of the
+    same geometry, and one that damped only the components indexed by the
+    occupied cell, so a one-cell-thick wall or iris got its lower face and
+    never its far one.  An empty-guide REFERENCE run gets no interior edge
+    masks; per-port reference geometry supplies its own.
+
 
     ``return_settling=True`` (issue #538) additionally returns the
     per-driven-run energy ring-down witness: ``(S, settling_db)`` with
@@ -2148,6 +2210,7 @@ def extract_waveguide_s_matrix(
             aniso_eps=aniso_eps,
             conformal_weights=conformal_weights,
             aniso_inv_eps=aniso_inv_eps,
+            pec_edge_masks=pec_edge_masks,
             checkpoint=_wg_checkpoint,
             checkpoint_segments=checkpoint_segments,
             sheet_impedance=sheet_impedance,
@@ -2208,10 +2271,23 @@ def extract_waveguide_s_matrix_flux(
     ref_aniso_inv_eps: tuple | None = None,
     ref_materials_per_port: "list | None" = None,
     sheet_impedance: object | None = None,
+    pec_edge_masks: tuple | None = None,
+    ref_pec_edge_masks_per_port: "list | None" = None,
     checkpoint_segments: int | None = None,
     return_settling: bool = False,
 ) -> "jnp.ndarray | tuple[jnp.ndarray, np.ndarray]":
     """Hybrid power-flux magnitude + modal phase waveguide S-matrix.
+
+    PEC realization (#931 §1.7): interior ``Box(material='pec')`` walls
+    reach this lane as the realized edge masks ``pec_edge_masks``
+    (``rfx.boundaries.pec.realized_pec_edge_masks``), applied per step by
+    the shared ``apply_pec_edges``.  Until #931 the caller folded the PEC
+    CELL mask into ``sigma = 1e10`` instead — a fourth realization of the
+    same geometry, and one that damped only the components indexed by the
+    occupied cell, so a one-cell-thick wall or iris got its lower face and
+    never its far one.  An empty-guide REFERENCE run gets no interior edge
+    masks; per-port reference geometry supplies its own.
+
 
     ``return_settling=True`` (issue #538): returns ``(S, settling_db)``;
     the witness per drive is the WORST of the device and reference runs'
@@ -2340,6 +2416,9 @@ def extract_waveguide_s_matrix_flux(
         # #677: the vacuum/straight-guide REFERENCE deliberately runs with
         # NO sheet ctx (explicit strip — the sheet no longer rides
         # materials.sigma, so vacuum materials alone do not strip it).
+        _ref_edges = (
+            None if ref_pec_edge_masks_per_port is None
+            else ref_pec_edge_masks_per_port[drive_idx])
         ref_result = run_simulation(
             grid, ref_mat_drive, n_steps,
             debye=ref_debye, lorentz=ref_lorentz,
@@ -2347,6 +2426,7 @@ def extract_waveguide_s_matrix_flux(
             flux_monitors=_make_flux_monitors(),
             aniso_eps=ref_aniso_eps,
             aniso_inv_eps=ref_aniso_inv_eps,
+            pec_edge_masks=_ref_edges,
             checkpoint=_flux_checkpoint,
             checkpoint_segments=checkpoint_segments,
             **common_run_kw,
@@ -2383,6 +2463,7 @@ def extract_waveguide_s_matrix_flux(
             aniso_eps=aniso_eps,
             conformal_weights=conformal_weights,
             aniso_inv_eps=aniso_inv_eps,
+            pec_edge_masks=pec_edge_masks,
             checkpoint=_flux_checkpoint,
             checkpoint_segments=checkpoint_segments,
             sheet_impedance=sheet_impedance,
@@ -2476,8 +2557,20 @@ def extract_waveguide_s_params_normalized(
     checkpoint_segments: int | None = None,
     return_settling: bool = False,
     sheet_impedance: object | None = None,
+    pec_edge_masks: tuple | None = None,
 ) -> "jnp.ndarray | tuple[jnp.ndarray, np.ndarray]":
     """Two-run normalized waveguide S-matrix.
+
+    PEC realization (#931 §1.7): interior ``Box(material='pec')`` walls
+    reach this lane as the realized edge masks ``pec_edge_masks``
+    (``rfx.boundaries.pec.realized_pec_edge_masks``), applied per step by
+    the shared ``apply_pec_edges``.  Until #931 the caller folded the PEC
+    CELL mask into ``sigma = 1e10`` instead — a fourth realization of the
+    same geometry, and one that damped only the components indexed by the
+    occupied cell, so a one-cell-thick wall or iris got its lower face and
+    never its far one.  An empty-guide REFERENCE run gets no interior edge
+    masks; per-port reference geometry supplies its own.
+
 
     Cancels Yee-grid numerical dispersion for **transmission** (off-diagonal)
     terms by normalizing device outgoing waves against reference-run waves
@@ -2633,6 +2726,7 @@ def extract_waveguide_s_params_normalized(
             waveguide_ports=dev_cfgs, aniso_eps=aniso_eps,
             conformal_weights=conformal_weights,
             aniso_inv_eps=aniso_inv_eps,
+            pec_edge_masks=pec_edge_masks,
             checkpoint=_norm_checkpoint,
             checkpoint_segments=checkpoint_segments,
             sheet_impedance=sheet_impedance,
@@ -2948,6 +3042,7 @@ def extract_multimode_s_matrix(
     aniso_eps: tuple | None = None,
     conformal_weights: tuple | None = None,
     aniso_inv_eps: tuple | None = None,
+    pec_edge_masks: tuple | None = None,
 ) -> tuple[jnp.ndarray, list[tuple[int, int, str, tuple[int, int]]]]:
     """Assemble a multi-mode waveguide S-matrix.
 
@@ -3041,6 +3136,7 @@ def extract_multimode_s_matrix(
             aniso_eps=aniso_eps,
             conformal_weights=conformal_weights,
             aniso_inv_eps=aniso_inv_eps,
+            pec_edge_masks=pec_edge_masks,
         )
         final_cfgs = result.waveguide_ports or ()
         if len(final_cfgs) != n_total:
@@ -3109,6 +3205,7 @@ def extract_multimode_s_matrix_flux(
     ref_aniso_eps: tuple | None = None,
     aniso_inv_eps: tuple | None = None,
     ref_aniso_inv_eps: tuple | None = None,
+    pec_edge_masks: tuple | None = None,
 ) -> tuple[jnp.ndarray, list[tuple[int, int, str, tuple[int, int]]]]:
     """Power-flux multi-mode waveguide S-matrix.
 
@@ -3238,6 +3335,7 @@ def extract_multimode_s_matrix_flux(
             aniso_eps=aniso_eps,
             conformal_weights=conformal_weights,
             aniso_inv_eps=aniso_inv_eps,
+            pec_edge_masks=pec_edge_masks,
             **common_run_kw,
         )
         dev_final_cfgs = dev_result.waveguide_ports or ()

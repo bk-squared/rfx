@@ -1,0 +1,73 @@
+name: rfx-931-post-msl-port-integration
+description: "#931 R2 re-measure of tests/unit/sparams/test_msl_port_integration.py slow gates. The gate BOUNDS (mean|S11|<0.15, mean|S21| in (0.90,1.05), mean Re(Z0) in (40,65) ohm) are UNTOUCHED; only the recorded MEASURED values are pre-contract (0.118/0.972/54 ohm, refreshed 0.1160/0.9930/57.58 ohm) and are re-taken on the on-lattice sheet board. If a window does not hold that is a result to report, not a bound to widen. Branch feat/931-t2-sparams-ports. Submit: vessl run create -f rfx-931-post-msl-port-integration.yaml"
+tags: [rfx, issue-931, post, msl-port-integration, cpu]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_PLATFORMS: "cpu"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  echo "=== rfx #931 post-change: test_msl_port_integration slow gates re-measured ==="
+  date
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  SRC=/root/workspace/byungkwan-workspace/research/rfx-931-T2-sparams-ports
+  test -d "$SRC" || { echo "ERROR: worktree missing at $SRC"; exit 3; }
+  RUNS=/root/workspace/claude-workspace/rfx/runs
+  OUT=$RUNS/issue931-post-msl-port-integration-$(date -u +%Y%m%dT%H%M%SZ)
+  mkdir -p "$OUT"
+  echo "$OUT" > "$RUNS/issue931-post-msl-port-integration.latest"
+  trap 'chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
+  echo "artifacts: $OUT"
+  WORK=/root/work/rfx931-msl-port-integration
+  rm -rf "$WORK"
+  mkdir -p "$WORK"
+  cp -a "$SRC/." "$WORK/"
+  cd "$WORK"
+  git rev-parse HEAD > "$OUT/commit.txt" 2>/dev/null || echo "no git" > "$OUT/commit.txt"
+  cat "$OUT/commit.txt"
+  touch "$OUT/.tstamp"
+  "$PY" -m pip uninstall -y -q jax-cuda12-plugin jax-cuda12-pjrt 2>/dev/null || true
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" "pytest>=7.4"
+  export RFX_REPO_ROOT="$WORK"
+  export PYTHONPATH="$WORK"
+  export MPLBACKEND=Agg
+  export JAX_PLATFORMS=cpu
+  "$PY" -c "import jax, rfx, os; print('probe ok | jax', jax.__version__, '| backend', jax.default_backend(), '| rfx', getattr(rfx, '__version__', '?'), '| from', os.path.dirname(rfx.__file__))"
+  echo "=== measure: test_msl_port_integration -m slow (gate BOUNDS untouched) ==="
+  set +e
+  timeout 10800 "$PY" -u -m pytest tests/unit/sparams/test_msl_port_integration.py \
+      -m slow -q -s -p no:cacheprovider > "$OUT/pytest.log" 2>&1
+  rc=$?
+  set -e
+  echo "$rc" > "$OUT/capture.rc"
+  echo "--- measured values the run printed ---"
+  grep -E "^\[MSL (thru|eigenmode|z0-len)" "$OUT/pytest.log" || true
+  tail -n 60 "$OUT/pytest.log" || true
+  echo "pytest_rc=$rc"
+
+  echo "=== harvest: every file the run wrote into the staged checkout ==="
+  mkdir -p "$OUT/produced"
+  find "$WORK" -type f -newer "$OUT/.tstamp" \
+      -not -path "*/.git/*" -not -path "*/__pycache__/*" -not -name "*.pyc" \
+      > "$OUT/produced_files.txt" 2>/dev/null || true
+  while IFS= read -r f; do
+    rel=${f#$WORK/}
+    d=$(dirname "$rel")
+    mkdir -p "$OUT/produced/$d"
+    cp -p "$f" "$OUT/produced/$rel" 2>/dev/null || true
+  done < "$OUT/produced_files.txt"
+  echo "harvested $(wc -l < "$OUT/produced_files.txt") file(s)"
+  ls -la "$OUT"
+  chmod -R a+rX "$OUT" 2>/dev/null || true
+  echo "POST_CASE=msl-port-integration RC=$rc"
+  exit "$rc"

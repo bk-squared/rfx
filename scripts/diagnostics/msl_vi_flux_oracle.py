@@ -533,7 +533,7 @@ def run_one(label: str, dx: float) -> dict:
     k_lo, k_top = k_set[0], k_set[-1]
     j_c = (j_lo + j_hi) // 2
 
-    pec_mask = np.asarray(sim._assemble_materials(grid)[3])
+    pec_mask = np.asarray(sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])[3])
     col = pec_mask[cells[0][0], j_c, k_top:]
     kp = np.where(col)[0]
     if kp.size == 0:

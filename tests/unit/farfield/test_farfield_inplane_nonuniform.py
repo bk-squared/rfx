@@ -13,8 +13,8 @@ Two properties are pinned:
    the plumbing, not physics — the #  "uniform-valued profile tests
    plumbing" lesson);
 2. a genuinely graded in-plane mesh must integrate with the LOCAL cell
-   sizes: the total radiated power over the closed box must match the
-   uniform run's within the discretization envelope, whereas using the
+   sizes: the angular-integrated intensity must match the uniform run's
+   within the discretization envelope, whereas using the
    boundary cell everywhere (the old behaviour) mis-weights every face.
 """
 from __future__ import annotations
@@ -26,6 +26,19 @@ from rfx import Box, Simulation, compute_far_field_jax
 from rfx.sources import GaussianPulse
 
 NF = [30e9]
+
+
+def _graded_profile():
+    """Grade the NTFF surface while preserving the radiator's Yee lattice.
+
+    The central 7--15 mm band and the exterior use 250 um cells. Only the
+    4.5--7 and 15--17.5 mm shoulders use 312.5 um cells. The cube, current
+    source, smallest spacing (hence dt), and acquisition duration are then
+    identical to the uniform control. Every declared face is on a node.
+    """
+    return np.concatenate([np.full(18, 250e-6), np.full(8, 312.5e-6),
+                           np.full(32, 250e-6), np.full(8, 312.5e-6),
+                           np.full(18, 250e-6)])
 
 
 def _sim(dx_profile=None, dy_profile=None):
@@ -43,6 +56,10 @@ def _sim(dx_profile=None, dy_profile=None):
         kw["dy_profile"] = dy_profile
     sim = Simulation(freq_max=40e9, domain=(22e-3, 22e-3, 22e-3), dx=250e-6,
                      boundary="cpml", cpml_layers=6, **kw)
+    # A buildable 1.5 mm solid PEC cube: six 250 um cells per axis on BOTH
+    # meshes, with faces on nodes and seven tangential wall planes (#931).
+    # The former graded profile halved the cube/source spacing; its relative
+    # power gate mixed NTFF integration with a different radiator stencil.
     sim.add(Box((10.25e-3, 10.25e-3, 10.25e-3),
                 (11.75e-3, 11.75e-3, 11.75e-3)), material="pec")
     sim.add_source(position=(11e-3, 11e-3, 9.5e-3), component="ez",
@@ -54,6 +71,8 @@ def _sim(dx_profile=None, dy_profile=None):
 
 
 def _pattern(res):
+    # The integral is a relative power metric under one source convention,
+    # not a newly calibrated absolute watt measurement.
     th = np.radians(np.linspace(0.0, 180.0, 25))
     ph = np.radians(np.linspace(0.0, 350.0, 12))
     ff = compute_far_field_jax(res.ntff_data, res.ntff_box, res.grid, th, ph)
@@ -63,6 +82,37 @@ def _pattern(res):
     p_rad = np.sum(U * np.sin(th)[None, :, None] * dth[None, :, None]
                    * dph[None, None, :], axis=(1, 2))
     return U, p_rad
+
+
+def test_graded_fixture_preserves_radiator_and_acquisition_lattice():
+    """The integration comparison must not change the conductor or source."""
+    from rfx.geometry.rasterize_grid import (
+        coords_from_nonuniform_grid, coords_from_uniform_grid)
+    from tests._realized_geometry import realized
+
+    prof = _graded_profile()
+    assert abs(prof.sum() - 22e-3) < 1e-12
+    uniform = realized(_sim())
+    graded = realized(_sim(dx_profile=prof, dy_profile=prof))
+    assert graded.grid.dt == pytest.approx(uniform.grid.dt, rel=1e-7)
+    for rz, coords in (
+        (uniform, coords_from_uniform_grid(uniform.grid)),
+        (graded, coords_from_nonuniform_grid(graded.grid)),
+    ):
+        assert np.count_nonzero(rz.pec_mask) == 6 ** 3
+        assert [np.count_nonzero(e) for e in rz.edge_masks] == [294] * 3
+        for axis, line in enumerate((coords.x, coords.y, coords.z)):
+            nodes = np.asarray(line)
+            np.testing.assert_allclose(
+                nodes[rz.wall_planes(axis)],
+                np.arange(41, 48) * 250e-6, rtol=0, atol=2e-9)
+            source = (11e-3, 11e-3, 9.5e-3)[axis]
+            idx = int(np.argmin(abs(nodes - source)))
+            np.testing.assert_allclose(
+                nodes[idx - 1:idx + 2], source + np.arange(-1, 2) * 250e-6,
+                rtol=0, atol=2e-9)
+            for face in (4.5e-3, 17.5e-3):
+                assert np.min(abs(nodes - face)) < 2e-9
 
 
 @pytest.mark.slow
@@ -85,17 +135,16 @@ def test_uniform_valued_inplane_profile_matches_the_plain_uniform_grid():
 def test_graded_inplane_mesh_integrates_with_local_cell_sizes():
     """A graded mesh must not be integrated with the boundary cell size.
 
-    The centre band is refined and the shoulders coarsened at constant total
-    length, so the boundary cell — which the pre-#743 code used for x and y
-    everywhere — is NOT the mean cell. The test computes the pattern BOTH
+    Only the shoulders are coarsened, at constant total length. The centre
+    shares the uniform radiator/source lattice, dt, and acquisition window.
+    The boundary cell — which the pre-#743 code used for x and y everywhere
+    — is NOT the mean cell. The test computes the pattern BOTH
     ways from the same run data (hiding dx_arr/dy_arr reproduces the old
     behaviour exactly) and asserts the local-cell integration is the one
     that agrees with the uniform mesh. That comparison is the discriminator;
-    the absolute envelope is secondary and stated from measurement.
+    the absolute 5% envelope is retained, not refit to this repaired fixture.
     """
-    prof = np.concatenate([np.full(30, 250e-6), np.full(8, 312.5e-6),
-                           np.full(16, 125e-6), np.full(8, 312.5e-6),
-                           np.full(30, 250e-6)])
+    prof = _graded_profile()
     assert abs(prof.sum() - 22e-3) < 1e-12, prof.sum()
 
     u_res = _sim().run(n_steps=600)
@@ -132,4 +181,4 @@ def test_graded_inplane_mesh_integrates_with_local_cell_sizes():
         f"{100 * err_new:.1f}% vs old {100 * err_old:.1f}%")
     assert err_new < 0.05, (
         f"graded mesh radiates {100 * err_new:.1f}% differently from the "
-        "uniform mesh (measured 2.1% when this envelope was set)")
+        "uniform mesh (unchanged 5% acceptance envelope)")

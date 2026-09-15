@@ -16,8 +16,13 @@ Every tolerance below is a MEASURED envelope plus stated margin (rfx numbers
 from ``scripts/diagnostics/patch_tutorial_rfx.py`` and
 ``examples/tutorials/patch_antenna_demo.py`` on this same geometry):
 
-* broadside directivity: measured |rfx - openEMS| = 0.60 dB at the DESIGN-mode
-  bin (7.39 vs 6.79 dBi) — locked at 1.0 dB (``D_ABS_TOL_DB`` below).
+* broadside directivity: measured |rfx - openEMS| = 0.0659 dB at the
+  DESIGN-mode bin (6.7241 vs 6.7900 dBi) on the #931 sheet-declared board
+  (VESSL 369367259302) — the gate stays at 1.0 dB (``D_ABS_TOL_DB`` below),
+  which is 15x the measurement: the derivation rule gives 0.1 dB and the
+  constant is HELD at its pre-#931 value, because a rerun that happens to land
+  closer is not a reason to narrow a regression gate. The pre-#931 board
+  measured 0.60 dB here.
   DOCSTRING CORRECTION 2026-08-31 (#812 Phase 0, prose only — no constant
   changed): this bullet previously read "measured 0.08 dB in the research
   frame (6.71 vs 6.79 dBi, num_periods=250) and 0.11 dB in this test's lean
@@ -25,20 +30,38 @@ from ``scripts/diagnostics/patch_tutorial_rfx.py`` and
   wrong-mode (40 mm cross-mode) numbers and the pre-#693 tolerance; PR #716 /
   commit 12d2f00 repinned the constant to 1.0 dB on 2026-08-27 but left this
   bullet and the gate's own docstring quoting the retired values;
-* E-/H-plane beam peaks: measured 0 deg / -3 deg (openEMS 0 / 0) — locked at
+* E-/H-plane beam peaks: measured -1 deg / -4 deg (openEMS 0 / 0) — locked at
   15 deg from broadside;
-* resonance (REPINNED 2026-08-27, #693): the design mode — the 32 mm
-  feed-axis mode, rfx ring-down 2.6954 GHz — reads HIGH by +11.3% vs the
-  openEMS 2.4221 GHz at dx = 2 mm.  The pre-#693 docstring said "-8.6% LOW"
-  because the old selector tracked the 40 mm CROSS mode (2.2147 GHz); its
-  dx-ladder claims (-6% at dx=1, -3% extrapolated) are wrong-mode data and
-  retired with it (a per-mode ladder is tracked in #693).  The gate locks
-  BOTH the magnitude envelope [+6%, +16%] and the sign; it is a
-  discretization-bias regression lock, NOT an rfx-vs-openEMS accuracy claim.
+* resonance (RE-DERIVED 2026-09-07 on the #931 sheet-declared board, VESSL
+  369367259302): the design mode — the 32 mm feed-axis mode, rfx ring-down
+  2.5070 GHz — reads high by +3.51% vs the openEMS 2.4221 GHz at dx = 2 mm.
+  On the pre-#931 board it read +11.3%, and the difference is the mechanism
+  #693 named: the one-cell PEC ground's own cell sat inside the modelled
+  cavity as vacuum and diluted eps_eff. The band is re-derived by the same
+  rule that shaped the old one (measured ± 5 percentage points, rounded
+  outward to whole percent) and is now [-2%, +9%].
+
+  **THE GATE IS NO LONGER SIGN-LOCKED, AND THAT IS A CHANGE OF KIND.** The old
+  [+6%, +16%] excluded zero, so it asserted "rfx reads HIGH here" as part of
+  the characterization. [-2%, +9%] contains zero: what it now asserts is that
+  the coarse-dx offset stays inside ±one band-width of the measured +3.51%,
+  with the HIGH side still nine times wider than the low. This was written
+  down in advance as the outcome that would need saying rather than
+  re-tuning (docs/design_notes/931_migration/XA-manifest.json.md §5), and it
+  is said here rather than absorbed by picking a narrower rule after seeing
+  the number. It remains a discretization-bias regression lock, NOT an
+  rfx-vs-openEMS accuracy claim.
+
+  History, retired: the pre-#693 docstring said "-8.6% LOW" because the old
+  selector tracked the 40 mm CROSS mode (2.2147 GHz); its dx-ladder claims
+  (-6% at dx=1, -3% extrapolated) are wrong-mode data (a per-mode ladder is
+  tracked in #693).
 
 The -40 dB ring-down settling witness is asserted in-test before any gated
 number (num_periods=110; the num_periods=90 demo of this fixture measured
--36.5 dB, i.e. just under the bar — 110 clears it with margin).
+-36.5 dB, i.e. just under the bar — 110 clears it with margin). Measured
+-42.9 dB on the sheet-declared board, so the numbers above are quotable; a
+re-derivation from a run that did not clear this bar would not be.
 
 Humble-crossval note: all distances are stated factually as properties of our
 coarse fixture; nothing here ranks the solvers.
@@ -106,22 +129,55 @@ NTFF_FREQS = np.array([2.0e9, 2.1e9, 2.2e9, 2.3e9, 2.4e9, 2.5e9, 2.8e9])
 # (2.2147 GHz) the old F_GUESS selector picked. Full written root cause with
 # the evidence chain: issue #693 (2026-08-27 comments).
 #
-# MECHANISM (measured decomposition, #693 closure): the +11.3% is NOT
+# MECHANISM (measured decomposition, #693 closure): the +11.3% was NOT
 # primarily a dx-convergence bias — the ladder measured it GROWING at finer
-# dx. It is the one-plane sheet realization: the ground sheet's own cell
-# sits inside the cavity as vacuum (+15%p, series-capacitance dilution of
-# eps_eff; preflight sheet-cavity check prints it as +84.5% electrical
-# thickness), plus the one-plane length cost, minus ~4%p in-plane staircase.
-# The CORRECTED realization (two_plane) lands at -4.7% (dx=2) and -1.5%
-# (dx=1, inside the patch's own bandwidth) — the dx=2 point is gated below.
-D_ABS_TOL_DB = 1.0          # measured 0.60 dB at the design-mode bin (7.39 vs
-                            # openEMS 6.79); the old 0.5/measured-0.08 was the
-                            # wrong-mode bin
-PEAK_ANGLE_TOL_DEG = 15.0   # measured 0 / -3 deg vs openEMS 0 / 0
-F_RES_REL_LO = +0.06        # dx=2 mm bias envelope on the DESIGN mode,
-F_RES_REL_HI = +0.16        # measured +11.3%; sign lock: rfx reads HIGH here
-                            # (z-under-resolution side, #330 family)
+# dx. It was the one-plane REALIZATION: the ground's own cell sat inside the
+# cavity as vacuum (+15%p, series-capacitance dilution of eps_eff; the old
+# preflight sheet-cavity check printed it as +84.5% electrical thickness),
+# plus the one-plane length cost, minus ~4%p in-plane staircase.
+#
+# #931: that mechanism is gone, at its source. The foil is declared a SHEET on
+# the laminate's own faces and a sheet owns no cell, so there is no vacuum
+# ground cell to dilute anything and the two reserved fine cells are out of
+# the mesh. Every constant below was measured on the geometry that no longer
+# exists, so none was carried across: VESSL 369367259302 re-solved the case
+# and the record is tests/fixtures/patch_canonical_farfield_e4/
+# canonical_farfield_e4_measured_369367259302.json, which carries the
+# arithmetic for every value here. Settling -42.9 dB, so the run is quotable.
+# The #740 two_plane arm's -4.7% (dx=2) was the PREDICTION to check against;
+# measured +3.51%, i.e. the direction it gave (down from +11.3%) but not the
+# crossing. Recorded as a prediction that got the sign of the CHANGE right
+# and the sign of the RESULT wrong -- not repaired, and not re-fitted.
+_ENVELOPES_REDERIVED_FOR_931 = True
+_MIGRATION_RUN = ("VESSL 369367259302 — the canonical patch re-solved on the "
+                  "sheet-declared board (crossval-A, #931). Record: tests/"
+                  "fixtures/patch_canonical_farfield_e4/canonical_farfield_"
+                  "e4_measured_369367259302.json; producer + rule in its meta")
+
+D_ABS_TOL_DB = 1.0          # measured 0.0659 dB (rfx 6.7241 vs openEMS 6.7900)
+                            # on the sheet board; ceil(0.0659 x 1.5, .1) = 0.1,
+                            # HELD at 1.0 — a rerun may not narrow a gate.
+PEAK_ANGLE_TOL_DEG = 15.0   # measured -1 / -4 deg vs openEMS 0 / 0. Broadside
+                            # is a symmetry statement, not a realization one,
+                            # so this one survives the change.
+F_RES_REL_LO = -0.02        # measured +3.51% on the sheet board (2.5070 GHz
+F_RES_REL_HI = +0.09        # vs the committed openEMS 2.4221), re-derived as
+                            # measured +- 5 pp rounded outward to whole percent
+                            # — the same rule that shaped [+6%, +16%] around a
+                            # measured +11.3%. THIS BAND STRADDLES ZERO, so the
+                            # gate is no longer SIGN-locked: see the docstring.
 SETTLING_BAR_DB = -40.0
+
+
+def _require_rederived_envelopes():
+    if not _ENVELOPES_REDERIVED_FOR_931:
+        import pytest as _pytest
+        _pytest.skip(
+            "the gated envelopes on this file were measured on the pre-#931 "
+            "board (a one-cell PEC ground with its own vacuum cell inside the "
+            "cavity). The board is now sheet-declared and those numbers cannot "
+            "be translated; re-derive them from the new run and set "
+            f"_ENVELOPES_REDERIVED_FOR_931 = True in that commit. {_MIGRATION_RUN}")
 
 
 def _load_reference() -> dict:
@@ -203,9 +259,17 @@ def _build_simulation() -> Simulation:
     dom_y = GP_SIZE + 2 * MARGIN_XY
     cx, cy = dom_x / 2, dom_y / 2
 
+    # #931: the fine band is N_SUB cells, not 1 + N_SUB + 1. The two extra
+    # fine cells existed to give the ground and the patch each a cell of their
+    # own, because a one-cell PEC Box was the only way to ask for a wall — and
+    # the ground's cell then sat INSIDE the modelled cavity as vacuum, which is
+    # the #693 "vacuum ground cell" and the measured +15%p of the +11.3%
+    # resonance bias. Under the ownership contract the foil is declared a
+    # SHEET on a node plane (design note §1.3), a sheet owns no cell, and the
+    # cells it used to need are not in the mesh at all.
     raw_dz = np.concatenate([
         np.full(n_below, DX),
-        np.full(1 + N_SUB + 1, DZ_SUB),
+        np.full(N_SUB, DZ_SUB),
         np.full(n_above, DX),
     ])
     dz_profile = smooth_grading(raw_dz, max_ratio=1.3)
@@ -215,11 +279,9 @@ def _build_simulation() -> Simulation:
     # Register the stack to the BUILT mesh (#325 lesson): derive z coordinates
     # from where smooth_grading actually put the fine band.
     fine = np.where(np.isclose(dz_profile, DZ_SUB, rtol=1e-6))[0]
-    assert len(fine) >= 2 + N_SUB, "graded mesh lost the fine band"
+    assert len(fine) >= N_SUB, "graded mesh lost the fine band"
     f0 = int(fine[0])
-    z_gnd_lo, z_gnd_hi = edges[f0], edges[f0 + 1]
-    z_sub_lo, z_sub_hi = edges[f0 + 1], edges[f0 + 1 + N_SUB]
-    z_patch_lo, z_patch_hi = z_sub_hi, edges[f0 + 1 + N_SUB + 1]
+    z_sub_lo, z_sub_hi = edges[f0], edges[f0 + N_SUB]
 
     centers = 0.5 * (edges[:-1] + edges[1:])
     sub_cells = int(np.sum((centers >= z_sub_lo) & (centers < z_sub_hi)))
@@ -240,15 +302,15 @@ def _build_simulation() -> Simulation:
 
     gx_lo, gx_hi = cx - GP_SIZE / 2, cx + GP_SIZE / 2
     gy_lo, gy_hi = cy - GP_SIZE / 2, cy + GP_SIZE / 2
-    sim.add(Box((gx_lo, gy_lo, z_gnd_lo), (gx_hi, gy_hi, z_gnd_hi)), material="pec")
+    # Ground and patch are 35 um copper foil on a 1.524 mm laminate — foil, so
+    # SHEETS on the substrate's own faces (#931 §1.3). Drawn zero-thickness at
+    # the exact node planes the graded mesh produced, so nothing is snapped.
+    sim.add_thin_conductor(
+        Box((gx_lo, gy_lo, z_sub_lo), (gx_hi, gy_hi, z_sub_lo)))
     sim.add(Box((gx_lo, gy_lo, z_sub_lo), (gx_hi, gy_hi, z_sub_hi)), material="sub")
-    sim.add(
-        Box(
-            (cx - PATCH_W / 2, cy - PATCH_L / 2, z_patch_lo),
-            (cx + PATCH_W / 2, cy + PATCH_L / 2, z_patch_hi),
-        ),
-        material="pec",
-    )
+    sim.add_thin_conductor(
+        Box((cx - PATCH_W / 2, cy - PATCH_L / 2, z_sub_hi),
+            (cx + PATCH_W / 2, cy + PATCH_L / 2, z_sub_hi)))
 
     feed_x, feed_y = cx + FEED_OFFSET_X, cy
     src_z = z_sub_lo + DZ_SUB * 1.5
@@ -264,7 +326,7 @@ def _build_simulation() -> Simulation:
     # — preflight flags exactly that face, and the placement is backed by the
     # 0.08 dB solver-to-solver cross-check rather than silence.
     pad = (N_CPML + 3) * DX
-    box_lo = (pad, pad, max(pad, z_gnd_lo - 3 * DX))
+    box_lo = (pad, pad, max(pad, z_sub_lo - 3 * DX))
     box_hi = (dom_x - pad, dom_y - pad, z_total - pad)
     sim.add_ntff_box(corner_lo=box_lo, corner_hi=box_hi, freqs=NTFF_FREQS)
     return sim
@@ -277,6 +339,61 @@ def _principal_cut(power_f: np.ndarray, phi_index_pos: int, phi_index_neg: int):
     neg = power_f[:n_half, phi_index_neg][::-1]
     angle = np.concatenate([-np.arange(90, 0, -1.0), np.arange(0, 91, 1.0)])
     return angle, np.concatenate([neg[:-1], pos])
+
+
+def test_the_board_realizes_the_planes_it_declares():
+    """BUILD-TIME (no solve): the sheet planes ARE the laminate's own faces.
+
+    #931 §1.3. Two things have to be true and neither is visible in a
+    directivity number: the foil realizes ONE wall on each laminate face (not
+    a slab with a second wall a cell away), and the substrate between them is
+    N_SUB cells of laminate with nothing else in it. The #693 defect this file
+    documents was precisely the second one failing — a vacuum cell inside the
+    cavity, which cost +15%p of resonance and was invisible to every gate here
+    for months.
+
+    The falsifier arm is the one that would have caught it: NO wall one fine
+    cell below the laminate floor, which is where the old one-cell ground Box
+    put its only wall.
+    """
+    from tests._realized_pec import (assert_no_wall_at, assert_normal_edge_live,
+                                     assert_sheet_owns_no_cell,
+                                     assert_sheet_planes, realize, wall_planes)
+
+    sim = _build_simulation()
+    realized = realize(sim)
+    assert len(realized.sheets) == 2, (
+        f"the canonical patch declares {len(realized.sheets)} sheet(s); "
+        "ground and patch are both foil")
+    assert_sheet_owns_no_cell(realized, what="canonical patch foil")
+    assert_normal_edge_live(realized, what="canonical patch foil")
+
+    z_nodes = realized.nodes(2)
+    planes = sorted(int(sp.plane) for sp in realized.sheets)
+    assert len(planes) == 2 and planes[1] - planes[0] == N_SUB, (
+        f"ground and patch sit {planes[1] - planes[0]} cells apart, not "
+        f"{N_SUB}: the laminate is not the cavity")
+    z_lo, z_hi = float(z_nodes[planes[0]]), float(z_nodes[planes[1]])
+    assert z_hi - z_lo == pytest.approx(SUB_THICK, rel=1e-9), (
+        f"realized cavity {1e3 * (z_hi - z_lo):.4f} mm against a declared "
+        f"{1e3 * SUB_THICK:.4f} mm laminate")
+    assert_sheet_planes(realized, 2, [z_lo, z_hi], what="canonical patch foil")
+
+    # The eps between the two planes is laminate all the way — no vacuum cell.
+    eps = np.asarray(realized.materials.eps_r)
+    i_mid, j_mid = eps.shape[0] // 2, eps.shape[1] // 2
+    column = eps[i_mid, j_mid, planes[0]:planes[1]]
+    assert np.allclose(column, SUB_EPS_R, rtol=1e-6), (
+        f"the modelled cavity carries eps {sorted(set(column.tolist()))} "
+        f"instead of {SUB_EPS_R} — the #693 vacuum ground cell is back")
+
+    # Falsifier: nothing one fine cell below the floor, which is where the old
+    # one-cell PEC ground Box stood its only wall.
+    assert planes[0] - 1 not in wall_planes(realized, 2), (
+        "a wall is realized one fine cell below the laminate floor — the "
+        "#693 geometry")
+    assert_no_wall_at(realized, 2, [float(z_nodes[planes[0] - 1])],
+                      what="canonical patch board")
 
 
 @pytest.fixture(scope="module")
@@ -380,7 +497,7 @@ def test_settling_witness_clears_the_bar(rfx_run):
 def test_radiating_mode_is_broadside(rfx_run):
     """Far-field mode ID: a broadside bin exists, the radiated-power peak is
     broadside, and both principal-plane beam peaks sit within 15 deg of
-    broadside (measured: rfx 0/-3 deg, openEMS reference 0/0 deg)."""
+    broadside (measured: rfx -1/-4 deg, openEMS reference 0/0 deg)."""
     assert rfx_run["broadside_any"], (
         f"no monitored bin shows a broadside beam; peak thetas = {rfx_run['peak_theta_deg']}"
     )
@@ -397,9 +514,13 @@ def test_radiating_mode_is_broadside(rfx_run):
 @pytest.mark.slow
 def test_directivity_within_committed_envelope(rfx_run):
     """|D_rfx - D_openEMS| <= D_ABS_TOL_DB = 1.0 dB at the radiating bin.
-    Measured: 0.60 dB at the design-mode bin (7.39 vs openEMS 6.79 dBi). The
-    gate is measured-plus-margin headroom for frame/settling scatter — it
-    fails closed if the far-field lane regresses.
+    Measured on the #931 sheet-declared board (VESSL 369367259302): 0.0659 dB,
+    rfx 6.7241 vs openEMS 6.7900 dBi. The gate is HELD at 1.0 dB rather than
+    re-derived downward — the file's rule, round-UP(measured x 1.5), gives
+    0.1 dB, and a rerun that lands closer is not an argument for narrowing a
+    regression gate. So the headroom is now 15x the measurement instead of
+    1.7x; it still fails closed if the far-field lane regresses, and it now
+    also fails closed a long way before the pre-#931 board's own 0.60 dB.
 
     DOCSTRING CORRECTION 2026-08-31 (#812 Phase 0, prose only — the asserted
     constant is unchanged): this docstring previously read "<= 0.5 dB ...
@@ -409,6 +530,7 @@ def test_directivity_within_committed_envelope(rfx_run):
     PR #716 / commit 12d2f00 repinned D_ABS_TOL_DB 0.5 -> 1.0 on 2026-08-27
     and recorded the design-mode measurement at line 111, but this docstring
     was left behind."""
+    _require_rederived_envelopes()
     ref = _load_reference()
     d_rfx = float(rfx_run["d_dbi"][rfx_run["k_star"]])
     diff = abs(d_rfx - ref["directivity_dbi"])
@@ -422,10 +544,16 @@ def test_directivity_within_committed_envelope(rfx_run):
 def test_mode_pair_present_with_aspect_ratio(rfx_run):
     """Physics lock born from #693: the 32x40 patch supports a near-degenerate
     TM mode pair whose frequency ratio tracks the aspect ratio (TL model
-    f32/f40 = 1.232 at these eps_eff; measured 2.6954/2.2147 = 1.217).  Any
+    f32/f40 = 1.232 at these eps_eff; measured 2.5070/2.0346 = 1.2322 on the
+    #931 sheet board, 2.6954/2.2147 = 1.217 before it).  The band below is
+    NOT re-derived: 1.2322 sits inside [1.15, 1.30] with margin, the quantity
+    is an aspect-ratio statement rather than a realization one, and the
+    producer's rule would have moved the band by +-0.01 in both directions —
+    widening the high side of a gate for no measured reason.  Any
     selector or realization change that loses one member — the failure mode
     that produced the wrong-mode envelope — fails here by name instead of
     surfacing as an inexplicable offset sign flip."""
+    _require_rederived_envelopes()
     fs = sorted(m.freq for m in rfx_run["modes"] if 1.8e9 < m.freq < 3.1e9)
     assert len(fs) >= 2, (
         f"mode pair lost: only {[f/1e9 for f in fs]} GHz in 1.8-3.1 GHz — "
@@ -439,12 +567,28 @@ def test_mode_pair_present_with_aspect_ratio(rfx_run):
 @pytest.mark.slow
 def test_f_res_inside_documented_coarse_dx_envelope(rfx_run):
     """ENVELOPE REGRESSION LOCK, not accuracy: at dx = 2 mm the rfx DESIGN
-    mode (32 mm feed-axis; far-field-identified) reads HIGH vs the committed
-    openEMS reference by a measured +11.3% discretization bias (#693 root
-    cause: the old [-12%, -5%] envelope was pinned on the 40 mm cross mode).
-    Locked at [+6%, +16%] with the sign as part of the characterization — a
-    run that lands low, or beyond +16%, or on a wrong member of the mode
-    pair, fails."""
+    mode (32 mm feed-axis; far-field-identified) reads +3.51% against the
+    committed openEMS reference on the #931 sheet-declared board (2.5070 vs
+    2.4221 GHz, VESSL 369367259302). Locked at [-2%, +9%], the measured value
+    +- 5 percentage points rounded outward — the same rule that shaped the
+    pre-#931 [+6%, +16%] around a measured +11.3%.
+
+    WHAT THIS GATE NOW ASSERTS, AND WHAT IT NO LONGER DOES. The old band
+    excluded zero, so passing it was also a statement that rfx reads HIGH
+    here; the deleted mechanism (#693: the one-cell ground's own cell inside
+    the cavity as vacuum) was what put the whole band on one side. [-2%, +9%]
+    contains zero, so the SIGN is no longer part of the characterization. What
+    survives is the magnitude envelope and the asymmetry: the high side is
+    nine times the low side, so a run drifting back toward the pre-#931 +11.3%
+    still fails, and so does one that swings 2% low. A wrong member of the
+    mode pair fails here as it always did. XA-manifest.json.md 5 pre-declared
+    that a band around zero would be a different kind of lock and would have
+    to be SAID rather than re-tuned into looking like the old one; this
+    docstring is that saying.
+
+    History, retired: the pre-#693 [-12%, -5%] envelope was pinned on the
+    40 mm cross mode."""
+    _require_rederived_envelopes()
     ref = _load_reference()
     f_ref = ref["f_res_ghz"] * 1e9
     rel = (rfx_run["f_radiating_hz"] - f_ref) / f_ref

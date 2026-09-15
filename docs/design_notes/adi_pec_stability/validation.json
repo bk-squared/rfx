@@ -1,0 +1,444 @@
+{
+  "command": "JAX_PLATFORMS=cpu OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 timeout 1200 taskset -c 0-3 python -m pytest -q -n 4 -m '' tests/contracts/test_pec_lane_parity_numeric.py tests/unit/runners/test_adi.py tests/unit/runners/test_adi_gradient.py tests/unit/preflight/test_adi_preflight.py tests/unit/preflight/test_preflight_advisory_emission_contract.py --durations=10",
+  "counts": {
+    "tests.contracts.test_pec_lane_parity_numeric": {
+      "passed": 25,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "tests.unit.runners.test_adi": {
+      "passed": 20,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "tests.unit.runners.test_adi_gradient": {
+      "passed": 4,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "tests.unit.preflight.test_adi_preflight": {
+      "passed": 29,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "tests.unit.preflight.test_preflight_advisory_emission_contract": {
+      "passed": 3,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "tests": [
+    {
+      "name": "tests.contracts.test_pec_lane_parity_numeric::test_the_conductor_reaches_the_uniform_lane_at_all",
+      "status": "passed",
+      "seconds": 1.885
+    },
+    {
+      "name": "tests.contracts.test_pec_lane_parity_numeric::test_adi_default_refuses_interior_pec_even_without_preflight[forward-thick_volume-3d]",
+      "status": "passed",
+      "seconds": 0.389
+    },
+    {
+      "name": "tests.contracts.test_pec_lane_parity_numeric::test_adi_default_refuses_interior_pec_even_without_preflight[run-thick_volume-2d_tmz]",
+      "status": "passed",
+      "seconds": 0.275
+    },
+    {
+      "name": "tests.contracts.test_pec_lane_parity_numeric::test_adi_default_refuses_interior_pec_even_without_preflight[run-sheet-3d]",
+      "status": "passed",
+      "seconds": 0.34
+    },
+    {
+      "name": "tests.contracts.test_pec_lane_parity_numeric::test_adi_default_refuses_interior_pec_even_without_preflight[forward-sheet-3d]",
+      "status": "passed",
+      "seconds": 0.215
+    },
+    {
+      "name": "tests.contracts.test_pec_lane_parity_numeric::test_adi_default_refuses_interior_pec_even_without_preflight[run-sheet-2d_tmz]",
+      "status": "passed",
+      "seconds": 0.192
+    },
+    {
+      "name": "tests.contracts.test_pec_lane_parity_numeric::test_adi_default_refuses_interior_pec_even_without_preflight[forward-thick_volume-2d_tmz]",
+      "status": "passed",
+      "seconds": 0.154
+    },
+    {
+      "name": "tests.contracts.test_pec_lane_parity_numeric::test_adi_default_refuses_interior_pec_even_without_preflight[forward-sheet-2d_tmz]",
+      "status": "passed",
+      "seconds": 0.051
+    },
+    {
+      "name": "tests.contracts.test_pec_lane_parity_numeric::test_adi_default_refuses_interior_pec_even_without_preflight[run-volume-3d]",
+      "status": "passed",
+      "seconds": 0.179
+    },
+    {
+      "name": "tests.contracts.test_pec_lane_parity_numeric::test_adi_default_refuses_interior_pec_even_without_preflight[forward-volume-3d]",
+      "status": "passed",
+      "seconds": 0.161
+    },
+    {
+      "name": "tests.contracts.test_pec_lane_parity_numeric::test_adi_refusal_preserves_sheet_and_wire_forwarding[run-sheet]",
+      "status": "passed",
+      "seconds": 0.083
+    },
+    {
+      "name": "tests.contracts.test_pec_lane_parity_numeric::test_adi_refusal_preserves_sheet_and_wire_forwarding[run-wire]",
+      "status": "passed",
+      "seconds": 0.039
+    },
+    {
+      "name": "tests.contracts.test_pec_lane_parity_numeric::test_adi_refusal_preserves_sheet_and_wire_forwarding[forward-sheet]",
+      "status": "passed",
+      "seconds": 0.007
+    },
+    {
+      "name": "tests.unit.runners.test_adi.TestThomasSolve::test_simple_system",
+      "status": "passed",
+      "seconds": 0.165
+    },
+    {
+      "name": "tests.contracts.test_pec_lane_parity_numeric::test_adi_default_refuses_interior_pec_even_without_preflight[forward-volume-2d_tmz]",
+      "status": "passed",
+      "seconds": 0.005
+    },
+    {
+      "name": "tests.contracts.test_pec_lane_parity_numeric::test_adi_default_refuses_interior_pec_even_without_preflight[run-volume-2d_tmz]",
+      "status": "passed",
+      "seconds": 0.064
+    },
+    {
+      "name": "tests.contracts.test_pec_lane_parity_numeric::test_adi_refusal_preserves_sheet_and_wire_forwarding[forward-wire]",
+      "status": "passed",
+      "seconds": 0.005
+    },
+    {
+      "name": "tests.contracts.test_pec_lane_parity_numeric::test_the_adi_forward_lane_refuses_the_thin_conductor_it_cannot_realize",
+      "status": "passed",
+      "seconds": 0.008
+    },
+    {
+      "name": "tests.contracts.test_pec_lane_parity_numeric::test_the_subgridded_lane_refuses_a_sheet_it_cannot_realize",
+      "status": "passed",
+      "seconds": 0.005
+    },
+    {
+      "name": "tests.contracts.test_pec_lane_parity_numeric::test_the_forward_lossy_sheet_ctx_knows_about_a_pec_wire",
+      "status": "passed",
+      "seconds": 1.9
+    },
+    {
+      "name": "tests.contracts.test_pec_lane_parity_numeric::test_adi_default_refuses_interior_pec_even_without_preflight[run-thick_volume-3d]",
+      "status": "passed",
+      "seconds": 0.005
+    },
+    {
+      "name": "tests.unit.runners.test_adi::test_simulation_adi_rejects_unsupported_configs",
+      "status": "passed",
+      "seconds": 0.001
+    },
+    {
+      "name": "tests.unit.runners.test_adi::test_simulation_adi_cpml_boundary",
+      "status": "passed",
+      "seconds": 1.458
+    },
+    {
+      "name": "tests.unit.runners.test_adi.TestThomasSolve::test_random_system",
+      "status": "passed",
+      "seconds": 0.213
+    },
+    {
+      "name": "tests.unit.runners.test_adi.TestThomasSolve::test_jit_compatible",
+      "status": "passed",
+      "seconds": 0.292
+    },
+    {
+      "name": "tests.unit.runners.test_adi.TestThomasSolve::test_differentiable",
+      "status": "passed",
+      "seconds": 0.745
+    },
+    {
+      "name": "tests.contracts.test_pec_lane_parity_numeric::test_sheet_and_pec_thin_conductor_are_the_same_object_on_the_uniform_lane",
+      "status": "passed",
+      "seconds": 1.414
+    },
+    {
+      "name": "tests.unit.runners.test_adi::test_adi_stability_beyond_cfl",
+      "status": "passed",
+      "seconds": 1.693
+    },
+    {
+      "name": "tests.unit.runners.test_adi::test_simulation_adi_lossy_material",
+      "status": "passed",
+      "seconds": 0.81
+    },
+    {
+      "name": "tests.contracts.test_pec_lane_parity_numeric::test_the_forward_lossy_sheet_ctx_uses_the_runs_periodic_flags",
+      "status": "passed",
+      "seconds": 1.007
+    },
+    {
+      "name": "tests.unit.runners.test_adi::test_simulation_adi_rejects_port_loaded_excitation",
+      "status": "passed",
+      "seconds": 0.113
+    },
+    {
+      "name": "tests.unit.runners.test_adi.TestADI3DCavityPhysics::test_simulation_adi_3d_default_refuses_internal_pec_post",
+      "status": "passed",
+      "seconds": 0.28
+    },
+    {
+      "name": "tests.contracts.test_pec_lane_parity_numeric::test_a_one_cell_volume_is_not_the_same_object_as_a_sheet",
+      "status": "passed",
+      "seconds": 1.297
+    },
+    {
+      "name": "tests.unit.runners.test_adi::test_simulation_adi_3d_run",
+      "status": "passed",
+      "seconds": 1.946
+    },
+    {
+      "name": "tests.unit.runners.test_adi::test_adi_cavity_resonance",
+      "status": "passed",
+      "seconds": 0.942
+    },
+    {
+      "name": "tests.unit.runners.test_adi.TestADI3DStability::test_stability_3d_pec_cavity[2.0]",
+      "status": "passed",
+      "seconds": 2.189
+    },
+    {
+      "name": "tests.unit.runners.test_adi::test_simulation_adi_run_high_level",
+      "status": "passed",
+      "seconds": 1.134
+    },
+    {
+      "name": "tests.contracts.test_pec_lane_parity_numeric::test_the_nonuniform_lane_agrees_with_the_uniform_lane",
+      "status": "passed",
+      "seconds": 0.223
+    },
+    {
+      "name": "tests.contracts.test_pec_lane_parity_numeric::test_the_vmap_sweep_fast_path_realizes_the_same_conductor",
+      "status": "passed",
+      "seconds": 1.843
+    },
+    {
+      "name": "tests.unit.runners.test_adi::test_simulation_adi_3d_cpml",
+      "status": "passed",
+      "seconds": 3.288
+    },
+    {
+      "name": "tests.unit.runners.test_adi::test_simulation_adi_forward_contract",
+      "status": "passed",
+      "seconds": 0.953
+    },
+    {
+      "name": "tests.unit.runners.test_adi.TestADI3DStability::test_stability_3d_pec_cavity[5.0]",
+      "status": "passed",
+      "seconds": 0.081
+    },
+    {
+      "name": "tests.unit.runners.test_adi.TestADI3DCavityPhysics::test_cavity_field_propagation",
+      "status": "passed",
+      "seconds": 2.428
+    },
+    {
+      "name": "tests.unit.runners.test_adi_gradient::test_adi_step_3d_gradient_is_finite_and_nonzero",
+      "status": "passed",
+      "seconds": 21.294
+    },
+    {
+      "name": "tests.unit.runners.test_adi::test_simulation_adi_default_refuses_internal_pec_geometry",
+      "status": "passed",
+      "seconds": 0.016
+    },
+    {
+      "name": "tests.unit.preflight.test_adi_preflight::test_adi_3d_within_envelope_is_silent",
+      "status": "passed",
+      "seconds": 0.002
+    },
+    {
+      "name": "tests.unit.preflight.test_adi_preflight::test_adi_2d_tmz_is_silent",
+      "status": "passed",
+      "seconds": 0.002
+    },
+    {
+      "name": "tests.unit.preflight.test_adi_preflight::test_yee_3d_is_silent",
+      "status": "passed",
+      "seconds": 0.001
+    },
+    {
+      "name": "tests.unit.preflight.test_adi_preflight::test_default_adi_conductor_is_named_error_and_cannot_solve[sheet-3d]",
+      "status": "passed",
+      "seconds": 0.063
+    },
+    {
+      "name": "tests.unit.preflight.test_adi_preflight::test_default_adi_conductor_is_named_error_and_cannot_solve[sheet-2d_tmz]",
+      "status": "passed",
+      "seconds": 0.022
+    },
+    {
+      "name": "tests.unit.preflight.test_adi_preflight::test_default_adi_conductor_is_named_error_and_cannot_solve[volume1-3d]",
+      "status": "passed",
+      "seconds": 0.013
+    },
+    {
+      "name": "tests.unit.preflight.test_adi_preflight::test_default_adi_conductor_is_named_error_and_cannot_solve[volume1-2d_tmz]",
+      "status": "passed",
+      "seconds": 0.009
+    },
+    {
+      "name": "tests.unit.preflight.test_adi_preflight::test_default_adi_conductor_is_named_error_and_cannot_solve[volume3-3d]",
+      "status": "passed",
+      "seconds": 0.023
+    },
+    {
+      "name": "tests.unit.preflight.test_adi_preflight::test_default_adi_conductor_is_named_error_and_cannot_solve[volume3-2d_tmz]",
+      "status": "passed",
+      "seconds": 0.016
+    },
+    {
+      "name": "tests.unit.preflight.test_adi_preflight::test_default_adi_conductor_is_named_error_and_cannot_solve[wire-3d]",
+      "status": "passed",
+      "seconds": 0.012
+    },
+    {
+      "name": "tests.unit.preflight.test_adi_preflight::test_default_adi_conductor_is_named_error_and_cannot_solve[wire-2d_tmz]",
+      "status": "passed",
+      "seconds": 0.011
+    },
+    {
+      "name": "tests.unit.preflight.test_adi_preflight::test_reducing_factor_is_not_a_supported_interior_pec_remedy[0.5-3d]",
+      "status": "passed",
+      "seconds": 0.01
+    },
+    {
+      "name": "tests.unit.preflight.test_adi_preflight::test_reducing_factor_is_not_a_supported_interior_pec_remedy[0.5-2d_tmz]",
+      "status": "passed",
+      "seconds": 0.008
+    },
+    {
+      "name": "tests.unit.preflight.test_adi_preflight::test_reducing_factor_is_not_a_supported_interior_pec_remedy[1.0-3d]",
+      "status": "passed",
+      "seconds": 0.009
+    },
+    {
+      "name": "tests.unit.preflight.test_adi_preflight::test_reducing_factor_is_not_a_supported_interior_pec_remedy[1.0-2d_tmz]",
+      "status": "passed",
+      "seconds": 0.008
+    },
+    {
+      "name": "tests.unit.preflight.test_adi_preflight::test_reducing_factor_is_not_a_supported_interior_pec_remedy[2.0-3d]",
+      "status": "passed",
+      "seconds": 0.011
+    },
+    {
+      "name": "tests.unit.preflight.test_adi_preflight::test_reducing_factor_is_not_a_supported_interior_pec_remedy[2.0-2d_tmz]",
+      "status": "passed",
+      "seconds": 0.007
+    },
+    {
+      "name": "tests.unit.preflight.test_adi_preflight::test_no_interior_pec_and_loss_only_material_do_not_get_conductor_error[3d]",
+      "status": "passed",
+      "seconds": 0.165
+    },
+    {
+      "name": "tests.unit.preflight.test_adi_preflight::test_no_interior_pec_and_loss_only_material_do_not_get_conductor_error[2d_tmz]",
+      "status": "passed",
+      "seconds": 0.063
+    },
+    {
+      "name": "tests.unit.preflight.test_adi_preflight::test_custom_pec_material_uses_production_classification",
+      "status": "passed",
+      "seconds": 0.025
+    },
+    {
+      "name": "tests.unit.preflight.test_adi_preflight::test_forward_call_time_conductors_cannot_bypass_guard[pec_mask_override-3d]",
+      "status": "passed",
+      "seconds": 0.066
+    },
+    {
+      "name": "tests.unit.preflight.test_adi_preflight::test_forward_call_time_conductors_cannot_bypass_guard[pec_mask_override-2d_tmz]",
+      "status": "passed",
+      "seconds": 0.049
+    },
+    {
+      "name": "tests.unit.preflight.test_adi_preflight::test_forward_call_time_conductors_cannot_bypass_guard[pec_occupancy_override-3d]",
+      "status": "passed",
+      "seconds": 0.009
+    },
+    {
+      "name": "tests.unit.preflight.test_adi_preflight::test_forward_call_time_conductors_cannot_bypass_guard[pec_occupancy_override-2d_tmz]",
+      "status": "passed",
+      "seconds": 0.01
+    },
+    {
+      "name": "tests.unit.preflight.test_adi_preflight::test_low_level_adi_refuses_masks_before_scan_or_step[3d]",
+      "status": "passed",
+      "seconds": 0.06
+    },
+    {
+      "name": "tests.unit.preflight.test_adi_preflight::test_low_level_adi_refuses_masks_before_scan_or_step[2d_tmz]",
+      "status": "passed",
+      "seconds": 0.075
+    },
+    {
+      "name": "tests.unit.preflight.test_adi_preflight::test_accuracy_advisory_scopes_the_stability_guarantee",
+      "status": "passed",
+      "seconds": 0.008
+    },
+    {
+      "name": "tests.unit.preflight.test_preflight_advisory_emission_contract::test_preflight_emission_site_surface_is_frozen",
+      "status": "passed",
+      "seconds": 0.309
+    },
+    {
+      "name": "tests.unit.preflight.test_preflight_advisory_emission_contract::test_every_functional_entry_point_is_emission_classified",
+      "status": "passed",
+      "seconds": 0.001
+    },
+    {
+      "name": "tests.unit.preflight.test_preflight_advisory_emission_contract::test_emission_classification_matches_measured_reachability",
+      "status": "passed",
+      "seconds": 0.629
+    },
+    {
+      "name": "tests.unit.runners.test_adi.TestADI3DCavityPhysics::test_internal_pec_projection_reads_realized_edges_3d",
+      "status": "passed",
+      "seconds": 0.385
+    },
+    {
+      "name": "tests.unit.runners.test_adi_gradient::test_adi_step_3d_refuses_internal_pec_under_transformations[jit_grad]",
+      "status": "passed",
+      "seconds": 0.37
+    },
+    {
+      "name": "tests.unit.preflight.test_adi_preflight::test_adi_3d_large_cfl_fires_envelope_advisory",
+      "status": "passed",
+      "seconds": 0.003
+    },
+    {
+      "name": "tests.unit.preflight.test_adi_preflight::test_adi_default_cfl_factor_fires_envelope_advisory",
+      "status": "passed",
+      "seconds": 0.001
+    },
+    {
+      "name": "tests.unit.runners.test_adi_gradient::test_adi_step_3d_refuses_internal_pec_under_transformations[jit]",
+      "status": "passed",
+      "seconds": 0.636
+    },
+    {
+      "name": "tests.unit.runners.test_adi_gradient::test_adi_step_3d_refuses_internal_pec_under_transformations[grad]",
+      "status": "passed",
+      "seconds": 0.188
+    }
+  ],
+  "summary": "81 passed, 0 failed, 0 errors, 0 skipped; 31.55 seconds",
+  "warnings": 100
+}

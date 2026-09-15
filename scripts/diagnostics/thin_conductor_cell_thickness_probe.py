@@ -126,7 +126,7 @@ def run_one(n_cells: int) -> dict:
                          height=H_SUB, direction=direction, impedance=50.0)
 
     grid = sim._build_grid()
-    pec = np.asarray(sim._assemble_materials(grid)[3])
+    pec = np.asarray(sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])[3])
     k0 = int(round(H_SUB / DX))
     layers = int(pec[pec.shape[0] // 2, pec.shape[1] // 2, k0:k0 + 6].sum())
 

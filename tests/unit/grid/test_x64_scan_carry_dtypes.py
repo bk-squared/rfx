@@ -191,6 +191,21 @@ def test_lumped_rlc_scan_closes_under_x64():
 
 
 def _rcs_args():
+    """A flat scatterer as a SIGMA FILL, not a PEC declaration.
+
+    #931 SCOPE: ``rasterize(grid, [(plate, 1.0, PEC_SIGMA)])`` writes
+    ``sigma`` directly and never reaches ``pec_mask``, so no realized edge
+    set applies to it. Design note §1.8 fences low-level sigma fills out of
+    the lattice ownership contract — they are a lossy VOLUME model (fields
+    decay inside a conductive cell), which is a different physical model
+    from a PEC edge set, and cv16 / the RCS reference family are pinned on
+    it. The ``ht = dx/2`` half-cell straddle below is therefore NOT the
+    "draw it half a cell either side so it lands on one node" compensation
+    the contract abolishes for declared conductors; it is how this fill
+    puts one cell of metal on the centre plane. A PEC plate declared
+    through ``sim.add`` would be drawn zero-thickness (a sheet) or on two
+    node planes (a volume), and would be refused at 0 < extent < one cell.
+    """
     f0 = 3e9
     dx = C0 / f0 / 10
     domain = 0.12

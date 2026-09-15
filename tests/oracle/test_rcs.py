@@ -4,6 +4,21 @@ Validates:
 1. PEC plate normal-incidence RCS against physical optics approximation
 2. PEC sphere monostatic RCS against analytical (large-sphere) estimate
 3. RCSResult structure, shapes, and unit consistency
+
+"PEC" IN THIS MODULE IS A SIGMA FILL, NOT A PEC BODY (#931 §1.8). The metal
+here is painted with ``rasterize(grid, [(shape, eps, PEC_SIGMA)])`` straight
+into ``MaterialArrays.sigma``; it never reaches ``pec_mask``,
+``add_thin_conductor`` or ``realized_pec_edge_masks``, and the lattice
+ownership contract deliberately does not cover it — fields decay inside a
+conductive cell, which is a different operator from zeroing an edge. The
+threshold that separates the two models is
+``Simulation._PEC_SIGMA_THRESHOLD`` (1e6 S/m), applied in
+``rfx/api/_compile.py`` to a MATERIAL on a geometry entry; a raw
+``rasterize`` call never passes through it. That the two are not silently
+equated is pinned in
+``tests/contracts/test_lattice_ownership_contract.py::test_a_sigma_fill_conductor_is_not_a_pec_body``
+(same sphere, 910 sigma cells vs 912 PEC volume cells, and no realized PEC
+edge on the sigma path). Nothing in this module was re-measured for #931.
 """
 
 import numpy as np

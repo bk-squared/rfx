@@ -33,8 +33,8 @@ A 3-point vertex is exact only if the sampled function is a parabola over the
 stencil.  Near an isolated transmission zero displaced off the real frequency
 axis by loss/radiation delta, |S21(f)|^2 ~ |A|^2 ((f-f0)^2 + delta^2) is
 parabolic in f, and log|S21| is parabolic to the same order for delta not too
-small; both estimators were measured on the committed cv07 legs and agree to
-<= 0.02 % (see ``docs/design_notes/estimator_resolution_regate.md``).  The
+small; both estimators were measured on the pre-#931 cv07 legs and agreed to
+<= 0.02 % (historical evidence, see ``docs/design_notes/estimator_resolution_regate.md``).  The
 residual error is set by the DEPARTURE from a parabola over one stencil -- for
 the cv07 doublet, by the neighbouring zero's shoulder.  It is bounded, not
 zero, and the honest way to state it is to MEASURE it, which is what

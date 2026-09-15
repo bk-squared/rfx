@@ -106,7 +106,6 @@ so there is no mechanism for this floor to move with parallelism.
 
 from __future__ import annotations
 
-import warnings
 
 import jax.numpy as jnp
 import numpy as np
@@ -513,6 +512,11 @@ class TestVmapMaterialSweepCpmlPad:
         # shows the drop -- by design. Read the precondition off the box's
         # own rasterized mask instead, which is where the drop actually
         # happens and is what this guard always meant.
+        # #931 scope: the ownership contract changes how a CONDUCTOR is
+        # realized. DIELECTRIC sampling stays node-based and half-open
+        # (design note §1.8), so this box still drops its hi-face node and
+        # the #627 pad fallback / #655 node repair stay live. Do not read
+        # the contract as making this assert obsolete — it is fenced.
         probe_shape = probe_sim._geometry[0].shape
         raw = np.asarray(probe_shape.mask(probe_grid))
         naive_src = raw[-phx - 1, cy, cz]
@@ -729,31 +733,50 @@ class TestVmapBatchedPadByteIdentity:
         on which field is swept.
 
         The PEC row is the must-pass companion, not filler: it measured
-        0 mismatched cells on every tree (a PEC conductor routes to
-        ``pec_mask``, not to the material arrays), so it is the case that
-        had to keep passing while the non-PEC case went from red to
-        green. An equality test can be satisfied by a fixture where
-        nothing could differ; ``test_thin_conductor_fixture_is_live``
-        below rules that out for the non-PEC row."""
+        0 mismatched cells on every tree (a PEC conductor writes no
+        eps_r/sigma at all), so it is the case that had to keep passing
+        while the non-PEC case went from red to green. An equality test
+        can be satisfied by a fixture where nothing could differ;
+        ``test_thin_conductor_fixture_is_live`` below rules that out for
+        the non-PEC row.
+
+        #931: the PEC row's Box is drawn ZERO-THICKNESS. A PEC thin
+        conductor is a SHEET — a footprint on one node plane — and a shape
+        thicker than one local cell along its normal is refused ("not a
+        sheet; use add() for a volume"). The old 2x2-cell bar was never a
+        sheet; it only looked like one because the pre-#931 rule realized
+        any masked body as a stack of node planes. The DC-fold (non-PEC)
+        row keeps the finite box: that is a lossy VOLUME model and is out
+        of the contract's scope (design note §1.8)."""
         field = param.split(".")[1]
 
         def sim_fn(val):
             kw = {"eps_r": 4.0, "sigma": 0.0, "mu_r": 1.0}
             kw[field] = val
             sim = _matrix_sim((0.0, 0.0, 0.0), (0.02, 0.02, 0.02), **kw)
-            sim.add_thin_conductor(
-                Box((0.0, 0.008, 0.008), (0.02, 0.012, 0.012)),
-                sigma_bulk=sigma_bulk, thickness=35e-6)
+            box = (
+                # PEC -> a sheet: zero thickness on its normal (#931 §1.3)
+                Box((0.0, 0.008, 0.010), (0.02, 0.012, 0.010))
+                if sigma_bulk >= 1.0e6 else
+                # DC fold -> a lossy volume, unchanged (§1.8)
+                Box((0.0, 0.008, 0.008), (0.02, 0.012, 0.012))
+            )
+            sim.add_thin_conductor(box, sigma_bulk=sigma_bulk,
+                                   thickness=35e-6)
             return sim
 
         base_sim = sim_fn(base_value)
         grid = base_sim._build_grid()
-        base_materials, *_ = base_sim._assemble_materials(grid)
+        # eps/sigma/mu only — a PEC sheet owns no cell and writes no
+        # material, so the #931 collectors are passed and dropped here.
+        base_materials, *_ = base_sim._assemble_materials(
+            grid, pec_sheets=[], pec_wires=[])
         vals = np.asarray(values, dtype=np.float32)
         batched = _build_batched_materials(
             base_sim, grid, base_materials, param, jnp.asarray(vals))
         for idx, v in enumerate(vals):
-            want, *_ = sim_fn(float(v))._assemble_materials(grid)
+            want, *_ = sim_fn(float(v))._assemble_materials(
+                grid, pec_sheets=[], pec_wires=[])
             for name in ("eps_r", "sigma", "mu_r"):
                 npt.assert_array_equal(
                     np.asarray(getattr(batched, name)[idx]),
@@ -770,6 +793,15 @@ class TestVmapBatchedPadByteIdentity:
         could hold because the conductor is nowhere near a pad -- exactly
         the vacuous-fixture failure mode #643's own matrix needed a
         control for.
+
+        #931 SCOPE: ``sigma_bulk = 1e4`` with no ``surface_impedance_f0``
+        is the DC fold -- a lossy VOLUME model that stamps
+        ``sigma_eff = sigma_bulk * thickness / dx`` into the material
+        arrays. Design note §1.8 fences it out of the ownership contract,
+        so the 175 S/m assertion below stays as written: a SHEET owns no
+        cell and writes no material, but this is not a sheet. The PEC row
+        of the matrix above is, and it writes nothing at all -- which is
+        why the two rows need separate controls.
 
         Asserts the two halves separately so a future failure says which
         one moved: the conductor IS at the x-lo interior edge (so the old
@@ -979,7 +1011,12 @@ class TestVmapPortFamilyEligibility:
         patch_w = 0.008
         x0 = (Lx - patch_w) / 2
         y0 = (Ly - patch_w) / 2
-        sim.add(Box((x0, y0, Lz / 2), (x0 + patch_w, y0 + patch_w, Lz / 2 + 0.001)),
+        # #931: the patch is a FOIL on the substrate top face, so it is a
+        # sheet (zero-thickness Box = the sheet declaration, §1.5). Drawn
+        # one cell thick it is a VOLUME and realizes walls at BOTH
+        # z = Lz/2 and z = Lz/2 + dx with Ez shorted between — a 1 mm
+        # solid slab where the antenna has copper foil.
+        sim.add(Box((x0, y0, Lz / 2), (x0 + patch_w, y0 + patch_w, Lz / 2)),
                 material="pec")
         sim.add_floquet_port(Lz * 0.25, axis="z", scan_theta=0.0, scan_phi=0.0,
                               polarization="te", n_freqs=10)
@@ -996,7 +1033,9 @@ class TestVmapPortFamilyEligibility:
                           boundary="cpml", cpml_layers=6, dx=0.001)
         sim.add_material("sub", eps_r=4.0)
         sim.add(Box((0, 0, 0), (0.02, 0.01, 0.002)), material="sub")
-        sim.add(Box((0, 0.004, 0.002), (0.02, 0.006, 0.003)), material="pec")
+        sim.add(Box((0, 0, 0), (0.02, 0.01, 0)), material="pec")
+        # #931: foil trace on the substrate top node plane -> a sheet.
+        sim.add(Box((0, 0.004, 0.002), (0.02, 0.006, 0.002)), material="pec")
         sim.add_msl_port(position=(0.003, 0.005, 0.0), width=0.002,
                           height=0.002, direction="+x", impedance=50.0)
 

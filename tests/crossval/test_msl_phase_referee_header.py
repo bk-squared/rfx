@@ -205,6 +205,20 @@ def test_f_notch_an_matches_cv06b_closed_form():
     own oracle, and a cross-check that this script did not silently
     diverge from the repo's existing validated formula.
 
+    #931 (2026-09-07): cv06b's realized trace width moves again when its
+    foil is declared a SHEET — 635.0um -> 571.5um on that board, so its
+    runtime ``F_NOTCH_AN`` moves a second time. This test is unaffected for
+    the same reason it was unaffected in #723: it never imports cv06b and
+    compares only against Stage A's own explicitly-meshed 600/254um board.
+    Stage A's substrate is a dielectric and dielectric sampling is untouched
+    by the contract (§1.1), so ``n_z_sub_realized`` — the quantity
+    ``_build_stage_b`` pins its mesh against — does not move either. What DOES
+    move on the referee side is ``w_trace_realized_m``: the openEMS Stage-B
+    board is meshed from rfx's realized trace, so it must be re-meshed and
+    re-run with cv06b/cv20 (crossval-B/E), and the declared-vs-realized
+    distinguishability argument (5 vs 6 substrate cells) has to be re-checked
+    rather than assumed to survive.
+
     issue #723 (2026-08-27) CORRECTION: this is the SAME formula, but NOT
     the same board as cv06b's own runtime output any more. ``module.
     F_NOTCH_AN_HZ`` here is Stage A's value (A_MSL_WIDTH_UM=600,
@@ -350,6 +364,17 @@ def test_ref_plane_shift_transform_independently_rederived():
             "trace_y_lo_realized_m": 0.0,
             "trace_y_hi_realized_m": module.B_W_TRACE_M,
             "n_z_sub_realized": round(module.B_H_SUB_M / module.B_DX_M),
+            # issue #931: _stage_b_layout refuses a fixture with no realized
+            # wall planes by name rather than falling back to the declared
+            # board. Same reason as the #723 block above -- this test is
+            # about the ref_plane_shift TRANSFORM, so these are placeholders
+            # satisfying the contract: a one-cell VOLUME strip whose lower
+            # wall is the top of the dielectric under it, which is the
+            # self-consistency _h_dielectric_under_strip asserts.
+            "trace_realization_kind": "volume",
+            "trace_wall_planes_realized": [5, 6],
+            "trace_wall_planes_realized_z_m": [
+                module.B_H_SUB_M - module.B_DX_M, module.B_H_SUB_M],
         },
         "reference_plane_geometry": {
             "msl_0": {"feed_x_m": 0.002, "direction": "+x", "probe0_x_m": 0.0045},
@@ -1235,6 +1260,32 @@ def _cx(pairs):
 
 
 def _rfx_realized_eps_eff(module):
+    """eps_eff of the board RFX built, which is the one its beta is judged
+    against (#931): the trace is a one-cell PEC volume inlaid in the
+    substrate's top cell, so the dielectric under the strip is 250um, not
+    the substrate's own realized 300um."""
+    fixture = module._load_rfx_fixture(str(RFX_FIXTURE_PATH))
+    return module._hammerstad_jensen_eps_eff(
+        fixture["meta"]["w_trace_realized_m"],
+        module._h_dielectric_under_strip(fixture["meta"]),
+        module.B_EPS_R,
+    )
+
+
+def _h_sub_realized_eps_eff(module):
+    """eps_eff of the 300um board, which two different things still are.
+
+    (1) What ``_build_stage_b_thru`` builds: the strip PROUD on the full
+        realized substrate. Kept separate from the rfx board on purpose --
+        the two ARE different, the E4 cross-solver phase witness gates that
+        difference directly, and inlaying openEMS's strip is a held decision
+        (docs/design_notes/931_migration/XE-windows-2b.md section 2).
+    (2) The board the rfx fixture had when the committed run artifacts were
+        made: pre-#931 the trace realized as ONE zero-thickness wall on the
+        full substrate, no metal thickness at all. So the historical
+        ``beta_rfx_real`` in those artifacts is judged here and not against
+        today's 250um board.
+    """
     fixture = module._load_rfx_fixture(str(RFX_FIXTURE_PATH))
     return module._hammerstad_jensen_eps_eff(
         fixture["meta"]["w_trace_realized_m"],
@@ -1270,7 +1321,14 @@ def test_external_phase_reference_budgets_are_recomputable_from_geometry():
     derivation)."""
     module = _load_referee_module()
     pre = module.EXTERNAL_PHASE_REFERENCE_PREDECLARATION
-    er, w, h, t_cond = module.B_EPS_R, 600e-6, 300e-6, module.B_DX_M
+    # #931: the analytic budget is re-derived at the board the rfx leg is
+    # judged against -- 250um of dielectric under a one-cell volume strip,
+    # not the substrate's own realized 300um. That is the LARGER of the two
+    # sums (0.0185 vs 0.0177 at 300um), so the declared tolerance covers
+    # both legs. The cross-solver budget below keeps h_sub = 300um: its
+    # terms are one-cell MESH differences in the substrate itself.
+    er, w, h_sub, t_cond = module.B_EPS_R, 600e-6, 300e-6, module.B_DX_M
+    h = h_sub - t_cond
     eps0 = module._hammerstad_jensen_eps_eff(w, h, er)
 
     # (i) Hammerstad-Jensen model accuracy, 1% in eps_eff -> 0.5% in beta.
@@ -1303,8 +1361,11 @@ def test_external_phase_reference_budgets_are_recomputable_from_geometry():
     # file's own committed +-4-cell reference-plane term.
     beta_max = 155.92
     l12 = 5.0e-3
-    dh = abs(0.5 * (module._hammerstad_jensen_eps_eff(w, h - module.B_DX_M, er) - eps0) / eps0)
-    dw = abs(0.5 * (module._hammerstad_jensen_eps_eff(w - module.B_DX_M, h, er) - eps0) / eps0)
+    eps0_sub = module._hammerstad_jensen_eps_eff(w, h_sub, er)
+    dh = abs(0.5 * (module._hammerstad_jensen_eps_eff(w, h_sub - module.B_DX_M, er)
+                    - eps0_sub) / eps0_sub)
+    dw = abs(0.5 * (module._hammerstad_jensen_eps_eff(w - module.B_DX_M, h_sub, er)
+                    - eps0_sub) / eps0_sub)
     xs = pre["cross_solver_tol_budget_deg"]
     assert math.degrees(dh * beta_max * l12) == pytest.approx(xs["h_sub_one_cell"], abs=2e-3)
     assert math.degrees(dw * beta_max * l12) == pytest.approx(xs["w_trace_one_cell"], abs=2e-3)
@@ -1320,14 +1381,25 @@ def test_self_consistency_witness_is_blind_to_a_factor_two_phase_velocity_error(
     """The audit's own measurement, pinned as a permanent record of WHY the
     two independent witnesses exist.
 
-    The audit reported 0.2414 deg for a factor-2 phase-velocity error
-    against this file's 3.0 deg gate. That number comes from SCALING the
+    The audit reported a deviation for a factor-2 phase-velocity error far
+    inside this file's 3.0 deg gate. That number comes from SCALING the
     de-embedded phase (which scales the extraction residual with it); the
     cleaner model -- rotate the through path by the extra propagation term
     and scale beta to match -- leaves the deviation BIT-IDENTICAL to its
-    unperturbed value, 0.1207 deg. Both are pinned. Neither is a matter of
-    tolerance: this witness's resolving power for the coherent-beta class
-    is zero at ANY tolerance.
+    unperturbed value. Both are pinned. Neither is a matter of tolerance:
+    this witness's resolving power for the coherent-beta class is zero at
+    ANY tolerance, which is the claim the k-loop below actually proves.
+
+    Re-pinned 2026-09-07 from the fixture re-solved under the ownership
+    contract (86cca38e), old -> new:
+      unperturbed E1 max phase deviation   0.1207 -> 0.0323 deg
+      audit-construction E1 deviation      0.2414 -> 0.0647 deg
+    The fixture's own S21 and beta changed (the trace is a one-cell PEC
+    volume now, so the strip is metal inlaid in the substrate's top cell);
+    the witness is untouched and its gate is untouched. Note the ratio
+    audit/unperturbed holds at 2.00 across the change -- the audit
+    construction doubles the extraction residual and nothing else, which
+    is why it was never a measurement of the defect.
     """
     module = _load_referee_module()
     freqs, s21, beta, layout = _rfx_fixture_s21_beta_l12(module)
@@ -1337,7 +1409,7 @@ def test_self_consistency_witness_is_blind_to_a_factor_two_phase_velocity_error(
         freqs, s21, beta, l12_m=l12, mag_band=module.B_S21_MAG_BAND,
         phase_tol_deg=module.B_PHASE_TOL_DEG, gd_tol_ps=module.B_GD_TOL_PS,
         label="baseline")
-    assert baseline["max_phase_dev_deg"] == pytest.approx(0.12072012657087564, rel=1e-9)
+    assert baseline["max_phase_dev_deg"] == pytest.approx(0.03234191236485675, rel=1e-9)
     assert baseline["evidence_level"] == "E1 (intra-run self-consistency)"
 
     # (a) the audit's construction: scale the de-embedded phase itself.
@@ -1347,7 +1419,9 @@ def test_self_consistency_witness_is_blind_to_a_factor_two_phase_velocity_error(
         phase_tol_deg=module.B_PHASE_TOL_DEG, gd_tol_ps=module.B_GD_TOL_PS,
         label="audit_construction")
     assert audit["passed"] is True
-    assert audit["max_phase_dev_deg"] == pytest.approx(0.2414, abs=5e-4)
+    assert audit["max_phase_dev_deg"] == pytest.approx(0.064684, abs=5e-6)
+    assert audit["max_phase_dev_deg"] / baseline["max_phase_dev_deg"] == pytest.approx(
+        2.0, rel=1e-9)
 
     # (b) the propagation-only construction: deviation cannot move at all.
     for k in (2.0, 0.5):
@@ -1369,7 +1443,17 @@ def test_dispersion_corrected_residual_is_blind_for_the_same_reason():
     defect class: ``residual = raw_diff - (beta_openems - beta_rfx)*L12``
     subtracts a term built from ``beta_rfx``, so doubling ``beta_rfx`` and
     the rfx phase together leaves it bit-unchanged. Only the RAW difference
-    moves -- which is why the raw one is what got gated."""
+    moves -- which is why the raw one is what got gated.
+
+    Re-pinned 2026-09-07 from the fixture re-solved under the ownership
+    contract (86cca38e), old -> new:
+      max |residual| baseline    0.715345 -> 0.791711 deg
+      max |raw| baseline           0.3418 -> 0.5308 deg
+      max |raw| at k = 2          44.8146 -> 45.7271 deg
+    The comparison's openEMS side is the same committed run-2 artifact; the
+    rfx side is the re-solved fixture, whose strip is now metal inlaid in
+    the substrate's top cell. The blindness claim asserted below is
+    structural and did not move."""
     module = _load_referee_module()
     stage_b = json.loads(_RUN2_RESULT_PATH.read_text())["stage_b"]
     freqs = np.asarray(stage_b["freqs_hz"], dtype=float)
@@ -1393,16 +1477,21 @@ def test_dispersion_corrected_residual_is_blind_for_the_same_reason():
 
     mask = module._gate_band_mask(freqs)
     assert np.allclose(resid0, resid1, atol=1e-12), "residual must be provably blind"
-    assert np.max(np.abs(resid0[mask])) == pytest.approx(0.715345, abs=1e-5)
-    assert np.max(np.abs(raw0[mask])) == pytest.approx(0.3418, abs=1e-3)
-    assert np.max(np.abs(raw1[mask])) == pytest.approx(44.8146, abs=1e-3)
+    assert np.max(np.abs(resid0[mask])) == pytest.approx(0.791711, abs=1e-5)
+    assert np.max(np.abs(raw0[mask])) == pytest.approx(0.5308, abs=1e-3)
+    assert np.max(np.abs(raw1[mask])) == pytest.approx(45.7271, abs=1e-3)
 
 
 def _independent_legs_on(module, result_path, eps_eff_openems):
+    """#931: the rfx leg of a COMMITTED run artifact is judged against the
+    300um board that artifact's own ``beta_rfx_real`` was solved on, not
+    against today's re-solved fixture (see ``_h_sub_realized_eps_eff``).
+    Grading a 2026-08 measurement on a 2026-09 board would read 0.23%
+    instead of 0.94% and would mean nothing."""
     stage_b = json.loads(pathlib.Path(result_path).read_text())["stage_b"]
     freqs = np.asarray(stage_b["freqs_hz"], dtype=float)
     cross = stage_b["cross_solver_report"]
-    eps_rfx = _rfx_realized_eps_eff(module)
+    eps_rfx = _h_sub_realized_eps_eff(module)
     rfx = module._analytic_beta_witness(
         freqs, np.asarray(cross["beta_rfx_real"], dtype=float), eps_eff=eps_rfx,
         tol_frac=module.B_BETA_ANALYTIC_TOL_FRAC, label="replay", solver="rfx")
@@ -1428,9 +1517,12 @@ def test_independent_phase_legs_pass_on_both_committed_runs():
     """
     module = _load_referee_module()
     eps_declared = module._hammerstad_jensen_eps_eff(600e-6, 254e-6, module.B_EPS_R)
-    eps_realized = _rfx_realized_eps_eff(module)
+    eps_realized = _h_sub_realized_eps_eff(module)
     assert eps_realized == pytest.approx(2.8326927491022724, rel=1e-12)
     assert eps_declared == pytest.approx(2.8693862252597855, rel=1e-12)
+    # #931: today's fixture is a different board again, and it is NOT what
+    # these historical artifacts are judged against.
+    assert _rfx_realized_eps_eff(module) == pytest.approx(2.872970226316938, rel=1e-12)
 
     rfx2, oe2, xs2 = _independent_legs_on(module, _RUN2_RESULT_PATH, eps_realized)
     assert (rfx2["passed"], oe2["passed"], xs2["passed"]) == (True, True, True)
@@ -1469,7 +1561,14 @@ def test_independent_phase_legs_fire_on_the_factor_two_phase_velocity_error():
     beta_rfx = np.real(_cx(fixture["beta_first_port"]))
     eps_rfx = _rfx_realized_eps_eff(module)
 
-    for k, dev, xs_deg in ((2.0, 1.018764, 44.8146), (0.5, 0.495643, 22.1883)):
+    # Re-pinned 2026-09-07 on the re-solved fixture (86cca38e) AND on the
+    # per-solver oracle: the rfx leg is judged against the 250um board rfx
+    # builds, so a factor-k error is measured against that board's closed
+    # form. old -> new, k = 2: dev 1.018764 -> 1.028244, cross-solver
+    # 44.8146 -> 45.7271 deg; k = 0.5: dev 0.495643 -> 0.493633,
+    # cross-solver 22.1883 -> 22.0673 deg. Both falsifiers still FIRE, by
+    # 51x and 25x their gate respectively -- the point of the test.
+    for k, dev, xs_deg in ((2.0, 1.028244, 45.7271), (0.5, 0.493633, 22.0673)):
         beta_bad = beta_rfx * k
         s21_bad = s21_rfx * np.exp(-1j * (k - 1.0) * beta_rfx * l12)
 
@@ -1519,6 +1618,12 @@ def test_independent_phase_legs_are_wired_into_sanity_passed():
     # the declared constants -- a regression to B_H_SUB_M here would make
     # the E2 leg judge a board that is not simulated.
     assert 'layout["w_trace_realized_m"], layout["h_sub_realized_m"]' in src
+    # ... and #931: each leg is judged against the board ITS OWN solver
+    # builds. Sharing one eps_eff judged rfx's beta against openEMS's
+    # substrate height and cost 0.7 percentage points of a 2.0% gate.
+    assert 'layout["h_dielectric_under_strip_realized_m"], B_EPS_R)' in src
+    assert "eps_eff=eps_eff_hj_rfx," in src
+    assert "eps_eff=eps_eff_hj_openems," in src
 
 
 def _stage_b_replay_fakes(module, monkeypatch, *, openems_k: float = 1.0):
@@ -1579,14 +1684,28 @@ def test_run_stage_b_reds_end_to_end_on_a_coherent_rfx_beta_error(monkeypatch):
     witnesses in isolation -- the cv21 ``_run_one_drive`` replay pattern.
 
     (A) run-2's committed data passes and the three independent legs equal
-    the artifact's ``cv20.run2_realized_board`` keys. (B) a coherent
-    factor-2 / factor-0.5 error on the rfx side raises naming solver
-    ``rfx`` and still carries the partial forensics; the same error on the
-    openEMS side raises naming solver ``openems`` -- the E2 leg attributes
-    to whichever side is out of envelope, including openEMS.
+    the artifact's keys. (B) a coherent factor-2 / factor-0.5 error on the
+    rfx side raises naming solver ``rfx`` and still carries the partial
+    forensics; the same error on the openEMS side raises naming solver
+    ``openems`` -- the E2 leg attributes to whichever side is out of
+    envelope, including openEMS.
+
+    #931: the replay harness fakes openEMS with run-2's field data but
+    feeds the CURRENT rfx fixture, so the legs it produces are no longer
+    run-2's own. Until the fixture was re-solved (86cca38e) the two
+    coincided and this test read ``cv20.run2_realized_board``; the artifact
+    now records that replay separately and this reads it. The historical
+    block is untouched and is still checked, by
+    ``test_independent_phase_legs_pass_on_both_committed_runs``.
     """
     module = _load_referee_module()
-    evidence = json.loads(_EVIDENCE_PATH.read_text())["cv20"]["run2_realized_board"]
+    evidence = json.loads(_EVIDENCE_PATH.read_text())["cv20"][
+        "run2_openems_with_current_rfx_fixture"]
+    # the openEMS leg is the one thing the two blocks must still agree on:
+    # the replay does not touch openEMS's own beta.
+    historical = json.loads(_EVIDENCE_PATH.read_text())["cv20"]["run2_realized_board"]
+    assert evidence["analytic_beta_openems_max_abs_dev_frac"] == pytest.approx(
+        historical["analytic_beta_openems_max_abs_dev_frac"], rel=1e-12)
 
     _stage_b_replay_fakes(module, monkeypatch)
     result = module._run_stage_b(sim_root="/tmp/_unused_812_cv20_ok", threads=1, nrts=200000,
@@ -1754,7 +1873,11 @@ def test_signed_beta_envelope_flags_rfx_and_reports_what_it_cannot_attribute(cap
     stage_b = json.loads(_RUN2_RESULT_PATH.read_text())["stage_b"]
     freqs = np.asarray(stage_b["freqs_hz"], dtype=float)
     cross = stage_b["cross_solver_report"]
-    eps = _rfx_realized_eps_eff(module)
+    # #931: both beta arrays here come from the COMMITTED run-2 artifact, so
+    # both are judged against the 300um board that run had. Judging the
+    # historical rfx beta against today's 250um board would put it inside
+    # the envelope and make the G1 finding disappear by arithmetic.
+    eps = _h_sub_realized_eps_eff(module)
     beta_rfx = np.asarray(cross["beta_rfx_real"], dtype=float)
     beta_oe = np.asarray(cross["beta_openems_real"], dtype=float)
 

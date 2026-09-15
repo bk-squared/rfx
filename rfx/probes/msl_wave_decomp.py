@@ -6,16 +6,16 @@ least-squares wave decomposition (issue #80 Fix C) that removes the
 
 Plane-probe registration helpers:
 
-  * :func:`register_msl_plane_probes` — adds 5 plane DFT probes per
-    port (Ez planes at x=x₁/x₂/x₃ for V, Hy + Hz planes at x=x₁ for
-    the closed-loop I) via :meth:`Simulation.add_dft_plane_probe` and
+  * :func:`register_msl_plane_probes` — adds 7 plane DFT probes per
+    port (Ez planes at x=x₁/x₂/x₃ for V, bracketing Hy + Hz planes for
+    the closed-loop I at x=x₁) via :meth:`Simulation.add_dft_plane_probe` and
     returns the static integration metadata (trace-PEC-search-derived
     j/k spans, per-cell dz/dy profiles, the leapfrog half-step phase)
     that :func:`_v_from_plane` / :func:`_i_from_plane` feed straight
     into the PRODUCTION primitives (:func:`rfx.api._sparams.
     msl_modal_voltage`, :func:`rfx.sources.msl_port.msl_loop_current`)
-    -- issue #514: this path used to duplicate those integrals and
-    drifted; it now calls them, so it cannot drift again.
+    -- issue #514 shares the transverse integrals; issue #726 also shares
+    the H-to-E-plane interpolation with production.
 
 Point-probe registration helper:
 
@@ -185,6 +185,11 @@ class MSLPlaneProbeSet:
     direction: str            # port propagation direction ("+x" / "-x")
     hs_phase: jnp.ndarray      # (n_freqs,) leapfrog E/H half-step phase (#240)
     delta: float                # adjacent-probe spacing (for diagnostics)
+    # Append defaults so existing constructors remain valid. Extraction
+    # refuses legacy metadata instead of silently retaining staggered I.
+    hy_left_name: str | None = None
+    hz_left_name: str | None = None
+    h_weights: tuple[float, float] | None = None
 
 
 def register_msl_plane_probes(
@@ -194,7 +199,7 @@ def register_msl_plane_probes(
     freqs: jnp.ndarray,
     name_prefix: str | None = None,
 ) -> MSLPlaneProbeSet:
-    """Register 5 plane DFT probes for a registered MSL port + return metadata.
+    """Register 7 plane DFT probes for a registered MSL port + return metadata.
 
     Computes the SAME geometry ``compute_msl_s_matrix`` computes
     (``rfx/api/_sparams.py:2953-3072``) so :func:`_v_from_plane` /
@@ -211,7 +216,8 @@ def register_msl_plane_probes(
         ``frac(h_sub/dx) in (0, 0.5)`` (issue #511 / PR #516 finding F2;
         see ``msl_modal_voltage``'s docstring).
       * I at probe 1: the closed Ampere loop ``∮H·dl`` around the trace
-        conductor from the Hy + Hz planes at the same yz plane, via
+        conductor from Hy + Hz on the two bracketing Yee half-planes,
+        interpolated to the voltage plane before
         :func:`rfx.sources.msl_port.msl_loop_current`.
 
     Parameters
@@ -224,7 +230,7 @@ def register_msl_plane_probes(
     freqs : (n_freqs,) jnp.ndarray
         Target frequencies — same convention as ``add_dft_plane_probe``.
     name_prefix : str, optional
-        Prefix for the five registered DFT-plane names.  Default
+        Prefix for the seven registered DFT-plane names. Default
         ``f"msl_p{port_index}"``.
 
     Returns
@@ -233,7 +239,8 @@ def register_msl_plane_probes(
     """
     import numpy as np
     from rfx.sources.msl_port import (
-        msl_cross_section_span, msl_port_from_entry, msl_probe_x_coords,
+        msl_cross_section_span, msl_h_plane_stencil, msl_port_from_entry,
+        msl_probe_x_coords,
     )
 
     if name_prefix is None:
@@ -292,13 +299,14 @@ def register_msl_plane_probes(
         n_spacing_cells=pe.n_probe_spacing
             if pe.n_probe_spacing is not None else 3,
     )
+    h_stencil = msl_h_plane_stencil(grid, mp, pxs[0])
 
     # Cross-section index metadata, identical to compute_msl_s_matrix's
     # per-port meta (rfx/api/_sparams.py:2961-2980).
     span = msl_cross_section_span(grid, mp)
     j_centre = span["w_centre"]
     j_lo, j_hi = span["w_lo"], span["w_hi"]     # trace-conductor width span
-    k_lo, k_top = span["n_lo"], span["n_hi"]     # ground .. substrate-top proxy
+    k_lo = span["n_lo"]                          # ground plane proxy
 
     # Per-axis cell-size arrays (uniform mesh only — see the NU refusal above).
     def _profile(axis: str, n: int) -> np.ndarray:
@@ -311,30 +319,24 @@ def register_msl_plane_probes(
     dy_arr = _profile("y", grid.ny)
     dz_arr = _profile("z", grid.nz)
 
-    # Trace-PEC search — IDENTICAL to compute_msl_s_matrix's
-    # trace_k_per_port (rfx/api/_sparams.py:3008-3072): walk UP the
-    # substrate-normal axis from the substrate top, at the feed column and
-    # trace centre, and find the PEC run. This is what anchors k_hi on the
-    # rasterized trace node instead of the round(h_sub/dx) proxy.
-    _msl_assembled = sim._assemble_materials(grid)
-    _pec_mask = (
-        None if _msl_assembled[3] is None else np.asarray(_msl_assembled[3])
-    )
-    _sel = [0, 0, 0]
-    _sel[span["prop_idx"]] = span["i_feed"]
-    _sel[span["width_idx"]] = j_centre
-    _sel[span["normal_idx"]] = slice(k_top, None)
-    col = None if _pec_mask is None else _pec_mask[tuple(_sel)]
-    k_pec = np.array([], dtype=int) if col is None else np.where(col)[0]
-    if k_pec.size == 0:
+    # Trace search — IDENTICAL to compute_msl_s_matrix's trace_k_per_port
+    # (rfx/api/_sparams.py): walk UP the substrate-normal axis from the
+    # substrate top, at the feed column and trace centre, and find the
+    # realized PEC WALL PLANES. #931 §1.9: this used to scan the pec_mask
+    # CELL column, which finds a volume trace one plane low and misses a
+    # sheet-declared trace entirely (a sheet owns no cell). The V span
+    # (ground wall plane -> trace plane) and the Ampere loop legs now
+    # anchor on the same realized planes.
+    k_trace_lo, k_trace_hi = _realized_trace_planes(sim, grid, span, j_centre)
+    if k_trace_lo is None:
         raise RuntimeError(
-            "register_msl_plane_probes: no PEC trace conductor found above "
-            f"the substrate top for MSL port {port_index} ({pe.name!r}); "
-            "the closed Ampere-loop current needs the trace PEC. Add the "
-            "microstrip trace as a Box(material='pec')."
+            "register_msl_plane_probes: no realized PEC trace conductor "
+            "found above the substrate top for MSL port "
+            f"{port_index} ({pe.name!r}); the closed Ampere-loop current "
+            "needs the trace. Declare the microstrip trace as a "
+            "Box(material='pec') (a volume) or as a zero-thickness Box / "
+            "add_thin_conductor (a sheet)."
         )
-    k_trace_lo = int(k_top + int(k_pec.min()))
-    k_trace_hi = int(k_top + int(k_pec.max()))
 
     delta = float(abs(pxs[1] - pxs[0]))
 
@@ -348,25 +350,31 @@ def register_msl_plane_probes(
         * (float(grid.dt) * 0.5)
     ).astype(jnp.complex64)
 
-    # Register the 5 plane DFT probes (3 Ez + Hy + Hz for the closed
-    # Ampere loop).  The accumulators are filled inside the JIT scan body
+    # Register 3 Ez planes and two bracketing planes for each H component.
+    # The accumulators are filled inside the JIT scan body
     # and surfaced through ``ForwardResult.dft_planes[name]``.
     ez_names = [f"{name_prefix}_ez{q+1}" for q in range(3)]
     hy_name = f"{name_prefix}_hy"
     hz_name = f"{name_prefix}_hz"
+    hy_left_name = f"{hy_name}_left"
+    hz_left_name = f"{hz_name}_left"
     for q in range(3):
         sim.add_dft_plane_probe(
             axis="x", coordinate=float(pxs[q]),
             component="ez", freqs=freqs, name=ez_names[q],
         )
-    sim.add_dft_plane_probe(
-        axis="x", coordinate=float(pxs[0]),
-        component="hy", freqs=freqs, name=hy_name,
-    )
-    sim.add_dft_plane_probe(
-        axis="x", coordinate=float(pxs[0]),
-        component="hz", freqs=freqs, name=hz_name,
-    )
+    # Preserve the original five names and their registration order;
+    # append the two new left H planes. Coordinates name array indices,
+    # while the stencil accounts for H's physical half-cell offset.
+    for coordinate, names in (
+        (h_stencil["registration_coordinates"][1], (hy_name, hz_name)),
+        (h_stencil["registration_coordinates"][0], (hy_left_name, hz_left_name)),
+    ):
+        for component, name in zip(("hy", "hz"), names):
+            sim.add_dft_plane_probe(
+                axis=h_stencil["axis"], coordinate=coordinate,
+                component=component, freqs=freqs, name=name,
+            )
 
     return MSLPlaneProbeSet(
         ez1_name=ez_names[0], ez2_name=ez_names[1], ez3_name=ez_names[2],
@@ -380,7 +388,55 @@ def register_msl_plane_probes(
         direction=mp.direction,
         hs_phase=hs_phase,
         delta=delta,
+        hy_left_name=hy_left_name,
+        hz_left_name=hz_left_name,
+        h_weights=h_stencil["weights"],
     )
+
+
+def realized_trace_planes_on_column(pec_edge_masks, normal_idx, ij, k_from,
+                                    periodic=(False, False, False)):
+    """Lowest and highest realized PEC wall plane on one column, at or
+    above ``k_from`` along ``normal_idx`` (#931 §1.9).
+
+    Replaces the ``pec_mask`` CELL scan every MSL trace detector used.  A
+    volume trace answers with its LOWER wall plane and its far face; a
+    sheet trace answers with its single plane.  ``(None, None)`` when the
+    column carries no realized PEC above ``k_from``.  ``periodic`` is the
+    run's #689 flags, forwarded so a column on the seam node of a periodic
+    in-plane axis finds its backward incident edge.
+    """
+    from rfx.boundaries.pec import realized_wall_planes
+    if pec_edge_masks is None:
+        return None, None
+    planes = [k for k in realized_wall_planes(
+        pec_edge_masks, normal_idx, ij=ij, periodic=periodic)
+        if k >= int(k_from)]
+    if not planes:
+        return None, None
+    return int(min(planes)), int(max(planes))
+
+
+def _realized_trace_planes(sim, grid, span, j_centre):
+    """``realized_trace_planes_on_column`` for the uniform diagnostic path."""
+    from rfx.boundaries.pec import realized_pec_edge_masks
+    _pec_sheets: list = []
+    _pec_wires: list = []
+    _assembled = sim._assemble_materials(
+        grid, pec_sheets=_pec_sheets, pec_wires=_pec_wires)
+    _pec_mask = _assembled[3]
+    if _pec_mask is None and not _pec_sheets and not _pec_wires:
+        return None, None
+    _periodic = sim._periodic_flags()
+    masks = realized_pec_edge_masks(
+        _pec_mask, sheets=tuple(_pec_sheets), wires=tuple(_pec_wires),
+        periodic=_periodic)
+    ij = tuple(
+        span["i_feed"] if c == span["prop_idx"] else int(j_centre)
+        for c in range(3) if c != span["normal_idx"]
+    )
+    return realized_trace_planes_on_column(
+        masks, span["normal_idx"], ij, span["n_hi"], periodic=_periodic)
 
 
 def _v_from_plane(fr, plane_name: str, p: MSLPlaneProbeSet) -> jnp.ndarray:
@@ -405,9 +461,11 @@ def _v_from_plane(fr, plane_name: str, p: MSLPlaneProbeSet) -> jnp.ndarray:
 def _i_from_plane(fr, plane_name: str, p: MSLPlaneProbeSet) -> jnp.ndarray:
     """I_f = production ``msl_loop_current`` closed Ampere loop.
 
-    ``plane_name`` names the Hy plane; the Hz plane comes from
-    ``p.hz_name`` (both registered together by
-    :func:`register_msl_plane_probes`). Issue #514: this used to
+    ``plane_name`` names the retained right Hy plane; its left neighbour
+    and both Hz planes are registered by :func:`register_msl_plane_probes`.
+    Interpolate each H pair to the voltage E-node before the temporal
+    correction. Missing bracketing metadata or data is an error.
+    Issue #514: this used to
     integrate a single pre-#80 Hy slab (~1.5x undercount vs. the closed
     loop). It now applies the leapfrog E/H half-step phase (#240) and
     calls :func:`rfx.sources.msl_port.msl_loop_current` directly with the
@@ -415,9 +473,21 @@ def _i_from_plane(fr, plane_name: str, p: MSLPlaneProbeSet) -> jnp.ndarray:
     convention comes from ``msl_loop_current``/``msl_axis_roles`` alone —
     no extra direction multiply here (that would double-apply the sign).
     """
-    from rfx.sources.msl_port import msl_loop_current
-    hy_plane = jnp.asarray(fr.dft_planes[plane_name].accumulator)
-    hz_plane = jnp.asarray(fr.dft_planes[p.hz_name].accumulator)
+    from rfx.sources.msl_port import msl_collocate_h_planes, msl_loop_current
+
+    if p.hy_left_name is None or p.hz_left_name is None or p.h_weights is None:
+        raise ValueError(
+            "MSL current requires bracketing H-plane metadata; "
+            "re-register the plane probes and acquire both H samples")
+    planes = getattr(fr, "dft_planes", None) or {}
+    required = (p.hy_left_name, plane_name, p.hz_left_name, p.hz_name)
+    missing = [name for name in required if name not in planes]
+    if missing:
+        raise ValueError(f"MSL current requires bracketing H-plane data; missing {missing}")
+    hy_plane = msl_collocate_h_planes(
+        planes[p.hy_left_name].accumulator, planes[plane_name].accumulator, p.h_weights)
+    hz_plane = msl_collocate_h_planes(
+        planes[p.hz_left_name].accumulator, planes[p.hz_name].accumulator, p.h_weights)
     hy_plane = hy_plane * p.hs_phase[:, None, None].astype(hy_plane.dtype)
     hz_plane = hz_plane * p.hs_phase[:, None, None].astype(hz_plane.dtype)
     return msl_loop_current(

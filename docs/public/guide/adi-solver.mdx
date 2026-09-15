@@ -1,6 +1,6 @@
 ---
 title: "ADI Solver (Experimental)"
-description: "Unconditionally stable ADI-FDTD for stiff meshes: the timestep trade, the accuracy envelope, and what is and is not yet validated."
+description: "Experimental ADI-FDTD: the cavity accuracy envelope, timestep trade, and unsupported interior PEC."
 sidebar:
   order: 9
 ---
@@ -11,10 +11,24 @@ substrate, a coating, or a narrow gap forces a small timestep on the whole
 domain even when the wavelength is large. That is the stiff-mesh problem.
 
 `solver="adi"` (Alternating-Direction-Implicit, the Zheng–Chen–Zhang two-sub-step
-3D scheme since #338) is **unconditionally stable**: it stays bounded at any
-timestep.
-`adi_cfl_factor` sets how far past the standard limit you push. Stability is
-free; wavelength-scale accuracy is not.
+3D scheme since #338) removes the explicit CFL stability restriction for the
+homogeneous, lossless split with compatible domain boundaries.
+`adi_cfl_factor` scales the grid's Yee timestep; accuracy still depends on it.
+This guarantee does **not** extend to the current interior PEC projection.
+
+**Interior PEC is refused on both 3D and 2D TMz ADI, at every factor.**
+Preflight reports the error `adi_interior_pec_unsupported`; `run()`, `forward()`,
+and the low-level ADI step/run functions enforce it even when preflight is
+skipped. Sheets, wires, and volumes must be retained: use `solver="yee"`.
+Domain-boundary PEC without interior conductors remains supported.
+
+The shipped factor 5 produced growing and non-finite sheet traces on both
+lanes. Factor 1 also grew over longer runs (3D sheet peak 4.33e6; TMz sheet
+peak 1.77e19 at 4,000 steps). Lowering or clamping the factor is therefore not
+a supported remedy. A supplied internal mask is rejected structurally, even
+when all entries are false, so the guard also works under JAX tracing; use
+`None` for an absent mask. Differentiable PEC occupancy overrides have no ADI
+carrier and are explicitly refused too.
 
 ## When to reach for it
 
@@ -69,11 +83,12 @@ wavelength, reads a cavity TE101 at **−0.54% (factor 2)** and **−2.6% (facto
   cavity eigenfrequency matches the closed-form mode within the 2% gate at
   `adi_cfl_factor = 2` (`tests/unit/misc/test_review_tier1_validation_battery.py`,
   measured 1.2%). The 2D TMz path (`mode="2d_tmz"`) holds a 2% resonance gate at
-  5× CFL (`tests/unit/runners/test_adi.py::test_adi_cavity_resonance`) and is unconditionally
-  stable well beyond it.
+  5× CFL (`tests/unit/runners/test_adi.py::test_adi_cavity_resonance`). These
+  cavities contain no interior conductor; they do not validate internal PEC
+  or arbitrary material discontinuities.
 - **The stiff-mesh throughput advantage is not yet demonstrated.** The larger
-  timestep is a real property of an unconditionally stable scheme, but a
-  measured end-to-end speed-and-accuracy result on a genuinely stiff production
+  timestep is permitted by the homogeneous ADI stability analysis, but a
+  measured end-to-end speed-and-accuracy result on a stiff production
   mesh has not been published. Do not read ADI as a validated speed-up.
 - ADI is an **experimental solver lane**. Use the explicit Yee solver for
   claims-bearing 3D physics.

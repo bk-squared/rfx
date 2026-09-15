@@ -29,7 +29,7 @@ The S-matrix convention is always:
 S[receiver_port, driven_port, frequency_index]
 ```
 
-## Replay formula
+## Lumped/wire replay formula
 
 The independent replay uses the power-wave split, role-selected per port to
 match the production lumped decomposer (issue #308):
@@ -59,6 +59,22 @@ applies:
 a_ref = a_raw exp(-gamma d)
 b_ref = b_raw exp(+gamma d)
 ```
+
+## MSL records
+
+The loader also accepts `rfx.msl_nprobe_dump` with `raw_v` (drive, port,
+probe, frequency) and `raw_i1` (drive, port, frequency). Probe zero defines
+the S plane. It requires the actual `s_reference_impedances_ohm`; source/load
+resistance and fitted Z0 cannot fill missing references in historical dumps.
+
+MSL v3 uses voltage waves and v4 uses positive-real-reference power waves.
+Replay solves the full recorded system `B = S A` for `multi_drive_solve`,
+or reproduces the declared `single_ratio_fallback`. It keeps native MSL
+current orientation, without the lumped receiving-role transformation above.
+No reference-plane shifts are inferred. See the
+[MSL power contract](msl_power_contract.md) for formulas, compatibility,
+fallback limitations, and the distinction between algebraic replay and
+electromagnetic accuracy.
 
 ## APIs and CLI
 

@@ -1,0 +1,18 @@
+/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/scripts/harnesses/v173a_physics_equivalence.py:48: DeprecationWarning: pec_faces= kwarg is deprecated; encode PEC faces in BoundarySpec instead (e.g. boundary=BoundarySpec(x='cpml', y='cpml', z=Boundary(lo='pec', hi='cpml'))). The kwarg will be removed in rfx v2.0.
+  sim = Simulation(
+/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/scripts/harnesses/v173a_physics_equivalence.py:56: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+  sim.add_thin_conductor(Box(lo, hi), sigma_bulk=5.8e7, thickness=35e-6)
+/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/scripts/harnesses/v173a_physics_equivalence.py:96: UserWarning: [run] preflight found 1 advisory issue(s) - pass skip_preflight=True to suppress:
+  - all dielectric(s) ['fr4'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+  result = sim.run(n_steps=n_steps)
+  [PREFLIGHT] all dielectric(s) ['fr4'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+Traceback (most recent call last):
+  File "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/scripts/harnesses/v173a_physics_equivalence.py", line 131, in <module>
+    main()
+  File "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/scripts/harnesses/v173a_physics_equivalence.py", line 122, in main
+    payload, trace = run_capture(n_steps=args.n_steps, dx=args.dx)
+  File "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/scripts/harnesses/v173a_physics_equivalence.py", line 98, in run_capture
+    payload = _measure(ts, dt)
+  File "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/scripts/harnesses/v173a_physics_equivalence.py", line 82, in _measure
+    raise ValueError("no observable probe mode in the declared band")
+ValueError: no observable probe mode in the declared band

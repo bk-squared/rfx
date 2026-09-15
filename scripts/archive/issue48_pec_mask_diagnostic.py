@@ -116,7 +116,7 @@ def _report(label, sim, expected):
         z_edges = np.concatenate([[0.0], np.cumsum(dz)])
         z_edges = z_edges - z_edges[grid.cpml_layers]
         z_centres = 0.5 * (z_edges[:-1] + z_edges[1:])
-        materials, _, _, pec_mask = assemble_materials_nu(sim, grid)
+        materials, _, _, pec_mask = assemble_materials_nu(sim, grid, pec_sheets=[], pec_wires=[])
         feed_idx = pos_to_nu_index(grid, sim._ports[0].position)
     else:
         grid = sim._build_grid()
@@ -124,7 +124,7 @@ def _report(label, sim, expected):
         z_edges = (np.arange(grid.nz + 1) - grid.cpml_layers) * grid.dx
         z_centres = 0.5 * (z_edges[:-1] + z_edges[1:])
         # Materials assembled during run; get via _assemble_materials
-        mat, _, _, pec_mask, _, _ = sim._assemble_materials(grid)
+        mat, _, _, pec_mask, _, _ = sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])
         materials = mat
         # Uniform pos_to_index
         feed_idx = grid.position_to_index(sim._ports[0].position)

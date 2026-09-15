@@ -1,5 +1,22 @@
 # THRU feed-post de-embedding — pre-declaration (PI disposition (b) on the held #683 gate)
 
+> **SUPERSEDED IN PART by #931 (the lattice ownership contract), 2026-09-07.**
+> Kept as dated history and deliberately NOT rewritten.
+> Section 2's fixture description — the feed post as an "Ez column, 3 cells,
+> top cell dead inside the PEC trace" — counts a dead cell produced by the
+> deleted neighbour rule under a one-cell PEC trace. Under #931 a one-cell PEC
+> Box is a VOLUME (walls on both drawn planes, the Ez edge between them
+> shorted) and a foil trace is declared as a SHEET (one plane, the normal edge
+> live); a wire port's live/dead cells are read from `edge_is_pec` on the
+> port's own component, not from a cell scan. The de-embedding algebra, the
+> #313 constants and every measured number here are unaffected — only the
+> sentence describing how the trace lands on the lattice is. The same
+> correction applies to attempts 2-4, which carry this fixture forward by
+> pointer.
+> The current rule is
+> `docs/design_notes/20260906_plan_realign_lattice_ownership.md` §1 and §1.9,
+> and for users `docs/public/guide/materials-geometry.mdx`.
+
 Status: BINDING. Committed BEFORE any new measurement. Sections 1-6 are
 frozen at commit time; results are APPENDED in later sections, never
 edited back into these. No window below may be widened after a

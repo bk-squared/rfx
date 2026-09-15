@@ -458,13 +458,31 @@ def test_production_boundary_terminated_rejects_static_material_transition_near_
 
 
 def test_production_boundary_terminated_accepts_guarded_pec_at_interface():
+    """A PEC volume whose TOP face is the subgrid interface plane is
+    accepted inside the guarded envelope.
+
+    #931: the box is drawn ON node planes (0.014 -> 0.016 at dx = 2 mm),
+    so drawn extent == realized extent: one occupied cell, walls at both
+    0.014 and 0.016, and 0.016 IS the interface ``zhi``. The old corners
+    (0.015 -> 0.017) sat half a cell off the node line in both directions;
+    the occupied cell is the same one either way, but the drawing did not
+    say which planes the body meant, and "PEC touches the interface" is
+    exactly a question about planes.
+    """
     sim = Simulation(freq_max=8e9, domain=(0.04, 0.04, 0.024), boundary="pec", dx=0.002)
-    sim.add(Box((0.010, 0.010, 0.015), (0.030, 0.030, 0.017)), material="pec")
+    sim.add(Box((0.010, 0.010, 0.014), (0.030, 0.030, 0.016)), material="pec")
     zlo, zhi = (0.0, 0.016)
     span = zhi - zlo
     sim.add_refinement(z_range=(zlo, zhi), ratio=2, validation="production")
     sim.add_source((0.006, 0.006, zlo + 0.45 * span), "ez")
     sim.add_probe((0.008, 0.006, zlo + 0.55 * span), "ez")
+
+    # Build-time (no solve): the realized top wall IS the interface plane,
+    # which is the configuration this test says is guarded-acceptable.
+    from tests._realized_geometry import assert_wall_planes, realized
+    assert not realized(sim).sheets, "this body is a volume"
+    assert_wall_planes(sim, 2, [0.014, 0.016],
+                       what="guarded PEC block at the subgrid interface")
 
     report = sim.validate_subgrid()
 

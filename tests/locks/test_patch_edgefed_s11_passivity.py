@@ -54,30 +54,80 @@ scoring: ``docs/design_notes/issue782_retired_resonance_predeclaration.md``. Mea
     min|S11| over (8.4, 9.2) GHz = 0.8794
     global dip 10.100 GHz, |S11| = 0.4426 (the off-resonance match point)
 
-  (1) PASSIVITY:          max|S11| <= 1.05      (the #80 fix; 0.9921 measured settled)
-  (2) EDGE-FED SIGNATURE: |S11| > 0.70 across RES_BAND_GHZ = (8.4, 9.2)
+RE-PINNED 2026-09-07 FOR #931 (VESSL 369367259226, same builder, same freqs,
+same num_periods = 280, both arms settled, cavity advisory silent)
+------------------------------------------------------------------------------
+The board above was drawn with a CELL RESERVED for each foil, and rfx used to
+re-sample a sheet's own cell material onto its live edge (#702), so the reserved
+cell silently became laminate and the electrical cavity was 983.75 um where the
+board declares 787. The ownership contract deletes that re-sample, so this
+fixture now draws each foil ON the laminate face it bounds and the cavity is
+four cells of laminate and nothing else (asserted at build time, no solve).
+
+The structure of the gate is unchanged and so is every threshold; the BOARD
+moved, so the band that brackets its antiresonance moved with it:
+
+    max|S11| = 0.9837
+    port-plane antiresonance: Im(Zin) zero-crossing at 7.7620 GHz, Re(Zin) peak
+        4157 ohm at the 7.7 GHz bin (1119 ohm at 7.8)
+    min|S11| over (7.4, 8.2) GHz = 0.9096
+    dip 8.800 GHz, |S11| = 0.6418 (the off-resonance match point, still OUTSIDE
+        the resonance band — the assertion (2) thesis is intact)
+
+WHY IT MOVED DOWN while the isolated patch moved UP (Board H's Leg A went
+-6.17 -> -1.871 % on the same redraw): they are different features. The patch
+mode rises because a thinner cavity fringes less. THIS number is the port-plane
+antiresonance of a patch loaded by a 13.18 mm open feed stub, and a thinner
+substrate RAISES eps_eff, so the stub is electrically longer and its resonance
+falls. The two directions are the reason the fed and unfed terms are pinned
+separately in the harminv companion.
+
+  (1) PASSIVITY:          max|S11| <= 1.05      (the #80 fix; 0.9837 measured
+      settled on the redrawn board, 0.9921 on the pre-#931 one)
+  (2) EDGE-FED SIGNATURE: |S11| > 0.70 across RES_BAND_GHZ = (7.4, 8.2)
+      (the pre-#931 board's band was (8.4, 9.2))
       => the patch is poorly matched at its resonance => the dip is NOT the resonance.
   (2b) IN-BAND RESONANCE WITNESS: an Im(Zin) = 0 crossing exists inside the band —
       the resonance the band names is actually there. This is what makes (2)
       falsifiable: without it the band gate would pass over any dead spectral region
       (that is exactly how the retired (9.0, 9.42) band failed, #782).
   (2c) the in-band max Re(Zin) exceeds 500 ohm — the high-impedance antiresonance
-      that MAKES "poorly matched at resonance" the right physics (measured 4326).
-  (3) (soft) the global |S11| minimum lies ABOVE the band (measured 10.100 > 9.2).
+      that MAKES "poorly matched at resonance" the right physics (measured 4157 on
+      the #931 redraw; 4326 on the board this gate was first written for).
+  (3) (soft) the global |S11| minimum lies ABOVE the band (measured 8.800 > 8.2;
+      10.100 > 9.2 on the pre-#931 board).
+
+  Every reading in (1)-(3) above is from VESSL 369367259239, the confirm run
+  on the re-pinned band; 369367259226 is the evidence run they were pinned
+  from and reproduces them.
 
 The crossing is a PORT-PLANE observable — the antiresonance seen through the feed
 line, reference-plane dependent — so it is an existence witness inside a band, never a
 frequency gate, and it must not be quoted as "the TM010 modal frequency" (the
 companion's modal numbers live on Board H). Identity of the in-band feature — never
-amplitude rank: the y-centred feed parity-suppresses TM001 (Board-S realized-raster
-Balanis 8.0016 GHz shows only as a non-crossing Re(Zin) ~ 30 ohm wiggle at
-7.9-8.1 GHz, below the band), and the 4.3-kohm Re peak is the edge-fed patch
-antiresonance class the pre-#702 witness also saw (Re peaks > 1.5 kohm); the modal
+amplitude rank: the y-centred feed parity-suppresses TM001. On the pre-#931 board
+that mode (Board-S realized-raster Balanis 8.0016 GHz) sat BELOW the band and showed
+only as a non-crossing Re(Zin) ~ 30 ohm wiggle at 7.9-8.1 GHz. On the redrawn 787 um
+board it sits INSIDE the band — the companion reads Balanis TM001 8.0188 GHz for its
+own raster on the same redrawn stack (VESSL 369367259250; 787.0 um on Board H, 788.0
+on Board S, the 0.005-cell mesh incommensurability), and the axis that sets TM001 is
+51 cells on BOTH boards at a dx 0.13 % apart, so Board S's TM001 lands within a tenth
+of a percent of that — and it shows neither a crossing nor a bump: 7.9 / 8.0 /
+8.1 GHz read Re(Zin) 352 / 159 / 89 ohm on the monotone skirt of the antiresonance,
+and the only in-band crossing is 7.7620 (all crossings 7.762 / 9.3154 / 11.5136, VESSL
+369367259239). So the in-band feature is still identified by CROSSING EXISTENCE, and
+the reason has changed: the suppressed mode is no longer out of the band, it is inside
+it and silent. The 4.2-kohm Re peak is the edge-fed patch antiresonance class the pre-#702 witness also saw (Re peaks > 1.5 kohm); the modal
 labelling chain (spatial parity across a probe cross, windowed-DFT nodal check,
 single-dimension perturbation, Balanis both modes per realized raster) lives in the
 companion gate and the #782 ledger record.
 
-DISCRIMINATION (#702 falsifier, scored in the predeclaration note): with
+DISCRIMINATION (#702 falsifier, scored in the predeclaration note) — HISTORY as of
+#931: the arm below is no longer buildable, because the contract deletes
+``resample_sheet_node_materials`` AND this board no longer reserves a cell for the
+re-sample to act on. The discharge is recorded in
+``docs/design_notes/issue782_retired_resonance_predeclaration.md`` Section 4; the
+paragraph stays because it is what the gate's assertions were shaped by. With
 ``resample_sheet_node_materials`` disabled — the bit-exact pre-#702 physics — the same
 config puts the antiresonance at 9.5-9.6 GHz (Re(Zin) peak 5255 ohm at 9.6, OUT of
 band; crossings 9.108 / 9.325 / 9.629 / 11.366, dip 11.400). (2c) FAILS on that
@@ -139,17 +189,33 @@ W_MSL = 1.8e-3
 L_MSL = 8.0e-3
 PORT_MARGIN = 5.0e-3
 DX = 0.197e-3
+# Board height SNAPPED TO THE NODE LINE (#931 §1.3 off-lattice interfaces): the
+# stack used to start at a bare 4 mm, which on this mesh sits 0.33 of a cell off
+# the node line, so a foil declared on a laminate face snapped to a node the
+# laminate's own half-open sampling did not start at. dx = 197 um is not an exact
+# divisor of H_SUB (3.995 cells), so the laminate's top face still lands 0.005 of
+# a cell off its node — 1.0 um, which the realized-cavity assertion below reads
+# and preflight's 1 % cavity check passes.
+Z_GND = round(4e-3 / DX) * DX
+Z_SUB_LO = Z_GND
+Z_SUB_HI = Z_GND + H_SUB
 DOM_X = 29.747e-3
 DOM_Y = 18.130e-3
 DOM_Z = 12.787e-3
 Y_C = DOM_Y / 2.0
 
 PASSIVE_TOL = 1.05           # |S11| <= 1 + numerical slack (the #80 passivity fix)
-RES_BAND_GHZ = (8.4, 9.2)    # measured antiresonance neighbourhood on THIS board
-#                              (crossing 8.8189 GHz, 2026-09-01 provenance run; the
-#                              pre-#702 band (9.0, 9.42) is retired — issue #782)
-RES_BAND_S11_MIN = 0.70      # poorly matched there (measured in-band min 0.8794)
-RES_BAND_RE_ZIN_MIN_OHM = 500.0  # in-band antiresonance Re peak (measured 4326 ohm)
+RES_BAND_GHZ = (7.4, 8.2)    # measured antiresonance neighbourhood on THIS board
+#                              (crossing 7.7620 GHz, VESSL 369367259226 on the
+#                              #931 redraw; SAME +-0.4 GHz half-width as the
+#                              8.8189 GHz band it replaces, re-centred on the
+#                              measured crossing and rounded to the 0.1 GHz DFT
+#                              bins. The pre-#931 band (8.4, 9.2) and the
+#                              pre-#702 band (9.0, 9.42) are both retired —
+#                              issue #782, then #931's laminate-face redraw)
+RES_BAND_S11_MIN = 0.70      # UNCHANGED threshold (in-band min measured 0.9096)
+RES_BAND_RE_ZIN_MIN_OHM = 500.0  # UNCHANGED threshold (in-band antiresonance Re
+#                              peak measured 4157 ohm; 4326 on the old board)
 
 # Realized patch raster this band was pinned on: 44 x 51 cells = 8.668 x 10.047 mm at
 # dx = 197 um ("Board S"). NOT the harminv companion's 43 x 51 at h/4 (issue #782).
@@ -157,9 +223,8 @@ RASTER_CELLS = (44, 51)
 
 
 def _patch_box() -> Box:
-    return Box((PORT_MARGIN + L_MSL, Y_C - W / 2, 4e-3 + DX + H_SUB + DX),
-               (PORT_MARGIN + L_MSL + L, Y_C + W / 2,
-                4e-3 + DX + H_SUB + 2 * DX))
+    return Box((PORT_MARGIN + L_MSL, Y_C - W / 2, Z_SUB_HI),
+               (PORT_MARGIN + L_MSL + L, Y_C + W / 2, Z_SUB_HI))
 
 
 def _build_patch_sim() -> Simulation:
@@ -168,16 +233,37 @@ def _build_patch_sim() -> Simulation:
         dx=DX, cpml_layers=8, boundary="cpml",
     )
     sim.add_material("ro4003c", eps_r=EPS_R, sigma=0.0)
-    sim.add(Box((0, 0, 4e-3), (DOM_X, DOM_Y, 4e-3 + DX)), material="pec")
-    sim.add(Box((0, 0, 4e-3 + DX), (DOM_X, DOM_Y, 4e-3 + DX + H_SUB)),
+    # Ground, feed trace and patch are FOILS: zero-thickness sheets ON the two
+    # laminate faces (#931 §1.3, and amendment §6 "a foil sheet goes on the
+    # dielectric INTERFACE it bounds").
+    #
+    # The board used to reserve a CELL for each foil — the ground in
+    # [4.000, 4.197] mm below a laminate that only started at 4.197, and the
+    # trace a further cell ABOVE the laminate top. Under the old rule that cost
+    # nothing visible, because rfx re-sampled a sheet's own cell material onto
+    # its live edge (#702). The contract deletes that re-sample: a sheet owns no
+    # cell, so a reserved cell is a vacuum cell and it sits in series with the
+    # cavity. Measured on the un-redrawn board (VESSL 369367259174): walls at
+    # nodes 29 and 34 with preflight #703 reading sum(d/eps) 627.1 um mesh vs
+    # 429.8 um physical (+45.9 %), the Im(Zin) antiresonance at 9.3453 GHz
+    # instead of 8.8189, and Re(Zin) NEGATIVE across most of the band.
+    #
+    # Redrawn: laminate H_SUB thick between two node planes, a foil on each,
+    # every cell of the cavity the laminate. The MSL port already declares
+    # exactly this stack (its foot is at the laminate bottom and its height is
+    # H_SUB), which is the second reason the reserved cells were wrong: the
+    # port's ground reference and the realized ground wall were one cell apart.
+    sim.add_thin_conductor(Box((0, 0, Z_SUB_LO), (DOM_X, DOM_Y, Z_SUB_LO)),
+                           sigma_bulk=5.8e7)
+    sim.add(Box((0, 0, Z_SUB_LO), (DOM_X, DOM_Y, Z_SUB_HI)),
             material="ro4003c")
-    sim.add(Box((0, Y_C - W_MSL / 2, 4e-3 + DX + H_SUB + DX),
-                (PORT_MARGIN + L_MSL, Y_C + W_MSL / 2,
-                 4e-3 + DX + H_SUB + 2 * DX)),
-            material="pec")
-    sim.add(_patch_box(), material="pec")
+    sim.add_thin_conductor(
+        Box((0, Y_C - W_MSL / 2, Z_SUB_HI),
+            (PORT_MARGIN + L_MSL, Y_C + W_MSL / 2, Z_SUB_HI)),
+        sigma_bulk=5.8e7)
+    sim.add_thin_conductor(_patch_box(), sigma_bulk=5.8e7)
     sim.add_msl_port(
-        position=(PORT_MARGIN, Y_C, 4e-3 + DX),
+        position=(PORT_MARGIN, Y_C, Z_SUB_LO),
         width=W_MSL, height=H_SUB, direction="+x", impedance=50.0,
         waveform=GaussianPulse(f0=8.5e9, bandwidth=1.6),
     )
@@ -190,7 +276,7 @@ def _build_patch_sim() -> Simulation:
     # present, so removing it fails loudly rather than silently disarming #332.)
     x_patch0 = PORT_MARGIN + L_MSL
     sim.add_probe(
-        position=(x_patch0 + 0.7 * L, Y_C - 0.2 * W, 4e-3 + DX + H_SUB * 0.5),
+        position=(x_patch0 + 0.7 * L, Y_C - 0.2 * W, Z_SUB_LO + H_SUB * 0.5),
         component="ez",
     )
     return sim
@@ -230,6 +316,58 @@ def _gate_readings(fr_ghz, s, z0):
         band_crossings_ghz=[c for c in crossings
                             if RES_BAND_GHZ[0] <= c <= RES_BAND_GHZ[1]],
     )
+
+
+def test_the_board_realizes_three_foils_and_no_conductor_volume():
+    """Build-time (no solve): ground, feed and patch are sheets, not slabs.
+
+    The band below was pinned on a board whose metallization presented ONE
+    electrical wall each. Declared as one-cell PEC Boxes the ownership
+    contract would give each of them two walls and a shorted interior — a
+    different board. This is the assertion that says which one is in the
+    solve, read from the single owner (#931 §1.7).
+
+    The node census the raster test asserts is 44 x 51; the electrical
+    patch is the 43 x 50 edges between those nodes. Both are stated, for
+    the same reason as in the Board H twin.
+    """
+    from tests._realized_geometry import node_index, realized
+
+    sim = _build_patch_sim()
+    rz = realized(sim)
+    assert rz.pec_mask is None or not bool(np.asarray(rz.pec_mask).any()), (
+        "a foil owns no cell")
+    assert rz.sheet_planes.keys() == {2}, rz.sheet_planes
+    planes = sorted(set(p for v in rz.sheet_planes.values() for p in v))
+    assert planes == [node_index(rz.grid, 2, Z_SUB_LO),
+                      node_index(rz.grid, 2, Z_SUB_HI)], planes
+    assert len(rz.sheets) == 3, len(rz.sheets)  # ground, feed trace, patch
+    assert rz.wall_planes(2) == planes, (rz.wall_planes(2), planes)
+
+    # The cavity between the two foils is the laminate and nothing else. The
+    # board used to reserve a vacuum cell for each foil and get its dielectric
+    # back through the #702 re-sample, which the contract deletes; a reserved
+    # cell is now what the drawing says it is. Measured before the redraw
+    # (VESSL 369367259174): five cells between the walls, one of them vacuum,
+    # preflight #703 reading +45.9 % on sum(d/eps).
+    eps = sim._assemble_materials(rz.grid, pec_sheets=[], pec_wires=[])[0].eps_r
+    col = np.asarray(eps)[np.asarray(eps).shape[0] // 2,
+                          np.asarray(eps).shape[1] // 2, planes[0]:planes[1]]
+    assert np.allclose(col, EPS_R), (
+        f"the cavity carries a cell that is not the laminate: "
+        f"{[round(float(v), 3) for v in col]} — the #702 slot geometry. Draw "
+        "the laminate to the foil plane; nothing is re-sampled.")
+
+    grid = rz.grid
+    occ = np.where(np.asarray(_patch_box().mask(grid), dtype=bool))
+    x0, x1 = int(occ[0].min()), int(occ[0].max())
+    y0, y1 = int(occ[1].min()), int(occ[1].max())
+    kp = planes[-1]
+    mx, my, _ = (np.asarray(m) for m in rz.edge_masks)
+    n_ex = len({int(i) for i in np.argwhere(mx[x0:x1 + 1, y0:y1 + 1, kp])[:, 0]})
+    n_ey = len({int(j) for j in np.argwhere(my[x0:x1 + 1, y0:y1 + 1, kp])[:, 1]})
+    assert (n_ex, n_ey) == (RASTER_CELLS[0] - 1, RASTER_CELLS[1] - 1), (n_ex,
+                                                                        n_ey)
 
 
 def test_realized_raster_is_the_board_this_band_was_pinned_on():
@@ -357,8 +495,9 @@ def test_patch_edgefed_s11_passive_and_match():
     assert g["band_max_re_zin"] > RES_BAND_RE_ZIN_MIN_OHM, (
         f"in-band max Re(Zin) = {g['band_max_re_zin']:.0f} ohm <= "
         f"{RES_BAND_RE_ZIN_MIN_OHM:.0f} — the band's crossing is not the edge-fed "
-        "patch antiresonance (measured 4326 ohm on the 2026-09-01 provenance run; "
-        "pre-#702 witness class saw > 1.5 kohm)."
+        "patch antiresonance (measured 4157 ohm on VESSL 369367259226, the #931 "
+        "redraw; 4326 ohm on the 2026-09-01 provenance run before it; pre-#702 "
+        "witness class saw > 1.5 kohm)."
     )
 
     # --- (3) soft: the |S11| minimum (match point) lies ABOVE the resonance band ---

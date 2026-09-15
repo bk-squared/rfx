@@ -36,7 +36,8 @@ Guide construction (fixture engineering, not contract constants):
   clean (probe flat, final fields at -80.6 dB).
 
 Measurement: log-linear least-squares fit of ln|Ez(x)| at f0 over the
-DFT-plane accumulator (z = 3 mm midplane) along x in [25, 125] mm, with
+DFT plane registered at z = 3 mm (actual Ez samples at z = 3.25 mm)
+along x in [25, 125] mm, with
 the fit RMS residual as the forward-wave-purity witness. NEVER probe
 time-series + FFT (repo Never-list).
 
@@ -46,6 +47,17 @@ alpha from the analytic TEM field and Rs0 by hand quadrature over the
 actual grid sampling and asserts it reproduces Rs0/(eta0*b) to rtol 1e-6,
 and `test_fit_chain_recovers_synthetic_alpha` shows the fitting chain
 recovers a synthetic exponential's alpha to rtol 1e-6.
+
+#947 correction (2026-09-13): the historical records below retain their
+original comparisons; the current gate predicts Ez separately from Hy,
+using each mode's Ez/Hy = -eta0*kx/k0 and each component's Yee coordinates.
+Only Hy amplitudes are fitted. This checks model adequacy and predicts the
+unfitted Ez observable; it is not an independent prediction of source launch.
+The one-cell absorber boxes now use canonical integer-node bounds. The old
+decimal additions left sigma=0 at x=144 mm and displaced eight ramp values.
+A controlled repair on current main restores the old profiles and the
+0.72494 endpoint pin without changing the sheet operator or either gate.
+Evidence: docs/research_notes/2026-09-13_issue947_oracle_repair.md.
 
 Envelope provenance and R2-STOP record (measured 2026-08-19, this file's
 fixture, JAX CPU float32):
@@ -251,7 +263,12 @@ N_STEPS = 4000
 
 # ---- measured envelope (see module docstring: #677 RE-MEASURE) ----
 MEASURED_ALPHA = 0.69823           # Np/m at f0, node-thin operator (#677)
-MEASURED_ALPHA_TWO_PLANE = 0.72494  # two-plane-ratio comparator, same run
+MEASURED_ALPHA_TWO_PLANE = 0.72494  # original #677 endpoint-ratio record
+# Restored by #947's absorber-only comparison: 0.87333 -> 0.72494797,
+# alpha_fit 0.71565 -> 0.69823741. The 2026-09-07 re-pin attributed the
+# change to sheet rims without isolating the malformed absorber. Current
+# sheet ownership is retained; correcting nine ramp cells recovers the
+# historical profile. The diagnostic tolerance remains 5%.
 MEASURED_ENVELOPE = 0.33806        # |alpha_fit/alpha_analytic - 1| — the
 #   closed-form pairing's envelope, kept as the documented LIMIT-ANCHOR
 #   record (#700): the fixture's alpha_fit is 34% below Rs/(eta0*b)
@@ -269,8 +286,11 @@ RS0 = float(leontovich_rs(F0, SIGMA_BULK))
 O3_MODEL_ENVELOPE = 0.05677        # worst bin (8 GHz, Ez route)
 O3_MODEL_GATE = gate_from_envelope(O3_MODEL_ENVELOPE, quantum=100)
 assert O3_MODEL_GATE == 0.09, O3_MODEL_GATE
-# model-fit trust gate: scout measured 0.26-0.56% rel rms across bins;
-# committed at ~2x margin. The O3 gate refuses to run on a worse fit.
+# The historical 0.26-0.56% Hy fit envelope sets a 1% trust gate.
+# #947 restores that envelope by fixing the absorber declaration, not by
+# widening this gate. Analytic eigenvalues/shapes stay fixed; amplitudes
+# ARE data-fitted, so the resulting alpha prediction can change with the
+# measured field. Hy and Ez also have distinct modal wave impedances.
 O3_FIELD_FIT_RMS_GATE = 0.01
 
 # O4a band: Leontovich predicts alpha ~ sqrt(1/sigma), so a x4 in
@@ -301,11 +321,16 @@ def _build_guide(sigma_bulk=SIGMA_BULK, *, f0_mode=True,
         cpml_layers=10,
     )
     # graded in-guide absorber (full cross-section, ends on hi-x PEC)
+    # Use the grid's node arithmetic for BOTH faces of every slab. Adding
+    # DX to a decimal x0 can move a half-open face by one float64 ulp,
+    # leaving a hole in this one-cell ramp after material rasterization.
+    absorber_i0 = int(round(ABSORBER_X0 / DX))
     for i in range(ABSORBER_N):
         s = ABSORBER_SIGMA_MAX * ((i + 0.5) / ABSORBER_N) ** 2
-        x0 = ABSORBER_X0 + i * DX
+        x0 = (absorber_i0 + i) * DX
+        x1 = (absorber_i0 + i + 1) * DX
         sim.add_material(f"abs{i}", eps_r=1.0, sigma=s)
-        sim.add(Box((x0, 0.0, 0.0), (x0 + DX, DOMAIN[1], DOMAIN[2])),
+        sim.add(Box((x0, 0.0, 0.0), (x1, DOMAIN[1], DOMAIN[2])),
                 material=f"abs{i}")
     # the two plates
     kw = dict(sigma_bulk=sigma_bulk, thickness=thickness)
@@ -372,7 +397,10 @@ def _run_guide(sigma_bulk=SIGMA_BULK, *, f0_mode=True, thickness=THICKNESS,
     kz0 = grid.pad_z_lo
     nz = int(round(DOMAIN[2] / DX))
     out["hy_plane"] = hy[:, i0:i1 + 1, kz0:kz0 + nz]
+    out["hy_xs"] = xs + 0.5 * DX
     out["z_nodes"] = (np.arange(nz) + 0.5) * DX
+    out["ez_z"] = (
+        result.dft_planes["midplane"].index - grid.pad_z_lo + 0.5) * DX
     ts = np.abs(np.asarray(result.time_series)[:, 0])
     tail = ts[int(0.95 * len(ts)):].max()
     out["settle_db"] = float(20 * np.log10(max(tail, 1e-300) / ts.max()))
@@ -383,6 +411,133 @@ def _run_guide(sigma_bulk=SIGMA_BULK, *, f0_mode=True, thickness=THICKNESS,
 # ---------------------------------------------------------------------------
 # Comparator-first: validate the measurement chain with no FDTD involved
 # ---------------------------------------------------------------------------
+
+def test_absorber_realizes_the_declared_ramp_without_gaps_or_overwrites():
+    """No solve: all 120 distinct conductivities tile the declared volume.
+
+    Check the assembled full array, including zero conductivity outside
+    the absorber and its half-open y/z extents. Checking only Box widths
+    missed the decimal-bound singleton/two-node ambiguity behind #947.
+    """
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        sim = _build_guide()
+        grid = sim._build_grid()
+        materials, *_ = sim._assemble_materials(grid)
+    sigma = np.asarray(materials.sigma)
+    expected = np.zeros_like(sigma)
+    start = int(round(ABSORBER_X0 / DX)) + grid.pad_x_lo
+    ny, nz = (int(round(length / DX)) for length in DOMAIN[1:])
+    values = np.asarray([
+        ABSORBER_SIGMA_MAX * ((i + 0.5) / ABSORBER_N) ** 2
+        for i in range(ABSORBER_N)], dtype=sigma.dtype)
+    expected[start:start + ABSORBER_N,
+             grid.pad_y_lo:grid.pad_y_lo + ny,
+             grid.pad_z_lo:grid.pad_z_lo + nz] = values[:, None, None]
+    np.testing.assert_array_equal(sigma, expected)
+
+
+def test_ez_prediction_recovers_tem_impedance_and_physical_phase_reference():
+    """A prescribed TEM wave has Ez=-eta0*Hy at every sample location."""
+    k0 = 2 * np.pi * F0 / _trm.C0
+    xs = np.array([0.017, 0.029, 0.045])
+    zs = np.array([0.00025, 0.00325, 0.00575])
+    amplitude, x_reference = 0.7 + 0.3j, 0.02625
+    fit = {"modes": [k0], "amps": [amplitude], "x_reference": x_reference}
+    actual = _trm.predict_ez_from_hy_fit(
+        fit, xs, zs, F0, B_PLATE, G_STUB, RS0, ETA_0)
+    expected = -ETA_0 * amplitude * np.exp(-1j * k0 * (xs - x_reference))
+    np.testing.assert_allclose(actual, np.broadcast_to(expected[:, None], actual.shape),
+                               rtol=1e-13, atol=1e-13)
+
+
+def test_multimode_ez_prediction_does_not_reuse_the_hy_alpha():
+    """An exact prescribed mixture falsifies a shared Ez/Hy alpha gate.
+
+    The lossy/TEM ratio at z_E is chosen as 0.25j without a data search.
+    Fit only the synthetic Hy plane, then predict Ez at its half-cell
+    shifted x samples. Its exact alpha differs from Hy by >9%, despite
+    both belonging to the same analytic solution of Maxwell's equations.
+    """
+    f = O3_FREQS[0]
+    k0 = 2 * np.pi * f / _trm.C0
+    ks = _trm.find_symmetric_lossy_mode(f, B_PLATE, G_STUB, RS0, ETA_0)
+    xs_e = np.arange(201) * DX + FIT_X[0]
+    xs_h = xs_e + DX / 2
+    zs = (np.arange(12) + 0.5) * DX
+    z_e = 3.25e-3
+    phi = _trm.hy_profile(ks, f, B_PLATE, G_STUB, RS0, ETA_0, zs)
+    phi_e = _trm.hy_profile(ks, f, B_PLATE, G_STUB, RS0, ETA_0, [z_e])[0]
+    q = 0.25j
+    distance_h = xs_h - xs_h[0]
+    hy = (np.exp(-1j * k0 * distance_h)[:, None]
+          + q / phi_e * np.exp(-1j * ks * distance_h)[:, None] * phi[None, :])
+    fit = _trm.fit_hy_field(xs_h, zs, hy, f, B_PLATE, G_STUB, RS0, ETA_0)
+    assert fit["rel_resid"] < 1e-10
+    predicted = _trm.predict_ez_from_hy_fit(
+        fit, xs_e, [z_e], f, B_PLATE, G_STUB, RS0, ETA_0)[:, 0]
+    distance_e = xs_e - xs_h[0]
+    expected = -ETA_0 * (np.exp(-1j * k0 * distance_e)
+                        + ks / k0 * q * np.exp(-1j * ks * distance_e))
+    np.testing.assert_allclose(predicted, expected, rtol=1e-10, atol=1e-10)
+    alpha_e = _trm._fit_alpha_loglin(xs_e, np.abs(expected))
+    assert abs(alpha_e / fit["alpha_model"] - 1) > O3_MODEL_GATE
+    assert abs(_trm._fit_alpha_loglin(xs_e, np.abs(predicted)) - alpha_e) < 1e-9
+
+
+def test_the_guide_plates_realize_two_planes_spanning_the_cross_section():
+    """Build-time (no solve): where the plates are, and how wide.
+
+    Every alpha here is a per-unit-length quantity measured between two
+    surface-impedance plates, so the plates' realized planes and footprint
+    ARE the fixture. The declaration is a zero-extent Box on each of
+    z = 0.5 mm and 5.5 mm spanning the full cross-section; this reads back
+    what the lattice ownership contract realizes for it (#931 §1.3).
+
+    The closed sheet footprint includes both y rims and the hi-x node.
+    The y-PMC condition zeros Hx/Hz, not Hy, so boundary type alone cannot
+    establish zero Ex-sheet-current dissipation there. This build check
+    asserts placement only. #947's controlled absorber repair retains these
+    sheet masks and recovers the historical field profile.
+
+    A note for whoever generalizes ``tests/_realized_geometry.realized``:
+    it cannot be used here. This fixture declares f0 sheets and dielectric
+    Boxes only, so there is no cell mask, no PEC sheet and no wire, and
+    ``realized_pec_edge_masks`` refuses an empty realization by design.
+    """
+    import warnings as _w
+
+    sim = _build_guide()
+    with _w.catch_warnings():
+        _w.simplefilter("ignore")
+        grid = sim._build_grid()
+        specs = []
+        _m, _d, _l, pec, *_rest = sim._assemble_materials(
+            grid, sheet_specs=specs)
+    assert pec is None or not bool(np.asarray(pec).any()), (
+        "the plates are f0 sheets and the graded absorber is dielectric; "
+        "nothing here is a conductor VOLUME")
+    assert len(specs) == 2, len(specs)
+
+    z_nodes = np.asarray(grid.z if hasattr(grid, "z") else None, dtype=float) \
+        if getattr(grid, "z", None) is not None else None
+    planes = sorted(int(sp.plane) for sp in specs)
+    if z_nodes is not None:
+        expect = sorted(int(np.argmin(np.abs(z_nodes - z)))
+                        for z in (Z_SHEET_LO, Z_SHEET_HI))
+        assert planes == expect, (planes, expect)
+    assert planes[1] - planes[0] == int(round((Z_SHEET_HI - Z_SHEET_LO) / DX)), \
+        planes
+
+    for sp in specs:
+        m = np.asarray(sp.mask, dtype=bool)
+        occ = np.argwhere(m)
+        assert int(occ[:, 1].max() - occ[:, 1].min() + 1) == m.shape[1], (
+            "a plate must span the whole y cross-section; the closed "
+            "footprint includes both PMC rim rows")
+        assert int(occ[:, 2].max()) == int(occ[:, 2].min()) == sp.plane, (
+            "a sheet occupies exactly its own plane")
+
 
 def test_comparator_quadrature_reproduces_closed_form():
     """alpha from the analytic TEM field + Rs0 by hand quadrature over the
@@ -470,10 +625,35 @@ def test_alpha_envelope_regression_lock():
     alpha 0.72494."""
     out = _base()
     alpha = out["alpha"][_F0_IDX]
+    a2 = _alpha_two_plane(out["xs"], out["profile"][_F0_IDX])
+
+    # R5 trace, added 2026-09-07 (#931). The two extractors disagreed about
+    # whether this fixture moved — the span-average fit stayed inside its 5 %
+    # pin while the endpoint ratio went 20 % — and neither the profile nor the
+    # endpoints it reads were ever printed, so the disagreement could not be
+    # read. The endpoint ratio uses only profile[0] and profile[-1]; the fit
+    # uses all of it. A profile whose ENDS move relative to its middle moves
+    # one and not the other, which is the "non-exponential profile / two-mode
+    # beat" this module's docstring already describes.
+    prof = np.asarray(out["profile"][_F0_IDX], dtype=float)
+    xs = np.asarray(out["xs"], dtype=float)
+    print(f"\n[LEONTOVICH/ENVELOPE] alpha_fit={alpha:.5f} (pin "
+          f"{MEASURED_ALPHA}), alpha_two_plane={a2:.5f} (pin "
+          f"{MEASURED_ALPHA_TWO_PLANE}), ln-RMS resid="
+          f"{out['resid'][_F0_IDX]:.5f}, settle={out['settle_db']:.1f} dB")
+    print(f"[LEONTOVICH/ENVELOPE] endpoints used by the two-plane extractor: "
+          f"|E|(x={xs[0] * 1e3:.2f} mm)={prof[0]:.6g}, "
+          f"|E|(x={xs[-1] * 1e3:.2f} mm)={prof[-1]:.6g}, "
+          f"ratio={prof[0] / prof[-1]:.6f}")
+    for i in range(0, len(xs), max(1, len(xs) // 25)):
+        print(f"[LEONTOVICH/PROFILE] {xs[i] * 1e3:8.3f} mm  {prof[i]:.6g}  "
+              f"ln={np.log(prof[i]):.5f}")
+
     assert abs(alpha / MEASURED_ALPHA - 1.0) <= 0.05, (
         f"measured alpha moved: {alpha:.5f} vs recorded {MEASURED_ALPHA}")
-    # two-plane comparator pin (same run, independent extractor shape)
-    a2 = _alpha_two_plane(out["xs"], out["profile"][_F0_IDX])
+    # Endpoint ratio is a distinct extractor of the same record. The
+    # absorber-only A/B recovers the original pin; this is not a claim
+    # that a multimode guide has one exponential attenuation constant.
     assert abs(a2 / MEASURED_ALPHA_TWO_PLANE - 1.0) <= 0.05, a2
     # forward-wave-purity witness (re-measure run: 0.00245 ln-RMS)
     assert out["resid"][_F0_IDX] < 0.02, out["resid"][_F0_IDX]
@@ -517,11 +697,43 @@ def _model_fits(out):
     """Per-bin exact-model fits to the measured Hy(x, z) plane (cached)."""
     if "model_fits" not in _cache:
         _cache["model_fits"] = [
-            _trm.fit_hy_field(out["xs"], out["z_nodes"],
+            _trm.fit_hy_field(out["hy_xs"], out["z_nodes"],
                               out["hy_plane"][fi], f, B_PLATE, G_STUB,
                               RS0, ETA_0)
             for fi, f in enumerate(O3_FREQS)]
+        for f, fit in zip(O3_FREQS, _cache["model_fits"]):
+            ez = _trm.predict_ez_from_hy_fit(
+                fit, out["xs"], [out["ez_z"]], f, B_PLATE, G_STUB, RS0, ETA_0)
+            fit["alpha_model_ez"] = _trm._fit_alpha_loglin(out["xs"], np.abs(ez[:, 0]))
     return _cache["model_fits"]
+
+
+def _print_model_fit_census(out):
+    """R5 census for the O3 pair — every bin, both routes, printed BEFORE
+    any assertion (2026-09-07, #931).
+
+    The two O3 tests both trip on the trust precondition at ONE bin and
+    say so with one number, which is not enough to tell "the model got
+    worse everywhere" from "one bin moved". This prints the whole table
+    so the next reader classifies by inspection instead of by argument.
+    Printed once per session; the fits themselves are cached."""
+    if _cache.get("census_printed"):
+        return
+    _cache["census_printed"] = True
+    fits = _model_fits(out)
+    print(f"\n[LEONTOVICH/O3-CENSUS] gate: fit trust <= "
+          f"{O3_FIELD_FIT_RMS_GATE}, model err <= {O3_MODEL_GATE}; "
+          f"settle {out['settle_db']:.1f} dB")
+    print("[LEONTOVICH/O3-CENSUS]  f(GHz)  fit_rel_rms  model_Ez  "
+          "alpha_Ez  err_Ez   model_Hy  alpha_Hy  err_Hy")
+    for fi, (f, ft) in enumerate(zip(O3_FREQS, fits)):
+        a_model = ft["alpha_model"]
+        a_model_ez = ft["alpha_model_ez"]
+        a_ez = out["alpha"][fi]
+        a_hy = ft["alpha_meas"]
+        print(f"[LEONTOVICH/O3-CENSUS]  {f/1e9:5.1f}   {ft['rel_resid']:10.5f}  "
+              f"{a_model_ez:8.5f}  {a_ez:8.5f}  {abs(a_ez/a_model_ez-1):6.2%}  "
+              f"{a_model:8.5f}  {a_hy:8.5f}  {abs(a_hy/a_model-1):6.2%}")
 
 
 @pytest.mark.slow_physics
@@ -535,6 +747,7 @@ def test_o3_model_fits_measured_field():
     supermode} IS the mechanism statement of #700: the fitted alpha is a
     two-mode transient, not an eigenvalue."""
     out = _base()
+    _print_model_fit_census(out)
     for f, ft in zip(O3_FREQS, _model_fits(out)):
         assert ft["rel_resid"] <= O3_FIELD_FIT_RMS_GATE, (
             f"model fit degraded at {f/1e9:.0f} GHz: rel rms "
@@ -544,10 +757,15 @@ def test_o3_model_fits_measured_field():
 @pytest.mark.slow_physics
 def test_alpha_oracle_o3():
     """O3 (contract gate, RE-PAIRED by #700 — GREEN): per-bin measured
-    alpha vs the exact 4-conductor model's two-mode-transient prediction
+    alpha vs the exact 4-conductor model's multimode prediction
     for this probe span, |alpha_meas/alpha_model - 1| <= O3_MODEL_GATE,
     on BOTH extraction routes (Ez midplane fit — the fixture's canonical
     extractor — and Hy midplane fit, the field the model is fitted on).
+
+    #947 predicts each component at its actual Yee samples. Ez uses the
+    same Hy-fitted amplitudes and mode-specific impedance, with no E fit.
+    The Hy comparison measures model adequacy, not independent source
+    prediction; a multimode Ez/Hy pair need not share an alpha.
 
     The pre-#700 pairing gated |alpha_meas/ALPHA_ANALYTIC - 1| against a
     0.15 cap and was strict-xfail RED at envelope 0.33806. #700 showed
@@ -560,15 +778,16 @@ def test_alpha_oracle_o3():
     Envelope provenance for O3_MODEL_GATE: see O3 MODEL RE-PAIR in the
     module docstring."""
     out = _base()
+    _print_model_fit_census(out)
     assert not any("PreflightError" in w for w in out["warnings"])
     assert out["settle_db"] < -40.0, out["settle_db"]
     for fi, (f, ft) in enumerate(zip(O3_FREQS, _model_fits(out))):
         assert ft["rel_resid"] <= O3_FIELD_FIT_RMS_GATE, (
             f"model fit not trustworthy at {f/1e9:.0f} GHz: "
             f"{ft['rel_resid']:.4f}")
-        a_model = ft["alpha_model"]
-        for route, a_meas in (("Ez-fit", out["alpha"][fi]),
-                              ("Hy-fit", ft["alpha_meas"])):
+        for route, a_meas, a_model in (
+                ("Ez-fit", out["alpha"][fi], ft["alpha_model_ez"]),
+                ("Hy-fit", ft["alpha_meas"], ft["alpha_model"])):
             err = abs(a_meas / a_model - 1.0)
             assert err <= O3_MODEL_GATE, (
                 f"{route} alpha at {f/1e9:.0f} GHz: {a_meas:.5f} vs "
@@ -755,4 +974,3 @@ def test_sheet_transmission_matches_closed_form():
         assert abs(t / t_analytic - 1.0) <= TRANS_GATE, (
             f"|T| off closed form at {f/1e9:.0f} GHz: {t:.6f} vs "
             f"{t_analytic:.6f}")
-

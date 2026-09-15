@@ -12,9 +12,43 @@ Reads, and turns into an instrument, two diagnoses:
   normal incidence, the echo-free control, and the structural finding this lane
   closes.
 
+**Neither is in this repository** — both branches are unmerged, so the paths above
+do not resolve in a checkout. What does resolve: #888 comments
+[5525810073](https://github.com/bk-squared/rfx/issues/888#issuecomment-5525810073) and
+[5529673679](https://github.com/bk-squared/rfx/issues/888#issuecomment-5529673679),
+which carry each diagnosis's decisive measurements and name its branch and sha.
+
 **No window, gate threshold, record length or committed physics number is
 changed here.** This lane adds a witness and a precondition gate. The one thing
 it does change is artifact bytes, deliberately and only additively — see §6.
+
+> **SUPERSEDED IN PART, 2026-09-13 (#888, PR #1005).** Everything below that
+> quotes the auxiliary *layout* describes the grid as it was when this note was
+> written: `n_cpml_1d = 20`, `n_margin = 10`, `n_1d = 20 + 10 + n_tfsf + 10 + 20`,
+> `i0 = 30`, `src_idx = 23`, and a reflector fitted 6.88 cells inside the layer
+> (§1.1, §1.2, §2). That grid no longer exists. `rfx/sources/tfsf.py` now derives
+> its absorber from a reflection target at `AUX_N_CPML_1D = 200`, so the live
+> layout is `n_1d = 2·200 + 2·10 + n_tfsf`, `i0 = 210`, `src_idx = 203`, and the
+> reflector depth is a **bound at the absorber's inner edge (0 cells)** rather
+> than a fitted position — at `|B/A| ≈ 1e-06` the residual backward wave is no
+> longer one specular echo from one place, so no single reflector index describes
+> it.
+>
+> **The mechanism, the arithmetic and the invariant in this note are unchanged**;
+> only the numbers plugged into them moved. The direction is the safe one: the
+> arrival comes 19 to 20 steps EARLIER at all 13 committed slab-family rungs
+> (ratios 0.520-0.610 → 0.525-0.617 against a limit of 1.0), because the reflector
+> moves out by 180 cells while the source and both probe references move in by
+> 180, leaving only the 13.76-cell reflector-depth term.
+>
+> Where the live numbers live: `validation/crossval/comparators/slab_family.py`
+> (the constants, pinned against `rfx.sources.tfsf` by the test below),
+> `tests/crossval/test_aux_echo_record_invariant.py` (the pin, the two-way
+> recompute waiver `_ABSORBER_RECOMPUTE_PENDING`, and the earlier-arrival
+> assertion), and
+> `docs/design_notes/20260904_aux_absorber_depth_derivation.md` §2, §12 and §14
+> for the derivation and its validity domain. Read those for anything you intend
+> to act on; read this note for why the invariant exists.
 
 ---
 
@@ -65,7 +99,10 @@ slab_aux_echo(nx_interior, dt, dx_div, n_steps)        -> the block, at this fam
 
 The auxiliary grid's layout is `rfx/sources/tfsf.py`'s, and its constants are
 **not** scaled by `dx_div` (the case refines the 3-D rig; `tfsf.py` hard-codes
-the auxiliary one):
+the auxiliary one). **The four numbers in the block below are the pre-#888 ones
+— see the supersession header at the top of this note; `tfsf.py` now carries
+`n_cpml_1d = 200`, `i0 = 210`, `src_idx = 203`.** The derivation is what this
+section is for, and it does not change with them:
 
 ```
 n_cpml_1d = 20 ; n_margin = 10 ; n_tfsf = x_hi - x_lo + 2
@@ -168,7 +205,7 @@ its committed record, and written into the artifact.
 
 | case | rung | K | `nx_interior` | record | arrival (gated) | **ratio** | arrival (centre) | ratio (centre) |
 |---|---|---|---|---|---|---|---|---|
-| cv04 | `slab_eps4` | 1 | 600 | 719 | 1196 | **0.601** | 1278 | 0.563 |
+| cv04 | `slab_eps4` | 1 | 800 | 990 | 1624 | **0.610** | 1707 | 0.580 |
 | cv22 | `debye` | 1 | 1000 | 1108 | 2053 | **0.540** | 2135 | 0.519 |
 | cv22 | `drude` | 1 | 1000 | 1168 | 2053 | **0.569** | 2135 | 0.547 |
 | cv22 | `lorentz` | 1 | 1000 | 1228 | 2053 | **0.598** | 2135 | 0.575 |
@@ -182,8 +219,14 @@ its committed record, and written into the artifact.
 | cv23 | `tand3_dx2` | 2 | 2000 | 2362 | 4043 | **0.584** | 4207 | 0.561 |
 | cv23 | `tand3_dx4` | 4 | 4000 | 4723 | 8022 | **0.589** | 8349 | 0.566 |
 
+cv04's row reflects the settling-extension fix (2026-09-10): `nx_interior`
+grew from the declared 600 to 800 (one grow attempt) so the record could
+reach the family's −40 dB settling bar, which is why cv04's own numbers here
+differ from an earlier reading of this table -- they are read fresh from
+the same artifact, not retyped by hand.
+
 Every value in the "ratio" column is read back from the artifact:
-`validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.aux_echo.record_over_echo_arrival = 0.601`,
+`validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.aux_echo.record_over_echo_arrival = 0.610`,
 `validation/crossval/_22_dispersive_results/lattice_witness.json::rungs.debye.aux_echo.record_over_echo_arrival = 0.540`,
 `validation/crossval/_22_dispersive_results/lattice_witness.json::rungs.drude.aux_echo.record_over_echo_arrival = 0.569`,
 `validation/crossval/_22_dispersive_results/lattice_witness.json::rungs.lorentz.aux_echo.record_over_echo_arrival = 0.598`,
@@ -198,20 +241,26 @@ Every value in the "ratio" column is read back from the artifact:
 `validation/crossval/_23_lossy_results/lattice_witness.json::rungs.tand3_dx4.aux_echo.record_over_echo_arrival = 0.589`.
 
 cv04's arrival and record, likewise:
-`validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.aux_echo.echo_arrival_steps = 1196`,
-`validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.aux_echo.record_steps = 719`,
-`validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.aux_echo.echo_arrival_centre_steps = 1278`,
-`validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.aux_echo.aux_n_1d = 652`,
+`validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.aux_echo.echo_arrival_steps = 1624`,
+`validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.aux_echo.record_steps = 990`,
+`validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.aux_echo.echo_arrival_centre_steps = 1707`,
+`validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.aux_echo.aux_n_1d = 852`,
 and the reflector the phase slope located,
-`validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.aux_echo.aux_reflector_index = 638.88`.
+`validation/crossval/_04_fresnel_results/lattice_witness.json::rungs.slab_eps4.aux_echo.aux_reflector_index = 838.88`.
 
 **The notes' 0.50–0.57 is confirmed, at the notes' own convention.** In the
-centre column the 13 rungs span **0.500 to 0.575** — `tand0p1` at 0.4998 is the
-0.50 the cv04 note reports, `lorentz` at 0.575 its 0.57 (the note's table used
-`v_g(f0)`, 0.3 % slower than the Courant speed used here, and reads 0.573
-there). At the gated convention, which subtracts the pulse's leading edge, the
-same rungs span **0.520 to 0.601**. Both columns are in the artifact so neither
-claim rests on a retyped number.
+centre column the 13 rungs span **0.500 to 0.580** (N3, PR #974 round 2: was
+0.500 to 0.575 before cv04's 2026-09-10 settling fix; cv04 is now the rung
+that sets this column's upper bound too, `lorentz` at 0.575 held it before)
+— `tand0p1` at 0.4998 is the 0.50 the cv04 note reports, `lorentz` at 0.575
+close to its 0.57 (the note's table used `v_g(f0)`, 0.3 % slower than the
+Courant speed used here, and reads 0.573 there). At the gated convention,
+which subtracts the pulse's leading edge, the
+same rungs span **0.520 to 0.610** (was 0.520 to 0.601 before cv04's
+2026-09-10 settling fix; cv04 is the rung that sets the upper bound both
+before and after, `record/arrival` 0.601 -> 0.610 with its own record growing
+719 -> 990 steps). Both columns are in the artifact so neither claim rests on
+a retyped number.
 
 ---
 
@@ -221,12 +270,16 @@ claim rests on a retyped number.
 
 cv04's rig, geometry untouched, only the record changed. The FDTD columns were
 measured here with a harness that reproduces `04_multilayer_fresnel.py` PART 1 + PART 2
-verbatim (it returns 0.0066 / 0.0487 at the committed 719, which is what
-licenses the rest):
+verbatim (it returns 0.0066 / 0.0487 at the then-committed 719, which is what
+licenses the rest). This sweep predates cv04's 2026-09-10 settling-extension
+fix and its rows are read as historical: the case's OWN committed record is
+990 steps now, not 719, and does not appear in this sweep (this harness was
+not re-run at 990; the case's own `--lattice-witness` output is the current
+source, §2 above):
 
 | record | ratio | guard | measured `mean\|ΔR\|` | measured `max\|R+T−1\|` |
 |---|---|---|---|---|
-| 719 (committed) | 0.601 | silent | 0.0066 | 0.0487 |
+| 719 (PRE-FIX, superseded 2026-09-10) | 0.601 | silent | 0.0066 | 0.0487 |
 | 1100 | 0.920 | silent | 0.0073 | 0.0004 |
 | 1195 | 0.999 | silent | 0.0073 | 0.0004 |
 | **1196** | **1.000** | **FIRES** | — | — |
@@ -252,7 +305,9 @@ Reproduce: the harness is in this note's §8; ~11 s per record locally.
 
 ### 4.2 The guard is silent at every committed rung
 
-All 13 rungs carry `precond_aux_echo_record: true` at ratios 0.520–0.601 (§3).
+All 13 rungs carry `precond_aux_echo_record: true` at ratios 0.520–0.610 (§3;
+was 0.520–0.601 before cv04's 2026-09-10 settling fix moved the rung that
+sets the upper bound).
 `test_no_committed_rung_is_anywhere_near_the_arrival` asserts the whole
 population, its size (13), and the band.
 
@@ -297,7 +352,8 @@ none.
    measurable only from ~1230 — 34 steps, 2.8 %, in which a clean record is
    rejected (§4.1: 1200 steps measures 0.0073 / 0.0004 and is refused). That is
    the correct direction for a guard and it costs nothing at any committed rung,
-   whose worst ratio is 0.601.
+   whose worst ratio is 0.610 (cv04, post-2026-09-10 settling fix; was 0.601 at
+   cv04's pre-fix 719-step record).
 
 5. **`reflector_depth_cells` is measured, at two geometries, not derived.**
    6.88 cells at `nx_interior = 600` and 1038.88 → 6.88 at `nx_interior = 1000`
@@ -373,8 +429,10 @@ addition had to keep green; it does, because the backfilled key and the key
 
 ## 8. Reproduction
 
-All local, `~/Documents/rfx/.venv/bin/python`, worktree
-`~/Documents/rfx-worktrees/echo-invariant`. No VESSL run was needed.
+All local CPU, no VESSL run needed. Run from the repository root; every command
+below is repo-relative. (This paragraph named PR #892's author's home directory
+and venv until 2026-09-14 -- paths nobody else can follow, the same class as the
+two corrected in `20260904_aux_absorber_depth_derivation.md` section 6.)
 
 * the invariant at every committed rung —
   `python validation/crossval/comparators/emit_aux_echo_witness.py --check`

@@ -41,7 +41,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 # maintaining a second, thinner set that would silently stop covering families.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_interop_design_document import DESIGN_BUILDERS  # noqa: E402
-SCHEMA_PATH = _REPO_ROOT / "docs/design_notes/schemas/rfx-design-ir-v1.schema.json"
+SCHEMA_PATH = _REPO_ROOT / "docs/design_notes/schemas/rfx-design-ir-v2.schema.json"
 
 
 @pytest.fixture(scope="module")
@@ -90,7 +90,7 @@ def documents() -> list[dict]:
 
 def test_schema_file_exists_and_declares_the_right_identity(schema):
     assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
-    assert schema["$id"].endswith("rfx-design-ir-v1.schema.json")
+    assert schema["$id"].endswith("rfx-design-ir-v2.schema.json")
     assert schema["properties"]["schema"]["const"] == DESIGN_SCHEMA_VERSION
 
 

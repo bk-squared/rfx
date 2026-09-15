@@ -25,6 +25,69 @@ from scipy.signal import decimate as scipy_decimate
 
 DECIMATION_GUARD = 8
 _MAX_DECIMATION_STAGE = 13
+_FIR_HALF_OUTPUT_SAMPLES = 10
+_MIN_PENCIL_SAMPLES = 10
+
+
+def _pencil_columns(n_samples: int, pencil_parameter: float) -> int:
+    """The same clamped pencil shape for planning and the actual solve."""
+    return max(4, min(int(n_samples * pencil_parameter), n_samples - 2))
+
+
+def _decimation_plan(n_samples: int, dt: float, f_max: float,
+                     decimate: str | bool, *, pencil_parameter: float = 0.33,
+                     max_modes: int = 50) -> tuple[tuple[int, ...], int]:
+    """Preserve requested pencil capacity as well as finite FIR support.
+
+    A K-pole pencil needs at least K rows and columns. Leave one additional
+    singular direction for the relative rank cut, up to max_modes poles.
+    If the original record/shape cannot provide that capacity, preserve what
+    it already has; preprocessing cannot supply missing information. This
+    also respects the core's historical clamp for extreme pencil fractions.
+    """
+    if decimate not in ("auto", False):
+        raise ValueError("decimate must be 'auto' or False")
+    if n_samples < _MIN_PENCIL_SAMPLES:
+        return (), n_samples
+    columns = _pencil_columns(n_samples, pencil_parameter)
+    capacity = min(max_modes + 1, columns, n_samples - columns)
+    factors = []
+    if decimate == "auto" and 1.0 / dt > DECIMATION_GUARD * f_max:
+        target = int(1.0 / dt / (4.0 * f_max))
+        for factor in _decimation_factors(target):
+            kept = (n_samples + factor - 1) // factor - 2 * _FIR_HALF_OUTPUT_SAMPLES
+            columns = _pencil_columns(kept, pencil_parameter)
+            if (kept < _MIN_PENCIL_SAMPLES
+                    or min(columns, kept - columns) < capacity):
+                # Default p=.33/K=50 needs 155 retained samples. A rejected
+                # stage (q<=13) therefore leaves at most 2262 inputs to the
+                # core. Other requested pencil shapes/ranks change that bound.
+                break
+            factors.append(factor)
+            n_samples = kept
+    return tuple(factors), n_samples
+
+
+def harminv_record_duration(n_samples: int, dt: float, f_max: float, *,
+                           decimate: str | bool = "auto",
+                           pencil_parameter: float = 0.33,
+                           max_modes: int = 50) -> float:
+    """Time between the first and last samples used to estimate the poles.
+
+    Use this duration, rather than the unfiltered input length, for record-
+    length admission or uncertainty calculations. Each zero-phase FIR stage
+    excludes outputs whose filter support reaches outside its input record.
+    This helper shares the estimator's sampling plan and performs no solve.
+    Pass the same ``pencil_parameter`` and ``max_modes`` as the estimator:
+    they determine when further decimation would reduce its model capacity.
+    This describes the pole fit; amplitudes still use the original input.
+    """
+    factors, kept = _decimation_plan(n_samples, dt, f_max, decimate,
+                                      pencil_parameter=pencil_parameter,
+                                      max_modes=max_modes)
+    for factor in factors:
+        dt *= factor
+    return max(0, kept - 1) * dt
 
 
 class HarminvMode(NamedTuple):
@@ -35,6 +98,29 @@ class HarminvMode(NamedTuple):
     amplitude: float  # amplitude magnitude
     phase: float      # phase in radians
     error: float      # relative error estimate
+
+
+def _fit_mode_amplitudes(signal: np.ndarray, poles: np.ndarray,
+                         dt: float) -> np.ndarray:
+    """Joint complex coefficients at the original input's first sample.
+
+    All finite candidate poles participate, including conjugates and modes
+    outside the reporting band. Independent projections double-count their
+    overlap on a finite record. Coefficients are probe-signal weights, not
+    power-normalized modal energies or noise-confidence estimates.
+
+    A growing pole is anchored at the last sample so every basis entry has
+    magnitude <= 1; column normalization then removes norm disparities from
+    the least-squares system. These scalings avoid overflow, but cannot make
+    nearly coincident poles physically distinguishable. lstsq's numerical
+    rank cutoff handles singular systems without forming normal equations.
+    """
+    times = np.arange(len(signal)) * dt
+    reference = np.where(poles.real > 0, times[-1], 0.0)
+    basis = np.exp((times[:, None] - reference) * poles)
+    norms = np.linalg.norm(basis, axis=0)
+    coefficients = np.linalg.lstsq(basis / norms, signal, rcond=None)[0] / norms
+    return coefficients * np.exp(-reference * poles)
 
 
 def harminv(
@@ -76,48 +162,63 @@ def harminv(
     min_Q : float
         Discard modes with Q < min_Q.
     max_modes : int
-        Maximum modes to return.
+        Maximum complex-pole rank and maximum modes to return. Both members
+        of a real signal's conjugate pair consume rank before reporting.
     sv_threshold : float
-        Singular value threshold for rank determination.
+        Relative singular value threshold for rank determination (relative
+        to the largest singular value). The same threshold is used after
+        resampling; it is not a calibrated noise-confidence bound.
     decimate : {"auto", False}
         Automatically reduce oversampled, band-limited inputs before matrix
         pencil analysis. With the default ``"auto"``, decimation is applied
         when ``1 / dt > 8 * f_max`` using a target factor of
         ``int(1 / dt / (4 * f_max))``. Anti-aliased, zero-phase FIR stages of
         at most 13 are used, and the effective timestep is passed to the core
-        algorithm. Set to ``False`` to retain every input sample. This avoids
+        algorithm. At each stage, outputs touching the filter's zero-padded
+        boundary are excluded: filtering an interior exponential preserves
+        its pole, while zero padding introduces transients. This SHORTENS
+        the usable record; ``harminv_record_duration`` reports its duration.
+        A stage is omitted if fewer than 10 interior samples would remain or
+        its pencil could not hold ``max_modes`` poles plus one singular
+        direction for rank selection. If the original pencil is smaller,
+        its existing capacity is preserved instead. This is a dimension
+        safeguard, not a guarantee that noisy/nearby modes are identifiable.
+        Set to ``False`` to retain every input sample. Decimation avoids
         redundant work because the estimator scales approximately as
-        :math:`O(N^{2.7})`, while retaining the record's time span and hence
-        its frequency resolution.
+        :math:`O(N^{2.7})`.
 
     Returns
     -------
     list of HarminvMode, sorted by amplitude (strongest first).
+        Amplitude and phase describe jointly fitted complex coefficients at
+        the original input's first sample. For a real cosine of peak A the
+        positive-frequency coefficient has magnitude A/2; its conjugate is
+        fitted too, then omitted from the returned list. Relative weights
+        depend on source/probe placement and are not modal energies.
     """
-    if decimate not in ("auto", False):
-        raise ValueError("decimate must be 'auto' or False")
-
     y = np.asarray(signal, dtype=np.complex128).ravel()
+    real_signal = not np.any(y.imag)
     amplitude_signal = y
     amplitude_dt = dt
-    effective_sv_threshold = sv_threshold
-    if decimate == "auto" and 1.0 / dt > DECIMATION_GUARD * f_max:
-        target_factor = int(1.0 / dt / (4.0 * f_max))
-        factors = _decimation_factors(target_factor)
-        for factor in factors:
-            y = scipy_decimate(y, factor, ftype="fir", zero_phase=True)
-            dt *= factor
-        # Signal singular values shrink with the reduced sample count while
-        # broadband noise does not shrink at the same rate. Preserve the
-        # original rank-selection meaning across the resampling operation.
-        effective_sv_threshold *= np.sqrt(target_factor)
+    factors, _ = _decimation_plan(len(y), dt, f_max, decimate,
+                                 pencil_parameter=pencil_parameter,
+                                 max_modes=max_modes)
+    for factor in factors:
+        # A symmetric FIR of order 20*q has support [-10*q, +10*q]
+        # in input samples. At output k (input centre k*q), precisely
+        # k=10 .. ceil(N/q)-11 have their whole support inside the record.
+        # Pin the order explicitly rather than depending on SciPy defaults.
+        half = _FIR_HALF_OUTPUT_SAMPLES
+        y = scipy_decimate(y, factor, n=2 * half * factor,
+                           ftype="fir", zero_phase=True)[half:-half]
+        dt *= factor
 
     N = len(y)
-    if N < 10:
+    if N < _MIN_PENCIL_SAMPLES:
         return []
 
     # Pencil parameter L: matrix size
-    L = max(4, min(int(N * pencil_parameter), N - 2))
+    L = _pencil_columns(N, pencil_parameter)
 
     # Build Hankel matrices Y0 and Y1
     # Y0[i,j] = y[i+j],     i=0..N-L-1, j=0..L-1
@@ -134,7 +235,7 @@ def harminv(
 
     # Determine effective rank from singular values
     sv_norm = sv / sv[0] if sv[0] > 0 else sv
-    rank = max(1, int(np.sum(sv_norm > effective_sv_threshold)))
+    rank = max(1, int(np.sum(sv_norm > sv_threshold)))
     rank = min(rank, max_modes, len(sv))
 
     # Truncate to rank
@@ -156,13 +257,23 @@ def harminv(
     except np.linalg.LinAlgError:
         return []
 
+    eigenvalues = eigenvalues[np.isfinite(eigenvalues) & (np.abs(eigenvalues) >= 1e-30)]
+    if not len(eigenvalues):
+        return []
+    poles = np.log(eigenvalues) / dt
+    try:
+        amplitudes = _fit_mode_amplitudes(amplitude_signal, poles, amplitude_dt)
+    except np.linalg.LinAlgError:
+        return []
+
     modes = []
-    for lam in eigenvalues:
-        if not np.isfinite(lam) or abs(lam) < 1e-30:
+    for lam, s, amp_complex in zip(eigenvalues, poles, amplitudes):
+        # Real records have conjugate poles. Fit both, then report the
+        # positive-frequency coefficient with a deterministic phase.
+        if real_signal and s.imag < 0:
             continue
 
         # z = exp(s * dt) where s = -alpha + j*omega
-        s = np.log(lam) / dt
         freq = abs(s.imag) / (2 * np.pi)
         decay = -s.real
 
@@ -179,13 +290,6 @@ def harminv(
         if Q < min_Q:
             continue
 
-        # Amplitude: project signal onto this mode
-        n_arr = np.arange(len(amplitude_signal))
-        amplitude_lam = np.exp(s * amplitude_dt)
-        basis = amplitude_lam**n_arr  # z^n at the original sample rate
-        amp_complex = np.dot(amplitude_signal, basis.conj()) / np.dot(
-            basis, basis.conj()
-        )
         amplitude = abs(amp_complex)
         phase = np.angle(amp_complex)
 

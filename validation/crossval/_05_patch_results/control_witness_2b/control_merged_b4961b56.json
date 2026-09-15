@@ -1,0 +1,132 @@
+{
+  "cases": [
+    {
+      "captured": [
+        {
+          "call": "run",
+          "conductor_free": true,
+          "eps_r": {
+            "dtype": "float32",
+            "max": 12.0,
+            "min": 1.0,
+            "sha256": "a693e67131469a9dd556f709c9712ec6acc7a5d3ee67726f43be593c8d5a6f4c",
+            "shape": [
+              181,
+              181,
+              1
+            ]
+          },
+          "grid_shape": [
+            181,
+            181,
+            1
+          ],
+          "n_pec_sheets": 0,
+          "n_pec_wires": 0,
+          "pec_cells": 0,
+          "pec_edges": 0,
+          "sigma": {
+            "dtype": "float32",
+            "max": 0.0,
+            "min": 0.0,
+            "sha256": "81205f6f74a3487c5c5afc32af6a3c4008706ce3afc801f7ff241474db1715e7",
+            "shape": [
+              181,
+              181,
+              1
+            ]
+          }
+        }
+      ],
+      "case": "01_waveguide_bend",
+      "error": null
+    },
+    {
+      "captured": [
+        {
+          "call": "run",
+          "conductor_free": true,
+          "eps_r": {
+            "dtype": "float32",
+            "max": 11.5600004196167,
+            "min": 1.0,
+            "sha256": "40dbec5bbf922728f3b1add478f8b046f82d27c1c5fda11e7c54975901caccb4",
+            "shape": [
+              162,
+              162,
+              1
+            ]
+          },
+          "grid_shape": [
+            162,
+            162,
+            1
+          ],
+          "n_pec_sheets": 0,
+          "n_pec_wires": 0,
+          "pec_cells": 0,
+          "pec_edges": 0,
+          "sigma": {
+            "dtype": "float32",
+            "max": 0.0,
+            "min": 0.0,
+            "sha256": "e006234d0697ae9cbb706dc1b14e87ef89fe2d64a48360fc76895adfd68402a1",
+            "shape": [
+              162,
+              162,
+              1
+            ]
+          }
+        }
+      ],
+      "case": "02_ring_resonator",
+      "error": null
+    },
+    {
+      "captured": [
+        {
+          "call": "run",
+          "conductor_free": true,
+          "eps_r": {
+            "dtype": "float32",
+            "max": 12.0,
+            "min": 1.0,
+            "sha256": "f12b4af1ea61604e16dcf436aa53b69391644484ec84cb58e250c68c7d0d6a0e",
+            "shape": [
+              201,
+              131,
+              1
+            ]
+          },
+          "grid_shape": [
+            201,
+            131,
+            1
+          ],
+          "n_pec_sheets": 0,
+          "n_pec_wires": 0,
+          "pec_cells": 0,
+          "pec_edges": 0,
+          "sigma": {
+            "dtype": "float32",
+            "max": 0.0,
+            "min": 0.0,
+            "sha256": "309d6171b688ed096719b571b776d2235c8c136f0775575423560be94a4da2b1",
+            "shape": [
+              201,
+              131,
+              1
+            ]
+          }
+        }
+      ],
+      "case": "03_straight_waveguide_flux",
+      "error": null
+    }
+  ],
+  "repo": "/root/workspace/byungkwan-workspace/research/rfx-931-XA-crossval-a",
+  "repo_commit": "b4961b56059d051e83efc6700be88424444f8871",
+  "repo_dirty": false,
+  "rfx_module": "/root/workspace/byungkwan-workspace/research/rfx-931-XA-crossval-a/rfx/__init__.py",
+  "rfx_version": "1.8.0"
+}

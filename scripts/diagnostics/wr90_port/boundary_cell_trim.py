@@ -43,7 +43,7 @@ MU_0 = 1.2566370614e-6
 
 def _load_cv11():
     spec = importlib.util.spec_from_file_location(
-        "cv11", REPO / "examples" / "crossval" / "11_waveguide_port_wr90.py"
+        "cv11", REPO / "validation" / "crossval" / "11_waveguide_port_wr90.py"
     )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -96,9 +96,22 @@ def run_rfx_once():
         ),
         cpml_layers=cv.CPML_LAYERS, dx=dx_m,
     )
+    # Cross-section drawn to the REALIZED guide walls, not the declared
+    # WR-90 numbers (#931 §1.1 / design note §6, the 2026-09-07 cv11
+    # adjudication). Grid realizes the declared 22.86 x 10.16 mm domain by
+    # ceil(extent/dx) as 23 x 11 mm at dx = 1 mm, and a PEC volume's face
+    # rounds to the NEAREST node — so a plug drawn to DOMAIN_Y/DOMAIN_Z
+    # realizes its top at 10.000 mm under a wall at 11.000 mm and leaves a
+    # one-cell vacuum slot along the broad wall: a parallel-plate line open
+    # at both ends, measured passing |S21| 0.22-0.33 past the "short".
+    # Same arithmetic as cv11's A_WG_REALIZED / B_WG_REALIZED
+    # (validation/crossval/11_waveguide_port_wr90.py), re-derived here at
+    # this script's own dx.
+    guide_y = float(np.ceil(cv.DOMAIN_Y / dx_m)) * dx_m
+    guide_z = float(np.ceil(cv.DOMAIN_Z / dx_m)) * dx_m
     sim.add(
         Box((cv.PEC_SHORT_X, 0.0, 0.0),
-            (cv.PEC_SHORT_X + 2 * dx_m, cv.DOMAIN_Y, cv.DOMAIN_Z)),
+            (cv.PEC_SHORT_X + 2 * dx_m, guide_y, guide_z)),
         material="pec",
     )
     pf = jnp.asarray(freqs)

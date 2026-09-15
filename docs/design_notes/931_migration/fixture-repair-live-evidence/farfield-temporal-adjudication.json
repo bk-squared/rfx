@@ -1,0 +1,352 @@
+{
+  "provenance": {
+    "source_sha": "b36fc46cdf21d1c57f221e6a057654bcad60bae2",
+    "captures": {
+      "600": {
+        "identity": {
+          "run_id": "369367259613",
+          "witness": {
+            "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/farfield/run_id.txt",
+            "sha256": "d4920df717f2496e162ad281fab156dc9eb1a0a3e3d0383f51fe4404298d9347"
+          },
+          "commit_witness": {
+            "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/farfield/commit.txt",
+            "sha256": "720df802df5c57a088c3efdb4c95d0c0398afe62c1f0b1eec675a129f5d1d585"
+          }
+        },
+        "json": {
+          "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/farfield/600/farfield-attribution.json",
+          "sha256": "13e9f01843cbb09c17d2c260f9e978038a61d778bbbc9aca693f88197d0596b8"
+        },
+        "npz": {
+          "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/farfield/600/farfield-attribution.npz",
+          "sha256": "f869732b637cc88e8bfe00b49ad048ed1cd8d1ad2ca5383565750ae56ca3ead7"
+        }
+      },
+      "1200": {
+        "identity": {
+          "run_id": "369367259613",
+          "witness": {
+            "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/farfield/run_id.txt",
+            "sha256": "d4920df717f2496e162ad281fab156dc9eb1a0a3e3d0383f51fe4404298d9347"
+          },
+          "commit_witness": {
+            "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/farfield/commit.txt",
+            "sha256": "720df802df5c57a088c3efdb4c95d0c0398afe62c1f0b1eec675a129f5d1d585"
+          }
+        },
+        "json": {
+          "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/farfield/1200/farfield-attribution.json",
+          "sha256": "bf7adec6e6e1457aa129cad9b626c2bd37fd39917ad4f8c1484c7bfa251afa54"
+        },
+        "npz": {
+          "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/farfield/1200/farfield-attribution.npz",
+          "sha256": "0d23579b92062976aa85e9aed03496f5c004a10f956b62061714ba1af4cdf26c"
+        }
+      }
+    },
+    "adjudicator": {
+      "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/scripts/diagnostics/adjudicate_931_farfield_temporal.py",
+      "sha256": "bc81a6527dfc48f466827e413b4fbae1370782aeb7c79cab574cb64095556088"
+    }
+  },
+  "criteria": {
+    "temporal_absolute_power_relative_delta_lt": 0.01,
+    "temporal_combined_complex_angular_relative_l2_lt": 0.01,
+    "temporal_reference_steps": 1200,
+    "original_local_error_lt": 0.05,
+    "original_local_error_lt_scalar_error_times": 0.5,
+    "strict_inequalities": true,
+    "phase_or_amplitude_alignment": false
+  },
+  "meshes": {
+    "uniform": {
+      "geometry_equal": true,
+      "geometry": {
+        "shape": [
+          101,
+          101,
+          101
+        ],
+        "dt": 4.766437173827514e-13,
+        "duration": 5.719724608593017e-10,
+        "occupied_cells": 216,
+        "node_vs_center_occupancy_xor": 0,
+        "edge_counts": [
+          294,
+          294,
+          294
+        ],
+        "wall_planes_m": [
+          [
+            0.01025,
+            0.0105,
+            0.010750000000000001,
+            0.011,
+            0.01125,
+            0.0115,
+            0.01175
+          ],
+          [
+            0.01025,
+            0.0105,
+            0.010750000000000001,
+            0.011,
+            0.01125,
+            0.0115,
+            0.01175
+          ],
+          [
+            0.01025,
+            0.0105,
+            0.010750000000000001,
+            0.011,
+            0.01125,
+            0.0115,
+            0.01175
+          ]
+        ],
+        "source_index": [
+          50,
+          50,
+          44
+        ],
+        "source_node_m": [
+          0.011,
+          0.011,
+          0.0095
+        ],
+        "source_dual_volume_m3": 1.5625e-11,
+        "source_waveform_30ghz_dt_dft": [
+          -1.4802728537424605e-12,
+          2.3241124585971612e-12
+        ],
+        "source_waveform_tail": -0.0,
+        "power": 6.155373252240554e-14,
+        "numpy_power": 6.155373479832653e-14,
+        "numpy_jax_max_U_relative": 9.729665464180356e-07,
+        "scalar_inplane_power": 6.155373252240554e-14,
+        "ntff_indices": [
+          24,
+          76,
+          24,
+          76,
+          24,
+          76
+        ],
+        "ntff_coordinates_m": [
+          [
+            0.0045000000000000005,
+            0.0175
+          ],
+          [
+            0.0045000000000000005,
+            0.0175
+          ],
+          [
+            0.0045000000000000005,
+            0.0175
+          ]
+        ]
+      },
+      "source_waveform_and_time_prefix_equal": true,
+      "source_tail_amplitude": {
+        "600": -0.0,
+        "1200": -0.0
+      },
+      "power": {
+        "600": 6.156803395161001e-14,
+        "1200": 6.155373252240554e-14,
+        "absolute_delta": 1.430142920447006e-17,
+        "relative_delta": 0.00023234056844992048,
+        "passed": true
+      },
+      "combined_complex_angular": {
+        "reference_l2": 1.0012047518027844e-06,
+        "absolute_l2_delta": 4.962243151775373e-09,
+        "relative_l2_delta": 0.00495627207405906,
+        "passed": true
+      },
+      "E_theta": {
+        "reference_l2": 1.0010752815615998e-06,
+        "absolute_l2_delta": 4.805540487813576e-09,
+        "relative_l2_delta": 0.0048003787290775025
+      },
+      "E_phi": {
+        "reference_l2": 1.6100797459701977e-08,
+        "absolute_l2_delta": 1.2371894427799073e-09,
+        "relative_l2_delta": 0.0768402587434826
+      },
+      "power_normalized_pattern": {
+        "reference_l2": 1.1752540322546199,
+        "absolute_l2_delta": 0.008149005440764514,
+        "relative_l2_delta": 0.006933824702674174
+      },
+      "peak_normalized_pattern_max_abs_delta": 0.020428895950317383,
+      "polarization_reference_norm_fraction": {
+        "E_theta": 0.9998706855506314,
+        "E_phi": 0.016081423335946657
+      },
+      "temporal_qualified": true
+    },
+    "graded": {
+      "geometry_equal": true,
+      "geometry": {
+        "shape": [
+          97,
+          97,
+          101
+        ],
+        "dt": 4.766437173827411e-13,
+        "duration": 5.719724608592893e-10,
+        "occupied_cells": 216,
+        "node_vs_center_occupancy_xor": 0,
+        "edge_counts": [
+          294,
+          294,
+          294
+        ],
+        "wall_planes_m": [
+          [
+            0.010250000000000009,
+            0.01050000000000001,
+            0.01075000000000001,
+            0.01100000000000001,
+            0.01125000000000001,
+            0.01150000000000001,
+            0.01175000000000001
+          ],
+          [
+            0.010250000000000009,
+            0.01050000000000001,
+            0.01075000000000001,
+            0.01100000000000001,
+            0.01125000000000001,
+            0.01150000000000001,
+            0.01175000000000001
+          ],
+          [
+            0.01025,
+            0.0105,
+            0.010750000000000001,
+            0.011,
+            0.01125,
+            0.0115,
+            0.01175
+          ]
+        ],
+        "source_index": [
+          48,
+          48,
+          44
+        ],
+        "source_node_m": [
+          0.01100000000000001,
+          0.01100000000000001,
+          0.0095
+        ],
+        "source_dual_volume_m3": 1.5625002226443134e-11,
+        "source_waveform_30ghz_dt_dft": [
+          -1.4802728537424284e-12,
+          2.3241124585971107e-12
+        ],
+        "source_waveform_tail": -0.0,
+        "power": 6.177979341635783e-14,
+        "numpy_power": 6.177980188497108e-14,
+        "numpy_jax_max_U_relative": 9.575464540096093e-07,
+        "scalar_inplane_power": 5.875646216918599e-14,
+        "ntff_indices": [
+          24,
+          72,
+          24,
+          72,
+          24,
+          76
+        ],
+        "ntff_coordinates_m": [
+          [
+            0.004500000000000004,
+            0.017500000000000012
+          ],
+          [
+            0.004500000000000004,
+            0.017500000000000012
+          ],
+          [
+            0.0045000000000000005,
+            0.0175
+          ]
+        ]
+      },
+      "source_waveform_and_time_prefix_equal": true,
+      "source_tail_amplitude": {
+        "600": -0.0,
+        "1200": -0.0
+      },
+      "power": {
+        "600": 6.178911806596708e-14,
+        "1200": 6.177979341635783e-14,
+        "absolute_delta": 9.324649609247091e-18,
+        "relative_delta": 0.00015093364826270435,
+        "passed": true
+      },
+      "combined_complex_angular": {
+        "reference_l2": 1.0029166193238982e-06,
+        "absolute_l2_delta": 4.958716177185545e-09,
+        "relative_l2_delta": 0.004944295549243557,
+        "passed": true
+      },
+      "E_theta": {
+        "reference_l2": 1.002753427907125e-06,
+        "absolute_l2_delta": 4.80269218502999e-09,
+        "relative_l2_delta": 0.0047895046293223095
+      },
+      "E_phi": {
+        "reference_l2": 1.809165930994587e-08,
+        "absolute_l2_delta": 1.2341044938470519e-09,
+        "relative_l2_delta": 0.06821400252483222
+      },
+      "power_normalized_pattern": {
+        "reference_l2": 1.175630978387886,
+        "absolute_l2_delta": 0.008108989078889293,
+        "relative_l2_delta": 0.006897563289807956
+      },
+      "peak_normalized_pattern_max_abs_delta": 0.01841181516647339,
+      "polarization_reference_norm_fraction": {
+        "E_theta": 0.9998372831662883,
+        "E_phi": 0.01803904627898389
+      },
+      "temporal_qualified": true
+    }
+  },
+  "horizons": {
+    "600": {
+      "local": 0.0035908912493589026,
+      "scalar": 0.04523190069984444,
+      "unchanged_5pct_gate_passed": true,
+      "local_cell_discriminator_passed": true,
+      "cross_mesh_patterns": {
+        "peak_normalized_pattern_max_abs": 0.03170919418334961,
+        "power_normalized_pattern_relative_l2": 0.010401714593172073
+      }
+    },
+    "1200": {
+      "local": 0.0036725781636394684,
+      "scalar": 0.04544436606181994,
+      "unchanged_5pct_gate_passed": true,
+      "local_cell_discriminator_passed": true,
+      "cross_mesh_patterns": {
+        "peak_normalized_pattern_max_abs": 0.029735267162322998,
+        "power_normalized_pattern_relative_l2": 0.010354832746088505
+      }
+    }
+  },
+  "temporal_qualified": true,
+  "original_gates_passed_at_both_horizons": true,
+  "qualification_passed": true,
+  "qualification_scope": "600 versus 1200 steps at the retained geometry and 30 GHz only; combined complex angular field, not independent polarization or pointwise convergence",
+  "figure": {
+    "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/farfield-temporal-power-angular.png",
+    "sha256": "ec4f04d6f99d2ef0ffda3feb933e0575971469d548f25aa98565723fe2296aca"
+  }
+}

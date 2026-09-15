@@ -16,8 +16,23 @@ implementation carries; this test measures it:
   the one-cell realization is judged against its own physics with no
   thin-film approximation error;
 * the PEC endpoint (sigma_bulk >= 1e6 -> PEC sheet) must be OPAQUE in this
-  orientation: in 2D TMz the sheet's tangential Ez is zeroed (full-span
-  neighbours along z), so T must collapse.
+  orientation: the sheet is an x-normal plane whose footprint spans the
+  whole cross-section, so both components tangential to it (Ez and Ey) are
+  PEC on that plane and T must collapse. On this 2-D TMz lane the z axis
+  is length 1, so the Ez edge's backward neighbour along z is itself
+  (#689 wrap) and every footprint node is a zeroed Ez.
+
+REALIZATION UNDER THE LATTICE OWNERSHIP CONTRACT (#931). This module hands
+``add_thin_conductor`` a Box ONE CELL thick, where two sibling oracle
+fixtures hand it a zero-extent Box, and nothing said which spelling was
+normative. §1.3 settles it without a new rule: a sheet lands on the node
+plane nearest its mid-plane, a tie resolving to the LOWER plane, and a
+Box from node k to node k+1 has its mid-plane exactly on that tie. Both
+spellings therefore land on node k. Measured on this grid (no solve): the
+sheet realizes at x-node 110 (x = 45 mm + the 20-layer CPML pad) with 61
+Ez edges and 60 Ey edges, which is what the pre-#931 rule realized for
+the same declaration — so nothing here was re-measured, and the R/T
+numbers below are the same measurement they always were.
 
 Measurement follows the committed R/T recipe verbatim (TFSF plane wave +
 flux monitors + two-run reference subtraction; never FFT-of-probe).
@@ -83,6 +98,28 @@ def _run(sim):
     return sim.run(n_steps=40000, until_decay=1e-6,
                    decay_monitor_component="ez",
                    decay_monitor_position=(TRANS_X, DOM_Y / 2, 0))
+
+
+def test_the_pec_sheet_realizes_one_plane_at_the_declared_x():
+    """Build-time (no solve): where the opaque endpoint actually is.
+
+    The T < 1e-3 gate below only means "opaque at the declared plane" if
+    the plane is where the declaration put it. This reads it back off the
+    single owner (#931 §1.7) instead of trusting the Box coordinates.
+    """
+    from tests._realized_geometry import assert_sheet_planes, realized
+
+    sim = _build("pec")
+    assert_sheet_planes(sim, 0, expected_m=[SHEET_X], what="PEC film")
+    rz = realized(sim)
+    assert rz.pec_mask is None or not bool(np.asarray(rz.pec_mask).any()), (
+        "a sheet owns no cell")
+    mx, my, mz = (np.asarray(m) for m in rz.edge_masks)
+    # x-normal sheet: the two tangential components are PEC on the plane,
+    # the normal one (Ex) stays live so charge can sit on the film.
+    assert mx.sum() == 0, mx.sum()
+    assert mz.sum() == rz.grid.shape[1], (mz.sum(), rz.grid.shape)
+    assert my.sum() == rz.grid.shape[1] - 1, my.sum()
 
 
 @pytest.fixture(scope="module")

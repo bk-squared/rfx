@@ -93,29 +93,62 @@ dz_profile = np.concatenate([
 ### Graded transition
 
 Avoid abrupt fine-to-coarse jumps; adjacent-cell ratios above 1.3x can introduce
-numerical reflections or dispersion. To generate a graded profile from scratch,
-use `make_z_profile` from `rfx.nonuniform`:
+numerical reflections or dispersion. To build a profile whose interfaces land
+on node planes and whose adjacent-cell ratios obey a cap everywhere, use
+`make_band_profile` (also exported as `rfx.make_band_profile`):
 
 ```python
-from rfx import smooth_grading
+from rfx.nonuniform import make_band_profile
+
+dz_profile = make_band_profile(
+    edges=[0.0, h, h + margin],        # every interface, plus both domain ends
+    cell_sizes=[dz_sub, dz_air],        # target cell per segment
+    protected=[True, False],            # substrate: uniform, never hosts a ramp
+    max_ratio=1.3,
+)
+```
+
+Each edge is a cumulative node coordinate (to 1e-12 m), every adjacent ratio
+is at most `max_ratio` — including the seam between two protected segments,
+where the coarser one is refined instead of a ramp being wedged into the finer
+one — and the profile sums to `edges[-1] - edges[0]` exactly. Ramps are
+geometric and live inside the coarser free segment on whichever side needs
+one, ascending and descending. The same function serves `dx_profile` and
+`dy_profile`: pass `boundary_cell=dx` and both end cells come out equal to
+`dx` bit-exactly, which is the contract those axes require (in-plane, keep
+`max_ratio=1.3`). Note that `preflight()` still asks for `cpml_layers`
+uniform cells against each absorbing face; the pinned cell alone does not
+provide that runway, so an in-plane profile that grades near a face draws the
+`nu_grading_reaches_absorber` advisory. Widening the end segment does not
+remove it: the plateau beside the pin is solved from the span and sits below
+the pin by 3.9 % at a 12 mm end segment, 2.3 % at 20 mm, 1.5 % at 30 mm,
+0.87 % at 50 mm and 0.43 % at 100 mm (1 mm pin, `max_ratio=1.3`, measured) —
+never the advisory's 1e-6. Close the face with PEC, or accept the advisory as
+informational; the builder has no runway argument yet.
+
+`make_z_profile` (same module) is the feature-list convenience built on the
+same engine: fine cells of `dx_fine` at every feature plane and at both domain
+ends, a ramp of ratio at most `grading` up to `dx_coarse` and back down inside
+every segment, all features on node planes:
+
+```python
 from rfx.nonuniform import make_z_profile
 
-candidate = make_z_profile(
+dz_profile = make_z_profile(
     features=[0.0, h],      # z-positions that must align to cell boundaries
     domain_z=h + margin,
     dx_fine=dz_sub,
     dx_coarse=dz_air,
     grading=1.3,
 )
-dz_profile = smooth_grading(candidate, max_ratio=1.3)
 ```
 
-The final fill cell from `make_z_profile()` can still exceed the requested
-adjacent-cell ratio. `smooth_grading()` repairs that ratio, but it may change the
-profile length, total domain height, or a requested feature edge. Inspect the
-final cumulative edges after either operation. Keep grading conservative,
-record the generated profile, and verify the RF observable against the relevant
-reference.
+Neither builder needs a `smooth_grading()` pass afterwards. `smooth_grading()`
+inserts transition cells and shifts every downstream interface (it changes the
+profile length and moves requested feature edges) — use it only on a profile
+you assembled by hand, and inspect the cumulative edges afterwards. Whichever
+way the profile was built, keep grading conservative, record the generated
+profile, and verify the RF observable against the relevant reference.
 
 ## Passing `dz_profile` to `Simulation`
 
@@ -209,10 +242,12 @@ sim = Simulation(**cfg.to_sim_kwargs())
 ```
 
 `SimConfig.uses_nonuniform` is `True` when `dz_profile is not None`.
-This example plans from the dielectric thickness only. A zero-thickness
-`Box` does not rasterize a conductor; register a physical sheet separately
-with `sim.add_thin_conductor(...)` after constructing the simulation, or give a
-volumetric conductor a finite, cell-aligned thickness.
+This example plans from the dielectric thickness only. Register the conductor
+separately after constructing the simulation: a sheet with
+`sim.add_thin_conductor(...)` (or the equivalent zero-thickness `Box` through
+`sim.add()`), or a volume with a cell-aligned thickness of at least one local
+cell. A PEC `Box` thinner than one cell raises rather than thin-rasterizing
+([How conductors land on the lattice](/rfx/guide/materials-geometry/#how-conductors-land-on-the-lattice)).
 
 ---
 

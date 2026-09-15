@@ -22,6 +22,7 @@ radiates dominantly once resonant, so the pattern is patch-dominated, not feed-d
 import json
 import math
 import os
+import sys
 import time
 import numpy as np
 from rfx import Simulation, Box
@@ -30,6 +31,11 @@ from rfx.sources.sources import GaussianPulse
 from rfx.auto_config import smooth_grading
 from rfx.harminv import harminv
 from rfx.farfield import compute_far_field, directivity
+# The ONE spelling of the build-time realization check (#931 §1.7).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__)))), "tests"))
+from _realized_geometry import (   # noqa: E402
+    assert_wall_planes as _assert_wall_planes, realized as _realized)
 
 C0 = 2.998e8
 EPS0 = 8.8541878e-12
@@ -59,9 +65,12 @@ margin_xy = float(os.environ.get("PT_MARGIN_XY_MM", "85")) * 1e-3
 air_below = float(os.environ.get("PT_AIR_BELOW_MM", "30")) * 1e-3
 air_above = float(os.environ.get("PT_AIR_ABOVE_MM", "95")) * 1e-3
 NUM_PERIODS = int(os.environ.get("PT_NUM_PERIODS", "250"))
-# PT_TWO_PLANE=1: #706 two-plane realization of the one-cell ground/patch
-# sheets — the radiation-damping A/B on a matched textbook radiator.
-_TP = dict(two_plane=True) if os.environ.get("PT_TWO_PLANE", "0") == "1" else {}
+# PT_TWO_PLANE is gone with #931: `two_plane` was a realization toggle on ONE
+# declaration, and a conductor's realization is no longer a knob. The foils
+# below are declared as SHEETS (§1.3) because that is what they are — printed
+# copper on a laminate. The realization A/B that switch existed for lives in
+# scripts/diagnostics/sheet_vs_volume_patch_radiation_ab.py, where the two
+# arms are two DECLARATIONS.
 # #693 root cause lived here: F_GUESS used patch_l (40 mm) as the resonant
 # length, so the nearest-mode selector always picked the 40 mm CROSS mode
 # (2.21 GHz) and that number became the committed envelope. The probe feed
@@ -92,6 +101,37 @@ def hpbw_deg(ang_deg, power_lin):
     return float("nan") if (np.isnan(lo) or np.isnan(hi)) else abs(hi - lo)
 
 
+def assert_sheet_planes(sim, want_z, labels=("ground", "patch")):
+    """Build-time gate (#931 sec 1.3), no solve: the foils realize exactly
+    their declared node planes.
+
+    The check itself is ``tests/_realized_geometry.assert_wall_planes`` —
+    the ONE spelling on this branch — so this script cannot drift from what
+    the solve zeroes, and it covers both lanes (the cubic build is uniform,
+    the graded build is a NonUniformGrid) because that helper picks the lane
+    the simulation itself would take.
+    """
+    got = _assert_wall_planes(sim, 2, expected_m=list(want_z),
+                              what="patch tutorial foils")
+    rz = _realized(sim)
+    got_z = [_node_line_position(rz.grid, 2, k) for k in got]
+    print("  realized z wall planes: "
+          + ", ".join(f"{z*1e3:.4f} mm" for z in got_z)
+          + "  (declared: "
+          + ", ".join(f"{l} {z*1e3:.4f}" for l, z in zip(labels, want_z))
+          + ")  [#931 build-time gate, no solve]")
+    return got_z
+
+
+def _node_line_position(grid, axis, k):
+    from rfx.geometry.rasterize_grid import (coords_from_nonuniform_grid,
+                                             coords_from_uniform_grid)
+    from rfx.nonuniform import NonUniformGrid
+    c = (coords_from_nonuniform_grid(grid) if isinstance(grid, NonUniformGrid)
+         else coords_from_uniform_grid(grid))
+    return float(np.asarray((c.x, c.y, c.z)[axis])[k])
+
+
 def build_cubic():
     """Uniform CUBIC mesh (dz = dx, no dz_profile) — the only path Stage-2
     kottke_pec supports. Requires sub_thick/dx integer (dx=0.762mm -> 2 cells).
@@ -108,17 +148,23 @@ def build_cubic():
     patch_x_lo, patch_x_hi = cx - patch_w / 2, cx + patch_w / 2
     patch_y_lo, patch_y_hi = cy - patch_l / 2, cy + patch_l / 2
     feed_x, feed_y = cx + feed_off, cy
-    z_gnd_lo, z_gnd_hi = zb - dx, zb
+    # #931 migration rule 2: the ground used to be drawn ONE CELL BELOW the
+    # substrate floor (`zb - dx .. zb`) so that its single realized wall — the
+    # lo node plane, the only one the old rule gave a body — landed on the
+    # floor. Under the contract the foil is declared where it physically is,
+    # as a sheet on the floor plane, and the compensation is deleted rather
+    # than re-tuned.
+    z_gnd = zb
     z_sub_lo, z_sub_hi = zb, zb + sub_thick
-    z_patch_lo, z_patch_hi = z_sub_hi, z_sub_hi + dx
+    z_patch = z_sub_hi
 
     sim = Simulation(freq_max=4e9, domain=(dom_x, dom_y, dom_z), dx=dx,
                      boundary=BoundarySpec.uniform("cpml"), cpml_layers=n_cpml)
     sim.add_material("sub", eps_r=sub_epsR, sigma=SIGMA)
-    sim.add(Box((gx_lo, gy_lo, z_gnd_lo), (gx_hi, gy_hi, z_gnd_hi)), material="pec", **_TP)
+    sim.add_thin_conductor(Box((gx_lo, gy_lo, z_gnd), (gx_hi, gy_hi, z_gnd)))
     sim.add(Box((gx_lo, gy_lo, z_sub_lo), (gx_hi, gy_hi, z_sub_hi)), material="sub")
-    sim.add(Box((patch_x_lo, patch_y_lo, z_patch_lo),
-                (patch_x_hi, patch_y_hi, z_patch_hi)), material="pec", **_TP)
+    sim.add_thin_conductor(Box((patch_x_lo, patch_y_lo, z_patch),
+                               (patch_x_hi, patch_y_hi, z_patch)))
     src_z = z_sub_lo + 0.75 * dx
     sim.add_source(position=(feed_x, feed_y, src_z), component="ez",
                    waveform=GaussianPulse(f0=f_design, bandwidth=1.2))
@@ -128,6 +174,7 @@ def build_cubic():
                 gp_edge_to_box_mm=None, lambda_half_mm=round(lam / 2 * 1e3, 1),
                 ntff_freqs_ghz=[])
     ntff_freqs = np.array([2.0e9])  # unused in lean mode
+    assert_sheet_planes(sim, (z_gnd, z_patch))
     return sim, meta, ntff_freqs
 
 
@@ -147,8 +194,12 @@ def build():
     # test: cv05 #325 verdict predicts the transition ADJACENT to the resonant
     # stack injects a spurious mode split; real modes are mesh-robust).
     buf = int(os.environ.get("PT_FINE_BUFFER_CELLS", "0"))
+    # #931: the fine band no longer reserves ONE CELL EACH for the ground and
+    # the patch. A sheet owns no cell; the reserved cells existed so the old
+    # one-wall-per-masked-plane rule had somewhere to put the foil, and under
+    # the contract they are two extra dielectric-free cells inside the cavity.
     raw_dz = np.concatenate([np.full(n_below, z_air),
-                             np.full(buf + 1 + n_sub + 1 + buf, dz_sub),
+                             np.full(buf + n_sub + buf, dz_sub),
                              np.full(n_above, z_air)])
     dz_profile = smooth_grading(raw_dz, max_ratio=1.3)
     edges = np.insert(np.cumsum(dz_profile), 0, 0.0)
@@ -157,11 +208,10 @@ def build():
     # band (do NOT trust a fixed air_below — smooth_grading's transition cells shift
     # it, the #325 bug: the substrate then lands on 1 coarse cell instead of n_sub).
     fi = np.where(np.isclose(dz_profile, dz_sub, rtol=1e-6))[0]
-    assert len(fi) >= 2 + n_sub + 2 * buf, f"expected >= {2+n_sub+2*buf} fine cells, got {len(fi)}"
+    assert len(fi) >= n_sub + 2 * buf, f"expected >= {n_sub+2*buf} fine cells, got {len(fi)}"
     f0 = int(fi[0]) + buf
-    z_gnd_lo, z_gnd_hi = edges[f0], edges[f0 + 1]
-    z_sub_lo, z_sub_hi = edges[f0 + 1], edges[f0 + 1 + n_sub]
-    z_patch_lo, z_patch_hi = z_sub_hi, edges[f0 + 1 + n_sub + 1]
+    z_sub_lo, z_sub_hi = edges[f0], edges[f0 + n_sub]
+    z_gnd, z_patch = z_sub_lo, z_sub_hi
     centers = 0.5 * (edges[:-1] + edges[1:])
     sub_cells = int(np.sum((centers >= z_sub_lo) & (centers < z_sub_hi)))
     print(f"  z-mesh FIXED: substrate rasterizes to {sub_cells} cells (intended {n_sub}); "
@@ -171,22 +221,20 @@ def build():
                      dz_profile=dz_profile, boundary=BoundarySpec.uniform("cpml"),
                      cpml_layers=n_cpml)
     sim.add_material("sub", eps_r=sub_epsR, sigma=SIGMA)
-    sim.add(Box((gx_lo, gy_lo, z_gnd_lo), (gx_hi, gy_hi, z_gnd_hi)), material="pec", **_TP)
-    # PT_FILL_GROUND_CELL=1 (#693 follow-up): extend the substrate across the
-    # ground sheet's own cell so its live normal-E edge samples eps_r 3.38,
-    # not vacuum — the preflight sheet-cavity check measured that vacuum cell
-    # as +84.5% electrical thickness, and this is the REMEDY it prints.
-    _sub_lo = z_gnd_lo if os.environ.get("PT_FILL_GROUND_CELL", "0") == "1" else z_sub_lo
-    sim.add(Box((gx_lo, gy_lo, _sub_lo), (gx_hi, gy_hi, z_sub_hi)), material="sub")
-    sim.add(Box((patch_x_lo, patch_y_lo, z_patch_lo),
-                (patch_x_hi, patch_y_hi, z_patch_hi)), material="pec", **_TP)
+    sim.add_thin_conductor(Box((gx_lo, gy_lo, z_gnd), (gx_hi, gy_hi, z_gnd)))
+    # PT_FILL_GROUND_CELL is gone with #931: a sheet owns no cell, so the
+    # ground has no "own cell" whose vacuum had to be filled. The substrate is
+    # drawn between the two sheet planes and the cavity is exactly it.
+    sim.add(Box((gx_lo, gy_lo, z_sub_lo), (gx_hi, gy_hi, z_sub_hi)), material="sub")
+    sim.add_thin_conductor(Box((patch_x_lo, patch_y_lo, z_patch),
+                               (patch_x_hi, patch_y_hi, z_patch)))
     src_z = z_sub_lo + dz_sub * 1.5
     sim.add_source(position=(feed_x, feed_y, src_z), component="ez",
                    waveform=GaussianPulse(f0=f_design, bandwidth=1.2))
     sim.add_probe(position=(feed_x + 4e-3, feed_y + 4e-3, src_z), component="ez")
 
     pad = box_pad
-    box_lo = (pad, pad, max(pad, z_gnd_lo - 3 * z_air))
+    box_lo = (pad, pad, max(pad, z_gnd - 3 * z_air))
     box_hi = (dom_x - pad, dom_y - pad, z_total - pad)
     ntff_freqs = np.array([2.00e9, 2.10e9, 2.20e9, 2.30e9, 2.40e9, 2.50e9])
     if not SKIP_NTFF:
@@ -197,6 +245,7 @@ def build():
                 dx_mm=dx * 1e3, gp_edge_to_box_mm=round((gx_lo - box_lo[0]) * 1e3, 1),
                 lambda_half_mm=round(lam / 2 * 1e3, 1),
                 ntff_freqs_ghz=[round(f / 1e9, 3) for f in ntff_freqs])
+    assert_sheet_planes(sim, (z_gnd, z_patch))
     return sim, meta, ntff_freqs
 
 

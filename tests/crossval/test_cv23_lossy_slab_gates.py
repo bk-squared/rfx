@@ -29,16 +29,17 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-from tests._gate_policy import gate_from_envelope
+from tests._gate_policy import ENVELOPE_GATE_MULTIPLIER
 
 _REPO = Path(__file__).resolve().parents[2]
 _RESULTS = _REPO / "validation/crossval/_23_lossy_results"
-_GOLDEN_CV04 = _REPO / "tests/fixtures/golden_workflows/multilayer_fresnel.json"
+_ENVELOPE = _REPO / "validation/crossval/_04_fresnel_results/envelope.json"
 
 
 def _load(name: str, rel: str):
@@ -81,18 +82,48 @@ def _rfx_bins():
 # 1. Artifact-free witnesses
 # ---------------------------------------------------------------------------
 
-def test_windows_are_cv22s_plus_the_triangle_sums_for_absorption():
-    golden = json.loads(_GOLDEN_CV04.read_text())
-    baseline = {m["id"]: m["observed_baseline"] for m in golden["expected_metrics"]}
-    assert L.W_BIN == G.W_BIN == 0.074 and L.W_MEAN_R == G.W_MEAN_R == 0.010 and L.W_MEAN_T == G.W_MEAN_T == 0.017
+def _round_up(value: float, multiplier: float, quantum: float) -> float:
+    """The envelope->gate arithmetic, written out again rather than imported:
+    ``gate_from_envelope`` is one side of the comparison, so it cannot be both."""
+    return math.ceil(value * multiplier * quantum) / quantum
+
+
+def test_windows_are_rederived_from_the_producer_artifact_outside_the_consumer():
+    """cv23's windows, re-derived from cv04's own artifact.
+
+    The closure envelope used to be copied into this module from the STUDIO UI
+    fixture and pinned equal to it here (#928). Both ends are gone: the module
+    reads the producer's `_04_fresnel_results/envelope.json` through its own
+    adoption record, and this test re-derives from that artifact with the
+    arithmetic written out locally.
+    """
+    doc = json.loads(_ENVELOPE.read_text())
+    adoption = L.CV04_ADOPTION
+    rev = doc["revisions"][adoption["adopted_revision"]]
+    assert rev["status"] == "active"
+    assert ENVELOPE_GATE_MULTIPLIER == adoption["gate_policy"]["multiplier"], (
+        "the shared multiplier moved since cv23 adopted its envelope")
+    mult, quantum = adoption["gate_policy"]["multiplier"], adoption["gate_policy"]["quantum"]
+    values = rev["values"]
+
+    # cv22's three, re-exported here: same revision, same derivation.
+    assert L.W_BIN == G.W_BIN == _round_up(values["per_bin_max_RT_closure"], mult, quantum)
+    assert L.W_MEAN_R == G.W_MEAN_R == _round_up(values["mean_dR"], mult, quantum)
+    assert L.W_MEAN_T == G.W_MEAN_T == _round_up(values["mean_dT"], mult, quantum)
+    assert L.CV04_ADOPTION["adopted_revision"] == G.CV04_ADOPTION["adopted_revision"]
+    assert L.CV04_ADOPTION["revision_sha256"] == G.CV04_ADOPTION["revision_sha256"]
+    # the declared A windows: triangle sums of the above, not new evidence
     assert L.W_BIN_A == 2 * G.W_BIN == pytest.approx(0.148)
     assert L.W_MEAN_A == G.W_MEAN_R + G.W_MEAN_T == pytest.approx(0.027)
-    # the tighter A window is DERIVABLE from cv04's closure (reported, not gated)
-    assert L.CV04_MEAN_CLOSURE == baseline["mean_energy_closure_error"] == 0.0091
-    assert L.W_BIN_A_TIGHT == gate_from_envelope(0.0487, quantum=1000) == 0.074
-    assert L.W_MEAN_A_TIGHT == gate_from_envelope(0.0091, quantum=1000) == 0.014
+    # the tighter A windows: derived from the SAME artifact's closure values
+    assert L.CV04_MEAN_CLOSURE == values["mean_closure"]
+    assert L.W_BIN_A_TIGHT == _round_up(values["per_bin_max_RT_closure"], mult, quantum)
+    assert L.W_MEAN_A_TIGHT == _round_up(values["mean_closure"], mult, quantum)
     assert L.W_BIN_A_TIGHT < L.W_BIN_A and L.W_MEAN_A_TIGHT < L.W_MEAN_A
     assert L.MEEP_PRIMARY_RESOLUTION == 40 and L.MEEP_EPS_AVERAGING is False
+    print(f"cv23 calibration: adopted {L.CV04_ADOPTED['revision']} "
+          f"(latest {L.CV04_ADOPTED['latest_revision']}, newer available: "
+          f"{L.CV04_ADOPTED['newer_revisions'] or 'none'})")
 
 
 @pytest.mark.parametrize("arm", L.ARM_ORDER)
@@ -262,6 +293,47 @@ def test_add_material_path_assembles_the_direct_arrays_bit_for_bit(arm):
     assert int((mats.sigma[:, 0, 0] > 0).sum()) == 10
 
 
+@pytest.mark.parametrize("arm", L.ARM_ORDER[:1])
+def test_a_one_cell_lossy_body_still_owns_exactly_one_cell(arm):
+    """#931 regression guard: the contract changes EDGES, not cells.
+
+    This is the sharpest pin in the crossval suite on the conductor /
+    dielectric boundary, so it gets the case that used to be special. A
+    one-cell lossy body is where ``resample_sheet_node_materials`` (#702)
+    acted: it gave a node-thin conductor's own cell the material its live
+    edge sat in, which is the one mechanism that could put a THIRD material
+    value on a one-node body (measured on the canonical patch: 18590 cells on
+    one z plane went 1.000 -> 3.380, and the resonance moved 9.32 -> 8.16 GHz).
+    That function is deleted by the contract, and a lossy dielectric must not
+    fall through the PEC sigma threshold either.
+
+    So: exactly one cell carries sigma, its value is the declared one, and
+    ``pec_mask`` stays empty. The ten-cell sibling above says the same thing
+    about a thick body; this says it where the old code was clever.
+    """
+    import jax.numpy as jnp
+    from rfx import Box, Simulation
+    from rfx.geometry.csg import _grid_coords
+    from rfx.grid import Grid
+    p = L.ARMS[arm]["params"]
+    domain = (G.NX_INTERIOR_R3 * G.DX_M, 0.004, G.DX_M)
+    grid = Grid(freq_max=20e9, domain=domain, dx=G.DX_M, cpml_layers=G.N_CPML,
+                mode="2d_tmz")
+    lo = G.rig_cells(G.NX_INTERIOR_R3)["slab_lo"]
+    sim = Simulation(freq_max=20e9, domain=domain, dx=G.DX_M,
+                     cpml_layers=G.N_CPML, mode="2d_tmz")
+    sim.add_material(L.API_MATERIAL_NAME, eps_r=p["eps_inf"], sigma=p["sigma"])
+    xs, _, _ = _grid_coords(grid)
+    sim.add(Box((float(xs[lo]), -1.0, -1.0), (float(xs[lo + 1]), 1.0, 1.0)),
+            material=L.API_MATERIAL_NAME)
+    mats, _, _, pec, *_ = sim._assemble_materials(sim._build_grid())
+    assert int((mats.sigma[:, 0, 0] > 0).sum()) == 1
+    assert float(mats.sigma[lo, 0, 0]) == pytest.approx(p["sigma"])
+    assert float(mats.eps_r[lo, 0, 0]) == pytest.approx(p["eps_inf"])
+    assert pec is None or not bool(jnp.any(pec)), (
+        "a lossy dielectric fell through the PEC sigma threshold")
+
+
 @pytest.mark.parametrize("name", sorted(L.FALSIFIERS))
 def test_rfx_falsifiers_exceed_the_windows_analytically(name):
     """Note section 6: every F1/F2/F4 defect must fail G2 (band-mean) on R, T
@@ -355,7 +427,9 @@ def test_baseline_artifact_replays_and_passes_e2_on_all_arms():
         assert ad["run"]["recipe"] == G.RECIPE_R3
         assert ad["run"]["dx_div"] == L.ARM_DX_DIV[arm], "note section 13: tand3 at dx/2, the others at dx"
         assert ad["run"]["dx_m"] == pytest.approx(G.DX_M / L.ARM_DX_DIV[arm])
-        # the exact-lattice witness (reported, not gated) must reproduce and the run must sit on it
+        # the exact-lattice witness must reproduce and the run must sit on it. It is GATED
+        # since #970 (GL_witness in main()); the committed rfx.json predates that and
+        # carries no GL_witness key, so this test checks the numbers, not the key.
         lat = ad["lattice"]
         Rl, Tl, Al = L.lattice_rta(np.asarray(ad["freqs_hz"]), ad["params"], ad["run"]["dx_m"], ad["dt_s"])
         assert np.allclose(Rl, lat["R_lattice"], atol=1e-12) and np.allclose(Tl, lat["T_lattice"], atol=1e-12)
@@ -646,3 +720,99 @@ def test_r3_meep_node_count_discriminators_against_the_predictions():
                      f"corr with TMM(d - a/40) {corr_minus:+.3f}; |dT| {e4['mean_dT_meep_tmm_gated']:.5f}")
     print("\n".join(lines))
 
+
+
+# ---------------------------------------------------------------------------
+# 6. GL_witness cannot silently vanish (S1, PR #974 round 2 review)
+# ---------------------------------------------------------------------------
+#
+# GL_witness appeared in no test before this: the four scenarios below drive
+# the REAL main() end to end (a monkeypatched run_rfx_arm returns the
+# committed tand3 arm, optionally with a one-cell-thickness defect added to
+# R/T and/or run["record"] = None -- the recipe=cv04 shape), to a tmp_path
+# --out-dir so the committed _23_lossy_results/ is never touched.
+
+def _cv23_main_module():
+    return _load("cv23_main_s1", "validation/crossval/23_lossy_slab_fresnel.py")
+
+
+def _cv23_run_with_fake_arm(monkeypatch, tmp_path, *, plant: bool, norecord: bool):
+    doc = _baseline()
+    arm = doc["arms"]["tand3"]
+    m = _cv23_main_module()
+
+    def fake(params, path, **kw):
+        a = json.loads(json.dumps(arm))  # deep copy via round-trip, cheap here
+        run = dict(a["run"])
+        run.update({"freqs_hz": a["freqs_hz"], "R_rfx": np.asarray(a["R_rfx"]),
+                    "T_rfx": np.asarray(a["T_rfx"]), "tail": a["tail"],
+                    "materials": a["materials"], "band_inc_ok": a["band_inc_ok"],
+                    "inc_amp_rel": a["inc_amp_rel"], "grow": False,
+                    "t_safe": run["record"]["t_safe_cpml_steps"]})
+        if plant:
+            f = np.asarray(a["freqs_hz"])
+            dx = float(run["dx_m"])
+            dt = float(a["dt_s"])
+            R0, T0, _ = m.LW.lattice_rta(f, "conductive", a["params"], dx, dt, d_slab_m=m.G.D_SLAB_M)
+            R1, T1, _ = m.LW.lattice_rta(f, "conductive", a["params"], dx, dt, d_slab_m=m.G.D_SLAB_M + dx)
+            run["R_rfx"] = run["R_rfx"] + (R1 - R0)
+            run["T_rfx"] = run["T_rfx"] + (T1 - T0)
+        if norecord:
+            run["record"] = None
+        run["record"] = None if run["record"] is None else \
+            {k: v for k, v in run["record"].items() if k != "nx_grows"}
+        return run
+
+    monkeypatch.setattr(m, "run_rfx_arm", fake)
+    out_dir = str(tmp_path)
+    rc = m.main(["--arms", "tand3", "--out-dir", out_dir, "--meep-dir", str(_RESULTS), "--no-plots"])
+    out = _read(Path(out_dir) / "rfx.json")["arms"]["tand3"]
+    return rc, out
+
+
+def test_clean_replay_passes_and_gates_the_witness(monkeypatch, tmp_path):
+    rc, out = _cv23_run_with_fake_arm(monkeypatch, tmp_path, plant=False, norecord=False)
+    assert rc == 0, (rc, out["gates"], out.get("incomplete_gates"))
+    assert out["gates"]["GL_witness"] is True
+    assert out["e2_ok"] is True
+    assert out["incomplete_gates"] == []
+    assert out["lattice"]["gated"] is True
+
+
+def test_planted_thickness_defect_fails_via_gl_witness(monkeypatch, tmp_path):
+    """The #970 closure evidence, as a real test: a one-cell-thickness defect
+    reaches main()'s own exit code through GL_witness, not just the print."""
+    rc, out = _cv23_run_with_fake_arm(monkeypatch, tmp_path, plant=True, norecord=False)
+    assert rc == 1, (rc, out["gates"], out.get("incomplete_gates"))
+    assert out["gates"]["GL_witness"] is False
+    assert out["e2_ok"] is False
+    assert out["lattice"]["gated"] is True
+
+
+def test_norecord_cannot_publish_a_witness_less_pass(monkeypatch, tmp_path):
+    """S1: recipe=cv04 (run["record"] = None) must fail require_complete, not
+    pass silently because GL_witness was never in the declared set."""
+    rc, out = _cv23_run_with_fake_arm(monkeypatch, tmp_path, plant=False, norecord=True)
+    assert rc != 0, (rc, out["gates"], out.get("incomplete_gates"))
+    assert "GL_witness" not in out["gates"]
+    assert out.get("incomplete_gates") == ["GL_witness"]
+    assert out["e2_ok"] is False
+    assert out["lattice"]["gated"] is False
+
+
+def test_planted_defect_with_no_record_still_fails(monkeypatch, tmp_path):
+    """S1's required regression: plant_norecord must not exit 0."""
+    rc, out = _cv23_run_with_fake_arm(monkeypatch, tmp_path, plant=True, norecord=True)
+    assert rc != 0, (rc, out["gates"], out.get("incomplete_gates"))
+    assert "GL_witness" not in out["gates"]
+    assert out.get("incomplete_gates") == ["GL_witness"]
+    assert out["e2_ok"] is False
+
+
+def test_recipe_cv04_without_tag_is_refused():
+    """--recipe cv04 has no adaptive settling record and must never be able to
+    write the committed baseline rfx.json (S1)."""
+    m = _cv23_main_module()
+    with pytest.raises(SystemExit) as exc:
+        m.main(["--recipe", "cv04", "--arms", "tand3"])
+    assert exc.value.code == 2

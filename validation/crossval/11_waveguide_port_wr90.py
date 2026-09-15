@@ -39,223 +39,60 @@ simultaneously before the waveguide port is cleared to Meep-class:
    day, same pod) it is [0.9995, 1.0000], and on 2026-07-13 it was
    measured at [0.99956, 1.00000] with max 1.0000030 at 11.14 GHz.
    The trim widens the envelope on both sides and pushes the top
-   over unity; see "PEC short: passivity after the aperture trim"
-   below. Both envelopes sit inside the documented band, so the
-   band is pinned as-is (it is a regression envelope with margin,
-   not a physics claim; the physics reference is |S11| = 1
-   exactly).
+   over unity; see "PEC short: the over-unity excursion, re-attributed
+--------------------------------------------------
+On origin/main d990e18c the pec-short per-bin |S11| envelope is
+[0.9854, 0.9938] — it never reaches unity because the plug drawn to the
+declared cross-section leaks past the short. On this branch the
+envelope is [0.9980, 1.0019], so closing the leak brings the reflector
+back to |S11| ~ 1 and, at three bins, 0.0019 ABOVE it. That is a real
+if small non-physicality on a lossless PEC short and is NOT reported as
+physics.
 
-3. **Single dielectric slab (analytic Airy reflection)**
-   Geometry: uniform εr=2.0 slab of length L inside WR-90.
-   Reference: closed-form using the modal impedances of the two guide
-   segments (vacuum-filled + dielectric-filled) and the Airy-formula
-   multi-reflection summation (see ``docs/agent/recipe-waveguide-sparams.mdx``,
-   "Analytic reference" section).
-   Accept: S11 |S| mean diff < 0.10, S21 |S| mean diff < 0.07,
-   phase mean diff < 60° with |S_ref| >= 0.30 mask, and complex-S
-   envelope max diff <= 0.30. This is a reference-convention-aware
-   diagnostic envelope, not a blanket phase-accuracy claim.
+WHAT IT IS NOT: the 2026-08-28 revision of this note attributed the
+same 0.0019 to the aperture trim, on an A/B in which the trim was the
+only variable. That A/B was sound and its conclusion has been
+superseded by a wider one: run 369367259198 measured the trim arm at
+max dev 0.0711 and the no-trim arm at 0.0560, i.e. the trim was WORSE
+on the magnitude leg, and the plug-drawing A/B
+(``scripts/diagnostics/pec_short_lane_ab.py``) then reproduced
+[0.9980, 1.0019] / 0.0020 from the drawing alone on both checkouts.
+Two variables were confounded; the drawing is the dominant one and the
+trim's own contribution to the excursion is not separated here. Do not
+quote either as a diagnosed cause of the 0.0019.
 
-**Rule compliance**:
-This crossval uses the canonical ``add_waveguide_port`` +
-``compute_waveguide_s_matrix`` pipeline. It does NOT compute S-params
-from a time-series FFT or probe-subtraction hacks.
+WHAT IT PLAUSIBLY IS, uninstrumented: with the trim deleted
+``u_hi == u_grid_size`` holds again, so the DROP-weight zeroing at
+``rfx/sources/waveguide_port.py`` fires and the ghost column is dropped
+by weight rather than by range — a different total aperture area for
+the modal V/I normalization. #729 is where the correct column set gets
+derived.
 
-Exit code convention (per rfx crossval standard):
-  0 → all three geometries within accept gates
-  1 → a geometry could not run or one or more numeric accept gates failed
-
-Run:
-  python validation/crossval/11_waveguide_port_wr90.py
-
-  Do NOT prefix ``JAX_ENABLE_X64=1``. The module does
-  ``os.environ.setdefault("JAX_ENABLE_X64", "0")``, so an exported 1 wins
-  and changes the rasterization by a whole cell — see PRECISION
-  REQUIREMENT below. This line used to say ``JAX_ENABLE_X64=1``; every
-  number in this docstring was measured at 0.
-
-Status (2026-05-04):
-  - Empty-guide and PEC-short magnitude gates: PASS (Meep-class via
-    ``compute_waveguide_s_matrix(normalize=False)``; PEC-short
-    ``max ||S11|-1| = 0.0004`` at R=1). SUPERSEDED as a current number:
-    re-measured 2026-08-28 origin/main gives 0.0005 and this file with
-    the #724 aperture trim gives 0.0020 — see the RUN RESULT table.
-  - Single-slab analytic-Airy gates: PASS under the current
-    reference-convention-aware envelope (60° phase gate with |S_ref| >= 0.30
-    mask and complex-S max-diff envelope 0.30). The previous 5° blanket
-    phase gate mixed solver reference-plane conventions and is no longer the
-    promoted gate.
-  - The "per-frequency PEC-short |S11| oscillation ±6-13%" that prior
-    sessions chased was a diagnostic-comparator artefact: the
-    dump-derived recipe in
-    ``scripts/diagnostics/wr90_port/s11_from_dumps.py`` was missing
-    the Yee leapfrog half-step correction
-    (``exp(+jω·dt/2)`` on the H spectrum) that the production
-    extractor always applies. With that correction landed (commits
-    ``2fb9b76``, ``3e2754c``) the dump recipe drops to ~0.017 spread
-    at R=1 (Meep-class). The production extractor itself was always
-    Meep-class on this geometry.
-  - This script remains a diagnostic reporter for the slab/reference-plane
-    envelope. The authoritative correctness gates live in
-    ``tests/oracle/test_waveguide_port_validation_battery.py``.
-
-Mesh / reference convention (issue #722, #724):
-  #722 requires that when a cell size does not divide a declared dimension,
-  the reference formula and the rasterized mesh must agree on ONE structure.
-  This script adopts **QUOTE-REALIZED**, not realize-declared-by-mesh:
-  DX_M stays 1 mm; F_CUTOFF_TE10 is computed from A_WG_REALIZED /
-  B_WG_REALIZED (= ceil(A_WG/DX_M)*DX_M = 23.000 mm, 11.000 mm at dx=1mm —
-  the walls the mesh actually rasterizes), not the declared 22.86 mm.
-  A mesh-based fix (DX_M -> 0.635 mm, which divides 22.86 mm and 10.16 mm
-  exactly) was evaluated and WITHDRAWN: measured by rasterizing this
-  script's own Box entities, it shrinks the propagation-axis slab length
-  L_slab from the declared/realized-at-1mm 10.000 mm to 9.525 mm (-4.75%)
-  and moves the PEC-short face from 145.000 mm to 145.415 mm (+0.415 mm,
-  up to 10.49 deg of fresh round-trip-phase error against a gate whose
-  live margin is only 4.44 deg — origin/main measures 10.56 deg against
-  the 15.0 deg gate) — a LARGER instance of the #722 defect on the
-  load-bearing axis than the 0.61% cross-section error it would remove.
-  At the unchanged dx = 1 mm the propagation axis is exact today (slab
-  L = 10.000 mm, short face = 145.000 mm), so it is preserved.
-
-  Ranked error budget (comparator-first — see repo rule: validate the
-  extractor before touching solver/reference physics). EVERY percentage
-  below names the reference it is against; the two terms compose, so
-  quoting one against the declared cutoff and the other against the
-  realized one double-counts the geometry term:
-    1. DOMINANT, comparator-side: the port's transverse eigenproblem spans
-       n_nodes columns, not n_cells (rfx/api/_compile.py `_range_to_slice`,
-       `value_range is None` branch returns `(axis_pad, grid_size -
-       axis_pad)`), so its effective broad/narrow wall is `realized + dx`
-       at every resolution. Measured cfg.f_cutoff = 6.241218 GHz at
-       dx=1mm — an effective broad wall of 24.0177 mm — which is -4.237%
-       against the QUOTE-REALIZED reference of 6.517391 GHz (and -4.820%
-       against the declared 6.557305 GHz, i.e. this term and term 2
-       together). It survives every mesh: 6.204954 GHz at dx=1.27mm and
-       6.378004 GHz at dx=0.635mm, both of which realize a = 22.860 mm
-       exactly, so there the whole -5.373% / -2.734% deficit is this term
-       alone. Comparator/extractor defect, not a geometry defect — NOT
-       fixed by this change; filed as #729 (the node-vs-cell class) with
-       this measurement.
-    2. Cross-section geometry: -0.609% (declared 6.557305 GHz vs realized
-       6.517391 GHz — 22.86 mm vs 23.000 mm). Fixed here by quote-realized.
-  An in-script mitigation for term (1) IS applied below (cheap in
-  compute — it changes no mesh and no run length — but NOT free in
-  accuracy; the cost is measured and tabulated further down): both
-  ports are given `y_range=(0.0, A_WG_REALIZED - DX_M)` and
-  `z_range=(0.0, B_WG_REALIZED - DX_M)`, naming the last interior CELL
-  column of the cross-section instead of the default n_nodes span.
-  Measured: cfg.f_cutoff rises from 6.241218 GHz to 6.512162 GHz, i.e.
-  -0.080% against the quote-realized reference instead of -4.237%.
-  The CAVEAT this docstring carried before the run — that trimming the
-  aperture makes `u_hi != u_grid_size`, disabling the PEC-ghost
-  aperture-weight zeroing at ``rfx/sources/waveguide_port.py`` that the
-  2026-04-27 DROP-weight fix (see pec-short docstring below) depends on —
-  was RESOLVED by the run below: it does not break the |S11| gates. It is
-  not free either. See the measured table and the passivity note below.
-
-RUN RESULT (2026-08-28, this pod, CPU, dx = 1 mm unchanged, 2m06.8s)
-============================================================================
-BASELINE PROVENANCE — read this before quoting any "before" number.
-The `main` column below is a LIVE run of this script at origin/main
-(cdc38bc8) on this pod, committed at
-``tests/fixtures/waveguide_broad_e5/cv11_wr90_main_baseline_stdout.txt``.
-It is NOT the pre-#724 contents of
-``tests/fixtures/waveguide_broad_e5/cv11_wr90_fresh_stdout.txt``: that
-file was last written at b0322c16 (#181), and 2dcafdb6 (#595) has since
-replaced ``CPML_LAYERS = 20`` with the derived
-``int(np.ceil(0.75*_LAMBDA_G_LOW_M/DX_M))`` = 43 — a 2.15x absorber
-depth change on a script whose own history says absorber depth removes
-most of a PEC short's residual. An earlier revision of this docstring
-used that stale fixture as the "before" column; four of its rows were
-wrong and three of those inverted the direction of the change. A
-committed run of an older revision is a provenance record, not a
-baseline — re-run main. The three logs are provenance records only;
-grep confirms no test reads them, so writing them moves no gate.
-
-  gate line                           main  ->   this   (gate)
-  [pec-short S11 round-trip] max     10.56  ->   3.26   deg (15.0)
-  [pec-short S11 round-trip] mean     5.53  ->   1.45   deg
-  [pec-short |S11|] max_diff         0.0005 -> 0.0020   (0.050)  WORSE
-  [pec-short |S11|] per-bin envelope
-      [0.9995, 1.0000] -> [0.9980, 1.0019]  (band [0.93, 1.07],
-                                             ceiling 1.05)     WORSE
-  [slab S11] |S| max_diff            0.0186 -> 0.0141   (0.100)
-  [slab S11] |S| mean_diff           0.0077 -> 0.0069
-  [slab S11] angle max_diff           8.69  ->  8.94    deg (60.0)  WORSE
-  [slab S11] |S_rfx-S_ref| max       0.0628 -> 0.0654   (0.300)  WORSE
-  [slab S21] |S| max_diff            0.0045 -> 0.0023   (0.070)
-  [slab S21] |S| mean_diff           0.0010 -> 0.0006
-  [slab S21] angle max_diff           0.66  ->  0.76    deg (60.0)  WORSE
-  [slab S21] |S_rfx-S_ref| max       0.0115 -> 0.0132   (0.300)  WORSE
-  [empty] every line                 0.0000 -> 0.0000   unchanged
-
-SIX reported lines get worse and all six are in the table above. No gate
-is moved and every line stays inside its gate. Of the difference-type
-lines the one consuming the most of its gate is slab S11 complex,
-0.0654 of 0.300 (22%); the pec-short per-bin maximum sits at 1.0019
-against the 1.05 passivity ceiling, which is discussed on its own below
-because it is an over-unity excursion, not just a larger residual.
-
-What the change buys, and what it costs:
-  - The pec-short round-trip PHASE leg improves 3.2x (10.56 -> 3.26 deg
-    max, 5.53 -> 1.45 mean). Its reference is exactly
-    ``-exp(-2j*beta*d_pec)`` with beta built from F_CUTOFF_TE10 over a
-    190 mm round trip, so a cutoff mismatch dominates it directly.
-    Aligning the reference cutoff with the extractor's effective guide
-    (-4.237% -> -0.080%) is the whole of that improvement.
-  - The slab MAGNITUDE comparisons improve: S11 0.0186 -> 0.0141,
-    S21 0.0045 -> 0.0023.
-  - The slab PHASE and complex-envelope comparisons do NOT collapse.
-    They move in the third digit and slightly the wrong way. Those legs
-    are dominated by the reference-plane convention offset — 13 of 21
-    S11 bins are masked nulls and the gate is 60 deg for exactly that
-    reason — so the cutoff correction barely reaches them, while the
-    aperture trim does. Which term inside the trim moves them is not
-    instrumented; see the passivity note.
-  An earlier revision of this docstring said "the phase residuals
-  collapse". Measured against a live main run that is true of the
-  pec-short round-trip leg only.
-
-PEC short: passivity after the aperture trim
---------------------------------------------
-On origin/main the pec-short per-bin |S11| never exceeds 1.0000
-(envelope [0.9995, 1.0000]). With the trim it reaches 1.0019, so this
-change introduces a small over-unity excursion on a lossless PEC short.
-That is a real, if small, non-physicality, and the trim is the only
-variable between the two runs, so it is the trim's. It is NOT reported
-as physics.
-The code path the trim changes is the aperture column set: with the
-trim ``u_hi != u_grid_size``, so the DROP-weight zeroing at
-``rfx/sources/waveguide_port.py`` (the ``u_hi == u_grid_size`` guard)
-no longer fires, and the ghost column is dropped by the range instead
-of by the weight — a different total aperture area for the modal V/I
-normalization. That the 0.0019 comes from THAT term is inference from
-the A/B, not an instrumented measurement; do not quote it as a
-diagnosed cause.
 Sizing it: the excursion above unity is 0.0019 where the ceiling allows
 0.05, i.e. 3.8% of the allowance, and far inside the documented
 single-run envelope the ``normalize=False`` waveguide path is locked
-silent to — ``tests/unit/sparams/test_sparam_passivity_guard.py`` holds that path
-silent up to column power ~2.0 (|S11| ~ 1.4 for a 1-port) because
-band-edge Yee dispersion overshoots there. #729 is where the correct
-column set gets derived; until then the trim's cost is this line.
+silent to — ``tests/unit/sparams/test_sparam_passivity_guard.py`` holds
+that path silent up to column power ~2.0 (|S11| ~ 1.4 for a 1-port)
+because band-edge Yee dispersion overshoots there. The per-freq gate
+sees it: [0.930, 1.070] band, 0/21 violations, ceiling max 1.0019.
 
-INVARIANCE WITNESS (run-length, 2026-08-28): the whole script was
-re-run with NUM_PERIODS_LONG doubled 200 -> 400, same mesh, same
-everything else. EVERY gate line above reproduces EXACTLY, to the last
-printed digit, including the slab S11 complex envelope at 0.0654. Log
-at ``tests/fixtures/waveguide_broad_e5/cv11_wr90_witness_np400_stdout.txt``,
-whose first line is the grep proving NUM_PERIODS_LONG was 400; wall
-clock 4m06.6s against 2m06.8s for the 200-period run, i.e. the scan
-really did double. This is the end-to-end version of the per-geometry
-invariance the NUM_PERIODS_LONG comment below already records for
-PEC-short.
-Reproducibility note: an earlier run of this same branch, on the same
-pod but from a different checkout directory, printed 0.0653 rather than
-0.0654 for [slab S11] |S_rfx-S_ref| max. Nothing else moved. Treat the
-last digit of that one line as environment noise; two runs from this
-worktree and the 400-period witness all give 0.0654.
+INVARIANCE WITNESS (run-length, 2026-09-07, VESSL 369367259277 leg 3/3):
+the whole script was re-run with NUM_PERIODS_LONG doubled 200 -> 400,
+same mesh, same container, everything else equal. All 27 gate lines
+reproduce EXACTLY to the last printed digit except ONE — [pec-short S11
+vs conj(MEEP)] |S| max_diff, 0.1992 against 0.1991 — including the slab
+S11 complex envelope at 0.1536. Log at
+``tests/fixtures/waveguide_broad_e5/cv11_wr90_witness_np400_stdout.txt``,
+whose first line is the grep proving NUM_PERIODS_LONG was 400; the leg
+took about twice the wall clock of the 200-period leg in the same
+container, i.e. the scan really did double. This is the end-to-end
+version of the per-geometry invariance the NUM_PERIODS_LONG comment
+below already records for PEC-short.
+Reproducibility note: last digits on the difference-type lines are
+environment noise at the 1e-4 level — an earlier branch run from a
+different checkout printed 0.0653 rather than 0.0654 for [slab S11]
+|S_rfx-S_ref| max, and the 0.1992/0.1991 above is the same class. Do
+not read a fourth-decimal move as a result.
 
 GATES ARE STILL NOT TIGHTENED, and the reason is no longer a missing
 witness -- it is two specific things:
@@ -279,11 +116,129 @@ witness -- it is two specific things:
 So: tighten the magnitude gates after #729 settles, on a re-measured
 envelope, not here.
 
+  #931 LATTICE OWNERSHIP — APPENDED 2026-09-07. Three things in this
+  docstring change; nothing above is deleted.
+
+  (a) THE APERTURE TRIM IS DELETED, not re-tuned. "SEQUENCING" above says
+      the in-script `y_range`/`z_range` workaround "becomes redundant or a
+      double correction" once the rfx-side default is fixed. The default
+      was fixed — #889, `_node_span_to_cell_span` in
+      rfx/sources/waveguide_port.py, which solves the transverse mode on
+      the guide's N CELLS rather than the node span's N+1 — so the trim is
+      now the double correction. Measured on this checkout, build-only:
+      with the trim `cfg.f_cutoff` = 6.807677 GHz (+4.454% against the
+      quote-realized 6.517391 GHz); without it, 6.512162 GHz (-0.080%),
+      which is EXACTLY the figure this docstring credited to the trim in
+      2026-08. The compensation is removed and the rfx-side default now
+      supplies the same number. Consequences to re-measure in the re-run:
+      `u_hi == u_grid_size` holds again, so the PEC-ghost aperture-weight
+      zeroing the 2026-04-27 DROP-weight fix depends on fires again, and
+      the pec-short per-bin |S11| envelope is predicted to return from
+      [0.9980, 1.0019] toward [0.9995, 1.0000] with max_diff 0.0020 ->
+      ~0.0005. The RUN RESULT table above was measured WITH the trim and is
+      superseded by the post-#931 run.
+
+      MEASURED AFTER THE FACT (VESSL 369367259194, this branch, against
+      baseline 369367259004 on origin/main d990e18c with the trim). The
+      prediction in (a) — that the pec-short |S11| envelope would TIGHTEN —
+      is FALSIFIED. Reported verbatim, pass and fail together:
+
+                                          baseline (trim)   post (no trim)
+        pec-short |S11| max_diff              0.0146           0.0560
+        pec-short round-trip phase max        9.99 deg        17.20 deg
+        pec-short vs conj(MEEP) angle        27.12 deg        10.98 deg
+        slab S11 angle                       13.60 deg         8.79 deg
+        slab S11 vs conj(MEEP) angle         25.37 deg        18.58 deg
+        empty S11/S21, slab S21              identical        identical
+
+      Every PHASE leg improved, two of them by more than 2x including the
+      one against an EXTERNAL solver; the pec-short MAGNITUDE leg got worse
+      and crossed its 0.050 gate, taking the internal 15 deg round-trip
+      phase gate with it. Those two runs differ by two things — the trim and
+      the whole #931 core — so the magnitude step was not attributed from
+      them.
+
+      THE A/B THAT ATTRIBUTES IT (VESSL 369367259198,
+      `scripts/diagnostics/cv11_aperture_trim_ab.py`: both arms on ONE
+      checkout, the trim as the only variable):
+
+        trim     cfg.f_cutoff 6.807677 GHz  |S11| [0.9289, 0.9811]  dev 0.0711
+        no_trim  cfg.f_cutoff 6.512162 GHz  |S11| [0.9440, 0.9888]  dev 0.0560
+
+      Removing the trim IMPROVES this leg by 0.0152. So the 0.0146 -> 0.0560
+      degradation is NOT the trim's: about +0.057 of it belongs to the #931
+      CORE, on the waveguide S-matrix lane — the lane where stage C replaced
+      a sigma = 1e10 cell fill with the realized PEC edges (commit 0184d64c),
+      the fold the inventory critic flagged as owned by no group. That is
+      filed for the core; this case does not compensate for it. The trim
+      stays deleted on both counts: it solves a 22-cell guide (+4.454% in
+      cutoff) where the walls make 23, and it is worse on the magnitude leg
+      too.
+
+      ADJUDICATED 2026-09-07 (scripts/diagnostics/pec_short_lane_ab.py,
+      per-bin dumps + port time records, both checkouts, 200 periods): the
+      +0.057 is NOT the lane's edge realization. It is THIS SCRIPT'S
+      DRAWING of the plug's cross-section, made visible by the contract.
+      The plug was drawn to the DECLARED 22.86 x 10.16 mm; the grid
+      realizes the guide as 23 x 11 mm (ceil, the quote-realized walls
+      above), and a volume's face rounds to the NEAREST node plane
+      (§1.1), so the top face landed at z = 10.000 mm with the wall at
+      11.000 mm — a 1 mm x 22.86 mm x 2 mm vacuum slot along the top
+      broad wall, open at both ends, a parallel-plate line for Ez. Under
+      the old node-half-open sampler node 10 (z = 10.000 < 10.16) was in
+      and the sigma fill covered the whole height by accident. Same
+      lane, same mesh, same window, one variable (the Box's hi corner):
+
+                                       declared x-sec   realized x-sec
+        |S11| envelope                 [0.9440,0.9888]  [0.9980,1.0019]
+        max||S11|-1|                       0.0560           0.0020
+        round-trip phase max              17.20 deg        3.26 deg
+        single-run |S21| behind the plug  0.22-0.33         0 exactly
+        right-port record re left peak    -13.3 dB         nothing
+        H1 window x2 (100 -> 200 periods) no change        no change
+        H3 far face 147 -> 148 mm             -            no change
+
+      The baseline (d990e18c) is invariant to the redraw (node sampler,
+      506 cells either way) and reproduces 0.0146 / 9.99 deg here. The
+      lane is exonerated on the same evidence: with the plug at the wall
+      it seals the guide exactly (the record behind it is identically
+      zero) and a sheet-declared short drawn to the realized walls reads
+      the same >= 0.99 class, so the lane does apply sheets. The plug is
+      now drawn to (A_WG_REALIZED, B_WG_REALIZED) and
+      assert_realized_short() refuses a front wall that is not the full
+      cross-section, so this cannot regress silently again.
+
+  (b) THE PEC SHORT STAYS A VOLUME, and its walls are now asserted. It is
+      a 2 mm metal plug across the guide — the Meep and openEMS legs this
+      case is byte-matched against terminate with metal — so under the
+      contract it realizes walls at BOTH bounding node planes with the
+      interior shorted: 145.000, 146.000 and 147.000 mm (measured
+      build-only). Pre-#931 the far face at 147.000 mm was never a wall;
+      that plane sits BEHIND the reflector, and the reflection plane the
+      round-trip phase reference uses is the FIRST wall, at 145.000 mm,
+      which does not move. `assert_realized_short()` now states this before
+      any solve: nothing in this case asserted where the short's walls land,
+      and the only thing that could have caught a mis-declaration was a
+      phase gate with +-4 cells of allowance — four times the effect it
+      would have to see. The cell-relative `2 * DX_M` extent this script
+      has flagged since #722/#724 is gone with it (PEC_SHORT_T_M = 2 mm,
+      absolute).
+
+  (c) "the longitudinal convention is genuinely unsettled ... make the
+      sensitivity to that half cell part of the reported envelope rather
+      than picking a rule" is superseded FOR CONDUCTORS: the contract picks
+      the rule, and drawn == realized (a body drawn x_a -> x_b stands walls
+      at both). It is NOT superseded for the DIELECTRIC slab below, whose
+      sampling §1.8 leaves untouched (node, half-open) — so the paragraph
+      that follows still holds for `slab_L`, and this case's slab legs must
+      come back bit-identical if #931 touched nothing it promised not to.
+
   `slab_L` (below, the dielectric-slab geometry) stays DECLARED at
   10.000 mm rather than quote-realized: the longitudinal/propagation-axis
-  convention is genuinely unsettled (rfx/geometry/csg.py:130-140 — "make
-  the sensitivity to that half cell part of the reported envelope rather
-  than picking a rule"). At dx=1mm and PRODUCTION precision (see below)
+  convention is genuinely unsettled FOR DIELECTRICS (rfx/geometry/csg.py —
+  "make the sensitivity to that half cell part of the reported envelope
+  rather than picking a rule"; #931 §1.8 keeps dielectric sampling as it
+  was). At dx=1mm and PRODUCTION precision (see below)
   the occupied-node band is [9.000, 10.000] mm with the declared value at
   the TOP edge (i.e. the realized slab may be up to one cell SHORTER, not
   longer). That half-cell sensitivity, `beta_d * 0.5 * DX_M` (up to ~9.76
@@ -408,6 +363,16 @@ MON_RIGHT_X = 0.150     # = +50 mm OpenEMS frame = Meep mon_right_x
 # That convention drift is corrected here so rfx vs Meep vs OpenEMS share
 # byte-identical PEC-short geometry.
 PEC_SHORT_X = MON_RIGHT_X - 0.005  # 0.145 m = +45 mm OE = Meep/OpenEMS canonical
+# Thickness of the shorting plug, as an ABSOLUTE extent (#931). The old
+# spelling was `2 * DX_M`, a cell-relative expression this script has flagged
+# since #722/#724; at dx = 1 mm it realizes the identical body. It is a
+# VOLUME under the lattice ownership contract: walls at 145.000 / 146.000 /
+# 147.000 mm with the interior shorted. Only the FIRST wall sets the
+# reflection plane, and it is at PEC_SHORT_X on any of these readings.
+# Its cross-section is drawn to the REALIZED guide (A_WG_REALIZED x
+# B_WG_REALIZED) — see _build_sim for the 2026-09-07 measurement of what a
+# plug drawn to the declared 22.86 x 10.16 mm leaves open.
+PEC_SHORT_T_M = 0.002
 
 
 # =============================================================================
@@ -472,6 +437,35 @@ def analytic_slab_s(freqs_hz: np.ndarray, eps_r: float, slab_length_m: float,
 # =============================================================================
 # Geometry-specific rfx runs
 # =============================================================================
+def _lattice_slab_bounds(slab_length_m: float) -> tuple[float, float]:
+    """Return node-aligned x bounds for the dielectric slab fixture.
+
+    Dielectric ``Box`` sampling remains node/half-open under the #931
+    ownership contract.  A decimal expression such as ``center + L/2`` can
+    land one float64 ulp above the intended node and include the hi node,
+    changing a nominal 10-cell slab into an 11-node material region.  The
+    analytic reference in this case is for the declared length, so this
+    fixture spells its lattice coordinates explicitly and refuses lengths
+    that cannot be represented by ``DX_M``.
+    """
+    n_cells = int(round(float(slab_length_m) / DX_M))
+    if n_cells <= 0 or not np.isclose(n_cells * DX_M, slab_length_m,
+                                      rtol=0.0, atol=1e-15):
+        raise ValueError(
+            "cv11 dielectric slab length must be an integer number of DX_M "
+            f"cells, got {slab_length_m!r} at DX_M={DX_M!r}"
+        )
+    center = 0.5 * (PORT_LEFT_X + PORT_RIGHT_X)
+    lo_cell = int(round((center - 0.5 * n_cells * DX_M) / DX_M))
+    lo = float(lo_cell * DX_M)
+    hi = float((lo_cell + n_cells) * DX_M)
+    if not np.isclose(hi - lo, slab_length_m, rtol=0.0, atol=1e-15):
+        raise AssertionError(
+            f"cv11 lattice slab bounds changed length: {lo!r}..{hi!r}"
+        )
+    return lo, hi
+
+
 def _build_sim(
     freqs: np.ndarray,
     *,
@@ -497,15 +491,47 @@ def _build_sim(
             sim.add_material(name, eps_r=eps_r, sigma=0.0)
             sim.add(Box(lo, hi), material=name)
     if pec_short_x is not None:
-        # NOTE (#722/#724): `pec_short_x + 2 * DX_M` is a cell-relative
-        # thickness (2 cells), not an absolute-coordinate extent — it
-        # violates the repo's absolute-coordinates convention. Inert here
-        # only because DX_M is frozen at 1 mm by this change (reflection
-        # plane stays exactly pec_short_x regardless of thickness); flag
-        # before ever moving DX_M in this script.
+        # A VOLUME, and it stays one (#931 §1.2). This is a 2 mm metal plug
+        # across the guide, not a foil: the Meep and openEMS legs this case
+        # is byte-matched against terminate with metal, and the contract
+        # realizes a drawn body with walls on BOTH bounding node planes
+        # plus a shorted interior — which is what a plug is.
+        #
+        # The thickness is now an ABSOLUTE extent. It used to read
+        # `pec_short_x + 2 * DX_M`, a cell-relative expression flagged in
+        # this script since #722/#724 as a violation of the repo's
+        # absolute-coordinates convention, inert only while DX_M is frozen
+        # at 1 mm. PEC_SHORT_T_M realizes the identical body at dx = 1 mm
+        # (measured: walls at 145.000 / 146.000 / 147.000 mm) and keeps
+        # meaning the same 2 mm plug at any other dx.
+        #
+        # The CROSS-SECTION is drawn to the REALIZED guide (A_WG_REALIZED x
+        # B_WG_REALIZED = 23 x 11 mm at dx = 1 mm), the same quote-realized
+        # walls F_CUTOFF_TE10 is computed from — not to the declared
+        # DOMAIN_Y x DOMAIN_Z (22.86 x 10.16 mm). Under the contract a
+        # volume's faces round to the NEAREST node plane (§1.1), so a plug
+        # drawn to z = 10.16 mm realizes its top face at 10.000 mm while
+        # the grid's top wall (ceil) is at 11.000 mm: a 1 mm x 22.86 mm
+        # vacuum slot along the top broad wall, open at both ends, carrying
+        # Ez — the TE10 field — straight past the "short" as a
+        # parallel-plate line (no cutoff). MEASURED 2026-09-07
+        # (scripts/diagnostics/pec_short_lane_ab.py, 200 periods, same
+        # lane, same mesh): drawn to the declared cross-section the leg
+        # reads |S11| in [0.9440, 0.9888], max||S11|-1| 0.0560, single-run
+        # |S21| 0.22-0.33 behind the plug, the right-port record only 13 dB
+        # below the left-port peak; drawn to the realized cross-section it
+        # reads [0.9980, 1.0019], max||S11|-1| 0.0020, |S21| = 0 exactly,
+        # nothing recorded behind the plug. That is the whole of the
+        # 0.0146 -> 0.0560 step VESSL 369367259194 measured: it was this
+        # drawing, not the waveguide lane's edge realization (which is
+        # what closes the slot correctly the moment the plug reaches the
+        # wall). The pre-#931 node-half-open sampler happened to include
+        # node 10 (z = 10.000 < 10.16 mm) and the sigma fill damped the
+        # whole 11 mm; nothing asserted it. assert_realized_short() below
+        # now refuses a front wall that is not the full cross-section.
         sim.add(
             Box((pec_short_x, 0.0, 0.0),
-                (pec_short_x + 2 * DX_M, DOMAIN_Y, DOMAIN_Z)),
+                (pec_short_x + PEC_SHORT_T_M, A_WG_REALIZED, B_WG_REALIZED)),
             material="pec",
         )
     port_freqs = jnp.asarray(freqs)
@@ -515,32 +541,34 @@ def _build_sim(
     # referenced identically; otherwise an ~85° phase offset appears
     # purely from the plane difference (β·20 mm ≈ 190° at 10 GHz).
     #
-    # y_range/z_range (#722/#724): trim the port aperture to the last
-    # interior CELL column of the realized cross-section instead of the
-    # default n_nodes span (rfx/api/_compile.py `_range_to_slice`, the
-    # `value_range is None` branch). Zero-cost mitigation for the
-    # DOMINANT cv11 error term (comparator/extractor cutoff, see
-    # docstring): measured cfg.f_cutoff 6.241218 -> 6.512162 GHz, i.e.
-    # -0.080% against the 6.517391 GHz quote-realized reference instead
-    # of -4.237%.
-    # COST (measured 2026-08-28 by a full solve, see docstring): the trim
-    # makes `u_hi != u_grid_size`, which disables the PEC-ghost
-    # aperture-weight zeroing the pec-short 2026-04-27 DROP-weight fix
-    # depends on. The |S11| gates still pass, but the pec-short per-bin
-    # envelope widens [0.9995, 1.0000] -> [0.9980, 1.0019] and max_diff
-    # 0.0005 -> 0.0020, and the slab phase / complex-envelope lines move
-    # slightly the wrong way. Not "zero-cost" — see the RUN RESULT table.
-    aperture_kw = dict(
-        y_range=(0.0, A_WG_REALIZED - DX_M),
-        z_range=(0.0, B_WG_REALIZED - DX_M),
-    )
+    # THE APERTURE TRIM IS GONE (#931 / #889). Both ports used to carry
+    # `y_range=(0, A_WG_REALIZED - DX_M)`, `z_range=(0, B_WG_REALIZED -
+    # DX_M)` — an in-script correction for the port eigenproblem spanning
+    # n_nodes columns instead of n_cells, i.e. solving a guide one cell
+    # WIDER than the walls make. The docstring above predicted its own
+    # obsolescence: "if the rfx-side default is fixed the workaround
+    # becomes redundant or a double correction". The default WAS fixed
+    # (#889, `_node_span_to_cell_span` in rfx/sources/waveguide_port.py:
+    # the transverse mode is solved on the guide's N cells), so the trim
+    # is now the double correction.
+    #
+    # MEASURED on this checkout, build-only, no solve:
+    #     with the trim     cfg.f_cutoff = 6.807677 GHz  (+4.454%)
+    #     without the trim  cfg.f_cutoff = 6.512162 GHz  (-0.080%)
+    # against the quote-realized F_CUTOFF_TE10 = 6.517391 GHz. The
+    # untrimmed number is EXACTLY the 6.512162 GHz this docstring credits
+    # to the trim in 2026-08 — the rfx-side default now delivers what the
+    # workaround used to, so the compensation is deleted rather than
+    # re-tuned. It also restores `u_hi == u_grid_size`, which re-enables
+    # the PEC-ghost aperture-weight zeroing the 2026-04-27 DROP-weight fix
+    # depends on; the pec-short per-bin |S11| envelope is predicted to
+    # return from [0.9980, 1.0019] toward [0.9995, 1.0000].
     sim.add_waveguide_port(
         PORT_LEFT_X, direction="+x", mode=(1, 0), mode_type="TE",
         freqs=port_freqs, f0=f0, bandwidth=bandwidth,
         waveform="modulated_gaussian",
         reference_plane=0.050,
         name="left",
-        **aperture_kw,
     )
     sim.add_waveguide_port(
         PORT_RIGHT_X, direction="-x", mode=(1, 0), mode_type="TE",
@@ -548,17 +576,125 @@ def _build_sim(
         waveform="modulated_gaussian",
         reference_plane=0.150,
         name="right",
-        **aperture_kw,
     )
     return sim
+
+
+def realized_short_planes(sim) -> dict:
+    """Where the PEC short's electric walls actually land (#931 §1.7).
+
+    Build-time, no solve, read from
+    ``rfx.boundaries.pec.realized_pec_edge_masks`` — the one function the
+    solver realizes with — so this cannot drift from what is solved.
+    Returns the wall-plane indices along the propagation axis, their
+    physical x, and the PEC cell count.
+    """
+    import numpy as _np
+    from rfx.boundaries.pec import realized_pec_edge_masks, realized_wall_planes
+    from rfx.geometry.rasterize_grid import coords_from_uniform_grid
+
+    grid = sim._build_grid()
+    sheets: list = []
+    wires: list = []
+    assembled = sim._assemble_materials(grid, pec_sheets=sheets,
+                                        pec_wires=wires)
+    pec_mask = assembled[3]
+    if pec_mask is None and not sheets and not wires:
+        return dict(planes=[], planes_m=[], n_cells=0, n_sheets=0)
+    edges = realized_pec_edge_masks(pec_mask, sheets=tuple(sheets),
+                                    wires=tuple(wires),
+                                    periodic=sim._periodic_flags())
+    nodes = _np.asarray(coords_from_uniform_grid(grid).x)
+    planes = realized_wall_planes(edges, 0)
+    # The FRONT wall must be the whole cross-section: every tangential E
+    # edge on that x-plane PEC. A short that stops one row short of a guide
+    # wall is an iris with a slot, not a short (measured 2026-09-07: one
+    # missing row of Ez along the top broad wall reads |S11| ~ 0.94-0.99).
+    # The domain-face rows (j = ny-1, k = nz-1) count because the volume
+    # rule marks them through the last occupied cell.
+    _my, _mz = (_np.asarray(edges[1], dtype=bool), _np.asarray(edges[2], dtype=bool))
+    ny, nz = _my.shape[1], _mz.shape[2]
+    front = dict(
+        ey_pec=int(_my[planes[0]].sum()) if planes else 0,
+        ey_full=int((ny - 1) * nz),
+        ez_pec=int(_mz[planes[0]].sum()) if planes else 0,
+        ez_full=int(ny * (nz - 1)))
+    return dict(
+        planes=[int(k) for k in planes],
+        planes_m=[float(nodes[k]) for k in planes],
+        n_cells=0 if pec_mask is None else int(_np.asarray(pec_mask).sum()),
+        n_sheets=len(sheets),
+        front_wall=front,
+        front_wall_full=bool(
+            planes and front["ey_pec"] == front["ey_full"]
+            and front["ez_pec"] == front["ez_full"]))
+
+
+def assert_realized_short(sim) -> dict:
+    """MANDATORY build-time check (#931): the short's realized walls are the
+    drawn ones. No FDTD step runs here.
+
+    Nothing in this case asserted WHERE the short's walls land. The only
+    thing that could have caught a mis-declaration was the round-trip phase
+    gate, whose derivation allows +-4 cells of reference-plane uncertainty
+    — four times the effect it would need to see — so the case passed
+    whether the short realized at 145/146 or at 146. This is the direct
+    statement, in the shape of cv09's gate 0.
+
+    Under the contract a body drawn ``x_a -> x_b`` on node planes realizes
+    tangential walls at BOTH and shorts the interior, so the 2 mm plug
+    stands walls at 145.000, 146.000 and 147.000 mm. The FIRST is the
+    reflection plane and the one the phase reference uses; it must be at
+    PEC_SHORT_X exactly.
+    """
+    r = realized_short_planes(sim)
+    xs = r["planes_m"]
+    expected = [PEC_SHORT_X + n * DX_M
+                for n in range(int(round(PEC_SHORT_T_M / DX_M)) + 1)]
+    problems = []
+    if r["n_sheets"]:
+        problems.append(
+            f"{r['n_sheets']} PEC sheet(s) declared; the short is a VOLUME "
+            "(a 2 mm metal plug), not a foil")
+    if len(xs) != len(expected) or any(
+            abs(a - b) > 1e-9 for a, b in zip(xs, expected)):
+        problems.append(
+            f"realized wall planes {[round(x*1e3, 3) for x in xs]} mm != drawn "
+            f"{[round(x*1e3, 3) for x in expected]} mm")
+    elif abs(xs[0] - PEC_SHORT_X) > 1e-12:
+        problems.append(
+            f"the reflection plane realizes at {xs[0]*1e3:.3f} mm, declared "
+            f"{PEC_SHORT_X*1e3:.3f} mm")
+    if xs and not r["front_wall_full"]:
+        fw = r["front_wall"]
+        problems.append(
+            f"the front wall at {xs[0]*1e3:.3f} mm is not the full "
+            f"cross-section: Ey {fw['ey_pec']}/{fw['ey_full']}, Ez "
+            f"{fw['ez_pec']}/{fw['ez_full']} tangential edges PEC — a slot "
+            "against a guide wall (the plug must be drawn to the REALIZED "
+            f"guide, {A_WG_REALIZED*1e3:.3f} x {B_WG_REALIZED*1e3:.3f} mm)")
+    if problems:
+        raise RuntimeError(
+            "assert_realized_short: the realized PEC short is not the drawn "
+            "one — refusing to quote a round-trip phase. "
+            + "; ".join(problems) + f" [measured: {r}]")
+    return r
 
 
 def _s_params(
     sim: Simulation,
     *,
+    geometry: str | None = None,
     num_periods: int = NUM_PERIODS_LONG,
-    normalize: bool = True,
+    normalize: bool | str = True,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    # Record the argument actually passed below; magnitude tables alone do
+    # not identify which extraction algorithm produced them.
+    import json
+    if geometry is not None:
+        print("CV11_EXTRACTION_MODE " + json.dumps({
+            "geometry": geometry, "normalize": normalize,
+        }, sort_keys=True))
     result = sim.compute_waveguide_s_matrix(
         num_periods=num_periods,
         normalize=normalize,
@@ -573,7 +709,7 @@ def _s_params(
 
 def run_rfx_empty() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     sim = _build_sim(FREQS_HZ)
-    return _s_params(sim)
+    return _s_params(sim, geometry="empty")
 
 
 def run_rfx_pec_short() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -585,15 +721,21 @@ def run_rfx_pec_short() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     extraction reaches Meep-class min |S11| ≥ 0.99.
     """
     sim = _build_sim(FREQS_HZ, pec_short_x=PEC_SHORT_X)
-    return _s_params(sim, normalize=False)
+    r = assert_realized_short(sim)
+    print(f"[#931] realized PEC-short walls at "
+          f"{[round(x*1e3, 3) for x in r['planes_m']]} mm "
+          f"({r['n_cells']} PEC cells, {r['n_sheets']} sheets); reflection "
+          f"plane {r['planes_m'][0]*1e3:.3f} mm == declared "
+          f"{PEC_SHORT_X*1e3:.3f} mm")
+    return _s_params(sim, geometry="pec_short", normalize=False)
 
 
 def run_rfx_slab(eps_r: float, slab_length_m: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    slab_center = 0.5 * (PORT_LEFT_X + PORT_RIGHT_X)
-    lo = (slab_center - 0.5 * slab_length_m, 0.0, 0.0)
-    hi = (slab_center + 0.5 * slab_length_m, DOMAIN_Y, DOMAIN_Z)
+    slab_lo_x, slab_hi_x = _lattice_slab_bounds(slab_length_m)
+    lo = (slab_lo_x, 0.0, 0.0)
+    hi = (slab_hi_x, DOMAIN_Y, DOMAIN_Z)
     sim = _build_sim(FREQS_HZ, obstacles=[(lo, hi, eps_r)])
-    return _s_params(sim)
+    return _s_params(sim, geometry="slab")
 
 
 # =============================================================================

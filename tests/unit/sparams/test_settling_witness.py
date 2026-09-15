@@ -45,8 +45,9 @@ each formerly its own file:
    ``test_waveguide_geometry_hygiene``, deliberately short records so the
    truncation warning path is exercised for real.
 
-Every assertion, tolerance, fixture value and marker of the original files
-is kept verbatim; only module-level helper names carry a section prefix.
+The consolidation preserved the original assertions and thresholds. The
+MSL fixture subsequently gained its missing explicit ground under #729;
+CPML padding does not supply a ground conductor.
 """
 
 from __future__ import annotations
@@ -62,6 +63,7 @@ import pytest
 
 from rfx import Box, Simulation
 from rfx.api._sparams import _SETTLING_WITNESS_DB, _warn_if_ringdown_truncated
+from tests._realized_geometry import assert_sheet_planes, assert_wall_planes
 
 
 # ===========================================================================
@@ -73,8 +75,14 @@ def _msl_thru(domain_y=0.008, y_c=0.004):
                      dx=2e-4, boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (0.012, domain_y, 0.0008)), material="sub")
+    sim.add(Box((0, 0, 0), (0.012, domain_y, 0)), material="pec")
+    # 35 um foil: a SHEET (#931 §1.3), declared by a zero-thickness Box
+    # on the laminate top. h_sub / dx = 0.8 mm / 0.2 mm = 4, so the substrate face is a
+    # node line and the sheet lands on it exactly. Drawn one cell thick
+    # before the contract, it would now be a VOLUME — walls at BOTH z
+    # faces and the Ez edge between them shorted.
     sim.add(Box((0.0, y_c - 0.0006, 0.0008),
-                (0.012, y_c + 0.0006, 0.0010)), material="pec")
+                (0.012, y_c + 0.0006, 0.0008)), material="pec")
     sim.add_msl_port(position=(0.002, y_c, 0.0), width=0.0012, height=0.0008,
                      direction="+x", impedance=50.0, eps_r_sub=2.2, name="p1")
     sim.add_msl_port(position=(0.010, y_c, 0.0), width=0.0012, height=0.0008,
@@ -166,6 +174,18 @@ _SPARAMS_SRC = pathlib.Path(
 _EXECUTE_SRC = pathlib.Path(
     __import__("rfx.api._execute", fromlist=["_execute"]).__file__
 )
+# #980 Phase 2 moves the ``compute_*`` bodies verbatim out of
+# ``rfx/api/_sparams.py`` into per-family modules under ``rfx/sparams/``, one
+# leg per PR. The scan follows the code by globbing that package rather than
+# naming each module as it lands -- exactly the widening the
+# ``_functions_producing_settling_db`` docstring below asks for when a
+# producing module appears; without it a moved lane drops out of the inventory
+# and ``test_the_known_lanes_are_all_covered`` goes red (or, worse, the routing
+# gate passes vacuously for it).
+_SPARAMS_PKG_SRCS = tuple(sorted(
+    pathlib.Path(__import__("rfx.sparams", fromlist=["sparams"]).__file__)
+    .parent.glob("*.py")
+))
 
 
 def _catch(fn):
@@ -263,14 +283,17 @@ def _functions_producing_settling_db():
     """(name, routes_through_warner) for every function that attaches a
     ``settling_db=`` to a result object.
 
-    Two modules do so: ``_sparams.py`` (the S-matrix lanes) and, since #885,
-    ``_execute.py`` (the ``run()`` lane, which attaches the witness to
-    ``Result``). ``_spec.py`` only declares the field. The scan was widened
-    with the second module the moment it appeared, per the instruction the
-    first version of this docstring left for exactly that case.
+    Three places do so: ``_sparams.py`` (the S-matrix lanes still in the
+    mixin), since #885 ``_execute.py`` (the ``run()`` lane, which attaches the
+    witness to ``Result``), and since the #980 split every module under
+    ``rfx/sparams/`` (the lane bodies moved verbatim out of ``_sparams.py``,
+    globbed so a later leg needs no edit here). ``_spec.py`` only declares the
+    field. The scan was widened with each further module the moment it
+    appeared, per the instruction the first version of this docstring left
+    for exactly that case.
     """
     out = []
-    for src in (_SPARAMS_SRC, _EXECUTE_SRC):
+    for src in (_SPARAMS_SRC, _EXECUTE_SRC, *_SPARAMS_PKG_SRCS):
         out.extend(_producers_in(ast.parse(src.read_text(encoding="utf-8"))))
     return out
 
@@ -380,19 +403,49 @@ def test_underrun_coax_two_port_warns_instead_of_returning_it_quietly():
 
 @pytest.mark.slow_physics
 def test_settled_coax_two_port_stays_silent():
-    """Control on the SAME fixture: measured [-67.26, -68.09] dB at
-    n_steps=3000. A settled run must not warn."""
+    """A valid record at or below the documented -40 dB bar must not warn.
+
+    Historical n_steps=3000 record: [-67.26, -68.09] dB. Current main
+    records [-58.88, -64.84] dB, still 18.88/24.84 dB below the bar.
+    The extra -60 dB fixture margin formerly rejected a valid silence
+    control (#940); it was not the result's settling contract. Preserve
+    the record length and test the actual contract, including availability.
+    This does not attribute the change in physical decay between records.
+    """
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         res = _coax_two_port_sim().compute_coaxial_two_port(
             n_steps=3000, freqs=_BAND)
 
     sd = np.asarray(res.settling_db)
-    assert np.all(sd < -60.0), (
-        f"settled control drifted to {sd}; it no longer sits well clear of "
-        "the bar, so its silence would stop meaning anything."
+    assert sd.shape == (2,) and np.all(np.isfinite(sd)), sd
+    assert np.all(sd <= _SETTLING_WITNESS_DB), (
+        f"settled control {sd} does not meet the {_SETTLING_WITNESS_DB:g} dB "
+        "return contract; it cannot establish the settled-silence behavior."
     )
     assert not [w for w in caught if "settling witness" in str(w.message)]
+
+
+@pytest.mark.parametrize("db,eligible", [
+    ([-50.0, -55.0], True),
+    ([-39.0, -55.0], False),
+    ([-40.0, -55.0], True),
+    ([np.nan, -55.0], False),
+    ([-np.inf, -55.0], False),
+    ([], False),
+])
+def test_settled_coax_control_requires_valid_contract_evidence(monkeypatch, db, eligible):
+    """No FDTD: the real control accepts settled records, not absent ones."""
+    from types import SimpleNamespace
+
+    result = SimpleNamespace(settling_db=np.asarray(db))
+    sim = SimpleNamespace(compute_coaxial_two_port=lambda **kwargs: result)
+    monkeypatch.setitem(globals(), "_coax_two_port_sim", lambda: sim)
+    if eligible:
+        test_settled_coax_two_port_stays_silent()
+    else:
+        with pytest.raises(AssertionError):
+            test_settled_coax_two_port_stays_silent()
 
 
 @pytest.mark.slow_physics
@@ -605,7 +658,7 @@ def _rebuild_solve(call):
 
 
 def _legacy_worst(cfgs):
-    """The pre-fix arithmetic, verbatim, for the bit-identity check below."""
+    """The pre-fix arithmetic, verbatim, for the preserved-verdict control."""
     worst = -np.inf
     for cfg in cfgs:
         for ts in (cfg.v_probe_t, cfg.v_ref_t, cfg.i_probe_t, cfg.i_ref_t):
@@ -723,14 +776,44 @@ def test_a_subnormal_record_no_longer_carries_the_pass():
 def test_normal_range_far_port_records_are_kept_and_the_cell_does_not_move():
     """Control, and the reason the floor is not simply "the far port": at the
     coarse rung the same far-port records are ordinary float32 (peak
-    amplitudes 3.15e-20 / 5.5e-23). Nothing is skipped, and the arithmetic on
-    a kept record is bit-identical to the pre-fix formula."""
+    amplitudes 3.15e-20 / 5.5e-23). Nothing is skipped and the recorded-cell
+    gate stays unchanged. #919 normalizes power before reduction to avoid
+    overflow/underflow; compare its arithmetic to an independent high-
+    precision ratio, not the last bit of the superseded operation order.
+    """
+    from decimal import Decimal, localcontext
+
     c = _pec_short_cell("coarse", "false")
     for call, port in zip(c["settling_records"], ("left", "right")):
         cfgs = _rebuild_solve(call)
         db, detail = settling_db_from_port_records(cfgs, return_detail=True)
         assert detail["skipped_records"] == [] and detail["n_witnessed"] == 8
-        assert db == _legacy_worst(cfgs), "kept-record arithmetic changed"
+        references = []
+        tail_max = 0
+        # Raw stored samples -> unscaled squared power in Decimal. This
+        # oracle does not share the production normalization or reduction.
+        with localcontext() as context:
+            context.prec = 60
+            for cfg in cfgs:
+                for name in ("v_probe_t", "v_ref_t", "i_probe_t", "i_ref_t"):
+                    raw = np.asarray(getattr(cfg, name))
+                    tail = max(1, len(raw) // 10)
+                    tail_max = max(tail_max, tail)
+                    peak = Decimal.from_float(float(np.max(np.abs(raw))))**2
+                    end = sum((Decimal.from_float(float(x))**2 for x in raw[-tail:]),
+                              Decimal(0)) / Decimal(tail)
+                    references.append(Decimal(10) * (end / peak).log10())
+            reference = float(max(references))
+        # Positive terms have no cancellation: a serial tail reduction
+        # plus the surrounding divisions/square is bounded by gamma_(N+8).
+        # Convert relative ratio error to dB. The extra two ULPs are an
+        # explicit platform log/final-rounding allowance, not an IEEE
+        # guarantee about the accuracy of every platform's libm.
+        unit_roundoff = np.finfo(float).eps / 2
+        gamma = (tail_max + 8) * unit_roundoff / (1 - (tail_max + 8) * unit_roundoff)
+        roundoff_db = 10 / np.log(10) * (-np.log1p(-gamma)) + 2 * abs(np.spacing(reference))
+        assert abs(db - reference) <= roundoff_db
+        assert settling_verdict(db) == settling_verdict(reference) == settling_verdict(_legacy_worst(cfgs))
         assert db == pytest.approx(c["settling_db"][port], abs=0.01)
 
 
@@ -1026,3 +1109,18 @@ def test_a_driver_internal_run_does_not_double_fire():
     assert quiet.settling_db is None
     assert not _settling_warnings(caught), [
         str(w.message) for w in _settling_warnings(caught)]
+
+
+def test_realized_conductor_planes_equal_the_declaration():
+    """Build-time witness (no solve) for the #931 ownership contract.
+
+    Ground and trace are SHEETS, each with exactly one wall plane on its
+    own laminate face,
+    with the normal Ez edge through it left live. Drawn one cell thick it
+    was a volume: two walls, and the Ez edge between them shorted. This
+    assertion is what keeps the declaration and the realization the same
+    statement.
+    """
+    sim = _msl_thru()
+    assert_sheet_planes(sim, 2, [0., 0.0008], what="MSL thru ground and trace")
+    assert_wall_planes(sim, 2, [0., 0.0008], what="MSL thru ground and trace")

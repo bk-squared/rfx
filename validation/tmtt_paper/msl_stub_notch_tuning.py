@@ -42,10 +42,23 @@ gradient on the Kottke path:
   2. **Heaviside projection** centered at occ=0.5 (smooth_width=0.05) to
      force-zero interior cells, mirroring Stage 2's
      ``where(e_inside, 0, ...)`` for a hard ``Box(material='pec')``.
+     The projected cell set is what the volume rule then reads.
   3. **1-cell PEC dilation** via 6-neighbor max-pool of occupancy before
-     projection — the AD-smooth analogue of the binary ``apply_pec_mask``
-     ``mask & (roll | roll)`` rule the imperative ``compute_msl_s_matrix``
-     uses for ``Box(material='pec')``.
+     projection.
+
+     Since the lattice ownership contract (#931) this is no longer the
+     analogue of a ``mask & (roll | roll)`` neighbour rule — that rule is
+     gone. A PEC VOLUME is now realized by the incident-cell rule (an E
+     edge is PEC iff any of the four cells it touches is occupied, §1.2),
+     and its differentiable counterpart is the noisy-OR of those same four
+     cells, ``M = 1 - Π(1 - o_c)``, in ``apply_pec_occupancy`` (§1.6) —
+     bit-identical to the hard rule at binary occupancy. The max-pool
+     dilation here is a SEPARATE, deliberate widening of the density
+     itself, applied before projection so the Kottke mixing sees a fully
+     enclosed interior; it is not a restatement of the realization rule.
+     ``assert_soft_pec_equals_hard`` checks the actual identity (soft limit
+     == hard realized edge set) at build time rather than asserting it in
+     prose.
 
 The combination gives a global-min notch depth ≈ -45.9 dB at L ≈ 7.0 mm and
 lets ``jax.grad`` flow cleanly through sigmoid → density → Yee → DFT
@@ -95,6 +108,7 @@ import math
 import os
 import sys
 import time
+from typing import NamedTuple
 
 import matplotlib
 matplotlib.use("Agg")
@@ -113,6 +127,8 @@ from rfx.probes.msl_wave_decomp import (
     extract_msl_nprobe,
     MSLPlaneProbeSet,  # used in build_sim's return-type annotation
 )
+
+from validation.crossval.comparators import realized_conductors as RC
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 C0 = 2.998e8
@@ -223,8 +239,25 @@ def build_sim(freqs: jnp.ndarray) -> tuple[
     y_trace = (2 * H_SUB + 8 * DX) + W_TRACE / 2.0
     trace_y_lo = y_trace - W_TRACE / 2.0
     trace_y_hi = y_trace + W_TRACE / 2.0
-    sim.add(Box((0, trace_y_lo, H_SUB), (LX, trace_y_hi, H_SUB + DX)),
+    # The through-line trace is FOIL and is declared as a SHEET on the
+    # z = H_SUB node plane (a zero-thickness Box, #931 §1.5). H_SUB / DX = 2
+    # exactly, so the declared substrate top IS a node line and the sheet
+    # lands on it with no snap.
+    #
+    # Measured on this board (build-time, no solve), drawn width 600 um:
+    #   sheet  -> one wall plane at 254 um, realized width 635 um (+5.8%)
+    #   volume -> walls at 254 AND 381 um, realized width 762 um (+27%)
+    # The volume arm also puts 127 um of "copper" on a 254 um substrate —
+    # half the board thickness in metal. The sheet is the better geometry on
+    # both counts.
+    #
+    # The residual +5.8% width error is NOT fixable by redrawing: W_TRACE /
+    # DX = 4.72 is not an integer, and gcd(254 um, 600 um) = 2 um, so no
+    # sane uniform dx puts both the substrate top and both trace edges on
+    # node lines. That is disclosed here, not absorbed.
+    sim.add(Box((0, trace_y_lo, H_SUB), (LX, trace_y_hi, H_SUB)),
             material="pec")
+    assert_trace_sheet(sim, "through-line trace")
 
     sim.add_msl_port(position=(PORT_MARGIN, y_trace, 0.0),
                      width=W_TRACE, height=H_SUB,
@@ -232,6 +265,14 @@ def build_sim(freqs: jnp.ndarray) -> tuple[
     sim.add_msl_port(position=(PORT_MARGIN + L_LINE, y_trace, 0.0),
                      width=W_TRACE, height=H_SUB,
                      direction="-x", impedance=50.0)
+
+    # A pair of local fields in the same observation region as the first MSL
+    # port supplies an energy ring-down witness for the paper example (#918).
+    # They are passive records and do not participate in either DFT-plane
+    # extractor or the AD objective.
+    witness = (PORT_MARGIN + 3.0 * DX, y_trace, 0.5 * H_SUB)
+    sim.add_probe(witness, "ez")
+    sim.add_probe(witness, "hy")
 
     # Plane DFT probes — line-integrated V (Ez) + closed-Ampere-loop I
     # (Hy + Hz) per port.  register_msl_plane_probes / _v_from_plane /
@@ -250,6 +291,67 @@ def build_sim(freqs: jnp.ndarray) -> tuple[
     return sim, y_trace, trace_y_hi, d_set, p_set
 
 
+def assert_trace_sheet(sim, label: str) -> dict:
+    """Build-time (no solve): the trace realizes ONE wall plane, at H_SUB.
+
+    Asked of the shared owner (``realized_pec_edge_masks`` via the crossval
+    gate), never re-derived. A trace that snapped to the node below would
+    sit inside the substrate and every extracted Z0 with it; this fails by
+    name first.
+    """
+    return RC.assert_wall_planes(
+        sim, 2, [float(H_SUB)], at=(LX / 2.0, (2 * H_SUB + 8 * DX) + W_TRACE / 2.0),
+        label=label, tol_m=1e-12)
+
+
+def assert_soft_pec_equals_hard(grid, sim) -> dict:
+    """The soft PEC limit IS the hard realized edge set (no solve).
+
+    ``apply_pec_occupancy`` at binary occupancy must produce exactly the
+    edges ``realized_pec_edge_masks`` produces for the same cells — the
+    contract says so (#931 §1.6) and nothing in this script's own lane
+    checked it. Run on a stub occupancy hardened to {0, 1} plus the
+    declared sheet, so it exercises the mixed board this file actually
+    builds.
+    """
+    from rfx.boundaries.pec import (
+        apply_pec_occupancy, realized_pec_edge_masks)
+    rz = RC.realize(sim, grid)
+    edges, sheets, wires = rz.edge_masks, rz.sheets, rz.wires
+    occ_soft = build_stub_occ(grid, (2 * H_SUB + 8 * DX) + W_TRACE, 7.0e-3)
+    occ = (np.asarray(occ_soft) > 0.5)
+    hard = realized_pec_edge_masks(
+        occ, sheets, wires, periodic=tuple(sim._periodic_flags()))
+    sheet_edges = realized_pec_edge_masks(
+        None, sheets, wires, periodic=tuple(sim._periodic_flags()))
+    ones = np.ones(tuple(grid.shape), dtype=np.float32)
+    state = _UnitState(ones.copy(), ones.copy(), ones.copy())
+    out = apply_pec_occupancy(state, jnp.asarray(occ, dtype=jnp.float32),
+                              tuple(sim._periodic_flags()),
+                              sheet_edge_masks=sheet_edges)
+    for name, soft, want in (("ex", out.ex, hard[0]), ("ey", out.ey, hard[1]),
+                             ("ez", out.ez, hard[2])):
+        soft_zeroed = (np.asarray(soft) == 0.0)
+        if not np.array_equal(soft_zeroed, np.asarray(want)):
+            n = int((soft_zeroed != np.asarray(want)).sum())
+            raise AssertionError(
+                f"soft PEC limit != hard realized edge set on {name}: "
+                f"{n} entries differ. The differentiable stub and the "
+                "imperative Box are then two different conductors and the "
+                "cross-solver gate below is not comparing like with like "
+                "(#931 §1.6).")
+    return {"edges_checked": int(sum(np.asarray(m).sum() for m in hard)),
+            "sheet_edges": int(sum(np.asarray(m).sum() for m in sheet_edges)),
+            "declared_edges": int(sum(np.asarray(m).sum() for m in edges))}
+
+
+class _UnitState(NamedTuple):
+    """Minimal E-only state for the soft/hard PEC equality check."""
+    ex: object
+    ey: object
+    ez: object
+
+
 def build_stub_occ(grid, trace_y_hi: float, L_stub: jnp.ndarray) -> jnp.ndarray:
     """Sigmoid soft-PEC stub mask of commanded length ``L_stub``,
     rooted at ``trace_y_hi`` along +y, in the trace-x footprint."""
@@ -266,7 +368,8 @@ def build_stub_occ(grid, trace_y_hi: float, L_stub: jnp.ndarray) -> jnp.ndarray:
 
     in_x = ((x_centres >= stub_x_lo) & (x_centres <= stub_x_hi)).astype(np.float32)
     in_z = (np.abs(z_centres - z_patch) <= 0.5 * DX).astype(np.float32)
-    in_x_j = jnp.asarray(in_x); in_z_j = jnp.asarray(in_z)
+    in_x_j = jnp.asarray(in_x)
+    in_z_j = jnp.asarray(in_z)
     y_far = jnp.asarray(y_centres - trace_y_hi, dtype=jnp.float32)
     sig_low = jax.nn.sigmoid(y_far / SIGMOID_BETA)
     sig_high = jax.nn.sigmoid((L_stub - y_far) / SIGMOID_BETA)
@@ -456,7 +559,7 @@ def main() -> int:
     # N-probe extractor from sitting in the stub-junction standing-wave
     # region; see `_check_msl_port_geometry` in rfx/api.py).
     pre_msgs = sim.preflight()
-    if pre_msgs:
+    if len(pre_msgs):     # PreflightReport refuses bool() (#980)
         print("\nPreflight warnings:")
         for m in pre_msgs:
             print(f"  - {m}")
@@ -610,9 +713,31 @@ def main() -> int:
     stub_x_centre = LX / 2.0
     stub_x_lo = stub_x_centre - W_TRACE / 2.0
     stub_x_hi = stub_x_centre + W_TRACE / 2.0
+    # The stub stays a one-cell VOLUME on BOTH arms — deliberately, and
+    # unlike the through-line trace above.
+    #
+    # The differentiable path has no sheet: pec_occupancy_override is a
+    # CELL field and apply_pec_occupancy is the noisy-OR of the four
+    # incident cells, i.e. the §1.2 VOLUME rule relaxed (#931 §1.6; a
+    # sheet's plane is a static integer, not a traced quantity, so a
+    # traced-length sheet cannot exist today). The stub length IS the
+    # design variable, so the soft arm can only realize the stub as a
+    # volume. Declaring the hard reference stub a sheet would turn this
+    # gate from "does the imperative solver reproduce the AD arm's own
+    # object" into a comparison of two different metal models, which is
+    # exactly what the gate exists to rule out.
+    #
+    # Consequence, stated rather than hidden: this board carries a sheet
+    # feed line and a volume stub. A plane-indexed differentiable sheet is
+    # the design work that would remove the split; it is a contract gap
+    # (#931 §1.6), not something to paper over here.
     sim_imp.add(Box((stub_x_lo, trace_y_hi_imp, H_SUB),
                     (stub_x_hi, trace_y_hi_imp + L_opt, H_SUB + DX)),
                 material="pec")
+    RC.assert_wall_planes(
+        sim_imp, 2, [float(H_SUB), float(H_SUB + DX)],
+        at=(stub_x_centre, trace_y_hi_imp + 0.5 * L_opt),
+        label="hard-PEC reference stub", tol_m=1e-12)
     # restore default both-port-driven for compute_msl_s_matrix
     object.__setattr__(sim_imp._msl_ports[1], "excite", True)
     t0 = time.time()
@@ -736,11 +861,13 @@ def main() -> int:
     ax.set_xlabel("L_stub (mm)")
     ax.set_ylabel(f"|S21(f={F_TARGET/1e9:.1f} GHz)|² (JAX extractor)")
     ax.set_title("Multimodal cost vs L_stub — multi-start basins")
-    ax.legend(fontsize=8); ax.grid(True, alpha=0.3)
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3)
 
     ax = axes[1]
     ax.plot(iters, history["db"], "b-o", lw=1.4, ms=4)
-    ax.set_xlabel("Adam iter"); ax.set_ylabel("|S21(f_target)| dB (JAX)")
+    ax.set_xlabel("Adam iter")
+    ax.set_ylabel("|S21(f_target)| dB (JAX)")
     ax.set_title(f"Adam convergence (best start "
                  f"{best_history['start']}, seed "
                  f"{L_seeds_mm[best_history['start']]:.1f}mm)")
@@ -751,10 +878,12 @@ def main() -> int:
             label=f"imperative @ L_opt={L_opt*1e3:.2f}mm")
     ax.axvline(F_TARGET / 1e9, color="r", ls=":", alpha=0.8,
                label=f"f_target={F_TARGET/1e9:.2f} GHz")
-    ax.set_xlabel("Frequency (GHz)"); ax.set_ylabel("|S21| dB (imperative)")
+    ax.set_xlabel("Frequency (GHz)")
+    ax.set_ylabel("|S21| dB (imperative)")
     ax.set_title("Cross-solver gate — imperative notch at L_opt")
     ax.set_ylim(-50, 5)
-    ax.grid(True, alpha=0.3); ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3)
+    ax.legend(fontsize=8)
 
     fig.suptitle(
         f"MSL stub notch tuning — density-PEC reformulation + JAX N-probe extractor\n"
@@ -765,7 +894,8 @@ def main() -> int:
     )
     plt.tight_layout()
     out = os.path.join(SCRIPT_DIR, "msl_stub_notch_tuning.png")
-    plt.savefig(out, dpi=150); plt.close()
+    plt.savefig(out, dpi=150)
+    plt.close()
     print(f"\nWrote: {out}")
     return 0 if all_ok else 1
 

@@ -1,0 +1,5 @@
+{
+  "run_id": "369367259624",
+  "artifact_directory": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-resources-refine-20260909T020638Z-b36fc46cdf21-105",
+  "reason": "Original submitter five-minute wait expired during image pull; recovered using original create response and unique lane pointer."
+}

@@ -20,16 +20,23 @@ seconds to a few minutes.
 | 1 | `examples/quickstart/hello_world.py` | install check, the minimal Simulation → run → probe loop | closed PEC box; soft point source and one probe; no port |
 | 2 | `examples/tutorials/boundary_spec_demo.py` | choosing boundaries: CPML = open, PEC = closed (never mix roles), PMC symmetry, periodic cells | `BoundarySpec` per axis and per face — all four patterns; soft source and probe |
 | 3 | `examples/tutorials/slab_rt_flux_monitor.py` | R(f)/T(f) the right way: `add_flux_monitor` plus a two-run reference subtraction, and why a probe FFT lies | CPML; TFSF plane wave; two flux monitors — flux monitors are not ports |
-| 4 | `examples/tutorials/nonuniform_patch_demo.py` | graded z-mesh for a thin substrate, and verifying where the layers actually landed after `smooth_grading` shifts them | CPML; `dz_profile` graded mesh; soft source and probe |
+| 4 | `examples/tutorials/nonuniform_patch_demo.py` | graded z-mesh for a thin substrate, and verifying where the layers actually landed after `smooth_grading` shifts them — the fine band carries the substrate only, because the ground and patch are sheets and own no cell | CPML; `dz_profile` graded mesh; soft source and probe |
 | 5 | `examples/tutorials/materials_and_dispersion.py` | library and custom materials, why loss matters (the infinite-Q trap), Debye and Lorentz poles | CPML; soft source and probe; five small runs, one per material model |
 | 6 | `examples/tutorials/run_control_and_fields.py` | `n_steps` vs `num_periods` vs `until_decay`, reading the truncation advisory, extracting field slices | CPML; soft source and probe |
-| 7 | `examples/tutorials/ports_and_sparams_101.py` | which port suits which structure, S11 basics, and the standing-wave-null bins the extractor marks unreliable | the script's five-entry port decision tree — `add_msl_port`, `add_waveguide_port`, `add_coaxial_port`, lumped `add_port`, `add_lumped_rlc`; CPML and PEC |
+| 7 | `examples/tutorials/ports_and_sparams_101.py` | which port suits which structure, S11 basics, and the standing-wave-null bins the extractor marks unreliable | the script's five-entry port decision tree — `add_msl_port`, `add_waveguide_port`, `add_coaxial_port`, lumped `add_port`, `add_lumped_rlc`; CPML and PEC; the microstrip ground and trace are declared with `add_thin_conductor` (sheets), not as PEC boxes |
 | 8 | `examples/tutorials/resonance_harminv.py` | ring-down resonance extraction, picking a mode by physics rather than amplitude, record length vs frequency resolution | closed PEC cavity via `BoundarySpec`; soft source and probe; no port (a port would load the cavity) |
 | 9 | `examples/tutorials/antenna_farfield_pattern.py` | near-to-far-field boxes done right — every face at least half the shortest monitored wavelength from the radiator — and directivity against the textbook short dipole | CPML; `add_ntff_box`; soft source |
-| 10 | `examples/tutorials/patch_antenna_demo.py` | a real antenna end to end: a stack registered to the built mesh, identifying the radiating mode from the far field rather than by amplitude rank, a settling witness, and an error budget against openEMS | CPML; graded `dz_profile`; `add_ntff_box`; soft source and probe |
+| 10 | `examples/tutorials/patch_antenna_demo.py` | a real antenna end to end: a stack registered to the built mesh with the two foils declared as sheets on the substrate's faces, identifying the radiating mode from the far field rather than by amplitude rank, a settling witness, and an error budget against openEMS | CPML; graded `dz_profile`; `add_ntff_box`; soft source and probe |
 | 11 | `examples/tutorials/rcs_scattering.py` | radar cross-section with `subtract_incident_reference=True`, and why deep nulls near the collection box carry larger error | CPML; TFSF illumination with an empty reference run |
 | 12 | `examples/inverse_design/differentiable_s11_design.py` | the differentiable design loop: `jax.grad` end to end through the public `compute_waveguide_s_matrix` API, cross-checked against central finite differences | CPML; two WR-90 `add_waveguide_port` above cutoff; differentiates on `normalize=False` |
 | 13 | `examples/tutorials/artifact_report_demo.py` | exporting a shareable scene, mesh/preflight metadata, Markdown report and manifest | PEC box; lumped `add_port` and a probe; exports without running FDTD |
+
+Every conductor in these examples is declared as exactly one of three things,
+and the declaration — not the mesh — decides which: a **sheet** for foil
+(`add_thin_conductor`, one node plane, no cell), a **volume** for a plate, iris
+or post (`add(..., material="pec")`, walls on both drawn faces, interior
+shorted), or a **wire** for a filament. Step 2, `boundary_spec_demo.py`, teaches
+the choice.
 
 ## The rest of what ships
 
@@ -40,7 +47,7 @@ seconds to a few minutes.
 | `examples/inverse_design/multilayer_ar_coating.py` | a 3-layer AR coating optimized with `jax.value_and_grad` through `forward(eps_override=...)`, cross-checked against an analytic transfer-matrix optimum | CPML on x, periodic y and z (1D-equivalent); soft source and two probes |
 | `examples/inverse_design/field_observable_shielding.py` | pooling two `add_dft_plane_probe` planes into one worst-case-leakage scalar with `field_softmax`, then descending on it | CPML; TFSF plane wave; two DFT plane probes behind the stack |
 | `examples/inverse_design/progressive_demo.py` | how `progressive_optimize` runs a design at increasing mesh resolutions, upsampling the latent between stages. Its own docstring calls it a minimal API demonstration with a trivial optimum, not a cross-validation | CPML on all sides; soft source and probe |
-| `examples/config/microstrip_thru.yaml` | the declarative YAML front-end for the same Simulation API, driven by `rfx run` / `rfx plot` / `rfx export-geometry` | CPML; two 50 Ω lumped wire ports, port 1 excited and port 2 a passive matched load |
+| `examples/config/microstrip_thru.yaml` | the declarative YAML front-end for the same Simulation API, driven by `rfx run` / `rfx plot` / `rfx export-geometry` | CPML; two 50 Ω lumped wire ports, port 1 excited and port 2 a passive matched load; ground and trace declared in a `thin_conductors:` block (sheets) |
 
 Read the preflight output every time. Its warnings identify conditions that can
 invalidate a result — lossless-dielectric Q traps, graded-mesh rasterization

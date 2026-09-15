@@ -441,6 +441,11 @@ def test_waveguide_four_port_parallel_guides_through_api():
         cpml_layers=10,
         dx=0.002,
     )
+    # A full-height septum: a VOLUME (#931 §1.2), 10 cells across in y and
+    # drawn node to node. It realizes electric walls on BOTH bounding planes
+    # (y = 40 mm and y = 60 mm, 11 planes against the pre-#931 10), so each
+    # guide either side of it is one cell narrower than before and every
+    # number below was re-measured under that realization.
     sim.add(Box((0.0, 0.04, 0.0), (0.12, 0.06, 0.02)), material="pec")
     common = dict(
         mode=(1, 0),
@@ -561,7 +566,11 @@ def test_waveguide_two_port_y_normal_s_matrix_through_api():
         "so normalize='flux' would FALSE-GREEN it on a non-physical |S|>1 result "
         "— it must stay skipped until a real de-embed lands (probe-plane / "
         "mode-filter / larger port-to-junction separation). See "
-        "docs/research_notes/2026-04-22_waveguide_port_validation_session.md."
+        "docs/research_notes/2026-04-22_waveguide_port_validation_session.md. "
+        "#931: the three walls are VOLUMES and stay drawn as they are, but "
+        "each now realizes a wall on BOTH of its bounding node planes, so the "
+        "junction apertures are one cell narrower than they were; whoever "
+        "unskips this inherits new numbers, not the pre-#931 ones."
     )
 )
 def test_waveguide_branch_junction_mixed_normals_reciprocal_through_api():
@@ -1046,15 +1055,19 @@ def test_validation_errors():
         sim.set_periodic_axes("q")
 
 
-def test_floquet_auto_mesh_rejects_nonuniform_fallback():
+@pytest.mark.parametrize("preview", [False, True])
+@pytest.mark.parametrize("entry", ["run", "forward"])
+def test_floquet_auto_mesh_rejects_nonuniform_fallback(preview, entry):
     """Floquet workflows should fail instead of silently dropping auto NU mesh."""
     sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.005), boundary="cpml")
     sim.add_material("sub", eps_r=4.4, sigma=0.025)
     sim.add(Box((0.0, 0.0, 0.0), (0.03, 0.03, 0.0016)), material="sub")
+    if preview:
+        assert sim._uses_nonuniform_mesh
     sim.add_floquet_port(0.0025, axis="z", scan_theta=0.0)
 
     with pytest.raises(ValueError, match="Floquet ports do not support non-uniform z mesh"):
-        sim.run(n_steps=10, compute_s_params=False)
+        getattr(sim, entry)(n_steps=10)
 
 
 def test_fluent_api():
@@ -1183,6 +1196,12 @@ def test_five_line_patch_workflow():
         freq_max=4e9, domain=(0.08, 0.06, 0.02),
         boundary="cpml", cpml_layers=8, dx=5e-3,
     )
+    # The patch is a ZERO-thickness Box, which the lattice ownership contract
+    # reads as a sheet declaration (§1.5) — that clause exists so this
+    # documented five-line workflow stays five lines. On this deliberately
+    # coarse CI mesh (dx = 5 mm) the declared plane z = 0.8 mm is 0.16 of a
+    # cell above the substrate floor, so the sheet realizes at z = 0; the
+    # contract reports that offset rather than absorbing it.
     sim.add(
         Box((-19e-3, -14.5e-3, 0.8e-3), (19e-3, 14.5e-3, 0.8e-3)),
         material="pec",
@@ -1198,3 +1217,56 @@ def test_five_line_patch_workflow():
     # The port excites the domain; verify non-zero fields in final state
     ez_peak = float(jnp.max(jnp.abs(result.state.ez)))
     assert ez_peak > 0, "Port should excite non-zero Ez field"
+
+
+def test_five_line_patch_declares_a_sheet_not_a_volume():
+    """Build-time (no solve) ownership check for the documented workflow.
+
+    §1.5: a PEC Box with exactly ONE zero-extent axis IS a sheet declaration.
+    The five-line example depends on that clause, so it is asserted here
+    rather than left implied by the run above: the patch owns no cell, it
+    realizes on one node plane, and the normal E through it stays live.
+    """
+    from tests._realized_geometry import (
+        assert_sheet_planes, assert_wall_planes, node_index, realized)
+
+    sim = rfx.Simulation(
+        freq_max=4e9, domain=(0.08, 0.06, 0.02),
+        boundary="cpml", cpml_layers=8, dx=5e-3,
+    )
+    sim.add(Box((-19e-3, -14.5e-3, 0.8e-3), (19e-3, 14.5e-3, 0.8e-3)),
+            material="pec")
+    sim.add(Box((-30e-3, -25e-3, 0), (30e-3, 25e-3, 1.6e-3)), material="fr4")
+
+    rz = realized(sim)
+    assert rz.pec_mask is None, "a sheet owns no cell"
+    assert len(rz.sheets) == 1 and rz.sheets[0].normal_axis == 2
+    assert_sheet_planes(sim, 2, expected_m=(0.8e-3,), what="the patch")
+    assert_wall_planes(sim, 2, expected_m=(0.8e-3,), what="the patch")
+    k = node_index(rz.grid, 2, 0.8e-3)
+    assert not bool(np.asarray(rz.edge_masks[2])[:, :, k].any()), (
+        "the normal E through a sheet stays live (§1.3)")
+
+
+def test_four_port_septum_realizes_walls_on_both_drawn_faces():
+    """Build-time (no solve) ownership check for the septum fixture.
+
+    A wall is a VOLUME: drawn y = 40 -> 60 mm on node planes, it realizes
+    tangential walls at BOTH and shorts the normal Ey between them. Before
+    #931 the y = 60 mm face was never a wall, so the upper guide was one cell
+    wider than drawn — the #868 class this contract removes.
+    """
+    from tests._realized_geometry import assert_wall_planes, node_index, realized
+
+    sim = Simulation(freq_max=10e9, domain=(0.12, 0.10, 0.02),
+                     boundary="cpml", cpml_layers=10, dx=0.002)
+    sim.add(Box((0.0, 0.04, 0.0), (0.12, 0.06, 0.02)), material="pec")
+    rz = realized(sim)
+    assert rz.sheets == [], "a 10-cell septum is a volume, not a sheet"
+    j_lo = node_index(rz.grid, 1, 0.04)
+    j_hi = node_index(rz.grid, 1, 0.06)
+    assert_wall_planes(sim, 1, expected_planes=range(j_lo, j_hi + 1),
+                       what="the septum")
+    # every normal Ey strictly inside the septum is shorted
+    ey = np.asarray(rz.edge_masks[1])
+    assert ey[rz.grid.shape[0] // 2, j_lo:j_hi, rz.grid.shape[2] // 2].all()

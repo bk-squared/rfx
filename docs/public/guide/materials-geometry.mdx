@@ -46,8 +46,20 @@ from rfx import Simulation, Box
 
 sim = Simulation(freq_max=10e9, domain=(0.05, 0.05, 0.02), boundary="cpml")
 sim.add(Box((0.005, 0.005, 0.005), (0.045, 0.045, 0.0066)), material="fr4")
+# A 1 mm PEC plate: a real thickness, so a volume — walls at z = 4 mm and
+# z = 5 mm with the interior shorted. Foil would be a sheet instead; see
+# "How conductors land on the lattice" below.
 sim.add(Box((0.005, 0.005, 0.004), (0.045, 0.045, 0.005)), material="pec")
 ```
+
+With `dx` omitted, grid-dependent inspection and execution use the same
+automatically resolved mesh, including any nonuniform profile. `preflight()`
+checks that mesh without changing the declared mesh inputs. It may emit the
+auto-mesh selection warning; that warning is separate from its validation
+findings. Adding geometry or replacing a material recomputes the resolved view.
+For differentiating geometry or mesh inputs themselves, provide an explicit
+`dx` and the intended profiles before tracing; auto-mesh selection uses static
+geometry and materials.
 
 ---
 
@@ -75,9 +87,13 @@ sim.add(Box((0.01, 0.01, 0.0), (0.04, 0.04, 0.002)), material="my_ceramic")
  .add(Box((0.005, 0.005, 0.001), (0.045, 0.025, 0.0015)), material="metal"))
 ```
 
-`Box` is volumetric: every upper bound must exceed its lower bound. Use
-`add_thin_conductor(...)` for a sheet whose physical thickness is below one
-cell; a zero-thickness `Box` added with `sim.add()` rasterizes no volume.
+A conductor is a **volume**, a **sheet** or a **wire**, and the declaration says
+which — see [How conductors land on the lattice](#how-conductors-land-on-the-lattice).
+For a `Box` given to `sim.add()` with a PEC material, every upper bound must
+exceed its lower bound *or* be equal to it: a `Box` with exactly one zero-extent
+axis is a **sheet declaration** and realizes the same single node plane
+`add_thin_conductor()` would. A PEC `Box` whose drawn extent is between zero and
+one local cell raises — the thickness is neither a volume nor a stated sheet.
 
 ---
 
@@ -244,23 +260,26 @@ sim.add(Box((0.020, 0.020, 0.0), (0.030, 0.030, 0.004)), material="air")  # wins
 ```
 
 !!! warning
-    Draw-order overwrite applies only to dielectric / conductivity fills. PEC
-    cells (σ ≥ 10⁶ S/m, including `copper`, `aluminum`, and `pec`) accumulate in
-    a Boolean mask that is never cleared, so a later shape **cannot** carve a hole
-    in PEC. Model hollow or patterned metal by placing conductor only where metal
-    should exist.
+    Draw-order overwrite applies only to dielectric / conductivity fills.
+    Conductors accumulate in two containers that are never cleared — primal-cell
+    occupancy for PEC volumes (σ ≥ 10⁶ S/m, including `copper`, `aluminum`, and
+    `pec`) and a separate list of sheet footprints — so a later shape **cannot**
+    carve a hole in either. Model hollow or patterned metal by placing conductor
+    only where metal should exist.
 
 ---
 
-## PEC mask enforcement
+## How conductors land on the lattice
 
-Any material with σ ≥ 10⁶ S/m is enforced via a Boolean PEC mask rather than
-through the conductivity update: the E-field is set to zero on every PEC cell at
-each time step, which avoids the numerical instability that very large σ would
-cause in the standard update equations. This threshold captures library `pec`
-(σ = 10¹⁰) **and** the good-metal entries `copper` (5.8×10⁷) and `aluminum`
-(3.5×10⁷) — all three are modelled as perfect conductors, so finite-conductivity
-loss is not represented on this path.
+This section is the canonical statement of the rule. Every other page links here
+rather than restating it.
+
+Any material with σ ≥ 10⁶ S/m is a **conductor**: it is enforced by zeroing E
+rather than through the conductivity update, which avoids the instability a very
+large σ would cause in the standard update equations. The threshold captures
+library `pec` (σ = 10¹⁰) and the good-metal entries `copper` (5.8×10⁷) and
+`aluminum` (3.5×10⁷) — all three are modelled as perfect conductors, so
+finite-conductivity loss is not represented on this path.
 
 !!! warning
     To model a genuinely lossy conductor, keep σ below 10⁶ S/m; at or above that
@@ -269,11 +288,211 @@ loss is not represented on this path.
     metals, unless `surface_impedance_f0` is selected on
     `add_thin_conductor(...)`.
 
-For a PEC body that rasterizes to one cell along an axis, `sim.add(...,
-two_plane=True)` is an opt-in face-registered realization: it zeros the
-tangential E components on both node planes instead of the default lower plane.
-It is limited to hard PEC on the uniform `run()`/`forward()` scan and the
-single-device non-uniform runner. Other runners reject it explicitly.
+### One sentence
+
+**An E component is PEC if and only if its own location lies inside the closed
+conductor region.** A conductor is exactly one of three things, and your
+declaration says which:
+
+| Kind | What it is | You declare it with | An E edge is PEC when |
+|---|---|---|---|
+| **volume** | a set of primal cells | `sim.add(shape, material="pec")` — `Box`, `Sphere`, `Cylinder` | the edge is incident to an occupied cell |
+| **sheet** | a footprint on ONE node plane, zero thickness | `sim.add_thin_conductor(shape, ...)`, or a zero-thickness `Box` through `sim.add()` | the edge lies in the plane and both of its end nodes are in the footprint |
+| **wire** | a 1-D path of edges | `PolylineWire` thinner than half a local cell | the edge lies on the path |
+
+The three rows are that one sentence evaluated for a 3-D, a 2-D and a 1-D region
+on the Yee lattice. Nothing is inferred from how the shape happened to
+rasterize.
+
+### Index conventions
+
+Node `i` sits at `x_i = i·Δx`; primal cell `i` spans `[x_i, x_{i+1}]`, so node
+`i` is its **lower** corner. `Ex[i,j,k]` sits at `(x_{i+½}, y_j, z_k)`,
+`Ey[i,j,k]` at `(x_i, y_{j+½}, z_k)`, `Ez[i,j,k]` at `(x_i, y_j, z_{k+½})`.
+
+A PEC **volume** is sampled at **cell centres**: cell `i` is occupied when
+`lo ≤ x_{i+½} < hi`. On node planes this gives exactly the cells `i0 … i1−1` the
+drawn box covers; off-lattice it rounds each face to the nearest plane rather
+than always outward or always inward. **Dielectric sampling is unchanged** —
+node coordinates, half-open — so a dielectric-only model is bit-identical to
+earlier releases.
+
+### What follows from it
+
+* A `Box` drawn `z_a → z_b` on node planes realizes tangential walls at **both**
+  `z_a` and `z_b`, and shorts every normal edge between them. Realized thickness
+  equals drawn thickness.
+* A one-cell PEC `Box` is a filled slab with two faces — at every thickness, on
+  every axis, with no flag. If what you meant was foil, declare a sheet.
+* A **sheet** is realized on exactly one node plane: the plane nearest the
+  shape's mid-plane along its normal, with an exact half-cell tie resolving to
+  the lower plane. A sheet owns no cell — it adds nothing to the occupancy,
+  writes no εᵣ or σ — and the E component **normal** to it stays live.
+* Sheets on the same plane are unioned before the edge rule is applied, so two
+  abutting sheets realize seamlessly. Sheets on adjacent planes stay two films
+  with a live normal edge between them.
+* A sheet meant to sit on a dielectric interface needs that interface on a node
+  plane. Node planes are the integer multiples of `dx` from the domain origin,
+  so `dx = h_sub / n` sizes the laminate but does not place it — the face's
+  offset from the origin has to be a whole number of cells as well. Otherwise
+  the sheet snaps to the nearest node and preflight reports the
+  declared-versus-realized offset.
+* The rule is invariant under mirroring and axis permutation of the geometry.
+
+`fidelity_report()` prints, per PEC entry, the drawn extent against the realized
+wall planes on each axis, in your input units. Read it whenever the realization
+matters.
+
+### What `sim.add()` refuses
+
+* A PEC `Box` with **exactly one** zero-extent axis is a **sheet declaration**,
+  not an error, and is realized exactly as `add_thin_conductor()` would realize
+  the same box. Two or three zero-extent axes raise — a line or a point is not a
+  conductor; use `PolylineWire`.
+* A PEC shape with `0 < extent < one local cell` along any axis **raises**. A
+  `Box` is a volume: declare a sheet, or resolve the thickness. Nothing is
+  inferred from raster thickness or drawing direction.
+* A PEC `Sphere` / `Cylinder` / `Box` that rasterizes to **zero cells** raises,
+  naming `PolylineWire` for a filament and the minimum radius for a volume.
+  Metal no longer vanishes silently.
+* `add_thin_conductor()` with a shape thicker than one local cell along its
+  normal raises: that is a volume, use `add()`.
+
+### What this rule does not cover
+
+Three paths put metal in a domain without going through a conductor
+declaration. They are not part of the contract above, and mixing them up with
+it is the easiest way to misread a result.
+
+* **Domain-boundary PEC** — `boundary="pec"`, or a `BoundarySpec` face. That is
+  a wall of the box, not a body: tangential E is zeroed on the face plane
+  itself. A ground plane realized this way has no footprint, no cell and no
+  sheet; it is the domain.
+* **A σ fill through the low-level rasterizer** —
+  `rasterize(grid, [(shape, 1.0, 1e7)])`, and the shell and pin that
+  `stamp_coaxial_line()` stamps. This writes a conductivity into cells and
+  lets the ordinary update equation damp the field inside them. It is a lossy
+  volume model, not PEC realization: no edge is zeroed, `realized_wall_planes`
+  reports nothing for it, and its occupied cells are sampled at NODES, not at
+  cell centres. The RCS pages use it deliberately, because TFSF illumination
+  takes `MaterialArrays` rather than a `Simulation`.
+* **Subpixel smoothing** — `subpixel_smoothing="kottke_pec"` (stage 2) and the
+  Dey–Mittra conformal path (stage 1) select their own interior and carry their
+  own weights. One composition did change at 2.0: on the waveguide lane the
+  conformal path now applies the realized PEC edges together with Dey–Mittra,
+  where before it applied a σ fold and Dey–Mittra. No test covers a curved
+  conformal body, so treat that combination as an untested edge.
+
+If you want the contract's three kinds, declare them with `add()`,
+`add_thin_conductor()` or `PolylineWire`. Everything else is a different model
+with a different answer, and it is on you to say which one a number came from.
+
+### Finalize the mesh before placing geometry from its nodes
+
+Automatic mesh previews depend on the geometry registered so far. Reading a
+grid or running preflight does **not** finalize it: adding the body you placed
+from that grid can refine the mesh and move its faces off the new node lines.
+After registering mesh-driving geometry and materials, call
+`grid = sim.freeze_mesh()` before using grid coordinates to place conductors.
+This explicitly fixes the resolved spacing, profiles and extent. Later
+additions still face the normal #931 checks: a sub-cell volume is refused;
+freezing does not resolve a feature that the fixed mesh cannot represent.
+
+For example, with an empty uniform model:
+
+```python
+sim = Simulation(freq_max=10e9, domain=(0.03, 0.03, 0.03), boundary="pec")
+grid = sim.freeze_mesh()
+d = float(grid.dx)
+sim.add(Box((5*d, 5*d, 5*d), (9*d, 9*d, 6*d)), material="pec")
+```
+
+Use the actual node coordinates for a non-uniform grid; its scalar `dx` is
+only the boundary spacing. Register ports and boundaries before retaining
+array indices, since they can change padding. Physical node coordinates
+inside the domain stay fixed. Repeated `freeze_mesh()` calls preserve the
+mesh; construct a new simulation if you need a different mesh. Supplying
+explicit `dx=` and fixed profiles from the outset remains another way to
+place geometry on a stable mesh.
+
+### Two worked contrasts
+
+**Foil is a sheet.** A 35 µm ground on a 0.787 mm RO4003C laminate, meshed at
+`dx = h_sub / 4 = 196.75 µm`. The copper is a fifth of a cell thick, so a `Box`
+through `add()` raises. Declare the sheet on the laminate face — and put that
+face on a node plane, because the sheet is realized on the nearest one.
+
+Choosing `dx = h_sub / 4` fixes the laminate's *thickness* at four cells. It
+says nothing about *where* the laminate floor lands, and the two are separate
+conditions. A floor at `z = 4 mm` is not a node plane at all:
+`0.004 / 196.75e-6 = 20.33`, so the ground would be realized at node 20,
+`3.935 mm`, 65 µm below the dielectric it is supposed to sit under. Declare the
+floor as `20 · dx`, and the in-plane edges as cell counts too, and the mesh
+carries the board you drew:
+
+```python
+from rfx import Box, Simulation
+
+H_SUB = 0.787e-3
+DX = H_SUB / 4                       # 196.75 µm — four cells across the laminate
+Z_GND = 20 * DX                      # 3.935 mm — node plane 20, by construction
+XY_LO, XY_HI = 25 * DX, 175 * DX     # 4.91875 mm, 34.43125 mm — nodes 25 and 175
+
+board = Simulation(freq_max=12e9, domain=(0.04, 0.04, 0.012), dx=DX,
+                   boundary="cpml")
+board.add(Box((XY_LO, XY_LO, Z_GND), (XY_HI, XY_HI, Z_GND + H_SUB)),
+          material="rogers4003c")
+# Ground: zero thickness on the substrate floor. One node plane, no cell.
+board.add_thin_conductor(Box((XY_LO, XY_LO, Z_GND), (XY_HI, XY_HI, Z_GND)),
+                         sigma_bulk=5.8e7, thickness=35e-6)
+board.fidelity_report()
+```
+
+The report comes back with **0 findings**: every declared face is realized as
+itself, and the sheet names the plane it landed on. The `z` rows, with the `x`
+and `y` rows (identical in form, `0.0` residuals) left out:
+
+```text
+  geometry[0] 'rogers4003c'
+    cells: 90000
+    z: declared [3935.0, 4722.0] um -> realized [3935.0, 4722.0] um | face residuals (0.0, 0.0) um | extent 787.0 -> 787.0 um
+
+  thin_conductor[0] sigma_bulk=5.8e+07 S/m -> pec — PEC sheet on node plane z = 3935.00 um (22801 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)
+    sheet nodes: 22801 (owns no cell)
+    z: declared [3935.0, 3935.0] um -> realized [3935.0, 3935.0] um | face residuals (0.0, 0.0) um | extent 0.0 -> 0.0 um
+```
+
+One wall plane at `z = 3.935 mm`, the laminate's four cells above it untouched,
+and `Ez` through the ground still live. Draw the same foil as a one-cell `Box`
+instead and it eats the laminate's bottom cell: walls at `3935.0 µm` and
+`4131.8 µm`, and the report adds
+`claimed-by-conductor: 25.0% of this dielectric's cells are also PEC` — a
+three-cell dielectric cavity under a board you declared four cells thick.
+
+**A plate is a volume.** A 2 mm-thick iris in a WR-90 guide at `dx = 1 mm`:
+
+```python
+guide = Simulation(freq_max=12e9, domain=(0.30, 0.02286, 0.01016), dx=1e-3,
+                   boundary="cpml")
+guide.add(Box((0.145, 0.0, 0.0), (0.147, 0.02286, 0.01016)), material="pec")
+```
+
+Realized: faces at `x = 145 mm` and `x = 147 mm`, every normal edge between
+them shorted. Drawn extent equals realized extent, so an oracle is fed the
+drawn 2 mm — no `±1` cell correction anywhere.
+
+`fidelity_report()` prints **three** planes here, `145000, 146000, 147000 µm`,
+not two. That is not a contradiction: a 2 mm plate on a 1 mm mesh occupies one
+cell and has a tangential wall on both faces AND on the plane between them,
+because its interior is shorted as well. `realized_wall_planes` reports every
+plane the conductor owns, so `max − min` gives the body's outer span rather
+than a clear opening — bracket between wall groups when you want the aperture.
+
+!!! warning "Removed in 2.0"
+    The `two_plane=True` keyword on `sim.add()` is gone. It existed to give a
+    one-cell PEC body its far face, which the volume rule above now does at every
+    thickness, on every axis, on every lane. Passing it is a `TypeError`. Foil
+    that used it should be declared as a sheet; a real plate needs no flag.
 
 ---
 
@@ -296,9 +515,11 @@ sim.add_thin_conductor(
 `add_thin_conductor` picks a regime from `sigma_bulk` and the optional
 `surface_impedance_f0`:
 
-- **σ_bulk ≥ 10⁶ S/m** (copper, as above): the sheet is enforced as a thin PEC
-  sheet — its cells are added to the PEC mask, no volumetric meshing needed. rfx
-  emits a warning noting this routing. This is the common case for printed copper.
+- **σ_bulk ≥ 10⁶ S/m** (copper, as above): the sheet is enforced as a lossless
+  PEC sheet on one node plane. It owns no cell — nothing is added to the volume
+  occupancy and no εᵣ or σ is written — and the E component normal to it stays
+  live. rfx emits a warning noting this routing. This is the common case for
+  printed copper.
 - **σ_bulk < 10⁶ S/m** (resistive films, inks): rfx sets an effective conductivity
   `σ_eff = σ_bulk · (thickness / Δx)` on the intersected Yee cells rather than
   fully filling them, preserving the sheet resistance `R_s = 1 / (σ_bulk · thickness)`.
@@ -306,17 +527,26 @@ sim.add_thin_conductor(
   band-centre Leontovich resistance
   `R_s0 = sqrt(π f0 μ0 / σ_bulk)` for metals as well as lower-conductivity
   sheets. Any rasterizable shape may carry this operator, including patterned
-  `Cylinder`, `Sphere`, and `MeshShape` geometries. The rasterized result must
-  occupy exactly one cell layer along its normal and at least one cell; thicker
-  or vanished sheets fail rather than degrade silently.
+  `Cylinder`, `Sphere`, and `MeshShape` geometries. A lossy sheet uses the same
+  footprint and the same edge set as the PEC sheet, so `f0` toggles loss and
+  never geometry. A shape thicker than one local cell along its normal is not a
+  sheet and raises; a footprint that reaches no node line raises rather than
+  vanishing.
 
 On a graded mesh (`dz_profile`), `Δx` above is the spacing between the midpoints
-of the two cells either side of the sheet — `(d[k-1] + d[k]) / 2` — not either
-cell on its own. That is the length the sheet's conductivity actually acts over
-in the update, so the sheet resistance you asked for is what you get wherever
-the sheet lands. The two are the same number whenever the neighbouring cells
-match, which is every uniform mesh. If a sheet does land on a grading step,
+of the two cells either side of the sheet plane — `(d[k-1] + d[k]) / 2` — not
+either cell on its own. That is the length the sheet's conductivity actually acts
+over in the update, so the sheet resistance you asked for is what you get
+wherever the sheet lands. The two are the same number whenever the neighbouring
+cells match, which is every uniform mesh. If a sheet does land on a grading step,
 preflight says so.
+
+The sheet has no cell of its own whose material it inherits — that is what
+"owns no cell" means. So if your stack-up leaves the sheet's node plane in
+vacuum while both neighbouring cells carry dielectric (a slot drawn for the
+foil), the one E edge on that plane sits half a cell into vacuum and the cavity
+gains a vacuum layer in series. Extend the dielectric boxes to the sheet plane;
+preflight flags the slot rather than re-sampling anything behind your back.
 
 The surface-impedance operator is available on the uniform and
 single-device graded-mesh run/S-parameter lanes documented by the support

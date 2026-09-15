@@ -261,6 +261,72 @@ A_EFF_TOL_COARSE = 0.015   # 1.5% of declared radius, cpr=6.4
 A_EFF_TOL_FINE = 0.005     # 0.5% of declared radius, cpr=12.8
 
 
+def assert_conductor_model(grid, shape, sigma):
+    """Refuse to quote an RCS unless the conductor is the model cv16 claims.
+
+    cv16's sphere is a HIGH-SIGMA MATERIAL FILL: ``rasterize(grid, [(Sphere,
+    1.0, PEC_SIGMA)])`` straight onto ``MaterialArrays``, never
+    ``Simulation.add(..., material='pec')``. ``sigma = 1e7`` is above the
+    repo's own ``_PEC_SIGMA_THRESHOLD`` of 1e6, so by that definition it is a
+    PEC -- and the lattice ownership contract (#931 §1.8) FENCES it out: a
+    sigma fill is a lossy VOLUME model (fields decay inside a conductive cell),
+    not PEC realization, and it keeps node sampling. Nothing about cv16's
+    numbers moves under the contract, which is exactly why cv16 is worth
+    nothing as a witness unless the fence is checked instead of assumed.
+
+    What this asserts, build-time, no solve:
+
+    1. the sigma fill is NODE-sampled, i.e. it equals ``Sphere.mask(grid)``.
+       That is the model every committed a_eff, every gate constant and the
+       whole 15-point curve were measured under;
+    2. the PEC-VOLUME path for the SAME sphere -- ``pec_volume_cell_mask`` on
+       the CELL CENTRES, §1.1 -- gives a DIFFERENT cell set, and reports how
+       different. The two models are not silently equated (§1.8's requirement),
+       and the difference is not a rounding detail: measured at cv16's own
+       operating points, ka=0.50 coarse N goes 1082 -> 1123 (a_eff/a 0.988032
+       -> 1.000357) with 259 cells differing, and fine ka=2.00 N goes 9264 ->
+       9339 (0.998319 -> 1.001006) with 957 cells differing. Centre sampling
+       realizes the sphere symmetric about its centre (the node sampler is one
+       cell short on every ``+`` side, visible in the occupied bounding box:
+       [29, 40] node vs [28, 40] centre at ka=0.5).
+
+    Consequence, stated so nobody has to rediscover it: if cv16 is ever brought
+    under the ownership contract -- declared through ``Simulation.add`` as a PEC
+    volume -- a_eff moves by ~1.2% at ka=0.5, the Mie reference leg moves with
+    it, and the entire fixture plus both gate constants must be regenerated
+    from a re-solve. That is a PI decision, not a refactor's side effect. It is
+    NOT taken here.
+
+    Raises ``RuntimeError`` if (1) fails -- the raster changed model under a
+    measurement that assumes it did not.
+    """
+    from rfx.geometry.rasterize_grid import (centres_from_uniform_grid,
+                                             pec_volume_cell_mask)
+
+    filled = np.asarray(sigma) > 0
+    node = np.asarray(shape.mask(grid), dtype=bool)
+    if not np.array_equal(filled, node):
+        raise RuntimeError(
+            "assert_conductor_model: the sigma fill no longer equals the "
+            f"node-sampled shape mask ({int((filled ^ node).sum())} cells "
+            "differ). Every committed a_eff, both gate constants and the whole "
+            "15-point curve were measured under node sampling; refuse to quote "
+            "an RCS against them (#931 §1.8 fences the sigma-fill model, it "
+            "does not silently move it).")
+    centre = np.asarray(pec_volume_cell_mask(shape, centres_from_uniform_grid(grid)),
+                        dtype=bool)
+    n_node, n_centre = int(node.sum()), int(centre.sum())
+    dx = float(grid.dx)
+    a_of = lambda n: (3 * n * dx ** 3 / (4 * np.pi)) ** (1.0 / 3.0)  # noqa: E731
+    print(f"[CONDUCTOR MODEL] sigma fill (node-sampled, the model cv16 gates): "
+          f"N={n_node}, a_eff={a_of(n_node)*1e3:.4f} mm | PEC volume "
+          f"(centre-sampled, #931 §1.1, NOT used here): N={n_centre}, "
+          f"a_eff={a_of(n_centre)*1e3:.4f} mm | {int((node ^ centre).sum())} "
+          "cells differ")
+    return {"n_occupied_node": n_node, "n_occupied_pec_volume": n_centre,
+            "n_cells_differing": int((node ^ centre).sum())}
+
+
 def run_point(ka: float, cpr: float, clear_cells: int, steps_mult: float = 1.0):
     """One monostatic point at the derived operating point. Returns a record.
 
@@ -280,7 +346,12 @@ def run_point(ka: float, cpr: float, clear_cells: int, steps_mult: float = 1.0):
                 cpml_layers=CPML_LAYERS)
     n_steps = int(max(700, np.ceil(2.2 * domain / C0 / grid.dt)) * steps_mult)
     center = (domain / 2,) * 3
-    eps_r, sigma = rasterize(grid, [(Sphere(center=center, radius=radius), 1.0, PEC_SIGMA)])
+    sphere = Sphere(center=center, radius=radius)
+    eps_r, sigma = rasterize(grid, [(sphere, 1.0, PEC_SIGMA)])
+    # #931: the conductor model is a claim, so check it instead of assuming it.
+    # Build-time, no solve; records nothing into the row, so the committed
+    # fixture is untouched.
+    assert_conductor_model(grid, sphere, sigma)
     n_occupied = int(np.sum(np.asarray(sigma) > 0))
     a_eff = (3 * n_occupied * dx ** 3 / (4 * np.pi)) ** (1.0 / 3.0)
     ka_eff = 2 * np.pi * a_eff / LAM

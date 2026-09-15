@@ -1,5 +1,24 @@
 # THRU feed-post de-embedding, attempt 3 — two-segment post model, identification from independent fixtures
 
+> **SUPERSEDED IN PART by #931 (the lattice ownership contract), 2026-09-07.**
+> Kept as dated history and deliberately NOT rewritten.
+> Two of its statements about the tree are dead. (1) Section 2's feed post,
+> "3 cells with the top cell dead inside the PEC trace", counted a dead cell
+> that the deleted neighbour rule produced under a one-cell PEC trace; under
+> #931 the trace is either a VOLUME (walls on both drawn planes, the normal
+> edge between them shorted) or a declared SHEET (one plane, the normal edge
+> live), and the post's live-cell count follows from `edge_is_pec` on the
+> port's own component, not from a cell scan. (2) Section 11's mechanism
+> note — "`pec_mask` comes solely from interior rasterization" — is still true
+> of `pec_mask` and no longer true of the metal: a sheet-declared conductor
+> never enters `pec_mask` at all. The CPML-pad finding it supports (a PEC
+> trace drawn to the domain edge ends at the pad interface as an open circuit)
+> is unaffected, because the pad extension still carries no conductor of
+> either kind. Attempt 3's measured numbers stand as measured.
+> The current rule is
+> `docs/design_notes/20260906_plan_realign_lattice_ownership.md` §1 and §1.9,
+> and for users `docs/public/guide/materials-geometry.mdx`.
+
 Status: BINDING. Committed BEFORE any new measurement and BEFORE the
 attempt-3 harness exists. Sections 1-9 are frozen at commit time;
 results are APPENDED in later sections, never edited back. No window

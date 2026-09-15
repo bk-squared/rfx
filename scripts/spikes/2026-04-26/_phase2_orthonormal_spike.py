@@ -930,7 +930,7 @@ def _prepare_multimode_case(sim: Any, *, num_periods: float):
         raise SpikeUnavailable("BIORTHO benchmark must be run with n_modes > 1")
 
     grid = sim._build_grid()
-    base_materials, debye_spec, lorentz_spec, pec_mask_wg, _, _ = sim._assemble_materials(grid)
+    base_materials, debye_spec, lorentz_spec, pec_mask_wg, _, _ = sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])
     if pec_mask_wg is not None:
         base_materials = base_materials._replace(
             sigma=jnp.where(pec_mask_wg, 1e10, base_materials.sigma)

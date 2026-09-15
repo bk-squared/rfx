@@ -1,0 +1,42 @@
+{
+  "starting_commit": "294038ca646a4e841b208bea8c9a6522b73de615",
+  "rfx_tree": "bf4f2c1f1e7175e526c063b0a082d910aac8eb5e",
+  "rfx_import": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/__init__.py",
+  "jax_version": "0.6.2",
+  "numpy_version": "2.2.6",
+  "backend": "cpu",
+  "x64_enabled": false,
+  "source_hashes": {
+    "tests/unit/autodiff/test_msl_sparam_ad.py": "96d7fad542de5c1eb2f43f5794190232852b543779ebaebb7b27b489be11da19",
+    "tests/_msl_fixture_qualification.py": "0000ff0cfe676b44b1f80fb0e62ef75ff591c9b3de02ab4e789f0f237ac44b9a",
+    "tests/fixtures/msl_s_matrix_golden.npy": "4776a6fd73d725206339c2310ffe4983d0522d551668fc666b44ca4a422d4d88",
+    "scripts/diagnostics/import_931_msl_golden.py": "f6352e3112e0ef0eb9e7a012fbd2cd06e5abe78baa25d634ef39da3892bc77b6"
+  },
+  "command": [
+    "python",
+    "-m",
+    "pytest",
+    "-o",
+    "addopts=",
+    "-n",
+    "4",
+    "-v",
+    "--capture=tee-sys",
+    "-rA",
+    "--junitxml=output/931-msl-repin-verification/junit.xml",
+    "tests/unit/autodiff/test_msl_sparam_ad.py"
+  ],
+  "environment": {
+    "JAX_PLATFORMS": "cpu",
+    "JAX_ENABLE_X64": "0",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1"
+  },
+  "observed_worker_environment": {
+    "OPENBLAS_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "JAX_ENABLE_X64": "0",
+    "JAX_PLATFORMS": "cpu",
+    "XLA_FLAGS": "--xla_force_host_platform_device_count=2"
+  }
+}

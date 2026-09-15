@@ -1256,12 +1256,18 @@ def build_coaxial_tem_plane_source_specs(
     coeff_h = jnp.float32(dt_step / (MU_0 * dz))
     coeff_e = jnp.float32(dt_step / (float(eps_r) * EPS_0 * dz))
 
-    # Inner edge of the PEC outer-conductor shell stamped by
-    # ``setup_coaxial_port``. Source cells must stay strictly inside the
-    # PTFE annulus [pin_radius, shell_inner]; injecting at radii in
-    # [shell_inner, outer_radius] hits PEC cells whose E is zeroed every
-    # step by ``apply_pec_mask``, breaking the TFSF cancellation
-    # symmetry.
+    # Inner edge of the outer-conductor shell stamped by
+    # ``setup_coaxial_port``. The shell is a SIGMA STAMP
+    # (``sigma = PEC_SIGMA`` on those cells), not a PEC mask entry: it is
+    # a lossy-volume conductor model and is explicitly out of the #931
+    # lattice ownership contract (design note §1.8, "sigma-fill
+    # conductors"). Nothing zeroes its E; the field decays inside the
+    # conductive cells instead. Source cells must still stay strictly
+    # inside the PTFE annulus [pin_radius, shell_inner] — injecting at
+    # radii in [shell_inner, outer_radius] lands in those lossy cells and
+    # breaks the TFSF cancellation symmetry.  (Earlier revisions of this
+    # comment claimed ``apply_pec_mask`` zeroed the shell every step;
+    # that was never true of a sigma stamp.)
     shell_thickness = min(
         float(dz),
         0.5 * (float(port.outer_radius) - float(port.pin_radius)),

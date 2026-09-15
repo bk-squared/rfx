@@ -1,0 +1,9 @@
+{
+  "source_commit": "98d319877dc50cec43bca950b163ebec029cf13e",
+  "baseline_commit": "ae9102cf8c65d23fd83c266c5fa2e02ec5a32cf1",
+  "source_harminv_sha256": "888f3312a1efa804598ee454fbbfa37710ea8a9379235bebb6788ea9acf4b2eb",
+  "input_sha256": "8753ec454e9d2d590d452ca3029e39d91aa8007e61c7a701233835bcf18df06a",
+  "input": "tests/fixtures/harminv_decimation/stage1/input.npz",
+  "capture": "actual mean-subtracted harminv input from scripts.stage1_nu_cavity_physics_gate.run_gate; no solver or threshold modifications",
+  "outcome": "original 0.03 percent gate fails at 0.0826745 percent; unresolved pending short-record policy decision"
+}

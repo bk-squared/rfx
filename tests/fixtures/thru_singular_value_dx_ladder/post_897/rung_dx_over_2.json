@@ -1,0 +1,403 @@
+{
+  "study": "thru_singular_value_dx_ladder",
+  "predeclaration": "docs/design_notes/thru_singular_value_dx_ladder_predeclaration.md",
+  "rung": {
+    "dx_divisor": 2,
+    "dx_m": 0.00025,
+    "cpml_layers": 16,
+    "cpml_thickness_m": 0.004,
+    "trace_box_lo_m": [
+      0.0075,
+      0.0075,
+      0.001
+    ],
+    "trace_box_hi_m": [
+      0.0245,
+      0.0125,
+      0.00125
+    ],
+    "trace_thickness_cells": 1,
+    "overhang_m": 0.0005,
+    "overhang_cells": 2,
+    "port_extent_m": 0.001,
+    "n_steps": 8000,
+    "dt_s": 4.766437173827514e-13,
+    "dt0_s": 9.532874347655029e-13,
+    "physical_time_s": 3.813149739062012e-09,
+    "n_steps_fixture": 4000
+  },
+  "fixture": {
+    "domain_m": [
+      0.032,
+      0.02,
+      0.01
+    ],
+    "freq_max_hz": 10000000000.0,
+    "trace_width_m": 0.005,
+    "trace_height_m": 0.001,
+    "port_x_m": [
+      0.008,
+      0.024
+    ],
+    "z0_ohm": 50.0,
+    "pulse": {
+      "f0_hz": 5000000000.0,
+      "bandwidth": 0.8
+    },
+    "battery_sv_max": 1.003227
+  },
+  "preflight": {
+    "codes": [
+      "pec_faces_finite_pec",
+      "wire_port_dead_extent_cells",
+      "wire_port_dead_extent_cells"
+    ],
+    "battery_codes_present": true,
+    "extra_codes": [],
+    "messages_verbatim": [
+      "pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and use an explicit PEC Box instead.",
+      "Wire port at (0.008, 0.01, 0.0) (extent 0.001) rasterizes to n=5 cells of which 1 land inside PEC geometry ['pec'] (n_live/n = 4/5). Dead cells are shorted by the PEC and are excluded from the port's resistance distribution, drive injection, and wave normalization (issue #318 fix): the port terminates at 50 ohm across its 4 live cells. (rfx versions before the #318 fix counted all 5 cells and physically terminated at Z0*(n_live/n) = 40.0 ohm \u2014 the issue-#313 finding.) Verify the extent was MEANT to end on/inside the conductor, and keep the midpoint V/I probe cell live; to silence, shorten the extent or move the port so none of its rasterized cells land on PEC (per the assembled geometry -- not a cell-center guess; a thin PEC sheet snaps to its nearest grid NODE, which can be a full cell away from the sheet's midpoint).",
+      "Wire port at (0.024, 0.01, 0.0) (extent 0.001) rasterizes to n=5 cells of which 1 land inside PEC geometry ['pec'] (n_live/n = 4/5). Dead cells are shorted by the PEC and are excluded from the port's resistance distribution, drive injection, and wave normalization (issue #318 fix): the port terminates at 50 ohm across its 4 live cells. (rfx versions before the #318 fix counted all 5 cells and physically terminated at Z0*(n_live/n) = 40.0 ohm \u2014 the issue-#313 finding.) Verify the extent was MEANT to end on/inside the conductor, and keep the midpoint V/I probe cell live; to silence, shorten the extent or move the port so none of its rasterized cells land on PEC (per the assembled geometry -- not a cell-center guess; a thin PEC sheet snaps to its nearest grid NODE, which can be a full cell away from the sheet's midpoint)."
+    ]
+  },
+  "warnings_verbatim": [
+    "UserWarning: [run] preflight found 3 advisory issue(s) - pass skip_preflight=True to suppress:\n  - pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and use an explicit PEC Box instead.\n  - Wire port at (0.008, 0.01, 0.0) (extent 0.001) rasterizes to n=5 cells of which 1 land inside PEC geometry ['pec'] (n_live/n = 4/5). Dead cells are shorted by the PEC and are excluded from the port's resistance distribution, drive injection, and wave normalization (issue #318 fix): the port terminates at 50 ohm across its 4 live cells. (rfx versions before the #318 fix counted all 5 cells and physically terminated at Z0*(n_live/n) = 40.0 ohm \u2014 the issue-#313 finding.) Verify the extent was MEANT to end on/inside the conductor, and keep the midpoint V/I probe cell live; to silence, shorten the extent or move the port so none of its rasterized cells land on PEC (per the assembled geometry -- not a cell-center guess; a thin PEC sheet snaps to its nearest grid NODE, which can be a full cell away from the sheet's midpoint).\n  - Wire port at (0.024, 0.01, 0.0) (extent 0.001) rasterizes to n=5 cells of which 1 land inside PEC geometry ['pec'] (n_live/n = 4/5). Dead cells are shorted by the PEC and are excluded from the port's resistance distribution, drive injection, and wave normalization (issue #318 fix): the port terminates at 50 ohm across its 4 live cells. (rfx versions before the #318 fix counted all 5 cells and physically terminated at Z0*(n_live/n) = 40.0 ohm \u2014 the issue-#313 finding.) Verify the extent was MEANT to end on/inside the conductor, and keep the midpoint V/I probe cell live; to silence, shorten the extent or move the port so none of its rasterized cells land on PEC (per the assembled geometry -- not a cell-center guess; a thin PEC sheet snaps to its nearest grid NODE, which can be a full cell away from the sheet's midpoint).",
+    "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.",
+    "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.",
+    "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.",
+    "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.",
+    "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.",
+    "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.",
+    "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.",
+    "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.",
+    "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.",
+    "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.",
+    "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.",
+    "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.",
+    "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.",
+    "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.",
+    "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.",
+    "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.",
+    "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more.",
+    "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/google/jax#current-gotchas for more."
+  ],
+  "rasterization": {
+    "grid_shape": [
+      161,
+      113,
+      57
+    ],
+    "n_cells_total": 1037001,
+    "finite_pec_cells": 1360,
+    "wire_ports": [
+      {
+        "n_cells": 5,
+        "n_live": 4,
+        "live_flags": [
+          true,
+          true,
+          true,
+          true,
+          false
+        ]
+      },
+      {
+        "n_cells": 5,
+        "n_live": 4,
+        "live_flags": [
+          true,
+          true,
+          true,
+          true,
+          false
+        ]
+      }
+    ]
+  },
+  "freqs_hz": [
+    3000000000.0,
+    3500000000.0,
+    4000000000.0,
+    4500000000.0,
+    5000000000.0,
+    5500000000.0,
+    6000000000.0,
+    6500000000.0,
+    7000000000.0
+  ],
+  "s_matrix": {
+    "layout": "S[i][j][k] = {re, im} at freqs_hz[k]; i = receive, j = drive",
+    "re": [
+      [
+        [
+          0.01641804538667202,
+          -0.022680722177028656,
+          -0.07064716517925262,
+          -0.11463510990142822,
+          -0.1405331939458847,
+          -0.13795481622219086,
+          -0.10385823994874954,
+          -0.042849112302064896,
+          0.0351165272295475
+        ],
+        [
+          0.18831178545951843,
+          -0.044403936713933945,
+          -0.2743898630142212,
+          -0.48484453558921814,
+          -0.659794807434082,
+          -0.7881935238838196,
+          -0.8664811849594116,
+          -0.897908091545105,
+          -0.8893082737922668
+        ]
+      ],
+      [
+        [
+          0.18831023573875427,
+          -0.04440142959356308,
+          -0.2743832468986511,
+          -0.4848335087299347,
+          -0.6597788333892822,
+          -0.7881730794906616,
+          -0.8664600253105164,
+          -0.8978850245475769,
+          -0.8892831802368164
+        ],
+        [
+          0.014788968488574028,
+          -0.023447668179869652,
+          -0.06976215541362762,
+          -0.11143392324447632,
+          -0.1348472386598587,
+          -0.1303229033946991,
+          -0.0954291969537735,
+          -0.03497816622257233,
+          0.041292011737823486
+        ]
+      ]
+    ],
+    "im": [
+      [
+        [
+          0.002586307702586055,
+          0.000978795113041997,
+          0.021359700709581375,
+          0.06794676184654236,
+          0.13706456124782562,
+          0.21755993366241455,
+          0.29441598057746887,
+          0.3534546196460724,
+          0.38452258706092834
+        ],
+        [
+          -0.9781103134155273,
+          -0.992390513420105,
+          -0.948704719543457,
+          -0.8488082885742188,
+          -0.7012850046157837,
+          -0.5206118822097778,
+          -0.32336926460266113,
+          -0.12370441854000092,
+          0.06944829225540161
+        ]
+      ],
+      [
+        [
+          -0.9781026840209961,
+          -0.9923794269561768,
+          -0.9486929774284363,
+          -0.8487967848777771,
+          -0.7012761831283569,
+          -0.5206078290939331,
+          -0.3233690857887268,
+          -0.12370771914720535,
+          0.06943907588720322
+        ],
+        [
+          0.007246554829180241,
+          0.007338224444538355,
+          0.029151275753974915,
+          0.07640260457992554,
+          0.1450277864933014,
+          0.22386543452739716,
+          0.2983526885509491,
+          0.3550306260585785,
+          0.38441476225852966
+        ]
+      ]
+    ]
+  },
+  "abs_s": {
+    "s11": [
+      0.016620505463170437,
+      0.022701832488697348,
+      0.0738055469613734,
+      0.1332590367200036,
+      0.19630657796082784,
+      0.2576118321313923,
+      0.3121975394275947,
+      0.35604243367079813,
+      0.38612276602745504
+    ],
+    "s22": [
+      0.016468944891775885,
+      0.0245691408289279,
+      0.07560790438862473,
+      0.13511061111641934,
+      0.19803241307759573,
+      0.2590362753078503,
+      0.31324281060675874,
+      0.3567495165404434,
+      0.38662609802707115
+    ],
+    "s21": [
+      0.9960650608133296,
+      0.9933722434192642,
+      0.9875750764375728,
+      0.977506784225169,
+      0.9628584496236189,
+      0.9445894954675765,
+      0.9248354129816493,
+      0.9063669880812112,
+      0.8919901120035888
+    ],
+    "s12": [
+      0.9960728456055675,
+      0.9933834308674141,
+      0.9875881944459405,
+      0.9775222424287945,
+      0.9628758204545055,
+      0.9446087883300689,
+      0.9248552995892557,
+      0.9063893887444251,
+      0.8920158469066417
+    ]
+  },
+  "singular_values": {
+    "max_per_bin": [
+      0.9981161938093508,
+      0.9968208378173895,
+      0.9951798489495975,
+      0.9932442953728852,
+      0.9910481373586344,
+      0.9886295898732731,
+      0.9859790539939096,
+      0.9830106813161152,
+      0.9795466577813305
+    ],
+    "min_per_bin": [
+      0.9942928392224645,
+      0.9904879039595541,
+      0.9856043098640721,
+      0.980075438658814,
+      0.9745783386909147,
+      0.9698506379564603,
+      0.9664944559540997,
+      0.9647638434644984,
+      0.9645711515458587
+    ],
+    "sv_max": 0.9981161938093508,
+    "sv_max_freq_hz": 3000000000.0,
+    "excess_3ghz": -0.0018838061906492065,
+    "monotone_decreasing_in_f": true,
+    "delta_vs_battery_sv_max": -0.005110806190649297
+  },
+  "column_power": [
+    [
+      0.9924218465749133,
+      0.9873037871941668,
+      0.9807517903629452,
+      0.9732774840737743,
+      0.9656326665622896,
+      0.9586131710017834,
+      0.9527878447295823,
+      0.9482673316576311,
+      0.9447371503568677
+    ],
+    [
+      0.9924323398986211,
+      0.9874142834029862,
+      0.9810469970150322,
+      0.9738046116792711,
+      0.9663466822452725,
+      0.9593855549157653,
+      0.9534783835751537,
+      0.9488119415803327,
+      0.9451720108082117
+    ]
+  ],
+  "reciprocity_abs": [
+    7.785197194698188e-06,
+    1.1366412582067736e-05,
+    1.3477768746979956e-05,
+    1.5935076324843475e-05,
+    1.8247979276802498e-05,
+    2.0842287773849914e-05,
+    2.1160404433610012e-05,
+    2.3301939466024186e-05,
+    2.673252640347826e-05
+  ],
+  "reciprocity_abs_max": 2.673252640347826e-05,
+  "settling": {
+    "per_drive": [
+      {
+        "drive_idx": 0,
+        "settling_db": -134.6680149911226,
+        "settling_db_per_probe": [
+          -179.5141310104442,
+          -134.6680149911226,
+          -181.13921341946877
+        ],
+        "record_shape": [
+          8000,
+          3
+        ]
+      },
+      {
+        "drive_idx": 1,
+        "settling_db": -134.76404427031116,
+        "settling_db_per_probe": [
+          -179.39006602509,
+          -134.76404427031116,
+          -177.50709392738102
+        ],
+        "record_shape": [
+          8000,
+          3
+        ]
+      }
+    ],
+    "main_pass_settling_db": -132.04275347910612,
+    "main_pass_per_probe": [
+      -181.3388392625564,
+      -132.04275347910612,
+      -181.71145579480896
+    ],
+    "probe_labels": [
+      "port1_gap",
+      "mid_line",
+      "port2_gap"
+    ],
+    "definition": "max over probes of 10*log10(mean(E^2, last 10%) / max(E^2))"
+  },
+  "wall_time_s": {
+    "run": 13.178232192993164,
+    "total": 14.889843702316284
+  },
+  "provenance": {
+    "git_sha": "f5ee3b59c3e83832f7df1682f0ad30abb260a42e",
+    "rfx_version": "1.7.0",
+    "rfx_file": "rfx/__init__.py",
+    "jax_version": "0.4.33.dev20241023+e3c6d6430",
+    "jax_backend": "gpu",
+    "jax_devices": [
+      "cuda:0"
+    ],
+    "x64_enabled": false,
+    "field_dtype": null,
+    "python": "3.10.12",
+    "hostname": "run-execution-livcafrwo65h-0",
+    "timestamp_utc": "2026-09-06T07:15:51.578514+00:00"
+  }
+}

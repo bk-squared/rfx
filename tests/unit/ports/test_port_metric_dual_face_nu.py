@@ -524,8 +524,21 @@ def test_msl_eigenmode_realizes_z0_end_to_end_on_a_graded_substrate(z_ratio):
     )
 
 
-def test_msl_mode_profile_on_a_uniform_grid_is_bit_identical_to_the_scalar_form():
-    """Per-cell weighting must not move the uniform lane.
+def test_msl_mode_profile_uniform_regression_after_physical_span_correction():
+    """Regression of the three-cell profile after #729's physical correction.
+
+    The old scalar/per-cell snapshot described FOUR cells under a declared
+    three-cell substrate: it included the normal E edge above the trace.
+    #729's wall-derived tests fail on that geometry before any snapshot is
+    changed (docs/research_notes/issue729/README.md, committed in 525b8001).
+    This snapshot now describes the corrected source shape. It is a numerical
+    regression record, not an independent accuracy oracle. The physical wall
+    span, unit voltage and load identity are checked independently in
+    test_msl_physical_substrate_span.py, including other origins and axes.
+
+    Old moments retained here as history: sum=73361.79312530009,
+    sum_squared=169878467.3801139, max=4556.98256846321. Their movement is
+    intended and much larger than the reduction-order variation below.
 
     ``np.sum(ez * dz_span)`` and ``np.sum(ez) * dz`` are NOT algebraically
     guaranteed to agree bit-for-bit even when every ``dz_span`` entry equals
@@ -558,9 +571,10 @@ def test_msl_mode_profile_on_a_uniform_grid_is_bit_identical_to_the_scalar_form(
     port = MSLPort(feed_x=1.0 * MM, y_lo=1.8 * MM, y_hi=2.2 * MM,
                    z_lo=0.0, z_hi=0.3 * MM, direction="+x", impedance=50.0)
     ez = np.asarray(compute_msl_mode_profile(grid, port, 4.4)["ez_profile"])
-    for got, want, label in ((float(ez.sum()), 73361.79312530009, "sum"),
-                             (float((ez * ez).sum()), 169878467.3801139, "sum of squares"),
-                             (float(ez.max()), 4556.98256846321, "max")):
+    assert ez.shape[1] == 3
+    for got, want, label in ((float(ez.sum()), 69888.63021121288, "sum"),
+                             (float((ez * ez).sum()), 211777137.3866443, "sum of squares"),
+                             (float(ez.max()), 5303.005051293684, "max")):
         assert abs(got - want) <= 1e-13 * abs(want), (
             f"{label}: {got!r} vs pinned {want!r} "
             f"(relative {abs(got - want) / abs(want):.3e} > 1e-13) — this is "

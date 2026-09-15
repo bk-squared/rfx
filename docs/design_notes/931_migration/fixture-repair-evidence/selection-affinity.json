@@ -1,0 +1,18 @@
+{
+  "pid": 1227227,
+  "parent": 1227211,
+  "old_affinity": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "new_affinity": [
+    4,
+    5,
+    6,
+    7
+  ],
+  "thread_count": 23,
+  "reason": "Move only the owned slow pytest worker to the CPU set released by the finished diagnostic; no model, source, dtype, timestep or pytest worker-count change."
+}

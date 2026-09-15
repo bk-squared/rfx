@@ -16,8 +16,10 @@ This is the *smooth-gradient* regime favoured for RF inverse design: the
 permittivity is a continuous field in [1, 10] (no moving metal interface, no
 binarization), so the PEC->NTFF gradient is well-signed and the optimizer
 descends cleanly.  The reflector plate is fixed geometry injected as a static
-``pec_mask_override`` (it never participates in the gradient), and the NTFF
-box keeps >= lambda/2 clearance from the plate (Huygens equivalence).
+declared PEC SHEET (a zero-thickness Box; it never participates in the
+gradient -- a sheet's plane is a static integer, not a traced quantity),
+and the NTFF box keeps >= lambda/2 clearance from the plate (Huygens
+equivalence).
 
 Objective (E-plane = phi = 0 cut), with U the radiation intensity and
 P_rad the total radiated power:
@@ -72,8 +74,11 @@ import jax.numpy as jnp
 import optax
 
 from rfx.api import Simulation
+from rfx.geometry.csg import Box
 from rfx.optimize import DesignRegion
 from rfx.farfield import compute_far_field
+
+from validation.crossval.comparators import realized_conductors as RC
 
 C0 = 299_792_458.0
 SMOKE = os.environ.get("SMOKE", "1") == "1"
@@ -152,6 +157,10 @@ def build_problem():
     sim = Simulation(freq_max=freq_max, domain=(Lx, Ly, Lz),
                      cpml_layers=cpml_layers, dx=dx)
     sim.add_source((cx, cy, float(src_z)), "ex")     # x-oriented dipole
+    # Keep one field record at the source so NTFF results carry the shared
+    # ring-down witness (#918).  This is diagnostic only: it does not alter
+    # the source or the differentiated far-field path.
+    sim.add_probe((cx, cy, float(src_z)), "ex")
 
     region = DesignRegion(
         corner_lo=(cx - half, cy - half, float(slab_z)),
@@ -163,8 +172,31 @@ def build_problem():
     box_hi = (float(Lx - cpml_t - m), float(Ly - cpml_t - m), float(box_z_hi))
     sim.add_ntff_box(corner_lo=box_lo, corner_hi=box_hi, freqs=[f0])
 
+    # The finite PEC reflector plate, DECLARED on the simulation as a
+    # zero-thickness Box (#931 §1.5: one zero-extent axis IS the sheet
+    # declaration). It used to be injected after the fact as a static
+    # forward(pec_mask_override=) cell layer, which had three costs the
+    # contract removes: preflight never saw the plate it is asked to check
+    # clearance against; the plate's realization was a raw index write, not
+    # a declaration the shared owner could report on; and pec_mask_override
+    # is a VOLUME override (cells), so keeping it would have made the
+    # reflector a one-cell SLAB whose top face sits dx above plate_z --
+    # lambda/20 closer to the dipole at the paper mesh, i.e. it would have
+    # moved the lambda/4 spacing this geometry is built around.
+    #
+    # A sheet has no top face, so the spacing is preserved exactly. The
+    # plate never participates in the gradient either way: a sheet's plane
+    # is a static integer, not a traced quantity (§1.6).
+    sim.add(Box((cx - half, cy - half, float(plate_z)),
+                (cx + half, cy + half, float(plate_z))), material="pec")
+
     grid = sim._build_grid()
     plate = dict(z=float(plate_z), half=float(half), cx=cx, cy=cy)
+    # Build-time (no solve): the reflector realizes exactly ONE wall plane
+    # and it is plate_z, so the dipole really is lambda/4 above the metal.
+    plate["realized"] = RC.assert_wall_planes(
+        sim, 2, [float(plate_z)], at=(cx, cy), label="reflector plate",
+        grid=grid, tol_m=1e-12)
     return sim, region, grid, plate, lam, f0
 
 
@@ -193,28 +225,22 @@ def resolve_design_indices(region, grid):
 
 def make_pattern_fn(sim, grid, plate, lo, hi, n_steps):
     """Return ``pattern(eps_slab) -> |E|^2 over (THETA, PHI)`` (radiation
-    intensity, up to a constant), plus the static PEC mask for the plate.
+    intensity, up to a constant), plus the plate's realized-plane record.
 
-    The PEC reflector plate is baked into ``pec_mask_override`` once, as
-    fixed geometry: it shapes the field but carries no gradient.
+    The PEC reflector plate is DECLARED geometry on ``sim`` (a sheet, see
+    ``build_problem``): it shapes the field but carries no gradient, and
+    ``forward`` realizes it through the shared edge rule like any other
+    conductor. Nothing is injected here any more.
     """
-    base_materials, _, _, base_pec_mask, *_ = sim._assemble_materials(grid)
+    # Collectors, not a positional unpack: the plate is a sheet and a sheet
+    # owns no cell, so it is absent from pec_mask by construction (#931 §6
+    # out-parameters). Only eps_r is read here, but asking without the
+    # collectors would take the sheets-dropped warning and hide the plate.
+    _sheets: list = []
+    _wires: list = []
+    base_materials, _, _, _base_pec_mask, *_ = sim._assemble_materials(
+        grid, pec_sheets=_sheets, pec_wires=_wires)
     base_eps_r = base_materials.eps_r
-    if base_pec_mask is None:
-        base_pec_mask = jnp.zeros(base_eps_r.shape, dtype=bool)
-
-    # Inject the finite PEC plate (one cell thick) at plate_z.
-    p_region = DesignRegion(
-        corner_lo=(plate["cx"] - plate["half"], plate["cy"] - plate["half"],
-                   plate["z"]),
-        corner_hi=(plate["cx"] + plate["half"], plate["cy"] + plate["half"],
-                   plate["z"] + grid.dx),
-        eps_range=(1.0, 10.0),
-    )
-    p_lo, p_hi, _ = resolve_design_indices(p_region, grid)
-    pec_mask = base_pec_mask.at[
-        p_lo[0]:p_hi[0] + 1, p_lo[1]:p_hi[1] + 1, p_lo[2]:p_lo[2] + 1
-    ].set(True)
 
     si, sj, sk = lo
     ei, ej, ek = hi
@@ -224,7 +250,6 @@ def make_pattern_fn(sim, grid, plate, lo, hi, n_steps):
             jnp.clip(jnp.asarray(eps_slab, dtype=jnp.float32), 1.0, 10.0))
         res = sim.forward(
             eps_override=eps_override,
-            pec_mask_override=pec_mask,
             n_steps=n_steps,
             checkpoint=True,
             skip_preflight=True,
@@ -234,7 +259,7 @@ def make_pattern_fn(sim, grid, plate, lo, hi, n_steps):
         power = jnp.abs(ff.E_theta) ** 2 + jnp.abs(ff.E_phi) ** 2
         return power[0] * 1e27       # (n_theta, n_phi), f-index 0
 
-    return pattern, pec_mask
+    return pattern, plate["realized"]
 
 
 # Solid-angle quadrature weights (sin(theta) d_theta d_phi) for P_rad.
@@ -270,11 +295,18 @@ def main():
           f"dx=lambda/{lam/grid.dx:.1f}  n_steps={n_steps}")
     print(f"superstrate design={design_shape} ({n_dof} DOF)  "
           f"steer target theta0={THETA0_DEG:.0f} deg (E-plane)")
+    print(f"reflector plate: declared z={plate['z']*1e3:.3f} mm  "
+          f"realized wall plane(s) {plate['realized']['planes']} at "
+          f"{[round(c*1e3, 4) for c in plate['realized']['coords_m']]} mm  "
+          f"(dipole lambda/4 = {lam/4*1e3:.3f} mm above it)")
 
     pattern, _ = make_pattern_fn(sim, grid, plate, lo, hi, n_steps)
 
-    # Preflight once (surfaces NTFF/Huygens clearance + injected-PEC-plate
-    # placement issues); the per-iteration forward below skips it for speed.
+    # Preflight once (surfaces NTFF/Huygens clearance + PEC-plate placement
+    # issues -- and since #931 the plate is a declared sheet on the sim, so
+    # preflight genuinely sees the conductor it is asked to measure
+    # clearance from, instead of an override applied after preflight ran);
+    # the per-iteration forward below skips it for speed.
     issues = sim.preflight()
     print(f"preflight: {len(issues)} message(s)")
     for s in issues:

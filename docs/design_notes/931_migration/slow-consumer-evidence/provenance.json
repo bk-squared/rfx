@@ -1,0 +1,49 @@
+{
+  "base_sha": "5ce0de652d6bb58a70735504dce42da83ddd8b16",
+  "python": "3.10.12",
+  "packages": {
+    "jax": "0.6.2",
+    "jaxlib": "0.6.2",
+    "numpy": "2.2.6",
+    "pytest": "9.1.1",
+    "pytest-xdist": "3.8.0"
+  },
+  "platform": "Linux-5.15.0-187-generic-x86_64-with-glibc2.35",
+  "JAX_PLATFORMS": "cpu",
+  "diagnostic_cpu_affinity": "0-3",
+  "max_pytest_workers": 4,
+  "unchanged_blobs": {
+    "tests/unit/autodiff/test_msl_sparam_ad.py": "40e5fef0168de5934a97f6686efe680f308c5f49",
+    "tests/unit/misc/test_v173a_physics_equivalence_slow.py": "966bfcc2ce414095237153dbee9867556e85ba0d",
+    "tests/unit/farfield/test_farfield_inplane_nonuniform.py": "9d745a8d1bdf43eee101a88ea8ccdf6432737280",
+    "tests/unit/sparams/test_sparam_passivity_guard.py": "776a5e97fc970a7a4029ed63d87be6b761e6c70c",
+    "docs/design_notes/20260906_plan_realign_lattice_ownership.md": "17a17b833e481b7455ab32ab2352dbe19c573d65"
+  },
+  "production_and_fixtures_diff": "empty",
+  "diagnostic_sha256": {
+    "scripts/diagnostics/slow_931_farfield_attribution.py": "a284231a6a5ca339796253053347b2cc4389ddfb148022b6980db7f55496dfae",
+    "scripts/diagnostics/slow_931_advisory_attribution.py": "8560dc111fe119aebd316dddb1df6e64ed62be05ba6754c6290331804db6d580"
+  },
+  "artifacts_sha256": {
+    "farfield-traces.npz": "03392af04dded41f883a112585202b09bf7f9fb0a00ac656bb065464a0a39181",
+    "consumer-budgets.json": "e7cdfcc9bdf52c4732567ab8c682b63f03763ca31d6ce5be0f43b5591a90d7c2",
+    "farfield-attribution.png": "ede35329e2af060f1b8e8a4c841b70b4fc5881d2bc40c23e6fd6b27e1dff5f89",
+    "advisory_current_fine_records.npz": "0fae362a7dedf6fe94e5302b811d1eba336715e4bdde36ba216b1a27e64fe555",
+    "advisory_node_volume.json": "475536b5c5606ced975d991fd63ac30bb3ccae39b2d4fff418cf3041c4471fc3",
+    "advisory_current.json": "b975191d78c1e145985ed2c22e30e7dba80bf881d2d70d9f317a88f8e14eac27",
+    "advisory_current_records.npz": "7351473f191c7690b471bc80f6d2bcb18495dadaff9e39e39517ecc540947680",
+    "farfield-result-note.md": "1aae7e5825b22260951e252694c0761a79536959528e710ba53487228177ee78",
+    "plane-falsifier.log": "e2704a1f9c3c2aaeeafbefd899db116ba2a66bc302db0854168047274f26c6c6",
+    "lint-comparison.json": "7b5fed837f8cbf37d1f9ae873a91205759fb0f87946d2ec3f0b1ddb32b2c3957",
+    "advisory_legacy_sigma.json": "f9520165f482c5fa59a4974a441cb1e3bcf2c71080fe3c2c5132d7c35f8f0a10",
+    "attribution-audit.txt": "8125549e60ea05eb97ed77d2dc20d9dac09185306d30150102d20b544a299e4b",
+    "advisory-result-note.md": "28336a452e549a5ad2ef68dc57b292cff2fbbe437ab3bd11be7a424a61d5739c",
+    "advisory-attribution.png": "81815aa1d2e6f9ab1cd9e26889d1e8efea54b9bc210cccb42aa5eee6e695d87b",
+    "advisory_legacy_sigma_records.npz": "eb69318a6893d1d0d73cd0158cb2c3000f9785ef9604c2375571b839e668e7d3",
+    "advisory_current_fine.json": "a28d4af5282b0c72a749bac54c08fc48ac05ee72ae68e21b9f43dd315cb1f4ed",
+    "advisory_node_volume_records.npz": "b7f4148e884a10e10542f17bd7f11f8ec68bcd69836224bff79d6097852fd880",
+    "test-census.json": "ff534b4d1ae3bc43a4b2a5675cdd1360c9d1e5edf204febef54b18b9ccccf61f",
+    "consumer-physics-traces.txt": "64716cbd65147a5ffff2c51cd58f242193762645e18faf71c2fed14681e0dd33",
+    "farfield-attribution.json": "f10e03156294f23a724c6d59b0c91c942478c8e929057bfb83def659a65efa00"
+  }
+}

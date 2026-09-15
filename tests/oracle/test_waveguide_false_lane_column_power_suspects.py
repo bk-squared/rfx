@@ -26,9 +26,18 @@ WHAT IS NOT PINNED HERE. No physics gate, no tolerance and no golden moves. The
 nothing here identifies the whole mechanism.
 
 IF THIS FILE GOES RED BECAUSE THE PORT CUTOFF WAS CORRECTED (issue #868, the
-aperture solved on N+1 cells), that is the expected signal, not a regression:
-re-run the diagnostic script and re-commit ``suspects.json`` with the new
-baseline. Do not relax an assertion to keep it green.
+aperture solved on N+1 cells), that is the expected signal, not a regression.
+Do not relax an assertion to keep it green.
+
+THE "RE-RUN AND RE-COMMIT" REMEDY THIS DOCSTRING USED TO PRESCRIBE IS RETRACTED
+(#904). The producer rebuilds the port config LIVE, so after #889 it measures a
+DIFFERENT port from the one that produced the frozen S-parameters: the live
+cutoff equals the guide's discrete cutoff, suspect S1 collapses to identically
+zero, and the regenerated report claims the suspects explain 22 % of an excess
+the (N+1)-cell port largely produced. The committed report is pinned to the
+merge tree ``df6ca133`` and reproduces there bit-for-bit; re-measuring with the
+corrected port needs its own pre-declaration. The xfail below records the same
+decision at the tie itself.
 """
 
 from __future__ import annotations
@@ -221,10 +230,13 @@ def test_the_flux_lane_thru_number_is_a_construction_not_a_comparison(report):
 def test_live_port_config_still_carries_the_cutoff_the_report_compared_against():
     """Ties the committed JSON to live code: rebuild the coarse port config.
 
-    Builds the port configuration only — no FDTD solve. If this fires because
-    the port aperture was narrowed to the guide's N cells (issue #868), re-run
-    ``scripts/diagnostics/waveguide_false_lane_column_power_suspects.py`` and
-    re-commit the report; do not widen the tolerance.
+    Builds the port configuration only — no FDTD solve. This fires because the
+    port aperture was narrowed to the guide's N cells (issue #868/#889). Do NOT
+    re-run ``scripts/diagnostics/waveguide_false_lane_column_power_suspects.py``
+    and re-commit the report -- that remedy is retracted (#904): the producer
+    rebuilds the port live and would mix the corrected port with frozen
+    S-parameters measured on the (N+1)-cell one. Do not widen the tolerance
+    either.
     """
     import jax.numpy as jnp
 

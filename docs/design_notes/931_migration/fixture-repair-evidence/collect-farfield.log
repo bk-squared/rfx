@@ -1,0 +1,5 @@
+tests/unit/farfield/test_farfield_inplane_nonuniform.py::test_graded_fixture_preserves_radiator_and_acquisition_lattice
+tests/unit/farfield/test_farfield_inplane_nonuniform.py::test_uniform_valued_inplane_profile_matches_the_plain_uniform_grid
+tests/unit/farfield/test_farfield_inplane_nonuniform.py::test_graded_inplane_mesh_integrates_with_local_cell_sizes
+
+3 tests collected in 0.90s

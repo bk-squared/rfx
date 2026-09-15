@@ -27,6 +27,18 @@ ALIASED at fine ka=4.0, which failed a 3.5 dB gate at 9 of 13 clearances):
 No FDTD runs here — the fixture is frozen evidence; live regeneration is the
 crossval script's job. These gates must not be re-tuned to look tighter than
 the recorded physics (no-silent-gate-loosening rule).
+
+
+#931 SCOPE, measured not assumed: the rfx scatterer on this lane is built with
+the low-level ``rasterize(grid, [(shape, 1.0, PEC_SIGMA)])`` — a sigma = 1e7
+CELL FILL. Design note §1.8 fences that model out of the lattice ownership
+contract (it is a lossy volume, not a realized PEC edge set), so nothing here
+moves under #931 and no re-run is scheduled. The two models are NOT the same
+object: at the cube fixture's mesh, node- and centre-sampling put a sphere at
+3023 vs 3082 cells. That difference is pinned in
+``tests/crossval/test_rcs_cube_bem_gates.py::test_the_sigma_fill_and_the_pec_contract_are_not_the_same_object``,
+so this lane's agreement figures must not be read as evidence about conductor
+realization.
 """
 from __future__ import annotations
 
@@ -256,3 +268,130 @@ def test_operating_point_is_the_derived_one(fixture):
     assert cfg["fine_cells_per_radius"] == 12.8
     for r in fixture["gated_coarse"] + fixture["diagnostic_curve_clear20"]:
         assert r["a_over_dx"] >= 6.3, r  # the sphere is never cell-starved
+
+
+# ---------------------------------------------------------------------------
+# #931 lattice ownership contract: cv16's conductor is a sigma FILL, fenced
+# out of the contract (§1.8). These two tests are the fence, in data.
+# ---------------------------------------------------------------------------
+
+def _cv16_module():
+    """Import cv16 without executing its __main__ block."""
+    import importlib.util
+    import sys
+
+    path = _REPO_ROOT / "validation/crossval/16_pec_sphere_mie_ka_sweep.py"
+    spec = importlib.util.spec_from_file_location("_cv16_ka_sweep", path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _cv16_operating_point(ka: float, cpr: float, clear_cells: int = 20):
+    """cv16's own geometry arithmetic for one bin, verbatim from run_point."""
+    from rfx.geometry.csg import Sphere
+    from rfx.grid import C0, Grid
+
+    f0, lam = 3e9, C0 / 3e9
+    radius = ka * lam / (2 * np.pi)
+    res = max(15, int(np.ceil(2 * np.pi * cpr / ka)))
+    dx = lam / res
+    domain = 2 * radius + 2 * clear_cells * dx
+    grid = Grid(freq_max=f0 * 1.5, domain=(domain,) * 3, dx=dx, cpml_layers=8)
+    return grid, Sphere(center=(domain / 2,) * 3, radius=radius), radius
+
+
+def test_cv16_conductor_is_a_node_sampled_sigma_fill_not_a_pec_volume():
+    """cv16's sphere is a high-sigma MATERIAL FILL, and #931 §1.8 fences that
+    out of the ownership contract: it stays a lossy volume model on NODE
+    samples, while a PEC volume declared through ``Simulation.add`` is sampled
+    at CELL CENTRES (§1.1). The two must not be silently equated.
+
+    Asserted here on the real rasterizer at cv16's own gated operating points
+    (build-time, no solve):
+
+    * the sigma fill still equals ``Sphere.mask(grid)`` -- the model under
+      which every committed ``a_eff``, both gate constants and the whole
+      15-point curve were measured. cv16 refuses to quote an RCS otherwise;
+    * ``n_occupied`` reproduces the count cv16's own GEOMETRY-FIDELITY
+      CONVENTION note records for that bin, parsed out of the module docstring
+      so the prose and the raster cannot drift apart (the committed fixture
+      predates the ``a_eff`` convention and carries no ``n_occupied`` field --
+      the docstring is where that measurement lives);
+    * the PEC-volume cell set for the SAME sphere is DIFFERENT, and bigger:
+      the node sampler is one cell short on every ``+`` side, so centre
+      sampling realizes the sphere symmetric about its centre.
+
+    If cv16 is ever brought under the contract, a_eff moves ~1.2% at ka=0.5,
+    the Mie reference leg moves with it, and the fixture plus both gate
+    constants need a re-solve. This test is what makes that a decision rather
+    than a surprise.
+    """
+    import numpy as _np
+    from rfx.geometry.csg import rasterize
+    from rfx.geometry.rasterize_grid import (centres_from_uniform_grid,
+                                             pec_volume_cell_mask)
+
+    cv16 = _cv16_module()
+    # "ka=0.50 a_eff/a=0.988032 (N=1082, -1.197%)" -- the GEOMETRY-FIDELITY
+    # CONVENTION note in cv16's module docstring, the record of what the
+    # gated curve's geometry actually was.
+    quoted = {float(ka): (float(a), int(n)) for ka, a, n in re.findall(
+        r"ka=([\d.]+)\s+a_eff/a=([\d.]+)\s+\(N=(\d+),", cv16.__doc__)}
+    assert {0.5, 2.0} <= set(quoted), quoted
+
+    for ka, cpr in [(0.5, 6.4), (2.0, 12.8)]:
+        grid, sphere, radius = _cv16_operating_point(ka, cpr)
+        _eps, sigma = rasterize(grid, [(sphere, 1.0, cv16.PEC_SIGMA)])
+        info = cv16.assert_conductor_model(grid, sphere, sigma)
+
+        a_quoted, n_quoted = quoted[ka]
+        assert info["n_occupied_node"] == n_quoted, (
+            f"ka={ka}: the node-sampled raster now gives "
+            f"{info['n_occupied_node']} cells, cv16's own docstring records "
+            f"N={n_quoted} -- the gated curve was measured on that geometry")
+        assert info["n_occupied_pec_volume"] > info["n_occupied_node"], (
+            f"ka={ka}: the centre-sampled PEC volume ("
+            f"{info['n_occupied_pec_volume']}) is not larger than the "
+            f"node-sampled fill ({info['n_occupied_node']}) -- the §1.1 "
+            "symmetry claim (node sampling is one cell short on every + side) "
+            "no longer holds, so this fence's stated consequence is stale")
+        assert info["n_cells_differing"] > 0
+
+        # The reason it matters, in the quantity cv16 actually gates on.
+        dx = float(grid.dx)
+        a_of = lambda n: (3 * n * dx ** 3 / (4 * _np.pi)) ** (1.0 / 3.0)  # noqa: E731
+        a_node = a_of(info["n_occupied_node"]) / radius
+        a_vol = a_of(info["n_occupied_pec_volume"]) / radius
+        assert a_node == pytest.approx(a_quoted, abs=5e-6), (
+            f"ka={ka}: realized a_eff/a={a_node:.6f}, docstring says "
+            f"{a_quoted:.6f}")
+        assert abs(a_vol - a_node) > 0.002, (
+            f"ka={ka}: a_eff/a under the two models ({a_node:.6f} node vs "
+            f"{a_vol:.6f} centre) now agree to better than 0.2%; the fence's "
+            "cost claim needs re-measuring before it is re-quoted")
+        # centre sampling is the symmetric one: its occupied bounding box
+        # extends one cell further on the - side than the node sampler's.
+        centre = _np.asarray(
+            pec_volume_cell_mask(sphere, centres_from_uniform_grid(grid)),
+            dtype=bool)
+        node = _np.asarray(sphere.mask(grid), dtype=bool)
+        lo_node = int(_np.nonzero(node.any(axis=(1, 2)))[0].min())
+        lo_centre = int(_np.nonzero(centre.any(axis=(1, 2)))[0].min())
+        assert lo_centre < lo_node, (ka, lo_centre, lo_node)
+
+
+def test_cv16_refuses_when_the_fill_stops_matching_the_node_mask():
+    """The fence is only evidence if it can fire: hand ``assert_conductor_model``
+    a sigma array with one cell knocked out and it must refuse, not warn."""
+    from rfx.geometry.csg import rasterize
+
+    cv16 = _cv16_module()
+    grid, sphere, _r = _cv16_operating_point(0.5, 6.4)
+    _eps, sigma = rasterize(grid, [(sphere, 1.0, cv16.PEC_SIGMA)])
+    tampered = np.array(sigma)
+    ijk = tuple(int(v[0]) for v in np.nonzero(tampered > 0))
+    tampered[ijk] = 0.0
+    with pytest.raises(RuntimeError, match="node-sampled shape mask"):
+        cv16.assert_conductor_model(grid, sphere, tampered)

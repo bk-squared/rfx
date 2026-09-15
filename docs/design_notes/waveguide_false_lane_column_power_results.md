@@ -73,8 +73,13 @@ ratios 2.05 and 2.03 — itself first order in dx. A second-order remainder woul
 rounding story about the three suspects. A first-order one means a fourth first-order
 channel exists in the extraction that none of the three names. The per-bin shape agrees:
 the product falls monotonically across the band (0.0828 → 0.0521 at the coarse rung)
-while the measured `|S11|` stays between 0.076 and 0.135 with a ripple whose period
-matches a round trip to the near absorber, so the model does not carry the frequency
+while the measured `|S11|` stays between 0.076 and 0.135 with a ripple whose ~0.93 GHz
+period matches a round trip to the FAR absorber (fitting `S11(f) = A + B·exp(-2jβD)`
+with β from the discrete cutoff puts the reflector 117-120 mm from the reference plane,
+16 mm inside the far CPML pad; a near-pad round trip would ripple at 1.8-5.6 GHz,
+invisible across this 3.2 GHz band — correction from the 2026-09-05 post-merge review,
+`docs/design_notes/20260905_post_merge_review_20_prs.md` item A(iv), tracked in #904).
+The side changes; the verdict does not. So the model does not carry the frequency
 dependence either.
 
 **Not established here**, stated so it is not mistaken for a finding: expressed as the

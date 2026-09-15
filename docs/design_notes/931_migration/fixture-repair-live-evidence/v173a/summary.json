@@ -1,0 +1,73 @@
+{
+  "run_name": "issue931-fixture-repair-v173a-20260909T014947Z-b36fc46cdf21-100",
+  "lane": "v173a",
+  "source_sha": "b36fc46cdf21d1c57f221e6a057654bcad60bae2",
+  "rfx_import": "/tmp/rfx-fixture-repair-v173a-oUEkX6/rfx/__init__.py",
+  "jax_version": "0.6.2",
+  "started_utc": "2026-09-09T01:49:58.137205+00:00",
+  "run_id_source": "run_id.txt written by scripts/vessl_submit.sh",
+  "commands": [
+    {
+      "name": "capture",
+      "command": [
+        "/opt/conda/bin/python",
+        "scripts/harnesses/v173a_physics_equivalence.py",
+        "--output",
+        "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-v173a-20260909T014947Z-b36fc46cdf21-100/capture.json",
+        "--run-name",
+        "issue931-fixture-repair-v173a-20260909T014947Z-b36fc46cdf21-100-capture"
+      ],
+      "status": "complete",
+      "timeout_s": 21600,
+      "returncode": 0,
+      "elapsed_s": 80.28599395696074
+    },
+    {
+      "name": "pytest",
+      "command": [
+        "/opt/conda/bin/python",
+        "-m",
+        "pytest",
+        "-o",
+        "addopts=",
+        "-n",
+        "4",
+        "-v",
+        "-s",
+        "-rA",
+        "--timeout=7200",
+        "--timeout-method=thread",
+        "--junitxml=/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-v173a-20260909T014947Z-b36fc46cdf21-100/junit.xml",
+        "tests/unit/misc/test_v173a_physics_equivalence_slow.py"
+      ],
+      "status": "complete",
+      "timeout_s": 21600,
+      "returncode": 0,
+      "elapsed_s": 94.66931497305632,
+      "junit": {
+        "available": true,
+        "counts": {
+          "total": 4,
+          "passed": 4,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "failing_ids": []
+      }
+    }
+  ],
+  "returncode": 0,
+  "finished_utc": "2026-09-09T01:52:53.094367+00:00",
+  "pytest": {
+    "available": true,
+    "counts": {
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "failing_ids": []
+  }
+}

@@ -510,6 +510,13 @@ class TestSBPSATAlpha:
         sim = self._make_sim(tau=0.75)
         # Build the grid and config to verify tau reaches SubgridConfig3D
         grid = sim._build_grid()
+        # #931 (design note §6): sheets and wires come back through the
+        # ``pec_sheets=`` / ``pec_wires=`` COLLECTOR keywords, not in the
+        # positional tuple, so ``pec_mask`` stays at index 3 and this
+        # unpack is still correct. There is no sheet in this fixture; a
+        # caller that assembles a sim which HAS one and passes no
+        # collector gets a UserWarning, because a silently dropped sheet
+        # is a conductor that reaches no solver lane.
         base_materials, _, _, pec_mask, *_ = sim._assemble_materials(grid)
 
         # Patch run to capture config instead of running full sim

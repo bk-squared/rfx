@@ -419,7 +419,7 @@ def test_header_itemises_provenance_and_every_approximation():
     import rfx
 
     assert f"source rfx       : {rfx.__version__}" in header
-    assert "design IR schema : rfx-design-ir/v1" in header
+    assert "design IR schema : rfx-design-ir/v2" in header
     assert f"emitter          : {OPENEMS_EMITTER_VERSION}" in header
     assert "APPROXIMATIONS APPLIED" in header
     assert "WHAT THIS SCRIPT DOES NOT PROVE" in header
@@ -830,8 +830,8 @@ def test_refuses_mixed_port_families_and_undriveable_designs():
 
 def test_refuses_a_foreign_schema():
     doc = _cavity_doc()
-    doc["schema"] = "rfx-design-ir/v2"
-    with _refuses("schema 'rfx-design-ir/v2'"):
+    doc["schema"] = "rfx-design-ir/v1"
+    with _refuses("schema 'rfx-design-ir/v1'"):
         emit_openems_script(doc)
 
 

@@ -1,0 +1,23 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "geometry_in_absorber",
+        "loc": "geometry[#0 lo 1mm]",
+        "message": "Material 'diel' (geometry entry #0, Box) extends into CPML region along z-axis: bbox lo face at -1mm is 1mm past the z-lo absorber boundary at 0mm. CPML modifies field updates \u2014 geometry inside the absorber is physically meaningless (issue #61).",
+        "severity": "warning",
+        "source": "_validate_cfg_geometry_in_cpml"
+      },
+      {
+        "code": "lossless_q",
+        "loc": null,
+        "message": "all dielectric(s) ['diel'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)",
+        "severity": "warning",
+        "source": "_validate_cfg_lossless_resonator_in_absorber"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 2,
+    "ok": true
+  }
+}

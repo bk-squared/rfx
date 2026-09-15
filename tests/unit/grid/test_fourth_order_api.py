@@ -153,16 +153,15 @@ def test_order4_cfl_derated():
         debye=None, lorentz=None, tfsf=None, sources=[], probes=[],
         dft_planes=[], flux_monitors=[], waveguide_ports=[], ntff=None,
         aniso_eps=None, aniso_inv_eps=None, aniso_inv_eps_smooth=False,
-        pec_mask=None, pec_occupancy=None, conformal_weights=None,
+        pec_mask=None, pec_sheets=(), pec_wires=(), pec_edge_masks=None,
+        pec_occupancy=None, conformal_weights=None,
         wire_port_sparams=[], lumped_port_sparams=[], lumped_rlc=[],
         kerr_chi3=None, field_dtype=None, mag_sources=[],
     )
-    # pec_two_plane_mask=None = the pre-#706 one-plane semantics; this test
-    # is about the stencil-order CFL derating, not the slab realization.
-    setup2 = _build_step_setup(grid, mats, stencil_order=2,
-                               pec_two_plane_mask=None, **common)
-    setup4 = _build_step_setup(grid, mats, stencil_order=4,
-                               pec_two_plane_mask=None, **common)
+    # No conductor at all (pec_mask=None in ``common``); this test is about
+    # the stencil-order CFL derating, not conductor realization.
+    setup2 = _build_step_setup(grid, mats, stencil_order=2, **common)
+    setup4 = _build_step_setup(grid, mats, stencil_order=4, **common)
 
     assert setup2.dt == grid.dt, "order=2 dt must equal the undertated grid.dt"
     assert setup4.dt == pytest.approx(grid.dt * _ORDER4_CFL_FACTOR, rel=1e-9)

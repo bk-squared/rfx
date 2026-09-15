@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import warnings
 
+import jax
 import numpy as np
 import jax.numpy as jnp
 
 from rfx.grid import C0
+from rfx.core.jax_utils import is_tracer
 from rfx.core.yee import MaterialArrays
 from rfx.materials.debye import init_debye
 from rfx.materials.lorentz import init_lorentz
@@ -23,6 +25,70 @@ from rfx.nonuniform import (
     run_nonuniform_until_decay,
     make_current_source,
 )
+
+
+INTERFACE_EPS_RULES = ("sampled", "dual_average")
+
+
+def _validate_interface_eps_nu(sim, *, subpixel_smoothing=False, eps_override=None):
+    """Refuse combinations that cannot consume the component eps rule."""
+    if getattr(sim, "_interface_eps", "sampled") == "sampled":
+        return
+    from rfx.core.jax_utils import is_tracer
+
+    if subpixel_smoothing or eps_override is not None:
+        raise ValueError("interface_eps='dual_average' cannot combine with subpixel_smoothing or eps_override")
+    if sim._thin_conductors or sim._lumped_rlc:
+        raise ValueError("interface_eps='dual_average' cannot combine with thin conductors or lumped RLC")
+    if any(is_tracer(getattr(sim, name, None))
+           for name in ("_dx_profile", "_dy_profile", "_dz_profile")):
+        raise ValueError("interface_eps='dual_average' requires concrete profiles, not traced profiles")
+
+
+def assemble_interface_eps_nu(sim, grid, materials):
+    """Cell-centre eps averaged over the four cells sharing each E edge.
+
+    Tangential weights are dual-face areas, with PEC cells excluded. Along
+    its own axis the edge stays in its own cell (no node-aligned interface
+    cuts that edge). End nodes are one-sided. All-PEC edges retain sampled
+    eps as a finite fallback; the existing PEC mask enforces their fields.
+    Scalar materials, conductivity and source normalization are untouched.
+    """
+    from rfx.geometry.rasterize_grid import GridCoords, coords_from_nonuniform_grid, rasterize_geometry
+
+    _validate_interface_eps_nu(sim)
+    nodes = coords_from_nonuniform_grid(grid)
+    widths = (grid.dx_arr_f64, grid.dy_arr_f64, grid.dz_f64)
+    if any(d is None for d in widths):
+        raise ValueError("interface_eps='dual_average' requires the exact float64 grid spine")
+    centres = [np.asarray(x) + np.asarray(d) / 2 for x, d in zip(nodes[:3], widths)]
+    # The bounding node has no outgoing real cell: copy the last centre.
+    for x in centres:
+        x[-1] = x[-2]
+    cell, debye, lorentz, pec, *_ = rasterize_geometry(
+        sim._geometry, sim._resolve_material, GridCoords(*centres, grid.shape),
+        pec_sigma_threshold=sim._PEC_SIGMA_THRESHOLD)
+    if debye is not None or lorentz is not None:
+        raise ValueError("interface_eps='dual_average' cannot combine with Debye/Lorentz materials")
+    eps = np.asarray(cell.eps_r, dtype=np.float64)
+    live = np.ones(grid.shape, dtype=np.float64) if pec is None else (~np.asarray(pec)).astype(np.float64)
+    components = []
+    for c in range(3):
+        num, den = eps * live, live
+        for a in range(3):
+            if a == c:
+                continue
+            shape = [1, 1, 1]
+            shape[a] = grid.shape[a]
+            d = np.asarray(widths[a]).reshape(shape)
+            num, den = num * d, den * d
+            lower = np.maximum(np.arange(grid.shape[a]) - 1, 0)
+            num = num + np.take(num, lower, axis=a)
+            den = den + np.take(den, lower, axis=a)
+        out = np.asarray(materials.eps_r, dtype=np.float64).copy()
+        np.divide(num, den, out=out, where=den > 0)
+        components.append(jnp.asarray(out, dtype=materials.eps_r.dtype))
+    return tuple(components)
 
 
 def build_nonuniform_grid(
@@ -56,28 +122,41 @@ def build_nonuniform_grid(
         nz_phys = max(1, int(round(domain[2] / dx)))
         dz_profile = np.full(nz_phys, float(dx))
     domain_xy = (domain[0], domain[1])
-    return make_nonuniform_grid(
-        domain_xy, dz_profile, dx, cpml_layers,
-        dx_profile=dx_profile, dy_profile=dy_profile,
-        pec_faces=pec_faces, pmc_faces=pmc_faces, cpml_axes=cpml_axes,
-    )
+    # An outer jit must not turn a STATIC mesh into traced coordinates:
+    # conductor classification needs the same concrete lattice as preflight.
+    # Actual mesh design variables retain their differentiable build path.
+    from contextlib import nullcontext
+    traced = any(is_tracer(value) for value in (
+        dx, dx_profile, dy_profile, dz_profile))
+    with nullcontext() if traced else jax.ensure_compile_time_eval():
+        return make_nonuniform_grid(
+            domain_xy, dz_profile, dx, cpml_layers,
+            dx_profile=dx_profile, dy_profile=dy_profile,
+            pec_faces=pec_faces, pmc_faces=pmc_faces, cpml_axes=cpml_axes,
+        )
 
 
 def assemble_materials_nu(
     sim,
     grid: NonUniformGrid,
     sheet_specs: list | None = None,
+    pec_sheets: list | None = None,
+    pec_wires: list | None = None,
 ) -> tuple[MaterialArrays, object, object, jnp.ndarray | None]:
     """Build material arrays and dispersion specs for non-uniform grid.
 
     Delegates to the shared rasterize_geometry() with non-uniform coordinates.
-    Supports all shape types, Debye/Lorentz poles, chi3, and thin conductors:
-    PEC sheets OR into pec_mask; lossy sheets fold into sigma with the LOCAL
-    E-node DUAL spacing normal to the sheet (#373, corrected #669-review) —
-    both the DC fold (sigma_bulk*t/d_norm) and the opt-in Leontovich
-    surface-impedance mode (sigma_eff = 1/(Rs0*d_norm) when
-    surface_impedance_f0 is set, issue #669). Only non-Box LOSSY sheets on
-    the legacy DC path warn-and-skip.
+    Supports all shape types, Debye/Lorentz poles, chi3, and thin conductors.
+    Lattice ownership contract (#931): PEC volumes are centre-sampled into
+    ``pec_mask``; PEC thin conductors and zero-thickness PEC Boxes are
+    :class:`~rfx.boundaries.pec.SheetSpec` sheets (``pec_sheets``
+    out-parameter), sub-cell ``PolylineWire`` filaments are ``WireSpec``
+    (``pec_wires``); neither is in ``pec_mask``. Lossy sheets fold into
+    sigma with the LOCAL E-node DUAL spacing normal to the sheet (#373,
+    corrected #669-review) — both the DC fold (sigma_bulk*t/d_norm) and the
+    opt-in Leontovich surface-impedance mode (sigma_eff = 1/(Rs0*d_norm)
+    when surface_impedance_f0 is set, issue #669). Only non-Box LOSSY
+    sheets on the legacy DC path warn-and-skip.
 
     Returns
     -------
@@ -85,72 +164,32 @@ def assemble_materials_nu(
     """
     from rfx.geometry.rasterize_grid import (
         rasterize_geometry, coords_from_nonuniform_grid, extend_cpml_pad_materials,
-        collect_thin_conductor_sheet_inputs, periodic_flags_from_axes,
-        resample_sheet_node_materials,
+        cell_sizes_from_nonuniform_grid, centres_from_nonuniform_grid,
+        sheet_footprint_traced, sheet_spec_from_shape,
     )
 
     coords = coords_from_nonuniform_grid(grid)
+    cell_sizes = cell_sizes_from_nonuniform_grid(grid)
+    centres = centres_from_nonuniform_grid(grid, coords)
+    _pec_sheets = pec_sheets if pec_sheets is not None else []
+    _pec_wires = pec_wires if pec_wires is not None else []
 
     result = rasterize_geometry(
         sim._geometry,
         sim._resolve_material,
         coords,
         pec_sigma_threshold=sim._PEC_SIGMA_THRESHOLD,
+        centres=centres,
+        cell_sizes=cell_sizes,
+        sheets=_pec_sheets,
+        wires=_pec_wires,
+        # The NU stepper installs no periodic BC and NU grids are 3-D, so the
+        # non-periodic #689 convention is the one this lane's step function
+        # uses (see the realization comment further down); the guard must ask
+        # with the SAME flags or it judges a seam the solve never has.
+        periodic=(False, False, False),
     )
     materials, debye_spec, lorentz_spec, pec_mask, _pec_shapes, _kerr_chi3 = result
-
-    # Node-thin conductors: sample the statics where the LIVE edge is.
-    # A sub-cell conductor has no volume, so nothing writes eps_r at its
-    # node (a PEC entry writes only pec_mask) and the node keeps vacuum
-    # wherever the surrounding dielectric boxes abut the metal faces
-    # instead of spanning its thickness. The one E component the sheet
-    # leaves alive is the sheet-NORMAL one, and it sits half a primal cell
-    # away, inside that dielectric. See resample_sheet_node_materials.
-    #
-    # Runs BEFORE the CPML pad extension below, deliberately: that step
-    # sources the pad from the outermost interior column and treats
-    # eps==1 & sigma==0 & mu==1 as vacuum (#627a/#655), so it must see the
-    # corrected interior, not a stale vacuum it would then replicate
-    # outward. It runs before the thin-conductor fold further down for the
-    # same reason, which is why the PEC thin-sheet masks are collected
-    # here rather than read off the later pec_mask.
-    #
-    # STRUCTURAL DEBT, named rather than left to be rediscovered. This rule
-    # sits at the two CALL SITES (here and rfx/api/_compile.py's
-    # _build_materials), not inside the shared rasterize_geometry() body
-    # both of them call, so a third caller inherits the ORIGINAL defect
-    # silently. Today that third caller is rfx/runners/subgridded.py:203
-    # (the FINE region, sampled at cell CENTRES; cv12/13-fenced
-    # experimental), and it is unfixed. Hand-copied rules drifting apart is
-    # this repo's recurring failure mode -- #689 found the neighbour rule
-    # inlined a second time in the distributed kernel, disagreeing at a
-    # domain face -- so promoting the resample INTO rasterize_geometry, and
-    # letting every caller inherit it, is the real fix. It was not taken
-    # here only because rasterize_geometry receives neither the run's
-    # periodic flags nor the lane's half-steps, both of which this rule
-    # needs; widening its signature is a separate change.
-    _pec_tc_masks, _f0_sheets = collect_thin_conductor_sheet_inputs(
-        getattr(sim, "_thin_conductors", None),
-        lambda shape: shape.mask_on_coords(coords.x, coords.y, coords.z),
-    )
-    _cond_mask = pec_mask
-    for _m in _pec_tc_masks:
-        _cond_mask = _m if _cond_mask is None else (_cond_mask | _m)
-    if _cond_mask is not None or _f0_sheets:
-        _eps_s, _sigma_s = resample_sheet_node_materials(
-            sim._geometry, sim._resolve_material, coords,
-            materials.eps_r, materials.sigma,
-            half_steps=(jnp.asarray(grid.dx_arr) * 0.5,
-                        jnp.asarray(grid.dy_arr) * 0.5,
-                        jnp.asarray(grid.dz) * 0.5),
-            conductor_cell_mask=_cond_mask,
-            declared_sheets=_f0_sheets,
-            periodic=periodic_flags_from_axes(
-                getattr(sim, "_periodic_axes", "")),
-            pec_sigma_threshold=sim._PEC_SIGMA_THRESHOLD,
-        )
-        materials = MaterialArrays(
-            eps_r=_eps_s, sigma=_sigma_s, mu_r=materials.mu_r)
 
     # Extend material properties into CPML padding so that guided modes in
     # dielectric waveguides see an impedance-matched absorber (equivalent to
@@ -191,39 +230,21 @@ def assemble_materials_nu(
         )
         materials = MaterialArrays(eps_r=eps_r_ext, sigma=sigma_ext, mu_r=mu_r_ext)
 
-    # Thin conductors (#369): a PEC thin sheet rasterizes on the coords-based
-    # mask exactly like geometry PEC — ``mask_on_coords`` resolves fine on
-    # non-uniform axes, so the earlier "needs a uniform Grid, skip for now"
-    # shortcut was wrong. Before this fix the NU (dz_profile) path silently
-    # dropped EVERY thin conductor: an ``add_thin_conductor()`` PEC sheet on a
-    # graded-z grid produced no pec_mask, so the patch neither reflected nor
-    # resonated (box-PEC rang, thin-sheet decayed). ORing a boolean mask keeps
-    # the field AD-clean (no float op enters the gradient path). Lossy
-    # (non-PEC) sheets need a grid-dependent surface-conductivity fold the
-    # coords path cannot yet express — warn rather than silently drop.
-    # #371 (resolved as not-a-placement-bug): on a graded dz_profile the sheet's
-    # cell can differ from a >=1-cell VOLUME box at the same nominal z. That is
-    # correct: a zero-thickness sheet and a one-cell-thick box are different
-    # objects. apply_pec_mask realizes the sheet's conductor at the selected
-    # E-NODE, where tangential Ex/Ey actually sit, so Box's argmin-nearest thin
-    # branch minimizes the realized-plane error |node - z0|; a genuinely
-    # matching-thickness (sub-cell) box takes the same thin branch and selects
-    # the identical layer (verified, tests/unit/materials/test_thin_conductor.py). No fix here.
-    # (This said "cell CENTRE" until #562: the NU coordinates the argmin runs
-    # over were centres then, half a cell off the fields. The #371 argument is
-    # STRENGTHENED by the correction — the minimized quantity is now the
-    # distance to the plane the conductor is actually realized on.)
+    # Thin conductors. A PEC thin conductor is a SHEET (#931 §1.3): one
+    # node plane (nearest node to its mid-plane, tie -> lower), a closed
+    # footprint, no cell. It is emitted as a SheetSpec, never OR'd into
+    # pec_mask; the run lanes realize it through
+    # rfx.boundaries.pec.realized_pec_edge_masks. A shape thicker than one
+    # local cell along its normal is refused ("not a sheet; use add()").
     if sim._thin_conductors:
         pec_tcs = [tc for tc in sim._thin_conductors
                    if getattr(tc, "is_pec", False)]
         lossy_tcs = [tc for tc in sim._thin_conductors
                      if not getattr(tc, "is_pec", False)]
-        if pec_tcs:
-            if pec_mask is None:
-                pec_mask = jnp.zeros(coords.shape, dtype=jnp.bool_)
-            for tc in pec_tcs:
-                pec_mask = pec_mask | tc.shape.mask_on_coords(
-                    coords.x, coords.y, coords.z)
+        for tc in pec_tcs:
+            _pec_sheets.append(sheet_spec_from_shape(
+                tc.shape, coords, cell_sizes, name="thin_conductor",
+                lane="non-uniform", refuse_thick=True))
         # #373: lossy (non-PEC) thin conductors fold into sigma using the LOCAL
         # spacing NORMAL to the sheet, not a uniform grid.dx. The sheet has
         # bulk conductivity sigma_bulk and physical thickness t but is realized
@@ -297,8 +318,23 @@ def assemble_materials_nu(
                 (grid.dx_arr, grid.dy_arr, grid.dz)[n_axis])
             bshape = [1, 1, 1]
             bshape[n_axis] = int(d_norm.shape[0])
-            m = tc.shape.mask_on_coords(coords.x, coords.y, coords.z)
+            _plane = None
             if _f0 is not None:
+                # #931 G4 by construction: the f0 sheet takes the SAME
+                # footprint and plane a PEC sheet on this shape gets
+                # (sheet_spec_from_shape: nearest node to the mid-plane,
+                # closed Box footprint). A traced mesh (mesh-as-design-
+                # variable) has no static plane; there the footprint keeps
+                # the shape's own traced node sampler, as before #931.
+                if any(is_tracer(c) for c in (coords.x, coords.y, coords.z)):
+                    m = sheet_footprint_traced(tc.shape, coords, n_axis)
+                else:
+                    _spec = sheet_spec_from_shape(
+                        tc.shape, coords, cell_sizes, normal_axis=n_axis,
+                        name="thin_conductor", lane="non-uniform",
+                        refuse_thick=True)
+                    m = _spec.footprint
+                    _plane = _spec.plane
                 # #674 guard: the realization normalizes ONE E node along the
                 # sheet normal, so the rasterized sheet must occupy exactly
                 # one layer there — and must not have vaporized.
@@ -311,10 +347,10 @@ def assemble_materials_nu(
                 # node — d_norm the LOCAL E-node dual spacing along the
                 # sheet normal (#671), so sigma_sheet * Rs0 * d_norm == 1 on
                 # every layer of a graded mesh — and realized NODE-THIN by
-                # the per-step operator on the apply_pec_mask tangential
-                # edge set. Thickness deliberately does not enter
-                # (Leontovich loss is thickness-independent). eps_r stays at
-                # background (a sheet is a surface, not a dielectric fill).
+                # the per-step operator on the sheet edge set. Thickness
+                # deliberately does not enter (Leontovich loss is
+                # thickness-independent). eps_r stays at background (a sheet
+                # is a surface, not a dielectric fill).
                 #
                 # Invariant (NU two-run S reference): the sheet is NOT
                 # resident in materials.sigma, so the reference run's
@@ -332,14 +368,23 @@ def assemble_materials_nu(
                         jnp.ones_like(materials.sigma), 0.0)
                     sheet_specs.append(SheetImpedanceSpec(
                         mask=m, normal_axis=n_axis, g_sheet=g_sheet,
-                        sigma_sheet=sigma_sheet))
+                        sigma_sheet=sigma_sheet, plane=_plane))
                 continue
+            m = tc.shape.mask_on_coords(coords.x, coords.y, coords.z)
             sigma_eff = tc.sigma_bulk * (tc.thickness / d_norm.reshape(bshape))
             materials = MaterialArrays(
                 eps_r=jnp.where(m, tc.eps_r, materials.eps_r),
                 sigma=jnp.where(m, sigma_eff, materials.sigma),
                 mu_r=materials.mu_r,
             )
+    from rfx.materials.thin_conductor import (
+        warn_sheet_planes_inside_dielectric,
+    )
+    warn_sheet_planes_inside_dielectric(_pec_sheets, materials.eps_r)
+    from rfx.api._compile import _refuse_uncollected_pec
+    _refuse_uncollected_pec(_pec_sheets if pec_sheets is None else (),
+                            _pec_wires if pec_wires is None else (),
+                            lane="non-uniform")
     return materials, debye_spec, lorentz_spec, pec_mask
 
 
@@ -355,119 +400,26 @@ def pos_to_nu_index(grid: NonUniformGrid, pos) -> tuple[int, int, int]:
 
 def _nu_flux_tangential_bounds(d_arr, pad_lo: int, pad_hi: int,
                                center, size) -> tuple[int, int]:
-    """Physical ``(center, size)`` in metres -> half-open CELL slice
-    ``[lo:hi]`` on one graded tangential axis of a flux-monitor plane.
+    """Resolve a finite graded-axis CELL window inside the physical interior.
 
-    The finite-region ``add_flux_monitor(size=...)`` counterpart of the
-    waveguide port's ``_range_to_slice_nu`` cumulative-edge argmin lookup.
-    This is a FRESH helper used ONLY by the flux-monitor loop; the waveguide
-    path (``_build_waveguide_port_config_nu`` / ``_range_to_slice_nu``) is
-    left byte-identical because origin/main #889 is editing it concurrently
-    (audit c/B1 collision-avoidance). Steps, all against the REALIZED graded
-    profile ``d_arr`` (no ``/dx`` cubic-cell arithmetic):
-
-      edges = insert(cumsum(interior_cells(d_arr, pad_lo, pad_hi)), 0, 0)
-      lo_local = argmin|edges - (center - size/2)|
-      hi_local = argmin|edges - (center + size/2)|
-
-    ``edges`` is interior-relative (edges[0]=0 at the first interior face),
-    matching the physical-coordinate convention ``add_flux_monitor`` validates
-    against ``[0, domain]``. ``center=None`` -> the realized interior midpoint
-    ``edges[-1]/2`` (uniform-lane ``domain/2`` parity, but read off the graded
-    grid so it tracks the mesh).
-
-    NODE span -> CELL span (issue #868): ``FluxMonitor`` integrates per-cell
-    face areas ``dA = d1[lo:hi] (x) d2[lo:hi]``, so the window must select the
-    ``hi_local - lo_local`` CELLS whose cumulative width equals the requested
-    ``size`` -- NOT the ``hi_local - lo_local + 1`` NODES the argmin brackets.
-    We build the node span and narrow it with the shipped, tested
-    ``_node_span_to_cell_span`` (the same conversion the NU waveguide builder
-    applies to its aperture), which also raises on a degenerate (<1 cell) span.
-
-    SNAPPING AND CLAMPING (review2 F7 — an earlier wording claimed this helper
-    "never clamps", which is false). ``argmin`` is taken over the interior edge
-    array, so a requested endpoint outside ``[0, edges[-1]]`` snaps to the first
-    or last edge: ``size`` larger than the axis, or a ``center`` that pushes the
-    window off an end, yields the CLAMPED intersection with the interior (e.g.
-    ``size=30 mm`` on a 10 mm axis -> the whole axis; ``center=1 mm,
-    size=6 mm`` -> ``[0, 4] mm``). Inside the interior the endpoints still snap
-    by up to half a local cell each. That is deliberate; only the degenerate
-    (<1 cell) case raises. It is NOT what the uniform lane does: that lane
-    saturates at the padded array bounds and integrates absorber cells with no
-    warning (issue #910).
-
-    To make it non-silent a ``UserWarning`` is emitted when EITHER of two
-    runtime-derived conditions holds (fix2b, verify nit 1 — the previous single
-    size-difference test was a PROXY that missed clamps of up to ~1.5 end cells):
-
-      (a) CLAMP, tested PER ENDPOINT: the REQUESTED ``center -/+ size/2``
-          reaches outside ``[0, edges[-1]]`` by more than half the end cell
-          (``interior[0]/2`` at the low end, ``interior[-1]/2`` at the high
-          end). Half a cell is the threshold because an endpoint anywhere in
-          the interior may legitimately move that far by ordinary snapping, so
-          a clamp of half an end cell or less is indistinguishable from it and
-          stays silent — the one documented silent case.
-      (b) SNAP PAST AN ADJACENT EDGE: the realized extent differs from the
-          requested ``size`` by more than the largest cell touching the window
-          (which envelopes the (d_lo + d_hi)/2 two-endpoint worst case).
-
-    Ordinary sub-cell snapping inside the interior triggers neither.
+    Uses nearest cumulative edges, with the lower edge at a tie. Every
+    requested endpoint outside the interior emits a clamp warning, including
+    sub-cell overflow. Ordinary interior snapping remains a geometry result.
     """
-    d_np = np.asarray(d_arr)
-    interior = interior_cells(d_np, pad_lo, pad_hi)
+    from rfx.probes.flux_region import resolve_flux_axis
+
+    interior = interior_cells(np.asarray(d_arr, dtype=float), pad_lo, pad_hi)
     edges = np.insert(np.cumsum(interior), 0, 0.0)
-    if size is None or float(size) <= 0.0:
-        raise ValueError(
-            f"flux monitor size={size!r} is not a positive extent")
-    c = float(edges[-1]) / 2.0 if center is None else float(center)
-    lo_phys = c - float(size) / 2.0
-    hi_phys = c + float(size) / 2.0
-    lo_local = int(np.argmin(np.abs(edges - lo_phys)))
-    hi_local = int(np.argmin(np.abs(edges - hi_phys)))
-    if hi_local <= lo_local:
-        raise ValueError(
-            f"flux monitor center={center!r} size={size!r} resolves to a "
-            f"degenerate aperture on the NU grid (edge nodes "
-            f"lo_local={lo_local}, hi_local={hi_local}); it spans no "
-            f"interior cell -- widen size= or move center=")
-    realized = float(edges[hi_local] - edges[lo_local])
-    axis_len = float(edges[-1])
-    # (a) per-endpoint clamp: how far each REQUESTED endpoint reaches outside
-    #     the realized interior, against half the end cell it would be clamped
-    #     onto. Both quantities are read off the realized profile.
-    over_lo = max(0.0 - lo_phys, 0.0)
-    over_hi = max(hi_phys - axis_len, 0.0)
-    half_end_lo = float(interior[0]) / 2.0
-    half_end_hi = float(interior[-1]) / 2.0
-    clamped = (over_lo > half_end_lo) or (over_hi > half_end_hi)
-    # (b) snap past an adjacent edge (size-difference test, kept).
-    snap_bound = float(np.max(interior[max(lo_local - 1, 0):hi_local + 1]))
-    far_snap = abs(realized - float(size)) > snap_bound
-    if clamped or far_snap:
-        why = []
-        if over_lo > half_end_lo:
-            why.append(
-                f"CLAMPED at the low end (requested {lo_phys:.6g} m is "
-                f"{over_lo:.3g} m below the interior, more than the "
-                f"{half_end_lo:.3g} m half end cell)")
-        if over_hi > half_end_hi:
-            why.append(
-                f"CLAMPED at the high end (requested {hi_phys:.6g} m is "
-                f"{over_hi:.3g} m above the interior, more than the "
-                f"{half_end_hi:.3g} m half end cell)")
-        if far_snap:
-            why.append(
-                f"snapped past an adjacent edge (extent differs from the "
-                f"request by {abs(realized - float(size)):.3g} m, more than "
-                f"the {snap_bound:.3g} m largest cell touching the window)")
+    result = resolve_flux_axis(edges, pad_lo, center, size)
+    if result["clamped_low"] or result["clamped_high"]:
         warnings.warn(
-            f"flux monitor center={center!r} size={size!r} resolves to a "
-            f"{realized:.6g} m extent on this graded axis (interior "
-            f"[0, {axis_len:.6g}] m): " + "; ".join(why) + ". The monitor "
-            "integrates the realized extent, not the requested one.",
-            UserWarning, stacklevel=2)
-    node_span = (lo_local + pad_lo, hi_local + pad_lo + 1)
-    return _node_span_to_cell_span(node_span)
+            f"flux monitor center={center!r} size={size!r}: CLAMPED to interior "
+            f"[0, {float(edges[-1]):.12g}] m; requested bounds "
+            f"{result['requested_bounds_m']} m, realized bounds "
+            f"{result['realized_bounds_m']} m. The monitor integrates the realized extent.",
+            UserWarning, stacklevel=2,
+        )
+    return result["cell_slice"]
 
 
 def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
@@ -592,7 +544,8 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
 
 
 def _setup_msl_ports_nu(sim, grid, materials, materials_concrete, sources,
-                        n_steps, pec_mask):
+                        n_steps, pec_edge_masks, *, geometry_edge_masks=None,
+                        sheet_specs=()):
     """Set up MSL ports on the non-uniform mesh (Ez static-Laplace feed only).
 
     Mirrors the uniform MSL block (``rfx/runners/uniform.py``: ``_msl_ports``)
@@ -608,10 +561,12 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_concrete, sources,
     NU point-source scan injection). The per-probe DFT planes are registered
     separately by ``compute_msl_s_matrix`` via ``add_dft_plane_probe`` and
     flow through the existing NU ``dft_plane_probes`` accumulation. Returns
-    the (possibly σ-updated) ``materials`` and ``pec_mask``.
+    the (possibly σ-updated) ``materials`` and the port-cleared realized PEC
+    edge masks (#931 §1.9).
     """
     from rfx.sources.msl_port import (
         _msl_yz_cells,
+        msl_normal_component as _msl_normal_component,
         compute_msl_mode_profile,
         make_msl_port_sources,
         msl_cell,
@@ -619,6 +574,7 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_concrete, sources,
         msl_port_from_entry,
         setup_msl_port,
     )
+    original_edges = pec_edge_masks if geometry_edge_masks is None else geometry_edge_masks
     for pe in sim._msl_ports:
         # Issue #661: one shared projection of position -> port frame.
         mp = msl_port_from_entry(pe)
@@ -633,6 +589,10 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_concrete, sources,
             )
         # laplace / uniform: build the static-Laplace Ez mode profile from the
         # substrate eps_r read concretely under the trace centre.
+        from rfx.sources.msl_port import validate_msl_port_geometry
+        validate_msl_port_geometry(
+            grid, mp, pec_edge_masks=original_edges, sheet_specs=sheet_specs,
+            pec_faces=sim._boundary_spec.pec_faces(), name=pe.name)
         span = msl_cross_section_span(grid, mp)
         k_mid = (span["n_lo"] + span["n_hi"]) // 2
         eps_cell = msl_cell(
@@ -649,10 +609,16 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_concrete, sources,
             sources.extend(make_msl_port_sources(
                 grid, mp, materials_concrete, n_steps, mode_profile=mode_profile,
             ))
-        if pec_mask is not None:
-            for cell in _msl_yz_cells(grid, mp):
-                pec_mask = pec_mask.at[cell[0], cell[1], cell[2]].set(False)
-    return materials, pec_mask
+        if pec_edge_masks is not None:
+            from rfx.boundaries.pec import clear_edges
+            # Only the SUBSTRATE-NORMAL component: the edge the modal
+            # source drives.  The three-component form opened a
+            # width-long slot in the ground plane at the feed (#931
+            # §1.9, corrected).
+            pec_edge_masks = clear_edges(
+                pec_edge_masks, list(_msl_yz_cells(grid, mp)),
+                component=_msl_normal_component(mp))
+    return materials, pec_edge_masks
 
 
 def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=None,
@@ -712,9 +678,13 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     pec_mask_override : jnp.ndarray or None
         Extra hard-PEC mask ORed into the geometry-derived pec_mask.
     strip_interior_pec : bool
-        When True, drop the interior-geometry ``pec_mask`` returned by
-        ``assemble_materials_nu`` (the rasterized iris / wall / post),
-        forcing a clean vacuum-plus-boundary-walls reference run. The
+        When True, drop the interior-geometry PEC returned by
+        ``assemble_materials_nu`` — both the ``pec_mask`` VOLUME cells
+        (the rasterized iris / wall / post) and the declared SHEETS and
+        WIRES (#931 §1.9: a sheet iris owns no cell, so stripping only
+        ``pec_mask`` would leave it in the "empty guide" reference and the
+        two-run S11 would come out 0) — forcing a clean
+        vacuum-plus-boundary-walls reference run. The
         boundary-wall PEC (the y/z guide walls from the BoundarySpec) is
         NOT carried in ``pec_mask`` — it is enforced separately via
         ``pec_faces`` (grid pad=0 + ``apply_pec`` / CPML face split), so
@@ -732,6 +702,9 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     Result
     """
     from rfx.api import Result
+
+    _validate_interface_eps_nu(sim, subpixel_smoothing=subpixel_smoothing,
+                               eps_override=eps_override)
 
     # Flux monitors: the NU scan body accumulates Poynting-flux DFTs (parity
     # with the uniform path). Full-plane AND finite-region (``size=``)
@@ -791,8 +764,14 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         ),
     )
     _sheet_specs: list = []
+    _pec_sheets: list = []
+    _pec_wires: list = []
     materials, debye_spec, lorentz_spec, pec_mask = assemble_materials_nu(
-        sim, grid, sheet_specs=_sheet_specs)
+        sim, grid, sheet_specs=_sheet_specs, pec_sheets=_pec_sheets,
+        pec_wires=_pec_wires)
+    if getattr(sim, "_interface_eps", "sampled") == "dual_average" and (
+            debye_spec is not None or lorentz_spec is not None):
+        raise ValueError("interface_eps='dual_average' cannot combine with Debye/Lorentz materials")
     if strip_sheet_impedance:
         # #677 EXPLICIT reference strip: the surface-impedance sheet no
         # longer rides materials.sigma, so the two-run vacuum reference's
@@ -814,6 +793,10 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     # PEC reflector on the NU path.
     if strip_interior_pec:
         pec_mask = None
+        # #931: a sheet iris owns no cell, so stripping only ``pec_mask``
+        # would leave it in the vacuum reference and give S11 = 0.
+        _pec_sheets = []
+        _pec_wires = []
 
     # ``eps_override`` / ``sigma_override`` replace the assembled material
     # arrays for the scan. We keep the original concrete ``materials`` for
@@ -832,6 +815,23 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     if pec_mask_override is not None:
         pec_mask = pec_mask_override if pec_mask is None else (pec_mask | pec_mask_override)
 
+    # #931 §1.7: realize (Mx, My, Mz) ONCE here.  The NU stepper installs no
+    # periodic BC and NU grids are 3-D, so the non-periodic #689 convention
+    # is the one the step function uses.  Port clearing, wire-port liveness
+    # and the sheet ctx all read THIS object from here on.
+    from rfx.boundaries.pec import (
+        clear_edges as _clear_edges,
+        edge_is_pec as _edge_is_pec,
+        realized_pec_edge_masks as _rpem,
+    )
+    _pec_sheets = tuple(_pec_sheets)
+    _pec_wires = tuple(_pec_wires)
+    pec_edge_masks = None
+    if pec_mask is not None or _pec_sheets or _pec_wires:
+        pec_edge_masks = _rpem(pec_mask, sheets=_pec_sheets,
+                               wires=_pec_wires)
+    _msl_geometry_edges = pec_edge_masks  # before ANY port clearing
+
     # ── Subpixel smoothing on non-uniform mesh ─────────────────────────
     # Builds Kottke tensor-averaged ε per E-component using per-axis
     # cell-size arrays. Only the non-dispersive scan branch consumes
@@ -849,14 +849,22 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 stacklevel=2,
             )
         else:
-            shape_eps_pairs = [
-                (entry.shape, sim._resolve_material(entry.material_name).eps_r)
-                for entry in sim._geometry
-            ]
+            # #1043 stage B: the pairs carry the CPML/UPML pad continuation,
+            # the NU mirror of the two uniform sites. Same shared builder, so
+            # the three cannot drift the way the array-side replication did
+            # before #627.
+            from rfx.geometry.smoothing import (
+                smoothed_shape_pairs, warn_unextendable_shapes,
+            )
+            shape_eps_pairs, _unextendable = smoothed_shape_pairs(sim, grid)
+            warn_unextendable_shapes(_unextendable)
             if shape_eps_pairs:
                 aniso_eps = compute_smoothed_eps_nonuniform(
                     grid, shape_eps_pairs, background_eps=1.0,
                 )
+
+    if getattr(sim, "_interface_eps", "sampled") == "dual_average":
+        aniso_eps = assemble_interface_eps_nu(sim, grid, materials)
 
     # Fold RLC R/C into materials before other port/source setup
     # (mirrors the uniform path).
@@ -919,7 +927,16 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             lo_k = min(idx[axis], idx_end[axis])
             hi_k = max(idx[axis], idx_end[axis])
 
-            wire_cells = list(range(lo_k, hi_k + 1))
+            # HALF-OPEN in edges, from the shared spelling: the driven
+            # edges are the ones whose own location lies inside the
+            # declared extent. This lane had its own endpoint-INCLUSIVE
+            # copy, so the same declaration drove one more edge here than
+            # on the uniform lane once that lane was corrected.
+            from rfx.sources.sources import wire_port_edge_span
+            _first_k, _last_k = wire_port_edge_span(
+                grid, axis, lo_k, hi_k,
+                float(pe.position[axis]), float(end_pos[axis]))
+            wire_cells = list(range(_first_k, _last_k + 1))
 
             # Live-cell split (issue #318): a cell whose extent lies inside
             # PEC (assembled-geometry mask, read BEFORE this port's own
@@ -931,10 +948,11 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 cell = list(idx)
                 cell[axis] = k
                 _cells_ijk.append(tuple(cell))
-            if pec_mask is not None:
-                _mask_np = np.asarray(pec_mask)
-                live_flags = [not bool(_mask_np[c[0], c[1], c[2]])
-                              for c in _cells_ijk]
+            if pec_edge_masks is not None:
+                live_flags = [
+                    not _edge_is_pec(pec_edge_masks, pe.component,
+                                     c[0], c[1], c[2])
+                    for c in _cells_ijk]
             else:
                 live_flags = [True] * len(_cells_ijk)
             n_live = sum(live_flags)
@@ -988,12 +1006,11 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                     materials = materials._replace(
                         sigma=materials.sigma.at[ci, cj, ck].add(
                             sigma_port))
-                    # Clear PEC mask at LIVE cells only (issue #318
-                    # commit 2): dead extent cells stay PEC so the port
-                    # does not punch an in-plane conductivity hole in the
-                    # DUT conductor.
-                    if pec_mask is not None:
-                        pec_mask = pec_mask.at[ci, cj, ck].set(False)
+                    # No PEC clearing here (#931 §1.9, corrected): a cell
+                    # is LIVE exactly when the port component's own edge is
+                    # not PEC, so releasing that component is a no-op, and
+                    # releasing the two tangential edges would open the
+                    # conductor the port foot stands on.
 
             # Create per-cell sources — only when the port is excited.
             # Passive (excite=False) ports contribute just the σ
@@ -1078,8 +1095,11 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             sigma_port = d_parallel / (pe.impedance * d_perp1 * d_perp2)
             materials = materials._replace(
                 sigma=materials.sigma.at[i, j, k].add(sigma_port))
-            if pec_mask is not None:
-                pec_mask = pec_mask.at[i, j, k].set(False)
+            if pec_edge_masks is not None:
+                # The lumped port drives ONE edge: its own component at
+                # its own cell (#931 §1.9, corrected).
+                pec_edge_masks = _clear_edges(
+                    pec_edge_masks, [(i, j, k)], component=pe.component)
             if pe.excite:
                 src = make_current_source(
                     grid, idx, pe.component, pe.waveform, sizing_n, materials_concrete)
@@ -1135,14 +1155,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             1: (np.asarray(grid.dx_arr), np.asarray(grid.dz)),
             2: (np.asarray(grid.dx_arr), np.asarray(grid.dy_arr)),
         }
-        # Per-tangential-axis (d_arr, pad_lo, pad_hi) for size-> CELL index.
-        _axis_d = {0: np.asarray(grid.dx_arr), 1: np.asarray(grid.dy_arr),
-                   2: np.asarray(grid.dz)}
-        _axis_pad = {
-            0: (grid.pad_x_lo, grid.pad_x_hi),
-            1: (grid.pad_y_lo, grid.pad_y_hi),
-            2: (grid.pad_z_lo, grid.pad_z_hi),
-        }
+        from rfx.probes.flux_region import resolve_flux_region
         for pe in sim._flux_monitors:
             axis_idx = axis_to_index[pe.axis]
             plane_pos = [0.0, 0.0, 0.0]
@@ -1158,17 +1171,10 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             # each tangential axis against the graded cumulative edges. Full
             # plane keeps init_flux_monitor's (0, -1) full-extent defaults.
             lo1, hi1, lo2, hi2 = 0, -1, 0, -1
-            if getattr(pe, "size", None) is not None:
-                tangential_axes = [a for a in range(3) if a != axis_idx]
-                centers = (pe.center
-                           if getattr(pe, "center", None) is not None
-                           else (None, None))
-                bounds = []
-                for j, t in enumerate(tangential_axes):
-                    _plo, _phi = _axis_pad[t]
-                    bounds.append(_nu_flux_tangential_bounds(
-                        _axis_d[t], _plo, _phi, centers[j], pe.size[j]))
-                (lo1, hi1), (lo2, hi2) = bounds
+            region = resolve_flux_region(grid, pe, sim._domain)
+            if region is not None:
+                (lo1, hi1), (lo2, hi2) = region["cell_slices"]
+                grid_index = region["normal_index"]
             flux_monitor_objs.append(
                 init_flux_monitor(
                     axis=axis_idx,
@@ -1225,8 +1231,10 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     # ride the generic point-source `sources` list; per-probe DFT planes are
     # registered by compute_msl_s_matrix via add_dft_plane_probe.
     if getattr(sim, "_msl_ports", None):
-        materials, pec_mask = _setup_msl_ports_nu(
-            sim, grid, materials, materials_concrete, sources, sizing_n, pec_mask,
+        materials, pec_edge_masks = _setup_msl_ports_nu(
+            sim, grid, materials, materials_concrete, sources, sizing_n,
+            pec_edge_masks,
+            geometry_edge_masks=_msl_geometry_edges, sheet_specs=_sheet_specs,
         )
 
     # Optional per-waveguide-port Poynting flux monitors at each port's
@@ -1336,12 +1344,12 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         ntff_data_init = init_ntff_data(ntff_box)
 
     # #677: assemble the surface-impedance sheet ctx from the specs the
-    # assembler emitted, against the FINAL pec_mask of this run (PEC wins on
-    # overlapping edges). Crossing-normal refusal lives in the builder.
+    # assembler emitted, against the FINAL realized PEC edges of this run
+    # (PEC wins on overlapping edges). Crossing-normal refusal lives in the
+    # builder.
     from rfx.materials.thin_conductor import build_sheet_impedance_ctx
-    # #689: default (non-periodic) — the NU stepper installs no periodic
-    # BC and NU grids are 3-D, matching its apply_pec_mask call.
-    sheet_ctx = build_sheet_impedance_ctx(_sheet_specs, pec_mask=pec_mask)
+    sheet_ctx = build_sheet_impedance_ctx(
+        _sheet_specs, pec_edge_masks=pec_edge_masks)
     if sheet_ctx is not None:
         # v1 fences (loud, never silent): the sheet operator replaces the
         # standard E update at its edges, which is only correct against the
@@ -1361,23 +1369,13 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 "isotropic E update at its edges. Disable "
                 "subpixel_smoothing or drop the f0 sheet.")
 
-    # #706: opt-in two-plane slab mask, rasterized with the SAME
-    # coords-based call assemble_materials_nu uses for geometry PEC, so
-    # the flagged cells cannot land off the pec_mask they extend. The
-    # reference-run strip (strip_interior_pec) drops it with the mask it
-    # extends.
-    pec_two_plane_mask = None
-    if not strip_interior_pec:
-        from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
-        _tp_coords = coords_from_nonuniform_grid(grid)
-        pec_two_plane_mask = sim._two_plane_cell_mask(
-            mask_fn=lambda sh: sh.mask_on_coords(
-                _tp_coords.x, _tp_coords.y, _tp_coords.z))
     _shared_run_kwargs = dict(
         sheet_impedance=sheet_ctx,
         aniso_eps=aniso_eps,
         pec_mask=pec_mask,
-        pec_two_plane_mask=pec_two_plane_mask,
+        pec_edge_masks=pec_edge_masks,
+        pec_sheets=_pec_sheets,
+        pec_wires=_pec_wires,
         pec_occupancy=pec_occupancy_override,
         sources=sources,
         probes=probes,

@@ -1,9 +1,13 @@
 """Lorentz and Drude dispersive materials via ADE.
 
+Time convention e^{+jωt} throughout (Im ε < 0 for loss), matching the ADE
+this module discretizes and the rfx convention in
+validation/crossval/comparators/dispersive_eps.py (convention 1).
+
 Lorentz model: ε(ω) = ε_∞ + Σ_p κ_p / (ω₀_p² - ω² + 2jδ_pω)
 
 Drude model is Lorentz with ω₀ = 0:
-    ε(ω) = ε_∞ - ω_p² / (ω² + jγω)
+    ε(ω) = ε_∞ − ω_p² / (ω² − jγω)
 
 Each pole introduces a second-order auxiliary polarization P_p:
     d²P_p/dt² + 2δ_p dP_p/dt + ω₀_p² P_p = ε₀ κ_p E

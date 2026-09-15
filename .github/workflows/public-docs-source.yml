@@ -30,6 +30,14 @@ on:
       - "scripts/check_api_reference.py"
       - "docs/guides/api_symbol_inventory.json"
 
+# Superseded runs on the same PR/branch are cancelled: a force-push or a
+# stacked-leg rebase used to leave the previous run queued, and on a busy day
+# (2026-09-15: six branches × 21 jobs against the plan's concurrent-job limit)
+# that held every PR for an hour. Pushes to main are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 

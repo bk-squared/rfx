@@ -1,0 +1,57 @@
+name: rfx-931-post-msl-nu-gate
+description: "#931 phase 2 T6 RE-MEASURE after the laminate-face redraw: NU twin of Board S, same pre-declaration, and the two lanes must agree within one DFT bin. Submit: vessl run create -f msl-nu-gate.yaml"
+tags: [rfx, issue-931, post, t6, msl-nu-gate]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_PLATFORMS: "cpu"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  echo "=== rfx #931 T6 post-change re-measure: msl-nu-gate ==="
+  date
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  SRC=/root/workspace/byungkwan-workspace/research/rfx-931-T6-oracle-contracts-locks-studio
+  test -d "$SRC" || { echo "ERROR: T6 worktree missing at $SRC"; exit 3; }
+  git config --global --add safe.directory "$SRC" || true
+  RUNS=/root/workspace/claude-workspace/rfx/runs
+  OUT=$RUNS/issue931-post-msl-nu-gate-$(date -u +%Y%m%dT%H%M%SZ)
+  mkdir -p "$OUT"
+  echo "$OUT" > "$RUNS/issue931-post-msl-nu-gate.latest"
+  trap 'chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
+  echo "artifacts: $OUT"
+  ( cd "$SRC" && git rev-parse HEAD && git status --short | head -20 ) | tee "$OUT/commit.txt"
+  WORK=/root/work/rfx931-t6-msl-nu-gate
+  rm -rf "$WORK"
+  mkdir -p "$WORK"
+  cp -a "$SRC/." "$WORK/"
+  cd "$WORK"
+  "$PY" -m pip uninstall -y -q jax-cuda12-plugin jax-cuda12-pjrt 2>/dev/null || true
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest pytest-xdist
+  export RFX_REPO_ROOT="$WORK"
+  export PYTHONPATH="$WORK"
+  export MPLBACKEND=Agg
+  "$PY" -c "import jax, rfx, os; print('probe ok | jax', jax.__version__, '| backend', jax.default_backend(), '| rfx', getattr(rfx, '__version__', '?'))"
+  echo "=== pytest tests/locks/test_msl_nu_sparam_gate.py (all markers enabled) ==="
+  set +e
+  timeout 21600 "$PY" -m pytest -q -p no:cacheprovider -p no:randomly --no-header -rA -s \
+      -m "" --junitxml="$OUT/junit.xml" tests/locks/test_msl_nu_sparam_gate.py > "$OUT/pytest.log" 2>&1
+  rc=$?
+  set -e
+  echo "$rc" > "$OUT/pytest.rc"
+  tail -n 120 "$OUT/pytest.log" || true
+  cp -p "$OUT/pytest.log" "$OUT/msl-nu-gate.log" 2>/dev/null || true
+  ls -la "$OUT"
+  chmod -R a+rX "$OUT" 2>/dev/null || true
+  echo "T6_POST_CASE=msl-nu-gate RC=$rc"
+  exit 0

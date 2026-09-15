@@ -8,7 +8,7 @@ sidebar:
 Geometry should stay explicit in public examples.
 The documented API includes the shapes and named materials below. An available
 constructor alone does not establish RF accuracy; pair it with a configuration
-listed in [Recommended Configuration](/rfx/validation/reference-lane/) and
+listed in [Recommended Configuration](/rfx/validation/recommended-configuration/) and
 [Support Boundaries](/rfx/api/support-boundaries/).
 
 ## Shapes
@@ -64,12 +64,16 @@ sim.add_material(
 
 Materials such as the built-in `"copper"` and `"aluminum"` have conductivity
 above the `1e6` S/m threshold and therefore behave as PEC in the compiled grid;
-their bulk skin depth and ohmic loss are not resolved. Use
-`add_thin_conductor(...)` when a subcell sheet model is appropriate. That helper
-also maps `sigma_bulk >= 1e6` S/m (including its default copper value) to PEC;
-a finite sheet resistance requires an explicitly justified
-`sigma_bulk < 1e6` S/m. Use a below-threshold volumetric conductivity only when
-its cells and loss model match the intended physical approximation.
+their bulk skin depth and ohmic loss are not resolved. The threshold decides
+*whether* a shape is a conductor; the declaration route decides *what kind*:
+`sim.add()` gives a volume of primal cells, `add_thin_conductor()` gives a sheet
+on one node plane that owns no cell and writes no material. That helper also
+maps `sigma_bulk >= 1e6` S/m (including its default copper value) to PEC; a
+finite sheet resistance requires an explicitly justified `sigma_bulk < 1e6` S/m.
+Use a below-threshold volumetric conductivity only when its cells and loss model
+match the intended physical approximation. The realization rule for all three
+conductor kinds is stated once, in
+[How conductors land on the lattice](/rfx/guide/materials-geometry/#how-conductors-land-on-the-lattice).
 
 ## Configuration limits
 
@@ -78,13 +82,15 @@ source or port, mesh, and observable combination. Check
 [Support Boundaries](/rfx/api/support-boundaries/) before reporting RF accuracy for a
 structure that uses a limited configuration.
 
-Two current opt-in conductor realizations have narrower contracts:
+One conductor realization has a narrower contract:
 
-- `add(shape, material="pec", two_plane=True)` is hard-PEC-only and
-  face-registers a one-cell PEC body on both node planes. A non-PEC material
-  raises `ValueError`. It is supported only on the uniform `run()`/`forward()`
-  scan and the single-device non-uniform runner.
 - `add_thin_conductor(shape, surface_impedance_f0=...)` applies a band-centre
-  Leontovich sheet resistance to any rasterizable patterned shape that occupies
-  exactly one cell layer and at least one cell. Unsupported solver, boundary,
+  Leontovich sheet resistance to any rasterizable patterned shape that is a
+  sheet — one node plane, no thicker than one local cell along its normal.
+  A lossy sheet uses the same footprint and the same edge set as the PEC sheet,
+  so `f0` toggles loss and never geometry. Unsupported solver, boundary,
   overlap, and port-family combinations fail explicitly.
+
+Removed in 2.0: `add(shape, material="pec", two_plane=True)`. The volume rule
+gives a PEC body both of its faces at every thickness, so the flag has no work
+left to do; passing it raises `TypeError`.

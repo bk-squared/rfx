@@ -2,6 +2,14 @@
 
 Base: main 1c38b0d7 (2026-09-02). Every file:line below was re-checked against that commit.
 
+> **Current-path qualification (2026-09-08).** The numbers below retain that
+> dated planning baseline. In the regenerated cv18 record, the Richardson
+> envelope is now **0.0046** (gate still **0.01**), and the pooled fine
+> envelope/gate are **0.0106 / 0.02** (formerly **0.0232 / 0.04**).
+> cv19's `tests/fixtures/wr90_iris_filter/fixture.json::gates.f0_measured_envelope_mhz`
+> is now **12.1219 MHz**, with the **19.0 MHz** gate unchanged. These are
+> current artifact-pointer corrections, not changes to the plan's windows.
+
 **Rules binding every work package.** No gate loosening without a written root cause. No
 re-implementation of the in-graph S assembly or the flux-path AD — that work is DONE and
 recorded at `docs/agent-memory/rfx-known-issues.md:3093-3099` (RESOLVED 2026-05-25,

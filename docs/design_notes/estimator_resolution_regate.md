@@ -1,5 +1,22 @@
 # Estimator resolution re-gate — cv06b and cv07 (issue #812, mechanism P3)
 
+> **Historical measurements; current-artifact scope correction (2026-09-08).**
+> Sections 1–6 record the #812 runs and frozen estimator windows. Their
+> "committed"/"reproducible" numeric claims refer to those original revisions,
+> not the regenerated #931 files at the same paths. In particular cv07's
+> `0/120`, worst `0.0145`, and 6.9440/7.9259 GHz refined rfx doublet are
+> historical: the current leg has **3/120 corrections > 0.05, worst 0.6571609**,
+> all above **17 GHz** (none in **5–15 GHz**), and refined doublet
+> **7.233338/8.244069 GHz**. The coarser realized strip at unchanged
+> **dx = 200 µm** changes the high-band correction footprint; it does not
+> establish an in-band physics regression. The old full-band excess bound
+> in T5's rationale is no longer a current full-band bound.
+> cv06b's current build-falsifier summary gives baseline width ratio
+> **0.999132**, narrow-stub ratio **0.655348**, and a now-visible one-cell
+> shift (**0.822770 % refined**, **1.694925 % bin argmin**); the original
+> measured numbers below are retained as the instrument's history.
+> No estimator window is revised here.
+
 Append-only. Sections 1-4 are the **PRE-DECLARATION**: every numeric window
 in them was frozen in commit `0b018c8`, before any measurement that judges it.
 Section 5 records what was then measured; it never edits a window. A
@@ -654,6 +671,16 @@ on a 0.886 % term.
 
 ### 7.6 The GPU job ran: criterion (A) holds on cv06b's own board; one pre-declared falsifier FIRED
 
+**Superseded 2026-09-10 (see section 8) -- board changed under it.** Every
+value below is frozen to the pre-#931 board this run measured (ground/trace
+as one-cell PEC `Box`es); the committed artifact at the live path
+(`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json`)
+is now the post-#931 sheet board (section 8). The pre-#931 board this section
+measured is archived, byte-identical to `fae08d10^`, at
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary_pre931_fae08d10.json`
+(see that directory's `README.md`), so the citations below still resolve
+against a committed artifact instead of being stated as bare prose.
+
 `scripts/vessl_cv06b_estimator_falsifiers.yaml`, VESSL run 369367257702 (remilab-c0,
 one RTX 4090; log harvested, run deleted). Two earlier attempts are part of the record:
 369367257699 printed every gate PASS and then lost its exit code when the shipped
@@ -661,42 +688,45 @@ script's `savefig` hit the read-only NFS checkout (the job now stages to local d
 and 369367257701 died on an inline heredoc under VESSL's script wrapper (replaced by
 `scripts/diagnostics/compare_json_close.py`). Artifacts are committed under
 `validation/crossval/_06b_msl_notch_results/`; the run's CPU replay reproduced the
-committed cv06b falsifier artifact to 1e-9.
+committed cv06b falsifier artifact to 1e-9 (against the board this section describes;
+see section 8 for the current one).
 
 **Criterion (A) — demonstrated, on this board, exit 0.** The shipped
 `06b_msl_notch_filter_uniform.py` (`cv06b_baseline_run.exit` = `EXIT:0`) and the
 build-falsifier baseline leg agree:
-`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.all_pass` with
-`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.err_pct = 1.453` (G1, window 4.0 %),
-`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.bw_ratio = 0.9684` (G2, window 0.80–1.20),
-`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.witness_bins = 0.3175` (G3, threshold 1.000),
-`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.z0_median_ohm = 46.48` (G4, 40–65 Ω) and a notch depth of
-`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.notch_depth_db = -43.49` dB (witness only). Section 6.2's
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary_pre931_fae08d10.json::criterion_A_baseline.all_pass` with
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary_pre931_fae08d10.json::criterion_A_baseline.err_pct = 1.453` (G1, window 4.0 %),
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary_pre931_fae08d10.json::criterion_A_baseline.bw_ratio = 0.9684` (G2, window 0.80–1.20),
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary_pre931_fae08d10.json::criterion_A_baseline.witness_bins = 0.3175` (G3, threshold 1.000),
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary_pre931_fae08d10.json::criterion_A_baseline.z0_median_ohm = 46.48` (G4, 40–65 Ω) and a notch depth of
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary_pre931_fae08d10.json::criterion_A_baseline.notch_depth_db = -43.49` dB (witness only). Section 6.2's
 "UNDEMONSTRATED" is superseded by this paragraph. Solve time
-`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.solve_s = 312.7` s.
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary_pre931_fae08d10.json::criterion_A_baseline.solve_s = 312.7` s.
 
 **Criterion (B), narrow stub — fires, and the old gate stays blind.** `W_STUB` = 5·`DX`
-(`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_narrow.w_stub_m = 0.0003175` m): the −10 dB width ratio reads
-`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_narrow.bw_ratio = 0.648`, so `validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_narrow.G2_fired`; section 4
+(`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary_pre931_fae08d10.json::stub_narrow.w_stub_m = 0.0003175` m): the −10 dB width ratio reads
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary_pre931_fae08d10.json::stub_narrow.bw_ratio = 0.648`, so `validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary_pre931_fae08d10.json::stub_narrow.G2_fired`; section 4
 predicted ~0.674 from the closed form, the solve lands 3.9 % lower — inside the window's
 margin either way. The retained depth witness still passes at
-`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_narrow.notch_depth_db = -35.10` dB
-(`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_narrow.depth_witness_still_passes`), and G1 still passes at
-`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_narrow.err_pct = 0.208` %: the blindness #812 measured, reproduced on the
-board itself, next to the gate that catches it.
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary_pre931_fae08d10.json::stub_narrow.notch_depth_db = -35.10` dB
+(`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary_pre931_fae08d10.json::stub_narrow.depth_witness_still_passes`), and G1 still passes at
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary_pre931_fae08d10.json::stub_narrow.err_pct = 0.208` %: the blindness #812 measured, reproduced on the
+board itself, next to the gate that catches it. (On this board only — section 8's
+narrow-stub paragraph is the current one.)
 
 **Criterion (B), one-cell stub — the pre-declared falsifier FIRED.** Section 4 declared
 that a one-cell stub-length error (`STUB_LEN` − `DX`,
-`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_1cell.stub_len_m = 0.0119365` m) would move the *reported* notch by ~0.5 %
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary_pre931_fae08d10.json::stub_1cell.stub_len_m = 0.0119365` m) would move the *reported* notch by ~0.5 %
 instead of the bin-quantised 0.000 %. Measured on the board: the analytic shift is
-`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_1cell.true_shift_pct = 0.532` % (`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_1cell.true_shift_bins = 0.303`
-bin); the bin argmin moved `validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_1cell.bin_argmin_delta_pct = 0.0` % as
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary_pre931_fae08d10.json::stub_1cell.true_shift_pct = 0.532` % (`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary_pre931_fae08d10.json::stub_1cell.true_shift_bins = 0.303`
+bin); the bin argmin moved `validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary_pre931_fae08d10.json::stub_1cell.bin_argmin_delta_pct = 0.0` % as
 predicted; the refined estimate moved
-`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_1cell.refined_delta_pct = 0.145` % — non-zero, so the estimator is not
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary_pre931_fae08d10.json::stub_1cell.refined_delta_pct = 0.145` % — non-zero, so the estimator is not
 bin-quantised, but **27 % of the predicted shift**, below the builder's pre-declared
 visibility criterion (half the predicted shift):
-`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_1cell.visible` is false and `validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::verdict.all_ok` is false. This is
-reported as the result, not adjusted.
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary_pre931_fae08d10.json::stub_1cell.visible` is false and `validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary_pre931_fae08d10.json::verdict.all_ok` is false. This is
+reported as the result on this board, not adjusted (section 8: it no longer holds on
+the current one).
 
 *Not attributed here.* Two mechanisms are consistent with the number and this run
 cannot separate them: (i) the estimator under-responds — the own-board notch is
@@ -712,3 +742,82 @@ is owed, not run. What it qualifies: G1's verdict does not rest on sub-bin resol
 full-bin error is 1.75 % and `1.45 + 1.75 < 4.0` — but the claim that the notch
 frequency is resolved *to* sub-bin accuracy on cv06b's own board is **not demonstrated**
 and the case's public row says so.
+
+## 8. Re-anchor (2026-09-10, merge of issue #920 into #931). 7.6's board moved; two
+pinned verdicts flip.
+
+Section 7.6 measured cv06b on the pre-#931 board (ground/trace as one-cell PEC
+`Box`es). `fae08d10` (2026-09-07, run 369367259191, the #931 X-B group) re-solved
+the same falsifier sweep on the lattice-ownership-contract board (ground/trace
+declared as sheets) — before this note's merge, independent of the cv15 work in
+this same merge commit. That is the current committed artifact
+(`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json`);
+7.6's numbers are frozen history for the board they measured, not the one shipping
+today, exactly as section 1's preamble already flags for cv07.
+
+**Criterion (A), baseline — still holds, numbers moved.** `all_pass` stays `true`:
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.err_pct = 2.1649` % (G1, window 4.0 %, was 1.453),
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.bw_ratio = 0.99913` (G2, window 0.80–1.20, was 0.9684),
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.witness_bins = 0.44689` (G3, threshold 1.000, was 0.3175),
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.z0_median_ohm = 48.192` (G4, 40–65 Ω, was 46.48) and a notch depth of
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.notch_depth_db = -39.4435` dB (witness only, was -43.49). Solve time
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.solve_s = 315.22` s (was 312.7). Z0's move (46.48 -> 48.192 ohm) is
+itself the width-convention falsifier below, not noise on the baseline gate.
+
+**Criterion (B), narrow stub — G1 NOW ALSO FIRES, not just G2.** Section 7.6's "G1
+still passes at err_pct = 0.208 %" no longer holds:
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_narrow.err_pct = 6.4388` % is now OVER the 4.0 % window, so
+`stub_narrow.gates["G1 notch freq vs analytic"]` reads `false` where it was `true`. `bw_ratio` is
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_narrow.bw_ratio = 0.65535` (was 0.648, still fires G2 as before) and depth
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_narrow.notch_depth_db = -28.259` dB (was -35.10) — the depth witness still
+passes (`stub_narrow.depth_witness_still_passes`). `test_cv06b_build_falsifier_plumbing.py`
+no longer requires G1 to stay silent on the narrow arm -- 7.6's "old gate stays
+blind" described a coincidence of the pre-#931 board, not a property of the
+instrument, and is retracted rather than restated with new digits.
+
+**Why this does not contradict `verdict.all_ok` flipping to `true` below.**
+`stub_narrow`'s new G1 failure and `verdict.all_ok`'s flip are not two readings
+of the same check -- `all_ok` never reads `stub_narrow`'s G1 at all.
+`scripts/diagnostics/cv06b_build_falsifiers.py:160` defines it directly:
+`good = ok and visible and (not g2) and dep`, where `ok` is
+`criterion_A_baseline.all_pass`, `visible` is `stub_1cell.visible`, `g2` is
+`stub_narrow.gates["G2 -10 dB stopband width"]` (so `not g2` is
+`stub_narrow.G2_fired`, expected `true`) and `dep` is
+`stub_narrow.depth_witness_still_passes`. `stub_narrow.gates["G1 notch freq vs
+analytic"]` is computed and written to the JSON for the record but was never
+one of the four terms `good` ANDs together -- by design: the docstring at the
+top of that script (lines 19-24) predeclares `stub_narrow` as a probe of G2
+and the depth witness only ("`-> G2 must FAIL while the retained -10 dB depth
+gate still PASSES`"), never of G1. So `all_ok`'s `true` is an honest read of
+its own four-term, predeclared definition, not a definition that quietly grew
+to cover fewer failures than before.
+
+**Criterion (B), one-cell stub — the pre-declared falsifier CLOSES; it no longer
+fires.** This is the substantial flip, not a magnitude update. Against a true
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_1cell.true_shift_pct = 0.5320` % stub-length shift
+(`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_1cell.true_shift_bins = 0.3142` bin, essentially unchanged from 0.303),
+the refined estimator now reads
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_1cell.refined_delta_pct = 0.8228` % -- **155 % of the predicted shift**,
+where 7.6 measured 0.145 % (27 % of it, below the pre-declared half-shift visibility
+bar). The bare bin argmin, which 7.6 reported moved exactly 0.0 % "as predicted",
+now reads
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_1cell.bin_argmin_delta_pct = 1.6949` % -- also non-zero. So
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_1cell.visible` is now `true` (was `false`) and
+`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::verdict.all_ok` is now `true` (was `false`). 7.6's "not
+attributed here" section — the two-mechanism ambiguity between estimator
+under-response and a genuinely smaller physical shift — is spent, not resolved
+in this note: `fae08d10`'s own record is that CRITERION B now closes with more
+sensitivity than before, not less, and the RECOMPUTE's standing caveat not to
+read the old `False` as a #931 regression stands retired with it. The decisive
+2-4x finer-DFT experiment 7.6 called "owed, not run" was not run here either;
+what changed is that the coarse board it was meant to disambiguate no longer
+ships.
+
+**Not re-derived.** `err_pct` rising instead of falling traces to
+`_realized_trace_width = n*dx`, a width convention this run's own G4 falsifier
+(`stub_narrow` aside — the baseline Z0 move above) found sits between the two
+named candidates and nearer the node span, not to either. Nothing here re-fits
+that convention to the datum that was supposed to check it; the case still ships
+`n*dx` unchanged, per `fae08d10`'s own stated scope. This section only re-anchors
+the citations 7.6 froze against a board that no longer ships; it does not reopen
+2's finding or move any window.

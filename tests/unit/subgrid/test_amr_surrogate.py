@@ -3,6 +3,7 @@
 import numpy as np
 import pytest
 import tempfile
+import warnings
 from pathlib import Path
 
 from rfx.api import Simulation, Result
@@ -195,6 +196,92 @@ class TestExportGeometrySDF:
 
         # A corner far from the box should be positive
         assert sdf[0, 0, 0] > 0, "SDF at domain corner should be positive"
+
+    def test_export_geometry_sdf_sees_a_sheet_declared_conductor(self):
+        """A sheet must not vanish from the exported training data (#931).
+
+        A sheet is a footprint on ONE node plane with zero thickness, so it
+        has no interior and a naive "inside the shape" SDF is degenerate
+        for it. A zero-thickness PEC Box IS the sheet declaration (design
+        note §1.5), so the exporter realizes it the way the contract does:
+        one sample layer, on the sample plane nearest its declared plane.
+        This test pins that, because a silent drop would take every
+        sheet-declared conductor out of the surrogate training set with no
+        error anywhere.
+
+        The ``add_thin_conductor`` twin of this gap is closed by
+        ``test_export_geometry_sdf_sees_an_add_thin_conductor_sheet`` below.
+        """
+        sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03),
+                         boundary="pec")
+        # The exporter samples on ``linspace(0, L, ceil(L/resolution))``,
+        # so pick a sheet plane that IS a sample point.
+        z_sheet = float(np.linspace(0, 0.03, 30)[15])
+        sim.add(Box((0.010, 0.010, z_sheet), (0.020, 0.020, z_sheet)),
+                material="pec")
+
+        sdf = export_geometry_sdf(sim, resolution=1e-3)
+
+        assert np.any(sdf < 0), (
+            "a sheet-declared conductor vanished from the exported SDF")
+        assert sdf[15, 15, 15] < 0, "the sheet's own plane must read inside"
+
+    def test_export_geometry_sdf_sees_an_add_thin_conductor_sheet(self):
+        """An ``add_thin_conductor`` sheet must reach the exported SDF (#931).
+
+        Sheets declared this way are not in ``sim._geometry``, and the
+        exporter walked only that list — so a sheet ground plane, patch or
+        trace was absent from the exported training data with no error
+        anywhere. It is now realized the way the contract realizes it: one
+        sample layer, on the sample plane nearest the declared mid-plane,
+        with the drawn footprint sampled closed in-plane.
+
+        The foil here is 35 um thick against a 1 mm sample pitch, i.e. it
+        falls BETWEEN samples — the case a containment test cannot catch
+        and the reason the plane is snapped rather than tested.
+        """
+        sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03),
+                         boundary="pec")
+        z_plane = float(np.linspace(0, 0.03, 30)[15])
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            sim.add_thin_conductor(
+                Box((0.010, 0.010, z_plane), (0.020, 0.020, z_plane + 35e-6)),
+                sigma_bulk=5.8e7, thickness=35e-6)
+
+        sdf = export_geometry_sdf(sim, resolution=1e-3)
+
+        assert np.any(sdf < 0), (
+            "an add_thin_conductor sheet vanished from the exported SDF")
+        # ONE sample layer, on the plane nearest the declared mid-plane
+        # (mid = z_plane + 17.5 um, well inside the lower half-sample).
+        inside = np.asarray(sdf < 0)
+        planes = sorted(set(np.flatnonzero(inside.any(axis=(0, 1))).tolist()))
+        assert planes == [15], planes
+        # ... and the footprint is the drawn rectangle, sampled closed:
+        # x, y run 0 .. 30 mm on 30 samples (pitch 30/29 mm), so the closed
+        # [10, 20] mm window is exactly the samples inside it.
+        xs = np.linspace(0, 0.03, 30)
+        want = int(((xs >= 0.010 - 1e-12) & (xs <= 0.020 + 1e-12)).sum())
+        assert int(inside[:, :, 15].sum()) == want * want, inside[:, :, 15].sum()
+
+    def test_export_geometry_sdf_refuses_a_sheet_it_cannot_place(self):
+        """A sheet too small for the sample pitch raises, never vanishes.
+
+        The whole defect this closes is a silent drop, so the resolution
+        failure mode must not be one either. The message names the knob.
+        """
+        sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03),
+                         boundary="pec")
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            # 100 um square patch between two 1 mm samples: no sample lands
+            # in its footprint.
+            sim.add_thin_conductor(
+                Box((0.0154, 0.0154, 0.0155), (0.0155, 0.0155, 0.0155)),
+                sigma_bulk=5.8e7, thickness=35e-6)
+        with pytest.raises(ValueError, match=r"resolution="):
+            export_geometry_sdf(sim, resolution=1e-3)
 
     def test_sdf_shape_matches_resolution(self):
         """SDF grid shape should match domain/resolution."""

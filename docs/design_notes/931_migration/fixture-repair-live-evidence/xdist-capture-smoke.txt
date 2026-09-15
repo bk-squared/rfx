@@ -1,0 +1,1 @@
+PASS: one synthetic pytest case; worker stdout preserved in terminal report and JUnit with tee-sys/junit_logging=all. No FDTD run.

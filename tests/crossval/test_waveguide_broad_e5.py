@@ -54,6 +54,20 @@ each formerly its own file:
 Every assertion, tolerance, fixture value and parametrisation of the original
 files is kept verbatim; only module-level helper names were disambiguated
 (``_mag_fixture_files`` / ``_phase_fixture_files``, ``_live_build_sim``).
+
+
+#931 SCOPE for the frozen legs in this file (traced to the producers, not
+assumed). The ``pec_short`` geometry is drawn ``Box((PEC_SHORT_X, 0, 0),
+(PEC_SHORT_X + 2*DX, A_WG, B_WG))`` with ``material="pec"`` at
+PEC_SHORT_X = 0.145 m and DX = 1 mm — 145 cells in, two cells thick, so both
+faces are on node planes at every committed rung. Under the ownership contract
+that body gains a wall at its FAR face (design note §1.2); the reflecting NEAR
+face, which is what the incident TE10 sees, is at the same plane it has always
+been. So |S11| and the reference-plane phase behind a total reflector are
+unchanged and the frozen pairs are not re-run. What would change that is a rung
+whose short is not an integer number of cells — none is committed, and the live
+anchor in ``test_waveguide_broad_e5.py`` is now drawn on an explicit mesh for
+exactly this reason.
 """
 from __future__ import annotations
 
@@ -80,6 +94,10 @@ from build_waveguide_band_broad_e5_phase_envelope import (  # type: ignore  # no
 )
 
 from tests._gate_policy import ENVELOPE_GATE_MULTIPLIER, gate_from_envelope  # noqa: E402
+from tests._realized_geometry import domain_wall_positions  # noqa: E402
+from tests._realized_pec import (  # noqa: E402
+    assert_no_wall_at, assert_walls_at, realize, wall_positions,
+)
 
 FIXTURES = REPO / "tests" / "fixtures" / "waveguide_broad_e5"
 EXPECTED_BANDS = {
@@ -561,6 +579,24 @@ PORT_RIGHT_X = 0.09
 BAND_HZ = (5.0e9, 7.0e9)
 N_FREQS = 6
 
+# #931: the anchor's mesh is DECLARED, not auto-derived. The short below is a
+# metal block — a total reflector, so a VOLUME (design note §1.5) — and a
+# volume has to be an integer number of cells thick or the contract refuses it.
+# With the auto-derived dx (0.00214137 m at freq_max = 7 GHz) the old 2 mm
+# thickness was 0.93 of a cell and the drawn faces sat nowhere near a node, so
+# the realized reflector depended on where 0.085 m happened to fall between two
+# cell centres. LIVE_DX = 2 mm divides the domain (60 x 20 x 10 cells), both
+# port planes (5, 45) and the short's faces (42, 43) exactly, and is within 7 %
+# of the mesh the auto rule chose, so the anchor's gates keep their scale.
+LIVE_DX = 0.002
+# Short at 42 cells; one cell thick, i.e. a filled slab with walls on BOTH
+# drawn faces (§1.2). It was 0.085 m against the old mesh, which is 42.5 cells
+# — half a cell off the node line, and the half-cell that made the drawing
+# ambiguous. The reflecting (near) face moves 1 mm; |S11| for a total
+# reflector is a magnitude, so the gates below are unchanged quantities.
+PEC_SHORT_X = 0.084
+PEC_SHORT_THICKNESS = LIVE_DX
+
 
 def _live_build_sim(freqs_hz, *, pec_short_x=None):
     """Two-port WR-style guide; optional full-cross-section PEC short.
@@ -574,14 +610,52 @@ def _live_build_sim(freqs_hz, *, pec_short_x=None):
     sim = Simulation(
         freq_max=max(float(freqs[-1]), f0),
         domain=DOMAIN,
+        dx=LIVE_DX,
         boundary="cpml",
         cpml_layers=10,
     )
     if pec_short_x is not None:
-        thickness = 0.002
+        # A VOLUME, RESOLVED. The short used to be drawn 2 mm thick on a mesh
+        # this builder let rfx choose (~2.14 mm here) — i.e. THINNER than
+        # one cell, which the lattice ownership contract refuses outright
+        # (#931 §1.5) rather than realizing to whatever the raster happened
+        # to give. The live mesh is now LIVE_DX = 2 mm (above), so the short
+        # is exactly one cell drawn on node planes from the same front face:
+        # the declaration says what the lattice can build.
+        #
+        # Two earlier readings of this anchor on the merged tree, both now
+        # ATTRIBUTED (2026-09-07, scripts/diagnostics/pec_short_lane_ab.py
+        # on cv11's identical case, per-bin dumps + port time records):
+        #
+        # 1. On the AUTO mesh (2.1414 mm) the one-cell volume read |S11| =
+        #    [0.9663, 0.9572, 0.9741, 0.9827, 0.9847, 0.9836]. That mesh
+        #    makes the guide ceil(20 / 2.1414) = 10 cells = 21.41 mm tall,
+        #    and a plug drawn to DOMAIN[2] = 20 mm rounds its top face to
+        #    the nearest node (#931 §1.1) at 19.27 mm: a 2.14 mm vacuum slot
+        #    under the top wall, a parallel-plate line that carries Ez past
+        #    the "short". cv11's 1 mm slot of the same origin was the whole
+        #    0.0146 -> 0.0560 step (|S21| 0.22-0.33 behind the plug; closing
+        #    it returns [0.9980, 1.0019], equal to the pre-change baseline).
+        #    Not the lane: with the plug at the wall the lane seals the guide
+        #    exactly (the record behind it is identically zero).
+        # 2. Declared as a zero-thickness Box at pec_short_x on that same
+        #    mesh the anchor read [1.2128, 0.7139, 0.8416, 0.9628, 1.0023,
+        #    1.4836]. A sheet's footprint is sampled CLOSED at nodes, so on
+        #    the auto mesh it stops one node short of the wall on BOTH
+        #    transverse axes: an L-shaped zero-thickness slot, a resonator,
+        #    in a 40-period record. The lane DOES apply sheets — a sheet
+        #    drawn to the realized walls reads the >= 0.99 class on cv11.
+        #
+        # So the short is drawn to the grid's REALIZED walls (identical to
+        # DOMAIN at LIVE_DX = 2 mm, which is on-lattice, and the reason the
+        # tests-crossval re-run at LIVE_DX passed), and the build-time test
+        # below asserts each face is a wall across the WHOLE cross-section.
+        _grid = sim._build_grid()
+        y_wall = domain_wall_positions(_grid, 1)[1]
+        z_wall = domain_wall_positions(_grid, 2)[1]
         sim.add(
             Box((pec_short_x, 0.0, 0.0),
-                (pec_short_x + thickness, DOMAIN[1], DOMAIN[2])),
+                (pec_short_x + PEC_SHORT_THICKNESS, y_wall, z_wall)),
             material="pec",
         )
     port_freqs = jnp.asarray(freqs)
@@ -614,6 +688,33 @@ def _assert_cpml(sim):
     )
 
 
+def test_live_pec_short_realizes_the_block_it_declares():
+    """BUILD-TIME (no solve) witness for the live anchor's reflector (#931).
+
+    The short is a metal BLOCK, so a volume: the contract realizes tangential
+    walls on BOTH drawn faces and shorts the normal edge between them. Read
+    back through the one realized-edge reader — a check that only asked for
+    the near face would not notice the far one going missing, which is what
+    the pre-#931 rule did at every thickness.
+    """
+    freqs = np.linspace(*BAND_HZ, N_FREQS)
+    sim = _live_build_sim(freqs, pec_short_x=PEC_SHORT_X)
+    realized = realize(sim)
+    # footprint=None: the WHOLE cross-section. A footprint taken from the
+    # plug's own cells passed on the auto mesh while the plug was one row
+    # short of the top wall (the slot the builder's comment describes).
+    assert_walls_at(realized, 0, [PEC_SHORT_X, PEC_SHORT_X + PEC_SHORT_THICKNESS],
+                    what="live-anchor PEC short (full cross-section)")
+    assert wall_positions(realized, 0) == pytest.approx(
+        [PEC_SHORT_X, PEC_SHORT_X + PEC_SHORT_THICKNESS], abs=1e-9), (
+        "the reflector realizes wall planes it did not declare: "
+        f"{wall_positions(realized, 0)}")
+    # Falsifier arm: no wall one cell in front of the reflecting face, so a
+    # body that grew a cell would be caught rather than absorbed by |S11| ~ 1.
+    assert_no_wall_at(realized, 0, [PEC_SHORT_X - LIVE_DX],
+                      what="live-anchor PEC short")
+
+
 def test_live_pec_short_s11_anchor():
     """LIVE compute_waveguide_s_matrix: PEC-short total reflection, |S11|≈1.
 
@@ -623,7 +724,7 @@ def test_live_pec_short_s11_anchor():
     cannot see.
     """
     freqs = np.linspace(*BAND_HZ, N_FREQS)
-    sim = _live_build_sim(freqs, pec_short_x=0.085)
+    sim = _live_build_sim(freqs, pec_short_x=PEC_SHORT_X)
     _assert_cpml(sim)
     s, _, idx = _s_matrix(sim, normalize=False)
     s11 = np.abs(s[idx["left"], idx["left"], :])

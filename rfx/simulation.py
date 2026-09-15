@@ -21,7 +21,14 @@ from rfx.core.yee import (
     update_e, update_e_aniso, update_e_aniso_inv, update_h, EPS_0, MU_0, _shift_bwd,
     precompute_coeffs, update_he_fast,
 )
-from rfx.boundaries.pec import apply_pec, apply_pec_faces, apply_pec_occupancy
+from rfx.boundaries.pec import (
+    apply_pec,
+    apply_pec_edges,
+    apply_pec_faces,
+    apply_pec_occupancy,
+    kottke_fenced_edge_masks,
+    realized_pec_edge_masks,
+)
 from rfx.progress import (
     ProgressReporter, check_not_traced, scan_with_progress,
     validate_report_every,
@@ -328,13 +335,13 @@ def make_port_source(grid: Grid, port, materials: MaterialArrays, n_steps):
                       component=port.component, waveform=waveform)
 
 
-def make_wire_port_sources(grid, port, materials, n_steps, pec_mask=None):
+def make_wire_port_sources(grid, port, materials, n_steps, pec_edge_masks=None):
     """Create a list of SourceSpec for a multi-cell WirePort.
 
     Each LIVE cell in the wire gets its own SourceSpec with the
     Cb-corrected waveform scaled by 1/n_live (issue #318: dead extent
     cells inside PEC get no source — pre-#318 they accumulated phantom
-    EMF).  With ``pec_mask=None`` (or no dead cells) this is the
+    EMF).  With ``pec_edge_masks=None`` (or no dead cells) this is the
     historical all-cells 1/N_cells behaviour.  The port impedance must
     already be folded into *materials* via ``setup_wire_port()``.
 
@@ -344,7 +351,7 @@ def make_wire_port_sources(grid, port, materials, n_steps, pec_mask=None):
     """
     from rfx.sources.sources import _wire_port_live_cells
 
-    cells, live_flags, n_live = _wire_port_live_cells(grid, port, pec_mask)
+    cells, live_flags, n_live = _wire_port_live_cells(grid, port, pec_edge_masks)
     times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
 
     from rfx.sources.sources import port_d_parallel
@@ -636,6 +643,24 @@ class _SimSetup(NamedTuple):
     pec_axes: str
 
 
+def resolve_periodic(grid, periodic):
+    """The run's per-axis periodic flags, after the 2-D lane override (#689).
+
+    One spelling, shared by :func:`_build_step_setup` and by any lane that
+    must realize the PEC edge masks (§1.7) before calling ``run`` — those
+    masks are only correct under the flags the step function will use.
+    """
+    if periodic is None:
+        periodic = (False, False, False)
+    else:
+        if len(periodic) != 3:
+            raise ValueError(f"periodic must have length 3, got {periodic!r}")
+        periodic = tuple(bool(v) for v in periodic)
+    if getattr(grid, "is_2d", False):
+        periodic = (periodic[0], periodic[1], True)
+    return periodic
+
+
 def _build_step_setup(
     grid: "Grid",
     materials: "MaterialArrays",
@@ -657,7 +682,9 @@ def _build_step_setup(
     aniso_inv_eps: "tuple | None",
     aniso_inv_eps_smooth: bool,
     pec_mask: object,
-    pec_two_plane_mask: object,
+    pec_sheets: object,
+    pec_wires: object,
+    pec_edge_masks: object,
     pec_occupancy: object,
     conformal_weights: "tuple | None",
     wire_port_sparams: list,
@@ -680,15 +707,7 @@ def _build_step_setup(
     dx = grid.dx
 
     # ---- boundary configuration ----
-    if periodic is None:
-        periodic = (False, False, False)
-    else:
-        if len(periodic) != 3:
-            raise ValueError(f"periodic must have length 3, got {periodic!r}")
-        periodic = tuple(bool(v) for v in periodic)
-
-    if grid.is_2d:
-        periodic = (periodic[0], periodic[1], True)
+    periodic = resolve_periodic(grid, periodic)
 
     # Skip CPML / PEC on periodic axes.
     axis_names = ("x", "y", "z")
@@ -724,13 +743,59 @@ def _build_step_setup(
     use_dft_planes = len(dft_planes) > 0
     use_flux_monitors = len(flux_monitors) > 0
     use_waveguide_ports = len(waveguide_ports) > 0
-    use_pec_mask = pec_mask is not None
+    # ---- #931 §1.7: realize the PEC edge masks ONCE, here ----
+    # ``pec_edge_masks`` may arrive pre-realized (and port-cleared) from a
+    # lane that had to read them before the run; otherwise realize from the
+    # volume cell mask plus the declared sheets/wires with THIS run's
+    # periodic flags.
+    pec_sheets = tuple(pec_sheets or ())
+    pec_wires = tuple(pec_wires or ())
+    if pec_edge_masks is None and (
+            pec_mask is not None or pec_sheets or pec_wires):
+        pec_edge_masks = realized_pec_edge_masks(
+            pec_mask, sheets=pec_sheets, wires=pec_wires, periodic=periodic)
+    use_pec_edges = pec_edge_masks is not None
     use_pec_occupancy = pec_occupancy is not None
+    # The soft lane carries sheets/wires as STATIC edge masks (§1.6).
+    #
+    # Realized from the declarations, then INTERSECTED with the masks this
+    # call was handed.  Those arrived port-cleared (§1.9: a port releases
+    # the one component it drives, at its own cells), and re-realizing from
+    # the declaration alone puts the conductor back over the port — a
+    # 50 ohm Ex port standing on a PEC sheet reads a False Ex entry in the
+    # masks it was given and a True one in the reconstruction.  Measured
+    # through ``pec_occupancy_override=zeros``, which §1.6 requires to be
+    # the hard path exactly: an off-sheet Ez probe moved 5.7245574 ->
+    # 12.5340872 on a 12 mm board at dx = 2 mm.  The identity has to hold
+    # THROUGH the override entry point, so the clearing is carried here
+    # rather than recomputed.
+    pec_static_edge_masks = None
+    if use_pec_occupancy and (pec_sheets or pec_wires):
+        pec_static_edge_masks = realized_pec_edge_masks(
+            None, sheets=pec_sheets, wires=pec_wires, periodic=periodic)
+        if pec_edge_masks is not None:
+            pec_static_edge_masks = tuple(
+                s & m for s, m in zip(pec_static_edge_masks, pec_edge_masks))
     use_conformal = conformal_weights is not None
     # Stage 2: when aniso_inv_eps is set, the inverse-permittivity tensor
     # encodes both PEC behaviour and dielectric subpixel smoothing —
     # apply_conformal_pec is redundant and SKIPPED to avoid double-zeroing.
     use_aniso_inv = aniso_inv_eps is not None
+    # ---- #931 §1.8 fence: Kottke Stage-2 owns its own volume ----
+    # ``subpixel_smoothing="kottke_pec"`` builds the tensor from the SAME
+    # ``pec_shapes`` that produced ``pec_mask``, and a partially filled edge
+    # gets a FRACTIONAL inverse permittivity.  Applying the §1.2 ownership
+    # rule on top hard-zeroes those edges and throws the subpixel model away.
+    # Restrict the applied set to what the tensor froze, plus the sheets and
+    # wires the tensor cannot see (they own no cell).  ``aniso_inv_eps_smooth``
+    # marks the occupancy-derived tensor instead, where the static declaration
+    # and the traced override are two different geometries and the
+    # intersection would silently delete declared metal — that lane keeps the
+    # realized edges.
+    if use_pec_edges and use_aniso_inv and not aniso_inv_eps_smooth:
+        pec_edge_masks = kottke_fenced_edge_masks(
+            pec_edge_masks, aniso_inv_eps,
+            sheets=pec_sheets, wires=pec_wires, periodic=periodic)
     use_wire_sparams = len(wire_port_sparams) > 0
     use_lumped_sparams = len(lumped_port_sparams) > 0
     wire_refplane_sparams = wire_refplane_sparams or []
@@ -1033,7 +1098,7 @@ def _build_step_setup(
         use_pmc_faces=use_pmc_faces,
         use_aniso_inv=use_aniso_inv,
         aniso_inv_eps_smooth=aniso_inv_eps_smooth,
-        use_pec_mask=use_pec_mask,
+        use_pec_edges=use_pec_edges,
         use_pec_occupancy=use_pec_occupancy,
         use_conformal=use_conformal,
         use_wire_sparams=use_wire_sparams,
@@ -1054,8 +1119,8 @@ def _build_step_setup(
         lorentz_coeffs=lorentz_coeffs,
         aniso_eps=aniso_eps,
         aniso_inv_eps=aniso_inv_eps,
-        pec_mask=pec_mask,
-        pec_two_plane_mask=pec_two_plane_mask,
+        pec_edge_masks=pec_edge_masks,
+        pec_static_edge_masks=pec_static_edge_masks,
         pec_occupancy=pec_occupancy,
         conformal_weights=conformal_weights,
         kerr_chi3=kerr_chi3,
@@ -1171,7 +1236,7 @@ class _StepContext:
     use_pmc_faces: bool
     use_aniso_inv: bool
     aniso_inv_eps_smooth: bool
-    use_pec_mask: bool
+    use_pec_edges: bool
     use_pec_occupancy: bool
     use_conformal: bool
     use_wire_sparams: bool
@@ -1197,8 +1262,8 @@ class _StepContext:
     lorentz_coeffs: Any = None
     aniso_eps: Any = None
     aniso_inv_eps: Any = None
-    pec_mask: Any = None
-    pec_two_plane_mask: Any = None
+    pec_edge_masks: Any = None
+    pec_static_edge_masks: Any = None
     pec_occupancy: Any = None
     conformal_weights: Any = None
     kerr_chi3: Any = None
@@ -1264,6 +1329,23 @@ def make_core_step(ctx: _StepContext):
     pec_axes = ctx.pec_axes
     aniso_eps = ctx.aniso_eps
     aniso_inv_eps = ctx.aniso_inv_eps
+
+    # #1043. ``apply_cpml_e`` builds its psi coefficient from a permittivity,
+    # and it has to be the SAME one the Yee half of this timestep used, or the
+    # two halves integrate different media and the combined update can
+    # amplify (see that function's ``inv_eps_r_update`` docstring for the
+    # derivation and the measured spectral radius). ``None`` on every path
+    # that has no anisotropic array, which keeps those byte-identical.
+    # The guard mirrors ``_update_e_with_optional_dispersion``'s own
+    # ``debye is None and lorentz is None``: with a dispersion model active the
+    # E update never consults the anisotropic arrays, so neither may this.
+    _aniso_is_live = not (ctx.use_debye or ctx.use_lorentz)
+    if _aniso_is_live and aniso_inv_eps is not None:
+        cpml_inv_eps_r = aniso_inv_eps
+    elif _aniso_is_live and aniso_eps is not None:
+        cpml_inv_eps_r = tuple(1.0 / e for e in aniso_eps)
+    else:
+        cpml_inv_eps_r = None
 
     # #677 surface-impedance sheet: Holland exponential-stepping A/B built
     # once from the FINAL run materials (background eps_r/sigma at the sheet
@@ -1398,7 +1480,8 @@ def make_core_step(ctx: _StepContext):
             if ctx.use_cpml:
                 st, cpml_new = ctx.apply_cpml_e(
                     st, ctx.cpml_params, cpml_new, grid, ctx.cpml_axes,
-                    materials=materials)
+                    materials=materials,
+                    inv_eps_r_update=cpml_inv_eps_r)
             # Re-enforce Kottke-frozen E cells after CPML-E correction.
             # CPML adds a psi-driven correction that can thaw cells
             # where inv_eps==0; re-zero them here so the frozen
@@ -1423,15 +1506,26 @@ def make_core_step(ctx: _StepContext):
                 # already, so this would be redundant double-zeroing.
                 from rfx.geometry.conformal import apply_conformal_pec
                 st = apply_conformal_pec(st, ctx.conformal_weights[0], ctx.conformal_weights[1], ctx.conformal_weights[2])
-            elif ctx.use_pec_mask:
-                from rfx.boundaries.pec import apply_pec_mask
-                # #689: the tangential-edge rule keeps the wrap only on
-                # genuinely periodic axes, so hand it the run's flags.
-                st = apply_pec_mask(st, ctx.pec_mask, ctx.periodic,
-                                    two_plane_mask=ctx.pec_two_plane_mask)
+            if ctx.use_pec_edges:
+                # #931 §1.7: the (Mx, My, Mz) realized once at setup.
+                #
+                # NOT an ``elif`` on the conformal branch. Dey-Mittra is a
+                # subpixel UPDATE-COEFFICIENT model, not a second geometry
+                # realization: ``apply_conformal_pec`` zeroes only edges
+                # whose weight is exactly 0, and no edge of a one-cell PEC
+                # slab is fully covered — both its faces sit ON the slab's
+                # own boundary, so w = 1/2 there. While the waveguide
+                # S-matrix lane folded interior PEC into sigma=1e10 the
+                # conductor survived anyway; with that fold deleted (#931)
+                # the ``elif`` dropped it outright — measured on the
+                # conformal PEC-short battery, min|S11| 0.2296 against a
+                # gate of 0.99, restored to 0.9942 by applying both.
+                st = apply_pec_edges(st, ctx.pec_edge_masks)
 
             if ctx.use_pec_occupancy:
-                st = apply_pec_occupancy(st, ctx.pec_occupancy)
+                st = apply_pec_occupancy(
+                    st, ctx.pec_occupancy, ctx.periodic,
+                    sheet_edge_masks=ctx.pec_static_edge_masks)
 
             # #677 node-thin surface-impedance sheet operator. Contract slot:
             # AFTER apply_pec_mask/apply_pec_occupancy (PEC wins on overlap —
@@ -1829,7 +1923,9 @@ def run(
     aniso_inv_eps: tuple | None = None,
     aniso_inv_eps_smooth: bool = False,
     pec_mask: object | None = None,
-    pec_two_plane_mask: object | None = None,
+    pec_sheets: object = (),
+    pec_wires: object = (),
+    pec_edge_masks: object | None = None,
     pec_occupancy: object | None = None,
     conformal_weights: tuple | None = None,
     wire_port_sparams: list | None = None,
@@ -1955,7 +2051,9 @@ def run(
         aniso_inv_eps=aniso_inv_eps,
         aniso_inv_eps_smooth=aniso_inv_eps_smooth,
         pec_mask=pec_mask,
-        pec_two_plane_mask=pec_two_plane_mask,
+        pec_sheets=pec_sheets,
+        pec_wires=pec_wires,
+        pec_edge_masks=pec_edge_masks,
         pec_occupancy=pec_occupancy,
         conformal_weights=conformal_weights,
         wire_port_sparams=wire_port_sparams,
@@ -2003,14 +2101,19 @@ def run(
         and not _ctx["use_tfsf"]
         and not _ctx["use_debye"]
         and not _ctx["use_lorentz"]
-        and not _ctx["use_pec_mask"]
+        and not _ctx["use_pec_edges"]
         and not _ctx["use_pec_occupancy"]
         and not _ctx["use_conformal"]
         and not _ctx["use_lumped_rlc"]
         and not _ctx["use_kerr"]
         and not _ctx["use_mag_sources"]
         # #677: the GPU baked fast path has an inline H+E update with no
-        # sheet-operator slot; per-plane baking is tracked in issue #701.
+        # sheet-operator slot, so a surface-impedance sheet is DELIBERATELY
+        # unsupported here: an f0 sheet takes the standard path, which costs
+        # performance only -- no accuracy loss, nothing silently wrong.
+        # Per-plane baking is a parked capability, not a promised follow-up;
+        # it waits on the thin-sheet plane-BC architecture decision (#701),
+        # and the parking itself is backlog #787.
         and not _ctx["use_sheet_impedance"]
         and aniso_eps is None
         and periodic == (False, False, False)
@@ -2116,7 +2219,8 @@ def run(
                 # grad/vmap, so checking only those would let the request
                 # through and print trace-time lines.
                 trace_probes=(materials, aniso_eps, aniso_inv_eps,
-                              pec_mask, pec_occupancy, conformal_weights,
+                              pec_mask, pec_edge_masks,
+                              pec_occupancy, conformal_weights,
                               kerr_chi3, debye, lorentz, tfsf),
             )
     else:
@@ -2350,7 +2454,9 @@ def run_until_decay(
     aniso_inv_eps: tuple | None = None,
     aniso_inv_eps_smooth: bool = False,
     pec_mask: object | None = None,
-    pec_two_plane_mask: object | None = None,
+    pec_sheets: object = (),
+    pec_wires: object = (),
+    pec_edge_masks: object | None = None,
     pec_occupancy: object | None = None,
     conformal_weights: tuple | None = None,
     wire_port_sparams: list | None = None,
@@ -2517,7 +2623,9 @@ def run_until_decay(
         aniso_inv_eps=aniso_inv_eps,
         aniso_inv_eps_smooth=aniso_inv_eps_smooth,
         pec_mask=pec_mask,
-        pec_two_plane_mask=pec_two_plane_mask,
+        pec_sheets=pec_sheets,
+        pec_wires=pec_wires,
+        pec_edge_masks=pec_edge_masks,
         pec_occupancy=pec_occupancy,
         conformal_weights=conformal_weights,
         wire_port_sparams=wire_port_sparams,
@@ -2685,7 +2793,8 @@ def run_until_decay(
         # a bare grad/vmap the carry stays concrete and the tracer rides in
         # through the closure instead.
         check_not_traced(carry, materials, aniso_eps, aniso_inv_eps,
-                         pec_mask, pec_occupancy, conformal_weights,
+                         pec_mask, pec_edge_masks,
+                         pec_occupancy, conformal_weights,
                          kerr_chi3, debye, lorentz, tfsf)
         _reporter = ProgressReporter(
             max_steps, label=report_label, total_is_cap=True)

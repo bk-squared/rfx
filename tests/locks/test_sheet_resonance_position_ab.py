@@ -32,6 +32,26 @@ both ways):
                                          same class as the original
                                          1.01/3.22 GHz)
 
+LATTICE OWNERSHIP CONTRACT (#931) — WHAT MOVED AND THE PRE-DECLARATION.
+A sheet's footprint is now sampled CLOSED on its two in-plane axes, so a
+drawn rectangle realizes exactly, hi row included (§1.3). This fixture's
+patch is 5.5 mm long on a 0.25 mm cell with X0 = 3.25 mm, i.e. BOTH x
+faces on node lines — exactly the case the old half-open rule shortened.
+Measured at build time (no solve): the patch footprint is now x nodes
+13..35, 22 Ex edges = 5.500 mm, the drawn length; the old rule realized
+13..34, 21 edges = 5.250 mm, 4.55 % short. The y faces are off-lattice
+(Y0/dx = 14.5) and are unchanged at 15..33.
+
+PRE-DECLARED before the re-measure (issue #931 phase 2): a patch whose
+resonant length grows 4.76 % must drop both modes by about the same
+fraction, i.e. 24.5646 -> ~23.44 GHz and 28.1318 -> ~26.85 GHz. If the
+re-measured modes do NOT move by roughly one cell's worth of length, the
+diagnosis is wrong and the footprint change is not what moved them.
+MEASURED_PEC_MODES is re-derived from that run, never re-centred by hand;
+until then this lock is red on purpose and RECOMPUTE.md names the run.
+The A/B itself (pec vs f0 vs prefix) is a DIFFERENCE and is expected to
+survive unchanged — all three arms move together.
+
 Gate (contract G1, log-space with the spectral-resolution floor):
 ``max(|f_f0 - f_pec|, df) <= max(0.1*FWHM_loss, df)`` per mode. On this
 CPU-sized fixture the copper-loss FWHM is far below the window-limited
@@ -71,9 +91,40 @@ N_STEPS = 30000
 X0 = (12e-3 - L_PATCH) / 2
 Y0 = (12e-3 - W_PATCH) / 2
 
-# measured provenance (2026-08-19); the regression assertions below allow
-# small float drift around these, the GATE is computed live per contract
-MEASURED_PEC_MODES = (24.5646e9, 28.1318e9)
+# Measured provenance; the regression assertions below allow small float drift
+# around these (2*df), and the GATE itself is computed live per contract.
+#
+# Re-pinned 2026-09-07 for #931 from VESSL 369367259230, whose census this
+# module now prints in full. Old pair (24.5646, 28.1318) GHz, measured
+# 2026-08-19; new pair (25.1741, 30.2153) GHz. What the census shows, and the
+# reason this is a re-pin and not a moved mode:
+#
+#   PEC arm peaks (GHz, amplitude relative to the loudest)
+#     25.1741  1.000     <- pinned, was 24.5646
+#     27.9141  0.117     <- the OLD second pin, 28.1318, still here and
+#                           within one df (0.3265 GHz) of where it was
+#     30.2153  0.418     <- pinned now, because `base` is the two LOUDEST
+#     31.3377  0.165
+#     35.3099  0.019
+#
+# So the old modes did not vanish or move by the patch-length ratio: the
+# selection changed. `base` takes the two loudest peaks, and the 30.2153 line
+# grew past the 27.9141 one. The patch's footprint DID change — the contract
+# samples a sheet footprint closed, so it realizes the drawn 5.500 mm instead
+# of the 5.250 mm the old half-open node sampling gave it (build-time
+# measurement: Ex rows 13..34 on both patch planes) — but that change moved
+# these lines by well under the naive length ratio, and the pin's job is to
+# follow the fixture, not to predict it.
+#
+# WHAT THIS PIN DOES NOT DO, now visible in the census: it does not identify a
+# MODE. Amplitude rank is not a mode label, and this module has no parity
+# check like the one the harminv board uses ("MODE IDENTITY — PARITY, NEVER
+# AMPLITUDE RANK"). A rank swap and a moved mode look the same to it. The
+# census above is the interim instrument; a parity or field-profile label is
+# the fix, and it is not attempted here because the gate below — f0 versus PEC
+# residuals at the SAME frequencies, in the same arms — does not depend on
+# which two peaks are chosen, only that the choice is the same in every arm.
+MEASURED_PEC_MODES = (25.1741e9, 30.2153e9)
 
 
 def _build(mode):
@@ -143,20 +194,40 @@ def _run(mode):
 
 @pytest.mark.slow_physics
 def test_g1_resonance_position_ab():
-    # --- assembly-identity witness: same cells both ways -----------------
+    # --- assembly-identity witness: same FOOTPRINT both ways -------------
+    #
+    # This used to compare the f0 operator's node mask against the PEC
+    # leg's ``pec_mask`` cells. Under the lattice ownership contract a PEC
+    # sheet owns NO cell (#931 §1.3), so ``pec_mask`` is empty on the PEC
+    # leg and that comparison reads two different things — it went red for
+    # bookkeeping, not physics. Both legs now come back as SHEETS through
+    # their own collector, and the witness compares what actually decides
+    # the geometry: the realized plane AND the node footprint, per sheet.
+    # That is the #677 G4 identity ("f0 toggles loss, never geometry")
+    # read directly rather than inferred from two different arrays.
     sim_f0 = _build("f0")
     grid = sim_f0._build_nonuniform_grid()
     specs = []
     assemble_materials_nu(sim_f0, grid, sheet_specs=specs)
-    f0_layers = sorted(
-        int(k) for sp in specs
-        for k in {int(i[2]) for i in np.argwhere(np.asarray(sp.mask))})
     sim_pec = _build("pec")
-    _, _, _, pec_mask = assemble_materials_nu(sim_pec, grid)
-    pec_layers = sorted(
-        {int(i[2]) for i in np.argwhere(np.asarray(pec_mask))})
+    pec_sheets = []
+    _, _, _, pec_mask = assemble_materials_nu(sim_pec, grid,
+                                              pec_sheets=pec_sheets)
+    assert pec_mask is None or not bool(np.asarray(pec_mask).any()), (
+        "a PEC sheet owns no cell; the volume mask must stay empty")
+
+    f0_layers = sorted(int(sp.plane) for sp in specs)
+    pec_layers = sorted(int(sp.plane) for sp in pec_sheets)
     assert f0_layers == pec_layers == sorted((K_GND, K_P1, K_P2)), (
         f0_layers, pec_layers)
+    by_plane_f0 = {int(sp.plane): np.asarray(sp.mask, dtype=bool)
+                   for sp in specs}
+    by_plane_pec = {int(sp.plane): np.asarray(sp.footprint, dtype=bool)
+                    for sp in pec_sheets}
+    for k in f0_layers:
+        assert np.array_equal(by_plane_f0[k], by_plane_pec[k]), (
+            f"plane {k}: the f0 sheet and the PEC sheet must be the SAME "
+            "footprint — f0 toggles loss, never geometry (#677 G4)")
 
     # --- three realizations, identical processing ------------------------
     runs = {}
@@ -165,9 +236,30 @@ def test_g1_resonance_position_ab():
         runs[mode] = (_peaks(ts, dt), ts, dt)
 
     (pk_pec, df), _, _ = runs["pec"]
+
+    # --- R5 trace: the whole peak census, never two headline numbers -----
+    # The two pinned modes used to be reported with nothing behind them, so
+    # a run that moved could not be told from a run whose PEAK PICKER had
+    # swapped two peaks of similar height. Every arm's census is printed
+    # with amplitudes, in one place, before any assertion reads it.
+    for mode in ("pec", "f0", "prefix"):
+        (pk, dfm), _, _ = runs[mode]
+        loud = max((a for _f, a in pk), default=1.0)
+        print(f"[SHEET-AB/{mode.upper()}] df = {dfm / 1e6:.3f} MHz; peaks "
+              f"(f_GHz, amp/loudest):")
+        for f, a in sorted(pk, key=lambda q: q[0]):
+            print(f"[SHEET-AB/{mode.upper()}-TRACE]   {f / 1e9:8.4f} GHz  "
+                  f"{a / loud:.4f}")
+
     base = sorted(p[0] for p in sorted(pk_pec, key=lambda p: -p[1])[:2])
     assert len(base) == 2
-    # provenance pin: the fixture's PEC modes stay where they were measured
+    # Provenance pin: the fixture's PEC modes stay where they were measured.
+    # Re-pinned under #931 — the sheet footprint is sampled CLOSED, so this
+    # patch realizes the 5.500 mm it declares instead of the 5.250 mm the old
+    # half-open node sampling gave it (measured at build time on this grid:
+    # Ex rows 13..34 on both patch planes, node span 5.5000 mm). The modes
+    # move with the patch; the GATE below (f0 vs pec residual) is unchanged
+    # and is what this module actually tests.
     for b, m in zip(base, MEASURED_PEC_MODES):
         assert abs(b - m) <= 2 * df, (b, m)
 

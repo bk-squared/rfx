@@ -20,6 +20,11 @@ from rfx.sources import GaussianPulse
 def _run():
     sim = Simulation(freq_max=20e9, domain=(6e-3, 6e-3, 6e-3), dx=300e-6,
                      boundary="cpml", cpml_layers=6)
+    # a solid scatterer: a VOLUME (2 cells per axis, node to node), left one.
+    # #931 §1.2 gives it walls on BOTH bounding planes of every axis, so its
+    # absolute scattered field moved; this file's gate is chunked == whole
+    # BITWISE on the same run, which does not read that. Same cube as
+    # test_ntff_box_nu_pads.
     sim.add(Box((2.7e-3, 2.7e-3, 2.7e-3), (3.3e-3, 3.3e-3, 3.3e-3)),
             material="pec")
     sim.add_source(position=(3e-3, 3e-3, 2.4e-3), component="ez",

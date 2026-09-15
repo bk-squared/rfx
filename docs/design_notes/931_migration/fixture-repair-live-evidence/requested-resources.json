@@ -1,0 +1,7 @@
+{
+  "run_id": 369367259617,
+  "note": "Server-normalized resources omitted the submitted cpu/memory fields; original submitted YAMLs are archived separately. This is not an allocated-capacity claim.",
+  "server_normalized_resources": {
+    "cluster": "remilab-c0"
+  }
+}

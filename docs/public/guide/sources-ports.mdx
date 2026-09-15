@@ -286,6 +286,8 @@ sim = Simulation(
     cpml_layers=3,
 )
 sim.add_material("substrate", eps_r=3.2, sigma=0.01)
+# 2-cell PEC volumes, not foil: each realizes walls at both drawn faces, so the
+# electrical substrate is the declared 1.00 mm. Foil would be a sheet instead.
 sim.add(Box((0.75e-3, 0.75e-3, 0.75e-3), (19.25e-3, 9.25e-3, 1.25e-3)), material="pec")
 sim.add(Box((0.75e-3, 0.75e-3, 1.25e-3), (19.25e-3, 9.25e-3, 2.25e-3)), material="substrate")
 sim.add(Box((0.75e-3, 4.50e-3, 2.25e-3), (19.25e-3, 5.50e-3, 2.75e-3)), material="pec")

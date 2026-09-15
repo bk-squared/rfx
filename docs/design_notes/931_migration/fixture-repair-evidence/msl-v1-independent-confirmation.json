@@ -1,0 +1,13 @@
+{
+  "run_name": "local-931-fixture-repair-final-selection-20260908",
+  "fixture_id": "931-msl-254um-600um-aligned-v1",
+  "source_repair_state": "v1, before final source repair; NOT v2 qualification",
+  "independent_fdtd": true,
+  "raw_S_array_equal": true,
+  "max_raw_S_delta": 0.0,
+  "qualification_failures": [
+    "unexcited/unreliable full-spectrum bins",
+    "old 10mm comparator phase failure, corrected offline"
+  ],
+  "log": "selection.log"
+}

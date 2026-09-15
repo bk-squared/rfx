@@ -1,0 +1,79 @@
+name: rfx-931-cv05-farfield-envelope
+description: "Re-derive the canonical-patch far-field envelope constants that _ENVELOPES_REDERIVED_FOR_931 holds. tests/crossval/test_patch_canonical_farfield_e4.py gates D_ABS_TOL_DB, F_RES_REL_LO/HI and the mode-pair band against the committed openEMS reference; all of them were measured on the pre-#931 one-cell-PEC-ground board whose ground cell sat inside the cavity as vacuum, and cannot be translated. scripts/diagnostics/measure_patch_canonical_farfield_e4.py calls that gate file's own rfx_run fixture function (one FDTD run, dx = 2 mm, num_periods = 110, ~12 min CPU) and writes a JSON record with the measured values and the arithmetic for each proposed constant. Phase 2b ingest, group X-A. Submit: vessl run create -f cv05_farfield_envelope.yaml"
+tags: [rfx, issue-931, ingest, cv05, crossval-a, farfield]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_PLATFORMS: "cpu"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  echo "=== rfx #931 INGEST: canonical patch far-field envelope re-derivation ==="
+  date
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  WORK=/root/workspace/byungkwan-workspace/research/rfx-931-XA-crossval-a
+  test -d "$WORK" || { echo "ERROR: branch worktree missing at $WORK"; exit 3; }
+  RUNS=/root/workspace/claude-workspace/rfx/runs
+  OUT=$RUNS/issue931-post-cv05farfield-$(date -u +%Y%m%dT%H%M%SZ)
+  mkdir -p "$OUT"
+  echo "$OUT" > "$RUNS/issue931-post-cv05farfield.latest"
+  trap 'chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
+  echo "artifacts: $OUT"
+  HAVE_GIT=0
+  if command -v git >/dev/null 2>&1; then
+    git config --global --add safe.directory '*' >/dev/null 2>&1 || true
+    if git -C "$WORK" rev-parse --git-dir >/dev/null 2>&1; then HAVE_GIT=1; fi
+  fi
+  echo "HAVE_GIT=$HAVE_GIT" | tee "$OUT/have_git.txt"
+  if [ "$HAVE_GIT" -eq 1 ]; then
+    git -C "$WORK" log --oneline -1 | tee "$OUT/commit.txt"
+    git -C "$WORK" status --porcelain | tee "$OUT/worktree_status_before.txt"
+  else
+    echo "git unavailable in image; commit identity not recorded" | tee "$OUT/commit.txt"
+  fi
+  cd "$WORK"
+  touch "$OUT/.tstamp"
+  "$PY" -m pip uninstall -y -q jax-cuda12-plugin jax-cuda12-pjrt 2>/dev/null || true
+  # pytest is in this list because the GATE FILE imports it at module scope
+  # (pytest.approx, the slow markers) and the measuring script imports that
+  # file rather than copying its build. The image does not carry pytest; the
+  # first attempt at this job died on exactly that, before touching physics.
+  # No test is RUN through pytest here — the four fast gates are called as
+  # plain functions inside the script.
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" "pytest>=8"
+  export RFX_REPO_ROOT="$WORK"
+  export PYTHONPATH="$WORK"
+  export MPLBACKEND=Agg
+  "$PY" -c "import jax, rfx, os; print('probe ok | jax', jax.__version__, '| backend', jax.default_backend(), '| rfx from', os.path.dirname(rfx.__file__))"
+  # The gate file's four fast, no-FDTD tests run INSIDE the measuring script
+  # (it calls them directly) and it exits 3 without solving if any fails. The
+  # first attempt at this job ran them through pytest, which the solver image
+  # does not carry, and the run refused on a missing test runner rather than on
+  # the board — a wasted allocation. No pytest here.
+  echo "=== step measure (fast gates, then one FDTD run through the gate file's own fixture) ==="
+  set +e
+  timeout 7200 "$PY" -u scripts/diagnostics/measure_patch_canonical_farfield_e4.py \
+      --out "$OUT/canonical_farfield_e4_measured.json" > "$OUT/measure.log" 2>&1
+  rc=$?
+  set -e
+  echo "$rc" > "$OUT/measure.rc"
+  tail -n 40 "$OUT/measure.log" || true
+  echo "=== proposed constants ==="
+  "$PY" -c "import json,sys; d=json.load(open(sys.argv[1]))['proposed_constants']; [print(k, d[k]['old'], '->', d[k]['new'], '|', d[k]['arithmetic']) for k in d]" \
+      "$OUT/canonical_farfield_e4_measured.json" 2>/dev/null | tee "$OUT/constants.txt" || true
+  if [ "$HAVE_GIT" -eq 1 ]; then
+    git -C "$WORK" status --porcelain | tee "$OUT/worktree_status_after.txt"
+  fi
+  ls -la "$OUT"
+  chmod -R a+rX "$OUT" 2>/dev/null || true
+  echo "INGEST_MEASURE=canonical_farfield_e4 RC=$rc"
+  exit "$rc"

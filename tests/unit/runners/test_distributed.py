@@ -992,6 +992,16 @@ class TestLegacyPmapPadXFaceAppliers:
     ``tests/unit/boundaries/test_boundary_pmc_distributed.py::test_pmc_distributed_legacy_mixed_z``
     (which exercises them at n_devices=1, where pad_x is always 0 and
     so never reaches this code path either).
+
+    #931 SCOPE: these are DOMAIN-FACE appliers, and the lattice ownership
+    contract fences domain-boundary PEC out of the realized-edge-set
+    function on purpose (design note §1.8: ``BoundarySpec`` faces,
+    ``apply_pec`` / ``apply_pec_faces`` keep their convention, E_tan = 0 on
+    the face plane at index 0 / N). A domain wall and a body wall stay two
+    mechanisms: a body's walls come from ``realized_pec_edge_masks`` and
+    follow its drawing, a domain face is a boundary condition on the
+    outermost node. Nothing in this class is a consumer of the body rule,
+    and the index arithmetic below is about slab padding, not realization.
     """
 
     def _padded_state(self, n_devices, nx_local, ny, nz):

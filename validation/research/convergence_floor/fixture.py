@@ -34,6 +34,8 @@ import numpy as np
 from rfx import Simulation, Box, GaussianPulse
 from rfx.api._preflight import PreflightWarning
 
+from validation.crossval.comparators import realized_conductors as RC
+
 C0 = 299792458.0
 
 # --- P-C geometry (fixtures.py, PR #785) -------------------------------
@@ -158,14 +160,13 @@ def n_steps_for(scale: float, dz_min: float) -> int:
 def build_sim(scale: float, dz_profile: np.ndarray, antisym: bool = True,
               with_trace: bool = True, src_amp: float = 1.0,
               src_p=SRC_P, src_m=SRC_M, prb=PRB) -> Simulation:
-    """PR #785 ``build_sim`` with knife-edge-free (half-cell margin) drawing.
+    """PR #785 ``build_sim``, with the PEC trace drawn on NODE planes (#931).
 
     ``with_trace=False`` deletes ONLY the PEC trace (D2 control); every
     other declaration, the port pair and the probe are untouched.
     """
     assert abs(dz_profile.sum() - PC_TOTAL_H) < 1e-9
     dx = PC_DX0 * scale
-    dzf = PC_DZF0 * scale
     assert abs(round(PC_A / dx) * dx - PC_A) < 1e-9
     sim = Simulation(
         freq_max=F_MAX, domain=(PC_A, PC_B, PC_TOTAL_H),
@@ -178,11 +179,33 @@ def build_sim(scale: float, dz_profile: np.ndarray, antisym: bool = True,
     sim.add(Box((0, 0, z_up0), (PC_A, PC_B, z_up0 + PC_H_UPPER)),
             material="upper")
     if with_trace:
-        sim.add(Box((TRACE_X[0] - dx / 2, TRACE_Y[0] - dx / 2,
-                     TRACE_Z[0] - dzf / 2),
-                    (TRACE_X[1] + dx / 2, TRACE_Y[1] + dx / 2,
-                     TRACE_Z[1] + dzf / 2)),
+    # #931: drawn on NODE planes, and the half-cell margins are gone.
+    #
+    # PR #785 drew this body with a +-half-cell margin on every face
+    # ("knife-edge-free") because the pre-#931 rule sampled a PEC Box at
+    # NODES, half-open: a face exactly on a node was a tie, and the hi
+    # face was dropped, so the margins were what put the intended node set
+    # inside the mask. Under the lattice ownership contract a PEC volume is
+    # sampled at cell CENTRES and the realized edge set spans exactly the
+    # drawn node range — drawn IS realized (§1.1/§1.2) — so the margins now
+    # SHIFT the body: faces on cell midpoints put the last occupied cell
+    # one below the intended hi node. Drawing on the declared nodes is both
+    # the contract's spelling and the fixture's original intent.
+    #
+    # This changes the realized body relative to PR #785, which realized
+    # one edge SHORT of the declared node set on each axis' hi side. The
+    # #786 predeclared windows and d0_reproduce's PR #785 comparison
+    # numbers were measured on that geometry and must be re-derived; they
+    # are deliberately NOT touched here.
+        sim.add(Box((TRACE_X[0], TRACE_Y[0], TRACE_Z[0]),
+                    (TRACE_X[1], TRACE_Y[1], TRACE_Z[1])),
                 material="pec")
+        # Build-time (no solve): realized == declared on every axis.
+        RC.assert_wall_span(
+            sim, 2, TRACE_Z[0], TRACE_Z[1],
+            at=(0.5 * (TRACE_X[0] + TRACE_X[1]),
+                0.5 * (TRACE_Y[0] + TRACE_Y[1])),
+            label="P-C trace", tol_m=1e-12)
     sim.add_source(src_p, "ez",
                    waveform=GaussianPulse(amplitude=+src_amp, **WAVEFORM),
                    amplitude_kind="current")

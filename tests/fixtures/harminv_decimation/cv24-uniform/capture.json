@@ -1,0 +1,288 @@
+{
+  "case": "cv24-uniform",
+  "source_commit": "013fc06a",
+  "source_harminv_sha256": "04e3cdec7e2c32eaf79c30ddb6d2928383eea039eddcf8947a09c5228fb30075",
+  "python": "3.10.12",
+  "numpy": "2.2.6",
+  "scipy": "1.15.3",
+  "jax": "0.6.2",
+  "jax_enable_x64": false,
+  "records": [
+    {
+      "file": "input-00.npz",
+      "dt": 5.719724608593017e-12,
+      "f_min": 4000000000.0,
+      "f_max": 8500000000.0,
+      "kwargs": {
+        "decimate": false
+      },
+      "n_samples": 5515,
+      "dtype": "float64",
+      "sha256": "238f00490c369a65d1754df289f0a112cf268cdba2e36225e99e59797cc7d004"
+    },
+    {
+      "file": "input-01.npz",
+      "dt": 5.719724608593017e-12,
+      "f_min": 4000000000.0,
+      "f_max": 8500000000.0,
+      "kwargs": {
+        "decimate": false
+      },
+      "n_samples": 5515,
+      "dtype": "float64",
+      "sha256": "61d62e9cbd73d128fd84d297944bd27b5f90cbfeae3ef2905e207151772e89da"
+    },
+    {
+      "file": "input-02.npz",
+      "dt": 5.719724608593017e-12,
+      "f_min": 4000000000.0,
+      "f_max": 8500000000.0,
+      "kwargs": {
+        "decimate": false
+      },
+      "n_samples": 5515,
+      "dtype": "float64",
+      "sha256": "07517a60f941c999387fbdb353d687aa198e0469352646dfe78ccdac5e25cc9e"
+    },
+    {
+      "file": "input-03.npz",
+      "dt": 3.8131497390620115e-12,
+      "f_min": 4000000000.0,
+      "f_max": 8500000000.0,
+      "kwargs": {
+        "decimate": false
+      },
+      "n_samples": 5514,
+      "dtype": "float64",
+      "sha256": "689a15c49e8966f701b5c395a9814a3d16ebee2a0a4ec70a8f16de9736ec7c27"
+    },
+    {
+      "file": "input-04.npz",
+      "dt": 3.8131497390620115e-12,
+      "f_min": 4000000000.0,
+      "f_max": 8500000000.0,
+      "kwargs": {
+        "decimate": false
+      },
+      "n_samples": 5514,
+      "dtype": "float64",
+      "sha256": "6ee631b0cc684da0bbb0ef5501208414fb2e2484a4c626a06d6944e6855d702d"
+    },
+    {
+      "file": "input-05.npz",
+      "dt": 3.8131497390620115e-12,
+      "f_min": 4000000000.0,
+      "f_max": 8500000000.0,
+      "kwargs": {
+        "decimate": false
+      },
+      "n_samples": 5514,
+      "dtype": "float64",
+      "sha256": "ccb7fd4620655ea5a475f3275d73a9377805f40fa7878f43d4d5f51697863259"
+    },
+    {
+      "file": "input-06.npz",
+      "dt": 3.8131497390620115e-12,
+      "f_min": 4000000000.0,
+      "f_max": 8500000000.0,
+      "kwargs": {
+        "decimate": false
+      },
+      "n_samples": 5515,
+      "dtype": "float64",
+      "sha256": "1de57af73dd8523c87fb79a8d09689d063ba1db4bea79e50b5821673854cb1aa"
+    },
+    {
+      "file": "input-07.npz",
+      "dt": 3.8131497390620115e-12,
+      "f_min": 4000000000.0,
+      "f_max": 8500000000.0,
+      "kwargs": {
+        "decimate": false
+      },
+      "n_samples": 5515,
+      "dtype": "float64",
+      "sha256": "92e4db01e0d29ed85ef7bf26bbc3da4af888308705e743ed93a34e1b1fc01971"
+    },
+    {
+      "file": "input-08.npz",
+      "dt": 3.8131497390620115e-12,
+      "f_min": 4000000000.0,
+      "f_max": 8500000000.0,
+      "kwargs": {
+        "decimate": false
+      },
+      "n_samples": 5515,
+      "dtype": "float64",
+      "sha256": "0d6637039fc652b5a6af536605516a6f689bd71c9a32faa88adcecada81ca9ff"
+    }
+  ],
+  "case_exit_code": null,
+  "arm": {
+    "name": "uniform",
+    "lane": "uniform",
+    "dx": 0.001,
+    "profile_mm": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "nodes": [
+      51,
+      31,
+      41
+    ],
+    "cells": [
+      50,
+      30,
+      40
+    ],
+    "n_cells": 60000,
+    "realized_d_m": 0.04,
+    "dt": 1.9065748695310057e-12,
+    "n_steps": 16794,
+    "record": {
+      "df_min_hz": 142674765.42663193,
+      "closest_pair": [
+        "TM111",
+        "TE201"
+      ],
+      "t_post_s": 3.1540265628220354e-08,
+      "t_start_s": 4.77464829275686e-10,
+      "n_start": 251,
+      "n_steps": 16794,
+      "dt": 1.9065748695310057e-12,
+      "n_sub": 11029,
+      "pair_units_full": 4.455000000000001,
+      "pair_units_sub": 2.9700000000000006
+    },
+    "preflight": [
+      "  [PREFLIGHT] All checks passed."
+    ],
+    "metric_swap": false,
+    "search_band_hz": [
+      4000000000.0,
+      8500000000.0
+    ],
+    "measured": {
+      "per_mode": {
+        "TE101": null,
+        "TM110": null,
+        "TE011": null,
+        "TM111": null,
+        "TE201": null,
+        "TM210": null,
+        "TE102": null
+      },
+      "n_clusters_in_band": 0,
+      "orphans": [],
+      "ambiguous": [],
+      "stationarity": {
+        "TE101": null,
+        "TM110": null,
+        "TE011": null,
+        "TM111": null,
+        "TE201": null,
+        "TM210": null,
+        "TE102": null
+      },
+      "windows": {
+        "full": {
+          "steps": [
+            251,
+            16794
+          ],
+          "n_clusters_in_band": 0,
+          "per_mode": {
+            "TE101": null,
+            "TM110": null,
+            "TE011": null,
+            "TM111": null,
+            "TE201": null,
+            "TM210": null,
+            "TE102": null
+          }
+        },
+        "A": {
+          "steps": [
+            251,
+            11279
+          ],
+          "n_clusters_in_band": 0,
+          "per_mode": {
+            "TE101": null,
+            "TM110": null,
+            "TE011": null,
+            "TM111": null,
+            "TE201": null,
+            "TM210": null,
+            "TE102": null
+          }
+        },
+        "B": {
+          "steps": [
+            5765,
+            16794
+          ],
+          "n_clusters_in_band": 0,
+          "per_mode": {
+            "TE101": null,
+            "TM110": null,
+            "TE011": null,
+            "TM111": null,
+            "TE201": null,
+            "TM210": null,
+            "TE102": null
+          }
+        }
+      },
+      "energy": {}
+    },
+    "cost": {
+      "n_cells": 60000,
+      "n_steps": 16794,
+      "cell_steps": 1007640000,
+      "wall_run_s": 15.35808253288269,
+      "wall_harminv_s": 0.07637643814086914,
+      "wall_energy_s": 0.0
+    }
+  },
+  "note": "cv24 measured fields are empty because this is input capture, not a verdict"
+}

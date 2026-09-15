@@ -1,5 +1,18 @@
 # E4 expansion: every crossval case × every external solver class — inventory and lane plan
 
+> **SUPERSEDED IN PART by #931 (the lattice ownership contract), 2026-09-07.**
+> Kept as dated history; its numeric citations describe the planning snapshot.
+> The appended 2026-09-08 artifact-pointer correction below identifies the
+> current regenerated records. Proposed windows below remain historical.
+> Its cv05 row calls the f0 gate "blind to the #740 one-plane-ground
+> realization". That realization no longer exists — the ground is declared a
+> sheet — so the blindness it hedged against is not the current risk; the leg
+> still adds a third independent f0.
+> The current rule is
+> `docs/design_notes/20260906_plan_realign_lattice_ownership.md` §1, and for
+> users `docs/public/guide/materials-geometry.mdx` ("How conductors land on
+> the lattice").
+
 **Status:** PLAN (no simulation run, no code changed; this note only) · **Opened:** 2026-09-03 · **Author:** planning agent
 **PI decision (2026-09-03, verbatim):** "crossval 들에서 한 종류가 아니라 시뮬레이션 가능한 모든 class (ems/meep/palace)를 추가하는걸로 해줘" — every crossval case gets every external solver class that can simulate it (openEMS, Meep, Palace), not one.
 **Branch:** `agent/e4-all-solvers-plan` (worktree `~/Documents/rfx-worktrees/e4-plan`, base `origin/main` @ `6d13df7`).
@@ -248,3 +261,27 @@ Recommended first three after L0: **L1, L2, L3**. Together they close 7 cells on
 - `tests/fixtures/msl_notch_e4/msl_stub_notch_palace_referee.json::meta.version = "58f2991-dirty"`, `::meta.mesh.coarse.{tets,dof_order2} = 143812 / 968238`, `::meta.vessl_runs.failed_lanes`; `tests/fixtures/sheen_lpf_e4/sheen_lpf_palace_referee.json::meta.mesh.coarse.{tets,dof_order2} = 140039 / 924257`, `::meta.port_note`.
 - `tests/fixtures/waveguide_broad_e5/cv11_wr90_main_baseline_stdout.txt:149` (slab S11 vs Palace max 0.0186); `wr90_rectangular_broad_e4_comparison.json` (0.0707, 2026-06-16).
 - Capability lines: `docker/openems-lane/Dockerfile` (OPENEMS_COMMIT, WITH_MPI=OFF); `openEMS/FDTD/operator.cpp:799-801`; `openEMS/FDTD/extensions/operator_ext_lorentzmaterial.cpp:240-256, 263-266`; `CSXCAD/python/CSXCAD/CSProperties.pyx:1070, 1091, 1636, 1712`; `CSXCAD/python/CSXCAD/CSXCAD.pyx:346-455`; `openEMS/python/openEMS/ports.py` (class list); `openEMS/python/Tutorials/RCS_Sphere.py:65-66, 74, 96, 110`; `scripts/diagnostics/meep_coax_line_reference.py:8-9`; `scripts/diagnostics/ar_coating_openems_xval.py:8-11`; `scripts/diagnostics/build_msl_notch_openems_comparison.py:17-21`; `scripts/vessl_issue812_r2_cv17_cv18.yaml:48`; `scripts/vessl_cv22_dispersive_slab.yaml:22-26, 66`; `scripts/vessl_cv22_dispersive_slab_r4.yaml:105-110`; awslabs/palace `docs/src/guide/boundaries.md:62-76, 105-160`, `docs/src/guide/model.md:62-72`, `docs/src/guide/problem.md:103-124`, `docs/src/features/farfield.md`, release notes v0.14.0 / v0.15.0 / v0.17.0; `rfx/harminv.py:40`; `validation/crossval/11_waveguide_port_wr90.py:719-770`; `.github/workflows/validation.yml:175-260`.
+
+
+## Artifact-pointer correction after #931 (2026-09-08)
+
+The numeric citations in §§2–5 above describe the 2026-09-03 planning snapshot.
+Several paths now resolve to regenerated artifacts; they no longer reproduce
+those historical numbers. This table supplies the current values without
+rewriting the proposal or changing any gate.
+
+| case | historical citation above | current committed artifact |
+|---|---|---|
+| cv05 | `cv05_run_openems_369367257743.json` | The current run record is `_05_patch_results/cv05_run_openems_369367259142.json`; the named older record remains historical evidence. |
+| cv05 | `cv05_ringdown_spectra.json::runs.patch_len_22p0mm.modes[0].freq = 2.993459 GHz` | The TM110 pole is now **`modes[1].freq = 3.043213 GHz`**; retain the mode identity rather than the old list position. |
+| cv06b | `cv06b_build_falsifiers_summary.json::stub_narrow.bw_ratio = 0.648` | **0.655348** (stored 0.6553479954953043). The width gate still fires; the notch-frequency gate now also fires. |
+| cv07 | Structure-distance spread OpenEMS/rfx `0.66 % / 1.52 %` | `sheen_lpf_palace_referee.json::referee.structure_distance_pct` is **0.6644 % / 2.8668 %**. The distinct `referee.argmin_first_null.distances_pct.rfx` is **2.3756 %** and must not substitute for structure distance. |
+| cv18 | `aperture_resolution.json::pairs[2].fine_gate_abs = 0.015`, `pairs[4] = 0.035`, pooled `0.04` | **0.006**, **0.016**, pooled **0.02**, already re-derived on the branch. No window is changed by this correction. |
+| cv18 | One-cell under-aperture blind spot | The current `aperture_resolution.json::summary` reports detection in **both signs at all 8 configurations**; the old under-aperture blind spot was the pre-#931 thickness deficit. |
+| cv18 | `_18_wr90_iris_results/rfx.json::gated_fine[0].wall_s = 823.4` | **424.3 s**; the eight current fine records span **352.1–496.3 s**. The planning costs above are historical hardware/run estimates. |
+
+For cv07, the regenerated rfx passivity-correction footprint is **3/120 bins
+above 0.05, worst 0.6571609**, all above **17 GHz** and none in the **5–15 GHz**
+null band. The realized strip is coarser at the same **dx = 200 µm**; this is
+an extraction-correction change outside the stated null band, not evidence of
+an in-band physics regression. The number remains part of the public record.

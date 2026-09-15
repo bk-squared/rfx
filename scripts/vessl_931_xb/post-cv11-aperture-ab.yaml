@@ -1,0 +1,47 @@
+name: rfx-931-post-cv11-aperture-ab
+description: "cv11 A/B on ONE checkout: the pec-short leg with and without the in-script port-aperture trim, to attribute the measured |S11| step (0.0146 -> 0.0560) between baseline run 369367259004 and post run 369367259194 to either the trim or the #931 core. Two solves, ~2 min each. Checkout: worktree /root/workspace/byungkwan-workspace/research/rfx-931-XB-crossval-b on feat/931-crossval-b."
+tags: [rfx, issue-931, post, cv11, waveguide, ab]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_PLATFORMS: "cpu"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  echo "=== rfx #931: cv11 aperture-trim A/B (feat/931-crossval-b) ==="
+  date
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  WORK=/root/workspace/byungkwan-workspace/research/rfx-931-XB-crossval-b
+  test -d "$WORK" || { echo "ERROR: worktree missing at $WORK"; exit 3; }
+  RUNS=/root/workspace/claude-workspace/rfx/runs
+  OUT=$RUNS/issue931-post-cv11-aperture-ab-$(date -u +%Y%m%dT%H%M%SZ)
+  mkdir -p "$OUT"
+  echo "$OUT" > "$RUNS/issue931-post-cv11-aperture-ab.latest"
+  trap 'chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
+  echo "artifacts: $OUT"
+  cd "$WORK"
+  touch "$OUT/.tstamp"
+  "$PY" -m pip uninstall -y -q jax-cuda12-plugin jax-cuda12-pjrt 2>/dev/null || true
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7"
+  export RFX_REPO_ROOT="$WORK"
+  export PYTHONPATH="$WORK"
+  export MPLBACKEND=Agg
+  echo "=== step cv11_aperture_ab ==="
+  set +e
+  timeout 3600 "$PY" -u scripts/diagnostics/cv11_aperture_trim_ab.py --out-json "$OUT/cv11_aperture_trim_ab.json" > "$OUT/cv11_aperture_trim_ab.log" 2>&1
+  rc=$?
+  set -e
+  echo "$rc" > "$OUT/cv11_aperture_trim_ab.rc"
+  tail -n 40 "$OUT/cv11_aperture_trim_ab.log" || true
+  echo "cv11_aperture_ab_rc=$rc"
+  chmod -R a+rX "$OUT" 2>/dev/null || true
+  exit "$rc"

@@ -40,10 +40,15 @@ For every model:
 
 1. Confirm that important dielectric regions occupy enough cells to represent
    their interfaces and thickness.
-2. Represent a zero-thickness conductor with `add_thin_conductor(...)`, or use
-   an edge-aligned PEC volume that occupies at least one cell.
+2. Declare a conductor as what it is. Foil and any metal thinner than one local
+   cell is a **sheet**: `add_thin_conductor(...)`, or the equivalent
+   zero-thickness `Box` through `sim.add()`. Metal with real thickness is a
+   **volume**: a PEC `Box`/`Sphere`/`Cylinder` of at least one cell on every
+   axis. A PEC shape between zero and one cell thick raises — it is neither.
 3. Inspect the final cell edges after grading. A requested physical thickness
-   can still rasterize to zero cells.
+   that rasterizes to zero cells raises rather than vanishing, but a sheet can
+   still land on a plane you did not intend; read `fidelity_report()`, which
+   prints drawn extent against realized wall planes per PEC entry.
 4. Respect the adjacent-cell ratio reported by preflight.
 5. Repeat the requested observable on at least one finer mesh before using it
    as an RF result.
@@ -57,16 +62,21 @@ Material names do not imply a loss model. Set `eps_r`, `mu_r`, conductivity, or
 the supported dispersive parameters required by the calculation, and document
 the values used.
 
-rfx promotes materials with `sigma >= 1e6 S/m` to the PEC mask. Such a material
-does not retain finite volumetric conductivity in the update equations. Use
+rfx treats materials with `sigma >= 1e6 S/m` as perfect conductors. Such a
+material does not retain finite volumetric conductivity in the update
+equations. The threshold decides *whether* a shape is a conductor; the
+declaration route decides *what kind* — `sim.add()` a volume of cells,
+`add_thin_conductor()` a sheet on one node plane that owns no cell. Use
 PEC when that is the intended approximation. A finite sheet-resistance study
 requires a supported finite-conductivity representation below that threshold
 and a mesh/convergence study for the loss observable.
 
-PEC geometry is rasterized to the Yee grid. Subcell warnings identify geometry
-that may disappear or change effective dimensions; they are not evidence that
-the approximation is acceptable. See
-[Geometry and materials](../public/api/geometry-materials.mdx).
+PEC geometry is realized as a set of E edges on the Yee grid: an E component is
+PEC iff its own location lies inside the closed conductor region. A volume's
+drawn extent equals its realized extent (walls at both drawn faces); a sheet is
+one node plane. Sub-cell PEC shapes are refused at `add()` rather than warned
+about. See
+[How conductors land on the lattice](../public/guide/materials-geometry.mdx).
 
 ## 4. Keep active geometry clear of absorbers
 
@@ -76,7 +86,8 @@ allows otherwise. Check clearance against the final grid and absorber cell
 count, not only against nominal model coordinates.
 
 For NTFF calculations, rfx applies conservative preflight heuristics to the
-projected face clearance from PEC geometry. Passing those checks does not prove
+projected face clearance from realized conductor edges (volume wall planes and
+sheet planes alike, through `realized_wall_planes` / `edge_is_pec`). Passing those checks does not prove
 far-field separation. The transform may use a closed surface in the near field;
 mesh convergence and an analytic or independent reference remain necessary.
 

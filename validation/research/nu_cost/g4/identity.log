@@ -1,0 +1,83 @@
+
+uniform8
+ex: equal=False, differing=20382, max_abs=4.76837158203125e-07
+ey: equal=False, differing=20386, max_abs=3.5762786865234375e-07
+ez: equal=False, differing=20392, max_abs=7.152557373046875e-07
+hx: equal=False, differing=21168, max_abs=1.0577663189792474e-09
+hy: equal=False, differing=21168, max_abs=1.2921370640128771e-09
+hz: equal=False, differing=21168, max_abs=9.9403774100892406e-10
+psi_ex_ylo: equal=False, differing=5292, max_abs=9.892483276985331e-09
+psi_ex_yhi: equal=False, differing=5292, max_abs=1.5531984587369152e-08
+psi_ex_zlo: equal=False, differing=5292, max_abs=1.2664713722188026e-08
+psi_ex_zhi: equal=False, differing=5292, max_abs=2.7835767468786798e-08
+psi_ey_xlo: equal=False, differing=5292, max_abs=9.8453094565797983e-09
+psi_ey_xhi: equal=False, differing=5292, max_abs=1.8486556285779443e-08
+psi_ey_zlo: equal=False, differing=5291, max_abs=1.1521933629410341e-08
+psi_ey_zhi: equal=False, differing=5292, max_abs=2.9317561711650342e-08
+psi_ez_xlo: equal=False, differing=5292, max_abs=1.1852250736410497e-08
+psi_ez_xhi: equal=False, differing=5291, max_abs=2.463639248162508e-08
+psi_ez_ylo: equal=False, differing=5292, max_abs=1.1981683201156557e-08
+psi_ez_yhi: equal=False, differing=5292, max_abs=2.3092979972716421e-08
+psi_hx_ylo: equal=False, differing=5284, max_abs=7.674098014831543e-06
+psi_hx_yhi: equal=False, differing=4525, max_abs=4.7124922275543213e-06
+psi_hx_zlo: equal=False, differing=5281, max_abs=6.7427754402160645e-06
+psi_hx_zhi: equal=False, differing=4523, max_abs=6.1658211052417755e-06
+psi_hy_xlo: equal=False, differing=5278, max_abs=7.8268349170684814e-06
+psi_hy_xhi: equal=False, differing=4523, max_abs=5.0575472414493561e-06
+psi_hy_zlo: equal=False, differing=5280, max_abs=5.9232115745544434e-06
+psi_hy_zhi: equal=False, differing=4527, max_abs=4.0372833609580994e-06
+psi_hz_xlo: equal=False, differing=5288, max_abs=7.3667615652084351e-06
+psi_hz_xhi: equal=False, differing=4527, max_abs=5.3565017879009247e-06
+psi_hz_ylo: equal=False, differing=5285, max_abs=6.970483809709549e-06
+psi_hz_yhi: equal=False, differing=4532, max_abs=4.1320454329252243e-06
+F
+=================================== FAILURES ===================================
+__________________ test_cpml_localization_identity[uniform8] ___________________
+
+name = 'uniform8'
+
+    @pytest.mark.parametrize('name', FIXTURES)
+    def test_cpml_localization_identity(name):
+        reference = jax.jit(lambda: runner(name, old)[0])()
+        candidate = jax.jit(lambda: runner(name, cpml)[0])()
+        records = differences(reference, candidate)
+        print('\n' + name + '\n' + '\n'.join(records))
+>       assert all('equal=True' in record for record in records), '\n'.join(records)
+E       AssertionError: ex: equal=False, differing=20382, max_abs=4.76837158203125e-07
+E         ey: equal=False, differing=20386, max_abs=3.5762786865234375e-07
+E         ez: equal=False, differing=20392, max_abs=7.152557373046875e-07
+E         hx: equal=False, differing=21168, max_abs=1.0577663189792474e-09
+E         hy: equal=False, differing=21168, max_abs=1.2921370640128771e-09
+E         hz: equal=False, differing=21168, max_abs=9.9403774100892406e-10
+E         psi_ex_ylo: equal=False, differing=5292, max_abs=9.892483276985331e-09
+E         psi_ex_yhi: equal=False, differing=5292, max_abs=1.5531984587369152e-08
+E         psi_ex_zlo: equal=False, differing=5292, max_abs=1.2664713722188026e-08
+E         psi_ex_zhi: equal=False, differing=5292, max_abs=2.7835767468786798e-08
+E         psi_ey_xlo: equal=False, differing=5292, max_abs=9.8453094565797983e-09
+E         psi_ey_xhi: equal=False, differing=5292, max_abs=1.8486556285779443e-08
+E         psi_ey_zlo: equal=False, differing=5291, max_abs=1.1521933629410341e-08
+E         psi_ey_zhi: equal=False, differing=5292, max_abs=2.9317561711650342e-08
+E         psi_ez_xlo: equal=False, differing=5292, max_abs=1.1852250736410497e-08
+E         psi_ez_xhi: equal=False, differing=5291, max_abs=2.463639248162508e-08
+E         psi_ez_ylo: equal=False, differing=5292, max_abs=1.1981683201156557e-08
+E         psi_ez_yhi: equal=False, differing=5292, max_abs=2.3092979972716421e-08
+E         psi_hx_ylo: equal=False, differing=5284, max_abs=7.674098014831543e-06
+E         psi_hx_yhi: equal=False, differing=4525, max_abs=4.7124922275543213e-06
+E         psi_hx_zlo: equal=False, differing=5281, max_abs=6.7427754402160645e-06
+E         psi_hx_zhi: equal=False, differing=4523, max_abs=6.1658211052417755e-06
+E         psi_hy_xlo: equal=False, differing=5278, max_abs=7.8268349170684814e-06
+E         psi_hy_xhi: equal=False, differing=4523, max_abs=5.0575472414493561e-06
+E         psi_hy_zlo: equal=False, differing=5280, max_abs=5.9232115745544434e-06
+E         psi_hy_zhi: equal=False, differing=4527, max_abs=4.0372833609580994e-06
+E         psi_hz_xlo: equal=False, differing=5288, max_abs=7.3667615652084351e-06
+E         psi_hz_xhi: equal=False, differing=4527, max_abs=5.3565017879009247e-06
+E         psi_hz_ylo: equal=False, differing=5285, max_abs=6.970483809709549e-06
+E         psi_hz_yhi: equal=False, differing=4532, max_abs=4.1320454329252243e-06
+E       assert False
+E        +  where False = all(<generator object test_cpml_localization_identity.<locals>.<genexpr> at 0x10b6e18a0>)
+
+tests/unit/boundaries/test_cpml_localization.py:101: AssertionError
+=========================== short test summary info ============================
+FAILED tests/unit/boundaries/test_cpml_localization.py::test_cpml_localization_identity[uniform8]
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+1 failed in 2.56s

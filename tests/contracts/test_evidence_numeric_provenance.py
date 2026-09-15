@@ -61,6 +61,8 @@ from pathlib import Path
 
 import pytest
 
+from tests._git_tracked import git_available, tracked_set
+
 _REPO = Path(__file__).resolve().parents[2]
 
 # --------------------------------------------------------------------------
@@ -169,6 +171,24 @@ def parse_references(doc: str, site: str, text: str) -> list[Reference]:
 # Resolution
 # --------------------------------------------------------------------------
 
+_JSON_CACHE: dict[Path, object] = {}
+_TRACKED_CACHE: list[frozenset[str]] = []
+
+
+def _TRACKED() -> frozenset[str]:
+    """`git ls-files` once per session, not once per citation."""
+    if not _TRACKED_CACHE:
+        _TRACKED_CACHE.append(tracked_set(_REPO))
+    return _TRACKED_CACHE[0]
+
+
+def _load_json(target: Path):
+    """Load once per path: the census reaches ~650 references over ~30 files."""
+    if target not in _JSON_CACHE:
+        _JSON_CACHE[target] = json.loads(target.read_text(encoding="utf-8"))
+    return _JSON_CACHE[target]
+
+
 def resolve(root: Path, ref: Reference):
     """Walk ``ref.keypath`` into the committed JSON at ``ref.path``."""
     target = root / ref.path
@@ -177,7 +197,20 @@ def resolve(root: Path, ref: Reference):
             f"{ref.doc} [{ref.site}] cites `{ref.raw}`, but the artifact "
             f"{ref.path} does not exist."
         )
-    data = json.loads(target.read_text(encoding="utf-8"))
+    # #928: existing is not committed. A results directory can hold a file that
+    # lives in one checkout and no other (gitignored scratch, an un-added VESSL
+    # leftover); a citation resolved against such a file is green here and
+    # unresolvable in a fresh clone. Only asked of the repo tree -- the (B)-arm
+    # falsifiers below resolve against scratch trees, where tracking is not a
+    # question git can answer.
+    if root == _REPO and git_available(_REPO) and ref.path not in _TRACKED():
+        raise AssertionError(
+            f"{ref.doc} [{ref.site}] cites `{ref.raw}`, but the artifact "
+            f"{ref.path} is NOT git-tracked. It exists in this checkout only; "
+            f"a fresh clone cannot resolve the citation. Commit the artifact "
+            f"or cite one that is committed."
+        )
+    data = _load_json(target)
     node = data
     walked = ""
     for step in _STEP.finditer(ref.keypath):
@@ -278,6 +311,51 @@ CV19_WITNESS_NOTE = "docs/design_notes/20260903_cv19_fdfd_unitarity_witness.md"
 # falsifier argument is "no committed rung is near 1.0" -- exactly the shape that
 # is worthless if the numbers stop resolving. Opted in with its section 3.
 AUX_ECHO_NOTE = "docs/design_notes/20260904_aux_echo_record_invariant.md"
+# 2026-09-14 (#813): the cv01 CPML flux self-check pre-declaration. Its result
+# section quotes the four-point cpml_layers sweep -- the numbers that decide a
+# pre-declared gate -- so they are resolved here rather than retyped.
+CV01_CPML_NOTE = "docs/design_notes/cv01_cpml_flux_selfcheck_predeclaration.md"
+# 2026-09-06 (#928): the public benchmarks page is the single largest carrier of
+# measured numbers in the repository (93 references) and was NOT under this gate.
+# Every public "Validated comparison" row quotes an artifact value; a page that
+# says what is validated, with numbers nobody re-resolves, is the exact shape
+# this gate exists for.
+BENCHMARKS = "docs/public/guide/benchmarks.mdx"
+# 2026-09-06 (#928): the enumerate-and-classify pass over docs/public/**/*.mdx
+# and docs/design_notes/*.md (see CLASSIFICATION below) found eight further
+# notes whose references already resolve, with no unparseable `::` span to trip
+# the reader. Leaving a document that cites artifacts outside the gate because
+# nobody opted it in is how coverage stays accidental, so they are opted in
+# here; all eight were green at the commit that added them.
+NEWLY_GATED_NOTES = (
+    "docs/design_notes/20260901_patch_mode_identification_predeclaration.md",
+    "docs/design_notes/20260902_cv24_nu_cavity_predeclaration.md",
+    "docs/design_notes/estimator_resolution_regate.md",
+    "docs/design_notes/issue812_cv03_dispersion_regate_predeclaration.md",
+    "docs/design_notes/issue812_cv03_dispersion_regate_results.md",
+    "docs/design_notes/issue812_cv17_cv18_geometry_sensitivity_predeclaration.md",
+    "docs/design_notes/issue812_phase_identity_predeclaration.md",
+    "docs/design_notes/issue812_phase_identity_results.md",
+)
+
+ISSUE1043_STABILITY_NOTE = (
+    "docs/design_notes/issue1043_cpml_subpixel_coefficient_results.md")
+ISSUE1043_F1_NOTE = (
+    "docs/design_notes/issue1043_f1_pec_short_gate_results.md")
+# 2026-09-15 (#1043 stage B): the #831 diagnosis lane's two notes arrive from
+# the unmerged branch that produced them, because section 8.4 of the
+# pre-declaration is the falsifier the stage-B PR is judged by and a falsifier
+# a reviewer cannot re-run is not one. Both carry resolvable citations into
+# issue812_cv03_dispersion_matched_frequency.json, so GATED is the only
+# classification available to them -- there is no "resolvable but not opted
+# in" class, deliberately.
+ISSUE831_PREDECLARATION = (
+    "docs/design_notes/issue831_far_end_return_predeclaration.md")
+ISSUE831_RESULTS = "docs/design_notes/issue831_far_end_return_results.md"
+# Stage B's own results note, opted in for the same reason: its verdict IS a
+# table of measured numbers read out of committed artifacts.
+ISSUE1043_PAD_CONTINUATION_NOTE = (
+    "docs/design_notes/issue1043_pad_continuation_results.md")
 
 # Markdown documents, with the regex that cuts them into named sites.
 MARKDOWN_SITES: dict[str, str] = {
@@ -285,12 +363,45 @@ MARKDOWN_SITES: dict[str, str] = {
     CV11_NOTE: r"^#+\s+(.*\S)\s*$",
     "docs/design_notes/20260901_numeric_provenance_gate.md": r"^#+\s+(.*\S)\s*$",
     LATTICE_NOTE: r"^#+\s+(.*\S)\s*$",
+    BENCHMARKS: r"^#+\s+(.*\S)\s*$",
+    **{note: r"^#+\s+(.*\S)\s*$" for note in NEWLY_GATED_NOTES},
     # 2026-09-03 (#884): the cv19 unitarity-witness note argues *from* the
     # committed self-test scalars, so the committed scalars it quotes are
     # opted in here rather than retyped and trusted.
     CV19_WITNESS_NOTE: r"^#+\s+(.*\S)\s*$",
     # 2026-09-04 (#888): see AUX_ECHO_NOTE above.
     AUX_ECHO_NOTE: r"^#+\s+(.*\S)\s*$",
+    # 2026-09-10 (#931 lattice-ownership merge): two notes opted in because
+    # they now carry a resolvable citation each -- see the CLASSIFICATION
+    # comments below at the same date for why each one moved. (A third,
+    # v18_waveguide_s_chain_plan.md, also gained a resolvable citation but
+    # stays OUT of DOCUMENTS: it carries a second `::` span,
+    # `nu_flux_ad::..._grad_finite_and_fd_consistent`, a test-name reference
+    # this parser rejects by construction -- SYMBOL_SPAN_PARSER_SCOPE, not
+    # GATED. Adding it here breaks collection for every doc.)
+    "docs/design_notes/20260908_docs_truth_audit.md": r"^#+\s+(.*\S)\s*$",
+    "docs/design_notes/chain_closure_contract.md": r"^#+\s+(.*\S)\s*$",
+    "docs/design_notes/20260911_harminv_record_support.md": r"^#+\s+(.*\S)\s*$",
+    # 2026-09-14 (#813 layer sweep): the cv01 CPML pre-declaration was
+    # NO_ARTIFACT_REFERENCE while it carried no citation at all. Its
+    # "Result 2026-09-14" section is a table of measured numbers read out of
+    # scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json, which is
+    # exactly the shape this gate exists for, so the note is opted in with the
+    # section that carries them.
+    CV01_CPML_NOTE: r"^#+\s+(.*\S)\s*$",
+    # 2026-09-15 (#1043 / PR #1047 verification round): both results notes are
+    # opted in because their verdicts ARE tables of measured numbers read out
+    # of the committed stability / PEC-short artifacts -- exactly the shape
+    # this gate exists for. It is opted in for a measured reason: a
+    # transcription slip survived review in one of them (the 80-period head
+    # range read the bin-0 value 0.9969 instead of the bin-5 minimum 0.9552),
+    # and value-checked citations are what catches that class rather than the
+    # instance.
+    ISSUE1043_STABILITY_NOTE: r"^#+\s+(.*\S)\s*$",
+    ISSUE1043_F1_NOTE: r"^#+\s+(.*\S)\s*$",
+    ISSUE831_PREDECLARATION: r"^#+\s+(.*\S)\s*$",
+    ISSUE831_RESULTS: r"^#+\s+(.*\S)\s*$",
+    ISSUE1043_PAD_CONTINUATION_NOTE: r"^#+\s+(.*\S)\s*$",
 }
 
 DOCUMENTS = (MANIFEST, *MARKDOWN_SITES)
@@ -298,6 +409,18 @@ DOCUMENTS = (MANIFEST, *MARKDOWN_SITES)
 # Sites that MUST carry at least this many value-checked references. Lowering a
 # floor is a deliberate act that belongs in the same commit as the reason.
 REQUIRED_SITES: dict[tuple[str, str], int] = {
+    ("docs/design_notes/20260911_harminv_record_support.md", "Actual FDTD records"): 3,
+    # 2026-09-14 (#813 Arm 1): the cv01 CPML note's result section states its
+    # verdict as a table and resolves every cell in "Numeric provenance". The
+    # floor is the reproduced count (26 of its 35 references carry a value),
+    # not a round number: a rewrite that drops the citations would leave the
+    # table's numbers with nothing behind them.
+    (CV01_CPML_NOTE, "Numeric provenance"): 26,
+    # 2026-09-14 (#813 round-1 review): the interior arm that splits the
+    # 40-layer residual. Its whole claim is the two halves of that split and
+    # the 10-layer pair they are compared against, so the floor is the
+    # reproduced count of value-carrying citations (19).
+    (CV01_CPML_NOTE, "Numeric provenance, residual split"): 19,
     (MANIFEST, "11_waveguide_port_wr90"): 4,
     (MANIFEST, "15_patch_antenna_rt5880"): 3,
     (MANIFEST, "17_dielectric_sphere_mie"): 2,
@@ -316,7 +439,33 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
     # found reconstructed numbers in; its floor is the point of opting the note in.
     (LATTICE_NOTE, "5.1 cv23 \u2014 nine committed entries, eight distinct meshes, all green"): 4,
     (LATTICE_NOTE, "5.2 cv22 \u2014 three rungs, all green; the pole lattice predicts the residual a priori"): 8,
-    (LATTICE_NOTE, "5.3 cv04 \u2014 the witness is REPORTED, not gated, and the derivation says why"): 16,
+    # 2026-09-10: cv04's settling-extension fix landed (PI override of this
+    # section's own 8.3, "no new physics" -- see the commit message). Two
+    # passes, both reproduced with this file's own parser rather than
+    # asserted:
+    #   Pass 1 (c9b86b5e): PRE-FIX the section carried 16 live citations.
+    #   `lattice_witness.json` was regenerated in place and no longer holds
+    #   the pre-fix 719-step values under those keys, so 10 were demoted to
+    #   plain historical text (6 stayed live, unaffected keys -- that 6 is
+    #   already inside the 16 - 10, not an addition to it) and 7 new live
+    #   citations to the POST-FIX 990-step record were added:
+    #   16 - 10 + 7 = 13 (the 6 that stayed live are the 16 - 10).
+    #   Pass 2 (PR #974 adversarial review): re-checked the 10 demotions and
+    #   found only 4 were forced -- W_witness,R/T and the worst-per-bin
+    #   ratios R/T have no other committed home, so they stay plain text
+    #   with a `git show e079b0b5:...` retrieval note. The other 6 were
+    #   re-lived by pointing them at sources the fix does not change: the
+    #   a-priori ceiling and \u0393 (ringdown rate) are geometry-derived and
+    #   numerically unchanged, so they now cite the CURRENT artifact (+2);
+    #   the four |rfx-lattice| gated-mean citations (dR, dT, each appearing
+    #   twice) now cite the IMMUTABLE r1 revision of `envelope.json`, which
+    #   archived them before the fix and does not move when the producer is
+    #   re-run (+4, previously plain text under the same keys). The section
+    #   also gained 2 live citations to the re-run F2/F3 falsifier
+    #   separations at the settled rung, which now discriminate where they
+    #   previously did not: 13 + 2 + 4 + 2 = 21.
+    # Floor set to the reproduced count (21), not a round number.
+    (LATTICE_NOTE, "5.3 cv04 \u2014 the witness was REPORTED, not gated; the derivation said why, and the settling-extension fix (2026-09-10) closed it"): 21,
     (LATTICE_NOTE, "8.1 cv22 Debye at a 3e-4 settling bar (the only rung a claim requires)"): 3,
     # 2026-09-03 (#884): the cv19 witness note's two load-bearing sections. §6.2
     # cites the committed unitarity that U3's floor is compared against; §6.3
@@ -329,6 +478,11 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
     # cv04's arrival, record and fitted reflector index, every one of them read
     # back out of the artifact the run wrote rather than retyped from a note.
     (AUX_ECHO_NOTE, "3. The per-case ratios, read from the committed artifacts"): 18,
+    # 2026-09-06 (#928): the public benchmarks table. This is the page a reader
+    # takes "validated" from, so its measured numbers are the ones that must
+    # keep resolving. 93 references parse there; 91 of them carry a value,
+    # which is what this floor counts (the other two are existence-only).
+    (BENCHMARKS, "Reference cases"): 85,
 }
 
 # Anti-vacuity census. A green gate must mean the references are right, not that
@@ -338,9 +492,326 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
 # 2026-09-04 (#888): +18, the auxiliary-echo record invariant's section 3, and
 # +1 distinct artifact (cv04's lattice_witness.json, cited here for the first
 # time). Raised in the same commit that adds them.
-MIN_REFERENCES = 70
-MIN_VALUE_CHECKED = 70
-MIN_DISTINCT_ARTIFACTS = 7
+# 2026-09-06 (#928): +benchmarks.mdx (93) and +8 design notes, all green at the
+# commit that opted them in; the population went 566 -> 1147 references (+581)
+# over 60 -> 64 distinct artifacts. Raised here in the same commit, as above.
+# 2026-09-14 (#813 Arm 1): +35 references over +1 distinct artifact
+# (scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json), 26 of them
+# value-checked -- the cv01 CPML pre-declaration's result section, opted in as
+# CV01_CPML_NOTE above. Raised by the delta in the same commit that adds them.
+# 2026-09-14 (#813 round-1 review, residual split): +23 references over +2
+# distinct artifacts (residual_split.json, and selfcheck.json cited for the
+# first time), 19 of them value-checked. Same note, its second provenance
+# section.
+#
+# What the three numbers below actually did, said plainly because the two
+# entries above say "raised by the delta" and this one is NOT that. The
+# minimums went 1175 -> 1270 (+95), 1121 -> 1207 (+86) and 61 -> 77 (+16),
+# while this pass adds only +23 references, +19 value-checked and +2
+# artifacts. The difference -- 72 references, 67 value-checked, 14 artifacts
+# -- is PRE-EXISTING SLACK that had accumulated between the old floors and the
+# real population, and it is absorbed here rather than left as headroom.
+#
+# So these floors now EQUAL the current actuals, with zero slack. That is
+# stricter than this file has been, deliberately, and it has a consequence
+# worth stating rather than discovering: the next legitimate removal of a
+# single cited number ANYWHERE in the opted-in surface reds this gate. That is
+# the intent -- a removal should be a decision someone writes down, which is
+# what the comment above each floor asks for -- but whoever hits it is not
+# looking at a bug. Lower the floor in the same commit as the removal and say
+# why, exactly as this block does.
+MIN_REFERENCES = 1270
+MIN_VALUE_CHECKED = 1207
+MIN_DISTINCT_ARTIFACTS = 77
+
+
+# --------------------------------------------------------------------------
+# Enumerate-and-classify (methodology 2.3): which documents are under this
+# gate, and -- for every one that is not -- a reason this file can CHECK.
+#
+# Before #928 the opted-in set was a hand-kept tuple and its complement was
+# invisible: a new evidence document simply was not gated, and nothing said so.
+# The surface is enumerated dynamically below (docs/public/**/*.mdx and
+# docs/design_notes/*.md); an unclassified file fails.
+#
+# The three classifications, and what makes each one falsifiable:
+#   GATED                     - in DOCUMENTS; every reference is resolved above.
+#   NO_ARTIFACT_REFERENCE     - the document contains NO backtick span that
+#                               parses as `<path>.json::<key>`. Verified here,
+#                               so "it has no citations" cannot be an excuse a
+#                               document quietly outgrows.
+#   SYMBOL_SPAN_PARSER_SCOPE  - the document DOES carry resolvable artifact
+#                               references AND at least one `::` span this
+#                               parser rejects by construction (`module.py::sym`,
+#                               `expected_metrics[id=...]`, an elided `…::key`).
+#                               Opting it in would raise on the symbol spans, so
+#                               the blocker is the reference syntax, not the
+#                               document. Both halves are verified.
+# There is deliberately NO "resolvable but not opted in" class: that would be a
+# note saying the gate could have covered a document and chose not to.
+# --------------------------------------------------------------------------
+
+GATED = "gated"
+NO_ARTIFACT_REFERENCE = "no-artifact-reference"
+SYMBOL_SPAN_PARSER_SCOPE = "symbol-span-parser-scope"
+
+CLASSIFIED_DOC_DIRS = ("docs/public/**/*.mdx", "docs/design_notes/*.md")
+
+CLASSIFICATION: dict[str, str] = {
+    "docs/public/api/automation.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/api/geometry-materials.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/api/index.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/api/results-observables.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/api/simulation.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/api/sources-ports.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/api/support-boundaries.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/examples/index.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/gallery/index.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/gallery/multilayer_fresnel.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/gallery/patch_antenna.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/gallery/waveguide_wr90.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/adi-solver.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/api-reference.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/autodiff-adjoint.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/benchmarks.mdx": GATED,
+    "docs/public/guide/changelog.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/first-patch.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/installation.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/materials-geometry.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/memory-reduction.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/nonuniform-mesh.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/parametric-sweeps.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/probes-sparams.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/quickstart.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/sources-ports.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/studio-experiments.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/tutorial-convergence.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/tutorial-patch-antenna.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/validation.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/index.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/validation/cross-solver.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/validation/index.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/validation/recommended-configuration.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260829_spec01_multiband_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260830_issue786_convergence_floor.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260831_cv02_ring_judge_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260831_cv11_broad_e4_artifact_provenance.md": GATED,
+    "docs/design_notes/20260901_numeric_provenance_gate.md": GATED,
+    "docs/design_notes/20260901_patch_mode_identification_predeclaration.md": GATED,
+    "docs/design_notes/20260902_cv22_dispersive_slab_predeclaration.md": SYMBOL_SPAN_PARSER_SCOPE,
+    "docs/design_notes/20260902_cv23_lossy_slab_predeclaration.md": SYMBOL_SPAN_PARSER_SCOPE,
+    "docs/design_notes/20260902_cv24_nu_cavity_predeclaration.md": GATED,
+    "docs/design_notes/20260902_test_reorg_tier4b_plan.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260903_cv19_fdfd_unitarity_witness.md": GATED,
+    "docs/design_notes/20260903_e4_all_solver_classes_plan.md": SYMBOL_SPAN_PARSER_SCOPE,
+    "docs/design_notes/20260903_lattice_witness_standard.md": GATED,
+    "docs/design_notes/20260903_test_reorg_tier3b_consolidation.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260904_aux_echo_record_invariant.md": GATED,
+    "docs/design_notes/20260902_cv26_oblique_fresnel_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260904_cv26_round3_close.md": SYMBOL_SPAN_PARSER_SCOPE,
+    # 2026-09-13 (#888 r2): one resolvable span,
+    # `validation/crossval/_04_fresnel_results/lattice_witness.json::gated_here`,
+    # alongside several `tests/....py::test_name` spans (and
+    # `tests/_gate_policy.py::gate_from_envelope`) that this parser rejects by
+    # construction. The note's own measurements are not quoted out of a
+    # committed artifact -- they are the lane's raw readings, replayed by
+    # tests/unit/sources/test_tfsf_aux_absorber_reflection.py and
+    # tests/crossval/test_aux_echo_record_invariant.py.
+    "docs/design_notes/20260904_aux_absorber_depth_derivation.md": SYMBOL_SPAN_PARSER_SCOPE,
+    "docs/design_notes/20260905_post_merge_review_20_prs.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260905_post_v18_plan_rasterization_preflight_cst.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260905_v18_close_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260906_issue928_ownership_decision.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260906_plan_realign_lattice_ownership.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-11 (nu band-profile lane, PR #956): three `::` spans, all of the
+    # form `rfx/auto_config.py::_make_dz_profile` -- module-symbol references,
+    # not artifact paths (no `.json`), so they land in `others` and never in
+    # `parses`. The note's F1-F8 numbers are not quoted out of a committed
+    # artifact by `path::key` at all; they are replayed from
+    # `validation/research/multiband_nu/results/w6_band_builder.json` by
+    # tests/unit/nonuniform/test_band_builder_chain_model.py, which is a
+    # stronger check than this gate performs. Same shape as
+    # 20260910_cv05_crossval_disposition.md above.
+    "docs/design_notes/20260907_nu_band_profile_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-11 (nu lane, PR #963): no `path.json::key` span (parses empty; any
+    # `::` spans are test ids); the numbers are replayed from the lane's results
+    # JSON by its own replay test.
+    "docs/design_notes/20260910_cpml_localization_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-11 (nu lane, PR #963): no `path.json::key` span (parses empty; any
+    # `::` spans are test ids); the numbers are replayed from the lane's results
+    # JSON by its own replay test.
+    "docs/design_notes/20260907_nu_cost_reduction_plan.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-11 (nu lane, PR #962): no `path.json::key` span (parses empty; any
+    # `::` spans are test ids); the numbers are replayed from the lane's results
+    # JSON by its own replay test.
+    "docs/design_notes/20260907_nu_exp4_diff_stackup_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-11 (nu lane, PR #961): no `path.json::key` span (parses empty; any
+    # `::` spans are test ids); the numbers are replayed from the lane's results
+    # JSON by its own replay test.
+    "docs/design_notes/20260907_nu_exp2_thin_layer_subpixel_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-11 (nu lane, PR #958): no `path.json::key` span (parses empty; any
+    # `::` spans are test ids); the numbers are replayed from the lane's results
+    # JSON by its own replay test.
+    "docs/design_notes/20260907_nu_exp3_interface_eps_rule_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-11 (nu lane, PR #960): no `path.json::key` span (parses empty; any
+    # `::` spans are test ids); the numbers are replayed from the lane's results
+    # JSON by its own replay test.
+    "docs/design_notes/20260907_nu_exp1_band_law_sweep_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-11 (nu accuracy/AD lane, PR #957): the note carries no `::`
+    # span at all (parses and others both empty); its A1-A3 / AD1-AD5 numbers
+    # are replayed from validation/research/multiband_nu/results/w7_accuracy_ad.json
+    # by tests/unit/nonuniform/test_band_accuracy_ad_replay.py, cell for cell
+    # and rule for rule, which is the stronger check.
+    "docs/design_notes/20260907_nu_band_accuracy_ad_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260908_adi_interior_pec_guard.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260908_automesh_regressions.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-10 (#931 lattice-ownership merge): a single `::referee` span
+    # cited a dict (DT-F01), which is what test_every_enumerated_document_is_
+    # classified caught. Repointed to the leaf the finding's sentence
+    # actually describes (argmin_first_null.note) and opted in -- an audit
+    # document's whole job is naming real paths.
+    "docs/design_notes/20260908_docs_truth_audit.md": GATED,
+    "docs/design_notes/20260908_docs_truth_field_ledger.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-10 (cv05 crossval disposition, issues #959/#965): one `::` span,
+    # `test_patch_mode_identification.py::test_cv05_constants_...` -- a
+    # test-name reference, not an artifact path (no `.json`), so it lands in
+    # `others` and never `parses`; NO_ARTIFACT_REFERENCE only checks `parses`.
+    "docs/design_notes/20260910_cv05_crossval_disposition.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260911_harminv_record_support.md": GATED,
+    # 2026-09-14 (#1015 pre-declaration): `parses` is empty. Its two `::` spans
+    # are a symbol reference (`oblique_fresnel.py::evaluate_e2`) and a TEMPLATE
+    # with placeholders in the key path
+    # (`lattice_witness.json::rungs.<rung>.falsifiers.<kind>.gates`), and the
+    # file it names carries no directory, so both land in `others`. The note is
+    # a decision rule written BEFORE its measurements existed and quotes no
+    # measured value at all; the measurements live in section 13 of the
+    # lattice-witness standard, which IS gated.
+    "docs/design_notes/20260914_lattice_witness_gl1_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-13 (#717 crossval lane decision): `parses` is empty -- the note
+    # cites no artifact key at all. Its five `::` spans are pytest node ids
+    # (`test_crossval_comprehensive.py::TestPECCavity::test_rfx_vs_analytical`
+    # and siblings), so they land in `others`. The note quotes wall times and
+    # pass/fail counts from a pytest run it prints the command for, not values
+    # out of a committed JSON, so there is no `path.json::key` for the gate to
+    # resolve.
+    "docs/design_notes/717_crossval_lane_decision.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-10 (#931 lattice-ownership merge): 591e296e added a resolvable
+    # citation to this note (cv18's Richardson envelope); opted in rather than
+    # left failing NO_ARTIFACT_REFERENCE's own vacuity check.
+    "docs/design_notes/chain_closure_contract.md": GATED,
+    # 2026-09-13 (issue #813 attribution): the pre-declaration for cv01's CPML
+    # flux self-check. It carried no `::` span at all -- neither a resolvable
+    # `path.json::key` nor one this parser rejects -- so `parses` and `others`
+    # were both empty, and the classification was NO_ARTIFACT_REFERENCE.
+    # 2026-09-14 (#813 Arm 1): its "Result 2026-09-14" section now cites the
+    # layer sweep's own artifact key by key, so it is GATED. The artifact-side
+    # control is unchanged and stronger than this gate: the sweep's 10-layer
+    # arm IS cv01's rig and must reproduce the committed cpml_full number, or
+    # no other layer count in the table is readable.
+    CV01_CPML_NOTE: GATED,
+    "docs/design_notes/cv10_pmc_realization_regate.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/cv14_rect_cavity_gate_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/estimator_resolution_regate.md": GATED,
+    "docs/design_notes/geometry_setup_interop.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/graded_z_lowz_demo_closure.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/graded_z_lowz_demo_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/i489_stage2_two_port_fdtd_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/i636_cpml_pole_pad_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/issue683_decomposer_flip_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/issue683_sampling_order_decision_protocol.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/issue763_dz_profile_preserve_regions.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/issue764_wireport_norm_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/issue764_wireport_norm_results.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/issue770_offdiag_adjudication_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/issue770_offdiag_adjudication_results.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/issue782_retired_resonance_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/issue802_807_rasterization_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/issue808_debye_pad_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/issue811_dz_dispatch_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/issue812_cv03_dispersion_regate_predeclaration.md": GATED,
+    "docs/design_notes/issue812_cv03_dispersion_regate_results.md": GATED,
+    "docs/design_notes/issue812_cv04_fringe_gate_predeclaration.md": SYMBOL_SPAN_PARSER_SCOPE,
+    "docs/design_notes/issue812_cv09_mirror_plane_regate.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/issue812_cv17_cv18_geometry_sensitivity_predeclaration.md": GATED,
+    "docs/design_notes/issue812_phase_identity_predeclaration.md": GATED,
+    "docs/design_notes/issue812_phase_identity_results.md": GATED,
+    # 2026-09-15 (#1043 Stage A, CPML + subpixel psi coefficient): neither note
+    # carries a `::` span at all -- `parses` and `others` are both empty. Every
+    # number in the results note is replayed by
+    # scripts/diagnostics/cpml_subpixel_stability/ into
+    # scripts/diagnostics/_artifacts/cpml_subpixel_stability/*.json, and the
+    # load-bearing ones are additionally pinned by
+    # tests/unit/boundaries/test_cpml_subpixel_coefficient_consistency.py,
+    # which is a stronger check than a key lookup.
+    "docs/design_notes/issue1043_cpml_subpixel_coefficient_predeclaration.md":
+        NO_ARTIFACT_REFERENCE,
+    ISSUE1043_STABILITY_NOTE: GATED,
+    # 2026-09-15 (#1043 review round 1, F1): the pre-declaration's only `::`
+    # span is a pytest node id
+    # (`test_subpixel_pec.py::test_pec_short_s11_with_conformal_face_pec`), so
+    # it lands in `others` and never in `parses`; the results note carries no
+    # `::` span at all. Every number in both is replayed by
+    # scripts/diagnostics/cpml_subpixel_stability/f1_pec_short_gate.py and the
+    # load-bearing ones are pinned by the two gates in
+    # tests/unit/geometry/test_subpixel_pec.py.
+    "docs/design_notes/issue1043_f1_pec_short_gate_predeclaration.md":
+        NO_ARTIFACT_REFERENCE,
+    ISSUE1043_F1_NOTE: GATED,
+    # 2026-09-15 (#1043 stage B): the #831 diagnosis notes and stage B's own
+    # results note. All three carry resolvable citations, so GATED is the only
+    # class open to them -- see the constants above for why the two #831 notes
+    # travel with this change at all.
+    ISSUE831_PREDECLARATION: GATED,
+    ISSUE831_RESULTS: GATED,
+    ISSUE1043_PAD_CONTINUATION_NOTE: GATED,
+    "docs/design_notes/mixed_refplane_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/portgrid_m0m1_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/portgrid_m0m1_results.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/portgrid_m1b_retry_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/preflight_lessons_from_a_long_crossval.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/thin_sheet_plane_bc_direction.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/thru_feedpost_deembed_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/thru_feedpost_joint_extraction_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/thru_feedpost_junction_windows_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/thru_feedpost_twoseg_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/thru_singular_value_dx_ladder_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-10 (#931 lattice-ownership merge): 591e296e added a resolvable
+    # cv19 citation here too (missing its tests/fixtures/ prefix, fixed in the
+    # same pass) -- but unlike chain_closure_contract.md this document ALSO
+    # carries `nu_flux_ad::..._grad_finite_and_fd_consistent` in its timing
+    # table, a test-name reference the artifact-reference parser rejects by
+    # construction. GATED would break collection for the whole test module;
+    # SYMBOL_SPAN_PARSER_SCOPE is the classification that is actually true.
+    "docs/design_notes/v18_waveguide_s_chain_plan.md": SYMBOL_SPAN_PARSER_SCOPE,
+    "docs/design_notes/waveguide_chain_battery_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/waveguide_chain_battery_remeasure_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/waveguide_false_lane_column_power_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/waveguide_false_lane_column_power_results.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/waveguide_vi_envelope_sweep_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/waveguide_vi_envelope_sweep_results.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/wp4e_lumped_component_value_ad_spike.md": NO_ARTIFACT_REFERENCE,
+}
+
+
+def _enumerate_classified_docs(root: Path) -> list[str]:
+    found: list[str] = []
+    for pattern in CLASSIFIED_DOC_DIRS:
+        base, _, glob = pattern.partition("/**/")
+        if glob:
+            found += [str(p.relative_to(root)) for p in (root / base).rglob(glob)]
+        else:
+            base, _, glob = pattern.rpartition("/")
+            found += [str(p.relative_to(root)) for p in (root / base).glob(glob)]
+    return sorted(found)
+
+
+def _reference_spans(root: Path, doc: str) -> tuple[list[str], list[str]]:
+    """(parseable artifact references, other ``::`` spans) in *doc*."""
+    text = strip_code_blocks((root / doc).read_text(encoding="utf-8"))
+    spans = [s.group(1).strip() for s in _SPAN.finditer(text) if "::" in s.group(1)]
+    parses = [s for s in spans if _REFERENCE.match(s)]
+    others = [s for s in spans if not _REFERENCE.match(s)]
+    return parses, others
 
 
 def _sites(root: Path, doc: str) -> list[tuple[str, str]]:
@@ -410,6 +881,54 @@ def test_each_registered_site_still_carries_its_references(site, floor) -> None:
         f"references drops the only mechanical link between this claim and its "
         f"evidence."
     )
+
+
+def test_every_enumerated_document_is_classified() -> None:
+    """No document in the two evidence-carrying trees may be unclassified.
+
+    This is the half that stops the opted-in set from being accidental: adding
+    a design note or a public page now fails here until someone says, in this
+    table, whether it is gated and -- if not -- why the gate cannot reach it.
+    """
+    found = set(_enumerate_classified_docs(_REPO))
+    listed = set(CLASSIFICATION)
+    assert found - listed == set(), (
+        f"unclassified documents: {sorted(found - listed)}. Add each to "
+        f"CLASSIFICATION as {GATED!r} (and to MARKDOWN_SITES), "
+        f"{NO_ARTIFACT_REFERENCE!r}, or {SYMBOL_SPAN_PARSER_SCOPE!r}."
+    )
+    assert listed - found == set(), (
+        f"CLASSIFICATION lists documents that no longer exist: "
+        f"{sorted(listed - found)}."
+    )
+
+
+@pytest.mark.parametrize("doc", sorted(CLASSIFICATION))
+def test_each_classification_holds_mechanically(doc: str) -> None:
+    """Each reason is checked, not asserted in prose."""
+    kind = CLASSIFICATION[doc]
+    parses, others = _reference_spans(_REPO, doc)
+    if kind == GATED:
+        assert doc in DOCUMENTS, f"{doc} is classified gated but is not in DOCUMENTS"
+        return
+    assert doc not in DOCUMENTS, f"{doc} is in DOCUMENTS but classified {kind}"
+    if kind == NO_ARTIFACT_REFERENCE:
+        assert not parses, (
+            f"{doc} is classified {NO_ARTIFACT_REFERENCE!r} but now carries "
+            f"{len(parses)} resolvable artifact reference(s), e.g. `{parses[0]}`. "
+            f"Opt it into DOCUMENTS/MARKDOWN_SITES and re-classify it as gated."
+        )
+    elif kind == SYMBOL_SPAN_PARSER_SCOPE:
+        assert parses, (
+            f"{doc} is classified {SYMBOL_SPAN_PARSER_SCOPE!r} but carries no "
+            f"resolvable artifact reference; it is {NO_ARTIFACT_REFERENCE!r}."
+        )
+        assert others, (
+            f"{doc} is classified {SYMBOL_SPAN_PARSER_SCOPE!r} but every `::` "
+            f"span in it now parses, so nothing blocks opting it in. Gate it."
+        )
+    else:  # pragma: no cover - the closed set is enforced here
+        raise AssertionError(f"{doc}: unknown classification {kind!r}")
 
 
 # --------------------------------------------------------------------------
@@ -508,6 +1027,36 @@ def test_an_unresolvable_key_is_an_error_not_a_skip(tmp_path: Path) -> None:
     dst.write_text(json.dumps(data), encoding="utf-8")
     with pytest.raises(AssertionError, match="does not exist"):
         check(tmp_path, ref)
+
+
+def test_the_gate_fires_on_a_present_but_untracked_artifact() -> None:
+    """#928's (B) arm: an artifact that exists here and in no clone.
+
+    Written into the repo tree deliberately -- the property under test is
+    "present but untracked", which cannot be staged anywhere else -- and
+    removed in the finally.
+    """
+    if not git_available(_REPO):
+        pytest.skip("git unavailable; tracking is not a question git can answer")
+    probe_rel = "docs/design_notes/.untracked_probe_928.json"
+    probe = _REPO / probe_rel
+    # A killed run used to leave this file behind and the next run failed its
+    # own precondition (round-2 item 8). A leftover is removed and reported,
+    # not treated as a failure: the file is this test's, and it is untracked by
+    # construction.
+    if probe.exists():
+        print(f"removing a leftover probe from an interrupted run: {probe_rel}")
+        probe.unlink()
+    ref = Reference("doc", "site", f"{probe_rel}::value = 1", probe_rel, "value", "1", "")
+    try:
+        probe.write_text(json.dumps({"value": 1.0}), encoding="utf-8")
+        assert probe_rel not in tracked_set(_REPO)
+        with pytest.raises(AssertionError, match="NOT git-tracked"):
+            check(_REPO, ref)
+    finally:
+        probe.unlink(missing_ok=True)
+    # and the control: the same shape resolves when the artifact IS tracked.
+    assert MANIFEST in tracked_set(_REPO)
 
 
 def test_a_malformed_reference_is_rejected() -> None:

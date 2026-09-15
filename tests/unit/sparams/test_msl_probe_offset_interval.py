@@ -29,7 +29,14 @@ from rfx import Box, Simulation
 from rfx.grid import Grid
 from rfx.api._sparams import _resolve_msl_auto_offsets
 
-DX = 2e-4
+# ON-LATTICE board (#931 §1.3): h_sub / dx = 4 exactly. The Sheen-1990
+# LPF leg ran at dx = 200 um (h_sub/dx = 3.97); the foils below are
+# sheets now, and a sheet belongs ON the laminate face, not near it.
+# Every number this file pins (offset_min 20, spacing 2, offset_max 33,
+# midpoint 26) is an interval in CELLS derived from declared coordinates,
+# so it moves with dx only through the clearance rule, which is checked
+# against the grid it is computed on.
+DX = 0.000794 / 4
 DOMAIN = (0.020, 0.02632, 0.0038)
 Y_C = 0.01316
 W_TRACE = 0.002413
@@ -41,12 +48,13 @@ def _sim_with_feed_and_patch(patch_x0=0.012466, patch_x1=0.015006):
                      boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (DOMAIN[0], DOMAIN[1], H_SUB)), material="sub")
+    sim.add(Box((0, 0, 0), (DOMAIN[0], DOMAIN[1], 0)), material="pec")
     # the port's own feed trace (contains the feed plane -> excluded)
     sim.add(Box((0.001, Y_C - W_TRACE / 2, H_SUB),
-                (patch_x0, Y_C + W_TRACE / 2, H_SUB + DX)), material="pec")
+                (patch_x0, Y_C + W_TRACE / 2, H_SUB)), material="pec")
     # the patch = downstream reflector (wide, but < 80 % of domain y)
     sim.add(Box((patch_x0, 0.003, H_SUB),
-                (patch_x1, 0.02332, H_SUB + DX)), material="pec")
+                (patch_x1, 0.02332, H_SUB)), material="pec")
     sim.add_msl_port(position=(0.0025, Y_C, 0.0), width=W_TRACE, height=H_SUB,
                      direction="+x", impedance=50.0, eps_r_sub=2.2, name="p1")
     return sim
@@ -93,7 +101,7 @@ def test_no_reflector_keeps_the_pre469_default():
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (DOMAIN[0], DOMAIN[1], H_SUB)), material="sub")
     sim.add(Box((0.001, Y_C - W_TRACE / 2, H_SUB),
-                (0.019, Y_C + W_TRACE / 2, H_SUB + DX)), material="pec")
+                (0.019, Y_C + W_TRACE / 2, H_SUB)), material="pec")
     sim.add_msl_port(position=(0.0025, Y_C, 0.0), width=W_TRACE, height=H_SUB,
                      direction="+x", impedance=50.0, eps_r_sub=2.2, name="p1")
     with warnings.catch_warnings():
@@ -126,7 +134,7 @@ def test_own_trace_of_minus_x_port_is_not_a_reflector():
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (DOMAIN[0], DOMAIN[1], H_SUB)), material="sub")
     sim.add(Box((0.008, Y_C - W_TRACE / 2, H_SUB),
-                (0.018, Y_C + W_TRACE / 2, H_SUB + DX)), material="pec")
+                (0.018, Y_C + W_TRACE / 2, H_SUB)), material="pec")
     sim.add_msl_port(position=(0.0175, Y_C, 0.0), width=W_TRACE, height=H_SUB,
                      direction="-x", impedance=50.0, eps_r_sub=2.2, name="p2")
     with warnings.catch_warnings():
@@ -211,10 +219,10 @@ def _nu_sim(direction="+x", **profiles):
     # the port's own feed trace (contains the feed plane -> excluded)
     sim.add(_pw_box(direction, 0.001, 0.012466,
                     _W_C - W_TRACE / 2, _W_C + W_TRACE / 2,
-                    H_SUB, H_SUB + DX), material="pec")
+                    H_SUB, H_SUB), material="pec")
     # the patch = downstream reflector
     sim.add(_pw_box(direction, 0.012466, 0.015006, 0.003, 0.02332,
-                    H_SUB, H_SUB + DX), material="pec")
+                    H_SUB, H_SUB), material="pec")
     px, py = _pw(direction, 0.0025, _W_C)
     sim.add_msl_port(position=(px, py, 0.0), width=W_TRACE, height=H_SUB,
                      direction=direction, impedance=50.0, eps_r_sub=2.2,
@@ -392,7 +400,7 @@ def _open_thru_sim():
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (DOMAIN[0], DOMAIN[1], H_SUB)), material="sub")
     sim.add(Box((0.001, Y_C - W_TRACE / 2, H_SUB),
-                (0.019, Y_C + W_TRACE / 2, H_SUB + DX)), material="pec")
+                (0.019, Y_C + W_TRACE / 2, H_SUB)), material="pec")
     return sim
 
 

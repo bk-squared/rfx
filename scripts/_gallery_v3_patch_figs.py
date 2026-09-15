@@ -173,17 +173,34 @@ F_DESIGN = 2.4e9
 # single resolution for the S11 sweep, the Harminv ring-down and the field map
 # is what keeps all three at one self-consistent frequency. 1 mm gives ~30 cells
 # across L (the TM010 half-wave is well sampled) and runs in ~1 min/case on CPU.
-DX = 1.0e-3                # uniform cubic Yee cells (dx = dy = dz); snapshots
+DX = 0.5e-3                # uniform cubic Yee cells (dx = dy = dz); snapshots
 N_CPML = 8                 #   require a uniform mesh, and one resolution for the
 DZ = DX                    #   S11 sweep, the Harminv ring-down and the field map
 #                            keeps all three at one self-consistent frequency.
-# The 1.5 mm substrate is a sub-cell layer represented with 0.5 mm-thick metal
-# cells (ground + patch) stamped onto the 1 mm propagation mesh — the standard
-# coarse-substrate patch model. ~30 cells span L, so the TM010 half-wave is well
-# sampled, and a case runs in ~1 min on CPU.
-DZ_THIN = 0.5e-3           # ground / patch metal cell thickness + substrate
+#
+# THE MESH RESOLVES THE BOARD. 0.5 mm cells put a node plane on BOTH faces of
+# the 1.5 mm FR4 (three cells), so the two copper foils can be declared as
+# SHEETS exactly where the board is and the realized stack equals the declared
+# one. That is the lattice ownership contract's remedy for an off-lattice
+# interface (#931 §1.3), and this model needed it: at the previous DX = 1 mm
+# the substrate's upper face at 9.5 mm sat half a cell off the node line, and
+# the ground and patch were 0.5 mm PEC Boxes — half a cell thick, which the
+# contract now refuses outright (§1.5) and which the old rule quietly snapped
+# onto the nearest node. What actually ran was a board 2.0 mm thick (walls at
+# 8.0 and 10.0 mm, two FR4 cells) while every label in this file said 1.5 mm.
+# The declared geometry mirrors validation/crossval/05_patch_antenna.py, so the
+# board stays 1.5 mm and the mesh moves instead.
+#
+# Cost: 0.5 mm doubles every axis and halves dt, so a case is ~10x the 1 mm
+# run (~1 min -> ~10 min on CPU). Run the sweep on a batch machine.
 N_SUB = 3                  # 3 * 0.5 mm = 1.5 mm FR4 substrate
-H_G = N_SUB * DZ_THIN
+H_G = N_SUB * DX
+# The meshed board and the labelled board are the same board. The geometry
+# figure and the Balanis estimate below both quote H_SUB; if a future edit
+# moves DX or N_SUB without moving H_SUB, that label becomes a fiction again.
+assert abs(H_G - H_SUB) < 1e-12, (
+    f"meshed substrate {H_G * 1e3:.3f} mm != declared H_SUB "
+    f"{H_SUB * 1e3:.3f} mm — N_SUB * DX must equal H_SUB")
 AIR_BELOW, AIR_ABOVE = 8.0e-3, 16.0e-3
 
 DOM_X = GX + 2 * 8e-3
@@ -196,12 +213,14 @@ PATCH_X_LO = DOM_X / 2 - L / 2
 PATCH_Y_LO = DOM_Y / 2 - W / 2
 FEED_Y = DOM_Y / 2
 
-Z_GND_LO = AIR_BELOW - DZ_THIN
 Z_SUB_LO = AIR_BELOW
 Z_SUB_HI = AIR_BELOW + H_G
-Z_PATCH_LO = Z_SUB_HI
-Z_PATCH_HI = Z_SUB_HI + DZ_THIN
-SRC_Z = Z_SUB_LO + DZ_THIN * 1.5    # mid-substrate drive / probe plane
+# The ground and the patch are copper FOIL, so each is a SHEET on one node
+# plane — the substrate's own two faces (#931 §1.3). Neither owns a cell, so
+# there is no metal cell to reserve above or below the board.
+Z_GND = Z_SUB_LO
+Z_PATCH = Z_SUB_HI
+SRC_Z = Z_SUB_LO + H_G / 2          # mid-substrate drive / probe plane
 
 # FR4 conductivity from the loss tangent (gives a finite, physical Q).
 SIGMA_FR4 = 2 * math.pi * F_DESIGN * 8.8541878128e-12 * EPS_R * TAN_D
@@ -229,12 +248,16 @@ def _build(inset, *, with_port):
     sim = Simulation(freq_max=4e9, domain=(DOM_X, DOM_Y, DOM_Z), dx=DX,
                      boundary="cpml", cpml_layers=N_CPML)
     sim.add_material("fr4", eps_r=EPS_R, sigma=SIGMA_FR4)
-    sim.add(Box((GX_LO, GY_LO, Z_GND_LO), (GX_LO + GX, GY_LO + GY, Z_SUB_LO)),
-            material="pec")
+    # Foil is a sheet: a zero-thickness Box through add_thin_conductor, one
+    # node plane, no cell. A Box with material="pec" would be a VOLUME —
+    # right for a plate, wrong for etched copper.
+    sim.add_thin_conductor(
+        Box((GX_LO, GY_LO, Z_GND), (GX_LO + GX, GY_LO + GY, Z_GND)))
     sim.add(Box((GX_LO, GY_LO, Z_SUB_LO), (GX_LO + GX, GY_LO + GY, Z_SUB_HI)),
             material="fr4")
-    sim.add(Box((PATCH_X_LO, PATCH_Y_LO, Z_PATCH_LO),
-                (PATCH_X_LO + L, PATCH_Y_LO + W, Z_PATCH_HI)), material="pec")
+    sim.add_thin_conductor(
+        Box((PATCH_X_LO, PATCH_Y_LO, Z_PATCH),
+            (PATCH_X_LO + L, PATCH_Y_LO + W, Z_PATCH)))
     if with_port:
         sim.add_port(position=(feed_x, FEED_Y, Z_SUB_LO), component="ez",
                      impedance=50.0, extent=Z_SUB_HI - Z_SUB_LO,
@@ -244,7 +267,39 @@ def _build(inset, *, with_port):
                        waveform=GaussianPulse(f0=F_DESIGN, bandwidth=1.2))
         sim.add_probe((DOM_X / 2 + 5e-3, DOM_Y / 2 + 5e-3, SRC_Z),
                       component="ez")
+    _assert_realized_stack(sim, (Z_GND, Z_PATCH), H_G)
     return sim
+
+
+def _assert_realized_stack(sim, planes, thickness):
+    """Build-time check (no solve): realized wall planes == declared foils.
+
+    Read from the contract's own realization — realized_pec_edge_masks then
+    realized_wall_planes (#931 §1.7) — over the arrays the assembly hands the
+    stepper, so this cannot drift from what the solve applies.
+    """
+    from rfx import realized_pec_edge_masks, realized_wall_planes
+    from rfx.geometry.rasterize_grid import coords_from_uniform_grid
+
+    grid = sim._build_grid()
+    sheets = []
+    _m, _d, _l, pec_cells, _a, _b, _c = sim._assemble_materials(
+        grid, pec_sheets=sheets)
+    z_nodes = np.asarray(coords_from_uniform_grid(grid).z, dtype=float)
+    walls = realized_wall_planes(
+        realized_pec_edge_masks(pec_cells, sheets=sheets,
+                                periodic=sim._periodic_flags()), 2)
+    want = sorted({int(np.argmin(np.abs(z_nodes - z))) for z in planes})
+    if walls != want:
+        raise RuntimeError(
+            f"realized z wall planes {walls} != declared {want} "
+            f"({[round(float(z_nodes[k]) * 1e3, 3) for k in walls]} mm vs "
+            f"{[round(z * 1e3, 3) for z in planes]} mm)")
+    gap = float(z_nodes[want[-1]] - z_nodes[want[0]])
+    if abs(gap - thickness) > 1e-12:
+        raise RuntimeError(
+            f"realized cavity {gap * 1e3:.4f} mm != declared "
+            f"{thickness * 1e3:.4f} mm")
 
 
 def _run_s11(inset, freqs, n_steps=6000):
@@ -743,22 +798,24 @@ def _build_ad(deps, *, dx_ad, n_cpml_ad, n_sub_ad):
     dom_z = air_below + h_g + air_above
     gx_lo, gy_lo = (dom_x - GX) / 2, (dom_y - GY) / 2
     px_lo, py_lo = dom_x / 2 - L / 2, dom_y / 2 - W / 2
-    z_gnd_lo = air_below - dx_ad
     z_sub_lo, z_sub_hi = air_below, air_below + h_g
     feed_x = px_lo + MATCHED_INSET
 
     sim = Simulation(freq_max=4e9, domain=(dom_x, dom_y, dom_z), dx=dx_ad,
                      boundary="cpml", cpml_layers=n_cpml_ad)
     sim.add_material("fr4", eps_r=EPS_R, sigma=SIGMA_FR4)
-    sim.add(Box((gx_lo, gy_lo, z_gnd_lo), (gx_lo + GX, gy_lo + GY, z_sub_lo)),
-            material="pec")
+    # Same declaration as _build: the foils are sheets on the board's faces,
+    # so the coarse AD mesh reserves no cell for them either.
+    sim.add_thin_conductor(
+        Box((gx_lo, gy_lo, z_sub_lo), (gx_lo + GX, gy_lo + GY, z_sub_lo)))
     sim.add(Box((gx_lo, gy_lo, z_sub_lo), (gx_lo + GX, gy_lo + GY, z_sub_hi)),
             material="fr4")
-    sim.add(Box((px_lo, py_lo, z_sub_hi),
-                (px_lo + L, py_lo + W, z_sub_hi + dx_ad)), material="pec")
+    sim.add_thin_conductor(
+        Box((px_lo, py_lo, z_sub_hi), (px_lo + L, py_lo + W, z_sub_hi)))
     sim.add_port(position=(feed_x, dom_y / 2, z_sub_lo),
                  component="ez", impedance=50.0, extent=z_sub_hi - z_sub_lo,
                  waveform=GaussianPulse(f0=F_DESIGN, bandwidth=1.0))
+    _assert_realized_stack(sim, (z_sub_lo, z_sub_hi), h_g)
     return sim
 
 
@@ -775,7 +832,12 @@ def make_autodiff():
 
     sim = _build_ad(0.0, dx_ad=dx_ad, n_cpml_ad=n_cpml_ad, n_sub_ad=n_sub_ad)
     grid = sim._build_grid()
-    mats = sim._assemble_materials(grid)[0]
+    # Pass a sheet collector: the foils are sheets and own no cell, so a
+    # caller that omits it gets a pec_mask with them missing and a warning
+    # saying so (#931 §3). Only eps_r is read here, but the collector keeps
+    # the call honest.
+    _ad_sheets: list = []
+    mats = sim._assemble_materials(grid, pec_sheets=_ad_sheets)[0]
     eps_base = np.asarray(mats.eps_r)
     sub_mask = jnp.asarray((eps_base > 1.5).astype(np.float32))   # FR4 cells
     eps_base_j = jnp.asarray(eps_base)

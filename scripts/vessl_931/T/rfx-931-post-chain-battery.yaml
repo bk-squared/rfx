@@ -1,0 +1,87 @@
+name: rfx-931-post-chain-battery
+description: "WR-90 chain battery re-measured on the #931 lattice ownership branch. The S-matrix lane no longer folds pec_mask into sigma=1e10 (it applies the realized PEC edges), so design_override(kind='sigma') no longer carries that fold and the ('pec_short','sigma') AD leg differentiates through a different quantity; the 2-cell PEC short also gains its far wall. Same battery, same rungs, same lanes, same stages as run 3 (scripts/vessl_waveguide_chain_battery_v18_close.yaml) so the artifact is comparable. Reads the working tree of the section-T worktree directly (NFS)."
+tags: [rfx, issue-931, post, chain-battery, waveguide, wp2]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_PLATFORMS: "cpu"
+  JAX_ENABLE_X64: "0"
+  RFX_PREDECLARATION_SHA: "f914a7ca"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  echo "=== rfx #931 post-change: WR-90 chain battery ==="
+  date
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  SRC=/root/workspace/byungkwan-workspace/research/rfx-931-T5-crossval-tests
+  test -d "$SRC" || { echo "ERROR: section-T worktree missing at $SRC"; exit 3; }
+  RUNS=/root/workspace/claude-workspace/rfx/runs
+  TS=$(date -u +%Y%m%dT%H%M%SZ)
+  OUT=$RUNS/issue931-post-chain-battery-$TS
+  mkdir -p "$OUT"
+  echo "$OUT" > "$RUNS/issue931-post-chain-battery.latest"
+  trap 'chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
+  echo "artifacts: $OUT"
+  WORK=/root/work/rfx931-chain-battery
+  rm -rf "$WORK"
+  mkdir -p "$WORK"
+  cp -a "$SRC/." "$WORK/"
+  cd "$WORK"
+  git rev-parse HEAD > "$OUT/commit.txt" 2>/dev/null || echo "(no git)" > "$OUT/commit.txt"
+  cat "$OUT/commit.txt"
+  touch "$OUT/.tstamp"
+  "$PY" -m pip uninstall -y -q jax-cuda12-plugin jax-cuda12-pjrt 2>/dev/null || true
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest
+  export RFX_REPO_ROOT="$WORK"
+  export PYTHONPATH="$WORK"
+  export MPLBACKEND=Agg
+  "$PY" -c "import jax, rfx, os; print('probe ok | jax', jax.__version__, '| backend', jax.default_backend(), '| rfx', getattr(rfx, '__version__', '?'), '| from', os.path.dirname(rfx.__file__))"
+  test -f scripts/diagnostics/waveguide_chain_battery_measure.py || { echo "FATAL: driver missing"; exit 3; }
+  test -f tests/_waveguide_chain_battery_fixture.py || { echo "FATAL: builder missing"; exit 3; }
+  grep -q "sign_discriminating_pair" tests/_waveguide_chain_battery_fixture.py || { echo "FATAL: builder lost the re-declared shift pair"; exit 3; }
+  grep -q "assert_dut_realizes_its_faces" tests/_waveguide_chain_battery_fixture.py || { echo "FATAL: this is not the #931-migrated builder"; exit 3; }
+  "$PY" -c "import warnings; warnings.simplefilter('ignore'); from tests import _waveguide_chain_battery_fixture as F; from tests import _waveguide_chain_battery_gates as G; s = F._build('pec_short', F.DX_COARSE, cpml_layers=8, reference_planes=(None, None), precision='float32'); w = F.assert_dut_realizes_its_faces(s, 'pec_short'); G.assert_oracle_anchors_are_realized(s, 'pec_short'); print('build-time witness ok | realized walls (m):', w)"
+  if [ -z "${VESSL_RUN_ID:-}" ]; then RUN_ID="UNSET-see-log-filename"; echo "WARNING: VESSL_RUN_ID unset"; else RUN_ID="$VESSL_RUN_ID"; fi
+  echo "run id: $RUN_ID"
+  fails=0
+  for stage in cells ad_fd plane_shift; do
+    echo "===== stage $stage ====="
+    date
+    set +e
+    timeout 14400 "$PY" -u scripts/diagnostics/waveguide_chain_battery_measure.py \
+      --out-dir "$OUT" --stages "$stage" --run-id "$RUN_ID" --run-lane vessl \
+      --predeclaration-sha "$RFX_PREDECLARATION_SHA" \
+      --vessl-yaml scripts/vessl_931/T/rfx-931-post-chain-battery.yaml \
+      > "$OUT/stage_$stage.log" 2>&1
+    rc=$?
+    set -e
+    echo "$rc" > "$OUT/stage_$stage.rc"
+    echo "stage $stage rc=$rc"
+    tail -n 30 "$OUT/stage_$stage.log" || true
+    [ "$rc" -eq 0 ] || fails=$((fails + 1))
+  done
+  echo "===== assemble ====="
+  set +e
+  timeout 1800 "$PY" -u scripts/diagnostics/waveguide_chain_battery_measure.py \
+    --out-dir "$OUT" --stages assemble --run-id "$RUN_ID" --run-lane vessl \
+    --predeclaration-sha "$RFX_PREDECLARATION_SHA" \
+    --vessl-yaml scripts/vessl_931/T/rfx-931-post-chain-battery.yaml \
+    --fixture-out "$OUT/fixture.json" > "$OUT/stage_assemble.log" 2>&1
+  rc=$?
+  set -e
+  echo "$rc" > "$OUT/stage_assemble.rc"
+  tail -n 60 "$OUT/stage_assemble.log" || true
+  [ "$rc" -eq 0 ] || fails=$((fails + 1))
+  ls -la "$OUT"
+  chmod -R a+rX "$OUT" 2>/dev/null || true
+  echo "chain_battery_failed_stages=$fails"
+  exit 0

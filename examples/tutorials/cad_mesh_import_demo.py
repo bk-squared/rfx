@@ -38,7 +38,21 @@ def main() -> int:
         print(f"imported mesh: bbox = {patch.bounding_box()}  "
               f"min feature = {patch.min_feature_size() * 1e3:.2f} mm")
 
-        # 3. Compose it like any CSG shape and assign PEC.
+        # 3. Compose it like any CSG shape and assign PEC.  An imported solid
+        #    is a VOLUME — that is the whole point of a CAD body — so it goes
+        #    through sim.add(..., material="pec"): the primal cells whose
+        #    CENTRES lie inside the mesh, with every E edge incident to one of
+        #    them zeroed (lattice ownership contract, #931 §1.2).  Foil is the
+        #    other declaration, add_thin_conductor on a zero-thickness shape,
+        #    and it is what a CAD sheet body would want.
+        #
+        #    On this mesh the 1.5 mm plate spans z = 14.25 .. 15.75 mm, and the
+        #    cell centres at 14.5 and 15.5 mm are both inside it: the part
+        #    realizes 2 cells thick with tangential walls at z = 14, 15 and
+        #    16 mm — 2.0 mm of realized metal against 1.5 mm drawn, each face
+        #    rounded to its nearest node plane.  That +0.5 mm is exactly what
+        #    the advisory in step 4 is about, and it is why an under-resolved
+        #    CAD part is a resolution problem, not a rounding detail.
         sim = Simulation(freq_max=10e9, domain=(0.06, 0.04, 0.03), dx=0.001,
                          boundary="cpml", cpml_layers=8, mode="3d")
         sim.add(patch, material="pec")

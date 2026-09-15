@@ -1,5 +1,16 @@
 # issue #812 — cv17 / cv18 re-gate: gate windows derived from geometry sensitivity
 
+> **Historical cv18 snapshot; current-path correction (2026-09-08).**
+> The cv18 measurement tables and old under-aperture blind spot below record
+> the pre-#931 thickness-deficit geometry. The regenerated
+> `_18_wr90_iris_results/aperture_resolution.json` now detects a one-cell
+> aperture defect in both signs at all **8/8** configurations, with minimum
+> margins **1.623x over-aperture** and **2.608x under-aperture**. Its nearest
+> oracle offset is **0.0 fine cells** at every pair. The binding per-config
+> fine gates are now **0.012/0.016/0.006/0.016/0.016/0.006/0.015/0.015**,
+> pooled **0.02**; these were already re-derived on the branch. The frozen
+> pre-declaration and dated measurements below remain intact. cv17 is unchanged.
+
 Status: **PRE-DECLARATION.** Every numeric window below is fixed in this commit,
 which PRECEDES the measurements that judge it. Branch `agent/regate-mie-iris`.
 Date: 2026-09-01. Lane: `geometry-sensitivity` (issue #812, post-Phase-1).
@@ -465,13 +476,23 @@ Every quantity this lane asserts in a durable document, and where it now lives:
 
 | claim | source of record |
 |---|---|
-| cv18 per-configuration fine gates | `validation/crossval/_18_wr90_iris_results/aperture_resolution.json::pairs[0].fine_gate_abs = 0.019` … `validation/crossval/_18_wr90_iris_results/aperture_resolution.json::pairs[2].fine_gate_abs = 0.015` (eight entries, identical to the per-configuration dict in `validation/crossval/_18_wr90_iris_results/rfx.json` under gates), bound to the script constant and to `round-up(env x 1.5)` in the gate test |
+| cv18 per-configuration fine gates | `validation/crossval/_18_wr90_iris_results/aperture_resolution.json::pairs[0].fine_gate_abs = 0.012` … `validation/crossval/_18_wr90_iris_results/aperture_resolution.json::pairs[2].fine_gate_abs = 0.006` (eight entries, identical to the per-configuration dict in `validation/crossval/_18_wr90_iris_results/rfx.json` under gates), bound to the script constant and to `round-up(env x 1.5)` in the gate test |
 | cv18 one-cell detection counts, margins, Richardson blindness | `validation/crossval/_18_wr90_iris_results/aperture_resolution.json::summary.over_aperture_detected = 8` and the sibling `summary` keys, and each pair's `one_cell_defect` block |
-| cv18 effective aperture of the fine rung | `validation/crossval/_18_wr90_iris_results/aperture_resolution.json::summary.nearest_offset_fine_cells_values[0] = 0.5` and each pair's `oracle_distance_abs` (this is the quantity §2.4 and §5.2 got sign-inverted) |
+| cv18 effective aperture of the fine rung | `validation/crossval/_18_wr90_iris_results/aperture_resolution.json::summary.nearest_offset_fine_cells_values[0] = 0.0` and each pair's `oracle_distance_abs` (this is the quantity §2.4 and §5.2 got sign-inverted) |
 | cv17 permittivity sensitivity (dB per unit relative eps) | re-derived in `test_the_declared_permittivity_sensitivity_is_the_one_recorded` in `tests/crossval/test_rcs_dielectric_sphere_mie_gates.py` and bound to `claim_scope` |
 | cv17 dB-gate permittivity blind window | `validation/crossval/_17_dielectric_results/material_blind_window.json::summary.pass_runs_eps[0][0] = 2.0`–`validation/crossval/_17_dielectric_results/material_blind_window.json::summary.pass_runs_eps[0][1] = 4.5` and `validation/crossval/_17_dielectric_results/material_blind_window.json::summary.pass_runs_eps[1][0] = 5.0`–`validation/crossval/_17_dielectric_results/material_blind_window.json::summary.pass_runs_eps[1][1] = 5.6`, the island `validation/crossval/_17_dielectric_results/material_blind_window.json::summary.fail_islands_eps[0].eps_r[0] = 4.6`–`validation/crossval/_17_dielectric_results/material_blind_window.json::summary.fail_islands_eps[0].eps_r[3] = 4.9` (worst bin `validation/crossval/_17_dielectric_results/material_blind_window.json::summary.fail_islands_eps[0].max_abs_delta_db = 9.787` dB), and the `scan` rows |
 | cv18 live-FDTD (B) run (`0.02842` / `0.00588`) | **prose only, §5.2** — not gate-bearing; criterion (B) is carried by the committed model table. `scripts/diagnostics/probe_cv18_one_cell_aperture_defect.py` re-runs that pair and writes `one_cell_defect_live.json` (it exits 1 unless the defect passes the pooled 0.04 gate and fails the per-config 0.015 one); it is submitted by a VESSL yaml reported to the orchestrator (`scripts/vessl_issue812_r2_cv17_cv18.yaml` in the worktree; `**/vessl*.yaml` is gitignored by repo convention, so the yaml is a hand-off artifact, not a commit). Its geometry half is verified locally with `--geometry-only`: aperture 20 nodes at the fine rung and 10 at the coarse, against nominal 19 / 9. |
 | cv17 live-FDTD defect runs (four dB magnitudes) | **prose only, §5.1** — not gate-bearing; the window is carried by `material_blind_window.json`. |
+
+**Why the cv18 fine gates in this ledger moved (2026-09-10, #931).** `901a3ad9`
+(VESSL run `369367259159`) found that this case's own iris realized its drawn
+thickness one cell short at both mesh rungs; fixing that fed the oracle the
+geometry that was actually built, and every measured envelope the gate rule
+reads shrank. Each constant above is the same repo rule — `round-up(measured
+envelope x 1.5)` — re-applied to the smaller envelope; none is hand-picked,
+and the `--write-fixture` self-check in `18_wr90_iris_modematch.py` demands
+exact equality with it. All ten gate values in that commit moved down or held;
+none widened.
 
 Both builders are deterministic, read only committed artifacts, run no FDTD,
 and support `--check` (rebuild and diff, exit 1 on any drift).
@@ -604,13 +625,13 @@ results they belong to.
   `RESULT: ALL CHECKS PASSED`, exit 0, every fine gap equal to the §5.2 table
   (`validation/crossval/_18_wr90_iris_results/cv18_gated_A.log`).
 * **cv18 (B), live** — the number §6 called "prose only" now has a key:
-  `validation/crossval/_18_wr90_iris_results/one_cell_defect_live.json::measured.fine_gap_abs = 0.02842` PASSES the pre-#812 pooled gate
-  (`validation/crossval/_18_wr90_iris_results/one_cell_defect_live.json::config.pooled_fine_gate_abs = 0.04`) and the Richardson gate
-  (`validation/crossval/_18_wr90_iris_results/one_cell_defect_live.json::measured.richardson_dev_abs = 0.00588` against
+  `validation/crossval/_18_wr90_iris_results/one_cell_defect_live.json::measured.fine_gap_abs = 0.01246` PASSES the pre-#812 pooled gate
+  (`validation/crossval/_18_wr90_iris_results/one_cell_defect_live.json::config.pooled_fine_gate_abs = 0.02`) and the Richardson gate
+  (`validation/crossval/_18_wr90_iris_results/one_cell_defect_live.json::measured.richardson_dev_abs = 0.00007` against
   `validation/crossval/_18_wr90_iris_results/one_cell_defect_live.json::config.richardson_gate_abs = 0.01`) — the measured blindness — and FAILS the
-  per-configuration gate `validation/crossval/_18_wr90_iris_results/one_cell_defect_live.json::config.fine_gate_abs_per_config = 0.015` by
-  `validation/crossval/_18_wr90_iris_results/one_cell_defect_live.json::measured.per_config_margin_x = 1.895`. The first-order model row beside it,
-  `validation/crossval/_18_wr90_iris_results/aperture_resolution.json::pairs[2].one_cell_defect.over.fine_gap_abs = 0.0265`, is 7 % low on the gated
+  per-configuration gate `validation/crossval/_18_wr90_iris_results/one_cell_defect_live.json::config.fine_gate_abs_per_config = 0.006` by
+  `validation/crossval/_18_wr90_iris_results/one_cell_defect_live.json::measured.per_config_margin_x = 2.077`. The first-order model row beside it,
+  `validation/crossval/_18_wr90_iris_results/aperture_resolution.json::pairs[2].one_cell_defect.over.fine_gap_abs = 0.0134`, is 7.5 % high on the gated
   leg and predicts the same three verdicts. The probe exits 1 unless exactly that
   pattern holds; it exited 0. Pinned by
   `test_live_one_cell_defect_is_caught_by_the_per_config_gate_and_not_the_old_ones`.

@@ -1,4 +1,4 @@
-"""The node-thin surface-impedance (Leontovich, ``surface_impedance_f0``) sheet:
+"""The surface-impedance (Leontovich, ``surface_impedance_f0``) SHEET:
 operator, identities, lane fences, stacked-layer gap veto, non-Box shapes.
 
 One file for the #677 sheet realization (tier 3b of the 2026-09 test-corpus
@@ -15,7 +15,7 @@ Sections, each formerly its own file:
    registers exactly one live ``SheetImpedanceSpec``, de-PECs the sheet and
    no longer overwrites ``eps_r``. O7: one f0-mode case through the
    ``vmap_sweep`` batched material build vs the serial assembly.
-2. **#677 node-thin sheet operator — unit + limit gates** — was
+2. **#677 sheet operator — unit + limit gates** — was
    ``test_sheet_impedance_operator.py``. Design B (exponential stepping):
    ``E^{n+1} = A*E^n + B*curlH`` with ``A = exp(-x2)``,
    ``B = -expm1(-x2)/sigma_tot``, ``x2 = sigma_tot*dt/(eps0*eps_r)``,
@@ -77,7 +77,7 @@ import jax
 import jax.numpy as jnp
 
 from rfx import Box, DebyePole, GaussianPulse, Simulation
-from rfx.boundaries.pec import apply_pec_mask, tangential_edge_masks
+from rfx.boundaries.pec import apply_pec_mask
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.core.yee import EPS_0, init_state, init_materials
 from rfx.geometry.csg import Cylinder, Sphere
@@ -88,7 +88,6 @@ from rfx.materials.thin_conductor import (
     build_sheet_impedance_ctx,
     leontovich_rs,
     refuse_f0_sheets,
-    sheet_update_coeffs,
 )
 from rfx.runners.nonuniform import assemble_materials_nu, build_nonuniform_grid
 
@@ -131,8 +130,14 @@ def _fixture_sim(kind: str, **tc_kwargs):
 
 def _digests(sim):
     specs = []
+    # #931: a PEC sheet owns no cell, so it is in NEITHER the material
+    # arrays nor pec_mask — digesting only those would compare two models
+    # while ignoring the one object under test. Collect the sheets and
+    # digest their realization too.
+    pec_sheets: list = []
     mats, _, _, pec_mask, *_ = sim._assemble_materials(
-        sim._build_grid(), sheet_specs=specs)
+        sim._build_grid(), sheet_specs=specs, pec_sheets=pec_sheets,
+        pec_wires=[])
     if pec_mask is None:
         pec_mask = np.zeros((0,), dtype=np.bool_)
     return {
@@ -140,6 +145,8 @@ def _digests(sim):
         "sigma": _sha(mats.sigma),
         "mu_r": _sha(mats.mu_r),
         "pec_mask": _sha(pec_mask),
+        "pec_sheets": tuple((int(sp.normal_axis), int(sp.plane),
+                             _sha(sp.footprint)) for sp in pec_sheets),
     }, mats, pec_mask, specs
 
 
@@ -175,7 +182,7 @@ def test_default_off_identity_and_negative_control_o6():
         d_on, mats_on, pec_on, specs_on = _digests(sim_on)
         assert d_on["sigma"] == _sha(jnp.zeros_like(mats_on.sigma)), (
             f"{kind}: f0 mode wrote into materials.sigma — the #677 "
-            f"node-thin realization must not fold the sheet into arrays")
+            f"sheet realization must not fold the sheet into arrays")
         assert d_on["eps_r"] == _sha(jnp.ones_like(mats_on.eps_r)), (
             f"{kind}: f0 mode overwrote eps_r (removed by #677)")
         assert int(np.asarray(pec_on).sum()) == 0, (
@@ -389,6 +396,14 @@ def _masks_for_fixtures():
     grid = Grid(freq_max=10e9, domain=(0.02, 0.02, 0.002))
     out.append(("uniform-box", Box((0.005, 0.005, 0.001),
                                    (0.015, 0.015, 0.001)).mask(grid)))
+    # a closed sheet footprint as the contract samples it (#931 §1.3)
+    from rfx.materials.thin_conductor import ThinConductor
+    specs_c: list = []
+    apply_thin_conductor(grid, ThinConductor(
+        shape=Box((0.005, 0.005, 0.001), (0.015, 0.015, 0.001)),
+        sigma_bulk=1e4, thickness=35e-6, surface_impedance_f0=F0),
+        init_materials(grid.shape), None, sheet_specs=specs_c, sheets=[])
+    out.append(("uniform-box-closed", specs_c[0].mask))
     from tests.unit.materials.test_thin_conductor import _nu_graded_grid, _nu_graded_sim
     from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
     sim = _nu_graded_sim(zc=4.0e-3, sigma_bulk=1e4, thickness=35e-6,
@@ -410,34 +425,41 @@ def _masks_for_fixtures():
 
 
 def test_g4_footprint_identity_with_pec_mask():
+    """#931 G4 by construction: the f0 ctx of a one-layer node footprint is
+    exactly the edge set a PEC sheet on the same footprint realizes
+    (``realized_pec_edge_masks`` on a ``SheetSpec``: E_t on the plane where
+    both end nodes are in the footprint; the normal component never)."""
+    from rfx.boundaries.pec import SheetSpec, realized_pec_edge_masks
+    from rfx.materials.thin_conductor import SheetImpedanceSpec
     for name, mask in _masks_for_fixtures():
         mask = jnp.asarray(mask)
         assert bool(jnp.any(mask)), name
-        mex, mey, mez = tangential_edge_masks(mask)
-        # exact equality with what apply_pec_mask zeroes: run it on a
-        # state of ones — zeros land exactly on the tangential edge sets
+        one_layer_axes = [
+            a for a in range(3)
+            if int(np.count_nonzero(np.asarray(jnp.any(
+                mask, axis=tuple(b for b in range(3) if b != a))))) == 1]
+        assert one_layer_axes, name
+        a = one_layer_axes[0]
+        plane = int(np.flatnonzero(np.asarray(jnp.any(
+            mask, axis=tuple(b for b in range(3) if b != a))))[0])
+        spec = SheetSpec(normal_axis=a, plane=plane, footprint=mask)
+        mex, mey, mez = realized_pec_edge_masks(None, sheets=[spec])
+        # exact equality with what apply_pec_mask zeroes for the same sheet
         st = init_state(mask.shape)
         ones = jnp.ones(mask.shape, jnp.float32)
         st = st._replace(ex=ones, ey=ones, ez=ones)
-        out = apply_pec_mask(st, mask)
+        out = apply_pec_mask(st, None, sheets=[spec])
         np.testing.assert_array_equal(np.asarray(out.ex) == 0.0,
                                       np.asarray(mex), err_msg=name)
         np.testing.assert_array_equal(np.asarray(out.ey) == 0.0,
                                       np.asarray(mey), err_msg=name)
         np.testing.assert_array_equal(np.asarray(out.ez) == 0.0,
                                       np.asarray(mez), err_msg=name)
-        # one-layer sheet: the normal-component edge set is all-False
-        one_layer_axes = [
-            a for a in range(3)
-            if int(np.count_nonzero(np.asarray(jnp.any(
-                mask, axis=tuple(b for b in range(3) if b != a))))) == 1]
-        for a in one_layer_axes:
-            assert not bool(jnp.any((mex, mey, mez)[a])), (name, a)
+        # the normal-component edge set is all-False
+        assert not bool(jnp.any((mex, mey, mez)[a])), (name, a)
         # and the assembled ctx carries exactly these masks (no PEC given)
-        from rfx.materials.thin_conductor import SheetImpedanceSpec
         ctx = build_sheet_impedance_ctx([SheetImpedanceSpec(
-            mask=mask, normal_axis=(one_layer_axes[0]
-                                    if one_layer_axes else 2),
+            mask=mask, normal_axis=a,
             g_sheet=1.0, sigma_sheet=jnp.where(mask, 1.0, 0.0))])
         np.testing.assert_array_equal(np.asarray(ctx.mask_ex),
                                       np.asarray(mex))
@@ -448,15 +470,19 @@ def test_g4_footprint_identity_with_pec_mask():
 
 
 def test_g4_pec_owned_edges_are_excluded_from_the_ctx():
+    from rfx.boundaries.pec import realized_pec_edge_masks
     from rfx.materials.thin_conductor import SheetImpedanceSpec
     rng = np.random.default_rng(677)
-    mask = jnp.asarray(rng.random((8, 8, 8)) < 0.3)
+    mask = np.zeros((8, 8, 8), bool)
+    mask[:, :, 3] = rng.random((8, 8)) < 0.5
+    mask = jnp.asarray(mask)
     pec = jnp.asarray(rng.random((8, 8, 8)) < 0.3)
+    pec_edges = realized_pec_edge_masks(pec)
     ctx = build_sheet_impedance_ctx(
         [SheetImpedanceSpec(mask=mask, normal_axis=2, g_sheet=1.0,
                             sigma_sheet=jnp.where(mask, 1.0, 0.0))],
-        pec_mask=pec)
-    pex, pey, pez = tangential_edge_masks(pec)
+        pec_edge_masks=pec_edges)
+    pex, pey, pez = pec_edges
     assert not bool(jnp.any(ctx.mask_ex & pex))
     assert not bool(jnp.any(ctx.mask_ey & pey))
     assert not bool(jnp.any(ctx.mask_ez & pez))
@@ -738,8 +764,24 @@ def _wr90(n_modes=1):
 def _mixed_probe_fed_msl():
     """Probe-fed MSL board for the mixed (wire + MSL) lane. Ladder geometry
     copied from the working fixture in tests/unit/sparams/test_mixed_port_sparam.py so
-    the earlier port-geometry guards pass and the #677 fence is reached."""
-    eps_r, h_sub, w_trace, dx = 3.66, 254e-6, 600e-6, 80e-6
+    the earlier port-geometry guards pass and the #677 fence is reached.
+
+    Ownership (#931): the trace is FOIL, so it is declared a sheet on the
+    substrate-top node plane (a zero-thickness Box, §1.5) instead of the
+    one-cell PEC Box it used to be — which the contract realizes as a filled
+    slab of solid metal with a wall on each face. The board is also redrawn
+    ON-LATTICE for it: at the copied dx = 80 um the 254 um laminate has no
+    node at its top face (254/80 = 3.175), so the sheet would land at 240 um,
+    a fifth of a cell INSIDE the substrate. `dx = h_sub / 3` puts the face on
+    a node and keeps the physical board, which is what design note §1.3 says
+    to do with an off-lattice interface (cv06b's recipe) rather than let the
+    declaration snap. Nothing here gates a field magnitude: the only consumer
+    is `test_fence_mixed_sparams`, which expects a ValueError before any
+    solve, so the redraw costs nothing and stops the file from teaching the
+    declaration the contract removed.
+    """
+    eps_r, h_sub, w_trace = 3.66, 254e-6, 600e-6
+    dx = h_sub / 3.0                    # 84.667 um: h_sub is node 3
     lx, ly, lz = 8e-3, 3e-3, 754e-6
     sim = Simulation(freq_max=5e9, domain=(lx, ly, lz), dx=dx, cpml_layers=8,
                      boundary=BoundarySpec(x="cpml", y="cpml",
@@ -748,7 +790,7 @@ def _mixed_probe_fed_msl():
     sim.add(Box((0.0, 0.0, 0.0), (lx, ly, h_sub)), material="sub")
     y_c = ly / 2.0
     sim.add(Box((0.0, y_c - w_trace / 2, h_sub),
-                (lx, y_c + w_trace / 2, h_sub + dx)), material="pec")
+                (lx, y_c + w_trace / 2, h_sub)), material="pec")
     _sheet(sim, Box((3e-3, 1e-3, 5e-4), (5e-3, 2e-3, 5e-4)))
     sim.add_port(position=(2e-3, y_c, 0.0), component="ez", impedance=50.0,
                  extent=h_sub)
@@ -757,6 +799,40 @@ def _mixed_probe_fed_msl():
                      waveform=GaussianPulse(f0=2.5e9, bandwidth=0.5),
                      n_probe_offset=10, n_probe_spacing=4)
     return sim
+
+
+def test_the_mixed_board_trace_realizes_on_the_substrate_top_plane():
+    """Build-time (no solve) ownership check for the fixture above: one
+    sheet, one wall plane, on the laminate face the board declares — the
+    redraw is only worth anything if the plane really lands there."""
+    from rfx.geometry.rasterize_grid import coords_from_uniform_grid
+    from tests._realized_geometry import (
+        assert_sheet_planes, assert_wall_planes, node_index, realized)
+
+    h_sub = 254e-6
+    sim = _mixed_probe_fed_msl()
+    rz = realized(sim)
+    assert rz.pec_mask is None, "foil declared as a sheet owns no cell"
+    assert len(rz.sheets) == 1, (
+        "only the PEC trace is a declared PEC sheet — the f0 sheet is a "
+        f"per-step operator, not a conductor declaration; got {rz.sheets}")
+    assert_sheet_planes(sim, 2, expected_m=(h_sub,), what="the PEC trace")
+    assert_wall_planes(sim, 2, expected_m=(h_sub,), what="the PEC trace")
+    k = node_index(rz.grid, 2, h_sub)
+    assert not bool(np.asarray(rz.edge_masks[2])[:, :, k].any()), (
+        "the normal E through a sheet stays live (§1.3)")
+
+    # ...and the plane is ON the laminate face, which is the half the two
+    # assertions above CANNOT see: they resolve `expected_m` to the nearest
+    # node and compare INDICES, so at the old dx = 80 um they both pass while
+    # node 3 sits at 240 um — the sheet 14 um inside the substrate. Measured
+    # both ways 2026-09-07: dx = 80 um -> plane 3 at 240.000 um;
+    # dx = h_sub/3 -> plane 3 at 254.000 um. This line is the difference.
+    z = np.asarray(coords_from_uniform_grid(rz.grid).z, dtype=float)
+    assert abs(float(z[k]) - h_sub) < 1e-9, (
+        f"the trace plane realizes at {float(z[k]) * 1e6:.3f} um, the board "
+        f"declares {h_sub * 1e6:.3f} um — the laminate face is off the node "
+        "line and the fixture must be redrawn (design note §1.3), not snapped")
 
 
 # ---------------------------------------------------------------------------
@@ -841,7 +917,10 @@ def test_fence_msl_junction_mixed_s_matrix():
         _mixed_probe_fed_msl().compute_mixed_s_matrix(
             freqs=np.linspace(1e9, 4e9, 3), num_periods=1.0,
             skip_preflight=True)
-    _fence(go, where=("_sparams.py", "compute_mixed_s_matrix"),
+    # #980 Phase 2 moved the body (and with it this fence) verbatim from
+    # rfx/api/_sparams.py to rfx/sparams/mixed.py; the frame basename tracks
+    # the file, the lane and the enclosing function are unchanged.
+    _fence(go, where=("mixed.py", "compute_mixed_s_matrix"),
            match=r"on the MSL junction S-parameter lane")
 
 
@@ -995,7 +1074,7 @@ def test_fence_waveguide_s_matrix_subpixel():
             warnings.simplefilter("ignore")
             _wr90().compute_waveguide_s_matrix(n_steps=4,
                                                subpixel_smoothing=True)
-    _fence(go, where=("_sparams.py", "compute_waveguide_s_matrix"),
+    _fence(go, where=("waveguide.py", "compute_waveguide_s_matrix"),
            match=r"on the waveguide S-matrix lane")
 
 
@@ -1004,7 +1083,7 @@ def test_fence_waveguide_s_matrix_multimode():
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             _wr90(n_modes=2).compute_waveguide_s_matrix(n_steps=4)
-    _fence(go, where=("_sparams.py", "compute_waveguide_s_matrix"),
+    _fence(go, where=("waveguide.py", "compute_waveguide_s_matrix"),
            match=r"on the multimode waveguide S-matrix path")
 
 
@@ -1075,9 +1154,14 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
         (__name__, "test_fence_adi_run"),
     ("rfx/api/_execute.py", "run", "subgridded (SBP-SAT) run()"):
         (__name__, "test_fence_subgridded_run"),
-    ("rfx/api/_sparams.py", "compute_mixed_s_matrix",
+    ("rfx/sparams/mixed.py", "compute_mixed_s_matrix",
      "MSL junction S-parameter"):
         (__name__, "test_fence_msl_junction_mixed_s_matrix"),
+    # #980 Phase 2 moved compute_coax_msl_transition (and this call site with
+    # it) verbatim from rfx/api/_sparams.py to rfx/sparams/coax.py.
+    ("rfx/sparams/coax.py", "compute_coax_msl_transition", "coax-MSL transition"):
+        ("tests.unit.ports.test_msl_realized_port_contract",
+         "test_direct_transition_cannot_silently_drop_lossy_sheets"),
     ("rfx/differentiable_material_fit.py", "forward",
      "differentiable material fit"):
         (__name__, "test_fence_differentiable_material_fit"),
@@ -1103,10 +1187,10 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
         (__name__, "test_fence_forward_upml"),
     ("rfx/api/_execute.py", "forward", "dispersive (Debye/Lorentz)"):
         (__name__, "test_fence_forward_dispersive_overlap"),
-    ("rfx/api/_sparams.py", "compute_waveguide_s_matrix",
+    ("rfx/sparams/waveguide.py", "compute_waveguide_s_matrix",
      "waveguide S-matrix lane"):
         (__name__, "test_fence_waveguide_s_matrix_subpixel"),
-    ("rfx/api/_sparams.py", "compute_waveguide_s_matrix",
+    ("rfx/sparams/waveguide.py", "compute_waveguide_s_matrix",
      "multimode waveguide S-matrix path"):
         (__name__, "test_fence_waveguide_s_matrix_multimode"),
     ("rfx/runners/uniform.py", "run_uniform", "boundary='upml'"):
@@ -1284,20 +1368,30 @@ def _counts(ctx):
             int(jnp.sum(ctx.mask_ez)))
 
 
+def _sheet_edges(spec):
+    """The #931 sheet rule on one spec's node footprint."""
+    from rfx.boundaries.pec import SheetSpec, realized_pec_edge_masks
+    a = int(spec.normal_axis)
+    other = tuple(b for b in range(3) if b != a)
+    plane = int(np.flatnonzero(np.asarray(jnp.any(spec.mask, axis=other)))[0])
+    return realized_pec_edge_masks(
+        None, sheets=[SheetSpec(normal_axis=a, plane=plane, footprint=spec.mask)])
+
+
 def test_adjacent_same_normal_sheets_leave_the_gap_edge_unloaded():
-    """ORACLE 1: |mask_ex| = |mask_ey| = |F|*n, |mask_ez| = 0."""
+    """ORACLE 1 (#931 sheet rule): a 4x4-NODE footprint carries 3x4 = 12
+    in-plane edges per direction per film; |mask_ez| = 0 for any stack."""
     ctx = build_sheet_impedance_ctx([
         _spec(FOOT, FOOT, [3], 2),
         _spec(FOOT, FOOT, [4], 2, g=2.0),
     ])
-    assert _counts(ctx) == (32, 32, 0), _counts(ctx)
+    assert _counts(ctx) == (24, 24, 0), _counts(ctx)
 
-    # the in-plane sets are exactly the union of each film's own classification
-    from rfx.boundaries.pec import tangential_edge_masks
+    # the in-plane sets are exactly the union of each film's own edge set
     a = _spec(FOOT, FOOT, [3], 2)
     b = _spec(FOOT, FOOT, [4], 2, g=2.0)
-    ax, ay, _ = tangential_edge_masks(a.mask)
-    bx, by, _ = tangential_edge_masks(b.mask)
+    ax, ay, _ = _sheet_edges(a)
+    bx, by, _ = _sheet_edges(b)
     assert bool(jnp.all(ctx.mask_ex == (ax | bx)))
     assert bool(jnp.all(ctx.mask_ey == (ay | by)))
 
@@ -1315,7 +1409,7 @@ def test_deeper_same_normal_stack_leaves_every_gap_edge_unloaded():
         _spec(FOOT, FOOT, [4], 2),
         _spec(FOOT, FOOT, [5], 2),
     ])
-    assert _counts(ctx) == (48, 48, 0), _counts(ctx)
+    assert _counts(ctx) == (36, 36, 0), _counts(ctx)
 
 
 def test_non_adjacent_stack_is_unchanged_negative_control():
@@ -1324,12 +1418,12 @@ def test_non_adjacent_stack_is_unchanged_negative_control():
         _spec(FOOT, FOOT, [2], 2),
         _spec(FOOT, FOOT, [5], 2, g=2.0),
     ])
-    assert _counts(ctx) == (32, 32, 0), _counts(ctx)
+    assert _counts(ctx) == (24, 24, 0), _counts(ctx)
 
 
 def test_single_sheet_ctx_is_unchanged_negative_control():
     ctx = build_sheet_impedance_ctx([_spec(FOOT, FOOT, [3], 2)])
-    assert _counts(ctx) == (16, 16, 0), _counts(ctx)
+    assert _counts(ctx) == (12, 12, 0), _counts(ctx)
 
 
 def test_coincident_same_normal_sheets_still_add_conductance():
@@ -1338,7 +1432,7 @@ def test_coincident_same_normal_sheets_still_add_conductance():
         _spec(FOOT, FOOT, [3], 2, g=1.0),
         _spec(FOOT, FOOT, [3], 2, g=2.0),
     ])
-    assert _counts(ctx) == (16, 16, 0), _counts(ctx)
+    assert _counts(ctx) == (12, 12, 0), _counts(ctx)
     assert np.isclose(float(np.asarray(ctx.sigma_sheet)[2, 2, 3]), 3.0 / DX)
 
 
@@ -1396,7 +1490,7 @@ def test_gap_between_stacked_films_rings_instead_of_being_clamped():
 # ``mode="2d_tmz"`` Ez is the only live E component, so the sheet became
 # bit-identically inert: an f0 copper patch behaved exactly like vacuum.
 #
-# ``tangential_edge_masks`` already keeps the wrap on a length-1 axis for
+# The realization rule already keeps the wrap on a length-1 axis for
 # exactly this reason (#689) — the veto ran after it and threw the result
 # away. Measured on the fixture below (20x20x1, dx = 1 mm, 6x6-cell copper
 # patch, 400 steps):
@@ -1437,22 +1531,25 @@ def _flat_spec(shape, xs, ys, normal, g=1.0):
 
 
 def test_two_d_sheet_keeps_its_out_of_plane_component():
-    """nz == 1: the veto must not fire on z. Without the exception the
-    only live 2d_tmz component is zeroed and the sheet is inert."""
+    """nz == 1: the sheet's "normal" component is the only live 2d_tmz
+    component and must be loaded at every footprint NODE (#931 §1.3: on a
+    length-1 normal axis the region has no thickness direction). A 6x6-node
+    footprint: 36 Ez, and 5x6 = 30 in-plane edges per direction."""
     spec = _flat_spec(TMZ_SHAPE, range(8, 14), range(8, 14), 2)
     ctx = build_sheet_impedance_ctx([spec], periodic=(False, False, True))
-    assert _counts(ctx) == (36, 36, 36), _counts(ctx)
+    assert _counts(ctx) == (30, 30, 36), _counts(ctx)
 
     # ...and it holds on the DEFAULT flags too, which is what the callers
     # that never pass ``periodic`` (forward(), the NU runner, the eager
     # S-parameter re-runs) get.
     ctx_def = build_sheet_impedance_ctx([spec])
-    assert _counts(ctx_def) == (36, 36, 36), _counts(ctx_def)
+    assert _counts(ctx_def) == (30, 30, 36), _counts(ctx_def)
 
 
 def test_two_d_sheet_keeps_the_g4_pec_footprint_identity():
-    """#677 G4 on a 2-D mask: the f0 footprint is what apply_pec_mask zeroes."""
-    from rfx.boundaries.pec import apply_pec_mask
+    """#931 G4 on a 2-D footprint: the f0 edge set is what apply_pec_mask
+    zeroes for a PEC sheet on the same footprint."""
+    from rfx.boundaries.pec import SheetSpec, apply_pec_mask
     from rfx.core.yee import init_state
 
     spec = _flat_spec(TMZ_SHAPE, range(8, 14), range(8, 14), 2)
@@ -1460,8 +1557,9 @@ def test_two_d_sheet_keeps_the_g4_pec_footprint_identity():
     ctx = build_sheet_impedance_ctx([spec], periodic=per)
     st = init_state(TMZ_SHAPE)
     ones = jnp.ones(TMZ_SHAPE, jnp.float32)
-    out = apply_pec_mask(st._replace(ex=ones, ey=ones, ez=ones),
-                         spec.mask, per)
+    out = apply_pec_mask(st._replace(ex=ones, ey=ones, ez=ones), None, per,
+                         sheets=[SheetSpec(normal_axis=2, plane=0,
+                                           footprint=spec.mask)])
     for zeroed, m in ((out.ex, ctx.mask_ex), (out.ey, ctx.mask_ey),
                       (out.ez, ctx.mask_ez)):
         np.testing.assert_array_equal(np.asarray(zeroed) == 0.0,
@@ -1473,18 +1571,15 @@ def test_periodic_seam_gap_edge_stays_vetoed():
 
     Two one-layer z-normal films on cells 0 and n-1 of a z-PERIODIC domain
     are two films with the seam between them, exactly the #690 geometry —
-    ``tangential_edge_masks`` fuses them through the wrap (32 Ez edges) and
-    the veto must still remove them. Broadening the exception to
-    ``union.shape[c] == 1 or periodic[c]`` reds this test with ez = 32.
+    the #931 sheet rule loads only in-plane components, so the seam edge
+    stays live whatever the periodic flags say (a cell-adjacency rule fused
+    them through the wrap: 32 Ez edges, before #931).
     """
-    from rfx.boundaries.pec import tangential_edge_masks
     per = (False, False, True)
     a = _spec(FOOT, FOOT, [0], 2)
     b = _spec(FOOT, FOOT, [NZ - 1], 2)
-    fused = tangential_edge_masks(a.mask | b.mask, per)
-    assert int(jnp.sum(fused[2])) == 32, int(jnp.sum(fused[2]))
     ctx = build_sheet_impedance_ctx([a, b], periodic=per)
-    assert _counts(ctx) == (32, 32, 0), _counts(ctx)
+    assert _counts(ctx) == (24, 24, 0), _counts(ctx)
 
 
 def _tmz_sim(kind):
@@ -1539,17 +1634,21 @@ THICKNESS = 35e-6
 # ---------------------------------------------------------------------------
 
 class PlanarSheet:
-    """Flat sheet on ``axis = coord``, footprint ``[lo, hi)``, optional hole.
+    """Flat sheet on ``axis = coord``, footprint ``[lo, hi]``, optional hole.
 
-    Conventions match the primitives deliberately: half-open ``[lo, hi)`` on
-    the in-plane axes (:class:`rfx.geometry.csg.Box`'s volume rule) and the
-    single nearest node on the normal axis (Box's thin-sheet rule), so an
-    equivalent Box and this shape must rasterize to the same cells.
+    Conventions match the #931 sheet rule deliberately: CLOSED ``[lo, hi]``
+    on the in-plane axes (the contract samples a Box sheet's footprint
+    closed, §1.3) and the single nearest node on the normal axis, so an
+    equivalent Box and this shape rasterize to the same nodes. The hole is
+    open (a node ON the hole boundary is metal).
     """
 
-    def __init__(self, axis, coord, plane_lo, plane_hi, hole=None):
+    def __init__(self, axis, coord, plane_lo, plane_hi, hole=None, closed=True):
         self.axis = int(axis)
         self.coord = float(coord)
+        # closed=False reproduces the DC-fold lane's half-open node sampling
+        # (a sigma-fill VOLUME model, untouched by #931 §1.8)
+        self.closed = bool(closed)
         self.plane_lo = tuple(float(v) for v in plane_lo)   # (a0, a1) lows
         self.plane_hi = tuple(float(v) for v in plane_hi)
         self.hole = None if hole is None else (
@@ -1580,7 +1679,8 @@ class PlanarSheet:
                     jnp.argmin(jnp.abs(c - self.coord))].set(True)
             else:
                 i = self._plane_axes.index(a)
-                m = (c >= self.plane_lo[i]) & (c < self.plane_hi[i])
+                m = (c >= self.plane_lo[i]) & (
+                    (c <= self.plane_hi[i]) if self.closed else (c < self.plane_hi[i]))
             per_axis.append(m)
         out = (per_axis[0][:, None, None] & per_axis[1][None, :, None]
                & per_axis[2][None, None, :])
@@ -1591,7 +1691,7 @@ class PlanarSheet:
                     holes.append(jnp.ones(coords[a].shape, dtype=bool))
                 else:
                     i = self._plane_axes.index(a)
-                    holes.append((coords[a] >= self.hole[0][i])
+                    holes.append((coords[a] > self.hole[0][i])
                                  & (coords[a] < self.hole[1][i]))
             out = out & ~(holes[0][:, None, None] & holes[1][None, :, None]
                           & holes[2][None, None, :])
@@ -1633,7 +1733,7 @@ class BoundsOnlyShape:
 U_DX = 1e-3
 U_DOMAIN = (0.02, 0.02, 0.003)
 U_Z = 1e-3
-U_FOOT = ((5e-3, 5e-3), (15e-3, 15e-3))          # [lo, hi) in x and y
+U_FOOT = ((5e-3, 5e-3), (15e-3, 15e-3))          # [lo, hi] in x and y (#931: closed)
 U_HOLE = ((8e-3, 8e-3), (12e-3, 12e-3))
 
 # NU fixture: dz = [0.5 mm]x8 + [1.5 mm]x8, sheet ON the 4.0 mm step node
@@ -1702,9 +1802,9 @@ def _box_sheet(z, foot):
     return Box((x0, y0, z), (x1, y1, z))
 
 
-def _planar_sheet(z, foot, hole=None):
+def _planar_sheet(z, foot, hole=None, closed=True):
     (x0, y0), (x1, y1) = foot
-    return PlanarSheet(2, z, (x0, y0), (x1, y1), hole=hole)
+    return PlanarSheet(2, z, (x0, y0), (x1, y1), hole=hole, closed=closed)
 
 
 # ---------------------------------------------------------------------------
@@ -1768,8 +1868,10 @@ def test_dc_fold_also_accepts_a_mask_shape_on_the_uniform_lane():
     """The legacy DC fold was never Box-only on the uniform lane (it reads
     ``shape.mask``); pin that #674 did not change it. The NU DC path keeps its
     documented warn-and-skip for non-Box shapes."""
+    # The DC fold samples ``shape.mask`` half-open (a sigma-fill volume
+    # model, unchanged by #931), so the equivalent mask shape is half-open.
     sig_box, _, _, _ = _uniform_sigma(_box_sheet(U_Z, U_FOOT))
-    sig_msk, _, _, _ = _uniform_sigma(_planar_sheet(U_Z, U_FOOT))
+    sig_msk, _, _, _ = _uniform_sigma(_planar_sheet(U_Z, U_FOOT, closed=False))
     assert _sha(sig_box) == _sha(sig_msk)
 
     with warnings.catch_warnings(record=True) as rec:
@@ -1830,14 +1932,15 @@ def test_patterned_sheet_folds_only_occupied_cells(lane):
 # ---------------------------------------------------------------------------
 
 def test_body_with_height_refused_on_both_lanes():
-    """A 3-D shape is not a sheet: it rasterizes to more than one layer along
-    its normal, and folding it per cell would multiply the sheet conductance
-    by the layer count. Refused at build time on both lanes."""
+    """A 3-D shape is not a sheet: it is thicker than one local cell along
+    its normal (#931 §1.5), and folding it per layer would multiply the
+    sheet conductance by the layer count. Refused at build time on both
+    lanes."""
     ball = Sphere((10e-3, 10e-3, 1.5e-3), 1.2e-3)
-    with pytest.raises(ValueError, match="cell layers along its normal"):
+    with pytest.raises(ValueError, match="not a sheet; use add"):
         _uniform_sigma(ball, surface_impedance_f0=F0)
     ball_nu = Sphere((6e-3, 6e-3, 4.0e-3), 1.2e-3)
-    with pytest.raises(ValueError, match="cell layers along its normal"):
+    with pytest.raises(ValueError, match="not a sheet; use add"):
         _nu_sigma(ball_nu, surface_impedance_f0=F0)
 
 
@@ -1845,9 +1948,9 @@ def test_sheet_that_rasterizes_to_nothing_is_refused_not_vaporized():
     """The #369 class, reachable by a non-Box sheet a Box could not reach: a
     footprint that falls entirely between node planes folds zero cells. It
     must raise, never silently vanish."""
-    # footprint strictly inside one cell in x: [5.2, 5.8) mm on a 1 mm grid
+    # footprint strictly inside one cell in x: [5.2, 5.8] mm on a 1 mm grid
     ghost = PlanarSheet(2, U_Z, (5.2e-3, 5e-3), (5.8e-3, 15e-3))
-    with pytest.raises(ValueError, match="ZERO cells"):
+    with pytest.raises(ValueError, match="ZERO nodes"):
         _uniform_sigma(ghost, surface_impedance_f0=F0)
 
 
@@ -1992,18 +2095,18 @@ def _mesh_slab(x0, x1, y0, y1, z0, z1, extra=()):
 def test_mesh_shape_sheet_folds_bit_identically_to_its_box():
     """An imported CAD slab and the Box it stands for fold the same sigma.
 
-    Bounds are chosen OFF the node planes (4.6 .. 14.6 mm on a 1 mm grid) so
-    the mesh's closed containment test and Box's half-open ``[lo, hi)`` rule
-    select the same nodes 5..14 mm — the comparison is of the FOLD, not of two
-    boundary conventions.
+    Bounds are chosen OFF the node planes (4.6 .. 15.4 mm on a 1 mm grid) so
+    the mesh's closed containment test and the contract's CLOSED Box sheet
+    footprint (#931 §1.3) select the same nodes 5..15 mm — the comparison is
+    of the FOLD, not of two boundary conventions.
     """
-    slab = _mesh_slab(4.6e-3, 14.6e-3, 4.6e-3, 14.6e-3,
+    slab = _mesh_slab(4.6e-3, 15.4e-3, 4.6e-3, 15.4e-3,
                       U_Z - 1e-4, U_Z + 1e-4)
     sig_mesh, pec_mesh, grid, _ = _uniform_sigma(slab,
                                                  surface_impedance_f0=F0)
     sig_box, _, _, _ = _uniform_sigma(_box_sheet(U_Z, U_FOOT),
                                       surface_impedance_f0=F0)
-    assert int((sig_mesh > 0).sum()) == 100, int((sig_mesh > 0).sum())
+    assert int((sig_mesh > 0).sum()) == 121, int((sig_mesh > 0).sum())
     np.testing.assert_array_equal(sig_mesh > 0, sig_box > 0)
     assert _sha(sig_mesh) == _sha(sig_box)
     assert pec_mesh is None or int(np.asarray(pec_mesh).sum()) == 0

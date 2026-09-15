@@ -1,0 +1,60 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-9.1.1, pluggy-1.6.0
+rootdir: /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds
+configfile: pyproject.toml
+plugins: split-0.11.0, xdist-3.8.0, anyio-4.9.0
+created: 4/4 workers
+4 workers [139 items]
+
+........................................................................ [ 51%]
+...................................................................      [100%]
+=============================== warnings summary ===============================
+tests/contracts/test_lattice_ownership_contract.py::test_pec_thin_conductor_is_a_sheet_not_a_cell
+tests/contracts/test_lattice_ownership_contract.py::test_g4_pec_sheet_and_f0_sheet_share_footprint_and_edge_set
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/contracts/test_lattice_ownership_contract.py:527: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+    sim.add_thin_conductor(Box((0.002, 0.003, 0.003), (0.006, 0.007, 0.003)),
+
+tests/contracts/test_lattice_ownership_contract.py::test_sub_cell_non_box_sheet_is_realized_from_its_mid_plane_cross_section
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/contracts/test_lattice_ownership_contract.py:629: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+    sim.add_thin_conductor(
+
+tests/contracts/test_lattice_ownership_contract.py::test_g4_pec_sheet_and_f0_sheet_share_footprint_and_edge_set
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/contracts/test_lattice_ownership_contract.py:527: UserWarning: add_thin_conductor: surface_impedance_f0=5000000000.0 Hz — Leontovich surface-resistance sheet with Rs0 = 1.405 ohm/sq. Rs is FREQUENCY-FLAT within the run, frozen at f0, with relative band error |sqrt(f/f0)-1|; the reactive part Xs = Rs (internal inductance) is NOT modeled, so resonances read slightly high.
+    sim.add_thin_conductor(Box((0.002, 0.003, 0.003), (0.006, 0.007, 0.003)),
+
+tests/contracts/test_lattice_ownership_contract.py::test_zero_thickness_pec_box_via_add_is_a_sheet_declaration
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/contracts/test_lattice_ownership_contract.py:590: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+    sim.add_thin_conductor(box)
+
+tests/contracts/test_lattice_ownership_contract.py::test_fidelity_report_realized_extent_comes_from_the_wall_planes
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/contracts/test_lattice_ownership_contract.py:962: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. You passed thickness=1e-06 m, which is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+    sim.add_thin_conductor(Box((4e-3, 4e-3, 5e-3), (16e-3, 16e-3, 5e-3)),
+
+tests/contracts/test_frozen_mesh_construction.py::test_freeze_before_first_geometry_survives_execution[run]
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/contracts/test_frozen_mesh_construction.py:34: UserWarning: no field energy was recorded — the source may not have coupled (position off-grid, wrong component, or zero amplitude) (issue #336)
+    result = getattr(sim, entry)(n_steps=1, skip_preflight=True)
+
+tests/contracts/test_pec_short_advisory_geometry.py::test_short_faces_and_actual_port_planes_describe_one_fixed_network[0.002-8]
+tests/contracts/test_pec_short_advisory_geometry.py::test_short_faces_and_actual_port_planes_describe_one_fixed_network[0.001-10]
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/sources/waveguide_port.py:906: UserWarning: Explicitly requested dtype float64 requested in zeros is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.
+    real_dtype = jnp.zeros((), dtype=freqs.dtype).dtype if hasattr(freqs, 'dtype') else jnp.float32
+
+tests/contracts/test_frozen_mesh_construction.py::test_freeze_keeps_automatic_profiles_and_extent_after_geometry_edit
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/api/_mesh.py:143: AutoMeshWarning: Auto mesh: dx=0.500mm (60 cells/λ), non-uniform z (158 cells). Set dx= explicitly to suppress.
+    return (self._build_nonuniform_grid() if self._uses_nonuniform_mesh
+
+tests/contracts/test_frozen_mesh_construction.py::test_freeze_keeps_automatic_profiles_and_extent_after_geometry_edit
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/api/_mesh.py:143: AutoMeshWarning: Non-uniform z mesh enabled: 158 cells, dz=0.133–0.497 mm
+    return (self._build_nonuniform_grid() if self._uses_nonuniform_mesh
+
+tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_v173a_drawing_and_gap_measurements_are_realized
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/scripts/harnesses/v173a_physics_equivalence.py:48: DeprecationWarning: pec_faces= kwarg is deprecated; encode PEC faces in BoundarySpec instead (e.g. boundary=BoundarySpec(x='cpml', y='cpml', z=Boundary(lo='pec', hi='cpml'))). The kwarg will be removed in rfx v2.0.
+    sim = Simulation(
+
+tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_v173a_drawing_and_gap_measurements_are_realized
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/scripts/harnesses/v173a_physics_equivalence.py:56: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+    sim.add_thin_conductor(Box(lo, hi), sigma_bulk=5.8e7, thickness=35e-6)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/outputs/931-fixture-repair/fast-contracts/junit.xml -
+====================== 139 passed, 13 warnings in 13.50s =======================

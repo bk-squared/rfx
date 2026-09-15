@@ -45,6 +45,31 @@ Gate calibration (dx=80 µm, laplace mode, measured 2026-05-04)
   mean |S11| ≈ 0.118  → gate < 0.15
   mean |S21| ≈ 0.972  → gate (0.90, 1.05)
   mean Re(Z0) ≈ 54 Ω  → gate (40, 65) Ω
+
+#931 — the recorded MEASURED values above (and the 0.1160 / 0.9930 /
+57.58 Ω refresh below) are pre-contract: they were taken on the
+bisecting mesh, where the strip sat at 320 µm over a 254 µm dielectric
+plus a 66 µm air gap. The fixture is now on the lattice with the trace
+declared as a sheet, so it simulates the intended board.
+
+RE-MEASURED on the contract board (VESSL run 369367259284, 2026-09-07,
+preset gpu-rtx4090, JAX_PLATFORMS=cpu, ``-m slow``, rc=0, 6 min). The
+three BOUNDS are UNTOUCHED and all three hold with more margin than
+before:
+
+  quantity        pre-#931 (dx = 80 µm)   post-#931 (dx = h_sub/3)   gate
+  mean |S11|      0.1160                  0.0203                     < 0.15
+  mean |S21|      0.9930                  0.9997                     (0.90, 1.05)
+  mean Re(Z0)     57.58 Ω                 46.16 Ω                    (40, 65) Ω
+
+That is the direction the geometry implies and the size this file's own
+text predicted: it already recorded the aligned dx = 84.67 µm sibling at
+44.11 Ω against the bisecting mesh's 57.58 Ω, and named 57.58 Ω "the
+faithful extraction of THAT geometry, not extractor error". The board is
+now the intended one, so Re(Z0) sits 3.6 % below the declared board's
+Hammerstad–Jensen anchor of 47.89 Ω instead of 20 % above it, and the
+reflection the port sees against its own 50 Ω reference falls 5.7×.
+Nothing was widened; nothing was translated.
 """
 
 from __future__ import annotations
@@ -57,6 +82,9 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.geometry.csg import Box
 
 from tests._gate_policy import gate_from_envelope
+from tests._realized_geometry import (
+    assert_sheet_planes, assert_wall_planes, node_index, realized,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -69,8 +97,17 @@ W_TRACE = 600e-6      # trace width, metres
 L_LINE = 10e-3        # thru-line length
 PORT_MARGIN = 2e-3    # feed → domain edge clearance
 
-# Uniform cell size: 80 µm gives 254/80 ≈ 3.2 cells in substrate.
-DX = 80e-6
+# ON-LATTICE board (#931 §1.3): dx = h_sub/3, so the laminate face IS a
+# node line and the foil sheet lands on it. The fixture ran at dx = 80 µm
+# (254/80 = 3.175): there the substrate realizes FOUR cells and the strip
+# sat at z = 320 µm over a 254 µm dielectric plus a 66 µm air gap — the
+# structure the docstrings below call "not the intended board". Its own
+# text already names dx = 84.67 µm as the aligned sibling that rasterizes
+# the intended structure and reads 44.11 Ω against 57.58 Ω. That is the
+# board this fixture now simulates, so the three gate windows are
+# RE-MEASURED on it (see the results dir's RECOMPUTE.md) rather than
+# carried across; nothing here is widened.
+DX = H_SUB / 3
 F_MAX = 5e9
 
 LX = L_LINE + 2 * PORT_MARGIN
@@ -119,13 +156,14 @@ def test_msl_thru_line_passive_gate():
     See ``docs/agent-memory/port_sparam_review_2026-05-19.md``.
 
     CALIBRATION REFRESHED 2026-07-30 (issues #511/#507 + PR #516 review
-    finding F2). Bounds untouched — never weakened or moved; only the
-    recorded measured values:
+    finding F2) and again 2026-09-07 (#931 R6 — the on-lattice sheet
+    board). Bounds untouched throughout — never weakened or moved; only
+    the recorded measured values:
 
-        quantity        pre-#511    final (trace-anchored V, PR #516)
-        mean|S11|       0.118       0.1160
-        mean|S21|       0.972       0.9930
-        mean Re(Z0)     ~57 Ω       57.58 Ω
+        quantity        pre-#511    PR #516     #931 (VESSL 369367259284)
+        mean|S11|       0.118       0.1160      0.0203
+        mean|S21|       0.972       0.9930      0.9997
+        mean Re(Z0)     ~57 Ω       57.58 Ω     46.16 Ω
 
     (An intermediate PR #516 state read 0.0746 / 42.41 Ω here; that was the
     review's finding F2 — a V span anchored on ``round(h_sub/dx)``, one
@@ -171,18 +209,20 @@ def test_msl_thru_line_passive_gate():
         material="ro4350b",
     )
 
-    # --- PEC trace strip (one cell thick at z = H_SUB) ---
-    # A microstrip quasi-TEM mode requires a metal trace above the substrate.
-    # Without the trace, the Ez source excites a TM substrate mode (Z0>>50Ω).
-    # Canonical pattern (as in validation/crossval/06b_msl_notch_filter_uniform.py):
-    #   sim.add(Box(..., substrate_thickness, substrate_thickness+dz), material="pec")
-    # Use one-cell thickness (H_SUB to H_SUB + DX) so rfx Box captures the
-    # cells whose z-centres fall within the box z-range.
+    # --- PEC trace strip: a SHEET on the laminate face (#931 §1.3) ---
+    # A microstrip quasi-TEM mode requires a metal trace above the
+    # substrate. Without the trace, the Ez source excites a TM substrate
+    # mode (Z0 >> 50 Ω). 35 µm copper is foil, so it is declared as a
+    # zero-thickness Box at z = H_SUB and realized as ONE wall plane with
+    # the normal Ez left live. The one-cell-thick spelling this fixture
+    # used to carry is a VOLUME under the contract: walls at H_SUB and
+    # H_SUB + dx with the Ez between them shorted, i.e. 85 µm of solid
+    # metal.
     y_centre = LY / 2.0
     trace_y_lo = y_centre - W_TRACE / 2.0
     trace_y_hi = y_centre + W_TRACE / 2.0
     sim.add(
-        Box((0.0, trace_y_lo, H_SUB), (LX, trace_y_hi, H_SUB + DX)),
+        Box((0.0, trace_y_lo, H_SUB), (LX, trace_y_hi, H_SUB)),
         material="pec",
     )
 
@@ -238,7 +278,8 @@ def test_msl_thru_line_passive_gate():
     nz_sub = int(round(H_SUB / DX))
     print(f"[MSL thru] dx = {DX*1e6:.0f} µm, nz_sub ≈ {nz_sub}")
 
-    # --- reflection gate (laplace mode, dx=80µm: measured ~0.118) ---
+    # --- reflection gate (laplace mode; measured 0.0203 on the #931
+    #     on-lattice sheet board, 0.1160 on the pre-#931 bisecting mesh) ---
     assert mean_s11 < 0.15, (
         f"|S11| = {mean_s11:.4f} ≥ 0.15 — excessive reflection at source plane"
     )
@@ -251,7 +292,8 @@ def test_msl_thru_line_passive_gate():
         f"|S21| = {mean_s21:.4f} ≥ 1.05 — passivity violated"
     )
 
-    # --- Z0 gate (dx=80µm corrected window; measured ~54 Ω) ---
+    # --- Z0 gate (window unchanged since the dx=80µm correction; measured
+    #     46.16 Ω on the #931 board, 57.58 Ω on the pre-#931 one) ---
     assert 40.0 < mean_z0 < 65.0, (
         f"Re(Z0) = {mean_z0:.2f} Ω outside (40, 65) Ω"
     )
@@ -303,7 +345,7 @@ def test_msl_thru_line_eigenmode_gate():
     trace_y_lo = y_centre - W_TRACE / 2.0
     trace_y_hi = y_centre + W_TRACE / 2.0
     sim.add(
-        Box((0.0, trace_y_lo, H_SUB), (LX, trace_y_hi, H_SUB + DX)),
+        Box((0.0, trace_y_lo, H_SUB), (LX, trace_y_hi, H_SUB)),
         material="pec",
     )
 
@@ -385,7 +427,7 @@ def _run_msl_thru(l_line: float):
     trace_y_lo = y_centre - W_TRACE / 2.0
     trace_y_hi = y_centre + W_TRACE / 2.0
     sim.add(
-        Box((0.0, trace_y_lo, H_SUB), (lx, trace_y_hi, H_SUB + DX)),
+        Box((0.0, trace_y_lo, H_SUB), (lx, trace_y_hi, H_SUB)),
         material="pec",
     )
     sim.add_msl_port(
@@ -431,6 +473,17 @@ def test_msl_thru_line_z0_length_invariance_and_positive_sign():
     Enforced bound = gate_from_envelope(0.004607, quantum=1000) = 0.007 —
     the shared measured-envelope policy (``tests/_gate_policy.py``:
     ENVELOPE_GATE_MULTIPLIER then ceil-quantize to 1/1000), a 1.52x margin.
+
+    #931, RE-MEASURED on the on-lattice sheet board (VESSL run
+    369367259284): mean|Z0| per length {8, 10, 12} mm = 46.21 / 46.16 /
+    46.13 Ω, spread 0.16% against the SAME 0.7% bound; per-leg mean|S11|
+    0.0126 / 0.0203 / 0.0264 against the same < 0.15 envelope. The bound is
+    NOT re-derived from this run. gate_from_envelope(0.0016, quantum=1000)
+    would tighten it to 0.003, and doing that on one solve on one platform
+    would throw away the cross-platform envelope work below (issue #610):
+    a gate re-derived from the single measurement it bounds cannot fail by
+    construction. The envelope moved and is recorded; the gate stays where
+    the two-platform evidence put it.
 
     The L = 6 mm leg was REMOVED, not re-bounded (no-silent-loosening: the
     bound TIGHTENED 5% → 0.7%). Issue #518 attributes its ~+2.9 Ω offset to
@@ -577,3 +630,86 @@ def test_msl_thru_line_z0_length_invariance_and_positive_sign():
         f"SHORT line, check N-probe fit conditioning first (issue #518) "
         f"before suspecting the extractor."
     )
+
+
+# ---------------------------------------------------------------------------
+# The ownership contract on this board — build time, no solve
+# ---------------------------------------------------------------------------
+
+def test_declared_conductor_is_the_realized_conductor():
+    """A correctly drawn conductor realizes what it declares (#931).
+
+    Three claims, all read from ``realized_pec_edge_masks`` through the
+    shared reader, all costing one grid build:
+
+    * the foil sits on the laminate face and nowhere else — ONE wall plane
+      at z = h_sub, because the board is on-lattice and a sheet lands on
+      the node nearest its declared plane;
+    * it owns NO cell and leaves the normal Ez through it live, which is
+      what makes the #511 V span stop below it;
+    * its footprint is the drawn rectangle sampled CLOSED — the realized
+      node rows are exactly the nodes the declaration covers, ``hi`` row
+      included. Nothing in this suite gated that before: the realized
+      width was only ever recorded (the anchor artifact,
+      ``fidelity_report``), and at dx = 80 µm it read 560 µm against a
+      declared 600 µm — a 7 % error nobody caught.
+
+    The width residual is a separate, smaller statement, and it is worth
+    keeping the two apart. Making the SUBSTRATE commensurate does not make
+    the TRACE commensurate: W = 600 µm against dx = h_sub/3 = 84.67 µm is
+    7.087 cells, so the closed sampling gives 7 cells = 592.667 µm and the
+    drawn-vs-realized residual is 7.333 µm — under one cell, and the same
+    number the realized-anchor artifact records for this mesh. Preflight's
+    off-lattice design-edge check reports it as a face residual. It is
+    pinned here so that a change in the sampling rule shows up as a
+    changed residual rather than as silence, but it is NOT an equality:
+    only a dimension commensurate with dx realizes exactly.
+    """
+    # The same board the gate above builds, stated once here; nothing is
+    # stepped, so this costs one grid build.
+    sim = Simulation(
+        freq_max=F_MAX, domain=(LX, LY, LZ), dx=DX, cpml_layers=8,
+        boundary=BoundarySpec(x="cpml", y="cpml",
+                              z=Boundary(lo="pec", hi="cpml")),
+    )
+    sim.add_material("ro4350b", eps_r=EPS_R)
+    sim.add(Box((0.0, 0.0, 0.0), (LX, LY, H_SUB)), material="ro4350b")
+    y_centre = LY / 2.0
+    sim.add(Box((0.0, y_centre - W_TRACE / 2.0, H_SUB),
+                (LX, y_centre + W_TRACE / 2.0, H_SUB)), material="pec")
+    rz = realized(sim)
+
+    assert_sheet_planes(sim, 2, [H_SUB], what="MSL trace foil")
+    assert_wall_planes(sim, 2, [H_SUB], what="MSL trace foil")
+
+    assert rz.pec_mask is None or not bool(np.asarray(rz.pec_mask).any()), (
+        "a sheet owns no cell (§1.3), so this board's pec_mask is empty")
+
+    plane = rz.sheet_planes[2][0]
+    fp = np.zeros(tuple(rz.grid.shape), dtype=bool)
+    for sp in rz.sheets:
+        fp |= np.asarray(sp.footprint, dtype=bool)
+    ez = np.asarray(rz.edge_masks[2], dtype=bool)
+    assert not (ez & fp).any(), (
+        "normal E through a sheet stays live (§1.3)")
+
+    y_c = LY / 2.0
+    j_lo = node_index(rz.grid, 1, y_c - W_TRACE / 2)
+    j_hi = node_index(rz.grid, 1, y_c + W_TRACE / 2)
+    rows = np.flatnonzero(fp[:, :, plane].any(axis=0))
+    # The drawn rectangle is realized CLOSED on the in-plane axes (§1.3),
+    # hi row included, so the first and last footprint rows are the nodes
+    # nearest the two drawn faces. Compared against node_index rather than
+    # against a ceil/floor of lo/dx: re-deriving the sampling here would be
+    # a second rule, and at a face that lands within a float ulp of a node
+    # the two disagree by a whole row.
+    assert (int(rows[0]), int(rows[-1])) == (j_lo, j_hi), (
+        f"the trace's realized node rows are {int(rows[0])}..{int(rows[-1])}, "
+        f"drawn {j_lo}..{j_hi}")
+    realized_w = (int(rows[-1]) - int(rows[0])) * rz.grid.dx
+    assert realized_w == pytest.approx(592.667e-6, abs=1e-9), (
+        f"realized trace width {realized_w * 1e6:.3f} um against a drawn "
+        f"{W_TRACE * 1e6:.1f} um; expected 592.667 um on this mesh "
+        f"(600/84.67 = 7.087 cells -> 7 cells closed)")
+    assert abs(realized_w - W_TRACE) < rz.grid.dx, (
+        "a drawn dimension must realize within one cell of itself")

@@ -74,6 +74,23 @@ def _po_sigma(phi_obs, theta_i_deg, W, h, lam):
 
 
 def _gate_grid_and_plate():
+    """The plate is a SIGMA FILL, not a PEC body — outside #931 (§1.8).
+
+    ``rasterize(grid, [(plate, 1.0, PEC_SIGMA)])`` writes ``sigma`` directly
+    (node-sampled, half-open); it never reaches ``pec_mask``, never goes
+    through ``classify_pec_entry`` and is not realized by
+    ``realized_pec_edge_masks``. The lattice ownership contract fences the
+    lossy-volume conductor model explicitly and leaves it unchanged, so the
+    +0.86 / +0.85 dB locks below do not move under the contract and are not
+    recomputed for it.
+
+    Standing debt this fixture carries, unchanged and named here so nobody
+    "fixes" it by analogy with the contract: the PO oracle is fed the
+    REALIZED width ``n_w * DX``, not the drawn ``PLATE_W``. For a PO aperture
+    that is defensible — the comparator must match the discretized aperture —
+    but it is the same shape as the compensations #931 deleted elsewhere, so
+    the number moves whenever the sigma realization moves.
+    """
     grid = Grid(freq_max=F0 * 3, domain=DOMAIN, dx=DX, cpml_layers=CPML)
     nx, ny, nz = grid.shape
     xc = (nx // 2) * DX

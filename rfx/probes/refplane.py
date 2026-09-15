@@ -152,7 +152,8 @@ def _trace_bbox_at_plane(pec2d: np.ndarray, seed_uv: tuple[int, int]):
                 "line) at the plane. Check the port direction and N, and "
                 "check that the caller passed the full conductor footprint "
                 "(#695: an f0 surface-impedance sheet is in neither "
-                "`pec_mask` nor `materials.sigma`).")
+                "`pec_mask` nor `materials.sigma`; #931: a PEC sheet owns "
+                "no cell and is not in `pec_mask` either).")
         d2 = (cand[:, 0] - su) ** 2 + (cand[:, 1] - sv) ** 2
         su, sv = (int(x) for x in cand[int(np.argmin(d2))])
     # 4-connected BFS
@@ -239,9 +240,10 @@ def build_wire_refplane_specs(
             "`rfx.materials.thin_conductor.conductor_footprint`), not the "
             "bare `pec_mask`: since #677 a surface_impedance_f0 sheet is a "
             "node-thin operator that appears in NEITHER `pec_mask` NOR "
-            "`materials.sigma`, so a sheet-traced board handed a bare "
-            "`pec_mask` reaches this line reading 'no metal' on a perfectly "
-            "healthy model.")
+            "`materials.sigma`, and since #931 a PEC SHEET owns no cell "
+            "either, so a sheet-traced board handed a bare `pec_mask` "
+            "reaches this line reading 'no metal' on a perfectly healthy "
+            "model.")
     n_cells = int(n_cells)
     if n_cells < 1:
         raise ValueError(f"reference_plane_cells must be >= 1, got {n_cells}")
@@ -263,10 +265,6 @@ def build_wire_refplane_specs(
     third_index = cells[0][third_axis]
     comp_ids = sorted(c[comp_axis] for c in cells)
     e_lo, e_hi = comp_ids[0], comp_ids[-1] + 1
-    # The extent END cell (top of the wire — sits in/at the trace) seeds
-    # the trace connected component.  _wire_port_cells spans ascending
-    # component-axis indices from the base; the end is the last cell.
-    end_cell = max(cells, key=lambda c: c[comp_axis])
 
     # (a, u, v) right-handed cyclic axes for the Ampere loop.
     u_axis = (line_axis + 1) % 3
@@ -276,6 +274,20 @@ def build_wire_refplane_specs(
 
     pec3d = np.asarray(pec_mask, dtype=bool)
     shape = pec3d.shape
+
+    # The extent's END NODE — the node the port's last driven edge reaches
+    # — seeds the trace connected component, because that is where the
+    # trace sits. ``_wire_port_cells`` is half-open in EDGES (#931 R8), so
+    # the last DRIVEN EDGE is indexed one below that node; while the
+    # extent was endpoint-inclusive the two coincided and this read
+    # ``max(cells)`` directly. Seeding one cell low is not a loud failure:
+    # ``_trace_bbox_at_plane`` falls back to the NEAREST conductor cell,
+    # and on a microstrip cross-section the ground plane below is exactly
+    # as near as the trace above — a tie that would silently measure the
+    # ground.
+    _end = list(max(cells, key=lambda c: c[comp_axis]))
+    _end[comp_axis] = min(e_hi, shape[comp_axis] - 1)
+    end_cell = tuple(_end)
 
     specs = []
     bboxes = []

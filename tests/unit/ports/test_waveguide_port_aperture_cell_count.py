@@ -24,6 +24,23 @@ Each check below fails on the pre-correction code:
    comparison cannot pass by coincidence,
 3. the stored profile shape against the plane-indexer window, so the aperture
    the solver templates and the aperture the extractor slices stay one object.
+
+#931, unchanged and deliberately so. The walls here are DOMAIN-BOUNDARY PEC
+(``BoundarySpec`` faces), which the lattice ownership contract fences out of
+itself (§1.8): a boundary is not a body, and ``apply_pec`` keeps zeroing
+E_tan on the face planes at index 0 and N. Nothing in this file moves.
+
+It is worth saying why the fence is consistent rather than an exemption. The
+arithmetic this file pins — walls on node planes, N cells between N+1 planes,
+aperture ``(hi - lo - 1) * d`` — IS the contract's sheet rule (§1.3) evaluated
+on the two bounding planes: an E component is PEC iff its own location lies in
+the closed conductor region. So boundary PEC was already the repo's node-plane
+reading of a wall, years before the contract wrote it down, and that is the
+precedent the sheet declaration generalizes rather than contradicts. A guide
+walled with PEC *Boxes* instead reaches the same numbers through §1.2, because
+a volume's drawn face is a wall too — measured on
+``test_port_aperture_rasterization.py::test_sub_aperture_walls_are_realized_where_they_are_drawn``,
+where two drawn blocks leave the drawn 40.0 mm exactly.
 """
 
 from __future__ import annotations

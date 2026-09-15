@@ -1,0 +1,44 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "port_in_pec",
+        "loc": null,
+        "message": "Port/source/probe at (0.02, 0.02, 0.02) (ez) is frozen by realized PEC geometry ['pec']: its own E edge is a realized PEC edge (lattice ownership contract, #931). Field will be zero. Move it off the conductor, or drive/read a component the conductor leaves live (the normal E through a sheet plane; tangential H beside a sheet).",
+        "severity": "warning",
+        "source": "_validate_cfg_port_inside_pec"
+      },
+      {
+        "code": "port_in_pec",
+        "loc": null,
+        "message": "Port/source/probe at (0.022, 0.02, 0.02) (ez) is frozen by realized PEC geometry ['pec']: its own E edge is a realized PEC edge (lattice ownership contract, #931). Field will be zero. Move it off the conductor, or drive/read a component the conductor leaves live (the normal E through a sheet plane; tangential H beside a sheet).",
+        "severity": "warning",
+        "source": "_validate_cfg_port_inside_pec"
+      },
+      {
+        "code": "off_lattice_design_edges",
+        "loc": null,
+        "message": "3 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 3 listed): geometry[0] 'pec' (volume) z: extent 30mm, worst face residual 1.026mm (3.42% of the extent); geometry[0] 'pec' (volume) x: extent 30mm, worst face residual 996\u00b5m (3.32% of the extent); geometry[0] 'pec' (volume) y: extent 30mm, worst face residual 996\u00b5m (3.32% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: choose dx commensurate with the patterned dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on the design edges. COVERAGE: examined 3 axis extent(s) on 1 conductor Box declaration(s) on the uniform lane; 0 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
+        "severity": "warning",
+        "source": "_validate_cfg_off_lattice_design_edges"
+      },
+      {
+        "code": "ntff_near_field",
+        "loc": null,
+        "message": "NTFF face z_lo is 4.00mm from port/source at (0.02, 0.02, 0.02) \u2014 below \u03bb/4 = 14.99mm at f_max=5.00GHz. NTFF will integrate reactive near-field; directivity / pattern likely corrupted. Move NTFF box \u2265 \u03bb/2 from any radiating/scattering structure (Huygens-equivalence rule).",
+        "severity": "warning",
+        "source": "_validate_ntff_inverse_design"
+      },
+      {
+        "code": "ntff_near_field",
+        "loc": null,
+        "message": "NTFF face z_hi is 15.00mm from port/source at (0.02, 0.02, 0.02) \u2014 below \u03bb/2 = 29.98mm at f_max=5.00GHz. Close to reactive near-field; far-field pattern accuracy may degrade. Move NTFF box \u2265 \u03bb/2 from radiating/scattering structures.",
+        "severity": "warning",
+        "source": "_validate_ntff_inverse_design"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 5,
+    "ok": true
+  }
+}

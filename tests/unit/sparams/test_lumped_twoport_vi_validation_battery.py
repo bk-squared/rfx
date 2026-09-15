@@ -178,7 +178,8 @@ Box PEC rasterization is lower-inclusive/upper-EXCLUSIVE, so the trace
 box must overhang BOTH port columns by >= 1 cell — a box ending exactly
 at the port-2 x coordinate leaves that column with no PEC overhead and
 produces a silently dead thru. Also: wire extent=1.0 mm at dx=0.5 mm
-rasterizes to n_cells=3 (endpoint-inclusive), which enters the
+rasterizes to n_cells=2 (the extent is half-open in EDGES; it was
+endpoint-inclusive and gave 3 until #931 R8), which enters the
 Z0_cell = Z0/n_cells off-diagonal normalization.
 
 No network, no external solver; deterministic (fixed geometry, fixed step
@@ -217,11 +218,6 @@ _THRU_L_M = _THRU_X2_M - _THRU_X1_M   # 16 mm port-to-port
 _THRU_Y_MID_M = _THRU_DOMAIN_M[1] / 2
 _THRU_N_STEPS = 4000
 _THRU_FREQS_HZ = np.linspace(3e9, 7e9, 9)   # in-band of f0=5 GHz, bw=0.8
-
-_PEC_FACES_ADVISORY_SNIPPET = (
-    "pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry "
-    "contains finite PEC objects."
-)
 
 # ===========================================================================
 # Gate constants (R5: every gate = measured value + honest margin)
@@ -392,15 +388,25 @@ def _build_thru(pulse: "GaussianPulse | None" = None) -> Simulation:
                               z=Boundary(lo="pec", hi="cpml")),
         cpml_layers=_THRU_CPML_LAYERS,
     )
-    # PEC trace one cell thick on top of the wire-port spans. The x-extent
-    # overhangs each port column by one cell — Box rasterization is
-    # lower-inclusive/upper-EXCLUSIVE, and a box ending exactly at the
-    # port-2 x leaves that column without PEC overhead (silently dead thru;
-    # module docstring, fixture-authoring lesson).
+    # The trace is FOIL, so under the lattice ownership contract (#931
+    # §1.3) it is a SHEET: a zero-thickness Box on the z = 1.0 mm plane,
+    # realized as ONE wall plane with the normal Ez edge through it live.
+    # Drawn _THRU_H_M -> _THRU_H_M + _THRU_DX_M it was a VOLUME under §1.2
+    # — walls at 1.0 AND 1.5 mm with the Ez between them shorted — i.e. a
+    # 0.5 mm solid slab of metal, half the substrate height, on an air
+    # microstrip whose whole geometry is the 1.0 mm ground-to-trace gap.
+    #
+    # The x-extent still overhangs each port column by one cell. That
+    # margin was originally there because Box rasterization is
+    # lower-inclusive/upper-EXCLUSIVE (module docstring, fixture-authoring
+    # lesson); a sheet footprint is sampled CLOSED, so the hi end no longer
+    # needs it. The drawn corners are kept anyway: under the contract drawn
+    # == realized, and shrinking a margin at the same time as changing the
+    # realization would confound the two.
     sim.add(
         Box((_THRU_X1_M - _THRU_DX_M, _THRU_Y_MID_M - _THRU_W_M / 2, _THRU_H_M),
             (_THRU_X2_M + _THRU_DX_M, _THRU_Y_MID_M + _THRU_W_M / 2,
-             _THRU_H_M + _THRU_DX_M)),
+             _THRU_H_M)),
         material="pec",
     )
     if pulse is None:
@@ -424,22 +430,9 @@ def thru_smatrix():
     # (feedback_never_ignore_preflight).
     for msg in issues:
         print(f"\n[thru battery] preflight (verbatim): {msg}")
-    # Exact known advisory set (re-pinned 2026-07-11 for issue #319):
-    # the intended pec_faces advisory (the infinite ground plane IS the
-    # microstrip return) PLUS one wire_port_dead_extent_cells advisory
-    # per port — this fixture GENUINELY has its top extent cell inside
-    # the PEC trace. Post-#318 the dead cell is EXCLUDED from the
-    # sigma/drive/Z0 fold, so each port now terminates at 50 ohm across
-    # its 2 live cells (the pre-#318 33.3-ohm Z0*(n_live/n) reading is
-    # the historical issue #313 finding). The battery gates below were
-    # MEASURED on this exact fixture, dead cell included, so they stay
-    # valid as-is. Anything else = fixture drift, stop.
-    codes = sorted(getattr(i, "code", None) for i in report)
-    assert codes == ["pec_faces_finite_pec",
-                     "wire_port_dead_extent_cells",
-                     "wire_port_dead_extent_cells"], (
-        f"thru fixture preflight drifted from the measured baseline: {issues}")
-    assert any(_PEC_FACES_ADVISORY_SNIPPET in m for m in issues)
+    errors = [str(i) for i in report if i.severity == "error"]
+    assert not errors, errors
+    _assert_thru_trace_realization(sim)
 
     result = sim.run(n_steps=_THRU_N_STEPS, compute_s_params=True,
                      s_param_freqs=_THRU_FREQS_HZ)
@@ -488,6 +481,125 @@ def crosscheck():
                   s_param_freqs=_XCHK_FREQS_HZ)
     fr = _wire_sim().forward(port_s11_freqs=_XCHK_FREQS_HZ)
     return np.asarray(r.s_params), np.asarray(fr.s_params)
+
+
+# ===========================================================================
+# Geometry contract (no solve): the trace this battery measures is the
+# trace it declares (#931)
+# ===========================================================================
+def test_thru_trace_is_one_realized_sheet_plane():
+    """Build-time record of what the ownership contract changed here.
+
+    Measured on this exact fixture, one grid build each:
+
+    ==============================  ============  ============
+    quantity                        1-cell Box    sheet
+    ==============================  ============  ============
+    realized z wall planes          [2, 3]        [2]
+    Ez through the trace plane      shorted       live
+    primal cells owned              340           0
+    realized footprint (x by y)     17.0 x 5.0    17.0 x 5.0 mm
+    wire-port live extent cells     2 of 3 *      2 of 2
+    ==============================  ============  ============
+
+    (*) measured under the endpoint-INCLUSIVE extent rule this branch also
+    corrected; the Box column is the historical reading, not what that
+    declaration would rasterize to today.
+
+    The footprint is the drawn one under both declarations, and it is also
+    what the PRE-#931 rule realized here (checked against the old
+    node-half-open sampling plus the #677 neighbour rule), so this fixture
+    is not a case where the in-plane rule moved.
+
+    ``n_live`` is 2 under both declarations, and it now gets there for a
+    reason instead of by luck.  The port declares ``extent = _THRU_H_M`` —
+    exactly the 1.0 mm ground-to-trace gap — and ``_wire_port_cells`` used
+    to rasterize that endpoint-INCLUSIVE into THREE Ez edges, the third
+    spanning 1.0 -> 1.5 mm, i.e. ABOVE the trace.  While the trace was a
+    one-cell PEC Box that surplus edge was shorted and the port counted 2
+    live cells: the right number, reached by an accident of the metal
+    being drawn a cell thick.  A foil does not short the edge above it, so
+    on the contract's realization the surplus edge went live and
+    ``Z0_cell = Z0 / n_live`` moved to Z0/3.  That was a defect in the
+    port's extent rasterization, made visible (not caused) by the sheet
+    declaration; it is fixed in the wire-port lane — the extent is now
+    half-open in edges, so 1.0 mm of extent on a 0.5 mm mesh is TWO Ez
+    edges and neither of them is above the trace.  The slow_physics gates
+    below therefore stay on Z0/2, which is what they were measured at
+    (RECOMPUTE R8 closed here).
+    """
+    _assert_thru_trace_realization(_build_thru())
+
+
+def _assert_thru_trace_realization(sim):
+    """The geometry/live-edge oracle shared by broadband and DC runs."""
+    import numpy as _np
+    from rfx.sources.sources import WirePort, _wire_port_live_cells
+    from tests._realized_geometry import (
+        assert_sheet_planes, assert_wall_planes, realized)
+
+    assert_sheet_planes(sim, 2, [_THRU_H_M], what="THRU trace foil")
+    assert_wall_planes(sim, 2, [_THRU_H_M], what="THRU trace foil")
+
+    assert sim._pec_faces == {"z_lo"}, "the declared ground must be the z_lo PEC face"
+    rz = realized(sim)
+    assert rz.pec_mask is None or not bool(_np.asarray(rz.pec_mask).any()), \
+        "a sheet owns no cell (#931 §1.3)"
+    k = int(round(_THRU_H_M / _THRU_DX_M))
+    mx, my, mz = (_np.asarray(m, dtype=bool) for m in rz.edge_masks)
+    assert not mz[:, :, k].any(), \
+        "the normal Ez edge through a sheet stays live (#931 §1.3)"
+
+    # realized footprint == drawn footprint, in metres
+    xs = _np.where(mx[:, :, k].any(axis=1))[0]
+    ys = _np.where(my[:, :, k].any(axis=0))[0]
+    length = (xs.max() - xs.min() + 1) * _THRU_DX_M
+    width = (ys.max() - ys.min() + 1) * _THRU_DX_M
+    assert length == pytest.approx(_THRU_X2_M - _THRU_X1_M + 2 * _THRU_DX_M,
+                                   abs=1e-12), length
+    assert width == pytest.approx(_THRU_W_M, abs=1e-12), width
+
+    for port_x in (_THRU_X1_M, _THRU_X2_M):
+        wp = WirePort(start=(port_x, _THRU_Y_MID_M, 0.0),
+                      end=(port_x, _THRU_Y_MID_M, _THRU_H_M),
+                      component="ez", impedance=50.0)
+        cells, live, n_live = _wire_port_live_cells(rz.grid, wp, rz.edge_masks)
+        assert len(cells) == 2 and n_live == 2, (
+            f"1.0 mm of extent on a 0.5 mm mesh is TWO Ez edges, both live "
+            f"below the foil (half-open in edges, #931 R8); got {cells}, "
+            f"live={live}")
+        k_trace = int(round(_THRU_H_M / _THRU_DX_M))
+        assert max(c[2] for c in cells) == k_trace - 1, (
+            f"no driven edge may sit above the trace plane k={k_trace}; "
+            f"got {cells}")
+
+
+def test_thru_preflight_code_set_is_the_contract_set():
+    """The exact advisory set this fixture must produce under the contract.
+
+    One code, and only one: ``pec_faces_finite_pec`` — the infinite ground
+    plane IS the microstrip return, and that is intended.
+
+    This test was written as ``xfail(strict=True)`` on 2026-09-07 with a
+    pre-declared falsifier: "when the preflight migration lands, this test
+    goes green and the xfail comes off."  It fired, in the direction the
+    falsifier named.  The two extra messages the xfail reason listed are
+    gone, and each for a stated reason:
+
+    * the ``mesh_resolution`` "Zero-thickness geometry 'pec' along z-axis
+      ... consider giving it at least one cell of thickness" advice, which
+      told the user to UN-DECLARE the sheet they had just declared — a
+      zero-thickness PEC Box IS the sheet declaration under §1.5;
+    * the uncoded ``_assemble_materials (uniform lane): PEC sheets/wires
+      were classified but the caller passed no pec_sheets/pec_wires
+      collector`` warning — preflight now passes the collectors.
+
+    So the marker is off and the assertion below is a plain lock.  It is
+    the one that would catch preflight growing a message back.
+    """
+    report = _build_thru().preflight()
+    codes = sorted(getattr(i, "code", None) for i in report)
+    assert codes == ["pec_faces_finite_pec"], codes
 
 
 # ===========================================================================
@@ -832,18 +944,12 @@ def dc_anchor_smatrix():
     issues = [str(i) for i in report]
     for msg in issues:
         print(f"\n[dc anchor] preflight (verbatim): {msg}")
-    # Same exact set as the thru_smatrix fixture above (re-pinned
-    # 2026-07-11 for issue #319): pec_faces + one dead-extent-cell
-    # advisory per port (#318 — post-fix each port terminates at 50 ohm
-    # across its 2 live cells; the pre-fix 33.3-ohm reading is the
-    # historical #313 finding; gates measured on this geometry stay
-    # valid as-is).
-    codes = sorted(getattr(i, "code", None) for i in report)
-    assert codes == ["pec_faces_finite_pec",
-                     "wire_port_dead_extent_cells",
-                     "wire_port_dead_extent_cells"], (
-        f"dc-anchor fixture preflight drifted: {issues}")
-    assert any(_PEC_FACES_ADVISORY_SNIPPET in m for m in issues)
+    # Same foil and live driven edges as the broadband fixture. A former
+    # dead-extent notice is not a geometry oracle: inspect the realized
+    # sheet and both ports before evaluating the DC receive-sign gate.
+    errors = [str(i) for i in report if i.severity == "error"]
+    assert not errors, errors
+    _assert_thru_trace_realization(sim)
     result = sim.run(n_steps=_DCA_N_STEPS, compute_s_params=True,
                      s_param_freqs=_DCA_FREQS_HZ)
     return np.asarray(result.s_params).astype(np.complex128)

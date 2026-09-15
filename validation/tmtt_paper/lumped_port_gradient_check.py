@@ -26,6 +26,8 @@ import jax
 import jax.numpy as jnp
 from rfx.api import Simulation
 from rfx import GaussianPulse
+
+from validation.crossval.comparators import realized_conductors as RC
 from rfx.optimize_objectives import minimize_s11_at_freq_wave_decomp
 
 
@@ -35,6 +37,12 @@ def build(f0=3.0e9):
     # Single-cell lumped Ez port, interior (clear of the x-CPML); 50 ohm feed.
     sim.add_port(position=(0.03, 0.015, 0.01), component="ez", impedance=50.0,
                  waveform=GaussianPulse(f0=f0, bandwidth=0.8))
+    # Build-time (no solve) control: an all-CPML dielectric box with one
+    # lumped port and NO conductor. The lattice ownership contract (#931)
+    # changes PEC realization only, so this gradient check must be
+    # bit-identical across it; asserting "no conductor" is what makes that
+    # claim checkable instead of assumed.
+    RC.assert_no_conductor(sim, label="lumped-port gradient check")
     return sim
 
 

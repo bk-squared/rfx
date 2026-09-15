@@ -43,16 +43,23 @@ def _build_patch(*, feed_extent: float | None, add_pec_pin: bool = False):
                 (domain[0] - 0.005, domain[1], sub_z0 + H_SUB)),
             material="sub")
     # Patch sits at the top of the substrate (>= 2 cells above the
-    # mid-substrate port cell).
+    # mid-substrate port cell). It is foil, so a SHEET (#931 §1.3): a
+    # zero-thickness Box on the substrate top, realized as one wall plane
+    # with Ez through it live. One cell thick it is a VOLUME, which would
+    # add a second wall a cell higher and short the Ez between them.
     patch_z = sub_z0 + H_SUB
     sim.add(Box(
         (0.005, 0.004, patch_z),
-        (0.015, 0.011, patch_z + DX),
+        (0.015, 0.011, patch_z),
     ), material="pec")
     feed_pos = (0.010, 0.007, sub_z0 + H_SUB * 0.5)
     if add_pec_pin:
-        # Coax-style pin: PEC box immediately below the port cell (one
-        # cell along the Ez axis) simulating a vertical probe feed.
+        # Coax-style pin: a solid probe, i.e. a VOLUME (#931 §1.2). It
+        # gains its far face under the contract — walls at both drawn z
+        # faces and Ez shorted between them — so its realized top plane
+        # sits where it is drawn instead of one cell low. The port's own
+        # Ez cell is above that plane, so the feed is adjacent to the pin,
+        # which is what this fixture is for.
         sim.add(Box(
             (feed_pos[0] - DX / 2, feed_pos[1] - DX / 2, sub_z0),
             (feed_pos[0] + DX / 2, feed_pos[1] + DX / 2, feed_pos[2] - DX / 2),

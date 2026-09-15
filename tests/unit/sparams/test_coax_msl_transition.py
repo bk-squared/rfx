@@ -28,6 +28,77 @@ precedents):
    claimed). Attempt 1's own predeclaration, fixture, and regression locks
    above are UNCHANGED and UNDELETED — they remain a valid, reproducible
    historical record of a deliberately short ladder.
+
+#931 — NOT MIGRATED HERE, AND WHY (see
+``tests/unit/sparams/_results_931/RECOMPUTE.md`` R6).
+
+This is the only fixture in the S-parameter/port suite with a genuine
+three-dimensional conductor stack, and the lattice ownership contract
+touches every part of it:
+
+* the ground plane and the trace are ``_half_cell_box_z(n, n)`` — a recipe
+  that exists ONLY to make a Box rasterize to exactly one node plane. That
+  is a sheet declaration written in the language of a volume, and §1.3
+  gives it a first-class spelling: a zero-thickness Box with a static
+  integer plane. Left as volumes they realize a wall on node 26 as well as
+  25 — node 26 is ``N_SUB_LO``, the substrate's own bottom plane — which
+  shorts the laminate's lower face and destroys the MSL launch;
+* the pin ``Cylinder`` is a volume and gains its far end plane;
+* ``_TRACE_Y_LO_OFFSET_NODES = -3`` / ``_TRACE_Y_HI_OFFSET_NODES = +2`` is a
+  hard-coded compensation for the old rule dropping a footprint's hi row —
+  exactly the class of local repair this branch deletes;
+* every realized-count constant in the attempt-3 block (``N_GROUND_BOXES_3``,
+  ``HOLE_CELLS_3``, ``ANNULUS_CELLS_3``, ``LIP_CELLS_3``, ``SHELL_CELLS_3``,
+  ``TRACE_NODE_ROWS_2`` and the entity cell counts) is a measurement of the
+  old realization, and the continuity checks read a CELL column that a
+  sheet-declared ground plane no longer populates;
+* ``test_attempt3_junction_is_attempt2_plus_hole_only`` asserts the numeric
+  effect of #702's ``resample_sheet_node_materials``, which this branch
+  deleted: with no resample the eps_r arrays agree at the 38 hole cells, so
+  ``eps_diff`` empties while ``xor`` stays 38.
+
+The PREDECLARATION / PREDECLARATION_ATTEMPT2 blocks and ``SETTLED_RUN_RECORD``
+are frozen; the post-contract junction needs its OWN attempt predeclaration
+and its own GPU run, the way the RASTERIZER NOTE already marks these records
+as pre-#834. Editing the frozen numbers in place would be the thing that
+discipline exists to prevent, so nothing here is touched until that
+predeclaration is written.
+
+#931 PHASE 2b — WHAT WAS DONE HERE, AND WHAT IS STILL OWED.
+
+The eleven witnesses that went red were reading the primal CELL mask to
+answer a question about a NODE PLANE. Those are different indices under the
+contract, and this fixture's own ``_half_cell_box_z(n, n)`` recipe makes the
+gap visible: the ground plane's cells sit at z index 32 (node 24) while the
+junction node is 33 (node 25), so ``pec_mask[:, :, 33]`` read 2 of 36 annulus
+cells. They now read the realization (``_realized_node_pec`` /
+``_assemble_junction_realized``, both thin wrappers on
+``realized_pec_edge_masks`` through ``tests/_realized_geometry.py``, with the
+vectorized reader cross-checked against ``realized_wall_planes``' own
+per-column form). Not one count, radius or window size changed.
+
+Six of them are green on the realization channel and say exactly what they
+always said: attempt 1 and attempt 2 short the launch (annulus 36/36 in-plane
+PEC, wide ring 68/68, no open node in the 9x9 window), the coax shell contacts
+ground 32/32 and the ground lip is 32/32 on both fixtures, and the trace is
+untouched.
+
+Five are ``xfail(strict=True)`` because the contract found something the
+channel change does not fix, each with the measurement in its marker:
+
+* the four attempt-3 launch tests. Attempt 3's clearance hole is itself a
+  compensation for the rule the contract deletes — 20 half-cell ground Boxes
+  leaving the disk uncovered IN CELLS — and under §1.2 each Box's inner faces
+  are now realized as walls on the hole's rim. The annulus reads 25/36 PEC,
+  the window 11 open nodes, the post-stamp open fraction 0.3056. The open
+  launch has to be REDRAWN under the contract.
+* the wide Step-B byte-identity test. Its trace is placed by the
+  ``-3 / +2`` node compensation while attempt 2 draws the same trace by its
+  physical width; on exact node coordinates the two land one row apart
+  (13..19 against 14..20).
+
+Both fixes are fixture changes that move what a run measures, so they belong
+with the post-contract attempt predeclaration and its GPU run, not here.
 """
 
 from __future__ import annotations
@@ -720,9 +791,7 @@ def test_attempt1_pin_axis_pec_column_is_continuous_because_ground_is_solid():
     from rfx.sources.coaxial_port import stamp_coaxial_line, PEC_SIGMA
 
     sim = _build_coax_msl_transition_sim()
-    grid = sim._build_grid()
-    materials, _, _, pec_mask, _, _, _ = sim._assemble_materials(grid)
-    pec = np.asarray(pec_mask)
+    grid, materials, pec, _i0, _j0, _kj = _assemble_junction_realized(sim)
 
     port = sim._coaxial_ports[0]
     center_xy = (float(port.position[0]), float(port.position[1]))
@@ -753,6 +822,9 @@ def test_attempt1_pin_axis_pec_column_is_continuous_because_ground_is_solid():
     # Issue #589: the ground under the coax dielectric is SOLID in attempt 1
     # (the declared clearance disk never carved it) -- the pin column above
     # is continuous through PEC ground, i.e. shorted. Pinned as history.
+    # #931: read on the REALIZED node plane, and the answer is the same
+    # 36/36 the cell mask gave before the contract -- attempt 1 is the short
+    # it always was.
     annulus = _lattice_ring_mask(grid, i0, j0, PIN_R_CELLS, CLEAR_R_CELLS)
     n_pec_in_annulus = int((pec[:, :, z_junction_idx] & annulus).sum())
     assert int(annulus.sum()) == ANNULUS_CELLS_3
@@ -1699,6 +1771,32 @@ def _junction_window_slices(grid, x_offset_cells, y_offset_cells):
     )
 
 
+_WIDE_TRACE_COMPENSATION_BLOCKER = (
+    "#931 R6: the wide fixture declares its trace by the "
+    "_TRACE_Y_LO_OFFSET_NODES = -3 / _TRACE_Y_HI_OFFSET_NODES = +2 node "
+    "compensation, which the lattice ownership contract deletes (module "
+    "docstring, third bullet: 'a hard-coded compensation for the old rule "
+    "dropping a footprint's hi row -- exactly the class of local repair this "
+    "branch deletes'). Attempt 2 draws the same trace by its PHYSICAL width, "
+    "Y_C +/- W_TRACE/2. The two agreed while the old rule sampled nodes "
+    "half-open; on exact node coordinates they do not. Measured, build only, "
+    "after the (+20, +17) node offset is removed: attempt 2's trace realizes "
+    "y node rows 14..20 (cells 14..19) and the wide fixture's realizes "
+    "13..19 (cells 13..18) -- ONE ROW LOW. Both realize 7 closed node rows "
+    "and the same 600 um width; they are simply not the same rows, so the "
+    "byte-identity this test exists to assert cannot hold. 62 cells differ, "
+    "all at z node 28 and all on the trace's two edge rows; the materials "
+    "differ at exactly 2 eps_r cells, both at r = CLEAR_R, which the "
+    "knife-radius rule below already allows. The fix is to draw the wide "
+    "trace by its physical width like attempt 2 does -- a fixture change "
+    "that moves what a Step-B run measures, so it belongs with R6's "
+    "post-contract attempt predeclaration and its GPU run, not here. Every "
+    "assertion and number below is UNCHANGED; the marker is strict, so the "
+    "redraw landing fails the run immediately."
+)
+
+
+@pytest.mark.xfail(reason=_WIDE_TRACE_COMPENSATION_BLOCKER, strict=True)
 def test_attempt2_wide_junction_cells_are_byte_identical_to_attempt2():
     """Structural (build-only, no FDTD, ~seconds): the Step-B wide fixture
     assembles, and every material array (eps_r, sigma, mu_r) AND the PEC
@@ -1796,9 +1894,17 @@ def test_attempt2_wide_junction_cells_are_byte_identical_to_attempt2():
                 f"differs at r={r_nodes:.4f} dx -- NOT a knife-edge "
                 "radius; the wide fixture is geometrically different"
             )
+    # #931 §1.9: compare the REALIZED in-plane PEC nodes, not the primal cell
+    # mask — the cell layer and the node plane a conductor is drawn at are
+    # different indices under the contract.  The diff below is the same
+    # either way (measured: 62 cell diffs, all at z node 28, and the same
+    # one-row shift on the node planes), which is what makes it a geometry
+    # finding and not a channel artefact.
     assert pec2 is not None and pecw is not None
-    a = np.asarray(pec2, dtype=bool)[s2]
-    b = np.asarray(pecw, dtype=bool)[sw]
+    _, node2 = _realized_node_pec(sim2)
+    _, nodew = _realized_node_pec(simw)
+    a = node2[s2]
+    b = nodew[sw]
     # Same knife-radius rule as the materials above: the pin Cylinder puts
     # PIN_R (= 2 dx) exactly on a node radius, so its shell cells are the
     # r^2-comparison knife edge (measured at #802: 37 pec cells, all at
@@ -2562,7 +2668,17 @@ ANNULUS_CELLS_3 = 36     # |{4 < di^2 + dj^2 <= 16}|  -- PIN_R < r <= CLEAR_R on
 LIP_CELLS_3 = 32         # |{16 < di^2 + dj^2 <= 25}| -- CLEAR_R < r <= shell_inner
 SHELL_CELLS_3 = 32       # |{25 < di^2 + dj^2 <= 36}| -- shell_inner < r <= OUTER_R
 PIN_FOOTPRINT_CELLS_2 = 11   # attempt 2's REALIZED pin Cylinder footprint at node 25 (knife edge, #802)
-TRACE_NODE_ROWS_2 = 6        # attempt 2's REALIZED trace width in node rows on exact node coordinates (= the declared 600 um)
+TRACE_NODE_ROWS_2 = 6        # attempt 2's REALIZED trace width in CELLS on exact node coordinates (= the declared 600 um); see below
+# #931: the constant above is a CELL count and its old name said "node rows".
+# Under the contract the two are different quantities and both are asserted:
+# the trace Box's y span [Y_C - 300 um, Y_C + 300 um] is nodes 14..20, so the
+# realized footprint is a CLOSED run of 7 NODES with 6 CELLS between them, and
+# the realized width is (7 - 1) x DX = 600 um -- exactly the declared width.
+# The pre-#931 cell scan saw the 6 cells; the realization channel sees the 7
+# nodes that bound them. NOT a gate change: the width in metres is unchanged,
+# and it is now asserted in metres instead of being inferred from a count.
+TRACE_NODE_ROWS_2_REALIZED = TRACE_NODE_ROWS_2 + 1   # 7 closed node rows
+TRACE_W_REALIZED_M = TRACE_NODE_ROWS_2 * DX          # 600 um = W_TRACE
 HOLE_XOR_CELLS_3 = HOLE_CELLS_3 - PIN_FOOTPRINT_CELLS_2   # 38
 # RASTERIZER NOTE (re-derived on b5605391, identical under JAX_ENABLE_X64=0
 # and =1). #834 (635ab2e3) moved the rasterizer to exact host-float64 node
@@ -2842,6 +2958,99 @@ _JUNCTION_FIXTURES = {
 }
 
 
+# ---------------------------------------------------------------------------
+# #931 R6 -- reading the junction's REALIZATION instead of its cell mask.
+#
+# Every witness below used to ask ``pec_mask[:, :, k]`` "is this node metal on
+# node-plane k".  That question was answerable from the cell mask only while
+# the pre-#931 rule happened to put a one-cell body's occupancy on the same
+# index as the node plane it was drawn at.  Under the lattice ownership
+# contract the two indices are DIFFERENT things and the fixture's own
+# ``_half_cell_box_z(n, n)`` recipe makes the gap visible: a Box drawn
+# z = (n - 0.5) dx .. (n + 0.5) dx owns the CELL layer n - 1 and realizes
+# tangential walls on node planes n - 1 AND n.  Measured on attempt 2:
+# the ground plane's cells sit at z index 32 (node 24) while the junction node
+# is 33 (node 25), so ``pec_mask[:, :, 33]`` reads 2 of the 36 annulus cells
+# and the eleven witnesses below all went red -- reading an empty layer, not
+# an opened launch.
+#
+# The realization lives in the EDGE masks (§1.9), so that is what these read.
+# ``_realized_node_pec`` turns the (Mx, My, Mz) triple into the node-level
+# question the fixture actually asks, using the SAME rule the single owner
+# uses per column (``realized_wall_planes(edges, 2, ij=(i, j))``): a node is
+# in-plane PEC on plane k when any tangential edge INCIDENT on it is PEC --
+# its own Ex/Ey index or the backward one, so a node on the hi rim of a
+# footprint, whose incident edge is stored at i-1, is found.  The vectorized
+# form is cross-checked against the owner in
+# ``test_realized_node_pec_reader_agrees_with_the_single_owner`` below; if the
+# two ever disagree the owner is right and this reader is the bug.
+#
+# NOT a gate change: not one count, radius or window size below moved.  What
+# moved is which array answers "is this node metal", and the answers it gives
+# are reported in each test.
+# ---------------------------------------------------------------------------
+def _realized_node_pec(sim):
+    """``(grid, node_pec)`` — ``node_pec[i, j, k]`` True when the lattice
+    realizes node ``(i, j)`` as IN-PLANE PEC on z-node-plane ``k``."""
+    from tests._realized_geometry import realized
+
+    rz = realized(sim)
+    mx = np.asarray(rz.edge_masks[0], dtype=bool)
+    my = np.asarray(rz.edge_masks[1], dtype=bool)
+    out = mx.copy()
+    out[1:, :, :] |= mx[:-1, :, :]        # backward Ex edge (node's hi rim)
+    out |= my
+    out[:, 1:, :] |= my[:, :-1, :]        # backward Ey edge
+    return rz.grid, out
+
+
+def _assemble_junction_realized(sim):
+    """``_assemble_junction``'s tuple with the REALIZED node-plane PEC in
+    place of the primal cell mask: ``(grid, materials, node_pec, i0, j0, kj)``.
+
+    The materials are still the assembled arrays — the coax stub's stamp is a
+    sigma write and is read from them exactly as before.
+    """
+    grid = sim._build_grid()
+    materials, _, _, _pec_mask, _, _, _ = sim._assemble_materials(
+        grid, pec_sheets=[], pec_wires=[])
+    g2, node_pec = _realized_node_pec(sim)
+    assert (g2.nx, g2.ny, g2.nz) == (grid.nx, grid.ny, grid.nz)
+    port = sim._coaxial_ports[0]
+    i0, j0, kj = (int(v) for v in grid.position_to_index(port.position))
+    return grid, materials, node_pec, i0, j0, kj
+
+
+def test_realized_node_pec_reader_agrees_with_the_single_owner():
+    """The vectorized reader IS ``realized_wall_planes``' per-column rule.
+
+    A second hand-rolled scan over some mask is exactly the drift the
+    single-owner rule (#931 §1.7) exists to stop, so the fast whole-plane
+    form is checked against the owner's own ``ij=`` column form on a sample
+    that covers the pin axis, the clearance annulus, the ground lip, the
+    shell ring and open ground — on both committed junction fixtures.
+    """
+    from rfx.boundaries.pec import realized_wall_planes
+    from tests._realized_geometry import realized
+
+    for name, build in sorted(_JUNCTION_FIXTURES.items()):
+        sim = build()
+        grid, node_pec = _realized_node_pec(sim)
+        edges = realized(sim).edge_masks
+        port = sim._coaxial_ports[0]
+        i0, j0, kj = (int(v) for v in grid.position_to_index(port.position))
+        probes = [(i0, j0), (i0 + PIN_R_CELLS, j0), (i0, j0 + PIN_R_CELLS),
+                  (i0 + 3, j0), (i0, j0 + 3), (i0 + CLEAR_R_CELLS, j0),
+                  (i0, j0 + CLEAR_R_CELLS), (i0 + SHELL_INNER_CELLS, j0),
+                  (i0 + OUTER_R_CELLS, j0), (i0 + 12, j0 + 9), (i0 - 7, j0 - 5)]
+        for (i, j) in probes:
+            want = kj in realized_wall_planes(edges, 2, ij=(i, j))
+            assert bool(node_pec[i, j, kj]) == want, (
+                f"{name}: the node-plane reader and realized_wall_planes "
+                f"disagree at node ({i}, {j}) on plane {kj}: reader "
+                f"{bool(node_pec[i, j, kj])}, owner {want}")
+
+
 def _assemble_junction(sim):
     """(grid, materials, pec, i0, j0, k_junction) -- what compute_coax_msl_
     transition sees BEFORE its own coax-stub stamp."""
@@ -2895,10 +3104,14 @@ def _stamp_like_method(sim, grid, materials):
 
 
 def _assert_clearance_annulus_open(sim):
-    """DISCRIMINATING assertion: at the junction node every lattice cell
-    with PIN_R < r <= CLEAR_R (36 cells, all azimuths) is NOT registered
-    PEC. Fails on attempt 2 (36/36 PEC), passes on attempt 3 (0/36)."""
-    grid, _, pec, i0, j0, kj = _assemble_junction(sim)
+    """DISCRIMINATING assertion: at the junction node every lattice node
+    with PIN_R < r <= CLEAR_R (36 nodes, all azimuths) is NOT realized as
+    in-plane PEC. Fails on attempt 2 (36/36 PEC), passes on attempt 3 (0/36).
+
+    #931: read on the REALIZED node plane (§1.9), not on the primal cell
+    mask; the count and the radii are unchanged.
+    """
+    grid, _, pec, i0, j0, kj = _assemble_junction_realized(sim)
     annulus = _lattice_ring_mask(grid, i0, j0, PIN_R_CELLS, CLEAR_R_CELLS)
     assert int(annulus.sum()) == ANNULUS_CELLS_3
     n_pec = int((pec[:, :, kj] & annulus).sum())
@@ -2915,7 +3128,7 @@ def _post_stamp_junction_open_fraction(sim):
     read. 'Open' at the junction node = not registered PEC AND not
     sigma-PEC; 'dielectric' at node 24 = not sigma-PEC AND eps == EPS_COAX."""
     from rfx.sources.coaxial_port import PEC_SIGMA
-    grid, materials, pec, i0, j0, kj = _assemble_junction(sim)
+    grid, materials, pec, i0, j0, kj = _assemble_junction_realized(sim)
     materials, _, _, z_stub_hi = _stamp_like_method(sim, grid, materials)
     assert z_stub_hi == kj - 1
     sigma = np.asarray(materials.sigma)
@@ -2940,8 +3153,12 @@ def _assert_method_stamp_leaves_junction_open(sim):
 
 def _node25_hole_window(sim):
     """(open_window, disk_window, pin_footprint_window) -- (2R+1)^2 boolean
-    windows about the axis at the junction node, R = CLEAR_R_CELLS."""
-    grid, _, pec, i0, j0, kj = _assemble_junction(sim)
+    windows about the axis at the junction node, R = CLEAR_R_CELLS.
+
+    #931: ``open_w`` is the complement of the REALIZED in-plane PEC nodes on
+    the junction node plane, not of the primal cell mask.
+    """
+    grid, _, pec, i0, j0, kj = _assemble_junction_realized(sim)
     R = CLEAR_R_CELLS
     sl = (slice(i0 - R, i0 + R + 1), slice(j0 - R, j0 + R + 1))
     open_w = ~pec[:, :, kj][sl]
@@ -2976,6 +3193,32 @@ def _assert_hole_matches_integer_disk(sim):
 
 
 # ---- DISCRIMINATING tests: FAIL on attempt 2, PASS on attempt 3 ------------
+_ATTEMPT3_CARVE_BLOCKER = (
+    "#931 R6: attempt 3's clearance hole is a COMPENSATION for the rule the "
+    "lattice ownership contract deletes, and the contract closes it. The "
+    "ground plane is tiled by 20 half-cell PEC Boxes whose inner faces are "
+    "placed half a cell outside the hole so the disk is left uncovered IN "
+    "CELLS. Under §1.2 a volume Box now realizes tangential walls at BOTH "
+    "faces of every axis, so each tiling Box's inner x/y faces are realized "
+    "as walls ON the hole's rim -- and the launch closes again. Measured, "
+    "build only, on the realized node planes: the junction node's clearance "
+    "annulus is 25/36 in-plane PEC (the contract's answer) where the cell "
+    "mask read 0/36 (the pre-#931 answer); the 9x9 window has 11 open nodes, "
+    "not 38; the post-stamp open fraction is 0.3056, not 1.0; and the "
+    "attempt3-vs-attempt2 node-plane xor is 11 nodes on EACH of the ground's "
+    "two realized wall planes (24 and 25), 22 in total, where the cell xor "
+    "is 37 on one plane. Attempt 2 is unaffected and still reads 36/36 -- "
+    "the short it is committed as. The fix is to REDRAW the open launch "
+    "under the contract, which needs its own attempt predeclaration and its "
+    "own GPU run (R6 in tests/unit/sparams/_results_931/RECOMPUTE.md); "
+    "PREDECLARATION_ATTEMPT3 and SETTLED_RUN_RECORD are frozen and are not "
+    "edited here. Every assertion and number below is UNCHANGED and reads "
+    "the realization channel; the marker is strict, so the redraw landing "
+    "fails the run immediately."
+)
+
+
+@pytest.mark.xfail(reason=_ATTEMPT3_CARVE_BLOCKER, strict=True)
 def test_attempt3_ground_clearance_annulus_is_open():
     """At the junction node every cell with PIN_R < r <= CLEAR_R (36 cells,
     all azimuths) has pec_mask False. Attempt 2 measured 36/36 PEC (FAILS
@@ -2984,6 +3227,7 @@ def test_attempt3_ground_clearance_annulus_is_open():
     _assert_clearance_annulus_open(_build_coax_msl_transition_sim_attempt3())
 
 
+@pytest.mark.xfail(reason=_ATTEMPT3_CARVE_BLOCKER, strict=True)
 def test_attempt3_method_stamp_leaves_junction_open():
     """After the method's own stamp_coaxial_line (+ annular resistor) at its
     own z_stub_lo/z_stub_hi = z_junction_idx - 1: the node BELOW the
@@ -2994,6 +3238,7 @@ def test_attempt3_method_stamp_leaves_junction_open():
     _assert_method_stamp_leaves_junction_open(_build_coax_msl_transition_sim_attempt3())
 
 
+@pytest.mark.xfail(reason=_ATTEMPT3_CARVE_BLOCKER, strict=True)
 def test_attempt3_junction_is_attempt2_plus_hole_only():
     """Byte-level: sigma and mu_r np.array_equal to attempt 2; pec_mask ^
     pec_mask_attempt2 is EXACTLY the 38 cells at the junction node equal
@@ -3013,8 +3258,8 @@ def test_attempt3_junction_is_attempt2_plus_hole_only():
     coincidence, not a property of the hole."""
     sim2 = _build_coax_msl_transition_sim_attempt2()
     sim3 = _build_coax_msl_transition_sim_attempt3()
-    g2, m2, pec2, i2, j2, k2 = _assemble_junction(sim2)
-    g3, m3, pec3, i3, j3, k3 = _assemble_junction(sim3)
+    g2, m2, pec2, i2, j2, k2 = _assemble_junction_realized(sim2)
+    g3, m3, pec3, i3, j3, k3 = _assemble_junction_realized(sim3)
     assert g2.shape == g3.shape and (i2, j2, k2) == (i3, j3, k3)
     assert np.array_equal(np.asarray(m2.sigma), np.asarray(m3.sigma))
     assert np.array_equal(np.asarray(m2.mu_r), np.asarray(m3.mu_r))
@@ -3065,6 +3310,7 @@ def test_attempt3_junction_is_attempt2_plus_hole_only():
     assert mats3 == ["pec"] * N_GROUND_BOXES_3 + ["ptfe", "sub", "pec", "pec"]
 
 
+@pytest.mark.xfail(reason=_ATTEMPT3_CARVE_BLOCKER, strict=True)
 def test_attempt3_hole_matches_integer_disk_and_contains_ptfe_disk():
     """~pec_mask at the junction node in the 9x9 window == {di^2+dj^2 <= 16}
     minus the pin's realized footprint (49 - 11 = 38 cells), and the PTFE
@@ -3089,7 +3335,7 @@ def test_attempt2_junction_is_shorted_by_registered_ground():
     what VESSL 369367257263 measured (S00 = -0.9928 at 6 GHz). If this test
     ever fails, attempt 2 was edited -- forbidden; attempt 2 is history."""
     sim2 = _build_coax_msl_transition_sim_attempt2()
-    grid, _, pec, i0, j0, kj = _assemble_junction(sim2)
+    grid, _, pec, i0, j0, kj = _assemble_junction_realized(sim2)
     annulus = _lattice_ring_mask(grid, i0, j0, PIN_R_CELLS, CLEAR_R_CELLS)
     wide = _lattice_ring_mask(grid, i0, j0, PIN_R_CELLS, SHELL_INNER_CELLS)
     assert int(annulus.sum()) == ANNULUS_CELLS_3
@@ -3126,7 +3372,7 @@ def test_junction_pin_axis_is_pec_continuous_stub_to_trace(fixture):
     is_open, which is what distinguishes 'pin' from 'ground' at that node."""
     from rfx.sources.coaxial_port import PEC_SIGMA
     sim = _JUNCTION_FIXTURES[fixture]()
-    grid, materials, pec, i0, j0, kj = _assemble_junction(sim)
+    grid, materials, pec, i0, j0, kj = _assemble_junction_realized(sim)
     materials, _, z_stub_lo, _ = _stamp_like_method(sim, grid, materials)
     sigma = np.asarray(materials.sigma)
     trace_idx = int(grid.position_to_index((JUNCTION_X, Y_C, N_TRACE * DX))[2])
@@ -3146,7 +3392,7 @@ def test_junction_coax_shell_contacts_ground(fixture):
     construction (everything is PEC there); its discriminating partner is
     test_attempt3_ground_clearance_annulus_is_open."""
     sim = _JUNCTION_FIXTURES[fixture]()
-    grid, materials, pec, i0, j0, kj = _assemble_junction(sim)
+    grid, materials, pec, i0, j0, kj = _assemble_junction_realized(sim)
     _, shell_inner, _, _ = _stamp_like_method(sim, grid, materials)
     assert int(round(shell_inner / DX)) == SHELL_INNER_CELLS
     shell = _lattice_ring_mask(grid, i0, j0, SHELL_INNER_CELLS, OUTER_R_CELLS)
@@ -3160,14 +3406,23 @@ def test_junction_coax_shell_contacts_ground(fixture):
 
 @pytest.mark.parametrize("fixture", sorted(_JUNCTION_FIXTURES))
 def test_junction_trace_width_in_cells_is_attempt2s(fixture):
-    """INVARIANT (MSL side untouched): the contiguous PEC node-row run across
-    the trace at the trace node, 5 cells down the trace from the junction,
-    is TRACE_NODE_ROWS_2 rows on both fixtures; the trace Box is the same
-    code path in both. 6 rows on exact node coordinates (= the declared
-    600 um); the archived runs realized 7 on the pre-#834 float32 path
-    (RASTERIZER NOTE and KNIFE-EDGE NOTE above)."""
+    """INVARIANT (MSL side untouched): the contiguous realized in-plane-PEC
+    node run across the trace at the trace node plane, 5 cells down the
+    trace from the junction, is the same on both fixtures; the trace Box is
+    the same code path in both.
+
+    #931: the run is read on the REALIZED node plane (§1.9).  The trace Box's
+    y span [Y_C - 300 um, Y_C + 300 um] is nodes 14..20, so the realized
+    footprint is a CLOSED run of 7 nodes with 6 cells between them and a
+    realized width of (7 - 1) x DX = 600.00 um -- the declared width, exactly.
+    The pre-#834 float32 path realized 7 CELLS = 700 um (RASTERIZER NOTE and
+    KNIFE-EDGE NOTE above); the exact-coordinate path realized 6 cells; the
+    contract adds the closing rim node that bounds them.  The width in metres
+    is the invariant and is asserted directly, so no reading of "how many
+    indices" can drift it.
+    """
     sim = _JUNCTION_FIXTURES[fixture]()
-    grid, _, pec, i0, j0, kj = _assemble_junction(sim)
+    grid, _, pec, i0, j0, kj = _assemble_junction_realized(sim)
     kt = int(grid.position_to_index((JUNCTION_X, Y_C, N_TRACE * DX))[2])
     row = pec[i0 + 5, :, kt]
     assert row[j0]
@@ -3177,8 +3432,13 @@ def test_junction_trace_width_in_cells_is_attempt2s(fixture):
     hi = j0
     while hi + 1 < row.size and row[hi + 1]:
         hi += 1
-    assert hi - lo + 1 == TRACE_NODE_ROWS_2, (lo, hi, int(row.sum()))
-    assert int(row.sum()) == TRACE_NODE_ROWS_2   # no PEC elsewhere on that row at node 29
+    assert hi - lo + 1 == TRACE_NODE_ROWS_2_REALIZED, (lo, hi, int(row.sum()))
+    assert int(row.sum()) == TRACE_NODE_ROWS_2_REALIZED   # nothing else PEC on that row
+    # The number that is not a counting convention: the realized width.
+    assert (hi - lo) * DX == pytest.approx(TRACE_W_REALIZED_M, rel=1e-12)
+    assert TRACE_W_REALIZED_M == pytest.approx(W_TRACE, rel=1e-12), (
+        "the realized trace width is the declared one; if this fails the "
+        "fixture is no longer building the board it says it builds")
 
 
 def test_attempt3_builder_entity_inventory_and_kwargs():

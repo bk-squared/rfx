@@ -128,11 +128,23 @@ def run_subgridded(
                                         materials=mats_c)
         st_c = apply_pec(st_c)
         if pec_mask_c is not None:
+            # #931: ``apply_pec_mask`` IS the shared realization
+            # (realized_pec_edge_masks, volume branch). This lane
+            # carries VOLUMES only — run() refuses a declared sheet
+            # or wire before it gets here (rfx/api/_execute.py) — and
+            # has no periodic branch, so the default #689 flags are
+            # the run's own.
             st_c = apply_pec_mask(st_c, pec_mask_c)
 
         # === Fine grid: E update + PEC mask ===
         st_f = update_e(st_f, mats_f, dt, dx_f)
         if pec_mask_f is not None:
+            # #931: ``apply_pec_mask`` IS the shared realization
+            # (realized_pec_edge_masks, volume branch). This lane
+            # carries VOLUMES only — run() refuses a declared sheet
+            # or wire before it gets here (rfx/api/_execute.py) — and
+            # has no periodic branch, so the default #689 flags are
+            # the run's own.
             st_f = apply_pec_mask(st_f, pec_mask_f)
 
         # === Shared-node coupling ===

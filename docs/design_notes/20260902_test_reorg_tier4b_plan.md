@@ -1,5 +1,17 @@
 # Test-suite reorganization — tier 4b plan (oracle + unit)
 
+> **SUPERSEDED IN PART by #931 (the lattice ownership contract), 2026-09-07.**
+> Kept as dated history and deliberately NOT rewritten.
+> Two rows of its move table name tests that #931 deleted with their
+> mechanism: `test_sheet_node_permittivity.py` (the #702 resample) is gone,
+> and the "node-thin" vocabulary in the sheet-operator row is the pre-2.0 name
+> for a sheet realized on its node plane. The reorganization itself is
+> unaffected.
+> The current rule is
+> `docs/design_notes/20260906_plan_realign_lattice_ownership.md` §1, and for
+> users `docs/public/guide/materials-geometry.mdx` ("How conductors land on
+> the lattice").
+
 Date: 2026-09-02. Branch `agent/reorg-tier4b-unit`, stacked on tier 4a
 (`agent/reorg-tier4a-studio`). Approved by the PI on 2026-09-02 as the last
 MOVE tier: everything still at top level `tests/test_*.py` after tiers 1-4a

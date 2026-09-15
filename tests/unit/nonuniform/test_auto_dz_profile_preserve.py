@@ -46,7 +46,17 @@ def test_demo_fixture_interface_on_node():
     """Falsifier (a): substrate-top edge within 1e-12 m of declared 254 um.
 
     Pre-fix: interface mid-cell at fraction 0.3462 (nearest edge tens of
-    microns away)."""
+    microns away).
+
+    #931 depends on this property. A sheet's plane is a STATIC integer node
+    index (§1.3), so a foil declared on a dielectric interface can only
+    land where it is meant to if that interface is on a node — which is
+    what ``_make_dz_profile(preserve_regions=...)`` guarantees to 1e-12 m
+    and this test pins. A sheet whose plane is further than half a local
+    cell from the nearest node is REFUSED rather than clamped (design note
+    §6); see
+    ``tests/contracts/test_lattice_ownership_contract.py::test_sheet_plane_outside_the_node_line_is_refused``.
+    """
     dz = _demo_profile()
     edges = np.concatenate([[0.0], np.cumsum(dz)])
     dist = float(np.min(np.abs(edges - H_SUB)))

@@ -1,0 +1,994 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-9.1.1, pluggy-1.6.0 -- /usr/bin/python
+cachedir: .pytest_cache
+rootdir: /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds
+configfile: pyproject.toml
+plugins: split-0.11.0, xdist-3.8.0, anyio-4.9.0
+created: 4/4 workers
+4 workers [158 items]
+
+scheduling tests via LoadScheduling
+
+tests/contracts/test_lattice_ownership_contract.py::test_one_cell_box_is_a_filled_slab_with_no_flag
+tests/contracts/test_lattice_ownership_contract.py::test_slab_realized_thickness_equals_drawn[1-0]
+tests/contracts/test_lattice_ownership_contract.py::test_sheet_footprint_is_the_closed_rectangle
+tests/contracts/test_lattice_ownership_contract.py::test_slab_realizes_both_faces_and_shorts_its_interior[1-0]
+[gw3] [  0%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_sheet_footprint_is_the_closed_rectangle
+tests/contracts/test_lattice_ownership_contract.py::test_sheet_spec_validates_its_layer
+[gw2] [  1%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_one_cell_box_is_a_filled_slab_with_no_flag
+tests/contracts/test_lattice_ownership_contract.py::test_volume_box_realizes_its_closed_extent_exactly
+[gw3] [  1%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_sheet_spec_validates_its_layer
+tests/contracts/test_lattice_ownership_contract.py::test_realized_edges_commute_with_axis_permutation[perm0]
+[gw2] [  2%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_volume_box_realizes_its_closed_extent_exactly
+tests/contracts/test_lattice_ownership_contract.py::test_volume_box_through_the_api_has_walls_on_both_drawn_planes
+[gw0] [  3%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realized_thickness_equals_drawn[1-0]
+tests/contracts/test_lattice_ownership_contract.py::test_slab_realized_thickness_equals_drawn[1-1]
+[gw0] [  3%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realized_thickness_equals_drawn[1-1]
+tests/contracts/test_lattice_ownership_contract.py::test_slab_realized_thickness_equals_drawn[1-2]
+[gw0] [  4%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realized_thickness_equals_drawn[1-2]
+tests/contracts/test_lattice_ownership_contract.py::test_slab_realized_thickness_equals_drawn[2-0]
+[gw0] [  5%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realized_thickness_equals_drawn[2-0]
+tests/contracts/test_lattice_ownership_contract.py::test_slab_realized_thickness_equals_drawn[2-1]
+[gw3] [  5%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_realized_edges_commute_with_axis_permutation[perm0]
+tests/contracts/test_lattice_ownership_contract.py::test_realized_edges_commute_with_axis_permutation[perm1]
+[gw0] [  6%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realized_thickness_equals_drawn[2-1]
+tests/contracts/test_lattice_ownership_contract.py::test_slab_realized_thickness_equals_drawn[2-2]
+[gw0] [  6%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realized_thickness_equals_drawn[2-2]
+tests/contracts/test_lattice_ownership_contract.py::test_slab_realized_thickness_equals_drawn[3-0]
+[gw0] [  7%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realized_thickness_equals_drawn[3-0]
+[gw3] [  8%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_realized_edges_commute_with_axis_permutation[perm1]
+tests/contracts/test_lattice_ownership_contract.py::test_realized_edges_commute_with_axis_permutation[perm2]
+tests/contracts/test_lattice_ownership_contract.py::test_slab_realized_thickness_equals_drawn[3-1]
+[gw0] [  8%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realized_thickness_equals_drawn[3-1]
+tests/contracts/test_lattice_ownership_contract.py::test_slab_realized_thickness_equals_drawn[3-2]
+[gw3] [  9%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_realized_edges_commute_with_axis_permutation[perm2]
+tests/contracts/test_lattice_ownership_contract.py::test_realized_edges_commute_with_axis_permutation[perm3]
+[gw0] [ 10%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realized_thickness_equals_drawn[3-2]
+tests/contracts/test_lattice_ownership_contract.py::test_realized_edges_commute_with_mirror_of_an_interior_body[1]
+[gw3] [ 10%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_realized_edges_commute_with_axis_permutation[perm3]
+tests/contracts/test_lattice_ownership_contract.py::test_realized_edges_commute_with_axis_permutation[perm4]
+[gw3] [ 11%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_realized_edges_commute_with_axis_permutation[perm4]
+tests/contracts/test_lattice_ownership_contract.py::test_realized_edges_commute_with_axis_permutation[perm5]
+[gw3] [ 12%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_realized_edges_commute_with_axis_permutation[perm5]
+tests/contracts/test_lattice_ownership_contract.py::test_realized_edges_commute_with_mirror_of_an_interior_body[0]
+[gw1] [ 12%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realizes_both_faces_and_shorts_its_interior[1-0]
+tests/contracts/test_lattice_ownership_contract.py::test_slab_realizes_both_faces_and_shorts_its_interior[1-1]
+[gw3] [ 13%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_realized_edges_commute_with_mirror_of_an_interior_body[0]
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=3 k0=2]
+[gw1] [ 13%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realizes_both_faces_and_shorts_its_interior[1-1]
+tests/contracts/test_lattice_ownership_contract.py::test_slab_realizes_both_faces_and_shorts_its_interior[1-2]
+[gw2] [ 14%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_volume_box_through_the_api_has_walls_on_both_drawn_planes
+tests/contracts/test_lattice_ownership_contract.py::test_sheet_realizes_one_plane_and_leaves_the_normal_edge_live[0]
+[gw1] [ 15%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realizes_both_faces_and_shorts_its_interior[1-2]
+tests/contracts/test_lattice_ownership_contract.py::test_slab_realizes_both_faces_and_shorts_its_interior[2-0]
+[gw1] [ 15%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realizes_both_faces_and_shorts_its_interior[2-0]
+tests/contracts/test_lattice_ownership_contract.py::test_slab_realizes_both_faces_and_shorts_its_interior[2-1]
+[gw1] [ 16%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realizes_both_faces_and_shorts_its_interior[2-1]
+tests/contracts/test_lattice_ownership_contract.py::test_slab_realizes_both_faces_and_shorts_its_interior[2-2]
+[gw1] [ 17%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realizes_both_faces_and_shorts_its_interior[2-2]
+tests/contracts/test_lattice_ownership_contract.py::test_slab_realizes_both_faces_and_shorts_its_interior[3-0]
+[gw1] [ 17%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realizes_both_faces_and_shorts_its_interior[3-0]
+tests/contracts/test_lattice_ownership_contract.py::test_slab_realizes_both_faces_and_shorts_its_interior[3-1]
+[gw1] [ 18%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realizes_both_faces_and_shorts_its_interior[3-1]
+tests/contracts/test_lattice_ownership_contract.py::test_slab_realizes_both_faces_and_shorts_its_interior[3-2]
+[gw1] [ 18%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realizes_both_faces_and_shorts_its_interior[3-2]
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=3 k0=2]
+[gw0] [ 19%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_realized_edges_commute_with_mirror_of_an_interior_body[1]
+tests/contracts/test_lattice_ownership_contract.py::test_realized_edges_commute_with_mirror_of_an_interior_body[2]
+[gw2] [ 20%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_sheet_realizes_one_plane_and_leaves_the_normal_edge_live[0]
+tests/contracts/test_lattice_ownership_contract.py::test_sheet_realizes_one_plane_and_leaves_the_normal_edge_live[1]
+[gw0] [ 20%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_realized_edges_commute_with_mirror_of_an_interior_body[2]
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=1 k0=0]
+[gw2] [ 21%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_sheet_realizes_one_plane_and_leaves_the_normal_edge_live[1]
+tests/contracts/test_lattice_ownership_contract.py::test_sheet_realizes_one_plane_and_leaves_the_normal_edge_live[2]
+[gw2] [ 22%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_sheet_realizes_one_plane_and_leaves_the_normal_edge_live[2]
+tests/contracts/test_lattice_ownership_contract.py::test_sheet_with_a_cell_mask_of_none_or_zeros_is_the_same
+[gw2] [ 22%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_sheet_with_a_cell_mask_of_none_or_zeros_is_the_same
+tests/contracts/test_lattice_ownership_contract.py::test_abutting_sheets_on_one_plane_union_before_the_edge_rule
+[gw2] [ 23%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_abutting_sheets_on_one_plane_union_before_the_edge_rule
+tests/contracts/test_lattice_ownership_contract.py::test_sheets_on_adjacent_planes_keep_a_live_normal_edge_between_them
+[gw2] [ 24%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_sheets_on_adjacent_planes_keep_a_live_normal_edge_between_them
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=3 k0=0]
+[gw0] [ 24%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=1 k0=0]
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=1 k0=2]
+[gw0] [ 25%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=1 k0=2]
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=1 k0=7]
+[gw0] [ 25%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=1 k0=7]
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=2 k0=0]
+[gw0] [ 26%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=2 k0=0]
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=2 k0=2]
+[gw1] [ 27%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=3 k0=2]
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=3 k0=5]
+[gw0] [ 27%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=2 k0=2]
+[gw3] [ 28%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=3 k0=2]
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=2 k0=6]
+[gw1] [ 29%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=3 k0=5]
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=3 k0=5]
+[gw0] [ 29%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=2 k0=6]
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=1 k0=0]
+[gw3] [ 30%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=3 k0=5]
+[gw1] [ 31%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=1 k0=0]
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=1 k0=2]
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=1 k0=0]
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=3 k0=0]
+[gw0] [ 31%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=3 k0=0]
+[gw3] [ 32%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=1 k0=0]
+[gw1] [ 32%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=1 k0=2]
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=1 k0=2]
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[2d-lane]
+[gw3] [ 33%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=1 k0=2]
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=1 k0=7]
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=1 k0=7]
+[gw1] [ 34%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=1 k0=7]
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=2 k0=0]
+[gw3] [ 34%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=1 k0=7]
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=2 k0=0]
+[gw1] [ 35%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=2 k0=0]
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=2 k0=2]
+[gw3] [ 36%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=2 k0=0]
+[gw1] [ 36%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=2 k0=2]
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=2 k0=6]
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=2 k0=2]
+[gw1] [ 37%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=2 k0=6]
+[gw3] [ 37%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=2 k0=2]
+tests/contracts/test_lattice_ownership_contract.py::test_realized_wall_planes_region_and_column
+[gw1] [ 38%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_realized_wall_planes_region_and_column
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=2 k0=6]
+tests/contracts/test_lattice_ownership_contract.py::test_pec_thin_conductor_is_a_sheet_not_a_cell
+[gw3] [ 39%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=2 k0=6]
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=3 k0=0]
+[gw3] [ 39%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=3 k0=0]
+tests/contracts/test_lattice_ownership_contract.py::test_sub_cell_non_box_sheet_is_realized_from_its_mid_plane_cross_section
+[gw2] [ 40%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=3 k0=0]
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=3 k0=2]
+[gw2] [ 41%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=3 k0=2]
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=3 k0=5]
+[gw3] [ 41%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_sub_cell_non_box_sheet_is_realized_from_its_mid_plane_cross_section
+[gw2] [ 42%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=3 k0=5]
+tests/contracts/test_lattice_ownership_contract.py::test_sub_cell_pec_box_via_add_is_refused
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[seam ax=0]
+[gw3] [ 43%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_sub_cell_pec_box_via_add_is_refused
+tests/contracts/test_lattice_ownership_contract.py::test_conformal_weights_do_not_replace_the_realized_edges
+[gw0] [ 43%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[2d-lane]
+tests/contracts/test_lattice_ownership_contract.py::test_soft_path_ors_sheet_masks_in_statically
+[gw1] [ 44%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_pec_thin_conductor_is_a_sheet_not_a_cell
+[gw2] [ 44%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[seam ax=0]
+tests/contracts/test_lattice_ownership_contract.py::test_g4_pec_sheet_and_f0_sheet_share_footprint_and_edge_set
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[seam ax=1]
+[gw2] [ 45%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[seam ax=1]
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[seam ax=2]
+[gw2] [ 46%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[seam ax=2]
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[random]
+[gw2] [ 46%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[random]
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[random-periodic-y]
+[gw2] [ 47%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[random-periodic-y]
+tests/contracts/test_lattice_ownership_contract.py::test_realized_wall_planes_column_follows_the_periodic_wrap
+[gw2] [ 48%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_realized_wall_planes_column_follows_the_periodic_wrap
+tests/contracts/test_lattice_ownership_contract.py::test_wire_path_has_no_periodic_argument
+[gw2] [ 48%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_wire_path_has_no_periodic_argument
+tests/contracts/test_lattice_ownership_contract.py::test_subcell_refusal_covers_non_box_shapes
+[gw2] [ 49%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_subcell_refusal_covers_non_box_shapes
+tests/contracts/test_lattice_ownership_contract.py::test_sheet_plane_outside_the_node_line_is_refused
+[gw2] [ 50%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_sheet_plane_outside_the_node_line_is_refused
+tests/contracts/test_lattice_ownership_contract.py::test_cell_centres_use_the_actual_node_line
+[gw2] [ 50%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_cell_centres_use_the_actual_node_line
+tests/contracts/test_lattice_ownership_contract.py::test_stackup_foils_sit_on_the_dielectric_faces
+[gw2] [ 51%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_stackup_foils_sit_on_the_dielectric_faces
+tests/contracts/test_lattice_ownership_contract.py::test_add_thin_conductor_takes_both_sheet_spellings_and_lands_on_one_plane
+[gw2] [ 51%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_add_thin_conductor_takes_both_sheet_spellings_and_lands_on_one_plane
+tests/contracts/test_lattice_ownership_contract.py::test_domain_boundary_pec_is_not_a_conductor_body
+[gw1] [ 52%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_g4_pec_sheet_and_f0_sheet_share_footprint_and_edge_set
+tests/contracts/test_lattice_ownership_contract.py::test_zero_thickness_pec_box_via_add_is_a_sheet_declaration
+[gw1] [ 53%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_zero_thickness_pec_box_via_add_is_a_sheet_declaration
+tests/contracts/test_lattice_ownership_contract.py::test_pec_box_with_two_or_three_zero_axes_is_refused[hi0]
+[gw1] [ 53%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_pec_box_with_two_or_three_zero_axes_is_refused[hi0]
+tests/contracts/test_lattice_ownership_contract.py::test_pec_box_with_two_or_three_zero_axes_is_refused[hi1]
+[gw1] [ 54%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_pec_box_with_two_or_three_zero_axes_is_refused[hi1]
+tests/contracts/test_lattice_ownership_contract.py::test_a_sigma_fill_conductor_is_not_a_pec_body
+[gw0] [ 55%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_path_ors_sheet_masks_in_statically
+[gw2] [ 55%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_domain_boundary_pec_is_not_a_conductor_body
+tests/contracts/test_lattice_ownership_contract.py::test_a_binary_zero_occupancy_override_keeps_the_ports_edge_clearing
+tests/contracts/test_lattice_ownership_contract.py::test_fidelity_report_realized_extent_comes_from_the_wall_planes
+[gw1] [ 56%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_a_sigma_fill_conductor_is_not_a_pec_body
+tests/contracts/test_lattice_ownership_contract.py::test_kottke_owns_its_own_volume_the_ownership_rule_does_not_overwrite_it
+[gw2] [ 56%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_fidelity_report_realized_extent_comes_from_the_wall_planes
+tests/contracts/test_lattice_ownership_contract.py::test_degenerate_sheet_and_wire_declarations_are_refused
+[gw2] [ 57%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_degenerate_sheet_and_wire_declarations_are_refused
+tests/contracts/test_lattice_ownership_contract.py::test_every_solve_entry_point_applies_a_declared_sheet[forward]
+[gw3] [ 58%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_conformal_weights_do_not_replace_the_realized_edges
+tests/contracts/test_lattice_ownership_contract.py::test_two_plane_is_gone_from_the_package
+[gw3] [ 58%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_two_plane_is_gone_from_the_package
+tests/contracts/test_lattice_ownership_contract.py::test_clear_edges_releases_only_the_named_component
+[gw2] [ 59%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_every_solve_entry_point_applies_a_declared_sheet[forward]
+tests/contracts/test_lattice_ownership_contract.py::test_every_solve_entry_point_applies_a_declared_sheet[vmap_material_sweep]
+[gw0] [ 60%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_a_binary_zero_occupancy_override_keeps_the_ports_edge_clearing
+tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_differentiable_and_noisy_or
+[gw3] [ 60%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_clear_edges_releases_only_the_named_component
+tests/contracts/test_lattice_ownership_contract.py::test_edges_are_pec_matches_edge_is_pec
+[gw3] [ 61%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_edges_are_pec_matches_edge_is_pec
+tests/contracts/test_lattice_ownership_contract.py::test_conductor_mask_counts_a_sub_cell_wire
+[gw3] [ 62%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_conductor_mask_counts_a_sub_cell_wire
+tests/contracts/test_lattice_ownership_contract.py::test_validate_subgrid_refuses_the_sheet_the_runner_refuses
+[gw2] [ 62%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_every_solve_entry_point_applies_a_declared_sheet[vmap_material_sweep]
+tests/contracts/test_lattice_ownership_contract.py::test_every_solve_entry_point_applies_a_declared_sheet[optimize]
+[gw3] [ 63%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_validate_subgrid_refuses_the_sheet_the_runner_refuses
+tests/contracts/test_lattice_ownership_contract.py::test_the_material_only_coaxial_lanes_refuse_a_sheet
+[gw3] [ 63%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_the_material_only_coaxial_lanes_refuse_a_sheet
+tests/contracts/test_lattice_ownership_contract.py::test_a_lane_that_drops_volume_pec_does_not_recommend_drawing_a_volume
+[gw3] [ 64%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_a_lane_that_drops_volume_pec_does_not_recommend_drawing_a_volume
+tests/contracts/test_lattice_ownership_contract.py::test_the_permittivity_viewer_draws_a_sheet_it_cannot_see_in_eps
+[gw0] [ 65%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_differentiable_and_noisy_or
+tests/contracts/test_lattice_ownership_contract.py::test_wire_path_realizes_the_axis_aligned_lattice_edges
+[gw0] [ 65%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_wire_path_realizes_the_axis_aligned_lattice_edges
+tests/contracts/test_lattice_ownership_contract.py::test_wire_path_refuses_a_diagonal_segment
+[gw0] [ 66%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_wire_path_refuses_a_diagonal_segment
+tests/contracts/test_lattice_ownership_contract.py::test_edge_is_pec_and_clear_edges
+[gw0] [ 67%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_edge_is_pec_and_clear_edges
+[gw1] [ 67%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_kottke_owns_its_own_volume_the_ownership_rule_does_not_overwrite_it
+tests/contracts/test_frozen_mesh_construction.py::test_freezing_does_not_legalize_unresolved_volume
+tests/contracts/test_lattice_ownership_contract.py::test_the_kottke_fence_keeps_sheets_and_wires_the_tensor_cannot_see
+[gw0] [ 68%] PASSED tests/contracts/test_frozen_mesh_construction.py::test_freezing_does_not_legalize_unresolved_volume
+tests/contracts/test_frozen_mesh_construction.py::test_freeze_keeps_automatic_profiles_and_extent_after_geometry_edit
+[gw3] [ 68%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_the_permittivity_viewer_draws_a_sheet_it_cannot_see_in_eps
+tests/contracts/test_frozen_mesh_construction.py::test_short_fixture_faces_stay_on_final_nodes[None]
+[gw0] [ 69%] PASSED tests/contracts/test_frozen_mesh_construction.py::test_freeze_keeps_automatic_profiles_and_extent_after_geometry_edit
+[gw1] [ 70%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_the_kottke_fence_keeps_sheets_and_wires_the_tensor_cannot_see
+tests/contracts/test_lattice_ownership_contract.py::test_the_probe_sits_on_a_realized_sheet_edge_and_the_control_does_not
+[gw1] [ 70%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_the_probe_sits_on_a_realized_sheet_edge_and_the_control_does_not
+tests/contracts/test_lattice_ownership_contract.py::test_every_solve_entry_point_applies_a_declared_sheet[run]
+[gw3] [ 71%] PASSED tests/contracts/test_frozen_mesh_construction.py::test_short_fixture_faces_stay_on_final_nodes[None]
+tests/contracts/test_frozen_mesh_construction.py::test_short_fixture_faces_stay_on_final_nodes[0.002]
+[gw1] [ 72%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_every_solve_entry_point_applies_a_declared_sheet[run]
+tests/contracts/test_pec_short_advisory_geometry.py::test_short_faces_and_actual_port_planes_describe_one_fixed_network[0.001-10]
+[gw3] [ 72%] PASSED tests/contracts/test_frozen_mesh_construction.py::test_short_fixture_faces_stay_on_final_nodes[0.002]
+tests/contracts/test_frozen_mesh_construction.py::test_freeze_before_first_geometry_survives_execution[run]
+tests/contracts/test_frozen_mesh_construction.py::test_freeze_copies_caller_profile_and_refuses_mesh_reassignment
+[gw0] [ 73%] PASSED tests/contracts/test_frozen_mesh_construction.py::test_freeze_copies_caller_profile_and_refuses_mesh_reassignment
+tests/contracts/test_pec_short_advisory_geometry.py::test_short_faces_and_actual_port_planes_describe_one_fixed_network[0.002-8]
+[gw3] [ 74%] PASSED tests/contracts/test_frozen_mesh_construction.py::test_freeze_before_first_geometry_survives_execution[run]
+tests/contracts/test_frozen_mesh_construction.py::test_freeze_before_first_geometry_survives_execution[forward]
+[gw1] [ 74%] PASSED tests/contracts/test_pec_short_advisory_geometry.py::test_short_faces_and_actual_port_planes_describe_one_fixed_network[0.001-10]
+tests/unit/farfield/test_farfield_inplane_nonuniform.py::test_graded_fixture_preserves_radiator_and_acquisition_lattice
+[gw3] [ 75%] PASSED tests/contracts/test_frozen_mesh_construction.py::test_freeze_before_first_geometry_survives_execution[forward]
+tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_mode_estimator_reads_ringdown_after_the_driven_transient
+[gw0] [ 75%] PASSED tests/contracts/test_pec_short_advisory_geometry.py::test_short_faces_and_actual_port_planes_describe_one_fixed_network[0.002-8]
+tests/unit/farfield/test_farfield_inplane_nonuniform.py::test_graded_inplane_mesh_integrates_with_local_cell_sizes
+[gw3] [ 76%] PASSED tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_mode_estimator_reads_ringdown_after_the_driven_transient
+tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_v173a_baseline_bit_identity
+[gw2] [ 77%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_every_solve_entry_point_applies_a_declared_sheet[optimize]
+tests/contracts/test_lattice_ownership_contract.py::test_assembling_without_collectors_is_refused_and_names_the_caller
+[gw2] [ 77%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_assembling_without_collectors_is_refused_and_names_the_caller
+tests/contracts/test_lattice_ownership_contract.py::test_the_non_uniform_assembler_refuses_the_same_way
+[gw2] [ 78%] PASSED tests/contracts/test_lattice_ownership_contract.py::test_the_non_uniform_assembler_refuses_the_same_way
+tests/unit/sparams/test_sparam_passivity_guard.py::test_nonpassive_smatrix_raises_under_strict
+[gw2] [ 79%] PASSED tests/unit/sparams/test_sparam_passivity_guard.py::test_nonpassive_smatrix_raises_under_strict
+tests/unit/sparams/test_sparam_passivity_guard.py::test_nonfinite_smatrix_warns
+[gw2] [ 79%] PASSED tests/unit/sparams/test_sparam_passivity_guard.py::test_nonfinite_smatrix_warns
+tests/unit/sparams/test_sparam_passivity_guard.py::test_small_passivity_overage_within_tol_is_silent
+[gw2] [ 80%] PASSED tests/unit/sparams/test_sparam_passivity_guard.py::test_small_passivity_overage_within_tol_is_silent
+tests/unit/sparams/test_sparam_passivity_guard.py::test_guard_is_tracer_safe_under_jax_grad
+[gw2] [ 81%] PASSED tests/unit/sparams/test_sparam_passivity_guard.py::test_guard_is_tracer_safe_under_jax_grad
+tests/unit/sparams/test_sparam_passivity_guard.py::test_normalize_aware_tol_tolerates_documented_overshoot
+[gw2] [ 81%] PASSED tests/unit/sparams/test_sparam_passivity_guard.py::test_normalize_aware_tol_tolerates_documented_overshoot
+tests/unit/sparams/test_sparam_passivity_guard.py::test_soft_advisory_filter_excludes_reciprocity_warning
+[gw2] [ 82%] PASSED tests/unit/sparams/test_sparam_passivity_guard.py::test_soft_advisory_filter_excludes_reciprocity_warning
+tests/unit/sparams/test_sparam_passivity_guard.py::test_soft_advisory_fires_in_the_over_unity_gap
+[gw2] [ 82%] PASSED tests/unit/sparams/test_sparam_passivity_guard.py::test_soft_advisory_fires_in_the_over_unity_gap
+tests/unit/sparams/test_sparam_passivity_guard.py::test_soft_advisory_silent_at_documented_envelope
+[gw2] [ 83%] PASSED tests/unit/sparams/test_sparam_passivity_guard.py::test_soft_advisory_silent_at_documented_envelope
+tests/unit/sparams/test_sparam_passivity_guard.py::test_soft_advisory_silent_just_below_floor
+[gw2] [ 84%] PASSED tests/unit/sparams/test_sparam_passivity_guard.py::test_soft_advisory_silent_just_below_floor
+tests/unit/sparams/test_sparam_passivity_guard.py::test_soft_advisory_never_fires_on_tight_tol_path
+[gw2] [ 84%] PASSED tests/unit/sparams/test_sparam_passivity_guard.py::test_soft_advisory_never_fires_on_tight_tol_path
+tests/unit/sparams/test_sparam_passivity_guard.py::test_gross_violation_still_hard_not_soft
+[gw2] [ 85%] PASSED tests/unit/sparams/test_sparam_passivity_guard.py::test_gross_violation_still_hard_not_soft
+tests/unit/sparams/test_sparam_passivity_guard.py::test_soft_advisory_real_coarse_pec_short_witness
+[gw1] [ 86%] PASSED tests/unit/farfield/test_farfield_inplane_nonuniform.py::test_graded_fixture_preserves_radiator_and_acquisition_lattice
+tests/unit/farfield/test_farfield_inplane_nonuniform.py::test_uniform_valued_inplane_profile_matches_the_plain_uniform_grid
+[gw2] [ 86%] FAILED tests/unit/sparams/test_sparam_passivity_guard.py::test_soft_advisory_real_coarse_pec_short_witness
+tests/unit/autodiff/test_msl_sparam_ad.py::test_replay_float64_equivalence
+[gw2] [ 87%] PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_replay_float64_equivalence
+tests/unit/autodiff/test_msl_sparam_ad.py::test_replay_geometry_matches_the_captured_lattice
+[gw2] [ 87%] PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_replay_geometry_matches_the_captured_lattice
+tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_ad_smoke_has_finite_gradient
+[gw2] [ 88%] PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_ad_smoke_has_finite_gradient
+tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_end_to_end_matches_historical_base
+[gw1] [ 89%] PASSED tests/unit/farfield/test_farfield_inplane_nonuniform.py::test_uniform_valued_inplane_profile_matches_the_plain_uniform_grid
+tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
+[gw1] [ 89%] PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
+tests/unit/autodiff/test_msl_sparam_ad.py::test_migrated_trace_is_a_sheet_on_the_declared_plane[2]
+[gw0] [ 90%] PASSED tests/unit/farfield/test_farfield_inplane_nonuniform.py::test_graded_inplane_mesh_integrates_with_local_cell_sizes
+tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_v173a_drawing_and_gap_measurements_are_realized
+[gw0] [ 91%] FAILED tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_v173a_drawing_and_gap_measurements_are_realized
+tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_probe_spectrum_statistic_exposes_source_amplitude_dependence
+[gw0] [ 91%] PASSED tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_probe_spectrum_statistic_exposes_source_amplitude_dependence
+tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[phase_conjugation-electrical-length phase]
+[gw0] [ 92%] PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[phase_conjugation-electrical-length phase]
+tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[zero_transmission-transmission misses]
+[gw0] [ 93%] PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[zero_transmission-transmission misses]
+tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[excess_reflection-reflection exceeds]
+[gw0] [ 93%] PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[excess_reflection-reflection exceeds]
+tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[projection_hides_gain-singular value exceeds]
+[gw0] [ 94%] PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[projection_hides_gain-singular value exceeds]
+tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[unsettled-ringdown exceeds]
+[gw0] [ 94%] PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[unsettled-ringdown exceeds]
+tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[nonfinite-non-finite raw S]
+[gw0] [ 95%] PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[nonfinite-non-finite raw S]
+[gw1] [ 96%] PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_migrated_trace_is_a_sheet_on_the_declared_plane[2]
+tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_accepts_matched_line_limit
+[gw1] [ 96%] PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_accepts_matched_line_limit
+[gw3] [ 97%] PASSED tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_v173a_baseline_bit_identity
+tests/unit/sparams/test_sparam_passivity_guard.py::test_passive_smatrix_is_silent
+[gw3] [ 98%] PASSED tests/unit/sparams/test_sparam_passivity_guard.py::test_passive_smatrix_is_silent
+tests/unit/sparams/test_sparam_passivity_guard.py::test_nonpassive_smatrix_warns
+[gw3] [ 98%] PASSED tests/unit/sparams/test_sparam_passivity_guard.py::test_nonpassive_smatrix_warns
+[gw2] [ 99%] FAILED tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_end_to_end_matches_historical_base
+tests/unit/autodiff/test_msl_sparam_ad.py::test_migrated_trace_is_a_sheet_on_the_declared_plane[1]
+[gw2] [100%] PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_migrated_trace_is_a_sheet_on_the_declared_plane[1]
+
+=================================== FAILURES ===================================
+_______________ test_soft_advisory_real_coarse_pec_short_witness _______________
+[gw2] linux -- Python 3.10.12 /usr/bin/python
+
+    @pytest.mark.slow
+    def test_soft_advisory_real_coarse_pec_short_witness():
+        """Keep the historical advisory claim falsifiable after physical repair.
+
+        The old 85--87 mm short was off-lattice at dx=2 mm, and both right
+        measurement planes were across it from their source. Its ~2.51 column
+        power therefore did not measure two independent outgoing ports. The
+        repaired rectangular guide has node-aligned faces and measurements in
+        each source's connected region. The original (2.25, 3] interval remains:
+        a miss is a finding that this fixture is no longer an advisory witness,
+        not permission to tune the geometry or widen the interval. Synthetic
+        tests above independently cover the advisory's warn/silent behavior.
+        """
+        from tests._pec_short_advisory_fixture import build
+
+        # Historical hypothesis, deliberately retained after fixture repair.
+        with warnings.catch_warnings(record=True) as rec:
+            warnings.simplefilter("always")
+            res = build(np.linspace(4e9, 6e9, 6), dx=2e-3, cpml=8).\
+                compute_waveguide_s_matrix(normalize=False, num_periods=30)
+        s = np.asarray(res.s_params)
+        assert np.isfinite(s).all()
+        assert np.all(np.abs(s[[0, 1], [0, 1], :]) > 0), (
+            "Each driven port must measure its own reflected wave; an all-zero "
+            "drive column is not evidence of a passive matched port"
+        )
+        cp = float(np.sum(np.abs(s) ** 2, axis=0).max())
+>       assert 2.25 < cp <= 3.0, f"expected witness column power in the gap, got {cp:.4f}"
+E       AssertionError: expected witness column power in the gap, got 1.0445
+E       assert 2.25 < 1.0444802045822144
+
+tests/unit/sparams/test_sparam_passivity_guard.py:260: AssertionError
+_____________ test_v173a_drawing_and_gap_measurements_are_realized _____________
+[gw0] linux -- Python 3.10.12 /usr/bin/python
+
+    def test_v173a_drawing_and_gap_measurements_are_realized():
+        sim = v173a._build_sim()
+        rz = realized(sim)
+        assert rz.pec_mask is None
+        assert len(rz.sheets) == 1
+        sheet = rz.sheets[0]
+        assert sheet.plane == node_index(rz.grid, 2, v173a._SUB_T)
+        assert rz.wall_planes(2) == [sheet.plane]
+        # Independent arithmetic: every physical face is an integer node index.
+        for faces in ((0., .011, .039, .05), (0., .007, .043, .05), (0., .0015, .02)):
+            np.testing.assert_allclose(np.array(faces) / v173a._DX,
+                                       np.rint(np.array(faces) / v173a._DX), atol=1e-12, rtol=0)
+        assert np.count_nonzero(rz.edge_masks[0]) == 56 * 73
+        assert np.count_nonzero(rz.edge_masks[1]) == 57 * 72
+        assert not np.any(rz.edge_masks[2])
+>       materials = sim._assemble_materials(rz.grid)[0]
+
+tests/unit/misc/test_v173a_physics_equivalence_slow.py:37:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+rfx/api/_compile.py:460: in _assemble_materials
+    _refuse_uncollected_pec(_pec_sheets if pec_sheets is None else (),
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+sheets = [SheetSpec(normal_axis=2, plane=3, footprint=Array([[[False, False, False, ..., False, False, False],
+        [False, ..., False, False, False],
+        [False, False, False, ..., False, False, False]]], dtype=bool), name='thin_conductor')]
+wires = [], lane = 'uniform'
+
+    def _refuse_uncollected_pec(sheets, wires, *, lane: str) -> None:
+        """Refuse to return a ``pec_mask`` that silently omits a sheet or wire.
+
+        A sheet owns no cell (#931 §1.3), so it cannot ride out in
+        ``pec_mask``: a caller that passes no collector receives a mask with
+        the conductor MISSING, and nothing downstream can tell that from a
+        model that never had one.  This was a ``UserWarning`` while the
+        consumers were being migrated; every consumer in ``rfx/`` now passes
+        collectors, so the omission becomes an error and a future
+        collector-less caller cannot appear.
+
+        Passing ``pec_sheets=[]`` / ``pec_wires=[]`` and dropping the result
+        is a legitimate, and now explicit, "I read cells only".  A lane that
+        steps fields must realize what it collected with
+        :func:`rfx.boundaries.pec.realized_pec_edge_masks`, or refuse the
+        sheet loudly (``NotImplementedError`` naming the lane).
+        """
+        if not sheets and not wires:
+            return
+        what = []
+        if sheets:
+            what.append(f"{len(sheets)} PEC sheet(s)")
+        if wires:
+            what.append(f"{len(wires)} PEC wire(s)")
+>       raise ValueError(
+            f"_assemble_materials ({lane} lane): {' and '.join(what)} were "
+            f"classified, but {_uncollected_pec_caller()} passed no "
+            "pec_sheets/pec_wires collector. A sheet owns no cell (#931 "
+            "§1.3), so it cannot be returned in pec_mask and this caller "
+            "would step or report a model with the conductor MISSING. Pass "
+            "pec_sheets=[] / pec_wires=[]: realize them with "
+            "rfx.boundaries.pec.realized_pec_edge_masks if this path steps "
+            "fields, or drop them deliberately if it only reads cells.")
+E       ValueError: _assemble_materials (uniform lane): 1 PEC sheet(s) were classified, but /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/misc/test_v173a_physics_equivalence_slow.py:37 in test_v173a_drawing_and_gap_measurements_are_realized() passed no pec_sheets/pec_wires collector. A sheet owns no cell (#931 §1.3), so it cannot be returned in pec_mask and this caller would step or report a model with the conductor MISSING. Pass pec_sheets=[] / pec_wires=[]: realize them with rfx.boundaries.pec.realized_pec_edge_masks if this path steps fields, or drop them deliberately if it only reads cells.
+
+rfx/api/_compile.py:861: ValueError
+_________ test_compute_msl_s_matrix_end_to_end_matches_historical_base _________
+[gw2] linux -- Python 3.10.12 /usr/bin/python
+
+
+    # ---------------------------------------------------------------------------
+    # Test D: physically qualified live coupon and secondary complex drift lock
+    # ---------------------------------------------------------------------------
+
+    @pytest.mark.slow
+    def test_compute_msl_s_matrix_end_to_end_matches_historical_base():
+        """End-to-end drift lock: full FDTD + assembly vs the committed golden.
+
+        FIXTURE REPAIRED 2026-09-08 (#931): retain the PI-authorized 254 um
+        substrate, 600 um width and 10 mm launch-plane separation; align every declared face on
+        dx=dy=50 um and dz=(50,50,38.5,38.5,38.5,38.5) um through the
+        substrate, declare the foil at its actual interface, and hold domain/absorber thickness fixed under refinement.
+        An explicit f0=5 GHz / bandwidth=.8 differentiated Gaussian covers all
+        ten measurement bins; the former implicit2.5 GHz pulse undersupplied
+        the final two bins. Live qualification of this drive remains pending.
+        Raw physical qualification precedes the unchanged complex drift gate.
+        The historical golden is NOT yet re-pinned. Capture requires named base,
+        independent confirmation and refined-grid reports; a failed qualification
+        is a finding, never a reason to widen a gate. Historical replay binaries
+        keep their original uniform 80 um interpretation.
+
+        RE-BASELINED 2026-07-30 (PR #516; decision required by that PR's review,
+        finding F4, and recorded here + in issue #509). The original golden was a
+        pre-jnp-conversion S1 capture whose contract said it "must NOT be
+        regenerated from post-change code" — that contract existed to prove a pure
+        REFACTOR was precision-only. Two deliberate algorithm changes then made
+        the premise unsatisfiable:
+
+          * #468 made ``enforce_passivity=True`` the default (projection moves S
+            by up to 5.2e-2 on this fixture — the first red, 2026-07-27, #509);
+          * #511/#507 (PR #516) corrected the modal-voltage span and replaced the
+            single-ratio assembly with the multi-drive solve (measured deviation
+            vs the old golden: 1.07e-1 as shipped (an intermediate PR state
+            measured 2.93e-1 before review finding F2 re-anchored the V span) —
+            not f32 rounding, and not
+            meant to be).
+
+        A frozen old-algorithm capture cannot survive deliberate algorithm
+        changes, and keeping it red hides real regressions behind an expected
+        one. The golden is therefore now a capture of the CURRENT pipeline
+        (fixture, freqs, ``num_periods=12``, default ``enforce_passivity`` —
+        exactly this test's invocation; capture script recorded in PR #516), and
+        this test's job is narrower and honest: catch UNINTENDED cross-version
+        drift. Any future red here is a real change to the MSL S-matrix and must
+        be either root-caused or re-baselined with its reason written in this
+        docstring — never silently.
+
+        Structural correctness (jnp == numpy on the SAME algorithm) is proven
+        separately by test_replay_float64_equivalence against the replay golden.
+        Tolerance stays rtol=5e-3/atol=2e-3: it must absorb cross-machine float
+        noise on a CI runner (the PR #119 lesson: tolerances, not bit-equality),
+        and every deliberate algorithm change to date has exceeded it by >10x, so
+        the lock still discriminates.
+
+        MEASURED, NOT RE-BASELINED (2026-09-02, closing the #803 remainder).
+        After the exact-coordinate rasterization fix (#802/#807, PR #834) this
+        fixture realizes the substrate box at 25900 cells (x nodes 0..174) and
+        the trace at 1225, identical at both x64 flags (``_build_thru_line_sim``,
+        no solve, measured here); the pre-#834 base 06cf29f0 realized 26048
+        (x nodes 0..175) / 1232 at x64=0 (measured by the #803 remainder
+        assessment) — one x node plane fewer on each, the x-hi face. Re-running
+        scripts/capture_msl_e2e_golden.py on main b5605391 at JAX_ENABLE_X64=0
+        gave old-vs-new max|dS| = 1.2307e-4 (mean|S11| 0.0852 -> 0.0851,
+        mean|S21| 0.9954 unchanged), 16x inside atol, so the golden was left as
+        captured by PR #516. The lock's remaining headroom against that S is
+        2e-3 - 1.2e-4; the next deliberate re-baseline should quote this number
+        as its starting point.
+        """
+        from tests._msl_fixture_qualification import qualify_result
+
+        golden = np.load(E2E_GOLDEN_PATH)
+        sim = _build_aligned_e2e_sim()
+        _assert_trace_sheet_realized(sim)
+        _assert_e2e_preflight(sim)
+        freqs = jnp.linspace(F_MAX / 10, F_MAX, golden.shape[-1], dtype=jnp.float32)
+
+        result = sim.compute_msl_s_matrix(freqs=freqs, num_periods=E2E_PERIODS)
+        qualification = qualify_result(result)
+        s_actual = np.asarray(result.S).astype(np.complex128)
+
+        print("\n[WI-1 MSL end-to-end full S trace]")
+        for idx, freq in enumerate(np.asarray(result.freqs)):
+            vals = s_actual[:, :, idx]
+            print(
+                f"f[{idx:02d}]={freq:.9e} "
+                f"S00={vals[0, 0].real:+.12e}{vals[0, 0].imag:+.12e}j "
+>               f"S01={vals[0, 1].real:+.12e}{vals[0, 1].imag:+.12e}j "
+                f"S10={vals[1, 0].real:+.12e}{vals[1, 0].imag:+.12e}j "
+                f"S11={vals[1, 1].real:+.12e}{vals[1, 1].imag:+.12e}j"
+            )
+E           AssertionError: ['unexcited/unreliable full-spectrum bins', 'raw S21 electrical-length phase differs from drawing by >=5 degrees']
+E           assert not ['unexcited/unreliable full-spectrum bins', 'raw S21 electrical-length phase differs from drawing by >=5 degrees']
+
+tests/unit/autodiff/test_msl_sparam_ad.py:681: AssertionError
+----------------------------- Captured stdout call -----------------------------
+  [PREFLIGHT] all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+  [PREFLIGHT] all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+  [PREFLIGHT] all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+
+[WI-1 MSL end-to-end full S trace]
+f[00]=5.000000000e+08 S00=-1.471340656281e-04-1.635588705540e-03j S01=+9.975173473358e-01-7.019418478012e-02j S10=+9.975206255913e-01-7.019486278296e-02j S11=-9.355330257677e-05-1.639498863369e-03j
+f[01]=1.000000000e+09 S00=-5.777180194855e-04-3.200180828571e-03j S01=+9.901316165924e-01-1.400491148233e-01j S10=+9.901318550110e-01-1.400476843119e-01j S11=-3.325221478008e-04-3.234886098653e-03j
+f[02]=1.500000000e+09 S00=-1.282662153244e-03-4.656299948692e-03j S01=+9.778446555138e-01-2.092208564281e-01j S10=+9.778450727463e-01-2.092206627131e-01j S11=-7.430107798427e-04-4.772052168846e-03j
+f[03]=2.000000128e+09 S00=-2.269864082336e-03-5.960211157799e-03j S01=+9.607014656067e-01-2.773708105087e-01j S10=+9.607017636299e-01-2.773679494858e-01j S11=-1.317056827247e-03-6.237627938390e-03j
+f[04]=2.500000000e+09 S00=-3.432929515839e-03-7.070392370224e-03j S01=+9.388422966003e-01-3.441540598869e-01j S10=+9.388426542282e-01-3.441566228867e-01j S11=-2.002658788115e-03-7.596109993756e-03j
+f[05]=3.000000256e+09 S00=-4.797071218491e-03-7.948592305183e-03j S01=+9.123379588127e-01-4.092452228069e-01j S10=+9.123345017433e-01-4.092440903187e-01j S11=-2.802440896630e-03-8.847551420331e-03j
+f[06]=3.500000256e+09 S00=-6.301790475845e-03-8.573830127716e-03j S01=+8.813134431839e-01-4.723183512688e-01j S10=+8.813118934631e-01-4.723218679428e-01j S11=-3.716114908457e-03-9.963620454073e-03j
+f[07]=4.000000256e+09 S00=-7.909148931503e-03-8.906304836273e-03j S01=+8.459188342094e-01-5.330679416656e-01j S10=+8.459228873253e-01-5.330735445023e-01j S11=-4.708157852292e-03-1.093601435423e-02j
+f[08]=4.500000256e+09 S00=-9.558707475662e-03-8.956909179688e-03j S01=+8.063482046127e-01-5.911880731583e-01j S10=+8.063430190086e-01-5.911959409714e-01j S11=-5.770154297352e-03-1.176544278860e-02j
+f[09]=5.000000000e+09 S00=-1.122841238976e-02-8.699029684067e-03j S01=+7.627713680267e-01-6.463855504990e-01j S10=+7.627626061440e-01-6.463884115219e-01j S11=-6.871536374092e-03-1.243516802788e-02j
+[WI-1 MSL raw full S, matrix axes port/drive/frequency] [[[(-0.00015795342915225774-0.0016347039490938187j), (-0.0006030755466781557-0.0031967167742550373j), (-0.0013233963400125504-0.004646179731935263j), (-0.002329912269487977-0.005940798670053482j), (-0.003491831012070179-0.007047629449516535j), (-0.004854609724134207-0.007918797433376312j), (-0.006358716636896133-0.0085404422134161j), (-0.007946099154651165-0.008877471089363098j), (-0.009574849158525467-0.008938789367675781j), (-0.011228431947529316-0.008698993362486362j)], [(0.9975247383117676-0.07019469141960144j), (0.9901644587516785-0.1400536745786667j), (0.977883517742157-0.2092290073633194j), (0.9607629776000977-0.27738821506500244j), (0.9388998746871948-0.34417468309402466j), (0.9124007225036621-0.40927261114120483j), (0.8813715577125549-0.47234874963760376j), (0.8459561467170715-0.5330906510353088j), (0.8063676953315735-0.5912020206451416j), (0.762771487236023-0.646385669708252j)]], [[(0.9975360631942749-0.07019591331481934j), (0.9901638627052307-0.14005213975906372j), (0.9778876304626465-0.20922958850860596j), (0.960762083530426-0.2773849666118622j), (0.9389033317565918-0.34417834877967834j), (0.912390410900116-0.40926846861839294j), (0.881370484828949-0.4723525047302246j), (0.8459654450416565-0.5330997109413147j), (0.8063629865646362-0.5912100076675415j), (0.7627625465393066-0.6463884711265564j)], [(-0.00010432433191454038-0.0016389066586270928j), (-0.000357841287041083-0.003231397131457925j), (-0.0007842850754968822-0.0047650267370045185j), (-0.0013783157337456942-0.006222863681614399j), (-0.0020621465519070625-0.007576666306704283j), (-0.0028633244801312685-0.008825675584375858j), (-0.003775877645239234-0.009936030954122543j), (-0.004750529304146767-0.010916289873421192j), (-0.005792573094367981-0.011756150983273983j), (-0.006871670950204134-0.012434964999556541j)]]]
+[WI-1 MSL raw qualification] {'failures': ['unexcited/unreliable full-spectrum bins', 'raw S21 electrical-length phase differs from drawing by >=5 degrees'], 'physics_band_hz': [3000000000.0, 4500000000.0], 'oracle_z0_ohm': 47.89480046631184, 'oracle_beta_rad_per_m': [17.751034755444348, 35.502069510888695, 53.25310426633305, 71.0041435660423, 88.75517377722174, 106.5062176211959, 124.25725237664022, 142.0082871320846, 159.75932188752893, 177.51034755444348], 'raw_sigma_max': [1.000015377998352, 1.0000507831573486, 1.0000762939453125, 1.0001187324523926, 1.000118374824524, 1.000121831893921, 1.000124216079712, 1.0000861883163452, 1.0000410079956055, 0.9999904632568359], 'raw_s21_phase_error_deg': [6.145365247720168, 12.290482448994018, 18.43482598045428, 24.57823567250488, 30.721302595837766, 36.864124859845276, 43.00598782242787, 49.146968236804724, 55.28718786412509, 61.42696905682657], 'raw_complex_reciprocity_abs': [1.1390609870431945e-05, 1.6464939562865766e-06, 4.153576810494997e-06, 3.3692444958433043e-06, 5.0387084229441825e-06, 1.1112590073025785e-05, 3.905355242750375e-06, 1.298232382396236e-05, 9.271731869375799e-06, 9.369311555929016e-06]}
+=============================== warnings summary ===============================
+tests/contracts/test_lattice_ownership_contract.py::test_sub_cell_non_box_sheet_is_realized_from_its_mid_plane_cross_section
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/contracts/test_lattice_ownership_contract.py:629: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+    sim.add_thin_conductor(
+
+tests/contracts/test_lattice_ownership_contract.py::test_pec_thin_conductor_is_a_sheet_not_a_cell
+tests/contracts/test_lattice_ownership_contract.py::test_g4_pec_sheet_and_f0_sheet_share_footprint_and_edge_set
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/contracts/test_lattice_ownership_contract.py:527: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+    sim.add_thin_conductor(Box((0.002, 0.003, 0.003), (0.006, 0.007, 0.003)),
+
+tests/contracts/test_lattice_ownership_contract.py::test_g4_pec_sheet_and_f0_sheet_share_footprint_and_edge_set
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/contracts/test_lattice_ownership_contract.py:527: UserWarning: add_thin_conductor: surface_impedance_f0=5000000000.0 Hz — Leontovich surface-resistance sheet with Rs0 = 1.405 ohm/sq. Rs is FREQUENCY-FLAT within the run, frozen at f0, with relative band error |sqrt(f/f0)-1|; the reactive part Xs = Rs (internal inductance) is NOT modeled, so resonances read slightly high.
+    sim.add_thin_conductor(Box((0.002, 0.003, 0.003), (0.006, 0.007, 0.003)),
+
+tests/contracts/test_lattice_ownership_contract.py::test_zero_thickness_pec_box_via_add_is_a_sheet_declaration
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/contracts/test_lattice_ownership_contract.py:590: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+    sim.add_thin_conductor(box)
+
+tests/contracts/test_lattice_ownership_contract.py::test_fidelity_report_realized_extent_comes_from_the_wall_planes
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/contracts/test_lattice_ownership_contract.py:962: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. You passed thickness=1e-06 m, which is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+    sim.add_thin_conductor(Box((4e-3, 4e-3, 5e-3), (16e-3, 16e-3, 5e-3)),
+
+tests/contracts/test_frozen_mesh_construction.py::test_freeze_keeps_automatic_profiles_and_extent_after_geometry_edit
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/api/_mesh.py:143: AutoMeshWarning: Auto mesh: dx=0.500mm (60 cells/λ), non-uniform z (158 cells). Set dx= explicitly to suppress.
+    return (self._build_nonuniform_grid() if self._uses_nonuniform_mesh
+
+tests/contracts/test_frozen_mesh_construction.py::test_freeze_keeps_automatic_profiles_and_extent_after_geometry_edit
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/api/_mesh.py:143: AutoMeshWarning: Non-uniform z mesh enabled: 158 cells, dz=0.133–0.497 mm
+    return (self._build_nonuniform_grid() if self._uses_nonuniform_mesh
+
+tests/contracts/test_frozen_mesh_construction.py::test_freeze_before_first_geometry_survives_execution[run]
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/contracts/test_frozen_mesh_construction.py:34: UserWarning: no field energy was recorded — the source may not have coupled (position off-grid, wrong component, or zero amplitude) (issue #336)
+    result = getattr(sim, entry)(n_steps=1, skip_preflight=True)
+
+tests/contracts/test_pec_short_advisory_geometry.py::test_short_faces_and_actual_port_planes_describe_one_fixed_network[0.001-10]
+tests/contracts/test_pec_short_advisory_geometry.py::test_short_faces_and_actual_port_planes_describe_one_fixed_network[0.002-8]
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/sources/waveguide_port.py:906: UserWarning: Explicitly requested dtype float64 requested in zeros is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.
+    real_dtype = jnp.zeros((), dtype=freqs.dtype).dtype if hasattr(freqs, 'dtype') else jnp.float32
+
+tests/unit/autodiff/test_msl_sparam_ad.py::test_replay_float64_equivalence
+tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
+tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/api/_sparams.py:4572: UserWarning: standing-wave null at the port plane: 1 bins in [5.0000, 5.0000] GHz have |V|,|I| below 10% of band median — wave-split S-parameters are unreliable there (blind spot of single-run reflection measurements of strong reflectors); see rfx-known-issues standing-wave-null entry
+    _warn_msl_wave_split_unreliable(reliable, freqs_arr)
+
+tests/unit/autodiff/test_msl_sparam_ad.py::test_replay_float64_equivalence
+tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
+tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/api/_sparams.py:4595: UserWarning: N-probe beta scan pinned at its own window limit: 5 bins in [0.5000, 5.0000] GHz at port(s) 'msl_0', 'msl_1' minimized the fit residual at the edge of the ±35% scan around the analytic Hammerstad-Jensen guess — the reported Z0/beta at those bins are the scan limit, NOT a measurement (issue #681). S11/S21 are unaffected (they use the analytic Z0 anchor). Common causes: the real eps_eff is far from the HJ estimate (wrong eps_r_sub / substrate not detected under the port), or a contaminated/under-settled record at those bins (check settling_db and the reliable mask). Check the result's beta_railed mask before quoting Z0 or beta.
+    _warn_msl_beta_scan_railed(
+
+tests/unit/autodiff/test_msl_sparam_ad.py::test_replay_float64_equivalence
+tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
+tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/autodiff/test_msl_sparam_ad.py:240: UserWarning: compute_msl_s_matrix: reported Z0 for MSL port 'msl_0' = 90.38 ohm deviates 93.6% from analytic Hammerstad-Jensen 47.89 ohm at f = 5.0000 GHz. Z0 rides on the retained N-probe fit (S1 transitional); this can reflect Yee-staircase bias, or that the rasterized board (h_sub/W snapped to the lattice; see sim.fidelity_report()) genuinely differs from the declared one — not necessarily an extraction fault (issue #752). The V·I-split S11/S21 are unaffected.
+    result = sim.compute_msl_s_matrix(
+
+tests/unit/autodiff/test_msl_sparam_ad.py::test_replay_float64_equivalence
+tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
+tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/autodiff/test_msl_sparam_ad.py:240: UserWarning: compute_msl_s_matrix: reported Z0 for MSL port 'msl_1' = 90.35 ohm deviates 94.4% from analytic Hammerstad-Jensen 47.89 ohm at f = 5.0000 GHz. Z0 rides on the retained N-probe fit (S1 transitional); this can reflect Yee-staircase bias, or that the rasterized board (h_sub/W snapped to the lattice; see sim.fidelity_report()) genuinely differs from the declared one — not necessarily an extraction fault (issue #752). The V·I-split S11/S21 are unaffected.
+    result = sim.compute_msl_s_matrix(
+
+tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_ad_smoke_has_finite_gradient
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/api/_sparams.py:4595: UserWarning: N-probe beta scan pinned at its own window limit: 1 bins in [1.0000, 1.0000] GHz at port(s) 'msl_0', 'msl_1' minimized the fit residual at the edge of the ±35% scan around the analytic Hammerstad-Jensen guess — the reported Z0/beta at those bins are the scan limit, NOT a measurement (issue #681). S11/S21 are unaffected (they use the analytic Z0 anchor). Common causes: the real eps_eff is far from the HJ estimate (wrong eps_r_sub / substrate not detected under the port), or a contaminated/under-settled record at those bins (check settling_db and the reliable mask). Check the result's beta_railed mask before quoting Z0 or beta.
+    _warn_msl_beta_scan_railed(
+
+tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_ad_smoke_has_finite_gradient
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/autodiff/test_msl_sparam_ad.py:561: UserWarning: compute_msl_s_matrix: reported Z0 for MSL port 'msl_0' = 2317.12 ohm deviates 13369.5% from analytic Hammerstad-Jensen 47.89 ohm at f = 1.0000 GHz. Z0 rides on the retained N-probe fit (S1 transitional); this can reflect Yee-staircase bias, or that the rasterized board (h_sub/W snapped to the lattice; see sim.fidelity_report()) genuinely differs from the declared one — not necessarily an extraction fault (issue #752). The V·I-split S11/S21 are unaffected.
+    result = sim.compute_msl_s_matrix(
+
+tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_ad_smoke_has_finite_gradient
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/autodiff/test_msl_sparam_ad.py:561: UserWarning: compute_msl_s_matrix: V·I-split |S11| = 1.090 > 1 for MSL port 'msl_1' at f = 1.0000 GHz — non-physical for a passive structure. the closed Ampere-loop current is likely mismeasured (sign/scale); the extracted S11/S21 at this bin are UNRELIABLE.
+    result = sim.compute_msl_s_matrix(
+
+tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_ad_smoke_has_finite_gradient
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/autodiff/test_msl_sparam_ad.py:561: UserWarning: compute_msl_s_matrix: reported Z0 for MSL port 'msl_1' = -2317.12 ohm deviates 13441.7% from analytic Hammerstad-Jensen 47.89 ohm at f = 1.0000 GHz. Z0 rides on the retained N-probe fit (S1 transitional); this can reflect Yee-staircase bias, or that the rasterized board (h_sub/W snapped to the lattice; see sim.fidelity_report()) genuinely differs from the declared one — not necessarily an extraction fault (issue #752). The V·I-split S11/S21 are unaffected.
+    result = sim.compute_msl_s_matrix(
+
+tests/unit/farfield/test_farfield_inplane_nonuniform.py::test_uniform_valued_inplane_profile_matches_the_plain_uniform_grid
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/farfield/test_farfield_inplane_nonuniform.py:120: UserWarning: [run] preflight found 1 advisory issue(s) - pass skip_preflight=True to suppress:
+    - this simulation requests NTFF far-field output but registers no point probe. run() scores its ring-down settling witness from the probe time series, so its Result will carry settling_db=None and those DFT numbers will have no truncation guard (#885); add sim.add_probe(position, component) somewhere the field is live. forward() attaches no settling witness at all yet, so a forward()-driven simulation stays unguarded whatever it registers (tracked separately).
+    u_res = _sim().run(n_steps=400)
+
+tests/unit/farfield/test_farfield_inplane_nonuniform.py::test_uniform_valued_inplane_profile_matches_the_plain_uniform_grid
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/farfield/test_farfield_inplane_nonuniform.py:120: UserWarning: no ring-down settling witness on this run: this run recorded no probe time series: add a point probe (sim.add_probe(position, component)) so the run records a time series the witness can score, or drive the run with run(until_decay=...) so the stop criterion bounds the ring-down instead. This run requests NTFF and/or field-DFT output, so its truncation is unguarded (#885); settling_db is None, which is not a pass.
+    u_res = _sim().run(n_steps=400)
+
+tests/unit/farfield/test_farfield_inplane_nonuniform.py::test_uniform_valued_inplane_profile_matches_the_plain_uniform_grid
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/farfield/test_farfield_inplane_nonuniform.py:121: UserWarning: [run] preflight found 1 advisory issue(s) - pass skip_preflight=True to suppress:
+    - this simulation requests NTFF far-field output but registers no point probe. run() scores its ring-down settling witness from the probe time series, so its Result will carry settling_db=None and those DFT numbers will have no truncation guard (#885); add sim.add_probe(position, component) somewhere the field is live. forward() attaches no settling witness at all yet, so a forward()-driven simulation stays unguarded whatever it registers (tracked separately).
+    g_res = _sim(dx_profile=prof, dy_profile=prof).run(n_steps=400)
+
+tests/unit/farfield/test_farfield_inplane_nonuniform.py::test_uniform_valued_inplane_profile_matches_the_plain_uniform_grid
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/farfield/test_farfield_inplane_nonuniform.py:121: UserWarning: no ring-down settling witness on this run: this run recorded no probe time series: add a point probe (sim.add_probe(position, component)) so the run records a time series the witness can score, or drive the run with run(until_decay=...) so the stop criterion bounds the ring-down instead. This run requests NTFF and/or field-DFT output, so its truncation is unguarded (#885); settling_db is None, which is not a pass.
+    g_res = _sim(dx_profile=prof, dy_profile=prof).run(n_steps=400)
+
+tests/unit/farfield/test_farfield_inplane_nonuniform.py::test_graded_inplane_mesh_integrates_with_local_cell_sizes
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/farfield/test_farfield_inplane_nonuniform.py:148: UserWarning: [run] preflight found 1 advisory issue(s) - pass skip_preflight=True to suppress:
+    - this simulation requests NTFF far-field output but registers no point probe. run() scores its ring-down settling witness from the probe time series, so its Result will carry settling_db=None and those DFT numbers will have no truncation guard (#885); add sim.add_probe(position, component) somewhere the field is live. forward() attaches no settling witness at all yet, so a forward()-driven simulation stays unguarded whatever it registers (tracked separately).
+    u_res = _sim().run(n_steps=600)
+
+tests/unit/farfield/test_farfield_inplane_nonuniform.py::test_graded_inplane_mesh_integrates_with_local_cell_sizes
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/farfield/test_farfield_inplane_nonuniform.py:148: UserWarning: no ring-down settling witness on this run: this run recorded no probe time series: add a point probe (sim.add_probe(position, component)) so the run records a time series the witness can score, or drive the run with run(until_decay=...) so the stop criterion bounds the ring-down instead. This run requests NTFF and/or field-DFT output, so its truncation is unguarded (#885); settling_db is None, which is not a pass.
+    u_res = _sim().run(n_steps=600)
+
+tests/unit/farfield/test_farfield_inplane_nonuniform.py::test_graded_inplane_mesh_integrates_with_local_cell_sizes
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/farfield/test_farfield_inplane_nonuniform.py:149: UserWarning: [run] preflight found 1 advisory issue(s) - pass skip_preflight=True to suppress:
+    - this simulation requests NTFF far-field output but registers no point probe. run() scores its ring-down settling witness from the probe time series, so its Result will carry settling_db=None and those DFT numbers will have no truncation guard (#885); add sim.add_probe(position, component) somewhere the field is live. forward() attaches no settling witness at all yet, so a forward()-driven simulation stays unguarded whatever it registers (tracked separately).
+    g_res = _sim(dx_profile=prof, dy_profile=prof).run(n_steps=600)
+
+tests/unit/farfield/test_farfield_inplane_nonuniform.py::test_graded_inplane_mesh_integrates_with_local_cell_sizes
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/farfield/test_farfield_inplane_nonuniform.py:149: UserWarning: no ring-down settling witness on this run: this run recorded no probe time series: add a point probe (sim.add_probe(position, component)) so the run records a time series the witness can score, or drive the run with run(until_decay=...) so the stop criterion bounds the ring-down instead. This run requests NTFF and/or field-DFT output, so its truncation is unguarded (#885); settling_db is None, which is not a pass.
+    g_res = _sim(dx_profile=prof, dy_profile=prof).run(n_steps=600)
+
+tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_v173a_drawing_and_gap_measurements_are_realized
+tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_v173a_baseline_bit_identity
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/scripts/harnesses/v173a_physics_equivalence.py:50: DeprecationWarning: pec_faces= kwarg is deprecated; encode PEC faces in BoundarySpec instead (e.g. boundary=BoundarySpec(x='cpml', y='cpml', z=Boundary(lo='pec', hi='cpml'))). The kwarg will be removed in rfx v2.0.
+    sim = Simulation(
+
+tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_v173a_drawing_and_gap_measurements_are_realized
+tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_v173a_baseline_bit_identity
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/scripts/harnesses/v173a_physics_equivalence.py:58: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+    sim.add_thin_conductor(Box(lo, hi), sigma_bulk=5.8e7, thickness=35e-6)
+
+tests/unit/autodiff/test_msl_sparam_ad.py::test_migrated_trace_is_a_sheet_on_the_declared_plane[2]
+tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_end_to_end_matches_historical_base
+tests/unit/autodiff/test_msl_sparam_ad.py::test_migrated_trace_is_a_sheet_on_the_declared_plane[1]
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/autodiff/test_msl_sparam_ad.py:141: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+    sim.add_thin_conductor(
+
+tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_v173a_baseline_bit_identity
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/scripts/harnesses/v173a_physics_equivalence.py:112: UserWarning: [run] preflight found 1 advisory issue(s) - pass skip_preflight=True to suppress:
+    - all dielectric(s) ['fr4'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+    result = sim.run(n_steps=n_steps)
+
+tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_end_to_end_matches_historical_base
+tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_end_to_end_matches_historical_base
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/api/_sparams.py:4195: UserWarning: [run] preflight found 1 advisory issue(s) - pass skip_preflight=True to suppress:
+    - all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+    result = self.run(
+
+tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_end_to_end_matches_historical_base
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/api/_sparams.py:4572: UserWarning: standing-wave null at the port plane: 2 bins in [4.5000, 5.0000] GHz have |V|,|I| below 10% of band median — wave-split S-parameters are unreliable there (blind spot of single-run reflection measurements of strong reflectors); see rfx-known-issues standing-wave-null entry
+    _warn_msl_wave_split_unreliable(reliable, freqs_arr)
+
+tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_end_to_end_matches_historical_base
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/api/_sparams.py:4808: UserWarning: S-matrix projected onto the passive set (singular values clipped to 1): 9 of 10 frequency bins were non-passive as extracted, worst sigma_max = 1.000 at 3.500 GHz. Raw values are preserved in S_raw; corrections per bin in passivity_correction.
+    _warn_if_passivity_projected(passivity_correction, freqs_arr)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+==================================== PASSES ====================================
+_____ test_a_binary_zero_occupancy_override_keeps_the_ports_edge_clearing ______
+[gw0] linux -- Python 3.10.12 /usr/bin/python
+----------------------------- Captured stdout call -----------------------------
+  [PREFLIGHT] Port/source/probe at (0.006, 0.006, 0.006) (ex) is frozen by realized PEC geometry ['pec']: its own E edge is a realized PEC edge (lattice ownership contract, #931). Field will be zero. Move it off the conductor, or drive/read a component the conductor leaves live (the normal E through a sheet plane; tangential H beside a sheet).
+  [PREFLIGHT] Port/source/probe at (0.006, 0.006, 0.006) (ex) is frozen by realized PEC geometry ['pec']: its own E edge is a realized PEC edge (lattice ownership contract, #931). Field will be zero. Move it off the conductor, or drive/read a component the conductor leaves live (the normal E through a sheet plane; tangential H beside a sheet).
+___ test_kottke_owns_its_own_volume_the_ownership_rule_does_not_overwrite_it ___
+[gw1] linux -- Python 3.10.12 /usr/bin/python
+----------------------------- Captured stdout call -----------------------------
+  [PREFLIGHT] PEC 'pec' x-extent 4.2mm = 4.2 cells — volume under-resolved (a PEC volume's curved/edge features need ≥5 cells; a 1-2 cell slab is realized as drawn, with walls on both faces).
+  [PREFLIGHT] PEC 'pec' y-extent 4.2mm = 4.2 cells — volume under-resolved (a PEC volume's curved/edge features need ≥5 cells; a 1-2 cell slab is realized as drawn, with walls on both faces).
+  [PREFLIGHT] PEC 'pec' z-extent 4.2mm = 4.2 cells — volume under-resolved (a PEC volume's curved/edge features need ≥5 cells; a 1-2 cell slab is realized as drawn, with walls on both faces).
+  [PREFLIGHT] pec_faces={x_hi, x_lo, y_hi, y_lo, z_hi, z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and declare it: a foil is a SHEET (add_thin_conductor, or a zero-thickness PEC Box — one node plane, normal E through it live); a thick plate is a PEC Box VOLUME (walls on both faces, lattice ownership contract #931).
+_______________________ test_replay_float64_equivalence ________________________
+[gw2] linux -- Python 3.10.12 /usr/bin/python
+----------------------------- Captured stdout call -----------------------------
+
+[test_replay_float64_equivalence] per-frequency S overlay
+freq_idx    max|S_jnp-S_numpy|
+  f[00]  dev=2.238e-08
+         jnp  S00=+1.4184000425e-03+1.6536229253e-02j  S10=+9.9572387413e-01-9.1119751573e-02j
+         npy  S00=+1.4184223159e-03+1.6536231465e-02j  S10=+9.9572386341e-01-9.1119752139e-02j
+  f[01]  dev=1.168e-08
+         jnp  S00=+1.4649138467e-02+5.1088355757e-02j  S10=+9.5517104749e-01-2.9157706831e-01j
+         npy  S00=+1.4649149034e-02+5.1088360728e-02j  S10=+9.5517104233e-01-2.9157706751e-01j
+  f[02]  dev=1.782e-08
+         jnp  S00=+3.9897640856e-02+7.8393498910e-02j  S10=+8.7416388503e-01-4.7858326355e-01j
+         npy  S00=+3.9897658618e-02+7.8393500293e-02j  S10=+8.7416387871e-01-4.7858326963e-01j
+  f[03]  dev=2.038e-08
+         jnp  S00=+7.3956148814e-02+9.3813776755e-02j  S10=+7.5671345957e-01-6.4360302710e-01j
+         npy  S00=+7.3956153258e-02+9.3813783855e-02j  S10=+7.5671345514e-01-6.4360302523e-01j
+  f[04]  dev=1.531e-08
+         jnp  S00=+1.1107872179e-01+9.4658190981e-02j  S10=+6.0936667349e-01-7.7962588253e-01j
+         npy  S00=+1.1107873494e-01+9.4658196617e-02j  S10=+6.0936666917e-01-7.7962587683e-01j
+
+[test_replay_float64_equivalence] max_abs_dev = 2.238e-08
+[test_replay_float64_equivalence] PASS
+____________ test_compute_msl_s_matrix_ad_smoke_has_finite_gradient ____________
+[gw2] linux -- Python 3.10.12 /usr/bin/python
+----------------------------- Captured stdout call -----------------------------
+
+[AD smoke] grad = -6.964697e-03
+[test_compute_msl_s_matrix_ad_smoke_has_finite_gradient] PASS
+______ test_uniform_valued_inplane_profile_matches_the_plain_uniform_grid ______
+[gw1] linux -- Python 3.10.12 /usr/bin/python
+----------------------------- Captured stdout call -----------------------------
+  [PREFLIGHT] this simulation requests NTFF far-field output but registers no point probe. run() scores its ring-down settling witness from the probe time series, so its Result will carry settling_db=None and those DFT numbers will have no truncation guard (#885); add sim.add_probe(position, component) somewhere the field is live. forward() attaches no settling witness at all yet, so a forward()-driven simulation stays unguarded whatever it registers (tracked separately).
+  [PREFLIGHT] this simulation requests NTFF far-field output but registers no point probe. run() scores its ring-down settling witness from the probe time series, so its Result will carry settling_db=None and those DFT numbers will have no truncation guard (#885); add sim.add_probe(position, component) somewhere the field is live. forward() attaches no settling witness at all yet, so a forward()-driven simulation stays unguarded whatever it registers (tracked separately).
+____________________ test_float32_deployment_delta_bounded _____________________
+[gw1] linux -- Python 3.10.12 /usr/bin/python
+----------------------------- Captured stdout call -----------------------------
+
+[test_float32_deployment_delta_bounded] f32-vs-f64 max_abs_dev = 2.353e-07
+  (Production float32 delta vs float64 structural result.)
+  MSL Z0 staircase physics error at DX=80µm is >5% — delta is negligible.
+[test_float32_deployment_delta_bounded] PASS
+__________ test_graded_inplane_mesh_integrates_with_local_cell_sizes ___________
+[gw0] linux -- Python 3.10.12 /usr/bin/python
+----------------------------- Captured stdout call -----------------------------
+  [PREFLIGHT] this simulation requests NTFF far-field output but registers no point probe. run() scores its ring-down settling witness from the probe time series, so its Result will carry settling_db=None and those DFT numbers will have no truncation guard (#885); add sim.add_probe(position, component) somewhere the field is live. forward() attaches no settling witness at all yet, so a forward()-driven simulation stays unguarded whatever it registers (tracked separately).
+  [PREFLIGHT] this simulation requests NTFF far-field output but registers no point probe. run() scores its ring-down settling witness from the probe time series, so its Result will carry settling_db=None and those DFT numbers will have no truncation guard (#885); add sim.add_probe(position, component) somewhere the field is live. forward() attaches no settling witness at all yet, so a forward()-driven simulation stays unguarded whatever it registers (tracked separately).
+___________ test_migrated_trace_is_a_sheet_on_the_declared_plane[2] ____________
+[gw1] linux -- Python 3.10.12 /usr/bin/python
+----------------------------- Captured stdout call -----------------------------
+  [PREFLIGHT] all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+_______________________ test_v173a_baseline_bit_identity _______________________
+[gw3] linux -- Python 3.10.12 /usr/bin/python
+----------------------------- Captured stdout call -----------------------------
+  [PREFLIGHT] all dielectric(s) ['fr4'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+{
+  "dominant_probe_mode_hz": 1984479720.2163157,
+  "probe_spectrum_min_db": 190.48059426681422,
+  "probe_spectrum_min_f_hz": 3496671844.996355,
+  "modes": [
+    {
+      "freq": 1984479720.2163157,
+      "decay": 59621658.67129965,
+      "Q": 104.5664788462284,
+      "amplitude": 826392.478242935,
+      "phase": -2.3778484365581036,
+      "error": 5.683496288355627e-05
+    }
+  ],
+  "ringdown_start_s": 1.7904931097838228e-09,
+  "ringdown_start_sample": 1879,
+  "source_tail_bound_A": 2.7834273962922828e-15,
+  "tail_to_peak": 0.0003252121096011251,
+  "ringdown_tail_to_peak": 0.768401026725769,
+  "sha": "949e1845b84b26826d4e5309363bea4c2ffa5920",
+  "harness_sha256": "d881da9b5cbd249b77bf23e1fc88e00fa16e207805a028a8cc69065d44321240",
+  "rfx_import": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/__init__.py",
+  "jax_version": "0.6.2",
+  "backend": "cpu",
+  "x64": false,
+  "dt": 9.532874347655029e-13,
+  "n_steps": 6000,
+  "fixture": {
+    "dx_m": 0.0005,
+    "domain_m": [
+      0.05,
+      0.05,
+      0.02
+    ],
+    "substrate_height_m": 0.0015,
+    "eps_r": 4.3,
+    "patch_size_m": [
+      0.028,
+      0.036
+    ],
+    "sheet_z_m": 0.0015,
+    "source_m": [
+      0.025,
+      0.018,
+      0.0005
+    ],
+    "probe_m": [
+      0.025,
+      0.018,
+      0.001
+    ],
+    "cpml_thickness_m": 0.004,
+    "ground": "z_lo PEC",
+    "source_amplitude_kind": "current",
+    "waveform": {
+      "f0_hz": 2000000000.0,
+      "bandwidth": 0.8,
+      "cutoff": 3.0,
+      "amplitude_A": 1.0
+    }
+  }
+}
+___________ test_migrated_trace_is_a_sheet_on_the_declared_plane[1] ____________
+[gw2] linux -- Python 3.10.12 /usr/bin/python
+----------------------------- Captured stdout call -----------------------------
+  [PREFLIGHT] all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+- generated xml file: /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/outputs/931-fixture-repair/final-selection/junit.xml -
+=========================== short test summary info ============================
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_sheet_footprint_is_the_closed_rectangle
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_one_cell_box_is_a_filled_slab_with_no_flag
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_sheet_spec_validates_its_layer
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_volume_box_realizes_its_closed_extent_exactly
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realized_thickness_equals_drawn[1-0]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realized_thickness_equals_drawn[1-1]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realized_thickness_equals_drawn[1-2]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realized_thickness_equals_drawn[2-0]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_realized_edges_commute_with_axis_permutation[perm0]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realized_thickness_equals_drawn[2-1]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realized_thickness_equals_drawn[2-2]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realized_thickness_equals_drawn[3-0]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_realized_edges_commute_with_axis_permutation[perm1]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realized_thickness_equals_drawn[3-1]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_realized_edges_commute_with_axis_permutation[perm2]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realized_thickness_equals_drawn[3-2]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_realized_edges_commute_with_axis_permutation[perm3]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_realized_edges_commute_with_axis_permutation[perm4]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_realized_edges_commute_with_axis_permutation[perm5]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realizes_both_faces_and_shorts_its_interior[1-0]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_realized_edges_commute_with_mirror_of_an_interior_body[0]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realizes_both_faces_and_shorts_its_interior[1-1]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_volume_box_through_the_api_has_walls_on_both_drawn_planes
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realizes_both_faces_and_shorts_its_interior[1-2]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realizes_both_faces_and_shorts_its_interior[2-0]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realizes_both_faces_and_shorts_its_interior[2-1]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realizes_both_faces_and_shorts_its_interior[2-2]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realizes_both_faces_and_shorts_its_interior[3-0]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realizes_both_faces_and_shorts_its_interior[3-1]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_slab_realizes_both_faces_and_shorts_its_interior[3-2]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_realized_edges_commute_with_mirror_of_an_interior_body[1]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_sheet_realizes_one_plane_and_leaves_the_normal_edge_live[0]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_realized_edges_commute_with_mirror_of_an_interior_body[2]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_sheet_realizes_one_plane_and_leaves_the_normal_edge_live[1]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_sheet_realizes_one_plane_and_leaves_the_normal_edge_live[2]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_sheet_with_a_cell_mask_of_none_or_zeros_is_the_same
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_abutting_sheets_on_one_plane_union_before_the_edge_rule
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_sheets_on_adjacent_planes_keep_a_live_normal_edge_between_them
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=1 k0=0]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=1 k0=2]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=1 k0=7]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=2 k0=0]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=3 k0=2]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=2 k0=2]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=3 k0=2]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=3 k0=5]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=2 k0=6]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=3 k0=5]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=1 k0=0]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=3 k0=0]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=1 k0=0]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=1 k0=2]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=1 k0=2]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=1 k0=7]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=1 k0=7]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=2 k0=0]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=2 k0=0]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=2 k0=2]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=2 k0=6]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=2 k0=2]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_realized_wall_planes_region_and_column
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=2 k0=6]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=3 k0=0]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=3 k0=0]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=3 k0=2]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_sub_cell_non_box_sheet_is_realized_from_its_mid_plane_cross_section
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=3 k0=5]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_sub_cell_pec_box_via_add_is_refused
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[2d-lane]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_pec_thin_conductor_is_a_sheet_not_a_cell
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[seam ax=0]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[seam ax=1]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[seam ax=2]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[random]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[random-periodic-y]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_realized_wall_planes_column_follows_the_periodic_wrap
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_wire_path_has_no_periodic_argument
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_subcell_refusal_covers_non_box_shapes
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_sheet_plane_outside_the_node_line_is_refused
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_cell_centres_use_the_actual_node_line
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_stackup_foils_sit_on_the_dielectric_faces
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_add_thin_conductor_takes_both_sheet_spellings_and_lands_on_one_plane
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_g4_pec_sheet_and_f0_sheet_share_footprint_and_edge_set
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_zero_thickness_pec_box_via_add_is_a_sheet_declaration
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_pec_box_with_two_or_three_zero_axes_is_refused[hi0]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_pec_box_with_two_or_three_zero_axes_is_refused[hi1]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_path_ors_sheet_masks_in_statically
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_domain_boundary_pec_is_not_a_conductor_body
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_a_sigma_fill_conductor_is_not_a_pec_body
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_fidelity_report_realized_extent_comes_from_the_wall_planes
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_degenerate_sheet_and_wire_declarations_are_refused
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_conformal_weights_do_not_replace_the_realized_edges
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_two_plane_is_gone_from_the_package
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_every_solve_entry_point_applies_a_declared_sheet[forward]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_a_binary_zero_occupancy_override_keeps_the_ports_edge_clearing
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_clear_edges_releases_only_the_named_component
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_edges_are_pec_matches_edge_is_pec
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_conductor_mask_counts_a_sub_cell_wire
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_every_solve_entry_point_applies_a_declared_sheet[vmap_material_sweep]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_validate_subgrid_refuses_the_sheet_the_runner_refuses
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_the_material_only_coaxial_lanes_refuse_a_sheet
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_a_lane_that_drops_volume_pec_does_not_recommend_drawing_a_volume
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_soft_occupancy_is_differentiable_and_noisy_or
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_wire_path_realizes_the_axis_aligned_lattice_edges
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_wire_path_refuses_a_diagonal_segment
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_edge_is_pec_and_clear_edges
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_kottke_owns_its_own_volume_the_ownership_rule_does_not_overwrite_it
+PASSED tests/contracts/test_frozen_mesh_construction.py::test_freezing_does_not_legalize_unresolved_volume
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_the_permittivity_viewer_draws_a_sheet_it_cannot_see_in_eps
+PASSED tests/contracts/test_frozen_mesh_construction.py::test_freeze_keeps_automatic_profiles_and_extent_after_geometry_edit
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_the_kottke_fence_keeps_sheets_and_wires_the_tensor_cannot_see
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_the_probe_sits_on_a_realized_sheet_edge_and_the_control_does_not
+PASSED tests/contracts/test_frozen_mesh_construction.py::test_short_fixture_faces_stay_on_final_nodes[None]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_every_solve_entry_point_applies_a_declared_sheet[run]
+PASSED tests/contracts/test_frozen_mesh_construction.py::test_short_fixture_faces_stay_on_final_nodes[0.002]
+PASSED tests/contracts/test_frozen_mesh_construction.py::test_freeze_copies_caller_profile_and_refuses_mesh_reassignment
+PASSED tests/contracts/test_frozen_mesh_construction.py::test_freeze_before_first_geometry_survives_execution[run]
+PASSED tests/contracts/test_pec_short_advisory_geometry.py::test_short_faces_and_actual_port_planes_describe_one_fixed_network[0.001-10]
+PASSED tests/contracts/test_frozen_mesh_construction.py::test_freeze_before_first_geometry_survives_execution[forward]
+PASSED tests/contracts/test_pec_short_advisory_geometry.py::test_short_faces_and_actual_port_planes_describe_one_fixed_network[0.002-8]
+PASSED tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_mode_estimator_reads_ringdown_after_the_driven_transient
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_every_solve_entry_point_applies_a_declared_sheet[optimize]
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_assembling_without_collectors_is_refused_and_names_the_caller
+PASSED tests/contracts/test_lattice_ownership_contract.py::test_the_non_uniform_assembler_refuses_the_same_way
+PASSED tests/unit/sparams/test_sparam_passivity_guard.py::test_nonpassive_smatrix_raises_under_strict
+PASSED tests/unit/sparams/test_sparam_passivity_guard.py::test_nonfinite_smatrix_warns
+PASSED tests/unit/sparams/test_sparam_passivity_guard.py::test_small_passivity_overage_within_tol_is_silent
+PASSED tests/unit/sparams/test_sparam_passivity_guard.py::test_guard_is_tracer_safe_under_jax_grad
+PASSED tests/unit/sparams/test_sparam_passivity_guard.py::test_normalize_aware_tol_tolerates_documented_overshoot
+PASSED tests/unit/sparams/test_sparam_passivity_guard.py::test_soft_advisory_filter_excludes_reciprocity_warning
+PASSED tests/unit/sparams/test_sparam_passivity_guard.py::test_soft_advisory_fires_in_the_over_unity_gap
+PASSED tests/unit/sparams/test_sparam_passivity_guard.py::test_soft_advisory_silent_at_documented_envelope
+PASSED tests/unit/sparams/test_sparam_passivity_guard.py::test_soft_advisory_silent_just_below_floor
+PASSED tests/unit/sparams/test_sparam_passivity_guard.py::test_soft_advisory_never_fires_on_tight_tol_path
+PASSED tests/unit/sparams/test_sparam_passivity_guard.py::test_gross_violation_still_hard_not_soft
+PASSED tests/unit/farfield/test_farfield_inplane_nonuniform.py::test_graded_fixture_preserves_radiator_and_acquisition_lattice
+PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_replay_float64_equivalence
+PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_replay_geometry_matches_the_captured_lattice
+PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_ad_smoke_has_finite_gradient
+PASSED tests/unit/farfield/test_farfield_inplane_nonuniform.py::test_uniform_valued_inplane_profile_matches_the_plain_uniform_grid
+PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
+PASSED tests/unit/farfield/test_farfield_inplane_nonuniform.py::test_graded_inplane_mesh_integrates_with_local_cell_sizes
+PASSED tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_probe_spectrum_statistic_exposes_source_amplitude_dependence
+PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[phase_conjugation-electrical-length phase]
+PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[zero_transmission-transmission misses]
+PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[excess_reflection-reflection exceeds]
+PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[projection_hides_gain-singular value exceeds]
+PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[unsettled-ringdown exceeds]
+PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[nonfinite-non-finite raw S]
+PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_migrated_trace_is_a_sheet_on_the_declared_plane[2]
+PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_accepts_matched_line_limit
+PASSED tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_v173a_baseline_bit_identity
+PASSED tests/unit/sparams/test_sparam_passivity_guard.py::test_passive_smatrix_is_silent
+PASSED tests/unit/sparams/test_sparam_passivity_guard.py::test_nonpassive_smatrix_warns
+PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_migrated_trace_is_a_sheet_on_the_declared_plane[1]
+FAILED tests/unit/sparams/test_sparam_passivity_guard.py::test_soft_advisory_real_coarse_pec_short_witness
+FAILED tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_v173a_drawing_and_gap_measurements_are_realized
+FAILED tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_end_to_end_matches_historical_base
+=========== 3 failed, 155 passed, 47 warnings in 5771.46s (1:36:11) ============

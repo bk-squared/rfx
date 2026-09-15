@@ -114,6 +114,11 @@ def _eps_override_for(sim, deps):
     ``compute_waveguide_s_matrix`` calls internally) and the slab region
     from the Box's own ``mask_on_coords`` on the production node
     coordinates — never a hand-rolled index reconstruction.
+
+    #931: ``mask_on_coords`` is the DIELECTRIC sampler and §1.8 leaves it
+    alone, so this helper is unchanged. A conductor would not come through
+    here at all — ``realized_pec_edge_masks`` is the one source for PEC
+    edges, and eps_override is an eps override.
     """
     from rfx.runners.nonuniform import assemble_materials_nu
     from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid

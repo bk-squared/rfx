@@ -1,0 +1,6 @@
+tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_v173a_drawing_and_gap_measurements_are_realized
+tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_probe_spectrum_statistic_exposes_source_amplitude_dependence
+tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_mode_estimator_reads_ringdown_after_the_driven_transient
+tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_v173a_baseline_bit_identity
+
+4 tests collected in 1.35s

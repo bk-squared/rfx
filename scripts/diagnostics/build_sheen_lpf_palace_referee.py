@@ -4,9 +4,9 @@
 THE REFEREE QUESTION (and what the referee actually found)
 ----------------------------------------------------------
 cv07's committed rfx-vs-openEMS cross-check
-(``validation/crossval/_07_sheen_results/{rfx,openems}.json``) locks a ~1.4% split in
+(``validation/crossval/_07_sheen_results/{rfx,openems}.json``) locks a ~2.74% split in
 the "first S21 null" (defined there as argmin|S21| over 5-15 GHz, raw bin): rfx
-7.874 GHz, openEMS 7.983 GHz (post-regeneration, PR #468/#516; the earlier
+8.202 GHz, openEMS 7.983 GHz (post-regeneration, #931, VESSL 369367259192; the earlier
 num_periods=20/default-offset leg read rfx 7.218 GHz, a ~9.6% split). Both are
 staircased FDTD; the committed narrative asked whether one reads the null wrong
 because it under-resolves the wide-patch open-end / step fringing. An independent
@@ -21,17 +21,18 @@ re-derived by ``build_referee`` and locked in the ``referee`` block:
   * Palace resolves both zeros (coarse & mid meshes agree -> converged).
   * openEMS resolves the SAME double-zero structure in close agreement with the
     conformal referee (both zeros within <~1%).
-  * The regenerated rfx leg (num_periods=60, n_probe_offset=30; PR #468/#516)
-    ALSO resolves both zeros (structure_distance_pct 1.52% vs Palace, vs
+  * The regenerated rfx leg (num_periods=60, n_probe_offset=30; #931, VESSL 369367259192)
+    ALSO resolves both zeros (structure_distance_pct 2.87% vs Palace, vs
     openEMS's 0.66%). The earlier num_periods=20, default-offset leg did not —
     its coarser-mesh, contaminated-probe leg distorted the doublet (a spurious
     extra dip + a shifted/merged central feature); that is the leg the ~9.6%
     "split" figure above describes.
-  * The committed argmin "first null" compares DIFFERENT members of the doublet
-    in each solver (rfx's deepest 7.87, openEMS's deepest 7.98, Palace's
-    deepest ~7.0), so even on the regenerated leg the argmin-vs-argmin
-    "split" is a comparator artifact of a double-null, NOT a physical
-    single-null disagreement -- read the structure_distance_pct field instead.
+  * The current rfx, openEMS and Palace-mid argmins all select the UPPER
+    doublet member; Palace coarse selects the lower. The argmin is therefore
+    mesh-dependent. The raw-bin rfx/openEMS split is ~2.74%; the parabolic
+    argmins in fdtd_doublet_ghz are 8.244069 / 7.994749 GHz. Neither is
+    structure_distance_pct (2.8668% for rfx), nor the separately windowed
+    argmin_first_null.distances_pct.rfx (2.3756%).
 
 ``sides_with`` therefore names the FDTD solver whose full stopband STRUCTURE (both
 zeros) the conformal referee matches best — the structure-faithful metric — with
@@ -366,6 +367,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--artifacts-dir", default=str(_ARTIFACTS))
     p.add_argument("--from-artifacts", action="store_true",
                    help="rebuild the committed fixture JSON from the four Palace port-S.csv files")
+    p.add_argument("--refresh-referee", action="store_true",
+                   help="re-derive ONLY the 'referee' block from the committed Palace "
+                        "arrays plus the current _07_sheen_results/{rfx,openems}.json and "
+                        "write it back. Use when an FDTD leg was re-solved but Palace was "
+                        "not: the Palace port-S.csv files are external prerequisites and "
+                        "are not committed, so --from-artifacts cannot run from a clean "
+                        "checkout, while every referee number is a pure function of what "
+                        "IS committed.")
     p.add_argument("--vessl-coarse", default=None)
     p.add_argument("--vessl-mid", default=None)
     args = p.parse_args(argv)
@@ -383,6 +392,14 @@ def main(argv: list[str] | None = None) -> int:
             vessl_runs = {"coarse": args.vessl_coarse, "mid": args.vessl_mid}
         build_fixture_from_artifacts(artifacts_dir, fixtures_dir, vessl_runs)
         print(f"rebuilt {fixtures_dir / _REFEREE_FIXTURE} from {artifacts_dir}")
+
+    if args.refresh_referee:
+        out = fixtures_dir / _REFEREE_FIXTURE
+        fixture = json.loads(out.read_text())
+        fixture["referee"] = build_referee(fixtures_dir)["referee"]
+        out.write_text(json.dumps(fixture, indent=2) + "\n")
+        print(f"refreshed the referee block of {out} "
+              f"(Palace mesh blocks untouched)")
 
     ref = build_referee(fixtures_dir)["referee"]
     pd = ref["palace_doublet_mid_ghz"]

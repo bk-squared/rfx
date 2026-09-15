@@ -25,6 +25,7 @@ import os
 
 os.environ.setdefault("XLA_FLAGS", "--xla_force_host_platform_device_count=2")
 
+import sys  # noqa: E402
 import threading  # noqa: E402
 import warnings  # noqa: E402
 
@@ -349,6 +350,187 @@ def _no_x64_leak(_x64_baseline):
         "scheduled after it in this worker. Scope the flip with "
         "tests/_x64_compat.enable_x64() instead of calling "
         'jax.config.update("jax_enable_x64", ...) directly.'
+    )
+
+
+@pytest.fixture
+def evict_from_sys_modules():
+    """Temporarily pop module names out of ``sys.modules``, restoring the
+    ORIGINAL module objects (not just whatever a fresh import produces) once
+    the test ends -- including each restored module's binding as an
+    attribute of its own parent package, which the import machinery rebinds
+    to the fresh (broken) object as a side effect of reloading it and which
+    a plain ``sys.modules`` restore does not touch (see
+    ``_guard_rfx_import_state_is_consistent`` below for the mechanism).
+
+    Use this instead of a bare ``sys.modules.pop(name, None)`` whenever a
+    test needs to force a genuine first import of an already-imported
+    module -- the whole point of forcing the re-import is to observe a
+    real import, so the eviction has to be genuine too; restoring the
+    original objects afterward is what keeps that genuine re-import from
+    leaking into every later test in the same process.
+    """
+    originals: dict[str, object] = {}
+
+    def _evict(*names: str) -> None:
+        for name in names:
+            if name not in originals:
+                originals[name] = sys.modules.pop(name, None)
+            else:
+                sys.modules.pop(name, None)
+
+    yield _evict
+
+    # Pass 1: put every original module object back in sys.modules first,
+    # so pass 2 below sees the restored (not the still-broken fresh) parent
+    # objects when it re-binds their attributes.
+    for name, mod in originals.items():
+        if mod is None:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = mod
+
+    # Pass 2: re-bind each restored module back onto its own parent
+    # package's attribute of the same name (undoing the parent-attribute
+    # rebind that the intervening fresh import performed as a side effect).
+    for name, mod in originals.items():
+        if mod is None:
+            continue
+        parent_name, sep, child = name.rpartition(".")
+        if not sep:
+            continue
+        parent = sys.modules.get(parent_name)
+        if parent is not None:
+            setattr(parent, child, mod)
+
+
+def _repair_rfx_submodule_bindings() -> list[str]:
+    """Find, and immediately repair, every ``rfx.*`` package/submodule
+    attribute binding that is missing even though the submodule is loaded in
+    ``sys.modules`` -- returning a description of what it repaired.
+
+    Root cause this exists for (#931 follow-up, VESSL ``-n 12`` slow lane): a
+    test that does ``sys.modules.pop("rfx.runners", None)`` to force a
+    genuine first import, then never restores the ORIGINAL module object,
+    leaves any sibling submodule that was NOT also popped (still cached in
+    ``sys.modules``) unreachable as an attribute of the freshly re-imported
+    parent package. CPython only (re)binds ``parent.child`` inside
+    ``importlib._bootstrap._find_and_load``, which is skipped whenever the
+    child is already present in ``sys.modules`` -- so a fresh ``rfx.runners``
+    object can end up missing ``.nonuniform`` / ``.subgridded`` /
+    ``._distributed_common`` / ``.distributed`` (the guard reports all four;
+    an earlier draft of this comment only named three). Any later test that
+    resolves a dotted string target
+    through that package (for example
+    ``monkeypatch.setattr("rfx.runners.nonuniform.run_nonuniform_path", ...)``)
+    then fails with ``AttributeError`` -- order-dependent, invisible when the
+    polluting file runs alone.
+
+    A second, easy-to-miss piece of the same mechanism: importing a fresh
+    ``rfx.runners`` object doesn't just leave a bad object sitting in
+    ``sys.modules`` -- as a side effect of the import machinery finishing
+    that load, it also rebinds the GRANDPARENT's attribute
+    (``sys.modules["rfx"].runners``) to point at the new, broken object.
+    ``rfx`` itself is essentially never popped, so it survives the whole
+    process; repairing ``sys.modules`` alone is not enough, because pytest's
+    ``monkeypatch.setattr("rfx.runners....", ...)`` resolves the
+    ``rfx.runners`` segment by ``getattr(rfx, "runners")`` (see
+    ``_pytest.monkeypatch.resolve``), not by a fresh ``sys.modules`` lookup
+    -- so it keeps finding the broken object even after ``sys.modules`` is
+    fixed, unless that parent attribute is repaired too. Repairing IS
+    correct here regardless of cause: binding the already-loaded submodule
+    object from ``sys.modules`` onto its parent's attribute of the same name
+    is exactly what a normal import does.
+
+    Deliberately checks (and repairs) *presence*, not identity: several
+    ``rfx`` packages (``rfx.optimize``, ``rfx.harminv``,
+    ``rfx.differentiable_material_fit``) re-export a function of the same
+    name as their own submodule from ``rfx/__init__.py``
+    (``from rfx.optimize import optimize, ...``), which legitimately REBINDS
+    ``rfx.optimize`` from the submodule object to the function object --
+    that is normal, intentional shadowing, not the pollution this guards
+    against. The defect this exists for is an outright missing attribute,
+    not a different value.
+
+    Cheap: only the (small) set of already-imported ``rfx.`` module names is
+    inspected, not the whole of ``sys.modules``.
+    """
+    violations = []
+    for name, mod in list(sys.modules.items()):
+        if mod is None or not name.startswith("rfx."):
+            continue
+        parent_name, sep, child = name.rpartition(".")
+        if not sep:
+            continue
+        parent = sys.modules.get(parent_name)
+        if parent is not None and not hasattr(parent, child):
+            violations.append(
+                f"{parent_name!r} had no attribute {child!r} even though "
+                f"{name!r} was loaded in sys.modules"
+            )
+            setattr(parent, child, mod)
+    return violations
+
+
+@pytest.fixture(autouse=True)
+def _guard_rfx_import_state_is_consistent():
+    """Fail the test that leaves an ``rfx`` package/submodule attribute
+    binding missing (#931 follow-up), instead of letting the damage surface
+    later as an unrelated ``AttributeError`` in whichever test happens to
+    run next and touch the affected package.
+
+    Same shape as ``_no_x64_leak`` right above, and for the same reason:
+    REPAIR the process-global state first, then assert -- so a leak costs
+    exactly one red test instead of cascading into every test scheduled
+    after it in this worker.
+
+    Both sides are checked, with two DIFFERENT messages, and this is not
+    redundant. The repair on the ``after`` side only guarantees that no
+    later test starts inconsistent BECAUSE OF a previous test's own
+    function-scoped phase. It guarantees nothing about pollution that
+    predates this fixture's first teardown in the worker -- collection-time
+    module imports, ``pytest_configure``, plugin or xdist worker startup --
+    nor about a higher-scoped fixture (module/session-scoped, or one that
+    runs before this one) that pollutes and then raises during setup: this
+    fixture is function-scoped and autouse, so it is set up AFTER
+    higher-scoped fixtures and never runs at all for a test whose
+    higher-scoped setup already errored. In both of those paths, the FIRST
+    test to run after the damage is an innocent bystander, and the
+    ``after``-only design would blame it with "this test left ... "
+    -- factually wrong. The ``before``-check exists to cover exactly those
+    two paths: it names the state as ALREADY broken on entry, not caused by
+    this test, and repairs it before asserting so the bystander test still
+    only costs one red, not a cascade.
+
+    Accepted consequence, not a bug: if the ``before``-assert fires, this
+    fixture never reaches ``yield``, so its OWN ``after``-check does not run
+    for that same test. If that test's body also pollutes state, the damage
+    is attributed to whichever test runs next instead -- an edge case of an
+    edge case, since the state was already repaired by the before-check
+    before its assert ran, so nothing accumulates or cascades from it.
+
+    Today neither path fires in this repo (importing every ``rfx.*``
+    submodule yields zero violations, and no test module mutates an
+    ``rfx.*`` ``sys.modules`` entry at import time) -- but the guarantee the
+    ``after``-check alone can make is narrower than "no test ever starts
+    inconsistent", and a comment claiming the wider guarantee would be wrong
+    the day either path is exercised.
+    """
+    stale = _repair_rfx_submodule_bindings()
+    assert not stale, (
+        "rfx's package/submodule attribute bindings were ALREADY "
+        "inconsistent when this test STARTED -- this test is not the "
+        "culprit. The damage predates it: a collection-time module import, "
+        "pytest_configure, xdist/plugin worker startup, or a higher-scoped "
+        "fixture that raised during its own setup. (now repaired so later "
+        f"tests are unaffected): {stale}"
+    )
+    yield
+    violations = _repair_rfx_submodule_bindings()
+    assert not violations, (
+        "this test left rfx's package/submodule attribute bindings "
+        f"inconsistent (now repaired so later tests are unaffected): "
+        f"{violations}"
     )
 
 

@@ -32,7 +32,7 @@ CURRENT_DOC_REQUIRED_SNIPPETS = {
         "broad magnitude evidence",
         "raw voltage/current replay",
     ],
-    "docs/public/validation/reference-lane.mdx": [
+    "docs/public/validation/recommended-configuration.mdx": [
         "uniform Cartesian Yee",
         "compute_coaxial_line_reflection(...)"
     ],

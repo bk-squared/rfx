@@ -14,14 +14,26 @@ from rfx.visualize3d import (
 
 @pytest.fixture
 def simple_sim():
-    """Create a simple simulation with geometry."""
+    """A simple board: ground foil, substrate, trace foil.
+
+    Ownership (#931 §1.5): ground and trace are foil, declared as SHEETS —
+    zero-thickness Boxes on the substrate's two faces. Drawn one cell thick
+    they were volumes, and the ground's cell then overlapped the substrate's,
+    which is exactly the stack-up ambiguity #702 was about: under the contract
+    a sheet owns no cell, so the substrate keeps its whole 2 mm.
+
+    The board is lifted one cell off z = 0 so the ground has vacuum under it.
+    Sitting on the domain floor it did not: the CPML pad extension replicates
+    the substrate into the pad, which puts laminate on BOTH sides of the ground
+    plane and (correctly) trips the buried-sheet warning.
+    """
     sim = Simulation(freq_max=5e9, domain=(0.02, 0.02, 0.01), dx=0.001)
     sim.add_material("substrate", eps_r=4.4, sigma=0.01)
-    sim.add(Box((0, 0, 0), (0.02, 0.02, 0.001)), material="pec")
-    sim.add(Box((0, 0, 0), (0.02, 0.02, 0.002)), material="substrate")
-    sim.add(Box((0.005, 0.005, 0.002), (0.015, 0.015, 0.003)), material="pec")
+    sim.add(Box((0, 0, 0.001), (0.02, 0.02, 0.001)), material="pec")
+    sim.add(Box((0, 0, 0.001), (0.02, 0.02, 0.003)), material="substrate")
+    sim.add(Box((0.005, 0.005, 0.003), (0.015, 0.015, 0.003)), material="pec")
     sim.add_port(
-        position=(0.01, 0.01, 0.001),
+        position=(0.01, 0.01, 0.002),
         component="ez",
         waveform=GaussianPulse(f0=3e9),
         extent=0.001,
@@ -76,3 +88,29 @@ def test_save_screenshot_with_field(simple_sim, tmp_path):
                           dpi=72)
     assert os.path.exists(out)
     assert out.endswith(".png")
+
+
+def test_the_two_foils_realize_as_sheets_and_leave_the_substrate_whole(simple_sim):
+    """Build-time (no solve) ownership check for the fixture above (#931 §1.7).
+
+    Two sheets on the substrate's two faces, no PEC cell anywhere, and the
+    substrate's permittivity written at the ground plane too — which is the
+    "a sheet owns no cell" clause read on a stack-up whose dielectric and
+    metal were drawn on the same plane.
+    """
+    import numpy as np
+    from tests._realized_geometry import (
+        assert_sheet_planes, assert_wall_planes, node_index, realized)
+
+    rz = realized(simple_sim)
+    assert rz.pec_mask is None, "foil declared as a sheet owns no cell"
+    assert_sheet_planes(simple_sim, 2, expected_m=(0.001, 0.003),
+                        what="ground and trace")
+    assert_wall_planes(simple_sim, 2, expected_m=(0.001, 0.003),
+                       what="ground and trace")
+
+    grid = simple_sim._build_grid()
+    mats = simple_sim._assemble_materials(grid, pec_sheets=[])[0]
+    i, j = grid.shape[0] // 2, grid.shape[1] // 2
+    k_gnd = node_index(grid, 2, 0.001)
+    assert float(np.asarray(mats.eps_r)[i, j, k_gnd]) == pytest.approx(4.4)

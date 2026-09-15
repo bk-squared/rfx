@@ -1,0 +1,240 @@
+======================================================================
+Crossval 05: 2.4 GHz Rectangular Patch Antenna on FR4
+======================================================================
+Substrate: εr=4.3, h=1.5 mm (FR4)
+Patch: W=38.0 x L=29.5 mm
+Ground plane: 60 x 55 mm
+Feed: probe at (33.2, 37.5) mm
+
+Analytic transmission-line model:
+  εr_eff = 4.009
+  ΔL     = 0.695 mm
+  L_eff  = 30.891 mm
+  f_res  = 2.424 GHz
+
+Domain: 80 x 75 x 38 mm, dx=1.0 mm
+
+======================================================================
+PART 1: rfx — Harminv ringdown resonance
+======================================================================
+z mesh: 47 interior cells, substrate = 6 x 250.0 um between exact nodes k=22 (12.0000 mm) and k=28 (13.5000 mm); dom_z = 46.5222 mm
+Running rfx source-excitation run for Harminv...
+/root/workspace/byungkwan-workspace/research/rfx-931-XA-crossval-a/validation/crossval/05_patch_antenna.py:603: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+  sim.add_thin_conductor(Box((gx_lo, gy_lo, z_gnd_sheet),
+/root/workspace/byungkwan-workspace/research/rfx-931-XA-crossval-a/validation/crossval/05_patch_antenna.py:609: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+  sim.add_thin_conductor(Box((patch_x_lo, patch_y_lo, z_patch_sheet),
+/root/workspace/byungkwan-workspace/research/rfx-931-XA-crossval-a/validation/crossval/05_patch_antenna.py:637: DeprecationWarning: add_source(..., amplitude_kind=None): on this simulation the waveform amplitude is a CURRENT in amperes (E += Cb*I/dV; identical to amplitude_kind='current'). This per-path default is deprecated (issue #571): pass amplitude_kind='current' (amperes, resolution-independent power — the future default) or amplitude_kind='field' (raw E increment). amplitude_kind becomes required in 1.9 (and 'current' the default in 2.0).
+  sim.add_source(
+Realized stack (build-time, no solve; realized_pec_edge_masks / realized_wall_planes):
+  ground  sheet: node plane k=22 at z=12.0000 mm; realized footprint 60.0 x 55.0 mm (declared 60.0 x 55.0 mm)
+  patch   sheet: node plane k=28 at z=13.5000 mm; realized footprint 28.0 x 37.0 mm (declared 29.5 x 38.0 mm)
+  cavity: 1.5000 mm node-to-node over 6 substrate cells (physical 1.5000 mm)
+  [PREFLIGHT] all dielectric(s) ['fr4'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+  [PREFLIGHT] _assemble_materials (non-uniform lane): PEC sheets/wires were classified but the caller passed no pec_sheets/pec_wires collector, so they are absent from the returned pec_mask (a sheet owns no cell, #931 §1.3). A caller that steps fields must pass collectors and realize them with rfx.boundaries.pec.realized_pec_edge_masks.
+/root/workspace/byungkwan-workspace/research/rfx-931-XA-crossval-a/validation/crossval/05_patch_antenna.py:682: UserWarning: [run] preflight found 2 advisory issue(s) - pass skip_preflight=True to suppress:
+  - all dielectric(s) ['fr4'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+  - _assemble_materials (non-uniform lane): PEC sheets/wires were classified but the caller passed no pec_sheets/pec_wires collector, so they are absent from the returned pec_mask (a sheet owns no cell, #931 §1.3). A caller that steps fields must pass collectors and realize them with rfx.boundaries.pec.realized_pec_edge_masks.
+  res_h = sim_h.run(num_periods=60, subpixel_smoothing=SUBPIXEL_SMOOTHING)
+/root/workspace/byungkwan-workspace/research/rfx-931-XA-crossval-a/validation/crossval/05_patch_antenna.py:682: UserWarning: run ended at -16.0 dB of peak — ring-down truncated; Harminv/DFT/NTFF quantities may carry transient error; consider until_decay or more periods (issue #332)
+  res_h = sim_h.run(num_periods=60, subpixel_smoothing=SUBPIXEL_SMOOTHING)
+Done in 141.8s
+Settling witness (#332/G1): end/peak = -20.4 dB (UNDERSETTLED (>-40): Harminv freq/Q suspect, raise num_periods)
+Harminv on last 13491 samples (ringdown region)
+
+Harminv modes (Q > 2, amp > 1e-8):
+  f = 1.9003 GHz, Q = 90.5, amp = 6.29e+04
+  f = 2.4465 GHz, Q = 50.0, amp = 4.47e+05
+  f = 3.1869 GHz, Q = 67.9, amp = 4.23e+04
+  f = 3.7590 GHz, Q = 109.5, amp = 6.03e+05
+
+Mode identification vs the declared TM_mn0 spectrum:
+  declared TM010 = 1.91491 GHz
+  declared TM100 = 2.42351 GHz
+  declared TM110 = 3.08874 GHz
+  identification tol = 12.50% (derived: sqrt(min adjacent declared ratio) - 1); span [1.7022, 3.4748] GHz
+    f = 1.9003 GHz  ->  TM010          -0.76%
+    f = 2.4465 GHz  ->  TM100          +0.95%
+    f = 3.1869 GHz  ->  TM110          +3.18%
+    f = 3.7590 GHz  ->  UNIDENTIFIED      n/a
+
+  TM100 (design mode, identified): f = 2.4465 GHz, Q = 50.0
+  Analytic target:    f = 2.4235 GHz
+  Harminv error:      0.95 %  (REPORTED as accuracy; identification bounds it to [-11.11 %, +12.50 %])
+
+======================================================================
+PART 2: OpenEMS — same patch, lumped-port S11
+======================================================================
+  OpenEMS mesh: 68 × 65 × 24 cells = 106,080
+  Running OpenEMS (GaussExcite f0=2.40 GHz, fc=1.00 GHz)...
+ ---------------------------------------------------------------------- 
+ | openEMS 64bit -- version v0.37.0-rc1-6-g2000574
+ | (C) 2010-2026 Thorsten Liebig <thorsten.liebig@gmx.de>  GPL license
+ ---------------------------------------------------------------------- 
+	Used external libraries:
+		CSXCAD -- Version: v0.7.0-rc1-3-ge558171
+		hdf5   -- Version: 1.10.4
+		          compiled against: HDF5 library version: 1.10.4
+		tinyxml -- compiled against: 2.6.2
+		fparser
+		boost  -- compiled against: 1_71
+		vtk -- Version: 7.1.1
+		       compiled against: 7.1.1
+
+Create FDTD operator (compressed SSE + multi-threading)
+FDTD simulation size: 68x65x24 --> 106080 FDTD cells 
+FDTD timestep is: 1.14571e-12 s; Nyquist rate: 128 timesteps @3.40945e+09 Hz
+Excitation signal length is: 2501 timesteps (2.86542e-09s)
+Max. number of timesteps: 25000 ( --> 9.996 * Excitation signal length)
+Create FDTD engine (compressed SSE + multi-threading)
+Running FDTD engine... this may take a while... grab a cup of coffee?!?
+[@        4s] Timestep:         1536 || Speed:   40.2 MC/s (2.642e-03 s/TS) || Energy: ~1.70e-15 (- 0.00dB)
+[@        8s] Timestep:         4000 || Speed:   64.7 MC/s (1.639e-03 s/TS) || Energy: ~1.02e-17 (-22.21dB)
+[@       12s] Timestep:         7360 || Speed:   88.8 MC/s (1.194e-03 s/TS) || Energy: ~1.04e-20 (-52.11dB)
+[@       16s] Timestep:        11104 || Speed:   98.7 MC/s (1.075e-03 s/TS) || Energy: ~3.46e-22 (-66.90dB)
+[@       20s] Timestep:        15136 || Speed:  106.9 MC/s (9.927e-04 s/TS) || Energy: ~1.10e-21 (-61.88dB)
+[@       24s] Timestep:        18976 || Speed:  101.0 MC/s (1.050e-03 s/TS) || Energy: ~1.34e-20 (-51.03dB)
+Multithreaded Engine: Best performance found using 5 threads.
+[@       28s] Timestep:        22976 || Speed:  105.4 MC/s (1.007e-03 s/TS) || Energy: ~1.59e-19 (-40.27dB)
+RunFDTD: Warning: Max. number of timesteps was reached before the end-criteria of -70dB was reached... 
+	You may want to choose a higher number of max. timesteps... 
+Time for 25000 iterations with 106080.00 cells : 30.24 sec
+Speed: 87.70 MCells/s 
+  done in 30.5s
+
+  OpenEMS mode identification vs the declared TM_mn0 spectrum:
+    identification tol = 12.50% (derived: sqrt(min adjacent declared ratio) - 1); span [1.7022, 3.4748] GHz
+      f = 1.7707 GHz  ->  TM010          -7.53%
+      f = 1.9304 GHz  ->  TM010          +0.81%
+      f = 2.1942 GHz  ->  TM100          -9.46%
+      f = 2.2589 GHz  ->  TM100          -6.79%
+      f = 2.4762 GHz  ->  TM100          +2.17%
+      f = 3.2115 GHz  ->  TM110          +3.97%
+      f = 3.3174 GHz  ->  TM110          +7.40%
+      ! declared member TM010 is claimed by 2 measured modes ([1.7707, 1.9304] GHz) -- identification is ambiguous, refuse to name a resonance
+      ! declared member TM100 is claimed by 3 measured modes ([2.1942, 2.2589, 2.4762] GHz) -- identification is ambiguous, refuse to name a resonance
+      ! declared member TM110 is claimed by 2 measured modes ([3.2115, 3.3174] GHz) -- identification is ambiguous, refuse to name a resonance
+
+  OpenEMS Harminv modes (Q > 2) near analytic target:
+    f = 1.7707 GHz, Q = 75.0, amp = 2.84e-08
+    f = 1.9304 GHz, Q = 2.4, amp = 3.37e-07
+    f = 2.1942 GHz, Q = 242.3, amp = 5.22e-08
+    f = 2.2589 GHz, Q = 6.6, amp = 1.43e-07
+    f = 2.4762 GHz, Q = 5.2, amp = 2.78e-07
+    f = 3.2115 GHz, Q = 15.1, amp = 3.47e-07
+
+  OpenEMS Harminv:   f = 2.1900 GHz, Q = nan
+  OpenEMS S11 dip:   f = 2.1900 GHz, |S11| = -0.53 dB  (secondary)
+  Analytic target:   f = 2.4235 GHz
+  OpenEMS vs analytic: 9.64 %
+  rfx Harminv vs OpenEMS Harminv: 11.71 %  ← primary metric
+
+======================================================================
+PART 3: rfx — lumped port S11 (secondary check)
+======================================================================
+/root/workspace/byungkwan-workspace/research/rfx-931-XA-crossval-a/validation/crossval/05_patch_antenna.py:603: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+  sim.add_thin_conductor(Box((gx_lo, gy_lo, z_gnd_sheet),
+/root/workspace/byungkwan-workspace/research/rfx-931-XA-crossval-a/validation/crossval/05_patch_antenna.py:609: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+  sim.add_thin_conductor(Box((patch_x_lo, patch_y_lo, z_patch_sheet),
+Realized stack (build-time, no solve; realized_pec_edge_masks / realized_wall_planes):
+  ground  sheet: node plane k=22 at z=12.0000 mm; realized footprint 60.0 x 55.0 mm (declared 60.0 x 55.0 mm)
+  patch   sheet: node plane k=28 at z=13.5000 mm; realized footprint 28.0 x 37.0 mm (declared 29.5 x 38.0 mm)
+  cavity: 1.5000 mm node-to-node over 6 substrate cells (physical 1.5000 mm)
+Preflight:
+  [PREFLIGHT] Wire port at (0.03325, 0.0375, 0.011999999999999993) (extent 0.0015000000000000013): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared ground-truth primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- verify manually that its rasterized extent does not land on PEC and does not stop one cell short of a conductor it is meant to contact.
+  [PREFLIGHT] all dielectric(s) ['fr4'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+  [PREFLIGHT] _assemble_materials (non-uniform lane): PEC sheets/wires were classified but the caller passed no pec_sheets/pec_wires collector, so they are absent from the returned pec_mask (a sheet owns no cell, #931 §1.3). A caller that steps fields must pass collectors and realize them with rfx.boundaries.pec.realized_pec_edge_masks.
+
+/opt/conda/lib/python3.10/site-packages/numpy/core/getlimits.py:549: UserWarning: The value of the smallest subnormal for <class 'numpy.float32'> type is zero.
+  setattr(self, word, getattr(machar, word).flat[0])
+/opt/conda/lib/python3.10/site-packages/numpy/core/getlimits.py:89: UserWarning: The value of the smallest subnormal for <class 'numpy.float32'> type is zero.
+  return self._float_to_str(self.smallest_subnormal)
+Running rfx S-parameter sweep (long ringdown for patch Q ~50)...
+  [PREFLIGHT] Wire port at (0.03325, 0.0375, 0.011999999999999993) (extent 0.0015000000000000013): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared ground-truth primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- verify manually that its rasterized extent does not land on PEC and does not stop one cell short of a conductor it is meant to contact.
+  [PREFLIGHT] all dielectric(s) ['fr4'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+  [PREFLIGHT] _assemble_materials (non-uniform lane): PEC sheets/wires were classified but the caller passed no pec_sheets/pec_wires collector, so they are absent from the returned pec_mask (a sheet owns no cell, #931 §1.3). A caller that steps fields must pass collectors and realize them with rfx.boundaries.pec.realized_pec_edge_masks.
+/root/workspace/byungkwan-workspace/research/rfx-931-XA-crossval-a/validation/crossval/05_patch_antenna.py:992: UserWarning: [run] preflight found 3 advisory issue(s) - pass skip_preflight=True to suppress:
+  - Wire port at (0.03325, 0.0375, 0.011999999999999993) (extent 0.0015000000000000013): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared ground-truth primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- verify manually that its rasterized extent does not land on PEC and does not stop one cell short of a conductor it is meant to contact.
+  - all dielectric(s) ['fr4'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+  - _assemble_materials (non-uniform lane): PEC sheets/wires were classified but the caller passed no pec_sheets/pec_wires collector, so they are absent from the returned pec_mask (a sheet owns no cell, #931 §1.3). A caller that steps fields must pass collectors and realize them with rfx.boundaries.pec.realized_pec_edge_masks.
+  result = sim.run(
+/opt/conda/lib/python3.10/site-packages/jax/_src/numpy/array_methods.py:122: UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.
+  return lax_numpy.astype(self, dtype, copy=copy, device=device)
+Done in 89.0s
+S-matrix shape: (1, 1, 101)
+
+rfx S11 analysis:
+  Passivity advisory |S11| < 1.05: PASS (max=0.776)
+  Local resonance dip: 2.480 GHz
+  |S11| at dip:        -9.62 dB
+  Dip contrast:        6.07 dB
+  Analytic target:     2.424 GHz
+  Frequency error:     2.33 %
+
+Saved: /root/workspace/byungkwan-workspace/research/rfx-931-XA-crossval-a/validation/crossval/05_patch_antenna.png
+
+======================================================================
+SUMMARY
+======================================================================
+  Measurement                             f_res (GHz)    Δ vs TL (%)
+  ------------------------------------ -------------- --------------
+  Analytic (Balanis TL model)                  2.4235              —
+  OpenEMS Harminv (port V(t))                  2.1900 -         9.64
+  OpenEMS S11 local dip                        2.1900   (secondary)
+  rfx Harminv (probe ringdown)                 2.4465 +         0.95
+  rfx lumped-port S11 local dip                2.4800 +         2.33
+
+  rfx internal agreement (Harminv vs lumped-S11): 1.37 %
+  rfx vs Balanis TL analytic:                    0.95 %
+  rfx vs OpenEMS Harminv:                        11.71 %
+
+  rfx mode identification (TM100 found, tol 12.50 %): PASS
+  openEMS mode identification:      FAIL  (REPORTED, not gated -- see the all_ok comment)
+      ! declared member TM010 is claimed by 2 measured modes ([1.7707, 1.9304] GHz) -- identification is ambiguous, refuse to name a resonance
+      ! declared member TM100 is claimed by 3 measured modes ([2.1942, 2.2589, 2.4762] GHz) -- identification is ambiguous, refuse to name a resonance
+      ! declared member TM110 is claimed by 2 measured modes ([3.2115, 3.3174] GHz) -- identification is ambiguous, refuse to name a resonance
+  rfx self-consistency (< 5 %):     PASS  (1.37 %)
+  rfx vs analytic (report, not gated): 0.95 %  (Balanis TL is 5-8% approximate)
+  rfx vs OpenEMS (< 20 %, smoke):   PASS  (11.71 %)
+  S11 passivity advisory (|S11| < 1.05): PASS  (max|S11|=0.776)
+  Overall:                          PASS
+
+  DIAGNOSTIC REPORT (not an accuracy gate): rfx and OpenEMS Harminv
+  agree to 11.71 % (smoke bound 20 %) on the TM010 patch
+  resonance; rfx vs the Balanis TL estimate is 0.95 %
+  (reported, NOT gated — the TL model is 5-8 % approximate). This is a
+  coarse-mesh integration check; the smoke bound passes over two
+  different substrate geometries (#325), so it does not validate
+  accuracy — see the committed patch tests (manifest gate_paths).
+
+  Realization (lattice ownership contract, #931):
+   • ground / patch are PEC SHEETS on node planes k=22 / 28 (z = 12.0000 / 13.5000 mm); the cavity is 1.5000 mm node-to-node over 6 FR4 cells against a 1.5000 mm physical substrate.
+   • realized footprints: ground 60.0 x 55.0 mm (declared 60.0 x 55.0), patch 28.0 x 37.0 mm (declared 29.5 x 38.0). The patch faces sit half a 1 mm cell off the lattice; that is mesh resolution, reported not hidden.
+   • Before #931 the two conductors were 250 um PEC Boxes placed by a
+     nearest-node argmin on a graded mesh: planes at 12.0000 and
+     13.8161 mm, a 1.8161 mm cavity (+21.1 %) whose top 455 um was air.
+     Comparing this run to the committed 6.48 % openEMS agreement is a
+     comparison between two different cavities, not a regression test.
+
+  Root-cause history (see research note 2026-04-11_crossval12):
+   • Before the ground-plane fix, rfx used `pec_faces={"z_lo"}`
+     to get a free z-boundary PEC. That turned the entire domain
+     floor into an infinite PEC sheet — a cavity, not an antenna —
+     and shifted the resonance 8 % high (2.618 vs 2.424 GHz).
+   • Before the PML fix, OpenEMS used `MUR` at ≈λ/4 margin which
+     reflected energy and made the effective cavity larger,
+     shifting the resonance 8 % low (2.231 vs 2.424 GHz).
+   • The two bugs pointed in opposite directions and gave a 17 %
+     inter-tool gap. With both fixed (rfx = explicit finite PEC box
+     BELOW substrate; OpenEMS = PML_8 + 50 mm margin) the remaining
+     Harminv gap in this run is 11.71 %.
+
+  NOTES:
+   • Reference tool is OpenEMS (not Meep) because it is the
+     canonical open-source patch-antenna reference.
+   • rfx single-cell lumped-port S11 dip is shallow (~2 dB) because
+     the single-cell port has parasitic reactance — use Harminv for
+     the clean resonance frequency, the S11 dip only as a
+     passivity / local-dip confirmation.
+
+  Output: 05_patch_antenna.png
+  JSON output: /root/workspace/claude-workspace/rfx/runs/issue931-post-cv05-20260907T095630Z/cv05_run.json

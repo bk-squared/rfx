@@ -1,0 +1,785 @@
+{
+  "label": "head",
+  "provenance": {
+    "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-ac585302d6176235b/rfx/__init__.py",
+    "rfx_under_repo_root": true,
+    "repo_root": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-ac585302d6176235b",
+    "driver_commit": "b8b08dabd2abbf6c1b61ca687af01193e1c8dbf9",
+    "branch": "fix/1043-cpml-subpixel-coefficients",
+    "dirty": true
+  },
+  "rig": {
+    "a": 1e-06,
+    "eps_wg": 12.0,
+    "w_wg": 1e-06,
+    "dx": 1e-07,
+    "cpml_layers": 10,
+    "sx": 8e-06,
+    "sy": 8e-06,
+    "n_steps": 1200,
+    "mode": "2d_tmz"
+  },
+  "arms": {
+    "cpml_baseline": {
+      "coefficients": {
+        "boundary": "cpml",
+        "subpixel": true,
+        "padrep": false,
+        "cpml_e_path_taken": true,
+        "grid_shape": [
+          101,
+          101,
+          1
+        ],
+        "pad": [
+          10,
+          10,
+          10,
+          10
+        ],
+        "c_min": -0.9920586943626404,
+        "per_component": {
+          "ex": {
+            "min": 0.00794130563735962,
+            "n_negative": 0,
+            "n_pad_cells": 3640
+          },
+          "ey": {
+            "min": 0.00794130563735962,
+            "n_negative": 0,
+            "n_pad_cells": 3640
+          },
+          "ez": {
+            "min": 0.00794130563735962,
+            "n_negative": 0,
+            "n_pad_cells": 3640
+          }
+        },
+        "K_eff_norm_min": 0.00794130563735962,
+        "n_negative_total": 0,
+        "negative_cells_sample": [],
+        "negative_cells": []
+      },
+      "fdtd": {
+        "arm": "cpml_baseline",
+        "boundary": "cpml",
+        "subpixel": true,
+        "padrep": false,
+        "n_steps": 1200,
+        "n_nonfinite": 0,
+        "first_nonfinite_index": null,
+        "max_abs_finite": 4.7000727931845176e-07,
+        "settling_db": -18.10368441230787,
+        "stdout_tail": "  [PREFLIGHT] dielectric 'wg' on x: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.\n  [PREFLIGHT] dielectric 'wg' on y: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.\n  [PREFLIGHT] dielectric 'wg' on z: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.\n  [PREFLIGHT] all dielectric(s) ['wg'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)\n",
+        "wall_s": 2.7
+      }
+    },
+    "cpml_padrep": {
+      "coefficients": {
+        "boundary": "cpml",
+        "subpixel": true,
+        "padrep": true,
+        "cpml_e_path_taken": true,
+        "grid_shape": [
+          101,
+          101,
+          1
+        ],
+        "pad": [
+          10,
+          10,
+          10,
+          10
+        ],
+        "c_min": -0.9920586943626404,
+        "per_component": {
+          "ex": {
+            "min": -0.838212540516486,
+            "n_negative": 7,
+            "n_pad_cells": 3640
+          },
+          "ey": {
+            "min": 0.00794130563735962,
+            "n_negative": 0,
+            "n_pad_cells": 3640
+          },
+          "ez": {
+            "min": -0.838212540516486,
+            "n_negative": 14,
+            "n_pad_cells": 3640
+          }
+        },
+        "K_eff_norm_min": -0.838212540516486,
+        "n_negative_total": 21,
+        "negative_cells_sample": [
+          [
+            "ex",
+            0,
+            55,
+            0
+          ],
+          [
+            "ex",
+            1,
+            55,
+            0
+          ],
+          [
+            "ex",
+            2,
+            55,
+            0
+          ],
+          [
+            "ex",
+            3,
+            55,
+            0
+          ],
+          [
+            "ex",
+            4,
+            55,
+            0
+          ],
+          [
+            "ex",
+            5,
+            55,
+            0
+          ],
+          [
+            "ex",
+            6,
+            55,
+            0
+          ],
+          [
+            "ez",
+            0,
+            55,
+            0
+          ],
+          [
+            "ez",
+            1,
+            55,
+            0
+          ],
+          [
+            "ez",
+            2,
+            55,
+            0
+          ],
+          [
+            "ez",
+            3,
+            55,
+            0
+          ],
+          [
+            "ez",
+            4,
+            55,
+            0
+          ],
+          [
+            "ez",
+            5,
+            55,
+            0
+          ],
+          [
+            "ez",
+            6,
+            55,
+            0
+          ],
+          [
+            "ez",
+            94,
+            55,
+            0
+          ],
+          [
+            "ez",
+            95,
+            55,
+            0
+          ],
+          [
+            "ez",
+            96,
+            55,
+            0
+          ],
+          [
+            "ez",
+            97,
+            55,
+            0
+          ],
+          [
+            "ez",
+            98,
+            55,
+            0
+          ],
+          [
+            "ez",
+            99,
+            55,
+            0
+          ],
+          [
+            "ez",
+            100,
+            55,
+            0
+          ]
+        ],
+        "negative_cells": [
+          [
+            "ex",
+            0,
+            55,
+            0
+          ],
+          [
+            "ex",
+            1,
+            55,
+            0
+          ],
+          [
+            "ex",
+            2,
+            55,
+            0
+          ],
+          [
+            "ex",
+            3,
+            55,
+            0
+          ],
+          [
+            "ex",
+            4,
+            55,
+            0
+          ],
+          [
+            "ex",
+            5,
+            55,
+            0
+          ],
+          [
+            "ex",
+            6,
+            55,
+            0
+          ],
+          [
+            "ez",
+            0,
+            55,
+            0
+          ],
+          [
+            "ez",
+            1,
+            55,
+            0
+          ],
+          [
+            "ez",
+            2,
+            55,
+            0
+          ],
+          [
+            "ez",
+            3,
+            55,
+            0
+          ],
+          [
+            "ez",
+            4,
+            55,
+            0
+          ],
+          [
+            "ez",
+            5,
+            55,
+            0
+          ],
+          [
+            "ez",
+            6,
+            55,
+            0
+          ],
+          [
+            "ez",
+            94,
+            55,
+            0
+          ],
+          [
+            "ez",
+            95,
+            55,
+            0
+          ],
+          [
+            "ez",
+            96,
+            55,
+            0
+          ],
+          [
+            "ez",
+            97,
+            55,
+            0
+          ],
+          [
+            "ez",
+            98,
+            55,
+            0
+          ],
+          [
+            "ez",
+            99,
+            55,
+            0
+          ],
+          [
+            "ez",
+            100,
+            55,
+            0
+          ]
+        ]
+      },
+      "fdtd": {
+        "arm": "cpml_padrep",
+        "boundary": "cpml",
+        "subpixel": true,
+        "padrep": true,
+        "n_steps": 1200,
+        "n_nonfinite": 0,
+        "first_nonfinite_index": null,
+        "max_abs_finite": 4.592121172208863e-07,
+        "settling_db": -34.22297970707086,
+        "stdout_tail": "  [PREFLIGHT] dielectric 'wg' on x: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.\n  [PREFLIGHT] dielectric 'wg' on y: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.\n  [PREFLIGHT] dielectric 'wg' on z: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.\n  [PREFLIGHT] all dielectric(s) ['wg'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)\n",
+        "wall_s": 1.7
+      }
+    },
+    "cpml_subpixel_off": {
+      "coefficients": {
+        "boundary": "cpml",
+        "subpixel": false,
+        "padrep": false,
+        "cpml_e_path_taken": true,
+        "grid_shape": [
+          101,
+          101,
+          1
+        ],
+        "pad": [
+          10,
+          10,
+          10,
+          10
+        ],
+        "c_min": -0.9920586943626404,
+        "per_component": {
+          "ex": {
+            "min": 0.0006617754697799683,
+            "n_negative": 0,
+            "n_pad_cells": 3640
+          },
+          "ey": {
+            "min": 0.0006617754697799683,
+            "n_negative": 0,
+            "n_pad_cells": 3640
+          },
+          "ez": {
+            "min": 0.0006617754697799683,
+            "n_negative": 0,
+            "n_pad_cells": 3640
+          }
+        },
+        "K_eff_norm_min": 0.0006617754697799683,
+        "n_negative_total": 0,
+        "negative_cells_sample": [],
+        "negative_cells": []
+      },
+      "fdtd": {
+        "arm": "cpml_subpixel_off",
+        "boundary": "cpml",
+        "subpixel": false,
+        "padrep": false,
+        "n_steps": 1200,
+        "n_nonfinite": 0,
+        "first_nonfinite_index": null,
+        "max_abs_finite": 4.5304705054149963e-07,
+        "settling_db": -41.078245123656544,
+        "stdout_tail": "  [PREFLIGHT] dielectric 'wg' on x: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.\n  [PREFLIGHT] dielectric 'wg' on y: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.\n  [PREFLIGHT] dielectric 'wg' on z: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.\n  [PREFLIGHT] all dielectric(s) ['wg'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)\n",
+        "wall_s": 1.5
+      }
+    },
+    "upml_padrep": {
+      "coefficients": {
+        "boundary": "upml",
+        "subpixel": true,
+        "padrep": true,
+        "cpml_e_path_taken": false,
+        "grid_shape": [
+          101,
+          101,
+          1
+        ],
+        "pad": [
+          10,
+          10,
+          10,
+          10
+        ],
+        "c_min": -0.9920586943626404,
+        "per_component": {
+          "ex": {
+            "min": -0.838212540516486,
+            "n_negative": 7,
+            "n_pad_cells": 3640
+          },
+          "ey": {
+            "min": 0.00794130563735962,
+            "n_negative": 0,
+            "n_pad_cells": 3640
+          },
+          "ez": {
+            "min": -0.838212540516486,
+            "n_negative": 14,
+            "n_pad_cells": 3640
+          }
+        },
+        "K_eff_norm_min": -0.838212540516486,
+        "n_negative_total": 21,
+        "negative_cells_sample": [
+          [
+            "ex",
+            0,
+            55,
+            0
+          ],
+          [
+            "ex",
+            1,
+            55,
+            0
+          ],
+          [
+            "ex",
+            2,
+            55,
+            0
+          ],
+          [
+            "ex",
+            3,
+            55,
+            0
+          ],
+          [
+            "ex",
+            4,
+            55,
+            0
+          ],
+          [
+            "ex",
+            5,
+            55,
+            0
+          ],
+          [
+            "ex",
+            6,
+            55,
+            0
+          ],
+          [
+            "ez",
+            0,
+            55,
+            0
+          ],
+          [
+            "ez",
+            1,
+            55,
+            0
+          ],
+          [
+            "ez",
+            2,
+            55,
+            0
+          ],
+          [
+            "ez",
+            3,
+            55,
+            0
+          ],
+          [
+            "ez",
+            4,
+            55,
+            0
+          ],
+          [
+            "ez",
+            5,
+            55,
+            0
+          ],
+          [
+            "ez",
+            6,
+            55,
+            0
+          ],
+          [
+            "ez",
+            94,
+            55,
+            0
+          ],
+          [
+            "ez",
+            95,
+            55,
+            0
+          ],
+          [
+            "ez",
+            96,
+            55,
+            0
+          ],
+          [
+            "ez",
+            97,
+            55,
+            0
+          ],
+          [
+            "ez",
+            98,
+            55,
+            0
+          ],
+          [
+            "ez",
+            99,
+            55,
+            0
+          ],
+          [
+            "ez",
+            100,
+            55,
+            0
+          ]
+        ],
+        "negative_cells": [
+          [
+            "ex",
+            0,
+            55,
+            0
+          ],
+          [
+            "ex",
+            1,
+            55,
+            0
+          ],
+          [
+            "ex",
+            2,
+            55,
+            0
+          ],
+          [
+            "ex",
+            3,
+            55,
+            0
+          ],
+          [
+            "ex",
+            4,
+            55,
+            0
+          ],
+          [
+            "ex",
+            5,
+            55,
+            0
+          ],
+          [
+            "ex",
+            6,
+            55,
+            0
+          ],
+          [
+            "ez",
+            0,
+            55,
+            0
+          ],
+          [
+            "ez",
+            1,
+            55,
+            0
+          ],
+          [
+            "ez",
+            2,
+            55,
+            0
+          ],
+          [
+            "ez",
+            3,
+            55,
+            0
+          ],
+          [
+            "ez",
+            4,
+            55,
+            0
+          ],
+          [
+            "ez",
+            5,
+            55,
+            0
+          ],
+          [
+            "ez",
+            6,
+            55,
+            0
+          ],
+          [
+            "ez",
+            94,
+            55,
+            0
+          ],
+          [
+            "ez",
+            95,
+            55,
+            0
+          ],
+          [
+            "ez",
+            96,
+            55,
+            0
+          ],
+          [
+            "ez",
+            97,
+            55,
+            0
+          ],
+          [
+            "ez",
+            98,
+            55,
+            0
+          ],
+          [
+            "ez",
+            99,
+            55,
+            0
+          ],
+          [
+            "ez",
+            100,
+            55,
+            0
+          ]
+        ]
+      },
+      "fdtd": {
+        "arm": "upml_padrep",
+        "boundary": "upml",
+        "subpixel": true,
+        "padrep": true,
+        "n_steps": 1200,
+        "n_nonfinite": 0,
+        "first_nonfinite_index": null,
+        "max_abs_finite": 4.2711874925771554e-07,
+        "settling_db": -35.45452498147205,
+        "stdout_tail": "  [PREFLIGHT] dielectric 'wg' on x: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.\n  [PREFLIGHT] dielectric 'wg' on y: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.\n  [PREFLIGHT] dielectric 'wg' on z: 11.5 cells per \u03bb_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.\n  [PREFLIGHT] all dielectric(s) ['wg'] are perfectly lossless in an open (UPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)\n",
+        "wall_s": 1.2
+      }
+    }
+  },
+  "gates": {
+    "G_A": {
+      "scored_arms": [
+        "cpml_baseline",
+        "cpml_padrep",
+        "cpml_subpixel_off"
+      ],
+      "excluded_no_cpml_e_path": [
+        "upml_padrep"
+      ],
+      "diverging_min": -0.838212540516486,
+      "stable_worst_min": 0.0006617754697799683,
+      "r_A": 0.0,
+      "verdict": "H1 SUPPORTED"
+    },
+    "G_D": {
+      "expectation_set": "fixed",
+      "diverged": {
+        "cpml_baseline": false,
+        "cpml_padrep": false,
+        "cpml_subpixel_off": false,
+        "upml_padrep": false
+      },
+      "expected": {
+        "cpml_baseline": false,
+        "cpml_padrep": false,
+        "cpml_subpixel_off": false,
+        "upml_padrep": false
+      },
+      "r_D": 0
+    },
+    "G_B": {
+      "first_nonfinite_state_step": null,
+      "note": "arm cpml_padrep stayed finite; nothing to localise",
+      "r_B": null
+    }
+  }
+}

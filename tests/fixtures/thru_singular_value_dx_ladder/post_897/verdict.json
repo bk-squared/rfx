@@ -1,0 +1,153 @@
+{
+  "study": "thru_singular_value_dx_ladder",
+  "adjudicated_on": "2026-09-06",
+  "predeclaration": "docs/design_notes/thru_singular_value_dx_ladder_predeclaration.md",
+  "predeclaration_section": "3. Outcome table",
+  "vessl_run_id": "369367258720",
+  "run_dir_on_nfs": "claude-workspace/rfx/runs/thru_sv_dx_ladder/20260906T071525Z-f5ee3b59-post897",
+  "rfx_sha": "f5ee3b59c3e83832f7df1682f0ad30abb260a42e",
+  "floor": 1e-05,
+  "excess_3ghz": {
+    "dx": -0.0011039865171916796,
+    "dx_over_2": -0.0018838061906492065,
+    "dx_over_4": -0.0019647831689539874
+  },
+  "signs": {
+    "dx": -1.0,
+    "dx_over_2": -1.0,
+    "dx_over_4": -1.0
+  },
+  "ratio_floored_magnitudes": {
+    "e1_over_e2": 0.5860403913479116,
+    "e2_over_e4": 0.9587857939826044
+  },
+  "log2_ratio": {
+    "e1_over_e2": -0.7709279927157058,
+    "e2_over_e4": -0.0607195616853395
+  },
+  "abs_e4_above_floor": true,
+  "outcome_a_discretization": false,
+  "outcome_b_refuted": false,
+  "outcome_b_spread": 0.0008607966517623078,
+  "outcome_b_threshold": 0.00022079730343833593,
+  "verdict": "C",
+  "verdict_text": "C \u2014 non-closing, by the pre-declared table applied literally: the 3 GHz excess now holds ONE sign (negative, sv_max below unity) at all three rungs, but |e1|/|e2| = 0.586 and |e2|/|e4| = 0.959 are both < 2, so outcome A fails, and the spread 8.608e-4 exceeds 0.20*|e1| = 2.208e-4, so outcome B fails. What CHANGED versus the pre-#897 ladder (also C, by a sign flip): the over-unity excess is gone \u2014 every bin at every rung is now strictly below unity (unity_crossing_hz empty at all three rungs) \u2014 and the residual is a NEGATIVE deficit that CONVERGES with dx (-1.104e-3 -> -1.884e-3 -> -1.965e-3, |e2|/|e4| = 0.959) rather than halving. A converging below-unity deficit is a loss floor, not a dt/2 artefact; the part that WAS a dt/2 artefact is exactly what #897 removed (per-rung max|Delta S| halves, ratios 1.880 / 1.880; Delta e(3 GHz) / theta(3 GHz) = -0.482 / -0.491 / -0.498 -> -1/2). No gate is touched: _THRU_MAX_SINGULAR_VALUE stays 1.01 and _THRU_PASSIVITY_PHYSICAL_BOUND stays 1.0.",
+  "outcome_table_scope_note": "The outcome table of section 3 was written for an over-unity excess and has no cell for 'the excess is gone and the remainder converges'. It is applied here exactly as written and NOT re-aimed; the observation that its A/B/C partition no longer matches the quantity being measured is recorded for the PI, not acted on.",
+  "unity_crossing_hz": {
+    "dx": [],
+    "dx_over_2": [],
+    "dx_over_4": []
+  },
+  "all_bins_below_unity_at_dx_over_4": true,
+  "successive_difference_sv_max_per_bin": {
+    "dx_to_dx2": [
+      0.0007798196734575269,
+      0.000912633119641737,
+      0.0010211975102744075,
+      0.001077352976294188,
+      0.001115021544689343,
+      0.0011841278802896538,
+      0.0013487305604824584,
+      0.0016627315735756598,
+      0.002094444927006278
+    ],
+    "dx2_to_dx4": [
+      8.09769783047809e-05,
+      2.8830247227218386e-05,
+      -5.2153173255797824e-05,
+      -0.00014027471930444513,
+      -0.00021735340644146728,
+      -0.00024938820505504555,
+      -0.0002076422011035861,
+      -7.023187572863243e-05,
+      0.00020501488304647264
+    ]
+  },
+  "gate_thru_max_singular_value": 1.01,
+  "sv_max_below_gate_at_every_rung": true,
+  "validity_gates": {
+    "G1_delta_vs_battery": -0.0043309865171917705,
+    "G1_pass": false,
+    "G2_battery_codes_present": {
+      "dx": true,
+      "dx_over_2": true,
+      "dx_over_4": true
+    },
+    "G2_extra_codes": {
+      "dx": [],
+      "dx_over_2": [],
+      "dx_over_4": []
+    },
+    "G3_settling_db_per_drive": {
+      "dx": [
+        -138.3110637590139,
+        -141.82619091173692
+      ],
+      "dx_over_2": [
+        -134.6680149911226,
+        -134.76404427031116
+      ],
+      "dx_over_4": [
+        -129.20619102224873,
+        -126.2216208749715
+      ]
+    },
+    "G3_main_pass_settling_db": {
+      "dx": -140.44433583157894,
+      "dx_over_2": -132.04275347910612,
+      "dx_over_4": -133.01258410165718
+    },
+    "G3_pass": true,
+    "G4_finite_pec_cells": [
+      340,
+      1360,
+      5440
+    ],
+    "G4_wire_port_cells": [
+      3,
+      5,
+      9
+    ],
+    "G4_wire_port_live": [
+      2,
+      4,
+      8
+    ],
+    "G4_cpml_layers": [
+      8,
+      16,
+      32
+    ],
+    "G4_pass": true,
+    "G5_pass": true
+  },
+  "column_power_max": {
+    "dx": 0.9910847767181096,
+    "dx_over_2": 0.9924323398986211,
+    "dx_over_4": 0.9929710946492383
+  },
+  "column_power_min": {
+    "dx": 0.944777077061242,
+    "dx_over_2": 0.9447371503568677,
+    "dx_over_4": 0.9469829967203949
+  },
+  "reciprocity_abs_max": {
+    "dx": 0.00011263401129731469,
+    "dx_over_2": 2.673252640347826e-05,
+    "dx_over_4": 3.951028208536279e-06
+  },
+  "G1_restated_post897": {
+    "why": "Pre-declaration G1 pins the dx rung to BATTERY_SV_MAX = 1.003227, the PRE-#897 measurement. #897 (0225b397) corrected the wire-lane port-current DFT and records the same fixture at sv_max = 0.998896. The literal G1 constant is left untouched everywhere (producer, adjudicator, replay test), so \"G1_pass\": false in validity_gates above is a superseded reference, not an invalid rung.",
+    "battery_reference_pre_897": 1.003227,
+    "battery_reference_post_897": 0.998896,
+    "dx_rung_sv_max": 0.9988960134828083,
+    "delta_vs_post897_reference": 1.3482808314257966e-08,
+    "tolerance": 1e-05,
+    "G1_restated_pass": true
+  },
+  "supersedes": null,
+  "companion_record": {
+    "pre_897_record": "tests/fixtures/thru_singular_value_dx_ladder/rung_dx_over_{1,2,4}.json + verdict.json (VESSL 369367257803, rfx 08828189) \u2014 kept, not overwritten",
+    "relationship": "same fixture, same producer physics (md5 21b54da5ddeca8359789b7aa1391d218 at both f5ee3b59 and 30fad4bb; the only diff since the pre-#897 run is a docstring path), same ladder fences; the extractor differs by #897 alone."
+  }
+}

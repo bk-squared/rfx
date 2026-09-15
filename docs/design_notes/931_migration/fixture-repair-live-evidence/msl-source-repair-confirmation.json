@@ -1,0 +1,70 @@
+{
+  "base_run_id": "369367259636",
+  "old_capture": "msl-v1-original.json",
+  "interpretation": "Same corrected board, explicit final-source repair removes weak-bin reliability flags without changing physical-band response materially; no old unreliable bin is promoted to qualified evidence.",
+  "raw_max_delta": 2.5761562235720345e-05,
+  "raw_per_bin_max_delta": [
+    9.100450359456843e-06,
+    1.1133221755543807e-05,
+    1.0934507330341524e-05,
+    2.5761562235720345e-05,
+    9.791587682918566e-06,
+    9.889926615980336e-06,
+    9.201871983936096e-06,
+    2.1314386822101666e-05,
+    1.3414580174205037e-05,
+    1.5950967308061773e-05
+  ],
+  "old_reliable": [
+    [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ],
+    [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  ],
+  "new_reliable": [
+    [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ],
+    [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  ]
+}

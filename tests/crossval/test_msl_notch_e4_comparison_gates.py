@@ -23,6 +23,17 @@ re-derived (no FDTD) by ``build_msl_notch_openems_comparison.py``.
 
 No FDTD here: the ~65 min rfx run is committed as a fixture, mirroring the coax
 broad-E4 evidence-commit pattern.
+
+
+#931 (lattice ownership contract): every number here is downstream of cv06b's
+trace declaration. Its 600um trace is 35um copper on a 254um laminate, i.e.
+foil, so under the contract it is a SHEET: one wall at the substrate top
+(unchanged from today), realized width 571.5um instead of 635.0um. That moves
+the analytic notch and the microstrip Z0 the comparison is read against, so
+the committed 65-minute rfx leg and the openEMS comparison are re-run together
+by the crossval-B migration (VESSL rfx-931-post-cv06b) and the ~6% notch
+characterization re-stated from the new pair. Nothing in this file is
+re-typed from the old run.
 """
 from __future__ import annotations
 

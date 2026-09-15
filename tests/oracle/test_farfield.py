@@ -11,6 +11,7 @@ import numpy as np
 import jax.numpy as jnp
 import pytest
 
+from rfx.boundaries.pec import WireSpec, wire_path_edge_masks
 from rfx.grid import Grid
 from rfx.core.yee import init_materials
 from rfx.sources.sources import GaussianPulse
@@ -192,10 +193,12 @@ def _run_halfwave_ntff(f0=3e9, freq_max=5e9, n_arm=7, n_steps=800,
                        domain=(0.08, 0.08, 0.14)):
     """Run a genuine center-fed ~lambda/2 PEC-wire dipole and return far-field.
 
-    The radiator is a single-cell-wide PEC column along z with a one-cell feed
-    gap at the center, driven by an ez soft source at the gap. Unlike a uniform
-    imposed current line (which radiates 2.43 dBi, not 2.15), a real center-fed
-    conductor self-develops the sinusoidal current of a half-wave dipole.
+    The radiator is a PEC FILAMENT along z — a 1-D path of Ez edges, the
+    lattice ownership contract's wire case (#931 §1.4) — with a one-cell
+    feed gap at the centre, driven by an ez soft source at the gap. Unlike
+    a uniform imposed current line (which radiates 2.43 dBi, not 2.15), a
+    real center-fed conductor self-develops the sinusoidal current of a
+    half-wave dipole.
     """
     grid = Grid(freq_max=freq_max, domain=domain, cpml_layers=8)
     dx = grid.dx
@@ -204,11 +207,34 @@ def _run_halfwave_ntff(f0=3e9, freq_max=5e9, n_arm=7, n_steps=800,
     center = (domain[0] / 2, domain[1] / 2, domain[2] / 2)
     ic, jc, kc = grid.position_to_index(center)
 
-    # PEC wire: arms of n_arm cells above/below a one-cell feed gap at kc.
-    pec_mask = np.zeros(grid.shape, dtype=bool)
-    pec_mask[ic, jc, kc - n_arm:kc + n_arm + 1] = True
-    pec_mask[ic, jc, kc] = False  # feed gap (source cell must radiate)
-    pec_mask = jnp.asarray(pec_mask)
+    # PEC wire, declared as a WIRE (lattice ownership contract #931 §1.4):
+    # a filament is a 1-D path of E edges, not a set of cells. Arms of
+    # n_arm edges above and below a one-cell feed gap at kc, so the Ez edge
+    # AT the source is live and the two arms are galvanically separate.
+    #
+    # This used to be a cell mask of the same column handed to
+    # ``pec_mask=``, and the docstring already called the object a
+    # filament. That worked only because the pre-#931 rule zeroed E_a on a
+    # masked cell whose NEIGHBOUR ALONG a was masked: on a 1x1-cell column
+    # it happened to reduce to exactly these 2*n_arm Ez edges and nothing
+    # else. Under the volume rule the same cells are a body — every edge
+    # incident to an occupied cell — so the column would realize as a
+    # four-node-wide tube with Ex and Ey walls, which is not a thin-wire
+    # dipole. Verified before the change: the WireSpec below and the old
+    # rule applied to the old mask give byte-identical (Mx, My, Mz) on this
+    # grid (Ez 14 edges, Ex/Ey empty), so the measured directivity is the
+    # same measurement, not a re-tuned one.
+    wire = WireSpec(
+        edges=tuple(
+            a | b for a, b in zip(
+                wire_path_edge_masks([(ic, jc, kc - n_arm), (ic, jc, kc)],
+                                     grid.shape),
+                wire_path_edge_masks([(ic, jc, kc + 1),
+                                      (ic, jc, kc + n_arm + 1)], grid.shape),
+            )
+        ),
+        name="halfwave_dipole",
+    )
 
     pulse = GaussianPulse(f0=f0, bandwidth=0.6)
     src = make_source(grid, center, "ez", pulse, n_steps)
@@ -225,7 +251,7 @@ def _run_halfwave_ntff(f0=3e9, freq_max=5e9, n_arm=7, n_steps=800,
     )
 
     result = run(grid, materials, n_steps, boundary="cpml",
-                 sources=[src], ntff=ntff, pec_mask=pec_mask)
+                 sources=[src], ntff=ntff, pec_wires=[wire])
 
     theta = np.linspace(0.01, np.pi - 0.01, 73)
     phi = np.linspace(0.0, 2 * np.pi, 24, endpoint=False)

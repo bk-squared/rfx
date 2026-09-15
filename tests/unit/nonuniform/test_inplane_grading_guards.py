@@ -13,6 +13,9 @@ import numpy as np
 import pytest
 
 from rfx import Box, Simulation
+from tests.unit._wall_planes_m import wall_planes_m
+
+
 
 
 def _profile_with_jump(n_total=40, d=250e-6):
@@ -62,9 +65,33 @@ def test_under_resolution_uses_the_local_cell_not_the_global_minimum():
     sim = Simulation(freq_max=20e9, domain=(L, L, L), dx=d,
                      boundary="cpml", cpml_layers=6,
                      dx_profile=prof, dy_profile=prof)
-    # a PEC volume 3 coarse cells wide, sitting inside the coarse band
-    sim.add(Box((3.2e-3, 3.2e-3, 3.2e-3), (4.7e-3, 4.7e-3, 4.7e-3)),
-            material="pec")
+    # A PEC volume 3 coarse cells wide, STRICTLY inside the coarse band.
+    # #931: drawn ON the coarse node planes (3.5 -> 5.0 mm), so the drawn
+    # extent IS the realized extent — walls at 3.5/4.0/4.5/5.0 mm. The old
+    # corners (3.2 -> 4.7 mm) sat mid-cell and left the realized body's
+    # position dependent on where the box fell between two cell centres.
+    #
+    # The lo face is one coarse cell INSIDE the band on purpose. Drawn at
+    # 3.0 mm — the band's own first node — ``_local_cell`` scores the body
+    # against the 250 um cell on the fine side of that boundary instead of
+    # the 500 um cell the body sits in, so the advisory goes quiet and this
+    # test reds for a reason that has nothing to do with #931. Measured:
+    # 3.0 -> 4.5 mm gives 0 under-resolution advisories, 3.5 -> 5.0 mm gives
+    # 2 (x and y), same body, same 3 coarse cells. That tie is the #743
+    # failure mode reappearing at a band edge and belongs to preflight's
+    # owner; it is recorded in docs/design_notes/931_migration/, not worked
+    # around by moving the assertion.
+    lo, hi = 3.5e-3, 5.0e-3
+    sim.add(Box((lo,) * 3, (hi,) * 3), material="pec")
+    # Build-time (no solve): what preflight is about to score is what the
+    # lattice realizes — walls at BOTH drawn planes on every axis (§1.2).
+    for axis in range(3):
+        rz, pos = wall_planes_m(sim, axis, nonuniform=True)
+        assert not rz.sheets, "this body is a VOLUME"
+        assert abs(min(pos) - lo) < 1e-9 and abs(max(pos) - hi) < 1e-9, (
+            f"axis {'xyz'[axis]}: realized walls span "
+            f"[{min(pos)*1e3:.4f}, {max(pos)*1e3:.4f}] mm, drawn "
+            f"[{lo*1e3:.1f}, {hi*1e3:.1f}] mm")
     msgs = [str(a) for a in sim.preflight()]
     under = [m for m in msgs if "under-resolved" in m or "under-resolution" in m]
     assert under, (

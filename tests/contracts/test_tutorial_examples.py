@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import re
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -17,13 +18,31 @@ def _run_tutorial(name: str) -> str:
     path = TUTORIALS_DIR / name
     assert path.exists(), f"missing tutorial: {path}"
 
+    # PYTHONPATH is not optional here.  Running a script BY PATH puts the
+    # SCRIPT'S directory on sys.path, not ``cwd``, so ``import rfx`` in the
+    # child resolves to whatever ``rfx`` is INSTALLED -- on this pod a path
+    # install pointing at a different checkout.  Without this the test runs
+    # the tutorial source from THIS tree against SOMEONE ELSE'S rfx, and
+    # reports the result as if it were this checkout's.
+    #
+    # It stayed invisible until a tutorial used a symbol that exists only
+    # here: ports_and_sparams_101 imports ``realized_pec_edge_masks`` (#931)
+    # and the child raised ImportError against the installed copy.  Every
+    # earlier green in this file was measured against the installed rfx.
+    env = dict(os.environ)
+    env["PYTHONPATH"] = (
+        str(REPO_ROOT) + os.pathsep + env["PYTHONPATH"]
+        if env.get("PYTHONPATH") else str(REPO_ROOT)
+    )
+
     completed = subprocess.run(
         [sys.executable, str(path)],
         cwd=REPO_ROOT,
+        env=env,
         capture_output=True,
         text=True,
         check=True,
-        timeout=60,
+        timeout=180,
     )
     return completed.stdout
 
@@ -69,8 +88,27 @@ def test_ports_and_sparams_101_tutorial_runs():
     """Every port family preflights and the live RLC load changes S11."""
     output = _run_tutorial("ports_and_sparams_101.py")
 
+    # Three empty general reports: the two generic-port models and the
+    # waveguide.  The microstrip's general report is NOT empty since the
+    # lattice ownership contract (#931) made its ground and trace SHEETS —
+    # preflight now COLLECTS them and says where they landed, which is the
+    # line asserted below.  This pin has now been wrong twice in one day, both
+    # times by asserting a preflight line that a later commit made conditional:
+    # first the collector warning (removed when the collectors were threaded),
+    # then the sheet-plane line (made conditional on an OFFSET, so a board whose
+    # sheets land exactly where they were declared prints nothing).  The stable
+    # statement is the second kind: this board is clean AND its realized planes
+    # are what it declared, which the tutorial prints itself and which the
+    # assertion further down pins.  Measured 2026-09-08: four clean reports.
     assert output.count("[PREFLIGHT] All checks passed") >= 4
     assert "Microstrip port setup ready: True" in output
+    # The declared foils must BE the realized wall planes, and the gap between
+    # them the height the MSL ports were told.  build_microstrip_ports() raises
+    # if not; this pins the measured line so a silent plane move is visible.
+    assert (
+        "Microstrip realized conductor planes along z: [8, 12] "
+        "(ground 1.25 mm, trace 2.25 mm, strip-to-ground 1.00 mm"
+    ) in output
     assert "Waveguide port setup ready: True" in output
     # The waveguide setup audits are part of what this tutorial teaches, and
     # this small model draws both of them (2.4 far-boundary round trips at the

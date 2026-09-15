@@ -566,6 +566,49 @@ def _build_waveguide_wr90(quick: bool) -> CaseResult:
     )
 
 
+def _assert_realized_planes(sim, planes, thickness, *, nonuniform):
+    """Build-time check (no solve): realized wall planes == declared foils.
+
+    Read from the contract's own realization — ``realized_pec_edge_masks``
+    then ``realized_wall_planes`` (#931 §1.7) — over the arrays the assembly
+    hands the stepper, so this cannot drift from what the solve applies.
+    """
+    import numpy as _np
+
+    from rfx import realized_pec_edge_masks, realized_wall_planes
+    from rfx.geometry.rasterize_grid import (
+        coords_from_nonuniform_grid,
+        coords_from_uniform_grid,
+    )
+
+    sheets: list = []
+    if nonuniform:
+        grid = sim._build_nonuniform_grid()
+        _m, _d, _l, pec_cells = sim._assemble_materials_nu(
+            grid, pec_sheets=sheets)
+        z_nodes = _np.asarray(coords_from_nonuniform_grid(grid).z, dtype=float)
+    else:
+        grid = sim._build_grid()
+        _m, _d, _l, pec_cells, _a, _b, _c = sim._assemble_materials(
+            grid, pec_sheets=sheets)
+        z_nodes = _np.asarray(coords_from_uniform_grid(grid).z, dtype=float)
+    walls = realized_wall_planes(
+        realized_pec_edge_masks(pec_cells, sheets=sheets,
+                                periodic=sim._periodic_flags()), 2)
+    want = sorted({int(_np.argmin(_np.abs(z_nodes - z))) for z in planes})
+    if walls != want:
+        raise RuntimeError(
+            f"realized z wall planes {walls} != declared {want} "
+            f"({[round(float(z_nodes[k]) * 1e3, 4) for k in walls]} mm vs "
+            f"{[round(z * 1e3, 4) for z in planes]} mm)")
+    gap = float(z_nodes[want[-1]] - z_nodes[want[0]])
+    if abs(gap - thickness) > 1e-9 * max(thickness, 1e-9):
+        raise RuntimeError(
+            f"realized cavity {gap * 1e3:.4f} mm != declared "
+            f"{thickness * 1e3:.4f} mm")
+    return walls, z_nodes
+
+
 def _build_patch_antenna(quick: bool) -> CaseResult:
     """Generate diagnostic files for a probe-fed 2.4 GHz patch model.
 
@@ -610,22 +653,45 @@ def _build_patch_antenna(quick: bool) -> CaseResult:
     feed_x = patch_x_lo + probe_inset
     feed_y = dom_y / 2
 
-    z_gnd_lo = air_below - dz_sub
-    z_gnd_hi = air_below
-    z_sub_lo = air_below
-    z_sub_hi = air_below + h_sub
-    z_patch_lo = z_sub_hi
-    z_patch_hi = z_sub_hi + dz_sub
-
+    # The ground and the patch are copper FOIL: under the lattice ownership
+    # contract (#931 §1.3) each is a SHEET on ONE node plane — the substrate's
+    # own two faces — owning no cell. The fine z band therefore reserves cells
+    # for the SUBSTRATE only. It used to reserve one extra fine cell below the
+    # board for the ground, because the pre-#931 rule put a wall only on a
+    # masked cell's lower face; that reserved cell then sat inside the realized
+    # cavity carrying vacuum, and the model solved a 1.75 mm board against the
+    # declared 1.5 mm.
+    #
+    # A sheet lands on the node plane nearest its declared plane, so the
+    # board's faces have to BE node planes. smooth_grading inserts transition
+    # cells and moves the fine band, so the stack coordinates are read back
+    # from the BUILT mesh (the trap examples/tutorials/nonuniform_patch_demo.py
+    # teaches), with a buffer of fine cells on each side so no transition cell
+    # lands on the board.
+    n_buf = 2
     raw_dz = np.concatenate(
         [
             np.full(n_below, dx),
-            np.full(1, dz_sub),
-            np.full(n_sub, dz_sub),
+            np.full(n_buf + n_sub + n_buf, dz_sub),
             np.full(n_above, dx),
         ]
     )
     dz_profile = smooth_grading(raw_dz, max_ratio=1.3)
+    z_edges = np.concatenate([[0.0], np.cumsum(dz_profile)])
+    fine_i = np.flatnonzero(np.isclose(dz_profile, dz_sub, rtol=1e-6))
+    if len(fine_i) < n_sub + 2 * n_buf:
+        raise RuntimeError(
+            f"graded mesh lost the fine band: expected >= "
+            f"{n_sub + 2 * n_buf} fine cells, found {len(fine_i)}")
+    f0 = int(fine_i[0]) + n_buf
+    z_sub_lo = float(z_edges[f0])
+    z_sub_hi = float(z_edges[f0 + n_sub])
+    if abs((z_sub_hi - z_sub_lo) - h_sub) > 1e-12:
+        raise RuntimeError(
+            f"fine band spans {(z_sub_hi - z_sub_lo) * 1e3:.4f} mm, not the "
+            f"declared {h_sub * 1e3:.4f} mm")
+    z_gnd = z_sub_lo
+    z_patch = z_sub_hi
 
     sim = Simulation(
         freq_max=4e9,
@@ -636,11 +702,10 @@ def _build_patch_antenna(quick: bool) -> CaseResult:
         cpml_layers=n_cpml,
     )
     sim.add_material("fr4", eps_r=eps_r, sigma=0.0)
-    sim.add(Box((gx_lo, gy_lo, z_gnd_lo), (gx_hi, gy_hi, z_gnd_hi)), material="pec")
+    sim.add_thin_conductor(Box((gx_lo, gy_lo, z_gnd), (gx_hi, gy_hi, z_gnd)))
     sim.add(Box((gx_lo, gy_lo, z_sub_lo), (gx_hi, gy_hi, z_sub_hi)), material="fr4")
-    sim.add(
-        Box((patch_x_lo, patch_y_lo, z_patch_lo), (patch_x_hi, patch_y_hi, z_patch_hi)),
-        material="pec",
+    sim.add_thin_conductor(
+        Box((patch_x_lo, patch_y_lo, z_patch), (patch_x_hi, patch_y_hi, z_patch))
     )
     port_z0 = z_sub_lo + dz_sub * 1.5
     port_extent = z_sub_hi - port_z0
@@ -651,6 +716,8 @@ def _build_patch_antenna(quick: bool) -> CaseResult:
         extent=port_extent,
         waveform=GaussianPulse(f0=f_design, bandwidth=0.8),
     )
+
+    _assert_realized_planes(sim, (z_gnd, z_patch), h_sub, nonuniform=True)
 
     n_freqs = 31 if quick else 101
     s_param_n_steps = 2000 if quick else 12000
@@ -683,24 +750,29 @@ def _build_patch_antenna(quick: bool) -> CaseResult:
         cpml_layers=n_cpml,
     )
     sim_anim.add_material("fr4", eps_r=eps_r, sigma=0.0)
-    sim_anim.add(
-        Box((gx_lo, gy_lo, z0_gnd - dx), (gx_hi, gy_hi, z0_gnd)), material="pec"
+    # Same declaration as the port model: foil is a sheet. The ground used to
+    # be drawn one cell BELOW z0_gnd so the old single-wall rule would leave a
+    # wall AT z0_gnd — the compensation the contract removes. A sheet is
+    # declared where the metal is, and lands there.
+    sim_anim.add_thin_conductor(
+        Box((gx_lo, gy_lo, z0_gnd), (gx_hi, gy_hi, z0_gnd))
     )
     sim_anim.add(
         Box((gx_lo, gy_lo, z0_gnd), (gx_hi, gy_hi, z0_gnd + dx)), material="fr4"
     )
-    sim_anim.add(
+    sim_anim.add_thin_conductor(
         Box(
             (patch_x_lo, patch_y_lo, z0_gnd + dx),
-            (patch_x_hi, patch_y_hi, z0_gnd + 2 * dx),
-        ),
-        material="pec",
+            (patch_x_hi, patch_y_hi, z0_gnd + dx),
+        )
     )
     sim_anim.add_source(
         (feed_x, feed_y, z0_gnd + 0.5 * dx),
         "ez",
         waveform=GaussianPulse(f0=f_design, bandwidth=0.8),
     )
+    _assert_realized_planes(sim_anim, (z0_gnd, z0_gnd + dx), dx,
+                            nonuniform=False)
 
     return CaseResult(
         freqs_hz=f_hz,

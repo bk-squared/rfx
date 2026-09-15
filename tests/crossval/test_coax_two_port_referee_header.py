@@ -579,6 +579,13 @@ def test_stage_b_layout_is_self_consistent_and_openems_free():
     # The TARGET reference planes (not the bare conductor extent, which
     # legitimately reaches the domain edges, into the PML) must stay
     # safely inside the clear, non-PML region.
+    #
+    # #931 SCOPE, recorded so this is not re-investigated: cv21 is an
+    # openEMS-ONLY referee. It imports no rfx module and reads no rfx fixture
+    # (proved by test_issue812_phase_identity_evidence.py::
+    # test_cv21_registers_no_e4_because_no_leg_supports_one), so the lattice
+    # ownership contract does not reach it. The words "conductor extent" and
+    # "wall" below describe the openEMS geometry, not an rfx realization.
     assert layout["z_feed_bot_mm"] > module.B_PML_DEPTH_MM
     assert layout["z_feed_top_mm"] < layout["lz_mm"] - module.B_PML_DEPTH_MM
     assert layout["z_port1_start_mm"] < layout["z_split_mm"] < layout["z_port2_stop_mm"]

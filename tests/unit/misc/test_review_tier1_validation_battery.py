@@ -290,6 +290,16 @@ def test_risc2_np_interp_complex_part_behavior():
 # XPASS. The falsifier test below pins the corrected convention: the
 # known-good explicit Yee scheme on the SAME 12^3 node cavity lands
 # 0.21% from the corrected analytic and 8.9% from the biased one.
+#
+# NOT touched by the lattice ownership contract (#931 §1.8): these walls are
+# DOMAIN-boundary PEC (a BoundarySpec face, applied by _apply_pec_3d), not a
+# conductor body, and the contract fences domain-face PEC out explicitly —
+# E_tan = 0 on the face plane at index 0 / N, unchanged. The (N-1)*dx here is
+# therefore NOT the same species as the oracle compensations #931 deletes
+# (cv19's (L_c+1)*dx, cv15's ground drawn one cell low), which existed because
+# a conductor BODY never realized its far face. Do not "fix" this one by
+# analogy: L_eff = (N-1)*dx is what _apply_pec_3d actually realizes on a
+# 12-node cavity, and the falsifier below is what proves it.
 
 def test_optc1_adi_3d_cavity_eigenfrequency():
     L = 0.06           # nominal 60 mm cube

@@ -41,19 +41,72 @@ OUTPUT_PATH = (
     _HERE.parent / "_04_fresnel_results" / "fringe_gate_geometry.json"
 )
 
+def _load_slab_family():
+    spec = importlib.util.spec_from_file_location(
+        "_cv04_evidence_slab_family", _HERE / "slab_family.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+slab_family = _load_slab_family()
+
 # --- the committed cv04 configuration --------------------------------------
-# Every value here is read off validation/crossval/04_multilayer_fresnel.py at
-# the line cited; DT is Grid(...).dt for that configuration and BAND is the
-# contiguous band the committed spectral mask selects (a MEASURED property of
-# the committed run, not a gate threshold -- see "band_provenance" in the JSON).
-EPS_R = 4.0             # 04_multilayer_fresnel.py:63
-D_M = 10.0e-3           # 04_multilayer_fresnel.py:65
-N_INDEX = 2.0           # 04_multilayer_fresnel.py:64  (sqrt(4.0))
-DX_M = 1.0e-3           # 04_multilayer_fresnel.py:67
-C0 = 2.998e8            # 04_multilayer_fresnel.py:43
-DT_S = 2.335067793382187e-12   # Grid(freq_max=20e9, domain=(0.6,0.004,1e-3),
-#                                dx=1e-3, cpml_layers=10, mode="2d_tmz").dt
-NFFT = 8192             # 2**ceil(log2(719)) * 8   (04_multilayer_fresnel.py:290)
+# READ from the shared rig declaration (#928), not restated: this file used to
+# be a THIRD home for eps / d / dx / c (after the script and cv22's rig block),
+# each pinned to a line number in the script, and a line-number pin is what
+# broke when the script started reading the same declaration.
+# DT_S and BAND are MEASURED properties of the committed run (Grid(...).dt for
+# this configuration; the contiguous band the committed spectral mask selects)
+# and are keyed to the committed artifacts, not to a source line.
+EPS_R = slab_family.EPS_SLAB
+D_M = slab_family.D_SLAB_M
+N_INDEX = math.sqrt(EPS_R)
+DX_M = slab_family.DX_M
+C0 = slab_family.C0_SCRIPT
+
+
+def _committed_run_length() -> tuple[int, float]:
+    """(n_steps, dt_s) of cv04's OWN committed run, READ from
+    lattice_witness.json rather than hand-copied.
+
+    Found stale (issue: cv04 settling-extension fix, 2026-09-10): this used
+    to be ``N_STEPS = 719`` / ``DT_S = 2.335067793382187e-12`` as literals,
+    each commented as citing this exact artifact -- a hand-synced copy, not
+    a read. n_steps changes with cv04's own settling-extension loop (719 on
+    the pre-fix legacy record; the fix grows it until the tail clears the
+    family's -40 dB bar), so a literal here goes stale exactly when the
+    thing it is supposed to track changes. dt_s does NOT depend on
+    n_steps/nx_interior (the Courant-limited per-cell timestep only depends
+    on dx), which is why the old hardcoded value happened to still be
+    correct after the settling fix -- a coincidence of this one transition,
+    not a property of hardcoding it, and the failure mode (a stale number
+    silently doing the wrong thing) does not announce itself when the
+    correct-by-luck case is the one that gets tested.
+    """
+    path = _HERE.parent / "_04_fresnel_results" / "lattice_witness.json"
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"{path} is missing -- run 04_multilayer_fresnel.py --lattice-witness "
+            "first (this evidence emitter reads that artifact's own n_steps/dt_s "
+            "rather than a hand-copied literal, issue: cv04 settling-extension fix)"
+        )
+    with open(path, encoding="utf-8") as fh:
+        doc = json.load(fh)
+    rung = doc["rungs"]["slab_eps4"]
+    return int(rung["n_steps"]), float(rung["dt_s"])
+
+
+N_STEPS, DT_S = _committed_run_length()
+
+
+def nfft_for(n_steps: int) -> int:
+    """cv04's FFT-length rule, as a function instead of a pinned 8192."""
+    return int(2 ** math.ceil(math.log2(int(n_steps))) * slab_family.NFFT_OVERSAMPLE)
+
+
+NFFT = nfft_for(N_STEPS)       # 8192
 DF_BIN_HZ = 1.0 / (NFFT * DT_S)
 BAND_LO_HZ = 3.0321e9
 BAND_HI_HZ = 11.8666e9

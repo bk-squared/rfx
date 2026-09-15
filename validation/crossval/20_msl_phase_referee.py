@@ -178,6 +178,14 @@ boards, so its size carried no information about agreement. No gate is
 loosened here and none is moved -- run-2 is recorded alongside run-1,
 not in place of it.
 
+CURRENT FIXTURE REPLAY (#931; not a new matched-board openEMS solve):
+``validation/crossval/_issue812_phase_identity/regate_evidence.json::
+cv20.run2_openems_with_current_rfx_fixture`` combines the historical run-2
+openEMS fields with the regenerated rfx fixture. It reports raw cross-solver
+phase difference 0.5308 deg and analytic-beta errors 1.4122 % rfx / 0.3068 %
+openEMS; all three gates pass. These are replay measurements, not a completed
+post-#931 matched-board referee run: the openEMS fields still belong to run-2.
+
 ============================================================================
 DO-NOT-REPEAT (R1/R2 class -- read before choosing a mesh size)
 ============================================================================
@@ -201,6 +209,82 @@ reference.py``) was run at dx=50um for the SAME reason -- neither side
 reuses the committed dx=80um fixture.
 
 ============================================================================
+LATTICE OWNERSHIP CONTRACT (#931, 2026-09-07) -- the rfx trace is a VOLUME,
+and this file's central premise is true for the first time
+============================================================================
+This script states, twice, that "the pec feed box is one Yee cell (dx)
+thick ... and the rfx fixture's own PEC trace spans exactly one cell too",
+and builds a 0.0121 tolerance term (68% of B_BETA_ANALYTIC_TOL_FRAC) on
+that equality. Under the pre-#931 realization the claim was FALSE:
+openEMS built a genuine one-cell slab while rfx realized a single wall
+plane with Ez live through the metal. The contract makes the question
+decidable, and the answer here is VOLUME -- the 1-cell PEC Box in
+``scripts/diagnostics/build_msl_thru_phase_dx50um_reference.py`` stays as
+drawn and now realizes what openEMS builds.
+
+MEASURED at build time on the producer's own board (grid + material
+assembly, no solve; declared h_sub = 254um, W_TRACE = 600um, dx = 50um;
+the dielectric realizes cells 0..5 = 0..300um and is NOT moved by the
+contract):
+
+  volume (1-cell Box, as drawn)     walls at z = 250 AND 300um; realized
+                                    trace width 600um on y in [900, 1500]
+                                    = the drawn width exactly
+  sheet  (zero-thickness at H_SUB)  ONE wall at z = 250um (254um snaps to
+                                    the nearest node); realized width
+                                    550um on y in [950, 1500], -8.3%
+
+Both arms put the CONDUCTING PLANE at the same place, z = 250um, so the
+sheet buys nothing on the ground-to-trace height. What separates them:
+
+  * the volume realizes the drawn width exactly (600um); the sheet loses
+    a node row on each side because the trace's y faces (908/1508um) are
+    off-lattice, and a sheet footprint is sampled closed on NODES while a
+    volume is sampled at cell CENTRES, which rounds each face to the
+    nearest plane;
+  * the volume occupies the top substrate cell, leaving air above the
+    strip -- a microstrip. The sheet leaves 50um of realized ro4350b ON
+    TOP of the strip (the dielectric realizes 300um, the sheet sits at
+    250um), which is a buried strip, not the declared board;
+  * only the volume matches what openEMS Stage B builds
+    (``pec.AddBox([..., h_sub], [..., h_sub + dx])``), which is the
+    premise the ``conductor_thickness_one_cell`` budget term rests on.
+
+The design note's own remedy for the off-lattice interface (redraw with
+dx = h_sub/n) was considered and rejected for a reason that has not
+changed -- see MESH CONVENTION below: dx = 50.8um destroys the on-lattice
+ref_plane_shift the entire reference-plane comparison depends on. So the
+board stays at dx = 50um and the trace stays a volume.
+
+What moves, and what does not:
+
+  * ``h_sub_realized_m`` (300um) and ``n_z_sub_realized`` (6) are
+    UNCHANGED -- they are dielectric, and dielectric sampling is untouched
+    (section 1.8). ``w_trace_realized_m`` is still 600um.
+  * ``trace_y_lo/hi_realized_m`` MOVE one cell, 950/1550um -> 900/1500um.
+    Two reasons at once: the realization changed (node half-open -> centre
+    sampled), and the committed values came from ``sim.fidelity_report()``,
+    whose conductor rows are computed with the shape's NODE sampler while
+    the solver realizes PEC volumes from cell CENTRES -- a one-cell
+    disagreement, reported upstream and NOT worked around here. The
+    producer now reads the trace's realized bounds from the shared
+    realized-edge owner instead (section 1.7, one source every consumer).
+  * Because Stage B places its openEMS trace from those bounds, STAGE B
+    MUST BE RE-RUN: its trace moves 50um in y. The committed openEMS
+    artifacts (_20_msl_phase_referee_logs/*.json) are history from the
+    pre-#931 board and are superseded, not edited.
+  * rfx's OWN S11/S21/beta move: the realized trace gains its wall at
+    250um and its width gains a cell. The committed rfx fixture must be
+    RE-SOLVED with its own producer -- never metadata-patched for this
+    change (#723 REQUIRED 11's patch path covers metadata; this is
+    physics, and the producer now refuses the patch path on a pre-#931
+    fixture).
+  * ``t_m`` is no longer the literal ``B_DX_M`` at the call site: it is
+    derived from the fixture's realized wall planes
+    (``(n_planes - 1) * dx``), so the value cannot silently disagree with
+    the realization it claims to describe, and ``_build_stage_b_thru``
+    asserts openEMS's own metal thickness against it.
+
 MESH CONVENTION (issue #723, 2026-08-27) -- keep dx=50um, build on rfx's
 REALIZED board, not its declared one
 ============================================================================
@@ -591,9 +675,9 @@ wrong, in three parts:
       power; what it did not say is that its resolving power for a
       COHERENT phase-velocity error is ZERO, at any tolerance -- a
       factor-2 error, beta and angle(S21) moved together, was MEASURED
-      by the #812 audit to read 0.2414 deg (regate_evidence.json::
+      by the regenerated #812 audit to read 0.0647 deg (regate_evidence.json::
       cv20.blindness.audit_construction_e1_max_phase_dev_deg) against the 3.0 deg gate,
-      12x inside. The group-delay leg is blind for the same reason.
+      46x inside. The group-delay leg is blind for the same reason.
 
   (b) "Gating the RAW cross-solver phase difference would conflate that
       physical dispersion difference with the convention-resolution
@@ -622,8 +706,11 @@ the artifact rather than inferred from the case's registration:
       test reads a planted single-port referral drop at 15.88-22.21 deg
       against this same 3 deg gate. Relabelled, not weakened.
   E2  each solver's measured beta vs the Hammerstad-Jensen quasi-static
-      closed form of the REALIZED board, at 2.0% (_analytic_beta_witness).
-      Attributes: a failure names the side.
+      closed form of the board THAT solver built, at 2.0%
+      (_analytic_beta_witness). #931: those are two different boards under
+      the strip -- 250um of dielectric for rfx (a one-cell PEC volume
+      inlaid in the substrate's top cell), 300um for openEMS (the same
+      strip proud on top). Attributes: a failure names the side.
   E4  the RAW cross-solver angle(S21) difference, at 3.0 deg
       (_cross_solver_phase_witness). Does NOT attribute.
 
@@ -1212,8 +1299,8 @@ B_GD_TOL_PS = 200.0
 # propagation error -- the line's phase velocity is wrong, so that
 # solver's measured beta AND its angle(S21) move together -- cancels.
 # The issue #812 audit measured a FACTOR-2 phase-velocity error reading
-# 0.2414 deg (regate_evidence.json::cv20.blindness.audit_construction_
-# e1_max_phase_dev_deg) against this file's own 3.0 deg gate: 12x INSIDE. The
+# 0.0647 deg on the regenerated fixture (regate_evidence.json::cv20.blindness.audit_construction_
+# e1_max_phase_dev_deg) against this file's own 3.0 deg gate: 46x INSIDE. The
 # group-delay leg is blind for the same reason (it differentiates the
 # same identity), and so is
 # ``residual_phase_diff_after_dispersion_deg``, for a THIRD instance of
@@ -1226,9 +1313,12 @@ B_GD_TOL_PS = 200.0
 #
 # (1) ANALYTIC (E2) -- the Hammerstad-Jensen quasi-static eps_eff of the
 #     REALIZED board (h_sub/w_trace as rasterized, sourced from the rfx
-#     fixture's own meta, NOT the declared 254um -- issue #723). Closed
+#     fixture's own meta, NOT the declared 254um -- issue #723; and #931:
+#     h is the DIELECTRIC height under the strip, which for rfx's one-cell
+#     PEC volume trace is 250um, not the substrate's own 300um). Closed
 #     form of declared geometry only; contains no run quantity. Gated
-#     against BOTH solvers' measured beta, so a failure ATTRIBUTES.
+#     against BOTH solvers' measured beta -- each against its own board --
+#     so a failure ATTRIBUTES.
 #
 #     B_BETA_ANALYTIC_TOL_FRAC = 0.020 is a linear worst-case sum of the
 #     four terms by which the zero-thickness quasi-static form is known
@@ -1239,6 +1329,23 @@ B_GD_TOL_PS = 200.0
 #       - finite conductor thickness t = dx = 50um, absent from the
 #         zero-thickness form; Bahl-Garg correction
 #         -(er-1)(t/h)/(4.6*sqrt(w/h)) = -0.0681 = -2.41% -> -1.21% beta
+#
+#         RE-DECLARED under the lattice ownership contract (#931,
+#         2026-09-07), BEFORE the fixture was re-solved. The VALUE is
+#         unchanged (0.0121) because t is still exactly one cell; the
+#         DERIVATION is what changed, and it changed from false to true.
+#         This term was written on the premise that both solvers build a
+#         one-cell-thick strip. Under the pre-#931 rule rfx did not: a
+#         1-cell PEC Box realized ONE wall plane with Ez live through the
+#         metal -- zero thickness, not one cell -- so the term bounded a
+#         difference rfx did not have. Under the contract the same drawn
+#         Box realizes walls at both faces, so t = dx is now what rfx
+#         actually builds, and t_m is read from the fixture's realized
+#         wall planes rather than spelled as B_DX_M. Nothing is re-fitted;
+#         had the contract made rfx's realized thickness ZERO (the sheet
+#         arm) this term would have been DELETED, not re-tuned -- see the
+#         "LATTICE OWNERSHIP CONTRACT" section of the module docstring for
+#         why the sheet arm was rejected on this board.
 #       - dispersion neglected by the quasi-static form, at the band top
 #         4.5 GHz; Getsinger f_p = Z0/(2*mu0*h) = 70.4 GHz,
 #         G = 0.6+0.009*Z0 = 1.078, +0.13% in eps_eff    -> +0.06% beta
@@ -1286,16 +1393,49 @@ EXTERNAL_PHASE_REFERENCE_PREDECLARATION: dict = {
     "predeclared_on": "2026-09-01",
     "design_note": "docs/design_notes/issue812_phase_identity_predeclaration.md",
     "analytic_reference": (
-        "Hammerstad-Jensen quasi-static eps_eff of the REALIZED board "
-        "(h_sub_realized_m, w_trace_realized_m from the rfx fixture meta; eps_r=B_EPS_R), "
+        "Hammerstad-Jensen quasi-static eps_eff of the board EACH solver "
+        "builds (w_trace_realized_m from the rfx fixture meta, eps_r=B_EPS_R; "
+        "h = h_dielectric_under_strip_realized_m for the rfx leg, 250um -- the "
+        "trace is a one-cell PEC volume inlaid in the substrate's top cell -- "
+        "and h_sub_realized_m for the openEMS leg, 300um, which is the board "
+        "_build_stage_b_thru puts its strip proud on), "
         "beta = 2*pi*f*sqrt(eps_eff)/c0"
     ),
     "analytic_tol_frac": B_BETA_ANALYTIC_TOL_FRAC,
+    # Re-derived at the rfx leg's own board (h = 250um), which is the LARGER
+    # of the two sums: at the openEMS leg's 300um the same three terms give
+    # 0.0050 + 0.0121 + 0.0006 = 0.0177. The declared tolerance covers both
+    # and is NOT moved.
     "analytic_tol_budget_frac": {
         "hammerstad_jensen_model": 0.0050,
-        "conductor_thickness_one_cell": 0.0121,
-        "quasi_static_dispersion_at_band_top": 0.0006,
-        "sum": 0.0177,
+        "conductor_thickness_one_cell": 0.0130,
+        "quasi_static_dispersion_at_band_top": 0.0005,
+        "sum": 0.0185,
+    },
+    # #931: the conductor_thickness_one_cell term's derivation was
+    # re-declared on 2026-09-07, before the post-contract fixture was
+    # re-solved. Its VALUE then moved on 2026-09-07 with the comparator fix
+    # that feeds each leg its own board: t/h and w/h are both evaluated at
+    # h = 250um now, so the Bahl-Garg term goes 0.0121 -> 0.0130 and the
+    # Getsinger dispersion term 0.0006 -> 0.0005. Both moves, and the new
+    # sum 0.0185 < 0.0200, were pre-computed in
+    # docs/design_notes/931_migration/XE-windows-2b.md section 2 BEFORE the
+    # change; the tolerance itself is untouched. The cross_solver budget
+    # below is untouched: its three terms are h_sub, w_trace and
+    # reference-plane uncertainty, none of which the contract moves on this
+    # board (measured: h_sub_realized 300um, w_trace_realized 600um and
+    # n_z_sub_realized 6 are all unchanged).
+    "lattice_ownership_contract": {
+        "issue": 931,
+        "rfx_trace_realization": "volume (1-cell PEC Box, walls at both faces)",
+        "redeclared_on": "2026-09-07",
+        "terms_changed": [
+            "conductor_thickness_one_cell",
+            "quasi_static_dispersion_at_band_top",
+            "sum",
+        ],
+        "derivations_repaired": ["conductor_thickness_one_cell"],
+        "analytic_reference_h_m": {"rfx": 250e-6, "openems": 300e-6},
     },
     "cross_solver_reference": "the committed rfx fixture's own de-embedded angle(S21)",
     "cross_solver_tol_deg": B_CROSS_SOLVER_PHASE_TOL_DEG,
@@ -1489,11 +1629,15 @@ def _bahl_garg_thickness_eps_eff_dev_frac(eps_r: float, w_m: float, h_m: float,
 
     d_eps_eff = -(eps_r - 1)*(t/h)/(4.6*sqrt(w/h)) < 0 for any t > 0: a
     finite-thickness strip LOWERS eps_eff. Computed from (eps_r, w, h, t) at
-    call time; NOT a pinned fraction. ``t_m`` here is the realized metal
-    thickness Stage B actually builds -- the pec feed box is one Yee cell (dx)
-    thick (see ``_build_stage_b_thru``'s ``h_sub + dx`` box), and the rfx
-    fixture's own PEC trace spans exactly one cell too -- a grid-derived
-    quantity, so it moves with the mesh, not a board-pinned constant.
+    call time; NOT a pinned fraction. ``t_m`` is the REALIZED metal
+    thickness, and since #931 it is derived from the realized wall planes
+    rather than asserted: ``(n_wall_planes - 1) * dx`` from the fixture's
+    own meta (``_stage_b_layout``'s ``t_metal_realized_m``). Stage B's pec
+    box spans ``h_sub .. h_sub + dx``, one cell, and the rfx trace is a
+    one-cell VOLUME that realizes walls at both faces, so the two agree by
+    construction. Before the lattice ownership contract the equality was
+    stated here as fact and was false -- rfx realized a single wall plane
+    with Ez live through the metal, i.e. no thickness at all.
 
     SCOPE (review2 P1-1): this term bounds how far BELOW the zero-thickness
     closed form an admissible line may sit. It is NOT used, here or anywhere
@@ -1522,7 +1666,13 @@ def _half_cell_rasterization_beta_dev_frac(eps_r: float, w_m: float, h_m: float,
     A staircased Yee realization does not pin the electrical h and w to the
     nominal dims to better than roughly half a cell: the effective substrate
     interface and the effective strip edge each sit somewhere inside their
-    cell. This evaluates the SAME closed form at h +- dx/2 and w +- dx/2,
+    cell. This is unchanged by #931 and is not the same quantity as the
+    declared-vs-realized offset the contract removes: the contract makes
+    the realized WALL PLANES equal the drawn faces (drawn is realized), and
+    this term is about where the ELECTRICAL interface sits between two
+    node planes, which no rasterization rule can pin. It stays reported,
+    never folded into ``hi``. This evaluates the SAME closed form at
+    h +- dx/2 and w +- dx/2,
     takes the worse side of each, and sums the two as magnitudes -- the same
     sum-of-magnitudes convention the file's committed cross-solver budget
     already uses for its +-1-cell h and w terms.
@@ -1852,8 +2002,10 @@ def _analytic_beta_witness(freqs_hz: np.ndarray, beta: np.ndarray, *,
         beta_analytic(f) = 2*pi*f*sqrt(eps_eff_HJ(w, h, eps_r))/c0
 
     with ``w``/``h`` the REALIZED board (as rasterized -- issue #723 --
-    not the declared 254um) and ``eps_eff_HJ`` the same Hammerstad
-    quasi-static form Stage A's notch oracle uses.
+    not the declared 254um; ``h`` is the DIELECTRIC height under the strip,
+    which #931 separates from the substrate's own realized height) and
+    ``eps_eff_HJ`` the same Hammerstad quasi-static form Stage A's notch
+    oracle uses.
 
     Applied to BOTH solvers' beta, so a failure ATTRIBUTES to a side --
     which the cross-solver witness deliberately cannot do.
@@ -2101,9 +2253,10 @@ def _self_consistency_witness(freqs_hz: np.ndarray, s21: np.ndarray, beta: np.nd
     are built from one field solve, so a COHERENT propagation error --
     the line's phase velocity is wrong, so that solver's measured beta
     AND its angle(S21) move together -- cancels. The issue #812 audit
-    measured a FACTOR-2 phase-velocity error reading 0.2414 deg
+    measured a FACTOR-2 phase-velocity error reading 0.0647 deg
+    on the regenerated fixture
     (regate_evidence.json::cv20.blindness.audit_construction_e1_max_phase_dev_deg) against
-    this file's own 3.0 deg gate: 12x INSIDE. The group-delay leg is
+    this file's own 3.0 deg gate: 46x INSIDE. The group-delay leg is
     blind for the same reason (it differentiates the same identity).
 
     The module docstring's own QUALIFIER already said this check "proves
@@ -2197,6 +2350,39 @@ def _assert_matches_rfx_fixture(fixture: dict) -> None:
         )
 
 
+def _h_dielectric_under_strip(meta: dict) -> float:
+    """Height of DIELECTRIC under the microstrip, from the fixture's own
+    realized wall planes -- the ``h`` a microstrip closed form takes.
+
+    Before #931 rfx realized the trace as a single zero-thickness wall, so
+    the substrate's realized height and the height under the strip were the
+    same number and one key served both. Under the ownership contract the
+    one-cell PEC Box realizes walls at BOTH faces (contract section 1.2),
+    so the strip is 50um of metal INLAID in the top substrate cell and the
+    dielectric beneath it is 250um, not 300um. Feeding the 300um to
+    Hammerstad-Jensen judged the fixture's beta against a board rfx did not
+    build: 2.1306% deviation against a 2.000% gate, where the same beta
+    against its own board reads 1.4122% (design note
+    docs/design_notes/931_migration/XE-windows-2b.md section 2, pre-declared
+    before this change). Comparator input, not a gate -- the gate is
+    untouched.
+    """
+    kind = str(meta.get("trace_realization_kind", "volume"))
+    h_sub = float(meta["h_sub_realized_m"])
+    planes_z = list(meta.get("trace_wall_planes_realized_z_m", []))
+    if kind == "sheet" or not planes_z:
+        return h_sub
+    h_diel = float(min(planes_z))
+    t_metal = (len(meta["trace_wall_planes_realized"]) - 1) * float(meta["dx_m"])
+    assert abs(h_diel - (h_sub - t_metal)) < 1e-12, (
+        f"fixture meta is self-inconsistent: the trace's lower realized wall "
+        f"plane is at {h_diel} m, but h_sub_realized_m - t_metal_realized_m "
+        f"is {h_sub - t_metal} m. A volume strip inlaid in the substrate's "
+        f"top cell must satisfy both (#931 section 1.2)."
+    )
+    return h_diel
+
+
 def _stage_b_layout(fixture: dict) -> dict:
     """Pure arithmetic (openEMS-free, testable without the solver): every
     Stage B position/ref_plane_shift, in metres. An AssertionError here is
@@ -2220,6 +2406,22 @@ def _stage_b_layout(fixture: dict) -> dict:
             f"fields only; the freqs/S11/S21/Z0/beta arrays are governed "
             f"by #723 REQUIRED 11 -- a metadata-only patch is the "
             f"preferred re-pin path over a full re-solve)."
+        )
+    # #931: the trace's realized WALL PLANES, read from
+    # rfx.boundaries.pec.realized_wall_planes by the producer. Stage B's
+    # own metal thickness is asserted against them below, so the two
+    # solvers cannot silently build different objects -- the exact
+    # equality this file's conductor_thickness_one_cell budget term
+    # assumes, and which was asserted only in prose before.
+    if "trace_wall_planes_realized" not in meta:
+        raise KeyError(
+            f"rfx fixture {RFX_FIXTURE_PATH!r} predates the lattice "
+            f"ownership contract (#931): meta carries no "
+            f"'trace_wall_planes_realized'. This is NOT a metadata patch "
+            f"-- the contract changed rfx's realized trace (the 1-cell PEC "
+            f"Box now realizes walls at BOTH faces), so the fixture must be "
+            f"RE-SOLVED: 'python scripts/diagnostics/build_msl_thru_phase_"
+            f"dx50um_reference.py --output {RFX_FIXTURE_PATH}'."
         )
     geom = fixture["reference_plane_geometry"]
     grid = geom["_grid"]
@@ -2267,6 +2469,20 @@ def _stage_b_layout(fixture: dict) -> dict:
         "trace_y_lo_realized_m": meta["trace_y_lo_realized_m"],
         "trace_y_hi_realized_m": meta["trace_y_hi_realized_m"],
         "n_z_sub_realized": meta["n_z_sub_realized"],
+        # #931: rfx's realized trace wall planes (node indices) and the
+        # metal thickness they imply.
+        "trace_wall_planes_realized": list(meta["trace_wall_planes_realized"]),
+        "trace_wall_planes_realized_z_m": list(
+            meta.get("trace_wall_planes_realized_z_m", [])),
+        "t_metal_realized_m": (
+            (len(meta["trace_wall_planes_realized"]) - 1) * float(meta["dx_m"])),
+        # #931: the height of DIELECTRIC under the strip, which is what a
+        # microstrip closed form takes as ``h`` -- NOT the substrate's own
+        # realized height once the strip is metal inlaid in its top cell.
+        # For a VOLUME trace the strip's lower wall plane IS the top of the
+        # dielectric beneath it; for a SHEET trace the strip has no
+        # thickness and the two coincide.
+        "h_dielectric_under_strip_realized_m": _h_dielectric_under_strip(meta),
     }
 
     # Config assertions (a regression here is a script bug, exit 3).
@@ -2637,7 +2853,21 @@ def _build_stage_b(ContinuousStructure, openEMS, MSLPort, layout: dict, *,
     # NOTHING beyond either port toward the PML (no through-PML
     # continuation of the conductor; see module docstring "Port topology"
     # for the parallel-impedance defect this fixes).
-    pec.AddBox([feed_x0, trace_y_lo, h_sub], [feed_x1, trace_y_hi, h_sub + dx], priority=10)
+    # #931: Stage B's metal thickness must EQUAL rfx's realized one, by
+    # assertion and not by prose. rfx's trace is a one-cell PEC VOLUME and
+    # realizes walls at both faces; t_metal_realized_m is (n_wall_planes -
+    # 1) * dx read from the fixture's own realized planes. Both solvers
+    # then build the same object, which is the premise the
+    # conductor_thickness_one_cell budget term rests on.
+    t_metal = layout["t_metal_realized_m"] / unit
+    assert abs(t_metal - dx) < 1e-9 * dx, (
+        f"Stage B builds {dx:g} (mesh units) of metal but rfx's realized "
+        f"trace is {t_metal:g}: wall planes "
+        f"{layout['trace_wall_planes_realized']} at "
+        f"{layout['trace_wall_planes_realized_z_m']} m. The two solvers "
+        f"are not building the same conductor (#931 section 1.2)."
+    )
+    pec.AddBox([feed_x0, trace_y_lo, h_sub], [feed_x1, trace_y_hi, h_sub + t_metal], priority=10)
 
     # m5 fix: MeasPlaneShift set EXPLICITLY to this fixture's own
     # ref_plane_shift target (2.5mm here, same "unit" as ref_plane_shift
@@ -2825,15 +3055,32 @@ def _run_stage_b(*, sim_root: str, threads: int, nrts: int, end_criteria: float,
     # reference is built from the same solve they judge, so a coherent
     # phase-velocity error cancels and they read ~0.24 deg for a FACTOR-2
     # error. These two do not have that property.
-    eps_eff_hj = _hammerstad_jensen_eps_eff(
+    # #931: EACH solver's beta is judged against the closed form of the
+    # board THAT solver built. They are not the same board under the strip.
+    # rfx realizes the trace as a one-cell PEC VOLUME inlaid in the top
+    # substrate cell, so 250um of dielectric carries its strip;
+    # _build_stage_b_thru puts openEMS's 50um strip PROUD on the full 300um.
+    # Sharing one eps_eff judged rfx's beta against openEMS's board and read
+    # 2.1306% against a 2.000% gate; the split reads 1.4122% for rfx and
+    # leaves the openEMS leg on the number it has always been judged at.
+    # The boards' disagreement is NOT hidden by the split -- it is what the
+    # E4 cross-solver phase witness below gates directly, and closing it
+    # (inlay openEMS's strip, then assert the two dielectric heights are
+    # equal) is a HELD decision that needs a Stage B re-run:
+    # docs/design_notes/931_migration/XE-windows-2b.md section 2, option (a).
+    eps_eff_hj_rfx = _hammerstad_jensen_eps_eff(
+        layout["w_trace_realized_m"],
+        layout["h_dielectric_under_strip_realized_m"], B_EPS_R)
+    eps_eff_hj_openems = _hammerstad_jensen_eps_eff(
         layout["w_trace_realized_m"], layout["h_sub_realized_m"], B_EPS_R)
+    eps_eff_hj = eps_eff_hj_openems     # kept for the reported fields below
     try:
         analytic_beta_openems = _analytic_beta_witness(
-            freqs_hz, beta_openems, eps_eff=eps_eff_hj,
+            freqs_hz, beta_openems, eps_eff=eps_eff_hj_openems,
             tol_frac=B_BETA_ANALYTIC_TOL_FRAC, label="stage_b_analytic_beta",
             solver="openems")
         analytic_beta_rfx = _analytic_beta_witness(
-            freqs_hz, beta_rfx, eps_eff=eps_eff_hj,
+            freqs_hz, beta_rfx, eps_eff=eps_eff_hj_rfx,
             tol_frac=B_BETA_ANALYTIC_TOL_FRAC, label="stage_b_analytic_beta",
             solver="rfx")
         cross_solver_phase = _cross_solver_phase_witness(
@@ -2845,6 +3092,12 @@ def _run_stage_b(*, sim_root: str, threads: int, nrts: int, end_criteria: float,
         # to it.
         partial_data["cross_solver_partial"] = {
             "eps_eff_hammerstad_jensen": float(eps_eff_hj),
+            "eps_eff_hammerstad_jensen_rfx_board": float(eps_eff_hj_rfx),
+            "eps_eff_hammerstad_jensen_openems_board": float(eps_eff_hj_openems),
+            "h_dielectric_under_strip_rfx_m": float(
+                layout["h_dielectric_under_strip_realized_m"]),
+            "h_dielectric_under_strip_openems_m": float(
+                layout["h_sub_realized_m"]),
             "beta_rfx_real": np.real(beta_rfx).tolist(),
             "beta_openems_real": np.real(beta_openems).tolist(),
             "raw_phase_diff_deg": raw_phase_diff_deg.tolist(),
@@ -2856,15 +3109,18 @@ def _run_stage_b(*, sim_root: str, threads: int, nrts: int, end_criteria: float,
     # non-fatal, and deliberately NOT in sanity_passed (see the SIGNED
     # analytic-beta envelope block). Every term is DERIVED HERE, at runtime,
     # from THIS run's REALIZED board -- w_trace/h_sub as the fixture meta
-    # reports them (not the declared dims), the one-cell realized metal
-    # thickness, which is what BOTH solvers build (openEMS's pec box spans
-    # h_sub..h_sub+dx and the rfx fixture's PEC trace spans exactly one cell),
-    # eps_r, the band top and dx -- so the whole block moves with the board
-    # rather than pinning per-fixture fractions. It never raises, so it is
+    # reports them (not the declared dims), the realized metal thickness
+    # DERIVED from the fixture's own realized wall planes
+    # (layout['t_metal_realized_m'] = (n_planes - 1) * dx, one cell here)
+    # rather than spelled as B_DX_M, so the value cannot silently disagree
+    # with the realization; eps_r, the band top and dx -- so the whole
+    # block moves with the board rather than pinning per-fixture fractions.
+    # Under #931 both solvers really do build that one cell of metal
+    # (_build_stage_b_thru asserts it); before the contract rfx did not. It never raises, so it is
     # computed AFTER the gated (raising) witnesses above and simply recorded.
     signed_beta_envelope_terms = _signed_beta_envelope_terms(
         B_EPS_R, layout["w_trace_realized_m"], layout["h_sub_realized_m"],
-        B_DX_M, B_GATE_F_HI_HZ, B_DX_M)
+        B_DX_M, B_GATE_F_HI_HZ, layout["t_metal_realized_m"])
     beta_dev_lo = signed_beta_envelope_terms["lo_frac"]
     beta_dev_hi = signed_beta_envelope_terms["hi_frac"]
     signed_beta_envelope_openems = _signed_analytic_beta_envelope_witness(

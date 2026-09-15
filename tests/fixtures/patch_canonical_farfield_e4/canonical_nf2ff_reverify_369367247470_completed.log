@@ -1,0 +1,832 @@
+Organization: remilab
+Project: byungkwan
+Displayed last 829 lines of #369367247470.
+[04:43:17.499983] workload awaiting to start
+[04:43:17.500083] Workload status changed to pending
+[04:43:21.610775] Event Reason: FailedScheduling, Event Note: 0/13 nodes are available: pod has unbound immediate PersistentVolumeClaims. preemption: 0/13 nodes are available: 13 Preemption is not helpful for scheduling.
+[04:43:21.610775] Workload is in queue for scheduling. Please wait...
+[04:43:29.429847] Event Reason: FailedScheduling, Event Note: 0/13 nodes are available: pod has unbound immediate PersistentVolumeClaims. preemption: 0/13 nodes are available: 13 Preemption is not helpful for scheduling.
+[04:43:29.429847] Workload is in queue for scheduling. Please wait...
+[04:43:31.680361] VESSL Workload assigned successfully. Starting soon.
+[04:43:32.000000] Container image "quay.io/vessl-ai/kernels-toolbox:0.1.188" already present on machine
+[04:43:32.000000] Created container vops-init
+[04:43:32.000000] Started container vops-init
+[04:43:33.000000] Started container run-sidecar
+[04:43:33.000000] Creating VESSL Workload...
+[04:43:33.000000] Created container vops-sidecar
+[04:43:33.000000] Starting VESSL Workload...
+[04:43:33.000000] Started container vops-sidecar
+[04:43:33.000000] Created container run-exec
+[04:43:33.000000] Container image "docker.io/pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime" already present on machine
+[04:43:33.000000] Container image "quay.io/vessl-ai/kernels-toolbox:0.1.188" already present on machine
+[04:43:33.000000] Started container run-exec
+[04:43:33.000000] Started container fluentbit
+[04:43:33.000000] Started container ttyd-sidecar
+[04:43:33.000000] Created container run-sidecar
+[04:43:33.001000] Container image "docker.io/pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime" already present on machine
+[04:43:33.806383] Installing VESSL CLI...
+[04:43:44.698851] workload reported alive as pod run-execution-crlbl19uuz50-0
+[04:43:44.698951] Workload status changed to initializing
+[04:43:45.809557] + set +x
+[04:43:50.946751] vessl, version 0.1.199
+[04:43:55.835015] workload reported alive as pod run-execution-crlbl19uuz50-0
+[04:43:55.835115] Workload status changed to running
+[04:43:55.923217] + mkdir -p /root
+[04:43:55.924958] + cd /root
+[04:43:55.925357] === canonical-patch NF2FF re-verification (reproduce-gate first) ===
+[04:43:55.925372] + set -eux
+[04:43:55.925391] + echo '=== canonical-patch NF2FF re-verification (reproduce-gate first) ==='
+[04:43:55.925401] + date
+[04:43:55.926530] Sat Jul 18 04:43:55 UTC 2026
+[04:43:55.926756] + apt-get update
+[04:43:56.757009] Get:1 http://security.ubuntu.com/ubuntu focal-security InRelease [128 kB]
+[04:43:56.945814] Get:2 http://archive.ubuntu.com/ubuntu focal InRelease [265 kB]
+[04:43:57.768350] Get:3 http://security.ubuntu.com/ubuntu focal-security/multiverse amd64 Packages [32.5 kB]
+[04:43:58.012710] Get:4 http://security.ubuntu.com/ubuntu focal-security/main amd64 Packages [4368 kB]
+[04:43:58.627476] Get:5 http://archive.ubuntu.com/ubuntu focal-updates InRelease [128 kB]
+[04:43:59.027057] Get:6 http://archive.ubuntu.com/ubuntu focal-backports InRelease [128 kB]
+[04:43:59.087768] Get:7 http://security.ubuntu.com/ubuntu focal-security/restricted amd64 Packages [4710 kB]
+[04:43:59.379205] Get:8 http://security.ubuntu.com/ubuntu focal-security/universe amd64 Packages [1300 kB]
+[04:43:59.427998] Get:9 http://archive.ubuntu.com/ubuntu focal/restricted amd64 Packages [33.4 kB]
+[04:43:59.456445] Get:10 http://archive.ubuntu.com/ubuntu focal/multiverse amd64 Packages [177 kB]
+[04:43:59.606204] Get:11 http://archive.ubuntu.com/ubuntu focal/universe amd64 Packages [11.3 MB]
+[04:44:01.380851] Get:12 http://archive.ubuntu.com/ubuntu focal/main amd64 Packages [1275 kB]
+[04:44:01.482226] Get:13 http://archive.ubuntu.com/ubuntu focal-updates/restricted amd64 Packages [4904 kB]
+[04:44:01.959288] Get:14 http://archive.ubuntu.com/ubuntu focal-updates/main amd64 Packages [4850 kB]
+[04:44:02.411820] Get:15 http://archive.ubuntu.com/ubuntu focal-updates/multiverse amd64 Packages [36.2 kB]
+[04:44:02.414214] Get:16 http://archive.ubuntu.com/ubuntu focal-updates/universe amd64 Packages [1588 kB]
+[04:44:02.567365] Get:17 http://archive.ubuntu.com/ubuntu focal-backports/universe amd64 Packages [28.4 kB]
+[04:44:02.569314] Get:18 http://archive.ubuntu.com/ubuntu focal-backports/main amd64 Packages [54.7 kB]
+[04:44:02.632491] Fetched 35.3 MB in 7s (5296 kB/s)
+[04:44:03.213876] Reading package lists...
+[04:44:03.231140] + apt-get install -y --no-install-recommends build-essential cmake git libhdf5-dev libtinyxml-dev libboost-thread-dev libboost-system-dev libboost-date-time-dev libboost-serialization-dev libcgal-dev libvtk7-dev python3-dev python3-numpy python3-scipy python3-matplotlib python3-setuptools python3-h5py
+[04:44:03.231291] + tail -3
+[04:47:29.481831]   if max_dims is 1:
+[04:47:29.481854] Setting up libvtk7-dev (7.1.1+dfsg2-2ubuntu1) ...
+[04:47:29.481859] Processing triggers for libc-bin (2.31-0ubuntu9.9) ...
+[04:47:29.481975] + cd /tmp
+[04:47:29.481985] + git clone --recursive https://github.com/thliebig/openEMS-Project.git
+[04:47:29.483587] Cloning into 'openEMS-Project'...
+[04:47:31.361324] Submodule 'AppCSXCAD' (https://github.com/thliebig/AppCSXCAD.git) registered for path 'AppCSXCAD'
+[04:47:31.369139] Submodule 'CSXCAD' (https://github.com/thliebig/CSXCAD.git) registered for path 'CSXCAD'
+[04:47:31.369355] Submodule 'CTB' (https://github.com/thliebig/CTB.git) registered for path 'CTB'
+[04:47:31.369566] Submodule 'QCSXCAD' (https://github.com/thliebig/QCSXCAD.git) registered for path 'QCSXCAD'
+[04:47:31.369775] Submodule 'fparser' (https://github.com/thliebig/fparser.git) registered for path 'fparser'
+[04:47:31.369940] Submodule 'hyp2mat' (https://github.com/koendv/hyp2mat.git) registered for path 'hyp2mat'
+[04:47:31.370118] Submodule 'openEMS' (https://github.com/thliebig/openEMS.git) registered for path 'openEMS'
+[04:47:31.374602] Cloning into '/tmp/openEMS-Project/AppCSXCAD'...
+[04:47:32.121403] Cloning into '/tmp/openEMS-Project/CSXCAD'...
+[04:47:32.815689] Cloning into '/tmp/openEMS-Project/CTB'...
+[04:47:33.524464] Cloning into '/tmp/openEMS-Project/QCSXCAD'...
+[04:47:34.103012] Cloning into '/tmp/openEMS-Project/fparser'...
+[04:47:34.616824] Cloning into '/tmp/openEMS-Project/hyp2mat'...
+[04:47:35.188332] Cloning into '/tmp/openEMS-Project/openEMS'...
+[04:47:36.095957] Submodule path 'AppCSXCAD': checked out 'bd996a16e41f62302d1b860a0e39ceefefbd96ea'
+[04:47:36.149877] Submodule path 'CSXCAD': checked out '511570109736153b8c30c2f6fb9ca30f3fbc58e6'
+[04:47:36.183788] Submodule path 'CTB': checked out '5ac29367ebb7e30e78dd3db13a21464756855599'
+[04:47:36.220471] Submodule path 'QCSXCAD': checked out '92d546f9e8887a6acb65b76fef6bf020dc3f1815'
+[04:47:36.260283] Submodule path 'fparser': checked out '4b9c845b449b520c4b8c5f23c74cd04820084f81'
+[04:47:36.311910] Submodule path 'hyp2mat': checked out 'b15f749849610066e6c09da5b5e3f97e3317ba8a'
+[04:47:36.400067] Submodule path 'openEMS': checked out '7b051bb7433facd150294c4e8a3c7452176be238'
+[04:47:36.411107] + cd openEMS-Project
+[04:47:36.411122] + cd fparser
+[04:47:36.411128] + mkdir -p build
+[04:47:36.412535] + cd build
+[04:47:36.412548] + cmake .. '-DCMAKE_INSTALL_PREFIX=/usr/local' '-DCMAKE_BUILD_TYPE=Release'
+[04:47:36.479574] -- The CXX compiler identification is GNU 9.4.0
+[04:47:36.489017] -- Detecting CXX compiler ABI info
+[04:47:36.558871] -- Detecting CXX compiler ABI info - done
+[04:47:36.565178] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[04:47:36.565401] -- Detecting CXX compile features
+[04:47:36.565711] -- Detecting CXX compile features - done
+[04:47:36.566366] -- Configuring done (0.1s)
+[04:47:36.568543] -- Generating done (0.0s)
+[04:47:36.569083] -- Build files have been written to: /tmp/openEMS-Project/fparser/build
+[04:47:36.570639] + nproc
+[04:47:36.571228] + make -j8
+[04:47:36.599907] [ 33%] Building CXX object CMakeFiles/fparser.dir/fparser.cc.o
+[04:47:36.603266] [ 66%] Building CXX object CMakeFiles/fparser.dir/fpoptimizer.cc.o
+[04:47:40.335515] [100%] Linking CXX shared library libfparser.so
+[04:47:40.403545] [100%] Built target fparser
+[04:47:40.412528] + make install
+[04:47:40.445900] [100%] Built target fparser
+[04:47:40.458618] Install the project...
+[04:47:40.465107] -- Install configuration: "Release"
+[04:47:40.465285] -- Installing: /usr/local/lib/libfparser.so.4.5.1
+[04:47:40.466593] -- Installing: /usr/local/lib/libfparser.so.4
+[04:47:40.466902] -- Installing: /usr/local/lib/libfparser.so
+[04:47:40.467039] -- Installing: /usr/local/include/fparser.hh
+[04:47:40.468766] + cd ../..
+[04:47:40.468781] + cd CSXCAD
+[04:47:40.468794] + mkdir -p build
+[04:47:40.469754] + cd build
+[04:47:40.469773] + cmake .. '-DCMAKE_INSTALL_PREFIX=/usr/local' '-DCMAKE_BUILD_TYPE=Release' '-DCMAKE_DISABLE_FIND_PACKAGE_MPI=TRUE'
+[04:47:40.528251] -- The C compiler identification is GNU 9.4.0
+[04:47:40.601336] -- The CXX compiler identification is GNU 9.4.0
+[04:47:40.614926] -- Detecting C compiler ABI info
+[04:47:40.708033] -- Detecting C compiler ABI info - done
+[04:47:40.718470] -- Check for working C compiler: /usr/bin/cc - skipped
+[04:47:40.718787] -- Detecting C compile features
+[04:47:40.719210] -- Detecting C compile features - done
+[04:47:40.722896] -- Detecting CXX compiler ABI info
+[04:47:40.790768] -- Detecting CXX compiler ABI info - done
+[04:47:40.801581] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[04:47:40.801921] -- Detecting CXX compile features
+[04:47:40.802413] -- Detecting CXX compile features - done
+[04:47:40.807421] -- Found Git: /usr/bin/git (found version "2.25.1") 
+[04:47:40.812910] -- Found Git repository, CSXCAD version tag: v0.7.0-rc1-1-g5115701
+[04:47:40.813029] -- FPARSER_ROOT_DIR: /usr
+[04:47:40.816464] -- fparser_INCLUDE_DIR: /usr/local/include
+[04:47:40.816472] -- TinyXML_ROOT_DIR 
+[04:47:40.822891] -- Found TinyXML: /usr/lib/x86_64-linux-gnu/libtinyxml.so  
+[04:47:40.822923] -- TinyXML_INCLUDE_DIR: /usr/include
+[04:47:40.822927] -- TinyXML_LIBRARY: /usr/lib/x86_64-linux-gnu/libtinyxml.so
+[04:47:41.022758] -- Found HDF5: /usr/lib/x86_64-linux-gnu/hdf5/serial/libhdf5.so;/usr/lib/x86_64-linux-gnu/libpthread.so;/usr/lib/x86_64-linux-gnu/libsz.so;/usr/lib/x86_64-linux-gnu/libz.so;/usr/lib/x86_64-linux-gnu/libdl.so;/usr/lib/x86_64-linux-gnu/libm.so (found version "1.10.4") found components: C HL 
+[04:47:41.027955] -- Using header-only CGAL
+[04:47:41.029615] -- Targetting Unix Makefiles
+[04:47:41.029626] -- Using /usr/bin/c++ compiler.
+[04:47:41.030721] -- Found GMP: /usr/lib/x86_64-linux-gnu/libgmp.so  
+[04:47:41.032609] -- Found MPFR: /usr/lib/x86_64-linux-gnu/libmpfr.so  
+[04:47:41.039239] -- Found Boost: /usr/lib/x86_64-linux-gnu/cmake/Boost-1.71.0/BoostConfig.cmake (found suitable version "1.71.0", minimum required is "1.48")  
+[04:47:41.039712] -- Boost include dirs: /usr/include
+[04:47:41.039719] -- Boost libraries:    
+[04:47:41.040113] -- Using gcc version 4 or later. Adding -frounding-math
+[04:47:41.040732] -- Found package CGAL v5+. Using version 5.00.2.100
+[04:47:41.040739] -- CGAL libraries CGAL::CGAL
+[04:47:41.083774] -- The imported target "vtkParseOGLExt" references the file
+[04:47:41.083791]    "/usr/bin/vtkParseOGLExt-7.1"
+[04:47:41.083798] but this file does not exist.  Possible reasons include:
+[04:47:41.083805] * The file was deleted, renamed, or moved to another location.
+[04:47:41.083812] * An install or uninstall procedure did not complete successfully.
+[04:47:41.083819] * The installation package was faulty and contained
+[04:47:41.083825]    "/usr/lib/cmake/vtk-7.1/VTKTargets.cmake"
+[04:47:41.083848] but not all the files it references.
+[04:47:41.083854] 
+[04:47:41.084347] -- The imported target "vtkRenderingPythonTkWidgets" references the file
+[04:47:41.084359]    "/usr/lib/x86_64-linux-gnu/libvtkRenderingPythonTkWidgets.so"
+[04:47:41.084367] but this file does not exist.  Possible reasons include:
+[04:47:41.084374] * The file was deleted, renamed, or moved to another location.
+[04:47:41.084379] * An install or uninstall procedure did not complete successfully.
+[04:47:41.084383] * The installation package was faulty and contained
+[04:47:41.084388]    "/usr/lib/cmake/vtk-7.1/VTKTargets.cmake"
+[04:47:41.084392] but not all the files it references.
+[04:47:41.084396] 
+[04:47:41.084672] -- The imported target "vtk" references the file
+[04:47:41.084684]    "/usr/bin/vtk"
+[04:47:41.084691] but this file does not exist.  Possible reasons include:
+[04:47:41.084697] * The file was deleted, renamed, or moved to another location.
+[04:47:41.084703] * An install or uninstall procedure did not complete successfully.
+[04:47:41.084710] * The installation package was faulty and contained
+[04:47:41.084716]    "/usr/lib/cmake/vtk-7.1/VTKTargets.cmake"
+[04:47:41.084722] but not all the files it references.
+[04:47:41.084728] 
+[04:47:41.084740] -- The imported target "pvtk" references the file
+[04:47:41.084747]    "/usr/bin/pvtk"
+[04:47:41.084754] but this file does not exist.  Possible reasons include:
+[04:47:41.084761] * The file was deleted, renamed, or moved to another location.
+[04:47:41.084767] * An install or uninstall procedure did not complete successfully.
+[04:47:41.084773] * The installation package was faulty and contained
+[04:47:41.084780]    "/usr/lib/cmake/vtk-7.1/VTKTargets.cmake"
+[04:47:41.084786] but not all the files it references.
+[04:47:41.084792] 
+[04:47:41.095711] -- Found package VTK. Using version 7.1.1
+[04:47:41.095726] -- vtk libraries vtkIOGeometryvtkCommonCorevtksysvtkCommonDataModelvtkCommonMathvtkCommonMiscvtkCommonSystemvtkCommonTransformsvtkCommonExecutionModelvtkIOCore/usr/lib/x86_64-linux-gnu/libz.sovtkIOLegacyvtkIOPLY
+[04:47:41.097380] -- Configuring done (0.6s)
+[04:47:41.107186] -- Generating done (0.0s)
+[04:47:41.107858] -- Build files have been written to: /tmp/openEMS-Project/CSXCAD/build
+[04:47:41.111104] + nproc
+[04:47:41.111769] + make -j8
+[04:47:41.137346] [  4%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSUseful.cpp.o
+[04:47:41.137357] [  7%] Building CXX object src/CMakeFiles/CSXCAD.dir/ContinuousStructure.cpp.o
+[04:47:41.137511] [ 12%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSProperties.cpp.o
+[04:47:41.137533] [ 12%] Building CXX object src/CMakeFiles/CSXCAD.dir/ParameterObjects.cpp.o
+[04:47:41.137537] [ 12%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSPrimitives.cpp.o
+[04:47:41.137831] [ 14%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSRectGrid.cpp.o
+[04:47:41.138173] [ 17%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSFunctionParser.cpp.o
+[04:47:41.138755] [ 19%] Building CXX object src/CMakeFiles/CSXCAD.dir/ParameterCoord.cpp.o
+[04:47:41.385355] [ 21%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSTransform.cpp.o
+[04:47:41.450951] [ 24%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSPrimPoint.cpp.o
+[04:47:41.506465] [ 26%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSPrimBox.cpp.o
+[04:47:41.573324] [ 29%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSPrimMultiBox.cpp.o
+[04:47:41.666842] [ 31%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSPrimSphere.cpp.o
+[04:47:41.720978] [ 34%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSPrimSphericalShell.cpp.o
+[04:47:41.742638] [ 36%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSPrimCylinder.cpp.o
+[04:47:41.790585] [ 39%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSPrimCylindricalShell.cpp.o
+[04:47:41.875901] [ 41%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSPrimPolygon.cpp.o
+[04:47:41.893690] [ 43%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSPrimLinPoly.cpp.o
+[04:47:42.025166] [ 46%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSPrimRotPoly.cpp.o
+[04:47:42.063629] [ 48%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSPrimPolyhedron.cpp.o
+[04:47:42.075162] [ 51%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSPrimPolyhedronReader.cpp.o
+[04:47:42.130100] [ 53%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSPrimCurve.cpp.o
+[04:47:42.177703] [ 56%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSPrimWire.cpp.o
+[04:47:42.243484] [ 58%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSPrimUserDefined.cpp.o
+[04:47:42.267098] [ 60%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSPropUnknown.cpp.o
+[04:47:42.366897] [ 63%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSPropMaterial.cpp.o
+[04:47:42.393168] [ 65%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSPropDispersiveMaterial.cpp.o
+[04:47:42.537118] [ 68%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSPropLorentzMaterial.cpp.o
+[04:47:42.541330] [ 70%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSPropDebyeMaterial.cpp.o
+[04:47:42.570857] [ 73%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSPropDiscMaterial.cpp.o
+[04:47:42.577888] [ 75%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSPropLumpedElement.cpp.o
+[04:47:42.673008] [ 78%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSPropAbsorbingBC.cpp.o
+[04:47:42.704029] [ 80%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSPropMetal.cpp.o
+[04:47:42.954205] [ 82%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSPropConductingSheet.cpp.o
+[04:47:42.990916] [ 85%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSPropExcitation.cpp.o
+[04:47:43.001065] [ 87%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSPropProbeBox.cpp.o
+[04:47:43.011476] [ 90%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSPropDumpBox.cpp.o
+[04:47:43.015778] [ 92%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSPropResBox.cpp.o
+[04:47:43.250674] [ 95%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSBackgroundMaterial.cpp.o
+[04:47:43.280539] [ 97%] Building CXX object src/CMakeFiles/CSXCAD.dir/CSModeData.cpp.o
+[04:47:45.592075] [100%] Linking CXX shared library libCSXCAD.so
+[04:47:45.752219] [100%] Built target CSXCAD
+[04:47:45.761647] + make install
+[04:47:45.845452] [100%] Built target CSXCAD
+[04:47:45.856701] Install the project...
+[04:47:45.861720] -- Install configuration: "Release"
+[04:47:45.861766] -- Installing: /usr/local/share/CSXCAD/matlab
+[04:47:45.862028] -- Installing: /usr/local/share/CSXCAD/matlab/struct_2_xml.m
+[04:47:45.862283] -- Installing: /usr/local/share/CSXCAD/matlab/AddDebyeMaterial.m
+[04:47:45.862515] -- Installing: /usr/local/share/CSXCAD/matlab/CalcDrudeMaterial.m
+[04:47:45.862685] -- Installing: /usr/local/share/CSXCAD/matlab/export_povray.m
+[04:47:45.862863] -- Installing: /usr/local/share/CSXCAD/matlab/AddCylindricalShell.m
+[04:47:45.863021] -- Installing: /usr/local/share/CSXCAD/matlab/private
+[04:47:45.863092] -- Installing: /usr/local/share/CSXCAD/matlab/private/SmoothRange.m
+[04:47:45.863252] -- Installing: /usr/local/share/CSXCAD/matlab/private/GetPropertyPosition.m
+[04:47:45.863405] -- Installing: /usr/local/share/CSXCAD/matlab/private/octave_struct2xml_2.m
+[04:47:45.863571] -- Installing: /usr/local/share/CSXCAD/matlab/private/FindProperty.m
+[04:47:45.863734] -- Installing: /usr/local/share/CSXCAD/matlab/private/vector2str.m
+[04:47:45.863897] -- Installing: /usr/local/share/CSXCAD/matlab/private/GetPropertyType.m
+[04:47:45.864059] -- Installing: /usr/local/share/CSXCAD/matlab/private/AddPrimitiveArgs.m
+[04:47:45.864222] -- Installing: /usr/local/share/CSXCAD/matlab/private/Add2Property.m
+[04:47:45.864385] -- Installing: /usr/local/share/CSXCAD/matlab/private/struct_2_xmlNode.m
+[04:47:45.864547] -- Installing: /usr/local/share/CSXCAD/matlab/private/SetPropertyArgs.m
+[04:47:45.864710] -- Installing: /usr/local/share/CSXCAD/matlab/private/CheckSymmtricLines.m
+[04:47:45.864874] -- Installing: /usr/local/share/CSXCAD/matlab/private/AddProperty.m
+[04:47:45.865036] -- Installing: /usr/local/share/CSXCAD/matlab/ImportSTL.m
+[04:47:45.865192] -- Installing: /usr/local/share/CSXCAD/matlab/AutoSmoothMeshLines.m
+[04:47:45.865355] -- Installing: /usr/local/share/CSXCAD/matlab/AddMaterial.m
+[04:47:45.865513] -- Installing: /usr/local/share/CSXCAD/matlab/AddSphere.m
+[04:47:45.865674] -- Installing: /usr/local/share/CSXCAD/matlab/CalcDjordjevicSarkarApprox.m
+[04:47:45.865849] -- Installing: /usr/local/share/CSXCAD/matlab/AddDump.m
+[04:47:45.866010] -- Installing: /usr/local/share/CSXCAD/matlab/AddLinPoly.m
+[04:47:45.866169] -- Installing: /usr/local/share/CSXCAD/matlab/DetectEdges.m
+[04:47:45.866385] -- Installing: /usr/local/share/CSXCAD/matlab/Convert_VF_DiscMaterial.m
+[04:47:45.866550] -- Installing: /usr/local/share/CSXCAD/matlab/AddRotPoly.m
+[04:47:45.866734] -- Installing: /usr/local/share/CSXCAD/matlab/ImportPLY.m
+[04:47:45.866897] -- Installing: /usr/local/share/CSXCAD/matlab/export_gerber.m
+[04:47:45.867064] -- Installing: /usr/local/share/CSXCAD/matlab/AddDiscMaterial.m
+[04:47:45.867225] -- Installing: /usr/local/share/CSXCAD/matlab/AddPlaneWaveExcite.m
+[04:47:45.867383] -- Installing: /usr/local/share/CSXCAD/matlab/SetExcitationWeight.m
+[04:47:45.867543] -- Installing: /usr/local/share/CSXCAD/matlab/export_excellon.m
+[04:47:45.867713] -- Installing: /usr/local/share/CSXCAD/matlab/WriteCSX.m
+[04:47:45.867873] -- Installing: /usr/local/share/CSXCAD/matlab/searchBinary.m
+[04:47:45.868038] -- Installing: /usr/local/share/CSXCAD/matlab/SetMaterialWeight.m
+[04:47:45.868198] -- Installing: /usr/local/share/CSXCAD/matlab/SmoothMesh.m
+[04:47:45.868358] -- Installing: /usr/local/share/CSXCAD/matlab/AddBox.m
+[04:47:45.868520] -- Installing: /usr/local/share/CSXCAD/matlab/AddCylinder.m
+[04:47:45.868680] -- Installing: /usr/local/share/CSXCAD/matlab/AddLorentzMaterial.m
+[04:47:45.868836] -- Installing: /usr/local/share/CSXCAD/matlab/AddDjordjevicSarkarMaterial.m
+[04:47:45.869004] -- Installing: /usr/local/share/CSXCAD/matlab/CalcDebyeMaterial.m
+[04:47:45.869166] -- Installing: /usr/local/share/CSXCAD/matlab/CheckMesh.m
+[04:47:45.869325] -- Installing: /usr/local/share/CSXCAD/matlab/AddPoint.m
+[04:47:45.869487] -- Installing: /usr/local/share/CSXCAD/matlab/AnalyseMesh.m
+[04:47:45.869649] -- Installing: /usr/local/share/CSXCAD/matlab/RecursiveSmoothMesh.m
+[04:47:45.869817] -- Installing: /usr/local/share/CSXCAD/matlab/SmoothMeshLines.m
+[04:47:45.869977] -- Installing: /usr/local/share/CSXCAD/matlab/AddPolyhedron.m
+[04:47:45.870144] -- Installing: /usr/local/share/CSXCAD/matlab/AddSphericalShell.m
+[04:47:45.870313] -- Installing: /usr/local/share/CSXCAD/matlab/AddPolygon.m
+[04:47:45.870473] -- Installing: /usr/local/share/CSXCAD/matlab/AddCurve.m
+[04:47:45.870644] -- Installing: /usr/local/share/CSXCAD/matlab/SmoothMeshLines2.m
+[04:47:45.870835] -- Installing: /usr/local/share/CSXCAD/matlab/SetMaterialProperty.m
+[04:47:45.870999] -- Installing: /usr/local/share/CSXCAD/matlab/SetBackgroundMaterial.m
+[04:47:45.871163] -- Installing: /usr/local/share/CSXCAD/matlab/CalcLorentzMaterial.m
+[04:47:45.871327] -- Installing: /usr/local/share/CSXCAD/matlab/AddConductingSheet.m
+[04:47:45.871499] -- Installing: /usr/local/share/CSXCAD/matlab/AddMetal.m
+[04:47:45.871789] -- Installing: /usr/local/share/CSXCAD/matlab/isOctave.m
+[04:47:45.872089] -- Installing: /usr/local/share/CSXCAD/matlab/SetExcitationWeightFile.m
+[04:47:45.872387] -- Installing: /usr/local/share/CSXCAD/matlab/DefineRectGrid.m
+[04:47:45.872677] -- Installing: /usr/local/share/CSXCAD/matlab/InitCSX.m
+[04:47:45.872967] -- Installing: /usr/local/share/CSXCAD/matlab/CSXGeomPlot.m
+[04:47:45.873269] -- Installing: /usr/local/share/CSXCAD/matlab/CreateDiscMaterial.m
+[04:47:45.873564] -- Installing: /usr/local/share/CSXCAD/matlab/DirChar2Int.m
+[04:47:45.873860] -- Installing: /usr/local/share/CSXCAD/matlab/AddWire.m
+[04:47:45.874157] -- Installing: /usr/local/share/CSXCAD/matlab/AddExcitation.m
+[04:47:45.874456] -- Installing: /usr/local/share/CSXCAD/matlab/export_empire.m
+[04:47:45.874809] -- Installing: /usr/local/share/CSXCAD/matlab/AddPropAttribute.m
+[04:47:45.875107] -- Installing: /usr/local/share/CSXCAD/matlab/AddLumpedElement.m
+[04:47:45.875402] -- Installing: /usr/local/share/CSXCAD/matlab/AddProbe.m
+[04:47:45.876094] -- Installing: /usr/local/lib/libCSXCAD.so.0.7.0
+[04:47:45.878248] -- Installing: /usr/local/lib/libCSXCAD.so.0
+[04:47:45.878833] -- Set runtime path of "/usr/local/lib/libCSXCAD.so.0.7.0" to "/usr/local/lib:/usr/lib/x86_64-linux-gnu/hdf5/serial"
+[04:47:45.878980] -- Installing: /usr/local/lib/libCSXCAD.so
+[04:47:45.879245] -- Installing: /usr/local/include/CSXCAD/ContinuousStructure.h
+[04:47:45.879564] -- Installing: /usr/local/include/CSXCAD/CSPrimitives.h
+[04:47:45.879864] -- Installing: /usr/local/include/CSXCAD/CSProperties.h
+[04:47:45.880157] -- Installing: /usr/local/include/CSXCAD/CSRectGrid.h
+[04:47:45.880452] -- Installing: /usr/local/include/CSXCAD/CSXCAD_Global.h
+[04:47:45.880716] -- Installing: /usr/local/include/CSXCAD/ParameterObjects.h
+[04:47:45.881010] -- Installing: /usr/local/include/CSXCAD/CSFunctionParser.h
+[04:47:45.881277] -- Installing: /usr/local/include/CSXCAD/CSUseful.h
+[04:47:45.881552] -- Installing: /usr/local/include/CSXCAD/ParameterCoord.h
+[04:47:45.881834] -- Installing: /usr/local/include/CSXCAD/CSTransform.h
+[04:47:45.882119] -- Installing: /usr/local/include/CSXCAD/CSBackgroundMaterial.h
+[04:47:45.882410] -- Installing: /usr/local/include/CSXCAD/CSPrimPoint.h
+[04:47:45.882703] -- Installing: /usr/local/include/CSXCAD/CSPrimBox.h
+[04:47:45.882986] -- Installing: /usr/local/include/CSXCAD/CSPrimMultiBox.h
+[04:47:45.883264] -- Installing: /usr/local/include/CSXCAD/CSPrimSphere.h
+[04:47:45.883541] -- Installing: /usr/local/include/CSXCAD/CSPrimSphericalShell.h
+[04:47:45.883825] -- Installing: /usr/local/include/CSXCAD/CSPrimCylinder.h
+[04:47:45.884105] -- Installing: /usr/local/include/CSXCAD/CSPrimCylindricalShell.h
+[04:47:45.884389] -- Installing: /usr/local/include/CSXCAD/CSPrimPolygon.h
+[04:47:45.884680] -- Installing: /usr/local/include/CSXCAD/CSPrimLinPoly.h
+[04:47:45.884974] -- Installing: /usr/local/include/CSXCAD/CSPrimRotPoly.h
+[04:47:45.885251] -- Installing: /usr/local/include/CSXCAD/CSPrimPolyhedron.h
+[04:47:45.885544] -- Installing: /usr/local/include/CSXCAD/CSPrimPolyhedronReader.h
+[04:47:45.885831] -- Installing: /usr/local/include/CSXCAD/CSPrimCurve.h
+[04:47:45.886121] -- Installing: /usr/local/include/CSXCAD/CSPrimWire.h
+[04:47:45.886409] -- Installing: /usr/local/include/CSXCAD/CSPrimUserDefined.h
+[04:47:45.886716] -- Installing: /usr/local/include/CSXCAD/CSPropUnknown.h
+[04:47:45.887029] -- Installing: /usr/local/include/CSXCAD/CSPropMaterial.h
+[04:47:45.887328] -- Installing: /usr/local/include/CSXCAD/CSPropDispersiveMaterial.h
+[04:47:45.887620] -- Installing: /usr/local/include/CSXCAD/CSPropLorentzMaterial.h
+[04:47:45.887923] -- Installing: /usr/local/include/CSXCAD/CSPropDebyeMaterial.h
+[04:47:45.888222] -- Installing: /usr/local/include/CSXCAD/CSPropDiscMaterial.h
+[04:47:45.888522] -- Installing: /usr/local/include/CSXCAD/CSPropLumpedElement.h
+[04:47:45.888805] -- Installing: /usr/local/include/CSXCAD/CSPropAbsorbingBC.h
+[04:47:45.889090] -- Installing: /usr/local/include/CSXCAD/CSPropMetal.h
+[04:47:45.889372] -- Installing: /usr/local/include/CSXCAD/CSPropConductingSheet.h
+[04:47:45.889656] -- Installing: /usr/local/include/CSXCAD/CSPropExcitation.h
+[04:47:45.889953] -- Installing: /usr/local/include/CSXCAD/CSPropProbeBox.h
+[04:47:45.890258] -- Installing: /usr/local/include/CSXCAD/CSPropDumpBox.h
+[04:47:45.890546] -- Installing: /usr/local/include/CSXCAD/CSPropResBox.h
+[04:47:45.890845] -- Installing: /usr/local/include/CSXCAD/CSModeData.h
+[04:47:45.892577] + cd ../..
+[04:47:45.892589] + cd openEMS
+[04:47:45.892593] + mkdir -p build
+[04:47:45.893891] + cd build
+[04:47:45.893897] + cmake .. '-DCMAKE_INSTALL_PREFIX=/usr/local' '-DCMAKE_BUILD_TYPE=Release' '-DWITH_MPI=OFF'
+[04:47:45.964544] -- The CXX compiler identification is GNU 9.4.0
+[04:47:46.012812] -- The C compiler identification is GNU 9.4.0
+[04:47:46.023384] -- Detecting CXX compiler ABI info
+[04:47:46.106051] -- Detecting CXX compiler ABI info - done
+[04:47:46.116740] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[04:47:46.117091] -- Detecting CXX compile features
+[04:47:46.117620] -- Detecting CXX compile features - done
+[04:47:46.121209] -- Detecting C compiler ABI info
+[04:47:46.176063] -- Detecting C compiler ABI info - done
+[04:47:46.186432] -- Check for working C compiler: /usr/bin/cc - skipped
+[04:47:46.186794] -- Detecting C compile features
+[04:47:46.187250] -- Detecting C compile features - done
+[04:47:46.192023] -- Found Git: /usr/bin/git (found version "2.25.1") 
+[04:47:46.198521] -- Found Git repository, openEMS version tag: v0.37.0-rc1-2-g7b051bb
+[04:47:46.201810] -- fparser: /usr/local/lib/libfparser.so
+[04:47:46.202167] -- CSXCAD_LIBRARIES: /usr/local/lib/libCSXCAD.so
+[04:47:46.202437] -- CSXCAD_INCLUDE_DIR: /usr/local/include/CSXCAD
+[04:47:46.208882] -- Found TinyXML: /usr/lib/x86_64-linux-gnu/libtinyxml.so  
+[04:47:46.208902] -- TinyXML_INCLUDE_DIR: /usr/include
+[04:47:46.208910] -- TinyXML_LIBRARY: /usr/lib/x86_64-linux-gnu/libtinyxml.so
+[04:47:46.391767] -- Found HDF5: /usr/lib/x86_64-linux-gnu/hdf5/serial/libhdf5.so;/usr/lib/x86_64-linux-gnu/libpthread.so;/usr/lib/x86_64-linux-gnu/libsz.so;/usr/lib/x86_64-linux-gnu/libz.so;/usr/lib/x86_64-linux-gnu/libdl.so;/usr/lib/x86_64-linux-gnu/libm.so (found version "1.10.4") found components: C HL 
+[04:47:46.578792] -- Found Boost: /usr/lib/x86_64-linux-gnu/cmake/Boost-1.71.0/BoostConfig.cmake (found suitable version "1.71.0", minimum required is "1.46") found components: thread date_time serialization chrono program_options 
+[04:47:46.579999] -- Boost_INCLUDE_DIRS: /usr/include
+[04:47:46.580013] -- Boost_LIBRARIES: Boost::thread;Boost::date_time;Boost::serialization;Boost::chrono;Boost::program_options
+[04:47:46.622340] -- The imported target "vtkParseOGLExt" references the file
+[04:47:46.622359]    "/usr/bin/vtkParseOGLExt-7.1"
+[04:47:46.622366] but this file does not exist.  Possible reasons include:
+[04:47:46.622373] * The file was deleted, renamed, or moved to another location.
+[04:47:46.622380] * An install or uninstall procedure did not complete successfully.
+[04:47:46.622387] * The installation package was faulty and contained
+[04:47:46.622394]    "/usr/lib/cmake/vtk-7.1/VTKTargets.cmake"
+[04:47:46.622401] but not all the files it references.
+[04:47:46.622407] 
+[04:47:46.622885] -- The imported target "vtkRenderingPythonTkWidgets" references the file
+[04:47:46.622897]    "/usr/lib/x86_64-linux-gnu/libvtkRenderingPythonTkWidgets.so"
+[04:47:46.622901] but this file does not exist.  Possible reasons include:
+[04:47:46.622905] * The file was deleted, renamed, or moved to another location.
+[04:47:46.622909] * An install or uninstall procedure did not complete successfully.
+[04:47:46.622912] * The installation package was faulty and contained
+[04:47:46.622916]    "/usr/lib/cmake/vtk-7.1/VTKTargets.cmake"
+[04:47:46.622920] but not all the files it references.
+[04:47:46.622923] 
+[04:47:46.623211] -- The imported target "vtk" references the file
+[04:47:46.623236]    "/usr/bin/vtk"
+[04:47:46.623243] but this file does not exist.  Possible reasons include:
+[04:47:46.623249] * The file was deleted, renamed, or moved to another location.
+[04:47:46.623255] * An install or uninstall procedure did not complete successfully.
+[04:47:46.623263] * The installation package was faulty and contained
+[04:47:46.623269]    "/usr/lib/cmake/vtk-7.1/VTKTargets.cmake"
+[04:47:46.623276] but not all the files it references.
+[04:47:46.623281] 
+[04:47:46.623296] -- The imported target "pvtk" references the file
+[04:47:46.623302]    "/usr/bin/pvtk"
+[04:47:46.623309] but this file does not exist.  Possible reasons include:
+[04:47:46.623315] * The file was deleted, renamed, or moved to another location.
+[04:47:46.623322] * An install or uninstall procedure did not complete successfully.
+[04:47:46.623328] * The installation package was faulty and contained
+[04:47:46.623334]    "/usr/lib/cmake/vtk-7.1/VTKTargets.cmake"
+[04:47:46.623340] but not all the files it references.
+[04:47:46.623346] 
+[04:47:46.632392] -- Found package VTK. Using version 7.1.1
+[04:47:46.632401] -- vtk libraries vtkIOXMLvtkCommonCorevtksysvtkCommonDataModelvtkCommonMathvtkCommonMiscvtkCommonSystemvtkCommonTransformsvtkCommonExecutionModelvtkIOCore/usr/lib/x86_64-linux-gnu/libz.sovtkIOXMLParser/usr/lib/x86_64-linux-gnu/libexpat.sovtkIOGeometryvtkIOLegacyvtkIOPLY
+[04:47:46.636333] -- Sources:openems.cpp/tmp/openEMS-Project/openEMS/tools/AdrOp.cpp/tmp/openEMS-Project/openEMS/tools/ErrorMsg.cpp/tmp/openEMS-Project/openEMS/tools/array_ops.cpp/tmp/openEMS-Project/openEMS/tools/signal.cpp/tmp/openEMS-Project/openEMS/tools/global.cpp/tmp/openEMS-Project/openEMS/tools/hdf5_file_reader.cpp/tmp/openEMS-Project/openEMS/tools/hdf5_file_writer.cpp/tmp/openEMS-Project/openEMS/tools/sar_calculation.cpp/tmp/openEMS-Project/openEMS/tools/useful.cpp/tmp/openEMS-Project/openEMS/tools/vtk_file_writer.cpp/tmp/openEMS-Project/openEMS/FDTD/engine.cpp/tmp/openEMS-Project/openEMS/FDTD/operator.cpp/tmp/openEMS-Project/openEMS/FDTD/engine_multithread.cpp/tmp/openEMS-Project/openEMS/FDTD/operator_cylinder.cpp/tmp/openEMS-Project/openEMS/FDTD/engine_cylinder.cpp/tmp/openEMS-Project/openEMS/FDTD/engine_sse.cpp/tmp/openEMS-Project/openEMS/FDTD/operator_sse.cpp/tmp/openEMS-Project/openEMS/FDTD/operator_sse_compressed.cpp/tmp/openEMS-Project/openEMS/FDTD/engine_sse_compressed.cpp/tmp/openEMS-Project/openEMS/FDTD/operator_multithread.cpp/tmp/openEMS-Project/openEMS/FDTD/excitation.cpp/tmp/openEMS-Project/openEMS/FDTD/operator_cylindermultigrid.cpp/tmp/openEMS-Project/openEMS/FDTD/engine_cylindermultigrid.cpp/tmp/openEMS-Project/openEMS/FDTD/engine_interface_fdtd.cpp/tmp/openEMS-Project/openEMS/FDTD/engine_interface_sse_fdtd.cpp/tmp/openEMS-Project/openEMS/FDTD/engine_interface_cylindrical_fdtd.cpp/tmp/openEMS-Project/openEMS/FDTD/extensions/engine_extension.cpp/tmp/openEMS-Project/openEMS/FDTD/extensions/operator_ext_dispersive.cpp/tmp/openEMS-Project/openEMS/FDTD/extensions/operator_ext_lorentzmaterial.cpp/tmp/openEMS-Project/openEMS/FDTD/extensions/operator_ext_conductingsheet.cpp/tmp/openEMS-Project/openEMS/FDTD/extensions/engine_ext_dispersive.cpp/tmp/openEMS-Project/openEMS/FDTD/extensions/engine_ext_lorentzmaterial.cpp/tmp/openEMS-Project/openEMS/FDTD/extensions/engine_ext_cylindermultigrid.cpp/tmp/openEMS-Project/openEMS/FDTD/extensions/operator_ext_upml.cpp/tmp/openEMS-Project/openEMS/FDTD/extensions/engine_ext_upml.cpp/tmp/openEMS-Project/openEMS/FDTD/extensions/operator_extension.cpp/tmp/openEMS-Project/openEMS/FDTD/extensions/engine_ext_mur_abc.cpp/tmp/openEMS-Project/openEMS/FDTD/extensions/operator_ext_mur_abc.cpp/tmp/openEMS-Project/openEMS/FDTD/extensions/operator_ext_cylinder.cpp/tmp/openEMS-Project/openEMS/FDTD/extensions/engine_ext_cylinder.cpp/tmp/openEMS-Project/openEMS/FDTD/extensions/operator_ext_excitation.cpp/tmp/openEMS-Project/openEMS/FDTD/extensions/engine_ext_excitation.cpp/tmp/openEMS-Project/openEMS/FDTD/extensions/operator_ext_tfsf.cpp/tmp/openEMS-Project/openEMS/FDTD/extensions/engine_ext_tfsf.cpp/tmp/openEMS-Project/openEMS/FDTD/extensions/operator_ext_steadystate.cpp/tmp/openEMS-Project/openEMS/FDTD/extensions/engine_ext_steadystate.cpp/tmp/openEMS-Project/openEMS/FDTD/extensions/operator_ext_lumpedRLC.cpp/tmp/openEMS-Project/openEMS/FDTD/extensions/engine_ext_lumpedRLC.cpp/tmp/openEMS-Project/openEMS/FDTD/extensions/operator_ext_absorbing_bc.cpp/tmp/openEMS-Project/openEMS/FDTD/extensions/engine_ext_absorbing_bc.cpp/tmp/openEMS-Project/openEMS/Common/engine_interface_base.cpp/tmp/openEMS-Project/openEMS/Common/operator_base.cpp/tmp/openEMS-Project/openEMS/Common/processcurrent.cpp/tmp/openEMS-Project/openEMS/Common/processfieldprobe.cpp/tmp/openEMS-Project/openEMS/Common/processfields.cpp/tmp/openEMS-Project/openEMS/Common/processfields_fd.cpp/tmp/openEMS-Project/openEMS/Common/processfields_sar.cpp/tmp/openEMS-Project/openEMS/Common/processfields_td.cpp/tmp/openEMS-Project/openEMS/Common/processing.cpp/tmp/openEMS-Project/openEMS/Common/processintegral.cpp/tmp/openEMS-Project/openEMS/Common/processmodematch.cpp/tmp/openEMS-Project/openEMS/Common/processvoltage.cpp
+[04:47:46.637110] -- Configuring done (0.7s)
+[04:47:46.672182] -- Generating done (0.0s)
+[04:47:46.673404] -- Build files have been written to: /tmp/openEMS-Project/openEMS/build
+[04:47:46.677328] + nproc
+[04:47:46.678018] + make -j8
+[04:47:46.705166] [  2%] Building CXX object nf2ff/CMakeFiles/nf2ff.dir/nf2ff_calc.cpp.o
+[04:47:46.705176] [  2%] Building CXX object nf2ff/CMakeFiles/nf2ff.dir/__/tools/array_ops.cpp.o
+[04:47:46.705626] [  3%] Building CXX object nf2ff/CMakeFiles/nf2ff.dir/nf2ff.cpp.o
+[04:47:46.705807] [  5%] Building CXX object nf2ff/CMakeFiles/nf2ff.dir/__/tools/useful.cpp.o
+[04:47:46.706072] [  6%] Building CXX object nf2ff/CMakeFiles/nf2ff.dir/__/tools/hdf5_file_writer.cpp.o
+[04:47:46.706132] [  7%] Building CXX object nf2ff/CMakeFiles/nf2ff.dir/__/tools/hdf5_file_reader.cpp.o
+[04:47:46.707999] [ 10%] Building CXX object CMakeFiles/openEMS.dir/tools/AdrOp.cpp.o
+[04:47:46.708012] [ 10%] Building CXX object CMakeFiles/openEMS.dir/openems.cpp.o
+[04:47:46.890902] [ 11%] Building CXX object CMakeFiles/openEMS.dir/tools/ErrorMsg.cpp.o
+[04:47:46.951611] [ 12%] Building CXX object CMakeFiles/openEMS.dir/tools/array_ops.cpp.o
+[04:47:46.995762] [ 14%] Building CXX object CMakeFiles/openEMS.dir/tools/signal.cpp.o
+[04:47:47.126339] [ 15%] Building CXX object CMakeFiles/openEMS.dir/tools/global.cpp.o
+[04:47:47.806539] [ 16%] Building CXX object CMakeFiles/openEMS.dir/tools/hdf5_file_reader.cpp.o
+[04:47:47.824736] [ 18%] Building CXX object CMakeFiles/openEMS.dir/tools/hdf5_file_writer.cpp.o
+[04:47:47.829528] [ 19%] Building CXX object CMakeFiles/openEMS.dir/tools/sar_calculation.cpp.o
+[04:47:48.192811] [ 20%] Building CXX object CMakeFiles/openEMS.dir/tools/useful.cpp.o
+[04:47:48.902364] [ 22%] Building CXX object CMakeFiles/openEMS.dir/tools/vtk_file_writer.cpp.o
+[04:47:49.055175] [ 23%] Building CXX object CMakeFiles/openEMS.dir/FDTD/engine.cpp.o
+[04:47:49.281528] [ 24%] Building CXX object CMakeFiles/openEMS.dir/FDTD/operator.cpp.o
+[04:47:49.297647] [ 25%] Building CXX object CMakeFiles/openEMS.dir/FDTD/engine_multithread.cpp.o
+[04:47:49.346682] [ 27%] Building CXX object CMakeFiles/openEMS.dir/FDTD/operator_cylinder.cpp.o
+[04:47:49.392112] [ 28%] Linking CXX shared library libnf2ff.so
+[04:47:49.484442] [ 28%] Built target nf2ff
+[04:47:49.488771] [ 29%] Building CXX object CMakeFiles/openEMS.dir/FDTD/engine_cylinder.cpp.o
+[04:47:49.525248] [ 31%] Building CXX object CMakeFiles/openEMS.dir/FDTD/engine_sse.cpp.o
+[04:47:50.293541] [ 32%] Building CXX object CMakeFiles/openEMS.dir/FDTD/operator_sse.cpp.o
+[04:47:50.395434] [ 33%] Building CXX object CMakeFiles/openEMS.dir/FDTD/operator_sse_compressed.cpp.o
+[04:47:50.419069] [ 35%] Building CXX object CMakeFiles/openEMS.dir/FDTD/engine_sse_compressed.cpp.o
+[04:47:50.653426] [ 36%] Building CXX object CMakeFiles/openEMS.dir/FDTD/operator_multithread.cpp.o
+[04:47:51.310575] [ 37%] Building CXX object CMakeFiles/openEMS.dir/FDTD/excitation.cpp.o
+[04:47:51.452450] [ 38%] Building CXX object CMakeFiles/openEMS.dir/FDTD/operator_cylindermultigrid.cpp.o
+[04:47:51.463864] [ 40%] Building CXX object CMakeFiles/openEMS.dir/FDTD/engine_cylindermultigrid.cpp.o
+[04:47:51.534715] [ 41%] Building CXX object CMakeFiles/openEMS.dir/FDTD/engine_interface_fdtd.cpp.o
+[04:47:51.649004] [ 42%] Building CXX object CMakeFiles/openEMS.dir/FDTD/engine_interface_sse_fdtd.cpp.o
+[04:47:51.823779] [ 44%] Building CXX object CMakeFiles/openEMS.dir/FDTD/engine_interface_cylindrical_fdtd.cpp.o
+[04:47:51.961006] [ 45%] Building CXX object CMakeFiles/openEMS.dir/FDTD/extensions/engine_extension.cpp.o
+[04:47:52.533888] [ 46%] Building CXX object CMakeFiles/openEMS.dir/FDTD/extensions/operator_ext_dispersive.cpp.o
+[04:47:52.539712] [ 48%] Building CXX object CMakeFiles/openEMS.dir/FDTD/extensions/operator_ext_lorentzmaterial.cpp.o
+[04:47:52.561094] [ 49%] Building CXX object CMakeFiles/openEMS.dir/FDTD/extensions/operator_ext_conductingsheet.cpp.o
+[04:47:52.862778] [ 50%] Building CXX object CMakeFiles/openEMS.dir/FDTD/extensions/engine_ext_dispersive.cpp.o
+[04:47:53.407990] [ 51%] Building CXX object CMakeFiles/openEMS.dir/FDTD/extensions/engine_ext_lorentzmaterial.cpp.o
+[04:47:53.664381] [ 53%] Building CXX object CMakeFiles/openEMS.dir/FDTD/extensions/engine_ext_cylindermultigrid.cpp.o
+[04:47:53.699366] [ 54%] Building CXX object CMakeFiles/openEMS.dir/FDTD/extensions/operator_ext_upml.cpp.o
+[04:47:53.804130] [ 55%] Building CXX object CMakeFiles/openEMS.dir/FDTD/extensions/engine_ext_upml.cpp.o
+[04:47:54.068455] [ 57%] Building CXX object CMakeFiles/openEMS.dir/FDTD/extensions/operator_extension.cpp.o
+[04:47:54.119577] [ 58%] Building CXX object CMakeFiles/openEMS.dir/FDTD/extensions/engine_ext_mur_abc.cpp.o
+[04:47:54.402047] [ 59%] Building CXX object CMakeFiles/openEMS.dir/FDTD/extensions/operator_ext_mur_abc.cpp.o
+[04:47:54.498607] [ 61%] Building CXX object CMakeFiles/openEMS.dir/FDTD/extensions/operator_ext_cylinder.cpp.o
+[04:47:54.985826] [ 62%] Building CXX object CMakeFiles/openEMS.dir/FDTD/extensions/engine_ext_cylinder.cpp.o
+[04:47:55.152429] [ 63%] Building CXX object CMakeFiles/openEMS.dir/FDTD/extensions/operator_ext_excitation.cpp.o
+[04:47:55.220442] [ 64%] Building CXX object CMakeFiles/openEMS.dir/FDTD/extensions/engine_ext_excitation.cpp.o
+[04:47:55.423444] [ 66%] Building CXX object CMakeFiles/openEMS.dir/FDTD/extensions/operator_ext_tfsf.cpp.o
+[04:47:56.135740] [ 67%] Building CXX object CMakeFiles/openEMS.dir/FDTD/extensions/engine_ext_tfsf.cpp.o
+[04:47:56.271442] [ 68%] Building CXX object CMakeFiles/openEMS.dir/FDTD/extensions/operator_ext_steadystate.cpp.o
+[04:47:56.275233] [ 70%] Building CXX object CMakeFiles/openEMS.dir/FDTD/extensions/engine_ext_steadystate.cpp.o
+[04:47:56.304356] [ 71%] Building CXX object CMakeFiles/openEMS.dir/FDTD/extensions/operator_ext_lumpedRLC.cpp.o
+[04:47:56.364719] [ 72%] Building CXX object CMakeFiles/openEMS.dir/FDTD/extensions/engine_ext_lumpedRLC.cpp.o
+[04:47:56.518710] [ 74%] Building CXX object CMakeFiles/openEMS.dir/FDTD/extensions/operator_ext_absorbing_bc.cpp.o
+[04:47:56.805526] [ 75%] Building CXX object CMakeFiles/openEMS.dir/FDTD/extensions/engine_ext_absorbing_bc.cpp.o
+[04:47:57.098101] [ 76%] Building CXX object CMakeFiles/openEMS.dir/Common/engine_interface_base.cpp.o
+[04:47:57.226103] [ 77%] Building CXX object CMakeFiles/openEMS.dir/Common/operator_base.cpp.o
+[04:47:57.249359] [ 79%] Building CXX object CMakeFiles/openEMS.dir/Common/processcurrent.cpp.o
+[04:47:57.286778] [ 80%] Building CXX object CMakeFiles/openEMS.dir/Common/processfieldprobe.cpp.o
+[04:47:57.318573] [ 81%] Building CXX object CMakeFiles/openEMS.dir/Common/processfields.cpp.o
+[04:47:57.524569] [ 83%] Building CXX object CMakeFiles/openEMS.dir/Common/processfields_fd.cpp.o
+[04:47:57.542555] [ 84%] Building CXX object CMakeFiles/openEMS.dir/Common/processfields_sar.cpp.o
+[04:47:57.942300] [ 85%] Building CXX object CMakeFiles/openEMS.dir/Common/processfields_td.cpp.o
+[04:47:58.027006] [ 87%] Building CXX object CMakeFiles/openEMS.dir/Common/processing.cpp.o
+[04:47:58.135026] [ 88%] Building CXX object CMakeFiles/openEMS.dir/Common/processintegral.cpp.o
+[04:47:58.181918] [ 89%] Building CXX object CMakeFiles/openEMS.dir/Common/processmodematch.cpp.o
+[04:47:58.220691] [ 90%] Building CXX object CMakeFiles/openEMS.dir/Common/processvoltage.cpp.o
+[04:47:58.398208] [ 92%] Building CXX object nf2ff/CMakeFiles/nf2ff_bin.dir/main.cpp.o
+[04:47:58.620125] [ 93%] Linking CXX executable nf2ff
+[04:47:58.685988] [ 93%] Built target nf2ff_bin
+[04:47:59.225108] [ 94%] Linking CXX shared library libopenEMS.so
+[04:47:59.442027] [ 94%] Built target openEMS
+[04:47:59.454648] [ 96%] Building CXX object tools/CMakeFiles/sar_bin.dir/sar_calc.cpp.o
+[04:47:59.455875] [ 97%] Building CXX object CMakeFiles/openEMS_bin.dir/main.cpp.o
+[04:48:00.267439] [ 98%] Linking CXX executable openEMS
+[04:48:00.372730] [ 98%] Built target openEMS_bin
+[04:48:01.353189] [100%] Linking CXX executable sar_calc
+[04:48:01.458230] [100%] Built target sar_bin
+[04:48:01.469489] + make install
+[04:48:01.728643] [ 83%] Built target openEMS
+[04:48:01.761170] [ 85%] Built target openEMS_bin
+[04:48:01.799724] [ 94%] Built target nf2ff
+[04:48:01.817226] [ 97%] Built target nf2ff_bin
+[04:48:01.841962] [100%] Built target sar_bin
+[04:48:01.855802] Install the project...
+[04:48:01.860970] -- Install configuration: "Release"
+[04:48:01.861083] -- Installing: /usr/local/lib/libopenEMS.so.0.37.0
+[04:48:01.864252] -- Installing: /usr/local/lib/libopenEMS.so.0
+[04:48:01.864575] -- Set runtime path of "/usr/local/lib/libopenEMS.so.0.37.0" to "/usr/local/lib:/usr/lib/x86_64-linux-gnu/hdf5/serial"
+[04:48:01.864646] -- Installing: /usr/local/lib/libopenEMS.so
+[04:48:01.864795] -- Installing: /usr/local/bin/openEMS
+[04:48:01.865251] -- Set runtime path of "/usr/local/bin/openEMS" to "/usr/local/lib:/usr/lib/x86_64-linux-gnu/hdf5/serial"
+[04:48:01.865320] -- Installing: /usr/local/bin/openEMS.sh
+[04:48:01.865612] -- Installing: /usr/local/include/openEMS/openems.h
+[04:48:01.865822] -- Installing: /usr/local/include/openEMS/openems_global.h
+[04:48:01.866040] -- Installing: /usr/local/share/openEMS/matlab
+[04:48:01.866228] -- Installing: /usr/local/share/openEMS/matlab/Tutorials
+[04:48:01.866349] -- Installing: /usr/local/share/openEMS/matlab/Tutorials/CreateCRLH.m
+[04:48:01.866568] -- Installing: /usr/local/share/openEMS/matlab/Tutorials/Conical_Horn_Antenna.m
+[04:48:01.866812] -- Installing: /usr/local/share/openEMS/matlab/Tutorials/CylindricalWave_CC.m
+[04:48:01.867033] -- Installing: /usr/local/share/openEMS/matlab/Tutorials/Helical_Antenna.m
+[04:48:01.867264] -- Installing: /usr/local/share/openEMS/matlab/Tutorials/Bent_Patch_Antenna.m
+[04:48:01.867482] -- Installing: /usr/local/share/openEMS/matlab/Tutorials/readme
+[04:48:01.867697] -- Installing: /usr/local/share/openEMS/matlab/Tutorials/MRI_Loop_Coil.m
+[04:48:01.867928] -- Installing: /usr/local/share/openEMS/matlab/Tutorials/StripLine2MSL.m
+[04:48:01.868149] -- Installing: /usr/local/share/openEMS/matlab/Tutorials/Rect_Waveguide.m
+[04:48:01.868362] -- Installing: /usr/local/share/openEMS/matlab/Tutorials/CRLH_LeakyWaveAnt.m
+[04:48:01.868585] -- Installing: /usr/local/share/openEMS/matlab/Tutorials/MSL_NotchFilter.m
+[04:48:01.868799] -- Installing: /usr/local/share/openEMS/matlab/Tutorials/Simple_Patch_Antenna.m
+[04:48:01.869034] -- Installing: /usr/local/share/openEMS/matlab/Tutorials/Circ_Waveguide.m
+[04:48:01.869258] -- Installing: /usr/local/share/openEMS/matlab/Tutorials/Patch_Antenna_Array.m
+[04:48:01.869482] -- Installing: /usr/local/share/openEMS/matlab/Tutorials/RadarUWBTutorial.m
+[04:48:01.869712] -- Installing: /usr/local/share/openEMS/matlab/Tutorials/Dipole_SAR.m
+[04:48:01.869932] -- Installing: /usr/local/share/openEMS/matlab/Tutorials/MRI_LP_Birdcage.m
+[04:48:01.870168] -- Installing: /usr/local/share/openEMS/matlab/Tutorials/Patch_Antenna_Phased_Array.m
+[04:48:01.870401] -- Installing: /usr/local/share/openEMS/matlab/Tutorials/CRLH_Extraction.m
+[04:48:01.870664] -- Installing: /usr/local/share/openEMS/matlab/Tutorials/Parallel_Plate_Waveguide.m
+[04:48:01.870854] -- Installing: /usr/local/share/openEMS/matlab/Tutorials/RCS_Sphere.m
+[04:48:01.871069] -- Installing: /usr/local/share/openEMS/matlab/Tutorials/Horn_Antenna.m
+[04:48:01.871289] -- Installing: /usr/local/share/openEMS/matlab/SetBoundaryCond.m
+[04:48:01.871495] -- Installing: /usr/local/share/openEMS/matlab/SetCustomExcite.m
+[04:48:01.871692] -- Installing: /usr/local/share/openEMS/matlab/private
+[04:48:01.871810] -- Installing: /usr/local/share/openEMS/matlab/private/ReadNF2FF.m
+[04:48:01.872026] -- Installing: /usr/local/share/openEMS/matlab/private/invoke_openEMS.m
+[04:48:01.872236] -- Installing: /usr/local/share/openEMS/matlab/ReadUI.m
+[04:48:01.872448] -- Installing: /usr/local/share/openEMS/matlab/CleanupSimPath.m
+[04:48:01.872655] -- Installing: /usr/local/share/openEMS/matlab/calcWGPort.m
+[04:48:01.872871] -- Installing: /usr/local/share/openEMS/matlab/AddMRStub.m
+[04:48:01.873077] -- Installing: /usr/local/share/openEMS/matlab/SetGaussExcite.m
+[04:48:01.873287] -- Installing: /usr/local/share/openEMS/matlab/h5writemode.m
+[04:48:01.873494] -- Installing: /usr/local/share/openEMS/matlab/AddPML.m
+[04:48:01.873701] -- Installing: /usr/local/share/openEMS/matlab/GetField_Range.m
+[04:48:01.873910] -- Installing: /usr/local/share/openEMS/matlab/DFT_time2freq.m
+[04:48:01.874122] -- Installing: /usr/local/share/openEMS/matlab/optimize.m
+[04:48:01.874335] -- Installing: /usr/local/share/openEMS/matlab/ResultsQueue.m
+[04:48:01.874540] -- Installing: /usr/local/share/openEMS/matlab/FindFreeSSH.m
+[04:48:01.874767] -- Installing: /usr/local/share/openEMS/matlab/AddStripLinePort.m
+[04:48:01.874997] -- Installing: /usr/local/share/openEMS/matlab/DumpFF2VTK.m
+[04:48:01.875202] -- Installing: /usr/local/share/openEMS/matlab/calcPort.m
+[04:48:01.875417] -- Installing: /usr/local/share/openEMS/matlab/CheckQueue.m
+[04:48:01.875623] -- Installing: /usr/local/share/openEMS/matlab/queue_addProcess.m
+[04:48:01.875831] -- Installing: /usr/local/share/openEMS/matlab/plotFF3D.m
+[04:48:01.876044] -- Installing: /usr/local/share/openEMS/matlab/RunOpenEMS_Parallel.m
+[04:48:01.876250] -- Installing: /usr/local/share/openEMS/matlab/WriteHDF5.m
+[04:48:01.876458] -- Installing: /usr/local/share/openEMS/matlab/harminv.m
+[04:48:01.876666] -- Installing: /usr/local/share/openEMS/matlab/FFT_time2freq.m
+[04:48:01.876876] -- Installing: /usr/local/share/openEMS/matlab/calc_ypar.m
+[04:48:01.877088] -- Installing: /usr/local/share/openEMS/matlab/AddCoaxialPort.m
+[04:48:01.877315] -- Installing: /usr/local/share/openEMS/matlab/GetField_TD2FD.m
+[04:48:01.877530] -- Installing: /usr/local/share/openEMS/matlab/ConvertHDF5_VTK.m
+[04:48:01.877739] -- Installing: /usr/local/share/openEMS/matlab/SetStepExcite.m
+[04:48:01.877949] -- Installing: /usr/local/share/openEMS/matlab/polarFF.m
+[04:48:01.878170] -- Installing: /usr/local/share/openEMS/matlab/PlotHDF5FieldData.m
+[04:48:01.878380] -- Installing: /usr/local/share/openEMS/matlab/SetSinusExcite.m
+[04:48:01.878590] -- Installing: /usr/local/share/openEMS/matlab/optimizer_asco_sim.m
+[04:48:01.878820] -- Installing: /usr/local/share/openEMS/matlab/DelayFidelity.m
+[04:48:01.879044] -- Installing: /usr/local/share/openEMS/matlab/AddCurvePort.m
+[04:48:01.879261] -- Installing: /usr/local/share/openEMS/matlab/ReadHDF5FieldData.m
+[04:48:01.879483] -- Installing: /usr/local/share/openEMS/matlab/AddWaveGuidePort.m
+[04:48:01.879701] -- Installing: /usr/local/share/openEMS/matlab/Dump2VTK.m
+[04:48:01.879926] -- Installing: /usr/local/share/openEMS/matlab/SetDiracExcite.m
+[04:48:01.880136] -- Installing: /usr/local/share/openEMS/matlab/InitCylindricalFDTD.m
+[04:48:01.880345] -- Installing: /usr/local/share/openEMS/matlab/ReadHDF5Mesh.m
+[04:48:01.880564] -- Installing: /usr/local/share/openEMS/matlab/Add2Queue.m
+[04:48:01.880776] -- Installing: /usr/local/share/openEMS/matlab/AR_estimate.m
+[04:48:01.880987] -- Installing: /usr/local/share/openEMS/matlab/calcLumpedPort.m
+[04:48:01.881202] -- Installing: /usr/local/share/openEMS/matlab/setup.m
+[04:48:01.881428] -- Installing: /usr/local/share/openEMS/matlab/AddRectWaveGuidePort.m
+[04:48:01.881643] -- Installing: /usr/local/share/openEMS/matlab/SetupMPI.m
+[04:48:01.881862] -- Installing: /usr/local/share/openEMS/matlab/CalcNF2FF.m
+[04:48:01.882084] -- Installing: /usr/local/share/openEMS/matlab/InitQueue.m
+[04:48:01.882296] -- Installing: /usr/local/share/openEMS/matlab/CalcSAR.m
+[04:48:01.882507] -- Installing: /usr/local/share/openEMS/matlab/RunOpenEMS.m
+[04:48:01.882743] -- Installing: /usr/local/share/openEMS/matlab/ReadHDF5Dump.m
+[04:48:01.882958] -- Installing: /usr/local/share/openEMS/matlab/AddCircWaveGuidePort.m
+[04:48:01.883179] -- Installing: /usr/local/share/openEMS/matlab/CreateNF2FFBox.m
+[04:48:01.883395] -- Installing: /usr/local/share/openEMS/matlab/GetField_Interpolation.m
+[04:48:01.883614] -- Installing: /usr/local/share/openEMS/matlab/AnalyzeNF2FF.m
+[04:48:01.883844] -- Installing: /usr/local/share/openEMS/matlab/calcTLPort.m
+[04:48:01.884070] -- Installing: /usr/local/share/openEMS/matlab/FinishQueue.m
+[04:48:01.884288] -- Installing: /usr/local/share/openEMS/matlab/RunOpenEMS_MPI.m
+[04:48:01.884498] -- Installing: /usr/local/share/openEMS/matlab/examples
+[04:48:01.884607] -- Installing: /usr/local/share/openEMS/matlab/examples/transmission_lines
+[04:48:01.884722] -- Installing: /usr/local/share/openEMS/matlab/examples/transmission_lines/directional_coupler.m
+[04:48:01.884959] -- Installing: /usr/local/share/openEMS/matlab/examples/transmission_lines/CPW_Line.m
+[04:48:01.885193] -- Installing: /usr/local/share/openEMS/matlab/examples/transmission_lines/Finite_Stripline.m
+[04:48:01.885415] -- Installing: /usr/local/share/openEMS/matlab/examples/transmission_lines/MSL_Losses.m
+[04:48:01.885637] -- Installing: /usr/local/share/openEMS/matlab/examples/transmission_lines/MSL.m
+[04:48:01.885863] -- Installing: /usr/local/share/openEMS/matlab/examples/transmission_lines/Stripline.m
+[04:48:01.886080] -- Installing: /usr/local/share/openEMS/matlab/examples/antennas
+[04:48:01.886196] -- Installing: /usr/local/share/openEMS/matlab/examples/antennas/Patch_Antenna.m
+[04:48:01.886425] -- Installing: /usr/local/share/openEMS/matlab/examples/antennas/inverted_f.m
+[04:48:01.886669] -- Installing: /usr/local/share/openEMS/matlab/examples/antennas/infDipol.m
+[04:48:01.886894] -- Installing: /usr/local/share/openEMS/matlab/examples/antennas/Patch_Antenna_Array.m
+[04:48:01.887133] -- Installing: /usr/local/share/openEMS/matlab/examples/antennas/Bi_Quad_Antenna.m
+[04:48:01.887343] -- Installing: /usr/local/share/openEMS/matlab/examples/waveguide
+[04:48:01.887464] -- Installing: /usr/local/share/openEMS/matlab/examples/waveguide/Coax.m
+[04:48:01.887688] -- Installing: /usr/local/share/openEMS/matlab/examples/waveguide/Coax_CylinderCoords.m
+[04:48:01.887921] -- Installing: /usr/local/share/openEMS/matlab/examples/waveguide/Circ_Waveguide_CylinderCoords.m
+[04:48:01.888149] -- Installing: /usr/local/share/openEMS/matlab/examples/waveguide/Rect_Waveguide.m
+[04:48:01.888378] -- Installing: /usr/local/share/openEMS/matlab/examples/waveguide/Circ_Waveguide.m
+[04:48:01.888610] -- Installing: /usr/local/share/openEMS/matlab/examples/waveguide/Coax_Cylindrical_MG.m
+[04:48:01.888844] -- Installing: /usr/local/share/openEMS/matlab/examples/waveguide/Rect_WG_W_WG_Ports.m
+[04:48:01.889061] -- Installing: /usr/local/share/openEMS/matlab/examples/other
+[04:48:01.889179] -- Installing: /usr/local/share/openEMS/matlab/examples/other/gauss_excitation_test.m
+[04:48:01.889403] -- Installing: /usr/local/share/openEMS/matlab/examples/other/Helix.m
+[04:48:01.889629] -- Installing: /usr/local/share/openEMS/matlab/examples/other/PML_reflection_analysis.m
+[04:48:01.889854] -- Installing: /usr/local/share/openEMS/matlab/examples/other/LumpedElement.m
+[04:48:01.890072] -- Installing: /usr/local/share/openEMS/matlab/examples/other/PlaneWave.m
+[04:48:01.890293] -- Installing: /usr/local/share/openEMS/matlab/examples/other/Metamaterial_PlaneWave_Drude.m
+[04:48:01.890521] -- Installing: /usr/local/share/openEMS/matlab/examples/other/resistance_sheet.m
+[04:48:01.890757] -- Installing: /usr/local/share/openEMS/matlab/examples/optimizer
+[04:48:01.890871] -- Installing: /usr/local/share/openEMS/matlab/examples/optimizer/optimizer_simfun.m
+[04:48:01.891098] -- Installing: /usr/local/share/openEMS/matlab/examples/optimizer/optimizer_asco.m
+[04:48:01.891308] -- Installing: /usr/local/share/openEMS/matlab/examples/__deprecated__
+[04:48:01.891419] -- Installing: /usr/local/share/openEMS/matlab/examples/__deprecated__/MSL2.m
+[04:48:01.891654] -- Installing: /usr/local/share/openEMS/matlab/GetField_SubSampling.m
+[04:48:01.891872] -- Installing: /usr/local/share/openEMS/matlab/h5writemode_octave.cc
+[04:48:01.892096] -- Installing: /usr/local/share/openEMS/matlab/AddCPWPort.m
+[04:48:01.892336] -- Installing: /usr/local/share/openEMS/matlab/InitFDTD.m
+[04:48:01.892557] -- Installing: /usr/local/share/openEMS/matlab/plotRefl.m
+[04:48:01.892784] -- Installing: /usr/local/share/openEMS/matlab/plotFFdB.m
+[04:48:01.893003] -- Installing: /usr/local/share/openEMS/matlab/physical_constants.m
+[04:48:01.893218] -- Installing: /usr/local/share/openEMS/matlab/queue_delProcess.m
+[04:48:01.893438] -- Installing: /usr/local/share/openEMS/matlab/h5readatt_octave.cc
+[04:48:01.893655] -- Installing: /usr/local/share/openEMS/matlab/queue_checkProcess.m
+[04:48:01.893881] -- Installing: /usr/local/share/openEMS/matlab/ReadHDF5Attribute.m
+[04:48:01.894108] -- Installing: /usr/local/share/openEMS/matlab/WriteOpenEMS.m
+[04:48:01.894328] -- Installing: /usr/local/share/openEMS/matlab/AddLumpedPort.m
+[04:48:01.894553] -- Installing: /usr/local/share/openEMS/matlab/AddMSLPort.m
+[04:48:01.895109] -- Installing: /usr/local/bin/nf2ff
+[04:48:01.895523] -- Set runtime path of "/usr/local/bin/nf2ff" to "/usr/local/lib:/usr/lib/x86_64-linux-gnu/hdf5/serial"
+[04:48:01.895633] -- Installing: /usr/local/lib/libnf2ff.so.0.1.0
+[04:48:01.896685] -- Installing: /usr/local/lib/libnf2ff.so.0
+[04:48:01.896943] -- Set runtime path of "/usr/local/lib/libnf2ff.so.0.1.0" to "/usr/local/lib:/usr/lib/x86_64-linux-gnu/hdf5/serial"
+[04:48:01.897029] -- Installing: /usr/local/lib/libnf2ff.so
+[04:48:01.897138] -- Installing: /usr/local/include/openEMS/nf2ff.h
+[04:48:01.897542] -- Installing: /usr/local/include/openEMS/sar_calculation.h
+[04:48:01.897773] -- Installing: /usr/local/include/openEMS/hdf5_file_reader.h
+[04:48:01.897984] -- Installing: /usr/local/include/openEMS/hdf5_file_writer.h
+[04:48:01.898183] -- Installing: /usr/local/include/openEMS/vtk_file_writer.h
+[04:48:01.898472] -- Installing: /usr/local/include/openEMS/arraylib/array_ij.h
+[04:48:01.898694] -- Installing: /usr/local/include/openEMS/arraylib/array_ijk.h
+[04:48:01.898914] -- Installing: /usr/local/include/openEMS/arraylib/array_nijk.h
+[04:48:01.899210] -- Installing: /usr/local/include/openEMS/arraylib/impl/allocator.h
+[04:48:01.899427] -- Installing: /usr/local/include/openEMS/arraylib/impl/array_base.h
+[04:48:01.899650] -- Installing: /usr/local/include/openEMS/arraylib/impl/subscript.h
+[04:48:01.899909] -- Installing: /usr/local/bin/sar_calc
+[04:48:01.900640] -- Set runtime path of "/usr/local/bin/sar_calc" to "/usr/local/lib:/usr/lib/x86_64-linux-gnu/hdf5/serial"
+[04:48:01.902205] + cd ../..
+[04:48:01.902221] + ldconfig
+[04:48:01.958778] + export 'CSXCAD_INSTALL_PATH=/usr/local'
+[04:48:01.958791] + export 'OPENEMS_INSTALL_PATH=/usr/local'
+[04:48:01.958795] + PY=python
+[04:48:01.958806] + command -v python
+[04:48:01.958850] + python --version
+[04:48:01.959884] Python 3.10.13
+[04:48:01.960107] + python -m pip install -q --upgrade pip cython 'numpy<2' matplotlib h5py scipy
+[04:48:12.759019] WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv
+[04:48:13.176785] + cd /tmp/openEMS-Project/CSXCAD/python
+[04:48:13.176806] + python setup.py install
+[04:48:13.176899] + tail -2
+[04:48:32.359066] Using /opt/conda/lib/python3.10/site-packages
+[04:48:32.359104] Finished processing dependencies for CSXCAD==0.7.0
+[04:48:32.359540] + cd /tmp/openEMS-Project/openEMS/python
+[04:48:32.359742] + python setup.py install
+[04:48:32.359766] + tail -2
+[04:48:38.855439] Using /opt/conda/lib/python3.10/site-packages
+[04:48:38.855485] Finished processing dependencies for openEMS==0.37.0
+[04:48:38.855517] + cd /tmp
+[04:48:38.855532] + python -c 'from openEMS.openEMS import openEMS; print('"'"'openEMS source build: OK'"'"')'
+[04:48:38.971464] openEMS source build: OK
+[04:48:38.986217] + date -u '+%Y%m%dT%H%M%SZ'
+[04:48:38.987106] + out=/root/workspace/byungkwan-workspace/research/rfx/.omx/canonical-nf2ff-reverify/20260718T044838Z
+[04:48:38.987117] + mkdir -p /root/workspace/byungkwan-workspace/research/rfx/.omx/canonical-nf2ff-reverify/20260718T044838Z
+[04:48:38.996569] + TUT=/tmp/openEMS-Project/openEMS/python/Tutorials/Simple_Patch_Antenna.py
+[04:48:38.996583] + test -f /tmp/openEMS-Project/openEMS/python/Tutorials/Simple_Patch_Antenna.py
+[04:48:38.996593] + cp /tmp/openEMS-Project/openEMS/python/Tutorials/Simple_Patch_Antenna.py /root/workspace/byungkwan-workspace/research/rfx/.omx/canonical-nf2ff-reverify/20260718T044838Z/Simple_Patch_Antenna.verbatim.py
+[04:48:39.001469] === STAGE 1: literal Simple_Patch_Antenna.py (unmodified) ===
+[04:48:39.001477] + echo '=== STAGE 1: literal Simple_Patch_Antenna.py (unmodified) ==='
+[04:48:39.001484] + set +e
+[04:48:51.987170] + s1_rc=0
+[04:48:51.987195] + set -e
+[04:48:51.988319] + echo 0
+[04:48:51.990010] + tail -n 30 /root/workspace/byungkwan-workspace/research/rfx/.omx/canonical-nf2ff-reverify/20260718T044838Z/stage1_literal_tutorial.log
+[04:48:51.992627] + cd /tmp
+[04:48:51.992648] + timeout 3600 python /tmp/openEMS-Project/openEMS/python/Tutorials/Simple_Patch_Antenna.py
+[04:48:51.992654]  ---------------------------------------------------------------------- 
+[04:48:51.992659]  | openEMS 64bit -- version v0.37.0-rc1-2-g7b051bb
+[04:48:51.992664]  | (C) 2010-2026 Thorsten Liebig <thorsten.liebig@gmx.de>  GPL license
+[04:48:51.992670]  ---------------------------------------------------------------------- 
+[04:48:51.992675] 	Used external libraries:
+[04:48:51.992680] 		CSXCAD -- Version: v0.7.0-rc1-1-g5115701
+[04:48:51.992684] 		hdf5   -- Version: 1.10.4
+[04:48:51.992688] 		          compiled against: HDF5 library version: 1.10.4
+[04:48:51.992692] 		tinyxml -- compiled against: 2.6.2
+[04:48:51.992697] 		fparser
+[04:48:51.992701] 		boost  -- compiled against: 1_71
+[04:48:51.992705] 		vtk -- Version: 7.1.1
+[04:48:51.992709] 		       compiled against: 7.1.1
+[04:48:51.992713] 
+[04:48:51.992718] Create FDTD operator (compressed SSE + multi-threading)
+[04:48:51.992722] FDTD simulation size: 49x47x45 --> 103635 FDTD cells 
+[04:48:51.992727] FDTD timestep is: 1.07987e-12 s; Nyquist rate: 154 timesteps @3.00662e+09 Hz
+[04:48:51.992731] Excitation signal length is: 2653 timesteps (2.86489e-09s)
+[04:48:51.992735] Max. number of timesteps: 30000 ( --> 11.308 * Excitation signal length)
+[04:48:51.992739] Create FDTD engine (compressed SSE + multi-threading)
+[04:48:51.992743] Running FDTD engine... this may take a while... grab a cup of coffee?!?
+[04:48:51.992748] [@        4s] Timestep:         4180 || Speed:  107.9 MC/s (9.604e-04 s/TS) || Energy: ~3.41e-14 (-13.45dB)
+[04:48:51.992752] [@        8s] Timestep:         8094 || Speed:  100.9 MC/s (1.027e-03 s/TS) || Energy: ~3.19e-15 (-23.73dB)
+[04:48:51.992756] Multithreaded Engine: Best performance found using 1 threads.
+[04:48:51.992761] [@       12s] Timestep:        12274 || Speed:  107.9 MC/s (9.608e-04 s/TS) || Energy: ~5.21e-17 (-41.61dB)
+[04:48:51.992765] Time for 12274 iterations with 103635.00 cells : 12.05 sec
+[04:48:51.992769] Speed: 105.56 MCells/s 
+[04:48:51.992932] + grep -iE 'resonance|f_res|fmin|s11|s_11' /root/workspace/byungkwan-workspace/research/rfx/.omx/canonical-nf2ff-reverify/20260718T044838Z/stage1_literal_tutorial.log
+[04:48:51.993029] + tail -5
+[04:48:51.994172] + true
+[04:48:51.994181] + '[' 0 -ne 0 ]
+[04:48:51.994189] + cd /tmp
+[04:48:51.994195] + git clone --branch feat/canonical-patch-farfield-oracle https://github.com/bk-squared/rfx.git rfx-oracle
+[04:48:51.995513] Cloning into 'rfx-oracle'...
+[04:48:55.980223] + cd /tmp/rfx-oracle
+[04:48:55.980346] + git+  rev-parse HEADtee
+[04:48:55.980371]  /root/workspace/byungkwan-workspace/research/rfx/.omx/canonical-nf2ff-reverify/20260718T044838Z/rfx_oracle_sha.txt
+[04:48:55.982686] d49ec825624b3e07060d6ebbc4231939cb24044d
+[04:48:55.984776] + python -m pip install -q 'jax[cpu]==0.6.2' 'numpy<2' 'scipy>=1.11' 'h5py>=3.8' 'matplotlib>=3.7'
+[04:49:01.351228] WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+[04:49:01.398950] + export 'PYTHONPATH=/tmp/rfx-oracle'
+[04:49:01.398973] + cd /tmp
+[04:49:01.398980] + python -c 'import jax, rfx; print('"'"'probe ok'"'"', jax.__version__, rfx.__file__)'
+[04:49:02.238857] probe ok 0.6.2 /tmp/rfx-oracle/rfx/__init__.py
+[04:49:02.359917] === STAGE 2: patch_tutorial_openems.py (target geometry) ===
+[04:49:02.359917] + echo '=== STAGE 2: patch_tutorial_openems.py (target geometry) ==='
+[04:49:02.359943] + set +e
+[04:49:11.800073] + s2_rc=0
+[04:49:11.800101] + set -e
+[04:49:11.804780] + echo 0
+[04:49:11.806523] + tail -n 30 /root/workspace/byungkwan-workspace/research/rfx/.omx/canonical-nf2ff-reverify/20260718T044838Z/stage2_target_openems.log
+[04:49:11.808998]  | openEMS 64bit -- version v0.37.0-rc1-2-g7b051bb
+[04:49:11.809028]  | (C) 2010-2026 Thorsten Liebig <thorsten.liebig@gmx.de>  GPL license
+[04:49:11.809037]  ---------------------------------------------------------------------- 
+[04:49:11.809045] 	Used external libraries:
+[04:49:11.809054] 		CSXCAD -- Version: v0.7.0-rc1-1-g5115701
+[04:49:11.809062] 		hdf5   -- Version: 1.10.4
+[04:49:11.809069] 		          compiled against: HDF5 library version: 1.10.4
+[04:49:11.809076] 		tinyxml -- compiled against: 2.6.2
+[04:49:11.809084] 		fparser
+[04:49:11.809091] 		boost  -- compiled against: 1_71
+[04:49:11.809099] 		vtk -- Version: 7.1.1
+[04:49:11.809107] 		       compiled against: 7.1.1
+[04:49:11.809115] 
+[04:49:11.809123] Create FDTD operator (compressed SSE + multi-threading)
+[04:49:11.809131] FDTD simulation size: 49x47x42 --> 96726 FDTD cells 
+[04:49:11.809137] FDTD timestep is: 1.43245e-12 s; Nyquist rate: 116 timesteps @3.00908e+09 Hz
+[04:49:11.809143] Excitation signal length is: 2000 timesteps (2.86489e-09s)
+[04:49:11.809148] Max. number of timesteps: 30000 ( --> 15 * Excitation signal length)
+[04:49:11.809153] Create FDTD engine (compressed SSE + multi-threading)
+[04:49:11.809159] Running FDTD engine... this may take a while... grab a cup of coffee?!?
+[04:49:11.809165] [@        4s] Timestep:         6467 || Speed:  156.1 MC/s (6.195e-04 s/TS) || Energy: ~4.12e-16 (-29.04dB)
+[04:49:11.809170] [@        8s] Timestep:        10063 || Speed:   86.4 MC/s (1.119e-03 s/TS) || Energy: ~1.19e-17 (-44.44dB)
+[04:49:11.809175] Multithreaded Engine: Best performance found using 1 threads.
+[04:49:11.809181] Time for 10063 iterations with 96726.00 cells : 8.03 sec
+[04:49:11.809186] Speed: 121.19 MCells/s 
+[04:49:11.809192]   FDTD done 8.1s
+[04:49:11.809197]   harminv-port-V f_res=2.4222 GHz Q=20.1 | S11 dip 2.4300 (-29.8 dB)
+[04:49:11.809203]   E-plane peak 0.0deg HPBW 89.6 | H-plane peak 0.0deg HPBW 87.2
+[04:49:11.809208]   directivity 6.80 dBi | BROADSIDE OK
+[04:49:11.809213] WROTE /tmp/rfx-oracle/scripts/diagnostics/cv05_investigation_results/patch_tutorial_openems.json (wall 9.2s)
+[04:49:11.809281] + cp -v /tmp/rfx-oracle/scripts/diagnostics/cv05_investigation_results/patch_tutorial_openems.json /root/workspace/byungkwan-workspace/research/rfx/.omx/canonical-nf2ff-reverify/20260718T044838Z/
+[04:49:11.814433] '/tmp/rfx-oracle/scripts/diagnostics/cv05_investigation_results/patch_tutorial_openems.json' -> '/root/workspace/byungkwan-workspace/research/rfx/.omx/canonical-nf2ff-reverify/20260718T044838Z/patch_tutorial_openems.json'
+[04:49:11.814812] + grep -iE 'f_res|harminv|directiv|dBi|GHz' /root/workspace/byungkwan-workspace/research/rfx/.omx/canonical-nf2ff-reverify/20260718T044838Z/stage2_target_openems.log
+[04:49:11.814859] + tail -10
+[04:49:11.816407] TUTORIAL patch openEMS | f_guess=2.1151 GHz | mesh_res=5.00mm
+[04:49:11.816421]   harminv-port-V f_res=2.4222 GHz Q=20.1 | S11 dip 2.4300 (-29.8 dB)
+[04:49:11.816426]   directivity 6.80 dBi | BROADSIDE OK
+[04:49:11.816619] + '[' 0 -ne 0 ]
+[04:49:11.816636] === verdict ===
+[04:49:11.816638] + echo '=== verdict ==='
+[04:49:11.816983] stage1(reproduce-gate)=0 stage2(target)=0  artifacts: /root/workspace/byungkwan-workspace/research/rfx/.omx/canonical-nf2ff-reverify/20260718T044838Z
+[04:49:11.817006] + echo 'stage1(reproduce-gate)=0 stage2(target)=0  artifacts: /root/workspace/byungkwan-workspace/research/rfx/.omx/canonical-nf2ff-reverify/20260718T044838Z'
+[04:49:11.817022] + exit 0
+[04:49:11.825758] workload reported done
+[04:49:11.825858] Workload status changed to stopping
+[04:49:20.018395] + set +x
+[04:49:25.035666] workload reported done
+[04:49:25.035766] Workload status changed to waitToBeKilled
+[04:49:27.000000] Stopping container vops-sidecar
+[04:49:27.000000] Stopping container run-sidecar
+[04:49:27.000000] Stopping container run-exec
+[04:49:27.000000] Terminating VESSL Workload...
+[04:49:27.000000] Stopping container ttyd-sidecar
+[04:49:27.000000] Stopping container fluentbit
+[04:49:27.703153] workload completed
+[04:49:27.703254] Workload status changed to completed

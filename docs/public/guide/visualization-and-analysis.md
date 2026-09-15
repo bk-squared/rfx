@@ -100,7 +100,9 @@ from rfx.core.yee import MaterialArrays
 from rfx.geometry.csg import rasterize
 
 # TFSF illumination cannot share a Simulation with ports, so the RCSResult
-# comes from its own scattering run: a PEC plate, one cell thick.
+# comes from its own scattering run: a conducting plate, one cell thick,
+# rasterized as a sigma FILL (not a declared PEC conductor — see "How
+# conductors land on the lattice" in materials-geometry).
 f0 = 3e9
 dx = 0.01
 grid = Grid(freq_max=f0 * 1.5, domain=(0.12, 0.12, 0.12), dx=dx, cpml_layers=8)

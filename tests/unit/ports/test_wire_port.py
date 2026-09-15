@@ -145,12 +145,18 @@ def test_wire_port_api_extent():
 def test_wire_port_live_cell_split_and_all_dead_guard():
     """Issue #318: setup_wire_port distributes sigma over LIVE cells only.
 
-    - pec_mask=None (or all-live) is bit-identical to the historical
-      all-cells fold (the structural byte-identity predicate).
-    - A dead extent cell (pec_mask True) gets NO port sigma and the live
-      cells carry sigma scaled by n_live (per-cell R = Z0/n_live, series
-      sum over live cells = Z0 exactly).
+    - ``pec_edge_masks=None`` (or all-live) is bit-identical to the
+      historical all-cells fold (the structural byte-identity predicate).
+    - A dead extent cell gets NO port sigma and the live cells carry
+      sigma scaled by n_live (per-cell R = Z0/n_live, series sum over
+      live cells = Z0 exactly).
     - All extent cells dead -> ValueError (no live cell to terminate).
+
+    #931 §1.9: "dead" is now read off the port component's OWN realized
+    E edge, not off a primal-cell mask — that is what makes a
+    sheet-declared conductor (which owns no cell) visible here. The
+    fixture still describes deadness with a cell mask and realizes it
+    through the single owner, so the geometry under test is unchanged.
     """
     import jax.numpy as jnp
     import pytest
@@ -167,22 +173,30 @@ def test_wire_port_live_cell_split_and_all_dead_guard():
     )
     from rfx.sources.sources import _wire_port_cells
     cells = _wire_port_cells(grid, port)
-    assert len(cells) == 3
+    # The extent is 2 mm on a 1 mm mesh and the driven edges are HALF-OPEN
+    # in edges (#931 R8): 2 mm of extent is 2 Ez edges, k = 2 and 3. It
+    # used to be endpoint-INCLUSIVE and gave 3, the third spanning
+    # 4 -> 5 mm, one cell ABOVE the declared end.
+    assert len(cells) == 2, cells
 
-    # pec_mask=None == all-live mask, bit-identical (structural predicate)
+    from rfx.boundaries.pec import realized_pec_edge_masks
+
+    # None == all-live edge masks, bit-identical (structural predicate)
     legacy = np.asarray(setup_wire_port(grid, port, materials).sigma)
     all_live = np.asarray(setup_wire_port(
         grid, port, materials,
-        pec_mask=jnp.zeros(grid.shape, dtype=jnp.bool_)).sigma)
+        pec_edge_masks=realized_pec_edge_masks(
+            jnp.zeros(grid.shape, dtype=jnp.bool_))).sigma)
     assert np.array_equal(legacy, all_live), (
-        "all-live pec_mask must be bit-identical to pec_mask=None")
+        "all-live edge masks must be bit-identical to None")
 
     # One dead cell: sigma only at live cells, series R over live == Z0
     mask = jnp.zeros(grid.shape, dtype=jnp.bool_)
     top = cells[-1]
     mask = mask.at[top[0], top[1], top[2]].set(True)
-    folded = np.asarray(setup_wire_port(grid, port, materials,
-                                        pec_mask=mask).sigma)
+    folded = np.asarray(setup_wire_port(
+        grid, port, materials,
+        pec_edge_masks=realized_pec_edge_masks(mask)).sigma)
     assert folded[top[0], top[1], top[2]] == 0.0, (
         "dead extent cell must carry no port sigma")
     r_series = 0.0
@@ -198,4 +212,5 @@ def test_wire_port_live_cell_split_and_all_dead_guard():
     for c in cells:
         mask_all = mask_all.at[c[0], c[1], c[2]].set(True)
     with pytest.raises(ValueError, match="no live cell"):
-        setup_wire_port(grid, port, materials, pec_mask=mask_all)
+        setup_wire_port(grid, port, materials,
+                        pec_edge_masks=realized_pec_edge_masks(mask_all))

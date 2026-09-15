@@ -111,19 +111,76 @@ def _low_level_run(report_every=None, *, perturb=False, n_steps=_N_STEPS):
 
 
 def _msl_thru():
-    """The committed thru-line fixture (see tests/unit/sparams/test_settling_witness.py)."""
+    """The committed thru-line fixture (see tests/unit/sparams/test_settling_witness.py).
+
+    #931: the trace is a FOIL and is declared as a sheet on the substrate
+    top node plane (z = 0.8 mm = k 4 at dx = 0.2 mm). It used to be drawn as
+    a one-cell PEC Box, ``z 0.0008 -> 0.0010`` — the "give the metal its own
+    cell" compensation. Under the ownership contract that Box is a VOLUME:
+    it would realize walls at BOTH z = 0.8 mm and z = 1.0 mm and short Ez
+    between them, i.e. a 0.2 mm-tall solid bar where the board has 35 um of
+    copper. The sheet realizes the one plane the old rule realized, without
+    the #702 material backfill at that node.
+
+    Every assertion in this file compares two runs of the SAME fixture
+    (report_every on vs off), so no pinned number here moves with the
+    declaration. ``tests/unit/sparams/test_settling_witness.py`` keeps its
+    own copy of this geometry and is migrated by its own owner.
+
+    MEASURED after the migration (VESSL run 369367259209 and a local
+    re-run, ``JAX_PLATFORMS=cpu``, ``num_periods=6``, 2-18 GHz): this
+    fixture does NOT witness its own trace, before or after. The returned
+    S reads ``|S11| = 0.000000`` and ``|S21| = 0.999992`` for the 1.2 mm
+    sheet, for a 3.6 mm sheet and for the one-cell PEC Box this migration
+    replaced — ``max|dS|`` 1.4e-07 and 4.2e-07, float32 noise — while the
+    reported ``Z0`` moves with the realized width (59.72 / 97.02 / 53.28
+    ohm at 10.7 GHz), i.e. it is read off the geometry, not off the fields.
+    ``compute_msl_s_matrix`` projects S onto the passive set by default and
+    its own docstring warns that the projection is not small where the raw
+    extraction is bad, so a saturated ``|S21| = 1`` is the expected reading
+    here; whether ``S_raw`` separates the three is unmeasured. The lane is
+    NOT blind to geometry — the control says so: put a PEC Box across the
+    whole guide at mid-line and ``|S21|`` goes to 0.000000
+    (``max|dS| = 1.000``). What this fixture cannot resolve is the trace
+    itself, which for a matched thru changes neither reading. ``beta/k0``
+    is 0.872 on 8 of the 12 bins (eps_eff 0.76, below vacuum) and does not
+    move with ``num_periods`` 6 -> 20 — the same class as
+    ``rfx-known-issues.md`` 2026-08-20, "MSL extractor reports non-physical
+    Z0 / eps_eff ... DIAGNOSTIC-ONLY".
+
+    So: nothing in this file is a physics gate on the trace, and the
+    build-time assertion below is what says the declared trace is realized
+    where it is drawn. Do not quote this fixture's Z0/beta as physics.
+    """
     domain_y, y_c = 0.008, 0.004
     sim = Simulation(freq_max=20e9, domain=(0.012, domain_y, 0.0032),
                      dx=2e-4, boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (0.012, domain_y, 0.0008)), material="sub")
-    sim.add(Box((0.0, y_c - 0.0006, 0.0008),
-                (0.012, y_c + 0.0006, 0.0010)), material="pec")
+    sim.add(Box((0, 0, 0), (0.012, domain_y, 0)), material="pec")
+    sim.add_thin_conductor(Box((0.0, y_c - 0.0006, 0.0008),
+                               (0.012, y_c + 0.0006, 0.0008)))
     sim.add_msl_port(position=(0.002, y_c, 0.0), width=0.0012, height=0.0008,
                      direction="+x", impedance=50.0, eps_r_sub=2.2, name="p1")
     sim.add_msl_port(position=(0.010, y_c, 0.0), width=0.0012, height=0.0008,
                      direction="-x", impedance=50.0, eps_r_sub=2.2, name="p2")
     return sim
+
+
+def test_msl_thru_realizes_the_trace_where_it_is_drawn():
+    """Build-time (no solve) gate on the migrated fixture: the sheet lands on
+    the substrate top node plane, owns no cell, and leaves Ez live there."""
+    from tests._realized_geometry import (
+        assert_sheet_planes, assert_wall_planes, realized)
+    sim = _msl_thru()
+    assert_sheet_planes(sim, 2, [0., 0.0008], what="thru-line ground and trace")
+    assert_wall_planes(sim, 2, [0., 0.0008], what="thru-line ground and trace")
+    rz = realized(sim)
+    assert rz.pec_mask is None or not bool(np.any(np.asarray(rz.pec_mask))), (
+        "a sheet owns no cell")
+    # a sheet leaves the normal component live (#690); a one-cell VOLUME
+    # would short it — that is what the old drawing realized.
+    assert not bool(np.any(np.asarray(rz.edge_masks[2])))
 
 
 _MSL_FREQS = jnp.linspace(2e9, 18e9, 12)

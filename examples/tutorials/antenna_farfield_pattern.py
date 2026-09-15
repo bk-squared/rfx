@@ -121,7 +121,7 @@ def main() -> None:
         freqs=[F0],
     )
     corrected_report = sim.preflight()
-    if corrected_report:
+    if len(corrected_report):   # PreflightReport refuses bool() (#980)
         raise RuntimeError("Corrected far-field setup still has preflight advisories")
 
     print(

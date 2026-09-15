@@ -7,6 +7,19 @@ tests/fixtures/msl_z0_length_invariance/platform_datums.json, stays
 internally consistent, so a future red on this lock is diagnosable as
 platform-vs-code without re-deriving anything.
 
+REALIZATION PROVENANCE (#931). Every row in that ledger was measured before
+the lattice ownership contract, on an MSL thru line whose trace was drawn as
+a one-cell PEC Box and realized as ONE wall. Under the contract the same
+declaration is a VOLUME with a wall on both faces, and the migrated fixture
+declares a sheet instead; either way the number a fresh run produces is not
+necessarily this ledger's number. This file checks the ledger's INTERNAL
+consistency and runs no FDTD, so it is not the thing that would notice.
+A reader comparing a new platform measurement against these rows must first
+ask which realization produced it. Regenerating the ledger belongs with the
+MSL thru fixture's own re-measure (tests/unit/sparams/test_msl_port_integration.py,
+not this group); until then the rows stand as a pre-contract record and are
+labelled as one here rather than silently compared against post-contract runs.
+
 Bounds are imported from tests/unit/sparams/test_msl_port_integration.py, not restated --
 a hardcoded 0.007 / 0.15 in this second file would be exactly the "second
 copy of the gate that can drift from the mechanism" class of defect the

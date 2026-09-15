@@ -12,7 +12,8 @@ Method: single-run input/output flux normalization.
 
 Boundary selection:
   - Default: `upml`
-  - Override with `RFX_BOUNDARY=cpml` for the material-aware CPML baseline
+  - Override with `RFX_BOUNDARY=cpml` for the material-aware CPML baseline,
+    which runs a 20-cell absorber (see `cpml_layers` below, issue #813)
 
 Run this script with JAX x64 enabled. The flux monitor accumulators need
 double precision for stable SI-unit spectra:
@@ -42,25 +43,254 @@ Exit codes (rfx crossval convention):
       crossval, NOT a pass. CI must not treat this as green.
 
 Save: validation/crossval/01_waveguide_bend.png
+
+Re-judge a retained record without solving anything:
+  python 01_waveguide_bend.py --replay <record.json> --out-dir <dir>
 """
 
 import os
 import sys
 import time
 
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, SCRIPT_DIR)
+import _exit_evidence  # noqa: E402  (SCRIPT_DIR on sys.path)
+
+C0 = 2.998e8
+
+# ---------------------------------------------------------------------------
+# The verdict, decided in one place and read by three: the live gates below,
+# the retained record, and --replay. The limits are named ONCE here because
+# the live run and a replay of a committed record must be able to disagree
+# about the measurement and never about the threshold.
+# ---------------------------------------------------------------------------
+G1_T_BAND = (0.3, 1.0)            # smoothed mean T over the eval band
+G2_SELF_T_BAND = (0.95, 1.05)     # straight-guide self-T (flux conservation)
+G3_MAX_ABS_GAP = 0.10             # |rfx - Meep| on the smoothed band mean
+
+
+def _gates(mean_T: float, mean_self: float, meep_mean):
+    """The three gate booleans. ``G3`` is ``None`` when Meep did not run."""
+    return {
+        "G1_smoothed_T_in_0p3_1p0": bool(G1_T_BAND[0] <= mean_T <= G1_T_BAND[1]),
+        "G2_straight_self_T_in_0p95_1p05": bool(
+            G2_SELF_T_BAND[0] <= mean_self <= G2_SELF_T_BAND[1]),
+        "G3_abs_rfx_minus_meep_lt_0p10": (
+            None if meep_mean is None
+            else bool(abs(mean_T - meep_mean) < G3_MAX_ABS_GAP)),
+    }
+
+
+def _exit_code(rfx_ok: bool, meep_present: bool) -> int:
+    """The one place the verdict is decided; the tail prints it unchanged."""
+    if not meep_present:
+        return 2 if rfx_ok else 1
+    return 0 if rfx_ok else 1
+
+
+def _summary(code: int) -> str:
+    """The one spelling of the summary, keyed on the code it describes (#946)."""
+    if code == 0:
+        return "ALL CHECKS PASSED"
+    if code == 2:
+        return "[SKIP] Meep reference unavailable — crossval inconclusive (exit 2)"
+    return "SOME CHECKS FAILED"
+
+
+def _replay(argv) -> int:
+    """Re-judge a committed record from the numbers IT retained.
+
+    ``--replay <record.json> --out-dir <dir>`` reads a record this case wrote,
+    re-evaluates the three gates against the ``measured`` block inside it, and
+    re-emits the record (plus a ``replay`` provenance stanza) through the same
+    writer the live run uses. No FDTD, no Meep -- the point is the decision
+    stage and the write, not the solve.
+
+    It exists because the #946 contract has to be tested on THIS script rather
+    than on a fixture that imitates it: the record here is written ~90 lines
+    ahead of the ``sys.exit`` at the bottom, and only a real run of this file
+    proves that the finalizer armed on the way past. The out-dir is required
+    and must not be the committed results directory -- a replay is a re-judge,
+    not a reproduction (the record it writes says so in ``replay.source``).
+    """
+    import argparse
+    import json as _j
+    parser = argparse.ArgumentParser(prog="01_waveguide_bend.py --replay")
+    parser.add_argument("--replay", required=True, metavar="RECORD")
+    parser.add_argument("--out-dir", required=True)
+    a = parser.parse_args(argv)
+    # A replay is a re-judge, not a reproduction: it must never land in the
+    # committed evidence tree, whatever --out-dir says (#967 / PR #977).
+    out_dir = _exit_evidence.refuse_evidence_tree(a.out_dir, "--out-dir")
+    with open(a.replay) as fh:
+        doc = _j.load(fh)
+    m = doc["measured"]
+    mean_T = float(m["mean_T_smoothed_over_band"])
+    mean_self = float(m["mean_self_smoothed_over_band"])
+    meep_mean = (float(m["meep"]["mean_T_smoothed_over_band"])
+                 if m.get("meep", {}).get("present") else None)
+    gates = _gates(mean_T, mean_self, meep_mean)
+    passed = all(v for v in gates.values() if v is not None)
+    rc_declared = _exit_code(passed, meep_mean is not None)
+    doc["replay"] = {
+        "source": os.path.abspath(a.replay),
+        "of_schema": doc.get("schema"),
+        "note": ("gates re-evaluated from the source record's own measured "
+                 "block; no solver ran (#946 contract replay)"),
+    }
+    doc["gates"] = gates
+    doc["verdict"] = {
+        "rfx_self_ok": bool(gates["G1_smoothed_T_in_0p3_1p0"]
+                            and gates["G2_straight_self_T_in_0p95_1p05"]),
+        "meep_present": meep_mean is not None,
+        "all_gates_ok": bool(passed),
+    }
+    out_path = os.path.join(out_dir, "crossval.json")
+    rc = _exit_evidence.write_record(out_path, doc, exit_code=rc_declared,
+                                     summary=_summary)
+    print(f"  replay artifact: {out_path}")
+    print(f"\n{_summary(rc)}")
+    return rc
+
+
+if "--replay" in sys.argv[1:]:
+    # One name for the process outcome on this path too, so every sys.exit in
+    # this file still takes _rc (the shape the #946 contract tests read).
+    _rc = _replay(sys.argv[1:])
+    sys.exit(_rc)
+
+# Everything below here is the live run. The imports sit AFTER the --replay
+# dispatch on purpose: a replay re-judges a record and must not need jax, a
+# GPU or an rfx install to do it.
 os.environ.setdefault("JAX_ENABLE_X64", "1")
 
-import matplotlib
+import matplotlib  # noqa: E402
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import numpy as np
+import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
 
-from scipy.ndimage import uniform_filter1d
-from rfx import Simulation, Box, GaussianPulse, flux_spectrum
-from rfx.boundaries.spec import BoundarySpec
+from scipy.ndimage import uniform_filter1d  # noqa: E402
+from rfx import Simulation, Box, GaussianPulse, flux_spectrum  # noqa: E402
+from rfx.boundaries.spec import BoundarySpec  # noqa: E402
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-C0 = 2.998e8
+# ---------------------------------------------------------------------------
+# Reproduce-gate record -- audit artifact (docs/agent-memory/task_recipes/
+# external_solver_comparator.md step 2). Committed UNRUN; a VESSL run fills
+# these fields AND must supply a log path under a git-TRACKED prefix (same
+# PR #548 lesson validation/crossval/20_msl_phase_referee.py and
+# validation/crossval/21_coax_two_port_referee.py already paid for).
+#
+# UNLIKE cv20's Stage A or cv21's own reproduce-gate, this one does NOT check
+# against a published number -- Meep's own docs page for this example
+# (doc/docs/Python_Tutorials/Basics.md, "Transmittance Spectrum of a
+# Waveguide Bend") ends in plt.show(): a plot (doc/docs/images/
+# Tut-bend-flux.png), not a printed transmittance value. Verified directly
+# against the raw upstream markdown (fetched via `gh api repos/NanoComp/
+# meep/contents/doc/docs/Python_Tutorials/Basics.md`) and the plot image
+# itself, 2026-09-10 -- there is no number anywhere in that section's text.
+#
+# So this reproduce-gate anchors on OUR OWN recorded run of upstream's own,
+# UNMODIFIED script (validation/crossval/_01_waveguide_bend_upstream/
+# bend-flux.py, vendored verbatim -- see that directory's PROVENANCE.md and
+# scripts/diagnostics/waveguide_bend_tutorial_meep.py, the producer), not on
+# an external ground truth. That is a WEAKER anchor than cv20's/cv21's, and
+# this fact belongs in the record, not just in a design note: it records
+# "this Meep, on this exact upstream script, produced this", which makes
+# future drift attributable, but does not validate against a published
+# result. The producer's checks (also weaker than a numeric match, for the
+# same reason -- see that script's own docstring) are PASSIVITY (R>=0, T>=0,
+# R+T<=1 at every frequency -- the real, non-tautological form; asserting
+# R+T+loss==1 literally would be a tautology, since loss is DEFINED as
+# 1-R-T, never independently measured) and a weak qualitative shape check
+# (T has an interior local minimum; R stays within a generous,
+# eyeballed-off-the-published-plot range).
+#
+# Do NOT reuse this record's own single number for anything cv01's EXISTING
+# Meep comparator leg (below, :187-200) reports -- that leg is a hand-port
+# with SIX of ten parameters diverging from this tutorial (cell size,
+# waveguide-center placement, source position, nfreq, flux-region width,
+# normalization algorithm) and answers a different question (rfx-vs-that-
+# specific-Meep-setup), not "did Meep reproduce its own tutorial".
+# ---------------------------------------------------------------------------
+REPRODUCE_GATE_RECORD: dict = {
+    "stage": "tutorial-reproduce",
+    "tutorial": {
+        "repo": "NanoComp/meep",
+        "path": "python/examples/bend-flux.py",
+        "verified_present_on": "2026-09-10",
+        "verified_via": "gh api repos/NanoComp/meep/contents/python/examples/bend-flux.py",
+        "submodule_pin_note": (
+            "Vendored verbatim at validation/crossval/"
+            "_01_waveguide_bend_upstream/bend-flux.py, git blob sha "
+            "f56ab6492a3cc55ebc1fc0c682c4981508c51955 (matches `git "
+            "hash-object` on the vendored copy -- byte-identical, not "
+            "transcribed). No submodule-pin caveat applies; this is a "
+            "standalone example script, not a library entry point."
+        ),
+    },
+    "do_not_repeat": (
+        "01_waveguide_bend.py's own Meep comparator leg (:187-200) was "
+        "treated as if it were a faithful reproduction of Meep's "
+        "bend-flux.py tutorial. It is a hand-port and diverges from the "
+        "tutorial in six of ten parameters (cell size/aspect ratio "
+        "18x18 vs 16x32, waveguide-center placement, source position, "
+        "nfreq 200 vs 100, flux-region width full-domain-cross-section vs "
+        "2*w aperture-sized, and the normalization algorithm -- single-run "
+        "ratio-of-ratios vs the tutorial's two-run flux-data subtraction). "
+        "Do not treat that leg's agreement or disagreement with rfx as "
+        "evidence about whether Meep's OWN tutorial was reproduced -- it "
+        "was never a port of it in the first place, by its own docstring "
+        "('Meep Basics EQUIVALENT'). Separately: issue #973 (filed "
+        "2026-09-10) found that this leg and rfx's own flux monitors "
+        "SHARE the same full-domain-cross-section measurement aperture, "
+        "where the tutorial's own flux planes are sized to the waveguide. "
+        "Their mutual agreement/disagreement does not validate that "
+        "aperture choice -- two implementations agreeing on a measurement "
+        "choice they share is not independent validation, and this "
+        "anchor does not close #973."
+    ),
+    "geometry": (
+        "90-degree dielectric waveguide bend transmittance spectrum, "
+        "eps=12 (frequency-independent), waveguide width w=1um, "
+        "resolution=10 px/um, cell 16x32um (sx=16, sy=32), PML "
+        "thickness dpml=1.0um, padding pad=4um between waveguide and "
+        "cell edge, GaussianSource fcen=0.15 df=0.1, nfreq=100, "
+        "two-run (straight then bend) flux-data-subtraction "
+        "normalization -- exactly as published, no changes."
+    ),
+    "documented_check": (
+        "NONE PUBLISHED. Meep's own docs page for this example "
+        "(doc/docs/Python_Tutorials/Basics.md, section 'Transmittance "
+        "Spectrum of a Waveguide Bend') ends in plt.show() -- a plot, "
+        "doc/docs/images/Tut-bend-flux.png, not a printed number. That "
+        "makes this reproduce-gate WEAKER than validation/crossval/"
+        "20_msl_phase_referee.py's Stage A or validation/crossval/"
+        "21_coax_two_port_referee.py's own reproduce-gate: both of those "
+        "check against a number their own tutorial DOES publish; this "
+        "one anchors on our own recorded run of upstream's own script "
+        "instead, which makes future drift attributable but does not "
+        "validate against a published result. "
+        "Gated here: PASSIVITY -- R(f)>=0, T(f)>=0, R(f)+T(f)<=1 at "
+        "every frequency. NOT energy conservation: the tutorial's own "
+        "script computes loss as `1 - Rs - Ts` inline, for its plot "
+        "only, and never measures loss independently, so asserting "
+        "R+T+loss==1 would be an IDENTITY -- true of any input, "
+        "including a broken run -- not a check. Passivity is not an "
+        "identity; a wrong flux normalization, a sign error, or PML "
+        "leakage into a flux plane can all violate it. Also gated: a "
+        "WEAK qualitative shape check (T has an interior local minimum; "
+        "R stays within a generous +-0.20 range eyeballed off the "
+        "published plot) -- stated plainly here as a bound against a "
+        "grossly wrong run, not a pin."
+    ),
+    "status": "UNRUN",
+    "reproduced_passivity_ok": None,
+    "reproduced_shape_ok": None,
+    "reproduced_meep_version": None,
+    "log_path": None,
+    "vessl_run_id": None,
+    "verified_on": None,
+}
 
 # =============================================================================
 # Parameters
@@ -82,6 +312,37 @@ if boundary not in {"cpml", "upml"}:
         f"RFX_BOUNDARY must be 'cpml' or 'upml', got {boundary!r}"
     )
 
+# Absorber depth. `cpml_n` above is the PLANE-PLACEMENT constant: `pml`,
+# `src_x` and the output coordinates are all written off it, and it stays 10
+# so those planes do not move. What varies here is the absorber only, and only
+# on the RFX_BOUNDARY=cpml path.
+#
+# Measured, not chosen (issue #813,
+# scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json). On this rig
+# the straight-guide flux self-check `mean_self` reads 0.748852 at 10 CPML
+# layers, 0.884100 at 16, 0.919530 at 20 and 0.947345 at 40, against the UPML
+# run's 0.989162 -- so a 10-cell absorber returns ~25 points of the guided
+# power back through the off-guide part of the measurement plane. 20 is the
+# smallest swept depth that clears the pre-declared bar (>= 0.90906, two
+# thirds of the gap closed).
+#
+# 20 has precedent here for the same reason -- a guided mode running into the
+# absorber needs more depth than a radiating one. The WR-90 slab measurement
+# that fixed rfx's phase-alignment constants ran at it:
+# scripts/verify_phase_alignment.py:40, "Measured on 2026-04-22 WR-90 slab,
+# cpml_layers=20 on both sides". (An earlier draft of this comment cited
+# examples/crossval/11_waveguide_port_wr90.py as a 20-layer user. That was
+# wrong twice over and is corrected here: the path does not exist -- the case
+# is validation/crossval/11_waveguide_port_wr90.py -- and that file derives
+# its own depth from the guide wavelength, CPML_LAYERS = ceil(0.75 *
+# _LAMBDA_G_LOW_M / DX_M) = 43, never 20.)
+#
+# This does NOT make the CPML variant pass G2 (0.95 <= mean_self <= 1.05):
+# 0.919530 is still short of it, and what remains is unattributed. #813 is
+# open. The default UPML path is untouched -- it keeps `cpml_n` -- so the
+# committed run and every number in its artifact are unaffected.
+cpml_layers = 20 if boundary == "cpml" else cpml_n
+
 sx = 16.0 * a
 sy = 16.0 * a
 wg_y = sy / 2
@@ -95,7 +356,8 @@ print("=" * 60)
 print("Cross-Validation 01: Waveguide Bend (Meep Basics equivalent)")
 print("=" * 60)
 print(f"eps={eps_wg}, w={w_wg/a:.0f}a, res=10, {n_steps} steps")
-print(f"Domain: {sx/a:.0f}a x {sy/a:.0f}a, boundary={boundary} ({cpml_n} layers)")
+print(f"Domain: {sx/a:.0f}a x {sy/a:.0f}a, boundary={boundary} "
+      f"({cpml_layers} layers)")
 print("Method: single-run input/output flux normalization")
 print()
 
@@ -115,7 +377,7 @@ print("Run 1: Straight waveguide (self-calibration)...", flush=True)
 t0 = time.time()
 sim_s = Simulation(freq_max=0.25 * C0 / a, domain=(sx, sy, dx), dx=dx,
                    boundary=BoundarySpec.uniform(boundary),
-                   cpml_layers=cpml_n, mode="2d_tmz")
+                   cpml_layers=cpml_layers, mode="2d_tmz")
 sim_s.add_material("wg", eps_r=eps_wg)
 sim_s.add(Box((0, wg_y - w_wg / 2, 0), (sx, wg_y + w_wg / 2, dx)),
           material="wg")
@@ -136,7 +398,7 @@ print("Run 2: 90-degree bend...", flush=True)
 t0 = time.time()
 sim_b = Simulation(freq_max=0.25 * C0 / a, domain=(sx, sy, dx), dx=dx,
                    boundary=BoundarySpec.uniform(boundary),
-                   cpml_layers=cpml_n, mode="2d_tmz")
+                   cpml_layers=cpml_layers, mode="2d_tmz")
 sim_b.add_material("wg", eps_r=eps_wg)
 sim_b.add(Box((0, wg_y - w_wg / 2, 0),
               (wg_x + w_wg / 2, wg_y + w_wg / 2, dx)), material="wg")
@@ -227,14 +489,17 @@ except Exception as _e:
 # Validation
 # =============================================================================
 PASS = True
+# Same three booleans a --replay of this run's record recomputes: _gates() is
+# where the limits live, so the two paths cannot drift apart on a threshold.
+_live_gates = _gates(mean_T, mean_self, meep_mean)
 
-if 0.3 <= mean_T <= 1.0:
+if _live_gates["G1_smoothed_T_in_0p3_1p0"]:
     print(f"\nPASS: smoothed T = {mean_T:.4f} in [0.3, 1.0]")
 else:
     print(f"\nFAIL: smoothed T = {mean_T:.4f} outside [0.3, 1.0]")
     PASS = False
 
-if 0.95 <= mean_self <= 1.05:
+if _live_gates["G2_straight_self_T_in_0p95_1p05"]:
     print(f"PASS: straight self-T = {mean_self:.4f} in [0.95, 1.05]")
 else:
     print(f"FAIL: straight self-T = {mean_self:.4f} outside [0.95, 1.05]")
@@ -242,11 +507,169 @@ else:
 
 if meep_mean is not None:
     gap = abs(mean_T - meep_mean)
-    if gap < 0.10:
+    if _live_gates["G3_abs_rfx_minus_meep_lt_0p10"]:
         print(f"PASS: |rfx - Meep| = {gap:.4f} < 0.10")
     else:
         print(f"FAIL: |rfx - Meep| = {gap:.4f} >= 0.10")
         PASS = False
+
+# =============================================================================
+# Retained output (issue #928)
+#
+# Written HERE -- after the gates, before the plot -- because printing is not
+# persisting: this case's numbers used to exist only in a scheduled runner's
+# log, which expires with the runner, so no clone could check them. The file
+# carries the gate table, the quantities the gates read (per bin, not only the
+# headline means), the exit code this run is about to return, the run's
+# provenance and the rig it realized, as values.
+#
+# `_exit_code`, `_summary` and `_gates` are defined at the TOP of this file so
+# --replay can reach them without the solve; this is still the only place the
+# verdict is decided.
+# =============================================================================
+_rfx_self_ok = bool(_live_gates["G1_smoothed_T_in_0p3_1p0"]
+                    and _live_gates["G2_straight_self_T_in_0p95_1p05"])
+_gate_meep = _live_gates["G3_abs_rfx_minus_meep_lt_0p10"]
+_rc_declared = _exit_code(PASS, meep_mean is not None)
+
+_dt = __import__("datetime")
+_platform = __import__("platform")
+_subprocess = __import__("subprocess")
+
+try:
+    _commit = _subprocess.check_output(["git", "rev-parse", "HEAD"],
+                                       cwd=SCRIPT_DIR, text=True,
+                                       stderr=_subprocess.DEVNULL).strip()
+except Exception:
+    _commit = None
+try:
+    import rfx as _rfx_pkg
+    _rfx_version = getattr(_rfx_pkg, "__version__", None)
+except Exception:
+    _rfx_version = None
+_meep_version = getattr(mp, "__version__", None) if meep_mean is not None else None
+
+_doc = {
+    "schema": "cv01-waveguide-bend/v1",
+    "case_id": "01_waveguide_bend",
+    "commit": _commit,
+    "date_utc": _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "provenance": {
+        "rfx_version": _rfx_version,
+        "meep_version": _meep_version,
+        "jax_enable_x64": os.environ.get("JAX_ENABLE_X64"),
+        "rfx_boundary": boundary,
+        "python": _platform.python_version(),
+        "platform": _platform.platform(),
+        "wall_s_since_bend_run_start": float(time.time() - t0),
+    },
+    "rig": {
+        "a_m": float(a),
+        "eps_wg": float(eps_wg),
+        "w_wg_over_a": float(w_wg / a),
+        "resolution_cells_per_a": int(round(a / dx)),
+        "dx_m": float(dx),
+        "boundary": boundary,
+        # These two are NOT the same quantity and, under cpml, no longer agree:
+        # `pml_m` is the plane-placement padding, held at cpml_n = 10 cells so
+        # the source and monitors stay put, while `boundary_layers` is the
+        # absorber depth (10 under upml, 20 under cpml since #813). The
+        # invariant pml_m == boundary_layers * dx_m held before #813 and does
+        # not hold on the cpml path now; reading either one as the other is the
+        # mistake this comment exists to prevent.
+        "boundary_layers": int(cpml_layers),
+        "pml_m": float(pml),
+        "domain_over_a": [float(sx / a), float(sy / a)],
+        "domain_m": [float(sx), float(sy), float(dx)],
+        "src_x_m": float(src_x),
+        "fcen_c_over_a": float(fcen * a / C0),
+        "fwidth_c_over_a": float(fwidth * a / C0),
+        "n_freqs": int(n_freqs),
+        "freq_lo_c_over_a": float(freqs[0] * a / C0),
+        "freq_hi_c_over_a": float(freqs[-1] * a / C0),
+        "n_steps": int(n_steps),
+        "f_cutoff_c_over_a": float(f_cutoff),
+        "eval_band": "f_cutoff + 0.005 < f (c/a) < 0.20",
+        "smoothing_window_bins": 20,
+        "method": "single-run input/output flux normalization; T = (out/in)_bend / (out/in)_straight",
+        "meep_leg": {
+            "resolution": 10,
+            "pml_over_a": 1.0,
+            "cell_over_a": [float(sx / a + 2), float(sy / a + 2)],
+            "fcen_c_over_a": 0.15, "df_c_over_a": 0.1, "n_freqs": 200,
+            "stop_when_fields_decayed": [50, 1e-3],
+        } if meep_mean is not None else None,
+    },
+    "measured": {
+        "freqs_c_over_a": [float(v) for v in f_meep],
+        "eval_mask": [bool(v) for v in above],
+        # The RAW spectra both ratios are built from. A second run of this case
+        # is compared to this file bin by bin, and a difference in T alone
+        # cannot say which leg moved; these can (#928, PR review).
+        "flux_in_straight": [float(v) for v in flux_in_s],
+        "flux_out_straight": [float(v) for v in flux_out_s],
+        "flux_in_bend": [float(v) for v in flux_in_b],
+        "flux_out_bend": [float(v) for v in flux_out_b],
+        "T_bend_over_in": [float(v) for v in T_bend_abs],
+        "T_self": [float(v) for v in T_self],
+        "T_self_smooth": [float(v) for v in T_self_smooth],
+        "T_norm": [float(v) for v in T_norm],
+        "T_norm_smooth": [float(v) for v in T_norm_smooth],
+        "mean_self_smoothed_over_band": float(mean_self),
+        "mean_T_smoothed_over_band": float(mean_T),
+        "min_T_smoothed_over_band": float(np.min(T_norm_smooth[above])),
+        "max_T_smoothed_over_band": float(np.max(T_norm_smooth[above])),
+        "meep": None if meep_mean is None else {
+            "present": True,
+            "freqs_c_over_a": [float(v) for v in f_ref],
+            "T": [float(v) for v in T_meep],
+            "eval_mask": [bool(v) for v in above_r],
+            "mean_T_smoothed_over_band": float(meep_mean),
+            "abs_rfx_minus_meep": float(abs(mean_T - meep_mean)),
+        },
+    },
+    "gates": dict(_live_gates),
+    "gate_limits": {
+        "G1_smoothed_T_in_0p3_1p0": list(G1_T_BAND),
+        "G2_straight_self_T_in_0p95_1p05": list(G2_SELF_T_BAND),
+        "G3_abs_rfx_minus_meep_lt_0p10": G3_MAX_ABS_GAP,
+    },
+    # What an independent re-run compares, and how. Named here so the check is
+    # the same check whoever runs it.
+    "comparison_recipe": {
+        "compare_bin_by_bin": [
+            "measured.flux_in_straight", "measured.flux_out_straight",
+            "measured.flux_in_bend", "measured.flux_out_bend",
+            "measured.T_self", "measured.T_self_smooth",
+            "measured.T_bend_over_in", "measured.T_norm", "measured.T_norm_smooth",
+            "measured.meep.T",
+        ],
+        "compare_scalar": [
+            "measured.mean_self_smoothed_over_band",
+            "measured.mean_T_smoothed_over_band",
+            "measured.meep.mean_T_smoothed_over_band",
+            "measured.meep.abs_rfx_minus_meep",
+        ],
+        "identity": ["rig", "provenance.rfx_boundary", "provenance.jax_enable_x64"],
+        "expected": ("bit-identical on the same commit, same rig and same "
+                     "JAX_ENABLE_X64 / RFX_BOUNDARY; the Meep leg is a separate "
+                     "solver run and repeats to its own determinism"),
+    },
+    "verdict": {
+        "rfx_self_ok": _rfx_self_ok,
+        "meep_present": meep_mean is not None,
+        "all_gates_ok": bool(PASS),
+    },
+}
+_out_dir = os.path.join(SCRIPT_DIR, "_01_waveguide_bend_results")
+_artifact = os.path.join(_out_dir, "crossval.json")
+# write_record puts exit_code and summary INTO the verdict block and arms the
+# finalizer that amends them if this process ends with a different status
+# (#946) -- the ~90 lines of plotting below this write are an exit path like
+# any other.
+_rc = _exit_evidence.write_record(_artifact, _doc, exit_code=_rc_declared,
+                                  summary=_summary)
+print(f"\n  artifact: {_artifact}")
 
 # =============================================================================
 # Plot
@@ -324,12 +747,14 @@ if meep_mean is None:
     if PASS:
         print("\nrfx SELF-CHECKS PASSED")
         print("[SKIP] Meep reference unavailable — crossval inconclusive (exit 2)")
-        sys.exit(2)
-    print("\nSOME CHECKS FAILED")
-    sys.exit(1)
-
-if PASS:
+    else:
+        print("\nSOME CHECKS FAILED")
+elif PASS:
     print("\nALL CHECKS PASSED")
-    sys.exit(0)
-print("\nSOME CHECKS FAILED")
-sys.exit(1)
+else:
+    print("\nSOME CHECKS FAILED")
+# Same prints, same codes; the value comes from _exit_code() above so the
+# retained artifact records the code this script actually returns (#928), and
+# _exit_evidence amends the record if any exit path below that write ever
+# returns a different one (#946).
+sys.exit(_rc)

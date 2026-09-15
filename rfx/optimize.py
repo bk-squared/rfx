@@ -367,7 +367,22 @@ def optimize(
         hi_idx = list(_nu_pos_to_idx(grid, region.corner_hi))
         from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
         _refuse_f0(sim._thin_conductors, "optimize() non-uniform design")
-        base_materials, _, _, base_pec_mask = sim._assemble_materials_nu(grid)
+        # #931 §1.9: this assembly is BOOKKEEPING — it supplies base eps_r
+        # and the volume cell mask that ride into sim.forward() as
+        # eps_override / pec_mask_override. The sheets and wires collected
+        # here are NOT threaded onward on purpose: forward() re-assembles
+        # on its own lane and realizes them there with
+        # realized_pec_edge_masks, so passing them again would double the
+        # declaration. Collecting them is still required: the assembler
+        # refuses to hand back a pec_mask that silently omits a sheet, so
+        # the drop is a decision made here rather than an accident. The
+        # lanes forward() can route to either realize sheets or refuse
+        # them by name (the distributed non-uniform lane raises), so no
+        # route from here drops one.
+        _opt_sheets: list = []
+        _opt_wires: list = []
+        base_materials, _, _, base_pec_mask = sim._assemble_materials_nu(
+            grid, pec_sheets=_opt_sheets, pec_wires=_opt_wires)
         period = 1.0 / float(sim._freq_max)
         # float(grid.dt): host-boundary context — called after _build_nonuniform_grid()
         # outside any JIT trace, so grid.dt is always a Python float here.
@@ -378,7 +393,11 @@ def optimize(
         hi_idx = list(grid.position_to_index(region.corner_hi))
         from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
         _refuse_f0(sim._thin_conductors, "optimize() design")
-        base_materials, _, _, base_pec_mask, _, _, _ = sim._assemble_materials(grid)
+        # Bookkeeping assembly — see the non-uniform branch above.
+        _opt_sheets: list = []
+        _opt_wires: list = []
+        base_materials, _, _, base_pec_mask, _, _, _ = sim._assemble_materials(
+            grid, pec_sheets=_opt_sheets, pec_wires=_opt_wires)
         _n_steps_auto = grid.num_timesteps(num_periods=num_periods)
 
     # Per-face clamp (2026-04): using the symmetric ``pad_{axis}`` would
@@ -533,10 +552,15 @@ def gradient_check(
     GradientCheckResult
         Contains ad_grad, fd_grad, and relative_error.
     """
-    grid = sim._build_grid()
+    grid = sim._build_realized_grid()
     from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0_gc
     _refuse_f0_gc(sim._thin_conductors, "gradient-check")
-    base_materials, _, _, _, _, _, _ = sim._assemble_materials(grid)
+    # Baseline eps_r only; the solve is sim.forward(), which assembles and
+    # realizes its own sheets and wires (#931 §1.9). Collect-and-drop so
+    # the omission is a decision at this call site, not an accident.
+    assemble = (sim._assemble_materials_nu if sim._uses_nonuniform_mesh
+                else sim._assemble_materials)
+    base_materials, *_ = assemble(grid, pec_sheets=[], pec_wires=[])
     base_eps = base_materials.eps_r
 
     fwd_kw = {}

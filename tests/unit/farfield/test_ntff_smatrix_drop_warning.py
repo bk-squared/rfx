@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import warnings
 
+import numpy as np
 import jax.numpy as jnp
 import pytest
 
@@ -66,8 +67,11 @@ def _msl_thru() -> Simulation:
                      dx=2e-4, boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (0.012, domain_y, 0.0008)), material="sub")
+    # the trace is foil: a SHEET on the substrate-top node plane (#931 §1.3),
+    # not a one-cell Box (which the contract realizes as a filled slab with a
+    # wall on its underside AND its topside).
     sim.add(Box((0.0, y_c - 0.0006, 0.0008),
-                (0.012, y_c + 0.0006, 0.0010)), material="pec")
+                (0.012, y_c + 0.0006, 0.0008)), material="pec")
     sim.add_msl_port(position=(0.002, y_c, 0.0), width=0.0012, height=0.0008,
                      direction="+x", impedance=50.0, eps_r_sub=2.2, name="p1")
     sim.add_msl_port(position=(0.010, y_c, 0.0), width=0.0012, height=0.0008,
@@ -101,6 +105,32 @@ def _add_box(sim: Simulation) -> Simulation:
     hi = tuple(0.75 * d for d in sim._domain)
     sim.add_ntff_box(lo, hi, n_freqs=5)
     return sim
+
+
+def test_the_msl_trace_realizes_on_the_substrate_top_plane():
+    """Build-time (no solve) ownership check for the fixture above.
+
+    The trace is foil, so it is DECLARED a sheet (#931 §1.5: a PEC Box with
+    exactly one zero-extent axis IS a sheet declaration). It used to be drawn
+    one cell thick, which the contract reads as a filled slab with a wall on
+    its underside AND its topside — an 0.2 mm slab of solid metal where the
+    board has 35 um of foil. Nothing this file gates is a field magnitude (the
+    subject is one UserWarning per S-matrix call), but the fixture is copied
+    from three other files, so the realization it stands for is pinned here
+    rather than left to the comment.
+    """
+    from tests._realized_geometry import (
+        assert_sheet_planes, assert_wall_planes, node_index, realized)
+
+    sim = _msl_thru()
+    rz = realized(sim)
+    assert rz.pec_mask is None, "foil declared as a sheet owns no cell"
+    assert len(rz.sheets) == 1 and rz.sheets[0].normal_axis == 2
+    assert_sheet_planes(sim, 2, expected_m=(0.0008,), what="the MSL trace")
+    assert_wall_planes(sim, 2, expected_m=(0.0008,), what="the MSL trace")
+    k = node_index(rz.grid, 2, 0.0008)
+    assert not bool(np.asarray(rz.edge_masks[2])[:, :, k].any()), (
+        "the normal E through a sheet stays live (§1.3)")
 
 
 def _assert_no_ntff_warning(records) -> None:

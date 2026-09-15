@@ -405,6 +405,29 @@ def test_material_gate_rejects_the_permittivity_the_db_gate_cannot_see():
     assert not mod.material_gate_ok(st)                   # G17-B catches it
 
 
+def test_no_code_path_can_give_a_body_a_third_permittivity():
+    """#931: the one mechanism that could break ``n_distinct_eps == 2`` is gone.
+
+    ``resample_sheet_node_materials`` (#702) re-sampled a node-thin
+    conductor's own cell to the material its live edge sat in — the single
+    code path that could write a third permittivity onto a binary board, and
+    it is why this gate's third-value arm exists. The lattice ownership
+    contract deletes it: a sheet owns no cell, so there is no "own cell" to
+    re-sample (design note §2). Checked at the module surface rather than
+    assumed, because a gate whose defect class has silently become
+    unreachable should say so out loud rather than keep passing for a reason
+    nobody can name.
+    """
+    import rfx.geometry.rasterize_grid as rg
+    for gone in ("resample_sheet_node_materials",
+                 "sheet_normal_live_axis_masks",
+                 "collect_thin_conductor_sheet_inputs"):
+        assert not hasattr(rg, gone), (
+            f"{gone} is back in rfx.geometry.rasterize_grid; it can write a "
+            "third permittivity onto a one-node body and G17-B's third-value "
+            "arm is no longer hypothetical (#702 / #931 §2)")
+
+
 def test_realized_material_is_recorded_and_will_be_gated_on_the_frozen_leg(fixture):
     """Forward-guard for the frozen leg.
 
@@ -557,3 +580,74 @@ def test_island_probe_records_that_the_live_window_is_wider_than_the_model(fixtu
     # the island's worst live bin is the ka = 1.25 resonance bin, as the model said
     assert all(abs(by_eps[e]["per_bin_delta_db"][3]) == by_eps[e]["max_abs_delta_db"]
                for e in (4.7, 4.8, 4.9))
+
+
+# ---------------------------------------------------------------------------
+# #931 lattice ownership contract: cv17 is the DIELECTRIC control.
+# ---------------------------------------------------------------------------
+
+def test_cv17_dielectric_raster_is_untouched_by_the_ownership_contract():
+    """Design note §1.1 makes one promise about everything that is not a
+    conductor: "Dielectric sampling is untouched (node, half-open), so every
+    dielectric-only fixture stays bit-identical." cv17 is the case that
+    promise is worth the most on -- same Sphere, same grid arithmetic and the
+    same operating points as cv16, with the conductor swapped for eps_r = 2.56.
+
+    Checked on the real rasterizer at cv17's gated bins (build-time, no solve):
+
+    * the realized permittivity array still holds EXACTLY two distinct values
+      (G17-B: a binary raster, no sub-cell averaging, no partial fill) and the
+      non-background one is the declared 2.56 to within G17-A's window;
+    * the occupied-cell count equals the NODE-sampled sphere mask -- the same
+      count cv16's docstring records for the same bin (1082 at ka=0.5). Under
+      #931 a PEC volume moved to CELL-CENTRE sampling; a dielectric did not,
+      and if this count ever picks up centre sampling every cv17 number is a
+      different sphere.
+
+    This is the control the design note asks for. It fails loudly if the
+    contract leaks out of the conductor path.
+    """
+    from rfx.geometry.csg import Sphere, rasterize
+    from rfx.grid import C0, Grid
+
+    import importlib.util
+    import sys
+
+    path = _REPO_ROOT / "validation/crossval/17_dielectric_sphere_mie.py"
+    spec = importlib.util.spec_from_file_location("_cv17_dielectric", path)
+    cv17 = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = cv17
+    spec.loader.exec_module(cv17)
+
+    f0, lam = 3e9, C0 / 3e9
+    for ka in KA_GATED_COARSE:
+        radius = ka * lam / (2 * np.pi)
+        res = max(cv17.RES_FLOOR, int(np.ceil(2 * np.pi * 6.4 / ka)))
+        dx = lam / res
+        domain = 2 * radius + 2 * 20 * dx
+        grid = Grid(freq_max=f0 * 1.5, domain=(domain,) * 3, dx=dx,
+                    cpml_layers=cv17.CPML_LAYERS)
+        sphere = Sphere(center=(domain / 2,) * 3, radius=radius)
+        eps_r, _sigma = rasterize(grid, [(sphere, cv17.EPS_R, 0.0)])
+
+        stats = cv17.check_realized_material(eps_r)
+        assert cv17.material_gate_ok(stats), (ka, stats)
+        assert stats["n_distinct_eps"] == cv17.N_DISTINCT_EPS_EXPECTED
+
+        occupied = int(np.sum(np.asarray(eps_r) > 1.0))
+        node = int(np.asarray(sphere.mask(grid), dtype=bool).sum())
+        assert occupied == node, (
+            f"ka={ka}: the dielectric raster occupies {occupied} cells but the "
+            f"node-sampled shape mask has {node} -- dielectric sampling is "
+            "supposed to be untouched by #931 (§1.1)")
+
+    # The ka = 0.5 bin is the one cv16's docstring records a count for, and
+    # both cases build the identical sphere on the identical mesh there.
+    radius = 0.5 * lam / (2 * np.pi)
+    dx = lam / max(cv17.RES_FLOOR, int(np.ceil(2 * np.pi * 6.4 / 0.5)))
+    domain = 2 * radius + 2 * 20 * dx
+    grid = Grid(freq_max=f0 * 1.5, domain=(domain,) * 3, dx=dx,
+                cpml_layers=cv17.CPML_LAYERS)
+    sphere = Sphere(center=(domain / 2,) * 3, radius=radius)
+    eps_r, _sigma = rasterize(grid, [(sphere, cv17.EPS_R, 0.0)])
+    assert int(np.sum(np.asarray(eps_r) > 1.0)) == 1082

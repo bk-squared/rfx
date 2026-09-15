@@ -1,0 +1,15 @@
+=== APPARATUS VERIFICATION (predeclaration section 9) ===
+[generator x-check vs rfx.deembed inverse] max delta = 6.47e-16
+[V0] plane math: |dZc| 5.72e-14, |dbeta/beta| 2.22e-16, |dGamma_top| 6.06e-16, |d out_top| 6.11e-16
+[V1] thru fit (0.38000000 nH, 4.00000000 ps) err 2.22e-16; single-post fit (0.38000000 nH, 4.00000000 ps) err 2.22e-16
+[V2a] attempt-2 3-param flat-L fit on segment truth: L = 0.2600 nH (-31.6%), Zc = 47.730, l_eff = 17.2871 mm (excess +1.287 mm), resid_max = 0.0000
+[V2b] attempt-3 pipeline recovers truth: err 2.22e-16 <= 1%
+[V3a] 30% dispersive truth: fitted (0.2891 nH, 3.9786 ps), resid_max 0.0065 -> absorbed: True
+[V3b] synthetic band arm: worst 0.4421 vs B 0.1300 -> F-D1 fires: True
+[V4] thru: sigma_L/L 0.0081, sigma_tau/tau 0.0134, corr -0.097, cond 1.66, pulls [0.11, 0.6]
+[V4] single-post: sigma_L/L 0.0207, sigma_tau/tau 0.0409, corr 0.251, cond 2.08, pulls [0.06, 0.11]
+[V5] amp 1.02 ph +0.000: dL -0.0039 nH (ref -0.0039), dtau +0.058 ps (ref +0.058) -> ok
+[V5] amp 0.98 ph +0.000: dL +0.0041 nH (ref +0.0041), dtau -0.063 ps (ref -0.063) -> ok
+[V5] amp 1.0 ph +0.015: dL -0.0554 nH (ref -0.0554), dtau -1.547 ps (ref -1.547) -> ok
+[V5] amp 1.0 ph -0.015: dL +0.0554 nH (ref +0.0554), dtau +1.348 ps (ref +1.348) -> ok
+APPARATUS VERIFICATION: ALL PASS (V0, V1, V2, V3, V4, V5)

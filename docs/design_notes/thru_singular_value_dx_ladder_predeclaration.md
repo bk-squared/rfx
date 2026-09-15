@@ -1,5 +1,25 @@
 # THRU singular-value dx ladder — pre-declaration (issue #819, candidate 1)
 
+> **SUPERSEDED IN PART by #931 (the lattice ownership contract), 2026-09-07.**
+> Kept as dated history and deliberately NOT rewritten.
+> Section 2.1's reason for holding the trace at ONE cell at every rung — "a
+> one-cell PEC sheet leaves its own Ez edge live (`apply_pec_mask` shorts Ez
+> only where `pec & roll(pec, +/-1, z)`), while a slab of two or more cells
+> shorts Ez inside it" — describes the deleted neighbour rule. Under #931 a
+> one-cell PEC Box is a VOLUME: it realizes walls on both drawn planes and
+> shorts the Ez edge between them, so a one-cell trace and a two-cell trace
+> are the same operator class and the ladder's "one operator class" argument
+> no longer selects one-cell. A trace that is meant to be foil is now declared
+> with `add_thin_conductor` (a sheet owns no cell and keeps its normal edge
+> live), which holds the operator class across rungs AND holds the physical
+> thickness at zero — the confounder section 2.1 accepted (t/h shrinking
+> 0.5 -> 0.25 -> 0.125) disappears rather than being priced in. Any re-run of
+> this ladder re-declares section 2.1 first.
+> The current rule is
+> `docs/design_notes/20260906_plan_realign_lattice_ownership.md` §1, and for
+> users `docs/public/guide/materials-geometry.mdx` ("How conductors land on
+> the lattice").
+
 Status: PRE-DECLARATION, committed before any rung is run. One attempt under
 R2 at the RF/EM threshold (N >= 1): this note names the falsifier, the outcome
 table and the validity gates once; none of them is widened afterwards. The

@@ -1,35 +1,35 @@
 {
   "cv20": {
     "blindness": {
-      "audit_construction_e1_max_phase_dev_deg": 0.24144025314175127,
+      "audit_construction_e1_max_phase_dev_deg": 0.0646838247297135,
       "audit_construction_e1_passed": true,
-      "dispersion_corrected_residual_max_abs_change_deg_k2": 1.0658141036401503e-14,
-      "dispersion_corrected_residual_max_abs_deg_baseline": 0.7153450725324438,
-      "dispersion_corrected_residual_max_abs_deg_k2": 0.7153450725324506,
+      "dispersion_corrected_residual_max_abs_change_deg_k2": 8.770761894538737e-15,
+      "dispersion_corrected_residual_max_abs_deg_baseline": 0.7917114796063136,
+      "dispersion_corrected_residual_max_abs_deg_k2": 0.7917114796063096,
       "e1_tol_deg": 3.0
     },
     "criterion_b": [
       {
-        "e1_max_phase_dev_deg": 0.12072012657087881,
+        "e1_max_phase_dev_deg": 0.032341912364863105,
         "e1_self_consistency_fired": false,
-        "e2_analytic_beta_rfx_dev_frac": 0.4956433472800128,
-        "e2_failure_reason": "[perturbed] analytic-beta witness failed for solver 'rfx': its MEASURED beta disagrees with the Hammerstad-Jensen quasi-static closed form for this board (eps_eff=2.832693) by 0.495643 > 0.020000. The reference here contains NO quantity from the run, so -- unlike the self-consistency witness -- a coherent phase-velocity error cannot satisfy it.",
+        "e2_analytic_beta_rfx_dev_frac": 0.4936334711257333,
+        "e2_failure_reason": "[perturbed] analytic-beta witness failed for solver 'rfx': its MEASURED beta disagrees with the Hammerstad-Jensen quasi-static closed form for this board (eps_eff=2.872970) by 0.493633 > 0.020000. The reference here contains NO quantity from the run, so -- unlike the self-consistency witness -- a coherent phase-velocity error cannot satisfy it.",
         "e2_fired": true,
         "e4_attributes_to_a_solver": false,
-        "e4_cross_solver_max_abs_raw_phase_diff_deg": 22.18826368420616,
-        "e4_failure_reason": "[perturbed] cross-solver phase witness failed: max |angle(S21_rfx) - angle(S21_openems)| = 22.1883 deg > 3.0000 deg over the 3.0-4.5 GHz gate band. ONE OF THE TWO SOLVERS' de-embedded phase is wrong beyond the +-1-cell mesh and +-4-cell reference-plane budget -- this witness does NOT say which; read the analytic-beta witness for that.",
+        "e4_cross_solver_max_abs_raw_phase_diff_deg": 22.067283269346667,
+        "e4_failure_reason": "[perturbed] cross-solver phase witness failed: max |angle(S21_rfx) - angle(S21_openems)| = 22.0673 deg > 3.0000 deg over the 3.0-4.5 GHz gate band. ONE OF THE TWO SOLVERS' de-embedded phase is wrong beyond the +-1-cell mesh and +-4-cell reference-plane budget -- this witness does NOT say which; read the analytic-beta witness for that.",
         "e4_fired": true,
         "k": 0.5
       },
       {
-        "e1_max_phase_dev_deg": 0.12072012657087564,
+        "e1_max_phase_dev_deg": 0.032341912364863105,
         "e1_self_consistency_fired": false,
-        "e2_analytic_beta_rfx_dev_frac": 1.0187644160757117,
-        "e2_failure_reason": "[perturbed] analytic-beta witness failed for solver 'rfx': its MEASURED beta disagrees with the Hammerstad-Jensen quasi-static closed form for this board (eps_eff=2.832693) by 1.018764 > 0.020000. The reference here contains NO quantity from the run, so -- unlike the self-consistency witness -- a coherent phase-velocity error cannot satisfy it.",
+        "e2_analytic_beta_rfx_dev_frac": 1.0282436367527041,
+        "e2_failure_reason": "[perturbed] analytic-beta witness failed for solver 'rfx': its MEASURED beta disagrees with the Hammerstad-Jensen quasi-static closed form for this board (eps_eff=2.872970) by 1.028244 > 0.020000. The reference here contains NO quantity from the run, so -- unlike the self-consistency witness -- a coherent phase-velocity error cannot satisfy it.",
         "e2_fired": true,
         "e4_attributes_to_a_solver": false,
-        "e4_cross_solver_max_abs_raw_phase_diff_deg": 44.814580677298274,
-        "e4_failure_reason": "[perturbed] cross-solver phase witness failed: max |angle(S21_rfx) - angle(S21_openems)| = 44.8146 deg > 3.0000 deg over the 3.0-4.5 GHz gate band. ONE OF THE TWO SOLVERS' de-embedded phase is wrong beyond the +-1-cell mesh and +-4-cell reference-plane budget -- this witness does NOT say which; read the analytic-beta witness for that.",
+        "e4_cross_solver_max_abs_raw_phase_diff_deg": 45.72707401242633,
+        "e4_failure_reason": "[perturbed] cross-solver phase witness failed: max |angle(S21_rfx) - angle(S21_openems)| = 45.7271 deg > 3.0000 deg over the 3.0-4.5 GHz gate band. ONE OF THE TWO SOLVERS' de-embedded phase is wrong beyond the +-1-cell mesh and +-4-cell reference-plane budget -- this witness does NOT say which; read the analytic-beta witness for that.",
         "e4_fired": true,
         "k": 2.0
       }
@@ -37,7 +37,8 @@
     "cross_solver_raw_phase_difference_is_gated": true,
     "e4_supporting_leg_count": 1,
     "eps_eff_hammerstad_jensen_declared_board": 2.8693862252597855,
-    "eps_eff_hammerstad_jensen_realized_board": 2.832692749102272,
+    "eps_eff_hammerstad_jensen_realized_board": 2.8326927491022724,
+    "eps_eff_hammerstad_jensen_rfx_board_post_931": 2.872970226316938,
     "evidence_levels_supported_by_a_leg_in_this_case": [
       "E1",
       "E2",
@@ -50,6 +51,15 @@
       "analytic_beta_tol_frac": 0.02,
       "cross_solver_margin_x": 9.873250761990334,
       "cross_solver_max_abs_raw_phase_diff_deg": 0.30385129197257765,
+      "cross_solver_tol_deg": 3.0
+    },
+    "run2_openems_with_current_rfx_fixture": {
+      "all_three_passed": true,
+      "analytic_beta_openems_max_abs_dev_frac": 0.0030679160312854226,
+      "analytic_beta_rfx_max_abs_dev_frac": 0.014121818376352069,
+      "analytic_beta_tol_frac": 0.02,
+      "cross_solver_margin_x": 5.651464842989515,
+      "cross_solver_max_abs_raw_phase_diff_deg": 0.5308358245776609,
       "cross_solver_tol_deg": 3.0
     },
     "run2_realized_board": {

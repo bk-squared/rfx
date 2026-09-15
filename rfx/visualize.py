@@ -118,8 +118,29 @@ def plot_geometry_2d_slice(
     """
     _require_mpl()
 
-    grid = sim._build_grid()
-    eps = np.asarray(sim._assemble_materials(grid)[0].eps_r)
+    from rfx.nonuniform import NonUniformGrid
+    grid = sim._build_realized_grid()
+    nonuniform = isinstance(grid, NonUniformGrid)
+    # #931 §1.9: a PEC sheet and a sub-cell wire own no cell and write no
+    # eps, so an eps-only cross-section shows a fully copper-clad board as
+    # bare laminate. Collect them, draw the realized conductor footprint on
+    # top, and let it choose the slice (see the index rule below). The
+    # permittivity IMAGE is untouched; on a model with metal the plane it
+    # is taken at can move.
+    _geo_sheets: list = []
+    _geo_wires: list = []
+    assemble = sim._assemble_materials_nu if nonuniform else sim._assemble_materials
+    _geo_mats, _, _, _geo_pec, *_ = assemble(
+        grid, pec_sheets=_geo_sheets, pec_wires=_geo_wires)
+    eps = np.asarray(_geo_mats.eps_r)
+    from rfx.boundaries.pec import wire_node_footprint as _wire_nodes
+    from rfx.materials.thin_conductor import conductor_footprint as _cond_fp
+    _wn = _wire_nodes(_geo_wires)
+    cond = np.asarray(_cond_fp(
+        pec_mask=_geo_pec, sigma=_geo_mats.sigma,
+        sheet_masks=[sp.footprint for sp in _geo_sheets]
+                    + ([] if _wn is None else [_wn]),
+        shape=grid.shape), dtype=bool)
 
     if axis not in (0, 1, 2):
         raise ValueError(f"axis must be 0, 1, or 2, got {axis!r}")
@@ -127,39 +148,65 @@ def plot_geometry_2d_slice(
         # Pick the slice that actually contains the structure rather than the
         # geometric centre: for thin "1D-equivalent" domains (a layered stack
         # only a cell or two thick along y/z) the centre cell can land on a
-        # padding plane that is pure vacuum. Choose the plane along *axis* with
-        # the most permittivity variation; fall back to the centre if uniform.
+        # padding plane that is pure vacuum.
+        #
+        # Metal counts as structure, and it is looked at FIRST. A board whose
+        # traces are #931 sheets writes no eps at all, so the permittivity
+        # spread is the same on every y plane of a uniform laminate and the
+        # argmax lands on the first one — a plane the patch does not reach.
+        # Where there is a conductor, the plane carrying the most of it is
+        # the cross-section a reader asked for; permittivity variation
+        # decides only when the model has no metal.
+        moved_cond = np.moveaxis(cond, axis, 0)
+        per_plane_cond = moved_cond.reshape(moved_cond.shape[0], -1).sum(axis=1)
         moved = np.moveaxis(eps, axis, 0)
         per_plane_spread = np.ptp(moved.reshape(moved.shape[0], -1), axis=1)
-        if float(per_plane_spread.max()) > 0:
+        if int(per_plane_cond.max()) > 0:
+            index = int(np.argmax(per_plane_cond))
+        elif float(per_plane_spread.max()) > 0:
             index = int(np.argmax(per_plane_spread))
         else:
             index = eps.shape[axis] // 2
 
     if axis == 0:
-        slc = eps[index, :, :]
+        slc, cond2 = eps[index, :, :], cond[index, :, :]
         xlabel, ylabel = "y (mm)", "z (mm)"
     elif axis == 1:
-        slc = eps[:, index, :]
+        slc, cond2 = eps[:, index, :], cond[:, index, :]
         xlabel, ylabel = "x (mm)", "z (mm)"
     else:
-        slc = eps[:, :, index]
+        slc, cond2 = eps[:, :, index], cond[:, :, index]
         xlabel, ylabel = "x (mm)", "y (mm)"
 
-    dx_mm = float(grid.dx) * 1e3
-    extent = [0.0, slc.shape[0] * dx_mm, 0.0, slc.shape[1] * dx_mm]
-
     fig, ax = plt.subplots(figsize=figsize)
-    im = ax.imshow(
-        slc.T,
-        origin="lower",
-        cmap=cmap,
-        aspect="auto",
-        extent=extent,
-        vmin=float(slc.min()),
-        vmax=float(slc.max()),
-    )
+    if nonuniform:
+        # The solver's nodes bound the real cells; the final array slot
+        # supplies the bounding node rather than an extra physical cell.
+        coords = _slice_coords(sim, grid)
+        keep = [a for a in (0, 1, 2) if a != axis]
+        xe = _axis_edges(grid, keep[0], coords[keep[0]]) * 1e3
+        ye = _axis_edges(grid, keep[1], coords[keep[1]]) * 1e3
+        slc = slc[:xe.size - 1, :ye.size - 1]
+        cond2 = cond2[:xe.size - 1, :ye.size - 1]
+        im = ax.pcolormesh(xe, ye, slc.T, cmap=cmap, shading="flat",
+                           vmin=float(slc.min()), vmax=float(slc.max()))
+    else:
+        dx_mm = float(grid.dx) * 1e3
+        extent = [0.0, slc.shape[0] * dx_mm, 0.0, slc.shape[1] * dx_mm]
+        im = ax.imshow(slc.T, origin="lower", cmap=cmap, aspect="auto",
+                       extent=extent, vmin=float(slc.min()), vmax=float(slc.max()))
     fig.colorbar(im, ax=ax, label="relative permittivity εᵣ")
+    if bool(cond2.any()):
+        overlay = np.ma.masked_where(~cond2.T, cond2.T.astype(float))
+        if nonuniform:
+            ax.pcolormesh(xe, ye, overlay, cmap=_conductor_cmap(),
+                          shading="flat", vmin=0.0, vmax=1.0, alpha=0.55)
+        else:
+            ax.imshow(overlay, origin="lower", cmap=_conductor_cmap(),
+                      aspect="auto", extent=extent, vmin=0.0, vmax=1.0, alpha=0.55)
+        from matplotlib.patches import Patch
+        ax.legend(handles=[Patch(facecolor="#b03000", alpha=0.55,
+                                 label="conductor")], loc="best", fontsize=7)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.set_title(title or "Geometry (εᵣ cross-section)")
@@ -317,65 +364,43 @@ def _absorber_rects(grid, keep, xe, ye):
     return rects
 
 
-def _two_plane_wall_mask(sim, grid, coords):
-    """Boolean array, ``grid.shape``: cells where a ``two_plane=True``
-    (#706) body's SECOND wall lives.
+def _realized_edge_wall_mask(sim, grid, coords):
+    """Boolean array, ``grid.shape``: cells that carry a realized PEC E
+    edge but are NOT conductor cells (#931).
 
-    ``conductor_mask()`` cannot show this (it is a solve-time
-    tangential-E edge operator at the body's far node plane, not a cell
-    -- see the docstrings above), but the operator's own footprint IS
-    computable off-line, from the same production function the solve
-    itself uses (:func:`rfx.boundaries.pec.two_plane_extension_masks`),
-    so it can still be drawn as its own marker rather than only being
-    explained away. Returns ``None`` when no entry is flagged (the
-    common case).
+    Under the lattice ownership contract a PEC volume shorts every E edge
+    incident to an occupied cell, so its FAR faces (the ``hi`` node plane
+    on each axis) are electric walls that live on cells outside the
+    body's own cell set; ``conductor_mask()`` cannot show them because
+    they are not cells. The footprint is computed from the same production
+    function the solve uses (:func:`rfx.boundaries.pec.realized_pec_edge_masks`)
+    on the volumes, sheets and wires the assembly classified, and drawn as
+    its own marker. Returns ``None`` when there is no such edge.
 
-    The flagged-body mask is rasterized with the SAME call each lane's own
-    production code uses to build it -- NOT a single shared spelling,
-    because the two disagree for a body only one cell thick along an axis
-    (measured, a 0.4-0.5 mm box on a dx=100 um grid: the default
-    ``shape.mask(grid)`` and ``shape.mask_on_coords(...)`` landed the body
-    on DIFFERENT z-planes, 9 vs 8, one node apart -- the same
-    nearest-midpoint snap ambiguity ``rfx/geometry/csg.py``'s
-    ``_axis_mask`` documents for one-cell bodies generally). Using the
-    wrong one for a lane makes ``two_plane_mask & pec_mask`` land on
-    DIFFERENT cells than ``pec_mask`` itself, and the single-cell-run
-    condition (``~bwd & ~fwd``) then finds nothing at all -- not a
-    partial mismatch, a silent EMPTY result:
-
-    * uniform ``Grid``: the DEFAULT ``mask_fn`` (``shape.mask(grid)``),
-      matching ``rfx/api/_execute.py``'s own ``_two_plane_cell_mask(grid)``
-      call verbatim.
-    * ``NonUniformGrid``: ``shape.mask_on_coords`` on THIS grid's own node
-      coordinates, matching ``rfx/runners/nonuniform.py``'s own call.
-
-    Periodicity caveat: the extension is only correct for the
-    non-periodic (or 2D-mode z-periodic) default this grid was built
-    with. A ``run()``/``forward()`` call with an explicit ``periodic=``
-    override, Floquet ports, or oblique TFSF forces a DIFFERENT periodic
-    convention at solve time that this offline reconstruction has no way
-    to see (that convention is a `run()`-time keyword, not stored on the
-    grid) -- those two_plane bodies still get counted in the honesty
-    notes below, just without a placement-accurate wall marker.
+    Periodicity caveat: computed for the non-periodic (or 2D-mode
+    z-periodic) default this grid was built with; a ``run()`` with an
+    explicit ``periodic=`` override applies a different convention at
+    solve time that this offline reconstruction cannot see.
     """
+    from rfx.boundaries.pec import realized_pec_edge_masks
     from rfx.nonuniform import NonUniformGrid
+    pec_sheets: list = []
+    pec_wires: list = []
     if isinstance(grid, NonUniformGrid):
-        tp_mask = sim._two_plane_cell_mask(
-            mask_fn=lambda sh: sh.mask_on_coords(coords[0], coords[1], coords[2]))
+        _, _, _, pec_mask_raw = sim._assemble_materials_nu(
+            grid, sheet_specs=[], pec_sheets=pec_sheets, pec_wires=pec_wires)
     else:
-        tp_mask = sim._two_plane_cell_mask(grid)
-    if tp_mask is None:
+        _, _, _, pec_mask_raw, *_ = sim._assemble_materials(
+            grid, sheet_specs=[], pec_sheets=pec_sheets, pec_wires=pec_wires)
+    if pec_mask_raw is None and not pec_sheets and not pec_wires:
         return None
-    if isinstance(grid, NonUniformGrid):
-        _, _, _, pec_mask_raw = sim._assemble_materials_nu(grid, sheet_specs=[])
-    else:
-        _, _, _, pec_mask_raw, *_ = sim._assemble_materials(grid, sheet_specs=[])
-    from rfx.boundaries.pec import two_plane_extension_masks
     periodic = (False, False, bool(getattr(grid, "is_2d", False)))
-    ex, ey, ez = two_plane_extension_masks(
-        np.asarray(pec_mask_raw, dtype=bool), np.asarray(tp_mask, dtype=bool),
-        periodic=periodic)
-    return np.asarray(ex) | np.asarray(ey) | np.asarray(ez)
+    ex, ey, ez = realized_pec_edge_masks(
+        pec_mask_raw, sheets=pec_sheets, wires=pec_wires, periodic=periodic)
+    edges = np.asarray(ex, dtype=bool) | np.asarray(ey, dtype=bool) | np.asarray(ez, dtype=bool)
+    cond = np.asarray(sim.conductor_mask(grid), dtype=bool)
+    wall = edges & ~cond
+    return wall if wall.any() else None
 
 
 def plot_rasterized_slice(
@@ -418,14 +443,12 @@ def plot_rasterized_slice(
     extends into it, so without a marker that overhang reads as "the
     rasterizer grew my substrate."
 
-    ``two_plane=True`` (issue #706) bodies are drawn as ONE wall, same as
-    ``two_plane=False``: :meth:`Simulation.conductor_mask` returns the CELL
-    footprint, and the two-plane opt-in only zeroes an extra tangential-E
-    EDGE at the body's far node plane during the SOLVE — it adds no cell,
-    so there is nothing for this viewer's cell-based overlay to show.
-    Verified bit-identical: ``conductor_mask()`` is the same array whether
-    or not a body is flagged. Flagged bodies are still outlined normally;
-    the title counts how many are flagged so the gap is visible.
+    A PEC volume's FAR faces (#931): the solve shorts every E edge
+    incident to an occupied cell, so the ``hi`` node plane on each axis is
+    an electric wall that lives outside the body's own cells.
+    :meth:`Simulation.conductor_mask` is a CELL footprint and cannot show
+    it, so the viewer draws it as its own marker ("realized PEC wall")
+    from the same production function the solve uses.
 
     Parameters
     ----------
@@ -479,17 +502,23 @@ def plot_rasterized_slice(
     _warn_if_refined(sim)
 
     from rfx.nonuniform import NonUniformGrid
-    is_nu = (sim._dx_profile is not None or sim._dy_profile is not None
-             or sim._dz_profile is not None)
-    grid = sim._build_nonuniform_grid() if is_nu else sim._build_grid()
+    grid = sim._build_realized_grid()
     cond = np.asarray(sim.conductor_mask(grid, sigma_threshold=sigma_threshold),
                       dtype=bool)
+    # Permittivity only — this viewer already reads its conductors from
+    # sim.conductor_mask() above and its realized walls from
+    # _realized_edge_wall_mask() below, both of which collect sheets and
+    # wires. The #931 collectors here are passed and dropped so that
+    # "cells only" is a decision at the call site (rfx/api/_compile.py
+    # refuses an assembly that would silently omit a sheet).
     if isinstance(grid, NonUniformGrid):
-        eps = np.asarray(sim._assemble_materials_nu(grid)[0].eps_r, dtype=float)
+        eps = np.asarray(sim._assemble_materials_nu(
+            grid, pec_sheets=[], pec_wires=[])[0].eps_r, dtype=float)
     else:
-        eps = np.asarray(sim._assemble_materials(grid)[0].eps_r, dtype=float)
+        eps = np.asarray(sim._assemble_materials(
+            grid, pec_sheets=[], pec_wires=[])[0].eps_r, dtype=float)
     coords = _slice_coords(sim, grid)
-    wall_mask = _two_plane_wall_mask(sim, grid, coords)
+    wall_mask = _realized_edge_wall_mask(sim, grid, coords)
 
     names_of = lambda a: "xyz"[a]
     moved_note = ""
@@ -592,18 +621,19 @@ def plot_rasterized_slice(
     ax.pcolormesh(xe, ye, np.where(cond2, 1.0, np.nan).T, shading="flat",
                   cmap=_conductor_cmap(), vmin=0.0, vmax=1.0, alpha=0.55)
 
-    # #706 two_plane sealing wall: NOT a conductor cell (conductor_mask()
-    # cannot show it, see the docstring), but its own footprint is
-    # computable from the same production function the solve uses
-    # (two_plane_extension_masks) and drawn here as its own marker,
-    # distinct from both the conductor and absorber layers.
+    # #931 realized PEC edge outside every conductor cell (a volume's far
+    # face): NOT a conductor cell (conductor_mask() cannot show it, see
+    # the docstring), but its footprint is computable from the same
+    # production function the solve uses (realized_pec_edge_masks) and
+    # drawn here as its own marker, distinct from the conductor and
+    # absorber layers.
     wall_note = ""
     if wall2 is not None and wall2.any():
         ax.pcolormesh(xe, ye, np.where(wall2, 1.0, np.nan).T, shading="flat",
-                      cmap=_two_plane_wall_cmap(), vmin=0.0, vmax=1.0,
+                      cmap=_wall_cmap(), vmin=0.0, vmax=1.0,
                       alpha=0.65, zorder=4.5)
-        wall_note = ("two-plane sealing wall (#706) on THIS plane -- a "
-                    "solve-time edge operator, not a conductor cell")
+        wall_note = ("realized PEC wall (#931) on THIS plane -- a body's "
+                    "far face: an electric wall, not a conductor cell")
 
     absorber_rects = _absorber_rects(grid, keep, xe, ye)
     for rx, ry, rw, rh in absorber_rects:
@@ -615,7 +645,6 @@ def plot_rasterized_slice(
 
     names = "xyz"
     n_skipped = 0
-    n_two_plane = 0
     drawn = 0
     if show_declared:
         # BOTH registries. add_thin_conductor() bodies live in
@@ -642,8 +671,6 @@ def plot_rasterized_slice(
             tol = 0.05 * float(np.median(np.diff(coords[axis]))) if coords[axis].size > 1 else 1e-9
             if not (lo[axis] - tol <= float(coords[axis][index]) <= hi[axis] + tol):
                 continue
-            if getattr(entry, "two_plane", False):
-                n_two_plane += 1
             ax.add_patch(plt.Rectangle(
                 (lo[keep[0]] * 1e3, lo[keep[1]] * 1e3),
                 (hi[keep[0]] - lo[keep[0]]) * 1e3,
@@ -666,7 +693,7 @@ def plot_rasterized_slice(
                                  label="conductor cell"))
         if wall_note:
             handles.append(Patch(facecolor="#5533cc", alpha=0.65,
-                                 label="two-plane wall (#706)"))
+                                 label="realized PEC wall (#931)"))
         if drawn:
             handles.append(Patch(fill=False, edgecolor="#d55e00", lw=1.4,
                                  ls="--", label="declared outline (analytic box)"))
@@ -692,28 +719,19 @@ def plot_rasterized_slice(
         ax.set_aspect("auto")
     skip_note = (f"{n_skipped} patterned bod(y/ies): no analytic outline, "
                  "not outlined" if n_skipped else "")
-    # Plane-local: a two_plane body's OWN plane only ever shows its first
-    # (declared-shape) face; the SECOND face lives on a neighbouring plane
-    # and, when it does, `wall_note` above fires there instead. Wording it
-    # as "not shown on THIS plane" rather than "not shown at all" matches
-    # that the wall marker now exists.
-    tp_note = (f"{n_two_plane} two-plane bod(y/ies) (#706) here: 2nd wall "
-              "is on a neighbouring plane (see the wall marker there)"
-              if n_two_plane else "")
     # Each honesty note on its OWN line, not concatenated onto the main
     # title: at the default 10pt title font a single line carrying the
-    # main title PLUS the two-plane note alone measured ~1300 px wide,
-    # and main + two-plane + moved-plane together ~2340 px -- both well
-    # past the 800 px canvas of the default figsize, so exactly the
-    # notes this honesty mechanism exists to surface were the part that
-    # got clipped off-canvas. `get_title()` still returns the full
-    # (now multi-line) string, so substring checks on any one note are
-    # unaffected by where the line breaks fall.
+    # main title PLUS one long note measured ~1300 px wide, and two notes
+    # together ~2340 px -- both well past the 800 px canvas of the default
+    # figsize, so exactly the notes this honesty mechanism exists to
+    # surface were the part that got clipped off-canvas. `get_title()`
+    # still returns the full (now multi-line) string, so substring checks
+    # on any one note are unaffected by where the line breaks fall.
     main_line = (
         f"Rasterized {names[axis]}-slice at index {index} "
         f"({names[axis]} = {float(coords[axis][index]) * 1e3:.4f} mm) — "
         f"{int(cond2.sum())} conductor cells")
-    note_lines = [n for n in (skip_note, tp_note, wall_note, moved_note) if n]
+    note_lines = [n for n in (skip_note, wall_note, moved_note) if n]
     ax.set_title(title or "\n".join([main_line] + note_lines),
                 fontsize=10 if not note_lines else 8)
     # A caller-supplied `ax` belongs to a figure the caller is composing
@@ -755,11 +773,10 @@ def plot_stack_profile(
     does, so pad material at either end of the column is not read as
     declared substrate.
 
-    ``two_plane=True`` (issue #706) bodies count and draw the same as
-    ``two_plane=False`` here: the opt-in's second wall is a solve-time
-    tangential-E edge operator, not a conductor CELL, so
-    :meth:`Simulation.conductor_mask` (and this reading of it) cannot show
-    it. The title counts flagged bodies covering this column.
+    A PEC volume's far face (#931) is an electric wall on a node plane
+    outside the body's own cells; :meth:`Simulation.conductor_mask` cannot
+    show it, so it is drawn as its own marker where it falls in this
+    column (see :func:`plot_rasterized_slice`).
 
     Parameters
     ----------
@@ -783,17 +800,23 @@ def plot_stack_profile(
     _warn_if_refined(sim)
     from rfx.nonuniform import NonUniformGrid
 
-    is_nu = (sim._dx_profile is not None or sim._dy_profile is not None
-             or sim._dz_profile is not None)
-    grid = sim._build_nonuniform_grid() if is_nu else sim._build_grid()
+    grid = sim._build_realized_grid()
     cond = np.asarray(sim.conductor_mask(grid, sigma_threshold=sigma_threshold),
                       dtype=bool)
+    # Permittivity only — this viewer already reads its conductors from
+    # sim.conductor_mask() above and its realized walls from
+    # _realized_edge_wall_mask() below, both of which collect sheets and
+    # wires. The #931 collectors here are passed and dropped so that
+    # "cells only" is a decision at the call site (rfx/api/_compile.py
+    # refuses an assembly that would silently omit a sheet).
     if isinstance(grid, NonUniformGrid):
-        eps = np.asarray(sim._assemble_materials_nu(grid)[0].eps_r, dtype=float)
+        eps = np.asarray(sim._assemble_materials_nu(
+            grid, pec_sheets=[], pec_wires=[])[0].eps_r, dtype=float)
     else:
-        eps = np.asarray(sim._assemble_materials(grid)[0].eps_r, dtype=float)
+        eps = np.asarray(sim._assemble_materials(
+            grid, pec_sheets=[], pec_wires=[])[0].eps_r, dtype=float)
     coords = _slice_coords(sim, grid)
-    wall_mask = _two_plane_wall_mask(sim, grid, coords)
+    wall_mask = _realized_edge_wall_mask(sim, grid, coords)
     keep = [a for a in (0, 1, 2) if a != axis]
     names_of = lambda a: "xyz"[a]
     auto_note = ""
@@ -869,8 +892,8 @@ def plot_stack_profile(
                                        hatch="////",
                                        edgecolor="#701e00", lw=0.5))
         if wall_col is not None and wall_col[k]:
-            # #706 two_plane sealing wall: its own marker, distinct from
-            # the conductor hatch -- see plot_rasterized_slice.
+            # #931 realized PEC wall (a body's far face): its own marker,
+            # distinct from the conductor hatch -- see plot_rasterized_slice.
             ax.add_patch(plt.Rectangle((1.15, lo_e[k]), 1.0, hi_e[k] - lo_e[k],
                                        facecolor="#5533cc", alpha=0.5,
                                        edgecolor="#3a2488", lw=0.6))
@@ -893,7 +916,6 @@ def plot_stack_profile(
     x_at = float(coords[keep[0]][i0])
     y_at = float(coords[keep[1]][i1])
     drawn = 0
-    n_two_plane = 0
     for entry in _declared_entries(sim):
         shape = getattr(entry, "shape", entry)
         lo = getattr(shape, "corner_lo", None)
@@ -907,8 +929,6 @@ def plot_stack_profile(
         if not (lo[keep[0]] - tolx <= x_at <= hi[keep[0]] + tolx
                 and lo[keep[1]] - toly <= y_at <= hi[keep[1]] + toly):
             continue
-        if getattr(entry, "two_plane", False):
-            n_two_plane += 1
         mat = (getattr(entry, "material_name", None)
                or getattr(entry, "material", None))
         ax.add_patch(plt.Rectangle((0.0, lo[axis] * 1e3), 1.0,
@@ -928,7 +948,7 @@ def plot_stack_profile(
                                  hatch="////", label="conductor cell"))
         if wall_present:
             handles.append(Patch(facecolor="#5533cc", alpha=0.5,
-                                 label="two-plane wall (#706)"))
+                                 label="realized PEC wall (#931)"))
         if absorber_spans:
             handles.append(Patch(fill=False, hatch="////", edgecolor="0.35",
                                  label="CPML absorber"))
@@ -945,13 +965,10 @@ def plot_stack_profile(
     ax.set_xticks([0.5, 1.65])
     ax.set_xticklabels(["declared", "meshed"])
     ax.set_ylabel(f"{names[axis]} (mm)")
-    # Plane-local wording: see plot_rasterized_slice.
-    tp_note = (f"{n_two_plane} two-plane bod(y/ies) (#706): 2nd wall shown "
-              "as its own marker where it falls in this column"
-              if n_two_plane else "")
     # See plot_rasterized_slice: notes on their own line(s), not
     # concatenated onto the main title, so a long note is not the part
     # that gets clipped off the default-figsize canvas.
+    tp_note = ""
     main_line = (
         f"Stack along {names[axis]} at {names[keep[0]]}={x_at * 1e3:.3f} mm, "
         f"{names[keep[1]]}={y_at * 1e3:.3f} mm — {drawn} declared bod(y/ies), "
@@ -972,7 +989,7 @@ def _conductor_cmap():
     return ListedColormap(["#b03000"])
 
 
-def _two_plane_wall_cmap():
+def _wall_cmap():
     from matplotlib.colors import ListedColormap
     return ListedColormap(["#5533cc"])
 
@@ -1325,8 +1342,7 @@ def visualize_farfield_3d(result, sim=None, *, f_idx: int = 0,
         phi_grid = np.linspace(0, 2 * np.pi, 121)
 
     if sim is not None:
-        grid = (sim._build_nonuniform_grid()
-                if sim._dz_profile is not None else sim._build_grid())
+        grid = sim._build_realized_grid()
     else:
         grid = result.grid
 

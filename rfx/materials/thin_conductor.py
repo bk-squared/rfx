@@ -11,10 +11,13 @@ a cell of size Δx:
 This preserves the correct sheet resistance R_s = 1/(σ_bulk · t)
 while keeping the standard Yee cell size.
 
-For PEC thin sheets (σ_bulk → ∞), the cells containing the sheet are
-added to the PEC mask directly.  This implements the Thin Sheet Technique
-(TST) from CST's Perfect Boundary Approximation, without requiring the
-mesh to resolve the sheet volumetrically.
+For PEC thin sheets (σ_bulk → ∞) the conductor is a SHEET under the
+lattice ownership contract (#931): a closed footprint on ONE node plane,
+zero thickness, no cell — emitted as a :class:`rfx.boundaries.pec.SheetSpec`
+and realized by ``rfx.boundaries.pec.realized_pec_edge_masks`` (E tangential
+to the plane is zeroed where both end nodes are in the footprint; the
+sheet-normal E stays live).  This is the Thin Sheet Technique (TST) of CST's
+Perfect Boundary Approximation without volumetric resolution of the sheet.
 
 References:
     Taflove & Hagness, Ch. 10 — Subcell modeling techniques
@@ -233,17 +236,32 @@ class ThinConductor:
         return 1.0 / (self.sigma_bulk * self.thickness)
 
 
+def _pec_sheet_spec(conductor, grid, *, lane: str):
+    """The :class:`SheetSpec` of a thin conductor on a uniform Grid (#931)."""
+    from rfx.geometry.csg import _grid_coords
+    from rfx.geometry.rasterize_grid import (
+        GridCoords, cell_sizes_from_uniform_grid, sheet_spec_from_shape)
+    x, y, z = _grid_coords(grid)
+    coords = GridCoords(x=x, y=y, z=z, shape=tuple(grid.shape))
+    return sheet_spec_from_shape(
+        conductor.shape, coords, cell_sizes_from_uniform_grid(grid),
+        name="thin_conductor", lane=lane, refuse_thick=True)
+
+
 def apply_thin_conductor(
     grid: Grid,
     conductor: ThinConductor,
     materials: MaterialArrays,
     pec_mask: jnp.ndarray | None = None,
     sheet_specs: list | None = None,
+    sheets: list | None = None,
 ) -> tuple[MaterialArrays, jnp.ndarray | None]:
     """Apply thin conductor subcell correction to material arrays.
 
-    For lossy conductors (σ < 1e6): modifies σ_eff in the material arrays.
-    For PEC thin sheets (σ >= 1e6): adds cells to PEC mask instead.
+    For lossy conductors (σ < 1e6, no f0): modifies σ_eff in the material
+    arrays (DC fold).  For PEC thin sheets (σ >= 1e6): emits a
+    :class:`~rfx.boundaries.pec.SheetSpec` into ``sheets`` (#931) — the
+    PEC mask is returned UNCHANGED; a sheet owns no cell.
 
     Parameters
     ----------
@@ -251,7 +269,11 @@ def apply_thin_conductor(
     conductor : ThinConductor
     materials : MaterialArrays
     pec_mask : bool array or None
-        Existing PEC mask.  Updated in-place for PEC thin sheets.
+        Existing PEC (volume) mask, passed through untouched.
+    sheets : list or None
+        Collector for PEC sheets.  A PEC thin conductor with no collector
+        raises: the lane would otherwise simulate no sheet at all (the
+        #369 vaporized-metal class).
     sheet_specs : list or None
         Collector for surface-impedance (``surface_impedance_f0``) sheets
         (#677). An f0-mode conductor no longer touches the material arrays;
@@ -266,15 +288,20 @@ def apply_thin_conductor(
     -------
     (materials, pec_mask) — updated material arrays and PEC mask.
     """
-    mask = conductor.shape.mask(grid)
-
     if conductor.is_pec:
-        # P4: Thin PEC sheet — add to PEC mask, no volumetric meshing needed
-        if pec_mask is None:
-            pec_mask = mask
-        else:
-            pec_mask = pec_mask | mask
+        # #931 §1.3: a PEC thin conductor is a sheet — one plane, closed
+        # footprint, no cell. Thicker than one local cell is refused.
+        spec = _pec_sheet_spec(conductor, grid, lane="uniform")
+        if sheets is None:
+            raise ValueError(
+                "PEC thin conductor (add_thin_conductor with sigma_bulk >= "
+                "1e6 and no surface_impedance_f0) is a SHEET (#931) and this "
+                "lane collects no sheets (apply_thin_conductor(sheets=None)); "
+                "refusing to drop it silently.")
+        sheets.append(spec)
         return materials, pec_mask
+
+    mask = conductor.shape.mask(grid)
 
     if conductor.surface_impedance_f0 is not None:
         # Leontovich (band-centre) surface-impedance mode (issues #669/#677):
@@ -311,7 +338,11 @@ def apply_thin_conductor(
                 "requires a shape with an axis-aligned bounding box (Box "
                 "corner_lo/corner_hi, or Shape.bounding_box()) — the sheet "
                 "normal is read from it; refusing to fold it blind.")
-        n_axis = sheet_normal_axis(lo, hi)
+        # #931 G4 by construction: the f0 sheet takes the SAME footprint
+        # and plane the PEC sheet on this shape gets.
+        spec = _pec_sheet_spec(conductor, grid, lane="uniform")
+        mask = spec.footprint
+        n_axis = spec.normal_axis
         check_sheet_occupancy(mask, n_axis, lane="uniform")
         g_sheet = 1.0 / leontovich_rs(conductor.surface_impedance_f0,
                                       conductor.sigma_bulk)
@@ -319,7 +350,7 @@ def apply_thin_conductor(
             sigma_sheet = jnp.where(mask, g_sheet / grid.dx, 0.0)
             sheet_specs.append(SheetImpedanceSpec(
                 mask=mask, normal_axis=n_axis, g_sheet=g_sheet,
-                sigma_sheet=sigma_sheet))
+                sigma_sheet=sigma_sheet, plane=spec.plane))
         # Materials are returned UNCHANGED: assembled arrays are sheet-free
         # by design since #677. A caller that runs the fields without
         # applying the sheet ctx must refuse f0 sheets at its entry point
@@ -356,38 +387,26 @@ class SheetImpedanceSpec:
     +(1/Rs0)/(2 sigma_bulk) — the #669 closed forms with flipped signs,
     since G = 1/Rs0).
     """
-    mask: object          # (nx, ny, nz) bool — one-layer cell mask
+    mask: object          # (nx, ny, nz) bool — one-layer NODE footprint
     normal_axis: int      # 0/1/2
     g_sheet: object       # scalar sheet conductance per square, 1/Rs0 (S)
     sigma_sheet: object   # (nx, ny, nz) float — G/d_dual at sheet cells
+    plane: int | None = None   # realized node plane (#931); None = read from mask
 
 
 @dataclass(frozen=True)
 class SheetImpedanceCtx:
     """Assembled runtime context for all f0 sheets of one run.
 
-    ``mask_ex/ey/ez`` are the TANGENTIAL edge masks from the shared
-    ``rfx.boundaries.pec.tangential_edge_masks`` neighbor rule — the same
-    edges ``apply_pec_mask`` would zero for the same cell mask (G4
-    footprint identity), minus any edge the run's PEC mask already owns
-    (PEC wins on overlap), and minus any component that is NORMAL to every
-    sheet covering that cell.
-
-    That last veto is what keeps the sheet-normal component all-False
-    (#690). It used to be described as holding "by construction" for a
-    one-layer sheet, and that was wrong: the neighbour rule sees only
-    adjacency, so two one-layer sheets sharing a normal and sitting on
-    ADJACENT cell layers looked like one two-cell body and the gap edge
-    between them was loaded. Since #677 an f0 sheet is node-thin, so
-    adjacent layers are two films one dual spacing apart with vacuum
-    between — the gap edge must stay lossless. The veto uses each spec's
-    declared ``normal_axis``, so it holds for a stack of any depth.
-
-    Consequence worth knowing (and NOT re-litigating silently): for
-    adjacent stacked sheets the f0 footprint now differs from the PEC
-    thin-sheet footprint, which still fuses the two films because
-    ``pec_mask`` is a cell mask with no normal attached. The #677
-    PEC/f0 footprint identity holds per sheet, not for a stack.
+    ``mask_ex/ey/ez`` are the sheet EDGE masks of the lattice ownership
+    contract (#931 §1.3): each spec's node footprint goes through
+    ``rfx.boundaries.pec.realized_pec_edge_masks`` as a sheet — E_t
+    (t != normal) on the sheet plane where both end nodes are in the
+    footprint — so a PEC sheet and an f0 sheet on the same shape share
+    one edge set by construction (the #677 G4 identity), and the
+    sheet-normal component is never loaded (#690: two films on adjacent
+    planes keep the gap edge between them live). Edges the run's realized
+    PEC edge masks already own are excluded (PEC wins on overlap).
     """
     mask_ex: object
     mask_ey: object
@@ -395,7 +414,7 @@ class SheetImpedanceCtx:
     sigma_sheet: object   # accumulated over sheets; 0 off-sheet
 
 
-def build_sheet_impedance_ctx(sheet_specs, pec_mask=None,
+def build_sheet_impedance_ctx(sheet_specs, pec_edge_masks=None,
                              periodic=(False, False, False)):
     """Union a run's :class:`SheetImpedanceSpec` list into a runtime ctx.
 
@@ -404,30 +423,19 @@ def build_sheet_impedance_ctx(sheet_specs, pec_mask=None,
     share edges whose loss would double-count with no defined normal).
     Same-normal OVERLAP (two sheets on the very same cells) ADDS
     conductance — parallel sheet admittances on one node, physical.
-    Same-normal ADJACENCY (two one-layer sheets on neighbouring layers) is
-    two independent films with a vacuum gap, so the sheet-normal edge
-    between them is NOT loaded (#690); each component is kept only where
-    some covering sheet has it tangential. PEC-owned edges are excluded so
-    ``apply_pec_mask`` (which runs first) wins on overlap.
+    Same-normal ADJACENCY (two one-layer sheets on neighbouring planes) is
+    two independent films with a vacuum gap; the sheet rule loads only
+    in-plane components, so the gap edge is never touched (#690).
 
-    That per-component veto is skipped on a LENGTH-1 axis, where "normal to
-    the sheet" is not a direction the grid can represent — see the loop
-    below. Note the exception is the degenerate axis ONLY, not
-    ``periodic[c]``: on a periodic axis of length > 1 cells 0 and n-1 are
-    genuinely different cells, so two one-layer films sitting either side of
-    the seam are still two films and the edge between them is still their
-    gap. Widening the exception to ``periodic[c]`` would re-open #690 across
-    the seam; ``test_periodic_seam_gap_edge_stays_vetoed`` pins that.
-
-    ``periodic`` is forwarded to ``tangential_edge_masks`` for BOTH the
-    sheet union and the PEC subtraction (#689). Handing the two different
-    flags would compute the #677 G4 footprint identity against two
-    different neighbour rules; the caller must pass the same flags its
-    ``apply_pec_mask`` gets.
+    ``pec_edge_masks`` is the run's realized PEC ``(Mx, My, Mz)`` from
+    ``rfx.boundaries.pec.realized_pec_edge_masks``; edges it owns are
+    removed from the ctx (``apply_pec_edges`` runs first and wins).
+    ``periodic`` is the run's flags (#689) — the caller must pass the same
+    flags its PEC realization used.
 
     Returns ``None`` for an empty spec list.
     """
-    from rfx.boundaries.pec import tangential_edge_masks
+    from rfx.boundaries.pec import SheetSpec, realized_pec_edge_masks
     from rfx.core.jax_utils import is_tracer
 
     specs = list(sheet_specs or ())
@@ -450,20 +458,19 @@ def build_sheet_impedance_ctx(sheet_specs, pec_mask=None,
                         "double-counting their loss. Split the geometry so "
                         "f0 sheets of different orientation do not share "
                         "cells (PEC sheets may still cross freely).")
-    # #690: ``tangential_edge_masks`` classifies by ADJACENCY alone, so two
-    # sheets that share a normal axis and land on ADJACENT cell layers look
-    # like one two-cell body and the SHEET-NORMAL edge between them picks up
-    # the resistive update.  That edge is the dielectric gap of a two-layer
-    # board: since #677 an f0 sheet is node-thin, so adjacent layers are two
-    # films one dual spacing apart, not one 2-cell slab.  Each spec carries
-    # its own normal, so veto any component that is normal to EVERY sheet
-    # covering that cell.  Grouping the masks by normal axis first keeps the
-    # cost at n_specs cheap boolean ORs plus ONE classification.
-    per_axis = [None, None, None]
     sigma_sheet = specs[0].sigma_sheet
+    sheets = []
     for k, sp in enumerate(specs):
         a = int(sp.normal_axis)
-        per_axis[a] = sp.mask if per_axis[a] is None else (per_axis[a] | sp.mask)
+        plane = getattr(sp, "plane", None)
+        if plane is None:
+            if is_tracer(sp.mask):
+                plane = 0      # unused by the edge rule; only the footprint is
+            else:
+                other = tuple(b for b in range(3) if b != a)
+                layers = np.flatnonzero(np.asarray(jnp.any(sp.mask, axis=other)))
+                plane = int(layers[0]) if layers.size else 0
+        sheets.append(SheetSpec(normal_axis=a, plane=int(plane), footprint=sp.mask))
         if k:
             # Coincident same-normal sheets are PARALLEL sheet admittances
             # (1/Rs_tot = 1/Rs_1 + 1/Rs_2); ``sigma_sheet = G/d_dual`` is
@@ -472,40 +479,10 @@ def build_sheet_impedance_ctx(sheet_specs, pec_mask=None,
             # interact, so there the sum is only an assignment.  Summed in
             # the original spec order so the float result is unchanged.
             sigma_sheet = sigma_sheet + sp.sigma_sheet
-    union = None
-    for m in per_axis:
-        if m is not None:
-            union = m if union is None else (union | m)
-    masks = list(tangential_edge_masks(union, periodic))
-    for c in range(3):
-        if union.shape[c] == 1:
-            # DEGENERATE AXIS — leave the classification alone.  With one
-            # cell along ``c`` there is no "normal to c" direction to be
-            # normal to: every body spans the whole axis and is its own
-            # neighbour through the wrap ``tangential_edge_masks``
-            # deliberately keeps on a length-1 axis.  ``sheet_normal_axis``
-            # still names ``c`` the thinnest bounding-box axis, so on the
-            # 2-D lane (nz == 1) a flat patch reports ``normal_axis = 2``
-            # and the veto below would zero ``mask_ez`` — the ONLY live E
-            # component in ``mode="2d_tmz"``, making the sheet
-            # bit-identically inert (measured on a 6x6-cell copper patch,
-            # 20x20x1 grid: f0/none peak|Ez| = 1.000000 at the patch node
-            # against pec/none = 0.000000).  Skipped whole, not narrowed to
-            # ``masks[c] & allow``: with a second sheet of a different
-            # normal present, that AND would drop this sheet's own edges.
-            continue
-        # ``allow``: cells covered by at least one sheet for which component
-        # ``c`` is TANGENTIAL.  A component normal to every covering sheet is
-        # a gap edge, not a sheet edge.
-        allow = None
-        for a in range(3):
-            if a != c and per_axis[a] is not None:
-                allow = per_axis[a] if allow is None else (allow | per_axis[a])
-        masks[c] = (masks[c] & allow) if allow is not None \
-            else jnp.zeros_like(masks[c])
-    mask_ex, mask_ey, mask_ez = masks
-    if pec_mask is not None:
-        pex, pey, pez = tangential_edge_masks(pec_mask, periodic)
+    mask_ex, mask_ey, mask_ez = realized_pec_edge_masks(
+        None, sheets=sheets, periodic=periodic)
+    if pec_edge_masks is not None:
+        pex, pey, pez = pec_edge_masks
         mask_ex = mask_ex & ~pex
         mask_ey = mask_ey & ~pey
         mask_ez = mask_ez & ~pez
@@ -655,9 +632,9 @@ def conductor_footprint(
 
     Every argument is optional so callers can pass only what they hold:
     ``pec_mask`` (bool array or None), ``sigma`` (float array or None), and
-    ``sheet_masks`` (iterable of bool cell masks — ``SheetImpedanceSpec.mask``
-    values, or ``ctx.sigma_sheet > 0`` when only the assembled ctx is in
-    hand).  ``shape`` seeds an all-False result when every input is None.
+    ``sheet_masks`` (iterable of bool node-footprint masks —
+    ``SheetImpedanceSpec.mask`` / ``SheetSpec.footprint`` values, or
+    ``ctx.sigma_sheet > 0`` when only the assembled ctx is in hand).  ``shape`` seeds an all-False result when every input is None.
 
     Raises ``ValueError`` when nothing at all was supplied and no ``shape``
     is given — returning a scalar False there would be the same silent
@@ -684,3 +661,66 @@ def conductor_footprint(
                 "nothing' (#695).")
         return jnp.zeros(tuple(shape), dtype=bool)
     return out
+
+
+def warn_sheet_planes_inside_dielectric(sheets, eps_r) -> None:
+    """#931: a realized sheet plane buried strictly inside a dielectric.
+
+    A sheet is realized ON one node plane.  When the primal cells on BOTH
+    sides of that plane along the sheet's normal carry the SAME dielectric,
+    the declared conductor is sitting half a cell inside a dielectric body
+    rather than on its interface — the geometry the declaration described
+    (a foil ON the laminate) is not the geometry the lattice realized.
+    That is the #702 measurement in its honest form: the cavity gains a
+    half-cell of the wrong medium in series, 17 % on a 127 µm stack.
+
+    Reported through the ordinary ``warnings`` channel, once per sheet.
+    Nothing is re-sampled and nothing is refused — the remedy is to draw
+    the dielectric boxes up to the sheet plane, or the sheet on the
+    interface.  Preflight formalises this as a named check; this guard is
+    preflight-independent so the assembly warns even when preflight is
+    skipped.
+
+    A no-op when there are no sheets or when ``eps_r`` is traced (the
+    comparison would concretize a tracer).
+    """
+    import warnings as _warnings
+
+    from rfx.core.jax_utils import is_tracer
+
+    if not sheets or eps_r is None or is_tracer(eps_r):
+        return
+    eps = np.asarray(eps_r, dtype=float)
+    for sp in sheets:
+        a = int(sp.normal_axis)
+        k = int(sp.plane)
+        if k <= 0 or k >= eps.shape[a]:
+            continue                      # a domain-face plane has no "below"
+        foot = np.asarray(sp.footprint, dtype=bool)
+        if not foot.any():
+            continue
+        below = np.take(eps, k - 1, axis=a)
+        above = np.take(eps, k, axis=a)
+        sel = np.any(foot, axis=a)
+        if not sel.any():
+            continue
+        same = np.isclose(below, above, rtol=0.0, atol=1e-12)
+        buried = sel & same & (below > 1.0 + 1e-12)
+        n_buried = int(buried.sum())
+        if n_buried == 0:
+            continue
+        eps_val = float(below[buried][0])
+        _warnings.warn(
+            f"PEC sheet {getattr(sp, 'name', None) or '<unnamed>'!s} realizes "
+            f"on node plane {k} of axis {'xyz'[a]}, and the cells on BOTH "
+            f"sides of that plane carry the same dielectric (eps_r = "
+            f"{eps_val:.4g}) over {n_buried} of its footprint nodes. The "
+            "sheet is therefore buried half a cell inside the dielectric "
+            "instead of lying on its interface, so the realized cavity "
+            "carries half a cell of the wrong medium in series (#931; the "
+            "#702 measurement was 17 % on a 127 um stack). Draw the "
+            "dielectric bodies up to the sheet plane, or move the sheet to "
+            "the interface. Nothing is re-sampled.",
+            UserWarning,
+            stacklevel=3,
+        )

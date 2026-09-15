@@ -1,0 +1,628 @@
+{
+  "base_commit": "5ce0de652d6bb58a70735504dce42da83ddd8b16",
+  "worktree": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds",
+  "ruff_version": "ruff 0.15.22",
+  "command": [
+    "ruff",
+    "check",
+    "--output-format",
+    "json",
+    "--stdin-filename",
+    "<file>",
+    "-"
+  ],
+  "comparison": "Multiset of code, message, exact source span, start/end columns; line numbers retained in diagnostics but excluded from identity because unchanged code moved.",
+  "files": [
+    {
+      "path": "tests/locks/test_refplane_port_waves.py",
+      "base_count": 8,
+      "current_count": 8,
+      "added_count": 0,
+      "removed_count": 0,
+      "added": [],
+      "removed": [],
+      "base_diagnostics": [
+        {
+          "cell": null,
+          "code": "E402",
+          "end_location": {
+            "column": 19,
+            "row": 62
+          },
+          "filename": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/locks/test_refplane_port_waves.py",
+          "fix": null,
+          "location": {
+            "column": 1,
+            "row": 62
+          },
+          "message": "Module level import not at top of file",
+          "name": "module-import-not-at-top-of-file",
+          "noqa_row": 62,
+          "severity": "error",
+          "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file",
+          "source_span": "import numpy as np"
+        },
+        {
+          "cell": null,
+          "code": "E402",
+          "end_location": {
+            "column": 14,
+            "row": 63
+          },
+          "filename": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/locks/test_refplane_port_waves.py",
+          "fix": null,
+          "location": {
+            "column": 1,
+            "row": 63
+          },
+          "message": "Module level import not at top of file",
+          "name": "module-import-not-at-top-of-file",
+          "noqa_row": 63,
+          "severity": "error",
+          "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file",
+          "source_span": "import pytest"
+        },
+        {
+          "cell": null,
+          "code": "E402",
+          "end_location": {
+            "column": 32,
+            "row": 65
+          },
+          "filename": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/locks/test_refplane_port_waves.py",
+          "fix": null,
+          "location": {
+            "column": 1,
+            "row": 65
+          },
+          "message": "Module level import not at top of file",
+          "name": "module-import-not-at-top-of-file",
+          "noqa_row": 65,
+          "severity": "error",
+          "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file",
+          "source_span": "from rfx import Box, Simulation"
+        },
+        {
+          "cell": null,
+          "code": "E402",
+          "end_location": {
+            "column": 55,
+            "row": 66
+          },
+          "filename": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/locks/test_refplane_port_waves.py",
+          "fix": null,
+          "location": {
+            "column": 1,
+            "row": 66
+          },
+          "message": "Module level import not at top of file",
+          "name": "module-import-not-at-top-of-file",
+          "noqa_row": 66,
+          "severity": "error",
+          "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file",
+          "source_span": "from rfx.boundaries.spec import Boundary, BoundarySpec"
+        },
+        {
+          "cell": null,
+          "code": "E402",
+          "end_location": {
+            "column": 46,
+            "row": 67
+          },
+          "filename": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/locks/test_refplane_port_waves.py",
+          "fix": null,
+          "location": {
+            "column": 1,
+            "row": 67
+          },
+          "message": "Module level import not at top of file",
+          "name": "module-import-not-at-top-of-file",
+          "noqa_row": 67,
+          "severity": "error",
+          "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file",
+          "source_span": "from rfx.sources.sources import GaussianPulse"
+        },
+        {
+          "cell": null,
+          "code": "E402",
+          "end_location": {
+            "column": 54,
+            "row": 68
+          },
+          "filename": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/locks/test_refplane_port_waves.py",
+          "fix": null,
+          "location": {
+            "column": 1,
+            "row": 68
+          },
+          "message": "Module level import not at top of file",
+          "name": "module-import-not-at-top-of-file",
+          "noqa_row": 68,
+          "severity": "error",
+          "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file",
+          "source_span": "from rfx.probes.probes import decompose_wire_s_matrix"
+        },
+        {
+          "cell": null,
+          "code": "E402",
+          "end_location": {
+            "column": 2,
+            "row": 76
+          },
+          "filename": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/locks/test_refplane_port_waves.py",
+          "fix": null,
+          "location": {
+            "column": 1,
+            "row": 69
+          },
+          "message": "Module level import not at top of file",
+          "name": "module-import-not-at-top-of-file",
+          "noqa_row": 69,
+          "severity": "error",
+          "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file",
+          "source_span": "from rfx.probes.refplane import (\n    build_wire_refplane_specs,\n    decompose_wire_s_matrix_with_reference_planes,\n    refplane_beta,\n    refplane_centered_current,\n    refplane_split,\n    refplane_zc_two_plane,\n)"
+        },
+        {
+          "cell": null,
+          "code": "F401",
+          "end_location": {
+            "column": 30,
+            "row": 70
+          },
+          "filename": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/locks/test_refplane_port_waves.py",
+          "fix": {
+            "applicability": "safe",
+            "edits": [
+              {
+                "content": "from rfx.probes.refplane import (\n    decompose_wire_s_matrix_with_reference_planes,\n    refplane_beta,\n    refplane_centered_current,\n    refplane_split,\n    refplane_zc_two_plane,\n)",
+                "end_location": {
+                  "column": 2,
+                  "row": 76
+                },
+                "location": {
+                  "column": 1,
+                  "row": 69
+                }
+              }
+            ],
+            "message": "Remove unused import: `rfx.probes.refplane.build_wire_refplane_specs`"
+          },
+          "location": {
+            "column": 5,
+            "row": 70
+          },
+          "message": "`rfx.probes.refplane.build_wire_refplane_specs` imported but unused",
+          "name": "unused-import",
+          "noqa_row": 70,
+          "severity": "error",
+          "url": "https://docs.astral.sh/ruff/rules/unused-import",
+          "source_span": "    build_wire_refplane_specs,"
+        }
+      ],
+      "current_diagnostics": [
+        {
+          "cell": null,
+          "code": "E402",
+          "end_location": {
+            "column": 19,
+            "row": 62
+          },
+          "filename": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/locks/test_refplane_port_waves.py",
+          "fix": null,
+          "location": {
+            "column": 1,
+            "row": 62
+          },
+          "message": "Module level import not at top of file",
+          "name": "module-import-not-at-top-of-file",
+          "noqa_row": 62,
+          "severity": "error",
+          "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file",
+          "source_span": "import numpy as np"
+        },
+        {
+          "cell": null,
+          "code": "E402",
+          "end_location": {
+            "column": 14,
+            "row": 63
+          },
+          "filename": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/locks/test_refplane_port_waves.py",
+          "fix": null,
+          "location": {
+            "column": 1,
+            "row": 63
+          },
+          "message": "Module level import not at top of file",
+          "name": "module-import-not-at-top-of-file",
+          "noqa_row": 63,
+          "severity": "error",
+          "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file",
+          "source_span": "import pytest"
+        },
+        {
+          "cell": null,
+          "code": "E402",
+          "end_location": {
+            "column": 32,
+            "row": 65
+          },
+          "filename": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/locks/test_refplane_port_waves.py",
+          "fix": null,
+          "location": {
+            "column": 1,
+            "row": 65
+          },
+          "message": "Module level import not at top of file",
+          "name": "module-import-not-at-top-of-file",
+          "noqa_row": 65,
+          "severity": "error",
+          "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file",
+          "source_span": "from rfx import Box, Simulation"
+        },
+        {
+          "cell": null,
+          "code": "E402",
+          "end_location": {
+            "column": 55,
+            "row": 66
+          },
+          "filename": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/locks/test_refplane_port_waves.py",
+          "fix": null,
+          "location": {
+            "column": 1,
+            "row": 66
+          },
+          "message": "Module level import not at top of file",
+          "name": "module-import-not-at-top-of-file",
+          "noqa_row": 66,
+          "severity": "error",
+          "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file",
+          "source_span": "from rfx.boundaries.spec import Boundary, BoundarySpec"
+        },
+        {
+          "cell": null,
+          "code": "E402",
+          "end_location": {
+            "column": 46,
+            "row": 67
+          },
+          "filename": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/locks/test_refplane_port_waves.py",
+          "fix": null,
+          "location": {
+            "column": 1,
+            "row": 67
+          },
+          "message": "Module level import not at top of file",
+          "name": "module-import-not-at-top-of-file",
+          "noqa_row": 67,
+          "severity": "error",
+          "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file",
+          "source_span": "from rfx.sources.sources import GaussianPulse"
+        },
+        {
+          "cell": null,
+          "code": "E402",
+          "end_location": {
+            "column": 54,
+            "row": 68
+          },
+          "filename": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/locks/test_refplane_port_waves.py",
+          "fix": null,
+          "location": {
+            "column": 1,
+            "row": 68
+          },
+          "message": "Module level import not at top of file",
+          "name": "module-import-not-at-top-of-file",
+          "noqa_row": 68,
+          "severity": "error",
+          "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file",
+          "source_span": "from rfx.probes.probes import decompose_wire_s_matrix"
+        },
+        {
+          "cell": null,
+          "code": "E402",
+          "end_location": {
+            "column": 2,
+            "row": 76
+          },
+          "filename": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/locks/test_refplane_port_waves.py",
+          "fix": null,
+          "location": {
+            "column": 1,
+            "row": 69
+          },
+          "message": "Module level import not at top of file",
+          "name": "module-import-not-at-top-of-file",
+          "noqa_row": 69,
+          "severity": "error",
+          "url": "https://docs.astral.sh/ruff/rules/module-import-not-at-top-of-file",
+          "source_span": "from rfx.probes.refplane import (\n    build_wire_refplane_specs,\n    decompose_wire_s_matrix_with_reference_planes,\n    refplane_beta,\n    refplane_centered_current,\n    refplane_split,\n    refplane_zc_two_plane,\n)"
+        },
+        {
+          "cell": null,
+          "code": "F401",
+          "end_location": {
+            "column": 30,
+            "row": 70
+          },
+          "filename": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/locks/test_refplane_port_waves.py",
+          "fix": {
+            "applicability": "safe",
+            "edits": [
+              {
+                "content": "from rfx.probes.refplane import (\n    decompose_wire_s_matrix_with_reference_planes,\n    refplane_beta,\n    refplane_centered_current,\n    refplane_split,\n    refplane_zc_two_plane,\n)",
+                "end_location": {
+                  "column": 2,
+                  "row": 76
+                },
+                "location": {
+                  "column": 1,
+                  "row": 69
+                }
+              }
+            ],
+            "message": "Remove unused import: `rfx.probes.refplane.build_wire_refplane_specs`"
+          },
+          "location": {
+            "column": 5,
+            "row": 70
+          },
+          "message": "`rfx.probes.refplane.build_wire_refplane_specs` imported but unused",
+          "name": "unused-import",
+          "noqa_row": 70,
+          "severity": "error",
+          "url": "https://docs.astral.sh/ruff/rules/unused-import",
+          "source_span": "    build_wire_refplane_specs,"
+        }
+      ]
+    },
+    {
+      "path": "tests/oracle/test_ram_magnetic_mu_r_design.py",
+      "base_count": 3,
+      "current_count": 3,
+      "added_count": 0,
+      "removed_count": 0,
+      "added": [],
+      "removed": [],
+      "base_diagnostics": [
+        {
+          "cell": null,
+          "code": "E702",
+          "end_location": {
+            "column": 31,
+            "row": 181
+          },
+          "filename": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/oracle/test_ram_magnetic_mu_r_design.py",
+          "fix": null,
+          "location": {
+            "column": 30,
+            "row": 181
+          },
+          "message": "Multiple statements on one line (semicolon)",
+          "name": "multiple-statements-on-one-line-semicolon",
+          "noqa_row": 181,
+          "severity": "error",
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-semicolon",
+          "source_span": "    m = np.zeros(shape, bool); m[xb:xpec, :, :] = True"
+        },
+        {
+          "cell": null,
+          "code": "E702",
+          "end_location": {
+            "column": 31,
+            "row": 230
+          },
+          "filename": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/oracle/test_ram_magnetic_mu_r_design.py",
+          "fix": null,
+          "location": {
+            "column": 30,
+            "row": 230
+          },
+          "message": "Multiple statements on one line (semicolon)",
+          "name": "multiple-statements-on-one-line-semicolon",
+          "noqa_row": 230,
+          "severity": "error",
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-semicolon",
+          "source_span": "    m = np.zeros(shape, bool); m[xb:xpec, :, :] = True"
+        },
+        {
+          "cell": null,
+          "code": "E702",
+          "end_location": {
+            "column": 31,
+            "row": 258
+          },
+          "filename": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/oracle/test_ram_magnetic_mu_r_design.py",
+          "fix": null,
+          "location": {
+            "column": 30,
+            "row": 258
+          },
+          "message": "Multiple statements on one line (semicolon)",
+          "name": "multiple-statements-on-one-line-semicolon",
+          "noqa_row": 258,
+          "severity": "error",
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-semicolon",
+          "source_span": "    m = np.zeros(shape, bool); m[xb:xpec, :, :] = True"
+        }
+      ],
+      "current_diagnostics": [
+        {
+          "cell": null,
+          "code": "E702",
+          "end_location": {
+            "column": 31,
+            "row": 181
+          },
+          "filename": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/oracle/test_ram_magnetic_mu_r_design.py",
+          "fix": null,
+          "location": {
+            "column": 30,
+            "row": 181
+          },
+          "message": "Multiple statements on one line (semicolon)",
+          "name": "multiple-statements-on-one-line-semicolon",
+          "noqa_row": 181,
+          "severity": "error",
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-semicolon",
+          "source_span": "    m = np.zeros(shape, bool); m[xb:xpec, :, :] = True"
+        },
+        {
+          "cell": null,
+          "code": "E702",
+          "end_location": {
+            "column": 31,
+            "row": 230
+          },
+          "filename": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/oracle/test_ram_magnetic_mu_r_design.py",
+          "fix": null,
+          "location": {
+            "column": 30,
+            "row": 230
+          },
+          "message": "Multiple statements on one line (semicolon)",
+          "name": "multiple-statements-on-one-line-semicolon",
+          "noqa_row": 230,
+          "severity": "error",
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-semicolon",
+          "source_span": "    m = np.zeros(shape, bool); m[xb:xpec, :, :] = True"
+        },
+        {
+          "cell": null,
+          "code": "E702",
+          "end_location": {
+            "column": 31,
+            "row": 258
+          },
+          "filename": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/oracle/test_ram_magnetic_mu_r_design.py",
+          "fix": null,
+          "location": {
+            "column": 30,
+            "row": 258
+          },
+          "message": "Multiple statements on one line (semicolon)",
+          "name": "multiple-statements-on-one-line-semicolon",
+          "noqa_row": 258,
+          "severity": "error",
+          "url": "https://docs.astral.sh/ruff/rules/multiple-statements-on-one-line-semicolon",
+          "source_span": "    m = np.zeros(shape, bool); m[xb:xpec, :, :] = True"
+        }
+      ]
+    },
+    {
+      "path": "tests/unit/autodiff/test_sparam_ad_end_to_end.py",
+      "base_count": 1,
+      "current_count": 1,
+      "added_count": 0,
+      "removed_count": 0,
+      "added": [],
+      "removed": [],
+      "base_diagnostics": [
+        {
+          "cell": null,
+          "code": "F401",
+          "end_location": {
+            "column": 14,
+            "row": 36
+          },
+          "filename": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/autodiff/test_sparam_ad_end_to_end.py",
+          "fix": {
+            "applicability": "safe",
+            "edits": [
+              {
+                "content": "",
+                "end_location": {
+                  "column": 1,
+                  "row": 37
+                },
+                "location": {
+                  "column": 1,
+                  "row": 36
+                }
+              }
+            ],
+            "message": "Remove unused import: `pytest`"
+          },
+          "location": {
+            "column": 8,
+            "row": 36
+          },
+          "message": "`pytest` imported but unused",
+          "name": "unused-import",
+          "noqa_row": 36,
+          "severity": "error",
+          "url": "https://docs.astral.sh/ruff/rules/unused-import",
+          "source_span": "import pytest"
+        }
+      ],
+      "current_diagnostics": [
+        {
+          "cell": null,
+          "code": "F401",
+          "end_location": {
+            "column": 14,
+            "row": 36
+          },
+          "filename": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/autodiff/test_sparam_ad_end_to_end.py",
+          "fix": {
+            "applicability": "safe",
+            "edits": [
+              {
+                "content": "",
+                "end_location": {
+                  "column": 1,
+                  "row": 37
+                },
+                "location": {
+                  "column": 1,
+                  "row": 36
+                }
+              }
+            ],
+            "message": "Remove unused import: `pytest`"
+          },
+          "location": {
+            "column": 8,
+            "row": 36
+          },
+          "message": "`pytest` imported but unused",
+          "name": "unused-import",
+          "noqa_row": 36,
+          "severity": "error",
+          "url": "https://docs.astral.sh/ruff/rules/unused-import",
+          "source_span": "import pytest"
+        }
+      ]
+    },
+    {
+      "path": "tests/unit/sparams/test_lumped_twoport_vi_validation_battery.py",
+      "base_count": 0,
+      "current_count": 0,
+      "added_count": 0,
+      "removed_count": 0,
+      "added": [],
+      "removed": [],
+      "base_diagnostics": [],
+      "current_diagnostics": []
+    },
+    {
+      "path": "tests/unit/sparams/test_msl_sheet_threading.py",
+      "base_count": 0,
+      "current_count": 0,
+      "added_count": 0,
+      "removed_count": 0,
+      "added": [],
+      "removed": [],
+      "base_diagnostics": [],
+      "current_diagnostics": []
+    }
+  ],
+  "totals": {
+    "base_count": 12,
+    "current_count": 12,
+    "added_count": 0,
+    "removed_count": 0
+  }
+}

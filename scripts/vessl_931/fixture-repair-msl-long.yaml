@@ -1,0 +1,56 @@
+name: rfx-931-fixture-repair-msl-long
+description: "Fixture repair evidence, no golden writes. Set RFX_SHA to the final full commit and submit with scripts/vessl_submit.sh using prefix issue931-fixture-repair-msl-long."
+tags: [rfx, issue-931, fixture-repair, msl-long]
+resources:
+  cluster: remilab-c0
+  preset: base-pod
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "1"
+  OPENBLAS_NUM_THREADS: "1"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_PLATFORMS: "cpu"
+  MPLBACKEND: "Agg"
+  RFX_CHECKOUT: "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds"
+  RFX_SHA: "SET_FULL_COMMIT_SHA_BEFORE_SUBMIT"
+  RFX_LABEL: "msl-long"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  test "$RFX_CHECKOUT" = /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds
+  echo "$RFX_SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo 'FATAL: supply the full final commit in RFX_SHA'; exit 3; }
+  git config --global --add safe.directory "$RFX_CHECKOUT"
+  git config --global --add safe.directory "$(git -C "$RFX_CHECKOUT" rev-parse --absolute-git-dir)"
+  SHA=$(git -C "$RFX_CHECKOUT" rev-parse "$RFX_SHA^{commit}")
+  test "$SHA" = "$RFX_SHA"
+  RUNS=$RFX_CHECKOUT/output/931-fixture-repair-vessl
+  OUT=$RUNS/issue931-fixture-repair-$RFX_LABEL-$(date -u +%Y%m%dT%H%M%SZ)-$(echo "$SHA" | cut -c1-12)-$$
+  mkdir -p "$OUT"
+  printf '%s\n' "$SHA" > "$OUT/commit.txt"
+  printf '%s\n' "$OUT" > "$RUNS/issue931-fixture-repair-$RFX_LABEL.latest"
+  trap 'rc=$?; printf "{\"returncode\":%s,\"source_sha\":\"%s\"}\n" "$rc" "$SHA" > "$OUT/job-exit.json"; chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
+  echo "artifacts: $OUT"
+  RFX_RESOURCE_OUT="$OUT" "$PY" -c 'import json, os, pathlib; cpu=pathlib.Path("/sys/fs/cgroup/cpu.max").read_text().split(); memory=pathlib.Path("/sys/fs/cgroup/memory.max").read_text().strip(); d={"cpu_max":cpu,"memory_max":memory}; text=json.dumps(d); print(text); (pathlib.Path(os.environ["RFX_RESOURCE_OUT"])/"resources.json").write_text(text); assert cpu[0]!="max" and int(cpu[0])/int(cpu[1])>=8, d; assert memory!="max" and int(memory)>=32*1024**3, d'
+  WORK=$(mktemp -d /tmp/rfx-fixture-repair-$RFX_LABEL-XXXXXX)
+  git clone --quiet --no-checkout --shared "$RFX_CHECKOUT" "$WORK"
+  git -C "$WORK" checkout --quiet --detach "$SHA"
+  cd "$WORK"
+  test "$(git rev-parse HEAD)" = "$SHA"
+  test -z "$(git status --porcelain)"
+  export PYTHONPATH="$PWD"
+  export RFX_REPO_ROOT="$PWD"
+  "$PY" -m pip uninstall -y -q jax-cuda12-plugin jax-cuda12-pjrt 2>/dev/null || true
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest pytest-xdist pytest-timeout
+  "$PY" -c 'import pathlib, jax, rfx; p=pathlib.Path(rfx.__file__).resolve(); assert p.is_relative_to(pathlib.Path.cwd()/"rfx"), p; assert jax.default_backend()=="cpu"; print("local import", p, "backend", jax.default_backend())'
+  set +e
+  ( timeout --signal=TERM --kill-after=60 86400 "$PY" scripts/vessl_931/run_fixture_repair_evidence.py --lane "$RFX_LABEL" --output "$OUT"; printf '%s\n' "$?" > "$OUT/runner.rc" ) 2>&1 | tee "$OUT/run.log"
+  set -e
+  test -s "$OUT/runner.rc"
+  exit "$(cat "$OUT/runner.rc")"

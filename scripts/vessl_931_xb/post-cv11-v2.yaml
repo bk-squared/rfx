@@ -1,0 +1,100 @@
+name: rfx-931-post-cv11-v2
+description: "cv11 post-#931 re-solve, AFTER the pec-short adjudication (a8d59e86/1b0866db merged into feat/931-lattice-ownership): the plug is drawn to the grid's REALIZED guide walls, so run 369367259194 is superseded and must not be ingested. Three legs in ONE environment so the before/after table is internally consistent: (1) main_baseline = the campaign baseline worktree rfx-baseline-d990e18c (origin/main d990e18c), (2) fresh = feat/931-crossval-b at 200 periods, (3) witness_np400 = the same at NUM_PERIODS_LONG 400. Each leg's stdout becomes tests/fixtures/waveguide_broad_e5/cv11_wr90_{main_baseline,fresh,witness_np400}_stdout.txt. Submit: vessl run create -f post-cv11-v2.yaml from a cwd OUTSIDE any worktree."
+tags: [rfx, issue-931, post, cv11, waveguide, pecshort-fixed]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_PLATFORMS: "cpu"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  echo "=== rfx #931 post-change v2: cv11 three legs (feat/931-crossval-b, pec-short adjudicated) ==="
+  date
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  WORK=/root/workspace/byungkwan-workspace/research/rfx-931-XB-crossval-b
+  BASE=/root/workspace/byungkwan-workspace/research/rfx-baseline-d990e18c
+  test -d "$WORK" || { echo "ERROR: worktree missing at $WORK"; exit 3; }
+  test -d "$BASE" || { echo "ERROR: baseline worktree missing at $BASE"; exit 3; }
+  RUNS=/root/workspace/claude-workspace/rfx/runs
+  OUT=$RUNS/issue931-post-cv11v2-$(date -u +%Y%m%dT%H%M%SZ)
+  mkdir -p "$OUT"
+  echo "$OUT" > "$RUNS/issue931-post-cv11v2.latest"
+  trap 'chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
+  echo "artifacts: $OUT"
+  git -C "$WORK" log --oneline -1 > "$OUT/commit_branch.txt" 2>&1 || true
+  git -C "$BASE" log --oneline -1 > "$OUT/commit_baseline.txt" 2>&1 || true
+  cat "$OUT/commit_branch.txt" "$OUT/commit_baseline.txt" || true
+  touch "$OUT/.tstamp"
+  "$PY" -m pip uninstall -y -q jax-cuda12-plugin jax-cuda12-pjrt 2>/dev/null || true
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7"
+  export MPLBACKEND=Agg
+
+  echo "=== leg 1/3: main_baseline (origin/main d990e18c) ==="
+  cd "$BASE"
+  export RFX_REPO_ROOT="$BASE"
+  export PYTHONPATH="$BASE"
+  "$PY" -c "import rfx, os; print('probe baseline | rfx from', os.path.dirname(rfx.__file__))"
+  set +e
+  timeout 5400 "$PY" -u validation/crossval/11_waveguide_port_wr90.py > "$OUT/cv11_main_baseline.log" 2>&1
+  rc1=$?
+  set -e
+  echo "$rc1" > "$OUT/cv11_main_baseline.rc"
+  echo "main_baseline_rc=$rc1"
+
+  echo "=== leg 2/3: fresh (feat/931-crossval-b, NUM_PERIODS_LONG 200) ==="
+  cd "$WORK"
+  export RFX_REPO_ROOT="$WORK"
+  export PYTHONPATH="$WORK"
+  "$PY" -c "import rfx, os; print('probe branch | rfx from', os.path.dirname(rfx.__file__))"
+  grep -n '^NUM_PERIODS_LONG' validation/crossval/11_waveguide_port_wr90.py | tee "$OUT/np_fresh.txt"
+  set +e
+  timeout 5400 "$PY" -u validation/crossval/11_waveguide_port_wr90.py > "$OUT/cv11_fresh.log" 2>&1
+  rc2=$?
+  set -e
+  echo "$rc2" > "$OUT/cv11_fresh.rc"
+  echo "fresh_rc=$rc2"
+
+  echo "=== leg 3/3: witness_np400 (same script, NUM_PERIODS_LONG 400) ==="
+  SCRATCH=$OUT/np400_checkout
+  mkdir -p "$SCRATCH"
+  cp -a "$WORK/rfx" "$WORK/validation" "$SCRATCH/"
+  sed -i 's/^NUM_PERIODS_LONG = 200 /NUM_PERIODS_LONG = 400 /' "$SCRATCH/validation/crossval/11_waveguide_port_wr90.py"
+  grep -n '^NUM_PERIODS_LONG' "$SCRATCH/validation/crossval/11_waveguide_port_wr90.py" | tee "$OUT/np_witness.txt"
+  cd "$SCRATCH"
+  export RFX_REPO_ROOT="$SCRATCH"
+  export PYTHONPATH="$SCRATCH"
+  set +e
+  timeout 7200 "$PY" -u validation/crossval/11_waveguide_port_wr90.py > "$OUT/cv11_witness_np400.log" 2>&1
+  rc3=$?
+  set -e
+  echo "$rc3" > "$OUT/cv11_witness_np400.rc"
+  echo "witness_rc=$rc3"
+  rm -rf "$SCRATCH"
+
+  echo "=== harvest: files the legs wrote into the branch worktree ==="
+  mkdir -p "$OUT/produced"
+  find "$WORK" -type f -newer "$OUT/.tstamp" \
+      -not -path "*/.git/*" -not -path "*/__pycache__/*" -not -name "*.pyc" \
+      > "$OUT/produced_files.txt" 2>/dev/null || true
+  while IFS= read -r f; do
+    rel=${f#$WORK/}
+    d=$(dirname "$rel")
+    mkdir -p "$OUT/produced/$d"
+    cp -p "$f" "$OUT/produced/$rel" 2>/dev/null || true
+  done < "$OUT/produced_files.txt"
+  echo "harvested $(wc -l < "$OUT/produced_files.txt") file(s)"
+  for f in cv11_main_baseline cv11_fresh cv11_witness_np400; do
+    echo "--- tail $f ---"; tail -n 40 "$OUT/$f.log" || true
+  done
+  ls -la "$OUT"
+  chmod -R a+rX "$OUT" 2>/dev/null || true
+  echo "POST_CASE=cv11v2 RC_MAIN=$rc1 RC_FRESH=$rc2 RC_WITNESS=$rc3"

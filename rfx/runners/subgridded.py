@@ -200,11 +200,19 @@ def _run_subgridded_once(
     from rfx.geometry.rasterize_grid import coords_from_fine_grid, rasterize_geometry
 
     coords_f = coords_from_fine_grid(nx_f, ny_f, nz_f, dx_f, x_off, y_off, z_off)
+    # #931: the fine-region coordinates are already cell CENTRES
+    # (coords_from_fine_grid), so they double as the PEC centre samples.
+    # Sheets and wires are deliberately NOT collected here: this lane
+    # applies PEC from a cell mask on two grids and has no carrier for a
+    # zero-cell conductor, so ``run()`` refuses a declared sheet or wire
+    # before it reaches this function (rfx/api/_execute.py, run_subgridded
+    # lane). Collecting them here would only hide the refusal.
     mats_f, _, _, pec_mask_f, _, _ = rasterize_geometry(
         sim._geometry,
         sim._resolve_material,
         coords_f,
         pec_sigma_threshold=sim._PEC_SIGMA_THRESHOLD,
+        centres=coords_f,
     )
     has_pec_f = bool(jnp.any(pec_mask_f)) if pec_mask_f is not None else False
 
@@ -335,8 +343,18 @@ def _run_subgridded_once(
 
         lo = min(idx_start[axis], idx_end[axis])
         hi = max(idx_start[axis], idx_end[axis])
+        # HALF-OPEN in edges, the same rule as the uniform lane
+        # (rfx.sources.sources.wire_port_edge_span) and the non-uniform
+        # runner: the driven edges are the ones whose own location lies
+        # inside the declared extent, so n cells of extent drive n edges.
+        # This lane carried its own endpoint-INCLUSIVE copy; once the
+        # other two were corrected it was the only place where the same
+        # declaration drove one more edge. The shared helper is not called
+        # here because its sub-cell branch needs a node line and these are
+        # FINE-grid indices; an extent that snaps to a single fine node
+        # keeps its one edge, as before.
         cells = []
-        for a in range(lo, hi + 1):
+        for a in range(lo, max(hi, lo + 1)):
             cell = list(idx_start)
             cell[axis] = a
             cells.append(tuple(cell))

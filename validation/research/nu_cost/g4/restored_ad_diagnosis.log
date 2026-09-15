@@ -1,0 +1,86 @@
+F
+=================================== FAILURES ===================================
+_______________________ test_cpml_localization_ad[eps_r] _______________________
+
+variable = 'eps_r'
+
+    @pytest.mark.parametrize('variable', ['dz_profile', 'eps_r'])
+    def test_cpml_localization_ad(variable):
+        dz = jnp.linspace(0.5e-3, 1e-3, 12)
+        shape = (fixture('graded8').nx, fixture('graded8').ny, fixture('graded8').nz)
+        eps = jnp.full(shape, 1.5, dtype=jnp.float32)
+    
+        def objective(value, implementation):
+            st = runner('graded8', implementation,
+                        dz=value if variable == 'dz_profile' else dz,
+                        eps=value if variable == 'eps_r' else eps)[0][0]
+            return sum(jnp.sum(getattr(st, field) ** 2) for field in ('ex', 'ey', 'ez'))
+    
+        value = dz if variable == 'dz_profile' else eps
+>       a = np.asarray(jax.jit(jax.grad(lambda v: objective(v, old)))(value))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/unit/boundaries/test_cpml_localization.py:128: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/unit/boundaries/test_cpml_localization.py:128: in <lambda>
+    a = np.asarray(jax.jit(jax.grad(lambda v: objective(v, old)))(value))
+                                              ^^^^^^^^^^^^^^^^^
+tests/unit/boundaries/test_cpml_localization.py:122: in objective
+    st = runner('graded8', implementation,
+tests/unit/boundaries/test_cpml_localization.py:58: in runner
+    grid = fixture(name, dz)
+           ^^^^^^^^^^^^^^^^^
+tests/unit/boundaries/test_cpml_localization.py:44: in fixture
+    return make_nonuniform_grid((0.012, 0.012), dz, 1e-3, layers)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+rfx/nonuniform.py:399: in make_nonuniform_grid
+    dz_full = _append_bounding_node(_pad_profile(dz_profile, pad_z_lo, pad_z_hi))
+                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+profile = Array([0.0005    , 0.00054545, 0.00059091, 0.00063636, 0.00068182,
+       0.00072727, 0.00077273, 0.00081818, 0.00086364, 0.00090909,
+       0.00095455, 0.001     ], dtype=float32)
+pad_lo = 8, pad_hi = 8
+
+    def _pad_profile(profile, pad_lo: int, pad_hi: int | None = None):
+        """Pad a 1-D cell-size profile with CPML cells on each end.
+    
+        ``pad_lo`` and ``pad_hi`` may differ (per-face allocation, 2026-04 —
+        a PMC/PEC face gets 0 cells on that side while the opposing CPML
+        face keeps its allocation). If ``pad_hi`` is omitted the symmetric
+        ``pad_lo`` count is used on both ends (pre-per-face-allocation behaviour).
+    
+        CPML uses constant spacing matching the boundary cell size, so the
+        ``pad_lo`` cells on the leading side carry ``profile[0]`` and the
+        ``pad_hi`` cells on the trailing side carry ``profile[-1]``.
+    
+        When ``profile`` is a JAX tracer the padding stays in-trace (needed
+        for ``jax.grad`` w.r.t. ``dz_profile`` — mesh-as-design-variable).
+        Otherwise the numpy path is used, preserving the Python-float ``dt``
+        that Simulation-level callers depend on.
+        """
+        if pad_hi is None:
+            pad_hi = pad_lo
+        if is_tracer(profile):
+            prof = jnp.asarray(profile, dtype=jnp.float32)
+            lo_pad = jnp.full(pad_lo, prof[0])
+            hi_pad = jnp.full(pad_hi, prof[-1])
+            return jnp.concatenate([lo_pad, prof, hi_pad])
+>       lo_pad = np.full(pad_lo, float(profile[0]))
+                                 ^^^^^^^^^^^^^^^^^
+E       jax.errors.ConcretizationTypeError: Abstract tracer value encountered where concrete value is expected: traced array with shape float32[]
+E       The problem arose with the `float` function. If trying to convert the data type of a value, try using `x.astype(float)` or `jnp.array(x, float)` instead.
+E       The error occurred while tracing the function <lambda> at /Users/byungkwankim/Documents/rfx-nu-cost/tests/unit/boundaries/test_cpml_localization.py:128 for jit. This value became a tracer due to JAX operations on these lines:
+E       
+E         operation a:f32[1] = slice[limit_indices=(1,) start_indices=(0,) strides=None] b
+E           from line /Users/byungkwankim/Documents/rfx-nu-cost/rfx/nonuniform.py:141:35 (_pad_profile)
+E       
+E       See https://docs.jax.dev/en/latest/errors.html#jax.errors.ConcretizationTypeError
+E       --------------------
+E       For simplicity, JAX has removed its internal frames from the traceback of the following exception. Set JAX_TRACEBACK_FILTERING=off to include these.
+
+rfx/nonuniform.py:141: ConcretizationTypeError
+=========================== short test summary info ============================
+FAILED tests/unit/boundaries/test_cpml_localization.py::test_cpml_localization_ad[eps_r]
+1 failed in 1.59s

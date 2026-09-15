@@ -28,6 +28,8 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.deembed import deembed_series_inductance
 from rfx.sources.sources import GaussianPulse
 
+from validation.crossval.comparators import realized_conductors as RC
+
 C0 = 299792458.0
 
 # ---------------------------------------------------------------- FIX-T ----
@@ -85,8 +87,16 @@ def build_thru(pulse: GaussianPulse,
                               z=Boundary(lo="pec", hi="cpml")),
         cpml_layers=CPML_LAYERS,
     )
+    # The microstrip trace is FOIL: 35 um of copper on a 1 mm air line at
+    # dx = 0.5 mm, so it is a sheet, and the lattice ownership contract
+    # (#931 §1.5) says so with a ZERO-THICKNESS Box — zero thickness is a
+    # statement of intent, not an inference. It was drawn H -> H + DX
+    # before, back when a 1-cell PEC Box happened to realize as a single
+    # wall plane; under the contract that same drawing is a VOLUME and
+    # realizes a 0.5 mm slab of metal with two faces, which is not the
+    # line this battery measures. Declared plane = realized plane = H.
     sim.add(
-        Box((X1 - DX, Y_MID - W / 2, H), (X2 + DX, Y_MID + W / 2, H + DX)),
+        Box((X1 - DX, Y_MID - W / 2, H), (X2 + DX, Y_MID + W / 2, H)),
         material="pec",
     )
     kw = ({} if reference_plane_cells is None
@@ -95,6 +105,10 @@ def build_thru(pulse: GaussianPulse,
                  extent=H, waveform=pulse, direction="-x", **kw)
     sim.add_port(position=(X2, Y_MID, 0.0), component="ez", impedance=Z0,
                  extent=H, waveform=pulse, direction="+x", **kw)
+    # Build-time (no solve): the trace realizes exactly ONE wall plane and
+    # it is z = H. Asked of the shared owner, not re-derived (#931 §1.7).
+    RC.assert_wall_planes(sim, 2, [float(H)], at=(0.5 * (X1 + X2), Y_MID),
+                          label="thru trace", tol_m=1e-12)
     return sim
 
 
@@ -104,8 +118,12 @@ def run_thru(freqs: np.ndarray, n_steps: int, pulse_kw: dict) -> np.ndarray:
     for msg in report:
         print(f"[preflight verbatim] {msg}")
     codes = sorted(getattr(i, "code", None) for i in report)
-    assert codes == ["pec_faces_finite_pec", "wire_port_dead_extent_cells",
-                     "wire_port_dead_extent_cells"], (
+    # Re-derived under #931 — see THRU_CODES in
+    # thru_feedpost_twoseg_extraction.py for the per-entry reason. The two
+    # new entries (mesh_resolution, uncoded) are preflight-stage artifacts
+    # and must be re-derived when that stage lands.
+    assert codes == ["mesh_resolution", "pec_faces_finite_pec",
+                     "uncoded"], (
         f"fixture preflight drifted from the battery baseline: {codes}")
     result = sim.run(n_steps=n_steps, compute_s_params=True,
                      s_param_freqs=freqs)

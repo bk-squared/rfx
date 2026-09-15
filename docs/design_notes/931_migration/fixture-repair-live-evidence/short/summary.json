@@ -1,0 +1,94 @@
+{
+  "run_name": "issue931-fixture-repair-short-20260909T015010Z-b36fc46cdf21-101",
+  "lane": "short",
+  "source_sha": "b36fc46cdf21d1c57f221e6a057654bcad60bae2",
+  "rfx_import": "/tmp/rfx-fixture-repair-short-bDj0JH/rfx/__init__.py",
+  "jax_version": "0.6.2",
+  "started_utc": "2026-09-09T01:50:39.584764+00:00",
+  "run_id_source": "run_id.txt written by scripts/vessl_submit.sh",
+  "commands": [
+    {
+      "name": "coarse",
+      "command": [
+        "/opt/conda/bin/python",
+        "scripts/diagnostics/slow_931_advisory_attribution.py",
+        "--arm",
+        "current",
+        "--output-dir",
+        "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-short-20260909T015010Z-b36fc46cdf21-101/coarse"
+      ],
+      "status": "complete",
+      "timeout_s": 21600,
+      "returncode": 0,
+      "elapsed_s": 3.3342548329383135
+    },
+    {
+      "name": "fine",
+      "command": [
+        "/opt/conda/bin/python",
+        "scripts/diagnostics/slow_931_advisory_attribution.py",
+        "--arm",
+        "current",
+        "--output-dir",
+        "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-short-20260909T015010Z-b36fc46cdf21-101/fine",
+        "--fine"
+      ],
+      "status": "complete",
+      "timeout_s": 21600,
+      "returncode": 0,
+      "elapsed_s": 7.476035125087947
+    },
+    {
+      "name": "pytest",
+      "command": [
+        "/opt/conda/bin/python",
+        "-m",
+        "pytest",
+        "-o",
+        "addopts=",
+        "-n",
+        "4",
+        "-v",
+        "-s",
+        "-rA",
+        "--timeout=7200",
+        "--timeout-method=thread",
+        "--junitxml=/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-short-20260909T015010Z-b36fc46cdf21-101/junit.xml",
+        "tests/contracts/test_pec_short_advisory_geometry.py",
+        "tests/unit/sparams/test_sparam_passivity_guard.py"
+      ],
+      "status": "complete",
+      "timeout_s": 21600,
+      "returncode": 1,
+      "elapsed_s": 4.559834782034159,
+      "junit": {
+        "available": true,
+        "counts": {
+          "total": 16,
+          "passed": 15,
+          "failed": 1,
+          "errors": 0,
+          "skipped": 0
+        },
+        "failing_ids": [
+          "tests/unit/sparams/test_sparam_passivity_guard.py::test_soft_advisory_real_coarse_pec_short_witness"
+        ]
+      }
+    }
+  ],
+  "returncode": 1,
+  "finished_utc": "2026-09-09T01:50:54.962860+00:00",
+  "pytest": {
+    "available": true,
+    "counts": {
+      "total": 16,
+      "passed": 15,
+      "failed": 1,
+      "errors": 0,
+      "skipped": 0
+    },
+    "failing_ids": [
+      "tests/unit/sparams/test_sparam_passivity_guard.py::test_soft_advisory_real_coarse_pec_short_witness"
+    ]
+  }
+}

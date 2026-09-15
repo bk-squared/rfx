@@ -34,9 +34,14 @@ silent). These are not footnotes:
     valid for capacitive/E-plane obstacles, posts, or anything varying along b --
     pointed at those it returns a confident wrong number with clean unitarity,
     which is the worst failure mode. Hard scope fence.
- 2. NOT A SINGLE-RUN ORACLE. It converges FIRST order (node-Dirichlet staircase,
-    the same convention as rfx, which is why it reproduces rfx under both fin
-    conventions). One number at one mesh is useless: Richardson over >= 2
+ 2. NOT A SINGLE-RUN ORACLE. It converges FIRST order (node-Dirichlet
+    staircase). Its metal is a solid block whose two bounding node planes are
+    Dirichlet and whose interior is shorted, which is electrically what the
+    rfx #931 lattice ownership contract realizes for a PEC volume -- walls at
+    BOTH faces, every normal edge between them shorted. That is why it
+    reproduces rfx, and it held under the pre-#931 realization too, because
+    the caller then mapped its drawn counts differently (see `solve`). One
+    number at one mesh is useless: Richardson over >= 2
     levels is mandatory, and the original review used three levels and
     confirmed the two extrapolation estimates agreed to ~1e-3 before trusting
     either. See the case fixture's fdfd_formulation_independent block for this
@@ -112,7 +117,12 @@ def _assemble(a, freq, base_cells, refinement, apertures_cells, cavities_cells,
     h = a / nx
     k = 2 * np.pi * freq / C0
 
-    tc = thickness_cells * r + 1          # metal NODES; electrical = tc - 1
+    # metal NODES spanned by the block; `thickness_cells` is the distance
+    # between the two bounding Dirichlet planes, so the block covers
+    # thickness_cells*r + 1 node planes. Under the rfx #931 contract that
+    # distance is the DRAWN cell count; before #931 it was the drawn count
+    # minus one, and only the caller's mapping changed.
+    tc = thickness_cells * r + 1
     span = len(apertures_cells) * (tc - 1) + sum(c * r for c in cavities_cells)
     nz = span + 2 * margin_cells * r
     ix = np.arange(1, nx)
@@ -128,10 +138,11 @@ def _assemble(a, freq, base_cells, refinement, apertures_cells, cavities_cells,
                 "the geometry would be re-snapped and Richardson would degrade",
                 d_c, r)
             fc = (nx - d_c * r) // 2
-            # bounding zeroed planes at ix = fc and ix = nx - fc, so the
-            # electrical aperture is exactly (nx - 2*fc) = d_c*r cells at THIS
-            # level, with d_c*r - 1 open interior nodes -- node-for-node the rfx
-            # raster at r = 1. An earlier revision used strict inequalities,
+            # bounding Dirichlet planes at ix = fc and ix = nx - fc, so the
+            # realized aperture is exactly (nx - 2*fc) = d_c*r cells at THIS
+            # level, with d_c*r - 1 open interior nodes -- node-for-node the
+            # rfx realized edge set at r = 1. An earlier revision used strict
+            # inequalities,
             # which left the planes d_c*r + 2 cells apart at every level: a
             # first-order bias that Richardson cancelled (the extrapolated
             # numbers were right) but that made this docstring's convention
@@ -169,7 +180,12 @@ def _assemble(a, freq, base_cells, refinement, apertures_cells, cavities_cells,
     rhs = rhs.reshape(-1)
     rhs[midx] = 0.0
 
-    ctx = dict(phi=phi, gt=gt, nz=nz, nxi=nxi, nzi=nzi, h=h,
+    # `metal` rides in the context so a convention-parity test can compare
+    # this mask against rfx's realized PEC edge set without re-deriving the
+    # block arithmetic (the mapping between the two is the thing under test,
+    # and a test that re-implements it tests nothing).
+    ctx = dict(phi=phi, gt=gt, nz=nz, nxi=nxi, nzi=nzi, h=h, metal=metal,
+               ix=ix,
                info=dict(nx=nx, nz=nz, unknowns=N, h=h, metal_nodes_z=tc))
     return A.tocsc(), rhs, ctx
 
@@ -193,9 +209,17 @@ def solve(a, freq, base_cells, refinement, apertures_cells, cavities_cells,
           thickness_cells, margin_cells, empty=False):
     """One solve. Geometry is given in BASE cells; refinement is an integer.
 
-    apertures_cells / cavities_cells / thickness_cells are ELECTRICAL, i.e. the
-    distance between bounding zeroed node planes, matching the convention the
-    rfx rasterizer realizes.
+    apertures_cells / cavities_cells / thickness_cells are the distance
+    between the two bounding zeroed node planes of each region, in base cells.
+
+    Under the rfx #931 lattice ownership contract that distance IS the drawn
+    cell count of the corresponding rfx Box, so the mapping from the caller's
+    geometry to these arguments is the identity, and the caller should pass
+    what `realized_pec_edge_masks` reports rather than what it drew. Before
+    #931 an rfx body realized one plane fewer than it was drawn and the caller
+    had to subtract one from the iris and add one to each cavity; that
+    compensation lived in the CALLER, never here, and this function's
+    arithmetic is unchanged by the contract.
     """
     A, rhs, ctx = _assemble(a, freq, base_cells, refinement, apertures_cells,
                             cavities_cells, thickness_cells, margin_cells,

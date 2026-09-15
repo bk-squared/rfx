@@ -1,0 +1,16 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "refplane_partial_optin",
+        "loc": null,
+        "message": "1 of 2 impedance-carrying wire ports opt into reference_plane_cells \u2014 off-diagonal S entries involving a non-opted port SILENTLY stay on the legacy port-cell path (only pairs where BOTH ports opt in use the plane waves). Opt in every wire port of the S-matrix, or none.",
+        "severity": "warning",
+        "source": "_validate_cfg_refplane_placement"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 1,
+    "ok": true
+  }
+}

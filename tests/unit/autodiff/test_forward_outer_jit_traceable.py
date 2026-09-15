@@ -97,17 +97,27 @@ def test_real_interior_pec_under_outer_jit_matches_eager():
     assert np.allclose(np.asarray(g_plain), np.asarray(g_jit), rtol=3e-4, atol=1e-6)
 
 
-def test_assemble_materials_eager_pec_mask_none_when_empty():
-    """Eager ``has_pec`` decision is byte-identical to the pre-fix ``jnp.any``:
-    a PEC shape whose mask is empty (entirely outside the grid) still returns
-    ``pec_mask=None``, while an interior PEC obstacle returns a real mask. This
-    locks the corner the trace-only static fallback would otherwise
-    over-approximate."""
+def test_a_pec_shape_that_realizes_nothing_is_an_error_not_a_silent_none():
+    """The empty-PEC corner, restated under the lattice ownership contract.
+
+    Before #931 a PEC shape entirely outside the grid rasterized to an
+    empty mask and ``_assemble_materials`` returned ``pec_mask=None`` —
+    silently, which is the #369 vaporized-metal class. §1.5 makes it a
+    refusal: a PEC volume that no primal-cell centre falls inside raises,
+    naming ``PolylineWire`` for a filament and the minimum radius for a
+    volume. The invariant the old test protected (the empty case does not
+    over-approximate into a spurious mask) is kept by the refusal being
+    reached at all; what changed is that the user is told.
+
+    The second half is unchanged: a real interior obstacle returns a
+    non-empty mask.
+    """
+    import pytest
+
     s_empty = Simulation(freq_max=6e9, domain=(0.04, 0.02, 0.02), boundary="pec")
     s_empty.add(Box((10.0, 10.0, 10.0), (11.0, 11.0, 11.0)), material="pec")
-    grid = s_empty._build_grid()
-    pec_mask = s_empty._assemble_materials(grid)[3]
-    assert pec_mask is None, "empty-mask PEC must stay None on the eager path"
+    with pytest.raises(ValueError, match="ZERO cells"):
+        s_empty._assemble_materials(s_empty._build_grid())
 
     s_real = Simulation(freq_max=6e9, domain=(0.04, 0.02, 0.02), boundary="pec")
     s_real.add(Box((0.018, 0.006, 0.006), (0.024, 0.014, 0.014)), material="pec")
@@ -115,3 +125,7 @@ def test_assemble_materials_eager_pec_mask_none_when_empty():
     pec_mask_r = s_real._assemble_materials(grid_r)[3]
     assert pec_mask_r is not None and bool(pec_mask_r.any()), \
         "interior PEC obstacle must return a non-empty mask"
+    # ... and a run with NO conductor at all still returns None, so "None"
+    # keeps meaning "no conductor" rather than "a conductor vanished".
+    s_none = Simulation(freq_max=6e9, domain=(0.04, 0.02, 0.02), boundary="pec")
+    assert s_none._assemble_materials(s_none._build_grid())[3] is None

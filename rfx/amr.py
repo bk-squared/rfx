@@ -191,8 +191,9 @@ def auto_refine(sim, result, *, threshold: float = 0.5, component: str = "ez",
     sim : Simulation
         The same simulation object (for chaining).
     """
+    sim._require_uniform_mesh("auto_refine")
     error_map = compute_error_indicator(result, component=component)
-    grid = result.grid if hasattr(result, "grid") and result.grid is not None else sim._build_grid()
+    grid = result.grid if hasattr(result, "grid") and result.grid is not None else sim._build_realized_grid()
     boxes = suggest_refinement_regions(
         error_map, grid=grid, threshold=threshold, min_region_size=min_region_size,
     )

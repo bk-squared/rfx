@@ -57,10 +57,7 @@ def profile_forward(sim, *, n_steps: int, warmup_trace: bool = True,
 
     # 1. Grid build — NU or uniform, whichever this sim uses.
     g0 = time.time()
-    if sim._dz_profile is not None:
-        sim._build_nonuniform_grid()
-    else:
-        sim._build_grid()
+    sim._build_realized_grid()
     report["grid_build"] = time.time() - g0
 
     # 2. First forward call — trace + compile + one scan execution.
@@ -84,8 +81,7 @@ def profile_forward(sim, *, n_steps: int, warmup_trace: bool = True,
     report["total"] = time.time() - t0
     report["n_steps"] = n_steps
     try:
-        g = (sim._build_nonuniform_grid() if sim._dz_profile is not None
-             else sim._build_grid())
+        g = sim._build_realized_grid()
         report["cells"] = int(g.nx * g.ny * g.nz)
     except Exception:
         report["cells"] = None

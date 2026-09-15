@@ -1,0 +1,14 @@
+{
+  "missing_guard": {
+    "rejected": true,
+    "exception": "AssertionError"
+  },
+  "wrong_tolerance": {
+    "rejected": true,
+    "exception": "ValueError"
+  },
+  "soft_raises": {
+    "rejected": true,
+    "exception": "ValueError"
+  }
+}

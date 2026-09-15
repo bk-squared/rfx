@@ -1,0 +1,1 @@
+PASS mocked CLI, no VESSL request: submission from worktree uses plain temp cwd, copies YAML, records numeric ID.

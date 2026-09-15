@@ -7,11 +7,20 @@ tiny timestep on the *whole* domain even though the wavelength is large.  That
 is the stiff-mesh problem.
 
 The ``solver="adi"`` path (Alternating-Direction-Implicit, the Zheng-Chen-Zhang
-two-sub-step 3D scheme) is *unconditionally stable*: it stays bounded at any
-timestep.  ``adi_cfl_factor`` sets how far past the standard limit you push.
-Stability is free; accuracy is not.  The scheme adds a temporal dispersion error
-that grows with the timestep (roughly as ``dt^2``), so a large factor is a
-throughput setting, not an accuracy setting.
+two-sub-step 3D scheme) removes the explicit CFL limit for the case this demo
+runs: a homogeneous, lossless split with PEC on the DOMAIN faces and no
+conductor inside.  ``adi_cfl_factor`` sets how far past the standard limit you
+push.  For that case stability is free and accuracy is not -- the scheme adds a
+temporal dispersion error that grows with the timestep (roughly as ``dt^2``), so
+a large factor is a throughput setting, not an accuracy setting.
+
+The guarantee does NOT extend to a conductor inside the domain.  A declared
+sheet, wire or PEC volume is REFUSED on this lane, at every factor
+(``adi_interior_pec_unsupported``), because it was measured to diverge: at the
+default factor 5 a sheet reaches 4.1e30 with non-finite samples, and even at
+factor 1 it grows to 4.3e6 over 4,000 steps.  Use ``solver="yee"`` for a model
+with interior metal.  Measurement and reasoning:
+``docs/design_notes/20260908_adi_interior_pec_guard.md``.
 
 This tutorial resonates a closed vacuum PEC cavity -- an exact analytic
 oracle -- and reads TE101 three ways: explicit Yee, ADI at ``adi_cfl_factor=2``
@@ -29,8 +38,9 @@ Scope, stated plainly:
     yet demonstrated -- do not read this demo as a speed claim.
   - Use ``adi_cfl_factor <= 2`` for quantitative wavelength-scale results.  The
     default ``5.0`` is a stiff-mesh throughput default and carries a visible
-    wavelength-scale error (shown below).  Large factors stay stable but are
-    quantitative only for features much coarser than the timestep.
+    wavelength-scale error (shown below).  On THIS geometry large factors stay
+    bounded but are quantitative only for features much coarser than the
+    timestep; with interior metal the lane refuses rather than running.
   - ``solver="adi"`` differentiates end-to-end (``jax.grad`` flows through the
     tridiagonal solve); this demo does not exercise gradients.
 
@@ -138,15 +148,17 @@ def main() -> None:
         return 100.0 * (mode.freq - F_TE101) / F_TE101
 
     print("\n" + "-" * 70)
-    print("Summary -- accuracy is traded for timestep, stability is not:")
+    print("Summary -- accuracy is traded for timestep; the CFL limit is not:")
     print(f"  explicit Yee                : {e(yee):+.2f}%  (CFL-limited dt)")
     print(f"  ADI, adi_cfl_factor = 2     : {e(adi2):+.2f}%  (2x dt, accuracy setting)")
     print(f"  ADI, adi_cfl_factor = 5     : {e(adi5):+.2f}%  (5x dt, default throughput)")
     print("-" * 70)
-    print("Both ADI runs are stable at their enlarged timestep -- that is the")
-    print("unconditional-stability property.  The cfl=5 error is the documented")
-    print("wavelength-scale cost of the default; drop to <=2 when the resonance")
-    print("frequency, not the timestep, is what you need to be accurate.")
+    print("Both ADI runs stay bounded at their enlarged timestep.  That holds")
+    print("for THIS cavity -- homogeneous, lossless, PEC on the domain faces and")
+    print("no conductor inside; a conductor inside is refused on this lane.  The")
+    print("cfl=5 error is the documented wavelength-scale cost of the default;")
+    print("drop to <=2 when the resonance frequency, not the timestep, is what")
+    print("you need to be accurate.")
     print("ADI is an experimental lane; its stiff-mesh throughput advantage is a")
     print("separate, not-yet-demonstrated claim.")
 

@@ -1,0 +1,63 @@
+{
+  "dominant_probe_mode_hz": 1984479720.2162623,
+  "probe_spectrum_min_db": 190.48059426681422,
+  "probe_spectrum_min_f_hz": 3496671844.996355,
+  "modes": [
+    {
+      "freq": 1984479720.2162623,
+      "decay": 59621658.67142011,
+      "Q": 104.56647884601432,
+      "amplitude": 826392.4782431114,
+      "phase": 2.3778484365574926,
+      "error": 5.6834962883667295e-05
+    }
+  ],
+  "ringdown_start_s": 1.7904931097838228e-09,
+  "ringdown_start_sample": 1879,
+  "source_tail_bound_A": 2.7834273962922836e-15,
+  "tail_to_peak": 0.0003252121096011251,
+  "ringdown_tail_to_peak": 0.768401026725769,
+  "sha": "b36fc46cdf21d1c57f221e6a057654bcad60bae2",
+  "harness_sha256": "d881da9b5cbd249b77bf23e1fc88e00fa16e207805a028a8cc69065d44321240",
+  "rfx_import": "/tmp/rfx-fixture-repair-v173a-oUEkX6/rfx/__init__.py",
+  "jax_version": "0.6.2",
+  "backend": "cpu",
+  "x64": false,
+  "dt": 9.532874347655029e-13,
+  "n_steps": 6000,
+  "fixture": {
+    "dx_m": 0.0005,
+    "domain_m": [
+      0.05,
+      0.05,
+      0.02
+    ],
+    "substrate_height_m": 0.0015,
+    "eps_r": 4.3,
+    "patch_size_m": [
+      0.028,
+      0.036
+    ],
+    "sheet_z_m": 0.0015,
+    "source_m": [
+      0.025,
+      0.018,
+      0.0005
+    ],
+    "probe_m": [
+      0.025,
+      0.018,
+      0.001
+    ],
+    "cpml_thickness_m": 0.004,
+    "ground": "z_lo PEC",
+    "source_amplitude_kind": "current",
+    "waveform": {
+      "f0_hz": 2000000000.0,
+      "bandwidth": 0.8,
+      "cutoff": 3.0,
+      "amplitude_A": 1.0
+    }
+  },
+  "run_name": "issue931-fixture-repair-v173a-20260909T014947Z-b36fc46cdf21-100-capture"
+}

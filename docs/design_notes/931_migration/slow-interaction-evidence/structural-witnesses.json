@@ -1,0 +1,95 @@
+{
+  "rfx_path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/__init__.py",
+  "v173a_current": {
+    "dx": 0.001,
+    "shape": [
+      67,
+      67,
+      29
+    ],
+    "cells": 1008,
+    "sheet_count": 0,
+    "edge_counts": [
+      2072,
+      2088,
+      1073
+    ],
+    "edge_z_m": [
+      [
+        0.001,
+        0.002
+      ],
+      [
+        0.001,
+        0.002
+      ],
+      [
+        0.001
+      ]
+    ]
+  },
+  "small_gap": {
+    "declared_extent": 0.004,
+    "profile_sum": 0.0037999999999999996,
+    "nodes": [
+      0.0,
+      0.00024999999999999995,
+      0.0004999999999999999,
+      0.0007499999999999998,
+      0.0009166666666666664,
+      0.0009999999999999998,
+      0.0010661513124038736,
+      0.0011521480185289097,
+      0.0012639437364914566,
+      0.0014092781698427674,
+      0.0015982129331994716,
+      0.001788185932923417,
+      0.0020351508325645463,
+      0.002356205202098014,
+      0.002736151201545905,
+      0.003230081000828163,
+      0.0037999999999999996
+    ]
+  },
+  "overlap": {
+    "declared_extent": 0.005,
+    "profile_sum": 0.005999999999999999,
+    "nodes": [
+      0.0,
+      0.0005,
+      0.001,
+      0.0015,
+      0.0018333333333333333,
+      0.002,
+      0.0021666666666666666,
+      0.0025,
+      0.003,
+      0.0035,
+      0.0038333333333333336,
+      0.004,
+      0.0040993504012227745,
+      0.004228505922812381,
+      0.004381352693924341,
+      0.004580053496369889,
+      0.004838364539549102,
+      0.005144058081773022,
+      0.005541459686664119,
+      0.006
+    ]
+  },
+  "cross_axis": {
+    "declared_domain": [
+      0.008,
+      0.008,
+      0.02
+    ],
+    "resolved_domain": [
+      0.008,
+      0.008,
+      0.07744811449999997
+    ],
+    "resolved_dx": 0.0005,
+    "pec_x_extent": 0.0002,
+    "refusal": "PEC Box 'pec' is thinner than one cell along x (0.0002 m against a local cell of 0.0005 m): a Box passed to sim.add() is a VOLUME; declare a sheet (a zero-thickness Box or add_thin_conductor) or resolve the thickness. Nothing is inferred from raster thickness or drawing direction (lattice ownership contract \u00a71.5)."
+  }
+}

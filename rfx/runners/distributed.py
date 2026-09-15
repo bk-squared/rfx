@@ -16,6 +16,30 @@ Phase 3: Lumped ports + Debye/Lorentz dispersive materials.
          ADE (auxiliary differential equation) state is carried through
          the scan loop; updates are purely local (no cross-device
          exchange needed for polarization fields).
+
+LEGACY LANE -- not the production distributed path (#1038 leg 6, PI decision
+2026-09-15). ``Simulation.run(devices=...)`` dispatches to
+``rfx.runners.distributed_v2.run_distributed`` (``shard_map``) for uniform and
+non-uniform grids alike; v2 is the single distributed development trunk. This
+module is NOT merged into v2: the two are not bit-identical (max |delta|
+2.794e-09 on a 9.4145e-03 peak) and they disagree on the odd-``nx`` rule (this
+module refuses an odd ``nx``, v2 pads it).
+
+The module stays, and stays supported, for three live roles:
+
+* ``distributed_v2.py:56`` imports twelve domain splitting, local-update and
+  CPML names from here (``gather_array_x``, ``_split_state``,
+  ``_split_materials``, the Debye/Lorentz splitters,
+  ``_apply_cpml_{e,h}_distributed``, ...);
+* ``rfx/api/_execute.py`` imports ``_split_materials`` from here for the
+  distributed non-uniform forward path;
+* ``distributed_v2.run_distributed`` delegates to this module's
+  ``run_distributed`` verbatim as its single-device fast path
+  (``distributed_v2.py:514-517``, ``if n_devices == 1``), so this code still
+  runs under every one-device ``sim.run(devices=[...])`` call.
+
+As of #1038 leg 6 it is no longer re-exported from ``rfx.runners``; import it
+by full module path.
 """
 
 from __future__ import annotations
@@ -24,6 +48,8 @@ from functools import partial
 
 import jax
 import jax.numpy as jnp
+
+from rfx.core.jax_utils import is_tracer
 from jax import lax
 
 from rfx.core.yee import (
@@ -46,6 +72,10 @@ from rfx.materials.lorentz import LorentzCoeffs, LorentzState
 from rfx.runners._distributed_common import (
     cpml_coeff_e_vacuum,
     cpml_coeff_h_vacuum,
+    gather_array_x,
+    split_array_x,
+    split_poles_x,
+    zeros_psi_stacked,
 )
 
 
@@ -53,75 +83,19 @@ from rfx.runners._distributed_common import (
 # Domain splitting / gathering
 # ---------------------------------------------------------------------------
 
-def split_array_x(arr, n_devices, ghost=1, pad_value=0.0):
-    """Split a 3D array into N slabs along x with ghost cells.
-
-    Parameters
-    ----------
-    arr : ndarray, shape (nx, ny, nz)
-    n_devices : int
-    ghost : int
-        Number of ghost cells on each side.
-    pad_value : float
-        Value used for ghost cells at the physical boundary (device 0
-        left ghost and device N-1 right ghost).  Default 0.0 is correct
-        for field arrays; use 1.0 for eps_r and mu_r to avoid division
-        by zero in the Yee update.
-
-    Returns
-    -------
-    slabs : ndarray, shape (n_devices, nx_local + 2*ghost, ny, nz)
-    """
-    nx = arr.shape[0]
-    nx_per = nx // n_devices
-    slabs = []
-    for i in range(n_devices):
-        x_start = i * nx_per
-        x_end = x_start + nx_per
-
-        # Desired range including ghosts
-        want_lo = x_start - ghost
-        want_hi = x_end + ghost
-
-        # Clamp to valid array range
-        g_lo = max(0, want_lo)
-        g_hi = min(nx, want_hi)
-
-        slab_data = arr[g_lo:g_hi]
-
-        # Pad where the desired range exceeds array bounds
-        pad_lo = g_lo - want_lo   # > 0 when want_lo < 0
-        pad_hi = want_hi - g_hi   # > 0 when want_hi > nx
-
-        if pad_lo > 0 or pad_hi > 0:
-            pad_widths = [(pad_lo, pad_hi)] + [(0, 0)] * (arr.ndim - 1)
-            slab_data = jnp.pad(slab_data, pad_widths, mode='constant',
-                                constant_values=pad_value)
-
-        slabs.append(slab_data)
-    return jnp.stack(slabs)
-
-
-def gather_array_x(slabs, ghost=1):
-    """Gather slabs back into a single array, stripping ghost cells.
-
-    Parameters
-    ----------
-    slabs : ndarray, shape (n_devices, nx_local + 2*ghost, ny, nz)
-    ghost : int
-
-    Returns
-    -------
-    arr : ndarray, shape (nx, ny, nz)
-    """
-    # Strip ghost cells from each slab and concatenate
-    inner = slabs[:, ghost:-ghost, :, :]  # (n_devices, nx_per, ny, nz)
-    n_devices = inner.shape[0]
-    # Reshape: merge device and x dims
-    nx_per = inner.shape[1]
-    ny = inner.shape[2]
-    nz = inner.shape[3]
-    return inner.reshape(n_devices * nx_per, ny, nz)
+# #1038 leg 2: ``split_array_x`` and ``gather_array_x`` moved VERBATIM to
+# rfx/runners/_distributed_common.py and are re-exported here, at the position
+# they were defined, so ``rfx.runners.distributed.split_array_x`` and
+# ``...gather_array_x`` keep resolving for the three external importers
+# (tests/unit/runners/test_distributed.py, test_distributed_v2_gather_traceable.py,
+# and distributed_v2.py:57). They had to move before any consolidation of the
+# helpers that CALL them: ``_distributed_common`` is imported by distributed.py
+# ten lines above their old definitions, so a shared body calling them could not
+# import them from here. Measured, not assumed:
+#   ImportError: cannot import name 'gather_array_x' from partially initialized
+#   module 'rfx.runners.distributed' (most likely due to a circular import)
+# Both are closure-free module-level functions whose only global is ``jnp``, so
+# the move needs no signature change.
 
 
 def _split_state(state, n_devices, ghost=1):
@@ -204,10 +178,8 @@ def _split_debye_state(state: DebyeState, n_devices, ghost=1):
     n_poles = state.px.shape[0]
 
     def _split_poles(arr):
-        return jnp.stack([
-            split_array_x(arr[p], n_devices, ghost, pad_value=0.0)
-            for p in range(n_poles)
-        ], axis=1)  # (n_devices, n_poles, nx_local, ny, nz)
+        # (n_devices, n_poles, nx_local, ny, nz)
+        return split_poles_x(arr, n_poles, n_devices, ghost)
 
     return DebyeState(
         px=_split_poles(state.px),
@@ -235,10 +207,7 @@ def _split_lorentz_coeffs(coeffs: LorentzCoeffs, n_devices, ghost=1):
     n_poles = coeffs.a.shape[0]
 
     def _split_poles(arr):
-        return jnp.stack([
-            split_array_x(arr[p], n_devices, ghost, pad_value=0.0)
-            for p in range(n_poles)
-        ], axis=1)
+        return split_poles_x(arr, n_poles, n_devices, ghost)
 
     return LorentzCoeffs(
         ca=ca, cb=cb,
@@ -254,10 +223,7 @@ def _split_lorentz_state(state: LorentzState, n_devices, ghost=1):
     n_poles = state.px.shape[0]
 
     def _split_poles(arr):
-        return jnp.stack([
-            split_array_x(arr[p], n_devices, ghost, pad_value=0.0)
-            for p in range(n_poles)
-        ], axis=1)
+        return split_poles_x(arr, n_poles, n_devices, ghost)
 
     return LorentzState(
         px=_split_poles(state.px),
@@ -683,7 +649,7 @@ def _init_cpml_distributed(grid, nx_local, n_devices):
 
     def _zeros(dim1, dim2):
         """Zero psi array: (n_devices, n_cpml, dim1, dim2)."""
-        return jnp.zeros((n_devices, n, dim1, dim2), dtype=jnp.float32)
+        return zeros_psi_stacked(n_devices, n, dim1, dim2)
 
     # X-face psi: perpendicular dims are (ny, nz) or transposed
     # Y/Z-face psi: perpendicular dims include nx_local (slab-local x)
@@ -1347,10 +1313,45 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     )
 
     # Build grid and materials (full domain)
+    # PRE-EXISTING GAP, not a #931 regression (verified 2026-09-07): this
+    # lane assembles ``pec_mask`` and never applies it. Its step body only
+    # calls the DOMAIN-FACE PEC (``_apply_pec_local``); no geometry PEC —
+    # volume, sheet or wire — reaches the field update here. #931 did not
+    # introduce this and does not fix it; threading sheets in would only
+    # make the drop harder to see.
+    #
+    # The refusal below used to name "redraw it as a volume" as the remedy,
+    # which on this lane leaves the metal just as absent. Since the drop is
+    # the same for all three kinds, so is the refusal.
     grid = sim._build_grid()
+    _d_pec_sheets: list = []
+    _d_pec_wires: list = []
     base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, *_ = (
-        sim._assemble_materials(grid)
+        sim._assemble_materials(grid, pec_sheets=_d_pec_sheets,
+                                pec_wires=_d_pec_wires)
     )
+    _d_pec_volume = (pec_mask is not None
+                     and not is_tracer(pec_mask)
+                     and bool(jnp.any(pec_mask)))
+    if _d_pec_sheets or _d_pec_wires or _d_pec_volume:
+        _d_declared = []
+        if _d_pec_sheets:
+            _d_declared.append(f"{len(_d_pec_sheets)} PEC sheet(s)")
+        if _d_pec_wires:
+            _d_declared.append(f"{len(_d_pec_wires)} sub-cell wire(s)")
+        if _d_pec_volume:
+            _d_declared.append(
+                f"a PEC volume of {int(jnp.sum(pec_mask))} cell(s)")
+        raise NotImplementedError(
+            "run_distributed() does not realize declared PEC geometry of "
+            "ANY kind (#931): this lane carries geometry PEC only as a cell "
+            "mask, its step body applies domain-face PEC alone, and a sheet "
+            "or a wire owns no cell to begin with. Declared here: "
+            f"{', '.join(_d_declared)} — all of it would be absent from "
+            "every rank with no sign of it. Redrawing a sheet as a volume "
+            "does NOT help on this lane. Use sim.run() without devices=, "
+            "which realizes all three, or model the conductor as a sigma "
+            "fill, which rides in the material arrays this lane does shard.")
     materials = base_materials
 
     nx, ny, nz = grid.shape

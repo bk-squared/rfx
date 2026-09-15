@@ -3,49 +3,104 @@
  "_declared_TM100_hz": 2423509824.70113,
  "_settling": "EVERY run below is UNDER-SETTLED (-21.5 dB baseline, bar -40 dB) -- cv05 prints that witness and does not gate it. These frequencies are therefore identification evidence, not accuracy evidence, and no accuracy claim may be read from them.",
  "_realized_x_cell_census": {
-  "_what": "patch x-extent rasterization measured from the geometry mask on cv05's own grid (dx = 1 mm), no FDTD: declared length -> realized x cells. Establishes which design-mode errors are reachable.",
-  "29.5": 29,
-  "23.0": 23,
-  "22.5": 23,
+  "_what": "patch x-extent measured from the REALIZED PEC edge set on cv05's own grid (dx = 1 mm), no FDTD: declared length (mm) -> realized conductor length in edges. Since #931 the patch is a sheet and this counts tangential E edges, not masked nodes; the pre-#931 census counted nodes and every row read one higher. Establishes which design-mode errors are reachable.",
+  "_unit": "edges (= mm at dx = 1 mm)",
+  "29.5": 28,
+  "23.0": 22,
+  "22.5": 22,
   "22.0": 22,
-  "21.65": 21,
-  "21.5": 21,
-  "21.0": 21,
-  "20.5": 21,
+  "21.65": 20,
+  "21.5": 20,
+  "21.0": 20,
+  "20.5": 20,
   "38.0": 38
  },
  "_provenance": {
-  "repo_commit": "f247575 (agent/regate-patch-selector; the staged tree carries no .git, so the harness could not read it)",
-  "repo_dirty": false,
-  "recorded_utc": "2026-09-02T05:52:09Z",
-  "harness": "scripts/diagnostics/build_cv05_ringdown_spectra.py: exec of validation/crossval/05_patch_antenna.py per length with RFX_CV05_PATCH_L_MM set, num_periods=60 (the script's own value), CPU",
-  "host": "VESSL 369367257743, remilab-c0 CPU, image ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8, jax[cpu]==0.6.2 (CI's jax); the rfx leg of the same job's shipped-script run reproduces runs.baseline.modes[0].freq exactly",
-  "supersedes": "the round-1 fixture built on macOS (jax 0.8.x) at commit 5b6db32: same mode count at four of five lengths, TM100 frequencies within 2e-4 relative, Q within 2 %, and one extra low-amplitude pole at 38.0 mm on this host -- recorded in the design note 6.11"
+  "repo_commit": "a66f4a27ab3e5df839a26002cc30e3f5fe157e1d",
+  "repo_dirty": true,
+  "recorded_utc": "2026-09-07T10:01:07Z",
+  "harness": "scripts/diagnostics/build_cv05_ringdown_spectra.py: exec of validation/crossval/05_patch_antenna.py per length with RFX_CV05_PATCH_L_MM set, num_periods=60 (the script's own value), CPU"
  },
  "runs": {
   "baseline": {
    "realized_patch_len_mm": 29.500000000000004,
    "declared_patch_len_mm": 29.5,
-   "script_exit": 1,
+   "script_exit": 0,
+   "realized_stack": {
+    "sheet_plane_delta": 0,
+    "ground": {
+     "declared_z_mm": 11.999999999999993,
+     "k": 22,
+     "x_edge_cells": 60,
+     "y_edge_cells": 55,
+     "x_index_range": [
+      18,
+      77
+     ],
+     "y_index_range": [
+      18,
+      72
+     ],
+     "realized_x_mm": 60.0,
+     "realized_y_mm": 55.0,
+     "declared_x_mm": 60.0,
+     "declared_y_mm": 55.0
+    },
+    "patch": {
+     "declared_z_mm": 13.499999999999995,
+     "k": 28,
+     "x_edge_cells": 28,
+     "y_edge_cells": 37,
+     "x_index_range": [
+      34,
+      61
+     ],
+     "y_index_range": [
+      27,
+      63
+     ],
+     "realized_x_mm": 28.0,
+     "realized_y_mm": 37.0,
+     "declared_x_mm": 29.500000000000004,
+     "declared_y_mm": 38.0
+    },
+    "cavity_node_to_node_mm": 1.5000000000000013,
+    "cavity_physical_mm": 1.5,
+    "substrate_cells_between": 6,
+    "cavity_eps_r": [
+     4.300000190734863,
+     4.300000190734863,
+     4.300000190734863,
+     4.300000190734863,
+     4.300000190734863,
+     4.300000190734863,
+     1.0
+    ]
+   },
    "harminv_band_hz": [
     1500000000.0,
     3500000000.0
    ],
    "modes": [
     {
-     "freq": 2331854551.1670175,
-     "Q": 41.966108772711124,
-     "amplitude": 315963.09986257134
+     "freq": 1900346670.4241853,
+     "Q": 90.49033429630059,
+     "amplitude": 62949.052569474894
     },
     {
-     "freq": 3027300356.287401,
-     "Q": 72.46593821862187,
-     "amplitude": 38991.32422854564
+     "freq": 2446496652.4277554,
+     "Q": 50.00444385698477,
+     "amplitude": 447161.0223403334
     },
     {
-     "freq": 3605107274.604681,
-     "Q": 104.47228436822941,
-     "amplitude": 550918.9274581942
+     "freq": 3186911011.360049,
+     "Q": 67.85645072951348,
+     "amplitude": 42274.13506518711
+    },
+    {
+     "freq": 3758955223.270803,
+     "Q": 109.52499024938646,
+     "amplitude": 602958.9256829545
     }
    ]
   },
@@ -53,25 +108,76 @@
    "realized_patch_len_mm": 22.5,
    "declared_patch_len_mm": 29.5,
    "script_exit": 1,
+   "realized_stack": {
+    "sheet_plane_delta": 0,
+    "ground": {
+     "declared_z_mm": 11.999999999999993,
+     "k": 22,
+     "x_edge_cells": 60,
+     "y_edge_cells": 55,
+     "x_index_range": [
+      18,
+      77
+     ],
+     "y_index_range": [
+      18,
+      72
+     ],
+     "realized_x_mm": 60.0,
+     "realized_y_mm": 55.0,
+     "declared_x_mm": 60.0,
+     "declared_y_mm": 55.0
+    },
+    "patch": {
+     "declared_z_mm": 13.499999999999995,
+     "k": 28,
+     "x_edge_cells": 22,
+     "y_edge_cells": 37,
+     "x_index_range": [
+      37,
+      58
+     ],
+     "y_index_range": [
+      27,
+      63
+     ],
+     "realized_x_mm": 22.0,
+     "realized_y_mm": 37.0,
+     "declared_x_mm": 22.5,
+     "declared_y_mm": 38.0
+    },
+    "cavity_node_to_node_mm": 1.5000000000000013,
+    "cavity_physical_mm": 1.5,
+    "substrate_cells_between": 6,
+    "cavity_eps_r": [
+     4.300000190734863,
+     4.300000190734863,
+     4.300000190734863,
+     4.300000190734863,
+     4.300000190734863,
+     4.300000190734863,
+     1.0
+    ]
+   },
    "harminv_band_hz": [
     1500000000.0,
     3500000000.0
    ],
    "modes": [
     {
-     "freq": 2872715922.661824,
-     "Q": 36.096441345382374,
-     "amplitude": 232357.2505219953
+     "freq": 1921606083.2691016,
+     "Q": 115.8603065384501,
+     "amplitude": 46826.888029416084
     },
     {
-     "freq": 3520324859.0426426,
-     "Q": 21.035098741800503,
-     "amplitude": 859027.2089938433
+     "freq": 3043213212.2984095,
+     "Q": 43.835259020007854,
+     "amplitude": 291209.94365677866
     },
     {
-     "freq": 3627990688.422372,
-     "Q": 118.23176861613322,
-     "amplitude": 719519.4871881948
+     "freq": 3791640239.835446,
+     "Q": 122.26492023889415,
+     "amplitude": 787248.7277494344
     }
    ]
   },
@@ -79,20 +185,76 @@
    "realized_patch_len_mm": 22.0,
    "declared_patch_len_mm": 29.5,
    "script_exit": 1,
+   "realized_stack": {
+    "sheet_plane_delta": 0,
+    "ground": {
+     "declared_z_mm": 11.999999999999993,
+     "k": 22,
+     "x_edge_cells": 60,
+     "y_edge_cells": 55,
+     "x_index_range": [
+      18,
+      77
+     ],
+     "y_index_range": [
+      18,
+      72
+     ],
+     "realized_x_mm": 60.0,
+     "realized_y_mm": 55.0,
+     "declared_x_mm": 60.0,
+     "declared_y_mm": 55.0
+    },
+    "patch": {
+     "declared_z_mm": 13.499999999999995,
+     "k": 28,
+     "x_edge_cells": 22,
+     "y_edge_cells": 37,
+     "x_index_range": [
+      37,
+      58
+     ],
+     "y_index_range": [
+      27,
+      63
+     ],
+     "realized_x_mm": 22.0,
+     "realized_y_mm": 37.0,
+     "declared_x_mm": 22.0,
+     "declared_y_mm": 38.0
+    },
+    "cavity_node_to_node_mm": 1.5000000000000013,
+    "cavity_physical_mm": 1.5,
+    "substrate_cells_between": 6,
+    "cavity_eps_r": [
+     4.300000190734863,
+     4.300000190734863,
+     4.300000190734863,
+     4.300000190734863,
+     4.300000190734863,
+     4.300000190734863,
+     1.0
+    ]
+   },
    "harminv_band_hz": [
     1500000000.0,
     3500000000.0
    ],
    "modes": [
     {
-     "freq": 2993459153.4531217,
-     "Q": 34.26642911560174,
-     "amplitude": 93462.47989933677
+     "freq": 1921606083.2691016,
+     "Q": 115.8603065384501,
+     "amplitude": 46826.888029416084
     },
     {
-     "freq": 3633339337.891849,
-     "Q": 116.84629527235155,
-     "amplitude": 734526.1662209275
+     "freq": 3043213212.2984095,
+     "Q": 43.835259020007854,
+     "amplitude": 291209.94365677866
+    },
+    {
+     "freq": 3791640239.835446,
+     "Q": 122.26492023889415,
+     "amplitude": 787248.7277494344
     }
    ]
   },
@@ -100,20 +262,76 @@
    "realized_patch_len_mm": 21.0,
    "declared_patch_len_mm": 29.5,
    "script_exit": 1,
+   "realized_stack": {
+    "sheet_plane_delta": 0,
+    "ground": {
+     "declared_z_mm": 11.999999999999993,
+     "k": 22,
+     "x_edge_cells": 60,
+     "y_edge_cells": 55,
+     "x_index_range": [
+      18,
+      77
+     ],
+     "y_index_range": [
+      18,
+      72
+     ],
+     "realized_x_mm": 60.0,
+     "realized_y_mm": 55.0,
+     "declared_x_mm": 60.0,
+     "declared_y_mm": 55.0
+    },
+    "patch": {
+     "declared_z_mm": 13.499999999999995,
+     "k": 28,
+     "x_edge_cells": 20,
+     "y_edge_cells": 37,
+     "x_index_range": [
+      38,
+      57
+     ],
+     "y_index_range": [
+      27,
+      63
+     ],
+     "realized_x_mm": 20.0,
+     "realized_y_mm": 37.0,
+     "declared_x_mm": 21.0,
+     "declared_y_mm": 38.0
+    },
+    "cavity_node_to_node_mm": 1.5000000000000013,
+    "cavity_physical_mm": 1.5,
+    "substrate_cells_between": 6,
+    "cavity_eps_r": [
+     4.300000190734863,
+     4.300000190734863,
+     4.300000190734863,
+     4.300000190734863,
+     4.300000190734863,
+     4.300000190734863,
+     1.0
+    ]
+   },
    "harminv_band_hz": [
     1500000000.0,
     3500000000.0
    ],
    "modes": [
     {
-     "freq": 3111893977.1247616,
-     "Q": 32.64658674109165,
-     "amplitude": 251555.04960569437
+     "freq": 1928514417.7936974,
+     "Q": 127.68905554554874,
+     "amplitude": 51416.73949736543
     },
     {
-     "freq": 3637220114.939245,
-     "Q": 128.9919521920353,
-     "amplitude": 807430.1686991099
+     "freq": 3313171253.619663,
+     "Q": 41.112303099220696,
+     "amplitude": 237060.88947030727
+    },
+    {
+     "freq": 3805765597.1334476,
+     "Q": 132.4205372308718,
+     "amplitude": 840520.3448008626
     }
    ]
   },
@@ -121,25 +339,76 @@
    "realized_patch_len_mm": 38.0,
    "declared_patch_len_mm": 29.5,
    "script_exit": 1,
+   "realized_stack": {
+    "sheet_plane_delta": 0,
+    "ground": {
+     "declared_z_mm": 11.999999999999993,
+     "k": 22,
+     "x_edge_cells": 60,
+     "y_edge_cells": 55,
+     "x_index_range": [
+      18,
+      77
+     ],
+     "y_index_range": [
+      18,
+      72
+     ],
+     "realized_x_mm": 60.0,
+     "realized_y_mm": 55.0,
+     "declared_x_mm": 60.0,
+     "declared_y_mm": 55.0
+    },
+    "patch": {
+     "declared_z_mm": 13.499999999999995,
+     "k": 28,
+     "x_edge_cells": 38,
+     "y_edge_cells": 37,
+     "x_index_range": [
+      29,
+      66
+     ],
+     "y_index_range": [
+      27,
+      63
+     ],
+     "realized_x_mm": 38.0,
+     "realized_y_mm": 37.0,
+     "declared_x_mm": 38.0,
+     "declared_y_mm": 38.0
+    },
+    "cavity_node_to_node_mm": 1.5000000000000013,
+    "cavity_physical_mm": 1.5,
+    "substrate_cells_between": 6,
+    "cavity_eps_r": [
+     4.300000190734863,
+     4.300000190734863,
+     4.300000190734863,
+     4.300000190734863,
+     4.300000190734863,
+     4.300000190734863,
+     1.0
+    ]
+   },
    "harminv_band_hz": [
     1500000000.0,
     3500000000.0
    ],
    "modes": [
     {
-     "freq": 1813339498.9205768,
-     "Q": 49.769244013414685,
-     "amplitude": 280403.0612220936
+     "freq": 1840047744.6319866,
+     "Q": 65.70277841528525,
+     "amplitude": 356583.39808769344
     },
     {
-     "freq": 2609611690.1454163,
-     "Q": 57.67583424221865,
-     "amplitude": 25317.84702256452
+     "freq": 2702631824.789781,
+     "Q": 81.82986269025866,
+     "amplitude": 31034.5743866984
     },
     {
-     "freq": 3576915699.684167,
-     "Q": 77.46108490925334,
-     "amplitude": 339847.5167262771
+     "freq": 3725142223.4133167,
+     "Q": 92.2417698684421,
+     "amplitude": 366874.48300793517
     }
    ]
   }

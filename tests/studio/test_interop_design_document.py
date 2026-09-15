@@ -1,4 +1,4 @@
-"""Contract tests for the ``rfx-design-ir/v1`` design document.
+"""Contract tests for the ``rfx-design-ir/v2`` design document.
 
 These tests are pure: they build ``Simulation`` objects with the real public
 API, serialise them, rebuild them, and compare builder state.  No FDTD runs.
@@ -371,6 +371,41 @@ def _fourth_order_2d() -> Simulation:
     )
 
 
+def _pec_sheet_and_volume() -> Simulation:
+    """Both conductor OWNERSHIP kinds in one document (#931 §1.2/§1.3).
+
+    The corpus already carried a LOSSY thin conductor (``_coax_cavity``'s
+    ``sigma_bulk=5.8e4`` foil), so the codec was exercised on the sheet
+    operator but never on a PEC SHEET, and never on the sheet-vs-volume
+    distinction the lattice ownership contract makes load-bearing. A
+    document that cannot tell the two apart round-trips a patch antenna
+    into a filled slab.
+
+    Three declarations of metal at nominally the same place:
+
+    * ``add_thin_conductor(..., sigma_bulk=5.8e7)`` — a PEC sheet, one
+      node plane, normal E live;
+    * a ZERO-EXTENT PEC ``Box`` through ``add()`` — the same sheet, the
+      other spelling (§1.5);
+    * a one-cell PEC ``Box`` — a VOLUME, walls on both bounding planes and
+      the interior shorted.
+    """
+    sim = Simulation(freq_max=10e9, domain=(0.020, 0.020, 0.020), dx=1e-3,
+                     boundary="pec")
+    sim.add_thin_conductor(
+        Box(corner_lo=(0.004, 0.004, 0.005), corner_hi=(0.016, 0.016, 0.005)),
+        sigma_bulk=5.8e7,
+    )
+    sim.add(Box(corner_lo=(0.004, 0.004, 0.008), corner_hi=(0.016, 0.016, 0.008)),
+            material="pec")
+    sim.add(Box(corner_lo=(0.004, 0.004, 0.012), corner_hi=(0.016, 0.016, 0.013)),
+            material="pec")
+    sim.add_source(position=(0.010, 0.010, 0.003), component="ez",
+                   amplitude_kind="current")
+    sim.add_probe(position=(0.010, 0.010, 0.017), component="ez")
+    return sim
+
+
 DESIGN_BUILDERS = {
     "graded_microstrip": _graded_microstrip,
     "waveguide_dispersive": _waveguide_with_dispersive_slab,
@@ -387,6 +422,7 @@ DESIGN_BUILDERS = {
     "nonuniform_xy": _nonuniform_xy_design,
     "adi_mixed_precision": _adi_mixed_precision,
     "fourth_order_2d": _fourth_order_2d,
+    "pec_sheet_and_volume": _pec_sheet_and_volume,
 }
 
 
@@ -969,7 +1005,7 @@ def test_refuses_a_one_shot_iterator_shape_parameter():
 
     The failure this pins is a whole document, not a message: the first export
     consumed the iterator, so the SECOND export emitted ``points: []`` and
-    produced a complete, schema-valid ``rfx-design-ir/v1`` document with the
+    produced a complete, schema-valid ``rfx-design-ir/v2`` document with the
     wire simply absent — which then survived re-import. ``_SHAPE`` delegates to
     the shape codec and does not re-validate, so the document inherited the
     hole; it is closed in ``rfx/interop/_validate.check_sequence``. This test
@@ -1382,7 +1418,7 @@ def test_non_portable_annotation_cannot_be_stripped():
 
 SCHEMA_PATH = (
     Path(__file__).resolve().parents[2]
-    / "docs/design_notes/schemas/rfx-design-ir-v1.schema.json"
+    / "docs/design_notes/schemas/rfx-design-ir-v2.schema.json"
 )
 
 
@@ -1848,3 +1884,76 @@ def test_auto_offset_dump_solves_on_a_z_graded_stackup():
     (port_doc,) = document["excitations"]["msl_ports"]
     assert port_doc["n_probe_offset"] == _driver_offset(sim)
     assert port_doc["n_probe_offset"] == 26
+
+
+# ---------------------------------------------------------------------------
+# Conductor ownership across the IR boundary (#931)
+# ---------------------------------------------------------------------------
+
+def test_a_pec_sheet_and_a_one_cell_volume_round_trip_as_different_objects():
+    """§1.2 vs §1.3 survives export and re-import.
+
+    The IR is where a conductor's KIND can be lost without anything
+    erroring: a sheet and a one-cell Box differ only in one coordinate,
+    and both are schema-valid geometry. Before the contract there was a
+    per-entry ``two_plane`` boolean that carried the difference; it is
+    gone, and the difference now lives in the declaration itself — a
+    zero-extent Box or a ``thin_conductors`` entry is a sheet, anything
+    else is a volume. This pins that the document says so and the
+    rebuilt Simulation realizes so.
+    """
+    from rfx.boundaries.pec import realized_wall_planes
+    from tests._realized_geometry import realized
+
+    sim = DESIGN_BUILDERS["pec_sheet_and_volume"]()
+    doc = design_to_dict(sim)
+
+    thin = doc["thin_conductors"]
+    assert len(thin) == 1, thin
+    lo = thin[0]["shape"]["params"]["corner_lo"]
+    hi = thin[0]["shape"]["params"]["corner_hi"]
+    assert lo[2] == hi[2], ("the PEC sheet must round-trip as a ZERO-EXTENT "
+                            f"box on its normal axis, got {lo} -> {hi}")
+    assert thin[0]["sigma_bulk"] >= 1e6
+
+    boxes = [g["shape"]["params"] for g in doc["geometry"]]
+    zero = [b for b in boxes if b["corner_lo"][2] == b["corner_hi"][2]]
+    thick = [b for b in boxes if b["corner_lo"][2] != b["corner_hi"][2]]
+    assert len(zero) == 1 and len(thick) == 1, boxes
+
+    rebuilt = simulation_from_design(doc)
+    rz = realized(rebuilt)
+    # two sheets (the thin conductor and the zero-extent Box), one volume
+    assert rz.sheet_planes == {2: [5, 8]}, rz.sheet_planes
+    cells = sorted(set(np.where(np.asarray(rz.pec_mask))[2]))
+    assert cells == [12], cells
+    assert realized_wall_planes(rz.edge_masks, 2) == [5, 8, 12, 13], \
+        realized_wall_planes(rz.edge_masks, 2)
+
+
+def test_a_v1_document_is_refused_by_name_not_silently_migrated():
+    """A legacy document is a DIFFERENT physics statement, and says so.
+
+    ``two_plane`` was a REQUIRED field of every v1 geometry entry, and its
+    two values named two different realizations of the same Box. A reader
+    that quietly dropped the key would turn every v1 ``two_plane=False``
+    document — the historical default, one wall at the lower node plane —
+    into a two-wall volume without a word. The refusal must name the
+    field and the change, so a user reading the message knows which of
+    their documents moved.
+    """
+    doc = design_to_dict(DESIGN_BUILDERS["pec_sheet_and_volume"]())
+    doc["schema"] = "rfx-design-ir/v1"
+    with pytest.raises(UnsupportedDesignFeature) as exc:
+        simulation_from_design(doc)
+    msg = str(exc.value)
+    assert "rfx-design-ir/v1" in msg and "rfx-design-ir/v2" in msg, msg
+    assert "two" in msg and "931" in msg, msg
+
+
+def test_a_stray_two_plane_key_is_refused_rather_than_ignored():
+    """§1.5: passing the deleted flag is an error, not a deprecation."""
+    doc = design_to_dict(DESIGN_BUILDERS["pec_sheet_and_volume"]())
+    doc["geometry"][0]["two_plane"] = False
+    with pytest.raises(UnsupportedDesignFeature, match="two_plane"):
+        simulation_from_design(doc)

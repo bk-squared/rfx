@@ -1,0 +1,83 @@
+name: rfx-931-cv05-fixture-check
+description: "cv05 ring-down fixture verification: re-runs the producer scripts/diagnostics/build_cv05_ringdown_spectra.py with --check, which rebuilds all five lengths (2 solves each) and compares against the COMMITTED tests/fixtures/patch_mode_identification/cv05_ringdown_spectra.json at 1e-6 relative on every mode freq and Q. The fixture under test is the one VESSL 369367259142 wrote and commit efc9d2b1 committed; this job is the falsifier for that commit — a MISMATCH means the fixture is not reproducible from the repo. Nothing is written into the worktree (--check compares, it does not overwrite). Phase 2b ingest, group X-A. Submit: vessl run create -f cv05_fixture_check.yaml"
+tags: [rfx, issue-931, ingest, cv05, crossval-a]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_PLATFORMS: "cpu"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  echo "=== rfx #931 INGEST: cv05 ring-down fixture --check (branch feat/931-crossval-a) ==="
+  date
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  WORK=/root/workspace/byungkwan-workspace/research/rfx-931-XA-crossval-a
+  test -d "$WORK" || { echo "ERROR: branch worktree missing at $WORK"; exit 3; }
+  RUNS=/root/workspace/claude-workspace/rfx/runs
+  OUT=$RUNS/issue931-post-cv05check-$(date -u +%Y%m%dT%H%M%SZ)
+  mkdir -p "$OUT"
+  echo "$OUT" > "$RUNS/issue931-post-cv05check.latest"
+  trap 'chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
+  echo "artifacts: $OUT"
+  HAVE_GIT=0
+  if command -v git >/dev/null 2>&1; then
+    git config --global --add safe.directory '*' >/dev/null 2>&1 || true
+    if git -C "$WORK" rev-parse --git-dir >/dev/null 2>&1; then HAVE_GIT=1; fi
+  fi
+  echo "HAVE_GIT=$HAVE_GIT" | tee "$OUT/have_git.txt"
+  if [ "$HAVE_GIT" -eq 1 ]; then
+    git -C "$WORK" log --oneline -1 | tee "$OUT/commit.txt"
+    git -C "$WORK" status --porcelain | tee "$OUT/worktree_status_before.txt"
+  else
+    echo "git unavailable in image; commit identity not recorded" | tee "$OUT/commit.txt"
+  fi
+  cd "$WORK"
+  touch "$OUT/.tstamp"
+  "$PY" -m pip uninstall -y -q jax-cuda12-plugin jax-cuda12-pjrt 2>/dev/null || true
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7"
+  export RFX_REPO_ROOT="$WORK"
+  export PYTHONPATH="$WORK"
+  export MPLBACKEND=Agg
+  "$PY" -c "import jax, rfx, os; print('probe ok | jax', jax.__version__, '| backend', jax.default_backend(), '| rfx from', os.path.dirname(rfx.__file__))"
+  # digest of the file under test, so the record says WHICH fixture was checked
+  "$PY" -c "import hashlib,sys; p='tests/fixtures/patch_mode_identification/cv05_ringdown_spectra.json'; print(p, hashlib.md5(open(p,'rb').read()).hexdigest())" \
+      | tee "$OUT/fixture_under_test.txt"
+  echo "=== step cv05_fixture_check (5 lengths x 2 solves, compare at 1e-6 rel) ==="
+  set +e
+  timeout 7200 "$PY" -u scripts/diagnostics/build_cv05_ringdown_spectra.py --check \
+      > "$OUT/cv05_fixture_check.log" 2>&1
+  rc=$?
+  set -e
+  echo "$rc" > "$OUT/cv05_fixture_check.rc"
+  tail -n 20 "$OUT/cv05_fixture_check.log" || true
+  grep -E "^(OK|MISMATCH)" "$OUT/cv05_fixture_check.log" | tee "$OUT/verdict.txt" || true
+  echo "=== the worktree must be UNTOUCHED by a --check ==="
+  if [ "$HAVE_GIT" -eq 1 ]; then
+    git -C "$WORK" status --porcelain | tee "$OUT/worktree_status_after.txt"
+    git -C "$WORK" diff --stat -- tests/fixtures/patch_mode_identification/ \
+       | tee "$OUT/fixture_diff_after.txt" || true
+  fi
+  mkdir -p "$OUT/produced"
+  find "$WORK/tests/fixtures" -type f -newer "$OUT/.tstamp" \
+      -not -path "*/.git/*" -not -path "*/__pycache__/*" -not -name "*.pyc" \
+      > "$OUT/produced_files.txt" 2>/dev/null || true
+  while IFS= read -r f; do
+    rel=${f#$WORK/}
+    d=$(dirname "$rel")
+    mkdir -p "$OUT/produced/$d"
+    cp -p "$f" "$OUT/produced/$rel" 2>/dev/null || true
+  done < "$OUT/produced_files.txt"
+  echo "harvested $(wc -l < "$OUT/produced_files.txt") file(s) (expected 0)"
+  ls -la "$OUT"
+  chmod -R a+rX "$OUT" 2>/dev/null || true
+  echo "INGEST_CHECK=cv05_ringdown RC=$rc"
+  exit "$rc"

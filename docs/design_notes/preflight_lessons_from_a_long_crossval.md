@@ -1,5 +1,16 @@
 # What a long cross-validation taught us about preflight
 
+> **SUPERSEDED IN PART by #931 (the lattice ownership contract), 2026-09-07.**
+> Kept as dated history and deliberately NOT rewritten.
+> "After #677 a `surface_impedance_f0` sheet is a node-thin operator" is still
+> true in substance — an f0 sheet is realized on one node plane — but the
+> geometry now comes from the same sheet footprint a PEC sheet uses, so f0
+> toggles loss and never geometry, by construction rather than by comparison.
+> The current rule is
+> `docs/design_notes/20260906_plan_realign_lattice_ownership.md` §1, and for
+> users `docs/public/guide/materials-geometry.mdx` ("How conductors land on
+> the lattice").
+
 Written 2026-08-22, from a multi-week cross-validation of an imported multi-layer board
 against a commercial reference. No board-specific data appears here; every number is about
 rfx's own diagnostics.

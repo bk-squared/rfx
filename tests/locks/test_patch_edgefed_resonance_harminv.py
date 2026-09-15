@@ -142,11 +142,24 @@ W = 10.129e-3
 L = 8.595e-3
 W_MSL = 1.8e-3
 PORT_MARGIN = 5.0e-3
-Z_GND = 4e-3
 FEED_LEN = 8.0e-3
 DOM_X, DOM_Y, DOM_Z = 29.747e-3, 18.130e-3, 12.787e-3
 N_SUB_CELLS = 4
 DX = H_SUB / N_SUB_CELLS
+
+# Board height, SNAPPED TO THE NODE LINE (#931 §1.3 "off-lattice interfaces").
+# The z origin used to be a bare 4 mm, which on this mesh (dx = H_SUB/4 =
+# 196.75 um, node i at (i - cpml_pad)*dx) sits 0.33 of a cell above node 28.
+# Nothing in the board is off-lattice by intent — the laminate is an exact four
+# cells thick — so the 0.33-cell offset was pure registration noise, and under
+# the ownership contract it is not harmless: a foil declared on an off-node
+# interface snaps to the NEAREST node, which need not be the node the
+# dielectric's own half-open sampling starts at, and the cavity then carries a
+# vacuum cell in series (measured below).  Snapping the origin puts both
+# laminate faces exactly on node planes, so the two foils and the four
+# dielectric cells are the same five node planes.  The board moves 65 um in
+# free space; nothing else about it changes.
+Z_GND = round(4e-3 / DX) * DX
 
 # The realized patch raster at this mesh: 43 x 51 cells = 8.46025 x 10.03425 mm on a
 # 787.00 um substrate (design 8.595 x 10.129 mm; the x/y faces sit 47.5/65.5 um
@@ -154,7 +167,17 @@ DX = H_SUB / N_SUB_CELLS
 # because Leg A's ratio absorbs a raster change — see the module docstring.
 RASTER_CELLS = (43, 51)
 
-NUM_PERIODS = 120.0
+# 200, raised from 120 by the #931 redraw (2026-09-07). With the reserved
+# vacuum cell gone the cavity is 787 um of laminate instead of 983.75 um of
+# laminate-plus-vacuum, the patch radiates less, and the isolated arm drains
+# more slowly: at 120 periods the redrawn UNFED ring-down ends at -35.43 dB
+# of peak against this file's -40 dB truncation bar, while the fed arm still
+# clears it at -42.21 dB (VESSL 369367259225). That is the module's own
+# instruction taken literally — "raise NUM_PERIODS before trusting any
+# Harminv frequency" — not a widened bar: the bar is unchanged and the record
+# is longer. Leg A and Leg B are therefore re-pinned at 200 periods, and the
+# 120-period numbers are not comparable to them.
+NUM_PERIODS = 200.0
 SETTLING_BAR_DB = -40.0
 HARMINV_BAND_HZ = (6e9, 14e9)
 RINGDOWN_START_FRAC = 0.30      # skip the drive
@@ -201,8 +224,38 @@ N_PROBE_Y = 5                   # probes along y (the parity line for TM001)
 #
 # Discrimination: pre-#702 (6b1302b3) measures +7.430 % on identical geometry, mesh,
 # domain and extractor — only the tree differs.
-LEG_A_CENTRE_PCT = -6.17
-LEG_A_HALF_PCT = 1.125          # = 0.935 configuration + 0.190 extractor
+#
+# RE-PINNED 2026-09-07 for #931, from VESSL 369367259237 (this fixture, 200
+# periods, both arms settled at -58.3 dB). Centre -6.17 -> -1.886.
+#
+# WHY THE CENTRE MOVED, and why the WIDTH did not. The board this window was
+# built on reserved a vacuum CELL for the ground foil, and rfx's #702 re-sample
+# silently filled it with laminate, so the mesh cavity was 983.75 um while the
+# Balanis anchor was evaluated at the declared h = H_SUB = 787 um. Leg A was
+# measuring, among other things, that 25 % thickness disagreement. The
+# ownership contract deletes the re-sample, this fixture is redrawn with each
+# foil ON the laminate face it bounds, and the mesh cavity is now four cells of
+# laminate — 787.000 um, the declared value, asserted at build time. With the
+# mesh and the model finally agreeing on h, what is left is much closer to the
+# cavity MODEL's own error, which this module's refinement ladder already
+# plateaus near -4.4 %.
+#
+#   measured at 120 periods  -1.871 %   (record ended at -35.43 dB, under bar)
+#   measured at 200 periods  -1.886 %   (settled at -58.30 dB)  <- the pin
+#
+# The 0.015 pp between them is the whole effect of the longer record, so the
+# frequency was already converged and the settling fix did not move the physics.
+#
+# THE WIDTH IS CARRIED FORWARD, NOT RE-MEASURED, and that is a disclosure
+# rather than a claim: 0.935 pp of it is the mesh/domain/cpml ladder sampled on
+# the PRE-REDRAW board (h/3..h/6, +0/+20/+40 cells, cpml 8->12) and 0.190 pp is
+# the extractor spread. Nothing about the redraw makes that ladder wider — the
+# cavity is now exactly four cells at every refinement instead of four plus a
+# vacuum one — so carrying it is conservative. Re-measuring it on the redrawn
+# board is the follow-up, and it can only narrow this window.
+LEG_A_CENTRE_PCT = -1.886
+LEG_A_HALF_PCT = 1.125          # = 0.935 configuration + 0.190 extractor,
+#                                 both measured on the pre-redraw board
 
 # ------------------------------------------------------------- Leg B window --
 # f_TM010(fed) / f_TM010(unfed) - 1, in percent. The edge-feed loading term.
@@ -237,6 +290,15 @@ LEG_A_HALF_PCT = 1.125          # = 0.935 configuration + 0.190 extractor
 #   stub length moves this leg by +0.85 pp, and the pull runs about -2.2 %/mm of stub.
 #   With the stub held fixed the pull SHRINKS with inset depth (-6.74 -> -3.63 % at
 #   2.4 mm) — an inset-intrinsic matching term exists but is not what this leg pins.
+# NOT re-pinned under #931, and the reason is the construction rather than the
+# result: this centre is the midpoint of FIVE measured fed/unfed pairs, and the
+# redrawn board has one (h/4 base). Re-centring a five-point midpoint on a
+# single point would be a different statistic wearing the same name. The
+# redrawn board measures -7.061 % (VESSL 369367259237), which PASSES — but it
+# sits 0.952 pp from this centre against a 0.986 pp half-width, i.e. at 97 % of
+# the window, so the next drift in either direction trips it. Re-deriving both
+# legs properly needs the ladder re-run on the redrawn board; that is the
+# follow-up named in Leg A's block above, and it owns this centre too.
 LEG_B_CENTRE_PCT = -6.109       # midpoint of the 5 measured pairs, NOT rounded toward
 #                                 zero: rounding the centre in would contradict the Leg A
 #                                 block's claim that rounding UP is the only slack here.
@@ -271,23 +333,53 @@ def _build(fed: bool):
     """
     sim = Simulation(freq_max=15e9, domain=(DOM_X, DOM_Y, DOM_Z),
                      dx=DX, cpml_layers=8, boundary="cpml")
-    z_gnd_hi = Z_GND + DX
-    z_sub_lo, z_sub_hi = z_gnd_hi, z_gnd_hi + H_SUB
-    z_tr_lo, z_tr_hi = z_sub_hi, z_sub_hi + DX
+    # The stack, in the words the contract reads (#931 §1.3, §6): the laminate
+    # is the only body with a thickness, and each foil is a ZERO-THICKNESS sheet
+    # ON the laminate face it bounds.  Both faces are node planes (Z_GND is
+    # snapped and H_SUB is exactly four cells), so declared and realized are the
+    # same five planes and the cavity is four dielectric cells, nothing else.
+    z_sub_lo, z_sub_hi = Z_GND, Z_GND + H_SUB
     x_patch0 = PORT_MARGIN + FEED_LEN
     y_c = DOM_Y / 2.0
     z_mid = 0.5 * (z_sub_lo + z_sub_hi)
 
     substrate = Box((0, 0, z_sub_lo), (DOM_X, DOM_Y, z_sub_hi))
-    patch = Box((x_patch0, y_c - W / 2, z_tr_lo), (x_patch0 + L, y_c + W / 2, z_tr_hi))
+    patch = Box((x_patch0, y_c - W / 2, z_sub_hi), (x_patch0 + L, y_c + W / 2, z_sub_hi))
 
     sim.add_material("ro4003c", eps_r=EPS_R, sigma=0.0)
-    sim.add(Box((0, 0, Z_GND), (DOM_X, DOM_Y, z_gnd_hi)), material="pec")   # ground
+    # The three metallizations are FOILS, declared as zero-thickness sheets on
+    # the laminate faces (lattice ownership contract #931 §1.3, amendment §6
+    # "a foil sheet goes on the dielectric INTERFACE it bounds").
+    #
+    # They used to be one-cell PEC Boxes drawn in cells RESERVED for them: the
+    # ground in [4.000, 4.197] mm with the laminate starting only at 4.197. That
+    # reserved cell is the #702 geometry. Before this branch, rfx re-sampled the
+    # sheet's own cell material onto its live edge and the cell silently became
+    # dielectric; the contract deletes that re-sample (a sheet owns no cell), so
+    # the cell is what the drawing says it is — vacuum — and the cavity carries
+    # it in series. Measured at build time on the unreDRAWn board, walls at node
+    # 29 and 34 with eps_r = [1.0, 3.38, 3.38, 3.38, 3.38] across the five cells
+    # between them: preflight's #703 cavity check reads sum(d/eps) 429.6 um mesh
+    # vs 232.8 um physical, +84.5 %. That is the whole of the +10.365 % Leg A
+    # excursion the first post-contract run measured (VESSL 369367259172) — the
+    # pre-#702 signature this module's docstring names at +7.430 %.
+    #
+    # The contract's remedy is the drawing, not a re-sample: put each foil on
+    # the laminate face it bounds and let the laminate own every cell of the
+    # cavity. Realized now, and asserted below with no solve:
+    #   walls at nodes 28 and 32, four cells between them, all eps_r = 3.38,
+    #   node-to-node 787.00 um = the declared H_SUB to the micron.
+    # The patch footprint (43 x 51 nodes, 42 x 50 edges) is untouched by this —
+    # only z moved — so RASTER_CELLS still holds and Leg A's ratio still divides
+    # by the Balanis value of the same rectangle.
+    sim.add_thin_conductor(Box((0, 0, z_sub_lo), (DOM_X, DOM_Y, z_sub_lo)),
+                           sigma_bulk=5.8e7)                                # ground
     sim.add(substrate, material="ro4003c")
     if fed:
-        sim.add(Box((0, y_c - W_MSL / 2, z_tr_lo),
-                    (x_patch0, y_c + W_MSL / 2, z_tr_hi)), material="pec")  # feed trace
-    sim.add(patch, material="pec")
+        sim.add_thin_conductor(Box((0, y_c - W_MSL / 2, z_sub_hi),
+                                   (x_patch0, y_c + W_MSL / 2, z_sub_hi)),
+                               sigma_bulk=5.8e7)                            # feed trace
+    sim.add_thin_conductor(patch, sigma_bulk=5.8e7)
 
     if fed:
         sim.add_msl_port(
@@ -495,6 +587,103 @@ def arms():
 # --------------------------------------------------------------------------
 
 
+def test_the_board_realizes_three_sheets_and_no_conductor_volume():
+    """Build-time (no solve): the foils land on one plane each, owning no cell.
+
+    RASTER_CELLS below counts NODES of the declared patch (43 x 51). The
+    electrical patch is one edge shorter per axis (42 x 50) because an edge
+    needs both of its end nodes in the footprint — a distinction the old
+    ``shape.mask`` reading could not make, and one Leg A's centre already
+    absorbs as a constant. This test states both numbers so the next reader
+    does not have to re-derive which one the solve sees.
+    """
+    from tests._realized_geometry import node_index, realized
+
+    for fed in (False, True):
+        sim, patch, _sub = _build(fed)
+        rz = realized(sim)
+        assert rz.pec_mask is None or not bool(np.asarray(rz.pec_mask).any()), (
+            "ground, trace and patch are foils; none of them owns a cell")
+        assert rz.sheet_planes.keys() == {2}, rz.sheet_planes
+        # Ground plane and metallization plane. The fed leg adds the feed
+        # trace on the SAME plane as the patch, so there are three sheets
+        # but still two planes — and the two abutting footprints are
+        # UNIONED before the edge rule, so the join carries no slit
+        # (#931 §1.3).
+        planes = sorted(set(p for v in rz.sheet_planes.values() for p in v))
+        k_gnd, k_top = node_index(rz.grid, 2, Z_GND), node_index(
+            rz.grid, 2, Z_GND + H_SUB)
+        assert planes == [k_gnd, k_top], (fed, planes, [k_gnd, k_top])
+        assert len(rz.sheets) == (3 if fed else 2), len(rz.sheets)
+        assert rz.wall_planes(2) == planes, (fed, rz.wall_planes(2))
+
+        mx, my, _mz = (np.asarray(m) for m in rz.edge_masks)
+        kp = k_top
+        occ = np.argwhere(np.asarray(patch.mask(rz.grid), dtype=bool))
+        x0, x1 = int(occ[:, 0].min()), int(occ[:, 0].max())
+        y0, y1 = int(occ[:, 1].min()), int(occ[:, 1].max())
+        assert (x1 - x0 + 1, y1 - y0 + 1) == RASTER_CELLS, (x1 - x0 + 1,
+                                                            y1 - y0 + 1)
+        n_ex = len({int(i) for i in np.argwhere(mx[x0:x1 + 1, y0:y1 + 1,
+                                                  kp])[:, 0]})
+        n_ey = len({int(j) for j in np.argwhere(my[x0:x1 + 1, y0:y1 + 1,
+                                                  kp])[:, 1]})
+        assert (n_ex, n_ey) == (RASTER_CELLS[0] - 1, RASTER_CELLS[1] - 1), (
+            fed, n_ex, n_ey)
+
+
+def test_the_cavity_between_the_two_foils_is_all_laminate():
+    """Build-time (no solve): every cell between the two foil planes is the
+    laminate, and the node-to-node gap is the declared H_SUB.
+
+    This is the assertion the #702 repair used to stand in for. rfx re-sampled
+    a sheet's own cell material onto its live edge, so a board drawn with a
+    RESERVED cell for the ground foil (this fixture, until #931) got its
+    dielectric back silently and nobody had to look. The ownership contract
+    deletes the re-sample — a sheet owns no cell — so the drawing is the whole
+    statement, and a reserved cell is a vacuum cell in series with the cavity.
+    Measured on this board before it was redrawn: five cells between the walls,
+    eps_r [1.0, 3.38, 3.38, 3.38, 3.38], preflight #703 reading sum(d/eps)
+    429.6 um mesh vs 232.8 um physical (+84.5 %), and Leg A at +10.365 %
+    instead of -6.17 % (VESSL 369367259172).
+
+    The gate is on the cavity, not on a plane index, because that is what the
+    physics reads: Balanis is evaluated at h = H_SUB, so any cell of the wrong
+    medium between the walls is a bias Leg A would absorb silently.
+    """
+    from tests._realized_geometry import node_index, realized
+
+    for fed in (False, True):
+        sim, _patch, _sub = _build(fed)
+        rz = realized(sim)
+        grid = rz.grid
+        k_lo, k_hi = rz.wall_planes(2)
+        zline = _node_line_z(grid)
+        gap = float(zline[k_hi] - zline[k_lo])
+        assert abs(gap - H_SUB) < 0.5e-6, (
+            f"[{'FED' if fed else 'UNFED'}] realized cavity {gap * 1e6:.3f} um "
+            f"between the foil planes != declared H_SUB {H_SUB * 1e6:.3f} um")
+        assert k_lo == node_index(grid, 2, Z_GND)
+        assert k_hi == node_index(grid, 2, Z_GND + H_SUB)
+
+        eps = sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])[0].eps_r
+        col = np.asarray(eps)[int(rz.pec_mask.shape[0] // 2) if rz.pec_mask
+                              is not None else eps.shape[0] // 2,
+                              eps.shape[1] // 2, k_lo:k_hi]
+        assert col.shape[0] == N_SUB_CELLS, (col.shape, N_SUB_CELLS)
+        assert np.allclose(col, EPS_R), (
+            f"[{'FED' if fed else 'UNFED'}] the cavity carries a cell that is "
+            f"not the laminate: eps_r = {[round(float(v), 3) for v in col]}. A "
+            "vacuum cell here is the #702 slot geometry — draw the laminate to "
+            "the foil plane; nothing is re-sampled.")
+
+
+def _node_line_z(grid):
+    from tests._realized_geometry import _node_line
+
+    return _node_line(grid, 2)
+
+
 def test_realized_raster_is_the_board_this_gate_was_measured_on():
     """Leg A's anchor is recomputed from the realized raster, which makes the RATIO
     nearly blind to a rasterization regression — anchor and FDTD frequency both follow
@@ -541,8 +730,34 @@ def test_realized_raster_agrees_with_the_public_fidelity_report():
             seen["substrate"] = axes
     assert "patch" in seen and "substrate" in seen, (
         f"fidelity_report() did not report the patch and substrate entities: {seen}")
-    assert abs(seen["patch"]["x"]["realized_extent_um"] - l_real * 1e6) < 1e-3
-    assert abs(seen["patch"]["y"]["realized_extent_um"] - w_real * 1e6) < 1e-3
+    # THE ONE-CELL RELATION, stated instead of asserted away (#729/#931).
+    #
+    # ``_realized_extent`` counts the NODES the declared shape rasterizes
+    # to and multiplies by dx, so a 43-node patch reads 43*dx. The
+    # electrical patch is the 42 Ex edges BETWEEN those nodes, 42*dx, and
+    # since #931 ``fidelity_report`` reports that — the realized wall
+    # planes, which is what the solve sees. The two readings therefore
+    # differ by exactly one cell, and always did; before #931 the report
+    # shared the node reading and the disagreement was invisible.
+    #
+    # This module does NOT close that gap, and the choice is deliberate.
+    # Leg A's centre (-6.17 pp) was measured with the node-count anchor;
+    # re-pointing ``_realized_extent`` at the wall planes would raise the
+    # Balanis anchor by about 43/42 and move Leg A's centre to roughly
+    # -8.3 pp with no field re-run at all — a number that must come from a
+    # fresh configuration sweep, not from this arithmetic. #931 §1.8 fences
+    # the inclusive-+1 debt (#729 class) out of the ownership contract, so
+    # it stays fenced here and is written down instead of absorbed.
+    #
+    # The gate keeps its teeth: the relation is exact, so either reading
+    # drifting breaks it.
+    dx_um = DX * 1e6
+    assert abs(seen["patch"]["x"]["realized_extent_um"]
+               - (l_real * 1e6 - dx_um)) < 1e-3, seen["patch"]["x"]
+    assert abs(seen["patch"]["y"]["realized_extent_um"]
+               - (w_real * 1e6 - dx_um)) < 1e-3, seen["patch"]["y"]
+    # The substrate is a DIELECTRIC volume: node-sampled, unchanged by the
+    # ownership contract, and reported as the same cell census.
     assert abs(seen["substrate"]["z"]["realized_extent_um"] - h_real * 1e6) < 1e-3
 
 

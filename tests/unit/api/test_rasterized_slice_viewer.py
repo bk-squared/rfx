@@ -23,7 +23,17 @@ DOM = (3e-3, 3e-3, 2e-3)
 
 
 def _board(*, f0=None, dz_profile=None):
-    """Substrate + a ONE-CELL metal sheet on top of it."""
+    """Substrate + a ONE-CELL metal trace on top of it.
+
+    Ownership (#931 §1.2): with ``f0=None`` this trace is a one-cell PEC
+    VOLUME, deliberately — the viewer needs a case that OWNS conductor cells,
+    which is what its overlay draws and what ``conductor_mask()`` returns. It
+    is not "a sheet drawn one cell thick"; a real foil would be declared with
+    a zero-extent axis and own no cell at all, and ``_board(f0=...)`` is this
+    file's genuine sheet case. ``test_far_face_wall_is_drawn_on_its_own_plane``
+    is the volume's other half: the hi node plane is an electric wall with no
+    conductor cell on it.
+    """
     sim = Simulation(freq_max=20e9, domain=DOM, dx=DX, cpml_layers=4,
                      boundary="cpml", dz_profile=dz_profile)
     sim.add_material("sub", eps_r=4.0, sigma=0.0)
@@ -51,7 +61,7 @@ def _assembled(sim):
 def test_one_cell_metal_is_invisible_in_permittivity_but_present_in_the_mask():
     """The reason an eps_r plot cannot answer 'where is my metal'.
 
-    A one-cell PEC sheet contributes no permittivity contrast of its own, so
+    A one-cell PEC trace contributes no permittivity contrast of its own, so
     on an eps_r slice its cells are indistinguishable from the air (or
     dielectric) around them. The conductor mask is the only place it exists.
     This premise is then held against the VIEWER itself: an eps_r-only
@@ -60,16 +70,16 @@ def test_one_cell_metal_is_invisible_in_permittivity_but_present_in_the_mask():
     """
     sim = _board()
     _, cond, eps = _assembled(sim)
-    assert cond.any(), "the sheet produced no conductor cells at all"
+    assert cond.any(), "the trace produced no conductor cells at all"
     k = int(np.argmax(cond.reshape(-1, cond.shape[2]).sum(axis=0)))
     metal = cond[:, :, k]
     assert metal.any()
     inside = eps[:, :, k][metal]
     outside = eps[:, :, k][~metal]
-    assert np.isclose(inside.min(), inside.max()), "sheet cells not uniform in eps"
+    assert np.isclose(inside.min(), inside.max()), "metal cells not uniform in eps"
     assert np.isclose(float(inside[0]), float(np.median(outside))), (
         "this fixture is supposed to make the metal INVISIBLE in eps_r; if the "
-        "sheet cell now carries its own permittivity the premise moved")
+        "metal cell now carries its own permittivity the premise moved")
     fig = plot_rasterized_slice(sim, axis=2, index=k)
     n_shown = int(fig.axes[0].get_title().split("—")[1].split()[0])
     assert n_shown == int(metal.sum()), (
@@ -79,7 +89,7 @@ def test_one_cell_metal_is_invisible_in_permittivity_but_present_in_the_mask():
 
 
 def test_surface_impedance_sheet_is_in_neither_pec_mask_nor_sigma():
-    """#677 made the f0 sheet a node-thin operator.
+    """#677 made the f0 sheet a per-step operator on one node plane.
 
     A viewer that draws ``pec_mask | (sigma > thr)`` shows NOTHING for a board
     whose traces are all surface-impedance sheets. conductor_mask() is the
@@ -107,7 +117,7 @@ def test_edges_are_cell_lower_edges_not_node_midpoints():
     dz[k] on a graded axis. Building edges as node MIDPOINTS instead shifts
     every drawn cell by half a cell and distorts widths where the grading
     changes, which is the same node-vs-cell confusion that puts `position=`
-    one plane above a one-cell sheet.
+    one plane above a one-cell body.
 
     ``_axis_edges`` does NOT append a closing edge at all: a NonUniformGrid
     already carries N+1 nodes for N real cells (``_append_bounding_node``,
@@ -223,10 +233,10 @@ def test_last_real_cells_extent_and_data_are_not_lost_past_the_fence_post():
         f"(grid.ny-1={grid.ny - 1})")
 
 
-def test_position_lands_on_the_plane_that_holds_the_sheet():
-    """A one-cell sheet's mask sits on the LOWER node of its cell.
+def test_position_lands_on_the_plane_that_holds_the_metal():
+    """A one-cell body's CELL mask sits on the LOWER node of its cell.
 
-    Asking for the sheet's geometric centre and taking the nearest node lands
+    Asking for the trace's geometric centre and taking the nearest node lands
     one plane high and draws whatever else is there — the exact mistake that
     put a via column under the label 'a driven patch' while this was being
     developed.
@@ -239,8 +249,8 @@ def test_position_lands_on_the_plane_that_holds_the_sheet():
     fig = plot_rasterized_slice(sim, axis=2, position=centre)
     shown = int(fig.axes[0].get_title().split("—")[1].split()[0])
     assert shown == int(per_plane[k_true]), (
-        f"asked for the sheet centre and got {shown} conductor cells; the "
-        f"plane holding the sheet has {int(per_plane[k_true])}")
+        f"asked for the trace centre and got {shown} conductor cells; the "
+        f"plane holding the metal has {int(per_plane[k_true])}")
 
 
 def test_index_and_position_are_mutually_exclusive_and_axis_is_checked():
@@ -350,7 +360,12 @@ def test_a_patterned_body_is_counted_as_skipped_not_silently_undrawn():
                      boundary="cpml")
     sim.add_material("sub", eps_r=4.0, sigma=0.0)
     sim.add(Box((0, 0, 0), (DOM[0], DOM[1], H_SUB)), material="sub")
-    sim.add(Cylinder(center=(1.5e-3, 1.5e-3, H_SUB + 0.05e-3), radius=0.5e-3,
+    # One cell ABOVE the substrate's top plane: under #931 centre sampling
+    # the cylinder occupies the cell whose centre it contains, and the
+    # auto-picked plane must not coincide with the substrate Box's own
+    # (closed) outline plane, or the dashed rectangle below is the
+    # substrate's, not a bounding-box lie.
+    sim.add(Cylinder(center=(1.5e-3, 1.5e-3, H_SUB + 0.15e-3), radius=0.5e-3,
                      height=0.1e-3, axis="z"), material="pec")
     fig = plot_rasterized_slice(sim, axis=2)
     t = fig.axes[0].get_title()
@@ -397,7 +412,7 @@ def test_a_relocated_plane_says_so_in_the_title():
     empty = [k for k in range(cond.shape[2]) if per_plane[k] == 0
              and any(per_plane[max(k - 1, 0):k + 2])]
     if not empty:
-        pytest.skip("this fixture has no empty plane adjacent to a sheet")
+        pytest.skip("this fixture has no empty plane adjacent to the metal")
     from rfx.geometry.rasterize_grid import coords_from_uniform_grid
     z = np.asarray(coords_from_uniform_grid(sim._build_grid()).z, dtype=float)
     fig = plot_rasterized_slice(sim, axis=2, position=float(z[empty[0]]))
@@ -473,79 +488,58 @@ def test_add_refinement_warns_because_the_drawn_grid_is_coarse_only():
 
 # --- regressions for the SECOND adversarial review pass (#11-24) -----------
 
-def test_two_plane_wall_is_drawn_plane_locally_on_its_own_wall_plane():
-    """conductor_mask() is a CELL footprint; #706's ``two_plane=True`` opt-in
-    zeroes an extra tangential-E EDGE at the body's far node plane during
-    the solve, and ``conductor_mask()`` is verified bit-identical regardless
-    of the flag -- so there is genuinely no CONDUCTOR CELL for a
-    cell-based overlay to show on the wall's own plane. But the edge
-    operator's footprint IS independently computable
-    (``two_plane_extension_masks``, the same function the solve uses), so
-    it is drawn as its own marker rather than only being explained away.
+def test_far_face_wall_is_drawn_on_its_own_plane():
+    """conductor_mask() is a CELL footprint; under the lattice ownership
+    contract (#931) a PEC volume shorts every E edge incident to an
+    occupied cell, so its FAR face (the ``hi`` node plane) is an electric
+    wall with NO conductor cell on it. The edge operator's footprint IS
+    independently computable (``realized_pec_edge_masks``, the same
+    function the solve uses), so the viewer draws it as its own marker
+    rather than only explaining it away.
 
-    Reproduces the repo's own two_plane fixture (a 2x2 mm, 1-cell-thick
-    box, dx=100 um): measured wall_mask nonzero at z=8 (the body's own
-    plane, the interior normal-E edge) AND z=9 (the far face) -- BEFORE
-    the marker fix, the wall's own plane showed "0 conductor cells" with
-    no note at all.
-
-    Re-pinned at the exact-coordinate fix (#802/#807): the old body plane
-    9 was the float32 thin-branch tie artifact; on exact float64 nodes the
-    face-registered one-cell box realizes on its lo-face node (plane 8,
-    the node its own half-open [lo, hi) window keeps), and the transverse
-    span gains its convention-owed node (361 -> 400 cells per plane).
+    A 2x2 mm, 1-cell-thick box at dx=100 um, cpml_layers=4: cells on the
+    body plane z=8 (400 of them, centre-sampled), the far face on z=9
+    with 0 conductor cells and the wall marker.
     """
     dom = (3e-3, 3e-3, 2e-3)
+    sim = Simulation(freq_max=20e9, domain=dom, dx=DX, cpml_layers=4,
+                     boundary="cpml")
+    sim.add(Box((0.5e-3, 0.5e-3, 0.4e-3), (2.5e-3, 2.5e-3, 0.5e-3)),
+            material="pec")
+    from matplotlib.collections import QuadMesh
 
-    def _make(two_plane):
-        sim = Simulation(freq_max=20e9, domain=dom, dx=DX, cpml_layers=4,
-                         boundary="cpml")
-        sim.add(Box((0.5e-3, 0.5e-3, 0.4e-3), (2.5e-3, 2.5e-3, 0.5e-3)),
-                material="pec", two_plane=two_plane)
-        return sim
-
-    s0, s1 = _make(False), _make(True)
-    grid = s0._build_grid()
-    c0 = np.asarray(s0.conductor_mask(grid), dtype=bool)
-    c1 = np.asarray(s1.conductor_mask(grid), dtype=bool)
-    assert np.array_equal(c0, c1), (
-        "conductor_mask() must be bit-identical regardless of two_plane -- "
-        "the premise that the wall marker (not conductor_mask itself) is "
-        "what has to carry this information")
-
-    # The body's own plane (index 8): a conductor cell IS present, plus the
-    # interior-normal-E-edge component of the wall operator.
-    fig_body = plot_rasterized_slice(s1, axis=2, index=8)
+    # The body's own plane (index 8): conductor cells present, plus the
+    # closed rim of the wall operator (the hi rows of the footprint).
+    fig_body = plot_rasterized_slice(sim, axis=2, index=8)
     t_body = fig_body.axes[0].get_title()
     assert int(t_body.split("—")[1].split()[0]) == 400, "fixture sanity"
-    assert "sealing wall" in t_body
+    assert "realized PEC wall" in t_body
 
-    # The wall's OWN plane (index 9): flag ON -> marker present, title
-    # says so, even though there are 0 conductor cells there.
-    fig_wall_on = plot_rasterized_slice(s1, axis=2, index=9)
-    ax_wall_on = fig_wall_on.axes[0]
-    t_wall_on = ax_wall_on.get_title()
-    assert int(t_wall_on.split("—")[1].split()[0]) == 0
-    assert "sealing wall" in t_wall_on, (
-        f"plane 9 must note the sealing wall even with 0 conductor "
-        f"cells there; got title {t_wall_on!r}")
-    from matplotlib.collections import QuadMesh
-    wall_meshes = [c for c in ax_wall_on.collections if isinstance(c, QuadMesh)]
+    # The far face (index 9): marker present, title says so, even though
+    # there are 0 conductor cells there.
+    fig_wall = plot_rasterized_slice(sim, axis=2, index=9)
+    ax_wall = fig_wall.axes[0]
+    t_wall = ax_wall.get_title()
+    assert int(t_wall.split("—")[1].split()[0]) == 0
+    assert "realized PEC wall" in t_wall, (
+        f"plane 9 must note the far-face wall even with 0 conductor "
+        f"cells there; got title {t_wall!r}")
+    wall_meshes = [c for c in ax_wall.collections if isinstance(c, QuadMesh)]
     assert len(wall_meshes) >= 3, (
         "expected an eps mesh, a conductor overlay mesh, AND a wall "
         f"marker mesh; got {len(wall_meshes)}")
-    leg = ax_wall_on.get_legend()
+    leg = ax_wall.get_legend()
     assert leg is not None and any(
-        "two-plane wall" in t.get_text() for t in leg.get_texts())
+        "realized PEC wall" in t.get_text() for t in leg.get_texts())
 
-    # Flag OFF: the wall plane has neither a marker nor a note.
-    fig_wall_off = plot_rasterized_slice(s0, axis=2, index=9)
-    ax10_off = fig_wall_off.axes[0]
-    assert "two-plane" not in ax10_off.get_title()
-    wall_meshes_off = [c for c in ax10_off.collections if isinstance(c, QuadMesh)]
-    assert len(wall_meshes_off) == 2, (
-        "an unflagged body must draw only the eps + conductor meshes, no "
-        f"wall marker; got {len(wall_meshes_off)}")
+    # Two planes further (index 11): neither a marker nor a note.
+    fig_off = plot_rasterized_slice(sim, axis=2, index=11)
+    ax_off = fig_off.axes[0]
+    assert "realized PEC wall" not in ax_off.get_title()
+    off_meshes = [c for c in ax_off.collections if isinstance(c, QuadMesh)]
+    assert len(off_meshes) == 2, (
+        "a plane with no realized edge must draw only the eps + conductor "
+        f"meshes, no wall marker; got {len(off_meshes)}")
 
 
 def test_absorber_pad_is_hatched_past_the_declared_domain():
@@ -746,7 +740,7 @@ def test_position_search_reaches_the_same_physical_distance_on_a_graded_axis():
 
     Fixture: 50 um cells below index 10, 200 um cells from index 10 on.
     Querying `position` at the transition node makes the search radius the
-    WIDER touching cell (200 um). A one-cell sheet placed three 50 um cells
+    WIDER touching cell (200 um). A one-cell PEC body placed three 50 um cells
     before the transition (150 um away -- more than 1 INDEX, less than the
     200 um radius) must be found; a fixed +/-1 index window would only
     reach the immediate neighbour index and miss it (measured: index 14 /
@@ -763,8 +757,8 @@ def test_position_search_reaches_the_same_physical_distance_on_a_graded_axis():
     from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
     nodes = np.asarray(coords_from_nonuniform_grid(grid).z, dtype=float)
     t_idx = grid.pad_z_lo + 10
-    sheet_idx = t_idx - 3
-    z_lo, z_hi = float(nodes[sheet_idx]), float(nodes[sheet_idx + 1])
+    body_idx = t_idx - 3
+    z_lo, z_hi = float(nodes[body_idx]), float(nodes[body_idx + 1])
     sim.add(Box((0, 0, z_lo), (dom[0], dom[1], z_hi)), material="pec")
 
     pos = float(nodes[t_idx])
@@ -772,41 +766,42 @@ def test_position_search_reaches_the_same_physical_distance_on_a_graded_axis():
     title = fig.axes[0].get_title()
     shown = int(title.split("—")[1].split()[0])
     assert shown > 0, (
-        f"a sheet 150 um away (three 50 um cells, inside the 200 um "
+        f"metal 150 um away (three 50 um cells, inside the 200 um "
         f"coarse-side cell touching the query node) must be found; a fixed "
         f"+/-1 index window only reaches 50 um on the fine side. title: "
         f"{title!r}")
 
 
 def test_title_with_every_honesty_note_fits_the_default_canvas():
-    """The two-plane note alone measured ~1300 px wide on a single title
-    line (default 10pt font); two-plane + moved-plane together ~2340 px --
-    both well past the 800 px default figsize=(8,6) canvas, so exactly the
-    notes this honesty mechanism exists to surface were the part getting
-    clipped off-canvas. Trigger BOTH notes at once (a two_plane body AND a
-    position= that lands on an empty plane next to a sheet) and measure the
-    actual rendered title bounding box against the actual canvas width --
-    not a character count, which does not account for font metrics.
+    """One long note alone measured ~1300 px wide on a single title line
+    (default 10pt font); two notes together ~2340 px -- both well past the
+    800 px default figsize=(8,6) canvas, so exactly the notes this honesty
+    mechanism exists to surface were the part getting clipped off-canvas.
+    Trigger BOTH notes at once (the realized-wall note of a one-cell PEC
+    body AND a position= that lands on an empty plane next to it) and
+    measure the actual rendered title bounding box against the actual
+    canvas width -- not a character count, which does not account for
+    font metrics.
     """
     sim = Simulation(freq_max=20e9, domain=DOM, dx=DX, cpml_layers=4,
                      boundary="cpml")
     sim.add_material("sub", eps_r=4.0, sigma=0.0)
     sim.add(Box((0, 0, 0), (DOM[0], DOM[1], H_SUB)), material="sub")
     sim.add(Box((0.5e-3, 1.0e-3, H_SUB), (2.5e-3, 2.0e-3, H_SUB + DX)),
-           material="pec", two_plane=True)
+           material="pec")
     grid = sim._build_grid()
     cond = np.asarray(sim.conductor_mask(grid), dtype=bool)
     per_plane = cond.reshape(-1, cond.shape[2]).sum(axis=0)
     empty = [k for k in range(cond.shape[2]) if per_plane[k] == 0
              and any(per_plane[max(k - 1, 0):k + 2])]
     if not empty:
-        pytest.skip("this fixture has no empty plane adjacent to a sheet")
+        pytest.skip("this fixture has no empty plane adjacent to the metal")
     from rfx.geometry.rasterize_grid import coords_from_uniform_grid
     z = np.asarray(coords_from_uniform_grid(grid).z, dtype=float)
     fig = plot_rasterized_slice(sim, axis=2, position=float(z[empty[0]]))
     ax = fig.axes[0]
     title_text = ax.get_title()
-    assert "two-plane" in title_text
+    assert "realized PEC wall" in title_text
     assert "showing the neighbouring plane" in title_text
     fig.canvas.draw()
     renderer = fig.canvas.get_renderer()

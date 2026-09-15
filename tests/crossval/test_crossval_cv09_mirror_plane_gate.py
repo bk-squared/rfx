@@ -111,7 +111,19 @@ def test_a_eff_is_an_odd_multiple_of_dx_so_only_odd_meshes_can_register():
 
     Hence ``a_eff == a`` is reachable only when ``a/dx`` is ODD, and the
     smallest nonzero misregistration is ``dx`` (even ``a/dx``) or ``2*dx``
-    (odd ``a/dx``) — never smaller than ``4 * DX/4``."""
+    (odd ``a/dx``) — never smaller than ``4 * DX/4``.
+
+    #931 SCOPE, in writing rather than by omission: every wall in cv09 is a
+    ``BoundarySpec`` PEC/PMC FACE, not a conductor body. Domain-boundary PEC
+    keeps its own convention (E_tan = 0 on the face plane at index 0 / N) and
+    is explicitly fenced out of the lattice ownership contract — design note
+    §1.8 names cv09, cv10, cv14 and cv24 as the controls that must not move.
+    So ``(2n - 1)*dx`` is a statement about FACE realization, it is not a
+    second derivation of the conductor rule, and the contract's
+    ``realized_wall_planes`` — which reads the realized edges of BODIES — has
+    nothing to say about it. ``mirror_a_eff`` stays here for that reason.
+    ``GEOM_TOL`` and ``G3_TOL`` are derived from ``dx``, not from any
+    ownership rule, and are untouched."""
     for n_cells, half_x in ((22, 0.5 * cv09.a - 0.5 * cv09.DX),
                             (23, 0.5 * cv09.a + 0.5 * cv09.DX),
                             (24, 0.5 * cv09.a + 1.5 * cv09.DX)):

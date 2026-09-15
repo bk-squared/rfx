@@ -66,3 +66,43 @@ that run is this one. A new ladder is a new pre-declaration with its own fixture
 directory. The producer command, for the record:
 `python scripts/diagnostics/thru_singular_value_dx_ladder.py --dx-divisor {1|2|4} --output <file>`
 under `JAX_ENABLE_X64=0`; dx/4 on the GPU lane only.
+
+## The extractor these files were measured on has since been corrected — see `post_897/`
+
+Every number in this directory predates PR #897 (`0225b397`, the Yee half-step phase
+correction for the H-derived port current DFT on the wire lane). That correction moves
+the observable this ladder reads: it records the same battery THRU going
+`sv_max 1.003227 -> 0.998896`, and 1.003227 is the dx rung's own `sv_max` to the digit.
+
+These files stay as they are — they are the historical record, and the replay gate
+locks them. The re-read on the corrected extractor is a SEPARATE record in
+[`post_897/`](post_897/README.md) (VESSL run 369367258720, rfx `f5ee3b59`, same producer
+md5, same ladder fences), with its own `verdict.json` computed by the same
+pre-declared adjudication procedure. Cite `post_897/` for anything about the live
+extractor; cite this directory only for what the pre-#897 extractor measured.
+
+## Realization note (#931, lattice ownership contract)
+
+These three rungs were measured on the PRE-#931 realization and are frozen as
+such. The fixture they come from —
+`tests/unit/sparams/test_lumped_twoport_vi_validation_battery.py::_build_thru` —
+draws its wire-THRU trace as a ONE-CELL PEC Box, and each rung's
+`rasterization.trace_thickness_cells = 1` records exactly that.
+
+Under the ownership contract a Box is a VOLUME: it realizes tangential walls on
+BOTH bounding planes and shorts the normal edge between them, where the old rule
+gave one wall at the lower plane. Declared as a foil instead — an
+`add_thin_conductor` sheet, which is what a 1-cell trace over a substrate means
+— the plane is unchanged for a face-registered Box (the mid-plane is the
+half-cell tie, and a tie resolves to the lower plane) but the in-plane footprint
+is sampled CLOSED, so a drawn width realizes exactly instead of one row short.
+On the sibling 16 mm thru in `tests/locks/test_refplane_port_waves.py`, measured
+on the same 0.5 mm cell, that is 5.0 mm realized against 4.5 mm before.
+
+So: **do not mix a post-#931 rung into this ladder.** Either re-run all three
+rungs through `scripts/diagnostics/thru_singular_value_dx_ladder.py` on the
+contract build and write a NEW directory (the sha256s above are the provenance,
+and a ladder whose rungs were measured under two realizations adjudicates
+nothing), or leave this one frozen as the record of the realization it belongs
+to. Section 9 of the predeclaration is adjudicated against THIS ladder and stays
+valid for it.

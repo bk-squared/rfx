@@ -107,10 +107,16 @@ def _grad_through_two_run_lane(override_kw: str):
 
 
 def _rfx_frames(exc: BaseException) -> list[traceback.FrameSummary]:
-    """Traceback frames inside the two files the lane passes through."""
+    """Traceback frames inside the files the lane passes through.
+
+    ``rfx/sparams/waveguide.py`` joined the list when #980 Phase 2 moved
+    ``compute_waveguide_s_matrix`` there verbatim: the dispatch frame this
+    test pins now lives in that file, and without it the filter returned no
+    frames at all and the ``frames[-1].name == _DISPATCH`` check went red.
+    """
     return [
         f for f in traceback.extract_tb(exc.__traceback__)
-        if f.filename.endswith(("waveguide_port.py", "_sparams.py"))
+        if f.filename.endswith(("waveguide_port.py", "_sparams.py", "/sparams/waveguide.py"))
     ]
 
 

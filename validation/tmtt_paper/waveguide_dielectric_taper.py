@@ -14,8 +14,8 @@ The design variable is a graded dielectric TAPER of ``N_SECTIONS`` axial
 permittivity sections placed in the vacuum guide directly in front of the
 eps_r=9 region. Each section's permittivity is a continuous design variable,
 sigmoid-bounded to [1, EPS_LOAD], applied through ``eps_override`` (only eps_r
-is touched; the PEC guide walls and the modal ports are untouched because the
-override is applied *after* the PEC fold). The objective minimizes the
+is touched; the WR-90 guide walls are the DOMAIN boundary condition, not a
+conductor body, so ``eps_override`` cannot reach them at all). The objective minimizes the
 band-averaged reflected power <|S11|^2> over the X-band, computed via the
 public differentiable modal S-matrix ``Simulation.compute_waveguide_s_matrix``.
 Reverse-mode AD (``jax.grad``) flows through the full FDTD solve + modal
@@ -69,6 +69,8 @@ import numpy as np
 
 from rfx import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
+
+from validation.crossval.comparators import realized_conductors as RC
 
 C0 = 2.998e8
 
@@ -148,6 +150,12 @@ def build_sim() -> Simulation:
         waveform="modulated_gaussian",
         reference_plane=DOMAIN_X - REF_OFFSET, name="right",
     )
+    # Build-time (no solve) control: this fixture realizes NO conductor
+    # body at all — the WR-90 walls are the domain boundary, which the
+    # contract does not move (#931 §1.8). That makes the bit-identity
+    # claim for this case checkable rather than assumed, and it is the
+    # premise make_eps_builder's docstring relies on.
+    RC.assert_no_conductor(sim, label="WR-90 taper (boundary PEC only)")
     return sim
 
 
@@ -171,8 +179,17 @@ def make_eps_builder(grid, layout):
     Each taper section gets eps_r = 1 + (EPS_LOAD-1) * sigmoid(theta_s), so the
     permittivity stays bounded in [1, EPS_LOAD] for any real ``theta``. Beyond
     the taper, the guide is filled with eps_r = EPS_LOAD (the matched load).
-    Only eps_r is set; the PEC walls and ports are untouched because the
-    override is applied after the PEC fold inside compute_waveguide_s_matrix.
+    Only eps_r is set. The guide walls survive the override for a stronger
+    reason than an ordering argument: they are the domain boundary
+    condition (``BoundarySpec`` y/z = pec), which the lattice ownership
+    contract fences off from body PEC entirely (#931 §1.8) — there is no
+    conductor body in this fixture for an eps array to overwrite. The
+    earlier wording ("the override is applied after the PEC fold inside
+    compute_waveguide_s_matrix") described the pre-#931 waveguide lane,
+    which folded pec_mask CELLS into sigma = 1e10 before stepping. That
+    fold is gone; the lane now applies the realized PEC edges like every
+    other lane. ``assert_no_conductor`` in ``build_sim`` states the
+    premise the argument rests on, instead of asserting it in prose.
     """
     edges = layout["edges"]
     n_sec = layout["n_sec"]

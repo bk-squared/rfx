@@ -113,6 +113,50 @@ def export_training_data(
 # Geometry SDF export
 # ---------------------------------------------------------------------------
 
+def _is_pec_entry(sim, entry) -> bool:
+    """Does the assembly route this geometry entry to the PEC branch?
+
+    Keyed the way ``_assemble_materials`` keys it (the RESOLVED material's
+    ``sigma`` against the PEC threshold), not on the literal name "pec" —
+    a named copper at 5.8e7 S/m is PEC there too.
+    """
+    try:
+        mat = sim._resolve_material(entry.material_name)
+    except Exception:
+        return entry.material_name == "pec"
+    thr = float(getattr(sim, "_PEC_SIGMA_THRESHOLD", 1e6))
+    return float(getattr(mat, "sigma", 0.0) or 0.0) >= thr
+
+
+def _sheet_footprint_on_samples(shape, x, y, z, *, name):
+    """A declared SHEET's footprint on the SDF sample lattice (#931 §1.3).
+
+    Built by the contract's own :func:`sheet_spec_from_shape`, applied to
+    the exporter's sample lines instead of the solver's node lines, so the
+    exporter cannot drift from the realization rule: normal = the thinnest
+    bounding-box axis, plane = the nearest sample plane to the shape's
+    mid-plane (an exact half-sample tie resolves LOWER), footprint = the
+    drawn rectangle sampled CLOSED on the two in-plane axes (any other
+    shape: its cross-section at its own mid-plane).
+    """
+    from rfx.geometry.rasterize_grid import (
+        GridCoords, axis_cell_sizes, sheet_spec_from_shape)
+
+    coords = GridCoords(x=x, y=y, z=z, shape=(x.size, y.size, z.size))
+    sizes = tuple(axis_cell_sizes(v) for v in (x, y, z))
+    try:
+        spec = sheet_spec_from_shape(shape, coords, sizes, name=name)
+    except ValueError as exc:
+        raise ValueError(
+            f"export_geometry_sdf: sheet {name!r} cannot be placed on the "
+            f"SDF sample lattice — {exc} A sheet is zero-thickness, so it is "
+            "exported as ONE sample layer; if it falls between samples or "
+            "its footprint covers none, pass a finer `resolution=`. It is "
+            "not dropped silently (the #369 vanished-metal class)."
+        ) from exc
+    return np.asarray(spec.footprint, dtype=bool)
+
+
 def export_geometry_sdf(
     sim,
     *,
@@ -131,6 +175,26 @@ def export_geometry_sdf(
 
     This is suitable as input to geometry-conditioned neural operators
     (e.g., DeepONet, Fourier Neural Operator).
+
+    **Sheets.** A conductor declared as a sheet — ``add_thin_conductor``,
+    or a zero-thickness PEC Box, which is the same declaration (lattice
+    ownership contract §1.5) — has no interior, so a containment test
+    finds it only if its plane happens to land exactly on a sample. Before
+    this it did not land: ``add_thin_conductor`` sheets are not in
+    ``sim._geometry`` at all and never reached the exporter, so every
+    sheet-declared ground plane, patch and trace was missing from the
+    exported training data with no error anywhere.
+
+    A zero-thickness region cannot be represented in a sampled occupancy
+    field as zero thickness. The convention here, stated rather than
+    inferred: **a sheet occupies exactly ONE sample layer** — the sample
+    plane nearest its declared mid-plane, with the drawn footprint sampled
+    closed in-plane — so the distance transform reads ``-resolution`` on
+    the sheet and the sheet's apparent thickness in the SDF is one sample,
+    not zero. That is the same realization rule the solve uses (a sheet is
+    one node plane); only the lattice differs. A sheet whose plane or
+    footprint cannot be placed on this lattice raises rather than
+    vanishing — refine ``resolution``.
 
     Parameters
     ----------
@@ -159,8 +223,20 @@ def export_geometry_sdf(
     # Evaluate geometry occupancy at each grid point
     occupied = np.zeros((nx, ny, nz), dtype=bool)
 
-    for entry in sim._geometry:
+    for gi, entry in enumerate(sim._geometry):
         shape = entry.shape
+        # A PEC Box with exactly one zero-extent axis IS a sheet
+        # declaration (§1.5), so it is realized as a sheet here too rather
+        # than relying on its plane coinciding with a sample point.
+        lo_b = getattr(shape, "corner_lo", None)
+        hi_b = getattr(shape, "corner_hi", None)
+        if lo_b is not None and hi_b is not None and _is_pec_entry(sim, entry):
+            zero = [i for i in range(3)
+                    if float(hi_b[i]) - float(lo_b[i]) == 0.0]
+            if len(zero) == 1:
+                occupied |= _sheet_footprint_on_samples(
+                    shape, x, y, z, name=f"geometry[{gi}] 'pec'")
+                continue
         # Use the shape's corner-based geometry directly for Box, Sphere,
         # Cylinder. For arbitrary shapes fall back to mask() with a
         # temporary grid.
@@ -198,6 +274,14 @@ def export_geometry_sdf(
                 occupied |= r2 <= r ** 2
         # else: skip shapes we cannot evaluate analytically — they will
         # not appear in the SDF.  A future version could accept a Grid.
+
+    # Sheets declared through add_thin_conductor are NOT in sim._geometry,
+    # so the loop above never saw them: a sheet ground plane, patch or
+    # trace was silently absent from the exported geometry. One sample
+    # layer on the sheet's own plane (see the docstring).
+    for ti, tc in enumerate(getattr(sim, "_thin_conductors", ()) or ()):
+        occupied |= _sheet_footprint_on_samples(
+            tc.shape, x, y, z, name=f"thin_conductor[{ti}]")
 
     # Convert binary mask to approximate SDF via distance transform.
     try:

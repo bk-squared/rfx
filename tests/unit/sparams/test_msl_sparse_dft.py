@@ -204,13 +204,13 @@ def _thru_sim(axis: str, lane: str):
     if axis == "x":
         domain, sub = (_AG_L_PROP, _AG_L_LAT, lz), (_AG_L_PROP, _AG_L_LAT, _AG_H_SUB)
         tlo = (0.0, lat_c - _AG_W_TRACE / 2, _AG_H_SUB)
-        thi = (_AG_L_PROP, lat_c + _AG_W_TRACE / 2, _AG_H_SUB + _AG_DX)
+        thi = (_AG_L_PROP, lat_c + _AG_W_TRACE / 2, _AG_H_SUB)
         p0, p1, d0, d1 = ((_AG_PORT_MARGIN, lat_c, 0.0),
                           (_AG_PORT_MARGIN + _AG_L_LINE, lat_c, 0.0), "+x", "-x")
     else:
         domain, sub = (_AG_L_LAT, _AG_L_PROP, lz), (_AG_L_LAT, _AG_L_PROP, _AG_H_SUB)
         tlo = (lat_c - _AG_W_TRACE / 2, 0.0, _AG_H_SUB)
-        thi = (lat_c + _AG_W_TRACE / 2, _AG_L_PROP, _AG_H_SUB + _AG_DX)
+        thi = (lat_c + _AG_W_TRACE / 2, _AG_L_PROP, _AG_H_SUB)
         p0, p1, d0, d1 = ((lat_c, _AG_PORT_MARGIN, 0.0),
                           (lat_c, _AG_PORT_MARGIN + _AG_L_LINE, 0.0), "+y", "-y")
     sim = Simulation(freq_max=_AG_F_MAX, domain=domain, dx=_AG_DX, cpml_layers=8,
@@ -218,12 +218,46 @@ def _thru_sim(axis: str, lane: str):
                                            z=Boundary(lo="pec", hi="cpml")), **kw)
     sim.add_material("ro4350b", eps_r=_AG_EPS_R)
     sim.add(Box((0.0, 0.0, 0.0), sub), material="ro4350b")
+    # 35 um foil on the laminate face -> a SHEET (#931 §1.3): a
+    # zero-thickness Box at z = H_SUB, realized as ONE wall plane with the
+    # normal Ez edge live. Drawn H_SUB -> H_SUB + DX it was a one-cell
+    # VOLUME under §1.2 (walls at both faces, Ez between them shorted), i.e.
+    # 85 um of solid metal on a board that carries foil. The geometry
+    # constants come from test_msl_port_axis_generality, whose board is
+    # already on-lattice (DX = H_SUB / 3), so the sheet lands on a node.
     sim.add(Box(tlo, thi), material="pec")
     sim.add_msl_port(position=p0, width=_AG_W_TRACE, height=_AG_H_SUB,
                      direction=d0, impedance=50.0)
     sim.add_msl_port(position=p1, width=_AG_W_TRACE, height=_AG_H_SUB,
                      direction=d1, impedance=50.0)
     return sim
+
+
+def test_thru_foil_is_one_realized_sheet_plane():
+    """Build-time (no solve): the extractor's board is the declared board.
+
+    Both gates below compare the cropped extractor against the full-plane
+    one on ONE geometry, so they are realization-neutral by construction —
+    which is exactly why the geometry needs its own check. Without it the
+    trace could silently go back to being a slab and the equivalence would
+    still hold, on the wrong board.
+    """
+    from tests._realized_geometry import (
+        assert_sheet_planes, assert_wall_planes, realized)
+
+    for axis in ("x", "y"):
+        sim = _thru_sim(axis, "uniform")
+        assert_sheet_planes(sim, 2, [_AG_H_SUB],
+                            what=f"MSL {axis}-thru foil")
+        assert_wall_planes(sim, 2, [_AG_H_SUB],
+                           what=f"MSL {axis}-thru foil")
+        rz = realized(sim)
+        assert rz.pec_mask is None or not bool(np.asarray(rz.pec_mask).any()), \
+            "a sheet owns no cell (#931 §1.3); the foil must not enter pec_mask"
+        k = int(round(_AG_H_SUB / _AG_DX))
+        ez = np.asarray(rz.edge_masks[2], dtype=bool)
+        assert not ez[:, :, k].any(), \
+            "the normal Ez edge through a sheet stays live (#931 §1.3)"
 
 
 def _run_s(axis, lane, monkeypatch, *, crop: bool, seen: list):

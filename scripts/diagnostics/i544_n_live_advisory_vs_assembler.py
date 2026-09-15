@@ -247,7 +247,7 @@ def main() -> int:
     i0, j0 = cells[0][0], cells[0][1]
 
     materials, debye, lorentz, pec_mask, pec_shapes, boundary_pec, kerr = \
-        sim._assemble_materials(grid)
+        sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])
     pec_mask_np = np.asarray(pec_mask)
 
     print("=" * 78)

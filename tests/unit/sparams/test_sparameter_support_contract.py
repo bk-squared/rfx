@@ -212,7 +212,7 @@ def test_compute_msl_s_matrix_nu_laplace_not_fenced():
     with the trace-PEC RuntimeError, NOT the old 'uniform Yee lane only'
     NotImplementedError (which would mean the fence still blocks it)."""
     sim = _nu_msl_sim(mode="laplace")
-    with pytest.raises(RuntimeError, match="no PEC trace conductor"):
+    with pytest.raises(RuntimeError, match="no realized PEC trace conductor"):
         sim.compute_msl_s_matrix(n_steps=1)
 
 

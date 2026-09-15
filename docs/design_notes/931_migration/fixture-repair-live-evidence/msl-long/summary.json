@@ -1,0 +1,81 @@
+{
+  "run_name": "issue931-fixture-repair-msl-long-20260909T020258Z-b36fc46cdf21-101",
+  "lane": "msl-long",
+  "source_sha": "b36fc46cdf21d1c57f221e6a057654bcad60bae2",
+  "rfx_import": "/tmp/rfx-fixture-repair-msl-long-A5bcEu/rfx/__init__.py",
+  "jax_version": "0.6.2",
+  "started_utc": "2026-09-09T02:03:12.046952+00:00",
+  "run_id_source": "run_id.txt written by scripts/vessl_submit.sh",
+  "commands": [
+    {
+      "name": "long",
+      "command": [
+        "/opt/conda/bin/python",
+        "scripts/capture_msl_e2e_golden.py",
+        "--run-name",
+        "issue931-fixture-repair-msl-long-20260909T020258Z-b36fc46cdf21-101-long",
+        "--output",
+        "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-msl-long-20260909T020258Z-b36fc46cdf21-101/long.json",
+        "--refinement",
+        "1",
+        "--num-periods",
+        "24"
+      ],
+      "status": "complete",
+      "timeout_s": 21600,
+      "returncode": 0,
+      "elapsed_s": 3776.1676154783927
+    },
+    {
+      "name": "pytest",
+      "command": [
+        "/opt/conda/bin/python",
+        "-m",
+        "pytest",
+        "-o",
+        "addopts=",
+        "-n",
+        "4",
+        "-v",
+        "-s",
+        "-rA",
+        "--timeout=7200",
+        "--timeout-method=thread",
+        "--junitxml=/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-msl-long-20260909T020258Z-b36fc46cdf21-101/junit.xml",
+        "tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_drive_covers_the_declared_measurement_band",
+        "tests/unit/autodiff/test_msl_sparam_ad.py::test_qualification_checks_the_float32_rounded_band_endpoint",
+        "tests/unit/autodiff/test_msl_sparam_ad.py::test_migrated_trace_is_a_sheet_on_the_declared_plane",
+        "tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_accepts_matched_line_limit",
+        "tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables"
+      ],
+      "status": "complete",
+      "timeout_s": 21600,
+      "returncode": 0,
+      "elapsed_s": 4.964664147235453,
+      "junit": {
+        "available": true,
+        "counts": {
+          "total": 11,
+          "passed": 11,
+          "failed": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "failing_ids": []
+      }
+    }
+  ],
+  "returncode": 0,
+  "finished_utc": "2026-09-09T03:06:13.181079+00:00",
+  "pytest": {
+    "available": true,
+    "counts": {
+      "total": 11,
+      "passed": 11,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "failing_ids": []
+  }
+}

@@ -86,7 +86,7 @@
         },
         "pec_volume_scatterer": {
           "status": "experimental",
-          "limits": "experimental: device/reference handling is regression-tested, but arbitrary iris, post, septum, branch, and T-junction RF results are not validated"
+          "limits": "experimental: device/reference handling is regression-tested, but arbitrary iris, post, septum, branch, and T-junction RF results are not validated; realization changed at 2.0 (#931): a PEC volume realizes walls at both drawn faces and drawn extent equals realized extent, so the regression fixtures are recomputed for the release and a fixture that has not been is not shipped (no accuracy claim moves, because this entry makes none)"
         }
       }
     },

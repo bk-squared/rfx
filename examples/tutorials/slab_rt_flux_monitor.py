@@ -35,7 +35,7 @@ Run:  python examples/slab_rt_flux_monitor.py
 import numpy as np
 
 from rfx import Box, Simulation
-from rfx.probes.probes import flux_spectrum
+from rfx.probes.probes import flux_spectrum, subtract_flux_monitors
 
 C0 = 299_792_458.0
 
@@ -52,11 +52,29 @@ DOM_Y = 8e-3  # transverse (TFSF forces the transverse axes periodic)
 
 FREQS_RT = np.linspace(4e9, 14e9, 21)  # R/T evaluation band
 
-# slab centred in x; nudge the upper x-corner down by dx/2 so an inclusive-bounds
-# Box maps to exactly D_SLAB of interior cells (recipe detail (d)).
+# Slab centred in x, drawn at its physical corners — no nudge. A dielectric
+# Box is sampled at NODE coordinates, half-open [lo, hi) (rfx/geometry/csg.py),
+# which #931 leaves untouched: 95 mm -> 105 mm on a 1 mm mesh owns nodes
+# 95 .. 104, ten cells, exactly D_SLAB.
+#
+# The corners are built from CELL INDICES so both land bitwise on the node
+# coordinates the grid computes ((i - pad) * dx in float64). That matters: the
+# hi face sits exactly on a node plane, and half-open drops it, so the answer
+# depends on which side of the float the corner falls. Writing
+# CENTER_X + D_SLAB/2 gives 0.10500000000000001 — one ulp above node 105 — and
+# the slab silently realizes eleven cells against a ten-cell Fresnel oracle.
+#
+# This file used to subtract dx/2 from the upper corner and justify it with
+# "an inclusive-bounds Box", a convention that does not exist here. The nudge
+# did produce ten cells, for a reason nobody had written down; a hand-applied
+# realization knob with a wrong explanation is what the lattice ownership
+# contract (#931) exists to remove. The build-time assertion in build_sim()
+# is what keeps the realized extent honest now.
 CENTER_X = DOM_X / 2.0
-SLAB_X_LO = CENTER_X - D_SLAB / 2.0
-SLAB_X_HI = CENTER_X + D_SLAB / 2.0 - DX / 2.0
+N_SLAB = int(round(D_SLAB / DX))
+I_SLAB_LO = int(round((CENTER_X - D_SLAB / 2.0) / DX))
+SLAB_X_LO = I_SLAB_LO * DX
+SLAB_X_HI = (I_SLAB_LO + N_SLAB) * DX
 
 # flux planes: reflection monitor before the slab, transmission monitor after it
 REFL_X = CENTER_X - 40e-3
@@ -79,6 +97,24 @@ def build_sim(with_slab: bool) -> Simulation:
         # padding): with TFSF the transverse axes are periodic, so any cell
         # outside the material mask breaks the plane-wave assumption (detail (c)).
         sim.add(Box((SLAB_X_LO, -1.0, -1.0), (SLAB_X_HI, 1.0, 1.0)), material="slab")
+        # Build-time check (no solve): the Fresnel oracle below is evaluated at
+        # D_SLAB, so the realized slab must BE D_SLAB thick on the propagation
+        # axis. Read from the model's own fidelity report, which states the
+        # realized extent per axis in input units.
+        realized = None
+        for item in sim.fidelity_report(print_report=False):
+            mat = item.get("material") or {}
+            if mat.get("name") != "slab":
+                continue
+            for ax in item.get("axes", []):
+                if ax.get("axis") == "x":
+                    realized = float(ax["realized_extent_um"]) * 1e-6
+        if realized is None or abs(realized - D_SLAB) > 1e-9 * D_SLAB:
+            raise RuntimeError(
+                f"realized slab x-extent {realized} m != declared "
+                f"{D_SLAB} m — the Fresnel comparison would be against a "
+                "different slab"
+            )
     sim.add_tfsf_source(f0=F0, bandwidth=BW, polarization="ez", direction="+x")
     sim.add_flux_monitor(axis="x", coordinate=REFL_X, freqs=FREQS_RT, name="refl")
     sim.add_flux_monitor(axis="x", coordinate=TRANS_X, freqs=FREQS_RT, name="trans")
@@ -123,15 +159,10 @@ def main():
     slab_refl_fm = res_slab.flux_monitors["refl"]
     slab_trans_flux = np.asarray(flux_spectrum(res_slab.flux_monitors["trans"]))
 
-    # Field-level subtraction for the reflected (scattered) flux — recipe detail (a).
-    # FluxMonitor is a NamedTuple; the accumulated DFT fields are e1_dft, e2_dft,
-    # h1_dft, h2_dft.
-    scat_refl_fm = slab_refl_fm._replace(
-        e1_dft=slab_refl_fm.e1_dft - ref_refl_fm.e1_dft,
-        e2_dft=slab_refl_fm.e2_dft - ref_refl_fm.e2_dft,
-        h1_dft=slab_refl_fm.h1_dft - ref_refl_fm.h1_dft,
-        h2_dft=slab_refl_fm.h2_dft - ref_refl_fm.h2_dft,
-    )
+    # Field-level subtraction for the reflected (scattered) flux — recipe detail
+    # (a). Subtracting the FLUXES instead would leave the incident/scattered
+    # cross terms in the answer, because flux is bilinear in E and H.
+    scat_refl_fm = subtract_flux_monitors(slab_refl_fm, ref_refl_fm)
     scat_refl_flux = np.asarray(flux_spectrum(scat_refl_fm))
 
     transmittance = slab_trans_flux / ref_trans_flux

@@ -1,0 +1,66 @@
+jax 0.10.2 backend cpu
+ex first (np.int64(12), np.int64(13), np.int64(13), np.int64(24)) old 1.2256234e-10 new 1.2256235e-10 old_bits 788972091 new_bits 788972092
+ey first (np.int64(12), np.int64(12), np.int64(13), np.int64(24)) old 6.375286e-10 new 6.375285e-10 old_bits 808402454 new_bits 808402452
+ez first (np.int64(13), np.int64(12), np.int64(13), np.int64(24)) old 5.091192e-10 new 5.0911914e-10 old_bits 806089236 new_bits 806089235
+hx first (np.int64(13), np.int64(12), np.int64(13), np.int64(23)) old 1.8848048e-12 new 1.884805e-12 old_bits 738501024 new_bits 738501025
+hy first (np.int64(13), np.int64(13), np.int64(14), np.int64(25)) old -7.6813005e-15 new -7.6813e-15 old_bits 2819252159 new_bits 2819252158
+hz first (np.int64(13), np.int64(11), np.int64(13), np.int64(24)) old -1.5522321e-19 new 1.3220286e-20 old_bits 2687975766 new_bits 511293793
+psi_ex_ylo first (np.int64(19), np.int64(6), np.int64(12), np.int64(24)) old -6.7850387e-18 new 2.7546566e-18 old_bits 2734314209 new_bits 575357438
+psi_ex_yhi first (np.int64(19), np.int64(1), np.int64(13), np.int64(24)) old -3.6691026e-19 new -5.157547e-18 old_bits 2698548713 new_bits 2730379175
+psi_ex_zlo first (np.int64(47), np.int64(6), np.int64(12), np.int64(8)) old -1.2387567e-06 new -1.2387576e-06 old_bits 3047572315 new_bits 3047572323
+psi_ex_zhi first (np.int64(13), np.int64(5), np.int64(13), np.int64(14)) old -5.644968e-12 new -5.6449676e-12 old_bits 2898697562 new_bits 2898697561
+psi_ey_xlo first (np.int64(19), np.int64(6), np.int64(12), np.int64(24)) old -1.6689709e-17 new 2.5254637e-18 old_bits 2744774518 new_bits 574249129
+psi_ey_xhi first (np.int64(19), np.int64(1), np.int64(12), np.int64(24)) old -1.4762039e-17 new -5.1807666e-18 old_bits 2743609313 new_bits 2730435317
+psi_ey_zlo first (np.int64(48), np.int64(6), np.int64(7), np.int64(11)) old 1.4777126e-05 new 1.4777125e-05 old_bits 930605894 new_bits 930605893
+psi_ey_zhi first (np.int64(13), np.int64(3), np.int64(12), np.int64(13)) old -5.6578986e-09 new -5.6578995e-09 old_bits 2982307687 new_bits 2982307689
+psi_ez_xlo first (np.int64(19), np.int64(6), np.int64(24), np.int64(13)) old -7.124922e-11 new -7.124921e-11 old_bits 2929503679 new_bits 2929503677
+psi_ez_xhi first (np.int64(19), np.int64(1), np.int64(24), np.int64(14)) old -4.1960657e-11 new -4.196066e-11 old_bits 2922941312 new_bits 2922941313
+psi_ez_ylo first (np.int64(19), np.int64(6), np.int64(24), np.int64(13)) old 7.124921e-11 new 7.124922e-11 old_bits 782020029 new_bits 782020031
+psi_ez_yhi first (np.int64(19), np.int64(1), np.int64(24), np.int64(14)) old 4.196066e-11 new 4.1960657e-11 old_bits 775457665 new_bits 775457664
+psi_hx_ylo first (np.int64(20), np.int64(5), np.int64(13), np.int64(24)) old -1.2960827e-07 new -1.296083e-07 old_bits 3020630643 new_bits 3020630645
+psi_hx_yhi first (np.int64(20), np.int64(1), np.int64(14), np.int64(24)) old 5.957859e-09 new 5.9578587e-09 old_bits 835499490 new_bits 835499489
+psi_hx_zlo first (np.int64(48), np.int64(6), np.int64(10), np.int64(10)) old 0.0818105 new 0.081810504 old_bits 1034390595 new_bits 1034390596
+psi_hx_zhi first (np.int64(13), np.int64(2), np.int64(12), np.int64(13)) old 3.0093335e-07 new 3.0093338e-07 old_bits 883003383 new_bits 883003384
+psi_hy_xlo first (np.int64(19), np.int64(6), np.int64(14), np.int64(24)) old -6.0690764e-09 new -6.069075e-09 old_bits 2983233577 new_bits 2983233574
+psi_hy_xhi first (np.int64(20), np.int64(1), np.int64(14), np.int64(24)) old 5.9578587e-09 new 5.957859e-09 old_bits 835499489 new_bits 835499490
+psi_hy_zlo first (np.int64(49), np.int64(5), np.int64(8), np.int64(13)) old 0.039911665 new 0.03991167 old_bits 1025735274 new_bits 1025735275
+psi_hy_zhi first (np.int64(13), np.int64(4), np.int64(14), np.int64(13)) old 1.7808393e-09 new 1.7808397e-09 old_bits 821346742 new_bits 821346746
+psi_hz_xlo first (np.int64(19), np.int64(6), np.int64(24), np.int64(12)) old -3.897762e-08 new -3.897763e-08 old_bits 3005704281 new_bits 3005704283
+psi_hz_xhi first (np.int64(20), np.int64(1), np.int64(24), np.int64(12)) old 2.824404e-08 new 2.8244044e-08 old_bits 854760781 new_bits 854760783
+psi_hz_ylo first (np.int64(19), np.int64(6), np.int64(24), np.int64(13)) old 7.0523543e-09 new 7.0523534e-09 old_bits 837964074 new_bits 837964072
+psi_hz_yhi first (np.int64(20), np.int64(1), np.int64(24), np.int64(12)) old 2.8244044e-08 new 2.8244045e-08 old_bits 854760783 new_bits 854760784
+first divergent completed step 13
+isolated E baseline ex input 1.7924905e-10 psi 2.6325464e-10 ce 0.21533029 output 1.2256235e-10 bits 788972092 separate 1.2256235e-10 788972092 fused 1.2256235e-10 788972092
+isolated E baseline ey input 9.389259e-10 psi -1.3996982e-09 ce 0.21533029 output 6.3752853e-10 bits 808402453 separate 6.375285e-10 808402452 fused 6.3752853e-10 808402453
+isolated E candidate ex input 1.7924905e-10 psi 2.6325464e-10 ce 0.21533029 output 1.2256235e-10 bits 788972092 separate 1.2256235e-10 788972092 fused 1.2256235e-10 788972092
+isolated E candidate ey input 9.389259e-10 psi -1.3996982e-09 ce 0.21533029 output 6.3752853e-10 bits 808402453 separate 6.375285e-10 808402452 fused 6.3752853e-10 808402453
+scalar operands ex d1 7.424296e-20 d2 8.152795e-13 inv 999.99994 ce 0.21533029 previous 3.5480338e-10 psi 2.6325464e-10
+scalar replay ex 0 False False 1.2256234e-10 788972091
+scalar replay ex 0 False True 1.2256234e-10 788972091
+scalar replay ex 0 True False 1.2256234e-10 788972091
+scalar replay ex 0 True True 1.2256234e-10 788972091
+scalar replay ex 1 False False 1.2256234e-10 788972091
+scalar replay ex 1 False True 1.2256234e-10 788972091
+scalar replay ex 1 True False 1.2256234e-10 788972091
+scalar replay ex 1 True True 1.2256234e-10 788972091
+scalar replay ex 2 False False 1.2256235e-10 788972092
+scalar replay ex 2 False True 1.2256235e-10 788972092
+scalar replay ex 2 True False 1.2256235e-10 788972092
+scalar replay ex 2 True True 1.2256235e-10 788972092
+scalar operands ey d1 4.360399e-12 d2 -1.022359e-19 inv 999.99994 ce 0.21533029 previous 0.0 psi -1.3996984e-09
+scalar replay ey 0 False False 6.375285e-10 808402452
+scalar replay ey 0 False True 6.375285e-10 808402452
+scalar replay ey 0 True False 6.375285e-10 808402452
+scalar replay ey 0 True True 6.375285e-10 808402452
+scalar replay ey 1 False False 6.375286e-10 808402454
+scalar replay ey 1 False True 6.375286e-10 808402454
+scalar replay ey 1 True False 6.375286e-10 808402454
+scalar replay ey 1 True True 6.375286e-10 808402454
+scalar replay ey 2 False False 6.375285e-10 808402452
+scalar replay ey 2 False True 6.375285e-10 808402452
+scalar replay ey 2 True False 6.375285e-10 808402452
+scalar replay ey 2 True True 6.375285e-10 808402452
+13-step final without history baseline ex 1.2256234e-10 788972091
+13-step final without history baseline ey 6.375286e-10 808402454
+13-step final without history candidate ex 1.2256235e-10 788972092
+13-step final without history candidate ey 6.375285e-10 808402452

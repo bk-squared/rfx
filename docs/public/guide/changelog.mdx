@@ -11,7 +11,61 @@ This page summarizes user-visible changes.
 
 The recommended starting point remains the **uniform Cartesian Yee RF/FDTD lane**. Non-default lanes such as non-uniform mesh are documented through their [support and evidence envelopes](/rfx/guide/validation/), not presented as the default path.
 
-## Unreleased
+## Unreleased — 2.0.0
+
+**Breaking: how a conductor lands on the lattice.** A conductor is now exactly
+one of three things and your declaration says which — a **volume** of primal
+cells (`sim.add(shape, material="pec")`), a **sheet** on one node plane
+(`sim.add_thin_conductor(...)`, or a zero-thickness `Box` through `sim.add()`),
+or a **wire** (a sub-cell `PolylineWire`). One sentence covers all three: an E
+component is PEC if and only if its own location lies inside the closed
+conductor region. See
+[How conductors land on the lattice](/rfx/guide/materials-geometry/#how-conductors-land-on-the-lattice).
+
+- **Removed: the `two_plane=True` keyword on `sim.add()`.** Passing it raises
+  `TypeError`; there is no deprecation period and no replacement keyword. It
+  existed to give a one-cell PEC body its far face, and the volume rule now does
+  that at every thickness, on every axis, on every lane.
+- **A PEC volume realizes walls at both of its drawn faces** and shorts every
+  normal edge between them, so realized thickness equals drawn thickness. PEC
+  volumes are sampled at cell centres rather than at nodes, which rounds each
+  face to the nearest plane instead of always dropping the `hi` one. Recipes that
+  compensated for the missing far face — a drawn extent one cell longer than the
+  physical one, a conductor drawn one cell outside the interface it was meant to
+  bound, "interior faces on cell midpoints" as a *requirement* — are no longer
+  needed and have been deleted rather than re-tuned. **Dielectric sampling is
+  unchanged** (node coordinates, half-open), so a model with no conductor body is
+  bit-identical to 1.x.
+- **A sheet owns no cell.** It adds nothing to the PEC cell mask, writes no εᵣ or
+  σ, and is realized on exactly one node plane — the plane nearest the shape's
+  mid-plane, with an exact half-cell tie resolving to the lower plane. The E
+  component normal to a sheet stays live. Sheets on one plane are unioned before
+  the edge rule, so abutting sheets realize seamlessly. A lossy
+  (`surface_impedance_f0`) sheet uses the same footprint and the same edge set as
+  the PEC sheet, so `f0` toggles loss and never geometry.
+- **New refusals, raised when the grid exists** — at `run()`, `forward()` or
+  `preflight()`, not at `add()`, because "thinner than one cell" is a question
+  about the lattice and `add()` has no grid to ask it of. A PEC shape with
+  `0 < extent < one local cell` along any axis raises — declare a sheet or resolve the thickness. A PEC
+  shape that rasterizes to zero cells raises instead of vanishing silently. A
+  `Box` with two or three zero-extent axes raises. `add_thin_conductor()` with a
+  shape thicker than one local cell along its normal raises.
+- The plane-selection tie rule shipped in 1.x ("a window selecting exactly one
+  node — that node is the realized plane") **survives** as the sheet
+  plane-selection rule, so an existing one-cell sheet declaration lands where it
+  landed before.
+- `fidelity_report()` prints, per PEC entry, the drawn extent against the
+  realized wall planes on each axis, in your input units.
+- The design-interop IR is at v2: the required `two_plane` field is gone and
+  sheets are expressed directly. A v1 document carrying `two_plane` is refused
+  with a message rather than silently ignored.
+
+Superseded by the above: the #493 waveguide-obstacle drawing recipe (realized
+extent one cell short of drawn, at the `hi` face; an electrical opening of
+`d + dx` or `d + 2·dx`), the #740 `two_plane` ground fix for the RT5880 patch,
+the #674 "exactly one cell layer" sheet requirement, and the #702 re-sampling of
+a sheet's "own cell" material — a sheet has no own cell to re-sample. Their
+CHANGELOG entries are left as dated history.
 
 - A face-touching dispersive material no longer gets an absorber surround
   carrying its static permittivity without its dispersion poles — a material
@@ -21,7 +75,21 @@ The recommended starting point remains the **uniform Cartesian Yee RF/FDTD lane*
 - Realized geometry at node-aligned faces no longer depends on
   `JAX_ENABLE_X64` or the solver lane: one exact float64 node formula is
   shared by the uniform lane, the non-uniform lane, and the viewer, and a
-  one-cell sheet realizes on one and the same plane in both lanes.
+  one-cell sheet realizes on one and the same plane in both lanes. (At 2.0 the
+  node/half-open statement describes dielectric sampling only; PEC volumes are
+  centre-sampled. The one-node tie rule became the sheet plane-selection rule.)
+- New preflight warning `pec_face_short_of_domain_wall`. A domain is realized
+  by `ceil(extent / dx)` cells while a PEC volume's face rounds to the nearest
+  node, so a conductor drawn to a declared dimension can land one cell short of
+  the wall it was meant to reach — and that cell is a parallel-plate line along
+  the wall, open at both ends, not a short. The check reads the entry's own
+  realized wall planes against the grid's interior, on non-absorbing faces only.
+  Draw a conductor meant to reach a wall to the grid's REALIZED wall plane.
+- Fixed: on the distributed non-uniform lane, a conductor cell sitting on a rank
+  boundary reached its neighbour un-zeroed. The E ghost rows were exchanged
+  before the PEC stages, which act on a rank's own cells only, so the neighbour
+  read a stale copy of the conductor's plane; the exchange now runs last in the
+  E half-step. Single-device results are unaffected.
 - A `dz_profile`-only simulation now dispatches to the non-uniform waveguide
   S-matrix lane instead of silently solving on the uniform grid built from
   the scalar `dx`. The unsupported default `normalize=False` fails loudly
@@ -43,7 +111,8 @@ The recommended starting point remains the **uniform Cartesian Yee RF/FDTD lane*
   the public support envelope.
 - `add_thin_conductor(..., surface_impedance_f0=...)` accepts patterned shapes
   that rasterize to exactly one cell layer and at least one cell, including
-  CAD-backed `MeshShape` objects. Unsupported sheet realizations and execution
+  CAD-backed `MeshShape` objects. (Superseded at 2.0: a sheet is one node plane,
+  not one cell layer.) Unsupported sheet realizations and execution
   lanes fail explicitly.
 - The uniform single-device solver offers `precision="float64"` when JAX x64
   is enabled. `precision="mixed"` works with CPML, but its float16 field

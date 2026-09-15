@@ -4,9 +4,16 @@ Measures the two arms pre-declared in
 ``docs/design_notes/issue782_retired_resonance_predeclaration.md`` (Section 4):
 
   * ``main``    — today's tree physics;
-  * ``retired`` — ``rfx.api._compile.resample_sheet_node_materials`` replaced by the
-    identity (the same bypass ``tests/unit/preflight/test_preflight_rasterization.py`` uses),
-    which reproduces the pre-#702 tree digit for digit (issue #782).
+  * ``retired`` — RETIRED BY #931, and it now refuses to run rather than
+    silently agreeing with ``main``. That arm replaced
+    ``rfx.api._compile.resample_sheet_node_materials`` with the identity to
+    reproduce the pre-#702 tree digit for digit. #931 DELETED that function
+    (a sheet owns no cell, so there is no "own cell" material to re-sample),
+    and monkeypatching a name a module no longer has is a no-op — the arm
+    would have kept reporting numbers identical to ``main`` while claiming to
+    be the pre-#702 tree. The committed
+    ``patch_edgefed_s11_band_repin_retired.json`` stays as dated evidence for
+    the #782 falsifier replay; it is not regenerable.
 
 Config is EXACTLY the committed gate's (``tests/locks/test_patch_edgefed_s11_passivity.py``:
 same ``_build_patch_sim()`` geometry — imported from the test module, not copied —
@@ -39,7 +46,6 @@ import jax.numpy as jnp  # noqa: E402
 import numpy as np  # noqa: E402
 
 import rfx  # noqa: E402
-import rfx.api._compile as _compile  # noqa: E402
 from tests.locks.test_patch_edgefed_s11_passivity import _build_patch_sim  # noqa: E402
 
 FREQS = np.linspace(6e9, 14e9, 81)
@@ -61,10 +67,14 @@ def run_arm(tag: str, bypass_resample: bool) -> dict:
     print(f"\n================ ARM {tag} (bypass_resample={bypass_resample}) "
           f"================", flush=True)
     if bypass_resample:
-        # Same bypass as tests/unit/preflight/test_preflight_rasterization.py::_bypass_resample:
-        # the assembly keeps node-sampled statics — the pre-#702 tree, digit for digit.
-        _compile.resample_sheet_node_materials = (
-            lambda geo, res, coords, eps, sig, **kw: (eps, sig))
+        raise SystemExit(
+            "the 'retired' arm is retired (#931). It bypassed "
+            "rfx.api._compile.resample_sheet_node_materials to reproduce the "
+            "pre-#702 tree; that function is deleted, so the bypass would "
+            "silently be a no-op and this arm would report the 'main' numbers "
+            "under the 'retired' label. The committed "
+            "docs/design_notes/patch_edgefed_s11_band_repin_retired.json is "
+            "the dated evidence; run `main` only.")
 
     sim = _build_patch_sim()
 
@@ -142,8 +152,11 @@ def main() -> int:
     # script was killed by the session harness between the arms and the finished main
     # arm's arrays died unpersisted (the `feedback_persist_before_the_optional_stage`
     # lesson, again). One process per arm also keeps each run under the kill horizon.
-    which = sys.argv[1] if len(sys.argv) > 1 else "both"
-    arms = {"main": False, "retired": True} if which == "both" else \
+    # #931: the default is `main` alone. `retired` is kept as an explicit
+    # argument only so that asking for it gets the explanation above instead
+    # of a silent duplicate of `main`.
+    which = sys.argv[1] if len(sys.argv) > 1 else "main"
+    arms = {"main": False} if which in ("main", "both") else \
         {which: (which == "retired")}
 
     for tag, bypass in arms.items():

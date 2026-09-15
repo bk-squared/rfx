@@ -1,0 +1,143 @@
+{
+  "provenance": {
+    "run_id": "369367259614",
+    "source_sha": "b36fc46cdf21d1c57f221e6a057654bcad60bae2",
+    "inputs": [
+      {
+        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/v173a/capture.json",
+        "sha256": "b9080e1fdee295233a3285abb45439bc723a76de9ded67d4f705d30615285f44"
+      },
+      {
+        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/v173a/capture.npz",
+        "sha256": "b0d3bf17ab221f35d4d31c8a0a8cec829fa15c1ee54f3c1fc407109206b1b09e"
+      },
+      {
+        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-evidence/v173a-traces.npz",
+        "sha256": "66e238b17349d4b5b36308b6ff2e9cc396f4f1f6d5f8cdf70a69096f8c6fa9e5"
+      },
+      {
+        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/data/v173a_aligned_composition.json",
+        "sha256": "ff7eeceef3cf04888fafcf9f0c113a4b1bbf73fc8ee7ec6864594d64490154fa"
+      },
+      {
+        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/v173a/run_id.txt",
+        "sha256": "94f041176d5061fe09def24f7651337c867b84291898d3718d9bb903c714fc4e"
+      }
+    ],
+    "script": {
+      "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/scripts/diagnostics/inspect_931_v173a_capture.py",
+      "sha256": "879ccb58e2d30847819b024d3b5faa6b3a81ab3823dceb737d12583c9d7b10bb"
+    }
+  },
+  "scope": "Aligned synthetic composition drift sentinel only; no physical convergence, Q, mode identification, or S11 claim.",
+  "raw_trace": {
+    "array_equal": true,
+    "max_abs_delta": 0.0,
+    "relative_l2_delta": 0.0,
+    "samples": 6000,
+    "dt_s": 9.532874347655029e-13
+  },
+  "archive_comparisons_not_acceptance_gates": {
+    "ringdown": {
+      "array_equal": true,
+      "max_abs_delta": 0.0,
+      "deltas": null
+    },
+    "fft_band_frequencies_hz": {
+      "array_equal": true,
+      "max_abs_delta": 0.0,
+      "deltas": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "fft_band_log_amplitude_db": {
+      "array_equal": true,
+      "max_abs_delta": 0.0,
+      "deltas": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  },
+  "fresh_capture_consistency": {
+    "full_trace_tail_to_peak": 0.0003252121096011251,
+    "ringdown_tail_to_peak": 0.768401026725769,
+    "probe_spectrum_min_db": 190.48059426681422,
+    "probe_spectrum_min_f_hz": 3496671844.996355,
+    "checked_against": "fresh capture.json, independently recomputed from fresh capture.npz"
+  },
+  "frequency_pin": {
+    "reference_hz": 1984479720.2163157,
+    "fresh_hz": 1984479720.2162623,
+    "absolute_delta_hz": 5.340576171875e-05,
+    "relative_tolerance": 1e-06,
+    "allowed_absolute_delta_hz": 1984.4797202163156,
+    "passed": true
+  },
+  "spectrum_pin": {
+    "reference_db": 190.48059426681422,
+    "fresh_db": 190.48059426681422,
+    "absolute_delta_db": 0.0,
+    "absolute_tolerance_db": 0.1,
+    "passed": true
+  },
+  "ringdown_start_sample": 1879,
+  "full_trace_peak": 6578120192.0,
+  "ringdown_peak": 1695892.5,
+  "full_trace_tail_to_peak": 0.0003252121096011251,
+  "ringdown_tail_to_peak": 0.768401026725769,
+  "fft_band_frequencies_hz": [
+    1573502330.24836,
+    1748335922.4981775,
+    1923169514.7479954,
+    2098003106.9978132,
+    2272836699.247631,
+    2447670291.4974484,
+    2622503883.7472663,
+    2797337475.997084,
+    2972171068.246902,
+    3147004660.49672,
+    3321838252.746537,
+    3496671844.996355
+  ],
+  "fft_band_log_amplitude_db": [
+    220.81408175519073,
+    218.9876505070019,
+    217.31170441466384,
+    214.6717136416308,
+    212.5074813255338,
+    209.94454952185134,
+    207.1929801040031,
+    204.2459885669,
+    201.1023493772188,
+    197.76112235113487,
+    194.22123010679567,
+    190.48059426681422
+  ],
+  "fft_minimum_is_uppermost_band_bin": true,
+  "figure": {
+    "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/v173a/v173a-live-ringdown-spectrum.png",
+    "sha256": "6cb3196b7eb4dc87f6c71d985f508f0811f8f9c49de7634e7aba16ac42bebf75"
+  }
+}

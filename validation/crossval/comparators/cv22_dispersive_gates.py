@@ -26,29 +26,33 @@ for _p in (_HERE, _REPO_ROOT):
         sys.path.insert(0, _p)
 
 import dispersive_eps as de  # noqa: E402
+import slab_family  # noqa: E402
 from tests._gate_policy import gate_from_envelope  # noqa: E402
 
 TWO_PI = 2.0 * math.pi
 C0 = de.C0
 
 # ---------------------------------------------------------------------------
-# Rig (cv04's; pre-declaration §1)
+# Rig (cv04's; pre-declaration §1) -- DECLARED in ``slab_family``, re-exported
+# here so the modules that import it from this one keep working (#928). The rig
+# belongs to the producer's case, not to this consumer; the values are
+# unchanged and bit-identical (tests/fixtures/slab_family_windows_baseline.json).
 # ---------------------------------------------------------------------------
-DX_M = 1.0e-3
-D_SLAB_M = 10.0e-3
-NX_INTERIOR = 600
-N_CPML = 20
-TFSF_F0_HZ = 10.0e9
-TFSF_BW = 0.5
-NFFT_OVERSAMPLE = 8
-MASK_F_LO_HZ = 3.0e9
-MASK_F_HI_HZ = 15.0e9
-MASK_AMP_FRAC = 0.02
-# cv04 witness constants (04_multilayer_fresnel.py:208-210, :314), unchanged.
-TAIL_WINDOW = 50
-TAIL_PURITY_LIMIT = 1e-3
-TAIL_LIMIT = 0.10
-CONS_MAX_LIMIT = 0.06
+DX_M = slab_family.DX_M
+D_SLAB_M = slab_family.D_SLAB_M
+NX_INTERIOR = slab_family.NX_INTERIOR
+N_CPML = slab_family.N_CPML
+TFSF_F0_HZ = slab_family.TFSF_F0_HZ
+TFSF_BW = slab_family.TFSF_BW
+NFFT_OVERSAMPLE = slab_family.NFFT_OVERSAMPLE
+MASK_F_LO_HZ = slab_family.MASK_F_LO_HZ
+MASK_F_HI_HZ = slab_family.MASK_F_HI_HZ
+MASK_AMP_FRAC = slab_family.MASK_AMP_FRAC
+# cv04's own settling-tail witness constants and per-bin closure ceiling.
+TAIL_WINDOW = slab_family.TAIL_WINDOW
+TAIL_PURITY_LIMIT = slab_family.TAIL_PURITY_LIMIT
+TAIL_LIMIT = slab_family.TAIL_LIMIT
+CONS_MAX_LIMIT = slab_family.CONS_MAX_LIMIT
 
 # ---------------------------------------------------------------------------
 # Round-3 recipe (§12): the record length comes from the slab's OWN ring-down,
@@ -60,10 +64,13 @@ RECIPE_CV04 = "cv04"
 NX_INTERIOR_R3 = 1000          # derived in derive_record_length(): the smallest
                                # round number whose CPML round-trip gate exceeds
                                # the longest derived record (Lorentz)
-SETTLING_LIMIT = 1e-2          # -40 dB, amplitude, last TAIL_WINDOW steps
-TFSF_MARGIN = 5
-PROBE_OFFSET_CELLS = 30
-SRC_T0_OVER_TAU = 3.0          # rfx.sources.tfsf: src_t0 = 3 tau for differentiated_gaussian
+# Rig-level, declared in slab_family and re-exported (#928): the settling bar
+# and the cell placements are properties of the shared rig, not of this case's
+# gate policy, and the producer's own witness needs them.
+SETTLING_LIMIT = slab_family.SETTLING_LIMIT
+TFSF_MARGIN = slab_family.TFSF_MARGIN
+PROBE_OFFSET_CELLS = slab_family.PROBE_OFFSET_CELLS
+SRC_T0_OVER_TAU = slab_family.SRC_T0_OVER_TAU
 PULSE_END_ARG_40DB = 2.5255070008312575   # 2a e^{-a^2} = 1e-2 x peak (peak at a = 1/sqrt2)
 MEEP_PRIMARY_RESOLUTION = 40   # §12: the converged Meep reference (first-order ladder measured in r2)
 # §13 (round 4): the ring-down search covers the incident band where the
@@ -74,15 +81,21 @@ MEEP_PRIMARY_RESOLUTION = 40   # §12: the converged Meep reference (first-order
 # ln(100)/rate. The witness is then ADAPTIVE: extend the record in
 # RECORD_EXTEND_STEPS while the -40 dB bar is not met, and grow the box by
 # NX_GROW_CELLS when the CPML gate is reached (never clip).
-RING_W_MIN = 0.5
-RING_F_MAX_HZ = MASK_F_HI_HZ
+RING_W_MIN = slab_family.RING_W_MIN
+RING_F_MAX_HZ = slab_family.RING_F_MAX_HZ
 RECORD_EXTEND_STEPS = 100
-NX_GROW_CELLS = 200
+# Re-exported, not redeclared (moved to slab_family.py, cv04 settling-
+# extension fix 2026-09-10): cv04 is the envelope PRODUCER and needs this
+# same constant, and issue #928's producer-import-graph invariant forbids
+# the producer importing a module named after a consumer case, even for a
+# constant. Same pattern RING_W_MIN/RING_F_MAX_HZ already use.
+NX_GROW_CELLS = slab_family.NX_GROW_CELLS
 TAIL_ENVELOPE_STEPS = 300      # stored in the artifact so the decay can be fitted offline
 MEEP_LADDER_RESOLUTIONS = (10, 20, 40)
 
-# Gated band (§5) and the rig-sanity floor on incident amplitude inside it.
-BAND_GATED_HZ = (4.0e9, 10.0e9)
+# Gated band (§5; declared in slab_family so the producer can mark its own
+# gated bins) and the rig-sanity floor on incident amplitude inside it.
+BAND_GATED_HZ = slab_family.BAND_GATED_HZ
 GATED_BAND_MIN_INC_AMP_FRAC = 0.05
 
 # Meep leg (§7): a = 1 cm as in cv04; Meep default Courant.
@@ -112,19 +125,53 @@ ARMS = {
 ARM_ORDER = ("debye", "lorentz", "drude")
 
 # ---------------------------------------------------------------------------
-# Committed cv04 envelope on this rig (§4) and the derived rig windows
+# The cv04 envelope this case ADOPTED (§4), and the windows derived from it
+#
+# The values are NOT written here. They live in the producer's own artifact,
+# `validation/crossval/_04_fresnel_results/envelope.json`, which is where cv04
+# records what it measured; before #928 they were copied into this module from
+# a UI fixture and a source comment, so a consumer-named module was the home of
+# a producer's evidence.
+#
+# This declaration is the CALIBRATION: which revision of that evidence this
+# case adopted, that revision's hash, the realized rig's hash, and the gate
+# policy in force when it was adopted. Appending a new revision to the
+# producer's artifact does not move these windows -- only editing this record
+# does, and that edit is reviewed under the repo's no-silent-gate-loosening
+# rule. The windows below are the EXPECTATION, derived from the two and stated
+# nowhere else.
+#
+# 2026-09-10 disclosure (PR #974): the adopted r1 values are NOT measured on
+# cv04's settled record -- cv04 got its own settling-extension fix that day
+# (docs/design_notes/20260903_lattice_witness_standard.md section 5.3's
+# 2026-09-10 UPDATE, and its section 10 item 4 for the settled numbers), but
+# r1 in `envelope.json` is unchanged and this adoption is still pinned to it;
+# r1's per-bin closure was a truncation artefact of cv04's pre-fix record,
+# the settled run measures far tighter (same note, same sections -- not
+# restated here, to keep this file free of a second copy of the number).
+# DIRECTION (S6, PR #974 round 2, not the literals): a re-adoption of the
+# settled revision would move the band-mean R residual UP slightly (widening
+# W_MEAN_R a little) while the band-mean T residual and the per-bin closure
+# both move DOWN (narrowing W_MEAN_T and W_BIN) -- not a uniform tightening.
+# Whether to re-adopt a settled revision, and whether W_BIN's own recipe
+# should track it, is open under issue #928 -- not decided here, and not
+# something a producer re-run may do to this file silently either way.
 # ---------------------------------------------------------------------------
-CV04_ENVELOPE = {
-    # tests/fixtures/golden_workflows/multilayer_fresnel.json::expected_metrics[..].observed_baseline
-    "mean_dR": 0.0066,
-    "mean_dT": 0.011,
-    # validation/crossval/04_multilayer_fresnel.py:309 (code comment, rung C4,
-    # job 369367246779) -- the only committed per-bin number on this rig.
-    "per_bin_max_RT_closure": 0.0487,
+CV04_ADOPTION = {
+    "envelope": slab_family.CV04_ENVELOPE_REL,
+    "adopted_revision": "r1",
+    "revision_sha256": "sha256:59dafc9ab63239d74d6fec16fa4e89f7c055636fb6e14bf4123d724c05635686",
+    "rig_hash": "sha256:24164f616573af51b91f5c596e7b79e521005c4a872218fede25d009ed9dd211",
+    "gate_policy": {"multiplier": 1.5, "quantum": 1000},
+    "adopted_in": "docs/design_notes/20260902_cv22_dispersive_slab_predeclaration.md",
+    "adopted_by_reviewer": "cv22 pre-declaration review, 2026-09-02",
 }
-W_BIN = gate_from_envelope(CV04_ENVELOPE["per_bin_max_RT_closure"], quantum=1000)   # 0.074
-W_MEAN_R = gate_from_envelope(CV04_ENVELOPE["mean_dR"], quantum=1000)               # 0.010
-W_MEAN_T = gate_from_envelope(CV04_ENVELOPE["mean_dT"], quantum=1000)               # 0.017
+CV04_ADOPTED = slab_family.load_adopted_envelope(CV04_ADOPTION)
+CV04_ENVELOPE = CV04_ADOPTED["values"]
+_QUANTUM = CV04_ADOPTION["gate_policy"]["quantum"]
+W_BIN = gate_from_envelope(CV04_ENVELOPE["per_bin_max_RT_closure"], quantum=_QUANTUM)   # 0.074
+W_MEAN_R = gate_from_envelope(CV04_ENVELOPE["mean_dR"], quantum=_QUANTUM)               # 0.010
+W_MEAN_T = gate_from_envelope(CV04_ENVELOPE["mean_dT"], quantum=_QUANTUM)               # 0.017
 
 # ---------------------------------------------------------------------------
 # Falsifiers (§6)
@@ -176,9 +223,9 @@ def apply_meep_falsifier(meep_params: dict, name: str) -> dict:
 # Windows (§3, §4)
 # ---------------------------------------------------------------------------
 
-def gated_mask(freqs_hz) -> np.ndarray:
-    f = np.asarray(freqs_hz, dtype=float)
-    return (f >= BAND_GATED_HZ[0]) & (f <= BAND_GATED_HZ[1])
+# Rig-level, declared in slab_family (#928); re-exported for this module's
+# importers and for the pre-declaration's §5 wording.
+gated_mask = slab_family.gated_mask
 
 
 def analytic_rt(freqs_hz, model: str, params: dict):
@@ -221,12 +268,33 @@ def _f(x):
     return float(x)
 
 
+# The gate names this case declares. A name that never appears in the result
+# is INCOMPLETE, not passing (#928).
+DECLARED_GATES = ("G1_R", "G1_T", "G2_R", "G2_T", "G3_passivity", "G3_tail")
+
+# This case's windows, as a record the evaluator is HANDED. Nothing below reads
+# W_BIN / W_MEAN_R / W_MEAN_T from the module namespace: cv23 calls the same
+# evaluator and must be judged by cv23's adoption, not by this one (#928
+# round-2 review).
+WINDOWS = slab_family.Windows(W_BIN, W_MEAN_R, W_MEAN_T)
+
+
 def evaluate_e2(freqs_hz, R_rfx, T_rfx, model: str, params: dict, dt: float,
-                *, tail: dict | None = None) -> dict:
+                *, windows, tail: dict | None = None,
+                require_complete: bool = False) -> dict:
     """E2 gates G1 (per-bin), G2 (band-mean), G3 (witnesses) for one arm.
 
     ``freqs_hz`` are the masked rfx bins (cv04's mask); the gated subset is
     the 4-10 GHz band. Returns a JSON-ready dict; arrays as lists.
+
+    ``require_complete`` (issue #928): a gate whose evidence is ABSENT is None
+    here -- ``G3_tail`` is None when no tail witness is handed in -- and the
+    default aggregate skips it, which is right for the analytic falsifier
+    checks that legitimately have no run behind them. For a CLAIMS-BEARING
+    invocation that is wrong: a missing required witness would silently make a
+    two-of-three verdict read PASS. Pass ``require_complete=True`` there (the
+    case scripts do) and a None gate makes the verdict False, with the missing
+    names listed in ``incomplete_gates``.
     """
     f = np.asarray(freqs_hz, dtype=float)
     R_rfx = np.asarray(R_rfx, dtype=float)
@@ -236,12 +304,12 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, model: str, params: dict, dt: float,
     w_ade_R, w_ade_T, R_ade, T_ade = ade_window(f, model, params, dt)
     dR = np.abs(R_rfx - R_an)
     dT = np.abs(T_rfx - T_an)
-    win_R = W_BIN + w_ade_R
-    win_T = W_BIN + w_ade_T
+    win_R = windows.w_bin + w_ade_R
+    win_T = windows.w_bin + w_ade_T
     g1_R = bool(np.all(dR[g] <= win_R[g]))
     g1_T = bool(np.all(dT[g] <= win_T[g]))
-    mean_win_R = W_MEAN_R + _f(np.mean(w_ade_R[g]))
-    mean_win_T = W_MEAN_T + _f(np.mean(w_ade_T[g]))
+    mean_win_R = windows.w_mean_R + _f(np.mean(w_ade_R[g]))
+    mean_win_T = windows.w_mean_T + _f(np.mean(w_ade_T[g]))
     g2_R = bool(np.mean(dR[g]) <= mean_win_R)
     g2_T = bool(np.mean(dT[g]) <= mean_win_T)
     closure = R_rfx + T_rfx - 1.0
@@ -269,11 +337,12 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, model: str, params: dict, dt: float,
         "gates": {"G1_R": g1_R, "G1_T": g1_T, "G2_R": g2_R, "G2_T": g2_T,
                   "G3_passivity": g3_pass, "G3_tail": g3_tail},
     }
-    out["e2_ok"] = bool(all(v for v in out["gates"].values() if v is not None))
+    out.update(aggregate_gates(out["gates"], declared=DECLARED_GATES,
+                               require_complete=require_complete))
     return out
 
 
-def evaluate_e4(e2: dict, meep_doc: dict) -> dict:
+def evaluate_e4(e2: dict, meep_doc: dict, *, windows) -> dict:
     """E4 gates G4 (Meep vs TMM) and G5 (rfx vs Meep) on the rfx bin grid.
 
     ``meep_doc`` is the Meep leg JSON (``freqs_hz``, ``R``, ``T``,
@@ -308,15 +377,15 @@ def evaluate_e4(e2: dict, meep_doc: dict) -> dict:
     wm_ade_R, wm_ade_T, w_map_R, w_map_T = meep_windows(
         f, model, params, declared_mp, float(meep_doc["dt_meep_s"]))
     dR_mt = np.abs(R_m - R_an); dT_mt = np.abs(T_m - T_an)
-    win4_R = W_BIN + wm_ade_R + w_map_R
-    win4_T = W_BIN + wm_ade_T + w_map_T
-    mean4_R = W_MEAN_R + _f(np.mean(wm_ade_R[g] + w_map_R[g]))
-    mean4_T = W_MEAN_T + _f(np.mean(wm_ade_T[g] + w_map_T[g]))
+    win4_R = windows.w_bin + wm_ade_R + w_map_R
+    win4_T = windows.w_bin + wm_ade_T + w_map_T
+    mean4_R = windows.w_mean_R + _f(np.mean(wm_ade_R[g] + w_map_R[g]))
+    mean4_T = windows.w_mean_T + _f(np.mean(wm_ade_T[g] + w_map_T[g]))
     dR_xm = np.abs(R_x - R_m); dT_xm = np.abs(T_x - T_m)
-    win5_R = 2 * W_BIN + w_ade_R + wm_ade_R + w_map_R
-    win5_T = 2 * W_BIN + w_ade_T + wm_ade_T + w_map_T
-    mean5_R = 2 * W_MEAN_R + _f(np.mean(w_ade_R[g] + wm_ade_R[g] + w_map_R[g]))
-    mean5_T = 2 * W_MEAN_T + _f(np.mean(w_ade_T[g] + wm_ade_T[g] + w_map_T[g]))
+    win5_R = 2 * windows.w_bin + w_ade_R + wm_ade_R + w_map_R
+    win5_T = 2 * windows.w_bin + w_ade_T + wm_ade_T + w_map_T
+    mean5_R = 2 * windows.w_mean_R + _f(np.mean(w_ade_R[g] + wm_ade_R[g] + w_map_R[g]))
+    mean5_T = 2 * windows.w_mean_T + _f(np.mean(w_ade_T[g] + wm_ade_T[g] + w_map_T[g]))
     # The leg's own 1e-9 pre-run mapping check is a gate, not a record
     # (review finding 2). True on every committed primary; the two Meep
     # falsifier legs carry passed=false by design and fail here as well.
@@ -370,258 +439,35 @@ def rfx_json_name(falsifier: str | None = None) -> str:
 # Round-3 record-length derivation (§12) -- physics, no measurement enters.
 # ---------------------------------------------------------------------------
 
-def rig_cells(nx_interior: int, dx_div: int = 1):
-    """Cell bookkeeping of the cv04 rig (Grid adds 2*n_cpml + 1 cells)."""
-    K = int(dx_div)
-    n_cpml = N_CPML * K
-    nx = int(nx_interior) * K + 2 * n_cpml + 1
-    half = int(D_SLAB_M / (2 * DX_M / K))
-    slab_lo = nx // 2 - half
-    slab_hi = nx // 2 + half
-    x_lo = n_cpml + TFSF_MARGIN * K
-    probe_refl = slab_lo - PROBE_OFFSET_CELLS * K
-    probe_trans = slab_hi + PROBE_OFFSET_CELLS * K
-    return {"nx": nx, "n_cpml": n_cpml, "slab_lo": slab_lo, "slab_hi": slab_hi,
-            "x_lo": x_lo, "probe_refl": probe_refl, "probe_trans": probe_trans}
+# The rig's cell bookkeeping and its auxiliary-grid echo are geometry of the
+# SHARED rig -- the producer's witness (cv04 --lattice-witness, through
+# lattice_witness) needs them as much as this case does -- so they are declared
+# in slab_family and re-exported here (#928). Bodies unchanged.
+rig_cells = slab_family.rig_cells
+aux_echo_arrival = slab_family.aux_echo_arrival
+slab_aux_echo = slab_family.slab_aux_echo
+aux_echo_verdict = slab_family.aux_echo_verdict
+aux_echo_failure_message = slab_family.aux_echo_failure_message
+AUX_N_CPML_1D = slab_family.AUX_N_CPML_1D
+AUX_N_MARGIN_1D = slab_family.AUX_N_MARGIN_1D
+AUX_SRC_OFFSET_1D = slab_family.AUX_SRC_OFFSET_1D
+AUX_I0_1D = slab_family.AUX_I0_1D
+AUX_REFLECTOR_DEPTH_CELLS = slab_family.AUX_REFLECTOR_DEPTH_CELLS
+AUX_REFLECTOR_DEPTH_IS_BOUND = slab_family.AUX_REFLECTOR_DEPTH_IS_BOUND
+AUX_REFLECTOR_DEPTH_MEASURED_AT_20_CELLS = slab_family.AUX_REFLECTOR_DEPTH_MEASURED_AT_20_CELLS
+AUX_ECHO_RATIO_LIMIT = slab_family.AUX_ECHO_RATIO_LIMIT
+AUX_ECHO_SCHEMA = slab_family.AUX_ECHO_SCHEMA
 
 
-# ---------------------------------------------------------------------------
-# The auxiliary grid's own absorber echo (issue #888) -- the term the record
-# law has always been on the safe side of WITHOUT SAYING SO.
-#
-# WHAT THIS IS. Every TF/SF injection in this repo reads its incident field
-# from an auxiliary grid that carries its own absorber, and that absorber
-# reflects. Measured on THIS rig's 1-D auxiliary grid
-# (``rfx/sources/tfsf.py``): |B/A| = 4.40e-02 in steady state, from a
-# reflector 6.88 cells inside its own 20-cell CPML
-# (docs/design_notes/20260903_cv04_envelope_decomposition.md sections 2, 4.1).
-# The 2-D Bloch path (``rfx/sources/tfsf_2d.py``) reflects the same 4-6 %
-# class from 8 cells inside its 30-cell absorber
-# (docs/design_notes/20260903_cv26_oblique_defect_diagnosis.md section 3).
-#
-# WHY NOTHING SEES IT. The case normalises R = |E_tot - E_inc|^2/|E_inc|^2 and
-# T = |E_tot|^2/|E_inc|^2 with E_inc read from that same auxiliary grid, so the
-# contamination cancels IDENTICALLY in vacuum and the leakage / purity
-# witnesses read a steady standing wave as "settled". It enters the measured R
-# and T only once the record is long enough for the echo to reach the probes.
-#
-# WHY IT IS A RECORD QUESTION, NOT A MARGIN. The record law counts from the
-# PROBE (``t_safe`` = 0.95 x 2 dist(probe -> 3-D CPML)/v); the echo's path
-# counts from the auxiliary SOURCE, through the auxiliary reflector, back to
-# the probe -- roughly twice as long. The rig therefore buys a factor of ~1.8
-# against the auxiliary echo for free, and every committed slab-family rung
-# inherits it. That is a property of the geometry, not a margin anyone chose,
-# and until #888 it was written down nowhere. ``aux_echo_arrival`` computes it
-# so that a record law which ever grew past it fails instead of silently
-# importing the echo into every number.
-#
-# WHAT IT DOES NOT DO. It bounds WHEN the echo arrives. It does not bound HOW
-# LARGE the echo is: a deeper auxiliary absorber with sigma re-derived from a
-# reflection target is the actual fix (#888 fix candidate 1, undecided), and
-# this guard would pass a rig whose absorber was ten times worse.
-# ---------------------------------------------------------------------------
-AUX_N_CPML_1D = 20        # rfx/sources/tfsf.py: n_cpml_1d -- a hard-coded constant of the
-                          # auxiliary grid, NOT scaled by dx_div (cv04 note section 6.1)
-AUX_N_MARGIN_1D = 10      # rfx/sources/tfsf.py: n_margin
-AUX_SRC_OFFSET_1D = 3     # rfx/sources/tfsf.py: src_idx = n_cpml_1d + 3 for direction "+x"
-AUX_I0_1D = AUX_N_CPML_1D + AUX_N_MARGIN_1D   # tfsf.py: i0, the aux index mapping to 3-D x_lo
-# Where inside the absorber the reflection is generated, in cells from the
-# absorber's inner edge. MEASURED, not assumed: the two-mode fit
-# B/A = rho e^{-2 j k L} has a phase slope d(arg B/A)/dk = -1.277755 m, i.e.
-# a reflector at auxiliary index 638.88 with the hi CPML at 632..651
-# (cv04 note section 2), reproduced at 1038.88 on the nx_interior = 1000
-# geometry (section 9). The 2-D grid's counterpart is 8.0 cells inside its
-# 30-cell layer (#888 note section 3); it is passed explicitly there.
-AUX_REFLECTOR_DEPTH_CELLS = 6.88
-# The invariant: a record is admissible only while it ENDS BEFORE the echo
-# ARRIVES. Equality is already a failure -- the last recorded step would be the
-# first contaminated one.
-AUX_ECHO_RATIO_LIMIT = 1.0
-AUX_ECHO_SCHEMA = "aux-echo-record-invariant/v1"
-
-
-def aux_echo_arrival(*, n_aux: int, src_idx: int, aux_n_cpml: int,
-                     reflector_depth_cells: float, probe_aux_index: int,
-                     v_cells: float, lead_steps: float = 0.0) -> dict:
-    """The step at which the auxiliary absorber's echo first reaches one probe.
-
-    Pure geometry -- nothing here is measured on the run it guards, which is
-    the whole point: a witness derived from the record it bounds cannot bound
-    it. The echo is launched at ``src_idx``, reflects at
-    ``(n_aux - aux_n_cpml) + reflector_depth_cells`` (the absorber's inner edge
-    plus the measured reflecting depth) and travels back to
-    ``probe_aux_index``, the auxiliary index whose sample IS the incident
-    reference of the 3-D probe. ``v_cells`` is the propagation speed in cells
-    per step along the path.
-
-    ``lead_steps`` shifts the answer EARLIER, to the pulse's leading edge: the
-    path arithmetic starts the clock at t = 0 while the injected waveform only
-    peaks at t0, so the disturbance that arrives at ``path/v`` has a front
-    ``t0/dt`` steps ahead of it. Subtracting it is what makes the number a
-    bound rather than an estimate.
-
-    Returns ``arrival_steps`` (the bound, floored to an integer step) and
-    ``arrival_centre_steps`` (``path/v`` itself -- the quantity both #888 notes
-    tabulate, kept so their tables are reproducible from the artifact).
-    """
-    reflector = float(n_aux - int(aux_n_cpml)) + float(reflector_depth_cells)
-    path = (reflector - float(src_idx)) + (reflector - float(probe_aux_index))
-    if path <= 0.0:
-        raise ValueError(f"non-positive echo path {path} cells: the probe is behind the reflector")
-    if not (float(v_cells) > 0.0):
-        raise ValueError(f"v_cells must be positive, got {v_cells!r}")
-    centre = path / float(v_cells)
-    return {"reflector_index": reflector, "path_cells": path,
-            "arrival_centre_steps": int(round(centre)),
-            "arrival_steps": int(math.floor(centre - float(lead_steps)))}
-
-
-def slab_aux_echo(nx_interior: int, dt: float, *, dx_div: int = 1,
-                  n_steps: int | None = None) -> dict:
-    """``aux_echo_arrival`` at the slab family's own rig (cv04, cv22, cv23).
-
-    The auxiliary layout is ``rfx/sources/tfsf.py``'s:
-    ``n_1d = 20 + 10 + (x_hi - x_lo + 2) + 10 + 20``, source at 23, ``i0`` at
-    30 mapping to the 3-D ``x_lo``; its constants do NOT scale with ``dx_div``.
-
-    The speed is ``v_cells = c dt/dx``, the Courant cell speed
-    ``derive_record_length`` already uses. On the 1-D Yee lattice that is the
-    SUPREMUM of the group velocity over the band (v_g -> c dt/dx as k -> 0 and
-    falls monotonically with frequency), so no spectral component can arrive
-    earlier than this says. ``echo_arrival_steps`` is the earlier of the two
-    probes: the record is bounded by whichever is contaminated first.
-    """
-    K = int(dx_div)
-    dx = DX_M / K
-    cells = rig_cells(nx_interior, K)
-    x_lo = cells["x_lo"]
-    x_hi = cells["nx"] - x_lo - 1          # rfx/sources/tfsf.py: x_hi = nx - offset - 1
-    n_1d = 2 * AUX_N_CPML_1D + 2 * AUX_N_MARGIN_1D + (x_hi - x_lo + 2)
-    src_idx = AUX_N_CPML_1D + AUX_SRC_OFFSET_1D
-    v_cells = C0 * float(dt) / dx
-    tau = 1.0 / (math.pi * TFSF_F0_HZ * TFSF_BW)
-    lead = SRC_T0_OVER_TAU * tau / float(dt)
-    probes = {}
-    for name, px in (("refl", cells["probe_refl"]), ("trans", cells["probe_trans"])):
-        probes[name] = aux_echo_arrival(
-            n_aux=n_1d, src_idx=src_idx, aux_n_cpml=AUX_N_CPML_1D,
-            reflector_depth_cells=AUX_REFLECTOR_DEPTH_CELLS,
-            probe_aux_index=AUX_I0_1D + (px - x_lo),
-            v_cells=v_cells, lead_steps=lead)
-    first = min(probes, key=lambda k: probes[k]["arrival_steps"])
-    out = {
-        "schema": AUX_ECHO_SCHEMA, "issue": 888,
-        "nx_interior": int(nx_interior) * K, "dx_div": K,
-        "aux_n_1d": int(n_1d), "aux_n_cpml": AUX_N_CPML_1D, "aux_src_idx": int(src_idx),
-        "aux_reflector_depth_cells": AUX_REFLECTOR_DEPTH_CELLS,
-        "aux_reflector_index": probes["trans"]["reflector_index"],
-        "v_cells": float(v_cells), "pulse_lead_steps": float(lead),
-        "echo_arrival_probe": first,
-        "echo_arrival_steps": int(probes[first]["arrival_steps"]),
-        "echo_arrival_centre_steps": int(probes[first]["arrival_centre_steps"]),
-        "limit": AUX_ECHO_RATIO_LIMIT,
-    }
-    for name, pr in probes.items():
-        out[f"path_cells_{name}"] = pr["path_cells"]
-        out[f"arrival_steps_{name}"] = int(pr["arrival_steps"])
-        out[f"arrival_centre_steps_{name}"] = int(pr["arrival_centre_steps"])
-    if n_steps is not None:
-        out.update(aux_echo_verdict(out, int(n_steps)))
-    return out
-
-
-def aux_echo_verdict(echo: dict, n_steps: int) -> dict:
-    """``record_steps``, the ratio and the boolean, for a computed ``echo``."""
-    ratio = float(n_steps) / float(echo["echo_arrival_steps"])
-    return {"record_steps": int(n_steps),
-            "record_over_echo_arrival": ratio,
-            "ok": bool(ratio < AUX_ECHO_RATIO_LIMIT)}
-
-
-def aux_echo_failure_message(echo: dict) -> str:
-    """What a reader of a red gate needs: the mechanism, and where it is written."""
-    return (
-        f"AUXILIARY-ECHO RECORD INVARIANT (#888): the record is "
-        f"{echo['record_steps']} steps against an auxiliary-absorber echo arrival of "
-        f"{echo['echo_arrival_steps']} steps -- ratio "
-        f"{echo['record_over_echo_arrival']:.3f} >= {AUX_ECHO_RATIO_LIMIT:.1f}. "
-        f"The TF/SF auxiliary grid's own absorber reflects 4-6 % in amplitude "
-        f"(|B/A| = 4.40e-02 on this 1-D path) from "
-        f"{echo['aux_reflector_depth_cells']} cells inside its "
-        f"{echo['aux_n_cpml']}-cell layer; that -x wave is injected into the "
-        f"total-field region and, because R and T are normalised by the SAME "
-        f"auxiliary field, it cancels in vacuum and is invisible to the leakage "
-        f"and purity witnesses. It enters the measured R and T only once the "
-        f"record reaches the probes, which this record does. cv26 above 34 deg is "
-        f"exactly this failure. See issue #888 and "
-        f"docs/design_notes/20260904_aux_echo_record_invariant.md.")
-
-
-def incident_amplitude_rel(f_hz):
-    """Amplitude spectrum of the rig's differentiated-Gaussian incident pulse,
-    relative to its peak: |S(f)| ∝ f exp(-(pi f tau)^2), tau = 1/(pi f0 bw)."""
-    tau = 1.0 / (math.pi * TFSF_F0_HZ * TFSF_BW)
-    f = np.asarray(f_hz, dtype=float)
-    s = f * np.exp(-(math.pi * f * tau) ** 2)
-    peak = (1.0 / (math.sqrt(2.0) * math.pi * tau)) * math.exp(-0.5)
-    return s / peak
-
-
-def ring_band_hz():
-    """[f_lo, RING_F_MAX_HZ]: the incident band with amplitude >= RING_W_MIN of peak."""
-    f = np.linspace(1e7, TFSF_F0_HZ, 20000)
-    w = incident_amplitude_rel(f)
-    f_lo = float(f[np.argmax(w >= RING_W_MIN)])
-    return f_lo, RING_F_MAX_HZ
-
-
-def slab_ringdown_rates(model: str, params: dict):
-    """Amplitude decay rates (1/s) of the slab's own ring-down over the incident
-    ring band: the material pole (Debye 1/tau, Lorentz delta, Drude gamma/2)
-    and the etalon round-trip, rho = |r|^2 exp(-2 k0 Im(n) d) per
-    t_rt = 2 Re(n) d / c, each component weighted by its incident amplitude
-    w(f): a component starting at w needs ln(100 w)/rate to reach -40 dB. The
-    slowest entry is the one with the largest ln(100 w)/rate."""
-    f_lo, f_hi = ring_band_hz()
-    f = np.linspace(f_lo, f_hi, 1401)
-    eps = de.eps_analytic(f, model, params)
-    n = np.sqrt(eps)
-    # Forward branch: Re n >= 0 (the principal sqrt already has it; for a
-    # passive medium, Im eps < 0, that branch is the decaying one). The
-    # earlier `where(n.imag > 0, -n, n)` was a no-op for every passive arm
-    # but negated Re n for a GAIN medium (cv23's passivity falsifier),
-    # giving |r|^2 = 9; found while deriving that arm's record.
-    n = np.where(n.real < 0, -n, n)
-    k0 = TWO_PI * f / C0
-    r = (1 - n) / (1 + n)
-    rho = np.abs(r) ** 2 * np.exp(2 * k0 * n.imag * D_SLAB_M)   # |e^{-j k0 n d}|^2 per round trip
-    t_rt = 2 * np.abs(n.real) * D_SLAB_M / C0
-    if np.any(rho >= 1.0):
-        raise ValueError(f"{model}: etalon round-trip gain >= 1 at {f[np.argmax(rho)]/1e9:.2f} GHz "
-                         f"(rho {rho.max():.3f}); the slab does not ring down")
-    rate_et = -np.log(rho) / t_rt
-    if model == "debye":
-        rate_mat = 1.0 / params["tau"]
-    elif model == "lorentz":
-        rate_mat = float(params["delta"])
-    elif model == "conductive":
-        # cv23: J = sigma E is memoryless (no P recurrence, no material
-        # ring-down mode); the charge-relaxation pole sigma/(eps0 eps') is a
-        # longitudinal mode that normal incidence does not excite. Only the
-        # etalon decays, and its absorption per pass is already in rho.
-        rate_mat = float("inf")
-    else:
-        rate_mat = float(params["gamma"]) / 2.0
-    w = incident_amplitude_rel(f)
-    rate = np.minimum(rate_et, rate_mat)
-    t_need = np.log(100.0 * w) / rate       # seconds to -40 dB of the incident peak
-    i = int(np.argmax(t_need))
-    return {"rate_material_1_s": (float(rate_mat) if math.isfinite(rate_mat) else None),
-            "rate_etalon_slowest_1_s": float(rate_et.min()),
-            "f_etalon_slowest_hz": float(f[int(np.argmin(rate_et))]),
-            "ring_band_hz": [f_lo, f_hi], "ring_w_min": RING_W_MIN,
-            "t_ring_s": float(t_need[i]), "f_ring_hz": float(f[i]), "w_ring": float(w[i]),
-            "rate_ring_1_s": float(rate[i]), "rho_etalon": float(rho[i]), "t_rt_s": float(t_rt[i])}
+# The incident pulse's spectrum, the ring band it defines and the slab's own
+# ring-down rates are rig + material physics, not this case's gate policy:
+# cv04's witness and cv23's record recipe need them too, so they are DECLARED
+# in slab_family and re-exported here (#928). Bodies unchanged.
+incident_amplitude_rel = slab_family.incident_amplitude_rel
+ring_band_hz = slab_family.ring_band_hz
+slab_ringdown_rates = slab_family.slab_ringdown_rates
+# The verdict aggregate, including the completeness rule (#928).
+aggregate_gates = slab_family.aggregate_gates
 
 
 def derive_record_length(model: str, params: dict, dt: float, *, nx_interior: int = NX_INTERIOR_R3,
@@ -669,7 +515,7 @@ def meep_ladder_summary(results_dir: str, rfx_doc: dict, resolutions=MEEP_LADDER
     out = {"schema": "cv22-meep-ladder/v1", "resolutions": list(resolutions), "arms": {}}
     for arm, ad in rfx_doc["arms"].items():
         e2 = evaluate_e2(ad["freqs_hz"], ad["R_rfx"], ad["T_rfx"], ad["model"], ad["params"], ad["dt_s"],
-                         tail=ad["tail"])
+                         tail=ad["tail"], windows=WINDOWS)
         rungs = {}
         for res in resolutions:
             p = os.path.join(results_dir, f"meep_{arm}__res{res}.json")
@@ -680,7 +526,7 @@ def meep_ladder_summary(results_dir: str, rfx_doc: dict, resolutions=MEEP_LADDER
             if not md["run"]["finite"]:
                 rungs[str(res)] = {"finite": False}
                 continue
-            e4 = evaluate_e4(e2, md)
+            e4 = evaluate_e4(e2, md, windows=WINDOWS)
             rungs[str(res)] = {"finite": True, "dt_meep_s": md["dt_meep_s"],
                                "mean_dR_meep_tmm_gated": e4["mean_dR_meep_tmm_gated"],
                                "mean_dT_meep_tmm_gated": e4["mean_dT_meep_tmm_gated"],

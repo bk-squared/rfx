@@ -42,7 +42,9 @@ from thru_feedpost_joint_extraction import (  # noqa: E402  (attempt-2 appar.)
 from rfx import Simulation  # noqa: E402
 from rfx.boundaries.spec import Boundary, BoundarySpec  # noqa: E402
 from rfx.deembed import deembed_line_segment  # noqa: E402
-from rfx.sources.sources import GaussianPulse  # noqa: E402
+from rfx.sources.sources import GaussianPulse
+
+from validation.crossval.comparators import realized_conductors as RC  # noqa: E402
 from rfx.probes.refplane import (  # noqa: E402
     refplane_beta, refplane_centered_current, refplane_split,
     refplane_zc_two_plane,
@@ -217,8 +219,11 @@ def build_singlepost(pulse: GaussianPulse,
     realization): battery-verbatim port + post + trace cross-section and
     port-side overhang on a 20 mm line, terminated at x = 28 mm in the
     VALIDATED passive matched wire-port class (a PEC trace cannot
-    continue into the CPML pad — pec_mask is never pad-extended; the
-    section-11 apparatus finding). The far termination's own post sits
+    continue into the CPML pad — the pad carries no conductor: a sheet's
+    footprint is the nodes its own drawn rectangle covers, and the CPML
+    pad extension copies MATERIAL, never a conductor declaration; the
+    section-11 apparatus finding, restated for the contract). The far
+    termination's own post sits
     inside the MEASURED Gamma_top load and never enters the model.
     Returns the Simulation (no solve call)."""
     sim = Simulation(
@@ -227,9 +232,14 @@ def build_singlepost(pulse: GaussianPulse,
                               z=Boundary(lo="pec", hi="cpml")),
         cpml_layers=CPML_LAYERS,
     )
+    # Foil, not a slab: a zero-thickness Box declares the sheet on the
+    # z = H node plane (#931 §1.5). See build_thru in
+    # thru_feedpost_deembed.py — the two fixtures share this drawing and
+    # must share the declaration, or the THRU and the single-post line are
+    # two different lines.
     sim.add(
         Box((X1 - DX, Y_MID - W / 2, H),
-            (X_FAR_SP + DX, Y_MID + W / 2, H + DX)),
+            (X_FAR_SP + DX, Y_MID + W / 2, H)),
         material="pec",
     )
     kw = ({} if reference_plane_cells is None
@@ -238,7 +248,22 @@ def build_singlepost(pulse: GaussianPulse,
                  extent=H, waveform=pulse, direction="-x", **kw)
     sim.add_port(position=(X_FAR_SP, Y_MID, 0.0), component="ez",
                  impedance=Z0, extent=H, excite=False, direction="+x")
+    assert_trace_sheet(sim, "singlepost")
     return sim
+
+
+def assert_trace_sheet(sim, label: str) -> dict:
+    """Build-time (no solve): the trace realizes ONE wall plane, at z = H.
+
+    Asked of the shared owner (``realized_pec_edge_masks`` via the crossval
+    gate), not re-derived here. A sheet that snapped to a neighbouring node
+    would move the whole line's ground spacing by half a cell and every
+    extracted Zc with it, silently; this fails by name instead, before any
+    FDTD budget is spent.
+    """
+    return RC.assert_wall_planes(
+        sim, 2, [float(H)], at=(0.5 * (X1 + X_FAR_SP), Y_MID),
+        label=f"{label} trace", tol_m=1e-12)
 
 
 def raw_drive(sim, freqs, n_steps, drive_idx, expected_codes):
@@ -251,22 +276,54 @@ def raw_drive(sim, freqs, n_steps, drive_idx, expected_codes):
     assert codes == expected_codes, (
         f"fixture preflight drifted: {codes} vs pinned {expected_codes}")
     grid = sim._build_grid()
-    mats, dsp, lsp, pm, _, _, _ = sim._assemble_materials(grid)
+    # Collectors, not a positional unpack of pec_mask alone: the trace is a
+    # SHEET and a sheet owns no cell, so it is absent from pec_mask by
+    # construction (#931 §6 out-parameters). A caller that steps fields
+    # must pass pec_sheets/pec_wires and hand them to the forward, or the
+    # conductor silently is not there.
+    sheets: list = []
+    wires: list = []
+    mats, dsp, lsp, pm, _, _, _ = sim._assemble_materials(
+        grid, pec_sheets=sheets, pec_wires=wires)
     raw = sim._forward_from_materials(
         grid, mats, dsp, lsp, n_steps=n_steps, checkpoint=False,
-        pec_mask=pm, port_s11_freqs=np.asarray(freqs, dtype=np.float64),
+        pec_mask=pm, pec_sheets=tuple(sheets), pec_wires=tuple(wires),
+        port_s11_freqs=np.asarray(freqs, dtype=np.float64),
         _sparam_drive_idx=drive_idx, _return_raw_port_sparams=True)
     return raw, float(grid.dt)
 
 
-THRU_CODES = ["pec_faces_finite_pec", "wire_port_dead_extent_cells",
-              "wire_port_dead_extent_cells"]
+# Re-derived 2026-09-07 under the lattice ownership contract (#931), by
+# running sim.preflight() on these two fixtures — not translated from the
+# old lists. Three changes, each with its reason:
+#
+#   - wire_port_dead_extent_cells x2 is GONE from both. It fired because
+#     the trace's own cell was in pec_mask and the port column ran into
+#     it. Under the contract a wire-port cell is live exactly when the
+#     port component's own edge is not PEC (§1.9), and a sheet leaves the
+#     NORMAL edge live, so the Ez column under the trace has no dead cell
+#     to report. The port is galvanically attached to the trace, which is
+#     what this fixture always meant.
+#   - mesh_resolution is NEW and is a preflight-stage artifact, not
+#     physics: _validate_mesh_quality still advises a zero-thickness PEC
+#     Box to "give it at least one cell of thickness", which the contract
+#     makes exactly wrong (a zero-thickness Box IS the sheet
+#     declaration). Design note §6 lists this message among the preflight
+#     findings not yet migrated.
+#   - uncoded is NEW and is also a preflight-stage artifact: preflight's
+#     own _assemble_materials(grid) call passes no pec_sheets collector
+#     and takes the sheets-dropped UserWarning (design note §6, last
+#     paragraph).
+#
+# Both new entries MUST be re-derived (and are expected to disappear)
+# when the preflight stage lands. That is a required, reviewed diff on
+# this list — not an incidental one.
+THRU_CODES = ["mesh_resolution", "pec_faces_finite_pec", "uncoded"]
 # refplane_partial_optin is the DELIBERATE design: only the driven port
 # opts into the plane instrument (the passive far termination stays on
 # the default path; the harness consumes raw plane accumulators only).
-SINGLEPOST_CODES = ["pec_faces_finite_pec", "refplane_partial_optin",
-                    "wire_port_dead_extent_cells",
-                    "wire_port_dead_extent_cells"]
+SINGLEPOST_CODES = ["mesh_resolution", "pec_faces_finite_pec",
+                    "refplane_partial_optin", "uncoded"]
 
 
 def wholeport_channels(raw, port_idx):

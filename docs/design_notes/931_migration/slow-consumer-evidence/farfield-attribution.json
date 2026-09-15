@@ -1,0 +1,387 @@
+{
+  "source": "5ce0de652d6bb58a70735504dce42da83ddd8b16",
+  "rfx_import": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/__init__.py",
+  "predeclared_falsifier": "Diagnostic only: isolate #931 volume-edge realization, without fixture tuning.\n\nRun from this worktree: PYTHONPATH=$PWD JAX_PLATFORMS=cpu python\nscripts/diagnostics/slow_931_farfield_attribution.py\n\nPredeclared falsifier: if restoring ONLY the historical volume-edge map does\nnot bring this unchanged uniform/graded comparison back below 5%, volume-edge\nownership alone does not explain crossing the envelope. This is not a rollback\nproposal or a newly qualified physical baseline. Four sequential 600-step runs.\nHistorical map is copied from a3e4dba4^:rfx/boundaries/pec.py tangential_edge_masks.\nAll patching is process-local, restored after each counterfactual.\n",
+  "cases": {
+    "current_uniform": {
+      "shape": [
+        101,
+        101,
+        101
+      ],
+      "dt": 4.766437173827514e-13,
+      "duration": 2.8598623042965087e-10,
+      "occupied_cells": 216,
+      "node_vs_center_occupancy_xor": 0,
+      "edge_counts": [
+        294,
+        294,
+        294
+      ],
+      "wall_planes_m": [
+        [
+          0.01025,
+          0.0105,
+          0.010750000000000001,
+          0.011,
+          0.01125,
+          0.0115,
+          0.01175
+        ],
+        [
+          0.01025,
+          0.0105,
+          0.010750000000000001,
+          0.011,
+          0.01125,
+          0.0115,
+          0.01175
+        ],
+        [
+          0.01025,
+          0.0105,
+          0.010750000000000001,
+          0.011,
+          0.01125,
+          0.0115,
+          0.01175
+        ]
+      ],
+      "source_index": [
+        50,
+        50,
+        44
+      ],
+      "source_node_m": [
+        0.011,
+        0.011,
+        0.0095
+      ],
+      "source_dual_volume_m3": 1.5625e-11,
+      "source_waveform_30ghz_dt_dft": [
+        -1.480272935477922e-12,
+        2.3241124736533836e-12
+      ],
+      "source_waveform_tail": -0.0,
+      "power": 6.156803489220375e-14,
+      "numpy_power": 6.156803765602908e-14,
+      "numpy_jax_max_U_relative": 9.01657375156514e-07,
+      "scalar_inplane_power": 6.156803489220375e-14,
+      "ntff_indices": [
+        24,
+        76,
+        24,
+        76,
+        24,
+        76
+      ],
+      "ntff_coordinates_m": [
+        [
+          0.0045000000000000005,
+          0.0175
+        ],
+        [
+          0.0045000000000000005,
+          0.0175
+        ],
+        [
+          0.0045000000000000005,
+          0.0175
+        ]
+      ]
+    },
+    "current_graded": {
+      "shape": [
+        105,
+        105,
+        101
+      ],
+      "dt": 2.7519037853846947e-13,
+      "duration": 1.6511422712308169e-10,
+      "occupied_cells": 864,
+      "node_vs_center_occupancy_xor": 0,
+      "edge_counts": [
+        1092,
+        1092,
+        1014
+      ],
+      "wall_planes_m": [
+        [
+          0.010250000000000009,
+          0.01037500000000001,
+          0.01050000000000001,
+          0.01062500000000001,
+          0.01075000000000001,
+          0.01087500000000001,
+          0.01100000000000001,
+          0.01112500000000001,
+          0.01125000000000001,
+          0.01137500000000001,
+          0.01150000000000001,
+          0.01162500000000001,
+          0.01175000000000001
+        ],
+        [
+          0.010250000000000009,
+          0.01037500000000001,
+          0.01050000000000001,
+          0.01062500000000001,
+          0.01075000000000001,
+          0.01087500000000001,
+          0.01100000000000001,
+          0.01112500000000001,
+          0.01125000000000001,
+          0.01137500000000001,
+          0.01150000000000001,
+          0.01162500000000001,
+          0.01175000000000001
+        ],
+        [
+          0.01025,
+          0.0105,
+          0.010750000000000001,
+          0.011,
+          0.01125,
+          0.0115,
+          0.01175
+        ]
+      ],
+      "source_index": [
+        52,
+        52,
+        44
+      ],
+      "source_node_m": [
+        0.01100000000000001,
+        0.01100000000000001,
+        0.0095
+      ],
+      "source_dual_volume_m3": 3.9062505566107836e-12,
+      "source_waveform_30ghz_dt_dft": [
+        -1.480344492821306e-12,
+        2.324110522089473e-12
+      ],
+      "source_waveform_tail": -1.278717132180418e-09,
+      "power": 6.52969118201093e-14,
+      "numpy_power": 6.529691498136975e-14,
+      "numpy_jax_max_U_relative": 6.836160374152352e-07,
+      "scalar_inplane_power": 7.380006270798069e-14,
+      "ntff_indices": [
+        24,
+        80,
+        24,
+        80,
+        24,
+        76
+      ],
+      "ntff_coordinates_m": [
+        [
+          0.004500000000000004,
+          0.017500000000000012
+        ],
+        [
+          0.004500000000000004,
+          0.017500000000000012
+        ],
+        [
+          0.0045000000000000005,
+          0.0175
+        ]
+      ]
+    },
+    "legacy_uniform": {
+      "shape": [
+        101,
+        101,
+        101
+      ],
+      "dt": 4.766437173827514e-13,
+      "duration": 2.8598623042965087e-10,
+      "occupied_cells": 216,
+      "node_vs_center_occupancy_xor": 0,
+      "edge_counts": [
+        216,
+        216,
+        216
+      ],
+      "wall_planes_m": [
+        [
+          0.01025,
+          0.0105,
+          0.010750000000000001,
+          0.011,
+          0.01125,
+          0.0115
+        ],
+        [
+          0.01025,
+          0.0105,
+          0.010750000000000001,
+          0.011,
+          0.01125,
+          0.0115
+        ],
+        [
+          0.01025,
+          0.0105,
+          0.010750000000000001,
+          0.011,
+          0.01125,
+          0.0115
+        ]
+      ],
+      "source_index": [
+        50,
+        50,
+        44
+      ],
+      "source_node_m": [
+        0.011,
+        0.011,
+        0.0095
+      ],
+      "source_dual_volume_m3": 1.5625e-11,
+      "source_waveform_30ghz_dt_dft": [
+        -1.480272935477922e-12,
+        2.3241124736533836e-12
+      ],
+      "source_waveform_tail": -0.0,
+      "power": 6.492380346738798e-14,
+      "numpy_power": 6.492380606485797e-14,
+      "numpy_jax_max_U_relative": 1.1204029209573964e-06,
+      "scalar_inplane_power": 6.492380346738798e-14,
+      "ntff_indices": [
+        24,
+        76,
+        24,
+        76,
+        24,
+        76
+      ],
+      "ntff_coordinates_m": [
+        [
+          0.0045000000000000005,
+          0.0175
+        ],
+        [
+          0.0045000000000000005,
+          0.0175
+        ],
+        [
+          0.0045000000000000005,
+          0.0175
+        ]
+      ]
+    },
+    "legacy_graded": {
+      "shape": [
+        105,
+        105,
+        101
+      ],
+      "dt": 2.7519037853846947e-13,
+      "duration": 1.6511422712308169e-10,
+      "occupied_cells": 864,
+      "node_vs_center_occupancy_xor": 0,
+      "edge_counts": [
+        864,
+        864,
+        864
+      ],
+      "wall_planes_m": [
+        [
+          0.010250000000000009,
+          0.01037500000000001,
+          0.01050000000000001,
+          0.01062500000000001,
+          0.01075000000000001,
+          0.01087500000000001,
+          0.01100000000000001,
+          0.01112500000000001,
+          0.01125000000000001,
+          0.01137500000000001,
+          0.01150000000000001,
+          0.01162500000000001
+        ],
+        [
+          0.010250000000000009,
+          0.01037500000000001,
+          0.01050000000000001,
+          0.01062500000000001,
+          0.01075000000000001,
+          0.01087500000000001,
+          0.01100000000000001,
+          0.01112500000000001,
+          0.01125000000000001,
+          0.01137500000000001,
+          0.01150000000000001,
+          0.01162500000000001
+        ],
+        [
+          0.01025,
+          0.0105,
+          0.010750000000000001,
+          0.011,
+          0.01125,
+          0.0115
+        ]
+      ],
+      "source_index": [
+        52,
+        52,
+        44
+      ],
+      "source_node_m": [
+        0.01100000000000001,
+        0.01100000000000001,
+        0.0095
+      ],
+      "source_dual_volume_m3": 3.9062505566107836e-12,
+      "source_waveform_30ghz_dt_dft": [
+        -1.480344492821306e-12,
+        2.324110522089473e-12
+      ],
+      "source_waveform_tail": -1.278717132180418e-09,
+      "power": 6.631195815782366e-14,
+      "numpy_power": 6.631196070178765e-14,
+      "numpy_jax_max_U_relative": 7.331399152328433e-07,
+      "scalar_inplane_power": 7.494211508979361e-14,
+      "ntff_indices": [
+        24,
+        80,
+        24,
+        80,
+        24,
+        76
+      ],
+      "ntff_coordinates_m": [
+        [
+          0.004500000000000004,
+          0.017500000000000012
+        ],
+        [
+          0.004500000000000004,
+          0.017500000000000012
+        ],
+        [
+          0.0045000000000000005,
+          0.0175
+        ]
+      ]
+    }
+  },
+  "current_errors": {
+    "local": 0.06056514446878562,
+    "scalar": 0.19867497536982226,
+    "graded_over_uniform_power": 1.0605651444687856,
+    "peak_normalized_pattern_max_abs": 0.2977226972579956,
+    "power_normalized_pattern_relative_l2": 0.18730822205543518
+  },
+  "legacy_errors": {
+    "local": 0.021381290317240505,
+    "scalar": 0.1543087602290269,
+    "graded_over_uniform_power": 1.0213812903172406,
+    "peak_normalized_pattern_max_abs": 0.291678786277771,
+    "power_normalized_pattern_relative_l2": 0.1883770227432251
+  }
+}

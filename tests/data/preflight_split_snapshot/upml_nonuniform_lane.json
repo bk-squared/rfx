@@ -1,0 +1,37 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "upml_nonuniform_lane_unsupported",
+        "loc": null,
+        "message": "boundary='upml' was requested with a non-uniform mesh (dx/dy/dz profile set), but the non-uniform runner has no UPML code at all: rfx/nonuniform.py selects its absorber with `use_cpml = grid.cpml_layers > 0` and never reads the boundary type, and every apply_upml_e/apply_upml_h call site is in the uniform scan body (rfx/simulation.py). Measured before this was guarded (4x4x3 mm ez-dipole, configs identical apart from the mesh profile): apply_upml_e ran 1x on the uniform lane and 0x on the non-uniform lane while sim._boundary still read 'upml', so the run was CPML and even a post-hoc audit reported the absorber that never ran (issue #680). That is not a slightly worse UPML \u2014 CPML and UPML differ in reflection and in how material inside the pad is treated. Use boundary='cpml' to run the absorber that is implemented on this lane, or drop the mesh profile(s) to reach the uniform lane, which does implement UPML. run()/forward() raise ValueError at lane entry rather than proceed; this advisory explains that error in advance and covers skip_preflight=True, which does NOT bypass the lane guard. This guard is stale if rfx/nonuniform.py ever dispatches its absorber on the boundary type, or if an apply_upml_* call site appears outside rfx/simulation.py.",
+        "severity": "warning",
+        "source": "_validate_cfg_upml_nonuniform_lane"
+      },
+      {
+        "code": "unresolved_pulse",
+        "loc": "waveform GaussianPulse at (0.002, 0.002, 0.0015)",
+        "message": "waveform tau=6.37e-21s is below 3*dt (dt~9.53e-13s, tau/dt=6.68e-09): pulse unresolved by the time step \u2014 an absolute-Hz bandwidth was likely passed where a FRACTIONAL one is expected; the discrete DC residue leaves a static charge field CPML cannot absorb (issue #386)",
+        "severity": "warning",
+        "source": "_validate_cfg_unresolved_pulse"
+      },
+      {
+        "code": "nu_grading_reaches_absorber",
+        "loc": null,
+        "message": "dz_profile is not uniform within the 6 interior cells adjacent to the z_lo absorber face (max adjacent cell-ratio deviation 0.07). WHY: the absorber pad replicates the outermost interior cell, so a transition in that runway changes the discrete medium in the boundary-NORMAL direction exactly where the absorber starts \u2014 the documented PML breakdown class \u2014 and gives the transition's own reflection no runway to separate from the absorber's. COST: the validated multi-band envelope does not cover it at all; no witness in it MEASURES an accuracy observable with an absorber present (every accuracy witness is PEC-closed at cpml_layers = 0; the one absorber-bearing witness checks the AD path only) (docs/guides/support_matrix.md, 'Multi-band graded mesh'). REMEDY: keep at least 6 uniform interior cells against that face, or close it with PEC/PMC. STALE-IF: a witness that SCORES an accuracy observable with an absorber present is added to that row.",
+        "severity": "warning",
+        "source": "_validate_cfg_multiband_grading"
+      },
+      {
+        "code": "nu_grading_reaches_absorber",
+        "loc": null,
+        "message": "dz_profile is not uniform within the 6 interior cells adjacent to the z_hi absorber face (max adjacent cell-ratio deviation 0.07). WHY: the absorber pad replicates the outermost interior cell, so a transition in that runway changes the discrete medium in the boundary-NORMAL direction exactly where the absorber starts \u2014 the documented PML breakdown class \u2014 and gives the transition's own reflection no runway to separate from the absorber's. COST: the validated multi-band envelope does not cover it at all; no witness in it MEASURES an accuracy observable with an absorber present (every accuracy witness is PEC-closed at cpml_layers = 0; the one absorber-bearing witness checks the AD path only) (docs/guides/support_matrix.md, 'Multi-band graded mesh'). REMEDY: keep at least 6 uniform interior cells against that face, or close it with PEC/PMC. STALE-IF: a witness that SCORES an accuracy observable with an absorber present is added to that row.",
+        "severity": "warning",
+        "source": "_validate_cfg_multiband_grading"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 4,
+    "ok": true
+  }
+}

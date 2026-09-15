@@ -60,7 +60,6 @@ from rfx.api._preflight import (
     PreflightErrorWarning,
     PreflightIssue,
     PreflightReport,
-    PreflightWarning,
 )
 
 
@@ -76,18 +75,62 @@ def _has(issues, substring):
     return any(substring in i for i in issues)
 
 
-def test_thin_pec_sheet_is_silent():
-    """1-cell PEC on dx=0.5mm (half-wavelength-fraction) should not warn."""
+def test_one_cell_pec_box_is_a_slab_not_under_resolved():
+    """1-cell PEC on dx=0.5mm: no 'volume under-resolved' warning (a 1-2
+    cell slab is realized as drawn, #931 §1.2) — what fires instead is
+    ``pec_box_one_cell``, which says it is a slab with walls on both faces
+    and names the sheet declaration for a foil."""
     sim = Simulation(freq_max=10e9, domain=(0.01, 0.01, 0.01), dx=0.5e-3,
                      cpml_layers=4)
     sim.add_source((0.005, 0.005, 0.002), "ez")
     sim.add_probe((0.005, 0.005, 0.005), "ez")
     sim.add(Box((0.003, 0.003, 0.005), (0.007, 0.007, 0.0055)), material="pec")
     issues = _issues(sim)
-    assert not _has(issues, "PEC volume"), (
+    assert not _has(issues, "volume under-resolved"), (
         f"1-cell PEC should not trigger a volume under-resolved warning; "
         f"issues: {issues!r}"
     )
+    assert any(getattr(i, "code", None) == "pec_box_one_cell" for i in issues), (
+        f"1-cell PEC Box must be reported as a one-cell slab; issues: {issues!r}"
+    )
+
+
+def test_zero_thickness_pec_box_is_a_sheet_and_draws_no_thickness_advice():
+    """A zero-thickness PEC Box IS the sheet declaration (#931 §1.5): the
+    mesh-quality check must not tell the user to give it a cell of
+    thickness (that would turn a foil into a two-wall slab)."""
+    sim = Simulation(freq_max=10e9, domain=(0.01, 0.01, 0.01), dx=0.5e-3,
+                     cpml_layers=4)
+    sim.add_source((0.005, 0.005, 0.002), "ez")
+    sim.add(Box((0.003, 0.003, 0.005), (0.007, 0.007, 0.005)), material="pec")
+    from tests._realized_geometry import realized, node_index
+
+    issues = _issues(sim)
+    assert not issues.by_code("mesh_resolution"), issues
+    # An exactly on-node sheet has no offset to report. Its realization
+    # must survive even though the conditional advisory stays silent.
+    assert not issues.by_code("sheet_plane_realized"), issues
+    rz = realized(sim)
+    assert rz.sheet_planes == {2: [node_index(rz.grid, 2, 0.005)]}
+    assert not np.any(rz.pec_mask)
+    mx, my, mz = rz.edge_masks
+    assert np.any(mx) and np.any(my)
+    assert not np.any(mz), "a sheet must leave normal E live"
+
+
+def test_sub_cell_pec_box_advisory_documents_the_refusal():
+    """A 0.2 mm PEC Box on a 0.5 mm cell: the mesh-resolution advisory
+    names the §1.5 rule (a Box is a volume; declare a sheet) instead of
+    the pre-#931 'modelled as a one-cell surface' story, and the
+    realization finding is the ERROR that run() will raise."""
+    sim = Simulation(freq_max=10e9, domain=(0.01, 0.01, 0.01), dx=0.5e-3,
+                     cpml_layers=4)
+    sim.add_source((0.005, 0.005, 0.002), "ez")
+    sim.add(Box((0.003, 0.003, 0.005), (0.007, 0.007, 0.0052)), material="pec")
+    issues = _issues(sim)
+    assert _has(issues, "declare a SHEET"), issues
+    assert not _has(issues, "would not change it"), issues
+    assert any(getattr(i, "code", None) == "pec_box_subcell" for i in issues)
 
 
 def test_partial_pec_volume_warns():
@@ -369,8 +412,9 @@ def _codes(sim):
 # FP1 — thin-sheet PEC strip should not trigger PEC-volume warning
 # ---------------------------------------------------------------------------
 def test_thin_pec_strip_with_4_cell_y_silent_on_volume_warning():
-    """Strip-shape PEC with z = 1 cell is a thin sheet, not a volume.
-    The 4-cells-along-y signal must not fire the volume warning."""
+    """Strip-shape PEC with z = 1 cell is a one-cell slab (realized as
+    drawn); the 4-cells-along-y signal must not fire the partial-volume
+    warning."""
     DX = 0.5e-3
     LX, LY, LZ = 0.030, 0.005, 0.002
     sim = Simulation(freq_max=10e9, domain=(LX, LY, LZ), dx=DX,
@@ -380,7 +424,7 @@ def test_thin_pec_strip_with_4_cell_y_silent_on_volume_warning():
     sim.add(Box((0.0, 0.0015, 0.001), (LX, 0.0035, 0.0015)),
             material="pec")
     issues = _issues(sim)
-    assert not _has(issues, "PEC volume"), (
+    assert not _has(issues, "volume under-resolved"), (
         f"thin PEC strip (1 cell in z) must not fire volume warning; "
         f"issues: {issues!r}"
     )
@@ -452,11 +496,19 @@ def test_inset_box_leaking_into_cpml_still_warns():
 
 
 # ---------------------------------------------------------------------------
-# FP4 — H-component probe at thin-PEC-sheet centre is valid
+# FP4 — port/probe liveness is read from the REALIZED edge set (#931/#929)
 # ---------------------------------------------------------------------------
-def _msl_sim_with_probe(component: str) -> Simulation:
-    """Tiny MSL geometry with one diagnostic probe at the centre of the
-    1-cell trace PEC.  Used to test FP4 component-aware exemption."""
+def _msl_sim_with_probe(component: str, trace: str = "sheet",
+                        probe_on_plane: bool = False) -> Simulation:
+    """Tiny MSL geometry with one diagnostic probe half a cell above the
+    substrate top, where the trace sits.
+
+    ``trace="sheet"``: the trace is a zero-thickness PEC Box on z = H_SUB —
+    one node plane, normal E through it live, tangential H beside it live.
+    ``trace="volume"``: the trace is a 1-cell PEC Box [H_SUB, H_SUB + DX]
+    — a slab that shorts every edge between its faces, so H at its centre
+    is frozen (all four curl-loop edges are PEC).
+    """
     EPS_R = 3.66
     H_SUB = 254e-6
     W_TRACE = 600e-6
@@ -467,44 +519,74 @@ def _msl_sim_with_probe(component: str) -> Simulation:
     sim.add_material("ro4350b", eps_r=EPS_R)
     sim.add(Box((0, 0, 0), (LX, LY, H_SUB)), material="ro4350b")
     y_trace = LY / 2.0
+    z_hi = H_SUB if trace == "sheet" else H_SUB + DX
     sim.add(
         Box((0, y_trace - W_TRACE / 2, H_SUB),
-            (LX, y_trace + W_TRACE / 2, H_SUB + DX)),
+            (LX, y_trace + W_TRACE / 2, z_hi)),
         material="pec",
     )
     sim.add_source((0.5e-3, y_trace, 0.5 * H_SUB), "ez")
-    # Probe at trace cell centre: z = H_SUB + 0.5·dx, inside the PEC
-    # trace bbox by construction.
-    sim.add_probe((LX / 2, y_trace, H_SUB + 0.5 * DX), component)
+    # Probe half a cell above the substrate top (beside a sheet trace,
+    # inside a one-cell volume trace), or ON the trace plane itself.
+    z_probe = H_SUB if probe_on_plane else H_SUB + 0.5 * DX
+    sim.add_probe((LX / 2, y_trace, z_probe), component)
     return sim
 
 
-def test_hy_probe_at_thin_trace_pec_silent_on_inside_pec():
-    """An Hy diagnostic probe placed at the centre of a 1-cell trace
-    PEC measures tangential H — physically non-zero — and must not
-    trigger the inside-PEC warning."""
-    sim = _msl_sim_with_probe("hy")
-    issues = _issues(sim)
-    assert not _has(issues, "is inside PEC geometry"), (
-        f"Hy probe at thin-trace PEC centre must not warn; "
-        f"issues: {issues!r}"
+def _in_pec(issues):
+    return [i for i in issues if getattr(i, "code", None) == "port_in_pec"]
+
+
+def test_hy_probe_beside_a_sheet_trace_is_live():
+    """Tangential H half a cell above a SHEET is live (only one of its
+    four curl-loop edges is PEC): an Hy diagnostic probe there measures
+    the trace surface current and must not warn."""
+    issues = _issues(_msl_sim_with_probe("hy", trace="sheet"))
+    assert _in_pec(issues) == [], (
+        f"Hy probe beside a sheet trace must not warn; issues: {issues!r}"
     )
 
 
-def test_ez_probe_at_thin_trace_pec_still_warns():
-    """An Ez probe at the same position is killed by the PEC update —
-    the warning must still fire (only H components are exempt)."""
-    sim = _msl_sim_with_probe("ez")
-    issues = _issues(sim)
-    assert _has(issues, "is inside PEC geometry"), (
-        f"Ez probe inside thin PEC must still warn; issues: {issues!r}"
+def test_ez_probe_through_a_sheet_trace_is_live():
+    """The normal E edge THROUGH a sheet plane stays live (#931 §1.3) —
+    an Ez probe whose edge crosses the trace plane must not warn."""
+    issues = _issues(_msl_sim_with_probe("ez", trace="sheet"))
+    assert _in_pec(issues) == [], (
+        f"Ez probe through a sheet trace must not warn; issues: {issues!r}"
     )
+
+
+def test_ey_probe_on_a_sheet_trace_plane_warns():
+    """Tangential E ON the sheet plane is PEC: an Ey probe at the trace
+    plane is frozen and must warn (the #929 rule: dead iff its OWN edge
+    is PEC)."""
+    issues = _issues(_msl_sim_with_probe("ey", trace="sheet",
+                                         probe_on_plane=True))
+    hits = _in_pec(issues)
+    assert hits, f"Ey probe on the sheet plane must warn; issues: {issues!r}"
+    assert "its own E edge is a realized PEC edge" in str(hits[0])
+
+
+def test_hy_probe_inside_a_one_cell_volume_trace_warns():
+    """Inside a one-cell VOLUME all four curl-loop edges are PEC, so H at
+    the trace centre never moves: the warning is CORRECT there (the
+    pre-#931 '<= 1.5 dx is a thin sheet' exemption inferred sheet-ness
+    from a bounding box and silenced this case)."""
+    issues = _issues(_msl_sim_with_probe("hy", trace="volume"))
+    hits = _in_pec(issues)
+    assert hits, f"Hy probe inside a one-cell volume must warn; issues: {issues!r}"
+    assert "all four E edges of its curl loop" in str(hits[0])
+
+
+def test_ez_probe_inside_a_one_cell_volume_trace_warns():
+    """An Ez edge between the two faces of a volume is shorted — warns."""
+    issues = _issues(_msl_sim_with_probe("ez", trace="volume"))
+    assert _in_pec(issues), "Ez probe inside a volume trace must warn"
 
 
 def test_hy_probe_inside_thick_pec_volume_still_warns():
     """H decays to zero deep inside a thick PEC volume.  An Hy probe
-    placed at the centre of a 5-cell PEC cube must still warn — the
-    thin-sheet exemption applies only to ≤ 1.5·dx-thick PEC."""
+    placed at the centre of a 5-cell PEC cube must still warn."""
     DX = 1.0e-3
     LX, LY, LZ = 0.020, 0.020, 0.020
     sim = Simulation(freq_max=10e9, domain=(LX, LY, LZ), dx=DX,
@@ -515,8 +597,8 @@ def test_hy_probe_inside_thick_pec_volume_still_warns():
             material="pec")
     sim.add_probe((0.0075, 0.0075, 0.0075), "hy")  # cell centre, deep
     issues = _issues(sim)
-    assert _has(issues, "is inside PEC geometry"), (
-        f"Hy probe in thick PEC volume must still warn; "
+    assert _in_pec(issues), (
+        f"Hy probe in thick PEC volume must warn; "
         f"issues: {issues!r}"
     )
 
@@ -594,7 +676,7 @@ def test_preflight_returns_back_compatible_structured_issues():
     sim.add_source((0.01, 0.01, 0.0225), component="ez")  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node (#500 L7)
     sim.add_probe((0.01, 0.01, 0.022), component="ez")
     report = sim.preflight()
-    assert report, "expected a preflight finding for a source/probe in CPML"
+    assert len(report), "expected a preflight finding for a source/probe in CPML"
     for issue in report:
         assert isinstance(issue, PreflightIssue)
         assert isinstance(issue, str)          # back-compat: still a string
@@ -620,7 +702,9 @@ def test_preflight_report_is_a_list_with_canonical_api():
     assert isinstance(report, PreflightReport) and isinstance(report, list)
     # list[str] ops the 65 legacy call sites rely on
     assert isinstance("\n".join(report), str)
-    assert len(report) == len(list(report)) and bool(report)
+    # bool(report) is NOT in this list: it raises by design (#980, see
+    # tests/unit/preflight/test_preflight_report_truthiness.py).
+    assert len(report) == len(list(report)) and len(report) > 0
     # canonical report API
     assert report.issues == list(report)
     assert report.ok == (not report.errors)
@@ -666,32 +750,44 @@ def test_error_severity_mapping_end_to_end():
 
 
 # --------------------------------------------------------- (b) conformal guard
-def _fake_conformal(dx, dy=None, dz=None, faces=("z_lo", "z_hi")):
-    spec = SimpleNamespace(conformal_faces=lambda: set(faces))
-    return SimpleNamespace(_boundary_spec=spec, _dx=dx, _dy=dy, _dz=dz)
+# The three behavioural tests for ``_validate_cfg_conformal_fine_dx`` stood
+# here and were DELETED 2026-09-15 (#1043 / PR #1047) with the check itself.
+# The check warned that conformal PEC at dx <= 2 mm is "a KNOWN NaN"; the NaN
+# was the CPML psi coefficient reading a different permittivity than the Yee
+# half of the same timestep, and it no longer happens, so the advisory had
+# become a false positive. Its own comment named
+# ``tests/unit/geometry/test_subpixel_pec.py::test_mesh_convergence_s21_with_conformal_pec``
+# (xfail strict=True) as the tripwire that would say so, and that test now
+# passes as a real convergence gate on the same three rungs.
+#
+# The replacement coverage is NOT another guard test: it is that convergence
+# gate plus
+# ``test_pec_short_conformal_stays_bounded_over_a_long_record``, which
+# measures the thing the guard was warning about instead of asserting the
+# warning's text.
 
 
-def test_conformal_fine_dx_warns():
-    # WARNING severity (not error/forbid): conformal-fine-dx is a known,
-    # development-coupled bug; convergence tests must still RUN it, so it must
-    # not hard-fail. Agents gate on the code, not a hard-stop.
-    fake = _fake_conformal(1e-3)
-    with pytest.warns(UserWarning, match="KNOWN"):
-        _PreflightMixin._validate_cfg_conformal_fine_dx(fake, 1e-3)
+def test_conformal_fine_dx_guard_is_gone():
+    """The deleted guard must stay deleted, and say why if it comes back.
 
-
-def test_conformal_coarse_dx_silent():
-    fake = _fake_conformal(3e-3)
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        _PreflightMixin._validate_cfg_conformal_fine_dx(fake, 3e-3)
-
-
-def test_no_conformal_silent():
-    fake = _fake_conformal(1e-3, faces=())
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        _PreflightMixin._validate_cfg_conformal_fine_dx(fake, 1e-3)
+    A resurrected ``conformal_nan`` advisory would send users to staircase PEC
+    for a NaN that no longer happens. If this ever goes red, the question is
+    not "re-add the test" -- it is why the check came back, and whether the
+    conformal path regressed (in which case
+    ``test_mesh_convergence_s21_with_conformal_pec`` is red too and that is
+    the one to read first).
+    """
+    assert not hasattr(_PreflightMixin, "_validate_cfg_conformal_fine_dx"), (
+        "_validate_cfg_conformal_fine_dx is back on _PreflightMixin. It was "
+        "deleted by #1043 / PR #1047 because the fine-dx conformal NaN it "
+        "warned about was the CPML psi-coefficient defect and is fixed; see "
+        "the note at the top of rfx/preflight/pec_geometry.py's check section."
+    )
+    from rfx.preflight import _registry
+    names = [c.name for c in _registry.CORE_CONFIG_CHECKS]
+    assert "_validate_cfg_conformal_fine_dx" not in names, (
+        f"the deleted check is registered again in CORE_CONFIG_CHECKS: {names}"
+    )
 
 
 # --------------------------------------------------- (c) lossless-resonator
@@ -810,7 +906,7 @@ def test_to_dict_and_to_json_roundtrip_carry_code_and_severity():
     import json
 
     report = _bad_sim_probe_in_cpml().preflight()
-    assert report, "expected at least one issue to serialize"
+    assert len(report), "expected at least one issue to serialize"
     d = report.to_dict()
     assert d["n_issues"] == len(report)
     for src, rec in zip(report, d["issues"]):
@@ -844,7 +940,7 @@ def test_raise_for_failure_is_errors_only_gate():
     """report.raise_for_failure() is the SOFTER pre-launch gate: it raises only
     on error-severity, letting advisory warnings through (unlike strict=True)."""
     report = _bad_sim_probe_in_cpml().preflight()   # warnings only, no errors
-    assert report and report.ok          # ok == no error-severity issues
+    assert len(report) and report.ok     # ok == no error-severity issues
     report.raise_for_failure()           # must NOT raise on warning-only report
 
 

@@ -107,6 +107,13 @@ CLAIMS_RUNG = "fine"                                     # pre-declaration §2.6
 LEGS_RUNG_DEFAULT = "fine"                               # AD / FD / plane legs
 
 # Distance from each DEFAULT reference plane to the near DUT face (§2.3).
+# #931: the pec_short oracle is anchored to the DECLARED near face, and under
+# the ownership contract that is also the REALIZED near wall — drawn = realized
+# (§1.2), no longer a coincidence of the old rule putting a body's only wall at
+# its lower node plane. This is the one compensation-free oracle in the
+# battery, so it is the reference pattern rather than a special case; what
+# makes it true is checked, not assumed, by
+# :func:`assert_oracle_anchors_are_realized` below.
 D_PLANE_TO_PEC_FACE_M = F.PEC_SHORT_X_M[0] - F.REF_LEFT_DEFAULT_M     # 0.03810
 D_PLANE_TO_SLAB_FACE_M = F.SLAB_X_M[0] - F.REF_LEFT_DEFAULT_M         # 0.03556
 SLAB_THICKNESS_M = F.SLAB_X_M[1] - F.SLAB_X_M[0]                      # 0.01016
@@ -130,13 +137,14 @@ OBJECTIVES = {
     "re_s11": ("complex", (0, 0)),
     "im_s11": ("complex", (0, 0)),
 }
-# Legs of §5(a): (dut, theta_kind) -> objectives. The PEC-short |S11|² under
-# a lossless eps θ is the pre-declared expected ULP-floor skip.
+# Current relative-accuracy family, amended 2026-09-08. The lossless
+# PEC-short eps magnitude is excluded: its continuum derivative is zero.
 AD_LEGS = {
     ("slab", "eps"): ("s11_mag2", "s21_mag2", "re_s21", "im_s21"),
     ("pec_short", "sigma"): ("s11_mag2",),
-    ("pec_short", "eps"): ("s11_mag2", "re_s11", "im_s11"),
+    ("pec_short", "eps"): ("re_s11", "im_s11"),
 }
+# Historical schema 1--3 replay ONLY; no prospective expected-skip/null leg.
 EXPECTED_ULP_SKIP = {("pec_short", "eps", "s11_mag2")}
 # v1.8 closing declaration (PI, 2026-09-05; docs/design_notes/20260905_v18_close_predeclaration.md):
 # contract criterion 1 (forward identity) and 3(a) (AD-vs-FD) are evaluated under x64 on the
@@ -498,6 +506,75 @@ def ad_fd_entry(*, g_ad: float, f_plus: float, f_minus: float, h: float, loss_dt
             "gate": AD_FD_REL_GATE, "verdict": verdict, "loss_dtype": str(np.dtype(loss_dtype))}
 
 
+def forward2_ad_fd_entry(*, g_ad: float, f0: float, f_plus: float,
+                         f_2h: float, h: float, loss_dtype) -> dict:
+    """Second-order forward FD; weighted ULP budget includes cancellation."""
+    values = np.asarray([f0, f_plus, f_2h], dtype=loss_dtype)
+    assert np.all(np.isfinite(values)) and np.isfinite(g_ad) and np.isfinite(h) and h > 0, (
+        f"FD configuration defect BLOCKED: nonfinite objective/gradient or invalid h: {values}, {g_ad}, {h}")
+    # Algebraically -3*f0 + 4*f_h - f_2h, evaluated as differences to avoid
+    # gratuitous cancellation of the common loss offset.
+    numerator = 4.0 * (float(values[1]) - float(values[0])) - (float(values[2]) - float(values[0]))
+    budget = float(np.dot([3.0, 4.0, 1.0], np.abs(np.spacing(values)).astype(float)))
+    span = abs(numerator) / max(budget, float(np.nextafter(0.0, 1.0)))
+    g_fd = numerator / (2.0 * h)
+    rel = abs(g_ad - g_fd) / max(abs(g_fd), 1e-12)
+    verdict = ("skipped_under_ulp_floor" if span < FD_ULP_FLOOR else
+               "pass" if rel <= AD_FD_REL_GATE else "fail")
+    return {"stencil": "forward2", "f0": float(f0), "f_plus": float(f_plus),
+            "f_2h": float(f_2h), "fd_ulp_span": span, "fd_ulp_budget": budget,
+            "ulp_floor": FD_ULP_FLOOR, "g_ad": float(g_ad), "g_fd": g_fd,
+            "rel": rel, "gate": AD_FD_REL_GATE, "verdict": verdict,
+            "loss_dtype": str(np.dtype(loss_dtype))}
+
+
+def ad_fd_from_leg(leg: dict) -> dict:
+    """Dispatch by declared stencil; no forward samples disguised as central arms."""
+    if leg.get("stencil", "central2") == "forward2":
+        return forward2_ad_fd_entry(g_ad=leg["g_ad"], f0=leg["f0"], f_plus=leg["f_plus"],
+                                    f_2h=leg["f_2h"], h=leg["h"], loss_dtype=np.dtype(leg["loss_dtype"]))
+    assert leg.get("stencil", "central2") == "central2", "FD configuration defect: unknown stencil"
+    return ad_fd_entry(g_ad=leg["g_ad"], f_plus=leg["f_plus"], f_minus=leg["f_minus"],
+                       h=leg["h"], loss_dtype=np.dtype(leg["loss_dtype"]))
+
+
+def ad_leg_key(leg: dict) -> tuple:
+    return tuple(leg[k] for k in ("dut", "lane", "theta_kind", "objective"))
+
+
+def required_ad_leg_keys() -> set:
+    return {(dut, LANE_LABELS[lane], kind, obj) for (dut, kind), objs in AD_LEGS.items()
+            for lane in F.LANES for obj in objs}
+
+
+def assert_ad_fd_records(legs: list[dict], *, expected_keys: set | None = None,
+                         rung: str | None = None) -> None:
+    """Schema 4 mandatory membership and configuration gate, before verdicts."""
+    expected = required_ad_leg_keys() if expected_keys is None else expected_keys
+    keys = [ad_leg_key(row) for row in legs]
+    assert len(keys) == len(set(keys)) and set(keys) == expected, (
+        f"FD configuration defect BLOCKED: mandatory legs missing={expected - set(keys)}, "
+        f"unexpected={set(keys) - expected}, duplicates={len(keys) - len(set(keys))}")
+    for leg in legs:
+        spec = F.fd_stencil(leg["theta_kind"])
+        assert all(leg[k] == spec[k] for k in ("stencil", "theta0", "h")), (
+            "FD configuration defect BLOCKED: stale stencil/theta0/h")
+        validity = leg["fd_validity"]
+        assert all(validity[k] == leg[k] for k in ("dut", "theta_kind", "stencil", "theta0", "h"))
+        F.assert_fd_validity(validity)
+        assert leg["dx_m"] == RUNG_DX[leg["rung"]]
+        assert all(a["dx_m"] == leg["dx_m"] for a in validity["arms"])
+        declared_dt = 0.99 * leg["dx_m"] / (F.C0 * math.sqrt(3.0))
+        assert all(math.isclose(a["dt_s"], declared_dt, rel_tol=1e-12) for a in validity["arms"]), (
+            "FD configuration defect BLOCKED: timestep differs from fixed 0.99 vacuum Courant dt")
+        if rung is not None:
+            assert leg["rung"] == rung, "FD configuration defect BLOCKED: stale rung"
+        assert leg["loss_dtype"] == "float64" and leg["x64_context"] is True
+        fields = ("g_ad", "f0", "f_plus", "f_2h") if leg["stencil"] == "forward2" else ("g_ad", "f_plus", "f_minus")
+        assert all(np.isfinite(leg[k]) for k in fields), "FD configuration defect BLOCKED: nonfinite result"
+        assert ad_fd_from_leg(leg)["verdict"] == leg["verdict"], "FD configuration defect BLOCKED: stale verdict"
+
+
 def zero_derivative_entry(*, g_ad_x64: float, g_fd: float, fd_ulp_span: float) -> dict:
     """Gate for a pre-declared zero-derivative leg whose FD still resolves (span >= floor).
 
@@ -702,11 +779,15 @@ def recompute_verdicts(fx: dict) -> dict:
     """Every gate of the pre-declaration, recomputed from the stored numbers.
 
     Returns ``{gate_key: verdict}`` with verdict in
-    ``{"pass", "fail", "report_only", "skipped", "not_interpretable"}``. The
+    ``{"pass", "fail", "report_only", "skipped", "not_interpretable", "owed"}``. The
     driver stores this dict under ``verdicts``; the replay test recomputes it
     with this same function and compares.
     """
     v: dict[str, str] = {}
+    # Schema 4 retains the already-pinned battery program. An absent pin is
+    # unfinished adjudication, not permission to demote a discriminator to a
+    # report. Preserve the report-first semantics of historical artifacts.
+    missing_pin = "owed" if fx.get("schema_version", 1) >= 4 else "report_only"
     cells = {_cell_key(c): c for c in fx["cells"]}
 
     # settling (§2.5) per cell/drive, on the claims-bearing record
@@ -751,10 +832,11 @@ def recompute_verdicts(fx: dict) -> dict:
                 ("pass" if referee_slab_phase_pass(r) else "fail") if gated else "report_only")
 
     # AD vs FD (§5(a)) and the forward identity (criterion 1)
+    if fx.get("schema_version", 1) >= 4:
+        assert_ad_fd_records(fx["ad_vs_fd"])
     for leg in fx["ad_vs_fd"]:
         key = f"{leg['dut']}|{leg['lane']}|{leg['theta_kind']}|{leg['objective']}"
-        e = ad_fd_entry(g_ad=leg["g_ad"], f_plus=leg["f_plus"], f_minus=leg["f_minus"],
-                        h=leg["h"], loss_dtype=np.dtype(leg["loss_dtype"]))
+        e = ad_fd_from_leg(leg)
         verdict = e["verdict"]
         # v1.8 closing declaration (schema_version 3): on a lane in X64_DECLARED_LANES the
         # stored ``g_ad`` / ``forward_identity`` are the x64 readings and ``primary_precision``
@@ -770,7 +852,7 @@ def recompute_verdicts(fx: dict) -> dict:
         declared = fx.get("schema_version", 1) >= 3 and leg["lane"] in X64_DECLARED_LANES
         if declared and primary != "x64":
             verdict = "not_interpretable"
-        elif (declared and primary == "x64"
+        elif (fx.get("schema_version", 1) <= 3 and declared and primary == "x64"
               and (leg["dut"], leg["theta_kind"], leg["objective"]) in EXPECTED_ULP_SKIP
               and verdict != "skipped_under_ulp_floor"):
             # report_only only inside the pre-declared branch; a sign flip or a gradient
@@ -798,7 +880,7 @@ def recompute_verdicts(fx: dict) -> dict:
             if g.get("skipped_under_ulp_floor"):
                 v[gk] = "skipped"
             elif g.get("pinned_gate") is None:
-                v[gk] = "report_only"
+                v[gk] = missing_pin
             else:
                 v[gk] = "pass" if g["rel_change"] <= g["pinned_gate"] else "fail"
     refute = fx["plane_shift"].get("cheap_refute")
@@ -807,6 +889,8 @@ def recompute_verdicts(fx: dict) -> dict:
         v["cheap_refute_flip_shift_sign"] = (
             "pass" if refute["resid_yee_min_over_entries"] > WRONG_SIGN_MIN_DEG
             and not refute["rotation_gate_would_pass"] else "fail")
+    elif fx.get("schema_version", 1) >= 4:
+        v["cheap_refute_flip_shift_sign"] = "owed"
 
     # ladder (§5(c))
     for key, lad in fx["ladder"].items():
@@ -814,14 +898,14 @@ def recompute_verdicts(fx: dict) -> dict:
         pin = lad.get("pinned_richardson_gate")
         if "richardson" in lad:
             if pin is None:
-                v[f"ladder_richardson|{key}"] = "report_only"
+                v[f"ladder_richardson|{key}"] = missing_pin
             else:
                 pair = lad.get("pinned_richardson_pair", "mid-fine")
                 v[f"ladder_richardson|{key}"] = (
                     "pass" if lad["richardson"][pair]["max_abs_diff"] <= pin else "fail")
         pin_m = lad.get("pinned_monotone_fraction_min")
         if pin_m is None:
-            v[f"ladder_monotone|{key}"] = "report_only"
+            v[f"ladder_monotone|{key}"] = missing_pin
         else:
             v[f"ladder_monotone|{key}"] = (
                 "pass" if lad["monotone_fraction_of_bins"] >= pin_m else "fail")
@@ -981,3 +1065,36 @@ def pin_fixture(fx: dict) -> dict:
                             "lower bounds rounded down by the same multiplier"}
     fx["verdicts"] = recompute_verdicts(fx)
     return fx
+
+
+def assert_oracle_anchors_are_realized(sim, dut: str) -> None:
+    """BUILD-TIME (no solve): the oracles are fed the geometry that is BUILT.
+
+    Two oracles in this module take a distance from a DECLARED face:
+    :func:`pec_short_phase_oracle_deg` uses ``D_PLANE_TO_PEC_FACE_M`` and
+    :func:`airy_reference` uses ``D_PLANE_TO_SLAB_FACE_M`` with
+    ``SLAB_THICKNESS_M``. Feeding an oracle the drawn geometry while the
+    solver realizes a different one is the cv19 defect class verbatim, and it
+    is invisible in the residual — it shows up as a convention, not a bug.
+
+    So: for ``pec_short``, the realized near wall must BE the drawn near face
+    and the realized far wall the drawn far face. For ``slab`` (a dielectric,
+    which the contract does not touch) the check is that it realizes no PEC
+    wall at all, i.e. no conductor appeared where the Airy oracle assumes a
+    plain dielectric interface.
+    """
+    walls = F.assert_dut_realizes_its_faces(sim, dut)
+    if dut != "pec_short":
+        return
+    near, far = float(walls[0]), float(walls[-1])
+    if abs(near - F.PEC_SHORT_X_M[0]) > 1e-12:
+        raise AssertionError(
+            f"pec_short_phase_oracle_deg is anchored {D_PLANE_TO_PEC_FACE_M} m "
+            f"from x = {F.PEC_SHORT_X_M[0]} m, but the realized near wall is "
+            f"at {near} m. The oracle is measuring a plane the solver did not "
+            "build.")
+    if abs(far - F.PEC_SHORT_X_M[1]) > 1e-12:
+        raise AssertionError(
+            f"pec_short realized far wall {far} m != drawn far face "
+            f"{F.PEC_SHORT_X_M[1]} m — realized thickness must equal drawn "
+            "thickness (#931 §1.2).")

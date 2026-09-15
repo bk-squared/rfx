@@ -1,5 +1,17 @@
 # Pre-declaration — exact node coordinates for rasterization (#802, #807)
 
+> **SUPERSEDED IN PART by #931 (the lattice ownership contract), 2026-09-07.**
+> Kept as dated history and deliberately NOT rewritten.
+> Its node-coordinate, half-open `[lo, hi)` statement still describes
+> DIELECTRIC sampling, which #931 did not touch. It no longer describes
+> conductors: a PEC volume is sampled at cell centres and realizes walls at
+> both drawn faces. The one-node tie rule this note pinned SURVIVES, as the
+> sheet plane-selection rule.
+> The current rule is
+> `docs/design_notes/20260906_plan_realign_lattice_ownership.md` §1, and for
+> users `docs/public/guide/materials-geometry.mdx` ("How conductors land on
+> the lattice").
+
 Date: 2026-09-01. Written BEFORE any fix run. Implementer session, isolated
 worktree branched from `main` @ 92018513.
 

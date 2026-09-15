@@ -28,6 +28,44 @@ Consumers (as of this writing):
   * validation/crossval/16_pec_sphere_mie_ka_sweep.py   (--write-fixture self-check)
   * validation/crossval/17_dielectric_sphere_mie.py     (--write-fixture self-check)
   * validation/crossval/19_wr90_iris_filter_aghanim.py  (--write-fixture self-check)
+  * tests/unit/farfield/test_rcs280_reference_subtraction.py    (quantum=100,  dB pattern mean, #888/#280)
+  * tests/unit/sources/test_tfsf_aux_absorber_reflection.py     (quantum=1e5..1e7, |B/A| reflection amplitude, #888)
+
+This list is a SNAPSHOT of the quantized-gate lanes, not a discovered set, and
+it has drifted: ``grep -rl gate_from_envelope tests/ validation/ scripts/``
+finds considerably more files than appear above. What actually binds the lanes
+is ``tests/contracts/test_gate_policy_is_shared.py`` -- its fixture-glob
+discovery for the ``gates``-dict cases, and its hand-listed
+``_QUANTIZED_GATE_FILES`` tripwire for the flat-JSON ones. Reconciling this
+docstring against the full grep is not in PR #1005's scope; the two lanes added
+above are the ones that PR introduces.
+
+#931 (lattice ownership contract), and this is a CHECKLIST, not a change:
+``ENVELOPE_GATE_MULTIPLIER`` does not move. What moves is the measured
+envelope of every case whose realized geometry changed, and each of those
+gates must be RE-DERIVED through :func:`gate_from_envelope` and re-pinned in
+the SAME commit as the regenerated fixture, with a written root cause. The
+cases that needed that (the figures here are the pre-#931 baselines, not
+the regenerated gates):
+
+  * cv18 (``fine_gate_abs`` 0.04, ``richardson_gate_abs`` 0.01) — the fin
+    aperture loses its ``- 1``;
+  * cv19 (``f0_gate_mhz`` 19.0 from a 12.1230 MHz envelope) — the iris and
+    cavity lose their ``+1`` / ``-1`` pair;
+  * cv05 / cv06b / cv07 / cv15 — foil becomes a sheet, so every measured
+    envelope on those boards is measured on a different board.
+
+NOT on the list, measured rather than assumed: cv16 and cv17 build their
+scatterers with the low-level ``rasterize(..., sigma=1e7)`` cell fill, which
+design note §1.8 fences out of the contract, so their 3.3 / 4.0 dB and dB
+gates do not move and no re-run is scheduled for them.
+
+The no-silent-loosening rule binds here more than anywhere else in the repo:
+a gate that grows because its case was re-solved is a measurement; a gate
+that grows because the re-derivation was skipped is the failure this module
+exists to prevent. ``tests/contracts/test_gate_policy_is_shared.py``
+re-derives every discovered case from OUTSIDE its own file, so a half-finished
+re-pin fails there rather than locally — which is the intended order.
 
 The bounded-margin lanes (``test_waveguide_broad_e5_tolerance_envelope.py``
 and its phase / group-delay siblings) check a structurally different shape

@@ -71,7 +71,9 @@ catches a β that reaches the tape, or a non-unit-modulus shift factor. Never me
 delta plus a stated floor, on |S11|, |S21| and ∠S21. **Stated limitation:** a non-increase test, not a
 convergence test — a lane stuck at the wrong value passes it. Two report-first witnesses narrow it:
 monotonicity with the successive-delta ratio, and Richardson `2*S_fine - S_coarse` vs the oracle on
-adjacent pairs (cv18: envelope 0.0051 → gate 0.01, `crossval/18_wr90_iris_modematch.py:162`). Three
+adjacent pairs (cv18: current envelope 0.0046 → unchanged gate 0.01,
+`validation/crossval/_18_wr90_iris_results/rfx.json::gates.richardson_measured_envelope_abs`;
+the pre-#931 envelope was 0.0051). Three
 guards: rungs are `dx = a/N` at integer N, so all realize one guide; every bin is evaluated, the worst
 reported, the ladder uninterpretable when the ratio-2 successive-delta ratio is far from 0.5 (first
 order) or 0.25 (second); each rung asserts rasterized cell counts scale with 1/dx.

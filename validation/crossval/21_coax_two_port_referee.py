@@ -24,6 +24,30 @@ Both were false, verified independently before this rewrite:
      openEMS-Project itself, the prebuilt image does), includes it
      (added 2026-05-13, fixed 2026-07-29).
 
+LATTICE OWNERSHIP CONTRACT (#931) -- OUT OF SCOPE, AND WHY.
+
+rfx's coax pin and shell are not Box conductors at all: ``stamp_coaxial_line``
+writes PEC_SIGMA (a large sigma) into ``materials.sigma`` over a one-cell
+Cylinder-difference shell. That is a LOSSY VOLUME model, fenced out of the
+contract by design note section 1.8 ("Sigma-fill conductors ... are not PEC
+realization and are unchanged here"), and it never enters ``pec_mask``,
+``realized_pec_edge_masks`` or any sheet declaration. So nothing in this
+referee's geometry moves under #931, and none of its committed artifacts
+is invalidated by it.
+
+What the contract does NOT resolve, and what this case is the standing
+evidence for: a conductor expressed as a large sigma has no declared
+realization at all, so its DELTA LIST compensations stay. Specifically
+(a) DELTA item 2, the shell spanning [b - dz, b] so the realized PTFE
+annulus runs a to b - dz instead of the textbook a to b; (b)
+``r_os_mm = B_B_MM + 2.0 * dx_mm``, two cells of openEMS shield chosen
+because rfx's one-cell shell has no CSXCAD-primitive equivalent; and (c)
+``B_Z0_OHM`` computed on the NOMINAL a-to-b annulus while the realized one
+is a cell short. Under the contract those would be a realized-vs-declared
+report from the shared owner. They are not, because the sigma model has no
+owner. That is the follow-up issue design note section 1.8 names, and it is
+recorded here rather than half-migrated: nothing in this file is changed.
+
 SCOPE FENCE (unchanged): this is a COMPARATOR-LEG referee. It builds and
 runs an INDEPENDENT openEMS model and reports its own S-parameters; it
 does NOT run any rfx simulation, does NOT import rfx, and makes NO

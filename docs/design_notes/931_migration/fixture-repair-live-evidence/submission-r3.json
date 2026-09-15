@@ -1,0 +1,30 @@
+{
+  "sha": "b36fc46cdf21d1c57f221e6a057654bcad60bae2",
+  "cwd": "/tmp/rfx-931-submit-33mds6gc",
+  "jobs": [
+    {
+      "lane": "msl",
+      "yaml": "/tmp/rfx-931-submit-33mds6gc/msl-r3.yaml",
+      "prefix": "issue931-fixture-repair-msl-base",
+      "run_id": "369367259636"
+    },
+    {
+      "lane": "msl-long",
+      "yaml": "/tmp/rfx-931-submit-33mds6gc/msl-long-r3.yaml",
+      "prefix": "issue931-fixture-repair-msl-long",
+      "run_id": "369367259637"
+    },
+    {
+      "lane": "msl-refine",
+      "yaml": "/tmp/rfx-931-submit-33mds6gc/msl-refine-r3.yaml",
+      "prefix": "issue931-fixture-repair-msl-refine",
+      "run_id": "369367259648"
+    },
+    {
+      "lane": "msl-confirm",
+      "yaml": "/tmp/rfx-931-submit-33mds6gc/msl-confirm-r3.yaml",
+      "prefix": "issue931-fixture-repair-msl-confirm",
+      "run_id": "369367259638"
+    }
+  ]
+}

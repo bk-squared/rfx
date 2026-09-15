@@ -81,9 +81,15 @@ PROBE_XS_M = (X1_M, 0.5 * (X1_M + X2_M), X2_M)
 PROBE_LABELS = ("port1_gap", "mid_line", "port2_gap")
 
 BATTERY_SV_MAX = 1.003227
-BATTERY_CODES = ["pec_faces_finite_pec",
-                 "wire_port_dead_extent_cells",
-                 "wire_port_dead_extent_cells"]
+# #931: the two ``wire_port_dead_extent_cells`` advisories are GONE and
+# ``sheet_plane_realized`` takes their place.  They fired because the port's
+# top cell landed inside the one-cell PEC volume the trace used to be.
+# Against a sheet the port's Ez is NORMAL to the conductor and stays live by
+# contract (§1.3), and the extent is half-open in edges anyway, so no port
+# cell is dead — measured, build only, at all three rungs: n_cells = 2/4/8,
+# n_live = 2/4/8, every flag True.  A rung that still reports a dead extent
+# cell is a rung whose trace is not a sheet.
+BATTERY_CODES = ["pec_faces_finite_pec", "sheet_plane_realized"]
 SETTLING_TAIL_FRACTION = 0.10
 
 
@@ -99,9 +105,15 @@ def build_rung(divisor: int) -> tuple[Simulation, dict]:
                               z=Boundary(lo="pec", hi="cpml")),
         cpml_layers=cpml_layers,
     )
-    # One-cell PEC sheet on top of the wire spans; overhang held at 0.5 mm.
+    # Foil: a SHEET (#931 §1.3), declared by a zero-thickness Box on the trace
+    # plane; overhang held at 0.5 mm.  H_M / dx is 2 / 4 / 8 across the ladder,
+    # so the plane is a node line at every rung and the sheet lands on it
+    # exactly.  Written as a one-cell Box before the contract, it was a VOLUME
+    # (§1.2: walls at BOTH H_M and H_M + dx with the Ez between them shorted) —
+    # a 0.5 / 0.25 / 0.125 mm slab of metal that thinned with the mesh, i.e. the
+    # ladder's own independent variable leaking into the geometry.
     trace_lo = (X1_M - OVERHANG_M, Y_MID_M - W_M / 2, H_M)
-    trace_hi = (X2_M + OVERHANG_M, Y_MID_M + W_M / 2, H_M + dx)
+    trace_hi = (X2_M + OVERHANG_M, Y_MID_M + W_M / 2, H_M)
     sim.add(Box(trace_lo, trace_hi), material="pec")
     pulse = GaussianPulse(f0=PULSE_F0_HZ, bandwidth=PULSE_BW)
     sim.add_port(position=(X1_M, Y_MID_M, 0.0), component="ez",
@@ -118,7 +130,8 @@ def build_rung(divisor: int) -> tuple[Simulation, dict]:
         "cpml_thickness_m": cpml_layers * dx,
         "trace_box_lo_m": list(trace_lo),
         "trace_box_hi_m": list(trace_hi),
-        "trace_thickness_cells": 1,
+        "trace_thickness_cells": 0,   # a sheet owns no cell (#931 §1.3)
+        "trace_realization": "sheet",
         "overhang_m": OVERHANG_M,
         "overhang_cells": int(round(OVERHANG_M / dx)),
         "port_extent_m": H_M,
@@ -153,12 +166,40 @@ def git_sha(override: str | None) -> str:
 
 
 def rasterization_witness(sim: Simulation, grid) -> dict:
-    """G4: finite-PEC cell count, wire port cells / live cells."""
+    """G4: realized sheet footprint, finite-PEC cell count, wire port cells.
+
+    #931: ``finite_pec_cells`` no longer carries the dx^-2 property, because a
+    sheet owns NO cell (§1.3).  The key stays in the record so a reader can see
+    that it went away rather than find it missing; with no volume conductor on
+    this fixture the assembler returns no cell mask at all and the key reads
+    its long-standing absent sentinel, -1.
+
+    The quantity that still carries the property is the realized SHEET
+    FOOTPRINT in NODES, taken from the sheet specs the assembler collects (the
+    single owner, §1.7), not re-derived here.  It is a node count, so it is
+    ``(Nx + 1)(Ny + 1)`` where the cell count was ``Nx * Ny``: measured
+    385 / 1449 / 5617 across the rungs against the old 340 / 1360 / 5440.  The
+    ratios are 3.76 and 3.88, not exactly 4 — dx^-2 asymptotically, with the
+    rim node the exact law does not have.  G4 must be restated on that
+    identity, not on a claimed exact quartering.
+    """
     from rfx.sources.sources import WirePort, _wire_port_live_cells
     sheet_specs: list = []
+    pec_sheets: list = []
+    pec_wires: list = []
     _m, _d, _l, pec_mask, _a, _b, _c = sim._assemble_materials(
-        grid, sheet_specs=sheet_specs)
+        grid, sheet_specs=sheet_specs, pec_sheets=pec_sheets,
+        pec_wires=pec_wires)
     pec_cells = int(np.asarray(pec_mask).sum()) if pec_mask is not None else -1
+    footprint_nodes = 0
+    sheet_planes: dict[str, list[int]] = {}
+    for sp in pec_sheets:
+        fp = np.asarray(sp.footprint, dtype=bool)
+        footprint_nodes += int(fp.sum())
+        axis_name = "xyz"[int(sp.normal_axis)]
+        sheet_planes.setdefault(axis_name, []).append(int(sp.plane))
+    for k in sheet_planes:
+        sheet_planes[k] = sorted(sheet_planes[k])
     ports = []
     for pe in sim._ports:
         end = list(pe.position)
@@ -172,6 +213,9 @@ def rasterization_witness(sim: Simulation, grid) -> dict:
         "grid_shape": [int(grid.nx), int(grid.ny), int(grid.nz)],
         "n_cells_total": int(grid.nx) * int(grid.ny) * int(grid.nz),
         "finite_pec_cells": pec_cells,
+        "sheet_footprint_nodes": footprint_nodes,
+        "sheet_planes": sheet_planes,
+        "n_sheets": len(pec_sheets),
         "wire_ports": ports,
     }
 

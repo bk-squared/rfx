@@ -23,8 +23,23 @@ import jax.numpy as jnp
 
 _HERE = Path(__file__).resolve().parent
 _REPO = _HERE.parents[2]
+# Pin THIS repo tree ahead of any installed rfx. Running the script directly puts
+# only the script's own directory on sys.path, so an editable/site-packages rfx
+# from another checkout wins silently -- and it did: the 2026-09-13 regeneration
+# ran the sibling checkout's pre-#888 auxiliary absorber with THIS file's 24-cell
+# CPML, a rig that exists nowhere, and produced a corrected-pattern mean of
+# 0.41 dB instead of 0.70. The sibling generator (../rcs_sphere_mie/
+# generate_fixture.py) has carried this guard since #276; this one had not.
+sys.path.insert(0, str(_REPO))
 sys.path.insert(0, str(_REPO / "tests/fixtures/rcs_sphere_mie"))
 from mie_oracle import bistatic_over_pi_a2  # noqa: E402
+
+import rfx  # noqa: E402
+_rfx_root = Path(rfx.__file__).resolve().parents[1]
+if _rfx_root != _REPO:
+    raise RuntimeError(
+        f"import rfx resolved outside this repo tree ({rfx.__file__}); "
+        "refusing to generate a fixture against a different rfx build.")
 
 from rfx.grid import Grid, C0  # noqa: E402
 from rfx.geometry.csg import Sphere, rasterize  # noqa: E402
@@ -37,7 +52,12 @@ A = 0.0159                     # sphere radius (m); rcs_sphere_mie geometry
 RES = 40                       # dx = lam/40 (6.4 cells/radius)
 DX = LAM / RES
 DOMAIN = 0.10
-CPML = 8
+# 24, was 8. This fixture's claim ("the uncorrected path equals the sibling
+# rcs_sphere_mie monostatic, SAME GEOMETRY") only holds while the two rigs match,
+# and that one moved to a converged 24-cell absorber on 2026-09-13 -- see
+# ../rcs_sphere_mie/generate_fixture.py for the depth derivation and why the old
+# 8-cell agreement with Mie was a cancellation against the pre-#888 auxiliary echo.
+CPML = 24
 N_PHI = 37
 N_STEPS = 700
 KA = 2 * np.pi * A / LAM
@@ -94,9 +114,14 @@ def main():
             f"{_db(corr)[-1] - _db(mie)[-1]:+.2f} dB. The empty-domain run isolates the "
             "leakage (a spurious far-field with NO scatterer). Default OFF is byte-"
             "identical on the validated monostatic path."),
+        # cpml_layers is part of the RIG, not a detail: it moved 8 -> 24 here and
+        # re-baselined every number below, so an artifact that does not declare it
+        # cannot be checked against the rig it was measured on (PR #1005 review,
+        # finding 5; the sibling rcs_sphere_mie fixture has always recorded it).
         "geometry": {"shape": "pec_sphere", "radius_m": A, "f0_hz": F0, "ka": KA,
                      "dx_m": DX, "res_cells_per_lambda": RES,
-                     "cells_per_radius": A / DX, "n_steps": N_STEPS, "domain_m": DOMAIN},
+                     "cells_per_radius": A / DX, "n_steps": N_STEPS,
+                     "domain_m": DOMAIN, "cpml_layers": CPML},
         "phi_deg": [round(float(np.degrees(p)), 2) for p in phi],
         "mie_bistatic_over_pi_a2": [float(x) for x in mie],
         "rfx_uncorrected_over_pi_a2": [float(x) for x in uncorr],

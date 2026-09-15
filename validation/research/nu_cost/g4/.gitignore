@@ -1,0 +1,3 @@
+xla_dump/
+*.hlo.txt
+*.npz

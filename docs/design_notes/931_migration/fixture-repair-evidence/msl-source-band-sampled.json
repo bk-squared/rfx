@@ -1,0 +1,135 @@
+{
+  "freqs_hz": [
+    500000000.0,
+    1000000000.0,
+    1500000000.0,
+    2000000000.0,
+    2500000000.0,
+    3000000000.0,
+    3500000000.0,
+    4000000000.0,
+    4500000000.0,
+    5000000000.0
+  ],
+  "formula": "Magnitude of differentiated Gaussian Fourier transform, proportional to f exp(-(f/(f0*bandwidth))^2); ratios remove common scale.",
+  "mask_threshold_relative_band_median": 0.1,
+  "implicit_2p5ghz": {
+    "f0_hz": 2500000000.0,
+    "bandwidth": 0.8,
+    "relative_band_median": [
+      1.1953276960811148,
+      1.9819229316374725,
+      2.175008688230582,
+      1.872388206031917,
+      1.333568301282164,
+      0.8046723039188852,
+      0.4165830320875422,
+      0.18644143924978634,
+      0.07248649196460143,
+      0.024563478903906776
+    ],
+    "below_point_one": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "explicit_5ghz": {
+    "f0_hz": 5000000000.0,
+    "bandwidth": 0.8,
+    "relative_band_median": [
+      0.35480668932926224,
+      0.6771178161768818,
+      0.9393474130481062,
+      1.1227007720987177,
+      1.219274168096606,
+      1.2320781472468254,
+      1.1731916890954104,
+      1.0606525869518937,
+      0.9148843660582516,
+      0.7554270338145136
+    ],
+    "below_point_one": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "sampled_implicit_2p5ghz": {
+    "relative_band_median": [
+      1.1952542030497157,
+      1.9820964175114766,
+      2.175368374544387,
+      1.8725449047011462,
+      1.3335179526177283,
+      0.8047457969502844,
+      0.4167745304144385,
+      0.18645582536589506,
+      0.07234781253701784,
+      0.024563353632769278
+    ],
+    "below_point_one": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "sampled_explicit_5ghz": {
+    "relative_band_median": [
+      0.3547484624295399,
+      0.6770424269901307,
+      0.9393118335800427,
+      1.122742820493992,
+      1.219388929574284,
+      1.2322200061433668,
+      1.1733005176299784,
+      1.0606881664199572,
+      0.9148485306014918,
+      0.7553608215135991
+    ],
+    "below_point_one": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "sampled_record": {
+    "dt": 8.599436825577279e-14,
+    "samples": 27909,
+    "fdtd_run": false
+  },
+  "final_v2_preflight": [
+    {
+      "code": "lossless_q",
+      "severity": "warning"
+    }
+  ]
+}

@@ -27,12 +27,16 @@ Coverage
   ``tests/crossval/test_waveguide_tjunction_e4e5_gates.py``.
 """
 
+import warnings
+from types import SimpleNamespace
+
 import numpy as np
 import jax.numpy as jnp
 import pytest
 
 from rfx.api import Simulation
 from rfx.geometry.csg import Box
+from tests._realized_geometry import assert_wall_planes, realized
 
 
 # --------------------------------------------------------------------------
@@ -107,6 +111,19 @@ def test_port_reference_sims_eps_override_combo_raises():
 # test_api.py::test_waveguide_branch_junction_mixed_normals_reciprocal_through_api).
 # The main guide runs horizontally (y in [0.04, 0.08]); the top arm opens at
 # x in [0.04, 0.08], y in [0.08, 0.12].
+#
+# The walls are PEC VOLUMES (#931 §1.2). Under the ownership contract each
+# block realizes tangential walls on BOTH of its drawn faces, so the guide
+# between the y = 0.04 and y = 0.08 faces is 40.0 mm — the number the
+# declaration states. Before the contract a body's far face was never a
+# wall, the metal ended one node short on each side and the same geometry
+# realized a 42.0 mm guide; the ports' declared ``y_range=(0.04, 0.08)``
+# lands ON the walls for the first time. Anything this file's prose quotes
+# that was measured on the 42 mm guide (aperture areas, cutoffs, the
+# |S11| blow-up figures) is a pre-#931 measurement and is re-read with the
+# fixtures, not translated.
+# ``test_tj_walls_are_realized_where_they_are_drawn`` below is the
+# build-time witness, and it costs no solve.
 # --------------------------------------------------------------------------
 
 def _tj_common(freqs, f0):
@@ -169,18 +186,121 @@ def _tj_refs(freqs, f0):
     ]
 
 
-def test_port_reference_sims_clearance_advisory_fires():
+def test_port_reference_sims_clearance_advisory_fires(monkeypatch):
     """Probe planes sitting on top of the junction must fire the clearance
     advisory. The band is kept below the TE20 cutoff (fc2 = C0/a = 7.5 GHz for
     a = 0.04 m) so the advisory is not skipped for an in-band higher mode."""
     freqs = jnp.linspace(4.5e9, 6.5e9, 3)
     f0 = 5.5e9
-    with pytest.warns(UserWarning) as record:
+
+    class ReachedExtractor(Exception):
+        pass
+
+    def stop_before_solve(*args, **kwargs):
+        raise ReachedExtractor
+
+    monkeypatch.setattr(
+        # #980 Phase 2: compute_waveguide_s_matrix's body lives in
+        # rfx/sparams/waveguide.py, so this is where the extractor name is
+        # looked up. The re-export in rfx.api._sparams would still accept the
+        # patch and silently not be the binding the lane reads.
+        "rfx.sparams.waveguide.extract_waveguide_s_matrix_flux",
+        stop_before_solve,
+    )
+    with pytest.warns(UserWarning) as record, pytest.raises(ReachedExtractor):
         _tj_device(freqs, f0).compute_waveguide_s_matrix(
             num_periods=8, normalize="flux", port_reference_sims=_tj_refs(freqs, f0),
         )
-    messages = [str(w.message) for w in record]
-    assert any("clearance" in m for m in messages), messages
+    findings = [w.message for w in record
+                if getattr(w.message, "code", None) == "port_junction_probe_clearance"]
+    assert [finding.loc for finding in findings] == ["port:0", "port:1", "port:2"]
+    assert all(finding.severity == "warning" for finding in findings)
+
+
+@pytest.mark.parametrize("subpixel_smoothing", [None, "kottke_pec"])
+def test_identical_port_references_have_no_junction_clearance_advisory(
+    monkeypatch, subpixel_smoothing,
+):
+    """Kottke clearing solver edge masks must not erase advisory geometry."""
+    freqs = jnp.linspace(4.5e9, 6.5e9, 3)
+
+    class ReachedExtractor(Exception):
+        pass
+
+    def stop_before_solve(*args, **kwargs):
+        # Preserve the solver's dispatch: Kottke owns its inverse-eps
+        # tensor and must not acquire an additional staircase PEC mask.
+        assert (kwargs["pec_edge_masks"] is None) == (
+            subpixel_smoothing == "kottke_pec"
+        )
+        assert all(edges is not None
+                   for edges in kwargs["ref_pec_edge_masks_per_port"])
+        raise ReachedExtractor
+
+    monkeypatch.setattr(
+        # #980 Phase 2: compute_waveguide_s_matrix's body lives in
+        # rfx/sparams/waveguide.py, so this is where the extractor name is
+        # looked up. The re-export in rfx.api._sparams would still accept the
+        # patch and silently not be the binding the lane reads.
+        "rfx.sparams.waveguide.extract_waveguide_s_matrix_flux",
+        stop_before_solve,
+    )
+    with warnings.catch_warnings(record=True) as record, pytest.raises(ReachedExtractor):
+        warnings.simplefilter("always")
+        _tj_ref_horizontal(freqs, 5.5e9).compute_waveguide_s_matrix(
+            num_periods=8, normalize="flux", subpixel_smoothing=subpixel_smoothing,
+            port_reference_sims=[_tj_ref_horizontal(freqs, 5.5e9) for _ in range(3)],
+        )
+    assert not any(getattr(w.message, "code", None) == "port_junction_probe_clearance"
+                   for w in record)
+
+
+@pytest.mark.parametrize("difference,expected", [
+    ("none", False), ("near_sheet", True), ("far_sheet", False),
+    ("edge_component", True), ("sigma", True),
+    ("device_only", True), ("reference_only", True),
+])
+def test_junction_clearance_reads_material_and_component_edges(difference, expected):
+    """PEC sheets carry no sigma; identical or distant guides stay silent.
+
+    Component changes must remain visible even if the union of PEC edge
+    locations is unchanged (different conductor orientations).
+    """
+    from rfx.api._sparams import _warn_junction_probe_clearance
+
+    shape = (8, 2, 2)
+    dev_sigma = np.zeros(shape)
+    ref_sigma = np.zeros(shape)
+    dev_edges = [np.zeros(shape, dtype=bool) for _ in range(3)]
+    ref_edges = [np.zeros(shape, dtype=bool) for _ in range(3)]
+    if difference in ("near_sheet", "far_sheet", "edge_component"):
+        plane = 7 if difference == "far_sheet" else 3
+        dev_edges[1][plane] = True
+    if difference == "edge_component":
+        ref_edges[2][3] = True
+        np.testing.assert_array_equal(
+            np.logical_or.reduce(dev_edges), np.logical_or.reduce(ref_edges),
+        )
+    if difference == "sigma":
+        dev_sigma[3] = 1.0
+    if difference == "device_only":
+        dev_edges[1][3] = True
+        ref_edges = None
+    if difference == "reference_only":
+        ref_edges[1][3] = True
+        dev_edges = None
+    cfg = SimpleNamespace(a=0.04, normal_axis="x", probe_x=3)
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        _warn_junction_probe_clearance(
+            SimpleNamespace(dx=0.02), [cfg], dev_sigma, [ref_sigma],
+            np.array([4.5e9, 6.5e9]),
+            device_pec_edges=dev_edges, ref_pec_edges=[ref_edges],
+        )
+    findings = [w.message for w in record]
+    assert [finding.code for finding in findings] == (
+        ["port_junction_probe_clearance"] if expected else []
+    )
 
 
 def test_port_reference_sims_compact_junction_necessary_not_sufficient():
@@ -220,3 +340,25 @@ def test_port_reference_sims_compact_junction_necessary_not_sufficient():
     # Direction 2 — the overall matrix is still non-physical (compact geometry).
     assert max_ref > 1.05               # non-passive residual remains
     assert max_ref < max_vac            # but the blow-up is reduced
+
+
+def test_tj_walls_are_realized_where_they_are_drawn():
+    """Build-time witness (no solve) for the T-junction's guide width.
+
+    The two horizontal wall blocks are drawn to y = 0.04 m and from
+    y = 0.08 m at dx = 2 mm, both on node lines. A volume owns the cells
+    its centres fall in and walls both drawn faces, so the realized guide
+    runs from node 0.04 m to node 0.08 m — 20 cells, 40.0 mm, the drawn
+    gap exactly. This is the same geometry
+    ``tests/unit/ports/test_port_aperture_rasterization.py`` measures
+    through preflight, asserted here at the source.
+    """
+    freqs = jnp.linspace(4.5e9, 6.5e9, 3)
+    sim = _tj_ref_horizontal(freqs, 5.5e9)
+    rz = realized(sim)
+    pad = rz.grid.axis_pads[1]
+    expected = list(range(pad, pad + 21)) + list(range(pad + 40, pad + 61))
+    assert_wall_planes(sim, 1, expected_planes=expected,
+                       what="T-junction guide walls")
+    inner_lo, inner_hi = pad + 20, pad + 40
+    assert (inner_hi - inner_lo) * rz.grid.dx == pytest.approx(0.040, rel=1e-12)

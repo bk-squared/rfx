@@ -1,0 +1,37 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "mesh_resolution",
+        "loc": null,
+        "message": "dielectric 'hi' on x: 2.2 cells per \u03bb_eff (eps_r=12.00, freq_max=20GHz, dx=2mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
+        "severity": "warning",
+        "source": "_validate_mesh_quality"
+      },
+      {
+        "code": "mesh_resolution",
+        "loc": null,
+        "message": "dielectric 'hi' on y: 2.2 cells per \u03bb_eff (eps_r=12.00, freq_max=20GHz, dx=2mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
+        "severity": "warning",
+        "source": "_validate_mesh_quality"
+      },
+      {
+        "code": "mesh_resolution",
+        "loc": null,
+        "message": "dielectric 'hi' on z: 2.2 cells per \u03bb_eff (eps_r=12.00, freq_max=20GHz, dx=2mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
+        "severity": "warning",
+        "source": "_validate_mesh_quality"
+      },
+      {
+        "code": "numerical_dispersion",
+        "loc": null,
+        "message": "FDTD numerical dispersion at freq_max=20.00GHz exceeds 2%: x=2.1%, y=2.1%, z=2.1%. Worst axis: x (cell 2.000mm). Phase velocity error causes resonance frequency bias. Refine the coarse axis or co-refine all axes together (Taflove Ch. 4).",
+        "severity": "warning",
+        "source": "_check_numerical_dispersion"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 4,
+    "ok": true
+  }
+}

@@ -1,0 +1,62 @@
+name: rfx-931-post-pec-short-postfix
+description: "#931 phase 2b T6 — the PEC-short sweep re-run AFTER the cv11 adjudication (a8d59e86) drew the plug to the REALIZED guide walls. Pre-declared: min|S11| >= 0.99 at every thickness and the spread across 1/2/4 cells <= 0.005, because the vacuum slot that leaked is gone; a surviving thickness trend means the slot is not the whole story. The module gate runs in the same job. Submit: vessl run create -f pec-short-postfix.yaml"
+tags: [rfx, issue-931, post, t6, pec-short-postfix]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_PLATFORMS: "cpu"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  echo "=== rfx #931 T6 post-change re-measure: pec-short-postfix ==="
+  date
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  SRC=/root/workspace/byungkwan-workspace/research/rfx-931-T6-oracle-contracts-locks-studio
+  test -d "$SRC" || { echo "ERROR: T6 worktree missing at $SRC"; exit 3; }
+  git config --global --add safe.directory "$SRC" || true
+  RUNS=/root/workspace/claude-workspace/rfx/runs
+  OUT=$RUNS/issue931-post-pec-short-postfix-$(date -u +%Y%m%dT%H%M%SZ)
+  mkdir -p "$OUT"
+  echo "$OUT" > "$RUNS/issue931-post-pec-short-postfix.latest"
+  trap 'chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
+  echo "artifacts: $OUT"
+  ( cd "$SRC" && git rev-parse HEAD && git status --short | head -20 ) | tee "$OUT/commit.txt"
+  WORK=/root/work/rfx931-t6-pec-short-postfix
+  rm -rf "$WORK"
+  mkdir -p "$WORK"
+  cp -a "$SRC/." "$WORK/"
+  cd "$WORK"
+  "$PY" -m pip uninstall -y -q jax-cuda12-plugin jax-cuda12-pjrt 2>/dev/null || true
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest pytest-xdist
+  export RFX_REPO_ROOT="$WORK"
+  export PYTHONPATH="$WORK"
+  export MPLBACKEND=Agg
+  "$PY" -c "import jax, rfx, os; print('probe ok | jax', jax.__version__, '| backend', jax.default_backend(), '| rfx', getattr(rfx, '__version__', '?'))"
+  echo "=== pec-short thickness sweep (1, 2, 4 cells) ==="
+  set +e
+  timeout 21600 "$PY" scripts/vessl_931/pec_short_thickness_sweep.py > "$OUT/sweep.log" 2>&1
+  rcs=$?
+  echo "$rcs" > "$OUT/sweep.rc"
+  tail -n 40 "$OUT/sweep.log" || true
+  echo "=== the module gate itself, at the declared SHORT_CELLS ==="
+  timeout 21600 "$PY" -m pytest -q -p no:cacheprovider -p no:randomly --no-header -rA -s \
+      -m "" --junitxml="$OUT/junit.xml" tests/oracle/test_waveguide_port_validation_battery.py > "$OUT/pytest.log" 2>&1
+  rc=$?
+  set -e
+  echo "$rc" > "$OUT/pytest.rc"
+  tail -n 120 "$OUT/pytest.log" || true
+  cp -p "$OUT/pytest.log" "$OUT/pec-short-postfix.log" 2>/dev/null || true
+  ls -la "$OUT"
+  chmod -R a+rX "$OUT" 2>/dev/null || true
+  echo "T6_POST_CASE=pec-short-postfix RC=$rc"
+  exit 0

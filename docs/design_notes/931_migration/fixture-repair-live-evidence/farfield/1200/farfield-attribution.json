@@ -1,0 +1,192 @@
+{
+  "source": "b36fc46cdf21d1c57f221e6a057654bcad60bae2",
+  "rfx_import": "/tmp/rfx-fixture-repair-farfield-l6Juxg/rfx/__init__.py",
+  "predeclared_falsifier": "Diagnostic only: isolate #931 volume-edge realization, without fixture tuning.\n\nRun from this worktree: PYTHONPATH=$PWD JAX_PLATFORMS=cpu python\nscripts/diagnostics/slow_931_farfield_attribution.py\n\nPredeclared falsifier: if restoring ONLY the historical volume-edge map does\nnot bring this unchanged uniform/graded comparison back below 5%, volume-edge\nownership alone does not explain crossing the envelope. This is not a rollback\nproposal or a newly qualified physical baseline. Four sequential 600-step runs.\nHistorical map is copied from a3e4dba4^:rfx/boundaries/pec.py tangential_edge_masks.\nAll patching is process-local, restored after each counterfactual.\n\nFixture repair qualification: --fixture repaired --operators current uses\nidentical 250 um radiator/source lattices and grades only the NTFF shoulders.\nIts predeclared falsifier is local-cell error >= 5% OR >= scalar-cell error/2;\neither miss remains a finding, with no envelope change or profile sweep.\nUse --steps 1200 as an independently named duration-convergence witness.\n",
+  "fixture": "repaired",
+  "steps": 1200,
+  "cases": {
+    "current_uniform": {
+      "shape": [
+        101,
+        101,
+        101
+      ],
+      "dt": 4.766437173827514e-13,
+      "duration": 5.719724608593017e-10,
+      "occupied_cells": 216,
+      "node_vs_center_occupancy_xor": 0,
+      "edge_counts": [
+        294,
+        294,
+        294
+      ],
+      "wall_planes_m": [
+        [
+          0.01025,
+          0.0105,
+          0.010750000000000001,
+          0.011,
+          0.01125,
+          0.0115,
+          0.01175
+        ],
+        [
+          0.01025,
+          0.0105,
+          0.010750000000000001,
+          0.011,
+          0.01125,
+          0.0115,
+          0.01175
+        ],
+        [
+          0.01025,
+          0.0105,
+          0.010750000000000001,
+          0.011,
+          0.01125,
+          0.0115,
+          0.01175
+        ]
+      ],
+      "source_index": [
+        50,
+        50,
+        44
+      ],
+      "source_node_m": [
+        0.011,
+        0.011,
+        0.0095
+      ],
+      "source_dual_volume_m3": 1.5625e-11,
+      "source_waveform_30ghz_dt_dft": [
+        -1.4802728537424605e-12,
+        2.3241124585971612e-12
+      ],
+      "source_waveform_tail": -0.0,
+      "power": 6.155373252240554e-14,
+      "numpy_power": 6.155373479832653e-14,
+      "numpy_jax_max_U_relative": 9.729665464180356e-07,
+      "scalar_inplane_power": 6.155373252240554e-14,
+      "ntff_indices": [
+        24,
+        76,
+        24,
+        76,
+        24,
+        76
+      ],
+      "ntff_coordinates_m": [
+        [
+          0.0045000000000000005,
+          0.0175
+        ],
+        [
+          0.0045000000000000005,
+          0.0175
+        ],
+        [
+          0.0045000000000000005,
+          0.0175
+        ]
+      ]
+    },
+    "current_graded": {
+      "shape": [
+        97,
+        97,
+        101
+      ],
+      "dt": 4.766437173827411e-13,
+      "duration": 5.719724608592893e-10,
+      "occupied_cells": 216,
+      "node_vs_center_occupancy_xor": 0,
+      "edge_counts": [
+        294,
+        294,
+        294
+      ],
+      "wall_planes_m": [
+        [
+          0.010250000000000009,
+          0.01050000000000001,
+          0.01075000000000001,
+          0.01100000000000001,
+          0.01125000000000001,
+          0.01150000000000001,
+          0.01175000000000001
+        ],
+        [
+          0.010250000000000009,
+          0.01050000000000001,
+          0.01075000000000001,
+          0.01100000000000001,
+          0.01125000000000001,
+          0.01150000000000001,
+          0.01175000000000001
+        ],
+        [
+          0.01025,
+          0.0105,
+          0.010750000000000001,
+          0.011,
+          0.01125,
+          0.0115,
+          0.01175
+        ]
+      ],
+      "source_index": [
+        48,
+        48,
+        44
+      ],
+      "source_node_m": [
+        0.01100000000000001,
+        0.01100000000000001,
+        0.0095
+      ],
+      "source_dual_volume_m3": 1.5625002226443134e-11,
+      "source_waveform_30ghz_dt_dft": [
+        -1.4802728537424284e-12,
+        2.3241124585971107e-12
+      ],
+      "source_waveform_tail": -0.0,
+      "power": 6.177979341635783e-14,
+      "numpy_power": 6.177980188497108e-14,
+      "numpy_jax_max_U_relative": 9.575464540096093e-07,
+      "scalar_inplane_power": 5.875646216918599e-14,
+      "ntff_indices": [
+        24,
+        72,
+        24,
+        72,
+        24,
+        76
+      ],
+      "ntff_coordinates_m": [
+        [
+          0.004500000000000004,
+          0.017500000000000012
+        ],
+        [
+          0.004500000000000004,
+          0.017500000000000012
+        ],
+        [
+          0.0045000000000000005,
+          0.0175
+        ]
+      ]
+    }
+  },
+  "current_errors": {
+    "local": 0.0036725781636394684,
+    "scalar": 0.04544436606181994,
+    "graded_over_uniform_power": 1.0036725781636395,
+    "peak_normalized_pattern_max_abs": 0.029735267162322998,
+    "power_normalized_pattern_relative_l2": 0.010354832746088505,
+    "unchanged_5pct_gate_passed": true,
+    "local_cell_discriminator_passed": true
+  }
+}

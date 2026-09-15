@@ -1,16 +1,12 @@
 #!/usr/bin/env python3
 """WR-90 chain battery — the measurement driver (v1.8 WP2).
 
-Runs the pre-declared battery of
-``docs/design_notes/20260905_v18_close_predeclaration.md`` (run 3, the v1.8 closing
-run; ``waveguide_chain_battery_remeasure_predeclaration.md`` governed run 2 and the
-parent note ``waveguide_chain_battery_predeclaration.md`` run 1) on the fixture set
-built by ``tests/_waveguide_chain_battery_fixture.py`` and writes
-``tests/fixtures/waveguide_chain_battery/fixture_v18_close.json`` (schema:
-``tests/fixtures/waveguide_chain_battery/README.md``). Gate arithmetic lives in
-``tests/_waveguide_chain_battery_gates.py`` and is shared with the replay test
-``tests/oracle/test_waveguide_chain_battery.py``; this file only builds, runs,
-records and persists.
+Runs the 2026-09-08 PI amendment in
+``docs/design_notes/waveguide_chain_battery_predeclaration.md`` (schema 4).
+Historical schema 1--3 artifacts remain frozen. This driver builds from
+``tests/_waveguide_chain_battery_fixture.py`` and records the global per-arm
+validity certificates and stencil samples. Shared arithmetic and replay gates
+live in ``tests/_waveguide_chain_battery_gates.py``.
 
 Stages (``--stages``), each persisting one JSON per case into ``--out-dir``
 the moment the case finishes, before anything optional runs:
@@ -22,7 +18,7 @@ the moment the case finishes, before anything optional runs:
                   metrics of §4 / §6.
 * ``ad_fd``       §5(a): reverse-mode ``jax.value_and_grad`` of each objective
                   at θ0 (float32, the fixture as the gates see it) and a
-                  central FD reference under a scoped x64 context, with the
+                  second-order forward eps (central sigma) FD reference in scoped x64, with the
                   ULP-span validity of the FD pair recorded BEFORE the
                   accuracy gate. Also the criterion-1 forward identity.
 * ``plane_shift`` §5(b): the shifted-plane S-matrix, |S| invariance, the
@@ -44,7 +40,7 @@ Usage (from a clean checkout; the rfx import must resolve to this tree)::
         --out-dir <run-dir> --run-id <vessl run id> --run-lane vessl
     PYTHONPATH=. python scripts/diagnostics/waveguide_chain_battery_measure.py \
         --out-dir <run-dir> --stages assemble \
-        --fixture-out tests/fixtures/waveguide_chain_battery/fixture_v18_close.json
+        --fixture-out tests/fixtures/waveguide_chain_battery/fixture_931_adfd.json
 
 Lanes ``normalize=False`` and ``normalize="flux"`` only (``normalize=True``
 never enters). Nothing from ``rfx/probes/refplane.py`` is imported.
@@ -81,17 +77,14 @@ from tests import _waveguide_chain_battery_gates as G  # noqa: E402
 from tests._x64_compat import enable_x64  # noqa: E402
 
 SCHEMA = "rfx.waveguide_chain_battery"
-# Identity stamp of the SECOND run's artifact (re-measurement pre-declaration §7).
-# The first run's artifact stays at schema_version 1 and keeps pointing at the
-# parent note; nothing here rewrites it.
-SCHEMA_VERSION = 3
-PREDECLARATION = "docs/design_notes/20260905_v18_close_predeclaration.md"
-ARTIFACT = "tests/fixtures/waveguide_chain_battery/fixture_v18_close.json"
-SUPERSEDES = "tests/fixtures/waveguide_chain_battery/fixture_guide_cell_aperture.json"
+# New measurement identity; old schema 1--3 artifacts retain their own declarations.
+SCHEMA_VERSION = 4
+PREDECLARATION = "docs/design_notes/waveguide_chain_battery_predeclaration.md"
+ARTIFACT = "tests/fixtures/waveguide_chain_battery/fixture_931_adfd.json"
+SUPERSEDES = "tests/fixtures/waveguide_chain_battery/fixture_v18_close.json"
 SUPERSEDES_REASON = (
-    "same port, same battery: this artifact reads contract criterion 1 (forward identity) and "
-    "3(a) (AD-vs-FD) under x64 on the flux lane per the v1.8 closing declaration, stores the "
-    "float32 reading beside it, and carries the pre-declared zero-derivative leg as report_only")
+    "2026-09-08 PI amendment: second-order forward eps stencil at theta0=0; "
+    "every arm certified over the full array; lossless PEC eps magnitude excluded")
 README = "tests/fixtures/waveguide_chain_battery/README.md"
 DRIVER = "scripts/diagnostics/waveguide_chain_battery_measure.py"
 SETTLING_RERUN_NUM_PERIODS = 2.0 * F.NUM_PERIODS      # §2.5 record-length doubling
@@ -347,12 +340,51 @@ def ad_grads(sim, dut, kind, lane, objectives, theta0: float, cseg, *, tag: str)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             (val, S_primal), g = jax.value_and_grad(f, has_aux=True)(jnp.asarray(theta0, jnp.float32))
+        _finite_s(S_primal, tag=f"AD {tag} {name}")
+        assert np.isfinite(float(val)) and np.isfinite(float(g)), f"FD configuration defect BLOCKED: nonfinite AD {tag}/{name}"
         wall = time.time() - t0
         out[name] = {"value": float(val), "g_ad": float(g), "wall_time_s": wall,
                      "S_primal": np.asarray(S_primal).astype(np.complex128),
                      "grad_dtype": str(np.asarray(g).dtype)}
         _log(f"  AD {tag} {name}: value={float(val):.6e} g_ad={float(g):+.6e} wall={wall:.1f}s")
     return out
+
+
+def _finite_s(S, *, tag: str):
+    assert np.all(np.isfinite(np.asarray(S))), f"FD configuration defect BLOCKED: nonfinite S on {tag}"
+    return S
+
+
+def measure_fd_samples(sim, dut, kind, lane, objectives) -> tuple[object, dict, dict]:
+    """Called in x64. Certify ALL arms before the first solve; reuse f0 for identity."""
+    validity = F.assert_fd_stencil_admissible(sim, dut, kind)
+    samples = []
+    for theta in validity["thetas"]:
+        S = sim.compute_waveguide_s_matrix(
+            num_periods=F.NUM_PERIODS, normalize=lane,
+            **_override_kw(sim, dut, kind, jnp.asarray(theta, jnp.float64))).s_params
+        samples.append(_finite_s(jnp.asarray(S), tag=f"{dut}/{kind}/theta={theta}"))
+    fd = {}
+    for name in objectives:
+        values = [float(G.objective_value(S, name)) for S in samples]
+        assert all(np.isfinite(v) for v in values), f"FD configuration defect BLOCKED: {name} {values}"
+        fd[name] = {"f_plus": values[1], "h": validity["h"],
+                    "loss_dtype": str(np.asarray(G.objective_value(samples[0], name)).dtype),
+                    "stencil": validity["stencil"]}
+        if kind == "eps":
+            fd[name].update(f0=values[0], f_2h=values[2])
+        else:
+            fd[name]["f_minus"] = values[2]
+    return samples[0], fd, validity
+
+
+def _read_ad_group(path: Path, dut: str, lane: str, kind: str, rung: str) -> list[dict]:
+    assert path.exists(), f"FD configuration defect BLOCKED: missing {path}; run ad_fd first"
+    data = json.loads(path.read_text())
+    assert data.get("schema_version") == SCHEMA_VERSION, f"FD configuration defect BLOCKED: stale {path}"
+    expected = {(dut, lane, kind, obj) for obj in G.AD_LEGS[(dut, kind)]}
+    G.assert_ad_fd_records(data["legs"], expected_keys=expected, rung=rung)
+    return data["legs"]
 
 
 def stage_ad_fd(args, out_dir: Path, rung: str, prov: dict) -> None:
@@ -363,10 +395,12 @@ def stage_ad_fd(args, out_dir: Path, rung: str, prov: dict) -> None:
             lane_label = G.LANE_LABELS[lane]
             path = ad_fd_path(out_dir, dut, lane_label, kind)
             if path.exists() and not args.overwrite:
-                _log(f"skip existing {path.name}")
+                _read_ad_group(path, dut, lane_label, kind, rung)
+                _log(f"skip validated {path.name}")
                 continue
             t_stage = time.time()
             sim = F.build_simulation(dut, dx)
+            F.assert_fd_stencil_admissible(sim, dut, kind)
             grid = sim._build_grid()
             cseg = _checkpoint_segments(grid)
             _log(f"ad_fd {dut} {lane_label} {kind}: rung={rung} theta0={theta0} h={h} cseg={cseg}")
@@ -375,6 +409,8 @@ def stage_ad_fd(args, out_dir: Path, rung: str, prov: dict) -> None:
             _, S_concrete, _, _, _ = run_smatrix(
                 sim, lane, num_periods=F.NUM_PERIODS, spy=False,
                 **_override_kw(sim, dut, kind, jnp.asarray(theta0, jnp.float32)))
+            _finite_s(S_plain, tag=f"plain {dut}/{kind}")
+            _finite_s(S_concrete, tag=f"concrete {dut}/{kind}")
             grads = ad_grads(sim, dut, kind, lane, objectives, theta0, cseg,
                              tag=f"{dut}/{lane_label}/{kind}")
             # FD reference under a SCOPED x64 context (never module-level)
@@ -383,47 +419,30 @@ def stage_ad_fd(args, out_dir: Path, rung: str, prov: dict) -> None:
                 sim64 = F.build_simulation(dut, dx)
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
-                    S_plus = sim64.compute_waveguide_s_matrix(
-                        num_periods=F.NUM_PERIODS, normalize=lane,
-                        **_override_kw(sim64, dut, kind, jnp.asarray(theta0 + h, jnp.float64))).s_params
-                    S_plus = jnp.asarray(S_plus)
-                    S_minus = sim64.compute_waveguide_s_matrix(
-                        num_periods=F.NUM_PERIODS, normalize=lane,
-                        **_override_kw(sim64, dut, kind, jnp.asarray(theta0 - h, jnp.float64))).s_params
-                    S_minus = jnp.asarray(S_minus)
-                fd = {}
-                for name in objectives:
-                    fp = G.objective_value(S_plus, name)
-                    fm = G.objective_value(S_minus, name)
-                    fd[name] = {"f_plus": float(fp), "f_minus": float(fm),
-                                "loss_dtype": np.dtype(np.asarray(fp).dtype),
-                                "s_dtype": str(S_plus.dtype)}
+                    S0_64, fd, validity = measure_fd_samples(sim64, dut, kind, lane, objectives)
+                s_dtype_fd = str(S0_64.dtype)
                 x64_flag = bool(jax.config.x64_enabled)
             fd_wall = time.time() - t_fd
             # x64 witnesses (report-only): (i) the reverse-mode primal identity
             # in float64 — if the float32 identity is outside rtol 1e-5 while the
             # float64 one is at rounding, the difference is reassociation of the
-            # differently-compiled vjp forward, not a wrong op; (ii) any non-finite
-            # float32 gradient re-evaluated in float64.
+            # differently-compiled vjp forward, not a wrong op. Nonfinite results
+            # block before either precision can become a comparison row.
             x64_witness = {}
             t_x = time.time()
             # v1.8 closing declaration: on X64_DECLARED_LANES the x64 reading is the PRIMARY the
             # gate reads (criterion 1 and 3(a)), so it is measured for EVERY objective, not only
             # objectives[0]. The forward identity does not depend on the objective, so one S64
             # per group serves all legs. RFX_CHAIN_PRIMARY=float32 keeps the float32 primary
-            # (the pre-declaration's section-4 falsifier: must reproduce run 2's 9 red).
+            # (historical section-4 falsifier; its old nine-red census is not a
+            # prediction for the amended objective/stencil family).
             x64_primary = (lane_label in G.X64_DECLARED_LANES
                            and os.environ.get("RFX_CHAIN_PRIMARY", "declared") != "float32")
             with enable_x64():
-                sim64w = F.build_simulation(dut, dx)
+                sim64w = sim64
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
-                    S0_64 = np.asarray(sim64w.compute_waveguide_s_matrix(
-                        num_periods=F.NUM_PERIODS, normalize=lane,
-                        **_override_kw(sim64w, dut, kind, jnp.asarray(theta0, jnp.float64))).s_params)
-                    nonfinite = [n for n in objectives if not np.isfinite(grads[n]["g_ad"])]
-                    witness_names = (list(objectives) if x64_primary
-                                     else [objectives[0]] + [n for n in nonfinite if n != objectives[0]])
+                    witness_names = list(objectives) if x64_primary else [objectives[0]]
                     for name in witness_names:
                         def f64(th, _name=name):
                             S = sim64w.compute_waveguide_s_matrix(
@@ -431,6 +450,9 @@ def stage_ad_fd(args, out_dir: Path, rung: str, prov: dict) -> None:
                                 **_override_kw(sim64w, dut, kind, th)).s_params
                             return G.objective_value(S, _name), S
                         (v64, S64), g64 = jax.value_and_grad(f64, has_aux=True)(jnp.asarray(theta0, jnp.float64))
+                        _finite_s(S64, tag=f"x64 AD {dut}/{kind}/{name}")
+                        assert np.isfinite(float(v64)) and np.isfinite(float(g64)), (
+                            f"FD configuration defect BLOCKED: nonfinite x64 AD {dut}/{kind}/{name}")
                         x64_witness[name] = {
                             "g_ad_x64": float(g64), "value_x64": float(v64),
                             "forward_identity_x64": G.forward_identity_metric(np.asarray(S64), S0_64),
@@ -440,37 +462,17 @@ def stage_ad_fd(args, out_dir: Path, rung: str, prov: dict) -> None:
             x64_wall = time.time() - t_x
             legs = []
             for name in objectives:
-                e = G.ad_fd_entry(g_ad=grads[name]["g_ad"], f_plus=fd[name]["f_plus"],
-                                  f_minus=fd[name]["f_minus"], h=h, loss_dtype=fd[name]["loss_dtype"])
+                e = G.ad_fd_from_leg({"g_ad": grads[name]["g_ad"], **fd[name]})
                 # eps legs: θ0 = 0, so the untraced call IS the plain fixture; the
                 # sigma leg (θ0 = 0.05 S/m) compares with the concrete override at θ0.
                 ident_ref = S_plain if kind == "eps" else S_concrete
                 ident = G.forward_identity_metric(grads[name]["S_primal"], ident_ref)
                 ident_concrete = G.forward_identity_metric(S_concrete, S_plain) if kind == "eps" else None
-                expected_skip = (dut, kind, name) in G.EXPECTED_ULP_SKIP
                 w = x64_witness.get(name)
                 primary = "x64" if (x64_primary and w is not None) else "float32"
                 if primary == "x64":
                     ident_primary = w["forward_identity_x64"]
-                    e_primary = G.ad_fd_entry(g_ad=w["g_ad_x64"], f_plus=fd[name]["f_plus"],
-                                              f_minus=fd[name]["f_minus"], h=h, loss_dtype=fd[name]["loss_dtype"])
-                    if expected_skip and e_primary["verdict"] != "skipped_under_ulp_floor":
-                        # closing pre-declaration section 2: the pre-declared zero-derivative
-                        # leg is REPORT-ONLY on the remeasure note's exit (c); the sign/factor-3
-                        # entry is stored beside it, never read as the verdict.
-                        zd = G.zero_derivative_entry(g_ad_x64=w["g_ad_x64"], g_fd=e_primary["g_fd"],
-                                                     fd_ulp_span=e_primary["fd_ulp_span"])
-                        admissible = G.zero_derivative_report_only_admissible(
-                            g_ad_x64=w["g_ad_x64"], g_fd=e_primary["g_fd"])
-                        e_primary = {**e_primary, "zero_derivative": zd,
-                                     "verdict": "report_only" if admissible else "fail",
-                                     "report_only_reason": (
-                                         "pre-declared zero-derivative objective; AD and FD are O(1e-7) "
-                                         "discretization residuals of a physically zero derivative "
-                                         "(closing pre-declaration section 2)") if admissible else (
-                                         "OUTSIDE the pre-declared report_only branch (section 3 row 3): "
-                                         "sign flip or |g| above 1e-5 — a non-zero derivative the two "
-                                         "precisions disagree on; fail, root-cause, do not close")}
+                    e_primary = G.ad_fd_from_leg({"g_ad": w["g_ad_x64"], **fd[name]})
                 else:
                     ident_primary, e_primary = ident, e
                 legs.append({
@@ -478,11 +480,12 @@ def stage_ad_fd(args, out_dir: Path, rung: str, prov: dict) -> None:
                     "forward_identity_float32": ident, "ad_vs_fd_float32": e,
                     "dut": dut, "lane": lane_label, "dx_m": dx, "rung": rung,
                     "objective": name, "theta_kind": kind, "theta0": theta0, "h": h,
-                    "x64_context": x64_flag, "s_dtype_fd": fd[name]["s_dtype"],
+                    "x64_context": x64_flag, "s_dtype_fd": s_dtype_fd,
+                    "stencil": validity["stencil"], "fd_validity": validity,
                     "checkpoint_segments": cseg,
                     "value_at_theta0": grads[name]["value"],
                     "grad_dtype": grads[name]["grad_dtype"],
-                    "expected_ulp_floor_skip": expected_skip,
+                    "expected_ulp_floor_skip": False,
                     "forward_identity": ident_primary,
                     "forward_identity_concrete_override_vs_plain": ident_concrete,
                     "wall_time_s": {"ad": grads[name]["wall_time_s"], "fd_pair": fd_wall,
@@ -492,7 +495,8 @@ def stage_ad_fd(args, out_dir: Path, rung: str, prov: dict) -> None:
                 })
                 _log(f"  {name}: g_ad={e['g_ad']:+.6e} g_fd={e['g_fd']:+.6e} rel={e['rel']:.3e} "
                      f"span={e['fd_ulp_span']:.3g} -> {e['verdict']}; identity scaled={ident['max_scaled_diff']:.3f}")
-            _write(path, {"dut": dut, "lane": lane_label, "theta_kind": kind, "dx_m": dx, "rung": rung,
+            G.assert_ad_fd_records(legs, expected_keys={(dut, lane_label, kind, n) for n in objectives}, rung=rung)
+            _write(path, {"schema_version": SCHEMA_VERSION, "dut": dut, "lane": lane_label, "theta_kind": kind, "dx_m": dx, "rung": rung,
                           "legs": legs, "wall_time_s": time.time() - t_stage, "provenance": prov})
             _log(f"  wrote {path.name} ({time.time() - t_stage:.0f}s)")
 
@@ -532,7 +536,14 @@ def stage_plane_shift(args, out_dir: Path, rung: str, prov: dict, *, refute: boo
             lane_label = G.LANE_LABELS[lane]
             path = (out_dir / f"refute_flip_shift_sign__{dut}__{lane_label}.json" if refute
                     else plane_shift_path(out_dir, dut, lane_label))
+            if not refute:
+                for (d, kind), objectives in G.AD_LEGS.items():
+                    if d == dut:
+                        _read_ad_group(ad_fd_path(out_dir, dut, lane_label, kind), dut, lane_label, kind, rung)
             if path.exists() and not args.overwrite:
+                cached = json.loads(path.read_text())
+                assert cached.get("schema_version") == SCHEMA_VERSION, f"FD configuration defect BLOCKED: stale {path}"
+                assert cached["rung"] == rung, f"FD configuration defect BLOCKED: stale rung in {path}"
                 _log(f"skip existing {path.name}")
                 continue
             t_stage = time.time()
@@ -553,6 +564,7 @@ def stage_plane_shift(args, out_dir: Path, rung: str, prov: dict, *, refute: boo
             rot = G.plane_shift_rotation(S_base, S_shift, F.FREQS, float(grid.dt), dx,
                                          fc_port_hz=fc_port)
             rec = {
+                "schema_version": SCHEMA_VERSION,
                 "dut": dut, "lane": lane_label, "dx_m": dx, "rung": rung,
                 "reference_planes_base_m": [F.REF_LEFT_DEFAULT_M, F.REF_RIGHT_DEFAULT_M],
                 "reference_planes_shifted_m": [float(x) for x in np.asarray(res_s.reference_planes)],
@@ -596,10 +608,9 @@ def stage_plane_shift(args, out_dir: Path, rung: str, prov: dict, *, refute: boo
                     continue
                 theta0, _ = theta0_and_h(kind)
                 base_file = ad_fd_path(out_dir, dut, lane_label, kind)
-                if not base_file.exists():
-                    _log(f"  gradient leg {kind}: no {base_file.name}; run the ad_fd stage first — skipped")
-                    continue
-                base_legs = {l["objective"]: l for l in json.loads(base_file.read_text())["legs"]}
+                base_legs = {row["objective"]: row for row in
+                             _read_ad_group(base_file, dut, lane_label, kind, rung)}
+                F.assert_fd_stencil_admissible(sim_shift, dut, kind)
                 resolvable = [n for n in objectives
                               if base_legs[n]["verdict"] != "skipped_under_ulp_floor"]
                 skipped = [n for n in objectives if n not in resolvable]
@@ -671,6 +682,8 @@ def _fixture_constants() -> dict:
         "boundary": "cpml-x, pec-y, pec-z",
         "theta0_eps": F.THETA0_EPS, "theta0_sigma_s_per_m": F.THETA0_SIGMA_S_PER_M,
         "fd_step_eps": F.FD_STEP_EPS, "fd_step_sigma_s_per_m": F.FD_STEP_SIGMA_S_PER_M,
+        "fd_stencils": {kind: F.fd_stencil(kind) for kind in ("eps", "sigma")},
+        "fd_material_family": "eps_r>=1, sigma>=0, uniform grid, mu_r=1",
     }
 
 
@@ -710,7 +723,9 @@ def _ladder_block(cells: list[dict]) -> dict:
 def attach_section_4_falsifier(fx: dict, out_dir: Path) -> dict:
     """Closing pre-declaration section 4: the ad_fd stage re-run with
     ``RFX_CHAIN_PRIMARY=float32`` (the VESSL YAML writes it to ``<out-dir>/falsifier_float32``)
-    must reproduce run 2's 9 red. Attach a compact, checkable record of that stage — the
+    historically had to reproduce run 2's 9 red (schemas 1--3). Schema 4 keeps
+    this as a precision diagnostic; the amended family has no nine-red prediction.
+    Attach a compact, checkable record of that stage — the
     float32 verdict, rel, g_ad and identity metric per leg plus the red key set — so the
     replay can compare it leg by leg with the float32 readings stored on the primary legs
     (``tests/oracle/test_waveguide_chain_battery_v18_close.py``). No-op when the directory
@@ -720,6 +735,13 @@ def attach_section_4_falsifier(fx: dict, out_dir: Path) -> dict:
     files = sorted(fdir.glob("ad_fd__*.json")) if fdir.is_dir() else []
     if not files or "section_4_falsifier" in fx:
         return fx
+    if fx.get("schema_version", 1) >= 4:
+        rows = []
+        for path in files:
+            group = json.loads(path.read_text())
+            assert group.get("schema_version") == SCHEMA_VERSION, f"FD configuration defect BLOCKED: stale {path}"
+            rows.extend(group["legs"])
+        G.assert_ad_fd_records(rows, rung=fx["legs_rung"])
     legs, red, prov = {}, [], None
     for p in files:
         rec = json.loads(p.read_text())
@@ -738,8 +760,10 @@ def attach_section_4_falsifier(fx: dict, out_dir: Path) -> dict:
             if not leg["forward_identity"]["pass"]:
                 red.append(f"forward_identity|{key}")
     fx["section_4_falsifier"] = {
-        "what": "the ad_fd stage re-run in the same pod with RFX_CHAIN_PRIMARY=float32 "
-                "(closing pre-declaration section 4); must reproduce run 2's 9 red",
+        "what": ("same-pod float32-primary diagnostic for the amended family; no historical red-count prediction"
+                 if fx.get("schema_version", 1) >= 4 else
+                 "the ad_fd stage re-run in the same pod with RFX_CHAIN_PRIMARY=float32 "
+                 "(closing pre-declaration section 4); must reproduce run 2's 9 red"),
         "stage_dir": "falsifier_float32", "n_legs": len(legs), "n_red": len(red),
         "red_keys": sorted(red), "legs": legs, "provenance": prov,
     }
@@ -751,7 +775,10 @@ def assemble(args, out_dir: Path, prov: dict) -> Path:
     cells = [json.loads(p.read_text()) for p in sorted(out_dir.glob("cell__*.json"))]
     legs = []
     for p in sorted(out_dir.glob("ad_fd__*.json")):
-        legs.extend(json.loads(p.read_text())["legs"])
+        data = json.loads(p.read_text())
+        assert data.get("schema_version") == SCHEMA_VERSION, f"FD configuration defect BLOCKED: stale {p}"
+        legs.extend(data["legs"])
+    G.assert_ad_fd_records(legs, rung=args.legs_rung)
     cell_by = {(c["dut"], c["rung"], c["lane"]): c for c in cells}
 
     def _rerotate(d: dict) -> dict:
@@ -773,7 +800,10 @@ def assemble(args, out_dir: Path, prov: dict) -> Path:
 
     planes = {}
     for p in sorted(out_dir.glob("plane_shift__*.json")):
-        d = _rerotate(json.loads(p.read_text()))
+        raw = json.loads(p.read_text())
+        assert raw.get("schema_version") == SCHEMA_VERSION, f"FD configuration defect BLOCKED: stale {p}"
+        assert "eps:s11_mag2" not in raw["gradient_invariance"] or raw["dut"] != "pec_short"
+        d = _rerotate(raw)
         planes[f"{d['dut']}|{d['lane']}"] = d
     refutes = [_rerotate(json.loads(p.read_text())) for p in sorted(out_dir.glob("refute_flip_shift_sign__*.json"))]
     if refutes:
@@ -918,11 +948,15 @@ def assemble(args, out_dir: Path, prov: dict) -> Path:
          f"{len([k for k in planes if k != 'cheap_refute'])} plane-shift cases)")
     fails = {k: v for k, v in fx["verdicts"].items() if v == "fail"}
     ni = {k: v for k, v in fx["verdicts"].items() if v == "not_interpretable"}
-    _log(f"verdicts: {len(fx['verdicts'])} total, {len(fails)} fail, {len(ni)} not_interpretable")
+    owed = {k: v for k, v in fx["verdicts"].items() if v == "owed"}
+    _log(f"verdicts: {len(fx['verdicts'])} total, {len(fails)} fail, "
+         f"{len(ni)} not_interpretable, {len(owed)} owed")
     for k in sorted(fails):
         _log(f"  FAIL {k}")
     for k in sorted(ni):
         _log(f"  NOT INTERPRETABLE {k}")
+    for k in sorted(owed):
+        _log(f"  OWED {k}")
     return out
 
 

@@ -1,0 +1,141 @@
+{
+  "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-exp3/rfx/__init__.py",
+  "git_sha": "4129591bb7cef863adf0f8249c788d31c9b4337c",
+  "git_dirty": false,
+  "jax_platforms": "cpu",
+  "python_executable_requested": "/Users/byungkwankim/Documents/rfx/.venv/bin/python",
+  "pythonpath": "/Users/byungkwankim/Documents/rfx-nu-exp3",
+  "recorded_utc": "2026-09-10T04:12:20.937882+00:00",
+  "evidence_kind": "E3-B before-patch battery; STOP before implementation or E3 arm measurement",
+  "baseline_source_matches": "fea9f078 (only the E3 predeclaration differs)",
+  "runs": [
+    {
+      "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-exp3/rfx/__init__.py",
+      "git_sha": "4129591bb7cef863adf0f8249c788d31c9b4337c",
+      "git_dirty": false,
+      "jax_platforms": "cpu",
+      "python_executable_requested": "/Users/byungkwankim/Documents/rfx/.venv/bin/python",
+      "pythonpath": "/Users/byungkwankim/Documents/rfx-nu-exp3",
+      "argv": [
+        "-m",
+        "pytest",
+        "tests/unit/nonuniform",
+        "tests/unit/geometry",
+        "tests/unit/materials",
+        "tests/oracle",
+        "-q",
+        "-o",
+        "addopts=",
+        "-m",
+        "not gpu and not slow",
+        "-p",
+        "no:cacheprovider"
+      ],
+      "summary_verbatim": "4 failed, 1490 passed, 8 skipped, 92 deselected, 19 xfailed, 573 warnings in 1765.01s (0:29:25)",
+      "counts": {
+        "failed": 4,
+        "passed": 1490,
+        "skipped": 8,
+        "deselected": 92,
+        "xfailed": 19
+      },
+      "failures_verbatim": "_______________________________ test_replay_ad3 ________________________________\n\nw7_json = {'runs': [{'rfx_file': '/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py', 'git_sha': '5fdfced97fbec0ec95...ity_pass': True, 'f1_pass': True, ...}, 'graded|invariance': {'inv': 7.784117136001494e-06, 'pass': True}}, ...}}, ...}\n\n    def test_replay_ad3(w7_json):\n        if \"ad3\" not in w7_json:\n            pytest.skip(\"AD3 not run yet\")\n        row = w7_json[\"ad3\"]\n        assert \"error\" not in row, row.get(\"error\")\n        for ax in \"xyz\":\n>           _recheck_profile_ad(row[\"axes\"][ax], w7.AD3_TOL)\n\ntests/unit/nonuniform/test_band_accuracy_ad_replay.py:353: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nrow = {'n_cells': 46, 'all_finite': True, 'n_tied_min': 8, 'tied_cells': [19, 20, 21, 22, 23, 24, ...], ...}\ntol = 0.15\n\n    def _recheck_profile_ad(row: dict, tol: float) -> None:\n        g_ad, g_fd = np.asarray(row[\"g_ad\"]), np.asarray(row[\"g_fd\"])\n        assert np.all(np.isfinite(g_ad)), \"non-finite AD gradient\"\n        tied = np.zeros(len(g_ad), bool)\n        tied[row[\"tied_cells\"]] = True\n        assert row[\"n_tied_min\"] == int(tied.sum()) and len(row[\"tie_table\"]) == int(tied.sum())\n        free = np.isfinite(g_fd) & ~tied\n        dominant = free & (np.abs(g_fd) > w7.DOMINANT_FRAC * np.abs(g_fd[free]).max())\n        assert sorted(np.nonzero(dominant)[0].tolist()) == sorted(row[\"dominant_cells\"])\n        rel = np.abs(g_ad - g_fd) / np.maximum(np.abs(g_fd), 1e-300)\n        worst = float(rel[dominant].max())\n        assert _rel_close(worst, row[\"worst_dominant_rel_err\"], JUDGE_REL)\n        assert np.all(np.sign(g_ad[dominant]) == np.sign(g_fd[dominant])), \"sign disagreement on a dominant cell\"\n>       assert worst <= tol, f\"worst dominant AD-vs-FD {worst:.3e} > {tol}\"\nE       AssertionError: worst dominant AD-vs-FD 5.224e-01 > 0.15\nE       assert 0.5224044347795822 <= 0.15\n\ntests/unit/nonuniform/test_band_accuracy_ad_replay.py:322: AssertionError\n_____________________ test_alpha_envelope_regression_lock ______________________\n\n    @pytest.mark.slow_physics\n    def test_alpha_envelope_regression_lock():\n        \"\"\"DIAGNOSTIC pin (not a physics pass): the measured envelope itself.\n        alpha at f0 stays within +-5% of the recorded MEASURED_ALPHA, and the\n        run witnesses stay clean \u2014 so any regression OR improvement of the\n        node-thin sheet realization surfaces instead of drifting silently\n        behind the xfail'd contract gate below. Provenance: 2026-08-19 #677\n        re-measure, fit ln-RMS resid 0.00245, settle -71.0 dB, two-plane\n        alpha 0.72494.\"\"\"\n        out = _base()\n        alpha = out[\"alpha\"][_F0_IDX]\n        assert abs(alpha / MEASURED_ALPHA - 1.0) <= 0.05, (\n            f\"measured alpha moved: {alpha:.5f} vs recorded {MEASURED_ALPHA}\")\n        # two-plane comparator pin (same run, independent extractor shape)\n        a2 = _alpha_two_plane(out[\"xs\"], out[\"profile\"][_F0_IDX])\n>       assert abs(a2 / MEASURED_ALPHA_TWO_PLANE - 1.0) <= 0.05, a2\nE       AssertionError: 0.8733294904232025\nE       assert 0.20469209924021636 <= 0.05\nE        +  where 0.20469209924021636 = abs(((0.8733294904232025 / 0.72494) - 1.0))\n\ntests/oracle/test_leontovich_alpha_oracle.py:477: AssertionError\n----------------------------- Captured stdout call -----------------------------\n  [PREFLIGHT] All checks passed (NTFF advisory tier; the PEC-overlap error check runs on forward()/preflight()).\n______________________ test_o3_model_fits_measured_field _______________________\n\n    @pytest.mark.slow_physics\n    def test_o3_model_fits_measured_field():\n        \"\"\"FIELD-FIT self-check for the #700 model comparator (house rule,\n        part 2): on THIS committed fixture the 3-supermode expansion (three\n        complex amplitudes fitted, mode shapes and kx exact) must reproduce\n        the measured 2-D Hy(x, z) over the whole fit span to <= 1% relative\n        rms at every bin (O3_FIELD_FIT_RMS_GATE; scout measured 0.26-0.56%).\n        A field this well described by {lossless TEM + symmetric lossy\n        supermode} IS the mechanism statement of #700: the fitted alpha is a\n        two-mode transient, not an eigenvalue.\"\"\"\n        out = _base()\n        for f, ft in zip(O3_FREQS, _model_fits(out)):\n>           assert ft[\"rel_resid\"] <= O3_FIELD_FIT_RMS_GATE, (\n                f\"model fit degraded at {f/1e9:.0f} GHz: rel rms \"\n                f\"{ft['rel_resid']:.4f} > {O3_FIELD_FIT_RMS_GATE}\")\nE           AssertionError: model fit degraded at 8 GHz: rel rms 0.0108 > 0.01\nE           assert 0.010769780031860503 <= 0.01\n\ntests/oracle/test_leontovich_alpha_oracle.py:539: AssertionError\n_____________________________ test_alpha_oracle_o3 _____________________________\n\n    @pytest.mark.slow_physics\n    def test_alpha_oracle_o3():\n        \"\"\"O3 (contract gate, RE-PAIRED by #700 \u2014 GREEN): per-bin measured\n        alpha vs the exact 4-conductor model's two-mode-transient prediction\n        for this probe span, |alpha_meas/alpha_model - 1| <= O3_MODEL_GATE,\n        on BOTH extraction routes (Ez midplane fit \u2014 the fixture's canonical\n        extractor \u2014 and Hy midplane fit, the field the model is fitted on).\n    \n        The pre-#700 pairing gated |alpha_meas/ALPHA_ANALYTIC - 1| against a\n        0.15 cap and was strict-xfail RED at envelope 0.33806. #700 showed\n        the closed form Rs/(eta0*b) is not an eigenvalue of this fixture (the\n        1-cell PEC backing stubs make it a 4-conductor line whose spectrum\n        holds a lossless supermode and a 6.33 Np/m lossy one \u2014 nothing at\n        1.055), so that red measured stub geometry, not sheet physics. The\n        model prediction uses the same probe span; only the three complex\n        launch amplitudes are fitted (the trust gate above bounds the fit).\n        Envelope provenance for O3_MODEL_GATE: see O3 MODEL RE-PAIR in the\n        module docstring.\"\"\"\n        out = _base()\n        assert not any(\"PreflightError\" in w for w in out[\"warnings\"])\n        assert out[\"settle_db\"] < -40.0, out[\"settle_db\"]\n        for fi, (f, ft) in enumerate(zip(O3_FREQS, _model_fits(out))):\n>           assert ft[\"rel_resid\"] <= O3_FIELD_FIT_RMS_GATE, (\n                f\"model fit not trustworthy at {f/1e9:.0f} GHz: \"\n                f\"{ft['rel_resid']:.4f}\")\nE           AssertionError: model fit not trustworthy at 8 GHz: 0.0108\nE           assert 0.010769780031860503 <= 0.01\n\ntests/oracle/test_leontovich_alpha_oracle.py:566: AssertionError\n",
+      "started_utc": "2026-09-10T03:41:04.054365+00:00",
+      "started_utc_source": "redirected log file creation time (before pytest launch)"
+    },
+    {
+      "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-exp3/rfx/__init__.py",
+      "git_sha": "4129591bb7cef863adf0f8249c788d31c9b4337c",
+      "git_dirty": false,
+      "jax_platforms": "cpu",
+      "python_executable_requested": "/Users/byungkwankim/Documents/rfx/.venv/bin/python",
+      "pythonpath": "/Users/byungkwankim/Documents/rfx-nu-exp3",
+      "argv": [
+        "-m",
+        "pytest",
+        "tests/contracts/test_example_fidelity_contract.py",
+        "-q",
+        "-o",
+        "addopts=",
+        "-m",
+        "not gpu",
+        "-p",
+        "no:cacheprovider"
+      ],
+      "summary_verbatim": "175 passed, 9 warnings in 34.21s",
+      "counts": {
+        "passed": 175,
+        "failed": 0,
+        "skipped": 0
+      },
+      "started_utc": "2026-09-10T03:41:05.212871+00:00",
+      "started_utc_source": "redirected log file creation time (before pytest launch)"
+    }
+  ],
+  "gates": {
+    "E3-B": {
+      "status": "FIRED",
+      "stage": "before patch",
+      "stop_trigger": "test_alpha_envelope_regression_lock: pinned two-plane attenuation moved",
+      "measured_two_plane_alpha": 0.8733294904232025,
+      "pinned_two_plane_alpha": 0.72494,
+      "measured_relative_difference": 0.20469209924021636,
+      "maximum_relative_difference": 0.05,
+      "after_patch_counts": null,
+      "after_patch_not_run_reason": "Mandatory STOP at the default-path pinned-value failure; no production patch applied"
+    },
+    "E3-C": {
+      "status": "NOT RUN",
+      "reason": "E3-B mandatory STOP before implementation and measurement"
+    },
+    "E3-O": {
+      "status": "NOT RUN",
+      "reason": "E3-B mandatory STOP before implementation and measurement"
+    },
+    "E3-G3": {
+      "status": "NOT RUN",
+      "reason": "E3-B mandatory STOP before implementation and measurement"
+    },
+    "E3-V": {
+      "status": "NOT RUN",
+      "reason": "E3-B mandatory STOP before implementation and measurement"
+    },
+    "E3-F1": {
+      "status": "NOT RUN",
+      "reason": "E3-B mandatory STOP before implementation and measurement"
+    },
+    "E3-F2": {
+      "status": "NOT RUN",
+      "reason": "E3-B mandatory STOP before implementation and measurement"
+    },
+    "E3-R": {
+      "status": "NOT RUN",
+      "reason": "E3-B mandatory STOP before implementation and measurement"
+    },
+    "E3-P": {
+      "status": "NOT RUN",
+      "reason": "E3-B mandatory STOP before implementation and measurement"
+    }
+  },
+  "other_failed_quantities": {
+    "test_replay_ad3": {
+      "measured": 0.5224044347795822,
+      "maximum": 0.15,
+      "context": "Lane F Results already document this replay as red by design"
+    },
+    "test_o3_model_fits_measured_field": {
+      "frequency_hz": 8000000000.0,
+      "measured_rel_rms": 0.010769780031860503,
+      "maximum": 0.01
+    },
+    "test_alpha_oracle_o3": {
+      "frequency_hz": 8000000000.0,
+      "measured_rel_rms": 0.010769780031860503,
+      "maximum": 0.01
+    }
+  },
+  "production_source_changed": false,
+  "e3_arm_attempts": 0,
+  "frozen_windows_changed": false,
+  "started_utc": "2026-09-10T03:41:04.054365+00:00"
+}

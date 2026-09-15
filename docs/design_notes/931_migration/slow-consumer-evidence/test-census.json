@@ -1,0 +1,1083 @@
+{
+  "reports": {
+    "geometry-consumers": {
+      "counts": {
+        "passed": 192,
+        "xfailed": 1
+      },
+      "total": 193,
+      "seconds": 353.874,
+      "xml_sha256": "63c834a0a655291fa1b9030dac4078a0c7714311421cc614d5b7dfc8101ff60d",
+      "cases": [
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_auto_mesh_cannot_substitute_yee_for_declared_adi[False-None-run]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestCongruenceParity::test_off_lattice_mirror_pair_fires_once_with_basis",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_one_cell_pec_box_is_a_slab_not_under_resolved",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_the_thru_trace_realizes_the_drawn_foil",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_auto_mesh_cannot_substitute_yee_for_declared_adi[False-None-forward]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_auto_mesh_cannot_substitute_yee_for_declared_adi[False-sheet-run]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_auto_mesh_cannot_substitute_yee_for_declared_adi[False-sheet-forward]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_auto_mesh_cannot_substitute_yee_for_declared_adi[False-volume-run]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_auto_mesh_cannot_substitute_yee_for_declared_adi[False-volume-forward]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_auto_mesh_cannot_substitute_yee_for_declared_adi[True-None-run]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_auto_mesh_cannot_substitute_yee_for_declared_adi[True-None-forward]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_auto_mesh_cannot_substitute_yee_for_declared_adi[True-sheet-run]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_auto_mesh_cannot_substitute_yee_for_declared_adi[True-sheet-forward]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_auto_mesh_cannot_substitute_yee_for_declared_adi[True-volume-run]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_auto_mesh_cannot_substitute_yee_for_declared_adi[True-volume-forward]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_supported_uniform_model_reaches_the_declared_adi_solver[None-run]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_zc_beta_split_deembed_recover_synthetic_line",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_decompose_refplane_two_port_synthetic_matched",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestCongruenceParity::test_on_lattice_mirror_pair_is_silent",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_zero_thickness_pec_box_is_a_sheet_and_draws_no_thickness_advice",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestCongruenceParity::test_fires_on_nonuniform_lane_too",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestCongruenceParity::test_gate_mutation_both_directions",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestCongruenceParity::test_conductors_without_bounds_are_skipped_and_said_so",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_decompose_refplane_two_port_synthetic_reflective",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_decompose_refplane_requires_both_ports_opted",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestCongruenceParity::test_patterned_sheet_mirror_pair_fires",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_add_port_refplane_rejects_lumped",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_add_port_refplane_requires_direction",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_add_port_refplane_rejects_direction_along_component",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_add_port_refplane_rejects_nonpositive_n",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_nonuniform_lane_guard_fails_loudly",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_refplane_registers_two_planes_per_port_with_phase0_geometry",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestCongruenceParity::test_patterned_sheet_on_lattice_mirror_pair_is_silent",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestCongruenceParity::test_sheet_pair_gate_mutation_both_directions",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestSheetSlotVacuum::test_slotted_stack_fires_and_names_the_remedy",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_supported_uniform_model_reaches_the_declared_adi_solver[None-forward]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_supported_uniform_model_reaches_the_declared_adi_solver[0.002-run]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_sub_cell_pec_box_advisory_documents_the_refusal",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_partial_pec_volume_warns",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_fine_dielectric_is_silent",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_coarse_dielectric_warns",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_dielectric_near_old_threshold_now_warns",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_compute_waveguide_s_matrix_rejects_unnormalized_nu",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_supported_uniform_model_reaches_the_declared_adi_solver[0.002-forward]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestSheetSlotVacuum::test_dielectric_drawn_to_the_plane_is_silent",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_compute_waveguide_s_matrix_dispatches_nu_when_normalized",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestSheetSlotVacuum::test_fires_on_nonuniform_lane_too",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_default_path_registers_no_planes",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestSheetSlotVacuum::test_a_sheet_in_air_is_not_a_slot",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestSheetCavityThickness::test_foils_declared_with_faces_fire_with_both_measures",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_distributed_dispatch_cannot_substitute_yee_for_adi[run]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_distributed_dispatch_cannot_substitute_yee_for_adi[forward]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_plane_registration_is_independent_of_geometry_order[False-0-add_dft_plane_probe]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_plane_registration_is_independent_of_geometry_order[False-0-add_flux_monitor]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_plane_registration_is_independent_of_geometry_order[False-1-add_dft_plane_probe]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_plane_registration_is_independent_of_geometry_order[False-1-add_flux_monitor]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_plane_registration_is_independent_of_geometry_order[False-2-add_dft_plane_probe]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_plane_registration_is_independent_of_geometry_order[False-2-add_flux_monitor]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_plane_registration_is_independent_of_geometry_order[True-0-add_dft_plane_probe]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_plane_registration_is_independent_of_geometry_order[True-0-add_flux_monitor]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_plane_registration_is_independent_of_geometry_order[True-1-add_dft_plane_probe]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_plane_registration_is_independent_of_geometry_order[True-1-add_flux_monitor]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_plane_registration_is_independent_of_geometry_order[True-2-add_dft_plane_probe]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_plane_registration_is_independent_of_geometry_order[True-2-add_flux_monitor]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_plane_registration_preserves_declared_bounds[x-0.03-add_dft_plane_probe]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_plane_registration_preserves_declared_bounds[x-0.03-add_flux_monitor]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_plane_registration_preserves_declared_bounds[y-0.04-add_dft_plane_probe]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_plane_registration_preserves_declared_bounds[y-0.04-add_flux_monitor]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_plane_registration_preserves_declared_bounds[z-0.2-add_dft_plane_probe]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_declared_solver_and_monitor_domain::test_plane_registration_preserves_declared_bounds[z-0.2-add_flux_monitor]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.sparams.test_lumped_twoport_vi_validation_battery::test_thru_trace_is_one_realized_sheet_plane",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_refplane_crossing_guard_rejects_planes_past_other_port",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_refplane_requires_pec_trace_at_plane",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_forward_bitwise_unaffected_by_optin",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestSheetCavityThickness::test_node_registered_thin_foils_are_silent",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestSheetCavityThickness::test_gate_mutation_both_directions",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestSheetCavityThickness::test_volume_far_face_and_sheet_plane_read_flush",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.sparams.test_lumped_twoport_vi_validation_battery::test_thru_preflight_code_set_is_the_contract_set",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestSheetCavityThickness::test_snapped_sheet_plane_is_the_whole_difference",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestSheetCavityThickness::test_face_registered_foil_on_a_tie_reads_its_thickness_as_cavity",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_run_short_diagonals_byte_frozen_offdiagonals_move",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.sparams.test_lumped_twoport_vi_validation_battery::test_extract_lumped_s11_is_the_decompose_diagonal",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestOffLatticeCensus::test_off_lattice_edge_fires_with_residual_and_detune",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestOffLatticeCensus::test_on_lattice_edges_are_silent",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestOffLatticeCensus::test_gate_mutation_both_directions",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestOffLatticeCensus::test_offenders_are_aggregated_and_capped",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_dielectric_sparam_active_raises_threshold_to_20",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestOffLatticeCensus::test_sheet_in_plane_edges_are_examined_and_its_normal_is_not",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_wg_port_evanescent_no_warning_below_threshold",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_wg_port_evanescent_warns_above_threshold",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_thin_pec_strip_with_4_cell_y_silent_on_volume_warning",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestRealizationFindings::test_one_cell_volume_warns_with_both_walls",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestRealizationFindings::test_two_cell_volume_is_silent",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestRealizationFindings::test_sheet_plane_notice_prints_declared_realized_and_offset",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestRealizationFindings::test_half_cell_tie_is_a_warning_naming_both_planes",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestRealizationFindings::test_sub_cell_box_is_an_error_and_run_raises",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestRealizationFindings::test_zero_cell_volume_is_an_error",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestRealizationFindings::test_line_box_is_a_refusal",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestWiring::test_checks_run_inside_validate_simulation_config",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestWiring::test_advisory_tier_none_block",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization.TestWiring::test_context_is_built_once_per_configuration",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization::test_shifted_box_warns_with_actual_and_implied_counts",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization::test_box_pinned_to_actual_fine_band_is_silent",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization::test_uniform_dz_simulation_skips_check",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization::test_validator_count_matches_the_real_rasterizer[4.50-5.50mm]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization::test_validator_count_matches_the_real_rasterizer[5.00-6.00mm]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization::test_validator_count_matches_the_real_rasterizer[5.00-7.00mm]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization::test_validator_count_matches_the_real_rasterizer[4.00-5.00mm]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization::test_validator_count_matches_the_real_rasterizer[5.25-6.75mm]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_pec_volume_partial_in_all_axes_still_warns",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_full_domain_dielectric_silent_on_cpml_extension",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_inset_box_leaking_into_cpml_still_warns",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_hy_probe_beside_a_sheet_trace_is_live",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization::test_validator_count_matches_the_real_rasterizer[0.00-5.00mm]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization::test_asymmetric_metal_on_nu_triggers_warning",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_driver_vi_dump_with_planes_fails_loudly",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_ez_probe_through_a_sheet_trace_is_live",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_ey_probe_on_a_sheet_trace_plane_warns",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_hy_probe_inside_a_one_cell_volume_trace_warns",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.sparams.test_lumped_twoport_vi_validation_battery::test_run_forward_shapes_are_the_intended_ranks",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.sparams.test_lumped_twoport_vi_validation_battery::test_run_forward_complex_values_agree_on_cpml",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_ez_probe_inside_a_one_cell_volume_trace_warns",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_hy_probe_inside_thick_pec_volume_still_warns",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_pec_boundary_open_still_warns_when_ntff_declared",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_rasterization::test_symmetric_metal_on_nu_is_silent",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_zc_witness_warns_on_contaminated_synthetic_line",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_zc_witness_boundary_class_silent_at_one_percent",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_zc_witness_silent_on_clean_line",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_beta_wrap_guard_rejects_band_edge",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_beta_guard_rejects_nonpositive_beta",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_preflight_near_field_advisory_below_n10",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_pec_cavity_with_internal_pec_object_stays_silent",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_pec_empty_cavity_with_source_stays_silent",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_preflight_returns_back_compatible_structured_issues",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_preflight_issue_is_a_real_string",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_preflight_report_is_a_list_with_canonical_api",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_codes_set_at_check_site",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_error_severity_mapping_end_to_end",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_conformal_fine_dx_warns",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_conformal_coarse_dx_silent",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_no_conformal_silent",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_lossless_dielectric_in_cpml_warns",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_lossy_dielectric_silent",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_every_emitted_issue_carries_a_check_site_code",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_error_severity_config_issue_is_coded",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_to_dict_and_to_json_roundtrip_carry_code_and_severity",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_strict_aggregates_all_issues_in_one_raise",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_raise_for_failure_is_errors_only_gate",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_validator_crash_propagates_not_swallowed",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_run_uses_ntff_advisory_tier_but_forward_gets_the_error",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_frozen_mesh_construction::test_short_fixture_faces_stay_on_final_nodes[None]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_preflight_partial_optin_advisory",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_preflight_silent_at_n10_all_opted",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_preflight_silent_without_optin",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_nonuniform_lane_end_to_end_raises",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_frozen_mesh_construction::test_short_fixture_faces_stay_on_final_nodes[0.002]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_frozen_mesh_construction::test_freeze_before_first_geometry_survives_execution[run]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_run_hard_fails_on_error_severity_and_skip_bypasses",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_frozen_mesh_construction::test_freeze_before_first_geometry_survives_execution[forward]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_frozen_mesh_construction::test_freezing_does_not_legalize_unresolved_volume",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_frozen_mesh_construction::test_freeze_keeps_automatic_profiles_and_extent_after_geometry_edit",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_absorber_overlap_no_false_positive_on_2d_collapsed_z",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_absorber_overlap_still_fires_on_2d_xy",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_unit_adaptive_formatting_helpers",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_mesh_warning_uses_adaptive_units_at_optical_scale",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_tfsf_plus_lumped_rlc_warns",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_tfsf_alone_no_warning",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_guards::test_lumped_rlc_with_port_no_warning",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_reads_realized_edges::test_one_cell_volume_planes_reported_are_the_planes_zeroed",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.contracts.test_frozen_mesh_construction::test_freeze_copies_caller_profile_and_refuses_mesh_reassignment",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.oracle.test_ram_magnetic_mu_r_design::test_mu_r_override_fenced_on_nonuniform[equal-cells-x-40]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.oracle.test_ram_magnetic_mu_r_design::test_mu_r_override_fenced_on_nonuniform[equal-cells-y-12]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.oracle.test_ram_magnetic_mu_r_design::test_mu_r_override_fenced_on_nonuniform[equal-cells-z-4]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.oracle.test_ram_magnetic_mu_r_design::test_mu_r_override_fenced_on_nonuniform[graded-x-40]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.oracle.test_ram_magnetic_mu_r_design::test_mu_r_override_fenced_on_nonuniform[graded-y-12]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.oracle.test_ram_magnetic_mu_r_design::test_mu_r_override_fenced_on_nonuniform[graded-z-4]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_reads_realized_edges::test_sheet_plane_reported_is_the_plane_zeroed_and_its_normal_edge_lives",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_reads_realized_edges::test_wire_port_starting_on_a_volume_ground_face_is_galvanic",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_reads_realized_edges::test_wire_port_one_cell_short_of_a_volume_face_draws_the_gap_advisory",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_reads_realized_edges::test_wire_port_through_a_sheet_ground_keeps_its_normal_edges_live",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.preflight.test_preflight_reads_realized_edges::test_wire_port_inside_a_volume_ground_has_dead_cells_named_by_owner",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_refplane_thru_s21_tracks_box_referee",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_refplane_thru_leaves_legacy_lock_band_loudly",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_refplane_thru_reciprocity",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_refplane_thru_measured_line_constants",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_refplane_thru_deembedded_phase_tracks_measured_beta",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_refplane_thru_energy_and_passivity_labeled",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.sparams.test_lumped_twoport_vi_validation_battery::test_thru_s11_floor",
+          "outcome": "xfailed"
+        },
+        {
+          "id": "tests.unit.sparams.test_lumped_twoport_vi_validation_battery::test_thru_s21_band_locks_shipped_decomposer_envelope",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.sparams.test_lumped_twoport_vi_validation_battery::test_thru_s21_phase_band_is_sign_sensitive",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.sparams.test_lumped_twoport_vi_validation_battery::test_thru_reciprocity",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.sparams.test_lumped_twoport_vi_validation_battery::test_thru_passivity_singular_values",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.sparams.test_lumped_twoport_vi_validation_battery::test_dc_limit_pins_receive_sign",
+          "outcome": "passed"
+        }
+      ]
+    },
+    "ad-consumers": {
+      "counts": {
+        "passed": 12
+      },
+      "total": 12,
+      "seconds": 752.257,
+      "xml_sha256": "49a3a03d08b86f93507a3b42562d105f4ea224805ae5c6e2c65e7fa7f84bf21e",
+      "cases": [
+        {
+          "id": "tests.unit.sparams.test_msl_sheet_threading::test_ad_smoke_eps_override_grad_finite_with_sheet",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.autodiff.test_sparam_ad_end_to_end::test_msl_s_matrix_ad_end_to_end",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.autodiff.test_sparam_ad_end_to_end::test_waveguide_s_matrix_ad_end_to_end",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.autodiff.test_sparam_ad_end_to_end::test_forward_eps_override_is_differentiable_msl",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.autodiff.test_sparam_ad_end_to_end::test_forward_eps_override_is_differentiable_waveguide",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.autodiff.test_sparam_ad_end_to_end::test_migrated_trace_is_a_sheet_on_the_declared_plane",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.autodiff.test_scan_segmented_checkpoint::test_helpers",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.autodiff.test_scan_segmented_checkpoint::test_segmented_forward_matches_unsegmented",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.autodiff.test_scan_segmented_checkpoint::test_segmented_gradient_matches_unsegmented",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.autodiff.test_scan_segmented_checkpoint::test_segmented_rejects_non_divisor",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.autodiff.test_scan_segmented_checkpoint::test_segmented_rejects_non_positive",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.autodiff.test_scan_segmented_checkpoint::test_segmented_rejects_nonuniform_path",
+          "outcome": "passed"
+        }
+      ]
+    },
+    "final-targets": {
+      "counts": {
+        "passed": 53,
+        "failed": 2
+      },
+      "total": 55,
+      "seconds": 335.173,
+      "xml_sha256": "c97baf6cf742ec76daf3f67d5041b7bf0bba827255d4332f532acb128323565e",
+      "cases": [
+        {
+          "id": "tests.unit.farfield.test_farfield_inplane_nonuniform::test_uniform_valued_inplane_profile_matches_the_plain_uniform_grid",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_the_thru_trace_realizes_the_drawn_foil",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.sparams.test_sparam_passivity_guard::test_passive_smatrix_is_silent",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.oracle.test_ram_magnetic_mu_r_design::test_mu_r_override_fenced_on_nonuniform[equal-cells-x-40]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.sparams.test_sparam_passivity_guard::test_nonpassive_smatrix_warns",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.sparams.test_sparam_passivity_guard::test_nonpassive_smatrix_raises_under_strict",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.sparams.test_sparam_passivity_guard::test_nonfinite_smatrix_warns",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.sparams.test_sparam_passivity_guard::test_small_passivity_overage_within_tol_is_silent",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.sparams.test_sparam_passivity_guard::test_guard_is_tracer_safe_under_jax_grad",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.sparams.test_sparam_passivity_guard::test_normalize_aware_tol_tolerates_documented_overshoot",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.sparams.test_sparam_passivity_guard::test_soft_advisory_fires_in_the_over_unity_gap",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.sparams.test_sparam_passivity_guard::test_soft_advisory_silent_at_documented_envelope",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.sparams.test_sparam_passivity_guard::test_soft_advisory_silent_just_below_floor",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.sparams.test_sparam_passivity_guard::test_soft_advisory_never_fires_on_tight_tol_path",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.sparams.test_sparam_passivity_guard::test_gross_violation_still_hard_not_soft",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.sparams.test_sparam_passivity_guard::test_soft_advisory_real_coarse_pec_short_witness",
+          "outcome": "failed"
+        },
+        {
+          "id": "tests.oracle.test_ram_magnetic_mu_r_design::test_mu_r_override_fenced_on_nonuniform[equal-cells-y-12]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.oracle.test_ram_magnetic_mu_r_design::test_mu_r_override_fenced_on_nonuniform[equal-cells-z-4]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.oracle.test_ram_magnetic_mu_r_design::test_mu_r_override_fenced_on_nonuniform[graded-x-40]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.oracle.test_ram_magnetic_mu_r_design::test_mu_r_override_fenced_on_nonuniform[graded-y-12]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.oracle.test_ram_magnetic_mu_r_design::test_mu_r_override_fenced_on_nonuniform[graded-z-4]",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_zc_beta_split_deembed_recover_synthetic_line",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_decompose_refplane_two_port_synthetic_matched",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_decompose_refplane_two_port_synthetic_reflective",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_decompose_refplane_requires_both_ports_opted",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_add_port_refplane_rejects_lumped",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_add_port_refplane_requires_direction",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_add_port_refplane_rejects_direction_along_component",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_add_port_refplane_rejects_nonpositive_n",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_nonuniform_lane_guard_fails_loudly",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_refplane_registers_two_planes_per_port_with_phase0_geometry",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_default_path_registers_no_planes",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_refplane_crossing_guard_rejects_planes_past_other_port",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_refplane_requires_pec_trace_at_plane",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_forward_bitwise_unaffected_by_optin",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_run_short_diagonals_byte_frozen_offdiagonals_move",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_driver_vi_dump_with_planes_fails_loudly",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_zc_witness_warns_on_contaminated_synthetic_line",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_zc_witness_boundary_class_silent_at_one_percent",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_zc_witness_silent_on_clean_line",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_beta_wrap_guard_rejects_band_edge",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_beta_guard_rejects_nonpositive_beta",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_preflight_near_field_advisory_below_n10",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_preflight_partial_optin_advisory",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_preflight_silent_at_n10_all_opted",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_preflight_silent_without_optin",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_nonuniform_lane_end_to_end_raises",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.farfield.test_farfield_inplane_nonuniform::test_graded_inplane_mesh_integrates_with_local_cell_sizes",
+          "outcome": "failed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_refplane_thru_s21_tracks_box_referee",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_refplane_thru_leaves_legacy_lock_band_loudly",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_refplane_thru_reciprocity",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_refplane_thru_measured_line_constants",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_refplane_thru_deembedded_phase_tracks_measured_beta",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.locks.test_refplane_port_waves::test_refplane_thru_energy_and_passivity_labeled",
+          "outcome": "passed"
+        },
+        {
+          "id": "tests.unit.sparams.test_lumped_twoport_vi_validation_battery::test_dc_limit_pins_receive_sign",
+          "outcome": "passed"
+        }
+      ]
+    }
+  },
+  "unique_final_counts": {
+    "passed": 217,
+    "xfailed": 1,
+    "failed": 2
+  },
+  "unique_tests": 220,
+  "executions": 260
+}

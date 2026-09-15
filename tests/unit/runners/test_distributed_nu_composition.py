@@ -549,6 +549,13 @@ def test_forward_distributed_pec_occupancy_two_device_matches_single_device():
 
     # Build a soft-PEC occupancy mask: partial conductivity in a slab near the seam
     # Shape matches the FIELD GRID, which is cells+1 per axis (#562)
+    # #931 §1.6: the soft rule is the noisy-OR of the four cells incident to
+    # each edge, ``M = 1 - prod(1 - o_c)``, under the same #689 shifts as the
+    # hard rule — one relaxation of ONE realization, not a second spelling
+    # of a neighbour rule. At binary occupancy it is bit-identical to
+    # ``apply_pec_mask`` (pinned in tests/contracts). What is asserted here
+    # is that the sharded lane reproduces the single-device one, which is a
+    # property of the sharding, not of the rule.
     pec_occ = jnp.zeros(_field_shape(nx, ny, nz))
     pec_occ = pec_occ.at[7:9, :, :].set(0.5)  # partial occupancy near seam
 
@@ -711,7 +718,13 @@ def test_forward_distributed_pec_mask_seam_exchange_preserves_field():
     nx, ny, nz, dx = 16, 12, 12, 5e-3
     n_steps = 20
 
-    # PEC mask: a thin conductor near the seam (x = nx//2 - 1 to nx//2 + 1)
+    # PEC cell occupancy: a 3-cell VOLUME straddling the seam
+    # (x = nx//2 - 1 .. nx//2 + 1). #931: this is a volume declaration
+    # (§1.2) and realizes walls at x = nx//2 - 1 and x = nx//2 + 2 with Ex
+    # shorted through the slab. It was commented "a thin conductor", which
+    # a 3-cell body never was; a sheet owns no cell and has no cell-mask
+    # spelling. What the test measures is ghost exchange across the seam,
+    # and that is unchanged.
     pec_mask = jnp.zeros(_field_shape(nx, ny, nz), dtype=bool)
     pec_mask = pec_mask.at[nx // 2 - 1 : nx // 2 + 2, :, :].set(True)
 

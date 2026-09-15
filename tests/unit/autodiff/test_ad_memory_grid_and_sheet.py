@@ -69,7 +69,11 @@ def test_accounting_matches_the_nonuniform_grid_the_solve_builds():
                      dx=DX, boundary="cpml", cpml_layers=CPML, dz_profile=DZ)
     assert float(DZ.max() / DZ.min()) > 5.0, "fixture dz is not graded"
     nu = tuple(int(v) for v in sim._build_nonuniform_grid().shape)
-    uni = tuple(int(v) for v in sim._build_grid().shape)
+    # The production uniform builder now refuses a profiled simulation.
+    # Construct the historical surrogate explicitly for this counterexample.
+    from rfx.grid import Grid
+    uni = Grid(freq_max=20e9, domain=sim._domain, dx=DX,
+               cpml_layers=CPML).shape
     assert nu != uni, "fixture does not separate the two grids"
     assert _acc_shape(sim) == nu
     est = sim.estimate_ad_memory(1000)
@@ -160,12 +164,30 @@ def test_f0_sheet_operator_is_counted():
 
 
 def test_pec_sheet_is_not_charged_for_the_f0_operator():
-    """Only f0 sheets build the operator; a PEC sheet is in pec_mask."""
+    """Only an f0 sheet builds the surface-impedance operator.
+
+    A PEC sheet costs nothing per cell: under the lattice ownership
+    contract (#931 §1.3) it owns no cell, writes no material and is not in
+    ``pec_mask`` — it is a :class:`SheetSpec` (one node plane, a closed
+    footprint) that the realized-edge function ORs into (Mx, My, Mz). The
+    accounting must therefore charge it zero sheet bytes, and the second
+    half of this test states the declaration it is charging zero FOR, so
+    "0 bytes" cannot pass by the sheet having quietly vanished.
+    """
+    from rfx.boundaries.pec import SheetSpec
+
     sim = Simulation(freq_max=20e9, domain=(0.02, 0.02, float(DZ.sum())),
                      dx=DX, boundary="cpml", cpml_layers=CPML, dz_profile=DZ)
     sim.add_thin_conductor(Box((0.002, 0.002, 0.002), (0.018, 0.018, 0.002)),
                            sigma_bulk=5.8e7, thickness=35e-6)
     assert sim._ad_memory_static_accounting()["sheet_bytes"] == 0
+
+    sheets: list = []
+    mats = sim._assemble_materials_nu(sim._build_nonuniform_grid(),
+                                      pec_sheets=sheets)
+    (sp,) = sheets
+    assert isinstance(sp, SheetSpec) and sp.normal_axis == 2
+    assert mats[3] is None, "a PEC sheet owns no cell (#931 §1.3)"
 
 
 def test_report_and_estimate_describe_the_same_grid():
@@ -286,7 +308,18 @@ def test_fallback_label_and_number_both_differ_from_the_built_grid():
 # ---------------------------------------------------------------------------
 
 def _fr4_board():
-    """A board that forces a non-uniform z: 0.508 mm substrate, 35 um trace."""
+    """A board that forces a non-uniform z: 0.508 mm substrate, 35 um trace.
+
+    The trace is a FOIL. ``auto_configure`` takes shapes, not a Simulation,
+    so it never reaches ``sim.add`` and never meets §1.5's sub-cell
+    refusal — but the same 35 um Box declared on a Simulation would raise,
+    and the declaration that survives the contract is a sheet on the
+    laminate face (``Stackup.to_shapes`` emits exactly that since #931).
+    The z profile the planner returns is what this test is about and it is
+    driven by the same cut, so the budget assertions below are unchanged;
+    the fixture is kept as a pair of Boxes because that is the planner's
+    own input format.
+    """
     h = 0.508e-3
     return [
         (Box((0, 0, 0), (0.040, 0.030, h)), "fr4"),

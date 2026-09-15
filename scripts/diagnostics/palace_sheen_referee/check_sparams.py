@@ -48,7 +48,7 @@ def main():
     print("FIRST NULL (argmin |S21|): f=%.4f GHz, |S21|=%.5f (%.1f dB), |S11|=%.4f"
           % (fn, s21n, 20 * math.log10(max(s21n, 1e-12)), s11n))
     print("REFERENCE POINTS (cv07 first S21 null, raw argmin bin, post-regeneration "
-          "PR #468/#516): rfx 7.874 | openEMS 7.983 GHz")
+          "#931, VESSL 369367259192): rfx 8.202 | openEMS 7.983 GHz")
 
 
 if __name__ == "__main__":

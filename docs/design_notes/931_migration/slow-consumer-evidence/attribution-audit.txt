@@ -1,0 +1,1 @@
+Both operator attribution falsifiers reached. Coarse inputs identical; current/node-volume right-drive records each have 10496 exact-zero samples. All S/angular/NTFF arrays finite. Fine control meets both original conditions.

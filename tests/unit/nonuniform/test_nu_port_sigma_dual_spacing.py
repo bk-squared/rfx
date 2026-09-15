@@ -64,10 +64,19 @@ Measured on THIS fixture, Re S11 at 0.2 / 0.4 / 0.6 GHz, worst relative
 deviation over the three bins:
 
     component  extent  n_live   expected   measured             worst rel
-    ez            2D      2     -0.33333   -0.33334 ... -0.33333  2.5e-05
-    ez            6D      3     -0.50000   -0.50000 ... -0.50000  6.9e-06
-    ex            2D      2     -0.33333   -0.33336 ... -0.33334  7.8e-05
-    ey            2D      2     -0.33333   -0.33333 ... -0.33333  1.9e-05
+    ez            5D      2     -0.33333   -0.33334 ... -0.33333  2.3e-05
+    ez            9D      3     -0.50000   -0.50000 ... -0.50000  6.1e-06
+    ex            3D      2     -0.33333   -0.33336 ... -0.33334  8.4e-05
+    ey            4D      2     -0.33333   -0.33333 ... -0.33333  1.9e-05
+
+Re-measured under #931 R8 (VESSL run 369367259310, commit be40dddf,
+``JAX_PLATFORMS=cpu``; producer ``docs/design_notes/931_migration/
+t3_remeasure.py`` case 4, record
+``docs/design_notes/931_migration/t3_remeasure_369367259310.json``). The
+extents are the ones above because the half-open rule dropped a realized
+cell from each of the old ones (2D, 6D, 2D, 2D); ``n_live``, the expected
+column and the deviations are all where they were, which is the point of
+re-declaring the extents rather than re-pinning the oracle.
 
 For reference, the pre-fix code on the ORIGINAL isotropic fixture read
 -0.05882 against the same -0.33333 expectation: a 1.7778x-too-high cell
@@ -362,8 +371,18 @@ def _s11(component, extent):
     return np.real(np.asarray(res.s_params)[0, 0, :]), n_live
 
 
-@pytest.mark.parametrize("component,extent", [("ez", 2 * D), ("ez", 6 * D),
-                                              ("ex", 2 * D), ("ey", 2 * D)])
+# #931 R8 made a wire port's extent HALF-OPEN in edges, so every declaration
+# here realizes one cell fewer than it did. The extents below are re-declared
+# to realize the SAME cell counts the oracle was built on (2, 3, 2, 2) —
+# measured per component, because the port sits in the coarse run and the
+# three axes have different spacings there, so no single multiple of D works
+# for all of them. Nothing about the oracle moved: the guard is still
+# n_live >= 2 and the expected values are still -1/3 and -1/2. Re-deriving
+# the extents rather than lowering the guard is the point — at n_live = 1 the
+# closed form is S11 = 0, which every wrong cell resistance also satisfies,
+# so the test would still be green and would no longer discriminate.
+@pytest.mark.parametrize("component,extent", [("ez", 5 * D), ("ez", 9 * D),
+                                              ("ex", 3 * D), ("ey", 4 * D)])
 def test_passive_port_quasi_static_s11_matches_the_closed_form(component,
                                                                extent):
     """ORACLE 2 — S11 -> (1 - n_live)/(1 + n_live), independent of Z0."""

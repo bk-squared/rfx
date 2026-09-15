@@ -78,9 +78,11 @@ cell size matches `dx`.
 
 ## 3. Register the stack, source, and probe
 
-The ground and patch are subcell sheets. A zero-thickness `Box` passed to
-`sim.add()` would rasterize no volume, so the sheets use
-`add_thin_conductor()` instead.
+The ground and patch are sheets: 35 µm of copper on a substrate meshed far
+coarser than that. A zero-thickness `Box` through `sim.add()` and
+`add_thin_conductor()` are the same sheet declaration — one node plane, no cell
+— and `add_thin_conductor()` is the explicit spelling, so this page uses it.
+See [How conductors land on the lattice](/rfx/guide/materials-geometry/#how-conductors-land-on-the-lattice).
 
 ```python
 sim.add_material("fr4_design", eps_r=eps_r, sigma=sigma_fr4)
@@ -110,8 +112,20 @@ sim.add_source(feed, "ez", waveform=GaussianPulse(f0=f0, bandwidth=0.8),
                amplitude_kind="current")   # required from 1.9
 sim.add_probe(probe, "ez")
 
-sim.preflight(strict=True)
+report = sim.preflight()
+print(report)
 ```
+
+Preflight is not silent here, and that is the point: its output is part of the
+result. This model draws one advisory, `conductor-Box design edge(s) sit
+off-lattice`, on the patch's `y` faces — the designed width `W = 38.01 mm` is
+not a whole number of `dx = 1 mm` cells, so each face lands 495 µm from where
+it was drawn. Read it, do not silence it. Rounding `L` and `W` to the lattice
+would remove the advisory by changing the antenna, which is the wrong trade for
+a resonator whose length sets `f_res`; refining `dx` is the right one, and the
+[benchmarks page](/rfx/guide/benchmarks/) shows what that costs. Reserve
+`preflight(strict=True)` for a model you expect to be advisory-free — it
+escalates every finding, informational ones included.
 
 Both `add_thin_conductor` calls warn: `sigma_bulk=5.80e+07 S/m is at or above
 the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet`. That is the
@@ -124,9 +138,11 @@ resistive sheet of sheet resistance `Rs0 = sqrt(pi*f0*mu0/sigma_bulk)` — the
 thick-conductor surface resistance at band centre `f0`
 {/* rfx/api/__init__.py:1379-1420 */}. Its scope, from the
 "Surface-impedance sheets" row of `docs/guides/support_matrix.md`: patterned
-shapes that rasterize to exactly one cell layer and at least one cell, on the
-documented uniform and graded-mesh lanes; not a general dispersive or
-multi-runner conductor model. One frequency, one cell layer.
+shapes that are sheets — one node plane, no thicker than one local cell along
+their normal — on the documented uniform and graded-mesh lanes; not a general
+dispersive or multi-runner conductor model. One frequency, one node plane. The
+lossy sheet's footprint and edge set are the PEC sheet's, so `f0` changes the
+loss and never the geometry.
 
 The cruder route is a finite sheet resistance through `sigma_bulk` alone, which
 needs an explicitly justified value below 1e6 S/m. At or above 1e6 S/m the

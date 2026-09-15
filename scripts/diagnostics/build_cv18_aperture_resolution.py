@@ -144,6 +144,11 @@ def build() -> dict:
         "under_aperture_detected": sum(d["detected_by_fine_gate"] for d in under),
         "under_aperture_max_margin_x": round(
             max(d["fine_margin_x"] for d in under), 3),
+        # #931: with the thickness deficit closed, EVERY configuration detects
+        # an under-aperture, so the binding number is the worst margin, not the
+        # best one. The max stays for continuity with the #812 prose.
+        "under_aperture_min_margin_x": round(
+            min(d["fine_margin_x"] for d in under), 3),
         "under_aperture_detected_configs": [
             p["config"] for p in pairs
             if p["one_cell_defect"]["under"]["detected_by_fine_gate"]],

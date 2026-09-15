@@ -40,7 +40,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-C0 = 2.998e8
 
 
 def _load_fringe_gate():
@@ -57,28 +56,68 @@ def _load_fringe_gate():
 
 fringe_gate = _load_fringe_gate()
 
+
+def _load_slab_family():
+    """The shared slab-family rig declaration (#928).
+
+    This case is the PRODUCER of that rig: its cells, TFSF pulse, mask and
+    settling-tail witness are what cv22 and cv23 replicate. The values were
+    literals here and in ``cv22_dispersive_gates`` at once, which is two homes
+    for one declaration; they live in ``comparators/slab_family.py`` now and
+    this script reads them, so the two cannot drift apart.
+    """
+    import importlib.util
+
+    path = os.path.join(SCRIPT_DIR, "comparators", "slab_family.py")
+    spec = importlib.util.spec_from_file_location("slab_family", path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+slab_family = _load_slab_family()
+C0 = slab_family.C0_SCRIPT     # 2.998e8, the value this script has always used
+
+
+# NX_GROW_CELLS (the settling-extension loop's box-growth step, the same
+# one cv22/cv23's own loops use) lives in slab_family.py, NOT
+# cv22_dispersive_gates.py -- cv04 is the envelope PRODUCER (issue #928)
+# and must not import a module named after a CONSUMER case, even
+# transitively, even for a constant (tests/crossval/
+# test_producer_import_graph.py holds this; importing cv22_dispersive_gates
+# here directly, tried first, failed that test's own static+dynamic-import
+# walk). slab_family.py re-exports it for cv22/cv23's own convenience;
+# cv04 reads it from there like every other shared constant.
+
 # =============================================================================
 # Parameters
 # =============================================================================
-eps_slab = 4.0
+# Read from the shared declaration (#928); values unchanged.
+eps_slab = slab_family.EPS_SLAB    # 4.0
 n_slab = math.sqrt(eps_slab)
-d_slab = 10.0e-3     # 10 mm
-f0 = 10.0e9
-dx = 1.0e-3           # 1 mm (15 cells/λ at 20 GHz)
-bw = 0.5
+d_slab = slab_family.D_SLAB_M      # 10 mm
+f0 = slab_family.TFSF_F0_HZ        # 10 GHz
+dx = slab_family.DX_M              # 1 mm (15 cells/λ at 20 GHz)
+bw = slab_family.TFSF_BW
 
 # Large domain with thick CPML for clean measurement
 # Probe-to-CPML distance must be large enough that CPML round-trip
 # exceeds the simulation time (otherwise CPML reflections contaminate
 # the probe via multiple bounces).
-n_cpml = 20
-nx_interior = 600     # 600 mm interior — large to delay CPML round-trip
+n_cpml = slab_family.N_CPML
+# DECLARED starting point, not necessarily what runs: the settling-extension
+# loop below (2026-09-10 fix) grows this by slab_family.NX_GROW_CELLS until
+# the record settles, and reassigns the module-level `nx_interior` to
+# whatever it actually stopped on (800 on the committed run, not 600).
+nx_interior = slab_family.NX_INTERIOR   # 600 mm interior — large to delay CPML round-trip
 
 print("=" * 70)
 print("Crossval 04: Fresnel Slab — TFSF plane wave — rfx vs Analytic")
 print("=" * 70)
 print(f"Slab: eps={eps_slab}, n={n_slab:.1f}, d={d_slab*1e3:.0f} mm")
-print(f"Interior: {nx_interior} cells, dx={dx*1e3:.1f} mm, CPML={n_cpml} layers")
+print(f"Interior (declared, may grow to settle): {nx_interior} cells, "
+      f"dx={dx*1e3:.1f} mm, CPML={n_cpml} layers")
 print()
 
 # =============================================================================
@@ -118,135 +157,231 @@ from rfx.sources.tfsf import (
     apply_tfsf_e, apply_tfsf_h,
 )
 
-# 2D TMz grid (nz=1, much faster than 3D for this 1D physics problem)
-grid = Grid(freq_max=20e9, domain=(nx_interior * dx, 0.004, dx),
-            dx=dx, cpml_layers=n_cpml, mode="2d_tmz")
-dt = grid.dt
-periodic = (False, True, True)  # Periodic in y for plane wave; z trivially periodic
-print(f"Grid shape: {grid.shape}, dt={dt:.4e} s")
+TAIL_WINDOW = slab_family.TAIL_WINDOW
+TAIL_PURITY_LIMIT = slab_family.TAIL_PURITY_LIMIT
+TAIL_LIMIT = slab_family.TAIL_LIMIT
 
-tfsf_cfg, tfsf_st = init_tfsf(
-    grid.nx, dx, dt, cpml_layers=n_cpml, tfsf_margin=5,
-    f0=f0, bandwidth=bw, amplitude=1.0,
-    polarization="ez", direction="+x",
-    ny=grid.ny, nz=grid.nz,
-)
-x_lo, x_hi = tfsf_cfg.x_lo, tfsf_cfg.x_hi
-i0 = tfsf_cfg.i0
-print(f"TFSF box: x_lo={x_lo}, x_hi={x_hi}")
 
-# Slab position (grid indices)
-slab_lo_g = grid.nx // 2 - int(d_slab / (2 * dx))
-slab_hi_g = grid.nx // 2 + int(d_slab / (2 * dx))
-assert x_lo + 10 < slab_lo_g < slab_hi_g < x_hi - 10, \
-    f"Slab [{slab_lo_g},{slab_hi_g}) must be inside TFSF [{x_lo},{x_hi}]"
+def _run_slab_fdtd(nx_interior_try: int) -> dict:
+    """One attempt of the TFSF slab solve at a given interior cell count.
 
-# Probes (both inside TFSF total-field region):
-# - reflection: before slab — measures incident + reflected (subtract 1D incident)
-# - transmission: after slab — measures transmitted (normalize by 1D incident)
-probe_refl_x = slab_lo_g - 30  # 30 cells before slab
-probe_trans_x = slab_hi_g + 30  # 30 cells after slab
-probe_refl = (probe_refl_x, grid.ny // 2, 0)
-probe_trans = (probe_trans_x, grid.ny // 2, 0)
-# 1D auxiliary grid indices at the same x positions (for exact incident spectrum)
-ref_1d_refl = i0 + (probe_refl_x - x_lo)
-ref_1d_trans = i0 + (probe_trans_x - x_lo)
-print(f"Probes (TF region): refl=cell {probe_refl_x}, trans=cell {probe_trans_x}")
-print(f"1D ref indices: refl={ref_1d_refl}, trans={ref_1d_trans}")
-print(f"Slab: cells [{slab_lo_g}, {slab_hi_g})")
+    Settling-extension mechanism cv22/cv23 already have (docs/design_notes/
+    20260903_lattice_witness_standard.md section 8.3's "cv04 has no record
+    derivation and no --nx-interior" is the defect this fixes, not a
+    constraint honoured going forward -- overridden by the PI, 2026-09-10:
+    a case that cannot settle its own spectra cannot gate its own case).
+    A bigger interior box delays the CPML round trip, which raises the
+    safe step count this rig can run before boundary reflections
+    contaminate the probes -- exactly the mechanism cv23's own grow-loop
+    (``23_lossy_slab_fresnel.py``'s ``while True: run = run_rfx_arm(...)``)
+    already uses; ported here rather than reinvented.
 
-# Time-gate: stop signal acquisition before CPML reflections arrive
-# Round-trip from trans probe to CPML hi
-v_cells = C0 * dt / dx  # numerical phase velocity (cells/step)
-dist_to_cpml_hi = grid.nx - n_cpml - probe_trans_x
-dist_to_cpml_lo = probe_refl_x - n_cpml
-t_safe_steps_hi = int(2 * dist_to_cpml_hi / v_cells * 0.95)
-t_safe_steps_lo = int(2 * dist_to_cpml_lo / v_cells * 0.95)
-n_steps_safe = min(t_safe_steps_hi, t_safe_steps_lo)
-n_steps = min(n_steps_safe, 8000)
-print(f"v_cells={v_cells:.3f}, dist_hi={dist_to_cpml_hi}, dist_lo={dist_to_cpml_lo}")
-print(f"Safe steps: hi={t_safe_steps_hi}, lo={t_safe_steps_lo}")
-print(f"n_steps={n_steps}, total time={n_steps*dt*1e9:.2f} ns")
+    Returns a dict with everything the rest of the script needs (grid, dt,
+    n_steps, the four probe time series, and both tail-settling reads),
+    plus ``tail_settled_to_family_bar`` -- whether THIS attempt clears the
+    family-wide -40 dB / 1e-2 bar (``slab_family.SETTLING_LIMIT``), which is
+    what the lattice witness needs and is NOT the same as this case's own
+    (looser, 0.10) ``TAIL_LIMIT`` continuum gate below -- conflating the two
+    would silently loosen the thing being fixed.
+    """
+    grid = Grid(freq_max=20e9, domain=(nx_interior_try * dx, 0.004, dx),
+                dx=dx, cpml_layers=n_cpml, mode="2d_tmz")
+    dt = grid.dt
+    periodic = (False, True, True)  # Periodic in y for plane wave; z trivially periodic
+    print(f"  [nx_interior={nx_interior_try}] Grid shape: {grid.shape}, dt={dt:.4e} s")
 
-# Materials
-materials = init_materials(grid.shape)
-materials = materials._replace(
-    eps_r=materials.eps_r.at[slab_lo_g:slab_hi_g, :, :].set(eps_slab)
-)
+    tfsf_cfg, tfsf_st = init_tfsf(
+        grid.nx, dx, dt, cpml_layers=n_cpml, tfsf_margin=5,
+        f0=f0, bandwidth=bw, amplitude=1.0,
+        polarization="ez", direction="+x",
+        ny=grid.ny, nz=grid.nz,
+    )
+    x_lo, x_hi = tfsf_cfg.x_lo, tfsf_cfg.x_hi
+    i0 = tfsf_cfg.i0
+    print(f"  TFSF box: x_lo={x_lo}, x_hi={x_hi}")
 
-state = init_state(grid.shape)
-cp, cs = init_cpml(grid)
+    # Slab position (grid indices)
+    slab_lo_g = grid.nx // 2 - int(d_slab / (2 * dx))
+    slab_hi_g = grid.nx // 2 + int(d_slab / (2 * dx))
+    assert x_lo + 10 < slab_lo_g < slab_hi_g < x_hi - 10, \
+        f"Slab [{slab_lo_g},{slab_hi_g}) must be inside TFSF [{x_lo},{x_hi}]"
 
-ts_refl = np.zeros(n_steps)    # Total field at reflection probe
-ts_trans = np.zeros(n_steps)   # Total field at transmission probe
-ts_inc_refl = np.zeros(n_steps)  # 1D incident at refl probe x-position
-ts_inc_trans = np.zeros(n_steps) # 1D incident at trans probe x-position
+    # Probes (both inside TFSF total-field region):
+    # - reflection: before slab — measures incident + reflected (subtract 1D incident)
+    # - transmission: after slab — measures transmitted (normalize by 1D incident)
+    probe_refl_x = slab_lo_g - 30  # 30 cells before slab
+    probe_trans_x = slab_hi_g + 30  # 30 cells after slab
+    probe_refl = (probe_refl_x, grid.ny // 2, 0)
+    probe_trans = (probe_trans_x, grid.ny // 2, 0)
+    # 1D auxiliary grid indices at the same x positions (for exact incident spectrum)
+    ref_1d_refl = i0 + (probe_refl_x - x_lo)
+    ref_1d_trans = i0 + (probe_trans_x - x_lo)
+    print(f"  Probes (TF region): refl=cell {probe_refl_x}, trans=cell {probe_trans_x}")
+    print(f"  1D ref indices: refl={ref_1d_refl}, trans={ref_1d_trans}")
+    print(f"  Slab: cells [{slab_lo_g}, {slab_hi_g})")
 
-t0_wall = time.time()
-for step in range(n_steps):
-    t = step * dt
-    state = update_h(state, materials, dt, dx, periodic)
-    state = apply_tfsf_h(state, tfsf_cfg, tfsf_st, dx, dt)
-    state, cs = apply_cpml_h(state, cp, cs, grid, axes="x")
-    tfsf_st = update_tfsf_1d_h(tfsf_cfg, tfsf_st, dx, dt)
+    # Time-gate: stop signal acquisition before CPML reflections arrive
+    # Round-trip from trans probe to CPML hi
+    v_cells = C0 * dt / dx  # numerical phase velocity (cells/step)
+    dist_to_cpml_hi = grid.nx - n_cpml - probe_trans_x
+    dist_to_cpml_lo = probe_refl_x - n_cpml
+    t_safe_steps_hi = int(2 * dist_to_cpml_hi / v_cells * 0.95)
+    t_safe_steps_lo = int(2 * dist_to_cpml_lo / v_cells * 0.95)
+    n_steps_safe = min(t_safe_steps_hi, t_safe_steps_lo)
+    n_steps = min(n_steps_safe, 8000)
+    print(f"  v_cells={v_cells:.3f}, dist_hi={dist_to_cpml_hi}, dist_lo={dist_to_cpml_lo}")
+    print(f"  Safe steps: hi={t_safe_steps_hi}, lo={t_safe_steps_lo}")
+    print(f"  n_steps={n_steps}, total time={n_steps*dt*1e9:.2f} ns")
 
-    state = update_e(state, materials, dt, dx, periodic)
-    state = apply_tfsf_e(state, tfsf_cfg, tfsf_st, dx, dt)
-    state, cs = apply_cpml_e(state, cp, cs, grid, axes="x")
-    tfsf_st = update_tfsf_1d_e(tfsf_cfg, tfsf_st, dx, dt, t)
+    # Materials
+    materials = init_materials(grid.shape)
+    materials = materials._replace(
+        eps_r=materials.eps_r.at[slab_lo_g:slab_hi_g, :, :].set(eps_slab)
+    )
 
-    ts_refl[step] = float(state.ez[probe_refl])
-    ts_trans[step] = float(state.ez[probe_trans])
-    ts_inc_refl[step] = float(tfsf_st.e1d[ref_1d_refl])
-    ts_inc_trans[step] = float(tfsf_st.e1d[ref_1d_trans])
+    state = init_state(grid.shape)
+    cp, cs = init_cpml(grid)
 
-elapsed = time.time() - t0_wall
-print(f"Simulation: {elapsed:.1f}s")
-print(f"  refl max={np.max(np.abs(ts_refl)):.4e}, trans max={np.max(np.abs(ts_trans)):.4e}")
-print(f"  inc max: refl={np.max(np.abs(ts_inc_refl)):.4e}, trans={np.max(np.abs(ts_inc_trans)):.4e}")
+    ts_refl = np.zeros(n_steps)    # Total field at reflection probe
+    ts_trans = np.zeros(n_steps)   # Total field at transmission probe
+    ts_inc_refl = np.zeros(n_steps)  # 1D incident at refl probe x-position
+    ts_inc_trans = np.zeros(n_steps) # 1D incident at trans probe x-position
 
-# Compute scattered (reflected) field by subtracting 1D incident from total
+    t0_wall = time.time()
+    for step in range(n_steps):
+        t = step * dt
+        state = update_h(state, materials, dt, dx, periodic)
+        state = apply_tfsf_h(state, tfsf_cfg, tfsf_st, dx, dt)
+        state, cs = apply_cpml_h(state, cp, cs, grid, axes="x")
+        tfsf_st = update_tfsf_1d_h(tfsf_cfg, tfsf_st, dx, dt)
+
+        state = update_e(state, materials, dt, dx, periodic)
+        state = apply_tfsf_e(state, tfsf_cfg, tfsf_st, dx, dt)
+        state, cs = apply_cpml_e(state, cp, cs, grid, axes="x")
+        tfsf_st = update_tfsf_1d_e(tfsf_cfg, tfsf_st, dx, dt, t)
+
+        ts_refl[step] = float(state.ez[probe_refl])
+        ts_trans[step] = float(state.ez[probe_trans])
+        ts_inc_refl[step] = float(tfsf_st.e1d[ref_1d_refl])
+        ts_inc_trans[step] = float(tfsf_st.e1d[ref_1d_trans])
+
+    elapsed = time.time() - t0_wall
+    print(f"  Simulation: {elapsed:.1f}s")
+    print(f"    refl max={np.max(np.abs(ts_refl)):.4e}, trans max={np.max(np.abs(ts_trans)):.4e}")
+    print(f"    inc max: refl={np.max(np.abs(ts_inc_refl)):.4e}, trans={np.max(np.abs(ts_inc_trans)):.4e}")
+
+    # Compute scattered (reflected) field by subtracting 1D incident from total
+    ts_scattered_refl = ts_refl - ts_inc_refl
+
+    # -----------------------------------------------------------------------
+    # Settling-tail witness (GATED — issue #341; previously an ungated print).
+    #
+    # Window choice: the old window (last 100 steps) contained the direct
+    # pulse — at nx=600 (the pre-fix committed config) the 1D incident at the
+    # trans probe peaks at step ~544 and is still ~11% of peak inside the
+    # last 100 steps, so a "tail" there mostly measured the pulse itself.
+    # The last 50 steps are clean at that config: measured incident there is
+    # 2.1e-4 of peak (2026-07-13). The purity check below enforces that
+    # property at RUNTIME, so a change to n_steps/geometry cannot silently
+    # re-admit the direct pulse into the witness window.
+    #
+    # TAIL_LIMIT=0.10 (this case's own continuum tail_ok gate, below) is
+    # DELIBERATELY looser than slab_family.SETTLING_LIMIT=1e-2 (the family's
+    # -40 dB bar the lattice witness needs) -- see this function's own
+    # docstring. tail_settled_to_family_bar checks the STRICTER one.
+    # -----------------------------------------------------------------------
+    inc_peak = max(np.max(np.abs(ts_inc_refl)), np.max(np.abs(ts_inc_trans)))
+    tail_inc_rel = max(np.max(np.abs(ts_inc_refl[-TAIL_WINDOW:])),
+                       np.max(np.abs(ts_inc_trans[-TAIL_WINDOW:]))) / inc_peak
+    tail_refl_rel = np.max(np.abs(ts_scattered_refl[-TAIL_WINDOW:])) / inc_peak
+    tail_trans_rel = np.max(np.abs(ts_trans[-TAIL_WINDOW:])) / inc_peak
+    tail_window_clean = tail_inc_rel < TAIL_PURITY_LIMIT
+    tail_ok = bool(tail_window_clean
+                   and tail_refl_rel < TAIL_LIMIT
+                   and tail_trans_rel < TAIL_LIMIT)
+    tail_settled_to_family_bar = bool(
+        tail_window_clean
+        and tail_refl_rel < slab_family.SETTLING_LIMIT
+        and tail_trans_rel < slab_family.SETTLING_LIMIT
+    )
+    print(f"  Tail witness (last {TAIL_WINDOW} steps, rel. to incident peak): "
+          f"scat_refl={tail_refl_rel:.4f}, trans={tail_trans_rel:.4f} "
+          f"(this case's own limit {TAIL_LIMIT}, family -40dB bar "
+          f"{slab_family.SETTLING_LIMIT:g})")
+    print(f"  Tail window purity: incident={tail_inc_rel:.2e} of peak "
+          f"(limit {TAIL_PURITY_LIMIT:g}) -> "
+          f"{'clean' if tail_window_clean else 'CONTAMINATED BY DIRECT PULSE'}")
+
+    return dict(
+        nx_interior=nx_interior_try, grid=grid, dt=dt, n_steps=n_steps,
+        n_steps_safe=n_steps_safe, v_cells=v_cells,
+        x_lo=x_lo, probe_refl_x=probe_refl_x, probe_trans_x=probe_trans_x,
+        ts_refl=ts_refl, ts_trans=ts_trans,
+        ts_inc_refl=ts_inc_refl, ts_inc_trans=ts_inc_trans,
+        tail_inc_rel=tail_inc_rel,
+        tail_refl_rel=tail_refl_rel, tail_trans_rel=tail_trans_rel,
+        tail_window_clean=tail_window_clean, tail_ok=tail_ok,
+        tail_settled_to_family_bar=tail_settled_to_family_bar,
+        elapsed_s=elapsed,
+    )
+
+
+# Settling-extension loop (cv22/cv23's own mechanism, ported -- see
+# _run_slab_fdtd's docstring). Grows nx_interior by slab_family.NX_GROW_CELLS (the
+# SAME step cv22/cv23 use) until the tail clears the family's -40 dB bar,
+# and records where it actually stopped, not a number anyone typed.
+_nx_arm = nx_interior
+_grows = []
+while True:
+    _run = _run_slab_fdtd(_nx_arm)
+    if _run["tail_settled_to_family_bar"]:
+        break
+    _grows.append({"nx_interior": _nx_arm, "tail_refl_rel": _run["tail_refl_rel"],
+                   "tail_trans_rel": _run["tail_trans_rel"]})
+    print(f"  tail not settled to the family bar {slab_family.SETTLING_LIMIT:g} "
+          f"(scat_refl={_run['tail_refl_rel']:.4f}, trans={_run['tail_trans_rel']:.4f}) "
+          f"-- growing nx_interior {_nx_arm} -> {_nx_arm + slab_family.NX_GROW_CELLS}")
+    # N1 (PR #974 round 2): check the cap AFTER incrementing and BEFORE the
+    # next attempt, the way cv23's own loop does -- the earlier version
+    # checked the value already just tried, so the actual last attempt ran
+    # one grow step past the stated cap (2600 = 4.33x the declared 600, not
+    # "within 4x"). This way no attempt above the cap is ever run.
+    _nx_arm += slab_family.NX_GROW_CELLS
+    if _nx_arm > 4 * slab_family.NX_INTERIOR:
+        raise RuntimeError(
+            f"record never settled to the family's {slab_family.SETTLING_LIMIT:g} "
+            f"bar within 4x the declared box (next attempt would be "
+            f"nx_interior={_nx_arm}, over the {4 * slab_family.NX_INTERIOR} cap; "
+            f"last tried nx_interior={_run['nx_interior']} at tail "
+            f"scat/trans={_run['tail_refl_rel']:.4f}/{_run['tail_trans_rel']:.4f})"
+        )
+
+nx_interior = _run["nx_interior"]  # the FINAL, grown value -- PART 3 (Meep) reads this
+grid = _run["grid"]
+dt = _run["dt"]
+n_steps = _run["n_steps"]
+n_steps_safe = _run["n_steps_safe"]
+v_cells = _run["v_cells"]
+x_lo = _run["x_lo"]
+probe_refl_x = _run["probe_refl_x"]
+probe_trans_x = _run["probe_trans_x"]
+ts_refl = _run["ts_refl"]
+ts_trans = _run["ts_trans"]
+ts_inc_refl = _run["ts_inc_refl"]
+ts_inc_trans = _run["ts_inc_trans"]
+tail_refl_rel = _run["tail_refl_rel"]
+tail_trans_rel = _run["tail_trans_rel"]
+tail_window_clean = _run["tail_window_clean"]
+tail_inc_rel = _run["tail_inc_rel"]
+tail_ok = _run["tail_ok"]
+elapsed = _run["elapsed_s"]
+# Recomputed at module level (cheap; PART 1b/2 both read it) since the
+# function's own copy is local to its scope.
 ts_scattered_refl = ts_refl - ts_inc_refl
-
-# -----------------------------------------------------------------------------
-# Settling-tail witness (GATED — issue #341; previously an ungated print).
-#
-# Window choice: the old window (last 100 steps) contained the direct pulse —
-# in the committed config (nx=600, 719 steps) the 1D incident at the trans
-# probe peaks at step ~544 and is still ~11% of peak inside the last 100
-# steps, so a "tail" there mostly measured the pulse itself. The last 50
-# steps are clean: measured incident there is 2.1e-4 of peak (2026-07-13,
-# committed config). The purity check below enforces that property at
-# RUNTIME, so a future change to n_steps/geometry cannot silently re-admit
-# the direct pulse into the witness window.
-#
-# Thresholds (measured envelope + headroom, committed config 2026-07-13):
-#   - window purity: incident 2.1e-4 of peak measured -> gate 1e-3 (~5x).
-#   - tails: scattered@refl 0.036, total@trans 0.051 of incident peak; this
-#     residual is the order-2 etalon echo still in flight at run end (rung
-#     C4, job 369367246779 — collapses to ~5e-5 rel at nx=1500/1940 steps).
-#     Gate 0.10 (~2x): bounds gross non-settling (CPML contamination,
-#     late-time growth, broken time gate) while accepting the documented
-#     committed-config echo residual.
-# -----------------------------------------------------------------------------
-TAIL_WINDOW = 50
-TAIL_PURITY_LIMIT = 1e-3
-TAIL_LIMIT = 0.10
-inc_peak = max(np.max(np.abs(ts_inc_refl)), np.max(np.abs(ts_inc_trans)))
-tail_inc_rel = max(np.max(np.abs(ts_inc_refl[-TAIL_WINDOW:])),
-                   np.max(np.abs(ts_inc_trans[-TAIL_WINDOW:]))) / inc_peak
-tail_refl_rel = np.max(np.abs(ts_scattered_refl[-TAIL_WINDOW:])) / inc_peak
-tail_trans_rel = np.max(np.abs(ts_trans[-TAIL_WINDOW:])) / inc_peak
-tail_window_clean = tail_inc_rel < TAIL_PURITY_LIMIT
-tail_ok = bool(tail_window_clean
-               and tail_refl_rel < TAIL_LIMIT
-               and tail_trans_rel < TAIL_LIMIT)
-print(f"  Tail witness (last {TAIL_WINDOW} steps, rel. to incident peak): "
-      f"scat_refl={tail_refl_rel:.4f}, trans={tail_trans_rel:.4f} "
-      f"(limit {TAIL_LIMIT})")
-print(f"  Tail window purity: incident={tail_inc_rel:.2e} of peak "
-      f"(limit {TAIL_PURITY_LIMIT:g}) -> "
-      f"{'clean' if tail_window_clean else 'CONTAMINATED BY DIRECT PULSE'}")
+print(f"\n  SETTLED at nx_interior={nx_interior} (declared {slab_family.NX_INTERIOR}, "
+      f"{len(_grows)} grow attempt(s)): n_steps={n_steps}, tail scat_refl/trans = "
+      f"{tail_refl_rel:.4f}/{tail_trans_rel:.4f} (family bar "
+      f"{slab_family.SETTLING_LIMIT:g})")
 
 # =============================================================================
 # PART 1b: Time-domain diagnostic
@@ -287,7 +422,7 @@ print(f"\n{'=' * 70}")
 print("PART 2: rfx R(f), T(f)")
 print("=" * 70)
 
-nfft = int(2**np.ceil(np.log2(n_steps)) * 8)
+nfft = int(2**np.ceil(np.log2(n_steps)) * slab_family.NFFT_OVERSAMPLE)
 freqs = np.fft.rfftfreq(nfft, d=dt)
 S_inc_t = np.fft.rfft(ts_inc_trans, n=nfft)
 S_inc_r = np.fft.rfft(ts_inc_refl, n=nfft)
@@ -301,7 +436,8 @@ inc_power = np.abs(S_inc_t)
 # mean-only gates silently. The mask itself stays as committed (it defines
 # the evaluated band); the per-bin max|R+T-1| ceiling below now bounds the
 # amplified-bin class.
-mask = (freqs > 3e9) & (freqs < 15e9) & (inc_power > inc_power.max() * 0.02)
+mask = ((freqs > slab_family.MASK_F_LO_HZ) & (freqs < slab_family.MASK_F_HI_HZ)
+        & (inc_power > inc_power.max() * slab_family.MASK_AMP_FRAC))
 
 T_rfx = np.abs(S_total_t[mask])**2 / np.abs(S_inc_t[mask])**2
 R_rfx = np.abs(S_scat_r[mask])**2 / np.abs(S_inc_r[mask])**2
@@ -329,13 +465,19 @@ c_ok = cons_rfx.mean() < 0.05
 
 # Per-bin energy-conservation ceiling (ADDED, issue #341; the mean gates above
 # are untouched). Root cause of the pinned envelope (rung C4, job
-# 369367246779): committed config (nx=600, 719 steps) measures
-# max|R+T-1| = 0.0487, worst bin at the 11.87 GHz mask edge, and the error is
-# ENTIRELY order-2 etalon-echo truncation — widening to nx=1500/1940 steps
-# collapses it to 0.0002 while band-mean |dT|,|dR| shift < 0.005 (negligible
-# mean-side bias). Ceiling = measured envelope + headroom; it bounds the
+# 369367246779), HISTORICAL -- predates and is not restated by the
+# 2026-09-10 settling-extension fix below: committed config (nx=600, 719
+# steps) measured max|R+T-1| = 0.0487, worst bin at the 11.87 GHz mask edge,
+# and the error was ENTIRELY order-2 etalon-echo truncation -- widening to
+# nx=1500/1940 steps collapsed it to 0.0002 while band-mean |dT|,|dR| shifted
+# < 0.005 (negligible mean-side bias); this is exactly what the settling fix
+# now does automatically (nx=800/990 steps): the committed run's own
+# max|R+T-1| is 0.0010 (validation/crossval/_04_fresnel_logs/cv04.log), not
+# the 0.0487 this history cites. CONS_MAX_LIMIT itself (the gate ceiling, not
+# the measured value) is UNCHANGED by any of this. Ceiling = measured
+# envelope + headroom; it bounds the
 # previously-silent mask-amplified single-bin spike class (up to ~10) to 6%.
-CONS_MAX_LIMIT = 0.06
+CONS_MAX_LIMIT = slab_family.CONS_MAX_LIMIT
 cons_max_ok = bool(cons_rfx.max() <= CONS_MAX_LIMIT)
 
 # -----------------------------------------------------------------------------
@@ -394,86 +536,162 @@ fringe_ok = bool(fringe_verdict.ok)
 print()
 print(fringe_gate.format_fringe_table(fringe_verdict, "rfx vs analytic"))
 
-rfx_self_ok = bool(
-    t_ok and r_ok and c_ok and cons_max_ok and tail_ok and fringe_ok
-)
-
 # -----------------------------------------------------------------------------
-# The exact-lattice witness (`--lattice-witness`; issue: lattice-witness
-# standardisation, docs/design_notes/20260903_lattice_witness_standard.md).
+# The exact-lattice witness (issue: lattice-witness standardisation,
+# docs/design_notes/20260903_lattice_witness_standard.md).
 #
-# The continuum gates above are UNCHANGED. This writes a second, pre-declared
-# record: |rfx - lattice(f; eps'=4, sigma=0, d, dx, dt)| against a W_witness
-# DERIVED from the lattice model's own error budget (record truncation, the
-# incident reference's truncation, float32), evaluated at the one dx rung this
-# case runs. Nothing here can change the exit code: the note derives, from
-# THIS config's committed tail levels (0.036 / 0.051 of the incident peak,
-# against cv22's -40 dB bar), that W_witness is 5.2e-2 in the gated mean here
-# -- looser than the case's own band-mean window -- so the cv04 lattice gate is
-# declared NON-DISCRIMINATING at the committed 719-step record and is REPORTED,
-# not gated (note section 5.3). The claims-bearing rung for this material is
-# the settled one, cv23's `sigma_zero` arm.
+# The continuum gates above are UNCHANGED. This is a second, pre-declared
+# measurement: |rfx - lattice(f; eps'=4, sigma=0, d, dx, dt)| against a
+# W_witness DERIVED from the lattice model's own error budget (record
+# truncation, the incident reference's truncation, float32), evaluated at
+# the one dx rung this case runs.
+#
+# UPDATE 2026-09-10 (settling-extension fix, PI override of the note's
+# earlier "no new physics" call, note section 5.3 top UPDATE): the loop above
+# grows nx_interior until this rung's OWN tails clear the family's -40 dB /
+# 1e-2 bar (slab_family.SETTLING_LIMIT), instead of running a fixed 719-step
+# record whose tails read 0.036 / 0.051 and did not settle. At the settled
+# record the gated-mean W_witness collapses (~85x in R) and the cv04 lattice
+# gate is no longer non-discriminating.
+#
+# UPDATE 2026-09-10, round 2 (B1, PR #974 fresh-eyes review): this witness
+# now EVALUATES on every run and can FAIL the case -- `--lattice-witness`
+# controls ONLY whether the committed artifact is (re)written, not whether
+# the witness runs or counts. Before this fix `rfx_self_ok` never included
+# the witness at all (it was assembled above, before this block even ran),
+# and the artifact-writing branch only relabelled a bad witness "reported,
+# not gated" instead of failing -- so the DEFAULT scheduled invocation
+# (scripts/vessl_931/cv04.yaml, no flag) could never fail on it regardless
+# of the physics. Reviewer's regression: eps' x1.01 planted into the build,
+# `--lattice-witness` run, witness 59.6x over its window on 111 of 112 gated
+# bins, exit code still 2 (Meep absent) -- identical to a clean run.
 # -----------------------------------------------------------------------------
-if "--lattice-witness" in sys.argv:
-    _cmp = os.path.join(SCRIPT_DIR, "comparators")
-    if _cmp not in sys.path:
-        sys.path.insert(0, _cmp)
-    import json as _json
-    import cv22_dispersive_gates as _G
-    import lattice_witness as _LW
-    import slab_rig as _RIG
+_cmp = os.path.join(SCRIPT_DIR, "comparators")
+if _cmp not in sys.path:
+    sys.path.insert(0, _cmp)
+import lattice_witness as _LW  # noqa: E402
 
-    _params = {"eps_inf": eps_slab, "sigma": 0.0}
-    _rates = _G.slab_ringdown_rates("conductive", _params)
-    _arm = {
-        "model": "conductive", "params": _params,
-        "freqs_hz": freqs[mask].tolist(),
-        "gated": _G.gated_mask(freqs[mask]).tolist(),
-        "R_rfx": R_rfx.tolist(), "T_rfx": T_rfx.tolist(), "dt_s": float(dt),
-        "inc_amp_rel": (inc_power[mask] / inc_power.max()).tolist(),
-        "tail": {"scat_refl_rel": float(tail_refl_rel),
-                 "total_trans_rel": float(tail_trans_rel),
-                 "purity_inc_rel": float(tail_inc_rel), "ok": bool(tail_ok)},
-        # ``nx_interior`` and the cell bookkeeping are what the auxiliary-echo
-        # record invariant (#888) derives its arrival from; without them the
-        # rung would be unguarded, and the cross-check in
-        # ``lattice_witness.aux_echo_witness`` would have nothing to compare
-        # this rig's probes against.
-        "run": {"n_steps": int(n_steps), "dx_m": float(dx), "dx_div": 1,
-                "nx_interior": int(nx_interior),
-                "record": {"rate_ring_1_s": _rates["rate_ring_1_s"],
-                           "t_safe_cpml_steps": int(n_steps_safe),
-                           "nx_interior": int(nx_interior), "dx_div": 1,
-                           "nx": int(grid.nx), "n_cpml": int(n_cpml),
-                           "x_lo": int(x_lo), "probe_refl": int(probe_refl_x),
-                           "probe_trans": int(probe_trans_x),
-                           "v_cells": float(v_cells)}},
-    }
-    # Stamp the commit the way cv22 / cv23 do, so this artifact carries its own
-    # provenance instead of a null (review, 2026-09-03).
-    _doc = _LW.witness_document("04_multilayer_fresnel", {"slab_eps4": _arm},
-                                commit=_RIG.staged_commit(os.path.dirname(os.path.dirname(SCRIPT_DIR)),
-                                                          cwd=SCRIPT_DIR),
-                                d_slab_m=d_slab)
-    _doc["gated_here"] = False
+# #928: the producer imports the family LEAF and the witness emitter, and
+# NOTHING that names a consumer -- directly or through them. `slab_family`
+# declares the rig, the gated band, the ring-down rates, the cell
+# bookkeeping, the auxiliary-echo geometry and `staged_commit`; cv22
+# re-exports every one of them for its own importers.
+# tests/crossval/test_producer_import_graph.py holds the property.
+_params = {"eps_inf": eps_slab, "sigma": 0.0}
+_rates = slab_family.slab_ringdown_rates("conductive", _params)
+_arm = {
+    "model": "conductive", "params": _params,
+    "freqs_hz": freqs[mask].tolist(),
+    "gated": slab_family.gated_mask(freqs[mask]).tolist(),
+    "R_rfx": R_rfx.tolist(), "T_rfx": T_rfx.tolist(), "dt_s": float(dt),
+    "inc_amp_rel": (inc_power[mask] / inc_power.max()).tolist(),
+    "tail": {"scat_refl_rel": float(tail_refl_rel),
+             "total_trans_rel": float(tail_trans_rel),
+             "purity_inc_rel": float(tail_inc_rel), "ok": bool(tail_ok)},
+    # ``nx_interior`` and the cell bookkeeping are what the auxiliary-echo
+    # record invariant (#888) derives its arrival from; without them the
+    # rung would be unguarded, and the cross-check in
+    # ``lattice_witness.aux_echo_witness`` would have nothing to compare
+    # this rig's probes against.
+    "run": {"n_steps": int(n_steps), "dx_m": float(dx), "dx_div": 1,
+            "nx_interior": int(nx_interior),
+            "record": {"rate_ring_1_s": _rates["rate_ring_1_s"],
+                       "t_safe_cpml_steps": int(n_steps_safe),
+                       "nx_interior": int(nx_interior), "dx_div": 1,
+                       "nx": int(grid.nx), "n_cpml": int(n_cpml),
+                       "x_lo": int(x_lo), "probe_refl": int(probe_refl_x),
+                       "probe_trans": int(probe_trans_x),
+                       "v_cells": float(v_cells)}},
+}
+# Stamp the commit the way cv22 / cv23 do, so this artifact carries its own
+# provenance instead of a null (review, 2026-09-03).
+_doc = _LW.witness_document("04_multilayer_fresnel", {"slab_eps4": _arm},
+                            commit=slab_family.staged_commit(os.path.dirname(os.path.dirname(SCRIPT_DIR)),
+                                                              cwd=SCRIPT_DIR),
+                            d_slab_m=d_slab)
+_rung = _doc["rungs"]["slab_eps4"]
+_gl = _rung["gates"]
+
+# gated_here = PRECONDITIONS only (this rung's own tails clear the family's
+# settling bar, plus the witness's own CPML/tail/aux-echo preconditions) --
+# it does NOT include the GL1/GL2 accuracy gates. The settling-extension
+# loop above already guarantees _tail_settled_here (it grows until settled
+# or raises at the cap), so this should always be True in practice; if it or
+# one of the witness's other three preconditions is ever False anyway, that
+# is a hard case failure below (see else branch), never a silent downgrade.
+_tail_settled_here = bool(
+    tail_window_clean
+    and tail_refl_rel < slab_family.SETTLING_LIMIT
+    and tail_trans_rel < slab_family.SETTLING_LIMIT
+)
+_preconditions_ok = bool(
+    _tail_settled_here
+    and _gl["precond_cpml_gate"]
+    and _gl["precond_tail_witness"]
+    and _gl["precond_aux_echo_record"]
+)
+_doc["gated_here"] = _preconditions_ok
+if _preconditions_ok:
+    # Preconditions hold: the GL1/GL2 accuracy gates now decide the witness,
+    # and they enter rfx_self_ok below -- a GL failure FAILS the case.
+    lattice_witness_ok = bool(
+        _gl["GL1_R"] and _gl["GL1_T"] and _gl["GL1_A"]
+        and _gl["GL2_R"] and _gl["GL2_T"] and _gl["GL2_A"]
+    )
     _doc["gated_here_reason"] = (
-        "the committed 719-step record does not settle to -40 dB (tails "
-        f"{tail_refl_rel:.3f} / {tail_trans_rel:.3f} of the incident peak), so the "
-        "derived W_witness exceeds this case's own band-mean window; REPORTED, "
-        "see docs/design_notes/20260903_lattice_witness_standard.md section 5.3")
+        f"this rung's own {n_steps}-step record (nx_interior={nx_interior}, "
+        f"{len(_grows)} grow attempt(s) from the declared "
+        f"{slab_family.NX_INTERIOR}) settles to tails "
+        f"{tail_refl_rel:.4f} / {tail_trans_rel:.4f} of the incident peak, "
+        f"under the family's {slab_family.SETTLING_LIMIT:g} (-40 dB) bar -- "
+        "gated on its OWN data, not cv23's sigma_zero arm (that borrowing "
+        "was tried and reverted; a case that cannot settle its own "
+        "spectra cannot gate its own case, so the fix was to settle it, "
+        "not to cite elsewhere). GL1/GL2 enter rfx_self_ok directly: a "
+        "witness failure now fails this case (exit 1), never 'reported'."
+    )
+else:
+    # Preconditions did NOT hold. The settling-extension loop is supposed to
+    # make this branch unreachable (it grows until settled or raises at the
+    # cap), but if it or the witness's own CPML/aux-echo preconditions fail
+    # anyway, that is a hard failure -- never a silent "reported, not
+    # gated" pass-through the way it used to be.
+    lattice_witness_ok = False
+    _precond_detail = {k: _gl[k] for k in
+                       ("precond_cpml_gate", "precond_tail_witness",
+                        "precond_aux_echo_record")}
+    _doc["gated_here_reason"] = (
+        f"this rung's own {n_steps}-step record (nx_interior={nx_interior}) "
+        f"FAILED a precondition -- tail_settled_here={_tail_settled_here} "
+        f"(tails {tail_refl_rel:.4f} / {tail_trans_rel:.4f} against the "
+        f"family's {slab_family.SETTLING_LIMIT:g} bar), witness "
+        f"preconditions {_precond_detail}. This FAILS the case "
+        "(rfx_self_ok=False), not 'reported, not gated' -- the "
+        "settling-extension loop should make this unreachable; see "
+        "docs/design_notes/20260903_lattice_witness_standard.md section 5.3."
+    )
+
+if "--lattice-witness" in sys.argv:
+    import json as _json
     _out04 = os.path.join(SCRIPT_DIR, "_04_fresnel_results")
     os.makedirs(_out04, exist_ok=True)
     with open(os.path.join(_out04, _LW.witness_json_name()), "w") as _fh:
         _json.dump(_doc, _fh, indent=1)
-    _r = _doc["rungs"]["slab_eps4"]
-    _ae = _r["aux_echo"]
-    print(f"  cv04-aux-echo-invariant slab_eps4 (#888): record {_ae['record_steps']} steps / "
-          f"echo arrival {_ae['echo_arrival_steps']} = {_ae['record_over_echo_arrival']:.3f} "
-          f"(limit {_ae['limit']:.1f}); ok={_ae['ok']}")
-    print(f"  cv04-lattice-witness slab_eps4: |rfx-lattice| mean R "
-          f"{_r['mean_dR_lattice_gated']:.2e} vs W {_r['mean_W_witness_R_gated']:.2e} "
-          f"(ceiling {_r['mean_W_ceiling_R_gated']:.2e}); reported, not gated")
     print(f"  wrote {os.path.join(_out04, _LW.witness_json_name())}")
+
+_ae = _rung["aux_echo"]
+print(f"  cv04-aux-echo-invariant slab_eps4 (#888): record {_ae['record_steps']} steps / "
+      f"echo arrival {_ae['echo_arrival_steps']} = {_ae['record_over_echo_arrival']:.3f} "
+      f"(limit {_ae['limit']:.1f}); ok={_ae['ok']}")
+print(f"  cv04-lattice-witness slab_eps4: |rfx-lattice| mean R "
+      f"{_rung['mean_dR_lattice_gated']:.2e} vs W {_rung['mean_W_witness_R_gated']:.2e} "
+      f"(ceiling {_rung['mean_W_ceiling_R_gated']:.2e}); "
+      f"lattice witness: GATED -- {'PASS' if lattice_witness_ok else 'FAIL'}")
+
+rfx_self_ok = bool(
+    t_ok and r_ok and c_ok and cons_max_ok and tail_ok and fringe_ok
+    and lattice_witness_ok
+)
 
 # =============================================================================
 # PART 3: Meep simulation (OPTIONAL secondary cross-validation reference)
@@ -506,8 +724,11 @@ if HAVE_MEEP:
     # so fwidth ≥ 14 GHz. We use fwidth = 1.5*fcen ≈ 15 GHz to comfortably span this.
     fwidth_m = 1.5 * fcen_m
 
-    # Convert dimensions to Meep units (cm)
-    sx_m = nx_interior * dx / a_meep   # 60 cm
+    # Convert dimensions to Meep units (cm). nx_interior here is whatever the
+    # settling-extension loop above settled on (800 cells / 80 cm on the
+    # committed run, not the 600/60 cm this comment historically said before
+    # the 2026-09-10 fix) -- it is read live, not restated.
+    sx_m = nx_interior * dx / a_meep
     sy_m = 0.4                          # 0.4 cm transverse (periodic)
     dpml_m = n_cpml * dx / a_meep      # 2 cm PML
     d_slab_m = d_slab / a_meep         # 1 cm slab thickness

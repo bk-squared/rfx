@@ -28,9 +28,9 @@
     }
   ],
   "geometry": [
-    {"id": "ground", "kind": "box", "material_id": "pec", "bounds_m": [[0.011, 0.01, 0.01], [0.029, 0.026, 0.012]]},
+    {"id": "ground", "kind": "box", "material_id": "pec", "bounds_m": [[0.011, 0.01, 0.012], [0.029, 0.026, 0.012]]},
     {"id": "substrate", "kind": "box", "material_id": "fr4", "bounds_m": [[0.011, 0.01, 0.012], [0.029, 0.026, 0.014]]},
-    {"id": "patch", "kind": "box", "material_id": "pec", "bounds_m": [[0.015, 0.014, 0.014], [0.025, 0.022, 0.016]]}
+    {"id": "patch", "kind": "box", "material_id": "pec", "bounds_m": [[0.015, 0.014, 0.014], [0.025, 0.022, 0.014]]}
   ],
   "excitations": [
     {

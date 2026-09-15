@@ -1,5 +1,23 @@
 # Geometry / setup export–import interop
 
+> **SUPERSEDED IN PART by #931 (the lattice ownership contract), 2026-09-07.**
+> Kept as dated history and deliberately NOT rewritten.
+> The composition survey's PEC paragraph — "`pec_mask` is initialised once
+> (`_compile.py:139`) and only ever OR'd again (`:168`, `:234` for thin
+> conductors)" — no longer describes the tree: a PEC thin conductor is a
+> SHEET, it owns no cell, and it is returned through the sheet collector
+> instead of being OR'd into `pec_mask`. The survey's conclusion is unharmed
+> and in fact sharpens: entry order is still semantic state (PEC volumes are
+> an order-independent union, dielectric paint is last-write-wins), and a
+> conductor now additionally carries its KIND — volume, sheet or wire — which
+> an emitter must preserve or refuse. On the document side, the design IR is
+> at `rfx-design-ir/v2`: the per-entry `two_plane` boolean of v1 is gone and a
+> v1 document is refused by name rather than read with the flag ignored
+> (`docs/design_notes/schemas/rfx-design-ir-v2.schema.json`).
+> The current rule is
+> `docs/design_notes/20260906_plan_realign_lattice_ownership.md` §1, and for
+> users `docs/public/guide/materials-geometry.mdx`.
+
 Status: **PROVISIONAL.** The rfx⇄rfx design document and the first external
 emitter (openEMS) are implemented and contract-tested; the import direction is
 researched only. **Nothing here is a validated claim about agreement with

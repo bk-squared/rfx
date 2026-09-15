@@ -1,0 +1,67 @@
+name: rfx-931-fast-lane
+description: "Default (fast) pytest lane — not gpu/slow/slow_physics — for rfx, run on VESSL instead of the shared pod (#931). The job CLONES the NFS checkout to node-local disk at a pinned SHA, so an edit to the shared worktree while the job runs cannot change what it tested. Set RFX_CHECKOUT, RFX_SHA and RFX_LABEL in env before creating the run: vessl run create -f scripts/vessl_fast_lane_pytest.yaml"
+tags: [rfx, issue-931, pytest, fast-lane]
+resources:
+  cluster: remilab-c0
+  cpu: 16
+  memory: 64Gi
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "1"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_PLATFORMS: "cpu"
+  RFX_CHECKOUT: "/root/workspace/byungkwan-workspace/research/rfx-lattice-ownership"
+  RFX_LABEL: "branch"
+  RFX_SHA: "HEAD"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  git config --global --add safe.directory "$RFX_CHECKOUT" || true
+  git config --global --add safe.directory '*' || true
+  echo "=== provenance ==="
+  echo "source checkout: $RFX_CHECKOUT"
+  SHA=$(git -C "$RFX_CHECKOUT" rev-parse "$RFX_SHA")
+  echo "pinned sha: $SHA"
+  git -C "$RFX_CHECKOUT" status --short | head -20 || true
+  # Clone to node-local disk. The shared worktree is edited by live sessions; running
+  # pytest in it means a mid-run edit silently changes what was tested.
+  WORK=/tmp/rfx-fastlane-$SHA
+  rm -rf "$WORK"
+  git clone --quiet --no-checkout --shared "$RFX_CHECKOUT" "$WORK"
+  git -C "$WORK" checkout --quiet --detach "$SHA"
+  echo "=== working copy ==="
+  git -C "$WORK" rev-parse HEAD
+  git -C "$WORK" status --short | head -5 || true
+  cd "$WORK"
+  "$PY" -m pip uninstall -y -q jax-cuda12-plugin jax-cuda12-pjrt 2>/dev/null || true
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest pytest-xdist pytest-timeout
+  export PYTHONPATH="$WORK"
+  export MPLBACKEND=Agg
+  "$PY" -c "import jax, rfx; print('probe ok', jax.__version__, jax.devices(), rfx.__version__)"
+  OUT=/root/workspace/claude-workspace/rfx/runs/issue931-fastlane-$RFX_LABEL-$(date -u +%Y%m%dT%H%M%SZ)-$(echo "$SHA" | cut -c1-8)
+  mkdir -p "$OUT"
+  echo "$SHA" > "$OUT/sha.txt"
+  echo "$OUT" > /root/workspace/claude-workspace/rfx/runs/issue931-fastlane-$RFX_LABEL.latest
+  set +e
+  # --timeout: a hang must NAME itself. Run 369367259365 sat at 99% for 83
+  # minutes with no output and no failing test, which is worse than a red:
+  # nothing in the log says which test stopped. thread method prints the
+  # stack of the hung test rather than only killing the worker.
+  "$PY" -m pytest -q -n 12 -p no:cacheprovider --no-header -rfE \
+    --timeout=900 --timeout-method=thread \
+    --junitxml="$OUT/junit.xml" > "$OUT/pytest.log" 2>&1
+  rc=$?
+  set -e
+  echo "$rc" > "$OUT/pytest.rc"
+  echo "fast lane rc=$rc  sha=$SHA"
+  tail -n 60 "$OUT/pytest.log" || true
+  grep -E "^(FAILED|ERROR) " "$OUT/pytest.log" > "$OUT/reds.txt" || true
+  echo "reds: $(wc -l < "$OUT/reds.txt")"
+  exit "$rc"

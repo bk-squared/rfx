@@ -125,6 +125,21 @@ def test_dut_cell_counts_scale_exactly_with_inverse_dx(sims, dut, dx):
     )
     assert int(masks[mat].sum()) == math.prod(expected)
 
+    if dut == "pec_short":
+        # #931: a cell count says nothing about where the walls are, which
+        # is what a short IS. Under the volume rule the DUT realizes an
+        # electric wall on BOTH of its drawn x faces and shorts every
+        # normal edge between them, so the wall-plane list is exactly the
+        # nodes the drawn 5.08 mm span covers — 2*s cells, 2*s + 1 planes,
+        # starting on the declared lo face. Before the contract the hi face
+        # was never a wall at any thickness.
+        from tests._realized_geometry import assert_wall_planes
+        x0, x1 = F.PEC_SHORT_X_M
+        planes = assert_wall_planes(
+            sim, 0, [x0 + k * dx for k in range(2 * s + 1)],
+            what=f"pec_short DUT at dx={dx}")
+        assert len(planes) == 2 * s + 1, (dx, planes)
+
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         rep = fidelity_report(sim, print_report=False)

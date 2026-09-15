@@ -1,5 +1,15 @@
 # v1.8 이후 우선 과제 — 래스터화 가시화, preflight, CST 교훈 (계획, 2026-09-05)
 
+> **SUPERSEDED IN PART by #931 (the lattice ownership contract), 2026-09-07.**
+> Kept as dated history and deliberately NOT rewritten.
+> 그 계획의 1번 항목("래스터화 가시화")은 #931에서 "소유권 계약을 정의하고 강제"로 바뀌었고, 가시화는 계약을 다시 유도하는 대신
+> 읽는다. 여기 적힌 one-plane / two_plane A/B 판정은 두 실현 방식을 비교한 결과인데, 2.0에서는 두 방식 다
+> 존재하지 않는다 — 도체는 선언으로 volume·sheet·wire 중 하나다.
+> The current rule is
+> `docs/design_notes/20260906_plan_realign_lattice_ownership.md` §1, and for
+> users `docs/public/guide/materials-geometry.mdx` ("How conductors land on
+> the lattice").
+
 PI 지시(09-05): v1.8이 닫히면 (1) 메시 래스터화 가시화, (2) 시뮬레이션 preflight, (3) CST
 교차검증 교훈 적용을 #819/#888/v1.9보다 앞에. 근거는 이 세션 자체다 — #868 하나를 빼면 찾은
 결함 전부가 물리가 아니라 **측정 셋업**(기록 창, 흡수체 배치, witness)이었고, 그건 GPU 시간을

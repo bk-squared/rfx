@@ -1,7 +1,7 @@
 """Tests for ADI-FDTD 2D TMz solver.
 
 Validates:
-  1. Unconditional stability — fields stay bounded at 5x and 10x CFL limit.
+  1. PEC-domain cavity controls stay bounded at 5x and 10x CFL limit.
   2. Cavity resonance accuracy — eigenfrequency within 2% of analytical at 5x CFL.
 """
 
@@ -170,6 +170,17 @@ def test_adi_cavity_resonance():
     # consuming most of the 2% gate budget (measured peak 2.1552 GHz was
     # 1.67% from the biased analytic but only 0.37% from the honest one).
     # Same gate, honest reference.
+    #
+    # #931 SCOPE: this is a DOMAIN-BOUNDARY wall, not a body, and the
+    # lattice ownership contract fences domain-boundary PEC out
+    # explicitly (design note §1.8: BoundarySpec faces / apply_pec /
+    # apply_pec_faces keep their convention, E_tan = 0 on the face plane
+    # at index 0 / N). So a_eff below is NOT the body-rule "drawn extent
+    # is never realized" compensation the contract abolishes — a body
+    # drawn z_a -> z_b now realizes walls at both z_a and z_b, while a
+    # domain of N nodes still has its two walls N-1 spacings apart. Two
+    # different mechanisms, said out loud so the next reader does not
+    # mistake this line for one the contract should have removed.
     a_eff = (Nx - 1) * dx
     b_eff = (Ny - 1) * dy
     f_analytical = (C0 / 2.0) * np.sqrt((1.0/a_eff)**2 + (1.0/b_eff)**2)
@@ -283,22 +294,45 @@ def test_simulation_adi_forward_contract():
     assert not hasattr(result, "state")
 
 
-def test_simulation_adi_internal_pec_geometry_masks_ez():
-    """Internal PEC geometry should be enforced through the ADI path."""
+def test_simulation_adi_default_refuses_internal_pec_geometry():
+    """Internal PEC geometry is realized, then refused on the 2-D ADI path.
+
+    #931: the 2-D lane is the one place where the realization rule could
+    silently lose an interior body. The domain has ``nz == 1``, so a
+    z-normal region has no thickness direction; the shared rule handles
+    that by wrapping on a length-1 axis (``_shift``), which makes a body
+    self-adjacent along z. Get that wrong — an unconditional zero pad —
+    and every 2-D run with interior PEC keeps its metal in the mask and
+    loses it in the field, with no error anywhere. This test is the
+    regression gate for that case, so it passes an explicit ``dx``: the
+    body's realized extent must be determinate, not a function of whatever
+    ``auto_configure`` picks.
+    """
+    dx = 1e-3
     sim = Simulation(
         freq_max=10e9,
         domain=(0.02, 0.02, 0.01),
         boundary="pec",
         mode="2d_tmz",
         solver="adi",
+        dx=dx,
     )
     sim.add(Box((0.008, 0.008, 0.0), (0.012, 0.012, 0.01)), material="pec")
     sim.add_source((0.01, 0.01, 0.0), "ez")
     sim.add_probe((0.01, 0.01, 0.0), "ez")
 
-    result = sim.run(n_steps=20)
+    # Build-time (no solve): drawn extent == realized extent in x and y.
+    from tests._realized_geometry import assert_wall_planes, realized
+    assert not realized(sim).sheets
+    for axis in (0, 1):
+        assert_wall_planes(sim, axis,
+                           [0.008 + n * dx for n in range(5)],
+                           what=f"2-D ADI interior PEC body, {'xy'[axis]}")
 
-    assert float(jnp.max(jnp.abs(result.time_series))) == pytest.approx(0.0)
+    assert sim._adi_cfl_factor == 5.0
+    for entrypoint in (sim.run, sim.forward):
+        with pytest.raises(ValueError, match="adi_interior_pec_unsupported"):
+            entrypoint(n_steps=20, skip_preflight=True)
 
 
 def test_simulation_adi_rejects_unsupported_configs():
@@ -368,6 +402,9 @@ class TestADI3DStability:
         """
         from rfx.adi import adi_step_3d
 
+        # Compile once: the same 200 updates otherwise repeatedly dispatch
+        # nested tridiagonal scans and exceed a small CPU solve budget.
+        adi_step_3d = jax.jit(adi_step_3d)
         nx, ny, nz = 16, 14, 12
         dx = dy = dz = 2e-3
         dt_yee = dx / (C0 * np.sqrt(3.0)) * 0.99
@@ -458,57 +495,43 @@ class TestADI3DCavityPhysics:
         assert float(jnp.max(jnp.abs(ey_f[0, :, :]))) < 1e-10, "PEC violated at x=0"
         assert float(jnp.max(jnp.abs(ez_f[0, :, :]))) < 1e-10, "PEC violated at x=0"
 
-    def test_internal_pec_post_solve_projection_3d(self):
-        """3D ADI's internal pec_mask is a post-solve projection, not an exact
-        Dirichlet row (rfx/adi.py:748-750 docstring caveat) — previously only
-        exercised in 2D (test_simulation_adi_internal_pec_geometry_masks_ez,
-        mode='2d_tmz'). This adds the missing 3D coverage: an interior PEC
-        post inside a 3D ADI cavity must (a) stay exactly zero at every probe
-        location the mask covers, and (b) measurably perturb the field
-        elsewhere versus the same cavity without the post — proving the
-        projection is both applied and physically consequential in 3D, not a
-        silent no-op.
+    def test_internal_pec_projection_reads_realized_edges_3d(self):
+        """Pin #931 ownership without pretending a projection proves stability.
+
+        A deterministic nonzero field distinguishes a live edge from an
+        edge the volume owns. The actual ADI integrator refuses these
+        masks; this test covers only its retained projection helper.
         """
-        def _run(with_post: bool):
-            sim = Simulation(
-                freq_max=10e9, domain=(0.02, 0.02, 0.02), boundary="pec",
-                mode="3d", solver="adi", adi_cfl_factor=2.0, dx=2e-3,
-            )
-            if with_post:
-                sim.add(Box((0.008, 0.008, 0.0), (0.012, 0.012, 0.02)),
-                        material="pec")
-            sim.add_source(
-                (0.005, 0.01, 0.01), "ez",
-                waveform=lambda t: -2 * t * 1e10 * jnp.exp(-(t * 1e10) ** 2),
-            )
-            sim.add_probe((0.015, 0.01, 0.01), "ez")   # opposite side of the post
-            sim.add_probe((0.010, 0.010, 0.01), "ez")  # inside the post footprint
-            result = sim.run(n_steps=300)
-            far_probe = np.asarray(result.time_series[:, 0])
-            inside_probe = np.asarray(result.time_series[:, 1])
-            assert not np.any(np.isnan(far_probe))
-            assert not np.any(np.isnan(inside_probe))
-            return far_probe, inside_probe
+        from rfx.adi import _apply_pec_3d
+        from rfx.boundaries.pec import realized_pec_edge_masks
 
-        far_empty, _ = _run(with_post=False)
-        far_post, inside_post = _run(with_post=True)
+        cells = jnp.zeros((8, 8, 8), dtype=bool).at[3, 3, 3].set(True)
+        masks = realized_pec_edge_masks(cells)
+        fields = tuple(jnp.full(cells.shape, value) for value in (1.0, 2.0, 3.0))
+        projected = _apply_pec_3d(*fields, masks)
+        for component, (field, mask, value) in enumerate(
+                zip(projected, masks, (1, 2, 3))):
+            # Interior coordinates avoid domain-face PEC, which owns its
+            # own tangential edges independently of geometry.
+            inside = np.asarray(field)[1:-1, 1:-1, 1:-1]
+            owned = np.asarray(mask)[1:-1, 1:-1, 1:-1]
+            assert owned.any(), component
+            np.testing.assert_array_equal(inside[owned], 0)
+            np.testing.assert_array_equal(inside[~owned], value)
 
-        # (a) the mask must actually zero the field it covers — not a
-        # decorative no-op.
-        assert np.max(np.abs(inside_post)) < 1e-10, (
-            "internal pec_mask did not zero the field inside the PEC post "
-            f"under 3D ADI: max|Ez| = {np.max(np.abs(inside_post)):.2e}"
+    def test_simulation_adi_3d_default_refuses_internal_pec_post(self):
+        """A zero probe inside a post cannot hide growth outside it."""
+        sim = Simulation(
+            freq_max=10e9, domain=(0.02, 0.02, 0.02), boundary="pec",
+            mode="3d", solver="adi", dx=2e-3,
         )
-
-        # (b) the post must measurably perturb the field elsewhere versus the
-        # same cavity without it — the post-solve projection is doing real
-        # physics, not just clamping an already-zero field.
-        diff = np.max(np.abs(far_post - far_empty))
-        scale = np.max(np.abs(far_empty)) + 1e-30
-        assert diff / scale > 0.05, (
-            "internal PEC post had no measurable effect on the field beyond "
-            f"itself under 3D ADI: relative perturbation = {diff / scale:.4f}"
-        )
+        sim.add(Box((0.008, 0.008, 0.0), (0.012, 0.012, 0.02)), material="pec")
+        sim.add_source((0.005, 0.01, 0.01), "ez")
+        sim.add_probe((0.015, 0.01, 0.01), "ez")
+        assert sim._adi_cfl_factor == 5.0
+        for entrypoint in (sim.run, sim.forward):
+            with pytest.raises(ValueError, match="adi_interior_pec_unsupported"):
+                entrypoint(n_steps=4, skip_preflight=True)
 
 
 def test_simulation_adi_3d_run():

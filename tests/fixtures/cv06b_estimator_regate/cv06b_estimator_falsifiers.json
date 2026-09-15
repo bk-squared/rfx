@@ -140,7 +140,7 @@
       "measured_bw_ratio": 0.9511807620727214,
       "measured_f_notch_refined_hz": 3642397039.104538,
       "measured_notch_depth_db": -32.94774359681242,
-      "model_notch_depth_db": -32.38987697287823
+      "model_notch_depth_db": -32.389876972878234
     },
     "rows": [
       {
@@ -148,7 +148,7 @@
         "w_stub_m": 0.0006000000000000001,
         "z0_stub_ohm": 53.10578561884263,
         "r_coupling": 1.0,
-        "notch_depth_db": -32.38987697287823,
+        "notch_depth_db": -32.389876972878234,
         "f_notch_refined_hz": 3681028863.018823,
         "err_pct": 0.8075614559159082,
         "bw_frac": 0.20507948292927947,
@@ -162,7 +162,7 @@
         "w_stub_m": 0.0005,
         "z0_stub_ohm": 59.08884259501611,
         "r_coupling": 0.8987447255113755,
-        "notch_depth_db": -33.16358417945059,
+        "notch_depth_db": -33.163584179450595,
         "f_notch_refined_hz": 3694206397.0699186,
         "err_pct": 0.4524673272994056,
         "bw_frac": 0.1860030534993085,
@@ -179,8 +179,8 @@
         "notch_depth_db": -28.720463797075343,
         "f_notch_refined_hz": 3737012791.4101434,
         "err_pct": 0.7010337176243107,
-        "bw_frac": 0.1652072784694682,
-        "bw_ratio": 0.7856762056624604,
+        "bw_frac": 0.1652072784694683,
+        "bw_ratio": 0.785676205662461,
         "G1_pass": true,
         "G2_pass": false,
         "depth_witness_pass": true
@@ -190,7 +190,7 @@
         "w_stub_m": 0.00030000000000000003,
         "z0_stub_ohm": 76.77251035476513,
         "r_coupling": 0.6917291797994001,
-        "notch_depth_db": -28.971523961467383,
+        "notch_depth_db": -28.971523961467387,
         "f_notch_refined_hz": 3761185605.0453715,
         "err_pct": 1.3524169097092422,
         "bw_frac": 0.14493149358640744,

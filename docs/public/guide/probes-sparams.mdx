@@ -264,6 +264,9 @@ msl_sim = Simulation(
     cpml_layers=3,
 )
 msl_sim.add_material("substrate", eps_r=3.2, sigma=0.01)
+# Ground and trace are 2-cell PEC volumes here, not foil: at dx = 0.25 mm each
+# realizes walls at both drawn faces, so the electrical substrate is the
+# declared 1.00 mm (ground top 1.25 mm to trace bottom 2.25 mm).
 msl_sim.add(Box((0.75e-3, 0.75e-3, 0.75e-3), (19.25e-3, 9.25e-3, 1.25e-3)), material="pec")
 msl_sim.add(Box((0.75e-3, 0.75e-3, 1.25e-3), (19.25e-3, 9.25e-3, 2.25e-3)), material="substrate")
 msl_sim.add(Box((0.75e-3, 4.50e-3, 2.25e-3), (19.25e-3, 5.50e-3, 2.75e-3)), material="pec")
@@ -292,9 +295,11 @@ the fields. Do not expect `run(compute_s_params=True)` to include MSL ports in
 This board is coarse — 0.25 mm cells across a 1 mm substrate — so the run prints
 the extractor's advisory that the reported Z0 deviates from the analytic
 Hammerstad–Jensen value by more than 10 %. Z0 rides on the N-probe fit, which
-carries Yee-staircase bias at this cell size, and the rasterized board is not
-exactly the declared one (issue #752). The V·I-split S11/S21 are unaffected;
-refine the mesh before quoting Z0.
+carries Yee-staircase bias at this cell size. The raster is no longer part of
+that story: `fidelity_report()` on this board shows zero face residual on every
+axis of both conductors and of the substrate, so what the solver realizes is the
+board that was declared ([How conductors land on the lattice](/rfx/guide/materials-geometry/#how-conductors-land-on-the-lattice)). The V·I-split S11/S21 are
+unaffected; refine the mesh before quoting Z0.
 
 #### Low-signal MSL bins
 
@@ -323,10 +328,11 @@ the result is accurate.
 
 The threshold is relative to each record's own band median, so a port sitting in
 a deep stopband is not flagged wholesale — but individual deep bins are. Live
-extractor runs on rfx's two filter geometries flagged 2 bins of 100 on the
+extractor runs on the historical pre-#931 filter geometries flagged 2 bins of 100 on the
 microstrip notch fixture and 12 of 120 on the Sheen low-pass leg — and the notch
 fixture's two are the notch centre itself, 3.6273 GHz, which its committed
-fixture records at −30.66 dB. The two counts are not recomputable from the
+fixture recorded at −30.66 dB. Those counts and notch figures describe the
+old runs, not the regenerated #931 legs. The two counts are not recomputable from the
 committed fixtures, which store S magnitudes only with no V/I dump; checking them
 means re-running the extractor and reading `reliable`. That is not a false alarm: at a
 −30 dB notch the passive port's wave split really is low-signal, so the extractor

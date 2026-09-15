@@ -3,8 +3,9 @@
 Pins the three finding classes the tool exists for, on a fixture built to
 contain each trap exactly once:
 
-* a one-cell PEC ground with dielectric ABOVE it — the sheet's own cell is
-  vacuum inside the cavity ("sheet-own-cell-live", the #693/#702 class);
+* a one-cell PEC ground with dielectric ABOVE it — under the lattice
+  ownership contract (#931) a one-cell PEC volume with walls on BOTH of its
+  bounding node planes and its interior shorted;
 * a patch with deliberately off-lattice x-faces ("off-lattice-face");
 * a dielectric later overwritten by another entity
   ("materialization-overridden");
@@ -70,9 +71,9 @@ def test_finding_classes_are_detected():
     rep = _fixture().fidelity_report(print_report=False)
 
     ground = _geo(rep, 0)
-    assert "one-plane sheet" in ground["realization"]
-    assert "sheet-own-cell-live" in _kinds(ground)
-    assert ground["own_cell_eps_r"][1] <= 1.0 + 1e-6, "ground own-cell must read vacuum"
+    assert "one-cell PEC volume" in ground["realization"]
+    assert "BOTH" in ground["realization"]
+    assert "sheet-own-cell-live" not in _kinds(ground)
 
     patch = _geo(rep, 2)
     assert "off-lattice-face" in _kinds(patch)
@@ -184,20 +185,21 @@ def test_body_inside_the_absorber_is_caught():
     assert "inside-absorber" in kinds
 
 
-def test_inert_two_plane_request_is_reported():
-    sim = _plain()
-    sim.add(Box((2e-3, 2e-3, 3e-3), (8e-3, 8e-3, 6e-3)), material="pec",
-            two_plane=True)
-    item = _geo(sim.fidelity_report(print_report=False), 0)
-    assert "volumetric" in item["realization"]
-    assert "two-plane-inert" in [f["kind"] for f in item["findings"]]
-
-
-def test_multi_axis_thin_body_names_every_thin_axis():
+def test_sub_cell_pec_box_is_reported_as_refused_naming_every_thin_axis():
+    """#931 §1.5: a PEC Box thinner than one cell (here 0.5 mm on a 1 mm
+    grid, along y AND z) is not realized at all — the assembly refuses it.
+    The report must say so on that entity's row, name every sub-cell axis,
+    and still audit the rest of the model instead of crashing."""
     sim = _plain()
     sim.add(Box((2e-3, 5e-3, 5e-3), (8e-3, 5.5e-3, 5.5e-3)), material="pec")
-    item = _geo(sim.fidelity_report(print_report=False), 0)
-    assert "y+z" in item["realization"], item["realization"]
+    sim.add(Box((2e-3, 2e-3, 2e-3), (8e-3, 4e-3, 4e-3)), material="pec")
+    rep = sim.fidelity_report(print_report=False)
+    item = _geo(rep, 0)
+    assert "REFUSED" in item["realization"], item["realization"]
+    f = [x for x in item["findings"] if x["kind"] == "refused-by-contract"]
+    assert f and "along y" in f[0]["detail"] and "; z" in f[0]["detail"], f
+    assert "add_thin_conductor" in f[0]["remedy"]
+    assert "volumetric" in _geo(rep, 1)["realization"]
 
 
 def test_dispersive_material_states_that_poles_are_not_verified():
@@ -595,6 +597,45 @@ def test_one_cell_body_reads_its_cell_exactly_and_is_not_sub_cell(lane):
         assert not item["findings"], (tag, item["findings"])
 
 
+@pytest.mark.parametrize("lane", ["uniform", "nonuniform"])
+def test_one_cell_conductor_reports_walls_on_both_of_its_faces(lane):
+    """The CONDUCTOR twin of the readout above (#931 §1.2).
+
+    The dielectric fixture pins that a body one cell thick reads its own
+    two faces back exactly. For a conductor that readout is what the
+    lattice ownership contract makes TRUE of the solve, not just of the
+    report: the same Box declared PEC realizes electric walls on BOTH
+    bounding node planes — 5000 and 5500 um here — and shorts the normal E
+    between them. Under the pre-#931 sheet rule the hi face was never a
+    wall at any thickness, so the report and the solve disagreed by one
+    plane on every foil in the repo.
+
+    The realized planes come from the report's own
+    ``realized_wall_planes`` row, which is computed by the contract's
+    function, so this also pins that the report did not re-derive the rule.
+    """
+    D = _D_HALF_MM
+    from rfx.boundaries.spec import BoundarySpec
+    kw = dict(dz_profile=np.full(30, D)) if lane == "nonuniform" else {}
+    sim = Simulation(freq_max=6e9, domain=(20 * D, 20 * D, 30 * D), dx=D,
+                     cpml_layers=8,
+                     boundary=BoundarySpec(x="cpml", y="cpml", z="cpml"), **kw)
+    sim.add(Box((5 * D, 5 * D, 10 * D), (15 * D, 15 * D, 11 * D)),
+            material="pec")
+    item = _geo(sim.fidelity_report(print_report=False), 0)
+
+    assert item["n_cells"] == 100
+    assert "one-cell PEC volume" in item["realization"]
+    assert "BOTH" in item["realization"]
+    z_um = item["realized_wall_planes"]["z"]["planes_um"]
+    assert [round(v, 6) for v in z_um] == [5000.0, 5500.0], z_um
+    # in plane the drawn rectangle is realized closed: 5000 .. 7500 um
+    for ax in ("x", "y"):
+        p = item["realized_wall_planes"][ax]["planes_um"]
+        assert round(p[0], 6) == 2500.0 and round(p[-1], 6) == 7500.0, (ax, p)
+    assert item["axes"][2]["face_residual_um"] == (0.0, 0.0)
+
+
 def test_sub_cell_margin_does_not_swallow_a_real_sub_cell_body():
     """The margin (_SUB_CELL_TIE_REL, 1e-9 of the cell) absorbs round-off
     only: a body 0.999 of a cell thick is still sub-cell, as is a 1e-6 one."""
@@ -609,3 +650,48 @@ def test_sub_cell_margin_does_not_swallow_a_real_sub_cell_body():
                 material="sub")
         item = _geo(sim.fidelity_report(print_report=False), 0)
         assert item["axes"][2]["sub_cell"] is True, (frac, item["axes"][2])
+
+
+@pytest.mark.parametrize("lane", ["uniform", "nonuniform"])
+def test_off_lattice_pec_box_reports_the_cell_count_the_solve_builds(lane):
+    """The report samples a PEC volume where the SOLVE samples it (#931 §1.1).
+
+    A PEC volume's occupancy is read at primal-cell CENTRES, half-open;
+    the report used to read every entity at NODE coordinates, which is the
+    dielectric sampler. On-lattice the two agree, so the disagreement was
+    invisible on every fixture in the repo. Off-lattice they do not: this
+    Box is drawn 0.3 dx .. 10.6 dx on x, whose centres (0.5 .. 10.5 dx)
+    give 11 occupied cells while the node sampler gives 10 — the report
+    would under-count the conductor by a cell and place its realized x_hi
+    face one cell short of the wall the solve puts there.
+
+    The expectation is not a hand-computed number: it is the cell mask the
+    assembly itself built, read through the shared realization helper.
+    """
+    from tests._realized_geometry import realized
+
+    D = _D_HALF_MM
+    from rfx.boundaries.spec import BoundarySpec
+    kw = dict(dz_profile=np.full(30, D)) if lane == "nonuniform" else {}
+    sim = Simulation(freq_max=6e9, domain=(20 * D, 20 * D, 30 * D), dx=D,
+                     cpml_layers=8,
+                     boundary=BoundarySpec(x="cpml", y="cpml", z="cpml"), **kw)
+    sim.add(Box((0.3 * D, 0.3 * D, 10 * D), (10.6 * D, 10.6 * D, 12 * D)),
+            material="pec")
+
+    rz = realized(sim)
+    n_solve = int(np.asarray(rz.pec_mask, dtype=bool).sum())
+    item = _geo(sim.fidelity_report(print_report=False), 0)
+
+    assert item["n_cells"] == n_solve, (item["n_cells"], n_solve)
+    # 11 x 11 x 2 cells: the centre sampler keeps the cell whose centre is
+    # at 10.5 dx, inside the drawn 10.6 dx face.
+    assert n_solve == 11 * 11 * 2, n_solve
+    x = item["axes"][0]
+    assert x["realized_um"] == (0.0, 11 * D * 1e6), x
+    # ... and the walls the solve realizes are the ones the row quotes:
+    # a solid 11-cell body shorts every plane it spans, so the bounding
+    # pair is what carries the sampler question.
+    planes = item["realized_wall_planes"]["x"]["planes_um"]
+    assert round(planes[0], 6) == 0.0 and round(planes[-1], 6) == 11 * D * 1e6, planes
+    assert len(planes) == 12, planes

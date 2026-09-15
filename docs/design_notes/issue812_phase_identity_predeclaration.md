@@ -289,3 +289,21 @@ any backtick span carrying a double colon as an artifact reference and rejects o
 so both are rewritten in place as "`NAME` in `path.py`" — the pointer, the constant and the
 sentence are unchanged. This is the one in-place edit above this section, and it changes no
 claim.
+
+
+## Current artifact-path correction (2026-09-08, after #931)
+
+The measurements above are the dated #812 record. The regenerated
+`validation/crossval/_issue812_phase_identity/regate_evidence.json` now stores
+`cv20.blindness.audit_construction_e1_max_phase_dev_deg = 0.0646838247297135`
+(**0.0647°**, formerly **0.2414°**), and
+`cv20.blindness.dispersion_corrected_residual_max_abs_deg_baseline = 0.7917114796063136`
+(**0.7917°**, formerly **0.7153°**). The scaled-β construction still leaves the
+corrected residual unchanged to floating-point precision; the identified
+self-reference mechanism and the frozen windows are unchanged. Current cv20
+cross-solver conclusions must come from the branch's evidence and manifest,
+not from the historical run-2 table above. The added
+`cv20.run2_openems_with_current_rfx_fixture` replay reads **0.5308°** raw phase
+difference and analytic-beta errors **1.4122% / 0.3068%** (rfx/openEMS). It pairs
+current rfx with historical run-2 openEMS, not a fresh matched-board external
+solve after #931; that Stage B rerun remains outstanding.

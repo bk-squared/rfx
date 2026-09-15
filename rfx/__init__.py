@@ -8,7 +8,7 @@ from rfx.simulation import run, run_until_decay, make_source, make_probe, make_p
 from rfx.adi import ADIState2D, ADIState3D, thomas_solve, adi_step_2d, run_adi_2d, adi_step_3d, run_adi_3d
 from rfx.api import (
     Simulation, Result, WaveguideSParamResult, WaveguideSMatrixResult,
-    MSLSMatrixResult, MixedSMatrixResult, CoaxialSMatrixResult, MATERIAL_LIBRARY,
+    MSLProbeClearance, MSLSMatrixResult, MixedSMatrixResult, CoaxialSMatrixResult, MATERIAL_LIBRARY,
     AD_MemoryEstimate, ADMemoryPlan, ADMemoryComponent,
     ADMemoryActionHint, ADMemoryExplainabilityReport,
     ADMemoryPreflightReport, ADCompiledMemoryCertificate,
@@ -71,6 +71,10 @@ from rfx.sources.waveguide_port import (
 from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import LorentzPole, drude_pole, lorentz_pole
 from rfx.materials.thin_conductor import ThinConductor, apply_thin_conductor
+from rfx.boundaries.pec import (
+    SheetSpec, WireSpec, edge_is_pec, realized_pec_edge_masks,
+    realized_wall_planes,
+)
 from rfx.farfield import (
     NTFFBox, NTFFData, FarFieldResult,
     make_ntff_box, compute_far_field, compute_far_field_jax,
@@ -166,7 +170,7 @@ except ImportError:
     WaveguideMode = _eigenmode_unavailable  # type: ignore[assignment]
     solve_waveguide_modes = _eigenmode_unavailable  # type: ignore[assignment]
 from rfx.lumped import LumpedRLCSpec, RLCState, RLCCellMeta
-from rfx.nonuniform import NonUniformGrid, make_nonuniform_grid, run_nonuniform, make_current_source
+from rfx.nonuniform import NonUniformGrid, make_nonuniform_grid, run_nonuniform, make_current_source, make_band_profile
 from rfx.auto_config import auto_configure, SimConfig, analyze_features, smooth_grading, apply_thirds_rule
 from rfx.mesh_planner import MeshPlan, plan_mesh, plan_simulation_mesh
 from rfx.harminv import harminv, harminv_from_probe, HarminvMode
@@ -175,6 +179,7 @@ from rfx.probes.probes import (
     init_wire_sparam_probe, update_wire_sparam_probe,
     extract_s_matrix_wire,
     FluxMonitor, init_flux_monitor, update_flux_monitor, flux_spectrum,
+    subtract_flux_monitors,
 )
 from rfx.sweep import parametric_sweep, SweepResult, plot_sweep
 from rfx.vmap_sweep import vmap_material_sweep, VmapSweepResult
@@ -237,12 +242,13 @@ from rfx.convergence import (
 __all__ = [
     # grid / core simulation entry points
     "Grid", "NonUniformGrid", "make_nonuniform_grid",
+    "make_band_profile",
     "Simulation", "run", "run_until_decay", "run_nonuniform",
     "make_source", "make_probe", "make_port_source", "make_current_source",
     "SimResult", "SnapshotSpec",
     # result + S-matrix types
     "Result", "WaveguideSParamResult", "WaveguideSMatrixResult",
-    "MSLSMatrixResult", "MixedSMatrixResult", "CoaxialSMatrixResult",
+    "MSLProbeClearance", "MSLSMatrixResult", "MixedSMatrixResult", "CoaxialSMatrixResult",
     "AD_MemoryEstimate", "ADMemoryPlan", "ADMemoryComponent",
     "ADMemoryActionHint",
     "ADMemoryExplainabilityReport", "MeshIntelligenceReport",
@@ -275,6 +281,12 @@ __all__ = [
     # materials / dispersion / fitting
     "DebyePole", "LorentzPole", "drude_pole", "lorentz_pole",
     "ThinConductor", "MATERIAL_LIBRARY",
+    # lattice ownership contract (#931): the one realization of conductor
+    # geometry as PEC E edges, and the two helpers every consumer reads.
+    # ``SheetSpec`` / ``WireSpec`` stay OFF the star surface (declaration
+    # records the rasterizer produces, not something a user constructs) —
+    # they are still importable as ``rfx.SheetSpec``.
+    "realized_pec_edge_masks", "realized_wall_planes", "edge_is_pec",
     "load_material_csv", "fit_debye", "fit_lorentz", "eval_debye", "eval_lorentz",
     "plot_material_fit", "DebyeFitResult", "LorentzFitResult",
     "differentiable_material_fit", "MaterialFitResult", "sparam_loss",
@@ -301,7 +313,7 @@ __all__ = [
     "summarize_batch_manifest",
     # probes / measurements / spectral
     "wire_port_voltage", "wire_port_current",
-    "FluxMonitor", "flux_spectrum",
+    "FluxMonitor", "flux_spectrum", "subtract_flux_monitors",
     "harminv", "harminv_from_probe", "HarminvMode",
     # eigenmode (optional scipy)
     "WaveguideMode", "solve_waveguide_modes",

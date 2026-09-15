@@ -1,5 +1,18 @@
 # Issue #764 — measurement record, verdicts, and deviations
 
+> **SUPERSEDED IN PART by #931 (the lattice ownership contract), 2026-09-07.**
+> Kept as dated history and deliberately NOT rewritten.
+> The fixture-revision reasoning quoted at the top — "`apply_pec_mask`'s
+> thin-sheet rule preserves the normal E of a 1-cell-thick PEC plate", hence
+> `V(k6) = -(V7+V8)` — depends on the deleted rule. A 1-cell PEC plate is a
+> volume from 2.0 and shorts its normal edge, so that identity does not hold
+> on the current tree; the measurement record below is a dated result, not a
+> recipe.
+> The current rule is
+> `docs/design_notes/20260906_plan_realign_lattice_ownership.md` §1, and for
+> users `docs/public/guide/materials-geometry.mdx` ("How conductors land on
+> the lattice").
+
 Companion to `issue764_wireport_norm_predeclaration.md` (the binding
 pre-declaration, committed BEFORE any measurement, unmodified since).
 This note records what was measured, every falsifier verdict, and every

@@ -5,7 +5,7 @@ Physics and discretisation follow the independent referee
 ``validation/crossval/comparators/fdfd_hplane.py`` (node-Dirichlet PEC,
 5-point Laplacian, exact discrete DtN port built from the discrete transverse
 eigenbasis): on the nominal grid the two agree to LU roundoff, and that
-agreement is the correctness gate of this module (``tests/test_fdfd_hplane.py``).
+agreement is the correctness gate of this module (``tests/unit/fdfd/test_fdfd_hplane.py``).
 What is new:
 
 * the assembled system is a JAX function of ``freq`` (through k and the port

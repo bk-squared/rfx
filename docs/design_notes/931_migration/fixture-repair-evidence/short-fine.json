@@ -1,0 +1,672 @@
+{
+  "arm": "current",
+  "fine": true,
+  "source_sha": "949e1845b84b26826d4e5309363bea4c2ffa5920",
+  "rfx_import": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/__init__.py",
+  "fixture_sha256": "3c1d0a135933f09136ce00e8e234ad8e00304fcafa52fdfbc746ff39da1b040e",
+  "grid_shape": [
+    141,
+    41,
+    21
+  ],
+  "dx": 0.001,
+  "dt": 1.9065748695310057e-12,
+  "num_periods": 40,
+  "current": {
+    "cell_count": 1600,
+    "occupied_x_indices": [
+      94,
+      95
+    ],
+    "occupied_x_lower_nodes_m": [
+      0.084,
+      0.085
+    ],
+    "edge_counts": [
+      1722,
+      2520,
+      2460
+    ],
+    "tangential_wall_x_m": [
+      0.084,
+      0.085,
+      0.08600000000000001
+    ]
+  },
+  "node_volume": {
+    "cell_count": 1600,
+    "occupied_x_indices": [
+      94,
+      95
+    ],
+    "occupied_x_lower_nodes_m": [
+      0.084,
+      0.085
+    ],
+    "edge_counts": [
+      1722,
+      2520,
+      2460
+    ],
+    "tangential_wall_x_m": [
+      0.084,
+      0.085,
+      0.08600000000000001
+    ]
+  },
+  "legacy_sigma": {
+    "cell_count": 1600,
+    "damped_x_nodes_m": [
+      0.084,
+      0.085
+    ]
+  },
+  "frequencies_hz": [
+    5000000000.0,
+    5400000000.0,
+    5800000000.0,
+    6200000000.0,
+    6600000000.0,
+    7000000000.0
+  ],
+  "fixture": "931-fixture-repair-node-aligned-short",
+  "declared_short_faces_m": [
+    0.084,
+    0.086
+  ],
+  "port_planes_m": [
+    {
+      "source": 0.01,
+      "reference": 0.016,
+      "probe": 0.03
+    },
+    {
+      "source": 0.11,
+      "reference": 0.104,
+      "probe": 0.09
+    }
+  ],
+  "n_steps": 2998,
+  "ref_shifts_m": [
+    -0.006,
+    0.006000000000000005
+  ],
+  "material_input_sha256": {
+    "eps_r": "4ed0fb41d2b2270bac14cacb9fde37981b8b63dd4a18c19aa8fb6d84af618ac6",
+    "sigma": "618760690aed1c10d2207e7e1909674a4df510a38bd5f787efcdc04260249514",
+    "mu_r": "4ed0fb41d2b2270bac14cacb9fde37981b8b63dd4a18c19aa8fb6d84af618ac6"
+  },
+  "port_input_sha256": [
+    {
+      "x_index": "b0dc4e36b69ce4f9362d749abb6834f2c491e8f2243625df685cf8320916e0ab",
+      "ref_x": "33b7f9632bd39a3292c6fa45b55fb37b8e2954c37036e7f9a0b5d2d6c2e6700c",
+      "probe_x": "b0ec29a9f09d05ae698338190912b97b6e0d29dba1570db44e4f8dd1397a7d20",
+      "y_lo": "638c3654371664a5d7424a250b896c6aee9e09d3a2dd1209f493f9e25940628f",
+      "y_hi": "b0ec29a9f09d05ae698338190912b97b6e0d29dba1570db44e4f8dd1397a7d20",
+      "z_lo": "638c3654371664a5d7424a250b896c6aee9e09d3a2dd1209f493f9e25940628f",
+      "z_hi": "b0dc4e36b69ce4f9362d749abb6834f2c491e8f2243625df685cf8320916e0ab",
+      "normal_axis": "abbe169495ed62bb3d03edb8d17b4a11c12cc11e49e3c172a4c6945805b5e080",
+      "u_lo": "638c3654371664a5d7424a250b896c6aee9e09d3a2dd1209f493f9e25940628f",
+      "u_hi": "b0ec29a9f09d05ae698338190912b97b6e0d29dba1570db44e4f8dd1397a7d20",
+      "v_lo": "638c3654371664a5d7424a250b896c6aee9e09d3a2dd1209f493f9e25940628f",
+      "v_hi": "b0dc4e36b69ce4f9362d749abb6834f2c491e8f2243625df685cf8320916e0ab",
+      "e_u_component": "97f41c387ea64591759b59ff628e0e218d3526a97d378d831f89c75a5ee658c3",
+      "e_v_component": "ed053dd06e167f07938fb65fb6bf82eb5668d2964b6e9cc2aedaa5576ec06f46",
+      "h_u_component": "3ef68d3e089f698e90ec1a8ef10004a09862e6751d5661b101a87e9c8e54b1ed",
+      "h_v_component": "3def0554d1c367a1ae13f970020c0f93ac652dc27c3a27f9157ceb52b02a8632",
+      "ey_profile": "c5634715377970ba094f618efeb7643fb40d7311d05b34e5ba0e1ebce32f7195",
+      "ez_profile": "b4f4aa146b82c524514fe21ea2bbf5e62456bc76906c35fb9ddb1f8ae97f9a5a",
+      "hy_profile": "fe5b87dbbb637ba63a159b2294cd5dde12fdeda2b313267ac3874525421a917b",
+      "hz_profile": "02fbec8fdce256093548a923274f9ebc88fd0e1c7044120f52cf977a8448bde3",
+      "mode_type": "9c2a614e2f4703b5a6320eb9cc0e2ae281603765d1c9d3547517fb5512a2abde",
+      "direction": "4a3cc417977647716c24d9387b64c5bd717c3c2a780c2689a9f5fec1df3d137b",
+      "f_cutoff": "9880e0b597511b4e1cd0fef44e86c317154ee35b4c4eb2c273b1ff91ef72f6ad",
+      "a": "a94c26eb69a383ae3550c5b785aa27cfa3df30796cb833ae640bf400944400ac",
+      "b": "5d981b6d49de483d3c95c131368f7b94705eceab0f904ca2519d69fa8dd72171",
+      "dx": "07277ae96151c7ee643eabfac97e9c0025bc26504fe656682da57594cddf18d7",
+      "dt": "f9cc53dae1d0c98260297a220209c271696bd0cac9369131fe55d0be40324666",
+      "u_widths": "367dbf6ef325634cb1bab15921723b8f90a62bd80d3b7147de1548cb2776a3ec",
+      "v_widths": "00e703e48cb83ed4df176c023815ee3abddb00f1cef76b35fafa1b2a3742b6d4",
+      "source_x_m": "e0f4860159921c9c9fb79d023dad3091d9250133f0a5916a6a378758bd023f2a",
+      "reference_x_m": "2805dfd3bb04f20579369af9eedce7e838b1855f16fb7f989b5bfa3e24f1d4af",
+      "probe_x_m": "68a733fb824c4728768c1197b07d1756d4adef75d9fb187e672911906197f03e",
+      "dft_total_steps": "3d7439b3712cc616aa6bfc3d2539451cf4ed465c5ed473a1e682875a887bdf22",
+      "src_amp": "531bd5e101de4c727fcac6cda31dcaf3558b69a33c4949a3973ac8f2abcd4c83",
+      "src_t0": "cb8d51b363ebe7ddf44748fac189a304c04e669846b2fdffff27ad3054c9178c",
+      "src_tau": "6dda31867d676b19d21cac98bda7bc20c123da52d8b2d1c44a7c992be655f3bc",
+      "src_fcen": "c589c506631eb846db1d7c0ffc9677870f91e372d8a3b0250a204fea3072b181",
+      "waveform": "2fdbbdc6910104ee5940164ff53078b308cfdccf6e8367ea9bad50683cc26bc6",
+      "freqs": "562aa3b82ae0af6788cfcda446372f9326879ce1aee9777249a5108ffcb53109",
+      "v_probe_t": "1804791c86186e10cc77dd05a07ee07dcd9a78c0ec727ddf084683ba184ea61b",
+      "v_ref_t": "1804791c86186e10cc77dd05a07ee07dcd9a78c0ec727ddf084683ba184ea61b",
+      "i_probe_t": "1804791c86186e10cc77dd05a07ee07dcd9a78c0ec727ddf084683ba184ea61b",
+      "i_ref_t": "1804791c86186e10cc77dd05a07ee07dcd9a78c0ec727ddf084683ba184ea61b",
+      "v_inc_t": "1804791c86186e10cc77dd05a07ee07dcd9a78c0ec727ddf084683ba184ea61b",
+      "n_steps_recorded": "6df728909b95051831ead933ce466193352afb4cf1ed84de7259866b9ed3fe63",
+      "e_inc_table": "4ced84aeadab94bf1e499fc64f8682ac4d0befa6dcf5ffcb51d53b10f17628d4",
+      "h_inc_table": "f85a1c70b08a1ea567e0abe1c5526bd20315159dcfb2467d3406742c2fbe09a2",
+      "aperture_dA": "df8618b2b360e27f8d8e75d2af36a880e1c896e371501f11bc3ab0a02ade2739",
+      "h_offset": "8baa97848e4195136cef1bfbaa787ee44d122ddd0a70f011e1f8dc06628bf3ab",
+      "mode_indices": "4f41653fe38dad6fa82567983a8cd96bd857819873930586dc479aab61a75d1e"
+    },
+    {
+      "x_index": "ed3fa0a6cf7b5caa3a692d0d3547a2c9ef9d0b921b400f049641423ef030655e",
+      "ref_x": "49fe8870224b5fdadcbb2585617fd793b52839a496a7f6e9958c0a4263d3e6d8",
+      "probe_x": "35cb945182a2b7895a1392b0d72f24f3b5afe9cfd4c8b027fe757b9c2e49f98c",
+      "y_lo": "638c3654371664a5d7424a250b896c6aee9e09d3a2dd1209f493f9e25940628f",
+      "y_hi": "b0ec29a9f09d05ae698338190912b97b6e0d29dba1570db44e4f8dd1397a7d20",
+      "z_lo": "638c3654371664a5d7424a250b896c6aee9e09d3a2dd1209f493f9e25940628f",
+      "z_hi": "b0dc4e36b69ce4f9362d749abb6834f2c491e8f2243625df685cf8320916e0ab",
+      "normal_axis": "abbe169495ed62bb3d03edb8d17b4a11c12cc11e49e3c172a4c6945805b5e080",
+      "u_lo": "638c3654371664a5d7424a250b896c6aee9e09d3a2dd1209f493f9e25940628f",
+      "u_hi": "b0ec29a9f09d05ae698338190912b97b6e0d29dba1570db44e4f8dd1397a7d20",
+      "v_lo": "638c3654371664a5d7424a250b896c6aee9e09d3a2dd1209f493f9e25940628f",
+      "v_hi": "b0dc4e36b69ce4f9362d749abb6834f2c491e8f2243625df685cf8320916e0ab",
+      "e_u_component": "97f41c387ea64591759b59ff628e0e218d3526a97d378d831f89c75a5ee658c3",
+      "e_v_component": "ed053dd06e167f07938fb65fb6bf82eb5668d2964b6e9cc2aedaa5576ec06f46",
+      "h_u_component": "3ef68d3e089f698e90ec1a8ef10004a09862e6751d5661b101a87e9c8e54b1ed",
+      "h_v_component": "3def0554d1c367a1ae13f970020c0f93ac652dc27c3a27f9157ceb52b02a8632",
+      "ey_profile": "c5634715377970ba094f618efeb7643fb40d7311d05b34e5ba0e1ebce32f7195",
+      "ez_profile": "b4f4aa146b82c524514fe21ea2bbf5e62456bc76906c35fb9ddb1f8ae97f9a5a",
+      "hy_profile": "fe5b87dbbb637ba63a159b2294cd5dde12fdeda2b313267ac3874525421a917b",
+      "hz_profile": "02fbec8fdce256093548a923274f9ebc88fd0e1c7044120f52cf977a8448bde3",
+      "mode_type": "9c2a614e2f4703b5a6320eb9cc0e2ae281603765d1c9d3547517fb5512a2abde",
+      "direction": "c1f0e49f07e4a25cfd91c05ff74f08a816d79e31612e33968d02ccf986b3ce38",
+      "f_cutoff": "9880e0b597511b4e1cd0fef44e86c317154ee35b4c4eb2c273b1ff91ef72f6ad",
+      "a": "a94c26eb69a383ae3550c5b785aa27cfa3df30796cb833ae640bf400944400ac",
+      "b": "5d981b6d49de483d3c95c131368f7b94705eceab0f904ca2519d69fa8dd72171",
+      "dx": "07277ae96151c7ee643eabfac97e9c0025bc26504fe656682da57594cddf18d7",
+      "dt": "f9cc53dae1d0c98260297a220209c271696bd0cac9369131fe55d0be40324666",
+      "u_widths": "367dbf6ef325634cb1bab15921723b8f90a62bd80d3b7147de1548cb2776a3ec",
+      "v_widths": "00e703e48cb83ed4df176c023815ee3abddb00f1cef76b35fafa1b2a3742b6d4",
+      "source_x_m": "53014b3d9936d194c460845a9a36de97fb7d7f559ecb4aee954308bbe951bc02",
+      "reference_x_m": "e0d8810d7d6930553c5a9b29667b87914ae471fe27317a77a107b36055223924",
+      "probe_x_m": "9b6c0613967b99e26ad5b7ea572d54bd0f5fbaa323d181f518ad721f7a3e07cb",
+      "dft_total_steps": "3d7439b3712cc616aa6bfc3d2539451cf4ed465c5ed473a1e682875a887bdf22",
+      "src_amp": "531bd5e101de4c727fcac6cda31dcaf3558b69a33c4949a3973ac8f2abcd4c83",
+      "src_t0": "cb8d51b363ebe7ddf44748fac189a304c04e669846b2fdffff27ad3054c9178c",
+      "src_tau": "6dda31867d676b19d21cac98bda7bc20c123da52d8b2d1c44a7c992be655f3bc",
+      "src_fcen": "c589c506631eb846db1d7c0ffc9677870f91e372d8a3b0250a204fea3072b181",
+      "waveform": "2fdbbdc6910104ee5940164ff53078b308cfdccf6e8367ea9bad50683cc26bc6",
+      "freqs": "562aa3b82ae0af6788cfcda446372f9326879ce1aee9777249a5108ffcb53109",
+      "v_probe_t": "1804791c86186e10cc77dd05a07ee07dcd9a78c0ec727ddf084683ba184ea61b",
+      "v_ref_t": "1804791c86186e10cc77dd05a07ee07dcd9a78c0ec727ddf084683ba184ea61b",
+      "i_probe_t": "1804791c86186e10cc77dd05a07ee07dcd9a78c0ec727ddf084683ba184ea61b",
+      "i_ref_t": "1804791c86186e10cc77dd05a07ee07dcd9a78c0ec727ddf084683ba184ea61b",
+      "v_inc_t": "1804791c86186e10cc77dd05a07ee07dcd9a78c0ec727ddf084683ba184ea61b",
+      "n_steps_recorded": "6df728909b95051831ead933ce466193352afb4cf1ed84de7259866b9ed3fe63",
+      "e_inc_table": "4ced84aeadab94bf1e499fc64f8682ac4d0befa6dcf5ffcb51d53b10f17628d4",
+      "h_inc_table": "f85a1c70b08a1ea567e0abe1c5526bd20315159dcfb2467d3406742c2fbe09a2",
+      "aperture_dA": "df8618b2b360e27f8d8e75d2af36a880e1c896e371501f11bc3ab0a02ade2739",
+      "h_offset": "8baa97848e4195136cef1bfbaa787ee44d122ddd0a70f011e1f8dc06628bf3ab",
+      "mode_indices": "4f41653fe38dad6fa82567983a8cd96bd857819873930586dc479aab61a75d1e"
+    }
+  ],
+  "elapsed_s": 27.29909893590957,
+  "s_real": [
+    [
+      [
+        0.5987938642501831,
+        -0.8709007501602173,
+        -0.3920675218105316,
+        0.9284003973007202,
+        0.4102846682071686,
+        -0.8958034515380859
+      ],
+      [
+        -0.0,
+        -0.0,
+        -0.0,
+        -0.0,
+        -0.0,
+        -0.0
+      ]
+    ],
+    [
+      [
+        -0.0,
+        -0.0,
+        -0.0,
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      [
+        0.9818436503410339,
+        0.7171444296836853,
+        0.25562572479248047,
+        -0.2534772455692291,
+        -0.683202862739563,
+        -0.9436873197555542
+      ]
+    ]
+  ],
+  "s_imag": [
+    [
+      [
+        -0.7118331789970398,
+        -0.48439472913742065,
+        0.9195510745048523,
+        0.3720162808895111,
+        -0.9134001135826111,
+        -0.49693959951400757
+      ],
+      [
+        -0.0,
+        -0.0,
+        -0.0,
+        -0.0,
+        -0.0,
+        -0.0
+      ]
+    ],
+    [
+      [
+        -0.0,
+        -0.0,
+        -0.0,
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      [
+        -0.18871301412582397,
+        -0.696439802646637,
+        -0.9663084149360657,
+        -0.9667983651161194,
+        -0.72944575548172,
+        -0.3293190598487854
+      ]
+    ]
+  ],
+  "s_abs": [
+    [
+      [
+        0.9301938414573669,
+        0.9965472221374512,
+        0.9996455311775208,
+        1.0001617670059204,
+        1.0013158321380615,
+        1.0244084596633911
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    ],
+    [
+      [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.9998147487640381,
+        0.9996621608734131,
+        0.9995481371879578,
+        0.9994747638702393,
+        0.9994285106658936,
+        0.9994983077049255
+      ]
+    ]
+  ],
+  "column_power": [
+    [
+      0.8652606010437012,
+      0.9931063652038574,
+      0.999291181564331,
+      1.0003235340118408,
+      1.0026334524154663,
+      1.049412727355957
+    ],
+    [
+      0.999629557132721,
+      0.9993244409561157,
+      0.9990964531898499,
+      0.9989498257637024,
+      0.998857319355011,
+      0.9989968538284302
+    ]
+  ],
+  "max_column_power": 1.049412727355957,
+  "in_original_witness_interval": false,
+  "driven_incident_nonzero": [
+    true,
+    true
+  ],
+  "settling_db": [
+    -47.47585398397359,
+    -103.15757071046333
+  ],
+  "records_summary": [
+    [
+      {
+        "port": 0,
+        "dt": 1.9065748695310057e-12,
+        "n_steps": 2998,
+        "v_probe_t": {
+          "peak": 1.5209245681762695,
+          "tail": 0.010303708724677563
+        },
+        "v_ref_t": {
+          "peak": 0.7534060478210449,
+          "tail": 0.0072323838248848915
+        },
+        "i_probe_t": {
+          "peak": 0.002013865392655134,
+          "tail": 1.1900352546945214e-05
+        },
+        "i_ref_t": {
+          "peak": 0.003231074893847108,
+          "tail": 2.0566993043757975e-05
+        },
+        "a_wave": {
+          "real": [
+            -8.18266461533046e-12,
+            -2.1412323303326986e-10,
+            -1.1310402614483905e-09,
+            -9.283854240926814e-10,
+            -2.001333682111195e-10,
+            -1.0220597805588039e-11
+          ],
+          "imag": [
+            2.7360779657550904e-13,
+            -2.6116664386677257e-11,
+            9.153082458634998e-11,
+            5.939383707076473e-11,
+            -2.2139561017819887e-11,
+            -2.7580273676865164e-13
+          ],
+          "magnitude": [
+            8.187237346413134e-12,
+            2.157100748023666e-10,
+            1.1347378592319046e-09,
+            9.302833503532781e-10,
+            2.0135421108236073e-10,
+            1.0224317920082271e-11
+          ]
+        },
+        "b_wave": {
+          "real": [
+            -4.7049664511633615e-12,
+            1.738292981778855e-10,
+            3.5927688601944396e-10,
+            -8.840089216199942e-10,
+            -1.0233392605529801e-10,
+            9.018589694487211e-12
+          ],
+          "imag": [
+            5.988526514955073e-12,
+            1.26465185545932e-10,
+            -1.0759356738887504e-09,
+            -2.902332263410301e-10,
+            1.737183175087864e-10,
+            5.326085059098595e-12
+          ],
+          "magnitude": [
+            7.61571795210303e-12,
+            2.14965267808509e-10,
+            1.1343357364523854e-09,
+            9.304338410842661e-10,
+            2.0161916580718753e-10,
+            1.0473878708783246e-11
+          ]
+        }
+      },
+      {
+        "port": 1,
+        "dt": 1.9065748695310057e-12,
+        "n_steps": 2998,
+        "v_probe_t": {
+          "peak": 0.0,
+          "tail": 0.0
+        },
+        "v_ref_t": {
+          "peak": 0.0,
+          "tail": 0.0
+        },
+        "i_probe_t": {
+          "peak": 0.0,
+          "tail": 0.0
+        },
+        "i_ref_t": {
+          "peak": 0.0,
+          "tail": 0.0
+        },
+        "a_wave": {
+          "real": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "imag": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "magnitude": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "b_wave": {
+          "real": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "imag": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "magnitude": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      }
+    ],
+    [
+      {
+        "port": 0,
+        "dt": 1.9065748695310057e-12,
+        "n_steps": 2998,
+        "v_probe_t": {
+          "peak": 0.0,
+          "tail": 0.0
+        },
+        "v_ref_t": {
+          "peak": 0.0,
+          "tail": 0.0
+        },
+        "i_probe_t": {
+          "peak": 0.0,
+          "tail": 0.0
+        },
+        "i_ref_t": {
+          "peak": 0.0,
+          "tail": 0.0
+        },
+        "a_wave": {
+          "real": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "imag": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "magnitude": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "b_wave": {
+          "real": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "imag": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "magnitude": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      {
+        "port": 1,
+        "dt": 1.9065748695310057e-12,
+        "n_steps": 2998,
+        "v_probe_t": {
+          "peak": 0.7789714336395264,
+          "tail": 4.781187271873932e-06
+        },
+        "v_ref_t": {
+          "peak": 1.9903215169906616,
+          "tail": 1.9404171325732023e-05
+        },
+        "i_probe_t": {
+          "peak": 0.003883120371028781,
+          "tail": 3.1046905490939025e-08
+        },
+        "i_ref_t": {
+          "peak": 0.000789923476986587,
+          "tail": 1.949885586327582e-08
+        },
+        "a_wave": {
+          "real": [
+            -9.611074089366234e-12,
+            -2.407068988574679e-10,
+            -1.096831070412918e-09,
+            -9.902026976149614e-10,
+            -1.912506403245473e-10,
+            -8.031783571560425e-12
+          ],
+          "imag": [
+            -6.962959939529889e-13,
+            9.186209085076946e-12,
+            1.5921018670095322e-10,
+            1.6653498025043234e-10,
+            2.2940881833077853e-11,
+            3.474010629948149e-13
+          ],
+          "magnitude": [
+            9.636263141599155e-12,
+            2.4088214756190496e-10,
+            1.108325875520677e-09,
+            1.0041091291768112e-09,
+            1.926216269820813e-10,
+            8.039293189487928e-12
+          ]
+        },
+        "b_wave": {
+          "real": [
+            -9.567972282520376e-12,
+            -1.6622397902565922e-10,
+            -1.2653209036095348e-10,
+            4.11999545590902e-10,
+            1.4739710840760978e-10,
+            7.693897602356614e-12
+          ],
+          "imag": [
+            1.1300809463557493e-12,
+            1.7422571718661573e-10,
+            1.1005752975634664e-09,
+            9.151134294782537e-10,
+            1.2383369329960203e-10,
+            2.3171816028455527e-12
+          ],
+          "magnitude": [
+            9.634478111142375e-12,
+            2.4080076821419993e-10,
+            1.1078250539142687e-09,
+            1.0035817732401142e-09,
+            1.925115344914019e-10,
+            8.035259090044544e-12
+          ]
+        }
+      }
+    ]
+  ],
+  "warnings": [
+    "compute_waveguide_s_matrix(normalize=False): S21 and S-parameter phase include Yee numerical dispersion. For S21 accuracy and reciprocity use normalize=True. For |S11| of strong reflectors (PEC short, resonators) normalize=False is more accurate \u2014 see the normalize parameter docstring.",
+    "compute_waveguide_s_matrix: absorber on the x propagation axis is thinner than the documented 0.5 guide-wavelength far-port discipline at the lowest measured frequency 5.000 GHz (mode cutoff 3.746 GHz, lambda_g = 90.5 mm): x-lo 10 cells = 10.0 mm (0.11 lambda_g), x-hi 10 cells = 10.0 mm (0.11 lambda_g), against a required 45.3 mm. A thin absorber reflects guided energy and can set the accuracy envelope instead of discretization: in the WR-90 iris lane (issue #494) residual |S11| ripple was 0.0706 at 0.30 lambda_g, 0.0366 at 0.50, and 0.0093 at 0.75, so 0.5 lambda_g is a floor and not a target. Raise cpml_layers to at least 46 (0.75 lambda_g needs 68).",
+    "waveguide port index mirror audit, source E plane (x-axis): i(+) = 20, i(-) = 121, sum = 141 on n_axis = 141; the covariant sum for a primal plane is 140. The +1 difference is the KNOWN shipped offset \u2014 apply_waveguide_port_e places the '-' port's E correction at x_index + 1 \u2014 not an asymmetry in this setup. Reported as information."
+  ],
+  "capture_provenance": {
+    "run_name": "local-931-fixture-repair-short-fine",
+    "hashes_recorded_after_capture": true,
+    "sha256": {
+      "outputs/931-fixture-repair/short/advisory_current_fine.json": "bca00b5c4fc39dd4182d65f625b269586f4a220b39394504e7bece22749ecc36",
+      "outputs/931-fixture-repair/short/advisory_current_fine_records.npz": "4b8a8ee9e8c544b2db419e84d642520c4059c5dd43d451a106656243d7087c25",
+      "scripts/diagnostics/slow_931_advisory_attribution.py": "21205ffedd3f43e0c88ef2853716c5334d9ce7a8822d8bed5e62eac5f367b734"
+    }
+  },
+  "inspection": {
+    "all_trace_arrays_finite": true,
+    "both_driven_ports_have_nonzero_voltage_current_and_reflection": true,
+    "opposite_port_records_and_transmission_identically_zero": true,
+    "column_power_recomputed_from_complex_s": true,
+    "figure": "short-fine-inspection.png",
+    "trace_archive": "short-fine-traces.npz",
+    "both_drives_below_minus40db_settling": true,
+    "unchanged_fine_column_power_gate_passed": true,
+    "absolute_accuracy_qualified": false,
+    "reason": "absorber-depth warning remains; this is not fixed-configuration refinement"
+  }
+}

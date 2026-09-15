@@ -1,0 +1,172 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-9.1.1, pluggy-1.6.0 -- /usr/bin/python
+cachedir: .pytest_cache
+rootdir: /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds
+configfile: pyproject.toml
+plugins: split-0.11.0, xdist-3.8.0, anyio-4.9.0
+created: 4/4 workers
+4 workers [18 items]
+
+scheduling tests via LoadScheduling
+
+tests/unit/autodiff/test_msl_sparam_ad.py::test_migrated_trace_is_a_sheet_on_the_declared_plane[1]
+tests/unit/autodiff/test_msl_sparam_ad.py::test_replay_geometry_matches_the_captured_lattice
+tests/unit/autodiff/test_msl_sparam_ad.py::test_replay_float64_equivalence
+tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_accepts_matched_line_limit
+[gw3] [  5%] PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_accepts_matched_line_limit
+tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[phase_conjugation-electrical-length phase]
+[gw3] [ 11%] PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[phase_conjugation-electrical-length phase]
+tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[zero_transmission-transmission misses]
+[gw3] [ 16%] PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[zero_transmission-transmission misses]
+tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[excess_reflection-reflection exceeds]
+[gw3] [ 22%] PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[excess_reflection-reflection exceeds]
+tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[projection_hides_gain-singular value exceeds]
+[gw3] [ 27%] PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[projection_hides_gain-singular value exceeds]
+tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[unsettled-ringdown exceeds]
+[gw3] [ 33%] PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[unsettled-ringdown exceeds]
+tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[nonfinite-non-finite raw S]
+[gw3] [ 38%] PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[nonfinite-non-finite raw S]
+tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_drive_covers_the_declared_measurement_band
+[gw3] [ 44%] PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_drive_covers_the_declared_measurement_band
+tests/unit/autodiff/test_msl_sparam_ad.py::test_qualification_checks_the_float32_rounded_band_endpoint
+[gw3] [ 50%] PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_qualification_checks_the_float32_rounded_band_endpoint
+tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_v173a_drawing_and_gap_measurements_are_realized
+[gw1] [ 55%] PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_replay_geometry_matches_the_captured_lattice
+tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_ad_smoke_has_finite_gradient
+[gw3] [ 61%] PASSED tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_v173a_drawing_and_gap_measurements_are_realized
+tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_probe_spectrum_statistic_exposes_source_amplitude_dependence
+[gw3] [ 66%] PASSED tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_probe_spectrum_statistic_exposes_source_amplitude_dependence
+[gw2] [ 72%] PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_migrated_trace_is_a_sheet_on_the_declared_plane[1]
+tests/unit/autodiff/test_msl_sparam_ad.py::test_migrated_trace_is_a_sheet_on_the_declared_plane[2]
+[gw0] [ 77%] PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_replay_float64_equivalence
+tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
+[gw2] [ 83%] PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_migrated_trace_is_a_sheet_on_the_declared_plane[2]
+[gw1] [ 88%] PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_ad_smoke_has_finite_gradient
+tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_mode_estimator_reads_ringdown_after_the_driven_transient
+[gw1] [ 94%] PASSED tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_mode_estimator_reads_ringdown_after_the_driven_transient
+[gw0] [100%] PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
+
+=============================== warnings summary ===============================
+tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_drive_covers_the_declared_measurement_band
+tests/unit/autodiff/test_msl_sparam_ad.py::test_migrated_trace_is_a_sheet_on_the_declared_plane[1]
+tests/unit/autodiff/test_msl_sparam_ad.py::test_migrated_trace_is_a_sheet_on_the_declared_plane[2]
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/autodiff/test_msl_sparam_ad.py:145: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+    sim.add_thin_conductor(
+
+tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_v173a_drawing_and_gap_measurements_are_realized
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/scripts/harnesses/v173a_physics_equivalence.py:50: DeprecationWarning: pec_faces= kwarg is deprecated; encode PEC faces in BoundarySpec instead (e.g. boundary=BoundarySpec(x='cpml', y='cpml', z=Boundary(lo='pec', hi='cpml'))). The kwarg will be removed in rfx v2.0.
+    sim = Simulation(
+
+tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_v173a_drawing_and_gap_measurements_are_realized
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/scripts/harnesses/v173a_physics_equivalence.py:58: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+    sim.add_thin_conductor(Box(lo, hi), sigma_bulk=5.8e7, thickness=35e-6)
+
+tests/unit/autodiff/test_msl_sparam_ad.py::test_replay_float64_equivalence
+tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
+tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/api/_sparams.py:4572: UserWarning: standing-wave null at the port plane: 1 bins in [5.0000, 5.0000] GHz have |V|,|I| below 10% of band median — wave-split S-parameters are unreliable there (blind spot of single-run reflection measurements of strong reflectors); see rfx-known-issues standing-wave-null entry
+    _warn_msl_wave_split_unreliable(reliable, freqs_arr)
+
+tests/unit/autodiff/test_msl_sparam_ad.py::test_replay_float64_equivalence
+tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
+tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/api/_sparams.py:4595: UserWarning: N-probe beta scan pinned at its own window limit: 5 bins in [0.5000, 5.0000] GHz at port(s) 'msl_0', 'msl_1' minimized the fit residual at the edge of the ±35% scan around the analytic Hammerstad-Jensen guess — the reported Z0/beta at those bins are the scan limit, NOT a measurement (issue #681). S11/S21 are unaffected (they use the analytic Z0 anchor). Common causes: the real eps_eff is far from the HJ estimate (wrong eps_r_sub / substrate not detected under the port), or a contaminated/under-settled record at those bins (check settling_db and the reliable mask). Check the result's beta_railed mask before quoting Z0 or beta.
+    _warn_msl_beta_scan_railed(
+
+tests/unit/autodiff/test_msl_sparam_ad.py::test_replay_float64_equivalence
+tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
+tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/autodiff/test_msl_sparam_ad.py:245: UserWarning: compute_msl_s_matrix: reported Z0 for MSL port 'msl_0' = 90.38 ohm deviates 93.6% from analytic Hammerstad-Jensen 47.89 ohm at f = 5.0000 GHz. Z0 rides on the retained N-probe fit (S1 transitional); this can reflect Yee-staircase bias, or that the rasterized board (h_sub/W snapped to the lattice; see sim.fidelity_report()) genuinely differs from the declared one — not necessarily an extraction fault (issue #752). The V·I-split S11/S21 are unaffected.
+    result = sim.compute_msl_s_matrix(
+
+tests/unit/autodiff/test_msl_sparam_ad.py::test_replay_float64_equivalence
+tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
+tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/autodiff/test_msl_sparam_ad.py:245: UserWarning: compute_msl_s_matrix: reported Z0 for MSL port 'msl_1' = 90.35 ohm deviates 94.4% from analytic Hammerstad-Jensen 47.89 ohm at f = 5.0000 GHz. Z0 rides on the retained N-probe fit (S1 transitional); this can reflect Yee-staircase bias, or that the rasterized board (h_sub/W snapped to the lattice; see sim.fidelity_report()) genuinely differs from the declared one — not necessarily an extraction fault (issue #752). The V·I-split S11/S21 are unaffected.
+    result = sim.compute_msl_s_matrix(
+
+tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_ad_smoke_has_finite_gradient
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/api/_sparams.py:4595: UserWarning: N-probe beta scan pinned at its own window limit: 1 bins in [1.0000, 1.0000] GHz at port(s) 'msl_0', 'msl_1' minimized the fit residual at the edge of the ±35% scan around the analytic Hammerstad-Jensen guess — the reported Z0/beta at those bins are the scan limit, NOT a measurement (issue #681). S11/S21 are unaffected (they use the analytic Z0 anchor). Common causes: the real eps_eff is far from the HJ estimate (wrong eps_r_sub / substrate not detected under the port), or a contaminated/under-settled record at those bins (check settling_db and the reliable mask). Check the result's beta_railed mask before quoting Z0 or beta.
+    _warn_msl_beta_scan_railed(
+
+tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_ad_smoke_has_finite_gradient
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/autodiff/test_msl_sparam_ad.py:566: UserWarning: compute_msl_s_matrix: reported Z0 for MSL port 'msl_0' = 2317.12 ohm deviates 13369.5% from analytic Hammerstad-Jensen 47.89 ohm at f = 1.0000 GHz. Z0 rides on the retained N-probe fit (S1 transitional); this can reflect Yee-staircase bias, or that the rasterized board (h_sub/W snapped to the lattice; see sim.fidelity_report()) genuinely differs from the declared one — not necessarily an extraction fault (issue #752). The V·I-split S11/S21 are unaffected.
+    result = sim.compute_msl_s_matrix(
+
+tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_ad_smoke_has_finite_gradient
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/autodiff/test_msl_sparam_ad.py:566: UserWarning: compute_msl_s_matrix: V·I-split |S11| = 1.090 > 1 for MSL port 'msl_1' at f = 1.0000 GHz — non-physical for a passive structure. the closed Ampere-loop current is likely mismeasured (sign/scale); the extracted S11/S21 at this bin are UNRELIABLE.
+    result = sim.compute_msl_s_matrix(
+
+tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_ad_smoke_has_finite_gradient
+  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/autodiff/test_msl_sparam_ad.py:566: UserWarning: compute_msl_s_matrix: reported Z0 for MSL port 'msl_1' = -2317.12 ohm deviates 13441.7% from analytic Hammerstad-Jensen 47.89 ohm at f = 1.0000 GHz. Z0 rides on the retained N-probe fit (S1 transitional); this can reflect Yee-staircase bias, or that the rasterized board (h_sub/W snapped to the lattice; see sim.fidelity_report()) genuinely differs from the declared one — not necessarily an extraction fault (issue #752). The V·I-split S11/S21 are unaffected.
+    result = sim.compute_msl_s_matrix(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+==================================== PASSES ====================================
+___________ test_migrated_trace_is_a_sheet_on_the_declared_plane[1] ____________
+[gw2] linux -- Python 3.10.12 /usr/bin/python
+----------------------------- Captured stdout call -----------------------------
+  [PREFLIGHT] all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+_______________________ test_replay_float64_equivalence ________________________
+[gw0] linux -- Python 3.10.12 /usr/bin/python
+----------------------------- Captured stdout call -----------------------------
+
+[test_replay_float64_equivalence] per-frequency S overlay
+freq_idx    max|S_jnp-S_numpy|
+  f[00]  dev=2.238e-08
+         jnp  S00=+1.4184000425e-03+1.6536229253e-02j  S10=+9.9572387413e-01-9.1119751573e-02j
+         npy  S00=+1.4184223159e-03+1.6536231465e-02j  S10=+9.9572386341e-01-9.1119752139e-02j
+  f[01]  dev=1.168e-08
+         jnp  S00=+1.4649138467e-02+5.1088355757e-02j  S10=+9.5517104749e-01-2.9157706831e-01j
+         npy  S00=+1.4649149034e-02+5.1088360728e-02j  S10=+9.5517104233e-01-2.9157706751e-01j
+  f[02]  dev=1.782e-08
+         jnp  S00=+3.9897640856e-02+7.8393498910e-02j  S10=+8.7416388503e-01-4.7858326355e-01j
+         npy  S00=+3.9897658618e-02+7.8393500293e-02j  S10=+8.7416387871e-01-4.7858326963e-01j
+  f[03]  dev=2.038e-08
+         jnp  S00=+7.3956148814e-02+9.3813776755e-02j  S10=+7.5671345957e-01-6.4360302710e-01j
+         npy  S00=+7.3956153258e-02+9.3813783855e-02j  S10=+7.5671345514e-01-6.4360302523e-01j
+  f[04]  dev=1.531e-08
+         jnp  S00=+1.1107872179e-01+9.4658190981e-02j  S10=+6.0936667349e-01-7.7962588253e-01j
+         npy  S00=+1.1107873494e-01+9.4658196617e-02j  S10=+6.0936666917e-01-7.7962587683e-01j
+
+[test_replay_float64_equivalence] max_abs_dev = 2.238e-08
+[test_replay_float64_equivalence] PASS
+___________ test_migrated_trace_is_a_sheet_on_the_declared_plane[2] ____________
+[gw2] linux -- Python 3.10.12 /usr/bin/python
+----------------------------- Captured stdout call -----------------------------
+  [PREFLIGHT] all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+____________ test_compute_msl_s_matrix_ad_smoke_has_finite_gradient ____________
+[gw1] linux -- Python 3.10.12 /usr/bin/python
+----------------------------- Captured stdout call -----------------------------
+
+[AD smoke] grad = -6.964697e-03
+[test_compute_msl_s_matrix_ad_smoke_has_finite_gradient] PASS
+____________________ test_float32_deployment_delta_bounded _____________________
+[gw0] linux -- Python 3.10.12 /usr/bin/python
+----------------------------- Captured stdout call -----------------------------
+
+[test_float32_deployment_delta_bounded] f32-vs-f64 max_abs_dev = 2.353e-07
+  (Production float32 delta vs float64 structural result.)
+  MSL Z0 staircase physics error at DX=80µm is >5% — delta is negligible.
+[test_float32_deployment_delta_bounded] PASS
+- generated xml file: /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/outputs/931-fixture-repair/follow-up/junit.xml -
+=========================== short test summary info ============================
+PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_accepts_matched_line_limit
+PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[phase_conjugation-electrical-length phase]
+PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[zero_transmission-transmission misses]
+PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[excess_reflection-reflection exceeds]
+PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[projection_hides_gain-singular value exceeds]
+PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[unsettled-ringdown exceeds]
+PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[nonfinite-non-finite raw S]
+PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_drive_covers_the_declared_measurement_band
+PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_qualification_checks_the_float32_rounded_band_endpoint
+PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_replay_geometry_matches_the_captured_lattice
+PASSED tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_v173a_drawing_and_gap_measurements_are_realized
+PASSED tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_probe_spectrum_statistic_exposes_source_amplitude_dependence
+PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_migrated_trace_is_a_sheet_on_the_declared_plane[1]
+PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_replay_float64_equivalence
+PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_migrated_trace_is_a_sheet_on_the_declared_plane[2]
+PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_ad_smoke_has_finite_gradient
+PASSED tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_mode_estimator_reads_ringdown_after_the_driven_transient
+PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
+======================= 18 passed, 21 warnings in 18.18s =======================

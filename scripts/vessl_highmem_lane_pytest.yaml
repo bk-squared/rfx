@@ -1,0 +1,79 @@
+name: rfx-931-highmem-lane
+description: "HIGHMEM lane for rfx (#931): ONE job per test, 48Gi each, because these carry 3-24 GB RSS and must not share a box. Clones a pinned SHA to node-local disk. Set RFX_CHECKOUT, RFX_SHA and RFX_TEST (a pytest node id) before creating the run."
+tags: [rfx, issue-931, pytest, highmem-lane]
+resources:
+  cluster: remilab-c0
+  cpu: 8
+  memory: 48Gi
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "1"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_PLATFORMS: "cpu"
+  RFX_CHECKOUT: "/root/workspace/byungkwan-workspace/research/rfx-lattice-ownership"
+  RFX_LABEL: "highmem"
+  RFX_TEST: "SET-ME"
+  RFX_SHA: "HEAD"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  git config --global --add safe.directory "$RFX_CHECKOUT" || true
+  git config --global --add safe.directory '*' || true
+  echo "=== provenance ==="
+  echo "source checkout: $RFX_CHECKOUT"
+  SHA=$(git -C "$RFX_CHECKOUT" rev-parse "$RFX_SHA")
+  echo "pinned sha: $SHA"
+  git -C "$RFX_CHECKOUT" status --short | head -20 || true
+  # Clone to node-local disk. The shared worktree is edited by live sessions; running
+  # pytest in it means a mid-run edit silently changes what was tested.
+  WORK=/tmp/rfx-fastlane-$SHA
+  rm -rf "$WORK"
+  git clone --quiet --no-checkout --shared "$RFX_CHECKOUT" "$WORK"
+  git -C "$WORK" checkout --quiet --detach "$SHA"
+  echo "=== working copy ==="
+  git -C "$WORK" rev-parse HEAD
+  git -C "$WORK" status --short | head -5 || true
+  cd "$WORK"
+  "$PY" -m pip uninstall -y -q jax-cuda12-plugin jax-cuda12-pjrt 2>/dev/null || true
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest pytest-xdist pytest-timeout
+  export PYTHONPATH="$WORK"
+  export MPLBACKEND=Agg
+  "$PY" -c "import jax, rfx; print('probe ok', jax.__version__, jax.devices(), rfx.__version__)"
+  OUT=/root/workspace/claude-workspace/rfx/runs/issue931-highmem-$RFX_LABEL-$(date -u +%Y%m%dT%H%M%SZ)-$(echo "$SHA" | cut -c1-8)
+  mkdir -p "$OUT"
+  echo "$SHA" > "$OUT/sha.txt"
+  echo "$OUT" > /root/workspace/claude-workspace/rfx/runs/issue931-highmem-$RFX_LABEL.latest
+  set +e
+  # ONE pytest node id per job: serial inside by construction, isolated
+  # across jobs, so a 24 GB high-water never shares a box with six siblings.
+  echo "$RFX_TEST" | tee "$OUT/test.txt"
+  # -m highmem is REQUIRED, not decoration. pyproject's addopts carry
+  # `-m "not gpu and not slow and not slow_physics"`, and a node id does NOT
+  # override a marker filter: run 369367259434 exited 5 with "1 deselected"
+  # because the id it was given was filtered out by the default expression.
+  # Collect first, so "selected nothing" is a named error and not an opaque 5.
+  "$PY" -m pytest -q -p no:cacheprovider --no-header --collect-only \
+    -m highmem "$RFX_TEST" > "$OUT/collect.log" 2>&1
+  if ! grep -qE "^1 test collected" "$OUT/collect.log"; then
+    echo "FATAL: $RFX_TEST did not collect exactly one test under -m highmem"
+    cat "$OUT/collect.log"
+    exit 4
+  fi
+  "$PY" -m pytest -q -p no:cacheprovider --no-header -rfE \
+    -m highmem --timeout=3600 --timeout-method=thread \
+    --junitxml="$OUT/junit.xml" "$RFX_TEST" > "$OUT/pytest.log" 2>&1
+  rc=$?
+  set -e
+  echo "$rc" > "$OUT/pytest.rc"
+  echo "highmem rc=$rc  sha=$SHA  test=$RFX_TEST"
+  tail -n 60 "$OUT/pytest.log" || true
+  grep -E "^(FAILED|ERROR) " "$OUT/pytest.log" > "$OUT/reds.txt" || true
+  echo "reds: $(wc -l < "$OUT/reds.txt")"
+  exit "$rc"

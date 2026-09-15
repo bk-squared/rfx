@@ -15,7 +15,7 @@
   "dx_coarse_mm": 0.762,
   "n_freqs": 29,
   "richardson_gate_abs": 0.01,
-  "pooled_fine_gate_abs": 0.04
+  "pooled_fine_gate_abs": 0.02
  },
  "offset_grid_fine_cells": [
   -1.0,
@@ -30,31 +30,31 @@
    "d_mm": 18.288,
    "glen_m": 0.2,
    "iris_frac": 0.5,
-   "fine_gate_abs": 0.019,
-   "committed_fine_gap_abs": 0.0122,
+   "fine_gate_abs": 0.012,
+   "committed_fine_gap_abs": 0.0079,
    "oracle_distance_abs": {
-    "-1.0": 0.0469,
-    "-0.5": 0.0291,
-    "+0.0": 0.0122,
-    "+0.5": 0.0045,
-    "+1.0": 0.0203
+    "-1.0": 0.0268,
+    "-0.5": 0.009,
+    "+0.0": 0.0079,
+    "+0.5": 0.0243,
+    "+1.0": 0.0404
    },
-   "nearest_offset_fine_cells": 0.5,
+   "nearest_offset_fine_cells": 0.0,
    "one_cell_defect": {
     "over": {
-     "fine_gap_abs": 0.0446,
+     "fine_gap_abs": 0.0245,
      "detected_by_fine_gate": true,
-     "fine_margin_x": 2.349,
+     "fine_margin_x": 2.043,
      "scores_better_than_undefected": false,
-     "richardson_dev_abs": 0.0069,
+     "richardson_dev_abs": 0.0061,
      "detected_by_richardson_gate": false
     },
     "under": {
-     "fine_gap_abs": 0.0225,
+     "fine_gap_abs": 0.0426,
      "detected_by_fine_gate": true,
-     "fine_margin_x": 1.185,
+     "fine_margin_x": 3.553,
      "scores_better_than_undefected": false,
-     "richardson_dev_abs": 0.0061,
+     "richardson_dev_abs": 0.0054,
      "detected_by_richardson_gate": false
     }
    }
@@ -64,31 +64,31 @@
    "d_mm": 12.192,
    "glen_m": 0.2,
    "iris_frac": 0.5,
-   "fine_gate_abs": 0.034,
-   "committed_fine_gap_abs": 0.0223,
+   "fine_gate_abs": 0.016,
+   "committed_fine_gap_abs": 0.0101,
    "oracle_distance_abs": {
-    "-1.0": 0.0638,
-    "-0.5": 0.0429,
-    "+0.0": 0.0223,
-    "+0.5": 0.0048,
-    "+1.0": 0.0257
+    "-1.0": 0.0342,
+    "-0.5": 0.0121,
+    "+0.0": 0.0101,
+    "+0.5": 0.0321,
+    "+1.0": 0.0536
    },
-   "nearest_offset_fine_cells": 0.5,
+   "nearest_offset_fine_cells": 0.0,
    "one_cell_defect": {
     "over": {
-     "fine_gap_abs": 0.0648,
+     "fine_gap_abs": 0.0336,
      "detected_by_fine_gate": true,
-     "fine_margin_x": 1.906,
+     "fine_margin_x": 2.101,
      "scores_better_than_undefected": false,
-     "richardson_dev_abs": 0.0066,
+     "richardson_dev_abs": 0.0062,
      "detected_by_richardson_gate": false
     },
     "under": {
-     "fine_gap_abs": 0.0269,
-     "detected_by_fine_gate": false,
-     "fine_margin_x": 0.791,
+     "fine_gap_abs": 0.0538,
+     "detected_by_fine_gate": true,
+     "fine_margin_x": 3.362,
      "scores_better_than_undefected": false,
-     "richardson_dev_abs": 0.0061,
+     "richardson_dev_abs": 0.0056,
      "detected_by_richardson_gate": false
     }
    }
@@ -98,31 +98,31 @@
    "d_mm": 7.62,
    "glen_m": 0.2,
    "iris_frac": 0.5,
-   "fine_gate_abs": 0.015,
-   "committed_fine_gap_abs": 0.0097,
+   "fine_gate_abs": 0.006,
+   "committed_fine_gap_abs": 0.0034,
    "oracle_distance_abs": {
-    "-1.0": 0.0229,
-    "-0.5": 0.0167,
-    "+0.0": 0.0097,
-    "+0.5": 0.0018,
-    "+1.0": 0.0071
+    "-1.0": 0.0098,
+    "-0.5": 0.0036,
+    "+0.0": 0.0034,
+    "+0.5": 0.0115,
+    "+1.0": 0.0203
    },
-   "nearest_offset_fine_cells": 0.5,
+   "nearest_offset_fine_cells": 0.0,
    "one_cell_defect": {
     "over": {
-     "fine_gap_abs": 0.0265,
+     "fine_gap_abs": 0.0134,
      "detected_by_fine_gate": true,
-     "fine_margin_x": 1.77,
+     "fine_margin_x": 2.233,
      "scores_better_than_undefected": false,
-     "richardson_dev_abs": 0.003,
+     "richardson_dev_abs": 0.0027,
      "detected_by_richardson_gate": false
     },
     "under": {
-     "fine_gap_abs": 0.0035,
-     "detected_by_fine_gate": false,
-     "fine_margin_x": 0.235,
-     "scores_better_than_undefected": true,
-     "richardson_dev_abs": 0.0019,
+     "fine_gap_abs": 0.0167,
+     "detected_by_fine_gate": true,
+     "fine_margin_x": 2.778,
+     "scores_better_than_undefected": false,
+     "richardson_dev_abs": 0.0016,
      "detected_by_richardson_gate": false
     }
    }
@@ -132,31 +132,31 @@
    "d_mm": 18.288,
    "glen_m": 0.2,
    "iris_frac": 0.42,
-   "fine_gate_abs": 0.022,
-   "committed_fine_gap_abs": 0.0145,
+   "fine_gate_abs": 0.016,
+   "committed_fine_gap_abs": 0.0102,
    "oracle_distance_abs": {
-    "-1.0": 0.0481,
-    "-0.5": 0.0306,
-    "+0.0": 0.0145,
-    "+0.5": 0.0075,
-    "+1.0": 0.0209
+    "-1.0": 0.0282,
+    "-0.5": 0.0111,
+    "+0.0": 0.0102,
+    "+0.5": 0.024,
+    "+1.0": 0.0395
    },
-   "nearest_offset_fine_cells": 0.5,
+   "nearest_offset_fine_cells": 0.0,
    "one_cell_defect": {
     "over": {
-     "fine_gap_abs": 0.0458,
+     "fine_gap_abs": 0.026,
      "detected_by_fine_gate": true,
-     "fine_margin_x": 2.084,
+     "fine_margin_x": 1.623,
      "scores_better_than_undefected": false,
-     "richardson_dev_abs": 0.0064,
+     "richardson_dev_abs": 0.0063,
      "detected_by_richardson_gate": false
     },
     "under": {
-     "fine_gap_abs": 0.023,
+     "fine_gap_abs": 0.0417,
      "detected_by_fine_gate": true,
-     "fine_margin_x": 1.045,
+     "fine_margin_x": 2.608,
      "scores_better_than_undefected": false,
-     "richardson_dev_abs": 0.0058,
+     "richardson_dev_abs": 0.0056,
      "detected_by_richardson_gate": false
     }
    }
@@ -166,31 +166,31 @@
    "d_mm": 12.192,
    "glen_m": 0.2,
    "iris_frac": 0.42,
-   "fine_gate_abs": 0.035,
-   "committed_fine_gap_abs": 0.0232,
+   "fine_gate_abs": 0.016,
+   "committed_fine_gap_abs": 0.0106,
    "oracle_distance_abs": {
-    "-1.0": 0.0639,
-    "-0.5": 0.0433,
-    "+0.0": 0.0232,
-    "+0.5": 0.0049,
-    "+1.0": 0.0258
+    "-1.0": 0.0341,
+    "-0.5": 0.0122,
+    "+0.0": 0.0106,
+    "+0.5": 0.0321,
+    "+1.0": 0.0536
    },
-   "nearest_offset_fine_cells": 0.5,
+   "nearest_offset_fine_cells": 0.0,
    "one_cell_defect": {
     "over": {
-     "fine_gap_abs": 0.0649,
+     "fine_gap_abs": 0.0337,
      "detected_by_fine_gate": true,
-     "fine_margin_x": 1.855,
+     "fine_margin_x": 2.108,
      "scores_better_than_undefected": false,
-     "richardson_dev_abs": 0.0066,
+     "richardson_dev_abs": 0.0062,
      "detected_by_richardson_gate": false
     },
     "under": {
-     "fine_gap_abs": 0.027,
-     "detected_by_fine_gate": false,
-     "fine_margin_x": 0.771,
+     "fine_gap_abs": 0.054,
+     "detected_by_fine_gate": true,
+     "fine_margin_x": 3.373,
      "scores_better_than_undefected": false,
-     "richardson_dev_abs": 0.006,
+     "richardson_dev_abs": 0.0056,
      "detected_by_richardson_gate": false
     }
    }
@@ -200,31 +200,31 @@
    "d_mm": 7.62,
    "glen_m": 0.2,
    "iris_frac": 0.42,
-   "fine_gate_abs": 0.015,
-   "committed_fine_gap_abs": 0.0097,
+   "fine_gate_abs": 0.006,
+   "committed_fine_gap_abs": 0.0035,
    "oracle_distance_abs": {
-    "-1.0": 0.0229,
-    "-0.5": 0.0167,
-    "+0.0": 0.0097,
-    "+0.5": 0.0018,
-    "+1.0": 0.0072
+    "-1.0": 0.0098,
+    "-0.5": 0.0036,
+    "+0.0": 0.0035,
+    "+0.5": 0.0115,
+    "+1.0": 0.0203
    },
-   "nearest_offset_fine_cells": 0.5,
+   "nearest_offset_fine_cells": 0.0,
    "one_cell_defect": {
     "over": {
-     "fine_gap_abs": 0.0265,
+     "fine_gap_abs": 0.0134,
      "detected_by_fine_gate": true,
-     "fine_margin_x": 1.767,
+     "fine_margin_x": 2.228,
      "scores_better_than_undefected": false,
-     "richardson_dev_abs": 0.003,
+     "richardson_dev_abs": 0.0027,
      "detected_by_richardson_gate": false
     },
     "under": {
-     "fine_gap_abs": 0.0036,
-     "detected_by_fine_gate": false,
-     "fine_margin_x": 0.237,
-     "scores_better_than_undefected": true,
-     "richardson_dev_abs": 0.0018,
+     "fine_gap_abs": 0.0167,
+     "detected_by_fine_gate": true,
+     "fine_margin_x": 2.783,
+     "scores_better_than_undefected": false,
+     "richardson_dev_abs": 0.0016,
      "detected_by_richardson_gate": false
     }
    }
@@ -234,31 +234,31 @@
    "d_mm": 12.192,
    "glen_m": 0.16,
    "iris_frac": 0.5,
-   "fine_gate_abs": 0.034,
-   "committed_fine_gap_abs": 0.0222,
+   "fine_gate_abs": 0.015,
+   "committed_fine_gap_abs": 0.01,
    "oracle_distance_abs": {
-    "-1.0": 0.0639,
-    "-0.5": 0.0429,
-    "+0.0": 0.0222,
-    "+0.5": 0.0048,
-    "+1.0": 0.0257
+    "-1.0": 0.0342,
+    "-0.5": 0.0122,
+    "+0.0": 0.01,
+    "+0.5": 0.0321,
+    "+1.0": 0.0536
    },
-   "nearest_offset_fine_cells": 0.5,
+   "nearest_offset_fine_cells": 0.0,
    "one_cell_defect": {
     "over": {
-     "fine_gap_abs": 0.0647,
+     "fine_gap_abs": 0.0335,
      "detected_by_fine_gate": true,
-     "fine_margin_x": 1.903,
+     "fine_margin_x": 2.236,
      "scores_better_than_undefected": false,
-     "richardson_dev_abs": 0.0067,
+     "richardson_dev_abs": 0.0062,
      "detected_by_richardson_gate": false
     },
     "under": {
-     "fine_gap_abs": 0.0269,
-     "detected_by_fine_gate": false,
-     "fine_margin_x": 0.79,
+     "fine_gap_abs": 0.0538,
+     "detected_by_fine_gate": true,
+     "fine_margin_x": 3.585,
      "scores_better_than_undefected": false,
-     "richardson_dev_abs": 0.0061,
+     "richardson_dev_abs": 0.0057,
      "detected_by_richardson_gate": false
     }
    }
@@ -268,31 +268,31 @@
    "d_mm": 12.192,
    "glen_m": 0.24,
    "iris_frac": 0.5,
-   "fine_gate_abs": 0.034,
-   "committed_fine_gap_abs": 0.0222,
+   "fine_gate_abs": 0.015,
+   "committed_fine_gap_abs": 0.01,
    "oracle_distance_abs": {
-    "-1.0": 0.0638,
-    "-0.5": 0.0429,
-    "+0.0": 0.0222,
-    "+0.5": 0.0047,
-    "+1.0": 0.0256
+    "-1.0": 0.0342,
+    "-0.5": 0.0122,
+    "+0.0": 0.01,
+    "+0.5": 0.032,
+    "+1.0": 0.0535
    },
-   "nearest_offset_fine_cells": 0.5,
+   "nearest_offset_fine_cells": 0.0,
    "one_cell_defect": {
     "over": {
-     "fine_gap_abs": 0.0647,
+     "fine_gap_abs": 0.0336,
      "detected_by_fine_gate": true,
-     "fine_margin_x": 1.902,
+     "fine_margin_x": 2.24,
      "scores_better_than_undefected": false,
-     "richardson_dev_abs": 0.0067,
+     "richardson_dev_abs": 0.0063,
      "detected_by_richardson_gate": false
     },
     "under": {
-     "fine_gap_abs": 0.0268,
-     "detected_by_fine_gate": false,
-     "fine_margin_x": 0.788,
+     "fine_gap_abs": 0.0538,
+     "detected_by_fine_gate": true,
+     "fine_margin_x": 3.587,
      "scores_better_than_undefected": false,
-     "richardson_dev_abs": 0.0061,
+     "richardson_dev_abs": 0.0058,
      "detected_by_richardson_gate": false
     }
    }
@@ -301,21 +301,25 @@
  "summary": {
   "n_pairs": 8,
   "nearest_offset_fine_cells_values": [
-   0.5
+   0.0
   ],
-  "nearest_offset_is_positive_at_all_pairs": true,
+  "nearest_offset_is_positive_at_all_pairs": false,
   "over_aperture_detected": 8,
-  "over_aperture_min_margin_x": 1.767,
-  "under_aperture_detected": 2,
-  "under_aperture_max_margin_x": 1.185,
+  "over_aperture_min_margin_x": 1.623,
+  "under_aperture_detected": 8,
+  "under_aperture_max_margin_x": 3.587,
+  "under_aperture_min_margin_x": 2.608,
   "under_aperture_detected_configs": [
    "18.288|0.20|0.50",
-   "18.288|0.20|0.42"
-  ],
-  "under_aperture_scores_better_configs": [
+   "12.192|0.20|0.50",
    "7.620|0.20|0.50",
-   "7.620|0.20|0.42"
+   "18.288|0.20|0.42",
+   "12.192|0.20|0.42",
+   "7.620|0.20|0.42",
+   "12.192|0.16|0.50",
+   "12.192|0.24|0.50"
   ],
+  "under_aperture_scores_better_configs": [],
   "richardson_detected_either_sign": 0
  }
 }

@@ -1,0 +1,72 @@
+name: rfx-931-post-msl-replay-fixture
+description: "#931 R4 recapture of tests/fixtures/msl_replay_{accumulators.npz,golden_f64.npy}. scripts/capture_msl_replay_fixture.py drew the trace as a one-cell PEC Box on a bisecting dx=80um mesh (h_sub/dx=3.175); under the lattice ownership contract the foil is a SHEET on an on-lattice board (dx=h_sub/3=84.667um, one wall plane at node 3=254um). Branch feat/931-t2-sparams-ports. Consumer: tests/unit/autodiff/test_msl_sparam_ad.py (group T1). Submit: vessl run create -f rfx-931-post-msl-replay-fixture.yaml"
+tags: [rfx, issue-931, post, msl-replay, cpu]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_PLATFORMS: "cpu"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  echo "=== rfx #931 post-change: MSL replay fixture recapture ==="
+  date
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  SRC=/root/workspace/byungkwan-workspace/research/rfx-931-T2-sparams-ports
+  test -d "$SRC" || { echo "ERROR: worktree missing at $SRC"; exit 3; }
+  RUNS=/root/workspace/claude-workspace/rfx/runs
+  OUT=$RUNS/issue931-post-msl-replay-fixture-$(date -u +%Y%m%dT%H%M%SZ)
+  mkdir -p "$OUT"
+  echo "$OUT" > "$RUNS/issue931-post-msl-replay-fixture.latest"
+  trap 'chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
+  echo "artifacts: $OUT"
+  WORK=/root/work/rfx931-msl-replay-fixture
+  rm -rf "$WORK"
+  mkdir -p "$WORK"
+  cp -a "$SRC/." "$WORK/"
+  cd "$WORK"
+  git rev-parse HEAD > "$OUT/commit.txt" 2>/dev/null || echo "no git" > "$OUT/commit.txt"
+  cat "$OUT/commit.txt"
+  touch "$OUT/.tstamp"
+  "$PY" -m pip uninstall -y -q jax-cuda12-plugin jax-cuda12-pjrt 2>/dev/null || true
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" "pytest>=7.4"
+  export RFX_REPO_ROOT="$WORK"
+  export PYTHONPATH="$WORK"
+  export MPLBACKEND=Agg
+  export JAX_PLATFORMS=cpu
+  "$PY" -c "import jax, rfx, os; print('probe ok | jax', jax.__version__, '| backend', jax.default_backend(), '| rfx', getattr(rfx, '__version__', '?'), '| from', os.path.dirname(rfx.__file__))"
+  echo "=== capture: scripts/capture_msl_replay_fixture.py ==="
+  set +e
+  timeout 5400 "$PY" -u scripts/capture_msl_replay_fixture.py > "$OUT/capture.log" 2>&1
+  rc=$?
+  set -e
+  echo "$rc" > "$OUT/capture.rc"
+  tail -n 80 "$OUT/capture.log" || true
+  echo "capture_rc=$rc"
+  echo "=== realized geometry witness (build only, no solve) ==="
+  "$PY" -u -c "import warnings, importlib.util; spec=importlib.util.spec_from_file_location('cap','scripts/capture_msl_replay_fixture.py'); m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m); from tests._realized_geometry import realized; sim=m._build_sim(); warnings.simplefilter('ignore'); r=realized(sim); print('dx', r.grid.dx, 'h_sub/dx', m.H_SUB/r.grid.dx); print('sheet_planes', {k: sorted(v) for k, v in r.sheet_planes.items()}); print('wall planes z', r.wall_planes(2))" 2>&1 | tee "$OUT/realized.log" || true
+
+  echo "=== harvest: every file the run wrote into the staged checkout ==="
+  mkdir -p "$OUT/produced"
+  find "$WORK" -type f -newer "$OUT/.tstamp" \
+      -not -path "*/.git/*" -not -path "*/__pycache__/*" -not -name "*.pyc" \
+      > "$OUT/produced_files.txt" 2>/dev/null || true
+  while IFS= read -r f; do
+    rel=${f#$WORK/}
+    d=$(dirname "$rel")
+    mkdir -p "$OUT/produced/$d"
+    cp -p "$f" "$OUT/produced/$rel" 2>/dev/null || true
+  done < "$OUT/produced_files.txt"
+  echo "harvested $(wc -l < "$OUT/produced_files.txt") file(s)"
+  ls -la "$OUT"
+  chmod -R a+rX "$OUT" 2>/dev/null || true
+  echo "POST_CASE=msl-replay-fixture RC=$rc"
+  exit "$rc"

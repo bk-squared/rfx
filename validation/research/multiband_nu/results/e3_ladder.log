@@ -1,0 +1,19 @@
+rfx.__file__ = /Users/byungkwankim/Documents/rfx-nu-exp3/rfx/__init__.py
+  selfcheck A1 uc s=0.5: dual -3.9970 (quoted -3.9969) production +3.9910 (quoted +3.9910) MHz table=(3.0, 4.3, 1.0) ok=True
+  selfcheck A1 uc s=1: dual -16.0055 (quoted -16.0053) production +0.3411 (quoted +0.3411) MHz table=(3.0, 4.3, 1.0) ok=True
+  selfcheck A1 uc s=2: dual -64.3029 (quoted -64.3028) production -29.4613 (quoted -29.4613) MHz table=(3.0, 4.3, 1.0) ok=True
+  selfcheck A1 mb s=0.5: dual -7.5052 (quoted -7.5050) production -18.3505 (quoted -18.3505) MHz table=(4.3, 3.0, 4.3) ok=True
+  selfcheck A1 mb s=1: dual -30.0975 (quoted -30.0973) production -77.9318 (quoted -77.9318) MHz table=(3.0, 4.3, 4.3) ok=True
+  selfcheck A1 mb s=2: dual -121.6176 (quoted -121.6174) production -216.6348 (quoted -216.6348) MHz table=(3.0, 4.3, 4.3) ok=True
+  selfcheck A1 az s=0.5: dual -7.3853 (quoted -7.3851) production -12.5552 (quoted -12.5552) MHz table=(4.3, 3.0, 4.3) ok=True
+  selfcheck A1 az s=1: dual -22.7529 (quoted -22.7528) production -14.9238 (quoted -14.9238) MHz table=(3.0, 4.3, 1.0) ok=True
+  selfcheck A1 az s=2: dual -24.3057 (quoted -24.3055) production -16.5254 (quoted -16.5254) MHz table=(3.0, 4.3, 1.0) ok=True
+selfcheck: oracle (i) worst 1.81e-16 over 10 roots, (i') worst 1.88e-16 over 8 roots; f_true=10561719600.896 Hz; all_pass=True failed=[]
+A1 UC s=2 production: f=10.497397 GHz err=-64.3221 MHz model=-64.3029 MHz resid=-0.0192 MHz inv=0.0363 MHz zfrac=0.964 valid=True cells=19215 steps=13627 wall=1s
+A1 MB s=2 production: f=10.440043 GHz err=-121.6770 MHz model=-121.6176 MHz resid=-0.0594 MHz inv=0.0086 MHz zfrac=0.980 valid=True cells=14091 steps=13627 wall=1s
+A1 UC s=1 production: f=10.545680 GHz err=-16.0400 MHz model=-16.0055 MHz resid=-0.0345 MHz inv=0.0658 MHz zfrac=0.964 valid=True cells=139997 steps=27254 wall=6s
+A1 MB s=1 production: f=10.531626 GHz err=-30.0934 MHz model=-30.0975 MHz resid=+0.0041 MHz inv=0.0231 MHz zfrac=0.980 valid=True cells=102245 steps=27254 wall=4s
+A1 UC s=0.5 production: f=10.557741 GHz err=-3.9786 MHz model=-3.9970 MHz resid=+0.0184 MHz inv=0.0352 MHz zfrac=0.964 valid=True cells=1066425 steps=54508 wall=83s
+A1 MB s=0.5 production: f=10.554219 GHz err=-7.5005 MHz model=-7.5052 MHz resid=+0.0047 MHz inv=0.0048 MHz zfrac=0.980 valid=True cells=777225 steps=54508 wall=50s
+A1 judge: FIXTURE-INVALID or incomplete (G1, G2, G3 not passed)
+wrote validation/research/multiband_nu/results/e3_interface_eps_rule.json

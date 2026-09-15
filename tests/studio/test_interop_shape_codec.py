@@ -356,3 +356,62 @@ def test_payload_shape_is_json_serialisable_scalars_only():
         # emitted files stay byte-stable across writers.
         text = json.dumps(payload, sort_keys=True)
         assert "(" not in text
+
+
+# ---------------------------------------------------------------------------
+# the PolylineWire radius threshold (#931 §1.4)
+# ---------------------------------------------------------------------------
+
+def test_a_polyline_wire_round_trips_on_both_sides_of_the_filament_threshold():
+    """§1.4's decision, exercised through the codec rather than assumed.
+
+    ``PolylineWire`` is the one primitive whose OWNERSHIP KIND depends on a
+    parameter rather than on the shape's degeneracy: a radius of at least
+    half the local cell is a centre-sampled VOLUME tube, and anything below
+    that is a FILAMENT — the E edges of the axis-aligned lattice path
+    joining the nearest nodes of consecutive vertices. The codec carries
+    ``radius`` as a plain float and has no idea which side of the line a
+    given wire falls on, so the round trip is where a silent kind change
+    would hide: serialize a 0.4-cell wire, rebuild it, and get a tube.
+
+    ``test_scene_artifact_really_does_lose_what_the_codec_keeps`` above
+    already round-trips a wire at exactly the threshold (radius 5e-5 at
+    dx 1e-4, diameter one cell). This adds a case on each side and checks
+    that the REALIZATION, not just the parameter, survives.
+    """
+    import warnings
+
+    import numpy as np
+
+    from rfx import Simulation
+    from tests._realized_geometry import realized
+
+    dx = 1e-4
+    points = tuple((2e-4 + i * dx, 5e-4, 5e-4) for i in range(6))
+
+    def _rebuild_and_realize(radius):
+        wire = PolylineWire(points=points, radius=radius)
+        payload = json.loads(json.dumps(shape_to_dict(wire)))
+        rebuilt = shape_from_dict(payload)
+        assert rebuilt.radius == radius
+        assert [tuple(p) for p in rebuilt.points] == [tuple(p) for p in points]
+        sim = Simulation(freq_max=10e9, domain=(0.001, 0.001, 0.001), dx=dx,
+                         boundary="pec")
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            sim.add(rebuilt, material="pec")
+            return realized(sim)
+
+    filament = _rebuild_and_realize(0.4 * dx / 2)
+    assert filament.pec_mask is None or not bool(
+        np.asarray(filament.pec_mask).any()), (
+        "a sub-half-cell wire is a filament: it owns no cell")
+    assert filament.wires and not filament.sheets
+    mx, my, mz = (np.asarray(m) for m in filament.edge_masks)
+    assert int(mx.sum()) == len(points) - 1, int(mx.sum())
+    assert int(my.sum()) == 0 and int(mz.sum()) == 0
+
+    tube = _rebuild_and_realize(1.5 * dx)
+    assert tube.pec_mask is not None and bool(np.asarray(tube.pec_mask).any()), (
+        "a wire wider than one cell is a volume: it owns cells")
+    assert not tube.wires

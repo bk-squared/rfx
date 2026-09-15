@@ -69,13 +69,18 @@ from rfx.sources.msl_port import (
     msl_axis_roles,
     msl_cross_section_span,
     msl_physical_point,
-    msl_port_from_entry,
     msl_probe_x_coords_n,
     setup_msl_port,
 )
 
 EPS_R, H_SUB, W_TRACE = 3.66, 254e-6, 600e-6
-L_LINE, PORT_MARGIN, DX, F_MAX = 10e-3, 2e-3, 80e-6, 5e9
+# ON-LATTICE board (#931 §1.3): h_sub / dx = 3 exactly, so the laminate
+# face is a node line and the foil sheet lands on it. The module ran at
+# dx = 80 um (h_sub/dx = 3.175); that mesh is now used only by the
+# substrate-resolution advisory test, which is ABOUT the off-lattice
+# board and passes it explicitly.
+DX_BISECTING = 80e-6
+L_LINE, PORT_MARGIN, DX, F_MAX = 10e-3, 2e-3, H_SUB / 3.0, 5e9
 L_PROP = L_LINE + 2 * PORT_MARGIN
 L_LAT = W_TRACE + 2 * (2 * H_SUB + 8 * DX)
 LZ = H_SUB + 1.5e-3
@@ -300,8 +305,9 @@ def test_graded_mesh_probe_ladder_reads_its_own_axis_profile():
         assert _msl_cell_profile(g, ax, n).shape == (n,)
 
     kw = dict(n_probes=5, n_offset_cells=6, n_spacing_cells=3)
-    mk = lambda d: MSLPort(feed_x=0.006, y_lo=0.008, y_hi=0.010, z_lo=0.0,
-                           z_hi=0.002, direction=d, impedance=50.0)
+    def mk(d):
+        return MSLPort(feed_x=0.006, y_lo=0.008, y_hi=0.010, z_lo=0.0,
+                       z_hi=0.002, direction=d, impedance=50.0)
     lad_x = np.asarray(msl_probe_x_coords_n(g, mk("+x"), **kw))
     lad_y = np.asarray(msl_probe_x_coords_n(g, mk("+y"), **kw))
 
@@ -322,29 +328,18 @@ def test_graded_mesh_probe_ladder_reads_its_own_axis_profile():
 # ---------------------------------------------------------------------------
 
 
-class _AnisoGrid:
-    """Uniform-Grid duck type with independently settable per-axis spacing.
+def _anisotropic_grid(dx, dy, dz, shape):
+    """Actual supported grid with unequal constant spacings on each axis.
 
-    Exists because a CUBIC grid cannot detect a propagation-axis mix-up:
-    sigma scales as ``1/d_prop``, so on ``dx == dy`` an x-flavoured sigma
-    applied to a y-port is bit-identical to the correct one. The
-    end-to-end rotation-equivalence test below runs on a cubic mesh and is
-    therefore BLIND to this stage -- this test is the one that sees it.
+    A cubic mesh cannot expose a propagation/width metric swap. Use the
+    NU coordinate owner rather than a duck type with its own rounding rule.
     """
-
-    def __init__(self, dx, dy, dz, shape):
-        self.dx = dx
-        self.dx_profile = np.full(shape[0], dx)
-        self.dy_profile = np.full(shape[1], dy)
-        self.dz_profile = np.full(shape[2], dz)
-        self.shape = shape
-        self.nx, self.ny, self.nz = shape
-        self.dt = 1e-13
-
-    def position_to_index(self, pos):
-        return (int(round(pos[0] / self.dx_profile[0])),
-                int(round(pos[1] / self.dy_profile[0])),
-                int(round(pos[2] / self.dz_profile[0])))
+    from rfx.nonuniform import make_nonuniform_grid
+    return make_nonuniform_grid(
+        (0., 0.), np.full(shape[2], dz), dx,
+        dx_profile=np.full(shape[0], dx), dy_profile=np.full(shape[1], dy),
+        cpml_layers=0,
+        pec_faces={f"{axis}_{side}" for axis in "xyz" for side in ("lo", "hi")})
 
 
 class _Mat:
@@ -366,11 +361,11 @@ def _sigma_sum(direction, d_prop, d_width, d_norm):
     prop, width, _n, _s = msl_axis_roles(direction)
     sizes[prop] = d_prop
     sizes[width] = d_width
-    g = _AnisoGrid(sizes["x"], sizes["y"], sizes["z"], shape)
+    g = _anisotropic_grid(sizes["x"], sizes["y"], sizes["z"], shape)
     port = MSLPort(feed_x=10 * d_prop, y_lo=10 * d_width, y_hi=16 * d_width,
                    z_lo=0.0, z_hi=3 * d_norm, direction=direction,
                    impedance=50.0)
-    out = setup_msl_port(g, port, _Mat(shape))
+    out = setup_msl_port(g, port, _Mat(g.shape))
     return float(np.sum(np.asarray(out.sigma)))
 
 
@@ -423,12 +418,15 @@ def _board(domain, direction, feed, lat_c, *, trace_len_axis, dx=DX):
     sim.add_material("ro4350b", eps_r=EPS_R)
     sim.add(Box((0.0, 0.0, 0.0), (domain[0], domain[1], H_SUB)),
             material="ro4350b")
+    # 35 um foil -> a SHEET on the laminate face (#931 §1.3), declared by
+    # a zero-thickness Box. One cell thick it is a VOLUME: walls at both z
+    # faces and the Ez edge between them shorted.
     if trace_len_axis == "x":
         lo = (0.0, lat_c - W_TRACE / 2, H_SUB)
-        hi = (domain[0], lat_c + W_TRACE / 2, H_SUB + dx)
+        hi = (domain[0], lat_c + W_TRACE / 2, H_SUB)
     else:
         lo = (lat_c - W_TRACE / 2, 0.0, H_SUB)
-        hi = (lat_c + W_TRACE / 2, domain[1], H_SUB + dx)
+        hi = (lat_c + W_TRACE / 2, domain[1], H_SUB)
     sim.add(Box(lo, hi), material="pec")
     sim.add_msl_port(
         position=msl_physical_point(direction, feed, lat_c, 0.0),
@@ -491,40 +489,39 @@ def test_h_sub_alignment_checks_fire_for_every_direction(direction):
     "generalised" them onto the propagation axis would be wrong, and would
     stop reporting the substrate resolution for a y port.
 
-    Issue #752 / #766: the checks now count the substrate cells the RUN
-    GRID has, read off the assembled permittivity under the port. At
-    dx = 80 um the 254 um substrate REALIZES 4 cells (320 um), so check 2
-    ("< 4 cells") is correctly silent there and only check 2b fires (the
-    declared top sits 0.175 of a cell above a node). The genuine < 4-cell
-    case is dx = 100 um (3 cells, 300 um). Both are exercised, on every
-    direction, and the realized numbers must be identical across
-    directions -- h_sub does not depend on the propagation axis.
+    #752: conductor intervals and dielectric sample slots are different.
+    At dx=80um the foil/port snap to 240um (three intervals), whereas the
+    dielectric column occupies four slots/320um. At dx=100um the conductor
+    gap is 300um over three intervals. Both must warn in every direction;
+    the direction does not rotate the substrate normal away from z.
     """
     prop, width, _n, _s = msl_axis_roles(direction)
     domain = [0.0, 0.0, LZ]
     domain[{"x": 0, "y": 1}[prop]] = L_PROP
     domain[{"x": 0, "y": 1}[width]] = L_LAT
 
-    # dx = 80 um: 2b fires, 2 must not (the run grid has 4 substrate cells).
+    # Explicit off-lattice declaration: both resolution and fraction fire.
     sim80 = _board(tuple(domain), direction, PORT_MARGIN, L_LAT / 2.0,
-                   trace_len_axis=prop)
+                   trace_len_axis=prop, dx=DX_BISECTING)
     msgs80 = _msl_warnings(sim80)
-    cells80 = [m for m in msgs80 if "substrate cell(s) in z" in m]
+    cells80 = [m for m in msgs80 if "normal interval(s) between" in m]
     frac80 = [m for m in msgs80 if "mixed-cell danger zone" in m]
-    assert cells80 == [], f"4 realized cells must not trip check 2 for {direction}: {cells80}"
+    assert len(cells80) == 1, f"three conductor intervals must warn for {direction}: {msgs80}"
+    assert "only 3 normal interval(s)" in cells80[0]
+    assert "conductor-plane gap=240.0µm" in cells80[0]
     assert frac80, f"mixed-cell check silent for {direction}: {msgs80}"
-    assert "sits 0.175 of a cell above the nearest mesh node" in frac80[0], frac80[0]
-    assert "4 cell(s) of substrate = 320µm" in frac80[0], frac80[0]
+    assert "sits 0.175 of a cell above its lower mesh node" in frac80[0], frac80[0]
+    assert "4 same-permittivity sample slot(s), extent 320.0µm" in frac80[0], frac80[0]
 
-    # dx = 100 um: the run grid has 3 substrate cells -> check 2 fires.
+    # dx = 100 um: the port spans three actual normal intervals too.
     sim100 = _board(tuple(domain), direction, PORT_MARGIN, L_LAT / 2.0,
                     trace_len_axis=prop, dx=100e-6)
     msgs100 = _msl_warnings(sim100)
-    cells100 = [m for m in msgs100 if "substrate cell(s) in z" in m]
+    cells100 = [m for m in msgs100 if "normal interval(s) between" in m]
     assert cells100, f"substrate-resolution check silent for {direction}: {msgs100}"
     # Same numbers on every axis -- h_sub does not depend on direction.
-    assert "only 3 substrate cell(s) in z" in cells100[0], cells100[0]
-    assert "actually realizes 3 cell(s) = 300µm" in cells100[0], cells100[0]
+    assert "only 3 normal interval(s)" in cells100[0], cells100[0]
+    assert "conductor-plane gap=300.0µm" in cells100[0], cells100[0]
 
 
 def test_probe_span_absorber_check_fires_on_the_propagation_axis():
@@ -536,7 +533,7 @@ def test_probe_span_absorber_check_fires_on_the_propagation_axis():
     sim.add_material("ro4350b", eps_r=EPS_R)
     sim.add(Box((0.0, 0.0, 0.0), (L_LAT, L_PROP, H_SUB)), material="ro4350b")
     sim.add(Box((L_LAT / 2 - W_TRACE / 2, 0.0, H_SUB),
-                (L_LAT / 2 + W_TRACE / 2, L_PROP, H_SUB + DX)), material="pec")
+                (L_LAT / 2 + W_TRACE / 2, L_PROP, H_SUB)), material="pec")
     # Ladder deliberately long enough to run off the far y edge.
     sim.add_msl_port(position=(L_LAT / 2, L_PROP - 1e-3, 0.0), width=W_TRACE,
                      height=H_SUB, direction="+y", impedance=50.0,
@@ -557,14 +554,14 @@ def _thru(axis, n_freqs, num_periods):
         domain, sub = (L_PROP, L_LAT, LZ), (L_PROP, L_LAT, H_SUB)
         lat_c = L_LAT / 2.0
         tlo = (0.0, lat_c - W_TRACE / 2, H_SUB)
-        thi = (L_PROP, lat_c + W_TRACE / 2, H_SUB + DX)
+        thi = (L_PROP, lat_c + W_TRACE / 2, H_SUB)
         p0, p1, d0, d1 = ((PORT_MARGIN, lat_c, 0.0),
                           (PORT_MARGIN + L_LINE, lat_c, 0.0), "+x", "-x")
     else:
         domain, sub = (L_LAT, L_PROP, LZ), (L_LAT, L_PROP, H_SUB)
         lat_c = L_LAT / 2.0
         tlo = (lat_c - W_TRACE / 2, 0.0, H_SUB)
-        thi = (lat_c + W_TRACE / 2, L_PROP, H_SUB + DX)
+        thi = (lat_c + W_TRACE / 2, L_PROP, H_SUB)
         p0, p1, d0, d1 = ((lat_c, PORT_MARGIN, 0.0),
                           (lat_c, PORT_MARGIN + L_LINE, 0.0), "+y", "-y")
     sim = Simulation(freq_max=F_MAX, domain=domain, dx=DX, cpml_layers=8,
@@ -706,7 +703,7 @@ def test_equivalence_harness_can_move():
     sim.add_material("ro4350b", eps_r=EPS_R)
     sim.add(Box((0.0, 0.0, 0.0), (L_LAT, L_PROP, H_SUB)), material="ro4350b")
     sim.add(Box((lat_c - w_bad / 2, 0.0, H_SUB),
-                (lat_c + w_bad / 2, L_PROP, H_SUB + DX)), material="pec")
+                (lat_c + w_bad / 2, L_PROP, H_SUB)), material="pec")
     sim.add_msl_port(position=(lat_c, PORT_MARGIN, 0.0), width=w_bad,
                      height=H_SUB, direction="+y", impedance=50.0)
     sim.add_msl_port(position=(lat_c, PORT_MARGIN + L_LINE, 0.0), width=w_bad,

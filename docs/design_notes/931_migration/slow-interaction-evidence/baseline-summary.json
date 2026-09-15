@@ -1,0 +1,243 @@
+{
+  "run_name": "local-before-17b51196-20260908",
+  "source_commit": "17b51196a5cb0eabaaf77d3938912427e5b4ce57",
+  "provenance": "Controller PID 1063816 was already running on handover in this worktree; observed through completion. No concurrent pytest launched. Original log and JUnit paths and hashes retained below.",
+  "pytest_options": "-o addopts= -n 4; seven Group A node IDs and entire tests/locks/test_refplane_port_waves.py",
+  "seconds": 495.09,
+  "counts": {
+    "passed": 27,
+    "failed": 6,
+    "error": 7
+  },
+  "cases": [
+    {
+      "nodeid": "tests/unit/sparams/test_sparam_passivity_guard.py::test_soft_advisory_real_coarse_pec_short_witness",
+      "status": "failed",
+      "seconds": 10.044,
+      "message": "AssertionError: expected witness column power in the gap, got 1.2999\nassert 2.25 < 1.2999107837677002"
+    },
+    {
+      "nodeid": "tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_end_to_end_matches_historical_base",
+      "status": "failed",
+      "seconds": 424.531,
+      "message": "AssertionError: \nNot equal to tolerance rtol=0.005, atol=0.002\n\nMismatched elements: 36 / 40 (90%)\nMax absolute difference among violations: 0.1702888\nMax relative difference among violations: 1.18243833\n ACTUAL: array([[[-3.322661e-04-0.002995j, -1.323789e-03-0.005864j,\n         -2.953202e-03-0.008489j, -5.113870e-03-0.010649j,\n         -7.672369e-03-0.012245j, -1.051638e-02-0.013241j,...\n DESIRED: array([[[0.001443+0.01653j , 0.005736+0.032534j, 0.01267 +0.047489j,\n         0.022109+0.061079j, 0.033816+0.07291j , 0.047414+0.082575j,\n         0.062463+0.089728j, 0.078467+0.094121j, 0.094867+0.095647j,..."
+    },
+    {
+      "nodeid": "tests/oracle/test_ram_magnetic_mu_r_design.py::test_mu_r_override_fenced_on_nonuniform",
+      "status": "failed",
+      "seconds": 0.004,
+      "message": "NotImplementedError: uniform grid construction does not support the resolved non-uniform mesh. Use a non-uniform-capable entry point or supply an explicit uniform dx= and resolve all geometry thicknesses."
+    },
+    {
+      "nodeid": "tests/unit/farfield/test_farfield_inplane_nonuniform.py::test_graded_inplane_mesh_integrates_with_local_cell_sizes",
+      "status": "failed",
+      "seconds": 62.004,
+      "message": "AssertionError: graded mesh radiates 6.1% differently from the uniform mesh (measured 2.1% when this envelope was set)\nassert 0.0605651591873486 < 0.05"
+    },
+    {
+      "nodeid": "tests/unit/sparams/test_lumped_twoport_vi_validation_battery.py::test_dc_limit_pins_receive_sign",
+      "status": "error",
+      "seconds": 3.746,
+      "message": "failed on setup with \"AssertionError: dc-anchor fixture preflight drifted: ['pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and declare it: a foil is a SHEET (add_thin_conductor, or a zero-thickness PEC Box \u2014 one node plane, normal E through it live); a thick plate is a PEC Box VOLUME (walls on both faces, lattice ownership contract #931).']\nassert ['pec_faces_finite_pec'] == ['pec_faces_f...extent_cells']\n  \n  Right contains 2 more items, first extra item: 'wire_port_dead_extent_cells'\n  Use -v to get more diff\""
+    },
+    {
+      "nodeid": "tests/unit/sparams/test_msl_sheet_threading.py::test_ad_smoke_eps_override_grad_finite_with_sheet",
+      "status": "failed",
+      "seconds": 13.2,
+      "message": "ValueError: checkpoint_segments=14 does not divide n_steps=3717; pick a divisor (e.g. K=9 for \u2248 \u221an_steps memory). Padding is intentionally rejected because it would shift DFT accumulator integration windows."
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_the_thru_trace_realizes_the_drawn_foil",
+      "status": "passed",
+      "seconds": 3.003
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_add_port_refplane_requires_direction",
+      "status": "passed",
+      "seconds": 0.004
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_add_port_refplane_rejects_direction_along_component",
+      "status": "passed",
+      "seconds": 0.002
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_add_port_refplane_rejects_nonpositive_n",
+      "status": "passed",
+      "seconds": 0.002
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_nonuniform_lane_guard_fails_loudly",
+      "status": "passed",
+      "seconds": 0.002
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_refplane_registers_two_planes_per_port_with_phase0_geometry",
+      "status": "passed",
+      "seconds": 3.376
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_default_path_registers_no_planes",
+      "status": "passed",
+      "seconds": 1.244
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_decompose_refplane_requires_both_ports_opted",
+      "status": "passed",
+      "seconds": 1.307
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_refplane_crossing_guard_rejects_planes_past_other_port",
+      "status": "passed",
+      "seconds": 0.132
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_refplane_requires_pec_trace_at_plane",
+      "status": "passed",
+      "seconds": 0.054
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_forward_bitwise_unaffected_by_optin",
+      "status": "passed",
+      "seconds": 4.522
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_add_port_refplane_rejects_lumped",
+      "status": "passed",
+      "seconds": 0.002
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_driver_vi_dump_with_planes_fails_loudly",
+      "status": "passed",
+      "seconds": 9.22
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_run_short_diagonals_byte_frozen_offdiagonals_move",
+      "status": "passed",
+      "seconds": 12.327
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_zc_witness_warns_on_contaminated_synthetic_line",
+      "status": "passed",
+      "seconds": 0.033
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_zc_witness_silent_on_clean_line",
+      "status": "passed",
+      "seconds": 0.023
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_beta_wrap_guard_rejects_band_edge",
+      "status": "passed",
+      "seconds": 0.023
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_beta_guard_rejects_nonpositive_beta",
+      "status": "passed",
+      "seconds": 0.02
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_preflight_near_field_advisory_below_n10",
+      "status": "passed",
+      "seconds": 0.053
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_preflight_partial_optin_advisory",
+      "status": "passed",
+      "seconds": 0.044
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_preflight_silent_at_n10_all_opted",
+      "status": "passed",
+      "seconds": 0.048
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_preflight_silent_without_optin",
+      "status": "passed",
+      "seconds": 0.042
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_nonuniform_lane_end_to_end_raises",
+      "status": "passed",
+      "seconds": 0.002
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_refplane_thru_s21_tracks_box_referee",
+      "status": "error",
+      "seconds": 0.046,
+      "message": "failed on setup with \"AssertionError: refplane thru preflight drifted from the baseline: []\nassert [] == ['sheet_plane_realized']\n  \n  Right contains one more item: 'sheet_plane_realized'\n  Use -v to get more diff\""
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_refplane_thru_leaves_legacy_lock_band_loudly",
+      "status": "error",
+      "seconds": 0.001,
+      "message": "failed on setup with \"AssertionError: refplane thru preflight drifted from the baseline: []\nassert [] == ['sheet_plane_realized']\n  \n  Right contains one more item: 'sheet_plane_realized'\n  Use -v to get more diff\""
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_refplane_thru_reciprocity",
+      "status": "error",
+      "seconds": 0.001,
+      "message": "failed on setup with \"AssertionError: refplane thru preflight drifted from the baseline: []\nassert [] == ['sheet_plane_realized']\n  \n  Right contains one more item: 'sheet_plane_realized'\n  Use -v to get more diff\""
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_refplane_thru_measured_line_constants",
+      "status": "error",
+      "seconds": 0.001,
+      "message": "failed on setup with \"AssertionError: refplane thru preflight drifted from the baseline: []\nassert [] == ['sheet_plane_realized']\n  \n  Right contains one more item: 'sheet_plane_realized'\n  Use -v to get more diff\""
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_refplane_thru_deembedded_phase_tracks_measured_beta",
+      "status": "error",
+      "seconds": 0.001,
+      "message": "failed on setup with \"AssertionError: refplane thru preflight drifted from the baseline: []\nassert [] == ['sheet_plane_realized']\n  \n  Right contains one more item: 'sheet_plane_realized'\n  Use -v to get more diff\""
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_refplane_thru_energy_and_passivity_labeled",
+      "status": "error",
+      "seconds": 0.002,
+      "message": "failed on setup with \"AssertionError: refplane thru preflight drifted from the baseline: []\nassert [] == ['sheet_plane_realized']\n  \n  Right contains one more item: 'sheet_plane_realized'\n  Use -v to get more diff\""
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_zc_witness_boundary_class_silent_at_one_percent",
+      "status": "passed",
+      "seconds": 0.023
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_zc_beta_split_deembed_recover_synthetic_line",
+      "status": "passed",
+      "seconds": 0.006
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_decompose_refplane_two_port_synthetic_matched",
+      "status": "passed",
+      "seconds": 1.147
+    },
+    {
+      "nodeid": "tests/locks/test_refplane_port_waves.py::test_decompose_refplane_two_port_synthetic_reflective",
+      "status": "passed",
+      "seconds": 0.016
+    },
+    {
+      "nodeid": "tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_v173a_baseline_bit_identity",
+      "status": "failed",
+      "seconds": 65.35,
+      "message": "AssertionError: V173-A \u0394f_res = 80831686.37578821 Hz > 1e-06\u00b7f_res (1995.0 Hz). current=1914163251.7905414 Hz, baseline=1994994938.1663296 Hz. This exceeds cross-machine float noise \u2014 rebump tests/data/v173a_pre_t7_phase2_baseline.json only if the drift is explainable (numerics change, CPML reorder); otherwise investigate the offending commit.\nassert 80831686.37578821 <= (1e-06 * 1994994938.1663296)"
+    }
+  ],
+  "msl_full_complex_S_trace": [
+    "f[00]=5.000000000e+08 S00=-3.322660923004e-04-2.995014190674e-03j S01=+9.961013793945e-01-8.807832747698e-02j S10=+9.961012601852e-01-8.807855099440e-02j S11=-1.983702823054e-04-3.006873186678e-03j",
+    "f[01]=1.000000000e+09 S00=-1.323789358139e-03-5.863629281521e-03j S01=+9.844400286674e-01-1.754647493362e-01j S10=+9.844435453415e-01-1.754647046328e-01j S11=-8.191769011319e-04-5.955591797829e-03j",
+    "f[02]=1.500000000e+09 S00=-2.953201532364e-03-8.488684892654e-03j S01=+9.651265740395e-01-2.614516019821e-01j S10=+9.651247262955e-01-2.614531219006e-01j S11=-1.813032198697e-03-8.800968527794e-03j",
+    "f[03]=2.000000128e+09 S00=-5.113869905472e-03-1.064939796925e-02j S01=+9.382709264755e-01-3.454261124134e-01j S10=+9.382741451263e-01-3.454237282276e-01j S11=-3.174731042236e-03-1.136843394488e-02j",
+    "f[04]=2.500000000e+09 S00=-7.672369480133e-03-1.224450767040e-02j S01=+9.041105508804e-01-4.267441630363e-01j S10=+9.041210412979e-01-4.267425537109e-01j S11=-4.796404391527e-03-1.360866706818e-02j",
+    "f[05]=3.000000256e+09 S00=-1.051637530327e-02-1.324111223221e-02j S01=+8.629088401794e-01-5.047985315323e-01j S10=+8.629170060158e-01-5.047991275787e-01j S11=-6.615186575800e-03-1.553020626307e-02j",
+    "f[06]=3.500000256e+09 S00=-1.354479789734e-02-1.361349225044e-02j S01=+8.149605393410e-01-5.789549350739e-01j S10=+8.149672746658e-01-5.789645910263e-01j S11=-8.608398959041e-03-1.712774671614e-02j",
+    "f[07]=4.000000256e+09 S00=-1.665320992470e-02-1.336407661438e-02j S01=+7.606530189514e-01-6.486037373543e-01j S10=+7.606539130211e-01-6.486212015152e-01j S11=-1.075004227459e-02-1.840740628541e-02j",
+    "f[08]=4.500000256e+09 S00=-1.973703503609e-02-1.248180866241e-02j S01=+7.004171609879e-01-7.131670713425e-01j S10=+7.004051208496e-01-7.132063508034e-01j S11=-1.300774328411e-02-1.935599558055e-02j",
+    "f[09]=5.000000000e+09 S00=-2.268418669701e-02-1.100069284439e-02j S01=+6.347259283066e-01-7.721432447433e-01j S10=+6.346979141235e-01-7.722028493881e-01j S11=-1.536395400763e-02-1.997040584683e-02j"
+  ],
+  "raw_artifacts": {
+    "/tmp/rfx-931-slow-regressions/before.log": "b9e53f79192b0d76034150e2f0e66393952ccb6a8c52c5a65d662b094c418c11",
+    "/tmp/rfx-931-slow-regressions/before.xml": "3d94cf29f8cbaa36d528a454bd57d7e2da15be82a3d8e224a81f7c8c2ac47d04"
+  }
+}

@@ -362,8 +362,14 @@ def _migrate_v1_patch(document: Mapping[str, Any]) -> dict[str, Any]:
     z_ground_lo = model.stack_base_z_m or margin
     z_ground_hi = z_ground_lo + model.ground.thickness_m
     z_substrate_hi = z_ground_hi + model.substrate.thickness_m
-    z_patch_hi = z_substrate_hi + model.patch.thickness_m
     center_x, center_y = model.domain_m[0] / 2, model.domain_m[1] / 2
+    # #931 §1.3 / migration rule 1-2: the v1 foils carry a declared
+    # thickness, but a foil is a SHEET — it owns no cell. Each is emitted as
+    # a zero-thickness box ON the substrate face it bounds, so the realized
+    # cavity is the substrate itself. (The v1 realization put the ground's
+    # single wall a cell BELOW the substrate floor and the patch's on its
+    # top, so the cavity carried one extra vacuum cell — the #702/#325
+    # class the contract makes visible instead of absorbing.)
 
     def bounds(
         size: tuple[float, float], z_lo: float, z_hi: float
@@ -408,7 +414,7 @@ def _migrate_v1_patch(document: Mapping[str, Any]) -> dict[str, Any]:
                 "id": "ground",
                 "kind": "box",
                 "material_id": "pec",
-                "bounds_m": bounds(model.ground.size_m, z_ground_lo, z_ground_hi),
+                "bounds_m": bounds(model.ground.size_m, z_ground_hi, z_ground_hi),
             },
             {
                 "id": "substrate",
@@ -420,7 +426,8 @@ def _migrate_v1_patch(document: Mapping[str, Any]) -> dict[str, Any]:
                 "id": "patch",
                 "kind": "box",
                 "material_id": "pec",
-                "bounds_m": bounds(model.patch.size_m, z_substrate_hi, z_patch_hi),
+                "bounds_m": bounds(model.patch.size_m, z_substrate_hi,
+                                   z_substrate_hi),
             },
         ],
         "excitations": [
@@ -758,14 +765,24 @@ def _validate_document(document: dict[str, Any]) -> None:
             _fail("shape_error", f"{path}.bounds_m", "expected [lo, hi]")
         lo = _number_list(bounds[0], f"{path}.bounds_m[0]", length=3)
         hi = _number_list(bounds[1], f"{path}.bounds_m[1]", length=3)
-        if any(
-            lo[axis] < 0 or hi[axis] > domain[axis] or lo[axis] >= hi[axis]
-            for axis in range(3)
-        ):
+        if any(lo[axis] < 0 or hi[axis] > domain[axis] or lo[axis] > hi[axis]
+               for axis in range(3)):
             _fail(
                 "geometry_out_of_domain",
                 f"{path}.bounds_m",
-                "box must fit inside domain with positive extent",
+                "box must fit inside the domain",
+            )
+        # Lattice ownership contract (#931 §1.5): a box with EXACTLY ONE
+        # zero-extent axis is a SHEET declaration (a foil), realized on the
+        # nearest node plane. Two or three zero-extent axes are a line or a
+        # point, which is not a conductor.
+        flat = [axis for axis in range(3) if hi[axis] == lo[axis]]
+        if len(flat) >= 2:
+            _fail(
+                "shape_error",
+                f"{path}.bounds_m",
+                "a box may have at most one zero-extent axis (a zero-thickness "
+                "box is a sheet; a line or a point is not a conductor)",
             )
 
     excitation_kinds = []

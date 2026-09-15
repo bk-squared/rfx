@@ -385,6 +385,7 @@ def topology_optimize(
     TopologyResult
         Contains final density, permittivity, loss history, and beta history.
     """
+    sim._require_uniform_mesh("topology_optimize")
     sim._auto_preflight(skip=skip_preflight, context="topology_optimize")
     # #677 lane fence, deliberately ABOVE the optional-dependency import:
     # the surface-impedance sheet is unsupported on this lane whether or not
@@ -458,7 +459,10 @@ def topology_optimize(
     if filt_r is not None:
         filter_radius_cells = filt_r / grid.dx
 
-    base_materials, debye_spec, lorentz_spec, base_pec_mask, *_ = sim._assemble_materials(grid)
+    _topo_pec_sheets: list = []
+    _topo_pec_wires: list = []
+    base_materials, debye_spec, lorentz_spec, base_pec_mask, *_ = sim._assemble_materials(
+        grid, pec_sheets=_topo_pec_sheets, pec_wires=_topo_pec_wires)
     base_eps_r = base_materials.eps_r
     base_sigma = base_materials.sigma
     base_mu_r = base_materials.mu_r
@@ -518,6 +522,8 @@ def topology_optimize(
             n_steps=n_steps,
             checkpoint=True,
             pec_mask=base_pec_mask,
+            pec_sheets=tuple(_topo_pec_sheets),
+            pec_wires=tuple(_topo_pec_wires),
             pec_occupancy=pec_occupancy,
         )
         import inspect

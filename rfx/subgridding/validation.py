@@ -557,9 +557,19 @@ def validate_subgrid_setup(
     materials,
     pec_mask=None,
     *,
+    sheets=(),
+    wires=(),
     mode: str = "production",
 ) -> SubgridValidationReport:
-    """Validate a ``Simulation.add_refinement`` setup against support claims."""
+    """Validate a ``Simulation.add_refinement`` setup against support claims.
+
+    ``sheets`` / ``wires`` are the #931 ``SheetSpec`` / ``WireSpec`` lists the
+    assembly classified.  They own no cell, so they are absent from
+    ``pec_mask``; a validator that reads only cells would call a
+    sheet-declared board supported and then watch ``run(solver='subgridded')``
+    refuse it.  This lane realizes volumes only, so their presence is an
+    error here, in the same words the runner uses.
+    """
     issues: list[SubgridValidationIssue] = []
     ref = getattr(sim, "_refinement", None)
     if ref is None:
@@ -670,6 +680,25 @@ def validate_subgrid_setup(
                     "use these knobs for claims-bearing production results.",
                 )
             )
+
+    # #931: a sheet or a sub-cell wire has no cell for this lane's two
+    # grids to carry, so run(solver='subgridded') refuses it. Say so here
+    # too — a "supported" verdict for a model the runner will refuse is
+    # the failure this report exists to prevent. Checked before the region
+    # is built, because it does not depend on one.
+    if sheets or wires:
+        issues.append(
+            _issue(
+                "error",
+                "subgrid_pec_sheet_or_wire_unsupported",
+                f"{len(list(sheets))} PEC sheet(s) and {len(list(wires))} PEC "
+                "wire(s) are declared: the SBP-SAT subgrid lane applies PEC "
+                "from a cell mask on two grids and a sheet owns no cell "
+                "(#931), so run(solver='subgridded') refuses this model. "
+                "Draw the conductor as a volume (a Box at least one cell "
+                "thick) or use the uniform or non-uniform lane.",
+            )
+        )
 
     region = build_subgrid_region(sim, grid)
     if region is None:
@@ -806,6 +835,10 @@ def validate_subgrid_setup(
                         )
                     )
 
+        # #931: a CELL mask is the right reading here — this lane
+        # realizes volumes only (run() refuses sheets and wires on it),
+        # and the question below is which CELLS at the coarse/fine
+        # interface carry metal, not which E edges are shorted.
         if pec_mask is not None:
             pec = pec_mask.astype(jnp.bool_)
             pec_interface_guarded_allowed = (

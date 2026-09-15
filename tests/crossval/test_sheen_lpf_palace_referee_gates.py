@@ -4,18 +4,19 @@ Locks the independent-method arbitration committed under
 ``tests/fixtures/sheen_lpf_e4/sheen_lpf_palace_referee.json``. Palace is a
 frequency-domain FEM solver on a conformal tetrahedral mesh (no staircase), run on
 the matched cv07 geometry to referee the committed rfx-vs-openEMS "first null"
-split (rfx argmin 7.874 GHz, openEMS argmin 7.983 GHz, raw argmin bins,
-post-regeneration -- PR #468/#516; the earlier num_periods=20/default-offset leg
+split (rfx argmin 8.202 GHz, openEMS argmin 7.983 GHz, raw argmin bins,
+post-regeneration -- #931, VESSL 369367259192; the earlier num_periods=20/default-offset leg
 read rfx 7.218 GHz, a ~9.6% split).
 
 WHAT THE REFEREE FOUND: the Sheen stopband is a DOUBLE transmission-zero
 (~7.0 AND ~8.0 GHz), not a single null. Both openEMS and the regenerated rfx leg
 resolve this doublet in close agreement with the conformal referee
-(structure_distance_pct: openEMS 0.66%, rfx 1.52%); the earlier num_periods=20,
-default-offset rfx leg did not. The committed argmin "first null" compares
-different members of the doublet in each solver, so even on the regenerated leg
-its argmin-vs-argmin "split" (~1.4%) is largely a comparator artifact -- read
-structure_distance_pct instead. The
+(structure_distance_pct: openEMS 0.66%, rfx 2.87%); the earlier num_periods=20,
+default-offset rfx leg did not. The current rfx, openEMS and Palace-mid argmins all select the upper
+doublet member; Palace coarse selects the lower, so the metric is mesh-dependent.
+The raw-bin split (~2.74%) is distinct from the parabolic FDTD argmins
+8.244069 / 7.994749 GHz, structure_distance_pct.rfx (2.8668%), and
+argmin_first_null.distances_pct.rfx (2.3756%, a different window). The
 frozen ``sides_with`` therefore names the FDTD solver whose full stopband STRUCTURE
 (both zeros) the referee matches best; the fragile argmin metric is locked
 separately and labelled as such. No analytic reference (the stepped-impedance
@@ -29,6 +30,19 @@ THE REFEREE LOCK (``test_referee_sides_with_structure``) reads the rfx and openE
 doublet zeros from their sibling committed cv07 fixtures
 (``validation/crossval/_07_sheen_results/{rfx,openems}.json``), so tampering with either
 FDTD side (or with the Palace doublet) fails the gate.
+
+
+#931 (lattice ownership contract): cv07 is a microstrip structure, so its trace
+is the same one-cell PEC foil class as cv06b's. Declared as a SHEET — the
+contract's answer for foil (design note §1.3) — the electrical z-plane the
+board has today is unchanged and only the realized in-plane width moves
+(measured on the sibling cv06b board at dx=63.5um: 635.0 -> 571.5um). Declared
+as a VOLUME the foil becomes a full cell of solid metal with a second wall,
+which moves the doublet. The Palace referee meshes the DECLARED board, so a
+realization change also opens a declared-vs-realized gap on the referee side.
+Classified with cv05, cv06b and cv15 in one decision: foil is a sheet. The
+rfx leg is re-solved by the crossval-B migration (VESSL rfx-931-post-cv07)
+and every committed number here is re-derived from that run, never translated.
 """
 from __future__ import annotations
 

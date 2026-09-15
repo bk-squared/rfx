@@ -677,7 +677,25 @@ def test_extract_waveguide_s_matrix_two_port_reciprocity():
 
 
 def test_extract_waveguide_s_matrix_mixed_normal_branch_reciprocity():
-    """Mixed x/y boundary ports in a PEC T-junction should remain reciprocal."""
+    """Mixed x/y boundary ports in a PEC T-junction should remain reciprocal.
+
+    #931 SCOPE: the walls here are a SIGMA FILL stamped straight into the
+    material arrays (``sigma = 1e10`` where the Box's node mask is True),
+    not a ``sim.add(..., material=pec)`` declaration — they never reach
+    ``pec_mask`` and therefore no realized edge set. The lattice ownership
+    contract fences sigma-fill conductors out explicitly (design note
+    §1.8): they are a lossy VOLUME model, fields decay inside a conductive
+    cell, and that is a different physical model from a PEC edge set. So
+    this fixture is unchanged and its numbers do not move.
+
+    What the fence does NOT settle, and this test is a live example of, is
+    that the port then declares ``a = 0.04`` while the channel realized
+    between the two half-open wall masks measures 0.042 wall node to wall
+    node (nodes 0.038 and 0.080 at dx = 0.002). That is the #868
+    declared-vs-realized guide-width class, owned by the follow-up issue
+    §1.8 names, not by this branch. The gates below are loose (|s21| > 0.5,
+    recip_err < 0.2) and do not discriminate on it.
+    """
     dx = 0.002
     nc = 10
     domain = (0.12, 0.12, 0.02)

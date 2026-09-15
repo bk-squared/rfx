@@ -38,6 +38,15 @@ REQUIRED_KEYS = (
 
 #: Deleting every lock module would make this gate vacuously green, so require
 #: the population it was written for (the 2026-09-02 tier-1 move) to be there.
+#: #931 retired ``test_two_plane_pec_slab.py`` — it pinned the ``two_plane``
+#: extension masks, a mechanic the lattice ownership contract deleted rather
+#: than changed, so its number had no artifact left to guard — and replaced it
+#: with ``test_volume_sheet_cavity_ladder.py``, which measures the same
+#: parallel-plate cavity under the two DECLARATIONS the contract offers
+#: (volume: walls on both faces; sheet: one plane) instead of under a flag.
+#: The count is therefore back at its original 12;
+#: ``test_sheet_refactor_bit_identity.py`` was rewritten on the new rule and
+#: stays.
 MIN_LOCK_MODULES = 12
 
 _NO_FIXTURE = "none"

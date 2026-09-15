@@ -7,7 +7,7 @@ solver's input language, **explicitly lossy**, shipping its own itemised list
 of approximations.  The two are deliberately separate artifacts, because a
 reader of a single "portable-ish" schema cannot tell which fields survived.
 
-An emitter is text in, text out: it consumes a ``rfx-design-ir/v1`` document
+An emitter is text in, text out: it consumes a ``rfx-design-ir/v2`` document
 and returns a plain-text script.  Generation requires no licence and no
 solver — that is what makes a CST/HFSS emitter possible at all, and it is why
 generation is testable in CI while *execution* is target-dependent.

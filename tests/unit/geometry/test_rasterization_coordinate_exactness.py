@@ -91,8 +91,17 @@ def _mesh_shape():
 _SHAPE_CASES = {
     "box_volume_node_aligned": lambda: Box((0.5e-3, 0.5e-3, 0.4e-3),
                                            (2.5e-3, 2.5e-3, 1.2e-3)),
-    "box_one_cell_sheet": lambda: Box((0.5e-3, 0.5e-3, 0.4e-3),
-                                      (2.5e-3, 2.5e-3, 0.5e-3)),
+    # One cell thick on z. The name said "sheet" until #931; a one-cell PEC
+    # Box is a VOLUME with a wall on both of its bounding node planes, and
+    # the property this census exercises (the same node mask in both lanes
+    # and at both x64 flags) never depended on the sheet reading.
+    "box_one_cell_volume": lambda: Box((0.5e-3, 0.5e-3, 0.4e-3),
+                                       (2.5e-3, 2.5e-3, 0.5e-3)),
+    # A DECLARED sheet: zero extent on z (#931 §1.5). Its plane is stated,
+    # not inferred from a tie-break, so it belongs in the census beside the
+    # volume it used to be confused with.
+    "box_zero_thickness_sheet": lambda: Box((0.5e-3, 0.5e-3, 0.5e-3),
+                                            (2.5e-3, 2.5e-3, 0.5e-3)),
     "cylinder_z": lambda: Cylinder((1.5e-3, 1.5e-3, 0.9e-3), radius=0.6e-3,
                                    height=0.8e-3, axis="z"),
     "cylinder_y": lambda: Cylinder((1.5e-3, 1.5e-3, 0.9e-3), radius=0.6e-3,
@@ -178,6 +187,57 @@ def test_node_aligned_box_realizes_the_documented_convention():
         assert occ.min() - pads[axis] == lo_n
         assert occ.max() - pads[axis] == hi_n
 
+    # #931: the same Box declared as a CONDUCTOR is centre-sampled, and the
+    # thing the contract is about — where the walls are — is asserted here
+    # rather than left to the cell count. Drawn z 2.5 -> 2.8 mm, so walls on
+    # node planes 25 AND 28, not 25..27. The cell count above is the
+    # dielectric reading and is untouched (§1.8).
+    from rfx.boundaries.pec import realized_pec_edge_masks, realized_wall_planes
+    from rfx.geometry.rasterize_grid import (
+        cell_centres_from_nodes, classify_pec_entry,
+    )
+    co = coords_from_uniform_grid(grid)
+    cells, sheet, wire = classify_pec_entry(
+        box, co, cell_centres_from_nodes(co), name="pec")
+    assert sheet is None and wire is None
+    edges = realized_pec_edge_masks(cells)
+    walls_z = [k - pads[2] for k in realized_wall_planes(edges, 2)]
+    assert walls_z == [25, 26, 27, 28], walls_z
+
+
+def test_a_declared_sheet_realizes_the_plane_it_declares():
+    """The conductor twin of the test above (#931 §1.3/§1.5).
+
+    A zero-thickness Box states its plane; nothing is inferred from a
+    tie-break, and the plane is the same in both lanes and at both x64
+    flags — the #807 property, restated on the object that now carries it.
+    The normal E edge stays live, which is what makes a sheet a sheet.
+    """
+    from rfx.boundaries.pec import realized_pec_edge_masks, realized_wall_planes
+    from rfx.geometry.rasterize_grid import (
+        cell_centres_from_nodes, classify_pec_entry,
+    )
+    grid = _grid()
+    pads = grid.axis_pads
+    z0 = 0.5e-3
+    sheet_box = Box((0.5e-3, 0.5e-3, z0), (2.5e-3, 2.5e-3, z0))
+
+    def _plane():
+        co = coords_from_uniform_grid(grid)
+        cells, sp, wire = classify_pec_entry(
+            sheet_box, co, cell_centres_from_nodes(co), name="pec")
+        assert cells is None and wire is None
+        return sp, realized_pec_edge_masks(None, sheets=[sp])
+
+    sp, edges = _plane()
+    assert sp.normal_axis == 2
+    assert sp.plane - pads[2] == int(round(z0 / DX))
+    assert realized_wall_planes(edges, 2) == [sp.plane]
+    assert not bool(np.asarray(edges[2]).any()), "normal Ez must stay live"
+    with enable_x64():
+        sp64, _ = _plane()
+    assert sp64.plane == sp.plane, "declared plane moved with jax_enable_x64"
+
 
 @pytest.mark.parametrize("case", sorted(_SHAPE_CASES))
 def test_realized_mask_is_x64_invariant(case):
@@ -220,13 +280,20 @@ def test_uniform_and_nu_lanes_realize_identical_masks(case, graded):
 
 
 @pytest.mark.parametrize("axis", [0, 1, 2])
-def test_one_cell_sheet_lands_on_one_and_the_same_plane_in_both_lanes(axis):
-    """The #807 observable: a one-cell sheet is ONE plane, the SAME plane.
+def test_one_cell_box_lands_on_one_and_the_same_node_plane_in_both_lanes(axis):
+    """The #807 observable, on the sampler that still has it.
 
-    Before the fix the uniform lane put the sheet on plane 8 at x64=1 and
-    plane 9 at x64=0, while the NU lane stayed on 9 — the thin-branch
-    argmin at an exact half-cell tie was decided by the last ulp of two
-    different f32 coordinate constructions.
+    Before the fix the uniform lane put a face-registered one-cell box on
+    node plane 8 at x64=1 and plane 9 at x64=0, while the NU lane stayed on
+    9 — an exact half-cell tie decided by the last ulp of two different f32
+    coordinate constructions.
+
+    #931 §1.8 leaves ``Box.mask_on_coords`` (node, half-open) exactly as it
+    is, so this property is unchanged and still guards every DIELECTRIC.
+    What moved is what a one-cell PEC box MEANS: it is a volume with walls
+    on both of its bounding node planes, not a one-plane sheet, and the
+    plane it lands on here is no longer a realization decision for a
+    conductor. The sheet twin below states the conductor half.
     """
     lo = [0.5e-3] * 3
     hi = [2.5e-3] * 3
@@ -286,7 +353,14 @@ def test_traced_profile_mask_path_still_traces_and_differentiates():
 
 def test_cylinder_boundary_inclusion_convention_is_pinned():
     """Cylinder's radial predicate is CLOSED (``r2 <= radius**2``): a node
-    EXACTLY on the rim belongs to the shape. No committed test pinned that
+    EXACTLY on the rim belongs to the shape.
+
+    This is the DIELECTRIC (node) sampler, which #931 §1.8 leaves alone, so
+    791 is unchanged by the lattice ownership contract. The old complaint
+    that Box and Cylinder "disagree about faces" was about this sampler and
+    stays true here on purpose; for CONDUCTORS both primitives now go
+    through one centre sampler and agree, pinned in
+    ``test_realized_edges_per_primitive.py``. No committed test pinned that
     convention — a boundary-inclusion regression (``<=`` -> ``<``) left the
     whole related suite green (adjudicated 2026-09-01) because every other
     cylinder fixture keeps its rim off-node.

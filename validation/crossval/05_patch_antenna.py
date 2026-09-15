@@ -6,30 +6,49 @@ Canonical 2.4 GHz rectangular microstrip patch antenna on an FR4
 substrate, probe-fed. Structurally this matches the standard OpenEMS
 "Simple Patch Antenna" tutorial.
 
-Structure (stack from bottom to top):
-  - Ground plane: FINITE 60x55 mm PEC box below the substrate (both
-    solvers; bottom CPML absorbs radiation beneath it). NOT
-    ``pec_faces={"z_lo"}`` — an infinite boundary GP turns the antenna
-    into a cavity and shifts the resonance ~8 % high (see build_patch
-    docstring).
-  - FR4 substrate: εr=4.3, 1.5 mm nominal. NOTE: with the committed
-    graded z-mesh the substrate Box RASTERIZES to 2 coarse cells, not
-    the intended 6 fine cells (issue #325). Re-registering it to 6 fine
-    cells was tried and STOPPED by a pre-declared falsifier (research
-    note 20260711): on this graded mesh the 6-cell substrate sits next
-    to a fine↔coarse transition that SPLITS the mode and makes the
-    openEMS agreement WORSE (2.65% → 6.45%). A correct 6-cell build
-    needs a uniform-fine substrate band (no adjacent transition), which
-    is a redesign, not a re-pin. THIS SCRIPT IS A DIAGNOSTIC-REPORTER
-    (demoted from claims-bearing 2026-07-15,
-    docs/research_notes/20260715_cv05_first_principles_review.md): it
-    reports a coarse-mesh resonance and exercises the end-to-end path;
-    it does NOT gate accuracy. Patch-accuracy evidence is delegated to
-    the committed tests (test_patch_edgefed_resonance_harminv,
-    test_patch_edgefed_s11_passivity, test_patch_cavity_eps_oracle).
-    (OpenEMS side: 4 uniform z-cells.)
-  - Patch: PEC rectangle on top of the substrate
-  - Air region above the patch (MUR / CPML open boundaries)
+Structure (stack from bottom to top), lattice ownership contract (#931):
+  - Ground plane: a finite 60x55 mm PEC SHEET on the substrate floor
+    node plane — ``add_thin_conductor`` with a zero-thickness Box, so it
+    owns no cell, writes no material and is realized on exactly one node
+    plane. NOT ``pec_faces={"z_lo"}`` — an infinite boundary GP turns the
+    antenna into a cavity and shifts the resonance ~8 % high (see
+    build_patch docstring).
+  - FR4 substrate: εr=4.3, 1.5 mm, SIX cells of 250 µm. The z profile is
+    built block by block (``_z_profile``) so that the substrate floor and
+    top are EXACT node positions and the six fine cells survive grading;
+    the old ``smooth_grading(raw_dz)`` call graded the fine block away and
+    realized the substrate as three node planes 12.0000 / 12.7692 /
+    13.3609 mm — the #325 symptom.
+  - Patch: a PEC SHEET on the substrate top node plane, same declaration
+    as the ground.
+  - Air region above the patch (CPML open boundaries).
+
+Realized cavity: the two sheet planes are the substrate floor and top, so
+the electric walls stand exactly 1.5 mm apart with six FR4 cells between
+them. Before this migration the two conductors were 250 µm PEC Boxes,
+each a sub-cell body placed by a nearest-node argmin over the graded
+mesh; they landed at 12.0000 and 13.8161 mm, a 1.8161 mm node-to-node
+cavity (+21.1 %) whose top 455 µm was air, not FR4.
+
+PRE-DECLARED, and it is not a regression: making the cavity exact is
+expected to move this case AWAY from its pre-#931 committed 6.48 % rfx-vs-openEMS
+agreement. Two independent records say so. (a) The 2026-08-28 two_plane
+A/B: the realization that gives the physically correct cavity is the one
+that agrees WORST with the external reference — exactness and agreement
+point in opposite directions. (b) research note 20260711: a 6-cell
+substrate next to a fine↔coarse grading transition split the mode and
+took the openEMS agreement from 2.65 % to 6.45 %. The transition still
+sits immediately outside the fine block here (``_z_profile`` grades the
+air, not the substrate), so that risk is live and unmitigated; it is
+reported, not designed around. THIS SCRIPT IS A DIAGNOSTIC-REPORTER
+(demoted from claims-bearing 2026-07-15,
+docs/research_notes/20260715_cv05_first_principles_review.md): it reports
+a coarse-mesh resonance and exercises the end-to-end path; it does NOT
+gate accuracy. Patch-accuracy evidence is delegated to the committed
+tests (test_patch_edgefed_resonance_harminv,
+test_patch_edgefed_s11_passivity, test_patch_cavity_eps_oracle).
+(OpenEMS side: 4 uniform z-cells, both conductors 2-D PEC at z = 0 and
+z = h_sub — the same sheet picture rfx now declares.)
 
 REFERENCE TOOL CHOICE
 ---------------------
@@ -120,7 +139,14 @@ import numpy as np
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 C0 = 2.998e8
 
-# Stage 2 gate: set RFX_SUBPIXEL_SMOOTHING=kottke_pec to test Stage 2 path
+# Stage 2 gate: set RFX_SUBPIXEL_SMOOTHING=kottke_pec to test Stage 2 path.
+# Kept after #931: the contract fences the Kottke Stage-2 and Dey-Mittra
+# Stage-1 paths as subpixel models with their own interior selection (design
+# note §1.8), so this hook is not a per-entry realization knob of the kind
+# §1.5 forbids. It is also close to inert here now — both conductors are
+# sheets, which own no cell for a subpixel rule to smooth, and the substrate
+# faces are exact nodes, so there is no partially-filled cell left to weight.
+# The committed run leaves it unset.
 _sps_env = os.environ.get("RFX_SUBPIXEL_SMOOTHING", "")
 SUBPIXEL_SMOOTHING = _sps_env if _sps_env else False
 
@@ -156,34 +182,53 @@ probe_inset = 8.0e-3         # from one edge of the patch in x
 feed_y_center = 0.5          # normalized y position along patch width (0.5 = centre)
 
 # Grid: x/y uniform 1 mm, z non-uniform (fine in substrate, coarser
-# in air). Use 6 cells across the 1.5 mm FR4 substrate.
+# in air). Six cells across the 1.5 mm FR4 substrate.
 # Z-stack (bottom to top):
 #   [0 .. air_below]     — free-space air BELOW the finite ground plane
 #                          (radiates into the bottom CPML, matches the
 #                          physical picture of a finite-GP patch antenna)
-#   [air_below]          — 1 PEC cell = finite ground plane
-#   [air_below .. +h_sub]— FR4 substrate (6 cells)
-#   [..+dz_sub]          — 1 PEC cell = patch
+#   [air_below]          — ground SHEET, one node plane, owns no cell
+#   [air_below .. +h_sub]— FR4 substrate (6 cells of 250 µm)
+#   [air_below + h_sub]  — patch SHEET, one node plane, owns no cell
 #   [.. air_above]       — free-space air ABOVE
+# Both sheet planes are exact nodes by construction (``_z_profile``), so
+# the declared stack and the realized stack are the same object; the
+# build asserts it (``assert_realized_sheets``) before any solve.
 dx = 1.0e-3
 n_cpml = 8
 n_sub = 6
 dz_sub = h_sub / n_sub                    # 0.25 mm per cell inside substrate
 air_below = 12.0e-3                       # ≈ λ/4 in FR4, clears CPML
 air_above = 25.0e-3
-n_below = int(math.ceil(air_below / dx))
-n_above = int(math.ceil(air_above / dx))
 
 # Compute domain dimensions (center structure in x/y, stack bottom-aligned in z)
 dom_x = gx + 2 * 10e-3                    # 10 mm margin around ground plane
 dom_y = gy + 2 * 10e-3
 dom_z = air_below + h_sub + air_above
 
-# Structure position (ground-plane centered; substrate floats above air_below)
-gx_lo = (dom_x - gx) / 2
+# Structure position (ground-plane centered; substrate floats above air_below).
+#
+# The ground-plane and substrate corners are spelled in LATTICE arithmetic
+# (an integer number of dx from the origin), not as ``(dom_x - gx) / 2``.
+# That expression evaluated to 0.010000000000000002 m in x and
+# 0.009999999999999998 m in y — one f64 route-ulp either side of the 10 mm
+# node — so the SAME declaration lost one cell in y and two in x, and the
+# realized ground plane was 58 x 54 mm against a drawn 60 x 55 mm. On the
+# lattice both faces land on their node and the sheet footprint (sampled
+# CLOSED, #931 §1.3) is the drawn 60 x 55 mm exactly.
+n_gx_lo = int(round((dom_x - gx) / (2 * dx)))
+n_gy_lo = int(round((dom_y - gy) / (2 * dx)))
+gx_lo = n_gx_lo * dx
 gx_hi = gx_lo + gx
-gy_lo = (dom_y - gy) / 2
+gy_lo = n_gy_lo * dx
 gy_hi = gy_lo + gy
+# The patch keeps its DECLARED design dimensions L = 29.5 mm, W = 38 mm
+# centred on the domain, so its four in-plane faces sit half a cell off the
+# 1 mm lattice. That is a mesh-resolution debt of this case, not a
+# realization rule: the closed footprint rule realizes 28.0 x 37.0 mm from
+# a 29.5 x 38.0 mm declaration. It is REPORTED by assert_realized_sheets
+# and carried in the result JSON. The external leg now consumes these
+# measured bounds and the realized feed, with one common frame translation.
 patch_x_lo = dom_x / 2 - L / 2
 patch_x_hi = dom_x / 2 + L / 2
 patch_y_lo = dom_y / 2 - W / 2
@@ -191,13 +236,11 @@ patch_y_hi = dom_y / 2 + W / 2
 feed_x = patch_x_lo + probe_inset
 feed_y = dom_y / 2
 
-# Z positions of the ground plane / substrate / patch stack
-z_gnd_lo = air_below - dz_sub             # 1 cell of PEC BELOW substrate
-z_gnd_hi = air_below
+# Z positions of the substrate. The conductors are SHEETS on the substrate
+# floor and top node planes — there is no PEC cell below the substrate any
+# more, and no PEC cell above it.
 z_sub_lo = air_below
 z_sub_hi = air_below + h_sub
-z_patch_lo = z_sub_hi
-z_patch_hi = z_sub_hi + dz_sub
 
 # =============================================================================
 # Analytic reference (Balanis, Ch. 14)
@@ -244,6 +287,14 @@ import jax.numpy as jnp
 # self-confirming `argmin |f - f_analytic|` selector: see
 # docs/design_notes/20260901_patch_mode_identification_predeclaration.md.
 import sys as _sys_mid
+_sys_mid.path.insert(0, SCRIPT_DIR)
+from _patch_feed_contract import assert_galvanic_patch_feed as assert_galvanic_feed  # noqa: E402
+from _patch_external_geometry import (  # noqa: E402
+    external_patch_board, add_openems_patch_board, external_patch_mesh,
+    assert_external_patch_mesh, run_openems_reference,
+    assert_external_absorber_clearance,
+)
+
 _sys_mid.path.insert(0, os.path.join(SCRIPT_DIR, "comparators"))
 from patch_mode_identification import (            # noqa: E402
     declared_cavity_spectrum, identify_patch_modes, members_in_band,
@@ -260,14 +311,263 @@ assert abs(DECLARED_MODES[(1, 0)] - f_resonance_an) < 1.0, (
     "declared-spectrum TM100 and f_resonance_an disagree -- the mode set and "
     "the script's own closed form must be the same formula")
 
-# Non-uniform z mesh: coarse air below, fine substrate, coarse air above
-raw_dz = np.concatenate([
-    np.full(n_below, dx),                 # below the ground plane
-    np.full(1, dz_sub),                   # the ground-plane PEC cell
-    np.full(n_sub, dz_sub),               # substrate
-    np.full(n_above, dx),                 # air above the patch
-])
-dz_profile = smooth_grading(raw_dz, max_ratio=1.3)
+# ---------------------------------------------------------------------------
+# Non-uniform z mesh: coarse air below, SIX fine substrate cells, coarse air
+# above — built block by block so that the substrate floor and top are exact
+# node positions and the fine block survives.
+#
+# The previous build was ``smooth_grading(raw_dz)`` over one concatenated
+# array with no ``preserve_regions``. smooth_grading inserts transition cells
+# wherever the adjacent ratio exceeds max_ratio, and with the whole array free
+# it graded the fine block itself away: the realized node planes across the
+# substrate were 12.0000 / 12.7692 / 13.3609 mm — three planes of 0.77 / 0.59 /
+# 0.46 mm, not six of 0.25 mm (the #325 symptom this script's docstring used to
+# describe as "the substrate Box rasterizes to 2 coarse cells"). It also moved
+# every declared z coordinate off the node line, which is why the two sub-cell
+# PEC Boxes were placed by an argmin instead of by their declaration.
+#
+# Here each air block is a geometric ramp (ratio 1.3) from the substrate cell
+# up to the boundary cell, followed by coarse cells that carry the block's
+# remaining length exactly. The block sums are the declared air heights, so
+# cumsum lands on z_sub_lo and z_sub_hi with no residue and no rescaling of the
+# fine cells. A sheet's plane is a static node index under the contract
+# (#931 §1.3): a mesh that does not put a node where the declaration wants one
+# makes that index either unrepresentable or silently wrong, so the mesh is
+# built from the declaration rather than the declaration snapped to the mesh.
+def _graded_air_block(length: float, d_fine: float, d_coarse: float,
+                      max_ratio: float = 1.3, fine_at_end: bool = True
+                      ) -> np.ndarray:
+    """Cells filling ``length`` exactly: coarse at the outer face, graded down
+    to ``d_fine`` at the substrate face (``fine_at_end``), or mirrored."""
+    ramp = []
+    d = d_fine * max_ratio
+    while d < d_coarse:
+        ramp.append(d)
+        d *= max_ratio
+    ramp = np.asarray(ramp, dtype=np.float64)        # fine -> coarse
+    rest = length - float(ramp.sum())
+    n_coarse = int(round(rest / d_coarse))
+    if n_coarse < 1 or rest <= 0.0:
+        raise ValueError(
+            f"air block of {length*1e3:.4f} mm is too short for a {max_ratio} "
+            f"ramp from {d_fine*1e3:.4f} to {d_coarse*1e3:.4f} mm")
+    cells = np.concatenate([np.full(n_coarse, rest / n_coarse), ramp[::-1]])
+    return cells if fine_at_end else cells[::-1]
+
+
+_dz_below = _graded_air_block(air_below, dz_sub, dx, fine_at_end=True)
+_dz_above = _graded_air_block(air_above, dz_sub, dx, fine_at_end=False)
+dz_profile = np.concatenate([_dz_below, np.full(n_sub, dz_sub), _dz_above])
+
+# Node positions of the grid this profile builds, read from the grid itself
+# rather than recomputed here (ARRAY indices, CPML pad included). Every z
+# coordinate the case declares is then one of THESE floats, so the sampler's
+# comparisons are exact-equality comparisons and no face sits an f64 route-ulp
+# off its node. Measured cost of not doing this: the same ``(dom - g) / 2``
+# expression put gx_lo one ulp above the 10 mm node and gy_lo one ulp below,
+# and cumsum-vs-declared drift moved the whole substrate up one node plane
+# (FR4 on 12.25..13.50 instead of 12.00..13.25) — an FR4 permittivity on the
+# air cell above the patch, air under the first substrate cell.
+from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid   # noqa: E402
+
+_z_probe_sim = Simulation(
+    freq_max=4e9, domain=(dom_x, dom_y, 0), dx=dx, dz_profile=dz_profile,
+    boundary=BoundarySpec.uniform("cpml"), cpml_layers=n_cpml,
+)
+Z_NODES = np.asarray(
+    coords_from_nonuniform_grid(_z_probe_sim._build_nonuniform_grid()).z,
+    dtype=np.float64)
+K_GND = int(np.argmin(np.abs(Z_NODES - z_sub_lo)))    # substrate floor node
+K_PATCH = K_GND + n_sub                               # substrate top node
+assert abs(Z_NODES[K_GND] - z_sub_lo) < 1e-9, (Z_NODES[K_GND], z_sub_lo)
+assert abs(Z_NODES[K_PATCH] - z_sub_hi) < 1e-9, (Z_NODES[K_PATCH], z_sub_hi)
+assert np.allclose(np.diff(Z_NODES[K_GND:K_PATCH + 1]), dz_sub, rtol=0, atol=1e-15), (
+    "the substrate block is not six exact dz_sub cells",
+    np.diff(Z_NODES[K_GND:K_PATCH + 1]))
+
+# The substrate is declared on its OWN node values, so node half-open sampling
+# puts FR4 on nodes K_GND .. K_PATCH-1 and air from K_PATCH up: every
+# tangential E inside the cavity is FR4 and the Ez edge above the patch is air.
+z_sub_lo_node = float(Z_NODES[K_GND])
+z_sub_hi_node = float(Z_NODES[K_PATCH])
+
+# Realization falsifier (issue #931; the missing arm the crossval-A inventory
+# names). RFX_CV05_SHEET_PLANE_DELTA=n moves the ground sheet DOWN n node
+# planes and the patch sheet UP n node planes, keeping the substrate Box and
+# everything else fixed. n = 0 is the declared board. n = 1 reproduces the
+# defect class the contract removes — a cavity bounded by planes that are not
+# the laminate faces, with vacuum inside it — and its resonance shift is the
+# pre-declared window the post-contract number is judged against. cv04's
+# lattice witness (thickness_plus_cell / thickness_minus_cell) is the pattern.
+SHEET_PLANE_DELTA = int(os.environ.get("RFX_CV05_SHEET_PLANE_DELTA", "0") or 0)
+k_gnd_sheet = K_GND - SHEET_PLANE_DELTA
+k_patch_sheet = K_PATCH + SHEET_PLANE_DELTA
+if not (n_cpml <= k_gnd_sheet < k_patch_sheet < len(Z_NODES) - n_cpml):
+    raise ValueError(f"RFX_CV05_SHEET_PLANE_DELTA={SHEET_PLANE_DELTA} moves a sheet "
+                     f"into the CPML pad or off the mesh")
+z_gnd_sheet = float(Z_NODES[k_gnd_sheet])
+z_patch_sheet = float(Z_NODES[k_patch_sheet])
+if SHEET_PLANE_DELTA:
+    print(f"[falsifier hook] RFX_CV05_SHEET_PLANE_DELTA={SHEET_PLANE_DELTA}: "
+          f"ground sheet at z={z_gnd_sheet*1e3:.4f} mm (k={k_gnd_sheet}), "
+          f"patch sheet at z={z_patch_sheet*1e3:.4f} mm (k={k_patch_sheet}); "
+          f"declared planes are {z_sub_lo*1e3:.4f} / {z_sub_hi*1e3:.4f} mm")
+print(f"z mesh: {len(dz_profile)} interior cells, substrate = {n_sub} x "
+      f"{dz_sub*1e6:.1f} um between exact nodes k={K_GND} ({Z_NODES[K_GND]*1e3:.4f} mm) "
+      f"and k={K_PATCH} ({Z_NODES[K_PATCH]*1e3:.4f} mm); dom_z = "
+      f"{Z_NODES[-1]*1e3:.4f} mm")
+
+
+def assert_realized_sheets(sim, grid):
+    """Build-time (no solve) check that the REALIZED PEC edges are the
+    DECLARED stack — the #931 §1.7 single-owner functions, not a local
+    re-derivation of a rasterization rule.
+
+    Nothing in this repo asserted where cv05's two conductors actually
+    landed: the realized planes lived only as prose in a committed run log,
+    which is how a +21.1 % cavity error went unnoticed through several
+    re-pins. This is the cheapest possible check — build the Simulation,
+    realize the edge masks, read the wall planes — and it runs on every
+    build of both legs.
+
+    Returns the MEASURED stack for the caller to print and embed verbatim,
+    so a reader can re-check the numbers instead of trusting a label.
+    """
+    from rfx.boundaries.pec import realized_pec_edge_masks, realized_wall_planes
+
+    pec_sheets: list = []
+    pec_wires: list = []
+    mats, _, _, pec_mask = sim._assemble_materials_nu(
+        grid, pec_sheets=pec_sheets, pec_wires=pec_wires)
+    if not pec_sheets:
+        raise RuntimeError(
+            "assert_realized_sheets: no PEC sheet was classified — refuse to "
+            "quote f0 for a patch antenna with no conductor")
+    if pec_mask is not None and bool(np.asarray(pec_mask).any()):
+        raise RuntimeError(
+            "assert_realized_sheets: a PEC VOLUME cell was rasterized; both "
+            "conductors here are sheets and a sheet owns no cell (#931 §1.3)")
+    edges = realized_pec_edge_masks(pec_mask, pec_sheets, pec_wires,
+                                    periodic=sim._periodic_flags())
+
+    # The grid must be the one Z_NODES was read from, or the declared plane
+    # indices name different physical heights than the ones checked here.
+    z_built = np.asarray(coords_from_nonuniform_grid(grid).z, dtype=np.float64)
+    if z_built.shape != Z_NODES.shape or not np.allclose(z_built, Z_NODES,
+                                                         rtol=0, atol=1e-15):
+        raise RuntimeError(
+            "assert_realized_sheets: the built z node line is not the one the "
+            "sheet planes were named on")
+
+    # Column through the patch centre: the two walls must be there, and
+    # nothing else may be, between the CPML pads.
+    i_c, j_c, _ = sim._pos_to_nu_index(grid, (dom_x / 2, dom_y / 2, z_sub_lo))
+    planes = realized_wall_planes(edges, 2, ij=(i_c, j_c),
+                                  periodic=sim._periodic_flags())
+    k_gnd_arr = int(k_gnd_sheet)
+    k_patch_arr = int(k_patch_sheet)
+    if planes != [k_gnd_arr, k_patch_arr]:
+        raise RuntimeError(
+            "assert_realized_sheets: realized tangential-wall planes on the "
+            f"patch-centre column are k={planes}, declared "
+            f"[{k_gnd_arr}, {k_patch_arr}] "
+            f"(z = {z_gnd_sheet*1e3:.4f} / {z_patch_sheet*1e3:.4f} mm). A sheet "
+            "is realized on exactly one node plane; a second plane means a "
+            "volume was declared somewhere.")
+
+    # The normal (Ez) edge through each sheet stays live — a sheet is a
+    # zero-thickness film, not a shorted slab, and the feed passes through it.
+    ez = np.asarray(edges[2])
+    if bool(ez[i_c, j_c, k_gnd_arr]) or bool(ez[i_c, j_c, k_patch_arr]):
+        raise RuntimeError(
+            "assert_realized_sheets: the normal E edge through a sheet plane "
+            "is PEC — that is the volume rule, not the sheet rule")
+
+    # The cavity the solver sees: every node strictly between the two sheet
+    # planes must carry FR4, and the first node above the patch must not. This
+    # is the half-cell-of-the-wrong-medium error (#702 / the buried-sheet
+    # warning) stated as a build assertion instead of a run-log sentence.
+    # Material arrays are float32, so the comparison tolerance is storage
+    # resolution (~2e-7 relative on 4.3), not an accuracy allowance: the
+    # question here is "FR4 or vacuum", a factor of 4.3 apart.
+    _EPS_TOL = 1e-5
+    eps = np.asarray(mats.eps_r, dtype=np.float64)
+    col = eps[i_c, j_c, :]
+    if SHEET_PLANE_DELTA == 0:
+        inner = col[K_GND:K_PATCH]
+        if not np.allclose(inner, float(eps_r), rtol=0, atol=_EPS_TOL):
+            raise RuntimeError(
+                "assert_realized_sheets: the cavity nodes between the sheet "
+                f"planes carry eps_r={np.unique(inner).tolist()}, not "
+                f"{eps_r}; the sheet is not on the laminate face")
+        if abs(float(col[K_PATCH]) - 1.0) > _EPS_TOL:
+            raise RuntimeError(
+                "assert_realized_sheets: the node at the patch plane carries "
+                f"eps_r={float(col[K_PATCH])}, so the substrate leaks into the "
+                "air cell above the patch")
+
+    # In-plane realized extents, from the realized edge set (not the drawn Box).
+    ex = np.asarray(edges[0])
+    ey = np.asarray(edges[1])
+    node_coords = coords_from_nonuniform_grid(grid)
+    x_nodes = np.asarray(node_coords.x, dtype=np.float64)
+    y_nodes = np.asarray(node_coords.y, dtype=np.float64)
+    out = {
+        "sheet_plane_delta": SHEET_PLANE_DELTA,
+        "ground": {"declared_z_mm": z_gnd_sheet * 1e3, "k": int(k_gnd_arr)},
+        "patch": {"declared_z_mm": z_patch_sheet * 1e3, "k": int(k_patch_arr)},
+        "cavity_node_to_node_mm": float(z_patch_sheet - z_gnd_sheet) * 1e3,
+        "cavity_physical_mm": float(h_sub) * 1e3,
+        "substrate_cells_between": int(k_patch_arr - k_gnd_arr),
+        "cavity_eps_r": [float(v) for v in col[k_gnd_arr:k_patch_arr + 1]],
+    }
+    for name, k in (("ground", k_gnd_arr), ("patch", k_patch_arr)):
+        ii = np.flatnonzero(ex[:, :, k].any(axis=1))
+        jj = np.flatnonzero(ey[:, :, k].any(axis=0))
+        out[name]["x_edge_cells"] = int(ii.size)
+        out[name]["y_edge_cells"] = int(jj.size)
+        out[name]["x_index_range"] = [int(ii[0]), int(ii[-1])] if ii.size else []
+        out[name]["y_index_range"] = [int(jj[0]), int(jj[-1])] if jj.size else []
+        out[name]["realized_z_mm"] = float(z_built[k] * 1e3)
+        out[name]["realized_x_lo_mm"] = float(x_nodes[ii[0]] * 1e3) if ii.size else None
+        out[name]["realized_x_hi_mm"] = float(x_nodes[ii[-1] + 1] * 1e3) if ii.size else None
+        out[name]["realized_y_lo_mm"] = float(y_nodes[jj[0]] * 1e3) if jj.size else None
+        out[name]["realized_y_hi_mm"] = float(y_nodes[jj[-1] + 1] * 1e3) if jj.size else None
+        out[name]["realized_x_mm"] = float(x_nodes[ii[-1] + 1] - x_nodes[ii[0]]) * 1e3
+        out[name]["realized_y_mm"] = float(y_nodes[jj[-1] + 1] - y_nodes[jj[0]]) * 1e3
+    # The dielectric owns node-sampled cells; read their complete intervals.
+    eps = np.asarray(mats.eps_r)
+    material_xy = eps[:, :, (K_GND + K_PATCH) // 2] > 1.01
+    si = np.flatnonzero(material_xy.any(axis=1))
+    sj = np.flatnonzero(material_xy.any(axis=0))
+    out["substrate"] = {
+        "realized_x_lo_mm": float(x_nodes[si[0]] * 1e3),
+        "realized_x_hi_mm": float(x_nodes[si[-1] + 1] * 1e3),
+        "realized_y_lo_mm": float(y_nodes[sj[0]] * 1e3),
+        "realized_y_hi_mm": float(y_nodes[sj[-1] + 1] * 1e3),
+        "realized_z_lo_mm": float(z_built[K_GND] * 1e3),
+        "realized_z_hi_mm": float(z_built[K_PATCH] * 1e3),
+    }
+    out["ground"]["declared_x_mm"] = gx * 1e3
+    out["ground"]["declared_y_mm"] = gy * 1e3
+    out["patch"]["declared_x_mm"] = L * 1e3
+    out["patch"]["declared_y_mm"] = W * 1e3
+    del mats
+    return out
+
+
+def print_realized_stack(st: dict) -> None:
+    print("Realized stack (build-time, no solve; "
+          "realized_pec_edge_masks / realized_wall_planes):")
+    for name in ("ground", "patch"):
+        d = st[name]
+        print(f"  {name:<7} sheet: node plane k={d['k']} at z="
+              f"{d['declared_z_mm']:.4f} mm; realized footprint "
+              f"{d['realized_x_mm']:.1f} x {d['realized_y_mm']:.1f} mm "
+              f"(declared {d['declared_x_mm']:.1f} x {d['declared_y_mm']:.1f} mm)")
+    print(f"  cavity: {st['cavity_node_to_node_mm']:.4f} mm node-to-node over "
+          f"{st['substrate_cells_between']} substrate cells "
+          f"(physical {st['cavity_physical_mm']:.4f} mm)")
 
 
 def _refined_xy_profile(dom_len: float, boundary: float, interior_lo: float,
@@ -302,13 +602,21 @@ def build_patch(with_port: bool,
     """Build the patch-antenna stack. Optionally add a probe port or
     a simple broadband source (for Harminv).
 
-    Ground plane is an explicit finite-size PEC box BELOW the substrate
-    — this is physically correct: a real patch antenna has a finite GP
-    and the space beneath it radiates into free space (absorbed by the
-    bottom CPML). Using ``pec_faces={"z_lo"}`` instead makes the GP
-    infinite at the domain boundary, turning the structure into a
-    cavity and shifting the resonance 8 % high. See the research note
-    `2026-04-11_crossval05_patch_antenna_rootcause.md`.
+    Ground plane and patch are explicit finite-size PEC SHEETS
+    (``add_thin_conductor``, zero-thickness Box) on the substrate floor
+    and top node planes. A finite ground plane is physically correct: a
+    real patch antenna has one, and the space beneath it radiates into
+    free space (absorbed by the bottom CPML). Using ``pec_faces={"z_lo"}``
+    instead makes the GP infinite at the domain boundary, turning the
+    structure into a cavity and shifting the resonance 8 % high. See the
+    research note `2026-04-11_crossval05_patch_antenna_rootcause.md`.
+
+    Sheet, not Box: 35 µm of copper on a 250 µm cell is a foil, and the
+    lattice ownership contract (#931 §1.5) refuses a PEC Box thinner than
+    one cell rather than inferring a plane for it. Declaring the foil as
+    a sheet says the intent — one node plane, no cell, no material, the
+    normal E edge through it live so the probe feed is galvanic — instead
+    of leaving it to a nearest-node argmin over a graded mesh.
 
     When ``dx_profile`` / ``dy_profile`` are provided, the xy mesh is
     non-uniform with the specified profile (fine cells in the patch
@@ -326,20 +634,31 @@ def build_patch(with_port: bool,
         # NOTE: no pec_faces — bottom CPML absorbs radiation below GP
     )
     sim.add_material("fr4", eps_r=eps_r, sigma=0.0)
-    # Finite ground plane: 60 x 55 mm PEC, 1 cell thick, BELOW substrate
-    sim.add(Box((gx_lo, gy_lo, z_gnd_lo),
-                (gx_hi, gy_hi, z_gnd_hi)), material="pec")
-    # FR4 substrate
-    sim.add(Box((gx_lo, gy_lo, z_sub_lo),
-                (gx_hi, gy_hi, z_sub_hi)), material="fr4")
-    # Patch: 1 cell thick PEC on top of substrate
-    sim.add(Box((patch_x_lo, patch_y_lo, z_patch_lo),
-                (patch_x_hi, patch_y_hi, z_patch_hi)), material="pec")
+    # Finite ground plane: 60 x 55 mm PEC sheet on the substrate floor plane
+    sim.add_thin_conductor(Box((gx_lo, gy_lo, z_gnd_sheet),
+                               (gx_hi, gy_hi, z_gnd_sheet)))
+    # FR4 substrate (dielectric sampling is node/half-open, unchanged by #931)
+    sim.add(Box((gx_lo, gy_lo, z_sub_lo_node),
+                (gx_hi, gy_hi, z_sub_hi_node)), material="fr4")
+    # Patch: PEC sheet on the substrate top plane
+    sim.add_thin_conductor(Box((patch_x_lo, patch_y_lo, z_patch_sheet),
+                               (patch_x_hi, patch_y_hi, z_patch_sheet)))
 
-    src_z = z_sub_lo + dz_sub * 2.5
+    # Substrate mid-plane node — an exact node of the six-cell fine block, so
+    # the source and probe sit where they are declared instead of on whatever
+    # node an argmin picked.
+    src_z = float(Z_NODES[(K_GND + K_PATCH) // 2])
     if with_port:
-        port_z0 = z_sub_lo + dz_sub * 1.5
-        port_extent = z_sub_hi - port_z0
+        # Ground-to-patch, from the REALIZED sheet planes rather than from Box
+        # corners (#929: reason from realized walls, not from a drawn extent).
+        # The port's own Ez edges are live through both sheets, so this is the
+        # galvanic probe feed the openEMS leg also builds (start z = 0, stop
+        # z = h_sub). The old spelling started 1.5 cells above the substrate
+        # floor and stopped at the DRAWN substrate top, which after the graded
+        # mesh moved the patch to 13.8161 mm left the port's top terminal a
+        # node plane short of the patch.
+        port_z0 = z_gnd_sheet
+        port_extent = z_patch_sheet - z_gnd_sheet
         sim.add_port(
             position=(feed_x, feed_y, port_z0),
             component="ez",
@@ -366,6 +685,57 @@ def build_patch(with_port: bool,
 # ---- Harminv run ----
 print("Running rfx source-excitation run for Harminv...")
 sim_h = build_patch(with_port=False)
+# Build-time realization check BEFORE any solve (#931). Refuses to run at all
+# if the realized walls are not the declared stack.
+REALIZED = assert_realized_sheets(sim_h, sim_h._build_nonuniform_grid())
+print_realized_stack(REALIZED)
+
+# Validate the registered galvanic feed before ANY field/reference solve.
+# The stack check alone reads the patch centre and cannot detect a shortened
+# or laterally misplaced wire. Reuse this unchanged ported build in Part 3.
+sim = build_patch(with_port=True)
+_port_grid = sim._build_nonuniform_grid()
+REALIZED_PORT = assert_realized_sheets(sim, _port_grid)
+FEED_CHECK = assert_galvanic_feed(
+    sim, _port_grid, ground_node=REALIZED_PORT["ground"]["k"],
+    patch_node=REALIZED_PORT["patch"]["k"])
+OPENEMS_MARGIN_MM = 50.0
+OPENEMS_PML_LAYERS = 8
+OPENEMS_MESH_RES_MM = 2.5
+# With spacing <= mesh_res, PML thickness is <= layers*mesh_res. Leave two
+# further maximum-size cells below the finite ground. The legacy ground at
+# z=0 put its entire 1.5 mm feed inside the lower eight absorbing cells.
+OPENEMS_GROUND_Z_MM = (OPENEMS_PML_LAYERS + 2) * OPENEMS_MESH_RES_MM
+EXTERNAL_BOARD = external_patch_board(
+    REALIZED_PORT, FEED_CHECK, margin_mm=OPENEMS_MARGIN_MM,
+    ground_z_mm=OPENEMS_GROUND_Z_MM)
+EXTERNAL_DOMAIN_MM, EXTERNAL_MESH_LINES = external_patch_mesh(
+    EXTERNAL_BOARD, margin_mm=OPENEMS_MARGIN_MM, air_above_mm=40.0)
+
+# RFX_CV05_BUILD_ONLY=1 stops here: both builds, both realization assertions,
+# no FDTD. This is the case's cheap smoke — it exercises exactly the thing the
+# #931 migration changed (which node planes the two conductors land on and what
+# the cavity between them is made of) and costs seconds instead of the hour the
+# openEMS leg needs. RFX_CV05_REALIZED_JSON=<path> writes the measured stack
+# so a gate reads numbers rather than parsing prose;
+# tests/crossval/test_cv05_realized_sheet_planes.py drives exactly this pair.
+if os.environ.get("RFX_CV05_BUILD_ONLY"):
+    print_realized_stack(REALIZED_PORT)
+    _rj = os.environ.get("RFX_CV05_REALIZED_JSON")
+    if _rj:
+        os.makedirs(os.path.dirname(os.path.abspath(_rj)), exist_ok=True)
+        with open(_rj, "w", encoding="utf-8") as _f:
+            json.dump({"source": True, "with_port": REALIZED_PORT,
+                       "no_port": REALIZED,
+                       "feed_check": FEED_CHECK,
+                       "external_board_mm": EXTERNAL_BOARD,
+                       "external_mesh_lines_mm": {k: v.tolist() for k, v in EXTERNAL_MESH_LINES.items()},
+                       "dz_sub_mm": dz_sub * 1e3, "dx_mm": dx * 1e3,
+                       "n_sub": n_sub, "h_sub_mm": h_sub * 1e3}, _f, indent=2)
+        print(f"  realized-stack JSON: {_rj}")
+    print("RFX_CV05_BUILD_ONLY: realization asserted on both builds, no solve run.")
+    raise SystemExit(0)
+
 t0 = time.time()
 res_h = sim_h.run(num_periods=60, subpixel_smoothing=SUBPIXEL_SMOOTHING)
 print(f"Done in {time.time()-t0:.1f}s")
@@ -467,39 +837,22 @@ for _n in ("float", "int", "complex"):
 from CSXCAD.CSXCAD import ContinuousStructure
 from CSXCAD.SmoothMeshLines import SmoothMeshLines
 from openEMS.openEMS import openEMS as OEMS
-import shutil
 
 UNIT = 1e-3  # mm
-sim_path_oe = os.path.join(SCRIPT_DIR, "05_openems_tmp")
-# Skip re-running OpenEMS if the port files from a previous successful
-# run are still on disk. Delete `05_openems_tmp/` to force a fresh run.
-cached_oe = all(
-    os.path.exists(os.path.join(sim_path_oe, f))
-    for f in ("port_ut_1", "port_it_1", "et", "ht")
-)
+# The old four-file cache did not identify its geometry or solver settings.
+# Preserve it, but give every new solve a separate retained output directory
+# so a changed board cannot be compared against that unrelated reference.
+_oe_runs = os.path.join(SCRIPT_DIR, "05_openems_tmp")
 
 f0_hz_oe = f_design
 fc_hz_oe = 1.0e9                 # Gaussian half-bandwidth → covers 1.4–3.4 GHz
 lam0_mm = C0 / f0_hz_oe * 1000   # ≈ 125 mm
 
-# Geometry in mm (matches the rfx PART 1 design exactly)
-L_mm = L * 1000
-W_mm = W * 1000
-h_sub_mm = h_sub * 1000
-gx_mm = gx * 1000
-gy_mm = gy * 1000
-inset_mm = probe_inset * 1000
-
-# Domain: ground plane + ≥λ/2 air margin + radiation air above the patch.
+# The measured board is translated into the external air domain. Its finite
+# ground has PML-free air below, as required by the clearance assertion below.
 # The previous version used MUR at ~λ/4 margin which caused reflections
 # that corrupted the resonance frequency by ~8 % (see research note).
-margin_mm = 50.0
-air_above_mm = 40.0
-dom_x_mm = gx_mm + 2 * margin_mm
-dom_y_mm = gy_mm + 2 * margin_mm
-dom_z_mm = h_sub_mm + air_above_mm
-x_c = dom_x_mm / 2
-y_c = dom_y_mm / 2
+dom_x_mm, dom_y_mm, dom_z_mm = EXTERNAL_DOMAIN_MM
 
 # FDTD solver — use NrTS cap to guarantee enough ringdown.
 # EndCriteria is set loose on purpose: for a Q~30 resonator the total
@@ -507,84 +860,45 @@ y_c = dom_y_mm / 2
 # prematurely, cutting off the signal before the DFT can resolve the peak.
 FDTD = OEMS(NrTS=25000, EndCriteria=1e-7)
 FDTD.SetGaussExcite(f0_hz_oe, fc_hz_oe)
-FDTD.SetBoundaryCond(['PML_8'] * 6)   # PML absorbers (was MUR — reflections)
+FDTD.SetBoundaryCond([f'PML_{OPENEMS_PML_LAYERS}'] * 6)
 
 CSX = ContinuousStructure()
 FDTD.SetCSX(CSX)
 mesh_oe = CSX.GetGrid()
 mesh_oe.SetDeltaUnit(UNIT)
 
-# FR4 substrate
-sub_mat = CSX.AddMaterial('FR4')
-sub_mat.SetMaterialProperty(epsilon=eps_r)
-sub_lo = [x_c - gx_mm / 2, y_c - gy_mm / 2, 0]
-sub_hi = [x_c + gx_mm / 2, y_c + gy_mm / 2, h_sub_mm]
-sub_mat.AddBox(sub_lo, sub_hi, priority=1)
-
-# Ground plane (2D PEC at z=0)
-gnd = CSX.AddMetal('gnd')
-gnd.AddBox([sub_lo[0], sub_lo[1], 0],
-           [sub_hi[0], sub_hi[1], 0], priority=10)
-
-# Patch (2D PEC at z=h_sub)
-patch_lo_oe = [x_c - L_mm / 2, y_c - W_mm / 2, h_sub_mm]
-patch_hi_oe = [x_c + L_mm / 2, y_c + W_mm / 2, h_sub_mm]
-patch = CSX.AddMetal('patch')
-patch.AddBox(patch_lo_oe, patch_hi_oe, priority=10)
-
-# Lumped 50 Ω port: vertical, ground-to-patch at feed inset
-feed_x_mm = patch_lo_oe[0] + inset_mm
-feed_y_mm = y_c
-port = FDTD.AddLumpedPort(
-    port_nr=1, R=50.0,
-    start=[feed_x_mm, feed_y_mm, 0.0],
-    stop=[feed_x_mm, feed_y_mm, h_sub_mm],
-    p_dir='z', excite=1.0,
-)
+# The same measured/translated record controls material, metal, feed and mesh.
+sub_lo, sub_hi = (EXTERNAL_BOARD["substrate"][key] for key in ("lo", "hi"))
+patch_lo_oe, patch_hi_oe = (EXTERNAL_BOARD["patch"][key] for key in ("lo", "hi"))
+feed_x_mm, feed_y_mm = EXTERNAL_BOARD["feed"]["lo"][:2]
 
 # --- Mesh lines (λ_min/20 everywhere, no edge refinement) ---
 # Aim: ≥ 10 cells across the patch L dimension so the TM010 half-wave
 # mode is well-resolved, but keep cell count low enough to run
 # within a reasonable wall clock (~3–4 minutes).
 lam_min_mm = C0 / (f0_hz_oe + fc_hz_oe) * 1000.0   # ≈ 88 mm
-mesh_res = 2.5                                      # 2.5 mm → 12 cells across L
-sub_cells = 4                                       # 4 cells in 1.5 mm substrate
-
-x_lines = np.array([
-    0, dom_x_mm,
-    sub_lo[0], sub_hi[0],
-    patch_lo_oe[0], patch_hi_oe[0],
-    feed_x_mm,
-])
-y_lines = np.array([
-    0, dom_y_mm,
-    sub_lo[1], sub_hi[1],
-    patch_lo_oe[1], patch_hi_oe[1],
-    feed_y_mm,
-])
-z_lines = np.concatenate([
-    np.array([0.0, dom_z_mm, h_sub_mm]),
-    np.linspace(0, h_sub_mm, sub_cells + 1),
-])
+mesh_res = OPENEMS_MESH_RES_MM
+x_lines, y_lines, z_lines = (EXTERNAL_MESH_LINES[axis] for axis in "xyz")
 x_lines = SmoothMeshLines(np.unique(x_lines), mesh_res, ratio=1.4)
 y_lines = SmoothMeshLines(np.unique(y_lines), mesh_res, ratio=1.4)
 z_lines = SmoothMeshLines(np.unique(z_lines), mesh_res, ratio=1.4)
+assert_external_patch_mesh(EXTERNAL_BOARD, dict(x=x_lines, y=y_lines, z=z_lines))
+assert_external_absorber_clearance(
+    EXTERNAL_BOARD, dict(x=x_lines, y=y_lines, z=z_lines),
+    pml_layers=OPENEMS_PML_LAYERS)
 
 mesh_oe.SetLines('x', x_lines)
 mesh_oe.SetLines('y', y_lines)
 mesh_oe.SetLines('z', z_lines)
+port = add_openems_patch_board(CSX, FDTD, EXTERNAL_BOARD, eps_r=eps_r)
 
 print(f"  OpenEMS mesh: {len(x_lines)} × {len(y_lines)} × {len(z_lines)} "
       f"cells = {len(x_lines)*len(y_lines)*len(z_lines):,}")
-if cached_oe:
-    print(f"  Using cached OpenEMS output from {sim_path_oe}")
-    print("  (delete the folder to force a fresh run)")
-else:
-    print(f"  Running OpenEMS (GaussExcite f0={f0_hz_oe/1e9:.2f} GHz, "
-          f"fc={fc_hz_oe/1e9:.2f} GHz)...")
-    t0 = time.time()
-    FDTD.Run(sim_path_oe, verbose=0, cleanup=True)
-    print(f"  done in {time.time()-t0:.1f}s")
+print(f"  Running OpenEMS (GaussExcite f0={f0_hz_oe/1e9:.2f} GHz, "
+      f"fc={fc_hz_oe/1e9:.2f} GHz)...")
+t0 = time.time()
+sim_path_oe = run_openems_reference(FDTD, _oe_runs)
+print(f"  done in {time.time()-t0:.1f}s")
 
 # --- Post-process S11 ---
 # The Gaussian source spectrum rolls off hard outside [f0 ± fc].
@@ -664,7 +978,9 @@ print(f"\n{'=' * 70}")
 print("PART 3: rfx — lumped port S11 (secondary check)")
 print("=" * 70)
 
-sim = build_patch(with_port=True)
+# This is the ported build whose stack and actual source endpoints were
+# checked before the first Harminv/OpenEMS computation above.
+print_realized_stack(REALIZED_PORT)
 print("Preflight:")
 sim.preflight(strict=False)
 print()
@@ -859,6 +1175,30 @@ print("  coarse-mesh integration check; the smoke bound passes over two")
 print("  different substrate geometries (#325), so it does not validate")
 print("  accuracy — see the committed patch tests (manifest gate_paths).")
 print()
+print("  Realization (lattice ownership contract, #931):")
+print(f"   • ground / patch are PEC SHEETS on node planes k="
+      f"{REALIZED['ground']['k']} / {REALIZED['patch']['k']} "
+      f"(z = {REALIZED['ground']['declared_z_mm']:.4f} / "
+      f"{REALIZED['patch']['declared_z_mm']:.4f} mm); the cavity is "
+      f"{REALIZED['cavity_node_to_node_mm']:.4f} mm node-to-node over "
+      f"{REALIZED['substrate_cells_between']} FR4 cells against a "
+      f"{REALIZED['cavity_physical_mm']:.4f} mm physical substrate.")
+print(f"   • realized footprints: ground "
+      f"{REALIZED['ground']['realized_x_mm']:.1f} x "
+      f"{REALIZED['ground']['realized_y_mm']:.1f} mm (declared "
+      f"{REALIZED['ground']['declared_x_mm']:.1f} x "
+      f"{REALIZED['ground']['declared_y_mm']:.1f}), patch "
+      f"{REALIZED['patch']['realized_x_mm']:.1f} x "
+      f"{REALIZED['patch']['realized_y_mm']:.1f} mm (declared "
+      f"{REALIZED['patch']['declared_x_mm']:.1f} x "
+      f"{REALIZED['patch']['declared_y_mm']:.1f}). The patch faces sit half a "
+      f"1 mm cell off the lattice; that is mesh resolution, reported not hidden.")
+print("   • Before #931 the two conductors were 250 um PEC Boxes placed by a")
+print("     nearest-node argmin on a graded mesh: planes at 12.0000 and")
+print("     13.8161 mm, a 1.8161 mm cavity (+21.1 %) whose top 455 um was air.")
+print("     Comparing this run to the historical pre-#931 6.48 % openEMS agreement is a")
+print("     comparison between two different cavities, not a regression test.")
+print()
 print("  Root-cause history (see research note 2026-04-11_crossval12):")
 print("   • Before the ground-plane fix, rfx used `pec_faces={\"z_lo\"}`")
 print("     to get a free z-boundary PEC. That turned the entire domain")
@@ -868,8 +1208,10 @@ print("   • Before the PML fix, OpenEMS used `MUR` at ≈λ/4 margin which")
 print("     reflected energy and made the effective cavity larger,")
 print("     shifting the resonance 8 % low (2.231 vs 2.424 GHz).")
 print("   • The two bugs pointed in opposite directions and gave a 17 %")
-print("     inter-tool gap. With both fixed (rfx = explicit finite PEC box")
-print("     BELOW substrate; OpenEMS = PML_8 + 50 mm margin) the remaining")
+print("     inter-tool gap. With both fixed (rfx = a finite PEC ground")
+print("     SHEET on the substrate floor plane, which is where openEMS")
+print("     has always put its 2-D ground; OpenEMS = PML_8 + 50 mm")
+print("     margin) the remaining")
 print(f"     Harminv gap in this run is {rfx_vs_oe_pct:.2f} %.")
 print()
 print("  NOTES:")
@@ -893,8 +1235,19 @@ if json_out:
             "coarse-mesh probe-fed patch resonance integration check, reported "
             "not gated; the 20% openEMS smoke bound passes over two different "
             "substrate geometries (#325). Patch-accuracy evidence is delegated "
-            "to committed tests (manifest gate_paths)."
+            "to committed tests (manifest gate_paths). Since #931 both "
+            "conductors are declared PEC SHEETS on the substrate floor and top "
+            "node planes and the six-cell fine substrate block is preserved by "
+            "the z-profile builder, so the realized cavity is the declared "
+            "1.5 mm laminate; realized_stack below carries the measured planes "
+            "and footprints from realized_pec_edge_masks."
         ),
+        "realized_stack": REALIZED,
+        "realized_stack_with_port": REALIZED_PORT,
+        "external_board_mm": EXTERNAL_BOARD,
+        "external_mesh_lines_mm": {k: v.tolist() for k, v in EXTERNAL_MESH_LINES.items()},
+        "openems_run_path": os.path.relpath(sim_path_oe, SCRIPT_DIR),
+        "sheet_plane_delta": SHEET_PLANE_DELTA,
         "analytic_resonance_hz": float(f_resonance_an),
         "openems_harminv_hz": float(f_res_oe),
         "openems_s11_dip_hz": float(f_res_oe_s11),

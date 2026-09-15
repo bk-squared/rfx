@@ -1,0 +1,66 @@
+{
+  "snapshot_kind": "Historical status during resource replacement, not final run states",
+  "observed_utc": "2026-09-09T02:05:42.015298+00:00",
+  "runs": [
+    {
+      "id": 369367259612,
+      "status": "terminated",
+      "name": "rfx-931-fixture-repair-msl-base",
+      "reason": "workload terminated"
+    },
+    {
+      "id": 369367259615,
+      "status": "terminated",
+      "name": "rfx-931-fixture-repair-msl-long",
+      "reason": "workload terminated"
+    },
+    {
+      "id": 369367259616,
+      "status": "terminated",
+      "name": "rfx-931-fixture-repair-msl-base",
+      "reason": "workload terminated"
+    },
+    {
+      "id": 369367259617,
+      "status": "terminated",
+      "name": "rfx-931-fixture-repair-msl-refine",
+      "reason": "workload terminated"
+    },
+    {
+      "id": 369367259621,
+      "status": "completed",
+      "name": "rfx-931-fixture-repair-resources",
+      "reason": "workload completed"
+    },
+    {
+      "id": 369367259623,
+      "status": "completed",
+      "name": "rfx-931-fixture-repair-resources-base",
+      "reason": "workload completed"
+    },
+    {
+      "id": 369367259624,
+      "status": "pending",
+      "name": "rfx-931-fixture-repair-resources-refine",
+      "reason": "workload awaiting to start"
+    },
+    {
+      "id": 369367259636,
+      "status": "running",
+      "name": "rfx-931-fixture-repair-msl-base",
+      "reason": "workload reported alive as pod run-execution-jz9ffc8od3bd-0"
+    },
+    {
+      "id": 369367259637,
+      "status": "running",
+      "name": "rfx-931-fixture-repair-msl-long",
+      "reason": "workload reported alive as pod run-execution-8o10wkwgo251-0"
+    },
+    {
+      "id": 369367259638,
+      "status": "running",
+      "name": "rfx-931-fixture-repair-msl-confirm",
+      "reason": "workload reported alive as pod run-execution-foqj8p0f98na-0"
+    }
+  ]
+}

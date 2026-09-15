@@ -1,0 +1,23 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "adi_3d_accuracy",
+        "loc": null,
+        "message": "solver='adi' with a 3D grid at adi_cfl_factor=5: the homogeneous, lossless ADI split with compatible domain boundaries removes the explicit CFL stability restriction. This does not guarantee stability with interior PEC projection (refused) or arbitrary material interfaces. For the cavity without interior PEC, dispersion error grows ~dt^2 \u2014 at ~15 cells/wavelength the <2% eigenfrequency envelope holds only up to ~2x CFL (measured -1.4% at 2x; -2.8% at 3x, -6.7% at 5x by von Neumann analysis). Use adi_cfl_factor <= 2 for wavelength-scale accuracy, or reserve large factors for geometrically stiff meshes (features far below the wavelength).",
+        "severity": "warning",
+        "source": "_validate_cfg_adi_3d_accuracy"
+      },
+      {
+        "code": "adi_interior_pec_unsupported",
+        "loc": null,
+        "message": "adi_interior_pec_unsupported: solver='adi' cannot safely carry interior PEC sheets, wires, or volumes in 3D or 2D TMz. The current internal PEC projection has measured growing solutions, including at adi_cfl_factor=1 and the default 5; no general stable factor is established. Use solver='yee' with the declared conductors retained. Lowering or clamping adi_cfl_factor is not a supported remedy. Domain-boundary PEC without interior PEC remains supported.",
+        "severity": "error",
+        "source": "_validate_cfg_adi_interior_pec"
+      }
+    ],
+    "n_errors": 1,
+    "n_issues": 2,
+    "ok": false
+  }
+}

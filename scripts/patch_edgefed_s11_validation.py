@@ -17,11 +17,28 @@ twice over and is no longer gated here:
     cancelling — the #702 sheet-node material fix moved the fed TM010 to
     8.16 GHz on the harminv-gate board (issue #782).
 
-The committed gates are tests/locks/test_patch_edgefed_s11_passivity.py
-(passivity + edge-fed signature) and
-tests/locks/test_patch_edgefed_resonance_harminv.py (signed resonance
-envelopes). This script stays as a runnable trace dump + passivity check
-on the same geometry.
+WHICH BOARD THIS IS (#782 one-mesh anchor rule, #931 redraw). There are two
+committed gates and they sit on two DIFFERENT realized boards on purpose:
+
+  * tests/locks/test_patch_edgefed_resonance_harminv.py — "Board H",
+    dx = H_SUB/4 = 196.75 um, ground plane at round(4 mm / dx) * dx =
+    3.935 mm, patch raster 43 x 51 cells;
+  * tests/locks/test_patch_edgefed_s11_passivity.py — "Board S",
+    dx = 0.197 mm exactly, ground plane 3.940 mm, patch raster 44 x 51.
+
+This script is on BOARD H: same dx, same ground plane, same W / L / W_MSL /
+PORT_MARGIN / L_MSL / DOM_X / DOM_Y / DOM_Z. Its trace is comparable with the
+harminv gate's numbers and NOT with the passivity gate's — Board S's band
+(7.4, 8.2 GHz), its Re(Zin) floor and its 44-cell raster were measured on a
+board this script does not build. Mixing a constant from one into a reading
+from the other describes a board that exists on no mesh, which is the ~2-point
+error class issue #782 documents. The passivity check below is the generic
+max|S11| <= 1.05 defect gate from issue #80, which is a physics bound rather
+than a per-board pin, so it applies to either.
+
+(The passivity gate module still carries a comment calling its geometry a
+mirror of this script. That was true before #931 redrew the boards; it is
+Board S's file to correct.)
 
 S11 = gamma/alpha is a pure voltage-wave amplitude ratio (it does NOT
 use Z0), so the Fix-C N-probe voltage decomposition is what this tests.
@@ -46,11 +63,35 @@ L = 8.595e-3
 W_MSL = 1.8e-3
 L_MSL = 8.0e-3
 PORT_MARGIN = 5.0e-3
-DX = 0.197e-3
+# ON-LATTICE BOARD (#931 §1.3). A sheet lands on the node plane nearest its
+# declared plane, so a foil meant to lie on a dielectric interface needs that
+# interface ON a node line — otherwise it snaps half a cell into the laminate
+# and the cavity carries the wrong medium in series (preflight says so). The
+# cell size is therefore h_sub / 4 rather than a round 0.197 mm: 0.19675 mm,
+# a 0.13 % mesh change, and both board faces are exact nodes. The old
+# 0.197 mm mesh put the top face 0.3 cell off the node line.
+N_SUB_CELLS = 4
+DX = H_SUB / N_SUB_CELLS
+N_AIR_BELOW_CELLS = 20         # ~3.9 mm of air under the board, on-lattice
 DOM_X = 29.747e-3
 DOM_Y = 18.130e-3
 DOM_Z = 12.787e-3
 Y_C = DOM_Y / 2.0
+
+# Stack z coordinates, named once. The ground, the feed trace and the patch
+# are etched copper on a 0.787 mm RO4003C board, so under the lattice
+# ownership contract (#931 §1.3) each is a SHEET — a footprint on ONE node
+# plane, zero thickness, owning no cell — declared at the board face it is
+# etched on. Before the contract all three were 1-cell PEC Boxes and the
+# script parked them AROUND the substrate rather than on it: the ground one
+# cell below the dielectric and the trace/patch one cell above it. The old
+# rule put a wall only on a masked cell's lower face, so those offsets were
+# the compensation that landed the walls near the board — at the cost of a
+# vacuum cell in series on each side of a 4-cell substrate.
+Z_GND = N_AIR_BELOW_CELLS * DX  # board bottom face = ground foil plane
+Z_SUB_LO = Z_GND
+Z_SUB_HI = Z_SUB_LO + H_SUB    # board top face = trace / patch foil plane
+Z_TRACE = Z_SUB_HI
 
 
 def main() -> int:
@@ -59,21 +100,21 @@ def main() -> int:
         dx=DX, cpml_layers=8, boundary="cpml",
     )
     sim.add_material("ro4003c", eps_r=EPS_R, sigma=0.0)
-    # PEC ground plane.
-    sim.add(Box((0, 0, 4e-3), (DOM_X, DOM_Y, 4e-3 + DX)), material="pec")
+    # Ground foil, on the board's bottom face.
+    sim.add_thin_conductor(Box((0, 0, Z_GND), (DOM_X, DOM_Y, Z_GND)))
     # RO4003C substrate.
-    sim.add(Box((0, 0, 4e-3 + DX), (DOM_X, DOM_Y, 4e-3 + DX + H_SUB)),
+    sim.add(Box((0, 0, Z_SUB_LO), (DOM_X, DOM_Y, Z_SUB_HI)),
             material="ro4003c")
-    # 50 ohm microstrip feed trace.
-    sim.add(Box((0, Y_C - W_MSL / 2, 4e-3 + DX + H_SUB + DX),
-                (PORT_MARGIN + L_MSL, Y_C + W_MSL / 2,
-                 4e-3 + DX + H_SUB + 2 * DX)),
-            material="pec")
-    # Edge-fed patch.
-    sim.add(Box((PORT_MARGIN + L_MSL, Y_C - W / 2, 4e-3 + DX + H_SUB + DX),
-                (PORT_MARGIN + L_MSL + L, Y_C + W / 2,
-                 4e-3 + DX + H_SUB + 2 * DX)),
-            material="pec")
+    # 50 ohm microstrip feed trace, on the board's top face.
+    sim.add_thin_conductor(
+        Box((0, Y_C - W_MSL / 2, Z_TRACE),
+            (PORT_MARGIN + L_MSL, Y_C + W_MSL / 2, Z_TRACE)))
+    # Edge-fed patch, abutting the feed trace on the same face. Sheet
+    # footprints on one plane are UNIONED before the edge rule, so the shared
+    # edge between trace and patch is metal, not a slit (#931 §1.3).
+    sim.add_thin_conductor(
+        Box((PORT_MARGIN + L_MSL, Y_C - W / 2, Z_TRACE),
+            (PORT_MARGIN + L_MSL + L, Y_C + W / 2, Z_TRACE)))
     # Wider, higher-centre source than the default
     # GaussianPulse(f0=freq_max/2=7.5GHz, bw=0.8) — that default rolls off
     # ~exp(-6.25) ≈ 0.002 at 15 GHz, starving the upper part of the
@@ -83,15 +124,63 @@ def main() -> int:
     # ~10 GHz and gives ~14 GHz 1/e width, covering the full 1.5-15 GHz
     # sweep with usable SNR (~77% of peak amplitude at 15 GHz vs 0.2%).
     sim.add_msl_port(
-        position=(PORT_MARGIN, Y_C, 4e-3 + DX),
+        position=(PORT_MARGIN, Y_C, Z_SUB_LO),
         width=W_MSL, height=H_SUB, direction="+x", impedance=50.0,
         waveform=GaussianPulse(f0=8.5e9, bandwidth=1.6),
     )
 
-    # Preflight (user directive 2026-05-20: never ignore preflight). This
-    # fixture emits several advisories on this mesh (off-lattice design edges,
-    # sheet-cavity electrical thickness, the +25% substrate column under the
-    # port) — they are part of any number quoted from this run.
+    # Preflight (user directive 2026-05-20: never ignore preflight). What this
+    # fixture draws on the on-lattice mesh: the lossless-dielectric infinite-Q
+    # advisory (RO4003C is modelled with sigma = 0 here — real, and it is why
+    # the gate below is passivity, not Q). The sheets-dropped notice that used
+    # to accompany it is GONE and was never about this geometry: preflight
+    # assembled without a PEC-sheet collector (#931 §6), and it passes one now
+    # (rfx/api/_preflight.py::_assemble_realized, merged ab56f5b2), so the
+    # advisory it stood in for — where each foil actually realized — is the
+    # sheet_plane_realized INFO instead.
+    #
+    # Three advisories the old drawing produced are gone, and for a reason
+    # worth recording: the off-lattice conductor faces, the buried-sheet
+    # warning and the sheet-cavity electrical-thickness finding all came from
+    # a board whose faces were 0.3 cell off the node line and whose metal sat
+    # a cell away from the laminate. The board is on the lattice now and the
+    # realized cavity IS the declared 787 um. Nothing was suppressed.
+    # Build-time realization check (no solve): the three declared foils must
+    # BE the realized tangential-wall planes along z, and the board between
+    # them the declared H_SUB. Read from the contract's own realization
+    # (#931 §1.7) over the arrays the assembly hands the stepper.
+    from rfx import realized_pec_edge_masks, realized_wall_planes
+    from rfx.geometry.rasterize_grid import coords_from_uniform_grid
+
+    _grid = sim._build_grid()
+    _sheets: list = []
+    _m, _d, _l, _pec, _a, _b, _c = sim._assemble_materials(
+        _grid, pec_sheets=_sheets)
+    _z = np.asarray(coords_from_uniform_grid(_grid).z, dtype=float)
+    _walls = realized_wall_planes(
+        realized_pec_edge_masks(_pec, sheets=_sheets,
+                                periodic=sim._periodic_flags()), 2)
+    _k_gnd = int(np.argmin(np.abs(_z - Z_GND)))
+    _k_trc = int(np.argmin(np.abs(_z - Z_TRACE)))
+    print(f"realized z wall planes {_walls} = "
+          f"{[round(float(_z[k]) * 1e6, 1) for k in _walls]} um "
+          f"(declared ground {Z_GND * 1e6:.1f} um -> node {_k_gnd}, "
+          f"trace {Z_TRACE * 1e6:.1f} um -> node {_k_trc}); "
+          f"realized board {float(_z[_k_trc] - _z[_k_gnd]) * 1e6:.1f} um "
+          f"against a declared {H_SUB * 1e6:.1f} um", flush=True)
+    if _walls != sorted({_k_gnd, _k_trc}):
+        raise SystemExit(
+            f"realized z wall planes {_walls} != declared "
+            f"{sorted({_k_gnd, _k_trc})} — the foils did not land on the "
+            "board faces")
+    # H_SUB is 3.995 cells at this dx, so the top face snaps to the nearest
+    # node and the realized board is one part in 800 thicker than declared.
+    # That is the off-lattice residual the contract reports instead of
+    # absorbing; anything larger than half a cell is a different board.
+    if abs(float(_z[_k_trc] - _z[_k_gnd]) - H_SUB) > 0.5 * DX:
+        raise SystemExit("realized board thickness is more than half a cell "
+                         "from the declared H_SUB")
+
     print("=== sim.preflight() ===", flush=True)
     sim.preflight()
 

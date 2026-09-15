@@ -531,12 +531,17 @@ def test_compute_coaxial_two_port_drive_index_matches_physical_port(monkeypatch)
 
     import rfx.simulation as _simulation_mod
     import rfx.sources.coaxial_port as _coax_mod
-    import rfx.api._sparams as _sparams_mod
+    # #980 Phase 2 moved compute_coaxial_two_port verbatim into
+    # rfx/sparams/coax.py, so ``_assemble_coaxial_two_port_from_voltages`` is
+    # looked up as a global of THAT module. Patching the ``rfx.api._sparams``
+    # re-export would still succeed and silently stop biting -- ``captured``
+    # would stay empty and the drive-index check below would never run.
+    import rfx.sparams.coax as _coax_lane_mod
 
     monkeypatch.setattr(_simulation_mod, "run", _fake_run)
     monkeypatch.setattr(_coax_mod, "coaxial_line_plane_voltage", _fake_voltage)
     monkeypatch.setattr(
-        _sparams_mod, "_assemble_coaxial_two_port_from_voltages", _fake_assemble
+        _coax_lane_mod, "_assemble_coaxial_two_port_from_voltages", _fake_assemble
     )
 
     sim.compute_coaxial_two_port(n_steps=10, freqs=np.array([8.0e9]), probe_count=12)
@@ -627,7 +632,8 @@ def test_two_dimensional_mode_rejected():
 
 
 @pytest.mark.parametrize("feature", ("geometry", "thin_conductor"))
-def test_registered_geometry_rejected(feature):
+@pytest.mark.parametrize("method", ("compute_coaxial_two_port", "compute_coaxial_line_reflection"))
+def test_registered_geometry_rejected(feature, method, monkeypatch):
     sim = _sim()
     shape = Box((0.001, 0.001, 0.010), (0.002, 0.002, 0.011))
     if feature == "geometry":
@@ -635,8 +641,13 @@ def test_registered_geometry_rejected(feature):
         sim.add(shape, material="test_dielectric")
     else:
         sim.add_thin_conductor(shape, sigma_bulk=1.0e4, thickness=35.0e-6)
+
+    def unexpected_resolution():
+        pytest.fail("forbidden declarations must be rejected before mesh planning")
+
+    monkeypatch.setattr(sim, "_auto_configure_mesh", unexpected_resolution)
     with pytest.raises(ValueError, match="constructs the complete line geometry"):
-        sim.compute_coaxial_two_port(n_steps=1, n_freqs=1)
+        getattr(sim, method)(n_steps=1, n_freqs=1)
 
 
 def test_lumped_rlc_rejected():

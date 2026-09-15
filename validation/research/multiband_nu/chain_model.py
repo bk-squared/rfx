@@ -49,6 +49,67 @@ def bloch_kz(freq: float, dt: float, dy: float, b: float, d: float) -> float:
     return 2 * np.arcsin(arg) / d
 
 
+def step_reflection(d0: float, d1: float, freq: float, dt: float,
+                    dy: float, b: float) -> float:
+    """|R| of a SINGLE d0 -> d1 cell-size step, in closed form.
+
+    Same model as ``scattering`` on ``[d0]*n_lead + [d1]*n_tail`` — this
+    is that problem solved on paper instead of by ``np.linalg.solve``,
+    and it is the formulation the F7 per-step numbers must use.
+
+    Why the solve is not good enough here. A single step has exactly ONE
+    non-uniform recurrence row (the junction node k = L, the only k whose
+    two cells differ); every other row is the uniform Bloch relation the
+    asymptotic forms already satisfy. Eliminating them leaves a 2x2
+    system, and in it the REAL part of both numerator and denominator
+    cancels identically — that cancellation IS the smallness of |R|. A
+    dense float64 solve of the full (n+2)x(n+2) system performs the same
+    cancellation on numbers of order 1/d^2 ~ 1e10 to produce a residue of
+    order 1e-7, so its relative accuracy on |R| is about 1e-5, and its
+    last bits depend on the LAPACK build: the committed W6 JSON (macOS
+    Accelerate, arm64) and any Linux/OpenBLAS x86 run of the same code
+    disagree by up to 3e-4 per step and 4e-6 on the 46-step sum.
+
+    Derivation. With E_k = e^{i q1 k} + R e^{-i q1 k} on the fine side,
+    E_k = T e^{i q2 (k - (n-1))} on the coarse side, q_j = kz_j d_j, and
+    the junction row written with a = inv_e[L] inv_h[L], b_ = inv_e[L]
+    inv_h[L-1], gam = S0^2 - Sy^2:
+
+        |R| = |Y1 - Y2| / (Y1 + Y2),   Y_j = sin(q_j) / d_j
+
+    a discrete admittance mismatch. The real parts of both sides vanish
+    exactly because the Bloch relation gives gam = (2 sin(q_j/2)/d_j)^2
+    on EACH side, so 2 a sin^2(q2/2) + 2 b_ sin^2(q1/2) = gam identically.
+    Then sin(q_j)/d_j = sqrt(gam) sqrt(1 - gam d_j^2 / 4), and rationalising
+    the difference of the two square roots removes the last cancellation:
+
+        |R| = [gam (d1^2 - d0^2) / 4] / (sqrt(A) + sqrt(B))^2
+        A = 1 - gam d0^2 / 4,  B = 1 - gam d1^2 / 4
+
+    Every term is now evaluated without subtracting nearly equal
+    quantities, so |R| is accurate to a few ulp and is the same number on
+    every platform. Checked against a 60-decimal-digit Gaussian
+    elimination on the ORIGINAL (n+2)x(n+2) system (the same rows
+    ``scattering`` builds): agreement to 5e-51 relative on the F7 steps
+    10.667->8.333, 32.0->21.333 and 8.333->16.667 um, i.e. the closed form
+    is the exact value of the solved system and the float64 solve is the
+    approximation. ``tests/unit/nonuniform/test_band_builder_chain_model.py``
+    keeps a float64 version of that check.
+
+    Independent of the runway lengths, as the derivation says and the
+    60-digit check confirms at n_lead = n_tail = 12.
+    """
+    s0, sy = s0_sy(freq, dt, dy, b)
+    gam = s0 ** 2 - sy ** 2
+    d0 = float(d0)
+    d1 = float(d1)
+    a = 1.0 - gam * d0 * d0 / 4.0
+    b_ = 1.0 - gam * d1 * d1 / 4.0
+    if not (a > 0 and b_ > 0):
+        raise ValueError(f"evanescent/aliased step: d0={d0}, d1={d1}")
+    return abs(gam * (d1 * d1 - d0 * d0) / 4.0) / (np.sqrt(a) + np.sqrt(b_)) ** 2
+
+
 def _inv_arrays(profile: np.ndarray):
     d = np.asarray(profile, dtype=np.float64)
     inv_h = 1.0 / d
@@ -101,7 +162,12 @@ def scattering(profile: np.ndarray, n_lead: int, n_tail: int,
         A[r, k] = 1.0
         A[r, iT] = -np.exp(1j * q2 * (k - (n - 1)))
         r += 1
-    sol = np.linalg.solve(A, rhs)
+    # Interior rows scale as 1/d^2, while Bloch boundary rows are O(1).
+    # Balance equations before elimination: the small reflected amplitude
+    # otherwise depends on the BLAS kernel (E1 N60/r1.2 failed its unchanged
+    # 1e-9 replay window on Haswell). This preserves the exact R/T problem.
+    row_scale = np.max(np.abs(A), axis=1)
+    sol = np.linalg.solve(A / row_scale[:, None], rhs / row_scale)
     return sol[iR], sol[iT]
 
 

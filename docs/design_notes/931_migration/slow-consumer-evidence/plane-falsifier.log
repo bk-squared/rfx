@@ -1,0 +1,6 @@
+/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/locks/test_refplane_port_waves.py:120: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+  sim.add_thin_conductor(
+/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/locks/test_refplane_port_waves.py:120: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+  sim.add_thin_conductor(
+Declared exact plane accepted
+Same node index but displaced declaration rejected: trace plane 0.001 differs from declared height 0.00105

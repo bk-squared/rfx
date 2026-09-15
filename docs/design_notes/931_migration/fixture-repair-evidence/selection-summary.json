@@ -1,0 +1,247 @@
+{
+  "source_base_sha": "949e1845b84b26826d4e5309363bea4c2ffa5920",
+  "worktree": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds",
+  "backend": "cpu",
+  "pytest_max_workers": 4,
+  "one_pytest_controller_at_a_time": true,
+  "pytest_runs": {
+    "initial_v173a_static": {
+      "counts": {
+        "total": 2,
+        "passed": 2,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "deselected": 1,
+      "log": "v173a-initial-static.log",
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "-q",
+        "-o",
+        "addopts=",
+        "tests/unit/misc/test_v173a_physics_equivalence_slow.py",
+        "-k",
+        "not baseline"
+      ]
+    },
+    "fast_contracts": {
+      "counts": {
+        "total": 139,
+        "passed": 139,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "nonpassing": [],
+      "log": "fast-contracts.log",
+      "junit": "fast-contracts.xml",
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "-o",
+        "addopts=",
+        "-n",
+        "4",
+        "-m",
+        "not slow and not slow_physics and not gpu",
+        "tests/contracts/test_lattice_ownership_contract.py",
+        "tests/contracts/test_frozen_mesh_construction.py",
+        "tests/contracts/test_pec_short_advisory_geometry.py",
+        "tests/unit/farfield/test_farfield_inplane_nonuniform.py",
+        "tests/unit/misc/test_v173a_physics_equivalence_slow.py",
+        "tests/unit/sparams/test_sparam_passivity_guard.py"
+      ]
+    },
+    "full_selection": {
+      "counts": {
+        "total": 158,
+        "passed": 155,
+        "failed": 3,
+        "errors": 0,
+        "skipped": 0
+      },
+      "nonpassing": [
+        {
+          "node": "tests/unit/sparams/test_sparam_passivity_guard.py::test_soft_advisory_real_coarse_pec_short_witness",
+          "status": "failed"
+        },
+        {
+          "node": "tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_end_to_end_matches_historical_base",
+          "status": "failed"
+        },
+        {
+          "node": "tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_v173a_drawing_and_gap_measurements_are_realized",
+          "status": "failed"
+        }
+      ],
+      "log": "selection.log",
+      "junit": "selection.xml",
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "-o",
+        "addopts=",
+        "-n",
+        "4",
+        "-v",
+        "-rA",
+        "tests/contracts/test_lattice_ownership_contract.py",
+        "tests/contracts/test_frozen_mesh_construction.py",
+        "tests/contracts/test_pec_short_advisory_geometry.py",
+        "tests/unit/farfield/test_farfield_inplane_nonuniform.py",
+        "tests/unit/misc/test_v173a_physics_equivalence_slow.py",
+        "tests/unit/sparams/test_sparam_passivity_guard.py",
+        "tests/unit/autodiff/test_msl_sparam_ad.py"
+      ]
+    },
+    "final_followup": {
+      "counts": {
+        "total": 18,
+        "passed": 18,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "nonpassing": [],
+      "log": "follow-up.log",
+      "junit": "follow-up.xml",
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "-o",
+        "addopts=",
+        "-n",
+        "4",
+        "-v",
+        "-rA",
+        "-m",
+        "not slow and not slow_physics and not gpu",
+        "tests/unit/autodiff/test_msl_sparam_ad.py",
+        "tests/unit/misc/test_v173a_physics_equivalence_slow.py"
+      ]
+    }
+  },
+  "total_test_reports": 317,
+  "aggregate_reports": {
+    "passed": 314,
+    "failed": 3,
+    "errors": 0,
+    "skipped": 0
+  },
+  "scope_note": "Counts are literal per-run reports, not a claim that final-source MSL was live-qualified. Full selection used v1 MSL before final source/comparator repairs. Followup uses final v2 and excludes slow/slow_physics/gpu; its source and geometry tests do not run v2 FDTD.",
+  "final_disposition": {
+    "v173a": "repaired composition baseline confirmed by independent FDTD, exact frequency and FFT statistic equality",
+    "farfield": "repaired geometry/acquisition comparison passes both unchanged gates",
+    "short": "repaired fixture still fails unchanged coarse interval; no xfail or interval change",
+    "msl": "v1 source undercovers final two bins; final v2 source passes sampled-band/preflight checks but live qualification remains pending; no golden write"
+  },
+  "v173a_confirmation": {
+    "frequency_delta_hz": 0.0,
+    "spectrum_delta_db": 0.0
+  },
+  "msl_v1_confirmation": {
+    "run_name": "local-931-fixture-repair-final-selection-20260908",
+    "fixture_id": "931-msl-254um-600um-aligned-v1",
+    "source_repair_state": "v1, before final source repair; NOT v2 qualification",
+    "independent_fdtd": true,
+    "raw_S_array_equal": true,
+    "max_raw_S_delta": 0.0,
+    "qualification_failures": [
+      "unexcited/unreliable full-spectrum bins",
+      "old 10mm comparator phase failure, corrected offline"
+    ],
+    "log": "selection.log"
+  },
+  "unverified": [
+    "final v2 MSL FDTD and golden qualification",
+    "fixed-geometry MSL refinement and longer record",
+    "farfield longer-record convergence",
+    "V173A physical-mode identity, convergence, matching and Q",
+    "short absolute accuracy and source of remaining fine-band reflection deficits",
+    "VESSL execution and admission",
+    "full repository and GPU suites"
+  ],
+  "distinct_collected_and_executed_node_ids": 160,
+  "final_source_scope": {
+    "verified_passed_node_ids": 158,
+    "retained_short_failure": 1,
+    "msl_final_v2_live_test_not_run": 1,
+    "explanation": "The v1 MSL test failed before final source repair. The v2 sampled-drive and geometry checks passed, but this is not a v2 live S-matrix result."
+  },
+  "vessl_collection": "vessl-collection.json",
+  "checks": {
+    "ruff": "passed on all modified/new Python files",
+    "yaml_and_shell": "seven YAML run blocks and submitter parsed",
+    "production_tree_unchanged": true,
+    "msl_golden_unchanged": true
+  },
+  "environment": {
+    "PYTHONPATH": "$PWD",
+    "JAX_PLATFORMS": "cpu",
+    "OPENBLAS_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1"
+  },
+  "final_source_sha256": {
+    "scripts/capture_msl_e2e_golden.py": "d11a71096c4bb6431a065d272f6ef1ab0ecab3b9b8b2f977a406240286231f66",
+    "scripts/diagnostics/requalify_msl_fixture_report.py": "baf84279e8e2ce19ecd75d6fffbf848de80fa6868ac16dde18477a47bf79800e",
+    "scripts/diagnostics/slow_931_advisory_attribution.py": "21205ffedd3f43e0c88ef2853716c5334d9ce7a8822d8bed5e62eac5f367b734",
+    "scripts/diagnostics/slow_931_farfield_attribution.py": "6b5fb8a6a5575b6e820d39ecb67bfaa535014efccc4be03c2a6e1e92d2ab9b37",
+    "scripts/harnesses/v173a_physics_equivalence.py": "d881da9b5cbd249b77bf23e1fc88e00fa16e207805a028a8cc69065d44321240",
+    "scripts/vessl_931/fixture-repair-farfield.yaml": "551c7432c1c2c68eecee2baee074b52b9c9c64241600a0810fc153d53ecf1a6f",
+    "scripts/vessl_931/fixture-repair-msl-long.yaml": "196983a54589993a480ddec38e875b33d95ee7a984b185ae11911c69d3087110",
+    "scripts/vessl_931/fixture-repair-msl-refine.yaml": "a781c6c05e0d5941bafafa109e8b545577f6719d404854f961dff359aeea723d",
+    "scripts/vessl_931/fixture-repair-msl.yaml": "6e69f4d1d6c7e2769849346bd5b52f56d0fc07ee0d075f23045916413b4d6817",
+    "scripts/vessl_931/fixture-repair-short.yaml": "16ef04c77344260b637fb2eed4d1fe8d20e7eedef6514f84d5463dbb60d08292",
+    "scripts/vessl_931/fixture-repair-v173a.yaml": "d1d73449c7325109274c39afb48a6379e29444e11b39fb5a518dc9900b3666b8",
+    "scripts/vessl_931/repin-v173a-lock-evidence.yaml": "0f4af780f9e55941efc4cb119f3bd83e481d94d67e490ded2aa5bbfea4601065",
+    "scripts/vessl_931/run_fixture_repair_evidence.py": "49da03145c004f0c2dbdbff39c62aa8343e2ba91b35405bbb6dc04e97eacade9",
+    "scripts/vessl_submit.sh": "cac49a74c43b09b07f8195b278b0168b0b459c5625757bea5272ca86fd360323",
+    "tests/_msl_fixture_qualification.py": "0000ff0cfe676b44b1f80fb0e62ef75ff591c9b3de02ab4e789f0f237ac44b9a",
+    "tests/_pec_short_advisory_fixture.py": "3c1d0a135933f09136ce00e8e234ad8e00304fcafa52fdfbc746ff39da1b040e",
+    "tests/contracts/test_pec_short_advisory_geometry.py": "a4ade926aadca88901370f4a0f48f155324dd7401782c17d4d885a6b7d1d9c16",
+    "tests/unit/autodiff/test_msl_sparam_ad.py": "bb94d0bbafef8db997c34a54c82a62a5768c46b33bbfc407a0f42dabbabe3fd3",
+    "tests/unit/farfield/test_farfield_inplane_nonuniform.py": "f75352094903d58d70e5bc2c741fcce20e7aaf47ffbe8097f4273c5462fc45d4",
+    "tests/unit/misc/test_v173a_physics_equivalence_slow.py": "0dfdd1c1e98a3af299c375a0e0dae01b39f3bfa0edf1cad4f4f3e0a7cd1f75e2",
+    "tests/unit/sparams/test_sparam_passivity_guard.py": "793f7fd0d410522c7c5c6d69cc6b09e9d9a1c357199c727b8c08883b2a6503e8"
+  },
+  "protected_tree_sha": "bf4f2c1f1e7175e526c063b0a082d910aac8eb5e",
+  "protected_msl_golden_sha256": "7203caac78f285e5dc3dfc73bd74dd71e4c2e33f0a92b095808d854cfeb6eddb",
+  "artifact_whitespace_normalization": [
+    {
+      "path": "fast-contracts.xml",
+      "normalization": "trailing whitespace only",
+      "original_sha256": "d01d809ad90fbc2f67ff63058387ae55673af4a6f1cdb08015eafeda294425cd",
+      "exact_original_gzip": "fast-contracts.xml.gz"
+    },
+    {
+      "path": "follow-up.log",
+      "normalization": "trailing whitespace only",
+      "original_sha256": "6f140fe3592937d7b183a319ef033e96f4fd1337af73f737e9109dd20d6326a8",
+      "exact_original_gzip": "follow-up.log.gz"
+    },
+    {
+      "path": "follow-up.xml",
+      "normalization": "trailing whitespace only",
+      "original_sha256": "9956f732a605f389411c26b054ee05731001663fcc538377101cad0e58177e3c",
+      "exact_original_gzip": "follow-up.xml.gz"
+    },
+    {
+      "path": "selection.log",
+      "normalization": "trailing whitespace only",
+      "original_sha256": "33afdca84dd945d18760948b4f17a1caf52db3f8109f13d12f2c75a212e68416",
+      "exact_original_gzip": "selection.log.gz"
+    },
+    {
+      "path": "selection.xml",
+      "normalization": "trailing whitespace only",
+      "original_sha256": "c2228f7db995340b86102193f27be974d95abe1c448c5cef3706e9465857683d",
+      "exact_original_gzip": "selection.xml.gz"
+    }
+  ]
+}

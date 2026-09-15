@@ -84,6 +84,7 @@ import pytest
 
 from rfx import Box, Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
+from rfx.simulation import _suggest_checkpoint_segments
 
 # --------------------------------------------------------------------------
 # Fixture geometry (mirrors test_msl_port_integration.py, L_LINE shortened)
@@ -94,7 +95,11 @@ H_SUB = 254e-6        # substrate thickness (m)
 W_TRACE = 600e-6      # trace width (m)
 L_LINE = 8e-3         # thru-line length (m)
 PORT_MARGIN = 2e-3    # feed -> domain edge clearance (m)
-DX = 80e-6
+# ON-LATTICE board (#931 §1.3): h_sub / dx = 3 exactly, so the foil sheet
+# lands on the laminate face. The fixture ran at dx = 80 um
+# (h_sub/dx = 3.175); there the substrate realizes four cells and a sheet
+# declared at 254 um snaps to 240 um, buried in the dielectric.
+DX = H_SUB / 3
 F_MAX = 5e9
 LX = L_LINE + 2 * PORT_MARGIN
 LY = W_TRACE + 2 * (2 * H_SUB + 8 * DX)
@@ -146,8 +151,13 @@ def build_msl_thru(sheet=None, dz_profile=None):
     sim.add_material("ro4350b", eps_r=EPS_R)
     sim.add(Box((0.0, 0.0, 0.0), (LX, LY, H_SUB)), material="ro4350b")
     y_c = LY / 2.0
+    # The trace: 35 um foil -> a SHEET on the laminate face (#931 §1.3),
+    # declared by a zero-thickness Box. This file is where the repo's two
+    # sheet spellings meet -- this one, and the floating add_thin_conductor
+    # sheet below -- and under the contract they are one thing: a
+    # footprint on one node plane that owns no cell.
     sim.add(Box((0.0, y_c - W_TRACE / 2, H_SUB),
-                (LX, y_c + W_TRACE / 2, H_SUB + DX)), material="pec")
+                (LX, y_c + W_TRACE / 2, H_SUB)), material="pec")
     if sheet is not None:
         box = Box((SHEET_X[0], y_c - SHEET_HALF_W, SHEET_Z),
                   (SHEET_X[1], y_c + SHEET_HALF_W, SHEET_Z))
@@ -203,29 +213,53 @@ def _settled(tag):
 # --------------------------------------------------------------------------
 
 @pytest.mark.slow
-def test_o1_no_sheet_identity_vs_13de212_golden():
+def test_o1_no_sheet_identity_vs_931_golden():
     """With NO f0 sheet registered, the lane's S is byte-identical to the
-    golden captured at commit 13de212 (BEFORE the fence removal).
+    committed golden.
 
-    Provenance: the golden pair
-    ``tests/fixtures/golden_msl_sheet_thread_{s,freqs}_13de212.npy`` was
-    produced on 2026-08-19 from a pristine detached worktree of commit
-    13de212 (the #677/#678 merge, the parent of the #679 change), running
-    THIS module's ``build_msl_thru(sheet=None)`` fixture with
+    The golden is ``golden_msl_sheet_thread_{s,freqs}_931.npy``, captured on
+    the post-#931 board: the trace is a zero-thickness sheet on the laminate
+    face and the mesh is on-lattice (dx = h_sub/3 = 84.667 um, h_sub/dx = 3,
+    one wall plane at node 3 = 254 um, the conductor owns no cell). The
+    procedure is this module's own ``build_msl_thru(sheet=None)`` followed by
     ``compute_msl_s_matrix(freqs=FREQS, num_periods=12.0)`` on CPU
-    (JAX_PLATFORMS=cpu, float32 default precision, jax 0.8.x, linux
-    x86-64). Two consecutive captures were np.array_equal (deterministic),
-    and the post-change worktree reproduced the capture byte-exactly
-    (max dev 0.0) before this file was committed. The removed fence ran
-    BEFORE any physics on the no-sheet path and was a no-op there, so any
-    drift here means the #679 edit touched the sheet-free lane — exactly
-    what this oracle forbids. Byte identity is the gate on the capture
-    platform (same BLAS/JAX build); cross-platform float drift would show
-    up here as a tiny nonzero max-dev — investigate before touching the
-    gate (no-silent-gate-loosening rule).
+    (JAX_PLATFORMS=cpu, float32 default precision), captured twice and written
+    only when the two captures were byte-equal. Producer:
+    ``tests/unit/sparams/_results_931/capture_msl_sheet_thread_golden.py``,
+    VESSL run 369367259234 (2026-09-07, preset gpu-rtx4090, JAX_PLATFORMS=cpu,
+    rc=0). Determinism as measured: max |cap0 - cap1| = 0.0,
+    settling_db = [-95.72, -103.10] on both captures.
+
+    PRE-#931 HISTORY, kept beside it and NOT loaded by any test:
+    ``golden_msl_sheet_thread_{s,freqs}_13de212.npy``, produced 2026-08-19
+    from a pristine detached worktree of commit 13de212 (the #677/#678 merge,
+    the parent of the #679 change) by the same procedure. It records a board
+    this tree no longer builds -- the trace was a one-cell PEC Box (a VOLUME
+    under #931 §1.2, i.e. 80 um of solid metal where the board carries 35 um
+    of foil) on a bisecting mesh (dx = 80 um, h_sub/dx = 3.175, single wall at
+    node 4, substrate realized 320 um instead of 254 um). Both the realization
+    and the mesh moved, so byte identity against that file cannot hold and was
+    NOT relaxed into a tolerance; the file was re-captured instead.
+
+    What the recapture measured, against the pre-#931 file (REPORTED, not
+    gated -- one solve): ``max |new - old| = 0.1128``, and the reflection fell
+    by about 5.6-6x across the band -- |S11| goes from 0.01007 ... 0.09705
+    (pre-#931) to 0.00178 ... 0.01624 (post). That is the direction and the
+    size the geometry implies: the old board mismatched its own 50 ohm port by
+    realizing 254 um of substrate as 320 um (+26 %) and 35 um of foil as an
+    85 um slab; the new board realizes 254 um exactly under a foil of no
+    thickness. The frequency grid is unchanged between the two files.
+
+    The oracle itself is unchanged: the removed #679 fence ran BEFORE any
+    physics on the no-sheet path and was a no-op there, so any drift here
+    means the sheet-threading edit touched the sheet-free lane -- exactly what
+    this test forbids. Byte identity is the gate on the capture platform (same
+    BLAS/JAX build); cross-platform float drift would show up as a tiny
+    nonzero max-dev -- investigate before touching the gate
+    (no-silent-gate-loosening rule).
     """
-    golden_s = np.load(_FIXTURES / "golden_msl_sheet_thread_s_13de212.npy")
-    golden_f = np.load(_FIXTURES / "golden_msl_sheet_thread_freqs_13de212.npy")
+    golden_s = np.load(_FIXTURES / "golden_msl_sheet_thread_s_931.npy")
+    golden_f = np.load(_FIXTURES / "golden_msl_sheet_thread_freqs_931.npy")
     result, _ = _settled("off")
     S = np.asarray(result.S)
     np.testing.assert_array_equal(np.asarray(result.freqs), golden_f)
@@ -236,7 +270,7 @@ def test_o1_no_sheet_identity_vs_13de212_golden():
     print(f"[O1] max |S - golden| = {max_dev:.3e}")
     assert S.dtype == golden_s.dtype, (S.dtype, golden_s.dtype)
     assert np.array_equal(S, golden_s), (
-        f"no-sheet MSL S drifted from the 13de212 golden (max dev "
+        f"no-sheet MSL S drifted from the #931 golden (max dev "
         f"{max_dev:.3e}) — the #679 change must be a no-op without sheets")
 
 
@@ -459,7 +493,13 @@ def test_ad_smoke_eps_override_grad_finite_with_sheet():
     (PR #468 defect class — do not rely on the is_tracer default branch).
     """
     sim = build_msl_thru(sheet=_SHEETS["rs5"])
-    grid = sim._build_grid()
+    grid = sim._build_realized_grid()
+    # Checkpoint divisibility belongs to the realized timestep budget, not
+    # the board's old dx. Keep exactly the three-period DFT record: padding
+    # would change the observable and is deliberately refused by run().
+    num_periods = 3
+    n_steps = grid.num_timesteps(num_periods=num_periods)
+    checkpoint_segments = _suggest_checkpoint_segments(n_steps)
     eps_base = jnp.ones(grid.shape, dtype=jnp.float32)
     freqs_ad = np.linspace(2e9, 4.5e9, 4)
 
@@ -467,8 +507,9 @@ def test_ad_smoke_eps_override_grad_finite_with_sheet():
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             r = sim.compute_msl_s_matrix(
-                freqs=freqs_ad, num_periods=3, eps_override=eps_base * alpha,
-                checkpoint_segments=14, enforce_passivity=False)
+                freqs=freqs_ad, n_steps=n_steps, num_periods=num_periods,
+                eps_override=eps_base * alpha,
+                checkpoint_segments=checkpoint_segments, enforce_passivity=False)
         return jnp.real(jnp.sum(jnp.abs(r.S) ** 2))
 
     grad = jax.grad(objective)(jnp.float32(1.0))
@@ -504,9 +545,18 @@ def test_probe0_clears_the_sheet():
     sim = build_msl_thru(sheet=("f0", _sigma_bulk_for_rs0(1.0)))
     grid = sim._build_grid()
 
+    # Two collectors, because this board carries two KINDS of sheet and the
+    # assembler keeps them apart (#931 §1.3 + #677): ``sheet_specs`` takes
+    # the lossy f0 thin conductor this fixture is about, ``pec_sheets``
+    # takes the PEC trace, which owns no cell and is dropped with a warning
+    # if nobody asks for it. Passing only the first is what makes the
+    # sheets-dropped UserWarning fire on a test that has no reason to see it.
     specs: list = []
-    sim._assemble_materials(grid, sheet_specs=specs)
-    assert len(specs) == 1, f"expected one sheet spec, got {len(specs)}"
+    pec_sheets: list = []
+    sim._assemble_materials(grid, sheet_specs=specs, pec_sheets=pec_sheets)
+    assert len(specs) == 1, f"expected one f0 sheet spec, got {len(specs)}"
+    assert len(pec_sheets) == 1, (
+        f"expected the PEC trace as one sheet, got {len(pec_sheets)}")
     mask = np.asarray(specs[0].mask)
     sheet_ix = np.where(mask.any(axis=(1, 2)))[0]
     assert sheet_ix.size, "sheet rasterized to zero cells"

@@ -1,0 +1,30 @@
+test_refplane_thru_s21_tracks_box_referee
+--------------------------------- Captured Log ---------------------------------
+
+--------------------------------- Captured Out ---------------------------------
+  [PREFLIGHT] All checks passed.
+[refplane thru] |S21|=[0.99846 0.99735 0.99584 0.99392 0.99164 0.98913 0.98654 0.98405 0.98179]
+[refplane thru] |S21|/referee=[0.99192 0.99219 0.99256 0.99322 0.99388 0.99469 0.99557 0.99649 0.99744]
+[refplane thru] Zc0=[47.0366 +0.12632j 47.00655+0.14478j 46.96814+0.15899j 46.91718+0.1724j
+ 46.8523 +0.19032j 46.77694+0.22014j 46.69866+0.26542j 46.62687+0.32445j
+ 46.56912+0.3904j ]
+[refplane thru] Zc1=[46.94448+0.08917j 46.8853 +0.13393j 46.829  +0.19058j 46.78143+0.25531j
+ 46.7449 +0.32172j 46.71832+0.38184j 46.69628+0.43061j 46.67184+0.46661j
+ 46.63894+0.49263j]
+[refplane thru] beta0/(w/c)=[1.02409 1.02432 1.02408 1.02327 1.02186 1.01985 1.01732 1.01439 1.01115]
+[refplane thru] beta1/(w/c)=[1.02364 1.02373 1.02346 1.02286 1.02188 1.02041 1.01834 1.01564 1.0124 ]
+
+
+test_dc_limit_pins_receive_sign
+--------------------------------- Captured Log ---------------------------------
+
+--------------------------------- Captured Out ---------------------------------
+  [PREFLIGHT] pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and declare it: a foil is a SHEET (add_thin_conductor, or a zero-thickness PEC Box — one node plane, normal E through it live); a thick plate is a PEC Box VOLUME (walls on both faces, lattice ownership contract #931).
+
+[dc anchor] preflight (verbatim): pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and declare it: a foil is a SHEET (add_thin_conductor, or a zero-thickness PEC Box — one node plane, normal E through it live); a thick plate is a PEC Box VOLUME (walls on both faces, lattice ownership contract #931).
+  [PREFLIGHT] pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and declare it: a foil is a SHEET (add_thin_conductor, or a zero-thickness PEC Box — one node plane, normal E through it live); a thick plate is a PEC Box VOLUME (walls on both faces, lattice ownership contract #931).
+
+[dc anchor] |S21|=[1.     0.9998] dev(rad)=[-0.052  -0.1043]
+
+
+Sheet gradient: -1.739357e-01; sibling MSL gradient: -1.666153e-02.

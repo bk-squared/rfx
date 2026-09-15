@@ -17,11 +17,19 @@ declared 7.620 mm.  That is the audit's defect and the campaign's own setup
 defect (3) at half its size.
 
 This is a DIAGNOSTIC probe.  It gates nothing, is not imported by the crossval
-script, and deliberately does not reuse ``run_point`` -- ``run_point``'s raster
-asserts are the fence that makes the defect impossible on the gated path, and
-they must stay that way.  The geometry below is ``run_point``'s, with the upper
-fin moved by ``--fin-cells-delta`` and the aperture assert adjusted to demand
-the defect actually landed.
+script, and deliberately does not reuse ``run_point`` -- ``run_point``'s
+realized-geometry asserts are the fence that makes the defect impossible on
+the gated path, and they must stay that way.  The geometry below is
+``run_point``'s, with the upper fin moved by ``--fin-cells-delta`` and the
+aperture assert adjusted to demand the defect actually landed.
+
+#931: corners are on node planes here as they are in ``run_point``, and the
+asserts read the realized PEC edge set through
+``validation/crossval/_wr90_iris_realized.py`` rather than counting open nodes
+in a ``rasterize()`` sigma mask.  The emitted aperture fields are renamed and
+their VALUES move by one cell for the same geometry (a wall separation is one
+larger than the open-node count it replaces); the defect itself -- one cell
+too wide -- is unchanged.
 
 FDTD: 2 runs (a/60 and a/30) at one configuration.  Submit on VESSL
 (scripts/vessl_issue812_r2_cv17_cv18.yaml); do not run it on a shared laptop.
@@ -65,7 +73,11 @@ def defective_run(m, d_phys, cells, fin_cells_delta, geometry_only=False):
     """``run_point``'s geometry with the UPPER fin short by fin_cells_delta."""
     from rfx.api import Simulation
     from rfx.boundaries.spec import Boundary, BoundarySpec
-    from rfx.geometry.csg import Box, rasterize
+    from rfx.geometry.csg import Box
+
+    sys.path.insert(0, str(_REPO_ROOT / "validation" / "crossval"))
+    from _wr90_iris_realized import (aperture_walls, grid_plane,
+                                     realized_edge_masks, wall_plane_runs)
 
     DX = m.A_WR90 / cells
     d_c = int(round(d_phys / DX))
@@ -83,36 +95,48 @@ def defective_run(m, d_phys, cells, fin_cells_delta, geometry_only=False):
                               z=Boundary(lo="pec", hi="pec")),
         cpml_layers=m.cpml_layers_for(DX))
     big = 1.0
-    x_lo = (iris_lo - 0.5) * DX
-    x_hi = (iris_lo + t_c - 0.5) * DX
-    fin_lo_hi_y = (fin_c + 0.5) * DX                          # lower fin: nominal
-    fin_hi_lo_y = (fin_c + fin_cells_delta + 0.5) * DX        # upper fin: SHORT
+    # #931: corners on node planes, tracking run_point. The DEFECT is still
+    # the upper fin drawn short by fin_cells_delta cells; only the corner
+    # convention moved.
+    x_lo = iris_lo * DX
+    x_hi = (iris_lo + t_c) * DX
+    fin_lo_hi_y = fin_c * DX                                  # lower fin: nominal
+    fin_hi_lo_y = (cells - fin_c - fin_cells_delta) * DX      # upper fin: SHORT
     sim.add(Box((x_lo, -big, -big), (x_hi, fin_lo_hi_y, big)), material="pec")
-    sim.add(Box((x_lo, m.A_WR90 - fin_hi_lo_y, -big), (x_hi, big, big)),
-            material="pec")
+    sim.add(Box((x_lo, fin_hi_lo_y, -big), (x_hi, big, big)), material="pec")
     for x, dr, nm in ((p1 * DX, "+x", "P1"), (p2 * DX, "-x", "P2")):
         sim.add_waveguide_port(x, mode=(1, 0), mode_type="TE", direction=dr,
                                f0=10.3e9, bandwidth=0.41,
                                waveform="modulated_gaussian",
                                freqs=m.FREQS, name=nm)
-    grid = sim._build_grid()
+    grid, edges = realized_edge_masks(sim)
     assert grid.shape[1] == cells + 1, (grid.shape[1], cells)
-    sig = np.asarray(rasterize(grid, [(e.shape, 1.0, 1e7)
-                                      for e in sim._geometry])[1])
-    xc = np.where(sig.max(axis=(1, 2)) > 1e6)[0]
-    assert len(xc) == t_c, ("iris thickness cells", len(xc), t_c)
-    open_y = np.where(sig[xc[0]].max(axis=1) < 1e6)[0]
-    assert bool(np.all(np.diff(open_y) == 1)), "aperture not contiguous"
-    # THE DEFECT MUST BE REAL: nominal is d_c - 1 open nodes; one cell too wide
-    # is d_c - 1 - fin_cells_delta (fin_cells_delta is negative).
-    want = d_c - 1 - fin_cells_delta
-    assert len(open_y) == want, ("defect not realised", len(open_y), want)
+    x_runs = wall_plane_runs(edges, 0)
+    assert len(x_runs) == 1, ("iris count", x_runs)
+    (x_wall_lo, x_wall_hi), = x_runs
+    assert (x_wall_lo, x_wall_hi) == (grid_plane(grid, 0, iris_lo),
+                                      grid_plane(grid, 0, iris_lo + t_c)), (
+        "iris walls != drawn", x_runs)
+    y_wall_lo, y_wall_hi = aperture_walls(
+        edges, 1, (slice(x_wall_lo, x_wall_lo + 1), slice(None), slice(None)))
+    # THE DEFECT MUST BE REAL: nominal is d_c cells between the two bounding
+    # wall planes; one cell too wide is d_c - fin_cells_delta
+    # (fin_cells_delta is negative).
+    want = d_c - fin_cells_delta
+    assert y_wall_hi - y_wall_lo == want, (
+        "defect not realised", y_wall_hi - y_wall_lo, want)
     row = {"d_mm": round(d_phys * 1e3, 3), "cells_per_a": cells,
            "dx_mm": round(DX * 1e3, 4), "glen_m": GLEN, "iris_frac": FRAC,
            "fin_cells_delta": fin_cells_delta,
-           "nominal_aperture_nodes": d_c - 1,
-           "realized_aperture_nodes": int(len(open_y)),
-           "thickness_cells": int(len(xc))}
+           # RENAMED for #931 (were nominal_/realized_aperture_nodes, OPEN-node
+           # counts): the realized aperture is the distance between the two
+           # bounding wall planes, and it is one cell larger than the old
+           # count for the same geometry.
+           "nominal_aperture_cells": int(d_c),
+           "realized_aperture_cells": int(y_wall_hi - y_wall_lo),
+           "realized_thickness_cells": int(x_wall_hi - x_wall_lo),
+           "iris_wall_nodes": [int(x_wall_lo), int(x_wall_hi)],
+           "aperture_wall_nodes": [int(y_wall_lo), int(y_wall_hi)]}
     if geometry_only:
         return row
     t0 = time.time()

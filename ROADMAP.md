@@ -38,7 +38,7 @@ One definition, reused four times:
 | **v1.7.x — chain blockers** | #811, #802, #807, #808, #782 + a one-page chain-closure contract | Chain validation on a broken base proves nothing |
 | **v1.8 — waveguide + lumped/wire** | Waveguide first; its battery becomes the template. Then lumped/wire: #819 mechanism identified or envelope bounded, #683 implemented | Waveguide is the most mature family (analytic β/Z_TE, flux-path AD) |
 | **v1.9 — MSL + coax** | MSL: settle the Z0 definition (#726) first; acceptance fixtures = notch filter + edge-fed patch S11 (#715). Coax: the validated axisymmetric family; #822, #823 | MSL is the physics-riskiest leg — it goes after the template exists |
-| **v2.0 — all-family chain closed** | All four batteries green; support matrix redefined as *supported = chain-closed* | Feature-complete point |
+| **v2.0 — all-family chain closed** | **#931 lattice ownership contract first** (a conductor is a volume, a sheet or a wire by declaration; `two_plane` removed), then all four batteries green; support matrix redefined as *supported = chain-closed* | Feature-complete point. The chain cannot be judged closed on a realization that does not say what it realizes: every battery gate is measured on realized geometry, so the contract is a prerequisite of the criterion, not a substitute for it. The **version number** 2.0.0 is set by the breaking change (#931 removes a public kwarg and changes realized geometry); the **milestone** is still chain closure, and a 2.0.0 release that ships the contract before every battery is green says so in its notes rather than claiming the milestone. |
 
 The per-family contract is written out, with decidable pass conditions and the artifact each
 must leave, in [`docs/design_notes/chain_closure_contract.md`](docs/design_notes/chain_closure_contract.md)
@@ -50,8 +50,13 @@ main 1c38b0d7 are in
 
 - **Mixed (coax↔MSL) and Floquet lanes** remain experimental, post-2.0 research
   tracks. Gating the release on them would tie it to open research outcomes.
-- **Sub-cell conductor thickness (#504)** is a modelling-fidelity limit, documented
-  as an envelope rather than a chain-closure requirement.
+- **Sub-cell conductor thickness (#504)** is a **declaration**, not an accepted
+  approximation, from 2.0: metal thinner than one local cell is a sheet
+  (`add_thin_conductor`, or a zero-thickness `Box`), and a PEC shape drawn
+  between zero and one cell thick raises instead of thin-rasterizing. What
+  remains outside the v2.0 gate is the *physics* of sub-cell metal — finite
+  thickness, skin depth, roughness, and conformal metal — which stays a
+  post-2.0 research track.
 
 ## After v2.0
 

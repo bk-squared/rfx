@@ -123,9 +123,15 @@ def test_runners_uniform_kottke_pec_differs_from_default():
             ),
             cpml_layers=4,
         )
-        # Thin PEC strip (1 mm wide in x) at x=25mm inside the waveguide.
-        # Stage 2 assigns fractional inv tensor at the PEC boundary cells
-        # via Kottke averaging; Stage 1 uses sigma=1e10 + binary mask.
+        # PEC iris one cell thick (1 mm in x at dx = 1 mm) at x = 25 mm,
+        # node-aligned on both faces. #931: this is a VOLUME — walls on
+        # both drawn planes, normal E shorted between them — not a sheet;
+        # it is metal of a stated thickness across the guide, and the
+        # declaration is unchanged by the contract. Stage 2 assigns a
+        # fractional inv tensor at the PEC boundary cells via Kottke
+        # averaging (§1.8 fences that path out of the contract); Stage 1
+        # uses the realized edge masks. The two must differ, which is what
+        # the assertion below measures.
         sim.add(Box((0.025, 0.005, 0.002), (0.026, 0.020, 0.010)),
                 material="pec")
         sim.add_waveguide_port(

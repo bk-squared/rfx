@@ -51,6 +51,7 @@ import pytest
 
 from rfx import Box, Simulation
 from rfx.sources import GaussianPulse
+from rfx.runners.nonuniform import assemble_materials_nu
 
 # Band + floors are IMPORTED, not restated (issue #782 same-class fix): the retired
 # (9.0, 9.42) band died with #702, and this file's own hand-maintained copy is how it
@@ -63,6 +64,8 @@ from tests.locks.test_patch_edgefed_s11_passivity import (
     RES_BAND_GHZ,
     RES_BAND_RE_ZIN_MIN_OHM,
     RES_BAND_S11_MIN,
+    Z_SUB_HI,
+    Z_SUB_LO,
     _gate_readings,
 )
 
@@ -96,19 +99,30 @@ def _build_patch_sim_nu() -> Simulation:
         dz_profile=np.full(nz, DX),
     )
     sim.add_material("ro4003c", eps_r=EPS_R, sigma=0.0)
-    sim.add(Box((0, 0, 4e-3), (DOM_X, DOM_Y, 4e-3 + DX)), material="pec")
-    sim.add(Box((0, 0, 4e-3 + DX), (DOM_X, DOM_Y, 4e-3 + DX + H_SUB)),
+    # Board S geometry, duplicated verbatim on the NU lane by design (the
+    # #782 single-source fix imports the BAND from the uniform module, not
+    # the builder). Foils are zero-thickness sheets on the two laminate
+    # faces (#931 §1.3, §6) here for the same reason and with the same
+    # consequence as in the uniform twin — including the redraw: the board
+    # used to reserve a vacuum CELL for each foil, which the deleted #702
+    # re-sample used to hide, and the cavity carried it in series. The z
+    # origin comes from the uniform module so the two lanes cannot drift;
+    # the two must keep realizing the identical raster, which is what the
+    # #834 contract suite pins.
+    sim.add_thin_conductor(Box((0, 0, Z_SUB_LO), (DOM_X, DOM_Y, Z_SUB_LO)),
+                           sigma_bulk=5.8e7)
+    sim.add(Box((0, 0, Z_SUB_LO), (DOM_X, DOM_Y, Z_SUB_HI)),
             material="ro4003c")
-    sim.add(Box((0, Y_C - W_MSL / 2, 4e-3 + DX + H_SUB + DX),
-                (PORT_MARGIN + L_MSL, Y_C + W_MSL / 2,
-                 4e-3 + DX + H_SUB + 2 * DX)),
-            material="pec")
-    sim.add(Box((PORT_MARGIN + L_MSL, Y_C - W / 2, 4e-3 + DX + H_SUB + DX),
-                (PORT_MARGIN + L_MSL + L, Y_C + W / 2,
-                 4e-3 + DX + H_SUB + 2 * DX)),
-            material="pec")
+    sim.add_thin_conductor(
+        Box((0, Y_C - W_MSL / 2, Z_SUB_HI),
+            (PORT_MARGIN + L_MSL, Y_C + W_MSL / 2, Z_SUB_HI)),
+        sigma_bulk=5.8e7)
+    sim.add_thin_conductor(
+        Box((PORT_MARGIN + L_MSL, Y_C - W / 2, Z_SUB_HI),
+            (PORT_MARGIN + L_MSL + L, Y_C + W / 2, Z_SUB_HI)),
+        sigma_bulk=5.8e7)
     sim.add_msl_port(
-        position=(PORT_MARGIN, Y_C, 4e-3 + DX),
+        position=(PORT_MARGIN, Y_C, Z_SUB_LO),
         width=W_MSL, height=H_SUB, direction="+x", impedance=50.0,
         waveform=GaussianPulse(f0=8.5e9, bandwidth=1.6),
     )
@@ -119,10 +133,72 @@ def _build_patch_sim_nu() -> Simulation:
     # position, as tests/locks/test_patch_edgefed_s11_passivity.py.
     x_patch0 = PORT_MARGIN + L_MSL
     sim.add_probe(
-        position=(x_patch0 + 0.7 * L, Y_C - 0.2 * W, 4e-3 + DX + H_SUB * 0.5),
+        position=(x_patch0 + 0.7 * L, Y_C - 0.2 * W, Z_SUB_LO + H_SUB * 0.5),
         component="ez",
     )
     return sim
+
+
+def test_the_nu_board_realizes_the_same_foils_and_cavity_as_the_uniform_twin():
+    """Build-time (no solve): the NU lane realizes THIS board, not a lane of
+    its own.
+
+    The gate below imports its band from the uniform twin, so the two builders
+    have to realize the same board or the band is being applied to a different
+    fixture (#782 / #834). Under the ownership contract there are two ways that
+    can silently stop being true — a sheet landing on a different node plane on
+    the NU lane's own node line, and a cavity cell that is not the laminate
+    (the #702 slot the reserved cells used to open). Both are read here from
+    the single owner, with no solve.
+    """
+    from tests._realized_geometry import node_index, realized
+
+    sim = _build_patch_sim_nu()
+    rz = realized(sim, nonuniform=True)
+    assert rz.pec_mask is None or not bool(np.asarray(rz.pec_mask).any()), (
+        "a foil owns no cell")
+    planes = sorted(set(p for v in rz.sheet_planes.values() for p in v))
+    assert planes == [node_index(rz.grid, 2, Z_SUB_LO),
+                      node_index(rz.grid, 2, Z_SUB_HI)], planes
+    assert len(rz.sheets) == 3, len(rz.sheets)
+    assert rz.wall_planes(2) == planes, (rz.wall_planes(2), planes)
+
+    eps = assemble_materials_nu(sim, rz.grid, pec_sheets=[], pec_wires=[])[0]
+    eps = np.asarray(getattr(eps, "eps_r", eps))
+    col = eps[eps.shape[0] // 2, eps.shape[1] // 2, planes[0]:planes[1]]
+    assert np.allclose(col, EPS_R), (
+        f"the NU cavity carries a cell that is not the laminate: "
+        f"{[round(float(v), 3) for v in col]} — the #702 slot geometry.")
+
+    # ... and it is the SAME BOARD the uniform twin realizes (#834 parity).
+    #
+    # Compared in METRES, not in array indices: the two lanes do not agree on
+    # the y array length on this domain (uniform 110, NU 109 — a pre-existing
+    # lane sizing difference, not a #931 one), so an elementwise mask compare
+    # is ill-posed. What the band depends on is the realized rectangle and the
+    # realized plane, and those are lane-independent quantities.
+    from tests.locks.test_patch_edgefed_s11_passivity import _build_patch_sim
+
+    rz_u = realized(_build_patch_sim())
+    assert rz_u.wall_planes(2) == rz.wall_planes(2), (rz_u.wall_planes(2),
+                                                      rz.wall_planes(2))
+    for su, sn in zip(sorted(rz_u.sheets, key=lambda x: int(x.plane)),
+                      sorted(rz.sheets, key=lambda x: int(x.plane))):
+        eu = _footprint_extent_m(rz_u.grid, su)
+        en = _footprint_extent_m(rz.grid, sn)
+        assert np.allclose(eu, en, atol=1e-6), (
+            f"uniform and NU lanes realize different footprints on plane "
+            f"{int(su.plane)}: {eu} vs {en} (metres)")
+
+
+def _footprint_extent_m(grid, sheet):
+    """The realized footprint's (x0, x1, y0, y1) in metres, from the node line."""
+    from tests._realized_geometry import _node_line
+
+    occ = np.argwhere(np.asarray(sheet.footprint, dtype=bool))
+    xs, ys = _node_line(grid, 0), _node_line(grid, 1)
+    return (float(xs[occ[:, 0].min()]), float(xs[occ[:, 0].max()]),
+            float(ys[occ[:, 1].min()]), float(ys[occ[:, 1].max()]))
 
 
 @pytest.mark.gpu

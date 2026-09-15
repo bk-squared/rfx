@@ -5,18 +5,26 @@ One file per preflight stage (tier 3b of the 2026-09 test-corpus
 reorganisation, see ``docs/design_notes/20260903_test_reorg_tier3b_consolidation.md``).
 Sections, each formerly its own file:
 
-1. **Issue #703 campaign statics checks** — was
-   ``test_preflight_campaign_statics.py``. Four advisory checks derived from
-   a month-long external cross-validation: congruent-conductor rasterization
-   parity, node-thin sheet live-edge material consistency, sheet-bounded
-   cavity electrical-thickness report, and the off-lattice design-edge
-   census. Every fixture is SYNTHETIC and public — the motivating incidents
-   come from a private design and none of its dimensions appear here. Every
-   gate is mutation-falsified in BOTH directions inside the tests
-   (monkeypatching the module-level gate constants of ``rfx.api._preflight``):
-   loosening the gate must silence the firing fixture, tightening it must
-   make the silent fixture fire; the observed results are recorded verbatim
-   in each test's docstring.
+1. **Issue #703 campaign statics checks and the #931 realization findings**
+   — was ``test_preflight_campaign_statics.py``. The four advisory checks
+   derived from a month-long external cross-validation, re-pinned on the
+   lattice ownership contract (issue #931,
+   ``docs/design_notes/20260906_plan_realign_lattice_ownership.md``):
+   congruent-conductor realization parity (realized PEC EDGE counts),
+   the sheet-slot vacuum check (which replaces the #702 live-edge resample
+   guard — a sheet owns no cell, so there is nothing to resample), the
+   conductor-bounded cavity electrical-thickness report (adjacent REALIZED
+   wall planes, sheet planes and volume faces alike), and the off-lattice
+   design-edge census. Plus the design note's §3 findings:
+   ``pec_box_subcell`` / ``pec_zero_cells`` / ``pec_realization_refused``
+   (errors), ``pec_box_one_cell`` (warning), ``sheet_plane_realized``
+   (notice; warning on a half-cell tie). Every fixture is SYNTHETIC and
+   public — the motivating incidents come from a private design and none of
+   its dimensions appear here. Every gate is mutation-falsified in BOTH
+   directions inside the tests (monkeypatching the module-level gate
+   constants of ``rfx.api._preflight``): loosening the gate must silence the
+   firing fixture, tightening it must make the silent fixture fire; the
+   observed results are recorded verbatim in each test's docstring.
 2. **Boxes displaced from a graded-mesh fine band** — was
    ``test_preflight_graded_rasterization.py``: the advisory fires with the
    ACTUAL and implied z-cell counts, is silent for a box pinned to the real
@@ -24,38 +32,52 @@ Sections, each formerly its own file:
    MODELS the rasterizer — its predicted count must agree with the
    production rasterize path in both directions (#562 F2, #568 item 1).
 3. **Issue #48 thin PEC on a NU axis** — was ``test_preflight_thin_metal_nu.py``:
-   preflight must warn when a thin PEC sits on a non-uniform axis without
-   symmetric neighbouring cells (Meep/OpenEMS convention), and stay silent
-   on a uniform profile.
+   preflight must warn when a realized metal PLANE sits on a non-uniform
+   axis without symmetric neighbouring cells (Meep/OpenEMS convention), and
+   stay silent on a uniform profile. The foils are sheet declarations —
+   under #931 a 0.25 mm PEC Box on a 1 mm cell is refused, not snapped.
 
-Every assertion, tolerance, fixture value and parametrisation of the
-absorbed files is kept verbatim (the identical ``_has`` helper is defined
-once).
+Section 2 is kept verbatim from the absorbed file (the identical ``_has``
+helper is defined once).
 """
 
 from __future__ import annotations
 
 import math
-import warnings as _w
 
 import numpy as np
 import pytest
 
-import rfx.api._compile as _compile
-import rfx.api._preflight as _pf
+# The gate constants this file mutates live in rfx/preflight/pec_geometry.py
+# since #980 Phase 3 leg 2, and so do the ten check bodies that read them --
+# so a bare name in a check resolves in THAT module's globals. The
+# rfx.api._preflight re-export still binds all five, but patching it would
+# rebind a name no reader consults, and the four gate-mutation tests below
+# would pass on an unmutated gate: their loosened arm would still see the
+# firing fixture fire, and their tightened arm would still see the silent one
+# stay silent. Verified by falsification -- aimed at the facade after the
+# move, all four fail on their first assert.
+import rfx.preflight.pec_geometry as _pec
 from rfx import Box, Simulation
+from rfx.geometry.csg import Cylinder
 
 
 # ===========================================================================
-# formerly tests/unit/preflight/test_preflight_rasterization.py
+# formerly tests/unit/preflight/test_preflight_campaign_statics.py
 # ===========================================================================
 
 MM = 1e-3
 
 CONGRUENCE_CODE = "congruent_conductor_rasterization_parity"
-LIVE_EDGE_CODE = "sheet_live_edge_material_mismatch"
+SLOT_CODE = "sheet_slot_vacuum"
 CAVITY_CODE = "sheet_cavity_electrical_thickness"
 OFF_LATTICE_CODE = "off_lattice_design_edges"
+ONE_CELL_CODE = "pec_box_one_cell"
+PLANE_CODE = "sheet_plane_realized"
+SUBCELL_CODE = "pec_box_subcell"
+ZERO_CELLS_CODE = "pec_zero_cells"
+REFUSED_CODE = "pec_realization_refused"
+UNAVAILABLE_CODE = "campaign_statics_unavailable"
 
 
 # ---------------------------------------------------------------------------
@@ -63,33 +85,39 @@ OFF_LATTICE_CODE = "off_lattice_design_edges"
 # ---------------------------------------------------------------------------
 
 def _congruence_sim(off_lattice_mirror: bool, dz_profile=None):
-    """Mirror pair of PEC sheets, 3.5 x 3.0 x 0.4 mm, dx = 1 mm.
+    """Mirror pair of PEC VOLUMES, 3.5 x 3.0 x 1.0 mm, dx = 1 mm.
 
     ``off_lattice_mirror=True`` (the incident class): the pair is mirrored
     about x = 5.26 mm — 0.26 cells off the node/half-node lattice, the same
     sub-cell magnitude as the measured incident (#703: mirror plane 0.26
-    cells off, 173 vs 183 cells). Member A occupies x-nodes {1,2,3,4}
-    (4 cells/row), member B x in [6.02, 9.52) occupies {7,8,9} (3 cells/row):
-    12 vs 9 cells, spread 3.
+    cells off, 173 vs 183 cells). Under the centre-sampled volume rule
+    (#931 §1.1) member A ``x in [1.0, 4.5)`` holds the cell centres 1.5,
+    2.5, 3.5 (3 columns); member B ``x in [6.02, 9.52)`` holds 6.5, 7.5,
+    8.5 AND 9.5 (4 columns). Realized PEC edges of a 3x3x1 vs a 4x3x1
+    block: 64 vs 82, spread 18.
 
     ``off_lattice_mirror=False`` (negative control): the same extents
     mirrored about x = 5.5 mm — ON the half-node lattice — with both x
-    extents integer multiples of dx and every face safely off a node
-    (no knife edge): counts are equal by construction.
+    extents integer multiples of dx and every face safely off a centre:
+    3 columns each, counts equal by construction.
+
+    The z extent is a full cell on node planes (2 -> 3 mm): under #931 a
+    sub-cell PEC Box is refused at add()/assembly, so the former 0.4 mm
+    "sheet" version of this fixture cannot be built as a volume any more.
     """
     sim = Simulation(domain=(12 * MM, 6 * MM, 6 * MM), dx=1 * MM,
                      freq_max=10e9, boundary="cpml", dz_profile=dz_profile)
     if off_lattice_mirror:
         sim.add(Box((1.0 * MM, 1.0 * MM, 2.0 * MM),
-                    (4.5 * MM, 4.0 * MM, 2.4 * MM)), material="pec")
+                    (4.5 * MM, 4.0 * MM, 3.0 * MM)), material="pec")
         sim.add(Box((6.02 * MM, 1.0 * MM, 2.0 * MM),
-                    (9.52 * MM, 4.0 * MM, 2.4 * MM)), material="pec")
+                    (9.52 * MM, 4.0 * MM, 3.0 * MM)), material="pec")
     else:
         # integer-multiple extent (3 mm) mirrored about the half-node 5.5 mm
         sim.add(Box((1.2 * MM, 1.0 * MM, 2.0 * MM),
-                    (4.2 * MM, 4.0 * MM, 2.4 * MM)), material="pec")
+                    (4.2 * MM, 4.0 * MM, 3.0 * MM)), material="pec")
         sim.add(Box((6.8 * MM, 1.0 * MM, 2.0 * MM),
-                    (9.8 * MM, 4.0 * MM, 2.4 * MM)), material="pec")
+                    (9.8 * MM, 4.0 * MM, 3.0 * MM)), material="pec")
     return sim
 
 
@@ -99,13 +127,15 @@ class _PatternedSheet:
     Why a test needs one instead of a ``Box``. A metal layer with
     clearance holes cannot BE a Box — a Box fills the holes with metal and
     shorts whatever the holes clear — so a CAD layer arrives as a
-    user-defined ``Shape``: in-plane pattern from the design, thickness
-    collapsed onto the one node nearest the sheet's mid-height (which is
-    what rfx already does for a sub-cell Box). Implements exactly the
-    ``rfx.geometry.csg.Shape`` members the congruence census uses:
+    user-defined ``Shape``: in-plane pattern from the design. Declared as
+    a SHEET through ``add_thin_conductor`` (#931 §1.3: a non-Box sheet's
+    footprint is its cross-section at its own mid-plane, placed on the
+    nearest node plane). Implements exactly the ``rfx.geometry.csg.Shape``
+    members the sheet builder and the congruence census use:
     ``bounding_box`` and ``mask`` / ``mask_on_coords``.
 
-    Footprint = the ``lo/hi`` rectangle minus the ``hole_lo/hole_hi`` one.
+    Footprint = the ``lo/hi`` rectangle minus the ``hole_lo/hole_hi`` one,
+    half-open on x and y as the design's own raster is.
     """
 
     def __init__(self, lo, hi, hole_lo, hole_hi):
@@ -143,36 +173,40 @@ class _UnboundedSheet(_PatternedSheet):
     ``rfx.geometry.csg.Shape.bounding_box`` raises by default, so a shape
     that never overrides it is a supported case — and one the congruence
     census cannot key. It must show up in the coverage clause, not vanish.
+    Under #931 such a shape can only be a VOLUME via ``add()`` (a sheet
+    needs its bounds to find its plane), so it is added that way.
     """
 
     def bounding_box(self):
         raise NotImplementedError("this shape does not report bounds")
 
 
-def _sheet_congruence_sim(off_lattice_mirror: bool, cls=_PatternedSheet):
-    """Mirror pair of PATTERNED node-thin sheets, dx = 1 mm.
-
-    The shape of the motivating incident: sub-cell-thick metal layers
-    (0.4 mm on a 1 mm cell) that are NOT Boxes, mirrored about a plane
-    that does or does not sit on the lattice.
+def _sheet_congruence_sim(off_lattice_mirror: bool):
+    """Mirror pair of PATTERNED sheets declared through add_thin_conductor,
+    dx = 1 mm — the shape of the motivating incident: patterned metal
+    layers that are NOT Boxes, mirrored about a plane that does or does
+    not sit on the lattice.
 
     ``off_lattice_mirror=True`` (fires): mirror plane x = 5.26 mm, 0.26
     cells off the node lattice — the incident's sub-cell magnitude.
-    Member A holds x-nodes {1,2,3,4}, member B x in [6.02, 9.52) holds
-    {7,8,9}; both hold y-nodes {1,2,3} and lose one node to the mirrored
-    clearance hole: 11 vs 8 cells, spread 3.
+    Member A (x in [1.0, 4.5)) holds x-nodes {1,2,3,4}, member B
+    (x in [6.02, 9.52)) holds {7,8,9}; both hold y-nodes {1,2,3} and lose
+    the node (2,2) / (8,2) to the mirrored clearance hole. Realized
+    in-plane PEC edges (§1.3, both end nodes in the footprint): A 13
+    (Mx 7 + My 6), B 8 (Mx 4 + My 4), spread 5.
 
     ``off_lattice_mirror=False`` (negative control): the same pair
-    mirrored about x = 5.0 mm — ON a node — with 3 mm x extents: 8 vs 8.
+    mirrored about x = 5.0 mm — ON a node — with 3 mm x extents: equal.
     """
     sim = Simulation(domain=(12 * MM, 6 * MM, 6 * MM), dx=1 * MM,
                      freq_max=10e9, boundary="cpml")
-    z_lo, z_hi = 2.2 * MM, 2.6 * MM      # 0.4 mm: node-thin on a 1 mm cell
+    z_lo, z_hi = 2.2 * MM, 2.6 * MM      # 0.4 mm foil: mid-plane 2.4 -> node 2
 
     def _add(x0, x1, hx0, hx1):
-        sim.add(cls((x0 * MM, 1.0 * MM, z_lo), (x1 * MM, 4.0 * MM, z_hi),
-                    (hx0 * MM, 2.0 * MM, z_lo), (hx1 * MM, 3.0 * MM, z_hi)),
-                material="pec")
+        sim.add_thin_conductor(
+            _PatternedSheet((x0 * MM, 1.0 * MM, z_lo), (x1 * MM, 4.0 * MM, z_hi),
+                            (hx0 * MM, 2.0 * MM, z_lo), (hx1 * MM, 3.0 * MM, z_hi)),
+            sigma_bulk=5.8e7, thickness=0.4 * MM)
 
     if off_lattice_mirror:
         _add(1.0, 4.5, 2.0, 3.0)
@@ -183,13 +217,18 @@ def _sheet_congruence_sim(off_lattice_mirror: bool, cls=_PatternedSheet):
     return sim
 
 
-def _sheet_sim(dz_profile=None):
-    """Node-thin PEC sheet between two dielectric fills that ABUT its faces.
+def _slot_sim(slot: bool, dz_profile=None):
+    """A PEC sheet on z = 3.0 mm between two dielectrics, dx = 0.5 mm.
 
-    The stack a real board export gives: dielectric below ends at the
-    sheet's bottom face, dielectric above starts at its top face, so no
-    dielectric spans the sheet's node — the #702 configuration. dx=0.5 mm,
-    sheet 0.1 mm thick (node-thin).
+    ``slot=True`` (the #702 configuration, now reported instead of
+    re-sampled): the dielectric below ends at 3.0 mm, the one above starts
+    at 3.1 mm — the stack a board export gives when it leaves a slot for
+    the foil. The node sampler is half-open, so the node at 3.0 mm gets
+    neither dielectric; the sheet owns no cell and writes nothing; the
+    normal E edge from the sheet plane into the cell above runs on vacuum.
+
+    ``slot=False`` (silent): the upper dielectric is drawn from the sheet
+    plane itself, so the plane's node carries eps_r 2.5.
     """
     sim = Simulation(domain=(8 * MM, 8 * MM, 6 * MM), dx=0.5 * MM,
                      freq_max=10e9, boundary="cpml", dz_profile=dz_profile)
@@ -197,82 +236,99 @@ def _sheet_sim(dz_profile=None):
     sim.add_material("diel_hi", eps_r=2.5)
     sim.add(Box((1 * MM, 1 * MM, 1.0 * MM), (7 * MM, 7 * MM, 3.0 * MM)),
             material="diel_lo")
-    sim.add(Box((1 * MM, 1 * MM, 3.1 * MM), (7 * MM, 7 * MM, 5.0 * MM)),
+    z_hi_lo = 3.1 * MM if slot else 3.0 * MM
+    sim.add(Box((1 * MM, 1 * MM, z_hi_lo), (7 * MM, 7 * MM, 5.0 * MM)),
             material="diel_hi")
-    sim.add(Box((2 * MM, 2 * MM, 3.0 * MM), (6 * MM, 6 * MM, 3.1 * MM)),
-            material="pec")
+    sim.add(Box((2 * MM, 2 * MM, 3.0 * MM), (6 * MM, 6 * MM, 3.0 * MM)),
+            material="pec")                      # zero thickness = a sheet
     return sim
 
 
-def _cavity_sim(collapsed: bool):
-    """Two node-thin PEC sheets bounding an eps_r=4 dielectric gap, dx=1 mm.
+def _cavity_sim(faces: bool):
+    """Two foils declared with FACES (add_thin_conductor) bounding an
+    eps_r=4 core, dx = 1 mm.
 
-    ``collapsed=True`` (fires): sheets 0.4 mm thick, mid-planes at 2.2 and
-    4.2 mm snap to nodes k=2 and k=4, so the mesh cavity is node-to-node
-    2.0 mm while the physical face-to-face gap is 4.0-2.4 = 1.6 mm: both
-    electrical-thickness measures read +25%.
+    ``faces=True`` (fires): foils 0.4 mm thick, faces at 2.0/2.4 and
+    4.0/4.4 mm, mid-planes 2.2 / 4.2 -> realized on node planes 2 and 4
+    (#931 §1.3, nearest node). The core is drawn from plane to plane
+    (2.0 -> 4.0), so the mesh cavity is 2 cells of eps_r 4 = 2.0 mm while
+    the physical face-to-face stack is 4.0 - 2.4 = 1.6 mm: both
+    electrical-thickness measures read +25.0%. That is the sheet model's
+    honest cost — a foil has no thickness on this lattice — and the
+    message prints the lower plane's snap (-400 um: realized 2.0 mm,
+    declared upper face 2.4 mm).
 
-    ``collapsed=False`` (silent): sheets 2 um thick with mid-planes ON
-    nodes 2.0 and 4.0 mm; face-to-face 1.998 mm vs node-to-node 2.0 mm is
-    +0.1% on both measures, inside the 1% advisory threshold.
+    ``faces=False`` (silent): 2 um foils with mid-planes ON nodes 2.0 and
+    4.0 mm; face-to-face 1.998 mm vs plane-to-plane 2.0 mm is +0.1% on
+    both measures, inside the 1% advisory threshold.
     """
     sim = Simulation(domain=(10 * MM, 10 * MM, 8 * MM), dx=1 * MM,
                      freq_max=10e9, boundary="cpml")
     sim.add_material("core", eps_r=4.0)
-    if collapsed:
+    if faces:
         s1 = (2.0 * MM, 2.4 * MM)
         s2 = (4.0 * MM, 4.4 * MM)
     else:
         s1 = (1.999 * MM, 2.001 * MM)
         s2 = (3.999 * MM, 4.001 * MM)
-    sim.add(Box((2 * MM, 2 * MM, s1[1]), (8 * MM, 8 * MM, s2[0])),
+    sim.add(Box((2 * MM, 2 * MM, 2.0 * MM), (8 * MM, 8 * MM, 4.0 * MM)),
             material="core")
-    sim.add(Box((2 * MM, 2 * MM, s1[0]), (8 * MM, 8 * MM, s1[1])),
-            material="pec")
-    sim.add(Box((2 * MM, 2 * MM, s2[0]), (8 * MM, 8 * MM, s2[1])),
-            material="pec")
+    for lo, hi in (s1, s2):
+        sim.add_thin_conductor(Box((2 * MM, 2 * MM, lo), (8 * MM, 8 * MM, hi)),
+                               sigma_bulk=5.8e7, thickness=hi - lo)
     return sim
 
 
-def _face_registered_cavity_sim(upper: bool = False):
-    """Two sheets that each FILL one sub-cell cell, dielectric on the faces.
+def _stack_sim(patch_z_mm: float, ground_cells: int = 1):
+    """A VOLUME ground under an eps_r=4 core under a SHEET patch, dx = 1 mm.
 
-    The mesh a face-registered export gives: both faces of every sheet are
-    registered as nodes (1 um off the face, so the sheet's mid-height is
-    unambiguously nearer one of them — an exactly-centred sheet is a coin
-    flip between two equidistant nodes), and the dielectric between starts
-    and ends on those same faces.
+    Ground: Box z in [2, 2 + ground_cells] mm (a slab with walls on both
+    faces, #931 §1.2). Core: [3, patch_z). Patch: zero-thickness Box at
+    ``patch_z_mm`` — the sheet declaration.
 
-    ``upper=False``: nodes 1 um BELOW each face, so each sheet's PEC node
-    is its LOWER face and the cell it fills is the cell above that node —
-    inside the cavity. ``upper=True``: nodes 1 um ABOVE, so the PEC node
-    is the UPPER face; the filled cell is now BELOW the node, the live
-    edge is the cell above it, and for the lower sheet that cell is
-    ordinary dielectric (the #702 resample takes its eps from the live
-    edge) while for the upper sheet it is outside the cavity entirely.
+    ``patch_z_mm=5.0``: every face on a node, the cavity reads FLUSH (the
+    #767 closure: the ground's far face is a realized wall the check can
+    see). ``patch_z_mm=5.3``: the patch snaps to node 5, so the mesh
+    cavity is 2 mm against a declared 2.3 mm: -13.0% on both measures.
+    """
+    sim = Simulation(domain=(10 * MM, 10 * MM, 8 * MM), dx=1 * MM,
+                     freq_max=10e9, boundary="cpml")
+    sim.add_material("core", eps_r=4.0)
+    z_top = (2 + ground_cells) * MM
+    sim.add(Box((2 * MM, 2 * MM, 2 * MM), (8 * MM, 8 * MM, z_top)),
+            material="pec")
+    sim.add(Box((2 * MM, 2 * MM, z_top), (8 * MM, 8 * MM, patch_z_mm * MM)),
+            material="core")
+    sim.add(Box((2 * MM, 2 * MM, patch_z_mm * MM),
+                (8 * MM, 8 * MM, patch_z_mm * MM)), material="pec")
+    return sim
+
+
+def _tie_stack_sim():
+    """Two face-registered foils on a graded z mesh — the half-cell TIE.
 
     z cells (mm) 0.4 0.4 | 0.1 | 0.5 0.5 | 0.1 | 0.4 0.4, so the interior
-    nodes sit at 0, 0.4, 0.8, 0.9, 1.4, 1.9, 2.0, 2.4, 2.8. Sheet A fills
-    the cell [0.8, 0.9], sheet B fills [1.9, 2.0], and the eps_r=4 core
-    runs face to face between them.
+    nodes sit at 0, 0.4, 0.8, 0.9, 1.4, 1.9, 2.0, 2.4, 2.8. Foil A is
+    declared with faces at 0.8/0.9 mm (both on nodes): its mid-plane
+    0.85 mm is EXACTLY equidistant from the two, and the contract resolves
+    the tie to the LOWER plane, 0.8 mm — with a WARNING naming both
+    candidates. Foil B at 1.9/2.0 mm likewise lands on 1.9 mm. The eps_r=4
+    core runs face to face, 0.9 -> 1.9 mm.
 
-    The cavity here is 1.0 mm of solid eps_r=4: sum(d/eps) = 250 um,
-    sum(d*sqrt(eps)) = 2 mm, and the mesh reproduces both exactly — the
-    sheets' own cells are conductor and belong to neither side.
+    Cavity: planes 0.8 and 1.9 mm bracket the 0.1 mm cell [0.8, 0.9]
+    (vacuum — the core starts at 0.9) plus two 0.5 mm cells of eps_r 4:
+    sum(d/eps) = 100 + 125 + 125 = 350 um against the physical 1.0 mm / 4
+    = 250 um, +40.0%; the message prints foil A's snap (-100 um).
     """
     dz = np.array([0.4, 0.4, 0.1, 0.5, 0.5, 0.1, 0.4, 0.4]) * MM
-    bias = 0.001 if upper else -0.001          # mm, node offset from a face
     sim = Simulation(domain=(10 * MM, 10 * MM, 2.8 * MM), dx=0.5 * MM,
                      freq_max=10e9, boundary="cpml", dz_profile=dz)
     sim.add_material("core", eps_r=4.0)
-    lo_a, hi_a = (0.8 + bias) * MM, (0.9 + bias) * MM
-    lo_b, hi_b = (1.9 + bias) * MM, (2.0 + bias) * MM
-    sim.add(Box((2 * MM, 2 * MM, hi_a), (8 * MM, 8 * MM, lo_b)),
+    sim.add(Box((2 * MM, 2 * MM, 0.9 * MM), (8 * MM, 8 * MM, 1.9 * MM)),
             material="core")
-    sim.add(Box((2 * MM, 2 * MM, lo_a), (8 * MM, 8 * MM, hi_a)),
-            material="pec")
-    sim.add(Box((2 * MM, 2 * MM, lo_b), (8 * MM, 8 * MM, hi_b)),
-            material="pec")
+    for lo, hi in ((0.8 * MM, 0.9 * MM), (1.9 * MM, 2.0 * MM)):
+        sim.add_thin_conductor(Box((2 * MM, 2 * MM, lo), (8 * MM, 8 * MM, hi)),
+                               sigma_bulk=5.8e7, thickness=hi - lo)
     return sim
 
 
@@ -294,15 +350,12 @@ def _off_lattice_sim(on_lattice: bool):
     return sim
 
 
-def _bypass_resample(monkeypatch):
-    """Mutate the #702 fix off: the assembly keeps node-sampled statics."""
-    monkeypatch.setattr(
-        _compile, "resample_sheet_node_materials",
-        lambda geo, res, coords, eps, sig, **kw: (eps, sig))
+def _by_code(rep, code):
+    return rep.by_code(code)
 
 
 # ---------------------------------------------------------------------------
-# Check 1 — congruent-conductor rasterization parity
+# Check 1 — congruent-conductor realization parity
 # ---------------------------------------------------------------------------
 
 class TestCongruenceParity:
@@ -310,19 +363,20 @@ class TestCongruenceParity:
         """The incident class: mirror plane 0.26 cells off-lattice.
 
         Observed on this fixture: ONE aggregated advisory; member counts
-        12 vs 9 cells (spread 3 > tolerance 1); the message carries the
-        counts, per-member sub-lattice offsets, a verified origin-shift
-        suggestion (re-rasterized spread printed), the coverage clause and
-        the falsifier.
+        64 vs 82 realized PEC edges (spread 18 > tolerance 1); the message
+        carries the counts, per-member sub-lattice offsets, a verified
+        origin-shift suggestion (re-realized spread printed), the
+        coverage clause and the falsifier.
         """
         rep = _congruence_sim(True).preflight()
         hits = rep.by_code(CONGRUENCE_CODE)
         assert len(hits) == 1  # aggregated: one message per class per run
         msg = str(hits[0])
-        assert "12 cells" in msg and "9 cells" in msg
-        assert "spread 3" in msg
+        assert "64 PEC edges" in msg and "82 PEC edges" in msg
+        assert "spread 18" in msg
         assert "sub-lattice offsets" in msg
         assert "slide the lattice origin" in msg
+        assert "spread drops to 0 edge(s)" in msg
         assert "COVERAGE:" in msg and "STALE IF:" in msg
         assert "no bounding box" in msg  # skip clause stated, not silent
 
@@ -338,36 +392,38 @@ class TestCongruenceParity:
         """The check runs on the NU builders as well (issue #703 spec).
 
         The z profile is graded (not uniform-valued: a uniform-valued
-        profile only tests plumbing) but leaves the same x-lattice, so the
-        same 12-vs-9 spread must be found through the NU node builder.
+        profile only tests plumbing) but keeps the members' z cell
+        [2, 3] mm as one cell and leaves the same x-lattice, so the same
+        64-vs-82 spread must be found through the NU node builder.
         """
         dz = np.array([1.2, 0.8, 1.0, 1.0, 0.8, 1.2]) * MM
         rep = _congruence_sim(True, dz_profile=dz).preflight()
         hits = rep.by_code(CONGRUENCE_CODE)
         assert len(hits) == 1
         assert "nonuniform lane" in str(hits[0])
+        assert "64 PEC edges" in str(hits[0]) and "82 PEC edges" in str(hits[0])
 
     def test_gate_mutation_both_directions(self, monkeypatch):
-        """Gate = spread > _CONGRUENCE_SPREAD_TOL_CELLS.
+        """Gate = spread > _CONGRUENCE_SPREAD_TOL_EDGES.
 
         Mutation results (verbatim from this test's own asserts):
-        - loosened (tol 1 -> 10): firing fixture (spread 3) emitted 0
+        - loosened (tol 1 -> 100): firing fixture (spread 18) emitted 0
           advisories -> the tolerance is load-bearing;
         - tightened (tol 1 -> -1): silent fixture (spread 0) emitted 1
           advisory -> the comparison is live in both directions.
         """
-        monkeypatch.setattr(_pf, "_CONGRUENCE_SPREAD_TOL_CELLS", 10)
+        monkeypatch.setattr(_pec, "_CONGRUENCE_SPREAD_TOL_EDGES", 100)
         assert _congruence_sim(True).preflight().by_code(
             CONGRUENCE_CODE) == []
-        monkeypatch.setattr(_pf, "_CONGRUENCE_SPREAD_TOL_CELLS", -1)
+        monkeypatch.setattr(_pec, "_CONGRUENCE_SPREAD_TOL_EDGES", -1)
         assert len(_congruence_sim(False).preflight().by_code(
             CONGRUENCE_CODE)) == 1
 
     def test_conductors_without_bounds_are_skipped_and_said_so(self):
         """A conductor the census cannot key must appear in the coverage
         clause, not silently vanish (#685 class: silence has two
-        meanings). Being a non-Box is NOT such a case any more — only
-        declining to report bounds is."""
+        meanings). Being a non-Box is NOT such a case — only declining to
+        report bounds is. A bound-less shape is a VOLUME via add()."""
         sim = _congruence_sim(True)
         for x0 in (1.0, 6.02):
             sim.add(_UnboundedSheet(
@@ -380,26 +436,30 @@ class TestCongruenceParity:
         msg = str(hits[0])
         assert "skipped 2 conductor entr(y/ies) whose shape reports no "\
                "bounding box" in msg
-        assert "examined 2 conductor entr(y/ies)" in msg
+        assert "examined 2 conductor declaration(s)" in msg
 
     def test_patterned_sheet_mirror_pair_fires(self):
         """DEFECT A regression. The incident class is a mirror pair of
-        node-thin PATTERNED LAYERS, not Boxes, and a Box-only entry census
-        put every member into 'skipped' — the check stayed silent on the
-        board that motivated it (three mirror pairs, 173 vs 183 cells).
+        PATTERNED LAYERS, not Boxes, and a Box-only entry census put every
+        member into 'skipped' — the check stayed silent on the board that
+        motivated it (three mirror pairs, 173 vs 183 cells).
 
-        Observed on this fixture: ONE aggregated advisory, counts 11 vs 8
-        (spread 3 > tolerance 1), the members named, and the coverage
-        clause admitting that a bounding box bounds congruence rather than
-        proving it for shapes that are not Boxes.
+        Under #931 the layers are SHEETS (add_thin_conductor) and the
+        quantity compared is the realized in-plane PEC edge count.
+        Observed on this fixture: ONE aggregated advisory, counts 13 vs 8
+        edges (spread 5 > tolerance 1), the members named with their
+        realization kind, and the coverage clause admitting that a
+        bounding box bounds congruence rather than proving it for shapes
+        that are not Boxes.
         """
         hits = _sheet_congruence_sim(True).preflight().by_code(
             CONGRUENCE_CODE)
         assert len(hits) == 1
         msg = str(hits[0])
         assert "_PatternedSheet" in msg          # keyed by shape class
-        assert "11 cells" in msg and "8 cells" in msg
-        assert "spread 3" in msg
+        assert "(sheet)" in msg                   # ... and realization kind
+        assert "13 PEC edges" in msg and "8 PEC edges" in msg
+        assert "spread 5" in msg
         assert "INFERRED: 2 member(s)" in msg    # honesty clause present
         assert "not analytic Boxes" in msg       # no origin-shift guess
         assert "COVERAGE:" in msg and "STALE IF:" in msg
@@ -407,7 +467,7 @@ class TestCongruenceParity:
     def test_patterned_sheet_on_lattice_mirror_pair_is_silent(self):
         """Negative control: the same pair mirrored about a NODE.
 
-        Observed: both members 8 cells, no advisory — so the firing case
+        Observed: equal edge counts, no advisory — so the firing case
         above is the off-lattice mirror plane, not merely 'the check now
         looks at non-Box shapes'.
         """
@@ -415,104 +475,86 @@ class TestCongruenceParity:
         assert rep.by_code(CONGRUENCE_CODE) == []
 
     def test_sheet_pair_gate_mutation_both_directions(self, monkeypatch):
-        """Gate = spread > _CONGRUENCE_SPREAD_TOL_CELLS, on the sheet pair.
+        """Gate = spread > _CONGRUENCE_SPREAD_TOL_EDGES, on the sheet pair.
 
         Mutation results (verbatim from this test's own asserts):
-        - loosened (tol 1 -> 10): the firing sheet pair (spread 3) emitted
-          0 advisories -> the tolerance is load-bearing here too;
+        - loosened (tol 1 -> 100): the firing sheet pair (spread 5)
+          emitted 0 advisories -> the tolerance is load-bearing here too;
         - tightened (tol 1 -> -1): the on-node sheet pair (spread 0)
           emitted 1 advisory -> the pair IS being examined, so its silence
           above is an equal count and not a skipped entry.
         """
-        monkeypatch.setattr(_pf, "_CONGRUENCE_SPREAD_TOL_CELLS", 10)
+        monkeypatch.setattr(_pec, "_CONGRUENCE_SPREAD_TOL_EDGES", 100)
         assert _sheet_congruence_sim(True).preflight().by_code(
             CONGRUENCE_CODE) == []
-        monkeypatch.setattr(_pf, "_CONGRUENCE_SPREAD_TOL_CELLS", -1)
+        monkeypatch.setattr(_pec, "_CONGRUENCE_SPREAD_TOL_EDGES", -1)
         assert len(_sheet_congruence_sim(False).preflight().by_code(
             CONGRUENCE_CODE)) == 1
 
 
 # ---------------------------------------------------------------------------
-# Check 2 — node-thin sheet live-edge material consistency
+# Check 2 — sheet-slot vacuum (replaces the #702 live-edge resample guard)
 # ---------------------------------------------------------------------------
 
-class TestSheetLiveEdgeMaterials:
-    def test_post_702_main_is_silent(self):
-        """On current main the assembly resamples sheet-node statics at the
-        live edge (#702), so the guard must not fire."""
-        rep = _sheet_sim().preflight()
-        assert rep.by_code(LIVE_EDGE_CODE) == []
-
-    def test_fires_when_the_resample_is_mutated_off(self, monkeypatch):
-        """Mutate the #702 fix off (assembly keeps node-sampled statics).
-
-        Observed with the bypass: 64 mismatched cells, worst offender
-        'assigned eps_r 1 / sigma 0 vs live-edge sample eps_r 2.5' — the
-        exact #702 signature (live edge on vacuum where the stack has no
-        air). One aggregated message.
-        """
-        _bypass_resample(monkeypatch)
-        hits = _sheet_sim().preflight().by_code(LIVE_EDGE_CODE)
+class TestSheetSlotVacuum:
+    def test_slotted_stack_fires_and_names_the_remedy(self):
+        """The #702 configuration under the contract: nothing is re-sampled,
+        the slot is reported. Observed: ONE aggregated ERROR-grade warning
+        naming the plane (z = 3 mm), the vacuum on it, the two dielectrics
+        (3.5 below, 2.5 above) and the remedy (extend the dielectric to the
+        sheet plane)."""
+        rep = _slot_sim(True).preflight()
+        hits = rep.by_code(SLOT_CODE)
         assert len(hits) == 1
         msg = str(hits[0])
-        assert "assigned eps_r 1" in msg
-        assert "live-edge sample eps_r 2.5" in msg
+        assert msg.startswith("ERROR-GRADE")
+        assert hits[0].severity == "warning"     # error-grade, not a refusal
+        assert "z = 3mm" in msg
+        assert "eps_r 3.5" in msg and "eps_r 2.5" in msg
+        assert "extend the dielectric boxes to the sheet plane" in msg
         assert "COVERAGE:" in msg and "STALE IF:" in msg
 
-    def test_gate_mutation_both_directions(self, monkeypatch):
-        """Gate = |assigned - sampled| > _LIVE_EDGE_RTOL * max(|sampled|, 1).
+    def test_dielectric_drawn_to_the_plane_is_silent(self):
+        """The remedy applied: the upper dielectric starts ON the sheet
+        plane, the plane's node carries eps_r 2.5, no slot."""
+        rep = _slot_sim(False).preflight()
+        assert rep.by_code(SLOT_CODE) == []
 
-        Mutation results:
-        - loosened (rtol 1e-4 -> 1e9) WITH the resample bypassed: the
-          firing fixture emitted 0 advisories -> the rtol is load-bearing;
-        - tightened (rtol 1e-4 -> -1.0) on the CLEAN fixture: 1 advisory
-          (every live-edge cell 'mismatches' under a negative tolerance)
-          -> the comparison is live in both directions.
-        """
-        _bypass_resample(monkeypatch)
-        monkeypatch.setattr(_pf, "_LIVE_EDGE_RTOL", 1e9)
-        assert _sheet_sim().preflight().by_code(LIVE_EDGE_CODE) == []
-        monkeypatch.undo()
-        monkeypatch.setattr(_pf, "_LIVE_EDGE_RTOL", -1.0)
-        assert len(_sheet_sim().preflight().by_code(LIVE_EDGE_CODE)) == 1
-
-    def test_subgrid_fine_region_debt_is_named(self):
-        """add_refinement + a node-thin sheet: the FINE region still
-        inherits the original #702 defect (rfx/runners/subgridded.py never
-        calls resample_sheet_node_materials), and the check must say so
-        rather than read as clean coverage."""
-        sim = _sheet_sim()
-        sim.add_refinement((2.5 * MM, 3.5 * MM), ratio=2)
-        hits = sim.preflight().by_code(LIVE_EDGE_CODE)
-        assert len(hits) == 1
-        msg = str(hits[0])
-        assert "KNOWN-UNFIXED" in msg
-        assert "subgridded.py" in msg
-
-    def test_fires_on_nonuniform_lane_too(self, monkeypatch):
-        """Same mutation on the NU lane (graded dz, per-axis distinct)."""
-        # assemble_materials_nu imports the resample function-locally at
-        # call time, so the mutation goes on the SOURCE module; the check
-        # keeps its own import-time binding and stays live.
-        import rfx.geometry.rasterize_grid as _rg
-        monkeypatch.setattr(
-            _rg, "resample_sheet_node_materials",
-            lambda geo, res, coords, eps, sig, **kw: (eps, sig))
-        dz = np.array([0.6, 0.4, 0.5, 0.5, 0.4, 0.6,
+    def test_fires_on_nonuniform_lane_too(self):
+        """Same slot on a graded z mesh with a node at 3.0 mm. The cell
+        sizes are dyadic (0.75 / 0.25 / 0.5 mm) so every node is exact in
+        float32 too: the NU lane samples dielectrics on float32 node
+        coordinates, and a node at 2.9999998 mm would fall INSIDE the
+        lower dielectric's half-open span — a different (buried-sheet)
+        geometry, reported by the assembly's own warning, not a slot."""
+        dz = np.array([0.75, 0.25, 0.5, 0.5, 0.5, 0.5,
                        0.5, 0.5, 0.5, 0.5, 0.5, 0.5]) * MM
-        hits = _sheet_sim(dz_profile=dz).preflight().by_code(LIVE_EDGE_CODE)
+        hits = _slot_sim(True, dz_profile=dz).preflight().by_code(SLOT_CODE)
         assert len(hits) == 1
         assert "nonuniform lane" in str(hits[0])
 
+    def test_a_sheet_in_air_is_not_a_slot(self):
+        """Vacuum on the plane with vacuum on at least one side is a sheet
+        in air, not a slot: the check needs a dielectric on BOTH sides."""
+        sim = Simulation(domain=(8 * MM, 8 * MM, 6 * MM), dx=0.5 * MM,
+                         freq_max=10e9, boundary="cpml")
+        sim.add_material("diel_hi", eps_r=2.5)
+        sim.add(Box((1 * MM, 1 * MM, 3.1 * MM), (7 * MM, 7 * MM, 5.0 * MM)),
+                material="diel_hi")
+        sim.add(Box((2 * MM, 2 * MM, 3.0 * MM), (6 * MM, 6 * MM, 3.0 * MM)),
+                material="pec")
+        assert sim.preflight().by_code(SLOT_CODE) == []
+
 
 # ---------------------------------------------------------------------------
-# Check 3 — sheet-bounded cavity electrical-thickness report
+# Check 3 — conductor-bounded cavity electrical-thickness report
 # ---------------------------------------------------------------------------
 
 class TestSheetCavityThickness:
-    def test_collapsed_registration_fires_with_both_measures(self):
-        """Mid-plane-registered sheets: node-to-node 2 mm vs face-to-face
-        1.6 mm -> +25.0% on BOTH measures for this vacuum-free eps=4 gap.
+    def test_foils_declared_with_faces_fire_with_both_measures(self):
+        """Foils with faces realize on one plane each: plane-to-plane 2 mm
+        vs face-to-face 1.6 mm -> +25.0% on BOTH measures for this eps=4
+        gap, and the lower plane's snap (-400 um) is printed.
 
         The message must print both measures and name the governing one —
         the incident's lesson: the same defect measured 17.3% as a series
@@ -525,11 +567,13 @@ class TestSheetCavityThickness:
         assert "sum(d/eps)" in msg and "sum(d*sqrt(eps))" in msg
         assert "+25.0%" in msg
         assert "governs" in msg
-        assert "node-to-node" in msg and "face-to-face" in msg
+        assert "plane-to-plane" in msg and "face-to-face" in msg
+        assert "snap -400µm" in msg
+        assert "(sheet, plane k=" in msg
         assert "COVERAGE:" in msg and "STALE IF:" in msg
 
-    def test_node_registered_thin_sheets_are_silent(self):
-        """2 um sheets with mid-planes ON nodes: +0.1% < 1% threshold."""
+    def test_node_registered_thin_foils_are_silent(self):
+        """2 um foils with mid-planes ON nodes: +0.1% < 1% threshold."""
         rep = _cavity_sim(False).preflight()
         assert rep.by_code(CAVITY_CODE) == []
 
@@ -542,120 +586,46 @@ class TestSheetCavityThickness:
         - tightened (tol 0.01 -> -1.0): the +0.1% fixture emitted 1
           advisory -> the comparison is live in both directions.
         """
-        monkeypatch.setattr(_pf, "_CAVITY_THICKNESS_TOL", 10.0)
+        monkeypatch.setattr(_pec, "_CAVITY_THICKNESS_TOL", 10.0)
         assert _cavity_sim(True).preflight().by_code(CAVITY_CODE) == []
-        monkeypatch.setattr(_pf, "_CAVITY_THICKNESS_TOL", -1.0)
+        monkeypatch.setattr(_pec, "_CAVITY_THICKNESS_TOL", -1.0)
         assert len(_cavity_sim(False).preflight().by_code(CAVITY_CODE)) == 1
 
-    def test_face_registered_sheet_cell_is_a_live_edge(self):
-        """The fact the cavity number rests on, pinned at field level.
+    def test_volume_far_face_and_sheet_plane_read_flush(self):
+        """The #767 closure. A one-cell VOLUME ground has a wall on its
+        FAR face (#931 §1.2) and the check reads it: the cavity between
+        that face (3 mm) and the patch sheet (5 mm) equals the declared
+        core, so nothing fires. The old check read the cell mask, which
+        never contains a volume's far face, and mis-paired the cavity."""
+        rep = _stack_sim(5.0).preflight()
+        assert rep.by_code(CAVITY_CODE) == []
+        # ... and the ground IS a one-cell slab, said so by its own finding
+        assert len(rep.by_code(ONE_CELL_CODE)) == 1
 
-        On this stack each sheet fills ONE 100 um cell. ``apply_pec_mask``
-        zeroes only TANGENTIAL E on a one-cell PEC sheet, so that cell's
-        normal-E edge survives (it carries the sheet's surface charge) —
-        and with the dielectric abutting the sheet's faces, the live edge
-        sees vacuum.
+    def test_snapped_sheet_plane_is_the_whole_difference(self):
+        """Patch declared at 5.3 mm snaps to node 5: the mesh cavity is
+        2 mm against a declared 2.3 mm, -13.0% on both measures, and the
+        message attributes it to the printed snap (-300 um) — the
+        difference IS the snap, nothing else."""
+        hits = _stack_sim(5.3).preflight().by_code(CAVITY_CODE)
+        assert len(hits) == 1
+        msg = str(hits[0])
+        assert "-13.0%" in msg
+        assert "snap -300µm" in msg
+        assert "(volume, plane k=" in msg and "(sheet, k=" in msg
 
-        Observed: PEC at exactly 2 node layers; at each, eps_r 1.000,
-        Ex and Ey masked, Ez NOT masked. A face-registered sheet
-        therefore puts a live 100 um vacuum gap INSIDE the cavity, which
-        is why the advisory below is a true reading and not a mis-pairing
-        (it is also what rfx-known-issues records: face registration
-        moves the PEC plane, it does not shorten the cavity).
-        """
-        from rfx.boundaries.pec import tangential_edge_masks
-
-        sim = _face_registered_cavity_sim()
-        ctx = _pf._CampaignStaticsContext(sim)
-        mats, pec = ctx.assembled()
-        pec = np.asarray(pec)
-        eps = np.asarray(mats.eps_r)
-        m_ex, m_ey, m_ez = (np.asarray(m) for m in
-                            tangential_edge_masks(pec, (False, False, False)))
-        i = j = pec.shape[0] // 2
-        ks = np.flatnonzero(pec[i, j, :])
-        assert ks.size == 2                       # one node layer per sheet
-        for k in ks:
-            assert eps[i, j, k] == pytest.approx(1.0)   # live edge on vacuum
-            assert m_ex[i, j, k] and m_ey[i, j, k]      # tangential: zeroed
-            assert not m_ez[i, j, k]                    # normal: LIVE
-
-    def test_face_registered_stack_reports_the_live_vacuum_cell(self):
-        """A face-registered stack is NOT electrically flush, and the
-        message must name which of the two mechanisms it hit.
-
-        Observed: 1 advisory, 'sum(d/eps) mesh 350um vs physical 250um
-        (+40.0%)' — the 100 um excess is exactly the lower sheet's own
-        cell at eps_r 1.000, and the message attributes it there rather
-        than to the mid-plane collapse (a different mechanism with a
-        different remedy: the collapse is a modelling trade, the vacuum
-        cell is fixable by extending the abutting dielectric).
-        """
-        hits = _face_registered_cavity_sim().preflight().by_code(CAVITY_CODE)
+    def test_face_registered_foil_on_a_tie_reads_its_thickness_as_cavity(self):
+        """The half-cell tie. Foil A (faces 0.8/0.9 mm) realizes on the
+        LOWER plane 0.8 mm; the 0.1 mm cell above it is vacuum (the core
+        starts at 0.9), so the cavity reads 350 um vs 250 um (+40.0%) and
+        the snap printed for foil A is -100 um. No 'own cell' story: a
+        sheet owns no cell, the number is the plane snap and the drawing."""
+        hits = _tie_stack_sim().preflight().by_code(CAVITY_CODE)
         assert len(hits) == 1
         msg = str(hits[0])
         assert "sum(d/eps) mesh 350µm vs physical 250µm (+40.0%)" in msg
-        assert "is geometry[1]'s OWN cell (100µm at eps_r 1.000)" in msg
-        assert "normal-E edge stays live" in msg
-        assert "TWO MECHANISMS" in msg
-
-    def test_midplane_stack_names_no_own_cell(self):
-        """Negative control for the attribution: a mid-plane registered
-        pair owns no cell, so its +25.0% carries NO own-cell clause and
-        keeps the collapse story."""
-        hits = _cavity_sim(True).preflight().by_code(CAVITY_CODE)
-        assert len(hits) == 1
-        msg = str(hits[0])
-        assert "+25.0%" in msg
-        assert "'s OWN cell (" not in msg     # prose says "OWN cell" too
-
-    def test_upper_face_registration_attributes_nothing(self):
-        """Boundary of the attribution rule, in the other direction.
-
-        With the nodes 1 um ABOVE each face, each sheet's PEC node is its
-        UPPER face, so the cell it fills is below that node: the lower
-        sheet's live edge is then an ordinary dielectric cell (the #702
-        resample takes its eps from the live edge) and the upper sheet's
-        live edge is outside the cavity. Nothing in the cavity is a
-        conductor's own cell, so nothing may be attributed to one.
-
-        Observed: 1 advisory, 'sum(d/eps) mesh 275um vs physical 250um
-        (+10.0%)' — the collapse cost of moving both PEC planes up by a
-        sheet's thickness — and NO own-cell clause.
-        """
-        hits = _face_registered_cavity_sim(upper=True).preflight().by_code(
-            CAVITY_CODE)
-        assert len(hits) == 1
-        msg = str(hits[0])
-        assert "sum(d/eps) mesh 275µm vs physical 250µm (+10.0%)" in msg
-        assert "'s OWN cell (" not in msg
-
-    def test_own_cell_attribution_mutation_both_directions(self, monkeypatch):
-        """Gate = _CAVITY_SHEET_CELL_FILL_FRAC decides whether a sheet
-        FILLS a cell (attribute the excess to its live vacuum edge) or
-        straddles two (attribute it to the mid-plane collapse).
-
-        Mutation results (verbatim from this test's own asserts):
-        - raised (0.9 -> 1.5, no sheet can fill a cell): the
-          face-registered stack still reported the same
-          'sum(d/eps) mesh 350um vs physical 250um (+40.0%)' — the NUMBER
-          does not depend on this constant, which is the point — but the
-          own-cell clause vanished, so the reader loses the mechanism;
-        - lowered (0.9 -> 0.1, a sheet 'fills' any cell it touches): the
-          mid-plane fixture's +25.0% gained an own-cell clause it has no
-          right to, '250um is geometry[1]'s OWN cell (1mm at eps_r
-          4.000)'. Live in both directions, and 0.9 is what separates
-          'fills a cell' from 'straddles two'.
-        """
-        monkeypatch.setattr(_pf, "_CAVITY_SHEET_CELL_FILL_FRAC", 1.5)
-        msg = str(_face_registered_cavity_sim().preflight().by_code(
-            CAVITY_CODE)[0])
-        assert "sum(d/eps) mesh 350µm vs physical 250µm (+40.0%)" in msg
-        assert "'s OWN cell (" not in msg
-        monkeypatch.setattr(_pf, "_CAVITY_SHEET_CELL_FILL_FRAC", 0.1)
-        msg2 = str(_cavity_sim(True).preflight().by_code(CAVITY_CODE)[0])
-        assert "+25.0%" in msg2
-        assert "250µm is geometry[1]'s OWN cell (1mm at eps_r 4.000)" in msg2
+        assert "snap -100µm" in msg
+        assert "OWN cell" not in msg
 
 
 # ---------------------------------------------------------------------------
@@ -663,16 +633,53 @@ class TestSheetCavityThickness:
 # ---------------------------------------------------------------------------
 
 class TestOffLatticeCensus:
-    def test_off_lattice_edge_fires_with_residual_and_detune(self):
+    def test_off_lattice_edge_fires_with_alignment_residual(self):
         """lo face 0.3 mm off-lattice on a 9 mm extent = 3.33%: one
-        aggregated advisory carrying the residual and df/f ~ dL/L."""
+        aggregated advisory carrying the measured alignment residual."""
         hits = _off_lattice_sim(False).preflight().by_code(OFF_LATTICE_CODE)
         assert len(hits) == 1
         msg = str(hits[0])
         assert "300µm" in msg
         assert "3.33%" in msg
-        assert "df/f" in msg
+        assert "df/f" not in msg
+        assert "frequency sensitivity depends on the mode" in msg
         assert "COVERAGE:" in msg and "STALE IF:" in msg
+
+    @pytest.mark.parametrize("kind,lo,hi,z_hi,realized_mm,residual_mm", [
+        ("sheet", 1.2, 6.2, 2.0, 4.0, 0.2),
+        ("volume", 1.3, 6.7, 4.0, 6.0, 0.3),
+    ])
+    def test_nearest_node_residual_is_not_an_extent_error_bound(
+        self, kind, lo, hi, z_hi, realized_mm, residual_mm,
+    ):
+        from rfx.boundaries.pec import realized_pec_edge_masks
+        from rfx.geometry.rasterize_grid import coords_from_uniform_grid
+
+        sim = Simulation(domain=(12 * MM, 8 * MM, 8 * MM), dx=MM,
+                         freq_max=10e9, boundary="cpml")
+        sim.add(Box((lo * MM, 2 * MM, 2 * MM),
+                    (hi * MM, 5 * MM, z_hi * MM)), material="pec")
+        hits = sim.preflight().by_code(OFF_LATTICE_CODE)
+        assert len(hits) == 1 and hits[0].severity == "warning"
+
+        grid = sim._build_grid()
+        sheets, wires = [], []
+        assembled = sim._assemble_materials(grid, pec_sheets=sheets, pec_wires=wires)
+        edges = realized_pec_edge_masks(assembled[3], sheets=tuple(sheets),
+                                       wires=tuple(wires), periodic=sim._periodic_flags())
+        nodes = np.asarray(coords_from_uniform_grid(grid).x)
+        # Ey lies on x nodes, so its occupied columns bound the physical span.
+        columns = np.flatnonzero(np.asarray(edges[1]).any(axis=(1, 2)))
+        actual = float(nodes[columns[-1]] - nodes[columns[0]])
+        residual = max(float(np.min(abs(nodes - face * MM))) for face in (lo, hi))
+        assert actual == pytest.approx(realized_mm * MM, rel=0, abs=1e-15)
+        assert residual == pytest.approx(residual_mm * MM, rel=0, abs=1e-15)
+        assert abs(actual - (hi - lo) * MM) > residual
+        message = str(hits[0])
+        assert f"({kind}) x:" in message
+        assert "declared-face alignment only" in message
+        assert "up to the printed residual" not in message
+        assert "df/f" not in message
 
     def test_on_lattice_edges_are_silent(self):
         rep = _off_lattice_sim(True).preflight()
@@ -687,10 +694,10 @@ class TestOffLatticeCensus:
         - tightened (tol 0.005 -> -1.0): the on-lattice fixture emitted 1
           advisory -> the comparison is live in both directions.
         """
-        monkeypatch.setattr(_pf, "_OFF_LATTICE_EDGE_TOL", 1.0)
+        monkeypatch.setattr(_pec, "_OFF_LATTICE_EDGE_TOL", 1.0)
         assert _off_lattice_sim(False).preflight().by_code(
             OFF_LATTICE_CODE) == []
-        monkeypatch.setattr(_pf, "_OFF_LATTICE_EDGE_TOL", -1.0)
+        monkeypatch.setattr(_pec, "_OFF_LATTICE_EDGE_TOL", -1.0)
         assert len(_off_lattice_sim(True).preflight().by_code(
             OFF_LATTICE_CODE)) == 1
 
@@ -709,6 +716,123 @@ class TestOffLatticeCensus:
         msg = str(hits[0])
         assert msg.count("geometry[") == 5  # capped at the worst 5
 
+    def test_sheet_in_plane_edges_are_examined_and_its_normal_is_not(self):
+        """A sheet's in-plane rim is a real design edge (its footprint is
+        sampled closed on the nodes it covers); its NORMAL axis has no
+        extent and is reported by sheet_plane_realized instead — the
+        message says so."""
+        sim = Simulation(domain=(12 * MM, 8 * MM, 8 * MM), dx=1 * MM,
+                         freq_max=10e9, boundary="cpml")
+        sim.add(Box((1.3 * MM, 2.0 * MM, 2.0 * MM),
+                    (10.3 * MM, 5.0 * MM, 2.0 * MM)), material="pec")
+        hits = sim.preflight().by_code(OFF_LATTICE_CODE)
+        assert len(hits) == 1
+        msg = str(hits[0])
+        assert "(sheet) x:" in msg and "300µm" in msg
+        assert "1 sheet normal axis/axes reported by sheet_plane_realized" in msg
+
+
+# ---------------------------------------------------------------------------
+# #931 §3 — per-declaration realization findings
+# ---------------------------------------------------------------------------
+
+class TestRealizationFindings:
+    def test_one_cell_volume_warns_with_both_walls(self):
+        """A PEC Box exactly one cell thick is a filled slab with walls on
+        both faces; the warning prints both planes and names the sheet
+        declaration as the foil remedy."""
+        hits = _stack_sim(5.0).preflight().by_code(ONE_CELL_CODE)
+        assert len(hits) == 1
+        msg = str(hits[0])
+        assert "walls at 2mm and 3mm" in msg
+        assert "add_thin_conductor" in msg
+        assert hits[0].severity == "warning"
+
+    def test_two_cell_volume_is_silent(self):
+        assert _stack_sim(6.0, ground_cells=2).preflight().by_code(
+            ONE_CELL_CODE) == []
+
+    def test_sheet_plane_notice_prints_declared_realized_and_offset(self):
+        """Per sheet: declared mid-plane, realized node plane, offset; a
+        NOTICE (info severity) so it never blocks and never counts as a
+        warning. A sheet declared at 6.3 mm realizes on 6 mm: -0.300 cell."""
+        sim = Simulation(domain=(10 * MM, 10 * MM, 8 * MM), dx=1 * MM,
+                         freq_max=10e9, boundary="cpml")
+        sim.add(Box((2 * MM, 2 * MM, 5.0 * MM), (8 * MM, 8 * MM, 5.0 * MM)),
+                material="pec")
+        sim.add(Box((2 * MM, 2 * MM, 6.3 * MM), (8 * MM, 8 * MM, 6.3 * MM)),
+                material="pec")
+        rep = sim.preflight()
+        hits = rep.by_code(PLANE_CODE)
+        assert len(hits) == 1
+        assert hits[0].severity == "info"
+        msg = str(hits[0])
+        assert "2 PEC sheet(s) realized" in msg and "1 of them off" in msg
+        assert "declared mid-plane 6.3mm, realized node plane" in msg
+        assert "(offset -0.300 cell = 300µm)" in msg
+        assert "declared mid-plane 5mm" in msg and "(offset +0.000 cell" in msg
+        assert rep.ok
+
+    def test_half_cell_tie_is_a_warning_naming_both_planes(self):
+        """A face-registered foil (both faces on nodes) has its mid-plane
+        on an exact tie; the contract resolves it LOWER and says so."""
+        rep = _tie_stack_sim().preflight()
+        hits = [h for h in rep.by_code(PLANE_CODE) if h.severity == "warning"]
+        assert len(hits) == 1
+        msg = str(hits[0])
+        assert "2 PEC sheet(s) declared with a mid-plane on an exact half-cell TIE" in msg
+        assert "equidistant from node planes" in msg
+        assert "realized on the LOWER one" in msg
+        assert "declared mid-plane 850µm" in msg
+
+    def test_sub_cell_box_is_an_error_and_run_raises(self):
+        """§1.5: a 0.4 mm PEC Box on a 1 mm cell is refused. Preflight
+        reports it as pec_box_subcell (error severity, report.ok False)
+        with the physical thickness and the local cell, and run() raises
+        the same refusal."""
+        sim = Simulation(domain=(10 * MM, 10 * MM, 8 * MM), dx=1 * MM,
+                         freq_max=10e9, boundary="cpml")
+        sim.add(Box((2 * MM, 2 * MM, 2.0 * MM), (8 * MM, 8 * MM, 2.4 * MM)),
+                material="pec")
+        sim.add_source((5 * MM, 5 * MM, 5 * MM), "ez")
+        rep = sim.preflight()
+        hits = rep.by_code(SUBCELL_CODE)
+        assert len(hits) == 1
+        assert hits[0].severity == "error"
+        assert not rep.ok
+        msg = str(hits[0])
+        assert "0.0004 m against a local cell of 0.001 m" in msg
+        assert "declare a sheet" in msg
+        # the checks that need the assembly stay silent rather than
+        # announcing 'unavailable' — the refusal IS the reason
+        assert rep.by_code(UNAVAILABLE_CODE) == []
+        with pytest.raises(ValueError, match="thinner than one cell"):
+            sim.run(n_steps=2)
+
+    def test_zero_cell_volume_is_an_error(self):
+        """A post between cell centres (radius 0.55 mm centred on a node,
+        dx = 1 mm: the nearest centres are 0.707 mm away) rasterizes to
+        no cell — the #369 vaporized-metal class, now pec_zero_cells."""
+        sim = Simulation(domain=(10 * MM, 10 * MM, 8 * MM), dx=1 * MM,
+                         freq_max=10e9, boundary="cpml")
+        sim.add(Cylinder(center=(5 * MM, 5 * MM, 4 * MM), radius=0.55 * MM,
+                         height=2 * MM), material="pec")
+        rep = sim.preflight()
+        hits = rep.by_code(ZERO_CELLS_CODE)
+        assert len(hits) == 1
+        assert hits[0].severity == "error"
+        assert "PolylineWire" in str(hits[0])
+
+    def test_line_box_is_a_refusal(self):
+        """Two zero-extent axes: a line is not a conductor (§1.5)."""
+        sim = Simulation(domain=(10 * MM, 10 * MM, 8 * MM), dx=1 * MM,
+                         freq_max=10e9, boundary="cpml")
+        sim.add(Box((2 * MM, 5 * MM, 4 * MM), (8 * MM, 5 * MM, 4 * MM)),
+                material="pec")
+        hits = sim.preflight().by_code(REFUSED_CODE)
+        assert len(hits) == 1 and hits[0].severity == "error"
+        assert "a line or a point is not a conductor" in str(hits[0])
+
 
 # ---------------------------------------------------------------------------
 # Wiring: the checks reach run()'s chain and respect skip semantics
@@ -726,18 +850,40 @@ class TestWiring:
         sim.add(Box((1 * MM, 1 * MM, 1 * MM), (7 * MM, 7 * MM, 5 * MM)),
                 material="core")
         rep = sim.preflight()
-        for code in (CONGRUENCE_CODE, LIVE_EDGE_CODE, CAVITY_CODE,
-                     OFF_LATTICE_CODE, "campaign_statics_unavailable"):
+        for code in (CONGRUENCE_CODE, SLOT_CODE, CAVITY_CODE,
+                     OFF_LATTICE_CODE, ONE_CELL_CODE, PLANE_CODE,
+                     SUBCELL_CODE, ZERO_CELLS_CODE, REFUSED_CODE,
+                     UNAVAILABLE_CODE):
             assert rep.by_code(code) == []
 
     def test_advisory_tier_none_block(self):
-        """All four are warning-severity: report.ok stays True."""
+        """The campaign checks and the one-cell/slot findings are
+        warning-severity, the plane notice is info: report.ok stays True."""
         rep = _congruence_sim(True).preflight()
         hits = rep.by_code(CONGRUENCE_CODE)
         assert hits and all(h.severity == "warning" for h in hits)
+        assert rep.ok
         rep2 = _cavity_sim(True).preflight()
         assert all(h.severity == "warning"
                    for h in rep2.by_code(CAVITY_CODE))
+        assert all(h.severity == "info" for h in rep2.by_code(PLANE_CODE))
+        assert rep2.ok
+        rep3 = _slot_sim(True).preflight()
+        assert all(h.severity == "warning" for h in rep3.by_code(SLOT_CODE))
+        assert rep3.ok
+
+    def test_context_is_built_once_per_configuration(self):
+        """The shared context is reused across the checks of one preflight
+        and rebuilt after an add(): a cache keyed on the entries, not a
+        stale instance attribute (the add_box-after-preflight lesson)."""
+        sim = _stack_sim(5.0)
+        c1 = sim._campaign_ctx()
+        assert sim._campaign_ctx() is c1
+        sim.add(Box((2 * MM, 2 * MM, 6 * MM), (8 * MM, 8 * MM, 6 * MM)),
+                material="pec")
+        c2 = sim._campaign_ctx()
+        assert c2 is not c1
+        assert sum(1 for e in c2.entry_realizations() if e.kind == "sheet") == 2
 
 
 # ===========================================================================
@@ -926,33 +1072,39 @@ def test_validator_count_matches_the_real_rasterizer(z_lo_mm, z_hi_mm):
 
 
 # ===========================================================================
-# formerly tests/unit/preflight/test_preflight_rasterization.py
+# formerly tests/unit/preflight/test_preflight_thin_metal_nu.py
 # ===========================================================================
 
 def _build(dz_profile):
+    """FR4 patch on a graded z mesh, foils declared as SHEETS (#931).
+
+    The ground sits on the substrate floor (z = 12 mm) and the patch on its
+    top (z = 13.5 mm): zero-thickness Boxes via add(), i.e. sheet
+    declarations realized on those node planes. (Before #931 both were
+    0.25 mm PEC Boxes on a 1 mm cell — a sub-cell volume the contract
+    refuses rather than snaps, so the fixture states its intent instead.)
+    """
     h_sub = 1.5e-3
     sim = Simulation(
         freq_max=4e9, domain=(0.08, 0.075, 0), dx=1e-3,
         dz_profile=dz_profile, cpml_layers=8,
     )
     sim.add_material("fr4", eps_r=4.3)
-    z_gnd_lo = 12e-3 - 0.25e-3
     z_sub_lo = 12e-3
     z_sub_hi = 12e-3 + h_sub
-    z_patch_lo = z_sub_hi
-    z_patch_hi = z_sub_hi + 0.25e-3
-    sim.add(Box((0.010, 0.010, z_gnd_lo), (0.070, 0.065, z_sub_lo)),
+    sim.add(Box((0.010, 0.010, z_sub_lo), (0.070, 0.065, z_sub_lo)),
             material="pec")
     sim.add(Box((0.010, 0.010, z_sub_lo), (0.070, 0.065, z_sub_hi)),
             material="fr4")
-    sim.add(Box((0.025, 0.018, z_patch_lo), (0.054, 0.057, z_patch_hi)),
+    sim.add(Box((0.025, 0.018, z_sub_hi), (0.054, 0.057, z_sub_hi)),
             material="pec")
     return sim
 
 
 def test_asymmetric_metal_on_nu_triggers_warning():
-    # Raw profile with sharp 1mm → 0.25mm → 1mm transitions. Metal planes
-    # sit in cells with 4x larger neighbours — should warn.
+    # Raw profile with sharp 1mm → 0.25mm → 1mm transitions. The ground
+    # plane (z = 12 mm) has a 1 mm cell below and a 0.25 mm cell above,
+    # the patch plane (13.5 mm) the reverse — both 4x asymmetric.
     dz = np.concatenate([np.full(12, 1e-3), np.full(6, 0.25e-3),
                          np.full(25, 1e-3)])
     sim = _build(dz)
@@ -960,10 +1112,12 @@ def test_asymmetric_metal_on_nu_triggers_warning():
     assert _has(issues, "issue #48"), (
         f"expected issue #48 warning, got: {issues!r}"
     )
+    hits = [i for i in issues if "issue #48" in i]
+    assert any("realized as a sheet" in i and "node" in i for i in hits), hits
 
 
 def test_symmetric_metal_on_nu_is_silent():
-    # All-uniform 0.25mm z profile. Metal cells have symmetric neighbours.
+    # All-uniform 0.25mm z profile. Metal planes have symmetric neighbours.
     dz = np.full(60, 0.25e-3)
     sim = _build(dz)
     issues = sim.preflight()

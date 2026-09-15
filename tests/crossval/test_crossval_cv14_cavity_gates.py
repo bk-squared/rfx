@@ -298,7 +298,16 @@ def test_permittivity_defect_is_caught_by_gate_3_alone():
     """Detection power beyond the audited defect, end to end: a 0.2% cavity-fill
     permittivity error leaves the geometry exact and moves every frequency by
     only ~0.1%. Gates 0, 1 and 2 all pass; Gate 3 fails. This is why Gate 3
-    exists rather than a tighter percentage in Gate 2."""
+    exists rather than a tighter percentage in Gate 2.
+
+    #931 SCOPE: cv14's walls are ``boundary="pec"`` domain faces, and the only
+    ``Box`` here is an air-fill DIELECTRIC. Domain-boundary PEC keeps its
+    convention under the lattice ownership contract (design note §1.8, which
+    names cv14 as a control), and dielectric cell sampling is untouched
+    (§1.1). So Gate 0's ``EXACT_EFF = (A, B, D)`` and the seven pinned
+    discrete-Yee frequencies are contract-independent: if they ever move, the
+    fence has been broken and that is the finding, not a re-derivation.
+    """
     import rfx
     from rfx.api import Simulation
 

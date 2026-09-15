@@ -38,7 +38,16 @@ ARTIFACT = (REPO_ROOT
             / "tests/fixtures/cv06b_estimator_regate/cv06b_estimator_falsifiers.json")
 
 DX50 = 50e-6
-H_SUB = 300e-6          # the dx=50um producer REALIZES 300um (h_sub_cells 5.08)
+# The dx=50um producer REALIZES a 300um substrate: 254um / 50um = 5.08, so the
+# node-half-open dielectric sampler takes six cells.
+#
+# #931: this constant does NOT move. The lattice ownership contract changes how
+# a CONDUCTOR is realized; dielectric sampling stays node-based and half-open
+# (design note §1.1), so the substrate this falsifier model is built on is the
+# same 300um it has always been. What does move on this board is the trace,
+# which becomes a sheet — but the trace enters this model only through
+# ``W_LINE_CELLS``, a declared width in cells, not through a realized reading.
+H_SUB = 300e-6
 W_LINE_CELLS = 12
 BOARD = dict(h_sub=H_SUB, eps_r=3.66, tan_d=0.0037, sigma=5.8e7,
              l_stub=12e-3, l_line=5e-3, z_ref=50.0)

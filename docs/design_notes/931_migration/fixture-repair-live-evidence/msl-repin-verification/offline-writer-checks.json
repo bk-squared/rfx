@@ -1,0 +1,10 @@
+{
+  "passed": 4,
+  "failed": 0,
+  "checks": [
+    "qualified transfer reproduces all 40 committed values",
+    "ineligible report rejected",
+    "tampered input fingerprint rejected",
+    "widened recorded gate rejected"
+  ]
+}

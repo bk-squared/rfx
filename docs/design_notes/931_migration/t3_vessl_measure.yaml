@@ -1,0 +1,50 @@
+name: rfx-931-post-t3-measure
+description: "#931 group T3 — re-measure the three numbers the group's docstrings quote and the contract moves: the WR-90 iris |S11|max (uniform and graded-dy), the wire-port three-load passive S11 table, and the thru-line fixture's Z0/beta after its trace became a sheet. None is an assertion; the gates in those files are ratios and self-comparisons. Producer: docs/design_notes/931_migration/t3_remeasure.py on branch feat/931-t3-nu-runners-grid-subgrid. Submit: vessl run create -f measure.yaml"
+tags: [rfx, issue-931, group-t3, remeasure, post-change]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_PLATFORMS: "cpu"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  SRC=/root/workspace/byungkwan-workspace/research/rfx-931-T3-nu-runners-grid-subgrid
+  test -d "$SRC" || { echo "ERROR: worktree missing at $SRC"; exit 3; }
+  git config --global --add safe.directory "$SRC" || true
+  cd "$SRC"
+  echo "=== provenance ==="
+  git rev-parse HEAD
+  git status --short | head -20 || true
+  "$PY" -m pip uninstall -y -q jax-cuda12-plugin jax-cuda12-pjrt 2>/dev/null || true
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest
+  export PYTHONPATH="$SRC"
+  export MPLBACKEND=Agg
+  export T3_COMMIT="$(git rev-parse HEAD)"
+  "$PY" -c "import jax, rfx; print('probe ok', jax.__version__, jax.devices(), rfx.__version__)"
+  RUNS=/root/workspace/claude-workspace/rfx/runs
+  OUT=$RUNS/issue931-post-t3-measure-$(date -u +%Y%m%dT%H%M%SZ)
+  mkdir -p "$OUT"
+  echo "$OUT" > "$RUNS/issue931-post-t3-measure.latest"
+  trap 'chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
+  echo "artifacts: $OUT"
+  echo "$T3_COMMIT" > "$OUT/commit.txt"
+  set +e
+  timeout 10800 "$PY" -u docs/design_notes/931_migration/t3_remeasure.py "$OUT/t3_remeasure.json" > "$OUT/measure.log" 2>&1
+  rc=$?
+  set -e
+  echo "$rc" > "$OUT/measure.rc"
+  tail -n 60 "$OUT/measure.log" || true
+  cat "$OUT/t3_remeasure.json" 2>/dev/null || true
+  echo "t3 measure rc=$rc"
+  exit "$rc"

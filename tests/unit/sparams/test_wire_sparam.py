@@ -102,7 +102,33 @@ def test_wire_sparam_probe_accumulates():
 
 
 def test_wire_s11_pec_cavity():
-    """S11 of wire port in PEC cavity should be passive (|S11| <= 1)."""
+    """S11 of wire port in PEC cavity should be passive (|S11| <= 1).
+
+    The DFT window has to outlast the cavity's own ring-down. The only
+    loss in this model is the port's 50 ohm, so the TM110 mode of the
+    30 x 30 mm cavity (7.07 GHz analytic; the 7.05 GHz bin) decays only
+    through the wire, and a window that ends while it still rings leaves
+    that bin's port-current DFT unresolved: its |I| sits an order of
+    magnitude below the neighbouring bins and the SIGN of Re(V/I) is set
+    by the truncation, not by the physics. Measured 2026-09-07 with the
+    port driving its declared 2..8 mm (six Ez edges, #931 R8), CPU
+    float32:
+
+        steps   window   ring-down (late/peak)   Z_in at 7.05 GHz   max|S11|
+        2000    3.8 ns   -43.0 dB                -76.6 + 7.3j        4.598
+        3000    5.7 ns   -45.6 dB                                    1.078
+        4000    7.6 ns   -48.1 dB                                    1.150
+        6000   11.4 ns   -53.3 dB                140.5 + 164.7j      0.999
+
+    The 2000-step window passed before #931 only because the port then
+    drove a seventh edge (2..9 mm, one past its declared end) and that
+    bin happened to read Re(Z_in) = +97.5 ohm (|S11| 0.328): the same
+    unresolved bin on the other side of zero, not a settled value. The
+    window is 6000 steps, the first at which every bin reads at or below
+    1, and the ring-down is asserted so a shorter window cannot come back
+    silently.
+    """
+    n_steps = 6000
     grid = Grid(freq_max=8e9, domain=(0.03, 0.03, 0.01), dx=0.001, cpml_layers=0)
     materials = init_materials(grid.shape)
 
@@ -116,24 +142,33 @@ def test_wire_s11_pec_cavity():
     materials = setup_wire_port(grid, port, materials)
 
     freqs = jnp.linspace(2e9, 8e9, 20)
-    probe = init_wire_sparam_probe(grid, port, freqs, dft_total_steps=2000)
+    probe = init_wire_sparam_probe(grid, port, freqs, dft_total_steps=n_steps)
 
     state = init_state(grid.shape)
-    for n in range(2000):
+    v_t = np.zeros(n_steps)
+    for n in range(n_steps):
         t = n * grid.dt
         state = update_h(state, materials, grid.dt, grid.dx)
         state = update_e(state, materials, grid.dt, grid.dx)
         state = apply_pec(state)
         probe = update_wire_sparam_probe(probe, state, grid, port, grid.dt)
+        v_t[n] = float(wire_port_voltage(state, grid, port))
         state = apply_wire_port(state, grid, port, t, materials)
 
     s11 = extract_s11(probe, z0=50.0)
     s11_mag = np.abs(np.array(s11))
+    ring_down_db = 20.0 * np.log10(np.abs(v_t[-200:]).max() / np.abs(v_t).max())
 
     print("\nWire port S11 in PEC cavity:")
+    print(f"  |S11| per bin: {np.array2string(s11_mag, precision=3)}")
     print(f"  |S11| range: {s11_mag.min():.3f} - {s11_mag.max():.3f}")
     print(f"  |S11| mean:  {s11_mag.mean():.3f}")
+    print(f"  port-voltage ring-down (last 200 steps / peak): {ring_down_db:.1f} dB")
 
+    # The window is long enough that the cavity has rung down through the
+    # port; -53.3 dB measured, gated with 3 dB in hand (4000 steps read
+    # -48.1 dB and its resonance bin was still moving).
+    assert ring_down_db < -50.0, f"DFT window ended while the cavity still rings: {ring_down_db:.1f} dB"
     # PEC cavity is lossless — |S11| should be close to 1
     assert np.all(s11_mag < 1.5), f"|S11| should be <= ~1, max={s11_mag.max():.3f}"
     assert not np.any(np.isnan(s11_mag)), "No NaN in S11"

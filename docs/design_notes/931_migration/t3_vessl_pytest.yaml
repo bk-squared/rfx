@@ -1,0 +1,54 @@
+name: rfx-931-post-t3-pytest
+description: "#931 group T3 (tests/unit/{nonuniform,runners,grid,subgrid}) — full pytest for those four directories INCLUDING the slow marks, on branch feat/931-t3-nu-runners-grid-subgrid. The shared pod may not run these (machine rule: one small pytest at a time, no solve over ~1 min), and the WR-90 iris pair in test_nonuniform_pec_scatterer_limit.py is a two-run waveguide S-matrix at num_periods=20. Submit: vessl run create -f pytest.yaml"
+tags: [rfx, issue-931, pytest, group-t3, post-change]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "1"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_PLATFORMS: "cpu"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  SRC=/root/workspace/byungkwan-workspace/research/rfx-931-T3-nu-runners-grid-subgrid
+  test -d "$SRC" || { echo "ERROR: worktree missing at $SRC"; exit 3; }
+  git config --global --add safe.directory "$SRC" || true
+  cd "$SRC"
+  echo "=== provenance ==="
+  git rev-parse HEAD
+  git status --short | head -20 || true
+  "$PY" -m pip uninstall -y -q jax-cuda12-plugin jax-cuda12-pjrt 2>/dev/null || true
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest pytest-xdist
+  export PYTHONPATH="$SRC"
+  export MPLBACKEND=Agg
+  export XLA_FLAGS=--xla_force_host_platform_device_count=2
+  "$PY" -c "import jax, rfx; print('probe ok', jax.__version__, jax.devices(), rfx.__version__)"
+  RUNS=/root/workspace/claude-workspace/rfx/runs
+  OUT=$RUNS/issue931-post-t3-pytest-$(date -u +%Y%m%dT%H%M%SZ)
+  mkdir -p "$OUT"
+  echo "$OUT" > "$RUNS/issue931-post-t3-pytest.latest"
+  trap 'chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
+  echo "artifacts: $OUT"
+  git rev-parse HEAD > "$OUT/commit.txt"
+  set +e
+  "$PY" -m pytest -q -n 8 -p no:cacheprovider --no-header -rfE \
+    -m "" --junitxml="$OUT/junit.xml" \
+    tests/unit/nonuniform tests/unit/runners tests/unit/grid tests/unit/subgrid \
+    > "$OUT/pytest.log" 2>&1
+  rc=$?
+  set -e
+  echo "$rc" > "$OUT/pytest.rc"
+  echo "t3 pytest rc=$rc"
+  tail -n 80 "$OUT/pytest.log" || true
+  grep -E "^(FAILED|ERROR) " "$OUT/pytest.log" > "$OUT/reds.txt" || true
+  echo "reds: $(wc -l < "$OUT/reds.txt")"
+  exit "$rc"

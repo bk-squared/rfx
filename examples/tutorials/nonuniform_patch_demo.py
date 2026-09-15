@@ -19,7 +19,19 @@ air.  This tutorial shows the practical recipe AND the trap that comes with it:
      more accurate than uniform — use it to make big problems tractable, not
      to chase digits.
 
-  Rule 3 — A PROPERLY RESOLVED PATCH IS MULTI-MODE.  Once the substrate is
+  Rule 3 — FOIL IS A SHEET.  The ground and the patch are 35 um of copper on
+     a 1.5 mm board; no mesh this tutorial can afford resolves that, and the
+     lattice ownership contract (#931) says so out loud: a foil is declared
+     with ``add_thin_conductor`` on a zero-thickness Box and is realized as a
+     footprint on ONE node plane, owning no cell.  So the fine band reserves
+     cells for the SUBSTRATE only.  Reserving a cell for the metal (what this
+     script used to do) hands the solve a vacuum cell inside the cavity: the
+     realized board reads 2.0 mm instead of 1.5 mm.  A ``Box`` with
+     ``material="pec"`` is the other declaration — a VOLUME, walls on both
+     faces with the cells between them shorted — and is the right one for a
+     plate, an iris or a post.
+
+  Rule 4 — A PROPERLY RESOLVED PATCH IS MULTI-MODE.  Once the substrate is
      truly 6 cells, harminv shows the patch's real modes: TM01 on the 38 mm
      width and TM10 on the 29.5 mm length at comparable amplitude, plus a
      higher mode.  Picking "the mode closest to the textbook estimate" is
@@ -27,10 +39,30 @@ air.  This tutorial shows the practical recipe AND the trap that comes with it:
      see ``examples/tutorials/patch_antenna_demo.py`` for that workflow.
      This script prints the full mode list and gates on no single frequency.
 
-Runtime: measured 2026-09-05, 64-core CPU, run alone: 1169 s (19 min), of
-which the num_periods=120 FDTD run is 1160 s.  Settling at 120 periods:
--53.8 dB (the witness in part [5] prints it every run).  Parts [1]-[3], the
-mesh lesson itself, are grid-only arithmetic and cost nothing to run.
+Runtime: the pre-#931 board measured 1169 s (19 min) at num_periods=120 on a
+64-core CPU run alone, settling -53.8 dB.  Under the ownership contract the
+foils are sheets and the cavity lost its two vacuum cells, which raised the
+modal Q: the same 120 periods measured -30.9 dB, under-settled by the witness
+in part [5].  The run is 200 periods for that reason and measures -41.4 dB,
+in 840 s of FDTD (VESSL 369367259280, CPU lane).  Parts [1]-[3], the mesh
+lesson itself, are grid-only arithmetic and cost nothing to run.
+
+The modes this now resolves, and why they are the patch's and not the mesh's
+(VESSL 369367259280):
+
+    1.9037 GHz  Q =  99.9   TM01 on the 38 mm width
+    2.4446 GHz  Q =  51.6   TM10 on the 29.5 mm length — the design mode
+    3.1847 GHz  Q =  97.9   TM11
+    3.7588 GHz  Q = 116.7   TM02
+
+TM10 sits 0.9 % under the Balanis estimate 2.4235 GHz.  The check that the
+list is a patch and not four numbers: TM11 predicted from the measured pair as
+sqrt(TM01^2 + TM10^2) is 3.100 GHz against 3.1847 measured, and TM02 predicted
+as 2 x TM01 is 3.807 GHz against 3.7588 — both inside the coarse-mode spread,
+so the ladder closes on itself.  The pre-contract board showed only three
+modes (2.1393 / 2.7266 / 3.5067 GHz, VESSL 369367259021); every one of them
+was HIGH, because a vacuum cell on each face of the cavity put air in series
+with the laminate and lowered eps_eff.
 
 Run:
   python examples/tutorials/nonuniform_patch_demo.py
@@ -45,7 +77,12 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from rfx import Simulation, Box
+from rfx import (
+    Box,
+    Simulation,
+    realized_pec_edge_masks,
+    realized_wall_planes,
+)
 from rfx.sources.sources import GaussianPulse
 from rfx.auto_config import smooth_grading
 from rfx.harminv import harminv
@@ -140,17 +177,14 @@ def realized_layout(dz_profile, layers):
 # =============================================================================
 print("\n[1] THE TRAP — geometry at fixed pre-smoothing z:")
 raw_dz_naive = np.concatenate([
-    np.full(n_below, dx),       # air below GP
-    np.full(1, dz_sub),         # GP cell
+    np.full(n_below, dx),       # air below the board
     np.full(n_sub, dz_sub),     # substrate
-    np.full(n_above, dx),       # air above patch
+    np.full(n_above, dx),       # air above the patch
 ])
 dz_naive = smooth_grading(raw_dz_naive, max_ratio=1.3)
 # The intended coordinates ignore the transition cells smooth_grading inserted:
 naive_layers = [
-    ("ground",    air_below - dz_sub, air_below,                  1),
-    ("substrate", air_below,          air_below + h_sub,          n_sub),
-    ("patch",     air_below + h_sub,  air_below + h_sub + dz_sub, 1),
+    ("substrate", air_below, air_below + h_sub, n_sub),
 ]
 naive_ok = realized_layout(dz_naive, naive_layers)
 print("  => smooth_grading inserted transition cells BELOW the fine band and "
@@ -167,23 +201,25 @@ assert not naive_ok, "expected the naive placement to misregister (the lesson)"
 print("\n[2] THE FIX — buffered fine band, z derived from the built mesh:")
 raw_dz = np.concatenate([
     np.full(n_below, dx),
-    np.full(n_buf + 1 + n_sub + 1 + n_buf, dz_sub),  # buf+GP+sub+patch+buf
+    np.full(n_buf + n_sub + n_buf, dz_sub),   # buf + substrate + buf
     np.full(n_above, dx),
 ])
 dz_profile = smooth_grading(raw_dz, max_ratio=1.3)
 edges = np.concatenate([[0.0], np.cumsum(dz_profile)])
 fi = np.where(np.isclose(dz_profile, dz_sub, rtol=1e-6))[0]
-assert len(fi) >= 2 + n_sub + 2 * n_buf, \
-    f"fine band lost: expected >= {2 + n_sub + 2*n_buf} fine cells, got {len(fi)}"
+assert len(fi) >= n_sub + 2 * n_buf, \
+    f"fine band lost: expected >= {n_sub + 2*n_buf} fine cells, got {len(fi)}"
 f0 = int(fi[0]) + n_buf                    # skip the lower buffer cells
-z_gnd_lo,   z_gnd_hi   = float(edges[f0]),     float(edges[f0 + 1])
-z_sub_lo,   z_sub_hi   = float(edges[f0 + 1]), float(edges[f0 + 1 + n_sub])
-z_patch_lo, z_patch_hi = z_sub_hi,             float(edges[f0 + 2 + n_sub])
+z_sub_lo, z_sub_hi = float(edges[f0]), float(edges[f0 + n_sub])
+# The ground and the patch are FOIL, so they are SHEETS on the substrate's own
+# two node planes — zero thickness, no cell of their own (#931 §1.3).  The
+# fine band therefore reserves no cell for them; before the lattice ownership
+# contract it reserved one each, and the ground's reserved cell sat inside the
+# realized cavity carrying vacuum.
+z_gnd, z_patch = z_sub_lo, z_sub_hi
 
 fixed_layers = [
-    ("ground",    z_gnd_lo,   z_gnd_hi,   1),
-    ("substrate", z_sub_lo,   z_sub_hi,   n_sub),
-    ("patch",     z_patch_lo, z_patch_hi, 1),
+    ("substrate", z_sub_lo, z_sub_hi, n_sub),
 ]
 fixed_ok = realized_layout(dz_profile, fixed_layers)
 assert fixed_ok, "mesh-derived registration must realize the intended cells"
@@ -194,8 +230,8 @@ centers = 0.5 * (edges[:-1] + edges[1:])
 is_trans = ~(np.isclose(dz_profile, dz_sub, rtol=1e-6) |
              np.isclose(dz_profile, dx, rtol=1e-6))
 tc = centers[is_trans]
-clearance = (float(min(np.min(np.abs(tc - z_gnd_lo)),
-                       np.min(np.abs(tc - z_patch_hi))))
+clearance = (float(min(np.min(np.abs(tc - z_gnd)),
+                       np.min(np.abs(tc - z_patch))))
              if len(tc) else float("inf"))
 print(f"  grading-transition clearance from the stack: {clearance*1e3:.2f} mm "
       f"(buffer n_buf={n_buf})")
@@ -217,6 +253,10 @@ print(f"\n[3] Mesh economics: NU {nx}x{ny}x{nz_nu} vs uniform-at-dz_sub "
 # FR4 is modelled lossless (sigma=0) so preflight's infinite-Q advisory will
 # fire: legitimate here — we quote mode FREQUENCIES, not absolute Q (real FR4
 # tan_delta ~0.02 would cap Q near ~50).
+# The second line names the realized PEC sheets and whether each landed on the
+# plane it declared (#931 §1.3): preflight collects sheets, so a sheet-declared
+# conductor is visible to it.  It is a statement of where the metal is, not a
+# finding about this geometry.
 # =============================================================================
 src_z   = z_sub_lo + dz_sub * 2.5
 probe_z = src_z
@@ -230,10 +270,16 @@ sim = Simulation(
     cpml_layers=n_cpml,
 )
 sim.add_material("fr4", eps_r=eps_r, sigma=0.0)
-sim.add(Box((gx_lo, gy_lo, z_gnd_lo), (gx_hi, gy_hi, z_gnd_hi)), material="pec")
+# Ground and patch: zero-thickness Boxes through add_thin_conductor, i.e.
+# SHEETS on the substrate's two faces.  add_thin_conductor warns that a
+# metal's sigma_bulk makes this a lossless PEC sheet and that `thickness` is
+# unread — expected, and the reason foil is declared this way instead of as a
+# Box: a Box is a VOLUME and would put a shorted cell of metal into a 1.5 mm
+# board with a wall on each of its faces.
+sim.add_thin_conductor(Box((gx_lo, gy_lo, z_gnd), (gx_hi, gy_hi, z_gnd)))
 sim.add(Box((gx_lo, gy_lo, z_sub_lo), (gx_hi, gy_hi, z_sub_hi)), material="fr4")
-sim.add(Box((patch_x_lo, patch_y_lo, z_patch_lo),
-            (patch_x_hi, patch_y_hi, z_patch_hi)), material="pec")
+sim.add_thin_conductor(Box((patch_x_lo, patch_y_lo, z_patch),
+                           (patch_x_hi, patch_y_hi, z_patch)))
 sim.add_source(
     position=(feed_x, feed_y, src_z),
     component="ez",
@@ -245,10 +291,54 @@ sim.add_probe(
     component="ez",
 )
 
+# --- Build-time realization check (no solve): declared planes == realized ---
+# Read from the contract's own realization (realized_pec_edge_masks then
+# realized_wall_planes, #931 §1.7) applied to the arrays the assembly hands
+# the stepper, so this cannot drift from what the solve applies.
+# `_assemble_materials_nu` is private only because the realized edge set has
+# no public accessor yet; the two functions it feeds are public.
+from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid  # noqa: E402
+
+_grid = sim._build_nonuniform_grid()
+_sheets: list = []
+_mat, _deb, _lor, _pec_cells = sim._assemble_materials_nu(
+    _grid, pec_sheets=_sheets)
+_z_nodes = np.asarray(coords_from_nonuniform_grid(_grid).z, dtype=float)
+_walls = realized_wall_planes(
+    realized_pec_edge_masks(_pec_cells, sheets=_sheets,
+                            periodic=sim._periodic_flags()), 2)
+k_gnd = int(np.argmin(np.abs(_z_nodes - z_gnd)))
+k_patch = int(np.argmin(np.abs(_z_nodes - z_patch)))
+print(f"  realized conductor planes along z: {_walls} "
+      f"(declared ground {k_gnd} at {z_gnd*1e3:.3f} mm, "
+      f"patch {k_patch} at {z_patch*1e3:.3f} mm)")
+assert _walls == sorted({k_gnd, k_patch}), \
+    f"realized z wall planes {_walls} != declared {sorted({k_gnd, k_patch})}"
+assert abs(float(_z_nodes[k_patch] - _z_nodes[k_gnd]) - h_sub) < 1e-9, \
+    "realized cavity thickness != declared h_sub"
+
 print("\n[4] Preflight (advisories below are part of the result):")
 sim.preflight(strict=False)
 
-n_periods = 120   # the witness in [5] measured -53.8 dB here (2026-09-05)
+# 120 periods settled the PRE-#931 board (-53.8 dB, 2026-09-05). It does not
+# settle this one: with the vacuum cells gone from the cavity the modes are
+# higher-Q, and the #931 re-solve (VESSL 369367259177) measured -30.9 dB at
+# 120 — UNDER-SETTLED by the script's own witness. The binding mode is TM01
+# on the 38 mm width (1.9037 GHz, Q = 99.9), the slowest decayer in the set.
+#
+# 200 periods measures -41.4 dB (VESSL 369367259280). That clears the -40 dB
+# bar, but by 1.4 dB, which is less margin than the number below was chosen
+# for — worth knowing before anyone shortens this run or quotes a Q off it.
+# The two estimates that picked 200 bracketed badly: TM01's free decay says
+# -43.0 dB at 200 (1.6 dB pessimistic, close), while extrapolating the
+# measured -30.9 dB linearly in time says -51.5 dB (10 dB optimistic, wrong —
+# it charges the source ramp to the decay). The MEASURED slope between the two
+# runs is 0.131 dB/period (-30.9 at 120, -41.4 at 200); size any future change
+# from that, not from either estimate.
+#
+# Raising the run length is the response to an unsettled run; lowering the bar
+# would not be.
+n_periods = 200   # -41.4 dB measured; see the docstring runtime note
 print(f"\nRunning NU simulation (num_periods={n_periods})...")
 t0 = time.time()
 result = sim.run(num_periods=n_periods)
@@ -280,7 +370,7 @@ print("\n[6] Harminv modes (all, sorted by frequency):")
 for m in modes:
     print(f"  f = {m.freq/1e9:.4f} GHz   Q = {m.Q:5.1f}   amp = {m.amplitude:.2e}")
 print("""
-  Reading this honestly (Rule 3): with the substrate truly resolved to 6 cells
+  Reading this honestly (Rule 4): with the substrate truly resolved to 6 cells
   the patch shows its REAL modes — the lower one lives on the wider W=38 mm
   dimension (TM01), the middle on L=29.5 mm (TM10, the radiating design mode),
   plus a higher-order mode.  Their amplitudes at a single probe are comparable,

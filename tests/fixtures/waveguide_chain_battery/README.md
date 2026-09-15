@@ -1,28 +1,56 @@
 # waveguide_chain_battery — fixture JSON schema
 
-Three artifacts live in this directory, one per pre-declared run, and they share this schema.
+Four battery artifacts live in this directory, one per pre-declared run, and they share this schema.
+The separate `closure_witness.json` is documented below.
 
 | file | `schema_version` | pre-declaration | port | shift pair |
 |---|---|---|---|---|
 | `fixture.json` | 1 | `docs/design_notes/waveguide_chain_battery_predeclaration.md` | transverse eigenproblem on N+1 cells for an N-cell guide (`fc_port_hz` 5.877188 / 6.204954 / 6.378004 GHz) | `half_turn_pair` (0.03048, 0.08890) |
 | `fixture_guide_cell_aperture.json` | 2 | `docs/design_notes/waveguide_chain_battery_remeasure_predeclaration.md` | corrected: the guide's own N cells (`fc_port_hz` 6.523901 / 6.548821 / 6.555060 GHz) | `sign_discriminating_pair` (0.02540, 0.09906) |
 | `fixture_v18_close.json` | 3 | `docs/design_notes/20260905_v18_close_predeclaration.md` | same corrected port; 18 cells bit-identical to run 2's | `sign_discriminating_pair` (0.02540, 0.09906) |
+| `fixture_931_realized_pec_forward2_run369367259427.json` | 4 | `docs/design_notes/waveguide_chain_battery_predeclaration.md` at `bcce73c9` (2026-09-08 amendments) | same corrected port; realized PEC edges in the device lane | `sign_discriminating_pair` (0.02540, 0.09906) |
 
 `fixture.json` is frozen: it is the record of a port that no longer exists and is neither
 edited nor re-pinned. `fixture_guide_cell_aperture.json` is the record of run 2 as measured
-(float32 primary on every lane). `fixture_v18_close.json` is the live artifact and says so in
-its own `supersedes` key: the same port and the same battery, with contract criterion 1
+(float32 primary on every lane). `fixture_v18_close.json` is the historical run-3 record, with contract criterion 1
 (forward identity) and 3(a) (AD-vs-FD) read under x64 on the `normalize="flux"` lane per the
 v1.8 closing declaration, the float32 reading stored beside the x64 one on every leg, and the
 pre-declared zero-derivative leg carried as `report_only`.
 
-Both are written by the measurement driver
+`fixture_v18_close.json` was measured under the sigma=1e10 device cell-fill operator;
+it is preserved unchanged and superseded because the device lane now applies realized PEC edges.
+
+The live reference is `fixture_931_realized_pec_forward2_run369367259427.json`,
+a byte-for-byte ingest of the PI-adjudicated run **369367259427**, commit `6df7ccaf`,
+schema 4, predeclaration `bcce73c9`. The filename identifies the realized-PEC
+operator, admissible second-order forward eps stencil, and source run. Its 18 cells,
+14 AD/FD legs and 178 verdicts recompute as **102 pass / 76 report_only / 0 fail /
+0 not_interpretable**. The CPU and GPU live cell comparisons in
+`tests/oracle/test_waveguide_chain_battery_v18_close.py` use this reference;
+the third live test (coarse plane shift) checks physics directly. Historical
+schema 1–3 replays retain their own artifacts and assertions.
+
+Provenance caveat: the supplied JSON records `provenance.run_id` as
+`UNSET-see-log-filename` and `jax_default_backend` as `cpu`; the source run's
+adjacent `run_id.txt` supplies `369367259427`. These original fields are preserved,
+not silently repaired. The ingest does not establish a GPU live-test pass.
+SHA-256: `fcfef5cf89b0a736f187e358c6c73f4613521d6cbcee2bb0d556487400c0bf61`.
+
+**Open item — slab coarse/flux drift:** against historical `fixture_v18_close.json`,
+`max|S_new - S_old| = 1.0422476162860573e-5` (S11, 8.4 GHz). This was not
+pre-declared and remains unexplained: 2.08 times the `5e-6` envelope, though below
+the unchanged `1e-4` live gate. A passing live comparison does not explain this
+historical delta and must not justify widening either value. See
+[the ingest record and per-bin comparison](../../../docs/design_notes/931_migration/T6-chain-fixture-ingest-20260908.md).
+
+All four battery artifacts are written by the measurement driver
 `scripts/diagnostics/waveguide_chain_battery_measure.py` (one JSON per case persisted as it
 finishes, then assembled) and replayed by `tests/oracle/test_waveguide_chain_battery.py`,
 `tests/oracle/test_waveguide_chain_battery_guide_cell_aperture.py` and
 `tests/oracle/test_waveguide_chain_battery_v18_close.py`. Each run's pre-declaration
 and the builder `tests/_waveguide_chain_battery_fixture.py` were committed first (PR #861 for
-run 1, PR #891 for run 2, the closing note at `10b39787` for run 3) so that every tolerance, position and drive setting provably predates
+run 1, PR #891 for run 2, the closing note at `10b39787` for run 3, and the amended
+parent declaration at `bcce73c9` for run 4) so that every tolerance, position and drive setting provably predates
 that run's first measured S-parameter. This file fixes the schema the measurement writes, so
 the writer and the replay gate cannot drift. Gate arithmetic shared by the writer and the
 replay: `tests/_waveguide_chain_battery_gates.py`.
@@ -35,7 +63,7 @@ Units: metres, hertz, seconds, S/m, decibels, degrees. Complex values are writte
 | key | type | meaning |
 |---|---|---|
 | `schema` | string | `"rfx.waveguide_chain_battery"` |
-| `schema_version` | int | starts at 1; bump on any key change. 1 = run 1 (`fixture.json`), 2 = run 2 (`fixture_guide_cell_aperture.json`, which adds `shift_pair_name`, `supersedes` and `supersedes_reason`), 3 = run 3 (`fixture_v18_close.json`, which adds `primary_precision`, `forward_identity_float32`, `ad_vs_fd_float32`, `zero_derivative` and `report_only_reason` on the AD legs, `base_precision` / `shift_precision` and `gradient_invariance_x64_base` on the plane-shift legs). From 3 on, `tests/_waveguide_chain_battery_gates.py::X64_DECLARED_LANES` names the lanes whose criterion-1 / 3(a) readings are x64; a leg on such a lane without `primary_precision == "x64"` recomputes as `not_interpretable` |
+| `schema_version` | int | starts at 1; bump on any key change. 1 = run 1 (`fixture.json`), 2 = run 2 (`fixture_guide_cell_aperture.json`, which adds `shift_pair_name`, `supersedes` and `supersedes_reason`), 3 = run 3 (`fixture_v18_close.json`, which adds `primary_precision`, `forward_identity_float32`, `ad_vs_fd_float32`, `zero_derivative` and `report_only_reason` on the AD legs, `base_precision` / `shift_precision` and `gradient_invariance_x64_base` on the plane-shift legs), 4 = the realized-PEC / forward2 run (adds stencil and full-array FD validity records; removes the lossless PEC eps magnitude family). From 3 on, `tests/_waveguide_chain_battery_gates.py::X64_DECLARED_LANES` names the lanes whose criterion-1 / 3(a) readings are x64; a leg on such a lane without `primary_precision == "x64"` recomputes as `not_interpretable` |
 | `predeclaration` | string | path of the design note, plus its commit sha in `predeclaration_sha` |
 | `predeclaration_sha` | string | the commit the note was read at — the version of the note that was binding when the run started; it predates `provenance.commit` or equals it (run 3: the note's last pre-run revision IS the run commit `f914a7ca`; the note's earlier commits and one post-start edit are listed in its section 6) |
 | `shift_pair_name` | string | schema_version ≥ 2 only: which named pair in `tests/_waveguide_chain_battery_fixture.py::_K_SHIFT_PAIRS` this run's `reference_planes_shifted_m` realizes. An artifact without the key resolves to `half_turn_pair`, so the builder guard keeps binding for both files and cannot silently accept a third pair |
@@ -199,6 +227,14 @@ zero-derivative leg (`EXPECTED_ULP_SKIP`) whose FD resolved above the ULP floor 
 a `verdict == "report_only"` leg, never read as the verdict (closing note §2; the ratio on run 3 is
 5.709, outside the factor-3 band, written so report_only is not mistaken for pass);
 `report_only_reason` says why.
+
+Schema 4 uses `stencil="forward2"` for eps with `f0`, `f_plus` (f_h), `f_2h`,
+`fd_ulp_budget`, and `fd_validity` certificates for every full-array stencil arm;
+`g_fd = (-3*f0 + 4*f_plus - f_2h)/(2*h)`. Sigma retains `central2` and `f_minus`.
+Missing/invalid mandatory records block replay. The four PEC-short eps legs are
+Re/Im S11 on both lanes; the lossless PEC eps magnitude family, including its
+plane-shift gradient family, is removed by the amendment. The 0.05 relative gate
+and 1e4 ULP floor are unchanged. Schema 1–3 keep their historical interpretation.
 
 ## `port_cutoff`
 

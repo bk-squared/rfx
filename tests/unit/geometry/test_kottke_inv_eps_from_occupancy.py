@@ -120,11 +120,18 @@ def test_half_fill_y_normal_kottke_signature():
     # neighbor-max"): the occ=0.5 boundary cell adjacent to a PEC cell
     # (occ=1) is neighbor-max-dilated, so interior_mask = sigmoid((1−0.5)/
     # smooth_width) ≈ 1 and the Kottke output is ×(1−1) = 0 → inv_yy → 0
-    # (hard PEC mirror).  This is the AD-smooth analogue of the binary
-    # apply_pec_mask `pec_mask & (roll | roll)` rule that the production
-    # compute_msl_s_matrix path uses for Box(material="pec"); it is
-    # VESSL-validated by witness |s21| 0.27 → 0.77 (the wave now reflects
-    # cleanly off the open-stub end instead of leaking).  The pre-dilation
+    # (hard PEC mirror).
+    # This was calibrated against the pre-#931 binary rule
+    # `pec_mask & (roll | roll)`, which no longer exists: the binary
+    # realization is now `realized_pec_edge_masks` (an E component is PEC
+    # iff it is incident to an occupied cell -- four cells, #931 1.2).
+    # #931 1.8 fences the Kottke subpixel path OUT of the contract, so the
+    # expectations here are unchanged and this dilation is NOT claimed to be
+    # the smooth analogue of the current binary rule; it is a subpixel model
+    # with its own interior selection, and reconciling the two is the
+    # follow-up 1.8 names. The dilation's own witness stands as recorded:
+    # VESSL |s21| 0.27 -> 0.77 (the wave reflects cleanly off the open-stub
+    # end instead of leaking).  The pre-dilation
     # 0.25 expectation (from ancestor commit ef6f570, authored ~6 min before
     # 60939e0) is stale — see docs rfx-known-issues "Kottke occupancy dilation".
     assert jnp.allclose(bnd_yy, 0.0, atol=1e-2), (

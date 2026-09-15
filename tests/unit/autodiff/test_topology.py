@@ -283,13 +283,27 @@ def test_density_to_material_fields_pec_foreground_uses_occupancy():
     assert float(fields.pec_occupancy[0, 2]) > 1.0 - 1e-3
 
 
-def test_apply_pec_occupancy_matches_binary_mask_for_sheet():
-    """Binary occupancy should reduce to the hard-mask PEC operator."""
-    state = init_state((5, 5, 5))._replace(
-        ex=jnp.ones((5, 5, 5), dtype=jnp.float32),
-        ey=jnp.ones((5, 5, 5), dtype=jnp.float32),
-        ez=jnp.ones((5, 5, 5), dtype=jnp.float32),
+def _ones_state(shape=(5, 5, 5)):
+    return init_state(shape)._replace(
+        ex=jnp.ones(shape, dtype=jnp.float32),
+        ey=jnp.ones(shape, dtype=jnp.float32),
+        ez=jnp.ones(shape, dtype=jnp.float32),
     )
+
+
+def test_apply_pec_occupancy_matches_the_binary_volume_rule():
+    """The soft path is the relaxation of the VOLUME rule (#931 §1.6).
+
+    ``pec_occupancy`` is a per-CELL density, so the object it relaxes is a
+    volume: the noisy-OR ``M = 1 - Pi(1 - o_c)`` over the four cells
+    incident to an edge collapses, at binary occupancy, to exactly the four
+    -cell OR of ``realized_pec_edge_masks``.  The old name said "sheet"
+    because the fixture is one cell thick; a one-cell PEC body is a filled
+    slab with a wall on BOTH of its bounding node planes under the
+    contract, not a sheet, and the assertion below is unchanged by that
+    rename because both sides moved together.
+    """
+    state = _ones_state()
     mask = jnp.zeros((5, 5, 5), dtype=jnp.bool_).at[2, :, :].set(True)
 
     hard = apply_pec_mask(state, mask)
@@ -298,6 +312,29 @@ def test_apply_pec_occupancy_matches_binary_mask_for_sheet():
     np.testing.assert_allclose(np.array(hard.ex), np.array(soft.ex))
     np.testing.assert_allclose(np.array(hard.ey), np.array(soft.ey))
     np.testing.assert_allclose(np.array(hard.ez), np.array(soft.ez))
+    # ... and the two REALIZATIONS are different objects, which is what the
+    # old name blurred: the volume shorts its normal edge, a declared sheet
+    # on the same plane leaves it live (#931 §1.3).
+    from rfx.boundaries.pec import SheetSpec, realized_pec_edge_masks
+    fp = jnp.zeros((5, 5, 5), dtype=jnp.bool_).at[2, :, :].set(True)
+    sheet = realized_pec_edge_masks(
+        None, sheets=[SheetSpec(normal_axis=0, plane=2, footprint=fp)])
+    assert not bool(jnp.any(sheet[0])), "sheet normal Ex must stay live"
+    assert bool(jnp.any(realized_pec_edge_masks(mask)[0])), (
+        "a one-cell volume shorts its normal edge")
+
+
+def test_apply_pec_occupancy_does_not_realize_a_declared_sheet():
+    """A sheet's plane is a static integer, not a traced density (#931
+    §1.6): the soft path carries volumes only, and sheets are OR'd in as
+    static masks by the caller.  Pinned so a future "sheets through
+    occupancy" shortcut has to argue with a test."""
+    state = _ones_state()
+    occ = jnp.zeros((5, 5, 5), dtype=jnp.float32)
+    out = apply_pec_occupancy(state, occ)
+    np.testing.assert_allclose(np.array(out.ex), np.array(state.ex))
+    np.testing.assert_allclose(np.array(out.ey), np.array(state.ey))
+    np.testing.assert_allclose(np.array(out.ez), np.array(state.ez))
 
 
 # ---------------------------------------------------------------------------

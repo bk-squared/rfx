@@ -29,6 +29,20 @@ Distributed-path warnings are not exercised here because they require
 multi-device availability; their helper entry is wired identically to
 the other paths and is covered by the unit test on
 ``_warn_unsupported_run_kwargs`` below.
+
+#931 AND ``conformal_pec``. The lattice ownership contract removes
+per-entry realization knobs — ``two_plane`` is gone and passing it is a
+``TypeError`` — and a test greps ``rfx/`` for any surviving
+``realization=``-style keyword on a geometry entry. ``conformal_pec`` is
+NOT in that class and stays: it is a run-level SUBPIXEL model (Dey-Mittra
+weights) layered on top of the realized edge set, fenced in design note
+§1.8 alongside Kottke, not a second answer to "which edges are PEC". The
+uniform lane applies the realized edges AND the conformal weights; the
+NU / subgridded lanes cannot, so they warn and drop — which is what the
+rows below pin. The lanes therefore still disagree about SUBPIXEL
+treatment while agreeing about realization, and this file is where that
+distinction is visible. If ``conformal_pec`` ever moves onto the
+declaration, this test's kwarg tables are the checklist.
 """
 
 from __future__ import annotations

@@ -26,7 +26,7 @@ The patch workflow has two separate pieces: the model that passes preflight in
 
 ## Baseline geometry
 
-Place the ground plane as a finite PEC box inside the domain, not as a full-domain PEC boundary wall. A finite ground plane radiates into the absorber beneath it, which is the open-radiation problem being modelled; a PEC bottom wall turns the structure into a closed cavity and shifts the resonance high.
+Place the ground plane as a finite conductor inside the domain, not as a full-domain PEC boundary wall. For foil that is a sheet — `add_thin_conductor()` or a zero-thickness `Box` — and a `Box` with real thickness only when the metal really is that thick ([How conductors land on the lattice](/rfx/guide/materials-geometry/#how-conductors-land-on-the-lattice)). A finite ground plane radiates into the absorber beneath it, which is the open-radiation problem being modelled; a PEC bottom wall turns the structure into a closed cavity and shifts the resonance high.
 
 ## How to run the cross-check
 

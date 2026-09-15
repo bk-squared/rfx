@@ -32,6 +32,22 @@ walls intact). Documented in ``docs/guides/support_matrix.{json,md}``.
 Both tests are now hard gates: the uniform witness confirms the iris fixture is
 a valid strong reflector, and the NU gate confirms the PEC iris reflects on the
 graded-``dy`` path within the uniform reflector class.
+
+RE-MEASURED under the #931 lattice ownership contract (VESSL run
+369367259209, commit 7b8d9921, ``JAX_PLATFORMS=cpu``; producer
+``docs/design_notes/931_migration/t3_remeasure.py``, output
+``/root/workspace/claude-workspace/rfx/runs/issue931-post-t3-measure-20260907T123234Z/t3_remeasure.json``):
+
+    uniform  |S11|max = 2.170   (was ~0.78-2.1)
+    graded-dy |S11|max = 1.807  (was ~1.4-1.6)
+
+Two things moved at once and neither is separated here, because neither
+gate binds on the value: the fins are now drawn on the node line (so the
+realized block is the drawn one, not a 1.5 mm block between two planes the
+drawing never named), and the waveguide S-matrix lane applies the realized
+PEC edges instead of folding ``pec_mask`` cells into ``sigma = 1e10``. The
+numbers above are the reflector class, quoted so the next reader does not
+carry the pre-#931 figures forward.
 """
 from __future__ import annotations
 
@@ -45,6 +61,9 @@ from rfx.api import Simulation
 from rfx.auto_config import smooth_grading
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.geometry.csg import Box
+from tests.unit._wall_planes_m import wall_planes_m
+
+
 
 _A, _B, _FMAX = 0.02286, 0.01016, 12e9
 _FREQS = jnp.linspace(8.2e9, 12.4e9, 5)
@@ -75,8 +94,20 @@ def _iris_sim(*, nonuniform: bool):
     sim.add_material("metal", eps_r=1.0, sigma=1e7)  # sigma > 1e6 -> PEC
     xc = 0.5 * nx * dx
     fin = 0.30 * _A
-    sim.add(Box((xc - 1e-3, 0.0, 0.0), (xc + 1e-3, fin, _B)), material="metal")
-    sim.add(Box((xc - 1e-3, _A - fin, 0.0), (xc + 1e-3, _A, _B)), material="metal")
+    # #931: the fins are a VOLUME (a metal block through the guide), and
+    # they are drawn ON node planes so drawn thickness == realized
+    # thickness: one cell, walls at xc -/+ dx/2. The old corners
+    # (xc -/+ 1 mm at dx = 1.5 mm) sat mid-cell, so the realized fin was
+    # 1.5 mm wide between two node planes the drawing never named and the
+    # realized position depended on where the box fell between two cell
+    # centres. Nothing in this file is about the fin's thickness — it is a
+    # strong-reflector witness — but an ambiguous drawing is what the
+    # contract exists to remove.
+    half_t = 0.5 * dx
+    sim.add(Box((xc - half_t, 0.0, 0.0), (xc + half_t, fin, _B)),
+            material="metal")
+    sim.add(Box((xc - half_t, _A - fin, 0.0), (xc + half_t, _A, _B)),
+            material="metal")
     for x0, d, nm in ((0.015, "+x", "left"), (nx * dx - 0.015, "-x", "right")):
         sim.add_waveguide_port(
             x0, direction=d, mode=(1, 0), mode_type="TE",
@@ -93,6 +124,28 @@ def _iris_s11_max(*, nonuniform: bool) -> float:
             num_periods=_NP, normalize="flux",
         )
     return float(np.abs(np.asarray(res.s_params)[0, 0, :]).max())
+
+
+@pytest.mark.parametrize("nonuniform", [False, True])
+def test_the_iris_realizes_the_fins_where_they_are_drawn(nonuniform):
+    """Build-time gate (no solve) on both lanes: the fins realize walls at
+    BOTH drawn x planes and nowhere else (#931 §1.2).
+
+    The gates below are loose ratios and would survive a fin realized one
+    plane off; this is what says the two lanes rasterize the same obstacle
+    before either of them is asked to reflect off it.
+    """
+    dx = 1.5e-3
+    nx = int(round(0.100 / dx))
+    xc = 0.5 * nx * dx
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        sim = _iris_sim(nonuniform=nonuniform)
+        rz, xs = wall_planes_m(sim, 0, nonuniform=nonuniform)
+    assert not rz.sheets, "the fins are volumes, not sheets"
+    assert len(xs) == 2, f"expected two fin wall planes, got {xs}"
+    assert abs(min(xs) - (xc - 0.5 * dx)) < 1e-9
+    assert abs(max(xs) - (xc + 0.5 * dx)) < 1e-9
 
 
 @pytest.mark.slow
@@ -115,8 +168,9 @@ def test_nonuniform_pec_iris_reflects():
     pec_mask) → device and reference DFTs bit-identical → S11=0 for any
     reflector. Fixed by ``run_nonuniform_path(..., strip_interior_pec=True)`` on
     the reference (drops interior PEC, keeps the boundary guide walls). The
-    iris now recovers to |S11| ~ 1.4-1.6 on the graded-dy path, in the same
-    strong-reflector class as the uniform witness."""
+    iris now recovers on the graded-dy path into the same strong-reflector
+    class as the uniform witness (|S11|max 1.807 vs 2.170 re-measured under
+    #931; ~1.4-1.6 vs ~0.78-2.1 when the fix landed)."""
     s11_nu = _iris_s11_max(nonuniform=True)
     assert s11_nu > 0.2, (
         f"NU PEC iris |S11|max={s11_nu:.3f} <= 0.2 — iris not reflecting; the "

@@ -1,0 +1,73 @@
+{
+  "note": "Exact selectors and empty addopts rehearsed serially. Remote timeout plugin flags are not installed locally; YAML explicitly installs pytest-timeout. Collection is not test execution.",
+  "lanes": [
+    {
+      "lane": "v173a",
+      "returncode": 0,
+      "selectors": [
+        "tests/unit/misc/test_v173a_physics_equivalence_slow.py"
+      ],
+      "log": "collect-v173a.log",
+      "summary": "4 tests collected in 1.35s"
+    },
+    {
+      "lane": "msl",
+      "returncode": 0,
+      "selectors": [
+        "tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_end_to_end_matches_historical_base",
+        "tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_drive_covers_the_declared_measurement_band",
+        "tests/unit/autodiff/test_msl_sparam_ad.py::test_qualification_checks_the_float32_rounded_band_endpoint",
+        "tests/unit/autodiff/test_msl_sparam_ad.py::test_migrated_trace_is_a_sheet_on_the_declared_plane",
+        "tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_accepts_matched_line_limit",
+        "tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables"
+      ],
+      "log": "collect-msl.log",
+      "summary": "12 tests collected in 1.12s"
+    },
+    {
+      "lane": "msl-long",
+      "returncode": 0,
+      "selectors": [
+        "tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_drive_covers_the_declared_measurement_band",
+        "tests/unit/autodiff/test_msl_sparam_ad.py::test_qualification_checks_the_float32_rounded_band_endpoint",
+        "tests/unit/autodiff/test_msl_sparam_ad.py::test_migrated_trace_is_a_sheet_on_the_declared_plane",
+        "tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_accepts_matched_line_limit",
+        "tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables"
+      ],
+      "log": "collect-msl-long.log",
+      "summary": "11 tests collected in 0.97s"
+    },
+    {
+      "lane": "msl-refine",
+      "returncode": 0,
+      "selectors": [
+        "tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_drive_covers_the_declared_measurement_band",
+        "tests/unit/autodiff/test_msl_sparam_ad.py::test_qualification_checks_the_float32_rounded_band_endpoint",
+        "tests/unit/autodiff/test_msl_sparam_ad.py::test_migrated_trace_is_a_sheet_on_the_declared_plane",
+        "tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_accepts_matched_line_limit",
+        "tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables"
+      ],
+      "log": "collect-msl-refine.log",
+      "summary": "11 tests collected in 0.87s"
+    },
+    {
+      "lane": "farfield",
+      "returncode": 0,
+      "selectors": [
+        "tests/unit/farfield/test_farfield_inplane_nonuniform.py"
+      ],
+      "log": "collect-farfield.log",
+      "summary": "3 tests collected in 0.90s"
+    },
+    {
+      "lane": "short",
+      "returncode": 0,
+      "selectors": [
+        "tests/contracts/test_pec_short_advisory_geometry.py",
+        "tests/unit/sparams/test_sparam_passivity_guard.py"
+      ],
+      "log": "collect-short.log",
+      "summary": "16 tests collected in 1.05s"
+    }
+  ]
+}

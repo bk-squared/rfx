@@ -1,0 +1,68 @@
+name: rfx-931-post-cv24
+description: "cv24 graded-z PEC cavity vs Pozar, the four-arm baseline leg exactly as scripts/vessl_cv24_nu_cavity.yaml runs it (no falsifiers, no gate test). POST-change recompute for the #931 lattice ownership contract (group X-E): detached worktree /root/workspace/byungkwan-workspace/research/rfx-931-XE-crossvalE at feat/931-crossval-E (HEAD recorded at run time). Submit: vessl run create -f cv24.yaml"
+tags: [rfx, issue-931, post, cv24, nonuniform, cavity, control]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_PLATFORMS: "cpu"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  echo "=== rfx #931 post-change recompute: cv24 (feat/931-crossval-E (HEAD recorded at run time)) ==="
+  date
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  SRC=/root/workspace/byungkwan-workspace/research/rfx-931-XE-crossvalE
+  test -d "$SRC" || { echo "ERROR: X-E worktree missing at $SRC"; exit 3; }
+  RUNS=/root/workspace/claude-workspace/rfx/runs
+  OUT=$RUNS/issue931-post-cv24-$(date -u +%Y%m%dT%H%M%SZ)
+  mkdir -p "$OUT"
+  echo "$OUT" > "$RUNS/issue931-post-cv24.latest"
+  trap 'chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
+  echo "artifacts: $OUT"
+  echo "X-E worktree /root/workspace/byungkwan-workspace/research/rfx-931-XE-crossvalE @ $(git -C '/root/workspace/byungkwan-workspace/research/rfx-931-XE-crossvalE' rev-parse HEAD 2>/dev/null || echo unknown)" | tee "$OUT/commit.txt"
+  WORK=/root/work/rfx931post-cv24
+  rm -rf "$WORK"
+  mkdir -p "$WORK"
+  cp -a "$SRC/." "$WORK/"
+  cd "$WORK"
+  touch "$OUT/.tstamp"
+  "$PY" -m pip uninstall -y -q jax-cuda12-plugin jax-cuda12-pjrt 2>/dev/null || true
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7"
+  export RFX_REPO_ROOT="$WORK"
+  export PYTHONPATH="$WORK"
+  export MPLBACKEND=Agg
+  "$PY" -c "import jax, rfx, os; print('probe ok | jax', jax.__version__, '| backend', jax.default_backend(), '| rfx', getattr(rfx, '__version__', '?'), '| from', os.path.dirname(rfx.__file__))"
+  echo "=== step cv24 ==="
+  set +e
+  timeout 7200 "$PY" -u validation/crossval/24_nu_rect_cavity_pozar.py > "$OUT/cv24.log" 2>&1
+  rc=$?
+  set -e
+  echo "$rc" > "$OUT/cv24.rc"
+  tail -n 40 "$OUT/cv24.log" || true
+  echo "cv24_rc=$rc"
+
+  echo "=== harvest: every file the run wrote into the staged checkout ==="
+  mkdir -p "$OUT/produced"
+  find "$WORK" -type f -newer "$OUT/.tstamp" \
+      -not -path "*/.git/*" -not -path "*/__pycache__/*" -not -name "*.pyc" \
+      > "$OUT/produced_files.txt" 2>/dev/null || true
+  while IFS= read -r f; do
+    rel=${f#$WORK/}
+    d=$(dirname "$rel")
+    mkdir -p "$OUT/produced/$d"
+    cp -p "$f" "$OUT/produced/$rel" 2>/dev/null || true
+  done < "$OUT/produced_files.txt"
+  echo "harvested $(wc -l < "$OUT/produced_files.txt") file(s)"
+  ls -la "$OUT"
+  chmod -R a+rX "$OUT" 2>/dev/null || true
+  echo "POST_CASE=cv24 RC=$rc"
+  exit "$rc"

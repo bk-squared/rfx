@@ -12,12 +12,17 @@ Branch: `agent/issue-884-diagnosis`.
 
 Committed values this note cites, machine-checked against the record by
 `tests/contracts/test_evidence_numeric_provenance.py`:
-`tests/fixtures/wr90_iris_filter/fixture.json::fdfd_formulation_independent.self_test.unitarity = 1.4655321400880439e-09`,
-`tests/fixtures/wr90_iris_filter/fixture.json::fdfd_formulation_independent.self_test.empty_s11 = 4.998689747642886e-14`,
+`tests/fixtures/wr90_iris_filter/fixture.json::fdfd_formulation_independent.self_test.unitarity = 2.3153723383018132e-09`,
+`tests/fixtures/wr90_iris_filter/fixture.json::fdfd_formulation_independent.self_test.empty_s11 = 4.9977732337688505e-14`,
 and the same two on the artifact side,
-`validation/crossval/_19_iris_filter_results/rfx.json::fdfd_formulation_independent.self_test.unitarity = 1.4655321400880439e-09`
+`validation/crossval/_19_iris_filter_results/rfx.json::fdfd_formulation_independent.self_test.unitarity = 2.3153723383018132e-09`
 and
-`validation/crossval/_19_iris_filter_results/rfx.json::fdfd_formulation_independent.self_test.empty_s11 = 4.998689747642886e-14`.
+`validation/crossval/_19_iris_filter_results/rfx.json::fdfd_formulation_independent.self_test.empty_s11 = 4.9977732337688505e-14`.
+**Both moved on 2026-09-07** when cv19 was regenerated under the #931 lattice ownership
+contract. The body below was written against the pre-#931 pair, `1.4655321400880439e-09`
+and `4.998689747642886e-14`, and is left as written; **§7 records the move, why it is
+round-off and not physics, and re-runs every derived margin in this note against the new
+datum.** Every verdict survives, with more margin.
 The live r=2 anchor's committed sample is
 `tests/fixtures/wr90_iris_filter/fixture.json::fdfd_formulation_independent.levels.2.s11[65] = 0.153281`.
 
@@ -47,7 +52,7 @@ cavities=[56,62,62,56], t=8, margin=45)` — exactly the call in the test.
 
 | build | `empty_s11` | `unitarity` |
 |---|---|---|
-| **committed** (`fixture.json`, `rfx.json`) = CI py3.10 / jax 0.6.2 / Linux x86-64 | `4.998689747642886e-14` | `1.4655321400880439e-09` |
+| **committed as of 2026-09-03** (`fixture.json`, `rfx.json`) = CI py3.10 / jax 0.6.2 / Linux x86-64 — superseded 2026-09-07, see §7 | `4.998689747642886e-14` | `1.4655321400880439e-09` |
 | CI py3.11 / jax ≥0.7 / Linux x86-64 (from #884) | (not reported; test named `unitarity`) | `1.5806898456816043e-08` |
 | local `~/Documents/rfx/.venv` — py3.11, **jax 0.10.2**, numpy 2.4.6, scipy 1.17.1, arm64/Accelerate | `4.66988620937557925e-14` | `2.57592525088057300e-09` |
 | local `venv062` — py3.11, **jax 0.6.2**, numpy 2.2.6, scipy 1.15.3, arm64/Accelerate | `4.66988620937557925e-14` | `2.57592525088057300e-09` |
@@ -478,8 +483,9 @@ decades **at the 1e-14 level**, i.e. the whole band is 160× or more under the b
   worst-case across the ensemble, `min(u_raw)/max(u_refined)` = 4.0920e+04.
 * **U3 `committed > 1000 · u_refined`.** Floor 6.2061e-11 on the default ordering,
   8.1046e-12 … 6.2950e-11 across the four. The committed
-  `tests/fixtures/wr90_iris_filter/fixture.json::fdfd_formulation_independent.self_test.unitarity = 1.4655321400880439e-09`
-  clears the *worst* of those by 23.3×; the 1e-12 polishing attack fails even the lowest
+  `tests/fixtures/wr90_iris_filter/fixture.json::fdfd_formulation_independent.self_test.unitarity = 2.3153723383018132e-09`
+  clears the *worst* of those by 36.8× (23.3× on the pre-#931 datum this section was
+  written against — see §7); the 1e-12 polishing attack fails even the lowest
   of them by 8.1×. The upper side is kept as `committed < 1e-6`, the solver's own
   acceptance tolerance.
 
@@ -491,7 +497,9 @@ exactly the traceback in #884.
 
 ### 6.3 What did NOT change
 
-* **No fixture or artifact number moved, and no field was added.** `u_refined` is a
+* **No fixture or artifact number moved, and no field was added** *by #884*. (Two
+  did move later, on 2026-09-07, when #931 regenerated the whole cv19 record; that is
+  a different provenance and §7 records it.) `u_refined` is a
   live quantity; committing a locally measured value into a record whose provenance is
   "the generation run on CI-3.10/x86-64" would have been a new instance of the same
   defect. `self_test`'s return dict is also unchanged, so the generator writes the same
@@ -510,7 +518,7 @@ exactly the traceback in #884.
 
   | | value |
   |---|---|
-  | committed `tests/fixtures/wr90_iris_filter/fixture.json::fdfd_formulation_independent.self_test.empty_s11 = 4.998689747642886e-14` | 5.00e-14 |
+  | committed `tests/fixtures/wr90_iris_filter/fixture.json::fdfd_formulation_independent.self_test.empty_s11 = 4.9977732337688505e-14` | 5.00e-14 |
   | live (both venvs, COLAMD) | 4.66988620937557925e-14 |
   | **margin against the 1.0-decade gate** | **0.0295 decades** |
   | spread across the four orderings (4.6699e-14 / 7.1550e-14 / 1.2905e-13 / 3.3711e-13) | 0.8585 decades |
@@ -639,6 +647,58 @@ gates **losslessness**, `empty_s11` gates **port transparency**. The decade comp
 that was deleted was doing none of the three.
 
 ---
+
+
+---
+
+## 7. Addendum 2026-09-07 — both cited scalars moved with the #931 regeneration
+
+Not a new investigation. cv19 was re-solved end to end under the #931 lattice ownership
+contract (pass 2, VESSL 369367259297, output `issue931-post-cv19-20260907T194954Z`,
+rc 0), and the two self-test scalars this note cites came back different. The citations
+above now hold the new values; this section says what moved, by how much, and whether
+anything the note concluded depends on it.
+
+| quantity | 2026-09-03 (pre-#931) | 2026-09-07 (committed now) | move |
+|---|---|---|---|
+| `self_test.unitarity` | 1.4655321400880439e-09 | 2.3153723383018132e-09 | ×1.58 |
+| `self_test.empty_s11` | 4.998689747642886e-14 | 4.9977732337688505e-14 | 1.8e-4 relative |
+
+**It is not a geometry change.** The FDFD leg's discretisation is bit-identical across
+the regeneration: `nx = 90`, `nz = 366`, `unknowns = 32663`, `metal_nodes_z = 9`,
+`h = 2.54e-4`, all unchanged, which is what the geometry-preserving redraw predicted.
+Its physics reproduced too: `richardson_34` f0 moved 75 Hz and bandwidth 395 Hz — 1.1e-6
+relative on a 351 MHz bandwidth — and the live r=2 anchor `levels.2.s11[65] = 0.153281`
+still resolves at `abs=1e-5`. `d_f0_vs_cascade` is −1.087 MHz in both records.
+
+**It is the class of quantity this whole note is about.** Both scalars are round-off
+residuals of a sparse direct solve, and §2 measured exactly that: `u_raw` spans 1.25
+decades across four fill-reducing orderings of the *same* matrix, and the two local venvs
+differ from CI-3.10 by 0.2449 decades with identical inputs. A ×1.58 move — 0.20 decades
+— is inside that band and carries no information about the model. The note's own §6.3
+warning applies to itself: if this number changes, that is the latent conditioning
+property, not a physics change.
+
+**Every derived margin, re-run against the new datum. All verdicts unchanged.**
+
+| where | statement | pre-#931 | now |
+|---|---|---|---|
+| §6.2 U3 | committed ÷ worst `u_refined` floor 6.2950e-11 | 23.3× | **36.8×** |
+| §6.2 close | committed ÷ default floor 6.2061e-11 | 23.6× | **37.3×** |
+| §3 | committed ÷ the derived 2.4203e-11 bound | 60.5× | **95.7×** |
+| §6.3 | `empty_s11` margin against the 1.0-decade gate | 0.0295 dec | **0.0295 dec** |
+| §1 | separation from CI-3.11's 1.5806898456816043e-08 | 1.0329 dec | **0.8342 dec** |
+
+Every one of the first four is a clearance that got *larger*, so nothing that passed now
+fails. The last one is not a gate on the committed value and the note never treated it as
+one: it is the arithmetic reproduction of #884's traceback, and #884's traceback is a
+fixed historical string computed from the pre-#931 pair. It is quoted in §1 as that
+reproduction and stays quoted at 1.0329; the 0.8342 above is what the same comparison
+would read today, and it is below the retired 1.0-decade condition — which is one more
+reading of why that condition was the wrong gate, not a reason to revisit it.
+
+The shipped gates U1 and U2 read `u_refined` and `u_raw`, both live quantities measured
+in-run. Neither touches the committed scalar, so neither moved.
 
 ## Appendix: reproduction
 

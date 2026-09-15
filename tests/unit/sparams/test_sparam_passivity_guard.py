@@ -152,11 +152,19 @@ def test_normalize_aware_tol_tolerates_documented_overshoot():
 # fires for normalize=False.  Message says "ADVISORY", NOT "UNRELIABLE".
 # =============================================================================
 def _soft_fired(rec):
-    return any("ADVISORY" in str(w.message) for w in rec)
+    return any("ADVISORY" in str(w.message) and "max column power" in str(w.message)
+               for w in rec)
 
 
 def _hard_fired(rec):
     return any("UNRELIABLE" in str(w.message) for w in rec)
+
+
+def test_soft_advisory_filter_excludes_reciprocity_warning():
+    with warnings.catch_warnings(record=True) as rec:
+        warnings.simplefilter("always")
+        warnings.warn("compute_waveguide_s_matrix: reciprocity ADVISORY")
+    assert not _soft_fired(rec)
 
 
 def test_soft_advisory_fires_in_the_over_unity_gap():
@@ -222,49 +230,93 @@ def test_gross_violation_still_hard_not_soft():
     assert not _soft_fired(rec)
 
 
-@pytest.mark.slow
-def test_soft_advisory_real_coarse_pec_short_witness():
-    """REAL-geometry witness: a coarse (dx=2mm) WR-90 PEC-short on the
-    normalize=False path lands at column power ~2.51 — above the ~2.0
-    documented envelope, below the 3.0 hard limit — and used to return
-    silently. It must now emit the soft advisory. The finer validated
-    PEC-short (column power ~2.00) must stay silent (false-positive check)."""
-    import jax.numpy as jnp
-    from rfx import Box, Simulation
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize("amplitude,expected", [
+    (np.nextafter(1.5, 0.0), "silent"),
+    (1.5, "silent"),
+    (np.nextafter(1.5, np.inf), "soft"),
+    (1.625, "soft"),
+    (2.0, "hard"),
+])
+def test_advisory_policy_boundaries(amplitude, expected, strict):
+    """Policy, not a PEC calibration: P=|b/a|^2, floor=1.5^2.
 
-    DOMAIN = (0.12, 0.04, 0.02)
-
-    def build(freqs, dx, cpml):
-        freqs = np.asarray(freqs, float)
-        f0 = float(freqs.mean())
-        bw = max(0.2, min(0.8, (freqs[-1] - freqs[0]) / f0))
-        sim = Simulation(freq_max=float(freqs[-1]), domain=DOMAIN,
-                         boundary="cpml", cpml_layers=cpml, dx=dx)
-        sim.add(Box((0.085, 0, 0), (0.087, DOMAIN[1], DOMAIN[2])), material="pec")
-        pf = jnp.asarray(freqs)
-        sim.add_waveguide_port(0.01, direction="+x", mode=(1, 0), mode_type="TE",
-                               freqs=pf, f0=f0, bandwidth=bw,
-                               waveform="modulated_gaussian", name="left")
-        sim.add_waveguide_port(0.09, direction="-x", mode=(1, 0), mode_type="TE",
-                               freqs=pf, f0=f0, bandwidth=bw,
-                               waveform="modulated_gaussian", name="right")
-        return sim
-
-    # Witness: coarse mesh -> column power in the gap -> soft advisory fires.
+    Adjacent float64 amplitudes test the open lower boundary without fitting
+    a simulated value. Strict mode must never promote a soft advisory.
+    """
+    s = np.full((1, 1, 3), amplitude, dtype=complex)
     with warnings.catch_warnings(record=True) as rec:
         warnings.simplefilter("always")
-        res = build(np.linspace(4e9, 6e9, 6), dx=2e-3, cpml=8).\
-            compute_waveguide_s_matrix(normalize=False, num_periods=30)
-    cp = float(np.sum(np.abs(np.asarray(res.s_params)) ** 2, axis=0).max())
-    assert 2.25 < cp <= 3.0, f"expected witness column power in the gap, got {cp:.4f}"
-    assert _soft_fired(rec), f"coarse PEC-short (colpow {cp:.4f}) must emit the advisory"
-    assert not _hard_fired(rec)
+        if strict and expected == "hard":
+            with pytest.raises(ValueError, match="UNRELIABLE"):
+                _warn_if_nonpassive_smatrix(
+                    _result(s), extractor="compute_waveguide_s_matrix",
+                    passivity_tol=2.0, strict=strict)
+            return
+        _warn_if_nonpassive_smatrix(
+            _result(s), extractor="compute_waveguide_s_matrix",
+            passivity_tol=2.0, strict=strict)
+    assert _soft_fired(rec) == (expected == "soft")
+    assert _hard_fired(rec) == (expected == "hard")
 
-    # False-positive: the finer validated PEC-short (~2.00) stays silent.
-    with warnings.catch_warnings(record=True) as rec2:
+
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize("normalize", [False, True, "flux"])
+@pytest.mark.parametrize("power,loose_expected", [
+    (1.0, "silent"), (2.25, "silent"), (2.5, "soft"),
+    (3.0, "soft"), (3.25, "hard"),
+])
+def test_public_waveguide_advisory_policy(monkeypatch, normalize, strict,
+                                         power, loose_expected):
+    """Replace the retired coarse-short warning trigger with a public API gate.
+
+    Inject at the numerical extractor boundary, leaving the public assembly,
+    normalization dispatch, result epilogue and diagnostic code real. With
+    incident a_j=1, the constructed column has outgoing power P=sum |b_i|^2.
+    The declared policy is silent through 2.25, warn-only through 1+2, then
+    hard; normalized paths instead have hard limit 1+0.10. No measured pin.
+    """
+    from tests._pec_short_advisory_fixture import build
+
+    # Unit incident power; distribute outgoing power over two real entries.
+    # Check exact float64 column sums so rounding cannot move a boundary case.
+    diagonal = min(1.5, np.sqrt(power))
+    cross = np.sqrt(power - diagonal**2)
+    s = np.zeros((2, 2, 6), dtype=complex)
+    s[0, 0] = s[1, 1] = diagonal
+    s[0, 1] = s[1, 0] = cross
+    np.testing.assert_array_equal(np.sum(np.abs(s)**2, axis=0), power)
+    original = s.copy()
+    calls = []
+    target = {False: "extract_waveguide_s_matrix",
+              True: "extract_waveguide_s_params_normalized",
+              "flux": "extract_waveguide_s_matrix_flux"}[normalize]
+
+    def extract(*args, **kwargs):
+        calls.append(target)
+        assert kwargs["return_settling"] is True
+        return s, np.array([-80., -80.])
+
+    # #980 Phase 2 moved compute_waveguide_s_matrix verbatim into
+    # rfx/sparams/waveguide.py, so the extractor it calls is a global of
+    # THAT module now. Patch where the name is looked up -- patching
+    # "rfx.api._sparams.<target>" still succeeds (the name is re-exported
+    # there) but would no longer be the binding the lane reads.
+    monkeypatch.setattr("rfx.sparams.waveguide." + target, extract)
+    expected = loose_expected if normalize is False else (
+        "silent" if power <= 1.10 else "hard")
+    with warnings.catch_warnings(record=True) as rec:
         warnings.simplefilter("always")
-        res2 = build(np.linspace(5e9, 7e9, 6), dx=1e-3, cpml=10).\
-            compute_waveguide_s_matrix(normalize=False, num_periods=40)
-    cp2 = float(np.sum(np.abs(np.asarray(res2.s_params)) ** 2, axis=0).max())
-    assert cp2 <= 2.25, f"validated PEC-short column power drifted into the gap: {cp2:.4f}"
-    assert not _soft_fired(rec2), "validated PEC-short must NOT emit the advisory"
+        sim = build(np.linspace(4e9, 6e9, 6), dx=2e-3, cpml=8)
+        if strict and expected == "hard":
+            with pytest.raises(ValueError, match="UNRELIABLE"):
+                sim.compute_waveguide_s_matrix(
+                    normalize=normalize, strict_passivity=strict, num_periods=1)
+        else:
+            result = sim.compute_waveguide_s_matrix(
+                normalize=normalize, strict_passivity=strict, num_periods=1)
+            np.testing.assert_array_equal(result.s_params, original)
+            assert _soft_fired(rec) == (expected == "soft")
+            assert _hard_fired(rec) == (expected == "hard")
+    assert calls == [target]
+    np.testing.assert_array_equal(s, original)

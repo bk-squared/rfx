@@ -38,13 +38,23 @@ from rfx.api._preflight import (
 )
 from rfx.geometry.csg import Cylinder
 
-DX = 2e-4
+H_SUB = 0.000794
+# ON-LATTICE board (#931 §1.3): h_sub / dx = 4 exactly, so the laminate
+# face is a node line and the foil sheets below land on it with no snap.
+# The fixture ran at dx = 200 um (h_sub/dx = 3.97) — close enough that a
+# sheet would still snap to node 4, but the contract asks for the board
+# to be ON the lattice rather than near it. Nothing this file asserts
+# depends on dx: the scan places conductors by bounding box and the
+# clearance rule is a function of frequency alone.
+DX = H_SUB / 4
 DOMAIN = (0.020, 0.02632, 0.0038)
 Y_C = 0.01316
 W_TRACE = 0.002413
-H_SUB = 0.000794
 X_PROBE = 0.008
-PATCH = ((0.012466, 0.003, H_SUB), (0.015006, 0.02332, H_SUB + DX))
+# Downstream patch: 35 um foil, so a SHEET on the laminate face — a
+# zero-thickness Box (§1.3), the same declaration the thin_conductor
+# variant below makes.
+PATCH = ((0.012466, 0.003, H_SUB), (0.015006, 0.02332, H_SUB))
 
 
 def _base():
@@ -53,8 +63,9 @@ def _base():
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (DOMAIN[0], DOMAIN[1], H_SUB)), material="sub")
     # The port's own feed trace (contains the feed plane -> excluded).
+    # 35 um foil -> a SHEET on the laminate face (#931 §1.3).
     sim.add(Box((0.001, Y_C - W_TRACE / 2, H_SUB),
-                (0.012466, Y_C + W_TRACE / 2, H_SUB + DX)), material="pec")
+                (0.012466, Y_C + W_TRACE / 2, H_SUB)), material="pec")
     return sim
 
 
@@ -124,6 +135,15 @@ def test_thin_conductor_sheets_are_scanned():
 
 
 def test_non_box_shape_is_placed_by_its_bounding_box():
+    """A one-cell-tall PEC disc: a VOLUME, deliberately.
+
+    A pad this shape would be a sheet, but a Cylinder can only declare one
+    by being zero-height (§1.3 places a non-Box sheet from its mid-plane
+    cross-section), and a finite-height Cylinder is classified as a volume
+    (``classify_pec_entry``). It is left a volume because this test is
+    about the SCAN placing a non-Box shape by its bounding box, which is
+    the same either way; the arbitrariness is recorded rather than hidden.
+    """
     sim = _base()
     sim.add(Cylinder(center=(0.0090, Y_C, H_SUB + DX / 2), radius=0.0004,
                      height=DX, axis="z"), material="pec")
@@ -138,6 +158,13 @@ class _NoBBox:
     """A conductor shape the scan cannot place."""
 
     def mask(self, grid):                     # pragma: no cover - unused
+        raise NotImplementedError
+
+    # #931: the ownership classifier reaches a non-Box shape through
+    # ``mask_on_coords`` (rasterize_grid.pec_volume_cell_mask), so the double
+    # has to refuse there too — refusing only ``mask`` let the classifier
+    # raise AttributeError instead of the refusal this fixture is about.
+    def mask_on_coords(self, x, y, z):        # pragma: no cover - unused
         raise NotImplementedError
 
 
@@ -186,8 +213,11 @@ def test_the_measured_board_shape_warns_now():
     """
     sim = _base()
     sim.add_material("metal", eps_r=1.0, sigma=5.8e7)
-    # Junction placed deliberately close to the probe ladder.
-    sim.add(Box((0.0088, 0.003, H_SUB), (0.0110, 0.02332, H_SUB + DX)),
+    # Junction placed deliberately close to the probe ladder. Foil, so a
+    # SHEET on the laminate face (#931 §1.3) — sigma = 5.8e7 promotes it
+    # to PEC, and a zero-extent axis is a sheet declaration whatever name
+    # the conductor carries.
+    sim.add(Box((0.0088, 0.003, H_SUB), (0.0110, 0.02332, H_SUB)),
             material="metal")
     sim.add_msl_port(position=(0.0025, Y_C, 0.0), width=W_TRACE,
                      height=H_SUB, direction="+x", impedance=50.0,
@@ -198,3 +228,8 @@ def test_the_measured_board_shape_warns_now():
     hits = [m for m in msgs
             if "from a strong reflector" in m and "metal" in m]
     assert hits, msgs
+    # #726: proximity is a layout diagnostic, not a predicted error in dB.
+    assert all("The two-wave model includes standing waves" in m for m in hits)
+    assert all("does not quantify the S-parameter error" in m for m in hits)
+    assert all("if it is empty, extend the uniform feed region" in m for m in hits)
+    assert not any("-5 to -10 dB" in m for m in hits)

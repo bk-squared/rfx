@@ -130,7 +130,12 @@ def test_mesh_preflight_underresolved_advisory():
     """The preflight advisory fires when the mesh's THINNEST dimension is below ~2 cells (a thin
     plate/wall — the #330 class), and stays SILENT on a well-resolved part regardless of how finely
     it is tessellated (the proxy is bbox extent, not triangle-edge, so smooth CAD doesn't cry wolf).
-    preflight() collects messages into the returned PreflightReport."""
+    preflight() collects messages into the returned PreflightReport.
+
+    #931: the remedy a thin CONDUCTOR plate wants is the sheet declaration
+    (``add_thin_conductor``, or a zero-thickness Box), not a finer mesh —
+    the advisory's wording is preflight's to update (design note §3,
+    ``_validate_mesh_quality``). The fire/no-fire pair here is unchanged."""
     from rfx.api import Simulation
 
     sim = Simulation(freq_max=5e9, domain=(0.06, 0.06, 0.06), dx=0.006,

@@ -59,7 +59,7 @@ conductors live in :mod:`rfx.fdfd.ports3d` and :mod:`rfx.fdfd.conductor`
 and enter through the :class:`BoundaryTerms` hooks of :func:`assemble`.
 S-parameter magnitudes are the validated quantities; phases are
 referenced to the reference planes and rotate with them. The
-``pml_r0`` default was tuned on the WR90 gate of ``tests/test_fdfd_yee3d.py``
+``pml_r0`` default was tuned on the WR90 gate of ``tests/unit/fdfd/test_fdfd_yee3d.py``
 (|Gamma_PML| ~ 2e-5 with 10 cells, 4e-6 with 16, at 10 GHz); other guides may
 want a different value.
 """
@@ -203,7 +203,7 @@ def _index_arrays(shapes, offsets):
     return [np.arange(int(np.prod(s))).reshape(s) + off for s, off in zip(shapes, offsets)]
 
 
-def _shift(idx: np.ndarray, axis: int, lo_off: int, hi_off: int) -> np.ndarray:
+def _crop_index(idx: np.ndarray, axis: int, lo_off: int, hi_off: int) -> np.ndarray:
     """``idx`` restricted along ``axis`` to the slice ``[lo_off, n - hi_off)``."""
     sl = [slice(None)] * 3
     sl[axis] = slice(lo_off, idx.shape[axis] - hi_off if hi_off else None)
@@ -237,16 +237,16 @@ def _curl_patterns(nx: int, ny: int, nz: int):
         face = f_idx[c]
         for sign, comp, axis in ((+1, b, a), (-1, a, b)):
             step_i = _axis_index(face.shape, axis)
-            ce.append((face, _shift(e_idx[comp], axis, 1, 0), +sign, axis, step_i))
-            ce.append((face, _shift(e_idx[comp], axis, 0, 1), -sign, axis, step_i))
+            ce.append((face, _crop_index(e_idx[comp], axis, 1, 0), +sign, axis, step_i))
+            ce.append((face, _crop_index(e_idx[comp], axis, 0, 1), -sign, axis, step_i))
         # Ch: (curl H)_c = d_a H_b - d_b H_a, backward difference to the edge
         edge = e_idx[c]
         for sign, comp, axis in ((+1, b, a), (-1, a, b)):
             step_i = _axis_index(edge.shape, axis)
-            rows_hi = _shift(edge, axis, 0, 1)          # H[idx] exists for idx_axis <= n-1
-            ch.append((rows_hi, f_idx[comp], +sign, axis, _shift(step_i, axis, 0, 1)))
-            rows_lo = _shift(edge, axis, 1, 0)          # H[idx - e_axis] exists for idx_axis >= 1
-            ch.append((rows_lo, f_idx[comp], -sign, axis, _shift(step_i, axis, 1, 0)))
+            rows_hi = _crop_index(edge, axis, 0, 1)          # H[idx] exists for idx_axis <= n-1
+            ch.append((rows_hi, f_idx[comp], +sign, axis, _crop_index(step_i, axis, 0, 1)))
+            rows_lo = _crop_index(edge, axis, 1, 0)          # H[idx - e_axis] exists for idx_axis >= 1
+            ch.append((rows_lo, f_idx[comp], -sign, axis, _crop_index(step_i, axis, 1, 0)))
 
     def pack(entries):
         r = np.concatenate([e[0].ravel() for e in entries])

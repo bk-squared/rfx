@@ -22,6 +22,18 @@ Exit codes (rfx crossval convention):
   1 = any gate failed (a falsifier arm MUST exit 1)
   2 = E2 pass but a Meep JSON is missing -- inconclusive, NOT a pass
 
+Lattice ownership contract (#931): this case contains NO conductor. The
+slab is a dispersive DIELECTRIC written straight into ``MaterialArrays``
+(``init_materials`` plus a boolean slab mask for the ADE pole) and the
+boundaries are CPML in x, periodic in y/z. The contract changes PEC
+realization only — dielectric sampling (node, half-open) is untouched
+(§1.8) — so cv22 is one of the cases whose committed artifacts must come
+back BIT-IDENTICAL after it. If a cv22 re-run moves, the change leaked
+outside the conductor path, and that is the finding, not a tolerance to
+widen. (There is no ``Simulation`` here to ask ``assert_no_conductor``;
+the arrays ARE the fixture. cv23's api arm carries that assertion for the
+shared slab rig.)
+
 Run:
   python validation/crossval/22_dispersive_slab_fresnel.py            # all arms
   python validation/crossval/22_dispersive_slab_fresnel.py --falsifier debye_tau_x2
@@ -41,7 +53,9 @@ import time
 import numpy as np
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, SCRIPT_DIR)
 sys.path.insert(0, os.path.join(SCRIPT_DIR, "comparators"))
+import _exit_evidence  # noqa: E402  (SCRIPT_DIR on sys.path)
 import cv22_dispersive_gates as G  # noqa: E402
 import dispersive_eps as DE  # noqa: E402
 import lattice_witness as LW  # noqa: E402
@@ -298,8 +312,12 @@ def main(argv=None) -> int:
         # The oracle is ALWAYS the declared material; a falsifier that were
         # judged against its own defective eps(f) would be self-consistent
         # and pass (caught in review before the first run).
+        # require_complete: this is the claims-bearing invocation, so a gate
+        # whose witness is absent (None) makes the verdict FAIL, never PASS
+        # (#928). The analytic falsifier checks, which have no run behind them,
+        # keep the default.
         e2 = G.evaluate_e2(run["freqs_hz"], run["R_rfx"], run["T_rfx"], model, params, run["dt_s"],
-                           tail=run["tail"])
+                           tail=run["tail"], require_complete=True, windows=G.WINDOWS)
         e2["params_run"] = {k: float(v) for k, v in params_run.items()}
         e2["band_inc_ok"] = run["band_inc_ok"]
         e2["inc_amp_rel"] = np.asarray(run["inc_amp_rel"]).tolist()
@@ -338,7 +356,7 @@ def main(argv=None) -> int:
             with open(meep_path) as fh:
                 mdoc = json.load(fh)
             mdoc["_source"] = os.path.relpath(meep_path, SCRIPT_DIR)
-            e4 = G.evaluate_e4(e2, mdoc)
+            e4 = G.evaluate_e4(e2, mdoc, windows=G.WINDOWS)
             print(f"  E4 ({meep_name}): Meep-vs-TMM max|dR|={e4['max_dR_meep_tmm_gated']:.4f} "
                   f"max|dT|={e4['max_dT_meep_tmm_gated']:.4f} mean {e4['mean_dR_meep_tmm_gated']:.4f}/"
                   f"{e4['mean_dT_meep_tmm_gated']:.4f}; rfx-vs-Meep max|dR|={e4['max_dR_rfx_meep_gated']:.4f} "
@@ -380,10 +398,12 @@ def main(argv=None) -> int:
     elif a.falsifier is not None:
         summary += f"  [falsifier {a.falsifier}: smoke run, verdict not evaluated -- see the E2 gates line]"
     doc["verdict"] = {"rfx_self_ok": not any_e2_fail, "meep_present": not any_meep_missing,
-                      "e4_ok": not any_e4_fail, "exit_code": rc, "summary": summary}
+                      "e4_ok": not any_e4_fail}
     out_path = os.path.join(out_dir, f"rfx__{a.tag}.json" if a.tag else G.rfx_json_name(a.falsifier))
-    with open(out_path, "w") as fh:
-        json.dump(doc, fh, indent=1)
+    # write_record puts exit_code and summary INTO the verdict block and arms
+    # the finalizer that amends them if this process ends with a different
+    # status than the verdict above declared (#946).
+    rc = _exit_evidence.write_record(out_path, doc, exit_code=rc, summary=summary)
     print(f"\n  artifact: {out_path}")
     print(f"\n{summary}")
     return rc

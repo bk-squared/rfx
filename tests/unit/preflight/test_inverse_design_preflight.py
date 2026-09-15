@@ -306,14 +306,20 @@ def _microstrip_sim(port_extent_m: float,
     """Minimal air-microstrip: PEC trace at z in [1.0, 1.5] mm, dx=0.5 mm.
 
     A vertical ez wire port from z=0 rasterizes (production
-    ``_wire_port_cells``) to cells of 0.5 mm with sample centers at
-    z = 0.25/0.75/1.25/... mm; extent 1.5 mm -> 4 cells, midpoint cell
+    ``_wire_port_cells``) to Ez edges of 0.5 mm with sample centers at
+    z = 0.25/0.75/1.25/... mm; extent 2.0 mm -> 4 edges, midpoint edge
     center z = 1.25 mm INSIDE the default trace (the measured #314
-    corruption case); extent 1.0 mm -> 3 cells, midpoint center z =
-    0.75 mm in the substrate gap BUT the TOP cell (center 1.25 mm) is
+    corruption case); extent 1.5 mm -> 3 edges, midpoint center z =
+    0.75 mm in the substrate gap BUT the TOP edge (center 1.25 mm) is
     inside the trace — the #313 dead-extent-cell geometry (issue #319).
     ``trace_z_lo_m``/``trace_z_hi_m`` move/thicken the trace for the
     clean and both-dead variants.
+
+    Every extent here is one cell longer than this fixture carried before
+    #931 R8. The GEOMETRY each test names is unchanged — the same edges,
+    the same dead ones — because the extent used to be endpoint-INCLUSIVE
+    and drove one edge past its declared end; it is half-open in edges
+    now, so the declaration has to state the length it actually wanted.
     """
     sim = Simulation(freq_max=10e9, domain=(0.016, 0.010, 0.006),
                      boundary="cpml", cpml_layers=6, dx=0.5e-3)
@@ -329,22 +335,22 @@ def _by_code(issues, code):
 
 
 def test_wire_midpoint_in_pec_warns():
-    issues = _microstrip_sim(1.5e-3).preflight()
+    issues = _microstrip_sim(2.0e-3).preflight()
     hits = [s for s in issues if "MIDPOINT" in s and "PEC" in s]
     assert hits, (
-        "extent=1.5mm puts the midpoint probe cell (z=1.25mm) inside the "
+        "extent=2.0mm puts the midpoint probe cell (z=1.25mm) inside the "
         "trace [1.0,1.5]mm — the #314 warning must fire: "
         + "\n".join(issues))
 
 
 def test_wire_midpoint_in_gap_does_not_warn():
-    """extent=1.0mm keeps the MIDPOINT (z=0.75mm) in the gap — no #314
+    """extent=1.5mm keeps the MIDPOINT (z=0.75mm) in the gap — no #314
     warning. (The top extent cell IS dead on this geometry; that is the
     separate #319 advisory, covered below.)"""
-    issues = _microstrip_sim(1.0e-3).preflight()
+    issues = _microstrip_sim(1.5e-3).preflight()
     hits = [s for s in issues if "MIDPOINT" in s]
     assert hits == [], (
-        "extent=1.0mm keeps the midpoint (z=0.75mm) in the gap — no #314 "
+        "extent=1.5mm keeps the midpoint (z=0.75mm) in the gap — no #314 "
         "warning expected: " + "\n".join(hits))
 
 
@@ -353,14 +359,14 @@ def test_wire_midpoint_in_gap_does_not_warn():
 # ---------------------------------------------------------------------------
 
 def test_wire_dead_extent_cell_warns_with_live_count():
-    """The #313 geometry: extent=1.0mm -> 3 cells (centers 0.25/0.75/1.25
-    mm); the TOP cell sits inside the trace [1.0,1.5]mm while the midpoint
+    """The #313 geometry: extent=1.5mm -> 3 edges (centers 0.25/0.75/1.25
+    mm); the TOP edge sits inside the trace [1.0,1.5]mm while the midpoint
     (0.75mm) is clean. The #319 dead-extent advisory must fire with
     n_live/n = 2/3, the post-#318-fix semantics (dead cells EXCLUDED from
     the resistance distribution / drive / normalization), and the
     historical pre-fix Z0*(n_live/n) = 33.3-ohm citation; the #314
     midpoint warning must NOT fire."""
-    issues = _microstrip_sim(1.0e-3).preflight()
+    issues = _microstrip_sim(1.5e-3).preflight()
     dead = _by_code(issues, "wire_port_dead_extent_cells")
     assert len(dead) == 1, (
         "expected exactly one dead-extent advisory, got: "
@@ -377,12 +383,12 @@ def test_wire_dead_extent_cell_warns_with_live_count():
 
 def test_wire_midpoint_only_dead_keeps_midpoint_warning_only():
     """Regression (#314) + documented #319/#318 behavior: when ONLY the
-    midpoint cell is dead (extent=1.5mm -> 4 cells, only z=1.25mm inside
+    midpoint edge is dead (extent=2.0mm -> 4 edges, only z=1.25mm inside
     the trace), the strong midpoint warning fires and the dead-extent
     advisory (reserved for NON-midpoint dead cells) does not. (The #318
     live-cell split still excludes that dead midpoint from sigma/drive —
     the advisory split here is about which WARNING fires.)"""
-    issues = _microstrip_sim(1.5e-3).preflight()
+    issues = _microstrip_sim(2.0e-3).preflight()
     assert _by_code(issues, "wire_port_midpoint_in_pec"), (
         "#314 midpoint warning must still fire: "
         + "\n".join(str(s) for s in issues))
@@ -392,9 +398,9 @@ def test_wire_midpoint_only_dead_keeps_midpoint_warning_only():
 
 
 def test_wire_port_all_cells_live_is_silent():
-    """Trace raised to [1.5,2.0]mm: all 3 cell centers (0.25/0.75/1.25mm)
+    """Trace raised to [1.5,2.0]mm: all 3 edge centers (0.25/0.75/1.25mm)
     are live — neither wire-port-in-PEC warning fires."""
-    issues = _microstrip_sim(1.0e-3, trace_z_lo_m=1.5e-3,
+    issues = _microstrip_sim(1.5e-3, trace_z_lo_m=1.5e-3,
                              trace_z_hi_m=2.0e-3).preflight()
     hits = (_by_code(issues, "wire_port_midpoint_in_pec")
             + _by_code(issues, "wire_port_dead_extent_cells"))
@@ -405,12 +411,12 @@ def test_wire_port_all_cells_live_is_silent():
 
 def test_wire_midpoint_and_other_cell_dead_fires_both():
     """Documented #319/#318 behavior for the combined case: a thick trace
-    [0.5,1.5]mm with extent=1.5mm kills cells 0.75mm AND 1.25mm (the
+    [0.5,1.5]mm with extent=2.0mm kills edges 0.75mm AND 1.25mm (the
     midpoint) -> BOTH warnings fire, and the dead-extent live count
     includes the midpoint cell (n_live/n = 2/4; historical pre-#318-fix
     termination citation ~25.0 ohm), because the live split does not care
     which cell holds the probe."""
-    issues = _microstrip_sim(1.5e-3, trace_z_lo_m=0.5e-3,
+    issues = _microstrip_sim(2.0e-3, trace_z_lo_m=0.5e-3,
                              trace_z_hi_m=1.5e-3).preflight()
     assert _by_code(issues, "wire_port_midpoint_in_pec"), (
         "midpoint (z=1.25mm) is inside the thick trace — #314 must fire: "

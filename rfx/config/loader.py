@@ -35,6 +35,7 @@ _KNOWN_TOP_KEYS = {
     "precision",
     "materials",
     "geometry",
+    "thin_conductors",
     "sources",
     "probes",
     "execution",
@@ -174,6 +175,46 @@ def _add_geometry(sim: Simulation, geometry_cfg) -> None:
         material = _require(entry, "material", ctx)
         shape = shape_from_config(entry)
         sim.add(shape, material=str(material))
+
+
+def _add_thin_conductors(sim: Simulation, tc_cfg) -> None:
+    """``thin_conductors:`` — sheet declarations (#931 §1.3).
+
+    A sheet is a footprint on ONE node plane with zero thickness, so the
+    front end needs a way to say it: a Box drawn with ``lo == hi`` on its
+    normal axis, plus either ``sigma_bulk`` (a PEC or DC-fold sheet) or
+    ``surface_impedance_f0`` (a Leontovich lossy sheet).  Spelling it as a
+    geometry entry instead would make it a VOLUME, which the rasterizer
+    refuses below one cell.
+
+    Example::
+
+        thin_conductors:
+          - shape: box
+            bounds: [[0.0, 0.0, 0.0016], [0.02, 0.02, 0.0016]]
+            sigma_bulk: 5.8e7
+    """
+    if tc_cfg is None:
+        return
+    if not isinstance(tc_cfg, list):
+        raise TypeError(
+            f"config 'thin_conductors' must be a list of sheets, got "
+            f"{type(tc_cfg).__name__}")
+    for i, entry in enumerate(tc_cfg):
+        ctx = f"thin_conductors[{i}]"
+        if not isinstance(entry, dict):
+            raise TypeError(f"{ctx} must be a mapping, got {type(entry).__name__}")
+        shape = shape_from_config(entry)
+        kwargs = {}
+        for key in ("sigma_bulk", "thickness", "eps_r", "surface_impedance_f0"):
+            if key in entry and entry[key] is not None:
+                kwargs[key] = float(entry[key])
+        if "sigma_bulk" not in kwargs and "surface_impedance_f0" not in kwargs:
+            raise ValueError(
+                f"{ctx}: a thin conductor needs either sigma_bulk (a PEC or "
+                "DC-fold sheet) or surface_impedance_f0 (a Leontovich lossy "
+                "sheet); neither was given.")
+        sim.add_thin_conductor(shape, **kwargs)
 
 
 def _add_sources(sim: Simulation, sources_cfg) -> None:
@@ -342,6 +383,7 @@ def simulation_from_dict(cfg: dict) -> Simulation:
     sim = Simulation(**_build_simulation_kwargs(cfg))
     _add_materials(sim, cfg.get("materials"))
     _add_geometry(sim, cfg.get("geometry"))
+    _add_thin_conductors(sim, cfg.get("thin_conductors"))
     _add_sources(sim, cfg.get("sources"))
     _add_probes(sim, cfg.get("probes"))
     return sim

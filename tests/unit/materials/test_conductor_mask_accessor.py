@@ -1,7 +1,7 @@
 """Issue #695 — one accessor for the WHOLE conductor footprint.
 
-Since #677 a ``surface_impedance_f0`` thin conductor is a node-thin
-per-step operator: it appears in NEITHER ``pec_mask`` NOR
+Since #677 a ``surface_impedance_f0`` thin conductor is a per-step
+operator on ONE node plane: it appears in NEITHER ``pec_mask`` NOR
 ``materials.sigma``.  A conductor-connectivity check written the obvious
 way (``pec_mask | (sigma > 1e3)``) therefore finds nothing and reports a
 healthy model as disconnected.  ``Simulation.conductor_mask()`` /
@@ -120,7 +120,9 @@ def test_accessor_uses_the_nonuniform_grid_on_a_graded_mesh():
     dz = _graded_dz()
     sim = _sheet_sim(dz_profile=dz)
     nu = sim._build_nonuniform_grid()
-    uni = sim._build_grid()
+    # Independent uniform comparator: the profiled simulation must refuse a
+    # surrogate uniform grid, and the accessor must retain the declared NU one.
+    uni = _sheet_sim()._build_grid()
     assert tuple(nu.shape) != tuple(uni.shape), (
         "fixture is not exercising the NU/uniform shape difference")
     # The profile really is graded (a uniform-valued profile would take
@@ -169,7 +171,7 @@ def test_refplane_call_site_sees_the_sheet():
     specs: list = []
     _mats, _, _, pec_mask, _, _, _ = sim._assemble_materials(
         grid, sheet_specs=specs)
-    ctx = build_sheet_impedance_ctx(specs, pec_mask=pec_mask)
+    ctx = build_sheet_impedance_ctx(specs)
     assert ctx is not None
     assert pec_mask is None, "fixture must have no PEC at all"
 
@@ -289,13 +291,28 @@ def test_driver_drive_pass_registers_planes_on_the_sheet_trace():
     """The per-drive call the S-matrix driver makes registers FOUR planes,
     and their Ampere loops hug the SHEET trace.
 
-    The leg/span indices asserted here are the hand-derived Phase-0 values
-    pinned for the PEC thru in
+    The plane indices and the v (height) legs are the hand-derived Phase-0
+    values pinned for the PEC thru in
     ``tests/locks/test_refplane_port_waves.py::
     test_refplane_registers_two_planes_per_port_with_phase0_geometry``.
-    They can only come out equal if the cross-section BFS found the sheet
-    at the same cells the PEC box occupies — a fallback or a partial mask
-    would move them.
+
+    The u (width) legs are ONE NODE WIDER than the PEC thru's, and that is
+    the contract, not a fallback (#931 §1.3/§1.9). The trace is drawn
+    ``y = 7.5 .. 12.5 mm`` at dx = 0.5 mm. A SHEET footprint is sampled
+    CLOSED, so it is nodes 23..33 — the drawn rectangle exactly, hi row
+    included. A one-cell PEC Box is a VOLUME, and its cell mask is cells
+    23..32; the two describe the SAME physical trace (the volume's realized
+    wall planes are 23 and 33), but ``_refplane_conductor_mask`` unions
+    cells-of-volumes with footprints-of-sheets in one array, where a node
+    footprint spans one index more than the cell footprint of the same
+    rectangle. The Ampere loop is built one node outside the mask bbox, so
+    the sheet's hi leg is 34 where the PEC box's is 33.
+
+    Re-pinned 2026-09-07 (#931): (u_lo_leg, u_hi_leg) 22,33 -> 22,34 and
+    (u_span_lo, u_span_hi) 23,34 -> 23,35. What the test still proves is
+    unchanged: the cross-section BFS FOUND the sheet — a fallback or a
+    partial mask moves the plane indices and the v legs, which did not
+    move.
     """
     from rfx.materials.thin_conductor import build_sheet_impedance_ctx
 
@@ -305,7 +322,7 @@ def test_driver_drive_pass_registers_planes_on_the_sheet_trace():
     mats, dsp, lsp, pec_mask, _, _, _ = sim._assemble_materials(
         grid, sheet_specs=specs)
     assert pec_mask is None, "fixture must carry NO pec_mask at all"
-    ctx = build_sheet_impedance_ctx(specs, pec_mask=pec_mask)
+    ctx = build_sheet_impedance_ctx(specs)
     assert ctx is not None
 
     raw = sim._forward_from_materials(
@@ -322,7 +339,66 @@ def test_driver_drive_pass_registers_planes_on_the_sheet_trace():
         (0, 0): 27, (0, 1): 30, (1, 0): 53, (1, 1): 50}
     for key, spec in by_key.items():
         # Trace bbox -> Ampere loop, byte-equal to the PEC thru's pins.
-        assert (spec.u_lo_leg, spec.u_hi_leg) == (22, 33), key
+        assert (spec.u_lo_leg, spec.u_hi_leg) == (22, 34), key
         assert (spec.v_lo_leg, spec.v_hi_leg) == (1, 3), key
-        assert (spec.u_span_lo, spec.u_span_hi) == (23, 34), key
+        assert (spec.u_span_lo, spec.u_span_hi) == (23, 35), key
         assert (spec.v_span_lo, spec.v_span_hi) == (2, 4), key
+
+
+# --------------------------------------------------------------------------
+# What conductor_mask() MEANS under the lattice ownership contract (#931)
+# --------------------------------------------------------------------------
+
+def test_conductor_mask_is_a_cell_footprint_not_the_realized_edge_set():
+    """The two objects, and the exact relation between them.
+
+    Under the contract there are two different things a consumer can want and
+    they must not be confused (they were, which is what #931 fixes):
+
+    * ``conductor_mask()`` — a CELL / node footprint: the cells of every PEC
+      VOLUME, the cells above the sigma threshold, and the node footprints of
+      f0 and PEC SHEETS. This is what a connectivity, occupancy or
+      cross-section check wants ("is there metal here").
+    * ``realized_pec_edge_masks()`` — the E EDGES the solver zeroes. This is
+      what the field update applies, and it is NOT derivable from the
+      footprint by any local rule: a volume's edge set reaches ONE PLANE
+      FURTHER than its cells on every axis (the far face, which owns no
+      cell), and a sheet's reaches one index LESS in each in-plane direction
+      (both end nodes must be in the footprint).
+
+    Both directions are asserted, so collapsing either object into the other
+    turns this red.
+    """
+    from tests._realized_geometry import node_index, realized
+
+    dx = 0.5e-3
+    sim = Simulation(freq_max=20e9, domain=(4e-3, 4e-3, 4e-3), dx=dx,
+                     boundary="pec")
+    sim.add(Box((1e-3, 1e-3, 1e-3), (3e-3, 3e-3, 2e-3)), material="pec")
+    rz = realized(sim)
+    assert rz.sheets == []
+    cells = np.asarray(sim.conductor_mask(rz.grid), dtype=bool)
+    np.testing.assert_array_equal(cells, np.asarray(rz.pec_mask, dtype=bool))
+    k_lo = node_index(rz.grid, 2, 1e-3)
+    k_hi = node_index(rz.grid, 2, 2e-3)
+    occupied = sorted(set(np.nonzero(cells.any(axis=(0, 1)))[0].tolist()))
+    assert occupied == list(range(k_lo, k_hi))          # cells: lo .. hi-1
+    assert rz.wall_planes(2) == list(range(k_lo, k_hi + 1))
+    assert len(rz.wall_planes(2)) == len(occupied) + 1, (
+        "a volume's far face is a wall with no conductor cell on it")
+
+    # the sheet half: footprint one index WIDER than the in-plane edge set
+    sim_s = Simulation(freq_max=20e9, domain=(4e-3, 4e-3, 4e-3), dx=dx,
+                       boundary="pec")
+    sim_s.add(Box((1e-3, 1e-3, 2e-3), (3e-3, 3e-3, 2e-3)), material="pec")
+    rs = realized(sim_s)
+    assert rs.pec_mask is None, "a sheet owns no cell"
+    (spec,) = rs.sheets
+    foot = np.asarray(sim_s.conductor_mask(rs.grid), dtype=bool)
+    np.testing.assert_array_equal(foot, np.asarray(spec.footprint, dtype=bool))
+    n_i = int(foot.any(axis=(1, 2)).sum())
+    n_j = int(foot.any(axis=(0, 2)).sum())
+    ex, ey, ez = rs.edge_masks
+    assert int(np.asarray(ex).sum()) == (n_i - 1) * n_j
+    assert int(np.asarray(ey).sum()) == n_i * (n_j - 1)
+    assert not bool(np.asarray(ez).any()), "the normal edge stays live"

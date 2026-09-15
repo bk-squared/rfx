@@ -1,5 +1,21 @@
 # Thin-sheet realization: from cell rasterization toward a plane boundary condition
 
+> **SUPERSEDED IN PART by #931 (the lattice ownership contract), 2026-09-07.**
+> Kept as dated history and deliberately NOT rewritten.
+> This note's error family — a one-cell PEC slab presenting only its LOWER
+> node plane (#706), a live normal edge sampling whatever the geometry left in
+> the cell (#702), the sheet-cavity thickness error — was the diagnosis that
+> #931 acted on, and the direction it proposed (a sheet as a plane BC that
+> owns no cell) is what shipped. The *fixes* it lists as current are gone:
+> `two_plane` is removed, the #702 resample is deleted (a sheet has no own
+> cell to re-sample), and the one-cell slab now realizes both faces because it
+> is a volume. Read it as the problem statement, not as a description of the
+> tree.
+> The current rule is
+> `docs/design_notes/20260906_plan_realign_lattice_ownership.md` §1, and for
+> users `docs/public/guide/materials-geometry.mdx` ("How conductors land on
+> the lattice").
+
 Status: DIRECTION (PI-endorsed 2026-08-25). Not a commitment; a recorded target
 for the next architecture review. Triggers to revisit: the in-plane
 discretization verdict of the current crossval campaign, and an external

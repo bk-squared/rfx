@@ -1,0 +1,132 @@
+{
+ "_what": "Re-derivation of tests/crossval/test_patch_canonical_farfield_e4.py's gated envelope constants on the #931 sheet-declared canonical patch. Measured by calling that file's own rfx_run fixture function, so the build and the reduction are the gate's, not a copy.",
+ "provenance": {
+  "repo_commit": "09aab9d98da883d2c0cf3321c6d9430cda0be950",
+  "repo_dirty": false,
+  "recorded_utc": "2026-09-07T21:02:29Z",
+  "producer": "scripts/diagnostics/measure_patch_canonical_farfield_e4.py",
+  "gate_file": "tests/crossval/test_patch_canonical_farfield_e4.py",
+  "frame": {
+   "dx_m": 0.002,
+   "n_sub": 4,
+   "num_periods": 110,
+   "ntff_freqs_hz": [
+    2000000000.0,
+    2100000000.0,
+    2200000000.0,
+    2300000000.0,
+    2400000000.0,
+    2500000000.0,
+    2800000000.0
+   ]
+  }
+ },
+ "reference": {
+  "source": "tests/fixtures/patch_canonical_farfield_e4/patch_farfield_openems.json",
+  "f_res_hz": 2422100000.0,
+  "directivity_dbi": 6.79
+ },
+ "measured": {
+  "settling_end_db": -42.90464101187098,
+  "settling_bar_db": -40.0,
+  "settling_clears_bar": true,
+  "wall_s": 466.9681308269501,
+  "k_star": 5,
+  "f_radiating_hz": 2507021731.087216,
+  "q_radiating": 43.691042952041265,
+  "directivity_dbi": 6.724090099334717,
+  "d_abs_diff_db": 0.06590990066528324,
+  "f_rel_vs_reference": 0.03506119940845378,
+  "mode_pair_ghz": [
+   2.03457486756225,
+   2.507021731087216
+  ],
+  "mode_pair_ratio": 1.2322091317735746,
+  "beam_peak_theta_deg": [
+   4.0,
+   4.0,
+   5.0,
+   5.0,
+   5.0,
+   4.0,
+   6.000000000000001
+  ],
+  "cuts_deg": {
+   "E_peak_deg": -1.0,
+   "H_peak_deg": -4.0
+  },
+  "p_rel_db": [
+   -18.98609202216772,
+   -20.347746483787887,
+   -19.78844740616924,
+   -16.685885418353546,
+   -11.422873414206428,
+   0.0,
+   -19.428404395787947
+  ],
+  "d_dbi_per_bin": [
+   5.863927841186523,
+   5.86613655090332,
+   5.970902442932129,
+   6.232269287109375,
+   6.497015953063965,
+   6.724090099334717,
+   6.846701622009277
+  ],
+  "modes": [
+   {
+    "freq_hz": 2034574867.5622501,
+    "Q": 63.333344091855004,
+    "amplitude": 41133.112439126955
+   },
+   {
+    "freq_hz": 2507021731.087216,
+    "Q": 43.691042952041265,
+    "amplitude": 36909.13163062917
+   },
+   {
+    "freq_hz": 3316827225.299326,
+    "Q": 74.4658957609839,
+    "amplitude": 8078.826508119678
+   }
+  ],
+  "preflight_advisories": [
+   "2 PEC sheet(s) realized (lattice ownership contract #931 \u00a71.3: one node plane each, closed footprint, normal E through the plane live), 0 of them off their declared mid-plane; worst first: thin_conductor[0] 'thin_conductor[0]' normal z: declared mid-plane 35.29mm, realized node plane 29 at 35.29mm (offset +0.000 cell = 1.388e-08nm); thin_conductor[1] 'thin_conductor[1]' normal z: declared mid-plane 36.81mm, realized node plane 33 at 36.81mm (offset +0.000 cell = 1.388e-08nm). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane \u2014 a laminate face, a ground level \u2014 is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the nonuniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.",
+   "4 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 4 listed): thin_conductor[1] 'thin_conductor[1]' (sheet) x: extent 32mm, worst face residual 1mm (3.13% of the extent, df/f ~ 3.13%); thin_conductor[1] 'thin_conductor[1]' (sheet) y: extent 40mm, worst face residual 1mm (2.50% of the extent, df/f ~ 2.50%); thin_conductor[0] 'thin_conductor[0]' (sheet) x: extent 60mm, worst face residual 1mm (1.67% of the extent, df/f ~ 1.67%); thin_conductor[0] 'thin_conductor[0]' (sheet) y: extent 60mm, worst face residual 1mm (1.67% of the extent, df/f ~ 1.67%). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3), so the realized extent can differ from the design by up to the printed residual, and a resonant dimension realized dL off detunes df/f ~ dL/L. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: choose dx commensurate with the patterned dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on the design edges. COVERAGE: examined 4 axis extent(s) on 2 conductor Box declaration(s) on the nonuniform lane; 2 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
+   "NTFF face z_lo is 6.00mm from geometry 'sub' \u2014 below \u03bb/4 = 26.77mm at f_max=2.80GHz. NTFF will integrate reactive near-field; directivity / pattern likely corrupted. Move NTFF box \u2265 \u03bb/2 from any radiating/scattering structure (Huygens-equivalence rule).",
+   "Far-field pattern advisory: the PEC sheet backing a source (bbox (85.0, 85.0, 35.3)\u2013(145.0, 145.0, 35.3) mm) spans 60.0mm \u00d7 60.0mm = 0.56\u03bb \u00d7 0.56\u03bb at f_max=2.80GHz \u2014 a ground plane under ~1\u03bb across. Expect the radiation pattern to be shaped by ground-plane edge diffraction (broadside dip, off-axis side peaks). This is expected physics, not a solver defect, and the fixture stays fine for resonance / impedance work. For a clean broadside pattern enlarge the ground plane to at least ~1.4\u03bb; if the small ground plane is intentional, interpret the pattern accordingly."
+  ]
+ },
+ "proposed_constants": {
+  "D_ABS_TOL_DB": {
+   "old": 1.0,
+   "new": 1.0,
+   "rule": "round-UP(measured x 1.5, 1 decimal), floored at the pre-#931 pin so a rerun can never narrow the gate",
+   "arithmetic": "|6.7241 - 6.7900| = 0.0659 dB; ceil(0.0659 x 1.5, .1) = 0.1; max(0.1, 1.0) = 1.0"
+  },
+  "F_RES_REL_LO": {
+   "old": 0.06,
+   "new": -0.02,
+   "rule": "measured - 5 percentage points, rounded outward to whole percent",
+   "arithmetic": "measured +3.51%; floor(+3.51 - 5) = -2%"
+  },
+  "F_RES_REL_HI": {
+   "old": 0.16,
+   "new": 0.09,
+   "rule": "measured + 5 percentage points, rounded outward to whole percent",
+   "arithmetic": "measured +3.51%; ceil(+3.51 + 5) = +9%"
+  },
+  "mode_pair_ratio_band": {
+   "old": [
+    1.15,
+    1.3
+   ],
+   "new": [
+    1.16,
+    1.31
+   ],
+   "rule": "measured +- 0.07, rounded outward to two decimals",
+   "arithmetic": "measured 1.2322; [1.16, 1.31]"
+  }
+ }
+}

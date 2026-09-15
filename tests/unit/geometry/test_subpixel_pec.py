@@ -512,7 +512,12 @@ def _pec_short_sim(*, conformal: bool):
         ),
         cpml_layers=10,
     )
-    sim.add(Box((0.085, 0, 0), (0.087, 0.04, 0.02)), material="pec")
+    # #931: the old 2 mm slab on a 3 mm grid is a sub-cell VOLUME the
+    # contract refuses (it was realized by the thin branch as one wall at
+    # x = 0.087 m). Drawn as one full cell, 0.084 -> 0.087 m: a solid
+    # short with walls on both drawn planes, the far one still at 0.087 m.
+    # The |S11| magnitude gate below is unchanged.
+    sim.add(Box((0.084, 0, 0), (0.087, 0.04, 0.02)), material="pec")
     freqs = jnp.linspace(5e9, 7e9, 6)
     sim.add_waveguide_port(
         0.010, direction="+x", mode=(1, 0), mode_type="TE",
@@ -525,10 +530,31 @@ def _pec_short_sim(*, conformal: bool):
     return sim
 
 
+# Two-sided |S11| envelope for the conformal PEC-short. DERIVED FROM
+# MEASUREMENT (2026-09-15, #1043 / PR #1047), not chosen:
+#   interior bins 1-4, measured |dev| -- head 0.0017/0.0012/0.0019/0.0023,
+#                                        pre-fix 0.0007/0.0029/0.0023/0.0033
+#   band-edge bins 0 and 5           -- head 0.0145 / 0.0123
+# The interior bar is the measured interior worst (0.0033) rounded up to the
+# next half-percent.
+#
+# The all-bin bar is the **40-PERIOD** edge worst (0.0145 here, 0.0278 pre-fix)
+# rounded up to the next percent, and it is only a 40-period envelope. The same
+# rig reads a max |dev| of 0.0448 at 80 periods and 0.0363 at 160, all of it in
+# band-edge bin 5 -- so this bar would NOT hold at a longer record and must not
+# be quoted as a record-independent envelope. The gate below runs at 40
+# periods, which is what makes it applicable here.
+_PEC_SHORT_DEV_INTERIOR = 0.005
+_PEC_SHORT_DEV_ALL_BINS_AT_40_PERIODS = 0.03
+# Band edges of the 5-7 GHz sweep. Bin 5 (7.0 GHz) sits just under the guide's
+# second-mode cutoff (40 mm x 20 mm -> TE20/TE01 at 7.5 GHz), and bin 0 is the
+# low edge; both carry the largest extraction deviation on every tree measured.
+_PEC_SHORT_INTERIOR_BINS = slice(1, 5)
+
+
 def test_pec_short_s11_with_conformal_face_pec():
-    """Acceptance gate: with ``Boundary(conformal=True)`` on the y/z
-    PEC faces, cv11-style PEC-short min |S11| must remain Meep-class
-    (≥0.99) — same target as the binary-baseline battery test.
+    """Acceptance gate: with ``Boundary(conformal=True)`` on the y/z PEC
+    faces, the PEC-short ``|S11|`` must sit within a TWO-SIDED envelope of 1.
 
     Without the Stage 1 step 4 plumbing through
     ``compute_waveguide_s_matrix``, the Step 3 DROP-skip on the +face
@@ -540,19 +566,122 @@ def test_pec_short_s11_with_conformal_face_pec():
     integral, restoring Meep-class closure.
 
     Pre-implementation measurement (2026-04-30): conformal=False →
-    0.996; conformal=True → 0.843. Gate 0.99 must pass after step 4."""
+    0.996; conformal=True → 0.843.
+
+    **Why the bar is two-sided now (2026-09-15, #1043 / PR #1047).** It used to
+    be ``s11.min() >= 0.99``, and a one-sided minimum cannot see the failure
+    this rig actually has. A lossless PEC short is ``|S11| = 1`` exactly, so
+    ``|S11| > 1`` is a passivity violation and the old bar passed it silently:
+    on the pre-fix tree this same rig at 160 periods reads ``|S11|`` 9.36-12.09
+    — the field is growing — and ``min >= 0.99`` PASSES that run.
+
+    Root cause of the growth, and why it is gone: ``conformal_eps_correction``
+    sets ``aniso_eps`` to ``eps_eff = eps/w`` at wall cells
+    (``rfx/runners/uniform.py:279-303``), which is HIGHER than
+    ``materials.eps_r``; the x CPML pad spans every y and z, so those wall
+    cells sit in the absorber; and before #1043 ``apply_cpml_e`` built its psi
+    coefficient from the staircase epsilon while the Yee half used the
+    corrected one. That is the amplifying direction of the #1043 inequality.
+
+    Measured across record length, which is the independent axis that settles
+    it (``scripts/diagnostics/cpml_subpixel_stability/f1_pec_short_gate.py``):
+
+    ====== ======================== ========================
+    periods  pre-fix |S11| range      this tree |S11| range
+    ====== ======================== ========================
+    40       [0.9942, 1.0278]         [0.9877, 1.0145]
+    80       [0.5724, 2.8001]         [0.9552, 1.0014]
+    160      [9.3597, 12.0899]        [0.9637, 1.0014]
+    ====== ======================== ========================
+
+    and the ring-down witness moves the two ways round: pre-fix it DEGRADES
+    with a longer record (-39.2/-5.09 dB at 40 → -10.33/-10.58 at 160, the
+    signature of growth), here it improves (-40.05/-15.01 → -76.57/-26.62).
+    So the pre-fix 40-period numbers were early exponential growth stopped
+    before it showed, which is also why their mean sat ABOVE 1 (1.0032).
+
+    On this tree the residual is **entirely the top band-edge bin 5** (7.0 GHz,
+    0.93x this guide's TE20/TE01 cutoff at 7.5 GHz), on a port that never
+    reaches the -40 dB settling bar at any record length tested. Its |S11| runs
+    0.9877 -> 0.9552 -> 0.9637 across the three records, while the interior
+    bins 1-4 fall monotonically, 0.0023 -> 0.0019 -> 0.0018 |dev|. So the
+    band-edge residual is a near-cutoff extraction limit on an unsettled port,
+    NOT record-length truncation -- lengthening the record does not remove it.
+    That is why the edge bins are gated loosely and the interior tightly.
+
+    The gate that catches the growth is
+    ``test_pec_short_conformal_stays_bounded_over_a_long_record`` below — this
+    one is the 40-period envelope, that one is the physics."""
     sim = _pec_short_sim(conformal=True)
     res = sim.compute_waveguide_s_matrix(num_periods=40, normalize=False)
     s11 = np.abs(np.asarray(res.s_params)[0, 0, :])
+    dev = np.abs(s11 - 1.0)
     print(f"\n[step4 pec-short] |S11| range "
+          f"[{s11.min():.4f}, {s11.max():.4f}] mean={s11.mean():.4f} "
+          f"max|dev|={dev.max():.4f} interior|dev|="
+          f"{dev[_PEC_SHORT_INTERIOR_BINS].max():.4f}")
+    assert dev.max() <= _PEC_SHORT_DEV_ALL_BINS_AT_40_PERIODS, (
+        f"PEC-short |S11| with conformal=True left its two-sided envelope: "
+        f"per-bin |S11| = {[round(float(v), 4) for v in s11]}, "
+        f"max |dev| = {dev.max():.4f} (bar "
+        f"{_PEC_SHORT_DEV_ALL_BINS_AT_40_PERIODS}, a 40-PERIOD envelope — the "
+        f"same rig reads 0.0448 at 80 periods and 0.0363 at 160, all in "
+        f"band-edge bin 5, so this bar is not record-independent). A lossless "
+        f"short is |S11| = 1 exactly, so BOTH directions matter — above 1 is a "
+        f"passivity violation, below 1 is loss the structure does not have."
+    )
+    assert dev[_PEC_SHORT_INTERIOR_BINS].max() <= _PEC_SHORT_DEV_INTERIOR, (
+        f"PEC-short |S11| drifted in the INTERIOR bins, where this rig is "
+        f"trustworthy: per-bin |dev| = "
+        f"{[round(float(v), 4) for v in dev]}, interior max = "
+        f"{dev[_PEC_SHORT_INTERIOR_BINS].max():.4f} (bar "
+        f"{_PEC_SHORT_DEV_INTERIOR}). The band-edge bins 0 and 5 are excluded "
+        f"from this bar by measurement, not by convenience — see the "
+        f"docstring's record-length table."
+    )
+
+
+# The growth bar. Provenance, both measured on this rig at 160 periods:
+# this tree max |S11| = 1.0014, the pre-fix tree max |S11| = 12.0899. Any
+# threshold between them separates them; 1.05 is the passivity bound (|S11|
+# <= 1 for a lossless short) plus the measured discretization headroom.
+_PEC_SHORT_LONG_RECORD_MAX_S11 = 1.05
+
+
+@pytest.mark.slow
+def test_pec_short_conformal_stays_bounded_over_a_long_record():
+    """The conformal PEC-short must not GROW when the record is lengthened.
+
+    This is the gate the old one-sided ``min >= 0.99`` could not express, and
+    the reason #1043's CPML coefficient fix is load-bearing here rather than
+    cosmetic. On the pre-fix tree this rig is unstable — ``eps_eff = eps/w``
+    at the conformal wall cells is higher than the staircase ``materials.eps_r``
+    that ``apply_cpml_e`` was building its psi coefficient from, and those
+    cells run through the x CPML pads — so the field grows and 160 periods
+    reads ``|S11|`` 9.36-12.09 with the ring-down witness DEGRADING as the
+    record lengthens.
+
+    40 periods is too short to see it, which is exactly why the sibling gate
+    above could sit green over a diverging simulation for months.
+
+    RED on the pre-fix tree (12.0899), green here (1.0014). If this ever goes
+    red again, do not relax it: re-read the per-bin trace and the settling
+    witness first — a PEC short that returns more than it was given is not a
+    tolerance problem."""
+    sim = _pec_short_sim(conformal=True)
+    res = sim.compute_waveguide_s_matrix(num_periods=160, normalize=False)
+    s11 = np.abs(np.asarray(res.s_params)[0, 0, :])
+    print(f"\n[pec-short long record] 160 periods |S11| range "
           f"[{s11.min():.4f}, {s11.max():.4f}] mean={s11.mean():.4f}")
-    assert s11.min() >= 0.99, (
-        f"PEC-short |S11| with conformal=True regressed: "
-        f"min={s11.min():.4f} (gate 0.99). Likely cause: Stage 1 step 4 "
-        f"plumbing (compute_waveguide_s_matrix → conformal_weights → "
-        f"extract_waveguide_s_matrix → run_simulation) is incomplete, "
-        f"so DROP-skip runs without the compensating Dey-Mittra "
-        f"eps_correction."
+    assert np.all(np.isfinite(s11)), (
+        f"PEC-short |S11| went non-finite over a 160-period record: {s11}"
+    )
+    assert s11.max() <= _PEC_SHORT_LONG_RECORD_MAX_S11, (
+        f"PEC-short |S11| GREW over a 160-period record: per-bin "
+        f"{[round(float(v), 4) for v in s11]}, max = {s11.max():.4f} "
+        f"(bar {_PEC_SHORT_LONG_RECORD_MAX_S11}). A lossless short cannot "
+        f"return more than it was given; this is the conformal-in-CPML-pad "
+        f"instability #1043 fixed, measured at 12.0899 before that fix."
     )
 
 
@@ -560,14 +689,49 @@ def test_pec_short_s11_baseline_unchanged_with_binary_path():
     """Regression guard: ``Boundary(conformal=False)`` (default)
     PEC-short |S11| stays at the pre-Stage-1 baseline. Catches any
     accidental coupling between the conformal plumbing work and the
-    binary path."""
+    binary path.
+
+    ``num_periods`` is 80 here and 40 in the conformal sibling. That is a
+    SETTLING length, not a gate: measured on VESSL 369367259190 after #931
+    redrew the short from a sub-cell slab (one wall) to one full cell
+    (walls on both drawn faces, 0.084 and 0.087 m, verified below), the
+    binary lane at 40 periods reads
+
+        |S11| = [1.0057, 0.9936, 0.9996, 1.0029, 1.0012, 0.9892]
+
+    — three bins ABOVE 1 for a passive reflector, so the record's own
+    noise is +-0.6% and the 0.9892 minimum is 1.1% low. At 80 periods the
+    same geometry reads
+
+        |S11| = [0.9974, 0.9984, 1.0010, 1.0009, 0.9988, 1.0024]
+
+    — every bin within 0.26% of unity. The short moved one cell toward the
+    left port when it stopped being a zero-thickness wall, and the 40-period
+    window no longer contains the settled response of the new round trip.
+    The 0.99 gate is untouched.
+
+    (The conformal sibling is left at 40 periods on purpose: at 80 it
+    diverges, |S11| in [0.57, 2.77] on the same geometry. That is the
+    Dey-Mittra face-PEC lane, which #931 §1.8 fences out of the ownership
+    contract, and it is recorded here as an observation, not fixed.)
+    """
     sim = _pec_short_sim(conformal=False)
-    res = sim.compute_waveguide_s_matrix(num_periods=40, normalize=False)
+    # build-time: the short realizes walls on BOTH drawn faces (#931 §1.2)
+    from tests._realized_geometry import assert_wall_planes
+    assert_wall_planes(sim, 0, [0.084, 0.087], what="cv11-style PEC short")
+
+    res = sim.compute_waveguide_s_matrix(num_periods=80, normalize=False)
     s11 = np.abs(np.asarray(res.s_params)[0, 0, :])
     assert s11.min() >= 0.99, (
         f"PEC-short |S11| baseline regressed: min={s11.min():.4f} "
         f"(gate 0.99). Stage 1 must not affect the binary path."
     )
+    # the record must also not be contaminated the way 40 periods was: a
+    # passive short cannot reflect more than it receives.
+    assert s11.max() <= 1.01, (
+        f"|S11| max={s11.max():.4f} > 1 for a passive short — the DFT "
+        "window is contaminated; lengthen num_periods before reading the "
+        "minimum as physics")
 
 
 # -----------------------------------------------------------------------------
@@ -653,35 +817,58 @@ def test_mesh_convergence_s21_with_conformal_pec_baseline():
     )
 
 
+# Measured envelope for the conformal mesh-convergence ladder, 2026-09-15
+# (#1043 / PR #1047). DERIVED, not chosen: the three rungs read
+# 0.7796 / 0.6974 / 0.7274 on this tree, so the ladder spans [0.6974, 0.7796]
+# and the widening quantum is the ladder's own coarse delta, 0.0822.
+_MESHCONV_CONFORMAL_S21_LO = 0.6974 - 0.0822
+_MESHCONV_CONFORMAL_S21_HI = 0.7796 + 0.0822
+
+
 @pytest.mark.slow
-@pytest.mark.xfail(
-    reason=(
-        "Stage 1 conformal=True path produces NaN |S21| at dx∈{2,1.5} mm "
-        "(finite |S21|≈0.76 at dx=3 mm). MECHANISM (2026-05-29, corrected "
-        "from the falsified 2026-05-24 reference-asymmetry diagnosis): the "
-        "Dey-Mittra conformal-PEC run itself is intrinsically unstable at "
-        "fine dx — the E-update-only eps_eff=eps/w makes the update operator "
-        "non-SPSD (discrete-adjointness break). Normalize-INDEPENDENT: "
-        "threading conformal_weights into the reference run still NaNs, and "
-        "normalize=False also NaNs at dx=2 mm, so normalize=False is NOT a "
-        "safe workaround (the conformal_nan preflight warning carries the "
-        "same guidance). Conformal path remains verified at coarse dx on the "
-        "PEC-short single-run gate (test_pec_short_s11_with_conformal_face_pec). "
-        "STRICT TRIPWIRE: when a conformal-numerics redesign lands and the "
-        "NaN is gone, this XPASSes and strict=True HARD-FAILS the suite — which "
-        "is the signal to DELETE the _validate_cfg_conformal_fine_dx preflight "
-        "guard and the _sparams.py runtime guardrail (they would then be false "
-        "positives). Self-detecting stale-check "
-        "(mypy --warn-unused-ignores / rustc expect pattern)."
-    ),
-    strict=True,
-)
 def test_mesh_convergence_s21_with_conformal_pec():
     """``Boundary(conformal=True)`` must keep mesh refinement on the S21
     of an εr=4 obstacle within the same fine-delta gate (0.10) as the
     binary baseline. Three resolutions {3, 2, 1.5} mm with
     CPML thickness scaled to a fixed 30 mm physical absorber.
-    """
+
+    **This was an ``xfail(strict=True)`` until 2026-09-15 (#1043 / PR #1047)**,
+    tracking "the Stage 1 conformal path NaNs at fine dx". It was a
+    self-detecting stale check by design — its own reason text named the XPASS
+    as the signal to delete the ``_validate_cfg_conformal_fine_dx`` preflight
+    guard and the ``rfx/sparams/waveguide.py`` runtime guardrail — and it
+    XPASSed once #1043 made ``apply_cpml_e`` build its psi coefficient from the
+    permittivity the E update uses. Both guards are gone in the same change.
+
+    The NaN was never a property of the conformal METHOD.
+    ``conformal_eps_correction`` sets ``aniso_eps`` to ``eps_eff = eps/w`` at
+    wall cells (``rfx/runners/uniform.py:279-303``), higher than
+    ``materials.eps_r``; the x CPML pad spans every y and z, so those cells sit
+    in the absorber; and the psi half was reading the staircase epsilon. That
+    is the amplifying direction of the #1043 inequality, and it is why "dt
+    cannot cure it" — a coefficient sign flip is not a CFL problem.
+
+    |S21| at dx 3 / 2 / 1.5 mm, all three measured on this rig:
+
+    ==================================== ==========================
+    tree                                  |S21| at each rung
+    ==================================== ==========================
+    origin/main                           0.7564 / 0.6974 / nan
+    parameter present but not threaded    0.7564 / 0.6974 / nan
+    psi coefficient threaded (this tree)  0.7796 / 0.6974 / 0.7274
+    ==================================== ==========================
+
+    The middle row is the mutation control: adding the parameter without
+    passing it at the call sites leaves the NaN, so the threading is what
+    fixes it. dx = 2 mm reads identically on every tree because the wall lands
+    on a node there and the conformal weight is 1 — conformal is a no-op at
+    that rung by construction.
+
+    **NOT claimed here**: that conformal PEC is ACCURATE. The 2026-06-08
+    verdicts that falsified four conformal methods were all taken with this
+    defect present and have to be re-measured before any accuracy claim. This
+    test gates stability and mesh convergence, which is what it always
+    measured."""
     target_cpml_m = 0.030
     resolutions = [0.003, 0.002, 0.0015]
     s21_values: list[float] = []
@@ -695,13 +882,17 @@ def test_mesh_convergence_s21_with_conformal_pec():
         s21_values.append(s21)
         print(f"[meshconv-conformal] dx={dx*1e3:.1f}mm cpml={layers} |S21|={s21:.4f}")
 
-    # PRIMARY signal (hardened): the actual failure mode is NaN |S21| at fine
-    # dx, not a tolerance miss. Assert finiteness explicitly so XPASS means
-    # "the NaN is gone" (clean tripwire), not "the tolerance happened to pass".
+    # PRIMARY signal: the historical failure mode was a NaN |S21| at fine dx,
+    # not a tolerance miss, so finiteness is asserted on its own. It stays the
+    # first assertion now that the test is a real gate -- a regression here
+    # would come back as a NaN before it came back as a bad tolerance.
     assert np.all(np.isfinite(s21_values)), (
         f"conformal=True produced non-finite |S21| at fine dx: {s21_values} — "
-        "the known conformal-fine-dx NaN (see the conformal_nan preflight "
-        "warning and this test's xfail reason)."
+        "this is the pre-#1043 conformal-fine-dx NaN returning. Its cause was "
+        "the CPML psi coefficient reading a different permittivity than the "
+        "Yee half of the same timestep; check "
+        "rfx/boundaries/cpml.py's inv_eps_r_update and the two call sites "
+        "that pass it before looking anywhere else."
     )
 
     coarse_delta = abs(s21_values[0] - s21_values[1])
@@ -717,30 +908,43 @@ def test_mesh_convergence_s21_with_conformal_pec():
         f"Fine-mesh |S21| change too large with conformal=True: "
         f"{fine_delta:.4f} (gate 0.10)"
     )
+    # The measured envelope, so a rung that goes finite-but-wrong is caught
+    # too and not just a NaN. Bounds are the ladder's own span widened by its
+    # own coarse delta -- see the constants above for the derivation.
+    assert all(_MESHCONV_CONFORMAL_S21_LO <= v <= _MESHCONV_CONFORMAL_S21_HI
+               for v in s21_values), (
+        f"conformal mesh-convergence ladder left its measured envelope "
+        f"[{_MESHCONV_CONFORMAL_S21_LO:.4f}, {_MESHCONV_CONFORMAL_S21_HI:.4f}]: "
+        f"{[round(v, 4) for v in s21_values]} at dx = 3 / 2 / 1.5 mm "
+        f"(measured 0.7796 / 0.6974 / 0.7274 when this gate was written)."
+    )
 
 
 # -----------------------------------------------------------------------------
-# G-WI5 guardrail: conformal=True + normalize=True must emit UserWarning
+# G-WI5 guardrail: DELETED 2026-09-15 (#1043 / PR #1047)
 # -----------------------------------------------------------------------------
 
 
-def test_guardrail_conformal_normalize_emits_warning():
-    """G-WI5 guardrail: compute_waveguide_s_matrix(conformal=True,
-    normalize=True) must emit a UserWarning naming the known NaN
-    instability.
+def test_guardrail_conformal_normalize_no_longer_warns():
+    """The G-WI5 runtime guardrail must stay deleted.
 
-    Mechanism (2026-05-29, corrected from the falsified 2026-05-24
-    reference-asymmetry diagnosis): the Dey-Mittra conformal-PEC run
-    itself is intrinsically unstable at fine dx — the E-update-only
-    eps_eff=eps/w makes the update operator non-SPSD (discrete-
-    adjointness break), independent of the normalisation mode
-    (normalize=False also NaNs at dx=2 mm).  The guardrail fires before
-    the run so users get an actionable message (staircase PEC or a
-    coarser mesh) instead of a silent NaN.
+    It warned that ``compute_waveguide_s_matrix(conformal=True,
+    normalize=True)`` "is KNOWN to produce NaN S-parameters at fine mesh" and
+    told users to switch to staircase PEC or a coarser mesh. The NaN was the
+    #1043 CPML psi coefficient reading a different permittivity than the Yee
+    half of the same timestep (``conformal_eps_correction`` sets ``aniso_eps``
+    to ``eps_eff = eps/w`` at wall cells, higher than ``materials.eps_r``, and
+    those cells run through the x CPML pads). It is fixed, so the warning
+    became advice to avoid a working path.
 
-    The test uses dx=3 mm (the coarsest mesh, finite at this
-    resolution) so the run completes quickly; the warning is the
-    observable under test.
+    Measured on the tripwire's own three rungs, |S21| at dx 3 / 2 / 1.5 mm:
+    0.7564 / 0.6974 / nan before, 0.7796 / 0.6974 / 0.7274 after — see
+    ``test_mesh_convergence_s21_with_conformal_pec``, which is the gate that
+    replaced this one and measures the behaviour instead of the message.
+
+    This test is the anti-regression: if the guardrail comes back, either it
+    was re-added by mistake or the conformal path regressed, and in the second
+    case the convergence gate is red too and is the one to read first.
     """
     import warnings as _warnings
 
@@ -749,15 +953,15 @@ def test_guardrail_conformal_normalize_emits_warning():
         _warnings.simplefilter("always")
         sim.compute_waveguide_s_matrix(num_periods=40, normalize=True)
 
-    user_warnings = [w for w in caught if issubclass(w.category, UserWarning)]
-    guardrail_warnings = [
-        w for w in user_warnings
-        if "conformal" in str(w.message).lower()
-        and "normalize" in str(w.message).lower()
+    stale = [
+        w for w in caught
+        if issubclass(w.category, UserWarning)
+        and "conformal" in str(w.message).lower()
+        and "nan" in str(w.message).lower()
     ]
-    assert guardrail_warnings, (
-        "Expected a UserWarning mentioning 'conformal' and 'normalize' "
-        "when calling compute_waveguide_s_matrix(conformal=True, "
-        "normalize=True), but no such warning was emitted.  "
-        f"All UserWarnings: {[str(w.message) for w in user_warnings]}"
+    assert not stale, (
+        "the deleted G-WI5 conformal/NaN guardrail is warning again: "
+        f"{[str(w.message) for w in stale]}. It was removed by #1043 / "
+        "PR #1047 because the NaN it names no longer happens; see the note "
+        "where it stood in rfx/sparams/waveguide.py."
     )

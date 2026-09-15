@@ -148,7 +148,7 @@ def upload_tarball() -> pathlib.Path:
          "rfx", "tests", "conftest.py", "pyproject.toml",
          "validation/fdfd", "validation/vessl",
          # the Greenhouse referee and the hplane comparator live here:
-         # spiral_convergence.load_referee() and tests/test_fdfd_hplane.py
+         # spiral_convergence.load_referee() and tests/unit/fdfd/test_fdfd_hplane.py
          # both import them BY PATH, so leaving the directory out costs 3
          # test failures and J2's referee block (measured in the J0 run of
          # 20260915T053936Z, which is why it is here)
@@ -176,7 +176,7 @@ def payload_tarball() -> pathlib.Path:
                     for p in (REPO / "validation/crossval/comparators").glob("*.py"))
     files += ["rfx/py.typed", "conftest.py", "pyproject.toml",
               "tests/__init__.py", "tests/_x64_compat.py",
-              "tests/test_fdfd_linear_solve.py", "tests/test_fdfd_hplane.py",
+              "tests/unit/fdfd/test_fdfd_linear_solve.py", "tests/unit/fdfd/test_fdfd_hplane.py",
               "validation/fdfd/spiral_convergence.py",
               "validation/fdfd/spiral_convergence.json"]
     for optional in ("validation/fdfd/rfic_spiral.py",
@@ -248,10 +248,10 @@ def shell(lane: str, script: pathlib.Path, pytest_block: str, timeout_s: int,
 
 PYTEST_J0 = """  echo "=== pytest: linear_solve + hplane, backend forced BOTH ways ==="
   set +e
-  RFX_FDFD_BACKEND=superlu timeout 1800 "$PY" -m pytest tests/test_fdfd_linear_solve.py tests/test_fdfd_hplane.py -q -rs -p no:cacheprovider > "$OUT/pytest-superlu.log" 2>&1
+  RFX_FDFD_BACKEND=superlu timeout 1800 "$PY" -m pytest tests/unit/fdfd/test_fdfd_linear_solve.py tests/unit/fdfd/test_fdfd_hplane.py -q -rs -p no:cacheprovider > "$OUT/pytest-superlu.log" 2>&1
   echo "$?" > "$OUT/pytest-superlu.rc"
   tail -n 15 "$OUT/pytest-superlu.log"
-  RFX_FDFD_BACKEND=cudss timeout 1800 "$PY" -m pytest tests/test_fdfd_linear_solve.py tests/test_fdfd_hplane.py -q -rs -p no:cacheprovider > "$OUT/pytest-cudss.log" 2>&1
+  RFX_FDFD_BACKEND=cudss timeout 1800 "$PY" -m pytest tests/unit/fdfd/test_fdfd_linear_solve.py tests/unit/fdfd/test_fdfd_hplane.py -q -rs -p no:cacheprovider > "$OUT/pytest-cudss.log" 2>&1
   echo "$?" > "$OUT/pytest-cudss.rc"
   tail -n 15 "$OUT/pytest-cudss.log"
   set -e

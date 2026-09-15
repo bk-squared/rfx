@@ -1,0 +1,2368 @@
+{
+  "provenance": {
+    "run_id": "369367259618",
+    "source_sha": "b36fc46cdf21d1c57f221e6a057654bcad60bae2",
+    "adjudicator": {
+      "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/scripts/diagnostics/adjudicate_931_short_repair.py",
+      "sha256": "c27e07e5ce9f36883e81a080cc696f9619a0041df9f10506ac2d65929467a48d"
+    },
+    "run_id_witnesses": {
+      "coarse": {
+        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-short-20260909T015010Z-b36fc46cdf21-101/run_id.txt",
+        "sha256": "dfa500c44797aa987d82d0ab2a39d84c5cd4a9f4b959434f6758182c8c1cb561"
+      },
+      "fine": {
+        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-short-20260909T015010Z-b36fc46cdf21-101/run_id.txt",
+        "sha256": "dfa500c44797aa987d82d0ab2a39d84c5cd4a9f4b959434f6758182c8c1cb561"
+      }
+    }
+  },
+  "conclusion": "historical interval encoded invalid outgoing-power sum",
+  "original_gates": {
+    "coarse": "2.25 < maximum column power <= 3.0",
+    "fine": "maximum column power <= 2.25",
+    "settling": "each driven run <= -40 dB"
+  },
+  "committed_causal_identity": {
+    "s11": {
+      "exactly_equal": true,
+      "max_abs_delta": 0.0,
+      "max_abs_delta_over_reference_peak": 0.0
+    },
+    "drive0_port0_v_probe_t": {
+      "exactly_equal": true,
+      "max_abs_delta": 0.0,
+      "max_abs_delta_over_reference_peak": 0.0
+    },
+    "drive0_port0_v_ref_t": {
+      "exactly_equal": true,
+      "max_abs_delta": 0.0,
+      "max_abs_delta_over_reference_peak": 0.0
+    },
+    "drive0_port0_i_probe_t": {
+      "exactly_equal": true,
+      "max_abs_delta": 0.0,
+      "max_abs_delta_over_reference_peak": 0.0
+    },
+    "drive0_port0_i_ref_t": {
+      "exactly_equal": true,
+      "max_abs_delta": 0.0,
+      "max_abs_delta_over_reference_peak": 0.0
+    }
+  },
+  "causal_identity_inputs": [
+    {
+      "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/slow-consumer-evidence/advisory_current_records.npz",
+      "sha256": "7351473f191c7690b471bc80f6d2bcb18495dadaff9e39e39517ecc540947680"
+    },
+    {
+      "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-evidence/short-coarse-traces.npz",
+      "sha256": "14f09abc1e8e49b70beeee52e238be88c9da8090469a495ca9378994a39233fa"
+    }
+  ],
+  "historical": {
+    "current": {
+      "input": {
+        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/slow-consumer-evidence/advisory_current.json",
+        "sha256": "b975191d78c1e145985ed2c22e30e7dba80bf881d2d70d9f317a88f8e14eac27"
+      },
+      "bins": [
+        {
+          "frequency_hz": 4000000000.0,
+          "s_real": [
+            [
+              -0.5027915835380554,
+              0.0
+            ],
+            [
+              -0.5092054009437561,
+              0.0
+            ]
+          ],
+          "s_imag": [
+            [
+              -0.22624678909778595,
+              0.0
+            ],
+            [
+              -0.08747867494821548,
+              0.0
+            ]
+          ],
+          "s_abs": [
+            [
+              0.5513501483211585,
+              0.0
+            ],
+            [
+              0.5166649387378507,
+              0.0
+            ]
+          ],
+          "left_reflection_power": 0.30398698605376345,
+          "left_reported_transmission_power": 0.266942658920987,
+          "right_reflection_power": 0.0,
+          "right_reported_transmission_power": 0.0,
+          "column_power": [
+            0.5709296449747505,
+            0.0
+          ]
+        },
+        {
+          "frequency_hz": 4400000000.0,
+          "s_real": [
+            [
+              -0.6215968728065491,
+              0.0
+            ],
+            [
+              -0.3717525899410248,
+              0.0
+            ]
+          ],
+          "s_imag": [
+            [
+              0.8112320899963379,
+              0.0
+            ],
+            [
+              0.3423895537853241,
+              0.0
+            ]
+          ],
+          "s_abs": [
+            [
+              1.0219981292168334,
+              0.0
+            ],
+            [
+              0.5054014193383048,
+              0.0
+            ]
+          ],
+          "left_reflection_power": 1.0444801761227078,
+          "left_reported_transmission_power": 0.25543059466917306,
+          "right_reflection_power": 0.0,
+          "right_reported_transmission_power": 0.0,
+          "column_power": [
+            1.2999107707918804,
+            0.0
+          ]
+        },
+        {
+          "frequency_hz": 4800000000.0,
+          "s_real": [
+            [
+              0.9997101426124573,
+              0.0
+            ],
+            [
+              0.15829980373382568,
+              0.0
+            ]
+          ],
+          "s_imag": [
+            [
+              0.11220540851354599,
+              0.0
+            ],
+            [
+              0.4723769724369049,
+              0.0
+            ]
+          ],
+          "s_abs": [
+            [
+              1.005987287664169,
+              0.0
+            ],
+            [
+              0.49819557600487,
+              0.0
+            ]
+          ],
+          "left_reflection_power": 1.0120104229419113,
+          "left_reported_transmission_power": 0.24819883195082418,
+          "right_reflection_power": 0.0,
+          "right_reported_transmission_power": 0.0,
+          "column_power": [
+            1.2602092548927355,
+            0.0
+          ]
+        },
+        {
+          "frequency_hz": 5200000000.0,
+          "s_real": [
+            [
+              -0.18319369852542877,
+              0.0
+            ],
+            [
+              0.4833049774169922,
+              0.0
+            ]
+          ],
+          "s_imag": [
+            [
+              -0.9827036261558533,
+              0.0
+            ],
+            [
+              0.11759736388921738,
+              0.0
+            ]
+          ],
+          "s_abs": [
+            [
+              0.9996331067143026,
+              0.0
+            ],
+            [
+              0.4974061129396505,
+              0.0
+            ]
+          ],
+          "left_reflection_power": 0.9992663480392887,
+          "left_reported_transmission_power": 0.24741284118973234,
+          "right_reflection_power": 0.0,
+          "right_reported_transmission_power": 0.0,
+          "column_power": [
+            1.2466791892290205,
+            0.0
+          ]
+        },
+        {
+          "frequency_hz": 5600000000.0,
+          "s_real": [
+            [
+              -0.9391322135925293,
+              0.0
+            ],
+            [
+              0.38710713386535645,
+              0.0
+            ]
+          ],
+          "s_imag": [
+            [
+              0.3306684195995331,
+              0.0
+            ],
+            [
+              -0.3179457187652588,
+              0.0
+            ]
+          ],
+          "s_abs": [
+            [
+              0.9956459804205794,
+              0.0
+            ],
+            [
+              0.5009405285766045,
+              0.0
+            ]
+          ],
+          "left_reflection_power": 0.9913109183276569,
+          "left_reported_transmission_power": 0.2509414131706081,
+          "right_reflection_power": 0.0,
+          "right_reported_transmission_power": 0.0,
+          "column_power": [
+            1.2422523314982648,
+            0.0
+          ]
+        },
+        {
+          "frequency_hz": 6000000000.0,
+          "s_real": [
+            [
+              0.28804120421409607,
+              0.0
+            ],
+            [
+              0.10301663726568222,
+              0.0
+            ]
+          ],
+          "s_imag": [
+            [
+              0.8991777896881104,
+              0.0
+            ],
+            [
+              -0.47316309809684753,
+              0.0
+            ]
+          ],
+          "s_abs": [
+            [
+              0.9441866514590759,
+              0.0
+            ],
+            [
+              0.4842476070711513,
+              0.0
+            ]
+          ],
+          "left_reflection_power": 0.8914884327935022,
+          "left_reported_transmission_power": 0.2344957449541361,
+          "right_reflection_power": 0.0,
+          "right_reported_transmission_power": 0.0,
+          "column_power": [
+            1.1259841777476385,
+            0.0
+          ]
+        }
+      ],
+      "port_planes_m": [
+        {
+          "source": 0.01,
+          "reference": 0.016,
+          "probe": 0.03
+        },
+        {
+          "source": 0.09,
+          "reference": 0.08399999999999999,
+          "probe": 0.06999999999999999
+        }
+      ],
+      "realization_census": {
+        "current": {
+          "cell_count": 200,
+          "occupied_x_indices": [
+            50
+          ],
+          "occupied_x_lower_nodes_m": [
+            0.084
+          ],
+          "edge_counts": [
+            231,
+            440,
+            420
+          ],
+          "tangential_wall_x_m": [
+            0.084,
+            0.08600000000000001
+          ]
+        },
+        "node_volume": {
+          "cell_count": 200,
+          "occupied_x_indices": [
+            51
+          ],
+          "occupied_x_lower_nodes_m": [
+            0.08600000000000001
+          ],
+          "edge_counts": [
+            231,
+            440,
+            420
+          ],
+          "tangential_wall_x_m": [
+            0.08600000000000001,
+            0.088
+          ]
+        },
+        "legacy_sigma": {
+          "cell_count": 200,
+          "damped_x_nodes_m": [
+            0.08600000000000001
+          ]
+        }
+      }
+    },
+    "node_volume": {
+      "input": {
+        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/slow-consumer-evidence/advisory_node_volume.json",
+        "sha256": "475536b5c5606ced975d991fd63ac30bb3ccae39b2d4fff418cf3041c4471fc3"
+      },
+      "bins": [
+        {
+          "frequency_hz": 4000000000.0,
+          "s_real": [
+            [
+              -0.37328702211380005,
+              0.0
+            ],
+            [
+              -0.7939653992652893,
+              0.0
+            ]
+          ],
+          "s_imag": [
+            [
+              -0.10106438398361206,
+              0.0
+            ],
+            [
+              -0.09579907357692719,
+              0.0
+            ]
+          ],
+          "s_abs": [
+            [
+              0.38672627346558136,
+              0.0
+            ],
+            [
+              0.7997240259793922,
+              0.0
+            ]
+          ],
+          "left_reflection_power": 0.14955721058857563,
+          "left_reported_transmission_power": 0.6395585177286878,
+          "right_reflection_power": 0.0,
+          "right_reported_transmission_power": 0.0,
+          "column_power": [
+            0.7891157283172632,
+            0.0
+          ]
+        },
+        {
+          "frequency_hz": 4400000000.0,
+          "s_real": [
+            [
+              -0.44777512550354004,
+              0.0
+            ],
+            [
+              -0.7333974242210388,
+              0.0
+            ]
+          ],
+          "s_imag": [
+            [
+              0.9030780792236328,
+              0.0
+            ],
+            [
+              0.6820863485336304,
+              0.0
+            ]
+          ],
+          "s_abs": [
+            [
+              1.0079943353977527,
+              0.0
+            ],
+            [
+              1.0015555744490643,
+              0.0
+            ]
+          ],
+          "left_reflection_power": 1.0160525801939573,
+          "left_reported_transmission_power": 1.0031135687099957,
+          "right_reflection_power": 0.0,
+          "right_reported_transmission_power": 0.0,
+          "column_power": [
+            2.0191661489039525,
+            0.0
+          ]
+        },
+        {
+          "frequency_hz": 4800000000.0,
+          "s_real": [
+            [
+              0.9939612150192261,
+              0.0
+            ],
+            [
+              0.31712254881858826,
+              0.0
+            ]
+          ],
+          "s_imag": [
+            [
+              -0.14243477582931519,
+              0.0
+            ],
+            [
+              0.9436686038970947,
+              0.0
+            ]
+          ],
+          "s_abs": [
+            [
+              1.0041148153114978,
+              0.0
+            ],
+            [
+              0.9955285756573187,
+              0.0
+            ]
+          ],
+          "left_reflection_power": 1.0082465623280434,
+          "left_reported_transmission_power": 0.9910771449502896,
+          "right_reflection_power": 0.0,
+          "right_reported_transmission_power": 0.0,
+          "column_power": [
+            1.9993237072783332,
+            0.0
+          ]
+        },
+        {
+          "frequency_hz": 5200000000.0,
+          "s_real": [
+            [
+              -0.47047337889671326,
+              0.0
+            ],
+            [
+              0.9680569171905518,
+              0.0
+            ]
+          ],
+          "s_imag": [
+            [
+              -0.8829385638237,
+              0.0
+            ],
+            [
+              0.2354220449924469,
+              0.0
+            ]
+          ],
+          "s_abs": [
+            [
+              1.0004627468014728,
+              0.0
+            ],
+            [
+              0.9962719177959903,
+              0.0
+            ]
+          ],
+          "left_reflection_power": 1.000925707737548,
+          "left_reported_transmission_power": 0.9925577341889005,
+          "right_reflection_power": 0.0,
+          "right_reported_transmission_power": 0.0,
+          "column_power": [
+            1.9934834419264484,
+            0.0
+          ]
+        },
+        {
+          "frequency_hz": 5600000000.0,
+          "s_real": [
+            [
+              -0.7751664519309998,
+              0.0
+            ],
+            [
+              0.7766122221946716,
+              0.0
+            ]
+          ],
+          "s_imag": [
+            [
+              0.6438090801239014,
+              0.0
+            ],
+            [
+              -0.6424098610877991,
+              0.0
+            ]
+          ],
+          "s_abs": [
+            [
+              1.0076572630856582,
+              0.0
+            ],
+            [
+              1.0078774594587336,
+              0.0
+            ]
+          ],
+          "left_reflection_power": 1.0153731598492788,
+          "left_reported_transmission_power": 1.0158169732849913,
+          "right_reflection_power": 0.0,
+          "right_reported_transmission_power": 0.0,
+          "column_power": [
+            2.0311901331342703,
+            0.0
+          ]
+        },
+        {
+          "frequency_hz": 6000000000.0,
+          "s_real": [
+            [
+              0.6044701337814331,
+              0.0
+            ],
+            [
+              0.2121402621269226,
+              0.0
+            ]
+          ],
+          "s_imag": [
+            [
+              0.9593004584312439,
+              0.0
+            ],
+            [
+              -1.0941932201385498,
+              0.0
+            ]
+          ],
+          "s_abs": [
+            [
+              1.1338613284613503,
+              0.0
+            ],
+            [
+              1.1145682095827283,
+              0.0
+            ]
+          ],
+          "left_reflection_power": 1.2856415121801381,
+          "left_reported_transmission_power": 1.2422622938124486,
+          "right_reflection_power": 0.0,
+          "right_reported_transmission_power": 0.0,
+          "column_power": [
+            2.5279038059925867,
+            0.0
+          ]
+        }
+      ],
+      "port_planes_m": [
+        {
+          "source": 0.01,
+          "reference": 0.016,
+          "probe": 0.03
+        },
+        {
+          "source": 0.09,
+          "reference": 0.08399999999999999,
+          "probe": 0.06999999999999999
+        }
+      ],
+      "realization_census": {
+        "current": {
+          "cell_count": 200,
+          "occupied_x_indices": [
+            50
+          ],
+          "occupied_x_lower_nodes_m": [
+            0.084
+          ],
+          "edge_counts": [
+            231,
+            440,
+            420
+          ],
+          "tangential_wall_x_m": [
+            0.084,
+            0.08600000000000001
+          ]
+        },
+        "node_volume": {
+          "cell_count": 200,
+          "occupied_x_indices": [
+            51
+          ],
+          "occupied_x_lower_nodes_m": [
+            0.08600000000000001
+          ],
+          "edge_counts": [
+            231,
+            440,
+            420
+          ],
+          "tangential_wall_x_m": [
+            0.08600000000000001,
+            0.088
+          ]
+        },
+        "legacy_sigma": {
+          "cell_count": 200,
+          "damped_x_nodes_m": [
+            0.08600000000000001
+          ]
+        }
+      }
+    },
+    "legacy_sigma": {
+      "input": {
+        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/slow-consumer-evidence/advisory_legacy_sigma.json",
+        "sha256": "f9520165f482c5fa59a4974a441cb1e3bcf2c71080fe3c2c5132d7c35f8f0a10"
+      },
+      "bins": [
+        {
+          "frequency_hz": 4000000000.0,
+          "s_real": [
+            [
+              -0.37328487634658813,
+              -0.7965061068534851
+            ],
+            [
+              -0.7939600348472595,
+              -0.37630578875541687
+            ]
+          ],
+          "s_imag": [
+            [
+              -0.10106227546930313,
+              -0.016275454312562943
+            ],
+            [
+              -0.09580619633197784,
+              -0.04099055007100105
+            ]
+          ],
+          "s_abs": [
+            [
+              0.3867236512448145,
+              0.7966723722258578
+            ],
+            [
+              0.7997195534625016,
+              0.37853173162359804
+            ]
+          ],
+          "left_reflection_power": 0.14955518243212093,
+          "left_reported_transmission_power": 0.639551364190263,
+          "right_reflection_power": 0.14328627184595966,
+          "right_reported_transmission_power": 0.6346868686679759,
+          "column_power": [
+            0.7891065466223839,
+            0.7779731405139355
+          ]
+        },
+        {
+          "frequency_hz": 4400000000.0,
+          "s_real": [
+            [
+              -0.4477754533290863,
+              -0.7353866100311279
+            ],
+            [
+              -0.7333978414535522,
+              -0.1628241240978241
+            ]
+          ],
+          "s_imag": [
+            [
+              0.9030781984329224,
+              0.6812493801116943
+            ],
+            [
+              0.682086706161499,
+              0.0026683704927563667
+            ]
+          ],
+          "s_abs": [
+            [
+              1.0079945878271974,
+              1.002444105232627
+            ],
+            [
+              1.0015561235252735,
+              0.162845987329471
+            ]
+          ],
+          "left_reflection_power": 1.0160530890889217,
+          "left_reported_transmission_power": 1.0031146685709729,
+          "right_reflection_power": 0.02651881558931023,
+          "right_reported_transmission_power": 1.004894184115642,
+          "column_power": [
+            2.0191677576598943,
+            1.0314129997049521
+          ]
+        },
+        {
+          "frequency_hz": 4800000000.0,
+          "s_real": [
+            [
+              0.9939611554145813,
+              0.3169890344142914
+            ],
+            [
+              0.3171224296092987,
+              0.15084496140480042
+            ]
+          ],
+          "s_imag": [
+            [
+              -0.14243470132350922,
+              0.9507004022598267
+            ],
+            [
+              0.94366854429245,
+              0.05494371056556702
+            ]
+          ],
+          "s_abs": [
+            [
+              1.0041147457408475,
+              1.0021543308272938
+            ],
+            [
+              0.9955284811839068,
+              0.16053975741830598
+            ]
+          ],
+          "left_reflection_power": 1.0082464226142067,
+          "left_reported_transmission_power": 0.9910769568483363,
+          "right_reflection_power": 0.02577301371192853,
+          "right_reported_transmission_power": 1.004313302795901,
+          "column_power": [
+            1.9993233794625431,
+            1.0300863165078296
+          ]
+        },
+        {
+          "frequency_hz": 5200000000.0,
+          "s_real": [
+            [
+              -0.47047337889671326,
+              0.9737244248390198
+            ],
+            [
+              0.9680569171905518,
+              -0.0727338120341301
+            ]
+          ],
+          "s_imag": [
+            [
+              -0.8829385638237,
+              0.2336382120847702
+            ],
+            [
+              0.2354220449924469,
+              -0.1402873992919922
+            ]
+          ],
+          "s_abs": [
+            [
+              1.0004627468014728,
+              1.0013621071691539
+            ],
+            [
+              0.9962719177959903,
+              0.15802139669401427
+            ]
+          ],
+          "left_reflection_power": 1.000925707737548,
+          "left_reported_transmission_power": 0.9925577341889005,
+          "right_reflection_power": 0.024970761813127015,
+          "right_reported_transmission_power": 1.002726069674248,
+          "column_power": [
+            1.9934834419264484,
+            1.027696831487375
+          ]
+        },
+        {
+          "frequency_hz": 5600000000.0,
+          "s_real": [
+            [
+              -0.7751664519309998,
+              0.7737908959388733
+            ],
+            [
+              0.7766123414039612,
+              -0.058319538831710815
+            ]
+          ],
+          "s_imag": [
+            [
+              0.6438088417053223,
+              -0.6449989676475525
+            ],
+            [
+              -0.6424097418785095,
+              0.14665789902210236
+            ]
+          ],
+          "s_abs": [
+            [
+              1.0076571107560566,
+              1.0073609178960103
+            ],
+            [
+              1.0078774753318758,
+              0.15782809621585311
+            ]
+          ],
+          "left_reflection_power": 1.0153728528572437,
+          "left_reported_transmission_power": 1.0158170052813558,
+          "right_reflection_power": 0.024909707955120597,
+          "right_reported_transmission_power": 1.0147760189042925,
+          "column_power": [
+            2.0311898581385996,
+            1.039685726859413
+          ]
+        },
+        {
+          "frequency_hz": 6000000000.0,
+          "s_real": [
+            [
+              0.6044725179672241,
+              0.17107048630714417
+            ],
+            [
+              0.2121383547782898,
+              0.17617782950401306
+            ]
+          ],
+          "s_imag": [
+            [
+              0.9592999815940857,
+              -1.1286191940307617
+            ],
+            [
+              -1.0941956043243408,
+              0.14873486757278442
+            ]
+          ],
+          "s_abs": [
+            [
+              1.1338621960644288,
+              1.1415105765694897
+            ],
+            [
+              1.1145701871532134,
+              0.23056601753215678
+            ]
+          ],
+          "left_reflection_power": 1.2856434796640492,
+          "left_reported_transmission_power": 1.2422667020907487,
+          "right_reflection_power": 0.053160688440638815,
+          "right_reported_transmission_power": 1.303046396420009,
+          "column_power": [
+            2.527910181754798,
+            1.3562070848606478
+          ]
+        }
+      ],
+      "port_planes_m": [
+        {
+          "source": 0.01,
+          "reference": 0.016,
+          "probe": 0.03
+        },
+        {
+          "source": 0.09,
+          "reference": 0.08399999999999999,
+          "probe": 0.06999999999999999
+        }
+      ],
+      "realization_census": {
+        "current": {
+          "cell_count": 200,
+          "occupied_x_indices": [
+            50
+          ],
+          "occupied_x_lower_nodes_m": [
+            0.084
+          ],
+          "edge_counts": [
+            231,
+            440,
+            420
+          ],
+          "tangential_wall_x_m": [
+            0.084,
+            0.08600000000000001
+          ]
+        },
+        "node_volume": {
+          "cell_count": 200,
+          "occupied_x_indices": [
+            51
+          ],
+          "occupied_x_lower_nodes_m": [
+            0.08600000000000001
+          ],
+          "edge_counts": [
+            231,
+            440,
+            420
+          ],
+          "tangential_wall_x_m": [
+            0.08600000000000001,
+            0.088
+          ]
+        },
+        "legacy_sigma": {
+          "cell_count": 200,
+          "damped_x_nodes_m": [
+            0.08600000000000001
+          ]
+        }
+      }
+    }
+  },
+  "live": {
+    "coarse": {
+      "input": {
+        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-short-20260909T015010Z-b36fc46cdf21-101/coarse/advisory_current.json",
+        "sha256": "f39235c153a750f114975dffc78d327df38633ae77b620817a9607aef274ec61"
+      },
+      "records": {
+        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-short-20260909T015010Z-b36fc46cdf21-101/coarse/advisory_current_records.npz",
+        "sha256": "c5faa5c8368e0993c971661056a772640da5e1e0e5e63a754fb9ada1fc2fd2aa"
+      },
+      "committed_reference": {
+        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-evidence/short-coarse.json",
+        "sha256": "b723ee81ad7a9c05d4e5acc0b014905ff5bbd9beb1f178a1d9da1ce9be1953cc"
+      },
+      "committed_records": {
+        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-evidence/short-coarse-traces.npz",
+        "sha256": "14f09abc1e8e49b70beeee52e238be88c9da8090469a495ca9378994a39233fa"
+      },
+      "bins": [
+        {
+          "frequency_hz": 4000000000.0,
+          "s_real": [
+            [
+              -0.5027880072593689,
+              0.0
+            ],
+            [
+              0.0,
+              -0.16160286962985992
+            ]
+          ],
+          "s_imag": [
+            [
+              -0.22624564170837402,
+              0.0
+            ],
+            [
+              0.0,
+              1.0018659830093384
+            ]
+          ],
+          "s_abs": [
+            [
+              0.5513464161812255,
+              0.0
+            ],
+            [
+              0.0,
+              1.0148157149866537
+            ]
+          ],
+          "left_reflection_power": 0.3039828706358811,
+          "left_reported_transmission_power": 0.0,
+          "right_reflection_power": 1.0298509353838736,
+          "right_reported_transmission_power": 0.0,
+          "column_power": [
+            0.3039828706358811,
+            1.0298509353838732
+          ]
+        },
+        {
+          "frequency_hz": 4400000000.0,
+          "s_real": [
+            [
+              -0.6215967535972595,
+              0.0
+            ],
+            [
+              0.0,
+              0.6869679093360901
+            ]
+          ],
+          "s_imag": [
+            [
+              0.8112317323684692,
+              0.0
+            ],
+            [
+              0.0,
+              0.7277280688285828
+            ]
+          ],
+          "s_abs": [
+            [
+              1.0219977728372014,
+              0.0
+            ],
+            [
+              0.0,
+              1.0007562393603036
+            ]
+          ],
+          "left_reflection_power": 1.0444794476841999,
+          "left_reported_transmission_power": 0.0,
+          "right_reflection_power": 1.0015130506185772,
+          "right_reported_transmission_power": 0.0,
+          "column_power": [
+            1.0444794476841999,
+            1.0015130506185772
+          ]
+        },
+        {
+          "frequency_hz": 4800000000.0,
+          "s_real": [
+            [
+              0.9997101426124573,
+              0.0
+            ],
+            [
+              0.0,
+              0.9928361177444458
+            ]
+          ],
+          "s_imag": [
+            [
+              0.11220528185367584,
+              0.0
+            ],
+            [
+              0.0,
+              0.11706122756004333
+            ]
+          ],
+          "s_abs": [
+            [
+              1.0059872735368387,
+              0.0
+            ],
+            [
+              0.0,
+              0.9997134027788802
+            ]
+          ],
+          "left_reflection_power": 1.0120103945180823,
+          "left_reported_transmission_power": 0.0,
+          "right_reflection_power": 0.9994268876957274,
+          "right_reported_transmission_power": 0.0,
+          "column_power": [
+            1.0120103945180823,
+            0.9994268876957276
+          ]
+        },
+        {
+          "frequency_hz": 5200000000.0,
+          "s_real": [
+            [
+              -0.183193638920784,
+              0.0
+            ],
+            [
+              0.0,
+              0.8814486861228943
+            ]
+          ],
+          "s_imag": [
+            [
+              -0.9827036261558533,
+              0.0
+            ],
+            [
+              0.0,
+              -0.4702950716018677
+            ]
+          ],
+          "s_abs": [
+            [
+              0.9996330957911017,
+              0.0
+            ],
+            [
+              0.0,
+              0.9990641824431413
+            ]
+          ],
+          "left_reflection_power": 0.9992663262009017,
+          "left_reported_transmission_power": 0.0,
+          "right_reflection_power": 0.9981292406407823,
+          "right_reported_transmission_power": 0.0,
+          "column_power": [
+            0.9992663262009019,
+            0.9981292406407823
+          ]
+        },
+        {
+          "frequency_hz": 5600000000.0,
+          "s_real": [
+            [
+              -0.9391324520111084,
+              0.0
+            ],
+            [
+              0.0,
+              0.4992695152759552
+            ]
+          ],
+          "s_imag": [
+            [
+              0.3306683897972107,
+              0.0
+            ],
+            [
+              0.0,
+              -0.8646237850189209
+            ]
+          ],
+          "s_abs": [
+            [
+              0.9956461954085281,
+              0.0
+            ],
+            [
+              0.0,
+              0.9984209225093054
+            ]
+          ],
+          "left_reflection_power": 0.9913113464314768,
+          "left_reported_transmission_power": 0.0,
+          "right_reflection_power": 0.9968443385043323,
+          "right_reported_transmission_power": 0.0,
+          "column_power": [
+            0.9913113464314768,
+            0.9968443385043323
+          ]
+        },
+        {
+          "frequency_hz": 6000000000.0,
+          "s_real": [
+            [
+              0.2880401909351349,
+              0.0
+            ],
+            [
+              0.0,
+              0.008125961758196354
+            ]
+          ],
+          "s_imag": [
+            [
+              0.8991791605949402,
+              0.0
+            ],
+            [
+              0.0,
+              -0.9929770827293396
+            ]
+          ],
+          "s_abs": [
+            [
+              0.9441876478974772,
+              0.0
+            ],
+            [
+              0.0,
+              0.9930103313058558
+            ]
+          ],
+          "left_reflection_power": 0.8914903144421702,
+          "left_reported_transmission_power": 0.0,
+          "right_reflection_power": 0.9860695180801655,
+          "right_reported_transmission_power": 0.0,
+          "column_power": [
+            0.8914903144421704,
+            0.9860695180801655
+          ]
+        }
+      ],
+      "maximum_column_power_recomputed": 1.0444794476841999,
+      "maximum_column_power_capture": 1.044479250907898,
+      "original_interval_pass": false,
+      "soft_column_power_advisory": false,
+      "settling_db": [
+        -25.494890697081768,
+        -49.59556966120925
+      ],
+      "settling_pass": false,
+      "port_planes_m": [
+        {
+          "source": 0.01,
+          "reference": 0.016,
+          "probe": 0.03
+        },
+        {
+          "source": 0.11,
+          "reference": 0.104,
+          "probe": 0.09
+        }
+      ],
+      "driven_incident_nonzero": [
+        true,
+        true
+      ],
+      "wave_and_record_summaries": [
+        [
+          {
+            "port": 0,
+            "dt": 3.8131497390620115e-12,
+            "n_steps": 1312,
+            "v_probe_t": {
+              "peak": 0.9415111541748047,
+              "tail": 0.060908325016498566
+            },
+            "v_ref_t": {
+              "peak": 1.479399561882019,
+              "tail": 0.06888438016176224
+            },
+            "i_probe_t": {
+              "peak": 0.0022544388193637133,
+              "tail": 0.00010976769408443943
+            },
+            "i_ref_t": {
+              "peak": 0.001375385094434023,
+              "tail": 0.0001338150177616626
+            },
+            "a_wave": {
+              "real": [
+                1.2380178479598491e-11,
+                2.427592293852143e-10,
+                9.423191116297858e-10,
+                9.467626682635455e-10,
+                2.4860341563126553e-10,
+                9.028986759640478e-12
+              ],
+              "imag": [
+                7.00727290862263e-13,
+                2.4098476686384984e-11,
+                -1.2405483584831956e-10,
+                1.2557446749106305e-10,
+                -6.92224532902741e-12,
+                -1.5006172303030918e-12
+              ],
+              "magnitude": [
+                1.2399993358502837e-11,
+                2.439524138253546e-10,
+                9.504499409729306e-10,
+                9.550541468783535e-10,
+                2.486997552342274e-10,
+                9.152839076931318e-12
+              ]
+            },
+            "b_wave": {
+              "real": [
+                -6.066069088012105e-12,
+                -1.7044779476727e-10,
+                9.559655289592683e-10,
+                -5.0038410914776676e-11,
+                -2.31182559207177e-10,
+                3.950035177419098e-12
+              ],
+              "imag": [
+                -3.1532788533072953e-12,
+                1.819544515058169e-10,
+                -1.828569587414286e-11,
+                -9.533915878989774e-10,
+                8.870619516709866e-11,
+                7.686439158771652e-12
+              ],
+              "magnitude": [
+                6.836692670320055e-12,
+                2.4931881559275837e-10,
+                9.561403890856468e-10,
+                9.547038715140843e-10,
+                2.4761695471831047e-10,
+                8.641997707725668e-12
+              ]
+            }
+          },
+          {
+            "port": 1,
+            "dt": 3.8131497390620115e-12,
+            "n_steps": 1312,
+            "v_probe_t": {
+              "peak": 0.0,
+              "tail": 0.0
+            },
+            "v_ref_t": {
+              "peak": 0.0,
+              "tail": 0.0
+            },
+            "i_probe_t": {
+              "peak": 0.0,
+              "tail": 0.0
+            },
+            "i_ref_t": {
+              "peak": 0.0,
+              "tail": 0.0
+            },
+            "a_wave": {
+              "real": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "imag": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "magnitude": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            "b_wave": {
+              "real": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "imag": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "magnitude": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "port": 0,
+            "dt": 3.8131497390620115e-12,
+            "n_steps": 1312,
+            "v_probe_t": {
+              "peak": 0.0,
+              "tail": 0.0
+            },
+            "v_ref_t": {
+              "peak": 0.0,
+              "tail": 0.0
+            },
+            "i_probe_t": {
+              "peak": 0.0,
+              "tail": 0.0
+            },
+            "i_ref_t": {
+              "peak": 0.0,
+              "tail": 0.0
+            },
+            "a_wave": {
+              "real": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "imag": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "magnitude": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            "b_wave": {
+              "real": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "imag": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "magnitude": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ]
+            }
+          },
+          {
+            "port": 1,
+            "dt": 3.8131497390620115e-12,
+            "n_steps": 1312,
+            "v_probe_t": {
+              "peak": 0.5997623801231384,
+              "tail": 0.0030123931355774403
+            },
+            "v_ref_t": {
+              "peak": 2.0437750816345215,
+              "tail": 0.010499936528503895
+            },
+            "i_probe_t": {
+              "peak": 0.0036410025786608458,
+              "tail": 2.1779800590593368e-05
+            },
+            "i_ref_t": {
+              "peak": 0.0011216658167541027,
+              "tail": 9.14051452127751e-06
+            },
+            "a_wave": {
+              "real": [
+                7.876962103414709e-12,
+                1.896668933021317e-10,
+                1.0929653848634757e-09,
+                1.204878641303253e-09,
+                2.225498257901748e-10,
+                8.342989493703712e-12
+              ],
+              "imag": [
+                -8.274620138387645e-13,
+                1.3104671861552397e-11,
+                9.703986225684247e-11,
+                -8.74807171147296e-11,
+                -4.8908412042525384e-11,
+                -1.847264312002106e-12
+              ],
+              "magnitude": [
+                7.920305036823727e-12,
+                1.9011907326227373e-10,
+                1.097264834548639e-09,
+                1.2080502154176997e-09,
+                2.2786063313962046e-10,
+                8.545048349462014e-12
+              ]
+            },
+            "b_wave": {
+              "real": [
+                -4.4393365394336526e-13,
+                1.2075843103254158e-10,
+                1.0737759570389471e-09,
+                1.0208969225544706e-09,
+                6.882497349813832e-11,
+                -1.7664963459021465e-12
+              ],
+              "imag": [
+                8.025380707210594e-12,
+                1.4702841721891957e-10,
+                2.2428855994682806e-10,
+                -6.437582689144961e-10,
+                -2.1684036510816185e-10,
+                -8.299408035816747e-12
+              ],
+              "magnitude": [
+                8.03764953899444e-12,
+                1.902628610217505e-10,
+                1.0969503083657628e-09,
+                1.2069197863340264e-09,
+                2.2750080985733945e-10,
+                8.485321820184133e-12
+              ]
+            }
+          }
+        ]
+      ],
+      "reproduction_comparisons": {
+        "s_matrix": {
+          "exactly_equal": false,
+          "max_abs_delta": 3.7558316930185134e-06,
+          "max_abs_delta_over_reference_peak": 3.6749888142130375e-06
+        },
+        "drive0_port0_v_probe_t": {
+          "exactly_equal": false,
+          "max_abs_delta": 2.384185791015625e-07,
+          "max_abs_delta_over_reference_peak": 2.5322970031993464e-07
+        },
+        "drive0_port0_v_ref_t": {
+          "exactly_equal": false,
+          "max_abs_delta": 3.5762786865234375e-07,
+          "max_abs_delta_over_reference_peak": 2.417385474018374e-07
+        },
+        "drive0_port0_i_probe_t": {
+          "exactly_equal": false,
+          "max_abs_delta": 5.820766091346741e-10,
+          "max_abs_delta_over_reference_peak": 2.581913349786191e-07
+        },
+        "drive0_port0_i_ref_t": {
+          "exactly_equal": false,
+          "max_abs_delta": 4.656612873077393e-10,
+          "max_abs_delta_over_reference_peak": 3.3856792924780166e-07
+        },
+        "drive0_port1_v_probe_t": {
+          "exactly_equal": true,
+          "max_abs_delta": 0.0,
+          "max_abs_delta_over_reference_peak": null
+        },
+        "drive0_port1_v_ref_t": {
+          "exactly_equal": true,
+          "max_abs_delta": 0.0,
+          "max_abs_delta_over_reference_peak": null
+        },
+        "drive0_port1_i_probe_t": {
+          "exactly_equal": true,
+          "max_abs_delta": 0.0,
+          "max_abs_delta_over_reference_peak": null
+        },
+        "drive0_port1_i_ref_t": {
+          "exactly_equal": true,
+          "max_abs_delta": 0.0,
+          "max_abs_delta_over_reference_peak": null
+        },
+        "drive1_port0_v_probe_t": {
+          "exactly_equal": true,
+          "max_abs_delta": 0.0,
+          "max_abs_delta_over_reference_peak": null
+        },
+        "drive1_port0_v_ref_t": {
+          "exactly_equal": true,
+          "max_abs_delta": 0.0,
+          "max_abs_delta_over_reference_peak": null
+        },
+        "drive1_port0_i_probe_t": {
+          "exactly_equal": true,
+          "max_abs_delta": 0.0,
+          "max_abs_delta_over_reference_peak": null
+        },
+        "drive1_port0_i_ref_t": {
+          "exactly_equal": true,
+          "max_abs_delta": 0.0,
+          "max_abs_delta_over_reference_peak": null
+        },
+        "drive1_port1_v_probe_t": {
+          "exactly_equal": true,
+          "max_abs_delta": 0.0,
+          "max_abs_delta_over_reference_peak": 0.0
+        },
+        "drive1_port1_v_ref_t": {
+          "exactly_equal": true,
+          "max_abs_delta": 0.0,
+          "max_abs_delta_over_reference_peak": 0.0
+        },
+        "drive1_port1_i_probe_t": {
+          "exactly_equal": true,
+          "max_abs_delta": 0.0,
+          "max_abs_delta_over_reference_peak": 0.0
+        },
+        "drive1_port1_i_ref_t": {
+          "exactly_equal": true,
+          "max_abs_delta": 0.0,
+          "max_abs_delta_over_reference_peak": 0.0
+        }
+      },
+      "warnings": [
+        "compute_waveguide_s_matrix(normalize=False): S21 and S-parameter phase include Yee numerical dispersion. For S21 accuracy and reciprocity use normalize=True. For |S11| of strong reflectors (PEC short, resonators) normalize=False is more accurate \u2014 see the normalize parameter docstring.",
+        "compute_waveguide_s_matrix: absorber on the x propagation axis is thinner than the documented 0.5 guide-wavelength far-port discipline at the lowest measured frequency 4.000 GHz (mode cutoff 3.744 GHz, lambda_g = 212.7 mm): x-lo 8 cells = 16.0 mm (0.08 lambda_g), x-hi 8 cells = 16.0 mm (0.08 lambda_g), against a required 106.4 mm. A thin absorber reflects guided energy and can set the accuracy envelope instead of discretization: in the WR-90 iris lane (issue #494) residual |S11| ripple was 0.0706 at 0.30 lambda_g, 0.0366 at 0.50, and 0.0093 at 0.75, so 0.5 lambda_g is a floor and not a target. Raise cpml_layers to at least 54 (0.75 lambda_g needs 80).",
+        "the record is shorter than 3 x the far-boundary round trip \u2014 waveguide_port[0] (+x): T/tau_far = 2.097. T = 5.0029 ns (1312 steps x dt = 3.8131 ps; num_periods = 30 at freq_max = 6 GHz), tau_far = 2 x far_path / v_g = 2.386 ns. far_path = 126 mm (port plane 10 mm to the x-hi outer wall on a 120 mm domain, absorber pad 16 mm included); v_g(f_min)/c = 0.3523 at f_min = 4 GHz with the port's discrete cutoff f_c = 3.7436 GHz. num_periods >= 43 makes T/tau_far >= 3. Finer grids need more \u2014 measured 3, 5 and 8 at a/18, a/36 and a/72 on the WR-90 battery. A multimode port is audited on its lowest-cutoff mode, so this is a lower bound.",
+        "the record is shorter than 3 x the far-boundary round trip \u2014 waveguide_port[1] (-x): T/tau_far = 2.097. T = 5.0029 ns (1312 steps x dt = 3.8131 ps; num_periods = 30 at freq_max = 6 GHz), tau_far = 2 x far_path / v_g = 2.386 ns. far_path = 126 mm (port plane 110 mm to the x-lo outer wall on a 120 mm domain, absorber pad 16 mm included); v_g(f_min)/c = 0.3523 at f_min = 4 GHz with the port's discrete cutoff f_c = 3.7436 GHz. num_periods >= 43 makes T/tau_far >= 3. Finer grids need more \u2014 measured 3, 5 and 8 at a/18, a/36 and a/72 on the WR-90 battery. A multimode port is audited on its lowest-cutoff mode, so this is a lower bound.",
+        "waveguide port index mirror audit, source E plane (x-axis): i(+) = 13, i(-) = 64, sum = 77 on n_axis = 77; the covariant sum for a primal plane is 76. The +1 difference is the KNOWN shipped offset \u2014 apply_waveguide_port_e places the '-' port's E correction at x_index + 1 \u2014 not an asymmetry in this setup. Reported as information.",
+        "ring-down settling witness FAILED (end/peak energy above -40 dB): port left driven: -25.5 dB. The num_periods=30 record ended while the structure was still ringing, so the DFT-based S-parameters of the affected run(s) are truncation artifacts wherever the structure is resonant \u2014 expect spurious |S| poles and passivity violations. Increase num_periods until the witness is below \u221240 dB before quoting any S value (see the result's settling_db field)."
+      ]
+    },
+    "fine": {
+      "input": {
+        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-short-20260909T015010Z-b36fc46cdf21-101/fine/advisory_current_fine.json",
+        "sha256": "eb3abc4bd4c8fed1faf74b1b5e701e7723ca0bbc509ee8e088fa916a1e836a12"
+      },
+      "records": {
+        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-short-20260909T015010Z-b36fc46cdf21-101/fine/advisory_current_fine_records.npz",
+        "sha256": "b240dfb483f4e022fb2e7884f963d5448a2816bbcaaf014fae3fec0f4f5bd5a8"
+      },
+      "committed_reference": {
+        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-evidence/short-fine.json",
+        "sha256": "671af0fff5199ae02be6ca3b18791690b9356678efea4aadeb93717bbc82d671"
+      },
+      "committed_records": {
+        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-evidence/short-fine-traces.npz",
+        "sha256": "14feab41cd3297573cdb04ae1c4e4de0a4078ee30afc9ac27b7735c32ccd6bb6"
+      },
+      "bins": [
+        {
+          "frequency_hz": 5000000000.0,
+          "s_real": [
+            [
+              0.5987906455993652,
+              -0.0
+            ],
+            [
+              -0.0,
+              0.9818424582481384
+            ]
+          ],
+          "s_imag": [
+            [
+              -0.7118296027183533,
+              0.0
+            ],
+            [
+              0.0,
+              -0.18871350586414337
+            ]
+          ],
+          "s_abs": [
+            [
+              0.9301890241039579,
+              0.0
+            ],
+            [
+              0.0,
+              0.9998136827000735
+            ]
+          ],
+          "left_reflection_power": 0.8652516205634733,
+          "left_reported_transmission_power": 0.0,
+          "right_reflection_power": 0.9996274001142835,
+          "right_reported_transmission_power": 0.0,
+          "column_power": [
+            0.8652516205634735,
+            0.9996274001142833
+          ]
+        },
+        {
+          "frequency_hz": 5400000000.0,
+          "s_real": [
+            [
+              -0.870900571346283,
+              -0.0
+            ],
+            [
+              -0.0,
+              0.7171444892883301
+            ]
+          ],
+          "s_imag": [
+            [
+              -0.48439446091651917,
+              0.0
+            ],
+            [
+              0.0,
+              -0.6964399814605713
+            ]
+          ],
+          "s_abs": [
+            [
+              0.9965469376491441,
+              0.0
+            ],
+            [
+              0.0,
+              0.9996623761517788
+            ]
+          ],
+          "left_reflection_power": 0.9931057989378872,
+          "left_reported_transmission_power": 0.0,
+          "right_reflection_power": 0.9993248662934207,
+          "right_reported_transmission_power": 0.0,
+          "column_power": [
+            0.9931057989378872,
+            0.9993248662934204
+          ]
+        },
+        {
+          "frequency_hz": 5800000000.0,
+          "s_real": [
+            [
+              -0.3920675218105316,
+              -0.0
+            ],
+            [
+              -0.0,
+              0.25562575459480286
+            ]
+          ],
+          "s_imag": [
+            [
+              0.9195511341094971,
+              0.0
+            ],
+            [
+              0.0,
+              -0.9663085341453552
+            ]
+          ],
+          "s_abs": [
+            [
+              0.999645552133712,
+              0.0
+            ],
+            [
+              0.0,
+              0.9995482527493644
+            ]
+          ],
+          "left_reflection_power": 0.9992912299007138,
+          "left_reported_transmission_power": 0.0,
+          "right_reflection_power": 0.9990967095743075,
+          "right_reported_transmission_power": 0.0,
+          "column_power": [
+            0.9992912299007138,
+            0.9990967095743073
+          ]
+        },
+        {
+          "frequency_hz": 6200000000.0,
+          "s_real": [
+            [
+              0.9284005165100098,
+              -0.0
+            ],
+            [
+              -0.0,
+              -0.2534772753715515
+            ]
+          ],
+          "s_imag": [
+            [
+              0.37201637029647827,
+              0.0
+            ],
+            [
+              0.0,
+              -0.9667984247207642
+            ]
+          ],
+          "s_abs": [
+            [
+              1.0001618363168128,
+              0.0
+            ],
+            [
+              0.0,
+              0.9994748236810853
+            ]
+          ],
+          "left_reflection_power": 1.0003236988246194,
+          "left_reported_transmission_power": 0.0,
+          "right_reflection_power": 0.9989499231723363,
+          "right_reported_transmission_power": 0.0,
+          "column_power": [
+            1.000323698824619,
+            0.9989499231723366
+          ]
+        },
+        {
+          "frequency_hz": 6600000000.0,
+          "s_real": [
+            [
+              0.41028454899787903,
+              -0.0
+            ],
+            [
+              -0.0,
+              -0.6832029223442078
+            ]
+          ],
+          "s_imag": [
+            [
+              -0.913400411605835,
+              0.0
+            ],
+            [
+              0.0,
+              -0.7294459939002991
+            ]
+          ],
+          "s_abs": [
+            [
+              1.0013159956118256,
+              0.0
+            ],
+            [
+              0.0,
+              0.9994286823565055
+            ]
+          ],
+          "left_reflection_power": 1.0026337230681015,
+          "left_reported_transmission_power": 0.0,
+          "right_reflection_power": 0.9988576911168607,
+          "right_reported_transmission_power": 0.0,
+          "column_power": [
+            1.0026337230681015,
+            0.9988576911168607
+          ]
+        },
+        {
+          "frequency_hz": 7000000000.0,
+          "s_real": [
+            [
+              -0.895808756351471,
+              -0.0
+            ],
+            [
+              -0.0,
+              -0.9436811208724976
+            ]
+          ],
+          "s_imag": [
+            [
+              -0.4969403147697449,
+              0.0
+            ],
+            [
+              0.0,
+              -0.3293154537677765
+            ]
+          ],
+          "s_abs": [
+            [
+              1.0244134928823527,
+              0.0
+            ],
+            [
+              0.0,
+              0.9994912335690843
+            ]
+          ],
+          "left_reflection_power": 1.0494230043994222,
+          "left_reported_transmission_power": 0.0,
+          "right_reflection_power": 0.9989827259814499,
+          "right_reported_transmission_power": 0.0,
+          "column_power": [
+            1.0494230043994222,
+            0.9989827259814499
+          ]
+        }
+      ],
+      "maximum_column_power_recomputed": 1.0494230043994222,
+      "maximum_column_power_capture": 1.0494229793548584,
+      "original_interval_pass": true,
+      "soft_column_power_advisory": false,
+      "settling_db": [
+        -47.475852231488204,
+        -103.15660722963592
+      ],
+      "settling_pass": true,
+      "port_planes_m": [
+        {
+          "source": 0.01,
+          "reference": 0.016,
+          "probe": 0.03
+        },
+        {
+          "source": 0.11,
+          "reference": 0.104,
+          "probe": 0.09
+        }
+      ],
+      "driven_incident_nonzero": [
+        true,
+        true
+      ],
+      "wave_and_record_summaries": [
+        [
+          {
+            "port": 0,
+            "dt": 1.9065748695310057e-12,
+            "n_steps": 2998,
+            "v_probe_t": {
+              "peak": 1.520924687385559,
+              "tail": 0.01030371617525816
+            },
+            "v_ref_t": {
+              "peak": 0.7534060478210449,
+              "tail": 0.007232374511659145
+            },
+            "i_probe_t": {
+              "peak": 0.002013865625485778,
+              "tail": 1.1900362551386934e-05
+            },
+            "i_ref_t": {
+              "peak": 0.0032310746610164642,
+              "tail": 2.0566967577906325e-05
+            },
+            "a_wave": {
+              "real": [
+                -8.182662880606983e-12,
+                -2.1412320527769424e-10,
+                -1.131040372470693e-09,
+                -9.283853685815302e-10,
+                -2.0013335433333168e-10,
+                -1.0220562243756781e-11
+              ],
+              "imag": [
+                2.7362034621565556e-13,
+                -2.611665050888945e-11,
+                9.15308662197134e-11,
+                5.939386482634035e-11,
+                -2.213960265118331e-11,
+                -2.7581772586368625e-13
+              ],
+              "magnitude": [
+                8.187236479051396e-12,
+                2.1571004704679098e-10,
+                1.134737970254207e-09,
+                9.302832948421269e-10,
+                2.0135419720457293e-10,
+                1.0224283225612751e-11
+              ]
+            },
+            "b_wave": {
+              "real": [
+                -4.704931323012973e-12,
+                1.738292704223099e-10,
+                3.5927688601944396e-10,
+                -8.840089216199942e-10,
+                -1.0233394687197972e-10,
+                9.018604439636757e-12
+              ],
+              "imag": [
+                5.988503096188147e-12,
+                1.2646510227920515e-10,
+                -1.075935784911053e-09,
+                -2.902332540966057e-10,
+                1.7371835914214984e-10,
+                5.326089395907285e-12
+              ],
+              "magnitude": [
+                7.615678053463082e-12,
+                2.1496519841956996e-10,
+                1.1343358474746879e-09,
+                9.304338410842661e-10,
+                2.0161919356276314e-10,
+                1.047389432129453e-11
+              ]
+            }
+          },
+          {
+            "port": 1,
+            "dt": 1.9065748695310057e-12,
+            "n_steps": 2998,
+            "v_probe_t": {
+              "peak": 0.0,
+              "tail": 0.0
+            },
+            "v_ref_t": {
+              "peak": 0.0,
+              "tail": 0.0
+            },
+            "i_probe_t": {
+              "peak": 0.0,
+              "tail": 0.0
+            },
+            "i_ref_t": {
+              "peak": 0.0,
+              "tail": 0.0
+            },
+            "a_wave": {
+              "real": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "imag": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "magnitude": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            "b_wave": {
+              "real": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "imag": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "magnitude": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "port": 0,
+            "dt": 1.9065748695310057e-12,
+            "n_steps": 2998,
+            "v_probe_t": {
+              "peak": 0.0,
+              "tail": 0.0
+            },
+            "v_ref_t": {
+              "peak": 0.0,
+              "tail": 0.0
+            },
+            "i_probe_t": {
+              "peak": 0.0,
+              "tail": 0.0
+            },
+            "i_ref_t": {
+              "peak": 0.0,
+              "tail": 0.0
+            },
+            "a_wave": {
+              "real": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "imag": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "magnitude": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            "b_wave": {
+              "real": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "imag": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "magnitude": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ]
+            }
+          },
+          {
+            "port": 1,
+            "dt": 1.9065748695310057e-12,
+            "n_steps": 2998,
+            "v_probe_t": {
+              "peak": 0.7789714336395264,
+              "tail": 4.779658411280252e-06
+            },
+            "v_ref_t": {
+              "peak": 1.9903215169906616,
+              "tail": 1.9408727894187905e-05
+            },
+            "i_probe_t": {
+              "peak": 0.003883120371028781,
+              "tail": 3.105085610854985e-08
+            },
+            "i_ref_t": {
+              "peak": 0.000789923476986587,
+              "tail": 1.950668071515338e-08
+            },
+            "a_wave": {
+              "real": [
+                -9.611105314388801e-12,
+                -2.407069266130435e-10,
+                -1.096831070412918e-09,
+                -9.90202586592659e-10,
+                -1.912506264467595e-10,
+                -8.031799184071708e-12
+              ],
+              "imag": [
+                -6.962839050987657e-13,
+                9.186226432311706e-12,
+                1.592101589453776e-10,
+                1.665349247392811e-10,
+                2.2940914792823897e-11,
+                3.473747168820235e-13
+              ],
+              "magnitude": [
+                9.636294366621723e-12,
+                2.4088217531748057e-10,
+                1.108325875520677e-09,
+                1.0041090181545087e-09,
+                1.926216131042935e-10,
+                8.039307934637474e-12
+              ]
+            },
+            "b_wave": {
+              "real": [
+                -9.567989629755136e-12,
+                -1.6622399290344703e-10,
+                -1.265321319943169e-10,
+                4.119995178353264e-10,
+                1.473971500409732e-10,
+                7.693853366907977e-12
+              ],
+              "imag": [
+                1.1301042567024577e-12,
+                1.7422577269776696e-10,
+                1.1005754085857689e-09,
+                9.151134294782537e-10,
+                1.2383370717738984e-10,
+                2.3171844217712012e-12
+              ],
+              "magnitude": [
+                9.634498927824087e-12,
+                2.4080082372535117e-10,
+                1.1078251649365711e-09,
+                1.0035817732401142e-09,
+                1.9251157612476533e-10,
+                8.03521745668112e-12
+              ]
+            }
+          }
+        ]
+      ],
+      "reproduction_comparisons": {
+        "s_matrix": {
+          "exactly_equal": false,
+          "max_abs_delta": 7.171469263180017e-06,
+          "max_abs_delta_over_reference_peak": 7.000595186101887e-06
+        },
+        "drive0_port0_v_probe_t": {
+          "exactly_equal": false,
+          "max_abs_delta": 5.960464477539062e-07,
+          "max_abs_delta_over_reference_peak": 3.9189743006318167e-07
+        },
+        "drive0_port0_v_ref_t": {
+          "exactly_equal": false,
+          "max_abs_delta": 2.980232238769531e-07,
+          "max_abs_delta_over_reference_peak": 3.955678664624429e-07
+        },
+        "drive0_port0_i_probe_t": {
+          "exactly_equal": false,
+          "max_abs_delta": 5.820766091346741e-10,
+          "max_abs_delta_over_reference_peak": 2.890345172090747e-07
+        },
+        "drive0_port0_i_ref_t": {
+          "exactly_equal": false,
+          "max_abs_delta": 9.313225746154785e-10,
+          "max_abs_delta_over_reference_peak": 2.8823924935750256e-07
+        },
+        "drive0_port1_v_probe_t": {
+          "exactly_equal": true,
+          "max_abs_delta": 0.0,
+          "max_abs_delta_over_reference_peak": null
+        },
+        "drive0_port1_v_ref_t": {
+          "exactly_equal": true,
+          "max_abs_delta": 0.0,
+          "max_abs_delta_over_reference_peak": null
+        },
+        "drive0_port1_i_probe_t": {
+          "exactly_equal": true,
+          "max_abs_delta": 0.0,
+          "max_abs_delta_over_reference_peak": null
+        },
+        "drive0_port1_i_ref_t": {
+          "exactly_equal": true,
+          "max_abs_delta": 0.0,
+          "max_abs_delta_over_reference_peak": null
+        },
+        "drive1_port0_v_probe_t": {
+          "exactly_equal": true,
+          "max_abs_delta": 0.0,
+          "max_abs_delta_over_reference_peak": null
+        },
+        "drive1_port0_v_ref_t": {
+          "exactly_equal": true,
+          "max_abs_delta": 0.0,
+          "max_abs_delta_over_reference_peak": null
+        },
+        "drive1_port0_i_probe_t": {
+          "exactly_equal": true,
+          "max_abs_delta": 0.0,
+          "max_abs_delta_over_reference_peak": null
+        },
+        "drive1_port0_i_ref_t": {
+          "exactly_equal": true,
+          "max_abs_delta": 0.0,
+          "max_abs_delta_over_reference_peak": null
+        },
+        "drive1_port1_v_probe_t": {
+          "exactly_equal": false,
+          "max_abs_delta": 2.384185791015625e-07,
+          "max_abs_delta_over_reference_peak": 3.0606844347857987e-07
+        },
+        "drive1_port1_v_ref_t": {
+          "exactly_equal": false,
+          "max_abs_delta": 4.76837158203125e-07,
+          "max_abs_delta_over_reference_peak": 2.3957795747264754e-07
+        },
+        "drive1_port1_i_probe_t": {
+          "exactly_equal": false,
+          "max_abs_delta": 9.313225746154785e-10,
+          "max_abs_delta_over_reference_peak": 2.3983869823496207e-07
+        },
+        "drive1_port1_i_ref_t": {
+          "exactly_equal": false,
+          "max_abs_delta": 4.0745362639427185e-10,
+          "max_abs_delta_over_reference_peak": 5.158140652383736e-07
+        }
+      },
+      "warnings": [
+        "compute_waveguide_s_matrix(normalize=False): S21 and S-parameter phase include Yee numerical dispersion. For S21 accuracy and reciprocity use normalize=True. For |S11| of strong reflectors (PEC short, resonators) normalize=False is more accurate \u2014 see the normalize parameter docstring.",
+        "compute_waveguide_s_matrix: absorber on the x propagation axis is thinner than the documented 0.5 guide-wavelength far-port discipline at the lowest measured frequency 5.000 GHz (mode cutoff 3.746 GHz, lambda_g = 90.5 mm): x-lo 10 cells = 10.0 mm (0.11 lambda_g), x-hi 10 cells = 10.0 mm (0.11 lambda_g), against a required 45.3 mm. A thin absorber reflects guided energy and can set the accuracy envelope instead of discretization: in the WR-90 iris lane (issue #494) residual |S11| ripple was 0.0706 at 0.30 lambda_g, 0.0366 at 0.50, and 0.0093 at 0.75, so 0.5 lambda_g is a floor and not a target. Raise cpml_layers to at least 46 (0.75 lambda_g needs 68).",
+        "waveguide port index mirror audit, source E plane (x-axis): i(+) = 20, i(-) = 121, sum = 141 on n_axis = 141; the covariant sum for a primal plane is 140. The +1 difference is the KNOWN shipped offset \u2014 apply_waveguide_port_e places the '-' port's E correction at x_index + 1 \u2014 not an asymmetry in this setup. Reported as information."
+      ]
+    }
+  },
+  "unqualified": [
+    "Coarse absolute reflection accuracy: original record fails -40 dB settling.",
+    "Absorber depth is below the documented floor in both retained controls.",
+    "Fine control changes band, duration, and physical absorber thickness; it is not mesh convergence.",
+    "The unchanged historical coarse advisory test remains red; no qualified replacement witness is asserted."
+  ]
+}

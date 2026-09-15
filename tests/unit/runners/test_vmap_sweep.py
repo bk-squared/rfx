@@ -33,13 +33,27 @@ def _make_dielectric_sim(eps_r: float = 4.0):
 def _make_cpml_sim(eps_r: float = 4.0, thin_conductor: bool = False):
     """Create a CPML-bounded sim with a dielectric slab and probe.
 
-    ``thin_conductor`` adds a NON-PEC sheet spanning the full x extent
-    (issue #642). The full x span is load-bearing, not decoration: #642 is
-    a pad-EXTENSION leak, so the conductor has to sit on the very column
-    the x pads replicate from. An interior-only conductor
+    ``thin_conductor`` adds a NON-PEC lossy conductor spanning the full x
+    extent (issue #642). The full x span is load-bearing, not decoration:
+    #642 is a pad-EXTENSION leak, so the conductor has to sit on the very
+    column the x pads replicate from. An interior-only conductor
     (x 0.005..0.015, the first draft of this fixture) measured a
     diff/budget ratio of 7.5e-3 at n_steps=200 -- blind by GEOMETRY, a
     third blindness shape on top of the two issue #642 names.
+
+    #931 SCOPE. ``sigma_bulk = 1e4`` is BELOW the PEC threshold and carries
+    no ``surface_impedance_f0``, so this is the DC fold: a lossy VOLUME
+    model that stamps ``sigma_eff = sigma_bulk * thickness / dx`` into the
+    material arrays. Design note §1.8 fences that path out of the lattice
+    ownership contract, so the declaration, the realized footprint and the
+    calibrated ``n_steps = 200`` / ``atol=1e-8, rtol=1e-6`` gate below are
+    all unchanged. It is not a sheet and the word is avoided here: the box
+    is 2 cells thick in BOTH y and z, so it has no single normal axis and
+    could never have been one — only the pre-#931 rule, which realized any
+    masked body as a stack of node planes, made it look like a film.
+    A PEC (``sigma_bulk >= 1e6``) thin conductor IS a sheet and would have
+    to be drawn with zero thickness on its normal; see the PEC row of the
+    #642 pad matrix in test_vmap_sweep_dft_planes.py.
     """
     sim = Simulation(
         freq_max=5e9,
@@ -238,8 +252,9 @@ class TestVmapSweepCPML:
         That is not drift, it is divergence onset -- the R5 decile dump
         at 400 steps shows the injected path's probe envelope growing
         monotonically (last/mid decile 3.9e13) while the sequential
-        reference decays (9.1e-3). Leaking a 175 S/m sheet into the CPML
-        pad destabilises the run; #642 was never only an accuracy leak.
+        reference decays (9.1e-3). Leaking the 175 S/m lossy conductor
+        into the CPML pad destabilises the run; #642 was never only an
+        accuracy leak.
 
         Hence ``n_steps=200``: the only value at which BOTH rows are
         sensitive (1.47e4x and 5.10e2x over the gate). And hence the

@@ -517,7 +517,10 @@ def differentiable_material_fit(
         # Assemble materials (geometry masks are static, but eps_inf flows through)
         from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
         _refuse_f0(sim._thin_conductors, "differentiable material fit")
-        materials, debye_spec, lorentz_spec, pec_mask, *_ = sim._assemble_materials(grid)
+        _fit_pec_sheets: list = []
+        _fit_pec_wires: list = []
+        materials, debye_spec, lorentz_spec, pec_mask, *_ = sim._assemble_materials(
+            grid, pec_sheets=_fit_pec_sheets, pec_wires=_fit_pec_wires)
 
         # Setup ports (fold port impedance into materials)
         for pe in sim._ports:
@@ -569,6 +572,8 @@ def differentiable_material_fit(
             probes=probes,
             checkpoint=checkpoint,
             pec_mask=pec_mask,
+            pec_sheets=tuple(_fit_pec_sheets),
+            pec_wires=tuple(_fit_pec_wires),
         )
 
         # Extract S-params from time series via DFT

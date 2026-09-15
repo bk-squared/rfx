@@ -75,7 +75,7 @@ That override is a ``contextvars.ContextVar``, so it is restored on exit
 (including on an exception) and is private to the thread / asyncio task that
 set it -- unlike a plain module global, which two concurrent sweeps would
 race on. Neither the solution nor a gradient depends on the ordering beyond
-roundoff; that is gated in ``tests/test_fdfd_linear_solve.py``.
+roundoff; that is gated in ``tests/unit/fdfd/test_fdfd_linear_solve.py``.
 
 Memory
 ------
@@ -575,7 +575,7 @@ def sparse_solve(data: jax.Array, rows: np.ndarray, cols: np.ndarray, b: jax.Arr
     agrees to 6.0e-13, |S11|^2 to 4.6e-14 and d|S11|^2/dwidth to 2.9e-12.
     Every one of those gradients matches a 4th-order central difference
     (2.9e-8 and 3.0e-7 relative, FD4 truncation dominating). See
-    ``tests/test_fdfd_linear_solve.py``.
+    ``tests/unit/fdfd/test_fdfd_linear_solve.py``.
 
     ``backend`` names the sparse direct solver, one of :data:`BACKENDS`.
     ``None`` (the default) means :func:`get_default_backend`, itself

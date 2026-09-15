@@ -58,7 +58,12 @@ def test_thickness_does_not_affect_a_metal_sheet():
     for thickness in (1e-9, 17e-6, 35e-6, 68e-6, 1e-3):
         sim = _sim()
         sim.add_thin_conductor(_sheet(), sigma_bulk=5.8e7, thickness=thickness)
-        mask = np.asarray(sim._assemble_materials(sim._build_grid())[3])
+        sheets: list = []
+        pec_mask = sim._assemble_materials(sim._build_grid(),
+                                           pec_sheets=sheets)[3]
+        # #931: a PEC thin conductor is a SheetSpec, never a pec_mask cell
+        assert pec_mask is None and len(sheets) == 1
+        mask = np.asarray(sheets[0].footprint)
         assert mask.sum() > 0, f"sheet did not rasterise at t={thickness}"
         masks[thickness] = mask
 
@@ -210,9 +215,19 @@ def test_warning_names_the_deciding_quantity_and_states_no_false_inequality():
 def test_warning_does_not_invent_an_effective_thickness():
     """It must not report a cell-derived thickness as if it were the model.
 
-    A one-cell PEC layer is a SURFACE (rfx/boundaries/pec.py zeroes tangential
-    E only where the mask has a neighbour on that axis), so quoting
-    "dx thick = N oz" would replace a silent falsehood with a loud one.
+    The warning under test is ``add_thin_conductor``'s, and under the lattice
+    ownership contract (#931 §1.3) what that call declares is a SHEET: a
+    footprint on one node plane with ZERO thickness, owning no cell. So there
+    is no thickness to quote at all, and "dx thick = N oz" would replace a
+    silent falsehood with a loud one.
+
+    The docstring used to justify the same rule from the deleted #677 reading
+    ("a one-cell PEC layer is a surface, because apply_pec_mask zeroes
+    tangential E only where the mask has a neighbour on that axis"). That
+    reading is now wrong in the opposite direction: a one-cell PEC ``Box`` is a
+    VOLUME, dx thick, with a wall on each face — which is why declaring foil
+    that way is the thing the contract stopped, not a thing to describe more
+    honestly.
     """
     m = _warn_for(sigma_bulk=5.8e7, thickness=35e-6)[0]
     for forbidden in ("oz", "effective thickness", "modelled thickness"):
@@ -256,37 +271,26 @@ def test_warning_stays_short_enough_to_read():
         assert len(m) < 460, f"message grew to {len(m)} chars (was 526 once)"
 
 
-def test_preflight_hint_does_not_recommend_a_no_op():
-    """The mesh-resolution hint must not send a user on a pointless detour.
-
-    Measured: for a PEC material a sub-cell `Box` and `add_thin_conductor()`
-    on the same footprint produce a BIT-IDENTICAL `pec_mask`, so advising the
-    swap changed nothing. This pins both halves — the equivalence, and the
-    hint no longer claiming otherwise.
-    """
-    def _mask(use_thin):
-        sim = _sim()
-        box = Box((1e-3, 1e-3, 1e-3),
-                  (5e-3, 5e-3, 1e-3 + (0.0 if use_thin else 35e-6)))
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            if use_thin:
-                sim.add_thin_conductor(box, thickness=35e-6)
-            else:
-                sim.add(box, material="pec")
-        return np.asarray(sim._assemble_materials(sim._build_grid())[3])
-
-    assert np.array_equal(_mask(False), _mask(True)), (
-        "a sub-cell PEC Box and add_thin_conductor no longer agree — the "
-        "hint's rationale changed and its wording must be revisited"
-    )
-
+def test_sub_cell_pec_box_is_refused_naming_the_sheet_declaration():
+    """#931 §1.5: a 35 um PEC ``Box`` via ``add()`` on a 1 mm grid is not a
+    thinner sheet — it is a sub-cell VOLUME, refused at assembly with the
+    remedy spelled out (a zero-thickness Box or ``add_thin_conductor``);
+    the same footprint through ``add_thin_conductor`` is a SheetSpec on
+    the node plane the Box's mid-plane is nearest to.
+    (The preflight ``pec_box_subcell`` ERROR of design note §3 is the
+    preflight owner's; this pins the assembly.)"""
     sim = _sim()
     sim.add(Box((1e-3, 1e-3, 1e-3), (5e-3, 5e-3, 1e-3 + 35e-6)), material="pec")
-    # preflight() RETURNS the advisory messages (imitating
-    # tests/unit/ports/test_msl_port_preflight.py::_msl_warnings), it does not warn.
-    hints = [m for m in sim.preflight() if "below 1 cell resolution" in m]
-    assert hints, "the sub-cell resolution advisory stopped firing"
-    joined = " ".join(hints)
-    assert "Use add_thin_conductor() for sub-cell PEC sheet" not in joined
-    assert "one-cell PEC surface" in joined
+    with pytest.raises(ValueError, match="add_thin_conductor"):
+        sim._assemble_materials(sim._build_grid())
+
+    sim2 = _sim()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        sim2.add_thin_conductor(Box((1e-3, 1e-3, 1e-3), (5e-3, 5e-3, 1e-3)),
+                                thickness=35e-6)
+    sheets: list = []
+    grid = sim2._build_grid()
+    assert sim2._assemble_materials(grid, pec_sheets=sheets)[3] is None
+    assert len(sheets) == 1
+    assert sheets[0].plane == grid.position_to_index((0.0, 0.0, 1e-3))[2]

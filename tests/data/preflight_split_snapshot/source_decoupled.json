@@ -1,0 +1,16 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "source_decoupled",
+        "loc": null,
+        "message": "Source/port at (0.01, 0.01, 0.0) (component=ex) sits on the PEC z_lo plane and drives a tangential E. PEC zeros E_tan at the plane every step, so the source is silently discarded. Use a normal E source at this face, or offset by one cell (1 mm) off the plane.",
+        "severity": "warning",
+        "source": "_validate_cfg_source_on_reflector_plane"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 1,
+    "ok": true
+  }
+}

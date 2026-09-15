@@ -43,12 +43,12 @@ node differs, the pad being identical in both):
     1.00 mm        30             0.1914            0.1570            0.1572
     1.50 mm        20             0.2377            0.2644            0.2358   <- rfx default
 
-``dx = c0 / freq_max / 20`` is rfx's own default (``rfx/api/__init__.py``), so
-the WORST row is the one a user gets by not passing ``dx`` at all. The error
-grows as the mesh gets COARSER, which is the opposite of the direction a user
-checking convergence would look, and it is why the gates here are pinned at the
-default mesh rather than at a fine one: a fine-mesh-only test would understate
-the defect by ~6x and could pass on a broken tree.
+``dx = c0 / freq_max / 20`` is rfx's nominal vacuum default. Geometry-aware
+auto-meshing can refine it, so these fixtures explicitly pin that spacing.
+The error grows as the mesh gets COARSER, which is the opposite of the direction
+a user checking convergence would look, and it is why these gates retain the
+coarse vacuum-default mesh: a fine-mesh-only test would understate the defect
+by ~6x and could pass on a broken tree.
 
 Thin-film theory for a one-cell vacuum film in a medium eps_m,
 ``|r| = 2*pi*(dx/lambda0)*(eps_m - 1)/(2*sqrt(eps_m))``, is the independent
@@ -67,8 +67,8 @@ from rfx.probes.probes import flux_spectrum
 
 C0 = 299792458.0
 FREQ_MAX = 10e9
-#: rfx's own default when ``dx`` is not passed — see ``Simulation`` (``C0 /
-#: freq_max / 20``). Asserted, not assumed, in every test below.
+#: The nominal vacuum default (C0 / freq_max / 20), explicitly pinned so
+#: later geometry additions cannot refine away this coarse-mesh stress case.
 DX_DEFAULT = C0 / FREQ_MAX / 20.0          # 1.4990 mm
 N_CELLS = 30
 DOMAIN = (N_CELLS * DX_DEFAULT,) * 3
@@ -76,10 +76,10 @@ EPS_SLAB = 4.0
 
 
 def _default_mesh_sim(**kw):
-    """A CPML sim at rfx's DEFAULT mesh — ``dx`` deliberately not passed."""
+    """Pin the coarse vacuum-default spacing even after geometry is added."""
     sim = Simulation(freq_max=FREQ_MAX, domain=DOMAIN, boundary="cpml",
-                     cpml_layers=8, **kw)
-    grid = sim._build_grid()
+                     cpml_layers=8, dx=DX_DEFAULT, **kw)
+    grid = sim._build_realized_grid()
     assert grid.dx == pytest.approx(DX_DEFAULT, rel=1e-12), (
         f"fixture is not at the default mesh: grid.dx={grid.dx} != "
         f"{DX_DEFAULT} (= c0/freq_max/20). These gates are pinned at the "

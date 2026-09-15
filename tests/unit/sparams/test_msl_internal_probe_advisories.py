@@ -19,9 +19,9 @@ user-probe series still being evaluated during MSL runs).
 import warnings
 
 import jax.numpy as jnp
-import numpy as np
 
 from rfx import Box, Simulation
+from tests._realized_geometry import assert_sheet_planes, assert_wall_planes
 
 FREQS = jnp.linspace(2e9, 18e9, 8)
 
@@ -31,7 +31,13 @@ def _thru():
                      dx=2e-4, boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (0.012, 0.008, 0.0008)), material="sub")
-    sim.add(Box((0.0, 0.0034, 0.0008), (0.012, 0.0046, 0.0010)),
+    sim.add(Box((0, 0, 0), (0.012, 0.008, 0)), material="pec")
+    # 35 um foil: a SHEET (#931 §1.3), declared by a zero-thickness Box
+    # on the laminate top. h_sub / dx = 0.8 mm / 0.2 mm = 4, so the substrate face is a
+    # node line and the sheet lands on it exactly. Drawn one cell thick
+    # before the contract, it would now be a VOLUME — walls at BOTH z
+    # faces and the Ez edge between them shorted.
+    sim.add(Box((0.0, 0.0034, 0.0008), (0.012, 0.0046, 0.0008)),
             material="pec")
     sim.add_msl_port(position=(0.002, 0.004, 0.0), width=0.0012,
                      height=0.0008, direction="+x", impedance=50.0,
@@ -104,3 +110,18 @@ def test_user_probe_advisories_and_332_still_fire():
     # user probes survive the call
     assert len(sim._probes) == 2
     assert sim._internal_probe_indices == set()
+
+
+def test_realized_conductor_planes_equal_the_declaration():
+    """Build-time witness (no solve) for the #931 ownership contract.
+
+    Ground and trace are declared as SHEETS, each with exactly one wall
+    plane on its own laminate face,
+    with the normal Ez edge through it left live. Drawn one cell thick it
+    was a volume: two walls, and the Ez edge between them shorted. This
+    assertion is what keeps the declaration and the realization the same
+    statement.
+    """
+    sim = _thru()
+    assert_sheet_planes(sim, 2, [0., 0.0008], what="MSL thru ground and trace")
+    assert_wall_planes(sim, 2, [0., 0.0008], what="MSL thru ground and trace")

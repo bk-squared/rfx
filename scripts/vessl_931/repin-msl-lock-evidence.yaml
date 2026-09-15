@@ -1,0 +1,58 @@
+name: rfx-931-msl-lock-evidence
+description: "RE-PIN evidence for the msl numerical lock on the #931 branch. Serial CPU. Records the delta and authorizes nothing; no golden is rewritten. Set RFX_CHECKOUT and RFX_SHA before creating the run."
+tags: [rfx, issue-931, repin-evidence]
+resources:
+  cluster: remilab-c0
+  cpu: 8
+  memory: 32Gi
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "1"
+  OPENBLAS_NUM_THREADS: "1"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_PLATFORMS: "cpu"
+  MPLBACKEND: "Agg"
+  RFX_CHECKOUT: "/root/workspace/byungkwan-workspace/research/rfx-lattice-ownership"
+  RFX_SHA: "HEAD"
+  RFX_LABEL: "msl"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  git config --global --add safe.directory "$RFX_CHECKOUT" || true
+  git config --global --add safe.directory '*' || true
+  SHA=$(git -C "$RFX_CHECKOUT" rev-parse "$RFX_SHA")
+  echo "pinned sha: $SHA"
+  WORK=/tmp/rfx-repin-$SHA-$RFX_LABEL
+  rm -rf "$WORK"
+  git clone --quiet --no-checkout --shared "$RFX_CHECKOUT" "$WORK"
+  git -C "$WORK" checkout --quiet --detach "$SHA"
+  cd "$WORK"
+  git rev-parse HEAD > /tmp/_sha_check
+  test "$(cat /tmp/_sha_check)" = "$SHA" || { echo "FATAL: working copy is not the pinned sha"; exit 3; }
+  "$PY" -m pip uninstall -y -q jax-cuda12-plugin jax-cuda12-pjrt 2>/dev/null || true
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest
+  export PYTHONPATH="$WORK"
+  "$PY" -c "import jax, rfx; print('probe ok', jax.__version__, jax.devices(), rfx.__version__)"
+  OUT=/root/workspace/claude-workspace/rfx/runs/issue931-repin-$RFX_LABEL-$(date -u +%Y%m%dT%H%M%SZ)-$(echo "$SHA" | cut -c1-8)
+  mkdir -p "$OUT"
+  echo "$SHA" > "$OUT/sha.txt"
+  echo "$OUT" > /root/workspace/claude-workspace/rfx/runs/issue931-repin-$RFX_LABEL.latest
+  trap 'chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
+  set +e
+  # The lock is EXPECTED to fail; the recorded delta is the point.
+  # scripts/capture_msl_e2e_golden.py is deliberately NOT run - it overwrites the golden.
+  "$PY" -m pytest -o addopts= -v -s \
+    tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_end_to_end_matches_historical_base \
+    --junitxml="$OUT/msl.xml" > "$OUT/run.log" 2>&1
+  rc=$?
+  set -e
+  echo "$rc" > "$OUT/rc"
+  echo "msl evidence rc=$rc  sha=$SHA (a failing lock is the expected outcome; this run authorizes nothing)"
+  tail -n 40 "$OUT/run.log" || true

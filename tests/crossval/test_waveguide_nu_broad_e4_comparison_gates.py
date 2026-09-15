@@ -24,6 +24,20 @@ uniform fixture also uses — Meep is non-physical on PEC-short at this
 resolution). Magnitude only (cross-solver phase conventions differ 100 deg+).
 Both layers replay frozen numbers; the live NU anchor is the np=40
 power/reciprocity gate in ``tests/unit/sparams/test_waveguide_nu_nontrivial.py``.
+
+
+#931 SCOPE for the frozen legs in this file (traced to the producers, not
+assumed). The ``pec_short`` geometry is drawn ``Box((PEC_SHORT_X, 0, 0),
+(PEC_SHORT_X + 2*DX, A_WG, B_WG))`` with ``material="pec"`` at
+PEC_SHORT_X = 0.145 m and DX = 1 mm — 145 cells in, two cells thick, so both
+faces are on node planes at every committed rung. Under the ownership contract
+that body gains a wall at its FAR face (design note §1.2); the reflecting NEAR
+face, which is what the incident TE10 sees, is at the same plane it has always
+been. So |S11| and the reference-plane phase behind a total reflector are
+unchanged and the frozen pairs are not re-run. What would change that is a rung
+whose short is not an integer number of cells — none is committed, and the live
+anchor in ``test_waveguide_broad_e5.py`` is now drawn on an explicit mesh for
+exactly this reason.
 """
 from __future__ import annotations
 

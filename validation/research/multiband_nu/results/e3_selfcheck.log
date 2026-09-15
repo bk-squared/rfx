@@ -1,0 +1,12 @@
+rfx.__file__ = /Users/byungkwankim/Documents/rfx-nu-exp3/rfx/__init__.py
+  selfcheck A1 uc s=0.5: dual -3.9970 (quoted -3.9969) production +3.9910 (quoted +3.9910) MHz table=(3.0, 4.3, 1.0) ok=True
+  selfcheck A1 uc s=1: dual -16.0055 (quoted -16.0053) production +0.3411 (quoted +0.3411) MHz table=(3.0, 4.3, 1.0) ok=True
+  selfcheck A1 uc s=2: dual -64.3029 (quoted -64.3028) production -29.4613 (quoted -29.4613) MHz table=(3.0, 4.3, 1.0) ok=True
+  selfcheck A1 mb s=0.5: dual -7.5052 (quoted -7.5050) production -18.3505 (quoted -18.3505) MHz table=(4.3, 3.0, 4.3) ok=True
+  selfcheck A1 mb s=1: dual -30.0975 (quoted -30.0973) production -77.9318 (quoted -77.9318) MHz table=(3.0, 4.3, 4.3) ok=True
+  selfcheck A1 mb s=2: dual -121.6176 (quoted -121.6174) production -216.6348 (quoted -216.6348) MHz table=(3.0, 4.3, 4.3) ok=True
+  selfcheck A1 az s=0.5: dual -7.3853 (quoted -7.3851) production -12.5552 (quoted -12.5552) MHz table=(4.3, 3.0, 4.3) ok=True
+  selfcheck A1 az s=1: dual -22.7529 (quoted -22.7528) production -14.9238 (quoted -14.9238) MHz table=(3.0, 4.3, 1.0) ok=True
+  selfcheck A1 az s=2: dual -24.3057 (quoted -24.3055) production -16.5254 (quoted -16.5254) MHz table=(3.0, 4.3, 1.0) ok=True
+selfcheck: oracle (i) worst 1.81e-16 over 10 roots, (i') worst 1.88e-16 over 8 roots; f_true=10561719600.896 Hz; all_pass=True failed=[]
+wrote validation/research/multiband_nu/results/e3_interface_eps_rule.json

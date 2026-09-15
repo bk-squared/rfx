@@ -4,19 +4,26 @@ Two independent hygiene defects found while reviewing PR #480 (WR-90 single
 inductive iris), both filed as general issues because the iris lane only
 exposed them:
 
-* **#493** — ``Box``'s volume branch is half-open ``[lo, hi)`` over NODE
-  coordinates, so a PEC obstacle drawn to its nominal physical dimension
-  rasterizes short at its ``hi`` face. The tests below pin that arithmetic
-  so the convention is executable documentation rather than folklore.
-  Since the exact-coordinate fix (#802) production nodes ARE the float64
-  construction, drawing to nominal costs exactly ONE cell at every
-  aperture, and the old per-aperture one-or-two-cell scatter is history:
-  it was float32 double-rounding deciding whether the hi fin's lo corner
-  captured its node. They still derive node coordinates from a real
-  ``Grid`` so they cannot drift from production. They are
-  CHARACTERIZATION tests: the convention is deliberate and other paths
-  depend on it, so a change here is a deliberate behaviour change and must
-  be reviewed as one, not silenced.
+* **#493** — a PEC obstacle drawn to its nominal physical dimension used
+  to rasterize SHORT at its ``hi`` face: ``Box``'s volume branch sampled
+  half-open ``[lo, hi)`` over NODE coordinates and the neighbour rule
+  turned each masked node plane into a wall, so a fin's interior face
+  retreated one cell and the opening came out one cell too wide. The
+  lattice ownership contract (#931) replaces that with cell ownership: a
+  PEC volume is the set of primal cells whose CENTRES lie inside it and
+  every E edge incident to an occupied cell is PEC, so a body realizes
+  walls at BOTH drawn faces and drawn extent == realized extent. The
+  tests below are re-derived on that rule and read it from the single
+  owner, ``rfx.boundaries.pec.realized_pec_edge_masks``, instead of
+  re-implementing a sampler.
+
+  Two consequences are deliberate behaviour changes, pinned here because
+  the repo documents the opposite in several places: the excess table is
+  now 0 everywhere (was 1), and the "draw interior faces on cell
+  midpoints" recipe is now the DEFECTIVE drawing — it reads one cell too
+  narrow and half a cell off centre, while drawing on node lines is
+  exact. These stay CHARACTERIZATION tests: a change here is a deliberate
+  behaviour change and must be reviewed as one, not silenced.
 
 * **#494** — ``compute_waveguide_s_matrix``'s own docstring requires an
   absorber ``>= ~0.5 * lambda_g`` but nothing checked it on the plain
@@ -37,18 +44,20 @@ from rfx.api import Simulation
 from rfx.api._sparams import _warn_thin_absorber_vs_guide_wavelength
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.geometry.csg import Box, _grid_coords
+from tests._realized_geometry import assert_wall_planes, realized
 
 
 ADVISORY_KEY = "far-port discipline"
 
 
 # --------------------------------------------------------------------------- #
-# #493 — half-open node rasterization of PEC obstacles
+# #493 — how a PEC obstacle's drawn faces become electric walls
 # --------------------------------------------------------------------------- #
 A_WR90 = 22.86e-3
 B_WR90 = 10.16e-3
 _ZERO = np.array([0.0])
 _COORD_CACHE: dict = {}
+_FIN_CACHE: dict = {}
 
 
 def _real_node_coords(cells: int):
@@ -64,6 +73,22 @@ def _real_node_coords(cells: int):
     keeps these tests from drifting away from the code they document.
     """
     if cells not in _COORD_CACHE:
+        grid = _fin_sim(cells, ())._build_grid()
+        _COORD_CACHE[cells] = (np.asarray(_grid_coords(grid)[1]),
+                               A_WR90 / cells)
+    return _COORD_CACHE[cells]
+
+
+def _fin_sim(cells: int, faces):
+    """A real ``Simulation`` carrying ``faces`` as PEC VOLUMES.
+
+    ``faces`` is a sequence of ``("lo", hi_face)`` / ``("hi", lo_face)``
+    entries. Everything below reads the realization out of this sim
+    through the single owner, so the arithmetic documented here is the
+    arithmetic the solve runs — not a re-implementation of it.
+    """
+    key = (cells, tuple((s, float(v)) for s, v in faces))
+    if key not in _FIN_CACHE:
         dx = A_WR90 / cells
         sim = Simulation(
             freq_max=14e9, domain=(0.05, A_WR90, B_WR90), dx=dx,
@@ -71,34 +96,59 @@ def _real_node_coords(cells: int):
                                   y=Boundary(lo="pec", hi="pec"),
                                   z=Boundary(lo="pec", hi="pec")),
             cpml_layers=10)
-        y = np.asarray(_grid_coords(sim._build_grid())[1])
-        _COORD_CACHE[cells] = (y, dx)
-    return _COORD_CACHE[cells]
+        for side, face in faces:
+            if side == "lo":
+                sim.add(Box((-1.0, -1.0, -1.0), (1.0, float(face), 1.0)),
+                        material="pec")
+            else:
+                sim.add(Box((-1.0, float(face), -1.0), (1.0, 1.0, 1.0)),
+                        material="pec")
+        _FIN_CACHE[key] = sim
+    return _FIN_CACHE[key]
 
 
-def _occupied(hi_face: float, coords: np.ndarray) -> np.ndarray:
-    """Indices of nodes occupied by a box spanning up to ``hi_face`` in y."""
-    m = Box((-1.0, -1.0, -1.0), (1.0, float(hi_face), 1.0)).mask_on_coords(
-        _ZERO, coords, _ZERO)
-    return np.nonzero(np.asarray(m)[0, :, 0])[0]
+def _occupied_y_cells(sim) -> np.ndarray:
+    occ = np.asarray(realized(sim).pec_mask, dtype=bool)
+    return np.nonzero(np.any(occ, axis=(0, 2)))[0]
 
 
-def _fin_pair(hi_face: float, coords: np.ndarray, dx: float):
+def _occupied(hi_face: float, cells: int) -> np.ndarray:
+    """y-CELL indices a lo fin drawn up to ``hi_face`` owns (§1.1).
+
+    A PEC volume is sampled at primal-cell CENTRES, so this is the cell
+    set — the node mask ``Box.mask_on_coords`` returns is a dielectric
+    sampler and no longer decides where metal is.
+    """
+    return _occupied_y_cells(_fin_sim(cells, (("lo", hi_face),)))
+
+
+def _occupied_hi(lo_face: float, cells: int) -> np.ndarray:
+    """y-CELL indices a hi fin drawn from ``lo_face`` upward owns."""
+    return _occupied_y_cells(_fin_sim(cells, (("hi", lo_face),)))
+
+
+def _fin_walls(hi_face: float, cells: int) -> np.ndarray:
+    """Realized y wall planes of a facing pair drawn to ``hi_face``."""
+    sim = _fin_sim(cells, (("lo", hi_face), ("hi", A_WR90 - float(hi_face))))
+    return np.asarray(realized(sim).wall_planes(1), dtype=int)
+
+
+def _fin_pair(hi_face: float, cells: int):
     """Electrical aperture between two facing fins.
 
-    Returns ``(aperture_cells, free_node_indices)``. The aperture is the span
-    between the innermost OCCUPIED node planes, i.e. between the innermost
-    planes where tangential E is zeroed. That is the same convention under
-    which the guide itself measures ``a``: with PEC on the outermost node
-    planes 0 and ``cells``, the width is ``cells * dx`` = 22.86 mm exactly,
-    and the free-node count is ``width/dx - 1``.
+    Returns ``(aperture_cells, free_node_indices)``. The aperture is the
+    span between the innermost realized WALL planes — the planes where
+    tangential E is zeroed, read from ``realized_wall_planes``. Under the
+    lattice ownership contract a volume's drawn face IS a wall (§1.2), so
+    this is the same convention under which the guide itself measures
+    ``a``: with PEC on the outermost node planes 0 and ``cells`` the width
+    is ``cells * dx`` = 22.86 mm exactly and the free-node count is
+    ``width/dx - 1``.
     """
-    lo_fin = Box((-1.0, -1.0, -1.0), (1.0, float(hi_face), 1.0))
-    hi_fin = Box((-1.0, A_WR90 - float(hi_face), -1.0), (1.0, 1.0, 1.0))
-    metal = (np.asarray(lo_fin.mask_on_coords(_ZERO, coords, _ZERO))[0, :, 0]
-             | np.asarray(hi_fin.mask_on_coords(_ZERO, coords, _ZERO))[0, :, 0])
-    free = np.nonzero(~metal)[0]
-    return int((free[-1] + 1) - (free[0] - 1)), free
+    walls = set(int(k) for k in _fin_walls(hi_face, cells))
+    free = np.array(sorted(set(range(cells + 1)) - walls), dtype=int)
+    lo_inner, hi_inner = int(free[0]) - 1, int(free[-1]) + 1
+    return hi_inner - lo_inner, free
 
 
 def _iris(cells: int, d_phys: float):
@@ -113,7 +163,11 @@ def test_guide_width_fixes_the_zeroed_plane_convention(cells):
 
     Anchors every aperture number below: distance between the bounding
     zeroed node planes, NOT the span of open nodes (which would call WR-90
-    22.098 mm at a/30).
+    22.098 mm at a/30). Domain-boundary PEC is deliberately fenced OUT of
+    the ownership contract (§1.8) and keeps this convention; it is also
+    the precedent the contract's sheet rule follows, so the two readings
+    of "a node plane is a wall" now agree instead of one being a body
+    rule and the other a face rule.
     """
     y, dx = _real_node_coords(cells)
     assert len(y) == cells + 1
@@ -122,18 +176,28 @@ def test_guide_width_fixes_the_zeroed_plane_convention(cells):
 
 
 @pytest.mark.parametrize("cells", [30, 60])
-def test_box_volume_branch_excludes_the_hi_node_plane(cells):
-    """Half-open ``[lo, hi)``: the ``hi`` face contributes no cell.
+def test_volume_box_owns_its_cells_and_walls_both_drawn_faces(cells):
+    """§1.2: a PEC volume realizes BOTH drawn faces, and nothing beyond.
 
-    ``hi`` is taken from the realized node value so the comparison is an
-    exact equality and the result cannot depend on rounding — the rule
-    itself, isolated from the float32 effects tested separately below.
+    Replaces the half-open node characterization (``occ[-1] == k - 1``,
+    "the hi face contributes no cell"). That rule was the #931 defect: a
+    body's far face was never a wall at any thickness. A Box drawn from
+    the domain edge to node ``k`` now owns cells ``0 .. k-1`` and realizes
+    walls at every plane ``0 .. k`` — realized thickness == drawn
+    thickness, the property the contract test battery pins globally and
+    this file pins on the waveguide fin it was written for.
     """
-    y, _ = _real_node_coords(cells)
+    y, dx = _real_node_coords(cells)
     for k in (8, 12):
-        occ = _occupied(float(y[k]), y)
-        assert occ[-1] == k - 1, f"node {k} must be excluded"
-        assert len(occ) == k
+        occ = _occupied(float(y[k]), cells)
+        assert occ[-1] == k - 1, f"cells {k}..  must not be owned"
+        assert len(occ) == k, "the drawn cell count is the realized one"
+        sim = _fin_sim(cells, (("lo", float(y[k])),))
+        assert_wall_planes(
+            sim, 1, expected_planes=list(range(0, k + 1)),
+            what=f"fin drawn to node {k}")
+        assert (k - 0) * dx == pytest.approx(float(y[k]) - float(y[0])), (
+            "realized wall span must equal the drawn extent")
 
 
 def test_production_node_coords_equal_the_f64_construction():
@@ -156,188 +220,202 @@ def test_production_node_coords_equal_the_f64_construction():
             "construction (#802)")
 
 
-# Measured on the production coordinate path. Re-pinned at the
-# exact-coordinate fix (#802): the old table carried 2 at 12.192 mm (both
-# mesh rungs) — a float32 double-rounding artifact that made the hi fin's
-# lo corner lose its node. With exact float64 nodes the nominal drawing
-# costs exactly ONE cell everywhere (the half-open convention's own
-# hi-face shortfall), and the excess IS predictable now. Still pinned as a
-# characterization table so any change in rounding behaviour is visible.
+# Measured on the production realization path under the lattice ownership
+# contract (#931). Every entry was 1 before it: half-open node sampling
+# retreated the lo fin's interior face by a cell, so a fin drawn to its
+# nominal depth left the opening one cell too WIDE. Centre-sampled cells
+# with walls on both drawn faces put the wall on the plane the fixture
+# drew, so the excess is 0 everywhere and "drawn == realized" is now a
+# property rather than an accident. Kept as a characterization table so a
+# change in the rule is visible here first.
 _NOMINAL_EXCESS = {
-    (30, 7.620): 1, (30, 12.192): 1, (30, 18.288): 1,
-    (60, 7.620): 1, (60, 12.192): 1, (60, 18.288): 1,
+    (30, 7.620): 0, (30, 12.192): 0, (30, 18.288): 0,
+    (60, 7.620): 0, (60, 12.192): 0, (60, 18.288): 0,
 }
 
 
 @pytest.mark.parametrize("cells,d_mm", sorted(_NOMINAL_EXCESS))
-def test_fins_drawn_to_nominal_aperture_are_one_cell_too_wide(
+def test_fins_drawn_to_the_nominal_aperture_realize_it_exactly(
         cells, d_mm):
-    """#493's mechanism, with the measured per-config value.
+    """#493's mechanism, inverted by the ownership contract.
 
-    Drawing to the nominal opening never yields the nominal ELECTRICAL
-    opening: exactly one cell from the half-open convention itself. (The
-    former second cell — the hi fin's lo corner failing to capture its
-    node — was float32 rounding, gone at the exact-coordinate fix #802.)
+    Drawing the fins to the nominal opening now yields the nominal
+    ELECTRICAL opening: the innermost walls sit at ``fin_c`` and
+    ``cells - fin_c``, so the aperture is ``d_c`` cells and no
+    compensation is needed anywhere downstream.
     """
     d_phys = d_mm * 1e-3
     y, dx, d_c, fin_c = _iris(cells, d_phys)
-    aperture_cells, _ = _fin_pair(fin_c * dx, y, dx)
+    aperture_cells, _ = _fin_pair(fin_c * dx, cells)
 
     excess = aperture_cells - d_c
     assert excess == _NOMINAL_EXCESS[(cells, d_mm)]
-    assert excess == 1, "the drawn-to-nominal defect is exactly 1 cell (#802)"
-    assert aperture_cells * dx > d_phys, "must never be the nominal opening"
+    assert excess == 0, "drawn == realized for a volume (#931 §1.2)"
+    assert aperture_cells * dx == pytest.approx(d_phys, rel=1e-9)
 
 
 @pytest.mark.parametrize("cells,d_mm", sorted(_NOMINAL_EXCESS))
-def test_which_interior_face_retreats_decides_the_symmetry(cells, d_mm):
-    """The two interior faces of a facing pair are different corner types.
+def test_both_interior_faces_land_on_their_own_drawn_plane(cells, d_mm):
+    """Neither interior face retreats, so the opening is centred.
 
-    The lo fin's interior face is a ``hi`` corner, which half-openness ALWAYS
-    drops — so that fin always retreats one cell. The hi fin's interior face
-    is a ``lo`` corner, which ``coords >= lo`` KEEPS, unless float32 rounding
-    puts the node just below it. Hence excess 1 cell means only the lo fin
-    retreated and the opening is asymmetric (centre ``dx/2`` low), while
-    excess 2 cells means both retreated, the retreats cancel, and the opening
-    is symmetric.
+    The pre-#931 rule made the two interior faces of a facing pair behave
+    differently: the lo fin's interior face is a ``hi`` corner, which
+    half-openness always dropped, while the hi fin's interior face is a
+    ``lo`` corner, which it kept. That asymmetry (opening centre half a
+    cell low) is gone: a volume is the set of cells whose centres lie in
+    it, and both drawn faces become walls.
 
-    Pinned because an unconditional "the obstacle is asymmetric" claim would
-    send the next reader hunting a bug that is not there at the apertures
-    where it is centred (PR #495 review, item 2).
+    Pinned because the old asymmetry is quoted in several places as a
+    reason to offset a drawing, and every one of those compensations is
+    now wrong.
     """
     d_phys = d_mm * 1e-3
     y, dx, d_c, fin_c = _iris(cells, d_phys)
-    lo_metal = _occupied(fin_c * dx, y)
-    hi_fin = Box((-1.0, A_WR90 - fin_c * dx, -1.0), (1.0, 1.0, 1.0))
-    hi_metal = np.nonzero(
-        np.asarray(hi_fin.mask_on_coords(_ZERO, y, _ZERO))[0, :, 0])[0]
-    aperture_cells, free = _fin_pair(fin_c * dx, y, dx)
-    excess = aperture_cells - d_c
+    lo_metal = _occupied(fin_c * dx, cells)
+    hi_metal = _occupied_hi(A_WR90 - fin_c * dx, cells)
+    aperture_cells, free = _fin_pair(fin_c * dx, cells)
 
-    # The lo fin's interior face is a hi corner: it always loses exactly one.
+    assert aperture_cells - d_c == 0
+    # The lo fin owns cells 0..fin_c-1, so its interior WALL is fin_c.
     assert lo_metal[-1] == fin_c - 1
-    # The hi fin's interior face is a lo corner: it loses one only under (2).
-    hi_retreat = int(hi_metal[0] - (cells - fin_c))
-    assert hi_retreat == excess - 1, (hi_retreat, excess)
-
-    centre_offset = 0.5 * (free[0] + free[-1]) - cells / 2
-    if excess == 1:
-        assert centre_offset == pytest.approx(-0.5), "one retreat => asymmetric"
-    else:
-        assert excess == 2
-        assert centre_offset == pytest.approx(0.0), "two retreats => symmetric"
+    # The hi fin owns cells cells-fin_c.., so its interior wall is
+    # cells-fin_c: the mirror image, with no retreat on either side.
+    assert hi_metal[0] == cells - fin_c
+    centre_offset = 0.5 * (float(free[0]) + float(free[-1])) - cells / 2
+    assert centre_offset == pytest.approx(0.0), "no retreat => centred"
 
 
 @pytest.mark.parametrize("cells,d_mm", sorted(_NOMINAL_EXCESS))
-def test_midpoint_recipe_is_exact_at_even_parity(cells, d_mm):
-    """The documented recipe, and the non-firing control for the test above.
+def test_midpoint_recipe_now_costs_a_cell_and_is_asymmetric(cells, d_mm):
+    """The repo's documented recipe is the defective drawing now.
 
-    Interior faces on cell midpoints sit half a cell from either edge, so the
-    footprint is rounding-independent. Every case-18 configuration has
-    ``(cells - d_c)`` even and lands on the nominal aperture exactly.
+    Putting the interior faces on CELL MIDPOINTS was the correct recipe
+    under node sampling. Under centre sampling a midpoint face is exactly
+    on a cell centre, i.e. on the sampler's own tie: ``lo`` inclusive and
+    ``hi`` exclusive (§1.1), so the lo fin stops one cell short of the
+    midpoint while the hi fin claims the cell the midpoint sits in. The
+    aperture reads ``d_c - 1`` — one cell too NARROW — and the opening is
+    half a cell high. Every "draw on cell midpoints" comment in the tree
+    is a compensation for a rule that no longer exists.
     """
     d_phys = d_mm * 1e-3
     y, dx, d_c, fin_c = _iris(cells, d_phys)
     assert (cells - d_c) % 2 == 0, "case-18 configs are even-parity by design"
 
-    aperture_cells, free = _fin_pair((fin_c + 0.5) * dx, y, dx)
+    aperture_cells, free = _fin_pair((fin_c + 0.5) * dx, cells)
 
-    assert aperture_cells == d_c
-    assert aperture_cells * dx == pytest.approx(d_phys, rel=1e-6)
-    assert len(free) == d_c - 1, "free-node count == aperture/dx - 1"
-    assert 0.5 * (free[0] + free[-1]) == pytest.approx(cells / 2), "centred"
+    assert aperture_cells == d_c - 1
+    assert len(free) == d_c - 2, "free-node count == aperture/dx - 1"
+    centre_offset = 0.5 * (float(free[0]) + float(free[-1])) - cells / 2
+    assert centre_offset == pytest.approx(-0.5), (
+        "the tie drops the lo fin's midpoint cell and keeps the hi fin's, "
+        "so both walls move down and the opening sits half a cell low")
 
 
 @pytest.mark.parametrize("cells", [30, 60])
-def test_midpoint_recipe_costs_a_cell_at_odd_parity(cells):
+def test_odd_parity_still_cannot_place_a_symmetric_iris(cells):
     """A representability limit, not a rasterization defect.
 
-    ``fin_c = (cells - d_c)//2`` truncates, so when ``(cells - d_c)`` is odd
-    a SYMMETRIC iris of that aperture cannot be placed on the node grid at
-    all and the opening is one cell wide regardless of how it is drawn. Keep
-    ``(cells - d_c)`` even, i.e. the fin depth an exact number of cells.
+    ``fin_c = (cells - d_c)//2`` truncates, so when ``(cells - d_c)`` is
+    odd a SYMMETRIC iris of that aperture cannot be placed on the node
+    grid at all and the opening is one cell wide regardless of how it is
+    drawn. Keep ``(cells - d_c)`` even, i.e. the fin depth an exact number
+    of cells. Unchanged by the contract — it is arithmetic, not sampling —
+    but now measured on the NOMINAL drawing, which is the correct one.
     """
     y, dx = _real_node_coords(cells)
     d_c = 3
     assert (cells - d_c) % 2 == 1
     fin_c = (cells - d_c) // 2
 
-    aperture_cells, _ = _fin_pair((fin_c + 0.5) * dx, y, dx)
+    aperture_cells, _ = _fin_pair(fin_c * dx, cells)
 
     assert aperture_cells == d_c + 1
 
 
 @pytest.mark.parametrize("cells,d_mm", sorted(_NOMINAL_EXCESS))
-def test_half_cell_inward_offset_opens_two_cells_too_wide(cells, d_mm):
-    """Offsetting interior faces the WRONG way gives d + 2*dx everywhere.
+def test_half_cell_outward_offset_opens_one_cell_too_wide(cells, d_mm):
+    """Offsetting the interior faces OUTWARD gives d + 1*dx everywhere.
 
-    Unlike the nominal drawing this one is uniform across the table: the
-    corner sits half a cell from either edge, so it is rounding-independent
-    and the two cells are structural.
+    The former "wrong way" offset (``fin_c - 0.5``) cost two cells under
+    node sampling; under centre sampling it costs one, uniformly, and the
+    opening is again half a cell off centre — the mirror of the midpoint
+    recipe above.
     """
     d_phys = d_mm * 1e-3
     y, dx, d_c, fin_c = _iris(cells, d_phys)
 
-    aperture_cells, _ = _fin_pair((fin_c - 0.5) * dx, y, dx)
+    aperture_cells, _ = _fin_pair((fin_c - 0.5) * dx, cells)
 
-    assert aperture_cells == d_c + 2
+    assert aperture_cells == d_c + 1
 
 
-def test_node_plane_corner_is_a_single_float32_ulp_knife_edge():
-    """Why the recipe says "cell midpoint" and not "on the node plane".
+def test_the_knife_edge_moved_from_the_node_plane_to_the_cell_centre():
+    """Why "draw on node planes" replaces "draw on cell midpoints".
 
-    A corner one ULP below a node plane loses that node — half-open
-    ``[lo, hi)`` is exact, in whatever precision the caller's corner
-    arithmetic ran. Since #802 the comparison itself is float64, so the
-    knife edge is narrower (one f64 ulp, not the old f32 one) but not
-    gone: a corner computed as ``a - n*dx`` can still rasterize
-    differently from an algebraically identical ``m*dx``. Midpoint corners
-    sit half a cell from either edge and are immune. (The perturbations
-    below use f32 ULPs — generous by 2^29 against an f64 comparison, and
-    the footprint still flips, which is the point.)
+    A PEC volume is decided by ``lo <= centre < hi`` at CELL CENTRES, so
+    the ULP-wide knife edge sits at a cell centre now, not at a node
+    plane: a face one ULP either side of a centre owns a different number
+    of cells. A face ON a node plane is half a cell from either centre and
+    is immune — the exact inverse of the pre-#931 advice, and the reason
+    the migration draws boards and irises on node lines.
     """
     y, dx = _real_node_coords(30)
-    node = np.float32(y[8])
-    ulp = float(np.nextafter(node, np.float32(1)) - node)
-    assert 0 < ulp < 1e-9
+    centre = float(y[8]) + 0.5 * dx
+    ulp = float(np.nextafter(centre, 1.0) - centre)
+    assert 0 < ulp < 1e-15, "the comparison runs in host float64 (#802)"
 
-    below = _occupied(float(np.nextafter(node, np.float32(0))), y)
-    above = _occupied(float(np.nextafter(node, np.float32(1))), y)
+    below = _occupied(float(np.nextafter(centre, 0.0)), 30)
+    above = _occupied(float(np.nextafter(centre, 1.0)), 30)
 
     assert below[-1] == 7
-    assert above[-1] == 8, "one float32 ULP must flip the footprint by a cell"
-    mid = float(y[8]) + 0.5 * dx
-    assert _occupied(mid, y)[-1] == _occupied(mid + 8 * ulp, y)[-1]
+    assert above[-1] == 8, "one ULP across a cell centre flips the footprint"
+    node = float(y[8])
+    assert _occupied(node, 30)[-1] == _occupied(node + 8 * ulp, 30)[-1]
 
 
-def test_drawn_vs_realized_gap_is_ambiguous_between_correct_and_defective():
-    """Why #493 ships as documentation and not as a rasterized-vs-drawn check.
+def test_drawn_vs_realized_is_decidable_on_the_FACE_residual():
+    """Why #493's advisory can exist now, and on which quantity.
 
-    Issue #493 floated an advisory that fires when a PEC volume's rasterized
-    opening differs from its drawn opening by >= 1 cell. The reading is
-    AMBIGUOUS: at d = 7.620 mm the defective nominal drawing and the correct
-    midpoint recipe both read +1 cell, so +1 cell cannot support a defect
-    conclusion — and +1 cell is the common case. The defect is
-    ``realized != INTENDED``, and the intended dimension is never
-    communicated to the simulator, so it is not recoverable from geometry.
+    Issue #493 floated an advisory that fires when a PEC volume's
+    rasterized opening differs from its drawn opening by >= 1 cell, and
+    rejected it: at ``d = 7.620 mm`` the defective nominal drawing and the
+    then-correct midpoint recipe BOTH read +1 cell, so the reading could
+    not support a verdict.
+
+    Under the contract the GAP measure is uninformative for the opposite
+    reason — a volume's realized extent equals its drawn extent, so the
+    gap reads 0 for every drawing, correct or not (the two half-cell face
+    errors of a midpoint drawing cancel across the opening). The
+    decidable quantity is the per-FACE residual: how far each drawn face
+    sits from the wall it realizes. It is 0 for a node-aligned drawing and
+    half a cell for a midpoint one, which is exactly what preflight's
+    off-lattice design-edge check reports (design note §1.9).
     """
-    def drawn_vs_realized(cells, d_mm, offset):
+    def gap_residual_cells(cells, d_mm, offset):
         d_phys = d_mm * 1e-3
         y, dx, d_c, fin_c = _iris(cells, d_phys)
         hi_face = (fin_c + offset) * dx
-        aperture_cells, _ = _fin_pair(hi_face, y, dx)
+        aperture_cells, _ = _fin_pair(hi_face, cells)
         drawn = (A_WR90 - hi_face) - hi_face
         return (aperture_cells * dx - drawn) / dx
 
-    # The collision that kills the predicate: same reading, opposite verdicts.
-    assert drawn_vs_realized(30, 7.620, 0.0) == pytest.approx(1.0, abs=1e-6)
-    assert drawn_vs_realized(30, 7.620, 0.5) == pytest.approx(1.0, abs=1e-6)
-    # Since the exact-coordinate fix (#802) the collision is TOTAL: the
-    # defective nominal drawing and the correct midpoint recipe read +1
-    # cell at every aperture (the old +2 at 12.192 mm was float32
-    # rounding), so the predicate cannot separate them anywhere.
-    assert drawn_vs_realized(30, 12.192, 0.0) == pytest.approx(1.0, abs=1e-6)
-    assert drawn_vs_realized(30, 12.192, 0.5) == pytest.approx(1.0, abs=1e-6)
+    def face_residual_cells(cells, d_mm, offset):
+        d_phys = d_mm * 1e-3
+        y, dx, d_c, fin_c = _iris(cells, d_phys)
+        hi_face = (fin_c + offset) * dx
+        walls = _fin_walls(hi_face, cells)
+        lo_wall = int(walls[walls <= cells // 2].max())
+        return (hi_face - lo_wall * dx) / dx
+
+    # The gap is realized as drawn in BOTH drawings, so it separates nothing.
+    for d_mm in (7.620, 12.192):
+        assert gap_residual_cells(30, d_mm, 0.0) == pytest.approx(0.0, abs=1e-9)
+        assert gap_residual_cells(30, d_mm, 0.5) == pytest.approx(0.0, abs=1e-9)
+    # The face residual does: on-lattice reads 0, the midpoint recipe 0.5.
+    for d_mm in (7.620, 12.192):
+        assert face_residual_cells(30, d_mm, 0.0) == pytest.approx(0.0, abs=1e-9)
+        assert face_residual_cells(30, d_mm, 0.5) == pytest.approx(0.5, abs=1e-9)
 
 
 # --------------------------------------------------------------------------- #
@@ -723,25 +801,30 @@ def test_advisory_is_a_userwarning_so_the_default_filter_shows_it():
 # #493 characterization — independent oracle for the pinned excess table
 #
 # `_NOMINAL_EXCESS` is a table of measured constants, so a coherent author could
-# mutate the rasterization rule AND re-pin the table in one commit and stay
-# green. Verified: `(coords >= lo)` -> `(coords > lo)` plus five numeric edits
-# passed 40/40, which silently falsified the ambiguity docstring and left the
-# asymmetric branch of the symmetry test dead in every parametrization.
+# mutate the realization rule AND re-pin the table in one commit and stay
+# green. Verified once against the pre-#931 rule: `(coords >= lo)` -> `(coords >
+# lo)` plus five numeric edits passed 40/40, which silently falsified the
+# ambiguity docstring and left the asymmetric branch of the symmetry test dead
+# in every parametrization. The oracle below is re-derived from the ownership
+# contract's own arithmetic and never calls the rasterizer.
 # --------------------------------------------------------------------------- #
 def _predicted_excess(cells: int, d_phys: float) -> int:
     """Excess in cells, derived from the mechanism rather than measured.
 
-    The lo fin's interior face is a ``hi`` corner, which half-openness always
-    drops: one cell, unconditionally. The hi fin's interior face is a ``lo``
-    corner, kept unless float32 rounding puts its node strictly below it.
+    §1.1/§1.2: cell ``i`` is metal iff its centre ``(i + 1/2) dx`` lies in
+    ``[lo, hi)``, and the innermost wall of a fin is the plane bounding
+    its innermost cell. So the lo fin owns ``ceil(hi_face/dx - 1/2)``
+    cells and its wall is that count; the hi fin's first owned cell — and
+    its wall — is ``ceil(lo_face/dx - 1/2)``. The aperture is the
+    difference, and for a fin depth of an exact number of cells the two
+    ceilings are exact and the excess is 0.
     """
-    y, dx = _real_node_coords(cells)
+    _, dx = _real_node_coords(cells)
     d_c = int(round(d_phys / dx))
     fin_c = (cells - d_c) // 2
-    # Float64 since #802 — the same precision the mask comparison runs at.
-    hi_corner = np.float64(A_WR90 - fin_c * dx)
-    node = np.float64(y[cells - fin_c])
-    return 1 + (1 if node < hi_corner else 0)
+    lo_wall = int(np.ceil(np.float64(fin_c) - 0.5))
+    hi_wall = int(np.ceil(np.float64(cells - fin_c) - 0.5))
+    return (hi_wall - lo_wall) - d_c
 
 
 @pytest.mark.parametrize("cells,d_mm", sorted(_NOMINAL_EXCESS))
@@ -752,20 +835,20 @@ def test_pinned_excess_matches_an_independently_derived_prediction(cells, d_mm):
         cells, d_mm, predicted, _NOMINAL_EXCESS[(cells, d_mm)])
 
 
-def test_excess_table_is_uniformly_one_cell_since_exact_coordinates():
-    """Re-pinned at #802 (was: table must exercise both 1 and 2).
+def test_excess_table_is_uniformly_zero_under_the_ownership_contract():
+    """Re-pinned at #931 (was: uniformly 1 since #802).
 
-    The two-cell case existed only through float32 rounding, so with exact
-    coordinates it is unreachable from a nominal drawing and every pinned
-    excess is 1. Consequence for the symmetry test above: its
-    ``excess == 2`` branch is intentionally dead code retained as
-    documentation of the mechanism — the two corner types still differ,
-    but only the ``hi``-corner retreat occurs. If a value other than 1
-    ever appears here, rounding behaviour changed: investigate before
-    re-pinning (this table caught #802's class in the first place).
+    The one-cell excess was the half-open node rule's hi-face retreat, not
+    a property of the geometry: the fixture drew the aperture it wanted
+    and the solver realized a wider one. Under cell ownership the drawn
+    aperture IS the realized aperture, so every entry is 0 and the
+    downstream compensations (cv18's midpoint recipe, cv19's ``L_c + 1``)
+    have nothing left to compensate for. If a value other than 0 ever
+    appears here, the realization rule changed: investigate before
+    re-pinning — this table caught the #802 class in the first place.
     """
     values = set(_NOMINAL_EXCESS.values())
-    assert values == {1}, values
+    assert values == {0}, values
 
 
 def test_advisory_dedupe_key_keeps_cutoffs_apart_on_one_axis():

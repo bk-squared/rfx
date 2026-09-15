@@ -675,7 +675,7 @@ def solve_split(model, freq: float, theta=None, **kw) -> dict[str, Any]:
     the same :mod:`rfx.fdfd.deembed` call ``solve_spiral`` makes, on the same
     three S-matrices, so the result is bit-identical to a single
     ``solve_spiral`` call at the same theta (checked in
-    ``tests/test_fdfd_rfic_spiral.py``)."""
+    ``tests/unit/fdfd/test_fdfd_rfic_spiral.py``)."""
     import jax
     import jax.numpy as jnp
 
@@ -1734,7 +1734,7 @@ def evaluate_gates(study: dict[str, Any]) -> dict[str, Any]:
             "what": "one spiral.solve_spiral call for all three fixtures (forward_point: the "
                     "FD stencils, and the same path the design loop's value_and_grad takes) "
                     "against solve_split's three single-fixture calls. The metrics are "
-                    "BITWISE the same (gated in tests/test_fdfd_rfic_spiral.py); the peak "
+                    "BITWISE the same (gated in tests/unit/fdfd/test_fdfd_rfic_spiral.py); the peak "
                     "memory is not, because the three fixtures' assembled operators are "
                     "live in one XLA program.",
             "n_unknowns": (lv.get("1") or {}).get("grid", {}).get("n_unknowns"),

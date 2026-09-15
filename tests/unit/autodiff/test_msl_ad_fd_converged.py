@@ -35,7 +35,7 @@ from tests._x64_compat import enable_x64  # SCOPED x64 — never flip it at modu
 from rfx import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.geometry.csg import Box
-from tests._gate_policy import gate_from_envelope
+from rfx.sources import GaussianPulse
 from tests._msl_ad_objective import msl_band_mean_s21_sq
 
 # ---------------------------------------------------------------------------
@@ -45,13 +45,14 @@ from tests._msl_ad_objective import msl_band_mean_s21_sq
 _MSL_EPS_R = 3.66
 _MSL_H_SUB = 254e-6
 _MSL_W_TRACE = 600e-6
-_MSL_DX = 80e-6
+_MSL_DX = _MSL_H_SUB / 3
 _MSL_L_LINE = 6e-3
 _MSL_PORT_MARGIN = 2e-3
 _MSL_F_MAX = 5e9
+_MSL_WAVEFORM = GaussianPulse(f0=_MSL_F_MAX, bandwidth=.8)
 
 
-def _build_msl_sim() -> Simulation:
+def _build_msl_sim(*, precision="float32") -> Simulation:
     """Tiny MSL thru-line sim (2 ports, minimal domain)."""
     lx = _MSL_L_LINE + 2 * _MSL_PORT_MARGIN
     ly = _MSL_W_TRACE + 2 * (2 * _MSL_H_SUB + 8 * _MSL_DX)
@@ -61,6 +62,7 @@ def _build_msl_sim() -> Simulation:
         freq_max=_MSL_F_MAX,
         domain=(lx, ly, lz),
         dx=_MSL_DX,
+        precision=precision,
         cpml_layers=8,
         boundary=BoundarySpec(
             x="cpml",
@@ -75,10 +77,16 @@ def _build_msl_sim() -> Simulation:
     y_centre = ly / 2.0
     trace_y_lo = y_centre - _MSL_W_TRACE / 2.0
     trace_y_hi = y_centre + _MSL_W_TRACE / 2.0
-    sim.add(
-        Box((0.0, trace_y_lo, _MSL_H_SUB), (lx, trace_y_hi, _MSL_H_SUB + _MSL_DX)),
-        material="pec",
-    )
+    # The port, laminate and PEC trace share the same physical upper plane.
+    # The old dx=80um / one-cell Box put the trace at 320um while the
+    # port declared 254um. Retaining that compensation after #729 leaves
+    # an undriven edge between the port source and its own trace.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        sim.add_thin_conductor(
+            Box((0.0, trace_y_lo, _MSL_H_SUB), (lx, trace_y_hi, _MSL_H_SUB)),
+            sigma_bulk=5.8e7, thickness=35e-6,
+        )
 
     sim.add_msl_port(
         position=(_MSL_PORT_MARGIN, y_centre, 0.0),
@@ -86,6 +94,7 @@ def _build_msl_sim() -> Simulation:
         height=_MSL_H_SUB,
         direction="+x",
         impedance=50.0,
+        waveform=_MSL_WAVEFORM,
     )
     sim.add_msl_port(
         position=(_MSL_PORT_MARGIN + _MSL_L_LINE, y_centre, 0.0),
@@ -93,8 +102,18 @@ def _build_msl_sim() -> Simulation:
         height=_MSL_H_SUB,
         direction="-x",
         impedance=50.0,
+        waveform=_MSL_WAVEFORM,
     )
     return sim
+
+
+def _build_msl_f64_referee() -> Simulation:
+    """Use float64 FDTD fields as well as float64 loss/extractor arithmetic.
+
+    The caller also enters enable_x64(). That context alone cannot select
+    the field dtype: Simulation's explicit default remains float32.
+    """
+    return _build_msl_sim(precision="float64")
 
 
 # ---------------------------------------------------------------------------
@@ -105,6 +124,8 @@ def _build_msl_sim() -> Simulation:
 _NUM_PERIODS = 20
 _N_FREQS = 8
 _FD_H = 1e-3
+# Retained acceptance limit. The measurements below belong to the legacy
+# fixture/reference; they do not qualify #729's repaired geometry and drive.
 # Derived via tests._gate_policy.gate_from_envelope (issue #530; no more
 # hand-picked literals for this gate — see the "GATE REBUILT" docstring
 # section below for the measured envelope and the full derivation):
@@ -124,6 +145,9 @@ _REL_ERR_THRESHOLD = 0.03
 
 # Minimum resolving power the FD reference must have before its disagreement
 # with AD means anything: |f(+h) - f(-h)| expressed in ULPs of the loss.
+# Necessary, not sufficient: actual field precision and finite-step error
+# must also be checked. The final scalar dtype alone hid a mixed-precision
+# reference before #729. Numerical examples below are historical.
 # The loss is a float, so it can only move in whole ULPs — a difference N ULPs
 # wide is quantised to ~1/N relative resolution no matter how exact the solver
 # is. The shipped float32 comparator ran at N = 4.4 under the OLD objective
@@ -174,8 +198,13 @@ def _closest_divisor(n: int, target: int) -> int:
 @pytest.mark.slow
 def test_msl_ad_fd_converged_tight():
     """MSL-FD-TIGHT: converged (num_periods=20) AD gradient matches FD within
-    a measured envelope (currently 3%; see GATE REBUILT below for the
+    the retained 3% acceptance limit (see GATE REBUILT for its historical
     derivation — the value is _REL_ERR_THRESHOLD, do not hardcode it here).
+
+    #729 repairs the port/trace plane mismatch, drives the full fixed band,
+    and explicitly selects float64 fields for FD. Its predeclaration and
+    current qualification live in docs/research_notes/issue729/. Values in
+    the historical discussion below do not measure this repaired fixture.
 
     G-AD-CHECKPOINT (un-skipped 2026-05-26): the num_periods=20 reverse-AD tape
     is now segmented via checkpoint_segments → forward(), so it runs within
@@ -190,7 +219,7 @@ def test_msl_ad_fd_converged_tight():
     gradient accuracy finding instead).
 
     GATE REBUILT (issue #530, 2026-08-04) — OBJECTIVE REPLACED.
-    Everything below this point describes the CURRENT gate. The
+    The retained objective's original qualification is recorded below. The
     "issue #477 / #483 / #527" sections further down are HISTORY: they
     describe how the *previous* objective (``sum_ij|S_ij|**2``) and its
     comparator were debugged, and their numbers are SUPERSEDED — kept only
@@ -457,6 +486,15 @@ def test_msl_ad_fd_converged_tight():
     assert s_max > 0.0, (
         "[MSL-FD-TIGHT] Forward |S| = 0 everywhere — likely a broken forward pass."
     )
+    reliable = np.asarray(fwd_result.reliable)
+    assert reliable.shape == (2, _N_FREQS) and np.all(reliable), (
+        "[MSL-FD-TIGHT] The objective includes an unreliable port/frequency "
+        "record. Repair source coverage or port extraction before judging AD."
+    )
+    settling = np.asarray(fwd_result.settling_db)
+    assert settling.shape == (2,) and np.all(settling < -40.), (
+        f"[MSL-FD-TIGHT] Objective record is not settled: {settling} dB"
+    )
 
     # --- AD gradient ---------------------------------------------------------
     t_ad_start = time.perf_counter()
@@ -474,20 +512,24 @@ def test_msl_ad_fd_converged_tight():
     )
 
     # --- Central finite-difference, float64 reference -------------------------
-    # The two loss evaluations run under a SCOPED x64 context. Never flip x64 at
+    # The two loss evaluations run with explicit float64 FIELDS under a
+    # SCOPED x64 context. Never flip x64 at
     # module level: it is process-global, flips at pytest collection, and reds
     # every same-process pytest-split shard. rfx/probes/probes.py already keys
-    # its DFT accumulator dtype off jax.config.x64_enabled, so x64 reaches S.
+    # its DFT accumulator dtype off jax.config.x64_enabled. The context and
+    # eps64 alone only promoted part of the evaluation: the core otherwise
+    # rounded every E/H step back to float32. A float64 final loss does not
+    # resolve that internal evaluation noise (#729 consumer audit).
     #
     # `grid` and `checkpoint_segments` are computed OUTSIDE this context and
-    # reused inside it. Verified identical under both configs — shape
-    # (142, 54, 19), n_steps 26226, cseg 141, same dt and dx — and a divergence
-    # could not be silent anyway: a mismatched grid.shape would blow up on the
-    # eps_override broadcast, and a cseg that stopped dividing n_steps hard-errors
-    # in the segmented scan (plus the local assert above).
+    # reused inside it. Assert that field precision did not change the grid
+    # or time step; a precision referee must evaluate the same discrete rig.
     t_fd_start = time.perf_counter()
     with enable_x64():
-        sim64 = _build_msl_sim()
+        sim64 = _build_msl_f64_referee()
+        assert sim64._resolve_field_dtype() == jnp.float64
+        grid64 = sim64._build_grid()
+        assert (grid64.shape, grid64.dx, grid64.dt) == (grid.shape, grid.dx, grid.dt)
         eps64 = jnp.ones(grid.shape, dtype=jnp.float64)
 
         def objective64(alpha):
@@ -498,6 +540,14 @@ def test_msl_ad_fd_converged_tight():
                     eps_override=eps64 * alpha,
                     checkpoint_segments=checkpoint_segments,
                 )
+            assert (r.reliable is not None
+                    and np.asarray(r.reliable).shape == (2, _N_FREQS)
+                    and np.all(np.asarray(r.reliable))), (
+                "[MSL-FD-TIGHT] FD reference includes unreliable port data"
+            )
+            assert np.all(np.asarray(r.settling_db) < -40.), (
+                "[MSL-FD-TIGHT] FD reference is not settled"
+            )
             return msl_band_mean_s21_sq(r.S)
 
         # Keep the ARRAYS. float() would widen them to Python floats — always
@@ -694,3 +744,71 @@ def test_fd_ulp_span_is_dtype_sensitive_not_container_sensitive():
         "the recorded measurement no longer applies and the docstring numbers "
         "above need re-measuring, not just this constant nudged."
     )
+
+
+def _assert_trace_sheet_realized(sim_sim):
+    """Build-time check: the trace realizes at the port's substrate top.
+
+    Every migrated conductor on this branch owes this assertion; the shared
+    spelling is tests/_realized_geometry.py, so a fixture never re-derives
+    the rule it is checking.
+    """
+    from tests._realized_geometry import assert_sheet_planes, realized
+    rz = realized(sim_sim)
+    assert rz.pec_mask is None, "a sheet owns no cell"
+    assert len(rz.sheets) == 1
+    for port in sim_sim._msl_ports:
+        assert port.position[2] + port.height == pytest.approx(_MSL_H_SUB)
+    return assert_sheet_planes(sim_sim, 2, [_MSL_H_SUB], what="MSL trace")
+
+
+def test_migrated_trace_is_a_sheet_on_the_declared_plane():
+    _assert_trace_sheet_realized(_build_msl_sim())
+
+
+def test_ad_drive_covers_every_frequency_in_the_objective():
+    """Excitation precondition only; live reliability is checked separately."""
+    sim = _build_msl_sim()
+    grid = sim._build_grid()
+    times = np.asarray(jnp.arange(grid.num_timesteps(num_periods=_NUM_PERIODS),
+                                  dtype=jnp.float32)*grid.dt)
+    frequencies = np.linspace(_MSL_F_MAX/10., _MSL_F_MAX, _N_FREQS)
+    transform = np.exp(-2j*np.pi*frequencies[:, None]*times[None, :])
+    for port in sim._msl_ports:
+        spectrum = np.abs(transform @ np.asarray(port.waveform(times)))
+        # The existing low-signal screen is 10% of the band median.
+        assert np.min(spectrum/np.median(spectrum)) > .1
+    old = np.abs(transform @ np.asarray(
+        GaussianPulse(f0=_MSL_F_MAX/2., bandwidth=.8)(times)))
+    assert old[-1]/np.median(old) < .1
+
+
+@pytest.mark.parametrize("referee,expected", [(False, np.float32), (True, np.float64)])
+def test_referee_precision_reaches_the_actual_field_state(referee, expected, monkeypatch):
+    """Observe real core initialization; stop before any FDTD scan.
+
+    Both arms enable x64 and supply eps64. The default-field arm is the
+    negative control for the old assumption that this alone makes a
+    double-precision finite-difference reference.
+    """
+    import rfx.simulation as simulation_core
+
+    original = simulation_core.init_state
+    seen = []
+
+    class Captured(Exception):
+        pass
+
+    def capture(shape, **kwargs):
+        state = original(shape, **kwargs)
+        seen.append({getattr(state, key).dtype for key in ("ex", "ey", "ez", "hx", "hy", "hz")})
+        raise Captured
+
+    monkeypatch.setattr(simulation_core, "init_state", capture)
+    with enable_x64():
+        sim = _build_msl_f64_referee() if referee else _build_msl_sim()
+        grid = sim._build_grid()
+        with pytest.raises(Captured):
+            sim.compute_msl_s_matrix(n_steps=1, n_freqs=1, checkpoint_segments=1,
+                                     eps_override=jnp.ones(grid.shape, dtype=jnp.float64))
+    assert seen == [{np.dtype(expected)}]

@@ -50,7 +50,7 @@ C0 = 2.998e8
 
 def _load_cv11():
     spec = importlib.util.spec_from_file_location(
-        "cv11", REPO / "examples" / "crossval" / "11_waveguide_port_wr90.py"
+        "cv11", REPO / "validation" / "crossval" / "11_waveguide_port_wr90.py"
     )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)

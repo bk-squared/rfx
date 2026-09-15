@@ -8,7 +8,21 @@ the oblique bins.
 
 Findings this locks:
   * rfx NEAR-BACKSCATTER RCS agrees with independent BEM on a non-closed-form
-    shape (an axis-aligned cube is grid-perfect in FDTD -> no staircase).
+    shape (an axis-aligned cube is grid-perfect in FDTD -> no staircase). That
+    claim is load-bearing for the gates below and used to be untested; it is a
+    check now (``test_the_cube_is_a_whole_number_of_cells_on_its_own_mesh``),
+    and the check is precise about what "grid-perfect" means here: the EXTENT
+    is 18 cells per axis to 0.012 of a cell, but the cube is not registered on
+    the node lattice, so WHICH 18 cells depends on the sampler.
+
+#931 SCOPE (measured, not assumed): this lane does not go through the lattice
+ownership contract at all. The producer builds its metal with the low-level
+``rasterize(grid, [(cube, 1.0, PEC_SIGMA)])`` — a sigma = 1e7 CELL FILL, which
+design note §1.8 explicitly fences out of the contract as a lossy-volume model.
+So the committed rfx sigmas do not move, the gates below are not re-derived,
+and no re-run is needed. The two models are pinned as DIFFERENT rather than
+quietly equated (§1.8's own requirement); see
+``test_the_sigma_fill_and_the_pec_contract_are_not_the_same_object``.
   * rfx's FORWARD-OBLIQUE bistatic bins read high -- the documented bistatic
     contamination (issue #280) -- confirmed on a SECOND shape by a non-FDTD
     method (Bempp is converged there, so the gap is rfx-side). RECORDED, not
@@ -114,3 +128,100 @@ def test_physical_optics_order_of_magnitude(fx):
     bm_back = np.array(fx["bempp"]["bistatic_sigma_m2"])[-1]
     assert 1.0 < rfx_back / po < 4.0, rfx_back / po
     assert 1.0 < bm_back / po < 4.0, bm_back / po
+
+
+# --------------------------------------------------------------------------- #
+# #931: the geometry claim this file's gates rest on, and the model fence
+# --------------------------------------------------------------------------- #
+
+def _producer():
+    """The fixture's own producer module, imported without running it."""
+    import importlib.util
+    path = _FIXTURE.parent / "generate.py"
+    spec = importlib.util.spec_from_file_location("_rcs_cube_generate", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_the_cube_is_a_whole_number_of_cells_on_its_own_mesh(fx):
+    """Turn "an axis-aligned cube is grid-perfect" into a check.
+
+    The gates in this file are justified by that sentence — if the cube were
+    staircased, a 0.42 dB agreement with BEM would be a different claim. The
+    producer's own constants say: L = 30 mm, dx = lambda/RES = 1.6655 mm, so
+    L/dx = 18.012, i.e. eighteen whole cells to about a hundredth of a cell,
+    and equal on all three axes. Read from the producer, not retyped, so a
+    mesh change reds this before it reaches the physics.
+    """
+    m = _producer()
+    dx = m.LAM / m.RES
+    n = m.L / dx
+    assert abs(n - round(n)) < 0.02, (
+        f"the cube is {n:.4f} cells per side on its own mesh — no longer a "
+        "whole number of cells, so 'grid-perfect, no staircase' is false and "
+        "the gates below need a fresh justification")
+    assert round(n) == 18
+    assert fx["geometry"]["L_m"] == pytest.approx(m.L)
+    assert fx["rfx"]["dx_m"] == pytest.approx(dx, rel=1e-9)
+
+
+def test_the_sigma_fill_and_the_pec_contract_are_not_the_same_object():
+    """#931 §1.8: a sigma fill and a realized PEC volume must not be equated.
+
+    Design note §1.8 fences ``rasterize(..., sigma=1e7)`` out of the ownership
+    contract as a LOSSY VOLUME model and asks for a test that the two models
+    are not silently equated. Measured here on this file's own cube and on the
+    cv16 sphere, at the cube fixture's mesh:
+
+      cube    node-sampled (rasterize) 18x18x18 = 5832 cells
+              centre-sampled (contract) 18x18x18 = 5832 cells
+              SAME COUNT, DIFFERENT CELLS — the cube's faces sit 0.012 of a
+              cell off the node lattice, so the two samplers pick different
+              blocks of eighteen.
+      sphere  node-sampled 3023 cells, centre-sampled 3082 cells — 59 rim
+              cells apart, because a curved surface has no registration to
+              share.
+
+    The equality a reader might assume ("PEC is PEC") is therefore false, and
+    that is the point: cv16 and this cube measure a conductivity fill, not the
+    realized edge set, and their numbers are not evidence about the contract.
+    """
+    import numpy as _np
+    from rfx.geometry.csg import Box, Sphere, rasterize
+    from rfx.geometry.rasterize_grid import (centres_from_uniform_grid,
+                                             pec_volume_cell_mask)
+    from rfx.grid import Grid
+
+    m = _producer()
+    dx = m.LAM / m.RES
+    grid = Grid(freq_max=m.F0 * 1.5, domain=(m.DOMAIN,) * 3, dx=dx,
+                cpml_layers=m.CPML)
+    c = m.DOMAIN / 2
+    centres = centres_from_uniform_grid(grid)
+
+    cube = Box(corner_lo=(c - m.L / 2,) * 3, corner_hi=(c + m.L / 2,) * 3)
+    _eps, sigma = rasterize(grid, [(cube, 1.0, m.PEC_SIGMA)])
+    filled = _np.asarray(sigma) > 0
+    owned = _np.asarray(pec_volume_cell_mask(cube, centres), dtype=bool)
+
+    def runs(mask):
+        return tuple(int(mask.any(axis=tuple(k for k in range(3) if k != ax)).sum())
+                     for ax in range(3))
+
+    assert runs(filled) == runs(owned) == (18, 18, 18)
+    assert int(filled.sum()) == int(owned.sum()) == 18 ** 3
+    assert not _np.array_equal(filled, owned), (
+        "the sigma fill and the contract's cell ownership now select the SAME "
+        "cells for this cube. That may be an improvement, but §1.8 fences the "
+        "two models apart on purpose — re-read the fence before treating this "
+        "lane's numbers as evidence about PEC realization")
+
+    sphere = Sphere(center=(c, c, c), radius=0.015)
+    _e2, s2 = rasterize(grid, [(sphere, 1.0, m.PEC_SIGMA)])
+    filled_s = _np.asarray(s2) > 0
+    owned_s = _np.asarray(pec_volume_cell_mask(sphere, centres), dtype=bool)
+    assert int(filled_s.sum()) != int(owned_s.sum()), (
+        "node- and centre-sampling now agree on a curved body; the cv16 / "
+        "rcs_scattering split between the audited sphere and the measured "
+        "sphere has closed and both should be re-read")

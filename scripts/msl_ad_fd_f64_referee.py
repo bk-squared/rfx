@@ -59,6 +59,12 @@ reads 2017%, and 27% x 50 ~ 1350% is the same order.
 
 WHAT THIS SCRIPT DOES
 ---------------------
+2026-09-11 correction (#729): the f64 arms now explicitly request
+Simulation(precision="float64") as well as scoped x64. Previously the
+field state remained float32; the final loss's float64 ULP did not bound
+the internal evaluation noise. Historical "f64" measurements below name
+that mixed-precision path, not a verified float64-field reference.
+
 Evaluates the loss under ``jax.experimental.enable_x64()`` (a scoped context —
 module-level ``jax.config.update('jax_enable_x64', True)`` is forbidden here:
 it is process-global, flips at pytest collection, and reds every same-process
@@ -154,6 +160,7 @@ def main() -> int:
         _N_FREQS,
         _NUM_PERIODS,
         _REL_ERR_THRESHOLD,
+        _build_msl_f64_referee,
         _build_msl_sim,
     )
     from tests._msl_ad_objective import msl_band_mean_s21_sq  # noqa: E402
@@ -200,7 +207,7 @@ def main() -> int:
         if args.f64_ad:
             print("\n--- AD (float64) ---", flush=True)
             t0 = time.perf_counter()
-            sim64 = _build_msl_sim()
+            sim64 = _build_msl_f64_referee()
             l64, g64 = jax.value_and_grad(
                 _objective(sim64, jnp.float64))(jnp.float64(1.0))
             g_ad = float(g64)
@@ -211,7 +218,7 @@ def main() -> int:
 
         # ---- f64 central differences ---------------------------------------
         print("\n--- central FD, float64 loss ---", flush=True)
-        sim_fd = _build_msl_sim()
+        sim_fd = _build_msl_f64_referee()
         obj64 = _objective(sim_fd, jnp.float64)
         print(f"  {'h':>9} {'g_fd':>18} {'rel_err':>10} {'signal (ULP)':>14} {'s':>6}")
         rows = []

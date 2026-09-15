@@ -30,6 +30,8 @@ from rfx import Simulation, Box
 from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
 from rfx.sources.sources import GaussianPulse
 
+from validation.crossval.comparators import realized_conductors as RC
+
 C0 = 299792458.0
 
 # ---------------------------------------------------------------- FIX-T ----
@@ -48,9 +50,22 @@ Y_MID = DOMAIN[1] / 2
 N_STEPS = 4000
 FREQS = np.linspace(3e9, 7e9, 9)
 Z0 = 50.0
-PINNED_CODES = ["pec_faces_finite_pec",
-                "wire_port_dead_extent_cells",
-                "wire_port_dead_extent_cells"]
+# Re-derived 2026-09-07 under the lattice ownership contract (#931) by
+# running preflight on this fixture. wire_port_dead_extent_cells x2 is
+# gone (a sheet leaves the port's own Ez edges live, so the column has no
+# dead cell); mesh_resolution and uncoded are preflight-stage artifacts
+# that the preflight migration is expected to remove — see THRU_CODES in
+# thru_feedpost_twoseg_extraction.py for the per-entry reason. This list
+# is RECORDED, not gated: a drift prints a G0-clause deviation.
+# The two lanes no longer report the same set, so they are pinned
+# separately rather than sharing one list that is wrong on one lane:
+# the NU lane reports wire_port_dead_cell_classification_unavailable per
+# port where the uniform lane reports preflight's own uncoded
+# sheets-dropped warning.
+PINNED_CODES = ["mesh_resolution", "pec_faces_finite_pec", "uncoded"]
+PINNED_CODES_NU = ["mesh_resolution", "pec_faces_finite_pec",
+                   "wire_port_dead_cell_classification_unavailable",
+                   "wire_port_dead_cell_classification_unavailable"]
 
 # FIX-T-DC arm (committed DC-anchor constants).
 DC_FREQS = np.array([0.5e9, 1.0e9])
@@ -84,8 +99,12 @@ def build_fix_t(*, nu: bool, drive: int | None, pulse=None):
                      boundary=BoundarySpec(x="cpml", y="cpml",
                                            z=Boundary(lo="pec", hi="cpml")),
                      cpml_layers=CPML_LAYERS, **kw)
+    # Foil -> zero-thickness Box = a sheet on the z = H node plane
+    # (#931 §1.5). Same trace, same corners, same battery constants as
+    # thru_feedpost_deembed.build_thru; drawn H -> H + DX it would now be a
+    # 0.5 mm VOLUME slab of metal, which is not this line.
     sim.add(Box((X1 - DX, Y_MID - W / 2, H),
-                (X2 + DX, Y_MID + W / 2, H + DX)), material="pec")
+                (X2 + DX, Y_MID + W / 2, H)), material="pec")
     if pulse is None:
         pulse = GaussianPulse(f0=5e9, bandwidth=0.8)
     for idx, (x, d) in enumerate(((X1, "-x"), (X2, "+x"))):
@@ -93,6 +112,11 @@ def build_fix_t(*, nu: bool, drive: int | None, pulse=None):
         sim.add_port(position=(x, Y_MID, 0.0), component="ez",
                      impedance=Z0, extent=H, excite=exc,
                      waveform=(pulse if exc else None), direction=d)
+    # Build-time (no solve): the trace realizes ONE wall plane, at z = H,
+    # on BOTH lanes. Asked of the shared owner (#931 §1.7).
+    RC.assert_wall_planes(sim, 2, [float(H)], at=(0.5 * (X1 + X2), Y_MID),
+                          label=f"FIX-T trace ({'NU' if nu else 'uniform'})",
+                          tol_m=1e-12)
     return sim
 
 
@@ -187,8 +211,9 @@ def main():
     for j in (0, 1):
         sim = build_fix_t(nu=True, drive=j)
         codes, issues = preflight_verbatim(sim, f"FIX-T NU drive{j}")
-        if codes != PINNED_CODES:
-            print(f"[FIXTURE] advisory set {codes} != pinned {PINNED_CODES} "
+        if codes != PINNED_CODES_NU:
+            print(f"[FIXTURE] advisory set {codes} != pinned "
+                  f"{PINNED_CODES_NU} "
                   f"— recorded (G0 clause; geometry constants are verbatim "
                   f"battery values, so a lane-specific advisory is a "
                   f"deviation to record, a geometry drift is INVALID)")

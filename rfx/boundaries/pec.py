@@ -1,12 +1,20 @@
-"""Perfect Electric Conductor (PEC) boundary condition.
+"""Perfect Electric Conductor (PEC): domain faces and conductor bodies.
 
-Zeros tangential E-field at boundary faces.
+Domain-face PEC (:func:`apply_pec`, :func:`apply_pec_faces`) keeps its own
+convention (E_tan = 0 on the face plane at index 0 / N) — it is not a body.
+Conductor bodies follow the lattice ownership contract (#931):
+:func:`realized_pec_edge_masks` is the one source of PEC E edges for
+volumes, sheets and wires.
 """
 
 from __future__ import annotations
 
-import jax.numpy as jnp
+from dataclasses import dataclass
 
+import jax.numpy as jnp
+import numpy as np
+
+from rfx.core.jax_utils import is_tracer as _is_tracer
 from rfx.core.yee import _shift_bwd, _shift_fwd
 
 
@@ -87,231 +95,501 @@ def apply_pec_faces(state, faces: set[str]) -> object:
     return state._replace(ex=ex, ey=ey, ez=ez)
 
 
-def tangential_edge_masks(cell_mask, periodic=(False, False, False)):
-    """Per-component tangential E-edge masks for a boolean CELL mask.
+# ---------------------------------------------------------------------------
+# Lattice ownership contract for conductors (#931)
+#
+# One sentence, three regions: an E component is PEC iff its own location is
+# inside the closed conductor region — a VOLUME (a set of primal cells), a
+# SHEET (a footprint on one node plane, zero thickness) or a WIRE (a 1-D path
+# of edges).  :func:`realized_pec_edge_masks` is the ONLY function that turns
+# geometry into PEC edges; every consumer reads its ``(Mx, My, Mz)`` or one
+# of the two helpers built on it (:func:`realized_wall_planes`,
+# :func:`edge_is_pec`).  Normative text:
+# docs/design_notes/20260906_plan_realign_lattice_ownership.md (§1).
+#
+# Index conventions (§1.1): node ``i`` at ``x_i`` is the LOWER corner of
+# primal cell ``i``; ``Ex[i,j,k]`` sits at ``(x_{i+1/2}, y_j, z_k)``,
+# ``Ey[i,j,k]`` at ``(x_i, y_{j+1/2}, z_k)``, ``Ez[i,j,k]`` at
+# ``(x_i, y_j, z_{k+1/2})``.  ``C[i,j,k]`` means primal cell ``(i,j,k)`` is
+# conductor.
+# ---------------------------------------------------------------------------
 
-    The single source of the thin-sheet neighbor rule (#677): a component
-    is tangential to the masked body iff the body extends >= 2 cells in
-    that component's direction (i.e. has a masked neighbor along it). A
-    one-cell-thick sheet therefore selects only its in-plane (tangential)
-    E components.
 
-    Boundary convention (#689). The neighbour lookup used to be
-    ``jnp.roll`` on every axis, which wraps: on a NON-periodic axis, a
-    one-cell body on the ``0`` face and another on the ``n-1`` face saw
-    each other through the domain and BOTH had their sheet-normal
-    component selected. Whether a component is tangential or normal to a
-    body is a property of the body, so translating the same pair one cell
-    inward must not change the answer — and it did (measured, two 4x4
-    plates in a (6,6,10) domain: per-component nnz [32, 32, 32] on the
-    faces versus [32, 32, 0] anywhere inside). Non-periodic axes now use
-    the explicit zero pad ``rfx.core.yee._shift_bwd/_shift_fwd``, which is
-    also the convention the solver's own curl uses for out-of-domain H.
+def _shift(arr, ax, periodic, direction):
+    """THE single spelling of the #689 boundary convention.
 
-    The wrap is kept, deliberately, on two kinds of axis — both measured,
-    neither assumed:
-
-    * ``periodic[ax]`` — cell ``0`` and cell ``n-1`` really are
-      neighbours there, so a body straddling the seam is contiguous.
-      A seam-straddling body one cell either side goes from 8 selected
-      edges to 0 under an unconditional zero pad. Callers on a periodic
-      lane MUST pass their run's flags; the default is the non-periodic
-      convention.
-    * ``cell_mask.shape[ax] == 1`` — the 2-D lane. ``rfx/simulation.py``
-      forces ``periodic[2] = True`` when ``grid.is_2d``, and with
-      ``nz == 1`` the wrap is what makes a body self-adjacent along z.
-      An unconditional zero pad selects zero Ez edges there, i.e. every
-      2-D run with interior PEC silently loses that PEC (measured
-      max|Ez| inside the block 0.0 -> 2.60e+06).
-
-    Shared by :func:`apply_pec_mask` (which zeroes the selected edges) and
-    the surface-impedance sheet operator
-    (:func:`rfx.materials.thin_conductor.apply_sheet_impedance_e`, which
-    applies a resistive update on them), so the PEC and sheet footprints
-    are structurally identical — pinned by
-    tests/unit/materials/test_sheet_impedance.py (G4 footprint identity). Both
-    consumers must be handed the SAME ``periodic``, or that identity is
-    computed against two different neighbour rules.
-
-    The distributed NU lane's hard-PEC kernel
-    (``rfx/runners/distributed_nu.py::_apply_pec_mask_nu_shmap``) also
-    CALLS this function, with ``periodic=(True, False, False)`` — its
-    sharded x axis keeps the wrap because a slab's ghost rows carry the
-    seam neighbour and are forced ``False`` afterwards. It used to carry
-    an inlined ``roll`` copy of the rule, did not follow #689, and so
-    disagreed with the single-device lane at a y or z domain face
-    (measured, two 4x4 plates in a (6,6,10) domain: ``[32, 32, 32]``
-    there against ``[32, 32, 0]`` here). Pinned by
-    ``tests/unit/runners/test_distributed_nu_pec_mask_lane_parity.py``.
-
-    Still NOT moved in lockstep, and worth knowing before the next reader
-    rediscovers it: the SOFT PEC path — :func:`apply_pec_occupancy` below,
-    its distributed twin ``_apply_pec_occupancy_nu_shmap``, and the
-    AD-smooth dilation in ``rfx/geometry/smoothing.py`` — still spells the
-    rule with ``roll``, so hard and soft PEC differ at a non-periodic
-    domain face. Widening #689 into the differentiable-geometry lane was
-    out of its scope; ``tests/unit/autodiff/test_topology.py`` does not discriminate
-    either way (its mask spans the full y/z extent, where wrap and zero
-    pad agree).
-
-    Parameters
-    ----------
-    cell_mask : (nx, ny, nz) boolean array
-    periodic : (bool, bool, bool)
-        Per-axis periodic-boundary flags for the run. Defaults to the
-        non-periodic convention.
-
-    Returns
-    -------
-    (mask_ex, mask_ey, mask_ez) boolean arrays, same shape.
+    ``direction=+1`` returns ``arr[i-1]`` (backward neighbour), ``-1``
+    returns ``arr[i+1]`` (forward neighbour).  Wrap (``jnp.roll``) on a
+    periodic axis and on a length-1 axis (the 2-D lane's self-adjacency);
+    explicit zero pad (``_shift_bwd`` / ``_shift_fwd``) otherwise — the
+    same out-of-domain convention the solver's curl uses.  A hand-copied
+    second neighbour rule is this repo's recurring defect (#689/#690
+    class); volume, sheet and wire realization all come through here.
     """
-    masks = []
-    for ax in range(3):
-        bwd, fwd = _axis_neighbors(cell_mask, ax, periodic)
-        neighbor = bwd | fwd
-        masks.append(cell_mask & neighbor)
-    return tuple(masks)
+    if arr.shape[ax] == 1 or periodic[ax]:
+        return jnp.roll(arr, direction, axis=ax)
+    return _shift_bwd(arr, ax) if direction > 0 else _shift_fwd(arr, ax)
 
 
-def _axis_neighbors(cell_mask, ax, periodic):
-    """Per-axis (backward, forward) neighbour occupancy of ``cell_mask``.
+@dataclass(frozen=True)
+class SheetSpec:
+    """One PEC sheet: a node footprint on ONE plane, zero thickness (§1.3).
 
-    THE single spelling of the #689 boundary convention, shared by
-    :func:`tangential_edge_masks` and :func:`two_plane_extension_masks`
-    (a hand-copied second rule is this repo's recurring defect — #689/#690
-    class).  Wrap (``jnp.roll``) on periodic axes and on length-1 axes
-    (the 2-D lane's self-adjacency); explicit zero pad
-    (``_shift_bwd``/``_shift_fwd``) otherwise — the same out-of-domain
-    convention the solver's curl uses.
+    ``footprint`` is a boolean ``(nx, ny, nz)`` NODE mask that is True only
+    on layer ``plane`` along ``normal_axis`` (the full-shape layout keeps it
+    interchangeable with ``SheetImpedanceSpec.mask``, so a lossy f0 sheet
+    and a PEC sheet are one footprint with a different operator — the #677
+    G4 identity by construction).  ``plane`` is a static Python int: a
+    sheet's plane is never a traced quantity (the ``argmin`` cliff).  A
+    sheet owns NO cell — it adds nothing to the cell mask and writes no
+    material.
     """
-    if cell_mask.shape[ax] == 1 or periodic[ax]:
-        return jnp.roll(cell_mask, 1, axis=ax), jnp.roll(cell_mask, -1, axis=ax)
-    return _shift_bwd(cell_mask, ax), _shift_fwd(cell_mask, ax)
+    normal_axis: int
+    plane: int
+    footprint: object
+    name: str | None = None
+
+    def __post_init__(self):
+        a = int(self.normal_axis)
+        if a not in (0, 1, 2):
+            raise ValueError(f"SheetSpec.normal_axis must be 0/1/2, got {self.normal_axis!r}")
+        object.__setattr__(self, "normal_axis", a)
+        object.__setattr__(self, "plane", int(self.plane))
+        fp = self.footprint
+        if getattr(fp, "ndim", None) != 3:
+            raise ValueError("SheetSpec.footprint must be a 3-D (nx, ny, nz) boolean array")
+        if not (0 <= self.plane < fp.shape[a]):
+            raise ValueError(
+                f"SheetSpec.plane={self.plane} is outside the array along axis "
+                f"{'xyz'[a]} (length {fp.shape[a]})")
+        if not _is_tracer(fp):
+            fp_np = np.asarray(fp, dtype=bool)
+            other = tuple(b for b in range(3) if b != a)
+            layers = np.flatnonzero(np.any(fp_np, axis=other))
+            if layers.size and (layers.size != 1 or int(layers[0]) != self.plane):
+                raise ValueError(
+                    f"SheetSpec footprint must occupy exactly its own plane "
+                    f"{self.plane} along {'xyz'[a]}; found layers {layers.tolist()}")
+            object.__setattr__(self, "footprint", jnp.asarray(fp_np))
 
 
-def _place_at_next_plane(mask, ax, periodic):
-    """Move a per-cell-index selection to the NEXT plane index along ``ax``.
+@dataclass(frozen=True)
+class WireSpec:
+    """One PEC filament: the E edges of an axis-aligned lattice path (§1.4).
 
-    ``out[k+1] = mask[k]`` — used to realize a one-cell slab's FAR face
-    (issue #706).  Same #689 convention as :func:`_axis_neighbors`: on a
-    periodic (or length-1) axis the k = n-1 selection wraps to plane 0
-    (the seam-straddling far face IS plane 0 there); on a non-periodic
-    axis it is dropped (plane n has no array entry — a slab in the last
-    cell has its far face on the domain boundary, owned by the domain
-    BC).
+    ``edges`` is the ``(Mx, My, Mz)`` boolean triple naming the edges on the
+    path — built by :func:`wire_path_edge_masks` from the path's node
+    indices.  A wire owns no cell.
     """
-    if mask.shape[ax] == 1 or periodic[ax]:
-        return jnp.roll(mask, 1, axis=ax)
-    return _shift_bwd(mask, ax)
+    edges: tuple
+    name: str | None = None
 
 
-def two_plane_extension_masks(pec_mask, two_plane_mask,
-                              periodic=(False, False, False)):
-    """Extra E-edge zero masks realizing the OPT-IN two-plane slab (#706).
+def wire_path_edge_masks(nodes, shape):
+    """E edges of the axis-aligned lattice path through ``nodes`` (§1.4).
 
-    ``apply_pec_mask``'s base rule zeroes ONE tangential-E entry per PEC
-    cell index — the cell's LOWER node plane — so a PEC body filling
-    exactly one cell along its normal presents only its bottom face and
-    its own cell volume stays live (eigenmode-witnessed in #706: the
-    measured lateral-mode ladder pinned L_eff = gap + t, excluding the
-    face-to-face family at the first gap).  For bodies the user flagged
-    ``two_plane=True``, this function adds, per axis ``a`` on which the
-    body's cell run has length exactly 1 (no PEC neighbour on either
-    side along ``a``, evaluated against the FULL ``pec_mask`` union so a
-    flagged cell abutting another PEC body is a >= 2-cell run and gets
-    NOTHING extra — thick bodies are unchanged, the k+2 plane is out of
-    scope):
-
-    * the same tangential-E selection the base rule made at plane ``k``,
-      replicated at the NEXT plane ``k+1`` (the slab's far face) — the
-      lateral footprint gating (a component is only zeroed where the
-      body has a neighbour along the component's own axis) is inherited
-      from the base masks rather than re-derived, so the two planes
-      cannot disagree at the slab's lateral rim;
-    * the slab's interior normal-E edge ``E_a(k)`` (it lies strictly
-      inside the conductor once both faces are walls — leaving it live
-      would leave a driveable edge between two shielding planes).
-
-    Array edges and periodic seams follow the shared #689 convention via
-    :func:`_axis_neighbors` / :func:`_place_at_next_plane`.  The
-    intersection with the live ``pec_mask`` means cells cleared after
-    assembly (e.g. wire-port live-cell clearing) contribute no
-    extension.
-
-    Parameters
-    ----------
-    pec_mask : (nx, ny, nz) boolean array
-        FULL PEC cell union of the run (post any clearing).
-    two_plane_mask : (nx, ny, nz) boolean array
-        Cells of the geometry entries flagged ``two_plane=True``.
-    periodic : (bool, bool, bool)
-        The run's per-axis periodic flags (#689).
-
-    Returns
-    -------
-    (extra_ex, extra_ey, extra_ez) boolean arrays to OR into the base
-    tangential-edge masks.
+    ``nodes`` is a sequence of integer ``(i, j, k)`` node indices; each
+    consecutive pair must differ along exactly ONE axis (a diagonal
+    segment raises — today such a wire silently rasterizes to nothing).
+    The edge between node ``i`` and ``i+1`` along ``x`` is ``Ex[i, j, k]``,
+    so a segment from ``a`` to ``b`` marks ``E_ax[min(a,b) .. max(a,b)-1]``
+    — the interval BETWEEN the two indices, never the way round through
+    the seam.  A wire that is meant to cross a periodic seam is drawn as
+    two legs (… -> the hi rim node, then the lo rim node -> …); there is
+    no periodic argument here, because a path is a list of edges the
+    caller named, not a neighbour rule.
     """
-    base = tangential_edge_masks(pec_mask, periodic)
-    extras = [jnp.zeros_like(pec_mask) for _ in range(3)]
-    for ax in range(3):
-        bwd, fwd = _axis_neighbors(pec_mask, ax, periodic)
-        run1 = two_plane_mask & pec_mask & ~bwd & ~fwd
-        # Interior normal-E edge of the slab: inside the conductor.
-        extras[ax] = extras[ax] | run1
-        # Far-face plane k+1: replicate the base tangential selection.
+    masks = [np.zeros(tuple(shape), dtype=bool) for _ in range(3)]
+    pts = [tuple(int(v) for v in n) for n in nodes]
+    if len(pts) < 2:
+        raise ValueError("a PolylineWire filament needs at least two nodes")
+    for a, b in zip(pts[:-1], pts[1:]):
+        moving = [ax for ax in range(3) if a[ax] != b[ax]]
+        if len(moving) != 1:
+            raise ValueError(
+                f"PolylineWire segment {a} -> {b} is not axis-aligned; only "
+                "axis-aligned segments are supported (lattice ownership "
+                "contract §1.4). Split the segment into axis-aligned legs.")
+        ax = moving[0]
+        lo, hi = sorted((a[ax], b[ax]))
+        idx = [slice(v, v + 1) for v in a]
+        idx[ax] = slice(lo, hi)
+        masks[ax][tuple(idx)] = True
+    return tuple(jnp.asarray(m) for m in masks)
+
+
+def wire_node_footprint(wires, shape=None):
+    """NODE mask covered by ``wires`` — both end nodes of every path edge.
+
+    A filament owns no cell, so ``pec_mask`` cannot carry it and an
+    occupancy / connectivity read (``Simulation.conductor_mask``, a
+    footprint plot) that unions only cells and sheet footprints reports a
+    wire-fed model as having no metal along the wire.  The node set is the
+    honest cell-shaped answer for a 1-D region: edge ``c`` at index ``i``
+    joins node ``i`` to node ``i+1`` along axis ``c``, so the nodes are
+    ``M_c | shift_bwd(M_c)`` unioned over the three components.
+
+    There is no ``periodic`` argument, for the same reason
+    :func:`wire_path_edge_masks` has none: a path is the list of edges the
+    caller named, and a wire meant to cross a seam is drawn as two legs.
+    The zero-padded shift is therefore exact at both rims — node 0 is an
+    endpoint of edge 0 only, node ``n-1`` of edge ``n-2`` only.
+
+    ``shape`` seeds an all-False result when ``wires`` is empty; without
+    it an empty list returns ``None`` rather than inventing a grid size.
+    """
+    out = None
+    for w in wires or ():
+        for c in range(3):
+            m = jnp.asarray(w.edges[c], dtype=bool)
+            nodes = m | _shift(m, c, (False, False, False), +1)
+            out = nodes if out is None else (out | nodes)
+    if out is None and shape is not None:
+        return jnp.zeros(tuple(shape), dtype=bool)
+    return out
+
+
+def _volume_edge_masks(cell_mask, periodic):
+    """§1.2: an edge is PEC iff it is incident to an occupied cell.
+
+    ``Mx[i,j,k] = C[i,j,k] | C[i,j-1,k] | C[i,j,k-1] | C[i,j-1,k-1]`` and
+    cyclically — the four cells sharing the edge, reached by the backward
+    shifts along the two axes transverse to the component.
+    """
+    C = cell_mask
+    out = []
+    for c in range(3):
+        m = C
         for t in range(3):
-            if t == ax:
+            if t == c:
                 continue
-            extras[t] = extras[t] | _place_at_next_plane(
-                base[t] & run1, ax, periodic)
-    return tuple(extras)
+            m = m | _shift(m, t, periodic, +1)
+        out.append(m)
+    return tuple(out)
 
 
-def apply_pec_mask(state, pec_mask, periodic=(False, False, False),
-                   two_plane_mask=None) -> object:
-    """Zero tangential E-field components at PEC geometry cells.
+def _volume_occupancy_masks(occ, periodic):
+    """§1.6: noisy-OR of the four incident cells, ``M = 1 - Π(1 - o_c)``.
 
-    For thin PEC sheets (1 cell thick), only tangential E-components
-    are zeroed; the normal component is preserved (represents surface
-    charge). A component is tangential if the PEC extends >= 2 cells
-    in that component's direction (i.e., has a PEC neighbor).
+    Same shifts as :func:`_volume_edge_masks`, applied to the OCCUPANCY
+    (so the zero pad of a non-periodic axis reads "no conductor outside",
+    exactly as the hard rule's ``False`` pad does — shifting ``1 - o``
+    would pad with "conductor").  The pairwise noisy-OR ``a ⊕ b =
+    1 - (1-a)(1-b)`` chained over the two transverse axes is the
+    four-cell product; at binary occupancy it is exactly 0 or 1, so the
+    result is bit-identical to the hard rule.
+    """
+    out = []
+    for c in range(3):
+        m = occ
+        for t in range(3):
+            if t == c:
+                continue
+            m = 1.0 - (1.0 - m) * (1.0 - _shift(m, t, periodic, +1))
+        out.append(m)
+    return tuple(out)
+
+
+def _sheet_edge_masks(sheets, shape, periodic):
+    """§1.3: E_t (t != normal) on the sheet plane, both end nodes in F.
+
+    Footprints are UNIONED per normal axis BEFORE the edge rule (two
+    abutting sheets realize seamlessly; a per-sheet application would leave
+    the shared edge live — a slit).  Because a footprint is a full-shape
+    mask that is non-zero only on its own plane and the end-node shift runs
+    along an IN-PLANE axis, the per-axis union is exactly the per-(axis,
+    plane) union the design note asks for, and sheets on adjacent planes
+    stay two films with the normal edge between them live (#690).
+
+    On a length-1 normal axis (the 2-D lane) the region has no thickness
+    direction, so the "normal" component is not a through-sheet edge: it
+    is PEC exactly at the footprint nodes (the closed 2-D region evaluated
+    for that component's own location), and the in-plane components take
+    the usual both-end-nodes rule. That is the same set the volume rule
+    gives the same drawn rectangle on the 2-D lane (design note §1.3:
+    "realized as a 2-D volume of its footprint").
+    """
+    edge = [None, None, None]
+    per_axis = {}
+    for sp in sheets:
+        fp = sp.footprint
+        if tuple(fp.shape) != tuple(shape):
+            raise ValueError(
+                f"SheetSpec footprint shape {tuple(fp.shape)} does not match the "
+                f"grid shape {tuple(shape)}")
+        a = sp.normal_axis
+        per_axis[a] = fp if a not in per_axis else (per_axis[a] | fp)
+    for a, F in per_axis.items():
+        for t in range(3):
+            if t == a:
+                if shape[a] == 1:
+                    edge[t] = F if edge[t] is None else (edge[t] | F)
+                continue
+            m = F & _shift(F, t, periodic, -1)
+            edge[t] = m if edge[t] is None else (edge[t] | m)
+    return edge
+
+
+def realized_pec_edge_masks(cell_mask, sheets=(), wires=(),
+                            periodic=(False, False, False)):
+    """The one function that turns conductor geometry into PEC E edges.
 
     Parameters
     ----------
-    state : FDTDState
-    pec_mask : (nx, ny, nz) boolean array
-        True where material is PEC.
+    cell_mask : (nx, ny, nz) bool array or None
+        Primal-cell occupancy of every PEC VOLUME (Box / Sphere / Cylinder
+        via ``sim.add``, and thick ``PolylineWire``).  ``None`` when the run
+        has no volume conductor.
+    sheets : iterable of :class:`SheetSpec`
+        PEC sheets (``add_thin_conductor`` with PEC conductivity).
+    wires : iterable of :class:`WireSpec`
+        PEC filaments.
     periodic : (bool, bool, bool)
-        The run's per-axis periodic flags, forwarded to
-        :func:`tangential_edge_masks`. The default is the non-periodic
-        convention, so a caller on a periodic lane must pass its own
-        flags — see that function's boundary-convention note (#689).
-        A length-1 axis is handled without it.
-    two_plane_mask : (nx, ny, nz) boolean array or None
-        OPT-IN (issue #706): cells of PEC bodies flagged
-        ``two_plane=True``.  Where such a body fills exactly one cell
-        along an axis, the far-face plane ``k+1`` is also zeroed and the
-        slab's interior normal edge is shielded — see
-        :func:`two_plane_extension_masks`.  ``None`` (the default) is
-        bit-identical to the historical one-plane behaviour.
-    """
-    # Per-component masks: zero E only where PEC has extent in that direction
-    # Ex(i,j,k) zeroed if pec(i,j,k) AND neighbor PEC in x
-    # (if no x-neighbor is PEC → thin x-sheet → Ex is normal → preserve)
-    mask_ex, mask_ey, mask_ez = tangential_edge_masks(pec_mask, periodic)
-    if two_plane_mask is not None:
-        ex2, ey2, ez2 = two_plane_extension_masks(
-            pec_mask, two_plane_mask, periodic)
-        mask_ex = mask_ex | ex2
-        mask_ey = mask_ey | ey2
-        mask_ez = mask_ez | ez2
+        The run's per-axis periodic flags (#689).  Callers on a periodic
+        lane MUST pass their own; the default is the non-periodic
+        convention.
 
+    Returns
+    -------
+    (Mx, My, Mz) boolean arrays, grid shape: True where that E component
+    is zeroed.  Consequences the contract test pins: a Box drawn
+    ``z_a -> z_b`` on node planes realizes walls at BOTH planes and shorts
+    every normal edge between them; a 1-cell Box is a filled slab with two
+    faces on every axis; a sheet is one plane with its normal edge live;
+    the rule is invariant under mirror and axis permutation.
+    """
+    sheets = list(sheets or ())
+    wires = list(wires or ())
+    if cell_mask is None:
+        src = next((sp.footprint for sp in sheets), None)
+        if src is None:
+            src = next((w.edges[0] for w in wires), None)
+        if src is None:
+            raise ValueError("realized_pec_edge_masks: no cell mask, sheets or wires given")
+        shape = tuple(src.shape)
+    else:
+        shape = tuple(cell_mask.shape)
+    sheet_edges = _sheet_edge_masks(sheets, shape, periodic)
+    cells = cell_mask
+    if cells is not None:
+        out = list(_volume_edge_masks(cells.astype(bool), periodic))
+    else:
+        out = [jnp.zeros(shape, dtype=bool) for _ in range(3)]
+    for c in range(3):
+        if sheet_edges[c] is not None:
+            out[c] = out[c] | sheet_edges[c]
+        for w in wires:
+            out[c] = out[c] | w.edges[c]
+    return tuple(out)
+
+
+def realized_wall_planes(edge_masks, axis, *, ij=None, region=None,
+                         periodic=(False, False, False)):
+    """Sorted node-plane indices along ``axis`` where a tangential wall exists.
+
+    A plane ``k`` counts when some E component tangential to ``axis`` (the
+    two components other than ``axis``) is PEC on that plane, inside the
+    selection:
+
+    * ``region`` — a tuple of three slices over the grid; ``None`` is the
+      whole grid.  Any tangential edge whose index falls in the region.
+    * ``ij`` — the two in-plane node indices of ONE column (in axis order,
+      skipping ``axis``).  A wall counts on the column when any tangential
+      edge INCIDENT to the node ``(ij, k)`` is PEC, i.e. ``E_t`` at the
+      node's own index or at the backward index along ``t`` — so a node on
+      the hi rim of a footprint, whose incident edges are stored at
+      ``i-1``, is found.  The backward neighbour follows the run's #689
+      convention: on a periodic (or length-1) in-plane axis the backward
+      neighbour of index 0 is ``n-1``, so a wall on the seam node is
+      found; on a non-periodic axis index 0 has no backward edge.
+
+    ``periodic`` is the run's per-axis flags; callers on a periodic lane
+    MUST pass their own (the default is the non-periodic convention).  It
+    only affects the ``ij=`` column form — ``region=`` already scans every
+    stored index.
+
+    ``ij`` and ``region`` are exclusive.  Consumers: preflight cavity /
+    guide-width checks, cv15 ``assert_realized_stack``, MSL trace
+    detection, oracles.
+
+    EVERY plane, not just the two faces.  A body three cells thick has a
+    tangential wall on all four of its node planes, because the interior
+    is shorted too, so this returns four indices and not two.  ``max -
+    min`` is therefore the body's OUTER span and over-reads a guide or a
+    cavity bounded by thick walls: a 40-cell guide inside 3-cell walls
+    gives ``[0, 1, 2, 3]`` and ``[43, 44, 45]``, and ``45 - 0`` is 45, not
+    40.  A consumer that wants the clear opening brackets the aperture
+    between the hi plane of one wall group and the lo plane of the next
+    (``_port_transverse_spans`` does, and reads 40).
+    """
+    if ij is not None and region is not None:
+        raise ValueError("pass either ij= or region=, not both")
+    tangential = [c for c in range(3) if c != axis]
+    hit = None
+    if ij is not None:
+        i, j = (int(v) for v in ij)
+        in_plane = tangential
+        for t in tangential:
+            m = np.asarray(edge_masks[t], dtype=bool)
+            idx = [None, None, None]
+            idx[in_plane[0]] = i
+            idx[in_plane[1]] = j
+            idx[axis] = slice(None)
+            col = m[tuple(idx)]
+            back = list(idx)
+            if back[t] - 1 >= 0:
+                back[t] = back[t] - 1
+                col = col | m[tuple(back)]
+            elif m.shape[t] == 1:
+                pass  # length-1 axis: the node's own index IS the wrap neighbour
+            elif periodic[t]:
+                back[t] = m.shape[t] - 1   # #689 wrap: node 0's backward edge
+                col = col | m[tuple(back)]
+            hit = col if hit is None else (hit | col)
+    else:
+        sel = tuple(region) if region is not None else (slice(None),) * 3
+        other = tuple(c for c in range(3) if c != axis)
+        for t in tangential:
+            m = np.asarray(edge_masks[t], dtype=bool)
+            sub = np.zeros_like(m)
+            sub[sel] = m[sel]
+            col = np.any(sub, axis=other)
+            hit = col if hit is None else (hit | col)
+    return [int(k) for k in np.flatnonzero(hit)]
+
+
+_COMPONENT_INDEX = {"ex": 0, "ey": 1, "ez": 2, "x": 0, "y": 1, "z": 2, 0: 0, 1: 1, 2: 2}
+
+
+def edge_is_pec(edge_masks, component, i, j, k) -> bool:
+    """True iff the E edge ``component`` at index ``(i, j, k)`` is PEC.
+
+    ``component`` is ``"ex"``/``"ey"``/``"ez"``, ``"x"``/``"y"``/``"z"`` or
+    0/1/2.  Wire-port live-cell logic (#556 end gap, #929 ``port_in_pec``),
+    probes and sources read this instead of scanning a cell mask.
+    """
+    c = _COMPONENT_INDEX[component.lower() if isinstance(component, str) else int(component)]
+    return bool(np.asarray(edge_masks[c])[int(i), int(j), int(k)])
+
+
+def edges_are_pec(edge_masks, component, cells) -> list:
+    """:func:`edge_is_pec` for a LIST of cells, with ONE host transfer.
+
+    ``edge_is_pec`` pulls the whole component mask to the host per call,
+    which the eager S-parameter loops used to pay once per wire cell per
+    step.  Same rule, read once.
+    """
+    c = _COMPONENT_INDEX[
+        component.lower() if isinstance(component, str) else int(component)]
+    m = np.asarray(edge_masks[c], dtype=bool)
+    return [bool(m[int(i), int(j), int(k)]) for (i, j, k) in cells]
+
+
+def clear_edges(edge_masks, cells, component=None):
+    """Un-zero E entries at the given cell indices (§1.9 port clearing).
+
+    ``cells`` is either a boolean grid-shaped mask or an iterable of
+    ``(i, j, k)`` index triples.  ``component`` names the ONE E component
+    to release (``"ex"``/``"ey"``/``"ez"``, ``"x"``/``"y"``/``"z"`` or
+    0/1/2); ``None`` releases all three.
+
+    A port must pass its own component.  Under the ownership contract
+    "live" is defined on the port's own component edge, so releasing the
+    two TANGENTIAL edges at a port foot releases whatever conductor owns
+    that node — a ground plane under an MSL feed, the top face of a body
+    under a probe feed.  That is a hole the port never asked for, so the
+    three-component form is only for callers that really mean "no
+    conductor at this index".
+    """
+    if component is not None:
+        c = _COMPONENT_INDEX[
+            component.lower() if isinstance(component, str) else int(component)]
+        comps = (c,)
+    else:
+        comps = (0, 1, 2)
+    out = list(edge_masks)
+    if (hasattr(cells, "shape")
+            and tuple(getattr(cells, "shape", ())) == tuple(edge_masks[0].shape)):
+        keep = ~jnp.asarray(cells, dtype=bool)
+        for c in comps:
+            out[c] = out[c] & keep
+        return tuple(out)
+    for (i, j, k) in cells:
+        for c in comps:
+            out[c] = out[c].at[int(i), int(j), int(k)].set(False)
+    return tuple(out)
+
+
+#: E is frozen where the Kottke Stage-2 inverse-permittivity tensor is this
+#: small.  Same constant the step body's post-CPML re-enforcement and
+#: ``apply_pec_h_mask`` selection use; named once so the fence below and the
+#: step body cannot drift apart.
+PEC_INV_THRESHOLD = 1e-9
+
+
+def kottke_fenced_edge_masks(edge_masks, aniso_inv_eps, sheets=(), wires=(),
+                             periodic=(False, False, False),
+                             inv_threshold=PEC_INV_THRESHOLD):
+    """§1.8 fence: under ``subpixel_smoothing="kottke_pec"`` the VOLUME's
+    frozen set is the inverse-permittivity tensor's, not the ownership rule's.
+
+    Stage 2 gives a partially filled edge a FRACTIONAL inverse permittivity —
+    that fraction is the model.  Hard-zeroing such an edge because the §1.2
+    ownership rule calls its cell occupied throws the subpixel result away and
+    leaves a staircase.  §1.8 fences that path out of the contract, so on the
+    Kottke lane an edge is applied only when
+
+    * the tensor itself froze it (``inv < inv_threshold``) — the
+      defense-in-depth re-zero that keeps float noise from accumulating in a
+      fully-PEC cell — or
+    * a SHEET or a WIRE owns it.  Those own no cell, so they contribute
+      nothing to ``compute_inv_eps_tensor_diag`` and are invisible to the
+      tensor; without this term a declared sheet would vanish on the Kottke
+      lane.
+
+    Volume edges the tensor left positive are released back to Kottke.  Port
+    clearing survives: ``edge_masks`` arrives already cleared and the fence
+    only removes entries.
+
+    All-jnp and free of host-side decisions, so it also holds inside a trace.
+    """
+    sheets = tuple(sheets or ())
+    wires = tuple(wires or ())
+    shape = tuple(edge_masks[0].shape)
+    if sheets or wires:
+        owned = realized_pec_edge_masks(
+            None, sheets=sheets, wires=wires, periodic=periodic)
+    else:
+        zero = jnp.zeros(shape, dtype=bool)
+        owned = (zero, zero, zero)
+    out = []
+    for c in range(3):
+        frozen = jnp.asarray(aniso_inv_eps[c]) < inv_threshold
+        out.append(jnp.asarray(edge_masks[c], dtype=bool) & (frozen | owned[c]))
+    return tuple(out)
+
+
+def apply_pec_edges(state, edge_masks) -> object:
+    """Zero E on the realized ``(Mx, My, Mz)`` edge masks."""
+    mask_ex, mask_ey, mask_ez = edge_masks
     return state._replace(
         ex=state.ex * (1.0 - mask_ex.astype(state.ex.dtype)),
         ey=state.ey * (1.0 - mask_ey.astype(state.ey.dtype)),
         ez=state.ez * (1.0 - mask_ez.astype(state.ez.dtype)),
     )
+
+
+def apply_pec_mask(state, pec_mask, periodic=(False, False, False),
+                   sheets=()) -> object:
+    """Zero E at the PEC edges realized from a cell mask (and sheets).
+
+    Convenience wrapper: :func:`realized_pec_edge_masks` then
+    :func:`apply_pec_edges`.  Step functions precompute the edge masks once
+    at setup and call :func:`apply_pec_edges` directly; this wrapper is for
+    tests and one-shot callers.  ``periodic`` is the run's flags (#689).
+    """
+    return apply_pec_edges(
+        state, realized_pec_edge_masks(pec_mask, sheets=sheets, periodic=periodic))
 
 
 def apply_pec_h_mask(state, pec_mask=None, *,
@@ -375,22 +653,29 @@ def apply_pec_h_mask(state, pec_mask=None, *,
     )
 
 
-def apply_pec_occupancy(state, pec_occupancy) -> object:
-    """Apply a relaxed PEC occupancy field to tangential E components.
+def apply_pec_occupancy(state, pec_occupancy, periodic=(False, False, False),
+                        sheet_edge_masks=None) -> object:
+    """Differentiable PEC: relaxed occupancy on the §1.2 incident rule (§1.6).
 
-    This is the differentiable analogue of :func:`apply_pec_mask`.
-    ``pec_occupancy`` is a float field in ``[0, 1]`` where 0 means no
-    conductor and 1 means full PEC occupancy. For binary occupancy it
-    reproduces the hard-mask behaviour.
+    ``pec_occupancy`` is a float CELL field in ``[0, 1]``.  Each E component
+    is scaled by ``1 - M`` with ``M`` the noisy-OR of its four incident
+    cells, ``M = 1 - Π(1 - o_c)``, under the same #689 shifts as the hard
+    rule — so at binary occupancy this is bit-identical to
+    :func:`apply_pec_mask` (pinned on a battery that includes bodies on
+    faces 0 and n-1 of a non-periodic axis and the periodic seam).  Sheets
+    enter as STATIC edge masks (``sheet_edge_masks = (Sx, Sy, Sz)`` from
+    :func:`realized_pec_edge_masks`) OR'd in; a sheet's plane is not a
+    traced quantity.
     """
     occ = jnp.clip(pec_occupancy.astype(state.ex.dtype), 0.0, 1.0)
-
-    occ_ex = occ * jnp.maximum(jnp.roll(occ, 1, axis=0), jnp.roll(occ, -1, axis=0))
-    occ_ey = occ * jnp.maximum(jnp.roll(occ, 1, axis=1), jnp.roll(occ, -1, axis=1))
-    occ_ez = occ * jnp.maximum(jnp.roll(occ, 1, axis=2), jnp.roll(occ, -1, axis=2))
-
+    m_ex, m_ey, m_ez = _volume_occupancy_masks(occ, periodic)
+    if sheet_edge_masks is not None:
+        sx, sy, sz = sheet_edge_masks
+        m_ex = jnp.maximum(m_ex, sx.astype(m_ex.dtype))
+        m_ey = jnp.maximum(m_ey, sy.astype(m_ey.dtype))
+        m_ez = jnp.maximum(m_ez, sz.astype(m_ez.dtype))
     return state._replace(
-        ex=state.ex * (1.0 - occ_ex),
-        ey=state.ey * (1.0 - occ_ey),
-        ez=state.ez * (1.0 - occ_ez),
+        ex=state.ex * (1.0 - m_ex),
+        ey=state.ey * (1.0 - m_ey),
+        ez=state.ez * (1.0 - m_ez),
     )

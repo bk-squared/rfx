@@ -159,10 +159,17 @@ bound mode, which is itself the tell. Nothing here is suppressed; the witness is
 printed and asserted before any ratio is reported.
 """
 
+import os
 import sys
 import warnings
 
-sys.path.insert(0, "/root/workspace/byungkwan-workspace/research/rfx")
+# Import rfx from THIS checkout, whichever one that is. The path used to be
+# hard-coded to one clone, which silently ran a different tree's rfx from any
+# worktree — and the "is this checkout" guard in main() below then passed on
+# the wrong tree, because the hard-coded path is a prefix of every sibling
+# worktree's path.
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _REPO_ROOT)
 
 import numpy as np  # noqa: E402
 
@@ -186,8 +193,9 @@ def main() -> int:
     from rfx.sources.msl_port import MSLPort, _msl_yz_cells, msl_loop_current
 
     print(f"rfx.__file__ = {rfx.__file__}")
-    if "/root/workspace/byungkwan-workspace/research/rfx" not in rfx.__file__:
-        print("FATAL: imported rfx is not this checkout")
+    if os.path.realpath(rfx.__file__).startswith(
+            os.path.realpath(_REPO_ROOT) + os.sep) is False:
+        print(f"FATAL: imported rfx is not this checkout ({_REPO_ROOT})")
         return 2
 
     lx, ly, lz = L + 2 * PM, W + 2 * (2 * H_SUB + 8 * DX), H_SUB + 1.5e-3
@@ -197,7 +205,15 @@ def main() -> int:
     sim.add_material("sub", eps_r=EPS_R)
     sim.add(Box((0, 0, 0), (lx, ly, H_SUB)), material="sub")
     yc = ly / 2
-    sim.add(Box((0, yc - W / 2, H_SUB), (lx, yc + W / 2, H_SUB + DX)), material="pec")
+    # The trace is etched copper on the board's top face, so it is a SHEET:
+    # a footprint on ONE node plane, zero thickness, owning no cell
+    # (lattice ownership contract, #931 §1.3). It was a one-cell PEC Box,
+    # which the contract realizes as a VOLUME — walls on both faces with the
+    # cell between them shorted, i.e. 85 um of solid metal on a 254 um board.
+    # DX = H_SUB / 3, so z = H_SUB is an exact node and the declared plane is
+    # the realized one. The ground is the domain's z_lo PEC face, a boundary
+    # condition and not a body (§1.8), and is unchanged.
+    sim.add_thin_conductor(Box((0, yc - W / 2, H_SUB), (lx, yc + W / 2, H_SUB)))
     sim.add_msl_port(position=(PM, yc, 0.0), width=W, height=H_SUB, direction="+x",
                      impedance=50.0, excite=True,
                      waveform=GaussianPulse(f0=FMAX / 2, bandwidth=0.8))
@@ -213,6 +229,31 @@ def main() -> int:
                                     freqs=fr, name=f"{c}{p}")
         sim.add_flux_monitor(axis="x", coordinate=float(x), freqs=fr, name=f"F{p}")
     sim.add_probe(position=(PM + 5e-3, yc, H_SUB * 0.5), component="ez")
+
+    # Build-time realization check (no solve): the declared trace plane must
+    # be the realized one. Read through the contract's own realization
+    # (#931 §1.7). The domain's PEC z_lo face is a boundary, not a body, so
+    # it is not in this edge set — the single wall here is the trace.
+    from rfx import realized_pec_edge_masks, realized_wall_planes
+    from rfx.geometry.rasterize_grid import coords_from_uniform_grid
+
+    _grid = sim._build_grid()
+    _sheets: list = []
+    _m, _d, _l, _pec, _a, _b, _c = sim._assemble_materials(
+        _grid, pec_sheets=_sheets)
+    _z = np.asarray(coords_from_uniform_grid(_grid).z, dtype=float)
+    _walls = realized_wall_planes(
+        realized_pec_edge_masks(_pec, sheets=_sheets,
+                                periodic=sim._periodic_flags()), 2)
+    _k_trace = int(np.argmin(np.abs(_z - H_SUB)))
+    print(f"realized z wall planes {_walls} = "
+          f"{[round(float(_z[k]) * 1e6, 1) for k in _walls]} um "
+          f"(declared trace {H_SUB * 1e6:.1f} um -> node {_k_trace})",
+          flush=True)
+    if _walls != [_k_trace]:
+        print(f"FATAL: realized z wall planes {_walls} != declared "
+              f"[{_k_trace}] — the trace sheet did not land on the board face")
+        return 2
 
     print("\n--- PREFLIGHT (verbatim; part of the result) ---")
     sim.preflight()
@@ -246,7 +287,7 @@ def main() -> int:
     js, ks = sorted({c[1] for c in cells}), sorted({c[2] for c in cells})
     jlo, jhi, klo = js[0], js[-1], ks[0]
     jc = (jlo + jhi) // 2
-    pm_mask = np.asarray(sim._assemble_materials(grid)[3])
+    pm_mask = np.asarray(sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])[3])
     kp = np.where(pm_mask[cells[0][0], jc, ks[-1]:])[0]
     ktr = int(ks[-1] + int(kp.min()))
 

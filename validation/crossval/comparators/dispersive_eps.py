@@ -17,9 +17,10 @@ Three conventions live here, and every function names which one it speaks:
                                                                 rfx/core/yee.py update_e)
 
    The Drude line is the form the ADE in ``lorentz.py`` actually realizes
-   (``d²P/dt² + 2δ dP/dt + ω0² P = ε0 κ E`` with ``P ∝ e^{+jωt}``); the module
-   docstring at ``lorentz.py:5-6`` prints the ``e^{−iωt}`` sign instead. This
-   is recorded in the cv22 pre-declaration note, §2.
+   (``d²P/dt² + 2δ dP/dt + ω0² P = ε0 κ E`` with ``P ∝ e^{+jωt}``). The
+   ``lorentz.py`` module docstring used to print the ``e^{−iωt}`` sign for the
+   Drude line (recorded in the cv22 pre-declaration note, §2); that docstring
+   was corrected in #863 and now agrees with this convention.
 
 2. **Meep** (``meep.LorentzianSusceptibility`` / ``meep.DrudeSusceptibility``):
    time dependence ``e^{−iωt}``, ``Im ε > 0`` for loss, frequencies in units

@@ -8,21 +8,29 @@ deterministically from the committed ones, runs `07_sheen_lpf.py compare`
 against each in an isolated tree (the committed legs are never touched), and
 reports the gate-by-gate verdict.
 
-Two defects:
+HISTORICAL CALIBRATION: the anchors and numerical examples below, and
+``tests/fixtures/cv07_estimator_regate/cv07_estimator_falsifiers.json``, describe
+the pre-#931 leg. The current #931 leg's raw-bin upper zero is 8.2017 GHz,
+refined upper zero 8.244069 GHz and corner 5.7071 GHz. This tool still uses
+7.8739 / 5.5036 GHz anchors, so its claimed isolated defects require a separate
+post-#931 remeasurement before being cited as current evidence. No such run or
+fixture regeneration is included in this docs correction.
+
+Two defects (pre-#931 measurements):
 
   erased_zero
       The LOWER doublet member is filled in: 20log10|S21| between the 6.3992
       GHz shoulder bin and the 7.8739 GHz deep zero is replaced by a straight
       line in dB vs f through those two bins, which are themselves untouched.
       Nothing else in the leg changes. The audit measured 17/17 PASS on this.
-      EXPECTED NOW: C5 (zero count 1 != 2) and C4 (lower zero) fail.
+      EXPECTED IN THAT CALIBRATION: C5 (zero count 1 != 2) and C4 (lower zero) fail.
 
   corner_m20
       A -20 % corner-frequency error, ISOLATED. A monotone piecewise-linear
       warp of the frequency axis moves the -3 dB corner 5.5036 -> 4.4029 GHz
       while leaving f <= 3.0 GHz (the gated passband) and f >= 6.3992 GHz
       (both transmission zeros) exactly where they were.
-      EXPECTED NOW: C6 fails and NOTHING ELSE does -- which is the proof that
+      EXPECTED IN THAT CALIBRATION: C6 fails and NOTHING ELSE does -- which is the proof that
       the corner was an ungated quantity and now is not.
 
       NOT the audit's own leg. The audit reported a -20 % corner defect that

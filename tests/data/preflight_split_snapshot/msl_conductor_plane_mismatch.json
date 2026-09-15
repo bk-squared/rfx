@@ -1,0 +1,37 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "lossless_q",
+        "loc": null,
+        "message": "all dielectric(s) ['substrate'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)",
+        "severity": "warning",
+        "source": "_validate_cfg_lossless_resonator_in_absorber"
+      },
+      {
+        "code": "msl_port_conductor_planes",
+        "loc": null,
+        "message": "MSL port 'checked': declared trace at z=0.011 m maps to node 11 (z=0.011 m), but no longitudinal conductor edge meets it at width node 10. Observed conductor planes on this column are [0.006, 0.01] m. Make the port ground/trace declarations agree with the realized conductor surfaces. The conductor-plane gap is unavailable.",
+        "severity": "error",
+        "source": "_check_msl_port_geometry"
+      },
+      {
+        "code": "msl_port_geometry",
+        "loc": null,
+        "message": "MSL port 'checked' at x=8.00mm, direction='+x': distance to nearest x-CPML = 8000\u00b5m (domain edge + 0mm calibrated CPML buffer) < recommended 10000\u00b5m (= 2\u00b7h_sub). Source-side CPML reflection may inflate |S11|. Move port further from boundary OR increase domain x-extent.",
+        "severity": "warning",
+        "source": "_check_msl_port_geometry"
+      },
+      {
+        "code": "msl_port_geometry",
+        "loc": null,
+        "message": "MSL port 'checked' (direction='+x'): the 5-probe ladder (n_probe_offset=25, n_probe_spacing=2 cells) runs past the grid and CLAMPS \u2014 only 1 of 5 probes land on distinct grid cells (4 duplicate probe position(s): (24.0, 24.0, 24.0, 24.0, 24.0)mm). The N-probe least-squares wave-decomposition fit is rank-deficient on duplicated positions; `compute_msl_s_matrix`'s Z0/S11 extraction is unreliable for this port. Shorten n_probe_offset/n_probe_spacing or extend the domain so the full ladder stays in-grid.",
+        "severity": "warning",
+        "source": "_check_msl_port_geometry"
+      }
+    ],
+    "n_errors": 1,
+    "n_issues": 4,
+    "ok": false
+  }
+}

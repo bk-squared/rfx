@@ -17,6 +17,38 @@ from rfx.sources.sources import GaussianPulse
 pytestmark = pytest.mark.gpu
 
 
+def test_apply_pec_is_still_the_domain_face_surface_these_loops_use():
+    """#931 API-surface guard for the six hand-rolled loops in this directory.
+
+    ``rfx.boundaries.pec`` lost ``tangential_edge_masks`` and
+    ``two_plane_extension_masks`` to the ownership contract. ``apply_pec`` is a
+    different function on a different object: it zeroes tangential E on the
+    six DOMAIN faces, which design note §1.8 fences out of the contract.
+    Four files here (this one, test_openems_crossval.py,
+    test_crossval_comprehensive.py, test_meep_crossval_dielectric_cavity.py)
+    call it directly from update loops, so its signature is a contract of its
+    own — and this test is cheap and runs even though the loops around it are
+    gpu-marked, because a broken import surface should not wait for a GPU.
+    """
+    import inspect
+
+    import rfx.boundaries.pec as pec_mod
+
+    params = list(inspect.signature(pec_mod.apply_pec).parameters)
+    assert params == ["state", "axes"], (
+        f"apply_pec's signature moved to {params}; six hand-rolled update "
+        "loops in tests/crossval call it as apply_pec(state) and must be "
+        "updated in the same commit")
+    for gone in ("tangential_edge_masks", "two_plane_extension_masks"):
+        assert not hasattr(pec_mod, gone), (
+            f"{gone} is back in rfx.boundaries.pec; #931 replaced it with "
+            "realized_pec_edge_masks and a second classifier means the lanes "
+            "can disagree again")
+    for needed in ("realized_pec_edge_masks", "realized_wall_planes",
+                   "edge_is_pec"):
+        assert hasattr(pec_mod, needed), needed
+
+
 def fft_peak_freq(time_series: np.ndarray, dt: float,
                   f_lo: float, f_hi: float) -> float:
     """Find peak frequency using zero-padded FFT + parabolic interpolation.

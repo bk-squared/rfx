@@ -37,6 +37,12 @@ FIXTURE = REPO / "tests/fixtures/patch_mode_identification/cv05_ringdown_spectra
 LENGTHS_MM = {"baseline": 29.5, "patch_len_22p5mm": 22.5, "patch_len_22p0mm": 22.0,
               "patch_len_21p0mm": 21.0, "patch_len_38p0mm": 38.0}
 
+# Declared patch lengths for the geometry-only census (no FDTD). Same list the
+# committed fixture carried; it spans the design length and the neighbourhood of
+# the 21-23 mm rows where one lattice cell decides which cavity mode the
+# selector is allowed to find.
+CENSUS_LENGTHS_MM = [29.5, 23.0, 22.5, 22.0, 21.65, 21.5, 21.0, 20.5, 38.0]
+
 
 def _git(*args: str) -> str:
     try:
@@ -45,25 +51,77 @@ def _git(*args: str) -> str:
         return "unknown"
 
 
-def run_one(length_mm: float) -> dict:
-    os.environ["RFX_CV05_PATCH_L_MM"] = f"{length_mm:.4f}"
-    os.environ.pop("RFX_CROSSVAL05_JSON", None)
+def _exec_script(env_extra: dict) -> dict:
+    """Run 05_patch_antenna.py in a fresh globals dict and hand them back.
+
+    ``env_extra`` is applied on top of the environment and removed again, and
+    the case's other hooks are cleared first: a stray ``RFX_CV05_BUILD_ONLY``
+    or ``RFX_CV05_SHEET_PLANE_DELTA`` in the shell would silently produce a
+    fixture of a different board.
+    """
+    for key in ("RFX_CROSSVAL05_JSON", "RFX_CV05_BUILD_ONLY",
+                "RFX_CV05_REALIZED_JSON", "RFX_CV05_SHEET_PLANE_DELTA",
+                "RFX_CV05_PATCH_L_MM"):
+        os.environ.pop(key, None)
+    os.environ.update(env_extra)
     src = SCRIPT.read_text(encoding="utf-8")
     code = compile(src, str(SCRIPT), "exec")
     g = {"__name__": "__main__", "__file__": str(SCRIPT), "__builtins__": __builtins__}
     sys.argv = [str(SCRIPT)]
-    exit_code = 0
+    g["__exit_code__"] = 0
     try:
         exec(code, g)  # noqa: S102 -- the case script, run as itself
     except SystemExit as e:
-        exit_code = int(e.code or 0)
+        g["__exit_code__"] = int(e.code or 0)
     finally:
-        os.environ.pop("RFX_CV05_PATCH_L_MM", None)
+        for key in env_extra:
+            os.environ.pop(key, None)
+    return g
+
+
+def census(lengths_mm=None) -> dict:
+    """Declared patch length -> realized conductor extent, geometry only.
+
+    Measured from the REALIZED PEC edge set (the script's own
+    ``assert_realized_sheets``, which reads ``realized_pec_edge_masks``), not
+    from a rasterization rule re-derived here. Since #931 the patch is a sheet
+    and its realized length is the number of tangential E edges its footprint
+    stands on: 29 masked nodes carry 28 edges, and 28 mm of metal is what sets
+    the resonance. The pre-#931 census counted the NODES (29), which is why
+    its rows are one larger throughout. Re-measured, never carried forward.
+    """
+    lengths = list(CENSUS_LENGTHS_MM if lengths_mm is None else lengths_mm)
+    out = {
+        "_what": "patch x-extent measured from the REALIZED PEC edge set on "
+                 "cv05's own grid (dx = 1 mm), no FDTD: declared length (mm) -> "
+                 "realized conductor length in edges. Since #931 the patch is a "
+                 "sheet and this counts tangential E edges, not masked nodes; "
+                 "the pre-#931 census counted nodes and every row read one "
+                 "higher. Establishes which design-mode errors are reachable.",
+        "_unit": "edges (= mm at dx = 1 mm)",
+    }
+    for lm in lengths:
+        print(f"== census: L = {lm} mm ==", flush=True)
+        g = _exec_script({"RFX_CV05_PATCH_L_MM": f"{lm:.4f}",
+                          "RFX_CV05_BUILD_ONLY": "1"})
+        st = g["REALIZED"]
+        out[f"{lm}"] = int(st["patch"]["x_edge_cells"])
+    return out
+
+
+def run_one(length_mm: float) -> dict:
+    g = _exec_script({"RFX_CV05_PATCH_L_MM": f"{length_mm:.4f}"})
+    exit_code = g["__exit_code__"]
     modes = g["modes_good"]
+    st = g["REALIZED"]
     return {
         "realized_patch_len_mm": float(g["L"] * 1e3),
         "declared_patch_len_mm": 29.5,
         "script_exit": exit_code,
+        # The realized stack of THIS build, from realized_pec_edge_masks. A
+        # fixture whose provenance is a resonance and nothing else cannot say
+        # which cavity produced it; that is how the +21.1 % error survived.
+        "realized_stack": st,
         "harminv_band_hz": [float(g["HARMINV_F_LO"]), float(g["HARMINV_F_HI"])]
         if "HARMINV_F_LO" in g else None,
         "modes": [{"freq": float(m.freq), "Q": float(m.Q), "amplitude": float(abs(m.amplitude))}
@@ -86,8 +144,11 @@ def build(names: list[str]) -> dict:
     for name in names:
         print(f"== {name}: L = {LENGTHS_MM[name]} mm ==", flush=True)
         out["runs"][name] = run_one(LENGTHS_MM[name])
-    if "_realized_x_cell_census" in committed:
-        out["_realized_x_cell_census"] = committed["_realized_x_cell_census"]
+    # The census is RE-MEASURED, never copied from the committed fixture. It
+    # is a record of what the lattice realizes, and #931 changed that; carrying
+    # the old rows forward would put a pre-contract measurement inside a
+    # post-contract artifact.
+    out["_realized_x_cell_census"] = census()
     return out
 
 
@@ -112,7 +173,19 @@ def main(argv=None) -> int:
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--rel", type=float, default=1e-6)
     ap.add_argument("--only", nargs="*", default=None, help="subset of run names")
+    ap.add_argument("--census-only", action="store_true",
+                    help="geometry-only census (no FDTD); prints and writes just "
+                         "the realized-extent table")
     args = ap.parse_args(argv)
+    if args.census_only:
+        table = census()
+        print(json.dumps(table, indent=1))
+        if args.output != str(FIXTURE):
+            Path(args.output).parent.mkdir(parents=True, exist_ok=True)
+            Path(args.output).write_text(json.dumps(table, indent=1) + "\n",
+                                         encoding="utf-8")
+            print(f"wrote {args.output}")
+        return 0
     names = args.only or list(LENGTHS_MM)
     fresh = build(names)
     if args.check:

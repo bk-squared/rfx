@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
-"""Realized-board anchor for msl_z0_bias_floor_sweep.py (issue #752).
+"""Historical realized-board anchor for msl_z0_bias_floor_sweep.py (#752).
+
+CURRENT STATUS: generation is retired. The archived Z0 values and their
+recorded geometry belong to an earlier solver/rasterizer. Combining them
+with today's geometry creates an invalid comparison. The command refuses
+generation; --show-archive verifies and prints the frozen historical data
+without a solve, model re-evaluation, or file writes. No current Z0 accuracy
+bound follows from this archive. The build helpers below remain available
+only for geometry-drift checks; material extents are not conductor gaps.
+
+The original explanation below describes the historical operation.
 
 This is a NEW, SIBLING artifact. It does NOT touch
 ``scripts/diagnostics/msl_z0_bias_floor_sweep.py`` or its committed JSON
@@ -55,6 +65,8 @@ Run (no FDTD solve; ``sim.fidelity_report()`` only):
 
 from __future__ import annotations
 
+import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -65,7 +77,6 @@ sys.path.insert(0, str(REPO))
 from rfx import Box, Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.fidelity import fidelity_report
-from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
 
 # These constants and DX_GRID mirror msl_z0_bias_floor_sweep.py's fixture
 # EXACTLY (same EPS_R/H_SUB/W_TRACE/dx values) so the geometry rasterized
@@ -90,8 +101,9 @@ SOURCE_JSON = (
     REPO / "scripts" / "diagnostics" / "msl_z0_bias_floor_sweep"
     / "msl_z0_bias_floor_sweep.json"
 )
-OUT_DIR = SOURCE_JSON.parent
-OUT_PATH = OUT_DIR / "msl_z0_bias_floor_sweep_realized_anchor.json"
+ANCHOR_JSON = SOURCE_JSON.parent / "msl_z0_bias_floor_sweep_realized_anchor.json"
+_SOURCE_SHA256 = "f56f6b17691613d8782c1d5ce1241c1cd9bc10ef61715b203ed5cd6d4ab18362"
+_ANCHOR_SHA256 = "fbf7985d970a3976652f53a9a0fe1b65e7e7dd9e733041c04b94430b3db6863c"
 
 
 def _build_sim_no_solve(dx: float) -> Simulation:
@@ -117,12 +129,14 @@ def _build_sim_no_solve(dx: float) -> Simulation:
 
 
 def realized_h_w_um(dx: float) -> tuple[float, float]:
-    """(h_sub_realized_um, w_trace_realized_um) from fidelity_report().
+    """Current material/PEC-body extents for historical geometry-drift checks.
 
     entity[0] is the 'ro4350b' substrate Box (z-axis realized extent =
     realized h_sub); entity[1] is the 'pec' trace Box (y-axis realized
-    extent = realized W). No solve: fidelity_report() only rasterizes
-    the declared geometry onto the grid.
+    extent = realized W). These are geometry extents, NOT an RF gap or an
+    electrical-width calibration: the dielectric column can extend into a
+    PEC volume. For example the 80um case has a 320um dielectric extent
+    but a 240um ground-to-trace gap under #931. No solve is performed.
     """
     sim = _build_sim_no_solve(dx)
     report = fidelity_report(sim, print_report=False)
@@ -137,99 +151,35 @@ def realized_h_w_um(dx: float) -> tuple[float, float]:
     return float(h_real_um), float(w_real_um)
 
 
-def main() -> int:
-    source = json.loads(SOURCE_JSON.read_text(encoding="utf-8"))
-    by_label = {r["label"]: r for r in source["rows"]}
-
-    rows = []
-    for label, dx in DX_GRID:
-        src = by_label[label]
-        h_real_um, w_real_um = realized_h_w_um(dx)
-        z0_hj_real, eps_eff_real = hammerstad_jensen_z0_eps_eff(
-            w_real_um * 1e-6, h_real_um * 1e-6, EPS_R)
-        z0_meas = src["z0_measured_ohm"]  # verbatim from the pre-declared JSON
-        z0_hj_decl = src["z0_hj_ohm"]     # verbatim, declared-board anchor
-        dev_vs_realized_pct = (z0_meas - z0_hj_real) / z0_hj_real * 100.0
-        dev_vs_declared_pct = (z0_meas - z0_hj_decl) / z0_hj_decl * 100.0
-        rows.append({
-            "label": label,
-            "dx_um": src["dx_um"],
-            "h_sub_declared_um": round(H_SUB * 1e6, 3),
-            "h_sub_realized_um": round(h_real_um, 3),
-            "w_trace_declared_um": round(W_TRACE * 1e6, 3),
-            "w_trace_realized_um": round(w_real_um, 3),
-            "z0_measured_ohm": z0_meas,  # copied read-only from source JSON
-            "z0_hj_declared_board_ohm": z0_hj_decl,  # copied read-only
-            "z0_hj_realized_board_ohm": round(z0_hj_real, 3),
-            "dev_vs_declared_board_pct": round(dev_vs_declared_pct, 4),
-            "dev_vs_realized_board_pct": round(dev_vs_realized_pct, 4),
-        })
-
-    max_abs_dev_realized_all = max(abs(r["dev_vs_realized_board_pct"]) for r in rows)
-    misaligned = [r for r in rows if r["label"].startswith("misaligned")]
-    max_abs_dev_realized_misaligned = max(
-        abs(r["dev_vs_realized_board_pct"]) for r in misaligned)
-
-    out = {
-        "source_json": str(SOURCE_JSON.relative_to(REPO)),
-        "source_json_sha256": (
-            "f56f6b17691613d8782c1d5ce1241c1cd9bc10ef61715b203ed5cd6d4ab18362"
-        ),
-        "note": (
-            "Sibling artifact (issue #752): adds Hammerstad-Jensen scored "
-            "against the REALIZED h/W (sim.fidelity_report(), no solve) "
-            "alongside the pre-declared declared-board anchor. "
-            "z0_measured_ohm and z0_hj_declared_board_ohm are copied "
-            "VERBATIM from source_json, never re-solved or retyped. The "
-            "source JSON and its as-run verdict block are untouched."
-        ),
-        "precision": (
-            "jax_enable_x64=False, inferred from Z0 agreement with the "
-            "realized-board Hammerstad-Jensen anchor (max |dev| = "
-            f"{max_abs_dev_realized_all:.3f}% over all six points, vs "
-            "8.6/5.6/4.4% at the alternative (x64) rasterization of the "
-            "aligned class's trace width — not read from a log file. If "
-            "a rasterizer or float-precision change alters these dx "
-            "points' realized h/W, this artifact and its tolerance go "
-            "stale (re-solve and re-derive); it is not evidence of a "
-            "tolerance bug."
-        ),
-        "knife_edge": (
-            "At every ALIGNED dx in this grid, the trace's lower face "
-            "(yc - W/2 = 2*h_sub + 8*dx, the sweep's fixed-clearance "
-            "formula) lands EXACTLY on a lattice node because h_sub/dx "
-            "is an integer there — a structural property of the "
-            "geometry formula, not a coincidence of these six dx values."
-        ),
-        "rows": rows,
-        "max_abs_dev_vs_realized_board_pct_all_six": round(
-            max_abs_dev_realized_all, 4),
-        "max_abs_dev_vs_realized_board_pct_misaligned_pair": round(
-            max_abs_dev_realized_misaligned, 4),
-    }
-
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    OUT_PATH.write_text(json.dumps(out, indent=2) + "\n")
-    print(f"wrote {OUT_PATH}")
-    for r in rows:
-        print(
-            f"{r['label']:18s} dx={r['dx_um']:7.2f}um "
-            f"h_real={r['h_sub_realized_um']:7.1f}um "
-            f"w_real={r['w_trace_realized_um']:7.1f}um "
-            f"Z0meas={r['z0_measured_ohm']:6.2f} "
-            f"HJ(real)={r['z0_hj_realized_board_ohm']:6.2f} "
-            f"dev_real={r['dev_vs_realized_board_pct']:+.3f}% "
-            f"HJ(decl)={r['z0_hj_declared_board_ohm']:6.2f} "
-            f"dev_decl={r['dev_vs_declared_board_pct']:+.2f}%"
-        )
-    print(
-        f"max |dev_real| over all six: "
-        f"{out['max_abs_dev_vs_realized_board_pct_all_six']}%"
-    )
-    print(
-        f"max |dev_real| over the misaligned pair: "
-        f"{out['max_abs_dev_vs_realized_board_pct_misaligned_pair']}%"
-    )
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description="Inspect the frozen historical #752 anchor.")
+    parser.add_argument("--show-archive", action="store_true",
+                        help="verify and print the historical record; never generate a current comparison")
+    args = parser.parse_args(argv)
+    if not args.show_archive:
+        parser.error(
+            "Historical anchor generation is retired: the frozen Z0 measurements "
+            "cannot be paired with current geometry or used as a current accuracy "
+            "bound. Use --show-archive to inspect the existing record. A new "
+            "comparison requires geometry and field measurements from the same run.")
+    source_bytes = SOURCE_JSON.read_bytes()
+    anchor_bytes = ANCHOR_JSON.read_bytes()
+    if hashlib.sha256(source_bytes).hexdigest() != _SOURCE_SHA256:
+        parser.error("The frozen source record changed; restore its recorded bytes before inspection.")
+    if hashlib.sha256(anchor_bytes).hexdigest() != _ANCHOR_SHA256:
+        parser.error("The frozen anchor record changed; restore its recorded bytes before inspection.")
+    print(json.dumps({
+        "record_kind": "historical_realized_anchor",
+        "current_solver_validation": False,
+        "current_geometry_or_model_recomputed": False,
+        "source_json_sha256": _SOURCE_SHA256,
+        "anchor_json_sha256": _ANCHOR_SHA256,
+        "provenance_note": (
+            "Geometry and inferred precision below are inherited historical "
+            "metadata, not newly verified provenance of the original field run. "
+            "No current error bound is claimed."),
+        "historical_record": json.loads(anchor_bytes),
+    }, indent=2))
     return 0
 
 

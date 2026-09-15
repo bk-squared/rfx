@@ -13,8 +13,20 @@ read as a solver defect in a pattern fixture. These tests pin the
 - wording is advisory: says "expected physics", never says "error";
 - fires in BOTH preflight tiers (full and run()'s "advisory" tier, #303).
 
-Geometry constants mirror the cv05 patch (L=29.5, W=38, h=1.5 mm) and the
-2026-07-12 far-field arc's two ground planes (60×55 mm vs 180×180 mm class).
+Geometry constants mirror the cv05 patch (L=29.5, W=38 mm) and the 2026-07-12
+far-field arc's two ground planes (60×55 mm vs 180×180 mm class).
+
+Ownership (#931 §1.3): the ground plane and the patch element are foil, so
+both are DECLARED sheets — zero-thickness Boxes on node planes. The ground
+used to be drawn 1.0 mm thick on a 2.5 mm mesh; the contract refuses that
+outright (a Box is a volume, and 0.4 of a cell is not a volume), which is the
+#369 silently-vaporized-metal class turned into an error. The stack is redrawn
+ON-LATTICE with h = dx = 2.5 mm instead of cv05's 1.5 mm, because 1.5 mm has no
+node on a 2.5 mm mesh and the contract does not snap a sheet onto a plane it
+was not drawn on without saying so. Nothing this file gates depends on h: the
+advisory is about the ground plane's LATERAL extent against λ, and the source
+still sits between the two sheets, well inside the λ/2 image-coupling zone
+(λ = 125 mm).
 """
 
 from __future__ import annotations
@@ -30,8 +42,8 @@ LAM = 3e8 / NTFF_FREQS[0]
 
 PATCH_L = 29.5e-3
 PATCH_W = 38.0e-3
-H_SUB = 1.5e-3
-GP_T = 1.0e-3              # sheet-like ground plane thickness
+DX = 2.5e-3
+H_SUB = DX                 # substrate: one cell, so both foils are on nodes
 
 
 def _patch_sim(gp_x: float, gp_y: float, *, with_ntff: bool = True,
@@ -40,14 +52,14 @@ def _patch_sim(gp_x: float, gp_y: float, *, with_ntff: bool = True,
     margin = 0.04
     dom = (gp_x + 2 * margin, gp_y + 2 * margin, 0.05)
     cx, cy = dom[0] / 2, dom[1] / 2
-    z_gp_lo, z_gp_hi = 0.010, 0.010 + GP_T
-    z_patch = z_gp_hi + H_SUB
+    z_gp = 0.010                       # a node on the 2.5 mm mesh
+    z_patch = z_gp + H_SUB             # the next node up
 
     sim = Simulation(freq_max=FREQ_MAX, domain=dom, boundary="cpml",
-                     cpml_layers=4, dx=2.5e-3)
+                     cpml_layers=4, dx=DX)
     # ground plane (sheet) + patch element (sheet, smaller footprint)
-    sim.add(Box((cx - gp_x / 2, cy - gp_y / 2, z_gp_lo),
-                (cx + gp_x / 2, cy + gp_y / 2, z_gp_hi)), material="pec")
+    sim.add(Box((cx - gp_x / 2, cy - gp_y / 2, z_gp),
+                (cx + gp_x / 2, cy + gp_y / 2, z_gp)), material="pec")
     sim.add(Box((cx - PATCH_L / 2, cy - PATCH_W / 2, z_patch),
                 (cx + PATCH_L / 2, cy + PATCH_W / 2, z_patch)),
             material="pec")
@@ -57,7 +69,7 @@ def _patch_sim(gp_x: float, gp_y: float, *, with_ntff: bool = True,
         src_xy = (cx - PATCH_L / 2 + 8e-3, cy)
     else:
         src_xy = (cx - gp_x / 2 - 0.02, cy)
-    sim.add_port((src_xy[0], src_xy[1], z_gp_hi + H_SUB / 2), "ez")
+    sim.add_port((src_xy[0], src_xy[1], z_gp + H_SUB / 2), "ez")
     if with_ntff:
         sim.add_ntff_box(
             corner_lo=(0.012, 0.012, 0.004),
@@ -165,3 +177,27 @@ def test_advisory_surfaces_through_run_not_just_preflight():
         "expected the ntff_small_ground_plane advisory text to surface via "
         f"sim.run(); got warnings: {messages}"
     )
+
+
+def test_the_two_foils_realize_on_the_planes_they_were_drawn_on():
+    """Build-time (no solve) ownership check for the fixture above.
+
+    Read through the shared helper, which reads the single realized-edge
+    source: both foils are sheets, own no cell, and land on the node planes
+    they were drawn on — one cell apart, so the substrate the advisory talks
+    about is really there.
+    """
+    from tests._realized_geometry import (
+        assert_sheet_planes, assert_wall_planes, node_index, realized)
+
+    sim = _patch_sim(60e-3, 55e-3)
+    rz = realized(sim)
+    assert rz.pec_mask is None, "foil declared as a sheet owns no cell"
+    assert len(rz.sheets) == 2
+    k_gp = node_index(rz.grid, 2, z_of_gp := 0.010)
+    k_patch = node_index(rz.grid, 2, z_of_gp + H_SUB)
+    assert k_patch == k_gp + 1
+    assert_sheet_planes(sim, 2, expected_m=(z_of_gp, z_of_gp + H_SUB),
+                        what="ground and patch foils")
+    assert_wall_planes(sim, 2, expected_m=(z_of_gp, z_of_gp + H_SUB),
+                       what="ground and patch foils")

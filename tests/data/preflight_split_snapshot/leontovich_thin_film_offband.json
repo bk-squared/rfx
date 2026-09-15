@@ -1,0 +1,30 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "absorber_proximity",
+        "loc": null,
+        "message": "Source/port at (0.003, 0.003, 0.0015) is within 2 cells (2mm) of the domain edge on the z-axis, just past which the CPML absorber is active. Fields there carry CPML fringe/reflection error; move inward for claims-bearing measurement.",
+        "severity": "warning",
+        "source": "_validate_cfg_absorber_placement"
+      },
+      {
+        "code": "thin_conductor_leontovich_thin_film",
+        "loc": null,
+        "message": "surface_impedance_f0 thin conductor #0: thickness 35\u00b5m is below 3 skin depths (151\u00b5m at f0 = 1e+10 Hz, delta = 50.33\u00b5m). The thick-conductor (Leontovich) surface-resistance model is invalid for thin films \u2014 omit surface_impedance_f0 and use the DC sheet path (sigma_bulk*t/d), which is the correct model there.",
+        "severity": "warning",
+        "source": "_validate_cfg_thin_conductor_surface_impedance"
+      },
+      {
+        "code": "thin_conductor_leontovich_band_offset",
+        "loc": null,
+        "message": "surface_impedance_f0 thin conductor #0: f0 = 1e+10 Hz is more than 20% away from the source centre frequency 5e+09 Hz. Rs is frozen at f0 with relative band error |sqrt(f/f0)-1| \u2014 at the source centre that is 29.3%. Set surface_impedance_f0 to the band centre you actually analyse.",
+        "severity": "warning",
+        "source": "_validate_cfg_thin_conductor_surface_impedance"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 3,
+    "ok": true
+  }
+}

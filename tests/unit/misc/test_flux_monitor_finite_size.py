@@ -71,7 +71,13 @@ def _build_and_run():
         mode="2d_tmz",
     )
     # Internal full-transverse PEC short -> strong reflection -> standing wave
-    # between the source and the short.
+    # between the source and the short. A short is a WALL, so it stays a
+    # VOLUME (#931 §1.2): one cell thick, drawn node to node, it realizes
+    # electric walls on BOTH bounding planes (x = 72 dx and 73 dx) with the
+    # normal Ex between them shorted. Pre-#931 only the near plane was a wall,
+    # so the reflection point moved by one cell and the standing-wave pattern
+    # with it. The gates here compare two monitors on the SAME run, so they do
+    # not read that; the SWR witness is a > 2.0 floor, not a pin.
     short_x = domain[0] * 0.72
     sim.add(Box((short_x, 0, 0), (short_x + dx, domain[1], dx)), material="pec")
     sim.add_source(
@@ -240,3 +246,32 @@ def test_legacy_full_plane_includes_cpml_cells():
             "expected a non-trivial coverage gap from the excluded CPML cells; "
             f"got {coverage_gap:.3e}"
         )
+
+
+def test_the_short_realizes_walls_on_both_drawn_planes():
+    """Build-time (no solve) ownership check for the short above (#931 §1.2).
+
+    Drawn x = 72 dx -> 73 dx, it realizes tangential walls at BOTH planes and
+    shorts the normal Ex between them — the object the standing wave reflects
+    off. This is a 2-D (nz == 1) run, where the sheet and volume rules coincide
+    for a rectangle (see tests/unit/materials/test_conductor_ownership.py).
+    """
+    from tests._realized_geometry import assert_wall_planes, node_index, realized
+
+    dx = 1.0e-3
+    nx, ny = 100, 28
+    domain = (nx * dx, ny * dx, dx)
+    sim = Simulation(freq_max=0.5 * C0 / dx, domain=domain, dx=dx,
+                     boundary=BoundarySpec.uniform("cpml"), cpml_layers=8,
+                     mode="2d_tmz")
+    short_x = domain[0] * 0.72
+    sim.add(Box((short_x, 0, 0), (short_x + dx, domain[1], dx)), material="pec")
+
+    rz = realized(sim)
+    assert rz.sheets == [], "a wall one cell thick is a volume, not a sheet"
+    assert rz.pec_mask is not None and bool(np.asarray(rz.pec_mask).any())
+    assert_wall_planes(sim, 0, expected_m=(short_x, short_x + dx),
+                       what="the transverse short")
+    # the normal component between the two walls is shorted
+    i0 = node_index(rz.grid, 0, short_x)
+    assert bool(np.asarray(rz.edge_masks[0])[i0, rz.grid.shape[1] // 2, 0])

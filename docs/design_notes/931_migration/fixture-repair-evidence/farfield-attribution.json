@@ -1,0 +1,212 @@
+{
+  "source": "949e1845b84b26826d4e5309363bea4c2ffa5920",
+  "rfx_import": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/__init__.py",
+  "predeclared_falsifier": "Diagnostic only: isolate #931 volume-edge realization, without fixture tuning.\n\nRun from this worktree: PYTHONPATH=$PWD JAX_PLATFORMS=cpu python\nscripts/diagnostics/slow_931_farfield_attribution.py\n\nPredeclared falsifier: if restoring ONLY the historical volume-edge map does\nnot bring this unchanged uniform/graded comparison back below 5%, volume-edge\nownership alone does not explain crossing the envelope. This is not a rollback\nproposal or a newly qualified physical baseline. Four sequential 600-step runs.\nHistorical map is copied from a3e4dba4^:rfx/boundaries/pec.py tangential_edge_masks.\nAll patching is process-local, restored after each counterfactual.\n\nFixture repair qualification: --fixture repaired --operators current uses\nidentical 250 um radiator/source lattices and grades only the NTFF shoulders.\nIts predeclared falsifier is local-cell error >= 5% OR >= scalar-cell error/2;\neither miss remains a finding, with no envelope change or profile sweep.\nUse --steps 1200 as an independently named duration-convergence witness.\n",
+  "fixture": "repaired",
+  "steps": 600,
+  "cases": {
+    "current_uniform": {
+      "shape": [
+        101,
+        101,
+        101
+      ],
+      "dt": 4.766437173827514e-13,
+      "duration": 2.8598623042965087e-10,
+      "occupied_cells": 216,
+      "node_vs_center_occupancy_xor": 0,
+      "edge_counts": [
+        294,
+        294,
+        294
+      ],
+      "wall_planes_m": [
+        [
+          0.01025,
+          0.0105,
+          0.010750000000000001,
+          0.011,
+          0.01125,
+          0.0115,
+          0.01175
+        ],
+        [
+          0.01025,
+          0.0105,
+          0.010750000000000001,
+          0.011,
+          0.01125,
+          0.0115,
+          0.01175
+        ],
+        [
+          0.01025,
+          0.0105,
+          0.010750000000000001,
+          0.011,
+          0.01125,
+          0.0115,
+          0.01175
+        ]
+      ],
+      "source_index": [
+        50,
+        50,
+        44
+      ],
+      "source_node_m": [
+        0.011,
+        0.011,
+        0.0095
+      ],
+      "source_dual_volume_m3": 1.5625e-11,
+      "source_waveform_30ghz_dt_dft": [
+        -1.480272935477922e-12,
+        2.3241124736533836e-12
+      ],
+      "source_waveform_tail": -0.0,
+      "power": 6.156803489220375e-14,
+      "numpy_power": 6.156803765602908e-14,
+      "numpy_jax_max_U_relative": 9.01657375156514e-07,
+      "scalar_inplane_power": 6.156803489220375e-14,
+      "ntff_indices": [
+        24,
+        76,
+        24,
+        76,
+        24,
+        76
+      ],
+      "ntff_coordinates_m": [
+        [
+          0.0045000000000000005,
+          0.0175
+        ],
+        [
+          0.0045000000000000005,
+          0.0175
+        ],
+        [
+          0.0045000000000000005,
+          0.0175
+        ]
+      ]
+    },
+    "current_graded": {
+      "shape": [
+        97,
+        97,
+        101
+      ],
+      "dt": 4.766437173827411e-13,
+      "duration": 2.8598623042964466e-10,
+      "occupied_cells": 216,
+      "node_vs_center_occupancy_xor": 0,
+      "edge_counts": [
+        294,
+        294,
+        294
+      ],
+      "wall_planes_m": [
+        [
+          0.010250000000000009,
+          0.01050000000000001,
+          0.01075000000000001,
+          0.01100000000000001,
+          0.01125000000000001,
+          0.01150000000000001,
+          0.01175000000000001
+        ],
+        [
+          0.010250000000000009,
+          0.01050000000000001,
+          0.01075000000000001,
+          0.01100000000000001,
+          0.01125000000000001,
+          0.01150000000000001,
+          0.01175000000000001
+        ],
+        [
+          0.01025,
+          0.0105,
+          0.010750000000000001,
+          0.011,
+          0.01125,
+          0.0115,
+          0.01175
+        ]
+      ],
+      "source_index": [
+        48,
+        48,
+        44
+      ],
+      "source_node_m": [
+        0.01100000000000001,
+        0.01100000000000001,
+        0.0095
+      ],
+      "source_dual_volume_m3": 1.5625002226443134e-11,
+      "source_waveform_30ghz_dt_dft": [
+        -1.480272935477922e-12,
+        2.3241124736533836e-12
+      ],
+      "source_waveform_tail": -0.0,
+      "power": 6.178911931015615e-14,
+      "numpy_power": 6.178912805885424e-14,
+      "numpy_jax_max_U_relative": 8.858689604539369e-07,
+      "scalar_inplane_power": 5.87831939575654e-14,
+      "ntff_indices": [
+        24,
+        72,
+        24,
+        72,
+        24,
+        76
+      ],
+      "ntff_coordinates_m": [
+        [
+          0.004500000000000004,
+          0.017500000000000012
+        ],
+        [
+          0.004500000000000004,
+          0.017500000000000012
+        ],
+        [
+          0.0045000000000000005,
+          0.0175
+        ]
+      ]
+    }
+  },
+  "current_errors": {
+    "local": 0.003590896125554137,
+    "scalar": 0.04523192821590266,
+    "graded_over_uniform_power": 1.0035908961255542,
+    "peak_normalized_pattern_max_abs": 0.03170943260192871,
+    "power_normalized_pattern_relative_l2": 0.010401696898043156,
+    "unchanged_5pct_gate_passed": true,
+    "local_cell_discriminator_passed": true
+  },
+  "capture_provenance": {
+    "run_name": "local-931-fixture-repair-farfield-600",
+    "output_directory": "outputs/931-fixture-repair/farfield-600",
+    "hashes_recorded_after_capture": true,
+    "sha256": {
+      "scripts/diagnostics/slow_931_farfield_attribution.py": "6b5fb8a6a5575b6e820d39ecb67bfaa535014efccc4be03c2a6e1e92d2ab9b37",
+      "tests/unit/farfield/test_farfield_inplane_nonuniform.py": "8e393f4e6c89f2f9c6fdd38a0fbb52c94af5c6eeecd33b7b978dbfdcd7949fcc",
+      "outputs/931-fixture-repair/farfield-600/farfield-attribution.json": "28d65d919f254ac9854619fe487476a719835116df1915864123f42b6118e022",
+      "outputs/931-fixture-repair/farfield-600/farfield-attribution.npz": "64ca1bb1d933112895141c0865f4897dc5911e138ad31756cc8ec870f8278d1f"
+    }
+  },
+  "inspection": {
+    "all_full_npz_arrays_finite_and_nonzero": true,
+    "source_times_and_waveforms_array_identical": true,
+    "compact_trace": "farfield-traces.npz",
+    "figure": "farfield-repaired-angular.png",
+    "common_peak_normalized_intensity_max_difference": 0.020227694883942604,
+    "angular_bins_per_mesh": 300,
+    "full_ntff_arrays_retained_locally": "outputs/931-fixture-repair/farfield-600/farfield-attribution.npz"
+  }
+}

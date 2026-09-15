@@ -52,6 +52,32 @@ CV15 = dict(eps_r=2.2, h=3.175e-3, a=40.0e-3, b=50.0e-3, c0=2.99792458e8,
 
 PAIR = ((0, 1), (1, 0))   # the mode PAIR the audit proposed banding: TM010, TM100
 
+# #931: the fixture's two legs used to be named after the deleted realization
+# toggle (`two_plane_ground` vs `one_plane_ground_740_defect`). Neither
+# realization exists any more, so the #740 defect is NOT reproducible by a
+# flag — cv15's negative control becomes a wrong DECLARED ground plane
+# (`ground_plane_z`), which is a mistake a user can still make. This census
+# does not own that fixture (validation/crossval owns it), so it resolves the
+# legs by name instead of hard-coding one generation's spelling, newest first,
+# and says plainly which it found.
+LEG_CANDIDATES = {
+    "correct_build": ("correct_build", "sheet_ground", "two_plane_ground"),
+    "defect_740": ("defect_wrong_ground_plane", "ground_plane_z_defect",
+                   "one_plane_ground_740_defect"),
+}
+
+
+def _resolve_leg(fx, key):
+    for name in LEG_CANDIDATES[key]:
+        if name in fx:
+            return name
+    raise SystemExit(
+        f"{FIXTURE}: no leg for '{key}'. Tried {LEG_CANDIDATES[key]}. "
+        "The pre-#931 legs were named after the `two_plane` toggle, which no "
+        "longer exists; cv15's migrated fixture names its negative control "
+        "after a wrong declared ground plane. Add the new name to "
+        "LEG_CANDIDATES rather than reviving the old fixture.")
+
 
 def _git(*args):
     try:
@@ -82,8 +108,8 @@ def main():
     tol_id = identification_tolerance(members)
 
     out = {}
-    for key, leg in (("correct_build", "two_plane_ground"),
-                     ("defect_740", "one_plane_ground_740_defect")):
+    for key in ("correct_build", "defect_740"):
+        leg = _resolve_leg(fx, key)
         r, f_lo, f_hi = _pair_ratio(m["freq_hz"] for m in fx[leg]["modes"])
         out[key] = dict(
             source_fixture_key=leg,

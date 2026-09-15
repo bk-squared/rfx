@@ -101,6 +101,19 @@ def test_add_coaxial_port_preserves_explicit_parameters_and_waveform():
 
 
 def test_setup_coaxial_port_stamps_pin_dielectric_and_gap_conductivity():
+    """The coax pin and shell are a SIGMA FILL, not a PEC realization.
+
+    ``setup_coaxial_port`` writes ``sigma >= PEC_SIGMA`` straight into the
+    material arrays; the pin and shell never become a geometry entry, never
+    enter ``pec_mask``, and are not classified by ``classify_pec_entry``. So
+    they are outside the lattice ownership contract by decision, not by
+    oversight — design note §1.8 fences sigma-fill conductors as a LOSSY
+    VOLUME model (fields decay inside a conductive cell) and leaves them
+    unchanged, with their own node-vs-cell debts (the shell one cell inside
+    ``b``) filed as a follow-up. This test is the pin on that fence: it
+    asserts the stamp reaches ``sigma``, which is exactly what a
+    realized-edge query would NOT see.
+    """
     grid = _make_grid()
     base_materials = init_materials(grid.shape)
     port = CoaxialPort(

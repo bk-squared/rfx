@@ -4,13 +4,30 @@
 # a 50 ohm lumped wire port at each end (port 1 excited, port 2 passive
 # matched load) for a 2-port S-parameter sweep.
 #
+# FOIL IS A SHEET, A PLATE IS A VOLUME (lattice ownership contract, #931).
+# Etched copper is declared under `thin_conductors:` as a Box with lo == hi on
+# its normal axis — a footprint on ONE node plane, zero thickness, owning no
+# cell, zeroing the two in-plane E components on its plane and leaving the E
+# through it live. A `geometry:` entry with `material: pec` is the other
+# declaration, a VOLUME: walls on both drawn faces with the cells between them
+# shorted, which is what a plate, an iris or a machined wall is. Both
+# conductors here used to be `geometry:` boxes drawn 0.5 mm thick, and the
+# pre-#931 rule realized each as a single wall on its LOWER face — so the
+# ground's wall sat 0.5 mm below the substrate it was supposed to bound.
+#
 # The grid is intentionally tiny (~57 x 41 x 29 cells, dx = 0.5 mm) so the
 # whole run finishes in a few seconds on CPU. This is a structural / API
 # smoke example, not a calibrated S-parameter reference. At this coarse mesh
-# the 1 mm substrate is only ~2 cells thick, so `rfx run` will emit one
-# expected preflight advisory ("Gap between PEC structures ... coupling may be
-# under-resolved") — that is the mesh-resolution check working as intended,
-# not an error. Refine `dx` for a quantitative run.
+# the 1 mm substrate is only ~2 cells thick. Refine `dx` for a quantitative
+# run.
+#
+# Preflight advisories to expect from `rfx run` on this file: a line naming the
+# realized PEC sheets and whether each landed on the plane it declared
+# (#931 §1.3), and the "Gap between PEC structures ... coupling may be
+# under-resolved" advisory — 1 mm of FR4 is two cells at this dx. An earlier
+# revision of this comment said preflight could not see a sheet and that the
+# gap advisory went silent; that was true only of the branch state before the
+# sheet collectors were threaded through every assembler caller.
 #
 #   rfx run examples/config/microstrip_thru.yaml --output thru.h5
 #   rfx plot thru.h5 --quantity s_params --out thru_s11.png
@@ -29,18 +46,28 @@ materials:
   fr4: {eps_r: 4.4, sigma: 0.02}   # small loss avoids artificially infinite Q
 
 geometry:
-  # Ground plane (PEC), 0.5 mm thick at the bottom interior.
-  - {shape: box, bounds: [[0.0, 0.0, 0.0015], [0.020, 0.012, 0.002]], material: pec}
-  # FR4 substrate, 1 mm thick on top of the ground plane.
+  # FR4 substrate, 1 mm thick, between the two foils.
   - {shape: box, bounds: [[0.0, 0.0, 0.002], [0.020, 0.012, 0.003]], material: fr4}
-  # Microstrip trace (PEC), 1 mm wide, 8 mm long, on top of the substrate.
-  - {shape: box, bounds: [[0.006, 0.0055, 0.003], [0.014, 0.0065, 0.0035]], material: pec}
+
+thin_conductors:
+  # Ground plane: copper foil ON the substrate's lower face (z = 2 mm), a
+  # node plane of this mesh. sigma_bulk is above the 1e6 S/m PEC threshold,
+  # so this is a lossless PEC sheet and `thickness` is not read.
+  - {shape: box, bounds: [[0.0, 0.0, 0.002], [0.020, 0.012, 0.002]], sigma_bulk: 5.8e7}
+  # Microstrip trace: 1 mm wide, 8 mm long, ON the substrate's upper face
+  # (z = 3 mm). A sheet Box footprint is sampled CLOSED on its in-plane axes,
+  # so the drawn 1 mm width is realized as 1 mm (y nodes 5.5 .. 6.5 mm).
+  - {shape: box, bounds: [[0.006, 0.0055, 0.003], [0.014, 0.0065, 0.003]], sigma_bulk: 5.8e7}
 
 sources:
   # Port 1: excited 50 ohm lumped wire port, seated inside the substrate near
-  # the feed end. The wire is lifted off the ground-plane PEC top face
-  # (z = 0.002) and stops below the trace PEC (z = 0.003) so neither endpoint
-  # overlaps a conductor cell (avoids the "inside PEC" preflight advisory).
+  # the feed end. The wire starts above the ground sheet (z = 0.002) and stops
+  # below the trace sheet (z = 0.003), so it drives the substrate without
+  # either endpoint sitting on a realized wall plane. Under the ownership
+  # contract those two planes ARE the two foils, so the comment now describes
+  # the model that runs: before #931 the ground's realized wall was at
+  # z = 0.0015 and this clearance was measured against a face that was not
+  # there.
   - type: port
     position: [0.006, 0.006, 0.0021]
     component: ez

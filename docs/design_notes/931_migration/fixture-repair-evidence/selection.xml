@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="3" skipped="0" tests="158" time="5771.427" timestamp="2026-09-08T23:03:15.101887+00:00" hostname="run-execution-rfrcjp0gsxry-0"><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_one_cell_box_is_a_filled_slab_with_no_flag" time="0.203" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_slab_realized_thickness_equals_drawn[1-0]" time="0.348" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_slab_realizes_both_faces_and_shorts_its_interior[1-0]" time="0.462" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_sheet_footprint_is_the_closed_rectangle" time="0.185" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_sheet_spec_validates_its_layer" time="0.003" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_volume_box_realizes_its_closed_extent_exactly" time="0.016" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_volume_box_through_the_api_has_walls_on_both_drawn_planes" time="0.263" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_realized_edges_commute_with_axis_permutation[perm0]" time="0.182" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_slab_realized_thickness_equals_drawn[1-1]" time="0.021" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_slab_realized_thickness_equals_drawn[1-2]" time="0.004" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_slab_realized_thickness_equals_drawn[2-0]" time="0.005" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_slab_realized_thickness_equals_drawn[2-1]" time="0.009" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_slab_realized_thickness_equals_drawn[2-2]" time="0.010" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_realized_edges_commute_with_axis_permutation[perm1]" time="0.022" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_slab_realized_thickness_equals_drawn[3-0]" time="0.004" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_realized_edges_commute_with_axis_permutation[perm2]" time="0.009" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_slab_realized_thickness_equals_drawn[3-1]" time="0.006" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_slab_realized_thickness_equals_drawn[3-2]" time="0.014" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_realized_edges_commute_with_mirror_of_an_interior_body[1]" time="0.151" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_realized_edges_commute_with_axis_permutation[perm3]" time="0.023" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_realized_edges_commute_with_axis_permutation[perm4]" time="0.005" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_realized_edges_commute_with_axis_permutation[perm5]" time="0.003" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_realized_edges_commute_with_mirror_of_an_interior_body[0]" time="0.005" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_slab_realizes_both_faces_and_shorts_its_interior[1-1]" time="0.004" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=3 k0=2]" time="0.479" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_slab_realizes_both_faces_and_shorts_its_interior[1-2]" time="0.015" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_sheet_realizes_one_plane_and_leaves_the_normal_edge_live[0]" time="0.126" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_slab_realizes_both_faces_and_shorts_its_interior[2-0]" time="0.005" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_slab_realizes_both_faces_and_shorts_its_interior[2-1]" time="0.013" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_slab_realizes_both_faces_and_shorts_its_interior[2-2]" time="0.015" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_slab_realizes_both_faces_and_shorts_its_interior[3-0]" time="0.006" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_slab_realizes_both_faces_and_shorts_its_interior[3-1]" time="0.003" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_slab_realizes_both_faces_and_shorts_its_interior[3-2]" time="0.003" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=3 k0=2]" time="0.398" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_realized_edges_commute_with_mirror_of_an_interior_body[2]" time="0.021" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_sheet_realizes_one_plane_and_leaves_the_normal_edge_live[1]" time="0.037" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=1 k0=0]" time="0.268" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_sheet_realizes_one_plane_and_leaves_the_normal_edge_live[2]" time="0.011" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_sheet_with_a_cell_mask_of_none_or_zeros_is_the_same" time="0.020" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_abutting_sheets_on_one_plane_union_before_the_edge_rule" time="0.022" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_sheets_on_adjacent_planes_keep_a_live_normal_edge_between_them" time="0.005" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=3 k0=0]" time="0.502" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=1 k0=2]" time="0.007" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=1 k0=7]" time="0.014" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=2 k0=0]" time="0.018" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=2 k0=2]" time="0.017" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=3 k0=5]" time="0.012" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=2 k0=6]" time="0.014" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=3 k0=5]" time="0.009" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=1 k0=0]" time="0.004" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=1 k0=0]" time="0.006" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=0 t=3 k0=0]" time="0.007" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=1 k0=2]" time="0.008" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[2d-lane]" time="0.340" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=1 k0=2]" time="0.019" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=1 k0=7]" time="0.005" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=1 k0=7]" time="0.009" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=2 k0=0]" time="0.007" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=2 k0=0]" time="0.006" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=2 k0=2]" time="0.005" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=2 k0=6]" time="0.017" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=2 k0=2]" time="0.018" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_realized_wall_planes_region_and_column" time="0.003" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=2 k0=6]" time="0.016" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_pec_thin_conductor_is_a_sheet_not_a_cell" time="0.293" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=1 t=3 k0=0]" time="0.007" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_sub_cell_non_box_sheet_is_realized_from_its_mid_plane_cross_section" time="0.213" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=3 k0=2]" time="0.023" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[slab ax=2 t=3 k0=5]" time="0.024" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_sub_cell_pec_box_via_add_is_refused" time="0.005" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[seam ax=0]" time="0.054" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_conformal_weights_do_not_replace_the_realized_edges" time="1.857" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_path_ors_sheet_masks_in_statically" time="0.465" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_g4_pec_sheet_and_f0_sheet_share_footprint_and_edge_set" time="0.192" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[seam ax=1]" time="0.061" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[seam ax=2]" time="0.037" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[random]" time="0.005" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_bit_identical_to_hard_mask_at_binary[random-periodic-y]" time="0.006" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_realized_wall_planes_column_follows_the_periodic_wrap" time="0.027" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_wire_path_has_no_periodic_argument" time="0.008" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_subcell_refusal_covers_non_box_shapes" time="0.008" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_sheet_plane_outside_the_node_line_is_refused" time="0.002" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_cell_centres_use_the_actual_node_line" time="0.001" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_stackup_foils_sit_on_the_dielectric_faces" time="0.000" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_add_thin_conductor_takes_both_sheet_spellings_and_lands_on_one_plane" time="0.002" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_domain_boundary_pec_is_not_a_conductor_body" time="0.263" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_zero_thickness_pec_box_via_add_is_a_sheet_declaration" time="0.031" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_pec_box_with_two_or_three_zero_axes_is_refused[hi0]" time="0.004" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_pec_box_with_two_or_three_zero_axes_is_refused[hi1]" time="0.002" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_a_sigma_fill_conductor_is_not_a_pec_body" time="0.494" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_fidelity_report_realized_extent_comes_from_the_wall_planes" time="0.313" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_a_binary_zero_occupancy_override_keeps_the_ports_edge_clearing" time="1.890" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_kottke_owns_its_own_volume_the_ownership_rule_does_not_overwrite_it" time="2.781" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_degenerate_sheet_and_wire_declarations_are_refused" time="0.010" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_every_solve_entry_point_applies_a_declared_sheet[forward]" time="1.439" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_two_plane_is_gone_from_the_package" time="0.155" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_clear_edges_releases_only_the_named_component" time="0.414" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_every_solve_entry_point_applies_a_declared_sheet[vmap_material_sweep]" time="0.600" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_soft_occupancy_is_differentiable_and_noisy_or" time="1.085" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_edges_are_pec_matches_edge_is_pec" time="0.003" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_conductor_mask_counts_a_sub_cell_wire" time="0.251" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_validate_subgrid_refuses_the_sheet_the_runner_refuses" time="0.275" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_every_solve_entry_point_applies_a_declared_sheet[optimize]" time="4.765" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_the_material_only_coaxial_lanes_refuse_a_sheet" time="0.035" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_a_lane_that_drops_volume_pec_does_not_recommend_drawing_a_volume" time="0.147" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_the_permittivity_viewer_draws_a_sheet_it_cannot_see_in_eps" time="0.441" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_wire_path_realizes_the_axis_aligned_lattice_edges" time="0.017" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_wire_path_refuses_a_diagonal_segment" time="0.001" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_edge_is_pec_and_clear_edges" time="0.070" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_the_kottke_fence_keeps_sheets_and_wires_the_tensor_cannot_see" time="0.325" /><testcase classname="tests.contracts.test_frozen_mesh_construction" name="test_freezing_does_not_legalize_unresolved_volume" time="0.005" /><testcase classname="tests.contracts.test_frozen_mesh_construction" name="test_freeze_keeps_automatic_profiles_and_extent_after_geometry_edit" time="0.274" /><testcase classname="tests.contracts.test_frozen_mesh_construction" name="test_short_fixture_faces_stay_on_final_nodes[None]" time="0.727" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_the_probe_sits_on_a_realized_sheet_edge_and_the_control_does_not" time="0.341" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_every_solve_entry_point_applies_a_declared_sheet[run]" time="0.475" /><testcase classname="tests.contracts.test_frozen_mesh_construction" name="test_short_fixture_faces_stay_on_final_nodes[0.002]" time="0.623" /><testcase classname="tests.contracts.test_pec_short_advisory_geometry" name="test_short_faces_and_actual_port_planes_describe_one_fixed_network[0.001-10]" time="1.024" /><testcase classname="tests.contracts.test_frozen_mesh_construction" name="test_freeze_before_first_geometry_survives_execution[run]" time="0.676" /><testcase classname="tests.contracts.test_frozen_mesh_construction" name="test_freeze_copies_caller_profile_and_refuses_mesh_reassignment" time="0.154" /><testcase classname="tests.contracts.test_pec_short_advisory_geometry" name="test_short_faces_and_actual_port_planes_describe_one_fixed_network[0.002-8]" time="0.661" /><testcase classname="tests.contracts.test_frozen_mesh_construction" name="test_freeze_before_first_geometry_survives_execution[forward]" time="0.365" /><testcase classname="tests.unit.farfield.test_farfield_inplane_nonuniform" name="test_graded_fixture_preserves_radiator_and_acquisition_lattice" time="2.871" /><testcase classname="tests.unit.misc.test_v173a_physics_equivalence_slow" name="test_mode_estimator_reads_ringdown_after_the_driven_transient" time="0.274" /><testcase classname="tests.unit.farfield.test_farfield_inplane_nonuniform" name="test_graded_inplane_mesh_integrates_with_local_cell_sizes" time="60.642" /><testcase classname="tests.unit.misc.test_v173a_physics_equivalence_slow" name="test_v173a_baseline_bit_identity" time="187.988" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_assembling_without_collectors_is_refused_and_names_the_caller" time="0.048" /><testcase classname="tests.contracts.test_lattice_ownership_contract" name="test_the_non_uniform_assembler_refuses_the_same_way" time="0.528" /><testcase classname="tests.unit.sparams.test_sparam_passivity_guard" name="test_nonpassive_smatrix_raises_under_strict" time="0.014" /><testcase classname="tests.unit.sparams.test_sparam_passivity_guard" name="test_nonfinite_smatrix_warns" time="0.010" /><testcase classname="tests.unit.sparams.test_sparam_passivity_guard" name="test_small_passivity_overage_within_tol_is_silent" time="0.001" /><testcase classname="tests.unit.sparams.test_sparam_passivity_guard" name="test_guard_is_tracer_safe_under_jax_grad" time="0.209" /><testcase classname="tests.unit.sparams.test_sparam_passivity_guard" name="test_normalize_aware_tol_tolerates_documented_overshoot" time="0.004" /><testcase classname="tests.unit.sparams.test_sparam_passivity_guard" name="test_soft_advisory_filter_excludes_reciprocity_warning" time="0.002" /><testcase classname="tests.unit.sparams.test_sparam_passivity_guard" name="test_soft_advisory_fires_in_the_over_unity_gap" time="0.003" /><testcase classname="tests.unit.sparams.test_sparam_passivity_guard" name="test_soft_advisory_silent_at_documented_envelope" time="0.002" /><testcase classname="tests.unit.sparams.test_sparam_passivity_guard" name="test_soft_advisory_silent_just_below_floor" time="0.002" /><testcase classname="tests.unit.sparams.test_sparam_passivity_guard" name="test_soft_advisory_never_fires_on_tight_tol_path" time="0.012" /><testcase classname="tests.unit.sparams.test_sparam_passivity_guard" name="test_gross_violation_still_hard_not_soft" time="0.013" /><testcase classname="tests.unit.sparams.test_sparam_passivity_guard" name="test_soft_advisory_real_coarse_pec_short_witness" time="9.607"><failure message="AssertionError: expected witness column power in the gap, got 1.0445&#10;assert 2.25 &lt; 1.0444802045822144">@pytest.mark.slow
+    def test_soft_advisory_real_coarse_pec_short_witness():
+        """Keep the historical advisory claim falsifiable after physical repair.
+
+        The old 85--87 mm short was off-lattice at dx=2 mm, and both right
+        measurement planes were across it from their source. Its ~2.51 column
+        power therefore did not measure two independent outgoing ports. The
+        repaired rectangular guide has node-aligned faces and measurements in
+        each source's connected region. The original (2.25, 3] interval remains:
+        a miss is a finding that this fixture is no longer an advisory witness,
+        not permission to tune the geometry or widen the interval. Synthetic
+        tests above independently cover the advisory's warn/silent behavior.
+        """
+        from tests._pec_short_advisory_fixture import build
+
+        # Historical hypothesis, deliberately retained after fixture repair.
+        with warnings.catch_warnings(record=True) as rec:
+            warnings.simplefilter("always")
+            res = build(np.linspace(4e9, 6e9, 6), dx=2e-3, cpml=8).\
+                compute_waveguide_s_matrix(normalize=False, num_periods=30)
+        s = np.asarray(res.s_params)
+        assert np.isfinite(s).all()
+        assert np.all(np.abs(s[[0, 1], [0, 1], :]) &gt; 0), (
+            "Each driven port must measure its own reflected wave; an all-zero "
+            "drive column is not evidence of a passive matched port"
+        )
+        cp = float(np.sum(np.abs(s) ** 2, axis=0).max())
+&gt;       assert 2.25 &lt; cp &lt;= 3.0, f"expected witness column power in the gap, got {cp:.4f}"
+E       AssertionError: expected witness column power in the gap, got 1.0445
+E       assert 2.25 &lt; 1.0444802045822144
+
+tests/unit/sparams/test_sparam_passivity_guard.py:260: AssertionError</failure></testcase><testcase classname="tests.unit.farfield.test_farfield_inplane_nonuniform" name="test_uniform_valued_inplane_profile_matches_the_plain_uniform_grid" time="42.513" /><testcase classname="tests.unit.autodiff.test_msl_sparam_ad" name="test_replay_float64_equivalence" time="6.506" /><testcase classname="tests.unit.autodiff.test_msl_sparam_ad" name="test_replay_geometry_matches_the_captured_lattice" time="2.586" /><testcase classname="tests.unit.autodiff.test_msl_sparam_ad" name="test_compute_msl_s_matrix_ad_smoke_has_finite_gradient" time="11.638" /><testcase classname="tests.unit.autodiff.test_msl_sparam_ad" name="test_compute_msl_s_matrix_end_to_end_matches_historical_base" time="5725.539"><failure message="AssertionError: ['unexcited/unreliable full-spectrum bins', 'raw S21 electrical-length phase differs from drawing by &gt;=5 degrees']&#10;assert not ['unexcited/unreliable full-spectrum bins', 'raw S21 electrical-length phase differs from drawing by &gt;=5 degrees']"># ---------------------------------------------------------------------------
+    # Test D: physically qualified live coupon and secondary complex drift lock
+    # ---------------------------------------------------------------------------
+
+    @pytest.mark.slow
+    def test_compute_msl_s_matrix_end_to_end_matches_historical_base():
+        """End-to-end drift lock: full FDTD + assembly vs the committed golden.
+
+        FIXTURE REPAIRED 2026-09-08 (#931): retain the PI-authorized 254 um
+        substrate, 600 um width and 10 mm launch-plane separation; align every declared face on
+        dx=dy=50 um and dz=(50,50,38.5,38.5,38.5,38.5) um through the
+        substrate, declare the foil at its actual interface, and hold domain/absorber thickness fixed under refinement.
+        An explicit f0=5 GHz / bandwidth=.8 differentiated Gaussian covers all
+        ten measurement bins; the former implicit2.5 GHz pulse undersupplied
+        the final two bins. Live qualification of this drive remains pending.
+        Raw physical qualification precedes the unchanged complex drift gate.
+        The historical golden is NOT yet re-pinned. Capture requires named base,
+        independent confirmation and refined-grid reports; a failed qualification
+        is a finding, never a reason to widen a gate. Historical replay binaries
+        keep their original uniform 80 um interpretation.
+
+        RE-BASELINED 2026-07-30 (PR #516; decision required by that PR's review,
+        finding F4, and recorded here + in issue #509). The original golden was a
+        pre-jnp-conversion S1 capture whose contract said it "must NOT be
+        regenerated from post-change code" — that contract existed to prove a pure
+        REFACTOR was precision-only. Two deliberate algorithm changes then made
+        the premise unsatisfiable:
+
+          * #468 made ``enforce_passivity=True`` the default (projection moves S
+            by up to 5.2e-2 on this fixture — the first red, 2026-07-27, #509);
+          * #511/#507 (PR #516) corrected the modal-voltage span and replaced the
+            single-ratio assembly with the multi-drive solve (measured deviation
+            vs the old golden: 1.07e-1 as shipped (an intermediate PR state
+            measured 2.93e-1 before review finding F2 re-anchored the V span) —
+            not f32 rounding, and not
+            meant to be).
+
+        A frozen old-algorithm capture cannot survive deliberate algorithm
+        changes, and keeping it red hides real regressions behind an expected
+        one. The golden is therefore now a capture of the CURRENT pipeline
+        (fixture, freqs, ``num_periods=12``, default ``enforce_passivity`` —
+        exactly this test's invocation; capture script recorded in PR #516), and
+        this test's job is narrower and honest: catch UNINTENDED cross-version
+        drift. Any future red here is a real change to the MSL S-matrix and must
+        be either root-caused or re-baselined with its reason written in this
+        docstring — never silently.
+
+        Structural correctness (jnp == numpy on the SAME algorithm) is proven
+        separately by test_replay_float64_equivalence against the replay golden.
+        Tolerance stays rtol=5e-3/atol=2e-3: it must absorb cross-machine float
+        noise on a CI runner (the PR #119 lesson: tolerances, not bit-equality),
+        and every deliberate algorithm change to date has exceeded it by &gt;10x, so
+        the lock still discriminates.
+
+        MEASURED, NOT RE-BASELINED (2026-09-02, closing the #803 remainder).
+        After the exact-coordinate rasterization fix (#802/#807, PR #834) this
+        fixture realizes the substrate box at 25900 cells (x nodes 0..174) and
+        the trace at 1225, identical at both x64 flags (``_build_thru_line_sim``,
+        no solve, measured here); the pre-#834 base 06cf29f0 realized 26048
+        (x nodes 0..175) / 1232 at x64=0 (measured by the #803 remainder
+        assessment) — one x node plane fewer on each, the x-hi face. Re-running
+        scripts/capture_msl_e2e_golden.py on main b5605391 at JAX_ENABLE_X64=0
+        gave old-vs-new max|dS| = 1.2307e-4 (mean|S11| 0.0852 -&gt; 0.0851,
+        mean|S21| 0.9954 unchanged), 16x inside atol, so the golden was left as
+        captured by PR #516. The lock's remaining headroom against that S is
+        2e-3 - 1.2e-4; the next deliberate re-baseline should quote this number
+        as its starting point.
+        """
+        from tests._msl_fixture_qualification import qualify_result
+
+        golden = np.load(E2E_GOLDEN_PATH)
+        sim = _build_aligned_e2e_sim()
+        _assert_trace_sheet_realized(sim)
+        _assert_e2e_preflight(sim)
+        freqs = jnp.linspace(F_MAX / 10, F_MAX, golden.shape[-1], dtype=jnp.float32)
+
+        result = sim.compute_msl_s_matrix(freqs=freqs, num_periods=E2E_PERIODS)
+        qualification = qualify_result(result)
+        s_actual = np.asarray(result.S).astype(np.complex128)
+
+        print("\n[WI-1 MSL end-to-end full S trace]")
+        for idx, freq in enumerate(np.asarray(result.freqs)):
+            vals = s_actual[:, :, idx]
+            print(
+                f"f[{idx:02d}]={freq:.9e} "
+                f"S00={vals[0, 0].real:+.12e}{vals[0, 0].imag:+.12e}j "
+&gt;               f"S01={vals[0, 1].real:+.12e}{vals[0, 1].imag:+.12e}j "
+                f"S10={vals[1, 0].real:+.12e}{vals[1, 0].imag:+.12e}j "
+                f"S11={vals[1, 1].real:+.12e}{vals[1, 1].imag:+.12e}j"
+            )
+E           AssertionError: ['unexcited/unreliable full-spectrum bins', 'raw S21 electrical-length phase differs from drawing by &gt;=5 degrees']
+E           assert not ['unexcited/unreliable full-spectrum bins', 'raw S21 electrical-length phase differs from drawing by &gt;=5 degrees']
+
+tests/unit/autodiff/test_msl_sparam_ad.py:681: AssertionError</failure></testcase><testcase classname="tests.unit.autodiff.test_msl_sparam_ad" name="test_float32_deployment_delta_bounded" time="11.373" /><testcase classname="tests.unit.autodiff.test_msl_sparam_ad" name="test_migrated_trace_is_a_sheet_on_the_declared_plane[2]" time="8.499" /><testcase classname="tests.unit.misc.test_v173a_physics_equivalence_slow" name="test_v173a_drawing_and_gap_measurements_are_realized" time="1.638"><failure message="ValueError: _assemble_materials (uniform lane): 1 PEC sheet(s) were classified, but /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/misc/test_v173a_physics_equivalence_slow.py:37 in test_v173a_drawing_and_gap_measurements_are_realized() passed no pec_sheets/pec_wires collector. A sheet owns no cell (#931 §1.3), so it cannot be returned in pec_mask and this caller would step or report a model with the conductor MISSING. Pass pec_sheets=[] / pec_wires=[]: realize them with rfx.boundaries.pec.realized_pec_edge_masks if this path steps fields, or drop them deliberately if it only reads cells.">def test_v173a_drawing_and_gap_measurements_are_realized():
+        sim = v173a._build_sim()
+        rz = realized(sim)
+        assert rz.pec_mask is None
+        assert len(rz.sheets) == 1
+        sheet = rz.sheets[0]
+        assert sheet.plane == node_index(rz.grid, 2, v173a._SUB_T)
+        assert rz.wall_planes(2) == [sheet.plane]
+        # Independent arithmetic: every physical face is an integer node index.
+        for faces in ((0., .011, .039, .05), (0., .007, .043, .05), (0., .0015, .02)):
+            np.testing.assert_allclose(np.array(faces) / v173a._DX,
+                                       np.rint(np.array(faces) / v173a._DX), atol=1e-12, rtol=0)
+        assert np.count_nonzero(rz.edge_masks[0]) == 56 * 73
+        assert np.count_nonzero(rz.edge_masks[1]) == 57 * 72
+        assert not np.any(rz.edge_masks[2])
+&gt;       materials = sim._assemble_materials(rz.grid)[0]
+
+tests/unit/misc/test_v173a_physics_equivalence_slow.py:37:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+rfx/api/_compile.py:460: in _assemble_materials
+    _refuse_uncollected_pec(_pec_sheets if pec_sheets is None else (),
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+sheets = [SheetSpec(normal_axis=2, plane=3, footprint=Array([[[False, False, False, ..., False, False, False],
+        [False, ..., False, False, False],
+        [False, False, False, ..., False, False, False]]], dtype=bool), name='thin_conductor')]
+wires = [], lane = 'uniform'
+
+    def _refuse_uncollected_pec(sheets, wires, *, lane: str) -&gt; None:
+        """Refuse to return a ``pec_mask`` that silently omits a sheet or wire.
+
+        A sheet owns no cell (#931 §1.3), so it cannot ride out in
+        ``pec_mask``: a caller that passes no collector receives a mask with
+        the conductor MISSING, and nothing downstream can tell that from a
+        model that never had one.  This was a ``UserWarning`` while the
+        consumers were being migrated; every consumer in ``rfx/`` now passes
+        collectors, so the omission becomes an error and a future
+        collector-less caller cannot appear.
+
+        Passing ``pec_sheets=[]`` / ``pec_wires=[]`` and dropping the result
+        is a legitimate, and now explicit, "I read cells only".  A lane that
+        steps fields must realize what it collected with
+        :func:`rfx.boundaries.pec.realized_pec_edge_masks`, or refuse the
+        sheet loudly (``NotImplementedError`` naming the lane).
+        """
+        if not sheets and not wires:
+            return
+        what = []
+        if sheets:
+            what.append(f"{len(sheets)} PEC sheet(s)")
+        if wires:
+            what.append(f"{len(wires)} PEC wire(s)")
+&gt;       raise ValueError(
+            f"_assemble_materials ({lane} lane): {' and '.join(what)} were "
+            f"classified, but {_uncollected_pec_caller()} passed no "
+            "pec_sheets/pec_wires collector. A sheet owns no cell (#931 "
+            "§1.3), so it cannot be returned in pec_mask and this caller "
+            "would step or report a model with the conductor MISSING. Pass "
+            "pec_sheets=[] / pec_wires=[]: realize them with "
+            "rfx.boundaries.pec.realized_pec_edge_masks if this path steps "
+            "fields, or drop them deliberately if it only reads cells.")
+E       ValueError: _assemble_materials (uniform lane): 1 PEC sheet(s) were classified, but /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/misc/test_v173a_physics_equivalence_slow.py:37 in test_v173a_drawing_and_gap_measurements_are_realized() passed no pec_sheets/pec_wires collector. A sheet owns no cell (#931 §1.3), so it cannot be returned in pec_mask and this caller would step or report a model with the conductor MISSING. Pass pec_sheets=[] / pec_wires=[]: realize them with rfx.boundaries.pec.realized_pec_edge_masks if this path steps fields, or drop them deliberately if it only reads cells.
+
+rfx/api/_compile.py:861: ValueError</failure></testcase><testcase classname="tests.unit.misc.test_v173a_physics_equivalence_slow" name="test_probe_spectrum_statistic_exposes_source_amplitude_dependence" time="0.002" /><testcase classname="tests.unit.autodiff.test_msl_sparam_ad" name="test_aligned_coupon_qualification_rejects_wrong_observables[phase_conjugation-electrical-length phase]" time="0.022" /><testcase classname="tests.unit.autodiff.test_msl_sparam_ad" name="test_aligned_coupon_qualification_rejects_wrong_observables[zero_transmission-transmission misses]" time="0.011" /><testcase classname="tests.unit.autodiff.test_msl_sparam_ad" name="test_aligned_coupon_qualification_rejects_wrong_observables[excess_reflection-reflection exceeds]" time="0.001" /><testcase classname="tests.unit.autodiff.test_msl_sparam_ad" name="test_aligned_coupon_qualification_rejects_wrong_observables[projection_hides_gain-singular value exceeds]" time="0.003" /><testcase classname="tests.unit.autodiff.test_msl_sparam_ad" name="test_aligned_coupon_qualification_rejects_wrong_observables[unsettled-ringdown exceeds]" time="0.011" /><testcase classname="tests.unit.autodiff.test_msl_sparam_ad" name="test_aligned_coupon_qualification_rejects_wrong_observables[nonfinite-non-finite raw S]" time="0.004" /><testcase classname="tests.unit.autodiff.test_msl_sparam_ad" name="test_aligned_coupon_qualification_accepts_matched_line_limit" time="0.009" /><testcase classname="tests.unit.sparams.test_sparam_passivity_guard" name="test_passive_smatrix_is_silent" time="0.006" /><testcase classname="tests.unit.sparams.test_sparam_passivity_guard" name="test_nonpassive_smatrix_warns" time="0.005" /><testcase classname="tests.unit.autodiff.test_msl_sparam_ad" name="test_migrated_trace_is_a_sheet_on_the_declared_plane[1]" time="0.572" /></testsuite></testsuites>

@@ -1,0 +1,32 @@
+{
+  "capture_fixture_id": "931-msl-254um-600um-aligned-v1",
+  "final_fixture_v2_fdtd_qualified": false,
+  "historical_golden_changed": false,
+  "full_matrix_finite": true,
+  "raw_sigma_max_recomputed": 1.0001241823829228,
+  "projection_max_complex_entry_change": 6.847920674042203e-05,
+  "historical_complex_mismatches": 40,
+  "historical_complex_total": 40,
+  "historical_max_abs_delta": 0.20305470527038097,
+  "raw_s21_max_phase_error_deg_correct_reference": 0.4034066482065368,
+  "original_and_offline_capture_files": [
+    "msl-v1-original.json",
+    "msl-v1-requalified-4mm.json"
+  ],
+  "matrix_figure": "msl-v1-full-matrix.png",
+  "qualification_figure": "msl-v1-qualification-and-source.png",
+  "full_complex_arrays": "msl-v1-matrix.npz",
+  "artifact_hashes": {
+    "outputs/931-fixture-repair/msl-final-base/result.json": "51e5d2ea7d0c0feabefcf517635c087171b1bc4e772ef31e351483d8c650a1ce",
+    "outputs/931-fixture-repair/msl-final-base/requalified-4mm.json": "e610cc614559f997f051461ac6fc6fb47b8a9e255b1e491cfeb4af48f233f3b5",
+    "tests/fixtures/msl_s_matrix_golden.npy": "7203caac78f285e5dc3dfc73bd74dd71e4c2e33f0a92b095808d854cfeb6eddb",
+    "outputs/931-fixture-repair/msl-final-base/requalified-4mm-endpoint.json": "eac1047e80b1ad70c34f24a47c7ade1f98e9ea59cf1ed3ecb6d6305567565d63"
+  },
+  "final_requalification_file": "msl-v1-requalified-4mm-endpoint.json",
+  "physics_band_indices": [
+    5,
+    6,
+    7,
+    8
+  ]
+}

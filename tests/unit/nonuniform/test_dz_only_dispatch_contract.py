@@ -59,8 +59,19 @@ _B_WG = 0.01016
 # ---------------------------------------------------------------------------
 # The contract. Keys must enumerate every public compute_* entry point on
 # Simulation; values state what a dz-ONLY graded mesh must do there.
-#   "nu-lane" — dispatches to that family's non-uniform lane
-#   "raises"  — refuses loudly, naming the profile restriction
+#   "nu-lane"   — dispatches to that family's non-uniform lane
+#   "raises"    — refuses loudly, naming the profile restriction
+#   "delegates" — has no mesh behaviour of its own; forwards to one of the
+#                 rows above, which then does its own thing. Only
+#                 compute_s_matrix, the #980 Phase 1 lane dispatcher, is in
+#                 this class. It is NOT a third mesh behaviour and must not
+#                 become a place to park a method whose dz-only answer nobody
+#                 worked out: a row here is only honest if the method reads no
+#                 profile, builds no grid, and adds no fence of its own, which
+#                 test_compute_s_matrix_dz_only_is_exactly_the_delegates_answer
+#                 checks in BOTH directions (an nu-lane delegate still reaches
+#                 the NU lane; a raising delegate still raises, with its own
+#                 message).
 # ---------------------------------------------------------------------------
 DZ_ONLY_CONTRACT = {
     "compute_waveguide_s_matrix": "nu-lane",   # THE #811 fix
@@ -70,6 +81,7 @@ DZ_ONLY_CONTRACT = {
     "compute_coaxial_line_reflection": "raises",
     "compute_coaxial_two_port": "raises",
     "compute_coax_msl_transition": "raises",
+    "compute_s_matrix": "delegates",           # #980 Phase 1 lane dispatcher
 }
 
 
@@ -157,8 +169,54 @@ def test_msl_dz_only_reaches_the_nu_lane():
     )
     sim.add_msl_port(position=(0.004, 0.003, 0.0), width=0.5e-3,
                      height=0.5e-3, direction="+x", mode="laplace")
-    with pytest.raises(RuntimeError, match="no PEC trace conductor"):
+    with pytest.raises(RuntimeError,
+                       match="no realized PEC trace conductor"):
         sim.compute_msl_s_matrix(n_steps=1)
+
+
+def test_a_sheet_declared_msl_trace_is_found_by_the_detector():
+    """Positive control for the negative test above (#931 §1.9).
+
+    The witness in ``test_msl_dz_only_reaches_the_nu_lane`` is a RAISE, so
+    on its own it is satisfied by a detector that finds NOTHING ever. Until
+    #931 that was a live risk in the other direction: the detector scanned
+    the primal-cell ``pec_mask`` column above the substrate, and a sheet
+    owns no cell, so declaring the trace as a foil — the declaration the
+    contract asks for — turned every working MSL fixture into that same
+    RuntimeError. The detector reads realized WALL PLANES now, so a sheet
+    trace answers with its single plane and a volume trace with its two.
+    Build-time only: no solve.
+    """
+    from rfx.probes.msl_wave_decomp import realized_trace_planes_on_column
+    from tests._realized_geometry import node_index, realized
+
+    h_sub, w_trace, dx = 0.5e-3, 1.0e-3, 0.25e-3
+    lx, ly, lz = 4e-3, 4e-3, 2e-3
+    y_c = ly / 2.0
+
+    def _sim(sheet: bool):
+        s = Simulation(freq_max=10e9, domain=(lx, ly, lz), dx=dx,
+                       boundary="pec")
+        s.add_material("sub", eps_r=4.3)
+        s.add(Box((0.0, 0.0, 0.0), (lx, ly, h_sub)), material="sub")
+        z_hi = h_sub if sheet else h_sub + dx
+        s.add(Box((0.0, y_c - w_trace / 2, h_sub),
+                  (lx, y_c + w_trace / 2, z_hi)), material="pec")
+        return s
+
+    for sheet, expect_span in ((True, 0), (False, 1)):
+        rz = realized(_sim(sheet))
+        assert len(rz.sheets) == (1 if sheet else 0)
+        i = node_index(rz.grid, 0, lx / 2)
+        j = node_index(rz.grid, 1, y_c)
+        k_sub = node_index(rz.grid, 2, h_sub)
+        lo, hi = realized_trace_planes_on_column(
+            rz.edge_masks, 2, (i, j), k_from=k_sub)
+        assert lo == k_sub, (
+            f"sheet={sheet}: the trace must be found at the plane it is "
+            f"drawn on ({k_sub}), got {lo}")
+        assert hi - lo == expect_span, (
+            "a sheet is ONE plane; a one-cell volume is two")
 
 
 def test_mixed_dz_only_raises():
@@ -175,8 +233,13 @@ def test_mixed_dz_only_raises():
     sim.add_material("sub", eps_r=4.3)
     sim.add(Box((0.0, 0.0, 0.0), (lx, ly, _H_SUB)), material="sub")
     y_c = ly / 2.0
+    # #931: the MSL trace is a FOIL, so it is a sheet on the substrate-top
+    # node plane — a zero-extent axis IS the sheet declaration (§1.5). Drawn
+    # one cell thick it would be a VOLUME: walls at z = H_SUB and
+    # z = H_SUB + dx with Ez shorted between, a 0.25 mm solid bar where the
+    # board carries copper foil.
     sim.add(Box((0.0, y_c - _W_TRACE / 2, _H_SUB),
-                (lx, y_c + _W_TRACE / 2, _H_SUB + _DX)), material="pec")
+                (lx, y_c + _W_TRACE / 2, _H_SUB)), material="pec")
     sim.add_msl_port(position=(5.5e-3, y_c, 0.0), width=_W_TRACE,
                      height=_H_SUB, direction="-x", impedance=50.0,
                      waveform=GaussianPulse(f0=2.5e9, bandwidth=0.5))
@@ -214,6 +277,36 @@ def test_coaxial_two_port_dz_only_raises():
         sim.compute_coaxial_two_port(n_steps=1, n_freqs=1)
 
 
+def test_compute_s_matrix_dz_only_is_exactly_the_delegates_answer(monkeypatch):
+    """The #980 dispatcher must add no mesh behaviour of its own.
+
+    Both directions, because "delegates" is only an honest contract row if it
+    is unfalsifiable in neither:
+
+    * an "nu-lane" delegate must still REACH the NU lane through the
+      dispatcher (same sentinel as the direct waveguide test above), and
+    * a "raises" delegate must still raise ITS OWN fence, with its own
+      message naming dz_profile -- not a generic dispatcher-level refusal
+      that would hide which restriction was hit.
+    """
+    def boom(self, **kw):
+        raise RuntimeError("NU-LANE-ENTERED")
+
+    monkeypatch.setattr(Simulation, "_compute_waveguide_s_matrix_nu", boom)
+    sim = _dz_only_wg(_DZ_WR90_A)
+    with pytest.raises(RuntimeError, match="NU-LANE-ENTERED"):
+        with pytest.warns(Warning):
+            sim.compute_s_matrix(n_steps=1, normalize="flux")
+
+    coax = Simulation(domain=(0.008, 0.008, 0.040), freq_max=40e9,
+                      boundary="cpml", dz_profile=np.full(40, 1e-3))
+    coax.add_coaxial_port((0.004, 0.004, 0.020), face="top", pin_length=5e-3,
+                          waveform=GaussianPulse(f0=8e9, bandwidth=1.2))
+    with pytest.raises(ValueError, match="dz_profile"):
+        coax.compute_s_matrix(lane="compute_coaxial_two_port", n_steps=1,
+                              n_freqs=1)
+
+
 def test_coax_msl_transition_dz_only_raises():
     sim = Simulation(domain=(0.010, 0.010, 0.006), freq_max=20e9,
                      boundary="cpml", dz_profile=np.full(12, 0.5e-3))
@@ -249,7 +342,17 @@ def test_run_and_forward_dz_only_pick_nonuniform_lanes():
 # ---------------------------------------------------------------------------
 _DISPATCH_FILES = (
     "rfx/api/_sparams.py",
+    # #980 Phase 2 moves the compute_* bodies -- including the #811 dx/dy/dz
+    # profile predicates this scan exists for -- verbatim into per-family
+    # modules under rfx/sparams/; the scan follows the code by globbing the
+    # package so the class stays covered there instead of passing vacuously.
+    *sorted(str(p.relative_to(_REPO)) for p in (_REPO / "rfx/sparams").glob("*.py")),
     "rfx/api/_preflight.py",
+    # #980 Phase 3 does the same to rfx/api/_preflight.py, a leg at a time,
+    # into rfx/preflight/. Globbed NOW, while the package holds only leaf
+    # helpers, so no later leg has to remember to widen this scan -- the
+    # sparams rows above were added after the fact.
+    *sorted(str(p.relative_to(_REPO)) for p in (_REPO / "rfx/preflight").glob("*.py")),
     "rfx/api/_execute.py",
     "rfx/api/_compile.py",
     "rfx/optimize.py",

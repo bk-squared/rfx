@@ -1,0 +1,33 @@
+........................................................................ [ 40%]
+........................................................................ [ 80%]
+...................................                                      [100%]
+=============================== warnings summary ===============================
+tests/contracts/test_example_fidelity_contract.py::test_example_matches_snapshot[validation/crossval/14_rect_cavity_pozar.py::build_cavity::dx=1.0mm]
+tests/contracts/test_example_fidelity_contract.py::test_example_matches_snapshot[validation/crossval/14_rect_cavity_pozar.py::build_cavity::dx=0.5mm]
+  /Users/byungkwankim/Documents/rfx-nu-cost/validation/crossval/14_rect_cavity_pozar.py:245: DeprecationWarning: add_source(..., amplitude_kind=None): on this simulation the waveform amplitude is a raw field increment (E += w; identical to amplitude_kind='field'). This per-path default is deprecated (issue #571): pass amplitude_kind='current' (amperes, resolution-independent power — the future default) or amplitude_kind='field' (raw E increment). amplitude_kind becomes required in 1.9 (and 'current' the default in 2.0).
+    sim.add_source((0.013, 0.011, 0.017), component="ex")
+
+tests/contracts/test_example_fidelity_contract.py::test_example_matches_snapshot[validation/crossval/24_nu_rect_cavity_pozar.py::build_cavity::uniform]
+tests/contracts/test_example_fidelity_contract.py::test_example_matches_snapshot[validation/crossval/24_nu_rect_cavity_pozar.py::build_cavity::uniform_fine]
+  /Users/byungkwankim/Documents/rfx-nu-cost/validation/crossval/24_nu_rect_cavity_pozar.py:96: DeprecationWarning: add_source(..., amplitude_kind=None): on this simulation the waveform amplitude is a raw field increment (E += w; identical to amplitude_kind='field'). This per-path default is deprecated (issue #571): pass amplitude_kind='current' (amperes, resolution-independent power — the future default) or amplitude_kind='field' (raw E increment). amplitude_kind becomes required in 1.9 (and 'current' the default in 2.0).
+    sim.add_source(pos, component=comp)
+
+tests/contracts/test_example_fidelity_contract.py::test_example_matches_snapshot[validation/crossval/24_nu_rect_cavity_pozar.py::build_cavity::single_band]
+tests/contracts/test_example_fidelity_contract.py::test_example_matches_snapshot[validation/crossval/24_nu_rect_cavity_pozar.py::build_cavity::multi_band]
+  /Users/byungkwankim/Documents/rfx-nu-cost/validation/crossval/24_nu_rect_cavity_pozar.py:96: DeprecationWarning: add_source(..., amplitude_kind=None): on this simulation the waveform amplitude is a CURRENT in amperes (E += Cb*I/dV; identical to amplitude_kind='current'). This per-path default is deprecated (issue #571): pass amplitude_kind='current' (amperes, resolution-independent power — the future default) or amplitude_kind='field' (raw E increment). amplitude_kind becomes required in 1.9 (and 'current' the default in 2.0).
+    sim.add_source(pos, component=comp)
+
+tests/contracts/test_example_fidelity_contract.py::test_example_matches_snapshot[validation/research/multiband_nu/w4_supraconvergence.py::build_sim::s1.5_multiband]
+  /Users/byungkwankim/Documents/rfx-nu-cost/validation/research/multiband_nu/w4_supraconvergence.py:71: DeprecationWarning: add_source(..., amplitude_kind=None): on this simulation the waveform amplitude is a CURRENT in amperes (E += Cb*I/dV; identical to amplitude_kind='current'). This per-path default is deprecated (issue #571): pass amplitude_kind='current' (amperes, resolution-independent power — the future default) or amplitude_kind='field' (raw E increment). amplitude_kind becomes required in 1.9 (and 'current' the default in 2.0).
+    sim.add_source((6.75e-3, 11.25e-3, 0.75e-3), "ez",
+
+tests/contracts/test_example_fidelity_contract.py::test_example_matches_snapshot[validation/research/subgrid/12_subgrid_disjoint_prototype.py::_build_disjoint_simulation::default]
+  /Users/byungkwankim/Documents/rfx-nu-cost/validation/research/subgrid/12_subgrid_disjoint_prototype.py:41: DeprecationWarning: add_source(..., amplitude_kind=None): on this simulation the waveform amplitude is a raw field increment (E += w; identical to amplitude_kind='field'). This per-path default is deprecated (issue #571): pass amplitude_kind='current' (amperes, resolution-independent power — the future default) or amplitude_kind='field' (raw E increment). amplitude_kind becomes required in 1.9 (and 'current' the default in 2.0).
+    sim.add_source(
+
+tests/contracts/test_example_fidelity_contract.py::test_example_matches_snapshot[validation/tmtt_paper/beam_steering_superstrate.py::build_problem::default]
+  /Users/byungkwankim/Documents/rfx-nu-cost/validation/tmtt_paper/beam_steering_superstrate.py:154: DeprecationWarning: add_source(..., amplitude_kind=None): on this simulation the waveform amplitude is a Cb-normalized field add (E += Cb*w; NOT one of the two named kinds — to keep today's numbers, multiply your waveform amplitude by the cell volume dV and pass amplitude_kind='current'). This per-path default is deprecated (issue #571): pass amplitude_kind='current' (amperes, resolution-independent power — the future default) or amplitude_kind='field' (raw E increment). amplitude_kind becomes required in 1.9 (and 'current' the default in 2.0).
+    sim.add_source((cx, cy, float(src_z)), "ex")     # x-oriented dipole
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+179 passed, 9 warnings in 35.58s

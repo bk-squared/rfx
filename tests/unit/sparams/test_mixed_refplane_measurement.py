@@ -478,8 +478,14 @@ def _build_with_ladder(*, freq_max, n_probes, n_probe_offset,
     sim.add_material("sub", eps_r=m._EPS_R)
     sim.add(Box((0.0, 0.0, 0.0), (lx, ly, m._H_SUB)), material="sub")
     y_c = ly / 2.0
+    # 35 um foil -> a SHEET on the laminate face (#931 §1.3). The driver
+    # script this fixture borrows its constants from still runs the
+    # bisecting mesh (h_sub/dx = 254/80 = 3.175), so the sheet lands on
+    # node 3 = 240 um, 14 um below the face it is drawn on; the contract
+    # reports that offset rather than absorbing it. Redrawing the driver
+    # on-lattice belongs with the driver (scripts/diagnostics), not here.
     sim.add(Box((0.0, y_c - m._W_TRACE / 2, m._H_SUB),
-                (lx, y_c + m._W_TRACE / 2, m._H_SUB + m._DX)), material="pec")
+                (lx, y_c + m._W_TRACE / 2, m._H_SUB)), material="pec")
     sim.add_port(position=(m._X_FEED, y_c, 0.0), component="ez",
                  impedance=50.0, extent=m._H_SUB, direction=m._FEED_DIRECTION)
     sim.add_msl_port(position=(m._X_MSL, y_c, 0.0), width=m._W_TRACE,
@@ -660,8 +666,14 @@ def test_msl_driver_rebuilt_entries_keep_n_probes():
     sim.add_material("sub", eps_r=m._EPS_R)
     sim.add(Box((0.0, 0.0, 0.0), (lx, ly, m._H_SUB)), material="sub")
     y_c = ly / 2.0
+    # 35 um foil -> a SHEET on the laminate face (#931 §1.3). The driver
+    # script this fixture borrows its constants from still runs the
+    # bisecting mesh (h_sub/dx = 254/80 = 3.175), so the sheet lands on
+    # node 3 = 240 um, 14 um below the face it is drawn on; the contract
+    # reports that offset rather than absorbing it. Redrawing the driver
+    # on-lattice belongs with the driver (scripts/diagnostics), not here.
     sim.add(Box((0.0, y_c - m._W_TRACE / 2, m._H_SUB),
-                (lx, y_c + m._W_TRACE / 2, m._H_SUB + m._DX)), material="pec")
+                (lx, y_c + m._W_TRACE / 2, m._H_SUB)), material="pec")
     pulse = GaussianPulse(f0=2.5e9, bandwidth=0.5)
     for x, direction in ((m._X_FEED, "+x"), (m._X_MSL, "-x")):
         sim.add_msl_port(position=(x, y_c, 0.0), width=m._W_TRACE,

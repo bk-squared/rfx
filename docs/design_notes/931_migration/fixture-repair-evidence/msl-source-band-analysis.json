@@ -1,0 +1,72 @@
+{
+  "freqs_hz": [
+    500000000.0,
+    1000000000.0,
+    1500000000.0,
+    2000000000.0,
+    2500000000.0,
+    3000000000.0,
+    3500000000.0,
+    4000000000.0,
+    4500000000.0,
+    5000000000.0
+  ],
+  "formula": "Magnitude of differentiated Gaussian Fourier transform, proportional to f exp(-(f/(f0*bandwidth))^2); ratios remove common scale.",
+  "mask_threshold_relative_band_median": 0.1,
+  "implicit_2p5ghz": {
+    "f0_hz": 2500000000.0,
+    "bandwidth": 0.8,
+    "relative_band_median": [
+      1.1953276960811148,
+      1.9819229316374725,
+      2.175008688230582,
+      1.872388206031917,
+      1.333568301282164,
+      0.8046723039188852,
+      0.4165830320875422,
+      0.18644143924978634,
+      0.07248649196460143,
+      0.024563478903906776
+    ],
+    "below_point_one": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "explicit_5ghz": {
+    "f0_hz": 5000000000.0,
+    "bandwidth": 0.8,
+    "relative_band_median": [
+      0.35480668932926224,
+      0.6771178161768818,
+      0.9393474130481062,
+      1.1227007720987177,
+      1.219274168096606,
+      1.2320781472468254,
+      1.1731916890954104,
+      1.0606525869518937,
+      0.9148843660582516,
+      0.7554270338145136
+    ],
+    "below_point_one": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  }
+}

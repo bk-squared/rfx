@@ -52,10 +52,17 @@ structures — never mixed. A resonant cavity is a *closed* problem, so we use
 
 MESH CHOICE (why the match is tight, honestly)
 ----------------------------------------------
-We force ``dx`` to an EXACT DIVISOR of (a, b, d). rfx puts PEC walls at the
-first/last grid planes, so the effective wall separation is ``(n-1)*dx``; with
-dx = 1 mm and (a,b,d) = (50,30,40) mm the effective cavity is EXACTLY
-(0.050, 0.030, 0.040) m — zero geometric-quantization error. What remains is
+We force ``dx`` to an EXACT DIVISOR of (a, b, d). The domain-boundary PEC
+(``boundary="pec"`` -> ``rfx.boundaries.pec.apply_pec``) zeroes tangential E on
+the FIRST and LAST node plane of each axis — a sheet on each of those two
+planes, not a body (lattice ownership contract #931 §1.8: domain-boundary PEC
+is fenced out of the volume/sheet/wire classification and keeps this
+convention). So the realized wall separation is ``(n-1)*dx``; with dx = 1 mm
+and (a,b,d) = (50,30,40) mm the realized cavity is EXACTLY
+(0.050, 0.030, 0.040) m — zero geometric-quantization error. ``run_leg`` no
+longer asserts that from the grid SHAPE: it MEASURES the realized wall planes
+(``assert_realized_boundary_walls`` below) and refuses to quote a frequency
+unless they are exactly {0, n-1} on every axis. What remains is
 pure Yee numerical dispersion, which is small (~60 cells/wavelength at the
 fundamental) and CONVERGES at 2nd order. The optional ``--converge`` leg halves
 dx and shows the error drop ~4x, proving the residual is genuine dispersion,
@@ -160,17 +167,25 @@ def yee_cavity_freq(a: float, b: float, d: float, m: int, n: int, l: int,  # noq
         k_x = m*pi/a,  k_y = n*pi/b,  k_z = l*pi/d
         f = w / (2*pi)
 
-    WHY THIS IS EXACT AND NOT A FIT: rfx puts the PEC walls on the first and
-    last grid planes, and the mesh here is an exact divisor of (a, b, d), so
-    the effective wall separation is exactly (a, b, d) and the discrete field
-    sin(m*pi*x_i/a) sampled at x_i = i*hx is an EXACT eigenvector of the
-    discrete curl-curl operator with eigenvalue (2/hx)*sin(k_x*hx/2). Leapfrog
-    time stepping contributes the arcsin. The result has no free parameter.
+    WHY THIS IS EXACT AND NOT A FIT: the domain-boundary PEC realizes an
+    electric wall on the first and last node plane of each axis, and the mesh
+    here is an exact divisor of (a, b, d), so the realized wall separation is
+    exactly (a, b, d) and the discrete field sin(m*pi*x_i/a) sampled at
+    x_i = i*hx is an EXACT eigenvector of the discrete curl-curl operator with
+    eigenvalue (2/hx)*sin(k_x*hx/2). Leapfrog time stepping contributes the
+    arcsin. The result has no free parameter.
+
+    ``a, b, d`` here are the MEASURED wall separation from
+    ``assert_realized_boundary_walls`` (#931: an oracle is fed the realized
+    geometry, never the declared one), which Gate 0 has already required to
+    equal the declared extents. Before #931 this oracle read the module
+    constants A/B/D, so a wall that moved would have left this prediction
+    silently wrong instead of loudly wrong.
 
     This exactness is CONDITIONAL on exact wall registration (Gate 0). If the
-    box does not land on grid planes then k_i != m*pi/a and this prediction is
-    VOID, not merely loose — which is why Gate 3 is evaluated only when Gate 0
-    passes.
+    walls do not land on the declared planes then k_i != m*pi/a and this
+    prediction is VOID, not merely loose — which is why Gate 3 is evaluated
+    only when Gate 0 passes.
     """
     kx, ky, kz = m * np.pi / a, n * np.pi / b, l * np.pi / d
     s = np.sqrt((np.sin(kx * hx / 2.0) / hx) ** 2
@@ -230,6 +245,107 @@ GATE2_ALL_MODES_PCT = 2.0
 # ~1/(SNR*T*sqrt(N)) -- orders of magnitude below 1/T. One TENTH of one Fourier
 # bin is therefore a loose bound on the estimator and a tight bound on the physics.
 YEE_BUDGET_BINS = 0.1
+
+
+def realized_wall_planes_per_axis(sim: Simulation, grid) -> dict:
+    """MEASURE the node planes on which this build realizes an electric wall.
+
+    Reads the SHIPPED boundary functions, not a re-derivation: it applies
+    ``rfx.boundaries.pec.apply_pec`` (and ``apply_pec_faces`` when the build
+    declares per-face PEC) to an all-ones state and asks
+    ``rfx.boundaries.pec.realized_wall_planes`` — the lattice ownership
+    contract's one plane reader (#931 §1.7) — which planes came back zeroed.
+    No solve: one ``jnp.ones`` per component.
+
+    Domain-boundary PEC is NOT a conductor body, so it does not go through
+    ``realized_pec_edge_masks``; the contract fences it (§1.8) and keeps its
+    own convention, E_tan = 0 on the face plane at index 0 and n-1. This
+    function is the witness that the fence holds — flip a face to PMC, or move
+    the convention by one plane, and it changes.
+
+    The scan region excludes the outermost row/column of the two axes
+    TRANSVERSE to the axis being read: an x-face wall zeroes Ey on the whole
+    i=0 plane, which is present at every k, so a whole-grid scan would report
+    every plane as a z-wall. Restricting to the transverse interior leaves
+    exactly the wall planes of the axis under test.
+    """
+    from collections import namedtuple
+
+    import jax.numpy as jnp
+    from rfx.boundaries.pec import (apply_pec, apply_pec_faces,
+                                    realized_wall_planes)
+
+    _State = namedtuple("_State", "ex ey ez")
+    one = jnp.ones(tuple(grid.shape))
+    state = _State(one, one, one)
+
+    periodic = sim._periodic_flags()
+    spec = sim._boundary_spec
+    pec_axes = "".join(
+        name for i, name in enumerate("xyz")
+        if not periodic[i]
+        and getattr(spec, name).lo == "pec" and getattr(spec, name).hi == "pec"
+    )
+    if pec_axes:
+        state = apply_pec(state, axes=pec_axes)
+    faces = getattr(grid, "pec_faces", None) or set()
+    if faces:
+        state = apply_pec_faces(state, frozenset(faces))
+
+    masks = tuple(np.asarray(c) == 0.0 for c in (state.ex, state.ey, state.ez))
+    shape = tuple(grid.shape)
+    out = {}
+    for axis in range(3):
+        region = [slice(None)] * 3
+        for t in range(3):
+            if t != axis:
+                region[t] = slice(1, shape[t] - 1)
+        out["xyz"[axis]] = realized_wall_planes(masks, axis,
+                                                region=tuple(region),
+                                                periodic=periodic)
+    return out
+
+
+def assert_realized_boundary_walls(sim: Simulation, grid):
+    """Refuse to quote a frequency unless the realized walls are {0, n-1}.
+
+    cv14's whole claim — Pozar exact, Yee exact, zero geometric quantization —
+    rests on the walls sitting on the first and last node plane of each axis.
+    Before #931 nothing measured that: Gate 0 computed ``(n-1)*dx`` from the
+    grid SHAPE, which is arithmetic on the mesh and would keep passing under
+    ANY change to how a PEC wall is realized (the #929 class: a check named
+    "wall registration" that never looks at a realized wall). This is cv15's
+    ``assert_realized_stack`` posture applied to the boundary-PEC lane, and it
+    costs no solve.
+
+    Returns the realized wall separation per axis, in metres, for Gate 0 and
+    for the Yee oracle. Raises ``RuntimeError`` naming the offending axis when
+    the realized planes are anything other than exactly ``[0, n-1]``.
+
+    Cheap falsifier: flip one face to PMC and this raises.
+    """
+    planes = realized_wall_planes_per_axis(sim, grid)
+    shape = tuple(grid.shape)
+    steps = (float(grid.dx), float(grid.dx),
+             float(getattr(grid, "dz", grid.dx)))
+    bad = []
+    for axis, name in enumerate("xyz"):
+        want = [0, shape[axis] - 1]
+        if planes[name] != want:
+            bad.append(f"{name}: realized {planes[name]}, declared {want}")
+    if bad:
+        raise RuntimeError(
+            "assert_realized_boundary_walls: the realized electric-wall "
+            "planes are not the first and last node plane of every axis -- "
+            + "; ".join(bad)
+            + ". The Pozar and Yee oracles are both conditional on that "
+              "registration, so refuse to quote a frequency (#931 §1.8).")
+    eff = tuple((shape[a] - 1) * steps[a] for a in range(3))
+    print(f"[WALL REGISTRATION] realized wall planes x={planes['x']} "
+          f"y={planes['y']} z={planes['z']} (grid {shape}); realized "
+          f"separation = ({eff[0]*1e3:.6f}, {eff[1]*1e3:.6f}, "
+          f"{eff[2]*1e3:.6f}) mm")
+    return eff
 
 
 def build_cavity(dx: float) -> Simulation:
@@ -332,8 +448,10 @@ def run_leg(dx: float, num_periods: float):
     """
     sim = build_cavity(dx)
     grid = sim._build_grid()
-    eff = ((grid.nx - 1) * grid.dx, (grid.ny - 1) * grid.dx,
-           (grid.nz - 1) * getattr(grid, "dz", grid.dx))
+    # #931: Gate 0's quantity is MEASURED from the realized wall planes, not
+    # computed from the grid shape. Same number while the convention holds;
+    # the difference is that this one moves when the realization moves.
+    eff = assert_realized_boundary_walls(sim, grid)
 
     # --- preflight, captured verbatim (report requirement) ---
     buf = io.StringIO()
@@ -356,7 +474,9 @@ def run_leg(dx: float, num_periods: float):
     rows = []
     for name, (m, n, l), hint in TARGET_MODES:
         fa = pozar_cavity_freq(A, B, D, m, n, l)
-        fy = yee_cavity_freq(A, B, D, m, n, l, hx, hy, hz, dt_grid)
+        # Yee oracle on the REALIZED wall separation (#931), not on A/B/D.
+        fy = yee_cavity_freq(eff[0], eff[1], eff[2], m, n, l,
+                             hx, hy, hz, dt_grid)
         # search the hinted channel first, then all channels as fallback
         found = extract_modes(res, fa, channels=(hint, "ex", "ey", "ez"))
         if found is None:
@@ -426,6 +546,10 @@ def evaluate_gates(rows, eff, freq_resolution_hz):
     # run_leg already COMPUTED this quantity and the script already PRINTED it;
     # before #812 nothing gated it, so the one zero-noise readout of the
     # geometric defect class the audit exploited was report-only.
+    # #931: ``eff`` is now the separation between the MEASURED wall planes
+    # (assert_realized_boundary_walls), not (n-1)*dx from the grid shape.
+    # WALL_REG_TOL_M is unchanged -- reading the realized planes instead of the
+    # mesh arithmetic is a strict tightening, not a re-tune.
     targets = (A, B, D)
     devs = [abs(e - t) for e, t in zip(eff, targets)]
     g0 = max(devs)

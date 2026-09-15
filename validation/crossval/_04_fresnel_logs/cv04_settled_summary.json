@@ -1,0 +1,16 @@
+{
+  "gated_here": true,
+  "n_steps": 990,
+  "nx_interior": 800,
+  "tail_refl_rel": 0.0004,
+  "tail_trans_rel": 0.0001,
+  "witness_ok": true,
+  "mean_dR_lattice_gated": 2.0118006665268482e-05,
+  "mean_dT_lattice_gated": 9.52105772875556e-05,
+  "mean_W_witness_R_gated": 0.0006346269931565298,
+  "mean_W_witness_T_gated": 0.0002910297595034028,
+  "T_mean_err": 0.0073,
+  "R_mean_err": 0.0073,
+  "RT_mean_dev_energy": 0.0002,
+  "max_RT_minus_1_per_bin": 0.001
+}

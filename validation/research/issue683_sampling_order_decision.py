@@ -42,6 +42,8 @@ import rfx
 from rfx import Simulation, Box
 from rfx.sources.sources import GaussianPulse
 
+from validation.crossval.comparators import realized_conductors as RC
+
 # ---------------------------------------------------------------- fixture ---
 DX = 1e-3
 DOMAIN = (16e-3, 12e-3, 12e-3)   # protocol section 3
@@ -59,6 +61,15 @@ EXTENT = 1e-3
 X_DRV = 5e-3
 X_LOAD = 11e-3
 # PEC bars (2 cells thick) closing the loop; attach at column end nodes.
+# VOLUMES under the lattice ownership contract (#931 §1.2) — bars, not
+# foil — so the drawing does not move. What DOES move is the realization:
+# a volume now realizes walls at BOTH its faces, so BAR_LO closes the
+# column at z = 5 mm and BAR_HI at z = 7 mm by construction. Before #931
+# only the lo face of each bar was a wall, and the loop was closed at
+# z = 3/4 mm and z = 7/8 mm — the column's own end nodes were not
+# terminals. Every number this script produced before #931 was measured on
+# that geometry; the protocol's G0-G2 windows must be re-derived, not
+# translated.
 BAR_LO = Box((4e-3, 5e-3, 3e-3), (12e-3, 7e-3, 5e-3))     # cells k=3,4
 BAR_HI = Box((4e-3, 5e-3, 7e-3), (12e-3, 7e-3, 9e-3))     # cells k=7,8
 SHORT_COLUMN = Box((11e-3, 5e-3, 5e-3), (12e-3, 7e-3, 7e-3))
@@ -91,6 +102,13 @@ def build(nu: bool, r_load: float | None, boundary: str = "pec"):
         sim.add_port(position=(X_LOAD, PORT_Y, PORT_Z), component="ez",
                      impedance=r_load, extent=EXTENT, excite=False,
                      direction="+x")
+    # Build-time (no solve): the bars terminate the driven column at its
+    # own end nodes, z = 5 mm and z = 7 mm. Asked of the shared owner
+    # (#931 §1.7) on the driven column, on whichever lane is being built.
+    RC.assert_wall_planes(
+        sim, 2, [3e-3, 4e-3, 5e-3, 7e-3, 8e-3, 9e-3],
+        at=(X_DRV, PORT_Y),
+        label="loop bars", tol_m=1e-12)
     return sim
 
 

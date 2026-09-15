@@ -91,28 +91,59 @@ def test_f0_omitted_empty_guide_transmits():
     assert np.all(s11 < 0.3), f"|S11|={s11}"
 
 
-@pytest.mark.slow
-def test_issue150_two_slab_toy_run_length_invariant_and_passive():
-    """The recorded #150 toy: the run-length GROWTH signature must stay dead.
-
-    Measured calibration (2026-06-12, post-fix, this exact toy):
-      pre-fix : colpow 20.3 (n=600) -> 57.0 -> 113.7 (n=2400)  [GROWING]
-      post-fix: colpow 1.1071 at n=4800 AND n=9600 (identical to 4 dp);
-                max per-entry |S| drift 0.074 (2400->4800), 0.068 (4800->9600).
-    The 1.107 column-power floor is the coarse-toy artifact envelope
-    (dx=2mm staircase on the eps=4 slab + 16mm ~ 0.4*lambda_g port-obstacle
-    clearance), NOT ideal passivity — gated at the measured level, not
-    loosened beyond it. The #150 regression signature is GROWTH of column
-    power with n_steps; that is the primary assertion.
-    """
-    freqs = jnp.linspace(9e9, 11e9, 5)
+def _build_two_slab_toy(freqs):
+    """Keep the material override on the declared physical slab intervals."""
     sim = _build(0.10, 2e-3, freqs)
     grid = sim._build_grid()
     eps = jnp.ones(grid.shape, dtype=jnp.float32)
-    i = int(round(0.056 / grid.dx))
+    # Overrides address the padded solver array. Omitting pad_x_lo moved
+    # the first slab onto the vacuum-mode source at x=24 mm (#940).
+    i = grid.pad_x_lo + int(round(0.056 / grid.dx))
     eps = eps.at[i:i + 2].set(4.0)
-    i = int(round(0.040 / grid.dx))
+    i = grid.pad_x_lo + int(round(0.040 / grid.dx))
     eps = eps.at[i:i + 2].set(2.5)
+    return sim, grid, eps
+
+
+def test_two_slab_toy_materials_keep_sources_and_reference_stencils_in_vacuum():
+    """No solve: physical slab locations and the modal sampling assumptions.
+
+    Diagnostic probes need not all lie in vacuum: the second port's distant
+    probe lies in the eps=4 slab. S here reads the near reference plane.
+    """
+    freqs = jnp.linspace(9e9, 11e9, 5)
+    sim, grid, eps = _build_two_slab_toy(freqs)
+    eps = np.asarray(eps)
+    centres = (np.arange(grid.shape[0]) - grid.pad_x_lo + 0.5) * grid.dx
+    expected = np.ones(grid.shape[0], dtype=eps.dtype)
+    expected[(centres > 0.040) & (centres < 0.044)] = 2.5
+    expected[(centres > 0.056) & (centres < 0.060)] = 4.0
+    np.testing.assert_array_equal(eps, np.broadcast_to(expected[:, None, None], eps.shape))
+    for entry, source_m, reference_m in zip(
+            sim._waveguide_ports, (0.024, 0.076), (0.030, 0.070)):
+        cfg = sim._build_waveguide_port_config(entry, grid, freqs, 8)
+        for index, position in ((cfg.x_index, source_m), (cfg.ref_x, reference_m)):
+            assert (index - grid.pad_x_lo) * grid.dx == pytest.approx(position)
+            assert np.all(eps[index - 1:index + 2] == 1.0), (
+                "the vacuum-mode source/reference stencil overlaps a dielectric slab")
+
+
+@pytest.mark.slow
+def test_issue150_two_slab_toy_run_length_invariant_and_passive():
+    """The #150 run-length GROWTH signature must stay dead.
+
+    Historical 2026-06-12 records used misaddressed slab overrides:
+      pre-source-fix: colpow 20.3 -> 57.0 -> 113.7 (n=600..2400);
+      post-source-fix: colpow 1.1071 at n=4800/9600.
+    #940 restores the declared 40-44/56-60 mm slabs and the 16 mm
+    source clearance. The old indices put the first slab at the source;
+    the historical 1.1071 is not a calibration of this corrected geometry.
+    The unchanged 1.15 ceiling detects a large extraction error; it is not
+    an exact passivity certificate. Growth with n_steps remains the primary
+    assertion. Current corrected colpow is 1.010/1.012 at n=2400/4800.
+    """
+    freqs = jnp.linspace(9e9, 11e9, 5)
+    sim, _grid, eps = _build_two_slab_toy(freqs)
 
     out = {}
     for n in (2400, 4800):
@@ -129,7 +160,7 @@ def test_issue150_two_slab_toy_run_length_invariant_and_passive():
     assert growth < 1.10, (
         f"column power GREW with n_steps: {out[2400][1]:.3f} -> "
         f"{out[4800][1]:.3f} (x{growth:.2f}) — the #150 pathology is back")
-    # Secondary: stay at the measured coarse-toy envelope (1.1071 measured).
+    # Retain the historical large-error ceiling, not an exact power bound.
     for n, (_, colpow) in out.items():
         assert colpow <= 1.15, f"n={n}: max column power {colpow:.3f} > 1.15"
     d = np.max(np.abs(np.abs(out[2400][0]) - np.abs(out[4800][0])))

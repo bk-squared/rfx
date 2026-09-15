@@ -21,10 +21,19 @@ Design rules baked in (plan WP2, "Fixture predeclaration"):
 * Every rung is ``dx = a / N`` at integer ``N`` (9, 18, 36), so the three
   rungs realize ONE guide (a = 22.86 mm, b = 10.16 mm = a·4/9 → b is
   4 / 8 / 16 cells). Every x-coordinate below is an integer multiple of the
-  coarse cell ``DX_COARSE = 2.54 mm``, so every rasterized face lands on a
-  node at every rung and the half-open ``[lo, hi)`` Box rule
-  (``rfx/geometry/csg.py``, class docstring) realizes the same physical
-  extent at every rung.
+  coarse cell ``DX_COARSE = 2.54 mm``, so every DUT face lands on a node at
+  every rung and the realized extent is the drawn extent at every rung.
+  That last sentence is no longer prose: :func:`assert_dut_realizes_its_faces`
+  reads the realized wall planes back through
+  ``rfx.boundaries.pec.realized_wall_planes`` and the geometry guard calls it
+  at every rung. Under the lattice ownership contract (#931 §1.2) a PEC
+  VOLUME owns the primal cells whose CENTRES lie inside it and realizes a
+  tangential wall on BOTH drawn faces; on the node-aligned lattice this
+  battery is drawn on, that cell set is the same one the old half-open node
+  rule gave, so the DUT cell counts are unchanged and only the far wall is
+  new. The pre-#931 rule stood one wall per masked cell at that cell's LOWER
+  node plane and never zeroed the top face, which is why a 2-cell short and
+  a 1-cell sheet used to realize the same reflector.
 * Reference planes are post-processing (``exp(∓jβΔ)`` in
   ``rfx/sources/waveguide_port.py::_shift_modal_waves``), so they need no
   node alignment; they are still multiples of ``DX_COARSE`` for legibility.
@@ -190,7 +199,9 @@ def design_region_x_m(dut: str) -> tuple[float, float]:
     """Absolute x-extent [lo, hi) of the θ window for ``dut``."""
     if dut == "slab":
         return SLAB_X_M
-    if dut == "pec_short":
+    if dut in ("pec_short", "thru"):
+        # Thru is the build-time vacuum control, using the short's window.
+        # It has no mandatory AD accuracy leg and no DUT geometry is added.
         return PEC_SHORT_WINDOW_X_M
     raise ValueError(f"no design region is declared for dut={dut!r}")
 
@@ -324,7 +335,18 @@ class TransverseSpans:
 
 def transverse_spans(sim: Simulation, port_index: int = 0) -> TransverseSpans:
     """Realized transverse spans of a port, read the way preflight reads
-    them (``rfx/api/_preflight.py::_port_transverse_spans``)."""
+    them (``rfx/api/_preflight.py::_port_transverse_spans``).
+
+    #931 scope note, measured rather than assumed: this guide's y and z walls
+    are ``BoundarySpec`` PEC FACES, not conductor bodies, so ``guide_source``
+    is ``("domain_faces", "domain_faces")`` at every rung and the span is the
+    domain extent exactly. Domain-boundary PEC is fenced out of the ownership
+    contract (design note §1.8), so nothing here — and therefore nothing in
+    :func:`numerical_te10_cutoff_hz` or the absorber depth it sets — moves
+    under #931. The assertion below is the check, not the claim: if a future
+    rung ever draws a wall as a Box, ``guide_source`` changes and this reader
+    must move onto ``realized_wall_planes`` with the body.
+    """
     grid = sim._build_grid()
     pec_np = sim._port_pec_mask(grid)
     entry = sim._waveguide_ports[port_index]
@@ -334,6 +356,14 @@ def transverse_spans(sim: Simulation, port_index: int = 0) -> TransverseSpans:
     ap_z = z["aperture"] if z["aperture"] is not None else z["declared"]
     gd_y = y["guide"] if y["guide"] is not None else y["declared"]
     gd_z = z["guide"] if z["guide"] is not None else z["declared"]
+    src = (str(y["guide_source"]), str(z["guide_source"]))
+    if src != ("domain_faces", "domain_faces"):
+        raise AssertionError(
+            f"the guide walls are no longer domain faces ({src}). The #931 "
+            "fence that keeps this battery's cutoff and absorber out of the "
+            "ownership contract (design note §1.8) has stopped holding: read "
+            "the guide span from realized_wall_planes and re-derive "
+            "cpml_layers before trusting any measured S-parameter.")
     return TransverseSpans(
         a_aperture_m=float(max(ap_y, ap_z)), b_aperture_m=float(min(ap_y, ap_z)),
         a_guide_m=float(max(gd_y, gd_z)), b_guide_m=float(min(gd_y, gd_z)),
@@ -367,14 +397,112 @@ def port_cutoff_hz(sim: Simulation, port_index: int = 0) -> float:
     return float(cfg.f_cutoff)
 
 
+def realized_dut_wall_planes_m(sim: Simulation) -> list[float]:
+    """x positions (metres, domain coordinates) of the DUT's realized walls.
+
+    Read through the one realized-edge reader (#931 §1.7), restricted to the
+    x window of the DUT so the guide's own transverse faces do not enter.
+    Returns an empty list for the ``thru`` cell, which declares no conductor.
+    """
+    from tests._realized_pec import realize, wall_positions
+
+    if not any(e.material_name == "pec_like" for e in sim._geometry):
+        return []                      # thru / slab: no conductor to realize
+    realized = realize(sim)
+    # ``coords_from_uniform_grid`` already returns DOMAIN coordinates (node 0
+    # of the padded grid sits at ``-pad*dx``), so no pad arithmetic here — the
+    # positions come back in the same metres the DUT was drawn in.
+    return [float(p) for p in wall_positions(realized, 0)]
+
+
+def assert_dut_realizes_its_faces(sim: Simulation, dut: str) -> list[float]:
+    """BUILD-TIME (no solve) witness that the DUT lands where it is drawn.
+
+    #931 §1.2: a volume realizes a tangential wall on BOTH drawn faces and
+    shorts every normal edge between them, and the realized thickness is the
+    drawn thickness. The pre-#931 rule stood a wall at each masked cell's
+    lower node plane and never zeroed the top face, so a 2-cell short
+    realized walls at 23 and 24 of 23..25 — the near face right, the far face
+    missing, and |S11| ≈ 1 unable to tell the difference. This is the check
+    that can: it names both faces and refuses an undeclared third.
+
+    ``slab`` is a dielectric and declares no conductor, so it has no walls;
+    the assertion for it is that it grew none.
+    """
+    from tests._realized_pec import realize, assert_no_wall_at, assert_walls_at
+
+    got = realized_dut_wall_planes_m(sim)
+    if dut in ("thru", "slab"):
+        if got:
+            raise AssertionError(
+                f"{dut}: declares no conductor but realizes PEC wall planes "
+                f"at x = {got} m.")
+        return got
+    if dut != "pec_short":
+        raise ValueError(f"unknown dut {dut!r}")
+    realized = realize(sim)
+    dx = realized.grid.dx
+    assert_walls_at(realized, 0, list(PEC_SHORT_X_M),
+                    what="chain-battery PEC short")
+    # Falsifier arm: one cell outside each drawn face must carry NO wall. A
+    # reflector that grew or lost a cell still returns |S11| ~ 1.
+    assert_no_wall_at(realized, 0,
+                      [PEC_SHORT_X_M[0] - dx, PEC_SHORT_X_M[1] + dx],
+                      what="chain-battery PEC short")
+    expected = [PEC_SHORT_X_M[0] + k * dx
+                for k in range(int(round((PEC_SHORT_X_M[1] - PEC_SHORT_X_M[0]) / dx)) + 1)]
+    if len(got) != len(expected) or any(
+            abs(a - b) > 1e-12 for a, b in zip(got, expected)):
+        raise AssertionError(
+            f"chain-battery PEC short at dx={dx}: realized wall planes "
+            f"{got} m, drawn faces {PEC_SHORT_X_M} m — realized thickness "
+            "must equal drawn thickness (#931 §1.2).")
+    return got
+
+
 def dut_masks(sim: Simulation) -> dict[str, np.ndarray]:
     """Production rasterization of every geometry entry, keyed by material
-    name, on the padded grid the solve uses (``Box.mask(grid)``)."""
+    name, on the padded grid the solve uses (``Box.mask(grid)``).
+
+    #931: a PEC volume owns the cells whose CENTRES are inside it, which for
+    a Box with node-aligned faces — every DUT here — is the same cell set the
+    node-half-open sampler gives (design note §1.1). So these counts are
+    unchanged by the contract, and :func:`assert_dut_cells_match_realization`
+    is the witness rather than the assumption.
+    """
     grid = sim._build_grid()
     out = {}
     for entry in sim._geometry:
         out[entry.material_name] = np.asarray(entry.shape.mask(grid), dtype=bool)
     return out
+
+
+def assert_dut_cells_match_realization(sim: Simulation, dut: str) -> int:
+    """The DUT's rasterized cells ARE the cells the contract realizes.
+
+    ``dut_masks`` samples ``Box.mask`` at nodes; a PEC volume is sampled at
+    cell CENTRES (#931 §1.1). The two agree exactly for a Box whose faces sit
+    on node planes, which is this battery's design rule — so this is where
+    that rule stops being an argument and becomes a check. Returns the cell
+    count.
+    """
+    from tests._realized_pec import realize
+
+    if dut != "pec_short":
+        return 0
+    node_mask = dut_masks(sim)["pec_like"]
+    cells = realize(sim).cells
+    if cells is None:
+        raise AssertionError(
+            "pec_short: the contract classified the sigma=1e10 short as "
+            "something other than a volume — it owns no cell.")
+    centre_mask = np.asarray(cells, dtype=bool)
+    if not np.array_equal(node_mask, centre_mask):
+        raise AssertionError(
+            f"pec_short: node-sampled cells {int(node_mask.sum())} != "
+            f"centre-sampled cells {int(centre_mask.sum())}. A DUT face has "
+            "left the node lattice; redraw it before measuring anything.")
+    return int(centre_mask.sum())
 
 
 def axis_run_lengths(mask: np.ndarray) -> tuple[int, int, int]:
@@ -436,28 +564,184 @@ def design_override(sim: Simulation, dut: str, theta, *, kind: str = "eps"):
     array with ``theta`` added on the θ window. The override replaces the
     assembled array wholesale (``rfx/api/_sparams.py``, "materials._replace"),
     so it must carry the slab's eps_r = 4 itself — a ``jnp.ones`` base would
-    silently delete the DUT — and, for ``kind="sigma"``, the lane's own PEC
-    fold (sigma = 1e10 on ``pec_mask``), or the override deletes the PEC
-    short. ``theta`` may be a tracer.
+    silently delete the DUT. ``theta`` may be a tracer.
+
+    #931, and this is a CHANGE OF MEANING for ``kind="sigma"``, not a
+    refactor. Until the ownership contract landed,
+    ``compute_waveguide_s_matrix`` folded ``pec_mask`` back into
+    ``sigma = 1e10`` before applying the overrides, so the base here had to
+    carry that fold or ``sigma_override`` deleted the PEC short outright
+    (measured on the coarse rung: |S11| = 0.076 instead of 1.0). The lane no
+    longer folds — it realizes the interior PEC as the edge set
+    ``realized_pec_edge_masks`` returns and applies it every step
+    (``rfx/api/_sparams.py``, "#931 §1.7: the interior PEC of this lane is
+    the realized edge set"). Re-stamping sigma = 1e10 on the short's cells
+    would now add a lossy VOLUME on top of a conductor that is already
+    perfectly shorted: a second realization of one object, which is the
+    thing the contract exists to end. So the base is the assembled sigma as
+    it stands, and the short survives the override because nothing in the
+    override reaches the edges that realize it.
+
+    Consequence, stated rather than absorbed: the ``("pec_short", "sigma")``
+    AD leg used to differentiate through a sigma = 1e10 stamp and now
+    differentiates through vacuum cells inside an edge-realized short. That
+    leg's gradient is a different quantity and must be RE-MEASURED, not
+    re-pinned (see RECOMPUTE.md). :func:`assert_design_override_keeps_the_short`
+    is the build-time guard that the override does not delete the conductor.
     """
     grid = sim._build_grid()
     assembled = sim._assemble_materials(grid)
-    mats, pec_mask = assembled[0], assembled[3]
+    mats = assembled[0]
     if kind == "eps":
         base = jnp.asarray(mats.eps_r)
     else:
-        # ``_assemble_materials`` moves every conductor with sigma >= the PEC
-        # threshold OUT of ``materials.sigma`` into ``pec_mask`` (the assembled
-        # sigma is 0 inside ``pec_like``), and ``compute_waveguide_s_matrix``
-        # folds that mask back into sigma = 1e10 before applying the
-        # overrides ("Fold PEC mask back into high sigma", rfx/api/_sparams.py).
-        # ``sigma_override`` replaces the FOLDED array wholesale, so a base
-        # taken from the pre-fold assembly silently deletes the PEC short
-        # (measured on the coarse rung: sigma_override(theta=0) gives the
-        # empty guide's |S11| = 0.076 instead of 1.0). The base therefore
-        # carries the fold itself, exactly as the lane would have built it.
         base = jnp.asarray(mats.sigma)
-        if pec_mask is not None:
-            base = jnp.where(jnp.asarray(pec_mask), jnp.asarray(1e10, dtype=base.dtype), base)
     i_lo, i_hi = design_region_index_range(sim, dut)
     return base.at[i_lo:i_hi, :, :].add(jnp.asarray(theta, dtype=base.dtype))
+
+
+def assert_design_override_keeps_the_short(sim: Simulation, dut: str) -> None:
+    """The θ override must not change WHICH edges are PEC (#931 §1.7).
+
+    The differentiable leg used to re-derive the conductor from the cell mask
+    and a sigma = 1e10 fold; getting that wrong once turned |S11| = 1.0 into
+    0.076 with no error and no red test. Under the contract the conductor is
+    the realized edge set, and an override of ``eps_r`` or ``sigma`` reaches
+    neither — so the check is an equality, and it is cheap: build the edges
+    once, and assert the override changed nothing about them.
+    """
+    from tests._realized_pec import realize
+
+    if dut != "pec_short":
+        return          # thru and slab declare no conductor to move
+    before = realize(sim)
+    _ = design_override(sim, dut, 0.0, kind="eps")
+    _ = design_override(sim, dut, 0.0, kind="sigma")
+    after = realize(sim)
+    for c, name in enumerate(("Ex", "Ey", "Ez")):
+        if not np.array_equal(np.asarray(before.edges[c], dtype=bool),
+                              np.asarray(after.edges[c], dtype=bool)):
+            raise AssertionError(
+                f"{dut}: building the design override moved the realized "
+                f"{name} PEC edges. The AD lane and the forward lane would "
+                "then be solving different geometries — the silent divergence "
+                "the |S11| 0.076 measurement recorded.")
+
+
+# --- FD probe admissibility (no solve) --------------------------------------
+# Measured 2026-09-07 on VESSL run 369367259196 (the post-#931 re-measure):
+# all six ``ad_vs_fd|pec_short|*|eps|*`` legs came back FAIL with
+# ``g_fd = nan``. The minus arm of the central difference, not the gradient,
+# is what produced the NaN, and the cause is in THIS file rather than in the
+# realization change: the pec_short θ window is vacuum, so θ0 − h = −0.05
+# evaluates the guide at eps_r = 0.95, and dt is picked at 0.99 of the
+# eps_r = 1 Courant limit. 0.99 / sqrt(0.95) = 1.0157 — the FD minus step has
+# always been 1.6 % OUTSIDE the stability limit, on every rung.
+#
+# Why it only surfaces now, measured rather than inferred (coarse rung, x64,
+# θ = −0.05): the coarse rung stays bounded to 8545 steps (max|S| = 1.00254
+# for pec_short, 1.00196 for thru), the mid rung returns NaN for pec_short AND
+# for thru — a DUT with no conductor anywhere. So eps_r < 1 alone is
+# sufficient; the ownership contract did not cause it. What the contract
+# removed is the thing that used to hide it on this DUT: the lane no longer
+# folds the short into a sigma = 1e10 volume, and that lossy block sat one
+# cell from the window and damped the growing mode.
+#
+# PI amendment 2026-09-08: all eps stencils are second-order forward at
+# unchanged theta0 and h. Every arm now gets the full-array certificate below.
+# See waveguide_chain_battery_predeclaration.md, dated amendment.
+
+def guide_interior_cells(sim: Simulation) -> tuple[int, int]:
+    """Cell counts across the guide interior on (y, z) — ``A_M/dx`` and
+    ``B_M/dx``, both integral at every ladder rung by the assertions at the
+    top of this module. The material arrays carry one row beyond each on the
+    PEC-walled axes; fields there sit outside the guide."""
+    grid = sim._build_grid()
+    dx = float(grid.dx)
+    return int(round(A_M / dx)), int(round(B_M / dx))
+
+
+def fd_stencil(kind: str, *, theta0: float | None = None,
+               h: float | None = None) -> dict:
+    """The PI-declared stencil; theta0 remains the shipped eps fixture."""
+    if kind not in ("eps", "sigma"):
+        raise ValueError(f"unknown theta kind: {kind}")
+    theta0 = (THETA0_EPS if kind == "eps" else THETA0_SIGMA_S_PER_M) if theta0 is None else float(theta0)
+    h = (FD_STEP_EPS if kind == "eps" else FD_STEP_SIGMA_S_PER_M) if h is None else float(h)
+    if not math.isfinite(theta0) or not math.isfinite(h) or h <= 0:
+        raise AssertionError(f"FD configuration defect: theta0={theta0}, h={h}")
+    offsets = (0, 1, 2) if kind == "eps" else (0, 1, -1)
+    return {"stencil": "forward2" if kind == "eps" else "central2",
+            "theta_kind": kind, "theta0": theta0, "h": h,
+            "thetas": [theta0 + k * h for k in offsets]}
+
+
+def fd_arm_validity(sim: Simulation, dut: str, kind: str, theta: float) -> dict:
+    """Conservative GLOBAL certificate for this uniform, mu_r=1 fixture.
+
+    Inspect the actual full override, including CPML and wall rows. Inactive
+    entries can only make this certificate stricter; no outside vacuum or bad
+    region is hidden by restricting the minimum to the design window.
+    Material eps_r >= 1 is declared scope, not a deduction from passivity.
+    """
+    grid = sim._build_grid()
+    mats = sim._assemble_materials(grid)[0]
+    if not np.all(np.asarray(mats.mu_r) == 1):
+        raise AssertionError("FD configuration defect: certificate requires mu_r=1")
+    if kind not in ("eps", "sigma"):
+        raise ValueError(f"unknown theta kind: {kind}")
+    eps = np.asarray(design_override(sim, dut, theta, kind=kind) if kind == "eps" else mats.eps_r)
+    sigma = np.asarray(design_override(sim, dut, theta, kind=kind) if kind == "sigma" else mats.sigma)
+    minimum = float(np.min(eps))
+    dx, dt = float(grid.dx), float(grid.dt)
+    ratio = dt * C0 * math.sqrt(3.0) / (dx * math.sqrt(minimum)) if minimum > 0 else float("inf")
+    return {"theta": float(theta), "min_eps_r": minimum,
+            "min_sigma_s_per_m": float(np.min(sigma)), "courant_ratio": ratio,
+            "materials_finite": bool(np.all(np.isfinite(eps)) and np.all(np.isfinite(sigma))),
+            "dx_m": dx, "dt_s": dt, "scope": "full_assembled_array"}
+
+
+def assert_fd_validity(record: dict) -> None:
+    """Invalid mandatory configurations BLOCK, including on artifact replay."""
+    spec = fd_stencil(record["theta_kind"], theta0=record["theta0"], h=record["h"])
+    assert record["stencil"] == spec["stencil"], "FD configuration defect: wrong stencil"
+    arms = record["arms"]
+    assert [a["theta"] for a in arms] == spec["thetas"], "FD configuration defect: missing/wrong arms"
+    for arm in arms:
+        minimum, sigma = arm["min_eps_r"], arm["min_sigma_s_per_m"]
+        ratio, dx, dt = arm["courant_ratio"], arm["dx_m"], arm["dt_s"]
+        values = (arm["theta"], minimum, sigma, ratio, dx, dt)
+        ok = (all(math.isfinite(v) for v in values) and minimum >= 1 and sigma >= 0
+              and 0 < ratio < 1 and dx > 0 and dt > 0
+              and arm["materials_finite"] is True and arm["scope"] == "full_assembled_array")
+        if ok:
+            expected = dt * C0 * math.sqrt(3.0) / (dx * math.sqrt(minimum))
+            ok = math.isclose(ratio, expected, rel_tol=1e-12)
+        if not ok:
+            raise AssertionError(
+                f"FD configuration defect BLOCKED: {record.get('dut', '?')} "
+                f"{record['theta_kind']} {record['stencil']} theta={arm['theta']:g}, "
+                f"min_eps_r={minimum:.9g}, min_sigma={sigma:.9g}, "
+                f"global Courant ratio={ratio:.9f}; require eps_r>=1, sigma>=0, "
+                "finite materials and 0<dt/dt_Courant<1 over full assembled array")
+
+
+def assert_fd_stencil_admissible(sim: Simulation, dut: str, kind: str) -> dict:
+    spec = fd_stencil(kind)
+    record = {**spec, "dut": dut,
+              "arms": [fd_arm_validity(sim, dut, kind, th) for th in spec["thetas"]]}
+    assert_fd_validity(record)
+    return record
+
+
+def eps_fd_minus_window_interior_courant_ratio(sim: Simulation, dut: str, *,
+                                               theta0: float = THETA0_EPS,
+                                               h: float = FD_STEP_EPS) -> float:
+    """Historical minus-WINDOW diagnostic, explicitly NOT a validity certificate."""
+    grid = sim._build_grid()
+    lo, hi = design_region_index_range(sim, dut)
+    ny, nz = guide_interior_cells(sim)
+    eps = np.asarray(sim._assemble_materials(grid)[0].eps_r)
+    minimum = float(np.min(eps[lo:hi, :ny, :nz])) + theta0 - h
+    return (float(grid.dt) * C0 * math.sqrt(3.0) / (float(grid.dx) * math.sqrt(minimum))
+            if minimum > 0 else float("inf"))

@@ -19,10 +19,28 @@ rather than trusting the figure beside it.
 |---|---|
 | test | `pytest` — live count: `python -m pytest --collect-only -q \| tail -1` |
 | lint | `ruff check rfx/ tests/ --select E,F,W --ignore E501,F401,E741,E731,E701,E702,E402` |
-| preflight | `sim.preflight()` — multi-check suite; grep `def _validate_` in `rfx/api/_preflight.py` for the live set |
+| preflight | `sim.preflight()` — multi-check suite; grep `def _validate_` in `rfx/preflight/*.py` AND `rfx/api/_preflight.py` for the live set (the check families live in the package; the facade keeps the entry points and the request validators) |
 
 Lint is gated in CI by `.github/workflows/lint.yml` on every push/PR. Note CI lints
 `rfx/ tests/ validation/`; `scripts/` is out of scope.
+
+### Adding a preflight check
+
+The configuration checks are data, not a call list: `rfx/preflight/_registry.py` holds
+`CORE_CONFIG_CHECKS`, and `_PreflightMixin._validate_simulation_config` builds the
+shared context once and iterates it. So a new check is three steps in its own family
+module and NO edit to `rfx/api/_preflight.py`: write the function with `self` first,
+bind it on `_PreflightMixin` the way the other families do, then call
+`register_config_check(ConfigCheck(name, adapter, family))` at module import. The
+registry docstring carries the worked example.
+
+Registration appends, and extras run after the whole core sequence — which is the
+point, because `PreflightReport` preserves emission order and 65 committed reports in
+`tests/locks/test_preflight_split_snapshot.py` pin it. A check that genuinely has to
+speak earlier is a change to `CORE_CONFIG_CHECKS`, and reds both that lock and
+`tests/locks/test_preflight_registry_sequence.py`, which pins the sequence and the
+arguments each check receives. Neither red is one to regenerate past: it means
+preflight output moved.
 
 ## GPU validation
 
@@ -32,6 +50,15 @@ on gpu-rtx4090:
 ```
 vessl run create -f scripts/vessl_gpu_suite.yaml
 ```
+
+**What it tests: `origin/main`, exported with `git archive` into a scratch dir** — NOT
+the HEAD of the pod's primary checkout, and it never touches that checkout. Override
+the ref with `RFX_GPU_SUITE_REF=<sha|branch>` in the run's `env` when validating a
+branch. (Before 2026-09-15 the harness ran the primary checkout's HEAD as it stood;
+a "post-merge" run then silently tested code 6 commits behind main — VESSL run
+369367261080. The provenance block prints both the suite ref and the primary HEAD so
+the log itself says what was tested.) Artifacts still land under the primary
+checkout's `.omx/gpu-suite/<utc>-<short sha>/` on the shared volume.
 
 **Cadence**: per release tag AND after any GPU-touching merge. Record pass/fail
 counts in tracked release notes or a committed validation artifact suitable

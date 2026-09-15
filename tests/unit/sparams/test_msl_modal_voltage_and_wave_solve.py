@@ -7,14 +7,27 @@ two definitions directly, with no FDTD, and each has a mutation twin that fails
 if the defect is reintroduced.
 
 #511 — ``msl_modal_voltage`` summed ``k_lo..k_hi`` (n+1 Ez edges over an n-cell
-substrate). ``k_hi`` is the TRACE cell: ``_msl_yz_cells`` builds an inclusive
+substrate). ``k_hi`` is the TRACE plane: ``_msl_yz_cells`` builds an inclusive
 span up to ``position_to_index(h_sub) = round(h_sub/dx)``, and ``k_top = k_hi``
-is where the PEC search starts. The extra edge lives inside the one-cell PEC
-trace, where ``apply_pec_mask`` deliberately preserves normal E as surface
-charge, so it was live and contributed about -12%.
+is where the conductor search starts. The extra edge sits at the trace itself
+and was live, contributing about -12%.
+
+#931 restates WHY that edge is live, and the reason is now a contract rather
+than an accident. The trace is a SHEET, and the E component NORMAL to a sheet
+is never zeroed (§1.3) — a sheet is a zero-thickness footprint on one node
+plane, so there is nothing for a normal edge to be inside of. Before the
+lattice ownership contract the same edge was live because ``apply_pec_mask``'s
+neighbour rule happened to preserve normal E inside a one-cell PEC body, which
+is the incidental behaviour #931 replaced. The fix — exclude the trace-plane
+edge — is unchanged; only its justification stops being an accident.
 
 #507 — ``S[j, d] = b_j / a_d`` is the d-th column of the true S only when
-``a_j = 0`` at every passive port. Measured ``|a_passive/a_driven| = 0.07-0.51``.
+``a_j = 0`` at every passive port. It is not: ``|a_passive/a_driven|`` is
+0.243-0.248 at the shipped R = 50 Ω and 0.19-0.93 across terminations,
+re-measured on current main 2026-08-30 (#524). The 0.07-0.51 range this
+docstring quoted is the July pre-#511/#516 figure; the planted gammas in
+``test_multi_drive_solve_recovers_the_planted_s`` keep spanning it because
+they are a synthetic sweep, not a measurement.
 """
 
 import json
@@ -164,8 +177,11 @@ def _waves_from(S, gamma_passive):
 
 @pytest.mark.parametrize("gamma", [0.0, 0.07, 0.2, 0.51])
 def test_multi_drive_solve_recovers_the_planted_s(gamma):
-    """Exact recovery at every passive-port reflection, including the
-    0.07-0.51 range measured on real fixtures."""
+    """Exact recovery at every passive-port reflection.
+
+    The planted values span the July 0.07-0.51 range AND the current-main
+    0.24-0.25 reading (#524, 2026-08-30); they are a synthetic sweep of the
+    solve's algebra, so no measured number pins them."""
     S = _planted_s()
     wave_a, wave_b = _waves_from(S, gamma)
     with enable_x64():
@@ -527,12 +543,20 @@ def test_transpose_bug_is_caught_only_by_the_nonreciprocal_fixture():
 # search) with synthetic z-profiled Ez planes and read back raw_v, pinning
 # which Ez edges the production V actually contains on both mesh classes:
 #
-#   dx = 84.67 um (h_sub/dx = 2.9999, aligned):   trace node 3 -> edges 0..2
-#   dx = 80.00 um (h_sub/dx = 3.1750, bisecting): trace node 4 -> edges 0..3
+#   dx = 84.67 um (h_sub/dx = 2.9999, aligned):   trace plane 3 -> edges 0..2
+#   dx = 80.00 um (h_sub/dx = 3.1750, bisecting): trace plane 3 -> edges 0..2
 #
-# Together they kill both known bad rules: the pre-#511 inclusive span
-# (includes the trace-node edge -> fails the ALIGNED case) and the
-# round(h_sub/dx) proxy (drops edge 3 -> fails the BISECTING case).
+# #931 collapsed the second number. The bisecting mesh used to realize the
+# trace at node 4 because a one-cell PEC Box's only wall sat on its FAR
+# face; under the ownership contract the foil is a sheet and a sheet lands
+# on the node plane nearest its declared plane, which IS round(h_sub/dx).
+# So the round() proxy and the realized anchor can no longer disagree for a
+# conductor on the laminate face — that bug class is closed by
+# construction rather than by a test. What these two still kill is the
+# pre-#511 INCLUSIVE span, which adds the trace-plane edge (marker 10) and
+# reads 13*dz instead of 3*dz on either mesh. And they now read the
+# expected plane from realized_wall_planes rather than restating it, so a
+# future divergence between the span anchor and the realization is loud.
 
 from types import MethodType, SimpleNamespace
 
@@ -594,8 +618,9 @@ def _raw_v_for_dx(dx, tmp_path):
     sim.add_material("sub", eps_r=_EPS_R)
     sim.add(Box((0.0, 0.0, 0.0), (lx, ly, _H_SUB)), material="sub")
     y_c = ly / 2.0
+    # 35 um foil -> a SHEET on the laminate face (#931 §1.3).
     sim.add(Box((0.0, y_c - _W_TRACE / 2, _H_SUB),
-                (lx, y_c + _W_TRACE / 2, _H_SUB + dx)), material="pec")
+                (lx, y_c + _W_TRACE / 2, _H_SUB)), material="pec")
     for x, d in ((_MARGIN, "+x"), (_MARGIN + _L_LINE, "-x")):
         sim.add_msl_port(position=(x, y_c, 0.0), width=_W_TRACE,
                          height=_H_SUB, direction=d, impedance=50.0)
@@ -611,30 +636,53 @@ def _raw_v_for_dx(dx, tmp_path):
     return complex(np.asarray(d["raw_v"])[0, 0, 0, 0]), dx
 
 
-def test_v_span_on_aligned_mesh_stops_below_the_trace_node(tmp_path):
-    """dx = h_sub/3: trace at node 3 -> V = edges 0..2 exactly.
+def _realized_trace_plane(dx):
+    """Where the lattice puts this board's foil — from the single owner."""
+    from tests._realized_geometry import realized
 
-    Fails if the pre-#511 inclusive span ever returns (it would add the
-    -1000-weighted node... at this mesh the trace node is 3, so the
-    inclusive span adds marker[3] = +10).
+    lx = _L_LINE + 2 * _MARGIN
+    ly = _W_TRACE + 2 * (2 * _H_SUB + 8 * dx)
+    lz = _H_SUB + 1.5e-3
+    sim = Simulation(
+        freq_max=_F_MAX, domain=(lx, ly, lz), dx=dx, cpml_layers=8,
+        boundary=BoundarySpec(x="cpml", y="cpml",
+                              z=Boundary(lo="pec", hi="cpml")),
+    )
+    sim.add_material("sub", eps_r=_EPS_R)
+    sim.add(Box((0.0, 0.0, 0.0), (lx, ly, _H_SUB)), material="sub")
+    y_c = ly / 2.0
+    sim.add(Box((0.0, y_c - _W_TRACE / 2, _H_SUB),
+                (lx, y_c + _W_TRACE / 2, _H_SUB)), material="pec")
+    return realized(sim).sheet_planes[2][0]
+
+
+@pytest.mark.parametrize("dx,label", [(84.67e-6, "aligned"),
+                                      (80e-6, "bisecting")])
+def test_v_span_stops_below_the_realized_trace_plane(dx, label, tmp_path):
+    """V = the Ez edges strictly BELOW the realized trace plane.
+
+    The expected plane is read from ``realized_wall_planes`` and the
+    expected V is summed from the markers below it, so this test states
+    the contract rather than a number. On both meshes the plane is 3 and
+    V = 3*dz; the pre-#511 inclusive span would add marker[3] = 10 and
+    read 13*dz, which is a factor of four, not a tolerance slip.
+
+    #931: the bisecting mesh used to answer 4 here (the old rule put a
+    one-cell Box's only wall on its far face) and this pair used to be the
+    F2 discriminator between the realized anchor and the round(h_sub/dx)
+    proxy. Under the contract those two agree for a conductor on the
+    laminate face, so the discriminator is gone — closed by construction.
     """
-    v, dx = _raw_v_for_dx(84.67e-6, tmp_path)
-    expected = (1.0 + 1.0 + 1.0) * dx
+    k_trace = _realized_trace_plane(dx)
+    assert k_trace == 3, (
+        f"{label} mesh: realized trace plane moved to {k_trace}; re-derive "
+        "the span before trusting the number below")
+    v, dx_used = _raw_v_for_dx(dx, tmp_path)
+    expected = sum(_MARKER[k] for k in range(k_trace)) * dx_used
+    inclusive = expected + _MARKER[k_trace] * dx_used
     np.testing.assert_allclose(v.real, expected, rtol=1e-5)
-    assert abs(v.imag) < 1e-12
-
-
-def test_v_span_on_bisecting_mesh_reaches_the_rasterized_trace(tmp_path):
-    """dx = 80 um: trace rasterizes at node 4 -> V = edges 0..3.
-
-    This is the F2 case. The round(h_sub/dx) proxy gives k_hi = 3 and
-    silently drops edge 3; the correct anchor is the PEC-search trace node.
-    A wrong span here is off by the loud marker[3] = 10 x dz, not a
-    tolerance-level slip.
-    """
-    v, dx = _raw_v_for_dx(80e-6, tmp_path)
-    expected = (1.0 + 1.0 + 1.0 + 10.0) * dx
-    np.testing.assert_allclose(v.real, expected, rtol=1e-5)
+    assert not np.isclose(v.real, inclusive, rtol=1e-3), (
+        "V included the trace-plane edge — the pre-#511 inclusive span")
     assert abs(v.imag) < 1e-12
 
 
@@ -667,7 +715,7 @@ def _fake_run_drive_dependent(nz_markers, scale_by_run):
     branch under test. ``scale_by_run[i]`` scales run i's ez plane.
     """
     import re
-    name_re = re.compile(r"_msl_run(?P<run>\d+)_p(?P<port>\d+)_(?P<kind>ez\d+|hy|hz)")
+    name_re = re.compile(r"_msl_run(?P<run>\d+)_p(?P<port>\d+)_(?P<kind>ez\d+|hy|hz)(?:_left)?")
 
     def fake_run(self, *, n_steps=None, num_periods=1.0, compute_s_params=False):
         del n_steps, num_periods, compute_s_params
@@ -742,8 +790,9 @@ def _run_with(fake_run, tmp_path, tag, freqs_hz=(1.0e9,), **kw):
     sim.add_material("sub", eps_r=_EPS_R)
     sim.add(Box((0.0, 0.0, 0.0), (lx, ly, _H_SUB)), material="sub")
     y_c = ly / 2.0
+    # 35 um foil -> a SHEET on the laminate face (#931 §1.3).
     sim.add(Box((0.0, y_c - _W_TRACE / 2, _H_SUB),
-                (lx, y_c + _W_TRACE / 2, _H_SUB + dx)), material="pec")
+                (lx, y_c + _W_TRACE / 2, _H_SUB)), material="pec")
     for x, d in ((_MARGIN, "+x"), (_MARGIN + _L_LINE, "-x")):
         sim.add_msl_port(position=(x, y_c, 0.0), width=_W_TRACE,
                          height=_H_SUB, direction=d, impedance=50.0)
@@ -906,7 +955,7 @@ def _fake_run_collapse(collapse):
     null the mask exists to catch.
     """
     import re
-    name_re = re.compile(r"_msl_run(?P<run>\d+)_p(?P<port>\d+)_(?P<kind>ez\d+|hy|hz)")
+    name_re = re.compile(r"_msl_run(?P<run>\d+)_p(?P<port>\d+)_(?P<kind>ez\d+|hy|hz)(?:_left)?")
 
     def fake_run(self, *, n_steps=None, num_periods=1.0, compute_s_params=False):
         del n_steps, num_periods, compute_s_params
@@ -989,3 +1038,74 @@ def test_mask_still_fires_on_an_own_drive_collapse(tmp_path):
     """Widening coverage must not lose the case that already worked."""
     rel = _reliable_for((1, 1), tmp_path)
     assert not rel[1, 1] and rel[1, 0]
+
+
+# --------------------------------------------------------------------------
+# #726 — fitted diagnostics and the measured V/I are different dependencies
+# --------------------------------------------------------------------------
+
+
+def test_fitted_impedance_and_beta_cannot_change_production_s(tmp_path, monkeypatch):
+    """Intervene on fit outputs while feeding identical DFT planes.
+
+    This tests dataflow through the public extractor, not RF accuracy.
+    It is the narrow statement the old 'S11/S21 are unaffected' warning
+    could support; contamination of the input fields is a different claim.
+    """
+    import rfx.probes.msl_wave_decomp as decomp
+
+    fit_value = {"z0": 50.0, "beta": 10.0}
+
+    def controlled_fit(v, x, i1, beta0, *, z0_hj=None):
+        del x, i1, beta0, z0_hj
+        return dict(
+            z0=jnp.full(v.shape[0], fit_value["z0"], dtype=jnp.complex64),
+            beta=jnp.full(v.shape[0], fit_value["beta"], dtype=jnp.complex64),
+            q=jnp.ones(v.shape[0], dtype=jnp.complex64),
+            beta_railed=jnp.zeros(v.shape[0], dtype=bool),
+        )
+
+    monkeypatch.setattr(decomp, "extract_msl_nprobe", controlled_fit)
+    plane_builder = _fake_run_drive_dependent(_MARKER, {0: 1.0, 1: 0.41 - 0.23j})
+
+    def planes(self, **kwargs):
+        result = plane_builder(self, **kwargs)
+        for name, plane in result.dft_planes.items():
+            result.dft_planes[name] = plane._replace(accumulator=jnp.broadcast_to(
+                plane.accumulator, (len(plane.freqs),) + plane.accumulator.shape[1:]))
+        return result
+
+    run_args = dict(freqs_hz=(1e9, 2e9, 3e9), enforce_passivity=False)
+    a, dump_a, _ = _run_with(planes, tmp_path, "fit_a", **run_args)
+    fit_value.update(z0=500.0, beta=900.0)
+    b, dump_b, warnings_b = _run_with(planes, tmp_path, "fit_b", **run_args)
+    assert any("Fitted Z0/beta are not used in S11/S21" in w
+               and "does not certify those inputs" in w for w in warnings_b)
+    assert not any("S11/S21 are unaffected" in w for w in warnings_b)
+    assert a.assembly == b.assembly == "multi_drive_solve"
+    assert np.max(a.cond_a) < 1e3 and np.max(b.cond_a) < 1e3
+    assert not np.array_equal(a.Z0, b.Z0)
+    assert not np.array_equal(a.beta, b.beta)
+    np.testing.assert_array_equal(a.S, b.S)
+    with np.load(dump_a) as da, np.load(dump_b) as db:
+        np.testing.assert_array_equal(da["raw_v"], db["raw_v"])
+        np.testing.assert_array_equal(da["raw_i1"], db["raw_i1"])
+
+    # Now leave that same fitted Z0/beta fixed and perturb only the measured
+    # magnetic field. Finite, non-collapsed V/I still does NOT imply accuracy.
+    def altered_current(self, **kwargs):
+        result = planes(self, **kwargs)
+        for name, plane in result.dft_planes.items():
+            if name.startswith("_msl_run0_p0_") and plane.component in ("hy", "hz"):
+                result.dft_planes[name] = plane._replace(accumulator=plane.accumulator * 1.2)
+        return result
+
+    c, dump_c, _ = _run_with(altered_current, tmp_path, "changed_i", **run_args)
+    assert c.assembly == "multi_drive_solve" and np.max(c.cond_a) < 1e3
+    np.testing.assert_array_equal(b.Z0, c.Z0)
+    np.testing.assert_array_equal(b.beta, c.beta)
+    with np.load(dump_b) as db, np.load(dump_c) as dc:
+        np.testing.assert_array_equal(db["raw_v"], dc["raw_v"])
+        assert not np.array_equal(db["raw_i1"], dc["raw_i1"])
+    assert np.max(abs(np.asarray(b.S) - np.asarray(c.S))) > 1e-2
+    assert np.all(b.reliable) and np.all(c.reliable)

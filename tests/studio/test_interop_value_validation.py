@@ -268,3 +268,55 @@ def test_numpy_scalars_and_arrays_still_accepted():
     payload = shape_to_dict(Sphere(center=np.array([0.0, 0.0, 0.0]),
                                    radius=np.float64(5e-4)))
     assert payload["params"] == {"center": [0.0, 0.0, 0.0], "radius": 5e-4}
+
+
+# --------------------------------------------------------------------------
+# #931: what the codec must NOT start refusing.
+#
+# The inventory's suggestion for this module was to extend the refusal set
+# with the ownership contract's new errors — a sub-cell PEC Box, an empty
+# sheet footprint, a single-node wire. Two of those cannot live here and the
+# third would be wrong, and the reason is the single-owner rule (design note
+# §1.7) rather than effort: this codec encodes SHAPES. "Sub-cell" needs a
+# grid, "PEC" needs a material, and a codec that re-implemented either would
+# be the second copy of a rule that drifts from the first — which is the
+# defect #931 exists to remove, not one to add on the way out.
+#
+# So the codec-side statement is the opposite one, and it does need pinning:
+# a zero-extent Box is now the canonical spelling of a SHEET (§1.5), so it
+# has to survive a round trip EXACTLY. A codec that normalised a zero extent
+# away, or refused it as degenerate, would turn a declared foil into
+# something else with a schema-valid document to show for it.
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize("lo,hi,zero_axes", [
+    ((0.0, 0.0, 1e-3), (5e-3, 4e-3, 1e-3), (2,)),          # a sheet: z flat
+    ((0.0, 2e-3, 0.0), (5e-3, 2e-3, 4e-3), (1,)),          # a sheet: y flat
+    ((1e-3, 0.0, 0.0), (1e-3, 5e-3, 4e-3), (0,)),          # a sheet: x flat
+])
+def test_a_zero_extent_box_round_trips_exactly_because_it_is_a_sheet(
+        lo, hi, zero_axes):
+    box = Box(lo, hi)
+    back = shape_from_dict(shape_to_dict(box))
+    assert tuple(back.corner_lo) == tuple(lo)
+    assert tuple(back.corner_hi) == tuple(hi)
+    for a in zero_axes:
+        assert back.corner_hi[a] == back.corner_lo[a], (
+            "the codec collapsed or padded the zero extent that MAKES this a "
+            "sheet declaration (#931 §1.5)")
+
+
+@pytest.mark.parametrize("lo,hi", [
+    ((0.0, 0.0, 0.0), (1e-3, 0.0, 0.0)),   # a line: two zero extents
+    ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0)),    # a point: three
+])
+def test_a_degenerate_box_still_round_trips_so_the_refusal_stays_at_add(lo, hi):
+    """A line and a point are refused as CONDUCTORS (§1.5), at ``sim.add``,
+    where the material is known. The codec keeps carrying them: refusing here
+    would move the rule to a layer that cannot see the material, and would
+    also break a document that legitimately carries such a Box as a
+    non-conductor region.
+    """
+    back = shape_from_dict(shape_to_dict(Box(lo, hi)))
+    assert tuple(back.corner_lo) == tuple(lo)
+    assert tuple(back.corner_hi) == tuple(hi)

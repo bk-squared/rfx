@@ -645,14 +645,15 @@ def _live_compare(fx, rung: str):
 @pytest.mark.slow
 def test_live_ad_vs_fd_slab_s21_mag2_coarse_rung():
     """One §5(a) leg live on CPU: slab, normalize=False, eps θ, |S21|² at the
-    band centre — float32 reverse-mode AD vs a float64 central FD with the
-    ULP-span validity asserted before the accuracy gate."""
+    band centre — float32 reverse-mode AD vs a second-order forward x64 FD.
+    Full-array arm validity blocks before AD; the ULP floor precedes accuracy."""
     import jax
     import jax.numpy as jnp
     from tests._x64_compat import enable_x64
 
     dx = G.RUNG_DX["coarse"]
     sim = F.build_simulation("slab", dx)
+    F.assert_fd_stencil_admissible(sim, "slab", "eps")
 
     def obj(theta, sim_):
         S = sim_.compute_waveguide_s_matrix(
@@ -665,10 +666,9 @@ def test_live_ad_vs_fd_slab_s21_mag2_coarse_rung():
         _, g = jax.value_and_grad(lambda th: obj(th, sim))(jnp.asarray(F.THETA0_EPS, jnp.float32))
         with enable_x64():
             sim64 = F.build_simulation("slab", dx)
-            fp = obj(jnp.asarray(F.THETA0_EPS + F.FD_STEP_EPS, jnp.float64), sim64)
-            fm = obj(jnp.asarray(F.THETA0_EPS - F.FD_STEP_EPS, jnp.float64), sim64)
-            e = G.ad_fd_entry(g_ad=float(g), f_plus=float(fp), f_minus=float(fm), h=F.FD_STEP_EPS,
-                              loss_dtype=np.asarray(fp).dtype)
+            from scripts.diagnostics.waveguide_chain_battery_measure import measure_fd_samples
+            _, samples, _ = measure_fd_samples(sim64, "slab", "eps", False, ("s21_mag2",))
+            e = G.ad_fd_from_leg({"g_ad": float(g), **samples["s21_mag2"]})
     print(f"[live ad-fd coarse] g_ad={e['g_ad']:+.6e} g_fd={e['g_fd']:+.6e} rel={e['rel']:.3e} "
           f"span={e['fd_ulp_span']:.3g} ULP ({e['loss_dtype']})")
     assert e["loss_dtype"] == "float64"

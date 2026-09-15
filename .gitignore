@@ -5,6 +5,8 @@ __pycache__/
 .pytest_cache/
 .omc/
 .omx/
+.gjc/
+.omo/
 .rfx-experiments/
 .playwright-cli/
 build/
@@ -83,3 +85,9 @@ scripts/_patch_field_cache.npz
 
 # cv22 lanes: source commit stamped into a staged (git-less) copy at staging time
 .staged_commit
+
+# cv05's openEMS scratch directory (05_patch_antenna.py sim_path_oe). The
+# script writes and re-reads it as a cache; it is solver working state, not
+# evidence. Committed by accident in 7bb0dd0c when a VESSL run was writing
+# into the worktree during a `git add -A`.
+validation/crossval/05_openems_tmp/

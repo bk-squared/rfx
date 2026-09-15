@@ -44,7 +44,21 @@ Pre-declaration and decision rule:
 Usage (from the repository root)::
 
     PYTHONPATH=. python scripts/diagnostics/waveguide_false_lane_column_power_suspects.py \
-        --out tests/fixtures/waveguide_false_lane_column_power/suspects.json
+        --out <scratch>/suspects.json
+
+REPRODUCER IS PINNED TO THE MERGE TREE ``df6ca133`` (#904). The port config is
+rebuilt LIVE from ``tests._waveguide_chain_battery_fixture``, and since #889 the
+port solves its transverse mode on the guide's N cells instead of N+1 -- so on
+current main the live cutoff EQUALS the guide's discrete cutoff (6.5239 GHz at
+the coarse rung, where the frozen measurement used the N+1 port's 5.8772 GHz),
+suspect S1 collapses to identically zero, and a regenerated report would claim
+the suspects explain ~22 % of an excess that the (N+1) port largely produced.
+Re-running here measures a DIFFERENT port from the one that produced the frozen
+S-parameters: the result is mixed-provenance and must not be committed over
+``tests/fixtures/waveguide_false_lane_column_power/suspects.json``. The earlier
+instruction to re-run and re-commit the report if #868 was decided is retracted
+(#889 strict-xfails the live tie instead); re-measuring needs a new
+pre-declaration. Point ``--out`` at a scratch path.
 """
 
 from __future__ import annotations
@@ -52,6 +66,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -118,7 +133,67 @@ def _guide_mode(nu: int, nv: int, n_guide: int, half_cell_h: bool):
     return phi_e[:, None] * ones, phi_h[:, None] * ones
 
 
-def analyse(out_path: Path | None) -> dict:
+def write_report(result: dict, out_path: Path) -> None:
+    """Write the JSON report to ``out_path`` via a temp file + rename.
+
+    Called from ``main`` only AFTER the console report has finished, and the
+    bytes land under a ``.partial`` name first. Before #904 ``analyse`` wrote
+    ``--out`` in the middle of its own run and ``main`` then died in the ratio
+    step below, so a probe run left 25 KB of half-finished, mixed-provenance
+    JSON at the COMMITTED report path. Partial output is now either absent or
+    parked under ``.partial``; the real path is only ever replaced by a
+    complete report.
+    """
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out_path.with_name(out_path.name + ".partial")
+    tmp.write_text(
+        json.dumps(_json_safe(result), indent=1, sort_keys=False) + "\n"
+    )
+    tmp.replace(out_path)
+
+
+def _json_safe(obj):
+    """Replace non-finite floats with ``None`` so the report is strict JSON.
+
+    The committed report carries none: the frozen (N+1)-cell port made every
+    suspect nonzero. A LIVE rebuild on current main does (S1 is identically
+    zero post-#889, so its successive ratios are 0/0), and ``json.dumps``
+    would emit bare ``NaN`` tokens, which Python reads back but a strict
+    parser rejects. A degenerate run should produce a readable artifact, not
+    an unparseable one -- the run is refused by the warning in ``main``, not
+    by a corrupt file.
+    """
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_json_safe(v) for v in obj]
+    if isinstance(obj, float) and not np.isfinite(obj):
+        return None
+    return obj
+
+
+def _successive_ratio_strings(vals: list[float]) -> tuple[list[str], bool]:
+    """``[coarse/mid, mid/fine]`` formatted, with a zero denominator spelled out.
+
+    Post-#889 the port solves its transverse mode on the guide's N cells, so
+    the live cutoff EQUALS the guide's discrete cutoff and suspect S1 --
+    ``gamma = (z_guide - z_port)/(z_guide + z_port)`` -- is identically zero at
+    every rung. The bare ``vals[0] / vals[1]`` that used to sit here then
+    raised ``ZeroDivisionError`` before the verdict line printed (#904).
+    Returns the formatted ratios and whether any denominator was zero.
+    """
+    out: list[str] = []
+    degenerate = False
+    for num, den in ((vals[0], vals[1]), (vals[1], vals[2])):
+        if den == 0.0:
+            out.append("n/a")
+            degenerate = True
+        else:
+            out.append(f"{num / den:.2f}")
+    return out, degenerate
+
+
+def analyse() -> dict:
     import jax.numpy as jnp
 
     import tests._waveguide_chain_battery_fixture as F
@@ -372,9 +447,6 @@ def analyse(out_path: Path | None) -> dict:
         ),
     }
 
-    if out_path is not None:
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(json.dumps(result, indent=1, sort_keys=False) + "\n")
     return result
 
 
@@ -383,7 +455,7 @@ def main() -> None:
     ap.add_argument("--out", type=Path, default=None, help="write the JSON report here")
     args = ap.parse_args()
     os.environ.setdefault("JAX_PLATFORMS", "cpu")
-    res = analyse(args.out)
+    res = analyse()
     rungs = ("coarse", "mid", "fine")
     print(f"source run {res['source_run_id']} commit {res['source_commit'][:8]}")
     print()
@@ -400,6 +472,7 @@ def main() -> None:
     print("phase-fit rms (deg) at guide cutoff " + "".join(
         f"{res['per_rung'][r]['cutoffs_hz']['rms_deg_at_discrete_guide']:>9.3f}" for r in rungs))
     print()
+    degenerate_rows: list[str] = []
     print("band-mean |Gamma|   " + "".join(f"{r:>12}" for r in rungs) + "   ratios")
     for key, label in (
         ("measured_abs_s11_band_mean", "measured |S11|      "),
@@ -409,9 +482,12 @@ def main() -> None:
         ("product_S1_S2_S3", "product S1*S2*S3    "),
     ):
         vals = res["ladders"][key]
-        rat = [vals[0] / vals[1], vals[1] / vals[2]]
+        rat, degenerate = _successive_ratio_strings(vals)
+        if degenerate:
+            degenerate_rows.append(key)
+        note = "  (suspect identically zero post-#889)" if degenerate else ""
         print(label + "".join(f"{v:>12.5f}" for v in vals)
-              + "   " + " ".join(f"{v:.2f}" for v in rat))
+              + "   " + " ".join(rat) + note)
     print()
     print("column power - 1   " + "".join(f"{r:>13}" for r in rungs))
     for key, label in (
@@ -427,6 +503,29 @@ def main() -> None:
               f"pred/meas={['%.3f' % v for v in row['pred_over_measured']]}")
     print()
     print("VERDICT:", res["verdict"]["branch"], res["verdict"]["reproducing"])
+
+    if degenerate_rows:
+        print(
+            "\nWARNING: " + ", ".join(degenerate_rows) + " is identically zero on "
+            "this tree.\n"
+            "         The port config is rebuilt LIVE, and since #889 the port "
+            "solves its\n"
+            "         transverse mode on the guide's N cells, so its cutoff equals "
+            "the guide's\n"
+            "         discrete cutoff and S1 = (z_guide - z_port)/(z_guide + z_port) "
+            "vanishes.\n"
+            "         The frozen S-parameters this report explains were measured "
+            "with the\n"
+            "         (N+1)-cell port, so THIS RUN IS MIXED-PROVENANCE: do not commit "
+            "it over\n"
+            "         the committed report (#904). The committed report reproduces "
+            "only on the\n"
+            "         merge tree, df6ca133.",
+            file=sys.stderr,
+        )
+
+    if args.out is not None:
+        write_report(res, args.out)
 
 
 if __name__ == "__main__":

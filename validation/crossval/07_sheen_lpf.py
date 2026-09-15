@@ -6,7 +6,7 @@
     tests/fixtures/sheen_lpf_e4/sheen_lpf_palace_referee.json) showed the stopband
     is a DOUBLE transmission-zero (~7.0 AND ~8.0 GHz), not a single null. openEMS
     resolves BOTH zeros and matches Palace to ~0.7%; rfx's coarse 200um mesh
-    DISTORTS the doublet. [EDITORIAL FIX, #722] the committed leg has exactly
+    DISTORTS the doublet. [EDITORIAL FIX, #722, pre-#931 history] that leg had exactly
     two local minima in 5-10 GHz, 6.891 and 7.874 GHz, both doublet members —
     there is no ~6.6 GHz dip; that sentence was stale (the two UPDATE blocks
     below already superseded it). So the
@@ -38,7 +38,7 @@
     now agrees with openEMS to 0.0014 (was 0.0156). The argmin null is
     bit-identical (7.8739 GHz), so the doublet characterization stands.
 
-    GEOMETRY CONVENTION (#722) — documentation/reporting only; no geometry,
+    GEOMETRY CONVENTION (#722, pre-#931 history) — reporting only; no geometry,
     mesh, port or gate constant changes with this note. Every number below
     was measured on this checkout from the committed dx=200um build via
     Simulation.fidelity_report() (captured verbatim in run_rfx(), below,
@@ -92,16 +92,98 @@
     environment; pinning JAX_ENABLE_X64 explicitly for this leg is filed as
     a follow-up, not done here.
 
-    KNOWN STALE, PRE-EXISTING, OUT OF SCOPE FOR THIS EDIT: validation/
-    README.md:41, docs/public/guide/benchmarks.mdx:57 and
-    scripts/diagnostics/palace_sheen_referee/README.md:10,38-39 all quote
-    cv07 numbers (e.g. "1.91%", "84/120 bins", "~67 ohm") that disagree
-    with the committed _07_sheen_results/rfx.json and the committed referee
-    fixture (which reads structure_distance_pct.rfx=1.5195, 0/120
-    passivity_correction bins > 0.05, passband median Re(Z0)=50.30 ohm).
-    That drift predates and is independent of #722 (it is a docs sweep
-    across files outside this edit's scope) and is filed as its own
-    follow-up rather than fixed inline here.
+    CURRENT DOCS TRUTH (#931, VESSL 369367259192, commit 069bdebc):
+    the regenerated referee reads structure_distance_pct.rfx=2.8668;
+    argmin_first_null.distances_pct.rfx=2.3756 is a DIFFERENT quantity from
+    a different window. The leg reads 3/120 passivity_correction bins > 0.05,
+    worst 0.6572 at 17.870 GHz, all three above 17 GHz and none inside the
+    5-15 GHz null band. Passband median Re(Z0)=51.91 ohm (0.5-3 GHz),
+    in-band median Re(Z0)=54.73 ohm (5-15 GHz). Raw-bin argmins are rfx
+    8.202 / openEMS 7.983 GHz; referee parabolic FDTD argmins are
+    8.244069 / 7.994749 GHz. Public carriers are synchronized with those
+    artifacts; dated pre-#931 measurements below remain historical.
+
+    #931 LATTICE OWNERSHIP — APPENDED 2026-09-07. Earlier dated
+    measurements remain history; the current artifact values are stated above.
+
+    THE METAL IS THREE SHEETS, not three one-cell volumes. It used to be
+    drawn `H_SUB -> H_SUB + dx`, which the lattice ownership contract
+    realizes as a VOLUME: a 200 um filled metal slab with electric walls at
+    BOTH z = 800 and z = 1000 um and Ez shorted between them, i.e. a quarter
+    of the substrate thickness of metal. The openEMS leg of this very script
+    draws the same metal with zero thickness (`pec.AddBox([...H_SUB],
+    [...H_SUB])`), which settles the intent: (S). The three metal entries
+    now have EQUAL z corners at z = H_SUB and realize one node plane.
+
+    THE REALIZED BOARD, re-measured (build-only, `realized_metal()`, printed
+    verbatim into every run):
+
+      sheet plane           k = 4, z = 800.0 um = the realized substrate top
+                            (declared foil plane 794.0 um, +6.0 um)
+      in / out feed width   declared 2413.0 -> realized 2200.0 um, 12 node
+                            rows each — the two feeds stay SYMMETRIC
+      patch transverse      declared 20320.0 -> realized 20200.0 um
+      patch propagation     declared  2540.0 -> realized  2400.0 um
+
+    Every in-plane extent is one cell smaller than the pre-#931 table at
+    :53-57 (2400 / 20400 / 2600 um). That is not a re-measurement of the
+    same thing: a sheet IS its edge set, n footprint nodes carry n-1 edges,
+    and the pre-#931 rule zeroed one extra edge past each hi rim. The
+    current-carrying ROW COUNT is unchanged, so the strips' electrical
+    widths are unchanged (12 rows * 200 um = 2400 um; cv06b's docstring
+    carries the measurement behind that reading).
+
+    THE MESH STAYS dx = 200 um, and the on-lattice redraw the design note
+    prescribes (§1.3, "dx = h_sub/n") is REFUSED HERE WITH THE MEASUREMENT
+    THAT REFUSES IT. dx = H_SUB/4 = 198.5 um does put the sheet exactly on
+    the DECLARED interface and realize h_sub = 794.0 um exactly — but it
+    realizes the two nominally identical 50-ohm feeds 12 and 13 node rows
+    wide (2183.5 vs 2382.0 um; HJ Z0 54.22 vs 51.19 ohm), because their
+    centres sit at different sub-cell offsets. A mesh that makes a
+    symmetric board asymmetric is a worse board than one that realizes
+    h_sub 0.76% thick, and `assert_realized_metal` now refuses it. Finer
+    aligned meshes that restore the symmetry (H_SUB/5 = 158.8 um, H_SUB/6 =
+    132.3 um; both feeds 15 and 18 rows) also change `n_probe_offset`'s
+    physical meaning — it is 30 CELLS, derived at :459-464 as 6 mm >=
+    5*h_sub upstream with a 3.2 mm >= lambda_g/4 downstream clearance — and
+    a mesh change plus a recipe re-derivation must not ride along with a
+    realization change. The §1.3 pathology does not arise at dx = 200 um:
+    the sheet lands on the realized substrate TOP (the dielectric occupies
+    cells 0..3), not buried inside the laminate, so there is no vacuum slot
+    and nothing is absorbed by a tie rule.
+
+    THE PORT MISMATCH IS RE-MEASURED, NOT CLOSED. :73-86 records that
+    `add_msl_port` is handed the DECLARED width=W_FEED (2413 um) and
+    height=H_SUB (794 um) while the metal realizes something else. Under
+    the contract that gap is now visible per port and printed by
+    `assert_realized_metal`: each port's cross-section spans 13 node rows
+    (43..55 and 84..96) while its feed metal realizes 12 (44..55, 85..96) —
+    the port rounds each face to the NEAREST node while a sheet footprint
+    is closed [lo, hi], so the port integrates one row that carries no
+    metal. Handing the port the contract's realized extent (2200 um) does
+    fix the rows — measured, both ports then span exactly the metal's 12 —
+    but `width` also sets the Hammerstad-Jensen reference impedance the
+    wave split uses (a = (V + Z0*I)/2, b = (V - Z0*I)/2, rfx/api/_sparams.py),
+    and HJ(2200, 800) = 54.22 ohm on a line whose own passband median
+    Re(Z0) the current leg measures at 51.91 ohm (pre-#931: 50.30 ohm).
+    That is a 2.31-ohm mismatch, so the earlier 4-ohm rationale is historical.
+    Changing the reference to fix a one-row aperture is still not a measured
+    remedy for this port; the committed leg does not settle that choice.
+    The real remedy is §1.9's: the MSL port takes its
+    cross-section from the realized sheet footprint and its reference
+    impedance from the line, which is core work (#729 class), not a script
+    constant. Left open, measured, and named.
+
+    WHAT THIS MEANS FOR THE COMMITTED NUMBERS. Every rfx-leg value in
+    COMMITTED below was regenerated on the #931 sheet board by VESSL
+    369367259192 (the pre-#931 board had metal one cell wider on every
+    in-plane dimension AND a 200 um slab in z); the openEMS half does not
+    move (external solver, true zero-thickness sheet, declared board). C4's +-0.50%
+    doublet window and C6's +-0.25% corner window are NOT widened: their
+    derivations are "one dx=200 um cell on the 20.320 mm patch transverse
+    extent = 0.984%" and "one-cell transverse error moves fc 0.49%", both
+    of which are properties of the cell size, and the cell size did not
+    change.
 
 Reproduces the classic FDTD-microwave benchmark of
   D. M. Sheen, S. M. Ali, M. D. Abouzahra, J. A. Kong,
@@ -130,7 +212,7 @@ HONEST SCOPE (do NOT overclaim):
     corrected extractor (2026-08-09, issue #519), so the "stale evidence
     chain" reason for ungating is resolved. The depth stays ungated as a
     deliberate scope choice: no committed depth-accuracy envelope has been
-    derived for this dx=200um leg (openEMS reads -43.7 dB, rfx -39.2 dB at
+    derived for this dx=200um leg (openEMS reads -43.7 dB, rfx -40.3 dB at
     a different argmin bin density), and deriving one is a separate
     measurement task, not a lock this reporter should improvise.
   - We gate the first-null FREQUENCY (few-% envelope) and the passband band-mean
@@ -166,13 +248,16 @@ default ``compare`` mode does NOT gate rfx-vs-openEMS agreement. It gates:
 
 EVIDENCE STATE OF THE COMMITTED rfx ARTIFACT (gate D, quoted not hidden)
 ------------------------------------------------------------------------
-The committed leg (regenerated 2026-08-09 on the #511/#507-corrected
-extractor, PR #516 f95240f; issue #519) is passivity-ENFORCED: quoted |S|
+The committed leg (regenerated 2026-09-07 on the #931 sheet board,
+VESSL 369367259192, commit 069bdebc) is passivity-ENFORCED: quoted |S|
 satisfies the strict bound at every bin (max column power 0.9995), the raw
-excess is recorded per bin in passivity_correction (0/120 bins > 0.05,
-worst 0.0145 at 17.378 GHz — the large pre-#516 excess, 84 bins > 0.05
-worst 0.36, was the extractor defects, not a mesh envelope), and the
-ring-down settling witness reads -70.2/-71.3 dB (rule: < -40). Gate D
+excess is recorded per bin in passivity_correction (3/120 bins > 0.05,
+worst 0.6572 at 17.870 GHz). All three bins are above 17 GHz, none inside
+the 5-15 GHz null band: the case characterizes this as a high-frequency
+residual on the coarser realized strip at the same dx = 200 um, not evidence
+of a physics regression in the stated null band. The pre-#516 84-bin excess
+was substantially extractor defects. The current ring-down settling witness
+reads -64.8/-64.8 dB (rule: < -40). Gate D
 locks that evidence chain (D0 fails closed on a leg lacking the
 witness/enforcement fields; D1 strict bound; D2 witness; D3-D5 correction
 footprint; D6 max column power).
@@ -189,13 +274,13 @@ pre-#516 leg additionally carried a V3-near-reflector advisory on p2 that
 pattern-matched p2's own feed trace; the current preflight no longer
 emits it on this geometry. The old KNOWN RESIDUAL — passband (0.5-3 GHz)
 fitted median Re(Z0) ~67 ohm — is GONE on the corrected extractor: the
-regenerated leg reads 50.3 ohm in the passband and 52.4 ohm in-band
+regenerated leg reads 51.9 ohm in the passband and 54.7 ohm in-band (5-15 GHz)
 (openEMS ~51 ohm). Gate A2's (40, 65) ohm sanity applies to the openEMS
 reference only.
 
 Consequence for the reader: the argmin null position and the
 passband/stopband STRUCTURE are the primary registered outputs; the
-regenerated leg's magnitudes carry no correction > 0.05, but the study
+regenerated leg carries 3/120 corrections > 0.05, all above 17 GHz; the study
 remains registered for its stopband-STRUCTURE characterization, not as
 an rfx magnitude-accuracy claim at dx=200um.
 
@@ -205,7 +290,7 @@ IS WITHDRAWN. The audit found that gate C1 judged a BIN-QUANTISED estimate
 against a declared 1.0 % window. This sweep is `linspace(0.5, 20.0, 120)` GHz
 = 163.866 MHz/bin = **2.081 %** at the 7.87 GHz zero, so the reported
 deviation could only ever be 0.000 % or >= 2.081 %: the 1.0 % threshold was
-UNEXERCISABLE in between. Measured blindness, reproduced on this checkout:
+UNEXERCISABLE in between. Historical pre-#931 blindness, measured on that leg:
 erasing the LOWER doublet member outright (dB-linear fill between the 6.3992
 and 7.8739 GHz anchor bins) leaves argmin 7.8739 GHz, depth -39.20 dB,
 passband mean 0.9378, max column power 0.9995 and the correction footprint
@@ -313,20 +398,46 @@ COMMITTED = dict(
     # History: the earlier num_periods=20 leg FAILED the settling witness
     # at -24.7/-24.3 dB and its argmin (7.2185 GHz) sat on a probe-
     # contamination dip, not a doublet member (PR #468).
-    rfx_null_ghz=7.8739,        # argmin |S21| over 5-15 GHz
+    # RE-PIN 2026-09-07 (#931 lattice ownership, VESSL run 369367259192).
+    # The three conductors are now SHEETS on the laminate face instead of
+    # one-cell PEC Boxes, so every in-plane extent lost one cell (feeds
+    # 2400 -> 2200 um, patch 20400 -> 20200 x 2600 -> 2400 um) and the
+    # 200 um metal slab is gone. That is a different board; every rfx-leg
+    # number below had to be re-measured, not translated. NO GATE WINDOW
+    # MOVES: null_tol_pct 1.0, doublet_tol_pct 0.50, corner_tol_pct 0.25,
+    # half_grid_witness_bins 1.0 and every D-gate tolerance are the
+    # pre-#931 ones. What moved, and by how much:
+    #   - argmin null      7.8739 -> 8.2017 GHz (+4.16 %)
+    #   - doublet          (6.943990, 7.925928) -> (7.233338, 8.244069) GHz
+    #                      (+4.17 % / +4.01 %); taken from the referee
+    #                      fixture, which gate C4b cross-checks
+    #   - -3 dB corner     5.5036 -> 5.7071 GHz (+3.70 %)
+    #   - passband mean    0.9378 -> 0.9471 (+0.99 %)
+    #   - settling witness (-70.17, -71.26) -> (-64.80, -64.78) dB
+    #   - max column power 0.9995 -> 0.9995 (unchanged)
+    # THE ONE THAT IS A FINDING, NOT A RE-PIN, AND IS REPORTED AS SUCH:
+    # the raw passivity excess got WORSE. Bins with correction > 0.05 went
+    # 0 -> 3 and the worst went 0.0145 @ 17.378 GHz -> 0.6572 @ 17.870 GHz,
+    # all three above 17 GHz and none inside the 5-15 GHz null band
+    # (rfx_corr_bins_in_null_band stays 0, gate D5 untouched). A narrower
+    # strip on the same dx = 200 um mesh is a coarser strip in cells, and
+    # the top of the 20 GHz band is where this mesh was already
+    # artifact-class. The quotability scope line the case prints says so;
+    # NO magnitude claim is made above 15 GHz and none is now allowed.
+    rfx_null_ghz=8.2017,        # argmin |S21| over 5-15 GHz
     oems_null_ghz=7.9831,
     null_tol_pct=1.0,           # regression tolerance on the locked numbers
     rfx_nbins=120,
     oems_nbins=801,
     # Evidence-chain locks (gate D): witness, strict bound, correction footprint
-    rfx_settling_db=(-70.17, -71.26),   # per driven run; rule is < -40
-    rfx_corr_bins_over_005=0,           # passivity_correction > 0.05
+    rfx_settling_db=(-64.80, -64.78),   # per driven run; rule is < -40
+    rfx_corr_bins_over_005=3,           # passivity_correction > 0.05
     rfx_corr_bins_in_null_band=0,       # of those, inside 5-15 GHz
-    rfx_worst_corr=0.0145,
-    rfx_worst_corr_ghz=17.378,
+    rfx_worst_corr=0.6572,
+    rfx_worst_corr_ghz=17.870,
     # S-data locks (falsifier coverage: a tampered s11/s21 array must go red
     # even where the argmin and the stored side-channel fields survive)
-    rfx_passband_mean_s21=0.9378,   # over the CLI passband window, linear
+    rfx_passband_mean_s21=0.9471,   # over the CLI passband window, linear
     rfx_max_column_power=0.9995,
     referee_sides_with="openems",
     # --- #812 P3 sub-bin estimator locks (see the docstring section
@@ -335,7 +446,7 @@ COMMITTED = dict(
     # committed referee producer's own output
     # (tests/fixtures/sheen_lpf_e4/sheen_lpf_palace_referee.json ->
     # referee.fdtd_doublet_ghz), and gate C4b checks this file against it.
-    doublet_ghz={"rfx": (6.943990, 7.925928),
+    doublet_ghz={"rfx": (7.233338, 8.244069),
                  "openEMS": (7.030670, 7.994749)},
     doublet_tol_pct=0.50,       # one dx=200um cell on the 20.320mm patch
                                 # transverse extent = 0.984%; the estimator
@@ -348,7 +459,7 @@ COMMITTED = dict(
                                 # this comment read "12% in |S21|"; 0.5 dB is
                                 # 12% in power and 5.9% in amplitude. Window
                                 # unchanged -- only the description was wrong.)
-    corner_ghz={"rfx": 5.5036, "openEMS": 5.5185},
+    corner_ghz={"rfx": 5.7071, "openEMS": 5.5185},
     corner_tol_pct=0.25,        # one-cell transverse error moves fc 0.49%
     half_grid_witness_bins=1.0,  # structural: a bin-quantised estimator scores
                                  # exactly 1.0000 here, so < 1.0 is unpassable
@@ -423,11 +534,246 @@ def _geom_banner():
 
 
 # ===========================================================================
+# Realized geometry (#931 lattice ownership) — read, never assumed
+# ===========================================================================
+def realized_metal(sim, dx) -> dict:
+    """What this build's metal actually is, from the ONE realization
+    function (``rfx.boundaries.pec.realized_pec_edge_masks``, #931 §1.7).
+
+    No solve. All three metal entries are SHEETS: a zero-thickness Box on
+    the substrate-top node plane, realized as the tangential Ex/Ey edges
+    BETWEEN neighbouring footprint nodes with the normal Ez left live.
+
+    A sheet IS its edge set, so n footprint node rows carry n-1 edges and
+    the realized extent is ``(n - 1) * dx``. The pre-#931 neighbour rule
+    zeroed one EXTRA edge past the hi rim of every footprint, which is why
+    this case used to read 2400 um for a 2413 um feed and 20400 x 2600 mm
+    for a 20320 x 2540 um patch: a CELL count of a NODE mask (#929 class).
+
+    Keys: ``plane_k``/``plane_z`` (the one sheet plane), ``sub_top_k`` (the
+    topmost dielectric node plane — it must BE the sheet plane), ``feed_w``
+    (the realized 50-ohm feed width, asserted equal on both feeds),
+    ``patch_trv``/``patch_prop``, per-sheet node spans, and ``report``, a
+    list of printable declared-vs-realized lines.
+    """
+    import numpy as _np
+    from rfx.boundaries.pec import realized_pec_edge_masks, realized_wall_planes
+    from rfx.geometry.rasterize_grid import coords_from_uniform_grid
+
+    grid = sim._build_grid()
+    sheets: list = []
+    wires: list = []
+    assembled = sim._assemble_materials(grid, pec_sheets=sheets, pec_wires=wires)
+    mats, pec_mask = assembled[0], assembled[3]
+    if pec_mask is None and not sheets and not wires:
+        raise RuntimeError("realized_metal: this build has no conductor at all")
+    edges = realized_pec_edge_masks(pec_mask, sheets=tuple(sheets),
+                                    wires=tuple(wires),
+                                    periodic=sim._periodic_flags())
+    gc = coords_from_uniform_grid(grid)
+    nodes = (_np.asarray(gc.x), _np.asarray(gc.y), _np.asarray(gc.z))
+    planes = realized_wall_planes(edges, 2)
+    if len(planes) != 1:
+        raise RuntimeError(
+            f"realized_metal: tangential walls at z planes {planes}; three "
+            "zero-thickness sheets on one plane must realize exactly one "
+            "(two planes is what a one-cell VOLUME trace realizes)")
+    k = int(planes[0])
+
+    # The topmost node plane whose cell below carries the substrate: the
+    # realized substrate top, which is where a foil sheet belongs.
+    eps = _np.asarray(mats.eps_r)
+    mid = (grid.shape[0] // 2, grid.shape[1] // 2)
+    col = eps[mid[0], mid[1], :]
+    sub_cells = _np.flatnonzero(_np.isclose(col, EPS_R, rtol=1e-6))
+    sub_top_k = int(sub_cells.max()) + 1 if sub_cells.size else -1
+
+    spans = []
+    for sp in sheets:
+        fp = _np.asarray(sp.footprint)
+        idx = _np.where(fp)
+        i0, i1 = int(idx[0].min()), int(idx[0].max())
+        j0, j1 = int(idx[1].min()), int(idx[1].max())
+        spans.append(dict(
+            i=(i0, i1), j=(j0, j1), n_rows=j1 - j0 + 1, n_cols=i1 - i0 + 1,
+            prop=float(nodes[0][i1] - nodes[0][i0]),
+            trv=float(nodes[1][j1] - nodes[1][j0])))
+    in_feed, patch, out_feed = spans
+
+    rep = [
+        f"sheet plane k={k}, z={nodes[2][k]*1e6:.1f} um "
+        f"(declared foil plane {H_SUB*1e6:.1f} um; realized substrate top "
+        f"k={sub_top_k}) — {len(sheets)} sheets, "
+        f"{0 if pec_mask is None else int(_np.asarray(pec_mask).sum())} "
+        "PEC volume cells",
+        f"in  feed width  declared {W_FEED*1e6:8.1f} -> realized "
+        f"{in_feed['trv']*1e6:8.1f} um ({in_feed['n_rows']} node rows)",
+        f"out feed width  declared {W_FEED*1e6:8.1f} -> realized "
+        f"{out_feed['trv']*1e6:8.1f} um ({out_feed['n_rows']} node rows)",
+        f"patch transverse declared {PATCH_TRV_LEN*1e6:8.1f} -> realized "
+        f"{patch['trv']*1e6:8.1f} um",
+        f"patch propagation declared {PATCH_LEN_PROP*1e6:8.1f} -> realized "
+        f"{patch['prop']*1e6:8.1f} um",
+    ]
+    return dict(
+        plane_k=k, plane_z=float(nodes[2][k]), sub_top_k=sub_top_k,
+        n_sheets=len(sheets),
+        n_volume_cells=0 if pec_mask is None else int(_np.asarray(pec_mask).sum()),
+        feed_w=float(in_feed["trv"]), feed_rows=in_feed["n_rows"],
+        in_feed=in_feed, patch=patch, out_feed=out_feed,
+        patch_trv=float(patch["trv"]), patch_prop=float(patch["prop"]),
+        report=rep,
+    )
+
+
+def assert_realized_metal(sim, dx) -> dict:
+    """MANDATORY build-time geometry check (#931). No FDTD step runs here.
+
+    cv15's ``assert_realized_stack`` is the model. What it catches:
+
+    1. all three metal entries realize as SHEETS on ONE node plane, and
+       that plane is the realized substrate top — a foil re-declared as a
+       volume realizes a 200 um slab with two walls, and a sheet on an
+       off-lattice interface can snap INSIDE the dielectric (§1.3);
+    2. no PEC volume cell exists — the same statement from the other side;
+    3. the two 50-ohm feeds realize the SAME width. They are the same
+       declared object; a mesh that realizes them one node row apart makes
+       a symmetric board asymmetric, and the two ports then sit on
+       different lines. (Measured while choosing the mesh: at dx=198.5 um
+       = H_SUB/4 they realize 12 and 13 rows — 2183.5 vs 2382.0 um,
+       HJ Z0 54.22 vs 51.19 ohm. At the committed dx=200 um both realize
+       12 rows. See the "#931" docstring section.);
+    It also MEASURES, and reports rather than asserts, how the MSL ports'
+    cross-section rows compare with the metal's own rows. That is the
+    declared-vs-realized port mismatch this case has carried since #722,
+    re-measured under the contract; see the "#931" docstring section for
+    why closing it from this script would put a known error into the
+    extractor's reference impedance.
+
+    Returns the measured dict (with ``report`` lines) for the caller.
+    """
+    from rfx.sources.msl_port import msl_cross_section_span, msl_port_from_entry
+
+    m = realized_metal(sim, dx)
+    problems = []
+    if m["n_sheets"] != 3:
+        problems.append(f"expected 3 PEC sheets, classified {m['n_sheets']}")
+    if m["n_volume_cells"]:
+        problems.append(
+            f"{m['n_volume_cells']} PEC VOLUME cell(s) realized; every metal "
+            "entry must be a zero-thickness sheet")
+    if m["plane_k"] != m["sub_top_k"]:
+        problems.append(
+            f"the sheet plane is k={m['plane_k']} but the realized substrate "
+            f"top is k={m['sub_top_k']}: the foil is not on the laminate face")
+    if m["in_feed"]["n_rows"] != m["out_feed"]["n_rows"]:
+        problems.append(
+            f"the two 50-ohm feeds realize {m['in_feed']['n_rows']} and "
+            f"{m['out_feed']['n_rows']} node rows "
+            f"({m['in_feed']['trv']*1e6:.1f} vs {m['out_feed']['trv']*1e6:.1f} "
+            "um): this mesh makes a symmetric board asymmetric")
+    if problems:
+        raise RuntimeError(
+            "assert_realized_metal: the realized board is not the declared "
+            "one — refusing to solve. " + "; ".join(problems)
+            + f" [measured: {m['report']}]")
+
+    grid = sim._build_grid()
+    port_rows = []
+    for pe in sim._msl_ports:
+        span = msl_cross_section_span(grid, msl_port_from_entry(pe))
+        port_rows.append((span["w_lo"], span["w_hi"]))
+    m["port_rows"] = port_rows
+    for (w_lo, w_hi), feed, nm in zip(port_rows,
+                                      (m["in_feed"], m["out_feed"]),
+                                      ("p1", "p2")):
+        n_port = w_hi - w_lo + 1
+        same = (w_lo, w_hi) == tuple(feed["j"])
+        m["report"].append(
+            f"MSL port {nm} cross-section rows {(w_lo, w_hi)} ({n_port}) vs "
+            f"its feed metal's {tuple(feed['j'])} ({feed['n_rows']}) — "
+            + ("same rows" if same else
+               "OPEN DEFECT (#931 §1.9 / #729): the port rounds each face to "
+               "the nearest node while the sheet footprint is closed "
+               "[lo, hi], so the port integrates a row that carries no "
+               "metal"))
+    return m
+
+
+# ===========================================================================
 # rfx side
 # ===========================================================================
-def run_rfx(dx, num_periods, n_freqs):
+def build_rfx_sim(dx):
+    """The rfx-side board and its two MSL ports. No solve.
+
+    Separated from :func:`run_rfx` for #931 so the build-time geometry gate
+    (:func:`assert_realized_metal`) can be exercised by a test against THIS
+    builder rather than a test-local mirror of it — the mirror is how cv15's
+    equivalent check went green while the fix it tested had been deleted
+    (see tests/crossval/test_crossval_cv15_wall_planes.py's docstring).
+    """
     from rfx import Simulation, Box
     from rfx.boundaries.spec import Boundary, BoundarySpec
+
+    sim = Simulation(
+        freq_max=F_MAX, domain=(LX, LY, LZ), dx=dx, cpml_layers=8,
+        boundary=BoundarySpec(x="cpml", y="cpml",
+                              z=Boundary(lo="pec", hi="cpml")),
+    )
+    sim.add_material("duroid", eps_r=EPS_R)
+    sim.add(Box((0, 0, 0), (LX, LY, H_SUB)), material="duroid")
+
+    # metal: input feed (full x 0 -> PATCH_X0), patch, output feed (PATCH_X1 -> LX)
+    #
+    # SHEETS, not one-cell volumes (#931 §1.3/§1.5). The z corners are EQUAL,
+    # which is how the lattice ownership contract spells "a conductor on this
+    # node plane, zero thickness". Drawn as `H_SUB -> H_SUB + dx` (what this
+    # script shipped before #931) each is a VOLUME and realizes a 200 um
+    # filled metal slab with electric walls at BOTH z = 800 and z = 1000 um
+    # and Ez shorted between them — a quarter of the substrate thickness of
+    # metal on a board whose openEMS comparator leg draws the identical
+    # metal with zero thickness (`pec.AddBox([...H_SUB], [...H_SUB])` below).
+    # That comparator leg is what settles the intent: (S), not (V).
+    tz = H_SUB
+    sim.add(Box((0.0, IN_FEED_YC - W_FEED / 2, tz),
+                (PATCH_X0, IN_FEED_YC + W_FEED / 2, tz)), material="pec")
+    sim.add(Box((PATCH_X0, PATCH_Y_LO, tz),
+                (PATCH_X1, PATCH_Y_HI, tz)), material="pec")
+    sim.add(Box((PATCH_X1, OUT_FEED_YC - W_FEED / 2, tz),
+                (LX, OUT_FEED_YC + W_FEED / 2, tz)), material="pec")
+
+    # n_probe_offset=30: the default (20 cells) leaves the probes inside the
+    # feed near-field — measured on this geometry it inflates the 16-20 GHz
+    # column power 1.81 -> 8.75 and drags the argmin null onto a spurious dip
+    # (7.22 GHz instead of the ~7.9 GHz doublet member; PR #468) — while 40
+    # overshoots into the lambda_g/4 clearance of the downstream patch
+    # discontinuity (preflight-warned, in-band median Re(Z0) 57 vs 50 ohm).
+    # 30 satisfies BOTH constraints: 6 mm >= 5*h_sub upstream, V3 clearance
+    # 3.2 mm >= lambda_g/4 downstream; argmin identical at 30 vs 40.
+    # width/height stay DECLARED, and that is a decision with a measurement
+    # behind it — see "#931 ... THE PORT MISMATCH IS RE-MEASURED, NOT CLOSED"
+    # in the docstring. In one sentence: `width` sets BOTH the cross-section
+    # rows and the Hammerstad-Jensen reference impedance the wave split uses
+    # (a = (V + Z0*I)/2), and the two want different numbers — the contract's
+    # geometric realized extent (2200 um) fixes the rows but puts the
+    # reference at HJ = 54.22 ohm on a line currently measured at 51.91 ohm
+    # (pre-#931: 50.30 ohm; the old 4-ohm rationale is historical).
+    sim.add_msl_port(position=(PORT_MARGIN, IN_FEED_YC, 0.0),
+                     width=W_FEED, height=H_SUB, direction="+x",
+                     impedance=50.0, eps_r_sub=EPS_R, name="p1",
+                     n_probe_offset=30)
+    sim.add_msl_port(position=(LX - PORT_MARGIN, OUT_FEED_YC, 0.0),
+                     width=W_FEED, height=H_SUB, direction="-x",
+                     impedance=50.0, eps_r_sub=EPS_R, name="p2",
+                     n_probe_offset=30)
+
+    # Build-time geometry gate (#931), BEFORE any time stepping: the realized
+    # metal must be the declared metal. It also prints the port-vs-metal row
+    # comparison, which is reported rather than asserted (see the docstring).
+    return sim
+
+
+def run_rfx(dx, num_periods, n_freqs):
     import io
     import contextlib
 
@@ -439,39 +785,13 @@ def run_rfx(dx, num_periods, n_freqs):
     print(f"  mesh: dx={dx*1e6:.1f} um  -> substrate = {n_sub} cells  "
           f"(coarse; >=4 is the documented MSL minimum)")
 
-    sim = Simulation(
-        freq_max=F_MAX, domain=(LX, LY, LZ), dx=dx, cpml_layers=8,
-        boundary=BoundarySpec(x="cpml", y="cpml",
-                              z=Boundary(lo="pec", hi="cpml")),
-    )
-    sim.add_material("duroid", eps_r=EPS_R)
-    sim.add(Box((0, 0, 0), (LX, LY, H_SUB)), material="duroid")
+    sim = build_rfx_sim(dx)
 
-    # metal: input feed (full x 0 -> PATCH_X0), patch, output feed (PATCH_X1 -> LX)
-    tz0, tz1 = H_SUB, H_SUB + dx
-    sim.add(Box((0.0, IN_FEED_YC - W_FEED / 2, tz0),
-                (PATCH_X0, IN_FEED_YC + W_FEED / 2, tz1)), material="pec")
-    sim.add(Box((PATCH_X0, PATCH_Y_LO, tz0),
-                (PATCH_X1, PATCH_Y_HI, tz1)), material="pec")
-    sim.add(Box((PATCH_X1, OUT_FEED_YC - W_FEED / 2, tz0),
-                (LX, OUT_FEED_YC + W_FEED / 2, tz1)), material="pec")
-
-    # n_probe_offset=30: the default (20 cells) leaves the probes inside the
-    # feed near-field — measured on this geometry it inflates the 16-20 GHz
-    # column power 1.81 -> 8.75 and drags the argmin null onto a spurious dip
-    # (7.22 GHz instead of the ~7.9 GHz doublet member; PR #468) — while 40
-    # overshoots into the lambda_g/4 clearance of the downstream patch
-    # discontinuity (preflight-warned, in-band median Re(Z0) 57 vs 50 ohm).
-    # 30 satisfies BOTH constraints: 6 mm >= 5*h_sub upstream, V3 clearance
-    # 3.2 mm >= lambda_g/4 downstream; argmin identical at 30 vs 40.
-    sim.add_msl_port(position=(PORT_MARGIN, IN_FEED_YC, 0.0),
-                     width=W_FEED, height=H_SUB, direction="+x",
-                     impedance=50.0, eps_r_sub=EPS_R, name="p1",
-                     n_probe_offset=30)
-    sim.add_msl_port(position=(LX - PORT_MARGIN, OUT_FEED_YC, 0.0),
-                     width=W_FEED, height=H_SUB, direction="-x",
-                     impedance=50.0, eps_r_sub=EPS_R, name="p2",
-                     n_probe_offset=30)
+    stack = assert_realized_metal(sim, dx)
+    print("\n--- realized metal (#931, no solve) ---")
+    for line in stack["report"]:
+        print(f"  {line}")
+    print("--- end realized metal ---\n")
 
     print("\n--- rfx preflight (verbatim) ---")
     buf = io.StringIO()
@@ -638,9 +958,122 @@ def _openems_common_setup(f_max):
     return FDTD, CSX
 
 
+# ---------------------------------------------------------------------------
+# Reproduce-gate record -- audit artifact (docs/agent-memory/task_recipes/
+# external_solver_comparator.md step 2). Committed UNRUN; a VESSL run fills
+# these fields AND must supply a log path under a git-TRACKED prefix (same
+# PR #548 lesson validation/crossval/20_msl_phase_referee.py and
+# validation/crossval/21_coax_two_port_referee.py already paid for -- .omx/
+# and docs/research_notes/vessl_logs/ are both gitignored and therefore
+# unreadable by any reviewer outside the machine that ran the job).
+# ---------------------------------------------------------------------------
+_TUT_C0 = 2.998e8  # m/s -- matches the coax/notch precedent's own constant
+# (20_msl_phase_referee.py's _C0), deliberately NOT this module's own C0
+# (2.99792458e8) -- kept separate so this cross-check stays bit-comparable
+# to cv20's independent recomputation, not to this case's own Sheen-board
+# physics.
+
+# Tutorial geometry (RO4350B) -- the SAME openEMS MSL_NotchFilter.py
+# tutorial validation/crossval/20_msl_phase_referee.py's own Stage A
+# already reproduces (identical declared geometry: run_openems_tutorial()'s
+# own MSL_length/MSL_width/sub_t/sub_epr/stub below). Recomputed
+# independently here (not copy-pasted) as a regression lock on THIS
+# script's own reproduce-gate oracle -- issue #971.
+_TUT_STUB_LEN_M = 12e-3
+_TUT_W_TRACE_M = 600e-6
+_TUT_H_SUB_M = 254e-6
+_TUT_EPS_R = 3.66
+_TUT_U = _TUT_W_TRACE_M / _TUT_H_SUB_M
+_TUT_EPS_EFF = (_TUT_EPS_R + 1.0) / 2.0 + (_TUT_EPS_R - 1.0) / 2.0 * (1.0 + 12.0 / _TUT_U) ** -0.5
+# NAMED for the quantity it is: the tutorial's DECLARED geometry (600um
+# trace over 254um substrate) -- NOT validation/crossval/
+# 06b_msl_notch_filter_uniform.py's F_NOTCH_AN (~3.678954 GHz, eps_eff
+# 2.882252). That is a DIFFERENT quantity: cv06b's own as-built rfx
+# board's LATTICE-REALIZED electrical trace width (635um, its own
+# n_rows*DX convention, issue #723), not this tutorial's declared one.
+# Both compute Hammerstad-Jensen eps_eff on "the same substrate/trace/
+# stub" in prose, but they are not interchangeable -- confirmed by direct
+# re-derivation 2026-09-10: 3.678954 GHz (cv06b, realized 635um) vs
+# 3.687193 GHz (this constant, same value as cv20's F_NOTCH_AN_HZ,
+# declared 600um), -0.223%, both computing correctly, just not the same
+# input. Do not substitute cv06b's constant for this one, or vice versa.
+F_NOTCH_TUTORIAL_DECLARED_HZ = _TUT_C0 / (4.0 * _TUT_STUB_LEN_M * np.sqrt(_TUT_EPS_EFF))
+
+REPRODUCE_GATE_RECORD: dict = {
+    "stage": "tutorial-reproduce",
+    "tutorial": {
+        "repo": "thliebig/openEMS",
+        "path": "python/Tutorials/MSL_NotchFilter.py",
+        "verified_present_on": "2026-08-04",
+        "verified_via": "gh api repos/thliebig/openEMS/contents/python/Tutorials/MSL_NotchFilter.py",
+        "submodule_pin_note": (
+            "Same tutorial validation/crossval/20_msl_phase_referee.py's "
+            "Stage A already reproduces (that record's own tutorial "
+            "sub-record carries the same verification). AddMSLPort is a "
+            "long-standing openEMS primitive; no submodule-pin caveat "
+            "applies."
+        ),
+    },
+    "do_not_repeat": (
+        "07_sheen_lpf.py's own run_openems_tutorial(), pre-#971: the "
+        "docstring and its print both claimed 'known-good ... S21 notch "
+        "~3.43 GHz (repo fixture: openEMS 3.4286 GHz)' -- that number was "
+        "never this function's own measurement, it was cv06b's realized-"
+        "board reading, later shown to be an outlier by an independent "
+        "Palace-FEM referee (scripts/diagnostics/palace_notch_referee/). "
+        "Do not cite a sibling case's number as this function's own "
+        "known-good without running THIS function and checking the "
+        "result against F_NOTCH_TUTORIAL_DECLARED_HZ."
+    ),
+    "geometry": (
+        "open-stub microstrip notch filter, RO4350B eps_r=3.66, "
+        "h_sub=254um, MSL_width=600um, MSL_length=50mm (each side of "
+        "centre), stub_length=12mm, f_max=7GHz, boundary "
+        "['PML_8','PML_8','MUR','MUR','PEC','MUR'] -- identical to "
+        "validation/crossval/20_msl_phase_referee.py's Stage A geometry "
+        "(same tutorial, ported independently here)."
+    ),
+    "documented_check": (
+        "Quarter-wave open-stub notch: F_NOTCH = c0/(4*stub_len*"
+        "sqrt(eps_eff_HJ)), the SAME closed form validation/crossval/"
+        "06b_msl_notch_filter_uniform.py and validation/crossval/"
+        "20_msl_phase_referee.py both use, independently recomputed here "
+        "as F_NOTCH_TUTORIAL_DECLARED_HZ on the tutorial's OWN declared "
+        "geometry (NOT cv06b's realized-board convention -- see the "
+        "constant's own comment above)."
+    ),
+    "expected_f_notch_tutorial_declared_hz": float(F_NOTCH_TUTORIAL_DECLARED_HZ),
+    "gate": {
+        # Same one-sided-low-biased band validation/crossval/
+        # 20_msl_phase_referee.py's Stage A uses, same rationale
+        # (docs/agent-memory/rfx-known-issues.md: openEMS reading ~7% low
+        # on a different line-length/domain combination of this same
+        # substrate/trace/stub). This is a physical argument about
+        # openEMS's behavior on this substrate family, not about cv20's
+        # specific run, so reusing the band is not reusing cv20's RUN --
+        # this case still needs its own reproduction (see do_not_repeat
+        # and status below).
+        "f_notch_lo_hz": 0.80 * float(F_NOTCH_TUTORIAL_DECLARED_HZ),
+        "f_notch_hi_hz": 1.05 * float(F_NOTCH_TUTORIAL_DECLARED_HZ),
+    },
+    "status": "UNRUN",
+    "reproduced_f_notch_hz": None,
+    "reproduced_f_notch_dev_pct": None,
+    "log_path": None,
+    "vessl_run_id": None,
+    "verified_on": None,
+}
+
+
 def run_openems_tutorial():
-    """Comparator-first: canonical openEMS MSL_NotchFilter tutorial.
-    Known-good: Z0 ~ 50 ohm, S21 notch ~3.43 GHz (repo fixture: openEMS 3.4286 GHz)."""
+    """Comparator-first reproduce-gate: canonical openEMS MSL_NotchFilter
+    tutorial (see REPRODUCE_GATE_RECORD above for the full citation).
+    Known-good: Re(Z0) ~= 50 ohm; S21 notch ~= F_NOTCH_TUTORIAL_DECLARED_HZ.
+    Issue #971: the previous docstring/print here said 'known-good ...
+    S21 notch ~3.43 GHz (repo fixture: openEMS 3.4286 GHz)' -- that number
+    was never this function's own measurement (it was cv06b's realized-
+    board reading, since shown to be an outlier by an independent Palace
+    FEM referee); see REPRODUCE_GATE_RECORD['do_not_repeat']."""
     import os
     import tempfile
     FDTD, CSX = _openems_common_setup(7e9)
@@ -687,22 +1120,82 @@ def run_openems_tutorial():
     s21 = port[1].uf_ref / port[0].uf_inc
     band = (f > 1e9) & (f < 3e9)
     s21db = 20 * np.log10(np.abs(s21) + 1e-30)
-    i = int(np.argmin(s21db))
+    # Restrict the notch search to a window around the analytic estimate --
+    # same technique validation/crossval/20_msl_phase_referee.py's Stage A
+    # uses, same reason: an unrestricted argmin over the full 1MHz-7GHz
+    # sweep can lock onto a different minimum than the quarter-wave notch
+    # this function is actually checking. (Issue #971's wrong "3.4286 GHz"
+    # citation was never this function's own measurement at all -- see
+    # REPRODUCE_GATE_RECORD['do_not_repeat'] -- so this restriction is
+    # precautionary, not a fix to a demonstrated argmin defect.)
+    search_lo = 0.5 * F_NOTCH_TUTORIAL_DECLARED_HZ
+    search_hi = 1.5 * F_NOTCH_TUTORIAL_DECLARED_HZ
+    search_mask = (f >= search_lo) & (f <= search_hi)
+    if not np.any(search_mask):
+        search_mask = np.ones_like(f, dtype=bool)
+    i_local = int(np.argmin(s21db[search_mask]))
+    i = int(np.flatnonzero(search_mask)[i_local])
+    f_notch = float(f[i])
+    dev_pct = (abs(f_notch - F_NOTCH_TUTORIAL_DECLARED_HZ)
+               / F_NOTCH_TUTORIAL_DECLARED_HZ * 100.0)
+    gate = REPRODUCE_GATE_RECORD["gate"]
+    f_notch_ok = bool(gate["f_notch_lo_hz"] <= f_notch <= gate["f_notch_hi_hz"])
     print("=" * 72)
     print("COMPARATOR-FIRST: openEMS canonical tutorial (MSL_NotchFilter.py)")
     print("=" * 72)
     print(f"  Re(Z0) median 1-3 GHz = {np.median(z0[band]):.2f} ohm   "
           f"(known-good ~50 ohm)")
-    print(f"  S21 notch = {f[i] / 1e9:.4f} GHz @ {s21db[i]:.1f} dB   "
-          f"(repo fixture openEMS: 3.4286 GHz)")
+    print(f"  S21 notch = {f_notch / 1e9:.4f} GHz @ {s21db[i]:.1f} dB   "
+          f"expected={F_NOTCH_TUTORIAL_DECLARED_HZ / 1e9:.4f} GHz "
+          f"dev={dev_pct:.2f}%")
+    print(f"  gate band {gate['f_notch_lo_hz'] / 1e9:.4f}-"
+          f"{gate['f_notch_hi_hz'] / 1e9:.4f} GHz -- reproduce-gate: "
+          f"{'PASS' if f_notch_ok else 'FAIL'}")
     esum = np.abs(s11) ** 2 + np.abs(s21) ** 2
     print(f"  max |S11|^2+|S21|^2 = {np.max(esum):.4f} (passivity)")
+    return {
+        "f_notch_hz": f_notch,
+        "f_notch_expected_hz": float(F_NOTCH_TUTORIAL_DECLARED_HZ),
+        "f_notch_dev_pct": dev_pct,
+        "f_notch_ok": f_notch_ok,
+        "re_z0_median_1_3ghz_ohm": float(np.median(z0[band])),
+        "max_passivity": float(np.max(esum)),
+    }
 
 
 def run_openems(f_max):
     import os
     import tempfile
     import time
+    # Reproduce-gate refusal (docs/agent-memory/task_recipes/
+    # external_solver_comparator.md step 2, same gating cv20/cv21 apply
+    # before touching their own target geometry): refuse to build/solve
+    # the Sheen board's own openEMS comparator leg until
+    # run_openems_tutorial()'s reproduction has been checked and the
+    # committed record says so.
+    #
+    # BLIND SPOT, documented rather than hidden: this check fires only
+    # when someone regenerates THIS leg by hand or on VESSL. compare()
+    # -- the CI-gated path every crossval run actually takes -- reads the
+    # already-committed _07_sheen_results/openems.json and never calls
+    # this function, so it cannot re-verify the gate on every run; the
+    # guarantee is only as good as the discipline of whoever last
+    # regenerated this leg. This is a "once, not per run" gate, unlike
+    # cv20's (Stage A reruns inside the same script invocation as Stage B
+    # every time, because both stages are VESSL-only and CI never runs
+    # either).
+    if REPRODUCE_GATE_RECORD["status"] != "RUN":
+        print("!" * 72, file=sys.stderr)
+        print("!! REFUSING to build the openEMS comparator leg: "
+              f"REPRODUCE_GATE_RECORD['status'] is "
+              f"{REPRODUCE_GATE_RECORD['status']!r}, not 'RUN'.",
+              file=sys.stderr)
+        print("!!   run_openems_tutorial() (mode=tutorial) has not been "
+              "run and its result recorded in REPRODUCE_GATE_RECORD -- see "
+              "docs/agent-memory/task_recipes/external_solver_comparator.md "
+              "and issue #971.", file=sys.stderr)
+        print("!" * 72, file=sys.stderr)
+        raise SystemExit(3)
     FDTD, CSX = _openems_common_setup(f_max)
     print("=" * 72)
     print("openEMS side")
@@ -771,6 +1264,7 @@ def run_openems(f_max):
         freqs_hz=f.tolist(),
         s11_mag=np.abs(s11).tolist(), s21_mag=np.abs(s21).tolist(),
         re_z0=z0.tolist(), energy_sum=esum.tolist(),
+        reproduce_gate_record=REPRODUCE_GATE_RECORD,
     )
     with open(os.path.join(RES_DIR, "openems.json"), "w") as fp:
         json.dump(out, fp, indent=2)
@@ -839,8 +1333,72 @@ def _column_power(d):
     return np.array(d["s11_mag"]) ** 2 + np.array(d["s21_mag"]) ** 2
 
 
+def _refuse_unless_reproduce_gate_passed(openems_leg: dict) -> None:
+    """Reproduce-gate refusal, CONSUME side (docs/agent-memory/task_recipes/
+    external_solver_comparator.md step 2; team-lead ruling 2026-09-10):
+    compare() must not evaluate cv07's own gates against an openEMS leg
+    whose comparator-first sanity was never checked. run_openems() (see
+    its own refusal + comment, above) is the PRODUCE side -- refuses to
+    *generate* a leg while REPRODUCE_GATE_RECORD['status'] != 'RUN'. This
+    function is the other half: refuses to *consume* one. Neither
+    substitutes for the other -- a leg produced before this gate existed,
+    or hand-copied in from elsewhere, is only caught here.
+
+    The record is read from the LEG ITSELF (``openems_leg.get(
+    "reproduce_gate_record")``), not this module's live
+    REPRODUCE_GATE_RECORD -- what matters is whether the LEG BEING
+    CONSUMED was produced under a passing gate, not what the current
+    module state happens to say.
+
+    BLIND SPOT, still real and still written down: the record is
+    verified ONCE, when the leg was produced, not per compare() run -- an
+    openEMS version change or a rebuilt image between that run and this
+    compare() invocation is not noticed here.
+
+    Exit 2 (inconclusive), matching _load_legs()'s own convention for a
+    reference leg that cannot yet support a PASS -- this is not a physics
+    gate failure.
+    """
+    record = openems_leg.get("reproduce_gate_record")
+    if record is None:
+        print("!" * 72)
+        print("!! CROSSVAL 07 SKIPPED -- the committed openEMS leg carries "
+              "no reproduce_gate_record.")
+        print("!!   It predates this gate (issue #971) or was produced by "
+              "a script version that did not embed one. Regenerate it: "
+              "run_openems_tutorial() (mode=tutorial) must pass and "
+              "REPRODUCE_GATE_RECORD must be filled to status='RUN' "
+              "before `python 07_sheen_lpf.py openems` will build a new "
+              "leg. Exiting 2 (inconclusive).")
+        print("!" * 72)
+        raise SystemExit(2)
+    if record.get("status") != "RUN":
+        print("!" * 72)
+        print(f"!! CROSSVAL 07 SKIPPED -- the committed openEMS leg's "
+              f"reproduce_gate_record status is {record.get('status')!r}, "
+              f"not 'RUN'. Exiting 2 (inconclusive).")
+        print("!" * 72)
+        raise SystemExit(2)
+    gate = record.get("gate") or {}
+    f_notch = record.get("reproduced_f_notch_hz")
+    lo, hi = gate.get("f_notch_lo_hz"), gate.get("f_notch_hi_hz")
+    ok = f_notch is not None and lo is not None and hi is not None and lo <= f_notch <= hi
+    if not ok:
+        print("!" * 72)
+        print(f"!! CROSSVAL 07 SKIPPED -- the committed leg's "
+              f"reproduce_gate_record claims status='RUN' but its own "
+              f"reproduced_f_notch_hz ({f_notch}) does not satisfy its own "
+              f"gate band [{lo}, {hi}]. Exiting 2 (inconclusive).")
+        print("!" * 72)
+        raise SystemExit(2)
+    print(f"  reproduce-gate (embedded in the openEMS leg): PASS "
+          f"({f_notch / 1e9:.4f} GHz vs gate {lo / 1e9:.4f}-"
+          f"{hi / 1e9:.4f} GHz)")
+
+
 def compare(null_lo, null_hi, pass_lo, pass_hi, paper_null_ghz):
     R, O = _load_legs()
+    _refuse_unless_reproduce_gate_passed(O)
     fr, s21r = np.array(R["freqs_hz"]), np.array(R["s21_mag"])
     fo, s21o = np.array(O["freqs_hz"]), np.array(O["s21_mag"])
     s11r, s11o = np.array(R["s11_mag"]), np.array(O["s11_mag"])
@@ -1148,7 +1706,8 @@ def _gates(R, O, fr, fnull_r, fnull_o, pm_o, oems_null_db, null_lo, null_hi,
     print("Scope: stopband STRUCTURE characterization only. This case makes NO "
           "rfx accuracy claim.\nQuoted |S| is passivity-enforced (strict <= 1); "
           "any bin with passivity_correction > 0.05\n(footprint locked by gates "
-          "D3-D5; 0 bins on the 2026-08-09 corrected-extractor leg) is\n"
+          "D3-D5; 3 bins on the post-#931 sheet leg, all above 17 GHz,\n"
+          "0 inside the 5-15 GHz null band) is\n"
           "artifact-class for magnitude claims at dx=200um.")
     return ok
 

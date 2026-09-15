@@ -76,8 +76,17 @@ def test_csg_box_mask_on_coords_traceable_with_traced_coords():
 
 
 def test_csg_box_mask_on_coords_forward_bit_identical():
-    """The traceable rewrite is byte-identical to a direct volume mask
-    on concrete coordinates (the non-thin-sheet case).
+    """The traceable rewrite is byte-identical to a direct NODE mask on
+    concrete coordinates.
+
+    ``Box.mask_on_coords`` is the DIELECTRIC sampler — node coordinates,
+    half-open ``[lo, hi)`` — and #931 §1.8 leaves it exactly as it is, so
+    the reference below is unchanged by the lattice ownership contract.
+    What changed is who reads it: a PEC entry no longer goes through this
+    mask at all. It is centre-sampled by ``classify_pec_entry`` and
+    realized by ``realized_pec_edge_masks``, and the sibling test below
+    pins that the two samplers are different on purpose rather than one
+    having been left behind.
 
     Re-pinned at #802: concrete coordinates are compared on the HOST in
     float64, so the reference here widens the float32 linspace values to
@@ -100,6 +109,40 @@ def test_csg_box_mask_on_coords_forward_bit_identical():
         (yh >= 0.0) & (yh < 0.01))[None, :, None] & (
         (zh >= 0.0) & (zh < 0.01))[None, None, :]
     np.testing.assert_array_equal(m, expected)
+
+
+def test_the_pec_sampler_is_not_the_dielectric_sampler():
+    """#931 §1.1/§1.8, on ONE Box: the dielectric node sampler drops the
+    ``hi`` face, the PEC volume sampler is centre-based and the realized
+    walls land on BOTH drawn faces.
+
+    A single-file guard that a future "unify the samplers" edit has to
+    argue with, since half of this repo's #802/#807 history is the two
+    conventions being confused for each other.
+    """
+    from rfx.boundaries.pec import realized_pec_edge_masks, realized_wall_planes
+    from rfx.geometry.rasterize_grid import (
+        GridCoords, cell_centres_from_nodes, classify_pec_entry,
+    )
+
+    dx = 1e-3
+    axis = np.arange(11, dtype=np.float64) * dx      # nodes 0 .. 10 mm
+    co = GridCoords(x=axis, y=axis, z=axis, shape=(11, 11, 11))
+    box = Box((0.002, 0.002, 0.002), (0.006, 0.006, 0.006))
+
+    node = np.asarray(box.mask_on_coords(axis, axis, axis))
+    assert np.where(node.any(axis=(1, 2)))[0].tolist() == [2, 3, 4, 5]
+
+    cells, sheet, wire = classify_pec_entry(
+        box, co, cell_centres_from_nodes(co), name="body")
+    assert sheet is None and wire is None
+    cells_np = np.asarray(cells)
+    assert np.where(cells_np.any(axis=(1, 2)))[0].tolist() == [2, 3, 4, 5]
+
+    edges = realized_pec_edge_masks(cells)
+    for a in range(3):
+        assert realized_wall_planes(edges, a) == [2, 3, 4, 5, 6], (
+            "walls must sit on BOTH drawn faces, 2 mm and 6 mm")
 
 
 def test_probes_update_sparam_probe_traceable_with_traced_step():

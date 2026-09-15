@@ -9,6 +9,33 @@ frequency resolution), we measure the field pattern error at a specific
 time after many cycles. The analytical TM010 mode has a known spatial
 pattern (J_0 profile), so we compare the simulated radial profile to
 the analytical one.
+
+LATTICE OWNERSHIP CONTRACT (#931) — WHY THIS MODULE IS NOT SAFE TO ASSUME
+UNCHANGED. The staircase leg builds ``pec_mask = cyl.mask(grid)`` and calls
+``apply_pec_mask`` per step. That function is now the VOLUME rule (§1.2):
+every E edge incident to an occupied cell is zeroed, where the pre-#931
+rule zeroed a component only where the cell's neighbour ALONG that
+component's own axis was occupied. So the staircase cylinder gains its
+outer face and its interior normal edges, both of which sit inside the
+``|R - radius| < 1.5*dx`` ring this module integrates ``Ez^2`` over.
+
+Two things must be re-measured, and PRE-DECLARED here before the run
+(this module is ``pytest.mark.gpu``, so the run is on the GPU lane —
+RECOMPUTE.md names it):
+
+1. the staircase ``boundary_error`` should FALL (a fully shorted body
+   leaks less tangential E into the ring than one whose far face was
+   live), so the 1.2x conformal-over-staircase margin may shrink;
+2. if BOTH legs collapse toward zero the ring observable has stopped
+   discriminating and the comparison needs a different observable —
+   not a widened margin. That outcome is a redesign, not a re-tune.
+
+The conformal leg goes through ``apply_conformal_pec`` and its own
+interior selection, which §1.8 leaves alone; but the waveguide lane's
+conformal path now applies the realized PEC edges AND Dey-Mittra where it
+used to apply a sigma fold, so "conformal unchanged" is not literally true
+either (design note §6). No test in the tree pins a curved conformal body,
+which is why this one is worth re-running rather than assuming.
 """
 
 import numpy as np

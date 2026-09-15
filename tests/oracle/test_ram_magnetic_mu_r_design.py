@@ -27,6 +27,21 @@ Measured (CPU, f0=8 GHz, dx=0.5 mm, eps'=4, sigma=1.4, mu_r=2, ~9-cell layer, on
 PEC): channel live (18.7% output change mu 1->2); d|Gamma|/dmu_r AD==FD 0.0%; AD vs
 analytic magnetic-TMM gradient sign-match, ratio 0.65-0.78; |Gamma|(f) vs TMM band
 mean 3.2%; lossless mean|Gamma|~1.02.
+
+LATTICE OWNERSHIP CONTRACT (#931). The PEC backing here is a cell mask built
+by index (``m[xb:xpec] = True``) and handed to ``forward(pec_mask_override=)``,
+which stays a VOLUME override (design note §1.8). Under §1.2 that slab now
+realizes tangential walls on BOTH bounding node planes and shorts the normal
+edges between them, where the old rule gave one wall per masked cell plane.
+
+The analytic TMM oracle puts its short (``z_load = 0``) at ``X_BACK``, the
+LEADING face at index ``xb`` — the face the incident wave meets — and that face
+does not move. So the envelope is expected to be unchanged, and the expectation
+is checked by running the module rather than argued: VESSL run 369367259193
+(``rfx-931-post-ram-backings``), recorded in
+``docs/design_notes/931_migration/T6-RECOMPUTE.md``. If the |Gamma| envelope or
+either AD-vs-FD leg moves, the far face at ``xpec`` is what moved it and this
+row becomes a re-measure.
 """
 from __future__ import annotations
 
@@ -233,6 +248,7 @@ def test_mu_r_gradient_ad_vs_fd(mag_run):
 
 
 @pytest.mark.slow
+@pytest.mark.highmem
 def test_mu_r_gradient_vs_analytic_tmm(mag_run):
     """PHYSICAL gradient check: FDTD jax.grad vs the INDEPENDENT analytic magnetic-
     TMM gradient (closed-form derivative, not the FDTD's own FD). Sign + order;
@@ -288,12 +304,18 @@ def test_magnetic_lossless_energy_conservation(mag_run):
 
 
 @pytest.mark.slow
-def test_mu_r_override_fenced_on_nonuniform():
+@pytest.mark.parametrize("axis,n_cells", [("x", 40), ("y", 12), ("z", 4)])
+@pytest.mark.parametrize("graded", [False, True], ids=["equal-cells", "graded"])
+def test_mu_r_override_fenced_on_nonuniform(axis, n_cells, graded):
     """mu_r_override must fail loud on a non-uniform mesh (it is wired only on the
     uniform lane) rather than being silently dropped to a zero-gradient no-op."""
+    profile = np.full(n_cells, 0.5e-3)
+    if graded:
+        profile[1], profile[-2] = 0.4e-3, 0.6e-3
     sim = Simulation(freq_max=16e9, domain=(0.02, 0.006, 0.002), dx=0.5e-3,
-                     dz_profile=np.full(4, 0.5e-3), boundary="cpml", cpml_layers=6, mode="3d")
+                     **{f"d{axis}_profile": profile},
+                     boundary="cpml", cpml_layers=6, mode="3d")
     sim.add_probe((0.01, 0.003, 0.0005), component="ez")
-    shape = sim._build_grid().shape
+    shape = sim._build_realized_grid().shape
     with pytest.raises(NotImplementedError, match="mu_r_override"):
         sim.forward(mu_r_override=jnp.ones(shape, jnp.float32), n_steps=10, skip_preflight=True)

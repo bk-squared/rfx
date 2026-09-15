@@ -25,6 +25,12 @@ MEASURED, at 13de212 (before) and on this branch (after), all with
                                                             AFTER  -0.60000+0.00034j
   max|S11| on the passive vacuum fixture: BEFORE 1.66667, AFTER 0.60000.
 
+That block is HISTORY for the #673 sign fix and is quoted at the
+rasterization of its day. Its ``n_live`` labels (6, 4) and the values that
+follow from them are the endpoint-inclusive counts retired by #931 R8; the
+current numbers are the re-measured table further down. The BEFORE/AFTER
+ratio the block exists to show — a reciprocal, 1/S11 — is unaffected.
+
 WHAT THESE TESTS DO AND DO NOT VALIDATE
 ---------------------------------------
 They validate the CONVENTION — the sign and the non-reciprocity of the (a, b)
@@ -35,11 +41,52 @@ oracle for ``S11``.
 The reason is that the passive reading is a property of the port CELL, not of
 what is attached across it. From the discrete Ampere law at the port edge with
 no impressed current, ``-V/I = 1/(G + jwC)`` identically, where G and C are the
-port cell's own conductance and capacitance. Measured on this branch, three
-fixtures that differ only in what fills the gap — vacuum, PEC plates across the
-gap (which should read ``Gamma = -1``), and an ``eps_r = 10`` slab filling it —
-all return ``S11(0.2 GHz) = -0.600000`` at ``n_live = 4``. The load does not
-move the reading at all. A convention test is exactly what that supports.
+port cell's own conductance and capacitance. Measured, three fixtures that
+differ only in what sits at the gap — vacuum, PEC plates bracketing the gap,
+and an ``eps_r = 10`` slab filling it — all return the SAME
+``S11(0.2 GHz)`` at ``n_live = 3``. The load does not move the reading at
+all. A convention test is exactly what that supports.
+
+#931 NOTE ON THE THREE-LOAD WITNESS. The table above was measured before
+the lattice ownership contract, when a one-cell PEC body realized a single
+wall plane and left its normal E live — so the "PEC plates" arm was two
+films and could not short anything even in principle. Under the contract
+each plate realizes both of its drawn faces and shorts Ez between them, so
+the arm is a stronger witness: genuinely conducting bodies one cell from
+the port.
+
+RE-MEASURED under the contract (VESSL run 369367259274, commit 770c4e6c,
+``JAX_PLATFORMS=cpu``; producer ``docs/design_notes/931_migration/
+t3_remeasure.py``, output ``/root/workspace/claude-workspace/rfx/runs/
+issue931-post-t3-measure-20260907T191140Z/t3_remeasure.json``), S11 at
+0.2 GHz, uniform lane and NU lane agreeing to ~1e-6 on every row:
+
+  gap extent   load          n_live   S11(0.2 GHz)
+  5 mm         vacuum        5        -0.6666666 - 3.131e-05j
+  5 mm         PEC plates    5        -0.6666666 - 3.075e-05j
+  3 mm         vacuum        3        -0.4999999 - 6.952e-05j
+  3 mm         eps_r=10 slab 3        -0.5000007 - 6.955e-04j
+
+The reading is set by ``n_live`` and by nothing else: ``(1-n)/(1+n)`` is
+-4/6 = -0.6666667 at n = 5 and -2/4 = -0.5 at n = 3, and the measurement
+sits on those to seven digits. Shorting the plates' interior did not move
+it, which is the module's whole claim. What DID move against the pre-#931
+table is the small imaginary part (+2.7e-04 -> -3.1e-05 on the PEC-plate
+arm): it is the residual the closed form does not carry, and it is not
+gated anywhere. The dielectric arm's -7.0e-04 is the one load-dependent
+digit in the table, three orders of magnitude below the real part.
+
+WHY ``n_live`` IS 5 / 3 AND NOT 6 / 4. The counts in the pre-#931 table
+above are the endpoint-INCLUSIVE rasterization that #931 R8 retired: a
+5 mm extent on a 1 mm mesh drove six Ez edges, the sixth spanning a cell
+ABOVE the declared end. The extent is half-open in edges now
+(``rfx.sources.sources.wire_port_edge_span``), so it drives five, and the
+closed form follows the count. The gates in this file are computed from
+``_n_live`` rather than from a literal, so they moved with it — and
+``test_the_analytic_oracle_reads_the_runners_own_span`` pins ``_n_live``
+against the production rasterizer, because for one commit it did NOT move
+with it: the helper held its own copy of the retired rule, and the oracle
+sat one cell off the lane it was judging.
 
 The step from the raw ratio to ``S11`` additionally runs through the
 extractor's own mixed normalization (V and I are sampled at ONE cell in
@@ -122,6 +169,16 @@ def _build(nu, *, extent=3e-3, excite=False, z0=50.0, port_x=8e-3,
     sim = Simulation(freq_max=10e9, domain=DOMAIN, dx=DX,
                      boundary="cpml", cpml_layers=6, **kw)
     if load == "pec_plates":
+        # Two one-cell PEC plates, one below the port and one above it,
+        # each separated from the port edge by one cell of vacuum. They
+        # are VOLUMES (#931 §1.2), drawn on node planes, so each realizes
+        # walls at BOTH of its drawn faces and shorts the normal E between
+        # them — the object the name "plate" always meant. Before #931 a
+        # one-cell body realized ONE wall and left its normal E live, so
+        # the plates were films, not plates. Neither realization shorts the
+        # PORT: the vacuum cell on each side is what makes this a "load
+        # near the port", and the module docstring's point is that the
+        # passive reading does not move for ANY of the three loads.
         w = 2e-3
         sim.add(Box((port_x - w, PORT_Y - w, PORT_Z - 2 * DX),
                     (port_x + w, PORT_Y + w, PORT_Z - DX)), material="pec")
@@ -158,8 +215,34 @@ def _s11(sim, n_steps=N_STEPS):
 
 
 def _n_live(extent):
-    """Live wire cells: the runner keeps range(lo_k, hi_k+1)."""
-    return int(round(extent / DX)) + 1
+    """Live wire cells, read from the runner's OWN spelling of the rule.
+
+    #931 R8: a wire port's extent is HALF-OPEN in edges (``lo .. hi - 1``),
+    spelled once in :func:`rfx.sources.sources.wire_port_edge_span` and
+    called by all three lanes. This helper used to carry a second copy of
+    the rule — ``int(round(extent / DX)) + 1``, the endpoint-INCLUSIVE
+    spelling — which survived the R8 fix and left the analytic oracle
+    disagreeing with the lane it judges (measured: VESSL 369367259274, the
+    solved ``S11`` moved to -0.666667 / -0.500000 while this helper still
+    said n = 6 / 4). Reading the shared spelling is what stops that from
+    recurring; ``test_the_analytic_oracle_reads_the_runners_own_span``
+    pins it against the production rasterizer.
+
+    None of these fixtures' extents is sub-cell, so
+    ``wire_port_edge_span``'s sub-cell branch — the only one that needs a
+    real grid — is never taken; the assert below keeps it that way.
+    """
+    from rfx.sources.sources import wire_port_edge_span
+
+    lo = int(round(PORT_Z / DX))
+    hi = int(round((PORT_Z + extent) / DX))
+    assert hi > lo, (
+        f"extent {extent} is sub-cell at dx = {DX}: wire_port_edge_span "
+        "would take its sub-cell branch, which needs a real grid that this "
+        "build-free helper does not have")
+    first, last = wire_port_edge_span(None, 2, lo, hi,
+                                      PORT_Z, PORT_Z + extent)
+    return last - first + 1
 
 
 def _analytic_s11(extent):
@@ -170,6 +253,59 @@ def _analytic_s11(extent):
 # --------------------------------------------------------------------------
 # Independent oracle: the RAW V/I ratio, no wave decomposition involved.
 # --------------------------------------------------------------------------
+
+@pytest.mark.parametrize("nu", [False, True])
+def test_the_pec_plates_load_realizes_two_solid_plates(nu):
+    """Build-time gate (no solve): each plate realizes walls at BOTH of its
+    drawn faces, on both lanes, and the port gap stays clear (#931 §1.2).
+
+    The plates are one cell thick. Before the contract that meant ONE wall
+    plane with the normal E live between the two drawn faces — a film, not
+    a plate — so the fixture's name and the docstring's "should read
+    Gamma = -1" described an object rfx did not build. This says what is
+    built, without solving.
+    """
+    from tests.unit._wall_planes_m import wall_planes_m
+
+    extent = 5e-3
+    rz, zs = wall_planes_m(_build(nu, extent=extent, load="pec_plates"), 2,
+                           nonuniform=nu)
+    assert not rz.sheets, "the plates are volumes"
+    lower = [PORT_Z - 2 * DX, PORT_Z - DX]
+    upper = [PORT_Z + extent + DX, PORT_Z + extent + 2 * DX]
+    want = lower + upper
+    assert len(zs) == len(want), f"realized z wall planes {zs}, want {want}"
+    for got, exp in zip(zs, want):
+        assert abs(got - exp) < 1e-9, (zs, want)
+    # the port edge itself is not inside either plate: the load sits one
+    # cell away on each side, which is what makes it a LOAD and not a short.
+    assert all(not (PORT_Z - 1e-12 <= z <= PORT_Z + extent + 1e-12)
+               for z in zs)
+
+
+@pytest.mark.parametrize("nu", [False, True])
+@pytest.mark.parametrize("extent", [1e-3, 3e-3, 5e-3])
+def test_the_analytic_oracle_reads_the_runners_own_span(nu, extent):
+    """Build-time gate (no solve): ``_n_live`` equals the number of cells
+    the PRODUCTION rasterizer makes for the same declaration.
+
+    The analytic oracle in this module is ``(1 - n)/(1 + n)`` with ``n``
+    from :func:`_n_live`. That is only an oracle while ``n`` is the count
+    the runner actually drives. It stopped being one under #931 R8: the
+    extent became half-open in edges, the helper kept the
+    endpoint-inclusive ``+ 1``, and the oracle went one cell wrong on
+    every row while still looking self-consistent. A gate that compares
+    the oracle's own count against the rasterizer is what makes that a
+    red rather than a quiet mis-measurement, so this file cannot drift
+    from the rule again without saying so.
+    """
+    sim = _build(nu, extent=extent)
+    centers, _mid = sim._wire_port_cell_centers(sim._ports[0])
+    assert len(centers) == _n_live(extent), (
+        f"the rasterizer drives {len(centers)} cells for extent {extent} "
+        f"but the analytic oracle assumes {_n_live(extent)}; the oracle is "
+        "the one that must follow rfx.sources.sources.wire_port_edge_span")
+
 
 @pytest.mark.parametrize("extent", [1e-3, 3e-3, 5e-3])
 def test_raw_port_ratio_matches_the_analytic_admittance(extent):
@@ -258,8 +394,9 @@ def test_passive_s11_regression_lock_on_the_known_wrong_normalization(extent):
 
     Witness that it is an artifact and not the structure's reflection: with
     ``n_live = 4`` this asserts ``S11 = -0.6`` for a vacuum gap, for PEC
-    plates shorting the gap (physically ``Gamma = -1``) and for an
-    ``eps_r = 10`` slab filling it — measured -0.600000 for all three.
+    plates bracketing the gap and for an ``eps_r = 10`` slab filling it.
+    (#931: the plates realize both faces now and short their own interior;
+    the reading is unchanged by the load either way — that IS the finding.)
     """
     expected = _analytic_s11(extent)
     s_uni = _s11(_build(False, extent=extent))

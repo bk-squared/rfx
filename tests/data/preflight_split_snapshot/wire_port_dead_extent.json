@@ -1,0 +1,30 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "absorber_proximity",
+        "loc": null,
+        "message": "Source/port at (0.008, 0.005, 0.0) is within 2 cells (1mm) of the domain edge on the z-axis, just past which the CPML absorber is active. Fields there carry CPML fringe/reflection error; move inward for claims-bearing measurement.",
+        "severity": "warning",
+        "source": "_validate_cfg_absorber_placement"
+      },
+      {
+        "code": "wire_port_dead_extent_cells",
+        "loc": null,
+        "message": "Wire port at (0.008, 0.005, 0.0) (extent 0.0015) rasterizes to n=3 cells of which 1 have their ez edge inside realized PEC ['pec'] (n_live/n = 2/3). Dead cells are shorted by the PEC and are excluded from the port's resistance distribution, drive injection, and wave normalization (issue #318 fix): the port terminates at 50 ohm across its 2 live cells. (rfx versions before the #318 fix counted all 3 cells and physically terminated at Z0*(n_live/n) = 33.3 ohm \u2014 the issue-#313 finding.) Verify the extent was MEANT to end on/inside the conductor, and keep the midpoint V/I probe cell live; to silence, shorten the extent or move the port so none of its cells has its ez edge inside a conductor (per the realized edge set -- a volume shorts every edge between its two faces, a sheet shorts only the edges IN its plane and leaves the normal edge through it live).",
+        "severity": "warning",
+        "source": "_validate_cfg_port_inside_pec"
+      },
+      {
+        "code": "pec_box_one_cell",
+        "loc": null,
+        "message": "1 PEC volume(s) are exactly ONE cell thick along some axis and are realized as a filled slab with walls on BOTH faces (every E edge between the two faces is shorted; lattice ownership contract #931 \u00a71.2): geometry[0] 'pec' (Box) is one cell thick along z [z: walls at 1mm and 1.5mm (drawn 1mm -> 1.5mm)]. If this is foil (a ground plane, patch or trace), declare it as a SHEET \u2014 add_thin_conductor(shape), or a zero-thickness Box via add() \u2014 which realizes on ONE node plane with the normal E edge through it live; a slab and a sheet are different conductors on this lattice. If it is a plate, an iris or a wall drawn one cell thick on purpose, no action is needed (report-only). COVERAGE: examined 1 PEC volume(s) on the uniform lane through rfx.boundaries.pec.realized_wall_planes. STALE IF: realized_wall_planes on the named entry's own edge masks returns planes more than one index apart.",
+        "severity": "warning",
+        "source": "_validate_cfg_pec_realization"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 3,
+    "ok": true
+  }
+}

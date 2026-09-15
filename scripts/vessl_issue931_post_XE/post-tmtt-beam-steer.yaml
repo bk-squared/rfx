@@ -1,0 +1,68 @@
+name: rfx-931-post-tmtt-beam-steer
+description: "T-MTT paper Example 3, beam-steering superstrate at SMOKE=0 -- the full GPU invocation printed in validation/tmtt_paper/README.md. POST-change recompute for the #931 lattice ownership contract (group X-E): detached worktree /root/workspace/byungkwan-workspace/research/rfx-931-XE-crossvalE at feat/931-crossval-E (HEAD recorded at run time). Submit: vessl run create -f post-tmtt-beam-steer.yaml"
+tags: [rfx, issue-931, post, tmtt, inverse-design, ntff, gpu]
+resources:
+  cluster: remilab-c0
+  preset: gpu-a6000-1
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  echo "=== rfx #931 post-change recompute: tmtt-beam-steer (feat/931-crossval-E (HEAD recorded at run time)) ==="
+  date
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  SRC=/root/workspace/byungkwan-workspace/research/rfx-931-XE-crossvalE
+  test -d "$SRC" || { echo "ERROR: X-E worktree missing at $SRC"; exit 3; }
+  RUNS=/root/workspace/claude-workspace/rfx/runs
+  OUT=$RUNS/issue931-post-tmtt-beam-steer-$(date -u +%Y%m%dT%H%M%SZ)
+  mkdir -p "$OUT"
+  echo "$OUT" > "$RUNS/issue931-post-tmtt-beam-steer.latest"
+  trap 'chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
+  echo "artifacts: $OUT"
+  echo "X-E worktree /root/workspace/byungkwan-workspace/research/rfx-931-XE-crossvalE @ $(git -C '/root/workspace/byungkwan-workspace/research/rfx-931-XE-crossvalE' rev-parse HEAD 2>/dev/null || echo unknown)" | tee "$OUT/commit.txt"
+  WORK=/root/work/rfx931post-tmttbeamsteer
+  rm -rf "$WORK"
+  mkdir -p "$WORK"
+  cp -a "$SRC/." "$WORK/"
+  cd "$WORK"
+  touch "$OUT/.tstamp"
+  nvidia-smi || true
+  "$PY" -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" "optax>=0.1.7"
+  export RFX_REPO_ROOT="$WORK"
+  export PYTHONPATH="$WORK"
+  export MPLBACKEND=Agg
+  "$PY" -c "import jax, rfx, os; print('probe ok | jax', jax.__version__, '| backend', jax.default_backend(), '| rfx', getattr(rfx, '__version__', '?'), '| from', os.path.dirname(rfx.__file__))"
+  echo "=== step tmtt_beam_steer ==="
+  set +e
+  timeout 28800 env SMOKE=0 "$PY" -u validation/tmtt_paper/beam_steering_superstrate.py > "$OUT/tmtt_beam_steer.log" 2>&1
+  rc=$?
+  set -e
+  echo "$rc" > "$OUT/tmtt_beam_steer.rc"
+  tail -n 40 "$OUT/tmtt_beam_steer.log" || true
+  echo "tmtt_beam_steer_rc=$rc"
+
+  echo "=== harvest: every file the run wrote into the staged checkout ==="
+  mkdir -p "$OUT/produced"
+  find "$WORK" -type f -newer "$OUT/.tstamp" \
+      -not -path "*/.git/*" -not -path "*/__pycache__/*" -not -name "*.pyc" \
+      > "$OUT/produced_files.txt" 2>/dev/null || true
+  while IFS= read -r f; do
+    rel=${f#$WORK/}
+    d=$(dirname "$rel")
+    mkdir -p "$OUT/produced/$d"
+    cp -p "$f" "$OUT/produced/$rel" 2>/dev/null || true
+  done < "$OUT/produced_files.txt"
+  echo "harvested $(wc -l < "$OUT/produced_files.txt") file(s)"
+  ls -la "$OUT"
+  chmod -R a+rX "$OUT" 2>/dev/null || true
+  echo "POST_CASE=tmtt-beam-steer RC=$rc"
+  exit "$rc"

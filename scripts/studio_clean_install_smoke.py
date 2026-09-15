@@ -14,6 +14,77 @@ import urllib.request
 import venv
 
 
+def _worker_control(python: Path, root: Path, environment: dict[str, str]) -> dict:
+    """Verify actual interpreter ownership in the installed platform/venv."""
+    probe = r'''
+import json, os, subprocess, sys, time
+from pathlib import Path
+from rfx.experiments._worker_child import _bind_parent, _python_command
+from rfx.experiments.worker import _wait_for_child
+assert sys.prefix != sys.base_prefix, 'control must run inside the isolated venv'
+ready = Path(sys.argv[1])
+child_code = r"""
+import ctypes, json, os, sys, time
+from pathlib import Path
+from rfx.experiments._worker_child import _bind_parent
+_bind_parent(int(sys.argv[2]))
+ready = Path(sys.argv[1])
+temporary = ready.with_suffix('.tmp')
+temporary.write_text(json.dumps({'pid': os.getpid(), 'ppid': os.getppid(), 'prefix': sys.prefix}))
+temporary.replace(ready)
+if sys.platform == 'win32':
+    library = ctypes.PyDLL('kernel32')
+    library.Sleep.argtypes = [ctypes.c_ulong]
+    library.Sleep(30000)
+else:
+    time.sleep(30)
+"""
+command, child_env = _python_command([sys.executable, '-c', child_code, str(ready), str(os.getpid())])
+child = subprocess.Popen(command, env=child_env)
+try:
+    startup_deadline = time.monotonic() + 15
+    while not ready.exists():
+        assert child.poll() is None, 'worker interpreter exited before the control'
+        assert time.monotonic() < startup_deadline, 'worker interpreter did not start'
+        time.sleep(0.02)
+    observed = json.loads(ready.read_text())
+    assert observed['pid'] == child.pid, (observed, child.pid)
+    assert observed['ppid'] == os.getpid(), (observed, os.getpid())
+    assert Path(observed['prefix']).resolve() == Path(sys.prefix).resolve(), observed
+    before = time.monotonic()
+    outcome = _wait_for_child(child, deadline=before + 0.5, cancelled=lambda: False)
+    assert outcome == 'timeout' and child.returncode is not None
+    assert time.monotonic() - before < 10
+    print(json.dumps({'pid_owned': True, 'venv_preserved': True, 'deadline_enforced': True}))
+finally:
+    if child.poll() is None:
+        child.kill()
+    child.wait()
+'''
+    result = subprocess.run(
+        [str(python), "-I", "-c", probe, str(root / "worker-control-ready.json")],
+        capture_output=True,
+        text=True,
+        cwd=root,
+        env=environment,
+        timeout=30,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"worker process control failed\n{result.stdout}\n{result.stderr}"
+        )
+    return json.loads(result.stdout)
+
+
+def _worker_diagnostics(workspace: Path) -> str:
+    lines = []
+    for path in sorted((workspace / "runs").glob("*/worker.stderr.log")):
+        lines.append(
+            f"--- {path.name} ({path.parent.name}) ---\n{path.read_text(encoding='utf-8', errors='replace')[-16000:]}"
+        )
+    return "\n".join(lines)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("wheel")
@@ -65,6 +136,7 @@ def main() -> int:
             raise RuntimeError(
                 f"Studio imported outside isolated environment: {packaged_asset}"
             )
+        worker_control = _worker_control(python, root, clean_environment)
         port = 18765
         server = subprocess.Popen(
             [
@@ -128,7 +200,10 @@ def main() -> int:
             timeout=90,
         )
         if golden.returncode != 0:
-            raise RuntimeError(f"golden smoke failed\n{golden.stdout}\n{golden.stderr}")
+            diagnostics = _worker_diagnostics(root / "golden-workspace")
+            raise RuntimeError(
+                f"golden smoke failed\n{golden.stdout}\n{golden.stderr}\n{diagnostics}"
+            )
         result = json.loads(golden.stdout)
         if result["state"] != "succeeded":
             raise RuntimeError(f"golden smoke state: {result['state']}")
@@ -140,6 +215,7 @@ def main() -> int:
                     "studio_health": health,
                     "golden_run_id": result["id"],
                     "golden_state": result["state"],
+                    "worker_control": worker_control,
                 },
                 indent=2,
             )

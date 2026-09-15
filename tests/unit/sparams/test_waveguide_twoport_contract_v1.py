@@ -56,6 +56,15 @@ def _build_twoport_sim(*, kind: str, left_ref=None, right_ref=None):
         cpml_layers=CPML_LAYERS,
     )
     if kind == "pec_short":
+        # A metal BLOCK, i.e. a volume (#931 §1.2): sigma = 1e10 is above
+        # the PEC promotion threshold, so this entry is classified exactly
+        # like material="pec" and realizes tangential walls on both drawn
+        # x faces with the Ex between them shorted. Before the contract
+        # only the near face was a wall, so the reflecting plane sat one
+        # cell upstream; the magnitude-level gates in this file (
+        # reciprocity, sub-unity transmission, reference-plane magnitude
+        # invariance) do not see the difference, the de-embed PHASE gate
+        # in test_waveguide_phase_gate.py does.
         sim.add_material("pec_like", eps_r=1.0, sigma=1e10)
         sim.add(Box((0.05, 0.0, 0.0), (0.055, 0.04, 0.02)), material="pec_like")
     elif kind == "dielectric":

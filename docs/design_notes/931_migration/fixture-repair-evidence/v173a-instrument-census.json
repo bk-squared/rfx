@@ -1,0 +1,28 @@
+{
+  "run_name": "local-931-v173a-instrument-census-20260908",
+  "method": "Offline harminv on retained trace, min_Q=0, decimate=False, band1.5--3.5GHz. Values transcribed from completed local tool output, not a new solve.",
+  "trace_sha256": "b0d3bf17ab221f35d4d31c8a0a8cec829fa15c1ee54f3c1fc407109206b1b09e",
+  "estimator_sha256": "04e3cdec7e2c32eaf79c30ddb6d2928383eea039eddcf8947a09c5228fb30075",
+  "full_record_modes": [
+    {
+      "freq_hz": 2077593056.0496168,
+      "Q": 1.3155633557006579,
+      "decay": 4961335426.189675,
+      "amplitude": 280712474.1291344
+    },
+    {
+      "freq_hz": 3061119379.55418,
+      "Q": 2.445261209012978,
+      "decay": 3932827347.492477,
+      "amplitude": 52755653.689010374
+    }
+  ],
+  "exploratory_start_1000_modes": [
+    {
+      "freq_hz": 1984826771.1157544,
+      "Q": 99.69182822426964,
+      "amplitude": 2311059.054893626
+    }
+  ],
+  "decision": "The exploratory1000 sample window is NOT the final instrument. Final start is independently defined from the source pulse t0+6tau=1.7904931097838228ns, sample1879. The original Q>=5 criterion remains unchanged."
+}

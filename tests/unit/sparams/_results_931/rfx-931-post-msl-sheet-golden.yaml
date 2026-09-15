@@ -1,0 +1,70 @@
+name: rfx-931-post-msl-sheet-golden
+description: "#931 post-change recapture of the MSL sheet-threading golden. The 13de212 golden records a board this tree no longer builds (one-cell PEC Box trace on a bisecting dx=80um mesh, single wall at node 4 = 320um); under the lattice ownership contract the foil is a sheet on an on-lattice board (dx=h_sub/3, one wall at node 3 = 254um). Runs the module's own documented capture procedure twice and refuses to write unless the two are byte-equal. Branch feat/931-t2-sparams-ports. Submit: vessl run create -f rfx-931-post-msl-sheet-golden.yaml"
+tags: [rfx, issue-931, post, msl-sheet-golden, cpu]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_PLATFORMS: "cpu"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  echo "=== rfx #931 post-change: MSL sheet-threading golden recapture ==="
+  date
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  SRC=/root/workspace/byungkwan-workspace/research/rfx-931-T2-sparams-ports
+  test -d "$SRC" || { echo "ERROR: worktree missing at $SRC"; exit 3; }
+  RUNS=/root/workspace/claude-workspace/rfx/runs
+  OUT=$RUNS/issue931-post-msl-sheet-golden-$(date -u +%Y%m%dT%H%M%SZ)
+  mkdir -p "$OUT"
+  echo "$OUT" > "$RUNS/issue931-post-msl-sheet-golden.latest"
+  trap 'chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
+  echo "artifacts: $OUT"
+  WORK=/root/work/rfx931-msl-sheet-golden
+  rm -rf "$WORK"
+  mkdir -p "$WORK"
+  cp -a "$SRC/." "$WORK/"
+  cd "$WORK"
+  git rev-parse HEAD > "$OUT/commit.txt" 2>/dev/null || echo "no git" > "$OUT/commit.txt"
+  cat "$OUT/commit.txt"
+  touch "$OUT/.tstamp"
+  "$PY" -m pip uninstall -y -q jax-cuda12-plugin jax-cuda12-pjrt 2>/dev/null || true
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" "pytest>=7.4"
+  export RFX_REPO_ROOT="$WORK"
+  export PYTHONPATH="$WORK"
+  export MPLBACKEND=Agg
+  export JAX_PLATFORMS=cpu
+  "$PY" -c "import jax, rfx, os; print('probe ok | jax', jax.__version__, '| backend', jax.default_backend(), '| rfx', getattr(rfx, '__version__', '?'), '| from', os.path.dirname(rfx.__file__))"
+  echo "=== capture (twice, determinism check) ==="
+  set +e
+  timeout 5400 "$PY" -u tests/unit/sparams/_results_931/capture_msl_sheet_thread_golden.py > "$OUT/capture.log" 2>&1
+  rc=$?
+  set -e
+  echo "$rc" > "$OUT/capture.rc"
+  tail -n 60 "$OUT/capture.log" || true
+  echo "capture_rc=$rc"
+
+  echo "=== harvest: every file the run wrote into the staged checkout ==="
+  mkdir -p "$OUT/produced"
+  find "$WORK" -type f -newer "$OUT/.tstamp" \
+      -not -path "*/.git/*" -not -path "*/__pycache__/*" -not -name "*.pyc" \
+      > "$OUT/produced_files.txt" 2>/dev/null || true
+  while IFS= read -r f; do
+    rel=${f#$WORK/}
+    d=$(dirname "$rel")
+    mkdir -p "$OUT/produced/$d"
+    cp -p "$f" "$OUT/produced/$rel" 2>/dev/null || true
+  done < "$OUT/produced_files.txt"
+  echo "harvested $(wc -l < "$OUT/produced_files.txt") file(s)"
+  ls -la "$OUT"
+  chmod -R a+rX "$OUT" 2>/dev/null || true
+  echo "POST_CASE=msl-sheet-golden RC=$rc"
+  exit "$rc"

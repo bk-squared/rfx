@@ -35,6 +35,8 @@ import rfx
 from rfx import Simulation, Box
 from rfx.sources.sources import GaussianPulse
 
+from validation.crossval.comparators import realized_conductors as RC
+
 EPS_0 = 8.8541878128e-12
 
 # ------------------------------------------------------------- bindings ----
@@ -73,17 +75,30 @@ def build_fix_a(load: str | float, *, dx=DX_A, nz=NZ_A, extent=EXTENT_A):
     """
     sim = Simulation(freq_max=10e9, domain=DOMAIN_A, dx=dx,
                      dz_profile=np.full(nz, dx), boundary="pec")
-    # Electrode plates: 1 mm (>= 2 cells) thick, abutting the gap ends.
-    # FIXTURE REVISION (2026-08-29, measured provenance — G0 FIXTURE
-    # INVALID on the original 1-cell plates, NOT a falsifier verdict):
-    # apply_pec_mask's thin-sheet rule preserves the normal E of a
-    # 1-cell-thick PEC plate (surface charge), so the bottom plate
+    # Electrode plates: 1 mm (>= 2 cells) thick VOLUMES, abutting the gap
+    # ends. These are electrodes, not foil, so they stay volumes under the
+    # lattice ownership contract (#931 §1.2) and the drawing does not move.
+    #
+    # HISTORY, kept because it is the reason the plates are 2 cells and not
+    # 1. FIXTURE REVISION (2026-08-29, measured provenance — G0 FIXTURE
+    # INVALID on the original 1-cell plates, NOT a falsifier verdict): the
+    # pre-#931 thin-sheet rule realized a 1-cell PEC Box as a SINGLE wall
+    # plane at its lo face and left the normal E live, so the bottom plate
     # conducted at z=3.0 mm, not the intended z=3.5 mm gap face — the
     # driven column then saw a live series Ez layer inside the plate
     # (measured V(k6) = -(V7+V8) on the short fixture; the preflight
-    # sheet-cavity advisory reported the same +50% electrical gap).  A
-    # >= 2-cell plate zeroes the interior normal edges, restoring the
-    # declared terminals.  Gates are UNCHANGED.
+    # sheet-cavity advisory reported the same +50% electrical gap). Going
+    # to >= 2 cells was a workaround for that rule.
+    #
+    # Under the contract the workaround is no longer what carries the
+    # fixture: a volume realizes walls at BOTH its faces and shorts every
+    # normal edge between them at ANY thickness, so the gap faces at
+    # z = 3.5 mm and z = 4.5 mm are terminals by construction. The plates
+    # stay 2 cells (the drawn geometry is the measured geometry and this
+    # lane's provenance is the 2-cell one), and the assertion below states
+    # the terminals instead of trusting a thickness convention.
+    # Every pre-declared window in this file was measured on the pre-#931
+    # realization and MUST be re-derived before it is read as a gate again.
     sim.add(Box((PLATE_XY0, PLATE_XY0, 2.5e-3),
                 (PLATE_XY1, PLATE_XY1, GAP_Z0)), material="pec")
     sim.add(Box((PLATE_XY0, PLATE_XY0, GAP_Z1),
@@ -101,6 +116,16 @@ def build_fix_a(load: str | float, *, dx=DX_A, nz=NZ_A, extent=EXTENT_A):
         for (x, y) in LOAD_XY:
             sim.add_port(position=(x, y, GAP_Z0), component="ez",
                          impedance=z_col, extent=extent, excite=False)
+    # Build-time (no solve): the declared terminals ARE the realized wall
+    # planes. Bottom plate 2.5 -> 3.5 mm, top plate 4.5 -> 5.5 mm, so the
+    # column between them sees walls at 2.5/3.0/3.5 and 4.5/5.0/5.5 mm and
+    # nothing in the 3.5-4.5 mm gap. Asked of the shared owner (#931 §1.7);
+    # a plate that lost its gap face would fail here by name instead of
+    # showing up as a 50% electrical-gap error in the extracted rho(f).
+    RC.assert_wall_planes(
+        sim, 2, [2.5e-3, 3.0e-3, GAP_Z0, GAP_Z1, 5.0e-3, 5.5e-3],
+        at=(PLATE_XY0 + dx, PLATE_XY0 + dx),
+        label="FIX-A electrode plates", tol_m=1e-12)
     return sim
 
 

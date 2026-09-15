@@ -23,18 +23,23 @@ No FDTD runs here. Pre-declaration:
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
 import json
+import math
+import re
+import shutil
+import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-from tests._gate_policy import ENVELOPE_GATE_MULTIPLIER, gate_from_envelope
+from tests._gate_policy import ENVELOPE_GATE_MULTIPLIER
 
 _REPO = Path(__file__).resolve().parents[2]
 _RESULTS = _REPO / "validation/crossval/_22_dispersive_results"
-_GOLDEN_CV04 = _REPO / "tests/fixtures/golden_workflows/multilayer_fresnel.json"
 
 
 def _load(name: str, rel: str):
@@ -46,6 +51,115 @@ def _load(name: str, rel: str):
 
 de = _load("cv22_dispersive_eps", "validation/crossval/comparators/dispersive_eps.py")
 G = _load("cv22_dispersive_gates", "validation/crossval/comparators/cv22_dispersive_gates.py")
+_SF = _load("cv22_slab_family", "validation/crossval/comparators/slab_family.py")
+
+_ENVELOPE = _REPO / "validation/crossval/_04_fresnel_results/envelope.json"
+_COMPARATORS = _REPO / "validation/crossval/comparators"
+
+
+def _e2(*args, **kw):
+    """cv22's evaluator, handed cv22's own windows.
+
+    The evaluator takes them as a required argument now (#928 round 2): it used
+    to read cv22's module-level constants, which meant cv23 -- a different
+    adopter calling the same function -- was judged by cv22's adoption. Every
+    call in this file is cv22 judging cv22, so the record is named once here.
+    """
+    return G.evaluate_e2(*args, windows=G.WINDOWS, **kw)
+
+
+def _e4(e2, meep_doc):
+    return G.evaluate_e4(e2, meep_doc, windows=G.WINDOWS)
+
+
+def _round_up(value: float, multiplier: float, quantum: float) -> float:
+    """The repo's envelope->gate arithmetic, written out again on purpose.
+
+    ``tests/_gate_policy.gate_from_envelope`` is the implementation under test
+    on one side of every comparison below, so the other side must not be it.
+    """
+    return math.ceil(value * multiplier * quantum) / quantum
+
+
+@contextlib.contextmanager
+def _tmp_tree():
+    """A scratch copy of the comparator package + the producer results dir.
+
+    The point is to re-import the CONSUMER against a different artifact: a
+    module that hard-codes its windows behaves identically to one that derives
+    them until the artifact underneath it changes.
+    """
+    root = Path(tempfile.mkdtemp(prefix="cv22_envelope_"))
+    try:
+        comparators = root / "validation/crossval/comparators"
+        comparators.mkdir(parents=True)
+        (root / "validation/crossval/_04_fresnel_results").mkdir(parents=True)
+        for name in ("cv22_dispersive_gates.py", "cv23_lossy_gates.py",
+                     "dispersive_eps.py", "slab_family.py"):
+            shutil.copy(_COMPARATORS / name, comparators / name)
+        shutil.copy(_ENVELOPE, root / "validation/crossval/_04_fresnel_results/envelope.json")
+        yield root
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def _write_envelope(tree: Path, doc: dict) -> None:
+    (tree / "validation/crossval/_04_fresnel_results/envelope.json").write_text(
+        json.dumps(doc, indent=1), encoding="utf-8")
+
+
+def _repoint(src: Path, adopt: tuple[str, str] | None) -> None:
+    """Re-point a copied module's adoption record: the deliberate, reviewed
+    edit the real thing would be."""
+    if adopt is None:
+        return
+    revision, digest = adopt
+    text = src.read_text(encoding="utf-8")
+    text, n1 = re.subn(r'"adopted_revision": "r1"',
+                       f'"adopted_revision": "{revision}"', text)
+    text, n2 = re.subn(r'"revision_sha256": "sha256:[0-9a-f]+"',
+                       f'"revision_sha256": "{digest}"', text)
+    assert (n1, n2) == (1, 1), (
+        f"{src.name}'s adoption record changed shape; this scratch re-adoption "
+        f"edits it textually and must be updated with it")
+    src.write_text(text, encoding="utf-8")
+
+
+def _load_consumers_from(tree: Path, *, adopt_cv22=None, adopt_cv23=None):
+    """Import FRESH cv22 AND cv23 gate modules out of *tree*.
+
+    Both are loaded because they are two INDEPENDENT adopters of one artifact:
+    re-pointing cv22 alone must move cv22 and leave cv23 where its own record
+    says it is. cv23 binds the scratch cv22 (registered under its plain name
+    first), so the pair is self-consistent inside the tree.
+    """
+    comparators = tree / "validation/crossval/comparators"
+    _repoint(comparators / "cv22_dispersive_gates.py", adopt_cv22)
+    _repoint(comparators / "cv23_lossy_gates.py", adopt_cv23)
+    names = ("slab_family", "cv22_dispersive_gates", "cv23_lossy_gates")
+    saved_modules = {k: sys.modules.get(k) for k in names}
+    saved_path = list(sys.path)
+    loaded = {}
+    try:
+        for name in names:
+            spec = importlib.util.spec_from_file_location(
+                name, comparators / f"{name}.py")
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[name] = module          # so the next one binds THIS copy
+            spec.loader.exec_module(module)
+            loaded[name] = module
+        return loaded["cv22_dispersive_gates"], loaded["cv23_lossy_gates"]
+    finally:
+        for key, value in saved_modules.items():
+            if value is None:
+                sys.modules.pop(key, None)
+            else:
+                sys.modules[key] = value
+        sys.path[:] = saved_path
+
+
+def _load_cv22_from(tree: Path, *, adopt: tuple[str, str] | None = None):
+    return _load_consumers_from(tree, adopt_cv22=adopt, adopt_cv23=adopt)[0]
 
 
 def _rig_dt() -> float:
@@ -75,21 +189,355 @@ def _rfx_bins():
 # 1. Artifact-free witnesses
 # ---------------------------------------------------------------------------
 
-def test_windows_are_derived_from_the_committed_cv04_envelope():
-    golden = json.loads(_GOLDEN_CV04.read_text())
-    baseline = {m["id"]: m["observed_baseline"] for m in golden["expected_metrics"]}
-    assert G.CV04_ENVELOPE["mean_dR"] == baseline["mean_reflectance_error"]
-    assert G.CV04_ENVELOPE["mean_dT"] == baseline["mean_transmittance_error"]
-    # The per-bin number is a code comment in cv04 (no artifact carries it).
-    cv04_src = (_REPO / "validation/crossval/04_multilayer_fresnel.py").read_text()
-    assert "max|R+T-1| = 0.0487" in cv04_src
-    assert G.CV04_ENVELOPE["per_bin_max_RT_closure"] == 0.0487
-    assert ENVELOPE_GATE_MULTIPLIER == 1.5
-    assert G.W_BIN == gate_from_envelope(0.0487, quantum=1000) == 0.074
-    assert G.W_MEAN_R == gate_from_envelope(0.0066, quantum=1000) == 0.010
-    assert G.W_MEAN_T == gate_from_envelope(0.011, quantum=1000) == 0.017
-    # cv04 witness constants carried unchanged.
+def test_windows_are_rederived_from_the_producer_artifact_outside_the_consumer():
+    """The windows this case enforces, re-derived from the PRODUCER's artifact.
+
+    Nothing about the derivation is taken from cv22: the values are read out of
+    `_04_fresnel_results/envelope.json`, the round-up-and-quantize arithmetic is
+    written out again below rather than borrowed from ``gate_from_envelope``
+    (one of the two sides must not be the helper under test), and the result is
+    compared with the numbers the evaluator actually uses. The multiplier is
+    read from the shared policy and cross-checked against the one the adoption
+    record was made under, so a policy change that nobody re-adopted is visible.
+
+    This replaces two guards deleted in #928: an equality pin against the
+    STUDIO UI fixture (which made a display fixture a physics source) and a
+    grep for `max|R+T-1| = 0.0487` in cv04's source comment.
+    """
+    doc = json.loads(_ENVELOPE.read_text())
+    assert doc["producer"] == "04_multilayer_fresnel"
+    adoption = G.CV04_ADOPTION
+    rev = doc["revisions"][adoption["adopted_revision"]]
+    assert rev["status"] == "active"
+
+    # Policy: live vs the one this adoption was made under.
+    assert ENVELOPE_GATE_MULTIPLIER == adoption["gate_policy"]["multiplier"], (
+        "the shared envelope->gate multiplier moved since this case adopted its "
+        "envelope; re-adopt deliberately (the windows all move) rather than "
+        "letting the change ride in"
+    )
+    mult = adoption["gate_policy"]["multiplier"]
+    quantum = adoption["gate_policy"]["quantum"]
+
+    values = rev["values"]
+    assert G.W_BIN == _round_up(values["per_bin_max_RT_closure"], mult, quantum)
+    assert G.W_MEAN_R == _round_up(values["mean_dR"], mult, quantum)
+    assert G.W_MEAN_T == _round_up(values["mean_dT"], mult, quantum)
+    # ... and the consumer's copy of the values is the artifact's, not a copy.
+    assert G.CV04_ENVELOPE == values
+
+    # Staleness: REPORTED, never enforced -- a newer revision is evidence, and
+    # evidence does not move a gate on its own.
+    info = G.CV04_ADOPTED
+    print(f"cv22 calibration: adopted {info['revision']} "
+          f"(latest {info['latest_revision']}, newer available: "
+          f"{info['newer_revisions'] or 'none'}); witness_status "
+          f"{info['witness_status']!r}")
+
+    # cv04 witness constants carried unchanged (structure, not envelope).
     assert (G.TAIL_WINDOW, G.TAIL_PURITY_LIMIT, G.TAIL_LIMIT, G.CONS_MAX_LIMIT) == (50, 1e-3, 0.10, 0.06)
+
+
+def test_the_evaluator_applies_exactly_the_rederived_windows():
+    """Not only the three scalars: the per-bin windows the evaluator adds the
+    ADE term to, the gated mask, and the pass/fail boundary itself."""
+    f, dt = _rfx_bins()
+    doc = json.loads(_ENVELOPE.read_text())
+    values = doc["revisions"][G.CV04_ADOPTION["adopted_revision"]]["values"]
+    mult = G.CV04_ADOPTION["gate_policy"]["multiplier"]
+    quantum = G.CV04_ADOPTION["gate_policy"]["quantum"]
+    w_bin = _round_up(values["per_bin_max_RT_closure"], mult, quantum)
+    w_mean_R = _round_up(values["mean_dR"], mult, quantum)
+    w_mean_T = _round_up(values["mean_dT"], mult, quantum)
+
+    arm = "lorentz"
+    model, params = G.ARMS[arm]["model"], G.ARMS[arm]["params"]
+    # The oracle and the ADE window term, re-derived HERE from the leaf
+    # `dispersive_eps`, not taken from G.analytic_rt / G.ade_window: the module
+    # under test must not supply both sides of its own comparison.
+    eps_exact = de.eps_analytic(f, model, params)
+    R_an, T_an = de.tmm_slab_rt(f, eps_exact, _SF.D_SLAB_M)
+    eps_ade = de.eps_numerical_ade(f, model, params, dt)
+    R_ade, T_ade = de.tmm_slab_rt(f, eps_ade, _SF.D_SLAB_M)
+    w_ade_R, w_ade_T = np.abs(R_ade - R_an), np.abs(T_ade - T_an)
+    e2 = _e2(f, R_an, T_an, model, params, dt)
+
+    # the gated mask, recomputed from the declared band
+    g_expected = (f >= G.BAND_GATED_HZ[0]) & (f <= G.BAND_GATED_HZ[1])
+    assert np.array_equal(np.asarray(e2["gated"], dtype=bool), g_expected)
+    # the complete per-bin windows, and the band-mean ones
+    assert np.array_equal(np.asarray(e2["window_R"]), w_bin + w_ade_R)
+    assert np.array_equal(np.asarray(e2["window_T"]), w_bin + w_ade_T)
+    assert e2["mean_window_R"] == w_mean_R + float(np.mean(w_ade_R[g_expected]))
+    assert e2["mean_window_T"] == w_mean_T + float(np.mean(w_ade_T[g_expected]))
+    assert e2["e2_ok"] is False or e2["gates"]["G1_R"]   # zero-error input passes G1
+
+    # the pass/fail boundary sits where the re-derived window says it does
+    i = int(np.argmax(g_expected))
+    win_i = w_bin + w_ade_R[i]
+    just_inside = np.array(R_an, dtype=float)
+    just_inside[i] = R_an[i] + win_i * (1 - 1e-9)
+    just_outside = np.array(R_an, dtype=float)
+    just_outside[i] = R_an[i] + win_i * (1 + 1e-6)
+    assert _e2(f, just_inside, T_an, model, params, dt)["gates"]["G1_R"]
+    assert not _e2(f, just_outside, T_an, model, params, dt)["gates"]["G1_R"]
+    # and the band-mean gate's boundary, on the same principle
+    mean_win = w_mean_R + float(np.mean(w_ade_R[g_expected]))
+    n_g = int(g_expected.sum())
+    over = np.array(R_an, dtype=float)
+    over[g_expected] = R_an[g_expected] + mean_win * (1 + 1e-6)
+    assert not _e2(f, over, T_an, model, params, dt)["gates"]["G2_R"]
+    under = np.array(R_an, dtype=float)
+    under[g_expected] = R_an[g_expected] + mean_win * (1 - 1e-6)
+    assert _e2(f, under, T_an, model, params, dt)["gates"]["G2_R"]
+    assert n_g >= 100
+
+
+def test_unadopted_new_evidence_leaves_the_windows_alone():
+    """(a) The producer appends a revision. Nothing moves.
+
+    This is principle 2 (no self-certification) as a mechanical fact: a
+    producer re-run cannot widen the gates that judge its own family, because
+    the consumer derives from the revision its own declaration names.
+    """
+    with _tmp_tree() as tree:
+        doc = json.loads(_ENVELOPE.read_text())
+        r2 = json.loads(json.dumps(doc["revisions"]["r1"]))
+        r2["bootstrap"] = False
+        r2["values"] = {k: v * 3.0 for k, v in r2["values"].items()}
+        r2["revision_hash"] = _SF.revision_hash({k: v for k, v in r2.items()
+                                                 if k != "revision_hash"})
+        doc["revisions"]["r2"] = r2
+        doc["latest_revision"] = "r2"
+        _write_envelope(tree, doc)
+        mod = _load_cv22_from(tree)
+        assert mod.W_BIN == G.W_BIN
+        assert mod.W_MEAN_R == G.W_MEAN_R
+        assert mod.W_MEAN_T == G.W_MEAN_T
+        assert mod.CV04_ADOPTED["newer_revisions"] == ["r2"]
+
+
+def test_editing_adopted_evidence_fails_integrity():
+    """(b) The adopted revision is altered in place. Two shapes, both refused."""
+    # (b1) values edited, recorded hash left behind: the artifact fails against
+    # itself, so nobody has to notice the consumer.
+    with _tmp_tree() as tree:
+        doc = json.loads(_ENVELOPE.read_text())
+        doc["revisions"]["r1"]["values"]["mean_dR"] = 0.05
+        _write_envelope(tree, doc)
+        with pytest.raises(ValueError, match="edited after it was written"):
+            _load_cv22_from(tree)
+    # (b2) values edited AND the artifact's own hash re-stamped: the artifact is
+    # self-consistent, and the consumer's pin is what refuses it.
+    with _tmp_tree() as tree:
+        doc = json.loads(_ENVELOPE.read_text())
+        block = doc["revisions"]["r1"]
+        block["values"]["mean_dR"] = 0.05
+        block["revision_hash"] = _SF.revision_hash({k: v for k, v in block.items()
+                                                    if k != "revision_hash"})
+        _write_envelope(tree, doc)
+        with pytest.raises(ValueError, match="adoption record pins"):
+            _load_cv22_from(tree)
+
+
+def _expected_windows(values: dict, mult: float, quantum: float) -> dict:
+    """Every window either consumer derives, re-derived HERE from the adopted
+    values. Named individually because a review appended `W_BIN_A = 148 / 1000`
+    to cv23 -- a GATED window, hard-coded in expression form -- and the suite
+    stayed green: nothing compared cv23's A windows against its own adoption.
+    """
+    w_bin = _round_up(values["per_bin_max_RT_closure"], mult, quantum)
+    w_mean_R = _round_up(values["mean_dR"], mult, quantum)
+    w_mean_T = _round_up(values["mean_dT"], mult, quantum)
+    return {
+        "W_BIN": w_bin, "W_MEAN_R": w_mean_R, "W_MEAN_T": w_mean_T,
+        "W_BIN_A": 2.0 * w_bin, "W_MEAN_A": w_mean_R + w_mean_T,
+        "W_BIN_A_TIGHT": w_bin,
+        "W_MEAN_A_TIGHT": _round_up(values["mean_closure"], mult, quantum),
+    }
+
+
+_CV22_WINDOW_NAMES = ("W_BIN", "W_MEAN_R", "W_MEAN_T")
+_CV23_WINDOW_NAMES = _CV22_WINDOW_NAMES + ("W_BIN_A", "W_MEAN_A",
+                                           "W_BIN_A_TIGHT", "W_MEAN_A_TIGHT")
+
+
+def _realized(mod, case: str, f, dt) -> dict:
+    """What the EVALUATOR actually applies, not what the module declares.
+
+    A constant can be right while the evaluator reads someone else's: that was
+    round-2 item 1, where cv23's R/T verdicts came out of cv22's windows.
+    """
+    if case == "cv22":
+        arm = mod.ARMS["lorentz"]
+        R, T = mod.analytic_rt(f, arm["model"], arm["params"])
+        out = mod.evaluate_e2(f, R, T, arm["model"], arm["params"], dt,
+                              windows=mod.WINDOWS)
+    else:
+        params = mod.ARMS["tand1"]["params"]
+        R, T, _A = mod.analytic_rta(f, params)
+        out = mod.evaluate_e2(f, R, T, params, dt)
+    got = {"window_R_first": out["window_R"][0],
+           "mean_window_R": out["mean_window_R"],
+           "mean_window_T": out["mean_window_T"]}
+    if case == "cv23":
+        got["window_A_first"] = out["window_A"][0]
+        got["mean_window_A"] = out["mean_window_A"]
+    return got
+
+
+def _assert_consumer(mod, case: str, values: dict, mult, quantum, f, dt):
+    """Every declared window of *mod*, and every window its evaluator applies,
+    against a local re-derivation from the values *mod* adopted."""
+    want = _expected_windows(values, mult, quantum)
+    names = _CV22_WINDOW_NAMES if case == "cv22" else _CV23_WINDOW_NAMES
+    for name in names:
+        assert getattr(mod, name) == want[name], (case, name)
+    realized = _realized(mod, case, f, dt)
+    # the per-bin window is w_bin + the model-error term, so compare the part
+    # that comes from the adoption by subtracting the term the evaluator adds
+    assert realized["mean_window_R"] >= want["W_MEAN_R"]
+    assert realized["mean_window_R"] - want["W_MEAN_R"] < 2e-3
+    assert realized["mean_window_T"] >= want["W_MEAN_T"]
+    assert realized["window_R_first"] >= want["W_BIN"]
+    assert realized["window_R_first"] - want["W_BIN"] < 2e-3
+    if case == "cv23":
+        # TWO-SIDED, like the R checks above (round-3 review): a lower bound
+        # alone accepts a widened window, and `win_A = 2 * W_BIN_A + w_A`
+        # passed both this test and the identity file, which compared cv23's
+        # mean A window but not its per-bin one.
+        assert realized["window_A_first"] >= want["W_BIN_A"]
+        assert realized["window_A_first"] - want["W_BIN_A"] < 2e-3
+        assert realized["mean_window_A"] >= want["W_MEAN_A"]
+        assert realized["mean_window_A"] - want["W_MEAN_A"] < 2e-3
+    return realized
+
+
+def test_adopting_a_new_revision_moves_the_adopting_consumer_and_nothing_else():
+    """(c) An explicit re-adoption, judged on the evaluator's output.
+
+    Both consumers are loaded from the scratch tree; the one that re-adopts
+    must move -- every declared window AND every window its evaluator applies
+    -- and the one that did not must sit exactly where its own record says. It
+    is also the check that no consumer hard-codes a window: a module carrying
+    0.074, or `148 / 1000`, sails through (a) and (b) and fails here.
+    """
+    live_before = (G.W_BIN, G.W_MEAN_R, G.W_MEAN_T)
+    f, dt = _rfx_bins()
+    mult = G.CV04_ADOPTION["gate_policy"]["multiplier"]
+    quantum = G.CV04_ADOPTION["gate_policy"]["quantum"]
+    doc = json.loads(_ENVELOPE.read_text())
+    r1_values = doc["revisions"]["r1"]["values"]
+
+    def _tree_with_r2(tree, factor):
+        d = json.loads(_ENVELOPE.read_text())
+        r2 = json.loads(json.dumps(d["revisions"]["r1"]))
+        r2["bootstrap"] = False
+        r2["values"] = {k: v * factor for k, v in r2["values"].items()}
+        r2["revision_hash"] = _SF.revision_hash({k: v for k, v in r2.items()
+                                                 if k != "revision_hash"})
+        d["revisions"]["r2"] = r2
+        d["latest_revision"] = "r2"
+        _write_envelope(tree, d)
+        return r2
+
+    # --- cv22 re-adopts r2; cv23's own record still says r1 -----------------
+    with _tmp_tree() as tree:
+        r2 = _tree_with_r2(tree, 2.0)
+        mod22, mod23 = _load_consumers_from(tree, adopt_cv22=("r2", r2["revision_hash"]))
+        assert mod22.CV04_ADOPTION["adopted_revision"] == "r2"
+        assert mod23.CV04_ADOPTION["adopted_revision"] == "r1"
+        moved = _assert_consumer(mod22, "cv22", r2["values"], mult, quantum, f, dt)
+        stayed = _assert_consumer(mod23, "cv23", r1_values, mult, quantum, f, dt)
+        # and the two are genuinely different now, in the evaluator's output
+        assert moved["mean_window_R"] != stayed["mean_window_R"]
+        assert mod22.W_BIN != mod23.W_BIN
+
+    # --- the mirror image, in a FRESH tree (the first tree's cv22 source has
+    #     been re-pointed in place): cv23 re-adopts, cv22 does not ------------
+    with _tmp_tree() as tree2:
+        r2b = _tree_with_r2(tree2, 3.0)
+        mod22b, mod23b = _load_consumers_from(tree2, adopt_cv23=("r2", r2b["revision_hash"]))
+        assert mod22b.CV04_ADOPTION["adopted_revision"] == "r1"
+        assert mod23b.CV04_ADOPTION["adopted_revision"] == "r2"
+        stayed22 = _assert_consumer(mod22b, "cv22", r1_values, mult, quantum, f, dt)
+        moved23 = _assert_consumer(mod23b, "cv23", r2b["values"], mult, quantum, f, dt)
+        assert moved23["mean_window_A"] != stayed22["mean_window_R"]
+        assert mod23b.W_BIN != mod22b.W_BIN
+
+    # the live modules did not move with either scratch tree
+    assert (G.W_BIN, G.W_MEAN_R, G.W_MEAN_T) == live_before
+
+
+def test_a_missing_required_witness_cannot_be_a_pass():
+    """Completeness (#928): an absent gate is None, and the claims-bearing
+    aggregate refuses to call a two-of-three verdict PASS.
+
+    The live instance this closes: `G3_tail` is None when no tail witness is
+    handed in, and the default aggregate skipped it -- so a run whose settling
+    witness never arrived would have read PASS on the rest. The default is
+    kept for the analytic falsifier checks, which have no run behind them and
+    legitimately carry no witness; the case scripts pass require_complete.
+    """
+    f, dt = _rfx_bins()
+    arm = "lorentz"
+    model, params = G.ARMS[arm]["model"], G.ARMS[arm]["params"]
+    R_an, T_an = G.analytic_rt(f, model, params)
+
+    # no witness handed in: passing on the other gates, INCOMPLETE
+    lenient = _e2(f, R_an, T_an, model, params, dt)
+    assert lenient["gates"]["G3_tail"] is None
+    assert lenient["incomplete_gates"] == ["G3_tail"]
+    assert lenient["gates_complete"] is False
+    assert lenient["e2_ok"] is True, "the diagnostic aggregate is unchanged"
+
+    strict = _e2(f, R_an, T_an, model, params, dt, require_complete=True)
+    assert strict["e2_ok"] is False, (
+        "a required witness that never arrived must not leave a PASS standing")
+    assert strict["incomplete_gates"] == ["G3_tail"]
+
+    # and with the witness present the two agree again, so the rule costs
+    # nothing on a complete run
+    tail = {"ok": True}
+    complete = _e2(f, R_an, T_an, model, params, dt, tail=tail,
+                             require_complete=True)
+    assert complete["gates_complete"] and complete["e2_ok"]
+    assert complete["e2_ok"] == _e2(f, R_an, T_an, model, params, dt,
+                                              tail=tail)["e2_ok"]
+    # a failing witness still fails, in both modes
+    bad = _e2(f, R_an, T_an, model, params, dt, tail={"ok": False},
+                        require_complete=True)
+    assert bad["e2_ok"] is False and bad["gates_complete"]
+
+    # ... and a declared gate that is ABSENT is incomplete too, not passing.
+    # Without the declared set the aggregate can only see a key that is present
+    # and None, so an evaluator that stops inserting a key -- an early return, a
+    # dropped branch -- would read as a complete PASS.
+    full = {name: True for name in G.DECLARED_GATES}
+    assert G.aggregate_gates(full, declared=G.DECLARED_GATES,
+                             require_complete=True)["e2_ok"] is True
+    for dropped in G.DECLARED_GATES:
+        partial = {k: v for k, v in full.items() if k != dropped}
+        out = G.aggregate_gates(partial, declared=G.DECLARED_GATES,
+                                require_complete=True)
+        assert out["e2_ok"] is False, dropped
+        assert out["incomplete_gates"] == [dropped]
+        assert out["gates_complete"] is False
+
+
+def test_a_non_active_revision_cannot_be_adopted():
+    """A withdrawn or superseded revision is history, not calibration."""
+    for status in ("withdrawn", "superseded", "scope-limited"):
+        with _tmp_tree() as tree:
+            doc = json.loads(_ENVELOPE.read_text())
+            block = doc["revisions"]["r1"]
+            block["status"] = status
+            block["revision_hash"] = _SF.revision_hash({k: v for k, v in block.items()
+                                                        if k != "revision_hash"})
+            _write_envelope(tree, doc)
+            adopt = ("r1", block["revision_hash"])
+            with pytest.raises(ValueError, match="only an active revision"):
+                _load_cv22_from(tree, adopt=adopt)
 
 
 @pytest.mark.parametrize("arm", ["debye", "lorentz", "drude"])
@@ -223,7 +671,7 @@ def test_rfx_falsifiers_exceed_the_windows_analytically(name):
     good = G.ARMS[arm]["params"]
     R, T = G.analytic_rt(f, model, good)
     Rb, Tb = G.analytic_rt(f, model, bad)
-    e2 = G.evaluate_e2(f, Rb, Tb, model, good, dt)   # defective "measurement" vs the true oracle
+    e2 = _e2(f, Rb, Tb, model, good, dt)   # defective "measurement" vs the true oracle
     assert not (e2["gates"]["G2_R"] and e2["gates"]["G2_T"]), name
     # margin >= 2x on at least one band-mean window (coin-toss guard)
     ratio = max(e2["mean_dR_gated"] / e2["mean_window_R"], e2["mean_dT_gated"] / e2["mean_window_T"])
@@ -239,7 +687,7 @@ def test_debye_tau_x1p3_would_be_a_coin_toss_and_is_not_a_falsifier():
     p = G.ARMS["debye"]["params"]
     bad = {**p, "tau": 1.3 * p["tau"]}
     Rb, Tb = G.analytic_rt(f, "debye", bad)
-    e2 = G.evaluate_e2(f, Rb, Tb, "debye", p, dt)
+    e2 = _e2(f, Rb, Tb, "debye", p, dt)
     assert e2["mean_dR_gated"] / e2["mean_window_R"] < 1.5
     assert "debye_tau_x1p3" not in G.FALSIFIERS
 
@@ -255,17 +703,17 @@ def test_meep_falsifiers_exceed_the_e4_windows_analytically(name):
     eps_bad = np.conj(de.eps_meep_convention(f, bad))
     Rm, Tm = de.tmm_slab_rt(f, eps_bad, G.D_SLAB_M)
     R, T = G.analytic_rt(f, "lorentz", lp)
-    e2 = G.evaluate_e2(f, R, T, "lorentz", lp, dt)
+    e2 = _e2(f, R, T, "lorentz", lp, dt)
     meep_doc = {"freqs_hz": f.tolist(), "R": Rm.tolist(), "T": Tm.tolist(),
                 "dt_meep_s": dt_meep, "meep_params": bad, "precheck": {"passed": False}}
-    e4 = G.evaluate_e4(e2, meep_doc)
+    e4 = _e4(e2, meep_doc)
     assert not e4["e4_ok"], name
     assert not (e4["gates"]["G4_mean_R"] and e4["gates"]["G4_mean_T"]), name
     assert not (e4["gates"]["G5_mean_R"] and e4["gates"]["G5_mean_T"]), name
     # and the control: the RIGHT mapping passes the same E4 gates.
     eps_ok = np.conj(de.eps_meep_convention(f, good))
     Ro, To = de.tmm_slab_rt(f, eps_ok, G.D_SLAB_M)
-    e4_ok = G.evaluate_e4(e2, {**meep_doc, "R": Ro.tolist(), "T": To.tolist(), "meep_params": good,
+    e4_ok = _e4(e2, {**meep_doc, "R": Ro.tolist(), "T": To.tolist(), "meep_params": good,
                                "precheck": {"passed": True}})
     assert e4_ok["e4_ok"]
 
@@ -279,7 +727,7 @@ def _read(path: Path) -> dict:
 
 
 def _replay_e2(arm_doc: dict) -> dict:
-    return G.evaluate_e2(arm_doc["freqs_hz"], arm_doc["R_rfx"], arm_doc["T_rfx"],
+    return _e2(arm_doc["freqs_hz"], arm_doc["R_rfx"], arm_doc["T_rfx"],
                          arm_doc["model"], arm_doc["params"], arm_doc["dt_s"], tail=arm_doc["tail"])
 
 
@@ -344,11 +792,14 @@ def test_baseline_artifact_e4_against_the_committed_meep_jsons():
         assert md["run"]["finite"]
         assert md["precheck"]["passed"], (arm, md["precheck"]["max_rel_err"])
         assert md["precheck"]["max_rel_err"] < 1e-9
-        e4 = G.evaluate_e4(_replay_e2(ad), md)
+        e4 = _e4(_replay_e2(ad), md)
         assert e4["e4_ok"], (arm, e4["gates"], e4["max_dR_rfx_meep_gated"], e4["max_dT_rfx_meep_gated"])
         assert e4["gates"]["precheck_passed"]
-        # the committed r4 artifact predates the precheck_passed gate key
-        # (review finding 2); every stored gate must still replay identically
+        # the intersection, not equality: the committed artifact's gate set
+        # is whatever the run that produced it emitted (the pre-#931 r4 file
+        # predated precheck_passed, review finding 2; the #931 control
+        # re-solve 369367259201 carries it). Every stored gate must still
+        # replay identically whichever set that is.
         assert ad["meep"]["present"]
         assert {k: v for k, v in e4["gates"].items() if k in ad["meep"]["gates"]} == ad["meep"]["gates"]
     assert doc["verdict"]["exit_code"] == 0
@@ -368,7 +819,7 @@ def test_rfx_falsifier_artifacts_fail_for_the_declared_reason(name):
     _, model, bad = G.apply_falsifier(name)
     assert ad["params_run"] == pytest.approx(bad)
     assert ad["params"] == pytest.approx(G.ARMS[arm]["params"])
-    re = G.evaluate_e2(ad["freqs_hz"], ad["R_rfx"], ad["T_rfx"], model, G.ARMS[arm]["params"],
+    re = _e2(ad["freqs_hz"], ad["R_rfx"], ad["T_rfx"], model, G.ARMS[arm]["params"],
                        ad["dt_s"], tail=ad["tail"])
     assert re["gates"] == {k: v for k, v in ad["gates"].items() if k in re["gates"]}
     assert not re["e2_ok"]
@@ -385,7 +836,7 @@ def test_meep_falsifier_artifacts_fail_e4_against_the_baseline(name):
     md = _read(mp_path)
     assert md["falsifier"] == name
     assert md["precheck"]["passed"] is False, "the 1e-9 pre-check must have caught the wrong convention"
-    e4 = G.evaluate_e4(_replay_e2(doc["arms"][G.MEEP_FALSIFIER_ARM]), md)
+    e4 = _e4(_replay_e2(doc["arms"][G.MEEP_FALSIFIER_ARM]), md)
     assert not e4["e4_ok"], e4["gates"]
     assert not (e4["gates"]["G4_mean_R"] and e4["gates"]["G4_mean_T"])
 
@@ -442,7 +893,7 @@ def test_r2_meep_diagnostics_against_predeclared_predictions(arm):
         pytest.skip("baseline Meep leg absent")
     doc = _baseline()["arms"][arm]
     e2 = _replay_e2(doc)
-    e4b = G.evaluate_e4(e2, _read(base_path))
+    e4b = _e4(e2, _read(base_path))
     lines = [f"r2-summary meep {arm}: baseline (10 px/cm) Meep-vs-TMM mean|dR| {e4b['mean_dR_meep_tmm_gated']:.4f} "
              f"mean|dT| {e4b['mean_dT_meep_tmm_gated']:.4f}"]
     for tag in _R2_MEEP_TAGS:
@@ -452,7 +903,7 @@ def test_r2_meep_diagnostics_against_predeclared_predictions(arm):
             continue
         md = _read(p)
         assert md["run"]["finite"] and md["precheck"]["passed"], tag
-        e4 = G.evaluate_e4(e2, md)
+        e4 = _e4(e2, md)
         rT = e4["mean_dT_meep_tmm_gated"] / max(e4b["mean_dT_meep_tmm_gated"], 1e-12)
         lines.append(f"r2-summary meep {arm}__{tag}: res={md['resolution']} decay={md['decay']} "
                      f"fcen={md['fcen_meep']:.3f} Meep-vs-TMM mean|dR| {e4['mean_dR_meep_tmm_gated']:.4f} "
@@ -482,7 +933,7 @@ def test_r2_meep_debye_res40_primary_is_the_predeclared_fix():
     if q.is_file():
         m40 = _read(q)
         assert m40["run"]["finite"]
-        e4 = G.evaluate_e4(_replay_e2(_baseline()["arms"]["debye"]), m40)
+        e4 = _e4(_replay_e2(_baseline()["arms"]["debye"]), m40)
         print(f"r2-summary meep debye fn40 cross-check: mean|dT| vs TMM {e4['mean_dT_meep_tmm_gated']:.4f} "
               f"(W_map mean T carried {np.mean(np.asarray(e4['w_map_T'])[np.asarray(_baseline()['arms']['debye']['gated'])]):.2e})")
 

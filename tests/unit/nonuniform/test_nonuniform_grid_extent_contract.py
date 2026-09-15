@@ -73,6 +73,14 @@ def test_realized_extent_equals_requested_domain(profiles):
     first and last node IS the electrical cavity/guide dimension. It has to
     be what the caller asked for: at WR-90's 0.254 mm this defect cost one
     cell = 1.11 % of the guide width = +37 MHz of TE101 centre frequency.
+
+    #931 read this file as the existing precedent: "drawn extent ==
+    realized extent" was already the DOMAIN's contract while a PEC BODY's
+    far face was never a wall, so the same repo held both conventions at
+    once. The body-level twin — a PEC Box drawn z_a -> z_b realizes walls
+    at BOTH z_a and z_b — lives in
+    ``tests/contracts/test_lattice_ownership_contract.py``; this file keeps
+    the domain half, which the contract fences out on purpose (§1.8).
     """
     shape, axes = _spans(_sim(**profiles), nonuniform=bool(profiles))
     for name, requested, (n, first, span) in zip("xyz", REQUESTED, axes):

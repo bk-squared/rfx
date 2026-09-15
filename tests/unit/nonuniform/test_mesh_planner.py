@@ -209,8 +209,8 @@ def test_plan_simulation_mesh_reports_nonuniform_extrema_and_limiting_axis():
         domain=(0.0, 0.0, 0.01),
         boundary="pec",
         dx=0.005,
-        dx_profile=np.array([0.001, 0.002, 0.003]),
-        dy_profile=np.array([0.002, 0.004]),
+        dx_profile=np.array([0.005, 0.001, 0.002, 0.003, 0.005]),
+        dy_profile=np.array([0.005, 0.002, 0.004, 0.005]),
         dz_profile=np.array([0.0015, 0.0025, 0.0035]),
     )
 
@@ -220,9 +220,9 @@ def test_plan_simulation_mesh_reports_nonuniform_extrema_and_limiting_axis():
     assert plan.cell_sizes["dx"] == 0.005
     assert plan.cell_sizes["dy"] == 0.005
     assert plan.cell_sizes["dx_min"] == 0.001
-    assert plan.cell_sizes["dx_max"] == 0.003
+    assert plan.cell_sizes["dx_max"] == 0.005
     assert plan.cell_sizes["dy_min"] == 0.002
-    assert plan.cell_sizes["dy_max"] == 0.004
+    assert plan.cell_sizes["dy_max"] == 0.005
     assert plan.cell_sizes["dz_min"] == 0.0015
     assert plan.cell_sizes["dz_max"] == 0.0035
     assert plan.cell_sizes["profiles_present"] == {"x": True, "y": True, "z": True}
@@ -235,3 +235,10 @@ def test_simulation_plan_mesh_method_matches_function():
 
     assert method_plan.to_dict() == function_plan.to_dict()
     assert method_plan.memory["source"] == "Simulation.mesh_intelligence_report"
+
+
+def test_simulation_planner_refuses_profiles_the_solver_cannot_build():
+    sim = Simulation(freq_max=3e9, domain=(.006, .006, .006), boundary="pec",
+                     dx=.005, dx_profile=np.array([.001, .002, .003]))
+    with pytest.raises(ValueError, match=r"dx_profile\[0\].*boundary"):
+        plan_simulation_mesh(sim, n_steps=4)

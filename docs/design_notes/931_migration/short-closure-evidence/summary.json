@@ -1,0 +1,78 @@
+{
+  "policy": {
+    "run_id": "369367259732",
+    "source_sha": "db4ee4a1797e2109f1fe8f70b14f93740fbd249b",
+    "outcome": {
+      "available": true,
+      "counts": {
+        "total": 55,
+        "passed": 55,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "failing_ids": []
+    },
+    "resources": {
+      "cpu_max": [
+        "800000",
+        "100000"
+      ],
+      "memory_max": "34359738368"
+    }
+  },
+  "coarse": {
+    "run_id": "369367259733",
+    "source_sha": "db4ee4a1797e2109f1fe8f70b14f93740fbd249b",
+    "outcome": {
+      "available": true,
+      "counts": {
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "failing_ids": []
+    },
+    "resources": {
+      "cpu_max": [
+        "800000",
+        "100000"
+      ],
+      "memory_max": "34359738368"
+    },
+    "max_column_power": 1.0444785356521606,
+    "settling_db": [
+      -25.4948909801281,
+      -49.59556966120925
+    ]
+  },
+  "fine": {
+    "run_id": "369367259734",
+    "source_sha": "db4ee4a1797e2109f1fe8f70b14f93740fbd249b",
+    "outcome": {
+      "available": true,
+      "counts": {
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "failing_ids": []
+    },
+    "resources": {
+      "cpu_max": [
+        "800000",
+        "100000"
+      ],
+      "memory_max": "34359738368"
+    },
+    "max_column_power": 1.0494229793548584,
+    "settling_db": [
+      -47.475852231488204,
+      -103.15660722963592
+    ]
+  }
+}

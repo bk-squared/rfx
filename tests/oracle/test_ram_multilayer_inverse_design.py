@@ -40,6 +40,21 @@ lossless PEC-backed |Gamma|~1 in the mean (ripple 0.92-1.16 = the two-run
 extractor's domain standing-wave, worst on a total reflector); d|Gamma|/dsigma AD==FD
 0.05% (self-consistency) and sign-consistent with analytic; settling on the PEC
 runs -92 to -96 dB (< -40 dB drained); inverse design brackets the analytic sigma*.
+
+LATTICE OWNERSHIP CONTRACT (#931). The PEC backing here is a cell mask built
+by index (``m[xb:xpec] = True``) and handed to ``forward(pec_mask_override=)``,
+which stays a VOLUME override (design note §1.8). Under §1.2 that slab now
+realizes tangential walls on BOTH bounding node planes and shorts the normal
+edges between them, where the old rule gave one wall per masked cell plane.
+
+The analytic TMM oracle puts its short (``z_load = 0``) at ``X_BACK``, the
+LEADING face at index ``xb`` — the face the incident wave meets — and that face
+does not move. So the envelope is expected to be unchanged, and the expectation
+is checked by running the module rather than argued: VESSL run 369367259193
+(``rfx-931-post-ram-backings``), recorded in
+``docs/design_notes/931_migration/T6-RECOMPUTE.md``. If the |Gamma| envelope or
+either AD-vs-FD leg moves, the far face at ``xpec`` is what moved it and this
+row becomes a re-measure.
 """
 from __future__ import annotations
 
@@ -358,6 +373,7 @@ def test_ram_gradient_ad_vs_fd(ram_run, var, x0):
 
 
 @pytest.mark.slow
+@pytest.mark.highmem
 @pytest.mark.parametrize("var,x0", [("sigma", 1.0), ("eps", 4.0)])
 def test_ram_gradient_vs_analytic_tmm(ram_run, var, x0):
     """PHYSICAL gradient check: the FDTD jax.grad vs the INDEPENDENT analytic TMM
@@ -395,6 +411,7 @@ def _tmm_dallenbach_optimum(d):
 
 
 @pytest.mark.slow
+@pytest.mark.highmem
 def test_ram_inverse_design_brackets_analytic_optimum(ram_run):
     """Gradient descent reproduces the Dallenbach absorber: reflection is driven from
     a mismatched start to the analytic TMM minimum, and sigma ascends into the

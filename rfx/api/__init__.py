@@ -90,6 +90,7 @@ from rfx.api._spec import (  # noqa: E402
     CoaxialLineReflectionResult,
     CoaxialTwoPortResult,
     _MSLPortEntry,
+    MSLProbeClearance,
     MSLSMatrixResult,
     MixedSMatrixResult,
 )
@@ -267,6 +268,7 @@ from rfx.api._compile import _CompileMixin  # noqa: E402
 # ---------------------------------------------------------------------------
 
 from rfx.api._execute import _ExecuteMixin  # noqa: E402
+from rfx.api._mesh import _MeshMixin  # noqa: E402
 from rfx.api._artifacts import _ArtifactsMixin  # noqa: E402
 
 
@@ -279,6 +281,7 @@ _LorentzSpec = tuple[list[LorentzPole], list[jnp.ndarray]]
 # ---------------------------------------------------------------------------
 
 class Simulation(
+    _MeshMixin,
     _PreflightMixin,
     _SparamMixin,
     _CompileMixin,
@@ -353,9 +356,13 @@ class Simulation(
         ``"float32"`` (the default) for those.
     solver : str
         ``"yee"`` (default) for the standard explicit scheme or
-        ``"adi"`` for the ADI-FDTD path. ADI is unconditionally stable in
-        both 2D TMz (``mode="2d_tmz"``, 2% cavity-resonance gate at 5x
-        CFL, ``test_adi_cavity_resonance``; stable well beyond) and 3D
+        ``"adi"`` for the experimental ADI-FDTD path. The homogeneous,
+        lossless split with compatible domain boundaries removes the
+        explicit CFL stability restriction. Interior PEC (sheets, wires,
+        volumes) is refused at every factor on both lanes: its projection
+        does not inherit that guarantee. Cavity accuracy without interior
+        PEC is tested in 2D TMz (``mode="2d_tmz"``, 2% resonance gate at
+        5x CFL, ``test_adi_cavity_resonance``) and 3D
         (full Zheng–Chen–Zhang two-sub-step scheme since
         2026-07-13, issue #338: 2% PEC-cavity eigenfrequency gate at 2x
         CFL, ~15 cells/wavelength). 3D dispersion error grows ~dt^2, so
@@ -363,7 +370,7 @@ class Simulation(
         ``adi_cfl_factor > 2`` on a 3D grid — large factors trade
         wavelength-scale accuracy for stiff-mesh throughput.
     adi_cfl_factor : float
-        Timestep multiplier relative to the standard 2D CFL limit when
+        Timestep multiplier relative to the grid's Yee CFL timestep when
         ``solver="adi"``. Default 5.0; for quantitative wavelength-scale
         3D results prefer <= 2.0 (see ``solver``).
     stencil_order : int
@@ -397,8 +404,14 @@ class Simulation(
         solver: str = "yee",
         adi_cfl_factor: float = 5.0,
         stencil_order: int = 2,
+        interface_eps: str = "sampled",
     ):
         from rfx.boundaries.spec import normalize_boundary
+        from rfx.runners.nonuniform import INTERFACE_EPS_RULES
+
+        if interface_eps not in INTERFACE_EPS_RULES:
+            raise ValueError(f"interface_eps must be one of {INTERFACE_EPS_RULES}, got {interface_eps!r}")
+        self._interface_eps = interface_eps
 
         # T7-B: accept BoundarySpec directly or normalise a legacy scalar
         # boundary=<str>. A BoundarySpec provided here is authoritative;
@@ -848,21 +861,35 @@ class Simulation(
         material/PEC discontinuity at artificial coarse/fine interfaces, and
         no unsupported RF post-processing features.
         """
+        self._require_uniform_mesh("validate_subgrid")
+        # #931 §1.9: sheets and wires own no cell, so a validator handed
+        # only pec_mask cannot see them — and this lane cannot realize
+        # them (run(solver='subgridded') refuses). Collect and pass them
+        # so the report refuses the same models the runner does.
         if self._refinement is None:
             from rfx.subgridding.validation import validate_subgrid_setup
             grid = self._build_grid()
-            mats, _, _, pec_mask, *_ = self._assemble_materials(grid)
+            _vs_sheets: list = []
+            _vs_wires: list = []
+            mats, _, _, pec_mask, *_ = self._assemble_materials(
+                grid, pec_sheets=_vs_sheets, pec_wires=_vs_wires)
             return validate_subgrid_setup(
-                self, grid, mats, pec_mask, mode=mode or "production",
+                self, grid, mats, pec_mask, sheets=_vs_sheets,
+                wires=_vs_wires, mode=mode or "production",
             )
         grid = self._build_grid()
-        mats, _, _, pec_mask, *_ = self._assemble_materials(grid)
+        _vs_sheets = []
+        _vs_wires = []
+        mats, _, _, pec_mask, *_ = self._assemble_materials(
+            grid, pec_sheets=_vs_sheets, pec_wires=_vs_wires)
         from rfx.subgridding.validation import validate_subgrid_setup
         return validate_subgrid_setup(
             self,
             grid,
             mats,
             pec_mask,
+            sheets=_vs_sheets,
+            wires=_vs_wires,
             mode=mode or self._refinement.get("validation", "production"),
         )
 
@@ -916,8 +943,7 @@ class Simulation(
 
     # ---- geometry ----
 
-    def add(self, shape: Shape, *, material: str,
-            two_plane: bool = False) -> "Simulation":
+    def add(self, shape: Shape, *, material: str) -> "Simulation":
         """Add a geometric shape filled with a named material.
 
         Parameters
@@ -925,39 +951,23 @@ class Simulation(
         shape : Shape
         material : str
             Registered or library material name.
-        two_plane : bool
-            OPT-IN (issue #706), PEC materials only.  The default
-            one-plane realization zeroes one tangential-E entry per PEC
-            cell — the cell's LOWER node plane — so a PEC body filling
-            exactly ONE cell along its normal presents only its bottom
-            face as an electrical wall and its own cell volume stays
-            live (eigenmode-witnessed: a cavity bounded by such sheets
-            measures L_eff = plane-to-plane, one sheet allotment longer
-            than face-to-face).  With ``two_plane=True``, any one-cell
-            run of this body along an axis also zeroes the tangential
-            components at the NEXT node plane (``k+1``) and shields the
-            slab's interior normal edge, so the body presents BOTH
-            faces: a face-registered slab, not a node-registered plane.
-            The two models answer different intents; the default stays
-            the #677-validated one-plane behaviour, bit-identical when
-            this flag is off.  Bodies >= 2 cells thick along an axis are
-            unchanged by the flag on that axis.  Supported on the
-            uniform run()/forward() scan and the non-uniform runner;
-            vmap sweeps, subgridding, distributed-NU, ADI and conformal
-            PEC refuse loudly.
+
+        Notes
+        -----
+        A PEC shape is a VOLUME under the lattice ownership contract
+        (#931): its primal cells are sampled at cell centres and every E
+        edge incident to an occupied cell is shorted, so a Box drawn
+        ``z_a -> z_b`` on node planes realizes walls at BOTH planes with
+        realized thickness = drawn thickness. A PEC Box with exactly one
+        zero-extent axis (``lo == hi``) is a SHEET declaration, realized
+        exactly as :meth:`add_thin_conductor` would realize it. A PEC Box
+        thinner than one local cell (but not zero) is refused at
+        assembly; so is any PEC shape that rasterizes to zero cells.
+        There is no per-entry realization knob.
         """
-        mat = self._resolve_material(material)  # validate early
-        if two_plane and mat.sigma < self._PEC_SIGMA_THRESHOLD:
-            raise ValueError(
-                f"add(..., two_plane=True): material {material!r} (sigma="
-                f"{mat.sigma:g} S/m) is not PEC (threshold "
-                f"{self._PEC_SIGMA_THRESHOLD:g} S/m). The two-plane slab "
-                "realization (issue #706) is defined for hard-PEC bodies "
-                "only; surface-impedance (f0) sheets are a different "
-                "operator and are deliberately untouched."
-            )
+        self._resolve_material(material)  # validate early
         self._geometry.append(_GeometryEntry(
-            shape=shape, material_name=material, two_plane=two_plane))
+            shape=shape, material_name=material))
         return self
 
     def fidelity_report(self, print_report: bool = True):
@@ -967,42 +977,6 @@ class Simulation(
         realization class and materialization only)."""
         from rfx.fidelity import fidelity_report as _fr
         return _fr(self, print_report=print_report)
-
-    def _two_plane_cell_mask(self, grid=None, mask_fn=None):
-        """Union CELL mask of geometry entries flagged ``two_plane`` (#706).
-
-        Returns ``None`` when no entry is flagged (the common case — every
-        lane treats ``None`` as the bit-identical one-plane path).
-        ``mask_fn`` lets the non-uniform lane rasterize with the SAME
-        coords-based call its material assembly uses, so the flagged mask
-        cannot land on different cells than the pec_mask it extends.
-        """
-        flagged = [e for e in self._geometry
-                   if getattr(e, "two_plane", False)]
-        if not flagged:
-            return None
-        if mask_fn is None:
-            mask_fn = lambda shape: shape.mask(grid)
-        m = None
-        for e in flagged:
-            em = mask_fn(e.shape)
-            m = em if m is None else (m | em)
-        return m
-
-    def _refuse_two_plane(self, lane: str) -> None:
-        """Raise when a two_plane-flagged entry reaches an unsupported lane.
-
-        Loud refusal beats silently running the one-plane realization the
-        user explicitly opted out of (issue #706).
-        """
-        if any(getattr(e, "two_plane", False) for e in self._geometry):
-            raise NotImplementedError(
-                f"two_plane=True PEC slabs (issue #706) are not supported "
-                f"on the {lane} lane. Supported: the uniform run()/"
-                "forward() scan and the non-uniform runner. Remove the "
-                "flag (accepting the one-plane realization) or switch "
-                "lanes."
-            )
 
     # ---- sources (non-port) ----
 
@@ -1068,9 +1042,9 @@ class Simulation(
                contract**: multiply your waveform amplitude by the cell
                volume ``dV`` and pass ``amplitude_kind='current'`` —
                algebra ``Cb*(w*dV)/dV == Cb*w``, exact up to one float
-               multiply/divide pair (not bit-identical). From 1.8
-               ``amplitude_kind`` is required; from 1.9 the default
-               becomes ``'current'``.
+               multiply/divide pair (not bit-identical).
+               ``amplitude_kind`` becomes required in 1.9 (and
+               ``'current'`` the default in 2.0).
 
             Route note (pre-existing, unchanged): the ``forward()``
             uniform route uses the ``Cb``-normalized helper regardless of
@@ -2420,15 +2394,28 @@ class Simulation(
             raise ValueError(
                 "calibration_preset cannot be combined with explicit reference_plane/probe_plane"
             )
-        grid = self._build_grid(extra_waveguide_axes=axis_name)
         pos_vec = [0.0, 0.0, 0.0]
         pos_vec[axis_idx] = x_position
-        x_index = grid.position_to_index(tuple(pos_vec))[axis_idx]
-        axis_pad = grid.axis_pads[axis_idx]
-        snapped_source_plane = (x_index - axis_pad) * grid.dx
         step_sign = 1 if direction.startswith("+") else -1
-        measured_reference_plane = snapped_source_plane + step_sign * ref_offset * grid.dx
-        measured_probe_plane = snapped_source_plane + step_sign * probe_offset * grid.dx
+        if self._uses_nonuniform_mesh:
+            from rfx.nonuniform import position_to_index
+            from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
+            grid = self._build_nonuniform_grid()
+            x_index = position_to_index(grid, tuple(pos_vec))[axis_idx]
+            coords = coords_from_nonuniform_grid(grid)
+            nodes = np.asarray((coords.x, coords.y, coords.z)[axis_idx])
+            snapped_source_plane = float(nodes[x_index])
+            measured_reference_plane = float(nodes[np.clip(
+                x_index + step_sign * ref_offset, 0, len(nodes) - 1)])
+            measured_probe_plane = float(nodes[np.clip(
+                x_index + step_sign * probe_offset, 0, len(nodes) - 1)])
+        else:
+            grid = self._build_grid(extra_waveguide_axes=axis_name)
+            x_index = grid.position_to_index(tuple(pos_vec))[axis_idx]
+            axis_pad = grid.axis_pads[axis_idx]
+            snapped_source_plane = (x_index - axis_pad) * grid.dx
+            measured_reference_plane = snapped_source_plane + step_sign * ref_offset * grid.dx
+            measured_probe_plane = snapped_source_plane + step_sign * probe_offset * grid.dx
         axis_domain = self._domain[axis_idx]
         if (
             measured_reference_plane < 0.0
@@ -2653,8 +2640,9 @@ class Simulation(
                         f"but periodic_axes={self._periodic_axes!r}"
                     )
 
-        # P0.3: Floquet port requires uniform mesh
-        if self._dz_profile is not None:
+        # Reject an explicit incompatible declaration at registration. Auto
+        # mesh depends on the completed model and is checked by preflight.
+        if self._declared_mesh["_dz_profile"] is not None:
             raise ValueError(
                 "Floquet ports do not support non-uniform z mesh (dz_profile). "
                 "Set dx explicitly to prevent auto-mesh from creating NU grid."
@@ -2705,6 +2693,15 @@ class Simulation(
             self._probes.append(_ProbeEntry(position=position, component=comp))
         return self
 
+    def _validate_declared_plane_coordinate(self, axis: str, coordinate: float) -> None:
+        """Validate a builder coordinate without resolving unfinished geometry."""
+        axis_idx = {"x": 0, "y": 1, "z": 2}[axis]
+        extent = self._declared_mesh["_domain"][axis_idx]
+        if coordinate < 0 or coordinate > extent:
+            raise ValueError(
+                f"coordinate {coordinate} m is outside the {axis}-domain [0, {extent}]"
+            )
+
     def add_dft_plane_probe(
         self,
         *,
@@ -2737,11 +2734,7 @@ class Simulation(
         if component not in ("ex", "ey", "ez", "hx", "hy", "hz"):
             raise ValueError(f"component must be a field name, got {component!r}")
 
-        axis_idx = {"x": 0, "y": 1, "z": 2}[axis]
-        if coordinate < 0 or coordinate > self._domain[axis_idx]:
-            raise ValueError(
-                f"coordinate {coordinate} m is outside the {axis}-domain [0, {self._domain[axis_idx]}]"
-            )
+        self._validate_declared_plane_coordinate(axis, coordinate)
         if freqs is None:
             if n_freqs <= 0:
                 raise ValueError(f"n_freqs must be positive, got {n_freqs}")
@@ -2793,24 +2786,26 @@ class Simulation(
         n_freqs : int
             Number of frequencies if freqs is None.
         size : (float, float) or None
-            Physical extent in the two tangential directions.  ``None``
-            means the full plane (legacy behaviour).
+            Positive finite extents in the two tangential directions. A finite
+            window snaps to cell edges, clamps to the physical interior with
+            a warning on any clamp, and excludes CPML/bounding-node slots.
+            ``None`` means the full allocated plane (legacy behaviour).
         center : (float, float) or None
             Physical centre of the flux region in the two tangential
-            directions.  ``None`` defaults to the domain midpoint.
+            directions. ``None`` defaults to the declared domain midpoint
+            on uniform grids and the realized interior midpoint on graded grids.
             For example, for an x-normal monitor the two tangential
-            axes are (y, z).
+            axes are (y, z). Exactly two finite values are required.
+            Preflight reports finite requested/realized bounds in metres
+            through ``report.flux_regions``.
         name : str or None
             Result key. Default: ``flux_{axis}_{idx}``.
         """
         if axis not in ("x", "y", "z"):
             raise ValueError(f"axis must be 'x', 'y', or 'z', got {axis!r}")
-        axis_idx = {"x": 0, "y": 1, "z": 2}[axis]
-        if coordinate < 0 or coordinate > self._domain[axis_idx]:
-            raise ValueError(
-                f"coordinate {coordinate} m is outside the {axis}-domain "
-                f"[0, {self._domain[axis_idx]}]"
-            )
+        self._validate_declared_plane_coordinate(axis, coordinate)
+        from rfx.probes.flux_region import validate_flux_region_inputs
+        validate_flux_region_inputs(size, center)
         if freqs is not None:
             freqs_arr = jnp.asarray(freqs)
         else:
@@ -4068,6 +4063,21 @@ class Simulation(
             source_preflight=scope.source_preflight,
         )
 
+    def freeze_mesh(self):
+        """Finalize mesh spacing/profiles and extent, returning the selected grid.
+
+        Call after adding mesh-driving materials/geometry and before placing
+        lattice-aligned conductors. Later geometry cannot refine this mesh;
+        unresolved features still raise under the normal conductor contract.
+        Repeated calls preserve the same mesh. Build a new Simulation to remesh.
+
+        Grid previews (including preflight) alone do not finalize the mesh.
+        Register boundary conditions and ports before retaining grid indices:
+        port registration may change padding, though physical node positions
+        in the domain stay fixed. Caller declarations remain available unchanged.
+        """
+        return self._freeze_mesh()
+
     def mesh_intelligence_report(
         self,
         *,
@@ -4221,7 +4231,7 @@ class Simulation(
         This keeps the planner from scattering direct ``Simulation`` private
         attribute reads while avoiding a larger public accessor surface.
         """
-        grid = self._build_grid()
+        grid = self._build_realized_grid()
         return {
             "freq_max": float(self._freq_max),
             "domain": tuple(float(v) for v in self._domain),
@@ -4254,7 +4264,7 @@ class Simulation(
         )
 
     def __repr__(self) -> str:
-        grid = self._build_grid()
+        grid = self._build_realized_grid()
         return (
             f"Simulation(\n"
             f"  freq_max={self._freq_max:.2e} Hz,\n"
@@ -4383,6 +4393,7 @@ __all__ = [
     "CoaxialSMatrixResult",
     "CoaxialLineReflectionResult",
     "CoaxialTwoPortResult",
+    "MSLProbeClearance",
     "MSLSMatrixResult",
     "MixedSMatrixResult",
 ]

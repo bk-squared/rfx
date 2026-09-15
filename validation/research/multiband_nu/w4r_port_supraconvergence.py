@@ -71,6 +71,7 @@ from rfx import Simulation, Box, GaussianPulse
 # points working: `python -m validation.research.multiband_nu.<mod>`
 # from the repo root, and the gate's by-path load.
 from validation.research.multiband_nu import fixtures as fx
+from validation.crossval.comparators import realized_conductors as RC
 
 # --- W4R instrument (frozen in the note's W4R section) -----------------
 BAND = (4.0e9, 6.5e9)     # analysis band containing the target line
@@ -120,7 +121,6 @@ def build_sim(scale: float, dz_profile: np.ndarray,
                + fx.PC_H_UPPER + fx.PC_AIR2)
     assert abs(dz_profile.sum() - total_h) < 1e-9
     dx = fx.PC_DX0 * scale
-    dzf = fx.PC_DZF0 * scale
     assert abs(round(fx.PC_A / dx) * dx - fx.PC_A) < 1e-9
     sim = Simulation(
         freq_max=F_MAX, domain=(fx.PC_A, fx.PC_B, total_h),
@@ -133,10 +133,31 @@ def build_sim(scale: float, dz_profile: np.ndarray,
     z_up0 = fx.PC_H_SUB + fx.PC_H_TRACE_BAND + fx.PC_AIR1
     sim.add(Box((0, 0, z_up0), (fx.PC_A, fx.PC_B, z_up0 + fx.PC_H_UPPER)),
             material="upper")
-    sim.add(Box((6.75e-3 - dx / 2, 9.0e-3 - dx / 2, fx.PC_H_SUB - dzf / 2),
-                (20.25e-3 + dx / 2, 13.5e-3 + dx / 2,
-                 fx.PC_H_SUB + fx.PC_H_TRACE_BAND + dzf / 2)),
+    # #931: drawn on NODE planes, and the half-cell margins are gone.
+    #
+    # PR #785 drew this body with a +-half-cell margin on every face
+    # ("knife-edge-free") because the pre-#931 rule sampled a PEC Box at
+    # NODES, half-open: a face exactly on a node was a tie, and the hi
+    # face was dropped, so the margins were what put the intended node set
+    # inside the mask. Under the lattice ownership contract a PEC volume is
+    # sampled at cell CENTRES and the realized edge set spans exactly the
+    # drawn node range — drawn IS realized (§1.1/§1.2) — so the margins now
+    # SHIFT the body: faces on cell midpoints put the last occupied cell
+    # one below the intended hi node. Drawing on the declared nodes is both
+    # the contract's spelling and the fixture's original intent.
+    #
+    # This changes the realized body relative to PR #785, which realized
+    # one edge SHORT of the declared node set on each axis' hi side. The
+    # #786 predeclared windows and d0_reproduce's PR #785 comparison
+    # numbers were measured on that geometry and must be re-derived; they
+    # are deliberately NOT touched here.
+    sim.add(Box((6.75e-3, 9.0e-3, fx.PC_H_SUB),
+                (20.25e-3, 13.5e-3, fx.PC_H_SUB + fx.PC_H_TRACE_BAND)),
             material="pec")
+    RC.assert_wall_span(
+        sim, 2, fx.PC_H_SUB, fx.PC_H_SUB + fx.PC_H_TRACE_BAND,
+        at=(13.5e-3, 11.25e-3),
+        label="W4R P-C trace", tol_m=1e-12)
     sim.add_source(SRC_P, "ez",
                    waveform=GaussianPulse(amplitude=+1.0, **WAVEFORM),
                    amplitude_kind="current")

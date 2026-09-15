@@ -15,6 +15,42 @@ Status terms on this page are **supported**, **limited**, **experimental**,
 **not documented**, and **unsupported** as defined in
 `docs/guides/support_matrix.md`.
 
+## Which method should I call?
+
+If you are not sure which of the APIs below your simulation needs, do not
+guess from the table: ask the simulation.
+
+```python
+sim.s_matrix_lane()          # -> 'compute_waveguide_s_matrix'
+res = sim.compute_s_matrix() # routes to that method, forwarding kwargs
+```
+
+`Simulation.compute_s_matrix(**kwargs)` reads the registered ports, picks
+exactly one of the calculators below, and forwards every keyword argument to
+it unchanged — the delegate's own defaults, preconditions, warnings and
+result type are what you get, identical to calling it directly.
+`Simulation.s_matrix_lane()` returns the same choice as a string and runs no
+FDTD, so you can check the routing on a half-built simulation.
+
+| Registered | Routes to |
+|---|---|
+| waveguide ports only | `compute_waveguide_s_matrix(...)` |
+| MSL ports only | `compute_msl_s_matrix(...)` |
+| one coaxial port only | **ambiguous** — pass `lane="compute_coaxial_line_reflection"` or `lane="compute_coaxial_two_port"` |
+| one coaxial + one MSL port | `compute_coax_msl_transition(...)` |
+| lumped/wire `add_port(...)` + MSL | `compute_mixed_s_matrix(...)` |
+| lumped/wire only | raises, naming `run(compute_s_params=True)` — that lane returns a `Result`, not an S-matrix result type |
+| anything else | raises, naming the registered families and the method each one has on its own |
+
+Three deliberate refusals. It never guesses between
+`compute_coaxial_line_reflection` and `compute_coaxial_two_port`: both require
+exactly one `add_coaxial_port(...)` and reject every other family, so their
+registrations are identical and only you know which measurement you meant.
+It never calls `run()` for you, because that lane's `n_steps` has no default
+to supply. And it never routes to `compute_coaxial_s_matrix(...)`, the
+deprecated single-plane path, which `lane=` also cannot select — call it
+directly if you need it.
+
 ## Result and metric convention
 
 Full matrices use
@@ -42,13 +78,13 @@ guard. An absent warning therefore cannot be compared across port families.
 | Lumped `add_port(..., extent=None)` | `forward(port_s11_freqs=...)` | `ForwardResult.s_params`, `.freqs` (S11 vectors) | **limited** — uniform, single-device AD path; inherits the lumped-port RF limits |
 | Wire `add_port(..., extent=...)` | `run(compute_s_params=True, s_param_freqs=...)` | `Result.s_params`, `Result.freqs` | **limited** — multi-cell discrete feed across `extent`; magnitude evidence is stronger than absolute calibration evidence; nonuniform use is experimental |
 | Wire `add_port(..., extent=...)` | `forward(port_s11_freqs=...)` | `ForwardResult.s_params`, `.freqs` (S11 vectors) | **limited** — uniform, single-device AD path |
-| `add_msl_port(...)` | `compute_msl_s_matrix(...)` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta`, `.port_names`, `.reliable` | **limited** — E5-narrow / eigenmode-blocked; external notch agreement is characterized, not tight; `eps_override` AD checked against an f64 referee on the band-mean `\|S21\|^2` objective (rel_err 0.0026 at the gate's num_periods=20 fixture, threshold 0.03; issue #530, superseding the pre-#530 `sum\|S_ij\|^2` objective and its 0.0331/0.10 figures); nonuniform mode is experimental |
+| `add_msl_port(...)` | `compute_msl_s_matrix(...)` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta`, `.port_names`, `.reliable`, `.reference_impedances` | **limited** — E5-narrow / eigenmode-blocked; external notch agreement is characterized, not tight; `eps_override` AD checked against an f64 referee on the band-mean `\|S21\|^2` objective (f32 AD versus explicit f64-field FD; rel_err about 0.00058 at num_periods=20, threshold 0.03; issue #729 fixture repair, VESSL 369367260436); nonuniform mode is experimental |
 | `add_waveguide_port(...)` | `compute_waveguide_s_matrix(...)` | `WaveguideSMatrixResult.s_params`, `.freqs`, `.port_names`, `.port_directions`, `.reference_planes` | **limited** — broad magnitude evidence for documented uniform single-mode rectangular guides; phase and junction evidence are narrower; nonuniform configurations outside the passed Palace `normalize=flux` WR-90 cases remain experimental; chain-closed (v1.8) for uniform single-mode S on the differentiable lanes after three pre-declared chain-battery runs (VESSL run 369367257823 / 369367258205 / 369367258638; criterion 1 and 3(a) read under x64 on the flux lane, forward default float32; a float32 gradient pipeline on the flux lane is outside the declaration) — still limited, not supported |
 | `add_waveguide_port(...)` | `run(...)` | `Result.waveguide_sparams[name]` | **limited diagnostic** — per-port output, not the full multi-port matrix API |
 | `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult` | **limited** — exactly one `face="top"` port; broad-E5 analytic and broad-E4 MEEP evidence for the documented TEM-line result |
 | `add_coaxial_port(...)` | `compute_coaxial_s_matrix(...)` | `CoaxialSMatrixResult` | **experimental and deprecated** — older single-plane V/I path; can produce non-physical `\|S11\| > 1` for a lossless short |
 | `add_coaxial_port(...)` | `compute_coaxial_two_port(...)` | `CoaxialTwoPortResult` | **validated with scope** (issue #489, PI decision 2026-08-06) — two-drive through-line 2-port solve on one coax geometry family; bracketed by an external openEMS referee (`validation/crossval/21_coax_two_port_referee.py`, VESSL run-3 `369367251629` + VESSL `369367252220`) on `\|S21\|` and, via the port's own measured `beta`, phase, plus a mesh-refinement convergence witness (VESSL `369367251845`, `p ~= 1.5`) and a `GRAD_SAFE` `eps_scale` AD gate; every DUT it can currently gate against is still azimuthally symmetric (TM0n only) — coax<->planar transitions are the separate `compute_coax_msl_transition(...)` lane (own row below, own status, unaffected by this promotion) |
-| `add_coaxial_port(...)` + `add_msl_port(...)` | `compute_coax_msl_transition(...)` | `CoaxMSLTransitionResult` | **experimental, diagnostic-only** (issue #489 leg 4) — coax-to-microstrip transition, two-drive; two committed fixtures plus a settled VESSL run (`369367252283`, `n_steps=135000`) of attempt 2's own fixture. gamma-vs-beta is CONFIRMED (three in-band checkpoints, the last at full settling); reciprocity (91.4% worst deviation) and passivity are now MEASURED/ATTRIBUTED at full settling (the earlier passivity-guard trip was a truncation artifact); the MSL-driven column power is a SHARPENED open question (~99% missing at 6/8 GHz, ~20% at 10 GHz) with a named discriminating check, and whether the junction's own physical reflection also contributes is genuinely unresolved — see the section below — do not treat as a validated transition |
+| `add_coaxial_port(...)` + `add_msl_port(...)` | `compute_coax_msl_transition(...)` | `CoaxMSLTransitionResult` | **experimental, diagnostic-only** (issue #489 leg 4) — coax-to-microstrip transition, two-drive. The attempt-2 readings this row used to quote (91.4% reciprocity worst deviation, ~99% of the MSL-driven column power missing at 6/8 GHz, both from VESSL `369367252283`) were taken through three instrument defects that are now fixed: a fixture that was a short (the predeclared clearance hole was never realized, PR #804), inverted wave-role labels making `S_code = inv(S_true)` (#822), and an MSL fit window inside the port's near field (#823). Do not cite those numbers. On the corrected-label settled runs (VESSL `369367257613` / `369367257614`, PR #837, 2026-09-01) the junction is an ordinary low-loss transition: a six-face flux box closes to ≤0.2% and 91-98% of the net power crosses the junction, and ONE diagonal port renormalization `k ≈ 0.57` (flat to 1.2% over 6-10 GHz) restores reciprocity, giving `\|S21\|` 0.981/0.972/0.952 and column powers within 3.5% of unity. What is left is one named defect: the MSL side's power-wave normalization over-reads power by ~3x, measured twice by instruments sharing no assumption (the S-matrix's own reciprocity asymmetry and a Poynting flux box) — issue #838, isolated, mechanism unresolved, not fixed. The flux-adjudication lane is under a PI hard stop (2026-08-07). The section below is this lane's history and has NOT been re-baselined against the corrections — do not treat as a validated transition |
 | `add_port(...)` + `add_msl_port(...)` | `compute_mixed_s_matrix(...)` | `MixedSMatrixResult` | **experimental**, diagnostic, not in the validated set — off-diagonal magnitudes from Poynting flux; internal reciprocity witness 9.0% (flux channel) vs 55% (wave channel) on the probe-fed MSL fixture; absolute \|S\| is NOT validated (no external-solver referee has been run); with `enforce_passivity=True` (default) the returned diagonal is a joint SVD-projected value — read `S_raw`/`passivity_correction` for what was measured |
 | `add_floquet_port(...)` | no documented high-level S-parameter API | none | **experimental** — broadside diagnostic helpers only; no calibrated Floquet-port result |
 | Sources, TFSF, probes, DFT planes, flux monitors | none | field, resonance, or flux results | **not a port** — no impedance or S-matrix reference plane |
@@ -133,6 +169,12 @@ Relevant checks include `validation/crossval/05_patch_antenna.py`,
 
 **API:** `compute_msl_s_matrix(...)` with the laplace/quasi-TEM model.
 
+S is a power-wave matrix with positive real analytic references available as
+`result.reference_impedances`, separately from fitted Z0 and load resistance.
+Unequal-reference transmission differs from the legacy voltage ratio. The
+[power and replay contract](msl_power_contract.md) states the conversion,
+record compatibility, and the assumptions needed to interpret V/I as power.
+
 **RF evidence (E5-narrow / eigenmode-blocked):**
 
 - The uniform thru-line check uses `|S21|` in `(0.90, 1.05)` and
@@ -143,34 +185,63 @@ Relevant checks include `validation/crossval/05_patch_antenna.py`,
   2026-08, where the declared `254 um` substrate rasterized to `320 um` and
   the `600 um` trace to `560 um`, so the analytic references were computed on
   a board that mesh did not solve; that run is history, not current evidence.
-  The committed 2026-08-27 GPU run log
-  (`validation/crossval/_06b_notch_uniform_logs/20260827T131217Z_run.log`)
-  reports `1.40%` frequency error against the analytic notch evaluated on the
-  realized `635.0 um` trace width, `-43.3 dB` notch depth, and median
-  `Re(Z0)=46.5 ohm` (port 0, median over the 100 bins); it passes the gates
-  IN FORCE WHEN IT RAN -- frequency error `<15%`, notch depth `<-10 dB`, and
-  median `Re(Z0)` in `(40, 65) ohm`. **Those are not the case's current
-  gates.** The #812 P3 re-gate (2026-09-01,
-  `docs/design_notes/estimator_resolution_regate.md`) replaced the
-  bin-quantised `argmin` with a sub-bin log-parabolic vertex, TIGHTENED the
-  frequency window to `<4.0%`, added a `-10 dB` stopband-WIDTH gate against
-  the ideal shunt-open-stub closed form `(4/pi)atan(r/6) = 0.210274` at
-  `r = 1` (window `+-20%`), added an in-run half-grid resolution witness
-  (`< 1.000` full-grid bin), and demoted the `<-10 dB` depth gate to a witness
-  because on this `63.6364 MHz` grid an ideal `r = 1` stub's WORST sampled
-  minimum is `-31.23 dB`, `21.2 dB` inside it. The 2026-08-27 log PREDATES
-  those gates and therefore carries no measurement of the two new quantities:
-  re-running the case on GPU
-  (`scripts/vessl_cv06b_estimator_falsifiers.yaml`) is what will judge them.
-  That `Re(Z0)` sits `-2.9%` from
-  Hammerstad-Jensen on the DESIGN board (`600/254 um`, `47.90 ohm`) and
-  reproduces the independent `msl_z0_bias_floor_sweep` "aligned h_sub/4"
-  point (`46.098 ohm`) to `0.87%`. Read it with that run's own warnings, not
-  without them: a standing-wave null flags 9 bins in `[3.6273, 7.0000] GHz`
-  as unreliable for the wave split -- which starts at the reported notch --
-  `63 of 100` bins were non-passive as extracted (worst `sigma_max = 1.006`),
-  and the per-port argmax `Z0` deviations against Hammerstad-Jensen are
-  `61.02 ohm` (`msl_0`) and `39.90 ohm` (`msl_1`).
+  The current evidence is the post-#931 re-solve, **VESSL 369367259191**
+  (2026-09-07), whose log is committed at
+  `validation/crossval/_06b_notch_uniform_logs/20260907T124851Z_run.log`. On
+  that board the trace and the stub are declared as SHEETS (design note
+  section 1.3): each realizes ONE node plane at `z = 254 um`, and its
+  footprint is the closed node rectangle, so the GEOMETRIC width is
+  `571.5 um` while the ELECTRICAL width the analytic reference takes is
+  `n_rows*dx = 635.0 um`. The run reports `2.16%` frequency error (sub-bin
+  refined vertex `3.7586 GHz` against the analytic `3.679 GHz`), `-39.4 dB`
+  notch depth and median `Re(Z0) = 48.2 ohm` (port 0, median over the 100
+  bins), and it passes the case's CURRENT gates: frequency error `<4.0%`;
+  `-10 dB` stopband fractional width `0.21009`, ratio `0.9991` to the ideal
+  `r = 1` closed form, inside `(0.80, 1.20)`; half-grid resolution witness
+  `0.4469` bin (`< 1.000`); median `Re(Z0)` in `(40, 65) ohm`.
+  **The width convention is measured, not settled.** crossval-B pre-declared
+  the Z0 median as its falsifier -- `46.48 +- 1.0 ohm` says the electrical
+  `635.0 um` is the formula's input (Hammerstad-Jensen `46.18 ohm`), about
+  `49.4 ohm` says the geometric `571.5 um` is (`49.39 ohm`) -- and the
+  re-solve landed at `48.2 ohm`, outside that window and between the two
+  predictions. In the same run the frequency error ROSE (`1.453%` to
+  `2.16%`) where the migration predicted a fall to about `0.95%`, so cv06b's
+  own pre-declaration is not discharged. Both readings belong to crossval-B;
+  nothing here was re-tuned and no gate was moved for them.
+  Read the run with its own warnings, not without them: a standing-wave null
+  flags 9 bins in `[3.7545, 7.0000] GHz` as unreliable for the wave split --
+  which starts at the reported notch -- `63 of 100` bins were non-passive as
+  extracted (worst `sigma_max = 1.006`), and the per-port argmax `Z0`
+  deviations against Hammerstad-Jensen are `33.02 ohm` (`msl_0`) and
+  `59.23 ohm` (`msl_1`). That median sits `+0.6%` from Hammerstad-Jensen on
+  the DESIGN board (`600/254 um`, `47.90 ohm`; `48.2/47.90`) and `+4.5%` from
+  the independent `msl_z0_bias_floor_sweep` "aligned h_sub/4" point
+  (`46.098 ohm`; `48.2/46.098`).
+  The **pre-2.0** committed log
+  (`validation/crossval/_06b_notch_uniform_logs/20260827T131217Z_run.log`,
+  2026-08-27) reported `1.40%` frequency error, `-43.3 dB` notch depth and
+  median `Re(Z0)=46.5 ohm` for the same drawing realized as one-cell PEC
+  Boxes, passing the gates IN FORCE WHEN IT RAN -- frequency error `<15%`,
+  notch depth `<-10 dB`, median `Re(Z0)` in `(40, 65) ohm`. Those figures are
+  history: 2.0 does not produce that realization, and that log predates the
+  current gates as well. Its own qualifying numbers, kept with it: that median
+  sat `-2.9%` from Hammerstad-Jensen on the DESIGN board and reproduced
+  the independent `msl_z0_bias_floor_sweep` "aligned h_sub/4" point
+  (`46.098 ohm`) to `0.87%`, and the run's own warnings were a
+  standing-wave null over 9 bins in `[3.6273, 7.0000] GHz`, `63 of 100`
+  bins non-passive as extracted (worst `sigma_max = 1.006`) and per-port
+  argmax `Z0` deviations `61.02 ohm` (`msl_0`) and `39.90 ohm` (`msl_1`). The #812 P3 re-gate (2026-09-01,
+  `docs/design_notes/estimator_resolution_regate.md`) is what set the gates
+  quoted above: it replaced the bin-quantised `argmin` with a sub-bin
+  log-parabolic vertex, TIGHTENED the frequency window to `<4.0%`, added the
+  `-10 dB` stopband-WIDTH gate against the ideal shunt-open-stub closed form
+  `(4/pi)atan(r/6) = 0.210274` at `r = 1` (window `+-20%`), added the in-run
+  half-grid resolution witness (`< 1.000` full-grid bin), and demoted the
+  `<-10 dB` depth gate to a witness because an ideal `r = 1` stub's WORST
+  sampled minimum on this grid is about `-31 dB` (`-31.23 dB` on the
+  committed estimator fixture's `63.6364 MHz` grid, `-31.51 dB` in the
+  re-solve's own `63.6367 MHz` sweep), i.e. more than `21 dB` inside the
+  gate, so it cannot fail while a notch exists.
 - The `dx = 50 um` OpenEMS notch comparison below is NOT the same board:
   its rfx leg (`scripts/diagnostics/build_msl_notch_rfx_dx50.py`) still
   realizes `h_sub = 300 um` at its own `dx = 50 um` and is deferred, not
@@ -188,76 +259,26 @@ Relevant checks include `validation/crossval/05_patch_antenna.py`,
   3` dump (it now raises a clear error instead of a bare `KeyError`). The
   current independent check on the production V/I extraction is
   `scripts/diagnostics/msl_vi_flux_oracle.py`.
-- The `eps_override` gradient is checked against an f64 AD-vs-FD referee on
-  band-mean `\|S21\|^2` (issue #530; this REPLACES the prior `sum_ij\|S_ij\|^2`
-  objective, which was 99.96% a passivity-pinned structural constant — see
-  `tests/unit/autodiff/test_msl_ad_fd_converged.py`'s docstring for the full replacement
-  rationale). Tracked run log:
+- The `eps_override` gradient is checked on band-mean `\|S21\|^2`
+  with float32 AD and an explicitly float64-field FD reference. After #729's
+  port-height and source-coverage repair, VESSL 369367260436 measured
+  relative error about `0.00058` at `num_periods=20`, with the original
+  `h=1e-3` and `0.03` gate. Every fixed objective bin passed the wave-split
+  low-signal screen, and both drives settled below -124 dB. The test uses
+  a uniform-permittivity `eps_override` around 1 with the nominal launch and
+  reference model held fixed; it is an AD acceptance fixture, not an
+  absolute line-impedance accuracy claim. Raw V/I, wave matrices, S and
+  actual field dtypes are retained in
+  `docs/research_notes/issue729/gpu-observable-ad-369367260436/`.
+  [Diagnosis and limits](../research_notes/issue729/ad-referee-diagnosis.md).
+  Historical #530 and #560 measurements remain in
   `scripts/diagnostics/msl_ad_band_mean_owner_measurement/owner_runs_20260804.md`
-  (both VESSL runs' full measurement tables plus the actual pytest gate's
-  own PASS output — the raw logs live only under the primary checkout's
-  gitignored `.omx/`, this is the tracked copy). Headline: rel_err `0.0026`
-  at `num_periods=20` through the full extraction, on the gate's own fixture
-  at its own h=1e-3 (gpu-rtx4090, VESSL 369367251813/369367251827; a
-  5-point h-sweep over h in [3e-4, 1e-2] reads
-  rel_err 0.0002-0.0146 with a 1.583% FD spread), against a `0.03` gate
-  threshold derived via `tests._gate_policy.gate_from_envelope` from the
-  sweep's worst point. A planted issue-#483-class defect (`eps_override`
-  frozen before tracing, so the traced parameter never reaches the AD tape)
-  reads rel_err `1.0000` on the same fixture — the gate reds at 33x the
-  threshold, confirming it discriminates a real defect and not only
-  comparator noise. This supersedes the pre-#530 objective's `0.0331`/`0.10`
-  figures (issue #527, closed; that run: VESSL 369367250775, gate's own
-  measured run VESSL 369367250794) and the older pre-#516 `0.000110` figure
-  (issues #483/#486): the #507/#511 fixes had shrunk the OLD objective's
-  differentiated signal about 50x, exposing the f32 comparator's own
-  resolving-power floor as the dominant cause of an intermediate 0.8519
-  mismatch. The new objective is NOT immune to the same shape of failure — an
-  extractor fix that shrinks `\|S11\|` would shrink this gradient too — but
-  MEASURED (not narrated): the level dropped 16x on this fixture (16.00599 to
-  0.99787211), cutting the loss's float32 ULP 32x and lifting f32 resolving
-  power from 4.45 to 53.8 ULP at the gate's h, and the residue from unity
-  (~2.5e-3, order `\|S11\|^2` with `\|S11\|` ~ 0.05 here) is now a physical
-  observable rather than a unitarity-violation artifact. That risk is
-  CONTAINED — by the f64 comparator's 2.9e6x resolving-power headroom above
-  `_MIN_FD_ULP_SPAN` and by the resolving-power floor assert (issue #527's
-  fix, unchanged by the objective swap) reporting a comparator failure loudly
-  instead of silently — not eliminated (see `tests/unit/autodiff/test_msl_ad_fd_converged.py`
-  for the ULP-resolving-power derivation and `tests/_msl_ad_objective.py` for
-  the full statement, including what mechanism drives the gradient — a
-  reference-plane artifact against the wave split's frozen Hammerstad-Jensen
-  `z0_hj`, or genuine beta/reflection physics. **RESOLVED, issue #560,
-  2026-08-06**: a decisive probe
-  (`scripts/diagnostics/msl_ad_z0_anchor_probe.py`, run log
-  `scripts/diagnostics/msl_ad_z0_anchor_probe_run_20260806.md`) swapped the
-  frozen analytic `z0_hj` anchor for a frozen per-port FITTED z0 (measured
-  at alpha=1, held constant) and re-measured `|g_ad|` on this same fixture
-  (CPU/float32): it collapsed `1.602236e-03` (bit-identical across 2
-  repeats) -> `6.885110e-05` (headline value from an un-repeated run,
-  killed mid-way by a background-task duration limit; the
-  bit-identical-2/2 value under a CLI-rounded anchor is `6.884444e-05`,
-  agreeing to 4 significant figures). By issue #560's own QUALITATIVE
-  criterion ("drops toward the FD-unresolvable floor"): the estimated FD
-  signal for this g_b at the gate's h is only ~1.16 ULP of a float32 loss,
-  below the 4.449 ULP issue #527 measured for the retired objective's
-  comparator and declared untrustworthy — g_b is noise-floor by this
-  repo's own established standard. (As a secondary check, this is ~23.3x,
-  4.6x past this PR's own pre-declared 5x threshold — NOT a quote from
-  #560, whose body contains no such number; see the probe script's
-  docstring.)
-  The reference-plane artifact (not beta/reflection physics) is the
-  dominant channel — this does not change the `rel_err`/threshold numbers
-  above, only their physical reading. Separately, anchor B's own loss
-  exceeded 1 (a passivity violation, attributed to the raw unprojected
-  `eps_override` channel — see the probe's run log), which is evidence the
-  fitted anchor is not self-evidently "more correct"; whether
-  `compute_msl_s_matrix`'s PRODUCTION wave split should anchor on it is a
-  SEPARATE, undecided design question this PR does not settle. The #515 AD smoke
-  shares this same objective function (`tests/_msl_ad_objective.py`) so the
-  two tests cannot drift apart. The launch fixture derives from registered
-  materials on both the FD and AD sides; staticness is regression-locked by
-  `tests/unit/ports/test_msl_source_fixture_static.py` (pre-fix `0.126` vs gate `0.03`
-  at `num_periods=1`).
+  and `scripts/diagnostics/msl_ad_z0_anchor_probe_run_20260806.md`. Their
+  numerical values and reference-anchor attribution belong to the legacy
+  fixture. In particular, a float64 final-loss ULP did not prove float64
+  field evaluation or a sufficiently small FD step; those prerequisites
+  must be verified separately. The old records do not qualify the repaired
+  fixture or establish the dominant gradient mechanism on it.
 - MSL de-embedded phase now has an external referee (issue #490 Lane 2,
   openEMS, VESSL run 369367251705). With both solvers' measurement planes
   placed at the same physical coordinate (rfx's probe-0 plane), the raw
@@ -279,16 +300,25 @@ Relevant checks include `validation/crossval/05_patch_antenna.py`,
   Issue #812 P1 (2026-09-01): the per-solver self-consistency figures above
   are an **E1** leg -- both sides come from one field solve, so a coherent
   phase-velocity error cancels and a factor-2 error reads
-  `validation/crossval/_issue812_phase_identity/regate_evidence.json::cv20.blindness.audit_construction_e1_max_phase_dev_deg = 0.241`
+  `validation/crossval/_issue812_phase_identity/regate_evidence.json::cv20.blindness.audit_construction_e1_max_phase_dev_deg = 0.0647`
   degrees against that same 3-degree gate. Two independent-reference gates now run
   alongside it and are wired into the script's own pass/fail: each solver's
   measured `beta` against the Hammerstad-Jensen closed form of the realized
-  board (E2, 2.0% tolerance; measured 0.94% rfx / 0.31% openEMS), and the
+  board (E2, 2.0% tolerance; measured 0.94% rfx / 0.31% openEMS — a **pre-2.0**
+  realization, re-measured under #931: the contract moves rfx's realized MSL
+  trace, so both residuals are re-read from cv20's regenerated run and not
+  translated), and the
   **raw** cross-solver `angle(S21)` difference quoted above (E4, 3-degree
   tolerance; measured `0.342 degrees` on the #723 realized-board re-run),
   which was previously reported rather than gated. Do not cite the
   dispersion-corrected residual as the cross-solver number: it subtracts a
   term built from `beta_rfx` and is provably blind to this error class.
+  The committed replay with the current rfx fixture
+  (`regate_evidence.json::cv20.run2_openems_with_current_rfx_fixture`)
+  instead reads raw phase difference `0.5308 degrees`, analytic-beta errors
+  `1.4122%` rfx / `0.3068%` openEMS, all three gates passing. This combines
+  regenerated rfx data with historical run-2 openEMS fields; it does not
+  establish a fresh matched-board post-#931 openEMS result.
   See `validation/crossval/20_msl_phase_referee.py` (manifest entry
   `20_msl_phase_referee`), `tests/crossval/test_msl_phase_referee_header.py`, and
   `docs/design_notes/issue812_phase_identity_predeclaration.md`.
@@ -312,9 +342,15 @@ A `True` entry is not an accuracy guarantee.
 - Surface-impedance sheets (`add_thin_conductor(...,
   surface_impedance_f0=...)`) are applied on this lane's device runs (#679):
   every FDTD dispatch goes through `run()`/`forward()`, which realize the
-  sheet node-thin via the #677 per-step operator. The trace itself must stay
-  a PEC `Box` (an f0 sheet never enters the PEC mask the Ampere-loop current
-  and V span anchor on, and the lane raises if no PEC trace is found).
+  sheet on its node plane. The trace itself must stay **hard PEC** — a `Box`
+  volume, a zero-thickness `Box`, or a PEC `add_thin_conductor` sheet — because
+  the Ampere-loop current and the V span anchor on realized PEC wall planes,
+  and an `f0` sheet realizes no PEC edge. The lane reads the trace from
+  `realized_wall_planes()`, so a sheet-declared trace is found the same way a
+  volume one is; it raises when no realized PEC trace sits above the substrate
+  top. Use `f0` sheets for auxiliary lossy metal only. (Before 2.0 the trace had
+  to be a `Box` specifically, because the detector scanned the primal cell mask
+  — a companion volume under every sheet. That workaround is gone.)
   Combination refusals (dispersive substrate, subpixel/conformal, UPML,
   ADI/subgridded/distributed) fire at the run-lane entry. A sheet lying
   inside a probed span biases the lossless-line N-probe `Z0`/`q` fit (the
@@ -346,7 +382,9 @@ A `True` entry is not an accuracy guarantee.
   loudly when a short feed cannot satisfy both clearances (#469). Library
   witness probes are excluded from preflight advisories (#470).
 
-**cv06b re-gate, judged on its own board (2026-09-02, VESSL 369367257702, issue #812 P3 round 2).** Every gate passed on the shipped dx = 63.5 µm mesh: notch error `validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.err_pct = 1.453` % (window 4.0 %), −10 dB width ratio `validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.bw_ratio = 0.9684` (window 0.80–1.20). The build-level narrow-stub falsifier fires the width gate while the retained depth witness stays blind. One pre-declared falsifier FIRED and is recorded, not softened: a one-cell stub-length error (analytic shift 0.532 %, `validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_1cell.true_shift_pct = 0.532`) moved the refined notch estimate by `validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_1cell.refined_delta_pct = 0.145` % — non-zero, but below the declared half-of-predicted visibility criterion — so sub-bin resolution of the notch frequency on this board is not demonstrated; cause not attributed (design note section 7.6 names the two candidates and the finer-DFT experiment that separates them).
+**cv06b re-gate, judged on its own board (2026-09-02, VESSL 369367257702, issue #812 P3 round 2 — PRE-2.0 realization; recomputed under #931).** Every gate passed on the shipped dx = 63.5 µm mesh: notch error 1.453 % (window 4.0 %), −10 dB width ratio 0.9684 (window 0.80–1.20). The build-level narrow-stub falsifier fires the width gate while the retained depth witness stays blind. One pre-declared falsifier FIRED and is recorded, not softened: a one-cell stub-length error (analytic shift 0.532 %) moved the refined notch estimate by 0.145 % — non-zero, but below the declared half-of-predicted visibility criterion — so sub-bin resolution of the notch frequency on this board is not demonstrated; cause not attributed (design note section 7.6 names the two candidates and the finer-DFT experiment that separates them).
+
+**cv06b under #931, VESSL 369367259191 (2026-09-07).** The re-solve with the trace and stub declared as sheets passes the same four gates on the same mesh — notch error 2.16 %, width ratio 0.9991, half-grid witness 0.4469 bin, median Re(Z0) 48.2 Ω — and its build falsifiers were re-run in the same job: the one-cell stub error now moves the refined estimate `validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_1cell.refined_delta_pct = 0.823` % against a predicted `validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_1cell.true_shift_pct = 0.532` %, i.e. the falsifier that FIRED above no longer fires (over-response, 1.55x, where there was under-response, 0.27x; neither attributed), and the narrow-stub arm still trips the width gate (`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_narrow.bw_ratio = 0.6553`) while the depth witness stays blind; notch error `validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.err_pct = 2.1649` %, width ratio `validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.bw_ratio = 0.9991`, witness `validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.witness_bins = 0.4469` bin, Re(Z0) median `validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.z0_median_ohm = 48.19` Ω. Those numbers are read from the run's own artifacts under `/root/workspace/claude-workspace/rfx/runs/issue931-post-cv06b-20260907T124851Z/` (`cv06b_run.log`, committed as the 2026-09-07 entry in `validation/crossval/_06b_notch_uniform_logs/`, and `cv06b_build_falsifiers_summary.json`); the regenerated falsifier summary and estimator fixture are committed (crossval-B, fae08d10), so every json:: citation in this section resolves against the sheet-board summary and the pre-2.0 digits in the paragraph above are plain history. The flip of the pinned inequality in `tests/crossval/test_cv06b_build_falsifier_plumbing.py` was crossval-B's adjudication: the test pins the new direction, it was not relaxed.
 
 ## Rectangular-waveguide port
 
@@ -358,14 +396,15 @@ ports are required. `run()` provides only per-port diagnostics.
 - Analytic Airy checks cover WR-28, WR-62, WR-15, WR-340, and WR-10 dielectric
   slabs. With `normalize="flux"`, maximum per-band linear `|S11|` differences
   are 0.005--0.041 for the cited cases.
-- The Palace WR-90 comparison covers empty guide, PEC short, and dielectric slab
-  from 8.2--12.4 GHz. Across five compared terms, the maximum and mean
-  linear-magnitude differences are `0.0707` and `0.00943`.
-  > **STALE — 2026-06-16 numbers; quote them with their date (2026-08-31,
-  > issue #812 Phase 0).** They come from
+- The refreshed Palace WR-90 comparison covers empty guide, PEC short, and
+  dielectric slab from 8.2--12.4 GHz. Across five compared terms, the current
+  main maximum and mean linear-magnitude differences are `0.0193` and
+  `0.00195`.
+  > **Historical record — 2026-06-16 numbers; quote them with their date
+  > (2026-08-31, issue #812 Phase 0).** Those historical values come from
   > `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json`,
   > which was committed at `b0322c1` (2026-06-16, PR #181) and never
-  > regenerated. Its **provenance is settled**: feeding
+  > regenerated at the time of that audit. Its **provenance is settled**: feeding
   > `git show b0322c1:tests/fixtures/waveguide_broad_e5/cv11_wr90_fresh_stdout.txt`
   > (that stdout as it stood at the artifact's own commit — it was overwritten
   > later, at `20e5533`) to the artifact's own builder
@@ -374,21 +413,22 @@ ports are required. `run()` provides only per-port diagnostics.
   > rebuilds it field for field — 54 numeric fields, 52 bit-identical, 2
   > differing at ~1 ulp (`5.3e-18`, `1.7e-18`).
   >
-  > What is wrong with it is its **age**. The cv11 stdouts committed in that
-  > directory today are from 2026-08-28 (`20e5533`, #724/#730), and the same
+  > What was wrong with that record was its **age**. The cv11 stdouts committed in that
+  > directory at the August audit were from 2026-08-28 (`20e5533`, #724/#730), and the same
   > builder on them rebuilds the slab `S11` `max_mag_abs_diff` to `0.0186` /
   > `0.0194` / `0.0193` against the artifact's `0.0707` (3.6x-3.8x better) and
   > the slab `S11` `mean_mag_abs_diff` to `0.007705`-`0.007771` against
   > `0.043976`. The artifact's slab-`S11` rfx magnitude range
-  > `[0.0397, 0.5924]` reads `[0.0018, 0.5243--0.5251]` on the current runs,
+  > `[0.0397, 0.5924]` reads `[0.0018, 0.5243--0.5251]` on those August runs,
   > while the Palace reference column is identical throughout — the delta is
   > entirely on the rfx leg, which is what a code change between June and
   > August looks like.
   >
-  > **Direction matters: this understates the family.** Every current run is
+  > **Direction matters: that historical record understated the family.** Every
+  > August run cited there was
   > *better*, and `0.0707` is inside the artifact's own `max_mag_abs_tol` of
   > `0.1`. No gate is at risk and no rectangular-waveguide physics verdict is
-  > challenged. Two minor warts remain: `source_cv11_stdout` records a `/tmp`
+  > challenged by that audit. Two minor warts remained in the June artifact: `source_cv11_stdout` records a `/tmp`
   > path even though a file of that basename is committed beside the artifact,
   > and there is no `setup` block (no commit, `dx`, `NUM_PERIODS` or
   > `CPML_LAYERS`).
@@ -397,11 +437,25 @@ ports are required. `run()` provides only per-port diagnostics.
   > PROVENANCE-DISPUTED and stated it "does not reproduce from any committed
   > run of its own producing script". That is withdrawn — it rebuilt only from
   > the working-tree revision of those stdouts, never from their content at the
-  > artifact's commit. Settling this needed `git show`, not an FDTD run. What
-  > remains open is only whether to refresh the artifact, and any refresh must
-  > *explain* the 3.7x delta rather than silently re-pin it. Full record: the
+  > artifact's commit. Settling this needed `git show`, not an FDTD run. The
+  > later refresh is recorded in `provenance.refresh_2026_09_13`. Its material
+  > A/B explains the September pre-fix→post-fix change. The June→August 3.7x
+  > improvement remains unattributed; CPML and aperture changes are candidates.
+  > Full record: the
   > artifact's own `provenance` key and
   > `docs/design_notes/20260831_cv11_broad_e4_artifact_provenance.md`.
+- The pinned producer uses `normalize=True` for empty/slab and `False` for
+  PEC short. These refreshed magnitudes do not validate the `"flux"` extractor
+  or its AD path; the normalization audit is retained in the artifact.
+- The refreshed artifact is sourced from current-main VESSL run `369367260736`
+  (producer commit `8206031d`) and is reproduced by the committed stdout. Its
+  load-bearing slab S11 values are
+  `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::pairs[3].max_mag_abs_diff = 0.0193`
+  and
+  `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::pairs[3].mean_mag_abs_diff = 0.007767`.
+  The preserved historical sequence is June `0.0707` / `0.00943`, current-main
+  pre-fix `0.1500` / `0.1055`, and post-fix aggregate mean `0.001953`; these
+  values are provenance records, not additional tolerances.
 - The validation battery requires empty-guide `max |S11| < 0.02`, maximum column
   power `< 1.02`, symmetric-obstacle mean reciprocity error `< 0.01`, and a
   PEC-short result with `min |S11| >= 0.99` and `max |S11| < 1.03`.
@@ -712,59 +766,43 @@ stays replayable because its reference values are embedded (#574 scope item 3).
   otherwise relative error is dominated by the numerical noise floor.
 - Choose `dx` so the slab length is an integer number of cells; staircase
   quantization directly perturbs the round-trip phase.
-- Draw interior PEC obstacles (irises, septa, posts) with their interior faces
-  on **cell midpoints**, keep the metal depth an exact number of cells, and
-  assert the realized footprint. `Box` rasterizes half-open `[lo, hi)` over node
-  coordinates, so a box drawn between two node planes occupies one cell fewer
-  than drawn, asymmetrically at the `hi` face. Two facing fins drawn to leave a
-  nominal opening `d` therefore leave an electrical opening of `d + dx` **or
-  `d + 2*dx`, and which one is not predictable from the nominal dimensions**.
-  The pair's two interior faces are different corner types: the lo fin's is a
-  `hi` corner, which half-openness always drops, so it always retreats one
-  cell; the hi fin's is a `lo` corner, which is kept unless float32 rounding
-  puts the node just below it. One retreat gives `d + dx` with the opening
-  **asymmetric** (centre `dx/2` low); two retreats give `d + 2*dx`, **centred**.
-  Measured on WR-90 at both a/30 and a/60: 7.620 mm and 18.288 mm give
-  `d + dx` off-centre, 12.192 mm gives `d + 2*dx` centred. **Transverse** to
-  the propagation direction the electrical dimension is the span between the
-  innermost zeroed planes, `(n_open + 1) * dx` — the measure that reproduces
-  `a = cells * dx` exactly, and an independent refit of 16 committed
-  single-iris configurations across two meshes pins the realized aperture to
-  within 1/20 of a cell of it (a stage-S3 / issue #499 review observation; no
-  committed record carries the refit yet — a caution-grade number, like the
-  longitudinal one below). **That identity does not carry into the
-  propagation direction:** an obstacle's electrical *thickness* is set by field
-  interaction with the discontinuity rather than by a cutoff, is measured to
-  fall between `t_cells * dx` and `(t_cells - 1) * dx` so neither integer rule
-  holds, and is not settled — treat it as an unknown of order half a cell and
-  fold the sensitivity into the reported envelope instead of picking a rule.
-  (This measured *effective* thickness is a different quantity from a cascade
-  comparator's electrical-length bookkeeping — issue #499's comparator draws
-  `t_c = round(t/dx) + 1` so `(t_c - 1)*dx` conserves total electrical
-  length; that choice answers a different question and is not contradicted
-  here.)
-  Offsetting each
-  interior face half a cell the wrong way retreats both faces by construction
-  rather than by luck, giving `d + 2*dx` deterministically at every aperture;
-  that is the drawing case 18's blocked revision used. In
-  the WR-90 single-iris lane this inflated the `|S11|` difference against an
-  analytic mode-matching oracle by 4-6x (0.0193 to 0.1262 at `d = 7.620 mm`,
-  a/30). Because the error scales with `dx` it mimics first-order convergence,
-  and on a resonant structure it shifts the passband instead of widening a
-  magnitude tolerance. Midpoint corners are rounding-independent, and with
-  `(cells - d_cells)` even the realized opening equals the nominal one exactly;
-  at odd parity a symmetric opening of that width is not representable on the
-  grid and costs one cell **more** however it is drawn. Odd parity is a fork
-  rather than a dead end — change `dx`/the aperture so the parity works, or
-  place the fins asymmetrically on purpose and accept a recorded half-cell
-  offset instead of rounding the aperture (the quantity that sets the cutoff)
-  to the wrong parity. Neither is recommended here, because the cost of the
-  offset has not been measured; what is required is that the offset be recorded
-  and representable by the comparator, since an off-centre aperture compared
-  against a centred oracle silently becomes comparator error. See the `Box`
-  docstring for the
-  arithmetic and `run_point` in
-  `validation/crossval/18_wr90_iris_modematch.py` for the assert pattern.
+- Draw interior PEC obstacles (irises, septa, posts) at the dimensions you
+  mean, and assert the realized footprint. Under the lattice ownership contract
+  (#931) a PEC `Box` is a **volume**: it is sampled at cell centres, realizes
+  tangential walls at **both** of its drawn faces, and shorts every normal edge
+  between them. Drawn extent equals realized extent, so two facing fins drawn to
+  leave a nominal opening `d` leave an electrical opening of `d`, transverse and
+  longitudinal alike, and the obstacle's realized thickness is the drawn
+  thickness. Read the planes back from `realized_wall_planes()` (or
+  `fidelity_report()`, which prints them per entry in input units) and assert
+  them — a build-time check, no solve.
+
+  What that deletes, and why the deletions are deletions rather than re-tunings:
+
+  * the `d + dx` / `d + 2*dx` fork, and the "which one is not predictable from
+    the nominal dimensions" caveat under it. Both faces are now walls, so the
+    corner-type asymmetry that produced the fork is gone;
+  * the transverse identity `(n_open + 1) * dx`. The realized aperture is
+    `n_open * dx` — the drawn one;
+  * the requirement that interior faces sit on **cell midpoints**. Midpoint
+    corners are still harmless (centre sampling puts them on the plane they
+    intend, `lo` inclusive and `hi` exclusive at the tie), but they are no
+    longer load-bearing and the crossval scripts no longer draw that way;
+  * the #499 comparator's `t_c = round(t/dx) + 1` and its `(t_c - 1)*dx`
+    electrical-length bookkeeping. The comparator is fed the drawn thickness.
+
+  What survives: **parity and representability**. A symmetric opening still has
+  to be representable on the grid — at odd `(cells - d_cells)` parity a centred
+  opening of that width does not exist, and the fork is the same one as before
+  (change `dx` or the aperture so the parity works, or place the fins
+  asymmetrically on purpose and record the offset, since an off-centre aperture
+  compared against a centred oracle silently becomes comparator error). And the
+  *effective* electrical thickness of an obstacle — field interaction with the
+  discontinuity, not a cutoff — remains a measured quantity rather than a
+  geometric one; what changed is that its geometric starting point is now the
+  drawn thickness with no `±1` correction. See `run_point` in
+  `validation/crossval/18_wr90_iris_modematch.py` for the realized-plane assert
+  pattern.
 - Size the absorber from the guide wavelength at the **lowest** measured
   frequency, where `lambda_g` is longest and the `cpml_layers=16` default is
   weakest. `compute_waveguide_s_matrix` documents `>= 0.5 * lambda_g` and now
@@ -1010,6 +1048,22 @@ Two further cautions on this lane, both measured rather than anticipated:
 
 ## Coax<->MSL transition — EXPERIMENTAL, diagnostic-only (issue #489 leg 4)
 
+> **Record status (2026-09-01): every measurement recorded below was taken
+> through three instrument defects that have since been fixed, and this
+> section has NOT been re-baselined.** The defects: the fixture was a short
+> (the predeclared clearance hole was never realized — `pec_mask` is OR-only,
+> so a dielectric cannot clear PEC; fixed in attempt 3, PR #804), the
+> wave-role labels were inverted so that `S_code = inv(S_true)` (#822), and
+> the MSL fit window sat inside the port's near field (#823). With all three
+> fixed (PR #837), the junction itself is an ordinary low-loss transition —
+> the six-face flux box closes to ≤0.2 % and 91-98 % of the net power crosses
+> the junction — and exactly one defect is left: the MSL side's power-wave
+> normalization over-reads power by ~3x, which one diagonal renormalization
+> `k ≈ 0.57` corrects (issue **#838**, isolated, not fixed). Read what
+> follows as this lane's history; the API summary row at the top of this file
+> carries the current reading. Re-baselining this section waits on #838, and
+> the flux-adjudication lane is under a PI hard stop (2026-08-07).
+
 ```python
 res = sim.compute_coax_msl_transition(junction_x=..., eps_r_sub=...)
 ```
@@ -1110,7 +1164,9 @@ wavelength) that would justify a future, separately pre-declared retry (a
 longer MSL probe ladder, e.g. >= 0.25 lambda_g) — not attempted in this PR.
 `sim.preflight()` on this fixture also independently flags the same general
 resolution class from a different angle: the pin post's 4-cell diameter is
-under the ≥5-cell PEC-volume floor, and the 3-cell substrate is flagged for
+under the ≥5-cell PEC-volume floor (a pre-2.0 cell count — a `Cylinder` is
+sampled at cell centres from 2.0, so the realized count is re-read from the
+fixture's own preflight), and the 3-cell substrate is flagged for
 >5% Z0 staircase bias.
 
 | aspect | status |

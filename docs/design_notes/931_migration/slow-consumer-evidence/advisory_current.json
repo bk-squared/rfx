@@ -1,0 +1,644 @@
+{
+  "arm": "current",
+  "fine": false,
+  "source_sha": "5ce0de652d6bb58a70735504dce42da83ddd8b16",
+  "rfx_import": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/__init__.py",
+  "fixture_sha256": "a45f4c26d679e166c3f2d2306238b79ae3be0aafe2bc8e211b890adc724d3f5b",
+  "grid_shape": [
+    77,
+    21,
+    11
+  ],
+  "dx": 0.002,
+  "dt": 3.8131497390620115e-12,
+  "num_periods": 30,
+  "current": {
+    "cell_count": 200,
+    "occupied_x_indices": [
+      50
+    ],
+    "occupied_x_lower_nodes_m": [
+      0.084
+    ],
+    "edge_counts": [
+      231,
+      440,
+      420
+    ],
+    "tangential_wall_x_m": [
+      0.084,
+      0.08600000000000001
+    ]
+  },
+  "node_volume": {
+    "cell_count": 200,
+    "occupied_x_indices": [
+      51
+    ],
+    "occupied_x_lower_nodes_m": [
+      0.08600000000000001
+    ],
+    "edge_counts": [
+      231,
+      440,
+      420
+    ],
+    "tangential_wall_x_m": [
+      0.08600000000000001,
+      0.088
+    ]
+  },
+  "legacy_sigma": {
+    "cell_count": 200,
+    "damped_x_nodes_m": [
+      0.08600000000000001
+    ]
+  },
+  "frequencies_hz": [
+    4000000000.0,
+    4400000000.0,
+    4800000000.0,
+    5200000000.0,
+    5600000000.0,
+    6000000000.0
+  ],
+  "n_steps": 1312,
+  "port_planes_m": [
+    {
+      "source": 0.01,
+      "reference": 0.016,
+      "probe": 0.03
+    },
+    {
+      "source": 0.09,
+      "reference": 0.08399999999999999,
+      "probe": 0.06999999999999999
+    }
+  ],
+  "ref_shifts_m": [
+    -0.006,
+    0.006000000000000005
+  ],
+  "material_input_sha256": {
+    "eps_r": "0d76102636f43e29c629a444c374ce657fc65ec4b99757f27af91ed1375dd552",
+    "sigma": "428c72fdd8592dfa5b2669d041e895aff84e846b1029a8c5e98729a23655ce6a",
+    "mu_r": "0d76102636f43e29c629a444c374ce657fc65ec4b99757f27af91ed1375dd552"
+  },
+  "port_input_sha256": [
+    {
+      "x_index": "ab281dd074b47dd947be3ccdd5899de9f1df661ad0b8c45e01a4bcc70d8f3dd5",
+      "ref_x": "91876ea8f3c62f52eb1cdaa008286b930da7b12c4a3c65f57346dd79874842c7",
+      "probe_x": "8e3645b206cbc326629af6a848755d3ad495f6adc1e81a7106f8185ba49a8833",
+      "y_lo": "638c3654371664a5d7424a250b896c6aee9e09d3a2dd1209f493f9e25940628f",
+      "y_hi": "b0dc4e36b69ce4f9362d749abb6834f2c491e8f2243625df685cf8320916e0ab",
+      "z_lo": "638c3654371664a5d7424a250b896c6aee9e09d3a2dd1209f493f9e25940628f",
+      "z_hi": "7e95a7a969ade3bb3460f7379db6af2c34b75b66d74db219f0fa7ec33301d8c4",
+      "normal_axis": "abbe169495ed62bb3d03edb8d17b4a11c12cc11e49e3c172a4c6945805b5e080",
+      "u_lo": "638c3654371664a5d7424a250b896c6aee9e09d3a2dd1209f493f9e25940628f",
+      "u_hi": "b0dc4e36b69ce4f9362d749abb6834f2c491e8f2243625df685cf8320916e0ab",
+      "v_lo": "638c3654371664a5d7424a250b896c6aee9e09d3a2dd1209f493f9e25940628f",
+      "v_hi": "7e95a7a969ade3bb3460f7379db6af2c34b75b66d74db219f0fa7ec33301d8c4",
+      "e_u_component": "97f41c387ea64591759b59ff628e0e218d3526a97d378d831f89c75a5ee658c3",
+      "e_v_component": "ed053dd06e167f07938fb65fb6bf82eb5668d2964b6e9cc2aedaa5576ec06f46",
+      "h_u_component": "3ef68d3e089f698e90ec1a8ef10004a09862e6751d5661b101a87e9c8e54b1ed",
+      "h_v_component": "3def0554d1c367a1ae13f970020c0f93ac652dc27c3a27f9157ceb52b02a8632",
+      "ey_profile": "3a6924098d2eccbca098ccef85d2f07485f73eb7255310a07e984d2f6170d4be",
+      "ez_profile": "28501c476ce0f61246d7348deba8b73176ad9fa3f0f96a9f38da7d46089b8060",
+      "hy_profile": "fce54adf2d9a26c7cfef6e7cd83322dba381c690df70bfe82fd8f814a51c3663",
+      "hz_profile": "5d5137782f3c1e1164bc85e23a1e004fde7516ea12373e491ff8aab4787e3737",
+      "mode_type": "9c2a614e2f4703b5a6320eb9cc0e2ae281603765d1c9d3547517fb5512a2abde",
+      "direction": "4a3cc417977647716c24d9387b64c5bd717c3c2a780c2689a9f5fec1df3d137b",
+      "f_cutoff": "262ce1798b31d779e856deb97ee18822c434ba94604b960651cfeaf32b72e994",
+      "a": "a94c26eb69a383ae3550c5b785aa27cfa3df30796cb833ae640bf400944400ac",
+      "b": "5d981b6d49de483d3c95c131368f7b94705eceab0f904ca2519d69fa8dd72171",
+      "dx": "d65887569cbc98aafc651bf29bbcca5259020b2e2401fee2e6194a1a78eb1fac",
+      "dt": "7351f97ea7dd5b50ae7c8229c607da975d1e87400458210481f05ee301cfcab2",
+      "u_widths": "332368507ff9c788eea789024e24468ddb3bf12624c935d443999cef714f175d",
+      "v_widths": "7c49d397b47a00dc2a343ba9bb5d3b210a1a77edcdbb8a041f36be0aa2b78377",
+      "source_x_m": "e0f4860159921c9c9fb79d023dad3091d9250133f0a5916a6a378758bd023f2a",
+      "reference_x_m": "2805dfd3bb04f20579369af9eedce7e838b1855f16fb7f989b5bfa3e24f1d4af",
+      "probe_x_m": "68a733fb824c4728768c1197b07d1756d4adef75d9fb187e672911906197f03e",
+      "dft_total_steps": "36b144d4682f01fbb3f6b184823e519cca669fbf1ffa864a91ae404e6dfd596f",
+      "src_amp": "531bd5e101de4c727fcac6cda31dcaf3558b69a33c4949a3973ac8f2abcd4c83",
+      "src_t0": "cb8d51b363ebe7ddf44748fac189a304c04e669846b2fdffff27ad3054c9178c",
+      "src_tau": "6dda31867d676b19d21cac98bda7bc20c123da52d8b2d1c44a7c992be655f3bc",
+      "src_fcen": "bee7ed302db9209fb9310e2005fad9b1c837e32217f9b83a0e8ea7ab07d81e1c",
+      "waveform": "2fdbbdc6910104ee5940164ff53078b308cfdccf6e8367ea9bad50683cc26bc6",
+      "freqs": "2000944c974c286511af3fe5125a42b4a9bdd781708f07a8282242e115ca68ed",
+      "v_probe_t": "bc5eb465971f6ef6581628900a5b61b982c6584920aa9e63d61bd437b8b5783d",
+      "v_ref_t": "bc5eb465971f6ef6581628900a5b61b982c6584920aa9e63d61bd437b8b5783d",
+      "i_probe_t": "bc5eb465971f6ef6581628900a5b61b982c6584920aa9e63d61bd437b8b5783d",
+      "i_ref_t": "bc5eb465971f6ef6581628900a5b61b982c6584920aa9e63d61bd437b8b5783d",
+      "v_inc_t": "bc5eb465971f6ef6581628900a5b61b982c6584920aa9e63d61bd437b8b5783d",
+      "n_steps_recorded": "6df728909b95051831ead933ce466193352afb4cf1ed84de7259866b9ed3fe63",
+      "e_inc_table": "20d68e29d1edcd761af34e1844bdcb2771b3ca3f7bca95f78f04595a9136eb7a",
+      "h_inc_table": "b652441b06e303440b431de7202ee6ca6060dbf03d27e7a43a005518d3e5a2f1",
+      "aperture_dA": "c3754495f8bf5f64025e433f2660e0bac11a6fe769dd47c8dbc1d280e191fba0",
+      "h_offset": "8baa97848e4195136cef1bfbaa787ee44d122ddd0a70f011e1f8dc06628bf3ab",
+      "mode_indices": "4f41653fe38dad6fa82567983a8cd96bd857819873930586dc479aab61a75d1e"
+    },
+    {
+      "x_index": "953f17616ae1cd33c3d855c5a8b760d3dde15d0bec8702039adeedad4ef53f26",
+      "ref_x": "c4f3c86ec1e6849a40cc37af345fdbf50108c188347af089e568d33de992fc58",
+      "probe_x": "561906b8d707dacd8dfb9fa3f02ff07307aa1480802bfd08681fb60ca69cafbc",
+      "y_lo": "638c3654371664a5d7424a250b896c6aee9e09d3a2dd1209f493f9e25940628f",
+      "y_hi": "b0dc4e36b69ce4f9362d749abb6834f2c491e8f2243625df685cf8320916e0ab",
+      "z_lo": "638c3654371664a5d7424a250b896c6aee9e09d3a2dd1209f493f9e25940628f",
+      "z_hi": "7e95a7a969ade3bb3460f7379db6af2c34b75b66d74db219f0fa7ec33301d8c4",
+      "normal_axis": "abbe169495ed62bb3d03edb8d17b4a11c12cc11e49e3c172a4c6945805b5e080",
+      "u_lo": "638c3654371664a5d7424a250b896c6aee9e09d3a2dd1209f493f9e25940628f",
+      "u_hi": "b0dc4e36b69ce4f9362d749abb6834f2c491e8f2243625df685cf8320916e0ab",
+      "v_lo": "638c3654371664a5d7424a250b896c6aee9e09d3a2dd1209f493f9e25940628f",
+      "v_hi": "7e95a7a969ade3bb3460f7379db6af2c34b75b66d74db219f0fa7ec33301d8c4",
+      "e_u_component": "97f41c387ea64591759b59ff628e0e218d3526a97d378d831f89c75a5ee658c3",
+      "e_v_component": "ed053dd06e167f07938fb65fb6bf82eb5668d2964b6e9cc2aedaa5576ec06f46",
+      "h_u_component": "3ef68d3e089f698e90ec1a8ef10004a09862e6751d5661b101a87e9c8e54b1ed",
+      "h_v_component": "3def0554d1c367a1ae13f970020c0f93ac652dc27c3a27f9157ceb52b02a8632",
+      "ey_profile": "3a6924098d2eccbca098ccef85d2f07485f73eb7255310a07e984d2f6170d4be",
+      "ez_profile": "28501c476ce0f61246d7348deba8b73176ad9fa3f0f96a9f38da7d46089b8060",
+      "hy_profile": "fce54adf2d9a26c7cfef6e7cd83322dba381c690df70bfe82fd8f814a51c3663",
+      "hz_profile": "5d5137782f3c1e1164bc85e23a1e004fde7516ea12373e491ff8aab4787e3737",
+      "mode_type": "9c2a614e2f4703b5a6320eb9cc0e2ae281603765d1c9d3547517fb5512a2abde",
+      "direction": "c1f0e49f07e4a25cfd91c05ff74f08a816d79e31612e33968d02ccf986b3ce38",
+      "f_cutoff": "262ce1798b31d779e856deb97ee18822c434ba94604b960651cfeaf32b72e994",
+      "a": "a94c26eb69a383ae3550c5b785aa27cfa3df30796cb833ae640bf400944400ac",
+      "b": "5d981b6d49de483d3c95c131368f7b94705eceab0f904ca2519d69fa8dd72171",
+      "dx": "d65887569cbc98aafc651bf29bbcca5259020b2e2401fee2e6194a1a78eb1fac",
+      "dt": "7351f97ea7dd5b50ae7c8229c607da975d1e87400458210481f05ee301cfcab2",
+      "u_widths": "332368507ff9c788eea789024e24468ddb3bf12624c935d443999cef714f175d",
+      "v_widths": "7c49d397b47a00dc2a343ba9bb5d3b210a1a77edcdbb8a041f36be0aa2b78377",
+      "source_x_m": "9b6c0613967b99e26ad5b7ea572d54bd0f5fbaa323d181f518ad721f7a3e07cb",
+      "reference_x_m": "d344f3b67d048a180ad2f3d7f796deb7183a6fa195651821f5e71ebebe458af8",
+      "probe_x_m": "7ceaa87a204af4e7838d72fee5e42fa70827ad5c3488124416926d55d0648dac",
+      "dft_total_steps": "36b144d4682f01fbb3f6b184823e519cca669fbf1ffa864a91ae404e6dfd596f",
+      "src_amp": "531bd5e101de4c727fcac6cda31dcaf3558b69a33c4949a3973ac8f2abcd4c83",
+      "src_t0": "cb8d51b363ebe7ddf44748fac189a304c04e669846b2fdffff27ad3054c9178c",
+      "src_tau": "6dda31867d676b19d21cac98bda7bc20c123da52d8b2d1c44a7c992be655f3bc",
+      "src_fcen": "bee7ed302db9209fb9310e2005fad9b1c837e32217f9b83a0e8ea7ab07d81e1c",
+      "waveform": "2fdbbdc6910104ee5940164ff53078b308cfdccf6e8367ea9bad50683cc26bc6",
+      "freqs": "2000944c974c286511af3fe5125a42b4a9bdd781708f07a8282242e115ca68ed",
+      "v_probe_t": "bc5eb465971f6ef6581628900a5b61b982c6584920aa9e63d61bd437b8b5783d",
+      "v_ref_t": "bc5eb465971f6ef6581628900a5b61b982c6584920aa9e63d61bd437b8b5783d",
+      "i_probe_t": "bc5eb465971f6ef6581628900a5b61b982c6584920aa9e63d61bd437b8b5783d",
+      "i_ref_t": "bc5eb465971f6ef6581628900a5b61b982c6584920aa9e63d61bd437b8b5783d",
+      "v_inc_t": "bc5eb465971f6ef6581628900a5b61b982c6584920aa9e63d61bd437b8b5783d",
+      "n_steps_recorded": "6df728909b95051831ead933ce466193352afb4cf1ed84de7259866b9ed3fe63",
+      "e_inc_table": "20d68e29d1edcd761af34e1844bdcb2771b3ca3f7bca95f78f04595a9136eb7a",
+      "h_inc_table": "b652441b06e303440b431de7202ee6ca6060dbf03d27e7a43a005518d3e5a2f1",
+      "aperture_dA": "c3754495f8bf5f64025e433f2660e0bac11a6fe769dd47c8dbc1d280e191fba0",
+      "h_offset": "8baa97848e4195136cef1bfbaa787ee44d122ddd0a70f011e1f8dc06628bf3ab",
+      "mode_indices": "4f41653fe38dad6fa82567983a8cd96bd857819873930586dc479aab61a75d1e"
+    }
+  ],
+  "elapsed_s": 7.696782366838306,
+  "s_real": [
+    [
+      [
+        -0.5027915835380554,
+        -0.6215968728065491,
+        0.9997101426124573,
+        -0.18319369852542877,
+        -0.9391322135925293,
+        0.28804120421409607
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    ],
+    [
+      [
+        -0.5092054009437561,
+        -0.3717525899410248,
+        0.15829980373382568,
+        0.4833049774169922,
+        0.38710713386535645,
+        0.10301663726568222
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    ]
+  ],
+  "s_imag": [
+    [
+      [
+        -0.22624678909778595,
+        0.8112320899963379,
+        0.11220540851354599,
+        -0.9827036261558533,
+        0.3306684195995331,
+        0.8991777896881104
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    ],
+    [
+      [
+        -0.08747867494821548,
+        0.3423895537853241,
+        0.4723769724369049,
+        0.11759736388921738,
+        -0.3179457187652588,
+        -0.47316309809684753
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    ]
+  ],
+  "s_abs": [
+    [
+      [
+        0.5513501167297363,
+        1.0219981670379639,
+        1.005987286567688,
+        0.9996330738067627,
+        0.9956459999084473,
+        0.9441865682601929
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    ],
+    [
+      [
+        0.5166649222373962,
+        0.5054014325141907,
+        0.4981955587863922,
+        0.49740612506866455,
+        0.5009405612945557,
+        0.484247624874115
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    ]
+  ],
+  "column_power": [
+    [
+      0.5709295868873596,
+      1.2999107837677002,
+      1.260209321975708,
+      1.2466790676116943,
+      1.2422523498535156,
+      1.1259839534759521
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  ],
+  "max_column_power": 1.2999107837677002,
+  "in_original_witness_interval": false,
+  "settling_db": [
+    -25.494890460744337,
+    NaN
+  ],
+  "records_summary": [
+    [
+      {
+        "port": 0,
+        "dt": 3.8131497390620115e-12,
+        "n_steps": 1312,
+        "v_probe_t": {
+          "peak": 0.9415111541748047,
+          "tail": 0.060908298939466476
+        },
+        "v_ref_t": {
+          "peak": 1.4793994426727295,
+          "tail": 0.06888441741466522
+        },
+        "i_probe_t": {
+          "peak": 0.002254439052194357,
+          "tail": 0.00010976777411997318
+        },
+        "i_ref_t": {
+          "peak": 0.001375385094434023,
+          "tail": 0.0001338150177616626
+        },
+        "a_wave": {
+          "real": [
+            1.2380159397640256e-11,
+            2.427591461184875e-10,
+            9.423190006074833e-10,
+            9.467626682635455e-10,
+            2.4860341563126553e-10,
+            9.029005841598714e-12
+          ],
+          "imag": [
+            7.007121662419569e-13,
+            2.409851311557798e-11,
+            -1.2405489135947079e-10,
+            1.2557449524663866e-10,
+            -6.922264410985646e-12,
+            -1.500589799988128e-12
+          ],
+          "magnitude": [
+            1.2399974276544601e-11,
+            2.4395233055862775e-10,
+            9.50449829950628e-10,
+            9.550541468783535e-10,
+            2.486997552342274e-10,
+            9.152852954719126e-12
+          ]
+        },
+        "b_wave": {
+          "real": [
+            -6.066105950885969e-12,
+            -1.7044782252284563e-10,
+            9.559654179369659e-10,
+            -5.003843520090534e-11,
+            -2.3118248981823797e-10,
+            3.950022600673897e-12
+          ],
+          "imag": [
+            -3.1532836237968542e-12,
+            1.819544515058169e-10,
+            -1.8285642097715105e-11,
+            -9.533915878989774e-10,
+            8.870621598378037e-11,
+            7.686449567112508e-12
+          ],
+          "magnitude": [
+            6.836726931108705e-12,
+            2.49318843348334e-10,
+            9.561402780633443e-10,
+            9.547038715140843e-10,
+            2.4761692696273485e-10,
+            8.64200117717262e-12
+          ]
+        }
+      },
+      {
+        "port": 1,
+        "dt": 3.8131497390620115e-12,
+        "n_steps": 1312,
+        "v_probe_t": {
+          "peak": 1.5615438222885132,
+          "tail": 0.050818704068660736
+        },
+        "v_ref_t": {
+          "peak": 0.0,
+          "tail": 0.0
+        },
+        "i_probe_t": {
+          "peak": 0.0018264603568241,
+          "tail": 5.964320371276699e-05
+        },
+        "i_ref_t": {
+          "peak": 0.0016590618761256337,
+          "tail": 4.1590323235141113e-05
+        },
+        "a_wave": {
+          "real": [
+            5.3587590094494875e-12,
+            1.230365948012846e-10,
+            1.4028114780906265e-10,
+            -1.3716243418837593e-10,
+            -1.1778401864948052e-10,
+            -4.176132096384011e-12
+          ],
+          "imag": [
+            3.5112143227655768e-12,
+            -7.960785676497384e-12,
+            -4.5225298506146316e-10,
+            -4.548172671814399e-10,
+            -4.0596134093240366e-11,
+            1.4848334150760478e-12
+          ],
+          "magnitude": [
+            6.406631735539348e-12,
+            1.2329387510945367e-10,
+            4.735098424468731e-10,
+            4.750497217820282e-10,
+            1.245838016084022e-10,
+            4.432246670377227e-12
+          ]
+        },
+        "b_wave": {
+          "real": [
+            -6.242746337231653e-12,
+            -9.849742549361551e-11,
+            2.0776957931900597e-10,
+            4.428078737017671e-10,
+            9.40352448686177e-11,
+            2.2011407453670362e-13
+          ],
+          "imag": [
+            -1.4398063904325076e-12,
+            7.415951880362925e-11,
+            4.2549189172014223e-10,
+            1.7202757274237257e-10,
+            -8.172204579715014e-11,
+            -4.42677795461921e-12
+          ],
+          "magnitude": [
+            6.406631301858479e-12,
+            1.2329386123166586e-10,
+            4.735097869357219e-10,
+            4.750497772931794e-10,
+            1.245837738528266e-10,
+            4.432247104058096e-12
+          ]
+        }
+      }
+    ],
+    [
+      {
+        "port": 0,
+        "dt": 3.8131497390620115e-12,
+        "n_steps": 1312,
+        "v_probe_t": {
+          "peak": 0.0,
+          "tail": 0.0
+        },
+        "v_ref_t": {
+          "peak": 0.0,
+          "tail": 0.0
+        },
+        "i_probe_t": {
+          "peak": 0.0,
+          "tail": 0.0
+        },
+        "i_ref_t": {
+          "peak": 0.0,
+          "tail": 0.0
+        },
+        "a_wave": {
+          "real": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "imag": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "magnitude": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "b_wave": {
+          "real": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "imag": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "magnitude": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      {
+        "port": 1,
+        "dt": 3.8131497390620115e-12,
+        "n_steps": 1312,
+        "v_probe_t": {
+          "peak": 0.0,
+          "tail": 0.0
+        },
+        "v_ref_t": {
+          "peak": 0.0,
+          "tail": 0.0
+        },
+        "i_probe_t": {
+          "peak": 0.0,
+          "tail": 0.0
+        },
+        "i_ref_t": {
+          "peak": 0.0,
+          "tail": 0.0
+        },
+        "a_wave": {
+          "real": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "imag": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "magnitude": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "b_wave": {
+          "real": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "imag": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "magnitude": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      }
+    ]
+  ],
+  "warnings": [
+    "compute_waveguide_s_matrix(normalize=False): S21 and S-parameter phase include Yee numerical dispersion. For S21 accuracy and reciprocity use normalize=True. For |S11| of strong reflectors (PEC short, resonators) normalize=False is more accurate \u2014 see the normalize parameter docstring.",
+    "compute_waveguide_s_matrix: absorber on the x propagation axis is thinner than the documented 0.5 guide-wavelength far-port discipline at the lowest measured frequency 4.000 GHz (mode cutoff 3.744 GHz, lambda_g = 212.7 mm): x-lo 8 cells = 16.0 mm (0.08 lambda_g), x-hi 8 cells = 16.0 mm (0.08 lambda_g), against a required 106.4 mm. A thin absorber reflects guided energy and can set the accuracy envelope instead of discretization: in the WR-90 iris lane (issue #494) residual |S11| ripple was 0.0706 at 0.30 lambda_g, 0.0366 at 0.50, and 0.0093 at 0.75, so 0.5 lambda_g is a floor and not a target. Raise cpml_layers to at least 54 (0.75 lambda_g needs 80).",
+    "the record is shorter than 3 x the far-boundary round trip \u2014 waveguide_port[0] (+x): T/tau_far = 2.097. T = 5.0029 ns (1312 steps x dt = 3.8131 ps; num_periods = 30 at freq_max = 6 GHz), tau_far = 2 x far_path / v_g = 2.386 ns. far_path = 126 mm (port plane 10 mm to the x-hi outer wall on a 120 mm domain, absorber pad 16 mm included); v_g(f_min)/c = 0.3523 at f_min = 4 GHz with the port's discrete cutoff f_c = 3.7436 GHz. num_periods >= 43 makes T/tau_far >= 3. Finer grids need more \u2014 measured 3, 5 and 8 at a/18, a/36 and a/72 on the WR-90 battery. A multimode port is audited on its lowest-cutoff mode, so this is a lower bound.",
+    "the record is shorter than 3 x the far-boundary round trip \u2014 waveguide_port[1] (-x): T/tau_far = 2.492. T = 5.0029 ns (1312 steps x dt = 3.8131 ps; num_periods = 30 at freq_max = 6 GHz), tau_far = 2 x far_path / v_g = 2.0073 ns. far_path = 106 mm (port plane 90 mm to the x-lo outer wall on a 120 mm domain, absorber pad 16 mm included); v_g(f_min)/c = 0.3523 at f_min = 4 GHz with the port's discrete cutoff f_c = 3.7436 GHz. num_periods >= 37 makes T/tau_far >= 3. Finer grids need more \u2014 measured 3, 5 and 8 at a/18, a/36 and a/72 on the WR-90 battery. A multimode port is audited on its lowest-cutoff mode, so this is a lower bound.",
+    "waveguide port index mirror audit, source E plane (x-axis): i(+) = 13, i(-) = 54, sum = 67, but the covariant sum is 77 on n_axis = 77 (primal lattice, including the known +1 shipped E-plane offset). The two ports are not mirror images on this plane; check x_position, ref_offset / probe_offset and reference_plane.",
+    "waveguide port index mirror audit, source H plane (x-axis): i(+) = 12, i(-) = 53, sum = 65, but the covariant sum is 75 on n_axis = 77 (dual lattice). The two ports are not mirror images on this plane; check x_position, ref_offset / probe_offset and reference_plane.",
+    "waveguide port index mirror audit, reference probe plane (x-axis): i(+) = 16, i(-) = 50, sum = 66, but the covariant sum is 76 on n_axis = 77 (primal lattice). The two ports are not mirror images on this plane; check x_position, ref_offset / probe_offset and reference_plane.",
+    "waveguide port index mirror audit, measurement probe plane (x-axis): i(+) = 23, i(-) = 43, sum = 66, but the covariant sum is 76 on n_axis = 77 (primal lattice). The two ports are not mirror images on this plane; check x_position, ref_offset / probe_offset and reference_plane.",
+    "waveguide port index mirror audit, reference plane (x-axis, metres): 10 mm + 90 mm = 100 mm, but a mirror-symmetric pair sums to the domain extent 120 mm (tolerance 1 mm). Check reference_plane / x_position.",
+    "ring-down settling witness has NO COVERAGE on this run: 0 of 8 port records clear the 1.175e-36 peak-amplitude floor (the storage format's smallest normal, scaled so the -40 dB decision itself is representable), so no ring-down ratio can be established. settling_db is NaN and must NOT be read as a pass. Records: port0/v_probe_t, port0/v_ref_t, port0/i_probe_t, port0/i_ref_t, port1/v_probe_t, port1/v_ref_t, port1/i_probe_t, port1/i_ref_t",
+    "ring-down settling witness FAILED (end/peak energy above -40 dB): port left driven: -25.5 dB. The num_periods=30 record ended while the structure was still ringing, so the DFT-based S-parameters of the affected run(s) are truncation artifacts wherever the structure is resonant \u2014 expect spurious |S| poles and passivity violations. Increase num_periods until the witness is below \u221240 dB before quoting any S value (see the result's settling_db field).",
+    "compute_waveguide_s_matrix: reciprocity ADVISORY (warn-only -- nothing failed, the S-parameters are returned unchanged): worst complex reciprocity deviation max|S_ij - S_ji| / max|S| = 0.9371 exceeds 0.011, at ports (left, right), frequency index 0 (4.0000 GHz). The tolerance is derived from the WR-90 chain-battery envelope -- see WAVEGUIDE_RECIPROCITY_ADVISORY_TOL in rfx/api/_sparams.py for the cells it comes from. rfx models eps, sigma and mu_r as isotropic scalars, and a structure built only from those is reciprocal by Lorentz reciprocity, so on this lane a deviation this large is normally a discretization or extraction artifact: refine dx (the measured ladder runs 6.8e-2 coarse -> 7.0e-3 fine on normalize=False) or use normalize='flux', which measured ~21x tighter at the same mesh. If your structure genuinely IS non-reciprocal (magnetised ferrite, an active device), this advisory is expected -- it is informational and changes nothing."
+  ]
+}

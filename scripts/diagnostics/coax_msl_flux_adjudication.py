@@ -346,7 +346,7 @@ def run_c1(n_steps, outdir):
     entries = list(entries) + list(plane_scratch._flux_monitors)
 
     grid = sim._build_grid()
-    materials, _debye, _lorentz, pec_mask, _, _, _ = sim._assemble_materials(grid)
+    materials, _debye, _lorentz, pec_mask, _, _, _ = sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])
     msl_pe = sim._msl_ports[0]
     # mirror the extractor's entry -> low-level MSLPort conversion verbatim
     x_feed, y_centre, msl_z_lo = (float(c) for c in msl_pe.position)

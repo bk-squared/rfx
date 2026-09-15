@@ -52,10 +52,13 @@ _ETA0 = float(np.sqrt(MU_0 / EPS_0))
 def hammerstad_jensen_z0_eps_eff(
     w: float, h: float, eps_r: float
 ) -> tuple[float, float]:
-    """Hammerstad-Jensen closed-form microstrip Z0 and ε_eff.
+    """Simplified quasi-static, zero-thickness microstrip Z0 and ε_eff.
 
-    Reference: Pozar §3.7, Hammerstad & Jensen 1980. Accurate to ~0.5%
-    for standard MSL geometries (0.1 ≤ W/H ≤ 10, 1 ≤ εr ≤ 16).
+    The historical API name is retained. This piecewise approximation uses
+    ``(1 + 12*h/w)**(-0.5)``; it is not the full Hammerstad–Jensen 1980
+    model with geometry/material correction exponents. Agreement with this
+    reference is not an absolute solver or port-accuracy bound. See
+    ``docs/guides/msl_geometry_diagnostics.md`` for the #752 comparison scope.
     """
     u = w / h
     eps_eff = (eps_r + 1.0) / 2.0 + (eps_r - 1.0) / 2.0 * (

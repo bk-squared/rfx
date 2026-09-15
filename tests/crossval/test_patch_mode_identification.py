@@ -249,6 +249,55 @@ def _fixture(name):
     return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
 
 
+# --------------------------------------------------------------------------- #
+# #931: the two cv15 ring-down legs are HISTORY, not two live options
+# --------------------------------------------------------------------------- #
+# ``cv15_ringdown_spectra.json`` carries two reproductions of the same board:
+# ``two_plane_ground`` (walls at both faces of the one-cell ground) and
+# ``one_plane_ground_740_defect`` (one wall, a full cell below the substrate
+# floor -- the #693 vacuum ground cell). They were produced by
+# ``build_rfx_sim(two_plane=True/False)``, and the whole #740 argument was that
+# the flag chose between them.
+#
+# The lattice ownership contract removes the choice. A conductor is declared a
+# volume or a sheet; a volume realizes BOTH faces at every thickness and a
+# sheet realizes exactly one declared plane, so neither leg is reachable from a
+# flag any more and "two_plane_ground" is not the name of a correct build. What
+# the pair still is, and what these tests still use it for, is a frozen
+# MEASUREMENT of two realizations of one board: the dilation between them
+# (x1.068 common-mode) and the mode-pair ratio band derived from it are
+# statements about geometry sensitivity that stand on their own.
+#
+# So the legs are read by role, not by mechanism, and the names are resolved
+# rather than typed. If the crossval-C regeneration renames them (it should:
+# the mechanism they name is deleted), this keeps working, and the assertions
+# below stop describing a flag as the correct answer.
+_LEG_ALIASES = {
+    # role -> the fixture keys that have ever carried it, newest first
+    "two_wall": ("two_wall_ground", "volume_ground", "two_plane_ground"),
+    "one_wall": ("one_wall_ground_740_defect", "one_plane_ground_740_defect"),
+}
+
+
+def _leg(fx, role):
+    """The ring-down leg for ``role``, whatever the fixture calls it."""
+    for key in _LEG_ALIASES[role]:
+        if key in fx:
+            return fx[key]
+    raise KeyError(
+        f"no leg for role {role!r} in the committed spectra; tried "
+        f"{_LEG_ALIASES[role]}. The #740 realization pair is frozen HISTORICAL "
+        "evidence under #931 — if it was regenerated, add the new key here "
+        "rather than renaming the role.")
+
+
+def _leg_key(fx, role):
+    for key in _LEG_ALIASES[role]:
+        if key in fx:
+            return key
+    raise KeyError(role)
+
+
 def test_cv05_correct_build_passes_with_margin():
     """(A) cv05's committed configuration, run through its own script: the
     design member TM100 is FOUND, its residual is more than 3x inside the
@@ -270,22 +319,27 @@ def test_cv05_correct_build_passes_with_margin():
     assert (1, 1) in {o for _f, o, _r in ident.assignments if o}
 
 
-@pytest.mark.parametrize("run,f_ghz,rel", [
-    # values are the committed fixture's (rebuilt on the lab cluster, jax 0.6.2,
-    # VESSL 369367257743 -- the round-1 macOS build read 2.87308 / 2.98956 /
-    # 3.11259 here, i.e. within 2e-4 relative at two of three lengths and
-    # 1.3e-3 at 22.0 mm; design note 6.11)
-    ("patch_len_22p5mm", 2.87272, +0.1854),
-    ("patch_len_22p0mm", 2.99346, +0.2352),   # the audit's +24% point
-    ("patch_len_21p0mm", 3.11189, +0.2840),
+@pytest.mark.parametrize("run,f_low_ghz,f_drift_ghz,rel", [
+    # REPINNED for #931 (VESSL 369367259142). Values are the rebuilt fixture's,
+    # which was produced on the SHEET-declared board: ground and patch are
+    # zero-thickness PEC on the laminate's own node planes, so the cavity is
+    # 1.5000 mm of FR4 over six cells with no vacuum layer in it, and the patch
+    # x-extent is counted in realized metal EDGES instead of masked nodes (every
+    # census row but 22.0 and 38.0 reads one lower). Pre-#931 rows for the
+    # record: 2.87272 / +0.1854, 2.99346 / +0.2352, 3.11189 / +0.2840, all read
+    # off freqs[0] because the old board resolved no TM010 at these lengths.
+    ("patch_len_22p5mm", 1.92161, 3.04321, +0.2557),
+    ("patch_len_22p0mm", 1.92161, 3.04321, +0.2557),   # the audit's +24% point
+    ("patch_len_21p0mm", 1.92851, 3.31317, +0.3671),
 ])
-def test_cv05_mis_realized_resonant_length_fails_for_the_stated_reason(run, f_ghz, rel):
+def test_cv05_mis_realized_resonant_length_fails_for_the_stated_reason(
+        run, f_low_ghz, f_drift_ghz, rel):
     """(B) LIVE FDTD reproductions: the patch's realized resonant length is
     mis-built while every declaration -- including the anchor -- still says
     29.5 mm. Frequencies and the realized-cell census:
     ``cv05_ringdown_spectra.json::runs`` and ``::_realized_x_cell_census``.
 
-    The audit's +24% point is measured directly by the 22-cell realization
+    The audit's +24% point is measured directly by the 22-edge realization
     (``runs.patch_len_22p0mm``); the parametrization's ``rel`` column is
     re-derived from the fixture in the body below, so these digits are checked,
     not asserted. Exactly +24.00% is pinned algebraically by
@@ -294,12 +348,24 @@ def test_cv05_mis_realized_resonant_length_fails_for_the_stated_reason(run, f_gh
     In every case the drifted design mode is captured by a NEIGHBOURING
     declared member -- the cross-mode capture the audit described -- and the
     gate reports TM100 MISSING rather than reporting the neighbour as the
+    resonance.
+
+    #931 changed WHICH pole is which, not the verdict. On the sheet board every
+    mis-realized length also resolves TM010 (the b-axis mode, untouched by the
+    x-extent hook), so the lowest pole is no longer the drifted design mode --
+    it is a correctly identified TM010 sitting under 1% of its declared member.
+    The drifted a-axis mode is the SECOND pole and it now drifts UPWARD past
+    TM110 rather than into it. The identification verdict is unchanged: TM100
+    has no measured mode inside the window and nothing else is reported as the
     resonance."""
     data = _fixture("cv05_ringdown_spectra.json")["runs"][run]
     members = _members(CV05)
     freqs = [m["freq"] for m in data["modes"]]
-    assert freqs[0] / 1e9 == pytest.approx(f_ghz, abs=1e-5)
-    assert freqs[0] / members[(1, 0)] - 1 == pytest.approx(rel, abs=5e-4)
+    assert freqs[0] / 1e9 == pytest.approx(f_low_ghz, abs=1e-5)
+    assert freqs[1] / 1e9 == pytest.approx(f_drift_ghz, abs=1e-5)
+    assert freqs[1] / members[(1, 0)] - 1 == pytest.approx(rel, abs=5e-4)
+    # the lowest pole is TM010, identified with margin -- it is not the drift
+    assert abs(freqs[0] / members[(0, 1)] - 1) < 0.01
     ident = identify_patch_modes(freqs, members)
     assert not ident.ok
     assert ident.f_design is None
@@ -309,35 +375,153 @@ def test_cv05_mis_realized_resonant_length_fails_for_the_stated_reason(run, f_gh
     assert all(o != (1, 0) for _f, o, _r in ident.assignments)
 
 
-def test_cv15_correct_build_would_pass_with_margin():
-    """(A) for cv15, recorded even though cv15 ships no spectral gate: the
-    correct (two_plane) build's ring-down identifies every in-band declared
-    member with margin against the derived tolerance.
+def test_cv05_22p5_and_22p0_are_one_realization_since_931():
+    """The two shortest mis-realized rows are now the SAME board, and the
+    fixture says so in its own realized_stack: 22.5 mm and 22.0 mm both realize
+    22 metal edges, so their ring-downs are identical.
 
-    Source: ``cv15_ringdown_spectra.json::two_plane_ground.modes`` -- the live
-    reproduction through cv15's production ``build_rfx_sim(two_plane=True)``.
-    (A) alone is cosmetic; (B) is what cv15 could not meet."""
+    Pre-#931 the node census read 23 and 22 and the two rows were distinct
+    builds (2.87272 vs 2.99346 GHz). Counting edges removed that distinction.
+    This is a property of the census, not a copied file -- if a future change
+    separates the two realizations again, this test fails and the
+    parametrization above must grow its second distinct row back."""
+    runs = _fixture("cv05_ringdown_spectra.json")["runs"]
+    a, b = runs["patch_len_22p5mm"], runs["patch_len_22p0mm"]
+    assert a["realized_stack"]["patch"]["x_edge_cells"] == 22
+    assert b["realized_stack"]["patch"]["x_edge_cells"] == 22
+    assert [(m["freq"], m["Q"]) for m in a["modes"]] == \
+           [(m["freq"], m["Q"]) for m in b["modes"]]
+    census = _fixture("cv05_ringdown_spectra.json")["_realized_x_cell_census"]
+    assert census["22.5"] == census["22.0"] == 22
+    assert "edges" in census["_unit"]
+
+
+def test_cv15_two_wall_realization_would_pass_with_margin():
+    """(A) for cv15, recorded even though cv15 ships no spectral gate: the
+    two-wall realization's ring-down identifies every in-band declared member
+    with margin against the derived tolerance.
+
+    Source: ``cv15_ringdown_spectra.json::two_plane_ground.modes``, read here
+    through the ``two_wall`` leg alias -- a live reproduction recorded
+    2026-09-01 at repo commit 5b6db32 through what was then cv15's production
+    builder, ``build_rfx_sim(two_plane=True)``: the board with a wall at each
+    face of the one-cell ground. #931 note: that leg used to be called "the
+    correct build" because a flag chose it. Under the ownership contract it is
+    what a VOLUME declaration realizes, and cv15's foil is declared a SHEET
+    instead (the flag spelling no longer exists), so the leg is frozen
+    historical evidence about geometry sensitivity rather than a live option,
+    and the fixture is deliberately not regenerated. (A) alone is cosmetic;
+    (B) is what cv15 could not meet."""
     fx = _fixture("cv15_ringdown_spectra.json")
     members = _members(CV15)
     ident = identify_patch_modes(
-        [m["freq_hz"] for m in fx["two_plane_ground"]["modes"]], members)
+        [m["freq_hz"] for m in _leg(fx, "two_wall")["modes"]], members)
     assert ident.ok, ident.reasons
     worst = max(abs(r) for _f, o, r in ident.assignments if o is not None)
     assert worst < 0.5 * ident.tol        # margin, not a squeaker
 
 
-def test_cv15_reproduction_ringdown_matches_the_committed_leg():
+def test_cv15_reproduction_ringdown_matches_the_floating_post_leg():
     """The reproduction the two cv15 fixtures rest on is the same ring-down as
-    the leg #768 committed -- so reverting this lane's regeneration of
-    ``_15_patch_results/rfx.json`` (design note section 6.9) costs no evidence.
+    the leg #768 committed -- so reverting this lane's regeneration of that leg
+    (design note section 6.9) costs no evidence.
+
+    ROOT CAUSE of the re-anchor, TWICE OVER. Issue #920 (2026-09-06): this
+    test used to read ``_15_patch_results/rfx.json``, the leg cv15 currently
+    ships. It no longer can, and the reason is not a tolerance: cv15's feed
+    was FIXED. Its probe post used to float between the two conductors,
+    touching neither; it now bridges them galvanically, as openEMS's
+    ``AddLumpedPort`` always did. A floating post barely loads the patch, so
+    the ring-down it recorded (f0 2.3139 GHz, Q 18.9) was the cavity's
+    nearly-unloaded resonance. Issue #931 (the lattice ownership contract,
+    merged with #920 2026-09-10): the SAME leg regeneration also changed the
+    conductor declarations -- both ground and patch became SHEETS -- and,
+    measured rather than assumed, #920's galvanic-feed derivation and #931's
+    independently-chosen full-substrate feed are the SAME span once both
+    conductors are sheets, so the two causes converge on one leg instead of
+    compounding into two. The galvanic post loads the cavity properly
+    (2.4230 GHz, Q 10.1, committed in the regenerated leg). Both fixtures
+    under this lane were recorded through the pre-#920/#931 builder, so the
+    leg they correspond to is the archived one,
+    ``rfx_floating_post_1f005d0d.json`` -- byte-identical to the leg this
+    test was written against, and named explicitly rather than reached
+    through a path whose contents moved underneath it. The SAME bytes are
+    also archived under this branch's own name,
+    ``rfx_pre931_two_plane_ground_1f005d0d.json`` (see the branch-merge
+    resolution note for why both names are kept).
+
+    What this costs the #812 lane: nothing that it claims. Its finding is
+    that a dimensionless mode-pair instrument cannot separate the #740
+    one-plane ground from the correct build, and both members of that
+    comparison were recorded under the SAME feed, so the feed cancels out of
+    it. What the fixtures no longer are is a live reproduction of today's
+    production builder -- re-recording them is the #920/#931 follow-up, not
+    this fix.
 
     The leg carries no mode list; f0 is the field the two share."""
-    fx = _fixture("cv15_ringdown_spectra.json")["two_plane_ground"]
+    fx = _leg(_fixture("cv15_ringdown_spectra.json"), "two_wall")
+    leg = json.loads(
+        (REPO_ROOT / "validation/crossval/_15_patch_results"
+         / "rfx_floating_post_1f005d0d.json").read_text(encoding="utf-8"))
+    assert "modes" not in leg          # the committed leg is #768's, untouched
+    assert fx["f_harminv_hz"] == pytest.approx(leg["f_harminv_hz"], rel=1e-7)
+    # ... and it IS the pre-#931 build: the two_plane ground realization, which
+    # the current leg can no longer be (the flag is a TypeError now).
+    assert leg["stack_check"]["ground_realization"] == "two_plane"
+
+
+def test_cv15_pre931_leg_is_the_receipt_for_what_the_contract_closed():
+    """The preserved #768 leg carries, in its own recorded preflight, the three
+    findings the ownership contract exists to remove: the ground sheet's own
+    vacuum cell inflating the cavity by +55.0% in electrical thickness (#703 /
+    #702), the feed reaching one cell short of the patch so coupling is
+    capacitive only (#556), and the one-cell PEC sheet whose normal-E edge stays
+    live. Pinned so the before side of the before/after stays legible after the
+    leg beside it is regenerated."""
+    leg = json.loads(
+        (REPO_ROOT / "validation/crossval/_15_patch_results"
+         / "rfx_pre931_two_plane_ground_1f005d0d.json").read_text(encoding="utf-8"))
+    pf = leg["preflight"]
+    assert "+55.0%" in pf
+    assert "coupling is capacitive only" in pf
+    assert "issue #702" in pf
+    # and no key that only the post-#931 stack check writes
+    assert "n_distinct_eps" not in leg["stack_check"]
+
+
+def test_cv15_current_leg_is_the_galvanic_feed_and_moved_the_ringdown():
+    """The counterpart of the re-anchor above: cv15's SHIPPING leg is the
+    merged galvanic-feed regeneration (#920+#931), and it is a different
+    measurement from the fixtures -- pinned here so the substitution above
+    cannot be read as "the leg did not really change".
+
+    Where the Q bar comes from (item-A review nit 4 -- it was an undocumented
+    0.75). A probe that actually loads a resonator adds its own dissipation:
+    at critical coupling the loaded Q is HALF the lightly-loaded one
+    (Q_L = Q_0 / (1 + beta), beta = 1 at match). The floating post barely
+    loaded the patch, the galvanic one lands at Z_in ~ 49.5 + 11.2j, so the
+    expected ratio is ~0.5 -- measured 10.0605 / 18.8974 = 0.532. The bar is
+    NOT that measurement: it sits halfway between the physics expectation
+    (0.5) and no loading at all (1.0), so the test fires if the probe stops
+    loading the patch and does not re-pin the measured ratio. The -10 dB
+    return-loss threshold is the script's own ``S11_MATCHED_DB`` convention,
+    imported rather than retyped."""
+    cv15 = _load_cv15()
+    q_loading_bar = 0.5 * (0.5 + 1.0)   # halfway: match (0.5) <-> no load (1.0)
     leg = json.loads(
         (REPO_ROOT / "validation/crossval/_15_patch_results/rfx.json")
         .read_text(encoding="utf-8"))
-    assert "modes" not in leg          # the committed leg is #768's, untouched
-    assert fx["f_harminv_hz"] == pytest.approx(leg["f_harminv_hz"], rel=1e-7)
+    old = json.loads(
+        (REPO_ROOT / "validation/crossval/_15_patch_results"
+         / "rfx_floating_post_1f005d0d.json").read_text(encoding="utf-8"))
+    assert leg["feed_check"]["galvanic"] is True
+    assert leg["feed_check"]["z0_on_realized_plane"] is True
+    assert leg["feed_check"]["z1_on_realized_plane"] is True
+    # the probe now loads the patch: f0 up, Q down, dip matched
+    assert leg["f_harminv_hz"] > old["f_harminv_hz"]
+    assert leg["q_harminv"] < q_loading_bar * old["q_harminv"]
+    assert leg["s11_dip_db"] < cv15.S11_MATCHED_DB
+    assert old["s11_dip_db"] > cv15.S11_MATCHED_DB      # the floating post
 
 
 def test_cv15_740_defect_is_a_common_mode_dilation():
@@ -355,8 +539,8 @@ def test_cv15_740_defect_is_a_common_mode_dilation():
     fx = _fixture("cv15_ringdown_spectra.json")
     members = _members(CV15)
 
-    good = [m["freq_hz"] for m in fx["two_plane_ground"]["modes"]]
-    bad = [m["freq_hz"] for m in fx["one_plane_ground_740_defect"]["modes"]]
+    good = [m["freq_hz"] for m in _leg(fx, "two_wall")["modes"]]
+    bad = [m["freq_hz"] for m in _leg(fx, "one_wall")["modes"]]
     assert identify_patch_modes(good, members).ok
     ident_bad = identify_patch_modes(bad, members)
     assert ident_bad.ok, "the spectral gate is blind to #740 -- by construction"
@@ -379,17 +563,17 @@ def test_cv15_740_defect_is_a_common_mode_dilation():
     assert dil["half_spread"] < 0.5 * ident_bad.tol
 
     # the instrument that DOES see it, quoted from the same reproduction
-    assert fx["one_plane_ground_740_defect"]["assert_realized_stack"].startswith(
+    assert _leg(fx, "one_wall")["assert_realized_stack"].startswith(
         "RuntimeError: assert_realized_stack:")
     assert "no electric wall at z_sub_lo" in \
-        fx["one_plane_ground_740_defect"]["assert_realized_stack"]
+        _leg(fx, "one_wall")["assert_realized_stack"]
 
 
 def test_cv15_one_plane_reproduction_matches_the_committed_prefix_leg():
     """The live one-plane reproduction and the committed pre-fix leg
     (`rfx_one_plane_ground_b29f9de7.json`) are the same defect: their ring-down
     f0 agree to 6e-9 relative."""
-    fx = _fixture("cv15_ringdown_spectra.json")["one_plane_ground_740_defect"]
+    fx = _leg(_fixture("cv15_ringdown_spectra.json"), "one_wall")
     committed = json.loads(
         (REPO_ROOT / "validation/crossval/_15_patch_results"
          / "rfx_one_plane_ground_b29f9de7.json").read_text(encoding="utf-8"))
@@ -435,9 +619,9 @@ def test_mode_pair_ratio_band_census_reproduces_from_the_committed_spectra():
         identification_tolerance(members), rel=1e-12)
 
     widths = {}
-    for key, leg in (("correct_build", "two_plane_ground"),
-                     ("defect_740", "one_plane_ground_740_defect")):
-        fs = sorted(m["freq_hz"] for m in fx[leg]["modes"])
+    for key, role in (("correct_build", "two_wall"),
+                      ("defect_740", "one_wall")):
+        fs = sorted(m["freq_hz"] for m in _leg(fx, role)["modes"])
         r = fs[1] / fs[0]
         assert band["measured"][key]["pair_ratio"] == pytest.approx(r, rel=1e-12)
         assert band["measured"][key]["residual_vs_declared"] == pytest.approx(
@@ -474,12 +658,12 @@ def test_a_band_from_the_census_interval_does_separate_the_two_realizations():
     hi = band["declared_anchored_band"]["max_half_width_still_rejecting_740"]
     w = math.sqrt(lo * hi)          # geometric midpoint of the interval
 
-    def fires(leg):
-        fs = sorted(m["freq_hz"] for m in fx[leg]["modes"])
+    def fires(role):
+        fs = sorted(m["freq_hz"] for m in _leg(fx, role)["modes"])
         return abs(fs[1] / fs[0] / r_decl - 1.0) > w
 
-    assert not fires("two_plane_ground")            # correct build admitted
-    assert fires("one_plane_ground_740_defect")     # #740 rejected
+    assert not fires("two_wall")     # the two-wall realization admitted
+    assert fires("one_wall")         # the #740 one-wall realization rejected
 
 
 def test_the_census_interval_is_far_tighter_than_anything_derivable():
@@ -518,20 +702,30 @@ def test_cv05_38mm_build_is_not_caught_on_the_cluster_host_a_fired_falsifier():
     """(B) at L = 38.0 mm (-25 %, a square patch) fired on the macOS build
     (two poles: 1.81365 GHz -> TM010, 3.5769 -> none; TM100 MISSING) and
     does NOT fire on the committed cluster build: a third, weak pole appears
-    at 2.6096 GHz (+7.68 % of TM100, amplitude an order below the others)
     inside the identification window and is named TM100. Recorded as a
     fired falsifier against the INSTRUMENT (a spurious low-amplitude pole
     in the design window is accepted), not softened: no amplitude floor is
     added after the fact. The three other mis-realized lengths still fail
-    by name (test above); the audit's +24 % point is among them."""
+    by name (test above); the audit's +24 % point is among them.
+
+    REPINNED for #931 (VESSL 369367259142, sheet-declared board). The falsifier
+    still fires and for the same reason -- a weak third pole in the window --
+    but on a 1.5000 mm all-FR4 cavity the whole spectrum sits higher: pre-#931
+    the three poles read 1.81334 / 2.60961 / 3.57690 GHz with the accepted pole
+    at +7.68 % of TM100; they now read 1.84005 / 2.70263 / 3.72514 GHz with the
+    accepted pole at +11.52 %. 38.0 mm is one of the two census rows whose
+    realized extent did NOT change (its faces are on the lattice), so this is
+    the cavity, not the footprint."""
     data = _fixture("cv05_ringdown_spectra.json")["runs"]["patch_len_38p0mm"]
     members = _members(CV05)
     modes = sorted(data["modes"], key=lambda m: m["freq"])
     freqs = [m["freq"] for m in modes]
     assert len(freqs) == 3
-    assert freqs[0] / 1e9 == pytest.approx(1.81334, abs=1e-5)
-    assert freqs[1] / 1e9 == pytest.approx(2.60961, abs=1e-5)
-    assert freqs[1] / members[(1, 0)] - 1 == pytest.approx(+0.0768, abs=5e-4)
+    assert freqs[0] / 1e9 == pytest.approx(1.84005, abs=1e-5)
+    assert freqs[1] / 1e9 == pytest.approx(2.70263, abs=1e-5)
+    assert freqs[1] / members[(1, 0)] - 1 == pytest.approx(+0.1152, abs=5e-4)
+    # the footprint did not move: 38.0 mm is on-lattice in both censuses
+    assert data["realized_stack"]["patch"]["x_edge_cells"] == 38
     amps = [m["amplitude"] for m in modes]
     assert amps[1] < 0.1 * max(amps), "the accepted pole is the weak one"
     ident = identify_patch_modes(freqs, members)

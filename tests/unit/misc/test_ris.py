@@ -9,6 +9,26 @@ Tests:
 2. Capacitance sweep (3 values, phase varies)
 3. Angle sweep
 4. Plot generation
+
+Lattice ownership (#931), recorded for the redesign because this module is
+skipped and nothing here executes: the reflectarray patches ARE metallization
+and are already drawn as ZERO-THICKNESS Boxes, which §1.5 reads as sheet
+declarations — no change needed to the fixtures. Two realized-vs-declared gaps
+in ``rfx/ris.py`` that the contract now makes visible and the redesign must
+close (measured 2026-09-07 on the ``test_ris_build_sim`` cell, 15 mm cell,
+h_sub = 1.5 mm, freq_range 4-8 GHz -> auto dx = 1.8737 mm):
+
+* the patch is declared at z = h_sub = 1.5 mm, which is 0.80 of a cell above
+  the substrate floor; its sheet realizes on the NEAREST node, z = 1.874 mm —
+  above the substrate top, not on it. The auto-mesh does not preserve the
+  laminate faces, so ``_build_sim`` should choose a dz that puts both foils on
+  nodes (the ``preserve_regions`` pattern) instead of letting the patch snap.
+* ``_build_sim``'s internal ground plane (``Box((0,0,0),(Lx,Ly,0))``, also a
+  sheet declaration) realizes on the node the CPML pad extension has already
+  filled with substrate on both sides, so assembly now emits the buried-sheet
+  warning ("the sheet is buried half a cell inside the dielectric"). Nothing is
+  re-sampled — that is the point — but the realized cavity carries half a cell
+  of laminate below the ground until the stack-up is drawn to the sheet plane.
 """
 
 import numpy as np

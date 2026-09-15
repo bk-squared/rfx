@@ -22,8 +22,10 @@ Two numbers are compared, and they answer different questions:
 
 A THIRD number, the guide, decides which higher-order modes exist and so
 sets the 0.90 x fc_next margin heuristic. It is measured wall-to-wall on
-the assembled ``pec_mask`` along the port's own transverse line
-(``guide_source="pec_walls"``), or from the domain when the axis' two
+the REALIZED PEC edges along the port's own transverse line
+(``guide_source="pec_walls"``; under the lattice ownership contract a
+volume's drawn face IS a wall, so a 40 mm gap measures 40 mm — it read
+42 mm while the far face of a body was never zeroed), or from the domain when the axis' two
 faces are both PEC/PMC (``"domain_faces"``), or -- when neither holds --
 it falls back to the port's own rasterized aperture (``"aperture"``).
 The first version of this fix used the transverse DOMAIN extent
@@ -42,6 +44,7 @@ import pytest
 from rfx import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.geometry.csg import Box
+from tests._realized_geometry import assert_wall_planes, realized
 
 _A_WR90 = 22.86e-3
 _B_WR90 = 10.16e-3
@@ -177,26 +180,64 @@ def test_sub_aperture_port_does_not_fire_a_snap_finding():
     assert not any("no explicit range" in t for t in texts), texts
 
 
+def test_sub_aperture_walls_are_realized_where_they_are_drawn():
+    """Build-time witness (no solve) for the number the finding must quote.
+
+    The two PEC Boxes are VOLUMES (§1.2): they own the cells their centres
+    fall in and realize a tangential wall on BOTH drawn faces, so the
+    lower block's inner wall is the y node at 40 mm and the upper block's
+    is the node at 80 mm — 20 cells, 40.0 mm, exactly the declared gap.
+    Before #931 the far face of a body was never a wall, the metal ended
+    one node short on each side, and the same geometry measured 42 mm (the
+    #868 class). Read here from ``realized_pec_edge_masks`` so the
+    expectation below is anchored on the realization, not on prose.
+    """
+    sim = _sub_aperture_sim(jnp.linspace(4.5e9, 7.0e9, 3), f0=6.0e9)
+    grid = sim._build_grid()
+    pad = grid.axis_pads[1]
+    assert_wall_planes(
+        sim, 1,
+        expected_planes=list(range(pad, pad + 21)) + list(range(pad + 40, pad + 61)),
+        what="sub-aperture guide walls")
+    inner_lo, inner_hi = pad + 20, pad + 40
+    assert (inner_hi - inner_lo) * grid.dx == pytest.approx(0.040, rel=1e-12), (
+        "the drawn 40 mm gap must be the realized one")
+
+
 def test_sub_aperture_guide_is_measured_from_the_pec_walls():
-    """The interior PEC Boxes leave a guide ~40 mm wide inside a 120 mm
-    domain. The cutoffs the finding quotes must come from the walls."""
-    sim = _sub_aperture_sim(jnp.linspace(4.5e9, 6.5e9, 3))
+    """The interior PEC Boxes leave a 40 mm guide inside a 120 mm domain.
+    The cutoffs the finding quotes must come from those walls.
+
+    #931: the guide is the distance between the REALIZED wall planes, and
+    a volume's drawn face is a wall, so the number is the drawn 40.0000 mm
+    — not the 42.0000 mm the pre-#931 rule measured by treating the
+    outermost METAL CELL as the wall (the far face was never zeroed, so
+    the mask's last occupied index sat one node inside the real wall).
+    fc_TE20 = c / 40.0 mm = 7.495 GHz, threshold 6.745 GHz; the band goes
+    to 7.0 GHz so the advisory still has something to catch. The
+    domain-extent version reported 120 mm -> fc_TE20 = 2.498 GHz.
+
+    This assertion was committed as ``xfail(strict=True)`` while
+    preflight's ``_port_transverse_spans`` still measured the guide from
+    the primal CELL mask and read 42.0000 mm / 7.138 GHz / 6.424 GHz.  The
+    migration landed with the preflight group's merge and the marker fired
+    as an XPASS(strict) on 2026-09-07, so it is gone.  Not one number below
+    changed when it came off — the assertions are the contract's, exactly
+    as they were written before the consumer moved, which is the whole
+    point of pre-declaring the falsifier.
+    """
+    sim = _sub_aperture_sim(jnp.linspace(4.5e9, 7.0e9, 3), f0=6.0e9)
     ev = [i for i in _issues(sim)
           if getattr(i, "code", None) == "port_evanescent"]
-    assert ev, "6.5 GHz exceeds 0.90 x fc_TE20 on the walled guide"
+    assert ev, "7.0 GHz exceeds 0.90 x fc_TE20 on the walled guide"
     text = str(ev[0])
     assert "pec_walls" in text, (
-        f"the guide must be measured on the assembled pec_mask along the "
+        f"the guide must be measured on the realized wall planes along the "
         f"port's transverse line; got {text!r}"
     )
-    # Wall-to-wall on the mask: the PEC Boxes rasterize to y-nodes 10..29
-    # and 50..69, so the electric walls the SOLVE sees sit at nodes 29 and
-    # 50 -> (50 - 29) * 2 mm = 42.0 mm. fc_TE20 = c / 42.0 mm = 7.138 GHz,
-    # threshold 6.424 GHz. The domain-extent version reported 120 mm ->
-    # fc_TE20 = 2.498 GHz, threshold 2.248 GHz.
-    assert "42.0000" in text and "7.138" in text and "6.424" in text, (
-        f"expected the wall-measured 42.0000 mm guide (fc_TE20 7.138 GHz, "
-        f"threshold 6.424 GHz); got {text!r}"
+    assert "40.0000" in text and "7.495" in text and "6.745" in text, (
+        f"expected the wall-measured 40.0000 mm guide (fc_TE20 7.495 GHz, "
+        f"threshold 6.745 GHz); got {text!r}"
     )
     assert "2.248" not in text and "1.249" not in text, (
         f"the 120 mm DOMAIN must not be used as the guide; got {text!r}"

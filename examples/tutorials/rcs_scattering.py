@@ -59,6 +59,13 @@ def build_preflight_model() -> Simulation:
         boundary="cpml",
         cpml_layers=CPML_LAYERS,
     )
+    # A solid sphere is a VOLUME, and that is what sim.add(..., material="pec")
+    # declares under the lattice ownership contract (#931): the primal cells
+    # whose CENTRES lie inside the shape, with every E edge incident to one of
+    # them zeroed.  A sphere centred on a node therefore realizes symmetric
+    # about its centre.  The other declaration, add_thin_conductor, is for foil
+    # — a footprint on one node plane, zero thickness — and a sphere is not
+    # foil.
     sim.add(SPHERE, material="pec")
 
     # This is the plane wave used for the setup check.  The production call
@@ -82,7 +89,15 @@ def build_rcs_inputs() -> tuple[Grid, MaterialArrays]:
         cpml_layers=CPML_LAYERS,
     )
 
-    # A large conductivity represents the PEC sphere on the material grid.
+    # A large conductivity STANDS IN for the PEC sphere on the material grid:
+    # compute_rcs() takes material arrays, not a Simulation, so the conductor
+    # reaches it as a lossy fill rather than as a realized PEC edge set.  The
+    # ownership contract fences this path out on purpose (#931 §1.8): a
+    # sigma-filled cell is a lossy-volume model with fields decaying inside it,
+    # not PEC realization, and the two are not silently equated.  One
+    # consequence is visible below — rasterize() samples at NODE coordinates
+    # while a PEC volume samples at cell CENTRES, so the two spheres differ by
+    # their rim cells.
     eps_r, sigma = rasterize(grid, [(SPHERE, 1.0, 1.0e7)])
     materials = MaterialArrays(
         eps_r=eps_r,
@@ -100,11 +115,36 @@ def main() -> None:
     # a functional API, so this matching Simulation makes its public setup
     # checks visible without reaching into private state.
     report = sim.preflight()
-    if report:
+    if len(report):   # PreflightReport refuses bool() (#980)
         raise RuntimeError("Sphere scattering setup has unexpected advisories")
-    print(f"TFSF plane-wave setup ready: {not report}")
+    print(f"TFSF plane-wave setup ready: {not len(report)}")
 
     grid, materials = build_rcs_inputs()
+
+    # The two spheres, side by side.  Nothing used to check that the sphere
+    # preflight audits and the sphere compute_rcs() measures are the same
+    # object.  They are close, and they are NOT the same rasterization: the
+    # PEC volume takes the cells whose centres are inside the sphere, the
+    # sigma fill takes the cells whose lower-corner NODE is inside it.  Both
+    # are compared against the analytic volume so a real divergence — a wrong
+    # radius, a wrong centre, a sphere that vanished — fails here instead of
+    # showing up as a quiet 3 dB in the RCS.
+    sim_grid = sim._build_grid()
+    _mat, _deb, _lor, pec_cells, _s, _w, _c = sim._assemble_materials(sim_grid)
+    n_pec = int(np.asarray(pec_cells).sum())
+    n_sigma = int((np.asarray(materials.sigma) > 0.0).sum())
+    n_analytic = (4.0 / 3.0) * np.pi * RADIUS**3 / DX**3
+    print(
+        f"Sphere cells: PEC volume (centre-sampled) {n_pec}, sigma fill "
+        f"(node-sampled) {n_sigma}, analytic {n_analytic:.1f}"
+    )
+    for label, n in (("PEC volume", n_pec), ("sigma fill", n_sigma)):
+        if abs(n - n_analytic) > 0.05 * n_analytic:
+            raise RuntimeError(
+                f"{label} sphere occupies {n} cells against an analytic "
+                f"{n_analytic:.1f} — more than the 5 % a rim-cell difference "
+                "explains"
+            )
 
     # compute_rcs() creates the TFSF source and collection box, runs the
     # target, and transforms the collected fields to the requested angles.

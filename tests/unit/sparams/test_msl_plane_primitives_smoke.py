@@ -14,7 +14,7 @@ re-implementing them, so `_i_from_plane`'s closed-loop I reads BOTH an Hy
 plane (`plane_name`) and an Hz plane (`p.hz_name`, registered alongside
 it) — not "the Hy plane" alone as this file used to say.
 
-Scope: register the 4 plane DFT probes on a real cv06b-class MSL thru-line,
+Scope: register the 7 plane DFT probes per port on a real cv06b-class MSL thru-line,
 run a short forward, and assert the line-integrated V and closed-loop I
 phasors come back finite, correctly-shaped, and non-zero. NOT an accuracy
 gate (that lived in the deleted file vs the imperative reference) — purely a
@@ -33,6 +33,7 @@ from rfx.probes.msl_wave_decomp import (
     _v_from_plane,
     _i_from_plane,
 )
+from tests._realized_geometry import assert_sheet_planes, assert_wall_planes
 
 EPS_R = 3.66
 H_SUB = 254e-6
@@ -56,9 +57,16 @@ def _build_thru_line():
     sim.add_material("ro4350b", eps_r=EPS_R)
     sim.add(Box((0, 0, 0), (LX, LY, H_SUB)), material="ro4350b")
     y_trace = (2 * H_SUB + 8 * DX) + W_TRACE / 2
+    # 35 um copper foil: a SHEET (#931 §1.3), declared by a zero-thickness
+    # Box on the substrate top. H_SUB / DX = 254 / 127 = 2 exactly, so the
+    # laminate face is a node line and the sheet lands on it with no snap.
+    # It was drawn one cell thick before the contract; that made it a
+    # VOLUME, which now realizes walls at BOTH z faces and shorts the Ez
+    # edge between them — a 127 um slab of metal where the board has 35 um
+    # of foil.
     sim.add(
         Box((0, y_trace - W_TRACE / 2, H_SUB),
-            (LX, y_trace + W_TRACE / 2, H_SUB + DX)),
+            (LX, y_trace + W_TRACE / 2, H_SUB)),
         material="pec",
     )
     sim.add_msl_port(position=(PORT_MARGIN, y_trace, 0.0),
@@ -92,3 +100,18 @@ def test_plane_primitives_register_and_produce_signal():
     for name, arr in (("V_driven", v_np), ("I_driven", i_np), ("V_passive", vp1_np)):
         assert np.all(np.isfinite(arr)), f"{name} not finite: {arr}"
         assert float(np.max(np.abs(arr))) > 0.0, f"{name} is all-zero: {arr}"
+
+
+def test_realized_conductor_planes_equal_the_declaration():
+    """Build-time witness (no solve) for the #931 ownership contract.
+
+    The foil is declared as a SHEET, so the lattice must give it exactly
+    ONE wall plane, on the node line of the laminate face it was drawn on,
+    with the normal Ez edge through it left live. Drawn one cell thick it
+    was a volume: two walls, and the Ez edge between them shorted. This
+    assertion is what keeps the declaration and the realization the same
+    statement.
+    """
+    sim = _build_thru_line()
+    assert_sheet_planes(sim, 2, [H_SUB], what="MSL thru foil")
+    assert_wall_planes(sim, 2, [H_SUB], what="MSL thru foil")

@@ -93,15 +93,31 @@ def compute_lumped_wire_s_matrix_via_scan(
     n_freqs = len(freqs)
 
     # Build grid + materials exactly as the uniform forward lane does.
+    sim._require_uniform_mesh("compute_lumped_wire_s_matrix_via_scan")
     grid = sim._build_grid()
     _sheet_specs: list = []
+    _pec_sheets: list = []
+    _pec_wires: list = []
     materials, debye_spec, lorentz_spec, pec_mask, _, _, _ = \
-        sim._assemble_materials(grid, sheet_specs=_sheet_specs)
+        sim._assemble_materials(grid, sheet_specs=_sheet_specs,
+                                pec_sheets=_pec_sheets, pec_wires=_pec_wires)
+    _pec_sheets = tuple(_pec_sheets)
+    _pec_wires = tuple(_pec_wires)
+    # #931 §1.7: the realized PEC edges of this model — volumes, sheets and
+    # wires — read once here, under the RUN's #689 flags (preflight refuses
+    # lumped/wire S-params under periodic axes (#206), so this is normally
+    # the non-periodic convention — but the flags are read, not assumed).
+    from rfx.boundaries.pec import realized_pec_edge_masks as _rpem
+    _pec_edge_masks = None
+    if pec_mask is not None or _pec_sheets or _pec_wires:
+        _pec_edge_masks = _rpem(pec_mask, sheets=_pec_sheets,
+                                wires=_pec_wires,
+                                periodic=sim._periodic_flags())
     # #677: node-thin sheet ctx, applied by every per-drive forward run.
     from rfx.materials.thin_conductor import build_sheet_impedance_ctx
-    # #689: default (non-periodic) — preflight refuses lumped/wire
-    # S-params under periodic axes (#206), matching apply_pec_mask here.
-    _sheet_ctx = build_sheet_impedance_ctx(_sheet_specs, pec_mask=pec_mask)
+    _sheet_ctx = build_sheet_impedance_ctx(
+        _sheet_specs, pec_edge_masks=_pec_edge_masks,
+        periodic=sim._periodic_flags())
 
     if n_steps is None:
         n_steps = grid.num_timesteps(num_periods=30)
@@ -132,7 +148,8 @@ def compute_lumped_wire_s_matrix_via_scan(
     # Issue #318: the wave-decomposition normalization is Z0c = Z0/n_live so
     # it matches the live-cell sigma fold's per-cell resistor law
     # R_cell = Z0/n_live (the #308 receive-channel selection relies on that
-    # identity). ``pec_mask`` here is the assembled-geometry state BEFORE
+    # identity). The realized edge masks here are the assembled-geometry
+    # state BEFORE
     # any port-cell clearing — exactly the "live" definition. With no dead
     # cells this is the historical all-cells count.
     if wire_mode:
@@ -150,7 +167,7 @@ def compute_lumped_wire_s_matrix_via_scan(
                 excitation=pe.waveform,
             )
             port_cell_counts[idx] = _wire_port_live_cells(
-                grid, wp, pec_mask)[2]
+                grid, wp, _pec_edge_masks)[2]
 
     # FDTD-sign V/I phasors per (drive j, receive i).
     v_all = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
@@ -186,6 +203,8 @@ def compute_lumped_wire_s_matrix_via_scan(
             n_steps=n_steps,
             checkpoint=False,
             pec_mask=pec_mask,
+            pec_sheets=_pec_sheets,
+            pec_wires=_pec_wires,
             port_s11_freqs=freqs,
             _sparam_drive_idx=j,
             _return_raw_port_sparams=True,

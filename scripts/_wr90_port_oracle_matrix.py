@@ -680,7 +680,7 @@ def build_wr90_oracle_case(case_config: OracleCaseConfig) -> dict[str, Any]:
 
     entries = list(sim._waveguide_ports)
     grid = sim._build_grid()
-    base_materials, debye_spec, lorentz_spec, pec_mask_wg, _, _ = sim._assemble_materials(grid)
+    base_materials, debye_spec, lorentz_spec, pec_mask_wg, _, _ = sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])
     if pec_mask_wg is not None:
         # Match the current waveguide S-matrix compatibility path so the
         # oracle compares against the same internal-mask representation.
@@ -820,7 +820,7 @@ def _build_current_two_run_case(
     )
     entries = list(sim._waveguide_ports)
     grid = sim._build_grid()
-    base_materials, debye_spec, lorentz_spec, pec_mask_wg, _, _ = sim._assemble_materials(grid)
+    base_materials, debye_spec, lorentz_spec, pec_mask_wg, _, _ = sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])
     if pec_mask_wg is not None:
         base_materials = base_materials._replace(sigma=jnp.where(pec_mask_wg, 1e10, base_materials.sigma))
     _, debye, lorentz = sim._init_dispersion(base_materials, grid.dt, debye_spec, lorentz_spec)

@@ -27,10 +27,10 @@ This module holds three things:
   any of them reds here rather than passing quietly;
 * (moved on) the **live layer** (§5.11's success criterion) was re-pointed from
   the frozen artifact to this one here, with the three ``xfail(strict=True)``
-  marks removed; it now reads the v1.8 closing artifact in
-  ``tests/oracle/test_waveguide_chain_battery_v18_close.py`` (whose 18 cells are
-  bit-identical to this one's). This module is the adjudication of run 2 as it
-  was measured, float32 primary on every lane, and is not re-read under the
+  marks removed; it now reads the schema-4 realized-PEC / forward2 artifact
+  from run 369367259427 in
+  ``tests/oracle/test_waveguide_chain_battery_v18_close.py``. This module is the
+  adjudication of run 2 as it was measured, float32 primary on every lane, and is not re-read under the
   closing declaration (``recompute_verdicts`` applies it from schema_version 3).
 
 No gate, tolerance, golden or pin is moved here. Numbers that missed their
@@ -1216,11 +1216,12 @@ def test_preflight_findings_are_recorded_verbatim(fx):
 # ===========================================================================
 # LIVE layer — moved on
 # ===========================================================================
-# The three live tests that read THIS artifact — the two
+# The three live tests formerly hosted here — the two
 # ``test_live_cells_reproduce_the_fixture_*`` and
 # ``test_live_plane_shift_rotation_coarse_rung`` — and the pin guard
 # ``test_the_live_pin_is_the_committed_one`` now live in
-# ``tests/oracle/test_waveguide_chain_battery_v18_close.py`` and read the v1.8
-# closing artifact ``fixture_v18_close.json`` (VESSL 369367258638), whose 18 cells
-# are bit-identical to this one's (max|ΔS| = 0 on every cell). This module stays
-# the adjudication of run 2 as it was measured.
+# ``tests/oracle/test_waveguide_chain_battery_v18_close.py``. Cell comparisons
+# now read ``fixture_931_realized_pec_forward2_run369367259427.json``;
+# the plane-shift test checks physics directly. The historical v1.8 closing
+# artifact had cells identical to run 2; schema 4 uses realized PEC edges.
+# This module stays the adjudication of run 2 as it was measured.

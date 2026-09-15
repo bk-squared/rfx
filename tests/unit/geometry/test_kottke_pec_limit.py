@@ -338,9 +338,13 @@ def test_two_non_overlapping_pec_walls_per_component_min_correct():
     # PEC (sdf=−0.34, f=0.84 > 0.5). POST-60939e0 ("1-cell PEC dilation via
     # neighbor-max" + Heaviside projection): a cell whose own occupancy exceeds
     # 0.5 is projected to FULL PEC → inv_zz = 0 (hard mirror), not the
-    # pre-projection subpixel (1−0.84)=0.16. This matches the binary
-    # apply_pec_mask reference the dilation is the AD-smooth analogue of, and is
-    # VESSL-validated by |s21| 0.27→0.77. The y_hi cell above (only ~14% PEC,
+    # pre-projection subpixel (1−0.84)=0.16.
+    # The reference it was matched against was the pre-#931 binary
+    # apply_pec_mask rule; #931 §1.8 fences this subpixel path OUT of the
+    # lattice ownership contract, so 0.0 is unchanged and the "AD-smooth
+    # analogue of the binary rule" claim is scope-limited to that
+    # superseded rule. The VESSL witness |s21| 0.27 -> 0.77 stands as
+    # recorded. The y_hi cell above (only ~14% PEC,
     # < 0.5) stays subpixel (0.86). The 0.16 was stale — same root cause as the
     # test_kottke_inv_eps_from_occupancy re-bless (PR #115); see docs
     # rfx-known-issues "Kottke occupancy dilation". (Was sharding-masked on CI

@@ -1,0 +1,42 @@
+{
+  "sha": "b36fc46cdf21d1c57f221e6a057654bcad60bae2",
+  "cwd": "/tmp/rfx-931-submit-33mds6gc",
+  "jobs": [
+    {
+      "lane": "v173a",
+      "yaml": "/tmp/rfx-931-submit-33mds6gc/v173a.yaml",
+      "prefix": "issue931-fixture-repair-v173a",
+      "run_id": "369367259608"
+    },
+    {
+      "lane": "msl",
+      "yaml": "/tmp/rfx-931-submit-33mds6gc/msl.yaml",
+      "prefix": "issue931-fixture-repair-msl-base",
+      "run_id": "369367259605"
+    },
+    {
+      "lane": "msl-long",
+      "yaml": "/tmp/rfx-931-submit-33mds6gc/msl-long.yaml",
+      "prefix": "issue931-fixture-repair-msl-long",
+      "run_id": "369367259607"
+    },
+    {
+      "lane": "msl-refine",
+      "yaml": "/tmp/rfx-931-submit-33mds6gc/msl-refine.yaml",
+      "prefix": "issue931-fixture-repair-msl-refine",
+      "run_id": "369367259610"
+    },
+    {
+      "lane": "farfield",
+      "yaml": "/tmp/rfx-931-submit-33mds6gc/farfield.yaml",
+      "prefix": "issue931-fixture-repair-farfield",
+      "run_id": "369367259609"
+    },
+    {
+      "lane": "short",
+      "yaml": "/tmp/rfx-931-submit-33mds6gc/short.yaml",
+      "prefix": "issue931-fixture-repair-short",
+      "run_id": "369367259606"
+    }
+  ]
+}

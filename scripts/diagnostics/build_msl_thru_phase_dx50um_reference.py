@@ -28,7 +28,8 @@ openems_msl_phase_referee.py``) reads for its own Stage B comparison --
 keeping that script openEMS-only (no rfx import), matching the
 coax/floquet referee precedent.
 
-REALIZED GEOMETRY (issue #723, 2026-08-27): H_SUB=254um at DX=50um is
+HISTORICAL REALIZED GEOMETRY (issue #723, 2026-08-27; superseded
+by the #931 committed realization below): H_SUB=254um at DX=50um is
 254/50=5.08 substrate cells -- off-lattice, same defect class as cv06b's
 #723. ``sim.fidelity_report()`` on this exact build (verified in-session,
 not estimated): "geometry[0] 'ro4350b' ... z: declared [0.0, 254.0] um ->
@@ -63,6 +64,15 @@ reads them from ``sim.fidelity_report()`` (grid + material assembly
 only, no time stepping); the S11/S21/Z0/beta arrays are untouched by
 this change and, per #723 REQUIRED 11, a metadata-only patch of the
 committed fixture is the preferred re-pin path over a full re-run.
+
+CURRENT COMMITTED REALIZATION (#931, VESSL 369367259200): the trace is a
+50um PEC volume with walls at z=250/300um. Its realized y bounds are
+900/1500um (centre 1200um), and its width remains 600um. The reference-plane
+geometry records n_probe_spacing=11 for both ports (previously 20). The
+S11/S21/Z0/beta arrays were regenerated with that realization; the #723
+metadata-only procedure above is historical and cannot migrate old physics
+onto this board. ``_realized_board_geometry`` now reads the conductor's
+realized edge set, and the producer refuses that stale metadata patch.
 
 Usage::
 
@@ -186,6 +196,76 @@ def _reference_plane_geometry(sim: Simulation) -> dict:
     return out
 
 
+def _realized_trace_geometry(sim: Simulation) -> dict:
+    """The trace's realized wall planes AND y bounds, from the shared owner
+    (``rfx.boundaries.pec``, #931 section 1.7) -- NOT from fidelity_report.
+
+    Build-time only: grid construction plus material assembly, no time
+    stepping -- the same cost class as ``_realized_board_geometry``.
+
+    Why this belongs in the fixture's meta: ``20_msl_phase_referee.py``
+    builds its openEMS Stage B trace one cell thick and its
+    ``conductor_thickness_one_cell`` tolerance term assumes rfx builds the
+    same object. Before the lattice ownership contract that assumption was
+    false and nothing checked it (a 1-cell PEC Box realized ONE wall plane
+    with Ez live through the metal). Carrying the realized planes lets
+    Stage B ASSERT the equality instead of stating it in prose.
+
+    WHY NOT ``sim.fidelity_report()`` for the CONDUCTOR rows (measured
+    2026-09-07, reported upstream, deliberately not worked around):
+    ``rfx/fidelity.py::_entity_mask`` rasterizes every entity with
+    ``entry.shape.mask(grid)`` -- the shape's own NODE sampler, half-open
+    -- while a PEC VOLUME is realized from CELL CENTRES
+    (``pec_volume_cell_mask``, section 1.1). On this board the two
+    disagree by exactly one cell: the solver occupies cell 5 (nodes 250 ->
+    300 um) and fidelity reports the realized z as 300 -> 350 um, and the
+    same +1 cell appears on y (900 -> 1500 um realized, 950 -> 1550 um
+    reported). Reading the conductor's realized bounds from the shared
+    owner is what section 1.7 asks for anyway; it also means this fixture
+    does not inherit that defect. The SUBSTRATE row still comes from
+    fidelity, because dielectric sampling IS node half-open (section 1.8,
+    unchanged) and fidelity agrees with the solver there.
+    """
+    import numpy as _np
+    from rfx.boundaries.pec import (
+        realized_pec_edge_masks, realized_wall_planes)
+    from rfx.geometry.rasterize_grid import coords_from_uniform_grid
+
+    grid = sim._build_grid()
+    sheets: list = []
+    wires: list = []
+    out = sim._assemble_materials(grid, pec_sheets=sheets, pec_wires=wires)
+    pec_mask = out[3]
+    edges = realized_pec_edge_masks(
+        pec_mask, sheets, wires, periodic=tuple(sim._periodic_flags()))
+    coords = coords_from_uniform_grid(grid)
+    xs = _np.asarray(coords.x, dtype=float)
+    ys = _np.asarray(coords.y, dtype=float)
+    zs = _np.asarray(coords.z, dtype=float)
+    # One column, through the middle of the trace.
+    i = int(_np.argmin(_np.abs(xs - LX / 2.0)))
+    j = int(_np.argmin(_np.abs(ys - LY / 2.0)))
+    planes = realized_wall_planes(
+        edges, 2, ij=(i, j), periodic=tuple(sim._periodic_flags()))
+    # Realized trace WIDTH: the y span of the Ex edges (the longitudinal
+    # current path) on the trace's lower wall plane. Mx is indexed by NODE
+    # along y, so the span is nodes[first] .. nodes[last] with no +1 --
+    # the +1 belongs to a CELL range, and mixing the two is the one-cell
+    # error this whole change exists to stop making.
+    mx = _np.asarray(edges[0], dtype=bool)
+    rows = _np.flatnonzero(mx[:, :, planes[0]].any(axis=0))
+    y_lo, y_hi = float(ys[rows.min()]), float(ys[rows.max()])
+    return {
+        "trace_wall_planes_realized": [int(k) for k in planes],
+        "trace_wall_planes_realized_z_m": [float(zs[k]) for k in planes],
+        "trace_realization_kind": ("sheet" if sheets else "volume"),
+        "t_metal_realized_m": (len(planes) - 1) * float(grid.dx),
+        "trace_y_lo_realized_m": y_lo,
+        "trace_y_hi_realized_m": y_hi,
+        "w_trace_realized_m": y_hi - y_lo,
+    }
+
+
 def _realized_board_geometry(sim: Simulation) -> dict:
     """Realized (rasterized) substrate thickness and trace span, read live
     from ``sim.fidelity_report()`` -- not the DECLARED H_SUB/W_TRACE
@@ -196,15 +276,15 @@ def _realized_board_geometry(sim: Simulation) -> dict:
     """
     report = sim.fidelity_report(print_report=False)
     sub = next(item for item in report if item["entity"] == "geometry[0] 'ro4350b'")
-    trace = next(item for item in report if item["entity"] == "geometry[1] 'pec'")
     h_ax = next(ax for ax in sub["axes"] if ax["axis"] == "z")
-    w_ax = next(ax for ax in trace["axes"] if ax["axis"] == "y")
     h_sub_realized_m = float(h_ax["realized_extent_um"]) * 1e-6
+    # The trace rows used to come from this report too. They now come from
+    # _realized_trace_geometry, which asks the shared realized-edge owner
+    # -- see that function's docstring for the measured one-cell
+    # disagreement between fidelity's node sampler and the solver's centre
+    # sampler for PEC volumes (#931).
     return {
         "h_sub_realized_m": h_sub_realized_m,
-        "w_trace_realized_m": float(w_ax["realized_extent_um"]) * 1e-6,
-        "trace_y_lo_realized_m": float(w_ax["realized_um"][0]) * 1e-6,
-        "trace_y_hi_realized_m": float(w_ax["realized_um"][1]) * 1e-6,
         "n_z_sub_realized": int(round(h_sub_realized_m / DX)),
     }
 
@@ -226,9 +306,26 @@ def main(argv: list[str] | None = None) -> int:
 
     sim = _build_sim()
     realized_geom = _realized_board_geometry(sim)
+    realized_geom.update(_realized_trace_geometry(sim))
 
     if args.patch_realized_only:
         out_path = Path(args.output)
+        if out_path.exists():
+            _existing = json.loads(out_path.read_text())
+            if "trace_wall_planes_realized" not in _existing.get("meta", {}):
+                raise SystemExit(
+                    "--patch-realized-only refuses this fixture: it has no "
+                    "meta['trace_wall_planes_realized'], so its S11/S21/Z0/"
+                    "beta arrays were solved BEFORE the lattice ownership "
+                    "contract (#931). The contract changed rfx's realized "
+                    "trace -- a 1-cell PEC Box now realizes walls at BOTH "
+                    "faces instead of one -- so those arrays are stale "
+                    "physics, and patching post-#931 realized-geometry "
+                    "fields onto them would label pre-contract data as "
+                    "post-contract. Re-solve: drop --patch-realized-only. "
+                    "(#723 REQUIRED 11's metadata-patch path stays valid "
+                    "for metadata; this is not metadata.)"
+                )
         if not out_path.exists():
             raise FileNotFoundError(
                 f"--patch-realized-only requires an EXISTING fixture at "

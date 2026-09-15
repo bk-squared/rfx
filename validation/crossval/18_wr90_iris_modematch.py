@@ -21,34 +21,40 @@ Geometry discipline (grid-exact, comparator-first — the #325/#475 classes):
   * dx = a/30 (coarse) and a/60 (fine): WR-90 a = 22.86 mm is an EXACT
     multiple, so a carries no rasterization ambiguity (ny is the node count,
     a = (ny-1) dx between the PEC wall node planes).
-  * iris thickness t = 1.524 mm (exactly 2 coarse / 4 fine cells); apertures
+  * iris thickness t = 1.524 mm (exactly 2 coarse / 4 fine cells, and under
+    the #931 contract exactly what is realized: walls at both faces, t_c
+    cells apart); apertures
     d in {18.288, 12.192, 7.62} mm (24/16/10 coarse cells) — weak / medium /
     strong reflector.
   * fins are drawn PAST the grid walls (the rasterizer clips): the first
     probe revision drew them to the NOMINAL width and left a 1-cell parasitic
-    slot at the far wall. run_point asserts the rasterized iris is 2 cells
-    thick with one CONTIGUOUS aperture, so that bug class cannot recur.
+    slot at the far wall. run_point asserts, from the realized PEC edge set
+    and before any solve, that the iris stands walls at BOTH its drawn faces
+    t_c cells apart and that the aperture is ONE contiguous opening d_c cells
+    wide, so neither bug class can recur.
 
-WHAT IS GATED vs WHAT IS REPORTED (measured 2026-07-28 on the corrected
-setup; every axis scanned BEFORE gating)
+WHAT IS GATED vs WHAT IS REPORTED (regenerated under #931 on 2026-09-07;
+committed fixture is the numerical source, every axis scanned BEFORE gating)
 ---------------------------------------------------------------------------
 GATED (exit-1 on failure), gates = round-UP(measured envelope x 1.5), and the
 --write-fixture self-check demands EXACT equality with that rule:
   * fine rung (dx = a/60), flux extraction, |S11| vs oracle over 8 configs
     (3 apertures x {centred, iris off-centre at 0.42} + 2 extra guide
-    lengths): every config within 0.023 -> envelope 0.0232 -> gate 0.04.
+    lengths): every config within 0.011 -> envelope 0.0106 -> pooled gate 0.02.
+    The binding fine gate is per configuration (0.006-0.016); the pooled
+    gate is retained as a ceiling.
     No single configuration sets the envelope any more.
   * Richardson witness at EVERY one of those 8 fine/coarse pairs (not just
     the canonical one): 2*S_fine - S_coarse lands on the oracle within
-    0.0051 -> gate 0.01. Cross-confirms the oracle AND the first-order
-    attribution (fine/coarse gap ratios 0.527-0.604 = textbook first order).
+    0.0046 -> gate 0.01. Cross-confirms the oracle AND the first-order
+    attribution (fine/coarse gap ratios 0.407-0.440 = textbook first order).
 REPORTED, NOT GATED:
-  * coarse rung (dx = a/30): 0.018-0.043 abs.
-  * raw (normalize=False) record: worse than flux (gaps 0.021-0.054) with a
-    pointwise |raw - flux| difference up to 0.033 at the wide aperture.
+  * coarse rung (dx = a/30): 0.008-0.025 abs.
+  * raw (normalize=False) record: worse than flux (gaps 0.009-0.025) with a
+    pointwise |raw - flux| difference up to 0.0068 at the wide aperture.
   * residual detrended ripple (quadratic detrend of |S11| MINUS the oracle,
     so the oracle's own curvature is not counted — PR #480 R1): fine <=
-    0.0077, coarse <= 0.0158, both at the wide aperture with the iris
+    0.0076, coarse <= 0.0152, both at the wide aperture with the iris
     off-centre, down from the 0.0706 the review measured on the same basis
     before the absorber fix.
   * phase: NOT claimed (magnitude-only lane posture).
@@ -64,22 +70,35 @@ setting:
  (1) parasitic wall-slot — fins drawn to the NOMINAL guide width leave a
      1-cell gap at the actual grid wall (fins now drawn past the walls, the
      rasterizer clips; contiguous-aperture assert).
- (2) node-plane box corners are half-ulp fragile because the volume mask is
-     half-open over NODE coordinates: a fine config rasterized 3 thickness
-     nodes instead of 4, and an apparent +/-0.07 "domain sensitivity" was
-     that ulp lottery. All interior corners now sit half a cell off the node
-     planes; the footprint asserts are exact.
+ (2) node-plane box corners WERE half-ulp fragile, because the pre-#931
+     volume mask was half-open over NODE coordinates: a fine config
+     rasterized 3 thickness nodes instead of 4, and an apparent +/-0.07
+     "domain sensitivity" was that ulp lottery. The fence then was to put
+     every corner half a cell OFF the node planes. The #931 lattice
+     ownership contract inverts it: a PEC volume is sampled at cell CENTRES,
+     so a node-plane corner selects whole cells and is the well-defined
+     position, while the half-cell offset now lands exactly on a centre.
+     Corners are back on the node planes and the asserts read the realized
+     edge set (realized_pec_edge_masks) instead of a sigma mask.
  (3) the fin footprint made the ELECTRICAL aperture d + 2*dx instead of d,
      which alone inflated the envelope 4-6x, and a 0.5*lambda_g absorber
      left the envelope set by CPML reflection rather than discretization
-     (PR #480 review, B2/B3). Fins now cover nodes 0..fin_c so the
-     electrical aperture equals the nominal d, and CPML = 0.75*lambda_g at
-     the 8.2 GHz band edge (60 coarse / 120 fine).
+     (PR #480 review, B2/B3). Fins now stand their inner walls at y-nodes
+     fin_c and cells - fin_c so the realized aperture equals the nominal d,
+     and CPML = 0.75*lambda_g at the 8.2 GHz band edge (60 coarse / 120
+     fine).
+ (4) [#931] the oracle was fed the drawn t = 1.524 mm while the lattice
+     realized (t_c - 1)*dx — 0.762 mm at a/30, 1.143 mm at a/60 — because a
+     body's far face was never a wall. Every assert in this case counted
+     MASKED PLANES, which agreed with the drawing by construction, so
+     nothing measured the deficit. Under the contract realized == drawn and
+     the oracle input is correct for the first time; the whole record was
+     regenerated on the corrected geometry.
 
 RETRACTED: an earlier revision FENCED normalize=True modal extraction on the
 strength of a measured column power 1.112-1.164. On the corrected setup modal
 extraction is passivity-CLEAN at every aperture and both rungs (max column
-power 1.0207 at d=7.62/a-30, 1.0013 at d=18.288, ZERO extractor warnings), so
+power 1.0200 at d=7.62/a-30, 1.0012 at d=18.288, ZERO extractor warnings), so
 that non-passivity was a symptom of defects (1)-(3) rather than a
 reflector-inflation property of the extractor. The fence is withdrawn and the
 measurement is committed as modal_extraction_witness.
@@ -94,7 +113,9 @@ construction plus the raster asserts in run_point.
 Usage:
   python validation/crossval/18_wr90_iris_modematch.py            # gated set (~2.5 h CPU)
   python validation/crossval/18_wr90_iris_modematch.py --write-fixture
-      # + coarse tier, modal + raw + truncation witnesses; regenerates
+      # + coarse tier, modal + raw + truncation witnesses, and the #931
+      # one-cell volume witness (iris-thickness sweep t = 1..8 cells at
+      # a/30, ~8 min); regenerates
       # validation/crossval/_18_wr90_iris_results/rfx.json AND
       # tests/fixtures/wr90_iris_modematch/fixture.json (~2.8 h CPU)
 
@@ -129,7 +150,11 @@ if _RFX_ROOT != _REPO_ROOT:
 
 from rfx.api import Simulation  # noqa: E402
 from rfx.boundaries.spec import Boundary, BoundarySpec  # noqa: E402
-from rfx.geometry.csg import Box, rasterize  # noqa: E402
+from rfx.geometry.csg import Box  # noqa: E402
+
+sys.path.insert(0, _SCRIPT_DIR)
+from _wr90_iris_realized import (  # noqa: E402
+    aperture_walls, grid_plane, realized_edge_masks, wall_plane_runs)
 
 C0 = 299792458.0
 MU0 = 4e-7 * np.pi
@@ -158,8 +183,18 @@ CANONICAL = (0.20, 0.50)
 # gates = round-UP(measured envelope x 1.5); the gate test hard-pins these,
 # recomputes the envelopes from the committed data, and regex-binds these
 # constants (PR #475 D1/D2 + #476 prose-binding discipline).
-GATE_FINE_ABS = 0.04    # = round-up(POOLED fine envelope 0.0232 x 1.5)
-GATE_RICH_ABS = 0.01    # = round-up(measured Richardson envelope 0.0051 x 1.5)
+# #931 RE-DERIVED from VESSL run 369367259159 (pass 1 on the migrated
+# builder). The iris now realizes its drawn thickness at both rungs instead of
+# (t_c - 1)*dx, so the oracle is fed the geometry that was actually built and
+# every measured envelope shrank. Nothing here is tuned: each gate is the
+# repo rule applied to the new envelope, and the write-fixture self-check
+# re-derives it and demands exact equality.
+#   fine       envelope 0.0232 -> 0.0106 : round-up(0.0106 x 1.5 = 0.0159) at
+#              quantum 100 = 0.02   (0.04  -> 0.02, TIGHTER by 2x)
+#   Richardson envelope 0.0051 -> 0.0046 : round-up(0.0046 x 1.5 = 0.0069) at
+#              quantum 100 = 0.01   (0.01  -> 0.01, unchanged)
+GATE_FINE_ABS = 0.02    # = round-up(POOLED fine envelope 0.0106 x 1.5)
+GATE_RICH_ABS = 0.01    # = round-up(measured Richardson envelope 0.0046 x 1.5)
 
 # --- issue #812 re-gate (G18-A): PER-CONFIGURATION fine gates -------------
 # The pooled GATE_FINE_ABS above is set by the WORST of eight configurations
@@ -168,15 +203,19 @@ GATE_RICH_ABS = 0.01    # = round-up(measured Richardson envelope 0.0051 x 1.5)
 # envelope x 1.5) -- applied to each configuration's OWN committed envelope,
 # at quantum 1000 (precedent: tests/unit/sparams/test_msl_port_integration.py):
 #
-#   d(mm)   glen  frac   committed gap   gate
-#   18.288  0.20  0.50   0.0122          0.019
-#   12.192  0.20  0.50   0.0223          0.034
-#    7.620  0.20  0.50   0.0097          0.015
-#   18.288  0.20  0.42   0.0145          0.022
-#   12.192  0.20  0.42   0.0232          0.035
-#    7.620  0.20  0.42   0.0097          0.015
-#   12.192  0.16  0.50   0.0222          0.034
-#   12.192  0.24  0.50   0.0222          0.034
+#   d(mm)   glen  frac   pre-#931 gap   gate   #931 gap   #931 gate
+#   18.288  0.20  0.50   0.0122         0.019  0.0079     0.012
+#   12.192  0.20  0.50   0.0223         0.034  0.0101     0.016
+#    7.620  0.20  0.50   0.0097         0.015  0.0034     0.006
+#   18.288  0.20  0.42   0.0145         0.022  0.0102     0.016
+#   12.192  0.20  0.42   0.0232         0.035  0.0106     0.016
+#    7.620  0.20  0.42   0.0097         0.015  0.0035     0.006
+#   12.192  0.16  0.50   0.0222         0.034  0.0100     0.015
+#   12.192  0.24  0.50   0.0222         0.034  0.0100     0.015
+#
+# The #931 column is VESSL run 369367259159 on the corrected thickness, and
+# every gate in it is round-up(that row's own gap x 1.5) at quantum 1000 --
+# the same rule, re-applied, never widened: all eight moved DOWN.
 #
 # GATE_FINE_ABS is RETAINED UNCHANGED (nothing is widened); the per-config
 # gate is strictly tighter and is the binding one.  Why it matters: the audit
@@ -187,14 +226,14 @@ GATE_RICH_ABS = 0.01    # = round-up(measured Richardson envelope 0.0051 x 1.5)
 # predeclaration.md section 2.3/2.4, in a commit PRECEDING the measurement
 # that judges them.
 GATE_FINE_ABS_PER_CONFIG = {
-    "18.288|0.20|0.50": 0.019,
-    "12.192|0.20|0.50": 0.034,
-    "7.620|0.20|0.50": 0.015,
-    "18.288|0.20|0.42": 0.022,
-    "12.192|0.20|0.42": 0.035,
-    "7.620|0.20|0.42": 0.015,
-    "12.192|0.16|0.50": 0.034,
-    "12.192|0.24|0.50": 0.034,
+    "18.288|0.20|0.50": 0.012,
+    "12.192|0.20|0.50": 0.016,
+    "7.620|0.20|0.50": 0.006,
+    "18.288|0.20|0.42": 0.016,
+    "12.192|0.20|0.42": 0.016,
+    "7.620|0.20|0.42": 0.006,
+    "12.192|0.16|0.50": 0.015,
+    "12.192|0.24|0.50": 0.015,
 }
 
 
@@ -212,10 +251,16 @@ def config_key(d_phys_or_mm, glen, frac):
 # every residual stays nominal.  The pin is geometric, from a = 22.86 mm and
 # the two declared rungs: each aperture must be an exact and EVEN integer
 # number of cells at BOTH rungs.  Even, because the symmetric two-fin
-# construction can only realise an even d_c -- fin_c = (cells - d_c)//2 makes
-# the open-node count cells-1-2*fin_c, which equals d_c-1 only for even d_c.
-# A one-fine-cell relabel (7.620 -> 8.001 mm) is 21 fine cells (odd) and 10.5
-# coarse cells, so it fails this pin with ZERO tolerance.
+# construction can only realise an even d_c: with fin_c = (cells - d_c)//2 the
+# two inner fin walls stand at y-nodes fin_c and cells - fin_c, so the REALIZED
+# aperture is cells - 2*fin_c, which has the parity of `cells` and therefore
+# equals d_c only for even d_c on this even-cell guide.  (Until #931 the same
+# conclusion was derived from an OPEN-NODE count, cells-1-2*fin_c == d_c-1;
+# open nodes are not a realized dimension and the contract retires them, but
+# the parity conclusion is unchanged because both counts differ from the wall
+# separation by a constant.)  A one-fine-cell relabel (7.620 -> 8.001 mm) is
+# 21 fine cells (odd) and 10.5 coarse cells, so it fails this pin with ZERO
+# tolerance.
 def assert_declared_aperture(d_phys):
     for cells in (COARSE_CELLS, FINE_CELLS):
         n = d_phys / (A_WR90 / cells)
@@ -342,12 +387,21 @@ def validate_oracle() -> dict:
 # rfx measurement
 # --------------------------------------------------------------------------- #
 def run_point(d_phys, cells, glen=0.20, iris_frac=0.50, normalize="flux",
-              num_periods=100.0):
-    """One 2-port iris run at grid-exact dimensions with raster asserts."""
+              num_periods=100.0, t_cells=None):
+    """One 2-port iris run at grid-exact dimensions with realized asserts.
+
+    ``t_cells`` overrides the iris thickness in CELLS (default: T_IRIS at this
+    rung).  It exists for the one-cell volume witness — see
+    ``thickness_sweep`` — and the realized thickness is t_cells*dx either way,
+    because under the #931 contract a PEC volume realizes both of its faces.
+    """
     assert_declared_aperture(d_phys)   # issue #812 G18-C
     DX = A_WR90 / cells
     d_c = int(round(d_phys / DX))
-    t_c = int(round(T_IRIS / DX))
+    t_c = int(round(T_IRIS / DX)) if t_cells is None else int(t_cells)
+    assert t_c >= 1, ("iris thickness must be at least one cell; a "
+                      "zero-thickness PEC obstacle is a SHEET declaration "
+                      "(add_thin_conductor), not a volume", t_c)
     fin_c = (cells - d_c) // 2
     glen_c = int(round(glen / DX))
     p1 = int(round(0.040 / DX))
@@ -361,37 +415,55 @@ def run_point(d_phys, cells, glen=0.20, iris_frac=0.50, normalize="flux",
                               z=Boundary(lo="pec", hi="pec")),
         cpml_layers=cpml_layers_for(DX))
     big = 1.0   # fins drawn PAST the walls; rasterizer clips (slot-bug fence)
-    # The volume mask is HALF-OPEN [lo, hi) over NODE coordinates i*DX, so a
-    # box corner landing exactly on a node is half-ulp fragile (a fine-rung
-    # domain-scan config rasterized 3 thickness-nodes instead of 4 — caught
-    # by the assert below). All interior corners therefore sit HALF A CELL
-    # off the node planes: x spans nodes [iris_lo, iris_lo + t_c) and the
-    # fin edges exclude the first aperture node deterministically, making
-    # the rasterized footprint exact regardless of float rounding.
-    x_lo = (iris_lo - 0.5) * DX
-    x_hi = (iris_lo + t_c - 0.5) * DX
-    fin_hi_y = (fin_c + 0.5) * DX   # metal on nodes 0..fin_c: aperture == d (R480 B3)
+    # Every corner sits ON a node plane.  This INVERTS the recipe this case
+    # used until #931, and the reason is the lattice ownership contract: a PEC
+    # volume is sampled at cell CENTRES, so a corner on a node plane selects
+    # whole cells and is the well-defined position, while a corner half a cell
+    # off lands exactly on a centre — the tie the old recipe was invented to
+    # avoid, moved.  Under the old half-open NODE mask the opposite was true
+    # (a fine-rung domain-scan config rasterized 3 thickness-nodes instead of
+    # 4), which is what setup defect (2) below records.
+    #
+    # Realized, and asserted below from realized_pec_edge_masks: x walls at
+    # node planes iris_lo .. iris_lo + t_c, i.e. a thickness of t_c cells =
+    # T_IRIS exactly — which is what the oracle has always been fed.  Until
+    # #931 the far face was never a wall and the realized thickness was
+    # (t_c - 1)*dx, a 50% (a/30) / 25% (a/60) deficit against the oracle input
+    # that nothing in this case measured.
+    x_lo = iris_lo * DX
+    x_hi = (iris_lo + t_c) * DX
+    fin_hi_y = fin_c * DX          # y wall at node fin_c
+    fin_lo_y = (cells - fin_c) * DX  # y wall at node cells - fin_c
     sim.add(Box((x_lo, -big, -big), (x_hi, fin_hi_y, big)), material="pec")
-    sim.add(Box((x_lo, A_WR90 - fin_hi_y, -big), (x_hi, big, big)), material="pec")
+    sim.add(Box((x_lo, fin_lo_y, -big), (x_hi, big, big)), material="pec")
     for x, dr, nm in ((p1 * DX, "+x", "P1"), (p2 * DX, "-x", "P2")):
         sim.add_waveguide_port(x, mode=(1, 0), mode_type="TE", direction=dr,
                                f0=10.3e9, bandwidth=0.41,
                                waveform="modulated_gaussian",
                                freqs=FREQS, name=nm)
-    # raster asserts (operating-point guarantees, hand-ported)
-    grid = sim._build_grid()
+    # REALIZED-geometry asserts (build time, no solve): the operating-point
+    # guarantees, read from the ONE edge-set function the #931 contract
+    # defines.  They assert realized == drawn, which under the contract is an
+    # identity — so a regression shows up as a thickness of t_c - 1 or an
+    # aperture off by a cell, not as a silent shift in |S11|.
+    grid, edges = realized_edge_masks(sim)
     ny = grid.shape[1]
     assert ny == cells + 1, (ny, cells)          # node convention: a=(ny-1)dx exact
-    sig = np.asarray(rasterize(grid, [(e.shape, 1.0, 1e7)
-                                      for e in sim._geometry])[1])
-    xc = np.where(sig.max(axis=(1, 2)) > 1e6)[0]
-    assert len(xc) == t_c, ("iris thickness cells", len(xc), t_c)
-    open_y = np.where(sig[xc[0]].max(axis=1) < 1e6)[0]
-    assert bool(np.all(np.diff(open_y) == 1)), "aperture not contiguous (slot bug)"
-    # deterministic with the half-cell-offset fin edges: d_c + 1 open E-node
-    # columns between the innermost conductor node planes (the half-cell
-    # effective-aperture ambiguity is part of the measured first-order gap)
-    assert len(open_y) == d_c - 1, ("aperture nodes", len(open_y), d_c - 1)
+    x_runs = wall_plane_runs(edges, 0)
+    assert len(x_runs) == 1, ("iris count", x_runs)
+    (x_wall_lo, x_wall_hi), = x_runs
+    drawn_x = (grid_plane(grid, 0, iris_lo), grid_plane(grid, 0, iris_lo + t_c))
+    assert (x_wall_lo, x_wall_hi) == drawn_x, (
+        "realized iris walls != drawn", x_runs, drawn_x)
+    # BOTH faces present: this is the check nothing in this case had until
+    # #931, and the one the contract exists to make possible.
+    y_wall_lo, y_wall_hi = aperture_walls(
+        edges, 1, (slice(x_wall_lo, x_wall_lo + 1), slice(None), slice(None)))
+    drawn_y = (grid_plane(grid, 1, fin_c), grid_plane(grid, 1, cells - fin_c))
+    assert (y_wall_lo, y_wall_hi) == drawn_y, (
+        "realized aperture walls != drawn", (y_wall_lo, y_wall_hi), drawn_y)
+    assert y_wall_hi - y_wall_lo == d_c, ("realized aperture != drawn",
+                                          y_wall_hi - y_wall_lo, d_c)
 
     t0 = time.time()
     res = sim.compute_waveguide_s_matrix(normalize=normalize,
@@ -403,8 +475,19 @@ def run_point(d_phys, cells, glen=0.20, iris_frac=0.50, normalize="flux",
     return {
         "d_mm": round(d_phys * 1e3, 3), "cells_per_a": cells,
         "dx_mm": round(DX * 1e3, 4), "glen_m": glen, "iris_frac": iris_frac,
+        "t_mm": round(t_c * DX * 1e3, 4),
         "normalize": str(normalize), "num_periods": num_periods,
-        "aperture_cells": int(len(open_y)), "thickness_cells": int(len(xc)),
+        # RENAMED for #931 (was aperture_cells / thickness_cells): the
+        # committed fields were an OPEN-NODE count (d_c - 1) and a
+        # MASKED-PLANE count (t_c), neither of which is a realized dimension,
+        # and the aperture one changes VALUE under the contract.  These are
+        # the realized dimensions in cells, plus the wall-plane indices they
+        # were measured between.  Renamed rather than reused, because a
+        # same-named key with a new meaning is read wrong exactly once.
+        "realized_aperture_cells": int(y_wall_hi - y_wall_lo),
+        "realized_thickness_cells": int(x_wall_hi - x_wall_lo),
+        "iris_wall_nodes": [int(x_wall_lo), int(x_wall_hi)],
+        "aperture_wall_nodes": [int(y_wall_lo), int(y_wall_hi)],
         "s11": [round(float(v), 5) for v in s11],
         "s21": [round(float(v), 5) for v in s21],
         "max_colpow": round(float(np.max(s11 ** 2 + s21 ** 2)), 4),
@@ -412,9 +495,96 @@ def run_point(d_phys, cells, glen=0.20, iris_frac=0.50, normalize="flux",
     }
 
 
-def oracle_s11(d_phys):
-    return [round(float(abs(iris_smatrix(A_WR90, d_phys, T_IRIS, f)[0])), 5)
+def oracle_s11(d_phys, t_phys=T_IRIS):
+    return [round(float(abs(iris_smatrix(A_WR90, d_phys, t_phys, f)[0])), 5)
             for f in FREQS]
+
+
+# --------------------------------------------------------------------------- #
+# #931 one-cell volume witness (design note 20260906 section 5).
+# --------------------------------------------------------------------------- #
+THICK_SWEEP_CELLS = [1, 2, 3, 4, 5, 6, 8]
+THICK_SWEEP_D = D_WORST          # 12.192 mm, the worst-GAP aperture
+THICK_SWEEP_RUNG = COARSE_CELLS  # a/30, ~66 s per run
+
+
+def thickness_sweep(oracle_cache=None):
+    """rfx vs the mode-matching oracle across iris thickness, INCLUDING t = 1 cell.
+
+    WHY THIS EXISTS.  Under the #931 lattice ownership contract a PEC volume
+    one cell thick is a filled slab with a tangential wall at BOTH of its
+    faces, at every thickness, on every axis, with no flag.  Before #931 the
+    far face was never a wall, so a one-cell body stood ONE wall and a
+    ``two_plane`` flag existed to put the second one back for t = 1 only.
+    Nothing independent ever said which of those was right AT ONE CELL: the
+    thin-limit was checked against Marcuvitz, which is a t -> 0 statement, not
+    a t = dx one.
+
+    This is that independent witness.  The oracle is a TEn0 mode-matching
+    cascade of two width-step junctions joined by a length-t guide section;
+    it takes the physical t and knows nothing about the lattice.  If the
+    two-face rule is right at one cell, the t = 1 residual sits on the same
+    curve as t = 2..8; if a one-cell slab were realizing something other than
+    a dx-thick iris, t = 1 would be the outlier.  Run at the coarse rung
+    (a/30, dx = 0.762 mm) at the worst-gap aperture, seven thicknesses,
+    roughly 66 s each.
+
+    THE CRITERION, and why it is not the one this function shipped with.
+    The witness was first stated as "the t = 1 residual lies inside the range
+    spanned by t = 2..8".  VESSL run 369367259159 measured the residual to be
+    MONOTONE DECREASING in t (0.0312, 0.0246, 0.0207, 0.0179, 0.0157, 0.0139,
+    0.0109 for t = 1,2,3,4,5,6,8), and for any monotone family the t = 1 point
+    is necessarily the extremum, hence necessarily outside the range its own
+    t >= 2 rungs span.  That criterion therefore fails for EVERY outcome: a
+    t = 1 residual of 0.0000 — a perfect one-cell iris — fails it too.  A test
+    that cannot pass carries no information about the physics, so it is
+    retired for vacuity, not because of the answer it gave.  Its verdict is
+    kept in the record (``monotone_range_criterion``) so the retirement is
+    auditable.
+
+    THE REPLACEMENT is an identification test with no tunable constant.  The
+    question the contract actually poses at one cell is *which* thickness the
+    lattice built, and the lattice-blind oracle can be asked directly: for
+    each swept rung, evaluate the oracle at t-1, t and t+1 cells and take the
+    argmin of the residual.  The witness passes when every rung identifies its
+    OWN drawn thickness.  It can fail three ways per rung, and at t = 1 the
+    t-1 alternative is exactly the pre-#931 realization — one wall, a
+    zero-thickness screen — so this is a direct discriminator between the two
+    rules at the one place they disagree.  The margins are reported with the
+    verdict; they are not a gate, because argmin needs no threshold.
+    """
+    dx = A_WR90 / THICK_SWEEP_RUNG
+    rows = []
+    for t_c in THICK_SWEEP_CELLS:
+        t_phys = t_c * dx
+        orc = (oracle_cache or {}).get(t_c) or oracle_s11(THICK_SWEEP_D, t_phys)
+        r = run_point(THICK_SWEEP_D, THICK_SWEEP_RUNG, t_cells=t_c)
+        gap = max(_gaps(r, orc))
+        # identification: which realized thickness does this trace match?
+        # t-1 at t = 1 is the pre-#931 realization (one wall, zero thickness).
+        ident = {}
+        for n in (t_c - 1, t_c, t_c + 1):
+            o_n = (oracle_cache or {}).get(n) or oracle_s11(THICK_SWEEP_D, n * dx)
+            ident[n] = round(max(abs(a_ - b_) for a_, b_ in zip(r["s11"], o_n)), 4)
+        best = min(ident, key=lambda n: ident[n])
+        runner_up = min(v for n, v in ident.items() if n != best)
+        rows.append({"t_cells": t_c, "t_mm": round(t_phys * 1e3, 4),
+                     "identification": {
+                         "gap_at_t_minus_1": ident[t_c - 1],
+                         "gap_at_t": ident[t_c],
+                         "gap_at_t_plus_1": ident[t_c + 1],
+                         "argmin_t_cells": int(best),
+                         "identified_own_thickness": bool(best == t_c),
+                         "margin_vs_runner_up_x": round(
+                             runner_up / max(ident[best], 1e-12), 3)},
+                     "realized_aperture_cells": r["realized_aperture_cells"],
+                     "realized_thickness_cells": r["realized_thickness_cells"],
+                     "iris_wall_nodes": r["iris_wall_nodes"],
+                     "max_gap_abs": round(gap, 4),
+                     "max_colpow": r["max_colpow"],
+                     "s11": r["s11"], "oracle_s11": orc,
+                     "wall_s": r["wall_s"]})
+    return rows
 
 
 def _gaps(row, orc):
@@ -612,9 +782,47 @@ def main(argv):
               f"(dx-proportional errors cancel in 2*fine - coarse BY "
               f"CONSTRUCTION — see the module docstring)")
 
+        # #931 one-cell volume witness (design note section 5). Runs last
+        # because it is the cheapest block and its verdict is a comparison
+        # against the rest of the sweep, not against a gate constant.
+        print("\n== #931 one-cell volume witness: iris-thickness sweep "
+              f"(a/{THICK_SWEEP_RUNG}, d = {THICK_SWEEP_D*1e3:.3f} mm) ==")
+        thick_rows = thickness_sweep()
+        for r in thick_rows:
+            print(f"  t={r['t_cells']} cell(s) ({r['t_mm']:.3f} mm), walls "
+                  f"{r['iris_wall_nodes']}: max|dS11|={r['max_gap_abs']:.4f} "
+                  f"colpow={r['max_colpow']:.3f} ({r['wall_s']:.0f}s)",
+                  flush=True)
+        multi = [r["max_gap_abs"] for r in thick_rows if r["t_cells"] >= 2]
+        one = next(r["max_gap_abs"] for r in thick_rows if r["t_cells"] == 1)
+        # RETIRED criterion, still measured and recorded: see the
+        # thickness_sweep docstring for why it can never pass.
+        one_cell_on_curve = min(multi) <= one <= max(multi)
+        print(f"  [retired, vacuous] t=1 residual {one:.4f} vs the t=2..8 "
+              f"range [{min(multi):.4f}, {max(multi):.4f}]: "
+              f"{'ON the curve' if one_cell_on_curve else 'OUTLIER'}")
+        for r in thick_rows:
+            idn = r["identification"]
+            print(f"  t={r['t_cells']}: oracle gaps at t-1/t/t+1 = "
+                  f"{idn['gap_at_t_minus_1']:.4f}/{idn['gap_at_t']:.4f}/"
+                  f"{idn['gap_at_t_plus_1']:.4f} -> identifies t="
+                  f"{idn['argmin_t_cells']} "
+                  f"({idn['margin_vs_runner_up_x']:.2f}x) "
+                  f"{'OK' if idn['identified_own_thickness'] else 'MISIDENTIFIED'}")
+        identified = all(r["identification"]["identified_own_thickness"]
+                         for r in thick_rows)
+        one_ident = next(r["identification"] for r in thick_rows
+                         if r["t_cells"] == 1)
+        print(f"  GATED: every rung identifies its own thickness -> "
+              f"{'PASS' if identified else 'FAIL'}; at t = 1 the pre-#931 "
+              f"one-wall alternative is "
+              f"{one_ident['gap_at_t_minus_1'] / max(one_ident['gap_at_t'], 1e-12):.2f}x "
+              f"worse than the two-wall one")
+        ok &= identified
+
         payload = {
             "schema": "rfx.wr90_iris_modematch",
-            "schema_version": 1,
+            "schema_version": 2,
             "campaign": (
                 "cross-solver validation campaign, item 3 stage S1: single "
                 "symmetric inductive iris in WR-90 vs TEn0 mode-matching — "
@@ -632,22 +840,23 @@ def main(argv):
                 "the oracle with a formulation-independent 2-D H-plane "
                 "FDFD to 6e-4 and measured rfx's same-geometry agreement "
                 "at <= 0.02 — attributed, not imported). GATED: fine rung "
-                "dx = a/60 within 0.04 abs = round-up(measured envelope "
-                "0.0232 x 1.5) over 8 configs (3 apertures x {centred, "
+                "dx = a/60 within 0.02 abs = round-up(measured envelope "
+                "0.0106 x 1.5) over 8 configs (3 apertures x {centred, "
                 "iris off-centre at 0.42 of the guide} + 2 extra guide "
-                "lengths; every config lands within 0.023, so no single "
+                "lengths; every config lands within 0.011, so no single "
                 "configuration sets the envelope), and the Richardson "
                 "extrapolation 2*S(a/60) - S(a/30) on the oracle within "
-                "0.01 abs (envelope 0.0051) at EVERY one of those 8 pairs, "
+                "0.01 abs (envelope 0.0046) at EVERY one of those 8 pairs, "
                 "which cross-confirms the oracle and the first-order "
-                "attribution (gap ratios 0.527-0.604 = textbook first "
+                "attribution (gap ratios 0.407-0.440 = textbook first "
                 "order). REPORTED, NOT GATED: the coarse rung dx = a/30 "
-                "(0.018-0.043 abs); the raw normalize=False record, which "
-                "is WORSE than flux (gaps 0.021-0.054) with a pointwise "
-                "|raw - flux| difference up to 0.033 at the wide aperture; "
+                "(0.008-0.025 abs); the raw normalize=False record, which "
+                "is WORSE than flux (gaps 0.009-0.025) with a pointwise "
+                "|raw - flux| difference up to 0.0068 at the wide "
+                "aperture; "
                 "residual detrended ripple, i.e. a quadratic detrend of "
                 "|S11| MINUS the oracle so the oracle's own curvature is not "
-                "counted (fine <= 0.0077, coarse <= 0.0158, both at the wide "
+                "counted (fine <= 0.0076, coarse <= 0.0152, both at the wide "
                 "aperture with the iris off-centre, down from the 0.0706 the "
                 "PR #480 review measured on the same basis before the "
                 "absorber fix); "
@@ -660,22 +869,55 @@ def main(argv):
                 "now fenced by an assert or a derived setting: (1) a "
                 "parasitic wall-slot (fins drawn to the NOMINAL guide "
                 "width leave a 1-cell gap at the actual grid wall); (2) "
-                "node-plane box corners are half-ulp fragile because the "
-                "volume mask is half-open over NODE coordinates — one fine "
-                "config rasterized 3 thickness nodes instead of 4, and an "
-                "apparent +/-0.07 'domain sensitivity' was that ulp "
-                "lottery; (3) the fin footprint made the ELECTRICAL "
-                "aperture d + 2*dx instead of d, which alone inflated the "
-                "envelope 4-6x, and a 0.5*lambda_g absorber left the "
-                "envelope set by CPML reflection rather than "
-                "discretization (PR #480 review B2/B3; CPML is now "
-                "0.75*lambda_g at the band edge = 60 coarse / 120 fine). "
+                "node-plane box corners were half-ulp fragile under the "
+                "pre-#931 half-open NODE mask — one fine config rasterized "
+                "3 thickness nodes instead of 4, and an apparent +/-0.07 "
+                "'domain sensitivity' was that ulp lottery — so every "
+                "corner was moved half a cell OFF the node planes. The "
+                "#931 lattice ownership contract INVERTS that: a PEC volume "
+                "is sampled at cell CENTRES, so a node-plane corner selects "
+                "whole cells and is the well-defined position while a "
+                "half-cell offset lands exactly on a centre. The corners "
+                "are back on the node planes and the footprint asserts read "
+                "the realized edge set rather than a sigma mask; (3) the "
+                "fin footprint made the ELECTRICAL aperture d + 2*dx "
+                "instead of d, which alone inflated the envelope 4-6x, and "
+                "a 0.5*lambda_g absorber left the envelope set by CPML "
+                "reflection rather than discretization (PR #480 review "
+                "B2/B3; CPML is now 0.75*lambda_g at the band edge = 60 "
+                "coarse / 120 fine). THE #931 THICKNESS CORRECTION: until "
+                "the contract landed, this case fed its oracle the drawn "
+                "t = 1.524 mm while the lattice realized (t_c - 1)*dx — "
+                "0.762 mm at a/30 and 1.143 mm at a/60, a 50% / 25% "
+                "thickness deficit — because a body's far face was never a "
+                "wall. Nothing in this case measured that: every assert "
+                "counted MASKED PLANES, a quantity that agreed with the "
+                "drawing by construction. Under the contract the realized "
+                "thickness is the drawn thickness and the oracle input is "
+                "correct for the first time; the whole record was "
+                "regenerated on the corrected geometry and every gate "
+                "re-derived from the new envelopes. The case also gains the "
+                "contract's one-cell volume witness (one_cell_volume_witness): "
+                "an iris-thickness sweep t = 1..8 cells against the "
+                "lattice-blind mode-matching oracle, so that a one-cell "
+                "PEC body standing two walls has an independent check "
+                "rather than a thin-limit anchor that only speaks about "
+                "t -> 0. Each rung is asked to IDENTIFY its own thickness "
+                "-- the oracle at t-1, t and t+1 cells, argmin on t -- and "
+                "all seven do; at t = 1 the pre-#931 one-wall alternative "
+                "(a zero-thickness screen) is 4.32x worse than the two-wall "
+                "one, so the contract's rule at one cell is measured rather "
+                "than assumed. The witness's first-stated criterion (t = 1 "
+                "inside the t = 2..8 range) is RETIRED as vacuous and its "
+                "verdict kept: the residual is monotone in t, so t = 1 is "
+                "the extremum whatever the physics does, and a perfect "
+                "0.0000 would fail it too. "
                 "RETRACTED: an earlier revision fenced normalize=True "
                 "modal extraction on the strength of a measured column "
                 "power 1.112-1.164; on the corrected setup modal "
                 "extraction is passivity-CLEAN at every aperture and both "
-                "rungs (max column power 1.0207 at d = 7.62 mm / a-30, "
-                "1.0013 at d = 18.288 mm, ZERO extractor warnings), so "
+                "rungs (max column power 1.0200 at d = 7.62 mm / a-30, "
+                "1.0012 at d = 18.288 mm, ZERO extractor warnings), so "
                 "that non-passivity was a symptom of defects (1)-(3) and "
                 "not a reflector-inflation property of the extractor — the "
                 "fence is withdrawn and the measurement is committed as "
@@ -686,7 +928,7 @@ def main(argv):
                 "carries the gate. Palace WavePort corroboration (stage S2) "
                 "and a published multi-iris filter (stage S3) are follow-on "
                 "stages, not claimed here. "
-                "APERTURE RESOLUTION (issue #812 re-gate, 2026-09-01): the fine gate is now per-CONFIGURATION -- gate = round-up(that configuration's own committed envelope x 1.5) at quantum 1000, giving 0.019/0.034/0.015/0.022/0.035/0.015/0.034/0.034 for the eight configs -- because the pooled 0.04 was set by the worst configuration and then spent at all eight. Measured against those gates, a one-cell aperture error at each rung (the smallest the grid-snapped geometry can express, and the campaign's own setup defect (3) at half its size) is detected as an OVER-aperture at every configuration and as an UNDER-aperture at only two of the eight, both at the weak aperture and both below the repo's own 1.5x margin. Those counts, the margins and the per-configuration oracle distances are COMMITTED rather than restated here: validation/crossval/_18_wr90_iris_results/aperture_resolution.json, keys summary.over_aperture_detected, summary.over_aperture_min_margin_x, summary.under_aperture_detected, summary.under_aperture_detected_configs and summary.under_aperture_max_margin_x, with the per-configuration rows under pairs[*] (pairs[2] is d = 7.620 mm centred); each one is re-derived from the committed traces by an INDEPENDENT oracle in tests/crossval/test_wr90_iris_modematch_gates.py. A one-cell under-aperture is therefore NOT resolved with margin at any configuration, and at d = 12.192 and d = 7.620 mm it is not resolved at all: at both d = 7.620 configurations the modelled under-aperture defect scores BETTER than the undefected committed row (summary.under_aperture_scores_better_configs; pairs[*].one_cell_defect.under.scores_better_than_undefected), because the fine rung's own staircase error is an effective aperture WIDER than nominal rather than narrower -- over the declared offset grid the committed fine trace's NEAREST oracle sits at d PLUS half a fine cell at all eight configurations (summary.nearest_offset_fine_cells_values; pairs[*].oracle_distance_abs) -- so narrowing the geometry by one cell moves it TOWARD the trace instead of away. CORRECTION (issue #812 round 2): an earlier revision of this paragraph asserted the opposite sign, that the committed fine trace sat closer to the oracle one fine cell NARROW, quoting the under-aperture DEFECT metric as if it were that distance; that claim was mis-sourced and sign-inverted, and aperture_resolution.json is now the only source for this class. The Richardson witness is blind to this whole class in both signs at all eight configurations BY CONSTRUCTION: an aperture error of one cell at each rung is proportional to dx, which is exactly what 2*S(a/60) - S(a/30) is built to remove, so no tightening of its 0.01 gate can catch it and none is attempted. The calibration this case supplies to any downstream multi-iris filter is aperture-resolved to +1 fine cell, NOT to -1. The three declared apertures are now pinned as claims (G18-C): each must be an exact and EVEN integer cell count at BOTH rungs, a geometric condition no one-fine-cell relabel can satisfy."
+                "APERTURE RESOLUTION (issue #812 re-gate 2026-09-01, RE-MEASURED under #931 2026-09-07): the fine gate is per-CONFIGURATION -- gate = round-up(that configuration's own committed envelope x 1.5) at quantum 1000, giving 0.012/0.016/0.006/0.016/0.016/0.006/0.015/0.015 for the eight configs -- because the pooled gate is set by the worst configuration and then spent at all eight. All eight moved DOWN when the thickness deficit closed (0.019/0.034/0.015/0.022/0.035/0.015/0.034/0.034 before it), which is a re-derivation of the same rule on a better geometry, not a re-tuning. Measured against those gates, a one-cell aperture error at each rung (the smallest the grid-snapped geometry can express, and the campaign's own setup defect (3) at half its size) is now detected in BOTH signs at every one of the eight configurations, at worst 1.623x the gate for an over-aperture and 2.608x for an under-aperture. Those counts, the margins and the per-configuration oracle distances are COMMITTED rather than restated here: validation/crossval/_18_wr90_iris_results/aperture_resolution.json, keys summary.over_aperture_detected, summary.over_aperture_min_margin_x, summary.under_aperture_detected, summary.under_aperture_detected_configs, summary.under_aperture_min_margin_x and summary.under_aperture_max_margin_x, with the per-configuration rows under pairs[*] (pairs[2] is d = 7.620 mm centred); each one is re-derived from the committed traces by an INDEPENDENT oracle in tests/crossval/test_wr90_iris_modematch_gates.py. WHAT #931 CHANGED HERE, and it is the whole paragraph: before the contract, the committed fine trace's NEAREST oracle over the declared offset grid sat at d PLUS half a fine cell at all eight configurations, an apparent effective aperture WIDER than nominal; a one-cell under-aperture therefore moved the geometry TOWARD the trace, scored BETTER than the undefected row at both d = 7.620 configurations, and was detected at only two of the eight. That half-cell offset was not an aperture property at all -- it was the thickness deficit ((t_c - 1)*dx instead of t) reading out on the aperture axis, the two being the only free dimensions of a symmetric iris. With the realized thickness equal to the drawn one, the nearest oracle sits at the DECLARED d at all eight configurations (summary.nearest_offset_fine_cells_values == [0.0]), no defect scores better than the undefected row (summary.under_aperture_scores_better_configs == []), and the asymmetry between the two signs is gone. CORRECTION HISTORY (issue #812 round 2): an earlier revision of this paragraph asserted that the committed fine trace sat closer to the oracle one fine cell NARROW, quoting the under-aperture DEFECT metric as if it were that distance; that claim was mis-sourced and sign-inverted, and aperture_resolution.json is the only source for this class. The Richardson witness is blind to this whole class in both signs at all eight configurations BY CONSTRUCTION: an aperture error of one cell at each rung is proportional to dx, which is exactly what 2*S(a/60) - S(a/30) is built to remove, so no tightening of its 0.01 gate can catch it and none is attempted. The calibration this case supplies to any downstream multi-iris filter is aperture-resolved to one fine cell in both signs. The three declared apertures are pinned as claims (G18-C): each must be an exact and EVEN integer cell count at BOTH rungs, a geometric condition no one-fine-cell relabel can satisfy."
             ),
             "config": {
                 "a_m": A_WR90, "b_m": B_WR90, "t_m": T_IRIS,
@@ -716,9 +958,52 @@ def main(argv):
                            "extraction is no longer fenced (retracted, see "
                            "provenance) but structures beyond one symmetric "
                            "inductive iris remain fenced, never gated"
-                           "; issue #812 re-gate: the BINDING fine gate is now per-configuration, gate = round-UP(that configuration's own envelope x 1.5) at quantum 1000, with the pooled 0.04 retained unchanged as a ceiling and the one-cell aperture detection table gated as its own claim",
+                           "; issue #812 re-gate: the BINDING fine gate is now per-configuration, gate = round-UP(that configuration's own envelope x 1.5) at quantum 1000, with the pooled 0.02 kept as a ceiling and the one-cell aperture detection table gated as its own claim; #931: pooled 0.04 -> 0.02 and all eight per-config gates re-derived DOWN from the corrected-thickness envelopes (VESSL 369367259159), never widened",
             },
             "gated_fine": fine_rows,
+            "one_cell_volume_witness": {
+                "note": ("#931 lattice ownership contract, design note "
+                         "20260906 section 5: a PEC volume one cell thick is "
+                         "a filled slab with a tangential wall at BOTH faces, "
+                         "at every thickness, with no flag. Before #931 the "
+                         "far face was never a wall and a two_plane flag put "
+                         "it back for t = 1 only; nothing independent said "
+                         "which was right AT ONE CELL, because the thin-limit "
+                         "anchor is a t -> 0 statement rather than a t = dx "
+                         "one. Here the mode-matching oracle — which takes the "
+                         "physical t and knows nothing about the lattice — is "
+                         "run against rfx at t = 1..8 cells on the coarse "
+                         "rung at the worst-gap aperture. GATE: every swept "
+                         "rung must IDENTIFY its own drawn thickness — the "
+                         "oracle is evaluated at t-1, t and t+1 cells and the "
+                         "residual argmin must land on t. At t = 1 the t-1 "
+                         "alternative is precisely the pre-#931 realization "
+                         "(one wall, a zero-thickness screen), so the rule in "
+                         "dispute is decided by a measurement rather than by "
+                         "a convention. RETIRED, and recorded rather than "
+                         "deleted (monotone_range_criterion): the original "
+                         "statement — the t = 1 residual lies inside the "
+                         "range t = 2..8 spans — turned out to be vacuous "
+                         "once the residual was measured to be monotone "
+                         "decreasing in t, because then t = 1 is the "
+                         "extremum for every possible outcome, a perfect "
+                         "0.0000 included. It was retired for having no "
+                         "power in either direction, not for its verdict."),
+                "aperture_mm": round(THICK_SWEEP_D * 1e3, 3),
+                "cells_per_a": THICK_SWEEP_RUNG,
+                "rows": thick_rows,
+                "one_cell_gap_abs": one,
+                "multi_cell_gap_range_abs": [min(multi), max(multi)],
+                "identified_every_thickness": bool(identified),
+                "one_cell_two_wall_vs_one_wall_x": round(
+                    one_ident["gap_at_t_minus_1"]
+                    / max(one_ident["gap_at_t"], 1e-12), 3),
+                "monotone_range_criterion": {
+                    "verdict": bool(one_cell_on_curve),
+                    "status": "RETIRED — vacuous for a monotone residual",
+                },
+                "passed": bool(identified),
+            },
             "one_cell_aperture_detection_witness": one_cell,
             "modal_extraction_witness": modal_witness,
             "coarse_diagnostic": coarse_rows,
@@ -734,7 +1019,9 @@ def main(argv):
                     "compute_waveguide_s_matrix runs its own extractor "
                     "passivity self-check (warnings are part of this "
                     "record) but no sim.preflight(); operating-point "
-                    "guarantees are the raster asserts in run_point."
+                    "guarantees are the realized-geometry asserts in "
+                    "run_point, which read realized_pec_edge_masks through "
+                    "validation/crossval/_wr90_iris_realized.py."
                 ),
                 "modal_fence_retraction_2026_07_28": (
                     "An earlier revision of this case FENCED normalize=True "
@@ -745,8 +1032,8 @@ def main(argv):
                     "runs carried the d + 2*dx electrical aperture and a "
                     "0.5*lambda_g absorber. On the corrected setup the "
                     "same runs are passivity-CLEAN (see "
-                    "modal_extraction_witness: 1.0207 / 1.0101 / 1.0144 / "
-                    "1.0013, zero extractor warnings), so the fence is "
+                    "modal_extraction_witness: 1.0200 / 1.0099 / 1.0150 / "
+                    "1.0012, zero extractor warnings), so the fence is "
                     "RETRACTED: the non-passivity was a setup symptom, not "
                     "an extractor property. Recorded so the withdrawn "
                     "claim stays auditable."

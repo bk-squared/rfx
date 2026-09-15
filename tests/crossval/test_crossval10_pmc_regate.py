@@ -58,6 +58,17 @@ PATHS = ("uniform", "nonuniform")
 
 
 def test_control_geometry_follows_from_the_pmc_plane_convention():
+    """#931 SCOPE: this is the MAGNETIC-wall convention, deliberately left out.
+
+    ``apply_pmc_faces`` zeroes H_tan at array index 0, so the PMC plane sits
+    half a cell inside the domain — a different quantity from the electric
+    wall planes the ownership contract defines, on a different field, on a
+    domain FACE rather than a body. The contract's one realized-edge function
+    reports E edges of conductor BODIES only (design note §1.7 / §1.8), and
+    extending it to magnetic walls is a separate decision that has not been
+    taken. Recorded here so cv10 is not re-investigated as an un-migrated
+    consumer: it is an excluded one.
+    """
     dx = cv10.DX
     # apply_pmc_faces zeros H_tan at array index 0 => plane 0.5*dx inside.
     assert cv10.MIRROR_PLANE_Y == pytest.approx(0.5 * dx)
