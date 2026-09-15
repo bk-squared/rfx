@@ -3,21 +3,16 @@
 ``rfx/runners/distributed_v2.py`` assembled ``pec_mask`` and dropped it: its
 step bodies applied the DOMAIN-FACE PEC alone, so no declared conductor reached
 the field update. Rather than run with the metal missing, the lane refused
-(``NotImplementedError``, ``distributed_v2.py:573``). #1053 leg 2 ports
-``distributed_nu``'s realized-PEC mask stage across; leg 4 narrows the refusal
-to sheets and wires.
+(``NotImplementedError``). #1053 leg 2 ported ``distributed_nu``'s realized-PEC
+mask stage across; leg 4 narrowed the refusal to sheets and wires, which own no
+cell and are still absent from this lane.
 
-Two families of test live here.
-
-* The **public-API** comparisons go through ``sim.run(devices=...)`` and are
-  ``xfail(raises=NotImplementedError, strict=True)`` until leg 4 lifts the
-  refusal. They are red for exactly one reason, and ``strict`` makes them fail
-  the moment they go green, or red for a different reason.
-* The **stage** gates below them run TODAY. They bypass the volume half of the
-  refusal in-test, by making ``is_tracer`` report True for the mask -- which is
-  the single branch leg 4 deletes (``distributed_v2.py:564``), and nothing
-  else. The sheet/wire half is untouched. Leg 4 may delete these once the
-  public route above is green.
+So every test here now drives the PUBLIC route, ``sim.run(devices=...)``. They
+were written in leg 0 as ``xfail(raises=NotImplementedError, strict=True)``
+beside a second family that reached the same physics with the volume half of
+the refusal bypassed in-test; leg 4 lifted the refusal, so the xfail is gone
+and the bypassed duplicates are gone with it -- their assertions live in
+``test_a_declared_pec_body_matches_the_single_device_lane`` below.
 
 The reference is always the SAME model on ONE device through the uniform lane,
 the only lane in the repo with no seam. Not a tolerance-free comparison: the
@@ -188,19 +183,13 @@ def _build(boundary, body_x):
     return sim
 
 
-def _run(boundary, body_x, *, distributed, bypass=False, drop_stage=False):
+def _run(boundary, body_x, *, distributed, drop_stage=False):
     """One trace. Cached: several tests share the same single-device run."""
-    key = (boundary, body_x, distributed, bypass, drop_stage)
+    key = (boundary, body_x, distributed, drop_stage)
     if key in _TRACE_CACHE:
         return _TRACE_CACHE[key]
 
-    saved_is_tracer = _v2.is_tracer
     saved_stage = _v2.apply_pec_mask_shmap
-    if bypass:
-        # The ONE branch leg 4 deletes: reporting the mask as a tracer skips
-        # the declared-PEC-VOLUME half of the refusal and nothing else. The
-        # sheet/wire half still raises.
-        _v2.is_tracer = lambda _arr: True
     if drop_stage:
         _v2.apply_pec_mask_shmap = lambda st, *a, **k: st
     try:
@@ -210,20 +199,19 @@ def _run(boundary, body_x, *, distributed, bypass=False, drop_stage=False):
             ts = np.asarray(
                 _build(boundary, body_x).run(n_steps=N_STEPS, **kw).time_series)
     finally:
-        _v2.is_tracer = saved_is_tracer
         _v2.apply_pec_mask_shmap = saved_stage
 
     _TRACE_CACHE[key] = ts
     return ts
 
 
-def _rel(boundary, body_x, *, bypass=False, drop_stage=False):
+def _rel(boundary, body_x, *, drop_stage=False):
     """max|multi - single| / peak(|single|), per probe.
 
-    The distributed run goes FIRST so the public-API tests hit the refusal
-    before paying for a single-device reference they will not use.
+    The distributed run goes FIRST: when this lane refuses a model it must do
+    so before the test pays for a single-device reference it will not use.
     """
-    ts_multi = _run(boundary, body_x, distributed=True, bypass=bypass,
+    ts_multi = _run(boundary, body_x, distributed=True,
                     drop_stage=drop_stage)
     ts_single = _run(boundary, body_x, distributed=False)
     assert ts_multi.shape == ts_single.shape == (N_STEPS, 2), (
@@ -259,36 +247,12 @@ _BODIES = [
 
 
 # ===========================================================================
-# The public route. xfail until #1053 leg 4 narrows the refusal.
+# The gate, through the public route.
 # ===========================================================================
 
 @pytest.mark.parametrize("body_x", _BODIES)
 @pytest.mark.parametrize("boundary", ["pec", "cpml"])
-@pytest.mark.xfail(
-    raises=NotImplementedError, strict=True,
-    reason=(
-        "#1053 leg 4 has not lifted the declared-PEC-volume refusal in "
-        "rfx/runners/distributed_v2.py, so sim.run(devices=...) cannot run "
-        "this fixture at all. That refusal -- not a numeric failure -- is what "
-        "this xfail records. strict=True so it fails if it goes green, or if "
-        "it goes red for any other reason. The same physics IS gated today by "
-        "test_the_mask_stage_matches_the_single_device_lane below, which "
-        "bypasses the refusal in-test."),
-)
 def test_a_declared_pec_body_matches_the_single_device_lane(boundary, body_x):
-    rel = _rel(boundary, body_x)
-    _assert_the_body_is_visible(boundary, body_x)
-    assert np.all(rel < GATE), (
-        f"boundary={boundary}, body {body_x}: {rel} vs gate {GATE:.0e}")
-
-
-# ===========================================================================
-# The leg-2 gates. These run TODAY, with the volume refusal bypassed in-test.
-# ===========================================================================
-
-@pytest.mark.parametrize("body_x", _BODIES)
-@pytest.mark.parametrize("boundary", ["pec", "cpml"])
-def test_the_mask_stage_matches_the_single_device_lane(boundary, body_x):
     """The gate. Three bodies, each testing something different.
 
     ``seam-face``: the block's metal face is rank 1's first real cell, so the
@@ -297,9 +261,14 @@ def test_the_mask_stage_matches_the_single_device_lane(boundary, body_x):
     moving the stage after the exchange takes it to 2.093e-01 / 3.203e-01
     (pec). ``straddle``: metal owned by both ranks at once, which proves each
     rank realizes its own slab. ``interior``: no seam involvement at all.
+
+    That this runs at all is half the assertion. Before #1053 leg 4,
+    ``sim.run(devices=...)`` raised ``NotImplementedError`` on any declared
+    PEC volume and this test was ``xfail(raises=NotImplementedError,
+    strict=True)``.
     """
     _assert_the_body_is_visible(boundary, body_x)
-    rel = _rel(boundary, body_x, bypass=True)
+    rel = _rel(boundary, body_x)
     assert np.all(rel < GATE), (
         f"boundary={boundary}, body {body_x}: the distributed lane deviates "
         f"from the single-device lane by {rel} (gate {GATE:.0e}). For the "
@@ -323,7 +292,7 @@ def test_dropping_the_mask_stage_reds_the_gate(boundary, body_x):
     (pec), i.e. 100x to 1400x the gate. If this ever passes, the comparison
     above has stopped measuring whether the conductor is realized.
     """
-    rel = _rel(boundary, body_x, bypass=True, drop_stage=True)
+    rel = _rel(boundary, body_x, drop_stage=True)
     assert np.max(rel) > GATE, (
         f"boundary={boundary}, body {body_x}: with the PEC-mask stage dropped "
         f"to a no-op the lane still agrees to {rel}, inside the gate "

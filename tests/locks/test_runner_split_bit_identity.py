@@ -531,14 +531,16 @@ def _f_distributed_nu_pec_mask_seam():
 # --- 14/15: #1053 leg 0. The realized-PEC-body geometry ``distributed_v2``
 #     acquires in leg 2, captured BEFORE the kernel moves.
 #
-#     Kernel-level on purpose. The end-to-end route is unreachable at leg 0:
-#     ``distributed_v2.run_distributed`` raises NotImplementedError on any
-#     declared PEC volume (rfx/runners/distributed_v2.py:573), and that refusal
-#     does not lift until leg 4. A baseline captured after the refusal lifts
-#     would be captured on the post-move tree, which is not a baseline. So
-#     these call the applier directly on a sharded state, exactly as fixture 12
-#     does, and the end-to-end physics is gated separately by
-#     tests/unit/runners/test_distributed_v2_pec_body_seam.py.
+#     Kernel-level on purpose. The end-to-end route was unreachable at leg 0:
+#     ``distributed_v2.run_distributed`` then raised NotImplementedError on any
+#     declared PEC volume, and leg 4 did not narrow that refusal to sheets and
+#     wires until after the mask stage existed. A baseline captured once the
+#     refusal had lifted would be a post-move capture, which is not a baseline.
+#     So these call the applier directly on a sharded state, exactly as fixture
+#     12 does, and they STAY kernel-level now that sim.run(devices=...) accepts
+#     a body -- re-capturing them through the public route would throw away the
+#     pre-move reference they exist to be. The end-to-end physics is gated
+#     separately by tests/unit/runners/test_distributed_v2_pec_body_seam.py.
 #
 #     They differ from fixture 12 in the body GEOMETRY, which is what leg 2
 #     puts on v2: a solid 2-cell-thick block, once STRADDLING the rank seam
