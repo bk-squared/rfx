@@ -787,7 +787,10 @@ the array the solver receives, not the absorber that acts on it. Full write-up:
 
 ## Result after #1057 — cv01's own record re-measured, and G3 stops passing
 
-Appended 2026-09-15 (KST), issue #813. Everything above stays as written; this
+Appended 2026-09-16 (KST), issue #813. The artifacts and the run-log filenames
+carry 2026-09-15, which is the same moment in UTC; the section above it really
+was the previous KST day, so the two headings are a day apart on purpose.
+Everything above stays as written; this
 section edits no number, no gate and no verdict in it. The committed record
 `validation/crossval/_01_waveguide_bend_results/crossval.json` is untouched and
 everything cited below is a new file, so every citation above still resolves
