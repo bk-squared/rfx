@@ -19,6 +19,19 @@ text or snapshot is changed by this document or by the runs it declares.
     realized-board finding). The superseded text is quoted in place. No gate,
     tolerance, reference, support-matrix entry, `known_limits` text or snapshot
     moves; §10 is untouched.
+  - **2026-09-15, §3.3 box geometry bullet 1** — the clause "narrower than the
+    trace's 0.30 mm half-width" is **superseded**. The superseded text stays in
+    place below with an amendment note under it. 0.30 mm is the *declared*
+    `w_trace/2`; the *realized* trace is `y ∈ [1.28, 1.76] mm` (node half-width
+    0.24 mm, cell half-width 0.28 mm) and the box faces sit at
+    `y = 1.26 / 1.74 mm`, centred on the **declared** `y_c = 1.50 mm` rather
+    than the realized `1.52 mm`. The defect is a quarter-cell offset that
+    excludes one of the seven metal node rows asymmetrically, not a box that is
+    narrower than the trace. Recorded together with the zero-compute finding
+    that the 5-face box's own closure is off by ~1.3 % on this run
+    (`scripts/diagnostics/mixed_anchor_reanalysis.py` §3, PR for #498). No gate,
+    tolerance, reference, support-matrix entry, `known_limits` text or snapshot
+    moves; §10 is untouched and **no lw-diagonal value is pinned**.
 - Predecessor artifact (step 1, PR #543, already on main):
   `scripts/diagnostics/i517_mixed_solve_vs_ratio/i517_mixed_solve_vs_ratio.json`
   (referred to below as **the committed JSON**).
@@ -207,6 +220,22 @@ Declared geometric limitations (stated now, not after a surprise):
   0.30 mm half-width**, so the box's own capture of the trace-guided mode is
   incomplete by construction. This is a box property, not a plane defect, and F1
   is written to be attributable because of it (§6.1).
+  - **AMENDED 2026-09-15 (see the amendment log).** The clause above is
+    superseded, not deleted. 0.30 mm is the *declared* half-width; the realized
+    trace is `y ∈ [1.28, 1.76] mm` (7 metal node rows, half-widths 0.24 mm by
+    node span / 0.28 mm by cell span) while the committed box faces are at
+    `y = 1.26` and `1.74 mm`, centred on the declared `y_c = 1.50 mm` instead of
+    the realized `1.52 mm`. So the box is *offset by a quarter cell* and
+    excludes the `y = 1.76 mm` metal row asymmetrically; its `±x` faces and its
+    `+y` face are pierced by PEC. Measured consequence on the committed run
+    (VESSL 369367257597, re-read at zero compute): the 5-face surface does not
+    close — `box_net` exceeds a box-independent three-plane power budget by
+    **1.32 % (lw drive) / 1.31 % (MSL drive)**, the same factor on two drives,
+    and on the MSL drive that is a hard violation because the box is a
+    *subregion* of the slab it is compared against. **Widening the box does not
+    address this**, and widening has the wrong sign for the F4 bracket: a wider
+    box reads more, which makes `r1/r0` larger and the bracket more negative.
+    Full trace: `scripts/diagnostics/_mixed_anchor_reanalysis/`.
 - the box omits its bottom face (PEC `z_lo`), which the lane already requires.
 - the trace has open ends at x = 0 and x = 8 mm (no Box in the padding).
 

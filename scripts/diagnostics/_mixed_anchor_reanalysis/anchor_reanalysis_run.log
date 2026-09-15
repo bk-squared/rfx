@@ -1,0 +1,220 @@
+==============================================================================
+#498 ZERO-COMPUTE RE-ANALYSIS — REPORT-ONLY, PINS NOTHING
+==============================================================================
+  sources (committed, read-only):
+    scripts/diagnostics/_mixed_refplane_logs/measurement_369367257597_60p.json   [VESSL 369367257597]
+    scripts/diagnostics/_probe_fed_msl_referee_logs/stage2_369367257643_referee.json   [VESSL 369367257643]
+    docs/design_notes/mixed_refplane_predeclaration.md
+  tree of the measurement run: 38c7552b / jax 0.4.33.dev20241023+e3c6d6430 / numpy 1.26.4 / complex64
+  settling witness (both drives, rule -40.0 dB): [-124.5510466132368, -117.98878475418606]
+  NO SOLVER RUNS HERE. No VESSL, no GPU, no openEMS import.
+
+  PREDECLARATION §10 — WHAT MUST NOT BE PINNED BY ANY OF THIS:
+    1. Any lumped/wire (lw) diagonal value — the shipped 0.38–0.40, the predicted 0.21 +/- 0.03, sqrt(n_live)-rescaled variants, or anything the external referee reads. The PI sequencing decision on #776/#778 + the parked #683 uniform flip is undecided; F4 is a prediction, not a result.
+    2. reciprocity_tol = 0.06 — stays exactly as shipped.
+    3. The docs' 9.0 % / 55 % quotes, and the lane's known_limits text.
+    4. The mixed lane's reference_plane_cells rejection itself.
+    5. |S22| = 0.02–0.03 — must not become a reference or 'validated' number.
+    6. Zc_meas / beta from this run — must not replace the analytic Hammerstad–Jensen anchor anywhere in shipped code.
+    7. Any openEMS number — comparator leg only; never a gate, never a reference fixture.
+    8. cond(A), settling_db, wall clock, the inter-surface offsets — reported, never gated.
+    9. num_periods = 60 / the 5-bin frequency set / n_probes = 3.
+    10. No snapshot re-capture, no reference regeneration, no tolerance edit, no support-matrix status change.
+    11. F2's 'consistent' branch must not be written up as 'vindicated'.
+
+==============================================================================
+§1  MSL DIAGONAL vs THE SAME-RUN PLANE REFEREE M2  (VESSL 369367257597)
+==============================================================================
+  f [GHz]                         1.00      1.75      2.50      3.25      4.00
+  Zin = V0/I at MSL probe 0 (x = 4.72 mm), MSL-driven run:
+     Re                       49.64086  48.99929  48.01310  46.68244  45.10799
+     Im                       -0.85660  -1.36616  -1.72627  -1.81137  -1.50951
+     |Im/Re| [%]               1.72559   2.78811   3.59541   3.88020   3.34643
+  -> the issue body's '|V/I| ~ 591 ohm and strongly reactive' does NOT reproduce on this fixture.
+     That reading was the July near-open end-fed geometry; the premise is retired with a number.
+
+  |S22| = |(V0 - Z*I)/(V0 + Z*I)| at each anchor, against M2:
+    hj_declared_600x254um          Z= 47.8948    0.0199   0.0181   0.0180   0.0230   0.0341   max dev vs M2  80.78%
+    hj_realized_cell_560x320um     Z= 57.4630    0.0735   0.0805   0.0911   0.1049   0.1213   max dev vs M2   4.88%
+    zc_measured_two_plane          Z= 57.9252    0.0774   0.0844   0.0950   0.1088   0.1252   max dev vs M2   3.60%
+    hj_realized_node_480x320um     Z= 62.6520    0.1161   0.1229   0.1332   0.1470   0.1634   max dev vs M2  50.33%
+    M2 (plane referee, out_over_inc[0])              0.0772   0.0843   0.0939   0.1068   0.1209
+    abs_S22_raw (SHIPPED, HJ anchor)              0.0199   0.0181   0.0180   0.0230   0.0341
+
+  READING — stated as a bound, not as a result:
+   * M2 is built by refplane_split(v, i_corr, zc, sign) at the SAME
+     two-plane measured Zc this sweep re-derives at (mixed_refplane_measurement.py:503-506, :519-524). The agreement is
+     therefore ANCHOR-CIRCULAR: it checks that two V/I ratios on one
+     low-loss line are mutually consistent with ONE Zc. It is NOT an
+     independent measurement that 57.93 ohm is the right anchor.
+   * The realized-CELL Hammerstad-Jensen anchor 57.463 ohm reproduces
+     M2 essentially as well (max dev 4.88% vs 3.60%).
+     The sweep bounds the anchor to ~57-58 ohm and NO TIGHTER.
+   * What IS settled by it: the shipped declared-board anchor
+     47.895 ohm is 3.5-5.2x away from M2 at every bin, which is far
+     outside the ~57-58 ohm band. 'The algebra is correct' is NOT
+     established here and is not claimed.
+   * Predeclaration §10 item 6 stands: Zc_meas must not replace the
+     analytic anchor in shipped code. Nothing here proposes that.
+
+==============================================================================
+§2  openEMS COMPARATOR: THE MISSING KUROKAWA sqrt(Re Z_j/Re Z_i)  (VESSL 369367257643)
+==============================================================================
+  probe_fed_msl_openems_referee.py assembled S as bare uf_ref_i/uf_inc_j across two
+  ports with UNEQUAL reference impedances (lumped Feed_R pinned at 50.0; MSL port's own
+  measured ZL recorded per bin). That is the #460 class the mixed lane fixes internally.
+
+  --- comparator_dx50um (dx = 5e-05 m, COMPARATOR) ---
+      Re Z_msl (openEMS MSLPort.ZL, the independent witness): 60.663 .. 61.304 ohm
+      passivity_balance_verbatim reproduced from s11/s21 to 0.0e+00  (it IS |S11|^2+|S21|^2)
+      BEFORE:  |S21| 1.1072..1.1264  |S12| 0.8967..0.9014  |S21|/|S12| 1.2287..1.2562  balance 1.2261..1.2861
+      AFTER :  |S21| 1.0052..1.0201                        |S21|/|S12| 1.0101..1.0302  balance 1.0106..1.0579
+      per-bin trace (R5 — the full 48 bins, not a band):
+        f[GHz]     0.50    0.60    0.70    0.80    0.90    1.00    1.10    1.20    1.30    1.40    1.50    1.60    1.70    1.75    1.80    1.90    2.00    2.10    2.20    2.30    2.40    2.50    2.60    2.70    2.80    2.90    3.00    3.10    3.20    3.25    3.30    3.40    3.50    3.60    3.70    3.80    3.90    4.00    4.10    4.20    4.30    4.40    4.50    4.60    4.70    4.80    4.90    5.00
+        |S21n|   1.0052  1.0055  1.0059  1.0062  1.0065  1.0066  1.0068  1.0069  1.0069  1.0070  1.0070  1.0070  1.0069  1.0069  1.0069  1.0070  1.0071  1.0072  1.0074  1.0077  1.0080  1.0083  1.0087  1.0090  1.0094  1.0098  1.0102  1.0106  1.0110  1.0112  1.0114  1.0118  1.0122  1.0127  1.0131  1.0136  1.0140  1.0145  1.0150  1.0155  1.0160  1.0165  1.0171  1.0176  1.0182  1.0188  1.0194  1.0201
+        balance  1.0106  1.0113  1.0122  1.0131  1.0137  1.0142  1.0146  1.0151  1.0155  1.0159  1.0162  1.0164  1.0166  1.0168  1.0169  1.0173  1.0178  1.0184  1.0192  1.0200  1.0209  1.0220  1.0230  1.0241  1.0253  1.0265  1.0278  1.0291  1.0304  1.0311  1.0317  1.0331  1.0345  1.0359  1.0373  1.0388  1.0402  1.0417  1.0432  1.0447  1.0463  1.0478  1.0495  1.0511  1.0528  1.0545  1.0562  1.0579
+        drift    1.0127  1.0116  1.0107  1.0103  1.0101  1.0101  1.0101  1.0101  1.0102  1.0104  1.0107  1.0112  1.0117  1.0119  1.0121  1.0124  1.0127  1.0129  1.0131  1.0132  1.0134  1.0136  1.0138  1.0140  1.0143  1.0145  1.0149  1.0152  1.0157  1.0159  1.0162  1.0168  1.0174  1.0181  1.0187  1.0194  1.0202  1.0211  1.0220  1.0229  1.0238  1.0246  1.0254  1.0263  1.0272  1.0282  1.0292  1.0302
+      -> balance over 1.05 at 5 of 48 bins (f = 4.6, 4.7, 4.8, 4.9, 5.0 GHz)
+      -> |S21_renormalized| > 1 at 48 of 48 bins
+      -> residual 1.0101 .. 1.0302, minimum at 1.0 GHz, monotone above it: True
+
+  --- reported_only_dx80um (dx = 8e-05 m, REPORTED ONLY -- never the comparator (do_not_repeat)) ---
+      Re Z_msl (openEMS MSLPort.ZL, the independent witness): 33.190 .. 81.211 ohm
+      passivity_balance_verbatim reproduced from s11/s21 to 0.0e+00  (it IS |S11|^2+|S21|^2)
+      BEFORE:  |S21| 0.7422..1.0571  |S12| 0.9911..1.3409  |S21|/|S12| 0.5535..1.0666  balance 0.5513..1.1458
+      AFTER :  |S21| 0.8278..0.9110                        |S21|/|S12| 0.6535..0.8339  balance 0.6999..0.8303
+      per-bin trace (R5 — the full 48 bins, not a band):
+        f[GHz]     0.50    0.60    0.70    0.80    0.90    1.00    1.10    1.20    1.30    1.40    1.50    1.60    1.70    1.75    1.80    1.90    2.00    2.10    2.20    2.30    2.40    2.50    2.60    2.70    2.80    2.90    3.00    3.10    3.20    3.25    3.30    3.40    3.50    3.60    3.70    3.80    3.90    4.00    4.10    4.20    4.30    4.40    4.50    4.60    4.70    4.80    4.90    5.00
+        |S21n|   0.9110  0.8922  0.8787  0.8691  0.8624  0.8575  0.8538  0.8506  0.8477  0.8451  0.8428  0.8408  0.8391  0.8383  0.8375  0.8361  0.8348  0.8338  0.8329  0.8321  0.8314  0.8308  0.8303  0.8298  0.8295  0.8291  0.8289  0.8286  0.8284  0.8283  0.8282  0.8281  0.8280  0.8279  0.8278  0.8278  0.8278  0.8279  0.8279  0.8280  0.8281  0.8282  0.8284  0.8286  0.8288  0.8290  0.8292  0.8294
+        balance  0.8303  0.7966  0.7729  0.7564  0.7450  0.7370  0.7310  0.7260  0.7216  0.7176  0.7143  0.7114  0.7090  0.7079  0.7069  0.7051  0.7035  0.7023  0.7014  0.7008  0.7003  0.7000  0.6999  0.6999  0.7000  0.7003  0.7007  0.7010  0.7015  0.7017  0.7020  0.7027  0.7033  0.7040  0.7047  0.7054  0.7062  0.7071  0.7080  0.7088  0.7097  0.7106  0.7116  0.7126  0.7136  0.7145  0.7154  0.7164
+        drift    0.8339  0.7936  0.7669  0.7484  0.7343  0.7228  0.7134  0.7059  0.6997  0.6945  0.6901  0.6863  0.6831  0.6817  0.6803  0.6775  0.6749  0.6723  0.6698  0.6676  0.6655  0.6635  0.6617  0.6600  0.6586  0.6575  0.6565  0.6556  0.6549  0.6546  0.6543  0.6540  0.6537  0.6536  0.6535  0.6535  0.6535  0.6537  0.6539  0.6542  0.6544  0.6546  0.6548  0.6553  0.6557  0.6561  0.6564  0.6567
+      -> balance over 1.05 at 0 of 48 bins
+      -> |S21_renormalized| > 1 at 0 of 48 bins
+      -> residual 0.6535 .. 0.8339, minimum at 3.8 GHz, monotone above it: True
+
+  READING — this is a REPORT, not a gate:
+   * The Kurokawa factor is a REAL comparator bug and it is fixed (probe_fed_msl_openems_referee.py,
+     kurokawa_renormalize / --renormalize-json). It removes most of the reciprocity asymmetry.
+   * It does NOT restore passivity. On the comparator leg the balance is 1.0106-1.0579 —
+     still above 1.05 at 5 of 48 bins — and |S21| stays above 1 at ALL 48 bins.
+   * The residual DRIFTS with frequency (1.0101 near 1 GHz -> 1.0302 at 5 GHz, monotone above
+     the minimum). #498's 2026-08-03 comment records that exact signature as falsifying a
+     constant per-port impedance rescale: 'the required factor drifts 1.677->1.605 ... whatever
+     closes it needs a frequency-dependent term, not only a Kurokawa sqrt(Z) correction.'
+   * On the reported-only dx=80um leg the SAME correction drives |S21|/|S12| to 0.65-0.83,
+     i.e. it does not make that leg reciprocal either — a witness against 'normalization
+     explains everything'.
+   * VERDICT: normalization was ONE defect of the comparator. Fixing it EXPOSES a second one.
+     That second defect is the 2026-09-04 audit's own D1 branch, so the openEMS leg stays
+     CLOSED. No new VESSL slot is justified by this. Phase is untouched by a positive real
+     scale, so the ~1.29 mm de-embedding-length defect is also still open.
+
+==============================================================================
+§3  THE FLUX BRACKET, AND THE HYPOTHESIS THE BOX-WIDENING PLAN OMITTED
+==============================================================================
+  All numbers from the committed exact_f64 flux faces of VESSL 369367257597.
+  r0 = plane_msl(lw drive) / box_net(lw drive)
+  r1 = box_net(MSL drive)  / plane_msl(MSL drive)
+
+  f [GHz]              1.00       1.75       2.50       3.25       4.00
+  r0                0.97613    0.97784    0.97853    0.97883    0.97916
+  r1                1.02566    1.02486    1.02484    1.02513    1.02535
+  r1/r0             1.05074    1.04809    1.04733    1.04729    1.04718
+  |S22| @ Zc        0.07742    0.08444    0.09496    0.10885    0.12525
+  bracket @Zc      -0.04444   -0.04062   -0.03789   -0.03489   -0.03075
+  bracket @ship    -0.05032   -0.04775   -0.04699   -0.04674   -0.04596
+  bracket @|S|=0   -0.05074   -0.04809   -0.04733   -0.04729   -0.04718
+  NEGATIVE at every bin at EVERY anchor, including |S22| = 0: no real |S00| closes it.
+
+  (A) r1 > 1 IS NON-PHYSICAL ON ITS OWN — no box geometry needed to see it.
+      In the MSL drive the only source sits at x = 5.52 mm, EAST of the MSL reference
+      plane. Let R be everything west of that plane. The net inward flux across the plane
+      IS the total time-averaged dissipation in R (resistor + whatever CPML lies in R);
+      the net inward flux through the lw box IS the dissipation inside the box, and the
+      box (x 1.76-2.24, y 1.26-1.74, z 0-0.494 mm) is a SUBREGION of R. Dissipation in a
+      subregion cannot exceed dissipation in the region containing it, so r1 <= 1 with no
+      losslessness assumption at all. Measured: 1.02484 .. 1.02566 — a 2.57% violation.
+      Sign check on the plan's mechanism: a WIDER box captures MORE, so box_net grows on
+      both drives; r0 = plane/box falls, r1 = box/plane rises, and r1/r0 rises as the
+      square. Widening therefore makes r1 MORE non-physical and the bracket MORE negative.
+
+  (B) A BOX-INDEPENDENT THIRD INSTRUMENT. The run also committed two FULL-cross-section
+      x-planes at 1.44 mm and 2.56 mm (plane_mx / plane_px). They bound a slab containing
+      the entire lw port and share NO face with the 5-face box.
+      MSL drive, nested-region power budget. D(x<X) = net WESTWARD flux at X = the total
+      dissipation west of X (the only source is at x = 5.52 mm). It must be >= 0 and must
+      not DECREASE as X grows. Normalised to D(x<4.72 mm) = 1:
+        D(x<1.44)    -0.00974   -0.01066   -0.01140   -0.01157   -0.01139   <-- NEGATIVE: 1.16% of the scale
+        D(x<2.56)     1.00263    1.00212    1.00171    1.00150    1.00141   <-- EXCEEDS D(x<4.72) = 1
+        D(box)        1.02566    1.02486    1.02484    1.02513    1.02535   <-- the box, a SUBREGION, exceeds both
+      lw drive, same planes, source INSIDE the slab: eastward flux falls 2.3587e-28 ->
+      2.3540e-28 from 2.56 to 4.72 mm (-0.20%, physical) and box_net >= the sum of the
+      slab's two outflows. Every lw-drive budget is consistent; all three violations
+      above are on the MSL drive only.
+
+      box_net / (slab x-face budget), the tightest legitimate bound using both planes:
+        lw drive     1.01345    1.01262    1.01223    1.01210    1.01194
+        MSL drive    1.01312    1.01193    1.01158    1.01190    1.01238
+      The same factor on two independent drives, to 0.069%. On the MSL drive the box is a
+      SUBREGION of that slab, so this ratio MUST be <= 1 — it is a hard violation, the box
+      reading 1.312% high. On the lw drive the source is inside and the same excess is
+      degenerate with real y/z leakage, so it is not a violation there — only a match.
+      Mechanism available at zero compute: the box's +/-x faces and its +y face are
+      PIERCED BY PEC. The realized trace is y in [1.28, 1.76] mm while the box faces sit
+      at y = 1.26 / 1.74 mm, centred on the DECLARED y_c = 1.50 mm, not the realized 1.52 —
+      so one of the seven metal node rows is excluded asymmetrically and the face integrals
+      are sampled at a PEC edge. That is a CLOSURE defect of the 5-face surface, not a
+      width defect, and widening the faces does not remove it.
+
+  (C) REPLACE THE BOX WITH THE PLANE BUDGET AND THE BRACKET IS STILL NEGATIVE.
+      r0* = plane_msl(lw)/slab_out(lw); r1* = slab_in(MSL)/|plane_msl(MSL)|
+      r0*               0.98926    0.99017    0.99049    0.99068    0.99085
+      r1*               1.01238    1.01278    1.01311    1.01307    1.01281
+      r1*/r0*           1.02337    1.02284    1.02283    1.02261    1.02216
+      bracket* @Zc     -0.01723   -0.01554   -0.01361   -0.01049   -0.00613
+      That removes 51-53% of the log-excess in r1/r0 and the bracket is STILL negative
+      at all 5 bins, and r1* = 1.01311 is STILL > 1. So roughly half the anomaly is in the
+      box and roughly half is in the plane instruments themselves.
+
+  (D) WHAT BIAS MAGNITUDE WOULD BE NEEDED (the #838 family, asked and answered).
+      r1/r0 = P_box(msl)*P_box(lw) / (P_plane_msl(msl)*P_plane_msl(lw)), so a COMMON
+      multiplicative factor m on plane_msl (true = m x recorded) scales it by 1/m^2:
+        m >= 1.0220  (2.20%) makes the bracket positive at all 5 bins
+        m >= 1.0257  (2.57%) is independently required just to make r1 <= 1
+      The two thresholds agree to 0.37% — the single bias that removes the non-physical
+      gain in r1 also flips the bracket's sign, with NO box change at all.
+      Equivalently a common factor b on box_net: b <= 0.9785 flips the bracket, b <= 0.9750
+      makes r1 physical. After the box is replaced by the plane budget a residual
+      m* >= 1.0086 (0.86%) is still required.
+      HONEST CAVEAT ON #838: #838's measured ~3x over-read is in the MSL port's POWER-WAVE
+      normalization (_b_msl = (V0 - Z_hj*I)/(2*sqrt(Z_hj))), and its own six-face flux box
+      closed to -0.04/+0.06/+0.20%. plane_msl here is a POYNTING flux, not a power wave, so
+      #838's stated mechanism does not bias it directly. What is measured above is a
+      ~1.3% box-vs-plane and a ~1.2% plane-vs-plane POYNTING inconsistency. #838 remains
+      the nearest open precedent for 'a constant in a port normalization', not a proven cause.
+
+  (E) CONSEQUENCE FOR THE PROPOSED WIDER-BOX RUN: it must NOT be launched as designed.
+      Net flux through a CLOSED surface in a source-free lossless region is invariant to
+      widening it, which is exactly what a 2% two-box agreement gate asserts; and the
+      under-capture mechanism has the wrong sign for both (A) and (D). A box run is
+      justified only after someone names a mechanism by which a closed-surface flux moves
+      by the ~2.2% the bracket needs. None is named here.
+
+==============================================================================
+§4  rfx vs openEMS, SYMMETRIZED — REPORTED, NOT A VERDICT
+==============================================================================
+  f [GHz]                     1.00      1.75      2.50      3.25      4.00
+  rfx  sqrt(|S10||S01|)    0.96164   0.96084   0.95970   0.95850   0.95741
+  oe   sqrt(|S21||S12|)    1.00159   1.00101   1.00153   1.00324   1.00398
+  ratio rfx/openEMS        0.96012   0.95987   0.95824   0.95541   0.95362
+  The committed artifact's RAW comparison band is abs_s21_ratio [0.8082, 0.8195];
+  symmetrizing removes ~15 of those 19 points. That is a statement about the
+  COMPARATOR's asymmetry, not evidence that the two solvers agree.
+  §2 shows the openEMS leg is STILL non-passive after the normalization fix, so
+  predeclaration §7.4 and the lane's 'absolute |S| stays UNVALIDATED' sentence both
+  stand unchanged. No openEMS number is pinned (§10 item 7).
+
+=== Written to /Users/bk-squared/Documents/rfx-lanes/rfx-498/scripts/diagnostics/_mixed_anchor_reanalysis/anchor_reanalysis.json ===
+
+REPORT-ONLY. Nothing above is pinned, gated, or promoted. Predeclaration §10 items 1 and 11 in particular:
+no lw-diagonal value is pinned, and no branch is written up as 'vindicated'.

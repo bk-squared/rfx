@@ -622,6 +622,172 @@ def phase_self_consistency_deg(s21: np.ndarray, beta: np.ndarray,
     return np.degrees(dev)
 
 
+# ---------------------------------------------------------------------------
+# #498 COMPARATOR DEFECT 1 -- the S assembly was never power-normalized.
+#
+# ``run_stage2``'s legs form s11/s21/s22/s12 as BARE ``uf_ref_i / uf_inc_j``
+# ratios (see ``_run_stage2_leg``).  The two ports do NOT share a reference
+# impedance: the lumped probe is pinned at ``B_FEED_R_OHM = 50.0`` while the
+# MSL port's own measured ``ZL`` is 60.66-61.30 ohm on the dx = 50 um leg
+# (recorded verbatim as ``z0_msl_measured_ohm``).  A ratio of pseudo-waves
+# taken at unequal reference impedances is not an S-parameter; the power-wave
+# (Kurokawa) definition carries the sqrt(Re Z_j / Re Z_i) that rfx's own mixed
+# lane applies internally (rfx/sparams/_common.py:1701-1707, issue #460).
+#
+# This function is the fix.  It is PURE ARITHMETIC and is applied to the
+# already-committed Stage-2 artifact by ``--renormalize-json`` -- no openEMS
+# re-run is needed or permitted to read it.
+#
+# WHAT IT DOES NOT DO (measured on the committed artifact, 2026-09-15):
+#   * it does not restore passivity.  |S11|^2 + |S21n|^2 = 1.0106-1.0579 and
+#     is still above the 1.05 bar at 5 of 48 bins (4.6-5.0 GHz); |S21n| > 1
+#     at 48 of 48 bins (1.0052-1.0201).
+#   * the residual it leaves DRIFTS with frequency -- (|S21|/|S12|) divided
+#     by the predicted Re Z_msl / 50 reads 1.0127 at 0.5 GHz, floors at
+#     1.0101 near 1 GHz and then climbs monotonically to 1.0302 at 5.0 GHz.
+#     #498's own 2026-08-03 comment records that exact signature as
+#     falsifying a constant per-port impedance rescale ("the required factor
+#     drifts 1.677->1.605 ... whatever closes it needs a frequency-dependent
+#     term, not only a Kurokawa sqrt(Z) correction").
+#   * it does not touch phase.  A real positive scale cannot move the
+#     ~1.29 mm de-embedding-length defect, which stays open.
+# So: normalization was ONE defect of the comparator.  Fixing it exposes a
+# SECOND one, which is the 2026-09-04 audit's own D1 branch.  Nothing here
+# is a verdict on rfx.
+# ---------------------------------------------------------------------------
+KUROKAWA_RECORD = {
+    "issue": 460,
+    "rule": "S_ij_power = (uf_ref_i / uf_inc_j) * sqrt(Re Z_j / Re Z_i)",
+    "rule_source": "rfx/sparams/_common.py:1701-1707 (the mixed lane's own "
+                   "internal convention); Kurokawa 1965 power waves",
+    "z_ref_port1_source": "B_FEED_R_OHM -- the lumped probe's Feed_R, pinned "
+                          "at 50.0 by _build_stage2",
+    "z_ref_port2_source": "z0_msl_measured_ohm -- openEMS MSLPort.ZL, the "
+                          "leg's OWN recorded measurement (REPORTED, never "
+                          "a gate, never a reference: predeclaration S10.7)",
+    "applies_to": "magnitude only; arg(S) is unchanged by a positive real "
+                  "scale, so the ~1.29 mm de-embedding phase defect is "
+                  "untouched and stays open",
+    "verbatim_fields_are_never_overwritten": True,
+    "drift_is_the_post_fix_ratio": (
+        "For a 2-port, kurokawa_residual_drift is identically "
+        "reciprocity_ratio_renormalized -- the fix divides the raw "
+        "|S21|/|S12| by exactly Re Z_msl / Re Z_lumped. Both names are kept "
+        "because #498's 2026-08-03 comment speaks of the 'required factor' "
+        "drifting while the gate language speaks of a reciprocity ratio; "
+        "they are one number, reported once."),
+}
+
+
+def kurokawa_renormalize(*, s11, s21, s22, s12, z_port1, z_port2):
+    """Power-wave (Kurokawa) renormalization of a 2-port assembled as bare
+    ``uf_ref/uf_inc`` ratios at two UNEQUAL reference impedances.
+
+    Port 1 is the lumped probe (``z_port1``), port 2 the MSL port
+    (``z_port2``); both may be complex, only ``Re`` is used.  Returns a dict
+    of the renormalized entries plus the derived witnesses.  Identity when
+    ``Re z_port1 == Re z_port2`` -- that is the locked contract.
+    """
+    s11 = np.asarray(s11, dtype=np.complex128)
+    s21 = np.asarray(s21, dtype=np.complex128)
+    s22 = np.asarray(s22, dtype=np.complex128)
+    s12 = np.asarray(s12, dtype=np.complex128)
+    r1 = np.real(np.asarray(z_port1, dtype=np.complex128)) * np.ones_like(
+        np.real(s11))
+    r2 = np.real(np.asarray(z_port2, dtype=np.complex128)) * np.ones_like(
+        np.real(s11))
+    if np.any(r1 <= 0.0) or np.any(r2 <= 0.0):
+        raise ConfigError(
+            "kurokawa_renormalize: a reference impedance has Re <= 0 "
+            f"(min Re Z1={float(np.min(r1))!r}, min Re Z2={float(np.min(r2))!r})")
+    # sqrt(Re Z_j / Re Z_i) with i = row (out), j = column (in).
+    s21n = s21 * np.sqrt(r1 / r2)
+    s12n = s12 * np.sqrt(r2 / r1)
+    balance = np.abs(s11) ** 2 + np.abs(s21n) ** 2
+    ratio_raw = np.abs(s21) / np.abs(s12)
+    ratio_new = np.abs(s21n) / np.abs(s12n)
+    return {
+        "s11": s11,                      # diagonals are untouched by D S D^-1
+        "s22": s22,
+        "s21": s21n,
+        "s12": s12n,
+        "z_ref_port1_ohm": r1,
+        "z_ref_port2_ohm": r2,
+        "predicted_asymmetry": r2 / r1,
+        "reciprocity_ratio_raw": ratio_raw,
+        "reciprocity_ratio_renormalized": ratio_new,
+        "kurokawa_residual_drift": ratio_raw / (r2 / r1),
+        "s21_geometric_mean_raw": np.sqrt(np.abs(s21) * np.abs(s12)),
+        "passivity_balance_renormalized": balance,
+        "passivity_balance_renormalized_max": float(np.max(balance)),
+        "n_bins_balance_over_tol": int(
+            np.count_nonzero(balance > 1.0 + B_PASSIVITY_TOL)),
+        "n_bins_abs_s21_over_unity": int(np.count_nonzero(np.abs(s21n) > 1.0)),
+        "n_bins": int(np.size(balance)),
+    }
+
+
+def renormalized_leg_record(leg: dict) -> dict:
+    """Apply :func:`kurokawa_renormalize` to one committed Stage-2 leg dict.
+
+    JSON-serializable, report-only, and ADDITIVE: every verbatim field of the
+    committed artifact stays exactly as it was recorded, including
+    ``passivity_balance_verbatim`` and ``passivity_passed``, which remain the
+    numbers of record for VESSL 369367257643.
+    """
+    def _c(key):
+        return np.asarray([complex(r, i) for r, i in leg[key]],
+                          dtype=np.complex128)
+
+    z2 = _c("z0_msl_measured_ohm")
+    out = kurokawa_renormalize(
+        s11=_c("s11"), s21=_c("s21"), s22=_c("s22"), s12=_c("s12"),
+        z_port1=B_FEED_R_OHM, z_port2=z2)
+    bal = out["passivity_balance_renormalized"]
+    drift = out["kurokawa_residual_drift"]
+    return {
+        "label": leg.get("label"),
+        "dx_m": leg.get("dx_m"),
+        "role": leg.get("role"),
+        "freqs_hz": list(leg["freqs_hz"]),
+        "record": KUROKAWA_RECORD,
+        "re_z_msl_ohm": out["z_ref_port2_ohm"].tolist(),
+        "re_z_lumped_ohm": float(B_FEED_R_OHM),
+        "abs_s21_raw": np.abs(_c("s21")).tolist(),
+        "abs_s12_raw": np.abs(_c("s12")).tolist(),
+        "abs_s21_renormalized": np.abs(out["s21"]).tolist(),
+        "abs_s12_renormalized": np.abs(out["s12"]).tolist(),
+        "reciprocity_ratio_raw": out["reciprocity_ratio_raw"].tolist(),
+        "reciprocity_ratio_renormalized":
+            out["reciprocity_ratio_renormalized"].tolist(),
+        "kurokawa_residual_drift": drift.tolist(),
+        "kurokawa_residual_drift_band": [float(np.min(drift)),
+                                         float(np.max(drift))],
+        "kurokawa_residual_drift_is_flat":
+            bool((float(np.max(drift)) - float(np.min(drift))) <= 0.02),
+        "s21_geometric_mean_raw": out["s21_geometric_mean_raw"].tolist(),
+        "passivity_balance_verbatim": list(leg["passivity_balance_verbatim"]),
+        "passivity_balance_renormalized": bal.tolist(),
+        "passivity_balance_renormalized_band": [float(np.min(bal)),
+                                                float(np.max(bal))],
+        "passivity_tol": B_PASSIVITY_TOL,
+        # The SAME 1.05 bar the committed gate uses, applied to the fixed
+        # number.  It still fails -- reported, not hidden.
+        "passivity_passed_renormalized":
+            bool(out["passivity_balance_renormalized_max"]
+                 <= 1.0 + B_PASSIVITY_TOL),
+        "n_bins": out["n_bins"],
+        "n_bins_balance_over_tol": out["n_bins_balance_over_tol"],
+        "n_bins_abs_s21_over_unity": out["n_bins_abs_s21_over_unity"],
+        "verdict": (
+            "NORMALIZATION WAS ONE DEFECT; A SECOND REMAINS. The Kurokawa "
+            "factor removes most of the reciprocity asymmetry but leaves "
+            "|S21| > 1 and a frequency-DRIFTING residual, which is the "
+            "signature #498's 2026-08-03 comment records as falsifying a "
+            "constant per-port rescale. NOT a verdict on rfx vs openEMS."),
+    }
+
+
 # A mesh line pair closer together than this fraction of dx is NOT a mesh
 # feature -- it is one line that floating-point round-off split in two.
 # ``np.arange`` reproduces a coordinate that lies exactly on its own grid
@@ -1898,7 +2064,7 @@ def _run_stage2_leg(*, dx_m: float, sim_root: str, threads: int, nrts: int,
     balance = np.abs(s11) ** 2 + np.abs(s21) ** 2
     passivity_max = float(np.max(balance))
 
-    return {
+    rec = {
         "label": label,
         "dx_m": dx_m,
         "role": ("COMPARATOR" if abs(dx_m - B_DX_COMPARATOR_M) < 1e-12
@@ -1929,6 +2095,12 @@ def _run_stage2_leg(*, dx_m: float, sim_root: str, threads: int, nrts: int,
         "mesh": {k: v for k, v in plan.items() if not k.endswith("_lines_m")},
         "elapsed_s": round(elapsed, 1),
     }
+    # #498 comparator defect 1: the entries above are bare uf_ref/uf_inc
+    # ratios at two UNEQUAL reference impedances.  The power-wave fix is
+    # recorded ALONGSIDE them (never over them), so this leg's verbatim
+    # numbers stay comparable with VESSL 369367257643's artifact.
+    rec["kurokawa_renormalization"] = renormalized_leg_record(rec)
+    return rec
 
 
 def run_stage2(*, stage1: dict, sim_root: str, threads: int, nrts: int,
@@ -2065,6 +2237,83 @@ def print_stage_plan(*, stage: str, rfx_json: str | None,
 
 
 # ---------------------------------------------------------------------------
+def run_renormalize_offline(artifact_path: str, *,
+                            out_path: str | None = None) -> int:
+    """Apply the #460 Kurokawa fix to a committed Stage-2 artifact, offline.
+
+    Reads JSON, writes JSON, imports no solver.  R5: the FULL per-bin trace
+    is printed, together with the independent witness (openEMS's own
+    ``z0_msl_measured_ohm``), before any pass/fail word appears.
+    """
+    src_path = Path(artifact_path)
+    try:
+        doc = json.loads(src_path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"CONFIG ERROR: --renormalize-json unreadable ({exc})",
+              file=sys.stderr)
+        return 3
+    stage2 = doc.get("stage2")
+    if not isinstance(stage2, dict) or not isinstance(stage2.get("legs"), dict):
+        print("CONFIG ERROR: no stage2.legs in that artifact -- this mode "
+              "only reads a Stage-2 referee artifact.", file=sys.stderr)
+        return 3
+
+    out = {
+        "what_this_is": (
+            "OFFLINE, ZERO-COMPUTE re-derivation of the #498 openEMS "
+            "comparator's S with the #460 Kurokawa power-wave factor "
+            "applied. No openEMS ran. REPORT-ONLY: it pins nothing, it "
+            "moves no gate, and it is NOT a verdict on rfx vs openEMS."),
+        "source_artifact": str(src_path),
+        "record": KUROKAWA_RECORD,
+        "legs": {},
+    }
+    for name, leg in stage2["legs"].items():
+        if not isinstance(leg, dict) or "s21" not in leg:
+            continue
+        r = renormalized_leg_record(leg)
+        out["legs"][name] = r
+        f_ghz = [f / 1e9 for f in r["freqs_hz"]]
+        print(f"\n=== {name}  (dx = {r['dx_m']}, {r['role']}) ===")
+        print("  Re Z_lumped = %.4f ohm (pinned Feed_R); Re Z_msl = "
+              "%.4f .. %.4f ohm (openEMS MSLPort.ZL -- the independent "
+              "witness)" % (r["re_z_lumped_ohm"], min(r["re_z_msl_ohm"]),
+                            max(r["re_z_msl_ohm"])))
+        print("   f[GHz]   ReZmsl   |S21|    |S12|   |S21n|   |S12n|"
+              "   ratio_raw   ratio_new(=drift)   bal_raw  bal_renorm")
+        for k in range(len(f_ghz)):
+            print("  %7.3f %8.3f %8.5f %8.5f %8.5f %8.5f %10.5f %14.5f"
+                  " %13.5f %11.5f" % (
+                      f_ghz[k], r["re_z_msl_ohm"][k], r["abs_s21_raw"][k],
+                      r["abs_s12_raw"][k], r["abs_s21_renormalized"][k],
+                      r["abs_s12_renormalized"][k],
+                      r["reciprocity_ratio_raw"][k],
+                      r["reciprocity_ratio_renormalized"][k],
+                      r["passivity_balance_verbatim"][k],
+                      r["passivity_balance_renormalized"][k]))
+        lo, hi = r["passivity_balance_renormalized_band"]
+        dlo, dhi = r["kurokawa_residual_drift_band"]
+        print("  -> balance after the fix: %.4f .. %.4f  "
+              "(over the %.2f bar at %d of %d bins)"
+              % (lo, hi, 1.0 + r["passivity_tol"],
+                 r["n_bins_balance_over_tol"], r["n_bins"]))
+        print("  -> |S21n| > 1 at %d of %d bins"
+              % (r["n_bins_abs_s21_over_unity"], r["n_bins"]))
+        print("  -> residual drift %.4f .. %.4f (flat? %s) -- a FLAT residual "
+              "would mean normalization was the whole story"
+              % (dlo, dhi, r["kurokawa_residual_drift_is_flat"]))
+        print("  -> " + r["verdict"])
+
+    if out_path:
+        dest = Path(out_path)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(json.dumps(out, indent=2, default=str))
+        print(f"\n=== Written to {dest} ===")
+    print("\nNo openEMS was imported, no geometry was built, no VESSL slot "
+          "was used. The committed artifact is unmodified.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -2092,7 +2341,16 @@ def main(argv: list[str] | None = None) -> int:
                         "inferred from this file's location)")
     p.add_argument("--no-dx80-leg", action="store_true",
                    help="skip the reported-only dx=80 um leg")
+    p.add_argument("--renormalize-json", default=None, metavar="PATH",
+                   help="OFFLINE, zero-compute: apply the #460 Kurokawa "
+                        "power-wave renormalization to an ALREADY-COMMITTED "
+                        "Stage-2 artifact and print/write the per-bin trace. "
+                        "openEMS is never imported and no geometry is built.")
     args = p.parse_args(argv)
+
+    if args.renormalize_json:
+        return run_renormalize_offline(args.renormalize_json,
+                                       out_path=args.output)
 
     repo_root = Path(args.repo_root) if args.repo_root else Path(
         __file__).resolve().parents[2]
