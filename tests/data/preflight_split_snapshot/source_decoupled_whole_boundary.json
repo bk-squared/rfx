@@ -1,0 +1,16 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "source_decoupled",
+        "loc": null,
+        "message": "Source/port at (0.0, 0.0075, 0.0075) (component=ez) sits on the PEC x_lo plane and drives a tangential E, the component a perfect conductor holds at zero. What happens next DEPENDS ON THE LANE (issue #1075): the distributed lanes (run(devices=...), forward(distributed=True)) apply the PEC face AFTER injection, so the source is discarded and the probes read exactly zero; the single-device lane applies it BEFORE injection, so the source is NOT discarded and instead drives a component the mirror should force to zero, which makes the result numerically inconsistent rather than silent. Use a normal E source at this face, or offset by one cell (1 mm) off the plane.",
+        "severity": "warning",
+        "source": "_validate_cfg_source_on_reflector_plane"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 1,
+    "ok": true
+  }
+}

@@ -93,7 +93,7 @@ report-text change and should be re-blessed as one, not normalised here.
 
 Coverage, measured -- and what it does NOT cover
 ------------------------------------------------
-66 fixtures, witnessing 63 of the 74 literal ``code=`` slugs in
+67 fixtures, witnessing 63 of the 74 literal ``code=`` slugs in
 ``rfx/api/_preflight.py`` and ``rfx/preflight/`` plus the dynamic ``uncoded``
 and ``sparam_routing_msl`` paths. Stated because the split-inventory that
 seeded this lock projected "~56 of 74" for its 12-fixture set; the measured
@@ -119,6 +119,19 @@ Issue #1024 added the 66th, ``waveguide_refplane_in_slab``, and it carries
 unwitnessABLE. It was: the advisory's only reachable emission site read the
 wrong attribute off the geometry wrapper and swallowed the ``AttributeError``,
 so no fixture could have made it speak. See the paragraph on it further down.
+
+Issue #1075 added the 67th, ``source_decoupled_whole_boundary``, and it
+carries NO new code -- the count of witnessed slugs stays at 63. It is a
+second fixture on ``source_decoupled``, because the thing that was untested
+was not the advisory's text but the SET OF FACES it walks: the 66-fixture
+corpus reached that advisory only through a per-face ``BoundarySpec``, and
+the scalar ``boundary="pec"`` (the commonest PEC wall there is) walked an
+empty set and emitted nothing. Extending the face set left all 66 committed
+snapshots byte-identical, which is the measurement that says no existing
+fixture stood on a whole-boundary PEC face -- and is exactly why a new one
+was needed. The message text of ``source_decoupled`` itself was re-blessed
+in the same change (it now states the per-lane behaviour #1075 measured);
+that is a report-text re-bless of the kind this docstring describes above.
 
 The 11 unwitnessed codes left are the honest hole, and every one of them
 belongs to a family this lock has already discharged or to a body no builder
@@ -1734,6 +1747,35 @@ def _source_decoupled_sim():
     return sim
 
 
+def _source_decoupled_whole_boundary_sim():
+    """A tangential-E source on the x_lo wall of a ``boundary="pec"`` box.
+
+    CONSTRUCTED, issue #1075. The sibling above asks for its PEC wall with a
+    per-face ``BoundarySpec``, which is one of the two things that populate
+    ``Simulation._pec_faces``; this fixture asks for the SAME physical wall
+    the commonest way, the scalar ``boundary="pec"``, which populates nothing
+    and used to make ``_validate_cfg_source_on_reflector_plane`` skip its
+    whole loop. Measured on the pre-fix tree
+    (``scripts/diagnostics/issue1075_source_on_face.py``, arm A): this exact
+    placement rendered "All checks passed". ``ez`` on the ``x_lo`` plane is
+    tangential, so this is the same arm of the four-way component rule as the
+    sibling -- what the fixture witnesses is the FACE SET, not the rule, and
+    the pair is what keeps the two spellings of one wall rendering alike.
+
+    ``amplitude_kind="field"`` is explicit only to keep the #571
+    ``DeprecationWarning`` out of the build; it does not reach the report.
+    """
+    from rfx import Simulation
+
+    sim = Simulation(
+        freq_max=10e9, domain=(0.02, 0.015, 0.015), dx=1e-3,
+        boundary="pec", cpml_layers=0,
+    )
+    sim.add_source((0.0, 0.0075, 0.0075), component="ez",
+                   amplitude_kind="field")
+    return sim
+
+
 def _ntff_absorber_overlap_sim():
     """An NTFF box whose lo corner is 5 mm outside the domain.
 
@@ -2051,6 +2093,17 @@ _FIXTURES = (
     # is the text witness that the code now emits, and the FIRST committed
     # rendering of that advisory's message.
     ("waveguide_refplane_in_slab", _waveguide_refplane_in_slab_sim, {}, None),
+    # -- 59. issue #1075 ----------------------------------------------------
+    # Also not a leg gap-closer: source_decoupled was already witnessed, by
+    # the BoundarySpec fixture above. What was NOT witnessed is that the
+    # advisory fires at all on the scalar boundary="pec" -- it did not, and
+    # the corpus could not have shown that, because no fixture in it put a
+    # source on a whole-boundary PEC face (measured: extending the face set
+    # alone left all 66 committed snapshots byte-identical). This entry is
+    # the standing witness that the two spellings of one PEC wall now render
+    # the same advisory.
+    ("source_decoupled_whole_boundary",
+     _source_decoupled_whole_boundary_sim, {}, None),
 )
 
 _IDS = [fid for fid, _, _, _ in _FIXTURES]
