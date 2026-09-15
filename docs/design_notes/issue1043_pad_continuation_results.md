@@ -249,6 +249,32 @@ says both cv01 numbers stay facet-dominated until stage B. Consistent with both;
 contradicts neither. `R2-attempts=1`. `falsifier=section 8.4 re-run on the
 committed cv03 geometry` — 0.0296 at 20 layers, 0.0020 at 60, −138.3 dB.
 
+## 8a. A FOURTH site, found during this change and deliberately not changed
+
+`#1043`'s table names three sites. There is a fourth:
+**`rfx/sparams/waveguide.py:642-697`**, the waveguide S-parameter lane, which
+builds its own `shape_eps_pairs` from `self._geometry` for both the Stage-2 and
+the Stage-1 branch under a comment that says "Mirrors
+rfx/runners/uniform.py". It is the same defect class — a rebuilt update
+permittivity with no pad step — and after this change it is the one place where
+that mirror no longer holds.
+
+It is left alone here, and that is a decision rather than an oversight:
+
+* the lane is v1.8 **chain-closed**, with 185 verdicts replayed against a
+  frozen artifact, so a change there moves a closed family's numbers and wants
+  its own pre-declaration and its own re-measurement, not a ride on this one;
+* "refactoring and measurement changes do not travel together" (#928) cuts the
+  same way;
+* the reference run passes `dielectric_shapes=[]`, so only the device run can
+  carry a facet at all, and whether any committed waveguide fixture has a
+  dielectric reaching a padded face is not established here — it was found by
+  grep, not by measurement.
+
+So: **unmeasured, unfixed, named.** A waveguide fixture with a dielectric
+touching a CPML port face is solved with vacuum in that pad today, exactly as
+cv01 and cv03 were.
+
 ## 9. What this does not close
 
 * **cv03's band-mean `T` at 0.968.** The second effect is unisolated and this
