@@ -164,15 +164,23 @@ N_STEPS = 300
 _TRACE_CACHE: dict = {}
 
 
-def _build(boundary, body_x):
-    """The fixture. ``body_x=None`` deletes the conductor."""
+def _build(boundary, body_x, *, nu=False):
+    """The fixture. ``body_x=None`` deletes the conductor.
+
+    ``nu=True`` adds a UNIFORM-VALUED ``dz_profile``, which is the same
+    lattice through a different code path: it flips ``run_distributed``'s
+    ``is_nu`` branch, so the run assembles through ``_assemble_materials_nu``
+    and steps through the NU kernels. The PEC-mask stage is outside that
+    dispatch and runs on both, so the branch needs a witness of its own.
+    """
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         sim = Simulation(
             freq_max=15e9,
             domain=(NX_CELLS * DX, NYZ_CELLS * DX, NYZ_CELLS * DX),
             dx=DX, boundary=boundary,
-            cpml_layers=6 if boundary == "cpml" else 0)
+            cpml_layers=6 if boundary == "cpml" else 0,
+            **({"dz_profile": np.full(NYZ_CELLS, DX)} if nu else {}))
         if body_x is not None:
             sim.add(Box((body_x[0], BODY_YZ[0], BODY_YZ[0]),
                         (body_x[1], BODY_YZ[1], BODY_YZ[1])),
@@ -183,9 +191,9 @@ def _build(boundary, body_x):
     return sim
 
 
-def _run(boundary, body_x, *, distributed, drop_stage=False):
+def _run(boundary, body_x, *, distributed, drop_stage=False, nu=False):
     """One trace. Cached: several tests share the same single-device run."""
-    key = (boundary, body_x, distributed, drop_stage)
+    key = (boundary, body_x, distributed, drop_stage, nu)
     if key in _TRACE_CACHE:
         return _TRACE_CACHE[key]
 
@@ -197,7 +205,8 @@ def _run(boundary, body_x, *, distributed, drop_stage=False):
             warnings.simplefilter("ignore")
             kw = dict(devices=jax.devices()[:2]) if distributed else {}
             ts = np.asarray(
-                _build(boundary, body_x).run(n_steps=N_STEPS, **kw).time_series)
+                _build(boundary, body_x, nu=nu).run(
+                    n_steps=N_STEPS, **kw).time_series)
     finally:
         _v2.apply_pec_mask_shmap = saved_stage
 
@@ -205,15 +214,15 @@ def _run(boundary, body_x, *, distributed, drop_stage=False):
     return ts
 
 
-def _rel(boundary, body_x, *, drop_stage=False):
+def _rel(boundary, body_x, *, drop_stage=False, nu=False):
     """max|multi - single| / peak(|single|), per probe.
 
     The distributed run goes FIRST: when this lane refuses a model it must do
     so before the test pays for a single-device reference it will not use.
     """
     ts_multi = _run(boundary, body_x, distributed=True,
-                    drop_stage=drop_stage)
-    ts_single = _run(boundary, body_x, distributed=False)
+                    drop_stage=drop_stage, nu=nu)
+    ts_single = _run(boundary, body_x, distributed=False, nu=nu)
     assert ts_multi.shape == ts_single.shape == (N_STEPS, 2), (
         f"shapes: multi {ts_multi.shape}, single {ts_single.shape}")
     peaks = np.max(np.abs(ts_single), axis=0)
@@ -280,6 +289,31 @@ def test_a_declared_pec_body_matches_the_single_device_lane(boundary, body_x):
         f"boundary={boundary}, body {body_x}: relative error moved from the "
         f"recorded {recorded} to {rel}. Still under the gate, but the gate's "
         "derivation is stale; re-measure it rather than editing this bound.")
+
+
+def test_the_nu_branch_realizes_the_body_too():
+    """``run_distributed``'s ``is_nu`` dispatch, which leg 4 also opened.
+
+    The PEC-mask stage sits OUTSIDE that dispatch -- one call site per step
+    body, guarded only on ``sharded_pec_mask is not None`` -- so both branches
+    apply it, and the narrowed refusal admits a declared volume on both. A
+    uniform-valued ``dz_profile`` makes this the same lattice reached through
+    ``_assemble_materials_nu`` and the NU kernels, so the classification must
+    agree even though the steppers differ numerically.
+
+    One case, not the full matrix: the seam-face body, ``boundary="pec"``
+    (v2 refuses NU + CPML separately). Measured 2026-09-15: 6.851e-06 /
+    3.213e-05 with the body against a 4.282e-06 / 6.163e-05 no-body NU lane
+    floor -- the same envelope as the uniform rows above, under the same gate.
+    """
+    rel = _rel("pec", SEAM_FACE_BODY_X, nu=True)
+    assert np.all(rel < GATE), (
+        f"the NU branch of the shard_map lane deviates from the NU "
+        f"single-device lane by {rel}, gate {GATE:.0e}")
+    floor = _rel("pec", None, nu=True)
+    assert np.all(floor < GATE / 10), (
+        f"the NU no-body lane floor is {floor}, within a decade of the gate "
+        f"{GATE:.0e}. Re-derive the gate rather than raising it.")
 
 
 @pytest.mark.parametrize("body_x", _BODIES)
