@@ -1,0 +1,28 @@
+{
+  "_why": "Frozen collection for the weekly two-solver crossval lane (#717 item 2). The lane's closing condition is a green scheduled run that COLLECTS the four gpu-marked crossval files, and a count alone cannot say that: with no solver present all 13 external legs importorskip in under a second and a count-based gate passes on 18 skips. So the gate is this exact node set, plus skipped==0, plus a per-leg duration floor. Regenerate with tests/contracts/test_crossval_solver_lane_contract.py, which fails if collection and this file disagree.",
+  "_collected_at": "541f703f",
+  "external": [
+    "tests/crossval/test_crossval_comprehensive.py::TestPECCavity::test_rfx_vs_meep",
+    "tests/crossval/test_crossval_comprehensive.py::TestPECCavity::test_rfx_vs_openems",
+    "tests/crossval/test_crossval_comprehensive.py::TestDielectricCavity2D::test_rfx_vs_meep[FR4]",
+    "tests/crossval/test_crossval_comprehensive.py::TestDielectricCavity2D::test_rfx_vs_meep[Rogers]",
+    "tests/crossval/test_crossval_comprehensive.py::TestDielectricCavity2D::test_rfx_vs_meep[PTFE]",
+    "tests/crossval/test_crossval_comprehensive.py::TestDielectricCavity2D::test_rfx_vs_meep[Alumina]",
+    "tests/crossval/test_crossval_comprehensive.py::TestLossyDecay::test_rfx_vs_meep_decay",
+    "tests/crossval/test_meep_crossval.py::test_rfx_vs_meep_cavity",
+    "tests/crossval/test_meep_crossval.py::test_rfx_vs_meep_dielectric_loaded",
+    "tests/crossval/test_meep_crossval_dielectric_cavity.py::test_rfx_vs_meep_dielectric_cavity[FR4]",
+    "tests/crossval/test_meep_crossval_dielectric_cavity.py::test_rfx_vs_meep_dielectric_cavity[Rogers]",
+    "tests/crossval/test_meep_crossval_dielectric_cavity.py::test_rfx_vs_meep_dielectric_cavity[GPS]",
+    "tests/crossval/test_openems_crossval.py::test_rfx_vs_openems_cavity"
+  ],
+  "rfx_only": [
+    "tests/crossval/test_crossval_comprehensive.py::TestPECCavity::test_rfx_vs_analytical",
+    "tests/crossval/test_crossval_comprehensive.py::TestWaveguideCutoff::test_rfx_waveguide_cutoff",
+    "tests/crossval/test_crossval_comprehensive.py::TestLumpedPortCavity::test_rfx_lumped_port_s11",
+    "tests/crossval/test_crossval_comprehensive.py::TestLumpedPortCavity::test_rfx_lumped_port_resonance_via_probe",
+    "tests/crossval/test_meep_crossval.py::test_apply_pec_is_still_the_domain_face_surface_these_loops_use"
+  ],
+  "external_duration_floor_s": 1.0,
+  "_duration_floor_provenance": "Measured, not inferred from wall time. On a solver-less box the 13 external legs importorskip and junit records their time attribute as 0.000-0.001 s each (dumped at 541f703f; testsuite attrs skipped=13 tests=18 time=31.120). The floor at 1.0 s therefore sits ~1000x above every skip and far below any real solver run, so an external leg above it is positive evidence the solver executed. Note the floor is applied ONLY to the external legs: the rfx-only leg test_apply_pec_is_still_the_domain_face_surface_these_loops_use legitimately passes in 0.000 s."
+}
