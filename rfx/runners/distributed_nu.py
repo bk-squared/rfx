@@ -48,6 +48,7 @@ from rfx.boundaries.pec import (
 )
 from rfx.runners._distributed_common import (
     apply_pec_face_shmap,
+    apply_pmc_face_shmap,
     cpml_coeff_e_vacuum,
     cpml_coeff_h_vacuum,
     exchange_component_shmap,
@@ -654,75 +655,12 @@ def _exchange_e_ghosts_nu(state: FDTDState, mesh, n_devices: int) -> FDTDState:
 _apply_pec_face_nu_shmap = apply_pec_face_shmap
 
 
-def _apply_pmc_face_nu_shmap(state: FDTDState, mesh, n_devices: int,
-                             nx_local_with_ghost: int,
-                             pmc_faces: frozenset,
-                             pad_x: int = 0) -> FDTDState:
-    """Apply PMC (``H_tan = 0``) on physical domain faces using shard_map.
-
-    Electromagnetic dual of :func:`_apply_pec_face_nu_shmap`: PEC zeroes
-    tangential E, PMC zeroes tangential H. Hook point is the H-half of
-    the scan body (before the H ghost exchange) so the zero propagates
-    to neighbour ranks via the exchange — matching single-device
-    ordering at ``rfx/simulation.py:699-705``
-    (``apply_cpml_h`` -> ``apply_pmc_faces``).
-
-    Y- and Z-face PMC is local to every rank; X-face PMC is rank-
-    conditional (only rank 0 zeroes x_lo, only rank N-1 zeroes x_hi),
-    and acts on the **first real cell** (``ghost``) / **last real
-    cell** (``nx_local_with_ghost - 1 - ghost - pad_x``) — NOT the seam
-    ghost, and NOT the alignment-pad cells (#622, same class as the PEC
-    face fix).
-    """
-    if not pmc_faces:
-        return state
-
-    @partial(
-        shard_map,
-        mesh=mesh,
-        in_specs=(P("x"), P("x"), P("x")),
-        out_specs=(P("x"), P("x"), P("x")),
-        check_rep=False,
-    )
-    def _pmc(hx, hy, hz):
-        ghost = 1
-
-        # Yee convention: _hi PMC acts on index -2 (0.5·dx INSIDE the
-        # wall), not -1 (ghost outside). See rfx/boundaries/pmc.py.
-        if "y_lo" in pmc_faces:
-            hx = hx.at[:, 0, :].set(0.0)
-            hz = hz.at[:, 0, :].set(0.0)
-        if "y_hi" in pmc_faces:
-            hx = hx.at[:, -2, :].set(0.0)
-            hz = hz.at[:, -2, :].set(0.0)
-        if "z_lo" in pmc_faces:
-            hx = hx.at[:, :, 0].set(0.0)
-            hy = hy.at[:, :, 0].set(0.0)
-        if "z_hi" in pmc_faces:
-            hx = hx.at[:, :, -2].set(0.0)
-            hy = hy.at[:, :, -2].set(0.0)
-
-        device_idx = lax.axis_index("x")
-        is_first = (device_idx == 0)
-        is_last = (device_idx == n_devices - 1)
-        last_real = nx_local_with_ghost - 1 - ghost - pad_x
-        last_inside = last_real - 1
-
-        if "x_lo" in pmc_faces:
-            hy_new = jnp.where(is_first, 0.0, hy[ghost, :, :])
-            hz_new = jnp.where(is_first, 0.0, hz[ghost, :, :])
-            hy = hy.at[ghost, :, :].set(hy_new)
-            hz = hz.at[ghost, :, :].set(hz_new)
-        if "x_hi" in pmc_faces:
-            hy_new = jnp.where(is_last, 0.0, hy[last_inside, :, :])
-            hz_new = jnp.where(is_last, 0.0, hz[last_inside, :, :])
-            hy = hy.at[last_inside, :, :].set(hy_new)
-            hz = hz.at[last_inside, :, :].set(hz_new)
-
-        return hx, hy, hz
-
-    hx, hy, hz = _pmc(state.hx, state.hy, state.hz)
-    return state._replace(hx=hx, hy=hy, hz=hz)
+# #1038 leg 3. ``_apply_pmc_face_nu_shmap``'s body now lives as
+# ``apply_pmc_face_shmap`` in ``_distributed_common.py``; once the slab-length
+# parameter was spelled the same on both runners the two kernels were byte
+# identical. Kept as a module-local alias so the existing call sites are
+# unchanged.
+_apply_pmc_face_nu_shmap = apply_pmc_face_shmap
 
 
 def _apply_pec_mask_nu_shmap(state: FDTDState, sharded_pec_mask, mesh,

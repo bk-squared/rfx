@@ -41,6 +41,7 @@ __all__ = [
     "zeros_psi_stacked",
     "exchange_component_shmap",
     "apply_pec_face_shmap",
+    "apply_pmc_face_shmap",
     "shard_stacked",
     "shard_stacked_poles",
     "shard_stacked_psi",
@@ -448,6 +449,106 @@ def apply_pec_face_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
 
     ex, ey, ez = _pec(state.ex, state.ey, state.ez)
     return state._replace(ex=ex, ey=ey, ez=ez)
+
+
+def apply_pmc_face_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
+                         nx_local_with_ghost: int,
+                         pmc_faces: frozenset, pad_x: int = 0) -> FDTDState:
+    """Apply PMC (``H_tangential = 0``) on the physical domain faces under
+    ``shard_map``.
+
+    Electromagnetic dual of :func:`apply_pec_face_shmap`: PEC zeroes
+    tangential E, PMC zeroes tangential H. Y- and Z-face PMC is local to
+    every rank; X-face PMC is rank-conditional (only rank 0 zeroes
+    x_lo, only rank N-1 zeroes x_hi).
+
+    Yee convention: a ``_hi`` face acts on index ``-2`` (half a cell
+    INSIDE the wall), not ``-1`` (the ghost outside) -- see
+    ``rfx/boundaries/pmc.py``. On the x axis that is ``last_inside``,
+    one cell in from the last real cell
+    ``nx_local_with_ghost - 1 - ghost - pad_x``; the faces never act on
+    a seam ghost, nor on the alignment-pad cells when ``pad_x > 0``
+    (#622, same class as the PEC face fix).
+
+    ``pmc_faces`` is a Python ``frozenset`` read at trace time, so each
+    face's ``if`` is resolved while the kernel is staged out, not at
+    run time. An empty set short-circuits before the kernel is built.
+
+    #1038 leg 3. ``distributed_v2.py::_apply_pmc_shmap`` and
+    ``distributed_nu.py::_apply_pmc_face_nu_shmap`` were the SAME kernel
+    with one token of difference, each runner's own spelling of the
+    slab length; after the rename in this leg's first commit the two
+    inner bodies hashed byte-identical
+    (``c6baaf31de52299c39c564403a6fda4fbebdaea26014bbceb7f12d30983f0b12``).
+
+    **This function does not encode a hook point, and the two runners
+    disagree about one.** ``distributed_v2`` calls it AFTER the H ghost
+    exchange (``step_fn_cpml`` 3b / ``step_fn_pec`` 2b);
+    ``distributed_nu`` calls it BEFORE the H ghost exchange (step 2b),
+    so that the zero propagates to neighbour ranks through the
+    exchange. Both cite the same OQ9 directive for the H-half placement
+    and reach opposite conclusions about the exchange. That is inventory
+    §3.2 / leg 5 territory -- a physics question with its own gate --
+    and merging the kernel settles nothing about it. Callers own their
+    ordering.
+    """
+    if not pmc_faces:
+        return state
+
+    @partial(
+        shard_map,
+        mesh=mesh,
+        in_specs=(
+            P("x"),  # hx
+            P("x"),  # hy
+            P("x"),  # hz
+        ),
+        out_specs=(
+            P("x"),
+            P("x"),
+            P("x"),
+        ),
+        check_rep=False,
+    )
+    def _pmc(hx, hy, hz):
+        ghost = 1
+
+        # Yee convention: _hi PMC acts on index -2 (0.5·dx INSIDE the
+        # wall), not -1 (ghost outside). See rfx/boundaries/pmc.py.
+        if "y_lo" in pmc_faces:
+            hx = hx.at[:, 0, :].set(0.0)
+            hz = hz.at[:, 0, :].set(0.0)
+        if "y_hi" in pmc_faces:
+            hx = hx.at[:, -2, :].set(0.0)
+            hz = hz.at[:, -2, :].set(0.0)
+        if "z_lo" in pmc_faces:
+            hx = hx.at[:, :, 0].set(0.0)
+            hy = hy.at[:, :, 0].set(0.0)
+        if "z_hi" in pmc_faces:
+            hx = hx.at[:, :, -2].set(0.0)
+            hy = hy.at[:, :, -2].set(0.0)
+
+        device_idx = lax.axis_index("x")
+        is_first = (device_idx == 0)
+        is_last = (device_idx == n_devices - 1)
+        last_real = nx_local_with_ghost - 1 - ghost - pad_x
+        last_inside = last_real - 1
+
+        if "x_lo" in pmc_faces:
+            hy_new = jnp.where(is_first, 0.0, hy[ghost, :, :])
+            hz_new = jnp.where(is_first, 0.0, hz[ghost, :, :])
+            hy = hy.at[ghost, :, :].set(hy_new)
+            hz = hz.at[ghost, :, :].set(hz_new)
+        if "x_hi" in pmc_faces:
+            hy_new = jnp.where(is_last, 0.0, hy[last_inside, :, :])
+            hz_new = jnp.where(is_last, 0.0, hz[last_inside, :, :])
+            hy = hy.at[last_inside, :, :].set(hy_new)
+            hz = hz.at[last_inside, :, :].set(hz_new)
+
+        return hx, hy, hz
+
+    hx, hy, hz = _pmc(state.hx, state.hy, state.hz)
+    return state._replace(hx=hx, hy=hy, hz=hz)
 
 
 # ---------------------------------------------------------------------------
