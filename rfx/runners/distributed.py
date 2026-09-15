@@ -16,6 +16,30 @@ Phase 3: Lumped ports + Debye/Lorentz dispersive materials.
          ADE (auxiliary differential equation) state is carried through
          the scan loop; updates are purely local (no cross-device
          exchange needed for polarization fields).
+
+LEGACY LANE -- not the production distributed path (#1038 leg 6, PI decision
+2026-09-15). ``Simulation.run(devices=...)`` dispatches to
+``rfx.runners.distributed_v2.run_distributed`` (``shard_map``) for uniform and
+non-uniform grids alike; v2 is the single distributed development trunk. This
+module is NOT merged into v2: the two are not bit-identical (max |delta|
+2.794e-09 on a 9.4145e-03 peak) and they disagree on the odd-``nx`` rule (this
+module refuses an odd ``nx``, v2 pads it).
+
+The module stays, and stays supported, for three live roles:
+
+* ``distributed_v2.py:56`` imports twelve domain splitting, local-update and
+  CPML names from here (``gather_array_x``, ``_split_state``,
+  ``_split_materials``, the Debye/Lorentz splitters,
+  ``_apply_cpml_{e,h}_distributed``, ...);
+* ``rfx/api/_execute.py`` imports ``_split_materials`` from here for the
+  distributed non-uniform forward path;
+* ``distributed_v2.run_distributed`` delegates to this module's
+  ``run_distributed`` verbatim as its single-device fast path
+  (``distributed_v2.py:514-517``, ``if n_devices == 1``), so this code still
+  runs under every one-device ``sim.run(devices=[...])`` call.
+
+As of #1038 leg 6 it is no longer re-exported from ``rfx.runners``; import it
+by full module path.
 """
 
 from __future__ import annotations
