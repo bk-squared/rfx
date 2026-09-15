@@ -147,3 +147,16 @@ statistic) and its FD gate (3B/|g| 2.3e-3) both hold, as they did on E6-x
 a wrong gradient does not move it. The rule is kept as declared; the
 verified-coverage figure for L1 (0.174) therefore excludes `w` by rule,
 while the same control is verified on L2s (coverage 0.675).
+
+### Arm zsmooth — instrument fix before the attempt (no ladder was measured)
+
+The first launch (on 094cc595) raised `operands could not be broadcast
+together with shapes (8,) (4,)` inside the shared judge before the first
+ladder point: `arm_zsmooth` passes the full 8-parameter `P0` as `x0` with
+only the four thickness controls named, and `controls_arm` built the step
+direction over the names, not over `x0`. Fix: the direction is built in
+`x0`'s space (`v = zeros(len(x0)); v[i] = scale`), which is a no-op for arms
+y and pos (their `x0` and names have the same length — recorded ladders
+unaffected). No loss value of the zsmooth fixture was produced, so this is
+not a measurement attempt; the `.started` sentinel was reset and the arm
+relaunched once.

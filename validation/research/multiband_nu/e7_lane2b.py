@@ -206,7 +206,9 @@ def controls_arm(name, loss_fns, cells_of, jac, x0, names, scales, tied_cells, u
         g_x = jac.T @ g_cell
         rec = {'loss0': loss0, 'loss_ulp': adq.ulp(loss0), 'g_cell': g_cell.tolist(), 'g_x_chain': g_x.tolist(), 'controls': {}}
         for i, nm in enumerate(names):
-            v = np.zeros(len(names)); v[i] = scales[i]
+            # x0 may be longer than names (zsmooth: full P0 with the four thickness controls in front);
+            # the step direction lives in x0's space, the control index is shared.
+            v = np.zeros(len(x0)); v[i] = scales[i]
             ad_rel = float(g_x[i] * scales[i])
             r = judge_control(loss, np.asarray(x0, float), v, ad_rel, scales[i], loss0, use_floor)
             r['ad_relative'] = ad_rel
@@ -217,7 +219,7 @@ def controls_arm(name, loss_fns, cells_of, jac, x0, names, scales, tied_cells, u
             loss_nodt = jax.jit(lambda q, lc=loss_cells: lc(cells_of(q), stop_dt=True))
             g_nodt = np.asarray(jax.jit(jax.grad(lambda c, lc=loss_cells: lc(c, stop_dt=True)))(jnp.asarray(cells_of(jnp.asarray(x0, jnp.float32)))), float)
             gx_nodt = jac.T @ g_nodt
-            v = np.zeros(len(names)); v[i] = scales[i]
+            v = np.zeros(len(x0)); v[i] = scales[i]
             ad_nodt = float(gx_nodt[i] * scales[i])
             r = judge_control(loss, np.asarray(x0, float), v, ad_nodt, scales[i], loss0, use_floor)
             fwd_same = float(loss_nodt(jnp.asarray(x0, jnp.float32))) == loss0
