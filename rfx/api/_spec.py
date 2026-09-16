@@ -716,8 +716,15 @@ class Result(NamedTuple):
         ``"absent"``), ``route`` (``"probe_records"`` or ``None``),
         ``worst_record``, ``per_record_db`` (per-probe dB),
         ``skipped_records`` (records below the #869 underflow floor, skipped
-        rather than scored) and ``reason`` (what would make an absent witness
-        measurable). ``None`` only on lanes that never attach it.
+        rather than scored), ``reason`` (what would make an absent witness
+        measurable), ``source_dominated_records`` (probes sharing a Yee cell
+        with a registered source/port drive), ``source_dominated`` and
+        ``qualifier``. A source-dominated record peaks on the drive pulse,
+        so its end/peak ratio measures source turn-off rather than
+        ring-down; it never carries the verdict while an independent scored
+        record exists, and when every scored record is dominated the
+        qualifier says the number is not an independent witness (#1090).
+        ``None`` only on lanes that never attach it.
     """
     state: object
     time_series: jnp.ndarray
@@ -1049,9 +1056,10 @@ class ForwardResult(NamedTuple):
     user-probe record using the same host diagnostic as ``run()``. They
     report absence while records are traced; read them on the returned
     concrete result, not as gradient objectives. Numeric
-    ``settling_probe_info`` preserves the selected columns and component
-    labels without inserting strings into a JAX result tree. These lazy
-    properties are not stored fields in ``_asdict()``.
+    ``settling_probe_info`` preserves the selected columns, component
+    labels and the #1090 source-dominated flag as integers, without
+    inserting strings into a JAX result tree. These lazy properties are
+    not stored fields in ``_asdict()``.
 
     ``lumped_port_sparams`` exposes the raw per-port (V_dft, I_dft) tuples
     accumulated inside the JIT scan body when ``forward(port_s11_freqs=...)``

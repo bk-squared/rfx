@@ -98,7 +98,9 @@ def test_run_and_forward_score_the_same_record_and_labels(short_pair):
     same_record = forward._replace(time_series=run.time_series)
     assert same_record.settling_db == run.settling_db
     assert same_record.settling_witness == run.settling_witness
-    assert tuple(tuple(map(int, item)) for item in forward.settling_probe_info) == ((0, 2),)
+    # (column, component code, #1090 source-dominated flag); this probe is
+    # one cell above the source, so the flag is 0.
+    assert tuple(tuple(map(int, item)) for item in forward.settling_probe_info) == ((0, 2, 0),)
 
 
 def test_diagnostic_finalization_does_not_change_recorded_fields(short_pair, monkeypatch):
@@ -176,7 +178,7 @@ def test_public_metadata_excludes_internal_columns_and_outlives_sim_changes():
     sim.add_probe((.003, .002, .002), "hy")
     sim._internal_probe_indices = {0}
     result, _ = _captured(lambda: sim.forward(n_steps=10, skip_preflight=True))
-    assert tuple(tuple(map(int, item)) for item in result.settling_probe_info) == ((1, 4),)
+    assert tuple(tuple(map(int, item)) for item in result.settling_probe_info) == ((1, 4, 0),)
     # Retain the real public metadata, but supply discriminating records:
     # the excluded internal column never decays; the selected one does.
     t = np.arange(100)
@@ -300,7 +302,7 @@ def test_actual_public_forward_returns_numeric_carrier_through_outer_jit():
 
     (samples, info), caught = _captured(recorded_forward)
     assert samples.shape == (60, 1)
-    assert tuple(tuple(map(int, item)) for item in info) == ((0, 2),)
+    assert tuple(tuple(map(int, item)) for item in info) == ((0, 2, 0),)
     assert not _scoped_warnings(caught)
     host_result = ForwardResult(time_series=samples, settling_probe_info=info)
     expected = _independent_db(np.asarray(samples)[:, 0])
