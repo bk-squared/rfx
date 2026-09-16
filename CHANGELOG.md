@@ -273,6 +273,15 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
   every invariance assertion, widens the sweep from two record lengths on one
   board to five on both, pins the measured 10-cell table (5 of 10 `q` False,
   not 4), and adds that the Q-gated row set grows with `T` and never shrinks.
+- What "permanent" does and does not claim. It is the gate's scope: a
+  two-solver agreement test never becomes a Q-accuracy bound, and its bounds
+  are not widened from the observed gap. It is **not** a claim that the third
+  missing artifact is unobtainable. A converged cv02 mesh ladder has never been
+  run in this repo, so that artifact is MISSING, not impossible, and ingredient
+  3 flips if and when all three named artifacts appear.
+  `test_the_permanence_does_not_rest_on_an_unrun_mesh_ladder` pins that reading
+  on all three declaring surfaces and reds deliberately if a cv02 mesh ladder
+  is landed, so the declaration cannot go stale in silence.
 
 ### Changed — cv02 Q gate states which of its inputs are derived (#907)
 

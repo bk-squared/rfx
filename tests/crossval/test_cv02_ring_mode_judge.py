@@ -1738,6 +1738,60 @@ def test_the_q_gate_is_declared_a_permanent_consistency_envelope() -> None:
     assert "not being repaired" in rmj.q_window.__doc__
 
 
+def test_the_permanence_does_not_rest_on_an_unrun_mesh_ladder() -> None:
+    """The third missing artifact is MISSING, not proven impossible.
+
+    An earlier draft of the module docstring, and the pull request that
+    carried it, justified the permanent declaration by reporting that the
+    first mesh ladder anybody ran had rfx's ``Q`` moving away from the
+    continuum under refinement -- and concluded the third artifact therefore
+    could not exist. No such ladder exists in this repo, no test or fixture
+    pins those numbers, and the issue they lived in was closed as an
+    unfinished observation. This pins the withdrawal, and pins that the
+    declaration stands on the two measurements that ARE reproducible here.
+
+    It also fails deliberately if someone lands the ladder: the docstring
+    claims the artifact is absent, so producing it is a change to a
+    claims-bearing declaration and has to be argued, not absorbed.
+    """
+    module_doc = rmj.__doc__
+    budget = [i for i in rmj.Q_GATE_INGREDIENTS
+              if i.name == "discretization_budget"][0]
+
+    # the impossibility claim is gone from every declaring surface
+    for surface, text in (("module docstring", module_doc),
+                          ("ingredient basis", budget.basis),
+                          ("gate character", rmj.Q_GATE_CHARACTER)):
+        low = text.lower()
+        assert "moving away from the continuum" not in low, surface
+        assert "cannot exist" not in low, surface
+
+    # and the withdrawal is recorded, not silently dropped
+    assert "WITHDRAWN" in module_doc
+    assert "MISSING, not" in module_doc
+
+    # the two things it DOES rest on are named and reproducible
+    assert "Cramer-Rao" in module_doc
+    assert "cv02_exact_annulus_qnm.py" in module_doc
+    oracle = (Path(__file__).resolve().parents[2]
+              / "scripts/diagnostics/cv02_exact_annulus_qnm.py")
+    assert oracle.is_file(), "the declaration cites an oracle that must exist"
+
+    # the absent artifact is still absent: no cv02 mesh ladder in the repo
+    diagnostics = oracle.parent
+    mesh_ladders = sorted(
+        f.name for f in diagnostics.glob("cv02_*")
+        if "mesh" in f.name or "resolution" in f.name
+    )
+    assert not mesh_ladders, (
+        "a cv02 mesh ladder now exists (%s), so ingredient 3's third "
+        "artifact is no longer missing. The permanent declaration in "
+        "ring_mode_judge's docstring says it is absent -- update the "
+        "declaration deliberately rather than leaving it stale."
+        % ", ".join(mesh_ladders)
+    )
+
+
 #: The ``q`` gate's verdict at five record lengths on both boards, measured
 #: through the unmodified judge on 2026-09-15. FIVE of the ten cells are
 #: False. This table is the declared envelope's behaviour, not a defect

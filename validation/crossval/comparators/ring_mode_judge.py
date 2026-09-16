@@ -75,10 +75,20 @@ Gates (all evaluated only when the external reference is present):
     * a source-free Meep reference record regenerated under the same
       conditions (today's reference runs Harminv while the source is still
       on, so it violates the free-decay model any uncertainty law assumes);
-    * a CONVERGED spatial/timestep ladder against the exact annulus. The
-      third is worse than missing: the first ladder anybody ran has rfx's
-      ``Q`` on this annulus moving AWAY from the continuum as the mesh
-      refines, which is its own open finding.
+    * a CONVERGED spatial/timestep ladder against the exact annulus. No
+      such ladder exists in this repo: nothing under
+      ``scripts/diagnostics/`` refines cv02's mesh
+      (``cv02_harminv_decimation_ladder.py`` is a sampling-rate ladder, not
+      a mesh one). An earlier draft of this docstring said the first such
+      ladder had already been run and showed rfx's ``Q`` moving AWAY from
+      the continuum under refinement, and called that the reason the third
+      artifact could not exist. **That is WITHDRAWN.** Its numbers lived in
+      an issue comment; no artifact, test or table here pins them, and the
+      issue was closed as an unfinished observation. It is the same
+      withdrawal, for the same reason, that
+      ``scripts/diagnostics/cv02_harminv_decimation_ladder.py`` already
+      records in its own docstring. The artifact is therefore MISSING, not
+      impossible, and nothing below rests on it.
 
     Two measurements make this the honest disposition rather than a deferral.
     Both are reproducible from
