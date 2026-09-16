@@ -1933,10 +1933,36 @@ EXACT_ANNULUS = {
 }
 
 
-# Convergence witnesses, not reproducible values: at a converged root these sit a
-# few ulp above zero, so their last bits are a property of the machine and not of
-# the physics. Compared against their bound, never against each other.
-_RESIDUAL_FIELDS = ("normalized_residual",)
+# Fields whose VALUE carries no information, for two distinct reasons. Neither
+# group is compared between the fresh build and the frozen fixture; both are
+# checked against a bound, which is the only statement their numbers support.
+#
+# CONVERGENCE WITNESSES sit a few ulp above zero at a converged root, so their
+# last bits are a property of the machine.  ``abs_det_unnormalized`` carries
+# DO_NOT_THRESHOLD in its own name: it is reported so a reader can see that a
+# bare determinant is NOT the criterion, and three correct implementations of
+# this 4x4 differ on it by seven orders of magnitude.
+_CONVERGENCE_WITNESS = (
+    "normalized_residual",
+    "abs_det_unnormalized_DO_NOT_THRESHOLD",
+)
+
+# ANALYTICALLY ZERO quantities. Uniform radius scaling moves f at full leverage
+# and leaves Q exactly invariant, so dlnQ/dlnR and the radius-channel leverage
+# built from it are zero as a matter of the annulus, not as a matter of this
+# implementation. What a finite difference returns for them is the subtraction
+# noise of two nearly equal numbers: 8.88e-11 here, 4.00e-10 on a CI runner.
+# Both are zero. An earlier revision of this test removed the `abs` floor with
+# the comment "every field still compared here is a physical quantity of order
+# 0.1 to 1e3" -- that was wrong, these three are not, and CI caught it.
+_ANALYTICALLY_ZERO = ("dlnQ_dlnR", "leverage_radius_channel")
+
+#: A radius-channel leverage this size would be a real effect rather than noise.
+#: The INDEX channel reads 4.65-8.85 on the same modes, so this bound sits five
+#: orders below the quantity it must not be confused with.
+_ZERO_BOUND = 1e-6
+
+_RESIDUAL_FIELDS = _CONVERGENCE_WITNESS + _ANALYTICALLY_ZERO
 
 
 def test_the_exact_annulus_oracle_reproduces_its_frozen_fixture() -> None:
@@ -1979,9 +2005,20 @@ def test_the_exact_annulus_oracle_reproduces_its_frozen_fixture() -> None:
         f_pub, q_pub = EXACT_ANNULUS[int(key)]
         assert now["f_exact"] == pytest.approx(f_pub, abs=5e-9)
         assert now["Q_exact"] == pytest.approx(q_pub, abs=5e-5)
-        for field in _RESIDUAL_FIELDS:
-            assert now[field] < annulus.RESIDUAL_MAX
-            assert was[field] < annulus.RESIDUAL_MAX
+        for field in _CONVERGENCE_WITNESS:
+            assert now[field] < annulus.RESIDUAL_MAX, (
+                f"mode {key} {field}: the fresh solve did not converge"
+            )
+            assert was[field] < annulus.RESIDUAL_MAX, (
+                f"mode {key} {field}: the frozen fixture records a non-converged solve"
+            )
+        for field in _ANALYTICALLY_ZERO:
+            assert abs(now[field]) < _ZERO_BOUND, (
+                f"mode {key} {field} = {now[field]!r} is not zero. Uniform radius "
+                "scaling leaves Q exactly invariant on this annulus, so a value "
+                "here means the derivative is picking up something it should not."
+            )
+            assert abs(was[field]) < _ZERO_BOUND
 
 
 def test_the_annulus_residual_is_invariant_under_row_and_column_rescaling(
