@@ -789,6 +789,62 @@ def stage_verdicts(args, out_dir: Path) -> None:
             "n_bins_over_allowance": int((excess > 0).sum()),
         }
 
+    # Each out-of-envelope arm against ITS OWN allowance (review C-A). F-A was
+    # pre-declared against A_B and is NOT restated: this is the additional
+    # reading, derived from the SAME stored `allowance.<arm>.a_total_amplitude`
+    # by the §3.4 formula, so no arm is re-run to produce it.
+    own = {}
+    if "A|thru" in arms:
+        dA = _dev_per_bin(arms, "A|thru")["thru_s21_phase_residual_deg"]
+        for arm in ("D2", "E"):
+            if f"{arm}|thru" not in arms:
+                continue
+            amp = np.asarray(allow[arm]["a_total_amplitude"], dtype=float)
+            ph = np.degrees(np.arcsin(np.clip(amp, 0.0, 1.0)))
+            dev = _dev_per_bin(arms, f"{arm}|thru")["thru_s21_phase_residual_deg"]
+            excess = dev - dA - ph
+            own[arm] = {
+                "rule": "dev_X - dev_A vs arm X's OWN allowance (its ratio, its "
+                        "d_fine, its transition count)",
+                "n_transitions": allow[arm]["n_transitions"],
+                "own_allowance_amplitude": [float(v) for v in amp],
+                "own_allowance_phase_deg": [float(v) for v in ph],
+                "excess_per_bin": [float(v) for v in excess],
+                "max_excess": float(excess.max()),
+                "worst_bin_hz": float(np.asarray(F.FREQS)[int(np.argmax(excess))]),
+                "n_bins_over_own_allowance": int((excess > 0).sum()),
+            }
+    verdicts["own_allowance"] = own
+
+    # Sensitivity of the R-2 verdict to the floor term (review C-C): the
+    # declared 1e-4 is gate_from_envelope(5.000e-6, quantum=10000), a 20x pad
+    # over the battery's MEASURED envelope. Re-run the same rule at 5.000e-6.
+    tight = (np.asarray(allow["B"]["a_total_amplitude"], dtype=float)
+             - float(allow["floor_amplitude"]) + 5.000e-6)
+    fires = []
+    for key, d in list(verdicts.items()):
+        if not key.startswith("R-2|"):
+            continue
+        gate = key.split("|")[-1]
+        is_phase = gate in PHASE_GATES
+        allowance = (np.degrees(np.arcsin(np.clip(tight, 0.0, 1.0))) if is_phase
+                     else tight)
+        dt_term = a_dt if is_phase else np.zeros_like(a_dt)
+        dev_b = np.asarray(verdicts["R-1|" + "|".join(key.split("|")[1:])]["dev_B"],
+                           dtype=float)
+        margin = np.asarray(d["dev_A"], dtype=float) + allowance + dt_term - dev_b
+        if margin.min() < 0.0:
+            fires.append({"gate": key, "worst_margin": float(margin.min()),
+                          "worst_bin_hz": float(np.asarray(F.FREQS)[int(np.argmin(margin))])})
+    verdicts["r2_at_measured_floor"] = {
+        "floor_used": 5.000e-6,
+        "floor_provenance": ("tests/oracle/test_waveguide_chain_battery_v18_close.py"
+                             "::LIVE_ABS_S_ENVELOPE, the MEASURED envelope; the "
+                             "declared 1e-4 is gate_from_envelope(it, quantum=10000)"),
+        "gates_firing": fires,
+        "n_gates_firing": len(fires),
+    }
+
     # Yee predictions against measurement
     pred = {}
     for tag, key, predicted in (

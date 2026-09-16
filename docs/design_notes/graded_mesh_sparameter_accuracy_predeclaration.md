@@ -454,6 +454,31 @@ guide's TE10 as §1.2 predicted and the envelope is untested by this fixture;
 **F-A fires as declared**, arm D2's thru S21 phase residual exceeding the
 allowance at all 17 bins by up to +2.205°, with no flux-lane magnitude
 exceeding. The three Yee-dispersion predictions of §3.4 came in at 0.28 %,
-0.33 % and 0.09 % of the measurement. Two corrections to this note's own
-reasoning (the schema-3/schema-4 artifact choice of §1.4, and two reader
-defects in the driver) are recorded as C1 and C2 of the results note.
+0.33 % and 0.09 % of the measurement.
+
+Six corrections to this note's own reasoning are recorded in the results note
+and none of them moves a window: **C1** the schema-3/schema-4 artifact choice
+of §1.4; **C2** two reader defects in the driver; **C3** §3.1 calls
+`G.FC_TE10_HZ` "numerical" when it is the analytic `c/2a` (worth ≤ 0.39 % on
+every allowance number, no verdict moves); **C4** §3.2 calls 1e-4 "measured"
+when the measured envelope is 5.000e-6 and 1e-4 is
+`gate_from_envelope(…, quantum=10000)` (re-running R-2 at 5.000e-6 fires the
+same one gate at the same one bin); **C5** §1 of the results note over-read
+W-BC as exactness — the NU runner cannot run float64 fields, so 1.05e-6 is a
+bound; **C6** `stage_verdicts` landed in the measurement commit `ed55486d`,
+not in this one, and all 14 records carry `git_dirty = True` from the C2
+repairs (the independent reviewer's bit-identical re-run of seven cells at the
+committed sha is what closes that).
+
+**R1 addendum (2026-09-16, after the run — this is not a pre-run citation).**
+§0's memory table should have carried `docs/agent-memory/rfx-known-issues.md`,
+entry dated 2026-07-16 (cv05 demotion, #325 / PR #378): *"the graded
+fine↔coarse transition SPLITS the mode"*, and *"a correct build needs a
+uniform-fine substrate band with no adjacent transition (redesign, not
+re-pin)"*. It is **consistent with** this lane — that entry is a graded-mesh
+transition damaging an observable on a substrate stack, i.e. the mechanism
+this fixture's z-invariant TE10 cannot show — and it is the governing prior
+art for the MSL follow-up in §8 of the results note. It is recorded here
+rather than inserted into §0 because a pre-declaration's citation table is
+frozen at its commit; adding a row to it now would back-date a citation that
+was not made.

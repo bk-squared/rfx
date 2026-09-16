@@ -23,19 +23,30 @@ solve time in total. No VESSL, no GPU.
 | **R-2** `dev_B ≤ dev_A + A_B + A_dt` | **fires on one gate, one bin**: slab \|S11\| vs Airy at 8.4 GHz, margin −1.271e-4. Traced in §4: arm B equals arm C to 1.05e-6, so the cause is the z refinement, not the grading. |
 | **W-BC** `max\|S_B − S_C\| ≤ 1e-4` | **holds**: worst 1.047e-6 (declared expectation "≈ 1e-6"). |
 | **F-Z** ratio-2.0 on z expected NOT to exceed the allowance | **holds**: `max\|S_D1 − S_C\| = 1.696e-6`. The observables cannot see the z axis at all. |
-| **F-A** arm D2 must exceed the allowance | **fires as declared**: the thru's S21 phase residual exceeds by up to +2.205°, at every one of the 17 bins; no flux-lane magnitude exceeds, also as declared. |
+| **F-A** arm D2 must exceed the allowance | **fires as declared**: the thru's S21 phase residual exceeds by up to +2.205°, at every one of the 17 bins; no flux-lane magnitude exceeds, also as declared. Against D2's **own** allowance rather than arm B's: 15 / 17 bins, +1.011°. |
+| arm E (reference, no window) — the **in-envelope** ratio on the propagation axis | exceeds **its own** allowance at **6 / 17** bins, max **+0.0838°** at 11.6 GHz (against arm B's allowance it is 17 / 17, +0.309°) |
 
 **What that adds up to.** The multi-band z profile inside the #785 envelope
 costs this fixture nothing measurable on any of the chain battery's
 analytic-referenced gates — and the same fixture proves it cannot test the
 envelope, because a deliberately out-of-envelope ratio on the same axis is
 equally invisible (F-Z). The WR-90 control's real yield is elsewhere: it
-measures the NU flux S-lane end to end against analytic oracles, it shows the
-port extractor's z weighting is exact to float32 for a z-invariant mode, and
-it measures — for the first time on an S-parameter — what grading the
-**propagation** axis costs. That cost is a phase term the #785 reflection
+measures the NU flux S-lane end to end against analytic oracles, it **bounds**
+whatever the port extractor's z weighting does for a z-invariant mode below
+1.05e-6, and it measures — for the first time on an S-parameter — what grading
+the **propagation** axis costs. That cost is a phase term the #785 reflection
 budget does not bound, and it is predictable from the Yee dispersion relation
 to better than 1 %.
+
+That bound is a bound and not a demonstration of exactness, and the reason is
+structural: the NU runner does not thread `field_dtype`
+(`rfx/api/__init__.py:330-340` — it is threaded only by
+`rfx/runners/uniform.py`, and `run()` / `forward()` raise rather than silently
+run float32 fields at a higher declared precision), so **no arm here can be
+re-run in float64 to separate float32 field noise from a real z dependence**.
+1.05e-6 is float32 reassociation plus whatever the z weighting does, exactly as
+§1.2 of the pre-declaration put it; the two are not separable on this lane. See
+correction C5.
 
 ---
 
@@ -170,6 +181,18 @@ Gates: column power ≤ 1.02, |S11| ∈ [0.99, 1.03], slab magnitude ≤ 0.05,
 slab phase ≤ 15°. **Every arm passes every committed gate**, including the two
 deliberately out-of-envelope ones.
 
+**Which allowance each gate is judged by**, since §3.4 of the pre-declaration
+offers two phase readings and §4 says only "`A_phase` of §3.4". As implemented
+and as the artifact records it: the **amplitude** allowance `A_B` applies to
+`column_power`, `reciprocity_complex`, `pec_short_s11_mag`,
+`pec_short_s22_mag`, `slab_airy_s11_mag` and `slab_airy_s21_mag`; the **phase**
+allowance applies to the three phase gates —
+`slab_airy_s11_phase_deg`, `slab_airy_s21_phase_deg` and
+`thru_s21_phase_residual_deg` — and it is the **`at_unit_mag`** reading
+(0.0735° … 0.2309°), not the looser `|S| = 0.30` mask reading
+(0.245° … 0.770°). The tighter of the two declared readings binds every phase
+verdict in this note.
+
 ### The one firing rule, traced (R5)
 
 `R-2 | slab | slab_airy_s11_mag` fires at the 8.4 GHz bin only:
@@ -235,6 +258,21 @@ exceed (`column_power` max excess −1.283e-3, `reciprocity_complex`
 structure of the two-run flux extraction. **The falsifier behaves, and it
 behaves on exactly the observable the pre-declaration named.**
 
+F-A is pre-declared against **A_B**, arm B's allowance, and stays that way:
+the question it settles is whether the number arm B is judged by can be
+exceeded at all. But A_B is not arm D2's own budget — D2 has two transitions
+at ratio 2.0 on 1.27 mm cells, not four at 1.4 on 0.635 mm cells — so the same
+comparison against **D2's own** allowance is recorded beside it, from the
+`allowance.D2.a_total_amplitude` the artifact already held:
+
+| arm | allowance used | bins over | max excess |
+|---|---|---|---|
+| D2 | A_B (as pre-declared, F-A) | 17 / 17 | +2.2052° |
+| D2 | its own (2 × r = 2.0 at 1.27 mm) | 15 / 17 | +1.0110° |
+
+D2 exceeds either way, so nothing about the falsifier's verdict turns on the
+choice; the own-allowance row is the honest size of the effect.
+
 ### The Yee-dispersion term, predicted before the run
 
 | term | predicted (deg rms) | measured (deg rms) | rel. error |
@@ -253,17 +291,33 @@ under half a percent on this fixture.
 
 Ratio 1.4, two transitions, 17.78 mm of 1.778 mm cells in an 81.28 mm
 reference-plane separation. Measured S21 phase residual **0.34872° rms**
-against arm A's 0.03497°, an excess of 0.3141° rms — **over arm B's
-reflection-derived allowance at all 17 of 17 bins**, max excess +0.309° at
-11.6 GHz. Every committed gate still passes (the residual is a witness, not a
-gate), and the excess is the Yee term above, predicted to 0.09 %.
+against arm A's 0.03497°, an excess of 0.3141° rms. Every committed gate still
+passes (the residual is a witness, not a gate), and the excess is the Yee term
+above, predicted to 0.09 %.
 
-This is the substantive answer this lane has for #810 beyond the control's own
-scope: **inside the validated ratio, on the axis a wave actually traverses,
-the reflection budget under-predicts the S-parameter cost — the binding term
-is dispersive, not reflective.** Arm E grades an axis the support matrix
-explicitly does not cover, so nothing is promoted on it; it is one measured
-point, on one fixture, at one rung.
+Against which allowance, and the answer differs — so both are recorded:
+
+| allowance used | bins over | max excess |
+|---|---|---|
+| arm B's A_B (4 × r = 1.4 at 0.635 mm) | 17 / 17 | +0.3089° |
+| **arm E's own** (2 × r = 1.4 at 1.27 mm) | **6 / 17** | **+0.0838°** at 11.6 GHz |
+
+The own-allowance row is the one to quote. Arm E has two transitions on 1.27 mm
+cells, so its budget (2.466e-3 … 7.959e-3 amplitude, 0.141° … 0.456° phase) is
+about twice arm B's per bin, and the excess shrinks accordingly: it is the top
+six bins — 10.6 GHz and up, where the guided wavelength is shortest — that
+break the budget, not the whole band. The `arm B's A_B` row is kept only
+because it is the row the rest of this note's rules are written against.
+
+So the substantive answer this lane has for #810, stated at the strength the
+numbers support: **inside the validated ratio, on the axis a wave actually
+traverses, the reflection budget under-predicts the S-parameter cost over the
+upper third of this band — the binding term is dispersive, not reflective.**
+The under-prediction is a factor 1.18 at 11.6 GHz — arm E's residual exceeds
+arm A's by 0.5398° (0.58949° against 0.04971°) where its own budget allows
+0.4560° — not an order of magnitude. Arm E
+grades an axis the support matrix explicitly does not cover, so nothing is
+promoted on it; it is one measured point, on one fixture, at one rung.
 
 ---
 
@@ -312,8 +366,18 @@ term above says what any other band would cost without running it.
   Nothing here transfers to it.
 * **The z-axis envelope is still untested by an observable.** F-Z is the proof
   that this fixture cannot test it: a ratio-2.0 z profile, four transitions,
-  changes the S-matrix by 1.7e-6. A fixture whose mode varies along the graded
-  axis is required, and the WR-90 is not one.
+  changes the S-matrix by 1.7e-6. The mechanism is in the kernel, not in
+  prose: for this guide's TE10 (Ez, Hx, Hy, all constant in z) the Ez update
+  reads `curl_z = ∂Hy/∂x − ∂Hx/∂y` (`rfx/core/yee.py:340-341`) and the Hx / Hy
+  updates read `inv_dy_h` and `inv_dx_h` only (`:437-446`) — **no z spacing
+  enters any of them.** A fixture whose mode varies along the graded axis is
+  required, and the WR-90 is not one.
+* **Nothing here separates float32 field noise from real solver behaviour at
+  the 1e-6 level.** The NU runner does not thread `field_dtype`
+  (`rfx/api/__init__.py:330-340`; `rfx/runners/uniform.py` is the only runner
+  that does), so every NU S-parameter answer in this repo — this one included
+  — is floored by float32 fields, and W-BC's 1.05e-6 is a bound, not a
+  demonstration (C5).
 * The `slab` arms sit at 10.2 cells per λ_eff inside εr = 4, with the
   preflight's own "~5 % |S21| deficit expected" notice standing. The
   arm-to-arm comparison is unaffected (all arms share it), but the absolute
@@ -328,7 +392,41 @@ architectures that would actually advance #810 are: (a) the cv06b MSL case,
 where the graded axis carries the mode; (b) a WR-90 variant with the graded
 axis along propagation, judged against an external solver rather than against
 the analytic oracles, since arm E already shows the analytic-referenced gates
-pass while the phase moves by ten times the reflection budget.
+pass while the phase leaves the reflection budget over the upper third of the
+band.
+
+**Two things this lane says the next attempt must carry, for the PI.**
+
+1. **The phase allowance needs the dispersion term, not just the reflection
+   budget.** Whatever #810's Tier 1 does next, its allowance should be
+   `A_reflection(f) + degrees(arcsin(A_reflection(f)/|S|))`-style *plus*
+
+       Δφ(f) = Σ_cells [ β_Yee(f; d_cell, dt) − β_Yee(f; d_ref, dt_ref) ] · d_cell
+
+   over the cells between the reference planes. That term was derived here
+   before the run and came in at 0.28 % / 0.33 % / 0.09 % on three independent
+   arms, and it is the term that decides arm E. A Tier-1 pre-declaration that
+   carries only the reflection budget will under-predict its own arms, which is
+   the defect this lane found in the method #810 proposed — **method change,
+   not a result, and it applies to cv06b before that case is run.**
+2. **Every NU S-parameter answer is floored by float32 fields until the NU
+   runner threads `field_dtype`.** No NU arm can be lifted to float64 today
+   (`rfx/api/__init__.py:330-340`), so any NU window declared below roughly
+   1e-6 on this class of fixture is declaring against the field noise floor
+   rather than against the physics. That is a precondition for the MSL case,
+   where the graded axis carries the mode and the effects are expected to be
+   small.
+
+**Prior art the next attempt must read first.** `rfx-known-issues.md`, entry
+dated 2026-07-16 (cv05 demotion, #325 / PR #378): the #325 "fix" that
+re-registered the substrate to 6 fine cells is a **FIRED STOP** — *"the graded
+fine↔coarse transition SPLITS the mode"*, and *"a correct build needs a
+uniform-fine substrate band with no adjacent transition (redesign, not
+re-pin)"*. That is the same mechanism class as (a) above, already measured on a
+substrate stack, and it constrains how the cv06b arms may be meshed: the fine
+band must contain the whole substrate with no transition adjacent to it. This
+entry is prior art §0's R1 table should have cited and did not; see the
+addendum in the pre-declaration's Results section.
 
 ---
 
@@ -361,6 +459,55 @@ and all arms were re-run with the repaired readers. Neither defect touched a
 solve, an S-matrix or a window; the S-parameters before and after the repair
 are the same numbers (the driver is deterministic and the readers are
 read-only).
+
+**C3 — §3.1 mis-describes the cutoff the allowance is scaled by.** It calls
+`G.FC_TE10_HZ` "this fixture's … own numerical TE10 cutoff". It is not
+numerical: `tests/_waveguide_chain_battery_gates.py:129` is
+`C0_LOCAL / (2·A_M)`, the **analytic** c/2a, 6.557140 GHz. The port config's
+discrete cutoff — the one the extractor's β actually uses — is 6.548821 GHz.
+Size of the error, measured rather than waved at: λ_g differs by 0.059 % to
+0.197 % across the band, and the allowance goes as `(d/λ_g)²`, so **every
+allowance number in §3.3 / §3.4 moves by at most 0.39 %** if the discrete
+cutoff is used instead. That changes no verdict anywhere (the tightest margin
+in the whole set is R-2's −1.271e-4 against an allowance of 1.283e-3, and
+0.39 % of that is 5e-6). The windows are left exactly as declared; this
+correction records what they are scaled by, not a re-scaling.
+
+**C4 — §3.2 overstates what the 1e-4 floor is.** It calls 1e-4 "the only
+measured float32 reproducibility number this battery owns". The **measured**
+number is 5.000e-6 (`tests/oracle/test_waveguide_chain_battery_v18_close.py`,
+`LIVE_ABS_S_ENVELOPE`); 1e-4 is `gate_from_envelope(5.000e-6, quantum=10000)`
+— a 20× pad in the loosening direction, which is a gate, not a measurement. The
+declared windows are not moved. What the pad is worth is now measured instead
+of assumed: re-running every R-2 rule with the floor set to the measured
+5.000e-6 fires **the same one gate at the same one bin** (slab |S11| vs Airy
+at 8.4 GHz, margin −2.221e-4 instead of −1.271e-4), and nothing else changes.
+Stored as `verdicts.r2_at_measured_floor`. W-BC's window is the same 1e-4 and
+its measurement is 1.05e-6, 4.8× under even the measured envelope.
+
+**C5 — §1 over-read W-BC as a demonstration of exactness.** The sentence "the
+port extractor's z weighting is exact to float32" claims more than the
+measurement can carry. The NU runner does not thread `field_dtype`
+(`rfx/api/__init__.py:330-340`; only `rfx/runners/uniform.py` does, and
+`run()` / `forward()` raise rather than silently drop to float32), so **no arm
+here can be re-run in float64**, and 1.05e-6 cannot be decomposed into field
+noise versus a real z dependence. The independent reviewer's x64
+post-processing probe moved the B−C thru delta from 5.623e-7 to 5.338e-7, a
+5 % change — consistent with float32 fields dominating and not resolving the
+question either way. Repaired to §1.2's own wording: bounded below 1.05e-6,
+float32 reassociation plus whatever the z weighting does.
+
+**C6 — two provenance statements about this lane's own commits.**
+(i) `stage_verdicts` did **not** exist at the pre-declaration commit
+`f5712d6b`; it landed in the measurement commit `ed55486d`
+(`git log -S "def stage_verdicts"`). It is pure post-processing of stored
+per-bin values and declares no window, but the pre-declaration's §5 run plan
+did not name it and this note should not imply it did.
+(ii) All 14 arm records carry `provenance.git_dirty = True` at commit
+`f5712d6b`, because the C2 reader repairs were in the working tree when the
+arms ran. The independent reviewer re-ran seven of the fourteen cells at the
+committed sha and reproduced them bit-identically, which is what closes it;
+the dirty flag is left in the artifact rather than edited out.
 
 **R3:** memory=`physics_validation_evidence_rule.md` line 129 + known-issues
 chain-status row ("#810 dz-graded evidence absent") + the battery README's
