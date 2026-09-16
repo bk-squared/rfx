@@ -104,7 +104,17 @@ change.** `per_bin_max_RT_closure` here is what `W_BIN` is derived from in
 is that property as a test. The direction of the error in the meantime is
 unchanged from before this run: `W_BIN` is wider than the current rig warrants,
 never tighter, so no gate widens by leaving it alone. The magnitude is no longer
-unestablished — it is 0.0487 against 0.0003695, a factor of 132, and the
-absorber is not all of it: the #974 settled record on the OLD absorber already
-measured 0.0010, so record length carries most of the fall and the absorber the
-rest.
+unestablished — it is 0.0487 against 0.0003695, a factor of 132 — and the
+absorber is not all of it. `validation/crossval/_04_fresnel_logs/cv04_settled_summary.json::max_RT_minus_1_per_bin`
+= 0.001 is the #974 settled record, 990 steps on the OLD 20-cell absorber, which
+splits the fall: **record length carries 0.0487 → 0.001, about 49×, and the
+absorber carries 0.001 → 0.0003695, about 2.7×** (48.7 × 2.71 = 132, against
+0.0487 / 0.0003695 = 131.8; the 49× is one digit because the committed summary
+rounds that value to one).
+
+This is also the reconciliation for the 0.0043 the recompute was predicted to
+land on (main's version of this file, and
+`docs/agent-memory/rfx-known-issues.md`'s #928 entry). That reading is the #888
+branch's, on the 600-cell / 719-step rig with the TF/SF bandwidth also moved
+0.5 → 0.8 — it isolates neither variable and is not the same quantity as either
+column above.
