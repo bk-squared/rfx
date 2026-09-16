@@ -267,16 +267,43 @@ def test_the_lane_captures_pytest_s_exit_code_and_not_tee_s() -> None:
     pytest would report rc=0 and the lane would be green.
     """
     run = _lane_run()
+
     # Anchor on the GATED calls. `-m pytest` alone also matches the collection
     # rehearsal, whose exit code is deliberately not consulted — anchoring there
     # would make this test pass while the call that matters stayed broken.
+    #
+    # And check the STRUCTURE, not the presence of two substrings. An earlier
+    # revision of this test looked for `tee ` and `echo $? >` within a window and
+    # called that pinned. It was not: moving `echo $?` OUT of the brace group to
+    # after the pipeline — which is exactly how this bug comes back, and is what
+    # the code looked like before it was fixed — leaves both substrings present
+    # and in the window. Review demonstrated that mutant passing 12/12 while the
+    # lane silently reported a red pytest as rc=0.
+    #
+    # The property that actually matters: the rc capture is INSIDE the left side
+    # of the pipe, i.e. it appears before the `| tee` that follows it.
     for cmd in ("--junitxml", "assert_crossval_solver_lane.py"):
         idx = run.index(cmd)
-        window = run[max(0, idx - 700): idx + 700]
+        window = run[max(0, idx - 700): idx + 900]
         assert "tee " in window, f"the {cmd} call no longer tees; a hang would print nothing"
-        assert "echo $? >" in window, (
-            f"the {cmd} call does not capture its own exit code inside the pipeline. "
-            "`$?` after a pipe to tee is tee's status, which is always 0."
+        capture = window.find("echo $? >")
+        assert capture != -1, (
+            f"the {cmd} call does not capture its own exit code. `$?` after a pipe "
+            "to tee is tee's status, which is always 0."
+        )
+        pipe_to_tee = window.find("| tee", capture)
+        assert pipe_to_tee != -1, (
+            f"the {cmd} call captures an exit code but no `| tee` follows it, so "
+            "the capture is not inside the pipeline's left side. Either the tee "
+            "went away or the capture moved after the pipe — the second is the "
+            "regression this test exists for."
+        )
+        between = window[capture:pipe_to_tee]
+        assert "}" in between, (
+            f"the {cmd} call's `echo $? >` is not inside a brace group that the "
+            "pipe closes over. Written as `cmd | tee log` then `echo $? > rc` on "
+            "the next line, the recorded code is TEE's and is always 0 — a red "
+            "pytest reports green. It must read `{ cmd; echo $? > rc; } | tee log`."
         )
     # Comments are allowed to NAME the bashisms — the lane explains why it avoids
     # them — so strip comment lines before checking that none is actually used.
