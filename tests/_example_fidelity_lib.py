@@ -423,6 +423,11 @@ CLASSIFICATION: dict[str, Entry] = {
         "pure-numpy exact-lattice witness gate for the slab family (cv04 / cv22 "
         "/ cv23): the 1-D Yee-lattice prediction, the derived W_witness error "
         "budget and the analytic falsifiers -- no rfx Simulation"),
+    "validation/crossval/comparators/slab_arm_windows.py": Entry(
+        "no_simulation",
+        "pure-numpy per-arm continuum window for the slab family's E2 gates "
+        "(#928): the arm's own lattice-continuum difference plus that record's "
+        "lattice-witness budget -- no rfx Simulation"),
     "validation/crossval/comparators/slab_rig.py": Entry(
         "no_simulation",
         "shared quasi-1-D TFSF slab rig helpers (record-length derivation, "
