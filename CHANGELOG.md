@@ -6,6 +6,44 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased — 2.0.0]
 
+### Fixed — the example-fidelity gate described coverage it no longer has, and cv21's port span was asserted against its own literal (#737, #739)
+
+- Tests and docs only: no library code, no gate threshold and no snapshot value changed.
+  The build-only example gate (`tests/contracts/test_example_fidelity_contract.py`) still
+  runs green with the same pinned data — measured 2026-09-16 at 6d721a56: `211 passed,
+  13 warnings in 83.84s` before the change and `211 passed, 13 warnings in 90.01s` after
+  (`-o addopts=""`, `JAX_ENABLE_X64=0`, optax installed).
+- The gate's own header was stale. Measured today: 137 scripts discovered = 137
+  classified (audited 34 / builder_fused_with_solve 12 / module_level_solve 7 /
+  no_solve 4 / no_simulation 80), snapshot 51 variants over 34 scripts, and on the 47
+  scripts that existed when #737 was filed the split is 25 audited / 8 fused / 6
+  module-level / 8 no-simulation. The header claimed 23/10, listed cv07 and cv15 as out
+  of scope (both are audited — `07_sheen_lpf.py::build_rfx_sim`,
+  `15_patch_antenna_rt5880.py::build_rfx_sim`) and said the gate reaches two of #722's
+  eight scripts; it reaches four (cv06b, cv11, cv07, cv15).
+- The header now says in one place what the gate is: an EMISSION-drift pin. Nothing in it
+  time-steps, so a green run is never evidence about an example's output numbers. It
+  cross-references what does verify outputs — `tests/contracts/test_tutorial_examples.py`
+  (six tutorials run end-to-end with physics asserts), `tests/unit/api/test_diagnostics.py`
+  (`hello_world` via `runpy`), and the weekly `crossval-external` job (eight scheduled
+  crossval cases) — and names the scripts with no build or run coverage anywhere
+  (`boundary_spec_demo`, `cad_mesh_import_demo`, `nonuniform_patch_demo`,
+  `nu_cavity_gate_scan`).
+- `scripts/capture_example_fidelity_snapshot.py` and the snapshot's `_comment` carried the
+  same stale counts and a "do not quote a domain extent from this file" warning that PR
+  #734 (a5a72280) made obsolete — cv11 reads 23000/11000 um there now, which is what #722
+  measures. Both corrected; the script's generated `_comment` and the committed one still
+  match byte-for-byte, so a re-capture is a no-op.
+- #739 item 3: `tests/crossval/test_coax_two_port_referee_header.py` asserted
+  `abs(B_L12_MM - 58.4595293) < 1e-4` — a committed rfx-derived constant checked against a
+  transcription of itself. `B_L12_MM` and the four `B_Z_*_REL_MM` offsets are now derived
+  from a freshly rebuilt `Grid` using the index arithmetic `compute_coaxial_two_port` runs
+  (`rfx/sparams/coax.py`): shape (55, 55, 194), pad 16, dz = 0.3747405725 mm gives feed
+  nodes 19 and 175, i.e. L12 = 156 cells = 58.459529310 mm, and offsets of 2 / 160 / 3 /
+  159 cells. Witness: perturbing `B_L12_MM`, `B_Z_FEED_TOP_REL_MM` or
+  `B_Z_LO_COAX_BOT_REL_MM` by 1e-6 mm now fails the test; the old literal assertion passed
+  under the same perturbation.
+
 ### Fixed — a source on a `boundary="pec"` wall now raises the P1.6 advisory (#1075)
 
 - `_validate_cfg_source_on_reflector_plane` (code `source_decoupled`) took its reflector

@@ -21,9 +21,13 @@ Classification is a hand-authored table (five buckets: ``audited``,
 ``no_solve``)
 because "does this script have a build step separable from its solve step"
 is a judgement call a machine cannot make reliably on its own — the AST
-heuristic in ``_functions_building_simulation`` gets it right for all 47
-scripts in this repo today (independently re-derived, matches the 2026-08-27
-audit's 23/10/6/8 split exactly), so ``test_example_fidelity_contract.py``
+heuristic in ``_functions_building_simulation`` gets it right for all 137
+scripts discovered in this repo today (re-measured 2026-09-16 at 6d721a56:
+audited 34 / builder_fused_with_solve 12 / module_level_solve 7 /
+no_solve 4 / no_simulation 80; on the 47 scripts that existed when #737
+was filed the split is 25/8/6/8, where the 2026-08-27 audit read 23/10/6/8
+before cv07 and cv15 grew build-only entry points), so
+``test_example_fidelity_contract.py``
 uses it as a MACHINE CHECK on top of the hand-authored table for every
 bucket, not just the two the audit required — a script whose classification
 disagrees with what its own source does is a bug in the table, not a

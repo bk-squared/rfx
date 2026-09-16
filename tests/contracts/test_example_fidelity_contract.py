@@ -5,86 +5,132 @@ solving, WITHOUT solving, and compares its ``preflight()`` +
 ``fidelity_report()`` output against a committed snapshot
 (``tests/data/example_fidelity_snapshot.json``, regenerable with
 ``scripts/capture_example_fidelity_snapshot.py``). It is cheap precisely
-because neither call time-steps: measured 2026-08-28 on this repo's CPU
-lane, ``85 passed ... in 53.66s`` for all 33 script/builder/variant triples
-(``84 passed, 1 skipped in 50.26s`` without optax installed, which is CI's
-configuration -- see OPTIONAL_DEPENDENCIES).
+because neither call time-steps: measured 2026-09-16 on this repo's CPU
+lane at 6d721a56, ``211 passed, 13 warnings in 90.01s`` for all 51
+script/builder/variant triples with optax installed, and
+``210 passed, 1 skipped, 12 warnings in 123.19s`` on a machine without it
+(beam_steering_superstrate.py declares optax in OPTIONAL_DEPENDENCIES and
+skips rather than failing -- that is CI's configuration).
 
-SNAPSHOT, not a zero-advisory bar. What ships here PINS what each example
-emits TODAY, so any DRIFT from that baseline fails CI. It is NOT a claim
-that today's advisories are correct or that the examples are clean: read a
-green run as "this example did not change since the snapshot was taken."
+EMISSION-DRIFT PIN ONLY -- NOT A PHYSICS CHECK AND NOT A ZERO-ADVISORY
+BAR. Nothing here time-steps: what is pinned is the TEXT each example
+EMITS at build time (its preflight rows and its fidelity/realization
+report), so a green run says "this example's declared geometry and its
+build-time advisories did not change since the snapshot was taken." It
+says nothing about whether the example's OUTPUT numbers are right, and
+nothing about whether today's advisories are correct or the examples are
+clean. Never quote a green run here as example correctness.
 
-Measured on the snapshot as committed (2026-08-28, 33 variants): 37
-preflight rows over 11 variants, all severity="warning", codes
-mesh_resolution 7, msl_port_geometry 6, off_lattice_design_edges 5,
-pec_faces_finite_pec 4, port_evanescent 4, lossless_q 3, no_sources 2, and
-one each of adi_3d_accuracy, floating_port, ntff_near_field,
-ntff_small_ground_plane, sheet_cavity_electrical_thickness,
-geometry_in_absorber. #742 (the false positives and the never-emitted
-advisories that made a zero-advisory bar unworkable) is CLOSED: #744 took
-``absorber_budget_exceeds_axis`` off axes with no absorber and 9 rows left
-this snapshot with it. The 37 that remain are statements about the
-examples' own meshes and ports, so getting to zero means changing those
-examples -- separate work from this gate, which pins whatever they say.
+WHAT DOES VERIFY EXAMPLE OUTPUTS (the other half of #737, and the reason
+this gate's coverage table is not the coverage table):
 
-KNOWN WRONG AND PINNED ANYWAY: every ``domain`` row's
-``realized_extent_um`` / ``n_cells`` is one cell too large, because
-``rfx/fidelity.py`` sums the NODE-count slice of the cell-size array (N
-interior nodes bound N-1 cells). 95 ``domain-extent-quantized`` findings in
-this snapshot are that artefact -- cv14's 50 mm cavity at dx = 1 mm reads
-51 cells / 51000.0 um and is flagged as not dividing evenly. That is #729
-site 1, fixed by the open PR #734, NOT by this one: two PRs editing the
-same block with different 2-D semantics is worse than one honest header.
-When #734 lands, this gate will flag the drift -- that is the gate working,
-and the re-capture belongs to #734. Do not quote a domain extent from this
-file as a measurement until then.
+* ``tests/contracts/test_tutorial_examples.py`` RUNS six committed
+  tutorials end-to-end in a subprocess with time stepping and asserts
+  physics (peak directivity within 0.3 dB of 1.76 dBi, a TE101 error
+  bound, a backscatter/GO ratio window, preflight banner counts):
+  materials_and_dispersion, antenna_farfield_pattern,
+  ports_and_sparams_101, run_control_and_fields, rcs_scattering,
+  resonance_harminv. All six are ALSO audited here, so a change in one of
+  them shows up in two places: a snapshot diff (what it declares) and an
+  end-to-end failure (what it computes). That file carries no pytest
+  marker either, so it is in the same PR fast suite as this gate.
+* ``tests/unit/api/test_diagnostics.py`` runs
+  ``examples/quickstart/hello_world.py`` end-to-end via
+  ``runpy.run_path``. That script is ``builder_fused_with_solve`` here,
+  i.e. OUT of this snapshot but NOT uncovered.
+* the weekly ``crossval-external`` job (validation.yml) builds AND solves
+  the eight scheduled crossval cases (01, 02, 03, 04, 09, 10, 22, 23).
 
-COVERAGE (measured 2026-08-27, re-derive with test_discovery_matches_
-classification_table and the Counter in this module's own analysis): of the
-47 scripts under examples/ and validation/,
+Measured on the snapshot as committed (2026-09-16, 51 variants): 83
+preflight rows over 24 variants, 82 ``severity="warning"`` + 1 ``info``;
+codes mesh_resolution 25, port_aperture_snap 12, pec_faces_finite_pec 10,
+off_lattice_design_edges 7, wire_port_dead_cell_classification_unavailable
+5, lossless_q 4, msl_port_geometry 4, port_evanescent 4, no_sources 2,
+ntff_small_ground_plane 2, and 8 singletons. #742 (the false positives and
+the never-emitted advisories that made a zero-advisory bar unworkable) is
+CLOSED. The rows that remain are statements about the examples' own meshes
+and ports, so getting to zero means changing those examples -- separate
+work from this gate, which pins whatever they say. Whether that work
+happens at all (tighten to a zero-UNEXPLAINED-advisory bar by classifying
+all 83 rows) or the gate stays a drift pin is an open PI decision on #737;
+until it is taken, this file is a drift pin and the tracker's first
+comment's "tighten once #742 closes" plan has NOT been executed.
 
-* 23 are AUDITED here (33 script/builder/variant triples -- several
-  builders are called at more than one input, e.g. booleans or cell sizes,
-  matching what each script's own ``main()`` drives);
-* 10 are ``builder_fused_with_solve``: build and solve share one function
-  with no separable build-only path (e.g. cv07/cv15's ``run_rfx()`` builds
-  ``sim`` and calls a solve entrypoint in the same function). This gate
-  does NOT cover them -- notably cv07, cv09, cv10, cv15, cv18,
-  examples/quickstart/hello_world.py, examples/tutorials/boundary_spec_demo.py,
-  examples/tutorials/cad_mesh_import_demo.py,
-  validation/research/nu_cavity_gates/nu_cavity_gate_scan.py, and
-  validation/research/subgrid/13_subgrid_material_validation.py are ALL
-  OUT OF SCOPE until they get a builder separable from their solve;
-* 6 are ``module_level_solve``: importing the module solves at module scope
-  (cv01-cv05, examples/tutorials/nonuniform_patch_demo.py) -- also out of
-  scope, and deliberately never imported by this test;
+The #729 site-1 defect this header used to warn about (every ``domain``
+row's ``realized_extent_um``/``n_cells`` one cell too large, because
+``rfx/fidelity.py`` summed a NODE-count slice) was FIXED by PR #734
+(merged a5a72280) and the snapshot was re-captured after it: cv11's WR-90
+guide now reads 23000/11000 um, which is what #722 measures, not the old
+24000/12000. The snapshot's own ``_comment`` records that re-capture and a
+second one (2026-09-02, #833 item 2).
+
+COVERAGE (measured 2026-09-16 at 6d721a56; re-derive with
+``test_discovery_matches_classification_table`` and a Counter over
+``lib.CLASSIFICATION``). Discovery now sees 137 scripts under examples/ +
+validation/, all 137 classified: audited 34, builder_fused_with_solve 12,
+module_level_solve 7, no_solve 4, no_simulation 80; the snapshot holds 51
+variants over those 34 audited scripts.
+
+Against the 47 scripts that existed when #737 was filed (ed3484c1 -- the
+tracker's own denominator, kept here because the tracker's table is stated
+in it): 25 audited / 8 builder_fused_with_solve / 6 module_level_solve /
+8 no_simulation. This header previously said 23/10 and named cv07 and
+cv15 as out of scope: both are now audited
+(``07_sheen_lpf.py::build_rfx_sim``,
+``15_patch_antenna_rt5880.py::build_rfx_sim``), which is where the 23->25
+and 10->8 moves come from.
+
+* ``builder_fused_with_solve`` (build and solve share one function with
+  no separable build-only path) in that 47-set, i.e. the scripts this
+  gate does NOT reach: examples/quickstart/hello_world.py,
+  examples/tutorials/boundary_spec_demo.py,
+  examples/tutorials/cad_mesh_import_demo.py, cv09, cv10, cv18,
+  validation/research/nu_cavity_gates/nu_cavity_gate_scan.py,
+  validation/research/subgrid/13_subgrid_material_validation.py. Out of
+  scope here until they get a builder separable from their solve --
+  "out of this snapshot" is not "unverified": hello_world runs
+  end-to-end (above); cv09 is REBUILT build-only from its own constants
+  and helpers in tests/crossval/test_cv09_cv10_body_contract_controls.py
+  (cv10 only at the spec level there, via ``_common_spec()``) and both
+  solve weekly; cv18's gates replay a frozen fixture
+  (tests/crossval/test_wr90_iris_modematch_gates.py) and its realized
+  geometry is checked build-time in test_wr90_iris_realized_is_shared.py;
+  13_subgrid_material_validation has an import smoke in
+  tests/contracts/test_crossval_example_imports.py (import only, no
+  build). boundary_spec_demo, cad_mesh_import_demo and
+  nu_cavity_gate_scan have no build or run coverage anywhere (#737).
+* ``module_level_solve`` (importing the module solves at module scope):
+  cv01-cv05, examples/tutorials/nonuniform_patch_demo.py -- also out of
+  scope, and deliberately never imported by this test. cv01/cv02 have
+  ``--replay`` re-judge subprocess tests and cv05 a
+  ``RFX_CV05_BUILD_ONLY=1`` subprocess build test; nonuniform_patch_demo
+  has nothing.
 * 8 build no rfx ``Simulation`` at all (cv16/cv17/cv20/cv21, the two
-  crossval comparator subdirs, and the two research RCWA scripts) -- out of
-  scope BY CONSTRUCTION.
+  crossval comparator subdirs, and the two research RCWA scripts) -- out
+  of scope BY CONSTRUCTION.
 
 WHAT THIS DOES NOT COVER. Against #722's own list of eight scripts that
 solved geometry other than what they declared (cv06b, cv20, cv11, cv16,
-cv17, cv07, cv09, cv15), this gate reaches TWO: cv06b and cv11.
-cv20/cv16/cv17 are ``no_simulation`` and cv07/cv09/cv15 are
+cv17, cv07, cv09, cv15), this gate now reaches FOUR: cv06b, cv11, cv07
+and cv15 (the last two arrived with their build-only entry points).
+cv20/cv16/cv17 are ``no_simulation`` and cv09 is
 ``builder_fused_with_solve``, so a no-solve gate cannot see them as those
 scripts stand today. Nor does it reach cv21's fence-post error (#739, cv21
-is ``no_simulation``) or cv15's cavity (#740). It DOES pin
+is ``no_simulation``; that one is pinned against a rebuilt grid in
+tests/crossval/test_coax_two_port_referee_header.py instead). It DOES pin
 differentiable_s11_design's two domain widths (#738); that script's third
 declared width, the port aperture, falls under fidelity_report's own
 out-of-scope port row. A green run here is not evidence that the #722
-campaign's class is closed -- closing it needs the remaining six scripts to
-grow a builder separable from their solve.
+campaign's class is closed.
 
-Every one of the 47 is EXPLICITLY classified in
+Every discovered script is EXPLICITLY classified in
 ``tests/_example_fidelity_lib.CLASSIFICATION`` (enumerate-and-classify: a
 new script with no entry fails ``test_discovery_matches_classification_
-table`` instead of silently passing uncovered), and the two out-of-scope
-buckets required to be machine-checkable by the 2026-08-27 review are
-verified against each script's own AST in
-``test_not_auditable_classifications_are_machine_checked`` below (extended,
-cheaply, to all four buckets: a classification that disagrees with what the
-script's source actually does is a bug in the table, not a judgement call).
+table`` instead of silently passing uncovered), and all four out-of-scope
+buckets are verified against each script's own AST in
+``test_not_auditable_classifications_are_machine_checked`` below: a
+classification that disagrees with what the script's source actually does
+is a bug in the table, not a judgement call.
 
 Discovery is a recursive, unfiltered glob (see ``_example_fidelity_lib``'s
 module docstring) -- no one-level ``*/*.py`` pattern to miss a doubly-nested
