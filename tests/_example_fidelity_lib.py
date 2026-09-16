@@ -678,14 +678,17 @@ CLASSIFICATION: dict[str, Entry] = {
         "`main()` builds and calls .run(...) in the same function. NOT given "
         "a build-only entry point with the rest of #737 item 2, on purpose: "
         "its Simulation cannot be built without `trimesh` (the optional "
-        "[cad] extra), which the lane that runs this gate does not install -- "
-        "pr-tests.yml's fast suite is `pip install -e .[dev]` and only the "
-        "separate CAD job installs `.[dev,cad]`. A builder would raise "
-        "ModuleNotFoundError at BUILD time, and OPTIONAL_DEPENDENCIES only "
+        "[cad] extra), which one of the two lanes that collect this gate does "
+        "not install: pr-tests.yml's fast suite does install `.[dev,cad]` "
+        "(pr-tests.yml line 123, for the MeshShape import tests of #358), but "
+        "validation.yml's weekly `slow-tests` job installs `.[dev]` only "
+        "(line 92) and its `-m 'not gpu and not highmem'` selection collects "
+        "these contract files. A builder would raise "
+        "ModuleNotFoundError at BUILD time there, and OPTIONAL_DEPENDENCIES only "
         "converts an IMPORT-time miss (inside load_module) into a visible "
-        "skip, so this script would red the gate in CI rather than skip; the "
+        "skip, so this script would red that lane rather than skip; the "
         "snapshot row could not be captured on a machine without trimesh "
-        "either. Revisit if the fast suite ever installs the cad extra"),
+        "either. Revisit if the weekly lane ever installs the cad extra"),
     "validation/crossval/07_sheen_lpf.py": Entry(
         "audited",
         "`build_rfx_sim(dx)` returns Simulation with no solve call (split out "
