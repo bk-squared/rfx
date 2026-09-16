@@ -6,6 +6,34 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased — 2.0.0]
 
+### Fixed — the beam-steering TMTT fixture's settling witness now measures the superstrate, and its run length clears it (#918)
+
+- `validation/tmtt_paper/beam_steering_superstrate.py` carried one witness probe, at the
+  source cell (#999). That record's peak is the drive pulse, so its end/peak ratio reads
+  the source turn-off, not the structure: **-79.42 / -79.39 / -79.39 dB at 20, 40 and 80
+  periods** at the paper mesh (93×93×84), while an Ex record at the superstrate edge read
+  **-23.6 / -45.3 / -77.9 dB** and the far-field pattern moved by **max|ΔP|/max P = 4.0e-2**
+  (D(30°) +3.8102 → +3.8898 dBi) between 20 and 40 periods. `Result.settling_witness`
+  passed the -40 dB bar on a run whose NTFF output was still changing with run length.
+- The fixture keeps the source record (provenance) and adds three design-region Ex probes:
+  superstrate centre, superstrate edge (x = cx + 0.8·half — the slowest record on this
+  geometry) and air λ/4 above the slab. `NUM_PERIODS` is re-sized so the worst of them
+  clears -40 dB with margin: **paper mesh 20 → 60** (edge -23.6 → -63.2 dB; D(30°)
+  +3.8102 → +3.8781 dBi; the 60-period pattern is within 3.3e-4 of peak of a 120-period
+  run), **SMOKE 12 → 40** (edge -13.3 → -53.5 dB at the init ramp, -54.5 dB on the design
+  the fixture's own 8-step Adam loop returns; the fixture's SMOKE run now prints
+  `settling witness PASS: worst probe1(ex) -55.1 dB` next to its `[done]` number). The
+  eager forwards in `main()` (bare, init, final) print their witness line so a slow design
+  shows up next to the number it would contaminate. Geometry, mesh, loss, optimizer and
+  the differentiated path are unchanged: with the new probes at the OLD run length the 12
+  NTFF leaves, the 73×73 pattern, the loss and dL/dψ are **bit-identical** to the previous
+  fixture at both meshes (CPU, JAX 0.10.2).
+- Not covered: a laterally uniform ε_r = 10 slab (the design bound) is a high-Q dielectric
+  resonator and reads **-34.1 dB at 120 periods** at the paper mesh (-30.5 dB at 80 periods
+  in SMOKE); the optimizer does not return it, and the printed witness is what guards the
+  paper's optimized design at `SMOKE=0`, which was not re-run here (GPU lane). The fidelity
+  snapshot digests geometry and preflight only, so re-capturing it left
+  `tests/data/example_fidelity_snapshot.json` byte-identical (51 variants).
 ### Fixed — NU Kottke smoothing samples cell centres from the float64 spine (#833)
 
 - `compute_smoothed_eps_nonuniform` built its Yee cell centres as `node + f32(store)/2`
