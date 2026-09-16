@@ -1,0 +1,935 @@
+{
+ "lane": "J2",
+ "started_utc": "2026-09-15T06:14:24Z",
+ "artifact_dir": "/root/workspace/claude-workspace/rfx/runs/fdfd-gpu-j2-20260915T061323Z",
+ "env": {
+  "python": "3.10.13",
+  "platform": "Linux-5.15.0-191-generic-x86_64-with-glibc2.31",
+  "numpy": "2.2.6",
+  "scipy": "1.15.3",
+  "jax": "0.6.2",
+  "jax_platforms_env": "cpu",
+  "jax_devices": [
+   "TFRT_CPU_0"
+  ],
+  "jax_default_backend": "cpu",
+  "default_backend": "cudss",
+  "env_backend": "cudss",
+  "cudss_hybrid_memory": false,
+  "cudss_free_forward": true,
+  "backends": {
+   "cudss": {
+    "backend": "cudss",
+    "available": true,
+    "reason": null,
+    "nvmath_version": "1.0.0",
+    "cupy_version": "14.2.0",
+    "device_count": 1,
+    "device_name": "NVIDIA GeForce RTX 4090",
+    "device_arrays": true,
+    "min_cudss": "0.4.0",
+    "threading_lib": "/opt/conda/lib/python3.10/site-packages/nvidia/cu12/lib/libcudss_mtlayer_gomp.so.0",
+    "host_nthreads": 16,
+    "ir_steps": null
+   },
+   "cusolver": {
+    "backend": "cusolver",
+    "available": true,
+    "reason": null,
+    "cupy_version": "14.2.0",
+    "device_count": 1,
+    "device_name": "NVIDIA GeForce RTX 4090"
+   }
+  },
+  "device_memory_gb": {
+   "used": 0.38232421875,
+   "free": 23.26739501953125,
+   "total": 23.64971923828125,
+   "pool_used": 0.0,
+   "pool_total": 0.0
+  },
+  "cpu_count": 32,
+  "omp_num_threads": "16",
+  "nvmath_version": "1.0.0",
+  "cupy_version": "14.2.0",
+  "nvidia_smi": "NVIDIA GeForce RTX 4090, 24564 MiB, 391 MiB, 535.288.01"
+ },
+ "seconds": 95.91093039512634,
+ "finished_utc": "2026-09-15T06:16:00Z",
+ "config": {
+  "backend": "cudss",
+  "divs": [
+   1.0,
+   3.0
+  ],
+  "plan_divs": [
+   3.0
+  ],
+  "factor_cache_size": 1,
+  "hybrid_memory": false,
+  "free_forward": true,
+  "deadline_seconds": 5400.0
+ },
+ "fixture": {
+  "n_turns": 3,
+  "r_out": 0.000218,
+  "spacing": 1.4e-05,
+  "width": 3e-05,
+  "lead": 4.5e-05,
+  "margin": 3e-05,
+  "t_m2": 3e-06,
+  "t_m1": 2e-06,
+  "t_via": 2e-06,
+  "t_si": 0.00012,
+  "t_ox_low": 6.04e-06,
+  "t_ox_high": 1.5e-06,
+  "t_air": 6e-05,
+  "base_dz": 6e-05,
+  "metal_cells": 2,
+  "pad_cells": 4,
+  "pad_cells_z": 3,
+  "pad_ratio": 1.5,
+  "freq": 100000000.0,
+  "sigma_volumetric": 3000000.0,
+  "eps_dielectrics": "vacuum (eps=False), part A's protocol",
+  "source": "validation/fdfd/rfic_spiral.py (study H), imported unmodified"
+ },
+ "referee": {
+  "what": "Greenhouse partial inductance with a PEC ground image; PRIMARY convention L(strip) - L(short's bridge), area-exact corners, reference plane at the lead-column footprint centre (D2's protocol, bridge construction reused)",
+  "ground_height": 0.00013154,
+  "dz_underpass": 4.5e-06,
+  "reference_plane_shift": 1.5e-05,
+  "bridge_split_on_m2": 0.5,
+  "strip": 3.6239351399279985e-09,
+  "bridge": 6.356746144191331e-11,
+  "deembedded": 3.560367678486085e-09,
+  "bridge_over_strip": 0.017541004181210674,
+  "strip_worst_quadrature_error": 2.8009361458899115e-10,
+  "bridge_worst_quadrature_error": 1.5262186839564525e-12,
+  "greenhouse_corner_convention_strip": 3.606209512518044e-09,
+  "strip_no_ground": 4.02431870389502e-09,
+  "per_plane": {
+   "port_line": {
+    "strip": 3.6418030509033934e-09,
+    "bridge": 8.252102147867945e-11,
+    "deembedded": 3.559282029424714e-09
+   },
+   "column_centre": {
+    "strip": 3.6239351399279985e-09,
+    "bridge": 6.356746144191331e-11,
+    "deembedded": 3.560367678486085e-09
+   },
+   "far_edge": {
+    "strip": 3.6058762209989464e-09,
+    "bridge": 4.5366400303716083e-11,
+    "deembedded": 3.56050982069523e-09
+   }
+  },
+  "reference_plane_spread": 0.0003448495721201149,
+  "reference_plane_spread_strip_only": 0.00991376184099168,
+  "per_split": {
+   "0": 3.5604063210504043e-09,
+   "0.25": 3.560507361287507e-09,
+   "0.5": 3.560367678486085e-09,
+   "0.75": 3.5602094908649903e-09,
+   "1": 3.5598195970061245e-09
+  },
+  "split_spread": 0.00019317226294868006,
+  "ground_image_curve": {
+   "60": {
+    "t_si": 6e-05,
+    "ground_height": 7.153999999999998e-05,
+    "deembedded": 3.015998849774859e-09,
+    "rel_to_chosen": -0.15289680108058357
+   },
+   "120": {
+    "t_si": 0.00012,
+    "ground_height": 0.00013154,
+    "deembedded": 3.560367678486085e-09,
+    "rel_to_chosen": 0.0
+   },
+   "190": {
+    "t_si": 0.00019,
+    "ground_height": 0.00020154,
+    "deembedded": 3.7820747109480425e-09,
+    "rel_to_chosen": 0.062270824949245185
+   },
+   "300": {
+    "t_si": 0.0003,
+    "ground_height": 0.00031153999999999996,
+    "deembedded": 3.8922507454503006e-09,
+    "rel_to_chosen": 0.09321595322012821
+   }
+  },
+  "mohan_wheeler": {
+   "what": "SECONDARY sanity number: Mohan's modified-Wheeler fit for a SQUARE spiral (Mohan et al., JSSC 34(10) 1999, eq. 2; 2-3 % typical and ~8 % worst-case error against field solvers). The fit has NO ground plane, so the number to read it against is the referee's free-space strip, not the ground-imaged one.",
+   "n_turns": 3,
+   "d_out": 0.000436,
+   "d_in": 0.0002,
+   "d_in_definition": "inner edge of the innermost complete turn (the inner extension to the via sits inside the hole and is not a turn)",
+   "L": 4.16532927655346e-09,
+   "over_referee_no_ground_minus_1": 0.03503961366726749,
+   "over_referee_deembedded_minus_1": 0.16991548421330815
+  },
+  "area_gate": {
+   "strip_polygon_area": 1.154100000000001e-07,
+   "area_exact": {
+    "n_bars": 14,
+    "sum_of_areas": 1.1541000000000007e-07,
+    "union_area": 1.1541000000000003e-07,
+    "sum_over_polygon_minus_1": -3.3306690738754696e-16,
+    "union_over_polygon_minus_1": -6.661338147750939e-16,
+    "union_over_sum_minus_1": -3.3306690738754696e-16,
+    "underpass_area_over_polygon_minus_1": 6.661338147750939e-16,
+    "total_centreline_length": 0.0038470000000000006
+   },
+   "greenhouse": {
+    "n_bars": 14,
+    "sum_of_areas": 1.1541000000000007e-07,
+    "union_area": 1.1271000000000014e-07,
+    "sum_over_polygon_minus_1": -3.3306690738754696e-16,
+    "union_over_polygon_minus_1": -0.0233948531323106,
+    "union_over_sum_minus_1": -0.023394853132310267,
+    "underpass_area_over_polygon_minus_1": 6.661338147750939e-16,
+    "total_centreline_length": 0.003847
+   }
+  },
+  "gradient_fd4": [
+   3.061868096683841e-05,
+   -6.243707380658427e-05,
+   -9.688617037576522e-05
+  ],
+  "gradient_fd4_params": [
+   "r_out",
+   "spacing",
+   "width"
+  ]
+ },
+ "cpu_study_H": {
+  "A": {
+   "1": {
+    "freq": 100000000.0,
+    "theta": [
+     0.000218,
+     1.4e-05,
+     3e-05
+    ],
+    "L_diff": 3.089743866717694e-09,
+    "Q_diff": 0.13497635364991545,
+    "L_se": 3.087444555361174e-09,
+    "Q_se": 0.1348722122997095,
+    "L_z11_open": -8.052478796649837e-05,
+    "L_raw": 3.204354574543181e-09,
+    "seconds_per_fixture": {
+     "dut": 74.1622359752655,
+     "open": 73.07540488243103,
+     "short": 72.18958711624146
+    },
+    "seconds": 219.427227973938,
+    "z_dut": [
+     [
+      3.5689169549580666,
+      -50595.216461485405
+     ],
+     [
+      -2.1867437269920424,
+      -50596.00174883128
+     ],
+     [
+      -2.1867359737684575,
+      -50596.001752734235
+     ],
+     [
+      6.440443553953237,
+      -50594.84569675348
+     ]
+    ],
+    "s": {
+     "dut": [
+      [
+       0.12756966149758603,
+       0.014687865551059932
+      ],
+      [
+       0.8724323857971878,
+       -0.015944453978955934
+      ],
+      [
+       0.872432385870557,
+       -0.01594445385721438
+      ],
+      [
+       0.12756399403310725,
+       0.014738844422087916
+      ]
+     ],
+     "open": [
+      [
+       0.9999999602241559,
+       -0.00028047704094226716
+      ],
+      [
+       8.615269922904727e-09,
+       3.147115164067265e-05
+      ],
+      [
+       8.633405783481445e-09,
+       3.147106542948998e-05
+      ],
+      [
+       0.9999999635499774,
+       -0.000268203679282817
+      ]
+     ],
+     "short": [
+      [
+       -0.995077933832909,
+       0.0015260620206835544
+      ],
+      [
+       0.0006044281788201621,
+       6.964224590142778e-05
+      ],
+      [
+       0.0006044281788204315,
+       6.964224590144516e-05
+      ],
+      [
+       -0.9955798997988006,
+       0.0014949370373265047
+      ]
+     ],
+     "deembedded": [
+      [
+       0.12599733537948435,
+       0.014314624408486236
+      ],
+      [
+       0.8740049175641633,
+       -0.01532771166672653
+      ],
+      [
+       0.8740049176339257,
+       -0.01532771153403782
+      ],
+      [
+       0.1259917984798805,
+       0.014364339784117795
+      ]
+     ]
+    },
+    "s_stats": {
+     "dut": {
+      "reciprocity": 1.4214093535342077e-10,
+      "max_singular_value": 0.9999999739480394
+     },
+     "open": {
+      "reciprocity": 8.809811267086605e-11,
+      "max_singular_value": 1.0000000000811409
+     },
+     "short": {
+      "reciprocity": 2.699838674986725e-16,
+      "max_singular_value": 0.9959844242861453
+     },
+     "deembedded": {
+      "reciprocity": 1.4991026957813808e-10,
+      "max_singular_value": 0.999999975279481
+     }
+    },
+    "mem": {
+     "rss_gb": 7.54547119140625,
+     "vms_gb": 423.9071502685547,
+     "footprint_gb": 7.4123141542077065,
+     "tag": "solve_split",
+     "t": 220.64429807662964,
+     "solves": 0
+    },
+    "reciprocity_worst_solved": 1.4214093535342077e-10,
+    "passivity_worst_solved": 1.0000000000811409,
+    "grid": {
+     "shape": [
+      43,
+      44,
+      14
+     ],
+     "n_unknowns": 85785,
+     "base_dx": 3e-05,
+     "dx_min": 1.299999999999999e-05,
+     "dx_max": 7.593750000000048e-05,
+     "cells_across_width": 2,
+     "wall_x": [
+      -0.0004308124999999999,
+      0.00043081250000000113
+     ],
+     "wall_y": [
+      -0.00046081250000000056,
+      0.0004308124999999999
+     ],
+     "lid_z": 0.0006220399999999999,
+     "n_z_lines": 15,
+     "dz": [
+      6e-05,
+      6e-05,
+      6.040000000000003e-06,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      1.4999999999999823e-06,
+      1.5000000000000094e-06,
+      1.5000000000000094e-06,
+      5.9999999999999995e-05,
+      9.000000000000002e-05,
+      0.00013499999999999997,
+      0.00020249999999999993
+     ],
+     "t_si": 0.00012,
+     "pad_cells": 4,
+     "pad_cells_z": 3,
+     "port_gap_m": 6e-05,
+     "build_seconds": 0.2441258430480957
+    },
+    "referee_deembedded": 3.560367678485986e-09,
+    "gap": -0.13218404790384464,
+    "referee_strip_only": 3.6239351399278993e-09,
+    "gap_strip_only": -0.14740641114808506,
+    "d2_same_cells_across_width": -0.12025158857388896
+   },
+   "2": {
+    "freq": 100000000.0,
+    "theta": [
+     0.000218,
+     1.4e-05,
+     3e-05
+    ],
+    "L_diff": 3.0883016662366103e-09,
+    "Q_diff": 0.13504902964618265,
+    "L_se": 3.0860103438586822e-09,
+    "Q_se": 0.13494514025169135,
+    "L_z11_open": -8.052934321196215e-05,
+    "L_raw": 3.2029410680385555e-09,
+    "seconds_per_fixture": {
+     "dut": 84.39923477172852,
+     "open": 81.60679030418396,
+     "short": 82.65437483787537
+    },
+    "seconds": 248.66039991378784,
+    "z_dut": [
+     [
+      3.5747215996444814,
+      -50598.078606622264
+     ],
+     [
+      -2.181095659540369,
+      -50598.8638850571
+     ],
+     [
+      -2.1810987774263655,
+      -50598.86388619474
+     ],
+     [
+      6.431474246735475,
+      -50597.70872746423
+     ]
+    ],
+    "s": {
+     "dut": [
+      [
+       0.12745782048579188,
+       0.014685159258282395
+      ],
+      [
+       0.8725442205127696,
+       -0.015941635312158656
+      ],
+      [
+       0.8725442205331572,
+       -0.015941635376613215
+      ],
+      [
+       0.12745216545397675,
+       0.014735853721130381
+      ]
+     ],
+     "open": [
+      [
+       0.999999960153801,
+       -0.0002804799125568614
+      ],
+      [
+       8.638618111438155e-09,
+       3.149771172937285e-05
+      ],
+      [
+       8.642573944973684e-09,
+       3.1497630203521685e-05
+      ],
+      [
+       0.9999999634793125,
+       -0.0002684255866228804
+      ]
+     ],
+     "short": [
+      [
+       -0.9950779327973693,
+       0.001526049289561902
+      ],
+      [
+       0.000604556670956564,
+       7.025968817590002e-05
+      ],
+      [
+       0.0006045566709564658,
+       7.025968817581781e-05
+      ],
+      [
+       -0.9955881875771248,
+       0.0014968943089111622
+      ]
+     ],
+     "deembedded": [
+      [
+       0.12588673185015786,
+       0.014311607279069239
+      ],
+      [
+       0.874115516053231,
+       -0.015324512514090241
+      ],
+      [
+       0.8741155160719426,
+       -0.015324512568289518
+      ],
+      [
+       0.1258812051123585,
+       0.014361070602669543
+      ]
+     ]
+    },
+    "s_stats": {
+     "dut": {
+      "reciprocity": 6.760209842221099e-11,
+      "max_singular_value": 0.9999999738523819
+     },
+     "open": {
+      "reciprocity": 8.162176809845412e-11,
+      "max_singular_value": 1.000000000034779
+     },
+     "short": {
+      "reciprocity": 1.2809099901885294e-16,
+      "max_singular_value": 0.9959902878093689
+     },
+     "deembedded": {
+      "reciprocity": 5.73383392487098e-11,
+      "max_singular_value": 0.9999999752166869
+     }
+    },
+    "mem": {
+     "rss_gb": 7.605682373046875,
+     "vms_gb": 425.3087921142578,
+     "footprint_gb": 8.916526585817337,
+     "tag": "solve_split",
+     "t": 249.90476489067078,
+     "solves": 0
+    },
+    "reciprocity_worst_solved": 8.162176809845412e-11,
+    "passivity_worst_solved": 1.000000000034779,
+    "grid": {
+     "shape": [
+      42,
+      44,
+      14
+     ],
+     "n_unknowns": 83820,
+     "base_dx": 1.5e-05,
+     "dx_min": 1.399999999999996e-05,
+     "dx_max": 7.593749999999994e-05,
+     "cells_across_width": 2,
+     "wall_x": [
+      -0.0004308124999999999,
+      0.0004308124999999999
+     ],
+     "wall_y": [
+      -0.00046081250000000056,
+      0.0004308124999999999
+     ],
+     "lid_z": 0.0006220399999999999,
+     "n_z_lines": 15,
+     "dz": [
+      6e-05,
+      6e-05,
+      6.040000000000003e-06,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      9.999999999999972e-07,
+      1.4999999999999823e-06,
+      1.5000000000000094e-06,
+      1.5000000000000094e-06,
+      5.9999999999999995e-05,
+      9.000000000000002e-05,
+      0.00013499999999999997,
+      0.00020249999999999993
+     ],
+     "t_si": 0.00012,
+     "pad_cells": 4,
+     "pad_cells_z": 3,
+     "port_gap_m": 6e-05,
+     "build_seconds": 0.24574995040893555
+    },
+    "referee_deembedded": 3.560367678485986e-09,
+    "gap": -0.13258911856264166,
+    "referee_strip_only": 3.6239351399278993e-09,
+    "gap_strip_only": -0.1478043764607624,
+    "d2_same_cells_across_width": -0.12025158857388896
+   }
+  },
+  "referee": {
+   "what": "Greenhouse partial inductance with a PEC ground image; PRIMARY convention L(strip) - L(short's bridge), area-exact corners, reference plane at the lead-column footprint centre (D2's protocol, bridge construction reused)",
+   "ground_height": 0.00013154,
+   "dz_underpass": 4.5e-06,
+   "reference_plane_shift": 1.5e-05,
+   "bridge_split_on_m2": 0.5,
+   "strip": 3.6239351399278993e-09,
+   "bridge": 6.356746144191331e-11,
+   "deembedded": 3.560367678485986e-09,
+   "bridge_over_strip": 0.017541004181211156,
+   "strip_worst_quadrature_error": 2.8009361458899115e-10,
+   "bridge_worst_quadrature_error": 1.5262186839564525e-12,
+   "greenhouse_corner_convention_strip": 3.6062095125180104e-09,
+   "strip_no_ground": 4.0243187038949206e-09,
+   "per_plane": {
+    "port_line": {
+     "strip": 3.641803050903294e-09,
+     "bridge": 8.252102147867945e-11,
+     "deembedded": 3.5592820294246147e-09
+    },
+    "column_centre": {
+     "strip": 3.6239351399278993e-09,
+     "bridge": 6.356746144191331e-11,
+     "deembedded": 3.560367678485986e-09
+    },
+    "far_edge": {
+     "strip": 3.6058762209989216e-09,
+     "bridge": 4.5366400303716083e-11,
+     "deembedded": 3.5605098206952054e-09
+    }
+   },
+   "reference_plane_spread": 0.0003448495721410342,
+   "reference_plane_spread_strip_only": 0.009913761840971407,
+   "per_split": {
+    "0": 3.560406321050305e-09,
+    "0.25": 3.5605073612874077e-09,
+    "0.5": 3.560367678485986e-09,
+    "0.75": 3.5602094908648873e-09,
+    "1": 3.5598195970060252e-09
+   },
+   "split_spread": 0.00019317226294868545,
+   "ground_image_curve": {
+    "60": {
+     "t_si": 6e-05,
+     "ground_height": 7.153999999999998e-05,
+     "deembedded": 3.0159988497747595e-09,
+     "rel_to_chosen": -0.1528968010805879
+    },
+    "120": {
+     "t_si": 0.00012,
+     "ground_height": 0.00013154,
+     "deembedded": 3.560367678485986e-09,
+     "rel_to_chosen": 0.0
+    },
+    "190": {
+     "t_si": 0.00019,
+     "ground_height": 0.00020154,
+     "deembedded": 3.782074710947943e-09,
+     "rel_to_chosen": 0.06227082494924696
+    },
+    "300": {
+     "t_si": 0.0003,
+     "ground_height": 0.00031153999999999996,
+     "deembedded": 3.892250745450201e-09,
+     "rel_to_chosen": 0.09321595322013088
+    }
+   },
+   "mohan_wheeler": {
+    "what": "SECONDARY sanity number: Mohan's modified-Wheeler fit for a SQUARE spiral (Mohan et al., JSSC 34(10) 1999, eq. 2; 2-3 % typical and ~8 % worst-case error against field solvers). The fit has NO ground plane, so the number to read it against is the referee's free-space strip, not the ground-imaged one.",
+    "n_turns": 3,
+    "d_out": 0.000436,
+    "d_in": 0.0002,
+    "d_in_definition": "inner edge of the innermost complete turn (the inner extension to the via sits inside the hole and is not a turn)",
+    "L": 4.16532927655346e-09,
+    "over_referee_no_ground_minus_1": 0.035039613667293024,
+    "over_referee_deembedded_minus_1": 0.1699154842133408
+   },
+   "area_gate": {
+    "strip_polygon_area": 1.154100000000001e-07,
+    "area_exact": {
+     "n_bars": 14,
+     "sum_of_areas": 1.1541000000000009e-07,
+     "union_area": 1.1541000000000003e-07,
+     "sum_over_polygon_minus_1": -1.1102230246251565e-16,
+     "union_over_polygon_minus_1": -6.661338147750939e-16,
+     "union_over_sum_minus_1": -5.551115123125783e-16,
+     "underpass_area_over_polygon_minus_1": 6.661338147750939e-16,
+     "total_centreline_length": 0.003847
+    },
+    "greenhouse": {
+     "n_bars": 14,
+     "sum_of_areas": 1.1541000000000009e-07,
+     "union_area": 1.1271000000000014e-07,
+     "sum_over_polygon_minus_1": -1.1102230246251565e-16,
+     "union_over_polygon_minus_1": -0.0233948531323106,
+     "union_over_sum_minus_1": -0.02339485313231049,
+     "underpass_area_over_polygon_minus_1": 6.661338147750939e-16,
+     "total_centreline_length": 0.003847
+    }
+   },
+   "gradient_fd4": [
+    3.0618680966731e-05,
+    -6.243707380442818e-05,
+    -9.688617037645568e-05
+   ],
+   "gradient_fd4_params": [
+    "r_out",
+    "spacing",
+    "width"
+   ]
+  }
+ },
+ "referee_deembedded": 3.560367678486085e-09,
+ "plan_estimates": {
+  "3": {
+   "n": 509580,
+   "nnz": 6448572,
+   "hybrid_memory": false,
+   "plan_seconds": 1.1716833114624023,
+   "permanent_device_memory_gb": 8.62579307332635,
+   "peak_device_memory_gb": 8.62579307332635,
+   "permanent_host_memory_gb": 0.04980252683162689,
+   "peak_host_memory_gb": 0.10225708782672882,
+   "hybrid_min_device_memory_gb": 1.7226967252790928,
+   "hybrid_max_device_memory_gb": 7.937818601727486,
+   "device_memory_gb": {
+    "used": 1.56982421875,
+    "free": 22.07989501953125,
+    "total": 23.64971923828125,
+    "pool_used": 0.13719987869262695,
+    "pool_total": 0.5678491592407227
+   },
+   "grid": {
+    "shape": [
+     104,
+     110,
+     14
+    ],
+    "n_unknowns": 509580,
+    "base_dx": 1e-05,
+    "dx_min": 4.8749999999999965e-06,
+    "dx_max": 2.5312500000000053e-05,
+    "cells_across_width": 6,
+    "wall_x": [
+     -0.0003089375000000002,
+     0.0003089374999999962
+    ],
+    "wall_y": [
+     -0.00033893750000000015,
+     0.0003089374999999902
+    ],
+    "lid_z": 0.0006220399999999999,
+    "n_z_lines": 15,
+    "dz": [
+     6e-05,
+     6e-05,
+     6.040000000000003e-06,
+     9.999999999999972e-07,
+     9.999999999999972e-07,
+     9.999999999999972e-07,
+     9.999999999999972e-07,
+     1.4999999999999823e-06,
+     1.5000000000000094e-06,
+     1.5000000000000094e-06,
+     5.9999999999999995e-05,
+     9.000000000000002e-05,
+     0.00013499999999999997,
+     0.00020249999999999993
+    ],
+    "t_si": 0.00012,
+    "pad_cells": 4,
+    "pad_cells_z": 3,
+    "port_gap_m": 6e-05,
+    "build_seconds": 1.0314505100250244
+   }
+  }
+ },
+ "levels": {
+  "1": {
+   "div": 1.0,
+   "base_dx": 3e-05,
+   "grid": {
+    "shape": [
+     43,
+     44,
+     14
+    ],
+    "n_unknowns": 85785,
+    "base_dx": 3e-05,
+    "dx_min": 1.299999999999999e-05,
+    "dx_max": 7.593750000000048e-05,
+    "cells_across_width": 2,
+    "wall_x": [
+     -0.0004308124999999999,
+     0.00043081250000000113
+    ],
+    "wall_y": [
+     -0.00046081250000000056,
+     0.0004308124999999999
+    ],
+    "lid_z": 0.0006220399999999999,
+    "n_z_lines": 15,
+    "dz": [
+     6e-05,
+     6e-05,
+     6.040000000000003e-06,
+     9.999999999999972e-07,
+     9.999999999999972e-07,
+     9.999999999999972e-07,
+     9.999999999999972e-07,
+     1.4999999999999823e-06,
+     1.5000000000000094e-06,
+     1.5000000000000094e-06,
+     5.9999999999999995e-05,
+     9.000000000000002e-05,
+     0.00013499999999999997,
+     0.00020249999999999993
+    ],
+    "t_si": 0.00012,
+    "pad_cells": 4,
+    "pad_cells_z": 3,
+    "port_gap_m": 6e-05,
+    "build_seconds": 0.11439228057861328
+   },
+   "build_seconds": 0.1145026683807373,
+   "backend": "cudss",
+   "L_diff": 3.0897438686515622e-09,
+   "L_raw": 3.20435457677813e-09,
+   "Q_diff": 0.13497635373714886,
+   "solve_seconds": 7.268714427947998,
+   "device_memory_gb": {
+    "used": 2.10888671875,
+    "free": 21.54083251953125,
+    "total": 23.64971923828125,
+    "pool_used": 0.022932052612304688,
+    "pool_total": 0.5678491592407227
+   },
+   "stats": {
+    "A": {
+     "device_memory_gb": 2.10888671875
+    }
+   },
+   "factorizations": 1,
+   "solves": 1,
+   "freed_forward": 0,
+   "referee_deembedded": 3.560367678486085e-09,
+   "gap": -0.13218404736070355
+  },
+  "3": {
+   "div": 3.0,
+   "base_dx": 1e-05,
+   "grid": {
+    "shape": [
+     104,
+     110,
+     14
+    ],
+    "n_unknowns": 509580,
+    "base_dx": 1e-05,
+    "dx_min": 4.8749999999999965e-06,
+    "dx_max": 2.5312500000000053e-05,
+    "cells_across_width": 6,
+    "wall_x": [
+     -0.0003089375000000002,
+     0.0003089374999999962
+    ],
+    "wall_y": [
+     -0.00033893750000000015,
+     0.0003089374999999902
+    ],
+    "lid_z": 0.0006220399999999999,
+    "n_z_lines": 15,
+    "dz": [
+     6e-05,
+     6e-05,
+     6.040000000000003e-06,
+     9.999999999999972e-07,
+     9.999999999999972e-07,
+     9.999999999999972e-07,
+     9.999999999999972e-07,
+     1.4999999999999823e-06,
+     1.5000000000000094e-06,
+     1.5000000000000094e-06,
+     5.9999999999999995e-05,
+     9.000000000000002e-05,
+     0.00013499999999999997,
+     0.00020249999999999993
+    ],
+    "t_si": 0.00012,
+    "pad_cells": 4,
+    "pad_cells_z": 3,
+    "port_gap_m": 6e-05,
+    "build_seconds": 0.7826113700866699
+   },
+   "build_seconds": 0.7827377319335938,
+   "backend": "cudss",
+   "L_diff": 2.9991813030337047e-09,
+   "L_raw": 3.1076591492818262e-09,
+   "Q_diff": 0.1344161373776527,
+   "solve_seconds": 22.534517765045166,
+   "device_memory_gb": {
+    "used": 9.98583984375,
+    "free": 13.66387939453125,
+    "total": 23.64971923828125,
+    "pool_used": 0.13719987869262695,
+    "pool_total": 0.5678491592407227
+   },
+   "stats": {
+    "A": {
+     "device_memory_gb": 9.98583984375
+    }
+   },
+   "factorizations": 1,
+   "solves": 1,
+   "freed_forward": 0,
+   "referee_deembedded": 3.560367678486085e-09,
+   "gap": -0.15762034321438512
+  }
+ },
+ "cusolver_probe": {
+  "div": 1.0,
+  "backend": "cusolver",
+  "what": "one (n, 1) solve of the paper geometry's DUT system through cuSOLVER csrlsvqr, against cuDSS on the same system",
+  "n": 85785,
+  "nnz": 1076673,
+  "cudss": {
+   "seconds": 0.7081811428070068,
+   "residual": 8.061294693243466e-09,
+   "device_memory_gb": {
+    "used": 9.98583984375,
+    "free": 13.66387939453125,
+    "total": 23.64971923828125,
+    "pool_used": 0.02165365219116211,
+    "pool_total": 0.5678491592407227
+   }
+  },
+  "cusolver": {
+   "seconds": 20.68759250640869,
+   "residual": 1.505438262033441e-08,
+   "device_memory_gb": {
+    "used": 9.98583984375,
+    "free": 13.66387939453125,
+    "total": 23.64971923828125,
+    "pool_used": 0.02037525177001953,
+    "pool_total": 0.5678491592407227
+   }
+  }
+ }
+}

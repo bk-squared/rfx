@@ -1,0 +1,17 @@
++ timeout 4800 python -u /root/work/rfx-fdfd-gpu-p2/validation/vessl/_lane_embedded.py
+  paper plan m=2: N=571252 perm 12.60 GB
+  paper plan m=3: N=1899954 perm 65.79 GB
+  paper walls 5 W: L=2980.13 pH
+  paper walls 10 W: L=3072.35 pH
+  paper walls 20 W: L=3087.08 pH
+  paper plateau f=1e+07 sigma=5e+05 delta/W=7.50 L=3238.45 pH
+  paper plateau f=1e+07 sigma=1e+06 delta/W=5.31 L=3317.28 pH
+  paper plateau f=1e+07 sigma=2e+06 delta/W=3.75 L=3336.99 pH
+  paper plateau f=1e+07 sigma=3e+06 delta/W=3.06 L=3340.65 pH
+  paper plateau f=1e+07 sigma=1e+07 delta/W=1.68 L=3343.34 pH
+  paper plateau f=1e+07 sigma=3e+07 delta/W=0.97 L=3343.89 pH
+  paper plateau f=1e+06 sigma=2e+07 delta/W=3.75 L=3343.49 pH
+  paper level 1: N=74554 L=3072.35 pH (2 s)
+  paper level 2: N=571252 L=3336.99 pH (35 s)
+P2 done in 319 s
++ echo 0

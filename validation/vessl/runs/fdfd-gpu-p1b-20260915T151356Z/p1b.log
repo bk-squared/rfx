@@ -1,0 +1,9 @@
++ timeout 4800 python -u /root/work/rfx-fdfd-gpu-p1b/validation/vessl/_lane_embedded.py
+  level 4: [84, 88, 48] N=1095964
+    cudss     cold   122.49 s  warm  120.16 s  residual 2.510e-08  dev 38.82 GB
+    cudss     L_dut=312.6746 pH  grad=['1.159307e-05', '-1.112672e-05', '-2.457008e-05']  755.3 s
+    RC twin: L=312.9715 pH
+  FD4 dL/dwidth at level 4: AD -2.45700821e-05 FD -2.45700688e-05 rel 5.45e-07 (1471 s)
+  thru level 4: N=395576 L_deembedded=+1.2464 pH L_raw=31.3389 pH
+P1b done in 2912 s -> /root/workspace/claude-workspace/rfx/runs/fdfd-gpu-p1b-20260915T151356Z/p1b_ladder.json
++ echo 0

@@ -1,0 +1,22 @@
++ timeout 6600 python -u /root/work/rfx-fdfd-gpu-j1/validation/vessl/_lane_embedded.py
+  IR sweep at W/3: N=108898
+    ir=0: residual 3.858e-09  diff 2.396e-03  3.78 s
+    ir=1: residual 1.310e-09  diff 2.392e-03  0.85 s
+    ir=2: residual 1.315e-09  diff 2.395e-03  0.85 s
+    ir=4: residual 1.317e-09  diff 2.399e-03  0.86 s
+    cudss     L_dut=300.5577 pH  grad=['1.094448e-05', '-1.018859e-05', '-2.242248e-05']  15.2 s
+      ir=0: L_dut rel vs CPU 4.623e-10  grad worst 1.923e-08
+    cudss     L_dut=300.5577 pH  grad=['1.094448e-05', '-1.018859e-05', '-2.242248e-05']  6.6 s
+      ir=2: L_dut rel vs CPU 1.541e-10  grad worst 1.479e-08
+    cudss     L_dut=300.5577 pH  grad=['1.094448e-05', '-1.018859e-05', '-2.242248e-05']  6.8 s
+      ir=4: L_dut rel vs CPU 1.541e-10  grad worst 1.552e-08
+  W/4: [58, 62, 15] N=172747 nnz=2179339
+    cudss     L_dut=302.2169 pH  grad=['1.083435e-05', '-9.961494e-06', '-2.274962e-05']  20.9 s
+    L_pec=275.5668 pH (8 s)
+  W/6: [83, 89, 15] N=352536 nnz=4461120
+    cudss     L_dut=301.5538 pH  grad=['1.047089e-05', '-9.676079e-06', '-2.295085e-05']  38.1 s
+    L_pec=275.7962 pH (16 s)
+    FD4 param 2 at W/4: AD -2.27496171e-05 vs FD -2.27496148e-05 rel 9.99e-08 (21 s)
+extended Richardson: {'p1_finest_pair': 3.002274030567162e-10, 'p2_finest_pair': 3.0102321814558983e-10} rel [-0.09856538761397027, -0.09617594794635198]
+J1 done in 287 s -> /root/workspace/claude-workspace/rfx/runs/fdfd-gpu-j1-20260915T060541Z/j1_scale.json
++ echo 0

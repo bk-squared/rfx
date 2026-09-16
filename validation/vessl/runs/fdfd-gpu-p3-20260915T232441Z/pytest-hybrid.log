@@ -1,0 +1,280 @@
+.F                                                                       [100%]
+=================================== FAILURES ===================================
+_____ test_cudss_hybrid_mode_with_a_device_limit_matches_the_in_core_solve _____
+
+module_name = 'jit_gather'
+jaxpr = { lambda ; a:c128[300] b:i32[13744,1]. let
+    c:c64[13744] = gather[
+      dimension_numbers=GatherDimensionNumbers(o...
+      mode=GatherScatterMode.PROMISE_IN_BOUNDS
+      slice_sizes=(1,)
+      unique_indices=False
+    ] a b
+  in (c,) }
+ordered_effects = [], platforms = ('cpu',)
+backend = <jaxlib._jax.Client object at 0x7f95ac5cb850>
+axis_context = ShardingContext(num_devices=1, device_assignment=None, abstract_mesh=None)
+name_stack = NameStack(stack=(Scope(name='jit(gather)'),))
+replicated_args = [False, False], arg_shardings = [None, None]
+result_shardings = [None], in_layouts = (None, None), out_layouts = (None,)
+arg_names = ('args[0]', 'args[1]'), result_names = ('result',), num_replicas = 1
+num_partitions = 1, all_default_mem_kind = True
+input_output_aliases = [None, None], propagated_out_mem_kinds = (None,)
+lowering_parameters = LoweringParameters(override_lowering_rules=None, global_constant_computation=False, for_export=False, export_ignore_forward_compatibility=False)
+
+    def lower_jaxpr_to_module(
+        module_name: str,
+        jaxpr: core.ClosedJaxpr,
+        *,
+        ordered_effects: list[core.Effect],
+        # See ModuleContext.get_backend() for backend and platforms usage.
+        platforms: Sequence[str],
+        backend: xb.XlaBackend | None,
+        axis_context: AxisContext,
+        name_stack: source_info_util.NameStack,
+        donated_args: Sequence[bool],
+        replicated_args: Sequence[bool] | None = None,
+        arg_shardings: Sequence[JSharding | AUTO | None] | None = None,
+        result_shardings: Sequence[JSharding | AUTO | None] | None = None,
+        in_layouts: Sequence[DeviceLocalLayout | None | AutoLayout] | None = None,
+        out_layouts: Sequence[DeviceLocalLayout | None | AutoLayout] | None = None,
+        arg_names: Sequence[str] | None = None,
+        result_names: Sequence[str] | None = None,
+        num_replicas: int = 1,
+        num_partitions: int = 1,
+        all_default_mem_kind: bool = True,
+        input_output_aliases: None | tuple[int | None, ...] = None,
+        propagated_out_mem_kinds: tuple[None | str, ...] | None = None,
+        lowering_parameters: LoweringParameters,
+    ) -> LoweringResult:
+      """Lowers a top-level jaxpr to an MLIR module.
+    
+      Handles the quirks of the argument/return value passing conventions of the
+      runtime.
+      """
+      util.test_event("lower_jaxpr_to_module")
+      platforms = tuple(map(xb.canonicalize_platform, platforms))
+    
+      in_avals = (jaxpr.in_avals if arg_shardings is None else
+                  map(sharded_aval, jaxpr.in_avals, arg_shardings))
+      out_avals = (jaxpr.out_avals if result_shardings is None else
+                   map(sharded_aval, jaxpr.out_avals, result_shardings))
+      if all_default_mem_kind:
+        arg_memory_kinds = None
+        result_memory_kinds = None
+      else:
+        arg_memory_kinds = (map(_get_mem_kind, arg_shardings)
+                            if arg_shardings is not None else None)
+        result_memory_kinds = (map(_get_mem_kind, result_shardings)
+                              if result_shardings is not None else None)
+    
+      # TODO(yashkatariya): Simplify the donation logic.
+      xla_donated_args = None
+      platforms_with_donation = [p for p in platforms
+                                 if p in _platforms_with_donation]
+      if platforms_with_donation:
+        if len(platforms_with_donation) != len(platforms) and (
+            xla_donated_args or any(donated_args)):
+          raise NotImplementedError(
+            "In multi-platform lowering either all or no lowering platforms "
+            f"should support donation. Lowering for {platforms} of which "
+            f"only {platforms_with_donation} support donation")
+        input_output_aliases, donated_args, xla_donated_args = _set_up_aliases(
+            input_output_aliases, in_avals, out_avals, donated_args,
+            arg_memory_kinds, result_memory_kinds, in_layouts, out_layouts,
+            result_shardings if num_partitions > 1 else None)
+        if (num_partitions > 1 and
+            (result_shardings is None or
+             any(s is None or isinstance(s, AUTO) or contains_unconstrained(s)
+                 for s in result_shardings))):
+          if xla_donated_args is None:
+            xla_donated_args = [False] * len(donated_args)
+          for input_id in range(len(donated_args)):
+            if donated_args[input_id]:
+              xla_donated_args[input_id] = True
+              donated_args[input_id] = False
+      if any(donated_args):
+        unused_donations = [str(a) for a, d in zip(in_avals, donated_args) if d]
+        msg = "See an explanation at https://docs.jax.dev/en/latest/faq.html#buffer-donation."
+        if not platforms_with_donation:
+          msg = f"Donation is not implemented for {platforms}.\n{msg}"
+        if unused_donations:
+          warnings.warn("Some donated buffers were not usable:"
+                        f" {', '.join(unused_donations)}.\n{msg}")
+      # Delete donated_args by default here, since it's not needed beyond this point
+      del donated_args
+    
+      unlowerable_effects = lowerable_effects.filter_not_in(jaxpr.effects)
+      if unlowerable_effects:
+        raise ValueError(f'Cannot lower jaxpr with effects: {jaxpr.effects}')
+    
+      # HLO channels need to start at 1
+      channel_iter = itertools.count(1)
+      # Create a keepalives list that will be mutated during the lowering.
+      keepalives: list[Any] = []
+      host_callbacks: list[Any] = []
+    
+      dim_vars: Sequence[str]
+      if not config.dynamic_shapes.value:
+        # Find the dimension variables
+        all_dim_poly = [d for aval in jaxpr.in_avals if hasattr(aval, "shape")
+                        for d in aval.shape if not core.is_constant_dim(d)]
+        dim_vars = tuple(sorted(functools.reduce(lambda acc, new: acc.union(new._get_vars()),
+                                                 all_dim_poly, set())))
+      else:
+        dim_vars = ()
+    
+      ctx = ModuleContext(backend=backend,
+                          platforms=platforms, axis_context=axis_context,
+                          keepalives=keepalives,
+                          channel_iterator=channel_iter,
+                          host_callbacks=host_callbacks,
+                          lowering_parameters=lowering_parameters,
+                          shape_poly_state=ShapePolyLoweringState(dim_vars, platforms),
+                          all_default_mem_kind=all_default_mem_kind)
+      with ctx.context, ir.Location.unknown(ctx.context):
+        # Remove module name characters that XLA would alter. This ensures that
+        # XLA computation preserves the module name.
+        attrs = ctx.module.operation.attributes
+        module_name = sanitize_name(module_name)
+        attrs["sym_name"] = ir.StringAttr.get(module_name)
+        attrs["mhlo.num_replicas"] = i32_attr(num_replicas)
+        attrs["mhlo.num_partitions"] = i32_attr(num_partitions)
+        lower_jaxpr_to_fun(
+            ctx, "main", jaxpr, ordered_effects,
+            name_stack=name_stack,
+            public=True,
+            replicated_args=replicated_args,
+            arg_shardings=arg_shardings,
+            result_shardings=result_shardings,
+            input_output_aliases=input_output_aliases,
+            xla_donated_args=xla_donated_args,
+            arg_names=arg_names,
+            result_names=result_names,
+            arg_memory_kinds=arg_memory_kinds,
+            result_memory_kinds=result_memory_kinds,
+            arg_layouts=in_layouts,
+            result_layouts=out_layouts,
+            propagated_out_mem_kinds=propagated_out_mem_kinds)
+    
+      try:
+>       if not ctx.module.operation.verify():
+E       jaxlib.mlir._mlir_libs._site_initialize.<locals>.MLIRError: Verification failed:
+E       error: unknown: type of return operand 0 ('tensor<13744xcomplex<f64>>') doesn't match function result type ('tensor<13744xcomplex<f32>>') in function @main
+E        note: unknown: see current operation: "func.return"(%0) : (tensor<13744xcomplex<f64>>) -> ()
+
+/opt/conda/lib/python3.10/site-packages/jax/_src/interpreters/mlir.py:1292: MLIRError
+
+The above exception was the direct cause of the following exception:
+Traceback (most recent call last):
+  File "/opt/conda/lib/python3.10/site-packages/jax/_src/interpreters/mlir.py", line 1292, in lower_jaxpr_to_module
+    if not ctx.module.operation.verify():
+jaxlib.mlir._mlir_libs._site_initialize.<locals>.MLIRError: Verification failed:
+error: unknown: type of return operand 0 ('tensor<13744xcomplex<f64>>') doesn't match function result type ('tensor<13744xcomplex<f32>>') in function @main
+ note: unknown: see current operation: "func.return"(%0) : (tensor<13744xcomplex<f64>>) -> ()
+
+The above exception was the direct cause of the following exception:
+
+jax.errors.SimplifiedTraceback: For simplicity, JAX has removed its internal frames from the traceback of the following exception. Set JAX_TRACEBACK_FILTERING=off to include these.
+
+The above exception was the direct cause of the following exception:
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f92d03103d0>
+
+    def test_cudss_hybrid_mode_with_a_device_limit_matches_the_in_core_solve(monkeypatch):
+        """The GPU half of the same option (skipped where cuDSS cannot run).
+    
+        Hybrid mode keeps the factor in HOST memory and streams it, so it must
+        return the same answer as the in-memory factorisation of the same
+        matrix: the value, the reverse-mode gradient (whose adjoint is cuDSS's
+        separately factorised ``A^T``, in hybrid mode too) and the residual.
+        The device-memory limit is set explicitly, from cuDSS's own
+        ``hybrid_min_device_memory`` for this system, so the run cannot fall
+        back on the heuristic that filled the card in the study-P m = 5 attempt.
+    
+        1e-9 relative, the tolerance of the real-fixture gate H1
+        (``validation/fdfd/invariant_ladder.py``, the ``hybrid`` block: at level
+        3 of the level-invariant spiral, a 6 GiB limit against a 12.65 GB
+        factor, L and every gradient component agree far inside it).
+    
+        The factor cache is keyed on the matrix and the backend, NOT on the
+        memory mode, so it is cleared between the two runs -- otherwise the
+        second one would be a cache hit on the first one's factor and the test
+        would compare a number with itself.
+        """
+        _require("cudss")
+        from rfx.fdfd import _cudss
+        with enable_x64():
+            rows, cols, data, b = _system(n=300, seed=5)
+            est = _cudss.plan_estimate(np.asarray(data), rows, cols, 300)
+            floor = est.get("hybrid_min_device_memory_gb") or 0.0
+            limit = f"{max(int(4 * floor * 2 ** 30), 2 ** 26)}"          # >= 64 MiB
+    
+            def loss(d):
+                return jnp.sum(jnp.abs(sparse_solve(d, rows, cols, b, backend="cudss")) ** 2)
+    
+            ls.clear_factor_cache()
+            v_core, g_core = jax.value_and_grad(loss)(data)
+            ls.clear_factor_cache()
+            monkeypatch.setenv("RFX_FDFD_CUDSS_HYBRID", "1")
+            monkeypatch.setenv("RFX_FDFD_CUDSS_HYBRID_LIMIT", limit)
+            assert _cudss.hybrid_memory() and _cudss.hybrid_device_memory_limit() == int(limit)
+            v_hyb, g_hyb = jax.value_and_grad(loss)(data)
+            x_hyb = sparse_solve(data, rows, cols, b, backend="cudss")
+            ls.clear_factor_cache()
+        assert abs(float(v_hyb) - float(v_core)) <= 1e-9 * abs(float(v_core))
+        num = float(jnp.linalg.norm(g_hyb - g_core))
+        assert num <= 1e-9 * float(jnp.linalg.norm(g_core))
+        nb = float(jnp.linalg.norm(b))
+>       r = float(jnp.linalg.norm(sparse_matvec(data, rows, cols, x_hyb) - b)) / nb
+
+tests/unit/fdfd/test_fdfd_linear_solve.py:1111: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+rfx/fdfd/linear_solve.py:546: in sparse_matvec
+    return jnp.zeros(x.shape, dtype=jnp.result_type(data, x)).at[rows].add(d * x[cols])
+/opt/conda/lib/python3.10/site-packages/jax/_src/array.py:382: in __getitem__
+    return indexing.rewriting_take(self, idx)
+/opt/conda/lib/python3.10/site-packages/jax/_src/numpy/indexing.py:653: in rewriting_take
+    return internal_gather(arr, dynamic_idx)
+/opt/conda/lib/python3.10/site-packages/jax/_src/numpy/indexing.py:684: in _gather
+    y = lax.gather(
+/opt/conda/lib/python3.10/site-packages/jax/_src/lax/slicing.py:424: in gather
+    return gather_p.bind(
+/opt/conda/lib/python3.10/site-packages/jax/_src/core.py:536: in bind
+    return self._true_bind(*args, **params)
+/opt/conda/lib/python3.10/site-packages/jax/_src/core.py:552: in _true_bind
+    return self.bind_with_trace(prev_trace, args, params)
+/opt/conda/lib/python3.10/site-packages/jax/_src/core.py:562: in bind_with_trace
+    return trace.process_primitive(self, args, params)
+/opt/conda/lib/python3.10/site-packages/jax/_src/core.py:1066: in process_primitive
+    return primitive.impl(*args, **params)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+prim = gather
+args = (Array([ 0.3866798 +1.27083203e-01j, -0.21830124+8.77340226e-03j,
+        0.34542776+2.30278834e-02j, -0.27449474-1.21...lex128), Array([[  0],
+       [  3],
+       [ 12],
+       ...,
+       [293],
+       [294],
+       [299]], dtype=int32))
+params = {'dimension_numbers': GatherDimensionNumbers(offset_dims=(), collapsed_slice_dims=(0,), start_index_map=(0,), operand_...ms=(), start_indices_batching_dims=()), 'slice_sizes': (1,), 'unique_indices': False, 'indices_are_sorted': False, ...}
+
+    def apply_primitive(prim, *args, **params):
+      """Impl rule that compiles and runs a single primitive 'prim' using XLA."""
+      fun = xla_primitive_callable(prim, **params)
+      # TODO(yashkatariya): Investigate adding is_primitive to jit and never
+      # triggering the disable jit path instead of messing around with it here.
+      prev = lib.jax_jit.swap_thread_local_state_disable_jit(False)
+      try:
+>       outs = fun(*args)
+E       ValueError: Cannot lower jaxpr with verifier errors:
+E       	type of return operand 0 ('tensor<13744xcomplex<f64>>') doesn't match function result type ('tensor<13744xcomplex<f32>>') in function @main
+E       		at loc(unknown)
+E       	see current operation: "func.return"(%0) : (tensor<13744xcomplex<f64>>) -> ()
+E       		at loc(unknown)
+E       Define JAX_DUMP_IR_TO to dump the module.
+
+/opt/conda/lib/python3.10/site-packages/jax/_src/dispatch.py:91: ValueError
+1 failed, 1 passed, 26 deselected in 5.73s

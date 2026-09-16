@@ -1,0 +1,24 @@
+backends: {
+ "cudss": {
+  "backend": "cudss",
+  "available": true,
+  "reason": null,
+  "nvmath_version": "1.0.0",
+  "cupy_version": "14.2.0",
+  "device_count": 1,
+  "device_name": "NVIDIA RTX A6000",
+  "device_arrays": true,
+  "min_cudss": "0.4.0",
+  "threading_lib": "/opt/conda/lib/python3.10/site-packages/nvidia/cu12/lib/libcudss_mtlayer_gomp.so.0",
+  "host_nthreads": 16,
+  "ir_steps": null
+ },
+ "cusolver": {
+  "backend": "cusolver",
+  "available": true,
+  "reason": null,
+  "cupy_version": "14.2.0",
+  "device_count": 1,
+  "device_name": "NVIDIA RTX A6000"
+ }
+}

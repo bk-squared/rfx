@@ -1,0 +1,89 @@
+{
+ "what": "every VESSL run this study submitted, with its state, wall time and artifact path -- gate G6 reads it",
+ "cluster": "remilab-c0",
+ "preset": "gpu-rtx4090 (RTX 4090, 24 GB, driver 535.288.01, ~32 CPU)",
+ "image": "ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8 (conda Python 3.10)",
+ "etiquette": "one GPU job of mine at a time; another session of the user held 369367261081 (rfx-gpu-suite) for the whole session, and VESSL queued/scheduled around it",
+ "runs": [
+  {
+   "id": "369367261091",
+   "name": "rfx-fdfd-gpu-j0probe",
+   "lane": "probe",
+   "state": "terminated",
+   "submitted_utc": "2026-09-15T05:31:56Z",
+   "wall_minutes": 0.5,
+   "artifacts": "none (terminated during initialization)",
+   "note": "submission probe: mount: {/root/upload/: volume://vessl-storage/<vol>} is rejected by the API, so this variant dropped the mount to prove the mount was the rejected part. Accidentally submitted twice (the first vessl run create was filtered by a grep and looked like it had failed)."
+  },
+  {
+   "id": "369367261092",
+   "name": "rfx-fdfd-gpu-j0probe",
+   "lane": "probe",
+   "state": "terminated",
+   "submitted_utc": "2026-09-15T05:32:03Z",
+   "wall_minutes": 0.5,
+   "artifacts": "none (terminated during initialization)",
+   "note": "the duplicate of 369367261091"
+  },
+  {
+   "id": "369367261095",
+   "name": "rfx-fdfd-gpu-j0imp",
+   "lane": "probe",
+   "state": "terminated",
+   "submitted_utc": "2026-09-15T05:32:53Z",
+   "wall_minutes": 0.6,
+   "artifacts": "none (terminated while pending)",
+   "note": "import: {/root/upload/: volume://...} IS accepted; terminated too early on the transient \"pod has unbound immediate PersistentVolumeClaims\" message, which every run here shows for a few seconds. This is the mechanism the lanes now use."
+  },
+  {
+   "id": "369367261100",
+   "name": "rfx-fdfd-gpu-j0",
+   "lane": "j0",
+   "state": "failed",
+   "submitted_utc": "2026-09-15T05:39:06Z",
+   "wall_minutes": 3.6,
+   "artifacts": "validation/vessl/runs/fdfd-gpu-j0-20260915T053936Z/",
+   "note": "first real J0. cuDSS + cuSOLVER both available (nvmath 1.0.0, cupy 14.2.0, RTX 4090); _cudss.selftest passed at unit scale; the lane then died in build_level because shapely was not in the pip pins, and 3 hplane tests failed because validation/crossval/comparators was not in the tarball. Both fixed for the next submission."
+  },
+  {
+   "id": "369367261102",
+   "name": "rfx-fdfd-gpu-j0",
+   "lane": "j0",
+   "state": "terminated",
+   "submitted_utc": "2026-09-15T05:44:57Z",
+   "wall_minutes": 6.2,
+   "artifacts": "validation/vessl/runs/fdfd-gpu-j0-20260915T054539Z/",
+   "note": "second J0: shapely and the comparators fixed, cuDSS threading layer auto-found (libcudss_mtlayer_gomp.so.0, host_nthreads 16), selftest cross-thread now passes on a roundoff criterion. Terminated on purpose two minutes into the W/3 comparison: the lane was about to run the (108898, 2) system through cuSOLVER QR as well (8 one-shot sparse QRs), which would have eaten the 40-minute budget before the gate arithmetic. The heavy blocks are now SuperLU + cuDSS only. Its pytest run also found a real test bug: test_repeated_jitted_solves_do_not_grow_the_resident_set drives the solve from a worker thread, and on jax 0.6.2 (where jax.experimental.enable_x64 still exists and is THREAD-LOCAL) the worker saw no x64; fixed in tests/test_fdfd_linear_solve.py."
+  },
+  {
+   "id": "369367261104",
+   "name": "rfx-fdfd-gpu-j0",
+   "lane": "j0",
+   "state": "failed (exit 1 = gate G1 not passed; every measurement complete)",
+   "submitted_utc": "2026-09-15T05:51:07Z",
+   "wall_minutes": 13.4,
+   "artifacts": "validation/vessl/runs/fdfd-gpu-j0-20260915T055136Z/",
+   "note": "the J0 of record. cuDSS + cuSOLVER available; selftest clean; G1 measured on the real W/3 DUT system (N=108898): SuperLU 139.23 s / residual 1.787e-08, cuDSS 0.95 s / residual 3.841e-09, solutions differing 2.395e-03, value_and_grad L_dut 300.5577 pH both (rel 9.2e-10) and gradients to 2.29e-08 worst; plan estimates 1.38/2.43/5.68 GB at W/3/W/4/W/6; value_and_grad 432.9 s (SuperLU) vs 6.9 s (cuDSS). Exit 1 because the lane returns the G1 verdict, which fails its own 1e-8 thresholds -- reported failing, not widened."
+  },
+  {
+   "id": "369367261110",
+   "name": "rfx-fdfd-gpu-j1",
+   "lane": "j1",
+   "state": "completed",
+   "submitted_utc": "2026-09-15T06:05:22Z",
+   "wall_minutes": 6.5,
+   "artifacts": "validation/vessl/runs/fdfd-gpu-j1-20260915T060541Z/",
+   "note": "the scale lane. IR sweep at W/3 (residual 3.858e-09 -> 1.310e-09 in one step, saturating; the 2.4e-03 difference from SuperLUs solution does not move); L_dut at W/3 through cuDSS vs the recorded CPU level to 1.541e-10 with ir=2; W/4 (N=172747) value_and_grad 20.9 s, L_dut 302.2169 pH, L_pec 275.5668 pH, peak device 5.75 GB; W/6 (N=352536) value_and_grad 38.1 s, L_dut 301.5538 pH, L_pec 275.7962 pH, peak device 12.72 GB; FD4 on width at W/4 through cuDSS 9.99e-08 from the AD gradient (21 s for four solves)."
+  },
+  {
+   "id": "369367261113",
+   "name": "rfx-fdfd-gpu-j2",
+   "lane": "j2",
+   "state": "completed",
+   "submitted_utc": "2026-09-15T06:12:46Z",
+   "wall_minutes": 3.4,
+   "artifacts": "validation/vessl/runs/fdfd-gpu-j2-20260915T061323Z/",
+   "note": "paper geometry (study H, imported unmodified). W/1 (N=85785, 2 cells across W): L_diff 3.0897438686515622e-09 H in 7.3 s against study H own CPU SuperLU value 3.089743866717694e-09 in 219.4 s -- 6.26e-10 relative, 30x faster. W/3 (N=509580, 6 cells across W), the level study H could only BUILD: cuDSS plan estimate 8.63 GB permanent device memory in 1.2 s, solved in 22.5 s, L_diff 2.9991813030337047e-09, gap -15.76 % against the bridge-corrected referee 3.560367678486085e-09 (W/1 is -13.22 %), so refining in plane moves AWAY from the referee here too. cuSOLVER probe on the W/1 system, one rhs column: 20.7 s / residual 1.505e-08 against cuDSS 0.7 s / 8.061e-09."
+  }
+ ]
+}

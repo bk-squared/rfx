@@ -1,0 +1,2368 @@
+{
+ "what": "study P: the level-invariant spiral fixture and its joint GPU convergence ladder",
+ "fixture": {
+  "freq": 100000000.0,
+  "n_turns": 2,
+  "r_out": 5.2e-05,
+  "spacing": 1e-05,
+  "width": 1e-05,
+  "lead": 1.5000000000000002e-05,
+  "margin": 1e-05,
+  "z_top": 4e-05,
+  "base_dz_level1": 1e-05,
+  "metal_cells_level1": 1,
+  "pad_ratio": 1.5,
+  "short_gap": 1e-05,
+  "port_gap": 1e-05,
+  "wall_margin_w": 10.0,
+  "sigma": 2000000.0,
+  "skin_depth": 3.558812717085886e-05,
+  "skin_over_width": 3.5588127170858854,
+  "skin_over_thickness": 17.79406358542943,
+  "dielectrics": "vacuum (eps_si = eps_ox = 1)",
+  "metal": "uniform-current volumetric (solve_spiral(sigma_volumetric=))"
+ },
+ "runs": [
+  {
+   "id": "369367261232",
+   "name": "rfx-fdfd-gpu-p0",
+   "lane": "p0",
+   "preset": "gpu-rtx4090",
+   "state": "completed",
+   "submitted_utc": "2026-09-15T14:31:47Z",
+   "finished_utc": "2026-09-15T14:44:39Z",
+   "wall_minutes": 12.9,
+   "lane_seconds": 629.1,
+   "artifacts": "validation/vessl/runs/fdfd-gpu-p0-20260915T143212Z/",
+   "note": "probe: cuDSS plans (W10/W20 x metal_cells 1/2 x m 3..6), wall ladder at level 2, P6 at W/1 and W/2, sigma plateau at level 3 + RC twin, value_and_grad at levels 1-2 (metal_cells 2). Source volume rfx-fdfd-gpu-p-20260915, tarball rfx-src-p.tgz sha256 225b4622dd987410."
+  },
+  {
+   "id": "369367261233",
+   "name": "rfx-fdfd-gpu-p1",
+   "lane": "p1",
+   "preset": "gpu-rtx4090",
+   "state": "completed (lane exit 0; level 3 and the metal_cells-2 level 3 FAILED in value_and_grad: cuDSS ALLOC_FAILED)",
+   "submitted_utc": "2026-09-15T14:45:29Z",
+   "finished_utc": "2026-09-15T14:50:29Z",
+   "wall_minutes": 5.0,
+   "lane_seconds": 194.0,
+   "artifacts": "validation/vessl/runs/fdfd-gpu-p1-20260915T144557Z/",
+   "note": "levels 1 and 2 (value_and_grad, factor probe, RC twin) and the thru probe at levels 1-3 landed. Level 3 (N=466833) factorised once in the probe (11.0 s, 12.81 GB device in use) but value_and_grad ran out of the 24 GB: with factor_cache_size(1) the last fixture's A factor is still cached while its A^T is factorised, i.e. two factors resident. Fixed for the rerun by factor_cache_size(0)."
+  },
+  {
+   "id": "369367261234",
+   "name": "rfx-fdfd-gpu-p1",
+   "lane": "p1 (rerun: level 3)",
+   "preset": "gpu-rtx4090",
+   "state": "completed",
+   "submitted_utc": "2026-09-15T14:59:54Z",
+   "finished_utc": "2026-09-15T15:09:47Z",
+   "wall_minutes": 9.9,
+   "lane_seconds": 484.9,
+   "artifacts": "validation/vessl/runs/fdfd-gpu-p1-20260915T150027Z/",
+   "note": "factor_cache_size(0): level 3 (N=466833) value_and_grad 76.5 s, the metal_cells-2 level 3 (N=581430) 113.5 s, FD4 dL/dwidth at level 3 through cuDSS rel 1.72e-07 from the AD gradient; RC twins at both."
+  },
+  {
+   "id": "369367261236",
+   "name": "rfx-fdfd-gpu-p1b",
+   "lane": "p1b",
+   "preset": "gpu-a6000-1",
+   "state": "completed",
+   "submitted_utc": "2026-09-15T15:11:38Z",
+   "finished_utc": "2026-09-15T16:03:38Z",
+   "wall_minutes": 52.0,
+   "lane_seconds": 2911.6,
+   "artifacts": "validation/vessl/runs/fdfd-gpu-p1b-20260915T151356Z/",
+   "note": "level 4 (N=1095964) on the 48 GB card, factor_cache_size(0): one cuDSS factorisation 120.2 s with 38.82 GB in use, value_and_grad 755.3 s, RC twin, FD4 dL/dwidth through cuDSS 1471 s (rel 5.45e-07 from AD), thru probe at level 4."
+  },
+  {
+   "id": "369367261249",
+   "name": "rfx-fdfd-gpu-p2",
+   "lane": "p2",
+   "preset": "gpu-rtx4090",
+   "state": "completed",
+   "submitted_utc": "2026-09-15T16:04:39Z",
+   "finished_utc": "2026-09-15T16:11:38Z",
+   "wall_minutes": 7.0,
+   "lane_seconds": 319.0,
+   "artifacts": "validation/vessl/runs/fdfd-gpu-p2-20260915T160513Z/",
+   "note": "secondary: the paper-geometry square spiral on the invariant fixture at 10 MHz / 2e6 S/m (delta 3.75 W): cuDSS plans (m=2 12.60 GB, m=3 65.79 GB), level-1 walls 5/10/20 W, the sigma plateau at level 2 (4 cells across W) + the 1 MHz RC twin, forward L at levels 1-2."
+  },
+  {
+   "id": "369367261252",
+   "name": "rfx-fdfd-gpu-p1c",
+   "lane": "p1c",
+   "preset": "gpu-a6000-1",
+   "state": "failed (lane exit 1: cuDSS ALLOC_FAILED at level 5)",
+   "submitted_utc": "2026-09-15T16:12:56Z",
+   "finished_utc": "2026-09-15T16:15:35Z",
+   "wall_minutes": 2.7,
+   "artifacts": "validation/vessl/runs/fdfd-gpu-p1c-20260915T161317Z/",
+   "note": "stretch: level 5 (N=2128175, plan 91.87 GB permanent, 16.78 GB hybrid minimum) as a forward solve with RFX_FDFD_CUDSS_HYBRID=1 on the 48 GB card. The first factorisation filled the device (47.52 GB in use) and failed with ALLOC_FAILED (cuDSSError ALLOC_FAILED (2) in the log). Likely cause, NOT verified: rfx.fdfd._cudss switches hybrid mode on (HybridMemoryModeOptions(hybrid_memory_mode=True)) without a device-memory limit, so cuDSS may not have spilled to the host. The lane env block records cudss_hybrid_memory false at start because the lane switches hybrid on per level (RFX_P_HYBRID_LEVELS); the level-5 record has hybrid_memory true. Level 5 is therefore not measured; the ladder is m = 1-4."
+  },
+  {
+   "id": "369367261283",
+   "name": "rfx-fdfd-gpu-p3",
+   "lane": "p3",
+   "preset": "gpu-a6000-1",
+   "state": "completed",
+   "submitted_utc": "2026-09-15T23:23:57Z",
+   "finished_utc": "2026-09-15T23:33:47Z",
+   "wall_minutes": 9.8,
+   "lane_seconds": 458.0,
+   "artifacts": "validation/vessl/runs/fdfd-gpu-p3-20260915T232441Z/",
+   "note": "first hybrid-memory lane: gate H1 at level 3 with a 6 GiB device limit (rel L 3.00e-10, worst gradient component 1.62e-09, value_and_grad 1.26x) and the level-5 host-memory account (cgroup limit 32.0 GB against a 97.60 GB hybrid host estimate: NOT RUN). Two flaws fixed for the rerun: the device high-water mark was sampled without emptying the allocator (11.9 GB of the 12.5 GB reading was held from the previous factorisation), and there was no in-core-vs-in-core control. Its pytest block also caught a real bug in the new unit test (a jnp call outside the x64 scope). Source volume rfx-fdfd-gpu-p3-20260916, tarball rfx-src-p3.tgz."
+  },
+  {
+   "id": "369367261284",
+   "name": "rfx-fdfd-gpu-p3",
+   "lane": "p3 (rerun: control + clean memory sampling)",
+   "preset": "gpu-a6000-1",
+   "state": "completed (lane exit 0; gate H1 FAILS on the gradient, see the note)",
+   "submitted_utc": "2026-09-15T23:37:25Z",
+   "finished_utc": "2026-09-15T23:49:53Z",
+   "wall_minutes": 12.5,
+   "lane_seconds": 649.0,
+   "artifacts": "validation/vessl/runs/fdfd-gpu-p3-20260915T233751Z/",
+   "note": "gate H1 at level 3 (N = 466833, 11.37 GB factor) with RFX_FDFD_CUDSS_HYBRID_LIMIT=6GiB: the limit binds (cuDSS's plan 6.00 GB device / 18.79 GB host against 11.37 / 0.04 in-core; peak RSS 13.63 -> 21.57 GB), factor 22.8 -> 35.5 s, solve 0.63 -> 1.27 s, value_and_grad 159.6 -> 231.5 s (1.45x); L to 1.50e-10, gradient to 6.07e-09 (vector) against a 3.54e-09 in-core-vs-in-core control -- so H1 FAILS its 1e-9 on the gradient, below cuDSS's own reproducibility. m = 5 NOT RUN: 97.60 GB of host memory needed, 32.0 GB allowed by the cgroup. pytest -k hybrid: 2 passed on the card."
+  },
+  {
+   "id": "369367261289",
+   "name": "rfx-fdfd-gpu-p3",
+   "lane": "p3 (rerun: plans re-measured with the shipped constructor-only limit + a solution-vector control)",
+   "preset": "gpu-a6000-1",
+   "state": "completed (lane exit 0; gate H1 FAILS on the gradient, see the note)",
+   "submitted_utc": "2026-09-16T00:47:29Z",
+   "finished_utc": "2026-09-16T01:00:17Z",
+   "wall_minutes": 12.8,
+   "lane_seconds": 638.2,
+   "artifacts": "validation/vessl/runs/fdfd-gpu-p3-20260916T004810Z/",
+   "note": "re-measurement of gate H1 with rfx/fdfd/_cudss.py as shipped: the hybrid device limit is set ONLY at DirectSolver construction (the plan records carry hybrid_limit_applied=constructor; the earlier run 369367261284 also set it after plan(), through code that is not in the tree, so its plan numbers could not be attributed to either setter). Constructor-only reproduces them byte for byte: plan 5.999999988824129 GB device / 18.78843168914318 GB host against 11.37 / 0.04 in-core, peak RSS 13.55 -> 21.45 GB (+7.90). Cost: factor 23.1 -> 29.5 s (1.27x), solve 0.58 -> 1.30 s (2.26x), value_and_grad 161.1 -> 200.7 s (1.25x). Answer: L to 9.00e-10 (inside 1e-9), gradient to 1.90e-09 vector / 2.22e-09 worst -- H1 FAILS its 1e-9 on the gradient. Controls: the same in-core value_and_grad twice 1.70e-09 / 6.00e-10 (worst component 2.38e-09, larger than hybrid's), the same level on the RTX 4090 5.37e-09, the probe's solution vector 8.61e-05 hybrid vs 6.70e-05 in-core-twice. m = 5 NOT RUN again: 97.60 GB of host memory needed (hybrid minimum on the device 8.75 GB hybrid-plan / 16.78 GB in-core-plan), 32.0 GB allowed by the cgroup. pytest -k hybrid: 2 passed on the card."
+  }
+ ],
+ "referee": {
+  "what": "area-exact Greenhouse + PEC ground image, L(strip) - L(bridge); the bridge is the physical short standard's: M2 arm outer plane -> post centre, M1 arm post centre -> inner plane",
+  "total": 3.3305510896906523e-10,
+  "strip": 3.493712871350631e-10,
+  "bridge": 1.6316178165997864e-11,
+  "strip_worst_error": 1.584583900319699e-11,
+  "bridge_worst_error": 1.846497501877589e-13,
+  "ground_height": 2.6000000000000005e-05,
+  "dz_underpass": 4e-06,
+  "reference_planes_x": [
+   4.7e-05,
+   6.999999999999994e-06
+  ],
+  "post_x": [
+   2.1999999999999993e-05,
+   3.2e-05
+  ],
+  "split_on_m2": 0.5,
+  "post_split_band": {
+   "post_inner_edge": {
+    "x_transition": 2.1999999999999993e-05,
+    "split_on_m2": 0.37499999999999994,
+    "bridge": 1.6384174379149683e-11,
+    "deembedded": 3.329871127559134e-10
+   },
+   "post_centre": {
+    "x_transition": 2.6999999999999996e-05,
+    "split_on_m2": 0.5,
+    "bridge": 1.6316178165997864e-11,
+    "deembedded": 3.3305510896906523e-10
+   },
+   "post_outer_edge": {
+    "x_transition": 3.2e-05,
+    "split_on_m2": 0.6250000000000001,
+    "bridge": 1.6256952231281918e-11,
+    "deembedded": 3.331143349037812e-10
+   }
+  },
+  "post_split_band_rel": 0.00038198527643542316,
+  "underpass_depth": {
+   "one_layer_up": {
+    "dz_underpass": 2e-06,
+    "deembedded": 3.313201689611568e-10,
+    "rel": -0.00520916797607085
+   },
+   "nominal": {
+    "dz_underpass": 4e-06,
+    "deembedded": 3.3305510896906523e-10,
+    "rel": 0.0
+   },
+   "one_layer_down": {
+    "dz_underpass": 6e-06,
+    "deembedded": 3.34538619261784e-10,
+    "rel": 0.004454248719711229
+   }
+  },
+  "via": {
+   "what": "omitted by the referee (z-directed; every mutual with the x/y bars vanishes); its own partial self-inductance plus its ground-image mutual bound what the omission costs",
+   "self": 1.0532910744063715e-13,
+   "image_mutual": 8.276447903412123e-15,
+   "bound": 1.1360555534404927e-13,
+   "bound_rel": 0.000341101374171087
+  },
+  "lead_columns": "z-directed in the DUT and the short alike: they cancel term by term",
+  "old_study_deembedded": 3.3305510896906523e-10,
+  "same_as_old_study": 0.0
+ },
+ "p1": {
+  "levels": [
+   1,
+   2,
+   3,
+   4,
+   6
+  ],
+  "coordinates": {
+   "1": {
+    "walls": {
+     "x_lo": -0.000152,
+     "x_hi": 0.000152,
+     "y_lo": -0.000162,
+     "y_hi": 0.000152,
+     "ground": 0.0,
+     "lid": 0.00014000000000000001
+    },
+    "columns": {
+     "inner": [
+      1.9999999999999936e-06,
+      1.1999999999999994e-05,
+      -6.2e-05,
+      -5.2000000000000004e-05,
+      1e-05,
+      2.1000000000000002e-05
+     ],
+     "outer": [
+      4.2e-05,
+      5.2e-05,
+      -6.2e-05,
+      -5.2000000000000004e-05,
+      1e-05,
+      2.5000000000000005e-05
+     ]
+    },
+    "ports": {
+     "outer": [
+      4.2e-05,
+      5.2e-05,
+      -6.2e-05,
+      -5.2000000000000004e-05,
+      0.0,
+      1e-05
+     ],
+     "inner": [
+      1.9999999999999936e-06,
+      1.1999999999999994e-05,
+      -6.2e-05,
+      -5.2000000000000004e-05,
+      0.0,
+      1e-05
+     ]
+    },
+    "post": [
+     2.1999999999999993e-05,
+     3.2e-05,
+     -6.2e-05,
+     -5.2000000000000004e-05,
+     0.0,
+     2.7000000000000006e-05
+    ],
+    "bridge_m2": [
+     2.1999999999999993e-05,
+     5.2e-05,
+     -6.2e-05,
+     -5.2000000000000004e-05,
+     2.5000000000000005e-05,
+     2.7000000000000006e-05
+    ],
+    "bridge_m1": [
+     1.9999999999999936e-06,
+     3.2e-05,
+     -6.2e-05,
+     -5.2000000000000004e-05,
+     2.1000000000000002e-05,
+     2.3000000000000003e-05
+    ],
+    "dut_m2": [
+     -5.2e-05,
+     5.2e-05,
+     -6.2e-05,
+     5.2e-05,
+     2.5000000000000005e-05,
+     2.7000000000000006e-05
+    ],
+    "dut_m1": [
+     1.9999999999999936e-06,
+     1.1999999999999994e-05,
+     -6.2e-05,
+     -1.1999999999999995e-05,
+     2.1000000000000002e-05,
+     2.3000000000000003e-05
+    ],
+    "dut_via": [
+     1.9999999999999936e-06,
+     1.1999999999999994e-05,
+     -2.1999999999999996e-05,
+     -1.1999999999999995e-05,
+     2.3000000000000003e-05,
+     2.5000000000000005e-05
+    ],
+    "interfaces": {
+     "si_top": 2e-05,
+     "m1_bottom": 2.1000000000000002e-05,
+     "via_bottom": 2.3000000000000003e-05,
+     "m2_bottom": 2.5000000000000005e-05,
+     "m2_top": 2.7000000000000006e-05,
+     "ox_top": 3.0000000000000004e-05,
+     "stack_top": 4e-05
+    },
+    "volume": {
+     "dut": 1.5840000000000008e-14,
+     "open": 2.6e-15,
+     "short": 6.100000000000003e-15
+    }
+   },
+   "2": {
+    "walls": {
+     "x_lo": -0.000152,
+     "x_hi": 0.000152,
+     "y_lo": -0.000162,
+     "y_hi": 0.000152,
+     "ground": 0.0,
+     "lid": 0.00014000000000000001
+    },
+    "columns": {
+     "inner": [
+      1.9999999999999936e-06,
+      1.1999999999999994e-05,
+      -6.2e-05,
+      -5.2000000000000004e-05,
+      1e-05,
+      2.1000000000000002e-05
+     ],
+     "outer": [
+      4.2e-05,
+      5.2e-05,
+      -6.2e-05,
+      -5.2000000000000004e-05,
+      1e-05,
+      2.5000000000000005e-05
+     ]
+    },
+    "ports": {
+     "outer": [
+      4.2e-05,
+      5.2e-05,
+      -6.2e-05,
+      -5.2000000000000004e-05,
+      0.0,
+      1e-05
+     ],
+     "inner": [
+      1.9999999999999936e-06,
+      1.1999999999999994e-05,
+      -6.2e-05,
+      -5.2000000000000004e-05,
+      0.0,
+      1e-05
+     ]
+    },
+    "post": [
+     2.1999999999999993e-05,
+     3.2e-05,
+     -6.2e-05,
+     -5.2000000000000004e-05,
+     0.0,
+     2.7000000000000006e-05
+    ],
+    "bridge_m2": [
+     2.1999999999999993e-05,
+     5.2e-05,
+     -6.2e-05,
+     -5.2000000000000004e-05,
+     2.5000000000000005e-05,
+     2.7000000000000006e-05
+    ],
+    "bridge_m1": [
+     1.9999999999999936e-06,
+     3.2e-05,
+     -6.2e-05,
+     -5.2000000000000004e-05,
+     2.1000000000000002e-05,
+     2.3000000000000003e-05
+    ],
+    "dut_m2": [
+     -5.2e-05,
+     5.2e-05,
+     -6.2e-05,
+     5.2e-05,
+     2.5000000000000005e-05,
+     2.7000000000000006e-05
+    ],
+    "dut_m1": [
+     1.9999999999999936e-06,
+     1.1999999999999994e-05,
+     -6.2e-05,
+     -1.1999999999999995e-05,
+     2.1000000000000002e-05,
+     2.3000000000000003e-05
+    ],
+    "dut_via": [
+     1.9999999999999936e-06,
+     1.1999999999999994e-05,
+     -2.1999999999999996e-05,
+     -1.1999999999999995e-05,
+     2.3000000000000003e-05,
+     2.5000000000000005e-05
+    ],
+    "interfaces": {
+     "si_top": 2e-05,
+     "m1_bottom": 2.1000000000000002e-05,
+     "via_bottom": 2.3000000000000003e-05,
+     "m2_bottom": 2.5000000000000005e-05,
+     "m2_top": 2.7000000000000006e-05,
+     "ox_top": 3.0000000000000004e-05,
+     "stack_top": 4e-05
+    },
+    "volume": {
+     "dut": 1.5840000000000008e-14,
+     "open": 2.6e-15,
+     "short": 6.100000000000002e-15
+    }
+   },
+   "3": {
+    "walls": {
+     "x_lo": -0.000152,
+     "x_hi": 0.000152,
+     "y_lo": -0.000162,
+     "y_hi": 0.000152,
+     "ground": 0.0,
+     "lid": 0.00014000000000000001
+    },
+    "columns": {
+     "inner": [
+      1.9999999999999936e-06,
+      1.1999999999999994e-05,
+      -6.2e-05,
+      -5.2000000000000004e-05,
+      1e-05,
+      2.1000000000000002e-05
+     ],
+     "outer": [
+      4.2e-05,
+      5.2e-05,
+      -6.2e-05,
+      -5.2000000000000004e-05,
+      1e-05,
+      2.5000000000000005e-05
+     ]
+    },
+    "ports": {
+     "outer": [
+      4.2e-05,
+      5.2e-05,
+      -6.2e-05,
+      -5.2000000000000004e-05,
+      0.0,
+      1e-05
+     ],
+     "inner": [
+      1.9999999999999936e-06,
+      1.1999999999999994e-05,
+      -6.2e-05,
+      -5.2000000000000004e-05,
+      0.0,
+      1e-05
+     ]
+    },
+    "post": [
+     2.1999999999999993e-05,
+     3.2e-05,
+     -6.2e-05,
+     -5.2000000000000004e-05,
+     0.0,
+     2.7000000000000006e-05
+    ],
+    "bridge_m2": [
+     2.1999999999999993e-05,
+     5.2e-05,
+     -6.2e-05,
+     -5.2000000000000004e-05,
+     2.5000000000000005e-05,
+     2.7000000000000006e-05
+    ],
+    "bridge_m1": [
+     1.9999999999999936e-06,
+     3.2e-05,
+     -6.2e-05,
+     -5.2000000000000004e-05,
+     2.1000000000000002e-05,
+     2.3000000000000003e-05
+    ],
+    "dut_m2": [
+     -5.2e-05,
+     5.2e-05,
+     -6.2e-05,
+     5.2e-05,
+     2.5000000000000005e-05,
+     2.7000000000000006e-05
+    ],
+    "dut_m1": [
+     1.9999999999999936e-06,
+     1.1999999999999994e-05,
+     -6.2e-05,
+     -1.1999999999999995e-05,
+     2.1000000000000002e-05,
+     2.3000000000000003e-05
+    ],
+    "dut_via": [
+     1.9999999999999936e-06,
+     1.1999999999999994e-05,
+     -2.1999999999999996e-05,
+     -1.1999999999999995e-05,
+     2.3000000000000003e-05,
+     2.5000000000000005e-05
+    ],
+    "interfaces": {
+     "si_top": 2e-05,
+     "m1_bottom": 2.1000000000000002e-05,
+     "via_bottom": 2.3000000000000003e-05,
+     "m2_bottom": 2.5000000000000005e-05,
+     "m2_top": 2.7000000000000006e-05,
+     "ox_top": 3.0000000000000004e-05,
+     "stack_top": 4e-05
+    },
+    "volume": {
+     "dut": 1.584000000000001e-14,
+     "open": 2.6000000000000004e-15,
+     "short": 6.100000000000002e-15
+    }
+   },
+   "4": {
+    "walls": {
+     "x_lo": -0.000152,
+     "x_hi": 0.000152,
+     "y_lo": -0.000162,
+     "y_hi": 0.000152,
+     "ground": 0.0,
+     "lid": 0.00014000000000000001
+    },
+    "columns": {
+     "inner": [
+      1.9999999999999936e-06,
+      1.1999999999999994e-05,
+      -6.2e-05,
+      -5.2000000000000004e-05,
+      1e-05,
+      2.1000000000000002e-05
+     ],
+     "outer": [
+      4.2e-05,
+      5.2e-05,
+      -6.2e-05,
+      -5.2000000000000004e-05,
+      1e-05,
+      2.5000000000000005e-05
+     ]
+    },
+    "ports": {
+     "outer": [
+      4.2e-05,
+      5.2e-05,
+      -6.2e-05,
+      -5.2000000000000004e-05,
+      0.0,
+      1e-05
+     ],
+     "inner": [
+      1.9999999999999936e-06,
+      1.1999999999999994e-05,
+      -6.2e-05,
+      -5.2000000000000004e-05,
+      0.0,
+      1e-05
+     ]
+    },
+    "post": [
+     2.1999999999999993e-05,
+     3.2e-05,
+     -6.2e-05,
+     -5.2000000000000004e-05,
+     0.0,
+     2.7000000000000006e-05
+    ],
+    "bridge_m2": [
+     2.1999999999999993e-05,
+     5.2e-05,
+     -6.2e-05,
+     -5.2000000000000004e-05,
+     2.5000000000000005e-05,
+     2.7000000000000006e-05
+    ],
+    "bridge_m1": [
+     1.9999999999999936e-06,
+     3.2e-05,
+     -6.2e-05,
+     -5.2000000000000004e-05,
+     2.1000000000000002e-05,
+     2.3000000000000003e-05
+    ],
+    "dut_m2": [
+     -5.2e-05,
+     5.2e-05,
+     -6.2e-05,
+     5.2e-05,
+     2.5000000000000005e-05,
+     2.7000000000000006e-05
+    ],
+    "dut_m1": [
+     1.9999999999999936e-06,
+     1.1999999999999994e-05,
+     -6.2e-05,
+     -1.1999999999999995e-05,
+     2.1000000000000002e-05,
+     2.3000000000000003e-05
+    ],
+    "dut_via": [
+     1.9999999999999936e-06,
+     1.1999999999999994e-05,
+     -2.1999999999999996e-05,
+     -1.1999999999999995e-05,
+     2.3000000000000003e-05,
+     2.5000000000000005e-05
+    ],
+    "interfaces": {
+     "si_top": 2e-05,
+     "m1_bottom": 2.1000000000000002e-05,
+     "via_bottom": 2.3000000000000003e-05,
+     "m2_bottom": 2.5000000000000005e-05,
+     "m2_top": 2.7000000000000006e-05,
+     "ox_top": 3.0000000000000004e-05,
+     "stack_top": 4e-05
+    },
+    "volume": {
+     "dut": 1.5840000000000008e-14,
+     "open": 2.6000000000000004e-15,
+     "short": 6.100000000000002e-15
+    }
+   },
+   "6": {
+    "walls": {
+     "x_lo": -0.000152,
+     "x_hi": 0.000152,
+     "y_lo": -0.000162,
+     "y_hi": 0.000152,
+     "ground": 0.0,
+     "lid": 0.00014000000000000001
+    },
+    "columns": {
+     "inner": [
+      1.9999999999999936e-06,
+      1.1999999999999994e-05,
+      -6.2e-05,
+      -5.2000000000000004e-05,
+      1e-05,
+      2.1000000000000002e-05
+     ],
+     "outer": [
+      4.2e-05,
+      5.2e-05,
+      -6.2e-05,
+      -5.2000000000000004e-05,
+      1e-05,
+      2.5000000000000005e-05
+     ]
+    },
+    "ports": {
+     "outer": [
+      4.2e-05,
+      5.2e-05,
+      -6.2e-05,
+      -5.2000000000000004e-05,
+      0.0,
+      1e-05
+     ],
+     "inner": [
+      1.9999999999999936e-06,
+      1.1999999999999994e-05,
+      -6.2e-05,
+      -5.2000000000000004e-05,
+      0.0,
+      1e-05
+     ]
+    },
+    "post": [
+     2.1999999999999993e-05,
+     3.2e-05,
+     -6.2e-05,
+     -5.2000000000000004e-05,
+     0.0,
+     2.7000000000000006e-05
+    ],
+    "bridge_m2": [
+     2.1999999999999993e-05,
+     5.2e-05,
+     -6.2e-05,
+     -5.2000000000000004e-05,
+     2.5000000000000005e-05,
+     2.7000000000000006e-05
+    ],
+    "bridge_m1": [
+     1.9999999999999936e-06,
+     3.2e-05,
+     -6.2e-05,
+     -5.2000000000000004e-05,
+     2.1000000000000002e-05,
+     2.3000000000000003e-05
+    ],
+    "dut_m2": [
+     -5.2e-05,
+     5.2e-05,
+     -6.2e-05,
+     5.2e-05,
+     2.5000000000000005e-05,
+     2.7000000000000006e-05
+    ],
+    "dut_m1": [
+     1.9999999999999936e-06,
+     1.1999999999999994e-05,
+     -6.2e-05,
+     -1.1999999999999995e-05,
+     2.1000000000000002e-05,
+     2.3000000000000003e-05
+    ],
+    "dut_via": [
+     1.9999999999999936e-06,
+     1.1999999999999994e-05,
+     -2.1999999999999996e-05,
+     -1.1999999999999995e-05,
+     2.3000000000000003e-05,
+     2.5000000000000005e-05
+    ],
+    "interfaces": {
+     "si_top": 2e-05,
+     "m1_bottom": 2.1000000000000002e-05,
+     "via_bottom": 2.3000000000000003e-05,
+     "m2_bottom": 2.5000000000000005e-05,
+     "m2_top": 2.7000000000000006e-05,
+     "ox_top": 3.0000000000000004e-05,
+     "stack_top": 4e-05
+    },
+    "volume": {
+     "dut": 1.584000000000001e-14,
+     "open": 2.6000000000000004e-15,
+     "short": 6.100000000000003e-15
+    }
+   }
+  },
+  "worst_coordinate_deviation_m": 0.0,
+  "worst_coordinate_key": "",
+  "undefined_coordinates": [],
+  "worst_volume_rel_deviation": 2.220446049250313e-16,
+  "nesting_worst_distance_m": 0.0,
+  "nesting": {
+   "2": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0,
+    "shape": [
+     42,
+     44,
+     24
+    ]
+   },
+   "3": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0,
+    "shape": [
+     63,
+     66,
+     36
+    ]
+   },
+   "4": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0,
+    "shape": [
+     84,
+     88,
+     48
+    ]
+   },
+   "6": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0,
+    "shape": [
+     126,
+     132,
+     72
+    ]
+   }
+  },
+  "tolerance_m": 1e-12,
+  "passed": true,
+  "wall_w": 10.0,
+  "metal_cells": 1,
+  "n_unknowns": {
+   "1": 18643,
+   "2": 140990,
+   "3": 466833,
+   "4": 1095964,
+   "6": 3663258
+  }
+ },
+ "p1_old_fixture": {
+  "levels": [
+   1,
+   2,
+   3
+  ],
+  "worst_coordinate_deviation_m": 8.125000000000086e-05,
+  "worst_coordinate_key": "walls.x_hi",
+  "worst_volume_rel_deviation": 0.5464480874316953,
+  "nesting_worst_distance_m": 8.125000000000086e-05,
+  "passed": false
+ },
+ "probe_source": "validation/vessl/runs/fdfd-gpu-p0-20260915T143212Z",
+ "plans": {
+  "W10_mc2_m3": {
+   "wall_w": 10.0,
+   "metal_cells": 2,
+   "m": 3,
+   "n": 581430,
+   "permanent_device_memory_gb": 15.648950804024935,
+   "peak_device_memory_gb": 15.648950804024935,
+   "hybrid_min_device_memory_gb": 3.907481301575899,
+   "plan_seconds": 1.4293391704559326,
+   "assembly_seconds": 3.3224079608917236,
+   "error": null
+  },
+  "W20_mc2_m3": {
+   "wall_w": 20.0,
+   "metal_cells": 2,
+   "m": 3,
+   "n": 784614,
+   "permanent_device_memory_gb": 23.45399636402726,
+   "peak_device_memory_gb": 23.45399636402726,
+   "hybrid_min_device_memory_gb": 5.763726178556681,
+   "plan_seconds": 1.959031343460083,
+   "assembly_seconds": 3.469071865081787,
+   "error": null
+  },
+  "W10_mc2_m4": {
+   "wall_w": 10.0,
+   "metal_cells": 2,
+   "m": 4,
+   "n": 1366216,
+   "permanent_device_memory_gb": 50.85263213887811,
+   "peak_device_memory_gb": 50.85263213887811,
+   "hybrid_min_device_memory_gb": 11.242708925157785,
+   "plan_seconds": 3.7842328548431396,
+   "assembly_seconds": 4.728939056396484,
+   "error": null
+  },
+  "W20_mc2_m4": {
+   "wall_w": 20.0,
+   "metal_cells": 2,
+   "m": 4,
+   "n": 1845216,
+   "permanent_device_memory_gb": 77.32094453647733,
+   "peak_device_memory_gb": 77.32094453647733,
+   "hybrid_min_device_memory_gb": 16.639207888394594,
+   "plan_seconds": 5.2661638259887695,
+   "assembly_seconds": 5.62877082824707,
+   "error": null
+  },
+  "W10_mc1_m4": {
+   "wall_w": 10.0,
+   "metal_cells": 1,
+   "m": 4,
+   "n": 1095964,
+   "permanent_device_memory_gb": 36.6093324162066,
+   "peak_device_memory_gb": 36.6093324162066,
+   "hybrid_min_device_memory_gb": 7.312985513359308,
+   "plan_seconds": 2.8384785652160645,
+   "assembly_seconds": 3.49387788772583,
+   "error": null
+  },
+  "W10_mc2_m5": {
+   "wall_w": 10.0,
+   "metal_cells": 2,
+   "m": 5,
+   "n": 2654390,
+   "permanent_device_memory_gb": 125.59907395020127,
+   "peak_device_memory_gb": 125.59907395020127,
+   "hybrid_min_device_memory_gb": 25.613929484039545,
+   "plan_seconds": 8.054927587509155,
+   "assembly_seconds": 8.464665412902832,
+   "error": null
+  },
+  "W10_mc1_m5": {
+   "wall_w": 10.0,
+   "metal_cells": 1,
+   "m": 5,
+   "n": 2128175,
+   "permanent_device_memory_gb": 91.86791657283902,
+   "peak_device_memory_gb": 91.86791657283902,
+   "hybrid_min_device_memory_gb": 16.777628991752863,
+   "plan_seconds": 6.037430047988892,
+   "assembly_seconds": 5.854123830795288,
+   "error": null
+  },
+  "W10_mc1_m6": {
+   "wall_w": 10.0,
+   "metal_cells": 1,
+   "m": 6,
+   "n": 3663258,
+   "permanent_device_memory_gb": 193.78338426724076,
+   "peak_device_memory_gb": 193.78338426724076,
+   "hybrid_min_device_memory_gb": 34.854318115860224,
+   "plan_seconds": 11.654333114624023,
+   "assembly_seconds": 10.327569246292114,
+   "error": null
+  }
+ },
+ "walls": {
+  "level": 2,
+  "margins_w": [
+   10.0,
+   20.0,
+   40.0,
+   80.0
+  ],
+  "L_dut": [
+   2.9948997737705136e-10,
+   3.0003743767930224e-10,
+   3.0001833866278397e-10,
+   3.0004666720772473e-10
+  ],
+  "rel_change_to_next": [
+   0.0018279753701462287,
+   -6.365544468711626e-05,
+   9.442271118165202e-05
+  ],
+  "chosen_margin_w": 10.0,
+  "rule": "the smallest margin whose change to the next (doubled) margin is below 0.002",
+  "metal_cells": 2,
+  "n_unknowns": [
+   175292,
+   236152,
+   340706,
+   494342
+  ]
+ },
+ "p6": {
+  "wall_w": 10.0,
+  "levels": {
+   "1": {
+    "old": {
+     "L_dut": 2.6229893107679374e-10,
+     "rel_to_old": 0.0,
+     "old_rel_to_case": 0.0,
+     "n_unknowns": 23062,
+     "lid_z": 0.000161875,
+     "wall_x": 0.0001838750000000001
+    },
+    "a_walls": {
+     "L_dut": 2.6255871009777917e-10,
+     "rel_to_old": 0.000990392983757138,
+     "old_rel_to_case": -0.0009894130759885433,
+     "n_unknowns": 23062,
+     "lid_z": 0.00014000000000000001,
+     "wall_x": 0.000152
+    },
+    "b_short": {
+     "L_dut": 2.622989306599121e-10,
+     "rel_to_old": -1.5893379945453034e-09,
+     "old_rel_to_case": 1.5893379945453034e-09,
+     "n_unknowns": 23062,
+     "lid_z": 0.000161875,
+     "wall_x": 0.0001838750000000001
+    },
+    "c_vertical": {
+     "L_dut": 2.6229893116943414e-10,
+     "rel_to_old": 3.5318636903980405e-10,
+     "old_rel_to_case": -3.5318636903980405e-10,
+     "n_unknowns": 23062,
+     "lid_z": 0.000161875,
+     "wall_x": 0.0001838750000000001
+    },
+    "abc": {
+     "L_dut": 2.6255871005145897e-10,
+     "rel_to_old": 0.0009903928071639534,
+     "old_rel_to_case": -0.000989412899744635,
+     "n_unknowns": 23062,
+     "lid_z": 0.00014000000000000001,
+     "wall_x": 0.000152
+    },
+    "new": {
+     "L_dut": 2.625587099588186e-10,
+     "rel_to_old": 0.0009903924539778064,
+     "old_rel_to_case": -0.0009894125472570403,
+     "n_unknowns": 23062,
+     "lid_z": 0.00014000000000000001,
+     "wall_x": 0.000152
+    },
+    "sum_of_individual": 0.0009903917476055124,
+    "objects_ab": 0.0009903913944191434,
+    "interaction": 1.0595584409855974e-09,
+    "new_minus_abc": -3.528367598093496e-10
+   },
+   "2": {
+    "old": {
+     "L_dut": 2.928775842800471e-10,
+     "rel_to_old": 0.0,
+     "old_rel_to_case": 0.0,
+     "n_unknowns": 56408,
+     "lid_z": 0.000161875,
+     "wall_x": 0.00012293750000000033
+    },
+    "a_walls": {
+     "L_dut": 2.937073521199641e-10,
+     "rel_to_old": 0.0028331558454932626,
+     "old_rel_to_case": -0.0028251517502976276,
+     "n_unknowns": 63112,
+     "lid_z": 0.00014000000000000001,
+     "wall_x": 0.000152
+    },
+    "b_short": {
+     "L_dut": 2.898220926514879e-10,
+     "rel_to_old": -0.01043265784942271,
+     "old_rel_to_case": 0.01054264566446772,
+     "n_unknowns": 56408,
+     "lid_z": 0.000161875,
+     "wall_x": 0.00012293750000000033
+    },
+    "c_vertical": {
+     "L_dut": 3.0101189226750763e-10,
+     "rel_to_old": 0.02777374720382353,
+     "old_rel_to_case": -0.027023211362797728,
+     "n_unknowns": 110438,
+     "lid_z": 0.000161875,
+     "wall_x": 0.00012293750000000033
+    },
+    "abc": {
+     "L_dut": 2.983066646586967e-10,
+     "rel_to_old": 0.018537029359878776,
+     "old_rel_to_case": -0.018199661696667868,
+     "n_unknowns": 123562,
+     "lid_z": 0.00014000000000000001,
+     "wall_x": 0.000152
+    },
+    "new": {
+     "L_dut": 2.994899774696917e-10,
+     "rel_to_old": 0.022577327677361314,
+     "old_rel_to_case": -0.022078846329052215,
+     "n_unknowns": 175292,
+     "lid_z": 0.00014000000000000001,
+     "wall_x": 0.000152
+    },
+    "sum_of_individual": 0.02017424519989408,
+    "objects_ab": -0.007599502003929448,
+    "interaction": -0.0016372158400153047,
+    "new_minus_abc": 0.003966766254950738
+   }
+  },
+  "objects": {
+   "divs": [
+    2,
+    3
+   ],
+   "tolerance_m": 1e-12,
+   "per_div": {
+    "2": {
+     "old_z_lines": 16,
+     "a_walls": {
+      "worst_coordinate_deviation_m": 0.00012906250000000051,
+      "worst_coordinate_key": "walls.y_hi",
+      "worst_volume_rel_deviation": 7.771561172376096e-16,
+      "objects_moved": [
+       "walls"
+      ],
+      "z_lines": 18,
+      "changes_a_physical_object": true
+     },
+     "b_short": {
+      "worst_coordinate_deviation_m": 5.000000000000013e-06,
+      "worst_coordinate_key": "post.0",
+      "worst_volume_rel_deviation": 0.29069767441860506,
+      "objects_moved": [
+       "bridge_m1",
+       "bridge_m2",
+       "post"
+      ],
+      "z_lines": 16,
+      "changes_a_physical_object": true
+     },
+     "c_vertical": {
+      "worst_coordinate_deviation_m": 6.776263578034403e-21,
+      "worst_coordinate_key": "columns.inner.3",
+      "worst_volume_rel_deviation": 7.771561172376096e-16,
+      "objects_moved": [],
+      "z_lines": 31,
+      "changes_a_physical_object": false
+     }
+    },
+    "3": {
+     "old_z_lines": 16,
+     "a_walls": {
+      "worst_coordinate_deviation_m": 0.00014937500000000077,
+      "worst_coordinate_key": "walls.x_hi",
+      "worst_volume_rel_deviation": 6.661338147750939e-16,
+      "objects_moved": [
+       "walls"
+      ],
+      "z_lines": 18,
+      "changes_a_physical_object": true
+     },
+     "b_short": {
+      "worst_coordinate_deviation_m": 6.666666666666709e-06,
+      "worst_coordinate_key": "post.1",
+      "worst_volume_rel_deviation": 0.3533568904593647,
+      "objects_moved": [
+       "bridge_m1",
+       "bridge_m2",
+       "post"
+      ],
+      "z_lines": 16,
+      "changes_a_physical_object": true
+     },
+     "c_vertical": {
+      "worst_coordinate_deviation_m": 6.776263578034403e-21,
+      "worst_coordinate_key": "columns.inner.3",
+      "worst_volume_rel_deviation": 8.881784197001252e-16,
+      "objects_moved": [],
+      "z_lines": 46,
+      "changes_a_physical_object": false
+     }
+    }
+   }
+  }
+ },
+ "sigma_plateau": {
+  "level": 3,
+  "wall_w": 10.0,
+  "grid": {
+   "shape": [
+    63,
+    66,
+    45
+   ],
+   "n_unknowns": 581430,
+   "wall_x": [
+    -0.000152,
+    0.000152
+   ],
+   "wall_y": [
+    -0.000162,
+    0.000152
+   ],
+   "lid_z": 0.00014000000000000001,
+   "dx_min": 2.6666666666666626e-06,
+   "dz_min": 3.333333333333324e-07,
+   "build_seconds": 0.7890801429748535
+  },
+  "metal_cells": 2,
+  "sigma": [
+   300000.0,
+   1000000.0,
+   2000000.0,
+   3000000.0,
+   10000000.0,
+   30000000.0
+  ],
+  "L_dut": [
+   2.969372171032506e-10,
+   3.081293882200917e-10,
+   3.0895954325043347e-10,
+   3.0911326312956084e-10,
+   3.0922488490873183e-10,
+   3.09231677532232e-10
+  ],
+  "skin_over_width": [
+   9.188814923696533,
+   5.032921210448704,
+   3.5588127170858854,
+   2.9057584156627363,
+   1.5915494309189533,
+   0.9188814923696534
+  ],
+  "re_z_diff": [
+   85.15097901288306,
+   25.545308325371476,
+   12.77267763367681,
+   8.515144477531312,
+   2.554685639362531,
+   0.8519804747360996
+  ],
+  "rel_to_chosen": [
+   -0.03891229906900118,
+   -0.0026869376540632484,
+   0.0,
+   0.0004975404789577809,
+   0.000858823312291257,
+   0.000880808791130061
+  ],
+  "rc_twin": {
+   "freq": 10000000.0,
+   "sigma": 20000000.0,
+   "L_dut": 3.092334351516442e-10,
+   "re_z_diff": 1.2772672386411181,
+   "skin_depth": 3.558812717085886e-05,
+   "rel_to_chosen": 0.0008864976246703016
+  }
+ },
+ "ladder_sources": [
+  "validation/vessl/runs/fdfd-gpu-p1-20260915T144557Z",
+  "validation/vessl/runs/fdfd-gpu-p1-20260915T150027Z",
+  "validation/vessl/runs/fdfd-gpu-p1b-20260915T151356Z",
+  "validation/vessl/runs/fdfd-gpu-p1c-20260915T161317Z",
+  "validation/vessl/runs/fdfd-gpu-p3-20260915T232441Z",
+  "validation/vessl/runs/fdfd-gpu-p3-20260915T233751Z",
+  "validation/vessl/runs/fdfd-gpu-p3-20260916T004810Z"
+ ],
+ "levels": {
+  "1": {
+   "m": 1,
+   "metal_cells": 1,
+   "L_dut": 2.592230128025796e-10,
+   "grad": [
+    9.860094859594503e-06,
+    -9.814381587766655e-06,
+    -2.04904473386432e-05
+   ],
+   "grid": {
+    "shape": [
+     21,
+     22,
+     12
+    ],
+    "n_unknowns": 18643,
+    "wall_x": [
+     -0.000152,
+     0.000152
+    ],
+    "wall_y": [
+     -0.000162,
+     0.000152
+    ],
+    "lid_z": 0.00014000000000000001,
+    "dx_min": 7.999999999999991e-06,
+    "dz_min": 1.0000000000000006e-06,
+    "build_seconds": 0.20409083366394043
+   },
+   "value_and_grad_seconds": 6.880300283432007,
+   "source": "p1"
+  },
+  "2": {
+   "m": 2,
+   "metal_cells": 1,
+   "L_dut": 2.98524912863029e-10,
+   "grad": [
+    1.1078696158236317e-05,
+    -1.1094565221280408e-05,
+    -2.250581511269111e-05
+   ],
+   "grid": {
+    "shape": [
+     42,
+     44,
+     24
+    ],
+    "n_unknowns": 140990,
+    "wall_x": [
+     -0.000152,
+     0.000152
+    ],
+    "wall_y": [
+     -0.000162,
+     0.000152
+    ],
+    "lid_z": 0.00014000000000000001,
+    "dx_min": 3.999999999999995e-06,
+    "dz_min": 4.999999999999986e-07,
+    "build_seconds": 0.18370342254638672
+   },
+   "value_and_grad_seconds": 15.016825437545776,
+   "source": "p1"
+  },
+  "3": {
+   "m": 3,
+   "metal_cells": 1,
+   "L_dut": 3.086307030109585e-10,
+   "grad": [
+    1.1436135970221909e-05,
+    -1.1153038693168808e-05,
+    -2.3842370260613795e-05
+   ],
+   "grid": {
+    "shape": [
+     63,
+     66,
+     36
+    ],
+    "n_unknowns": 466833,
+    "wall_x": [
+     -0.000152,
+     0.000152
+    ],
+    "wall_y": [
+     -0.000162,
+     0.000152
+    ],
+    "lid_z": 0.00014000000000000001,
+    "dx_min": 2.6666666666666626e-06,
+    "dz_min": 3.333333333333324e-07,
+    "build_seconds": 0.8121790885925293
+   },
+   "value_and_grad_seconds": 76.51477837562561,
+   "source": "p1"
+  },
+  "4": {
+   "m": 4,
+   "metal_cells": 1,
+   "L_dut": 3.126745781241744e-10,
+   "grad": [
+    1.1593065539540792e-05,
+    -1.1126723412542185e-05,
+    -2.45700821321299e-05
+   ],
+   "grid": {
+    "shape": [
+     84,
+     88,
+     48
+    ],
+    "n_unknowns": 1095964,
+    "wall_x": [
+     -0.000152,
+     0.000152
+    ],
+    "wall_y": [
+     -0.000162,
+     0.000152
+    ],
+    "lid_z": 0.00014000000000000001,
+    "dx_min": 1.999999999999997e-06,
+    "dz_min": 2.499999999999993e-07,
+    "build_seconds": 2.8424179553985596
+   },
+   "value_and_grad_seconds": 755.283323764801,
+   "source": "p1b"
+  }
+ },
+ "cost": {
+  "1": {
+   "n_unknowns": 18643,
+   "shape": [
+    21,
+    22,
+    12
+   ],
+   "factor_seconds": 2.273756980895996,
+   "factor_cache_size": 1,
+   "solve_seconds": 0.022188901901245117,
+   "residual": 1.0000055334265184e-09,
+   "plan_permanent_device_gb": null,
+   "lu_nnz": null,
+   "factor_permanent_device_gb": null,
+   "device_gb_after_factor": 0.64208984375,
+   "value_and_grad_seconds": 6.880300283432007,
+   "device_gb_after_value_and_grad": 0.80419921875,
+   "source": "p1"
+  },
+  "2": {
+   "n_unknowns": 140990,
+   "shape": [
+    42,
+    44,
+    24
+   ],
+   "factor_seconds": 1.4866290092468262,
+   "factor_cache_size": 1,
+   "solve_seconds": 0.08272409439086914,
+   "residual": 4.322248302772696e-09,
+   "plan_permanent_device_gb": null,
+   "lu_nnz": null,
+   "factor_permanent_device_gb": null,
+   "device_gb_after_factor": 2.94091796875,
+   "value_and_grad_seconds": 15.016825437545776,
+   "device_gb_after_value_and_grad": 5.16943359375,
+   "source": "p1"
+  },
+  "3": {
+   "n_unknowns": 466833,
+   "shape": [
+    63,
+    66,
+    36
+   ],
+   "factor_seconds": 11.07280683517456,
+   "factor_cache_size": 0,
+   "solve_seconds": null,
+   "residual": 1.4438351756621247e-08,
+   "plan_permanent_device_gb": null,
+   "lu_nnz": null,
+   "factor_permanent_device_gb": null,
+   "device_gb_after_factor": 12.64990234375,
+   "value_and_grad_seconds": 76.51477837562561,
+   "device_gb_after_value_and_grad": 12.64990234375,
+   "source": "p1"
+  },
+  "4": {
+   "n_unknowns": 1095964,
+   "shape": [
+    84,
+    88,
+    48
+   ],
+   "factor_seconds": 120.16130948066711,
+   "factor_cache_size": 0,
+   "solve_seconds": null,
+   "residual": 2.509620123969892e-08,
+   "plan_permanent_device_gb": 36.6093324162066,
+   "lu_nnz": null,
+   "factor_permanent_device_gb": null,
+   "device_gb_after_factor": 38.8192138671875,
+   "value_and_grad_seconds": 755.283323764801,
+   "device_gb_after_value_and_grad": 38.8192138671875,
+   "source": "p1b"
+  }
+ },
+ "family": {
+  "m": [
+   1,
+   2,
+   3,
+   4
+  ],
+  "h": [
+   1e-05,
+   5e-06,
+   3.3333333333333337e-06,
+   2.5e-06
+  ],
+  "n_unknowns": [
+   18643,
+   140990,
+   466833,
+   1095964
+  ],
+  "L_dut": [
+   2.592230128025796e-10,
+   2.98524912863029e-10,
+   3.086307030109585e-10,
+   3.126745781241744e-10
+  ],
+  "dL_dwidth": [
+   -2.04904473386432e-05,
+   -2.250581511269111e-05,
+   -2.3842370260613795e-05,
+   -2.45700821321299e-05
+  ],
+  "richardson": {
+   "h": [
+    1e-05,
+    5e-06,
+    3.3333333333333337e-06,
+    2.5e-06
+   ],
+   "values": [
+    2.592230128025796e-10,
+    2.98524912863029e-10,
+    3.086307030109585e-10,
+    3.126745781241744e-10
+   ],
+   "observed_order": 1.6267062240998915,
+   "estimates": {
+    "p1_finest_pair": 3.2480620346382214e-10,
+    "p2_finest_pair": 3.178738461268806e-10,
+    "observed_order": 3.1945100521583163e-10
+   },
+   "range": [
+    3.178738461268806e-10,
+    3.2480620346382214e-10
+   ]
+  }
+ },
+ "family_rc_twin": {
+  "m": [
+   1,
+   2,
+   3,
+   4
+  ],
+  "h": [
+   1e-05,
+   5e-06,
+   3.3333333333333337e-06,
+   2.5e-06
+  ],
+  "n_unknowns": [
+   18643,
+   140990,
+   466833,
+   1095964
+  ],
+  "L_dut": [
+   2.5953261057192397e-10,
+   2.9882233625188194e-10,
+   3.0892716979535494e-10,
+   3.1297146294823863e-10
+  ],
+  "dL_dwidth": [
+   null,
+   null,
+   null,
+   null
+  ],
+  "richardson": {
+   "h": [
+    1e-05,
+    5e-06,
+    3.3333333333333337e-06,
+    2.5e-06
+   ],
+   "values": [
+    2.5953261057192397e-10,
+    2.9882233625188194e-10,
+    3.0892716979535494e-10,
+    3.1297146294823863e-10
+   ],
+   "observed_order": 1.626152312871127,
+   "estimates": {
+    "p1_finest_pair": 3.251043424068897e-10,
+    "p2_finest_pair": 3.1817126843051766e-10,
+    "observed_order": 3.1975148117908117e-10
+   },
+   "range": [
+    3.1817126843051766e-10,
+    3.251043424068897e-10
+   ]
+  },
+  "protocol": {
+   "freq": 10000000.0,
+   "sigma": 20000000.0,
+   "skin_depth": 3.558812717085886e-05
+  },
+  "rel_to_primary": [
+   0.0011943298011900527,
+   0.0009963101102701266,
+   0.0009605874642546475,
+   0.0009495009982753988
+  ]
+ },
+ "family_alt": {
+  "m": [
+   1,
+   2,
+   3
+  ],
+  "h": [
+   1e-05,
+   5e-06,
+   3.3333333333333337e-06
+  ],
+  "n_unknowns": [
+   23062,
+   175292,
+   581430
+  ],
+  "L_dut": [
+   2.625587099588186e-10,
+   2.9948997742337156e-10,
+   3.0895954306515276e-10
+  ],
+  "dL_dwidth": [
+   -2.0745002431323848e-05,
+   -2.2592016527925333e-05,
+   -2.3872817357360584e-05
+  ],
+  "richardson": {
+   "h": [
+    1e-05,
+    5e-06,
+    3.3333333333333337e-06
+   ],
+   "values": [
+    2.625587099588186e-10,
+    2.9948997742337156e-10,
+    3.0895954306515276e-10
+   ],
+   "observed_order": 1.4515241002096921,
+   "estimates": {
+    "p1_finest_pair": 3.2789867434871517e-10,
+    "p2_finest_pair": 3.165351955785777e-10,
+    "observed_order": 3.2077639972575147e-10
+   },
+   "range": [
+    3.165351955785777e-10,
+    3.2789867434871517e-10
+   ]
+  },
+  "metal_cells_level1": 2
+ },
+ "fd_width": {
+  "backend": "cudss",
+  "parameter": 2,
+  "step": 1.0000000000000001e-07,
+  "fd_order": 4,
+  "fd": -2.457006875118969e-05,
+  "fd_seconds": 1471.0647423267365,
+  "ad": -2.45700821321299e-05,
+  "rel": 5.44603287212866e-07,
+  "level": 4
+ },
+ "thru": {
+  "bar_length": 4e-05,
+  "levels": {
+   "1": {
+    "L_deembedded": 1.5949603396414998e-12,
+    "L_raw": 2.420092640744367e-11,
+    "n_unknowns": 6932,
+    "over_referee": 0.004788878166674941
+   },
+   "2": {
+    "L_deembedded": 1.3877838638014342e-12,
+    "L_raw": 2.917812735141591e-11,
+    "n_unknowns": 51412,
+    "over_referee": 0.004166829531896879
+   },
+   "3": {
+    "L_deembedded": 1.2934507693661148e-12,
+    "L_raw": 3.067204261656369e-11,
+    "n_unknowns": 169080,
+    "over_referee": 0.003883593839379455
+   },
+   "4": {
+    "L_deembedded": 1.2464072485592866e-12,
+    "L_raw": 3.133885725067567e-11,
+    "n_unknowns": 395576,
+    "over_referee": 0.0037423453806710865
+   }
+  }
+ },
+ "hybrid": {
+  "source": "validation/vessl/runs/fdfd-gpu-p3-20260916T004810Z",
+  "option": "RFX_FDFD_CUDSS_HYBRID=1 with RFX_FDFD_CUDSS_HYBRID_LIMIT (rfx/fdfd/_cudss.py, \"Device memory\"): cuDSS keeps the factor in host memory and streams it, and the limit bounds ALL of its device memory. Without a limit cuDSS assumes the whole card, which is how the first m = 5 attempt (run 369367261252) reached ALLOC_FAILED.",
+  "host": {
+   "meminfo": {
+    "MemTotal": 251.5681037902832,
+    "MemAvailable": 245.95772552490234,
+    "peak_rss": 0.6310462951660156
+   },
+   "cgroup": {
+    "version": 2,
+    "limit_gb": 32.0,
+    "memory.max": "34359738368",
+    "memory.current_gb": 6.768791198730469
+   },
+   "free_g": "total        used        free      shared  buff/cache   available\nMem:            251           3         230           0          16         245\nSwap:             7           0           7",
+   "nvidia_smi": "NVIDIA RTX A6000, 49140 MiB, 266 MiB",
+   "process_limit_gb": 32.0
+  },
+  "h1": {
+   "level": 3,
+   "n_unknowns": 466833,
+   "device_memory_limit": "6GiB",
+   "device_memory_limit_gb": 6.0,
+   "in_core_factor_gb": 11.373609337955713,
+   "hybrid_min_device_memory_gb": 2.7335859425365925,
+   "limit_below_in_core_factor": true,
+   "limit_at_least_hybrid_min": true,
+   "factor_seconds": {
+    "in_core": 23.12798523902893,
+    "hybrid": 29.460501670837402
+   },
+   "solve_seconds": {
+    "in_core": 0.5773618221282959,
+    "hybrid": 1.3042669296264648
+   },
+   "residual": {
+    "in_core": 1.4179585652243987e-08,
+    "hybrid": 1.4105771914322655e-08
+   },
+   "device_peak_used_gb": {
+    "in_core": 12.4617919921875,
+    "hybrid": 12.4852294921875
+   },
+   "plan_permanent_device_gb": {
+    "in_core": 11.373609337955713,
+    "hybrid": 5.999999988824129
+   },
+   "plan_permanent_host_gb": {
+    "in_core": 0.04347728192806244,
+    "hybrid": 18.78843168914318
+   },
+   "host_peak_rss_gb": {
+    "in_core": 13.550636291503906,
+    "hybrid": 21.454021453857422,
+    "in_core_repeat": 21.454021453857422
+   },
+   "host_cgroup_current_gb": {
+    "in_core": 11.9803466796875,
+    "hybrid": 13.242279052734375,
+    "in_core_repeat": 13.823600769042969
+   },
+   "solution_rel_diff": 8.60546155680515e-05,
+   "solution_rel_diff_control": 6.698425887215686e-05,
+   "device_baseline_used_gb": {
+    "in_core": 0.7938232421875,
+    "hybrid": 11.9149169921875
+   },
+   "factor_slowdown": 1.2738032027589772,
+   "solve_slowdown": 2.2590113853018896,
+   "value_and_grad_seconds": {
+    "in_core": 161.09707069396973,
+    "hybrid": 200.70703625679016
+   },
+   "value_and_grad_device_peak_used_gb": {
+    "in_core": 12.4637451171875,
+    "hybrid": 12.4852294921875
+   },
+   "plan_limit_applied": "constructor",
+   "L_in_core": 3.086307030572787e-10,
+   "L_hybrid": 3.086307027793576e-10,
+   "rel_L": 9.0049726918343e-10,
+   "grad_in_core": [
+    1.1436135937024275e-05,
+    -1.1153038594406662e-05,
+    -2.3842370147203408e-05
+   ],
+   "grad_hybrid": [
+    1.143613595035124e-05,
+    -1.1153038594337852e-05,
+    -2.3842370200065928e-05
+   ],
+   "rel_grad": [
+    1.1653381652452183e-09,
+    6.169580417094485e-12,
+    2.217167149759044e-09
+   ],
+   "rel_grad_worst": 2.217167149759044e-09,
+   "rel_grad_l2": 1.899597278703071e-09,
+   "tolerance": 1e-09,
+   "slowdown_value_and_grad": 1.245876386157673,
+   "passed": false,
+   "control_in_core_repeat": {
+    "L": 3.0863070287199793e-10,
+    "grad": [
+     1.1436135927075827e-05,
+     -1.1153038567870428e-05,
+     -2.3842370107416e-05
+    ],
+    "seconds": 150.69425678253174,
+    "rel_L": 6.00331568625684e-10,
+    "rel_grad": [
+     8.699133833371985e-10,
+     2.379282936572532e-09,
+     1.6687689745266367e-09
+    ],
+    "rel_grad_worst": 2.379282936572532e-09,
+    "rel_grad_l2": 1.7020979503564442e-09
+   },
+   "limit_binds_the_plan": true,
+   "plan_rel_deviation_from_limit": 1.862645149230957e-09,
+   "host_rss_growth_hybrid_gb": 7.903385162353516,
+   "rel_grad_l2_over_control": 1.1160328806607562,
+   "vs_ladder_level": {
+    "source": "p1",
+    "L_dut": 3.086307030109585e-10,
+    "rel_L": 1.5008293405649386e-10,
+    "rel_grad_l2": 5.366257499080739e-09,
+    "note": "the ladder's level, measured on the RTX 4090 in another job, against this lane's in-memory run on the A6000: the same protocol on a different card, i.e. a second floor for H1's tolerance"
+   },
+   "device_peak_note": "the sampled device high-water mark does not separate the two modes: 11.9149169921875 GB of the 12.4852294921875 GB peak was already held before the hybrid run began (cudaMemGetInfo counts what the previous factorisation's allocator kept, and cupy's pool held only 0.524803638458252 GB of it). The evidence that the factor moved is cuDSS's plan (device memory = the limit) and the process's resident set."
+  },
+  "h1_replicates": {
+   "runs": [
+    {
+     "run": "fdfd-gpu-p3-20260915T232441Z",
+     "level": 3,
+     "limit": "6GiB",
+     "rel_L": 3.001657006027958e-10,
+     "rel_grad_l2": null,
+     "rel_grad_worst": 1.6236510134532113e-09,
+     "control_in_core_repeat_rel_grad_l2": null,
+     "plan_limit_applied": null,
+     "slowdown_value_and_grad": 1.2602786046177203
+    },
+    {
+     "run": "fdfd-gpu-p3-20260915T233751Z",
+     "level": 3,
+     "limit": "6GiB",
+     "rel_L": 1.5008293394386945e-10,
+     "rel_grad_l2": 6.073330660301731e-09,
+     "rel_grad_worst": 1.121825105188468e-08,
+     "control_in_core_repeat_rel_grad_l2": 3.5381254186130025e-09,
+     "plan_limit_applied": null,
+     "slowdown_value_and_grad": 1.4503723045613577
+    },
+    {
+     "run": "fdfd-gpu-p3-20260916T004810Z",
+     "level": 3,
+     "limit": "6GiB",
+     "rel_L": 9.0049726918343e-10,
+     "rel_grad_l2": 1.899597278703071e-09,
+     "rel_grad_worst": 2.217167149759044e-09,
+     "control_in_core_repeat_rel_grad_l2": 1.7020979503564442e-09,
+     "plan_limit_applied": "constructor",
+     "slowdown_value_and_grad": 1.245876386157673
+    }
+   ],
+   "rel_grad_l2_range": [
+    1.899597278703071e-09,
+    6.073330660301731e-09
+   ],
+   "rel_grad_l2_spread": 3.1971674882837426,
+   "rel_grad_worst_range": [
+    1.6236510134532113e-09,
+    1.121825105188468e-08
+   ],
+   "rel_grad_worst_spread": 6.9092748127108266,
+   "note": "the same protocol, the same card, different jobs: the hybrid-vs-in-core gradient difference moves by this factor between jobs, so the single number gate H1 reports is not reproducible to better than that either. Both ends are above the 1e-9 the gate asks of it in the runs that are listed with a control, and the in-core-vs-in-core control of each run is the floor under both."
+  },
+  "m5": {
+   "level": 5,
+   "n_unknowns": 2128175,
+   "device_memory_limit": "40GiB",
+   "device_memory_limit_gb": 40.0,
+   "in_core_factor_gb": 91.86791657283902,
+   "hybrid_plan_host_estimate_gb": 97.60000805556774,
+   "hybrid_min_device_memory_gb": 8.752094779163599,
+   "hybrid_min_device_memory_gb_in_core_plan": 16.777628991752863,
+   "plan_limit_applied": "constructor",
+   "plan_seconds": {
+    "in_core": 10.11881971359253,
+    "hybrid": 10.26274824142456
+   },
+   "host_needed_gb": 97.60000805556774,
+   "host_in_use_gb": 15.23952865600586,
+   "host_allowed_gb": 32.0,
+   "host_margin_gb": 4.0,
+   "cgroup_limit_gb": 32.0,
+   "node_mem_total_gb": 251.5681037902832,
+   "preset": "gpu-a6000-1",
+   "fits": false,
+   "not_run": "host memory: the level-5 factor needs >= 97.60 GB of host memory in hybrid mode (in-core factor 91.87 GB, cuDSS hybrid host estimate 97.60 GB) + 15.24 GB in use + 4 GB margin, and this container may hold 32.0 GB (cgroup limit 32.0 GB; node MemTotal 251.5681037902832 GB)",
+   "error": null,
+   "hybrid_ceiling_factor_gb": 12.76047134399414,
+   "device_total_gb": 47.535888671875,
+   "hybrid_reaches_past_the_device": false
+  }
+ },
+ "paper": {
+  "source": "validation/vessl/runs/fdfd-gpu-p2-20260915T160513Z",
+  "fixture": {
+   "n_turns": 3,
+   "r_out": 0.000218,
+   "spacing": 1.4e-05,
+   "width": 3e-05,
+   "lead": 4.5e-05,
+   "margin": 3e-05,
+   "t_si": 0.00012,
+   "t_ox_low": 6.04e-06,
+   "t_m1": 2e-06,
+   "t_via": 2e-06,
+   "t_m2": 3e-06,
+   "t_ox_high": 1.5e-06,
+   "t_air": 6e-05,
+   "base_dz": 6e-05,
+   "port_gap": 6e-05,
+   "short_gap": 3e-05,
+   "wall_w": 10.0,
+   "freq": 10000000.0,
+   "sigma": 2000000.0,
+   "skin_depth": 0.00011253953951963826,
+   "metal_cells_level1": 1
+  },
+  "referee": {
+   "total": 3.560367678485986e-09,
+   "strip": 3.6239351399278993e-09,
+   "bridge": 6.356746144191331e-11,
+   "ground_height": 0.00013154,
+   "note": "rfic_spiral.referee_deembedded at its THETA0; the physical post (30 um from each column) is centred on the split-0.5 transition"
+  },
+  "plans": {
+   "2": {
+    "n": 571252,
+    "permanent_device_memory_gb": 12.6011429913342,
+    "hybrid_min_device_memory_gb": 2.601781565696001,
+    "error": null
+   },
+   "3": {
+    "n": 1899954,
+    "permanent_device_memory_gb": 65.79070233181119,
+    "hybrid_min_device_memory_gb": 9.477009821683168,
+    "error": null
+   }
+  },
+  "walls_level1": {
+   "5": 2.9801303507825962e-09,
+   "10": 3.072349178910749e-09,
+   "20": 3.0870778591273166e-09
+  },
+  "plateau": {
+   "level": 2,
+   "grid": {
+    "shape": [
+     90,
+     92,
+     22
+    ],
+    "n_unknowns": 571252,
+    "wall_x": [
+     -0.000518,
+     0.000518
+    ],
+    "wall_y": [
+     -0.0005480000000000001,
+     0.000518
+    ],
+    "lid_z": 0.00049454,
+    "dx_min": 6.499999999999995e-06,
+    "dz_min": 7.499999999999911e-07,
+    "build_seconds": 0.8300111293792725
+   },
+   "sigma": [
+    500000.0,
+    1000000.0,
+    2000000.0,
+    3000000.0,
+    10000000.0,
+    30000000.0
+   ],
+   "L_dut": [
+    3.2384460847060175e-09,
+    3.3172849494817e-09,
+    3.3369944363907058e-09,
+    3.3406461807998605e-09,
+    3.343340401760039e-09,
+    3.3438900203976206e-09
+   ],
+   "skin_over_width": [
+    7.502635967975884,
+    5.305164769729845,
+    3.751317983987942,
+    3.0629383078988446,
+    1.677640403482901,
+    0.9685861385542454
+   ],
+   "error": null,
+   "rel_to_chosen": [
+    -0.029532069520402993,
+    -0.005906358936074052,
+    0.0,
+    0.0010943213957241849,
+    0.001901700913890858,
+    0.0020664056049111146
+   ],
+   "rc_twin": {
+    "freq": 1000000.0,
+    "sigma": 20000000.0,
+    "L_dut": 3.3434946961484186e-09,
+    "rel_to_chosen": 0.0019479384462934846
+   }
+  },
+  "levels": {
+   "1": {
+    "L_dut": 3.072349148339427e-09,
+    "n_unknowns": 74554,
+    "gap": -0.13706970015919384,
+    "seconds": 1.5611298084259033,
+    "device_gb_after": 15.96240234375
+   },
+   "2": {
+    "L_dut": 3.3369944586243946e-09,
+    "n_unknowns": 571252,
+    "gap": -0.06273880678429777,
+    "seconds": 35.36344838142395,
+    "device_gb_after": 15.96240234375
+   }
+  },
+  "errors": {},
+  "richardson": {
+   "h": [
+    3e-05,
+    1.5e-05
+   ],
+   "values": [
+    3.072349148339427e-09,
+    3.3369944586243946e-09
+   ],
+   "observed_order": null,
+   "estimates": {
+    "p1_finest_pair": 3.6016397689093624e-09,
+    "p2_finest_pair": 3.425209562052717e-09
+   },
+   "range": [
+    3.425209562052717e-09,
+    3.6016397689093624e-09
+   ]
+  },
+  "rel_range": [
+   -0.037961842325999196,
+   0.011592086590598072
+  ]
+ },
+ "corrections": {
+  "walls": {
+   "what": "L(farthest walls) / L(chosen walls) - 1 at level 2",
+   "sign": "raises L",
+   "rel": 0.0018587928569393508,
+   "from_margin_w": 10.0,
+   "to_margin_w": 80.0
+  },
+  "rc": {
+   "what": "L(10 MHz, 2e7 S/m) / L(100 MHz, 2e6 S/m) - 1 at the finest level with a twin: same skin depth, a tenth of the resistance",
+   "sign": "raises L",
+   "rel": 0.0009495009982753988,
+   "per_level": {
+    "1": 0.0011943298011900527,
+    "2": 0.0009963101102701266,
+    "3": 0.0009605874642546475,
+    "4": 0.0009495009982753988
+   }
+  },
+  "post_short": {
+   "what": "the thru probe (a DUT identical to the short's bridge) de-embeds to L_thru > 0: the grounded post shorts part of the bridge, so the fixture subtracts less than a whole bridge; L_dut - L_thru is what the referee computes",
+   "sign": "lowers L",
+   "per_level": {
+    "1": 1.5949603396414998e-12,
+    "2": 1.3877838638014342e-12,
+    "3": 1.2934507693661148e-12,
+    "4": 1.2464072485592866e-12
+   },
+   "extrapolated_range": [
+    1.105276686138802e-12,
+    1.1859227218076503e-12
+   ],
+   "observed_order": 1.007390890397836,
+   "rel_range": [
+    -0.0035607402194746127,
+    -0.003318600004545981
+   ]
+  },
+  "all": {
+   "L_range": [
+    3.175811675975964e-10,
+    3.246136513018137e-10
+   ],
+   "rel_range": [
+    -0.04646060353004855,
+    -0.025345528232192938
+   ]
+  }
+ },
+ "extrapolation_checks": {
+  "triples": {
+   "1,2,3": {
+    "observed_order": 1.446732032785376,
+    "estimate": 3.2129675716790683e-10
+   },
+   "2,3,4": {
+    "observed_order": 1.6267062240998893,
+    "estimate": 3.1945100521583163e-10
+   }
+  },
+  "pairs": {
+   "1,2": {
+    "p1": 3.3782681292347835e-10,
+    "p2": 3.116255462165121e-10
+   },
+   "2,3": {
+    "p1": 3.288422833068175e-10,
+    "p2": 3.167153351293021e-10
+   },
+   "3,4": {
+    "p1": 3.2480620346382214e-10,
+    "p2": 3.178738461268806e-10
+   }
+  },
+  "fits": {
+   "lsq_h_h2_all_levels": {
+    "L_inf": 3.2327288198662434e-10,
+    "rel_to_referee": -0.029371196294573187,
+    "inside_p3_range": true
+   },
+   "exact_cubic_finest_four": {
+    "L_inf": 3.1957682532827337e-10,
+    "rel_to_referee": -0.040468628998102996,
+    "inside_p3_range": true
+   }
+  },
+  "observed_order_rising": true,
+  "bracket_closes_from_both_sides": true
+ },
+ "residual": {
+  "limit_rel_range": [
+   -0.04558183445729613,
+   -0.024767389189064404
+  ],
+  "signed_corrections_rel": {
+   "walls": 0.0018587928569393508,
+   "rc": 0.0009495009982753988
+  },
+  "post_short_rel_range": [
+   -0.0035607402194746127,
+   -0.003318600004545981
+  ],
+  "referee_convention_bounds_rel": {
+   "via": 0.000341101374171087,
+   "post_split_band": 0.00038198527643542316
+  },
+  "measured_model_differences_abs_sum": 0.007092120725295872,
+  "after_corrections_rel_range": [
+   -0.04646060353004855,
+   -0.025345528232192938
+  ],
+  "unexplained_at_least": 0.024622441581586427,
+  "richardson_p_spread_rel": 0.02081444526823172,
+  "finest_estimates_below_referee_by_at_least": 0.024767389189064404,
+  "explained": false
+ },
+ "resolution_for_3_percent": {
+  "target": 0.03,
+  "per_order": {
+   "p1": {
+    "order": 1.0,
+    "L_inf": 3.2480620346382214e-10,
+    "C": 4.8526501358590966e-11,
+    "error_at_finest": 0.037350349871008534,
+    "finest_within_target": false,
+    "cells_across_width_needed": 4.980046649467805,
+    "first_level_within_target": 5,
+    "limit_vs_referee": -0.024767389189064404
+   },
+   "p2": {
+    "order": 2.0,
+    "L_inf": 3.178738461268806e-10,
+    "C": 8.318828804329892e-11,
+    "error_at_finest": 0.016356388127102706,
+    "finest_within_target": true,
+    "cells_across_width_needed": 2.9535414337912114,
+    "first_level_within_target": 3,
+    "limit_vs_referee": -0.04558183445729613
+   },
+   "observed": {
+    "order": 1.6267062240998915,
+    "L_inf": 3.1945100521583163e-10,
+    "C": 6.462127242498446e-11,
+    "error_at_finest": 0.02121272740112011,
+    "finest_within_target": true,
+    "cells_across_width_needed": 3.232410720482951,
+    "first_level_within_target": 4,
+    "limit_vs_referee": -0.04084640465460376
+   }
+  },
+  "cells_across_width_needed_range": [
+   2.9535414337912114,
+   4.980046649467805
+  ],
+  "finest_level": 4,
+  "first_level_within_target_every_order": 5,
+  "finest_within_target_every_order": false
+ },
+ "gates": {
+  "P1": {
+   "what": "fixture invariance from the built masks: every wall / lid / post / bridge / column / port / interface coordinate identical across the levels and every level-1 line a line of every finer level",
+   "levels": [
+    1,
+    2,
+    3,
+    4,
+    6
+   ],
+   "worst_coordinate_deviation_m": 0.0,
+   "nesting_worst_distance_m": 0.0,
+   "worst_volume_rel_deviation": 2.220446049250313e-16,
+   "tolerance_m": 1e-12,
+   "old_fixture_worst_deviation_m": 8.125000000000086e-05,
+   "passed": true
+  },
+  "P2": {
+   "what": "monotone convergence over the finest three levels with an observed order, and the Richardson range",
+   "levels": [
+    1,
+    2,
+    3,
+    4
+   ],
+   "L_dut": [
+    2.592230128025796e-10,
+    2.98524912863029e-10,
+    3.086307030109585e-10,
+    3.126745781241744e-10
+   ],
+   "differences": [
+    3.930190006044937e-11,
+    1.0105790147929508e-11,
+    4.043875113215914e-12
+   ],
+   "monotone_finest_three": true,
+   "monotone_all": true,
+   "contracting": true,
+   "observed_order": 1.6267062240998915,
+   "estimates": {
+    "p1_finest_pair": 3.2480620346382214e-10,
+    "p2_finest_pair": 3.178738461268806e-10,
+    "observed_order": 3.1945100521583163e-10
+   },
+   "range": [
+    3.178738461268806e-10,
+    3.2480620346382214e-10
+   ],
+   "passed": true
+  },
+  "P3": {
+   "what": "the V1 answer: the extrapolated range against the referee 333.055 pH (one number for every level)",
+   "referee": 3.3305510896906523e-10,
+   "L_range": [
+    3.178738461268806e-10,
+    3.2480620346382214e-10
+   ],
+   "rel_range": [
+    -0.04558183445729613,
+    -0.024767389189064404
+   ],
+   "per_level_gap": {
+    "m=1": -0.22168131993238172,
+    "m=2": -0.10367712482453906,
+    "m=3": -0.07333442814827174,
+    "m=4": -0.06119266840846993
+   },
+   "tolerance": 0.05,
+   "within_5_percent": true,
+   "within_3_percent": false,
+   "passed": true
+  },
+  "P4": {
+   "what": "jax.grad of L_dut vs FD4 (1 % step) of dL/dwidth through cuDSS at the finest level that has it",
+   "level": 4,
+   "ad": -2.45700821321299e-05,
+   "fd4": -2.457006875118969e-05,
+   "rel": 5.44603287212866e-07,
+   "step": 1.0000000000000001e-07,
+   "tolerance": 0.0001,
+   "passed": true
+  },
+  "P5": {
+   "what": "dL/dwidth level-to-level changes decreasing",
+   "levels": [
+    1,
+    2,
+    3,
+    4
+   ],
+   "dL_dwidth": [
+    -2.04904473386432e-05,
+    -2.250581511269111e-05,
+    -2.3842370260613795e-05,
+    -2.45700821321299e-05
+   ],
+   "abs_changes": [
+    2.0153677740479103e-06,
+    1.3365551479226832e-06,
+    7.277118715161059e-07
+   ],
+   "passed": true
+  },
+  "H1": {
+   "what": "cuDSS hybrid (host-backed) memory with an EXPLICIT device limit BELOW the factor size returns the in-memory run's L_dut and gradient (the gradient as a VECTOR, the metric tests/unit/fdfd/test_fdfd_linear_solve.py uses for two backends) in the same job on the same card, with the limit binding THROUGH THE SHIPPED PATH: the plan record says the limit was applied at DirectSolver construction and nowhere else (plan_limit_applied = \"constructor\"), cuDSS's plan then asks for the limit instead of the factor size, and the factor's bytes appear in the process's resident set. The controls -- the SAME in-memory computation run twice, the same level on the other card, and the spread of this comparison across jobs (h1_replicates) -- are the floor the two differences are read against",
+   "level": 3,
+   "n_unknowns": 466833,
+   "device_memory_limit_gb": 6.0,
+   "in_core_factor_gb": 11.373609337955713,
+   "limit_below_in_core_factor": true,
+   "rel_L": 9.0049726918343e-10,
+   "rel_grad_l2": 1.899597278703071e-09,
+   "rel_grad_worst": 2.217167149759044e-09,
+   "control_in_core_repeat_rel_L": 6.00331568625684e-10,
+   "control_in_core_repeat_rel_grad_l2": 1.7020979503564442e-09,
+   "tolerance": 1e-09,
+   "slowdown_value_and_grad": 1.245876386157673,
+   "plan_permanent_device_gb": {
+    "in_core": 11.373609337955713,
+    "hybrid": 5.999999988824129
+   },
+   "plan_permanent_host_gb": {
+    "in_core": 0.04347728192806244,
+    "hybrid": 18.78843168914318
+   },
+   "plan_limit_applied": "constructor",
+   "plan_rel_deviation_from_limit": 1.862645149230957e-09,
+   "limit_binds_the_plan": true,
+   "solution_rel_diff": 8.60546155680515e-05,
+   "solution_rel_diff_control": 6.698425887215686e-05,
+   "host_rss_growth_hybrid_gb": 7.903385162353516,
+   "rel_grad_l2_over_control": 1.1160328806607562,
+   "rel_grad_l2_across_jobs": [
+    1.899597278703071e-09,
+    6.073330660301731e-09
+   ],
+   "L_within_tolerance": true,
+   "grad_within_tolerance": false,
+   "passed": false
+  },
+  "H2": {
+   "what": "m = 5 continues the monotone sequence",
+   "levels": [
+    1,
+    2,
+    3,
+    4
+   ],
+   "measured": false,
+   "why": "host memory: the level-5 factor needs >= 97.60 GB of host memory in hybrid mode (in-core factor 91.87 GB, cuDSS hybrid host estimate 97.60 GB) + 15.24 GB in use + 4 GB margin, and this container may hold 32.0 GB (cgroup limit 32.0 GB; node MemTotal 251.5681037902832 GB)",
+   "in_core_factor_gb": 91.86791657283902,
+   "host_needed_gb": 97.60000805556774,
+   "host_allowed_gb": 32.0,
+   "cgroup_limit_gb": 32.0,
+   "node_mem_total_gb": 251.5681037902832,
+   "passed": false
+  },
+  "P6": {
+   "what": "old vs new: each level-dependence of the old fixture switched alone, at levels 1 and 2 (relative to the old fixture at the same level): (a) walls and (b) short standard move a physical object, (c) the vertical grid refined moves none (a discretisation left un-refined)",
+   "changes_a_physical_object_at_level_2": {
+    "a_walls": true,
+    "b_short": true,
+    "c_vertical": false
+   },
+   "per_level": {
+    "1": {
+     "old": 0.0,
+     "a_walls": 0.000990392983757138,
+     "b_short": -1.5893379945453034e-09,
+     "c_vertical": 3.5318636903980405e-10,
+     "abc": 0.0009903928071639534,
+     "new": 0.0009903924539778064,
+     "sum_of_individual": 0.0009903917476055124,
+     "objects_ab": 0.0009903913944191434,
+     "interaction": 1.0595584409855974e-09,
+     "new_minus_abc": -3.528367598093496e-10
+    },
+    "2": {
+     "old": 0.0,
+     "a_walls": 0.0028331558454932626,
+     "b_short": -0.01043265784942271,
+     "c_vertical": 0.02777374720382353,
+     "abc": 0.018537029359878776,
+     "new": 0.022577327677361314,
+     "sum_of_individual": 0.02017424519989408,
+     "objects_ab": -0.007599502003929448,
+     "interaction": -0.0016372158400153047,
+     "new_minus_abc": 0.003966766254950738
+    }
+   },
+   "level1_identity_worst": 1.5893379945453034e-09,
+   "identity_tolerance": 1e-08,
+   "passed": true
+  }
+ },
+ "seconds_assembly": 0.6752681732177734
+}

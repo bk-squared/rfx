@@ -1274,6 +1274,193 @@ that block held the coarsest declared cell, a smaller minimum cell (dt):
   1.0063e-2 vs 1.0141e-2). Bands narrower than 2 cells and in-plane grading
   remain unwitnessed.
 
+### Added — an independent magnetoquasistatic referee (FastHenry): the FDFD spiral is validated, the Greenhouse referee is not
+
+- **`validation/referees/fasthenry/build_fasthenry.sh`** fetches, hash-checks,
+  patches and builds FastHenry 3.0wr from a pinned upstream commit into
+  `~/.cache/rfx-referees/` (no third-party source vendored; MIT licence and the
+  one printf patch recorded). **`validation/fdfd/fasthenry_referee`** meshes the
+  FDFD's own conductors (box coordinates equal to its built cell masks to 0 m),
+  models the PEC ground by the exact image construction, and converges its
+  filament/mesh ladders to 5e-7.
+- **Result.** For the quantity the Greenhouse referee computes, FastHenry's
+  limit is 318.74 ± 0.16 pH against the referee's 333.055 pH: **the referee is
+  +4.5 % high**, and it owns the residual the spiral ladder could not explain
+  (−10.35 pH from its uniform-current assumption, −3.82 pH from its corner
+  convention, −6.33 pH from the via and underpass reversal). The FDFD's
+  Richardson range brackets FastHenry's value for the fixture it measures
+  (319.91 pH), so **the FDFD's continuum limit is right to about 1.8 %**, and
+  un-extrapolated at 4 cells across W it is 2.3 % below the independent solver.
+  Corners in situ are worth −7.86 pH, 18 % more than an isolated corner.
+- **`rfx.fdfd.linear_solve` / `_cudss`**: a documented cuDSS hybrid host+device
+  memory option with an explicit device limit (the limit binds through the
+  shipped path, verified structurally and on the card). The fifth ladder level
+  remains out of reach: hybrid mode needs 97.6 GB of host memory against the
+  cluster's 32 GiB single-GPU cgroup. Its equality gate is reported failing
+  because its 1e-9 bound is below cuDSS's own run-to-run reproducibility at
+  N = 466,833 (the in-core-vs-in-core control fails it too, at 1.7e-9).
+- **Fixed**: the FastHenry study estimated its convergence order with the
+  constant-ratio formula on non-uniform ladders (k = 1, 2, 3, 4, 6, 8). It now
+  solves the consistent three-point equation, as `spiral_convergence` does:
+  orders move from 2.24 to 1.60 (spiral) and 1.11 to 1.95 (bend), limits by
+  ≤ 0.02 pH, and no gate changes.
+
+### Added — `rfx.fdfd` on the GPU: cuDSS backend, a level-invariant spiral fixture, and a paper-scale design
+
+- **`sparse_solve(..., backend="cudss")`** — NVIDIA cuDSS through
+  nvmath-python behind the same `custom_linear_solve` AD wrapper, LU cache and
+  factor thread. cuDSS has no transposed solve, so the adjoint refactors Aᵀ
+  (use `factor_cache_size(1)`). At N = 108,898 a three-fixture value-and-grad
+  takes 6.9 s against 432.9 s with host SuperLU; AD through cuDSS matches FD4
+  to 1e-7. VESSL lanes in `validation/vessl/` (working-tree tarball imported
+  into the job; artifacts harvested from the lab NFS).
+- **`rfx.fdfd.spiral` level-invariant fixture** (additive options; defaults
+  unchanged): walls, lid, the short standard's post and the port gap at fixed
+  physical coordinates, and nested joint x/y/z refinement. The earlier ladder
+  refined a fixture that changed with the level (walls grown from the last
+  cell, a post sized in cells, a frozen vertical grid) and plateaued at −9.5 %;
+  the frozen vertical grid was the largest part (+2.8 % at W/2).
+- **`validation/fdfd/invariant_ladder`** — the spiral's de-embedded L converges
+  monotonically (1–4 cells across W, N up to 1.1 M, observed order 1.63) to
+  317.9–324.8 pH, −4.6..−2.5 % from the independent referee: inside 5 %, not
+  3 %. The residual is not explained by any measured model difference (0.7 %
+  together); the next level needs a 92 GB factor.
+- **`validation/fdfd/rfic_design`** — a 3-turn square spiral with the paper's
+  (r_out, W, S) on an SG13G2-like stack, 2.45 GHz, Leontovich copper and lossy
+  silicon, 4 cells across W (N = 772,892): L-BFGS-B on `jax.value_and_grad`
+  through cuDSS reaches L = 4.000 nH (+0.001 %) in 22 evaluations with Q 23.9,
+  where a 27-point sweep puts two points in the 1 % band (best Q 23.2). The
+  design holds on the model it was designed on; one level finer moves L by
+  +1.7 %, and the Leontovich sheet is outside its validity (δ/t 0.61), so Q is
+  optimistic.
+- **`validation/fdfd/corner_convergence`** — an L-bend against a straight bar
+  of the same length on the same fixture: the FDFD reproduces the referee's
+  corner excess to 1.7 % at 2 cells across W, and with one sign convention
+  (FDFD − referee) the spiral's 8 corners contribute −7.2..+9.3 pH, which
+  misses the ladder's continuum-limit residual (−15.2..−8.2 pH) by 1.1 pH:
+  corners do not explain it. An earlier version passed this gate through a
+  sign error.
+
+### Added — `rfx.fdfd.spiral`: differentiable rectangular spiral inductor, validated against an independent referee
+
+- **`rfx.fdfd.spiral`** — `SpiralSpec` / `build_spiral` / `solve_spiral`: the
+  rectangular spiral from `gds.rect_spiral` on a body-fitted 3-D grid whose
+  lines move with `theta = (r_out, spacing, width)` (`jnp.interp` between the
+  polygon-edge breakpoints; topology, masks and pattern static), two lumped
+  ports on vertical lead columns, DUT / OPEN / SHORT fixtures on one grid,
+  open-short de-embedding, `L_diff` / `Q_diff` / `L_se` / `Q_se`. PEC,
+  Leontovich (`sigma_metal`) or uniform-current volumetric metal
+  (`sigma_volumetric`); lossy silicon; graded wall padding (`pad_cells`) —
+  the PML is measured useless for quasi-static 100 MHz fields (the stretch is
+  dominated by σ_w/(jωε₀), κ has no effect). `dut_kind="bar"` gives a straight
+  bar on the same fixture. `jax.grad` vs FD4: 4e-7 on `dL/dtheta`.
+- **`validation/crossval/comparators/spiral_greenhouse.py`** — numpy-only
+  Greenhouse partial-inductance referee (Hoer–Love closed form with an
+  automatic Gauss–Legendre switch where it loses digits, PEC ground by images,
+  Mohan–Wheeler), 25 tests against Neumann quadrature (≤ 2e-12).
+- **`validation/fdfd/spiral_convergence`** — FDFD vs referee under a
+  physics-consistent protocol (uniform-current metal, vacuum dielectrics,
+  walls padded away, area-exact corners). Finding: the open/short fixture
+  measures L(strip) − L(short's bridge), so the comparable referee is
+  333.1 pH, not 349.4; against it the de-embedded FDFD is −21.2 / −12.0 /
+  −9.8 % at 1 / 2 / 3 cells across W, Richardson −7.9..−5.2 % (order 1.5),
+  −5.5..−2.3 % after the measured vertical-grid term. **V1 fails at ±5 %,
+  recorded as such.** AD vs FD4 5.7e-7; dL/dθ vs referee 0.88–0.94 at W/3.
+- **`validation/fdfd/straight_bar_convergence`** — the same-fixture straight
+  bar shows the same distributed per-unit-length deficit as the spiral
+  (differential 0.81 / 0.89 vs 0.77 / 0.88 at 1 / 2 cells across W), so the
+  gap is strip cross-section discretisation, not spiral geometry; with the
+  walls extrapolated on validated 3-point ladders the per-unit-length ratio
+  is 0.83–0.93 (1 cell), 0.93 (2), 0.98 (3), 0.97 (4) ± 0.008.
+- **`validation/fdfd/spiral_design`** — L-BFGS-B on (r_out, S, W) at 2.4 GHz
+  with Leontovich copper and lossy silicon reaches the L target to 1.0 % in
+  16 evaluations (16 forward + 16 adjoint), a 27-point sweep lands no point
+  in the 2 % band; AD vs FD4 at the optimum 7.6e-7; W/2 re-solve shifts L by
+  +6.5 % (95 % common mode). Absolute L is biased (−17.6 % vs referee at
+  this geometry); the loop's claims are solve count and constraint accuracy.
+
+### Fixed
+
+- **`rfx.fdfd.linear_solve`** — every LU factorisation, triangular solve and
+  cache drop now runs on one dedicated thread: scipy 1.18.1's `SuperLU` does
+  not free its factor when deallocated on a thread other than the one that
+  built it, and under `jax.jit` the factors were built on XLA's callback
+  threads and dropped on the caller's (+3.4 GB per jitted three-fixture solve
+  at N = 33k, measured in `validation/fdfd/memory_probe.json`; flat after the
+  fix). Also: `permc_spec` keyword (COLAMD stays default: MMD_AT_PLUS_A is
+  1.5× faster on 2-D, 9.7× slower on 3-D), `factor_cache_size()` knob.
+- **`rfx.fdfd.yee3d.curl_h`** dropped the rows for edge ids ≥ n_faces,
+  corrupting `ports3d.port_current` for high-index ports; regression test.
+
+### Added — `rfx.fdfd` pipeline: 3-D vector FDFD, ports, conductors, de-embedding, GDS front end
+
+Built on the differentiable sparse solve below; every module keeps the same
+contract (static pattern, traced values, AD in both modes, gates asserted
+against an independent reference, gradients against 4th-order FD).
+
+- **`sparse_solve`** now takes an `(n, m)` right-hand side: one factorisation
+  serves all `m` excitations (the FDFD N-port advantage); block solve equals
+  the column solves to 1e-17, gradients to 3e-11 of FD.
+- **`rfx.fdfd.yee3d`** — 3-D Yee curl-curl FDFD: complex `eps_r` per cell,
+  PEC edge masks, PML by polynomial complex stretching, nonuniform traced
+  `dx/dy/dz`. Assembled operator equals `scipy` `Ch@Ce - k0² eps` to 3e-16.
+  WR90 TE10 port with a calibration solve: 10-cell PML reflection 1.9e-5;
+  a full-height inductive iris reproduces the 2-D `hplane` |S11|/|S21| on
+  the same transverse grid to 3e-5 / 1.4e-5; gradients w.r.t. one cell's
+  `eps_r` and one `dz` step match FD to 1e-10.
+- **`rfx.fdfd.ports3d`** — lumped ports (internal impedance as a diagonal
+  admittance derived from the Yee cell, V from E, I from the discrete Ampère
+  loop), N-port S and Z from one factorisation, renormalisation. One-port
+  load gate |S11 − (R−Z0)/(R+Z0)| ≤ 3e-3 at 10 MHz (residual is the gap's
+  shunt C, scales with f); wire-over-ground two-port |S21| 0.9997,
+  reciprocity 3e-15, passivity 1 + 2e-15; dS11/dR vs FD 3e-7.
+- **`rfx.fdfd.conductor`** — Leontovich surface impedance on cell-mask
+  conductors and on the outer walls (cut-cell Ampère loops on the air side
+  of the surface). Copper WR90 TE10 attenuation vs Pozar: +1.5e-3 at 24
+  cells across a, +7.3e-4 at 32 (second order); d|S21|²/dσ vs FD 1.2e-5.
+- **`rfx.fdfd.deembed`** — jnp `s_to_z`/`z_to_s`/`s_to_y`/`y_to_s`/ABCD,
+  the five `rfx.deembed` functions (identical to 1e-12), open-short
+  de-embedding (recovers a synthetic DUT to 6e-9 Ω), and `l_diff`/`q_diff`/
+  single-ended L, Q as used by the SG13G2 LC-VCO paper (arXiv 2607.08852).
+- **`rfx.fdfd.gds`** — `gdstk` GDS reading, `LayerStack` (+ approximate
+  `sg13g2_stack`), `rect_spiral`/`octagonal_spiral` generators with a
+  feasibility rule (every side ≥ width; the first version could emit a
+  self-intersecting octagon, caught in review), `mesh_lines` snapping grid
+  lines to every axis-aligned edge with grading ratio ≤ 1.5, and area-exact
+  `rasterise` (fill-fraction area conservation to 1e-15).
+
+Not yet: symmetric centre-tapped spiral, PDK via arrays, conductors inside
+PML, port-discontinuity de-embedding of lumped ports, GPU/iterative solver
+for RFIC-scale grids.
+
+### Added — `rfx.fdfd`: differentiable frequency-domain solve (sparse direct + AD in both modes)
+
+- **`rfx.fdfd.sparse_solve(data, rows, cols, b)`** — a host-factorised
+  (`scipy` SuperLU via `jax.pure_callback`) sparse direct solve wrapped in
+  `jax.lax.custom_linear_solve`, so `jax.grad` / `jax.vjp` and `jax.jvp` /
+  `jax.jacfwd` both work through it. Reverse mode costs one extra transposed
+  solve per gradient regardless of the number of parameters and stores no
+  time history — the property FDTD reverse-mode AD does not have. Requires
+  x64 (raises otherwise).
+- **`rfx.fdfd.hplane`** — 2-D H-plane TE_n0 Helmholtz FDFD with the exact
+  discrete DtN ports of the independent referee
+  (`validation/crossval/comparators/fdfd_hplane.py`); on the same grid the two
+  agree to LU roundoff (gated at 1e-8), the empty guide is transparent to
+  ~2e-14. The system is a JAX function of frequency, of a per-node complex
+  `eps_r` map, and of the iris aperture widths as CONTINUOUS parameters
+  — body-fitted: the iris edges always sit on nodes and the transverse
+  nodes stretch with the width, so nothing switches topology and the shape
+  derivative is smooth and mesh-convergent (a cut-cell / Shortley–Weller
+  edge was tried first and its derivative jumped ~50 % at every node
+  crossing — the M12 "sub-cell phase" finding in miniature). The DtN port
+  kernel is differentiated as a matrix function of the transverse operator
+  (Daleckii–Krein), not through `eigh`, so exactly degenerate eigenvalue
+  pairs of the stretched grid do not produce nan. All three gradients are
+  checked against 4th-order finite differences, and the width derivative
+  for smoothness across nodes and convergence under refinement, in
+  `tests/unit/fdfd/test_fdfd_hplane.py`. Same scope fence as the referee: H-plane
+  only; magnitudes validated; Richardson over ≥ 2 levels.
+
 ### Added — near-cutoff layout note, and the S21 phase residual on waveguide S-matrix results
 
 Two report-only additions from the same measurement campaign, one before the

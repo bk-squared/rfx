@@ -1,0 +1,720 @@
+{
+ "a_scipy": {
+  "rss_gb": [
+   1.2761077880859375,
+   1.2761077880859375,
+   1.2761077880859375,
+   1.2761077880859375,
+   1.2761077880859375,
+   1.2761077880859375
+  ],
+  "rss_gb_base": 1.26922607421875,
+  "first_increment_gb": 0.0068817138671875,
+  "growth_after_second_gb": 0.0,
+  "growth_gb_per_solve": 0.0,
+  "growth_fraction_of_first": 0.0,
+  "malloc_live_gb": [
+   0.19351254403591156,
+   0.19351254403591156,
+   0.19351254403591156,
+   0.19351254403591156,
+   0.19351254403591156,
+   0.19351254403591156
+  ],
+  "malloc_live_gb_base": 0.19351135194301605,
+  "seconds": [
+   1.5210859775543213,
+   1.515077829360962,
+   1.5159239768981934,
+   1.514744758605957,
+   1.5159111022949219,
+   1.5109610557556152
+  ],
+  "n": 12739,
+  "_block_seconds": 18.89674997329712
+ },
+ "gates": [
+  {
+   "name": "jit_solve_growth_bounded",
+   "measured": 0.0001643974832239841,
+   "threshold": 0.15,
+   "passed": true,
+   "units": "fraction",
+   "what": "RSS growth over solves 2..6 of the jitted three-fixture solve, as a fraction of solve 1's increment (the task's gate; measured 0.0002 GB on 1.021 GB)"
+  },
+  {
+   "name": "grad_growth_bounded",
+   "measured": 0.0003097653527452954,
+   "threshold": 0.15,
+   "passed": true,
+   "units": "fraction",
+   "what": "the same for value_and_grad"
+  },
+  {
+   "name": "fix_beats_pre_fix",
+   "measured": 15355.272727272728,
+   "threshold": 10.0,
+   "passed": true,
+   "units": "x",
+   "what": "pre-fix growth per solve divided by post-fix growth per solve (0.6443 vs 0.0000 GB)"
+  },
+  {
+   "name": "cross_thread_dealloc_leaks",
+   "measured": 253693.8190460205,
+   "threshold": 50.0,
+   "passed": true,
+   "units": "x",
+   "what": "malloc live bytes per factor, cross-thread destroy over same-thread destroy (0.2537 vs 0.0000 GB) -- the diagnosis"
+  },
+  {
+   "name": "scipy_control_flat",
+   "measured": 0.0,
+   "threshold": 0.01,
+   "passed": true,
+   "units": "GB/solve",
+   "what": "the pure-scipy control never grew, so the operator and the factorisation are not the problem"
+  },
+  {
+   "name": "eager_solve_flat",
+   "measured": 0.00017547607421875,
+   "threshold": 0.01,
+   "passed": true,
+   "units": "GB/solve",
+   "what": "eager sparse_solve never grew either -- it takes jit, and the XLA callback pool it brings, to show the bug"
+  },
+  {
+   "name": "factor_cache_size_knob",
+   "measured": 1.0048205169392077,
+   "threshold": 0.5,
+   "passed": true,
+   "units": "factors",
+   "what": "dropping factor_cache_size from 4 to 3 lowers the un-cleared plateau by 0.255 GB, i.e. this many factors of 0.254 GB"
+  },
+  {
+   "name": "n33k_value_bit_identical",
+   "measured": 0.0,
+   "threshold": 0.0,
+   "passed": true,
+   "units": "H",
+   "what": "spread of L_diff over the four repeated solves"
+  },
+  {
+   "name": "n33k_matches_study_nominal",
+   "measured": 3.9696528417137976e-12,
+   "threshold": 1e-09,
+   "passed": true,
+   "units": "relative",
+   "what": "L_diff of the jitted three-fixture solve against the design study's recorded nominal (5.090106167695985e-10 vs 5.090106167675779e-10)"
+  },
+  {
+   "name": "isolated_process_same_value",
+   "measured": 0.0,
+   "threshold": 0.0,
+   "passed": true,
+   "units": "relative",
+   "what": "one-solve-per-process control returns the same L_diff bit for bit as the repeated in-process loop"
+  },
+  {
+   "name": "n33k_growth_bounded",
+   "measured": -0.0632014397480441,
+   "threshold": 0.15,
+   "passed": true,
+   "units": "fraction",
+   "what": "the design fixture itself, N = 33352, four jitted solves"
+  }
+ ],
+ "conclusion": {
+  "lu_nnz_N12739": 11707199,
+  "factor_gb_N12739": 0.25381189584732056,
+  "bytes_per_lu_nnz_N12739": 23.278706375453257,
+  "lu_nnz_N33352": 55432413,
+  "factor_gb_N33352": 1.2773911952972412,
+  "bytes_per_lu_nnz_N33352": 24.743435794505285,
+  "factor_cache_gb_N33352_size4": 5.109564781188965,
+  "factor_cache_gb_N33352_size3": 3.8321735858917236,
+  "growth_gb_per_solve_N12739_before": 0.6443328857421875,
+  "leaked_factors_per_solve": 2.538623666913481,
+  "growth_gb_per_solve_N33352_before_scaled": 3.2428155202884774,
+  "growth_gb_per_solve_N12739_after": 4.1961669921875e-05,
+  "n33k_rss_gb": [
+   5.2187652587890625,
+   5.3285675048828125,
+   5.07647705078125,
+   5.0199127197265625
+  ],
+  "n33k_growth_gb_per_solve": -0.154327392578125,
+  "peak_gb_16_solve_loop_after_fix": 5.3285675048828125,
+  "peak_gb_16_solve_loop_before_fix": 53.86099806311623,
+  "no_clear_plateau_gb_N12739_cache4": 1.7732086181640625,
+  "no_clear_plateau_gb_N12739_cache3": 1.5181732177734375,
+  "no_clear_saving_gb_N12739": 0.255035400390625,
+  "grad_seconds_N12739_before": 3.134370803833008,
+  "grad_seconds_N12739_after": 4.416765928268433,
+  "grad_slowdown": 1.4091395704896146,
+  "forward_seconds_N12739_before": 4.609244108200073,
+  "forward_seconds_N12739_after": 4.421777963638306,
+  "forward_slowdown": 0.9593282238559993
+ },
+ "written": "2026-09-15T01:25:19",
+ "cross_thread": {
+  "n": 12739,
+  "scipy_version": "1.18.1",
+  "lu_nnz": 11707199,
+  "build_worker_destroy_worker": {
+   "malloc_live_gb": [
+    0.18999595940113068,
+    0.1901162564754486,
+    0.1901162564754486,
+    0.1901162564754486,
+    0.1901162564754486
+   ],
+   "rss_gb": [
+    1.268157958984375,
+    1.27325439453125,
+    1.27325439453125,
+    1.2769927978515625,
+    1.2769927978515625
+   ],
+   "malloc_growth_gb_per_factor": 0.0
+  },
+  "build_worker_destroy_main": {
+   "malloc_live_gb": [
+    0.1901162564754486,
+    0.44380897283554077,
+    0.6975028812885284,
+    0.9511979818344116,
+    1.2048906981945038
+   ],
+   "rss_gb": [
+    1.2769927978515625,
+    1.2769927978515625,
+    1.2971649169921875,
+    1.3017425537109375,
+    1.515960693359375
+   ],
+   "malloc_growth_gb_per_factor": 0.25369390845298767
+  },
+  "build_main_destroy_main": {
+   "malloc_live_gb": [
+    1.2048912942409515,
+    1.204892486333847,
+    1.204892486333847,
+    1.204892486333847,
+    1.204892486333847
+   ],
+   "rss_gb": [
+    1.515960693359375,
+    1.73016357421875,
+    1.7347564697265625,
+    1.7347564697265625,
+    1.7348175048828125
+   ],
+   "malloc_growth_gb_per_factor": 0.0
+  },
+  "build_main_destroy_worker": {
+   "malloc_live_gb": [
+    1.204892486333847,
+    1.458585113286972,
+    1.7122789323329926,
+    1.9659739434719086,
+    2.2196665704250336
+   ],
+   "rss_gb": [
+    1.7348175048828125,
+    1.7348175048828125,
+    1.9490966796875,
+    2.1632232666015625,
+    2.3775787353515625
+   ],
+   "malloc_growth_gb_per_factor": 0.2536938190460205
+  },
+  "_block_seconds": 33.66756296157837
+ },
+ "b_eager": {
+  "n": 12739,
+  "identical": {
+   "rss_gb": [
+    1.2776947021484375,
+    1.277862548828125,
+    1.2779693603515625,
+    1.27813720703125,
+    1.2783660888671875,
+    1.2784576416015625
+   ],
+   "rss_gb_base": 1.2724761962890625,
+   "first_increment_gb": 0.005218505859375,
+   "growth_after_second_gb": 0.0005950927734375,
+   "growth_gb_per_solve": 0.000148773193359375,
+   "growth_fraction_of_first": 0.11403508771929824,
+   "malloc_live_gb": [
+    0.19315169751644135,
+    0.19452929496765137,
+    0.19465851783752441,
+    0.19483639299869537,
+    0.19502437114715576,
+    0.1951705515384674
+   ],
+   "malloc_live_gb_base": 0.19292457401752472,
+   "seconds": [
+    1.4980549812316895,
+    1.506411075592041,
+    1.4948201179504395,
+    1.5039350986480713,
+    1.5090999603271484,
+    1.507270097732544
+   ]
+  },
+  "perturbed": {
+   "rss_gb": [
+    1.2827911376953125,
+    1.0063629150390625,
+    1.0065460205078125,
+    1.0066680908203125,
+    1.0068206787109375,
+    1.0070648193359375
+   ],
+   "rss_gb_base": 1.2784576416015625,
+   "first_increment_gb": 0.00433349609375,
+   "growth_after_second_gb": 0.000701904296875,
+   "growth_gb_per_solve": 0.00017547607421875,
+   "growth_fraction_of_first": 0.1619718309859155,
+   "malloc_live_gb": [
+    0.19553562998771667,
+    0.1956559270620346,
+    0.19616349041461945,
+    0.19629818201065063,
+    0.19645027816295624,
+    0.19782859086990356
+   ],
+   "malloc_live_gb_base": 0.1951705515384674,
+   "seconds": [
+    1.5168368816375732,
+    1.5166239738464355,
+    1.5040199756622314,
+    1.5106711387634277,
+    1.5057919025421143,
+    1.499742031097412
+   ]
+  },
+  "_block_seconds": 27.89396834373474
+ },
+ "c_jit": {
+  "fixed_theta": {
+   "rss_gb": [
+    1.3169097900390625,
+    1.3468017578125,
+    1.3468475341796875,
+    1.3468780517578125,
+    1.3469696044921875,
+    1.3469696044921875
+   ],
+   "rss_gb_base": 0.295928955078125,
+   "first_increment_gb": 1.0209808349609375,
+   "growth_after_second_gb": 0.0001678466796875,
+   "growth_gb_per_solve": 4.1961669921875e-05,
+   "growth_fraction_of_first": 0.0001643974832239841,
+   "malloc_live_gb": [
+    0.16380023956298828,
+    0.16380193829536438,
+    0.16380777955055237,
+    0.16380564868450165,
+    0.163807675242424,
+    0.1638055294752121
+   ],
+   "malloc_live_gb_base": 0.07891689240932465,
+   "seconds": [
+    5.16725492477417,
+    4.461488962173462,
+    4.394640207290649,
+    4.411386966705322,
+    4.421777963638306,
+    4.338758945465088
+   ],
+   "value": [
+    3.312078554687693e-10,
+    3.312078554687693e-10,
+    3.312078554687693e-10,
+    3.312078554687693e-10,
+    3.312078554687693e-10,
+    3.312078554687693e-10
+   ],
+   "mode": "forward",
+   "perturbed": false,
+   "inline_release": false,
+   "n": 12739
+  },
+  "perturbed_theta": {
+   "rss_gb": [
+    1.3273162841796875,
+    1.3557891845703125,
+    1.3558349609375,
+    1.3558502197265625,
+    1.3704681396484375,
+    1.370513916015625
+   ],
+   "rss_gb_base": 1.344390869140625,
+   "first_increment_gb": -0.0170745849609375,
+   "growth_after_second_gb": 0.0147247314453125,
+   "growth_gb_per_solve": 0.003681182861328125,
+   "growth_fraction_of_first": NaN,
+   "malloc_live_gb": [
+    0.16590140759944916,
+    0.16590215265750885,
+    0.16590827703475952,
+    0.16590598225593567,
+    0.16590797901153564,
+    0.1659087836742401
+   ],
+   "malloc_live_gb_base": 0.10861234366893768,
+   "seconds": [
+    5.0353920459747314,
+    4.343423128128052,
+    4.322840929031372,
+    4.3029279708862305,
+    4.376657724380493,
+    4.323959827423096
+   ],
+   "value": [
+    3.312078554687693e-10,
+    3.3134812503374335e-10,
+    3.314876271541422e-10,
+    3.3162635796725135e-10,
+    3.31764313576129e-10,
+    3.3190149004925155e-10
+   ],
+   "mode": "forward",
+   "perturbed": true,
+   "inline_release": false,
+   "n": 12739
+  },
+  "_block_seconds": 55.49352288246155
+ },
+ "d_grad": {
+  "fixed_theta": {
+   "rss_gb": [
+    1.4777679443359375,
+    1.5067596435546875,
+    1.5067901611328125,
+    1.5067901611328125,
+    1.5071258544921875,
+    1.5071258544921875
+   ],
+   "rss_gb_base": 0.2955474853515625,
+   "first_increment_gb": 1.182220458984375,
+   "growth_after_second_gb": 0.0003662109375,
+   "growth_gb_per_solve": 9.1552734375e-05,
+   "growth_fraction_of_first": 0.0003097653527452954,
+   "malloc_live_gb": [
+    0.19321201741695404,
+    0.19322435557842255,
+    0.1932305246591568,
+    0.19323661923408508,
+    0.1932392120361328,
+    0.1932392567396164
+   ],
+   "malloc_live_gb_base": 0.07894986867904663,
+   "seconds": [
+    6.098652124404907,
+    4.4406898021698,
+    4.386398792266846,
+    4.381053924560547,
+    4.388821840286255,
+    4.416765928268433
+   ],
+   "value": [
+    3.312078554687542e-10,
+    3.312078554687542e-10,
+    3.312078554687542e-10,
+    3.312078554687542e-10,
+    3.312078554687542e-10,
+    3.312078554687542e-10
+   ],
+   "mode": "grad",
+   "perturbed": false,
+   "inline_release": false,
+   "n": 12739
+  },
+  "_block_seconds": 29.46817922592163
+ },
+ "pre_fix": {
+  "forward_fixed_theta": {
+   "rss_gb": [
+    1.31903076171875,
+    1.961761474609375,
+    2.607757568359375,
+    3.25042724609375
+   ],
+   "rss_gb_base": 0.29638671875,
+   "first_increment_gb": 1.02264404296875,
+   "growth_after_second_gb": 1.288665771484375,
+   "growth_gb_per_solve": 0.6443328857421875,
+   "growth_fraction_of_first": 1.2601313040883317,
+   "malloc_live_gb": [
+    0.9251329749822617,
+    1.6862149238586426,
+    2.4472967982292175,
+    3.208375185728073
+   ],
+   "malloc_live_gb_base": 0.07895046472549438,
+   "seconds": [
+    5.162776947021484,
+    4.609244108200073,
+    4.556782007217407,
+    4.539302110671997
+   ],
+   "value": [
+    3.312078554687693e-10,
+    3.312078554687693e-10,
+    3.312078554687693e-10,
+    3.312078554687693e-10
+   ],
+   "mode": "forward",
+   "perturbed": false,
+   "inline_release": true,
+   "n": 12739
+  },
+  "grad_fixed_theta": {
+   "rss_gb": [
+    4.175933837890625,
+    4.80535888671875,
+    5.4347686767578125,
+    6.064117431640625
+   ],
+   "rss_gb_base": 3.0579071044921875,
+   "first_increment_gb": 1.1180267333984375,
+   "growth_after_second_gb": 1.258758544921875,
+   "growth_gb_per_solve": 0.6293792724609375,
+   "growth_fraction_of_first": 1.1258751757175418,
+   "malloc_live_gb": [
+    4.0000656843185425,
+    4.761153042316437,
+    5.522237330675125,
+    6.283321633934975
+   ],
+   "malloc_live_gb_base": 3.1531816720962524,
+   "seconds": [
+    4.645895004272461,
+    3.1268820762634277,
+    3.134370803833008,
+    3.111243963241577
+   ],
+   "value": [
+    3.312078554687542e-10,
+    3.312078554687542e-10,
+    3.312078554687542e-10,
+    3.312078554687542e-10
+   ],
+   "mode": "grad",
+   "perturbed": false,
+   "inline_release": true,
+   "n": 12739
+  },
+  "_block_seconds": 34.40258502960205
+ },
+ "subprocess": {
+  "runs": [
+   {
+    "rss_gb": 1.315765380859375,
+    "value": 3.312078554687693e-10,
+    "seconds": 5.29200291633606,
+    "wall_seconds": 6.3274009227752686
+   },
+   {
+    "rss_gb": 1.314178466796875,
+    "value": 3.312078554687693e-10,
+    "seconds": 5.254293918609619,
+    "wall_seconds": 6.291471004486084
+   },
+   {
+    "rss_gb": 1.3167266845703125,
+    "value": 3.312078554687693e-10,
+    "seconds": 5.336905002593994,
+    "wall_seconds": 6.391187906265259
+   }
+  ],
+  "rss_gb": [
+   1.315765380859375,
+   1.314178466796875,
+   1.3167266845703125
+  ],
+  "rss_gb_mean": 1.3155568440755208,
+  "_block_seconds": 19.044109106063843
+ },
+ "n33k": {
+  "fixed_theta": {
+   "rss_gb": [
+    5.2187652587890625,
+    5.3285675048828125,
+    5.07647705078125,
+    5.0199127197265625
+   ],
+   "rss_gb_base": 0.3350982666015625,
+   "first_increment_gb": 4.8836669921875,
+   "growth_after_second_gb": -0.30865478515625,
+   "growth_gb_per_solve": -0.154327392578125,
+   "growth_fraction_of_first": -0.0632014397480441,
+   "malloc_live_gb": [
+    0.2941567450761795,
+    0.2941576987504959,
+    0.29416319727897644,
+    0.29416388273239136
+   ],
+   "malloc_live_gb_base": 0.1010204553604126,
+   "seconds": [
+    38.72293496131897,
+    37.3833749294281,
+    37.50703692436218,
+    37.50911498069763
+   ],
+   "value": [
+    5.090106167695985e-10,
+    5.090106167695985e-10,
+    5.090106167695985e-10,
+    5.090106167695985e-10
+   ],
+   "mode": "forward",
+   "perturbed": false,
+   "inline_release": false,
+   "n": 33352
+  },
+  "_block_seconds": 152.45914793014526
+ },
+ "no_clear": {
+  "cache4": {
+   "rss_gb": [
+    1.317718505859375,
+    1.7517547607421875,
+    1.7679443359375,
+    1.772613525390625,
+    1.7728729248046875,
+    1.7732086181640625
+   ],
+   "rss_gb_base": 0.2964630126953125,
+   "first_increment_gb": 1.0212554931640625,
+   "growth_after_second_gb": 0.021453857421875,
+   "growth_gb_per_solve": 0.00536346435546875,
+   "growth_fraction_of_first": 0.021007336132319324,
+   "malloc_live_gb": [
+    0.925187349319458,
+    1.178884282708168,
+    1.1788874417543411,
+    1.1788905709981918,
+    1.1788932234048843,
+    1.1788994669914246
+   ],
+   "malloc_live_gb_base": 0.07900343835353851,
+   "seconds": [
+    5.074847936630249,
+    4.408944129943848,
+    4.383126974105835,
+    4.364268064498901,
+    4.335555076599121,
+    4.327770709991455
+   ],
+   "value": [
+    3.312078554687693e-10,
+    3.3134812503374335e-10,
+    3.314876271541422e-10,
+    3.3162635796725135e-10,
+    3.31764313576129e-10,
+    3.3190149004925155e-10
+   ],
+   "mode": "forward",
+   "perturbed": true,
+   "inline_release": false,
+   "clear_between": false,
+   "factor_cache_size": 4,
+   "n": 12739
+  },
+  "cache3": {
+   "rss_gb": [
+    1.51702880859375,
+    1.5173187255859375,
+    1.5173492431640625,
+    1.5181121826171875,
+    1.5181732177734375,
+    1.5181732177734375
+   ],
+   "rss_gb_base": 1.3616943359375,
+   "first_increment_gb": 0.15533447265625,
+   "growth_after_second_gb": 0.0008544921875,
+   "growth_gb_per_solve": 0.000213623046875,
+   "growth_fraction_of_first": 0.00550098231827112,
+   "malloc_live_gb": [
+    0.9269465506076813,
+    0.926947295665741,
+    0.9269480109214783,
+    0.9269481152296066,
+    0.9269507527351379,
+    0.9269508570432663
+   ],
+   "malloc_live_gb_base": 0.870024785399437,
+   "seconds": [
+    4.975153207778931,
+    4.298151016235352,
+    4.314454078674316,
+    4.32551908493042,
+    4.326292991638184,
+    4.314808130264282
+   ],
+   "value": [
+    3.312078554687693e-10,
+    3.3134812503374335e-10,
+    3.314876271541422e-10,
+    3.3162635796725135e-10,
+    3.31764313576129e-10,
+    3.3190149004925155e-10
+   ],
+   "mode": "forward",
+   "perturbed": true,
+   "inline_release": false,
+   "clear_between": false,
+   "factor_cache_size": 3,
+   "n": 12739
+  },
+  "_block_seconds": 54.970317125320435
+ },
+ "factors": {
+  "N12739": {
+   "n": 12739,
+   "coo_nnz": 156283,
+   "lu_nnz": 11707199,
+   "lu_nnz_all_fixtures": [
+    11707199,
+    11706333,
+    11703356
+   ],
+   "splu_seconds": 1.5213909149169922,
+   "factor_gb_malloc": 0.25381189584732056,
+   "factor_gb_rss": 0.009033203125,
+   "bytes_per_lu_nnz": 23.278706375453257,
+   "three_fixture_solve_seconds": 8.297816038131714,
+   "shape": [
+    16,
+    18,
+    13
+   ]
+  },
+  "N33352": {
+   "n": 33352,
+   "coo_nnz": 415312,
+   "lu_nnz": 55432413,
+   "lu_nnz_all_fixtures": [
+    55432413,
+    55535907,
+    55490787
+   ],
+   "splu_seconds": 12.530154943466187,
+   "factor_gb_malloc": 1.2773911952972412,
+   "factor_gb_rss": -0.7677001953125,
+   "bytes_per_lu_nnz": 24.743435794505285,
+   "three_fixture_solve_seconds": 40.726901054382324,
+   "shape": [
+    25,
+    27,
+    15
+   ]
+  },
+  "_block_seconds": 64.53783893585205
+ }
+}

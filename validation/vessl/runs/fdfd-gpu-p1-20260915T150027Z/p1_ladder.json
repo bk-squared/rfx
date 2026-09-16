@@ -1,0 +1,313 @@
+{
+ "lane": "P1",
+ "started_utc": "2026-09-15T15:01:22Z",
+ "artifact_dir": "/root/workspace/claude-workspace/rfx/runs/fdfd-gpu-p1-20260915T150027Z",
+ "env": {
+  "python": "3.10.13",
+  "platform": "Linux-5.15.0-187-generic-x86_64-with-glibc2.31",
+  "numpy": "2.2.6",
+  "scipy": "1.15.3",
+  "jax": "0.6.2",
+  "jax_platforms_env": "cpu",
+  "jax_devices": [
+   "TFRT_CPU_0"
+  ],
+  "jax_default_backend": "cpu",
+  "default_backend": "cudss",
+  "env_backend": "cudss",
+  "cudss_hybrid_memory": false,
+  "cudss_free_forward": true,
+  "backends": {
+   "cudss": {
+    "backend": "cudss",
+    "available": true,
+    "reason": null,
+    "nvmath_version": "1.0.0",
+    "cupy_version": "14.2.0",
+    "device_count": 1,
+    "device_name": "NVIDIA GeForce RTX 4090",
+    "device_arrays": true,
+    "min_cudss": "0.4.0",
+    "threading_lib": "/opt/conda/lib/python3.10/site-packages/nvidia/cu12/lib/libcudss_mtlayer_gomp.so.0",
+    "host_nthreads": 16,
+    "ir_steps": null
+   },
+   "cusolver": {
+    "backend": "cusolver",
+    "available": true,
+    "reason": null,
+    "cupy_version": "14.2.0",
+    "device_count": 1,
+    "device_name": "NVIDIA GeForce RTX 4090"
+   }
+  },
+  "device_memory_gb": {
+   "used": 0.38232421875,
+   "free": 23.26739501953125,
+   "total": 23.64971923828125,
+   "pool_used": 0.0,
+   "pool_total": 0.0
+  },
+  "cpu_count": 24,
+  "omp_num_threads": "16",
+  "nvmath_version": "1.0.0",
+  "cupy_version": "14.2.0",
+  "nvidia_smi": "NVIDIA GeForce RTX 4090, 24564 MiB, 391 MiB, 535.309.01"
+ },
+ "seconds": 484.9278383255005,
+ "finished_utc": "2026-09-15T15:09:27Z",
+ "host_memory_gb": {
+  "MemTotal": 125.56709671020508,
+  "MemAvailable": 122.53258514404297,
+  "peak_rss": 0.6070213317871094
+ },
+ "config": {
+  "backend": "cudss",
+  "levels": [
+   3
+  ],
+  "xlevels": [
+   [
+    2,
+    3
+   ]
+  ],
+  "wall_w": 10.0,
+  "fd_level": "3",
+  "thru_levels": [],
+  "hybrid_levels": [],
+  "deadline_s": 4200.0,
+  "factor_cache_size": 0,
+  "free_forward": true
+ },
+ "fixture": {
+  "freq": 100000000.0,
+  "sigma": 2000000.0,
+  "short_gap": 1e-05,
+  "port_gap": 1e-05,
+  "base_dz": 1e-05,
+  "metal_cells": 1,
+  "pad_ratio": 1.5,
+  "wall_w": 10.0,
+  "skin_depth": 3.558812717085886e-05
+ },
+ "levels": {
+  "3": {
+   "m": 3,
+   "metal_cells": 1,
+   "hybrid_memory": false,
+   "grid": {
+    "shape": [
+     63,
+     66,
+     36
+    ],
+    "n_unknowns": 466833,
+    "wall_x": [
+     -0.000152,
+     0.000152
+    ],
+    "wall_y": [
+     -0.000162,
+     0.000152
+    ],
+    "lid_z": 0.00014000000000000001,
+    "dx_min": 2.6666666666666626e-06,
+    "dz_min": 3.333333333333324e-07,
+    "build_seconds": 0.8121790885925293
+   },
+   "build_seconds_here": 0.8123159408569336,
+   "factor": {
+    "n": 466833,
+    "nnz": 5961225,
+    "rhs_shape": [
+     466833,
+     2
+    ],
+    "reference": "cudss",
+    "per_backend": {
+     "cudss": {
+      "cold_seconds": 13.22545862197876,
+      "warm_seconds": 11.07280683517456,
+      "factor_seconds": 2.152651786804199,
+      "solve_seconds": 11.07280683517456,
+      "residual": 1.4438351756621247e-08,
+      "residual_warm": 1.420895927995852e-08,
+      "warm_is_bit_identical": false,
+      "device_memory_gb_before": {
+       "used": 0.38232421875,
+       "free": 23.26739501953125,
+       "total": 23.64971923828125,
+       "pool_used": 0.0,
+       "pool_total": 0.0
+      },
+      "device_memory_gb_after": {
+       "used": 12.64990234375,
+       "free": 10.99981689453125,
+       "total": 23.64971923828125,
+       "pool_used": 0.0,
+       "pool_total": 0.524813175201416
+      },
+      "device_memory_gb_delta": 12.267578125
+     }
+    },
+    "reference_scale": 4165483.066342024
+   },
+   "L_dut": 3.086307030109585e-10,
+   "grad": [
+    1.1436135970221909e-05,
+    -1.1153038693168808e-05,
+    -2.3842370260613795e-05
+   ],
+   "value_and_grad_seconds": 76.51477837562561,
+   "device_memory_gb_before": {
+    "used": 12.64990234375,
+    "free": 10.99981689453125,
+    "total": 23.64971923828125,
+    "pool_used": 0.0,
+    "pool_total": 0.524813175201416
+   },
+   "device_memory_gb_peak_after": {
+    "used": 12.64990234375,
+    "free": 10.99981689453125,
+    "total": 23.64971923828125,
+    "pool_used": 0.0,
+    "pool_total": 0.524813175201416
+   },
+   "factor_cache_size": 0,
+   "factor_cache_entries": 0,
+   "host_memory_gb": {
+    "MemTotal": 125.56709671020508,
+    "MemAvailable": 117.25617599487305,
+    "peak_rss": 9.755939483642578
+   },
+   "rc_twin": {
+    "L_dut": 3.0892716979535494e-10,
+    "L_raw": 3.3664200749084827e-10,
+    "Q_diff": 0.01461060770114693,
+    "re_z_diff": 1.3285187679732005,
+    "sigma": 20000000.0,
+    "freq": 10000000.0,
+    "seconds": 35.128623485565186,
+    "device_memory_gb_after": 12.64990234375
+   },
+   "fd_width": {
+    "backend": "cudss",
+    "parameter": 2,
+    "step": 1.0000000000000001e-07,
+    "fd_order": 4,
+    "fd": -2.3842374363349134e-05,
+    "fd_seconds": 138.79350328445435,
+    "ad": -2.3842370260613795e-05,
+    "rel": 1.7207746498379918e-07
+   }
+  }
+ },
+ "xlevels": {
+  "mc2_m3": {
+   "m": 3,
+   "metal_cells": 2,
+   "hybrid_memory": false,
+   "grid": {
+    "shape": [
+     63,
+     66,
+     45
+    ],
+    "n_unknowns": 581430,
+    "wall_x": [
+     -0.000152,
+     0.000152
+    ],
+    "wall_y": [
+     -0.000162,
+     0.000152
+    ],
+    "lid_z": 0.00014000000000000001,
+    "dx_min": 2.6666666666666626e-06,
+    "dz_min": 3.333333333333324e-07,
+    "build_seconds": 0.7981419563293457
+   },
+   "build_seconds_here": 0.7982563972473145,
+   "factor": {
+    "n": 581430,
+    "nnz": 7436946,
+    "rhs_shape": [
+     581430,
+     2
+    ],
+    "reference": "cudss",
+    "per_backend": {
+     "cudss": {
+      "cold_seconds": 17.573059558868408,
+      "warm_seconds": 17.48466968536377,
+      "factor_seconds": 0.08838987350463867,
+      "solve_seconds": 17.48466968536377,
+      "residual": 4.35634806857478e-08,
+      "residual_warm": 4.410815747112819e-08,
+      "warm_is_bit_identical": false,
+      "device_memory_gb_before": {
+       "used": 12.64990234375,
+       "free": 10.99981689453125,
+       "total": 23.64971923828125,
+       "pool_used": 0.0,
+       "pool_total": 0.524813175201416
+      },
+      "device_memory_gb_after": {
+       "used": 17.32958984375,
+       "free": 6.32012939453125,
+       "total": 23.64971923828125,
+       "pool_used": 0.0,
+       "pool_total": 0.8572711944580078
+      },
+      "device_memory_gb_delta": 4.6796875
+     }
+    },
+    "reference_scale": 4426725.947388987
+   },
+   "L_dut": 3.0895954306515276e-10,
+   "grad": [
+    1.1448990464196115e-05,
+    -1.1165223786754109e-05,
+    -2.3872817357360584e-05
+   ],
+   "value_and_grad_seconds": 113.48349928855896,
+   "device_memory_gb_before": {
+    "used": 17.32958984375,
+    "free": 6.32012939453125,
+    "total": 23.64971923828125,
+    "pool_used": 0.0,
+    "pool_total": 0.8572711944580078
+   },
+   "device_memory_gb_peak_after": {
+    "used": 17.32958984375,
+    "free": 6.32012939453125,
+    "total": 23.64971923828125,
+    "pool_used": 0.0,
+    "pool_total": 0.8572711944580078
+   },
+   "factor_cache_size": 0,
+   "factor_cache_entries": 0,
+   "host_memory_gb": {
+    "MemTotal": 125.56709671020508,
+    "MemAvailable": 115.80728530883789,
+    "peak_rss": 13.178817749023438
+   },
+   "rc_twin": {
+    "L_dut": 3.0923344256287375e-10,
+    "L_raw": 3.3695616210101285e-10,
+    "Q_diff": 0.015211938144337269,
+    "re_z_diff": 1.2772672386410493,
+    "sigma": 20000000.0,
+    "freq": 10000000.0,
+    "seconds": 54.56323981285095,
+    "device_memory_gb_after": 17.32958984375
+   }
+  }
+ },
+ "host_memory_gb_end": {
+  "MemTotal": 125.56709671020508,
+  "MemAvailable": 115.63257598876953,
+  "peak_rss": 13.178817749023438
+ }
+}
