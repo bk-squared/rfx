@@ -48,6 +48,34 @@ from rfx.geometry.csg import Shape
 # precision differs, and the result is cast to the active JAX dtype once at
 # the end. ``rfx.geometry.conformal`` calls them with the default.
 
+def _exterior_norm(xp, *terms):
+    """``sqrt(sum(t**2))`` whose derivative at the origin is 0, not NaN.
+
+    The clamped SDFs below form their exterior distance as the Euclidean
+    norm of per-axis overhangs that are all exactly zero at every INTERIOR
+    sample point. ``d/du sqrt(u)`` is ``+inf`` at ``u = 0``, and the chain
+    rule then multiplies that by the zero inner derivative: ``0 * inf =
+    nan``, which ``jnp.where`` propagates into every voxel of the gradient
+    (issue #1085 -- ``jax.grad`` of ``compute_smoothed_eps`` w.r.t. a Box
+    shift was NaN at both ``jax_enable_x64`` flags while the central finite
+    difference was finite).
+
+    The standard remedy is the double-``where``: feed ``sqrt`` a strictly
+    positive argument on the branch that is discarded, so the reverse pass
+    never differentiates ``sqrt`` at 0. The FORWARD value is unchanged on
+    both backends -- for ``s > 0`` this is bit-for-bit ``xp.sqrt(s)``, and
+    for ``s == 0`` it returns ``0.0``, which is what ``xp.sqrt(0.0)``
+    returns. Only the derivative changes, NaN -> 0 (the subgradient the
+    finite difference already reports at an interior point, where moving
+    the surface does not move the exterior distance).
+    """
+    s = terms[0] ** 2
+    for t in terms[1:]:
+        s = s + t ** 2
+    positive = s > 0
+    return xp.where(positive, xp.sqrt(xp.where(positive, s, 1.0)), 0.0)
+
+
 def _sdf_sphere(x, y, z, shape, xp=jnp):
     """Signed distance: negative inside, positive outside."""
     cx, cy, cz = shape.center
@@ -69,7 +97,7 @@ def _sdf_box(x, y, z, shape, xp=jnp):
     ox = xp.maximum(dx, 0.0)
     oy = xp.maximum(dy, 0.0)
     oz = xp.maximum(dz, 0.0)
-    outside = xp.sqrt(ox**2 + oy**2 + oz**2)
+    outside = _exterior_norm(xp, ox, oy, oz)
     inside = xp.minimum(xp.maximum(xp.maximum(dx, dy), dz), 0.0)
     return outside + inside
 
@@ -88,7 +116,7 @@ def _sdf_cylinder(x, y, z, shape, xp=jnp):
         r = xp.sqrt((y - cy)**2 + (z - cz)**2) - shape.radius
         h = xp.abs(x - cx) - shape.height / 2.0
 
-    outside = xp.sqrt(xp.maximum(r, 0.0)**2 + xp.maximum(h, 0.0)**2)
+    outside = _exterior_norm(xp, xp.maximum(r, 0.0), xp.maximum(h, 0.0))
     inside = xp.minimum(xp.maximum(r, h), 0.0)
     return outside + inside
 
