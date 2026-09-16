@@ -136,9 +136,13 @@ def test_i4_referee_is_one_number():
     il = _il()
     ref = il.referee_block()
     js = _study()["referee"]
-    assert ref["total"] == js["total"]
+    # ONE number, not a bit pattern: the live sum is compared at 1e-15 relative,
+    # because the last bit of this numpy reduction is platform-dependent
+    # (measured: 3.330551089690653e-10 here on macOS/Accelerate against
+    # 3.3305510896906523e-10 in the committed JSON, 1 ULP = 2.2e-16 relative).
+    assert ref["total"] == pytest.approx(js["total"], rel=1e-15)
     old = json.loads(SC_JSON.read_text())["referee"]["deembedded"]["total"]
-    assert ref["total"] == old                    # the bridge split at the post centre (0.5)
+    assert ref["total"] == pytest.approx(old, rel=1e-15)   # bridge split at the post centre
     assert ref["total"] == pytest.approx(333.055e-12, abs=1e-15)
     # sensitivities recorded beside it (measured here): the M2 -> M1 transition
     # anywhere across the 10 um post 0.0382 %; the underpass one 2 um layer

@@ -335,7 +335,11 @@ def test_l10_gates_pass_in_the_committed_json():
     for name in ("F0", "F1", "F2", "F3", "F4", "F5"):
         assert g[name]["passed"], (name, g[name])
     assert g["all_passed"]
-    assert JSON_PATH.is_file() and PNG_PATH.is_file()
+    # the JSON is committed; the PNG is a build artifact (**/*.png is gitignored),
+    # so it exists only after a local run -- check it when it is there
+    assert JSON_PATH.is_file()
+    if PNG_PATH.is_file():
+        assert PNG_PATH.stat().st_size > 0
     # the run cache's provenance travels with the numbers
     assert len(s["cost"]["binary_sha256"]) == 64
 

@@ -292,6 +292,49 @@ _FACTOR_EXECUTOR_LOCK = threading.Lock()
 _T = TypeVar("_T")
 
 
+def _as_i32(z: jax.Array) -> jax.Array:
+    """complex128 -> int32 ``(..., 2, 2)``: the bits, in a transport dtype.
+
+    ``jax <= 0.6`` canonicalises a ``pure_callback``'s operands AND its result
+    with the x64 setting of the thread the callback runs on, and an XLA worker
+    thread never sees the caller's thread-local
+    ``jax.experimental.enable_x64()`` override. Measured on jax 0.6.2 / py3.10:
+    of 24 callbacks in one ``tests/unit/fdfd/test_fdfd_yee3d.py`` gradient
+    check, one landed on a worker thread and arrived as complex64 with the
+    result rejected ("Incorrect output dtype for return value #0: Expected:
+    complex128, Actual: complex64"); with the result cast the tangent came back
+    1.5e-3 relative away from the same reverse-mode gradient, because the
+    OPERANDS had already been truncated before any of this module's code ran.
+    jax 0.11 keeps the flag process-global and never does this.
+
+    int32 is invariant under that canonicalisation (it only narrows 64-bit
+    types), so the bits travel exactly on every jax version and on any thread.
+    The encode and decode are bitcasts inside the traced graph, where the x64
+    setting is the caller's, plus one host-side ``view`` per callback: no copy
+    of the values and nothing to keep in sync with a config flag.
+    """
+    r = jnp.stack([jnp.real(z), jnp.imag(z)], axis=-1)      # float64 (..., 2)
+    return jax.lax.bitcast_convert_type(r, jnp.int32)       # int32   (..., 2, 2)
+
+
+def _from_i32(i: jax.Array) -> jax.Array:
+    """int32 ``(..., 2, 2)`` -> complex128, the inverse of :func:`_as_i32`."""
+    r = jax.lax.bitcast_convert_type(i, jnp.float64)        # float64 (..., 2)
+    return r[..., 0] + 1j * r[..., 1]
+
+
+def _host_from_i32(a: Any, shape: tuple[int, ...]) -> np.ndarray:
+    """Host side of :func:`_as_i32`: reinterpret the int32 bits as complex128."""
+    flat = np.ascontiguousarray(np.asarray(a, dtype=np.int32)).reshape(-1)
+    return flat.view(np.complex128).reshape(shape)
+
+
+def _host_to_i32(x: np.ndarray) -> np.ndarray:
+    """Host side of :func:`_from_i32`: hand the complex128 bits back as int32."""
+    z = np.ascontiguousarray(x, dtype=np.complex128)
+    return z.reshape(-1).view(np.int32).reshape(z.shape + (2, 2))
+
+
 def _on_factor_thread(fn: Callable[..., _T], *args: Any) -> _T:
     """Run ``fn(*args)`` on the one thread that owns every LU factor.
 
@@ -623,7 +666,9 @@ def sparse_solve(data: jax.Array, rows: np.ndarray, cols: np.ndarray, b: jax.Arr
         raise ValueError(f"data has shape {data.shape}, pattern has {rows.shape}")
     data = jnp.asarray(data, dtype=jnp.complex128)
     b = jnp.asarray(b, dtype=jnp.complex128)
-    out_spec = jax.ShapeDtypeStruct(tuple(b.shape), jnp.complex128)
+    # int32 transport on the callback boundary -- see ``_as_i32``
+    out_spec = jax.ShapeDtypeStruct(tuple(b.shape) + (2, 2), jnp.int32)
+    data_shape, b_shape = tuple(data.shape), tuple(b.shape)
     # once per call, not once per (forward / adjoint / column-block) callback
     pattern_key = _pattern_digest(rows, cols, n, permc_spec, backend)
 
@@ -638,10 +683,10 @@ def sparse_solve(data: jax.Array, rows: np.ndarray, cols: np.ndarray, b: jax.Arr
             lu = _factor(d, rows, cols, n, permc_spec, pattern_key, backend)
             return lu.solve(rhs, trans=tr)
 
-        def f(d, rhs):
-            d = np.asarray(d, dtype=np.complex128)
-            rhs = np.asarray(rhs, dtype=np.complex128)
-            return _on_factor_thread(on_thread, d, rhs)
+        def f(d_i32, rhs_i32):
+            d = _host_from_i32(d_i32, data_shape)
+            rhs = _host_from_i32(rhs_i32, b_shape)
+            return _host_to_i32(_on_factor_thread(on_thread, d, rhs))
         return f
 
     host_solve = _host(False)
@@ -650,10 +695,12 @@ def sparse_solve(data: jax.Array, rows: np.ndarray, cols: np.ndarray, b: jax.Arr
     def matvec(x):
         return sparse_matvec(data, rows, cols, x)
 
+    data_i32 = _as_i32(data)
+
     def solve(_matvec, rhs):
-        return jax.pure_callback(host_solve, out_spec, data, rhs)
+        return _from_i32(jax.pure_callback(host_solve, out_spec, data_i32, _as_i32(rhs)))
 
     def transpose_solve(_vecmat, rhs):
-        return jax.pure_callback(host_solve_t, out_spec, data, rhs)
+        return _from_i32(jax.pure_callback(host_solve_t, out_spec, data_i32, _as_i32(rhs)))
 
     return jax.lax.custom_linear_solve(matvec, b, solve, transpose_solve)
