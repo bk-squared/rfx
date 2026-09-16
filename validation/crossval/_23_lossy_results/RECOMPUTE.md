@@ -73,6 +73,25 @@ committed one: this run recomputed the rfx side only and read the same
 `meep_*.json` files. `r4/commit.txt` and `r4/run.log` are the source commit and
 the full stdout.
 
+**Where that commit went.** `r4/commit.txt` and `r4/rfx.json::commit` record
+`94385249`, which is a commit on PR #1092's branch, not a commit on `main`:
+that branch's final head `f5e51a4c` landed here as squash `75ad2153`, and
+`git diff f5e51a4c 75ad2153` over every file #1092 touched is empty, so the
+merged content is that head byte for byte. `94385249` is an EARLIER point on
+the same branch — the tree this run actually stepped, before the post-review
+amendments — and it becomes unreachable once the branch is deleted, which is
+why the trail is written out here rather than left to `git log`.
+
+What the amendments after `94385249` did to this record: nothing. The
+load-bearing one caps `W_wit` at the lattice-witness ceiling, and that cap
+reaches no cv23 arm — 0 of 339 bins on each of tand0p1, tand1 and tand3, since
+only cv22's debye record sits above its own ceiling. Re-judging `r4/rfx.json`
+under the merged code reproduces its `window_R` arrays bit-identically (max
+relative difference 0.0) and its `gates` dict exactly, all three arms
+`e2_ok`. So the record was produced by the code that landed, in every respect
+this record depends on. Re-check with
+`cv23_lossy_gates.arm_windows(arm_doc)` against the stored `window_R`.
+
 Two things the committed record cannot carry:
 
 * **`GL_witness`.** The committed `rfx.json` was written 2026-09-02, before the
@@ -117,8 +136,10 @@ Three reasons, none of them a reason to withhold the evidence:
    it.
 3. The windows r4 was judged by are the per-arm ones (#928 item 2, design note
    `docs/design_notes/slab_family_per_arm_lattice_window_predeclaration.md`).
-   Until that change is merged, a record carrying them describes gates that are
-   not yet the repository's.
+   That change has since landed (squash `75ad2153`), so this reason has expired:
+   the windows r4 carries ARE the repository's now, which is what the paragraph
+   above verifies bit for bit. Reasons 1 and 2 stand, and 1 is the one that
+   cannot be settled from these numbers.
 
 ### What adopting it would take
 
