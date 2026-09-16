@@ -1183,7 +1183,24 @@ def test_the_persisted_ingredient_payload_round_trips_through_json() -> None:
     assert unbounded
     assert all(r["q_log_upper"] == math.inf for r in unbounded)
 
+#: cv02's LIVE record: current schema, regenerated against a real Meep, and what
+#: the manifest means by ``evidence_status: "committed"``. Anything asking "does
+#: the case's own evidence support its verdict" reads this.
 CV02_RECORD = REPO_ROOT / "validation/crossval/_02_ring_resonator_results/crossval.json"
+
+#: cv02's RETAINED pre-#1036 record, and the only copy that predates the #945
+#: rate-to-Q transform. Re-driving today's judge on it is the falsifier for "the
+#: transform moved a verdict that was already committed", so regenerating it
+#: would void that check rather than refresh it.
+#:
+#: These are two files because one file could not be both, and #1062 is the
+#: issue that says so: the same path was pinned as the pre-transform copy while
+#: being cited as current-schema evidence, and it was silently the first. The
+#: pin, the transform guard and the superseded-note pointer below read THIS one;
+#: everything about the case's present evidence reads ``CV02_RECORD``.
+CV02_PRE_TRANSFORM_RECORD = (
+    REPO_ROOT / "validation/crossval/_02_ring_resonator_results/crossval.pre1036.json"
+)
 
 #: WHICH retained record the guard below is a guard against. The check is only
 #: a check because this record was written BEFORE the asymmetric transform
@@ -1211,7 +1228,7 @@ def test_the_committed_record_is_still_the_pre_transform_one() -> None:
     keep passing while silently comparing today's judge against a record that
     same judge had just written.
     """
-    doc = json.loads(CV02_RECORD.read_text(encoding="utf-8"))
+    doc = json.loads(CV02_PRE_TRANSFORM_RECORD.read_text(encoding="utf-8"))
     assert {k: doc[k] for k in CV02_RECORD_PIN} == CV02_RECORD_PIN, (
         "the retained cv02 record is not the one the transform guard was "
         "established against -- read CV02_RECORD_PIN before touching this"
@@ -1232,7 +1249,7 @@ def test_the_committed_record_reproduces_its_own_verdict_through_the_judge(
     Which record that is, and why regenerating it would void this check
     rather than refresh it: :data:`CV02_RECORD_PIN` and the test above.
     """
-    doc = json.loads(CV02_RECORD.read_text(encoding="utf-8"))
+    doc = json.loads(CV02_PRE_TRANSFORM_RECORD.read_text(encoding="utf-8"))
     assert {k: doc[k] for k in CV02_RECORD_PIN} == CV02_RECORD_PIN
     f_min, f_max = doc["rig"]["band_c_over_a"]
     verdict = rmj.judge(
@@ -1290,7 +1307,7 @@ def test_the_retained_record_keeps_its_superseded_note_and_a_pointer_to_that(
     tied together -- if the record's note is ever fixed at the source, the
     pointer can go with it; while the note stands, the pointer must too.
     """
-    record = json.loads(CV02_RECORD.read_text(encoding="utf-8"))
+    record = json.loads(CV02_PRE_TRANSFORM_RECORD.read_text(encoding="utf-8"))
     note = record["gate_limits"]["note"]
     manifest = json.loads(
         (REPO_ROOT / "validation/crossval/manifest.json").read_text(
