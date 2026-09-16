@@ -110,7 +110,7 @@
       "disposition": "defect-open",
       "issue": 928,
       "reason": "The two 50-ohm feeds are the same declared object (2.413 x 12.47 mm sheets) and this mesh realizes them UNEQUAL: geometry[1] 1437 PEC edges vs geometry[3] 1414, spread 23 against a tolerance of 1. 23 = 12 + 11 is one node column of a 12-row-wide sheet, i.e. the two feeds differ by one cell of length. The docstring argues for dx = 200 um precisely BECAUSE it keeps the feeds symmetric ('the two feeds stay SYMMETRIC', 12 node rows each) and refuses dx = H_SUB/4 for realizing them 12 and 13 rows WIDE -- that argument is about the transverse width and does not cover the propagation length, which this advisory measures. Reported to the crossval leader on #928 (comment linked in ref); not edited here.",
-      "ref": "validation/crossval/07_sheen_lpf.py:118-133,634-648 | https://github.com/bk-squared/rfx/issues/928",
+      "ref": "validation/crossval/07_sheen_lpf.py:118-133,634-648 | https://github.com/bk-squared/rfx/issues/928#issuecomment-5699614129",
       "rows": 1,
       "variant": "validation/crossval/07_sheen_lpf.py::build_rfx_sim::default"
     },
