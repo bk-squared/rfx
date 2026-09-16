@@ -47,7 +47,10 @@ SemVer — **BREAKING** entries are flagged in upper-case.
   the two distances round differently, rz − rx = 64 f64 ulps, so z wins (ε 3.100) — a
   deterministic rounding result, not a convention, and base x64=1 already gave 3.100. Only
   the x64=0 float32 evaluation gave 2.105 there; the traced (`jax.numpy`) path at x64=0 still
-  does.
+  does. **Recorded limitation**: on such exact ties the concrete and traced paths now disagree
+  by 0.99 at x64=0 (3.100 vs 2.105), where before both gave 2.105. An explicit tie rule in
+  `_normal_box` would move x64=1 values on tie voxels and is a separate formula change, not
+  made here.
   Everything under `subpixel_smoothing=False`, the staircase fallback (shapes without an SDF),
   and `compute_conformal_weights_sdf` are bit-identical at both flags.
 - End-to-end (100 steps, 4 cm CPML cube, off-node ε 4 Box 11.3–28.7 mm, dx 2 mm, one TE10
