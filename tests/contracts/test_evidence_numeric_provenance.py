@@ -363,6 +363,13 @@ ISSUE1043_PAD_CONTINUATION_NOTE = (
 # them, so a number that moves without the note moving reds here.
 TILT_RESULTS = (
     "docs/design_notes/waveguide_false_lane_transmission_tilt_results.md")
+# 2026-09-16 (#873, the near-field composition run that followed the tilt one):
+# same reason again -- the verdict IS a table of measured numbers read out of
+# near_field_composition.json, including a leg that PASSES and one that FAILS,
+# and the difference between them is which number is quoted. Its "10. Numeric
+# provenance" section emits the citations from the artifact.
+NEAR_FIELD_RESULTS = (
+    "docs/design_notes/waveguide_driven_plane_near_field_composition_results.md")
 
 # Markdown documents, with the regex that cuts them into named sites.
 MARKDOWN_SITES: dict[str, str] = {
@@ -410,6 +417,7 @@ MARKDOWN_SITES: dict[str, str] = {
     ISSUE831_RESULTS: r"^#+\s+(.*\S)\s*$",
     ISSUE1043_PAD_CONTINUATION_NOTE: r"^#+\s+(.*\S)\s*$",
     TILT_RESULTS: r"^#+\s+(.*\S)\s*$",
+    NEAR_FIELD_RESULTS: r"^#+\s+(.*\S)\s*$",
 }
 
 DOCUMENTS = (MANIFEST, *MARKDOWN_SITES)
@@ -565,9 +573,14 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
 # tutorial's STRAIGHT-run mp.inf block as the bend geometry), and the correction
 # replaces one existence-only citation with twelve that resolve the bend arms'
 # measured extents. Raised by the delta, in the same commit.
-MIN_REFERENCES = 1326
-MIN_VALUE_CHECKED = 1247
-MIN_DISTINCT_ARTIFACTS = 78
+# 2026-09-16 (#873, near-field composition): +75 references over +1 distinct
+# artifact (tests/fixtures/waveguide_false_lane_column_power/
+# near_field_composition.json, cited here for the first time), all 75
+# value-checked -- the results note's section 10. Raised by the delta, in the
+# same commit that adds them, as the entries above did.
+MIN_REFERENCES = 1401
+MIN_VALUE_CHECKED = 1322
+MIN_DISTINCT_ARTIFACTS = 79
 
 
 # --------------------------------------------------------------------------
@@ -837,6 +850,7 @@ CLASSIFICATION: dict[str, str] = {
     # there is nothing here for this gate to resolve.
     "docs/design_notes/waveguide_driven_plane_near_field_composition_predeclaration.md":
         NO_ARTIFACT_REFERENCE,
+    NEAR_FIELD_RESULTS: GATED,
     "docs/design_notes/waveguide_false_lane_column_power_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_false_lane_column_power_results.md": NO_ARTIFACT_REFERENCE,
     # 2026-09-16 (#873 attempt 2): the pre-declaration was written before any
