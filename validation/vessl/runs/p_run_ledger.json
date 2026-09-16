@@ -75,5 +75,44 @@
   "wall_minutes": 2.7,
   "artifacts": "validation/vessl/runs/fdfd-gpu-p1c-20260915T161317Z/",
   "note": "stretch: level 5 (N=2128175, plan 91.87 GB permanent, 16.78 GB hybrid minimum) as a forward solve with RFX_FDFD_CUDSS_HYBRID=1 on the 48 GB card. The first factorisation filled the device (47.52 GB in use) and failed with ALLOC_FAILED (cuDSSError ALLOC_FAILED (2) in the log). Likely cause, NOT verified: rfx.fdfd._cudss switches hybrid mode on (HybridMemoryModeOptions(hybrid_memory_mode=True)) without a device-memory limit, so cuDSS may not have spilled to the host. The lane env block records cudss_hybrid_memory false at start because the lane switches hybrid on per level (RFX_P_HYBRID_LEVELS); the level-5 record has hybrid_memory true. Level 5 is therefore not measured; the ladder is m = 1-4."
+ },
+ {
+  "id": "369367261283",
+  "name": "rfx-fdfd-gpu-p3",
+  "lane": "p3",
+  "preset": "gpu-a6000-1",
+  "state": "completed",
+  "submitted_utc": "2026-09-15T23:23:57Z",
+  "finished_utc": "2026-09-15T23:33:47Z",
+  "wall_minutes": 9.8,
+  "lane_seconds": 458.0,
+  "artifacts": "validation/vessl/runs/fdfd-gpu-p3-20260915T232441Z/",
+  "note": "first hybrid-memory lane: gate H1 at level 3 with a 6 GiB device limit (rel L 3.00e-10, worst gradient component 1.62e-09, value_and_grad 1.26x) and the level-5 host-memory account (cgroup limit 32.0 GB against a 97.60 GB hybrid host estimate: NOT RUN). Two flaws fixed for the rerun: the device high-water mark was sampled without emptying the allocator (11.9 GB of the 12.5 GB reading was held from the previous factorisation), and there was no in-core-vs-in-core control. Its pytest block also caught a real bug in the new unit test (a jnp call outside the x64 scope). Source volume rfx-fdfd-gpu-p3-20260916, tarball rfx-src-p3.tgz."
+ },
+ {
+  "id": "369367261284",
+  "name": "rfx-fdfd-gpu-p3",
+  "lane": "p3 (rerun: control + clean memory sampling)",
+  "preset": "gpu-a6000-1",
+  "state": "completed (lane exit 0; gate H1 FAILS on the gradient, see the note)",
+  "submitted_utc": "2026-09-15T23:37:25Z",
+  "finished_utc": "2026-09-15T23:49:53Z",
+  "wall_minutes": 12.5,
+  "lane_seconds": 649.0,
+  "artifacts": "validation/vessl/runs/fdfd-gpu-p3-20260915T233751Z/",
+  "note": "gate H1 at level 3 (N = 466833, 11.37 GB factor) with RFX_FDFD_CUDSS_HYBRID_LIMIT=6GiB: the limit binds (cuDSS's plan 6.00 GB device / 18.79 GB host against 11.37 / 0.04 in-core; peak RSS 13.63 -> 21.57 GB), factor 22.8 -> 35.5 s, solve 0.63 -> 1.27 s, value_and_grad 159.6 -> 231.5 s (1.45x); L to 1.50e-10, gradient to 6.07e-09 (vector) against a 3.54e-09 in-core-vs-in-core control -- so H1 FAILS its 1e-9 on the gradient, below cuDSS's own reproducibility. m = 5 NOT RUN: 97.60 GB of host memory needed, 32.0 GB allowed by the cgroup. pytest -k hybrid: 2 passed on the card. NOTE, added by the M5 review round: this run's plan_estimate/hybrid_record ALSO set the device limit AFTER plan() (through nvmath's private config interface, on the calling thread, recorded here as hybrid_limit_set_after_plan), and that code is no longer in the tree, so THIS run's plan numbers cannot be attributed to the shipped constructor-only path. Run 369367261289 re-measured them with the shipped code (hybrid_limit_applied=constructor) and reproduced them byte for byte; the study quotes that run, not this one."
+ },
+ {
+  "id": "369367261289",
+  "name": "rfx-fdfd-gpu-p3",
+  "lane": "p3 (rerun: plans re-measured with the shipped constructor-only limit + a solution-vector control)",
+  "preset": "gpu-a6000-1",
+  "state": "completed (lane exit 0; gate H1 FAILS on the gradient, see the note)",
+  "submitted_utc": "2026-09-16T00:47:29Z",
+  "finished_utc": "2026-09-16T01:00:17Z",
+  "wall_minutes": 12.8,
+  "lane_seconds": 638.2,
+  "artifacts": "validation/vessl/runs/fdfd-gpu-p3-20260916T004810Z/",
+  "note": "re-measurement of gate H1 with rfx/fdfd/_cudss.py as shipped: the hybrid device limit is set ONLY at DirectSolver construction (the plan records carry hybrid_limit_applied=constructor; the earlier run 369367261284 also set it after plan(), through code that is not in the tree, so its plan numbers could not be attributed to either setter). Constructor-only reproduces them byte for byte: plan 5.999999988824129 GB device / 18.78843168914318 GB host against 11.37 / 0.04 in-core, peak RSS 13.55 -> 21.45 GB (+7.90). Cost: factor 23.1 -> 29.5 s (1.27x), solve 0.58 -> 1.30 s (2.26x), value_and_grad 161.1 -> 200.7 s (1.25x). Answer: L to 9.00e-10 (inside 1e-9), gradient to 1.90e-09 vector / 2.22e-09 worst -- H1 FAILS its 1e-9 on the gradient. Controls: the same in-core value_and_grad twice 1.70e-09 / 6.00e-10 (worst component 2.38e-09, larger than hybrid's), the same level on the RTX 4090 5.37e-09, the probe's solution vector 8.61e-05 hybrid vs 6.70e-05 in-core-twice. m = 5 NOT RUN again: 97.60 GB of host memory needed (hybrid minimum on the device 8.75 GB hybrid-plan / 16.78 GB in-core-plan), 32.0 GB allowed by the cgroup. pytest -k hybrid: 2 passed on the card."
  }
 ]

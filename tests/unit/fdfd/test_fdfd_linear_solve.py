@@ -953,3 +953,257 @@ def test_same_backend_control_transforms_preserve_the_exact_solution():
     assert out["worst_rel_diff"] < 1e-12
     # a condition estimate that is actually an estimate of this system
     assert 1.0 < out["cond_1_estimate"]["cond_1"] < 1e6
+
+
+# ---------------------------------------------------------------------------
+# cuDSS hybrid (host + device) memory mode, and its device-memory limit.
+# The first test runs everywhere (no GPU, no nvmath: the option object is
+# built against a stand-in module); the second needs the card.
+# ---------------------------------------------------------------------------
+
+
+def _fake_nvmath(monkeypatch):
+    """``nvmath.sparse.advanced`` with just the two option classes.
+
+    ``_cudss._execution_options`` imports them lazily, so a stand-in module
+    in ``sys.modules`` is enough to see EXACTLY what would be handed to
+    nvmath-python on a GPU machine -- which is the part of the hybrid-memory
+    option that can be wrong without a card (a dropped limit, a limit passed
+    under the wrong name, a limit passed while hybrid mode is off).
+    """
+    import sys
+    import types
+    calls = {}
+
+    class HybridMemoryModeOptions:
+        def __init__(self, **kw):
+            calls["hybrid"] = dict(kw)
+            self.kw = kw
+
+    class ExecutionCUDA:
+        def __init__(self, **kw):
+            calls["execution"] = dict(kw)
+            self.kw = kw
+
+    adv = types.ModuleType("nvmath.sparse.advanced")
+    adv.HybridMemoryModeOptions = HybridMemoryModeOptions
+    adv.ExecutionCUDA = ExecutionCUDA
+    sparse = types.ModuleType("nvmath.sparse")
+    sparse.advanced = adv
+    root = types.ModuleType("nvmath")
+    root.sparse = sparse
+    for name, mod in (("nvmath", root), ("nvmath.sparse", sparse),
+                      ("nvmath.sparse.advanced", adv)):
+        monkeypatch.setitem(sys.modules, name, mod)
+    return calls
+
+
+def test_cudss_hybrid_memory_limit_is_validated_and_reaches_nvmath(monkeypatch):
+    """``RFX_FDFD_CUDSS_HYBRID_LIMIT`` (rfx/fdfd/_cudss.py, "Device memory"):
+    the device-memory limit for cuDSS hybrid mode.
+
+    What is asserted here:
+
+    * THE DEFAULTS ARE UNCHANGED. With neither variable set, hybrid mode is
+      off and ``_execution_options()`` is ``None`` -- the in-memory path.
+      Setting only the limit changes nothing: it is read only when hybrid
+      mode is on.
+    * With hybrid mode on and no limit, the option object carries
+      ``hybrid_memory_mode=True`` and NOTHING else, i.e. cuDSS's own
+      heuristic ("assume that it can use the entire GPU memory"), which is
+      what the study-P m = 5 attempt ran with and what returned
+      ALLOC_FAILED at 47.52 of 47.54 GB in use.
+    * With a limit, it is passed through under nvmath's own keyword
+      ``hybrid_device_memory_limit`` in the form nvmath accepts.
+    * The grammar is nvmath's, checked on READ: a bad limit raises where it
+      is set (no nvmath, no GPU needed) instead of inside a factorisation
+      two hours into a job.
+    * ``memory_limit_bytes`` converts exactly as nvmath-python 1.0.0's
+      ``internal.utils._get_memory_limit`` does. The expected values below
+      were produced by running that function, extracted from the
+      ``nvmath_python-1.0.0-cp310-cp310-manylinux_2_28_x86_64`` wheel,
+      against a 48 GB device (51539607552 bytes): every one of the ten forms
+      agrees byte for byte. That wheel is a Linux/CUDA build and is NOT
+      installed in this CPU venv, so the ten numbers cannot be re-derived
+      from nvmath here -- they are re-derivable by hand from the convention
+      they encode: decimal units are powers of 1000 and ``iB`` units powers
+      of 1024, a bare integer is a byte count, and a percentage or a float
+      in [0, 1] is that fraction of the device total, floored (e.g.
+      ``"80%"`` -> floor(0.8 x 51539607552) = 41231686041).
+    """
+    from rfx.fdfd import _cudss
+    monkeypatch.delenv("RFX_FDFD_CUDSS_HYBRID", raising=False)
+    monkeypatch.delenv("RFX_FDFD_CUDSS_HYBRID_LIMIT", raising=False)
+    assert _cudss.hybrid_memory() is False
+    assert _cudss.hybrid_device_memory_limit() is None
+    assert _cudss._execution_options() is None
+    monkeypatch.setenv("RFX_FDFD_CUDSS_HYBRID_LIMIT", "40GiB")
+    assert _cudss.hybrid_memory() is False
+    assert _cudss._execution_options() is None            # hybrid off: not read
+
+    calls = _fake_nvmath(monkeypatch)
+    monkeypatch.setenv("RFX_FDFD_CUDSS_HYBRID", "1")
+    monkeypatch.delenv("RFX_FDFD_CUDSS_HYBRID_LIMIT", raising=False)
+    assert _cudss._execution_options() is not None
+    assert calls["hybrid"] == {"hybrid_memory_mode": True}
+    assert set(calls["execution"]) == {"hybrid_memory_mode_options"}
+    for limit, expect in (("40GiB", "40GiB"), ("40 GB", "40 GB"), ("80%", "80%"),
+                          ("0.8", 0.8), ("42949672960", 42949672960)):
+        monkeypatch.setenv("RFX_FDFD_CUDSS_HYBRID_LIMIT", limit)
+        assert _cudss.hybrid_device_memory_limit() == expect
+        _cudss._execution_options()
+        assert calls["hybrid"] == {"hybrid_memory_mode": True,
+                                   "hybrid_device_memory_limit": expect}
+    for bad in ("40G", "40 gigabytes", "0%", "120%", "-5", "GiB"):
+        monkeypatch.setenv("RFX_FDFD_CUDSS_HYBRID_LIMIT", bad)
+        with pytest.raises(ValueError):
+            _cudss.hybrid_device_memory_limit()
+        with pytest.raises(ValueError):
+            _cudss._execution_options()
+    total = 51539607552                                   # 48 GB, the A6000 lane's card
+    assert [_cudss.memory_limit_bytes(v, total) for v in
+            ("40GiB", "40 GB", "80%", "512MiB", "1e9 B", "0.8", "6GiB", "4.5 GiB",
+             "12kB", "42949672960")] == \
+        [42949672960, 40000000000, 41231686041, 536870912, 1000000000, 41231686041,
+         6442450944, 4831838208, 12000, 42949672960]
+    assert _cudss.memory_limit_bytes(0.25, total) == 12884901888
+
+
+def test_cudss_hybrid_limit_has_exactly_one_setter_and_says_so_in_the_record():
+    """PROVENANCE: where the hybrid device limit reaches cuDSS, asserted on
+    the module's own source, and written into every measurement record.
+
+    Why this test exists. A plan estimate taken in hybrid mode reports 6.00 GB
+    of permanent device memory for a matrix whose in-core factor is 11.37 GB,
+    and gate H1 of ``validation/fdfd/invariant_ladder.py`` reads that as "the
+    limit binds". That reading is only valid if the limit reached cuDSS at
+    ``DirectSolver`` construction -- the shipped path
+    (:func:`_cudss._execution_options`) -- and nowhere else. An earlier
+    revision of this module ALSO set it through nvmath's private config
+    interface after ``plan()``, which is why the plan records of run
+    ``fdfd-gpu-p3-20260915T233751Z`` carry ``hybrid_limit_set_after_plan``
+    and cannot be attributed to either setter.
+
+    So, structurally: nvmath's hybrid-memory interface
+    (``ExecutionCUDA`` / ``HybridMemoryModeOptions`` and the
+    ``hybrid_memory_mode`` keyword the limit rides in) is touched in exactly
+    ONE function of this module, ``_execution_options``, and no function of
+    it touches nvmath's private config objects
+    (``_internal_config``, ``cudssConfigSet``, ``plan_config.hybrid*``). And,
+    in the record: ``hybrid_record()["hybrid_limit_applied"]`` is
+    ``"constructor"`` whenever a limit is in force, ``"none"`` when hybrid
+    mode runs on cuDSS's own heuristic, and absent when hybrid mode is off --
+    so an artifact taken by any other code path is visibly not this one's.
+    """
+    import ast
+    import pathlib
+
+    from rfx.fdfd import _cudss
+    src = pathlib.Path(_cudss.__file__).read_text()
+    tree = ast.parse(src)
+    # nvmath's hybrid-memory interface: the option objects and the mode
+    # keyword. (The bare string "hybrid_device_memory_limit" is excluded on
+    # purpose -- plan_estimate and selftest use it as a RECORD key, which is
+    # reading, not setting.)
+    wanted = {"hybrid_memory_mode", "hybrid_memory_mode_options",
+              "HybridMemoryModeOptions", "ExecutionCUDA"}
+    setters = set()
+    for fn in ast.walk(tree):
+        if not isinstance(fn, ast.FunctionDef):
+            continue
+        for node in ast.walk(fn):
+            # the keyword, whether written out or built as a dict key, and the
+            # nvmath option objects it is passed in
+            hit = ((isinstance(node, ast.Constant) and node.value in wanted)
+                   or (isinstance(node, ast.Name) and node.id in wanted)
+                   or (isinstance(node, ast.Call)
+                       and any(kw.arg in wanted for kw in node.keywords)))
+            if hit and fn.name != "hybrid_record":     # the record READS the env
+                setters.add(fn.name)
+    assert sorted(setters) == ["_execution_options"], sorted(setters)
+    # nvmath's private config interface is the post-plan route, and it is not
+    # taken here: not by name, and not through a config attribute either
+    attrs = {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
+    assert not {"_internal_config", "cudssConfigSet"} & attrs
+    assert not [a for a in attrs if a.startswith("hybrid") and a != "hybrid_memory_mode_options"]
+
+
+def test_cudss_hybrid_record_carries_the_provenance_of_the_limit(monkeypatch):
+    """The record every artifact gets: the mode, the limit, and WHERE it was
+    applied (``hybrid_limit_applied``). Read by
+    ``validation/fdfd/invariant_ladder.py`` (``hybrid.h1.plan_limit_applied``),
+    which refuses to treat a plan estimate as evidence that the limit binds
+    unless the estimate says ``"constructor"``."""
+    from rfx.fdfd import _cudss
+    monkeypatch.delenv("RFX_FDFD_CUDSS_HYBRID", raising=False)
+    monkeypatch.delenv("RFX_FDFD_CUDSS_HYBRID_LIMIT", raising=False)
+    assert _cudss.hybrid_record() == {"hybrid_memory": False}
+    monkeypatch.setenv("RFX_FDFD_CUDSS_HYBRID", "1")
+    assert _cudss.hybrid_record() == {"hybrid_memory": True,
+                                      "hybrid_device_memory_limit": None,
+                                      "hybrid_limit_applied": "none"}
+    monkeypatch.setenv("RFX_FDFD_CUDSS_HYBRID_LIMIT", "6GiB")
+    rec = _cudss.hybrid_record()
+    assert rec["hybrid_memory"] and rec["hybrid_device_memory_limit"] == "6GiB"
+    assert rec["hybrid_limit_applied"] == "constructor"
+    # no GPU here, so no device total and no byte figure -- and no crash
+    assert "hybrid_device_memory_limit_gb" not in rec or _cudss.device_memory()["total"] > 0
+
+
+def test_cudss_hybrid_mode_with_a_device_limit_matches_the_in_core_solve(monkeypatch):
+    """The GPU half of the same option (skipped where cuDSS cannot run).
+
+    Hybrid mode keeps the factor in HOST memory and streams it, so it must
+    return the same answer as the in-memory factorisation of the same
+    matrix: the value, the reverse-mode gradient (whose adjoint is cuDSS's
+    separately factorised ``A^T``, in hybrid mode too) and the residual.
+    The device-memory limit is set explicitly, from cuDSS's own
+    ``hybrid_min_device_memory`` for this system, so the run cannot fall
+    back on the heuristic that filled the card in the study-P m = 5 attempt.
+
+    1e-9 relative, the SAME bound as the real-fixture gate H1
+    (``validation/fdfd/invariant_ladder.py``, the ``hybrid`` block: level 3
+    of the level-invariant spiral, a 6 GiB limit against an 11.37 GB
+    factor). At n = 300 the two modes agree far inside 1e-9; at H1's size
+    they do not, and H1 is recorded FAILING -- L agrees to 9.0e-10 but the
+    gradient only to 1.9e-09 as a vector (worst component 2.2e-09), against
+    a measured in-core-vs-in-core control of 1.7e-09 on the same quantity
+    (whose own worst component, 2.4e-09, is larger than hybrid mode's). So
+    this bound is a bound on THIS system (N = 300, one solve and one
+    adjoint), not a claim that hybrid mode reproduces a 466833-unknown
+    gradient to 1e-9: read the numbers there, not here.
+
+    The factor cache is keyed on the matrix and the backend, NOT on the
+    memory mode, so it is cleared between the two runs -- otherwise the
+    second one would be a cache hit on the first one's factor and the test
+    would compare a number with itself.
+    """
+    _require("cudss")
+    from rfx.fdfd import _cudss
+    with enable_x64():
+        rows, cols, data, b = _system(n=300, seed=5)
+        est = _cudss.plan_estimate(np.asarray(data), rows, cols, 300)
+        floor = est.get("hybrid_min_device_memory_gb") or 0.0
+        limit = f"{max(int(4 * floor * 2 ** 30), 2 ** 26)}"          # >= 64 MiB
+
+        def loss(d):
+            return jnp.sum(jnp.abs(sparse_solve(d, rows, cols, b, backend="cudss")) ** 2)
+
+        ls.clear_factor_cache()
+        v_core, g_core = jax.value_and_grad(loss)(data)
+        ls.clear_factor_cache()
+        monkeypatch.setenv("RFX_FDFD_CUDSS_HYBRID", "1")
+        monkeypatch.setenv("RFX_FDFD_CUDSS_HYBRID_LIMIT", limit)
+        assert _cudss.hybrid_memory() and _cudss.hybrid_device_memory_limit() == int(limit)
+        v_hyb, g_hyb = jax.value_and_grad(loss)(data)
+        x_hyb = sparse_solve(data, rows, cols, b, backend="cudss")
+        # everything that touches an array stays INSIDE the x64 scope: outside
+        # it the same complex128 operands would be traced as complex64
+        num = float(jnp.linalg.norm(g_hyb - g_core))
+        den = float(jnp.linalg.norm(g_core))
+        r = float(jnp.linalg.norm(sparse_matvec(data, rows, cols, x_hyb) - b)
+                  / jnp.linalg.norm(b))
+        ls.clear_factor_cache()
+    assert abs(float(v_hyb) - float(v_core)) <= 1e-9 * abs(float(v_core))
+    assert num <= 1e-9 * den, num / den
+    assert r < 1e-10, r

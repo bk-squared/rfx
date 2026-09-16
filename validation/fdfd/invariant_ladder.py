@@ -104,6 +104,83 @@ P6  the old fixture with ONE level-dependence switched at a time (the old
     switched together, (a) and (b) change L by -0.760 %, offsetting part of
     (c)'s +2.777 %.
 
+H1  cuDSS HYBRID (host + device) MEMORY WITH AN EXPLICIT DEVICE LIMIT -- the
+    option the failed m = 5 attempt lacked (``rfx/fdfd/_cudss.py``,
+    ``RFX_FDFD_CUDSS_HYBRID_LIMIT``; lane
+    ``validation/vessl/lane_p3_hybrid.py``, block ``hybrid`` of the JSON,
+    run 369367261289 on one RTX A6000). At m = 3 (N = 466833, an 11.37 GB
+    factor) with a 6 GiB limit, against the in-memory run of the SAME level
+    in the SAME job.
+
+    The limit BINDS, and through the shipped code path: the limit reaches
+    cuDSS at ``DirectSolver`` construction and nowhere else (the plan record
+    carries ``hybrid_limit_applied = "constructor"``, which is what
+    ``limit_binds_the_plan`` requires before it reads a plan as evidence),
+    and cuDSS's plan for the same matrix then asks for 6.00 GB of device
+    memory instead of 11.37 GB -- 1.86e-09 relative below the limit, i.e.
+    the limit, against the gate's 1e-6 predicate -- and for 18.79 GB of host
+    memory instead of 0.04 GB, while the process's peak resident set grows by
+    7.90 GB (13.55 -> 21.45 GB). It costs 1.27x on the factorisation
+    (23.1 -> 29.5 s), 2.26x on a triangular solve (0.58 -> 1.30 s) and 1.25x
+    on the whole three-fixture value_and_grad (161.1 -> 200.7 s).
+
+    The ANSWER: L_dut agrees to 9.00e-10 relative (308.630703 pH both ways)
+    and the gradient to 1.90e-09 as a vector (worst component 2.22e-09).
+    FAILS the 1e-9 the gate asks of the gradient -- and every control says
+    the same thing about what 1e-9 means here, because cuDSS is not
+    bit-reproducible across calls (one gradient is six factorisations and
+    twelve triangular solves):
+
+    * the same in-memory value_and_grad run TWICE in the same job differs by
+      1.70e-09 in the gradient vector and 6.00e-10 in L, and its worst
+      gradient component (2.38e-09) is LARGER than hybrid mode's (2.22e-09).
+      Hybrid mode is 1.12x that control on the gradient vector -- and the
+      CONTROL ITSELF is above 1e-9, so this gate's bound is one the solver
+      does not meet against itself in-core: no memory mode could pass it;
+    * the ladder's OWN level 3, measured on the RTX 4090 in another job,
+      sits 5.37e-09 (gradient) and 1.50e-10 (L) from this job's in-memory
+      run -- the same computation on a different card is FURTHER from it
+      than hybrid mode is;
+    * the SOLUTION VECTOR of the one-fixture probe: hybrid differs from
+      in-core by 8.61e-05 (max-norm, scaled by max|x|) and in-core from
+      itself by 6.70e-05, i.e. the same size. L_dut, a functional of x,
+      agrees to 9e-10 while x itself agrees to 1e-4: the operator is
+      ill-conditioned and the difference is the solver's, not the memory
+      mode's (residuals 1.418e-08 in-core, 1.411e-08 hybrid);
+    * and the reported difference is not itself reproducible to better than
+      3.20x: the same comparison in the three P3 jobs gives 1.90e-09 /
+      6.07e-09 for the gradient vector and 1.62e-09 / 1.12e-08 / 2.22e-09
+      for its worst component (``hybrid.h1_replicates``). Every one of those
+      is above 1e-9 and every one is within a small factor of that job's own
+      in-core control, so the honest statement is "hybrid mode changes the
+      gradient by about as much as running the same thing twice does", NOT
+      "hybrid mode reproduces the gradient to 1e-9". The gate is left at
+      1e-9 and reported FAILING; it is not widened.
+
+    (What says the gradient itself is right is P4: AD against FD4 at
+    5.45e-07.)
+H2  m = 5 (N = 2128175) CONTINUES THE LADDER: NOT MEASURED, and the blocker
+    is HOST memory, not the card. cuDSS hybrid mode keeps the whole factor
+    in host memory ("Factors L and U ... must fit into the host memory"),
+    and its plan for this level asks for 97.60 GB of host memory (in-core
+    factor 91.87 GB) while needing 8.75 GB of device memory at the minimum
+    (that is the hybrid plan's figure; the in-core plan of the same matrix
+    says 16.78 GB -- both are far below the card, which is the point, and
+    neither enters the feasibility test). The gpu-a6000-1 preset's container
+    may hold 32.0 GB (cgroup v2 ``memory.max`` = 34359738368; ``free -g``
+    reports the NODE's 251.57 GB, which is why the lane reads the cgroup),
+    and 15.24 GB of that was already the assembled operator: 97.60 + 15.24 +
+    4 GB of margin against 32.0 GB, so the lane wrote the numbers and stopped
+    instead of being OOM-killed. That ceiling -- 12.76 GB of factor here --
+    is BELOW the card's own 47.54 GB, so on this preset hybrid mode cannot
+    reach past the device at all. No preset of this cluster fixes it by host
+    memory alone (gpu-a6000-1-hi-mem is 64 GiB, still under 97.60; the
+    230 GiB preset takes three GPUs). The only single-GPU route is a bigger
+    CARD: the gpu-h200 preset's 141 GB would hold the 91.87 GB factor in
+    device memory with no hybrid mode at all -- untested here, another GPU
+    type, and not one of this study's presets. The ladder stays m = 1-4: P2,
+    P3 and P5 are exactly as recorded above.
+
 Supporting measurements
 -----------------------
 * Wall distance (level 2, metal_cells 2): walls and lid at 10 / 20 / 40 /
@@ -123,19 +200,21 @@ Supporting measurements
   resistance -- gives 309.233 pH, +0.089 % over 100 MHz / 2e6 and equal to
   the 3e7 point to 6e-6.
 * Cost through cuDSS (complex128, RTX 4090 for m <= 3, RTX A6000 48 GB for
-  m = 4): one factorisation 11.1 s at m = 3 with 12.65 GB in use and
+  m = 4): one factorisation 11.1 s at m = 3 with 12.65 GB of device memory
+  IN USE (factor, operands and cupy's pool; the factor itself is cuDSS's
+  11.37 GB plan estimate, which is what gate H1's limit is set below) and
   120.2 s at m = 4 with 38.82 GB (plan: 36.61 GB permanent); value_and_grad
   of the three-fixture L_dut 6.9 / 15.0 / 76.5 / 755.3 s at m = 1-4. The
   joint refinement is truly 3-D (N = 18643 -> 1095964 from m = 1 to 4, the
   padding refined too), so the factor grows much faster than the old in-plane
   ladder's: the plans give 91.87 GB at m = 5 and 193.78 GB at m = 6 -- m = 6
-  and m = 8 do not fit any card here. An m = 5 forward solve in cuDSS hybrid
-  (host-backed) mode on the 48 GB card failed with ALLOC_FAILED at 47.52 GB
-  in use (run 369367261252). A likely cause, NOT verified here:
-  ``rfx.fdfd._cudss`` switches hybrid mode on
-  (``HybridMemoryModeOptions(hybrid_memory_mode=True)``) without a
-  device-memory limit, so cuDSS may have kept filling the device instead of
-  spilling to the host. The ladder stops at m = 4.
+  and m = 8 do not fit any card here. The m = 5 attempt of run 369367261252
+  (cuDSS hybrid memory, no device limit) died with ALLOC_FAILED at 47.52 of
+  47.54 GB in use; hybrid mode now takes an explicit device limit and moves
+  the factor off the card as asked (gate H1, which nevertheless fails on the
+  gradient's 1e-9), and the reason m = 5 is still not run is HOST memory
+  (gate H2).
+  The ladder stops at m = 4.
 * Gradient memory: a factor cache of 1 keeps the last fixture's A factor
   alive while cuDSS factorises its A^T (it has no transposed solve), so the
   first m = 3 run died with ALLOC_FAILED on the 24 GB card; a cache of 0
@@ -608,6 +687,16 @@ def latest_run(lane: str, fname: str) -> tuple[pathlib.Path | None, dict[str, An
     return cands[-1], json.loads((cands[-1] / fname).read_text())
 
 
+def all_runs(lane: str, fname: str) -> list[tuple[pathlib.Path, dict[str, Any]]]:
+    """Every harvested ``fdfd-gpu-<lane>-<utc>/<fname>``, oldest first.
+
+    Used where a REPLICATE matters: a gate whose number is a difference
+    between two solver runs has to be read against how much that number
+    itself moves from job to job."""
+    return [(d, json.loads((d / fname).read_text()))
+            for d in sorted(RUNS.glob(f"fdfd-gpu-{lane}-*")) if (d / fname).exists()]
+
+
 def richardson(h: Sequence[float], values: Sequence[float]) -> dict[str, Any]:
     """``spiral_convergence.richardson`` (p = 1 and p = 2 from the finest
     pair, the observed order from the finest three), reused unmodified."""
@@ -726,6 +815,13 @@ def plateau_block(p0: dict[str, Any]) -> dict[str, Any]:
 V1_TOL = 0.05              # the V1 tolerance of the old study, not widened
 V1_TIGHT = 0.03            # reported beside it
 AD_FD_TOL = 1e-4           # rule 1 of the task
+# H1: hybrid (host-backed) memory must not change the answer. Both runs are
+# the SAME cuDSS factorisation algorithm on the same card, differing only in
+# where the factor is held, so the bound is the solver's own reproducibility
+# (cuDSS's triangular solve is not bit-reproducible across calls: 4.2e-16
+# relative, selftest in rfx/fdfd/_cudss.py), not a physics tolerance
+HYBRID_TOL = 1e-9
+H2_LEVEL = 5               # the level the hybrid option is FOR
 # P6's identity check: at level 1 the physical short standard and the jointly
 # refined z grid ARE the old fixture's (post [22, 32] um, z unchanged), so L
 # must agree to solver noise; the bound is 10 x the cuDSS-vs-SuperLU L_dut
@@ -787,6 +883,90 @@ def evaluate_gates(study: dict[str, Any]) -> dict[str, Any]:
     g["P5"] = {"what": "dL/dwidth level-to-level changes decreasing",
                "levels": ms, "dL_dwidth": gw, "abs_changes": ch,
                "passed": bool(len(ch) >= 2 and all(b < a for a, b in zip(ch[:-1], ch[1:])))}
+    hb = study.get("hybrid") or {}
+    h1 = hb.get("h1") or {}
+    g["H1"] = {"what": "cuDSS hybrid (host-backed) memory with an EXPLICIT device limit BELOW "
+                       "the factor size returns the in-memory run's L_dut and gradient (the "
+                       "gradient as a VECTOR, the metric tests/unit/fdfd/test_fdfd_linear_solve.py "
+                       "uses for two backends) in the same job on the same card, with the limit "
+                       "binding THROUGH THE SHIPPED PATH: the plan record says the limit was "
+                       "applied at DirectSolver construction and nowhere else "
+                       "(plan_limit_applied = \"constructor\"), cuDSS's plan then asks for the "
+                       "limit instead of the factor size, and the factor's bytes appear in the "
+                       "process's resident set. The controls -- the SAME in-memory computation "
+                       "run twice, the same level on the other card, and the spread of this "
+                       "comparison across jobs (h1_replicates) -- are the floor the two "
+                       "differences are read against",
+               "level": h1.get("level"), "n_unknowns": h1.get("n_unknowns"),
+               "device_memory_limit_gb": h1.get("device_memory_limit_gb"),
+               "in_core_factor_gb": h1.get("in_core_factor_gb"),
+               "limit_below_in_core_factor": h1.get("limit_below_in_core_factor"),
+               "rel_L": h1.get("rel_L"), "rel_grad_l2": h1.get("rel_grad_l2"),
+               "rel_grad_worst": h1.get("rel_grad_worst"),
+               # the control: the SAME in-memory computation run twice in the
+               # same job -- cuDSS is not bit-reproducible across calls, so this
+               # is the floor any hybrid-vs-in-core difference is read against
+               "control_in_core_repeat_rel_L": (h1.get("control_in_core_repeat")
+                                                or {}).get("rel_L"),
+               "control_in_core_repeat_rel_grad_l2": (h1.get("control_in_core_repeat")
+                                                      or {}).get("rel_grad_l2"),
+               "tolerance": HYBRID_TOL,
+               "slowdown_value_and_grad": h1.get("slowdown_value_and_grad"),
+               # and the limit BOUND: cuDSS's plan for the same matrix came back
+               # at the limit instead of the factor size, and the factor's bytes
+               # appeared in the PROCESS's resident set instead
+               "plan_permanent_device_gb": h1.get("plan_permanent_device_gb"),
+               "plan_permanent_host_gb": h1.get("plan_permanent_host_gb"),
+               # WHERE the limit was applied when those plans were taken:
+               # "constructor" is the shipped path (rfx/fdfd/_cudss.py,
+               # _execution_options) and the only one this gate accepts
+               "plan_limit_applied": h1.get("plan_limit_applied"),
+               "plan_rel_deviation_from_limit": h1.get("plan_rel_deviation_from_limit"),
+               "limit_binds_the_plan": h1.get("limit_binds_the_plan"),
+               # the SOLUTION VECTOR of the one-fixture probe, and its own
+               # in-core-vs-in-core control: L_dut is a functional of x, and it
+               # agrees far closer than x does
+               "solution_rel_diff": h1.get("solution_rel_diff"),
+               "solution_rel_diff_control": h1.get("solution_rel_diff_control"),
+               "host_rss_growth_hybrid_gb": h1.get("host_rss_growth_hybrid_gb"),
+               "rel_grad_l2_over_control": h1.get("rel_grad_l2_over_control"),
+               # and how much the reported difference itself moves between jobs
+               "rel_grad_l2_across_jobs": ((hb.get("h1_replicates") or {}).get(
+                   "rel_grad_l2_range")),
+               "L_within_tolerance": bool(h1.get("rel_L") is not None
+                                          and h1["rel_L"] <= HYBRID_TOL),
+               "grad_within_tolerance": bool(h1.get("rel_grad_l2") is not None
+                                             and h1["rel_grad_l2"] <= HYBRID_TOL),
+               "passed": bool(h1.get("rel_L") is not None
+                              and h1.get("limit_below_in_core_factor")
+                              and h1.get("limit_binds_the_plan")
+                              and (h1.get("host_rss_growth_hybrid_gb") or 0.0) > 0.0
+                              and h1["rel_L"] <= HYBRID_TOL
+                              and (h1.get("rel_grad_l2") or 1.0) <= HYBRID_TOL)}
+    m5 = hb.get("m5") or {}
+    has5 = H2_LEVEL in ms
+    if has5:
+        i = ms.index(H2_LEVEL)
+        prev = d[i - 2:i]          # the two steps ending at m = 5
+        g["H2"] = {"what": f"m = {H2_LEVEL} continues the monotone sequence (same sign, "
+                           "smaller step) and is the ladder's finest level",
+                   "levels": ms, "L_dut": L, "differences": d,
+                   "step_into_level": d[i - 1] if i >= 1 else None,
+                   "monotone": bool(len(prev) == 2 and prev[0] * prev[1] > 0),
+                   "contracting": bool(len(prev) == 2 and abs(prev[1]) < abs(prev[0])),
+                   "passed": bool(len(prev) == 2 and prev[0] * prev[1] > 0
+                                  and abs(prev[1]) < abs(prev[0]))}
+    else:
+        g["H2"] = {"what": f"m = {H2_LEVEL} continues the monotone sequence",
+                   "levels": ms, "measured": False,
+                   "why": m5.get("not_run") or m5.get("error")
+                   or "no m = 5 record in any harvested lane",
+                   "in_core_factor_gb": m5.get("in_core_factor_gb"),
+                   "host_needed_gb": m5.get("host_needed_gb"),
+                   "host_allowed_gb": m5.get("host_allowed_gb"),
+                   "cgroup_limit_gb": m5.get("cgroup_limit_gb"),
+                   "node_mem_total_gb": m5.get("node_mem_total_gb"),
+                   "passed": False}
     p6 = study.get("p6") or {}
     lv1 = (p6.get("levels") or {}).get("1") or {}
     ident = [abs(lv1[k]["rel_to_old"]) for k in ("b_short", "c_vertical") if k in lv1]
@@ -876,7 +1056,7 @@ def assemble(reuse: dict[str, Any] | None = None) -> dict[str, Any]:
     srcs = []
     runs_ = [(dd, json.loads((dd / fname).read_text()))
              for lane, fname in (("p1", "p1_ladder.json"), ("p1b", "p1b_ladder.json"),
-                                 ("p1c", "p1c_ladder.json"))
+                                 ("p1c", "p1c_ladder.json"), ("p3", "p3_ladder.json"))
              for dd in sorted(RUNS.glob(f"fdfd-gpu-{lane}-*")) if (dd / fname).exists()]
     # oldest first: a level measured again by a later run replaces the earlier one
     for dd, rr in sorted(runs_, key=lambda t: t[0].name.rsplit("-", 1)[-1]):
@@ -948,6 +1128,7 @@ def assemble(reuse: dict[str, Any] | None = None) -> dict[str, Any]:
                 "n_unknowns": (v.get("grid") or {}).get("n_unknowns"),
                 "over_referee": (v["L_dut"] / study["referee"]["total"]) if v.get("L_dut") else None}
             for k, v in sorted(thru.items(), key=lambda t: int(t[0]))}}
+    study["hybrid"] = hybrid_block(study)
     study["paper"] = paper_block()
     study["corrections"] = corrections(study)
     study["extrapolation_checks"] = extrapolation_checks(study)
@@ -1010,6 +1191,203 @@ def paper_block() -> dict[str, Any]:
         rr = richardson([PAPER["width"] / int(k) for k in ks], [lv[k]["L_dut"] for k in ks])
         out["richardson"] = rr
         out["rel_range"] = [v / ref["total"] - 1.0 for v in rr["range"]]
+    return out
+
+
+def hybrid_block(study: dict[str, Any] | None = None) -> dict[str, Any]:
+    """The P3 lane: cuDSS hybrid (host + device) memory with an explicit
+    device limit, and what a level-5 factor would need in HOST memory.
+
+    Gate H1's raw numbers (level 3 in hybrid mode with a device limit below
+    the factor size, against the in-memory run of the same level in the same
+    job) and the level-5 account: cuDSS's plan estimates, the container's
+    cgroup memory limit, and whether the solve was attempted. With ``study``
+    given, H1's in-memory run is also compared with the LADDER's own record
+    of that level -- a different card, a different job, the same protocol.
+
+    Three things here are about reading H1's difference rather than taking
+    it: ``plan_limit_applied`` (the PROVENANCE of the plan numbers -- only a
+    plan whose limit was applied at ``DirectSolver`` construction, the
+    shipped path, is accepted as evidence that the limit binds),
+    ``solution_rel_diff``/``_control`` (the probe's solution VECTOR against
+    the same solve run again in-core) and ``h1_replicates`` (the same
+    comparison in every P3 job)."""
+    d, r = latest_run("p3", "p3_ladder.json")
+    if not r:
+        return {}
+    out: dict[str, Any] = {
+        "source": str(d.relative_to(REPO)),
+        "option": "RFX_FDFD_CUDSS_HYBRID=1 with RFX_FDFD_CUDSS_HYBRID_LIMIT "
+                  "(rfx/fdfd/_cudss.py, \"Device memory\"): cuDSS keeps the factor in host "
+                  "memory and streams it, and the limit bounds ALL of its device memory. "
+                  "Without a limit cuDSS assumes the whole card, which is how the first "
+                  "m = 5 attempt (run 369367261252) reached ALLOC_FAILED.",
+        "host": r.get("host")}
+    h1 = r.get("h1") or {}
+    if h1.get("gate"):
+        pl = h1.get("plans") or {}
+        pr = h1.get("probe") or {}
+        vg = h1.get("value_and_grad") or {}
+        out["h1"] = {
+            "level": h1.get("level"), "n_unknowns": (h1.get("grid") or {}).get("n_unknowns"),
+            "device_memory_limit": h1.get("limit"), "device_memory_limit_gb": h1.get("limit_gb"),
+            "in_core_factor_gb": (pl.get("in_core") or {}).get("permanent_device_memory_gb"),
+            "hybrid_min_device_memory_gb": (pl.get("hybrid") or {}).get(
+                "hybrid_min_device_memory_gb"),
+            "limit_below_in_core_factor": h1.get("limit_below_in_core_factor"),
+            "limit_at_least_hybrid_min": h1.get("limit_at_least_hybrid_min"),
+            "factor_seconds": {k: (pr.get(k) or {}).get("factor_seconds")
+                               for k in ("in_core", "hybrid")},
+            "solve_seconds": {k: (pr.get(k) or {}).get("solve_seconds")
+                              for k in ("in_core", "hybrid")},
+            "residual": {k: (pr.get(k) or {}).get("residual") for k in ("in_core", "hybrid")},
+            "device_peak_used_gb": {k: (pr.get(k) or {}).get("device_peak_used_gb")
+                                    for k in ("in_core", "hybrid")},
+            "plan_permanent_device_gb": {k: (pl.get(k) or {}).get("permanent_device_memory_gb")
+                                         for k in ("in_core", "hybrid")},
+            "plan_permanent_host_gb": {k: (pl.get(k) or {}).get("permanent_host_memory_gb")
+                                       for k in ("in_core", "hybrid")},
+            # ru_maxrss is a HIGH-WATER mark, so the in-core run's is the
+            # in-core figure and the hybrid run's is after the factor moved to
+            # the host: the growth is what hybrid mode put there
+            "host_peak_rss_gb": {k: ((vg.get(k) or {}).get("host_memory_gb") or {}).get("peak_rss")
+                                 for k in ("in_core", "hybrid", "in_core_repeat")},
+            "host_cgroup_current_gb": {
+                k: ((vg.get(k) or {}).get("cgroup") or {}).get("memory.current_gb")
+                for k in ("in_core", "hybrid", "in_core_repeat")},
+            "solution_rel_diff": pr.get("solution_rel_diff"),
+            # the same solve run again IN-CORE: the floor for the line above
+            # (cuDSS's triangular solve is not bit-reproducible across calls)
+            "solution_rel_diff_control": pr.get("solution_rel_diff_control"),
+            "device_baseline_used_gb": {k: (pr.get(k) or {}).get("device_baseline_used_gb")
+                                        for k in ("in_core", "hybrid")},
+            "factor_slowdown": pr.get("factor_slowdown"),
+            "solve_slowdown": pr.get("solve_slowdown"),
+            "value_and_grad_seconds": {k: (vg.get(k) or {}).get("value_and_grad_seconds")
+                                       for k in ("in_core", "hybrid")},
+            "value_and_grad_device_peak_used_gb": {
+                k: (vg.get(k) or {}).get("device_peak_used_gb") for k in ("in_core", "hybrid")},
+            # PROVENANCE of the plan numbers below: "constructor" means the
+            # limit reached cuDSS at DirectSolver construction and nowhere
+            # else (rfx/fdfd/_cudss.py, hybrid_record). A plan record without
+            # it was taken by a code path that is not the shipped one, and
+            # limit_binds_the_plan refuses to read it as evidence
+            "plan_limit_applied": (pl.get("hybrid") or {}).get("hybrid_limit_applied"),
+            **{k: h1["gate"].get(k) for k in ("L_in_core", "L_hybrid", "rel_L", "grad_in_core",
+                                              "grad_hybrid", "rel_grad", "rel_grad_worst",
+                                              "rel_grad_l2", "tolerance",
+                                              "slowdown_value_and_grad", "passed")},
+            "control_in_core_repeat": h1["gate"].get("control_in_core_repeat")}
+        hh = out["h1"]
+        lim, plan_dev = hh["device_memory_limit_gb"], (hh["plan_permanent_device_gb"] or {})
+        # does the limit BIND? cuDSS's own plan for the same matrix, in hybrid
+        # mode, must come back at the limit instead of the in-core factor size
+        hh["limit_binds_the_plan"] = bool(
+            lim and plan_dev.get("hybrid") is not None
+            and hh.get("plan_limit_applied") == "constructor"
+            and abs(plan_dev["hybrid"] - lim) <= 1e-6 * lim)
+        hh["plan_rel_deviation_from_limit"] = (
+            abs(plan_dev["hybrid"] - lim) / lim
+            if lim and plan_dev.get("hybrid") is not None else None)
+        rss = hh["host_peak_rss_gb"]
+        hh["host_rss_growth_hybrid_gb"] = (
+            (rss.get("hybrid") - rss.get("in_core"))
+            if rss.get("hybrid") is not None and rss.get("in_core") is not None else None)
+        ctl = (hh.get("control_in_core_repeat") or {}).get("rel_grad_l2")
+        hh["rel_grad_l2_over_control"] = (hh["rel_grad_l2"] / ctl
+                                          if ctl and hh.get("rel_grad_l2") else None)
+        lv = ((study or {}).get("levels") or {}).get(str(hh["level"])) or {}
+        if lv.get("L_dut") and lv.get("grad") and hh.get("L_in_core"):
+            gl, gh_ = np.asarray(lv["grad"]), np.asarray(hh["grad_in_core"])
+            hh["vs_ladder_level"] = {
+                "source": lv.get("source"), "L_dut": lv["L_dut"],
+                "rel_L": abs(hh["L_in_core"] - lv["L_dut"]) / abs(lv["L_dut"]),
+                "rel_grad_l2": float(np.linalg.norm(gh_ - gl) / np.linalg.norm(gl)),
+                "note": "the ladder's level, measured on the RTX 4090 in another job, against "
+                        "this lane's in-memory run on the A6000: the same protocol on a "
+                        "different card, i.e. a second floor for H1's tolerance"}
+        hh["device_peak_note"] = (
+            "the sampled device high-water mark does not separate the two modes: "
+            f"{hh['device_baseline_used_gb'].get('hybrid')} GB of the "
+            f"{hh['device_peak_used_gb'].get('hybrid')} GB peak was already held before the "
+            "hybrid run began (cudaMemGetInfo counts what the previous factorisation's "
+            "allocator kept, and cupy's pool held only "
+            f"{((pr.get('hybrid') or {}).get('device_peak_pool_total_gb'))} GB of it). "
+            "The evidence that the factor moved is cuDSS's plan (device memory = the limit) "
+            "and the process's resident set.")
+    elif h1:
+        out["h1"] = {"level": h1.get("level"), "error": h1.get("error")}
+    # REPLICATES. H1's number is a DIFFERENCE between two runs of a solver
+    # that is not bit-reproducible, so how much that difference itself moves
+    # from job to job is part of reading it -- every P3 job that ran the
+    # comparison is listed, with the provenance of its plan numbers
+    reps = []
+    for d2, r2 in all_runs("p3", "p3_ladder.json"):
+        h2 = r2.get("h1") or {}
+        g2 = h2.get("gate") or {}
+        if not g2:
+            continue
+        reps.append({
+            "run": d2.name, "level": h2.get("level"), "limit": h2.get("limit"),
+            "rel_L": g2.get("rel_L"), "rel_grad_l2": g2.get("rel_grad_l2"),
+            "rel_grad_worst": g2.get("rel_grad_worst"),
+            "control_in_core_repeat_rel_grad_l2": (
+                g2.get("control_in_core_repeat") or {}).get("rel_grad_l2"),
+            "plan_limit_applied": ((h2.get("plans") or {}).get("hybrid")
+                                   or {}).get("hybrid_limit_applied"),
+            "slowdown_value_and_grad": g2.get("slowdown_value_and_grad")})
+    if reps:
+        gl2 = [v["rel_grad_l2"] for v in reps if v.get("rel_grad_l2")]
+        gw = [v["rel_grad_worst"] for v in reps if v.get("rel_grad_worst")]
+        out["h1_replicates"] = {
+            "runs": reps,
+            "rel_grad_l2_range": [min(gl2), max(gl2)] if gl2 else None,
+            "rel_grad_l2_spread": (max(gl2) / min(gl2)) if len(gl2) > 1 else None,
+            "rel_grad_worst_range": [min(gw), max(gw)] if gw else None,
+            "rel_grad_worst_spread": (max(gw) / min(gw)) if len(gw) > 1 else None,
+            "note": "the same protocol, the same card, different jobs: the "
+                    "hybrid-vs-in-core gradient difference moves by this factor "
+                    "between jobs, so the single number gate H1 reports is not "
+                    "reproducible to better than that either. Both ends are "
+                    "above the 1e-9 the gate asks of it in the runs that are "
+                    "listed with a control, and the in-core-vs-in-core control "
+                    "of each run is the floor under both."}
+    m5 = r.get("m5_feasibility") or {}
+    if m5:
+        pl = m5.get("plans") or {}
+        host = m5.get("host") or {}
+        out["m5"] = {
+            "level": m5.get("level"), "n_unknowns": (m5.get("grid") or {}).get("n_unknowns"),
+            "device_memory_limit": m5.get("limit"), "device_memory_limit_gb": m5.get("limit_gb"),
+            "in_core_factor_gb": m5.get("in_core_factor_gb"),
+            "hybrid_plan_host_estimate_gb": m5.get("hybrid_plan_host_estimate_gb"),
+            # cuDSS reports a different hybrid MINIMUM depending on whether
+            # hybrid mode was on when it planned; both are recorded, and the
+            # blocker (host memory) is the same under either
+            "hybrid_min_device_memory_gb": m5.get("hybrid_min_device_memory_gb"),
+            "hybrid_min_device_memory_gb_in_core_plan": m5.get(
+                "hybrid_min_device_memory_gb_in_core_plan"),
+            "plan_limit_applied": (pl.get("hybrid") or {}).get("hybrid_limit_applied"),
+            "plan_seconds": {k: (pl.get(k) or {}).get("plan_seconds")
+                             for k in ("in_core", "hybrid")},
+            "host_needed_gb": m5.get("host_needed_gb"),
+            "host_in_use_gb": m5.get("host_in_use_gb"),
+            "host_allowed_gb": m5.get("host_allowed_gb"),
+            "host_margin_gb": m5.get("margin_gb"),
+            "cgroup_limit_gb": (host.get("cgroup") or {}).get("limit_gb"),
+            "node_mem_total_gb": (host.get("meminfo") or {}).get("MemTotal"),
+            "preset": "gpu-a6000-1",
+            "fits": m5.get("fits"), "not_run": m5.get("not_run"), "error": m5.get("error")}
+        # what hybrid mode can hold AT ALL on this preset, against the device it
+        # is supposed to relieve: the factor lives in host memory, so the
+        # container's memory limit is the ceiling
+        allowed, used = m5.get("host_allowed_gb"), m5.get("host_in_use_gb")
+        dev = ((r.get("env") or {}).get("device_memory_gb") or {}).get("total")
+        if allowed is not None and used is not None:
+            ceiling = allowed - used - (m5.get("margin_gb") or 0.0)
+            out["m5"]["hybrid_ceiling_factor_gb"] = ceiling
+            out["m5"]["device_total_gb"] = dev
+            out["m5"]["hybrid_reaches_past_the_device"] = bool(dev is not None and ceiling > dev)
     return out
 
 
@@ -1356,12 +1734,30 @@ def figure(study: dict[str, Any], path: pathlib.Path) -> None:
                label="cuDSS plans: permanent factor GB (x-axis: plan N)")
     a.axhline(24, color=C_INK2, lw=0.8, ls=":")
     a.axhline(48, color=C_INK2, lw=0.8, ls="--")
+    hb = study.get("hybrid") or {}
+    h1 = hb.get("h1") or {}
+    if h1.get("device_memory_limit_gb") and (h1.get("plan_permanent_device_gb") or {}):
+        nh = h1.get("n_unknowns")
+        dev = (h1["plan_permanent_device_gb"] or {}).get("hybrid")
+        host = (h1["plan_permanent_host_gb"] or {}).get("hybrid")
+        if nh and dev:
+            a.plot([nh], [dev], "*", color=C_ORANGE, ms=15,
+                   label=f"hybrid at m={h1['level']} (limit "
+                         f"{h1['device_memory_limit_gb']:.0f} GB): plan {dev:.1f} GB on the "
+                         f"card, {host:.1f} GB on the host")
+    m5 = hb.get("m5") or {}
+    if m5.get("host_allowed_gb"):
+        a.axhline(m5["host_allowed_gb"], color=C_RED, lw=0.9, ls="-.")
+        a.text(0.02, m5["host_allowed_gb"] * 1.06,
+               f"host memory this preset may hold ({m5['host_allowed_gb']:.0f} GB): "
+               "hybrid mode's ceiling", color=C_RED, fontsize=7,
+               transform=a.get_yaxis_transform())
     a.set_xscale("log")
     a.set_yscale("log")
     a.set_xlabel("unknowns N")
-    a.set_ylabel("device memory (GB)")
-    a.set_title("(f) cost (24 / 48 GB cards)")
-    a.legend(fontsize=8, frameon=False)
+    a.set_ylabel("memory (GB)")
+    a.set_title("(f) cost (24 / 48 GB cards; hybrid mode and its host ceiling)")
+    a.legend(fontsize=7, frameon=False)
     fig.tight_layout()
     fig.savefig(path, dpi=150, facecolor=C_SURF)
     plt.close(fig)

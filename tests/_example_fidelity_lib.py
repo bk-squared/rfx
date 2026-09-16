@@ -393,6 +393,12 @@ CLASSIFICATION: dict[str, Entry] = {
     "validation/fdfd/corner_convergence.py": Entry(
         "no_simulation",
         "rfx.fdfd L-bend corner-decomposition study -- builds rfx.fdfd.spiral models, no Simulation"),
+    "validation/fdfd/fasthenry_referee.py": Entry(
+        "no_simulation",
+        "study F: drives the pinned FastHenry binary (validation/referees/fasthenry) as an "
+        "independent magnetoquasistatic referee for the rfx.fdfd spiral -- writes .inp decks, "
+        "reads Zc.mat and evaluates the Greenhouse referee; imports rfx.fdfd.gds for the "
+        "centreline only, constructs no Simulation"),
     "validation/fdfd/gpu_scaling.py": Entry(
         "no_simulation",
         "assembles the harvested VESSL GPU lane JSONs into the extended spiral ladder -- no solve, no Simulation"),
@@ -445,6 +451,10 @@ CLASSIFICATION: dict[str, Entry] = {
     "validation/vessl/lane_p2_paper.py": Entry(
         "no_simulation",
         "VESSL GPU lane P2: rfx.fdfd paper-geometry spiral on the invariant fixture -- no Simulation"),
+    "validation/vessl/lane_p3_hybrid.py": Entry(
+        "no_simulation",
+        "VESSL GPU lane P3: rfx.fdfd cuDSS hybrid (host+device) memory mode with an explicit "
+        "device limit, gate H1 and the level-5 host-memory feasibility -- no Simulation"),
     "validation/vessl/lane_r_rfic.py": Entry(
         "no_simulation",
         "VESSL GPU lane R: rfx.fdfd paper-scale RFIC spiral (levels, sweep, gradients, "

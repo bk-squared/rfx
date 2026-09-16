@@ -311,3 +311,142 @@ def test_i8_p6_objects_live():
         assert r["c_vertical"]["objects_moved"] == []
         assert r["c_vertical"]["z_lines"] > r["old_z_lines"]
     assert json.loads(json.dumps(ob)) == _study()["p6"]["objects"]
+
+
+def test_i9_hybrid_memory_option_and_its_two_gates():
+    """Gates H1 and H2 (``validation/vessl/lane_p3_hybrid.py``, run
+    369367261289, artifacts ``fdfd-gpu-p3-20260916T004810Z``), asserted as
+    measured -- H1 fails and is asserted failing, with the controls that say
+    what the failure is.
+
+    H1: cuDSS hybrid (host + device) memory with an EXPLICIT device limit
+    (``rfx/fdfd/_cudss.py``, ``RFX_FDFD_CUDSS_HYBRID_LIMIT``) at level 3,
+    a 6 GiB limit against an 11.37 GB factor, against the in-memory run of
+    the same level in the same job:
+
+    * the limit BINDS, through the shipped code path and no other: the plan
+      record says the limit was applied at ``DirectSolver`` construction
+      (``plan_limit_applied == "constructor"``, the only provenance the gate
+      accepts), and cuDSS's plan then comes back at 6.00 GB of device memory
+      -- 1.86e-09 relative under the limit, against the gate's 1e-6
+      predicate -- instead of 11.37 GB, asks for 18.79 GB of host memory
+      instead of 0.04 GB, and the process's peak resident set grows by
+      7.90 GB;
+    * it costs 1.27x on the factorisation (23.1 -> 29.5 s), 2.26x on a
+      triangular solve (0.58 -> 1.30 s) and 1.25x on the three-fixture
+      value_and_grad (161 -> 201 s);
+    * L_dut agrees to 9.00e-10 relative (308.630703 pH both ways) -- inside
+      the 1e-9, but only just;
+    * the gradient agrees to 1.90e-09 as a vector (worst component
+      2.22e-09) -- OUTSIDE it, so H1 FAILS. Every control puts that
+      difference at the solver's own reproducibility: the same in-core
+      computation run twice differs by 1.70e-09 (gradient vector) and
+      6.00e-10 (L), with a worst gradient component of 2.38e-09 -- LARGER
+      than hybrid mode's; the ladder's own level 3 from the RTX 4090 job
+      sits 5.37e-09 (gradient) from this job's in-core run, i.e. further
+      than hybrid mode does; the probe's solution VECTOR differs by
+      8.61e-05 between the modes and by 6.70e-05 between two in-core runs;
+      and the hybrid-vs-in-core gradient difference itself moves by 3.20x
+      (vector) / 6.91x (worst component) across the three P3 jobs.
+      Reported failing, not widened.
+
+    H2: m = 5 is not measured, and the reason is host memory -- 97.60 GB
+    wanted against the container's 32.0 GB (the node has 251.57 GB, which
+    is why the lane reads the cgroup, not /proc/meminfo). The card is not
+    the problem under either of cuDSS's two hybrid minima for that matrix
+    (8.75 GB from the hybrid plan, 16.78 GB from the in-core plan).
+    """
+    st = _study()
+    hb, g = st["hybrid"], st["gates"]
+    h1, m5 = hb["h1"], hb["m5"]
+    assert h1["level"] == 3 and h1["n_unknowns"] == 466833
+    assert h1["device_memory_limit"] == "6GiB" and h1["device_memory_limit_gb"] == 6.0
+    assert round(h1["in_core_factor_gb"], 2) == 11.37
+    assert h1["limit_below_in_core_factor"] and h1["limit_at_least_hybrid_min"]
+    # the limit binds -- and the PROVENANCE of the plan that says so: the
+    # limit reached cuDSS at DirectSolver construction and nowhere else
+    assert h1["plan_limit_applied"] == "constructor"
+    assert round(h1["plan_permanent_device_gb"]["hybrid"], 2) == 6.00
+    assert h1["plan_rel_deviation_from_limit"] == pytest.approx(1.86e-09, rel=1e-2)
+    assert h1["plan_rel_deviation_from_limit"] < 1e-6         # the gate's predicate
+    assert round(h1["plan_permanent_host_gb"]["hybrid"], 2) == 18.79
+    assert round(h1["plan_permanent_host_gb"]["in_core"], 2) == 0.04
+    assert h1["limit_binds_the_plan"]
+    assert round(h1["host_rss_growth_hybrid_gb"], 2) == 7.90
+    # the cost
+    assert [round(h1["factor_seconds"][k], 1) for k in ("in_core", "hybrid")] == [23.1, 29.5]
+    assert [round(h1["solve_seconds"][k], 2) for k in ("in_core", "hybrid")] == [0.58, 1.30]
+    assert [round(h1["value_and_grad_seconds"][k]) for k in ("in_core", "hybrid")] == [161, 201]
+    assert round(h1["slowdown_value_and_grad"], 2) == 1.25
+    # the answer, and the control
+    assert round(h1["L_in_core"] * 1e12, 6) == round(h1["L_hybrid"] * 1e12, 6) == 308.630703
+    ctl = h1["control_in_core_repeat"]
+    assert h1["rel_L"] == pytest.approx(9.00e-10, rel=1e-2)
+    assert h1["rel_grad_l2"] == pytest.approx(1.90e-09, rel=1e-2)
+    assert h1["rel_grad_worst"] == pytest.approx(2.22e-09, rel=1e-2)
+    assert ctl["rel_L"] == pytest.approx(6.00e-10, rel=1e-2)
+    assert ctl["rel_grad_l2"] == pytest.approx(1.70e-09, rel=1e-2)
+    assert ctl["rel_grad_worst"] == pytest.approx(2.38e-09, rel=1e-2)
+    # in-core-vs-in-core is WORSE than hybrid-vs-in-core on the worst
+    # component, and 1.12x better on the vector
+    assert ctl["rel_grad_worst"] > h1["rel_grad_worst"]
+    assert round(h1["rel_grad_l2_over_control"], 2) == 1.12
+    # the solution VECTOR: 1e-4 apart between the modes, and just as far
+    # apart between two in-core runs (L_dut is a functional of it and agrees
+    # to 9e-10); the residuals are the same size either way
+    assert h1["solution_rel_diff"] == pytest.approx(8.61e-05, rel=1e-2)
+    assert h1["solution_rel_diff_control"] == pytest.approx(6.70e-05, rel=1e-2)
+    assert h1["solution_rel_diff"] / h1["solution_rel_diff_control"] < 1.3
+    assert [round(h1["residual"][k] * 1e8, 3) for k in ("in_core", "hybrid")] == [1.418, 1.411]
+    # a second floor: the ladder's own level 3, measured on the RTX 4090 in
+    # another job, against this lane's in-memory run on the A6000 -- FURTHER
+    # from it than hybrid mode is
+    vs = h1["vs_ladder_level"]
+    assert vs["source"] == "p1"
+    assert vs["rel_L"] == pytest.approx(1.50e-10, rel=1e-2)
+    assert vs["rel_grad_l2"] == pytest.approx(5.37e-09, rel=1e-2)
+    assert vs["rel_grad_l2"] > h1["rel_grad_l2"]
+    # a third: how much the reported difference moves between jobs of the
+    # same protocol on the same card (and only the newest job's plans carry
+    # the constructor-only provenance)
+    rp = hb["h1_replicates"]
+    assert [r["run"] for r in rp["runs"]] == ["fdfd-gpu-p3-20260915T232441Z",
+                                              "fdfd-gpu-p3-20260915T233751Z",
+                                              "fdfd-gpu-p3-20260916T004810Z"]
+    assert [r["plan_limit_applied"] for r in rp["runs"]] == [None, None, "constructor"]
+    assert [round(v * 1e9, 2) for v in rp["rel_grad_l2_range"]] == [1.90, 6.07]
+    assert round(rp["rel_grad_l2_spread"], 2) == 3.20
+    assert [round(v * 1e9, 2) for v in rp["rel_grad_worst_range"]] == [1.62, 11.22]
+    assert round(rp["rel_grad_worst_spread"], 2) == 6.91
+    assert min(rp["rel_grad_l2_range"]) > g["H1"]["tolerance"]     # every job fails it
+    # and the bound is one the solver does not meet against ITSELF in-core:
+    # the control exceeds it too, so no memory mode could pass this gate
+    assert ctl["rel_grad_l2"] > g["H1"]["tolerance"]
+    # the verdict, as measured: L inside, gradient outside, gate failing
+    gh = g["H1"]
+    assert gh["tolerance"] == 1e-9
+    assert gh["L_within_tolerance"] and not gh["grad_within_tolerance"]
+    assert not gh["passed"]
+    # H2: not measured, and the numbers that say why
+    gh2 = g["H2"]
+    assert not gh2["passed"] and gh2["measured"] is False
+    assert m5["n_unknowns"] == 2128175
+    assert round(m5["in_core_factor_gb"], 2) == 91.87
+    assert round(m5["hybrid_plan_host_estimate_gb"], 2) == 97.60
+    # the CARD is not the problem under either of cuDSS's two hybrid minima
+    # for this matrix (the hybrid plan's and the in-core plan's)
+    assert round(m5["hybrid_min_device_memory_gb"], 2) == 8.75
+    assert round(m5["hybrid_min_device_memory_gb_in_core_plan"], 2) == 16.78
+    assert max(m5["hybrid_min_device_memory_gb"],
+               m5["hybrid_min_device_memory_gb_in_core_plan"]) < m5["device_total_gb"]
+    assert m5["plan_limit_applied"] == "constructor"
+    assert m5["cgroup_limit_gb"] == 32.0 and round(m5["node_mem_total_gb"], 2) == 251.57
+    assert round(m5["device_total_gb"], 2) == 47.54
+    assert m5["fits"] is False and "host memory" in m5["not_run"]
+    # the ceiling this preset puts on hybrid mode is below the card itself
+    assert round(m5["host_in_use_gb"], 2) == 15.24
+    assert round(m5["hybrid_ceiling_factor_gb"], 2) == 12.76
+    assert m5["hybrid_reaches_past_the_device"] is False
+    # and the ladder is unchanged by all of it
+    assert st["family"]["m"] == [1, 2, 3, 4]
+    assert g["P2"]["passed"] and g["P3"]["passed"] and g["P5"]["passed"]

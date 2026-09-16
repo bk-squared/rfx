@@ -90,6 +90,12 @@ PRESET_A6000 = "gpu-a6000-1"      # 48 GB, remilab-c0: the finest level only
 # tarball name, for the same reason
 R_VOLUME = "rfx-fdfd-gpu-r-20260916"
 R_TARBALL = "rfx-src-r.tgz"
+# study P's hybrid-memory lane (P3, lane_p3_hybrid.py): its own volume again, so
+# it can never import study P's or study R's older tree
+# (the rerun that re-measured the plans with the shipped constructor-only
+# limit gets its own volume again, so no job can import the older tree)
+P3_VOLUME = "rfx-fdfd-gpu-p3b-20260916"
+P3_TARBALL = "rfx-src-p3.tgz"
 
 # Python pins. The image's conda Python is 3.10, and jax 0.11.1 / scipy
 # 1.18.1 -- the Mac's versions, which produced the CPU levels -- both
@@ -516,6 +522,61 @@ LANES: dict[str, dict] = {
         volume=P_VOLUME, tarball=P_TARBALL,
     ),
 }
+
+PYTEST_P3 = """  echo "=== pytest: the hybrid-memory option, on the GPU ==="
+  set +e
+  RFX_FDFD_BACKEND=cudss timeout 900 "$PY" -m pytest tests/unit/fdfd/test_fdfd_linear_solve.py -q -rs -p no:cacheprovider -k "hybrid" > "$OUT/pytest-hybrid.log" 2>&1
+  echo "$?" > "$OUT/pytest-hybrid.rc"
+  tail -n 15 "$OUT/pytest-hybrid.log"
+  set -e
+  echo "pytest rc: hybrid=$(cat "$OUT/pytest-hybrid.rc")"
+"""
+
+
+LANES["p3"] = dict(
+    script="lane_p3_hybrid.py",
+    description=(
+        "P3, study P's hybrid-memory lane on the 48 GB card: cuDSS hybrid (host+device) "
+        "memory mode with an EXPLICIT device-memory limit (RFX_FDFD_CUDSS_HYBRID_LIMIT, "
+        "which the m = 5 attempt of run 369367261252 ran WITHOUT). Gate H1 at level 3 "
+        "(11.37 GB factor by cuDSS's in-core plan): hybrid with a 6 GiB limit -- below the "
+        "factor -- against the in-memory run, L and the gradient to 1e-9, each with its "
+        "in-core-vs-in-core CONTROL (the solution vector's and the value_and_grad's), the "
+        "slowdown and the sampled device peak; then the container's host-memory limit "
+        "(cgroup, not /proc/meminfo) against what a level-5 factor (91.87 GB) needs in host "
+        "memory, and the level-5 forward + value_and_grad only if it fits. The plan "
+        "estimates carry hybrid_limit_applied=constructor: the limit reaches cuDSS at "
+        "DirectSolver construction and nowhere else. "
+        "Submit: bash validation/vessl/submit.sh p3"),
+    env={"RFX_FDFD_BACKEND": "cudss",
+         "RFX_P_LANE_NAME": "P3",
+         "RFX_P_JSON": "p3_ladder.json",
+         "RFX_P_WALL": "10",
+         "RFX_P3_BLOCKS": "host h1 m5",
+         "RFX_P3_H1_LEVEL": "3",
+         # 6 GiB is 53 % of the 11.37 GB the level-3 factor occupies in device
+         # memory (cuDSS's own in-core plan; the 12.65 GB the P1 lane reported
+         # is device memory IN USE, factor + operands + pool), and above
+         # cuDSS's hybrid minimum for this size (2.73 GB), so the factor
+         # CANNOT be resident: hybrid mode has to stream it from the host
+         "RFX_P3_H1_LIMIT": "6GiB",
+         "RFX_P3_M5_LEVEL": "5",
+         # 40 GiB of the A6000's 47.54 GB, leaving room for the right-hand
+         # sides, the CSR copies, cupy's pool and the context
+         "RFX_P3_M5_LIMIT": "40GiB",
+         "RFX_P3_HOST_MARGIN_GB": "4",
+         # both controls on: the same computation in-core TWICE, for the
+         # solution vector of the probe and for the value_and_grad
+         "RFX_P3_PROBE_CONTROL": "1",
+         "RFX_P3_CONTROL": "1",
+         "RFX_P_DEADLINE_S": "5400",
+         # the lane switches hybrid mode on per block; these are the defaults
+         "RFX_FDFD_CUDSS_HYBRID": "0",
+         "RFX_FDFD_CUDSS_FREE_FORWARD": "1"},
+    pytest_block=PYTEST_P3,
+    timeout_s=5700,
+    volume=P3_VOLUME, tarball=P3_TARBALL, preset=PRESET_A6000)
+
 
 # ---- study R: the paper-scale RFIC inductor (validation/fdfd/rfic_spiral.py,
 #      validation/fdfd/rfic_design.py), one lane script, blocks by env

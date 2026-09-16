@@ -931,6 +931,37 @@ that block held the coarsest declared cell, a smaller minimum cell (dt):
   1.0063e-2 vs 1.0141e-2). Bands narrower than 2 cells and in-plane grading
   remain unwitnessed.
 
+### Added — an independent magnetoquasistatic referee (FastHenry): the FDFD spiral is validated, the Greenhouse referee is not
+
+- **`validation/referees/fasthenry/build_fasthenry.sh`** fetches, hash-checks,
+  patches and builds FastHenry 3.0wr from a pinned upstream commit into
+  `~/.cache/rfx-referees/` (no third-party source vendored; MIT licence and the
+  one printf patch recorded). **`validation/fdfd/fasthenry_referee`** meshes the
+  FDFD's own conductors (box coordinates equal to its built cell masks to 0 m),
+  models the PEC ground by the exact image construction, and converges its
+  filament/mesh ladders to 5e-7.
+- **Result.** For the quantity the Greenhouse referee computes, FastHenry's
+  limit is 318.74 ± 0.16 pH against the referee's 333.055 pH: **the referee is
+  +4.5 % high**, and it owns the residual the spiral ladder could not explain
+  (−10.35 pH from its uniform-current assumption, −3.82 pH from its corner
+  convention, −6.33 pH from the via and underpass reversal). The FDFD's
+  Richardson range brackets FastHenry's value for the fixture it measures
+  (319.91 pH), so **the FDFD's continuum limit is right to about 1.8 %**, and
+  un-extrapolated at 4 cells across W it is 2.3 % below the independent solver.
+  Corners in situ are worth −7.86 pH, 18 % more than an isolated corner.
+- **`rfx.fdfd.linear_solve` / `_cudss`**: a documented cuDSS hybrid host+device
+  memory option with an explicit device limit (the limit binds through the
+  shipped path, verified structurally and on the card). The fifth ladder level
+  remains out of reach: hybrid mode needs 97.6 GB of host memory against the
+  cluster's 32 GiB single-GPU cgroup. Its equality gate is reported failing
+  because its 1e-9 bound is below cuDSS's own run-to-run reproducibility at
+  N = 466,833 (the in-core-vs-in-core control fails it too, at 1.7e-9).
+- **Fixed**: the FastHenry study estimated its convergence order with the
+  constant-ratio formula on non-uniform ladders (k = 1, 2, 3, 4, 6, 8). It now
+  solves the consistent three-point equation, as `spiral_convergence` does:
+  orders move from 2.24 to 1.60 (spiral) and 1.11 to 1.95 (bend), limits by
+  ≤ 0.02 pH, and no gate changes.
+
 ### Added — `rfx.fdfd` on the GPU: cuDSS backend, a level-invariant spiral fixture, and a paper-scale design
 
 - **`sparse_solve(..., backend="cudss")`** — NVIDIA cuDSS through

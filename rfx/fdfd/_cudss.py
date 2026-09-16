@@ -67,14 +67,67 @@ Device memory
 A 3-D curl-curl LU is large: cuDSS's own estimate on the spiral W/3 DUT
 operator (N = 108898, 1.37e6 stored entries) is in
 ``validation/fdfd/gpu_scaling.json`` (``gates.G3``), and the reverse pass
-holds a second one for ``A^T``. Two knobs, both off by default, both read
+holds a second one for ``A^T``. Three knobs, all off by default, all read
 from the environment so a batch lane can set them without touching code:
 
 ``RFX_FDFD_CUDSS_HYBRID=1``
     cuDSS hybrid memory mode: the factor lives in host memory and is
     streamed to the device. The way to run a level whose factor does not
-    fit in 24 GB at all; slower per solve, and the amount it slows is
-    measured in the lane JSON rather than guessed.
+    fit on the device at all; slower, and the amount it slows is measured
+    (below) rather than guessed.
+
+``RFX_FDFD_CUDSS_HYBRID_LIMIT=<limit>``
+    The device-memory limit for hybrid mode, passed to nvmath-python as
+    ``HybridMemoryModeOptions(hybrid_device_memory_limit=...)`` (cuDSS's
+    ``CUDSS_CONFIG_HYBRID_DEVICE_MEMORY_LIMIT``). Accepted forms are
+    nvmath's own (:func:`parse_memory_limit` checks them on read, so a typo
+    fails before a factorisation, not inside one): ``"40GiB"`` / ``"40 GB"``
+    / ``"512MiB"`` (binary or decimal units, ``B`` required), ``"80%"`` of
+    the device, a plain byte count, or a fraction in ``[0, 1]`` of the
+    device. It bounds ALL of cuDSS's device memory (the factor portion,
+    the workspace), not just the factor; it must be at least cuDSS's
+    ``hybrid_min_device_memory`` (:func:`plan_estimate` reports it).
+    nvmath-python passes it at ``DirectSolver`` construction, earlier than
+    the window the cuDSS documentation names, and it binds there --
+    :func:`hybrid_record` has the measurement, the provenance key that says
+    the constructor is where it came from, and what happens if you try to set
+    it again later. It is read only when ``RFX_FDFD_CUDSS_HYBRID=1``; unset, hybrid mode keeps
+    cuDSS's internal heuristic, which per the cuDSS documentation "will
+    assume that it can use the entire GPU memory and set the device memory
+    limit based on the device properties" -- the whole card, including what
+    the right-hand side, the CSR copies and cupy's pool already hold. That
+    is what the study-P m = 5 attempt ran with (no limit) and it died with
+    ``ALLOC_FAILED`` at 47.52 of 47.54 GB in use
+    (``validation/vessl/runs/fdfd-gpu-p1c-20260915T161317Z``). The defaults
+    are unchanged: hybrid mode stays off, and nothing here is read unless
+    it is switched on.
+
+    HOST MEMORY is the hard limit of hybrid mode: cuDSS keeps "the entire
+    factors only in the host memory" and "Factors L and U (together with
+    all necessary internal arrays) must fit into the host memory" (cuDSS
+    documentation, "Hybrid memory mode"). So a factor of ``F`` GB needs
+    ``F`` GB of host memory for the PROCESS -- in a container that is the
+    cgroup memory limit, not ``/proc/meminfo`` or ``free -g``, which report
+    the whole node. nvmath also pins it (``register_cuda_memory=True``,
+    ``cudaHostRegister``) by default.
+
+    MEASURED (gate H1 of ``validation/fdfd/invariant_ladder.py``, the
+    ``hybrid`` block of ``invariant_ladder.json``, run 369367261289; the
+    level-3 spiral DUT operator, N = 466833, an 11.37 GB factor, with a
+    6 GiB limit, against the in-memory run of the same level in the same job
+    on one RTX A6000): cuDSS's plan drops from 11.37 GB of device memory to
+    6.00 GB -- the limit, to 1.9e-09 relative -- and asks for 18.79 GB of
+    host memory instead of 0.04 GB; the process's peak resident set grows by
+    7.90 GB (13.55 -> 21.45 GB); one factorisation costs 29.5 s against
+    23.1 s (1.27x), a triangular solve 1.30 s against 0.58 s (2.26x) and the
+    whole three-fixture ``value_and_grad`` 200.7 s against 161.1 s (1.25x);
+    L_dut agrees to 9.0e-10 relative and the gradient to 1.9e-09 (as a
+    vector) -- against 1.7e-09 between two IN-CORE runs of the same thing in
+    the same job, and 5.4e-09 between two in-core runs on different cards,
+    so that difference is the solver's own reproducibility rather than the
+    memory mode. Gate H1 asks for 1e-9 on both and is recorded FAILING on
+    the gradient; the numbers, the controls and the job-to-job spread of the
+    comparison itself are in the study.
 
 ``RFX_FDFD_CUDSS_FREE_FORWARD=1``
     Free the forward solver when the transposed one is built. In a
@@ -132,6 +185,7 @@ passes ``OMP_NUM_THREADS`` (or ``RFX_FDFD_CUDSS_NTHREADS``) as the plan's
 from __future__ import annotations
 
 import os
+import re
 import threading
 from typing import Any
 
@@ -139,8 +193,9 @@ import numpy as np
 
 __all__ = ["BACKENDS", "availability", "available", "factor", "selftest",
            "device_memory", "unavailable_reason", "plan_estimate",
-           "hybrid_memory", "free_forward", "threading_lib", "host_nthreads",
-           "ir_steps"]
+           "hybrid_memory", "hybrid_device_memory_limit", "parse_memory_limit",
+           "memory_limit_bytes", "hybrid_record", "free_forward",
+           "threading_lib", "host_nthreads", "ir_steps"]
 
 # The GPU backends this module implements. ``linear_solve.BACKENDS`` is this
 # tuple plus ``"superlu"``.
@@ -162,6 +217,86 @@ def _env_flag(name: str) -> bool:
 def hybrid_memory() -> bool:
     """Is cuDSS hybrid (host-backed) memory mode on? See "Device memory"."""
     return _env_flag("RFX_FDFD_CUDSS_HYBRID")
+
+
+# nvmath-python's own memory-limit grammar (nvmath/internal/mem_limit.py,
+# 1.0.0), mirrored so a bad RFX_FDFD_CUDSS_HYBRID_LIMIT is rejected on read,
+# on a machine with no nvmath at all, instead of inside the first factorisation
+_LIMIT_PCT = re.compile(r"(?P<value>[+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*%\s*$")
+_LIMIT_VAL = re.compile(
+    r"(?P<value>[+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*(?P<units>[kmg])?"
+    r"(?P<binary>(?<=[kmg])i)?b\s*$", re.IGNORECASE)
+_LIMIT_NUM = re.compile(r"[+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?$")
+
+
+def parse_memory_limit(value: str | int | float) -> str | int | float:
+    """A device-memory limit in one of nvmath-python's forms, validated.
+
+    Returns what ``HybridMemoryModeOptions(hybrid_device_memory_limit=)``
+    accepts: an ``int`` byte count, a ``float`` (a fraction of the device if
+    in ``[0, 1]``, else bytes), or the string itself for ``"40GiB"`` /
+    ``"40 GB"`` / ``"80%"``. A string holding a plain number becomes that
+    number. Raises ``ValueError`` on anything else, and on a negative value
+    or a percentage outside ``(0, 100]``.
+    """
+    if isinstance(value, bool):
+        raise ValueError(f"memory limit must be a number or a string, got {value!r}")
+    if isinstance(value, (int, float)):
+        if value < 0:
+            raise ValueError(f"memory limit must be >= 0, got {value!r}")
+        return value
+    text = str(value).strip()
+    if _LIMIT_NUM.match(text):
+        num = float(text)
+        if "." in text or "e" in text.lower():
+            return num
+        return int(num)
+    m = _LIMIT_PCT.match(text)
+    if m:
+        pct = float(m.group("value"))
+        if not 0.0 < pct <= 100.0:
+            raise ValueError(f"memory limit percentage must be in (0, 100], got {text!r}")
+        return text
+    if _LIMIT_VAL.match(text):
+        return text
+    raise ValueError(
+        f"memory limit {text!r} is not one of nvmath's forms: a byte count, a fraction "
+        "in [0, 1], a value with a unit ('40GiB', '40 GB', '512MiB', '1e9 B') or a "
+        "percentage ('80%')")
+
+
+def memory_limit_bytes(value: str | int | float, total_bytes: int) -> int:
+    """``value`` (any :func:`parse_memory_limit` form) in bytes, for a device
+    of ``total_bytes`` -- the same arithmetic as nvmath-python's
+    ``_get_memory_limit`` (decimal units are powers of 1000, ``iB`` units
+    powers of 1024, a float in ``[0, 1]`` and a percentage are fractions of
+    the device). Used to record the limit and to check it against a factor
+    size before a run; nvmath does its own conversion for the solve."""
+    v = parse_memory_limit(value)
+    if isinstance(v, int):
+        return v
+    if isinstance(v, float):
+        return int(v * total_bytes) if v <= 1.0 else int(v)
+    m = _LIMIT_PCT.match(v)
+    if m:
+        return int(float(m.group("value")) / 100.0 * total_bytes)
+    m = _LIMIT_VAL.match(v)
+    assert m is not None
+    num = float(m.group("value"))
+    units = (m.group("units") or "").lower()
+    base = 1024 if m.group("binary") else 1000
+    power = {"": 0, "k": 1, "m": 2, "g": 3}[units]
+    return int(num * base ** power)
+
+
+def hybrid_device_memory_limit() -> str | int | float | None:
+    """The hybrid-mode device-memory limit (``RFX_FDFD_CUDSS_HYBRID_LIMIT``),
+    validated, or ``None`` (cuDSS's heuristic: the whole device). See
+    "Device memory"; only consulted when :func:`hybrid_memory` is on."""
+    raw = os.environ.get("RFX_FDFD_CUDSS_HYBRID_LIMIT", "").strip()
+    if not raw:
+        return None
+    return parse_memory_limit(raw)
 
 
 def free_forward() -> bool:
@@ -261,12 +396,73 @@ def _solver_options() -> Any:
 
 
 def _execution_options() -> Any:
-    """``execution=`` for ``DirectSolver``: default, or hybrid memory mode."""
+    """``execution=`` for ``DirectSolver``: default (``None``), or hybrid
+    memory mode with the device limit of :func:`hybrid_device_memory_limit`
+    when one is set (read -- and validated -- before nvmath is imported)."""
     if not hybrid_memory():
         return None
+    limit = hybrid_device_memory_limit()
     from nvmath.sparse.advanced import ExecutionCUDA, HybridMemoryModeOptions
-    return ExecutionCUDA(
-        hybrid_memory_mode_options=HybridMemoryModeOptions(hybrid_memory_mode=True))
+    opts: dict[str, Any] = {"hybrid_memory_mode": True}
+    if limit is not None:
+        opts["hybrid_device_memory_limit"] = limit
+    return ExecutionCUDA(hybrid_memory_mode_options=HybridMemoryModeOptions(**opts))
+
+
+def hybrid_record() -> dict[str, Any]:
+    """The hybrid-memory settings in force, for a measurement record.
+
+    Not a setter, and the ONLY place the limit is set is
+    :func:`_execution_options`, at ``DirectSolver`` construction:
+    ``hybrid_limit_applied`` in the record says exactly that
+    (``"constructor"``), so a measurement taken with the limit applied any
+    other way cannot be mistaken for this path's.
+
+    Construction is BEFORE the analysis, while the cuDSS documentation says
+    the limit "can be set after the analysis phase but must be set before
+    the factorization phase". Measured on the constructor path ALONE, it
+    binds anyway (gate H1, ``validation/fdfd/invariant_ladder.json``,
+    ``hybrid.h1``): with ``RFX_FDFD_CUDSS_HYBRID_LIMIT=6GiB`` at study P's
+    level 3, cuDSS's own plan reports 5.99999999 GB of permanent DEVICE
+    memory -- the limit, 1.9e-09 relative under it -- against 11.37 GB for
+    the same matrix in-core, and 18.79 GB of host memory against 0.04 GB.
+
+    Re-setting it in cuDSS's own window is NOT done here. The only route is
+    nvmath's private config interface (``solver._internal_config`` /
+    ``cudssConfigSet``), and it behaves differently on the two threads this
+    module runs on: on the CALLING thread (``plan_estimate``) it succeeds and
+    reads back, but on ``linear_solve``'s dedicated factor thread -- where
+    every real solve happens -- it raises ``AttributeError: '_thread._local'
+    object has no attribute 'size_written'`` from inside nvmath 1.0.0. An
+    earlier revision of this module did both (set at construction AND again
+    after ``plan()``), which is why the plan records of run
+    ``fdfd-gpu-p3-20260915T233751Z`` carry ``hybrid_limit_set_after_plan``
+    and cannot say which of the two setters the plan's numbers came from.
+    They are not the numbers quoted anywhere here: those come from run
+    369367261289 (``fdfd-gpu-p3-20260916T004810Z``), whose plan records carry
+    ``hybrid_limit_applied = "constructor"`` and no second setter, and which
+    reproduced the same 5.999999988824129 GB / 18.78843168914318 GB
+    byte for byte with the constructor as the only setter. The same
+    nvmath thread-local is why the LU stats below carry no
+    ``memory_estimates``: those come from :func:`plan_estimate`, which runs
+    on the calling thread.
+    """
+    out: dict[str, Any] = {"hybrid_memory": hybrid_memory()}
+    if not out["hybrid_memory"]:
+        return out
+    limit = hybrid_device_memory_limit()
+    out["hybrid_device_memory_limit"] = limit
+    if limit is None:
+        # cuDSS's own heuristic: "the entire GPU memory" (see "Device memory")
+        out["hybrid_limit_applied"] = "none"
+        return out
+    # PROVENANCE, written into every artifact: the limit reached cuDSS at
+    # DirectSolver construction and nowhere else
+    out["hybrid_limit_applied"] = "constructor"
+    total = int(device_memory()["total"] * 2.0 ** 30)
+    if total > 0:                                       # pragma: no cover - no GPU here
+        out["hybrid_device_memory_limit_gb"] = memory_limit_bytes(limit, total) / 2.0 ** 30
+    return out
 
 
 def _make_solver(nvs: Any, a: Any, b: Any) -> Any:
@@ -286,6 +482,10 @@ def _make_solver(nvs: Any, a: Any, b: Any) -> Any:
     try:
         solver = nvs.DirectSolver(a, b, **kwargs)
     except TypeError:                                   # pragma: no cover - no GPU here
+        if execution is not None:
+            # hybrid mode was ASKED for: dropping it silently would run the
+            # factor in device memory and fail (or succeed) for the wrong reason
+            raise
         solver = nvs.DirectSolver(a, b)
     n = host_nthreads()
     if n is not None:
@@ -552,11 +752,19 @@ class CudssFactor:
                     float(est["peak_device_memory"]) / 2.0 ** 30
             except Exception:
                 pass
+        try:
+            est = plan_info.memory_estimates
+            for k in ("permanent_host_memory", "peak_host_memory",
+                      "hybrid_min_device_memory", "hybrid_max_device_memory"):
+                rec[f"plan_{k}_gb"] = float(est[k]) / 2.0 ** 30
+        except Exception:
+            pass
         for attr in ("lu_nnz", "npivots"):
             try:
                 rec[attr] = int(getattr(fac_info, attr))
             except Exception:
                 pass
+        rec.update(hybrid_record())
         rec["device_memory_gb"] = device_memory()["used"]
         self.stats[tag] = rec
 
@@ -686,12 +894,17 @@ def plan_estimate(data: np.ndarray, rows: np.ndarray, cols: np.ndarray, n: int,
     factorisation, then reports ``memory_estimates`` -- permanent and peak
     device bytes -- and frees everything. That is how a lane decides,
     cheaply and before committing two hours, whether a level fits in 24 GB
-    or needs ``RFX_FDFD_CUDSS_HYBRID=1``.
+    or needs ``RFX_FDFD_CUDSS_HYBRID=1`` (and, then, how much host memory:
+    in hybrid mode the ``*_host_memory_gb`` fields are cuDSS's estimate of
+    what the process must be allowed to hold).
     """
     import time
     f = CudssFactor(data, rows, cols, n)
+    # ``hybrid_record()`` carries the PROVENANCE of the limit
+    # (``hybrid_limit_applied``: "constructor", i.e. :func:`_execution_options`
+    # and nothing else), so a plan record can be attributed to a code path
     out: dict[str, Any] = {"n": int(n), "nnz": int(np.asarray(data).size),
-                           "hybrid_memory": hybrid_memory()}
+                           "hybrid_device_memory_limit": None, **hybrid_record()}
     try:
         b = f._rhs_buffer((n, m) if m > 1 else (n,))
         solver = _make_solver(f._nvs, f._matrix(False), b)
@@ -781,6 +994,7 @@ def selftest(backend: str = "cudss", n: int = 400, m: int = 3,
     out["replans"] = int(f.replans)
     out["freed_forward"] = int(getattr(f, "freed_forward", 0))
     out["hybrid_memory"] = hybrid_memory()
+    out["hybrid_device_memory_limit"] = hybrid_device_memory_limit() if hybrid_memory() else None
     out["free_forward"] = free_forward()
     out["threading_lib"] = threading_lib()
     out["host_nthreads"] = host_nthreads()
