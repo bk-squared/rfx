@@ -830,6 +830,13 @@ CLASSIFICATION: dict[str, str] = {
     "docs/design_notes/v18_waveguide_s_chain_plan.md": SYMBOL_SPAN_PARSER_SCOPE,
     "docs/design_notes/waveguide_chain_battery_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_chain_battery_remeasure_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-16 (#873 near-field composition): the pre-declaration was written
+    # before any projection coefficient existed and carries no `::` span. Its
+    # basis tables are properties of the port code and the grid, computed from
+    # rfx/sources/_waveguide_modes.py rather than read out of any artifact, so
+    # there is nothing here for this gate to resolve.
+    "docs/design_notes/waveguide_driven_plane_near_field_composition_predeclaration.md":
+        NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_false_lane_column_power_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_false_lane_column_power_results.md": NO_ARTIFACT_REFERENCE,
     # 2026-09-16 (#873 attempt 2): the pre-declaration was written before any
