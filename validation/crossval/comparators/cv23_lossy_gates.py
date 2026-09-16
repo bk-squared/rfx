@@ -237,9 +237,9 @@ def _f(x):
 DECLARED_GATES = G.DECLARED_GATES + ("G1_A", "G2_A")
 
 
-def evaluate_e2(freqs_hz, R_rfx, T_rfx, params: dict, dt: float, *, tail: dict | None = None,
-                dx: float | None = None, require_complete: bool = False,
-                windows=None) -> dict:
+def evaluate_e2(freqs_hz, R_rfx, T_rfx, params: dict, dt: float, *, windows,
+                tail: dict | None = None, dx: float | None = None,
+                require_complete: bool = False) -> dict:
     """E2 gates G1 (per-bin R, T, A), G2 (band-mean R, T, A), G3 (witnesses).
     With ``dx`` given, the exact Yee-lattice solution at (dx, dt) is added as
     a witness (``lattice``: W_lat per bin and |rfx - lattice|; note section
@@ -249,8 +249,15 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, params: dict, dt: float, *, tail: dict |
     run's record) wires it into the live verdict via
     comparators/lattice_witness.py's evaluate(), re-aggregating gates with
     GL_witness added -- issue #970. Do not re-describe it as reported-only
-    here without checking that caller first."""
-    win = WINDOWS if windows is None else windows
+    here without checking that caller first.
+
+    ``windows`` is REQUIRED, as it is in cv22's evaluator. It defaulted to this
+    module's cv04-adopted scalars until the per-arm derivation landed, and the
+    default then meant every caller that did not think about it -- four of this
+    case's own gate tests among them -- was still judged by the borrowed cv04
+    number while the case script used the derived one. A caller that wants the
+    scalar now has to write ``windows=WINDOWS`` and be seen doing it."""
+    win = windows
     out = G.evaluate_e2(freqs_hz, R_rfx, T_rfx, MODEL, params, dt, tail=tail,
                         require_complete=require_complete, windows=win)
     f = np.asarray(freqs_hz, dtype=float)
