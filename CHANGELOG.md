@@ -27,18 +27,27 @@ SemVer — **BREAKING** entries are flagged in upper-case.
   NU sibling on the graded WR-90 fixture (47×37×67) with Box / Sphere / Cylinder. The drift pin
   in `tests/unit/geometry/test_smoothing_coordinate_contract.py` is replaced by that lock
   (`assert_array_equal`, no tolerance), plus a traced-radius test for the `jax.numpy` fallback.
-- **x64=1 is reproduced**: uniform lane bit-identical or ≤ 4 f64 ulps (numpy vs XLA
-  reassociation; Box ex/ey identical, ez 143 voxels at 1 ulp). NU lane ≤ 2.2e-07 rel on the
-  interface voxels (1094 of 116 513 for the Box) because the geometric-mean cell length that
-  normalises the fill fraction is now formed in float64 from the exact spine; the old path
-  formed it in float32 from the float32 store (2.6e-07 rel off on every cell).
+- **x64=1 is reproduced for float32-representable permittivities** (ε 1, 4, …): uniform lane
+  bit-identical or ≤ 4 f64 ulps (numpy vs XLA reassociation; Box ex/ey identical, ez 143 voxels
+  at 1 ulp). Two qualified exceptions, both precision corrections of the old path: (i) the old
+  accumulators were `float32` even at x64=1, so a background or shape ε that is not
+  float32-representable was rounded — with `background_eps=2.2` on the Box fixture every
+  non-interface voxel now moves by 2.167e-08 rel (4.768e-08 abs, 13 425 / 13 375 / 13 245 of
+  14 025 voxels for ex/ey/ez: 2.2 vs float32(2.2) = 2.200000047683716); (ii) NU lane ≤ 2.2e-07
+  rel on the interface voxels (1094 of 116 513 for the Box) because the geometric-mean cell
+  length that normalises the fill fraction is now formed in float64 from the exact spine; the
+  old path formed it in float32 from the float32 store (2.6e-07 rel off on every cell).
 - **x64=0 operator delta on the opt-in lane** (the default precision; stated plainly): the
   smoothed ε at x64=0 is now the float32 image of the float64 result. On the Box fixture
   ex max|Δ| 1.907e-06 (15 ulps, 511 voxels), ey 1.192e-06 (5 ulps, 603), ez 1.311e-06 (11 ulps,
   538); inverse-ε 12 / 11 / 13 ulps. Sphere up to 80 ulps (1.9e-05 abs), Cylinder up to 53.
-  NU Box: ey/ez 16 ulps on 1094 voxels, and 12 voxels exactly equidistant from the x and z
-  faces (rx == rz) change by |Δε| 0.99 — the float32 path broke that nearest-face tie
-  differently per flag (ε 2.105 at x64=0 vs 3.100 at x64=1 before; 3.100 at both flags now).
+  NU Box: ey/ez 16 ulps on 1094 voxels, and 12 voxels exactly 0.2 D inside BOTH the x-lo and
+  z-hi faces (rx == rz == −0.2 D in exact arithmetic) change by |Δε| 0.99. `_normal_box`
+  selects x on `rx >= rz`, which the exact tie would satisfy (x-normal, ε 2.105); in float64
+  the two distances round differently, rz − rx = 64 f64 ulps, so z wins (ε 3.100) — a
+  deterministic rounding result, not a convention, and base x64=1 already gave 3.100. Only
+  the x64=0 float32 evaluation gave 2.105 there; the traced (`jax.numpy`) path at x64=0 still
+  does.
   Everything under `subpixel_smoothing=False`, the staircase fallback (shapes without an SDF),
   and `compute_conformal_weights_sdf` are bit-identical at both flags.
 - End-to-end (100 steps, 4 cm CPML cube, off-node ε 4 Box 11.3–28.7 mm, dx 2 mm, one TE10
@@ -46,8 +55,14 @@ SemVer — **BREAKING** entries are flagged in upper-case.
   bit-identical for `subpixel_smoothing=True`, `"kottke_pec"` and `False`; at x64=0 `False` is
   bit-identical and the two smoothed lanes move by ≤ 8.5e-07 of the field maximum
   (ex 3.2e-08 abs on 10 115 of 12 789 cells).
+- Build cost (reviewer-measured, 165³ grid, `compute_smoothed_eps` peak RSS delta): 943 MB
+  after vs 1327 MB before at x64=0, 943 MB vs 837 MB at x64=1, about 4× faster on the host path.
+- Mask-only shapes (no SDF) have their staircase mask evaluated before the backend is chosen,
+  so a mask that is a tracer under `jax.jit` routes the build through `jax.numpy` as before
+  (pinned at both flags in the contract file).
 - No committed gate moved. Pre-existing x64=1 red `test_compute_inv_eps_tensor_diag_returns_float32`
-  (the PEC-limit branch promotes to float64 at x64=1) is recorded by the new lock, not fixed.
+  (the PEC-limit branch promotes to float64 at x64=1) is left to that test; the lock asserts
+  values only for that case and pins no x64=1 dtype there.
 
 ### Added — the MSL Z0 length-invariance envelope drift is attributed to two commits (#796)
 

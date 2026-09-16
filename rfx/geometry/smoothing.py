@@ -725,7 +725,19 @@ def _to_jax(arrays, *, host: bool, promoted: bool):
     return tuple(jnp.asarray(a, dtype=dtype) for a in arrays)
 
 
-def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, fallback_mask):
+def _fallback_masks(shapes, mask_fn) -> dict:
+    """Staircase masks for the shapes WITHOUT an SDF, keyed by ``id(shape)``.
+
+    Evaluated up front, before the array backend is chosen, so that a mask
+    that comes back as a tracer (a custom shape closing over a traced value
+    under ``jax.jit``) is seen by :func:`_host_path` and routes the whole
+    build through ``jax.numpy`` -- the host path cannot ``np.where`` on a
+    tracer. ``mask_fn(shape)`` returns the mask or ``None`` to skip.
+    """
+    return {id(s): mask_fn(s) for s in shapes if not _has_sdf(s)}
+
+
+def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks):
     """Kottke-average ``shapes`` into the per-component permittivity arrays.
 
     This is the ONE smoothing body; the uniform and non-uniform public
@@ -747,8 +759,9 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, fallback_mask):
         ``f = clip(0.5 - sdf / cell_len, 0, 1)``.
     eps : (eps_ex, eps_ey, eps_ez)
         Starting (background) arrays; returned updated.
-    fallback_mask : callable(shape) -> bool mask or None
-        Staircase mask for a shape without an SDF; ``None`` skips it.
+    masks : {id(shape): bool mask or None}
+        Pre-evaluated staircase masks for the shapes without an SDF (see
+        :func:`_fallback_masks`); ``None`` skips that shape.
     """
     eps = dict(zip(("ex", "ey", "ez"), eps))
     from collections import OrderedDict
@@ -763,7 +776,7 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, fallback_mask):
         for shape in group_shapes:
             if _has_sdf(shape):
                 continue
-            mask = fallback_mask(shape)
+            mask = masks[id(shape)]
             if mask is None:
                 continue
             for comp in eps:
@@ -829,13 +842,12 @@ def _uniform_sample_coords(xp, coords, dx):
     return {"ex": (X + half, Y, Z), "ey": (X, Y + half, Z), "ez": (X, Y, Z + half)}
 
 
-def _smoothed_eps_uniform(xp, grid, coords, shapes, background_eps):
+def _smoothed_eps_uniform(xp, grid, coords, shapes, background_eps, masks):
     """``compute_smoothed_eps`` body on backend ``xp``; returns ``xp`` arrays."""
     acc_dtype = np.float64 if xp is np else jnp.float32
     eps = tuple(xp.full(grid.shape, background_eps, dtype=acc_dtype) for _ in range(3))
     return _kottke_smooth(
-        xp, shapes, _uniform_sample_coords(xp, coords, grid.dx), grid.dx, eps,
-        fallback_mask=lambda shape: shape.mask(grid),
+        xp, shapes, _uniform_sample_coords(xp, coords, grid.dx), grid.dx, eps, masks,
     )
 
 
@@ -887,9 +899,36 @@ def compute_smoothed_eps_nonuniform(
     # normalisation (a traced axis comes back as its tracer).
     cell_sizes = cell_sizes_from_nonuniform_grid(nu_grid)
 
+    # Staircase fallback for shapes without an SDF: the shape's cell mask if
+    # available, otherwise skip (NU grid has no Grid-style mask adapter for
+    # arbitrary shapes today). Evaluated here so a traced mask is seen by the
+    # backend choice below.
+    masks = {}
+    for shape, _ in shapes:
+        if _has_sdf(shape):
+            continue
+        masks[id(shape)] = None
+        if not hasattr(shape, "mask"):
+            continue
+        try:
+            masks[id(shape)] = shape.mask(nu_grid)
+        except Exception as exc:
+            # A shape whose .mask() cannot handle a NonUniformGrid is
+            # skipped — but make that visible. The pre-fix bare
+            # ``except: pass`` silently dropped the shape's geometry AND
+            # would have masked a real bug (NaN, typo, unexpected error)
+            # just as quietly.
+            warnings.warn(
+                f"smoothing: {type(shape).__name__}.mask() failed "
+                f"on the non-uniform grid ({exc!r}); this shape is "
+                f"SKIPPED and its geometry is NOT applied.",
+                stacklevel=2,
+            )
+
     host = _host_path(*coords[:3], *centres[:3], *cell_sizes, background_eps,
                       *(e for _, e in shapes),
-                      *(p for s, _ in shapes for p in _shape_parameters(s)))
+                      *(p for s, _ in shapes for p in _shape_parameters(s)),
+                      *masks.values())
     xp = np if host else jnp
 
     node_x, node_y, node_z = (xp.asarray(a) for a in coords[:3])
@@ -913,31 +952,10 @@ def compute_smoothed_eps_nonuniform(
         "ez": (node_x[:, None, None], node_y[None, :, None], centre_z[None, None, :]),
     }
 
-    def fallback_mask(shape):
-        # Staircase via the shape's cell mask if available; otherwise skip
-        # (NU grid has no Grid-style mask adapter for arbitrary shapes today).
-        if not hasattr(shape, "mask"):
-            return None
-        try:
-            return shape.mask(nu_grid)
-        except Exception as exc:
-            # A shape whose .mask() cannot handle a NonUniformGrid is
-            # skipped — but make that visible. The pre-fix bare
-            # ``except: pass`` silently dropped the shape's geometry AND
-            # would have masked a real bug (NaN, typo, unexpected error)
-            # just as quietly.
-            warnings.warn(
-                f"smoothing: {type(shape).__name__}.mask() failed "
-                f"on the non-uniform grid ({exc!r}); this shape is "
-                f"SKIPPED and its geometry is NOT applied.",
-                stacklevel=3,
-            )
-            return None
-
     acc_dtype = np.float64 if host else jnp.float32
     eps = tuple(xp.full(tuple(nu_grid.shape), background_eps, dtype=acc_dtype)
                 for _ in range(3))
-    eps = _kottke_smooth(xp, shapes, sample, dx_loc, eps, fallback_mask)
+    eps = _kottke_smooth(xp, shapes, sample, dx_loc, eps, masks)
     return _to_jax(eps, host=host, promoted=any(_has_sdf(s) for s, _ in shapes))
 
 
@@ -973,10 +991,13 @@ def compute_smoothed_eps(
     from rfx.geometry.rasterize_grid import coords_from_uniform_grid
 
     coords = coords_from_uniform_grid(grid)
+    masks = _fallback_masks([s for s, _ in shapes], lambda s: s.mask(grid))
     host = _host_path(*coords[:3], grid.dx, background_eps,
                       *(e for _, e in shapes),
-                      *(p for s, _ in shapes for p in _shape_parameters(s)))
-    eps = _smoothed_eps_uniform(np if host else jnp, grid, coords, shapes, background_eps)
+                      *(p for s, _ in shapes for p in _shape_parameters(s)),
+                      *masks.values())
+    eps = _smoothed_eps_uniform(np if host else jnp, grid, coords, shapes,
+                                background_eps, masks)
     return _to_jax(eps, host=host, promoted=any(_has_sdf(s) for s, _ in shapes))
 
 
@@ -1113,15 +1134,19 @@ def compute_inv_eps_tensor_diag(
     from rfx.geometry.rasterize_grid import coords_from_uniform_grid
 
     coords = coords_from_uniform_grid(grid)
+    diel_masks = _fallback_masks([s for s, _ in dielectric_shapes], lambda s: s.mask(grid))
+    pec_masks = _fallback_masks(pec_shapes, lambda s: s.mask(grid))
     host = _host_path(*coords[:3], grid.dx, background_eps,
                       *(e for _, e in dielectric_shapes),
                       *(p for s, _ in dielectric_shapes for p in _shape_parameters(s)),
-                      *(p for s in pec_shapes for p in _shape_parameters(s)))
+                      *(p for s in pec_shapes for p in _shape_parameters(s)),
+                      *diel_masks.values(), *pec_masks.values())
     xp = np if host else jnp
 
     # Step 1: dielectric subpixel smoothing (existing Kottke path).
     if dielectric_shapes:
-        eps = _smoothed_eps_uniform(xp, grid, coords, dielectric_shapes, background_eps)
+        eps = _smoothed_eps_uniform(xp, grid, coords, dielectric_shapes,
+                                    background_eps, diel_masks)
     else:
         acc_dtype = np.float64 if host else jnp.float32
         eps = tuple(xp.full(tuple(grid.shape), background_eps, dtype=acc_dtype)
@@ -1151,7 +1176,7 @@ def compute_inv_eps_tensor_diag(
         if not _has_sdf(pec_shape):
             # Fallback: staircase mask. Cells inside the shape get
             # full-PEC (inv = 0); cells outside are unchanged.
-            mask = pec_shape.mask(grid)
+            mask = pec_masks[id(pec_shape)]
             inv = [xp.where(mask, 0.0, a) for a in inv]
             continue
         promoted = True
