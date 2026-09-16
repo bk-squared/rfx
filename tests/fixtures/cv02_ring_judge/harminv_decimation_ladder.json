@@ -5,10 +5,11 @@
   "quick": false,
   "max_undecimated_samples": 5000,
   "source_record": {
-    "path": "validation/crossval/_02_ring_resonator_results/crossval.json",
+    "path": "validation/crossval/_02_ring_resonator_results/crossval.pre1036.json",
     "commit": "296cabada23343eede7beb05a0a4f98f7bb64adf",
     "rfx_code_tree": "f74a17ce0386afcf88c4f23b7b540a0e209a5157",
-    "date_utc": "2026-09-06T17:07:57Z"
+    "date_utc": "2026-09-06T17:07:57Z",
+    "_note_1062": "renamed by #1062: this record is cv02s RETAINED pre-1036 copy. The path moved; the commit 296cabad and the content did not. The live current-schema record is crossval.json beside it."
   },
   "signal": {
     "model": "single damped exponential, cos(2 pi f t) exp(-t/tau)",

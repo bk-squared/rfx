@@ -1,0 +1,109 @@
+name: rfx-cv02-record-regen
+description: "Regenerate cv02's claims-bearing crossval record against a REAL conda-forge Meep, so it carries the current schema (#1062 option 1). The pre-#1036 copy is retained separately in the same PR; this lane produces its replacement, it does not replace the pin. One-off: submit with scripts/vessl_submit.sh, quote the run id in the commit that lands the record."
+tags: [rfx, cv02, crossval, meep, i1062]
+resources:
+  cluster: remilab-c0
+  # CPU only, and deliberately no preset: cv02 is a 2-D Meep + rfx ring on a
+  # 16-core box and takes no GPU. _configs/.claude/rules/vessl-jobs.md: "Ask for
+  # CPU and memory explicitly when the work is CPU-only."
+  cpu: 16
+  memory: 32Gi
+# The openEMS solver image, used here for the one thing it already has that the
+# jax images do not: a conda prefix on numpy<2. pymeep is added at RUN time
+# rather than baked, because this is a one-off record regeneration and not a
+# recurring lane. (The recurring two-solver lane bakes the same layer --
+# docker/crossval-solvers-lane/Dockerfile, #717. If the conda solve below
+# works here it is the same solve that Dockerfile performs, so this run also
+# de-risks that image before it is built.)
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  MPLBACKEND: "Agg"
+  JAX_PLATFORMS: "cpu"
+  OMP_NUM_THREADS: "4"
+  RFX_CV02_REF: "origin/main"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  # POSIX sh, NO HEREDOCS (_configs/.claude/rules/vessl-jobs.md: VESSL re-indents
+  # this block and a terminator off column 0 kills the job at parse time).
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  primary=/root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory "$primary" || true
+  cd "$primary"
+
+  echo "=== cv02 record regeneration (#1062 option 1) ==="
+  date -u
+  echo "RFX_OPENEMS_COMMIT=${RFX_OPENEMS_COMMIT:-unset}"
+
+  # --- the tree under test: git archive export, never the live checkout -------
+  git fetch -q origin
+  ref="${RFX_CV02_REF:-origin/main}"
+  git cat-file -e "${ref}^{commit}" 2>/dev/null || git fetch -q origin "$ref"
+  sha=$(git rev-parse "$ref")
+  short=$(echo "$sha" | cut -c1-8)
+  echo "cv02 ref: $ref = $sha"
+  src="/tmp/rfx-cv02-$short"
+  rm -rf "$src"; mkdir -p "$src"
+  git archive --format=tar "$sha" | tar -xf - -C "$src"
+
+  OUT="$primary/.omx/cv02-record-regen/$(date -u +%Y%m%dT%H%M%SZ)-$short"
+  mkdir -p "$OUT"
+  # Provenance that fails loudly. No `|| echo unknown`.
+  echo "$sha" > "$OUT/commit.txt"
+  trap 'echo "=== collecting on exit: $OUT ==="; ls -la "$OUT" || true' EXIT
+
+  # --- Meep, from conda-forge, in a DEDICATED env -----------------------------
+  # Run 369367261409 tried `conda install --override-channels -c conda-forge`
+  # into the image's BASE env and died:
+  #
+  #     ResolvePackageNotFound:
+  #       - conda=23.5.2
+  #
+  # --override-channels restricts the solve to conda-forge, and the base env's
+  # own `conda` package came from another channel, so conda cannot keep ITSELF
+  # satisfiable and the solve fails before pymeep is considered. cv02 needs meep
+  # + rfx + jax and no openEMS at all, so the fix here is a separate env rather
+  # than fighting the base one. (The #717 two-solver image cannot take this
+  # route -- it needs both solvers in ONE interpreter -- and must drop
+  # --override-channels instead. Recorded on #1054.)
+  conda create -y -n cv02meep --override-channels -c conda-forge \
+    "python=3.11" "pymeep=1.34.0" "numpy<2" 2>&1 | tail -15
+  PY=/opt/conda/envs/cv02meep/bin/python
+  "$PY" -c "import meep, numpy; print('meep', meep.__version__, 'numpy', numpy.__version__)"
+
+  # --- rfx's own deps --------------------------------------------------------
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" 2>&1 | tail -3
+  export PYTHONPATH="$src"
+  cd "$src"
+  "$PY" -c "import jax, rfx, meep; print('probe ok | jax', jax.__version__, '| rfx', rfx.__version__, '| meep', meep.__version__)"
+
+  # --- the run ---------------------------------------------------------------
+  # 02_ring_resonator.py with no arguments does the full Meep + rfx case and
+  # writes validation/crossval/_02_ring_resonator_results/crossval.json INTO the
+  # tree it is run from -- which is the export, not the primary checkout.
+  echo "=== cv02, real Meep ==="
+  set +e
+  { timeout 10800 "$PY" validation/crossval/02_ring_resonator.py 2>&1; echo $? > "$OUT/cv02.rc"; } \
+    | tee "$OUT/cv02.log"
+  set -e
+  rc=$(cat "$OUT/cv02.rc")
+  echo "cv02 rc=$rc"
+
+  rec="$src/validation/crossval/_02_ring_resonator_results/crossval.json"
+  if [ ! -s "$rec" ]; then
+    echo "FATAL: cv02 wrote no crossval.json (rc=$rc)" >&2
+    exit 1
+  fi
+  cp "$rec" "$OUT/crossval.json"
+  # The two things #1062 says the old record cannot answer. Print them so the
+  # verdict is readable from the run log and not only from the artifact.
+  "$PY" -c "import json,sys; d=json.load(open('$OUT/crossval.json')); a=d['measured']['assignment'][0]; print('assignment row keys:', sorted(a)); print('gate_limits keys :', sorted(d['gate_limits'])); print('rig has harminv_analysis_duration_s:', 'harminv_analysis_duration_s' in d['rig']); print('record_length_meep_units:', d['rig'].get('record_length_meep_units')); print('verdict:', d['verdict'])"
+
+  echo "=== artifacts: $OUT ==="
+  exit "$rc"

@@ -70,7 +70,10 @@ from tests import _fixture_provenance as PROV  # noqa: E402
 
 from rfx.harminv import _decimation_plan, harminv  # noqa: E402
 
-CV02_RECORD = REPO_ROOT / "validation/crossval/_02_ring_resonator_results/crossval.json"
+# The RETAINED pre-#1036 copy (#1062): this ladder's rungs are the ones the
+# withdrawn #907 numbers were attached to, so it must read the record those
+# numbers came from and not whatever the case has regenerated since.
+CV02_RECORD = REPO_ROOT / "validation/crossval/_02_ring_resonator_results/crossval.pre1036.json"
 
 
 HARMINV_SOURCE = REPO_ROOT / "rfx/harminv.py"
