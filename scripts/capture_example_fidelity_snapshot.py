@@ -21,7 +21,8 @@ No solves: every number below comes from ``sim.preflight()`` and
 holds 51 (script, builder, variant) triples across the 34 auditable
 scripts of the 137 discovered under examples/ + validation/ (measured
 2026-09-16 at 6d721a56; the 2026-08-28 capture was 33 triples over 23
-scripts, and cv07/cv15 joining the audited set is most of the difference).
+scripts; since then cv07, cv15, cv24 and eight validation/research scripts
+joined the audited set -- 18 new variants, none removed).
 CPU-only; no GPU, and JAX warmup dominates.
 
 Every optional dependency in ``_example_fidelity_lib.OPTIONAL_DEPENDENCIES``
