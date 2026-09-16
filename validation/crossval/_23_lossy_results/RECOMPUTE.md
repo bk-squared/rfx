@@ -38,3 +38,17 @@ also invalidates — loose direction only, magnitude unestablished, re-derivatio
 is an explicit adoption edit under #928. Read
 `validation/crossval/_04_fresnel_results/RECOMPUTE.md` before re-pinning any
 window here.
+
+
+## the falsifier artifacts' `gates` dicts are old-window verdicts (#928 item 2)
+
+`rfx__falsifier_tand0p1_sigma_x1p5.json`, `rfx__falsifier_tand1_sigma_x1p5.json`
+and `rfx__falsifier_tand3_sigma_x1p5.json` record gates as `true` that the live
+script would no longer write: E2 windows are now derived per arm from the arm's
+own lattice and record, not from cv04's per-bin max `|R+T-1|`, and under them
+those three fail `G1_R`/`G1_A`, `G1_T`/`G1_A` and `G1_T`/`G1_A`/`G2_T`
+respectively. Each record's verdict (exit 1) is unchanged, and the gate tests
+here replay them against the windows they were judged by, saying so. Every
+before/after verdict is tabled in
+`docs/design_notes/slab_family_per_arm_lattice_window_predeclaration.md`
+section 6.1.

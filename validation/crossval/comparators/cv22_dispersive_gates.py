@@ -157,6 +157,13 @@ ARM_ORDER = ("debye", "lorentz", "drude")
 # Whether to re-adopt a settled revision, and whether W_BIN's own recipe
 # should track it, is open under issue #928 -- not decided here, and not
 # something a producer re-run may do to this file silently either way.
+#
+# 2026-09-16 SCOPE (#928 item 2): what this adoption still feeds is now the
+# MEEP legs alone. The E2 gates (G1_*, G2_*) take a window derived per arm
+# from its own lattice and its own record; W_BIN / W_MEAN_R / W_MEAN_T below
+# reach only evaluate_e4. That narrowing is stated again beside the constants
+# themselves about 115 lines down, and it is repeated here because this block
+# is the one a reader looking for "what does cv22 adopt from cv04" opens first.
 # ---------------------------------------------------------------------------
 CV04_ADOPTION = {
     "envelope": slab_family.CV04_ENVELOPE_REL,

@@ -108,6 +108,28 @@ window is the sum, and a floor is what the sum degenerates to wherever `W_lat`
 vanishes (cv23's `tand3` transmission, where `T_TMM ≤ 0.003` and the lattice
 term is 3e-5).
 
+**CAPPED at the a-priori ceiling** (post-review amendment, 2026-09-16; §5 is
+not edited). Those tails are measured on the record the window then judges, so
+`W_wit` is taken as `min(W_wit, W_ceiling)` per bin, where `W_ceiling` is
+`lattice_witness.ceiling_windows`: the same budget with the DECLARED bars
+(settling 1e-2, purity 1e-3) and the DERIVED ring rate, every input of it
+available before the run. The standard already computes that ceiling and
+reports the excess as `W_exceeds_ceiling_*` without gating it; as a cap it
+removes the record-dependent headroom entirely, and it costs nothing — only
+cv22's debye arm is capped at all, in every one of its gated bins, by at most
+1.046× in R and 1.055× in T, and no committed verdict moves. A record with no
+DERIVED ring rate (`--recipe cv04`) has no a-priori ceiling to cap against, so
+none is applied and the artifact records that.
+
+**What the cap costs in the argument, stated rather than glossed.** The
+decomposition above closes because `GL1` bounds `|X_rfx − X_lat|` by `W_wit`.
+`GL1` is judged against the UNCAPPED `W_wit`, so wherever the cap binds the
+window is TIGHTER than what `GL1` guarantees and `G1` is no longer implied by
+it — it is an empirical pass. That is one arm, cv22's debye, whose worst gated
+bin uses 0.156 of its window in R and 0.167 in T (§6.3), so the margin is
+6× rather than a theorem. Everywhere else the cap does not bind and the
+implication in §5.1 stands unchanged.
+
 ### 2.3 `M` — the governance multiplier
 
 `M = tests._gate_policy.ENVELOPE_GATE_MULTIPLIER` (1.5), imported, never
@@ -146,6 +168,27 @@ decomposition in §2.2 closes without it.
 The settling allowance is likewise not a separate additive term — it is
 `W_wit`, §2.2.
 
+**Two terms the 1-D model does not carry, named rather than implied.** The
+lattice solution is exact for the update it models; it is not the whole of the
+solver, and the budget in §2.2 is derived for the recorded field rather than
+for everything that feeds it.
+
+* **The polarization recurrence's own round-off.** `W_wit`'s `delta_round` term
+  is `n · eps_f32 / √2`, derived for the probe's recorded E trace. cv22's arms
+  also step a polarization state — `rfx/materials/debye.py:214` promotes it to
+  the field dtype, which is float32 — and that recurrence accumulates its own
+  round-off over the same n steps. It is the same order as `delta_round` and is
+  NOT separately modelled. This is not covered by an argument; it is uncovered,
+  and no committed arm depends on it (`delta_round` runs 1e-9-class against
+  windows of 1e-3).
+* **The rasterization rule.** The model places `round(d/dx)` slab E nodes; the
+  rig builds the slab symmetrically about the grid centre as
+  `2 · int(D/(2·dx))` (`slab_rig.py:68-69`). The two agree at 10, 20 and 40
+  cells — every committed rung — and not in general (`d/dx = 11` gives 11
+  against 10). `lattice_term` now asserts they agree wherever the record
+  carries its own slab span, so a rung where they diverge reds instead of
+  quietly sizing its window from a slab one cell thicker than the one stepped.
+
 ### 2.5 The band mean (G2)
 
 ```
@@ -165,6 +208,28 @@ sums — are replaced by the direct `A` difference of §2.1 plus
 `W_wit,A = W_wit,R + W_wit,T`. The reported-only tighter pair (`A_tight_ok`)
 keeps its present cv04-r1 derivation; it is not a gate and moving it would add a
 schema change to a gate change.
+
+### 2.6 What stops a badly settled record from buying itself a window
+
+`W_wit` is built from tails MEASURED on the record it then judges, so the
+question has to be answered rather than waved at: can a worse-settled record
+widen its own continuum window and walk a defect through?
+
+**GL1 is not the answer.** GL1 is judged against the same `W_wit`, so it widens
+with it and bounds nothing here independently. Two other things do:
+
+1. **The record law.** `G3_tail` is the record's own settling witness,
+   `tail["ok"]`, against `tail["limit"]`, which the r3 recipe sets to
+   `slab_family.SETTLING_LIMIT` = 1e-2 (`slab_rig.py:109`) and then EXTENDS the
+   record until it is met, growing the box rather than clipping
+   (`slab_rig.py:190`). A record above the bar is not a wider window; it is a
+   red gate.
+2. **The cap** of §2.2: above the declared bar the window stops responding to
+   the record's tail at all, because `W_ceiling` is built from the declared
+   bars and the derived rate.
+
+Measured in §6.6 and pinned in `tests/contracts/test_slab_arm_window_derivation.py`
+section 5.
 
 ## 3. What this is NOT
 
@@ -311,7 +376,7 @@ fires.**
 
 | case | record | arm | dx | old per-bin | old mean | new per-bin, min | new per-bin, max | new mean | of which W_lat | of which W_wit | what the arm needs |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| cv22 | primary | debye | 1.00 mm | 0.0740 | 0.0101 | 1.52e-02 | 8.92e-02 | 2.90e-02 | 2.22e-03 | 1.71e-02 | 5.57e-03 |
+| cv22 | primary | debye | 1.00 mm | 0.0740 | 0.0101 | 1.47e-02 | 8.55e-02 | 2.79e-02 | 2.22e-03 | 1.64e-02 | 5.57e-03 |
 | cv22 | primary | lorentz | 1.00 | 0.0740 | 0.0104 | 3.15e-03 | 1.15e-02 | 8.13e-03 | 2.84e-03 | 2.58e-03 | 4.99e-03 |
 | cv22 | primary | drude | 1.00 | 0.0740 | 0.0100 | 8.75e-05 | 2.25e-03 | 8.65e-04 | 4.94e-04 | 8.25e-05 | 1.34e-03 |
 | cv23 | primary | tand0p1 | 1.00 | 0.0740 | 0.0100 | 4.67e-04 | 3.03e-02 | 7.81e-03 | 3.92e-03 | 1.28e-03 | 1.40e-02 |
@@ -336,15 +401,15 @@ assumed.
 
 **The window follows the arm, which is the whole point.** The same old number,
 0.074, judged all eleven rungs. The new per-bin windows span 8.75e-05 to
-8.92e-02 — three orders of magnitude — and every one of them is that arm's own
+8.55e-02 — three orders of magnitude — and every one of them is that arm's own
 material, mesh and record.
 
 **The direction is tighter almost everywhere, and looser in one place.** In band
 mean: cv22 lorentz ×0.78 (R) / ×0.31 (T), drude ×0.09 / ×0.17, cv23 tand0p1
 ×0.78 / ×0.79 / ×0.36 (A), tand1 ×0.88 / ×0.16 / ×0.24, tand3 ×0.54 / ×0.003 /
 ×0.20, and the six dx rungs ×0.05 to ×0.31. The exception is **cv22's debye
-arm: ×2.89 (R), ×2.25 (T)**, with 11 of 229 gated bins in R and 25 of 229 in T
-carrying a window wider than the old flat one (worst 1.20× in R, 1.42× in T, all
+arm: ×2.78 (R), ×2.15 (T)**, with 9 of 229 gated bins in R and 21 of 229 in T
+carrying a window wider than the old flat one (worst 1.15× in R, 1.35× in T, all
 of them above 7.7 GHz in R and 6.6 GHz in T). §5.4 pre-declared this and §6.4
 reads it.
 
@@ -356,7 +421,7 @@ window the measurement actually uses.
 
 | arm | dx | gated bins | worst R ratio (at) | worst T ratio (at) | bins over window | bins where new > old (R / T) |
 |---|---|---|---|---|---|---|
-| cv22 debye | 1.00 mm | 229 | 0.150 (4.862 GHz) | 0.160 (5.306 GHz) | 0 | 11 / 25 |
+| cv22 debye | 1.00 mm | 229 | 0.156 (4.862 GHz) | 0.167 (5.306 GHz) | 0 | 9 / 21 |
 | cv22 lorentz | 1.00 | 229 | 0.520 (6.639 GHz) | 0.514 (5.541 GHz) | 0 | 0 / 0 |
 | cv22 drude | 1.00 | 229 | 0.614 (6.535 GHz) | 0.621 (6.613 GHz) | 0 | 0 / 0 |
 | cv23 tand0p1 | 1.00 | 229 | 0.559 (8.391 GHz) | 0.452 (8.756 GHz) | 0 | 0 / 0 |
@@ -379,15 +444,15 @@ on all 29 records.
 
 ### 6.4 The one place this loosens, read rather than reported
 
-cv22's debye arm carries a `W_wit` of 1.71e-02 (R) and 2.26e-02 (T) in the band
-mean against a `W_lat` of 2.22e-03 and 3.01e-03 — the floor is 87 % of the
+cv22's debye arm carries a `W_wit` of 1.64e-02 (R) and 2.14e-02 (T) in the band
+mean against a `W_lat` of 2.22e-03 and 3.01e-03 — the floor is 88 % of the
 window. Two things make it that big and both are in the record, not in the
 derivation:
 
 * **The band top is where the incident spectrum is weakest.** The budget divides
   every term by the relative incident amplitude, and the rig's differentiated
   Gaussian peaks near 3.5 GHz; by 10 GHz it is at about 8 % of peak. The debye
-  window therefore rises from 1.52e-02 at 4.0 GHz to 8.92e-02 at 10.0 GHz, and
+  window therefore rises from 1.47e-02 at 4.0 GHz to 8.55e-02 at 10.0 GHz, and
   it is only above 7.7 GHz that it passes the old flat 0.074.
 * **Debye's tail is the family's slowest.** Its fitted tail rate is slower than
   the derivation's (the lattice-witness standard's §14.1 measured 1.5×), and the
@@ -414,7 +479,7 @@ lowers `W_wit` directly; it is not needed for any verdict here and is not run.
 | 5.2 named new firings: `debye_tau_x2` `G1_R`; `tand0p1_sigma_x1p5` `G1_R`/`G1_A`; `tand1_sigma_x1p5` `G1_T`/`G1_A`; `tand3_sigma_x1p5` `G1_T`/`G1_A` | **hit**, all seven |
 | 5.3 the four Meep-leg falsifiers keep passing E2 | **hit** |
 | 5.4 `tand0p1_sigma_x1p5` `G1_R` flips to FAIL (the least-sure one) | **hit** |
-| 5.4 cv22 debye's worst bin widens ≈ 1.2× over the flat 0.074 | **hit** (1.20× in R; T also widens, 1.42×, which §5.4 did not put a number on) |
+| 5.4 cv22 debye's worst bin widens ≈ 1.2× over the flat 0.074 | **hit** (1.15× in R after the §6.7 cap, 1.20× before it; T also widens, 1.35×, which §5.4 did not put a number on) |
 | 5.5 item 3: `W_lat` accounts for ≈ 99.7 % of cv04's own residual | **hit** — on cv04's ε′ = 4 rung the same function gives a band-mean lattice−continuum difference of 7.3e-03 against a measured `\|rfx − continuum\|` of the same size, with `\|rfx − lattice\|` at 1.7e-05 |
 | 5.5 item 4: every `W_wit` bin finite and positive | **hit**, 29 records, asserted in `derive` |
 
@@ -422,6 +487,66 @@ lowers `W_wit` directly; it is not needed for any verdict here and is not run.
 `tand0p1_sigma_x1p5` also loses `G2_R` and `tand3_sigma_x1p5` also loses `G2_T`.
 §5.2 predicted the per-bin flips by name and did not enumerate band-mean ones;
 both records were already failing, so neither changes a verdict.
+
+### 6.6 The self-certification channel, measured
+
+§2.6 names two things that stop a badly settled record from buying itself a
+window. Both were measured here rather than argued.
+
+**The record law has room.** Every committed record sits under
+`SETTLING_LIMIT` = 1e-2, with `SETTLING_LIMIT / max(scat, trans)` running from
+**×1.4** (cv22 debye, the family's least settled) to **×131.8** (cv22 drude)
+over the sixteen declared-arm records. The r3 recipe does not tolerate a record
+above the bar; it extends the record and grows the box until it is under it.
+
+**The falsifiers do not survive the worst admissible record.** Push both
+settling tails and the purity of every wrong-model falsifier record to 0.999 of
+their own bars — the most contaminated record the gate admits — and re-judge:
+**all 13 still FAIL**. No declared arm fails under the same treatment either.
+
+**The cap is what makes the bar's VALUE stop mattering.** At the looser non-r3
+bar (`slab_family.TAIL_LIMIT` = 0.10) an UNCAPPED window lets **4 of the 13**
+wrong-model falsifiers back through G1 — `debye_tau_x2`,
+`tand0p1_sigma_x1p5`, `tand1_sigma_x1p5`, `tand3_sigma_x1p5`, which are four of
+the five records whose gates this derivation newly fires. With the §2.2 cap in
+place, **none** goes through at either bar, because `W_ceiling` is built from
+the declared bars and cannot follow a record that misses them. So the r3 bar
+was load-bearing before the cap and is a redundancy after it — which is the
+right direction for a bar to move, and the reason both are pinned rather than
+one.
+
+All four statements are tests, not prose:
+`tests/contracts/test_slab_arm_window_derivation.py` section 5.
+
+### 6.7 Post-review amendment — the ceiling cap (2026-09-16)
+
+An independent review read §2.2's floor as leaving a record-dependent channel
+open, and asked for the principled close: cap `W_wit` at the a-priori ceiling
+the lattice-witness standard already computes and reports. Done, with the
+measured cost:
+
+| | before the cap | after |
+|---|---|---|
+| declared records whose verdict changes | — | **0 of 16** |
+| arms capped at all | — | cv22 debye only, in all 229 gated bins |
+| debye per-bin window, R | 1.52e-02 – 8.92e-02 | 1.47e-02 – 8.55e-02 |
+| debye band mean, R / T | 2.90e-02 / 3.83e-02 | 2.79e-02 / 3.66e-02 (×2.78 / ×2.15 of the old flat window, was ×2.89 / ×2.25) |
+| debye bins above the old flat 0.074, R / T | 11 / 25 of 229 | 9 / 21 of 229 |
+| debye worst per-bin ratio, R / T | 0.150 / 0.160 | 0.156 / 0.167 |
+| falsifier records that still FAIL | 13 of 13 | 13 of 13 |
+
+The tables in §6.1–§6.5 carry the post-cap numbers. §5 is not edited: the cap
+is a tightening the pre-declaration did not anticipate, and the expectation
+table is judged against what it actually predicted.
+
+One correction the cap forces on §5.1's reasoning, recorded here rather than by
+editing it: §5.1 argues that `G1` passing is implied by `GL1` passing, because
+the window is `W_wit + W_lat` and `GL1` bounds the first term. `GL1` is judged
+against the UNCAPPED `W_wit`, so the implication holds only where the cap does
+not bind. It binds on one arm — cv22 debye, every gated bin — and there `G1`
+passes on measurement (0.156 of its window in R, 0.167 in T) rather than by
+arithmetic. The prediction was right; one of its two reasons now covers 15 of
+the 16 declared records instead of all 16.
 
 ## 7. What this does NOT fix — the Meep legs
 
@@ -449,6 +574,19 @@ hypothesises (`meep_thickness_excess_rta`, E nodes inclusive at both faces):
 | cv23 tand0p1 | 80 | 0.01324 | 0.00022 | 0.01307 | 0.01985 |
 | cv23 tand1 | 40 | 0.00509 | 0.00048 | 0.00519 | 0.00805 |
 | cv23 tand3 | 40 | 0.00110 | 0.00117 | 0.00048 | 0.00200 |
+
+**Provenance of that table: NOT reproducible from a committed script.** No
+artifact in the tree carries these six rows and no committed emitter writes
+them; they were computed once, for this note, from committed inputs. The recipe,
+so a follow-up re-derives rather than trusts: read `meep.R_meep`,
+`meep.dt_meep_s` and `meep.meep_params_declared` from each declared arm of
+`_22_dispersive_results/rfx.json` and `_23_lossy_results/rfx.json`; recover the
+Meep resolution as `a / (dt_meep · c / courant)` with `a` = 1 cm and courant
+0.5; take `W_lat,meep` as `dispersive_eps.yee_lattice_slab_rt_eps` at
+`(a/res, dt_meep)` on `eps_numerical_meep`, against `tmm_slab_rt` at the
+mapped target; take the thickness term as `tmm_slab_rt` at `d + a/res` against
+`d`. Treat the numbers as an argument for opening the follow-up, not as
+evidence anything is gated on.
 
 The thickness term alone reproduces the measured Meep residual to within a
 factor of 1.5 on all six arms, and the derived sum covers every one. That is
