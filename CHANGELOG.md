@@ -6,6 +6,44 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased — 2.0.0]
 
+### Fixed — NU Kottke smoothing samples cell centres from the float64 spine (#833)
+
+- `compute_smoothed_eps_nonuniform` built its Yee cell centres as `node + f32(store)/2`
+  from the float32 solver store (`dx_arr` / `dy_arr` / `dz`), not from the exact float64
+  cell-size spine (`dx_arr_f64` / `dy_arr_f64` / `dz_f64`) the #802/#807 fix added. On the
+  graded WR-90 fixture (dz 20×D | 10×D/2 | 20×D, D = 0.3048 mm, `cpml_layers=8`, 47×37×67)
+  the sampled centres sat **3.704e-12 m** off `node + d_exact/2` at x64=1 on every axis, and
+  5.18e-10 / 4.44e-10 / 1.10e-09 m (x/y/z) at x64=0 — not the float32 rounding of the exact
+  centre either. The centres are now formed in host float64 from
+  `cell_sizes_from_nonuniform_grid` and cast once to the active JAX dtype (private helper
+  `_nu_yee_centres`; traced axes keep traced arithmetic): **0.0 m** at x64=1, and exactly the
+  f32 rounding of the exact centre at x64=0. The fill-fraction normalisation (geometric-mean
+  cell size) still reads the float32 store — a scale, not a sample coordinate.
+- **Who is affected**: `subpixel_smoothing=True` on the non-uniform lane only
+  (`rfx/runners/nonuniform.py`, `compute_smoothed_eps_nonuniform`). Measured forward-operator
+  delta on that fixture (after vs before): a Box on nodes (ε 2.2) — `ex`/`ey` 0 voxels differ
+  at both flags, `ez` max|Δ| 3.576e-06 on 171 voxels at x64=0 and 1.354e-08 (7.5e-09 rel) on
+  342 voxels at x64=1; an off-node Box (ε 4.0) — `ex` 7.868e-06 / 63 voxels at x64=0 and
+  6.041e-08 / 126 voxels at x64=1, `ey` 0, `ez` 4.292e-06 / 171 voxels at x64=0 and
+  1.720e-08 / 342 voxels at x64=1. On the committed reduces-to-uniform fixture the NU-vs-
+  uniform gap is unchanged for `ex`/`ey`, and for `ez` moves 2.022e-07 → 1.232e-07 at x64=1
+  and 2.384e-07 → 1.431e-06 at x64=0 (the uniform lane adds the half cell in float32
+  arithmetic, the NU lane now rounds the exact centre once; gate 1e-5 untouched). No
+  committed NU test or golden moved; the uniform lane and the binary rasterizer are untouched.
+- Correction to the #833 entry below (ab280a38, PR #998): that change made the uniform
+  smoothing coordinates the **correctly rounded float32 of the shared spine** at x64=0 — it
+  did not make them flag-independent, and smoothed-ε x64-invariance (the issue's acceptance)
+  was not achieved: on the boundary-voxel fixture (dx = 2.54e-4 m, Box 1.3–4.7 × 1.1–3.9 ×
+  0.7–2.3 mm, ε 4) `eps(x64=0)` still differs from `eps(x64=1)` on every interface voxel, max
+  rel 1.131e-06 / 6.467e-07 / 1.025e-06 for `ex`/`ey`/`ez` (15 / 5 / 11 f32 ulps; pre-fix
+  1.019e-06 / 5.661e-06 / 5.661e-06). That PR also changed the x64=0 forward operator on the
+  opt-in uniform smoothing lane (`ex` max|Δ| 3.457e-06 on 478 voxels, `ey`/`ez` 5.484e-06,
+  inverse-ε `iy`/`iz` 5.364e-06) although its body said it changed no solver operator; x64=1
+  was bit-identical, and its third consumer `compute_conformal_weights_sdf` (conformal-PEC
+  lane) was bit-identical at both flags. A measured cross-flag **drift pin** now records this
+  envelope in `tests/unit/geometry/test_smoothing_coordinate_contract.py`; it is not the
+  acceptance. Whether to compute Kottke fill fractions in host float64 for concrete shapes
+  (option a) or ratify the envelope (option b) is recorded on #833 as the PI's decision.
 ### Fixed — the example-fidelity gate described coverage it no longer has, and cv21's port span was asserted against its own literal (#737, #739)
 
 - Tests and docs only: no library code, no gate threshold and no snapshot value changed.
@@ -443,8 +481,10 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
 ### Fixed — shared coordinates for Kottke smoothing (#833)
 
 - Build uniform-grid smoothing coordinates from the same exact host-float64
-  node spine used by rasterization, removing a separate `jnp.arange` path
-  whose positions varied with the active JAX precision setting.
+  node spine used by rasterization, removing a separate `jnp.arange` path.
+  Correction (2026-09-16 re-audit, see the #833 entry at the top of this
+  section): the positions are the correctly rounded float32 of that spine at
+  x64=0, not flag-independent, and smoothed-ε x64-invariance was not achieved.
 
 ### Fixed — MSL geometry and historical Z0 provenance (#752)
 
