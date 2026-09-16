@@ -80,6 +80,47 @@ if OUT_DIR != SCRIPT_DIR:
     print(f"[--out-dir] writing this run's outputs under {OUT_DIR}")
 
 
+# ---------------------------------------------------------------------------
+# ``--nx-interior N`` -- start the settling-extension loop from a DIFFERENT
+# declared box, so this case can produce the rig-variation sibling its own
+# envelope says it has never had.
+#
+# ``envelope.json`` r1 carries `witness_status: carried-unwitnessed` and says
+# why: "the run-length and mesh 2x checks that methodology section 3.2 requires
+# of a user-visible number were NOT run as sibling artifacts on this rung ...
+# both are prose, neither is a committed sibling artifact." The prose it means
+# is this script's own note that nx = 1500 / 1940 steps collapses the per-bin
+# closure. There was no way to run that from the committed script, so the claim
+# stayed prose. There is now.
+#
+# It changes only the STARTING point of the existing grow loop -- the same
+# number `slab_family.NX_INTERIOR` declares -- so a sibling differs from the
+# committed rung in record length and box size and in nothing else. It is
+# refused unless `--out-dir` also points outside the evidence tree: a run on a
+# different box is not this case's committed record and must not land on it.
+# ---------------------------------------------------------------------------
+def _parse_nx_interior(argv):
+    if "--nx-interior" not in argv:
+        return None
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="04_multilayer_fresnel.py --nx-interior", add_help=False)
+    parser.add_argument("--nx-interior", required=True, type=int, dest="nx")
+    parsed, _rest = parser.parse_known_args(argv)
+    if parsed.nx <= 0:
+        raise SystemExit("--nx-interior must be positive")
+    if OUT_DIR == SCRIPT_DIR:
+        raise SystemExit(
+            "--nx-interior is a rig-variation sibling, not this case's "
+            "committed rung: pass --out-dir (outside validation/crossval/) so "
+            "it cannot land on the committed record.")
+    return parsed.nx
+
+
+NX_INTERIOR_OVERRIDE = _parse_nx_interior(sys.argv[1:])
+
+
 def _load_fringe_gate():
     """Import the fringe comparator by path (validation/ is not a package)."""
     import importlib.util
@@ -149,6 +190,11 @@ n_cpml = slab_family.N_CPML
 # the record settles, and reassigns the module-level `nx_interior` to
 # whatever it actually stopped on (800 on the committed run, not 600).
 nx_interior = slab_family.NX_INTERIOR   # 600 mm interior — large to delay CPML round-trip
+if NX_INTERIOR_OVERRIDE is not None:
+    print(f"[--nx-interior] rig-variation sibling: declared box "
+          f"{nx_interior} -> {NX_INTERIOR_OVERRIDE} cells (the grow loop still "
+          f"runs from there). NOT this case's committed rung.")
+    nx_interior = NX_INTERIOR_OVERRIDE
 
 print("=" * 70)
 print("Crossval 04: Fresnel Slab — TFSF plane wave — rfx vs Analytic")
@@ -767,6 +813,10 @@ if "--lattice-witness" in sys.argv:
                      "MASK_AMP_FRAC of its own peak"),
         },
         "run": {"n_steps": int(n_steps), "nx_interior": int(nx_interior),
+                "nx_interior_declared": int(NX_INTERIOR_OVERRIDE
+                                            if NX_INTERIOR_OVERRIDE is not None
+                                            else slab_family.NX_INTERIOR),
+                "rig_variation_sibling": NX_INTERIOR_OVERRIDE is not None,
                 "dx_m": float(dx), "dt_s": float(dt), "n_cpml": int(n_cpml),
                 "aux_n_cpml": int(_rung["aux_echo"]["aux_n_cpml"])},
         "per_bin": {
