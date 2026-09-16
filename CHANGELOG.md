@@ -6,47 +6,6 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased — 2.0.0]
 
-### Fixed — the MSL Z0 platform-datum ledger is board-versioned, and the #931 board has rows (#1084)
-
-- `tests/fixtures/msl_z0_length_invariance/platform_datums.json` declared one top-level
-  `recipe` with `dx_m = 8e-05` while its `test` field named
-  `test_msl_thru_line_z0_length_invariance_and_positive_sign`, which has run the #931
-  board (`DX = H_SUB/3 = 84.67 µm`, zero-thickness PEC sheet, ~46 Ω) since the migration
-  commits. Every one of its nine rows was a ~57 Ω pre-#931 record. Nothing noticed,
-  because the lock runs no FDTD and checked internal consistency only.
-- **Schema v2**: a `boards` map (`pre931-dx80um-onewall`, marked retired-with-history, and
-  `b931-dxH3-sheet`, active) each carrying its own recipe and trace realization; an
-  `active_board` pointer; a mandatory `board` key on every datum. The nine existing rows are
-  unchanged in content and carry the retired board's id. `tests/locks/test_msl_z0_platform_datums.py`
-  gains the check whose absence caused the drift: it imports `DX`/`H_SUB` from the test module
-  and asserts `boards[active_board].recipe.dx_m == DX`. Its uniqueness key is now
-  `(board, commit, platform.cpu)`, and the 2-dp agreement band is a per-board property
-  (`printed_2dp_band`) instead of one global `0.0046 ± 0.0002`.
-- **Five rows for the gated board**, all at full float32 precision except the first:
-  the VESSL 369367259284 docstring record (spread 0.16 %, `docstring_2dp`), this pod's CPU
-  measurement at `6d721a56` (0.047715 %), the same at `c6788ef7` (bit-identical, so the nine
-  commits in between — #1095 and #1088 among them — move nothing on this fixture), a
-  **new RTX 4090 GPU measurement at the same commit `c6788ef7`** (VESSL 369367261423,
-  spread 0.056966 %, the gated test itself passing on that platform), and a runtime-stack
-  control at `c6788ef7` on the same CPU host under the docstring run's own stack
-  (jax 0.6.2 / numpy 1.26.4, spread 0.049877 %).
-- **The 0.11 pp question is answered as far as the evidence allows.** CPU vs GPU at
-  `c6788ef7` differ by 0.0093 pp — inside `classification_policy.threshold_pp = 0.05`, so by
-  the ledger's own rule they AGREE and the GPU backend is not the explanation. Run
-  369367259284 turns out to have pinned `JAX_PLATFORMS=cpu` (a CPU measurement despite the
-  `gpu-rtx4090` preset) and its own `git rev-parse HEAD` printed `no git`, so **it has no
-  recorded commit**. The stack control closes the other half: swapping jax 0.6.2 / numpy<2
-  onto the same host and tree moves the spread by 0.00216 pp, so the runtime stack is not the
-  explanation either — what is left is the tree that run measured, the pre-merge
-  `feat/931-t2-sparams-ports` branch. The policy classifies *same-commit* disagreements, so
-  the 0.16 % is recorded UNCLASSIFIED rather than called platform variance, with the
-  recomputable gap and the reason on file in a new `cross_platform_checks` block that the
-  lock re-derives.
-- **No gate moves.** `MEASURED_SPREAD_ENVELOPE` stays `0.004607` and the enforced gate stays
-  `gate_from_envelope(0.004607, quantum=1000) = 0.007`. The #931 board's own envelope is
-  recorded as data; adopting it would *tighten* the gate to 0.003 off a single board, which
-  is a PI decision and explicitly out of scope here.
-
 ### Fixed — Kottke subpixel smoothing is x64-invariant: concrete shapes are smoothed in host float64 (#833)
 
 - `compute_smoothed_eps`, `compute_inv_eps_tensor_diag` and `compute_smoothed_eps_nonuniform`
