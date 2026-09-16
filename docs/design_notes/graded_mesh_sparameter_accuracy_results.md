@@ -367,11 +367,20 @@ term above says what any other band would cost without running it.
 * **The z-axis envelope is still untested by an observable.** F-Z is the proof
   that this fixture cannot test it: a ratio-2.0 z profile, four transitions,
   changes the S-matrix by 1.7e-6. The mechanism is in the kernel, not in
-  prose: for this guide's TE10 (Ez, Hx, Hy, all constant in z) the Ez update
-  reads `curl_z = ∂Hy/∂x − ∂Hx/∂y` (`rfx/core/yee.py:340-341`) and the Hx / Hy
-  updates read `inv_dy_h` and `inv_dx_h` only (`:437-446`) — **no z spacing
-  enters any of them.** A fixture whose mode varies along the graded axis is
-  required, and the WR-90 is not one.
+  prose: for this guide's TE10 the only electric component is Ez (so
+  `Ex ≡ Ey ≡ 0`) and all three field components are constant in z. The Ez
+  update reads `curl_z = ∂Hy/∂x − ∂Hx/∂y`
+  (`rfx/core/yee.py:340-341`, in `curl_h_nu` — the non-uniform curl this lane
+  runs, not its uniform twin at `:294`) and carries no z spacing at all. The
+  Hx and Hy updates **do** carry `inv_dz_h` — `:438` and `:441`, in
+  `update_h_nu` — but it multiplies `(_shift_fwd(ey, 2) - ey)` and
+  `(_shift_fwd(ex, 2) - ex)`, that is `∂Ey/∂z` and `∂Ex/∂z`, **both
+  identically zero for this mode**. So the z cell sizes are present in the
+  kernel and inert in it: not absent from the update equations, multiplied by
+  zero in them. (§1.2 of the pre-declaration makes the same statement over the
+  surviving terms only, which is why it reads as though `inv_dz_h` were
+  absent.) A fixture whose mode varies along the graded axis is required, and
+  the WR-90 is not one.
 * **Nothing here separates float32 field noise from real solver behaviour at
   the 1e-6 level.** The NU runner does not thread `field_dtype`
   (`rfx/api/__init__.py:330-340`; `rfx/runners/uniform.py` is the only runner
