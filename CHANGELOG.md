@@ -20,9 +20,11 @@ SemVer — **BREAKING** entries are flagged in upper-case.
   geometry) and air λ/4 above the slab. `NUM_PERIODS` is re-sized so the worst of them
   clears -40 dB with margin: **paper mesh 20 → 60** (edge -23.6 → -63.2 dB; D(30°)
   +3.8102 → +3.8781 dBi; the 60-period pattern is within 3.3e-4 of peak of a 120-period
-  run), **SMOKE 12 → 40** (edge -13.3 → -53.5 dB at the init ramp, -54.5 dB on the design
-  the fixture's own 8-step Adam loop returns; the fixture's SMOKE run now prints
-  `settling witness PASS: worst probe1(ex) -55.1 dB` next to its `[done]` number). The
+  run), **SMOKE 12 → 40** (edge -13.3 → -53.5 dB at the init ramp; on an 8-step Adam design
+  produced at the OLD 12-period length the edge reads -54.5 dB and the worst record,
+  probe1 at the slab centre, -53.3 dB; the shipped fixture optimizes at 40 periods and
+  returns a different design — its SMOKE run prints `settling witness PASS: worst
+  probe1(ex) -55.1 dB`, edge -58.8 dB, next to its `[done]` number). The
   eager forwards in `main()` (bare, init, final) print their witness line so a slow design
   shows up next to the number it would contaminate. Geometry, mesh, loss, optimizer and
   the differentiated path are unchanged: with the new probes at the OLD run length the 12
