@@ -758,6 +758,15 @@ CLASSIFICATION: dict[str, str] = {
     "docs/design_notes/cv14_rect_cavity_gate_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/estimator_resolution_regate.md": GATED,
     "docs/design_notes/geometry_setup_interop.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-16 (#810 Tier 1, the WR-90 control): neither note carries a
+    # backtick span containing `::` at all, so nothing parses and nothing is
+    # rejected. Their numbers are replayed from
+    # tests/fixtures/graded_mesh_sparameter_accuracy/wr90_control.json, whose
+    # verdicts the driver's own `--stages verdicts` recomputes from the stored
+    # per-bin values. MIN_REFERENCES / MIN_VALUE_CHECKED / MIN_DISTINCT_ARTIFACTS
+    # are unchanged: these two files add no reference to the opted-in surface.
+    "docs/design_notes/graded_mesh_sparameter_accuracy_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/graded_mesh_sparameter_accuracy_results.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/graded_z_lowz_demo_closure.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/graded_z_lowz_demo_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/i489_stage2_two_port_fdtd_predeclaration.md": NO_ARTIFACT_REFERENCE,

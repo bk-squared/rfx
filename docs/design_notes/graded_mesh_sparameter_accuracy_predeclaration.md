@@ -439,4 +439,21 @@ about 30 s of CPU).
 
 ## Results
 
-(appended after measurement; no window above is changed)
+Measured 2026-09-16, local CPU, 14 cells / 250 s of solve. The numbers, the
+per-bin traces and the recomputed verdicts live in
+[`graded_mesh_sparameter_accuracy_results.md`](graded_mesh_sparameter_accuracy_results.md)
+and in `tests/fixtures/graded_mesh_sparameter_accuracy/wr90_control.json`.
+No window, profile, decision rule or expectation above was changed.
+
+In one line each: **R-1 holds on all 13 gates × 17 bins** (worst margin
++1.28e-3 amplitude, +0.0735° phase); **R-2 fires at one bin** (slab |S11| vs
+Airy at 8.4 GHz, −1.27e-4), traced to the z refinement because arm B equals
+arm C to 1.05e-6; **W-BC holds** at 1.047e-6 against 1e-4, the declared ≈1e-6;
+**F-Z holds** at 1.696e-6, so a ratio-2.0 z profile is as invisible to this
+guide's TE10 as §1.2 predicted and the envelope is untested by this fixture;
+**F-A fires as declared**, arm D2's thru S21 phase residual exceeding the
+allowance at all 17 bins by up to +2.205°, with no flux-lane magnitude
+exceeding. The three Yee-dispersion predictions of §3.4 came in at 0.28 %,
+0.33 % and 0.09 % of the measurement. Two corrections to this note's own
+reasoning (the schema-3/schema-4 artifact choice of §1.4, and two reader
+defects in the driver) are recorded as C1 and C2 of the results note.

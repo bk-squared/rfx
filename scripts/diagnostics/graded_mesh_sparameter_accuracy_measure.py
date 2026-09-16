@@ -74,6 +74,12 @@ SCHEMA_VERSION = 1
 PREDECLARATION = "docs/design_notes/graded_mesh_sparameter_accuracy_predeclaration.md"
 DRIVER = "scripts/diagnostics/graded_mesh_sparameter_accuracy_measure.py"
 REFERENCE_ARTIFACT = "tests/fixtures/waveguide_chain_battery/fixture_v18_close.json"
+# The battery's LIVE artifact (schema 4, realized-PEC device operator). Arm A
+# is compared with BOTH: the schema-3 run is the one the v1.8 chain closure
+# quotes, the schema-4 run is the one measured under the operator today's main
+# ships. See the results note, correction C1.
+LIVE_ARTIFACT = ("tests/fixtures/waveguide_chain_battery/"
+                 "fixture_931_realized_pec_forward2_run369367259427.json")
 
 RUNG = "mid"
 DX = G.RUNG_DX[RUNG]                 # 1.27 mm
@@ -223,16 +229,25 @@ def realized_mesh(sim, grid) -> dict:
     """The cell sizes the solver actually got, per axis, physical domain only,
     plus the node coordinates of every DUT face the geometry declares."""
     def axis_cells(name, total):
-        if is_nu(sim):
-            arr = np.asarray(
-                {"x": grid.dx_arr_f64, "y": grid.dy_arr_f64, "z": grid.dz_f64}[name],
-                dtype=float)
-            lo = int({"x": grid.pad_x_lo, "y": grid.pad_y_lo, "z": grid.pad_z_lo}[name])
-            hi = int({"x": grid.pad_x_hi, "y": grid.pad_y_hi, "z": grid.pad_z_hi}[name])
-            # the NU builder appends one trailing bounding node of zero width (#562)
-            arr = arr[arr > 0.0]
-            return arr[lo:arr.size - hi] if hi else arr[lo:]
-        return np.full(int(round(total / DX)), float(DX))
+        if not is_nu(sim):
+            return np.full(int(round(total / DX)), float(DX))
+        arr = np.asarray(
+            {"x": grid.dx_arr_f64, "y": grid.dy_arr_f64, "z": grid.dz_f64}[name],
+            dtype=float)
+        lo = int({"x": grid.pad_x_lo, "y": grid.pad_y_lo, "z": grid.pad_z_lo}[name])
+        hi = int({"x": grid.pad_x_hi, "y": grid.pad_y_hi, "z": grid.pad_z_hi}[name])
+        core = arr[lo:arr.size - hi] if hi else arr[lo:]
+        # The NU builder appends ONE trailing bounding node (#562). Which of
+        # the two slices is the physical domain is decided by the declared
+        # extent, not by an assumed layout.
+        if (abs(float(core.sum()) - total) > 1e-12
+                and abs(float(core[:-1].sum()) - total) <= 1e-12):
+            core = core[:-1]
+        if abs(float(core.sum()) - total) > 1e-12:
+            raise AssertionError(
+                f"realized {name} cells sum to {core.sum()!r}, declared {total!r} "
+                f"— the realized extent is not the drawn extent (#325 class)")
+        return core
 
     rec = {}
     for name, total in (("x", F.DOMAIN_X_M), ("y", F.A_M), ("z", F.B_M)):
@@ -252,8 +267,9 @@ def dut_rasterization(sim, grid, dut: str) -> dict:
     """Cell counts the DUT actually occupies, read off the assembled material
     arrays the solver uses — the #325-class check (a graded mesh must not move
     a declared stack onto the wrong cells)."""
-    mats = (sim._assemble_materials_nu(grid)[0] if is_nu(sim)
-            else sim._assemble_materials(grid)[0])
+    assembled = (sim._assemble_materials_nu(grid) if is_nu(sim)
+                 else sim._assemble_materials(grid))
+    mats, pec_mask = assembled[0], assembled[3]
     eps = np.asarray(mats.eps_r, dtype=float)
     sig = np.asarray(mats.sigma, dtype=float)
     out = {"dut": dut, "grid_shape": [int(v) for v in eps.shape]}
@@ -261,8 +277,13 @@ def dut_rasterization(sim, grid, dut: str) -> dict:
         m = eps > 2.0
         out["material"] = "eps_r=4 slab"
     elif dut == "pec_short":
-        m = sig > 1.0
-        out["material"] = "sigma=1e10 block"
+        # sigma = 1e10 is above Simulation._PEC_SIGMA_THRESHOLD (1e6), so the
+        # block is carried in pec_mask, not in the sigma array (#931 lattice
+        # ownership). Reading sigma here would report an empty conductor.
+        if pec_mask is None:
+            raise AssertionError("pec_short assembled with no pec_mask (#369 class)")
+        m = np.asarray(pec_mask) > 0
+        out["material"] = "pec_mask (sigma=1e10 > _PEC_SIGMA_THRESHOLD)"
     else:
         out["material"] = None
         out["n_cells"] = 0
@@ -412,6 +433,7 @@ def provenance(args) -> dict:
         "predeclaration": PREDECLARATION,
         "driver": DRIVER,
         "reference_artifact": REFERENCE_ARTIFACT,
+        "live_artifact": LIVE_ARTIFACT,
         "fs2_artifact": FS2_ARTIFACT,
     }
 
@@ -546,17 +568,19 @@ def stage_assemble(args, out_dir: Path, prov: dict) -> None:
     if not arms:
         raise SystemExit(f"no arm records in {out_dir}")
 
-    ref = json.loads((REPO / REFERENCE_ARTIFACT).read_text())
     committed = {}
-    for c in ref["cells"]:
-        if c["rung"] == RUNG and c["lane"] == LANE:
-            committed[c["dut"]] = c
+    for label, path in (("schema3", REFERENCE_ARTIFACT), ("schema4", LIVE_ARTIFACT)):
+        ref = json.loads((REPO / path).read_text())
+        for c in ref["cells"]:
+            if c["rung"] == RUNG and c["lane"] == LANE:
+                committed[(label, c["dut"])] = c
 
     art = {
         "schema": SCHEMA, "schema_version": SCHEMA_VERSION,
         "predeclaration": PREDECLARATION,
         "driver": DRIVER,
         "reference_artifact": REFERENCE_ARTIFACT,
+        "live_artifact": LIVE_ARTIFACT,
         "reference_note": (
             "analytic references of the committed WR-90 chain battery: PEC-short "
             "|S11| = 1, eps_r = 4 slab vs Airy (magnitude and phase), thru column "
@@ -574,17 +598,22 @@ def stage_assemble(args, out_dir: Path, prov: dict) -> None:
 
     # arm A vs the committed artifact — the provenance check
     prov_check = {}
-    for dut, c in committed.items():
+    for (label, dut), c in committed.items():
         key = f"A|{dut}"
         if key not in arms:
             continue
         S_new = G.s_from_json(arms[key]["s_params"])
         S_old = G.s_from_json(c["s_params"])
-        prov_check[dut] = {
-            "max_abs_diff": float(np.max(np.abs(S_new - S_old))),
+        d = np.abs(S_new - S_old)
+        prov_check[f"{label}|{dut}"] = {
+            "artifact": REFERENCE_ARTIFACT if label == "schema3" else LIVE_ARTIFACT,
+            "max_abs_diff": float(d.max()),
+            "max_abs_diff_per_entry": {
+                k: float(np.max(d[i, j])) for k, (i, j) in
+                (("S11", (0, 0)), ("S21", (1, 0)), ("S12", (0, 1)), ("S22", (1, 1)))},
             "gate": 1.0e-4,
             "gate_provenance": "tests/oracle/test_waveguide_chain_battery_v18_close.py live cell gate",
-            "pass": bool(np.max(np.abs(S_new - S_old)) <= 1.0e-4),
+            "pass": bool(d.max() <= 1.0e-4),
         }
     art["arm_a_vs_committed_artifact"] = prov_check
 
@@ -614,6 +643,174 @@ def stage_assemble(args, out_dir: Path, prov: dict) -> None:
     _log(f"wrote {out}")
 
 
+# --- verdicts (pure post-processing of the artifact; §4 of the note) --------
+
+def _dev_per_bin(arms: dict, key: str) -> dict:
+    """Deviation from the ANALYTIC reference, per gate, per bin."""
+    r = arms[key]
+    S = G.s_from_json(r["s_params"])
+    out = {}
+    dut = r["dut"]
+    cp = np.asarray(r["column_power_per_bin"], dtype=float)
+    out["column_power"] = np.abs(cp - 1.0).max(axis=0)
+    out["reciprocity_complex"] = np.asarray(r["reciprocity_complex_per_bin"], dtype=float)
+    if dut == "pec_short":
+        out["pec_short_s11_mag"] = np.abs(np.abs(S[0, 0]) - 1.0)
+        out["pec_short_s22_mag"] = np.abs(np.abs(S[1, 1]) - 1.0)
+    if dut == "slab":
+        ref = r["referee_slab_airy"]
+        out["slab_airy_s11_mag"] = np.abs(np.asarray(ref["s11_mag_abs_diff_per_bin"], dtype=float))
+        out["slab_airy_s21_mag"] = np.abs(np.asarray(ref["s21_mag_abs_diff_per_bin"], dtype=float))
+        out["slab_airy_s11_phase_deg"] = np.abs(np.asarray(ref["s11_phase_diff_deg_per_bin"], dtype=float))
+        out["slab_airy_s21_phase_deg"] = np.abs(np.asarray(ref["s21_phase_diff_deg_per_bin"], dtype=float))
+    if dut == "thru":
+        # wrap(angle(S21) + beta*L), the shipped witness's own formula
+        # (rfx/sparams/_common.py::s21_phase_residual_deg_rms), rebuilt per
+        # bin from the meta the result carries. The reconstruction is CHECKED
+        # against the stored rms below, so a formula drift is not silent.
+        meta = r.get("s21_phase_residual_meta") or {}
+        beta = G.beta_yee_fc(F.FREQS, float(meta["f_cutoff_hz"]),
+                             float(r["dt_s"]), float(r["dx_m"]))
+        resid = G.wrap_deg(np.degrees(np.angle(S[1, 0]) + beta * float(meta["L_m"])))
+        rms = float(np.sqrt((resid ** 2).mean()))
+        stored = float(r["s21_phase_residual_deg_rms"])
+        if abs(rms - stored) > 1e-6 * max(abs(stored), 1.0):
+            raise AssertionError(
+                f"{key}: reconstructed S21 phase residual rms {rms} does not "
+                f"reproduce the shipped {stored}")
+        out["thru_s21_phase_residual_deg"] = np.abs(resid)
+    return out
+
+
+PHASE_GATES = ("slab_airy_s11_phase_deg", "slab_airy_s21_phase_deg",
+               "thru_s21_phase_residual_deg")
+
+
+def stage_verdicts(args, out_dir: Path) -> None:
+    path = Path(args.artifact_out) if args.artifact_out else (
+        REPO / "tests" / "fixtures" / "graded_mesh_sparameter_accuracy" / "wr90_control.json")
+    art = json.loads(path.read_text())
+    arms = art["arms"]
+    allow = art["allowance"]
+    disp = art["dispersion_predictions"]
+    a_b_amp = np.asarray(allow["B"]["a_total_amplitude"], dtype=float)
+    a_b_ph = np.asarray(allow["B"]["a_total_phase_deg_at_unit_mag"], dtype=float)
+    a_dt = np.abs(np.asarray(disp["dt_term_deg_per_bin"], dtype=float))
+
+    verdicts = {}
+    for dut in ("thru", "pec_short", "slab"):
+        if f"B|{dut}" not in arms:
+            continue
+        dB = _dev_per_bin(arms, f"B|{dut}")
+        dC = _dev_per_bin(arms, f"C|{dut}")
+        dA = _dev_per_bin(arms, f"A|{dut}")
+        for gate in dB:
+            allowance = a_b_ph if gate in PHASE_GATES else a_b_amp
+            dt_term = a_dt if gate in PHASE_GATES else np.zeros_like(a_dt)
+            r1_margin = dC[gate] + allowance - dB[gate]
+            r2_margin = dA[gate] + allowance + dt_term - dB[gate]
+            verdicts[f"R-1|{dut}|{gate}"] = {
+                "rule": "dev_B <= dev_C + A_B, per bin",
+                "dev_B": [float(v) for v in dB[gate]],
+                "dev_C": [float(v) for v in dC[gate]],
+                "allowance": [float(v) for v in allowance],
+                "margin_per_bin": [float(v) for v in r1_margin],
+                "worst_margin": float(r1_margin.min()),
+                "worst_bin_hz": float(np.asarray(F.FREQS)[int(np.argmin(r1_margin))]),
+                "fired": bool(r1_margin.min() < 0.0),
+            }
+            verdicts[f"R-2|{dut}|{gate}"] = {
+                "rule": "dev_B <= dev_A + A_B + A_dt, per bin",
+                "dev_A": [float(v) for v in dA[gate]],
+                "margin_per_bin": [float(v) for v in r2_margin],
+                "worst_margin": float(r2_margin.min()),
+                "worst_bin_hz": float(np.asarray(F.FREQS)[int(np.argmin(r2_margin))]),
+                "fired": bool(r2_margin.min() < 0.0),
+            }
+
+    # W-BC and F-Z: |S_B - S_C| and |S_D1 - S_C|
+    for tag, a, b in (("W-BC", "B", "C"), ("F-Z", "D1", "C")):
+        worst = 0.0
+        per_dut = {}
+        for dut in ("thru", "pec_short", "slab"):
+            k = f"{a}-{b}|{dut}"
+            if k in art["pairwise_deltas"]:
+                v = art["pairwise_deltas"][k]["max_abs_delta_S"]
+                per_dut[dut] = v
+                worst = max(worst, v)
+        verdicts[tag] = {
+            "rule": f"max |S_{a} - S_{b}| <= 1e-4",
+            "per_dut": per_dut, "worst": worst, "window": 1.0e-4,
+            "fired": bool(worst > 1.0e-4),
+        }
+
+    # F-A: arm D2 must EXCEED arm B's allowance on at least one gate/bin
+    fa = {}
+    if "D2|thru" in arms:
+        dD2 = _dev_per_bin(arms, "D2|thru")
+        dA = _dev_per_bin(arms, "A|thru")
+        for gate in dD2:
+            allowance = a_b_ph if gate in PHASE_GATES else a_b_amp
+            excess = dD2[gate] - dA[gate] - allowance
+            fa[gate] = {
+                "dev_D2": [float(v) for v in dD2[gate]],
+                "dev_A": [float(v) for v in dA[gate]],
+                "allowance": [float(v) for v in allowance],
+                "excess_per_bin": [float(v) for v in excess],
+                "max_excess": float(excess.max()),
+                "exceeds": bool(excess.max() > 0.0),
+            }
+        fa["amplitude_witness"] = {
+            "max_abs_delta_S_vs_A": art["pairwise_deltas"]["D2-A|thru"]["max_abs_delta_S"],
+            "allowance_max": float(a_b_amp.max()),
+        }
+    verdicts["F-A"] = {
+        "rule": "arm D2 must exceed arm B's allowance on at least one gate and bin",
+        "gates": fa,
+        "falsifier_behaves": bool(any(v.get("exceeds") for v in fa.values()
+                                      if isinstance(v, dict) and "exceeds" in v)),
+    }
+
+    # Arm E — reference only, no window (note §4). Recorded the same way as
+    # F-A so a reader can see how an IN-envelope ratio on the propagation axis
+    # compares with the reflection-derived allowance.
+    if "E|thru" in arms:
+        dE = _dev_per_bin(arms, "E|thru")
+        dA = _dev_per_bin(arms, "A|thru")
+        g = "thru_s21_phase_residual_deg"
+        excess = dE[g] - dA[g] - a_b_ph
+        verdicts["E-reference"] = {
+            "rule": "no window; recorded against arm B's allowance for comparison",
+            "dev_E": [float(v) for v in dE[g]],
+            "dev_A": [float(v) for v in dA[g]],
+            "allowance_B": [float(v) for v in a_b_ph],
+            "excess_per_bin": [float(v) for v in excess],
+            "max_excess": float(excess.max()),
+            "n_bins_over_allowance": int((excess > 0).sum()),
+        }
+
+    # Yee predictions against measurement
+    pred = {}
+    for tag, key, predicted in (
+            ("dt-term (B/C vs A, thru)", "B-A|thru", disp["dt_term_deg_rms"]),
+            ("D2 band (vs A, thru)", "D2-A|thru", disp["D2"]["excess_phase_deg_rms"]),
+            ("E band (vs A, thru)", "E-A|thru", disp["E"]["excess_phase_deg_rms"])):
+        if key in art["pairwise_deltas"]:
+            meas = art["pairwise_deltas"][key]["s21_phase_delta_deg_rms"]
+            pred[tag] = {"predicted_deg_rms": float(predicted),
+                         "measured_deg_rms": float(meas),
+                         "rel_error": float(abs(meas - predicted) / max(predicted, 1e-12))}
+    verdicts["yee_prediction_vs_measurement"] = pred
+
+    art["verdicts"] = verdicts
+    _write(path, art)
+    _log(f"updated {path} with verdicts")
+    for k, v in verdicts.items():
+        if isinstance(v, dict) and "fired" in v:
+            _log(f"  {k}: fired={v['fired']} worst_margin="
+                 f"{v.get('worst_margin', v.get('worst'))}")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out-dir", required=True)
@@ -635,6 +832,8 @@ def main() -> None:
         stage_arms(args, out_dir, prov)
     if "assemble" in stages:
         stage_assemble(args, out_dir, prov)
+    if "verdicts" in stages:
+        stage_verdicts(args, out_dir)
 
 
 if __name__ == "__main__":
