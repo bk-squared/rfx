@@ -6,6 +6,32 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased — 2.0.0]
 
+### Fixed — `until_decay` measured the residual against itself on a domain that empties early (#1078)
+
+- The interior-energy stop of `run_until_decay` (uniform `rfx/simulation.py` and non-uniform
+  `rfx/nonuniform.py`) tracked its reference `peak_U` only from `decay_min_steps` onward, on the
+  assumption — stated in the code beside the flux-stop branch, which does NOT make it — that the
+  interior energy peaks after the source ends. On a domain that has already emptied by
+  `decay_min_steps` the reference IS the residual, nothing falls another `until_decay` below
+  itself, and the run reaches `decay_max_steps` without the criterion ever firing. The peak is now
+  tracked from the first check on both lanes; only the stop still waits for `decay_min_steps`.
+  `until_decay=0.0` (the forced-N escape) computes nothing extra and its recorded check trace is
+  unchanged.
+- Measured on the committed cv03-class guided fixture
+  (`tests/unit/runners/test_decay_flux_convergence.py`, eps=12 slab spanning the domain,
+  `until_decay=1e-5`, `decay_min_steps=2000`): the interior energy peaks at 6.28e-10 near step 701
+  and reads 6.13e-17 at step 2001 — 9.8e-8 of the peak — while the post-`min_steps` maximum reads
+  6.13e-17, a reference 1.0e7 times too small. The run went to the 8149-step cap; it now stops at
+  step 2051 with a flux-DFT transmission of 0.9074101 against the fixed-duration truth 0.9073967
+  (1.5e-5 relative, gate 2%).
+- This is what turned the GPU lane red after #1057. That change (a dielectric touching the domain
+  boundary is solved WITH its absorber pad) is correct and stays: it removed the vacuum facet that
+  used to reflect the guided mode back into the domain, which is precisely what had been keeping
+  enough energy inside for the broken reference to look like a working one. The acceptance test's
+  retired `stop_step > 3000` witness was a measurement of that facet-reflecting structure, not of
+  the criterion; it is replaced by a prompt-fire envelope and the transmission assertion it always
+  carried.
+
 ### Fixed — Kottke subpixel smoothing is x64-invariant: concrete shapes are smoothed in host float64 (#833)
 
 - `compute_smoothed_eps`, `compute_inv_eps_tensor_diag` and `compute_smoothed_eps_nonuniform`
