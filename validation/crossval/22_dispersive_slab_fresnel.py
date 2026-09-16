@@ -316,8 +316,14 @@ def main(argv=None) -> int:
         # whose witness is absent (None) makes the verdict FAIL, never PASS
         # (#928). The analytic falsifier checks, which have no run behind them,
         # keep the default.
+        # The E2 windows are DERIVED from this arm's own lattice-continuum
+        # difference and its own record, never borrowed from cv04 (#928 item 2,
+        # docs/design_notes/slab_family_per_arm_lattice_window_predeclaration.md).
+        # `params` (declared), never `params_run`: a falsifier must not size the
+        # window meant to catch it.
+        awin = G.slab_arm_windows.from_run(run, model, params)
         e2 = G.evaluate_e2(run["freqs_hz"], run["R_rfx"], run["T_rfx"], model, params, run["dt_s"],
-                           tail=run["tail"], require_complete=True, windows=G.WINDOWS)
+                           tail=run["tail"], require_complete=True, windows=awin)
         e2["params_run"] = {k: float(v) for k, v in params_run.items()}
         e2["band_inc_ok"] = run["band_inc_ok"]
         e2["inc_amp_rel"] = np.asarray(run["inc_amp_rel"]).tolist()

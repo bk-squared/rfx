@@ -558,6 +558,14 @@ FANOUT: dict[str, str] = {
     "docs/design_notes/20260906_issue928_ownership_decision.md": HISTORICAL_PROSE,
     "docs/design_notes/20260908_docs_truth_field_ledger.md": HISTORICAL_PROSE,
     "docs/design_notes/issue812_cv04_fringe_gate_predeclaration.md": HISTORICAL_PROSE,
+    # #928 item 2's pre-declaration. It quotes the r1 values and the windows
+    # derived from them to state the DEFECT it replaces -- cv04's |R+T-1| used
+    # to size a lattice-dispersion residual -- and nothing in it derives a
+    # window from any of them: the windows it declares come from each arm's own
+    # lattice-continuum difference and its own record
+    # (validation/crossval/comparators/slab_arm_windows.py), which carries no
+    # adopted literal at all. No revision names this note as an adoption site.
+    "docs/design_notes/slab_family_per_arm_lattice_window_predeclaration.md": HISTORICAL_PROSE,
 }
 
 # What a DISPLAY_WITH_SOURCE file must point at: the producer's envelope, or --

@@ -349,8 +349,13 @@ def main(argv=None) -> int:
         # The oracle is ALWAYS the declared material (cv22 note section 10.1).
         # require_complete: claims-bearing invocation -- an absent witness
         # cannot leave a PASS standing (#928).
+        # The E2 windows are DERIVED from this arm's own lattice-continuum
+        # difference and its own record, never borrowed from cv04 (#928 item 2,
+        # docs/design_notes/slab_family_per_arm_lattice_window_predeclaration.md).
+        # `params` (declared), never `params_run`.
+        awin = L.slab_arm_windows.from_run(run, L.MODEL, params)
         e2 = L.evaluate_e2(run["freqs_hz"], run["R_rfx"], run["T_rfx"], params, run["dt_s"], tail=run["tail"],
-                           dx=run["dx_m"], require_complete=True)
+                           dx=run["dx_m"], require_complete=True, windows=awin)
         e2["params_run"] = {k: float(v) for k, v in params_run.items()}
         e2["materials_path"] = path
         e2["materials"] = run["materials"]

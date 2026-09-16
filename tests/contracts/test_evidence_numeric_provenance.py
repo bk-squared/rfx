@@ -637,6 +637,13 @@ CLASSIFICATION: dict[str, str] = {
     "docs/public/validation/cross-solver.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/validation/index.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/validation/recommended-configuration.mdx": NO_ARTIFACT_REFERENCE,
+    # #928 item 2's pre-declaration: `parses` is empty -- it carries no
+    # `<path>.json::<key>` span. Its numbers are of two kinds, neither of which
+    # this gate can resolve: the r1 values it quotes to state the defect it
+    # replaces (their keys are in the envelope artifact, cited by name in the
+    # prose), and the per-arm windows it declares, which are RECOMPUTED from
+    # each record at evaluation time and are written into no artifact key.
+    "docs/design_notes/slab_family_per_arm_lattice_window_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260829_spec01_multiband_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260830_issue786_convergence_floor.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260831_cv02_ring_judge_predeclaration.md": NO_ARTIFACT_REFERENCE,

@@ -29,6 +29,7 @@ for _p in (_HERE, _REPO_ROOT):
 
 import cv22_dispersive_gates as G  # noqa: E402
 import dispersive_eps as de  # noqa: E402
+import slab_arm_windows  # noqa: E402
 import slab_family  # noqa: E402
 from tests._gate_policy import gate_from_envelope  # noqa: E402
 
@@ -137,7 +138,23 @@ W_MEAN_A_TIGHT = gate_from_envelope(CV04_MEAN_CLOSURE, quantum=_QUANTUM)
 # round 2 the evaluator read cv22's module-level constants, so cv23's
 # G1_R/G1_T/G2_R/G2_T were judged by cv22's adoption and the derivations
 # above were dead code for everything except the A gates.
+#
+# SCOPE, after the per-arm re-derivation (#928 item 2, pre-declaration
+# docs/design_notes/slab_family_per_arm_lattice_window_predeclaration.md):
+# every window above -- W_BIN, W_MEAN_R/T, W_BIN_A, W_MEAN_A -- is now the
+# MEEP legs' (evaluate_e4's G4/G5). The E2 gates G1_*/G2_* take
+# `arm_windows(...)`, derived from this arm's own lattice-continuum difference
+# and its own record, with no cv04 in it. W_BIN_A_TIGHT / W_MEAN_A_TIGHT keep
+# their cv04-r1 derivation: they are REPORTED (`A_tight_ok`), never gated.
 WINDOWS = slab_family.Windows(W_BIN, W_MEAN_R, W_MEAN_T)
+
+
+def arm_windows(arm_doc: dict, *, params: dict | None = None):
+    """The E2 windows for ONE cv23 arm, from its own lattice and record.
+
+    The same leaf derivation cv22 uses; `model` is this case's fixed
+    "conductive" and comes from the record."""
+    return slab_arm_windows.from_arm_doc(arm_doc, model=MODEL, params=params)
 
 # ---------------------------------------------------------------------------
 # Falsifiers (note section 6)
@@ -221,7 +238,8 @@ DECLARED_GATES = G.DECLARED_GATES + ("G1_A", "G2_A")
 
 
 def evaluate_e2(freqs_hz, R_rfx, T_rfx, params: dict, dt: float, *, tail: dict | None = None,
-                dx: float | None = None, require_complete: bool = False) -> dict:
+                dx: float | None = None, require_complete: bool = False,
+                windows=None) -> dict:
     """E2 gates G1 (per-bin R, T, A), G2 (band-mean R, T, A), G3 (witnesses).
     With ``dx`` given, the exact Yee-lattice solution at (dx, dt) is added as
     a witness (``lattice``: W_lat per bin and |rfx - lattice|; note section
@@ -232,8 +250,9 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, params: dict, dt: float, *, tail: dict |
     comparators/lattice_witness.py's evaluate(), re-aggregating gates with
     GL_witness added -- issue #970. Do not re-describe it as reported-only
     here without checking that caller first."""
+    win = WINDOWS if windows is None else windows
     out = G.evaluate_e2(freqs_hz, R_rfx, T_rfx, MODEL, params, dt, tail=tail,
-                        require_complete=require_complete, windows=WINDOWS)
+                        require_complete=require_complete, windows=win)
     f = np.asarray(freqs_hz, dtype=float)
     g = np.asarray(out["gated"], dtype=bool)
     R_x = np.asarray(out["R_rfx"]); T_x = np.asarray(out["T_rfx"])
@@ -243,8 +262,17 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, params: dict, dt: float, *, tail: dict |
     A_ade = 1.0 - np.asarray(out["R_tmm_ade"]) - np.asarray(out["T_tmm_ade"])
     w_A = np.abs(A_ade - A_an)
     dA = np.abs(A_x - A_an)
-    win_A = W_BIN_A + w_A
-    mean_win_A = W_MEAN_A + _f(np.mean(w_A[g]))
+    if isinstance(win, slab_arm_windows.ArmWindows):
+        # The absorption window is the arm's OWN |A_lattice - A_TMM| plus the
+        # record budget's A term, not the triangle sum 2*W_BIN of a borrowed
+        # scalar; A = 1 - R - T on both sides, so the lattice term is a direct
+        # difference and needs no triangle bound. w_A is already inside it
+        # (the lattice is built on the discrete-time eps), so it is not added.
+        win_A = np.asarray(win.A, dtype=float)
+        mean_win_A = float(win.mean_A)
+    else:
+        win_A = W_BIN_A + w_A
+        mean_win_A = W_MEAN_A + _f(np.mean(w_A[g]))
     g1_A = bool(np.all(dA[g] <= win_A[g]))
     g2_A = bool(np.mean(dA[g]) <= mean_win_A)
     # Reported, not gated (note section 4): the closure-derived tighter window.
@@ -284,7 +312,11 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, params: dict, dt: float, *, tail: dict |
 
 
 def evaluate_e4(e2: dict, meep_doc: dict) -> dict:
-    """E4 gates G4 (Meep vs TMM) and G5 (rfx vs Meep) on R, T and A."""
+    """E4 gates G4 (Meep vs TMM) and G5 (rfx vs Meep) on R, T and A.
+
+    Always the cv04-adopted scalar windows, whatever E2 was judged by: the
+    term these must cover is MEEP's discretization (pre-declaration section 7).
+    """
     out = G.evaluate_e4(e2, meep_doc, windows=WINDOWS)
     f = np.asarray(e2["freqs_hz"], dtype=float)
     g = np.asarray(e2["gated"], dtype=bool)
@@ -375,7 +407,8 @@ def meep_ladder_summary(results_dir: str, rfx_doc: dict, resolutions=MEEP_LADDER
     arm = "tand0p1"
     if arm in rfx_doc["arms"]:
         ad = rfx_doc["arms"][arm]
-        e2 = evaluate_e2(ad["freqs_hz"], ad["R_rfx"], ad["T_rfx"], ad["params"], ad["dt_s"], tail=ad["tail"])
+        e2 = evaluate_e2(ad["freqs_hz"], ad["R_rfx"], ad["T_rfx"], ad["params"], ad["dt_s"], tail=ad["tail"],
+                         windows=arm_windows(ad))
         for tag in MEEP_DIAGNOSTIC_TAGS:
             p = os.path.join(results_dir, f"meep_{arm}__{tag}.json")
             if not os.path.isfile(p):
