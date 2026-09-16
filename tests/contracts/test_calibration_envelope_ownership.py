@@ -457,10 +457,21 @@ def test_the_guard_fires_on_the_reviewers_rewrite_probe():
     # rule (a) alone: the artifact edited, no consumer touched
     only_artifact = same_commit_violation({_ENVELOPE_REL}, records, rewritten, base_doc)
     assert only_artifact is not None and "append-only" in only_artifact
-    # rule (b) alone: an APPENDED revision plus a re-adoption in one change
+    # rule (b) alone: an APPENDED revision plus a re-adoption in one change.
+    #
+    # The synthetic revision has to be one the artifact does not already have.
+    # This probe hard-coded "r2" and broke the day cv04 appended a real r2
+    # (#928 item 1): overwriting an existing revision exercises rule (a) --
+    # "already existed at the base and its [...] changed in place" -- which is
+    # the opposite of what these four lines are for, and the failure looks like
+    # a defect in the evidence rather than in the probe.
+    n = 2
+    while f"r{n}" in doc["revisions"]:
+        n += 1
+    probe = f"r{n}"
     appended = json.loads(json.dumps(doc))
-    appended["revisions"]["r2"] = json.loads(json.dumps(doc["revisions"]["r1"]))
-    appended["revisions"]["r2"]["bootstrap"] = False
+    appended["revisions"][probe] = json.loads(json.dumps(doc["revisions"]["r1"]))
+    appended["revisions"][probe]["bootstrap"] = False
     msg_b = same_commit_violation(both, records, appended, base_doc)
     assert msg_b is not None and "Split it" in msg_b
     # and the legitimate shapes stay legal
