@@ -1731,8 +1731,20 @@ class _ExecuteMixin:
                 # part, so the #931 collectors are passed and dropped —
                 # the sheets this run realizes are collected and applied
                 # by the assembly that drives the scan, not here.
-                _static_eps_483 = self._assemble_materials(
-                    grid, pec_sheets=[], pec_wires=[])[0].eps_r
+                #
+                # ``ensure_compile_time_eval`` keeps this read CONCRETE under
+                # an outer ``jax.jit``. It depends on no traced input by
+                # construction (registered materials, no override), but an
+                # inner ``jit``/``pjit`` inside material assembly stages its
+                # output as a tracer once an outer trace is open, and the
+                # ``float(np.asarray(...))`` below then raised
+                # ``TracerArrayConversionError`` and took down every
+                # jit-wrapped forward carrying an MSL port (#1091). Outside a
+                # trace the context manager is a no-op, so the eager value is
+                # bit-identical.
+                with jax.ensure_compile_time_eval():
+                    _static_eps_483 = self._assemble_materials(
+                        grid, pec_sheets=[], pec_wires=[])[0].eps_r
             for pe in self._msl_ports:
                 # Use the same physical-to-port frame as run(). In a y-fed
                 # port feed_x names physical y, and y_lo/y_hi name width x.
@@ -1782,9 +1794,16 @@ class _ExecuteMixin:
                         # (hoisted above the port loop) — correct
                         # for every caller (forward, topology,
                         # sparam_driver) without threading a handle.
-                        eps_r_sub = float(np.asarray(
-                            _static_eps_483[eps_cell]
-                        ))
+                        #
+                        # Same #1091 guard as the assembly above, one level
+                        # down: under an outer trace even an index into a
+                        # CONCRETE array is staged into the jaxpr, so the
+                        # single-cell read came back a tracer and ``float()``
+                        # raised. Outside a trace this is a no-op.
+                        with jax.ensure_compile_time_eval():
+                            eps_r_sub = float(np.asarray(
+                                _static_eps_483[eps_cell]
+                            ))
                     mode_profile = compute_msl_mode_profile(grid, mp, eps_r_sub)
                 elif port_mode == "eigenmode":
                     raise NotImplementedError(

@@ -425,14 +425,26 @@ def compute_far_field(
     -------
     FarFieldResult
     """
-    # Auto-detect JAX tracing context and dispatch to differentiable version
+    # Auto-detect JAX tracing context and dispatch to differentiable version.
+    #
+    # The dispatch DECISION is what may fail on an exotic ntff_data (a mock, a
+    # namedtuple missing a field); the transform itself must not be. An earlier
+    # form wrapped the ``return compute_far_field_jax(...)`` in the same
+    # ``except Exception: pass``, so a genuine failure inside the JAX transform
+    # was swallowed and re-raised from the numpy branch below instead — issue
+    # #1091 surfaced as ``TracerArrayConversionError`` at the numpy
+    # ``np.asarray(box.freqs)`` line, pointing at the fallback rather than at
+    # the cause in ``compute_far_field_jax``. Only the predicate is guarded now.
     import jax
     try:
-        if any(isinstance(getattr(ntff_data, f, None), jax.core.Tracer)
-               for f in ('x_lo', 'x_hi', 'y_lo')):
-            return compute_far_field_jax(ntff_data, box, grid, theta, phi)
+        _traced = any(
+            isinstance(getattr(ntff_data, f, None), jax.core.Tracer)
+            for f in ('x_lo', 'x_hi', 'y_lo')
+        ) or isinstance(getattr(box, 'freqs', None), jax.core.Tracer)
     except Exception:
-        pass
+        _traced = False
+    if _traced:
+        return compute_far_field_jax(ntff_data, box, grid, theta, phi)
     theta = np.asarray(theta, dtype=np.float64)
     phi = np.asarray(phi, dtype=np.float64)
     freqs = np.asarray(box.freqs, dtype=np.float64)
@@ -721,8 +733,14 @@ def compute_far_field_jax(
             if _shape is not None and len(_shape) >= 3:
                 n_cells = max(n_cells, int(_shape[1]) * int(_shape[2]))
         if n_cells > 0:
-            n_freqs = int(np.asarray(box.freqs).shape[0])
-            n_ph = int(jnp.asarray(phi).shape[0])
+            # Shapes are STATIC under tracing; the values are not. Reading
+            # the length through ``np.asarray`` materialised the array and
+            # broke every outer ``jax.jit`` around a forward with an NTFF box
+            # (issue #1091) — ``box.freqs`` leaves ``forward()`` as a tracer.
+            # ``jnp.shape`` answers from the aval and accepts a list, a numpy
+            # array, a concrete jax array and a tracer alike.
+            n_freqs = int(jnp.shape(box.freqs)[0])
+            n_ph = int(jnp.shape(phi)[0])
             per_theta = max(1.0, n_freqs * n_ph * n_cells * 16.0)
             # At least one theta per pass: when a single direction already
             # exceeds the budget, chunking to 1 is the smallest the split

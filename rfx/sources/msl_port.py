@@ -25,6 +25,7 @@ post-simulation, on small per-frequency arrays.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
 import jax
@@ -302,6 +303,7 @@ def validate_msl_port_geometry(grid, port, *, pec_edge_masks=None,
     accuracy or the approximation of a coarse trace width.
     """
     from rfx.boundaries.pec import realized_wall_planes
+    from rfx.core.jax_utils import is_tracer
     from rfx.geometry.rasterize_grid import _box_axis_closed, _local_cell
     from rfx.materials.thin_conductor import build_sheet_impedance_ctx
 
@@ -312,15 +314,30 @@ def validate_msl_port_geometry(grid, port, *, pec_edge_masks=None,
     label = f"MSL port {name!r}" if name is not None else "MSL port"
     if len(nodes[ip]) < 2 or len(nodes[iw]) < 2:
         raise ValueError(f"{label}: propagation and width axes must both be resolved")
-    hard = (tuple(np.zeros(grid.shape, dtype=bool) for _ in range(3))
-            if pec_edge_masks is None else tuple(np.asarray(m, dtype=bool) for m in pec_edge_masks))
-    if sheet_impedance is None and sheet_specs:
-        sheet_impedance = build_sheet_impedance_ctx(
-            sheet_specs, pec_edge_masks=pec_edge_masks, periodic=periodic)
-    observed = hard
-    if sheet_impedance is not None:
-        observed = tuple(h | np.asarray(getattr(sheet_impedance, f"mask_e{ax}"), dtype=bool)
-                         for h, ax in zip(hard, "xyz"))
+    # Under an OUTER ``jax.jit`` the realized PEC edge masks are TRACERS: they
+    # descend from a traced ``eps_override`` / ``pec_occupancy_override``, and
+    # the Kottke fence in the runners compares a traced inverse-permittivity
+    # against a threshold. The conductor census below is host-side by
+    # construction (Python ``bool()``, ``np.flatnonzero``, index lists inside
+    # error strings), so it cannot be evaluated on a tracer at all -- the
+    # ``np.asarray(m, dtype=bool)`` that used to sit here raised
+    # ``TracerArrayConversionError`` and took the whole forward down (#1091).
+    # Everything that reads only concrete mesh/port geometry still runs; the
+    # mask-dependent half is deferred, once, with a warning that names it.
+    masks_traced = (pec_edge_masks is not None
+                    and any(is_tracer(m) for m in pec_edge_masks))
+    if masks_traced:
+        hard = observed = None
+    else:
+        hard = (tuple(np.zeros(grid.shape, dtype=bool) for _ in range(3))
+                if pec_edge_masks is None else tuple(np.asarray(m, dtype=bool) for m in pec_edge_masks))
+        if sheet_impedance is None and sheet_specs:
+            sheet_impedance = build_sheet_impedance_ctx(
+                sheet_specs, pec_edge_masks=pec_edge_masks, periodic=periodic)
+        observed = hard
+        if sheet_impedance is not None:
+            observed = tuple(h | np.asarray(getattr(sheet_impedance, f"mask_e{ax}"), dtype=bool)
+                             for h, ax in zip(hard, "xyz"))
     faces = set(pec_faces or ())
     domain_planes = set()
     if "z_lo" in faces:
@@ -356,6 +373,18 @@ def validate_msl_port_geometry(grid, port, *, pec_edge_masks=None,
             idx[ip] = grid.shape[ip]-1
             found = found or bool(observed[ip][tuple(idx)])
         return found
+
+    if observed is None:
+        warnings.warn(
+            f"{label}: conductor-surface validation SKIPPED -- the realized PEC "
+            "edge masks are JAX tracers (an outer jax.jit around forward(), or a "
+            "traced eps_override / pec_occupancy_override), so the ground/trace "
+            "attachment and substrate-interval checks cannot be evaluated on the "
+            "host. Mesh, port-frame and domain-PEC-face checks did run. Call the "
+            "same simulation once WITHOUT the outer jit (or via preflight()) to "
+            "validate the port declaration against the realized conductors.",
+            UserWarning, stacklevel=2)
+        return
 
     for w in widths:
         for role, k, declared in (("ground", lower, port.z_lo), ("trace", upper, port.z_hi)):

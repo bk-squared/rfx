@@ -137,10 +137,19 @@ def msl_modal_voltage(ez_plane, *, j_centre: int, k_lo: int, k_hi: int,
             f"to zero substrate cells cannot define a modal voltage — "
             f"refine the mesh or raise the port height."
         )
+    # ``dz_arr`` is the STATIC substrate cell-size column, registered outside
+    # any trace. Under an outer ``jax.jit`` around forward()+extraction,
+    # however, indexing even a concrete array is staged into the jaxpr, so
+    # ``float(dz_arr[k])`` met a tracer and raised ``ConcretizationTypeError``
+    # (#1091, the MSL leg). ``ensure_compile_time_eval`` reads the same host
+    # floats it always read -- it is a no-op outside a trace, so the eager
+    # sum is unchanged term for term.
+    with jax.ensure_compile_time_eval():
+        dz_cells = [float(dz_arr[k]) for k in range(k_lo, k_hi)]
     v = jnp.zeros(ez_plane.shape[0],
                   dtype=ez_plane.dtype if dtype is None else dtype)
-    for k in range(k_lo, k_hi):
-        v = v + ez_plane[:, j_centre, k] * float(dz_arr[k])
+    for k, dz_k in zip(range(k_lo, k_hi), dz_cells):
+        v = v + ez_plane[:, j_centre, k] * dz_k
     return v
 
 
