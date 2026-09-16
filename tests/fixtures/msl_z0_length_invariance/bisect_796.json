@@ -1,0 +1,273 @@
+{
+  "schema": "rfx.msl_z0_length_invariance_bisect",
+  "issue": 796,
+  "window": "90c79d1d..7f68f9fb",
+  "recipe": {
+    "dx_m": 8e-05,
+    "legs_mm": [
+      8,
+      10,
+      12
+    ],
+    "band_hz": [
+      3000000000.0,
+      4500000000.0
+    ],
+    "n_freqs": 30,
+    "num_periods": 12,
+    "port": "+x",
+    "jax_enable_x64": false,
+    "dtype": "float32/complex64"
+  },
+  "method": "one process per sha over a git-archive tree of that sha; each process asserts rfx.__file__ is inside its own tree before running. Legs driven by the tree's own tests/test_msl_port_integration._run_msl_thru and gated with its GATE_F_LO/GATE_F_HI; spread = (max-min)/mean over the three mean|Z0[+x]| values, the same formula tests/locks/test_msl_z0_platform_datums.py recomputes.",
+  "platform": {
+    "cpu": "AMD EPYC 9654 96-Core Processor (2 sockets, 224 threads)",
+    "os": "Ubuntu 22.04.3 LTS, Linux 5.15.0-191-generic, glibc 2.35",
+    "jax": "0.10.2",
+    "jaxlib": "0.10.2",
+    "numpy": "2.4.6 (scipy-openblas 0.3.31.188.0)",
+    "python": "3.11.16"
+  },
+  "runs": [
+    {
+      "sha": "90c79d1d",
+      "sha_full": "90c79d1d48cdcb8cb0736ccb4a3661951e022b75",
+      "dtype": "complex64",
+      "legs": {
+        "8": {
+          "mean_abs_z0_px": 57.33811569213867,
+          "mean_abs_z0_mx": 57.37505340576172,
+          "mean_s11": 0.07422274351119995,
+          "mean_s21": 0.9971020221710205,
+          "n_band": 9
+        },
+        "10": {
+          "mean_abs_z0_px": 57.57783889770508,
+          "mean_abs_z0_mx": 57.66787338256836,
+          "mean_s11": 0.11597568541765213,
+          "mean_s21": 0.9930387139320374,
+          "n_band": 9
+        },
+        "12": {
+          "mean_abs_z0_px": 57.60304260253906,
+          "mean_abs_z0_mx": 57.73619842529297,
+          "mean_s11": 0.1487416923046112,
+          "mean_s21": 0.9886244535446167,
+          "n_band": 9
+        }
+      },
+      "spread": 0.0046069171751264015,
+      "note": "window base; pre-drift. Reproduces the 2026-08-09 derivation datum (57.3381 / 57.5778 / 57.6030) to 4 dp on a different jax/numpy/python, so the derivation legs are code, not lead-machine platform."
+    },
+    {
+      "sha": "fce10916",
+      "sha_full": "fce10916efcca997ae8372c2437a0e31c82fe847",
+      "dtype": "complex64",
+      "legs": {
+        "8": {
+          "mean_abs_z0_px": 57.33358383178711,
+          "mean_abs_z0_mx": 57.36948013305664,
+          "mean_s11": 0.07420501112937927,
+          "mean_s21": 0.9971067905426025,
+          "n_band": 9
+        },
+        "10": {
+          "mean_abs_z0_px": 57.57252883911133,
+          "mean_abs_z0_mx": 57.66193389892578,
+          "mean_s11": 0.11594578623771667,
+          "mean_s21": 0.9930481314659119,
+          "n_band": 9
+        },
+        "12": {
+          "mean_abs_z0_px": 57.59901428222656,
+          "mean_abs_z0_mx": 57.73126983642578,
+          "mean_s11": 0.14870256185531616,
+          "mean_s21": 0.988638162612915,
+          "n_band": 9
+        }
+      },
+      "spread": 0.004616044551155494,
+      "note": "after step 1 (#638). Bit-identical to 5f23ccae (#645) and fd37c62f (#658), so the two dtype-lift commits move nothing on this fixture."
+    },
+    {
+      "sha": "c9c1864f",
+      "sha_full": "c9c1864f95e8eb0a2cbe26f7a0823597d7e6907f",
+      "dtype": "complex64",
+      "legs": {
+        "8": {
+          "mean_abs_z0_px": 57.32954406738281,
+          "mean_abs_z0_mx": 57.36840057373047,
+          "mean_s11": 0.07420133054256439,
+          "mean_s21": 0.9971067905426025,
+          "n_band": 9
+        },
+        "10": {
+          "mean_abs_z0_px": 57.57195281982422,
+          "mean_abs_z0_mx": 57.66143798828125,
+          "mean_s11": 0.11594182997941971,
+          "mean_s21": 0.993048906326294,
+          "n_band": 9
+        },
+        "12": {
+          "mean_abs_z0_px": 57.59896469116211,
+          "mean_abs_z0_mx": 57.73093032836914,
+          "mean_s11": 0.14869743585586548,
+          "mean_s21": 0.9886388778686523,
+          "n_band": 9
+        }
+      },
+      "spread": 0.00468556352801808,
+      "note": "after step 2 (#659). Bit-identical to 7f68f9fb."
+    },
+    {
+      "sha": "7f68f9fb",
+      "sha_full": "7f68f9fb32a6d9f3bc0ed9b31d80202567886a60",
+      "dtype": "complex64",
+      "legs": {
+        "8": {
+          "mean_abs_z0_px": 57.32954406738281,
+          "mean_abs_z0_mx": 57.36840057373047,
+          "mean_s11": 0.07420133054256439,
+          "mean_s21": 0.9971067905426025,
+          "n_band": 9
+        },
+        "10": {
+          "mean_abs_z0_px": 57.57195281982422,
+          "mean_abs_z0_mx": 57.66143798828125,
+          "mean_s11": 0.11594182997941971,
+          "mean_s21": 0.993048906326294,
+          "n_band": 9
+        },
+        "12": {
+          "mean_abs_z0_px": 57.59896469116211,
+          "mean_abs_z0_mx": 57.73093032836914,
+          "mean_s11": 0.14869743585586548,
+          "mean_s21": 0.9886388778686523,
+          "n_band": 9
+        }
+      },
+      "spread": 0.00468556352801808,
+      "note": "window head. Bit-identical to c9c1864f on every leg, which is the measurement that excludes #666 (the 2026-09-13 close comment's attribution)."
+    },
+    {
+      "sha": "ae7919a9",
+      "sha_full": "ae7919a9d9d9f8793aeb6eaf74565991b85a8443",
+      "dtype": "complex64",
+      "legs": {
+        "8": {
+          "mean_abs_z0_px": 57.33811569213867,
+          "mean_abs_z0_mx": 57.37505340576172,
+          "mean_s11": 0.07422274351119995,
+          "mean_s21": 0.9971020221710205,
+          "n_band": 9
+        },
+        "10": {
+          "mean_abs_z0_px": 57.57783889770508,
+          "mean_abs_z0_mx": 57.66787338256836,
+          "mean_s11": 0.11597568541765213,
+          "mean_s21": 0.9930387139320374,
+          "n_band": 9
+        },
+        "12": {
+          "mean_abs_z0_px": 57.60304260253906,
+          "mean_abs_z0_mx": 57.73619842529297,
+          "mean_s11": 0.1487416923046112,
+          "mean_s21": 0.9886244535446167,
+          "n_band": 9
+        }
+      },
+      "spread": 0.0046069171751264015,
+      "note": "step-1 parent; bit-identical to 90c79d1d."
+    },
+    {
+      "sha": "5f23ccae",
+      "sha_full": "5f23ccae6c978ecbd2da02b5cd5599861d5c118d",
+      "dtype": "complex64",
+      "legs": {
+        "8": {
+          "mean_abs_z0_px": 57.33358383178711,
+          "mean_abs_z0_mx": 57.36948013305664,
+          "mean_s11": 0.07420501112937927,
+          "mean_s21": 0.9971067905426025,
+          "n_band": 9
+        },
+        "10": {
+          "mean_abs_z0_px": 57.57252883911133,
+          "mean_abs_z0_mx": 57.66193389892578,
+          "mean_s11": 0.11594578623771667,
+          "mean_s21": 0.9930481314659119,
+          "n_band": 9
+        },
+        "12": {
+          "mean_abs_z0_px": 57.59901428222656,
+          "mean_abs_z0_mx": 57.73126983642578,
+          "mean_s11": 0.14870256185531616,
+          "mean_s21": 0.988638162612915,
+          "n_band": 9
+        }
+      },
+      "spread": 0.004616044551155494,
+      "note": "#645 Yee dtype lift; bit-identical to fce10916."
+    },
+    {
+      "sha": "fd37c62f",
+      "sha_full": "fd37c62f8755f9feefae329abfeebcda64e7917a",
+      "dtype": "complex64",
+      "legs": {
+        "8": {
+          "mean_abs_z0_px": 57.33358383178711,
+          "mean_abs_z0_mx": 57.36948013305664,
+          "mean_s11": 0.07420501112937927,
+          "mean_s21": 0.9971067905426025,
+          "n_band": 9
+        },
+        "10": {
+          "mean_abs_z0_px": 57.57252883911133,
+          "mean_abs_z0_mx": 57.66193389892578,
+          "mean_s11": 0.11594578623771667,
+          "mean_s21": 0.9930481314659119,
+          "n_band": 9
+        },
+        "12": {
+          "mean_abs_z0_px": 57.59901428222656,
+          "mean_abs_z0_mx": 57.73126983642578,
+          "mean_s11": 0.14870256185531616,
+          "mean_s21": 0.988638162612915,
+          "n_band": 9
+        }
+      },
+      "spread": 0.004616044551155494,
+      "note": "#658 ADE dtype lift; bit-identical to fce10916."
+    },
+    {
+      "sha": "1f005d0d",
+      "sha_full": "1f005d0dcd3851811654a24c13f0de6f39388b63",
+      "dtype": "complex64",
+      "legs": {
+        "8": {
+          "mean_abs_z0_px": 57.32954406738281,
+          "mean_abs_z0_mx": 57.36840057373047,
+          "mean_s11": 0.07420133054256439,
+          "mean_s21": 0.9971067905426025,
+          "n_band": 9
+        },
+        "10": {
+          "mean_abs_z0_px": 57.57195281982422,
+          "mean_abs_z0_mx": 57.66143798828125,
+          "mean_s11": 0.11594182997941971,
+          "mean_s21": 0.993048906326294,
+          "n_band": 9
+        },
+        "12": {
+          "mean_abs_z0_px": 57.59896469116211,
+          "mean_abs_z0_mx": 57.73093032836914,
+          "mean_s11": 0.14869743585586548,
+          "mean_s21": 0.9886388778686523,
+          "n_band": 9
+        }
+      },
+      "spread": 0.00468556352801808,
+      "note": "the ledger's pod-witness commit; bit-identical to c9c1864f on this platform."
+    }
+  ]
+}

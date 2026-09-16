@@ -527,23 +527,49 @@ def test_msl_thru_line_z0_length_invariance_and_positive_sign():
     The envelope has DRIFTED since 2026-08-09: a full-precision pod re-measure
     at HEAD (1f005d0d) gives spread = 0.0046760 (0.4676%) vs the committed
     0.004607 (0.4607%) — entering somewhere in the CI commit window
-    90c79d1d..7f68f9fb (2026-08-11/12), unattributed to a single commit.
+    90c79d1d..7f68f9fb (2026-08-11/12). ATTRIBUTED 2026-09-16 (issue #796) by a
+    full-precision per-sha bisect on THIS recipe — one git-archive tree per sha,
+    each driving its own ``_run_msl_thru``; the recipe file is byte-identical
+    (md5 9faeeba500da9ced30baca8c6d939a04) from 69a6956a through 1f005d0d, so
+    the drift is rfx/ code. TWO commits carry it, both classification (i)
+    intended absorber-matching corrections, not regressions:
+      * fce10916 (#638) — the CPML hi-face pad now sources its material one
+        column further in, so this fixture's face-flush substrate Box stops
+        being terminated by a vacuum pad. Legs move −0.00453 / −0.00531 /
+        −0.00403 Ω; spread 0.4607% → 0.4616%.
+      * c9c1864f (#659) — the boundary node dropped by the half-open volume
+        rasterization gets that same material, removing a one-cell vacuum film
+        between the structure and its own absorber. Legs move a further
+        −0.00404 / −0.00058 / −0.00005 Ω; spread 0.4616% → 0.4686%.
+    Everything else in the window is bit-identical on this fixture
+    (90c79d1d = ae7919a9; fce10916 = 5f23ccae = fd37c62f; c9c1864f = 7f68f9fb
+    = 1f005d0d), which is the measurement that EXCLUDES #666 (7f68f9fb, the
+    add_msl_port x/y generalization) — the commit the 2026-09-13 triage had
+    guessed, on the reasoning that it was the window's only direct MSL-extractor
+    change. Per-sha rows: platform_datums.json's `attribution` block and its
+    role="bisect" datums; raw per-leg dump: bisect_796.json.
     gate_from_envelope(0.004676) would derive 0.008 — a ONE-QUANTUM WIDENING.
-    Per issue #610's no-silent-loosening rule the gate STAYS 0.007: this is
-    recorded as CODE drift to diagnose later (lead's lane — bisect requires a
-    full-precision pod run of 69a6956a first, ~53 min/leg-set), NOT re-derived
-    as routine gate maintenance. Full-precision per-leg mean|Z0[+x]| moved:
+    Per issue #610's no-silent-loosening rule the gate STAYS 0.007 and
+    MEASURED_SPREAD_ENVELOPE stays 0.004607: attribution is not a licence to
+    re-derive, and on current main any re-derivation would have to be measured
+    on the #931 board, not this one. That call is the PI's, not maintenance.
+    Full-precision per-leg mean|Z0[+x]| moved:
     57.3381 → 57.32987 Ω (−0.00823) at L=8mm, 57.5778 → 57.57185 Ω (−0.00595)
     at L=10mm, 57.6030 → 57.59874 Ω (−0.00426) at L=12mm — all DECREASES
     below the 0.01 Ω print quantum that makes the CI logs' "57.34 → 57.33"
     look like a bigger move than it is; do not bisect off 2-dp prints. The
     falsifier for the "platform, not code" attribution is a same-commit
-    second-platform run reproducing spread to <0.01 pp. It has NOT been run —
-    no commit in this ledger carries two platforms' datums — so that
-    attribution is provisional. Likewise the drift WINDOW 90c79d1d..7f68f9fb
-    is inferred from 2-significant-figure CI spread prints (0.46 % vs 0.47 %
-    straddle a rounding boundary at 0.465) and cannot resolve the 0.0069 pp
-    shift; only the drift's EXISTENCE is established at full precision.
+    second-platform run reproducing spread to <0.01 pp. It HAS now been run
+    (#796): at 1f005d0d the bisect host (jax 0.10.2 / numpy 2.4.6 / py3.11)
+    reads spread 0.0046856 against this ledger's pod row's 0.0046760 on jax
+    0.6.2 — 0.00096 pp apart, inside both the 0.01 pp print quantum and the
+    0.05 pp policy threshold — and at 90c79d1d it reproduces the 2026-08-09
+    derivation legs 57.3381 / 57.5778 / 57.6030 to 4 dp. That 1f005d0d run is
+    filed in bisect_796.json, not as a datum row, so the ledger's "no two
+    datums share a commit" statement above still holds literally. The drift
+    WINDOW is likewise no longer inferred from 2-significant-figure CI prints
+    (0.46 % vs 0.47 % straddle a rounding boundary at 0.465): the two steps
+    above are measured at full float32 precision on adjacent shas.
     CLASSIFICATION POLICY (this threshold is
     POLICY, not itself measured): a same-commit cross-platform disagreement
     ≥ 0.05 pp is treated as platform variance; a shift entering between two

@@ -6,6 +6,34 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased — 2.0.0]
 
+### Documentation — the MSL Z0 length-invariance envelope drift is attributed to two commits (#796)
+
+- The `|Z0|` length-invariance spread on the pre-#931 MSL thru board moved 0.4607 % → 0.4676 %
+  somewhere in `90c79d1d..7f68f9fb`, and the test docstring plus
+  `tests/fixtures/msl_z0_length_invariance/platform_datums.json` recorded it as unattributed.
+  It is now bisected at full float32 precision on that exact recipe (one `git archive` tree per
+  sha, each driving its own `_run_msl_thru`; the recipe file is byte-identical, md5
+  `9faeeba500da9ced30baca8c6d939a04`, from `69a6956a` through `1f005d0d`, so the drift is `rfx/`
+  code). **TWO** commits carry it, not one: `fce10916` (#638, the CPML hi-face pad sources its
+  material one column further in) moves the legs by −0.00453 / −0.00531 / −0.00403 Ω and the
+  spread to 0.4616 %; `c9c1864f` (#659, the boundary node dropped by the half-open volume
+  rasterization gets that same material) moves them a further −0.00404 / −0.00058 / −0.00005 Ω
+  and the spread to 0.4686 %. Both are intended absorber-matching corrections with their own
+  measured witnesses, so the shift is a better-terminated board, not a regression.
+- Everything else in the window is bit-identical on this fixture — leg-8 mean|Z0[+x]|
+  `90c79d1d = ae7919a9 = 57.33811569213867`, `fce10916 = 5f23ccae = fd37c62f = 57.33358383178711`,
+  `c9c1864f = 7f68f9fb = 1f005d0d = 57.32954406738281` — which **excludes #666** (`7f68f9fb`),
+  the commit the 2026-09-13 triage had named on the reasoning that it was the window's only
+  direct MSL-extractor change.
+- **No gate, tolerance or constant moved.** `MEASURED_SPREAD_ENVELOPE` stays `0.004607` and the
+  enforced spread gate stays `gate_from_envelope(0.004607, quantum=1000) = 0.007`.
+  `gate_from_envelope(0.004686, quantum=1000)` would derive `0.008` — a one-quantum widening that
+  #610's no-silent-loosening rule forbids applying as routine maintenance even now that the drift
+  is attributed and benign; re-deriving the envelope is left as an explicit decision, and on
+  current `main` it would have to be measured on the #931 board anyway. No solver operator, no
+  observable and no user-visible behaviour changed: this release note covers a docstring, a new
+  `attribution` block plus four `role="bisect"` datum rows in the ledger, and the raw per-sha dump
+  `tests/fixtures/msl_z0_length_invariance/bisect_796.json`.
 ### Fixed — the beam-steering TMTT fixture's settling witness now measures the superstrate, and its run length clears it (#918)
 
 - `validation/tmtt_paper/beam_steering_superstrate.py` carried one witness probe, at the
