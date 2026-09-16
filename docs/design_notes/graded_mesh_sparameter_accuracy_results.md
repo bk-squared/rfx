@@ -127,7 +127,17 @@ artifact):
   emits no z notice at all**, because its uniform 0.635 mm z cell reaches
   20.3 cells per λ_eff and clears the advisory's own ≥ 20 threshold.
 
-No new finding appeared on any graded arm. Worth recording for its own sake:
+**No NU-specific warning fired on any arm.** The distinct non-dtype warnings
+over all 14 cells are exactly three families: the record-length notice, the
+port index mirror audit, and the three adjacent-ratio notices above. In
+particular **no `warn_unextendable_shapes` (#1057) and no absorber-seam
+warning appeared** — the graded arms grade z, whose faces are PEC, and the two
+propagation-axis arms pin both end cells to `dx` so the CPML pad continuation
+(`extend_cpml_pad_materials`) has a uniform seam to work with. That silence is
+a reading, not an absence of instrumentation: both surfaces are live on this
+lane and neither had anything to report.
+
+Worth recording for its own sake:
 preflight reads the graded axis correctly and reports the coarse band, so the
 input-fidelity layer sees a difference between arms B, C and D1 that none of
 the measured observables can see.
