@@ -114,6 +114,7 @@ sys.path.insert(0, str(REPO))
 
 from tests._fixture_provenance import (  # noqa: E402
     CODE_TREE_KEY,
+    code_tree_of,
     code_trees_on,
     git_available,
     is_reachable,
@@ -235,7 +236,10 @@ ANNOTATED: dict[tuple[str, str], str] = {
 
 #: Fixture JSONs that declare no commit sha anywhere. Asserted EXACTLY, both
 #: directions, so the hole is a number a reader can see rather than a silence.
-#: Measured at 53 of 80 when this gate landed, 55 of 82 after the rebase below.
+#: Measured at 53 of 80 when this gate landed, 55 of 82 after the rebase below,
+#: then 54 once the value filter came out of the walker: rcs_mie_e4 does carry
+#: a provenance key (meta.commit), it just holds a label rather than a sha, so
+#: it is a NOT_A_SHA entry and not a file that declares nothing.
 #: It must only shrink. A new fixture is expected to embed
 #: ``tests._fixture_provenance.capture()`` rather than be added here.
 #:
@@ -280,7 +284,6 @@ NO_PROVENANCE_YET: frozenset[str] = frozenset({
     "tests/fixtures/patch_mode_identification/cv15_mode_pair_ratio_band.json",
     "tests/fixtures/patch_mode_identification/cv15_ringdown_spectra.json",
     "tests/fixtures/rcs_dielectric_sphere_mie/fixture.json",
-    "tests/fixtures/rcs_mie_e4/rcs_pec_sphere_mie.json",
     "tests/fixtures/rcs_mie_ka_sweep/fixture.json",
     "tests/fixtures/rcs_sphere_mie/fixture.json",
     "tests/fixtures/sheen_lpf_e4/sheen_lpf_palace_referee.json",
@@ -313,7 +316,13 @@ def _walk(node, prefix, out):
     if isinstance(node, dict):
         for key, value in node.items():
             path = f"{prefix}.{key}" if prefix else key
-            if key in SHA_KEYS and isinstance(value, str) and _HEX.match(value):
+            if key in SHA_KEYS and isinstance(value, str):
+                # The _HEX test used to live HERE, and that was the hole. A key
+                # named `rfx_commit` holding "" or "unknown" is exactly the
+                # fail-open value the writer half of #1013 was hardened against,
+                # and filtering on the value made it not a site at all: it
+                # vanished from the census instead of failing. Record every
+                # string under a provenance key; _classify decides what it is.
                 out.append((path, value, node))
             else:
                 _walk(value, path, out)
@@ -364,14 +373,61 @@ def _require_answerable() -> str:
     return ref
 
 
+#: Provenance-shaped keys whose value is deliberately a human LABEL and not a
+#: sha. Asserted exactly, both directions, for the same reason ANNOTATED is: the
+#: alternative is filtering non-sha values out of the census, which is precisely
+#: how a fail-open ``""`` or ``"unknown"`` escaped this gate. A label is fine; an
+#: empty string is the defect. Listing them is what separates the two.
+NOT_A_SHA: dict[tuple[str, str], str] = {
+    ("tests/fixtures/msl_z0_length_invariance/platform_datums.json", "datums[1].commit"):
+        "a dated main reference ('main@2026-08-10'), written by hand as a datum label",
+    ("tests/fixtures/msl_z0_length_invariance/platform_datums.json", "datums[2].commit"):
+        "a dated main reference ('main@2026-08-17'), written by hand as a datum label",
+    ("tests/fixtures/msl_z0_length_invariance/platform_datums.json", "datums[3].commit"):
+        "a dated main reference ('main@2026-08-24'), written by hand as a datum label",
+    ("tests/fixtures/rcs_mie_e4/rcs_pec_sphere_mie.json", "meta.commit"):
+        "a descriptive label ('post-276-97ca6a5') that embeds a short sha rather "
+        "than being one",
+}
+
+#: Verdicts that are not a failure. Everything else reds, and that list is the
+#: gate. An earlier revision failed only on 'unresolved', so adding a bucket was
+#: a way to make a defect stop failing -- the inverse of what a bucket is for.
+ACCEPTED = frozenset({
+    "reachable", "reachable-head", "code-tree", "code-tree-head",
+    "code-tree-unbound", "annotated", "labelled",
+})
+
+
 def _classify(sha: str, witness: str | None, ref: str) -> str:
+    if not _HEX.match(sha):
+        # Not a sha at all. Either a fail-open write (``""``, ``"unknown"``) or a
+        # human label under a provenance key; NOT_A_SHA says which are the latter.
+        return "not-a-sha"
     if is_reachable(sha, ref, REPO):
         return "reachable"
     if is_reachable(sha, "HEAD", REPO):
         return "reachable-head"
     if witness:
+        # The witness has to witness THIS commit. Set membership over every rfx/
+        # subtree on main accepts any 40-hex value that happens to be one of
+        # them -- main's own tip tree pasted into an unrelated fixture passed.
+        # When the recorded commit resolves we can bind them, and then the
+        # witness is a claim about the fixture rather than about the repo.
+        derived = code_tree_of(sha, REPO)
+        if derived is not None:
+            if witness != derived:
+                return "witness-mismatch"
+            if witness in code_trees_on(ref, REPO):
+                return "code-tree"
+            if witness in code_trees_on("HEAD", REPO):
+                return "code-tree-head"
+            return "unresolved"
+        # The commit object is absent from this clone, so the binding cannot be
+        # checked here and only membership is available. A weaker bucket, named
+        # so nobody reads it as the strong one.
         if witness in code_trees_on(ref, REPO):
-            return "code-tree"
+            return "code-tree-unbound"
         if witness in code_trees_on("HEAD", REPO):
             return "code-tree-head"
     return "unresolved"
@@ -395,17 +451,31 @@ def test_every_provenance_site_is_reachable_or_witnessed_or_annotated() -> None:
         verdict = _classify(sha, witness, ref)
         if verdict == "unresolved" and key in ANNOTATED:
             verdict = "annotated"
+        if verdict == "not-a-sha" and key in NOT_A_SHA:
+            verdict = "labelled"
         trace.append(f"  {verdict:<15} {sha[:8]:<9} {rel}::{keypath}"
                      + (f"  [{CODE_TREE_KEY}={witness[:8]}]" if witness else ""))
-        if verdict != "unresolved":
+        if verdict in ACCEPTED:
             continue
         landing = landing_commit(rel, ref, REPO) or "<none>"
-        why = (f"no {CODE_TREE_KEY} sibling recorded -- the producer of this file does "
-               f"not emit it (or dropped it); add tests._fixture_provenance.capture()"
-               if witness is None else
-               f"{CODE_TREE_KEY}={witness} is on no commit of {ref} or HEAD")
+        if verdict == "not-a-sha":
+            why = (f"the value {sha!r} is not a sha. If that is a deliberate human "
+                   f"label, declare it in NOT_A_SHA with the reason; if it is a "
+                   f"generator that failed open and wrote a placeholder, the fix is "
+                   f"tests._fixture_provenance.capture(), which raises instead")
+        elif verdict == "witness-mismatch":
+            why = (f"{CODE_TREE_KEY}={witness} is NOT the rfx/ subtree of the "
+                   f"recorded commit ({code_tree_of(sha, REPO)}). A witness has to "
+                   f"witness THIS commit; any tree that merely exists on main would "
+                   f"otherwise pass")
+        elif witness is None:
+            why = (f"no {CODE_TREE_KEY} sibling recorded -- the producer of this file does "
+                   f"not emit it (or dropped it); add tests._fixture_provenance.capture()")
+        else:
+            why = f"{CODE_TREE_KEY}={witness} is on no commit of {ref} or HEAD"
         failures.append(
             f"{rel}::{keypath}\n"
+            f"    verdict    {verdict}\n"
             f"    sha        {sha} -- not reachable from {ref} and not from HEAD\n"
             f"    witness    {why}\n"
             f"    landing    {landing} (the file's last commit on {ref}; an anchor only "
