@@ -6,7 +6,7 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased — 2.0.0]
 
-### Documentation — the MSL Z0 length-invariance envelope drift is attributed to two commits (#796)
+### Added — the MSL Z0 length-invariance envelope drift is attributed to two commits (#796)
 
 - The `|Z0|` length-invariance spread on the pre-#931 MSL thru board moved 0.4607 % → 0.4676 %
   somewhere in `90c79d1d..7f68f9fb`, and the test docstring plus
