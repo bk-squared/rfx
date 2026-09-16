@@ -113,6 +113,7 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
 from tests._fixture_provenance import (  # noqa: E402
+    RECORDED_CODE_TREES,
     CODE_TREE_KEY,
     code_tree_of,
     code_trees_on,
@@ -173,8 +174,35 @@ NOT_A_COMMIT_REFERENCE: dict[str, str] = {
 #: a number a reader can see -- and so that a producer cannot escape the gate
 #: by renaming its key: :func:`test_every_commit_shaped_key_name_is_classified`
 #: fails on any key name in no table at all.
+#: Key names classified BEFORE any committed fixture carries them. Exactly one
+#: thing belongs here and it is a trap review found: ``tests/_fixture_provenance``
+#: `capture()` EMITS ``generator_blob``, twelve producers call `capture()`, and
+#: the name was in no table -- so the first fixture regenerated after this PR
+#: would have reddened a gate nobody had connected to it. Classifying it now
+#: costs nothing; discovering it on somebody else's PR costs them an afternoon.
+#:
+#: The exact-table rule still applies in both directions: an anticipated name
+#: that never lands is caught by nothing, so keep this list at the one or two
+#: entries you can justify, and the assertion below moves a name OUT the moment
+#: it appears for real.
+ANTICIPATED: frozenset[str] = frozenset({"generator_blob"})
+
 COMMIT_SHAPED_NOT_YET_GATED: dict[str, str] = {
-    "commit_hash": "16 sites, 12 unreachable (broad-e5 envelopes; mostly 7-char)",
+    # ARRIVED WITH THE POST-GATE FIXTURES (see the note in ANNOTATED). Counted
+    # here rather than gated, for the same reason as the rest of this table: a
+    # name is promoted into SHA_KEYS when its producer is routed, not before.
+    "sha_full": "8 sites, graded-mesh S-parameter control arms",
+    "commit_full": "4 sites, graded-mesh S-parameter control arms",
+    # capture() EMITS THIS, and it was in no table until review found it. A key
+    # the repo's own shared helper writes on every routed fixture has to be
+    # classified, or the first fixture to carry it reds a gate nobody expected.
+    # It is a BLOB sha, not a commit, so it is here and not in SHA_KEYS: the
+    # reachability question this gate asks is meaningless for a blob.
+    "generator_blob": "the generator file's own blob sha, written by "
+                      "tests._fixture_provenance.capture(); a blob, so neither "
+                      "reachable-from-main nor code-tree applies to it",
+    "commit_hash": "16 sites, ALL unreachable -- review re-derived this; the "
+                   "earlier '12' was wrong (broad-e5 envelopes; mostly 7-char)",
     "repo_commit": "4 sites, 2 unreachable (patch mode-identification records)",
     "predeclaration_sha": "4 sites, short git object shas of the predeclaration doc",
     "source_sha": "2 sites, both unreachable (msl_s_matrix_golden)",
@@ -192,6 +220,70 @@ COMMIT_SHAPED_NOT_YET_GATED: dict[str, str] = {
 #: key whose site would now pass on its own, so the table cannot rot into
 #: permanence the way #928's bootstrap exemption did.
 ANNOTATED: dict[tuple[str, str], str] = {
+    # ---------------------------------------------------------------
+    # ARRIVED AFTER THIS GATE, and every one is the #1013 defect in a NEW
+    # fixture rather than a legacy one. They are listed rather than repaired
+    # because their shas (f5712d6b, 460bb9b7, 427fc97a) are absent from origin
+    # entirely -- no clone can derive a code tree for them -- and because the
+    # repair is to route the producing script through
+    # tests._fixture_provenance.capture() and regenerate, which belongs to the
+    # lane that owns each fixture.
+    #
+    # THAT THIS LIST GREW IS THE FINDING, not an exemption. The gate is exact,
+    # so it reds on every unrouted fixture that lands on main from here on. That
+    # is either the forcing function it is meant to be or more than this repo
+    # wants, and it is a policy call rather than a defect: see the PR body.
+    ("tests/fixtures/graded_mesh_sparameter_accuracy/wr90_control.json",
+     "arms.A|pec_short.provenance.commit"):
+        "arrived on main in the graded-mesh S-parameter work AFTER this gate was written, and is the #1013 defect itself in a brand-new fixture: a branch-only sha that origin does not carry (`git cat-file` ABSENT here), so neither reachability nor a code-tree witness can be derived from any clone. Its producer is not among the twelve routed through tests._fixture_provenance.capture(). The repair is to route that producer and regenerate, which belongs to the lane that owns the fixture, not here",
+    ("tests/fixtures/graded_mesh_sparameter_accuracy/wr90_control.json",
+     "arms.A|slab.provenance.commit"):
+        "arrived on main in the graded-mesh S-parameter work AFTER this gate was written, and is the #1013 defect itself in a brand-new fixture: a branch-only sha that origin does not carry (`git cat-file` ABSENT here), so neither reachability nor a code-tree witness can be derived from any clone. Its producer is not among the twelve routed through tests._fixture_provenance.capture(). The repair is to route that producer and regenerate, which belongs to the lane that owns the fixture, not here",
+    ("tests/fixtures/graded_mesh_sparameter_accuracy/wr90_control.json",
+     "arms.A|thru.provenance.commit"):
+        "arrived on main in the graded-mesh S-parameter work AFTER this gate was written, and is the #1013 defect itself in a brand-new fixture: a branch-only sha that origin does not carry (`git cat-file` ABSENT here), so neither reachability nor a code-tree witness can be derived from any clone. Its producer is not among the twelve routed through tests._fixture_provenance.capture(). The repair is to route that producer and regenerate, which belongs to the lane that owns the fixture, not here",
+    ("tests/fixtures/graded_mesh_sparameter_accuracy/wr90_control.json",
+     "arms.B|pec_short.provenance.commit"):
+        "arrived on main in the graded-mesh S-parameter work AFTER this gate was written, and is the #1013 defect itself in a brand-new fixture: a branch-only sha that origin does not carry (`git cat-file` ABSENT here), so neither reachability nor a code-tree witness can be derived from any clone. Its producer is not among the twelve routed through tests._fixture_provenance.capture(). The repair is to route that producer and regenerate, which belongs to the lane that owns the fixture, not here",
+    ("tests/fixtures/graded_mesh_sparameter_accuracy/wr90_control.json",
+     "arms.B|slab.provenance.commit"):
+        "arrived on main in the graded-mesh S-parameter work AFTER this gate was written, and is the #1013 defect itself in a brand-new fixture: a branch-only sha that origin does not carry (`git cat-file` ABSENT here), so neither reachability nor a code-tree witness can be derived from any clone. Its producer is not among the twelve routed through tests._fixture_provenance.capture(). The repair is to route that producer and regenerate, which belongs to the lane that owns the fixture, not here",
+    ("tests/fixtures/graded_mesh_sparameter_accuracy/wr90_control.json",
+     "arms.B|thru.provenance.commit"):
+        "arrived on main in the graded-mesh S-parameter work AFTER this gate was written, and is the #1013 defect itself in a brand-new fixture: a branch-only sha that origin does not carry (`git cat-file` ABSENT here), so neither reachability nor a code-tree witness can be derived from any clone. Its producer is not among the twelve routed through tests._fixture_provenance.capture(). The repair is to route that producer and regenerate, which belongs to the lane that owns the fixture, not here",
+    ("tests/fixtures/graded_mesh_sparameter_accuracy/wr90_control.json",
+     "arms.C|pec_short.provenance.commit"):
+        "arrived on main in the graded-mesh S-parameter work AFTER this gate was written, and is the #1013 defect itself in a brand-new fixture: a branch-only sha that origin does not carry (`git cat-file` ABSENT here), so neither reachability nor a code-tree witness can be derived from any clone. Its producer is not among the twelve routed through tests._fixture_provenance.capture(). The repair is to route that producer and regenerate, which belongs to the lane that owns the fixture, not here",
+    ("tests/fixtures/graded_mesh_sparameter_accuracy/wr90_control.json",
+     "arms.C|slab.provenance.commit"):
+        "arrived on main in the graded-mesh S-parameter work AFTER this gate was written, and is the #1013 defect itself in a brand-new fixture: a branch-only sha that origin does not carry (`git cat-file` ABSENT here), so neither reachability nor a code-tree witness can be derived from any clone. Its producer is not among the twelve routed through tests._fixture_provenance.capture(). The repair is to route that producer and regenerate, which belongs to the lane that owns the fixture, not here",
+    ("tests/fixtures/graded_mesh_sparameter_accuracy/wr90_control.json",
+     "arms.C|thru.provenance.commit"):
+        "arrived on main in the graded-mesh S-parameter work AFTER this gate was written, and is the #1013 defect itself in a brand-new fixture: a branch-only sha that origin does not carry (`git cat-file` ABSENT here), so neither reachability nor a code-tree witness can be derived from any clone. Its producer is not among the twelve routed through tests._fixture_provenance.capture(). The repair is to route that producer and regenerate, which belongs to the lane that owns the fixture, not here",
+    ("tests/fixtures/graded_mesh_sparameter_accuracy/wr90_control.json",
+     "arms.D1|pec_short.provenance.commit"):
+        "arrived on main in the graded-mesh S-parameter work AFTER this gate was written, and is the #1013 defect itself in a brand-new fixture: a branch-only sha that origin does not carry (`git cat-file` ABSENT here), so neither reachability nor a code-tree witness can be derived from any clone. Its producer is not among the twelve routed through tests._fixture_provenance.capture(). The repair is to route that producer and regenerate, which belongs to the lane that owns the fixture, not here",
+    ("tests/fixtures/graded_mesh_sparameter_accuracy/wr90_control.json",
+     "arms.D1|slab.provenance.commit"):
+        "arrived on main in the graded-mesh S-parameter work AFTER this gate was written, and is the #1013 defect itself in a brand-new fixture: a branch-only sha that origin does not carry (`git cat-file` ABSENT here), so neither reachability nor a code-tree witness can be derived from any clone. Its producer is not among the twelve routed through tests._fixture_provenance.capture(). The repair is to route that producer and regenerate, which belongs to the lane that owns the fixture, not here",
+    ("tests/fixtures/graded_mesh_sparameter_accuracy/wr90_control.json",
+     "arms.D1|thru.provenance.commit"):
+        "arrived on main in the graded-mesh S-parameter work AFTER this gate was written, and is the #1013 defect itself in a brand-new fixture: a branch-only sha that origin does not carry (`git cat-file` ABSENT here), so neither reachability nor a code-tree witness can be derived from any clone. Its producer is not among the twelve routed through tests._fixture_provenance.capture(). The repair is to route that producer and regenerate, which belongs to the lane that owns the fixture, not here",
+    ("tests/fixtures/graded_mesh_sparameter_accuracy/wr90_control.json",
+     "arms.D2|thru.provenance.commit"):
+        "arrived on main in the graded-mesh S-parameter work AFTER this gate was written, and is the #1013 defect itself in a brand-new fixture: a branch-only sha that origin does not carry (`git cat-file` ABSENT here), so neither reachability nor a code-tree witness can be derived from any clone. Its producer is not among the twelve routed through tests._fixture_provenance.capture(). The repair is to route that producer and regenerate, which belongs to the lane that owns the fixture, not here",
+    ("tests/fixtures/graded_mesh_sparameter_accuracy/wr90_control.json",
+     "arms.E|thru.provenance.commit"):
+        "arrived on main in the graded-mesh S-parameter work AFTER this gate was written, and is the #1013 defect itself in a brand-new fixture: a branch-only sha that origin does not carry (`git cat-file` ABSENT here), so neither reachability nor a code-tree witness can be derived from any clone. Its producer is not among the twelve routed through tests._fixture_provenance.capture(). The repair is to route that producer and regenerate, which belongs to the lane that owns the fixture, not here",
+    ("tests/fixtures/graded_mesh_sparameter_accuracy/wr90_control.json",
+     "provenance.commit"):
+        "arrived on main in the graded-mesh S-parameter work AFTER this gate was written, and is the #1013 defect itself in a brand-new fixture: a branch-only sha that origin does not carry (`git cat-file` ABSENT here), so neither reachability nor a code-tree witness can be derived from any clone. Its producer is not among the twelve routed through tests._fixture_provenance.capture(). The repair is to route that producer and regenerate, which belongs to the lane that owns the fixture, not here",
+    ("tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json",
+     "provenance.commit"):
+        "same class and same batch, object ABSENT from origin",
+    ("tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json",
+     "provenance.commit"):
+        "same class and same batch, object ABSENT from origin",
     (
         "tests/fixtures/rcs280_reference_subtraction/fixture.json",
         "provenance.rfx_commit",
@@ -414,7 +506,16 @@ def _classify(sha: str, witness: str | None, ref: str) -> str:
         # them -- main's own tip tree pasted into an unrelated fixture passed.
         # When the recorded commit resolves we can bind them, and then the
         # witness is a claim about the fixture rather than about the repo.
-        derived = code_tree_of(sha, REPO)
+        # The binding, and it has to work in a clone that never had the object.
+        # RECORDED_CODE_TREES is consulted FIRST for exactly that reason: CI
+        # checks out main at full depth and still does not carry a branch-only
+        # commit, so `code_tree_of` returns None for precisely the shas this
+        # gate exists for. An earlier revision bound only on the git-derived
+        # value and was therefore inert in CI while passing locally -- the check
+        # ran nowhere it mattered. test_recorded_code_trees_match_git keeps the
+        # table honest against git wherever git can answer.
+        recorded = RECORDED_CODE_TREES.get(sha)
+        derived = recorded[0] if recorded else code_tree_of(sha, REPO)
         if derived is not None:
             if witness != derived:
                 return "witness-mismatch"
@@ -668,7 +769,41 @@ def test_every_commit_shaped_key_name_is_classified() -> None:
         "NOT_A_COMMIT_REFERENCE (it is a run id or a content digest), or\n"
         "COMMIT_SHAPED_NOT_YET_GATED (it is a commit claim, with the measured gap).")
     stale = sorted(k for k in set(NOT_A_COMMIT_REFERENCE) | set(COMMIT_SHAPED_NOT_YET_GATED)
-                   if k not in measured)
+                   if k not in measured and k not in ANTICIPATED)
     assert not stale, (
         f"classified key name(s) that appear nowhere any more: {stale}. Delete them so "
         "the tables describe the tree as it is.")
+    landed = sorted(k for k in ANTICIPATED if k in measured)
+    assert not landed, (
+        f"{landed} now appears in a committed fixture, so it is no longer "
+        "anticipated. Move it out of ANTICIPATED and give its table entry the "
+        "measured counts, the way every other entry carries them.")
+
+
+def test_recorded_code_trees_match_git() -> None:
+    """RECORDED_CODE_TREES is the binding's input in CI, so it must not drift.
+
+    The table exists because a clone of main does not carry a branch-only commit
+    and ``code_tree_of`` cannot answer there. That makes it the one place a wrong
+    value would be invisible: the gate would happily bind a witness to a tree
+    nobody can check. So wherever git CAN answer -- which is here, and in any
+    clone that has fetched the objects -- the recorded value is re-derived and
+    compared.
+    """
+    if not git_available(REPO):
+        pytest.skip("NOT A PASS: git is unavailable")
+    checked = 0
+    for sha, (tree, where) in sorted(RECORDED_CODE_TREES.items()):
+        derived = code_tree_of(sha, REPO)
+        if derived is None:
+            continue  # object absent from this clone; `where` names the donor
+        assert derived == tree, (
+            f"RECORDED_CODE_TREES[{sha}] says {tree} (from {where}) but "
+            f"`git rev-parse {sha}:rfx` in this clone gives {derived}. One of "
+            "them is wrong, and the table is what CI trusts."
+        )
+        checked += 1
+    assert checked >= 4, (
+        f"only {checked} of {len(RECORDED_CODE_TREES)} recorded trees could be "
+        "re-derived here; too few to call this check meaningful"
+    )

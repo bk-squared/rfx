@@ -47,37 +47,12 @@ REPO = Path(__file__).resolve().parents[2]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from tests._fixture_provenance import (  # noqa: E402
+from tests._fixture_provenance import (
+    RECORDED_CODE_TREES,  # noqa: E402
     CODE_TREE_KEY, code_tree_of, is_reachable, resolve_reference_ref)
 from tests.contracts.test_fixture_provenance_reachability import SHA_KEYS, _sites  # noqa: E402
 
 #: commit sha -> (rfx/ subtree sha, where it was resolved)
-TREES: dict[str, tuple[str, str]] = {
-    "088281899727fcc644814f0ae9451b6b89a26af8":
-        ("f72547caacbd8b18690eebd5e8c6266a5e2a61c3", "this clone"),
-    "8206031de9923dfaddc17f7060def466a7906915":
-        ("3d2176e84bfee18b699d0976726bce27ff507bbe", "this clone"),
-    "6216e06fff27d6b351457cb4807379bec14ced15":
-        ("9ec8308106a26deb04787fce2f919b466d9fb22f", "this clone"),
-    "ca168584e35b145fcbeb86dc11350a7304daf024":
-        ("0cd2ab4aa36cb29ed763cca34668619ce0c0a5c6", "this clone"),
-    "5b588f3c6cdc2aeeb9af1eb528889cec3813525d":
-        ("7d93cbe022da003de9ed375f809cdecadf72ce73", "this clone"),
-    "f914a7caf1ff8c63cac6f5f8c975b7f9f420a0c7":
-        ("7d93cbe022da003de9ed375f809cdecadf72ce73", "this clone"),
-    "c3189960504b5fa570e944c074801594e6caf9cc":
-        ("192bbdab1f23bcaa8e3ee4d33c066001c1d82200",
-         "read-only primary checkout; origin refuses the object"),
-    "296cabada23343eede7beb05a0a4f98f7bb64adf":
-        ("f74a17ce0386afcf88c4f23b7b540a0e209a5157",
-         "read-only primary checkout; origin refuses the object"),
-    "6a369c2730c4904f71187f3cd4bddff943e91f22":
-        ("2a076e7146a21e0b07794fc82f179126e0c605d5",
-         "refs/pull/1005/head; NOT on any main commit"),
-    "98d319877dc50cec43bca950b163ebec029cf13e":
-        ("d4702ee977fbb34aebcde063dfac591ea9c2238b",
-         "this clone; NOT on any main commit"),
-}
 
 #: Shas with no tree at all, and why. These get no key: an invented or
 #: guessed value would be worse than the honest absence.
@@ -117,7 +92,7 @@ def annotate(rel: str, sites: list[tuple[str, str, str, str | None]]) -> tuple[i
         if sha in NO_TREE:
             notes.append(f"    {sha}: SKIPPED -- {NO_TREE[sha]}")
             continue
-        tree, where = TREES[sha]
+        tree, where = RECORDED_CODE_TREES[sha]
         live = code_tree_of(sha, REPO)
         if live and live != tree:
             raise SystemExit(f"{rel}: {sha[:8]}:rfx is {live} here but the table says {tree}")

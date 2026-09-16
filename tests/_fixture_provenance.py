@@ -337,3 +337,46 @@ def landing_commit(rel_path: str, ref: str, repo: Path | None = None) -> str | N
     """
     rc, out = _git_try(["log", "-1", "--format=%H", ref, "--", rel_path], repo)
     return out or None if rc == 0 else None
+
+
+#: The rfx/ subtree of every commit a committed fixture records, with the clone
+#: the tree was read from. This exists because the binding it feeds CANNOT be
+#: derived in CI: a fresh clone of main does not carry a branch-only commit, so
+#: ``code_tree_of(sha)`` returns None for exactly the shas that matter and any
+#: check conditioned on it silently does nothing there. Recording the mapping is
+#: what makes "this witness belongs to THIS commit" answerable in a clone that
+#: never had the object.
+#:
+#: Two entries are marked NOT on any main commit. They are recorded anyway: a
+#: tree that is provably absent is more legible than a missing key, and
+#: recording it does not make the site pass.
+#:
+#: ``test_recorded_code_trees_match_git`` re-derives every entry that resolves
+#: locally, so the table cannot drift from git.
+RECORDED_CODE_TREES: dict[str, tuple[str, str]] = {
+
+    "088281899727fcc644814f0ae9451b6b89a26af8":
+        ("f72547caacbd8b18690eebd5e8c6266a5e2a61c3", "this clone"),
+    "8206031de9923dfaddc17f7060def466a7906915":
+        ("3d2176e84bfee18b699d0976726bce27ff507bbe", "this clone"),
+    "6216e06fff27d6b351457cb4807379bec14ced15":
+        ("9ec8308106a26deb04787fce2f919b466d9fb22f", "this clone"),
+    "ca168584e35b145fcbeb86dc11350a7304daf024":
+        ("0cd2ab4aa36cb29ed763cca34668619ce0c0a5c6", "this clone"),
+    "5b588f3c6cdc2aeeb9af1eb528889cec3813525d":
+        ("7d93cbe022da003de9ed375f809cdecadf72ce73", "this clone"),
+    "f914a7caf1ff8c63cac6f5f8c975b7f9f420a0c7":
+        ("7d93cbe022da003de9ed375f809cdecadf72ce73", "this clone"),
+    "c3189960504b5fa570e944c074801594e6caf9cc":
+        ("192bbdab1f23bcaa8e3ee4d33c066001c1d82200",
+         "read-only primary checkout; origin refuses the object"),
+    "296cabada23343eede7beb05a0a4f98f7bb64adf":
+        ("f74a17ce0386afcf88c4f23b7b540a0e209a5157",
+         "read-only primary checkout; origin refuses the object"),
+    "6a369c2730c4904f71187f3cd4bddff943e91f22":
+        ("2a076e7146a21e0b07794fc82f179126e0c605d5",
+         "refs/pull/1005/head; NOT on any main commit"),
+    "98d319877dc50cec43bca950b163ebec029cf13e":
+        ("d4702ee977fbb34aebcde063dfac591ea9c2238b",
+         "this clone; NOT on any main commit"),
+}

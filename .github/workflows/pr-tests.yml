@@ -146,11 +146,21 @@ jobs:
         # would still be green -- a skip and a pass look identical in the
         # summary, which is the shape of defect #1013 exists to stop.
         run: |
-          set -e
-          echo "is-shallow: $(git rev-parse --is-shallow-repository)"
-          echo "origin/main: $(git rev-parse origin/main)"
+          set -eu
+          # Each check runs on its own line and its status is TESTED. An earlier
+          # revision wrote `echo "origin/main: $(git rev-parse origin/main)"`,
+          # which prints the git fatal to stderr and exits 0 -- a command
+          # substitution that fails inside `echo` does not propagate under
+          # `set -e`, so the step passed with no origin/main and the comment
+          # above was false about half of what it claimed. Reproduced in a repo
+          # with no remote before this was changed.
+          shallow=$(git rev-parse --is-shallow-repository)
+          echo "is-shallow: $shallow"
+          test "$shallow" = "false"
+          main_sha=$(git rev-parse origin/main)
+          echo "origin/main: $main_sha"
+          test -n "$main_sha"
           echo "commits: $(git rev-list --count HEAD)"
-          test "$(git rev-parse --is-shallow-repository)" = "false"
 
       - name: Fast suite — Python ${{ matrix.python-version }}, shard ${{ matrix.group }} of 6
         env:
