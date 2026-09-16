@@ -40,6 +40,44 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, SCRIPT_DIR)
+import _exit_evidence  # noqa: E402  (SCRIPT_DIR on sys.path)
+
+
+# ---------------------------------------------------------------------------
+# ``--out-dir DIR`` -- send this run's outputs somewhere that is NOT the
+# committed evidence tree.
+#
+# Without it every write in this file lands next to the script: the two PNGs
+# in ``validation/crossval/`` and the lattice witness in
+# ``_04_fresnel_results/``. A re-measurement therefore could not be taken at
+# all without first overwriting the record it is supposed to be compared
+# against. cv01 grew the same knob for the same reason (#967 / PR #977, and
+# #813's borrowed-leg runs); this is that pattern, with the same refusal:
+# ``--out-dir`` inside ``validation/crossval/`` is rejected BEFORE anything is
+# written, so a re-run can never quietly land on top of retained evidence.
+#
+# The committed layout is reproduced under DIR (``DIR/04_time_domain.png``,
+# ``DIR/_04_fresnel_results/lattice_witness.json``, ...) so a produced tree can
+# be diffed against the committed one path for path.
+# ---------------------------------------------------------------------------
+def _parse_out_dir(argv):
+    """``abspath`` of ``--out-dir``, or ``None``; refuses the evidence tree."""
+    if "--out-dir" not in argv:
+        return None
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="04_multilayer_fresnel.py --out-dir", add_help=False)
+    parser.add_argument("--out-dir", required=True, dest="out_dir")
+    parsed, _rest = parser.parse_known_args(argv)
+    return _exit_evidence.refuse_evidence_tree(parsed.out_dir, "--out-dir")
+
+
+OUT_DIR = _parse_out_dir(sys.argv[1:]) or SCRIPT_DIR
+if OUT_DIR != SCRIPT_DIR:
+    os.makedirs(OUT_DIR, exist_ok=True)
+    print(f"[--out-dir] writing this run's outputs under {OUT_DIR}")
 
 
 def _load_fringe_gate():
@@ -411,7 +449,7 @@ axes_td[1,1].set_xlabel("t (ns)"); axes_td[1,1].grid(True, alpha=0.3)
 
 fig_td.suptitle("Fresnel Slab — Time-Domain", fontsize=13, fontweight="bold")
 plt.tight_layout()
-out_td = os.path.join(SCRIPT_DIR, "04_time_domain.png")
+out_td = os.path.join(OUT_DIR, "04_time_domain.png")
 plt.savefig(out_td, dpi=150); plt.close()
 print(f"  Time-domain: {out_td}")
 
@@ -455,6 +493,26 @@ print(f"  Freq range: {f_plot[0]:.1f}–{f_plot[-1]:.1f} GHz ({len(f_plot)} pts)
 print(f"  T(f) mean err: {T_err_rfx.mean():.4f}, max: {T_err_rfx.max():.4f}")
 print(f"  R(f) mean err: {R_err_rfx.mean():.4f}, max: {R_err_rfx.max():.4f}")
 print(f"  R+T mean: {np.mean(R_rfx+T_rfx):.4f}, dev max: {cons_rfx.max():.4f}")
+
+# The four scalars the CALIBRATION ENVELOPE is made of, at full precision.
+#
+# They are printed apart from the four-decimal summary above because that
+# summary cannot carry them: at a settled rung ``mean|R+T-1|`` renders there as
+# "0.0000", and a revision of ``_04_fresnel_results/envelope.json`` cannot be
+# written from a line that rounds one of its own values to zero. r1's values
+# were read off the four-decimal print, which is why that artifact records them
+# to four decimals; anything appended from here on records what was measured
+# and rounds deliberately.
+ENVELOPE_MEASURED = {
+    "mean_dR": float(R_err_rfx.mean()),
+    "mean_dT": float(T_err_rfx.mean()),
+    "mean_closure": float(cons_rfx.mean()),
+    "per_bin_max_RT_closure": float(cons_rfx.max()),
+}
+print("  envelope measurement (the four scalars "
+      "_04_fresnel_results/envelope.json carries), full precision:")
+for _k, _v in ENVELOPE_MEASURED.items():
+    print(f"    {_k:<24} {_v!r}")
 
 # rfx self-check verdict (vs the exact analytic transfer matrix) — this is the
 # primary gate and does NOT depend on Meep. Compute it up front so a missing
@@ -673,11 +731,56 @@ else:
 
 if "--lattice-witness" in sys.argv:
     import json as _json
-    _out04 = os.path.join(SCRIPT_DIR, "_04_fresnel_results")
+    _out04 = os.path.join(OUT_DIR, "_04_fresnel_results")
     os.makedirs(_out04, exist_ok=True)
     with open(os.path.join(_out04, _LW.witness_json_name()), "w") as _fh:
         _json.dump(_doc, _fh, indent=1)
     print(f"  wrote {os.path.join(_out04, _LW.witness_json_name())}")
+
+    # The envelope measurement, with the per-bin arrays it is a reduction of.
+    #
+    # envelope.json's r1 block records, as part of its own evidence, that these
+    # arrays are committed NOWHERE -- "these four scalars are therefore the
+    # narrowest committed form of this measurement, which is exactly why they
+    # were being copied into consumer modules and UI fixtures". A revision
+    # appended from here on carries them, so a reader recomputes the four
+    # scalars instead of trusting a log line, and a per-bin claim about this
+    # rung has something to be checked against.
+    _env_doc = {
+        "schema": "cv04_envelope_measurement/1",
+        "case_id": "04_multilayer_fresnel",
+        "commit": _doc["commit"],
+        "what_this_is": (
+            "the four envelope scalars of THIS run and the per-bin arrays they "
+            "reduce -- evidence, not a gate. Which revision of "
+            "_04_fresnel_results/envelope.json was written from it is recorded "
+            "there; which consumer adopted that revision is recorded in the "
+            "consumer, never here."),
+        "values": dict(ENVELOPE_MEASURED),
+        "band": {
+            "f_lo_hz": float(freqs[mask][0]),
+            "f_hi_hz": float(freqs[mask][-1]),
+            "n_bins": int(mask.sum()),
+            "df_bin_hz": float(freqs[1] - freqs[0]),
+            "nfft": int(nfft),
+            "mask": ("MASK_F_LO_HZ < f < MASK_F_HI_HZ and incident |FFT| > "
+                     "MASK_AMP_FRAC of its own peak"),
+        },
+        "run": {"n_steps": int(n_steps), "nx_interior": int(nx_interior),
+                "dx_m": float(dx), "dt_s": float(dt), "n_cpml": int(n_cpml),
+                "aux_n_cpml": int(_rung["aux_echo"]["aux_n_cpml"])},
+        "per_bin": {
+            "freqs_hz": [float(v) for v in freqs[mask]],
+            "R_rfx": [float(v) for v in R_rfx],
+            "T_rfx": [float(v) for v in T_rfx],
+            "R_analytic": [float(v) for v in R_an],
+            "T_analytic": [float(v) for v in T_an],
+            "abs_RT_closure": [float(v) for v in cons_rfx],
+        },
+    }
+    with open(os.path.join(_out04, "envelope_measurement.json"), "w") as _fh:
+        _json.dump(_env_doc, _fh, indent=1)
+    print(f"  wrote {os.path.join(_out04, 'envelope_measurement.json')}")
 
 _ae = _rung["aux_echo"]
 print(f"  cv04-aux-echo-invariant slab_eps4 (#888): record {_ae['record_steps']} steps / "
@@ -967,7 +1070,7 @@ fig.suptitle(f"Fresnel Slab: eps={eps_slab}, d={d_slab*1e3:.0f}mm — Plane wave
              f"{_ref_label}",
              fontsize=13, fontweight="bold")
 plt.tight_layout()
-out = os.path.join(SCRIPT_DIR, "04_fresnel_slab.png")
+out = os.path.join(OUT_DIR, "04_fresnel_slab.png")
 plt.savefig(out, dpi=150); plt.close()
 print(f"\n  Saved: {out}")
 
