@@ -107,6 +107,24 @@ def _evaluate(record, *, windows=None):
                          dx=block["run"]["dx_m"], require_complete=True, windows=win), win
 
 
+def _uncapped_witness(block: dict, tail: dict | None = None):
+    """``W_wit`` WITHOUT the ceiling cap -- the shape shipped before the
+    post-review amendment, kept here so the cap's effect is measurable rather
+    than asserted."""
+    freqs = np.asarray(block["freqs_hz"], dtype=float)
+    run = block["run"]
+    dx, dt = float(run["dx_m"]), float(block["dt_s"])
+    tail = tail if tail is not None else block["tail"]
+    R_lat, T_lat = de.yee_lattice_slab_rt_model(freqs, block["model"], block["params"],
+                                                SF.D_SLAB_M, dx, dt)
+    rate, _src = LW.ringdown_rate(run["record"], tail)
+    terms = LW.budget_terms(freqs, block["inc_amp_rel"], dt=dt, n_steps=int(run["n_steps"]),
+                            scat_tail_rel=tail["scat_refl_rel"],
+                            trans_tail_rel=tail["total_trans_rel"],
+                            purity_rel=tail["purity_inc_rel"], rate_1_s=rate)
+    return LW.windows_from_terms(R_lat, T_lat, terms)
+
+
 def _rederive_from_outside(block: dict):
     """Section 2's window, rebuilt here from the two leaves it names.
 
@@ -133,9 +151,26 @@ def _rederive_from_outside(block: dict):
                             trans_tail_rel=tail["total_trans_rel"],
                             purity_rel=tail["purity_inc_rel"], rate_1_s=rate)
     wit_R, wit_T, wit_A = LW.windows_from_terms(R_lat, T_lat, terms)
+    # The cap (post-review amendment): the a-priori ceiling, built here from
+    # the standard's own function with the DECLARED bars and the DERIVED ring
+    # rate rather than taken from the module under test.
+    ceil_R, ceil_T, ceil_A = _ceiling(block, R_lat, T_lat)
+    wit_R = np.minimum(wit_R, ceil_R)
+    wit_T = np.minimum(wit_T, ceil_T)
+    wit_A = np.minimum(wit_A, ceil_A)
 
     m = ENVELOPE_GATE_MULTIPLIER
     return {"R": m * (lat_R + wit_R), "T": m * (lat_T + wit_T), "A": m * (lat_A + wit_A)}
+
+
+def _ceiling(block: dict, R_lat, T_lat):
+    """``lattice_witness.ceiling_windows`` on this record: the DECLARED bars and
+    the DERIVED ring rate, none of it measured on the run it bounds."""
+    run = block["run"]
+    return LW.ceiling_windows(np.asarray(block["freqs_hz"], dtype=float),
+                              block["inc_amp_rel"], R_lat, T_lat,
+                              dt=float(block["dt_s"]), n_steps=int(run["n_steps"]),
+                              rate_1_s=float(run["record"]["rate_ring_1_s"]))
 
 
 # ---------------------------------------------------------------------------
@@ -340,3 +375,155 @@ def test_the_committed_verdicts_are_still_reproduced_by_the_old_windows(record):
         assert bool(value) is bool(committed[name]), (
             f"{record['rel']}::{record['arm']} gate {name}: replay {value}, "
             f"committed {committed[name]}")
+
+
+# ---------------------------------------------------------------------------
+# 5. The settling bar these windows stand on, and the ceiling that caps them
+# ---------------------------------------------------------------------------
+#
+# `W_wit` is built from tails MEASURED on the record it then judges, so the
+# self-certification question is real: could a worse-settled record buy itself
+# a wider continuum window and walk a defect through? Two things answer it, and
+# GL1 is NOT one of them -- GL1 is judged against the same `W_wit`, so it moves
+# with it and bounds nothing independently.
+#
+#   (a) The record law. `G3_tail` is `tail["ok"]`, the record's own settling
+#       witness against `tail["limit"]`, which the r3 recipe sets to
+#       `slab_family.SETTLING_LIMIT` = 1e-2 (`slab_rig.py:109`) and then
+#       EXTENDS the record until it is met, growing the box rather than
+#       clipping (`slab_rig.py:190`). A record above the bar is not a wider
+#       window, it is a red gate.
+#   (b) The ceiling cap (post-review amendment). `W_wit` is capped per bin at
+#       `lattice_witness.ceiling_windows`, the same budget with the DECLARED
+#       bars and the DERIVED ring rate -- so above the bar the window stops
+#       responding to the record's tail at all.
+#
+# Both are pinned below, and both are shown to bite by measurement rather than
+# by assertion.
+
+_R3_SETTLING_BAR = 1e-2
+_FALSIFIER_RECORDS = [r for r in _RECORDS if not r["declared"]]
+_FALSIFIER_IDS = [i for r, i in zip(_RECORDS, _IDS) if not r["declared"]]
+
+
+def _with_tails_at(block: dict, bar: float, frac: float = 0.999) -> dict:
+    """The same record with both settling tails and the purity pushed to
+    ``frac`` of ``bar`` -- the most contaminated record that still passes."""
+    tail = dict(block["tail"])
+    tail["scat_refl_rel"] = bar * frac
+    tail["total_trans_rel"] = bar * frac
+    tail["purity_inc_rel"] = SF.TAIL_PURITY_LIMIT * frac
+    return dict(block, tail=tail)
+
+
+def test_the_settling_bar_these_windows_assume_is_the_r3_one():
+    """The bar is a value, pinned, not a name resolved at read time.
+
+    `slab_family.SETTLING_LIMIT` is what the r3 record recipe extends against
+    AND what `lattice_witness`'s a-priori ceiling is built from, so the cap in
+    `witness_term` inherits it. Moving it moves both halves of the defence at
+    once, which is the visibility this pin is for.
+    """
+    assert SF.SETTLING_LIMIT == _R3_SETTLING_BAR
+    assert LW.SETTLING_BAR == SF.SETTLING_LIMIT, (
+        "the ceiling the windows are capped at is no longer built from the same "
+        "settling bar the record law extends against")
+    assert SF.TAIL_LIMIT > SF.SETTLING_LIMIT, (
+        "TAIL_LIMIT is the looser non-r3 bar; if it stopped being looser this "
+        "test's falsifier arm below would prove nothing")
+
+
+@pytest.mark.parametrize("record", _RECORDS, ids=_IDS)
+def test_every_committed_record_sits_under_the_settling_bar_it_is_judged_on(record):
+    tail = record["doc"]["tail"]
+    worst = max(float(tail["scat_refl_rel"]), float(tail["total_trans_rel"]))
+    assert tail["limit"] == pytest.approx(SF.SETTLING_LIMIT)
+    assert bool(tail["ok"]) is True
+    assert worst < SF.SETTLING_LIMIT, (record["rel"], record["arm"], worst)
+    print(f"settling headroom {record['case']}:{Path(record['rel']).stem}:{record['arm']} "
+          f"x{SF.SETTLING_LIMIT / worst:.1f}")
+
+
+@pytest.mark.parametrize("record", _FALSIFIER_RECORDS, ids=_FALSIFIER_IDS)
+def test_a_falsifier_cannot_buy_its_way_out_with_a_worse_settled_record(record):
+    """The adversarial arm: give the defective record the worst tails the
+    settling bar admits and it must STILL fail."""
+    contaminated = _with_tails_at(record["doc"], SF.SETTLING_LIMIT)
+    out, _ = _evaluate(dict(record, doc=contaminated))
+    assert out["e2_ok"] is False, (
+        f"{record['rel']}::{record['arm']} reaches PASS once its tails are pushed to "
+        f"the settling bar: the window is buyable. gates={out['gates']}")
+
+
+@pytest.mark.parametrize("record", _RECORDS[:8], ids=_IDS[:8])
+def test_the_capped_window_is_bounded_by_an_a_priori_ceiling(record):
+    """What the cap buys, measured on both sides.
+
+    However bad the record's own tail gets, the capped window cannot exceed
+    ``MULTIPLIER x (W_lat + W_ceiling)``, every input of which is fixed before
+    the run. The uncapped window has no such bound: at ten times the bar it
+    runs away, which is the channel the cap closes.
+    """
+    freqs = np.asarray(record["doc"]["freqs_hz"], dtype=float)
+    run = record["doc"]["run"]
+    R_lat, T_lat = de.yee_lattice_slab_rt_model(
+        freqs, record["doc"]["model"], record["doc"]["params"], SF.D_SLAB_M,
+        float(run["dx_m"]), float(record["doc"]["dt_s"]))
+    lat_R, _lat_T, _lat_A = SAW.lattice_term(
+        freqs, record["doc"]["model"], record["doc"]["params"],
+        float(run["dx_m"]), float(record["doc"]["dt_s"]))
+    ceil_R, _ceil_T, _ceil_A = _ceiling(record["doc"], R_lat, T_lat)
+    bound = ENVELOPE_GATE_MULTIPLIER * (lat_R + ceil_R)
+
+    over_bar = _with_tails_at(record["doc"], SF.TAIL_LIMIT)     # 10x the bar
+    capped_over = _rederive_from_outside(over_bar)["R"]
+    assert np.all(capped_over <= bound * (1.0 + 1e-12)), (
+        "the capped window exceeded its own a-priori ceiling bound")
+
+    unc_over = _uncapped_witness(record["doc"], over_bar["tail"])[0]
+    unc_bound = ENVELOPE_GATE_MULTIPLIER * (lat_R + unc_over)
+    assert np.max(unc_bound / bound) > 2.0, (
+        "the uncapped window does not run away above the bar either, so this "
+        "control shows nothing about what the cap closes")
+
+
+def test_without_the_cap_a_looser_bar_would_let_falsifiers_through():
+    """Why the bar and the cap are both named: with neither, the window is
+    buyable; with the r3 bar alone it is not; with the cap it does not even
+    depend on the bar's value.
+
+    Measured, not argued: at the non-r3 `TAIL_LIMIT` = 0.10 an UNCAPPED window
+    lets some wrong-model falsifiers reach PASS, and the shipped capped window
+    lets none through at either bar.
+    """
+    walked_uncapped, walked_capped = [], []
+    for record in _FALSIFIER_RECORDS:
+        block = _with_tails_at(record["doc"], SF.TAIL_LIMIT)
+        out, _ = _evaluate(dict(record, doc=block))
+        if out["e2_ok"]:
+            walked_capped.append(f"{record['rel']}::{record['arm']}")
+        # the uncapped window, judged by hand against the same residuals
+        wR, wT, _wA = _uncapped_witness(record["doc"], block["tail"])
+        lat = _rederive_from_outside(record["doc"])          # capped, for its lattice part
+        g = np.asarray(record["doc"]["gated"], dtype=bool)
+        m = ENVELOPE_GATE_MULTIPLIER
+        latR, latT, _latA = SAW.lattice_term(
+            np.asarray(record["doc"]["freqs_hz"], dtype=float), record["doc"]["model"],
+            record["doc"]["params"], float(record["doc"]["run"]["dx_m"]),
+            float(record["doc"]["dt_s"]))
+        assert lat["R"].shape == wR.shape
+        dR = np.abs(np.asarray(record["doc"]["R_rfx"], dtype=float)
+                    - np.asarray(record["doc"]["R_tmm"], dtype=float))
+        dT = np.abs(np.asarray(record["doc"]["T_rfx"], dtype=float)
+                    - np.asarray(record["doc"]["T_tmm"], dtype=float))
+        if (np.all(dR[g] <= (m * (latR + wR))[g])
+                and np.all(dT[g] <= (m * (latT + wT))[g])):
+            walked_uncapped.append(f"{record['rel']}::{record['arm']}")
+    print(f"at TAIL_LIMIT={SF.TAIL_LIMIT}: uncapped G1 would pass "
+          f"{len(walked_uncapped)}/{len(_FALSIFIER_RECORDS)} falsifiers "
+          f"({sorted(walked_uncapped)}); capped lets {len(walked_capped)} through")
+    assert walked_capped == [], (
+        f"the shipped window is buyable at the looser bar: {walked_capped}")
+    assert walked_uncapped, (
+        "the uncapped window is not buyable at the looser bar either, so the cap "
+        "cannot be justified by this measurement -- re-derive the claim")

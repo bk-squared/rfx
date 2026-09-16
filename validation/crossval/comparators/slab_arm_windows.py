@@ -118,15 +118,36 @@ class ArmWindows(NamedTuple):
 
 
 def lattice_term(freqs_hz, model: str, params: dict, dx: float, dt: float,
-                 *, d_slab_m: float = SF.D_SLAB_M):
+                 *, d_slab_m: float = SF.D_SLAB_M, slab_cells=None):
     """``W_lat,{R,T,A}(f) = |lattice(dx, dt) - continuum|`` for ONE arm.
 
     ``params`` must be the DECLARED parameters, never a falsifier's run
     parameters: a wrong model that sized its own window would pass the gate
     meant to catch it. The callers take them from the arm record's ``params``
     key, which is the declared set (``params_run`` holds the defect).
+
+    ``slab_cells`` is the run's own ``[lo, hi)`` slab node span. The model
+    rasterizes the slab as ``round(d/dx)`` E nodes; the rig builds it as
+    ``2 * int(D/(2 dx))`` (``slab_rig.py`` lines 68-69, symmetric about the
+    grid centre). The two agree at 10, 20 and 40 cells -- every committed
+    rung -- and NOT in general (``d/dx = 11`` gives 11 against 10). Asserted
+    here rather than assumed, so a rung where they diverge reds instead of
+    quietly sizing its window from a slab one cell thicker than the one that
+    was stepped. ``None`` where the record does not carry the span (cv22's
+    does not).
     """
     f = np.asarray(freqs_hz, dtype=float)
+    n_model = int(round(float(d_slab_m) / float(dx)))
+    if slab_cells is not None:
+        lo, hi = (int(slab_cells[0]), int(slab_cells[1])) if not isinstance(
+            slab_cells, (int, float)) else (0, int(slab_cells))
+        n_rig = hi - lo
+        if n_rig != n_model:
+            raise ValueError(
+                f"the rig stepped {n_rig} slab nodes at dx = {dx!r} and the window "
+                f"model rasterizes {n_model}: the window would describe a slab "
+                f"{abs(n_rig - n_model)} cell(s) thicker than the one measured. "
+                f"model round(d/dx) vs rig 2*int(D/(2 dx)), slab_rig.py:68-69")
     R_an, T_an = de.tmm_slab_rt(f, de.eps_analytic(f, model, params), d_slab_m)
     R_lat, T_lat = de.yee_lattice_slab_rt_model(f, model, params, d_slab_m,
                                                 float(dx), float(dt))
@@ -170,13 +191,28 @@ def ringdown_rate(record, tail: dict):
 def witness_term(freqs_hz, model: str, params: dict, *, dx: float, dt: float,
                  n_steps: int, inc_amp_rel, tail: dict, record: dict,
                  d_slab_m: float = SF.D_SLAB_M):
-    """``W_wit,{R,T,A}(f)``: the lattice-witness budget window of this record.
+    """``W_wit,{R,T,A}(f)``: the lattice-witness budget window of this record,
+    CAPPED at the a-priori ceiling.
 
-    Computed by the standard's own functions
+    The budget itself is the standard's own
     (``lattice_witness.budget_terms`` + ``windows_from_terms``), on this
     record's settling tails, incident purity, ring-down rate and step count --
     the same numbers ``GL1`` is judged against, so the two gates cannot drift
     apart. No second copy of the budget lives here.
+
+    THE CAP (post-review, 2026-09-16). Those tails are MEASURED on the record
+    the window then judges, so a worse-settled record would buy itself a wider
+    continuum window. The standard already computes the bound that closes
+    that -- ``ceiling_windows``, the same budget with the DECLARED bars
+    (settling 1e-2, purity 1e-3) and the DERIVED ring rate, every input
+    available before the run -- and reports the excess as
+    ``W_exceeds_ceiling_*`` without gating it. Here it is a cap:
+    ``min(W_wit, W_ceiling)`` per bin. The window can then never exceed what
+    the policy fixes a priori, whatever the record's own tail does, and the
+    record-dependent headroom is gone at no cost to any declared arm.
+
+    A record with no DERIVED ring rate (``--recipe cv04``) has no a-priori
+    ceiling to cap against, so none is applied and the artifact says so.
     """
     R_lat, T_lat = de.yee_lattice_slab_rt_model(freqs_hz, model, params, d_slab_m,
                                                 float(dx), float(dt))
@@ -186,12 +222,25 @@ def witness_term(freqs_hz, model: str, params: dict, *, dx: float, dt: float,
                             trans_tail_rel=tail["total_trans_rel"],
                             purity_rel=tail["purity_inc_rel"], rate_1_s=rate)
     wR, wT, wA = LW.windows_from_terms(R_lat, T_lat, terms)
-    return wR, wT, wA, rate, rate_src
+    derived_rate = (record or {}).get("rate_ring_1_s")
+    if derived_rate is None:
+        return wR, wT, wA, rate, rate_src, False, None
+    cR, cT, cA = LW.ceiling_windows(freqs_hz, inc_amp_rel, R_lat, T_lat, dt=float(dt),
+                                    n_steps=int(n_steps), rate_1_s=float(derived_rate))
+    capped = (np.minimum(wR, cR), np.minimum(wT, cT), np.minimum(wA, cA))
+    excess = {
+        "capped_bins_R": int(np.sum(wR > cR)), "capped_bins_T": int(np.sum(wT > cT)),
+        "capped_bins_A": int(np.sum(wA > cA)), "n_bins": int(np.asarray(wR).size),
+        "max_uncapped_over_ceiling_R": float(np.max(wR / cR)),
+        "max_uncapped_over_ceiling_T": float(np.max(wT / cT)),
+        "ceiling_rate_1_s": float(derived_rate),
+    }
+    return capped[0], capped[1], capped[2], rate, rate_src, True, excess
 
 
 def derive(freqs_hz, model: str, params: dict, *, dx: float, dt: float, n_steps: int,
            inc_amp_rel, tail: dict, record: dict,
-           d_slab_m: float = SF.D_SLAB_M) -> ArmWindows:
+           d_slab_m: float = SF.D_SLAB_M, slab_cells=None) -> ArmWindows:
     """``MULTIPLIER * (W_lat + W_wit)`` per bin, and its gated-band mean.
 
     Raises rather than returning a window that cannot be enforced: a
@@ -204,8 +253,9 @@ def derive(freqs_hz, model: str, params: dict, *, dx: float, dt: float, n_steps:
     if not g.any():
         raise ValueError("no gated bin on this frequency grid; the band-mean window "
                          "would be undefined")
-    lat_R, lat_T, lat_A = lattice_term(f, model, params, dx, dt, d_slab_m=d_slab_m)
-    wit_R, wit_T, wit_A, rate, rate_src = witness_term(
+    lat_R, lat_T, lat_A = lattice_term(f, model, params, dx, dt, d_slab_m=d_slab_m,
+                                       slab_cells=slab_cells)
+    wit_R, wit_T, wit_A, rate, rate_src, capped, cap_report = witness_term(
         f, model, params, dx=dx, dt=dt, n_steps=n_steps, inc_amp_rel=inc_amp_rel,
         tail=tail, record=record, d_slab_m=d_slab_m)
     # Read at CALL time, not captured at import: `from ... import
@@ -236,6 +286,8 @@ def derive(freqs_hz, model: str, params: dict, *, dx: float, dt: float, n_steps:
         "d_slab_m": float(d_slab_m),
         "model": model, "params": {k: float(v) for k, v in params.items()},
         "rate_ringdown_1_s": float(rate), "rate_ringdown_source": rate_src,
+        "witness_capped_at_ceiling": bool(capped),
+        "ceiling_cap": cap_report,
         "W_lat_R": lat_R.tolist(), "W_lat_T": lat_T.tolist(), "W_lat_A": lat_A.tolist(),
         "W_wit_R": wit_R.tolist(), "W_wit_T": wit_T.tolist(), "W_wit_A": wit_A.tolist(),
         "mean_W_lat_R_gated": float(lat_R[g].mean()),
@@ -271,7 +323,8 @@ def from_arm_doc(arm_doc: dict, *, model: str | None = None, params: dict | None
                   params if params is not None else arm_doc["params"],
                   dx=float(run["dx_m"]), dt=float(arm_doc["dt_s"]),
                   n_steps=int(run["n_steps"]), inc_amp_rel=arm_doc["inc_amp_rel"],
-                  tail=arm_doc["tail"], record=run["record"], d_slab_m=d_slab_m)
+                  tail=arm_doc["tail"], record=run["record"], d_slab_m=d_slab_m,
+                  slab_cells=run.get("slab_cells"))
 
 
 def from_run(run: dict, model: str, params: dict, *,
@@ -288,7 +341,8 @@ def from_run(run: dict, model: str, params: dict, *,
     return derive(run["freqs_hz"], model, params, dx=float(run["dx_m"]),
                   dt=float(run["dt_s"]), n_steps=int(run["n_steps"]),
                   inc_amp_rel=run["inc_amp_rel"], tail=run["tail"],
-                  record=run["record"], d_slab_m=d_slab_m)
+                  record=run["record"], d_slab_m=d_slab_m,
+                  slab_cells=run.get("slab_cells"))
 
 
 def resolve(windows, w_ade_R, w_ade_T, gated):
