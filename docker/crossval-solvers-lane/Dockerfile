@@ -85,22 +85,38 @@ SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
 #     must not "helpfully" resolve that pip-installed numpy away.
 #
 #
-# MEASURED ON THE CLUSTER BEFORE THIS IMAGE WAS EVER BUILT. VESSL run
-# 369367261409 applied exactly the line below to this same parent image and it
-# failed in 5 minutes:
+# MEASURED ON THE CLUSTER, TWICE, BEFORE THIS IMAGE WAS EVER BUILT -- and the
+# first reading was wrong. VESSL run 369367261409 ran the conda line into this
+# parent image WITH --override-channels and died:
 #
 #     ResolvePackageNotFound:
 #       - conda=23.5.2
 #
-# --override-channels restricts the solve to conda-forge, and the base env's own
-# `conda` package came from another channel, so conda cannot keep ITSELF
-# satisfiable and the solve dies before pymeep is even considered. The pin that
-# matters (python, numpy<2) is unaffected; the channel restriction is what
-# breaks. So --override-channels is NOT used here, and the microwave-energy
-# recipe's use of it is not transferable: that recipe installs into a FRESH
-# miniconda where nothing else is in scope.
+# That was attributed to --override-channels restricting the solve to
+# conda-forge. Run 369367261425 then ran it WITHOUT --override-channels and
+# failed identically, which falsifies that reading. The channel restriction is
+# not the cause.
 #
-# IF THIS SOLVE STILL FAILS, in order, and none of these is a silent fallback --
+# What the two runs together say: conda must keep its OWN package satisfiable to
+# install anything into the env it lives in, and `conda=23.5.2` is not findable
+# from this image on this cluster with or without the restriction -- the channel
+# it originally came from is either unconfigured in the image or unreachable from
+# remilab-c0. The failure is about the base environment being uninstallable-into,
+# not about which channels pymeep is drawn from.
+#
+# CONSEQUENCE, and it is why this image exists rather than a runtime install:
+# the conda layer has to be applied where the channel situation is healthy, i.e.
+# on a GitHub Actions runner via build-crossval-solvers-image.yml, not in a pod.
+# A runtime install into the parent image is not a shortcut around building this;
+# it was tried and it does not work.
+#
+# A SEPARATE ENV IS NOT THE ANSWER HERE, though it is elsewhere: cv02 needs only
+# Meep and scripts/vessl_cv02_record_regen.yaml takes that route successfully.
+# These four test files need meep AND openEMS in ONE interpreter, and openEMS
+# lives in the base env's python.
+#
+# IF THIS SOLVE STILL FAILS ON THE RUNNER, in order, and none is a silent
+# fallback --
 # each changes what the image IS, so make the change, rebuild, and say which:
 #   1. pymeep has no build for this python. Bump PYMEEP_VERSION (the build
 #      workflow exposes it as a workflow_dispatch input) or drop the python pin

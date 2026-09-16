@@ -386,7 +386,15 @@ is the requirement that the baseline run already exists and is quoted.
 
 So this change ships both, and inherits that requirement:
 
-1. merge nothing yet. Let `build-crossval-solvers-image.yml` publish the image;
+0. **The image cannot be sidestepped by a runtime install, and this was tested.**
+   Two VESSL runs (369367261409, 369367261425) applied the conda layer directly to
+   the parent image in a pod, with and without `--override-channels`. Both died on
+   `ResolvePackageNotFound: conda=23.5.2` -- conda must keep its own package
+   satisfiable to install into the env it lives in, and that package is not
+   findable from this image on this cluster. So the layer has to be applied on a
+   GitHub Actions runner, which means **the merge really is the first step**; an
+   earlier draft of this section claimed otherwise.
+1. merge; let `build-crossval-solvers-image.yml` publish the image;
 2. flip the ghcr package private → public once by hand (`GITHUB_TOKEN` cannot);
 3. `scripts/vessl_crossval_solvers_pull_smoke.yaml` — a two-minute cluster-side check that the
    visibility flip happened and both solvers import;
