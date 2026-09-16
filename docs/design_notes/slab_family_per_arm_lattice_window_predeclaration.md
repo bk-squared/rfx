@@ -262,6 +262,167 @@ applies and this pre-declaration is wrong.
 
 *(appended after the note was committed; §5 is not edited)*
 
+Re-judged on 2026-09-16 with `tests/contracts/test_slab_arm_window_derivation.py`'s
+own re-derivation, which rebuilds the window from `dispersive_eps` and
+`lattice_witness` without calling the module under test. The old column is the
+committed windows replayed through the same evaluators: **they reproduce all 29
+committed gate dicts exactly**, so every difference in the new column is the
+derivation and not a replay drift.
+
+### 6.1 Verdicts, 29 records
+
+| case | record | arm | kind | gates that move | E2 before | E2 after |
+|---|---|---|---|---|---|---|
+| cv22 | `rfx` | debye | declared | none | PASS | PASS |
+| cv22 | `rfx` | lorentz | declared | none | PASS | PASS |
+| cv22 | `rfx` | drude | declared | none | PASS | PASS |
+| cv22 | `rfx__falsifier_debye_deps_zero` | debye | falsifier | none | FAIL | FAIL |
+| cv22 | `rfx__falsifier_debye_tau_x2` | debye | falsifier | `G1_R` PASS->FAIL | FAIL | FAIL |
+| cv22 | `rfx__falsifier_drude_fp_x1p3` | drude | falsifier | none | FAIL | FAIL |
+| cv22 | `rfx__falsifier_drude_wp_zero` | drude | falsifier | none | FAIL | FAIL |
+| cv22 | `rfx__falsifier_lorentz_deps_zero` | lorentz | falsifier | none | FAIL | FAIL |
+| cv22 | `rfx__falsifier_lorentz_f0_x1p3` | lorentz | falsifier | none | FAIL | FAIL |
+| cv22 | `rfx__falsifier_meep_lorentz_gamma_half` | lorentz | declared (Meep-leg falsifier) | none | PASS | PASS |
+| cv22 | `rfx__falsifier_meep_lorentz_no_2pi` | lorentz | declared (Meep-leg falsifier) | none | PASS | PASS |
+| cv23 | `rfx` | tand0p1 | declared | none | PASS | PASS |
+| cv23 | `rfx` | tand1 | declared | none | PASS | PASS |
+| cv23 | `rfx` | tand3 | declared | none | PASS | PASS |
+| cv23 | `rfx__falsifier_meep_tand1_sigma_2pi` | tand1 | declared (Meep-leg falsifier) | none | PASS | PASS |
+| cv23 | `rfx__falsifier_meep_tand1_sigma_no_eps` | tand1 | declared (Meep-leg falsifier) | none | PASS | PASS |
+| cv23 | `rfx__falsifier_tand0p1_sigma_neg` | tand0p1 | falsifier | none | FAIL | FAIL |
+| cv23 | `rfx__falsifier_tand0p1_sigma_x1p5` | tand0p1 | falsifier | `G1_R` PASS->FAIL, `G1_A` PASS->FAIL, `G2_R` PASS->FAIL | FAIL | FAIL |
+| cv23 | `rfx__falsifier_tand0p1_sigma_zero` | tand0p1 | falsifier | none | FAIL | FAIL |
+| cv23 | `rfx__falsifier_tand1_sigma_x1p5` | tand1 | falsifier | `G1_T` PASS->FAIL, `G1_A` PASS->FAIL | FAIL | FAIL |
+| cv23 | `rfx__falsifier_tand1_sigma_zero` | tand1 | falsifier | none | FAIL | FAIL |
+| cv23 | `rfx__falsifier_tand3_sigma_x1p5` | tand3 | falsifier | `G1_T` PASS->FAIL, `G1_A` PASS->FAIL, `G2_T` PASS->FAIL | FAIL | FAIL |
+| cv23 | `rfx__falsifier_tand3_sigma_zero` | tand3 | falsifier | none | FAIL | FAIL |
+| cv23 | `rfx__tand0p1_dx2` | tand0p1 | declared (dx rung) | none | PASS | PASS |
+| cv23 | `rfx__tand0p1_dx4` | tand0p1 | declared (dx rung) | none | PASS | PASS |
+| cv23 | `rfx__tand1_dx2` | tand1 | declared (dx rung) | none | PASS | PASS |
+| cv23 | `rfx__tand1_dx4` | tand1 | declared (dx rung) | none | PASS | PASS |
+| cv23 | `rfx__tand3_dx2` | tand3 | declared (dx rung) | none | PASS | PASS |
+| cv23 | `rfx__tand3_dx4` | tand3 | declared (dx rung) | none | PASS | PASS |
+
+**12 declared-arm records pass, unchanged. 13 wrong-model falsifier records
+fail, four of them on more gates than before. Neither stop condition in §4
+fires.**
+
+### 6.2 The windows, per arm and per rung (gated band, R)
+
+| case | record | arm | dx | old per-bin | old mean | new per-bin, min | new per-bin, max | new mean | of which W_lat | of which W_wit | what the arm needs |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| cv22 | primary | debye | 1.00 mm | 0.0740 | 0.0101 | 1.52e-02 | 8.92e-02 | 2.90e-02 | 2.22e-03 | 1.71e-02 | 5.57e-03 |
+| cv22 | primary | lorentz | 1.00 | 0.0740 | 0.0104 | 3.15e-03 | 1.15e-02 | 8.13e-03 | 2.84e-03 | 2.58e-03 | 4.99e-03 |
+| cv22 | primary | drude | 1.00 | 0.0740 | 0.0100 | 8.75e-05 | 2.25e-03 | 8.65e-04 | 4.94e-04 | 8.25e-05 | 1.34e-03 |
+| cv23 | primary | tand0p1 | 1.00 | 0.0740 | 0.0100 | 4.67e-04 | 3.03e-02 | 7.81e-03 | 3.92e-03 | 1.28e-03 | 1.40e-02 |
+| cv23 | `tand0p1_dx2` | tand0p1 | 0.50 | 0.0740 | 0.0100 | 3.64e-04 | 1.36e-02 | 3.13e-03 | 9.59e-04 | 1.13e-03 | 3.52e-03 |
+| cv23 | `tand0p1_dx4` | tand0p1 | 0.25 | 0.0740 | 0.0100 | 3.49e-04 | 9.30e-03 | 1.98e-03 | 2.38e-04 | 1.08e-03 | 9.27e-04 |
+| cv23 | primary | tand1 | 1.00 | 0.0740 | 0.0101 | 4.38e-03 | 1.60e-02 | 8.93e-03 | 5.09e-03 | 8.56e-04 | 7.74e-03 |
+| cv23 | `tand1_dx2` | tand1 | 0.50 | 0.0740 | 0.0100 | 1.40e-03 | 6.74e-03 | 3.01e-03 | 1.26e-03 | 7.50e-04 | 1.86e-03 |
+| cv23 | `tand1_dx4` | tand1 | 0.25 | 0.0740 | 0.0100 | 5.87e-04 | 3.66e-03 | 1.33e-03 | 3.13e-04 | 5.75e-04 | 4.79e-04 |
+| cv23 | primary = `tand3_dx2` | tand3 | 0.50 | 0.0740 | 0.0100 | 2.75e-03 | 9.31e-03 | 5.38e-03 | 3.11e-03 | 4.71e-04 | 4.70e-03 |
+| cv23 | `tand3_dx4` | tand3 | 0.25 | 0.0740 | 0.0100 | 8.55e-04 | 3.87e-03 | 1.82e-03 | 7.77e-04 | 4.34e-04 | 1.20e-03 |
+
+Three readings the table forces.
+
+**The lattice term halves four times per mesh halving and the record term does
+not.** `W_lat` on tand0p1 runs 3.92e-03 → 9.59e-04 → 2.38e-04, second order as
+the model says; `W_wit` on the same three rungs is 1.28e-03, 1.13e-03, 1.08e-03
+— flat, because refining the mesh does not lengthen the record. So on the fine
+rungs the floor is most of the window, and without it a dx/4 window would sit
+below the distance the record's own finiteness puts between the measurement and
+the lattice. That is the shape the §2.2 floor exists for, measured rather than
+assumed.
+
+**The window follows the arm, which is the whole point.** The same old number,
+0.074, judged all eleven rungs. The new per-bin windows span 8.75e-05 to
+8.92e-02 — three orders of magnitude — and every one of them is that arm's own
+material, mesh and record.
+
+**The direction is tighter almost everywhere, and looser in one place.** In band
+mean: cv22 lorentz ×0.78 (R) / ×0.31 (T), drude ×0.09 / ×0.17, cv23 tand0p1
+×0.78 / ×0.79 / ×0.36 (A), tand1 ×0.88 / ×0.16 / ×0.24, tand3 ×0.54 / ×0.003 /
+×0.20, and the six dx rungs ×0.05 to ×0.31. The exception is **cv22's debye
+arm: ×2.89 (R), ×2.25 (T)**, with 11 of 229 gated bins in R and 25 of 229 in T
+carrying a window wider than the old flat one (worst 1.20× in R, 1.42× in T, all
+of them above 7.7 GHz in R and 6.6 GHz in T). §5.4 pre-declared this and §6.4
+reads it.
+
+### 6.3 Per-bin trace, the six declared arms (R5)
+
+Every gated bin was inspected; the worst bin of each observable is listed with
+the extrema, and the ratio column is `|dX| / window` — the fraction of the
+window the measurement actually uses.
+
+| arm | dx | gated bins | worst R ratio (at) | worst T ratio (at) | bins over window | bins where new > old (R / T) |
+|---|---|---|---|---|---|---|
+| cv22 debye | 1.00 mm | 229 | 0.150 (4.862 GHz) | 0.160 (5.306 GHz) | 0 | 11 / 25 |
+| cv22 lorentz | 1.00 | 229 | 0.520 (6.639 GHz) | 0.514 (5.541 GHz) | 0 | 0 / 0 |
+| cv22 drude | 1.00 | 229 | 0.614 (6.535 GHz) | 0.621 (6.613 GHz) | 0 | 0 / 0 |
+| cv23 tand0p1 | 1.00 | 229 | 0.559 (8.391 GHz) | 0.452 (8.756 GHz) | 0 | 0 / 0 |
+| cv23 tand1 | 1.00 | 229 | 0.608 (5.541 GHz) | 0.639 (5.385 GHz) | 0 | 0 / 0 |
+| cv23 tand3 | 0.50 | 229 | 0.620 (6.221 GHz) | 0.650 (4.914 GHz) | 0 | 0 / 0 |
+
+Five of the six arms use between half and two thirds of their window at the
+worst bin — a margin of 1.5× to 2×, which is the multiplier and no more. That
+is what a window sized to the arm looks like: the old 0.074 left cv23 tand1's
+transmission using 1.5 % of its window. Debye is the exception at 0.15, and for
+the same reason its window widened: its record is the family's least settled, so
+its floor is large.
+
+The full per-bin traces (every 16th bin plus the extrema of each observable,
+with `|dR|`, `|dT|`, both windows and the ratio) are reproducible from the
+committed records by
+`python -m pytest tests/contracts/test_slab_arm_window_derivation.py`, whose
+re-derivation is checked bin by bin against the evaluator at `rtol = 1e-12`
+on all 29 records.
+
+### 6.4 The one place this loosens, read rather than reported
+
+cv22's debye arm carries a `W_wit` of 1.71e-02 (R) and 2.26e-02 (T) in the band
+mean against a `W_lat` of 2.22e-03 and 3.01e-03 — the floor is 87 % of the
+window. Two things make it that big and both are in the record, not in the
+derivation:
+
+* **The band top is where the incident spectrum is weakest.** The budget divides
+  every term by the relative incident amplitude, and the rig's differentiated
+  Gaussian peaks near 3.5 GHz; by 10 GHz it is at about 8 % of peak. The debye
+  window therefore rises from 1.52e-02 at 4.0 GHz to 8.92e-02 at 10.0 GHz, and
+  it is only above 7.7 GHz that it passes the old flat 0.074.
+* **Debye's tail is the family's slowest.** Its fitted tail rate is slower than
+  the derivation's (the lattice-witness standard's §14.1 measured 1.5×), and the
+  budget takes the slower of the two, so the truncation term is larger than on
+  any other arm. The same record is flagged by the standard's own
+  `W_exceeds_ceiling_R` for exactly this reason.
+
+So the widening is a true statement about that record: it is the least settled
+of the twelve, and a window derived from it says so, where cv04's borrowed
+scalar hid it behind a number measured on another board. Nothing survives
+because of it — the debye arm's own falsifiers `debye_tau_x2` and
+`debye_deps_zero` both still fail, and `debye_tau_x2` fails on one gate MORE
+than before. The cheap check that would close it is a longer debye record, which
+lowers `W_wit` directly; it is not needed for any verdict here and is not run.
+
+### 6.5 Expectation hits and misses
+
+§5's table is not edited. What it got right and wrong:
+
+| §5 prediction | outcome |
+|---|---|
+| 5.1 all 12 declared-arm records pass every E2 gate, unchanged | **hit** (worst ratio 0.65, margin ≥ 1.5 everywhere) |
+| 5.2 every wrong-model falsifier record keeps an overall FAIL | **hit** (13 of 13) |
+| 5.2 named new firings: `debye_tau_x2` `G1_R`; `tand0p1_sigma_x1p5` `G1_R`/`G1_A`; `tand1_sigma_x1p5` `G1_T`/`G1_A`; `tand3_sigma_x1p5` `G1_T`/`G1_A` | **hit**, all seven |
+| 5.3 the four Meep-leg falsifiers keep passing E2 | **hit** |
+| 5.4 `tand0p1_sigma_x1p5` `G1_R` flips to FAIL (the least-sure one) | **hit** |
+| 5.4 cv22 debye's worst bin widens ≈ 1.2× over the flat 0.074 | **hit** (1.20× in R; T also widens, 1.42×, which §5.4 did not put a number on) |
+| 5.5 item 3: `W_lat` accounts for ≈ 99.7 % of cv04's own residual | **hit** — on cv04's ε′ = 4 rung the same function gives a band-mean lattice−continuum difference of 7.3e-03 against a measured `\|rfx − continuum\|` of the same size, with `\|rfx − lattice\|` at 1.7e-05 |
+| 5.5 item 4: every `W_wit` bin finite and positive | **hit**, 29 records, asserted in `derive` |
+
+**Two misses, both in the direction of more gates firing than named**:
+`tand0p1_sigma_x1p5` also loses `G2_R` and `tand3_sigma_x1p5` also loses `G2_T`.
+§5.2 predicted the per-bin flips by name and did not enumerate band-mean ones;
+both records were already failing, so neither changes a verdict.
+
 ## 7. What this does NOT fix — the Meep legs
 
 `W_BIN`, `W_MEAN_R` and `W_MEAN_T` survive as cv04-r1-derived scalars, used by
