@@ -119,14 +119,18 @@ artifact):
   committed fixture at `num_periods = 40`, identical across arms.
 * `pec_short`, every arm: *"PEC 'pec_like' x-extent 5.08mm = 4.0 cells —
   volume under-resolved"*.
-* `slab`, every arm: the `10.2 cells per λ_eff` notice on x and y, the
-  lossless-dielectric-in-CPML notice; on arm B the z notice reads `14.5 cells
-  per λ_eff … dx=889µm` instead of 10.2, and on C and D1 it reads 10.2 with
-  the arm's own z cell — the notice tracks the realized graded cell, which is
-  the right behaviour and is recorded here because it is the only
-  arm-dependent preflight string.
+* `slab`, every arm: the `10.2 cells per λ_eff` notice on x and y, plus the
+  lossless-dielectric-in-CPML notice. The **z** notice is the one preflight
+  string that differs between arms, and it differs correctly: it reads the
+  arm's **coarsest realized z cell**. Arm A `10.2 cells per λ_eff …
+  dx=1.27mm`; arm B `14.5 … dx=889µm`; arm D1 `10.2 … dx=1.27mm`; **arm C
+  emits no z notice at all**, because its uniform 0.635 mm z cell reaches
+  20.3 cells per λ_eff and clears the advisory's own ≥ 20 threshold.
 
-No new finding appeared on any graded arm.
+No new finding appeared on any graded arm. Worth recording for its own sake:
+preflight reads the graded axis correctly and reports the coarse band, so the
+input-fidelity layer sees a difference between arms B, C and D1 that none of
+the measured observables can see.
 
 ---
 
