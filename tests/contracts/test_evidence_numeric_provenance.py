@@ -573,13 +573,17 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
 # tutorial's STRAIGHT-run mp.inf block as the bend geometry), and the correction
 # replaces one existence-only citation with twelve that resolve the bend arms'
 # measured extents. Raised by the delta, in the same commit.
-# 2026-09-16 (#873, near-field composition): +75 references over +1 distinct
+# 2026-09-16 (#873, near-field composition): +86 references over +1 distinct
 # artifact (tests/fixtures/waveguide_false_lane_column_power/
-# near_field_composition.json, cited here for the first time), all 75
+# near_field_composition.json, cited here for the first time), all 86
 # value-checked -- the results note's section 10. Raised by the delta, in the
-# same commit that adds them, as the entries above did.
-MIN_REFERENCES = 1401
-MIN_VALUE_CHECKED = 1322
+# same commit that adds them, as the entries above did. The last 11 of the 86
+# arrived with the PR #1094 review: its first finding was that the note gave a
+# reason for an estimator swap that is false at one rung, and the reason that
+# does hold is three numbers already IN the artifact that nothing cited. A
+# number the argument leans on and the gate cannot see is the gap that catches.
+MIN_REFERENCES = 1412
+MIN_VALUE_CHECKED = 1333
 MIN_DISTINCT_ARTIFACTS = 79
 
 

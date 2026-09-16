@@ -8,18 +8,26 @@ Verdict, in the order the pre-declaration asks for it:
   TE30 is not the carrier and its coefficient does not decay at its own `α`.
 * **The hypothesis of section 1 is supported, with the carrier re-identified.** The
   driven reference plane sits in a measurable near field, that near field is **TE20** —
-  94.2 / 98.5 / 99.6 % of all the non-TE10 content there — and it accounts for
-  **94.3 / 96.9 / 97.9 %** of the measured modal-power offset. TE20's own attenuation
-  constant, tabulated in the pre-declaration before the run, reproduces its decay across
-  five plane positions.
+  0.999 of all the non-TE10 content there against node-registered templates, 94.2 / 98.5 /
+  99.6 % against cell-centred ones — and it accounts for **94.3 / 96.9 / 97.9 %** of the
+  measured modal-power offset. TE20's own attenuation constant, tabulated in the
+  pre-declaration before the run, reproduces its decay across five plane positions, and
+  its amplitude at the plane is predictable from the injected profile alone to 27 / 16 /
+  11 %.
 * **What made the pre-declaration name the wrong mode is itself the measurement's main
   finding**: the port's transverse templates are cell-centred while the `Ez` and `Hy` it
   integrates are node-registered in u. The parity argument that excluded TE20 holds for
   cell-centred modes and does not hold for the field. See section 3.
 
 After two lanes that could not name the term (PR #880, PR #1081), this one names it and
-gives it a mechanism with two measured factors. No code in `rfx/` changed; no gate,
-tolerance or golden moved.
+gives it a mechanism: **one half-cell template offset, charged twice** — once where the
+profile is injected and once where the field is read back through it. No code in `rfx/`
+changed; no gate, tolerance or golden moved.
+
+Reviewed by a separate Opus instance (PR #1094): ACCEPT WITH CHANGES. The review's six
+items are addressed in sections 2, 3, 5, 8 and 9, each marked where it lands; its first
+item corrected a reason this note gave for a deviation, and section 8 now carries the one
+that holds.
 
 Pre-declaration: `waveguide_driven_plane_near_field_composition_predeclaration.md`
 (committed at 460bb9b7, before any projection coefficient existed).
@@ -85,10 +93,21 @@ then applied per aperture cell in float64. Injection is untouched.
 plane, the quantity PR #1081 recorded as −5.070e-3 / −1.073e-3 / −2.454e-4 at bin 16;
 this run reads −5.061e-3 / −1.065e-3 / −2.402e-4 on its own re-measurement.
 
-`D_pred` is the part of it carried by non-TE10 content, computed from the field through
-the extractor's own aperture weighting with no free parameter. `D_TE10` is the remainder,
-the TE10-only difference between the two planes. The two compose exactly:
+`D_pred` is the part of it carried by non-TE10 content, read off the field through the
+extractor's own aperture weighting. `D_TE10` is the remainder, the TE10-only difference
+between the two planes. The two compose exactly:
 `(1 + D_meas) = (1 + D_pred)(1 + D_TE10)`, and the residual of that identity is 1.1e-16.
+
+**What leg 1 therefore tests, said plainly (PR #1094 review).** That composition is exact
+algebra, and both sides share the same measured `P(drive_ref)`, so `D_pred` is not an
+independent prediction of `D_meas` — the two agree to the extent that `D_TE10` is small.
+Leg 1 reduces to: *the calibrated TE10 power is plane-invariant to 2-6 % of `D_meas`*,
+i.e. once the non-TE10 part of the driven plane's field is removed, what is left matches
+the clean plane. That is a real and falsifiable statement — the split could have left a
+large TE10-only residue and did not — but it is weaker than the pre-declaration's wording
+("with no free parameter") implied, and that wording is withdrawn here. The independent
+evidence for the hypothesis is leg 2's `α` (section 4), the falsifier (section 6) and the
+a-priori launch prediction (section 5), none of which shares a term with `D_meas`.
 
 | rung | `D_meas` (bin 16) | `D_pred` | `D_TE10` | `D_pred / D_meas` |
 |---|---|---|---|---|
@@ -107,6 +126,14 @@ coarse +1.165 +1.224 +1.211 +1.237 +1.271 +1.290 +1.344 +1.433 +1.680 +2.409 -4.
 mid    +1.022 +1.062 +1.047 +1.054 +1.061 +1.060 +1.072 +1.077 +1.097 +1.129 +1.185 +1.641 +0.667 +0.876 +0.938 +0.961 +0.969
 fine   +0.954 +1.050 +0.997 +1.017 +1.017 +1.009 +1.023 +1.013 +1.023 +1.028 +1.025 +1.091 +1.191 +0.909 +0.988 +0.987 +0.979
 ```
+
+**The sign chain, end to end.** `D_meas > 0` at the bottom of the band means the driven
+plane reads more modal power than the receiving plane, i.e. `a₁` is measured high against
+`b₂`; `|S21| = |b₂/a₁|` is then low and the column power sits below 1 — which is the
+committed per-bin curve's negative low-band end (−1.56e-3 at bin 0, coarse). `D_meas`
+crosses zero near bin 10-11 and is negative at the top, so `a₁` is measured low there,
+`|S21|` high, and the column power runs above 1 (+6.13e-3 at bin 16). The frequency tilt
+#873 carries is that crossing, and it is the crossing of the TE20 cross-term.
 
 The excursions at bins 10-12 are a division by a `D_meas` that crosses zero there, not a
 disagreement: in absolute terms the two curves are within 6.8e-4 / 6.4e-5 / 1.5e-5 of each
@@ -154,7 +181,16 @@ at all. The parity argument was applied to the wrong object.
 
 The non-TE10 content at the driven reference plane, split off the field with no basis
 (the clean far plane's own shape is the TE10 reference), is 4.5206e-2 / 2.3965e-2 /
-1.2422e-2 of the field norm at bin 16. Of that, TE20 carries **94.20 / 98.50 / 99.61 %**.
+1.2422e-2 of the field norm at bin 16. Of that, TE20 carries **94.20 / 98.50 / 99.61 %**
+when the census is taken in the cell-centred family.
+
+Taken against **node-registered** templates — `sin(mπj/nu)·cos(nπ(k+½)/nv)`, the lattice
+the field is actually on (section 3) — TE20's share is **0.9994 to 0.9999 across the whole
+band at every rung**, and that family's squares sum to 1.00000 of the orthogonal norm, so
+it is complete rather than merely large. The 5.8 % of "other" in the 94.2 % figure is the
+cell-centred basis's own read-through, not content (PR #1094 review; reproduced here by
+re-running the `compose` stage — the per-bin share is not stored in the artifact, so it is
+re-derived by running the script rather than read from a key).
 
 | mode | `α(11.6 GHz)`, 1/m | content / TE10 (coarse/mid/fine) | first-hop ratio measured | predicted `exp(α·17.78 mm)` |
 |---|---|---|---|---|
@@ -191,17 +227,45 @@ Two first-order factors multiply:
 | product | 6.317e-3 | 1.753e-3 | 4.586e-4 | 3.60, 3.82 |
 | measured `\|V_perp\|/\|V\|` | 6.6206e-3 | 1.7757e-3 | 4.6162e-4 | 3.73, 3.85 |
 
-The product reproduces the measured voltage error to −4.6 % / −1.3 % / −0.7 %, improving
-with refinement. (A consistency check rather than an identity: the two factors are
-normalised against templates that themselves differ at first order in `dx`, which is the
-size of the residual disagreement.)
+The product reproduces the measured voltage error to −4.6 % / −1.3 % / −0.7 %. **That row
+is close to an identity and is demoted here (PR #1094 review):** `V_perp` is the projection
+of the orthogonal field onto the TE10 template, and section 4 has just shown that
+orthogonal field is TE20 to 0.999, so "TE20 amplitude × TE20's template overlap ≈ `V_perp`"
+mostly re-states that. It is a closure check on the census, not a second measurement.
 
-Stated as a chain, this is #873's one sentence with a mechanism in it. The TFSF launch is
-not a pure discrete TE10 — its error is first order in `dx`, and it appears as a TE20 near
-field whose relative amplitude at a fixed physical distance falls like `dx`. The port's
-transverse template is half a cell off the lattice the field lives on, so it reads that
-TE20 as TE10 with a weight that also falls like `dx`. Their product is the error in `a₁`,
-second order in `dx`, and `|S21| = |b₂/a₁|` inherits it. The receiving port sees the same
+**The a-priori version, which uses no FDTD field at all.** Decompose the profile the port
+INJECTS, `cfg.ez_profile`, on the node lattice it is added to. Its TE20 fraction is
+**0.145045 / 0.073695 / 0.036990** — the *same numbers*, to 0.000 %, as the read-through
+row above. That is the finding: the "two first-order factors" are **one half-cell offset
+counted twice**, once when the template is written into the field and once when the field
+is read back through it. The template is index-flip symmetric, so its symmetry centre sits
+at index `(nu−1)/2` — 4.0 / 8.5 / 17.5 — while the guide centre is node `nu/2` = 4.5 / 9.0 /
+18.0. The offset is exactly half a cell at every rung, and independent of the parity of
+`nu`.
+
+That makes the TE20 amplitude at the driven plane predictable before any solve: the
+launched fraction times its own decay over 7.62 mm,
+
+| | coarse | mid | fine |
+|---|---|---|---|
+| launched TE20 / TE10 (from `ez_profile`, no FDTD) | 0.145045 | 0.073695 | 0.036990 |
+| `exp(−α·7.62 mm)`, `α` from the pre-declaration | 0.41365 | 0.38519 | 0.37860 |
+| **predicted TE20 / TE10 at the plane** | **0.0600** | **0.0284** | **0.0140** |
+| measured | 0.043553 | 0.023792 | 0.012397 |
+| measured / predicted | 0.73 | 0.84 | 0.89 |
+
+Predicted to within 27 / 16 / 11 %, improving with refinement, from the injected profile
+and a cutoff — no field, no fit. The shortfall is the part the launch is not: the TFSF pair
+injects an E-side and an H-side correction with different transverse shapes (PR #1081 §4),
+and only the E side is decomposed here.
+
+Stated as a chain, this is #873's one sentence with a mechanism in it. The port's
+transverse template sits half a cell off the lattice the field lives on. Injected, that
+offset launches a TE20 whose relative amplitude is first order in `dx` (0.145 / 0.0737 /
+0.0370 at the aperture, and 0.73-0.89 of that survives to the reference plane). Read back,
+the same offset makes the same template count that TE20 as TE10, with the same first-order
+weight. The product is the error in `a₁`, second order in `dx`, and `|S21| = |b₂/a₁|`
+inherits it — one geometric defect, charged at both ends. The receiving port sees the same
 error only in the far field of its own inactive launch, i.e. not at all, so nothing
 cancels — which is exactly why PR #1081's bound, correct for anything common to the two
 ports, did not catch it.
@@ -265,13 +329,29 @@ Recorded before the verdict, because one of them changes a leg's outcome.
    least-squares fit of the field in the cell-centred discrete mode family. That
    estimator was computed and is in the artifact
    (`D_pred_bin16` = −3.7304e-4 / +2.2981e-3 / +4.1469e-4, giving `D_pred/D_meas` of 0.074
-   / −2.157 / −1.727 — a fail, and a sign flip between rungs). It was discarded for a
-   measured reason, not for its answer: **it reads +2.2981e-3 at the mid rung's driven
-   plane and +2.3245e-3 at the clean receiving plane 88.9 mm away.** An estimator of
-   higher-mode content that returns the same value on a plane with none is measuring its
-   own basis. The cause is section 3: a node-registered field is not in the span of the
-   cell-centred family, so the fit's TE10 coefficient inherits the near-deficiency, and
-   its unexplained residual (4.86e-3 at mid) is identical at all four planes.
+   / −2.157 / −1.727 — a fail, and a sign flip between rungs).
+
+   **The decisive reason it was discarded is structural, and an earlier draft of this
+   paragraph gave a weaker one that is false at one rung (PR #1094 review).** That draft
+   said the estimator "returns the same value on a plane with none": true at mid
+   (+2.2981e-3 driven against +2.3245e-3 at the clean plane) and at fine (+4.1469e-4
+   against +4.1668e-4), but **false at coarse**, where it reads −3.7304e-4 at the driven
+   plane and +3.2224e-8 at the clean one — four orders apart, and still giving
+   `D_pred/D_meas` = 0.0737.
+
+   The reason that holds at every rung is in this run's own artifact.
+   `modes.TE20.overlap_e_with_te10` is −2.09e-16 and `modes.TE30.overlap_e_with_te10` is
+   −1.37e-8, and `te10_by_plane.drive_ref.reconstruction_rel_err_V` is 1.47e-11: `V` is
+   reconstructed by the TE10 term alone to eleven figures, so `V_hi ≡ 0` identically and
+   the pre-declared `D_pred` is an **H-side-only** quantity by construction. It is blind
+   to exactly the E-side read-through this PR identifies as the mechanism. The
+   pre-declaration derived "the modal voltage is blind to every higher mode" in its §2.3
+   and read it as *there is no E-side contamination*; what it actually means is *this
+   estimator cannot separate it*, because the blindness is a property of the cell-centred
+   basis and not of the field. Section 3 is why. The plane-independent readings at mid and
+   fine are then a second symptom of the same cause — the fit's `B₁₀` inherits the
+   family's near-deficiency against a node-registered field, and its unexplained residual
+   (4.86e-3 at mid) is identical at all four planes.
    The replacement takes the TE10 reference from the clean far plane's measured shape — no
    basis, no inversion — and is validated where it was not calibrated: at the 71.12 mm
    plane it reads −1.35e-5 / −3.94e-6 / −5.54e-7 against the driven plane's −4.77e-3 /
@@ -283,32 +363,59 @@ Recorded before the verdict, because one of them changes a leg's outcome.
    pre-declaration before any field was read, and both are met.
 2. **The mirror control's 1e-4 bar is not met as written** (section 7 item 1), for a
    reason that is a property of the calibration, not of the field.
+3. **The pre-declaration's §2.3 `⟨h_k, h₁₀⟩` row does not reproduce at the coarse rung.**
+   It declared TE30 5.445e-2 / TE50 1.049e-1 / TE70 1.881e-1 there; the artifact holds
+   5.3438e-2 / 9.7230e-2 / 1.4837e-1 (−1.9 / −7.3 / −21 %), while mid and fine agree to
+   ≤0.2 % (PR #1094 review). Diagnosed rather than left as a discrepancy: the two are
+   **different normalisations of the same overlap**. The pre-declaration's scratch
+   construction scaled each mode's H by the port's own `_scale_h_to_unit_cross` (unit
+   `∫(e×h)·n̂ dA`); the production script normalises `∫(h_y²+h_z²) dA = 1`, so the
+   decomposition coefficient and the overlap weight stay separately interpretable.
+   Recomputing the row under the pre-declaration's scaling returns 5.4445e-2 / 1.0486e-1 /
+   1.8813e-1, i.e. its numbers to four figures; the two conventions converge as `dx` falls
+   because the port's cross-overlap factor tends to 1 (1.0035 / 1.0004 / 1.0001 for TE10
+   here). No verdict moves — the row is an ordering argument in the pre-declaration and the
+   leak weights it ranks are unchanged — but the two columns are not the same quantity and
+   must not be compared as if they were. The pre-declaration is left unedited; this is the
+   record.
 
 ## 9. What a fix would be — for the PI, not done here
 
 `rfx/` carries no diff in this PR, per the pre-declaration. Two candidates, with what each
 would cost:
 
-* **Yee-register the port's transverse templates.** The templates are built on one
-  cell-centred lattice for both components, but `Ez` is a node in u and a cell centre in
-  v, and `Ey` is the reverse; `Hy` follows `Ez`. Building each component's template on its
-  own lattice removes the read-through at first order, which is the first factor of
-  section 5. Blast radius: every waveguide-port number moves — the discrete cutoff, `Z_TE`,
-  `|S11|`, `|S21|`, and with them the chain battery's goldens and the cv gates that read
-  them. This is the same registration family as #868/#889 seen from the template side
-  rather than the eigenproblem side, and it should be scoped as such rather than patched.
-* **A reference-plane clearance rule in preflight.** The governing parameter is the
-  physical distance from the launch in units of `1/α` of the first evanescent mode — TE20
-  here, `1/α` = 8.6 / 8.0 / 7.8 mm at the top of the band and 4.9 mm at the bottom. The
-  shipped `ref_offset` is a **cell count**, so the default plane moves physically closer to
-  the source as the mesh refines; this fixture happens to hold 7.62 mm fixed, which is
-  0.88 decay lengths. A preflight that computed `α` of the first mode above the operating
-  band and warned when the record plane sits inside ~3/α would have fired on every rung of
-  this battery. That is an input-fidelity check on declared geometry, which is the tier
-  preflight is for, and it moves no committed number.
+* **Yee-register the port's transverse templates — the principled fix.** The templates
+  are built on one cell-centred lattice for both components, but `Ez` is a node in u and a
+  cell centre in v, and `Ey` is the reverse; `Hy` follows `Ez`. Building each component's
+  template on its own lattice removes the offset at its source, and section 5 shows the
+  same offset is charged twice — once at the launch, once at the readout — so it is one
+  change, not two. Blast radius, traced rather than gestured at: the discrete eigenproblem
+  sets `kc_num`, which becomes `f_c` at `rfx/sources/waveguide_port.py:808`, which feeds
+  `_compute_beta` and `_compute_mode_impedance`, so `β` and `Z_TE` move; every
+  `normalize=False` and flux `|S|` moves with them, and so do
+  `tests/fixtures/waveguide_chain_battery/fixture_v18_close.json` and the verdicts read out
+  of it. This is #868/#889's transverse sibling — the same registration family seen from
+  the template side rather than the eigenproblem side — and it wants the same treatment: a
+  bit-identity gate for every configuration the change must not touch, and a declared
+  re-gate list for the ones it must.
+* **A reference-plane clearance rule in preflight — worth doing, but it hides rather
+  than fixes.** The governing parameter is the physical distance from the launch in units
+  of `1/α` of the first evanescent mode — TE20 here, `1/α` = 8.6 / 8.0 / 7.8 mm at the top
+  of the band and 4.9 mm at the bottom. The shipped `ref_offset` is a **cell count**, so
+  the default plane moves physically closer to the source as the mesh refines; this fixture
+  happens to hold 7.62 mm fixed, which is 0.88 decay lengths. A preflight that computed `α`
+  of the first mode above the operating band and warned when the record plane sits inside
+  ~3/α would have fired on every rung of this battery. It is an input-fidelity check on
+  declared geometry, which is the tier preflight is for, and it moves no committed number —
+  but it moves the *user* away from the defect rather than removing it, so it is not a
+  substitute for the first item. Do both, in that order of importance and the reverse order
+  of cost.
 
-The two are not alternatives: the first removes the coupling, the second tells a user when
-the content is there at all.
+**A candidate sibling for the same scope: #894.** Moving the reference plane moves
+band-mean `|S11|` by 1.0 % and 5.2 % (section 6) on a guide whose reflection is supposed to
+be a property of the structure, not of where it is read. #894's arrival-time class is a
+different mechanism, but both are "the answer depends on the plane", and whoever scopes the
+registration fix should check whether the two share a lane before assuming they do not.
 
 ## 10. Numeric provenance
 
@@ -410,3 +517,17 @@ by `tests/contracts/test_evidence_numeric_provenance.py`.
 `tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.mid.D_pred_bin16 = 0.00229805818739`,
 `tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.fine.D_pred_bin16 = 0.000414691544335`,
 `tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.mid.te10_by_plane.recv_ref.D_pred_at_this_plane[16] = 0.00232452880914`.
+
+**The PR #1094 review's changes (sections 2, 3, 5, 8).**
+
+`tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.modes.TE20.overlap_e_with_te10 = -2.08600497986e-16`,
+`tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.modes.TE30.overlap_e_with_te10 = -1.37027833151e-08`,
+`tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.te10_by_plane.drive_ref.reconstruction_rel_err_V = 1.46835650497e-11`,
+`tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.D_pred_recv_ref_bin16 = 3.22243134399e-08`,
+`tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.fine.D_pred_recv_ref_bin16 = 0.000416677695025`,
+`tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.modes.TE20.alpha_per_m[16] = 115.844697301`,
+`tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.mid.modes.TE20.alpha_per_m[16] = 125.199544595`,
+`tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.fine.modes.TE20.alpha_per_m[16] = 127.464983185`,
+`tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.modes.TE30.overlap_h_with_te10 = 0.0534383090981`,
+`tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.modes.TE50.overlap_h_with_te10 = 0.0972295365053`,
+`tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.modes.TE70.overlap_h_with_te10 = 0.148373121362`.
