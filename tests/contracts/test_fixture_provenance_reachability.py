@@ -509,8 +509,28 @@ NOT_A_SHA: dict[tuple[str, str], str] = {
 #: a way to make a defect stop failing -- the inverse of what a bucket is for.
 ACCEPTED = frozenset({
     "reachable", "reachable-head", "code-tree", "code-tree-head",
-    "code-tree-unbound", "annotated", "labelled",
+    "annotated", "labelled",
 })
+
+#: NOT accepted, and the reason is the whole point of the binding.
+#:
+#: ``code-tree-unbound`` is what _classify returns when a site records a witness
+#: but the commit it claims to witness cannot be resolved in this clone, so the
+#: two cannot be tied together. It used to be in ACCEPTED, and review showed what
+#: that bought: a fixture carrying a commit that exists NOWHERE
+#: (``deadbeef``x5) plus `git rev-parse origin/main:rfx` as its witness passed
+#: the gate green. Any 40-hex value that happens to be some rfx/ tree on main was
+#: a valid witness for any sha.
+#:
+#: That is the forgery the module docstring says this gate closed, and it was
+#: closed only for the ten shas in RECORDED_CODE_TREES -- i.e. only for sites
+#: that already existed. Every FUTURE occurrence of #1013 passed.
+#:
+#: So an unbindable witness is now a failure. A site in this state has two
+#: honest exits: record the sha->tree pair in RECORDED_CODE_TREES with the clone
+#: it was read from (which is what makes it checkable in CI, where the object is
+#: absent), or declare it in ANNOTATED with the measured reason.
+_UNBINDABLE = "code-tree-unbound"
 
 
 def _classify(sha: str, witness: str | None, ref: str) -> str:
@@ -586,6 +606,13 @@ def test_every_provenance_site_is_reachable_or_witnessed_or_annotated() -> None:
                    f"label, declare it in NOT_A_SHA with the reason; if it is a "
                    f"generator that failed open and wrote a placeholder, the fix is "
                    f"tests._fixture_provenance.capture(), which raises instead")
+        elif verdict == _UNBINDABLE:
+            why = (f"{CODE_TREE_KEY}={witness} is on some commit of {ref}, but the "
+                   f"commit it claims to witness ({sha}) resolves in no clone here, "
+                   f"so the two cannot be tied together. Membership alone is not a "
+                   f"witness: any tree that exists on main would pass. Record the "
+                   f"pair in RECORDED_CODE_TREES with its donor clone, or declare "
+                   f"the site in ANNOTATED")
         elif verdict == "witness-mismatch":
             why = (f"{CODE_TREE_KEY}={witness} is NOT the rfx/ subtree of the "
                    f"recorded commit ({code_tree_of(sha, REPO)}). A witness has to "
