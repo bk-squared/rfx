@@ -6,15 +6,8 @@
   "_comment": "Deliberately NOT named 'fixture.json' -- tests/contracts/test_gate_policy_is_shared.py globs tests/fixtures/**/fixture.json and its _QUANTUM_BY_SUFFIX has no 1000-quantum case; this file must not be discovered by that enumerator.",
   "recipe": {
     "dx_m": 8e-05,
-    "legs_mm": [
-      8,
-      10,
-      12
-    ],
-    "band_hz": [
-      3000000000.0,
-      4500000000.0
-    ],
+    "legs_mm": [8, 10, 12],
+    "band_hz": [3.0e9, 4.5e9],
     "n_freqs": 30,
     "num_periods": 12,
     "port": "+x",
@@ -47,11 +40,7 @@
         "pr": 638,
         "subject": "extend static materials into the CPML pad for domain-face-touching boxes (closes #627)",
         "mechanism": "this fixture's substrate Box((0,0,0)-(lx,LY,H_SUB)) is flush with the x-lo/x-hi/y-lo/y-hi domain faces, all CPML. #638 lets a hi-face pad whose naive interior-edge source column reads vacuum source from the column one further in, so the x-hi/y-hi pads went from eps_r=1 to eps_r=EPS_R -- the absorber stops being mismatched against the substrate it terminates.",
-        "step_mean_abs_z0_ohm": {
-          "8": -0.0045318603515625,
-          "10": -0.00531005859375,
-          "12": -0.0040283203125
-        },
+        "step_mean_abs_z0_ohm": {"8": -0.0045318603515625, "10": -0.00531005859375, "12": -0.0040283203125},
         "spread_before": 0.0046069171751264015,
         "spread_after": 0.004616044551155494,
         "classification": "i"
@@ -61,11 +50,7 @@
         "pr": 659,
         "subject": "give the boundary node the material its own pad already gets (closes #655)",
         "mechanism": "#638 wrote the recovered material into the pad only, leaving the dropped boundary node vacuum -- a one-cell film between the structure and its own matched absorber. #659 writes the replicated value into the outermost interior column too.",
-        "step_mean_abs_z0_ohm": {
-          "8": -0.004039764404296875,
-          "10": -0.000576019287109375,
-          "12": -4.9591064453125e-05
-        },
+        "step_mean_abs_z0_ohm": {"8": -0.004039764404296875, "10": -0.000576019287109375, "12": -4.9591064453125e-05},
         "spread_before": 0.004616044551155494,
         "spread_after": 0.00468556352801808,
         "classification": "i"
@@ -74,7 +59,7 @@
     "classification": "i -- both are intended absorber-matching corrections with their own measured witnesses (#638: its secondary 'author's independent fixture' witness, edge-touching-slab tail/peak energy -85.15 dB -> -90.62 dB — the PR's headline absorber witness is -95.63 -> -104.25 dB; #659: reflection off the one-cell vacuum film 0.2375 -> exactly 0.0 at the default mesh). Neither is a regression, so the shift is a better-terminated board, not a defect to revert.",
     "bit_identity_chain": "leg-8 mean|Z0[+x]| on the bisect platform: 90c79d1d = ae7919a9 = 57.33811569213867; fce10916 = 5f23ccae = fd37c62f = 57.33358383178711; c9c1864f = 7f68f9fb = 1f005d0d = 57.32954406738281. Legs 10 and 12 follow the same three-value chain.",
     "corrects": "The 2026-09-13 close comment named 7f68f9fb (#666, the x/y axis generalization of add_msl_port) as the only direct MSL-extraction change in the window and closed the issue as superseded by #931. Measurement says #666 moves nothing on this fixture: 7f68f9fb is bit-identical to its parent c9c1864f on all three legs. #645 and #658 (the two dtype lifts) are excluded the same way. The drift sits in #638 and #659.",
-    "gate_disposition": "UNCHANGED and left to the PI. MEASURED_SPREAD_ENVELOPE stays 0.004607 and the enforced gate stays gate_from_envelope(0.004607, quantum=1000) = 0.007. gate_from_envelope(0.004686, quantum=1000) would derive 0.008 -- a ONE-QUANTUM WIDENING, which issue #610's no-silent-loosening rule forbids applying as routine maintenance even when the drift is attributed and benign. Re-deriving the envelope off the post-#638/#659 board is a PI decision, and on current main it would additionally have to be taken on the #931 board, not this one.",
+    "gate_disposition": "Bisect rows are tagged PASSED so tests/locks/test_msl_z0_platform_datums.py::test_every_passed_datum_is_actually_under_bound checks their recomputation (spread < 0.007, L=12 mean|S11| < 0.15). UNCHANGED and left to the PI. MEASURED_SPREAD_ENVELOPE stays 0.004607 and the enforced gate stays gate_from_envelope(0.004607, quantum=1000) = 0.007. gate_from_envelope(0.004686, quantum=1000) would derive 0.008 -- a ONE-QUANTUM WIDENING, which issue #610's no-silent-loosening rule forbids applying as routine maintenance even when the drift is attributed and benign. Re-deriving the envelope off the post-#638/#659 board is a PI decision, and on current main it would additionally have to be taken on the #931 board, not this one.",
     "platform_variance_check": "this host reads spread 0.4686% at 1f005d0d where the ledger's pod row (jax 0.6.2) reads 0.4676% -- 0.001 pp apart, far inside classification_policy.threshold_pp = 0.05, so the two platforms agree and the steps above are code."
   },
   "datums": [
@@ -83,25 +68,12 @@
       "role": "derivation",
       "source": "PR #611 docstring (single process, dev platform, hand-recorded)",
       "commit": "69a6956a",
-      "platform": {
-        "cpu": "not recorded",
-        "os": "not recorded",
-        "jax": "not recorded",
-        "numpy": "not recorded",
-        "blas": "not recorded"
-      },
+      "platform": {"cpu": "not recorded", "os": "not recorded", "jax": "not recorded", "numpy": "not recorded", "blas": "not recorded"},
       "precision": "docstring_4-5dp",
       "legs": {
-        "8": {
-          "mean_abs_z0": 57.3381
-        },
-        "10": {
-          "mean_abs_z0": 57.5778
-        },
-        "12": {
-          "mean_abs_z0": 57.603,
-          "mean_s11": 0.14874
-        }
+        "8": {"mean_abs_z0": 57.3381},
+        "10": {"mean_abs_z0": 57.5778},
+        "12": {"mean_abs_z0": 57.6030, "mean_s11": 0.14874}
       },
       "spread": 0.004607,
       "verdict": "PASSED"
@@ -111,31 +83,12 @@
       "role": "witness",
       "source": "validation.yml run 31367543755 job 93389105380 (slow-tests shard 2), pytest -v -s stdout print",
       "commit": "main@2026-08-10",
-      "platform": {
-        "cpu": "GitHub-hosted runner (model not logged)",
-        "os": "ubuntu-24.04 image 20260720.247.2",
-        "jax": "0.6.2",
-        "jaxlib": "0.6.2",
-        "numpy": "2.2.6",
-        "python": "3.10.20"
-      },
+      "platform": {"cpu": "GitHub-hosted runner (model not logged)", "os": "ubuntu-24.04 image 20260720.247.2", "jax": "0.6.2", "jaxlib": "0.6.2", "numpy": "2.2.6", "python": "3.10.20"},
       "precision": "printed_2dp",
       "legs": {
-        "8": {
-          "mean_abs_z0": 57.34,
-          "mean_s11": 0.0742,
-          "mean_s21": 0.9971
-        },
-        "10": {
-          "mean_abs_z0": 57.58,
-          "mean_s11": 0.116,
-          "mean_s21": 0.993
-        },
-        "12": {
-          "mean_abs_z0": 57.6,
-          "mean_s11": 0.1487,
-          "mean_s21": 0.9886
-        }
+        "8": {"mean_abs_z0": 57.34, "mean_s11": 0.0742, "mean_s21": 0.9971},
+        "10": {"mean_abs_z0": 57.58, "mean_s11": 0.1160, "mean_s21": 0.9930},
+        "12": {"mean_abs_z0": 57.60, "mean_s11": 0.1487, "mean_s21": 0.9886}
       },
       "spread": 0.0046,
       "verdict": "PASSED"
@@ -145,31 +98,12 @@
       "role": "witness",
       "source": "validation.yml run 32004256088 job 95310451682 (slow-tests shard 2), pytest -v -s stdout print",
       "commit": "main@2026-08-17",
-      "platform": {
-        "cpu": "GitHub-hosted runner (model not logged)",
-        "os": "ubuntu-24.04 image 20260810.271.1",
-        "jax": "0.6.2",
-        "jaxlib": "0.6.2",
-        "numpy": "2.2.6",
-        "python": "3.10.20"
-      },
+      "platform": {"cpu": "GitHub-hosted runner (model not logged)", "os": "ubuntu-24.04 image 20260810.271.1", "jax": "0.6.2", "jaxlib": "0.6.2", "numpy": "2.2.6", "python": "3.10.20"},
       "precision": "printed_2dp",
       "legs": {
-        "8": {
-          "mean_abs_z0": 57.33,
-          "mean_s11": 0.0742,
-          "mean_s21": 0.9971
-        },
-        "10": {
-          "mean_abs_z0": 57.57,
-          "mean_s11": 0.1159,
-          "mean_s21": 0.993
-        },
-        "12": {
-          "mean_abs_z0": 57.6,
-          "mean_s11": 0.1487,
-          "mean_s21": 0.9886
-        }
+        "8": {"mean_abs_z0": 57.33, "mean_s11": 0.0742, "mean_s21": 0.9971},
+        "10": {"mean_abs_z0": 57.57, "mean_s11": 0.1159, "mean_s21": 0.9930},
+        "12": {"mean_abs_z0": 57.60, "mean_s11": 0.1487, "mean_s21": 0.9886}
       },
       "spread": 0.0047,
       "verdict": "PASSED"
@@ -179,31 +113,12 @@
       "role": "witness",
       "source": "validation.yml run 32700177994 job 97349946815 (slow-tests shard 2; shard red on a DIFFERENT test, test_msl_sheet_threading O1 golden, max dev 2.505e-06 -- not this test), pytest -v -s stdout print",
       "commit": "main@2026-08-24",
-      "platform": {
-        "cpu": "GitHub-hosted runner (model not logged)",
-        "os": "ubuntu-24.04 image 20260816.277.1",
-        "jax": "0.6.2",
-        "jaxlib": "0.6.2",
-        "numpy": "2.2.6",
-        "python": "3.10.21"
-      },
+      "platform": {"cpu": "GitHub-hosted runner (model not logged)", "os": "ubuntu-24.04 image 20260816.277.1", "jax": "0.6.2", "jaxlib": "0.6.2", "numpy": "2.2.6", "python": "3.10.21"},
       "precision": "printed_2dp",
       "legs": {
-        "8": {
-          "mean_abs_z0": 57.33,
-          "mean_s11": 0.0742,
-          "mean_s21": 0.9971
-        },
-        "10": {
-          "mean_abs_z0": 57.57,
-          "mean_s11": 0.1159,
-          "mean_s21": 0.993
-        },
-        "12": {
-          "mean_abs_z0": 57.6,
-          "mean_s11": 0.1487,
-          "mean_s21": 0.9886
-        }
+        "8": {"mean_abs_z0": 57.33, "mean_s11": 0.0742, "mean_s21": 0.9971},
+        "10": {"mean_abs_z0": 57.57, "mean_s11": 0.1159, "mean_s21": 0.9930},
+        "12": {"mean_abs_z0": 57.60, "mean_s11": 0.1487, "mean_s21": 0.9886}
       },
       "spread": 0.0047,
       "verdict": "PASSED"
@@ -213,50 +128,16 @@
       "role": "witness",
       "source": "Full-precision re-measure reusing test_msl_port_integration._run_msl_thru/GATE_F_LO/GATE_F_HI directly (production comparator, no re-implementation) at HEAD 1f005d0d; raw JSON dump EXIT=0 (the separate `pytest -m slow` run log for the same commit carries a spurious wrapper EXIT=137 line above its genuine '1 passed' summary -- not used as this row's source)",
       "commit": "1f005d0d",
-      "platform": {
-        "cpu": "AMD EPYC 9654 96-Core Processor",
-        "os": "Linux 5.15.0-187-generic glibc 2.35",
-        "jax": "0.6.2",
-        "jaxlib": "0.6.2",
-        "numpy": "2.2.6 (scipy-openblas 0.3.29)",
-        "python": "3.10.12"
-      },
+      "platform": {"cpu": "AMD EPYC 9654 96-Core Processor", "os": "Linux 5.15.0-187-generic glibc 2.35", "jax": "0.6.2", "jaxlib": "0.6.2", "numpy": "2.2.6 (scipy-openblas 0.3.29)", "python": "3.10.12"},
       "precision": "float32_full",
       "legs": {
-        "8": {
-          "mean_abs_z0": 57.32986831665039,
-          "mean_s11": 0.07420126348733902,
-          "mean_s21": 0.9971068501472473,
-          "settling_db": [
-            -99.296128531781,
-            -98.36610660638618
-          ]
-        },
-        "10": {
-          "mean_abs_z0": 57.57185363769531,
-          "mean_s11": 0.11594189703464508,
-          "mean_s21": 0.993048906326294,
-          "settling_db": [
-            -98.48874508467928,
-            -102.95149714665023
-          ]
-        },
-        "12": {
-          "mean_abs_z0": 57.59873962402344,
-          "mean_s11": 0.1486974060535431,
-          "mean_s21": 0.9886387586593628,
-          "settling_db": [
-            -103.80002898326913,
-            -98.11628314292864
-          ]
-        }
+        "8": {"mean_abs_z0": 57.32986831665039, "mean_s11": 0.07420126348733902, "mean_s21": 0.9971068501472473, "settling_db": [-99.296128531781, -98.36610660638618]},
+        "10": {"mean_abs_z0": 57.57185363769531, "mean_s11": 0.11594189703464508, "mean_s21": 0.993048906326294, "settling_db": [-98.48874508467928, -102.95149714665023]},
+        "12": {"mean_abs_z0": 57.59873962402344, "mean_s11": 0.1486974060535431, "mean_s21": 0.9886387586593628, "settling_db": [-103.80002898326913, -98.11628314292864]}
       },
       "spread": 0.00467601022477662,
       "verdict": "PASSED",
-      "headroom": {
-        "spread_pp": 0.232399,
-        "leg12_mean_s11": 0.0013025939
-      }
+      "headroom": {"spread_pp": 0.232399, "leg12_mean_s11": 0.0013025939}
     },
     {
       "id": "bisect-796-90c79d1d",
@@ -265,38 +146,16 @@
       "note": "window base; pre-drift. Reproduces the 2026-08-09 derivation datum (57.3381 / 57.5778 / 57.6030) to 4 dp on a different jax/numpy/python, so the derivation legs are code, not lead-machine platform.",
       "commit": "90c79d1d",
       "commit_full": "90c79d1d48cdcb8cb0736ccb4a3661951e022b75",
-      "platform": {
-        "cpu": "AMD EPYC 9654 96-Core Processor (2 sockets, 224 threads)",
-        "os": "Ubuntu 22.04.3 LTS, Linux 5.15.0-191-generic, glibc 2.35",
-        "jax": "0.10.2",
-        "jaxlib": "0.10.2",
-        "numpy": "2.4.6 (scipy-openblas 0.3.31.188.0)",
-        "python": "3.11.16"
-      },
+      "platform": {"cpu": "AMD EPYC 9654 96-Core Processor (2 sockets, 224 threads)", "os": "Ubuntu 22.04.3 LTS, Linux 5.15.0-191-generic, glibc 2.35", "jax": "0.10.2", "jaxlib": "0.10.2", "numpy": "2.4.6 (scipy-openblas 0.3.31.188.0)", "python": "3.11.16"},
       "precision": "float32_full",
       "legs": {
-        "8": {
-          "mean_abs_z0": 57.33811569213867,
-          "mean_abs_z0_minus_x_port": 57.37505340576172,
-          "mean_s11": 0.07422274351119995,
-          "mean_s21": 0.9971020221710205
-        },
-        "10": {
-          "mean_abs_z0": 57.57783889770508,
-          "mean_abs_z0_minus_x_port": 57.66787338256836,
-          "mean_s11": 0.11597568541765213,
-          "mean_s21": 0.9930387139320374
-        },
-        "12": {
-          "mean_abs_z0": 57.60304260253906,
-          "mean_abs_z0_minus_x_port": 57.73619842529297,
-          "mean_s11": 0.1487416923046112,
-          "mean_s21": 0.9886244535446167
-        }
+        "8": {"mean_abs_z0": 57.33811569213867, "mean_abs_z0_minus_x_port": 57.37505340576172, "mean_s11": 0.07422274351119995, "mean_s21": 0.9971020221710205},
+        "10": {"mean_abs_z0": 57.57783889770508, "mean_abs_z0_minus_x_port": 57.66787338256836, "mean_s11": 0.11597568541765213, "mean_s21": 0.9930387139320374},
+        "12": {"mean_abs_z0": 57.60304260253906, "mean_abs_z0_minus_x_port": 57.73619842529297, "mean_s11": 0.1487416923046112, "mean_s21": 0.9886244535446167}
       },
       "spread": 0.0046069171751264015,
       "verdict": "PASSED",
-      "verdict_note": "spread < 0.007 and L=12mm mean|S11| < 0.15 both recomputed from this row's own legs and clear. NOT tagged PASSED: the harness dumps band means, so the test's per-bin assertions (Re(Z0) > 0 every bin, per-bin passivity) were not captured. Tagged PASSED so tests/locks/test_msl_z0_platform_datums.py::test_every_passed_datum_is_actually_under_bound checks the recomputation."
+      "verdict_note": "spread < 0.007 and L=12mm mean|S11| < 0.15 both recomputed from this row's own legs and clear. NOT tagged PASSED: the harness dumps band means, so the test's per-bin assertions (Re(Z0) > 0 every bin, per-bin passivity) were not captured."
     },
     {
       "id": "bisect-796-fce10916",
@@ -305,38 +164,16 @@
       "note": "after step 1 (#638). Bit-identical to 5f23ccae (#645) and fd37c62f (#658), so the two dtype-lift commits move nothing on this fixture.",
       "commit": "fce10916",
       "commit_full": "fce10916efcca997ae8372c2437a0e31c82fe847",
-      "platform": {
-        "cpu": "AMD EPYC 9654 96-Core Processor (2 sockets, 224 threads)",
-        "os": "Ubuntu 22.04.3 LTS, Linux 5.15.0-191-generic, glibc 2.35",
-        "jax": "0.10.2",
-        "jaxlib": "0.10.2",
-        "numpy": "2.4.6 (scipy-openblas 0.3.31.188.0)",
-        "python": "3.11.16"
-      },
+      "platform": {"cpu": "AMD EPYC 9654 96-Core Processor (2 sockets, 224 threads)", "os": "Ubuntu 22.04.3 LTS, Linux 5.15.0-191-generic, glibc 2.35", "jax": "0.10.2", "jaxlib": "0.10.2", "numpy": "2.4.6 (scipy-openblas 0.3.31.188.0)", "python": "3.11.16"},
       "precision": "float32_full",
       "legs": {
-        "8": {
-          "mean_abs_z0": 57.33358383178711,
-          "mean_abs_z0_minus_x_port": 57.36948013305664,
-          "mean_s11": 0.07420501112937927,
-          "mean_s21": 0.9971067905426025
-        },
-        "10": {
-          "mean_abs_z0": 57.57252883911133,
-          "mean_abs_z0_minus_x_port": 57.66193389892578,
-          "mean_s11": 0.11594578623771667,
-          "mean_s21": 0.9930481314659119
-        },
-        "12": {
-          "mean_abs_z0": 57.59901428222656,
-          "mean_abs_z0_minus_x_port": 57.73126983642578,
-          "mean_s11": 0.14870256185531616,
-          "mean_s21": 0.988638162612915
-        }
+        "8": {"mean_abs_z0": 57.33358383178711, "mean_abs_z0_minus_x_port": 57.36948013305664, "mean_s11": 0.07420501112937927, "mean_s21": 0.9971067905426025},
+        "10": {"mean_abs_z0": 57.57252883911133, "mean_abs_z0_minus_x_port": 57.66193389892578, "mean_s11": 0.11594578623771667, "mean_s21": 0.9930481314659119},
+        "12": {"mean_abs_z0": 57.59901428222656, "mean_abs_z0_minus_x_port": 57.73126983642578, "mean_s11": 0.14870256185531616, "mean_s21": 0.988638162612915}
       },
       "spread": 0.004616044551155494,
       "verdict": "PASSED",
-      "verdict_note": "spread < 0.007 and L=12mm mean|S11| < 0.15 both recomputed from this row's own legs and clear. NOT tagged PASSED: the harness dumps band means, so the test's per-bin assertions (Re(Z0) > 0 every bin, per-bin passivity) were not captured. Tagged PASSED so tests/locks/test_msl_z0_platform_datums.py::test_every_passed_datum_is_actually_under_bound checks the recomputation."
+      "verdict_note": "spread < 0.007 and L=12mm mean|S11| < 0.15 both recomputed from this row's own legs and clear. NOT tagged PASSED: the harness dumps band means, so the test's per-bin assertions (Re(Z0) > 0 every bin, per-bin passivity) were not captured."
     },
     {
       "id": "bisect-796-c9c1864f",
@@ -345,38 +182,16 @@
       "note": "after step 2 (#659). Bit-identical to 7f68f9fb.",
       "commit": "c9c1864f",
       "commit_full": "c9c1864f95e8eb0a2cbe26f7a0823597d7e6907f",
-      "platform": {
-        "cpu": "AMD EPYC 9654 96-Core Processor (2 sockets, 224 threads)",
-        "os": "Ubuntu 22.04.3 LTS, Linux 5.15.0-191-generic, glibc 2.35",
-        "jax": "0.10.2",
-        "jaxlib": "0.10.2",
-        "numpy": "2.4.6 (scipy-openblas 0.3.31.188.0)",
-        "python": "3.11.16"
-      },
+      "platform": {"cpu": "AMD EPYC 9654 96-Core Processor (2 sockets, 224 threads)", "os": "Ubuntu 22.04.3 LTS, Linux 5.15.0-191-generic, glibc 2.35", "jax": "0.10.2", "jaxlib": "0.10.2", "numpy": "2.4.6 (scipy-openblas 0.3.31.188.0)", "python": "3.11.16"},
       "precision": "float32_full",
       "legs": {
-        "8": {
-          "mean_abs_z0": 57.32954406738281,
-          "mean_abs_z0_minus_x_port": 57.36840057373047,
-          "mean_s11": 0.07420133054256439,
-          "mean_s21": 0.9971067905426025
-        },
-        "10": {
-          "mean_abs_z0": 57.57195281982422,
-          "mean_abs_z0_minus_x_port": 57.66143798828125,
-          "mean_s11": 0.11594182997941971,
-          "mean_s21": 0.993048906326294
-        },
-        "12": {
-          "mean_abs_z0": 57.59896469116211,
-          "mean_abs_z0_minus_x_port": 57.73093032836914,
-          "mean_s11": 0.14869743585586548,
-          "mean_s21": 0.9886388778686523
-        }
+        "8": {"mean_abs_z0": 57.32954406738281, "mean_abs_z0_minus_x_port": 57.36840057373047, "mean_s11": 0.07420133054256439, "mean_s21": 0.9971067905426025},
+        "10": {"mean_abs_z0": 57.57195281982422, "mean_abs_z0_minus_x_port": 57.66143798828125, "mean_s11": 0.11594182997941971, "mean_s21": 0.993048906326294},
+        "12": {"mean_abs_z0": 57.59896469116211, "mean_abs_z0_minus_x_port": 57.73093032836914, "mean_s11": 0.14869743585586548, "mean_s21": 0.9886388778686523}
       },
       "spread": 0.00468556352801808,
       "verdict": "PASSED",
-      "verdict_note": "spread < 0.007 and L=12mm mean|S11| < 0.15 both recomputed from this row's own legs and clear. NOT tagged PASSED: the harness dumps band means, so the test's per-bin assertions (Re(Z0) > 0 every bin, per-bin passivity) were not captured. Tagged PASSED so tests/locks/test_msl_z0_platform_datums.py::test_every_passed_datum_is_actually_under_bound checks the recomputation."
+      "verdict_note": "spread < 0.007 and L=12mm mean|S11| < 0.15 both recomputed from this row's own legs and clear. NOT tagged PASSED: the harness dumps band means, so the test's per-bin assertions (Re(Z0) > 0 every bin, per-bin passivity) were not captured."
     },
     {
       "id": "bisect-796-7f68f9fb",
@@ -385,38 +200,16 @@
       "note": "window head. Bit-identical to c9c1864f on every leg, which is the measurement that excludes #666 (the 2026-09-13 close comment's attribution).",
       "commit": "7f68f9fb",
       "commit_full": "7f68f9fb32a6d9f3bc0ed9b31d80202567886a60",
-      "platform": {
-        "cpu": "AMD EPYC 9654 96-Core Processor (2 sockets, 224 threads)",
-        "os": "Ubuntu 22.04.3 LTS, Linux 5.15.0-191-generic, glibc 2.35",
-        "jax": "0.10.2",
-        "jaxlib": "0.10.2",
-        "numpy": "2.4.6 (scipy-openblas 0.3.31.188.0)",
-        "python": "3.11.16"
-      },
+      "platform": {"cpu": "AMD EPYC 9654 96-Core Processor (2 sockets, 224 threads)", "os": "Ubuntu 22.04.3 LTS, Linux 5.15.0-191-generic, glibc 2.35", "jax": "0.10.2", "jaxlib": "0.10.2", "numpy": "2.4.6 (scipy-openblas 0.3.31.188.0)", "python": "3.11.16"},
       "precision": "float32_full",
       "legs": {
-        "8": {
-          "mean_abs_z0": 57.32954406738281,
-          "mean_abs_z0_minus_x_port": 57.36840057373047,
-          "mean_s11": 0.07420133054256439,
-          "mean_s21": 0.9971067905426025
-        },
-        "10": {
-          "mean_abs_z0": 57.57195281982422,
-          "mean_abs_z0_minus_x_port": 57.66143798828125,
-          "mean_s11": 0.11594182997941971,
-          "mean_s21": 0.993048906326294
-        },
-        "12": {
-          "mean_abs_z0": 57.59896469116211,
-          "mean_abs_z0_minus_x_port": 57.73093032836914,
-          "mean_s11": 0.14869743585586548,
-          "mean_s21": 0.9886388778686523
-        }
+        "8": {"mean_abs_z0": 57.32954406738281, "mean_abs_z0_minus_x_port": 57.36840057373047, "mean_s11": 0.07420133054256439, "mean_s21": 0.9971067905426025},
+        "10": {"mean_abs_z0": 57.57195281982422, "mean_abs_z0_minus_x_port": 57.66143798828125, "mean_s11": 0.11594182997941971, "mean_s21": 0.993048906326294},
+        "12": {"mean_abs_z0": 57.59896469116211, "mean_abs_z0_minus_x_port": 57.73093032836914, "mean_s11": 0.14869743585586548, "mean_s21": 0.9886388778686523}
       },
       "spread": 0.00468556352801808,
       "verdict": "PASSED",
-      "verdict_note": "spread < 0.007 and L=12mm mean|S11| < 0.15 both recomputed from this row's own legs and clear. NOT tagged PASSED: the harness dumps band means, so the test's per-bin assertions (Re(Z0) > 0 every bin, per-bin passivity) were not captured. Tagged PASSED so tests/locks/test_msl_z0_platform_datums.py::test_every_passed_datum_is_actually_under_bound checks the recomputation."
+      "verdict_note": "spread < 0.007 and L=12mm mean|S11| < 0.15 both recomputed from this row's own legs and clear. NOT tagged PASSED: the harness dumps band means, so the test's per-bin assertions (Re(Z0) > 0 every bin, per-bin passivity) were not captured."
     }
   ]
 }
