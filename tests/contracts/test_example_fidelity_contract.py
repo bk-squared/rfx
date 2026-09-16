@@ -76,6 +76,15 @@ all 83 rows) or the gate stays a drift pin is an open PI decision on #737;
 until it is taken, this file is a drift pin and the tracker's first
 comment's "tighten once #742 closes" plan has NOT been executed.
 
+51 classification entries cover all 91 rows: 49 ``intended`` and 2
+``defect-open`` (#928 for cv07's congruent-feed parity, #1100 for the taper's
+declared-vs-realized WR-90 guide). The four rows the eleven #737-item-2 variants
+added are classified against the examples' own text: the patch demo states that
+it models FR4 lossless and quotes frequencies rather than Q, and that a graded
+mesh trades accuracy for cells; the subgrid script's coarse dielectric arm exists
+to be rejected, and its uniform twin reuses that mesh so the two are comparable
+and is checked against the analytic TM110 resonance.
+
 The #729 site-1 defect this header used to warn about (every ``domain``
 row's ``realized_extent_um``/``n_cells`` one cell too large, because
 ``rfx/fidelity.py`` summed a NODE-count slice) was FIXED by PR #734
