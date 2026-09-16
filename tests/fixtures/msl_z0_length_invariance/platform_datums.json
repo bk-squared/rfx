@@ -1,18 +1,60 @@
 {
   "schema": "rfx.msl_z0_length_invariance_platform_datums",
-  "schema_version": 1,
+  "schema_version": 2,
   "test": "tests/unit/sparams/test_msl_port_integration.py::test_msl_thru_line_z0_length_invariance_and_positive_sign",
+  "active_board": "b931-dxH3-sheet",
   "issue": 610,
   "_comment": "Deliberately NOT named 'fixture.json' -- tests/contracts/test_gate_policy_is_shared.py globs tests/fixtures/**/fixture.json and its _QUANTUM_BY_SUFFIX has no 1000-quantum case; this file must not be discovered by that enumerator.",
-  "recipe": {
-    "dx_m": 8e-05,
-    "legs_mm": [8, 10, 12],
-    "band_hz": [3.0e9, 4.5e9],
-    "n_freqs": 30,
-    "num_periods": 12,
-    "port": "+x",
-    "jax_enable_x64": false,
-    "dtype": "float32/complex64"
+  "_schema_version_2": "#1084. v1 carried ONE top-level `recipe` and no board key on the rows, so it described the RETIRED dx=80um board while `test` above names a test that has run the #931 board since the migration commits 44a69919 / fc4c39a4 / 6743863f. v2 adds `boards` (one recipe per board id) and a mandatory `board` key on every datum; the v1 rows are unchanged in content and carry board=\"pre931-dx80um-onewall\". The top-level `recipe` is gone -- read boards[<id>].recipe. tests/locks/test_msl_z0_platform_datums.py now asserts boards[active_board].recipe.dx_m == the test module's live DX, so the ledger cannot silently point at a different board again.",
+  "boards": {
+    "pre931-dx80um-onewall": {
+      "status": "retired-with-history",
+      "retired_by": "#931 lattice ownership contract. The fixture migrated on 44a69919 / fc4c39a4 / 6743863f; none of them touched this ledger, which is the defect issue #1084 names.",
+      "recipe": {
+        "dx_m": 8e-05,
+        "legs_mm": [8, 10, 12],
+        "band_hz": [3.0e9, 4.5e9],
+        "n_freqs": 30,
+        "num_periods": 12,
+        "port": "+x",
+        "jax_enable_x64": false,
+        "dtype": "float32/complex64",
+        "trace_realization": "one-cell PEC Box drawn to H_SUB+DX and realized as ONE wall under the pre-contract rasterizer. h_sub/dx = 254/80 = 3.175, so the substrate rasterized to FOUR cells and the strip sat at z = 320um over 254um of dielectric plus a 66um air gap -- the structure the test module's own comment calls 'not the intended board'."
+      },
+      "printed_2dp_band": {
+        "center": 0.0046,
+        "halfwidth": 0.0002,
+        "reference_datum": "dev-2026-08-09",
+        "note": "The band 2-dp rows on THIS board must fall in: the reference datum's spread 0.004607 printed at the test's 2-dp quantum, +-0.0002 (0.01 pp of print slack either side). It is an agreement check among 2-dp rows, not a claim about full-precision agreement -- see classification_policy."
+      },
+      "note": "Every row tagged with this board id was measured BEFORE the #931 migration, on a trace realized as one wall. bounds_unchanged / derivation / attribution below were all derived on THIS board and are kept as the historical record. They are NOT re-derived on the active board under #1084."
+    },
+    "b931-dxH3-sheet": {
+      "status": "active",
+      "active_since": "#931 lattice ownership contract (fixture migration commits 44a69919, fc4c39a4, 6743863f)",
+      "recipe": {
+        "dx_m": 8.466666666666666e-05,
+        "dx_expression": "H_SUB / 3",
+        "h_sub_m": 0.000254,
+        "w_trace_m": 0.0006,
+        "eps_r": 3.66,
+        "legs_mm": [8, 10, 12],
+        "band_hz": [3.0e9, 4.5e9],
+        "n_freqs": 30,
+        "num_periods": 12,
+        "port": "+x",
+        "jax_enable_x64": false,
+        "dtype": "float32/complex64",
+        "trace_realization": "zero-thickness PEC sheet Box((0,y_lo,H_SUB),(lx,y_hi,H_SUB)) -- one node plane, normal E through it live (lattice ownership contract #931 1.3). dx = h_sub/3 puts the laminate face ON a node line, so preflight reports the sheet realized at node plane 3, offset +0.000 cell."
+      },
+      "printed_2dp_band": {
+        "center": 0.0016,
+        "halfwidth": 0.0002,
+        "reference_datum": "vessl-369367259284-b931",
+        "note": "The band 2-dp rows on THIS board must fall in, centred on the board's FIRST record (VESSL 369367259284, the #931 re-measure the test docstring quotes). It is NOT an agreement claim: the full-precision rows on this board read 0.00048-0.00057 and sit far outside it. That disagreement is a recorded, classified fact in cross_platform_checks, not a tolerance to widen."
+      },
+      "note": "The board the named test actually runs and the gate actually binds. bounds_unchanged is still the pre-931 board's derivation: re-deriving MEASURED_SPREAD_ENVELOPE on this board is a PI decision (it would TIGHTEN the gate), and issue #1084 explicitly does not take it."
+    }
   },
   "bounds_unchanged": {
     "spread_tol": 0.007,
@@ -20,15 +62,17 @@
     "note": "Both bounds are single-sourced from tests/unit/sparams/test_msl_port_integration.py's MEASURED_SPREAD_ENVELOPE (via tests/_gate_policy.gate_from_envelope) and LEG_S11_BOUND -- this ledger imports them, it does not restate them."
   },
   "derivation": {
+    "board": "pre931-dx80um-onewall",
     "measured_spread_envelope": 0.004607,
     "datum_id": "dev-2026-08-09",
     "policy": "tests/_gate_policy.py gate_from_envelope(quantum=1000)"
   },
   "classification_policy": {
     "threshold_pp": 0.05,
-    "note": "POLICY, NOT measured: a same-commit cross-platform spread disagreement >= 0.05 percentage points is classified as platform variance; a shift entering between two same-platform (CI) runs across a commit window is classified as code drift. The measured fact is narrower than this policy number -- no two datums share a commit, so cross-platform agreement is demonstrated as two same-regime PAIRS, not at a fixed commit: pre-drift {dev 0.4607% @69a6956a, GitHub runner 0.46% @90c79d1d, 4 rfx/ commits apart} and post-drift {GitHub runner 0.47% @7f68f9fb and @8e004976, this pod 0.4676% @1f005d0d}. Agreement finer than the 0.01 pp / 0.01 ohm print quantum is NOT MEASURED."
+    "note": "POLICY, NOT measured: a same-commit cross-platform spread disagreement >= 0.05 percentage points is classified as platform variance; a shift entering between two same-platform (CI) runs across a commit window is classified as code drift. ON THE RETIRED pre931-dx80um-onewall BOARD the measured fact is narrower than this policy number -- no two of its datums share a commit, so cross-platform agreement there is demonstrated as two same-regime PAIRS, not at a fixed commit: pre-drift {dev 0.4607% @69a6956a, GitHub runner 0.46% @90c79d1d, 4 rfx/ commits apart} and post-drift {GitHub runner 0.47% @7f68f9fb and @8e004976, this pod 0.4676% @1f005d0d}. Agreement finer than the 0.01 pp / 0.01 ohm print quantum is NOT MEASURED. ON THE ACTIVE b931-dxH3-sheet BOARD (#1084, 2026-09-16) the policy DOES have a same-commit pair to apply: at c6788ef7 a CPU row and a GPU row differ by 0.00925 pp and a same-host runtime-stack control differs by 0.00216 pp. See cross_platform_checks for each comparison, its recomputable gap and its verdict."
   },
   "attribution": {
+    "board": "pre931-dx80um-onewall",
     "issue": 796,
     "date": "2026-09-16",
     "window": "90c79d1d..7f68f9fb (23 commits, 21 touching rfx/)",
@@ -62,9 +106,45 @@
     "gate_disposition": "Bisect rows are tagged PASSED so tests/locks/test_msl_z0_platform_datums.py::test_every_passed_datum_is_actually_under_bound checks their recomputation (spread < 0.007, L=12 mean|S11| < 0.15). UNCHANGED and left to the PI. MEASURED_SPREAD_ENVELOPE stays 0.004607 and the enforced gate stays gate_from_envelope(0.004607, quantum=1000) = 0.007. gate_from_envelope(0.004686, quantum=1000) would derive 0.008 -- a ONE-QUANTUM WIDENING, which issue #610's no-silent-loosening rule forbids applying as routine maintenance even when the drift is attributed and benign. Re-deriving the envelope off the post-#638/#659 board is a PI decision, and on current main it would additionally have to be taken on the #931 board, not this one.",
     "platform_variance_check": "this host reads spread 0.4686% at 1f005d0d where the ledger's pod row (jax 0.6.2) reads 0.4676% -- 0.001 pp apart, far inside classification_policy.threshold_pp = 0.05, so the two platforms agree and the steps above are code."
   },
+  "cross_platform_checks": [
+    {
+      "id": "cpc-1084-cpu-vs-gpu",
+      "issue": 1084,
+      "date": "2026-09-16",
+      "board": "b931-dxH3-sheet",
+      "question": "Is the gated board's spread platform-dependent between CPU and GPU at ONE commit?",
+      "rows": ["cpu-epyc9654-c6788ef7-b931", "gpu-rtx4090-c6788ef7-b931"],
+      "gap_pp": 0.009250952945643128,
+      "verdict": "agree",
+      "note": "Both rows are the same git-archive tree at c6788ef7, x64 off, complex64. The gap is 0.0093 pp, far inside classification_policy.threshold_pp = 0.05, so by the ledger's own rule CPU and GPU AGREE on this board. That is the measurement #1084 asked for, and it rules the GPU backend out as the source of the 0.11 pp disagreement with the docstring row."
+    },
+    {
+      "id": "cpc-1084-docstring-vs-cpu",
+      "issue": 1084,
+      "date": "2026-09-16",
+      "board": "b931-dxH3-sheet",
+      "question": "Why does the docstring/VESSL 369367259284 row read 0.16% where every full-precision row on this board reads ~0.05%?",
+      "rows": ["vessl-369367259284-b931", "cpu-epyc9654-c6788ef7-b931"],
+      "gap_pp": 0.11228497856371929,
+      "verdict": "unclassifiable",
+      "note": "classification_policy classifies a SAME-COMMIT cross-platform disagreement. These two rows do not share a recorded commit: run 369367259284's own `git rev-parse HEAD` printed 'no git', so its tree is known only as branch feat/931-t2-sparams-ports on 2026-09-07. The policy therefore cannot be applied, and this gap is recorded UNCLASSIFIED rather than called platform variance. What the same-commit rows do say: CPU and GPU agree (cpc-1084-cpu-vs-gpu), and the stack control (cpc-1084-stack-control) answers the runtime-stack half. Neither backend nor runtime stack explains the 0.16%, so what is left is the TREE that run measured -- the pre-merge feat/931-t2-sparams-ports branch. Settling it needs that sha, and the run log does not carry it."
+    },
+    {
+      "id": "cpc-1084-stack-control",
+      "issue": 1084,
+      "date": "2026-09-16",
+      "board": "b931-dxH3-sheet",
+      "question": "Does run 369367259284's runtime stack (jax[cpu] 0.6.2, numpy<2) reproduce its 0.16% on today's tree?",
+      "rows": ["stack-jax062-c6788ef7-b931", "cpu-epyc9654-c6788ef7-b931"],
+      "gap_pp": 0.002161911666169301,
+      "verdict": "agree",
+      "note": "Host, tree and recipe held fixed against cpu-epyc9654-c6788ef7-b931; only jax/numpy swapped to the docstring row's (jax 0.6.2, jaxlib 0.6.2, numpy 1.26.4). The two differ by 0.00216 pp, inside classification_policy.threshold_pp = 0.05, so the runtime stack AGREES and does not explain the docstring row's 0.16%. This control sits 0.11012 pp from that row. With backend (cpc-1084-cpu-vs-gpu) and stack both excluded at a fixed commit, the remaining candidate is the TREE run 369367259284 measured -- the pre-merge feat/931-t2-sparams-ports branch, whose sha it did not record."
+    }
+  ],
   "datums": [
     {
       "id": "dev-2026-08-09",
+      "board": "pre931-dx80um-onewall",
       "role": "derivation",
       "source": "PR #611 docstring (single process, dev platform, hand-recorded)",
       "commit": "69a6956a",
@@ -80,6 +160,7 @@
     },
     {
       "id": "gh-ubuntu-24.04-2026-08-10",
+      "board": "pre931-dx80um-onewall",
       "role": "witness",
       "source": "validation.yml run 31367543755 job 93389105380 (slow-tests shard 2), pytest -v -s stdout print",
       "commit": "main@2026-08-10",
@@ -95,6 +176,7 @@
     },
     {
       "id": "gh-ubuntu-24.04-2026-08-17",
+      "board": "pre931-dx80um-onewall",
       "role": "witness",
       "source": "validation.yml run 32004256088 job 95310451682 (slow-tests shard 2), pytest -v -s stdout print",
       "commit": "main@2026-08-17",
@@ -110,6 +192,7 @@
     },
     {
       "id": "gh-ubuntu-24.04-2026-08-24",
+      "board": "pre931-dx80um-onewall",
       "role": "witness",
       "source": "validation.yml run 32700177994 job 97349946815 (slow-tests shard 2; shard red on a DIFFERENT test, test_msl_sheet_threading O1 golden, max dev 2.505e-06 -- not this test), pytest -v -s stdout print",
       "commit": "main@2026-08-24",
@@ -125,6 +208,7 @@
     },
     {
       "id": "pod-epyc9654-2026-08-29",
+      "board": "pre931-dx80um-onewall",
       "role": "witness",
       "source": "Full-precision re-measure reusing test_msl_port_integration._run_msl_thru/GATE_F_LO/GATE_F_HI directly (production comparator, no re-implementation) at HEAD 1f005d0d; raw JSON dump EXIT=0 (the separate `pytest -m slow` run log for the same commit carries a spurious wrapper EXIT=137 line above its genuine '1 passed' summary -- not used as this row's source)",
       "commit": "1f005d0d",
@@ -141,6 +225,7 @@
     },
     {
       "id": "bisect-796-90c79d1d",
+      "board": "pre931-dx80um-onewall",
       "role": "bisect",
       "source": "git-archive tree per sha (git archive <sha> | tar -x), driven by the tree's OWN tests/test_msl_port_integration._run_msl_thru / GATE_F_LO / GATE_F_HI -- the recipe file is byte-identical (md5 9faeeba500da9ced30baca8c6d939a04) from 69a6956a through 1f005d0d, so no extractor was re-implemented; harness described in PR #1087 (issue #796). x64 never enabled.",
       "note": "window base; pre-drift. Reproduces the 2026-08-09 derivation datum (57.3381 / 57.5778 / 57.6030) to 4 dp on a different jax/numpy/python, so the derivation legs are code, not lead-machine platform.",
@@ -159,6 +244,7 @@
     },
     {
       "id": "bisect-796-fce10916",
+      "board": "pre931-dx80um-onewall",
       "role": "bisect",
       "source": "git-archive tree per sha (git archive <sha> | tar -x), driven by the tree's OWN tests/test_msl_port_integration._run_msl_thru / GATE_F_LO / GATE_F_HI -- the recipe file is byte-identical (md5 9faeeba500da9ced30baca8c6d939a04) from 69a6956a through 1f005d0d, so no extractor was re-implemented; harness described in PR #1087 (issue #796). x64 never enabled.",
       "note": "after step 1 (#638). Bit-identical to 5f23ccae (#645) and fd37c62f (#658), so the two dtype-lift commits move nothing on this fixture.",
@@ -177,6 +263,7 @@
     },
     {
       "id": "bisect-796-c9c1864f",
+      "board": "pre931-dx80um-onewall",
       "role": "bisect",
       "source": "git-archive tree per sha (git archive <sha> | tar -x), driven by the tree's OWN tests/test_msl_port_integration._run_msl_thru / GATE_F_LO / GATE_F_HI -- the recipe file is byte-identical (md5 9faeeba500da9ced30baca8c6d939a04) from 69a6956a through 1f005d0d, so no extractor was re-implemented; harness described in PR #1087 (issue #796). x64 never enabled.",
       "note": "after step 2 (#659). Bit-identical to 7f68f9fb.",
@@ -195,6 +282,7 @@
     },
     {
       "id": "bisect-796-7f68f9fb",
+      "board": "pre931-dx80um-onewall",
       "role": "bisect",
       "source": "git-archive tree per sha (git archive <sha> | tar -x), driven by the tree's OWN tests/test_msl_port_integration._run_msl_thru / GATE_F_LO / GATE_F_HI -- the recipe file is byte-identical (md5 9faeeba500da9ced30baca8c6d939a04) from 69a6956a through 1f005d0d, so no extractor was re-implemented; harness described in PR #1087 (issue #796). x64 never enabled.",
       "note": "window head. Bit-identical to c9c1864f on every leg, which is the measurement that excludes #666 (the 2026-09-13 close comment's attribution).",
@@ -210,6 +298,96 @@
       "spread": 0.00468556352801808,
       "verdict": "PASSED",
       "verdict_note": "spread < 0.007 and L=12mm mean|S11| < 0.15 both recomputed from this row's own legs and clear. NOT tagged PASSED: the harness dumps band means, so the test's per-bin assertions (Re(Z0) > 0 every bin, per-bin passivity) were not captured."
+    },
+    {
+      "id": "vessl-369367259284-b931",
+      "board": "b931-dxH3-sheet",
+      "role": "witness",
+      "source": "VESSL run 369367259284 (rfx-931-post-msl-port-integration, 2026-09-07), `pytest -m slow -q -s` stdout print, copied into the slow test's docstring. The run's own `git rev-parse HEAD` printed 'no git' (it cp -a'd a worktree without its git dir), so NO COMMIT WAS RECORDED -- the tree was branch feat/931-t2-sparams-ports, rfx 1.8.0, 2026-09-07 19:41 UTC. The job pinned JAX_PLATFORMS=cpu and pip-installed jax[cpu]==0.6.2 + numpy<2 over the image, so despite the gpu-rtx4090 preset this is a CPU-backend measurement.",
+      "note": "First record on this board, and the number the test docstring quotes. Its 2-dp legs recompute to spread 0.001733, not its printed 0.0016 -- the printed value was computed at full precision inside the run and the legs were rounded to 0.01 ohm for the log, so the recorded spread is the printed one. This row's per-leg trend FALLS with length (46.21 -> 46.13); every full-precision row on this board RISES. See cross_platform_checks.",
+      "commit": "not recorded",
+      "platform": {"cpu": "not recorded (VESSL remilab-c0 gpu-rtx4090 node; the job pinned JAX_PLATFORMS=cpu, so the GPU was allocated but unused)", "os": "not recorded (image ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8)", "jax": "0.6.2", "jaxlib": "0.6.2", "numpy": "<2 (pinned \"numpy<2\"; exact version not logged)", "python": "not recorded", "backend": "cpu (JAX_PLATFORMS=cpu)"},
+      "precision": "docstring_2dp",
+      "legs": {
+        "8": {"mean_abs_z0": 46.21, "mean_s11": 0.0126, "mean_s21": 0.9998},
+        "10": {"mean_abs_z0": 46.16, "mean_s11": 0.0203, "mean_s21": 0.9997},
+        "12": {"mean_abs_z0": 46.13, "mean_s11": 0.0264, "mean_s21": 0.9995}
+      },
+      "spread": 0.0016,
+      "verdict": "PASSED",
+      "verdict_note": "pytest ran the whole gated test (2 passed, 1 deselected, 1 xfailed in 360.20s, rc=0), so every per-bin assertion held, not just the band means."
+    },
+    {
+      "id": "cpu-epyc9654-6d721a56-b931",
+      "board": "b931-dxH3-sheet",
+      "role": "witness",
+      "source": "issue #1084 body: full-precision re-measure driving the test module's own _run_msl_thru / GATE_F_LO / GATE_F_HI at main 6d721a56, committed fixture unmodified, one process, x64 never enabled. The issue body prints the spread as 0.00047715021436281; recorded here as the exact double this row's own legs recompute to, 0.00047715021436280726 -- the body's 17-digit print is a different IEEE double.",
+      "note": "The first full-precision row on the gated board, and the one that raised #1084: 0.0477% against the docstring row's 0.16%.",
+      "commit": "6d721a56",
+      "platform": {"cpu": "AMD EPYC 9654 96-Core Processor (2 sockets, 224 threads)", "os": "Ubuntu 22.04.3 LTS, Linux 5.15.0-191-generic, glibc 2.35", "jax": "0.10.2", "jaxlib": "0.10.2", "numpy": "2.4.6 (scipy-openblas 0.3.31.188.0)", "python": "3.11.16", "backend": "cpu"},
+      "precision": "float32_full",
+      "legs": {
+        "8": {"mean_abs_z0": 46.21955871582031, "mean_s11": 0.012382, "mean_s21": 0.999833},
+        "10": {"mean_abs_z0": 46.23976135253906, "mean_s11": 0.01995, "mean_s21": 0.999678},
+        "12": {"mean_abs_z0": 46.24161911010742, "mean_s11": 0.025937, "mean_s21": 0.999523}
+      },
+      "spread": 0.00047715021436280726,
+      "verdict": "PASSED",
+      "verdict_note": "spread < 0.007 and L=12mm mean|S11| < 0.15 both recomputed from this row's own legs and clear. The harness dumps band means, so the test's per-bin assertions (Re(Z0) > 0 every bin, per-bin passivity) were not captured -- same limitation as the role=bisect rows."
+    },
+    {
+      "id": "cpu-epyc9654-c6788ef7-b931",
+      "board": "b931-dxH3-sheet",
+      "role": "witness",
+      "source": "#1084: same harness as the row above, re-run at main c6788ef7 so the CPU row shares a commit with the GPU row below. git-tracked worktree, rfx.__file__ asserted inside it, x64 never enabled.",
+      "note": "BIT-IDENTICAL to cpu-epyc9654-6d721a56-b931 on all three legs, which measures that the nine commits 6d721a56..c6788ef7 -- #1095 (Kottke host-float64 smoothing) and #1088 among them -- move nothing on this fixture.",
+      "commit": "c6788ef7",
+      "platform": {"cpu": "AMD EPYC 9654 96-Core Processor (2 sockets, 224 threads)", "os": "Ubuntu 22.04.3 LTS, Linux 5.15.0-191-generic, glibc 2.35", "jax": "0.10.2", "jaxlib": "0.10.2", "numpy": "2.4.6 (scipy-openblas 0.3.31.188.0)", "python": "3.11.16", "backend": "cpu"},
+      "precision": "float32_full",
+      "legs": {
+        "8": {"mean_abs_z0": 46.21955871582031, "mean_abs_z0_minus_x_port": 46.17390823364258, "mean_s11": 0.012382407672703266, "mean_s21": 0.9998326897621155},
+        "10": {"mean_abs_z0": 46.23976135253906, "mean_abs_z0_minus_x_port": 46.228946685791016, "mean_s11": 0.019949546083807945, "mean_s21": 0.9996779561042786},
+        "12": {"mean_abs_z0": 46.24161911010742, "mean_abs_z0_minus_x_port": 46.23126220703125, "mean_s11": 0.02593650296330452, "mean_s21": 0.9995227456092834}
+      },
+      "spread": 0.00047715021436280726,
+      "verdict": "PASSED",
+      "verdict_note": "spread < 0.007 and L=12mm mean|S11| < 0.15 both recomputed from this row's own legs and clear. Band means only -- per-bin assertions not captured by this harness."
+    },
+    {
+      "id": "gpu-rtx4090-c6788ef7-b931",
+      "board": "b931-dxH3-sheet",
+      "role": "witness",
+      "source": "VESSL run 369367261423 (#1084), remilab-c0 gpu-rtx4090, RFX_GPU_SUITE_REF=c6788ef7 exported with git archive (md5 of the fixture module 7280096f31b6ae91e27004908419e422). Step 1 dumped full precision through the exported tree's own _run_msl_thru; step 2 ran the gated test itself.",
+      "note": "The same-commit second platform for cpu-epyc9654-c6788ef7-b931, and the run that settles #1084's 0.11 pp question: CPU and GPU agree to 0.0093 pp, so the docstring row's 0.16% is not a GPU/CPU split. Per-leg trend RISES with length, like the CPU rows and unlike the docstring row.",
+      "commit": "c6788ef7",
+      "platform": {"cpu": "13th Gen Intel(R) Core(TM) i7-13700K", "gpu": "NVIDIA GeForce RTX 4090 (driver 535.309.01, 24564 MiB)", "os": "Linux 5.15.0-187-generic (VESSL remilab-c0, image nvcr.io/nvidia/jax:24.10-py3)", "jax": "0.4.33.dev20241023+e3c6d6430", "numpy": "1.26.4", "python": "3.10.12", "backend": "gpu"},
+      "precision": "float32_full",
+      "legs": {
+        "8": {"mean_abs_z0": 46.2152214050293, "mean_abs_z0_minus_x_port": 46.176292419433594, "mean_s11": 0.012382454238831997, "mean_s21": 0.9998326897621155},
+        "10": {"mean_abs_z0": 46.24006652832031, "mean_abs_z0_minus_x_port": 46.22846603393555, "mean_s11": 0.01994970068335533, "mean_s21": 0.9996779561042786},
+        "12": {"mean_abs_z0": 46.24155807495117, "mean_abs_z0_minus_x_port": 46.231346130371094, "mean_s11": 0.02593635767698288, "mean_s21": 0.9995227456092834}
+      },
+      "spread": 0.0005696597438192385,
+      "verdict": "PASSED",
+      "verdict_note": "step 2 ran the gated test itself on this platform: '1 passed, 12 warnings in 38.86s', printing mean|Z0| per length [46.22, 46.24, 46.24] ohm, spread 0.06% (bound 0.7%). Every per-bin assertion held."
+    },
+    {
+      "id": "stack-jax062-c6788ef7-b931",
+      "board": "b931-dxH3-sheet",
+      "role": "witness",
+      "source": "#1084 control. Same worktree at c6788ef7 and the same harness as cpu-epyc9654-c6788ef7-b931, on the SAME host, run from a throwaway venv carrying run 369367259284's runtime stack (jax[cpu]==0.6.2, jaxlib 0.6.2, numpy<2 -> 1.26.4). Only the runtime stack differs from that row -- host, tree and recipe are held fixed. (A VESSL twin of this control, run 369367261424, was launched first and terminated: its node hit 'failed to initialize NVML: Driver/library version mismatch' and back-off restarted. The control needs no GPU, so it was run on this host instead.)",
+      "note": "Separates 'runtime stack' from 'tree' as the explanation for the docstring row's 0.16%: it holds host and tree fixed against cpu-epyc9654-c6788ef7-b931 and swaps in the docstring row's jax/numpy.",
+      "commit": "c6788ef7",
+      "platform": {"cpu": "AMD EPYC 9654 96-Core Processor (2 sockets, 224 threads)", "os": "Ubuntu 22.04.3 LTS, Linux 5.15.0-191-generic, glibc 2.35", "jax": "0.6.2", "jaxlib": "0.6.2", "numpy": "1.26.4", "python": "3.11.16", "backend": "cpu"},
+      "precision": "float32_full",
+      "legs": {
+        "8": {"mean_abs_z0": 46.21866226196289, "mean_abs_z0_minus_x_port": 46.172977447509766, "mean_s11": 0.012382588349282742, "mean_s21": 0.999832808971405},
+        "10": {"mean_abs_z0": 46.240074157714844, "mean_abs_z0_minus_x_port": 46.2286376953125, "mean_s11": 0.019949641078710556, "mean_s21": 0.9996778964996338},
+        "12": {"mean_abs_z0": 46.241722106933594, "mean_abs_z0_minus_x_port": 46.23139953613281, "mean_s11": 0.025936394929885864, "mean_s21": 0.9995227456092834}
+      },
+      "spread": 0.0004987693310245003,
+      "verdict": "PASSED",
+      "verdict_note": "spread < 0.007 and L=12mm mean|S11| < 0.15 both recomputed from this row's own legs and clear. Band means only -- per-bin assertions not captured by this harness."
     }
   ]
 }
