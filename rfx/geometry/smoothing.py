@@ -31,6 +31,7 @@ from typing import NamedTuple
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 
 from rfx.grid import Grid
 from rfx.geometry.csg import Shape
@@ -603,6 +604,39 @@ def _yee_coords(grid: Grid):
     return tuple(jnp.asarray(axis) for axis in (coords.x, coords.y, coords.z))
 
 
+def _nu_yee_centres(nu_grid, coords=None):
+    """Per-axis cell centres ``node + d/2`` for the NU smoothing path.
+
+    ``coords`` are the E-NODE positions from ``coords_from_nonuniform_grid``
+    (host float64 on a concrete grid). The half-cell offset is taken from
+    the float64 cell-size spine (``dx_arr_f64`` / ``dy_arr_f64`` / ``dz_f64``
+    via ``cell_sizes_from_nonuniform_grid``), NOT from the float32 solver
+    store: ``node + f32(store)/2`` put the centres 3.7e-12 m off the exact
+    spine even at x64=1, and 1.1e-9 m off at x64=0 (#833, measured on the
+    graded WR-90 fixture). The sum is formed in host float64 and converted
+    to the active JAX dtype only afterwards, so at x64=0 the centres are the
+    correctly rounded float32 of the exact centre. A traced axis (no host
+    copy) keeps traced arithmetic.
+    """
+    from rfx.core.jax_utils import is_tracer
+    from rfx.geometry.rasterize_grid import (
+        cell_sizes_from_nonuniform_grid, coords_from_nonuniform_grid,
+    )
+
+    if coords is None:
+        coords = coords_from_nonuniform_grid(nu_grid)
+    out = []
+    for node, d in zip((coords.x, coords.y, coords.z),
+                       cell_sizes_from_nonuniform_grid(nu_grid)):
+        if is_tracer(node) or is_tracer(d):
+            nj = jnp.asarray(node)
+            out.append(nj + 0.5 * jnp.asarray(d, dtype=nj.dtype))
+            continue
+        centre = np.asarray(node, dtype=np.float64) + np.asarray(d, dtype=np.float64) / 2.0
+        out.append(jnp.asarray(centre))
+    return tuple(out)
+
+
 # ---------------------------------------------------------------------------
 # Kottke tensor averaging
 # ---------------------------------------------------------------------------
@@ -687,17 +721,20 @@ def compute_smoothed_eps_nonuniform(
     # interface-value bound (1 < eps < 4) passes under either sign — see
     # test_compute_smoothed_eps_nonuniform_reduces_to_uniform, which is the
     # assertion that catches it.
-    node_x = coords.x  # (nx,)
-    node_y = coords.y  # (ny,)
-    node_z = coords.z  # (nz,)
+    node_x = jnp.asarray(coords.x)  # (nx,)
+    node_y = jnp.asarray(coords.y)  # (ny,)
+    node_z = jnp.asarray(coords.z)  # (nz,)
+
+    # Cell centres — centre[i] = node[i] + d[i]/2, with d from the float64
+    # cell-size spine (not the float32 store) and the sum formed in host
+    # float64 before the cast to the active JAX dtype (#833).
+    centers_x, centers_y, centers_z = _nu_yee_centres(nu_grid, coords)
+
+    # Float32 solver store — the fill-fraction normalisation below keeps
+    # reading it (a cell-size scale, not a sample coordinate).
     dx_arr = jnp.asarray(nu_grid.dx_arr, dtype=jnp.float32)
     dy_arr = jnp.asarray(nu_grid.dy_arr, dtype=jnp.float32)
     dz_arr = jnp.asarray(nu_grid.dz, dtype=jnp.float32)
-
-    # Cell centres — centre[i] = node[i] + d_arr[i]/2
-    centers_x = node_x + dx_arr / 2.0
-    centers_y = node_y + dy_arr / 2.0
-    centers_z = node_z + dz_arr / 2.0
 
     # Local-cell characteristic length (geometric mean of three cell
     # widths) — used to normalise SDF → fill fraction. Anisotropic cell
