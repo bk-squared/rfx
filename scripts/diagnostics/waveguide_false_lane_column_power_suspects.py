@@ -72,10 +72,6 @@ from pathlib import Path
 import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-from tests import _fixture_provenance as PROV  # noqa: E402
-
 FIXTURE = REPO_ROOT / "tests/fixtures/waveguide_chain_battery/fixture.json"
 
 # Tolerances of the pre-declared decision rule.
@@ -218,11 +214,6 @@ def analyse() -> dict:
         "source_fixture": "tests/fixtures/waveguide_chain_battery/fixture.json",
         "source_run_id": fixture["provenance"]["run_id"],
         "source_commit": fixture["provenance"]["commit"],
-        # #1013: the source sha stops being reachable from main the day its PR
-        # squash-merges, so carry the source's rfx/ code-tree witness with it.
-        # Indexed, not .get(): if the battery fixture ever stops recording the
-        # witness this must fail here rather than quietly write a bare sha.
-        PROV.CODE_TREE_KEY: fixture["provenance"][PROV.CODE_TREE_KEY],
         "freqs_hz": freqs.tolist(),
         "decision_rule": {
             "band_mean_magnitude_factor": MAG_FACTOR,

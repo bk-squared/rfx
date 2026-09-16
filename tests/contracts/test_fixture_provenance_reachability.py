@@ -220,19 +220,41 @@ COMMIT_SHAPED_NOT_YET_GATED: dict[str, str] = {
 #: key whose site would now pass on its own, so the table cannot rot into
 #: permanence the way #928's bootstrap exemption did.
 ANNOTATED: dict[tuple[str, str], str] = {
+    # #873's evidence, and #873 is somebody else's open investigation. An earlier
+    # revision of this PR annotated this fixture AND edited its producer
+    # (waveguide_false_lane_column_power_suspects.py) to emit the witness. Both
+    # are reverted: the producer edit read the witness out of another lane's
+    # fixture by index, so #873's script would have started dying the day that
+    # fixture stopped carrying the key. Changing how somebody's live diagnostic
+    # fails is not this PR's to do.
+    #
+    # So the site is declared instead. It clears when #873's lane routes its own
+    # producer through tests._fixture_provenance.capture().
+    ("tests/fixtures/waveguide_false_lane_column_power/suspects.json",
+     "source_commit"):
+        "#873's evidence; its producer is not routed and this PR does not touch "
+        "it. sha ca168584 is unreachable from main, and the rfx/ subtree that "
+        "would witness it (0cd2ab4a) is recorded in RECORDED_CODE_TREES but the "
+        "fixture does not carry it",
     # ---------------------------------------------------------------
     # ARRIVED AFTER THIS GATE, and every one is the #1013 defect in a NEW
-    # fixture rather than a legacy one. They are listed rather than repaired
-    # because their shas (f5712d6b, 460bb9b7, 427fc97a) are absent from origin
-    # entirely -- no clone can derive a code tree for them -- and because the
-    # repair is to route the producing script through
-    # tests._fixture_provenance.capture() and regenerate, which belongs to the
-    # lane that owns each fixture.
+    # fixture rather than a legacy one.
     #
-    # THAT THIS LIST GREW IS THE FINDING, not an exemption. The gate is exact,
-    # so it reds on every unrouted fixture that lands on main from here on. That
-    # is either the forcing function it is meant to be or more than this repo
-    # wants, and it is a policy call rather than a defect: see the PR body.
+    # They are listed rather than repaired because their shas (f5712d6b,
+    # 460bb9b7, 427fc97a) resolve in NO clone available anywhere -- not this
+    # one, not origin, not the read-only primary checkout on NFS. Checked all
+    # three before writing this. Without the object there is no rfx/ subtree to
+    # record, so no annotation can make these sites checkable and only a
+    # regeneration would.
+    #
+    # NOT BEING FIXED IN THIS PR, and that is a decision rather than an
+    # oversight. Their three producers still call git directly and write
+    # "unknown" on failure. Routing them is the repair, and routing them means
+    # editing scripts that belong to #873 and #1083, both open investigations
+    # somebody else is running. This PR does not touch them.
+    #
+    # So this list can still grow, and the PR body says so. Whoever routes those
+    # producers clears these sites at the same time.
     ("tests/fixtures/graded_mesh_sparameter_accuracy/wr90_control.json",
      "arms.A|pec_short.provenance.commit"):
         "arrived on main in the graded-mesh S-parameter work AFTER this gate was written, and is the #1013 defect itself in a brand-new fixture: a branch-only sha that origin does not carry (`git cat-file` ABSENT here), so neither reachability nor a code-tree witness can be derived from any clone. Its producer is not among the twelve routed through tests._fixture_provenance.capture(). The repair is to route that producer and regenerate, which belongs to the lane that owns the fixture, not here",
