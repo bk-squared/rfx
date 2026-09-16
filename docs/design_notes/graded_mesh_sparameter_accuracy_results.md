@@ -20,7 +20,7 @@ solve time in total. No VESSL, no GPU.
 | rule (note §4) | result |
 |---|---|
 | **R-1** `dev_B ≤ dev_C + A_B`, 13 gates × 17 bins | **holds everywhere.** Worst margin +1.2827e-3 on the magnitude gates, +0.0735° on the phase gates — the allowance is essentially untouched. |
-| **R-2** `dev_B ≤ dev_A + A_B + A_dt` | **fires on one gate, one bin**: slab‖S11‖ vs Airy at 8.4 GHz, margin −1.271e-4. Traced in §4: arm B equals arm C to 1.05e-6, so the cause is the z refinement, not the grading. |
+| **R-2** `dev_B ≤ dev_A + A_B + A_dt` | **fires on one gate, one bin**: slab \|S11\| vs Airy at 8.4 GHz, margin −1.271e-4. Traced in §4: arm B equals arm C to 1.05e-6, so the cause is the z refinement, not the grading. |
 | **W-BC** `max\|S_B − S_C\| ≤ 1e-4` | **holds**: worst 1.047e-6 (declared expectation "≈ 1e-6"). |
 | **F-Z** ratio-2.0 on z expected NOT to exceed the allowance | **holds**: `max\|S_D1 − S_C\| = 1.696e-6`. The observables cannot see the z axis at all. |
 | **F-A** arm D2 must exceed the allowance | **fires as declared**: the thru's S21 phase residual exceeds by up to +2.205°, at every one of the 17 bins; no flux-lane magnitude exceeds, also as declared. |
