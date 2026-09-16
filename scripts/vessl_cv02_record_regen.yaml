@@ -77,6 +77,22 @@ run: |-
   PY=/opt/conda/envs/cv02meep/bin/python
   "$PY" -c "import meep, numpy; print('meep', meep.__version__, 'numpy', numpy.__version__)"
 
+  # --- THE SOLVER'S BUILD, not just its version ------------------------------
+  # The first version of this lane piped conda's output through `tail -15` and
+  # kept nothing else, so the package table went in the bin. That cost a real
+  # answer: when the regenerated record disagreed with the retained one about how
+  # many poles Meep resolves, `meep_version 1.34.0` was equal in both records and
+  # therefore said nothing -- conda-forge ships 1.34.0 as nompi_py* and
+  # mpi_mpich_py* variants with differing build numbers, and an MPI build
+  # decomposes the domain. A version string is not a build.
+  #
+  # Same standard the openEMS lanes already hold themselves to: they stamp
+  # RFX_OPENEMS_COMMIT and echo it. Meep gets the equivalent here.
+  conda list -n cv02meep > "$OUT/solver_build.txt" 2>&1 || true
+  echo "=== solver build (pymeep/harminv/BLAS/MPI decide reproducibility) ==="
+  grep -iE "^(pymeep|meep|harminv|python|numpy|libblas|libopenblas|liblapack|libcblas|mpich|openmpi|mpi4py|libctl|guile) " \
+    "$OUT/solver_build.txt" || echo "WARNING: conda list produced no recognisable rows"
+
   # --- rfx's own deps --------------------------------------------------------
   "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" 2>&1 | tail -3
   export PYTHONPATH="$src"
