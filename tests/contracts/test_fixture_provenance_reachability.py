@@ -852,7 +852,41 @@ def test_recorded_code_trees_match_git() -> None:
             "them is wrong, and the table is what CI trusts."
         )
         checked += 1
-    assert checked >= 4, (
-        f"only {checked} of {len(RECORDED_CODE_TREES)} recorded trees could be "
-        "re-derived here; too few to call this check meaningful"
+
+    # NO FLOOR ON `checked`, and that absence is the point.
+    #
+    # An earlier revision asserted `checked >= 4` and reddened CI. The reason is
+    # that how many of these shas a clone can resolve is a property of which
+    # ABANDONED BRANCHES origin still happens to serve, not a property of the
+    # repository's content. Measured over origin's 88 refs: 2 of the 10 resolve,
+    # 6a369c27 only via refs/remotes/origin/fix/888-aux-absorber-r2 and 98d31987
+    # only via refs/remotes/origin/fix/872-harminv-fir-boundaries. Prune either
+    # stale branch and the count drops. The floor was set from a development
+    # clone that had fetched more, so it passed locally and failed in CI --
+    # exactly the shape of defect this gate exists to catch, one level up.
+    #
+    # What this test can honestly assert is the IMPLICATION: every entry git can
+    # check here is right. That holds in any clone, including one that can check
+    # none, and it is the property that keeps the table from drifting. A table
+    # that is never exercised anywhere is caught by the separate staleness test
+    # below, which needs no objects at all.
+    print(f"RECORDED_CODE_TREES: {checked}/{len(RECORDED_CODE_TREES)} re-derivable "
+          f"in this clone (clone state, not repo state)")
+
+
+def test_recorded_code_trees_are_all_used() -> None:
+    """The table must not accumulate entries nothing reads.
+
+    This is the half of the previous test that does NOT depend on which objects a
+    clone holds: every recorded sha has to be one some committed fixture actually
+    records, or the table is carrying a witness for a site that no longer exists.
+    Checkable in any clone, including one that can resolve none of the objects.
+    """
+    recorded = set(RECORDED_CODE_TREES)
+    in_fixtures = {sha for _, _, sha, _ in _sites()}
+    unused = sorted(recorded - in_fixtures)
+    assert not unused, (
+        f"RECORDED_CODE_TREES carries {len(unused)} sha(s) no committed fixture "
+        f"records any more: {unused}. Delete them; a witness for a site that does "
+        "not exist is not evidence of anything."
     )
