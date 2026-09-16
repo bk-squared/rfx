@@ -84,25 +84,38 @@ SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
 #     parent image pip-installed numpy<2 for the openEMS bindings and conda
 #     must not "helpfully" resolve that pip-installed numpy away.
 #
-# --override-channels -c conda-forge matches the microwave-energy recipe
-# (research/microwave-energy/meep_simulation/jobs/meep_xband_sim.yaml:33) so
-# defaults/main never contributes a package to a solver environment.
 #
-# IF THIS SOLVE FAILS, in order, and none of these is a silent fallback --
+# MEASURED ON THE CLUSTER BEFORE THIS IMAGE WAS EVER BUILT. VESSL run
+# 369367261409 applied exactly the line below to this same parent image and it
+# failed in 5 minutes:
+#
+#     ResolvePackageNotFound:
+#       - conda=23.5.2
+#
+# --override-channels restricts the solve to conda-forge, and the base env's own
+# `conda` package came from another channel, so conda cannot keep ITSELF
+# satisfiable and the solve dies before pymeep is even considered. The pin that
+# matters (python, numpy<2) is unaffected; the channel restriction is what
+# breaks. So --override-channels is NOT used here, and the microwave-energy
+# recipe's use of it is not transferable: that recipe installs into a FRESH
+# miniconda where nothing else is in scope.
+#
+# IF THIS SOLVE STILL FAILS, in order, and none of these is a silent fallback --
 # each changes what the image IS, so make the change, rebuild, and say which:
 #   1. pymeep has no build for this python. Bump PYMEEP_VERSION (the build
 #      workflow exposes it as a workflow_dispatch input) or drop the python pin
 #      and let conda-forge choose; the binding rebuild below already handles a
 #      moved interpreter, and the final import assertion still guards it.
-#   2. The solve conflicts with the pytorch base's own channel mix. Drop
-#      --override-channels so conda may use the image's configured channels
-#      too. This trades ABI strictness for satisfiability and is the reason it
-#      is second, not first.
+#   2. conda-forge and the base channel disagree on something other than conda
+#      itself. Read the conflict; do not widen the channel list blindly.
 # Do NOT work around a failure by installing pymeep into a second conda env:
-# the whole point of this image is ONE interpreter.
+# the whole point of this image is ONE interpreter, because
+# test_crossval_comprehensive.py needs meep and openEMS in one pytest process.
+# (A second env IS the right answer where only one solver is needed -- see
+# scripts/vessl_cv02_record_regen.yaml, which takes that route deliberately.)
 RUN PYVER="$(python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')" \
     && echo "extending the openEMS image's python ${PYVER} with pymeep ${PYMEEP_VERSION}" \
-    && conda install -y --override-channels -c conda-forge \
+    && conda install -y -c conda-forge \
          "python=${PYVER}" "pymeep=${PYMEEP_VERSION}" "numpy<2" \
     && conda clean -afy
 
