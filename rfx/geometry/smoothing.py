@@ -40,49 +40,56 @@ from rfx.geometry.csg import Shape
 # ---------------------------------------------------------------------------
 # Signed distance functions for supported shapes
 # ---------------------------------------------------------------------------
+#
+# Every SDF and normal below takes an array backend ``xp`` -- ``jax.numpy``
+# (the default, and the only choice for traced inputs) or ``numpy``. The
+# smoothing functions evaluate them with ``xp=numpy`` on host float64 when
+# every input is concrete (#833): the same formulas, only the arithmetic
+# precision differs, and the result is cast to the active JAX dtype once at
+# the end. ``rfx.geometry.conformal`` calls them with the default.
 
-def _sdf_sphere(x, y, z, shape) -> jnp.ndarray:
+def _sdf_sphere(x, y, z, shape, xp=jnp):
     """Signed distance: negative inside, positive outside."""
     cx, cy, cz = shape.center
-    r = jnp.sqrt((x - cx)**2 + (y - cy)**2 + (z - cz)**2)
+    r = xp.sqrt((x - cx)**2 + (y - cy)**2 + (z - cz)**2)
     return r - shape.radius
 
 
-def _sdf_box(x, y, z, shape) -> jnp.ndarray:
+def _sdf_box(x, y, z, shape, xp=jnp):
     """Signed distance for axis-aligned box."""
-    lo = jnp.array(shape.corner_lo)
-    hi = jnp.array(shape.corner_hi)
+    lo = xp.array(shape.corner_lo)
+    hi = xp.array(shape.corner_hi)
     center = (lo + hi) / 2.0
     half = (hi - lo) / 2.0
 
-    dx = jnp.abs(x - center[0]) - half[0]
-    dy = jnp.abs(y - center[1]) - half[1]
-    dz = jnp.abs(z - center[2]) - half[2]
+    dx = xp.abs(x - center[0]) - half[0]
+    dy = xp.abs(y - center[1]) - half[1]
+    dz = xp.abs(z - center[2]) - half[2]
 
-    ox = jnp.maximum(dx, 0.0)
-    oy = jnp.maximum(dy, 0.0)
-    oz = jnp.maximum(dz, 0.0)
-    outside = jnp.sqrt(ox**2 + oy**2 + oz**2)
-    inside = jnp.minimum(jnp.maximum(jnp.maximum(dx, dy), dz), 0.0)
+    ox = xp.maximum(dx, 0.0)
+    oy = xp.maximum(dy, 0.0)
+    oz = xp.maximum(dz, 0.0)
+    outside = xp.sqrt(ox**2 + oy**2 + oz**2)
+    inside = xp.minimum(xp.maximum(xp.maximum(dx, dy), dz), 0.0)
     return outside + inside
 
 
-def _sdf_cylinder(x, y, z, shape) -> jnp.ndarray:
+def _sdf_cylinder(x, y, z, shape, xp=jnp):
     """Signed distance for a cylinder along a given axis."""
     cx, cy, cz = shape.center
 
     if shape.axis == "z":
-        r = jnp.sqrt((x - cx)**2 + (y - cy)**2) - shape.radius
-        h = jnp.abs(z - cz) - shape.height / 2.0
+        r = xp.sqrt((x - cx)**2 + (y - cy)**2) - shape.radius
+        h = xp.abs(z - cz) - shape.height / 2.0
     elif shape.axis == "y":
-        r = jnp.sqrt((x - cx)**2 + (z - cz)**2) - shape.radius
-        h = jnp.abs(y - cy) - shape.height / 2.0
+        r = xp.sqrt((x - cx)**2 + (z - cz)**2) - shape.radius
+        h = xp.abs(y - cy) - shape.height / 2.0
     else:
-        r = jnp.sqrt((y - cy)**2 + (z - cz)**2) - shape.radius
-        h = jnp.abs(x - cx) - shape.height / 2.0
+        r = xp.sqrt((y - cy)**2 + (z - cz)**2) - shape.radius
+        h = xp.abs(x - cx) - shape.height / 2.0
 
-    outside = jnp.sqrt(jnp.maximum(r, 0.0)**2 + jnp.maximum(h, 0.0)**2)
-    inside = jnp.minimum(jnp.maximum(r, h), 0.0)
+    outside = xp.sqrt(xp.maximum(r, 0.0)**2 + xp.maximum(h, 0.0)**2)
+    inside = xp.minimum(xp.maximum(r, h), 0.0)
     return outside + inside
 
 
@@ -102,31 +109,31 @@ def _get_sdf_fn(shape: Shape):
 # Analytic normals per shape (outward-pointing)
 # ---------------------------------------------------------------------------
 
-def _normal_sphere(x, y, z, shape):
+def _normal_sphere(x, y, z, shape, xp=jnp):
     """Analytic outward normal for a sphere: radial direction."""
     cx, cy, cz = shape.center
     dx = x - cx
     dy = y - cy
     dz = z - cz
-    r = jnp.sqrt(dx**2 + dy**2 + dz**2 + 1e-30)
+    r = xp.sqrt(dx**2 + dy**2 + dz**2 + 1e-30)
     return dx / r, dy / r, dz / r
 
 
-def _normal_box(x, y, z, shape):
+def _normal_box(x, y, z, shape, xp=jnp):
     """Analytic outward normal for an axis-aligned box.
 
     At each point the normal is determined by which face is nearest
     (the axis with the smallest penetration distance).
     """
-    lo = jnp.array(shape.corner_lo)
-    hi = jnp.array(shape.corner_hi)
+    lo = xp.array(shape.corner_lo)
+    hi = xp.array(shape.corner_hi)
     center = (lo + hi) / 2.0
     half = (hi - lo) / 2.0
 
     # Signed distance to each face pair (positive = outside that pair)
-    rx = jnp.abs(x - center[0]) - half[0]
-    ry = jnp.abs(y - center[1]) - half[1]
-    rz = jnp.abs(z - center[2]) - half[2]
+    rx = xp.abs(x - center[0]) - half[0]
+    ry = xp.abs(y - center[1]) - half[1]
+    rz = xp.abs(z - center[2]) - half[2]
 
     # The nearest face corresponds to the axis with the largest
     # (least-negative inside, or least-positive outside) component.
@@ -141,22 +148,22 @@ def _normal_box(x, y, z, shape):
     is_y = (ry > rx) & (ry >= rz)
     # is_z = everything else
 
-    sign_x = jnp.sign(x - center[0])
-    sign_y = jnp.sign(y - center[1])
-    sign_z = jnp.sign(z - center[2])
+    sign_x = xp.sign(x - center[0])
+    sign_y = xp.sign(y - center[1])
+    sign_z = xp.sign(z - center[2])
 
     # Default to z-face normal
-    nx = jnp.where(is_x, sign_x, 0.0)
-    ny = jnp.where(is_y, sign_y, jnp.where(is_x, 0.0, 0.0))
-    nz = jnp.where(is_x | is_y, 0.0, sign_z)
+    nx = xp.where(is_x, sign_x, 0.0)
+    ny = xp.where(is_y, sign_y, xp.where(is_x, 0.0, 0.0))
+    nz = xp.where(is_x | is_y, 0.0, sign_z)
 
     # Ensure unit length (should already be 1 for pure axis normals,
     # but guard against degenerate zero-sign cases)
-    mag = jnp.sqrt(nx**2 + ny**2 + nz**2 + 1e-30)
+    mag = xp.sqrt(nx**2 + ny**2 + nz**2 + 1e-30)
     return nx / mag, ny / mag, nz / mag
 
 
-def _normal_cylinder(x, y, z, shape):
+def _normal_cylinder(x, y, z, shape, xp=jnp):
     """Analytic outward normal for a cylinder.
 
     The radial component dominates on the curved surface; the axial
@@ -168,33 +175,33 @@ def _normal_cylinder(x, y, z, shape):
 
     if shape.axis == "z":
         dx, dy = x - cx, y - cy
-        r = jnp.sqrt(dx**2 + dy**2 + 1e-30)
-        dh = jnp.abs(z - cz) - H2
+        r = xp.sqrt(dx**2 + dy**2 + 1e-30)
+        dh = xp.abs(z - cz) - H2
         dr = r - R
         on_cap = dh > dr
-        nx = jnp.where(on_cap, 0.0, dx / r)
-        ny = jnp.where(on_cap, 0.0, dy / r)
-        nz = jnp.where(on_cap, jnp.sign(z - cz), 0.0)
+        nx = xp.where(on_cap, 0.0, dx / r)
+        ny = xp.where(on_cap, 0.0, dy / r)
+        nz = xp.where(on_cap, xp.sign(z - cz), 0.0)
     elif shape.axis == "y":
         dx, dz = x - cx, z - cz
-        r = jnp.sqrt(dx**2 + dz**2 + 1e-30)
-        dh = jnp.abs(y - cy) - H2
+        r = xp.sqrt(dx**2 + dz**2 + 1e-30)
+        dh = xp.abs(y - cy) - H2
         dr = r - R
         on_cap = dh > dr
-        nx = jnp.where(on_cap, 0.0, dx / r)
-        ny = jnp.where(on_cap, jnp.sign(y - cy), 0.0)
-        nz = jnp.where(on_cap, 0.0, dz / r)
+        nx = xp.where(on_cap, 0.0, dx / r)
+        ny = xp.where(on_cap, xp.sign(y - cy), 0.0)
+        nz = xp.where(on_cap, 0.0, dz / r)
     else:  # axis == "x"
         dy, dz = y - cy, z - cz
-        r = jnp.sqrt(dy**2 + dz**2 + 1e-30)
-        dh = jnp.abs(x - cx) - H2
+        r = xp.sqrt(dy**2 + dz**2 + 1e-30)
+        dh = xp.abs(x - cx) - H2
         dr = r - R
         on_cap = dh > dr
-        nx = jnp.where(on_cap, jnp.sign(x - cx), 0.0)
-        ny = jnp.where(on_cap, 0.0, dy / r)
-        nz = jnp.where(on_cap, 0.0, dz / r)
+        nx = xp.where(on_cap, xp.sign(x - cx), 0.0)
+        ny = xp.where(on_cap, 0.0, dy / r)
+        nz = xp.where(on_cap, 0.0, dz / r)
 
-    mag = jnp.sqrt(nx**2 + ny**2 + nz**2 + 1e-30)
+    mag = xp.sqrt(nx**2 + ny**2 + nz**2 + 1e-30)
     return nx / mag, ny / mag, nz / mag
 
 
@@ -657,6 +664,182 @@ def _kottke_tensor_eps(
 
 
 # ---------------------------------------------------------------------------
+# Host-float64 evaluation for concrete inputs (#833)
+# ---------------------------------------------------------------------------
+#
+# The smoothed permittivity is a constant geometry input, not a traced design
+# variable, in every in-tree caller. Evaluating it through ``jax.numpy`` tied
+# the result to ``jax_enable_x64``: with the flag off, the SDF, fill fraction,
+# normals and Kottke averaging all rounded in float32, and every interface
+# voxel came out up to 15 f32 ulps away from the x64=1 value (measured on the
+# boundary-voxel fixture in tests/unit/geometry/test_smoothing_coordinate_
+# contract.py). Coordinate routing alone (ab280a38, #1088) could not close
+# that: the coordinates were already the correctly rounded float32 of the
+# exact spine, and the rest was arithmetic.
+#
+# So when every input is concrete -- host coordinate arrays, Python-float
+# shape parameters and permittivities -- the whole chain runs in numpy
+# float64 and the result is cast to the active JAX dtype ONCE at the end.
+# Then eps(x64=0) is exactly float32(eps(x64=1)) by construction. Any traced
+# input (a Sphere radius under ``jax.grad``, a mesh-as-design-variable axis)
+# takes the same body through ``jax.numpy`` unchanged: one formula, two
+# array backends, chosen by :func:`_host_path`.
+
+def _shape_parameters(shape: Shape) -> list:
+    """The numbers an SDF / normal reads off ``shape`` (empty for shapes
+    without an SDF -- their staircase mask is evaluated, not traced)."""
+    from rfx.geometry.csg import Box, Sphere, Cylinder
+    if isinstance(shape, Box):
+        return [*shape.corner_lo, *shape.corner_hi]
+    if isinstance(shape, Sphere):
+        return [*shape.center, shape.radius]
+    if isinstance(shape, Cylinder):
+        return [*shape.center, shape.radius, shape.height]
+    return []
+
+
+def _host_path(*values) -> bool:
+    """True when no value is a JAX tracer, so the smoothing may run in host
+    float64. Arrays and Python scalars are both accepted."""
+    from rfx.core.jax_utils import is_tracer
+    return not any(is_tracer(v) for v in values)
+
+
+def _has_sdf(shape: Shape) -> bool:
+    return _get_sdf_fn(shape) is not None and _get_normal_fn(shape) is not None
+
+
+def _to_jax(arrays, *, host: bool, promoted: bool):
+    """Cast host results to the dtype the ``jax.numpy`` path returns.
+
+    The JAX path yields the active default float dtype (float32 at x64=0,
+    float64 at x64=1) whenever SDF arithmetic on the coordinate arrays
+    reached the output (``promoted``), and float32 otherwise (an all-
+    staircase or empty shape list never leaves the float32 accumulators).
+    The host path reproduces that so callers see the same dtypes they did
+    before; this is the ONE cast on the host path.
+    """
+    if not host:
+        return tuple(arrays)
+    dtype = jax.dtypes.canonicalize_dtype(np.float64) if promoted else jnp.float32
+    return tuple(jnp.asarray(a, dtype=dtype) for a in arrays)
+
+
+def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, fallback_mask):
+    """Kottke-average ``shapes`` into the per-component permittivity arrays.
+
+    This is the ONE smoothing body; the uniform and non-uniform public
+    functions differ only in how they build the sample coordinates and the
+    local cell length, and in what a staircase fallback does.
+
+    Parameters
+    ----------
+    xp : numpy or jax.numpy
+    shapes : list of (shape, eps_r)
+        Applied in order; later shapes overwrite earlier ones. Shapes sharing
+        an ``eps_r`` form one group and are smoothed against their union SDF
+        with the nearest shape's analytic normal, so overlapping same-material
+        bodies are not double-smoothed.
+    sample_coords : {"ex" | "ey" | "ez": (X, Y, Z)}
+        Broadcastable coordinate arrays at each component's Yee position.
+    cell_len : scalar or broadcastable array
+        Local cell length normalising SDF -> fill fraction,
+        ``f = clip(0.5 - sdf / cell_len, 0, 1)``.
+    eps : (eps_ex, eps_ey, eps_ez)
+        Starting (background) arrays; returned updated.
+    fallback_mask : callable(shape) -> bool mask or None
+        Staircase mask for a shape without an SDF; ``None`` skips it.
+    """
+    eps = dict(zip(("ex", "ey", "ez"), eps))
+    from collections import OrderedDict
+    groups: OrderedDict[float, list] = OrderedDict()
+    for shape, eps_r in shapes:
+        groups.setdefault(eps_r, []).append(shape)
+
+    for eps_r, group_shapes in groups.items():
+        sdf_shapes = [s for s in group_shapes if _has_sdf(s)]
+
+        # Fallback shapes: staircased mask
+        for shape in group_shapes:
+            if _has_sdf(shape):
+                continue
+            mask = fallback_mask(shape)
+            if mask is None:
+                continue
+            for comp in eps:
+                eps[comp] = xp.where(mask, eps_r, eps[comp])
+
+        if not sdf_shapes:
+            continue
+
+        # --- For each E-component position, compute union SDF and
+        #     select the best analytic normal from the nearest shape ---
+        for comp, (Xc, Yc, Zc) in sample_coords.items():
+            # Union SDF + per-voxel nearest-shape tracking: for analytic
+            # normals we pick the shape whose SDF is closest to zero (the
+            # one whose boundary is nearest).
+            sdf_union = None
+            best_abs_sdf = None
+            best_nx = best_ny = best_nz = None
+
+            for shape in sdf_shapes:
+                s = _get_sdf_fn(shape)(Xc, Yc, Zc, shape, xp=xp)
+                n_x, n_y, n_z = _get_normal_fn(shape)(Xc, Yc, Zc, shape, xp=xp)
+
+                if sdf_union is None:
+                    sdf_union = s
+                    best_abs_sdf = xp.abs(s)
+                    best_nx, best_ny, best_nz = n_x, n_y, n_z
+                else:
+                    sdf_union = xp.minimum(sdf_union, s)
+                    # Update normal where this shape's surface is closer
+                    closer = xp.abs(s) < best_abs_sdf
+                    best_abs_sdf = xp.where(closer, xp.abs(s), best_abs_sdf)
+                    best_nx = xp.where(closer, n_x, best_nx)
+                    best_ny = xp.where(closer, n_y, best_ny)
+                    best_nz = xp.where(closer, n_z, best_nz)
+
+            # Fill fraction from union SDF
+            f = xp.clip(0.5 - sdf_union / cell_len, 0.0, 1.0)
+
+            # Fix #1: fully-inside voxels get bulk eps, no smoothing
+            inside = f >= 1.0
+            # Boundary voxels
+            bnd = (f > 0.0) & (f < 1.0)
+
+            # The "outside" eps is whatever was there before.
+            # Fix #3: full Kottke tensor averaging
+            kt = _kottke_tensor_eps(f, eps_r, eps[comp], best_nx, best_ny, best_nz)
+            smooth = kt[("ex", "ey", "ez").index(comp)]
+
+            # Apply: interior -> bulk, boundary -> Kottke, exterior -> unchanged
+            eps[comp] = xp.where(inside, eps_r, xp.where(bnd, smooth, eps[comp]))
+
+    return eps["ex"], eps["ey"], eps["ez"]
+
+
+def _uniform_sample_coords(xp, coords, dx):
+    """Yee-position coordinates on a uniform grid from the shared node
+    spine: Ex at (i+1/2, j, k), Ey at (i, j+1/2, k), Ez at (i, j, k+1/2).
+    Centres are derived FROM nodes by adding half a cell -- see
+    :func:`_yee_coords` for why the direction is the contract."""
+    x, y, z = (xp.asarray(a) for a in (coords.x, coords.y, coords.z))
+    X, Y, Z = x[:, None, None], y[None, :, None], z[None, None, :]
+    half = dx * 0.5
+    return {"ex": (X + half, Y, Z), "ey": (X, Y + half, Z), "ez": (X, Y, Z + half)}
+
+
+def _smoothed_eps_uniform(xp, grid, coords, shapes, background_eps):
+    """``compute_smoothed_eps`` body on backend ``xp``; returns ``xp`` arrays."""
+    acc_dtype = np.float64 if xp is np else jnp.float32
+    eps = tuple(xp.full(grid.shape, background_eps, dtype=acc_dtype) for _ in range(3))
+    return _kottke_smooth(
+        xp, shapes, _uniform_sample_coords(xp, coords, grid.dx), grid.dx, eps,
+        fallback_mask=lambda shape: shape.mask(grid),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -668,16 +851,19 @@ def compute_smoothed_eps_nonuniform(
     """Kottke tensor-averaged ε on a NonUniformGrid (per-component).
 
     Same semantics as :func:`compute_smoothed_eps` but uses per-axis
-    cell-size arrays (``dx_arr``, ``dy_arr``, ``dz``) from ``nu_grid``
-    for both coordinate placement (per-axis half-cell offsets) and SDF
-    fill-fraction normalisation.
+    cell-size arrays from ``nu_grid`` for both coordinate placement
+    (per-axis half-cell offsets) and SDF fill-fraction normalisation.
 
     Fill-fraction normalisation uses the geometric mean of the three
     local cell sizes — first-order accurate for non-cubic Yee cells, in
     line with the SDF-to-fill approximation in the uniform path.
+
+    Concrete inputs are evaluated in host float64 and cast once (#833);
+    a traced axis (mesh as design variable) keeps traced arithmetic.
     """
     from rfx.geometry.rasterize_grid import (
-        centres_from_nonuniform_grid, coords_from_nonuniform_grid,
+        cell_sizes_from_nonuniform_grid, centres_from_nonuniform_grid,
+        coords_from_nonuniform_grid,
     )
 
     coords = coords_from_nonuniform_grid(nu_grid)
@@ -690,26 +876,25 @@ def compute_smoothed_eps_nonuniform(
     # interface-value bound (1 < eps < 4) passes under either sign — see
     # test_compute_smoothed_eps_nonuniform_reduces_to_uniform, which is the
     # assertion that catches it.
-    node_x = jnp.asarray(coords.x)  # (nx,)
-    node_y = jnp.asarray(coords.y)  # (ny,)
-    node_z = jnp.asarray(coords.z)  # (nz,)
-
+    #
     # Cell centres — centre[i] = node[i] + d[i]/2 from the shared producer
     # rasterize_grid.centres_from_nonuniform_grid: d comes from the float64
     # cell-size spine (not the float32 store) and the sum is formed in host
-    # float64 before the cast to the active JAX dtype (#833). ``node +
-    # f32(store)/2`` sat 3.7e-12 m off the exact spine at x64=1 and 1.1e-9 m
-    # at x64=0 on the graded WR-90 fixture.
-    _c = centres_from_nonuniform_grid(nu_grid, coords)
-    centers_x = jnp.asarray(_c.x)
-    centers_y = jnp.asarray(_c.y)
-    centers_z = jnp.asarray(_c.z)
+    # float64 (#833). ``node + f32(store)/2`` sat 3.7e-12 m off the exact
+    # spine at x64=1 and 1.1e-9 m at x64=0 on the graded WR-90 fixture.
+    centres = centres_from_nonuniform_grid(nu_grid, coords)
+    # Per-cell sizes from the same float64 spine, for the fill-fraction
+    # normalisation (a traced axis comes back as its tracer).
+    cell_sizes = cell_sizes_from_nonuniform_grid(nu_grid)
 
-    # Float32 solver store — the fill-fraction normalisation below keeps
-    # reading it (a cell-size scale, not a sample coordinate).
-    dx_arr = jnp.asarray(nu_grid.dx_arr, dtype=jnp.float32)
-    dy_arr = jnp.asarray(nu_grid.dy_arr, dtype=jnp.float32)
-    dz_arr = jnp.asarray(nu_grid.dz, dtype=jnp.float32)
+    host = _host_path(*coords[:3], *centres[:3], *cell_sizes, background_eps,
+                      *(e for _, e in shapes),
+                      *(p for s, _ in shapes for p in _shape_parameters(s)))
+    xp = np if host else jnp
+
+    node_x, node_y, node_z = (xp.asarray(a) for a in coords[:3])
+    centre_x, centre_y, centre_z = (xp.asarray(a) for a in centres[:3])
+    dx_arr, dy_arr, dz_arr = (xp.asarray(d) for d in cell_sizes)
 
     # Local-cell characteristic length (geometric mean of three cell
     # widths) — used to normalise SDF → fill fraction. Anisotropic cell
@@ -719,114 +904,41 @@ def compute_smoothed_eps_nonuniform(
               * dy_arr[None, :, None]
               * dz_arr[None, None, :]) ** (1.0 / 3.0)
 
-    nx, ny, nz = nu_grid.shape
+    # Per-component half-cell offsets along the COMPONENT axis only:
+    # Ex sits at (centre_x, node_y, node_z); Ey at (node_x, centre_y,
+    # node_z); Ez at (node_x, node_y, centre_z).
+    sample = {
+        "ex": (centre_x[:, None, None], node_y[None, :, None], node_z[None, None, :]),
+        "ey": (node_x[:, None, None], centre_y[None, :, None], node_z[None, None, :]),
+        "ez": (node_x[:, None, None], node_y[None, :, None], centre_z[None, None, :]),
+    }
 
-    eps_ex = jnp.full((nx, ny, nz), background_eps, dtype=jnp.float32)
-    eps_ey = jnp.full((nx, ny, nz), background_eps, dtype=jnp.float32)
-    eps_ez = jnp.full((nx, ny, nz), background_eps, dtype=jnp.float32)
-
-    from collections import OrderedDict
-    groups: OrderedDict[float, list] = OrderedDict()
-    for shape, eps_r in shapes:
-        groups.setdefault(eps_r, []).append(shape)
-
-    for eps_r, group_shapes in groups.items():
-        sdf_shapes = []
-        fallback_shapes = []
-        for shape in group_shapes:
-            sdf_fn = _get_sdf_fn(shape)
-            normal_fn = _get_normal_fn(shape)
-            if sdf_fn is not None and normal_fn is not None:
-                sdf_shapes.append((shape, sdf_fn, normal_fn))
-            else:
-                fallback_shapes.append(shape)
-
-        # Fallback shapes — staircase via the shape's cell mask if
-        # available; otherwise skip (NU grid has no Grid-style mask
-        # adapter for arbitrary shapes today).
-        for shape in fallback_shapes:
-            if hasattr(shape, "mask"):
-                try:
-                    m = shape.mask(nu_grid)
-                    eps_ex = jnp.where(m, eps_r, eps_ex)
-                    eps_ey = jnp.where(m, eps_r, eps_ey)
-                    eps_ez = jnp.where(m, eps_r, eps_ez)
-                except Exception as exc:
-                    # A shape whose .mask() cannot handle a
-                    # NonUniformGrid is skipped — but make that visible.
-                    # The pre-fix bare ``except: pass`` silently dropped
-                    # the shape's geometry AND would have masked a real
-                    # bug (NaN, typo, unexpected error) just as quietly.
-                    warnings.warn(
-                        f"smoothing: {type(shape).__name__}.mask() failed "
-                        f"on the non-uniform grid ({exc!r}); this shape is "
-                        f"SKIPPED and its geometry is NOT applied.",
-                        stacklevel=2,
-                    )
-
-        if not sdf_shapes:
-            continue
-
-        # Per-component half-cell offsets along the COMPONENT axis only:
-        # Ex sits at (center_x, node_y, node_z); Ey at (node_x, center_y,
-        # node_z); Ez at (node_x, node_y, center_z).
-        for comp, (axx, ayy, azz) in [
-            ("ex", (centers_x, node_y, node_z)),
-            ("ey", (node_x, centers_y, node_z)),
-            ("ez", (node_x, node_y, centers_z)),
-        ]:
-            Xc = axx[:, None, None] * jnp.ones((1, ny, nz))
-            Yc = jnp.ones((nx, 1, 1)) * ayy[None, :, None] * jnp.ones((1, 1, nz))
-            Zc = jnp.ones((nx, ny, 1)) * azz[None, None, :]
-
-            sdf_union = None
-            best_abs_sdf = None
-            best_nx = best_ny = best_nz = None
-
-            for shape, sdf_fn, normal_fn in sdf_shapes:
-                s = sdf_fn(Xc, Yc, Zc, shape)
-                n_x, n_y, n_z = normal_fn(Xc, Yc, Zc, shape)
-
-                if sdf_union is None:
-                    sdf_union = s
-                    best_abs_sdf = jnp.abs(s)
-                    best_nx, best_ny, best_nz = n_x, n_y, n_z
-                else:
-                    sdf_union = jnp.minimum(sdf_union, s)
-                    closer = jnp.abs(s) < best_abs_sdf
-                    best_abs_sdf = jnp.where(closer, jnp.abs(s), best_abs_sdf)
-                    best_nx = jnp.where(closer, n_x, best_nx)
-                    best_ny = jnp.where(closer, n_y, best_ny)
-                    best_nz = jnp.where(closer, n_z, best_nz)
-
-            f = jnp.clip(0.5 - sdf_union / dx_loc, 0.0, 1.0)
-            inside = f >= 1.0
-            bnd = (f > 0.0) & (f < 1.0)
-
-            if comp == "ex":
-                eps_outside = eps_ex
-            elif comp == "ey":
-                eps_outside = eps_ey
-            else:
-                eps_outside = eps_ez
-
-            kt_xx, kt_yy, kt_zz = _kottke_tensor_eps(
-                f, eps_r, eps_outside, best_nx, best_ny, best_nz,
+    def fallback_mask(shape):
+        # Staircase via the shape's cell mask if available; otherwise skip
+        # (NU grid has no Grid-style mask adapter for arbitrary shapes today).
+        if not hasattr(shape, "mask"):
+            return None
+        try:
+            return shape.mask(nu_grid)
+        except Exception as exc:
+            # A shape whose .mask() cannot handle a NonUniformGrid is
+            # skipped — but make that visible. The pre-fix bare
+            # ``except: pass`` silently dropped the shape's geometry AND
+            # would have masked a real bug (NaN, typo, unexpected error)
+            # just as quietly.
+            warnings.warn(
+                f"smoothing: {type(shape).__name__}.mask() failed "
+                f"on the non-uniform grid ({exc!r}); this shape is "
+                f"SKIPPED and its geometry is NOT applied.",
+                stacklevel=3,
             )
-            if comp == "ex":
-                smooth = kt_xx
-                eps_ex = jnp.where(inside, eps_r,
-                          jnp.where(bnd, smooth, eps_ex))
-            elif comp == "ey":
-                smooth = kt_yy
-                eps_ey = jnp.where(inside, eps_r,
-                          jnp.where(bnd, smooth, eps_ey))
-            else:
-                smooth = kt_zz
-                eps_ez = jnp.where(inside, eps_r,
-                          jnp.where(bnd, smooth, eps_ez))
+            return None
 
-    return eps_ex, eps_ey, eps_ez
+    acc_dtype = np.float64 if host else jnp.float32
+    eps = tuple(xp.full(tuple(nu_grid.shape), background_eps, dtype=acc_dtype)
+                for _ in range(3))
+    eps = _kottke_smooth(xp, shapes, sample, dx_loc, eps, fallback_mask)
+    return _to_jax(eps, host=host, promoted=any(_has_sdf(s) for s, _ in shapes))
 
 
 def compute_smoothed_eps(
@@ -839,6 +951,11 @@ def compute_smoothed_eps(
     At interface voxels, uses the full Kottke inverse-permittivity
     tensor with analytic interface normals.  Interior voxels get the
     bulk permittivity.
+
+    Concrete inputs (host node spine, Python-float shape parameters and
+    permittivities) are evaluated in host float64 and cast to the active
+    JAX dtype once, so the result does not depend on ``jax_enable_x64``
+    (#833); a traced shape parameter keeps traced ``jax.numpy`` arithmetic.
 
     Parameters
     ----------
@@ -853,126 +970,14 @@ def compute_smoothed_eps(
     eps_ex, eps_ey, eps_ez : jnp.ndarray
         Per-component permittivity arrays, each of shape grid.shape.
     """
-    x, y, z = _yee_coords(grid)
-    dx = grid.dx
-    half = dx * 0.5
+    from rfx.geometry.rasterize_grid import coords_from_uniform_grid
 
-    # Integer-grid 3D coordinate arrays
-    X = x[:, None, None] * jnp.ones((1, len(y), 1))
-    Y = jnp.ones((len(x), 1, 1)) * y[None, :, None] * jnp.ones((1, 1, len(z)))
-    Z = jnp.ones((len(x), len(y), 1)) * z[None, None, :]
-
-    # Start with background eps for all three components
-    eps_ex = jnp.full(grid.shape, background_eps, dtype=jnp.float32)
-    eps_ey = jnp.full(grid.shape, background_eps, dtype=jnp.float32)
-    eps_ez = jnp.full(grid.shape, background_eps, dtype=jnp.float32)
-
-    # Group shapes by eps_r so overlapping same-material shapes use
-    # union SDF (min of individual SDFs) instead of double-smoothing.
-    from collections import OrderedDict
-    groups: OrderedDict[float, list] = OrderedDict()
-    for shape, eps_r in shapes:
-        groups.setdefault(eps_r, []).append(shape)
-
-    for eps_r, group_shapes in groups.items():
-        sdf_shapes = []
-        fallback_shapes = []
-        for shape in group_shapes:
-            sdf_fn = _get_sdf_fn(shape)
-            normal_fn = _get_normal_fn(shape)
-            if sdf_fn is not None and normal_fn is not None:
-                sdf_shapes.append((shape, sdf_fn, normal_fn))
-            else:
-                fallback_shapes.append(shape)
-
-        # Fallback shapes: staircased mask
-        for shape in fallback_shapes:
-            mask = shape.mask(grid)
-            eps_ex = jnp.where(mask, eps_r, eps_ex)
-            eps_ey = jnp.where(mask, eps_r, eps_ey)
-            eps_ez = jnp.where(mask, eps_r, eps_ez)
-
-        if not sdf_shapes:
-            continue
-
-        # --- For each E-component position, compute union SDF and
-        #     select the best analytic normal from the nearest shape ---
-        for comp, offset in [("ex", (half, 0., 0.)),
-                             ("ey", (0., half, 0.)),
-                             ("ez", (0., 0., half))]:
-            Xc = X + offset[0]
-            Yc = Y + offset[1]
-            Zc = Z + offset[2]
-
-            # Union SDF + per-voxel nearest-shape tracking
-            sdf_union = None
-            # For analytic normals we pick the shape whose SDF is
-            # closest to zero (the one whose boundary is nearest).
-            best_abs_sdf = None
-            best_nx = None
-            best_ny = None
-            best_nz = None
-
-            for shape, sdf_fn, normal_fn in sdf_shapes:
-                s = sdf_fn(Xc, Yc, Zc, shape)
-                n_x, n_y, n_z = normal_fn(Xc, Yc, Zc, shape)
-
-                if sdf_union is None:
-                    sdf_union = s
-                    best_abs_sdf = jnp.abs(s)
-                    best_nx = n_x
-                    best_ny = n_y
-                    best_nz = n_z
-                else:
-                    sdf_union = jnp.minimum(sdf_union, s)
-                    # Update normal where this shape's surface is closer
-                    closer = jnp.abs(s) < best_abs_sdf
-                    best_abs_sdf = jnp.where(closer, jnp.abs(s), best_abs_sdf)
-                    best_nx = jnp.where(closer, n_x, best_nx)
-                    best_ny = jnp.where(closer, n_y, best_ny)
-                    best_nz = jnp.where(closer, n_z, best_nz)
-
-            # Fill fraction from union SDF
-            f = jnp.clip(0.5 - sdf_union / dx, 0.0, 1.0)
-
-            # Fix #1: fully-inside voxels get bulk eps, no smoothing
-            inside = f >= 1.0
-            # Boundary voxels
-            bnd = (f > 0.0) & (f < 1.0)
-
-            # The "outside" eps is whatever was there before
-            if comp == "ex":
-                eps_outside = eps_ex
-            elif comp == "ey":
-                eps_outside = eps_ey
-            else:
-                eps_outside = eps_ez
-
-            # Fix #3: full Kottke tensor averaging
-            kt_xx, kt_yy, kt_zz = _kottke_tensor_eps(
-                f, eps_r, eps_outside,
-                best_nx, best_ny, best_nz,
-            )
-
-            if comp == "ex":
-                smooth = kt_xx
-            elif comp == "ey":
-                smooth = kt_yy
-            else:
-                smooth = kt_zz
-
-            # Apply: interior → bulk, boundary → Kottke, exterior → unchanged
-            if comp == "ex":
-                eps_ex = jnp.where(inside, eps_r,
-                         jnp.where(bnd, smooth, eps_ex))
-            elif comp == "ey":
-                eps_ey = jnp.where(inside, eps_r,
-                         jnp.where(bnd, smooth, eps_ey))
-            else:
-                eps_ez = jnp.where(inside, eps_r,
-                         jnp.where(bnd, smooth, eps_ez))
-
-    return eps_ex, eps_ey, eps_ez
+    coords = coords_from_uniform_grid(grid)
+    host = _host_path(*coords[:3], grid.dx, background_eps,
+                      *(e for _, e in shapes),
+                      *(p for s, _ in shapes for p in _shape_parameters(s)))
+    eps = _smoothed_eps_uniform(np if host else jnp, grid, coords, shapes, background_eps)
+    return _to_jax(eps, host=host, promoted=any(_has_sdf(s) for s, _ in shapes))
 
 
 # ---------------------------------------------------------------------------
@@ -998,6 +1003,7 @@ def _kottke_inv_eps_diag(
     n_z,
     *,
     is_pec: bool = False,
+    xp=jnp,
 ):
     """Diagonal of the Kottke (ε̄⁻¹)_lab tensor at one point.
 
@@ -1015,6 +1021,8 @@ def _kottke_inv_eps_diag(
     is_pec : bool
         Switches to the σ→∞ / ε→∞ limit branch (Farjadpour 2006 §VI
         plus the limit derived in stage2_ca_cb_derivation.md §4).
+    xp : numpy or jax.numpy
+        Array backend; ``numpy`` on the concrete host-float64 path (#833).
 
     Returns
     -------
@@ -1029,9 +1037,9 @@ def _kottke_inv_eps_diag(
         # The discontinuity at f=0 is physically correct — any amount
         # of PEC freezes the parallel direction.
         inv_perp = (1.0 - f) / eps_outside
-        inv_par = jnp.where(
+        inv_par = xp.where(
             f > 0.0,
-            jnp.zeros_like(inv_perp),
+            xp.zeros_like(inv_perp),
             1.0 / eps_outside,
         )
     else:
@@ -1102,69 +1110,60 @@ def compute_inv_eps_tensor_diag(
         dielectric_shapes = []
     if pec_shapes is None:
         pec_shapes = []
+    from rfx.geometry.rasterize_grid import coords_from_uniform_grid
+
+    coords = coords_from_uniform_grid(grid)
+    host = _host_path(*coords[:3], grid.dx, background_eps,
+                      *(e for _, e in dielectric_shapes),
+                      *(p for s, _ in dielectric_shapes for p in _shape_parameters(s)),
+                      *(p for s in pec_shapes for p in _shape_parameters(s)))
+    xp = np if host else jnp
 
     # Step 1: dielectric subpixel smoothing (existing Kottke path).
     if dielectric_shapes:
-        eps_ex, eps_ey, eps_ez = compute_smoothed_eps(
-            grid, dielectric_shapes, background_eps=background_eps,
-        )
+        eps = _smoothed_eps_uniform(xp, grid, coords, dielectric_shapes, background_eps)
     else:
-        shape = tuple(grid.shape)
-        eps_ex = jnp.full(shape, background_eps, dtype=jnp.float32)
-        eps_ey = jnp.full(shape, background_eps, dtype=jnp.float32)
-        eps_ez = jnp.full(shape, background_eps, dtype=jnp.float32)
+        acc_dtype = np.float64 if host else jnp.float32
+        eps = tuple(xp.full(tuple(grid.shape), background_eps, dtype=acc_dtype)
+                    for _ in range(3))
 
-    # Cast to float32 explicitly — `compute_smoothed_eps` may return
-    # float64 if `background_eps` is a Python float, and downstream
-    # ``update_e_aniso_inv`` expects float32. Standardise here so the
-    # contract is independent of caller's eps_r dtype.
-    inv_xx = (1.0 / eps_ex).astype(jnp.float32)
-    inv_yy = (1.0 / eps_ey).astype(jnp.float32)
-    inv_zz = (1.0 / eps_ez).astype(jnp.float32)
+    # The dielectric inverse is a float32 quantity by this function's
+    # contract (downstream ``update_e_aniso_inv`` expects float32, and
+    # ``eps_r`` may arrive as a Python float), so it is rounded here on both
+    # backends and the PEC limit below is folded in on top of that value. The
+    # host path widens the rounded value back to float64 for the PEC
+    # arithmetic: that keeps x64=1 bit-identical to the pre-#833 path and
+    # makes x64=0 its float32 image.
+    inv = [(1.0 / e).astype(xp.float32) for e in eps]
+    if host:
+        inv = [a.astype(np.float64) for a in inv]
 
     if not pec_shapes:
-        return inv_xx, inv_yy, inv_zz
+        return _to_jax(inv, host=host, promoted=False)
 
     # Step 2: apply each PEC shape via Kottke PEC limit, taking the
     # elementwise minimum (union of PEC effects — the most-restrictive
-    # contribution wins per cell).
-    x, y, z = _yee_coords(grid)
-    nx, ny, nz = grid.shape
-    X = x[:, None, None] * jnp.ones((1, ny, 1))
-    Y = jnp.ones((nx, 1, 1)) * y[None, :, None] * jnp.ones((1, 1, nz))
-    Z = jnp.ones((nx, ny, 1)) * z[None, None, :]
-    half = grid.dx * 0.5
-
+    # contribution wins per cell). Each Yee E-component position carries
+    # its own half-cell offset.
+    sample = _uniform_sample_coords(xp, coords, grid.dx)
+    promoted = False
     for pec_shape in pec_shapes:
-        sdf_fn = _get_sdf_fn(pec_shape)
-        normal_fn = _get_normal_fn(pec_shape)
-
-        if sdf_fn is None or normal_fn is None:
+        if not _has_sdf(pec_shape):
             # Fallback: staircase mask. Cells inside the shape get
             # full-PEC (inv = 0); cells outside are unchanged.
             mask = pec_shape.mask(grid)
-            inv_xx = jnp.where(mask, 0.0, inv_xx)
-            inv_yy = jnp.where(mask, 0.0, inv_yy)
-            inv_zz = jnp.where(mask, 0.0, inv_zz)
+            inv = [xp.where(mask, 0.0, a) for a in inv]
             continue
+        promoted = True
+        for i, comp in enumerate(("ex", "ey", "ez")):
+            Xc, Yc, Zc = sample[comp]
+            sdf = _get_sdf_fn(pec_shape)(Xc, Yc, Zc, pec_shape, xp=xp)
+            n_x, n_y, n_z = _get_normal_fn(pec_shape)(Xc, Yc, Zc, pec_shape, xp=xp)
 
-        # Process each Yee E-component position with its own offset.
-        for comp, offset, eps_outside_local in (
-            ("ex", (half, 0.0, 0.0), eps_ex),
-            ("ey", (0.0, half, 0.0), eps_ey),
-            ("ez", (0.0, 0.0, half), eps_ez),
-        ):
-            Xc = X + offset[0]
-            Yc = Y + offset[1]
-            Zc = Z + offset[2]
-            sdf = sdf_fn(Xc, Yc, Zc, pec_shape)
-            n_x, n_y, n_z = normal_fn(Xc, Yc, Zc, pec_shape)
-
-            f = jnp.clip(0.5 - sdf / grid.dx, 0.0, 1.0)
-            inv_xx_c, inv_yy_c, inv_zz_c = _kottke_inv_eps_diag(
-                f, jnp.inf, eps_outside_local,
-                n_x, n_y, n_z, is_pec=True,
-            )
+            f = xp.clip(0.5 - sdf / grid.dx, 0.0, 1.0)
+            inv_c = _kottke_inv_eps_diag(
+                f, xp.inf, eps[i], n_x, n_y, n_z, is_pec=True, xp=xp,
+            )[i]
             # Kottke correctly zeros parallel (tangential) components for
             # f > 0, but assigns inv_perp = (1−f)/ε > 0 when the
             # E-position is inside the PEC body (SDF < 0, 0 < f < 1).
@@ -1174,17 +1173,10 @@ def compute_inv_eps_tensor_diag(
             # Override: wherever the E-component Yee position is inside
             # the PEC shape (SDF ≤ 0), force its inv component to 0.
             e_inside = (sdf <= 0.0)
-            if comp == "ex":
-                inv_xx_c = jnp.where(e_inside, 0.0, inv_xx_c)
-                inv_xx = jnp.minimum(inv_xx, inv_xx_c)
-            elif comp == "ey":
-                inv_yy_c = jnp.where(e_inside, 0.0, inv_yy_c)
-                inv_yy = jnp.minimum(inv_yy, inv_yy_c)
-            else:
-                inv_zz_c = jnp.where(e_inside, 0.0, inv_zz_c)
-                inv_zz = jnp.minimum(inv_zz, inv_zz_c)
+            inv_c = xp.where(e_inside, 0.0, inv_c)
+            inv[i] = xp.minimum(inv[i], inv_c)
 
-    return inv_xx, inv_yy, inv_zz
+    return _to_jax(inv, host=host, promoted=promoted)
 
 
 def kottke_inv_eps_from_occupancy(
