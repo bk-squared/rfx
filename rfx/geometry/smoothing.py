@@ -604,39 +604,6 @@ def _yee_coords(grid: Grid):
     return tuple(jnp.asarray(axis) for axis in (coords.x, coords.y, coords.z))
 
 
-def _nu_yee_centres(nu_grid, coords=None):
-    """Per-axis cell centres ``node + d/2`` for the NU smoothing path.
-
-    ``coords`` are the E-NODE positions from ``coords_from_nonuniform_grid``
-    (host float64 on a concrete grid). The half-cell offset is taken from
-    the float64 cell-size spine (``dx_arr_f64`` / ``dy_arr_f64`` / ``dz_f64``
-    via ``cell_sizes_from_nonuniform_grid``), NOT from the float32 solver
-    store: ``node + f32(store)/2`` put the centres 3.7e-12 m off the exact
-    spine even at x64=1, and 1.1e-9 m off at x64=0 (#833, measured on the
-    graded WR-90 fixture). The sum is formed in host float64 and converted
-    to the active JAX dtype only afterwards, so at x64=0 the centres are the
-    correctly rounded float32 of the exact centre. A traced axis (no host
-    copy) keeps traced arithmetic.
-    """
-    from rfx.core.jax_utils import is_tracer
-    from rfx.geometry.rasterize_grid import (
-        cell_sizes_from_nonuniform_grid, coords_from_nonuniform_grid,
-    )
-
-    if coords is None:
-        coords = coords_from_nonuniform_grid(nu_grid)
-    out = []
-    for node, d in zip((coords.x, coords.y, coords.z),
-                       cell_sizes_from_nonuniform_grid(nu_grid)):
-        if is_tracer(node) or is_tracer(d):
-            nj = jnp.asarray(node)
-            out.append(nj + 0.5 * jnp.asarray(d, dtype=nj.dtype))
-            continue
-        centre = np.asarray(node, dtype=np.float64) + np.asarray(d, dtype=np.float64) / 2.0
-        out.append(jnp.asarray(centre))
-    return tuple(out)
-
-
 # ---------------------------------------------------------------------------
 # Kottke tensor averaging
 # ---------------------------------------------------------------------------
@@ -709,7 +676,9 @@ def compute_smoothed_eps_nonuniform(
     local cell sizes — first-order accurate for non-cubic Yee cells, in
     line with the SDF-to-fill approximation in the uniform path.
     """
-    from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
+    from rfx.geometry.rasterize_grid import (
+        centres_from_nonuniform_grid, coords_from_nonuniform_grid,
+    )
 
     coords = coords_from_nonuniform_grid(nu_grid)
     # `coords` are E-NODE positions (cell edges) since #562 unified the NU
@@ -725,10 +694,16 @@ def compute_smoothed_eps_nonuniform(
     node_y = jnp.asarray(coords.y)  # (ny,)
     node_z = jnp.asarray(coords.z)  # (nz,)
 
-    # Cell centres — centre[i] = node[i] + d[i]/2, with d from the float64
-    # cell-size spine (not the float32 store) and the sum formed in host
-    # float64 before the cast to the active JAX dtype (#833).
-    centers_x, centers_y, centers_z = _nu_yee_centres(nu_grid, coords)
+    # Cell centres — centre[i] = node[i] + d[i]/2 from the shared producer
+    # rasterize_grid.centres_from_nonuniform_grid: d comes from the float64
+    # cell-size spine (not the float32 store) and the sum is formed in host
+    # float64 before the cast to the active JAX dtype (#833). ``node +
+    # f32(store)/2`` sat 3.7e-12 m off the exact spine at x64=1 and 1.1e-9 m
+    # at x64=0 on the graded WR-90 fixture.
+    _c = centres_from_nonuniform_grid(nu_grid, coords)
+    centers_x = jnp.asarray(_c.x)
+    centers_y = jnp.asarray(_c.y)
+    centers_z = jnp.asarray(_c.z)
 
     # Float32 solver store — the fill-fraction normalisation below keeps
     # reading it (a cell-size scale, not a sample coordinate).

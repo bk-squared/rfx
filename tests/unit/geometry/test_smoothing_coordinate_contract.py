@@ -92,10 +92,22 @@ with warnings.catch_warnings(record=True) as w:
 res["nu_warnings"] = np.array([str(ww.message) for ww in w])
 res["nu_shape"] = np.array(g.shape)
 coords = coords_from_nonuniform_grid(g)
-got = sm._nu_yee_centres(g, coords)
+from rfx.geometry.rasterize_grid import centres_from_nonuniform_grid, _uniform_axis_centres
+_c = centres_from_nonuniform_grid(g, coords)
+# cast exactly as compute_smoothed_eps_nonuniform does (host f64 -> active JAX dtype)
+got = tuple(jnp.asarray(a) for a in (_c.x, _c.y, _c.z))
 for name, node, d, c in zip("xyz", (coords.x, coords.y, coords.z),
                             cell_sizes_from_nonuniform_grid(g), got):
-    res["nu_exact_" + name] = np.asarray(node, np.float64) + np.asarray(d, np.float64) / 2.0
+    # Canonical primal-cell centre: on a uniform-valued axis the #807 closed
+    # form (i - pad + 1/2) * dx that the UNIFORM lane samples at (so both
+    # lanes centre-sample a uniform axis bit-identically); on a graded axis
+    # node + d_exact/2 in host float64.
+    _dd = np.asarray(d, np.float64); _nn = np.asarray(node, np.float64)
+    if _dd.size and bool(np.all(_dd == _dd[0])):
+        _dx = float(_dd[0]); _pad = int(round(-_nn[0] / _dx))
+        res["nu_exact_" + name] = _uniform_axis_centres(_nn.size, _pad, _dx)
+    else:
+        res["nu_exact_" + name] = _nn + _dd / 2.0
     res["nu_got_" + name] = np.asarray(c, dtype=np.float64)
     res["nu_dtype_" + name] = np.array(str(jnp.asarray(c).dtype))
 np.savez(out, **res)
@@ -143,8 +155,12 @@ def test_smoothing_uses_shared_uniform_node_spine():
 
 @pytest.mark.parametrize("flag", [0, 1])
 def test_nu_smoothing_centres_come_from_the_f64_spine(both_flags, flag):
-    """``_nu_yee_centres`` == node + d_exact/2 exactly at x64=1 and its
-    correctly rounded float32 at x64=0, on the graded fixture (#833).
+    """``centres_from_nonuniform_grid`` (the shared producer the NU smoother now calls) == the canonical
+    primal-cell centre exactly at x64=1 and its correctly rounded float32 at
+    x64=0, on the graded fixture (#833). Canonical = the #807 closed form
+    (i - pad + 1/2)*dx on the uniform-valued x/y axes (what the uniform lane
+    samples at, so the two lanes cannot centre-sample a uniform axis
+    differently) and node + d_exact/2 in host float64 on the graded z axis.
 
     Before this fix the half-cell offset came from the float32 solver store
     (``node + f32(store)/2``): 3.704e-12 m off the spine at x64=1 on all
