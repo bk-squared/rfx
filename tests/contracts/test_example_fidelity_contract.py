@@ -13,8 +13,8 @@ before those builders, i.e. 51 triples). On a machine without optax
 beam_steering_superstrate.py declares it in OPTIONAL_DEPENDENCIES and
 skips rather than failing -- that is CI's configuration.
 
-EMISSION-DRIFT PIN ONLY -- NOT A PHYSICS CHECK AND NOT A ZERO-ADVISORY
-BAR. Nothing here time-steps: what is pinned is the TEXT each example
+EMISSION-DRIFT PIN PLUS A ZERO-*UNEXPLAINED*-ADVISORY BAR -- STILL NOT A
+PHYSICS CHECK. Nothing here time-steps: what is pinned is the TEXT each example
 EMITS at build time (its preflight rows and its fidelity/realization
 report), so a green run says "this example's declared geometry and its
 build-time advisories did not change since the snapshot was taken." It
@@ -42,6 +42,19 @@ this gate's coverage table is not the coverage table):
   what it computes.
 * the weekly ``crossval-external`` job (validation.yml) builds AND solves
   the eight scheduled crossval cases (01, 02, 03, 04, 09, 10, 22, 23).
+
+EVERY PINNED ADVISORY ROW CARRIES A WRITTEN DISPOSITION (#737 item 1,
+2026-09-16). ``tests/data/example_fidelity_advisories.json`` classifies
+each (variant, code) group of pinned preflight rows as ``intended`` -- the
+example deliberately shows or tolerates the condition, with its own
+docstring/comment or the physics as the reason -- or ``defect-open``, with
+the issue number tracking the fix; ``test_every_pinned_advisory_row_is_
+classified`` asserts the mapping is a bijection with the row counts, so a
+new advisory, a retired one, and a stale entry all fail here. That is the
+"tighten once #742 closes" step the tracker's first comment planned: the
+bar is zero UNEXPLAINED advisories, not zero advisories. It does NOT
+assert that an advisory is correct, and it does not block a new one --
+it blocks an unexplained one.
 
 Measured on the snapshot as committed (2026-09-16, 62 variants): 91
 preflight rows over 27 variants, 90 ``severity="warning"`` + 1 ``info``;
@@ -390,6 +403,89 @@ def test_example_matches_snapshot(
     actual = json.loads(json.dumps(lib.digest_variant(sim)))
     expected = snapshot[key]
     assert actual == expected, _diff_message(key, expected, actual)
+
+
+def test_every_pinned_advisory_row_is_classified() -> None:
+    """Zero UNEXPLAINED advisories: the bar #737's first comment planned.
+
+    The snapshot pins WHAT each audited example emits. This asserts that every
+    pinned preflight row also has a WRITTEN disposition in
+    ``tests/data/example_fidelity_advisories.json`` -- intended (the example
+    deliberately shows or tolerates it, with its own docstring/comment or the
+    physics as the reason) or defect-open (it should not emit it, with the
+    issue that tracks the fix). The mapping is a bijection with the row counts
+    checked, so all three drift directions fail here rather than silently:
+
+    * a NEW advisory row on an audited example -> no entry -> fails;
+    * a row that DISAPPEARS (an example fixed, or an advisory retired)
+      -> stale entry -> fails;
+    * the same (variant, code) firing more or fewer times -> count mismatch.
+
+    This does NOT judge whether an advisory is correct, and it does not stop a
+    new advisory from landing -- it stops one from landing unexplained.
+    """
+    snapshot = _load_snapshot()
+    pinned = lib.snapshot_advisory_counts(snapshot)
+    entries = lib.load_advisory_classification()
+
+    seen: dict[tuple[str, str], int] = {}
+    for entry in entries:
+        key = (entry["variant"], entry["code"])
+        assert key not in seen, (
+            f"two classification entries for {key} -- one entry per "
+            "(variant, code), with `rows` counting the pinned rows it covers")
+        seen[key] = entry["rows"]
+
+    missing = sorted(k for k in pinned if k not in seen)
+    assert not missing, (
+        "pinned preflight row(s) with no written disposition: "
+        f"{missing} -- classify them in tests/data/"
+        "example_fidelity_advisories.json (#737 item 1); a new advisory on an "
+        "audited example is either intended (say why, citing the example) or "
+        "an example defect (fix it, or file an issue and use 'defect-open')")
+    stale = sorted(k for k in seen if k not in pinned)
+    assert not stale, (
+        f"classification entr(ies) for row(s) that are no longer pinned: "
+        f"{stale} -- the example or the advisory changed; drop the entry (and "
+        "say so in the PR) instead of leaving a claim about a row nobody emits")
+    wrong = {k: (seen[k], pinned[k]) for k in pinned if seen[k] != pinned[k]}
+    assert not wrong, (
+        f"row-count mismatch (classified, pinned): {wrong} -- the same code "
+        "now fires a different number of times on that variant")
+    assert sum(seen.values()) == sum(pinned.values()), (
+        "row totals disagree after the per-key check -- this cannot happen "
+        "and means the two tables were built from different snapshots")
+
+
+def test_advisory_classifications_are_well_formed() -> None:
+    """A disposition has to carry its evidence, and defect-open its issue.
+
+    Enforced per entry: a disposition from ``lib.ADVISORY_DISPOSITIONS``, a
+    non-trivial ``reason`` and ``ref`` (the classification's value is the
+    written reason -- an entry that just says 'intended' explains nothing),
+    and for ``defect-open`` an integer issue number, so a row cannot be parked
+    as a known defect with nothing tracking it.
+    """
+    for entry in lib.load_advisory_classification():
+        where = f"{entry.get('variant')} :: {entry.get('code')}"
+        for field in ("variant", "code", "rows", "disposition", "reason", "ref"):
+            assert field in entry, f"{where}: classification entry lacks {field!r}"
+        assert entry["disposition"] in lib.ADVISORY_DISPOSITIONS, (
+            f"{where}: unknown disposition {entry['disposition']!r} -- "
+            f"expected one of {sorted(lib.ADVISORY_DISPOSITIONS)}")
+        assert isinstance(entry["rows"], int) and entry["rows"] >= 1, (
+            f"{where}: rows must be a positive int, got {entry['rows']!r}")
+        assert len(entry["reason"].strip()) >= 80, (
+            f"{where}: the reason is the point of this file -- write why this "
+            "row is there, citing the example's own docstring/comment or the "
+            "physics")
+        assert entry["ref"].strip(), (
+            f"{where}: ref must point at the lines (or the issue) the reason "
+            "is read from")
+        if entry["disposition"] == "defect-open":
+            assert isinstance(entry.get("issue"), int), (
+                f"{where}: 'defect-open' requires an integer issue number -- "
+                "file the issue rather than parking the row")
 
 
 def test_optional_dependency_declarations_are_grounded() -> None:
