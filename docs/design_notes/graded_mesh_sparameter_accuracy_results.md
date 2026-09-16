@@ -274,9 +274,14 @@ every measured S-parameter** — the row #785 could not state before, now
 stated for an observable. Against the case's own uniform mesh the graded arm
 is 1.67× the cells and 1.41× the steps, because its finest cell is finer:
 grading buys back part of a refinement's cost, it does not make refinement
-free. On the propagation axis the saving is larger and the phase cost is the
-number above: arm E is 6.1 % cheaper than arm A in cells at 0.31° rms of
-phase; arm D2 is 6.1 % cheaper still at 1.42°.
+free. On the propagation axis the arms coarsen instead of refine, so they are
+cheaper than arm A and the phase cost is the number above: arm E is 2.4 %
+fewer cells than arm A (27 531 vs 28 215) at 0.3141° rms of phase, arm D2 is
+6.1 % fewer (26 505) at 1.4233°. Both keep arm A's `dt` and step count, since
+their minimum cell is still 1.27 mm. Those savings are small because only a
+10-cell band was coarsened; the point of the table is the rate, not the total
+— coarsening 25.4 mm of an 81.28 mm path by 2× cost 1.42° rms, and the Yee
+term above says what any other band would cost without running it.
 
 ---
 
