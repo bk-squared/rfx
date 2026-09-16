@@ -388,6 +388,86 @@
       },
       "preflight": []
     },
+    "examples/quickstart/hello_world.py::build_simulation::default": {
+      "fidelity": {
+        "NOT AUDITED by this report": {
+          "axes": {},
+          "findings": [
+            {
+              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "kind": "out-of-scope",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "domain": {
+          "axes": {
+            "x": {
+              "declared_extent_um": 20000.0,
+              "declared_um": [
+                0.0,
+                20000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 20000.0,
+              "n_cells": 10,
+              "realized_extent_um": 20000.0,
+              "realized_um": [
+                0.0,
+                20000.0
+              ]
+            },
+            "y": {
+              "declared_extent_um": 20000.0,
+              "declared_um": [
+                0.0,
+                20000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 20000.0,
+              "n_cells": 10,
+              "realized_extent_um": 20000.0,
+              "realized_um": [
+                0.0,
+                20000.0
+              ]
+            },
+            "z": {
+              "declared_extent_um": 20000.0,
+              "declared_um": [
+                0.0,
+                20000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 20000.0,
+              "n_cells": 10,
+              "realized_extent_um": 20000.0,
+              "realized_um": [
+                0.0,
+                20000.0
+              ]
+            }
+          },
+          "findings": [],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        }
+      },
+      "preflight": []
+    },
     "examples/tutorials/adi_solver_demo.py::build_cavity::adi_cfl2": {
       "fidelity": {
         "NOT AUDITED by this report": {
@@ -880,6 +960,326 @@
         }
       ]
     },
+    "examples/tutorials/boundary_spec_demo.py::build_simulation::closed cavity": {
+      "fidelity": {
+        "NOT AUDITED by this report": {
+          "axes": {},
+          "findings": [
+            {
+              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "kind": "out-of-scope",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "domain": {
+          "axes": {
+            "x": {
+              "declared_extent_um": 10000.0,
+              "declared_um": [
+                0.0,
+                10000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 10000.0,
+              "n_cells": 20,
+              "realized_extent_um": 10000.0,
+              "realized_um": [
+                0.0,
+                10000.0
+              ]
+            },
+            "y": {
+              "declared_extent_um": 10000.0,
+              "declared_um": [
+                0.0,
+                10000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 10000.0,
+              "n_cells": 20,
+              "realized_extent_um": 10000.0,
+              "realized_um": [
+                0.0,
+                10000.0
+              ]
+            },
+            "z": {
+              "declared_extent_um": 5000.0,
+              "declared_um": [
+                0.0,
+                5000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 5000.0,
+              "n_cells": 10,
+              "realized_extent_um": 5000.0,
+              "realized_um": [
+                0.0,
+                5000.0
+              ]
+            }
+          },
+          "findings": [],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        }
+      },
+      "preflight": []
+    },
+    "examples/tutorials/boundary_spec_demo.py::build_simulation::ground plane": {
+      "fidelity": {
+        "NOT AUDITED by this report": {
+          "axes": {},
+          "findings": [
+            {
+              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "kind": "out-of-scope",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "domain": {
+          "axes": {
+            "x": {
+              "declared_extent_um": 10000.0,
+              "declared_um": [
+                0.0,
+                10000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 10000.0,
+              "n_cells": 20,
+              "realized_extent_um": 10000.0,
+              "realized_um": [
+                0.0,
+                10000.0
+              ]
+            },
+            "y": {
+              "declared_extent_um": 10000.0,
+              "declared_um": [
+                0.0,
+                10000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 10000.0,
+              "n_cells": 20,
+              "realized_extent_um": 10000.0,
+              "realized_um": [
+                0.0,
+                10000.0
+              ]
+            },
+            "z": {
+              "declared_extent_um": 5000.0,
+              "declared_um": [
+                0.0,
+                5000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 5000.0,
+              "n_cells": 10,
+              "realized_extent_um": 5000.0,
+              "realized_um": [
+                0.0,
+                5000.0
+              ]
+            }
+          },
+          "findings": [],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        }
+      },
+      "preflight": []
+    },
+    "examples/tutorials/boundary_spec_demo.py::build_simulation::open box": {
+      "fidelity": {
+        "NOT AUDITED by this report": {
+          "axes": {},
+          "findings": [
+            {
+              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "kind": "out-of-scope",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "domain": {
+          "axes": {
+            "x": {
+              "declared_extent_um": 10000.0,
+              "declared_um": [
+                0.0,
+                10000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 10000.0,
+              "n_cells": 20,
+              "realized_extent_um": 10000.0,
+              "realized_um": [
+                0.0,
+                10000.0
+              ]
+            },
+            "y": {
+              "declared_extent_um": 10000.0,
+              "declared_um": [
+                0.0,
+                10000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 10000.0,
+              "n_cells": 20,
+              "realized_extent_um": 10000.0,
+              "realized_um": [
+                0.0,
+                10000.0
+              ]
+            },
+            "z": {
+              "declared_extent_um": 5000.0,
+              "declared_um": [
+                0.0,
+                5000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 5000.0,
+              "n_cells": 10,
+              "realized_extent_um": 5000.0,
+              "realized_um": [
+                0.0,
+                5000.0
+              ]
+            }
+          },
+          "findings": [],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        }
+      },
+      "preflight": []
+    },
+    "examples/tutorials/boundary_spec_demo.py::build_simulation::periodic cell": {
+      "fidelity": {
+        "NOT AUDITED by this report": {
+          "axes": {},
+          "findings": [
+            {
+              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "kind": "out-of-scope",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "domain": {
+          "axes": {
+            "x": {
+              "declared_extent_um": 10000.0,
+              "declared_um": [
+                0.0,
+                10000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 10000.0,
+              "n_cells": 20,
+              "realized_extent_um": 10000.0,
+              "realized_um": [
+                0.0,
+                10000.0
+              ]
+            },
+            "y": {
+              "declared_extent_um": 10000.0,
+              "declared_um": [
+                0.0,
+                10000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 10000.0,
+              "n_cells": 20,
+              "realized_extent_um": 10000.0,
+              "realized_um": [
+                0.0,
+                10000.0
+              ]
+            },
+            "z": {
+              "declared_extent_um": 5000.0,
+              "declared_um": [
+                0.0,
+                5000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 5000.0,
+              "n_cells": 10,
+              "realized_extent_um": 5000.0,
+              "realized_um": [
+                0.0,
+                5000.0
+              ]
+            }
+          },
+          "findings": [],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        }
+      },
+      "preflight": []
+    },
     "examples/tutorials/materials_and_dispersion.py::make_sim::default": {
       "fidelity": {
         "domain": {
@@ -952,6 +1352,318 @@
           "message": "No sources, ports, TFSF, or waveguide/Floquet/MSL ports configured. Simulation will produce zero fields.",
           "severity": "warning",
           "source": "_validate_cfg_no_sources"
+        }
+      ]
+    },
+    "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default": {
+      "fidelity": {
+        "NOT AUDITED by this report": {
+          "axes": {},
+          "findings": [
+            {
+              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "kind": "out-of-scope",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "domain": {
+          "axes": {
+            "x": {
+              "declared_extent_um": 80000.0,
+              "declared_um": [
+                0.0,
+                80000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 80000.0,
+              "n_cells": 80,
+              "realized_extent_um": 80000.0,
+              "realized_um": [
+                0.0,
+                80000.0
+              ]
+            },
+            "y": {
+              "declared_extent_um": 75000.0,
+              "declared_um": [
+                0.0,
+                75000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 75000.0,
+              "n_cells": 75,
+              "realized_extent_um": 75000.0,
+              "realized_um": [
+                0.0,
+                75000.0
+              ]
+            },
+            "z": {
+              "declared_extent_um": 47874.5772522,
+              "declared_um": [
+                0.0,
+                47874.5772522
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 47874.5772522,
+              "n_cells": 69,
+              "realized_extent_um": 47874.5772522,
+              "realized_um": [
+                0.0,
+                47874.5772522
+              ]
+            }
+          },
+          "findings": [],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "geometry|fr4|10000.000,10000.000,16435.570um->70000.000,65000.000,17935.570um": {
+          "axes": {
+            "x": {
+              "cell_um": 1000.0,
+              "declared_extent_um": 60000.0,
+              "declared_um": [
+                10000.0,
+                70000.0
+              ],
+              "face_residual_um": [
+                1000.0,
+                0.0
+              ],
+              "realized_extent_um": 59000.0,
+              "realized_um": [
+                11000.0,
+                70000.0
+              ],
+              "sub_cell": false
+            },
+            "y": {
+              "cell_um": 1000.0,
+              "declared_extent_um": 55000.0,
+              "declared_um": [
+                10000.0,
+                65000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "realized_extent_um": 55000.0,
+              "realized_um": [
+                10000.0,
+                65000.0
+              ],
+              "sub_cell": false
+            },
+            "z": {
+              "cell_um": 250.0,
+              "declared_extent_um": 1500.0,
+              "declared_um": [
+                16435.5697522,
+                17935.5697522
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "realized_extent_um": 1500.0,
+              "realized_um": [
+                16435.5697522,
+                17935.5697522
+              ],
+              "sub_cell": false
+            }
+          },
+          "findings": [
+            {
+              "axis": "x",
+              "detail": "PLACEMENT off by 1000.0 um (1.67% of the declared 60000.0 um extent); SIZE 59000.0 um (-1000.0 um, -1.67%)",
+              "kind": "off-lattice-face",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            }
+          ],
+          "material": {
+            "eps_r": 4.3,
+            "kind": "dielectric",
+            "n_debye": 0,
+            "n_lorentz": 0,
+            "name": "fr4",
+            "sigma": 0.0
+          },
+          "n_cells": 19470,
+          "realization": null
+        },
+        "thin_conductor|pec|10000.000,10000.000,16435.570um->70000.000,65000.000,16435.570um": {
+          "axes": {
+            "x": {
+              "cell_um": 1000.0,
+              "declared_extent_um": 60000.0,
+              "declared_um": [
+                10000.0,
+                70000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "realized_extent_um": 60000.0,
+              "realized_um": [
+                10000.0,
+                70000.0
+              ],
+              "sub_cell": false
+            },
+            "y": {
+              "cell_um": 1000.0,
+              "declared_extent_um": 55000.0,
+              "declared_um": [
+                10000.0,
+                65000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "realized_extent_um": 55000.0,
+              "realized_um": [
+                10000.0,
+                65000.0
+              ],
+              "sub_cell": false
+            },
+            "z": {
+              "cell_um": 250.0,
+              "declared_extent_um": 0.0,
+              "declared_um": [
+                16435.5697522,
+                16435.5697522
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "realized_extent_um": 0.0,
+              "realized_um": [
+                16435.5697522,
+                16435.5697522
+              ],
+              "sub_cell": true
+            }
+          },
+          "findings": [],
+          "material": {
+            "kind": "pec"
+          },
+          "n_cells": 0,
+          "realization": "PEC sheet on node plane z = 16435.57 um (3416 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
+        },
+        "thin_conductor|pec|25250.000,18500.000,17935.570um->54750.000,56500.000,17935.570um": {
+          "axes": {
+            "x": {
+              "cell_um": 1000.0,
+              "declared_extent_um": 29500.0,
+              "declared_um": [
+                25250.0,
+                54750.0
+              ],
+              "face_residual_um": [
+                750.0,
+                750.0
+              ],
+              "realized_extent_um": 28000.0,
+              "realized_um": [
+                26000.0,
+                54000.0
+              ],
+              "sub_cell": false
+            },
+            "y": {
+              "cell_um": 1000.0,
+              "declared_extent_um": 38000.0,
+              "declared_um": [
+                18500.0,
+                56500.0
+              ],
+              "face_residual_um": [
+                500.0,
+                500.0
+              ],
+              "realized_extent_um": 37000.0,
+              "realized_um": [
+                19000.0,
+                56000.0
+              ],
+              "sub_cell": false
+            },
+            "z": {
+              "cell_um": 250.0,
+              "declared_extent_um": 0.0,
+              "declared_um": [
+                17935.5697522,
+                17935.5697522
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "realized_extent_um": 0.0,
+              "realized_um": [
+                17935.5697522,
+                17935.5697522
+              ],
+              "sub_cell": true
+            }
+          },
+          "findings": [
+            {
+              "axis": "x",
+              "detail": "PLACEMENT off by 750.0 um (2.54% of the declared 29500.0 um extent); SIZE 28000.0 um (-1500.0 um, -5.08%)",
+              "kind": "off-lattice-face",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            },
+            {
+              "axis": "y",
+              "detail": "PLACEMENT off by 500.0 um (1.32% of the declared 38000.0 um extent); SIZE 37000.0 um (-1000.0 um, -2.63%)",
+              "kind": "off-lattice-face",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            }
+          ],
+          "material": {
+            "kind": "pec"
+          },
+          "n_cells": 0,
+          "realization": "PEC sheet on node plane z = 17935.57 um (1102 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
+        }
+      },
+      "preflight": [
+        {
+          "code": "lossless_q",
+          "loc": null,
+          "message": "all dielectric(s) ['fr4'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)",
+          "severity": "warning",
+          "source": "_validate_cfg_lossless_resonator_in_absorber"
+        },
+        {
+          "code": "off_lattice_design_edges",
+          "loc": null,
+          "message": "2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): thin_conductor[1] 'thin_conductor[1]' (sheet) y: extent 38mm, worst face residual 500\u00b5m (1.32% of the extent); thin_conductor[1] 'thin_conductor[1]' (sheet) x: extent 29.5mm, worst face residual 250\u00b5m (0.85% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: choose dx commensurate with the patterned dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on the design edges. COVERAGE: examined 4 axis extent(s) on 2 conductor Box declaration(s) on the nonuniform lane; 2 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
+          "severity": "warning",
+          "source": "_validate_cfg_off_lattice_design_edges"
         }
       ]
     },
@@ -7951,7 +8663,651 @@
         }
       ]
     },
+    "validation/research/nu_cavity_gates/nu_cavity_gate_scan.py::build_tm110_sim::xy_committed": {
+      "fidelity": {
+        "NOT AUDITED by this report": {
+          "axes": {},
+          "findings": [
+            {
+              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "kind": "out-of-scope",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "domain": {
+          "axes": {
+            "x": {
+              "declared_extent_um": 45374.5772522,
+              "declared_um": [
+                0.0,
+                45374.5772522
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 45374.5772522,
+              "n_cells": 56,
+              "realized_extent_um": 45374.5772522,
+              "realized_um": [
+                0.0,
+                45374.5772522
+              ]
+            },
+            "y": {
+              "declared_extent_um": 39374.5772522,
+              "declared_um": [
+                0.0,
+                39374.5772522
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 39374.5772522,
+              "n_cells": 50,
+              "realized_extent_um": 39374.5772522,
+              "realized_um": [
+                0.0,
+                39374.5772522
+              ]
+            },
+            "z": {
+              "declared_extent_um": 10000.0,
+              "declared_um": [
+                0.0,
+                10000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 10000.0,
+              "n_cells": 10,
+              "realized_extent_um": 10000.0,
+              "realized_um": [
+                0.0,
+                10000.0
+              ]
+            }
+          },
+          "findings": [],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        }
+      },
+      "preflight": []
+    },
+    "validation/research/nu_cavity_gates/nu_cavity_gate_scan.py::build_tm111_sim::z_committed": {
+      "fidelity": {
+        "NOT AUDITED by this report": {
+          "axes": {},
+          "findings": [
+            {
+              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "kind": "out-of-scope",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "domain": {
+          "axes": {
+            "x": {
+              "declared_extent_um": 40000.0,
+              "declared_um": [
+                0.0,
+                40000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 40000.0,
+              "n_cells": 40,
+              "realized_extent_um": 40000.0,
+              "realized_um": [
+                0.0,
+                40000.0
+              ]
+            },
+            "y": {
+              "declared_extent_um": 35000.0,
+              "declared_um": [
+                0.0,
+                35000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 35000.0,
+              "n_cells": 35,
+              "realized_extent_um": 35000.0,
+              "realized_um": [
+                0.0,
+                35000.0
+              ]
+            },
+            "z": {
+              "declared_extent_um": 41374.5772522,
+              "declared_um": [
+                0.0,
+                41374.5772522
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 41374.5772522,
+              "n_cells": 52,
+              "realized_extent_um": 41374.5772522,
+              "realized_um": [
+                0.0,
+                41374.5772522
+              ]
+            }
+          },
+          "findings": [],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        }
+      },
+      "preflight": []
+    },
     "validation/research/subgrid/12_subgrid_disjoint_prototype.py::_build_disjoint_simulation::default": {
+      "fidelity": {
+        "NOT AUDITED by this report": {
+          "axes": {},
+          "findings": [
+            {
+              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "kind": "out-of-scope",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "domain": {
+          "axes": {
+            "x": {
+              "declared_extent_um": 40000.0,
+              "declared_um": [
+                0.0,
+                40000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 40000.0,
+              "n_cells": 20,
+              "realized_extent_um": 40000.0,
+              "realized_um": [
+                0.0,
+                40000.0
+              ]
+            },
+            "y": {
+              "declared_extent_um": 40000.0,
+              "declared_um": [
+                0.0,
+                40000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 40000.0,
+              "n_cells": 20,
+              "realized_extent_um": 40000.0,
+              "realized_um": [
+                0.0,
+                40000.0
+              ]
+            },
+            "z": {
+              "declared_extent_um": 24000.0,
+              "declared_um": [
+                0.0,
+                24000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 24000.0,
+              "n_cells": 12,
+              "realized_extent_um": 24000.0,
+              "realized_um": [
+                0.0,
+                24000.0
+              ]
+            }
+          },
+          "findings": [],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        }
+      },
+      "preflight": []
+    },
+    "validation/research/subgrid/13_subgrid_material_validation.py::build_dielectric_subgrid::dielectric_centered": {
+      "fidelity": {
+        "NOT AUDITED by this report": {
+          "axes": {},
+          "findings": [
+            {
+              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "kind": "out-of-scope",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "domain": {
+          "axes": {
+            "x": {
+              "declared_extent_um": 40000.0,
+              "declared_um": [
+                0.0,
+                40000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 40000.0,
+              "n_cells": 20,
+              "realized_extent_um": 40000.0,
+              "realized_um": [
+                0.0,
+                40000.0
+              ]
+            },
+            "y": {
+              "declared_extent_um": 40000.0,
+              "declared_um": [
+                0.0,
+                40000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 40000.0,
+              "n_cells": 20,
+              "realized_extent_um": 40000.0,
+              "realized_um": [
+                0.0,
+                40000.0
+              ]
+            },
+            "z": {
+              "declared_extent_um": 24000.0,
+              "declared_um": [
+                0.0,
+                24000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 24000.0,
+              "n_cells": 12,
+              "realized_extent_um": 24000.0,
+              "realized_um": [
+                0.0,
+                24000.0
+              ]
+            }
+          },
+          "findings": [],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "geometry|dielectric|-1000.000,-1000.000,-1000.000um->41000.000,41000.000,25000.000um": {
+          "axes": {
+            "x": {
+              "cell_um": 2000.0,
+              "declared_extent_um": 40000.0,
+              "declared_um": [
+                0.0,
+                40000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                2000.0
+              ],
+              "realized_extent_um": 42000.0,
+              "realized_um": [
+                0.0,
+                42000.0
+              ],
+              "sub_cell": false
+            },
+            "y": {
+              "cell_um": 2000.0,
+              "declared_extent_um": 40000.0,
+              "declared_um": [
+                0.0,
+                40000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                2000.0
+              ],
+              "realized_extent_um": 42000.0,
+              "realized_um": [
+                0.0,
+                42000.0
+              ],
+              "sub_cell": false
+            },
+            "z": {
+              "cell_um": 2000.0,
+              "declared_extent_um": 24000.0,
+              "declared_um": [
+                0.0,
+                24000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                2000.0
+              ],
+              "realized_extent_um": 26000.0,
+              "realized_um": [
+                0.0,
+                26000.0
+              ],
+              "sub_cell": false
+            }
+          },
+          "findings": [
+            {
+              "axis": "x,y,z",
+              "detail": "the realized body extends beyond the declared domain on x,y,z \u2014 those cells sit in the CPML pad, where the update equations are the absorber's",
+              "kind": "inside-absorber",
+              "remedy": "keep the body inside the domain, or enlarge the domain so the absorber stays empty"
+            },
+            {
+              "axis": "x",
+              "detail": "PLACEMENT off by 2000.0 um (5.00% of the declared 40000.0 um extent); SIZE 42000.0 um (+2000.0 um, +5.00%)",
+              "kind": "off-lattice-face",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            },
+            {
+              "axis": "y",
+              "detail": "PLACEMENT off by 2000.0 um (5.00% of the declared 40000.0 um extent); SIZE 42000.0 um (+2000.0 um, +5.00%)",
+              "kind": "off-lattice-face",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            },
+            {
+              "axis": "z",
+              "detail": "PLACEMENT off by 2000.0 um (8.33% of the declared 24000.0 um extent); SIZE 26000.0 um (+2000.0 um, +8.33%)",
+              "kind": "off-lattice-face",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            },
+            {
+              "axis": "x,y,z",
+              "detail": "declared past the domain on x,y,z; the rasterizer clips it, so the residuals above are measured against the CLIPPED declaration (this is a common deliberate idiom, not necessarily a defect)",
+              "kind": "clipped-by-domain",
+              "remedy": "none if the overhang is intentional; otherwise draw the body to its physical bounds"
+            }
+          ],
+          "material": {
+            "eps_r": 2.25,
+            "kind": "dielectric",
+            "n_debye": 0,
+            "n_lorentz": 0,
+            "name": "dielectric",
+            "sigma": 0.0
+          },
+          "n_cells": 5733,
+          "realization": null
+        }
+      },
+      "preflight": [
+        {
+          "code": "mesh_resolution",
+          "loc": null,
+          "message": "dielectric 'dielectric' on x: 12.5 cells per \u03bb_eff (eps_r=2.25, freq_max=8GHz, dx=2mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
+        },
+        {
+          "code": "mesh_resolution",
+          "loc": null,
+          "message": "dielectric 'dielectric' on y: 12.5 cells per \u03bb_eff (eps_r=2.25, freq_max=8GHz, dx=2mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
+        },
+        {
+          "code": "mesh_resolution",
+          "loc": null,
+          "message": "dielectric 'dielectric' on z: 12.5 cells per \u03bb_eff (eps_r=2.25, freq_max=8GHz, dx=2mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
+        }
+      ]
+    },
+    "validation/research/subgrid/13_subgrid_material_validation.py::build_uniform_reference::uniform_reference": {
+      "fidelity": {
+        "NOT AUDITED by this report": {
+          "axes": {},
+          "findings": [
+            {
+              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "kind": "out-of-scope",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "domain": {
+          "axes": {
+            "x": {
+              "declared_extent_um": 40000.0,
+              "declared_um": [
+                0.0,
+                40000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 40000.0,
+              "n_cells": 20,
+              "realized_extent_um": 40000.0,
+              "realized_um": [
+                0.0,
+                40000.0
+              ]
+            },
+            "y": {
+              "declared_extent_um": 40000.0,
+              "declared_um": [
+                0.0,
+                40000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 40000.0,
+              "n_cells": 20,
+              "realized_extent_um": 40000.0,
+              "realized_um": [
+                0.0,
+                40000.0
+              ]
+            },
+            "z": {
+              "declared_extent_um": 24000.0,
+              "declared_um": [
+                0.0,
+                24000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 24000.0,
+              "n_cells": 12,
+              "realized_extent_um": 24000.0,
+              "realized_um": [
+                0.0,
+                24000.0
+              ]
+            }
+          },
+          "findings": [],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "geometry|dielectric|-1000.000,-1000.000,-1000.000um->41000.000,41000.000,25000.000um": {
+          "axes": {
+            "x": {
+              "cell_um": 2000.0,
+              "declared_extent_um": 40000.0,
+              "declared_um": [
+                0.0,
+                40000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                2000.0
+              ],
+              "realized_extent_um": 42000.0,
+              "realized_um": [
+                0.0,
+                42000.0
+              ],
+              "sub_cell": false
+            },
+            "y": {
+              "cell_um": 2000.0,
+              "declared_extent_um": 40000.0,
+              "declared_um": [
+                0.0,
+                40000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                2000.0
+              ],
+              "realized_extent_um": 42000.0,
+              "realized_um": [
+                0.0,
+                42000.0
+              ],
+              "sub_cell": false
+            },
+            "z": {
+              "cell_um": 2000.0,
+              "declared_extent_um": 24000.0,
+              "declared_um": [
+                0.0,
+                24000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                2000.0
+              ],
+              "realized_extent_um": 26000.0,
+              "realized_um": [
+                0.0,
+                26000.0
+              ],
+              "sub_cell": false
+            }
+          },
+          "findings": [
+            {
+              "axis": "x,y,z",
+              "detail": "the realized body extends beyond the declared domain on x,y,z \u2014 those cells sit in the CPML pad, where the update equations are the absorber's",
+              "kind": "inside-absorber",
+              "remedy": "keep the body inside the domain, or enlarge the domain so the absorber stays empty"
+            },
+            {
+              "axis": "x",
+              "detail": "PLACEMENT off by 2000.0 um (5.00% of the declared 40000.0 um extent); SIZE 42000.0 um (+2000.0 um, +5.00%)",
+              "kind": "off-lattice-face",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            },
+            {
+              "axis": "y",
+              "detail": "PLACEMENT off by 2000.0 um (5.00% of the declared 40000.0 um extent); SIZE 42000.0 um (+2000.0 um, +5.00%)",
+              "kind": "off-lattice-face",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            },
+            {
+              "axis": "z",
+              "detail": "PLACEMENT off by 2000.0 um (8.33% of the declared 24000.0 um extent); SIZE 26000.0 um (+2000.0 um, +8.33%)",
+              "kind": "off-lattice-face",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            },
+            {
+              "axis": "x,y,z",
+              "detail": "declared past the domain on x,y,z; the rasterizer clips it, so the residuals above are measured against the CLIPPED declaration (this is a common deliberate idiom, not necessarily a defect)",
+              "kind": "clipped-by-domain",
+              "remedy": "none if the overhang is intentional; otherwise draw the body to its physical bounds"
+            }
+          ],
+          "material": {
+            "eps_r": 2.25,
+            "kind": "dielectric",
+            "n_debye": 0,
+            "n_lorentz": 0,
+            "name": "dielectric",
+            "sigma": 0.0
+          },
+          "n_cells": 5733,
+          "realization": null
+        }
+      },
+      "preflight": [
+        {
+          "code": "mesh_resolution",
+          "loc": null,
+          "message": "dielectric 'dielectric' on x: 14.1 cells per \u03bb_eff (eps_r=2.25, freq_max=7.066GHz, dx=2mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
+        },
+        {
+          "code": "mesh_resolution",
+          "loc": null,
+          "message": "dielectric 'dielectric' on y: 14.1 cells per \u03bb_eff (eps_r=2.25, freq_max=7.066GHz, dx=2mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
+        },
+        {
+          "code": "mesh_resolution",
+          "loc": null,
+          "message": "dielectric 'dielectric' on z: 14.1 cells per \u03bb_eff (eps_r=2.25, freq_max=7.066GHz, dx=2mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
+        }
+      ]
+    },
+    "validation/research/subgrid/13_subgrid_material_validation.py::build_vacuum_subgrid::vacuum_guarded": {
       "fidelity": {
         "NOT AUDITED by this report": {
           "axes": {},

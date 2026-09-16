@@ -6,11 +6,12 @@ solving, WITHOUT solving, and compares its ``preflight()`` +
 (``tests/data/example_fidelity_snapshot.json``, regenerable with
 ``scripts/capture_example_fidelity_snapshot.py``). It is cheap precisely
 because neither call time-steps: measured 2026-09-16 on this repo's CPU
-lane at 6d721a56, ``211 passed, 13 warnings in 90.01s`` for all 51
-script/builder/variant triples with optax installed, and
-``210 passed, 1 skipped, 12 warnings in 123.19s`` on a machine without it
-(beam_steering_superstrate.py declares optax in OPTIONAL_DEPENDENCIES and
-skips rather than failing -- that is CI's configuration).
+lane at c6788ef7 + the #737-item-2 builders, ``205 passed, 20 warnings in
+103.76s`` for all 62 script/builder/variant triples with optax installed
+(the same lane measured ``194 passed, 13 warnings in 91.71s`` at c6788ef7
+before those builders, i.e. 51 triples). On a machine without optax
+beam_steering_superstrate.py declares it in OPTIONAL_DEPENDENCIES and
+skips rather than failing -- that is CI's configuration.
 
 EMISSION-DRIFT PIN ONLY -- NOT A PHYSICS CHECK AND NOT A ZERO-ADVISORY
 BAR. Nothing here time-steps: what is pinned is the TEXT each example
@@ -36,17 +37,23 @@ this gate's coverage table is not the coverage table):
   marker either, so it is in the same PR fast suite as this gate.
 * ``tests/unit/api/test_diagnostics.py`` runs
   ``examples/quickstart/hello_world.py`` end-to-end via
-  ``runpy.run_path``. That script is ``builder_fused_with_solve`` here,
-  i.e. OUT of this snapshot but NOT uncovered.
+  ``runpy.run_path``. Since #737 item 2 that script is ALSO audited here
+  (``build_simulation``), so it is covered twice: what it declares and
+  what it computes.
 * the weekly ``crossval-external`` job (validation.yml) builds AND solves
   the eight scheduled crossval cases (01, 02, 03, 04, 09, 10, 22, 23).
 
-Measured on the snapshot as committed (2026-09-16, 51 variants): 83
-preflight rows over 24 variants, 82 ``severity="warning"`` + 1 ``info``;
-codes mesh_resolution 25, port_aperture_snap 12, pec_faces_finite_pec 10,
-off_lattice_design_edges 7, wire_port_dead_cell_classification_unavailable
-5, lossless_q 4, msl_port_geometry 4, port_evanescent 4, no_sources 2,
-ntff_small_ground_plane 2, and 8 singletons. #742 (the false positives and
+Measured on the snapshot as committed (2026-09-16, 62 variants): 91
+preflight rows over 27 variants, 90 ``severity="warning"`` + 1 ``info``;
+codes mesh_resolution 31, port_aperture_snap 12, pec_faces_finite_pec 10,
+off_lattice_design_edges 8, lossless_q 5,
+wire_port_dead_cell_classification_unavailable 5, msl_port_geometry 4,
+port_evanescent 4, no_sources 2, ntff_small_ground_plane 2, and 8
+singletons. The eleven variants #737 item 2 added carry 8 of those rows
+(mesh_resolution 6 on 13_subgrid_material_validation's dielectric arms,
+lossless_q 1 + off_lattice_design_edges 1 on nonuniform_patch_demo, which
+are the two the tutorial's own text already explains); the other eight new
+variants emit none. #742 (the false positives and
 the never-emitted advisories that made a zero-advisory bar unworkable) is
 CLOSED. The rows that remain are statements about the examples' own meshes
 and ports, so getting to zero means changing those examples -- separate
@@ -64,47 +71,44 @@ guide now reads 23000/11000 um, which is what #722 measures, not the old
 24000/12000. The snapshot's own ``_comment`` records that re-capture and a
 second one (2026-09-02, #833 item 2).
 
-COVERAGE (measured 2026-09-16 at 6d721a56; re-derive with
+COVERAGE (measured 2026-09-16 at c6788ef7 + this PR; re-derive with
 ``test_discovery_matches_classification_table`` and a Counter over
-``lib.CLASSIFICATION``). Discovery now sees 137 scripts under examples/ +
-validation/, all 137 classified: audited 34, builder_fused_with_solve 12,
-module_level_solve 7, no_solve 4, no_simulation 80; the snapshot holds 51
-variants over those 34 audited scripts.
+``lib.CLASSIFICATION``). Discovery sees 138 scripts under examples/ +
+validation/, all 138 classified: audited 39, builder_fused_with_solve 8,
+module_level_solve 6, no_solve 4, no_simulation 81; the snapshot holds 62
+variants over those 39 audited scripts.
 
 Against the 47 scripts that existed when #737 was filed (ed3484c1 -- the
 tracker's own denominator, kept here because the tracker's table is stated
-in it): 25 audited / 8 builder_fused_with_solve / 6 module_level_solve /
-8 no_simulation. This header previously said 23/10 and named cv07 and
-cv15 as out of scope: both are now audited
-(``07_sheen_lpf.py::build_rfx_sim``,
-``15_patch_antenna_rt5880.py::build_rfx_sim``), which is where the 23->25
-and 10->8 moves come from.
+in it): 30 audited / 4 builder_fused_with_solve / 5 module_level_solve /
+8 no_simulation. The moves since the 2026-08-27 audit's 23/10/6/8: cv07
+and cv15 grew build-only entry points (23->25, 10->8), and #737 item 2
+(2026-09-16) added five more -- hello_world, boundary_spec_demo,
+nu_cavity_gate_scan and 13_subgrid_material_validation out of
+``builder_fused_with_solve``, and nonuniform_patch_demo out of
+``module_level_solve`` (its module-scope body moved into ``main()``, so
+importing it no longer solves).
 
 * ``builder_fused_with_solve`` (build and solve share one function with
   no separable build-only path) in that 47-set, i.e. the scripts this
-  gate does NOT reach: examples/quickstart/hello_world.py,
-  examples/tutorials/boundary_spec_demo.py,
-  examples/tutorials/cad_mesh_import_demo.py, cv09, cv10, cv18,
-  validation/research/nu_cavity_gates/nu_cavity_gate_scan.py,
-  validation/research/subgrid/13_subgrid_material_validation.py. Out of
-  scope here until they get a builder separable from their solve --
-  "out of this snapshot" is not "unverified": hello_world runs
-  end-to-end (above); cv09 is REBUILT build-only from its own constants
-  and helpers in tests/crossval/test_cv09_cv10_body_contract_controls.py
-  (cv10 only at the spec level there, via ``_common_spec()``) and both
-  solve weekly; cv18's gates replay a frozen fixture
+  gate does NOT reach: examples/tutorials/cad_mesh_import_demo.py, cv09,
+  cv10, cv18. "Out of this snapshot" is not "unverified": cv09 is REBUILT
+  build-only from its own constants and helpers in
+  tests/crossval/test_cv09_cv10_body_contract_controls.py (cv10 only at
+  the spec level there, via ``_common_spec()``) and both solve weekly;
+  cv18's gates replay a frozen fixture
   (tests/crossval/test_wr90_iris_modematch_gates.py) and its realized
-  geometry is checked build-time in test_wr90_iris_realized_is_shared.py;
-  13_subgrid_material_validation has an import smoke in
-  tests/contracts/test_crossval_example_imports.py (import only, no
-  build). boundary_spec_demo, cad_mesh_import_demo and
-  nu_cavity_gate_scan have no build or run coverage anywhere (#737).
+  geometry is checked build-time in test_wr90_iris_realized_is_shared.py.
+  cad_mesh_import_demo is the one script of #737 item 2 that did NOT get a
+  builder, and it is the one with no build or run coverage anywhere: its
+  Simulation needs ``trimesh`` (the optional [cad] extra), which the lane
+  running this gate does not install, and a build-time ModuleNotFoundError
+  would red the gate rather than skip (OPTIONAL_DEPENDENCIES only covers
+  an import-time miss). Its CLASSIFICATION entry carries that reason.
 * ``module_level_solve`` (importing the module solves at module scope):
-  cv01-cv05, examples/tutorials/nonuniform_patch_demo.py -- also out of
-  scope, and deliberately never imported by this test. cv01/cv02 have
-  ``--replay`` re-judge subprocess tests and cv05 a
-  ``RFX_CV05_BUILD_ONLY=1`` subprocess build test; nonuniform_patch_demo
-  has nothing.
+  cv01-cv05 -- also out of scope, and deliberately never imported by this
+  test. cv01/cv02 have ``--replay`` re-judge subprocess tests and cv05 a
+  ``RFX_CV05_BUILD_ONLY=1`` subprocess build test.
 * 8 build no rfx ``Simulation`` at all (cv16/cv17/cv20/cv21, the two
   crossval comparator subdirs, and the two research RCWA scripts) -- out
   of scope BY CONSTRUCTION.

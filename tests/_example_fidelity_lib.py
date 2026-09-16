@@ -21,12 +21,13 @@ Classification is a hand-authored table (five buckets: ``audited``,
 ``no_solve``)
 because "does this script have a build step separable from its solve step"
 is a judgement call a machine cannot make reliably on its own — the AST
-heuristic in ``_functions_building_simulation`` gets it right for all 137
-scripts discovered in this repo today (re-measured 2026-09-16 at 6d721a56:
-audited 34 / builder_fused_with_solve 12 / module_level_solve 7 /
-no_solve 4 / no_simulation 80; on the 47 scripts that existed when #737
-was filed the split is 25/8/6/8, where the 2026-08-27 audit read 23/10/6/8
-before cv07 and cv15 grew build-only entry points), so
+heuristic in ``_functions_building_simulation`` gets it right for all 138
+scripts discovered in this repo today (re-measured 2026-09-16 at c6788ef7
+plus #737 item 2: audited 39 / builder_fused_with_solve 8 /
+module_level_solve 6 / no_solve 4 / no_simulation 81; on the 47 scripts
+that existed when #737 was filed the split is 30/4/5/8, where the
+2026-08-27 audit read 23/10/6/8 before cv07 and cv15 grew build-only entry
+points and #737 item 2 added five more), so
 ``test_example_fidelity_contract.py``
 uses it as a MACHINE CHECK on top of the hand-authored table for every
 bucket, not just the two the audit required — a script whose classification
@@ -247,7 +248,7 @@ def functions_building_simulation(relpath: str) -> dict[str, bool]:
 # --------------------------------------------------------------------------
 # Module loading -- exec the script's top level (imports, defs, constants),
 # never main(). Safe for every "audited" and "builder_fused_with_solve"
-# entry: all 23 audited scripts carry a main guard AND no module-scope solve
+# entry: every audited script carries a main guard AND no module-scope solve
 # call, both asserted per script by the "audited" branch of
 # test_not_auditable_classifications_are_machine_checked, so nothing solves
 # merely by loading them. Pattern matches tests/contracts/test_crossval_example_imports.py.
@@ -349,7 +350,9 @@ def _v_from(label: str, fn: Callable[[ModuleType], dict]) -> Variant:
 
 
 CLASSIFICATION: dict[str, Entry] = {
-    # ---- no_simulation (22): zero real Simulation() calls, AST-verified --
+    # ---- no_simulation: zero real Simulation() calls, AST-verified ------
+    # (bucket sizes are not written here: they rot. Count them with a
+    #  Counter over CLASSIFICATION, the way the two docstrings above say.)
     "validation/crossval/16_pec_sphere_mie_ka_sweep.py": Entry(
         "no_simulation",
         "drives the functional rfx.rcs.compute_rcs entry point directly on "
@@ -638,7 +641,7 @@ CLASSIFICATION: dict[str, Entry] = {
         "`a1_production_column()` builds one only to read its rasterized "
         "eps column) -- no separable build-only path"),
 
-    # ---- module_level_solve (6): solves at import time, no main guard ----
+    # ---- module_level_solve: solves at import time, no main guard -------
     "validation/crossval/01_waveguide_bend.py": Entry(
         "module_level_solve",
         "builds and calls .run(...) at module scope with no "
@@ -655,9 +658,6 @@ CLASSIFICATION: dict[str, Entry] = {
     "validation/crossval/05_patch_antenna.py": Entry(
         "module_level_solve",
         "builds and calls .run(...) at module scope with no main guard"),
-    "examples/tutorials/nonuniform_patch_demo.py": Entry(
-        "module_level_solve",
-        "builds and calls .run(...) at module scope with no main guard"),
     # VENDORED UPSTREAM, NOT OURS. Meep's own python/examples/bend-flux.py,
     # byte-identical to blob f56ab649 (see the sibling PROVENANCE.md); cv01's
     # reproduce-gate runs it unmodified so the comparator is checked against
@@ -672,18 +672,20 @@ CLASSIFICATION: dict[str, Entry] = {
         "vendored upstream Meep tutorial, unmodified: builds and calls "
         ".run(...) at module scope with no main guard. Do not edit."),
 
-    # ---- builder_fused_with_solve (10): build+solve share one function ---
-    "examples/quickstart/hello_world.py": Entry(
-        "builder_fused_with_solve",
-        "`main()` builds and calls .run(...) in the same function -- no "
-        "separable build-only path"),
-    "examples/tutorials/boundary_spec_demo.py": Entry(
-        "builder_fused_with_solve",
-        "`_run_and_report()` builds and calls .run(...) in the same "
-        "function for every boundary spec under test"),
+    # ---- builder_fused_with_solve: build+solve share one function -------
     "examples/tutorials/cad_mesh_import_demo.py": Entry(
         "builder_fused_with_solve",
-        "`main()` builds and calls .run(...) in the same function"),
+        "`main()` builds and calls .run(...) in the same function. NOT given "
+        "a build-only entry point with the rest of #737 item 2, on purpose: "
+        "its Simulation cannot be built without `trimesh` (the optional "
+        "[cad] extra), which the lane that runs this gate does not install -- "
+        "pr-tests.yml's fast suite is `pip install -e .[dev]` and only the "
+        "separate CAD job installs `.[dev,cad]`. A builder would raise "
+        "ModuleNotFoundError at BUILD time, and OPTIONAL_DEPENDENCIES only "
+        "converts an IMPORT-time miss (inside load_module) into a visible "
+        "skip, so this script would red the gate in CI rather than skip; the "
+        "snapshot row could not be captured on a machine without trimesh "
+        "either. Revisit if the fast suite ever installs the cad extra"),
     "validation/crossval/07_sheen_lpf.py": Entry(
         "audited",
         "`build_rfx_sim(dx)` returns Simulation with no solve call (split out "
@@ -714,10 +716,6 @@ CLASSIFICATION: dict[str, Entry] = {
         "builder_fused_with_solve",
         "`run_point()` builds and calls sim.compute_waveguide_s_matrix(...) "
         "in the same function"),
-    "validation/research/nu_cavity_gates/nu_cavity_gate_scan.py": Entry(
-        "builder_fused_with_solve",
-        "`_tm110_error()`/`_tm111_error()` each build and call .run(...) in "
-        "the same function"),
     "validation/research/nu_cost/g4/cpml_baseline.py": Entry(
         "no_simulation",
         "G4 frozen low-level CPML reference; defines operators and state, "
@@ -736,9 +734,6 @@ CLASSIFICATION: dict[str, Entry] = {
         "`run_fixture()` builds the bench cube and calls .run(...) in the "
         "same function on purpose -- the arm's monkeypatch must be in place "
         "when the Simulation compiles"),
-    "validation/research/subgrid/13_subgrid_material_validation.py": Entry(
-        "builder_fused_with_solve",
-        "`run_example()` builds and calls .run(...) in the same function"),
 
     "validation/research/cpml_pole_pad/localize_636.py": Entry(
         "no_simulation",
@@ -763,7 +758,67 @@ CLASSIFICATION: dict[str, Entry] = {
         "builder_fused_with_solve",
         "issue #636 CFS-alpha factorial: `vacuum_floor()` (and `run_cell()` "
         "via `build_sim`) construct and call .run(...) for the same cell"),
-    # ---- audited (23): builder is separable from solve ----
+    # ---- audited: builder is separable from solve ----
+    # #737 item 2 (2026-09-16): build-only entry points on the cv07/cv15
+    # pattern for the scripts the reopen comment listed as unreachable. Each
+    # builder is the one the script's own main path calls, so what the gate
+    # pins is the model that runs, not a copy of it. cad_mesh_import_demo is
+    # the one exception and stays out of scope with its reason, above.
+    "examples/quickstart/hello_world.py": Entry(
+        "audited",
+        "`build_simulation()` returns Simulation with no solve call (split "
+        "out of main() for #737 item 2); main() consumes it and runs 120 "
+        "steps. Still ALSO run end-to-end by tests/unit/api/test_diagnostics"
+        ".py via runpy, so this example is covered twice",
+        (Builder("build_simulation", None, (_v("default"),)),)),
+    "examples/tutorials/boundary_spec_demo.py": Entry(
+        "audited",
+        "`build_simulation(spec)` returns Simulation with no solve call "
+        "(split out of _run_and_report() for #737 item 2); the four boundary "
+        "patterns the tutorial walks are declared once in the script's own "
+        "PATTERNS tuple and audited from THERE, so a spec change moves the "
+        "snapshot rather than leaving a stale copy in this table",
+        (Builder("build_simulation", None, tuple(
+            _v_from(label, lambda m, label=label: dict(
+                spec=dict(m.PATTERNS)[label]))
+            for label in ("open box", "ground plane", "closed cavity",
+                          "periodic cell"))),)),
+    "examples/tutorials/nonuniform_patch_demo.py": Entry(
+        "audited",
+        "`build_simulation(dz_profile=None)` returns Simulation with no solve "
+        "call (#737 item 2 restructured this script's module-scope body into "
+        "main(), so importing it no longer solves -- it was module_level_solve "
+        "before). Called with no argument it builds the same smooth_grading "
+        "profile main() passes it, which is the point of this tutorial: every "
+        "z is DERIVED from the built mesh (#325), so the audited geometry is "
+        "the realized one",
+        (Builder("build_simulation", None, (_v("default"),)),)),
+    "validation/research/nu_cavity_gates/nu_cavity_gate_scan.py": Entry(
+        "audited",
+        "`build_tm110_sim(...)`/`build_tm111_sim(...)` return (Simulation, "
+        "analytic f) with no solve call (split out of _tm110_error/"
+        "_tm111_error for #737 item 2); the error functions consume them and "
+        "run. Audited at each lane's COMMITTED configuration, which the "
+        "script itself now names once (committed_xy_config/committed_z_config) "
+        "and main() scans from, so the audited cavity is the one the gate "
+        "envelopes are derived from",
+        (Builder("build_tm110_sim", 0, (
+            _v_from("xy_committed", lambda m: m.committed_xy_config()),)),
+         Builder("build_tm111_sim", 0, (
+            _v_from("z_committed", lambda m: m.committed_z_config()),)))),
+    "validation/research/subgrid/13_subgrid_material_validation.py": Entry(
+        "audited",
+        "the three arms are separate builders with no solve call "
+        "(build_vacuum_subgrid / build_dielectric_subgrid / "
+        "build_uniform_reference, split out of run_example() for #737 item 2); "
+        "run_example() consumes them, calls validate_subgrid() on the first "
+        "two and solves the third. Auditing all three is the point here: the "
+        "guarded and the REJECTED subgrid arms declare geometry too, and this "
+        "gate pins what each declares without running the production "
+        "validator's verdict",
+        (Builder("build_vacuum_subgrid", None, (_v("vacuum_guarded"),)),
+         Builder("build_dielectric_subgrid", None, (_v("dielectric_centered"),)),
+         Builder("build_uniform_reference", 0, (_v("uniform_reference"),)))),
     "validation/research/issue683_sampling_order_decision.py": Entry(
         "audited",
         "issue #683 sampling-order decision harness: `build(nu, r_load, "
