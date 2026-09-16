@@ -295,9 +295,15 @@ def main(argv=None) -> int:
     print("=" * 70)
     print(f"Crossval 23: lossy slab -- arms {arms}; falsifier={a.falsifier}; smoke={a.smoke}")
     print("=" * 70)
-    print(f"  windows: W_bin={L.W_BIN}, W_mean_R={L.W_MEAN_R}, W_mean_T={L.W_MEAN_T}, "
-          f"W_bin_A={L.W_BIN_A:.3f}, W_mean_A={L.W_MEAN_A:.3f} (triangle; tighter derivable "
-          f"{L.W_BIN_A_TIGHT}/{L.W_MEAN_A_TIGHT} reported as A_tight_ok); gated band "
+    # Say which window judges WHICH gate (#928 item 2): the cv04 scalars are
+    # the MEEP legs' now, and printing them alone read as "these are the gates".
+    print("  E2 windows (G1_*, G2_*): per arm, MULTIPLIER x (|lattice - continuum| "
+          "at that arm's own eps' and sigma, dx, dt + that record's lattice-witness "
+          "budget); printed per arm below")
+    print(f"  E4 windows (G4_*, G5_*): W_bin={L.W_BIN}, W_mean_R={L.W_MEAN_R}, "
+          f"W_mean_T={L.W_MEAN_T}, W_bin_A={L.W_BIN_A:.3f}, W_mean_A={L.W_MEAN_A:.3f} "
+          f"(cv04 envelope {L.CV04_ADOPTED['revision']}; A by triangle). Reported, never "
+          f"gated: A_tight_ok at {L.W_BIN_A_TIGHT}/{L.W_MEAN_A_TIGHT}. Gated band "
           f"{G.BAND_GATED_HZ[0]/1e9:.0f}-{G.BAND_GATED_HZ[1]/1e9:.0f} GHz")
 
     doc = {
@@ -354,6 +360,11 @@ def main(argv=None) -> int:
         # docs/design_notes/slab_family_per_arm_lattice_window_predeclaration.md).
         # `params` (declared), never `params_run`.
         awin = L.slab_arm_windows.from_run(run, L.MODEL, params)
+        print(f"  E2 window: per-bin R {min(awin.R):.2e}-{max(awin.R):.2e}, "
+              f"T {min(awin.T):.2e}-{max(awin.T):.2e}, A {min(awin.A):.2e}-{max(awin.A):.2e}; "
+              f"band mean R {awin.mean_R:.2e}, T {awin.mean_T:.2e}, A {awin.mean_A:.2e} "
+              f"(W_lat mean R {awin.parts['mean_W_lat_R_gated']:.2e}, record floor mean R "
+              f"{awin.parts['mean_W_wit_R_gated']:.2e})")
         e2 = L.evaluate_e2(run["freqs_hz"], run["R_rfx"], run["T_rfx"], params, run["dt_s"], tail=run["tail"],
                            dx=run["dx_m"], require_complete=True, windows=awin)
         e2["params_run"] = {k: float(v) for k, v in params_run.items()}
