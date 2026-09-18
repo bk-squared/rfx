@@ -741,6 +741,7 @@
  "generated_at": "2026-09-02T14:19:10.701561+00:00",
  "provenance": {
   "commit": "6216e06fff27d6b351457cb4807379bec14ced15",
+  "rfx_code_tree": "9ec8308106a26deb04787fce2f919b466d9fb22f",
   "run_id": "local",
   "run_lane": "local",
   "jax_version": "0.6.2",

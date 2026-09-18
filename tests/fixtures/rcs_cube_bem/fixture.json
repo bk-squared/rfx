@@ -244,6 +244,7 @@
   },
   "provenance": {
     "rfx_commit": "c3189960504b5fa570e944c074801594e6caf9cc",
+    "rfx_code_tree": "192bbdab1f23bcaa8e3ee4d33c066001c1d82200",
     "bempp_version": "0.4.2",
     "producer": "tests/fixtures/rcs_cube_bem/generate.py",
     "wall_s": 75.39474987983704,
