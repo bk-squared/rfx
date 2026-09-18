@@ -88,6 +88,35 @@ public clone are non-authoritative here. Treat the tracked harness, current
 command result, support contracts, and committed artifacts as the available
 evidence; do not infer a pass from unavailable history.
 
+## Worktree hygiene
+
+Agent sessions create a worktree per task and rarely remove it. One clone held 22
+worktrees, 13 of them from pull requests merged weeks earlier, plus seven entries
+pointing at directories that no longer existed.
+
+```
+git fetch origin
+python scripts/dev/prune_worktrees.py          # dry run: classify and print
+python scripts/dev/prune_worktrees.py --apply  # remove what is safe elsewhere
+```
+
+The script asks `git worktree list` where the worktrees are, so it never scans
+directories and finds them wherever they live. It removes a worktree only when the
+work is safe somewhere else: the branch is merged into `origin/main` or its pull
+request is closed, or the branch is on origin with no open pull request and its last
+commit is older than `--days` (default 7). Add `--no-gh` offline, which drops the pull
+request lookup and leaves ancestor-of-`origin/main` as the only merged test.
+
+Nothing else is removed. A worktree with uncommitted changes, an open pull request,
+a branch that origin does not have, or a detached HEAD no ref contains is kept and
+listed. **An unpushed branch is never removed silently** — `--archive` pushes it to
+origin first, and only then does it become removable. A merged branch loses its local
+branch too; a pushed-idle one keeps both its local and remote branch.
+
+**Remove a task's worktree as the last step of the task**, after the pull request
+merges. The script is the cleanup for what earlier sessions left behind, not a
+substitute for that step.
+
 ## Where the role fences live
 
 Machine-readable crossval roles and registration live in
