@@ -54,14 +54,29 @@ comments:
   several pods push under one GitHub account, so the body is the only provenance.
   `REJECT` never passes.
 
-Two exceptions take `Review: skipped — <reason>`, and the reason must name which:
-(a) an easily reverted pure docs/comment change, (b) an explicit instruction from
-the PI to skip. Either dash, em or plain hyphen, is accepted.
+`<who read it>` names the reviewing instance and may not contain `<` or `>`: an
+unedited placeholder is not a review record.
+
+Two exceptions take a `Review: skipped` line, and the reason must open with the
+literal `(a)` or `(b)` so a later audit can tell which was claimed:
+
+```
+Review: skipped — (a) <easily reverted pure docs/comment change>
+Review: skipped — (b) <the PI instructed the skip>
+```
+
+Either dash, em or plain hyphen, is accepted. Both lines must start flush left:
+a claim inside a bullet, block quote or bold run does not count, because the
+point of the contract is that the two lines are greppable across every PR.
 
 The check is `scripts/ci/check_pr_body.py` (stdlib only; `--file PATH` to run it
 against a body locally), gated by `.github/workflows/pr-body.yml` on open, edit,
 reopen and synchronize. `.github/pull_request_template.md` seeds both stubs, and
 `tests/contracts/test_pr_body_contract.py` pins the accepted forms.
+
+**The gate binds only once `pr-body-contract` is a required check in branch
+protection.** Until then a red run is visible but does not block a merge, which
+is the same advisory state the prose rule was in.
 
 ## GPU validation
 

@@ -10,22 +10,30 @@ none of the 17 open PRs carried the line. Prose is context, not enforcement --
 so this is a CI check, which binds every author including the ones that never
 read a CLAUDE.md.
 
-Two lines, each exactly once, in the body text (not inside a code fence, not
-inside an HTML comment):
+Two lines, each exactly once, starting flush at the left margin of the body
+text (not inside a code fence, an HTML comment or a ``<pre>`` block):
 
     Lane: lane:<label>
     Review: <who> (separate instance) - ACCEPT
     Review: <who> (separate instance) - ACCEPT WITH CHANGES
-    Review: skipped - <which exception, and why>
+    Review: skipped - (a) <why> | Review: skipped - (b) <why>
 
 ``Lane:`` must name a label that exists on the repository. The workflow passes
 the live set in ``LANE_LABELS`` (newline-separated, from ``gh label list``); a
 local run with no such env falls back to the set recorded in this file.
 
-``Review: skipped`` covers the rule's only two exceptions: (a) an easily
-reverted pure docs/comment change, (b) an explicit instruction from the PI to
-skip. The free text has to name which one -- that is what makes the exception
-auditable later.
+``<who>`` names the reviewing instance and may not contain ``<`` or ``>``: an
+unedited placeholder is not a review record, and this file's own remediation
+text would otherwise be a passing body.
+
+``Review: skipped`` covers the rule's only two exceptions, and the line has to
+say WHICH by opening the reason with the literal ``(a)`` or ``(b)``:
+
+    (a) an easily reverted pure docs/comment change
+    (b) an explicit instruction from the PI to skip
+
+That is what makes the exception auditable later; a bare "skipped - x" records
+nothing.
 
 A ``REJECT`` verdict never passes. Neither does a self-review: the line asserts
 a SEPARATE instance did the reading, and the check can only enforce that the
@@ -38,7 +46,7 @@ Usage
     python scripts/ci/check_pr_body.py --file /tmp/body.md
 
 Exit 0 silently on success. Exit 1 with the failing condition and the lines to
-paste. Standard library only, Python 3.10.
+fill in. Standard library only, Python 3.10.
 """
 
 from __future__ import annotations
@@ -71,28 +79,50 @@ _DASH = r"[—-]"
 
 LANE_RE = re.compile(r"^Lane: (lane:[a-z0-9-]+)$")
 REVIEW_ACCEPT_RE = re.compile(
-    r"^Review: .+ \(separate instance\) " + _DASH + r" (ACCEPT|ACCEPT WITH CHANGES)$"
+    r"^Review: (?P<who>.+) \(separate instance\) "
+    + _DASH
+    + r" (?P<verdict>ACCEPT|ACCEPT WITH CHANGES)$"
 )
-REVIEW_SKIPPED_RE = re.compile(r"^Review: skipped " + _DASH + r" .+$")
+REVIEW_SKIPPED_RE = re.compile(r"^Review: skipped " + _DASH + r" \((?:a|b)\) .+$")
 
+# Anything that is invisible once GitHub renders the body cannot carry the
+# claim. Comments (terminated or not), fenced code, and <pre> blocks all
+# qualify; an unterminated <!-- swallows the rest of the body on render, so it
+# has to swallow the rest of the body here too.
 _COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+_OPEN_COMMENT_RE = re.compile(r"<!--.*\Z", re.DOTALL)
+_PRE_RE = re.compile(r"<pre\b[^>]*>.*?(?:</pre>|\Z)", re.DOTALL | re.IGNORECASE)
 _FENCE_RE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
 
+# A line that carries the keyword but not at the left margin: a list item, a
+# block quote, or a bold run. The strict rule stands -- the line must start the
+# claim -- but the failure text should say that instead of "no Lane: line".
+_ADORNMENT_RE = re.compile(r"^[\s>*+\-]*")
+_TRAILING_BOLD_RE = re.compile(r"[*_\s]+$")
 
-def strip_comments(body: str) -> str:
-    """Drop ``<!-- ... -->`` spans, keeping the line count so fences still pair."""
-    return _COMMENT_RE.sub(lambda m: "\n" * m.group(0).count("\n"), body)
+
+def _blank_out(match: re.Match[str]) -> str:
+    """Replace a span with as many newlines as it held, so fences still pair."""
+    return "\n" * match.group(0).count("\n")
+
+
+def strip_invisible(body: str) -> str:
+    """Drop HTML comments and ``<pre>`` blocks, keeping the line count."""
+    body = _COMMENT_RE.sub(_blank_out, body)
+    body = _OPEN_COMMENT_RE.sub(_blank_out, body)
+    return _PRE_RE.sub(_blank_out, body)
 
 
 def body_lines(body: str) -> list[str]:
-    """Lines that count: outside HTML comments and outside fenced code blocks.
+    """Lines that count: visible on render and outside fenced code blocks.
 
-    The PR template's hint text lives in a comment and its examples live in a
-    fence, so the template alone can never satisfy the check.
+    The PR template's hint text lives in a comment and this file's remediation
+    examples are placeholders, so neither can satisfy the check.
     """
     kept: list[str] = []
     fence: str | None = None
-    for raw in strip_comments(body).replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+    normalized = strip_invisible(body).replace("\r\n", "\n").replace("\r", "\n")
+    for raw in normalized.split("\n"):
         line = raw.rstrip()
         marker = _FENCE_RE.match(line)
         if marker is not None:
@@ -105,6 +135,17 @@ def body_lines(body: str) -> list[str]:
         if fence is None:
             kept.append(line)
     return kept
+
+
+def deadorn(line: str) -> str:
+    """The line with list bullets, quote markers and bold runs removed.
+
+    Only used to explain a failure. A body whose claim sits inside a bullet is
+    still a failing body -- the two lines have to start their own line so a
+    later audit can grep for them.
+    """
+    stripped = _ADORNMENT_RE.sub("", line)
+    return _TRAILING_BOLD_RE.sub("", stripped)
 
 
 def allowed_lanes(env: dict[str, str] | None = None) -> tuple[tuple[str, ...], str]:
@@ -123,71 +164,123 @@ def allowed_lanes(env: dict[str, str] | None = None) -> tuple[tuple[str, ...], s
     return FALLBACK_LANE_LABELS, "the fallback list in scripts/ci/check_pr_body.py"
 
 
+def _adorned_hint(lines: list[str], keyword: str) -> str:
+    """Explain a keyword that is present but indented, bulleted or quoted."""
+    for line in lines:
+        if line.startswith(keyword):
+            continue
+        if deadorn(line).startswith(keyword):
+            return (
+                f" Found `{keyword}` inside a list item, block quote or bold run "
+                f"({line.strip()!r}) -- it must start the line, flush left."
+            )
+    return ""
+
+
+def _check_lane(lines: list[str], lanes: tuple[str, ...], source: str) -> list[str]:
+    matches = [m for m in (LANE_RE.match(line) for line in lines) if m]
+    if len(matches) == 0:
+        return [
+            "no `Lane:` line. Exactly one line must read `Lane: lane:<label>` and "
+            "name the owner lane this PR belongs to."
+            + _adorned_hint(lines, "Lane:")
+        ]
+    if len(matches) > 1:
+        found = ", ".join(m.group(1) for m in matches)
+        return [
+            f"{len(matches)} `Lane:` lines ({found}). A PR belongs to exactly one "
+            "owner lane; keep one line and delete the rest."
+        ]
+    label = matches[0].group(1)
+    if label not in lanes:
+        return [
+            f"`Lane: {label}` is not a lane label on this repository. "
+            f"Allowed ({source}): {', '.join(sorted(lanes))}."
+        ]
+    return []
+
+
+def _check_review(lines: list[str]) -> list[str]:
+    valid: list[str] = []
+    placeholder: list[str] = []
+    bad_skip: list[str] = []
+
+    for line in lines:
+        accept = REVIEW_ACCEPT_RE.match(line)
+        if accept is not None:
+            who = accept.group("who")
+            if "<" in who or ">" in who:
+                placeholder.append(line)
+            else:
+                valid.append(line)
+            continue
+        if REVIEW_SKIPPED_RE.match(line):
+            valid.append(line)
+        elif line.startswith("Review: skipped"):
+            bad_skip.append(line)
+
+    if len(valid) > 1:
+        return [
+            f"{len(valid)} `Review:` lines. Keep the one that reflects the verdict "
+            "the PR is merging on."
+        ]
+    if valid:
+        return []
+
+    problem = (
+        "no well-formed `Review:` line. Every merged change is read by a SEPARATE "
+        "agent instance, and the PR body is the only record of it. A `REJECT` "
+        "verdict never passes -- fix the change, then get the re-read."
+    )
+    if placeholder:
+        problem += (
+            f" Found an unfilled placeholder ({placeholder[0].strip()!r}): replace "
+            "the angle-bracketed text with the instance that actually read the diff."
+        )
+    if bad_skip:
+        problem += (
+            f" Found a `Review: skipped` line that does not say which exception "
+            f"({bad_skip[0].strip()!r}): open the reason with `(a)` for an easily "
+            "reverted pure docs/comment change, or `(b)` for a skip the PI instructed."
+        )
+    problem += _adorned_hint(lines, "Review:")
+    return [problem]
+
+
 def check(body: str, env: dict[str, str] | None = None) -> list[str]:
     """Return the problems with *body*. Empty list means the body passes."""
     lanes, lane_source = allowed_lanes(env)
     lines = body_lines(body)
-
-    problems: list[str] = []
-
-    lane_matches = [m for m in (LANE_RE.match(line) for line in lines) if m]
-    if len(lane_matches) == 0:
-        problems.append(
-            "no `Lane:` line. Exactly one line must read `Lane: lane:<label>` "
-            "and name the owner lane this PR belongs to."
-        )
-    elif len(lane_matches) > 1:
-        found = ", ".join(m.group(1) for m in lane_matches)
-        problems.append(
-            f"{len(lane_matches)} `Lane:` lines ({found}). A PR belongs to exactly "
-            "one owner lane; keep one line and delete the rest."
-        )
-    else:
-        label = lane_matches[0].group(1)
-        if label not in lanes:
-            problems.append(
-                f"`Lane: {label}` is not a lane label on this repository. "
-                f"Allowed ({lane_source}): {', '.join(sorted(lanes))}."
-            )
-
-    review_lines = [
-        line
-        for line in lines
-        if REVIEW_ACCEPT_RE.match(line) or REVIEW_SKIPPED_RE.match(line)
-    ]
-    if len(review_lines) == 0:
-        problems.append(
-            "no well-formed `Review:` line. Every merged change is read by a "
-            "SEPARATE agent instance, and the PR body is the only record of it. "
-            "A `REJECT` verdict never passes -- fix the change, then get the "
-            "re-read."
-        )
-    elif len(review_lines) > 1:
-        problems.append(
-            f"{len(review_lines)} `Review:` lines. Keep the one that reflects the "
-            "verdict the PR is merging on."
-        )
-
-    return problems
+    return _check_lane(lines, lanes, lane_source) + _check_review(lines)
 
 
 def failure_report(problems: list[str], env: dict[str, str] | None = None) -> str:
+    """The remediation text.
+
+    Every example below is a deliberate NON-example: `lane:<name>` is not a
+    legal label and `<who read it>` is not a legal reviewer, so pasting this
+    report into a PR body fails the check it came from. A contract test pins
+    that.
+    """
     lanes, lane_source = allowed_lanes(env)
-    example_lane = lanes[0] if lanes else "lane:ci-infra"
     out = ["PR body contract FAILED:"]
     out += [f"  - {problem}" for problem in problems]
     out += [
         "",
-        "Add these two lines to the PR body, outside any code fence or HTML comment:",
+        # No literal "<pre>" in this text: an unterminated one swallows the
+        # rest of a body, which would make this report fail for the wrong
+        # reason instead of on its placeholders.
+        "Fill these two lines in, flush left, outside any code fence, HTML comment",
+        "or preformatted block -- the placeholders below do not pass as written:",
         "",
-        f"Lane: {example_lane}",
-        "Review: <who reviewed> (separate instance) - ACCEPT",
+        "Lane: lane:<name>",
+        "Review: <who read it> (separate instance) - ACCEPT",
         "",
         "Accepted `Review:` forms:",
-        "  Review: <who reviewed> (separate instance) - ACCEPT",
-        "  Review: <who reviewed> (separate instance) - ACCEPT WITH CHANGES",
-        "  Review: skipped - <(a) easily reverted pure docs/comment change, or "
-        "(b) PI instructed the skip>",
+        "  Review: <who read it> (separate instance) - ACCEPT",
+        "  Review: <who read it> (separate instance) - ACCEPT WITH CHANGES",
+        "  Review: skipped - (a) <easily reverted pure docs/comment change>",
+        "  Review: skipped - (b) <the PI instructed the skip>",
         "",
         f"Allowed lanes ({lane_source}):",
     ]

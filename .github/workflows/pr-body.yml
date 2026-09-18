@@ -8,6 +8,10 @@ name: pr-body
 # provenance a reader has. This job turns the two lines into a gate that binds
 # every author, Codex included.
 #
+# Mark this job a REQUIRED check in branch protection. Until it is required, a
+# red pr-body-contract does not stop a merge, and the gate is advisory only --
+# which is the state the prose rule was already in.
+#
 # The contract and its failure message live in scripts/ci/check_pr_body.py;
 # tests/contracts/test_pr_body_contract.py pins the accepted forms.
 
