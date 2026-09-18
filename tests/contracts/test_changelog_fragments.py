@@ -227,6 +227,87 @@ def test_the_repo_changelog_and_fragments_are_currently_valid():
     assert assemble.find_unreleased_index(lines) >= 0
 
 
+def test_a_fragment_body_may_not_forge_a_section_heading(workspace: Path):
+    """A `## ` line in a body would split the Unreleased block once assembled."""
+    (workspace / "changelog.d" / "12.fixed.md").write_text(
+        "### Fixed \u2014 headline (#12)\n\n## [1.8.0] - 2026-09-06\n\n- bullet.\n",
+        encoding="utf-8")
+    rc = assemble.main(["--changelog", str(workspace / "CHANGELOG.md"),
+                        "--fragments", str(workspace / "changelog.d"), "--check"])
+    assert rc == 1
+    with pytest.raises(assemble.FragmentError, match="line 3"):
+        assemble.validate_fragment_text(
+            "12.fixed.md", "### Fixed \u2014 h (#12)\n\n## [1.8.0] - 2026-09-06\n")
+
+
+def test_a_fragment_body_may_use_deeper_headings(workspace: Path):
+    (workspace / "changelog.d" / "12.fixed.md").write_text(
+        "### Fixed \u2014 headline (#12)\n\n#### Detail\n\n- bullet.\n",
+        encoding="utf-8")
+    rc = assemble.main(["--changelog", str(workspace / "CHANGELOG.md"),
+                        "--fragments", str(workspace / "changelog.d"), "--check"])
+    assert rc == 0
+
+
+def test_same_number_fragments_have_a_deterministic_order(workspace: Path):
+    _write_fragments(workspace, [(12, "fixed", "Fixed"), (12, "added", "Added")])
+    order = [path.name for path in assemble.iter_fragments(workspace / "changelog.d")]
+    assert order == ["12.added.md", "12.fixed.md"]
+
+
+def test_release_refuses_an_empty_unreleased_section(workspace: Path, capsys):
+    (workspace / "CHANGELOG.md").write_text(
+        "# Changelog\n\n## [Unreleased]\n\n## [1.8.0] - 2026-09-06\n\n- old.\n",
+        encoding="utf-8")
+    rc = assemble.main(["--changelog", str(workspace / "CHANGELOG.md"),
+                        "--fragments", str(workspace / "changelog.d"),
+                        "--release", "2.0.0", "--date", "2026-09-18"])
+    assert rc == 1
+    assert "Unreleased section is empty" in capsys.readouterr().err
+    assert "## [2.0.0]" not in (workspace / "CHANGELOG.md").read_text(encoding="utf-8")
+
+
+def test_release_and_unreleased_are_mutually_exclusive(workspace: Path):
+    with pytest.raises(SystemExit):
+        assemble.main(["--changelog", str(workspace / "CHANGELOG.md"),
+                       "--fragments", str(workspace / "changelog.d"),
+                       "--unreleased", "--release", "2.0.0"])
+
+
+def test_a_crlf_changelog_is_not_rewritten_wholesale(workspace: Path):
+    changelog = workspace / "CHANGELOG.md"
+    changelog.write_bytes(SYNTHETIC.replace("\n", "\r\n").encode("utf-8"))
+    _write_fragments(workspace, [(7, "changed", "Changed")])
+    assemble.main(["--changelog", str(changelog),
+                   "--fragments", str(workspace / "changelog.d")])
+    raw = changelog.read_bytes().decode("utf-8")
+    assert "\r\n" in raw
+    # Every line ending is still CRLF -- no lone LF survived the round trip.
+    assert raw.replace("\r\n", "") .count("\n") == 0
+    inserted = "\r\n### Changed \u2014 headline number 7 (#7)\r\n\r\n- bullet for 7.\r\n"
+    assert raw.replace(inserted, "", 1) == SYNTHETIC.replace("\n", "\r\n")
+
+
+def test_parse_labels_reads_the_json_array():
+    assert checker.parse_labels('["release", "lane:ci-infra"]') == ["release", "lane:ci-infra"]
+    assert checker.parse_labels("") == []
+    assert checker.parse_labels("[]") == []
+    with pytest.raises(ValueError):
+        checker.parse_labels("release")
+    with pytest.raises(ValueError):
+        checker.parse_labels('{"name": "release"}')
+
+
+def test_a_label_containing_a_comma_is_not_the_release_label(git_repo: Path):
+    """`pre,release` split on ',' used to yield a 'release' element."""
+    base = _git(git_repo, "rev-parse", "HEAD")
+    (git_repo / "CHANGELOG.md").write_text(SYNTHETIC + "\nmore\n", encoding="utf-8")
+    head = _commit(git_repo, "edit changelog")
+    labels = checker.parse_labels('["pre,release"]')
+    assert labels == ["pre,release"]
+    failures = _run_check(git_repo, base, head, labels=labels)
+    assert len(failures) == 1 and "without the 'release' label" in failures[0]
+
 # --------------------------------------------------------------------------
 # CI checker
 # --------------------------------------------------------------------------
@@ -346,7 +427,7 @@ def test_the_checker_cli_exits_nonzero_on_failure(git_repo: Path, monkeypatch):
     base = _git(git_repo, "rev-parse", "HEAD")
     (git_repo / "rfx" / "simulation.py").write_text("x = 5\n", encoding="utf-8")
     head = _commit(git_repo, "touch rfx")
-    monkeypatch.setenv("PR_LABELS", "")
+    monkeypatch.setenv("PR_LABELS_JSON", "[]")
     monkeypatch.setenv("PR_NUMBER", "77")
     rc = checker.main(["--base", base, "--head", head, "--repo", str(git_repo)])
     assert rc == 1
@@ -361,3 +442,61 @@ def test_the_workflow_invokes_the_checker_with_both_shas():
     assert "github.event.pull_request.base.sha" in workflow
     assert "github.event.pull_request.head.sha" in workflow
     assert "PR_LABELS" in workflow and "PR_NUMBER" in workflow
+
+
+def test_renaming_a_file_out_of_the_package_still_owes_a_fragment(git_repo: Path):
+    base = _git(git_repo, "rev-parse", "HEAD")
+    _git(git_repo, "mv", "rfx/simulation.py", "docs/simulation.py")
+    head = _commit(git_repo, "move a module out of rfx/")
+    statuses = _git(git_repo, "diff", "--name-status", f"{base}...{head}")
+    assert statuses.startswith("R")
+    failures = _run_check(git_repo, base, head)
+    assert len(failures) == 1 and "adds no changelog fragment" in failures[0]
+
+
+def test_renaming_a_file_into_the_package_owes_a_fragment(git_repo: Path):
+    base = _git(git_repo, "rev-parse", "HEAD")
+    _git(git_repo, "mv", "docs/guide.md", "rfx/guide.md")
+    head = _commit(git_repo, "move a file into rfx/")
+    failures = _run_check(git_repo, base, head)
+    assert len(failures) == 1 and "adds no changelog fragment" in failures[0]
+
+
+def test_a_rename_source_is_not_read_at_head(git_repo: Path):
+    """The old path is gone at head; reading it would crash the gate."""
+    (git_repo / "changelog.d" / "50.fixed.md").write_text(
+        _fragment(50, "fixed", "Fixed"), encoding="utf-8")
+    base = _commit(git_repo, "pre-existing fragment")
+    _git(git_repo, "mv", "changelog.d/50.fixed.md", "changelog.d/51.fixed.md")
+    (git_repo / "changelog.d" / "51.fixed.md").write_text(
+        _fragment(51, "fixed", "Fixed"), encoding="utf-8")
+    head = _commit(git_repo, "renumber a fragment")
+    assert _run_check(git_repo, base, head) == []
+
+
+def test_an_unreachable_base_is_a_message_not_a_traceback(git_repo: Path):
+    head = _git(git_repo, "rev-parse", "HEAD")
+    failures = _run_check(git_repo, "0" * 40, head)
+    assert len(failures) == 1
+    assert "fetch-depth: 0" in failures[0]
+
+
+def test_a_forged_section_heading_in_an_added_fragment_fails(git_repo: Path):
+    base = _git(git_repo, "rev-parse", "HEAD")
+    (git_repo / "rfx" / "simulation.py").write_text("x = 6\n", encoding="utf-8")
+    (git_repo / "changelog.d" / "77.fixed.md").write_text(
+        "### Fixed \u2014 headline (#77)\n\n## [1.8.0] - 2026-09-06\n", encoding="utf-8")
+    head = _commit(git_repo, "forged heading")
+    failures = _run_check(git_repo, base, head)
+    assert len(failures) == 1 and "may only use '###'" in failures[0]
+
+
+def test_the_workflow_names_the_job_and_passes_labels_as_json():
+    workflow = (REPO / ".github" / "workflows" / "changelog-fragment.yml").read_text(
+        encoding="utf-8")
+    assert "name: changelog-fragment" in workflow
+    assert "PR_LABELS_JSON: ${{ toJSON(github.event.pull_request.labels.*.name) }}" in workflow
+    # The comma form is gone, not merely unused (the comment still names it).
+    assert "PR_LABELS:" not in workflow
+    assert "${{ join(" not in workflow
+    assert "REQUIRED check in branch protection" in workflow

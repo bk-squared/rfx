@@ -35,6 +35,10 @@ matching the entries already in `CHANGELOG.md`; `breaking` renders as
 references on that line, so a copy-pasted fragment cannot file itself under
 someone else's number; extra references (`(#1041, #1055)`) are fine.
 
+Below the heading the body may use `###` and deeper, never `#` or `##`: a `## `
+line inside a fragment would split the Unreleased block once assembled, which
+is the one thing this design exists to make impossible.
+
 ## Assembling
 
 ```
@@ -61,5 +65,13 @@ released section. Stdlib only; no install.
   That is the assembling PR. Every other edit is rejected with the fragment
   filename to use instead.
 
-Malformed names and heading lines fail the same job, using the assembler's own
-validator so the gate and the release step cannot drift apart.
+Malformed names, heading lines and bodies fail the same job, using the
+assembler's own validator so the gate and the release step cannot drift apart.
+Renames count at both ends, so moving a file out of `rfx/` still owes an entry.
+
+Both rules bind only once `changelog-fragment` is a REQUIRED check in branch
+protection; until then a red run advises and nothing blocks. The `release`
+label is a convention with no access control — anyone who can label a PR can
+apply it, so it marks the release PR rather than authorising one. Nothing
+edits `CHANGELOG.md` automatically: the assembler is run by hand, by the
+release PR.

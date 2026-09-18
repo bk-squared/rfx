@@ -8,12 +8,14 @@ Three rules, all mechanical:
    removes the conflict class the file used to generate.
 2. A PR that changes anything under ``rfx/`` must ADD a fragment. Docs, tests,
    scripts and records may add one; they are not required to.
-3. Fragment names and heading lines must be well formed. The validator is the
-   assembler's own, imported here, so CI and the release step cannot drift.
+3. Fragment names, heading lines and bodies must be well formed. The validator
+   is the assembler's own, imported here, so CI and the release step cannot
+   drift.
 
 Inputs: ``--base``/``--head`` shas (the workflow passes the pull request's
-``base.sha`` and ``head.sha``), ``PR_LABELS`` (comma-separated) and the
-optional ``PR_NUMBER`` used to name the example file in the failure message.
+``base.sha`` and ``head.sha``), ``PR_LABELS_JSON`` (the JSON array GitHub's
+``toJSON(...labels.*.name)`` produces) and the optional ``PR_NUMBER`` used to
+name the example file in the failure message.
 
 Success is silent. Stdlib only.
 """
@@ -22,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
 import os
 import subprocess
 import sys
@@ -36,6 +39,9 @@ FRAGMENT_DIR = "changelog.d"
 RELEASE_LABEL = "release"
 GUARDED_PREFIX = "rfx/"
 
+#: ``(status, path, present_at_head)``.
+Entry = Tuple[str, str, bool]
+
 
 def _load_assembler():
     """Import the assembler by path: ``scripts/`` is not an importable package."""
@@ -47,23 +53,49 @@ def _load_assembler():
     return module
 
 
-def changed_paths(base: str, head: str, repo: Path) -> List[Tuple[str, str]]:
-    """``[(status, path), ...]`` for ``git diff --name-status base...head``.
+def parse_labels(raw: str) -> List[str]:
+    """Labels from GitHub's ``toJSON`` array.
 
-    A rename reports its destination -- that is the path the rules care about.
+    A comma-separated list cannot carry a label that contains a comma, and a
+    label named ``pre,release`` would have satisfied a substring-free split on
+    ``,`` -- the JSON form has no such reading.
+    """
+    raw = raw.strip()
+    if not raw:
+        return []
+    try:
+        values = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"PR_LABELS_JSON is not JSON: {exc}") from exc
+    if not isinstance(values, list):
+        raise ValueError("PR_LABELS_JSON must be a JSON array of label names")
+    return [str(value) for value in values]
+
+
+def changed_paths(base: str, head: str, repo: Path) -> List[Entry]:
+    """``[(status, path, present_at_head), ...]`` for ``base...head``.
+
+    A rename reports BOTH endpoints. Keeping only the destination let a PR move
+    a file out of ``rfx/`` -- ``R100 rfx/mod.py docs/mod.py`` -- and owe no
+    changelog entry for deleting a module.
     """
     out = subprocess.run(
         ["git", "diff", "--name-status", f"{base}...{head}"],
         cwd=repo, capture_output=True, text=True, check=True,
     ).stdout
-    entries: List[Tuple[str, str]] = []
+    entries: List[Entry] = []
     for line in out.splitlines():
         if not line.strip():
             continue
         fields = line.split("\t")
-        status = fields[0]
-        path = fields[-1]
-        entries.append((status[0], path))
+        status = fields[0][0]
+        if status in ("R", "C") and len(fields) >= 3:
+            source, destination = fields[1], fields[2]
+            # A rename's source is gone at head; a copy's source is still there.
+            entries.append((status, source, status == "C"))
+            entries.append((status, destination, True))
+        else:
+            entries.append((status, fields[-1], status != "D"))
     return entries
 
 
@@ -86,12 +118,18 @@ def check(base: str, head: str, labels: Sequence[str], repo: Path,
           pr_number: str = "") -> List[str]:
     """Return the failure messages; empty means the PR passes."""
     assemble = _load_assembler()
-    entries = changed_paths(base, head, repo)
+    try:
+        entries = changed_paths(base, head, repo)
+    except subprocess.CalledProcessError:
+        return [
+            f"cannot diff {base}...{head} in {repo}. Both commits must be "
+            f"present -- check out with fetch-depth: 0."
+        ]
     failures: List[str] = []
 
     example = f"{FRAGMENT_DIR}/{pr_number or '<PR number>'}.fixed.md"
 
-    touched_changelog = any(path == CHANGELOG for _, path in entries)
+    touched_changelog = any(path == CHANGELOG for _, path, _ in entries)
     if touched_changelog and RELEASE_LABEL not in labels:
         failures.append(
             f"{CHANGELOG} was modified without the '{RELEASE_LABEL}' label.\n"
@@ -102,9 +140,9 @@ def check(base: str, head: str, labels: Sequence[str], repo: Path,
             f"  into {CHANGELOG}, via scripts/changelog/assemble.py."
         )
 
-    added_fragments = [path for status, path in entries
+    added_fragments = [path for status, path, _ in entries
                        if status == "A" and _is_fragment(path)]
-    touched_package = any(path.startswith(GUARDED_PREFIX) for _, path in entries)
+    touched_package = any(path.startswith(GUARDED_PREFIX) for _, path, _ in entries)
     if touched_package and not added_fragments:
         failures.append(
             f"this PR changes {GUARDED_PREFIX} but adds no changelog fragment.\n"
@@ -115,9 +153,13 @@ def check(base: str, head: str, labels: Sequence[str], repo: Path,
             f"  deprecated, fixed, removed. See {FRAGMENT_DIR}/README.md."
         )
 
-    for status, path in entries:
-        if status == "D" or not path.startswith(FRAGMENT_DIR + "/"):
+    seen: set = set()
+    for _, path, present in entries:
+        if not present or path in seen:
             continue
+        if not path.startswith(FRAGMENT_DIR + "/"):
+            continue
+        seen.add(path)
         name = Path(path).name
         if name == "README.md":
             continue
@@ -140,8 +182,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--repo", type=Path, default=REPO_ROOT)
     args = parser.parse_args(argv)
 
-    labels = [label.strip() for label in os.environ.get("PR_LABELS", "").split(",")
-              if label.strip()]
+    try:
+        labels = parse_labels(os.environ.get("PR_LABELS_JSON", ""))
+    except ValueError as exc:
+        print(f"changelog fragment check failed: {exc}", file=sys.stderr)
+        return 1
     failures = check(args.base, args.head, labels, args.repo,
                      os.environ.get("PR_NUMBER", "").strip())
     if failures:

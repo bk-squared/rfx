@@ -7,6 +7,9 @@ name: changelog-fragment
 # scripts/changelog/assemble.py. This job enforces the two rules that keep that
 # true: no direct CHANGELOG.md edit outside a release PR, and a fragment for
 # every change under rfx/.
+#
+# Mark this job a REQUIRED check in branch protection — until it is required,
+# a red run only advises and both rules are convention, not enforcement.
 
 on:
   pull_request:
@@ -25,6 +28,7 @@ permissions:
 
 jobs:
   fragment:
+    name: changelog-fragment
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -43,7 +47,9 @@ jobs:
       - name: Require a changelog fragment
         # The checker is stdlib-only; nothing is installed.
         env:
-          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          # toJSON, not join(..., ','): a label may contain a comma, and a
+          # label named 'pre,release' would otherwise read as 'release'.
+          PR_LABELS_JSON: ${{ toJSON(github.event.pull_request.labels.*.name) }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           python scripts/ci/check_changelog_fragment.py \

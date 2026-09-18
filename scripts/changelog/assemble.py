@@ -50,6 +50,12 @@ TYPE_HEADINGS = {
 
 FRAGMENT_NAME_RE = re.compile(r"^(?P<number>[1-9][0-9]*)\.(?P<type>[a-z]+)\.md$")
 UNRELEASED_HEADING_RE = re.compile(r"^## \[Unreleased[^\]]*\]\s*$")
+SECTION_HEADING_RE = re.compile(r"^## ")
+#: A fragment body may only carry ``###`` and deeper. A ``#`` or ``##`` line
+#: inside a fragment would split the Unreleased block once assembled -- it can
+#: forge a released section heading -- which is exactly the #920 failure mode
+#: this design is supposed to make impossible.
+FORBIDDEN_BODY_HEADING_RE = re.compile(r"^#{1,2} ")
 VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.\-]+)?$")
 DATE_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 ISSUE_REF_RE = re.compile(r"#([1-9][0-9]*)")
@@ -63,6 +69,26 @@ FRESH_UNRELEASED_HEADING = "## [Unreleased]"
 
 class FragmentError(ValueError):
     """A fragment filename or first line does not follow the convention."""
+
+
+def read_text(path: Path) -> Tuple[str, str]:
+    """Return ``(text, newline)`` with line endings normalised to ``\\n``.
+
+    ``Path.read_text`` folds CRLF to LF and ``write_text`` would then write the
+    whole file back with LF, turning a one-entry insertion into a whole-file
+    rewrite on a CRLF checkout. Remember what was there and put it back.
+    """
+    raw = path.read_bytes().decode("utf-8")
+    if "\r\n" in raw:
+        return raw.replace("\r\n", "\n"), "\r\n"
+    return raw, "\n"
+
+
+def write_text(path: Path, text: str, newline: str = "\n") -> None:
+    """Write *text*, restoring *newline* as the line ending."""
+    if newline != "\n":
+        text = text.replace("\n", newline)
+    path.write_bytes(text.encode("utf-8"))
 
 
 def parse_fragment_name(name: str) -> Tuple[int, str]:
@@ -83,17 +109,19 @@ def parse_fragment_name(name: str) -> Tuple[int, str]:
 
 
 def validate_fragment_text(name: str, text: str) -> None:
-    """Raise :class:`FragmentError` unless *text* opens with a valid heading.
+    """Raise :class:`FragmentError` unless *text* is a well-formed fragment.
 
     The number in the filename must appear among the ``#NNN`` references on the
     heading line, so a copy-pasted fragment cannot file itself under someone
-    else's number. Extra references (``(#1041, #1055)``) are allowed.
+    else's number. Extra references (``(#1041, #1055)``) are allowed. Beyond
+    the heading the body may only use ``###`` and deeper.
     """
     number, kind = parse_fragment_name(name)
-    body = text.strip("\n")
+    body = text.replace("\r\n", "\n").strip("\n")
     if not body:
         raise FragmentError(f"{name}: fragment is empty")
-    first = body.split("\n", 1)[0].rstrip()
+    lines = body.split("\n")
+    first = lines[0].rstrip()
     expected = f"### {TYPE_HEADINGS[kind]} {EM_DASH} "
     if not first.startswith(expected):
         raise FragmentError(
@@ -107,12 +135,22 @@ def validate_fragment_text(name: str, text: str) -> None:
         raise FragmentError(
             f"{name}: heading must reference (#{number}); got {first!r}"
         )
+    for lineno, line in enumerate(lines[1:], start=2):
+        if FORBIDDEN_BODY_HEADING_RE.match(line):
+            raise FragmentError(
+                f"{name}: line {lineno} is a '#'/'##' heading ({line.rstrip()!r}). "
+                f"A fragment body may only use '###' and deeper -- a '## ' line "
+                f"would split the Unreleased block once assembled."
+            )
 
 
 def iter_fragments(fragment_dir: Path) -> List[Path]:
     """Every fragment in *fragment_dir*, newest number first.
 
-    ``README.md`` documents the directory and is not a fragment.
+    Two fragments may share a number (an issue and its PR); the type and then
+    the filename break the tie so the assembled order never depends on the
+    order the filesystem happened to list them in. ``README.md`` documents the
+    directory and is not a fragment.
     """
     if not fragment_dir.is_dir():
         return []
@@ -123,7 +161,12 @@ def iter_fragments(fragment_dir: Path) -> List[Path]:
     ]
     for path in paths:
         parse_fragment_name(path.name)
-    return sorted(paths, key=lambda p: parse_fragment_name(p.name)[0], reverse=True)
+
+    def sort_key(path: Path) -> Tuple[int, str, str]:
+        number, kind = parse_fragment_name(path.name)
+        return (-number, kind, path.name)
+
+    return sorted(paths, key=sort_key)
 
 
 def validate_all(fragment_dir: Path) -> List[str]:
@@ -138,7 +181,7 @@ def validate_all(fragment_dir: Path) -> List[str]:
             problems.append(f"{path.name}: fragments must be .md files")
             continue
         try:
-            validate_fragment_text(path.name, path.read_text(encoding="utf-8"))
+            validate_fragment_text(path.name, read_text(path)[0])
         except FragmentError as exc:
             problems.append(str(exc))
     return problems
@@ -155,6 +198,17 @@ def find_unreleased_index(lines: Sequence[str]) -> int:
     )
 
 
+def unreleased_is_empty(changelog_text: str) -> bool:
+    """True when nothing stands between Unreleased and the next ``## ``."""
+    lines = changelog_text.split("\n")
+    for line in lines[find_unreleased_index(lines) + 1:]:
+        if SECTION_HEADING_RE.match(line):
+            return True
+        if line.strip():
+            return False
+    return True
+
+
 def insert_fragments(changelog_text: str, fragments: Iterable[Tuple[str, str]]) -> str:
     """Return *changelog_text* with *fragments* under the Unreleased heading.
 
@@ -165,7 +219,7 @@ def insert_fragments(changelog_text: str, fragments: Iterable[Tuple[str, str]]) 
     for name, text in fragments:
         validate_fragment_text(name, text)
         rendered.append("")
-        rendered.extend(text.strip("\n").split("\n"))
+        rendered.extend(text.replace("\r\n", "\n").strip("\n").split("\n"))
     lines = changelog_text.split("\n")
     index = find_unreleased_index(lines)
     if not rendered:
@@ -183,6 +237,11 @@ def cut_release(changelog_text: str, version: str, date: str) -> str:
         raise FragmentError(f"--release {version!r} is not a SemVer X.Y.Z version")
     if not DATE_RE.match(date):
         raise FragmentError(f"--date {date!r} is not YYYY-MM-DD")
+    if unreleased_is_empty(changelog_text):
+        raise FragmentError(
+            f"the Unreleased section is empty; refusing to cut {version} from it. "
+            f"Add the fragments this release contains first."
+        )
     lines = changelog_text.split("\n")
     index = find_unreleased_index(lines)
     released = RELEASED_HEADING.format(version=version, date=date)
@@ -210,9 +269,9 @@ def run(
     dry_run: bool = False,
 ) -> str:
     """Do the assembly. Returns the diff; writes unless *dry_run*."""
-    before = changelog.read_text(encoding="utf-8")
+    before, newline = read_text(changelog)
     paths = iter_fragments(fragment_dir)
-    loaded = [(path.name, path.read_text(encoding="utf-8")) for path in paths]
+    loaded = [(path.name, read_text(path)[0]) for path in paths]
     after = insert_fragments(before, loaded)
     if release:
         after = cut_release(after, release, date or _today())
@@ -220,7 +279,7 @@ def run(
     if dry_run:
         return diff
     if after != before:
-        changelog.write_text(after, encoding="utf-8")
+        write_text(changelog, after, newline)
     for path in paths:
         path.unlink()
     return diff
@@ -234,11 +293,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("--changelog", type=Path, default=DEFAULT_CHANGELOG)
     parser.add_argument("--fragments", type=Path, default=DEFAULT_FRAGMENT_DIR)
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--unreleased", action="store_true",
         help="move fragments under the Unreleased heading (the default)",
     )
-    parser.add_argument(
+    mode.add_argument(
         "--release", metavar="X.Y.Z", default="",
         help="also rename Unreleased to this version and open a fresh one",
     )
@@ -256,7 +316,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     problems = validate_all(args.fragments)
     if args.check:
         try:
-            find_unreleased_index(args.changelog.read_text(encoding="utf-8").split("\n"))
+            find_unreleased_index(read_text(args.changelog)[0].split("\n"))
         except FragmentError as exc:
             problems.append(str(exc))
         if problems:
