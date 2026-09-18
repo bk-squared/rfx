@@ -38,29 +38,6 @@ face. Wavelength-scale clearance between the dielectric and the absorber avoids
 it.
 → [#1066](https://github.com/bk-squared/rfx/issues/1066)
 
-## Run termination
-
-**`until_decay`'s settling witness can pass without measuring the structure.**
-If the only probe record (or the worst-selected one) sits on a source cell, its
-peak is the drive pulse itself, so `end/peak` measures the source turning off and
-reports a comfortable margin while the structure is still ringing. Place at least
-one probe inside the structure you are measuring — in the resonator, in the
-design region, on the guided path — and read `Result.settling_witness` per record
-rather than trusting the summary.
-→ [#1090](https://github.com/bk-squared/rfx/issues/1090)
-
-## Automatic differentiation
-
-**Gradients through subpixel smoothing with respect to shape parameters return
-NaN at interior sample points.** The box and cylinder signed-distance functions
-clamp before a square root, so the derivative at zero is NaN even though the
-finite difference is finite. The production design-variable path
-(`kottke_inv_eps_from_occupancy`, what `optimize()` uses) does not go through
-these functions and is unaffected; differentiating a `Box` corner or a
-`Cylinder` radius through `compute_smoothed_eps` does. Sphere radii are finite
-and finite-difference-validated.
-→ [#1085](https://github.com/bk-squared/rfx/issues/1085)
-
 ## Ports and extraction
 
 **The coax→microstrip transition over-reads power by about a factor of three.**
