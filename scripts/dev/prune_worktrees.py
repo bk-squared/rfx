@@ -16,6 +16,15 @@ Python 3.10, standard library, ``git``, and optionally ``gh`` for pull-request
 state.  ``git worktree list`` already knows every worktree of this repository
 wherever it lives on disk, so no directory is ever scanned.
 
+Why the remote branch is the primary test: this repository squash-merges and
+has ``delete_branch_on_merge=false``, so the remote branch of a merged pull
+request stays on origin and still contains every commit the branch had when it
+merged.  Asking whether ``origin/<branch>`` contains the local tip therefore
+answers the question that matters -- is anything here only here -- and catches
+the commit made after the merge, which no squashed ancestry ever would.  The
+"no other ref contains the tip" test is the backstop for the cases that
+assumption does not cover, such as a remote branch deleted by hand.
+
 What is never removed, on any path:
 
 * a branch whose tip is not on the remote and is not an ancestor of the main
