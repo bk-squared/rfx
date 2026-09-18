@@ -580,3 +580,43 @@ def test_owner_lookup_failure_fails_closed(repo, gh_stub):
     assert applied.returncode == 2, applied.stdout
     for path in paths.values():
         assert os.path.isdir(path)
+
+
+@pytest.mark.parametrize("bad", ["2026", "20", "yesterday", "2026-13-45"])
+def test_a_bare_year_is_refused_rather_than_read_as_an_epoch(repo, bad):
+    """`--now 2026` as epoch seconds would silently mean 1970-01-01T00:33:46."""
+    proc = _run_script(repo["clone"], repo["env"], "--no-gh", "--now", bad)
+    assert proc.returncode == 2, proc.stdout
+    assert "not an ISO 8601 timestamp" in proc.stderr
+
+
+def test_now_still_accepts_a_real_epoch(repo):
+    """OLD_DATE as epoch seconds: the pushed worktree is exactly 0 days old."""
+    env, clone, paths = repo["env"], repo["clone"], repo["paths"]
+    proc = _run_script(clone, env, "--no-gh", "--now", "1577934245")
+    assert proc.returncode == 0, proc.stderr
+    row = _table(proc.stdout)[paths["pushed"]]
+    assert row["class"] == "pushed-fresh", proc.stdout
+    assert row["age"] == "0d"
+
+
+def test_archive_does_not_call_an_unknown_age_new(repo):
+    """The --archive path must not report "newer than 7d" for a date it lacks."""
+    mod = _module()
+    wt = mod.Worktree(path=repo["paths"]["unpushed"], head="0" * 40, branch="feat/unpushed")
+    rec = mod.classify(
+        str(repo["clone"]),
+        wt,
+        main_ref="origin/main",
+        days=7.0,
+        pr_lookup=None,
+        archive=True,
+        remove_ignored=False,
+        now=dt.datetime.now(dt.timezone.utc),
+    )
+    assert rec.age_days is None
+    assert rec.klass == mod.CLASS_UNPUSHED
+    assert "age unknown" in rec.action
+    assert "newer than" not in rec.action
+    assert rec.push_branch is True
+    assert rec.remove_worktree is False

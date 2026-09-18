@@ -380,6 +380,24 @@ def parse_commit_stamp(stamp: str) -> Optional[dt.datetime]:
         return None
 
 
+def parse_now(text: str) -> Optional[dt.datetime]:
+    """Read the ``--now`` override, which is a timestamp and not an epoch typo.
+
+    ``parse_commit_stamp`` reads epoch seconds first, because that is what git
+    is asked for. Applied to what a person types, that turns ``--now 2026``
+    into 1970-01-01T00:33:46 and reports it as success. A bare run of digits
+    too short to be a real epoch is a typo, so it is refused with the message
+    the flag advertises.
+    """
+    text = text.strip()
+    if text.isdigit() and len(text) < 8:
+        return None
+    parsed = parse_commit_stamp(text)
+    if parsed is not None and parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=dt.timezone.utc)
+    return parsed
+
+
 def commit_time(repo: str, rev: str) -> Optional[dt.datetime]:
     proc = git(repo, "log", "-1", "--format=%ct", rev, check=False)
     if proc.returncode != 0:
@@ -499,6 +517,9 @@ def classify(
             elif old:
                 rec.klass = CLASS_PUSHED_IDLE
                 rec.action = "push to {}, keep (no PR state)".format(remote)
+            elif age is None:
+                rec.klass = CLASS_UNPUSHED
+                rec.action = "push to {}, keep worktree (commit age unknown)".format(remote)
             else:
                 rec.klass = CLASS_UNPUSHED
                 rec.action = "push to {}, keep worktree (newer than {:g}d)".format(remote, days)
@@ -689,13 +710,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     pr_lookup = None if args.no_gh else PrLookup(repo=repo)
     now = dt.datetime.now(dt.timezone.utc)
     if args.now:
-        now = parse_commit_stamp(args.now)
+        now = parse_now(args.now)
         if now is None:
             print("error: --now is not an ISO 8601 timestamp: {}".format(args.now),
                   file=sys.stderr)
             return 2
-        if now.tzinfo is None:
-            now = now.replace(tzinfo=dt.timezone.utc)
     records = []
     for wt in trees:
         if wt.prunable or wt.bare:
