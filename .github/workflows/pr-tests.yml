@@ -7,6 +7,11 @@ name: pr-tests
 # runner, so this job is deliberately scoped to the affected surface to stay
 # fast and memory-safe. Mark this job a REQUIRED check in branch protection so
 # the tripwire/regression-locks gate merges.
+#
+# Path-aware since 2026-09-18: the `changes` job decides whether this event
+# touched anything the shards can observe, and the heavy jobs skip their own
+# steps when it did not. Their NAMES and their SUCCESS are unchanged, which is
+# what branch protection reads. A push to main is never skipped.
 
 on:
   push:
@@ -25,22 +30,81 @@ permissions:
   contents: read
 
 jobs:
+  # Which lanes this event needs. Measured 2026-09-18: three pull requests that
+  # changed no file under rfx/, tests/ or validation/ still ran the six-shard
+  # fast suite on every push — ten pr-tests runs of roughly 35 minutes each, for
+  # changes confined to .github/, scripts/ and docs/agent/. The shards cannot
+  # observe those files.
+  #
+  # The two heavy jobs below KEEP THEIR NAMES and still run on every event, so
+  # the contexts main's branch protection requires (`guards-and-preflight`,
+  # `fast-suite (1)`..`(6)`) are always reported. When this job says the diff is
+  # not code, each of their steps after checkout is skipped individually and the
+  # job ends SUCCESS with a line in the log saying why.
+  #
+  # Step-level `if:`, not job-level, is deliberate. GitHub's "Troubleshooting
+  # required status checks" says a job skipped by a conditional reports Success,
+  # so a job-level `if:` would also satisfy the required context — but a skipped
+  # job shows no steps and no reason, and the same page says a skipped WORKFLOW
+  # stays Pending and blocks the merge, which is a one-character edit away
+  # (`paths:` filters) from where we are. Keeping the jobs alive and skipping
+  # their steps keeps the reason in the log and keeps that trap shut.
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code_changed: ${{ steps.classify.outputs.code_changed }}
+    steps:
+      - name: Check out repository
+        # fetch-depth: 0 — the classifier diffs base.sha...head.sha, and a
+        # shallow clone has neither commit's history to find a merge base in.
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Classify the changed paths
+        id: classify
+        # Every input arrives through the environment. The decision is
+        # scripts/ci/changed_paths.py (stdlib, unit-tested); the shell around it
+        # is scripts/ci/classify_changes.sh, which answers `true` for any push
+        # to main and for any diff it could not compute.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
+        run: bash scripts/ci/classify_changes.sh
+
   guards-and-preflight:
+    needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Nothing to run — say so and finish green
+        if: needs.changes.outputs.code_changed == 'false'
+        run: |
+          echo 'The diff touches no file under rfx/, tests/, validation/ or'
+          echo 'examples/, and no build or lane configuration, so nothing in'
+          echo 'this job can observe it. The changes job above lists the paths;'
+          echo 'the classifier is scripts/ci/changed_paths.py.'
+
       - name: Set up Python
+        if: needs.changes.outputs.code_changed == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
 
       - name: Install package with dev dependencies
+        if: needs.changes.outputs.code_changed == 'true'
         run: pip install -e ".[dev]"
 
       - name: Guard + preflight suite (incl. upml/Floquet regression locks)
+        if: needs.changes.outputs.code_changed == 'true'
         # -o addopts="" overrides the pyproject default marker filter so a
         # future slow/gpu mark inside these files cannot silently deselect
         # tests from the required gate; the explicit -m "not gpu" keeps the
@@ -67,6 +131,7 @@ jobs:
             -m "not gpu" --strict-markers $FILES
 
       - name: Conformal stale-check tripwire (slow-marked; xfails today, HARD-FAILS when the NaN is fixed)
+        if: needs.changes.outputs.code_changed == 'true'
         run: |
           python -m pytest -q -p no:cacheprovider -o addopts="" \
             "tests/unit/geometry/test_subpixel_pec.py::test_mesh_convergence_s21_with_conformal_pec"
@@ -88,6 +153,7 @@ jobs:
   # upgrades first. The 3.10 entry stays: it is what the published floor and
   # the weekly validation lane run.
   fast-suite:
+    needs: changes
     # The job NAME must stay `fast-suite (<group>)` on the 3.10 entry: those are
     # the contexts main's branch protection requires, and a matrix that renames
     # them to `fast-suite (3.10, 1)` leaves every required check permanently
@@ -115,18 +181,31 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Nothing to run — say so and finish green
+        if: needs.changes.outputs.code_changed == 'false'
+        run: |
+          echo 'The diff touches no file under rfx/, tests/, validation/ or'
+          echo 'examples/, and no build or lane configuration, so this shard'
+          echo 'would collect the same tests as the last run on main. The'
+          echo 'changes job above lists the paths; the classifier is'
+          echo 'scripts/ci/changed_paths.py.'
+
       - name: Set up Python ${{ matrix.python-version }}
+        if: needs.changes.outputs.code_changed == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Install package with dev dependencies
+        if: needs.changes.outputs.code_changed == 'true'
         run: pip install -e ".[dev,cad]"   # cad = trimesh/rtree/cascadio for the MeshShape import tests (#358)
 
       - name: Record the resolved JAX/numpy versions (the pin this lane really has)
+        if: needs.changes.outputs.code_changed == 'true'
         run: python -c "import jax, jaxlib, numpy; print('jax', jax.__version__, 'jaxlib', jaxlib.__version__, 'numpy', numpy.__version__)"
 
       - name: Fast suite — Python ${{ matrix.python-version }}, shard ${{ matrix.group }} of 6
+        if: needs.changes.outputs.code_changed == 'true'
         env:
           # issue #594 remedy (a): the same per-test RSS delta/peak reporter +
           # live VmHWM sampler the weekly lane got in PR #592 (issue #545).

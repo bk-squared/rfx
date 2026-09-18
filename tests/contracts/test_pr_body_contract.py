@@ -573,22 +573,47 @@ def test_workflow_passes_the_body_through_env() -> None:
     assert "${{ github.event.pull_request.body }}" in env_values
 
 
-def test_the_lint_workflow_covers_this_gates_own_script() -> None:
+#: The ruff scope CI runs: the packages under test, plus every script that gates
+#: a merge. The rest of `scripts/` has 197 findings under this selector and is
+#: its own cleanup -- but an unlinted gate is a gate nobody notices breaking, so
+#: a helper that can fail a PR is never outside the scope.
+RUFF_SCOPE = (
+    "rfx/",
+    "tests/",
+    "validation/",
+    "scripts/ci/",
+    "scripts/dev/",
+    "scripts/changelog/",
+)
+
+
+def test_the_lint_scope_covers_this_gates_own_script() -> None:
     """An unlinted CI helper is one nobody notices breaking.
 
-    `scripts/` as a whole is out of the ruff scope and has its own backlog;
-    `scripts/ci/` is in, and this pins it so the path is not dropped from the
-    lint line by a later edit.
+    The line lives in `scripts/ci/lint.sh` since 2026-09-18, not in the workflow:
+    a gate whose only copy is inline yaml cannot be reproduced locally, which is
+    how two red checks on one PR became un-debuggable. `lint.yml` calls the
+    script; this pins what the script lints.
     """
-    lint = (REPO / ".github" / "workflows" / "lint.yml").read_text(encoding="utf-8")
+    script = REPO / "scripts" / "ci" / "lint.sh"
+    assert script.is_file(), f"missing {script}"
     ruff_lines = [
-        line for line in lint.splitlines() if "ruff check" in line and "rfx/" in line
+        line
+        for line in script.read_text(encoding="utf-8").splitlines()
+        if "ruff check" in line and not line.lstrip().startswith("#")
     ]
-    assert ruff_lines, "the lint workflow no longer runs ruff over rfx/"
-    for line in ruff_lines:
-        assert "scripts/ci/" in line, (
-            f"scripts/ci/ dropped from the CI ruff scope: {line.strip()!r}"
+    assert len(ruff_lines) == 1, f"expected one ruff invocation, got {ruff_lines}"
+    for path in RUFF_SCOPE:
+        assert path in ruff_lines[0], (
+            f"{path} dropped from the CI ruff scope: {ruff_lines[0].strip()!r}"
         )
+
+
+def test_the_lint_workflow_calls_the_script() -> None:
+    """The workflow must not grow its own copy of the ruff line again."""
+    lint = (REPO / ".github" / "workflows" / "lint.yml").read_text(encoding="utf-8")
+    assert "scripts/ci/lint.sh" in lint
+    assert "ruff check" not in lint, "the ruff line is inline in the workflow again"
 
 
 def test_workflow_asks_to_be_a_required_check() -> None:
