@@ -108,7 +108,11 @@ if bad:
 PYEOF
 
 begin 5
-"$PYTHON" -m pytest tests/contracts -q -x || fail
+# The same flags the required gate in pr-tests.yml uses. Without `-o addopts=""`
+# the local run silently collects two fewer tests than CI does, which is the
+# local-is-weaker-than-CI gap these scripts exist to close. Costs about 27 s.
+"$PYTHON" -m pytest tests/contracts -q -x \
+  -o addopts="" -m "not gpu" --strict-markers || fail
 
 echo
 echo "all ${#STEP_NAMES[@]} steps passed"

@@ -116,14 +116,31 @@ jobs:
       # the whole tree) when it is. Roughly 5 minutes.
       - name: Contract tests — the gates the shards are not running today
         if: needs.changes.outputs.code_changed == 'false'
+        # Same flags as the guard suite below, for the same reason: this is the
+        # ONLY test run on the not-code branch, so it is a required gate, and
+        # `-o addopts=""` overrides the pyproject marker filter so a future
+        # slow/slow_physics mark inside tests/contracts cannot silently deselect
+        # from it. (Two gallery-precompute tests are slow-marked today; they add
+        # 27 s.) The explicit -m "not gpu" keeps the job CPU-safe, and
+        # --strict-markers turns a marker typo into an error. The collect-count
+        # floor catches the other way a gate goes quiet: a path that stopped
+        # matching collects nothing and passes.
         run: |
+          set -e
           echo 'The diff touches no file under rfx/, tests/, validation/ or'
           echo 'examples/, and no build or lane configuration, so the six'
           echo 'physics shards have nothing to observe. The contract tests'
           echo 'still run: they pin docs/, scripts/ and these workflows, which'
           echo 'IS what this diff changed. The changes job above lists the'
           echo 'paths; the classifier is scripts/ci/changed_paths.py.'
-          python -m pytest tests/contracts -q -ra -p no:cacheprovider
+          collected=$(python -m pytest --collect-only -q -o addopts="" -m "not gpu" tests/contracts | grep -c "::" || true)
+          echo "collected $collected contract tests"
+          if [ "$collected" -lt 500 ]; then
+            echo "FAIL: tests/contracts collected only $collected tests (<500) — silent deselection?"
+            exit 1
+          fi
+          python -m pytest tests/contracts -q -ra -p no:cacheprovider \
+            -o addopts="" -m "not gpu" --strict-markers
 
       # `!= 'false'`, not `== 'true'`: an empty or unexpected output — a
       # classify step that died after its checkout, a future refactor that

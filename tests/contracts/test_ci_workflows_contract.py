@@ -274,6 +274,78 @@ def test_a_skipped_job_says_why_in_its_log(job: str) -> None:
 
 
 # --------------------------------------------------------------------------
+# Every required gate clears the marker filter
+# --------------------------------------------------------------------------
+
+#: `pyproject.toml` sets `addopts = "-m 'not gpu and not slow and not slow_physics'"`.
+#: A step that runs a REQUIRED gate has to override it: otherwise marking one
+#: test `slow` quietly removes it from a gate that is still reported green, and
+#: nobody finds out. The explicit `-m "not gpu"` puts the CPU-safety half back,
+#: and `--strict-markers` makes a marker typo an error instead of a no-op.
+GATE_PYTEST_FLAGS = ('-o addopts=""', '-m "not gpu"', "--strict-markers")
+
+
+#: A quoted token holding both a path separator and `::` is a single test id --
+#: `"tests/unit/geometry/test_subpixel_pec.py::test_mesh_convergence..."`. Not
+#: the bare `"::"` that the collect-count floors grep for, which has no slash.
+_NODE_ID = re.compile(r'"[^"]*/[^"]*::[^"]*"')
+
+
+def _gate_pytest_steps() -> list[dict]:
+    """Steps in `guards-and-preflight` that run pytest over a COLLECTION.
+
+    A step targeting one nodeid is a tripwire on a single named test, not a gate
+    over a collection, so the marker filter cannot hide anything inside it. The
+    two that run a directory or a file list are the required gates.
+    """
+    steps = load(PR_TESTS)["jobs"]["guards-and-preflight"]["steps"]
+    return [
+        step
+        for step in steps
+        if "python -m pytest" in str(step.get("run", ""))
+        and not _NODE_ID.search(str(step.get("run", "")))
+    ]
+
+
+def test_both_branches_have_a_gate_that_runs_pytest() -> None:
+    """One for the not-code branch, one for the code branch."""
+    steps = _gate_pytest_steps()
+    assert len(steps) == 2, [s.get("name") for s in steps]
+    conditions = {str(step.get("if", "")).strip() for step in steps}
+    assert conditions == {WORK_IF, SKIP_IF}, conditions
+
+
+@pytest.mark.parametrize("flag", GATE_PYTEST_FLAGS)
+def test_every_required_gate_overrides_the_marker_filter(flag: str) -> None:
+    """Both gates, not only the one that happened to be written first.
+
+    The contract-test step was added later and omitted these, so a future `slow`
+    mark inside `tests/contracts` would have deselected itself out of the ONLY
+    test run on a docs-only PR while the check stayed green.
+    """
+    missing = [
+        step.get("name", "?")
+        for step in _gate_pytest_steps()
+        if flag not in str(step.get("run", ""))
+    ]
+    assert not missing, f"{flag} missing from required gate step(s): {missing}"
+
+
+def test_every_required_gate_has_a_collect_count_floor() -> None:
+    """The other way a gate goes quiet: it collects nothing and passes.
+
+    A path that stopped matching, or a conftest that errors into an empty
+    collection, exits 0 from pytest. The floor makes that a failure.
+    """
+    for step in _gate_pytest_steps():
+        run = str(step.get("run", ""))
+        assert "--collect-only" in run, f"{step.get('name')!r} has no collect count"
+        assert re.search(r'-lt\s+"?\d+', run), (
+            f"{step.get('name')!r} counts but never compares the count: {run}"
+        )
+
+
+# --------------------------------------------------------------------------
 # The contract tests run on BOTH branches of the verdict
 # --------------------------------------------------------------------------
 
