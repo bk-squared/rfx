@@ -91,6 +91,10 @@ REVIEW_SKIPPED_RE = re.compile(r"^Review: skipped " + _DASH + r" \((?:a|b)\) .+$
 # missing verdict. Worth naming, because "no `Review:` line" is a baffling
 # thing to read on a body that visibly has one.
 REVIEW_SHAPE_RE = re.compile(r"^Review: .*\(separate instance\)")
+# An unedited template stub, as opposed to a name that merely CONTAINS angle
+# brackets: `claude <noreply@anthropic.com>` is a reviewer, `<who read it>` is
+# not. Only a who-field that is nothing but a bracketed span is a placeholder.
+PLACEHOLDER_WHO_RE = re.compile(r"^<[^<>]*>$")
 
 # Anything that is invisible once GitHub renders the body cannot carry the
 # claim. Comments (terminated or not), fenced code, and <pre> blocks all
@@ -101,12 +105,12 @@ _OPEN_COMMENT_RE = re.compile(r"<!--.*\Z", re.DOTALL)
 _PRE_RE = re.compile(r"<pre\b[^>]*>.*?(?:</pre>|\Z)", re.DOTALL | re.IGNORECASE)
 _FENCE_RE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
 
-# `<!--` inside an inline code span is literal text on render, not the start of
-# a comment. Without this the gate eats the tail of any body that DESCRIBES the
-# gate -- which is exactly how it first behaved on its own PR: one backticked
-# `<!--` in a sentence about unterminated comments swallowed the Lane and
-# Review lines 40 lines below it. Spans are single-line so a stray backtick
-# cannot run away across the whole body.
+# `<!--` inside an inline code span or a fenced block is literal text on
+# render, not the start of a comment. Without this the gate eats the tail of
+# any body that DESCRIBES the gate -- which is exactly how it first behaved on
+# its own PR: one backticked `<!--` in a sentence about unterminated comments
+# swallowed the Lane and Review lines 40 lines below it. Inline spans are
+# single-line so a stray backtick cannot run away across the whole body.
 _INLINE_CODE_RE = re.compile(r"(?<!`)(`+)(?!`)([^\n]+?)(?<!`)\1(?!`)")
 
 # A line that carries the keyword but not at the left margin: a list item, a
@@ -117,25 +121,60 @@ _TRAILING_BOLD_RE = re.compile(r"[*_\s]+$")
 
 
 def _mask_inline_code(text: str) -> str:
-    """*text* with inline code spans blanked, character count preserved.
+    """*text* with inline code spans blanked, character count preserved."""
+    return _INLINE_CODE_RE.sub(lambda m: " " * len(m.group(0)), text)
+
+
+def _mask_fenced(text: str) -> str:
+    """*text* with fenced code blocks blanked, character count preserved.
+
+    Same reason as inline code, one level up: a `<!--` or a `<pre>` shown
+    inside a fence is an EXAMPLE, not markup, and an unterminated one must not
+    swallow the lines below the closing fence. Delimiters are masked too, so a
+    fence whose content is an unclosed comment cannot leak either marker.
+    """
+    chars = list(text)
+    offset = 0
+    fence: str | None = None
+    for line in text.split("\n"):
+        marker = _FENCE_RE.match(line.rstrip())
+        masked = fence is not None
+        if marker is not None:
+            token = marker.group(1)[0]
+            if fence is None:
+                fence, masked = token, True
+            elif token == fence:
+                fence, masked = None, True
+        if masked:
+            for index in range(offset, offset + len(line)):
+                if chars[index] != "\n":
+                    chars[index] = " "
+        offset += len(line) + 1
+    return "".join(chars)
+
+
+def _mask_quoted(text: str) -> str:
+    """*text* with everything that renders as literal code blanked out.
 
     Used only to LOCATE comments and ``<pre>`` blocks; the offsets have to keep
     lining up with the real text, so spans are overwritten rather than removed.
     """
-    return _INLINE_CODE_RE.sub(lambda m: " " * len(m.group(0)), text)
+    return _mask_inline_code(_mask_fenced(text))
 
 
 def strip_invisible(body: str) -> str:
     """Blank out HTML comments and ``<pre>`` blocks, keeping the line count.
 
-    Each stage looks for its markers in a copy whose inline code spans are
-    masked, then blanks the matching range of the real text. Blanking with
-    spaces rather than deleting keeps every later offset and every newline
-    where it was, so fence pairing is unaffected.
+    Each stage looks for its markers in a copy where fenced blocks and inline
+    code spans are masked, then blanks the matching range of the real text.
+    Blanking with spaces rather than deleting keeps every later offset and
+    every newline where it was, so the fence pairing that ``body_lines`` does
+    on the RESULT is unaffected -- masking happens only in the throwaway copy
+    used to find the markers.
     """
     text = body
     for pattern in (_COMMENT_RE, _PRE_RE, _OPEN_COMMENT_RE):
-        masked = _mask_inline_code(text)
+        masked = _mask_quoted(text)
         chars = list(text)
         for match in pattern.finditer(masked):
             for index in range(match.start(), match.end()):
@@ -242,7 +281,7 @@ def _check_review(lines: list[str]) -> list[str]:
         accept = REVIEW_ACCEPT_RE.match(line)
         if accept is not None:
             who = accept.group("who")
-            if "<" in who or ">" in who:
+            if PLACEHOLDER_WHO_RE.match(who.strip()):
                 placeholder.append(line)
             else:
                 valid.append(line)

@@ -219,6 +219,64 @@ def test_angle_bracket_placeholders_do_not_pass(review: str) -> None:
     assert "placeholder" in problems[0]
 
 
+@pytest.mark.parametrize(
+    "review",
+    [
+        "Review: claude <noreply@anthropic.com> (separate instance) - ACCEPT",
+        "Review: Claude Opus 5 <noreply@anthropic.com> (separate instance) \u2014 ACCEPT",
+        "Review: opus <1M context> (separate instance) - ACCEPT WITH CHANGES",
+    ],
+)
+def test_a_name_that_merely_contains_angle_brackets_is_not_a_placeholder(
+    review: str,
+) -> None:
+    """`claude <noreply@anthropic.com>` is a reviewer; `<who read it>` is not.
+
+    Only a who-field that is nothing BUT a bracketed span is an unedited stub.
+    Rejecting every angle bracket turned the repo's own commit-trailer spelling
+    of a reviewer into a failure.
+    """
+    assert cpb.check(body("Lane: lane:ci-infra", review), ENV) == [], review
+
+
+@pytest.mark.parametrize(
+    "shown",
+    ["<!-- note to self", "<pre>", "<pre lang=\"text\">", "<!--"],
+    ids=["open-comment", "pre", "pre-with-info", "bare-open-comment"],
+)
+def test_an_unterminated_marker_inside_a_fence_does_not_swallow_the_body(
+    shown: str,
+) -> None:
+    """A fence SHOWS markup; it does not apply it.
+
+    A body that demonstrates an unterminated comment or an unclosed `<pre>`
+    inside a code fence still has its own Lane and Review lines below the
+    closing fence, and they render. Masking inline code alone was not enough:
+    the marker inside the fence swallowed everything after it.
+    """
+    text = body(
+        "For example:",
+        "```",
+        shown,
+        "```",
+        "",
+        "Lane: lane:ci-infra",
+        ACCEPT,
+    )
+    assert cpb.check(text, ENV) == [], shown
+
+
+def test_a_tilde_fence_hides_markers_too() -> None:
+    text = body("~~~", "<!-- note", "~~~", "", "Lane: lane:ci-infra", ACCEPT)
+    assert cpb.check(text, ENV) == []
+
+
+def test_a_real_unterminated_comment_outside_a_fence_still_swallows() -> None:
+    """The fence masking must not disarm the rule it was narrowing."""
+    text = body("<!-- note to self", "", "Lane: lane:ci-infra", ACCEPT)
+    assert len(cpb.check(text, ENV)) == 2
+
+
 def test_the_remediation_text_is_not_itself_a_passing_body() -> None:
     """Pasting the failure message into a PR body must fail the same check.
 
