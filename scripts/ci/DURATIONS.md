@@ -100,6 +100,25 @@ real collection, with the four `--ignore` flags both workflows pass:
 - slow (`--splits 4`, `-m "not gpu and not highmem"`, 10435 tests): 69.9 / 81.4 / 83.1 / 90.8 min
   against the 120-minute cap.
 
+Then the reading that step 5 calls the check. This pull request's own fast lane, groups 1
+through 6, against the prediction above in group order:
+
+| group | tests | predicted | observed | difference |
+|---|---|---|---|---|
+| 1 | 4258 | 26.0 min | 20.3 min | -5.7 |
+| 2 | 1808 | 25.7 min | 31.4 min | +5.7 |
+| 3 | 1438 | 25.7 min | 29.7 min | +4.0 |
+| 4 | 1459 | 27.1 min | 28.2 min | +1.1 |
+| 5 | 898 | 26.2 min | 29.0 min | +2.8 |
+| 6 | 363 | 23.2 min | 11.1 min | -12.1 |
+
+Critical path 42 min before, 31.4 min here; spread 8.0x before, 2.8x here. That is the win, and
+it is smaller than the simulated 1.2x. The gap is not fixed per-shard setup, which is a few
+minutes and roughly equal across shards: group 6 holds the 363 longest tests and ran at half its
+recorded cost, while the middle groups ran over. Those recordings come from the regen lane and
+this reading from the pull-request lane, and nothing here says which is representative. Do not
+quote 1.2x as what the lane does; quote this table, and re-read it after the next regen.
+
 For contrast, the file this replaces predicts 35.3 / 36.5 / 36.5 / 36.5 / 36.5 / 37.6 min on the
 fast lane — a flat-looking simulation that the lane does not obey, because 3077 of the 10224
 collected tests are absent from it and pytest-split charges every absent test the average of the
