@@ -1,0 +1,162 @@
+name: rfx-crossval-solvers
+description: "Two-solver crossval lane (#717 item 2, PI decision 2026-09-15 option (b)): the four gpu-marked crossval files run with meep AND openEMS actually installed, against an origin/main git-archive export. Their 13 external legs have executed in no lane, ever -- every other lane reports them as importorskip SKIPs and exits green. Submit with scripts/vessl_submit.sh so the run id lands in the artifact directory."
+tags: [rfx, validation, crossval, meep, openems, i717]
+resources:
+  cluster: remilab-c0
+  # CPU, not a GPU preset. The PI note said "solver-carrying GPU lane"; the PI
+  # confirmed CPU on 2026-09-16 once the measurement below existed. This is the
+  # decision, not an open question. Meep and openEMS are CPU-only and dominate this
+  # lane; rfx's own five tests in these files take 31.1 s on CPU (measured
+  # 2026-09-15 at 541f703f -- the decision note's 459 s was a loaded-pod
+  # number). _configs/.claude/rules/vessl-jobs.md: "Ask for CPU and memory
+  # explicitly when the work is CPU-only. Taking a GPU preset to get RAM wastes
+  # a card that other work is queued for." The lab has exactly two GPU nodes
+  # (remilab-l05, remilab-l09) and weekly-a6000-lane already holds one every
+  # Monday. (Were this ever to need a card: `preset: gpu-rtx4090` in place of the
+  # two lines below and jax[cuda12] for jax[cpu]. Not the plan.)
+  cpu: 32
+  memory: 64Gi
+# openEMS-Project + conda-forge pymeep in ONE interpreter
+# (docker/crossval-solvers-lane/Dockerfile). One interpreter is required, not
+# convenient: test_crossval_comprehensive.py's TestPECCavity holds
+# test_rfx_vs_meep (:163) and test_rfx_vs_openems (:171) in the same class.
+image: ghcr.io/bk-squared/rfx-crossval-solvers:openems-5b423bdfe0c8-pymeep-1.34.0
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  MPLBACKEND: "Agg"
+  JAX_PLATFORMS: "cpu"
+  OMP_NUM_THREADS: "8"
+  RFX_CROSSVAL_SOLVERS_REF: "origin/main"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  # POSIX sh, no bashisms, and NO HEREDOCS -- VESSL re-indents this block inside
+  # its own wrapper, which moves a heredoc terminator off column 0 and kills the
+  # job at parse time before any work runs (_configs/.claude/rules/vessl-jobs.md,
+  # verified 2026-07-31 on amc run 369367250654; `sh -n` does not catch it).
+  # Every inline python lives in a repo script under scripts/ops/ instead.
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  primary=/root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory "$primary" || true
+  cd "$primary"
+
+  echo "=== rfx two-solver crossval lane (#717 option b) ==="
+  date -u
+  echo "RFX_OPENEMS_COMMIT=${RFX_OPENEMS_COMMIT:-unset}"
+  echo "RFX_PYMEEP_VERSION=${RFX_PYMEEP_VERSION:-unset}"
+  echo "RFX_SOLVER_PARENT_IMAGE=${RFX_SOLVER_PARENT_IMAGE:-unset}"
+
+  # --- the tree under test, exported rather than checked out ----------------
+  # git archive of the requested ref into node-local disk, never the primary
+  # checkout's HEAD and never a checkout inside it (commit c0435798: run
+  # 369367261080 measured the primary checkout 6 commits behind main, so a
+  # "post-merge" run silently tested pre-merge code).
+  git fetch -q origin
+  ref="${RFX_CROSSVAL_SOLVERS_REF:-origin/main}"
+  git cat-file -e "${ref}^{commit}" 2>/dev/null || git fetch -q origin "$ref"
+  sha=$(git rev-parse "$ref")
+  short=$(echo "$sha" | cut -c1-8)
+  echo "lane ref: $ref = $sha"
+  echo "primary checkout HEAD: $(git rev-parse HEAD) (informational; this lane runs $ref)"
+  src="/tmp/rfx-crossval-solvers-$short"
+  rm -rf "$src"
+  mkdir -p "$src"
+  git archive --format=tar "$sha" | tar -xf - -C "$src"
+
+  OUT="$primary/.omx/crossval-solvers/$(date -u +%Y%m%dT%H%M%SZ)-$short"
+  mkdir -p "$OUT"
+  # Provenance that fails loudly. No `|| echo unknown`: an artifact with a
+  # placeholder commit line looks complete and links to nothing
+  # (_configs/.claude/rules/vessl-jobs.md, rfx #931 -- most commit.txt files
+  # from that campaign hold "unknown").
+  echo "$sha" > "$OUT/commit.txt"
+  # Collect whatever exists even if this job is killed, evicted or times out.
+  trap 'echo "=== collecting on exit: $OUT ==="; ls -la "$OUT" || true' EXIT
+
+  # --- rfx's own deps, pinned to the numpy-1 ABI the solvers require --------
+  # This image cannot be anything but numpy-1: every conda-forge pymeep build
+  # through 1.34.0 declares numpy<2.0a0 and the openEMS bindings are compiled
+  # against numpy 1. jax 0.6.2 + numpy<2 is the pair the CPU pytest lanes and
+  # scripts/vessl_crossval_external.yaml have run here since PR #563.
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest pytest-timeout
+  export RFX_REPO_ROOT="$src"
+  export PYTHONPATH="$RFX_REPO_ROOT"
+  cd "$src"
+
+  # --- both solvers must be real, and a missing one must be RED -------------
+  # Without this, a solver-less pod reports 13 clean importorskip SKIPs and
+  # exits 0. That green-with-skips outcome is the dishonest coverage claim
+  # #717 was filed about. The probe also catches the pytest-9 trap, where a
+  # broken (not missing) solver raises ImportError and pytest reports it as a
+  # test FAILURE wearing the shape of a physics disagreement.
+  "$PY" scripts/ops/probe_crossval_solvers.py --out "$OUT/solver_provenance.json"
+
+  FILES="tests/crossval/test_crossval_comprehensive.py tests/crossval/test_meep_crossval.py tests/crossval/test_meep_crossval_dielectric_cavity.py tests/crossval/test_openems_crossval.py"
+
+  # -m gpu on the command line is load-bearing: the pyproject addopts are
+  # -m 'not gpu and not slow and not slow_physics', and a node id does NOT
+  # override a marker filter, so without it these four files collect zero
+  # tests and the lane is green and empty.
+  echo "=== collection rehearsal ==="
+  "$PY" -m pytest -m gpu --collect-only -q -p no:cacheprovider $FILES 2>&1 | tee "$OUT/collect.log" | tail -3
+
+  echo "=== four gpu-marked crossval files, both solvers present ==="
+  set +e
+  # tee, not plain redirect: a lane that only redirects puts the whole run
+  # behind one NFS file and `vessl run logs` ends at the invocation line, so a
+  # hang says nothing. --timeout with the thread method makes a hang name
+  # itself rather than sit at 99% printing nothing.
+  #
+  # The rc is written from INSIDE the pipeline, and that is not a style choice.
+  # `set -o pipefail` is a bashism this shell does not have and ${PIPESTATUS[0]}
+  # is one that has already killed a lane here (gpu_suite run 369367242339,
+  # "bad substitution"). Without either, `$?` after `cmd | tee` is TEE's status,
+  # which is 0 whatever pytest did -- a red run would report green. The brace
+  # group is the pipeline's left side, so `echo $?` there sees pytest's own
+  # status, and the file carries it back out to this shell.
+  { "$PY" -m pytest -m gpu -v -ra -p no:cacheprovider \
+      --timeout=5400 --timeout-method=thread \
+      --junitxml="$OUT/junit.xml" $FILES 2>&1; echo $? > "$OUT/pytest.rc"; } \
+    | tee "$OUT/pytest.log"
+  set -e
+  rc=$(cat "$OUT/pytest.rc")
+
+  # --- the closing gate -----------------------------------------------------
+  # Exit code alone is explicitly NOT the gate. The asserter requires the
+  # frozen 18 node ids, zero skips, and every external leg above the duration
+  # floor -- the last clause is what makes "collected the four files" mean
+  # "executed them", since all 13 finish in 0.99 s total when no solver is
+  # present.
+  # Collect the reds BEFORE the gate runs, so the gate's verdict line stays last.
+  grep -E '^(FAILED|ERROR) ' "$OUT/pytest.log" > "$OUT/reds.txt" || true
+  # A pytest that died before writing junit leaves the gate with nothing to read.
+  # Say which failure that is rather than letting an XML traceback stand in for a
+  # physics verdict.
+  if [ ! -s "$OUT/junit.xml" ]; then
+    echo "FATAL: pytest produced no junit.xml (rc=$rc); the lane died before any" >&2
+    echo "       gate could be evaluated. This is an environment failure, not a" >&2
+    echo "       cross-solver disagreement." >&2
+    exit 1
+  fi
+  set +e
+  # Same POSIX rc-through-a-file idiom as above, same reason.
+  { "$PY" scripts/ops/assert_crossval_solver_lane.py "$OUT/junit.xml" \
+      --summary-json "$OUT/crossval_solver_lane_summary.json" \
+      --sha "$sha" --run-id "$(cat "$OUT/run_id.txt" 2>/dev/null || echo unset)" \
+      2>&1; echo $? > "$OUT/gate.rc"; } \
+    | tee "$OUT/gate.log"
+  set -e
+  gate_rc=$(cat "$OUT/gate.rc")
+
+  echo "pytest_rc=$rc gate_rc=$gate_rc reds=$(wc -l < "$OUT/reds.txt")"
+  echo "=== artifacts: $OUT ==="
+  # The CROSSVAL_SOLVER_LANE_VERDICT line printed by the asserter above is the
+  # last substantive output on purpose: the GitHub job reads this run back with
+  # `vessl run logs --tail 400 | tail -60`, so anything the submitting workflow
+  # must act on has to be near the end. Nothing verbose may be printed after it.
+  [ "$rc" -eq 0 ] && [ "$gate_rc" -eq 0 ]
