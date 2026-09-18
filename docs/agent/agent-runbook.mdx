@@ -42,6 +42,15 @@ speak earlier is a change to `CORE_CONFIG_CHECKS`, and reds both that lock and
 arguments each check receives. Neither red is one to regenerate past: it means
 preflight output moved.
 
+## Changelog fragments
+
+Do NOT append to `CHANGELOG.md`. Add `changelog.d/<number>.<type>.md` holding
+exactly the entry you would have pasted under `## [Unreleased]` — that is what
+keeps two concurrent PRs from conflicting on one file. Required for any change
+under `rfx/`; a direct `CHANGELOG.md` edit needs the `release` label. Naming,
+content shape and the assembler commands are in `changelog.d/README.md`;
+`python scripts/changelog/assemble.py --check` validates what you wrote.
+
 ## GPU validation
 
 `scripts/vessl_gpu_suite.yaml` is THE maintained harness — runs `pytest -m gpu -q -ra`
