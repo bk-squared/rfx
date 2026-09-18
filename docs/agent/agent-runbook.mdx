@@ -117,8 +117,8 @@ removed.
 Nothing else is removed. A worktree is kept, and listed with the reason, when it has
 uncommitted changes, an open pull request, a branch origin does not have, a detached
 HEAD no ref contains, or ignored files that are not regenerable caches. That last case
-matters here: `git worktree remove --force` deletes ignored files too, and this repo
-ignores `.omc/`, `docs/agent-memory/` and `docs/research_notes/`, which have no backup.
+matters here: `git worktree remove --force` deletes ignored files too, and some of the
+directories this repo ignores hold working notes that exist in no other copy.
 Caches such as `__pycache__` and `.ruff_cache` do not block a removal; anything else
 ignored does, until `--remove-ignored` says otherwise.
 
