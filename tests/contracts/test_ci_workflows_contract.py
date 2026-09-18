@@ -188,6 +188,27 @@ def test_the_heavy_jobs_wait_for_the_verdict(job: str) -> None:
     assert "changes" in needs, f"`{job}` does not depend on `changes`"
 
 
+#: The only two `if:` forms a step in a heavy job may carry.
+WORK_IF = "needs.changes.outputs.code_changed != 'false'"
+SKIP_IF = "needs.changes.outputs.code_changed == 'false'"
+
+#: Steps that legitimately run on BOTH branches, because both need them: an
+#: interpreter and the installed package. Matched against `uses:` or `run:`.
+SHARED_SETUP = ("actions/setup-python", "pip install -e")
+
+
+def _is_shared_setup(step: dict) -> bool:
+    text = f"{step.get('uses', '')} {step.get('run', '')}"
+    return any(marker in text for marker in SHARED_SETUP)
+
+
+@pytest.mark.parametrize("job", HEAVY_JOBS)
+def test_the_first_step_is_the_checkout(job: str) -> None:
+    """Every test below reasons about "the steps after checkout"."""
+    first = load(PR_TESTS)["jobs"][job]["steps"][0]
+    assert str(first.get("uses", "")).startswith("actions/checkout"), first
+
+
 @pytest.mark.parametrize("job", HEAVY_JOBS)
 def test_every_step_after_checkout_is_gated_on_the_verdict(job: str) -> None:
     """The JOB always runs; only its steps are conditional.
@@ -195,29 +216,124 @@ def test_every_step_after_checkout_is_gated_on_the_verdict(job: str) -> None:
     GitHub's "Troubleshooting required status checks" says a job skipped by a
     conditional reports Success, so a job-level `if:` would satisfy the required
     context too. Step level is still what this repo uses: a skipped job shows no
-    steps and no reason, and an ungated step that installs the package or runs
-    pytest would spend the 35 minutes the gate exists to save.
+    steps and no reason, and an ungated step that runs the fast suite would spend
+    the half hour the gate exists to save.
+
+    The exception is the shared setup -- an interpreter and the package -- which
+    both branches need, because the false branch still runs the contract tests.
     """
     steps = load(PR_TESTS)["jobs"][job]["steps"]
     ungated = [
         step.get("name", step.get("uses", "?"))
         for step in steps[1:]
-        if "needs.changes.outputs.code_changed" not in str(step.get("if", ""))
+        if not str(step.get("if", "")).strip()
+        and not _is_shared_setup(step)
     ]
     assert not ungated, f"`{job}` steps run regardless of the verdict: {ungated}"
+
+
+@pytest.mark.parametrize("job", HEAVY_JOBS)
+def test_work_steps_skip_only_on_the_one_known_value(job: str) -> None:
+    """`!= 'false'`, never `== 'true'`.
+
+    A third value -- an empty output because the classify step died after its
+    checkout, or a refactor that renames the output -- makes `== 'true'` skip
+    EVERY step including the one that explains itself, and the job goes green in
+    silence having run nothing. `!= 'false'` degrades the other way: anything
+    unexpected runs the full lane. Only the single value the classifier is known
+    to emit for "nothing to see" skips anything.
+    """
+    steps = load(PR_TESTS)["jobs"][job]["steps"]
+    wrong = [
+        (step.get("name", "?"), step["if"])
+        for step in steps
+        if str(step.get("if", "")).strip()
+        and str(step["if"]).strip() not in (WORK_IF, SKIP_IF)
+    ]
+    assert not wrong, (
+        f"`{job}`: a step gates on something other than {WORK_IF!r} (do the work) "
+        f"or {SKIP_IF!r} (the skip path): {wrong}"
+    )
 
 
 @pytest.mark.parametrize("job", HEAVY_JOBS)
 def test_a_skipped_job_says_why_in_its_log(job: str) -> None:
     """A green job that did nothing has to explain itself, or it reads as a pass."""
     steps = load(PR_TESTS)["jobs"][job]["steps"]
-    explainers = [
-        step
-        for step in steps
-        if "code_changed == 'false'" in str(step.get("if", ""))
-    ]
+    explainers = [step for step in steps if str(step.get("if", "")).strip() == SKIP_IF]
     assert len(explainers) == 1, f"`{job}` has {len(explainers)} explanation steps"
     assert "scripts/ci/changed_paths.py" in str(explainers[0].get("run", ""))
+
+
+# --------------------------------------------------------------------------
+# The contract tests run on BOTH branches of the verdict
+# --------------------------------------------------------------------------
+
+
+def test_the_contract_tests_run_when_the_diff_is_not_code() -> None:
+    """The gates that watch `docs/` and `scripts/` must survive a docs diff.
+
+    Much of `tests/contracts/` asserts on `docs/`, `scripts/`,
+    `.github/workflows/`, `CHANGELOG.md` and `README.md` -- the paths the
+    classifier calls not-code. Skipping them on a docs-only PR disarms exactly
+    the gates that guard docs: a later PR could shrink the ruff scope pinned by
+    `test_the_lint_scope_covers_this_gates_own_script`, and the test forbidding
+    it would never run.
+    """
+    steps = load(PR_TESTS)["jobs"]["guards-and-preflight"]["steps"]
+    on_the_skip_path = [
+        str(step.get("run", ""))
+        for step in steps
+        if str(step.get("if", "")).strip() == SKIP_IF
+    ]
+    assert on_the_skip_path, "guards-and-preflight has no not-code branch at all"
+    assert any(
+        "pytest tests/contracts" in block for block in on_the_skip_path
+    ), f"the not-code branch does not run the contract tests: {on_the_skip_path}"
+
+
+def test_the_contract_tests_run_when_the_diff_is_code() -> None:
+    """On the code branch the six shards collect the whole tree, contracts included."""
+    fast = load(PR_TESTS)["jobs"]["fast-suite"]
+    suite = "\n".join(
+        str(step.get("run", ""))
+        for step in fast["steps"]
+        if "--splits" in str(step.get("run", ""))
+    )
+    assert suite, "the fast-suite job no longer runs a sharded pytest"
+    assert "tests/contracts" not in suite, (
+        "the sharded suite now names tests/contracts explicitly -- check it is "
+        f"not being ignored: {suite}"
+    )
+    assert re.search(r"--ignore=tests/crossval", suite), (
+        "the ignore list changed shape; re-read what the shards now exclude"
+    )
+
+
+def test_the_setup_steps_the_skip_path_needs_are_not_themselves_skipped() -> None:
+    """Running the contracts on the false branch needs a Python and the package."""
+    steps = load(PR_TESTS)["jobs"]["guards-and-preflight"]["steps"]
+    shared = [step for step in steps if _is_shared_setup(step)]
+    assert len(shared) == 2, [s.get("name") for s in shared]
+    for step in shared:
+        assert not str(step.get("if", "")).strip(), (
+            f"{step.get('name')!r} is gated, so the not-code branch cannot run "
+            "the contract tests"
+        )
+
+
+def test_the_workflow_asks_for_changes_to_be_a_required_check() -> None:
+    """`needs: changes` is a hole until `changes` is required.
+
+    A `changes` job that dies of a runner fault leaves both heavy jobs SKIPPED by
+    dependency, and a skipped job does not fail a required context -- so a merge
+    would go through having run no tests. Requiring `changes` closes it; the job
+    is a checkout and a stdlib script.
+    """
+    text = PR_TESTS.read_text(encoding="utf-8")
+    assert "`changes` MUST BE A REQUIRED CHECK" in text
+    runbook = RUNBOOK.read_text(encoding="utf-8")
+    assert "`changes` must be a required check too" in runbook
 
 
 def test_pushes_to_main_still_trigger_the_lane() -> None:
@@ -413,3 +529,90 @@ def test_a_diff_that_cannot_be_computed_runs_everything(tmp_path: Path) -> None:
 def test_a_missing_base_sha_runs_everything(tmp_path: Path) -> None:
     written, log = _classify({"EVENT_NAME": "pull_request"}, tmp_path)
     assert written == "code_changed=true", log
+
+
+# --------------------------------------------------------------------------
+# A rename moves a file OUT of the code set, and must be seen
+# --------------------------------------------------------------------------
+
+
+def _git(repo: Path, *args: str) -> str:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=repo,
+        capture_output=True, text=True, timeout=60,
+        env={
+            "PATH": os.environ.get("PATH", ""),
+            "HOME": str(repo),
+            "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid",
+            "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.invalid",
+            "GIT_CONFIG_GLOBAL": str(repo / "gitconfig"),
+            "GIT_CONFIG_SYSTEM": "/dev/null",
+        },
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    return result.stdout.strip()
+
+
+def _repo_with_a_rename(tmp_path: Path) -> tuple[Path, str, str]:
+    """A repo where `rfx/mod.py` was renamed to `docs/mod.py`, nothing else."""
+    repo = tmp_path / "repo"
+    (repo / "rfx").mkdir(parents=True)
+    (repo / "docs").mkdir()
+    (repo / "rfx" / "mod.py").write_text("x = 1\n" * 40, encoding="utf-8")
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "base")
+    base = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "mv", "rfx/mod.py", "docs/mod.py")
+    _git(repo, "commit", "-qm", "move it out of the package")
+    return repo, base, _git(repo, "rev-parse", "HEAD")
+
+
+def test_a_rename_out_of_the_package_is_seen_as_a_code_change(tmp_path: Path) -> None:
+    """`git mv rfx/mod.py docs/mod.py` deletes a module the suite imports.
+
+    `git diff --name-only` reports a rename as its DESTINATION only, so without
+    `--no-renames` this diff reads as `docs/mod.py` alone -- a docs-only change
+    -- and the suite that just lost a module would not run. Git only calls it a
+    rename when similarity detection fires, which is why the fixture moves a file
+    big enough to be detected.
+    """
+    repo, base, head = _repo_with_a_rename(tmp_path)
+
+    # The defect, reproduced: without --no-renames the destination is all you see.
+    naive = _git(repo, "diff", "--name-only", f"{base}...{head}").split()
+    assert naive == ["docs/mod.py"], naive
+    assert changed_paths.code_changed(naive) is False
+
+    # What the script actually asks for.
+    both = _git(repo, "diff", "--name-only", "--no-renames", f"{base}...{head}").split()
+    assert sorted(both) == ["docs/mod.py", "rfx/mod.py"], both
+    assert changed_paths.code_changed(both) is True
+
+    output = tmp_path / "github_output"
+    output.touch()
+    result = subprocess.run(
+        ["bash", str(CLASSIFY_SH)],
+        cwd=repo,
+        env={
+            "PATH": os.environ.get("PATH", ""),
+            "HOME": str(repo),
+            "GITHUB_OUTPUT": str(output),
+            "EVENT_NAME": "pull_request",
+            "BASE_SHA": base,
+            "HEAD_SHA": head,
+        },
+        capture_output=True, text=True, timeout=120,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert output.read_text(encoding="utf-8").strip() == "code_changed=true", result.stdout
+
+
+def test_the_classifier_shell_asks_git_for_both_rename_endpoints() -> None:
+    """Pinned in the file too: the flag is one word and easy to drop."""
+    text = CLASSIFY_SH.read_text(encoding="utf-8")
+    diffs = [line for line in text.splitlines() if "git -c core.quotePath=false diff" in line]
+    assert diffs, "the classifier shell no longer runs git diff"
+    for line in diffs:
+        assert "--no-renames" in line, f"rename endpoints would be lost: {line.strip()}"

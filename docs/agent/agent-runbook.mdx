@@ -49,8 +49,8 @@ preflight output moved.
 
 One standing instruction: run `scripts/ci/local.sh` before every push. It is every
 short gate a PR must pass, in the order CI runs them, stopping at the first failure.
-Measure it rather than trusting this sentence: on 2026-09-18 the whole pass took
-5 min 13 s, nearly all of it `tests/contracts`.
+Measure it rather than trusting this sentence: on 2026-09-18 `tests/contracts` alone
+was 5 min 16 s of it, and everything else together was under ten seconds.
 
 `scripts/ci/local.sh` runs, in order: ruff, docs-hygiene, changelog-fragments, pr-body, workflow-yaml, contract-tests.
 
@@ -68,31 +68,51 @@ of `lint.yml`; `scripts/ci/check_pr_body.py` is the whole of `pr-body.yml`;
 and if this list and `local.sh` stop agreeing.
 
 What it does NOT run is the heavy half — the six-shard fast suite and the
-guard/preflight suite in `pr-tests.yml`, roughly 35 minutes. Those start only when the
-diff touches code:
+guard/preflight suite in `pr-tests.yml`, 22 to 42 minutes a shard. Those start only when
+the diff touches code:
 
 | the diff touches | the shards run |
 |---|---|
 | `rfx/`, `tests/`, `validation/`, `examples/` | yes |
 | `pyproject.toml`, `setup.*`, any `conftest.py`, any `.test_durations` | yes |
 | `pr-tests.yml`, `changed_paths.py`, `classify_changes.sh` — the lane itself | yes |
-| anything else: `docs/`, other workflows, the rest of `scripts/`, `changelog.d/` | no |
+| anything else: `docs/`, other workflows, the rest of `scripts/`, `changelog.d/` | no — but `tests/contracts` still does |
 | any push to `main` | always yes |
 
 The `changes` job decides, and its log prints the changed paths and the verdict. Ask it
 yourself before you push:
 
 ```
-python scripts/ci/changed_paths.py $(git diff --name-only origin/main...HEAD)
+python scripts/ci/changed_paths.py $(git diff --name-only --no-renames origin/main...HEAD)
 EVENT_NAME=pull_request BASE_SHA=origin/main HEAD_SHA=HEAD bash scripts/ci/classify_changes.sh
 ```
 
 `guards-and-preflight` and `fast-suite (1)`…`(6)` keep their names and still report
 SUCCESS on every pull request — those are the contexts branch protection requires, and
-a renamed or absent job leaves a required check unreported and blocks every merge. When
-the diff is not code, each job skips its own steps and logs one line saying why. The
-classifier fails open: a push to `main`, a missing sha, or a diff that would not compute
-all run the full lane.
+a renamed or absent job leaves a required check unreported and blocks every merge.
+
+**`tests/contracts/` runs either way.** Much of what lives there asserts on `docs/`,
+`scripts/`, `.github/workflows/`, `CHANGELOG.md` and `README.md` — the very paths the
+classifier calls not-code. `test_the_lint_scope_covers_this_gates_own_script` pins
+`scripts/ci/lint.sh`; `test_prune_worktrees.py` pins `scripts/dev/prune_worktrees.py`;
+`test_support_matrix_parity.py` pins a file under `docs/guides/`. Skipping them on a
+docs or scripts diff would disarm exactly the gates that watch docs and scripts, so a
+later PR could shrink the ruff scope and the test forbidding it would never run. When
+the verdict is false, `guards-and-preflight` runs `pytest tests/contracts` in place of
+the guard suite; when it is true, the six shards collect the whole tree and pick them up
+there. Count them yourself rather than trusting a number here:
+`grep -rl 'docs/\|scripts/\|workflows' tests/contracts/*.py | wc -l`.
+
+**`changes` must be a required check too**, alongside `ruff`,
+`guards-and-preflight` and `fast-suite (1)`…`(6)`. `needs: changes` means a `changes`
+job that dies of a runner fault leaves the heavy jobs skipped by dependency, and a
+skipped job does not fail a required context — a merge would go through having run
+nothing. The job is 15 s.
+
+The classifier fails open everywhere else: a push to `main`, a missing sha, a diff that
+would not compute, and any verdict other than the literal `false` all run the full lane.
+Work steps gate on `!= 'false'`, not `== 'true'`, so an empty or unexpected output runs
+everything rather than skipping everything.
 
 ## PR body contract
 

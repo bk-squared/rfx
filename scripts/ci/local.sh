@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Every short gate a pull request must pass. Run it before every push.
-# Measured 2026-09-18: 5 min 13 s in total, nearly all of it tests/contracts.
+# Measured 2026-09-18: tests/contracts is 5 min 16 s of it, the rest under 10 s.
 #
 # Two CI failures on one PR on 2026-09-18 could not be reproduced locally,
 # because the commands that produced them lived inline in workflow yaml. The

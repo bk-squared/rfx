@@ -50,7 +50,7 @@ if [ "$EVENT_NAME" = "push" ]; then
   # squash merge can carry content no pull-request diff showed.
   if [ -n "$PUSH_BEFORE" ] && [ "$PUSH_BEFORE" != "$ZERO" ] && [ -n "$PUSH_AFTER" ]; then
     echo "push $PUSH_BEFORE..$PUSH_AFTER changed:"
-    git -c core.quotePath=false diff --name-only "$PUSH_BEFORE" "$PUSH_AFTER" || true
+    git -c core.quotePath=false diff --name-only --no-renames "$PUSH_BEFORE" "$PUSH_AFTER" || true
   fi
   emit true "push to main always runs the full lane"
 fi
@@ -62,7 +62,10 @@ fi
 changed_file="$(mktemp)"
 trap 'rm -f "$changed_file"' EXIT
 
-if ! git -c core.quotePath=false diff --name-only "$BASE_SHA...$HEAD_SHA" > "$changed_file" 2>&1; then
+# --no-renames: `--name-only` otherwise reports a rename as its DESTINATION
+# only, so `git mv rfx/mod.py docs/mod.py` reads as a docs-only diff and the
+# suite that just lost a module never runs. With it, both endpoints appear.
+if ! git -c core.quotePath=false diff --name-only --no-renames "$BASE_SHA...$HEAD_SHA" > "$changed_file" 2>&1; then
   echo "git diff $BASE_SHA...$HEAD_SHA failed:"
   cat "$changed_file"
   emit true "could not compute the diff — running the full lane"
