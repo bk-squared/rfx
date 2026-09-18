@@ -1,61 +1,108 @@
 # .test_durations — provenance
 
-Regenerated 2026-09-08 at main 1658f12d. 7594 entries, exactly the union of the fast, slow and
-highmem selections at that commit. Every entry is a measurement plus a 0.3 s per-test floor.
-Nothing is estimated and nothing is carried from an older file.
+Regenerated 2026-09-16 on `main` from `regen-durations` run
+[35107932217](https://github.com/bk-squared/rfx/actions/runs/35107932217). **10625 entries in the
+file**, of which **297 of them carried unchanged** from the 7594-entry file this replaces. Nine of
+that run's ten jobs succeeded; `slow (3)` was killed by the runner (the exit-143 class
+`validation.yml` documents), so the merge seeded from the committed file and let the fresh
+measurements overwrite what they cover — that seeding is what the 297 are.
 
-## The 0.3 s floor, and why it is there
+Every entry is a raw measurement. **No floor is added** — see below.
 
-pytest-split records the sum of each test's own setup/call/teardown report durations. A shard's
-wall time is larger than the sum of those numbers: module imports, first-touch fixture
-construction and the framework's own per-test cost are not in them, and they fall hardest on a
-shard holding thousands of sub-millisecond tests. Measured, not assumed: on the first revision
-of pull request 939 the fast lane's shard 1 held 3426 tests whose measured durations sum to
-1149.7 s, and it spent 1817 s of pytest time — about 0.195 s per test unaccounted for. The floor
-is 0.3 s, a round number above that measurement.
+## The 0.3 s floor, retired 2026-09-18
 
-An earlier version of this note blamed a pytest-split threshold that supposedly drops short
-setup and teardown readings. That is backwards: `STORE_DURATIONS_SETUP_AND_TEARDOWN_THRESHOLD`
-is 600 s and the plugin discards readings ABOVE it. The floor stands on the measurement above,
-not on that claim.
+Entries used to carry a measurement **plus** 0.3 s, on the reasoning that a shard's wall time
+exceeds the sum of pytest's own per-test report durations: module imports, first-touch fixture
+construction and framework overhead are outside those numbers and fall hardest on a shard holding
+thousands of sub-millisecond tests. The 0.3 s came from one reading on the first revision of pull
+request 939 — shard 1 held 3426 tests summing to 1149.7 s and spent 1817 s of pytest time, about
+0.195 s per test unaccounted for.
 
-The floor changes the split itself, not only the predicted numbers: without it the algorithm
-puts 3853 of 7389 fast tests in shard 1, with it 2721. Its falsifier is the observed shard
-spread on the pull request that introduces the file.
+That reading no longer describes this lane. The falsifier is the shard the committed file assigns
+to group 1, measured three ways:
+
+| | shard 1 |
+|---|---|
+| predicted from fresh measurements, no floor | 4.2 min |
+| predicted with 0.3 s added to each of its 3067 tests | 19.5 min |
+| **observed**, `fast-suite (1)` on pull request 1108 | **5 min 19 s** |
+
+The floored model is 3.7x over the observation; the unfloored model is 1.1 min under it. Whatever
+per-test overhead the 2026-09-08 runner had, the runner this lane uses now does not have it at
+anything like 0.195 s, and adding 0.3 s to 10625 entries adds 53 minutes of fiction spread evenly
+across the lane. Evenly is the problem: a constant per test does not model a real cost, it just
+pulls every shard toward equal test COUNTS and away from equal time. On this file it raises the
+predicted critical path from 27.1 min to 34.5 min while the observed lane runs at the unfloored
+prediction.
+
+So the floor is gone, and step 4 of Regenerating below says not to re-add it. Two consequences to
+keep in mind:
+
+- The 297 carried entries still have the old additive 0.3 s inside them, because nothing
+  re-measured those tests. Measured breakdown: 65 are still collected (53 by the slow lane, 12 by
+  the a6000 highmem lane) and 232 are nodeids no current selection collects at all — stale ids the
+  seed dragged forward. pytest-split drops durations for uncollected ids, so the 232 cost nothing
+  but bytes; the 65 are 0.3 s over, each, until a regen that completes re-measures them. Across the
+  whole file 246 of 10625 entries are uncollected.
+- `tests/contracts/test_test_durations_provenance.py` pins the retirement: it fails if the
+  minimum entry ever climbs back above 0.3 s, which is what re-adding the floor would do.
+
+An earlier version of this note blamed a pytest-split threshold that supposedly drops short setup
+and teardown readings. That was backwards — `STORE_DURATIONS_SETUP_AND_TEARDOWN_THRESHOLD` is
+600 s and the plugin discards readings ABOVE it. The floor never stood on that claim, and it no
+longer stands on the 2026-09-08 measurement either.
 
 ## Sources
 
-- 7582 entries measured on the GitHub runners by `regen-durations` run 34158542674, the first
-  pass in which every shard finished. Four earlier passes lost slow shard 2 to a runner kill
-  (exit 143); two >16 GB oracle tests sat in its tail and are now marked `highmem` (pull
-  requests 941 and 943), which is what let the shard complete.
+- The fresh measurements come from the six `fast` shards and `slow (1)`, `(2)`, `(4)` of run
+  35107932217, measured on `ubuntu-latest`, the same runner class the lanes use. `slow (3)` was
+  killed; rather than drop the tests only that shard measures, `merge_test_durations.py` seeds
+  from the committed file first and lets later inputs win.
 - 12 entries measured on the a6000 lane (VESSL run 369367259335, `-m "highmem and not gpu"`,
-  13 passed in 254 s). These 12 carry `slow` or `slow_physics` as well as `highmem`, so the fast
-  lane deselects them through pyproject's default `-m` expression and the weekly lane excludes
-  them by marker. No GitHub split uses their time.
+  13 passed in 254 s) are among the 297 carried. These 12 carry `slow` or `slow_physics` as well
+  as `highmem`, so the fast lane deselects them through pyproject's default `-m` expression and
+  the weekly lane excludes them by marker. No GitHub split uses their time.
+- Recorded total: 20143.7 s (5.60 h), against 19486.5 s (5.41 h) for the file this replaces.
 
 ## The one highmem test the fast lane does run
 
 `tests/unit/ports/test_msl_source_fixture_static.py::test_auto_eps_msl_gradient_matches_fd_mini_referee`
 carries `highmem` and nothing else, so pyproject's default `-m 'not gpu and not slow and not
 slow_physics'` does not deselect it and it runs in a fast shard. Its entry must therefore be a
-runner measurement, and it is: 45.221316 s measured on the runner (the a6000 says 28.9 s), plus
-the floor. When regenerating, do not overwrite this one from the a6000 map.
+runner measurement, and it is: 35.295652 s from run 35107932217 (the a6000 says 28.9 s). It is the
+one highmem-marked entry the regen refreshed; the other 12 carried. When regenerating, do not
+overwrite this one from the a6000 map.
 
 ## Regenerating
 
 1. Dispatch `.github/workflows/regen-durations.yml` and download the artifacts.
 2. `python scripts/ci/merge_test_durations.py .test_durations <fast shards...> <slow shards...>`.
    Later inputs win on a nodeid measured twice, so pass the fast maps first and the slow maps
-   last; the two selections overlap on 7388 nodeids and their measurements differ.
+   last; the two selections overlap and their measurements differ.
 3. Take only the 12 GPU-only entries above from an a6000 run of the highmem selection. Leave the
    fast-lane highmem test on its runner value.
-4. Add the 0.3 s floor once, to every entry.
+4. **Do not add a floor.** Commit the raw measurements. The additive 0.3 s this step used to
+   require was retired on 2026-09-18 for the reason above; if a future lane really does carry
+   per-test overhead the reports miss, measure it on that lane first and write the measurement
+   here before any constant goes back in.
 5. Simulate both splits before committing (pytest-split's own `duration_based_chunks`), then read
    the pull request's own shard times afterwards — that reading is the check, not the simulation.
+6. Update the entry count and the carried count in the header above.
+   `tests/contracts/test_test_durations_provenance.py` compares both against the file.
 
 ## Balance
 
-Simulated on this file: fast 25.4 / 26.2 / 26.2 / 26.3 / 26.3 / 26.7 min (spread 1.3 min); slow
-63.0 / 80.2 / 84.9 / 92.3 min against the 120-minute cap. Before pull request 939 the fast lane
-ran 1 min on one shard and up to 35 min on another.
+Simulated on this file with `pytest_split.algorithms.Algorithms['duration_based_chunks']` over the
+real collection, with the four `--ignore` flags both workflows pass:
+
+- fast (`--splits 6`, 10224 tests): 23.2 / 25.7 / 25.7 / 26.0 / 26.2 / 27.1 min — spread 3.9 min,
+  critical path 27.1 min.
+- slow (`--splits 4`, `-m "not gpu and not highmem"`, 10435 tests): 69.9 / 81.4 / 83.1 / 90.8 min
+  against the 120-minute cap.
+
+For contrast, the file this replaces predicts 35.3 / 36.5 / 36.5 / 36.5 / 36.5 / 37.6 min on the
+fast lane — a flat-looking simulation that the lane does not obey, because 3077 of the 10224
+collected tests are absent from it and pytest-split charges every absent test the average of the
+ones it knows. What that lane actually did on pull request 1108, shards 1 through 6:
+5m19s / 33m35s / 34m32s / 24m20s / 34m38s / 42m23s — 8.0x apart, 42 min of wall clock. Reading the
+merged pull request's own shard times is step 5 for exactly this reason.
