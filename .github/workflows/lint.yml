@@ -41,6 +41,8 @@ jobs:
           python-version: "3.10"
 
       - name: Install ruff
+        # The script runs `$PYTHON -m ruff`, which this install satisfies —
+        # ruff's wheel ships an importable module, not only a console script.
         run: pip install ruff
 
       # The scope, the selector and the ignore list live in the script.

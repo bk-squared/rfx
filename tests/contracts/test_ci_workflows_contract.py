@@ -210,7 +210,7 @@ def test_the_first_step_is_the_checkout(job: str) -> None:
 
 
 @pytest.mark.parametrize("job", HEAVY_JOBS)
-def test_every_step_after_checkout_is_gated_on_the_verdict(job: str) -> None:
+def test_every_step_after_checkout_is_gated_on_the_verdict(job: str) -> None:  # noqa: D401
     """The JOB always runs; only its steps are conditional.
 
     GitHub's "Troubleshooting required status checks" says a job skipped by a
@@ -221,8 +221,16 @@ def test_every_step_after_checkout_is_gated_on_the_verdict(job: str) -> None:
 
     The exception is the shared setup -- an interpreter and the package -- which
     both branches need, because the false branch still runs the contract tests.
+
+    The `steps[1:]` slice is only meaningful if step 0 really is the checkout, so
+    this asserts it here rather than trusting a sibling test to have run: a step
+    inserted above the checkout would otherwise slip out of the scan.
     """
     steps = load(PR_TESTS)["jobs"][job]["steps"]
+    assert str(steps[0].get("uses", "")).startswith("actions/checkout"), (
+        f"`{job}` step 0 is not the checkout, so everything below scans the "
+        f"wrong steps: {steps[0]}"
+    )
     ungated = [
         step.get("name", step.get("uses", "?"))
         for step in steps[1:]
@@ -405,11 +413,54 @@ def test_local_sh_runs_the_real_entry_points() -> None:
     for entry_point in (
         "scripts/ci/lint.sh",
         "scripts/ci/docs_hygiene.sh",
-        "scripts/changelog/assemble.py --check",
+        "scripts/ci/check_changelog_fragment.py",
         "scripts/ci/check_pr_body.py --file",
         "pytest tests/contracts",
     ):
         assert entry_point in text, f"scripts/ci/local.sh no longer runs {entry_point}"
+
+
+def test_local_sh_runs_the_changelog_gate_ci_runs_not_a_lookalike() -> None:
+    """`assemble.py --check` answers a different question.
+
+    It validates fragment names and headings. It never notices a MISSING fragment
+    on a change under `rfx/`, nor a `CHANGELOG.md` edit without the `release`
+    label -- and those two are the whole of what `changelog-fragment.yml`
+    enforces. Running only the lookalike locally is how a red CI check surprises
+    someone who ran the local gate first.
+    """
+    local = LOCAL_SH.read_text(encoding="utf-8")
+    workflow_scripts = "\n".join(run_blocks(load(WORKFLOW_DIR / "changelog-fragment.yml")))
+    assert "scripts/ci/check_changelog_fragment.py" in workflow_scripts
+    assert "scripts/ci/check_changelog_fragment.py" in local, (
+        "local.sh does not run the script the changelog-fragment workflow runs"
+    )
+    assert "--base" in local and "--head" in local
+
+
+def test_every_local_step_can_pick_its_interpreter() -> None:
+    """One `PYTHON=` covers the whole run, ruff included.
+
+    `scripts/ci/lint.sh` called a bare `ruff`, which usually lives only in the
+    project venv -- so `local.sh` failed at step 1 for anyone who had not
+    activated it, which is exactly the "you cannot run what CI runs" problem
+    these scripts exist to remove.
+    """
+    lint = (REPO / "scripts" / "ci" / "lint.sh").read_text(encoding="utf-8")
+    ruff_lines = [
+        line for line in lint.splitlines()
+        if "ruff check" in line and not line.lstrip().startswith("#")
+    ]
+    assert len(ruff_lines) == 1, ruff_lines
+    assert '"$PYTHON" -m ruff check' in ruff_lines[0], (
+        f"lint.sh depends on a bare `ruff` on PATH: {ruff_lines[0].strip()!r}"
+    )
+    assert 'PYTHON="${PYTHON:-python3}"' in lint
+
+    local = LOCAL_SH.read_text(encoding="utf-8")
+    assert 'export PYTHON="${PYTHON:-python3}"' in local, (
+        "local.sh does not export PYTHON, so the scripts it calls ignore it"
+    )
 
 
 def test_the_runbook_tells_authors_to_run_it_before_every_push() -> None:
@@ -610,9 +661,116 @@ def test_a_rename_out_of_the_package_is_seen_as_a_code_change(tmp_path: Path) ->
 
 
 def test_the_classifier_shell_asks_git_for_both_rename_endpoints() -> None:
-    """Pinned in the file too: the flag is one word and easy to drop."""
+    """Pinned in the file too: each flag is one word and easy to drop."""
     text = CLASSIFY_SH.read_text(encoding="utf-8")
-    diffs = [line for line in text.splitlines() if "git -c core.quotePath=false diff" in line]
-    assert diffs, "the classifier shell no longer runs git diff"
+    # Lines that INVOKE git, not the one that echoes the command into the log.
+    invocation = re.compile(r"(?:^\s*|!\s*)git diff\b")
+    diffs = [
+        line for line in text.splitlines()
+        if invocation.search(line) and not line.lstrip().startswith("#")
+    ]
+    assert len(diffs) == 2, f"expected the push diff and the PR diff, got {diffs}"
     for line in diffs:
         assert "--no-renames" in line, f"rename endpoints would be lost: {line.strip()}"
+        assert " -z " in line, f"a quoted path would be misread: {line.strip()}"
+    assert "--stdin --null" in text, "the classifier is not told the paths are NUL-separated"
+
+
+# --------------------------------------------------------------------------
+# A path git would have to quote
+# --------------------------------------------------------------------------
+
+
+def test_a_path_containing_a_quote_survives_the_pipe(tmp_path: Path) -> None:
+    """`git diff --name-only` C-quotes an awkward name; `-z` does not.
+
+    A file at `rfx/od"d.py` comes back from a plain `--name-only` as the literal
+    seven-plus characters `"rfx/od\\"d.py"`, quotes included. That does not start
+    with `rfx/`, so the module that changed reads as not-code and the suite does
+    not run. With `-z` the name arrives verbatim.
+    """
+    repo = tmp_path / "quoted"
+    (repo / "rfx").mkdir(parents=True)
+    _git(repo, "init", "-q", "-b", "main")
+    (repo / "rfx" / "ok.py").write_text("x = 1\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "base")
+    base = _git(repo, "rev-parse", "HEAD")
+
+    awkward = 'rfx/od"d.py'
+    (repo / awkward).write_text("y = 2\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "add an awkward name")
+    head = _git(repo, "rev-parse", "HEAD")
+
+    # The defect, reproduced: the quoted rendering is not a path under rfx/.
+    quoted = _git(repo, "diff", "--name-only", f"{base}...{head}").split("\n")
+    assert quoted == ['"rfx/od\\"d.py"'], quoted
+    assert changed_paths.code_changed(quoted) is False
+
+    # NUL-separated, the name arrives as itself.
+    raw = subprocess.run(
+        ["git", "diff", "-z", "--name-only", "--no-renames", f"{base}...{head}"],
+        cwd=repo, capture_output=True, timeout=60, check=True,
+        env={"PATH": os.environ.get("PATH", ""), "HOME": str(repo),
+             "GIT_CONFIG_GLOBAL": str(repo / "gitconfig"),
+             "GIT_CONFIG_SYSTEM": "/dev/null"},
+    ).stdout.decode("utf-8")
+    assert [f for f in raw.split("\0") if f] == [awkward]
+    assert changed_paths.code_changed([f for f in raw.split("\0") if f]) is True
+
+    output = tmp_path / "github_output"
+    output.touch()
+    result = subprocess.run(
+        ["bash", str(CLASSIFY_SH)],
+        cwd=repo,
+        env={
+            "PATH": os.environ.get("PATH", ""), "HOME": str(repo),
+            "GITHUB_OUTPUT": str(output), "EVENT_NAME": "pull_request",
+            "BASE_SHA": base, "HEAD_SHA": head,
+        },
+        capture_output=True, text=True, timeout=120,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert output.read_text(encoding="utf-8").strip() == "code_changed=true", result.stdout
+
+
+def test_the_classifier_cli_reads_nul_separated_paths() -> None:
+    script = REPO / "scripts" / "ci" / "changed_paths.py"
+
+    def verdict(blob: str) -> str:
+        return subprocess.run(
+            [sys.executable, str(script), "--stdin", "--null"],
+            input=blob, capture_output=True, text=True, timeout=60, check=True,
+        ).stdout.strip()
+
+    assert verdict("docs/a.md\0docs/b.md\0") == "false"
+    assert verdict('rfx/od"d.py\0') == "true"
+    # A name holding a newline is exactly what line splitting cannot survive.
+    assert verdict("docs/two\nlines.md\0rfx/mod.py\0") == "true"
+    assert verdict("docs/two\nlines.md\0") == "false"
+
+
+# --------------------------------------------------------------------------
+# Build configuration that does not exist yet
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["requirements.txt", "requirements-dev.txt", "MANIFEST.in", "pytest.ini", "tox.ini",
+     "setup.py", "setup.cfg"],
+)
+def test_build_configuration_is_code_even_before_it_exists(path: str) -> None:
+    """None of these are in the tree today; only `pyproject.toml` is.
+
+    They are classified in advance because the failure is silent: someone adds a
+    `requirements.txt`, the dependency set moves out from under the shards, and
+    nothing says so. Listing them costs a line each.
+    """
+    assert changed_paths.code_changed([path]) is True
+
+
+def test_a_requirements_file_that_is_not_the_build_is_not_code() -> None:
+    """Root-scoped on purpose: the docs build has its own."""
+    assert changed_paths.code_changed(["docs/requirements.txt"]) is False

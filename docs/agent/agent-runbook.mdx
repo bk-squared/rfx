@@ -52,7 +52,7 @@ short gate a PR must pass, in the order CI runs them, stopping at the first fail
 Measure it rather than trusting this sentence: on 2026-09-18 `tests/contracts` alone
 was 5 min 16 s of it, and everything else together was under ten seconds.
 
-`scripts/ci/local.sh` runs, in order: ruff, docs-hygiene, changelog-fragments, pr-body, workflow-yaml, contract-tests.
+`scripts/ci/local.sh` runs, in order: ruff, docs-hygiene, changelog-fragment, pr-body, workflow-yaml, contract-tests.
 
 ```
 scripts/ci/local.sh                   # the six steps; pr-body reports skipped
@@ -63,9 +63,19 @@ PYTHON=.venv/bin/python scripts/ci/local.sh
 Each gate is a script, not a line of yaml, because a gate you cannot run is one you
 debug by pushing. `scripts/ci/lint.sh` and `scripts/ci/docs_hygiene.sh` are the whole
 of `lint.yml`; `scripts/ci/check_pr_body.py` is the whole of `pr-body.yml`;
-`scripts/ci/check_changelog_fragment.py` is the whole of `changelog-fragment.yml`.
-`tests/contracts/test_ci_workflows_contract.py` fails if a command moves back inline,
-and if this list and `local.sh` stop agreeing.
+`scripts/ci/check_changelog_fragment.py` is the whole of `changelog-fragment.yml`. The
+local runner calls those same files, so a green local run and a green CI run mean the
+same thing. `tests/contracts/test_ci_workflows_contract.py` fails if a command moves
+back inline, and if this list and `local.sh` stop agreeing.
+
+The changelog step diffs `origin/main...HEAD` and asks the two questions CI asks: is
+there a fragment for a change under `rfx/`, and was `CHANGELOG.md` edited without the
+`release` label. Override the endpoints with `CHANGELOG_BASE=` and `CHANGELOG_HEAD=`.
+`assemble.py --check`, which validates fragment names and headings, runs after it and
+answers a different question — it never notices a missing fragment.
+
+Set `PYTHON=` once and every step and every script the runner calls uses that
+interpreter, ruff included.
 
 What it does NOT run is the heavy half — the six-shard fast suite and the
 guard/preflight suite in `pr-tests.yml`, 22 to 42 minutes a shard. Those start only when

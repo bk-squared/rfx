@@ -14,18 +14,28 @@
 #   scripts/ci/local.sh                 # the six steps; pr-body reports skipped
 #   scripts/ci/local.sh /tmp/body.md    # also check that PR body
 #   PYTHON=.venv/bin/python scripts/ci/local.sh
+#   CHANGELOG_BASE=origin/main CHANGELOG_HEAD=HEAD scripts/ci/local.sh
+#
+# $PYTHON is exported, so every step and every script this one calls uses it.
 #
 # The step names below are listed in the same order in docs/agent/agent-runbook.mdx
 # and pinned against it by tests/contracts/test_ci_workflows_contract.py.
 
 set -uo pipefail
 
-STEP_NAMES=(ruff docs-hygiene changelog-fragments pr-body workflow-yaml contract-tests)
+STEP_NAMES=(ruff docs-hygiene changelog-fragment pr-body workflow-yaml contract-tests)
 
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-PYTHON="${PYTHON:-python3}"
+# Exported, so the scripts this file calls use the same interpreter. Without it
+# scripts/ci/lint.sh fell back to a bare `ruff` that is usually only in the venv.
+export PYTHON="${PYTHON:-python3}"
 BODY_PATH="${1:-}"
+
+# What the changelog gate diffs against. CI uses the PR's base and head shas;
+# locally the merge base with origin/main is the same question.
+CHANGELOG_BASE="${CHANGELOG_BASE:-origin/main}"
+CHANGELOG_HEAD="${CHANGELOG_HEAD:-HEAD}"
 step_index=0
 
 fail() {
@@ -48,6 +58,19 @@ begin 1
 bash scripts/ci/docs_hygiene.sh || fail
 
 begin 2
+# The SAME script the changelog-fragment workflow runs. `assemble.py --check`
+# validates fragment names and headings, which is a different question: it never
+# notices a missing fragment on an rfx/ change, nor a CHANGELOG.md edit without
+# the release label, and those are the two rules CI actually enforces.
+# PR_LABELS_JSON is empty locally, which is the strict reading (no release
+# label), and that is the right default for a pre-push check.
+# It is silent on success, so say what was asked: a green step that printed
+# nothing is indistinguishable from a step that did not run.
+echo "fragment required? $CHANGELOG_BASE...$CHANGELOG_HEAD"
+"$PYTHON" scripts/ci/check_changelog_fragment.py \
+  --base "$CHANGELOG_BASE" --head "$CHANGELOG_HEAD" || fail
+echo "  ok — a fragment exists for every rfx/ change, and CHANGELOG.md is untouched"
+# Fragment names and headings, which the workflow leaves to the release run.
 "$PYTHON" scripts/changelog/assemble.py --check || fail
 
 begin 3

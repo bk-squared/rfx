@@ -20,8 +20,11 @@ configured by:
 * every file under `rfx/`, `tests/`, `validation/` and `examples/` -- the
   packages under test, the tests themselves, and the example modules the
   tutorial/import tests exercise;
-* `pyproject.toml` and `setup.*` -- the dependency set, the marker filter and
-  the default addopts the shards run under;
+* `pyproject.toml`, `setup.*`, `requirements*.txt`, `MANIFEST.in`, `pytest.ini`
+  and `tox.ini` -- the dependency set, the marker filter and the default addopts
+  the shards run under. Only `pyproject.toml` exists today; the others are listed
+  so that adding one later does not silently open a hole, which is cheaper than
+  noticing it after a merge;
 * any `conftest.py` -- fixtures and collection hooks;
 * any `.test_durations` file -- what `pytest-split` balances the six shards on,
   so a change there changes which test lands in which shard;
@@ -42,11 +45,19 @@ Usage
 -----
     python scripts/ci/changed_paths.py docs/agent/agent-runbook.mdx   # -> false
     python scripts/ci/changed_paths.py rfx/core/yee.py               # -> true
-    git diff --name-only main...HEAD | python scripts/ci/changed_paths.py --stdin
+    git diff -z --name-only main...HEAD | python scripts/ci/changed_paths.py --stdin --null
 
 Prints `true` or `false` on stdout. `--explain` writes the matching paths to
 stderr. `--github-output PATH` appends `code_changed=<verdict>` to that file
-(the workflow passes `$GITHUB_OUTPUT`). Standard library only, Python 3.10.
+(the workflow passes `$GITHUB_OUTPUT`).
+
+`--null` reads NUL-separated paths, which is what `git diff -z` writes and what
+`classify_changes.sh` pipes in. Without `-z`, git renders a path holding a quote,
+a backslash or a newline as a C-quoted string wrapped in double quotes, so
+`"rfx/od\"d.py"` would not start with `rfx/` and would read as not-code. Line
+splitting cannot recover from that at all when the path contains a newline.
+
+Standard library only, Python 3.10.
 """
 
 from __future__ import annotations
@@ -69,6 +80,9 @@ CODE_FILES: frozenset[str] = frozenset(
     {
         "pyproject.toml",
         "conftest.py",
+        "MANIFEST.in",
+        "pytest.ini",
+        "tox.ini",
         ".github/workflows/pr-tests.yml",
         "scripts/ci/changed_paths.py",
         "scripts/ci/classify_changes.sh",
@@ -86,8 +100,10 @@ CODE_BASENAME_GLOBS: tuple[str, ...] = (
 
 #: A changed file at the repository ROOT matching one of these globs is code.
 #: Scoped to the root so that, say, `docs/setup.md` is not mistaken for build
-#: configuration.
-CODE_ROOT_GLOBS: tuple[str, ...] = ("setup.*",)
+#: configuration. Of these only `pyproject.toml` (above) exists today --
+#: `setup.py`, `setup.cfg` and a requirements file are listed in advance so that
+#: introducing one does not silently take the dependency set out of the gate.
+CODE_ROOT_GLOBS: tuple[str, ...] = ("setup.*", "requirements*.txt")
 
 
 def normalize(path: str) -> str:
@@ -130,7 +146,11 @@ def matching_paths(paths: Iterable[str]) -> list[str]:
     return [path for path in paths if is_code_path(path)]
 
 
-def _read_stdin() -> list[str]:
+def _read_stdin(nul_separated: bool) -> list[str]:
+    if nul_separated:
+        # No strip(): a NUL-separated name is exact, and a path may legally end
+        # in a space. Only the trailing empty field after the last NUL goes.
+        return [field for field in sys.stdin.read().split("\0") if field]
     return [line for line in (raw.strip() for raw in sys.stdin) if line]
 
 
@@ -141,6 +161,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--stdin",
         action="store_true",
         help="read the changed paths from stdin, one per line",
+    )
+    parser.add_argument(
+        "--null",
+        "-z",
+        action="store_true",
+        help="with --stdin, paths are NUL-separated (what `git diff -z` writes)",
     )
     parser.add_argument(
         "--explain",
@@ -161,7 +187,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     paths = list(args.paths)
     if args.stdin:
-        paths += _read_stdin()
+        paths += _read_stdin(args.null)
 
     verdict = code_changed(paths)
     if args.explain:
