@@ -11,6 +11,7 @@ scratch and a failed ``gh`` lookup all survive ``--apply``.
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import os
 import re
@@ -33,7 +34,8 @@ import sys
 
 fixture = json.load(open(os.environ["STUB_GH_FIXTURE"]))
 args = sys.argv[1:]
-if fixture.get("fail"):
+fail_on = fixture.get("fail_on")
+if fixture.get("fail") or (fail_on and args[:1] == [fail_on]):
     sys.stderr.write("stub gh: forced failure\\n")
     sys.exit(1)
 if args[:2] == ["repo", "view"]:
@@ -185,9 +187,12 @@ def gh_stub(repo):
     gh.chmod(0o755)
     fixture = tmp_path / "gh_fixture.json"
 
-    def configure(prs=None, fail=False, owner=OWNER):
+    def configure(prs=None, fail=False, owner=OWNER, fail_on=None):
         fixture.write_text(
-            json.dumps({"prs": prs or {}, "fail": fail, "owner": owner}), encoding="utf-8"
+            json.dumps(
+                {"prs": prs or {}, "fail": fail, "fail_on": fail_on, "owner": owner}
+            ),
+            encoding="utf-8",
         )
         repo["env"]["PATH"] = str(bin_dir) + os.pathsep + repo["env"]["PATH"]
         repo["env"]["STUB_GH_FIXTURE"] = str(fixture)
@@ -215,8 +220,8 @@ def test_dry_run_classifies_each_worktree(repo):
     assert rows[paths["merged"]]["pr"] == "off", "--no-gh never claims a PR is absent"
     assert "delete local branch" in rows[paths["merged"]]["action"]
 
-    assert rows[paths["pushed"]]["class"] == "pushed-idle"
-    assert rows[paths["unpushed"]]["class"] == "unpushed"
+    assert rows[paths["pushed"]]["class"] == "pushed-idle", proc.stdout
+    assert rows[paths["unpushed"]]["class"] == "unpushed", proc.stdout
     assert rows[paths["unpushed"]]["action"].startswith("KEEP")
     assert rows[paths["dirty"]]["class"] == "dirty"
 
@@ -231,7 +236,7 @@ def test_no_gh_refuses_to_remove_a_pushed_idle_worktree(repo):
     proc = _run_script(clone, env, "--no-gh")
     assert "--no-gh: pull-request state is unknown" in proc.stdout
     row = _table(proc.stdout)[paths["pushed"]]
-    assert row["class"] == "pushed-idle"
+    assert row["class"] == "pushed-idle", proc.stdout
     assert row["action"].startswith("keep")
 
     applied = _run_script(clone, env, "--no-gh", "--apply")
@@ -256,8 +261,8 @@ def test_apply_removes_merged_and_idle_only(repo, gh_stub):
     proc = _run_script(clone, env, "--apply")
     assert proc.returncode == 0, proc.stderr + proc.stdout
 
-    assert not os.path.exists(paths["merged"])
-    assert not os.path.exists(paths["pushed"])
+    assert not os.path.exists(paths["merged"]), proc.stdout
+    assert not os.path.exists(paths["pushed"]), proc.stdout
     assert os.path.isdir(paths["unpushed"])
     assert os.path.isdir(paths["dirty"])
     assert (Path(paths["dirty"]) / "scratch.txt").exists()
@@ -307,7 +312,7 @@ def test_detached_worktree_is_removed_only_when_idle(repo, tmp_path):
 
     aged = _run_script(clone, env, "--no-gh", "--days", "0", "--apply")
     assert aged.returncode == 0, aged.stderr
-    assert not os.path.exists(path)
+    assert not os.path.exists(path), aged.stdout
 
 
 def test_detached_worktree_on_no_ref_is_never_removed(repo, tmp_path):
@@ -449,8 +454,9 @@ def test_a_forks_pr_with_the_same_head_name_is_ignored(repo, gh_stub):
     env, clone, paths = repo["env"], repo["clone"], repo["paths"]
     gh_stub(prs={"feat/pushed": [_pr(14, "OPEN", owner="a-fork")]})
 
-    row = _table(_run_script(clone, env).stdout)[paths["pushed"]]
-    assert row["class"] == "pushed-idle", "the fork's open PR is not ours"
+    dry = _run_script(clone, env)
+    row = _table(dry.stdout)[paths["pushed"]]
+    assert row["class"] == "pushed-idle", "the fork's open PR is not ours:\n" + dry.stdout
     assert row["pr"] == "none", "looked, found no PR of ours"
 
     proc = _run_script(clone, env, "--apply")
@@ -465,7 +471,7 @@ def test_archive_pushes_an_unpushed_branch_before_removing_it(repo, gh_stub):
     assert proc.returncode == 0, proc.stderr + proc.stdout
     remote = _git(clone, "ls-remote", "--heads", "origin", env=env).stdout
     assert "refs/heads/feat/unpushed" in remote
-    assert not os.path.exists(paths["unpushed"])
+    assert not os.path.exists(paths["unpushed"]), proc.stdout
     # --archive does not make a dirty worktree removable.
     assert os.path.isdir(paths["dirty"])
 
@@ -477,3 +483,100 @@ def test_archive_without_gh_pushes_but_keeps_the_worktree(repo):
     remote = _git(clone, "ls-remote", "--heads", "origin", env=env).stdout
     assert "refs/heads/feat/unpushed" in remote
     assert os.path.isdir(paths["unpushed"])
+
+
+# --- reading a commit's age ------------------------------------------------
+
+
+_MODULE_NAME = "_prune_worktrees_under_test"
+
+
+def _module():
+    """Import the script as a module (its dataclasses need it in sys.modules)."""
+    import importlib.util
+
+    if _MODULE_NAME in sys.modules:
+        return sys.modules[_MODULE_NAME]
+    spec = importlib.util.spec_from_file_location(_MODULE_NAME, SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[_MODULE_NAME] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+@pytest.mark.parametrize(
+    "stamp",
+    [
+        "1577934245",
+        "2020-01-02T03:04:05+00:00",
+        "2020-01-02T03:04:05Z",
+        " 1577934245\n",
+    ],
+)
+def test_commit_stamps_parse_in_every_form_git_emits(stamp):
+    """git 2.45 made `%cI` end a UTC time in `Z`, which Python 3.10 rejects."""
+    mod = _module()
+    parsed = mod.parse_commit_stamp(stamp)
+    assert parsed is not None, stamp
+    assert parsed.utcoffset() == dt.timedelta(0)
+    assert parsed.year == 2020
+
+
+def test_an_unreadable_stamp_is_none_not_a_crash():
+    assert _module().parse_commit_stamp("not a date") is None
+    assert _module().parse_commit_stamp("") is None
+
+
+def test_every_worktree_reports_a_known_age(repo):
+    """The invariant behind the CI break: no row may show `?` for AGE.
+
+    An age this script cannot read is silently "too young to remove", so a
+    change in how git prints dates turns the whole tool into a no-op. This
+    asserts against the live git and Python, whatever they are.
+    """
+    proc = _run_script(repo["clone"], repo["env"], "--no-gh")
+    assert proc.returncode == 0, proc.stderr
+    rows = _table(proc.stdout)
+    assert rows, proc.stdout
+    unknown = [path for path, row in rows.items() if row["age"] == "?"]
+    assert not unknown, "age unreadable for {}:\n{}".format(unknown, proc.stdout)
+    for path, row in rows.items():
+        assert re.fullmatch(r"\d+d", row["age"]), (path, row["age"])
+
+
+def test_now_pins_the_idle_boundary(repo):
+    """`--now` makes the idle window exact instead of clock-dependent."""
+    env, clone, paths = repo["env"], repo["clone"], repo["paths"]
+    # The pushed worktree's only commit is at OLD_DATE.
+    just_short = _run_script(clone, env, "--no-gh", "--now", "2020-01-09T03:04:04+00:00")
+    assert _table(just_short.stdout)[paths["pushed"]]["class"] == "pushed-fresh", (
+        just_short.stdout
+    )
+    exact = _run_script(clone, env, "--no-gh", "--now", "2020-01-09T03:04:05+00:00")
+    assert _table(exact.stdout)[paths["pushed"]]["class"] == "pushed-idle", exact.stdout
+
+
+def test_a_bad_now_is_rejected(repo):
+    proc = _run_script(repo["clone"], repo["env"], "--no-gh", "--now", "yesterday")
+    assert proc.returncode == 2
+    assert "not an ISO 8601 timestamp" in proc.stderr
+
+
+# --- gh owner resolution ----------------------------------------------------
+
+
+def test_owner_lookup_failure_fails_closed(repo, gh_stub):
+    """`gh repo view` decides which PRs are ours; without it, nothing is acted on."""
+    env, clone, paths = repo["env"], repo["clone"], repo["paths"]
+    gh_stub(prs={"feat/pushed": [_pr(15, "MERGED")]}, fail_on="repo")
+
+    dry = _run_script(clone, env)
+    assert dry.returncode == 0
+    row = _table(dry.stdout)[paths["pushed"]]
+    assert row["pr"] == "?"
+    assert "unreliable" in row["action"]
+
+    applied = _run_script(clone, env, "--apply")
+    assert applied.returncode == 2, applied.stdout
+    for path in paths.values():
+        assert os.path.isdir(path)

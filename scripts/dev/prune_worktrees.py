@@ -357,15 +357,34 @@ def refs_containing(repo: str, rev: str, exclude: Sequence[str] = ()) -> List[st
     return [ref for ref in proc.stdout.split() if ref not in exclude]
 
 
-def commit_time(repo: str, rev: str) -> Optional[dt.datetime]:
-    proc = git(repo, "log", "-1", "--format=%cI", rev, check=False)
-    stamp = proc.stdout.strip()
-    if proc.returncode != 0 or not stamp:
+def parse_commit_stamp(stamp: str) -> Optional[dt.datetime]:
+    """Read a commit timestamp as UTC, from epoch seconds or ISO 8601.
+
+    Epoch seconds (``%ct``) is what this script asks git for, because the ISO
+    forms move: git 2.45 changed ``%cI`` to end a UTC time in ``Z``, and
+    ``datetime.fromisoformat`` rejected ``Z`` until Python 3.11.  A run with a
+    new git and an old Python read no date at all, silently called every
+    worktree too young to touch, and removed nothing.  Epoch seconds cannot
+    drift that way; the ISO branch stays for a caller that has one already.
+    """
+    stamp = stamp.strip()
+    if not stamp:
         return None
     try:
-        return dt.datetime.fromisoformat(stamp)
+        return dt.datetime.fromtimestamp(int(stamp), dt.timezone.utc)
+    except ValueError:
+        pass
+    try:
+        return dt.datetime.fromisoformat(stamp.replace("Z", "+00:00"))
     except ValueError:
         return None
+
+
+def commit_time(repo: str, rev: str) -> Optional[dt.datetime]:
+    proc = git(repo, "log", "-1", "--format=%ct", rev, check=False)
+    if proc.returncode != 0:
+        return None
+    return parse_commit_stamp(proc.stdout)
 
 
 def branch_is_pushed(repo: str, branch: str, main_ref: str) -> bool:
@@ -387,7 +406,8 @@ def classify(
     remove_ignored: bool,
     now: dt.datetime,
 ) -> Record:
-    last = commit_time(repo, wt.head) if wt.head else None
+    rev = wt.head or ("refs/heads/" + wt.branch if wt.branch else "")
+    last = commit_time(repo, rev) if rev else None
     age = None if last is None else (now - last).total_seconds() / 86400.0
     old = age is not None and age >= days
     rec = Record(wt=wt, last_commit=last, age_days=age)
@@ -421,6 +441,8 @@ def classify(
         if old:
             rec.remove_worktree = True
             rec.action = "remove worktree"
+        elif age is None:
+            rec.action = "keep (detached, commit age unknown)"
         else:
             rec.action = "keep (detached, newer than {:g}d)".format(days)
         return rec
@@ -495,7 +517,10 @@ def classify(
         return _finish(rec)
 
     rec.klass = CLASS_PUSHED_FRESH
-    rec.action = "keep (pushed, newer than {:g}d)".format(days)
+    if age is None:
+        rec.action = "keep (pushed, commit age unknown)"
+    else:
+        rec.action = "keep (pushed, newer than {:g}d)".format(days)
     return _finish(rec)
 
 
@@ -525,7 +550,7 @@ def format_table(records: Sequence[Record]) -> str:
                 rec.branch_label,
                 rec.klass,
                 rec.last_commit.strftime("%Y-%m-%d") if rec.last_commit else "-",
-                "{:.0f}d".format(rec.age_days) if rec.age_days is not None else "-",
+                "{:.0f}d".format(rec.age_days) if rec.age_days is not None else "?",
                 rec.pr.label(),
                 rec.action,
             )
@@ -610,6 +635,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
              "regenerable caches (they are deleted with it)",
     )
     parser.add_argument(
+        "--now",
+        default=None,
+        help="treat this ISO 8601 timestamp as the current time when measuring "
+             "idleness (for tests and reproducible runs)",
+    )
+    parser.add_argument(
         "--main-ref",
         default="origin/main",
         help="remote ref that decides 'merged' (default: origin/main)",
@@ -657,6 +688,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     pr_lookup = None if args.no_gh else PrLookup(repo=repo)
     now = dt.datetime.now(dt.timezone.utc)
+    if args.now:
+        now = parse_commit_stamp(args.now)
+        if now is None:
+            print("error: --now is not an ISO 8601 timestamp: {}".format(args.now),
+                  file=sys.stderr)
+            return 2
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=dt.timezone.utc)
     records = []
     for wt in trees:
         if wt.prunable or wt.bare:
