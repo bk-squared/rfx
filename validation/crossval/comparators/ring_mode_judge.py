@@ -56,9 +56,77 @@ Gates (all evaluated only when the external reference is present):
        discretization disagreement has ever been declared (#907).
 
     Because ingredient 3 does not exist, this gate is a two-solver
-    **consistency heuristic**, not a Q-accuracy guarantee. That is the
-    reading recorded when #907 was closed (2026-09-13); do not cite a cv02
+    **consistency heuristic**, not a Q-accuracy guarantee; do not cite a cv02
     ``q`` PASS as a bound on rfx's Q accuracy.
+
+    **PERMANENT DECLARATION (#907, 2026-09-15).** That reading is the gate's
+    standing character, not a placeholder awaiting a number. #907 offered two
+    dispositions: derive ingredient 1 and declare ingredient 3, or state
+    permanently that the cv02 ``q`` gate is a two-solver **consistency
+    envelope**. This module takes the second. Ingredient 3's ``kind`` stays
+    ``"absent"``, no floor is introduced, and no judge behaviour changes.
+
+    **What would have to exist before that flips** -- the standard this
+    module already recorded, re-measured on 2026-09-15 and unmet on all three
+    counts:
+
+    * the rfx matrix-pencil estimator's real SNR / model-order uncertainty
+      law on the REAL multi-mode record, not on a clean-exponential proxy;
+    * a source-free Meep reference record regenerated under the same
+      conditions (today's reference runs Harminv while the source is still
+      on, so it violates the free-decay model any uncertainty law assumes);
+    * a CONVERGED spatial/timestep ladder against the exact annulus. No
+      such ladder exists in this repo: nothing under
+      ``scripts/diagnostics/`` refines cv02's mesh
+      (``cv02_harminv_decimation_ladder.py`` is a sampling-rate ladder, not
+      a mesh one). An earlier draft of this docstring said the first such
+      ladder had already been run and showed rfx's ``Q`` moving AWAY from
+      the continuum under refinement, and called that the reason the third
+      artifact could not exist. **That is WITHDRAWN.** Its numbers lived in
+      an issue comment; no artifact, test or table here pins them, and the
+      issue was closed as an unfinished observation. It is the same
+      withdrawal, for the same reason, that
+      ``scripts/diagnostics/cv02_harminv_decimation_ladder.py`` already
+      records in its own docstring. The artifact is therefore MISSING, not
+      impossible, and nothing below rests on it.
+
+    Two measurements make this the honest disposition rather than a deferral.
+    Both are reproducible from
+    ``scripts/diagnostics/cv02_exact_annulus_qnm.py`` and its frozen fixture
+    ``tests/fixtures/cv02_ring_judge/exact_annulus_qnm.json``:
+
+    1. **Estimator uncertainty cannot license the observed gap.** The exact
+       finite-record Cramer-Rao bound for a damped exponential, evaluated at
+       cv02's own ``T`` and sampling rather than in the long-record limit, is
+       ``sigma_lnQ ~ tau * sqrt(6 dt / rho) * T**-1.5`` in this regime: about
+       ``5e-3`` for the slowest mode at a per-sample SNR ``rho = 1e4``, which
+       is ~15x SMALLER than that mode's observed ``|lnQ| = 0.076``. Admitting
+       the gap on estimator noise alone would need ``rho`` of order 1 to 45 --
+       and ``rho`` is not measured on the real record, which is the first
+       missing artifact above. Note what the correct law implies: it shrinks
+       with ``T`` FASTER than the ``tau/T`` window does (``T**-1.5`` against
+       ``T**-1``), so an honestly derived ingredient 1 would make this gate
+       TIGHTER with record length, not looser. That is the sharper form of
+       the complaint #907 opened with, and it is why "derive ingredient 1"
+       is not a route to a wider gate.
+    2. **A frequency-error budget cannot license it either.** The exact
+       annulus gives ``|dlnQ/dlnf| = 4.97 / 6.91 / 8.85`` in the INDEX
+       channel and ``0`` exactly in the uniform-radius channel
+       (``dlnf/dlnR = -1`` and ``dlnQ/dlnR = 0``, Maxwell scale invariance).
+       So the leverage is an assumption about which channel a solver's error
+       lives in -- it ranges over the whole interval ``[0, 8.85]`` -- not an
+       analytic property of the annulus. Even at the largest leverage and the
+       most generous frequency error (BOTH solvers' full disagreement with
+       the continuum, added) the transport gives ``0.013 / 0.023 / 0.051``
+       against observed ``|lnQ|`` of ``0.058 / 0.048 / 0.076``. Transporting
+       the rfx-vs-Meep frequency DIFFERENCE instead gives
+       ``0.0026 / 0.0021 / 0.0032``, short by 23x.
+
+    Both branches say the same thing: **the observed Q gap is not explained
+    by either candidate ingredient.** A floor wide enough to cover it would
+    therefore have to be read off the gap, and then the gate would certify
+    the agreement it exists to test. Declaring the envelope is what is left,
+    and it is a statement about the gate, not a claim about rfx.
 
 Frequencies and the record length must be in reciprocal units (the script
 passes both in Meep normalised units: ``f`` in ``c/a``, ``T`` in ``a/c``).
@@ -213,18 +281,44 @@ Q_GATE_INGREDIENTS: tuple[GateIngredient, ...] = (
             "gap without the gate certifying the agreement it is supposed to "
             "test. Deriving one needs the rfx estimator's real SNR / "
             "model-order uncertainty, a source-free Meep reference record "
-            "regenerated under the same conditions, and a spatial/timestep "
-            "discretization ladder against the exact annulus - a "
-            "pre-declared campaign, not a number chosen here."
+            "regenerated under the same conditions, and a CONVERGED "
+            "spatial/timestep ladder against the exact annulus - a "
+            "pre-declared campaign, not a number chosen here. "
+            "DECLARED PERMANENT 2026-09-15 (#907): this kind stays 'absent' "
+            "and the q gate is a two-solver consistency envelope, because "
+            "neither candidate ingredient accounts for the gap it would have "
+            "to license. The exact finite-record Cramer-Rao bound at cv02's "
+            "own T and sampling is ~5e-3 in |lnQ| for the slowest mode at "
+            "per-sample SNR 1e4, ~15x below that mode's observed 0.076; and "
+            "it falls as T**-1.5, i.e. FASTER than this gate's tau/T scale, "
+            "so a derived ingredient 1 tightens the gate with record length "
+            "rather than widening it. Transporting the measured frequency "
+            "disagreement through the exact annulus is short too: the "
+            "rfx-vs-Meep frequency difference carries 0.0026/0.0021/0.0032 "
+            "in |lnQ| (23x short of 0.058/0.048/0.076) and even both "
+            "solvers' full error against the continuum, added and taken at "
+            "the largest of the two leverage channels, carries only "
+            "0.013/0.023/0.051. The leverage itself is a CHOICE: the annulus "
+            "gives |dlnQ/dlnf| = 4.97/6.91/8.85 for an index error and "
+            "exactly 0 for a uniform radius error (dlnf/dlnR = -1, "
+            "dlnQ/dlnR = 0), so it spans [0, 8.85] and a floor built on it "
+            "declares an error channel rather than deriving one. Oracle and "
+            "frozen numbers: scripts/diagnostics/cv02_exact_annulus_qnm.py, "
+            "tests/fixtures/cv02_ring_judge/exact_annulus_qnm.json."
         ),
-        source="#907 closing decision, 2026-09-13",
+        source="#907 closing decision 2026-09-13; permanent declaration "
+               "2026-09-15 (option (b) of the issue's own two)",
     ),
 )
 
 #: One-line reading of the table above, quoted by the report and the artifact.
 Q_GATE_CHARACTER = (
-    "limited two-solver consistency heuristic - NOT a Q-accuracy guarantee "
-    "(no discretization budget is declared; #907 closed 2026-09-13)"
+    "PERMANENT two-solver consistency envelope - a limited consistency "
+    "heuristic, NOT a Q-accuracy guarantee. No discretization budget is "
+    "declared, none is being back-filled from the observed gap, and this is "
+    "the gate's standing character, not a placeholder: #907, declared "
+    "2026-09-15. Q_GATE_INGREDIENTS[2] records the three artifacts that "
+    "would have to exist before it changes"
 )
 
 
@@ -437,18 +531,30 @@ def q_window(ref_freq: float, ref_Q: float, record_length: float
     committed reference/rfx pair this gate PASSES at ``T=291`` (mode-1 window
     0.747) and FAILS at ``T=3385`` (window 0.064) purely because the record got
     longer and better settled. A longer record reds a physically stable case.
-    Fixing it needs ingredient 3 -- a discretization budget derived
-    independently of this board, e.g. a resolution ladder against the exact
-    annulus. It specifically does NOT need a floor read off the observed
-    rfx-vs-Meep gap: such a floor would make the gate certify the agreement it
-    exists to test, and it was refused on those grounds (see the record-length
-    comment in ``validation/crossval/02_ring_resonator.py``). Either way that
-    is a change to a claims-bearing gate and is NOT done here -- it is
-    tracked as issue
-    #907 (the ``tau_ref/T`` window shrinks with ``T`` faster than the physics
-    does, so a longer record fails a stable Q), and it is the reason cv02's
-    Meep (verdict) lane keeps its calibrated record length instead of the
-    tau-scaled one.
+    Measured across ``T in {260.98, 291, 3385, 15600, 1e6}`` on both boards
+    the ``q`` gate is False in 5 of those 10 cells, and it is the ONLY gate
+    that moves: ``unmatched``, ``count``, ``mean_err``, ``max_err`` and every
+    row's ``|lnQ|`` are identical at every ``T``
+    (``test_the_q_gate_is_the_only_gate_that_moves_with_record_length``).
+
+    **This is not being repaired, and that is a decision, not a deferral**
+    (#907, 2026-09-15). The gate is declared a two-solver consistency
+    envelope; see the module docstring for the two measurements behind it and
+    :data:`Q_GATE_INGREDIENTS` for the three artifacts that would have to
+    exist before ingredient 3 could be declared. In short: the exact
+    finite-record Cramer-Rao bound at cv02's own ``T`` and sampling puts the
+    estimator floor ~15x BELOW the observed ``|lnQ|`` gap, and it falls as
+    ``T**-1.5``, i.e. faster than this ``tau/T`` scale -- so deriving
+    ingredient 1 honestly would TIGHTEN this gate with record length, not
+    widen it. The frequency-error route is short by 1.5x to 23x depending on
+    which error the budget is built from, and the leverage it would be
+    transported through spans ``[0, 8.85]`` depending on an assumed error
+    channel. A floor big enough to cover the gap would have to be read off
+    the gap, which would make the gate certify the agreement it exists to
+    test; that was refused in 2026-09 and is refused again here. The gate's
+    ``T``-contingency therefore stands as declared behaviour, and it remains
+    the reason cv02's Meep (verdict) lane keeps its calibrated record length
+    instead of the tau-scaled one.
 
     ``window`` is retained as the scalar rate scale ``s`` for callers and
     reports.  The Q gate itself uses the exact, asymmetric transformed
