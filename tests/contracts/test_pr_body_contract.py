@@ -284,6 +284,42 @@ def test_an_unterminated_pre_block_swallows_the_rest_of_the_body() -> None:
     assert len(cpb.check(text, ENV)) == 2
 
 
+@pytest.mark.parametrize(
+    "prose",
+    [
+        "An unclosed `<!--` swallows the rest of the body on render.",
+        "Fenced code, `<pre>` blocks and `<!-- -->` comments are all stripped.",
+        "Write `<!--` when you mean a comment.",
+    ],
+)
+def test_a_backticked_tag_in_prose_does_not_eat_the_body(prose: str) -> None:
+    """Inline code is literal text on render, not markup.
+
+    This is not hypothetical: the first version of this gate ate its own PR
+    body. One backticked `<!--` in a sentence ABOUT unterminated comments
+    swallowed the Lane and Review lines forty lines further down, and the job
+    reported "no Lane: line" on a body that plainly had one.
+    """
+    text = body("## What", prose, "", "Lane: lane:ci-infra", ACCEPT)
+    assert cpb.check(text, ENV) == [], prose
+
+
+def test_the_prs_own_body_style_passes() -> None:
+    """A body that documents the contract in prose still satisfies it."""
+    text = body(
+        "Exactly one `Lane: lane:<label>` line and one `Review: ...` line.",
+        "Lines inside `<pre>` blocks and unterminated `<!--` comments do not count.",
+        "",
+        "```",
+        "Lane: lane:crossval",
+        "```",
+        "",
+        "Lane: lane:ci-infra",
+        ACCEPT,
+    )
+    assert cpb.check(text, ENV) == []
+
+
 def test_a_fenced_copy_does_not_satisfy_a_body_that_also_has_a_real_lane_line() -> None:
     """The fence is skipped, so one real line plus a quoted copy is still one."""
     text = body(

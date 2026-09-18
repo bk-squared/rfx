@@ -94,6 +94,14 @@ _OPEN_COMMENT_RE = re.compile(r"<!--.*\Z", re.DOTALL)
 _PRE_RE = re.compile(r"<pre\b[^>]*>.*?(?:</pre>|\Z)", re.DOTALL | re.IGNORECASE)
 _FENCE_RE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
 
+# `<!--` inside an inline code span is literal text on render, not the start of
+# a comment. Without this the gate eats the tail of any body that DESCRIBES the
+# gate -- which is exactly how it first behaved on its own PR: one backticked
+# `<!--` in a sentence about unterminated comments swallowed the Lane and
+# Review lines 40 lines below it. Spans are single-line so a stray backtick
+# cannot run away across the whole body.
+_INLINE_CODE_RE = re.compile(r"(?<!`)(`+)(?!`)([^\n]+?)(?<!`)\1(?!`)")
+
 # A line that carries the keyword but not at the left margin: a list item, a
 # block quote, or a bold run. The strict rule stands -- the line must start the
 # claim -- but the failure text should say that instead of "no Lane: line".
@@ -101,16 +109,33 @@ _ADORNMENT_RE = re.compile(r"^[\s>*+\-]*")
 _TRAILING_BOLD_RE = re.compile(r"[*_\s]+$")
 
 
-def _blank_out(match: re.Match[str]) -> str:
-    """Replace a span with as many newlines as it held, so fences still pair."""
-    return "\n" * match.group(0).count("\n")
+def _mask_inline_code(text: str) -> str:
+    """*text* with inline code spans blanked, character count preserved.
+
+    Used only to LOCATE comments and ``<pre>`` blocks; the offsets have to keep
+    lining up with the real text, so spans are overwritten rather than removed.
+    """
+    return _INLINE_CODE_RE.sub(lambda m: " " * len(m.group(0)), text)
 
 
 def strip_invisible(body: str) -> str:
-    """Drop HTML comments and ``<pre>`` blocks, keeping the line count."""
-    body = _COMMENT_RE.sub(_blank_out, body)
-    body = _OPEN_COMMENT_RE.sub(_blank_out, body)
-    return _PRE_RE.sub(_blank_out, body)
+    """Blank out HTML comments and ``<pre>`` blocks, keeping the line count.
+
+    Each stage looks for its markers in a copy whose inline code spans are
+    masked, then blanks the matching range of the real text. Blanking with
+    spaces rather than deleting keeps every later offset and every newline
+    where it was, so fence pairing is unaffected.
+    """
+    text = body
+    for pattern in (_COMMENT_RE, _PRE_RE, _OPEN_COMMENT_RE):
+        masked = _mask_inline_code(text)
+        chars = list(text)
+        for match in pattern.finditer(masked):
+            for index in range(match.start(), match.end()):
+                if chars[index] != "\n":
+                    chars[index] = " "
+        text = "".join(chars)
+    return text
 
 
 def body_lines(body: str) -> list[str]:
