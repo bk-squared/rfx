@@ -495,9 +495,9 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
     Four position-independent classes, in declaration order:
 
     1. **Periodic / Bloch boundaries.** The distributed local kernels are
-       unconditionally non-periodic -- ``rfx/runners/distributed.py:351``
+       unconditionally non-periodic -- ``rfx/runners/distributed.py:330``
        ("non-periodic (ghost cells handle inter-device coupling)"), and
-       the same sentence again at :380, :415 and :440 -- and
+       the same sentence again at :359, :394 and :419 -- and
        no kernel or stepper in ``rfx/runners/distributed_v2.py`` reads
        ``sim._periodic_axes``: on main (d56f68eb) the string did not occur
        in the file at all, and on this branch every occurrence is inside
@@ -525,15 +525,16 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
        is also the ``n_devices == 1`` delegate -- has the same fork, at
        the same two ``if pe.impedance > 0.0 and pe.extent is None:`` /
        ``elif pe.impedance == 0.0:`` lines.  Cited by symbol and not by
-       line number on purpose: this branch inserts the two admission-gate
-       blocks ABOVE that fork, which moved it from :1414/:1422 on
-       origin/main to :1476/:1484 here, and an error message that points
-       62 lines off is worse than one that points at a name.
+       line number on purpose: this branch inserts the gate blocks and
+       their derivations ABOVE both forks, which moved this file's from
+       :733/:740 on origin/main (8bc6c084) to :1599/:1606 here and the
+       pmap twin's from :1393/:1401 to :1473/:1481, and an error message
+       that points 866 lines off is worse than one that points at a name.
     3. **Passive ports** (``excite=False``).  No port branch in either
        distributed runner reads ``pe.excite`` -- on main (d56f68eb) the
        name ``excite`` did not occur in either file, and on this branch
        its occurrences in ``distributed_v2.py`` are all inside this gate;
-       ``rfx/runners/uniform.py:421,440`` honours it.  Every port was
+       ``rfx/runners/uniform.py:429,448`` honours it.  Every port was
        excited.
     4. **Flux monitors / NTFF boxes.**  Neither runner has an accumulator
        for them (the strings ``flux`` and ``ntff`` do not occur), so a
@@ -585,8 +586,8 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
             f"{' and '.join(_what)}: periodic / Bloch boundaries are not "
             f"supported on the {lane} path. The distributed local kernels "
             "are unconditionally non-periodic "
-            "(rfx/runners/distributed.py:351, \"non-periodic (ghost cells "
-            "handle inter-device coupling)\", and again at :380/:415/:440) "
+            "(rfx/runners/distributed.py:330, \"non-periodic (ghost cells "
+            "handle inter-device coupling)\", and again at :359/:394/:419) "
             "and no kernel in rfx/runners/distributed_v2.py reads "
             "sim._periodic_axes (outside this admission gate the attribute "
             "does not appear in the file at all), so the axis is solved "
@@ -628,7 +629,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
             "read 9.95e-04 (peak |Ez| 1.41e-02). Use a single-cell lumped "
             "port (drop extent=), or omit devices=... : the single-device "
             "run() lane realizes wire ports "
-            "(rfx/runners/uniform.py:419-420, setup_wire_port)."
+            "(rfx/runners/uniform.py:427-428, setup_wire_port)."
         )
 
     passive = [
@@ -645,7 +646,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
             "rfx/runners/distributed_v2.py or rfx/runners/distributed.py "
             "reads `excite` (outside this admission gate the name does not "
             "appear in either file), while "
-            "rfx/runners/uniform.py:421,440 honours it (`if "
+            "rfx/runners/uniform.py:429,448 honours it (`if "
             "pe.excite:` on both the wire and the lumped branch), so every "
             f"port here is EXCITED. Declared here: {_detail}. Measured on "
             "main before this refusal: an excite=False port with an "
@@ -702,7 +703,7 @@ def check_x_absorber_fits_ranks(*, nx, n_devices, nx_per, pad_x, ghost,
         x-lo, rank 0     [ghost, ghost + n)
         x-hi, rank N-1   [nx_per + ghost - pad_x - n, nx_per + ghost - pad_x)
 
-    (``xlo``/``xhi`` at rfx/runners/distributed.py:807-808; ``pad_x`` is the
+    (``xlo``/``xhi`` at rfx/runners/distributed.py:786-787; ``pad_x`` is the
     #623 alignment pad, which sits PAST the real x-hi face on the last
     rank.)  A rank owns the real cells ``[ghost, ghost + nx_per)`` of its
     own slab, so the windows stay inside owned cells exactly while

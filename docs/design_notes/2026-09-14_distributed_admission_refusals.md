@@ -1,22 +1,28 @@
 # Distributed admission refusals — closing seven silently-wrong paths (B0)
 
-2026-09-14, last revised 2026-09-15 (round 4). Branch
-`agent/distributed-admission-refusals`. **The tree this PR lands on is
-`origin/main` 883615c6** — 14 commits ahead of the 7b511591 the branch was
-rebased onto. Those 14 commits move a lot elsewhere (the #980 split of
-`rfx/api/_preflight.py` and `_sparams.py` into the `rfx/preflight/` and
-`rfx/sparams/` packages), but across every file this lane touches —
-`rfx/runners/`, `rfx/grid.py`, `rfx/nonuniform.py`, `rfx/boundaries/`,
-`rfx/api/_execute.py` — `git diff 7b511591 883615c6` is **one file, one
-line**: `if not issues:` → `if not len(issues):` at
-`rfx/api/_execute.py:1067`, unrelated to the gate. Every RED
-number in this note reproduces to the printed digit on 883615c6; round 4
-re-derived them all there, so the rebase before the PR is a fast-forward as
-far as the measurements are concerned. Provenance of each figure, kept
-because a number without its tree is not re-derivable: round-1 and round-2
-numbers were measured on d56f68eb (identical to 7b511591 in every runtime
-file this lane touches), round-3 on 7b511591, round-4 on 883615c6, and each
-says so beside itself.
+2026-09-14, last revised 2026-09-18 (round 5: rebase onto 8bc6c084).
+Branch `agent/distributed-admission-refusals`. **The tree this PR lands on
+is `origin/main` 8bc6c084** (`git rebase origin/main`, 2026-09-18).
+
+Rounds 1–4 measured on, in order, d56f68eb → 7b511591 → 883615c6, and each
+RED figure below still says beside itself which of those trees produced it.
+Those figures are kept as history, with their trees named, and are **no
+longer claimed to reproduce on the landing tree**: unlike the 7b511591 →
+883615c6 step (which was one line in one file across every file this lane
+touches — `if not issues:` → `if not len(issues):` in
+`rfx/api/_execute.py`), 88651a1c → 8bc6c084 moves the distributed runners
+themselves. #1038 legs 1–6 hoisted the shared sharding / CPML / shard_map
+helpers into `rfx/runners/_distributed_common.py` and retired the
+package-level `rfx.runners.run_distributed`; #1041/#1055 moved source
+injection to **before** the E ghost exchange in all three distributed
+runners; #1053 taught `distributed_v2` to realize declared PEC volumes.
+A re-derivation of the RED table on 8bc6c084 is therefore owed and is NOT
+done here — what the rebase does verify is that every refusal, every
+message and every parity control in
+`tests/unit/runners/test_distributed_admission_refusals.py` is still GREEN
+on 8bc6c084, i.e. the classes are still refused and the admitted
+configurations still match single-device. The one class whose *reachability
+argument* main changed is class 7; §2.7 says how.
 
 Direction note:
 `rfx-research-notes/accel-import-20260913/DIRECTION-distributed-preflight.md`
@@ -38,10 +44,12 @@ found two more while checking the five:
   5.09e-02 of peak on the committed fixture, up to **100 % of a probe's own
   peak** next to the face, and it is a silent path with 0 warnings — the
   same class as the five. §2.6.
-- **class 7**, the *ungated exported v1 runner*: `rfx.runners.run_distributed`
-  is the pmap runner in `rfx/runners/distributed.py`, not `distributed_v2`,
-  and the first round gated only `distributed_v2` and the `run(devices=...)`
-  dispatch. All five classes rode straight through the exported name. §2.7.
+- **class 7**, the *ungated v1 pmap runner* in
+  `rfx/runners/distributed.py`: the first round gated only `distributed_v2`
+  and the `run(devices=...)` dispatch, and all five classes rode straight
+  through the pmap runner — at the time reachable as the package-level
+  `rfx.runners.run_distributed`, and since #1038 leg 6 by full module path
+  and as `distributed_v2`'s one-device delegate. §2.7.
 
 **Round 4 (2026-09-15, after review).** Class 6 was **under-refusing**, and
 one shipped number was not re-derivable:
@@ -81,7 +89,9 @@ find it:
   `check_absorber_faces_are_absorbing()` (class 6, all six faces since
   round 4) inside both runners;
 - the same six-class gate in the **v1 pmap runner** `rfx/runners/distributed.py`
-  (class 7), which is the exported `rfx.runners.run_distributed`;
+  (class 7), which since #1038 leg 6 is reached as
+  `rfx.runners.distributed.run_distributed` and as `distributed_v2`'s
+  `n_devices == 1` delegate;
 - one ghost-width formula, `rfx.runners.distributed_nu.nu_ghost_width` (§4);
 - a `face_pads` property on `rfx.nonuniform.NonUniformGrid` (round 4), beside
   the `axis_pads` one it already had. `distributed_v2` reaches the class-6
@@ -180,9 +190,9 @@ Through `sim.run(devices=...)` with the source at the domain centre the same
 disagreement is 3.261566e-04 on a 7.734966e-01 peak.
 
 Cause. The distributed local kernels are unconditionally non-periodic —
-`rfx/runners/distributed.py:351` ("non-periodic (ghost cells handle
-inter-device coupling)"), and the same sentence again at `:380`, `:415`,
-`:440`. And `sim._periodic_axes` is read **zero** times in
+`rfx/runners/distributed.py:330` ("non-periodic (ghost cells handle
+inter-device coupling)"), and the same sentence again at `:359`, `:394`,
+`:419`. And `sim._periodic_axes` is read **zero** times in
 `rfx/runners/distributed_v2.py`: the string does not occur in the file
 (verified by grep on main, 2026-09-14; the survey's §C1-1 recorded two uses
 at 1021/1201, which are not on d56f68eb). A periodic axis was therefore
@@ -255,7 +265,7 @@ Cause. No port branch in `distributed_v2.py` or `distributed.py` reads
 `pe.excite` — on d56f68eb the name `excite` did not occur in either file, and
 on this branch its occurrences in `distributed_v2.py` are all inside the
 admission gate, which is why the runtime message says "outside this admission
-gate" rather than "at all"; `rfx/runners/uniform.py:421,440` honours it (`if pe.excite:` guards both
+gate" rather than "at all"; `rfx/runners/uniform.py:429,448` honours it (`if pe.excite:` guards both
 the wire-port and the lumped-port source). Passive matched loads are how
 multi-port S-parameters are extracted, so "every port is excited" is not a
 small deviation.
@@ -278,7 +288,7 @@ message.
 ### 2.5 x-absorber overflowing a rank's slab by more than one cell
 
 The distributed CPML windows on a per-rank slab of length
-`nx_local = nx_per + 2·ghost` are (`rfx/runners/distributed.py:807-808`):
+`nx_local = nx_per + 2·ghost` are (`rfx/runners/distributed.py:786-787`):
 
 ```
 x-lo, rank 0     [ghost, ghost + n)
@@ -678,15 +688,36 @@ equivalent) is ADMITTED because both pads are non-zero, while the lane drives
 phantom window — the same `grid.face_pads` gating that fixes one should read
 `face_layers` for the depth.
 
-### 2.7 The exported v1 pmap runner was ungated for all of 1–6
+### 2.7 The v1 pmap runner was ungated for all of 1–6
 
-`rfx/runners/__init__.py` re-exports `run_distributed` from
-**`rfx.runners.distributed`** — the pmap runner — not from `distributed_v2`.
-The first round of this change put the gate in `distributed_v2.run_distributed`
-and in the `run(devices=...)` dispatch, and `rfx.runners.run_distributed`
-kept running every class. The runner's only new-ish guard was its
-`nx % n_devices != 0` ValueError, which is the accident that made the 24 mm
-fixtures bounce and the gap look closed.
+The first round of this change put the gate in
+`distributed_v2.run_distributed` and in the `run(devices=...)` dispatch, and
+the pmap runner in `rfx.runners.distributed` kept running every class. The
+runner's only new-ish guard was its `nx % n_devices != 0` ValueError, which
+is the accident that made the 24 mm fixtures bounce and the gap look closed.
+
+**Round 5 (the 8bc6c084 rebase) changed how this runner is reached, not
+whether it needs the gate.** When rounds 1–4 measured it,
+`rfx/runners/__init__.py` re-exported `run_distributed` from
+**`rfx.runners.distributed`** — the pmap runner — and not from
+`distributed_v2`, so the package-level name itself was the open door. #1038
+leg 6 retired that re-export: `rfx.runners.run_distributed` no longer
+resolves at all, and `distributed_v2` is the trunk. Two live routes into the
+pmap runner remain, which is why all of §2.7 stands:
+
+1. the full module path `from rfx.runners.distributed import run_distributed`,
+   which `rfx/runners/__init__.py` documents as the migration path;
+2. `distributed_v2.run_distributed`'s `n_devices == 1` fast path, which
+   delegates to it verbatim — so every direct one-device distributed call
+   lands here.
+
+Both are pinned by
+`test_the_pmap_runner_is_still_reachable_and_still_gated`, which replaces
+round 2's export-module assertion: it now asserts the package-level name is
+**gone** (so a silent reinstatement fails the suite), that the module path
+still resolves to the pmap runner, and that v2 still delegates to it at one
+device. If (2) ever goes away the v1 gates become reachable only by a direct
+module-path caller, and this section should say so rather than imply more.
 
 Measured on the first-round tree with the committed `_build` fixture at
 **23×12×12 mm** (nx = 24, evenly divisible, so the divisibility error cannot
@@ -710,15 +741,15 @@ runner')` after the TFSF / waveguide fallbacks and after `_refuse_f0`, and
 `check_x_absorber_fits_ranks(...)` plus
 `check_absorber_faces_are_absorbing(...)` once `use_cpml` is known
 (`pad_x=0` literally, because this runner requires `nx % n_devices == 0`).
-Pinned by nine tests, including one that asserts the export really is the
-pmap module — if that export ever moves to `distributed_v2` the other tests
-would still pass while testing nothing.
+Pinned by nine tests, including one that asserts the pmap runner is still
+reachable by both routes above — without it the other eight would still
+pass while testing nothing, or testing v2 twice.
 
 ## 3. The refusals
 
 Three new entry points in `rfx/runners/distributed_v2.py`, called from
 **three** lanes — the `run(devices=...)` dispatch, `distributed_v2.run_distributed()`
-and (round 2) `distributed.run_distributed()`, the exported pmap runner:
+and (round 2) `distributed.run_distributed()`, the v1 pmap runner:
 
 - `refuse_unsupported_distributed_features(sim, *, lane, bloch=None)` —
   classes 1–4, position-independent, `NotImplementedError`. Called from the
@@ -859,8 +890,8 @@ preflight has not grown a second local formula.
 One precision, so the agreement is not overclaimed: what the two sites now
 share is **the same formula**, not the same allocation. `build_sharded_nu_grid`
 raises `NotImplementedError("exchange_interval > 1 is reserved for Phase 2E")`
-*before* it reads `nu_ghost_width` (`rfx/runners/distributed_nu.py:429` vs
-`:435`), so for K = 2..4 the builder never allocates `g = K` at all — the
+*before* it reads `nu_ghost_width` (`rfx/runners/distributed_nu.py:401` vs
+`:406`), so for K = 2..4 the builder never allocates `g = K` at all — the
 preflight and the builder agree on a line the builder cannot reach. That is
 exactly the point of unifying them before K > 1 lands, but "the same number
 the builder allocates" would be false today and "the same formula" is what is
@@ -951,8 +982,9 @@ true.
   twice: when a row figure and a per-probe figure are both interesting,
   print **both**, in a table with a column saying where the max sits.
 - **The NU-forward distributed lane is not gated by classes 1–4.**
-  `rfx/api/_execute.py`'s NU-forward branch (~:2318–2340) refuses flux
-  monitors and DFT planes with its own checks but never calls
+  `rfx/api/_execute.py`'s NU-forward branch
+  (`_forward_distributed_nonuniform_from_materials`, ~:2365–2378) refuses
+  flux monitors and DFT planes with its own checks but never calls
   `refuse_unsupported_distributed_features`, so periodic axes, extended ports
   and `excite=False` ports are **not** gated on that lane. B0's declared scope
   is the uniform `run(devices=...)` lane and the two runners behind it; this is
@@ -990,10 +1022,11 @@ Round 2 added, and each one is a fact the first round left unpinned:
 - **the v1 pmap runner** (§2.7): five parametrised feature refusals at
   nx = 24, a lane-name assertion, the two slab checks, the class-6 refusal
   at `n_devices == 1`, a symmetric-absorber parity control through the same
-  call at the shipped 1e-3, and one test asserting that
-  `rfx.runners.run_distributed.__module__` really is `rfx.runners.distributed`
-  — without it the other eight would keep passing while testing the wrong
-  runner if the export ever moved;
+  call at the shipped 1e-3, and one test asserting that the pmap runner is
+  still reachable — `rfx.runners` no longer exports `run_distributed`
+  (#1038 leg 6), `rfx.runners.distributed.run_distributed` still resolves to
+  it, and `distributed_v2` still delegates to it at one device — without
+  which the other eight would keep passing while testing the wrong runner;
 - **the DEFAULT preflight path.** Every other `_run_api` call in the file
   passes `skip_preflight=True`, which pinned nothing about
   `sim.run(devices=...)` as a user calls it. Measured on pristine d56f68eb
@@ -1024,7 +1057,7 @@ repository was weakened for this change**, in either round.
 Round 4 added (§2.6.1), all on the widened class 6:
 
 - the y/z refusal through the runner, through `sim.run(devices=...)` and
-  through the exported v1 pmap runner, parametrised over four RED specs —
+  through the v1 pmap runner, parametrised over four RED specs —
   `z=(pec,cpml)`, `z=(pec,pec)`, `y=(pmc,cpml)`, `y=(pec,pec)` — each
   asserting the faces it names;
 - the y/z refusal at `n_devices == 1` through the v1 runner, which is where
@@ -1129,13 +1162,13 @@ Recorded so that "unmentioned" is not read as "unexamined".
   (`grep -c devices rfx/api/_sparams.py` → 0), so it never reaches a
   distributed lane.
 - **`run(devices=[one_device])` is unchanged; the new single-device refusals
-  reach *direct runner callers* only.** `rfx/api/_execute.py:3671` dispatches
+  reach *direct runner callers* only.** `rfx/api/_execute.py:3713` dispatches
   distributed only for `len(devices) > 1`, so the public single-device path
   still runs the uniform lane and still returns
   `flux_monitors == ['flux_x_0']`. Two gates in `rfx/runners/distributed.py`
-  do fire at `n_devices == 1` — the classes 1–4 gate at `:1373` and **class 6
-  at `:1473`** — and both are reachable only through
-  `rfx.runners.run_distributed(sim, devices=[d0])` or as `distributed_v2`'s
+  do fire at `n_devices == 1` — the classes 1–4 gate at `:1352` and **class 6
+  at `:1462`** — and both are reachable only through
+  `rfx.runners.distributed.run_distributed(sim, devices=[d0])` or as `distributed_v2`'s
   `n_devices == 1` delegate, never through `sim.run(devices=[d])`. Both are
   correct refusals of genuinely silent paths rather than working paths taken
   away: the flux monitor returned `flux_monitors=None` on d56f68eb, and
@@ -1206,9 +1239,10 @@ remains". It does not.
 Changed, each by measurement (§2.5, §2.6, §4, §8.1 above): the class-5 bound
 narrowed by one cell per face; the class-5 message's "died inside XLA" and
 "an absorber on neither" clauses made conditional on what actually happened;
-the port-fork citation moved from `distributed.py:1414-1422` (its position on
-`origin/main`; this branch inserts 62 lines above it, so on HEAD it is
-`:1476`/`:1484`) to the symbol pair itself; the periodic refusal's "open
+the port-fork citation moved from `distributed.py:1414-1422` (its position
+on the round-3 `origin/main`; this branch inserts lines above it, so it does
+not stay put — on the 8bc6c084 rebase the pmap fork is `:1393`/`:1401` on
+main and `:1473`/`:1481` on HEAD) to the symbol pair itself; the periodic refusal's "open
 ghost-coupled axis" replaced by "solved with the declared non-periodic
 boundary"; §2.5's shape-pair attribution and §2.6's unfixtured
 `2.74 / 3.06 / 3.07 %` row; the `g = K` agreement stated as a shared formula
@@ -1301,11 +1335,12 @@ anything was edited.
   admitted / `n + 2` refused.
 - **Line-number citations re-anchored to HEAD** (they had drifted, in one case
   since before round 3): the v1 runner's gates at
-  `rfx/runners/distributed.py:1373` (classes 1–4) and `:1473` (class 6), not
+  `rfx/runners/distributed.py:1373` (classes 1–4) and `:1483` (class 6), not
   `:1364`/`:1463`; `rfx/api/_execute.py:3671` for
   `_distributed_run = devices is not None and len(devices) > 1`, not `:3669`;
   `rfx/grid.py:110-111` for the `cpml_axes` → `return 0` pair and `:112` for
-  the `face_layers` read, not `:109-110`/`:111`.
+  the `face_layers` read, not `:109-110`/`:111`. Round 5 re-anchored them
+  again onto 8bc6c084 — see §8.5.
 - **The note's header names the tree the PR lands on**, 883615c6, with the
   per-round provenance of every figure kept beside it.
 - **§2.6 gained the reachability argument** (below) and §8's lane-B sizing
@@ -1410,3 +1445,72 @@ renamed-symbol reference, no behaviour). `tests/unit/boundaries`,
 `tests/unit/runners`, `tests/contracts` and `tests/locks` were re-run after
 both edits, on the tree exactly as committed; their counts are the ones in
 the table.
+
+### 8.5 Round-5 record — the 8bc6c084 rebase
+
+`git rebase origin/main` (88651a1c → 8bc6c084, 27 commits). One textual
+conflict, in `tests/contracts/test_evidence_numeric_provenance.py`: main
+added #928 item 2's `slab_family_per_arm_lattice_window_predeclaration.md`
+row to `CLASSIFICATION` at the same place this lane adds its own note's row.
+Both rows are kept; no other file conflicted.
+
+A clean text merge is not the same as a correct one, and here it was not.
+Two things main changed needed a real answer:
+
+- **`rfx.runners.run_distributed` is gone** (#1038 leg 6). Class 7 (§2.7)
+  was written when the package-level name was itself the open door, and two
+  tests imported it: `test_the_exported_runner_is_the_pmap_one_and_it_is_gated`
+  and `test_the_y_z_refusal_fires_in_the_v1_pmap_runner_too` (× 4 specs).
+  Those five were the only failures the rebase produced. Re-pointed to
+  main's truth rather than around it: the y/z test reaches the pmap runner
+  by full module path, and the export test became
+  `test_the_pmap_runner_is_still_reachable_and_still_gated`, which asserts
+  the package-level name is gone, that `rfx.runners.distributed.run_distributed`
+  still resolves to the pmap runner, and that `distributed_v2` still
+  delegates to it at `n_devices == 1`. No refusal changed.
+- **Line-number citations re-anchored onto 8bc6c084**, in the refusal
+  messages, the gate docstrings, the test module docstring and this note.
+  `rfx/runners/distributed.py` "non-periodic" `:351/:380/:415/:440` →
+  `:330/:359/:394/:419`; its `xlo`/`xhi` slices `:807-808` → `:786-787`;
+  its v1 gates `:1373`/`:1483` → `:1352`/`:1462`;
+  `rfx/runners/uniform.py` `setup_wire_port` `:419-420` → `:427-428` and
+  `if pe.excite:` `:421,440` → `:429,448`; `rfx/api/_execute.py:3671` →
+  `:3713` and its NU-forward branch `~:2318–2340` →
+  `_forward_distributed_nonuniform_from_materials`, `~:2365–2378`;
+  `rfx/runners/distributed_nu.py` `:429`/`:435` → `:401`/`:406`; the port
+  fork `:1414/:1422` → `:1393/:1401` on main and `:1473/:1481` on HEAD (v2's
+  own fork: `:733/:740` → `:1599/:1606`). Verified unchanged and left as
+  they were: `rfx/grid.py:110-111`, `:112`, `:153-154`,
+  `rfx/simulation.py:890`, `:942`, `:1117`, and
+  `tests/unit/runners/test_distributed.py:149`, `:291`.
+
+**Nothing main added opens a new way into any of the seven classes.**
+Checked rather than assumed: `BOUNDARY_TOKENS` is unchanged
+(`cpml`, `upml`, `pec`, `pmc`, `periodic` — no new token, no Bloch token);
+no new port kind or port field, and no new monitor kind, is added to
+`Simulation`; `_cpml_profile`'s grading — which class 5's one-free-cell
+argument rests on — is untouched by #1047 (that change is per-component
+`ce`, not the `rho` ramp); #1053's declared-PEC-volume admission is about
+volumes, not about the six face pads class 6 reads; and the one lane the
+note already records as ungated for classes 1–3, `forward()`'s
+`fwd_distributed_nu`, is still reached only from `forward()` and was not
+widened.
+
+What is **owed and not done here**: a re-derivation of the RED table on
+8bc6c084. #1041/#1055 moved source injection before the E ghost exchange in
+all three distributed runners, so the printed digits of the
+before-the-refusal measurements are unlikely to reproduce on this tree. The
+header says so; the figures keep the trees that produced them.
+
+Counts on the rebased tree (macOS arm64, CPU only, 2 virtual devices):
+
+| selection | result |
+|---|---|
+| `tests/unit/runners` + `tests/unit/boundaries` + `tests/contracts` + `tests/locks`, one invocation | **3597 passed, 31 skipped, 81 deselected** (22:55) |
+| ruff on every file this branch changes | 3 pre-existing `F401` re-export findings, **identical on a pristine 8bc6c084 worktree** (`_update_e_local_nu`, `_update_h_local_nu`, `gather_array_x`), none from this lane |
+| ruff, the CI gate (`--select E,F,W --ignore E501,F401,E741,E731,E701,E702,E402` over `rfx/ tests/`) | **All checks passed** |
+
+Zero failures, so no pre-existing-on-main exemption is claimed this round —
+round 4's five crossval failures (§8.4) are in `tests/crossval`, outside this
+selection. `tests/unit/boundaries` is in the selection deliberately: §8.4
+records that leaving it out is how round 3's second false green survived.

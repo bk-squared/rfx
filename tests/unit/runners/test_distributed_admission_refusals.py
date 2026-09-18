@@ -42,7 +42,7 @@ Two conventions, stated rather than left implicit:
    Through the public ``sim.run(devices=...)`` with the source at the domain
    centre the same disagreement is ``3.261566e-04`` on a ``7.734966e-01`` peak.
    Cause: the distributed local kernels are unconditionally non-periodic
-   (``rfx/runners/distributed.py:351``, and again at :380/:415/:440) and
+   (``rfx/runners/distributed.py:330``, and again at :359/:394/:419) and
    ``sim._periodic_axes`` occurred ZERO times in
    ``rfx/runners/distributed_v2.py`` **on d56f68eb** (grep, 2026-09-14).
    On HEAD ``grep -c`` gives 4 lines, all inside the admission gate --
@@ -76,8 +76,8 @@ Two conventions, stated rather than left implicit:
    None`` -- a crash that names no feature. Cause: ``excite`` occurred ZERO
    times in either distributed runner **on d56f68eb**; on HEAD ``grep -c``
    gives 15 lines in ``distributed_v2.py``, all inside the admission gate.
-   ``rfx/runners/uniform.py:421,440`` honours it (the ``setup_wire_port``
-   call itself starts at :419 and runs to :420).
+   ``rfx/runners/uniform.py:429,448`` honours it (the ``setup_wire_port``
+   call itself starts at :427 and runs to :428).
 
 4. **Flux monitor / NTFF box**::
 
@@ -244,11 +244,16 @@ Two conventions, stated rather than left implicit:
    4.422548e+00 = 1.078195e-07. Parity. The refusal costs the fully
    absorbing model nothing.
 
-7. **The exported v1 pmap runner was ungated for all of 1-6.**
-   ``rfx/runners/__init__.py`` re-exports ``run_distributed`` from
-   ``rfx.runners.distributed``, NOT from ``distributed_v2``, and the first
-   round of this change gated only ``distributed_v2`` and the
-   ``run(devices=...)`` dispatch. MEASURED on that first-round tree with
+7. **The v1 pmap runner was ungated for all of 1-6.**
+   The first round of this change gated only ``distributed_v2`` and the
+   ``run(devices=...)`` dispatch. When that round was measured
+   ``rfx/runners/__init__.py`` still re-exported ``run_distributed`` from
+   ``rfx.runners.distributed``; #1038 leg 6 has since retired that
+   export, which removes one route in but not the class -- the runner is
+   still reachable by full module path (the migration path that file
+   documents) and is still ``distributed_v2``'s ``n_devices == 1``
+   delegate, both pinned by
+   ``test_the_pmap_runner_is_still_reachable_and_still_gated``. MEASURED on that first-round tree with
    the committed ``_build`` fixture at 23x12x12 mm (nx=24, evenly
    divisible so the "not evenly divisible" ValueError could not bounce
    it), 40 steps, 2 devices, 0 warnings every time::
@@ -968,17 +973,23 @@ def test_the_y_z_refusal_fires_through_the_public_dispatch_too(key):
 
 @pytest.mark.parametrize("key", sorted(YZ_RED_SPECS))
 def test_the_y_z_refusal_fires_in_the_v1_pmap_runner_too(key):
-    """The exported ``rfx.runners.run_distributed`` is the v1 pmap runner,
-    and it is the runner that BUILDS the offending profile
+    """The v1 pmap runner BUILDS the offending profile
     (``_init_cpml_distributed``), so its copy of the check must be widened
     with the other.
+
+    Reached by full module path: since #1038 leg 6 the pmap runner is no
+    longer re-exported from ``rfx.runners``, and that is the import
+    ``rfx/runners/__init__.py`` names as the migration path. It is still
+    the ``n_devices == 1`` delegate of ``distributed_v2``, which is what
+    keeps this runner on a live path -- pinned in
+    ``test_the_pmap_runner_is_still_reachable_and_still_gated``.
 
     At 23 mm rather than the measurement's 24: this runner raises
     ``Grid nx=... is not evenly divisible`` BEFORE the slab checks, and
     the 24 mm fixture is nx=41. 23 mm gives nx=40. The refusal under test
     does not depend on nx (the pads do not change with the domain).
     """
-    from rfx.runners import run_distributed as exported
+    from rfx.runners.distributed import run_distributed as exported
     spec, _faces = YZ_RED_SPECS[key]
     sim = _build(boundary=spec, cpml_layers=8, domain=(23e-3, 8e-3, 8e-3),
                  source=(6e-3, 4e-3, 4e-3), probes=(6e-3, 12e-3, 20e-3))
@@ -1526,13 +1537,44 @@ def _run_v1(sim, n_steps=N_STEPS, n_devices=2):
 V1_DOMAIN = (23e-3, 12e-3, 12e-3)   # nx = 24, divisible by 2 devices
 
 
-def test_the_exported_runner_is_the_pmap_one_and_it_is_gated():
-    """The export is the fact that makes the gap reachable, so pin it."""
+def test_the_pmap_runner_is_still_reachable_and_still_gated():
+    """The facts that make the v1 gap reachable, so pin them.
+
+    #1038 leg 6 retired ``rfx.runners.run_distributed``: the package no
+    longer re-exports the pmap runner, and ``distributed_v2`` is the trunk.
+    That removed the export this test used to pin, but NOT the reachability
+    it was pinning -- so pin what is actually true on this tree:
+
+    1. the package-level name is gone (main's decision, asserted so this
+       test fails rather than silently passing if it comes back);
+    2. the pmap runner is still importable by full module path, which is
+       the migration path ``rfx/runners/__init__.py`` documents and the
+       route every v1 test below takes;
+    3. ``distributed_v2.run_distributed`` still delegates to it verbatim at
+       ``n_devices == 1``, which is what keeps the v1 gaps reachable from a
+       direct one-device caller.
+
+    If (2) or (3) goes away, the four v1 tests below stop testing the pmap
+    runner and must be re-pointed rather than kept out of habit.
+    """
+    import inspect
+
     import rfx.runners as R
-    assert R.run_distributed.__module__ == "rfx.runners.distributed", (
-        "if this export moves to distributed_v2 the four tests below still "
-        "pass but stop testing the pmap runner -- re-point them"
+    assert not hasattr(R, "run_distributed"), (
+        "rfx.runners re-exports run_distributed again; #1038 leg 6 retired "
+        "it deliberately -- re-derive which runner the v1 tests below reach"
     )
+
+    from rfx.runners.distributed import run_distributed as run_v1
+    assert run_v1.__module__ == "rfx.runners.distributed"
+
+    import rfx.runners.distributed_v2 as dv2
+    v2_src = inspect.getsource(dv2.run_distributed)
+    assert "if n_devices == 1:" in v2_src and (
+        "from rfx.runners.distributed import run_distributed" in v2_src), (
+        "distributed_v2 no longer delegates to the pmap runner at one "
+        "device; the v1 gates below are then reachable only by a direct "
+        "rfx.runners.distributed caller -- say so instead of implying more")
 
 
 @pytest.mark.parametrize("name,make,match", [
@@ -1625,8 +1667,9 @@ def test_the_v1_pmap_runner_refuses_a_phantom_window_at_one_device():
     Note this is NOT reachable from ``sim.run(devices=[one_device])``:
     ``rfx/api/_execute.py`` dispatches distributed only for
     ``len(devices) > 1``. It is reachable from
-    ``rfx.runners.run_distributed`` and as ``distributed_v2``'s
-    ``n_devices == 1`` delegate.
+    ``rfx.runners.distributed.run_distributed`` (the full module path;
+    the package-level re-export was retired by #1038 leg 6) and as
+    ``distributed_v2``'s ``n_devices == 1`` delegate.
     """
     with pytest.raises(ValueError, match="no CPML absorber"):
         _run_v1(_asym(8, 24), n_steps=8, n_devices=1)
