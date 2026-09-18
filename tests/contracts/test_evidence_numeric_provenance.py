@@ -661,6 +661,83 @@ CLASSIFICATION: dict[str, str] = {
     # prose), and the per-arm windows it declares, which are RECOMPUTED from
     # each record at evaluation time and are written into no artifact key.
     "docs/design_notes/slab_family_per_arm_lattice_window_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-14 (B0 distributed admission refusals): the note carries ~20
+    # numbers measured on a pristine origin/main (d56f68eb) checkout, before
+    # the refusals existed. No test in the repository re-measures any of
+    # them -- they cannot be re-measured in-tree, because the refusals they
+    # justify now fire first -- and they are not read out of a committed
+    # JSON artifact either, so there is no `<path>.json::<key>` span for
+    # this gate to resolve. What IS committed is the measuring FIXTURE:
+    # tests/unit/runners/test_distributed_admission_refusals.py's `_build()`
+    # and `_asym()` carry the source position and the probe row explicitly,
+    # and its module docstring states the summation convention, so every
+    # number is re-derivable by running those fixtures AS COMMITTED against
+    # a d56f68eb tree. Classified, not deleted.
+    #
+    # Round 2 (2026-09-14) corrected the one number for which that claim was
+    # false: the note sized the phantom-x-window gap at "9.653624e-06 on a
+    # 3.165971e-03 peak = 3.05e-03 of peak" and attributed it to `_build`'s
+    # default probe row, but that digit reproduces only with a SINGLE probe
+    # at x=12 mm. `_build`'s default row for a 24 mm domain is x=12 and
+    # 22 mm, whose max is 1.610351e-04 = 5.086e-02 of the row peak -- 17x
+    # larger, and the x=22 mm probe is 99.46% wrong on its own peak. The
+    # note now quotes the row value and prints the probe row next to every
+    # relative figure that depends on one. This is the SECOND number in
+    # this note to fail that way (the first was `9.7e-05`, caught in round
+    # 1), which is why the rule is written down in the note's S6 rather
+    # than applied case by case.
+    #
+    # Round 3 (2026-09-14) caught two more, and both were attribution
+    # rather than arithmetic:
+    #   (a) the `(8, 1, 1), (5, 25, 25)` / `(6, 25, 25)` XLA broadcasting
+    #       shapes were attributed to the 8-layer ASYM fixtures "with the
+    #       same boundary spec"; they belong to
+    #       BoundarySpec(x=(pec,pec), y=cpml, z=cpml) at 6 mm and 8 mm.
+    #       The 8-layer ASYM model at 8 mm does not die at all -- it RUNS
+    #       at 1.309694e+00 on a 4.421298e+00 peak = 2.962240e-01 with 0
+    #       warnings, a silent case the misattribution hid. Now a table in
+    #       S2.5 with the spec beside every shape pair.
+    #   (b) S2.6's `2.74 % / 3.06 % / 3.07 %` row for x=(pec,pec) at
+    #       nx=16/20/40 stated NO source position and NO probe row, and is
+    #       not re-derivable as written: with a centred source and a stated
+    #       probe row the source-probe figure is 1.76 % / 0.063 % /
+    #       0.0033 % (it decays as the source moves away from the phantom
+    #       window) while the face probes are 99.4-100 % wrong in all
+    #       three. Replaced by three fully-stated rows.
+    #
+    # Round 4 (2026-09-15) caught a fifth, inside round 3's own replacement
+    # for (b): "the source-probe figure is 1.76 % / 0.063 % / 0.0033 %"
+    # mixed ONE source-probe figure with TWO ROW figures, and on those two
+    # domains the row max sits on the x=2 mm FACE probe, not on the source
+    # probe. Measured source-probe figures are 1.7610 % / 0.0225 % /
+    # 0.00002 %. The same round removed the "2.7-3.1 % wrong at the source"
+    # row from the SHIPPED ValueError text and docstring -- it had survived
+    # there after (b) replaced it in the note -- and put the face-probe
+    # figures (99.9986/99.9319 %, 99.9917/99.8366 %, 99.9424/99.4168 %) in
+    # its place, because those do not depend on where the source sits.
+    # So the rule now reads: a quoted relative figure needs its source
+    # position, its probe row AND which probe the max sits on; a quoted
+    # ERROR STRING needs the spec that produced it; and when a row figure
+    # and a per-probe figure are both interesting, print BOTH in a table
+    # with a column saying where the max sits (S2.6 now does). Round-3
+    # numbers were re-measured on origin/main 7b511591, which is identical
+    # to d56f68eb in every runtime file this lane touches; round 4
+    # re-derived EVERY red figure in the note on origin/main 883615c6, the
+    # tree the PR lands on, and the note names the commit beside each
+    # figure.
+    #
+    # Round 4 also widened class 6 from the two x faces to all six
+    # (grid.face_pads), after measuring a y/z phantom window the first
+    # three rounds had not looked for: x='cpml', y='cpml',
+    # z=Boundary(lo='pec', hi='cpml') at 24x8x8 mm, dx=1 mm,
+    # cpml_layers=8, field Ez source (6,4,4) mm, probes x=6/12/20 mm, 60
+    # steps, 2 CPU devices -- 90.5782 % of the source probe's own peak,
+    # 409.4824 % / 281.3395 % downstream, 0 warnings, and ADMITTED. Those
+    # numbers are in the same class as the rest of this entry: measured on
+    # a tree where the refusal does not exist (883615c6), re-derivable by
+    # running the committed `_yz()` fixture in
+    # tests/unit/runners/test_distributed_admission_refusals.py against it.
+    "docs/design_notes/2026-09-14_distributed_admission_refusals.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260829_spec01_multiband_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260830_issue786_convergence_floor.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260831_cv02_ring_judge_predeclaration.md": NO_ARTIFACT_REFERENCE,
