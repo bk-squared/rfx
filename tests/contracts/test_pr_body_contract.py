@@ -544,8 +544,12 @@ def test_workflow_exists_and_runs_the_script() -> None:
     # `on:` parses as the boolean True in YAML 1.1; accept either spelling.
     triggers = data.get("on", data.get(True))
     assert set(triggers["pull_request"]["types"]) == {
-        "opened", "edited", "reopened", "synchronize",
-    }
+        "opened", "edited", "reopened", "synchronize", "labeled", "unlabeled",
+    }, (
+        "the lane can be carried by a `lane:*` label, so a PR that went red for "
+        "a missing lane must be re-checked when .github/workflows/labeler.yml "
+        "applies one -- otherwise it stays red until the author edits the body"
+    )
 
 
 def test_no_workflow_expression_is_interpolated_into_any_run_block() -> None:
@@ -571,6 +575,117 @@ def test_workflow_passes_the_body_through_env() -> None:
         if isinstance(value, str)
     ]
     assert "${{ github.event.pull_request.body }}" in env_values
+
+
+def test_workflow_passes_the_labels_as_json() -> None:
+    """A comma-joined list cannot carry a label containing a comma.
+
+    Same shape `check_changelog_fragment.py` reads, for the same reason.
+    """
+    steps = _workflow()["jobs"]["pr-body-contract"]["steps"]
+    env_values = [
+        value
+        for step in steps
+        for value in (step.get("env") or {}).values()
+        if isinstance(value, str)
+    ]
+    assert "${{ toJSON(github.event.pull_request.labels.*.name) }}" in env_values
+
+
+# --------------------------------------------------------------------------
+# The lane: a line, a label, or both agreeing
+# --------------------------------------------------------------------------
+
+#: A PR that `.github/labeler.yml` put in one lane, the common case since
+#: 2026-09-18.
+ONE_LABEL = dict(ENV, PR_LABELS_JSON='["lane:ci-infra", "release"]')
+TWO_LABELS = dict(ENV, PR_LABELS_JSON='["lane:ci-infra", "lane:crossval"]')
+
+
+def test_a_single_lane_label_satisfies_the_lane_without_a_line() -> None:
+    """The paths are a better witness than a line the author retyped."""
+    assert cpb.check(body(ACCEPT), env=ONE_LABEL) == []
+
+
+def test_no_line_and_no_label_still_fails() -> None:
+    """A PR confined to paths no lane owns has to say which lane it is."""
+    problems = cpb.check(body(ACCEPT), env=ENV)
+    assert len(problems) == 1 and "no `Lane:` line and no `lane:*` label" in problems[0]
+
+
+def test_two_lane_labels_and_no_line_ask_for_the_primary_lane() -> None:
+    """Two lanes is information; which one is primary is not derivable."""
+    problems = cpb.check(body(ACCEPT), env=TWO_LABELS)
+    assert len(problems) == 1
+    assert "2 lane labels" in problems[0]
+    assert "lane:ci-infra" in problems[0] and "lane:crossval" in problems[0]
+
+
+def test_two_lane_labels_with_a_line_naming_one_of_them_passes() -> None:
+    assert cpb.check(body("Lane: lane:crossval", ACCEPT), env=TWO_LABELS) == []
+
+
+def test_a_line_that_contradicts_the_labels_fails() -> None:
+    """Either the line is wrong or labeler.yml is missing a path. Both matter."""
+    problems = cpb.check(body("Lane: lane:msl-port", ACCEPT), env=ONE_LABEL)
+    assert len(problems) == 1
+    assert "not among the lane labels" in problems[0]
+    assert "labeler.yml" in problems[0]
+
+
+def test_a_line_that_agrees_with_the_single_label_passes() -> None:
+    assert cpb.check(body("Lane: lane:ci-infra", ACCEPT), env=ONE_LABEL) == []
+
+
+def test_a_line_still_works_with_no_labels_at_all() -> None:
+    """Local runs and unlabelled PRs keep the behaviour they had."""
+    assert cpb.check(body("Lane: lane:ci-infra", ACCEPT), env=ENV) == []
+
+
+def test_two_lane_lines_fail_even_when_a_label_agrees() -> None:
+    problems = cpb.check(
+        body("Lane: lane:ci-infra", "Lane: lane:crossval", ACCEPT), env=ONE_LABEL
+    )
+    assert len(problems) == 1 and "2 `Lane:` lines" in problems[0]
+
+
+def test_an_unknown_lane_in_the_line_fails_before_the_labels_are_consulted() -> None:
+    problems = cpb.check(body("Lane: lane:invented", ACCEPT), env=ONE_LABEL)
+    assert len(problems) == 1 and "is not a lane label on this repository" in problems[0]
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "",
+        "   ",
+        "[]",
+        "not json",
+        '{"name": "lane:ci-infra"}',
+        '["release", "bug"]',
+    ],
+)
+def test_a_payload_carrying_no_lane_label_leaves_the_line_required(raw: str) -> None:
+    """Missing, malformed and lane-free label sets all read as "no lane label".
+
+    Erroring instead would fail every PR the day GitHub changes the payload,
+    and the `Lane:` line remains a complete answer on its own.
+    """
+    env = dict(ENV, PR_LABELS_JSON=raw)
+    assert cpb.pr_lane_labels(env) == ()
+    assert cpb.check(body("Lane: lane:ci-infra", ACCEPT), env=env) == []
+    assert cpb.check(body(ACCEPT), env=env) != []
+
+
+def test_a_label_containing_a_comma_survives_the_json() -> None:
+    env = dict(ENV, PR_LABELS_JSON='["lane:ci-infra", "needs,triage"]')
+    assert cpb.pr_lane_labels(env) == ("lane:ci-infra",)
+
+
+def test_the_remediation_text_mentions_the_label_route() -> None:
+    """An author who trips the gate should learn the line is not the only way."""
+    report = cpb.failure_report(cpb.check(body(ACCEPT), env=ENV), env=ENV)
+    assert "labeler.yml" in report
 
 
 #: The ruff scope CI runs: the packages under test, plus every script that gates

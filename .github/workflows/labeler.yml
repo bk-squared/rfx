@@ -1,0 +1,51 @@
+name: labeler
+
+# Apply the owner lane to every pull request from the paths it touches.
+#
+# Lanes were a hand-applied label set with the mapping written out in a pinned
+# issue, which is a mapping that only holds while somebody re-reads it. The
+# mapping is `.github/labeler.yml` now, and this job is what makes it true of
+# every PR without anyone remembering to.
+#
+# `pull_request_target`, not `pull_request`: applying a label needs
+# `pull-requests: write`, and a `pull_request` run from a fork gets a read-only
+# token. The trigger is only safe because this job checks out NOTHING and runs
+# no code from the pull request -- `actions/labeler` reads the diff through the
+# API. Do not add a checkout step here.
+#
+# Consequence worth knowing: a `pull_request_target` run uses the workflow AND
+# the configuration from the BASE branch, so the first PR this labels is the
+# first one opened after `.github/labeler.yml` is on `main`. The PR that adds
+# this file cannot label itself; run `pytest tests/contracts/test_governance_intake_contract.py`
+# for the offline equivalent, which prints what each lane would match.
+#
+# `sync-labels: true` removes a lane label once the paths that justified it
+# leave the diff. Without it a lane picked up by one commit stays for the life
+# of the branch and the labels stop describing the change.
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+# One run per PR: a rapid series of pushes otherwise queues a label
+# recomputation per push and the last to finish wins, which with sync-labels can
+# leave the labels of an intermediate diff.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  lane-label:
+    name: lane-label
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Apply the lane labels for the changed paths
+        uses: actions/labeler@v5
+        with:
+          configuration-path: .github/labeler.yml
+          sync-labels: true

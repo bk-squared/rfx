@@ -15,9 +15,14 @@ name: pr-body
 # The contract and its failure message live in scripts/ci/check_pr_body.py;
 # tests/contracts/test_pr_body_contract.py pins the accepted forms.
 
+# `labeled`/`unlabeled` are here because the lane requirement can be satisfied
+# by a `lane:*` label since 2026-09-18. Without them a PR that goes red for a
+# missing lane stays red after `.github/workflows/labeler.yml` applies the
+# label, and the author has to edit the body to re-trigger a check that would
+# now pass.
 on:
   pull_request:
-    types: [opened, edited, reopened, synchronize]
+    types: [opened, edited, reopened, synchronize, labeled, unlabeled]
 
 # Superseded runs on the same PR are cancelled: editing a body twice in a
 # minute used to queue two runs, and this gate is re-triggered by every edit.
@@ -58,4 +63,8 @@ jobs:
         # `run:` block is a script injection.
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
+          # The lane may be carried by a label instead of the line. toJSON, not
+          # a comma join: a label may contain a comma. Same shape
+          # check_changelog_fragment.py reads.
+          PR_LABELS_JSON: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: python scripts/ci/check_pr_body.py

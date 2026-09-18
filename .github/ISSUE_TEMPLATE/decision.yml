@@ -1,0 +1,62 @@
+name: Decision request
+description: Work is blocked until someone chooses between named options.
+title: "<the decision, phrased as a question>"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        One issue per decision. A decision request is not a place to record a finding —
+        that is the Finding form, or the ledger if nobody will act on it. If you cannot
+        name what is blocked on the answer, nothing is, and this does not need an issue.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: The question
+      description: One question, answerable by choosing one of the options below.
+    validations:
+      required: true
+
+  - type: textarea
+    id: options
+    attributes:
+      label: Options
+      description: >-
+        Each option with what it costs and what it gives up. An option list of one is a
+        plan, not a decision.
+      placeholder: |
+        (a) promote the inverse to f64 on host — +40 ms per build, bitwise-stable
+        (b) keep f32 and widen the gate — free, hides the drift the gate exists to catch
+    validations:
+      required: true
+
+  - type: textarea
+    id: what_blocks_on_it
+    attributes:
+      label: What blocks on it
+      description: >-
+        The PR, issue or campaign that cannot proceed until this is answered. If the
+        answer is "nothing", write the question in the ledger instead.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: lane
+    attributes:
+      label: Lane
+      description: >-
+        The owner lane. `.github/labeler.yml` maps paths to lanes; `lane:plan` is for a
+        decision that spans lanes or defers a program.
+      options:
+        - "lane:waveguide-port"
+        - "lane:msl-port"
+        - "lane:coax-mixed-port"
+        - "lane:absorber"
+        - "lane:nu-mesh"
+        - "lane:distributed"
+        - "lane:crossval"
+        - "lane:ci-infra"
+        - "lane:examples-docs"
+        - "lane:plan"
+    validations:
+      required: true

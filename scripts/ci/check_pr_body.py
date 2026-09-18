@@ -22,6 +22,21 @@ text (not inside a code fence, an HTML comment or a ``<pre>`` block):
 the live set in ``LANE_LABELS`` (newline-separated, from ``gh label list``); a
 local run with no such env falls back to the set recorded in this file.
 
+The lane requirement is satisfied by EITHER that line or exactly one ``lane:*``
+LABEL on the pull request. Since 2026-09-18 ``.github/labeler.yml`` derives the
+lane from the paths a PR touches, and a path is a better witness than a line an
+author retyped -- so a single-lane PR need not write the line at all. The
+workflow passes the PR's labels in ``PR_LABELS_JSON`` (GitHub's
+``toJSON(...labels.*.name)`` array, the same shape
+``check_changelog_fragment.py`` reads); an absent or empty value means "no
+labels", which is what a local run sees and which leaves the line required.
+
+Two cases still need the line. A PR carrying TWO lane labels is genuinely in
+two lanes, and the line is how it names the primary one. And when both a line
+and labels are present they must AGREE -- the line has to name one of the
+labels -- because a line contradicting the paths means either the line is wrong
+or ``.github/labeler.yml`` is missing a path, and both are worth stopping for.
+
 ``<who>`` names the reviewing instance and may not contain ``<`` or ``>``: an
 unedited placeholder is not a review record, and this file's own remediation
 text would otherwise be a passing body.
@@ -52,6 +67,7 @@ fill in. Standard library only, Python 3.10.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import sys
@@ -219,6 +235,34 @@ def deadorn(line: str) -> str:
     return _TRAILING_BOLD_RE.sub("", stripped)
 
 
+def pr_lane_labels(env: dict[str, str] | None = None) -> tuple[str, ...]:
+    """The ``lane:*`` labels GitHub says this pull request carries.
+
+    ``PR_LABELS_JSON`` is the ``toJSON(github.event.pull_request.labels.*.name)``
+    array. JSON rather than a comma-joined string for the same reason
+    ``check_changelog_fragment.py`` uses it: a label may contain a comma, and a
+    label named ``pre,release`` would otherwise read as two.
+
+    Absent, empty or unparseable means "no labels" rather than an error. A
+    local run has no such variable, and the strict reading of "no labels" is
+    that the ``Lane:`` line is required -- which is the right default for a
+    pre-push check.
+    """
+    env = os.environ if env is None else env
+    raw = (env.get("PR_LABELS_JSON") or "").strip()
+    if not raw:
+        return ()
+    try:
+        values = json.loads(raw)
+    except json.JSONDecodeError:
+        return ()
+    if not isinstance(values, list):
+        return ()
+    return tuple(
+        str(value) for value in values if str(value).startswith("lane:")
+    )
+
+
 def allowed_lanes(env: dict[str, str] | None = None) -> tuple[tuple[str, ...], str]:
     """The permitted lane labels and where they came from.
 
@@ -248,25 +292,60 @@ def _adorned_hint(lines: list[str], keyword: str) -> str:
     return ""
 
 
-def _check_lane(lines: list[str], lanes: tuple[str, ...], source: str) -> list[str]:
+def _check_lane(
+    lines: list[str],
+    lanes: tuple[str, ...],
+    source: str,
+    pr_labels: tuple[str, ...] = (),
+) -> list[str]:
+    """The lane is named by the ``Lane:`` line, by the labels, or by both.
+
+    *pr_labels* holds only the ``lane:*`` labels, applied by
+    `.github/labeler.yml` from the paths the PR touches. Empty means either an
+    unlabelled PR or a local run; both leave the line required.
+    """
     matches = [m for m in (LANE_RE.match(line) for line in lines) if m]
-    if len(matches) == 0:
-        return [
-            "no `Lane:` line. Exactly one line must read `Lane: lane:<label>` and "
-            "name the owner lane this PR belongs to."
-            + _adorned_hint(lines, "Lane:")
-        ]
+    labelled = sorted(set(pr_labels))
+
     if len(matches) > 1:
         found = ", ".join(m.group(1) for m in matches)
         return [
-            f"{len(matches)} `Lane:` lines ({found}). A PR belongs to exactly one "
-            "owner lane; keep one line and delete the rest."
+            f"{len(matches)} `Lane:` lines ({found}). A PR names exactly one "
+            "PRIMARY owner lane; keep one line and delete the rest."
         ]
+
+    if len(matches) == 0:
+        if len(labelled) == 1:
+            return []
+        if len(labelled) > 1:
+            return [
+                f"this PR carries {len(labelled)} lane labels "
+                f"({', '.join(labelled)}) and no `Lane:` line. Two lanes is "
+                "information, not an error -- the paths really do belong to both "
+                "-- but one of them is the primary owner. Add a line naming it: "
+                f"`Lane: {labelled[0]}`."
+            ]
+        return [
+            "no `Lane:` line and no `lane:*` label. Either add a line reading "
+            "`Lane: lane:<label>` naming the owner lane, or let "
+            "`.github/labeler.yml` apply the label from the paths you changed "
+            "(a path nobody owns gets no label, so this PR needs the line)."
+            + _adorned_hint(lines, "Lane:")
+        ]
+
     label = matches[0].group(1)
     if label not in lanes:
         return [
             f"`Lane: {label}` is not a lane label on this repository. "
             f"Allowed ({source}): {', '.join(sorted(lanes))}."
+        ]
+    if labelled and label not in labelled:
+        return [
+            f"`Lane: {label}` is not among the lane labels the paths earned this "
+            f"PR ({', '.join(labelled)}). One of the two is wrong: either the "
+            f"line names the wrong lane, or `.github/labeler.yml` does not map "
+            f"a path this PR touches to {label}. Fix whichever it is -- the "
+            "labels are recomputed on every push."
         ]
     return []
 
@@ -331,7 +410,8 @@ def check(body: str, env: dict[str, str] | None = None) -> list[str]:
     """Return the problems with *body*. Empty list means the body passes."""
     lanes, lane_source = allowed_lanes(env)
     lines = body_lines(body)
-    return _check_lane(lines, lanes, lane_source) + _check_review(lines)
+    labels = pr_lane_labels(env)
+    return _check_lane(lines, lanes, lane_source, labels) + _check_review(lines)
 
 
 def failure_report(problems: list[str], env: dict[str, str] | None = None) -> str:
@@ -355,6 +435,10 @@ def failure_report(problems: list[str], env: dict[str, str] | None = None) -> st
         "",
         "Lane: lane:<name>",
         "Review: <who read it> (separate instance) - ACCEPT",
+        "",
+        "The `Lane:` line may be omitted when .github/labeler.yml has already put",
+        "exactly one `lane:*` label on the PR. Write it when the PR carries two",
+        "lane labels, and then it must name one of them.",
         "",
         f"The separator before the verdict may be {DASH_NAMES}.",
         "",
