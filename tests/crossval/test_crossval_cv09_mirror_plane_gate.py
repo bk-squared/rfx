@@ -28,14 +28,21 @@ solves at the end carry the frequency-domain half of the falsifier.
 from __future__ import annotations
 
 import importlib.util
-import os
 import sys
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-os.environ.setdefault("JAX_ENABLE_X64", "1")
+# No module-level ``os.environ.setdefault("JAX_ENABLE_X64", "1")`` here. JAX reads
+# that variable once, when ``jax`` is first imported, and the repository-root
+# ``conftest.py`` imports jax at collection time — before this module is imported.
+# The line that used to sit here was therefore dead under pytest (measured: with
+# jax already imported, the setdefault leaves ``jax.config.jax_enable_x64`` False),
+# and had it ever arrived first it would have flipped a process-global flag for
+# every other test in the shard. These gates are geometry and frequency ratios and
+# run at whatever dtype the session started with. See
+# ``tests/contracts/test_no_module_level_x64.py``.
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CV09_PATH = REPO_ROOT / "validation" / "crossval" / "09_half_symmetric_waveguide.py"
