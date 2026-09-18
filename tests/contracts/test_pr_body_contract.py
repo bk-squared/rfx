@@ -60,16 +60,22 @@ def body(*lines: str) -> str:
         "Review: opus (separate instance) — ACCEPT WITH CHANGES",
         "Review: opus (separate instance) - ACCEPT",
         "Review: gpt-5.6-sol (separate instance) - ACCEPT WITH CHANGES",
+        "Review: opus (separate instance) – ACCEPT",
+        "Review: opus (separate instance) – ACCEPT WITH CHANGES",
         "Review: skipped — (a) pure docs change, one paragraph, trivially reverted",
         "Review: skipped - (b) PI instructed the skip on 2026-09-18",
+        "Review: skipped – (a) one comment typo, reverted with one click",
     ],
     ids=[
         "accept-emdash",
         "accept-with-changes-emdash",
         "accept-hyphen",
         "accept-with-changes-hyphen",
+        "accept-endash",
+        "accept-with-changes-endash",
         "skipped-a",
         "skipped-b",
+        "skipped-endash",
     ],
 )
 def test_accepted_review_forms(review: str) -> None:
@@ -113,7 +119,36 @@ def test_reject_never_passes() -> None:
         body("Lane: lane:ci-infra", "Review: opus (separate instance) — REJECT"),
         ENV,
     )
-    assert any("Review:" in p for p in problems)
+    assert len(problems) == 1
+    assert "verdict must be ACCEPT" in problems[0], problems[0]
+
+
+def test_an_unaccepted_separator_says_which_ones_are_accepted() -> None:
+    """The en dash is accepted now; a fourth glyph must still explain itself."""
+    problems = cpb.check(
+        body("Lane: lane:ci-infra", "Review: opus (separate instance) : ACCEPT"), ENV
+    )
+    assert len(problems) == 1
+    assert "em dash" in problems[0] and "en dash" in problems[0]
+    assert "hyphen" in problems[0]
+
+
+def test_the_failure_report_names_the_accepted_separators() -> None:
+    report = cpb.failure_report(cpb.check("", ENV), ENV)
+    assert "em dash" in report and "en dash" in report and "hyphen" in report
+
+
+def test_a_literal_null_body_fails_cleanly() -> None:
+    """A PR with no description delivers the string "null", not an empty body.
+
+    `gh pr view --json body --jq .body` and the workflow context both render a
+    missing body that way. It has to come out as the ordinary "no Lane: line"
+    failure, not a crash and not a pass.
+    """
+    problems = cpb.check("null", ENV)
+    assert len(problems) == 2
+    assert "no `Lane:` line" in problems[0]
+    assert "`Review:` line" in problems[1]
 
 
 def test_missing_lane_fails() -> None:
@@ -478,6 +513,24 @@ def test_workflow_passes_the_body_through_env() -> None:
         if isinstance(value, str)
     ]
     assert "${{ github.event.pull_request.body }}" in env_values
+
+
+def test_the_lint_workflow_covers_this_gates_own_script() -> None:
+    """An unlinted CI helper is one nobody notices breaking.
+
+    `scripts/` as a whole is out of the ruff scope and has its own backlog;
+    `scripts/ci/` is in, and this pins it so the path is not dropped from the
+    lint line by a later edit.
+    """
+    lint = (REPO / ".github" / "workflows" / "lint.yml").read_text(encoding="utf-8")
+    ruff_lines = [
+        line for line in lint.splitlines() if "ruff check" in line and "rfx/" in line
+    ]
+    assert ruff_lines, "the lint workflow no longer runs ruff over rfx/"
+    for line in ruff_lines:
+        assert "scripts/ci/" in line, (
+            f"scripts/ci/ dropped from the CI ruff scope: {line.strip()!r}"
+        )
 
 
 def test_workflow_asks_to_be_a_required_check() -> None:

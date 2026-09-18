@@ -40,8 +40,12 @@ jobs:
       - name: Install ruff
         run: pip install ruff
 
-      - name: Lint rfx/, tests/, and validation/
-        run: ruff check rfx/ tests/ validation/ --select E,F,W --ignore E501,F401,E741,E731,E701,E702,E402
+      # scripts/ci/ is in scope; the rest of scripts/ is not. The wider tree has
+      # 197 findings under this selector and is its own cleanup, but the CI
+      # helpers have to stay clean -- an unlinted gate is a gate nobody notices
+      # breaking. tests/contracts/test_pr_body_contract.py pins this path list.
+      - name: Lint rfx/, tests/, validation/, and scripts/ci/
+        run: ruff check rfx/ tests/ validation/ scripts/ci/ --select E,F,W --ignore E501,F401,E741,E731,E701,E702,E402
 
   agent-docs-hygiene:
     # docs/agent/ pages are sanitized public exports of internal (gitignored)

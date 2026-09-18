@@ -73,9 +73,12 @@ FALLBACK_LANE_LABELS = (
     "lane:plan",
 )
 
-# Em dash or a plain hyphen: Codex-written bodies use the hyphen, and failing a
-# PR on a glyph teaches nothing.
-_DASH = r"[—-]"
+# Em dash, en dash or a plain hyphen. Codex-written bodies use the hyphen and a
+# Korean keyboard produces the en dash; failing a PR on a glyph teaches nothing,
+# and the failure text names all three so a fourth one is a readable error
+# rather than a silent "no Review: line".
+_DASH = r"[—–-]"
+DASH_NAMES = "an em dash (—), an en dash (–) or a plain hyphen (-)"
 
 LANE_RE = re.compile(r"^Lane: (lane:[a-z0-9-]+)$")
 REVIEW_ACCEPT_RE = re.compile(
@@ -84,6 +87,10 @@ REVIEW_ACCEPT_RE = re.compile(
     + r" (?P<verdict>ACCEPT|ACCEPT WITH CHANGES)$"
 )
 REVIEW_SKIPPED_RE = re.compile(r"^Review: skipped " + _DASH + r" \((?:a|b)\) .+$")
+# Right shape, wrong content: a REJECT verdict, a separator nobody accepts, a
+# missing verdict. Worth naming, because "no `Review:` line" is a baffling
+# thing to read on a body that visibly has one.
+REVIEW_SHAPE_RE = re.compile(r"^Review: .*\(separate instance\)")
 
 # Anything that is invisible once GitHub renders the body cannot carry the
 # claim. Comments (terminated or not), fenced code, and <pre> blocks all
@@ -229,6 +236,7 @@ def _check_review(lines: list[str]) -> list[str]:
     valid: list[str] = []
     placeholder: list[str] = []
     bad_skip: list[str] = []
+    malformed: list[str] = []
 
     for line in lines:
         accept = REVIEW_ACCEPT_RE.match(line)
@@ -243,6 +251,8 @@ def _check_review(lines: list[str]) -> list[str]:
             valid.append(line)
         elif line.startswith("Review: skipped"):
             bad_skip.append(line)
+        elif REVIEW_SHAPE_RE.match(line):
+            malformed.append(line)
 
     if len(valid) > 1:
         return [
@@ -261,6 +271,12 @@ def _check_review(lines: list[str]) -> list[str]:
         problem += (
             f" Found an unfilled placeholder ({placeholder[0].strip()!r}): replace "
             "the angle-bracketed text with the instance that actually read the diff."
+        )
+    if malformed:
+        problem += (
+            f" Found a `Review:` line whose verdict or separator is not accepted "
+            f"({malformed[0].strip()!r}): the verdict must be ACCEPT or ACCEPT WITH "
+            f"CHANGES, and the separator before it must be {DASH_NAMES}."
         )
     if bad_skip:
         problem += (
@@ -300,6 +316,8 @@ def failure_report(problems: list[str], env: dict[str, str] | None = None) -> st
         "",
         "Lane: lane:<name>",
         "Review: <who read it> (separate instance) - ACCEPT",
+        "",
+        f"The separator before the verdict may be {DASH_NAMES}.",
         "",
         "Accepted `Review:` forms:",
         "  Review: <who read it> (separate instance) - ACCEPT",
