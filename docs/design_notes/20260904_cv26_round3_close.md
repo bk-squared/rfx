@@ -1051,3 +1051,86 @@ zero GL1 breaches. That arm is judged on G7, not on this witness.
 
 No FDTD was run for anything in this section: it is arithmetic on records already
 committed. Carried to #1015, whose body is corrected to match.
+
+### 10.6 Three of cv26's GL1 arms were judged against the wrong lattice, and that closes 62 of the 135 in-domain breaches — the other 73 stay open (2026-09-15, append-only)
+
+Standard `docs/design_notes/20260903_lattice_witness_standard.md` §14; pre-declaration
+`docs/design_notes/20260915_lattice_witness_reference_selection_predeclaration.md`.
+Arithmetic on the committed records only — no FDTD, no re-run, no VESSL job.
+
+**(a) The comparator defect.** cv26 judged all ten of its witness entries against the
+2-D lattice carrying the rig's REALIZED absorbers. Five of them — `te_00`, `tm_00`,
+`te_30`, `te_00__settle60`, `tm_00__settle60` — have `record["t_safe_cpml_steps"]`
+**and** the #892 auxiliary-echo arrival **both outside their record**. Those five cannot
+have measured either absorber echo, so a reference that contains one disagrees with them
+by exactly that echo, and the case reported the disagreement as GL1 breaches and as an
+unmodelled term shrinking its own validity domain. The test that separates the two
+regimes is not new: it is the arrival test §3 (Z1) of the standard already uses, and
+§13.3's "cv26 is exactly that [a rig admitting its echo by amplitude]" is now marked in
+place as false for those five entries.
+
+Selecting the reference by that predicate takes, **on the five arrival-safe entries
+only**:
+
+| | before | after |
+|---|---|---|
+| GL1 breaches over all gated bins (R + T) | 302 | **0** |
+| GL1 breaches inside the validity domain | 62 | **0** |
+| validity-domain coverage (`te_00__settle60` / `tm_00__settle60`) | 76.6 % / 75.5 % | **100 % / 100 %** |
+| worst `\|Δ\|/W` (`te_30` R) | 1.229 | **0.823** |
+| worst `\|Δ\|/W` (`te_00__settle60` R) | 3.056 | **0.251** |
+| worst `\|Δ\|/W` (`tm_00__settle60` R) | 2.409 | **0.255** |
+| `te_30` mean `W_witness,R` | 6.48049e-04 | 6.48057e-04 (**+0.0012 %**) |
+
+and, for the case as a whole, `verdict.gl1_breaches_in_domain` **135 → 73** with the
+all-gated-bin total **1291 → 989**. The seven entries that admit an echo by amplitude are
+**bit-identical** after the change — not "to 1e-12", exactly equal — apart from a
+rewritten `GL1_not_gated_reason`. The same reference swap applied to them makes every one
+markedly WORSE (`te_45` 1.17×, `tm_45` 1.43×, `tm_60` 1.67×, `te_60` 1.72× on mean `|ΔR|`,
+321× and 472× on the two compact boxes), which is why this is a reference defect and not
+a looser reference.
+
+**(b) The residue — 73 in-domain breaches, and a NAMED but UNSPENT candidate.** All 73
+sit on the four amplitude-capped oblique arms: `te_45` 18, `te_60` 14, `tm_45` 20,
+`tm_60` 21 (R and T together). Of them **53 sit inside `W + U`** and **20 do not**
+(`te_60` 7, `tm_45` 2, `tm_60` 11). At all 20, `U` is a near-cancellation — its two
+components `cpml3d_term` and `aux_echo_term` each individually exceed the net `U` by
+1–10× (`te_60` R at 9.253 GHz: `U` 2.884e-04, `cpml3d` 1.832e-03, `aux` 2.120e-03) — and
+substituting the non-cancelling `U_cpml + U_aux` into the same predicate would leave 3
+in-domain breaches. Both components are now reported per arm beside `U`.
+**That substitution changes the predicate #1028 shipped and is a SECOND attempt. It is
+not taken here and must not be bundled into this one.**
+
+**(c) `tm_60`'s GL2_R failure STAYS A FAILURE, with the trace that supports the issue's
+already-named candidate.** `tm_60` is not arrival-safe, so §14 does not touch it;
+`_GL2_EXPECTED["tm_60"] == (False, True)` is unchanged and the replay still reports
+`gl2_failing_arms: ["tm_60"]` at 244 % of its window. What is added is the per-bin trace
+(R5), over its 473 gated R bins, 9.230–10.772 GHz:
+
+- the failure is **not spread over the band**. Low-frequency half: mean `|ΔR|` 7.110e-05
+  against mean `W` 4.416e-06 = **16.1×**. High-frequency half: 3.018e-05 against
+  3.692e-05 = **0.82×, which passes**. The whole failure is carried by the 68.5–69.8° end.
+- the **worst 12 bins ranked by `|ΔR|`** (9.230–9.309 GHz, θ 68.49–69.76°) sit at
+  `d/W` = 21.5–35.3 but at `d/(W + U_cpml + U_aux)` = **0.97–1.41**. The ranking matters:
+  ranked by `d/W` instead, the same "worst 12" is a different set (9.233–9.345 GHz,
+  θ 67.94–69.71°, `d/W` 30.2–35.3, `d/(W+U_sum)` 0.75–1.33), so the ranking is named.
+- `corr(|ΔR|, U_cpml + U_aux)` over the gated band = **0.793**;
+  `mean(W + U_sum)` = 1.343e-04 against `mean|ΔR|` = 5.060e-05.
+- **The bound is NOT universal and this note will not round that off.** Over all 473
+  gated R bins, **18 have `|ΔR| > W + U_cpml + U_aux`, the worst at ratio 1.566 at
+  9.2792 GHz.** The narrower in-domain statement — that only **3** of the 14 in-domain R
+  breaches exceed that sum, at 10.233 / 10.335 / 10.491 GHz with ratios 1.291 / 1.445 /
+  1.020 — is the one that reproduces, and it is the one claimed. "The residual never
+  materially exceeds the absorber term" is **false** and is not asserted.
+
+The trace is consistent with the candidate #1015 already names (the arm's own absorber
+term: 5.048e-04, 24× its window and 10× its residual) and **nothing was run against that
+hypothesis**. It stays a reported failure with a named, untested mechanism. Acting on it
+by widening the budget with `U` is option (A), which is rejected and forbidden
+(standard §13.3, A2/A4/A5).
+
+**(d) `GL1_gated` stays `false` on cv26, and the PI decision of §10.4 is unchanged.**
+Item (b) is the reason: declaring the domain did not make GL1 green in #1028, and
+correcting the reference does not make it green now. What changed is that 62 of the 135
+in-domain breaches are no longer attributed to anything physical — they were the
+comparator's.

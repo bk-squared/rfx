@@ -482,10 +482,17 @@ def main(argv=None) -> int:
               f"{e2['mean_window_R']:.4f} mean|dT|={e2['mean_dT_gated']:.4f}/{e2['mean_window_T']:.4f}; "
               f"max closure {e2['max_closure_gated']:.4f}")
         lat = e2["lattice"]
-        print(f"  lattice witness (reported): |rfx - lattice| mean R/T {lat['mean_dR_lattice_gated']:.2e}/"
-              f"{lat['mean_dT_lattice_gated']:.2e} (max R {lat['max_dR_lattice_gated']:.2e}); W_lat mean R/T "
-              f"{lat['mean_W_lat_R_gated']:.4f}/{lat['mean_W_lat_T_gated']:.4f}; absorber term max R "
-              f"{lat['absorber_term_R_gated_max']:.2e}")
+        # #1015 section 14: WHICH lattice this arm's witness is judged against is
+        # decided by ARRIVAL and printed, so a live run never hides the choice.
+        # ``W_lat`` below stays the REALIZED lattice against Fresnel on every arm
+        # -- it is the lattice-vs-continuum separation, a different reported
+        # quantity, and it does not move with the witness reference.
+        print(f"  lattice witness (reported, ref {lat['witness_reference']}): |rfx - lattice| mean R/T "
+              f"{lat['mean_dR_lattice_gated']:.2e}/{lat['mean_dT_lattice_gated']:.2e} "
+              f"(other ref would give {lat['mean_dR_lattice_gated_alt']:.2e}/"
+              f"{lat['mean_dT_lattice_gated_alt']:.2e}; max R {lat['max_dR_lattice_gated']:.2e}); "
+              f"W_lat mean R/T {lat['mean_W_lat_R_gated']:.4f}/{lat['mean_W_lat_T_gated']:.4f}; "
+              f"absorber term max R {lat['absorber_term_R_gated_max']:.2e}")
         arm_ok = e2["e2_ok"] and (bool(r_["absorber_ok"]) or not primary)
         gates_line = dict(e2["gates"], G3_absorber=(bool(r_["absorber_ok"]) if primary else "reported"))
         if spec["slab"] and not spec["compact"]:

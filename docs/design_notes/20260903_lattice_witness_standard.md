@@ -1389,6 +1389,17 @@ element. Counts that would double-count them are taken on the twelve.
 
 ### 13.3 The three options, measured against the rule
 
+> **PARTIALLY SUPERSEDED BY §14 (2026-09-15, #1015).** Two statements in
+> this section are corrected there, and neither correction touches the
+> (A) / (B) / (C) verdict, which stands. (i) The clause below binding a
+> case to supply `U(f)` is completed: the case must FIRST choose its
+> reference by the arrival test §3 (Z1) already uses, and only then, if
+> an echo really is inside the record, supply `U`. (ii) "cv26 is exactly
+> that" is **false for five of cv26's ten witness entries**, which are
+> arrival-safe and were being judged against a reference they are not
+> entitled to. §14 carries the measurement and the correction.
+
+
 **(A) carry the absorber term in the budget — REJECTED, on three of its five
 pre-declared conditions.**
 
@@ -1450,7 +1461,12 @@ thirteen committed rungs with the echo arriving at 1.64×–1.92× the record.
 **Binding on every future consumer, not only cv26: a case whose record admits
 its absorber echo by AMPLITUDE rather than by arrival MUST supply `U(f)` to the
 gate (`evaluate(..., unmodelled_term=...)`, or `witness_domain` directly) and
-MUST report its coverage.** The parameter's default is zero-by-construction and
+MUST report its coverage.** — **Completed by §14: the binding obligation comes
+SECOND. First the case must decide, PER ENTRY and by ARRIVAL, whether its record
+admits an echo at all; only an entry that does keeps the realized reference and
+owes `U(f)`. An entry whose echoes are outside its record by arrival must be
+judged against the absorber-free reference, and then `U` is zero BY ARRIVAL and
+`unmodelled_term=None` is the correct argument, not a forgotten one.** The parameter's default is zero-by-construction and
 it is SILENT — a consumer that forgets it gets a per-bin verdict on bins where
 the window is not a bound, which is the #1015 defect exactly, with nothing in
 the artifact to say so. The default is correct for the slab family and for
@@ -1458,7 +1474,15 @@ nothing else.
 
 A rig that admits its echo INSIDE the record by AMPLITUDE instead has no such
 declaration to stand on. cv26 is exactly that: `e_absorber` / `absorber_ok`
-replaced the arrival cap, and its reference carries the realized absorbers. The
+replaced the arrival cap, and its reference carries the realized absorbers.
+**— SUPERSEDED BY §14. That is true of cv26's four amplitude-capped oblique
+arms and its three compact grazing boxes. It is FALSE of `te_00`, `tm_00`,
+`te_30` and both settle-60 rungs, whose `t_safe_cpml_steps` and #892 auxiliary
+arrival are BOTH outside their records: those five have the same
+zero-by-arrival declaration to stand on that the family does, and judging them
+against the realized reference manufactured 302 all-bin and 62 in-domain GL1
+breaches. The rig is not one regime; it is two, and §3 (Z1) already said which
+test separates them.** The
 size of what §3 then omits is the reference's OWN dependence on them,
 
     U(f) = | X_ref(f; the realized absorbers) − X_ref(f; outgoing-wave
@@ -1590,3 +1614,218 @@ R3: `memory=rfx-known-issues.md comparator-bug case ledger (13/13) + cv26 close
 note §10.4–§10.5 | R2-attempts=1 | falsifier=cv22's and cv23's
 lattice_witness.json rebuilt byte-identical between origin/main's comparator and
 this one (PASS, 260748 and 784777 bytes)`.
+
+## 14. Revision 2026-09-15 — the REFERENCE is chosen by arrival, not assumed (#1015 remainder)
+
+Append-only. §3's window, §4's gates and §13's domain predicate are unchanged
+in definition; what changes is which lattice a case hands the witness before
+either is evaluated. §13.3 carries two in-place supersession markers pointing
+here.
+
+Pre-declaration:
+`docs/design_notes/20260915_lattice_witness_reference_selection_predeclaration.md`,
+committed before any code moved, and labelled in its own §0 as a **regression
+pin rather than a falsifier** — every condition in it was evaluated before it
+was written.
+
+### 14.1 The rule
+
+> A case must choose its witness reference by the SAME arrival test §3 (Z1)
+> uses to declare the absorber terms zero by construction, evaluated PER ENTRY:
+>
+>     arrival_safe = (record["t_safe_cpml_steps"] >= n_steps
+>                     AND aux_echo_arrival_steps > n_steps)
+>
+> `arrival_safe` → the reference is the ABSORBER-FREE lattice, `U` is zero BY
+> ARRIVAL, `witness_domain`'s `unmodelled_term` is `None`, and the domain is
+> every gated bin. Otherwise → the reference carries the realized absorbers and
+> §13.3's binding obligation to supply `U(f)` applies unchanged.
+
+Both inputs are geometry: the CPML round trip out of the rig's standoff and the
+fastest gated group velocity, and the #888/#892 auxiliary-echo flight minus the
+pulse lead. No residual, window or breach count enters. The predicate ships as
+`lattice_witness.reference_is_absorber_free`.
+
+**Why it has to be this way round.** `U(f)` is a property of the REFERENCE. A
+record that cannot have measured an echo, judged against a lattice that
+contains one, disagrees with that lattice by the echo — and the case then
+reports that disagreement as a GL1 breach and, under §13, as an unmodelled term
+that shrinks its own validity domain. Both are artefacts of the comparison, not
+of the solver.
+
+### 14.2 The measurement — twelve entries, and the split is geometric
+
+`n_steps` / `t_safe_cpml_steps` / aux-echo arrival, then mean `|X_rfx − X_ref|`
+over the gated band against each reference. Recomputed from the committed
+records; no FDTD.
+
+| entry | `n_steps` | `t_safe_cpml` | aux arrival | arrival-safe | mean\|ΔR\| realized | mean\|ΔR\| absorber-free | R ratio | mean\|ΔT\| realized | mean\|ΔT\| absorber-free | T ratio |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `te_00` | 1511 | 3141 | 3197 | **YES** | 3.3357e-04 | 3.3192e-04 | 0.995 | 8.3923e-04 | 8.3187e-04 | 0.991 |
+| `te_30` | 6238 | 6807 | 7187 | **YES** | 1.4129e-04 | 1.1588e-04 | 0.820 | 3.3506e-04 | 2.4240e-04 | 0.723 |
+| `tm_00` | 1512 | 3141 | 3197 | **YES** | 3.4097e-04 | 3.3908e-04 | 0.994 | 8.0908e-04 | 8.0377e-04 | 0.993 |
+| `te_00__settle60` | 1611 | 3141 | 3197 | **YES** | 4.5470e-05 | 8.7913e-06 | 0.193 | 1.6752e-04 | 2.2340e-05 | 0.133 |
+| `tm_00__settle60` | 1612 | 3141 | 3197 | **YES** | 4.1685e-05 | 8.2639e-06 | 0.198 | 1.4246e-04 | 2.1176e-05 | 0.149 |
+| `te_45` | 11635 | 7959 | 8591 | no | 1.6713e-04 | 1.9484e-04 | 1.166 | 2.5966e-04 | 2.8181e-04 | 1.085 |
+| `te_60` | 18448 | 10867 | 11572 | no | 4.0515e-04 | 6.9844e-04 | 1.724 | 4.9314e-04 | 6.9663e-04 | 1.413 |
+| `tm_45` | 11635 | 7959 | 8591 | no | 4.3513e-05 | 6.2208e-05 | 1.430 | 2.8943e-04 | 2.9880e-04 | 1.032 |
+| `tm_60` | 18448 | 10867 | 11572 | no | 5.0597e-05 | 8.4548e-05 | 1.671 | 5.1856e-04 | 1.0681e-03 | 2.060 |
+| `graze_te` | 21835 | 4776 | −8641 | no | 2.0347e-04 | 9.5940e-02 | 471.5 | 2.5714e-05 | 2.9467e-02 | 1146.0 |
+| `graze_pec` | 21835 | 4776 | −8641 | no | 2.5248e-04 | 8.1158e-02 | 321.4 | 4.4005e-06 | 4.7214e-03 | 1072.9 |
+| `graze_vac` | 21835 | 4776 | −8641 | no | 7.3878e-12 | 7.3878e-12 | 1.000 | 2.6350e-07 | 2.6350e-07 | 1.000 |
+
+**Direction: 10 of 10 on R and 10 of 10 on T**, over the ten entries with a
+defined `W_witness`. Every arrival-safe entry matches the absorber-free
+reference better; every amplitude-capped one matches the realized reference
+better, and by more.
+
+**Three caveats, stated rather than left to a reader to find.**
+
+- The two clauses of the predicate are **perfectly collinear on this rig** —
+  every entry that clears the CPML round trip also clears the auxiliary
+  arrival — so nothing here distinguishes the AND from either clause alone.
+- **The margins are NOT uniform and the ratio column above is the honest form
+  of them.** Decisive on `te_30` (0.820 on R, 0.723 on T), on both settle-60
+  rungs (0.19 / 0.20 on R, i.e. 5.2× and 5.0× better), on `te_60` (1.724),
+  `tm_45` (1.430), `tm_60` (1.671), and enormous on the two compact boxes. But
+  it is a **near-tie on `te_00` and `tm_00`** (0.995 and 0.994 — 0.5 % and
+  0.6 %), where the 40 dB truncation term dominates both, and on `te_45` it is
+  **1.166 on R and only 1.085 on T** (16.6 % and 8.5 %). An earlier draft of
+  this lane claimed ">20 % on all four oblique arms"; that is **false for
+  `te_45` on both observables** and is withdrawn. Both zero-breach arms sit in
+  the near-tie band, so nothing below rests on them.
+- `graze_vac` has no scatterer, so its two references are the same lattice to
+  1e-8 relative. There is no sign to agree with; it is not one of the ten and
+  is not counted.
+
+### 14.3 What the correction buys, and what it does not
+
+Judging ONLY the five arrival-safe entries against the absorber-free reference:
+
+- **GL1 breaches over all gated bins on those five: 302 → 0** (`te_30` 18 R +
+  38 T, `te_00__settle60` 70 R + 50 T, `tm_00__settle60` 71 R + 55 T, and 0 on
+  `te_00` / `tm_00` either way).
+- **In-domain GL1 breaches on those five: 62 → 0**, and their validity domains
+  go from 100 % / 100 % / 76.6 % / 75.5 % coverage to 100 % everywhere.
+- Worst per-bin `|Δ|/W`: `te_30` 1.229 → **0.823** on R (0.624 on T),
+  `te_00__settle60` 3.056 → **0.251**, `tm_00__settle60` 2.409 → **0.255**.
+  Maximum over all arrival-safe entries and both observables: **0.823**.
+- Windows move by **at most 0.008 %**. `te_30`'s mean `W_R` goes
+  6.48049e-04 → 6.48057e-04, **+0.0012 %**.
+- **cv26 totals: `gl1_breaches_in_domain` 135 → 73, all-gated-bin total
+  1291 → 989.**
+
+And what it does not buy:
+
+- **`GL1_gated` stays `false`.** 73 in-domain breaches remain, all on the four
+  amplitude-capped oblique arms (`te_45` 18, `te_60` 14, `tm_45` 20,
+  `tm_60` 21, counting R and T). No mechanism is proposed for them here.
+- **`tm_60` still FAILS `GL2_R`**, at 244 % of its window, unchanged to the
+  last bit. It is not arrival-safe, so §14 cannot touch it, which is the point:
+  a correction that could have erased a reported failure would have been
+  rejected by the same A2 rule §13.3 used against option (A).
+- Every one of the seven amplitude-capped entries is **bit-identical** after
+  the change — not "identical to 1e-12", exactly equal — apart from the
+  rewritten `GL1_not_gated_reason` prose.
+
+### 14.4 The residue, named and left open
+
+Of the 73 in-domain breaches that remain, **53 sit inside `W + U`** and **20 do
+not** (`te_60` 7, `tm_45` 2, `tm_60` 11). At all 20, `U = |X_ref(realized) −
+X_ref(outgoing)|` is a **near-cancellation**: its two components
+`cpml3d_term` and `aux_echo_term` each individually exceed the net `U` by 1–10×
+(`te_60` R at 9.253 GHz: `U` = 2.884e-04, `cpml3d` = 1.832e-03, `aux` =
+2.120e-03). Using the non-cancelling magnitude `U_cpml + U_aux` in the same
+predicate would leave **3** in-domain breaches, all `tm_60` R at 10.233 /
+10.335 / 10.491 GHz with ratios 1.291 / 1.445 / 1.020.
+
+**That is a SECOND attempt on a different mechanism and it is NOT taken here.**
+It changes the predicate #1028 shipped. It needs its own pre-declaration and PI
+sign-off. It is written down so the next session starts from a measured
+candidate, not from scratch.
+
+The `aux_echo_free=True` control was checked, because a cancellation that large
+would also be what a definitional bug in `U` looks like: on `te_60`'s gated
+band the both-grids-reflectionless lattice (`ideal_absorber=True,
+aux_echo_free=True, aux="model"`) equals the `aux="plane"` reference to a
+maximum absolute difference of **4.1e-12** (1.0e-11 relative) on `R_ideal`
+0.315–0.576. The cancellation is a property of the two absorbers, not of the
+definition.
+
+### 14.5 What changed in code
+
+- `lattice_witness.reference_is_absorber_free(t_safe_cpml_steps,
+  aux_echo_arrival_steps, n_steps)` — new, pure, geometry-only predicate.
+- `lattice_witness.domain_report(..., report_term=None)` — new keyword-only
+  argument that REPORTS a magnitude without letting it define the domain. It
+  exists so the arrival-safe branch keeps emitting
+  `max_unmodelled_over_window_gated` and
+  `mean_unmodelled_over_mean_window_gated`; without it those two keys would
+  silently vanish from the five corrected entries and nothing would have gone
+  red. Entries reported that way also carry
+  `unmodelled_term_is_reported_only: true`.
+- `witness_domain`'s docstring states the rule. **Its predicate, `evaluate`,
+  `budget_terms`, `windows_from_terms`, `ceiling_windows` and `ringdown_rate`
+  are untouched**, and no existing callable in `lattice_witness.py` changed
+  except `domain_report`'s new keyword.
+- `oblique_fresnel.evaluate_e2` selects the reference and reports
+  `witness_reference`, `witness_reference_arrival_safe`,
+  `witness_reference_inputs`, `witness_reference_reason` and
+  `mean_dR/dT_lattice_gated_alt` — the residual the OTHER reference would have
+  given, so the choice can be checked rather than trusted. `R_lattice`,
+  `T_lattice`, `W_lat_R`, `W_lat_T` and `mean_W_lat_*_gated` stay on the
+  REALIZED lattice on every arm; they are the lattice-vs-Fresnel separation, a
+  different reported quantity, and they do not move.
+- cv26's replay artifact and its console line name the reference per entry.
+
+### 14.6 What would refute this revision
+
+- An entry whose `arrival_safe` is True and whose record nonetheless matches
+  the realized reference better on R or on T. One is enough: the whole claim is
+  that geometry predicts which reference the record matches. It is pinned as an
+  assertion, not left as prose — see
+  `test_the_witness_reference_is_chosen_by_arrival_geometry_not_by_a_residual`
+  in `tests/crossval/test_cv26_oblique_fresnel_gates.py`.
+- A rig change that moves an absorber standoff and flips an entry's
+  `arrival_safe` without the pinned `_WITNESS_REFERENCE` table going red —
+  that would be exactly the silent-default hazard §13.6 warns about,
+  reintroduced one level up.
+- A case in which the absorber-free reference is not available because the
+  reference is a measurement rather than a model. Every consumer of this
+  standard so far builds its reference analytically; one that does not would
+  need a different rule.
+
+### 14.7 R2 / R3 — stated under both readings
+
+**The honest problem first.** §13.7 of this note reads *"R2: attempt 1 on
+'what does GL1's window omit'"*. Read broadly, that mechanism contains this
+revision, and the spent attempts against it are three: the second-order term
+`(δ_scat + δ_round)²` (falsified), option (A) (rejected on A2/A4/A5), and
+option (C) (shipped, #1028). Under that reading §14 is attempt 2 or 3 on one
+mechanism and the RF/EM N≥1 intensifier forbids it without an explicit PI
+override.
+
+Read narrowly — mechanism = *"the comparator's REFERENCE contains absorber
+content the record cannot contain"* — attempts spent are **0** and this is
+attempt 1. The argument for the narrow reading is not that the mechanism is
+new; it is that **§14 is not a mechanism attempt at all**. §3 (Z1) and §13.3
+already bind a case to the arrival test. Five of cv26's ten entries satisfy it
+and were judged against a reference they are not entitled to. That is a case
+failing to apply a rule this note already states — a conformance defect in the
+comparator, the fourteenth in
+`docs/agent-memory/rfx-known-issues.md`'s comparator-bug ledger class — not a
+new hypothesis about the window. **This is a judgement and the PI owns it;**
+the pre-declaration's §6 puts it as an open question and the PR was opened, not
+merged, for that reason.
+
+R3: `memory=rfx-known-issues.md:4391 comparator-bug case ledger ("Current
+count: 13/13", and its own "do not increment yet" caveat at :49 is noted — this
+is not claimed as case 14 until a PI accepts it) + rf_capability_audit_2026-05-03.md:159
+("the bug has been in the comparator / diagnostic / extractor 3 out of 3
+times") | R2-attempts=1 broad (§13.7 counts option C) / 0 narrow (reference
+selection touches neither budget nor domain), both stated above |
+falsifier=the twelve-row arrival-vs-reference table of §14.2; a single sign
+disagreement between the geometry predicate and which reference the record
+matches kills it. RAN: 10/10 on R and 10/10 on T, and cv22 + cv23 rebuilt
+identical (220851 B and 666012 B, sorted-key serialization) between
+origin/main's comparator and this one in one process.`
