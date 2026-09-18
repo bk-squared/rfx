@@ -42,6 +42,27 @@ speak earlier is a change to `CORE_CONFIG_CHECKS`, and reds both that lock and
 arguments each check receives. Neither red is one to regenerate past: it means
 preflight output moved.
 
+## PR body contract
+
+Every PR body carries two lines, each exactly once, outside code fences and HTML
+comments:
+
+- `Lane: lane:<label>` — the owner lane, one of the repository's `lane:*` labels
+  (`gh label list | grep '^lane:'`). Every open issue carries exactly one.
+- `Review: <who read it> (separate instance) — ACCEPT` (or `ACCEPT WITH CHANGES`).
+  A merged change is read by an agent instance other than the one that wrote it;
+  several pods push under one GitHub account, so the body is the only provenance.
+  `REJECT` never passes.
+
+Two exceptions take `Review: skipped — <reason>`, and the reason must name which:
+(a) an easily reverted pure docs/comment change, (b) an explicit instruction from
+the PI to skip. Either dash, em or plain hyphen, is accepted.
+
+The check is `scripts/ci/check_pr_body.py` (stdlib only; `--file PATH` to run it
+against a body locally), gated by `.github/workflows/pr-body.yml` on open, edit,
+reopen and synchronize. `.github/pull_request_template.md` seeds both stubs, and
+`tests/contracts/test_pr_body_contract.py` pins the accepted forms.
+
 ## GPU validation
 
 `scripts/vessl_gpu_suite.yaml` is THE maintained harness — runs `pytest -m gpu -q -ra`

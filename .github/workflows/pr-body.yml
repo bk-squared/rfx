@@ -1,0 +1,57 @@
+name: pr-body
+
+# Every merged change is read by a SEPARATE agent instance, and every PR
+# belongs to exactly one owner lane. Both facts were prose-only until now.
+# Audit 2026-09-18: of the 90 PRs merged since 2026-09-11, 35 carried no review
+# trace at all, and none of the 17 open PRs carried the line. Agents from
+# several pods push under one GitHub account, so the PR body is the only
+# provenance a reader has. This job turns the two lines into a gate that binds
+# every author, Codex included.
+#
+# The contract and its failure message live in scripts/ci/check_pr_body.py;
+# tests/contracts/test_pr_body_contract.py pins the accepted forms.
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+# Superseded runs on the same PR are cancelled: editing a body twice in a
+# minute used to queue two runs, and this gate is re-triggered by every edit.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  pr-body-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Read the live lane labels
+        # The allowed lane set is whatever the repository actually has, so a
+        # lane added after the script was written does not fail a PR. `grep`
+        # exits 1 on no match, which would fail the step -- hence `|| true`;
+        # an empty LANE_LABELS makes the script fall back to its own list.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          labels=$(gh label list --limit 100 --json name --jq '.[].name' | grep '^lane:' || true)
+          {
+            echo "LANE_LABELS<<EOF"
+            echo "$labels"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: Check the PR body
+        # The body is passed through the environment, never interpolated into
+        # the shell: a body is attacker-controlled text and `${{ }}` inside a
+        # `run:` block is a script injection.
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: python scripts/ci/check_pr_body.py
