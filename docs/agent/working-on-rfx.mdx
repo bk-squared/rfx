@@ -49,9 +49,9 @@ machine, and [Lanes](./agent-runbook.mdx#lanes) explains where a lane comes from
 what the labels can and cannot say. Ten `lane:*` labels exist and nine are mapped to
 paths; `lane:plan` has none on purpose, because it marks trackers and deferred
 decisions that nobody implements from. The labels name the lane that owns a change,
-never the session driving it: that is the pinned lane-owners issue, #1111, a table you
-edit to claim a lane. Do not pick up an issue in another lane without a comment from its
-owner or from the PI. The convention this replaced was a lock emoji in a comment, and
+never the session driving it; which session drives a lane is recorded in the private
+governance appendix that the engineering standard points at, not in an issue. Do not pick
+up an issue in another lane without a comment on that issue from its owner or from the PI. The convention this replaced was a lock emoji in a comment, and
 under it an issue was closed on 2026-09-16 under another session's claim.
 
 ## One task, one worktree, one branch
