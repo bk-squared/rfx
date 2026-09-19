@@ -1,0 +1,261 @@
+---
+title: Working on rfx — the coordination contract
+---
+
+# Working on rfx
+
+## What this page is
+
+This is the workflow every session follows on this repository, and the reason each
+rule is enforced by a machine rather than by prose. The [agent
+runbook](./agent-runbook.mdx) holds the commands, lanes and cadences; `AGENTS.md` at
+the repository root holds the engineering rules, from physics to what counts as a
+witness. This page holds only how work is claimed, reviewed and landed.
+
+It exists because prose did not hold. Measured on 2026-09-18 and reported in PR #1112:
+of the 90 pull requests merged since 2026-09-11, 35 carried no review trace at all,
+and all 17 open pull requests lacked one. Several sessions in several pods, some
+Claude and some Codex, commit under a single account, so neither the author field nor
+the assignee says who did what, and no session's memory reaches another. The tracker
+and the pull-request body are the only shared store, and everything below is a CI
+check, a repository setting, or a row in a weekly report.
+
+## Before you start
+
+Find the current campaign. Work belongs to the open milestone unless the PI says
+otherwise:
+
+```
+gh api repos/bk-squared/rfx/milestones --jq '.[] | select(.state=="open") | "\(.number) \(.title)"'
+```
+
+On 2026-09-19 that returns two: `v1.9 — MSL + coax S-chain` with one open issue, and
+`port/S-param basic support` with eleven. The second is the campaign in progress.
+
+Find who owns the lane. A lane is a set of paths, mapped in `.github/labeler.yml`,
+and ten `lane:*` labels exist (`gh label list | grep '^lane:'`). From any machine,
+`gh issue list -l lane:msl-port` shows that lane's work.
+
+The labels say which lane owns a change, not which session drives it. That is the
+pinned lane-owners issue, #1111, a table you edit to claim a lane. Do not pick up an
+issue in another lane without a comment from its owner or from the PI. The convention
+this replaced was a lock emoji in a comment, and under it an issue was closed on
+2026-09-16 under another session's claim.
+
+## One task, one worktree, one branch
+
+One task gets one worktree and one branch. Never work in the standing clone, and
+never `git stash` in a tree others share — the stash stack is repository-global
+across worktrees, so a stash is another session's lost work.
+
+```
+git fetch -q origin
+git worktree add -b fix/1041-seam-source /path/to/rfx-wt-seam origin/main
+```
+
+Branch-name prefixes follow the kind of change. Over the 60 most recently merged pull
+requests: `fix/` 27, `refactor/` 15, `ci/` 5, `feat/` 3, `docs/` 2.
+
+**Removing the worktree is the last step of the task, after the merge.** One clone
+accumulated 22 worktrees, 13 from pull requests merged weeks earlier and seven
+pointing at directories that no longer existed (PR #1114). The cleanup script:
+
+```
+python scripts/dev/prune_worktrees.py          # dry run, classify and print
+python scripts/dev/prune_worktrees.py --apply  # remove only what survives removal
+```
+
+It removes a worktree only when the commits outlive it: merged into `origin/main`, or
+its pull request merged, or on origin with no open pull request and older than
+`--days` (default 7). It never deletes an unpushed branch on any path, and it keeps
+anything dirty, detached on no ref, or carrying ignored files that are not
+regenerable caches.
+
+## Filing an issue
+
+A finding does not go on the tracker by default. Take the first that applies:
+
+1. **Fix it in the pull request that found it** — the fix is smaller than the issue
+   body and lives in a file that pull request already touches. Say so in the body.
+2. **Turn the class into a gate** — it has appeared before. A contract test on the
+   invariant retires every future instance; an issue retires none.
+3. **Write it where durable notes go** — it is true and nobody will act on it. That
+   is most findings, and it is not a lesser outcome.
+4. **File an issue** — only for the remainder: someone will DO or DECIDE something.
+
+Blank issues are off. Two forms make step 4 answerable instead of assumed:
+
+| form | for | required fields |
+|---|---|---|
+| Finding | something measured is wrong | what is wrong (command and realized value), reproduction, what happens next, lane, evidence |
+| Decision request | work is blocked until someone chooses | the question, options, what blocks on it, lane |
+
+The Finding form's "what happens next" dropdown has a third option — *record only,
+this belongs in the ledger, do not file*. Picking it means closing the form, not
+submitting it. Both forms carry a Lane dropdown, and a workflow reads the rendered
+`### Lane` section and applies the matching label, moving it when the dropdown is
+edited. That job can never fail an issue, because it runs on every edit and a red
+check would follow the issue around for a word its author typed. When it declines to
+label, the issue carries no lane, which is a row in the weekly audit. Title the
+problem, not the intended fix: a number changes when an issue is closed and refiled,
+the problem does not.
+
+## Before every push
+
+Run every short gate locally first:
+
+```
+bash scripts/ci/local.sh                 # the six steps
+bash scripts/ci/local.sh /tmp/body.md    # also check your PR body
+```
+
+The six steps, in the order CI runs them, stopping at the first failure: ruff,
+docs-hygiene, changelog-fragment, pr-body, workflow-yaml, contract-tests. The
+contract tests are almost all of the wall time — 5 min 16 s on 2026-09-18, everything
+else under ten seconds together. Each step calls the same script the workflow calls,
+so a green local run and a green CI run mean the same thing.
+
+**One push per review round.** Every push to a pull request cancels the in-flight CI
+lane and starts a new one (`concurrency` with `cancel-in-progress` in
+`pr-tests.yml`). Measured with `gh run list --workflow=pr-tests.yml` on 2026-09-18,
+across the three pull requests that touched no simulator code: 13 `pr-tests` runs, 8
+of them cancelled by a newer push.
+
+The heavy lane is path-aware. A `changes` job diffs base against head: a diff
+confined to `docs/`, most of `scripts/`, other workflows or `changelog.d/` skips the
+six simulator shards and runs `tests/contracts` in their place, while a diff touching
+`rfx/`, `tests/`, `validation/`, `examples/` or the build and lane configuration runs
+everything, as does any push to `main`. A docs-only pull request pays roughly 8
+minutes in one job; the six shards on PR #1115's branch took 4m51s to 42m11s each.
+Ask the classifier before pushing:
+
+```
+python scripts/ci/changed_paths.py $(git diff --name-only --no-renames origin/main...HEAD)
+```
+
+## The PR body
+
+Two lines, each exactly once, starting flush left, outside code fences, HTML comments
+and `pre` blocks. The template seeds both:
+
+```
+Lane: lane:ci-infra
+Review: opus (separate instance) — ACCEPT
+```
+
+`Lane:` names one of the repository's ten lane labels, and is required on every pull
+request. The `lane:*` labels the labeler applies from changed paths do not replace it:
+over the 60 most recently merged pull requests, 32 earn two or more labels and 6 earn
+none, so for 38 of 60 the labels cannot say which lane owns the change. When labels
+are present, the line must name one of them.
+
+`Review:` takes one of four accepted forms. The separator before the verdict may be
+an em dash, an en dash or a plain hyphen:
+
+```
+Review: <who read it> (separate instance) - ACCEPT
+Review: <who read it> (separate instance) - ACCEPT WITH CHANGES
+Review: skipped - (a) <easily reverted pure docs/comment change>
+Review: skipped - (b) <the PI instructed the skip>
+```
+
+`REJECT` never passes, and neither does an unedited angle-bracketed placeholder.
+Rounds of review go on a separate `Review history:` line naming each round's verdict,
+its findings in short, and the commits that closed them; `Fixes #N` links the issue.
+
+Changelog entries are fragments, never edits to `CHANGELOG.md`. Add
+`changelog.d/<number>.<type>.md` holding exactly the text you would have pasted under
+`## [Unreleased]`: a `### <Type> — <one sentence> (#NNN)` heading and its bullets,
+`<type>` one of added, breaking, changed, deprecated, fixed, removed. It is required
+whenever the change touches `rfx/`; docs, tests and scripts may add one and need not.
+One file per pull request is what keeps concurrent changes from conflicting on one
+5500-line file, this repository's main source of merge conflicts. When no fragment is
+owed, say so in the body.
+
+Which check watches what: `pr-body-contract` reads the two lines,
+`changelog-fragment` the fragment rules, `ruff` the lint scope, `changes` the path
+verdict, `guards-and-preflight` and `fast-suite (1)`…`(6)` the physics and contracts.
+
+## Review before merge
+
+**A merged change is read by an agent instance other than the one that wrote it.**
+Not the author re-reading their own diff, and not a fork of the author's context.
+Spawn the reviewer separately. The verdict is `ACCEPT`, `ACCEPT WITH CHANGES` or
+`REJECT`, every finding cites `file:line`, and the reviewer separates what they
+reproduced from what they only read. The operating standard states the job:
+
+> Find what the AUTHOR DID NOT CHECK. Re-run their evidence only to confirm it
+> reproduces; spend the rest on what their tests cannot see — wrong physics behind a
+> passing number, a tautological test, a pull-request-body claim the diff does not
+> support, a gate moved without a derived root cause, a defect the change introduces
+> elsewhere. Default to UNRESOLVED over CONFIRMED when you could not reproduce it.
+
+Fixes go back to the **same** reviewer, who re-runs the checks that produced the
+findings. A big change gets two directions: a verification review that receives the
+finding list and confirms each one is closed, and a fresh-eyes review that receives no
+list. The first looks at the places that were fixed; the second looks at what the
+fixing introduced.
+
+Two exceptions, and only two: (a) an easily reverted pure docs or comment change, and
+(b) the PI said to skip. Either one is recorded on the `Review: skipped` line with its
+literal `(a)` or `(b)`, so the weekly audit can say which was claimed.
+
+## After merge
+
+The repository squash-merges and keeps the remote branch. Then:
+
+- Remove the worktree, and let `prune_worktrees.py` decide about the local branch.
+- Land the always-on check with the fix, not after it: the smallest test or preflight
+  gate that would have caught the root cause, pinning the invariant rather than a
+  value. A rule nobody runs is not enforcement, which is why so much of
+  `tests/contracts/` asserts on configuration —
+  `test_every_glob_matches_something_tracked` fails when a glob in
+  `.github/labeler.yml` owns no tracked file.
+- Update the ledger for classification and rationale only. Open or closed is the
+  tracker's answer, and every time the ledger repeated status the two drifted.
+
+## What the machine enforces and what it cannot
+
+| layer | what it covers |
+|---|---|
+| CI checks | the two body lines, changelog fragments, lint, contract tests, and the physics shards whenever the diff touches code |
+| repository settings | a pull request is required (administrators excepted), squash is the only merge method, conversations must be resolved, force-push is off |
+| weekly governance audit | skipped reviews, issues with no lane label or filed outside the forms, merged pull requests closing an issue outside every open milestone |
+
+Read the required contexts rather than trusting this page:
+
+```
+gh api repos/bk-squared/rfx/branches/main/protection --jq '.required_status_checks.contexts'
+```
+
+On 2026-09-19 that returns `ruff`, `guards-and-preflight` and `fast-suite (1)`…`(6)`.
+`pr-body-contract`, `changelog-fragment` and `changes` are **not** required yet, so a
+red run on any of them is visible and blocks nothing. The one ruleset on `main` has
+enforcement disabled, so classic branch protection is what binds, and no merge queue
+is in use.
+
+The audit is a list to look at, not a gate. It runs Mondays at 00:00 UTC and on
+demand; a non-empty table exits 1 only so the scheduled run shows up red and somebody
+opens it, and its unlinked-pull-request row never sets the exit code because
+housekeeping legitimately closes no issue. Run it with
+`python scripts/ci/governance_audit.py --days 7`.
+
+No check can tell whether a review was real. The gate reads that the `Review:` line is
+present and well-formed; it cannot see who read the diff. Making the claim explicit is
+what lets a later audit catch a false one, and the separate-instance rule plus the
+weekly report are the whole of the guard.
+
+## Where things live
+
+- **Commands, lanes, cadences, GPU and cross-validation harnesses** — the [agent
+  runbook](./agent-runbook.mdx).
+- **Engineering rules** — `AGENTS.md` at the repository root, which Codex reads
+  directly; Claude sessions read a byte-identical twin under a different name.
+- **User-visible defects** — `docs/guides/known_limitations.md`, one entry per
+  subject, linked from the README and the support matrix. An entry leaves when a
+  committed test pins the fix.
+- **Durable internal knowledge** — the versioned ledger, whose location `AGENTS.md`
+  gives. It carries classification, rationale and measurements, never open or closed.
+- **The mechanics** — `.github/labeler.yml` for the path-to-lane map,
+  `.github/ISSUE_TEMPLATE/` for the forms, `.github/pull_request_template.md` for the
+  two lines, and `scripts/ci/` for every gate as a script you can run.
