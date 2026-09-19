@@ -96,7 +96,7 @@ The `changes` job decides, and its log prints the changed paths and the verdict.
 yourself before you push:
 
 ```
-python scripts/ci/changed_paths.py $(git diff --name-only --no-renames origin/main...HEAD)
+git diff -z --name-only --no-renames origin/main...HEAD | python scripts/ci/changed_paths.py --stdin --null
 EVENT_NAME=pull_request BASE_SHA=origin/main HEAD_SHA=HEAD bash scripts/ci/classify_changes.sh
 ```
 
