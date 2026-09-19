@@ -9868,39 +9868,39 @@
         "domain": {
           "axes": {
             "x": {
-              "declared_extent_um": 374740.5725,
+              "declared_extent_um": 366413.004222,
               "declared_um": [
                 0.0,
-                374740.5725
+                366413.004222
               ],
               "face_residual_um": [
                 0.0,
                 0.0
               ],
-              "mesh_extent_um": 374740.5725,
-              "n_cells": 45,
-              "realized_extent_um": 374740.5725,
+              "mesh_extent_um": 366413.004222,
+              "n_cells": 44,
+              "realized_extent_um": 366413.004222,
               "realized_um": [
                 0.0,
-                374740.5725
+                366413.004222
               ]
             },
             "y": {
-              "declared_extent_um": 374740.5725,
+              "declared_extent_um": 366413.004222,
               "declared_um": [
                 0.0,
-                374740.5725
+                366413.004222
               ],
               "face_residual_um": [
                 0.0,
                 0.0
               ],
-              "mesh_extent_um": 374740.5725,
-              "n_cells": 45,
-              "realized_extent_um": 374740.5725,
+              "mesh_extent_um": 366413.004222,
+              "n_cells": 44,
+              "realized_extent_um": 366413.004222,
               "realized_um": [
                 0.0,
-                374740.5725
+                366413.004222
               ]
             },
             "z": {
@@ -9927,40 +9927,40 @@
           "n_cells": null,
           "realization": null
         },
-        "geometry|pec|142401.418,142401.418,149896.229um->232339.155,232339.155,149896.229um": {
+        "geometry|pec|141568.661,141568.661,149896.229um->224844.344,224844.344,149896.229um": {
           "axes": {
             "x": {
               "cell_um": 8327.56827778,
-              "declared_extent_um": 89937.7374,
+              "declared_extent_um": 83275.6827778,
               "declared_um": [
-                142401.41755,
-                232339.15495
+                141568.660722,
+                224844.3435
               ],
               "face_residual_um": [
-                7494.81145,
-                7494.81145
+                0.0,
+                0.0
               ],
-              "realized_extent_um": 74948.1145,
+              "realized_extent_um": 83275.6827778,
               "realized_um": [
-                149896.229,
+                141568.660722,
                 224844.3435
               ],
               "sub_cell": false
             },
             "y": {
               "cell_um": 8327.56827778,
-              "declared_extent_um": 89937.7374,
+              "declared_extent_um": 83275.6827778,
               "declared_um": [
-                142401.41755,
-                232339.15495
+                141568.660722,
+                224844.3435
               ],
               "face_residual_um": [
-                7494.81145,
-                7494.81145
+                0.0,
+                0.0
               ],
-              "realized_extent_um": 74948.1145,
+              "realized_extent_um": 83275.6827778,
               "realized_um": [
-                149896.229,
+                141568.660722,
                 224844.3435
               ],
               "sub_cell": false
@@ -9984,41 +9984,21 @@
               "sub_cell": true
             }
           },
-          "findings": [
-            {
-              "axis": "x",
-              "detail": "PLACEMENT off by 7494.8 um (8.33% of the declared 89937.7 um extent); SIZE 74948.1 um (-14989.6 um, -16.67%)",
-              "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
-            },
-            {
-              "axis": "y",
-              "detail": "PLACEMENT off by 7494.8 um (8.33% of the declared 89937.7 um extent); SIZE 74948.1 um (-14989.6 um, -16.67%)",
-              "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
-            }
-          ],
+          "findings": [],
           "material": {
             "kind": "pec"
           },
           "n_cells": 0,
-          "realization": "PEC sheet on node plane z = 149896.23 um (100 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
+          "realization": "PEC sheet on node plane z = 149896.23 um (121 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
         }
       },
       "preflight": [
         {
           "code": "ntff_small_ground_plane",
           "loc": null,
-          "message": "Far-field pattern advisory: the PEC sheet backing a source (bbox (142.4, 142.4, 149.9)\u2013(232.3, 232.3, 149.9) mm) spans 89.9mm \u00d7 89.9mm = 0.90\u03bb \u00d7 0.90\u03bb at f_max=3.00GHz \u2014 a ground plane under ~1\u03bb across. Expect the radiation pattern to be shaped by ground-plane edge diffraction (broadside dip, off-axis side peaks). This is expected physics, not a solver defect, and the fixture stays fine for resonance / impedance work. For a clean broadside pattern enlarge the ground plane to at least ~1.4\u03bb; if the small ground plane is intentional, interpret the pattern accordingly.",
+          "message": "Far-field pattern advisory: the PEC sheet backing a source (bbox (141.6, 141.6, 149.9)\u2013(224.8, 224.8, 149.9) mm) spans 83.3mm \u00d7 83.3mm = 0.83\u03bb \u00d7 0.83\u03bb at f_max=3.00GHz \u2014 a ground plane under ~1\u03bb across. Expect the radiation pattern to be shaped by ground-plane edge diffraction (broadside dip, off-axis side peaks). This is expected physics, not a solver defect, and the fixture stays fine for resonance / impedance work. For a clean broadside pattern enlarge the ground plane to at least ~1.4\u03bb; if the small ground plane is intentional, interpret the pattern accordingly.",
           "severity": "warning",
           "source": "_validate_ntff_small_ground_plane"
-        },
-        {
-          "code": "off_lattice_design_edges",
-          "loc": null,
-          "message": "2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[0] 'pec' (sheet) x: extent 89.94mm, worst face residual 832.8\u00b5m (0.93% of the extent); geometry[0] 'pec' (sheet) y: extent 89.94mm, worst face residual 832.8\u00b5m (0.93% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: choose dx commensurate with the patterned dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on the design edges. COVERAGE: examined 2 axis extent(s) on 1 conductor Box declaration(s) on the uniform lane; 1 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
-          "severity": "warning",
-          "source": "_validate_cfg_off_lattice_design_edges"
         }
       ]
     },

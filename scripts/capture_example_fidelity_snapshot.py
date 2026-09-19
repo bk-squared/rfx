@@ -12,7 +12,13 @@ it is not an endorsement that today's advisories are correct or complete.
 
 Regenerate after a DELIBERATE change to a committed example's declared
 geometry, materials, or preflight-relevant config -- never to silence a
-drift the gate correctly caught. If ``test_example_fidelity_contract.py``
+drift the gate correctly caught. If the re-capture ADDS or REMOVES a
+preflight row, ``tests/data/example_fidelity_advisories.json`` has to move
+with it: every pinned row carries a written disposition (#737 item 1) and
+``test_every_pinned_advisory_row_is_classified`` fails on an unclassified
+row and on a stale entry alike. That file is hand-written and this script
+does not touch it, which is why it is a sidecar and not a section of the
+snapshot this script rewrites wholesale. If ``test_example_fidelity_contract.py``
 fails and the diff is NOT an intentional change, that is the gate working:
 fix the script (or investigate why realized != declared), do not re-pin.
 

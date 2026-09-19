@@ -544,8 +544,13 @@ def test_workflow_exists_and_runs_the_script() -> None:
     # `on:` parses as the boolean True in YAML 1.1; accept either spelling.
     triggers = data.get("on", data.get(True))
     assert set(triggers["pull_request"]["types"]) == {
-        "opened", "edited", "reopened", "synchronize",
-    }
+        "opened", "edited", "reopened", "synchronize", "labeled", "unlabeled",
+    }, (
+        "`labeled`/`unlabeled` cover a lane label changed BY HAND. They do not "
+        "cover .github/workflows/labeler.yml -- an event triggered by "
+        "GITHUB_TOKEN creates no workflow run -- which is why the label set is "
+        "read live rather than taken from the event payload"
+    )
 
 
 def test_no_workflow_expression_is_interpolated_into_any_run_block() -> None:
@@ -571,6 +576,172 @@ def test_workflow_passes_the_body_through_env() -> None:
         if isinstance(value, str)
     ]
     assert "${{ github.event.pull_request.body }}" in env_values
+
+
+def test_workflow_reads_the_labels_live_not_from_the_event_payload() -> None:
+    """The payload's label list is wrong in both directions.
+
+    On `opened` it is empty, because .github/workflows/labeler.yml has not run
+    yet. And when that job does run, its label change fires no event here at
+    all: an event triggered by GITHUB_TOKEN creates no workflow run. A gate that
+    cross-checks the `Lane:` line against labels it read from the payload would
+    be cross-checking against nothing on most PRs.
+    """
+    steps = _workflow()["jobs"]["pr-body-contract"]["steps"]
+    blocks = "\n".join(_run_blocks(_workflow()))
+    env_values = [
+        value
+        for step in steps
+        for value in (step.get("env") or {}).values()
+        if isinstance(value, str)
+    ]
+    assert "${{ toJSON(github.event.pull_request.labels.*.name) }}" not in env_values
+    assert "gh pr view" in blocks and "PR_LABELS_JSON" in blocks
+    assert "${{ github.event.pull_request.number }}" in env_values
+
+
+# --------------------------------------------------------------------------
+# The lane: the line is required, and the labels cross-check it
+# --------------------------------------------------------------------------
+
+#: A PR that `.github/labeler.yml` put in one lane.
+ONE_LABEL = dict(ENV, PR_LABELS_JSON='["lane:ci-infra", "release"]')
+TWO_LABELS = dict(ENV, PR_LABELS_JSON='["lane:ci-infra", "lane:crossval"]')
+
+
+def test_a_lane_label_does_not_replace_the_line() -> None:
+    """Measured over 60 merged PRs: 32 earn two lane labels, 6 earn none.
+
+    For 38 of 60 the labels cannot say which lane OWNS the change, so the line
+    is the claim and the labels only cross-check it.
+    """
+    problems = cpb.check(body(ACCEPT), env=ONE_LABEL)
+    assert len(problems) == 1 and "no `Lane:` line" in problems[0]
+
+
+def test_the_missing_line_message_suggests_a_label_the_pr_carries() -> None:
+    problems = cpb.check(body(ACCEPT), env=TWO_LABELS)
+    assert "Lane: lane:ci-infra" in problems[0]
+    assert "lane:crossval" in problems[0]
+
+
+def test_no_line_and_no_label_fails() -> None:
+    problems = cpb.check(body(ACCEPT), env=ENV)
+    assert len(problems) == 1 and "no `Lane:` line" in problems[0]
+
+
+def test_a_line_naming_one_of_two_labels_passes() -> None:
+    assert cpb.check(body("Lane: lane:crossval", ACCEPT), env=TWO_LABELS) == []
+
+
+def test_a_line_that_contradicts_the_labels_fails() -> None:
+    """Either the line is wrong or labeler.yml is missing a path. Both matter."""
+    problems = cpb.check(body("Lane: lane:msl-port", ACCEPT), env=ONE_LABEL)
+    assert len(problems) == 1
+    assert "not among the lane labels" in problems[0]
+    assert "labeler.yml" in problems[0]
+
+
+def test_a_line_that_agrees_with_the_single_label_passes() -> None:
+    assert cpb.check(body("Lane: lane:ci-infra", ACCEPT), env=ONE_LABEL) == []
+
+
+def test_a_line_still_works_with_no_labels_at_all() -> None:
+    """A PR confined to unowned paths carries no label, and is not cross-checked."""
+    assert cpb.check(body("Lane: lane:ci-infra", ACCEPT), env=ENV) == []
+
+
+def test_two_lane_lines_fail_even_when_a_label_agrees() -> None:
+    problems = cpb.check(
+        body("Lane: lane:ci-infra", "Lane: lane:crossval", ACCEPT), env=ONE_LABEL
+    )
+    assert len(problems) == 1 and "2 `Lane:` lines" in problems[0]
+
+
+def test_an_unknown_lane_in_the_line_fails_before_the_labels_are_consulted() -> None:
+    problems = cpb.check(body("Lane: lane:invented", ACCEPT), env=ONE_LABEL)
+    assert len(problems) == 1 and "is not a lane label on this repository" in problems[0]
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "",
+        "   ",
+        "[]",
+        "not json",
+        '{"name": "lane:ci-infra"}',
+        '["release", "bug"]',
+    ],
+)
+def test_a_payload_carrying_no_lane_label_switches_the_cross_check_off(raw: str) -> None:
+    """Missing, malformed and lane-free label sets all read as "no labels".
+
+    Erroring instead would fail every PR the day GitHub changes the payload,
+    and the `Lane:` line remains a complete answer on its own.
+    """
+    env = dict(ENV, PR_LABELS_JSON=raw)
+    assert cpb.pr_lane_labels(env) == ()
+    assert cpb.check(body("Lane: lane:crossval", ACCEPT), env=env) == []
+
+
+def test_a_label_containing_a_comma_survives_the_json() -> None:
+    env = dict(ENV, PR_LABELS_JSON='["lane:ci-infra", "needs,triage"]')
+    assert cpb.pr_lane_labels(env) == ("lane:ci-infra",)
+
+
+# --------------------------------------------------------------------------
+# A retired label warns; it never fails
+# --------------------------------------------------------------------------
+
+
+def test_a_lane_label_the_repository_no_longer_has_is_only_a_warning() -> None:
+    """Retiring a label must not turn every open PR red for nobody's mistake."""
+    env = dict(ENV, PR_LABELS_JSON='["lane:ci-infra", "lane:retired"]')
+    warnings = cpb.lane_label_warnings(env)
+    assert len(warnings) == 1 and "lane:retired" in warnings[0]
+    assert cpb.check(body("Lane: lane:ci-infra", ACCEPT), env=env) == []
+
+
+def test_a_stale_label_is_warned_and_then_IGNORED() -> None:
+    """Warned and ignored, on every path -- not warned and then failed on.
+
+    A PR whose only lane label has been retired is a PR with no lane label. The
+    earlier version cross-checked against the unfiltered set, so this body
+    failed one branch after the warning promised it would not, and the failure
+    text then suggested `Lane: lane:retired`, which fails the allowed-set
+    branch. Two dead ends for something the author did not do.
+    """
+    env = dict(ENV, PR_LABELS_JSON='["lane:retired"]')
+    warnings = cpb.lane_label_warnings(env)
+    assert len(warnings) == 1 and "lane:retired" in warnings[0]
+    assert cpb.check(body("Lane: lane:ci-infra", ACCEPT), env=env) == []
+
+
+def test_a_stale_label_is_not_suggested_when_the_line_is_missing() -> None:
+    """The suggestion has to be a lane the author can actually write."""
+    env = dict(ENV, PR_LABELS_JSON='["lane:retired", "lane:crossval"]')
+    problems = cpb.check(body(ACCEPT), env=env)
+    assert len(problems) == 1
+    assert "Lane: lane:crossval" in problems[0]
+    assert "lane:retired" not in problems[0]
+
+
+def test_a_pr_whose_only_lane_label_is_stale_is_not_cross_checked_at_all() -> None:
+    env = dict(ENV, PR_LABELS_JSON='["lane:retired"]')
+    for lane in ("lane:ci-infra", "lane:crossval", "lane:msl-port"):
+        assert cpb.check(body(f"Lane: {lane}", ACCEPT), env=env) == [], lane
+
+
+def test_a_current_label_set_warns_about_nothing() -> None:
+    assert cpb.lane_label_warnings(ONE_LABEL) == []
+    assert cpb.lane_label_warnings(ENV) == []
+
+
+def test_the_remediation_text_says_the_label_is_not_a_substitute() -> None:
+    report = cpb.failure_report(cpb.check(body(ACCEPT), env=ENV), env=ENV)
+    assert "do not replace the line" in report
+
 
 
 #: The ruff scope CI runs: the packages under test, plus every script that gates

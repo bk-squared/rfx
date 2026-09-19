@@ -124,13 +124,94 @@ would not compute, and any verdict other than the literal `false` all run the fu
 Work steps gate on `!= 'false'`, not `== 'true'`, so an empty or unexpected output runs
 everything rather than skipping everything.
 
+## Filing an issue
+
+A finding does not go on the tracker by default. Take the first that applies:
+
+1. **Fix it in the PR that found it** — the fix is smaller than the issue body and
+   lives in a file that PR already touches. Say so in the PR body.
+2. **Turn the class into a gate** — the finding has appeared before. A contract test
+   on the invariant retires every future instance; an issue retires none.
+3. **Write it down where durable notes go** — it is true and nobody will act on it.
+   That is most findings, and it is not a lesser outcome.
+4. **File an issue** — only for the remainder: someone will DO or DECIDE something.
+
+`.github/ISSUE_TEMPLATE/` makes step 4 answerable instead of assumed. Two forms,
+and blank issues are off:
+
+| form | for | required fields |
+|---|---|---|
+| Finding | something measured is wrong | what is wrong (command + realized value), reproduction, what happens next, lane, evidence |
+| Decision request | work is blocked until someone chooses | the question, options, what blocks on it, lane |
+
+"What happens next" is a dropdown whose third option is *record only → this belongs
+in the ledger, do not file*. Picking it means closing the form, not submitting it.
+
+Title the problem, not the intended fix. A number changes when an issue is closed
+and refiled; the problem does not.
+
+## Lanes
+
+A lane is a set of PATHS, and `.github/labeler.yml` is the map. Change a file under
+`rfx/boundaries/`, and `.github/workflows/labeler.yml` puts `lane:absorber` on the
+pull request; stop changing it, and the label comes off, because the job runs with
+`sync-labels: true` on every push.
+
+Two lane labels on one PR is information, not an error — a change touching the
+waveguide extractor and the MSL extractor really is in both lanes. It is also the
+common case: 32 of the 60 most recently merged PRs would earn two or more. The
+body's `Lane:` line is what names the primary one, and it stays required on every
+PR for exactly that reason.
+
+Not every path is owned. `rfx/` core, `studio/`, `scripts/diagnostics/`,
+`validation/research/` and most of `tests/unit/` map to no lane; a PR confined to
+them gets no label and carries the `Lane:` line itself. `changelog.d/` is
+deliberately unowned — every PR adds a fragment there, and owning it would put a
+second label on every pull request. `lane:plan` has no paths at all: it marks
+trackers and deferred decisions that nobody implements from.
+
+On an issue the lane comes from the form's Lane dropdown.
+`.github/workflows/issue-lane-label.yml` reads the rendered `### Lane` section with
+`scripts/ci/issue_lane_label.py` and applies the label, moving it rather than adding
+a second one when the dropdown is edited. An issue with no `### Lane` section was
+filed outside the forms; nothing happens to it, and the weekly audit lists it. An
+issue whose body has TWO answered `### Lane` sections — which the form cannot
+produce, so somebody pasted one — is also left alone, with the conflicting lines
+printed in the job log, and so is one naming a value that is not a lane label.
+
+**No issue body can make that job fail.** It runs on every edit of every issue, so a
+red check would follow the issue around for a word its author typed. Everything it
+declines to do goes to the job log and the exit code stays 0.
+
+Both of those leave a well-formed issue with no lane label, and the job stays green,
+so nothing on the issue says so. That is why the weekly audit asks whether the issue
+carries a `lane:*` LABEL, not whether its body has the heading. The two questions are
+separate rows: an issue can have been filed through the form and still never have got
+a label.
+
+Query a lane from any machine with `gh issue list -l lane:msl-port`. Who currently
+DRIVES each lane is a separate question the labels do not answer — that lives in the
+pinned lane-board issue, which the labeler file replaces as the path mapping.
+
+Every glob in `.github/labeler.yml` is checked against `git ls-files` by
+`tests/contracts/test_governance_intake_contract.py`; a glob that matches nothing is
+a failure, because it is configuration that silently owns nothing.
+
 ## PR body contract
 
 Every PR body carries two lines, each exactly once, outside code fences, HTML
 comments and `pre` blocks:
 
 - `Lane: lane:<label>` — the owner lane, one of the repository's `lane:*` labels
-  (`gh label list | grep '^lane:'`). Every open issue carries exactly one.
+  (`gh label list | grep '^lane:'`). Required on every PR. The `lane:*` labels
+  `.github/workflows/labeler.yml` applies from the changed paths do NOT replace it:
+  measured over the 60 most recently merged PRs, 32 earn two or more lane labels and
+  6 earn none, so for 38 of 60 the labels cannot say which lane owns the change. The
+  labels are automatic and informational; the line is the claim. When the PR does
+  carry lane labels the line must name one of them, because a line contradicting the
+  paths means either the line is wrong or a path is missing from
+  `.github/labeler.yml`. A lane label the repository no longer has is reported as a
+  warning and never fails the check.
 - `Review: <who read it> (separate instance) — ACCEPT` (or `ACCEPT WITH CHANGES`).
   A merged change is read by an agent instance other than the one that wrote it;
   several pods push under one GitHub account, so the body is the only provenance.
@@ -155,7 +236,11 @@ point of the contract is that the two lines are greppable across every PR.
 
 The check is `scripts/ci/check_pr_body.py` (stdlib only; `--file PATH` to run it
 against a body locally), gated by `.github/workflows/pr-body.yml` on open, edit,
-reopen and synchronize. `.github/pull_request_template.md` seeds both stubs, and
+reopen, synchronize, label and unlabel. It reads the PR's labels from the API at
+check time rather than from the event payload: on `opened` the payload's label list
+is empty because the labeler has not run yet, and a label the labeler applies fires
+no event here at all, because an event triggered by `GITHUB_TOKEN` creates no
+workflow run. `.github/pull_request_template.md` seeds both stubs, and
 `tests/contracts/test_pr_body_contract.py` pins the accepted forms.
 
 **The gate binds only once `pr-body-contract` is a required check in branch
@@ -172,6 +257,30 @@ content shape and the assembler commands are in `changelog.d/README.md`;
 
 Both rules bind only once the `changelog-fragment` check is REQUIRED in branch
 protection — until then a red run advises and does not block.
+
+## Weekly governance audit
+
+`.github/workflows/governance-audit.yml` runs `scripts/ci/governance_audit.py`
+Mondays at 00:00 UTC, and on demand through `workflow_dispatch` with a `days` input.
+It reports what no single-PR gate can see, over the last seven days:
+
+| row | why it is listed |
+|---|---|
+| merged PR with no accepted `Review:` line | the gate binds new PRs only once it is a required check |
+| merged PR claiming `Review: skipped` | the rule has two exceptions; an exception claimed weekly is not one |
+| issue opened with no `lane:*` label | invisible to `gh issue list -l lane:...`, so no session can find it |
+| issue opened with no `### Lane` section | filed outside the forms, so nobody answered "who will DO or DECIDE" |
+| merged PR closing an issue outside every open milestone | work off the current campaign |
+| merged PR closing no issue | INFORMATIONAL only, never red: housekeeping legitimately closes nothing, and this was 65 of 102 merged PRs the week the report was written |
+
+**It is a report, not a gate.** A non-empty table exits 1 so the scheduled run shows
+up red in the Actions list and somebody opens it. Do not make it a required check —
+it would block every merge on a report about last week.
+
+Run it yourself with `python scripts/ci/governance_audit.py --days 7`, which needs
+`gh` authenticated. `--dump PATH` saves the payload and `--input PATH` replays it
+with no network, which is how `tests/contracts/test_governance_audit.py` exercises
+the classifier.
 
 ## GPU validation
 
