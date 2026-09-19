@@ -198,7 +198,6 @@ def test_a_conflicting_body_changes_no_label_and_stays_green() -> None:
     result = mod.plan(PASTED_BODY, ["lane:msl-port"], LANES)
     assert result.add is None
     assert result.remove == []
-    assert result.problems == []
     assert len(result.notes) == 1
 
 
@@ -242,9 +241,19 @@ def test_an_unanswered_dropdown_still_counts_as_a_form() -> None:
 # --------------------------------------------------------------------------
 
 
+def test_the_plan_has_no_way_to_express_a_failure() -> None:
+    """Structural, not a rule somebody has to remember.
+
+    Everything this job can object to is something an issue author typed. With
+    no failure field, a later edit cannot reintroduce a red check on an issue
+    without first putting the field back and explaining why.
+    """
+    assert mod.Plan._fields == ("add", "remove", "notes")
+
+
 def test_an_unlabelled_issue_gets_its_lane() -> None:
     assert mod.plan(FORM_BODY, [], LANES) == (
-        "lane:waveguide-port", [], [], [],
+        "lane:waveguide-port", [], [],
     )
 
 
@@ -252,7 +261,7 @@ def test_editing_the_dropdown_moves_the_label() -> None:
     result = mod.plan(FORM_BODY, ["lane:msl-port", "bug"], LANES)
     assert result.add == "lane:waveguide-port"
     assert result.remove == ["lane:msl-port"]
-    assert result.problems == [] and result.notes == []
+    assert result.notes == []
 
 
 def test_a_non_lane_label_is_left_alone() -> None:
@@ -264,7 +273,7 @@ def test_a_non_lane_label_is_left_alone() -> None:
 def test_an_edit_that_did_not_change_the_lane_changes_nothing() -> None:
     """Re-adding a label re-notifies every watcher for no reason."""
     assert mod.plan(FORM_BODY, ["lane:waveguide-port"], LANES) == (
-        None, [], [], [],
+        None, [], [],
     )
 
 
@@ -280,14 +289,21 @@ def test_a_hand_written_body_leaves_existing_labels_alone() -> None:
     somebody fixes a typo in it.
     """
     assert mod.plan(FREEFORM_BODY, ["lane:msl-port"], LANES) == (
-        None, [], [], [],
+        None, [], [],
     )
 
 
-def test_a_lane_the_dropdown_cannot_produce_is_reported() -> None:
+def test_a_lane_the_dropdown_cannot_produce_is_noted_not_failed_on() -> None:
+    """An issue author can edit their own body; a red check on it helps nobody.
+
+    Nothing is hidden by declining quietly: an issue this job could not label
+    carries no `lane:*` label, and the weekly audit lists exactly that.
+    """
     result = mod.plan("### Lane\n\nlane:nope\n", [], LANES)
     assert result.add is None and result.remove == []
-    assert len(result.problems) == 1 and "lane:nope" in result.problems[0]
+    assert len(result.notes) == 1
+    assert "lane:nope" in result.notes[0]
+    assert "governance audit" in result.notes[0]
 
 
 # --------------------------------------------------------------------------
@@ -358,13 +374,39 @@ def test_the_cli_is_quiet_and_green_on_a_hand_written_issue(tmp_path: Path) -> N
     ]
 
 
-def test_the_cli_fails_on_a_lane_the_dropdown_cannot_produce() -> None:
+@pytest.mark.parametrize(
+    "body",
+    [
+        "### Lane\n\nlane:invented\n",
+        "### Lane\n\nnot even a label\n",
+        PASTED_BODY,
+        FREEFORM_BODY,
+        UNANSWERED_BODY,
+        "",
+        "### Lane\n",
+        "### Lane\n\n" + "x" * 500 + "\n",
+    ],
+    ids=["unknown-lane", "not-a-label", "two-sections", "no-section",
+         "unanswered", "empty", "heading-only", "very-long-value"],
+)
+def test_no_issue_body_can_make_the_job_red(body: str) -> None:
+    """The job runs on every edit of every issue.
+
+    A body that fails it puts a red check on somebody's issue and keeps it there
+    until a maintainer notices, for a word the author typed.
+    """
+    result = _run({"ISSUE_BODY": body, "LANE_LABELS": "\n".join(LANES)})
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_the_cli_says_why_it_declined_a_lane_it_does_not_know() -> None:
     result = _run({
         "ISSUE_BODY": "### Lane\n\nlane:invented\n",
         "LANE_LABELS": "\n".join(LANES),
     })
-    assert result.returncode == 1
+    assert result.returncode == 0
     assert "lane:invented" in result.stderr
+    assert "no label was applied" in result.stderr
 
 
 def test_the_cli_with_no_body_fails_rather_than_passing_vacuously() -> None:

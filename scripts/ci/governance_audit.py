@@ -11,7 +11,14 @@ and issues, so no per-PR gate can see them:
 * **Intake.** ``.github/ISSUE_TEMPLATE/`` makes "someone will DO or DECIDE
   something" a required field, which works only for issues filed THROUGH a
   form. An issue opened through the API or transferred from elsewhere skips it
-  and has no ``### Lane`` section, so it is invisible to every lane query.
+  and has no ``### Lane`` section.
+* **Lane labels on issues.** Filing through the form is not the same as ending
+  up queryable. ``.github/workflows/issue-lane-label.yml`` deliberately does
+  nothing -- and stays green -- when the dropdown was left unanswered or when a
+  pasted second ``### Lane`` section makes the body ambiguous. Both leave a
+  perfectly well-formed issue with no ``lane:*`` label, invisible to every lane
+  query, and nothing on the issue itself says so. Asking for the LABEL rather
+  than the heading is what catches that.
 * **One campaign at a time.** The PI's standing instruction is that work runs
   one campaign at a time, and an open milestone is how that is visible. A merged
   PR that closes an issue outside every open milestone is work that happened off
@@ -104,10 +111,18 @@ SECTIONS = (
         "claimed often is not an exception.",
     ),
     (
+        "unlabelled",
+        "Issues opened with no lane label",
+        "Invisible to `gh issue list -l lane:...`, so no session can find it. "
+        "An unanswered dropdown, or a pasted second `### Lane` section, leaves "
+        "the label job doing nothing and green -- this is where that shows up.",
+    ),
+    (
         "form",
         "Issues opened outside the issue forms",
-        "No `### Lane` section, so no lane label and no answer to \"who will "
-        "DO or DECIDE something\".",
+        "No `### Lane` section at all, so nobody answered \"who will DO or "
+        "DECIDE something\". An issue can appear here and above; they are "
+        "different facts.",
     ),
     (
         "milestone",
@@ -151,6 +166,20 @@ def linked_issues(body: str) -> List[int]:
         if number not in seen:
             seen.append(number)
     return seen
+
+
+def lane_labels_of(issue: dict) -> List[str]:
+    """The ``lane:*`` labels on an issue record.
+
+    ``gh issue list --json labels`` gives ``[{"name": ...}, ...]``; a plain list
+    of names is accepted too, so a fixture need not carry the wrapper.
+    """
+    out: List[str] = []
+    for label in issue.get("labels") or []:
+        name = label.get("name") if isinstance(label, dict) else label
+        if isinstance(name, str) and name.startswith("lane:"):
+            out.append(name)
+    return out
 
 
 def _in_open_milestone(issue: Optional[dict]) -> bool:
@@ -204,18 +233,20 @@ def classify(
             rows.append(Row("milestone", ref, title, f"closes #{number}: {where}"))
 
     for issue in sorted(opened_issues, key=lambda item: item.get("number", 0)):
-        # Asks only whether the heading is THERE. An unanswered dropdown, or two
-        # sections that conflict, still means the form was used -- those are the
-        # lane-label job's business, not intake's.
+        ref = f"#{issue.get('number')}"
+        title = issue.get("title", "")
+
+        # The label, not the heading. The heading being present says the form
+        # was used; it does not say a lane came out of it, and the label job
+        # exits 0 without labelling anything when the dropdown was unanswered or
+        # a second `### Lane` section was pasted in.
+        if not lane_labels_of(issue):
+            rows.append(Row("unlabelled", ref, title, "no `lane:*` label"))
+
+        # A separate fact, kept separate: this one says nobody was ever ASKED
+        # the form's questions. An issue with neither appears in both sections.
         if not _lane.has_lane_section(issue.get("body") or ""):
-            rows.append(
-                Row(
-                    "form",
-                    f"#{issue.get('number')}",
-                    issue.get("title", ""),
-                    "no `### Lane` section",
-                )
-            )
+            rows.append(Row("form", ref, title, "no `### Lane` section"))
 
     return rows
 
@@ -259,12 +290,23 @@ def render(rows: Iterable[Row], since: dt.date, until: dt.date, counts: dict) ->
 
     failing = failing_rows(rows)
     informational = len(rows) - len(failing)
-    out += [
-        f"**{len(failing)} rows to look at**, plus {informational} informational. "
-        "This report is not a gate: a row is something to look at, not something "
-        "that was forbidden. The run is red so the report gets opened.",
-        "",
-    ]
+    if failing:
+        out += [
+            f"**{len(failing)} row{'' if len(failing) == 1 else 's'} to look at**, "
+            f"plus {informational} informational. This report is not a gate: a row "
+            "is something to look at, not something that was forbidden. The run is "
+            "red so the report gets opened.",
+            "",
+        ]
+    else:
+        # Nothing claims the run is red here, because it is not: informational
+        # rows never set the exit code, and a footer that said otherwise would
+        # teach a reader to distrust the one that does.
+        out += [
+            f"**Nothing to look at.** The {informational} informational "
+            f"row{'' if informational == 1 else 's'} above do not make the run red.",
+            "",
+        ]
     return "\n".join(out)
 
 
@@ -330,7 +372,7 @@ def fetch(days: int, limit: int = FETCH_LIMIT) -> dict:
     issues = _capped(_gh([
         "issue", "list", "--state", "all", "--limit", str(limit),
         "--search", f"created:>={since.isoformat()}",
-        "--json", "number,title,body,createdAt,url",
+        "--json", "number,title,body,createdAt,url,labels",
     ]), limit, "opened issues", window)
 
     wanted = {n for pr in prs for n in linked_issues(pr.get("body") or "")}

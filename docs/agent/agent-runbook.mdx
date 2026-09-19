@@ -177,7 +177,17 @@ a second one when the dropdown is edited. An issue with no `### Lane` section wa
 filed outside the forms; nothing happens to it, and the weekly audit lists it. An
 issue whose body has TWO answered `### Lane` sections — which the form cannot
 produce, so somebody pasted one — is also left alone, with the conflicting lines
-printed in the job log.
+printed in the job log, and so is one naming a value that is not a lane label.
+
+**No issue body can make that job fail.** It runs on every edit of every issue, so a
+red check would follow the issue around for a word its author typed. Everything it
+declines to do goes to the job log and the exit code stays 0.
+
+Both of those leave a well-formed issue with no lane label, and the job stays green,
+so nothing on the issue says so. That is why the weekly audit asks whether the issue
+carries a `lane:*` LABEL, not whether its body has the heading. The two questions are
+separate rows: an issue can have been filed through the form and still never have got
+a label.
 
 Query a lane from any machine with `gh issue list -l lane:msl-port`. Who currently
 DRIVES each lane is a separate question the labels do not answer — that lives in the
@@ -258,6 +268,7 @@ It reports what no single-PR gate can see, over the last seven days:
 |---|---|
 | merged PR with no accepted `Review:` line | the gate binds new PRs only once it is a required check |
 | merged PR claiming `Review: skipped` | the rule has two exceptions; an exception claimed weekly is not one |
+| issue opened with no `lane:*` label | invisible to `gh issue list -l lane:...`, so no session can find it |
 | issue opened with no `### Lane` section | filed outside the forms, so nobody answered "who will DO or DECIDE" |
 | merged PR closing an issue outside every open milestone | work off the current campaign |
 | merged PR closing no issue | INFORMATIONAL only, never red: housekeeping legitimately closes nothing, and this was 65 of 102 merged PRs the week the report was written |

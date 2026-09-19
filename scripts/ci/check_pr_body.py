@@ -37,9 +37,11 @@ either the line is wrong or ``.github/labeler.yml`` is missing a path, and both
 are worth stopping for. A PR carrying no lane label is not cross-checked, which
 is what a local run sees and what a PR confined to unowned paths gets.
 
-A lane label that is no longer a label on the repository is reported as a
-WARNING and never fails the check. Retiring a label must not turn every open PR
-red.
+A lane label that is no longer a label on the repository takes no part in any
+of this: it is reported as a WARNING and then IGNORED, so a PR whose only lane
+label was retired is treated as a PR with no lane label at all. Retiring a label
+must not turn every open PR red, and it must not turn them red through the
+cross-check either.
 
 ``<who>`` names the reviewing instance and may not contain ``<`` or ``>``: an
 unedited placeholder is not a review record, and this file's own remediation
@@ -315,7 +317,12 @@ def _check_lane(
     which lane owns the change. Empty switches the cross-check off.
     """
     matches = [m for m in (LANE_RE.match(line) for line in lines) if m]
-    labelled = sorted(set(pr_labels))
+    # Only labels the repository still HAS can cross-check anything. A retired
+    # one would otherwise fail a correct line, one branch after the warning
+    # promised it would not -- and the remediation text would then suggest that
+    # same retired label, which fails the allowed-set branch above. Dropping it
+    # here is what makes "warned and ignored" true of every path below.
+    labelled = sorted(set(pr_labels) & set(lanes))
 
     if len(matches) > 1:
         found = ", ".join(m.group(1) for m in matches)
@@ -358,10 +365,12 @@ def _check_lane(
 def lane_label_warnings(env: dict[str, str] | None = None) -> list[str]:
     """Lane labels on the PR that the repository no longer has.
 
-    Reported, never failed on. A label retired while twenty PRs are open would
-    otherwise turn all twenty red for something none of their authors did, and
-    the `Lane:` line -- the claim this gate is actually about -- is unaffected
-    by it.
+    Reported and then ignored: `_check_lane` cross-checks the `Lane:` line only
+    against labels that are still in the live set, so a PR whose lane labels
+    have all been retired is treated as a PR with no lane label. A label retired
+    while twenty PRs are open would otherwise turn all twenty red for something
+    none of their authors did, and the `Lane:` line -- the claim this gate is
+    actually about -- has nothing to do with it.
     """
     lanes, source = allowed_lanes(env)
     stale = [label for label in sorted(set(pr_lane_labels(env))) if label not in lanes]
@@ -371,7 +380,8 @@ def lane_label_warnings(env: dict[str, str] | None = None) -> list[str]:
         f"warning: {', '.join(stale)} "
         f"{'is' if len(stale) == 1 else 'are'} on this PR but not a lane label "
         f"on the repository ({source}). A retired or renamed label leaves this "
-        f"behind; it does not fail the check."
+        f"behind. It does not fail the check and it is not cross-checked against "
+        f"the `Lane:` line."
     ]
 
 

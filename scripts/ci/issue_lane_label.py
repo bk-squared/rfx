@@ -43,9 +43,18 @@ sections disagree this labels nothing, prints the conflicting lines and exits 0
 -- a body must never be able to turn the job red, because the job runs on every
 edit of every issue.
 
-A ``### Lane`` section naming something that is not a lane label IS an error:
-the dropdown cannot produce it, so the body was hand-edited, and silently
-labelling nothing would hide that.
+A ``### Lane`` section naming something that is not a lane label is reported
+the same way. The dropdown cannot produce it, so the body was hand-edited -- but
+the author of an issue can edit their own body, and failing on it would put a
+red check on somebody's issue for a word they typed. Nothing is hidden by that:
+an issue this job could not label carries no ``lane:*`` label, and
+``.github/workflows/governance-audit.yml`` lists exactly that, weekly.
+
+**No body can make this job fail.** That is structural, not a rule to remember:
+`Plan` has no field for a failure. The job runs on every edit of every issue, so
+a red one would follow the issue around until somebody with write access noticed.
+The only non-zero exit is having no ``ISSUE_BODY`` to read at all, which is a
+broken workflow, not a broken issue.
 
 Usage::
 
@@ -202,38 +211,46 @@ def resolve_lane(body: str) -> Tuple[Optional[str], List[str]]:
 
 
 class Plan(NamedTuple):
-    """What to do about one issue."""
+    """What to do about one issue.
 
-    add: Optional[str]      #: the lane label to add, or None
-    remove: List[str]       #: `lane:*` labels to take off
-    problems: List[str]     #: reported on stderr, exit 1
-    notes: List[str]        #: reported on stderr, exit 0
+    There is deliberately no failure field. Everything this job can object to is
+    something an issue author typed, and a red check on their issue helps nobody;
+    the weekly audit's "no lane label" row is the net that catches every case
+    where this job declined to act.
+    """
+
+    add: Optional[str]   #: the lane label to add, or None
+    remove: List[str]    #: `lane:*` labels to take off
+    notes: List[str]     #: printed on stderr; the exit code stays 0
 
 
 def plan(body: str, current: Sequence[str], lanes: Sequence[str]) -> Plan:
     """What the labels should become for one issue.
 
     ``add`` is ``None`` when the body names no lane, when the sections conflict,
-    or when the label is already on the issue -- an edit that did not change the
-    dropdown must not churn the label and re-notify every watcher.
+    when the value is not a lane, or when the label is already on the issue --
+    an edit that did not change the dropdown must not churn the label and
+    re-notify every watcher.
     """
     wanted, conflicts = resolve_lane(body)
     if conflicts:
-        return Plan(None, [], [], conflicts)
+        return Plan(None, [], conflicts)
     if wanted is None:
-        return Plan(None, [], [], [])
+        return Plan(None, [], [])
     if wanted not in lanes:
         return Plan(None, [], [
             f"`### {LANE_HEADING}` names {wanted!r}, which is not a lane label on "
-            f"this repository. The dropdown cannot produce it, so the body was "
-            f"hand-edited. Lanes: {', '.join(sorted(lanes))}."
-        ], [])
+            f"this repository, so no label was applied. The dropdown cannot "
+            f"produce it, so the body was hand-edited. Lanes: "
+            f"{', '.join(sorted(lanes))}. The weekly governance audit lists this "
+            f"issue until it carries a lane label."
+        ])
     remove = sorted(
         label for label in set(current)
         if label.startswith(LANE_PREFIX) and label != wanted
     )
     add = None if wanted in current else wanted
-    return Plan(add, remove, [], [])
+    return Plan(add, remove, [])
 
 
 def _write_output(add: Optional[str], remove: Sequence[str]) -> None:
@@ -267,11 +284,6 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     current = parse_labels(os.environ.get("CURRENT_LABELS_JSON", ""))
     result = plan(body, current, allowed_lanes())
-    if result.problems:
-        for problem in result.problems:
-            print(problem, file=sys.stderr)
-        return 1
-
     for note in result.notes:
         print(note, file=sys.stderr)
 

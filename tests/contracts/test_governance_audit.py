@@ -45,10 +45,13 @@ def pr(number: int, body: str, title: str = "a change") -> dict:
             "mergedAt": "2026-09-17T00:00:00Z", "url": f"u/{number}"}
 
 
-def issue(number: int, body: str, milestone: dict | None = None) -> dict:
+def issue(number: int, body: str, milestone: dict | None = None,
+          labels: list | None = None) -> dict:
+    """An issue record. *labels* defaults to one lane label, the healthy case."""
     return {"number": number, "title": f"issue {number}", "body": body,
             "createdAt": "2026-09-17T00:00:00Z", "milestone": milestone,
-            "url": f"u/{number}"}
+            "url": f"u/{number}",
+            "labels": [{"name": "lane:absorber"}] if labels is None else labels}
 
 
 OPEN_MILESTONE = {"title": "port/S-param basic support", "state": "open"}
@@ -186,7 +189,7 @@ def test_a_pr_closing_no_issue_does_not_make_the_run_red() -> None:
     assert audit.failing_rows(rows) == []
 
 
-@pytest.mark.parametrize("kind", ["review", "form", "milestone"])
+@pytest.mark.parametrize("kind", ["review", "form", "milestone", "unlabelled"])
 def test_the_other_three_sections_do_make_the_run_red(kind: str) -> None:
     assert audit.failing_rows([audit.Row(kind, "#1", "t", "d")])
 
@@ -222,14 +225,88 @@ def test_an_issue_filed_outside_the_forms_is_reported() -> None:
     assert rows[0].ref == "#20"
 
 
+# --------------------------------------------------------------------------
+# The label, not the heading
+# --------------------------------------------------------------------------
+
+
+def test_a_form_issue_that_never_got_a_lane_label_is_reported() -> None:
+    """The gap the heading check could not see.
+
+    .github/workflows/issue-lane-label.yml exits 0 without labelling anything
+    when the dropdown was left unanswered or a second `### Lane` section was
+    pasted in. The issue is then well-formed, invisible to every lane query, and
+    nothing on it says so.
+    """
+    rows = audit.classify([], [issue(20, FORM_ISSUE, labels=[])], {})
+    assert kinds(rows) == ["unlabelled"]
+    assert rows[0].detail == "no `lane:*` label"
+
+
+def test_an_unanswered_dropdown_is_caught_by_the_label_check() -> None:
+    body = "### What is wrong\n\nx\n\n### Lane\n\n_No response_\n"
+    rows = audit.classify([], [issue(21, body, labels=[])], {})
+    assert kinds(rows) == ["unlabelled"]
+
+
+def test_two_conflicting_lane_sections_are_caught_by_the_label_check() -> None:
+    body = "### Lane\n\nlane:absorber\n\n### Lane\n\nlane:msl-port\n"
+    assert audit._lane.resolve_lane(body)[0] is None  # the label job does nothing
+    rows = audit.classify([], [issue(22, body, labels=[])], {})
+    assert kinds(rows) == ["unlabelled"]
+
+
+def test_a_non_lane_label_does_not_satisfy_the_check() -> None:
+    rows = audit.classify([], [issue(20, FORM_ISSUE, labels=["bug", "release"])], {})
+    assert kinds(rows) == ["unlabelled"]
+
+
+def test_a_labelled_form_issue_produces_no_row() -> None:
+    rows = audit.classify([], [issue(20, FORM_ISSUE, labels=["lane:absorber"])], {})
+    assert rows == []
+
+
+def test_an_issue_with_neither_appears_in_both_sections() -> None:
+    """Two different facts: nobody was asked, and nothing can find it."""
+    rows = audit.classify([], [issue(20, HAND_ISSUE, labels=[])], {})
+    assert kinds(rows) == ["unlabelled", "form"]
+
+
+def test_a_hand_filed_issue_someone_labelled_by_hand_is_only_a_form_row() -> None:
+    rows = audit.classify([], [issue(20, HAND_ISSUE, labels=["lane:plan"])], {})
+    assert kinds(rows) == ["form"]
+
+
+@pytest.mark.parametrize(
+    "labels,expected",
+    [
+        ([{"name": "lane:plan"}, {"name": "bug"}], ["lane:plan"]),
+        (["lane:plan", "bug"], ["lane:plan"]),
+        ([], []),
+        (None, []),
+        ([{"colour": "red"}], []),
+    ],
+)
+def test_lane_labels_are_read_from_either_shape(labels, expected) -> None:
+    """`gh issue list --json labels` wraps names; a fixture need not."""
+    assert audit.lane_labels_of({"labels": labels}) == expected
+
+
+def test_the_issue_listing_asks_github_for_labels() -> None:
+    """Without the field every issue reads as unlabelled and every week is red."""
+    source = Path(audit.__file__).read_text(encoding="utf-8")
+    assert "number,title,body,createdAt,url,labels" in source
+
+
 def test_the_intake_check_uses_the_lane_parser_the_workflow_uses() -> None:
     """A form whose Lane heading moved must fail in ONE place, not diverge."""
     assert audit._lane.has_lane_section(FORM_ISSUE) is True
 
 
-def test_an_issue_whose_dropdown_was_left_blank_is_not_an_intake_row() -> None:
-    """The form WAS used. An unanswered dropdown is the lane job's business."""
-    rows = audit.classify([], [issue(21, "### What is wrong\n\nx\n\n### Lane\n\n_No response_\n")], {})
+def test_an_issue_whose_dropdown_was_left_blank_is_not_a_FORM_row() -> None:
+    """The form WAS used, so not that row -- the label check is what catches it."""
+    body = "### What is wrong\n\nx\n\n### Lane\n\n_No response_\n"
+    rows = audit.classify([], [issue(21, body, labels=["lane:absorber"])], {})
     assert rows == []
 
 
@@ -252,16 +329,22 @@ def test_an_empty_report_says_so_and_has_no_table() -> None:
 
 def test_every_row_kind_has_a_section_heading() -> None:
     """A kind with no entry in SECTIONS renders nowhere and is silently lost."""
+    kinds_ = [kind for kind, _, _ in audit.SECTIONS]
     rows = [
-        audit.Row("review", "#1", "t", "d"),
-        audit.Row("form", "#2", "t", "d"),
-        audit.Row("milestone", "#3", "t", "d"),
-        audit.Row("unlinked", "#4", "t", "d"),
+        audit.Row(kind, f"#{index}", "t", "d")
+        for index, kind in enumerate(kinds_)
     ]
     text = _render(rows)
-    for ref in ("#1", "#2", "#3", "#4"):
-        assert f"| {ref} |" in text
-    assert text.count("| ref | title | detail |") == 4
+    for index in range(len(kinds_)):
+        assert f"| #{index} |" in text
+    assert text.count("| ref | title | detail |") == len(kinds_)
+
+
+def test_the_sections_cover_every_kind_classify_can_emit() -> None:
+    """Pinned by name: a kind added to classify and not to SECTIONS vanishes."""
+    assert {kind for kind, _, _ in audit.SECTIONS} == {
+        "review", "unlabelled", "form", "milestone", "unlinked",
+    }
 
 
 def test_a_pipe_in_a_title_stays_in_its_cell() -> None:
@@ -284,7 +367,28 @@ def test_the_footer_separates_failing_rows_from_informational_ones() -> None:
         audit.Row("unlinked", "#2", "t", "d"),
         audit.Row("unlinked", "#3", "t", "d"),
     ])
-    assert "**1 rows to look at**, plus 2 informational." in text
+    assert "**1 row to look at**, plus 2 informational." in text
+    assert "The run is red" in text
+
+
+def test_a_report_of_only_informational_rows_does_not_claim_the_run_is_red() -> None:
+    """It is not red: informational rows never set the exit code.
+
+    A footer that said otherwise would teach a reader to distrust the one that
+    does, which is the whole value of making the run red at all.
+    """
+    text = _render([
+        audit.Row("unlinked", "#1", "t", "d"),
+        audit.Row("unlinked", "#2", "t", "d"),
+    ])
+    assert "The run is red" not in text
+    assert "**Nothing to look at.** The 2 informational rows above" in text
+    assert "| #1 |" in text, "the rows are still listed"
+
+
+def test_the_informational_footer_counts_one_row_in_the_singular() -> None:
+    text = _render([audit.Row("unlinked", "#1", "t", "d")])
+    assert "The 1 informational row above" in text
 
 
 # --------------------------------------------------------------------------
@@ -409,6 +513,9 @@ def test_a_week_of_only_informational_rows_stays_green(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Merged PRs closing no issue (informational)" in result.stdout
     assert "#1" in result.stdout
+    assert "The run is red" not in result.stdout, (
+        "a green run must not print the sentence that explains a red one"
+    )
 
 
 def test_the_report_is_written_to_the_step_summary(tmp_path: Path) -> None:

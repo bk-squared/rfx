@@ -215,6 +215,24 @@ def test_the_labeler_workflow_checks_out_nothing() -> None:
     assert not any("run" in step for step in steps), steps
 
 
+def test_the_pr_body_gate_keeps_the_permission_its_live_label_read_needs() -> None:
+    """`pull-requests: read` is load-bearing, and nothing else says so.
+
+    The gate reads the PR's labels with `gh pr view` because the event payload's
+    label list is empty on `opened` and is never updated by the labeler. Drop
+    this permission and that step aborts, taking the whole check with it -- a
+    failure that looks like a `gh` problem and is really a one-word deletion.
+    """
+    data = load(WORKFLOWS / "pr-body.yml")
+    assert data["permissions"]["pull-requests"] == "read", data["permissions"]
+    blocks = "\n".join(
+        step["run"]
+        for step in data["jobs"]["pr-body-contract"]["steps"]
+        if isinstance(step.get("run"), str)
+    )
+    assert "gh pr view" in blocks, blocks
+
+
 def _uses_entries(workflow: dict) -> list[str]:
     """Every `uses:` value anywhere in a workflow document."""
     found: list[str] = []

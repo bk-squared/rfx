@@ -703,11 +703,34 @@ def test_a_lane_label_the_repository_no_longer_has_is_only_a_warning() -> None:
     assert cpb.check(body("Lane: lane:ci-infra", ACCEPT), env=env) == []
 
 
-def test_a_stale_label_still_counts_for_the_agreement_check() -> None:
-    """It is on the PR. Naming it in the line is not a contradiction."""
+def test_a_stale_label_is_warned_and_then_IGNORED() -> None:
+    """Warned and ignored, on every path -- not warned and then failed on.
+
+    A PR whose only lane label has been retired is a PR with no lane label. The
+    earlier version cross-checked against the unfiltered set, so this body
+    failed one branch after the warning promised it would not, and the failure
+    text then suggested `Lane: lane:retired`, which fails the allowed-set
+    branch. Two dead ends for something the author did not do.
+    """
     env = dict(ENV, PR_LABELS_JSON='["lane:retired"]')
-    problems = cpb.check(body("Lane: lane:ci-infra", ACCEPT), env=env)
-    assert len(problems) == 1 and "not among the lane labels" in problems[0]
+    warnings = cpb.lane_label_warnings(env)
+    assert len(warnings) == 1 and "lane:retired" in warnings[0]
+    assert cpb.check(body("Lane: lane:ci-infra", ACCEPT), env=env) == []
+
+
+def test_a_stale_label_is_not_suggested_when_the_line_is_missing() -> None:
+    """The suggestion has to be a lane the author can actually write."""
+    env = dict(ENV, PR_LABELS_JSON='["lane:retired", "lane:crossval"]')
+    problems = cpb.check(body(ACCEPT), env=env)
+    assert len(problems) == 1
+    assert "Lane: lane:crossval" in problems[0]
+    assert "lane:retired" not in problems[0]
+
+
+def test_a_pr_whose_only_lane_label_is_stale_is_not_cross_checked_at_all() -> None:
+    env = dict(ENV, PR_LABELS_JSON='["lane:retired"]')
+    for lane in ("lane:ci-infra", "lane:crossval", "lane:msl-port"):
+        assert cpb.check(body(f"Lane: {lane}", ACCEPT), env=env) == [], lane
 
 
 def test_a_current_label_set_warns_about_nothing() -> None:
