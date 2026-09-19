@@ -88,6 +88,9 @@ overwrite this one from the a6000 map.
    here before any constant goes back in.
 5. Simulate both splits before committing (pytest-split's own `duration_based_chunks`), then read
    the pull request's own shard times afterwards — that reading is the check, not the simulation.
+   Re-measure the collection while you are there and quote it with the commit you measured it at:
+   it grew 10224 -> 10472 on the fast lane in the three days this file's own refresh took, so a
+   simulation quoted without one is unreproducible.
 6. Update the entry count and the carried count in the header above.
    `tests/contracts/test_test_durations_provenance.py` compares both against the file.
 
@@ -131,8 +134,13 @@ do not touch `.test_durations` (pull requests 1108, 1105 and 1107).
 
 | | run 1 | run 2 | run 3 | run 4 |
 |---|---|---|---|---|
+| group 1 | 5.3 | 4.8 | 4.5 | 4.5 |
 | **critical** | **42.4** | **41.6** | **37.7** | **35.8** |
 | spread | 8.0x | 8.7x | 8.3x | 7.9x |
+
+Group 1 gets its own row because two claims rest on it: that this file's imbalance is systematic
+rather than noise, and that the retired floor's shard-1 prediction of 19.5 min was wrong by a
+factor. Both need the four readings to be 4.5-5.3 and not a single one of them.
 
 **The result: critical path 28.6-31.4 min against 35.8-42.4.** Nothing finer is supportable.
 Within either block the split is the same file's, so most of the movement is runner noise, and it
