@@ -33,7 +33,12 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # Every issue the page cites, verified OPEN on 2026-09-18. Edit this set in the
 # same change that adds or removes an entry, and re-check the tracker when you
 # do -- that re-check is the whole point of the set being written down.
-CITED_ISSUES = frozenset({1070, 1066, 838, 830, 726, 1101, 820, 1100, 737, 715, 1022})
+# #1101 (the port_aperture_snap advisory naming the wrong source for the
+# cutoff) left on 2026-09-19: the message now READS the built
+# ``cfg.f_cutoff`` and names the profile it came from, pinned by
+# tests/unit/ports/test_port_aperture_rasterization.py's two
+# mode_profile fixtures -- the page's own rule for when an entry goes.
+CITED_ISSUES = frozenset({1070, 1066, 838, 830, 726, 820, 1100, 737, 715, 1022})
 
 # Numbers the prose names for provenance rather than as a live defect: a CLOSED
 # issue quoted to say what part of the problem is already fixed. #1043 (the

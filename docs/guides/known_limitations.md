@@ -58,13 +58,6 @@ condition biases `|S11|`. One of the two statements is wrong and a user reading
 both gets contradictory advice.
 → [#726](https://github.com/bk-squared/rfx/issues/726)
 
-**The `port_aperture_snap` advisory names the wrong source for the cutoff.** It
-says the solve builds its mode template *and cutoff* from the declared width. On
-the default discrete mode profile the cutoff comes from the realized aperture's
-own eigenvalue. The first half of the message — that the declared width is not
-what the grid rasterizes — is correct and worth acting on.
-→ [#1101](https://github.com/bk-squared/rfx/issues/1101)
-
 ## Scattering
 
 **Monostatic RCS is not translation-invariant.** Moving the same target inside a
