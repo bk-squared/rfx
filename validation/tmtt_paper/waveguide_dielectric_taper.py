@@ -35,10 +35,15 @@ not divide them rasterizes a wider guide, and the run solves THAT.
       snapshot pins the zero-row preflight report and the 18/8 cell counts,
       so a mesh change that reintroduced the gap would go red in CI whether
       or not anyone ran this file.
-  paper (SMOKE=0), dx = 0.5 mm   ->  23.000 x 10.500 mm, +0.61 % / +3.35 %.
-      NOT WR-90. Disclosed rather than re-meshed: see the QUOTE-REALIZED
-      block beside the constants. The production point in the paper,
-      dx = 0.25 mm, is not commensurate either (22.86/0.25 = 91.44).
+  paper (SMOKE=0), dx = 0.5 mm   ->  23.000 x 10.500 mm, 46 x 21 cells,
+      +0.61 % / +3.35 %. NOT WR-90.
+  paper production, dx = 0.25 mm ->  23.000 x 10.250 mm, 92 x 41 cells,
+      +0.61 % / +0.89 %. Also NOT WR-90: 22.86/0.25 = 91.44. This is the
+      mesh the -38.0 dB figure below was measured on.
+
+Both paper meshes have a TE10 cutoff of 6.517 GHz against the declared
+6.557 GHz. Disclosed rather than re-meshed: see the QUOTE-REALIZED block
+beside the constants.
 
 Every analytic reference this file computes -- ``F_CUTOFF_TE10`` and anything
 derived from it -- comes from ``A_WG_REALIZED``/``B_WG_REALIZED``, so it
@@ -57,9 +62,10 @@ and genetic search trail the gradient by at least 11.6 dB.
 Those four numbers were measured on the 23.000 mm-wide guide those two meshes
 rasterize, not on WR-90, and they are quoted here unchanged. A taper is a
 broadband match to whatever guide it sits in, so they are not wrong -- they
-belong to a structure 0.61 % wider than the one the title names. Re-measuring
-them on a commensurate mesh is a GPU-scale re-run and a PI decision: #1122
-carries it (refs #1100, #825). Not done here.
+belong to a structure 0.61 % wider than the one the title names. DECIDED
+2026-09-19 (#1122, closed): disclosed, not corrected. No erratum and no
+re-mesh; the realized guide is recorded precisely instead, here and in
+docs/guides/known_limitations.md. Refs #1100, #825.
 
 The reverse-mode tape over the full-resolution scan (~12-14k steps) is made
 affordable by ``checkpoint_segments``: segmented gradient checkpointing reduces
@@ -189,11 +195,11 @@ else:
 #   dx = 1.27 mm (SMOKE)  ->  22.860 x 10.160 mm   exactly WR-90
 #   dx = 0.50 mm (paper)  ->  23.000 x 10.500 mm   +0.61 % / +3.35 %
 #
-# The paper lane is NOT re-meshed here. dx = 0.635 mm or 0.3175 mm would put
-# it on the lattice, but every headline number that lane produces was measured
-# at 0.5 mm (and the production point at 0.25 mm) on GPU-scale runs, so moving
-# it is a PI decision, not a drive-by edit. Recorded, not done: #1122 (refs
-# #1100, #825).
+# The paper lane is NOT re-meshed. dx = 0.635 mm or 0.3175 mm would put it on
+# the lattice, but every headline number that lane produces was measured at
+# 0.5 mm (and the production point at 0.25 mm, which realizes 23.000 x
+# 10.250 mm) on GPU-scale runs. Decided 2026-09-19 (#1122, closed): disclosed,
+# not corrected -- no erratum, no re-mesh. Refs #1100, #825.
 # Both axes use DX_M because this file builds a uniform ``Grid``, which
 # carries one cell size. ``_assert_realized_guide`` reads the grid per axis
 # (``getattr(grid, "dy", grid.dx)``) rather than assuming that here, so a grid
@@ -468,8 +474,8 @@ def main() -> int:
     print(f"  improvement              : {init_db - opt_db:8.2f} dB")
     print(f"  wall time                : {time.time()-t0:8.1f} s")
     guide_note = ("WR-90, mesh commensurate" if SMOKE else
-                  f"NOT WR-90 — declared {A_WG*1e3:.2f} x {B_WG*1e3:.2f} mm, "
-                  f"see #1122")
+                  f"NOT WR-90 — declared {A_WG*1e3:.2f} x {B_WG*1e3:.2f} mm; "
+                  f"disclosed, not corrected (#1122)")
     print(f"  guide solved             : {A_WG_REALIZED*1e3:.3f} x "
           f"{B_WG_REALIZED*1e3:.3f} mm ({guide_note})")
     if SMOKE:
@@ -477,7 +483,8 @@ def main() -> int:
         print("   reaches -26.7 dB; at production dx=0.25mm it reaches -38.0 dB,")
         print("   beating a discretized Klopfenstein taper at -36.6 dB — all")
         print("   three measured on the 23.000 mm-wide guide those meshes")
-        print("   rasterize, not on WR-90. See #1122.)")
+        print("   rasterize (23.00 x 10.50 and 23.00 x 10.25 mm), not on")
+        print("   WR-90. Disclosed, not corrected: #1122.)")
 
     _save_figure(grid, layout, eps_from_theta, theta, s11_init, s11_opt,
                  loss_hist)

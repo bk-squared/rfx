@@ -91,7 +91,8 @@ resolution dx = 0.25 mm, versus a discretized Klopfenstein taper of the same
 electrical length at -36.6 dB (dx = 0.25 mm). At a comparable coarse-grid solve
 budget, particle-swarm and genetic search trail the gradient by at least
 11.6 dB. Those figures were measured on the 23.0 mm-wide guide the 0.5 mm and
-0.25 mm meshes rasterize, not on WR-90 (issue #1122); the default SMOKE lane
+0.25 mm meshes rasterize (23.00 x 10.50 and 23.00 x 10.25 mm), not on WR-90;
+decided 2026-09-19 in #1122, disclosed rather than corrected. The default SMOKE lane
 meshes at a commensurate dx = 1.27 mm and does solve WR-90 exactly. Run:
 `SMOKE=1 JAX_PLATFORMS=cpu python validation/tmtt_paper/waveguide_dielectric_taper.py`
 (CPU, ~1-3 min); `SMOKE=0 python validation/tmtt_paper/waveguide_dielectric_taper.py`

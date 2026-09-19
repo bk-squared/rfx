@@ -38,12 +38,15 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # ``cfg.f_cutoff`` and names the profile it came from, pinned by
 # tests/unit/ports/test_port_aperture_rasterization.py's two
 # mode_profile fixtures -- the page's own rule for when an entry goes.
-# #1100 (the taper example declaring WR-90 while both meshes solved a wider
-# guide) was split on 2026-09-19: the SMOKE half is fixed by a commensurate
-# dx = 1.27 mm mesh with a build-time assertion behind it, so #1100 closes;
-# the paper lane's published figures still belong to a 23.0 mm guide and are
-# only DISCLOSED, which is not a fix, so the entry stays and now cites #1122.
-CITED_ISSUES = frozenset({1070, 1066, 838, 830, 726, 820, 1122, 737, 715, 1022})
+# The taper entry carries NO citation line on purpose. #1100 (the SMOKE half)
+# closed with the commensurate mesh, and #1122 (the paper lane's published
+# figures) closed on 2026-09-19 with a PI decision to disclose rather than
+# re-mesh or issue an erratum. The limitation is still real and still belongs
+# on this page, but there is no open work behind it, and an arrow line would
+# present a settled decision as a task. Both numbers sit in
+# RESOLVED_REFERENCES below, which is what this file already uses for a closed
+# issue named for provenance.
+CITED_ISSUES = frozenset({1070, 1066, 838, 830, 726, 820, 737, 715, 1022})
 
 # Numbers the prose names for provenance rather than as a live defect: a CLOSED
 # issue quoted to say what part of the problem is already fixed. #1043 (the
@@ -51,9 +54,9 @@ CITED_ISSUES = frozenset({1070, 1066, 838, 830, 726, 820, 1122, 737, 715, 1022})
 # boundary of what remains. These are allowed to appear without a citation line;
 # a number that is neither cited nor listed here fails the test below, which is
 # what makes the exception a decision rather than a gap.
-RESOLVED_REFERENCES = frozenset({1043, 1100})
-# #1100 joins it for the same reason: the taper entry names it to say which
-# half of that issue is already closed, and #1122 carries what remains.
+RESOLVED_REFERENCES = frozenset({1043, 1100, 1122})
+# #1100 and #1122 join it together: the taper entry names both to record which
+# half was fixed and what was decided about the other, and both are closed.
 
 # The page's citation form: a line that is an arrow, then a link whose text is
 # `#N` and whose target is that issue.
