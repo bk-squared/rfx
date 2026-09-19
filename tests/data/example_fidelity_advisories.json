@@ -401,15 +401,6 @@
    "ref": "validation/tmtt_paper/msl_stub_notch_tuning.py:230-262",
    "rows": 1,
    "variant": "validation/tmtt_paper/msl_stub_notch_tuning.py::build_sim::f_target"
-  },
-  {
-   "code": "port_aperture_snap",
-   "disposition": "defect-open",
-   "issue": 1100,
-   "reason": "The script declares WR-90 (A_WG = 22.86 mm, B_WG = 10.16 mm) and hands those straight to domain=, but neither committed mesh divides either number: measured build-only, the SMOKE lane (dx = 1.0 mm) realizes a 23.000 x 11.000 mm guide (+0.61 % / +8.27 %) and the paper lane (dx = 0.5 mm) a 23.000 x 10.500 mm one (+0.61 % / +3.35 %). Nothing in the script discloses that, unlike cv11's QUOTE-REALIZED block, and F_CUTOFF_TE10 is computed from the declared width. Not fixed here: a commensurate mesh (gcd = 2.54 mm) moves every number both lanes print, and the paper lane's are GPU-scale. Filed as #1100. Re-read against the #1101 message: the row now quotes the BUILT cfg.f_cutoff, 6.512162 GHz on the SMOKE mesh, which is the realized 23-cell guide's cutoff. The script's F_CUTOFF_TE10 = C0/(2*A_WG) is 6.557305 GHz with its own C0 = 2.998e8 (line 75); the advisory's declared-width analytic value is 6.557140 GHz because it uses the exact c, 0.0025 % apart. Either way the constant the script prints sits 0.69 % above the cutoff the port builds, which is the #1100 gap stated in the port's own number.",
-   "ref": "validation/tmtt_paper/waveguide_dielectric_taper.py:1-11,75,80-82,88-115 | https://github.com/bk-squared/rfx/issues/1100",
-   "rows": 4,
-   "variant": "validation/tmtt_paper/waveguide_dielectric_taper.py::build_sim::default"
   }
  ]
 }

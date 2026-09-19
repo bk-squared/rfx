@@ -10383,21 +10383,21 @@
         "domain": {
           "axes": {
             "x": {
-              "declared_extent_um": 90000.0,
+              "declared_extent_um": 90170.0,
               "declared_um": [
                 0.0,
-                90000.0
+                90170.0
               ],
               "face_residual_um": [
                 0.0,
                 0.0
               ],
-              "mesh_extent_um": 90000.0,
-              "n_cells": 90,
-              "realized_extent_um": 90000.0,
+              "mesh_extent_um": 90170.0,
+              "n_cells": 71,
+              "realized_extent_um": 90170.0,
               "realized_um": [
                 0.0,
-                90000.0
+                90170.0
               ]
             },
             "y": {
@@ -10408,14 +10408,14 @@
               ],
               "face_residual_um": [
                 0.0,
-                140.0
+                0.0
               ],
-              "mesh_extent_um": 23000.0,
-              "n_cells": 23,
-              "realized_extent_um": 23000.0,
+              "mesh_extent_um": 22860.0,
+              "n_cells": 18,
+              "realized_extent_um": 22860.0,
               "realized_um": [
                 0.0,
-                23000.0
+                22860.0
               ]
             },
             "z": {
@@ -10426,66 +10426,24 @@
               ],
               "face_residual_um": [
                 0.0,
-                840.0
+                0.0
               ],
-              "mesh_extent_um": 11000.0,
-              "n_cells": 11,
-              "realized_extent_um": 11000.0,
+              "mesh_extent_um": 10160.0,
+              "n_cells": 8,
+              "realized_extent_um": 10160.0,
               "realized_um": [
                 0.0,
-                11000.0
+                10160.0
               ]
             }
           },
-          "findings": [
-            {
-              "axis": "y",
-              "detail": "declared 22860.0 um realized 23000.0 um over 23 cells (+140.0 um, +0.61%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            },
-            {
-              "axis": "z",
-              "detail": "declared 10160.0 um realized 11000.0 um over 11 cells (+840.0 um, +8.27%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
-            }
-          ],
+          "findings": [],
           "material": null,
           "n_cells": null,
           "realization": null
         }
       },
-      "preflight": [
-        {
-          "code": "port_aperture_snap",
-          "loc": null,
-          "message": "Waveguide port 'left': declared y-width 22.8600 mm is not what this grid rasterizes (dx=1.0000 mm): the port's slice covers 23.0000 mm, and with mode_profile='discrete' (the default) the solve builds its TE10 mode template and cutoff from the REALIZED aperture, 23 cells = 23.0000 mm on this axis (eigenvalues from the realized cells; the declared widths pick which eigenvalue): f_cutoff = 6.512162 GHz (analytic for the realized aperture 6.517227 GHz); the declared width would give 6.557140 GHz. Cutoffs, |S| references, and any analytic comparison computed from 22.8600 mm describe a structure this run does not solve. This axis has no explicit range: the None-range branch of _range_to_slice reports the declared domain rather than the rasterized span its own explicit branch computes (issue #729 site 2, still open \u2014 not a new defect). Choose dx so it divides the declared width, or declare the width the grid can represent.",
-          "severity": "warning",
-          "source": "_check_waveguide_port_aperture_snap"
-        },
-        {
-          "code": "port_aperture_snap",
-          "loc": null,
-          "message": "Waveguide port 'left': declared z-width 10.1600 mm is not what this grid rasterizes (dx=1.0000 mm): the port's slice covers 11.0000 mm, and with mode_profile='discrete' (the default) the solve builds its TE10 mode template and cutoff from the REALIZED aperture, 11 cells = 11.0000 mm on this axis (eigenvalues from the realized cells; the declared widths pick which eigenvalue): f_cutoff = 6.512162 GHz (analytic for the realized aperture 6.517227 GHz); the declared width would give 6.557140 GHz. Cutoffs, |S| references, and any analytic comparison computed from 10.1600 mm describe a structure this run does not solve. This axis has no explicit range: the None-range branch of _range_to_slice reports the declared domain rather than the rasterized span its own explicit branch computes (issue #729 site 2, still open \u2014 not a new defect). Choose dx so it divides the declared width, or declare the width the grid can represent.",
-          "severity": "warning",
-          "source": "_check_waveguide_port_aperture_snap"
-        },
-        {
-          "code": "port_aperture_snap",
-          "loc": null,
-          "message": "Waveguide port 'right': declared y-width 22.8600 mm is not what this grid rasterizes (dx=1.0000 mm): the port's slice covers 23.0000 mm, and with mode_profile='discrete' (the default) the solve builds its TE10 mode template and cutoff from the REALIZED aperture, 23 cells = 23.0000 mm on this axis (eigenvalues from the realized cells; the declared widths pick which eigenvalue): f_cutoff = 6.512162 GHz (analytic for the realized aperture 6.517227 GHz); the declared width would give 6.557140 GHz. Cutoffs, |S| references, and any analytic comparison computed from 22.8600 mm describe a structure this run does not solve. This axis has no explicit range: the None-range branch of _range_to_slice reports the declared domain rather than the rasterized span its own explicit branch computes (issue #729 site 2, still open \u2014 not a new defect). Choose dx so it divides the declared width, or declare the width the grid can represent.",
-          "severity": "warning",
-          "source": "_check_waveguide_port_aperture_snap"
-        },
-        {
-          "code": "port_aperture_snap",
-          "loc": null,
-          "message": "Waveguide port 'right': declared z-width 10.1600 mm is not what this grid rasterizes (dx=1.0000 mm): the port's slice covers 11.0000 mm, and with mode_profile='discrete' (the default) the solve builds its TE10 mode template and cutoff from the REALIZED aperture, 11 cells = 11.0000 mm on this axis (eigenvalues from the realized cells; the declared widths pick which eigenvalue): f_cutoff = 6.512162 GHz (analytic for the realized aperture 6.517227 GHz); the declared width would give 6.557140 GHz. Cutoffs, |S| references, and any analytic comparison computed from 10.1600 mm describe a structure this run does not solve. This axis has no explicit range: the None-range branch of _range_to_slice reports the declared domain rather than the rasterized span its own explicit branch computes (issue #729 site 2, still open \u2014 not a new defect). Choose dx so it divides the declared width, or declare the width the grid can represent.",
-          "severity": "warning",
-          "source": "_check_waveguide_port_aperture_snap"
-        }
-      ]
+      "preflight": []
     }
   }
 }

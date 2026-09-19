@@ -389,10 +389,13 @@ def _waveguide_port_cutoff_reading(sim, entry, grid, spans):
     ``init_waveguide_port`` sets ``f_c = kc_num * C0 / (2*pi)`` from the
     discrete eigenvalue of the aperture's own CELL widths. Measured
     build-only on
-    ``validation/tmtt_paper/waveguide_dielectric_taper.py::build_sim``
-    (SMOKE, dx = 1 mm, declared WR-90 22.860 x 10.160 mm): declared-width
-    analytic 6.557140 GHz, realized-aperture analytic 6.517227 GHz, built
-    ``cfg.f_cutoff`` 6.512162 GHz.
+    ``validation/tmtt_paper/waveguide_dielectric_taper.py::build_sim`` at
+    its then-committed SMOKE mesh, dx = 1 mm, declared WR-90
+    22.860 x 10.160 mm: declared-width analytic 6.557140 GHz,
+    realized-aperture analytic 6.517227 GHz, built ``cfg.f_cutoff``
+    6.512162 GHz. That lane moved to a commensurate dx = 1.27 mm in #1100
+    and no longer reproduces these numbers -- its ``SMOKE=0`` lane
+    (dx = 0.5 mm) still does, at 6.557140 / 6.517227 / 6.515961 GHz.
 
     Where it can afford to, this READS the number rather than restating a
     formula: it calls the same :meth:`_build_waveguide_port_config` the run
@@ -642,9 +645,11 @@ def _check_waveguide_port_aperture_snap(self, grid, realized) -> None:
     API default ``"discrete"``, where ``init_waveguide_port`` takes
     ``f_c`` from the discrete eigenvalue of the aperture's own cell
     widths — the realized aperture. Measured on
-    ``validation/tmtt_paper/waveguide_dielectric_taper.py::build_sim``
-    (SMOKE): declared-width analytic 6.557140 GHz, realized-aperture
-    analytic 6.517227 GHz, built ``cfg.f_cutoff`` 6.512162 GHz. The
+    ``validation/tmtt_paper/waveguide_dielectric_taper.py::build_sim`` at
+    its then-committed SMOKE mesh, dx = 1 mm: declared-width analytic
+    6.557140 GHz, realized-aperture analytic 6.517227 GHz, built
+    ``cfg.f_cutoff`` 6.512162 GHz. #1100 moved that lane to a commensurate
+    mesh; its ``SMOKE=0`` lane still reproduces the class. The
     clause now comes from :func:`_waveguide_port_cutoff_reading`, which
     builds the port and quotes the built number alongside both analytic
     values, so the row is self-checking.
