@@ -74,8 +74,9 @@ Its default SMOKE lane now meshes at a commensurate dx = 1.27 mm and realizes
 WR-90 exactly. Its paper lane still meshes at 0.5 mm, which realizes
 23.0 × 10.5 mm, and the −26.7 dB and −38.0 dB figures the docstring quotes were
 measured on that wider guide and on the 0.25 mm production mesh, which is not
-commensurate either. The file says so at each of those numbers and derives every
-analytic reference from the realized walls; re-measuring them on a commensurate
+commensurate either. The file says so in its docstring, in its README entry and
+in the result block the run prints, and it derives every analytic reference from
+the realized walls; re-measuring them on a commensurate
 mesh is a GPU-scale re-run that has not been done (the SMOKE half was #1100).
 → [#1122](https://github.com/bk-squared/rfx/issues/1122)
 
