@@ -171,21 +171,28 @@ Relevant checks include `validation/crossval/05_patch_antenna.py`,
 
 **Reading `Z0`/`beta` near a reflector (issue #726).** `reliable` is a per-bin
 fit-quality mask and `probe_clearance` is the geometric condition; neither is
-the other's proxy. On the board runs that opened #726, `reliable` was True on
-100 % of in-band bins while the fitted `Z0` was 2.4x the analytic value and its
-ripple tracked `|S11|` in dB at r = 0.77.
+the other's proxy. On the three board runs tabulated in #726, `reliable` was
+True on 100 % of in-band bins while the fitted `Z0` was 2.4x the analytic value
+and its ripple tracked `|S11|` in dB at r = 0.71, 0.76 and 0.77 — quote the
+range, not the best of the three. Those runs carry no VESSL id in the record.
 
 What the condition costs was measured (VESSL `369367260508`, cv06b
 fixed-source, same source/load/DUT with only the p1 observation offset varied;
 both arms settled below −118 dB): the FITTED quantities are what corrupt — the
-near arm's β scan railed on 51/51 bins over 3–5 GHz against 0/51 for the
-control — while raw `S11` at the 3.77125 GHz notch bin moved
-+0.026895 → +0.018065 dB, a difference of 0.009 dB, because `S` normalizes with
-the analytic Hammerstad–Jensen `Z0` rather than the fit. That comparison's
-producer verdict was `not_read`, so 0.009 dB is a difference between two arms,
-not an accuracy certificate. The `-5 to -10 dB` figure an older preflight
-message quoted came from the shorted-line ladder and was withdrawn on
-2026-09-13; do not cite it.
+near-reflector arm's β scan railed on 51/51 bins over 3–5 GHz against 0/51 for
+the compliant arm — while raw `S11` at the 3.77125 GHz notch bin read
+**+0.026895 dB on the near-reflector arm and +0.018065 dB on the compliant
+one**, against the analytic 0 dB that quarter-wave open-stub notch has. Both sit
+ABOVE unity on a passive structure, by 0.31 % and 0.21 %; that is never reported
+here as physics — they are raw, unprojected values carrying the coherent power
+excess tracked as #838.
+
+Their 0.009 dB difference is **one fixture, one bin, an arm-to-arm difference,
+not a bound on `S`**, and the comparison's producer verdict was `not_read`. What
+it does show is that `S` moves far less than the fit, because it normalizes with
+the analytic Hammerstad–Jensen `Z0` rather than the fit. The `-5 to -10 dB`
+figure an older preflight message quoted came from the shorted-line ladder and
+was withdrawn on 2026-09-13; do not cite it.
 
 So, when `probe_clearance` reports `insufficient` — including the board case
 where *no* compliant `n_probe_offset` exists on the feed length at all
@@ -195,7 +202,8 @@ where *no* compliant `n_probe_offset` exists on the feed length at all
   production path);
 - treat `Z0` and `beta` as UNREADABLE rather than merely uncertain, and gate on
   `beta_railed` for the symptom — `reliable` does not gate this;
-- read `S11`/`S21` with the 0.009 dB caveat above;
+- read `S11`/`S21` knowing nothing here bounds their error — the 0.009 dB above
+  is one fixture, one bin and an arm-to-arm difference;
 - fix it by lengthening the uniform feed region or moving the reference plane.
   Raising `n_probe_offset` alone moves the probes TOWARD the reflector.
 

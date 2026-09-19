@@ -357,6 +357,20 @@ def test_the_measured_evidence_carries_its_witness_and_every_number():
                   "+0.026895", "+0.018065", "0.009 dB", "-118 dB",
                   "not_read"):
         assert token in effect, f"{token!r} left the measured evidence"
+    # Which arm is which. The numbers alone read the wrong way round: the
+    # LARGER deviation belongs to the near-reflector arm, and an unlabelled
+    # "+0.026895 -> +0.018065" invites the opposite reading.
+    near = effect.index("+0.026895")
+    compliant = effect.index("+0.018065")
+    assert "near-reflector arm" in effect[max(0, near - 80):near + 80], effect
+    assert "compliant" in effect[compliant - 40:compliant + 80], effect
+    assert "51/51" in effect[:near] and "near-reflector arm" in effect[:near]
+    # Neither raw value may be presented as physics: both are above unity.
+    for token in ("ABOVE unity", "0.31 %", "0.21 %", "#838",
+                  "NOT a bound on S", "one fixture", "one bin",
+                  "arm-to-arm difference",
+                  "same source, load and DUT"):
+        assert token in effect, f"{token!r} left the measured evidence"
     # Both retired claims appear inside the one retraction sentence and
     # nowhere else; strip it and neither may be left.
     rest = effect.replace(_RETRACTION, "")
@@ -367,8 +381,11 @@ def test_the_measured_evidence_carries_its_witness_and_every_number():
         )
     guidance = preflight_msl.MSL_PROBE_CLEARANCE_GUIDANCE
     for token in ("probe_clearance", "beta_railed", "reliable",
-                  "Hammerstad-Jensen", "UNREADABLE", "0.009 dB"):
+                  "Hammerstad-Jensen", "UNREADABLE", "BOUNDS"):
         assert token in guidance, f"{token!r} left the guidance text"
+    # The guidance must not turn the retracted number into a bound by
+    # referring to it as a caveat the reader should apply.
+    assert "0.009 dB caveat" not in guidance, guidance
 
 
 def test_both_sites_embed_the_same_evidence_and_guidance(monkeypatch):
@@ -435,3 +452,69 @@ def test_the_msl_routing_lane_reports_the_condition_it_used_to_hide(front, expec
         assert "INSUFFICIENT" in text
         assert preflight_msl.MSL_PROBE_CLEARANCE_EFFECT in text
         assert preflight_msl.MSL_PROBE_CLEARANCE_GUIDANCE in text
+
+
+# --------------------------------------------------------------------------
+# #726 review P1b: the Z0 guard has more than one cause, and the clearance
+# story is the WRONG advice on a port whose clearance is satisfied -- its
+# common trigger is coarse-mesh staircase bias (#752), where "lengthen the
+# feed" does nothing. The appended text follows the port's own record.
+# --------------------------------------------------------------------------
+
+def test_the_guard_only_tells_the_clearance_story_when_it_applies(monkeypatch):
+    sim, _pe, grid = _base()          # no reflector registered at all
+    text = _z0_guard_message(monkeypatch, sim, grid)
+    assert "probe clearance is satisfied" in text
+    assert "standing-wave content at the probes is not the cause" in text
+    assert preflight_msl.MSL_PROBE_CLEARANCE_EFFECT not in text
+    assert preflight_msl.MSL_PROBE_CLEARANCE_GUIDANCE not in text
+    # The remaining causes are the ones that actually apply.
+    assert "issue #752" in text and "refine the mesh" in text.lower()
+
+
+def test_the_guard_tells_it_when_the_clearance_is_insufficient(monkeypatch):
+    sim, _pe, grid = _base()
+    _candidate(sim, "+x", 18)
+    text = _z0_guard_message(monkeypatch, sim, grid)
+    assert "probe clearance is INSUFFICIENT" in text
+    assert preflight_msl.MSL_PROBE_CLEARANCE_EFFECT in text
+    assert preflight_msl.MSL_PROBE_CLEARANCE_GUIDANCE in text
+
+
+def test_the_auto_offset_resolver_carries_the_same_evidence():
+    """#726 review P2a. The third site that speaks about this condition. It
+    used to import only the guidance, whose closing clause refers to a
+    caveat that was not in its own message, and it stated the fix twice."""
+    import warnings as _w
+    sim, _pe, _grid = _base(auto=True)
+    _candidate(sim, "+x", 18)
+    with _w.catch_warnings(record=True) as caught:
+        _w.simplefilter("always")
+        sim._resolve_msl_probe_entries(sim._build_realized_grid())
+    rows = [str(w.message) for w in caught
+            if "mutually unsatisfiable" in str(w.message)]
+    assert rows, [str(w.message) for w in caught]
+    text = rows[0]
+    assert preflight_msl.MSL_PROBE_CLEARANCE_EFFECT in text
+    assert preflight_msl.MSL_PROBE_CLEARANCE_GUIDANCE in text
+    # The fix is stated once, by the guidance.
+    assert text.count("lengthen the uniform feed") == 1
+    assert "Extend the feed line to fix" not in text
+
+
+def test_the_condition_is_reported_once_when_both_lanes_run():
+    """#726 review P3c. With include_general=True the general family reports
+    the same port under the same slug, so the routing lane stands down."""
+    sim, _pe, _grid = _base()
+    _candidate(sim, "+x", 18)
+    for include_general, expected_source in ((False, "preflight_sparameters"),
+                                             (True, "_check_msl_port_geometry")):
+        rep = sim.preflight_sparameters(calculator="msl",
+                                        include_general=include_general)
+        rows = [i for i in rep
+                if "probe" in str(i) and "reflector" in str(i)]
+        assert len(rows) == 1, (
+            f"include_general={include_general}: the condition is reported "
+            f"{len(rows)} times: {[getattr(i, 'source', None) for i in rows]}"
+        )
+        assert getattr(rows[0], "source", None) == expected_source

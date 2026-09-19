@@ -1153,6 +1153,37 @@ def compute_msl_s_matrix(
                 _w.warn(msg, stacklevel=2)
             # Secondary — reported-Z0 sanity (retained N-probe fit).
             if z0_dev_max > _Z0_TOL:
+                # Issue #726 review P1b: the clearance story is only ONE of
+                # this guard's causes, and on a satisfied port it is the
+                # WRONG advice — the common trigger is coarse-mesh staircase
+                # bias (#752), where "lengthen the feed" does nothing. Read
+                # the same per-port record the result carries, by the same
+                # index the entries tuple uses.
+                _cl = (probe_clearance[driven]
+                       if probe_clearance is not None
+                       and driven < len(probe_clearance) else None)
+                _cl_status = getattr(_cl, "status", None)
+                if _cl_status == "insufficient":
+                    _clearance_clause = (
+                        " This port's probe clearance is INSUFFICIENT, so "
+                        "that is a live cause here: "
+                        + MSL_PROBE_CLEARANCE_EFFECT + " "
+                        + MSL_PROBE_CLEARANCE_GUIDANCE)
+                elif _cl_status == "satisfied":
+                    _clearance_clause = (
+                        " This port's probe clearance is satisfied, so "
+                        "standing-wave content at the probes is not the "
+                        "cause; refine the mesh or reconcile the rasterized "
+                        "board with the declared one before quoting Z0.")
+                else:
+                    _clearance_clause = (
+                        " This port's probe clearance could not be "
+                        "evaluated"
+                        + (f" ({_cl.note})" if getattr(_cl, "note", None)
+                           else "")
+                        + ", so probe-clearance corruption cannot be ruled "
+                        "out as a cause; read probe_clearance and "
+                        "beta_railed before interpreting Z0.")
                 _w.warn(
                     f"compute_msl_s_matrix: reported Z0 for MSL port "
                     f"{pe.name!r} = "
@@ -1167,11 +1198,8 @@ def compute_msl_s_matrix(
                     "declared one — not necessarily an extraction "
                     "fault (issue #752). Fitted Z0/beta are not used in "
                     "S11/S21, which use measured V/I and the analytic "
-                    "Z0 anchor; this does not certify those inputs. The "
-                    "deviation can also be probe-clearance corruption, "
-                    "which is the one cause with a number on "
-                    "it: " + MSL_PROBE_CLEARANCE_EFFECT + " "
-                    + MSL_PROBE_CLEARANCE_GUIDANCE +
+                    "Z0 anchor; this does not certify those inputs."
+                    + _clearance_clause +
                     " Check settling_db, probe_clearance, beta_railed and "
                     "observation-plane sensitivity before interpreting S.",
                     stacklevel=2,

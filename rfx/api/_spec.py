@@ -1627,15 +1627,21 @@ class MSLSMatrixResult:
         board runs that opened #726 ``reliable`` was True on 100 % of in-band
         bins while the fitted Z0 was 2.4x the analytic value. What the
         geometric condition costs was measured (VESSL 369367260508, cv06b
-        fixed-source, only the p1 observation offset varied, both arms
-        settled below −118 dB): the FITTED Z0/beta are what corrupt — the
-        near arm's β scan railed on 51/51 bins over 3–5 GHz against 0/51 for
-        the control — while raw S11 at the 3.77125 GHz notch bin moved
-        +0.026895 → +0.018065 dB, a difference of 0.009 dB, because ``S``
-        normalizes with the analytic Hammerstad–Jensen Z0 rather than the
-        fit. That comparison's producer verdict was ``not_read``, so
-        0.009 dB is a difference between two arms and not an accuracy
-        certificate.
+        fixed-source, same source/load/DUT with only the p1 observation
+        offset varied, both arms settled below −118 dB): the FITTED Z0/beta
+        are what corrupt — the near-reflector arm's β scan railed on 51/51
+        bins over 3–5 GHz against 0/51 for the compliant arm — while raw S11
+        at the 3.77125 GHz notch bin read +0.026895 dB on the near-reflector
+        arm and +0.018065 dB on the compliant one, against the analytic 0 dB
+        that quarter-wave open-stub notch has. Both sit ABOVE unity on a
+        passive structure, by 0.31 % and 0.21 %, which is never reported here
+        as physics: they are raw, unprojected values carrying the coherent
+        power excess tracked as #838. Their 0.009 dB difference is one
+        fixture (cv06b), one bin (3.77125 GHz), an arm-to-arm difference —
+        NOT a bound on ``S`` — and the comparison's producer verdict was
+        ``not_read``. What it does show is that ``S`` moves far less than the
+        fit, because it normalizes with the analytic Hammerstad–Jensen Z0
+        rather than with the fit.
 
         So: gate on ``probe_clearance`` for the layout, on ``beta_railed``
         for the fitted-value symptom, and treat ``Z0``/``beta`` as

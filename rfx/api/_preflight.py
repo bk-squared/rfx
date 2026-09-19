@@ -1046,7 +1046,8 @@ class _PreflightMixin:
                 )
                 with _mslmod.catch_warnings(record=True) as _msl_caught:
                     _mslmod.simplefilter("always")
-                    preflight_msl_probe_clearance(self, _mslmod)
+                    preflight_msl_probe_clearance(
+                        self, _mslmod, skip=bool(include_general))
                 for _rec in _msl_caught:
                     _inst = _rec.message
                     issues.append(PreflightIssue(

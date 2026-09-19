@@ -54,11 +54,13 @@ is.
 
 **Microstrip `Z0` and `beta` are unreadable when the probes sit near a
 reflector.** The N-probe fit rides the standing wave instead of measuring the
-line: on the board runs that opened #726 the fitted `Z0` reached 2.4x the
-analytic value and its ripple tracked `|S11|` in dB at r = 0.77, while
-`reliable` was True on 100 % of in-band bins. `S` itself is normalized with the
-analytic Hammerstad-Jensen `Z0`, and in the controlled comparison it moved by
-0.009 dB. Gate on `probe_clearance` and `beta_railed`, not on `reliable`; the
+line: across the three board runs tabulated in #726 the fitted `Z0` reached
+2.4x the analytic value and its ripple tracked `|S11|` in dB at r = 0.71-0.77,
+while `reliable` was True on 100 % of in-band bins. Those three runs carry no
+VESSL id in the record. `S` itself is normalized with the analytic
+Hammerstad-Jensen `Z0` and moved far less, by 0.009 dB in one controlled
+comparison — one fixture, one bin, an arm-to-arm difference, not a bound on `S`.
+Gate on `probe_clearance` and `beta_railed`, not on `reliable`; the
 fix is a longer uniform feed or a moved reference plane. Every warning about
 this condition now carries that measurement, and `docs/guides/sparameter_support_matrix.md`
 has the full reading guidance. Settled in #726 (closed): the guard and preflight

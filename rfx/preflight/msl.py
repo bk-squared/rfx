@@ -146,27 +146,35 @@ MSL_PROBE_CLEARANCE_WITNESS = "VESSL 369367260508, cv06b fixed-source"
 
 #: The ONE sentence allowed to quote either retired claim, because it is what
 #: retracts them. Named so every test that asserts "this site does not state a
-#: retired claim" can strip exactly this and nothing else -- three of them do.
+#: retired claim" can strip exactly this and nothing else -- four of them do,
+#: including the docs scan.
 MSL_PROBE_CLEARANCE_RETRACTION = (
     "Neither 'S11/S21 are unaffected' nor the retired '-5 to -10 dB' figure "
     "is right."
 )
 
-#: What probe-clearance corruption does, in one sentence, with its numbers.
-#: Both the preflight layout warning and ``compute_msl_s_matrix``'s Z0 guard
-#: embed this, so the two cannot drift apart again (#726).
+#: What probe-clearance corruption does, with its numbers and their limits.
+#: Embedded by the preflight layout warning, ``compute_msl_s_matrix``'s Z0
+#: guard (only when the port's clearance is NOT satisfied) and the
+#: auto-offset resolver's empty-interval warning, so the three cannot drift
+#: apart again (#726).
 MSL_PROBE_CLEARANCE_EFFECT = (
-    "Measured (" + MSL_PROBE_CLEARANCE_WITNESS + ", only the p1 observation "
-    "offset varied, both arms settled below -118 dB): standing-wave content "
-    "at the probes corrupts the FITTED Z0/beta - the near arm's beta scan "
-    "railed on 51/51 bins over 3-5 GHz against 0/51 for the control - while "
-    "raw S11 at the 3.77125 GHz notch bin moved +0.026895 -> +0.018065 dB, a "
-    "difference of 0.009 dB, because S11/S21 normalize with the analytic "
-    "Hammerstad-Jensen Z0 rather than the fit. "
-    + MSL_PROBE_CLEARANCE_RETRACTION +
-    " That comparison's producer verdict was not_read (the low-signal checks "
-    "flagged both arms' notch bins), so 0.009 dB is a difference between two "
-    "arms and not an accuracy certificate."
+    "Measured on ONE fixture (" + MSL_PROBE_CLEARANCE_WITNESS + ", same "
+    "source, load and DUT; only p1's observation offset varied; both arms "
+    "settled below -118 dB): standing-wave content at the probes corrupts "
+    "the FITTED Z0/beta - the near-reflector arm's beta scan railed on 51/51 "
+    "bins over 3-5 GHz against 0/51 for the compliant arm - while raw S11 at "
+    "the 3.77125 GHz notch bin read +0.026895 dB on the near-reflector arm "
+    "and +0.018065 dB on the compliant one, against the analytic 0 dB that "
+    "quarter-wave open-stub notch has. Both are ABOVE unity on a passive "
+    "structure, by 0.31 % and 0.21 %; that is never reported here as "
+    "physics - they are raw, unprojected values carrying the coherent power "
+    "excess tracked as #838. Their 0.009 dB difference is one fixture, one "
+    "bin, an arm-to-arm difference, NOT a bound on S, and that comparison's "
+    "producer verdict was not_read. What it does show is that S11/S21 move "
+    "far less than the fit does, because they normalize with the analytic "
+    "Hammerstad-Jensen Z0 rather than with the fit. "
+    + MSL_PROBE_CLEARANCE_RETRACTION
 )
 
 #: What a caller should do, including when the feed admits no compliant
@@ -176,15 +184,15 @@ MSL_PROBE_CLEARANCE_GUIDANCE = (
     "for the fitted-value symptom; reliable is a per-bin fit-quality mask "
     "and gates neither. When no compliant offset exists on the available "
     "feed length, keep the analytic Hammerstad-Jensen Z0 for normalization "
-    "(already the production path), treat the fitted Z0/beta as UNREADABLE "
-    "rather than merely uncertain, and read S11/S21 with the 0.009 dB "
-    "caveat above. The fix is to lengthen the uniform feed region or move "
-    "the reference plane; raising n_probe_offset alone moves the probes "
-    "toward the reflector."
+    "(already the production path) and treat the fitted Z0/beta as "
+    "UNREADABLE rather than merely uncertain. S11/S21 are the "
+    "better-behaved of the two, but nothing here BOUNDS their error. The fix "
+    "is to lengthen the uniform feed region or move the reference plane; "
+    "raising n_probe_offset alone moves the probes toward the reflector."
 )
 
 
-def preflight_msl_probe_clearance(self, _w) -> None:
+def preflight_msl_probe_clearance(self, _w, *, skip: bool = False) -> None:
     """Emit the probe-clearance condition on the ``calculator="msl"`` route.
 
     Issue #726 item 2. ``preflight_sparameters(calculator="msl")`` is the
@@ -209,10 +217,20 @@ def preflight_msl_probe_clearance(self, _w) -> None:
     :data:`MSL_PROBE_CLEARANCE_GUIDANCE` text, so the routing lane cannot
     contradict either of the other two sites — which is the whole of #726.
 
+    Silent when ``skip`` is set, which the caller does for
+    ``include_general=True``: the general family reports the same port under
+    the same slug, and one source is enough.
+
     Mirrors the waveguide setup-audit block in ``preflight_sparameters``:
     warnings are raised here and folded into the report by the caller, so the
     coded fields survive into ``PreflightIssue``.
     """
+    if skip:
+        # Issue #726 review P3c: with include_general=True the full
+        # _check_msl_port_geometry family runs too and reports the SAME port
+        # under the same slug, so the caller saw the paragraph twice. One
+        # source when both would fire; check 4 is the fuller of the two.
+        return
     grid = None
     try:
         grid = self._build_realized_grid()
