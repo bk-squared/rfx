@@ -8,7 +8,9 @@ issue with no form section, a dropdown left unanswered, a lane spelled
 something the dropdown cannot emit.
 
 The move half is the other risk. An edit that leaves the old lane behind puts
-one issue in two lanes and the query starts lying.
+one issue in two lanes and the query starts lying. So is a SECOND `### Lane`
+heading pasted into an earlier answer: taking the first match would let the
+paste outrank the dropdown, silently and invisibly.
 """
 
 from __future__ import annotations
@@ -84,6 +86,11 @@ def test_a_form_body_yields_the_dropdown_value() -> None:
     assert mod.lane_from_body(FORM_BODY) == "lane:waveguide-port"
 
 
+def test_a_form_body_has_exactly_one_lane_section() -> None:
+    sections = mod.lane_sections(FORM_BODY)
+    assert [section.value for section in sections] == ["lane:waveguide-port"]
+
+
 def test_a_hand_written_body_yields_nothing() -> None:
     """Not an error: the weekly audit reports it, this job does nothing.
 
@@ -133,43 +140,137 @@ def test_an_empty_body_is_not_an_error() -> None:
 
 
 # --------------------------------------------------------------------------
+# Two `### Lane` sections: the form cannot produce one, so nothing is applied
+# --------------------------------------------------------------------------
+
+#: The attack the first draft had: the heading pasted into an earlier free-text
+#: answer, where it comes BEFORE the dropdown's own section.
+PASTED_BODY = """### What is wrong
+
+Broken. Also:
+
+### Lane
+
+lane:ci-infra
+
+### Lane
+
+lane:waveguide-port
+"""
+
+
+def test_a_pasted_lane_heading_does_not_outrank_the_dropdown() -> None:
+    lane, conflicts = mod.resolve_lane(PASTED_BODY)
+    assert lane is None
+    assert len(conflicts) == 1
+    assert "lane:ci-infra" in conflicts[0] and "lane:waveguide-port" in conflicts[0]
+
+
+def test_the_conflict_message_names_the_lines() -> None:
+    """Somebody has to find the paste, so the report says where it is."""
+    _, conflicts = mod.resolve_lane(PASTED_BODY)
+    numbers = [section.line for section in mod.lane_sections(PASTED_BODY)]
+    assert numbers == [5, 9]
+    for number in numbers:
+        assert f"line {number}" in conflicts[0]
+
+
+def test_two_sections_naming_the_SAME_lane_still_conflict() -> None:
+    """The form renders one. Two means the body was edited, whatever they say."""
+    body = "### Lane\n\nlane:absorber\n\n### Lane\n\nlane:absorber\n"
+    lane, conflicts = mod.resolve_lane(body)
+    assert lane is None and len(conflicts) == 1
+
+
+def test_a_second_UNANSWERED_section_does_not_conflict() -> None:
+    """Only answers compete. An empty heading decides nothing."""
+    body = "### Lane\n\nlane:absorber\n\n### Lane\n\n_No response_\n"
+    lane, conflicts = mod.resolve_lane(body)
+    assert lane == "lane:absorber" and conflicts == []
+
+
+def test_a_conflicting_body_changes_no_label_and_stays_green() -> None:
+    """A body must never be able to turn the job red.
+
+    It runs on every edit of every issue, so a red one would follow the issue
+    around until somebody with write access noticed.
+    """
+    result = mod.plan(PASTED_BODY, ["lane:msl-port"], LANES)
+    assert result.add is None
+    assert result.remove == []
+    assert result.problems == []
+    assert len(result.notes) == 1
+
+
+def test_the_cli_is_green_on_a_conflicting_body(tmp_path: Path) -> None:
+    output = tmp_path / "out"
+    output.write_text("", encoding="utf-8")
+    result = _run({
+        "ISSUE_BODY": PASTED_BODY,
+        "CURRENT_LABELS_JSON": json.dumps(["lane:msl-port"]),
+        "LANE_LABELS": "\n".join(LANES),
+        "GITHUB_OUTPUT": str(output),
+    })
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "sections answer differently" in result.stderr
+    assert output.read_text(encoding="utf-8").strip().splitlines() == [
+        "lane=", "remove=",
+    ]
+
+
+# --------------------------------------------------------------------------
+# has_lane_section: what the weekly audit asks
+# --------------------------------------------------------------------------
+
+
+def test_a_form_body_has_a_lane_section() -> None:
+    assert mod.has_lane_section(FORM_BODY) is True
+
+
+def test_a_hand_written_body_has_none() -> None:
+    assert mod.has_lane_section(FREEFORM_BODY) is False
+
+
+def test_an_unanswered_dropdown_still_counts_as_a_form() -> None:
+    """The audit asks whether the FORM was used, not whether it was answered."""
+    assert mod.has_lane_section(UNANSWERED_BODY) is True
+    assert mod.lane_from_body(UNANSWERED_BODY) is None
+
+
+# --------------------------------------------------------------------------
 # plan: add one, remove the rest
 # --------------------------------------------------------------------------
 
 
 def test_an_unlabelled_issue_gets_its_lane() -> None:
-    add, remove, problems = mod.plan(FORM_BODY, [], LANES)
-    assert (add, remove, problems) == ("lane:waveguide-port", [], [])
+    assert mod.plan(FORM_BODY, [], LANES) == (
+        "lane:waveguide-port", [], [], [],
+    )
 
 
 def test_editing_the_dropdown_moves_the_label() -> None:
-    add, remove, problems = mod.plan(
-        FORM_BODY, ["lane:msl-port", "bug"], LANES
-    )
-    assert add == "lane:waveguide-port"
-    assert remove == ["lane:msl-port"]
-    assert problems == []
+    result = mod.plan(FORM_BODY, ["lane:msl-port", "bug"], LANES)
+    assert result.add == "lane:waveguide-port"
+    assert result.remove == ["lane:msl-port"]
+    assert result.problems == [] and result.notes == []
 
 
 def test_a_non_lane_label_is_left_alone() -> None:
     """The job owns `lane:*` and nothing else."""
-    _, remove, _ = mod.plan(FORM_BODY, ["bug", "release", "lane:plan"], LANES)
-    assert remove == ["lane:plan"]
+    result = mod.plan(FORM_BODY, ["bug", "release", "lane:plan"], LANES)
+    assert result.remove == ["lane:plan"]
 
 
 def test_an_edit_that_did_not_change_the_lane_changes_nothing() -> None:
     """Re-adding a label re-notifies every watcher for no reason."""
-    add, remove, problems = mod.plan(
-        FORM_BODY, ["lane:waveguide-port"], LANES
+    assert mod.plan(FORM_BODY, ["lane:waveguide-port"], LANES) == (
+        None, [], [], [],
     )
-    assert (add, remove, problems) == (None, [], [])
 
 
 def test_more_than_one_stale_lane_is_removed() -> None:
-    _, remove, _ = mod.plan(
-        FORM_BODY, ["lane:msl-port", "lane:absorber"], LANES
-    )
-    assert remove == ["lane:absorber", "lane:msl-port"]
+    result = mod.plan(FORM_BODY, ["lane:msl-port", "lane:absorber"], LANES)
+    assert result.remove == ["lane:absorber", "lane:msl-port"]
 
 
 def test_a_hand_written_body_leaves_existing_labels_alone() -> None:
@@ -178,14 +279,15 @@ def test_a_hand_written_body_leaves_existing_labels_alone() -> None:
     An issue triaged by hand months ago must not lose its lane the next time
     somebody fixes a typo in it.
     """
-    add, remove, problems = mod.plan(FREEFORM_BODY, ["lane:msl-port"], LANES)
-    assert (add, remove, problems) == (None, [], [])
+    assert mod.plan(FREEFORM_BODY, ["lane:msl-port"], LANES) == (
+        None, [], [], [],
+    )
 
 
 def test_a_lane_the_dropdown_cannot_produce_is_reported() -> None:
-    add, remove, problems = mod.plan("### Lane\n\nlane:nope\n", [], LANES)
-    assert add is None and remove == []
-    assert len(problems) == 1 and "lane:nope" in problems[0]
+    result = mod.plan("### Lane\n\nlane:nope\n", [], LANES)
+    assert result.add is None and result.remove == []
+    assert len(result.problems) == 1 and "lane:nope" in result.problems[0]
 
 
 # --------------------------------------------------------------------------

@@ -54,7 +54,12 @@
           - "rfx/**/*wire*"
           - "rfx/lumped.py"
           - "tests/**/*coax*"
-          - "tests/**/*mixed*"
+          # NOT `tests/**/*mixed*`: that also owns tests/unit/grid/
+          # test_mixed_precision.py, which is f32/f64 arithmetic and has nothing
+          # to do with a mixed-mode port. The contract test pins that file as a
+          # must-NOT-match.
+          - "tests/**/*mixed_port*"
+          - "tests/**/*mixed_refplane*"
           - "tests/**/*wire*"
           - "tests/**/*lumped*"
           - "scripts/**/*coax*"

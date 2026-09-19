@@ -19,9 +19,15 @@ and issues, so no per-PR gate can see them:
   (housekeeping) or may be an issue nobody filed.
 
 None of this is a gate. A row here is a thing to look at, not a thing that was
-forbidden -- the report is deliberately loud (a non-empty table exits 1, so the
+forbidden -- the report is deliberately loud (a failing row exits 1, so the
 scheduled run is RED and shows up in the Actions list) because a green weekly
 summary nobody opens reports nothing. Do not make it a required check.
+
+One section is INFORMATIONAL and never touches the exit code: merged PRs that
+close no issue. Infrastructure and documentation work legitimately closes
+nothing, and on the week this was written that section alone was 65 of 102
+merged PRs -- a report that is red every week for a thing that is usually fine
+is a report nobody opens by the third week.
 
 Reads GitHub through ``gh``; classification is a pure function over the JSON so
 the tests need no network. Stdlib only, Python 3.10.
@@ -87,6 +93,9 @@ class Row(NamedTuple):
 
 
 #: Heading, and the sentence under it, for each kind. Printed in this order.
+#: Kinds that do NOT set the exit code. Listed and counted, never failed on.
+INFORMATIONAL = ("unlinked",)
+
 SECTIONS = (
     (
         "review",
@@ -108,8 +117,9 @@ SECTIONS = (
     ),
     (
         "unlinked",
-        "Merged PRs closing no issue",
-        "Housekeeping is fine here. A substantial change is an issue nobody filed.",
+        "Merged PRs closing no issue (informational)",
+        "Housekeeping is fine here, and most of these are. A substantial change "
+        "is an issue nobody filed. Does not make the run red.",
     ),
 )
 
@@ -157,10 +167,12 @@ def classify(
 ) -> List[Row]:
     """The report rows. Pure: everything it needs is in the arguments.
 
-    *issue_index* maps an issue number to its record, and must cover every issue
-    a merged PR links to. An issue that is missing from it is reported as
-    outside every open milestone rather than skipped -- a link the audit cannot
-    resolve is exactly the case worth a human look.
+    *issue_index* maps an issue number to its record, and must cover every
+    number a merged PR links to. A record carrying ``is_pull_request`` is
+    skipped: "Fixes #1042" pointing at a pull request is a cross-reference
+    between PRs, and a PR has no milestone question to answer. A number MISSING
+    from the index is reported rather than skipped -- a link the audit could not
+    resolve at all is exactly the case worth a human look.
     """
     rows: List[Row] = []
 
@@ -179,6 +191,8 @@ def classify(
             continue
         for number in links:
             issue = issue_index.get(number)
+            if issue is not None and issue.get("is_pull_request"):
+                continue
             if _in_open_milestone(issue):
                 continue
             if issue is None:
@@ -190,7 +204,10 @@ def classify(
             rows.append(Row("milestone", ref, title, f"closes #{number}: {where}"))
 
     for issue in sorted(opened_issues, key=lambda item: item.get("number", 0)):
-        if _lane.lane_from_body(issue.get("body") or "") is None:
+        # Asks only whether the heading is THERE. An unanswered dropdown, or two
+        # sections that conflict, still means the form was used -- those are the
+        # lane-label job's business, not intake's.
+        if not _lane.has_lane_section(issue.get("body") or ""):
             rows.append(
                 Row(
                     "form",
@@ -240,12 +257,20 @@ def render(rows: Iterable[Row], since: dt.date, until: dt.date, counts: dict) ->
         ]
         out += [""]
 
+    failing = failing_rows(rows)
+    informational = len(rows) - len(failing)
     out += [
-        f"**{len(rows)} rows.** This report is not a gate: a row is something to "
-        "look at. The run is red so the report gets opened.",
+        f"**{len(failing)} rows to look at**, plus {informational} informational. "
+        "This report is not a gate: a row is something to look at, not something "
+        "that was forbidden. The run is red so the report gets opened.",
         "",
     ]
     return "\n".join(out)
+
+
+def failing_rows(rows: Iterable[Row]) -> List[Row]:
+    """The rows that set the exit code."""
+    return [row for row in rows if row.kind not in INFORMATIONAL]
 
 
 # --------------------------------------------------------------------------
@@ -260,34 +285,75 @@ def _gh(args: Sequence[str]) -> list:
     return json.loads(out or "[]")
 
 
-def fetch(days: int, limit: int = 200) -> dict:
+def _gh_one(args: Sequence[str]) -> dict:
+    """A single JSON object, for the endpoints that do not return a list."""
+    out = subprocess.run(
+        ["gh", *args], cwd=REPO_ROOT, capture_output=True, text=True, check=True
+    ).stdout
+    return json.loads(out or "{}")
+
+
+#: `gh pr list --limit N` pages internally up to N. 1000 is the GitHub search
+#: API's own ceiling, so a window that would return more cannot be reported
+#: correctly by this tool at all -- which is why hitting it raises rather than
+#: truncating.
+FETCH_LIMIT = 1000
+
+
+def _capped(rows: list, limit: int, what: str, window: str) -> list:
+    """*rows*, or an error naming the cap it hit.
+
+    A silent truncation is the worst outcome here: the report would print "200
+    merged PRs" for a window holding 900 and every count under it would be
+    wrong, with nothing saying so.
+    """
+    if len(rows) >= limit:
+        raise RuntimeError(
+            f"{what} for {window} returned {len(rows)} rows, at the {limit} cap. "
+            f"The window is too wide to report accurately -- run it over fewer "
+            f"days, or raise FETCH_LIMIT if the search API still allows it."
+        )
+    return rows
+
+
+def fetch(days: int, limit: int = FETCH_LIMIT) -> dict:
     """Everything `classify` needs, as one JSON-serializable dict."""
     until = dt.datetime.now(dt.timezone.utc).date()
     since = until - dt.timedelta(days=days)
+    window = f"{since.isoformat()}..{until.isoformat()}"
 
-    prs = _gh([
+    prs = _capped(_gh([
         "pr", "list", "--state", "merged", "--limit", str(limit),
         "--search", f"merged:>={since.isoformat()}",
         "--json", "number,title,body,mergedAt,url",
-    ])
-    issues = _gh([
+    ]), limit, "merged PRs", window)
+    issues = _capped(_gh([
         "issue", "list", "--state", "all", "--limit", str(limit),
         "--search", f"created:>={since.isoformat()}",
         "--json", "number,title,body,createdAt,url",
-    ])
+    ]), limit, "opened issues", window)
 
     wanted = {n for pr in prs for n in linked_issues(pr.get("body") or "")}
     index: Dict[int, dict] = {}
     for number in sorted(wanted):
         try:
-            index[number] = _gh([
-                "issue", "view", str(number),
-                "--json", "number,title,milestone,url",
-            ])
+            # `gh api .../issues/N`, not `gh issue view N`: the REST payload
+            # carries a `pull_request` key for a number that is a PR, and
+            # `gh issue view` on a PR SUCCEEDS with a null milestone, which read
+            # as "an issue with no milestone" and put every cross-referenced PR
+            # in the report.
+            raw = _gh_one(["api", f"repos/{{owner}}/{{repo}}/issues/{number}"])
         except subprocess.CalledProcessError:
-            # A number that is a PR, or an issue in another repository. Left out
-            # of the index, which classify() reports as "issue not found".
+            # Not in this repository at all. Left out of the index, which
+            # classify() reports as "issue not found".
             continue
+        index[number] = {
+            "number": raw.get("number"),
+            "title": raw.get("title"),
+            "milestone": raw.get("milestone"),
+            "url": raw.get("html_url"),
+            "is_pull_request": "pull_request" in raw,
+        }
 
     return {
         "since": since.isoformat(),
@@ -299,7 +365,10 @@ def fetch(days: int, limit: int = 200) -> dict:
 
 
 def report(data: dict) -> tuple[str, int]:
-    """``(markdown, row count)`` for a fetched or loaded payload."""
+    """``(markdown, failing row count)`` for a fetched or loaded payload.
+
+    The count drives the exit code, so informational rows are left out of it.
+    """
     index = {int(k): v for k, v in (data.get("issue_index") or {}).items()}
     rows = classify(
         data.get("merged_prs") or [], data.get("opened_issues") or [], index
@@ -313,7 +382,7 @@ def report(data: dict) -> tuple[str, int]:
             "issues": len(data.get("opened_issues") or []),
         },
     )
-    return text, len(rows)
+    return text, len(failing_rows(rows))
 
 
 def main(argv: Optional[List[str]] = None) -> int:

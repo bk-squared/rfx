@@ -156,6 +156,32 @@ def test_changelog_fragments_are_not_owned_by_a_lane() -> None:
     assert not owners, f"changelog.d/ is owned by {owners}"
 
 
+#: Files a lane glob must NOT own, and why. A glob wide enough to be convenient
+#: is usually wide enough to be wrong, and the wrongness is invisible: the file
+#: just quietly belongs to a lane whose owner has never heard of it.
+MUST_NOT_MATCH = (
+    (
+        "lane:coax-mixed-port",
+        "tests/unit/grid/test_mixed_precision.py",
+        "f32/f64 arithmetic, not a mixed-mode port",
+    ),
+)
+
+
+@pytest.mark.parametrize(
+    "label,path,why", MUST_NOT_MATCH, ids=lambda value: str(value)
+)
+def test_a_lane_does_not_own_a_file_that_merely_shares_a_word(
+    label: str, path: str, why: str
+) -> None:
+    assert path in tracked_files(), f"{path} moved; update MUST_NOT_MATCH"
+    owning = [
+        glob for owner, glob in labeler_globs()
+        if owner == label and glob_to_regex(glob).match(path)
+    ]
+    assert not owning, f"{label} owns {path} via {owning}: {why}"
+
+
 def test_the_lane_plan_label_has_no_paths() -> None:
     """`lane:plan` marks trackers and deferred decisions, which have no code."""
     assert "lane:plan" not in load(LABELER)
@@ -189,10 +215,68 @@ def test_the_labeler_workflow_checks_out_nothing() -> None:
     assert not any("run" in step for step in steps), steps
 
 
+def _uses_entries(workflow: dict) -> list[str]:
+    """Every `uses:` value anywhere in a workflow document."""
+    found: list[str] = []
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key == "uses" and isinstance(value, str):
+                    found.append(value)
+                else:
+                    walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(workflow)
+    return found
+
+
+def pull_request_target_workflows() -> list[Path]:
+    return [
+        path for path in sorted(WORKFLOWS.glob("*.yml"))
+        if "pull_request_target" in (triggers(load(path)) or {})
+    ]
+
+
+def test_at_least_one_workflow_uses_pull_request_target() -> None:
+    """Otherwise the SHA-pinning test below silently checks nothing."""
+    assert pull_request_target_workflows()
+
+
+@pytest.mark.parametrize(
+    "path", pull_request_target_workflows(), ids=lambda p: p.name
+)
+def test_every_action_in_a_write_token_workflow_is_pinned_by_sha(path: Path) -> None:
+    """A `pull_request_target` job runs in the base repo's context with a token.
+
+    `@v5` is a mutable tag: whoever can move it runs their own code here with
+    whatever permissions the job holds, and for the labeler that is
+    `pull-requests: write`. A 40-hex commit cannot be moved. The repository
+    already pins this way in validation.yml.
+    """
+    unpinned = [
+        entry for entry in _uses_entries(load(path))
+        if not re.fullmatch(r"[^@]+@[0-9a-f]{40}", entry)
+    ]
+    assert not unpinned, (
+        f"{path.name} runs under pull_request_target; pin these by commit SHA "
+        f"with the version in a trailing comment -- {unpinned}"
+    )
+
+
+def test_the_pinned_labeler_still_says_which_version_it_is() -> None:
+    """A bare 40-hex is unreadable; the trailing comment is how it gets bumped."""
+    text = (WORKFLOWS / "labeler.yml").read_text(encoding="utf-8")
+    assert re.search(r"uses: actions/labeler@[0-9a-f]{40} # v\d+\.\d+\.\d+", text), text
+
+
 def test_the_labeler_workflow_syncs_labels() -> None:
     """Without `sync-labels` a lane picked up by one commit never leaves."""
     steps = load(WORKFLOWS / "labeler.yml")["jobs"]["lane-label"]["steps"]
-    labeler = [s for s in steps if str(s.get("uses", "")).startswith("actions/labeler")]
+    labeler = [s for s in steps if str(s.get("uses", "")).startswith("actions/labeler@")]
     assert len(labeler) == 1, steps
     assert labeler[0]["with"]["sync-labels"] is True
     assert labeler[0]["with"]["configuration-path"] == ".github/labeler.yml"

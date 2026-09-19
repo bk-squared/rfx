@@ -15,11 +15,11 @@ name: pr-body
 # The contract and its failure message live in scripts/ci/check_pr_body.py;
 # tests/contracts/test_pr_body_contract.py pins the accepted forms.
 
-# `labeled`/`unlabeled` are here because the lane requirement can be satisfied
-# by a `lane:*` label since 2026-09-18. Without them a PR that goes red for a
-# missing lane stays red after `.github/workflows/labeler.yml` applies the
-# label, and the author has to edit the body to re-trigger a check that would
-# now pass.
+# `labeled`/`unlabeled` cover a lane label changed BY HAND. They do not cover
+# `.github/workflows/labeler.yml`: an event triggered by GITHUB_TOKEN creates no
+# workflow run, so a label that job applies fires nothing here. That is why the
+# label set is read from the API at check time rather than taken from the event
+# payload -- see the step below.
 on:
   pull_request:
     types: [opened, edited, reopened, synchronize, labeled, unlabeled]
@@ -33,6 +33,7 @@ concurrency:
 permissions:
   contents: read
   issues: read
+  pull-requests: read
 
 jobs:
   pr-body-contract:
@@ -42,13 +43,22 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Read the live lane labels
-        # The allowed lane set is whatever the repository actually has, so a
-        # lane added after the script was written does not fail a PR. `grep`
-        # exits 1 on no match, which would fail the step -- hence `|| true`;
-        # an empty LANE_LABELS makes the script fall back to its own list.
+      - name: Read the live lane labels, and this PR's own
+        # Two different questions. LANE_LABELS is which lanes EXIST, so a lane
+        # added after the script was written does not fail a PR; `grep` exits 1
+        # on no match, which would fail the step -- hence `|| true`, and an
+        # empty value makes the script fall back to its own list.
+        #
+        # PR_LABELS_JSON is which lanes THIS PR carries, and it is read from the
+        # API rather than from `github.event.pull_request.labels`. The payload is
+        # wrong twice over: on `opened` it is empty because
+        # .github/workflows/labeler.yml has not run yet, and when that job does
+        # run its label change fires no event here at all, because an event
+        # triggered by GITHUB_TOKEN creates no workflow run. Only a live read
+        # sees what the PR actually carries.
         env:
           GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           labels=$(gh label list --limit 100 --json name --jq '.[].name' | grep '^lane:' || true)
           {
@@ -56,15 +66,20 @@ jobs:
             echo "$labels"
             echo "EOF"
           } >> "$GITHUB_ENV"
+          pr_labels=$(gh pr view "$PR_NUMBER" --json labels --jq '[.labels[].name]')
+          {
+            echo "PR_LABELS_JSON<<EOF"
+            echo "$pr_labels"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
 
       - name: Check the PR body
         # The body is passed through the environment, never interpolated into
         # the shell: a body is attacker-controlled text and `${{ }}` inside a
         # `run:` block is a script injection.
+        # PR_LABELS_JSON reaches the script through GITHUB_ENV, set by the step
+        # above. It cross-checks the `Lane:` line against the labels the paths
+        # earned; it never satisfies the line on its own.
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
-          # The lane may be carried by a label instead of the line. toJSON, not
-          # a comma join: a label may contain a comma. Same shape
-          # check_changelog_fragment.py reads.
-          PR_LABELS_JSON: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: python scripts/ci/check_pr_body.py

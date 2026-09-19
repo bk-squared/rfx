@@ -158,8 +158,10 @@ pull request; stop changing it, and the label comes off, because the job runs wi
 `sync-labels: true` on every push.
 
 Two lane labels on one PR is information, not an error — a change touching the
-waveguide extractor and the MSL extractor really is in both lanes. Name the primary
-one in the body's `Lane:` line when that happens.
+waveguide extractor and the MSL extractor really is in both lanes. It is also the
+common case: 32 of the 60 most recently merged PRs would earn two or more. The
+body's `Lane:` line is what names the primary one, and it stays required on every
+PR for exactly that reason.
 
 Not every path is owned. `rfx/` core, `studio/`, `scripts/diagnostics/`,
 `validation/research/` and most of `tests/unit/` map to no lane; a PR confined to
@@ -172,7 +174,10 @@ On an issue the lane comes from the form's Lane dropdown.
 `.github/workflows/issue-lane-label.yml` reads the rendered `### Lane` section with
 `scripts/ci/issue_lane_label.py` and applies the label, moving it rather than adding
 a second one when the dropdown is edited. An issue with no `### Lane` section was
-filed outside the forms; nothing happens to it, and the weekly audit lists it.
+filed outside the forms; nothing happens to it, and the weekly audit lists it. An
+issue whose body has TWO answered `### Lane` sections — which the form cannot
+produce, so somebody pasted one — is also left alone, with the conflicting lines
+printed in the job log.
 
 Query a lane from any machine with `gh issue list -l lane:msl-port`. Who currently
 DRIVES each lane is a separate question the labels do not answer — that lives in the
@@ -188,13 +193,15 @@ Every PR body carries two lines, each exactly once, outside code fences, HTML
 comments and `pre` blocks:
 
 - `Lane: lane:<label>` — the owner lane, one of the repository's `lane:*` labels
-  (`gh label list | grep '^lane:'`). Every open issue carries exactly one.
-  **This line is optional when the PR already carries exactly one `lane:*` label**,
-  which `.github/workflows/labeler.yml` applies from the paths the diff touches — a
-  path is a better witness than a line retyped by hand. Write the line when the PR
-  earns two lane labels (it names the primary one) or when the paths belong to no
-  lane. A line and a label that disagree fail, because one of the two is wrong:
-  either the line, or a path missing from `.github/labeler.yml`.
+  (`gh label list | grep '^lane:'`). Required on every PR. The `lane:*` labels
+  `.github/workflows/labeler.yml` applies from the changed paths do NOT replace it:
+  measured over the 60 most recently merged PRs, 32 earn two or more lane labels and
+  6 earn none, so for 38 of 60 the labels cannot say which lane owns the change. The
+  labels are automatic and informational; the line is the claim. When the PR does
+  carry lane labels the line must name one of them, because a line contradicting the
+  paths means either the line is wrong or a path is missing from
+  `.github/labeler.yml`. A lane label the repository no longer has is reported as a
+  warning and never fails the check.
 - `Review: <who read it> (separate instance) — ACCEPT` (or `ACCEPT WITH CHANGES`).
   A merged change is read by an agent instance other than the one that wrote it;
   several pods push under one GitHub account, so the body is the only provenance.
@@ -219,10 +226,12 @@ point of the contract is that the two lines are greppable across every PR.
 
 The check is `scripts/ci/check_pr_body.py` (stdlib only; `--file PATH` to run it
 against a body locally), gated by `.github/workflows/pr-body.yml` on open, edit,
-reopen, synchronize, label and unlabel — the last two so a PR that went red for a
-missing lane is re-checked when the labeler applies one, instead of staying red
-until someone edits the body. `.github/pull_request_template.md` seeds both stubs,
-and `tests/contracts/test_pr_body_contract.py` pins the accepted forms.
+reopen, synchronize, label and unlabel. It reads the PR's labels from the API at
+check time rather than from the event payload: on `opened` the payload's label list
+is empty because the labeler has not run yet, and a label the labeler applies fires
+no event here at all, because an event triggered by `GITHUB_TOKEN` creates no
+workflow run. `.github/pull_request_template.md` seeds both stubs, and
+`tests/contracts/test_pr_body_contract.py` pins the accepted forms.
 
 **The gate binds only once `pr-body-contract` is a required check in branch
 protection.** Until then a red run is visible but does not block a merge, which
@@ -251,7 +260,7 @@ It reports what no single-PR gate can see, over the last seven days:
 | merged PR claiming `Review: skipped` | the rule has two exceptions; an exception claimed weekly is not one |
 | issue opened with no `### Lane` section | filed outside the forms, so nobody answered "who will DO or DECIDE" |
 | merged PR closing an issue outside every open milestone | work off the current campaign |
-| merged PR closing no issue | housekeeping is fine; a substantial change is an issue nobody filed |
+| merged PR closing no issue | INFORMATIONAL only, never red: housekeeping legitimately closes nothing, and this was 65 of 102 merged PRs the week the report was written |
 
 **It is a report, not a gate.** A non-empty table exits 1 so the scheduled run shows
 up red in the Actions list and somebody opens it. Do not make it a required check —

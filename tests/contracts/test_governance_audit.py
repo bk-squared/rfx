@@ -142,6 +142,27 @@ def test_an_issue_in_a_closed_milestone_is_reported() -> None:
     assert "is closed" in rows[0].detail
 
 
+def test_a_link_to_another_pull_request_is_skipped() -> None:
+    """"Fixes #1042" pointing at a PR is a cross-reference between PRs.
+
+    `gh issue view <PR number>` SUCCEEDS with a null milestone, which read as
+    "an issue with no milestone" and put every cross-referenced PR in the
+    report. The index marks a PR so classify can tell the two apart.
+    """
+    body = f"{ACCEPTED}\n\nFixes #1042\n"
+    rows = classify_one(body, {1042: {"number": 1042, "title": "a PR",
+                                      "milestone": None, "is_pull_request": True}})
+    assert rows == []
+
+
+def test_a_link_to_a_milestone_less_ISSUE_is_still_reported() -> None:
+    """The skip is for pull requests only, not for anything without a milestone."""
+    body = f"{ACCEPTED}\n\nFixes #1042\n"
+    rows = classify_one(body, {1042: {"number": 1042, "title": "an issue",
+                                      "milestone": None, "is_pull_request": False}})
+    assert kinds(rows) == ["milestone"]
+
+
 def test_a_link_the_audit_could_not_resolve_is_reported_not_skipped() -> None:
     """A number `gh issue view` refused is exactly the case worth a human look."""
     body = f"{ACCEPTED}\n\nFixes #999\n"
@@ -153,6 +174,21 @@ def test_a_link_the_audit_could_not_resolve_is_reported_not_skipped() -> None:
 def test_a_pr_closing_no_issue_is_reported_once() -> None:
     rows = classify_one(f"{ACCEPTED}\n\nhousekeeping\n", {})
     assert kinds(rows) == ["unlinked"]
+
+
+def test_a_pr_closing_no_issue_does_not_make_the_run_red() -> None:
+    """65 of 102 merged PRs in one week, and most were legitimate housekeeping.
+
+    A report that is red every week for a thing that is usually fine is a report
+    nobody opens by the third week, so this section is listed and never counted.
+    """
+    rows = classify_one(f"{ACCEPTED}\n\nhousekeeping\n", {})
+    assert audit.failing_rows(rows) == []
+
+
+@pytest.mark.parametrize("kind", ["review", "form", "milestone"])
+def test_the_other_three_sections_do_make_the_run_red(kind: str) -> None:
+    assert audit.failing_rows([audit.Row(kind, "#1", "t", "d")])
 
 
 def test_an_unlinked_pr_is_not_also_reported_for_a_milestone() -> None:
@@ -188,7 +224,13 @@ def test_an_issue_filed_outside_the_forms_is_reported() -> None:
 
 def test_the_intake_check_uses_the_lane_parser_the_workflow_uses() -> None:
     """A form whose Lane heading moved must fail in ONE place, not diverge."""
-    assert audit._lane.lane_from_body(FORM_ISSUE) == "lane:absorber"
+    assert audit._lane.has_lane_section(FORM_ISSUE) is True
+
+
+def test_an_issue_whose_dropdown_was_left_blank_is_not_an_intake_row() -> None:
+    """The form WAS used. An unanswered dropdown is the lane job's business."""
+    rows = audit.classify([], [issue(21, "### What is wrong\n\nx\n\n### Lane\n\n_No response_\n")], {})
+    assert rows == []
 
 
 # --------------------------------------------------------------------------
@@ -236,6 +278,80 @@ def test_the_report_says_it_is_not_a_gate() -> None:
     assert "not a gate" in _render([audit.Row("review", "#1", "t", "d")])
 
 
+def test_the_footer_separates_failing_rows_from_informational_ones() -> None:
+    text = _render([
+        audit.Row("review", "#1", "t", "d"),
+        audit.Row("unlinked", "#2", "t", "d"),
+        audit.Row("unlinked", "#3", "t", "d"),
+    ])
+    assert "**1 rows to look at**, plus 2 informational." in text
+
+
+# --------------------------------------------------------------------------
+# Fetching: a truncated window is worse than no report
+# --------------------------------------------------------------------------
+
+
+def test_hitting_the_fetch_cap_raises_instead_of_truncating() -> None:
+    """A silent cap prints "200 merged PRs" for a window holding 900.
+
+    Every count under that heading is then wrong, with nothing saying so.
+    """
+    with pytest.raises(RuntimeError) as excinfo:
+        audit._capped([{}] * 5, 5, "merged PRs", "2026-08-19..2026-09-18")
+    assert "at the 5 cap" in str(excinfo.value)
+    assert "fewer" in str(excinfo.value)
+
+
+def test_a_window_under_the_cap_passes_through() -> None:
+    rows = [{}, {}]
+    assert audit._capped(rows, 5, "merged PRs", "w") is rows
+
+
+def test_the_cap_is_the_search_apis_own_ceiling() -> None:
+    """1000 is where GitHub search stops; a wider window cannot be reported."""
+    assert audit.FETCH_LIMIT == 1000
+
+
+def test_fetch_marks_a_linked_number_that_is_really_a_pull_request(monkeypatch) -> None:
+    """`gh issue view <PR number>` succeeds with a null milestone.
+
+    That read as "an issue with no milestone" and put every cross-referenced PR
+    in the report. The REST payload carries a `pull_request` key, which is the
+    only thing that tells the two apart, so `fetch` has to use it.
+    """
+    calls: list[list[str]] = []
+
+    def fake_gh(args):
+        calls.append(list(args))
+        if args[0] == "pr":
+            return [pr(1, f"{ACCEPTED}\n\nFixes #10, closes #11\n")]
+        return []
+
+    def fake_gh_one(args):
+        calls.append(list(args))
+        number = int(args[-1].rsplit("/", 1)[-1])
+        raw = {"number": number, "title": f"n{number}", "milestone": None,
+               "html_url": f"u/{number}"}
+        if number == 11:
+            raw["pull_request"] = {"url": "..."}
+        return raw
+
+    monkeypatch.setattr(audit, "_gh", fake_gh)
+    monkeypatch.setattr(audit, "_gh_one", fake_gh_one)
+    data = audit.fetch(7)
+
+    assert data["issue_index"]["10"]["is_pull_request"] is False
+    assert data["issue_index"]["11"]["is_pull_request"] is True
+    assert not any("view" in call for call in calls), calls
+
+    rows = audit.classify(
+        data["merged_prs"], [],
+        {int(k): v for k, v in data["issue_index"].items()},
+    )
+    assert [row.detail for row in rows] == ["closes #10: no milestone"]
+
+
 # --------------------------------------------------------------------------
 # The CLI, replayed from a payload: no network
 # --------------------------------------------------------------------------
@@ -278,11 +394,21 @@ def test_a_clean_week_exits_zero(tmp_path: Path) -> None:
     assert "Nothing to look at." in result.stdout
 
 
-def test_any_row_makes_the_run_red(tmp_path: Path) -> None:
+def test_any_failing_row_makes_the_run_red(tmp_path: Path) -> None:
     """A green weekly summary nobody opens reports nothing."""
     result = _run(_payload(opened_issues=[issue(20, HAND_ISSUE)]), tmp_path)
     assert result.returncode == 1
     assert "#20" in result.stdout
+
+
+def test_a_week_of_only_informational_rows_stays_green(tmp_path: Path) -> None:
+    """Otherwise the report is red every week, for infra PRs that close nothing."""
+    result = _run(
+        _payload(merged_prs=[pr(1, f"{ACCEPTED}\n\nhousekeeping\n")]), tmp_path
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Merged PRs closing no issue (informational)" in result.stdout
+    assert "#1" in result.stdout
 
 
 def test_the_report_is_written_to_the_step_summary(tmp_path: Path) -> None:

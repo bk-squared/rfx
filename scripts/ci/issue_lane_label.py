@@ -36,6 +36,13 @@ An issue with no ``### Lane`` section was filed outside the forms. That is not
 an error here -- the weekly governance audit is what reports it -- so this
 prints nothing and exits 0, and the workflow step does nothing.
 
+Neither is a body with MORE THAN ONE ``### Lane`` section. A body is text an
+author controls, and pasting the heading into an earlier answer would otherwise
+let the paste outrank the dropdown, which is silent and invisible. When the
+sections disagree this labels nothing, prints the conflicting lines and exits 0
+-- a body must never be able to turn the job red, because the job runs on every
+edit of every issue.
+
 A ``### Lane`` section naming something that is not a lane label IS an error:
 the dropdown cannot produce it, so the body was hand-edited, and silently
 labelling nothing would hide that.
@@ -57,7 +64,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple
+from typing import List, NamedTuple, Optional, Sequence, Tuple
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 _PR_BODY_CHECK = REPO_ROOT / "scripts" / "ci" / "check_pr_body.py"
@@ -118,14 +125,22 @@ def parse_labels(raw: str) -> List[str]:
     return [str(value) for value in values]
 
 
-def lane_from_body(body: str) -> Optional[str]:
-    """The value under the ``### Lane`` heading, or ``None`` if there is none.
+class Section(NamedTuple):
+    """One ``### Lane`` heading found in a body."""
+
+    line: int          #: 1-based line number of the heading
+    value: Optional[str]  #: the answer under it, or None if it answered nothing
+
+
+def lane_sections(body: str) -> List[Section]:
+    """Every ``### Lane`` heading in *body*, with the answer under each.
 
     The answer is the first non-empty line after the heading. Issue forms put a
     blank line between the two and a single-select dropdown answers with one
     line, so nothing is gained by joining the paragraph -- and joining it would
     turn a hand-written note below the answer into part of the label.
     """
+    found: List[Section] = []
     lines = (body or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
     for index, line in enumerate(lines):
         heading = _HEADING_RE.match(line)
@@ -134,38 +149,91 @@ def lane_from_body(body: str) -> Optional[str]:
         if not line.startswith("### "):
             # A deeper or shallower heading is not what the form renders.
             continue
+        value: Optional[str] = None
         for candidate in lines[index + 1:]:
             stripped = candidate.strip()
             if not stripped:
                 continue
-            if stripped == _NO_RESPONSE or _HEADING_RE.match(candidate):
-                return None
-            return stripped
-    return None
+            if stripped != _NO_RESPONSE and _HEADING_RE.match(candidate) is None:
+                value = stripped
+            break
+        found.append(Section(index + 1, value))
+    return found
 
 
-def plan(body: str, current: Sequence[str], lanes: Sequence[str]) -> Tuple[Optional[str], List[str], List[str]]:
-    """``(add, remove, problems)`` for one issue.
+def has_lane_section(body: str) -> bool:
+    """Whether *body* was rendered from a form at all.
 
-    ``add`` is ``None`` when the body names no lane, or when the label is
-    already on the issue -- an edit that did not change the dropdown must not
-    churn the label and re-notify every watcher.
+    The weekly audit asks this and nothing more: an issue with no ``### Lane``
+    heading anywhere was filed outside the forms.
     """
-    wanted = lane_from_body(body)
+    return bool(lane_sections(body))
+
+
+def lane_from_body(body: str) -> Optional[str]:
+    """The single lane *body* asks for, or ``None``.
+
+    ``None`` when nothing answered, and also when two sections both did: see
+    `resolve_lane`, which says which of the two it was.
+    """
+    return resolve_lane(body)[0]
+
+
+def resolve_lane(body: str) -> Tuple[Optional[str], List[str]]:
+    """``(lane, conflicts)``.
+
+    *conflicts* is empty unless more than one ``### Lane`` section answered.
+    When it is not empty *lane* is ``None`` and nothing should be changed: the
+    body is ambiguous, and guessing which section the author meant is how a
+    pasted heading silently overrides a dropdown.
+    """
+    answered = [section for section in lane_sections(body) if section.value]
+    if len(answered) <= 1:
+        return (answered[0].value if answered else None), []
+    lines = ", ".join(
+        f"line {section.line} -> {section.value!r}" for section in answered
+    )
+    return None, [
+        f"{len(answered)} `### {LANE_HEADING}` sections answer differently or "
+        f"twice ({lines}). The form renders exactly one, so this body was edited "
+        f"by hand. No label changed -- delete the extra section, or fix the "
+        f"label by hand."
+    ]
+
+
+class Plan(NamedTuple):
+    """What to do about one issue."""
+
+    add: Optional[str]      #: the lane label to add, or None
+    remove: List[str]       #: `lane:*` labels to take off
+    problems: List[str]     #: reported on stderr, exit 1
+    notes: List[str]        #: reported on stderr, exit 0
+
+
+def plan(body: str, current: Sequence[str], lanes: Sequence[str]) -> Plan:
+    """What the labels should become for one issue.
+
+    ``add`` is ``None`` when the body names no lane, when the sections conflict,
+    or when the label is already on the issue -- an edit that did not change the
+    dropdown must not churn the label and re-notify every watcher.
+    """
+    wanted, conflicts = resolve_lane(body)
+    if conflicts:
+        return Plan(None, [], [], conflicts)
     if wanted is None:
-        return None, [], []
+        return Plan(None, [], [], [])
     if wanted not in lanes:
-        return None, [], [
+        return Plan(None, [], [
             f"`### {LANE_HEADING}` names {wanted!r}, which is not a lane label on "
             f"this repository. The dropdown cannot produce it, so the body was "
             f"hand-edited. Lanes: {', '.join(sorted(lanes))}."
-        ]
+        ], [])
     remove = sorted(
         label for label in set(current)
         if label.startswith(LANE_PREFIX) and label != wanted
     )
     add = None if wanted in current else wanted
-    return add, remove, []
+    return Plan(add, remove, [], [])
 
 
 def _write_output(add: Optional[str], remove: Sequence[str]) -> None:
@@ -198,18 +266,21 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 1
 
     current = parse_labels(os.environ.get("CURRENT_LABELS_JSON", ""))
-    add, remove, problems = plan(body, current, allowed_lanes())
-    if problems:
-        for problem in problems:
+    result = plan(body, current, allowed_lanes())
+    if result.problems:
+        for problem in result.problems:
             print(problem, file=sys.stderr)
         return 1
 
-    _write_output(add, remove)
-    if add:
-        print(f"add {add}")
-    for label in remove:
+    for note in result.notes:
+        print(note, file=sys.stderr)
+
+    _write_output(result.add, result.remove)
+    if result.add:
+        print(f"add {result.add}")
+    for label in result.remove:
         print(f"remove {label}")
-    if not add and not remove:
+    if not result.add and not result.remove:
         print("no lane change")
     return 0
 

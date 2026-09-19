@@ -22,20 +22,24 @@ text (not inside a code fence, an HTML comment or a ``<pre>`` block):
 the live set in ``LANE_LABELS`` (newline-separated, from ``gh label list``); a
 local run with no such env falls back to the set recorded in this file.
 
-The lane requirement is satisfied by EITHER that line or exactly one ``lane:*``
-LABEL on the pull request. Since 2026-09-18 ``.github/labeler.yml`` derives the
-lane from the paths a PR touches, and a path is a better witness than a line an
-author retyped -- so a single-lane PR need not write the line at all. The
-workflow passes the PR's labels in ``PR_LABELS_JSON`` (GitHub's
-``toJSON(...labels.*.name)`` array, the same shape
-``check_changelog_fragment.py`` reads); an absent or empty value means "no
-labels", which is what a local run sees and which leaves the line required.
+The ``Lane:`` line is required on EVERY pull request. Since 2026-09-18
+``.github/labeler.yml`` also derives ``lane:*`` labels from the paths a PR
+touches, but those labels do not replace the line: measured over the 60 most
+recently merged PRs, 32 earn two or more lane labels and 6 earn none, so for 38
+of 60 the labels cannot say which lane OWNS the change. The labels are
+automatic and informational; the line is the claim.
 
-Two cases still need the line. A PR carrying TWO lane labels is genuinely in
-two lanes, and the line is how it names the primary one. And when both a line
-and labels are present they must AGREE -- the line has to name one of the
-labels -- because a line contradicting the paths means either the line is wrong
-or ``.github/labeler.yml`` is missing a path, and both are worth stopping for.
+What the labels do add is a cross-check. The workflow reads the PR's live label
+set and passes it in ``PR_LABELS_JSON`` (a JSON array of names, the same shape
+``check_changelog_fragment.py`` reads). When the PR carries lane labels, the
+``Lane:`` line must name ONE of them: a line contradicting the paths means
+either the line is wrong or ``.github/labeler.yml`` is missing a path, and both
+are worth stopping for. A PR carrying no lane label is not cross-checked, which
+is what a local run sees and what a PR confined to unowned paths gets.
+
+A lane label that is no longer a label on the repository is reported as a
+WARNING and never fails the check. Retiring a label must not turn every open PR
+red.
 
 ``<who>`` names the reviewing instance and may not contain ``<`` or ``>``: an
 unedited placeholder is not a review record, and this file's own remediation
@@ -238,15 +242,20 @@ def deadorn(line: str) -> str:
 def pr_lane_labels(env: dict[str, str] | None = None) -> tuple[str, ...]:
     """The ``lane:*`` labels GitHub says this pull request carries.
 
-    ``PR_LABELS_JSON`` is the ``toJSON(github.event.pull_request.labels.*.name)``
-    array. JSON rather than a comma-joined string for the same reason
-    ``check_changelog_fragment.py`` uses it: a label may contain a comma, and a
-    label named ``pre,release`` would otherwise read as two.
+    ``PR_LABELS_JSON`` is a JSON array of label names. JSON rather than a
+    comma-joined string for the same reason ``check_changelog_fragment.py``
+    uses it: a label may contain a comma, and a label named ``pre,release``
+    would otherwise read as two.
 
-    Absent, empty or unparseable means "no labels" rather than an error. A
-    local run has no such variable, and the strict reading of "no labels" is
-    that the ``Lane:`` line is required -- which is the right default for a
-    pre-push check.
+    The workflow fills it from ``gh pr view``, NOT from the event payload. On
+    an ``opened`` event the payload's label list is empty because
+    ``.github/workflows/labeler.yml`` has not run yet, and a label that job
+    adds later fires no ``labeled`` event at all -- an event triggered by
+    ``GITHUB_TOKEN`` creates no workflow run. Reading the API at check time is
+    the only way to see what the PR actually carries.
+
+    Absent, empty or unparseable means "no labels" rather than an error, which
+    switches the cross-check off. A local run has no such variable.
     """
     env = os.environ if env is None else env
     raw = (env.get("PR_LABELS_JSON") or "").strip()
@@ -298,11 +307,12 @@ def _check_lane(
     source: str,
     pr_labels: tuple[str, ...] = (),
 ) -> list[str]:
-    """The lane is named by the ``Lane:`` line, by the labels, or by both.
+    """One ``Lane:`` line, and it must agree with any lane labels present.
 
     *pr_labels* holds only the ``lane:*`` labels, applied by
-    `.github/labeler.yml` from the paths the PR touches. Empty means either an
-    unlabelled PR or a local run; both leave the line required.
+    `.github/labeler.yml` from the paths the PR touches. They never satisfy the
+    requirement on their own -- most PRs earn two or none, and neither says
+    which lane owns the change. Empty switches the cross-check off.
     """
     matches = [m for m in (LANE_RE.match(line) for line in lines) if m]
     labelled = sorted(set(pr_labels))
@@ -315,23 +325,18 @@ def _check_lane(
         ]
 
     if len(matches) == 0:
-        if len(labelled) == 1:
-            return []
-        if len(labelled) > 1:
-            return [
-                f"this PR carries {len(labelled)} lane labels "
-                f"({', '.join(labelled)}) and no `Lane:` line. Two lanes is "
-                "information, not an error -- the paths really do belong to both "
-                "-- but one of them is the primary owner. Add a line naming it: "
-                f"`Lane: {labelled[0]}`."
-            ]
-        return [
-            "no `Lane:` line and no `lane:*` label. Either add a line reading "
-            "`Lane: lane:<label>` naming the owner lane, or let "
-            "`.github/labeler.yml` apply the label from the paths you changed "
-            "(a path nobody owns gets no label, so this PR needs the line)."
-            + _adorned_hint(lines, "Lane:")
-        ]
+        problem = (
+            "no `Lane:` line. Exactly one line must read `Lane: lane:<label>` and "
+            "name the owner lane this PR belongs to. A `lane:*` label applied from "
+            "the paths you changed does NOT replace it: most PRs touch two lanes "
+            "or none, and which lane OWNS the change is not derivable from paths."
+        )
+        if labelled:
+            problem += (
+                f" This PR carries {', '.join(labelled)}; if {labelled[0]} is the "
+                f"primary one, the line is `Lane: {labelled[0]}`."
+            )
+        return [problem + _adorned_hint(lines, "Lane:")]
 
     label = matches[0].group(1)
     if label not in lanes:
@@ -348,6 +353,26 @@ def _check_lane(
             "labels are recomputed on every push."
         ]
     return []
+
+
+def lane_label_warnings(env: dict[str, str] | None = None) -> list[str]:
+    """Lane labels on the PR that the repository no longer has.
+
+    Reported, never failed on. A label retired while twenty PRs are open would
+    otherwise turn all twenty red for something none of their authors did, and
+    the `Lane:` line -- the claim this gate is actually about -- is unaffected
+    by it.
+    """
+    lanes, source = allowed_lanes(env)
+    stale = [label for label in sorted(set(pr_lane_labels(env))) if label not in lanes]
+    if not stale:
+        return []
+    return [
+        f"warning: {', '.join(stale)} "
+        f"{'is' if len(stale) == 1 else 'are'} on this PR but not a lane label "
+        f"on the repository ({source}). A retired or renamed label leaves this "
+        f"behind; it does not fail the check."
+    ]
 
 
 def _check_review(lines: list[str]) -> list[str]:
@@ -436,9 +461,9 @@ def failure_report(problems: list[str], env: dict[str, str] | None = None) -> st
         "Lane: lane:<name>",
         "Review: <who read it> (separate instance) - ACCEPT",
         "",
-        "The `Lane:` line may be omitted when .github/labeler.yml has already put",
-        "exactly one `lane:*` label on the PR. Write it when the PR carries two",
-        "lane labels, and then it must name one of them.",
+        "The `lane:*` labels .github/labeler.yml applies from your changed paths",
+        "do not replace the line -- most PRs earn two of them or none. When the PR",
+        "does carry lane labels, the line must name one of them.",
         "",
         f"The separator before the verdict may be {DASH_NAMES}.",
         "",
@@ -474,6 +499,9 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
+
+    for warning in lane_label_warnings():
+        print(warning, file=sys.stderr)
 
     problems = check(body)
     if problems:
