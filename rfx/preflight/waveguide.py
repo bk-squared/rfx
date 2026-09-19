@@ -369,6 +369,12 @@ _WAVEGUIDE_UV_AXES = {"x": ("y", "z"), "y": ("x", "z"), "z": ("x", "y")}
 #
 # The ``"analytic"`` profile has no eigensolve -- ``cutoff_frequency`` is closed
 # form and the profile helpers are too -- so the budget does not apply there.
+#
+# The budget is on the MATRIX SIZE, which is what sets both the cubic time and
+# the peak memory of one eigensolve. A multimode port pays that once per mode:
+# measured at the 0.5 mm row above, 0.37 s single-mode and 0.72 s at
+# ``n_modes=3``. That is a linear factor on an admitted case, not the cliff the
+# budget exists to stop, so it does not divide the budget.
 WAVEGUIDE_PREFLIGHT_DISCRETE_CELL_BUDGET = 2000
 
 
@@ -471,11 +477,29 @@ def _waveguide_port_cutoff_reading(sim, entry, grid, spans):
             skipped = "error"
             build_error = f"{type(exc).__name__}: {exc}"
 
-    if cfg is None and int(getattr(entry, "n_modes", 1)) > 1:
+    n_modes = int(getattr(entry, "n_modes", 1))
+    multimode_unbuilt = cfg is None and n_modes > 1
+    if multimode_unbuilt:
         # ``init_multimode_waveguide_port`` IGNORES ``port.mode`` and
-        # enumerates modes by cutoff, so with no config there is nothing
-        # truthful to name. Say nothing rather than quote entry.mode.
-        return None
+        # enumerates modes by cutoff, so with no config there is no mode to
+        # name and no mode-specific cutoff to quote. The row still has to
+        # give the RIGHT reason -- "over the budget" is not "could not be
+        # read" -- so this returns a reading carrying ``skipped`` and the
+        # cell counts, with the cutoff fields left None (#1101 re-review N1).
+        return {
+            "built_hz": None,
+            "skipped": skipped,
+            "build_error": build_error,
+            "declared_hz": None,
+            "realized_hz": None,
+            "cells": cells,
+            "cells_total": int(cells_total),
+            "mode": None,
+            "mode_label": None,
+            "n_modes": n_modes,
+            "u_axis": u_ax,
+            "v_axis": v_ax,
+        }
 
     m, n = entry.mode
     mode_type = entry.mode_type
@@ -490,7 +514,7 @@ def _waveguide_port_cutoff_reading(sim, entry, grid, spans):
         cells_total = cells[u_ax] * cells[v_ax]
 
     label = f"{mode_type}{m}{n}"
-    if int(getattr(entry, "n_modes", 1)) > 1:
+    if n_modes > 1:
         # Only the lowest-cutoff config is driven; the others are passive
         # listeners with their own cutoffs, so the row has to say which one
         # its number belongs to.
@@ -508,6 +532,7 @@ def _waveguide_port_cutoff_reading(sim, entry, grid, spans):
         "cells_total": int(cells_total),
         "mode": (int(m), int(n)),
         "mode_label": label,
+        "n_modes": n_modes,
         "u_axis": u_ax,
         "v_axis": v_ax,
     }
@@ -535,6 +560,27 @@ def _waveguide_cutoff_clause(reading, axis_name, rec, mode_profile) -> str:
     n_cells = reading["cells"][axis_name]
     realized_mm = rec["rasterized"] * 1e3
     label = reading["mode_label"]
+
+    if label is None:
+        # A multimode port whose config was not built: the builder
+        # enumerates modes by cutoff and IGNORES ``port.mode``, so there is
+        # no mode to name and no mode-specific cutoff to quote. Give the
+        # cell counts and the real reason, and quote no frequency at all --
+        # an unattributed cutoff is the class of claim #1101 is about.
+        why = (f"over the "
+               f"{WAVEGUIDE_PREFLIGHT_DISCRETE_CELL_BUDGET}-cell budget "
+               f"this check will solve"
+               if reading["skipped"] == "budget" else
+               f"and the build raised ({reading['build_error']})")
+        return (f"with mode_profile='{mode_profile}' the solve builds its "
+                f"mode templates and cutoffs from the REALIZED aperture, "
+                f"{n_cells} cells = {realized_mm:.4f} mm on this axis: this "
+                f"port carries {reading['n_modes']} modes and its realized "
+                f"aperture is {reading['cells'][reading['u_axis']]} x "
+                f"{reading['cells'][reading['v_axis']]} = "
+                f"{reading['cells_total']} cells, {why}, so no cutoff is "
+                f"quoted here")
+
     if mode_profile == "analytic":
         source = (f"with mode_profile='analytic' the solve builds its "
                   f"{label} mode template and cutoff from the "

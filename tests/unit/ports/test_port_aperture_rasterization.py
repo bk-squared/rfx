@@ -633,6 +633,90 @@ def test_each_axis_row_quotes_its_own_realized_cell_count(case):
 
 
 # --------------------------------------------------------------------------
+# 2g. #1101 re-review N1: a multimode port, on both sides of the budget.
+#
+# ``init_multimode_waveguide_port`` IGNORES ``port.mode`` and enumerates modes
+# by cutoff, so without a built config there is no mode to name and no
+# mode-specific cutoff to quote. The first version of the budget returned no
+# reading at all in that case, which made an OVER-BUDGET multimode port say
+# "the cutoff this port builds could not be read on this grid" -- a false
+# reason, since the check had declined on COST. The row now gives the real
+# one and quotes no frequency it cannot attribute.
+# --------------------------------------------------------------------------
+
+def _multimode_sim(dx, n_modes=3):
+    sim = Simulation(freq_max=12e9, domain=(0.10, _A_WR90, _B_WR90), dx=dx,
+                     boundary=_pec_walls(), cpml_layers=_CPML_LAYERS)
+    sim.add_waveguide_port(0.024, direction="+x", mode=(1, 0), mode_type="TE",
+                           freqs=jnp.asarray([9e9]), f0=9e9, name="p0",
+                           n_modes=n_modes)
+    return sim
+
+
+def test_a_multimode_port_under_the_budget_names_the_driven_mode():
+    """Only the lowest-cutoff config is driven; the others are passive
+    listeners with their own cutoffs. The row quotes the driven one and has
+    to say so, and the mode comes off that config, never off ``entry.mode``
+    (which the multimode builder ignores)."""
+    sim = _multimode_sim(1e-3)
+    grid = sim._build_grid()
+    entry = sim._waveguide_ports[0]
+    cfgs = sim._build_waveguide_port_config(
+        entry, grid, jnp.asarray(entry.freqs), 1)
+    assert isinstance(cfgs, list) and len(cfgs) == 3, type(cfgs)
+    driven = cfgs[0]
+    m, n = tuple(driven.mode_indices)
+    for row in _snap_rows(sim):
+        assert f"driven {driven.mode_type}{m}{n} mode template" in row, (
+            f"the row must name the DRIVEN mode; got {row!r}"
+        )
+        assert f"f_cutoff = {_ghz(driven.f_cutoff)} GHz" in row, row
+
+
+def test_a_multimode_port_over_the_budget_says_it_declined_on_cost(monkeypatch):
+    """The N1 defect. The reason must be the budget, not a failed read, and
+    the row must quote no cutoff -- there is no mode to attribute one to."""
+    sim = _multimode_sim(0.125e-3)
+    assert _cells(sim) > wgpf.WAVEGUIDE_PREFLIGHT_DISCRETE_CELL_BUDGET
+
+    def _boom(self, *a, **k):
+        raise _BuilderMustNotRun(
+            "preflight built a multimode port over the budget")
+
+    monkeypatch.setattr(type(sim), "_build_waveguide_port_config", _boom)
+    for row in _snap_rows(sim):
+        assert "could not be read on this grid" not in row, (
+            f"declining on cost is not a failed read; got {row!r}"
+        )
+        assert "this port carries 3 modes" in row, row
+        assert (f"over the {wgpf.WAVEGUIDE_PREFLIGHT_DISCRETE_CELL_BUDGET}"
+                f"-cell budget") in row, row
+        assert "so no cutoff is quoted here" in row, row
+        assert "f_cutoff = " not in row, (
+            f"no frequency may be quoted for an unnamed mode; got {row!r}"
+        )
+        assert "GHz" not in row, (
+            f"every frequency in this clause belongs to a mode this row "
+            f"cannot name; got {row!r}"
+        )
+
+
+def test_a_multimode_build_failure_is_not_reported_as_a_budget_decline(monkeypatch):
+    """The same reading carries two different reasons; they must not blur."""
+    sim = _multimode_sim(1e-3)
+    assert _cells(sim) <= wgpf.WAVEGUIDE_PREFLIGHT_DISCRETE_CELL_BUDGET
+
+    def _raise(self, *a, **k):
+        raise ValueError("synthetic multimode failure")
+
+    monkeypatch.setattr(type(sim), "_build_waveguide_port_config", _raise)
+    for row in _snap_rows(sim):
+        assert "the build raised (ValueError: synthetic multimode failure)" in row, row
+        assert "over the" not in row.split("so no cutoff")[0].split(
+            "this port carries")[1], row
+
+
+# --------------------------------------------------------------------------
 # 2f. #1101 review: no cubic-cell assumption (repo engineering principle 2).
 #
 # A transverse span is ``cells * that axis' own cell size``, never
