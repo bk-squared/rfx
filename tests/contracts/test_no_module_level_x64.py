@@ -300,9 +300,24 @@ def test_the_sanctioned_list_is_an_exact_path_not_a_basename():
 
 # Run in a CHILD interpreter, because the question is what a fresh process looks
 # like after an import. Every module is imported in one child rather than one
-# child each: the variable is read from the environment after each import, which
-# is independent of whether jax has already been imported by an earlier one, and
-# 579 subprocesses would cost minutes instead of seconds.
+# child each: both readings below are taken after each import and reset, so an
+# offender does not contaminate the modules behind it, and 579 subprocesses
+# would cost minutes instead of seconds.
+#
+# The child does NOT pre-import jax. That is the whole point: under pytest the
+# root conftest imports it at collection, so an import-time env line arrives too
+# late to change the flag and only leaks into subprocesses. Outside pytest, or
+# ahead of that conftest, the same line latches the flag for the process. The
+# second is the worse failure and only an interpreter with jax still unimported
+# can see it.
+#
+# TWO readings, because they are two different harms and a fix for one does not
+# imply the other. `env` is the leak into every subprocess a later test spawns.
+# `x64` is the latched process-global flag, which survives the environment being
+# put back: a module that sets the variable, lets jax read it, and then restores
+# the variable leaves `env` clean and the flag True. Importing jax is NOT an
+# offence — hundreds of test modules do it legitimately. Only flipping the flag
+# is.
 _IMPORT_PROBE = r"""
 import importlib, json, os, pathlib, sys
 
@@ -310,22 +325,65 @@ sys.path.insert(0, os.getcwd())
 KEY = "JAX_ENABLE_X64"
 os.environ.pop(KEY, None)
 
+# Reading 1: who WROTE the key while their import ran, restore or no restore.
+# os._Environ inherits setdefault() and update() from MutableMapping, and both
+# go through __setitem__, so one spy covers every spelling.
+current = [None]
+wrote = {}
+_orig_setitem = os._Environ.__setitem__
+
+
+def _spy(self, key, value):
+    if key == KEY and current[0] is not None:
+        wrote.setdefault(current[0], value)
+    return _orig_setitem(self, key, value)
+
+
+os._Environ.__setitem__ = _spy
+
+
+def x64_now():
+    # The live flag, or None while jax is still unimported. A comment and not
+    # a docstring: this whole script is inside a triple-quoted string.
+    jax = sys.modules.get("jax")
+    if jax is None:
+        return None
+    try:
+        return bool(jax.config.jax_enable_x64)
+    except Exception:
+        return None
+
+
 scanned = 0
-offenders, skipped, broken = [], [], []
+env_offenders, x64_offenders, skipped, broken = [], [], [], []
 for path in sorted(pathlib.Path("tests").rglob("test_*.py")):
     module = ".".join(path.with_suffix("").parts)
     scanned += 1
+    current[0] = module
     try:
         importlib.import_module(module)
     except BaseException as exc:  # a Skipped is pytest's own, not a failure
         target = skipped if type(exc).__name__ == "Skipped" else broken
         target.append([module, type(exc).__name__, str(exc)[:200]])
         continue
+    finally:
+        current[0] = None
+
+    # Reading 2: still set afterwards -- the leak into later subprocesses.
     if KEY in os.environ:
-        offenders.append([module, os.environ[KEY]])
+        env_offenders.append([module, os.environ[KEY]])
         os.environ.pop(KEY, None)
 
-print(json.dumps({"scanned": scanned, "offenders": offenders,
+    # Reading 3: the flag actually latched. Only visible when this module is
+    # the first to import jax, which is why reading 1 exists.
+    if x64_now() is True:
+        x64_offenders.append([module])
+        sys.modules["jax"].config.update("jax_enable_x64", False)
+
+print(json.dumps({"scanned": scanned,
+                  "wrote": sorted(wrote.items()),
+                  "env_offenders": env_offenders,
+                  "x64_offenders": x64_offenders,
                   "skipped": skipped, "broken": broken}))
 """
 
@@ -346,17 +404,40 @@ def _run_import_probe() -> dict:
     return json.loads(lines[-1])
 
 
-def test_importing_a_test_module_does_not_set_the_env_flag():
+def test_importing_a_test_module_does_not_flip_x64():
     """The shape the AST scan cannot see: an import that runs a script.
 
-    A module can leave `JAX_ENABLE_X64` set without containing a single
-    statement that sets it — by importing, or `exec_module`-ing, something that
-    does. That is what cv09's gate did through
+    A module can flip x64 without containing a single statement that does —
+    by importing, or `exec_module`-ing, something that does. That is what
+    cv09's gate did through
     `validation/crossval/09_half_symmetric_waveguide.py`, and why removing the
-    test module's own duplicate of the line changed nothing measurable.
+    test module's own duplicate of the env line changed nothing measurable.
 
-    So this asks the only question that settles it: after importing a test
-    module in a fresh interpreter with the variable unset, is it still unset.
+    Three readings after each import, because one alone is a hole someone has
+    already fallen into — twice, in this file's own history.
+
+    1. Did the module WRITE the key while its import ran. This is the one that
+       matters and the only one independent of import order: jax latches the
+       flag from the environment the first time it is imported, so a module
+       that sets the variable, lets a script it executes import rfx, and then
+       puts the variable back leaves the environment clean AND the flag True.
+       A spy on `os._Environ.__setitem__` sees the write whether or not it is
+       undone; `setdefault` and `update` both go through it.
+    2. Is the key still set afterwards. A different harm: it leaks into every
+       subprocess a later test spawns, even where jax read the variable long
+       ago and the flag never moved.
+    3. Is `jax.config.jax_enable_x64` True. Direct evidence, but it can only
+       fire when the module is the first in the process to import jax. Every
+       module after that one sees a flag already latched to False, which is
+       exactly why reading 1 exists.
+
+    Checking only reading 2 passed a module that flips the flag and restores
+    the variable. Checking 2 and 3 passed it too, in this child, because 60
+    modules import jax before it alphabetically.
+
+    Attribution note: a module imported as a side effect of an earlier one is
+    blamed on the earlier one, because `sys.modules` caches it. That is the
+    right answer — the import that runs the code is the one to fix.
     """
     report = _run_import_probe()
 
@@ -370,14 +451,33 @@ def test_importing_a_test_module_does_not_set_the_env_flag():
         "importable, or skip it the way pytest does (`pytest.skip(..., "
         "allow_module_level=True)`), which this probe records as skipped."
     )
-    assert not report["offenders"], (
+    assert not report["wrote"], (
+        "importing these test module(s) WROTE JAX_ENABLE_X64 while their import "
+        "ran: " + ", ".join(f"{name} -> {value!r}" for name, value in report["wrote"])
+        + ".\n\nThis is the reading that matters, and the only one that does not "
+        "depend on import order. jax latches the flag from the environment the "
+        "first time it is imported, so a module that sets the variable, lets a "
+        "script it executes import rfx, and then puts the variable back leaves "
+        "BOTH the environment clean and the flag True. Restoring the variable "
+        "hides the write; it does not undo the latch. Nothing in the module need "
+        "say so — importing or exec'ing a validation script runs ITS module-level "
+        "env line. Load the script lazily, so nothing runs at import: see "
+        "tests/crossval/test_crossval_cv09_mirror_plane_gate.py."
+    )
+    assert not report["x64_offenders"], (
+        "importing these test module(s) left jax_enable_x64 True in a fresh "
+        "interpreter: " + ", ".join(name for (name,) in report["x64_offenders"])
+        + ".\n\nThe flag is process-global and latches when jax first reads the "
+        "environment, so restoring the variable afterwards does NOT undo it. "
+        "Nothing in the module need say so — importing or exec'ing a validation "
+        "script runs ITS module-level env line before it imports rfx. Load the "
+        "script lazily, so nothing runs at import: see "
+        "tests/crossval/test_crossval_cv09_mirror_plane_gate.py."
+    )
+    assert not report["env_offenders"], (
         "importing these test module(s) left JAX_ENABLE_X64 set in the process: "
-        + ", ".join(f"{name} -> {value!r}" for name, value in report["offenders"])
-        + ".\n\nNothing in the module need say so: importing or exec'ing a "
-        "validation script runs ITS module-level env line. JAX reads the "
-        "variable at its first import, so this flips a process-global flag for "
-        "whatever has not imported jax yet, and leaks into every subprocess a "
-        "later test spawns. Load the script lazily (a module-scope fixture, or "
-        "an accessor called inside the tests) and restore the variable around "
-        "the load — see tests/crossval/test_crossval_cv09_mirror_plane_gate.py."
+        + ", ".join(f"{name} -> {value!r}" for name, value in report["env_offenders"])
+        + ".\n\nEven where jax has already read the variable and the flag is "
+        "unaffected, this leaks into every subprocess a later test spawns. "
+        "Restore the variable around whatever sets it."
     )
