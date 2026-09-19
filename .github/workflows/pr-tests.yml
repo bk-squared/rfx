@@ -7,6 +7,19 @@ name: pr-tests
 # runner, so this job is deliberately scoped to the affected surface to stay
 # fast and memory-safe. Mark this job a REQUIRED check in branch protection so
 # the tripwire/regression-locks gate merges.
+#
+# Path-aware since 2026-09-18: the `changes` job decides whether this event
+# touched anything the six physics shards can observe, and they skip their own
+# steps when it did not. Their NAMES and their SUCCESS are unchanged, which is
+# what branch protection reads. The contract tests run either way. A push to
+# main is never skipped.
+#
+# `changes` MUST BE A REQUIRED CHECK in branch protection, alongside `ruff`,
+# `guards-and-preflight` and `fast-suite (1)`..`(6)`. Without it the gate has a
+# hole: `needs: changes` means a `changes` job that dies of a runner fault
+# leaves the heavy jobs SKIPPED by dependency, and a skipped job does not fail a
+# required context — so a merge would go through having run no tests at all. The
+# job is a checkout plus a stdlib script, 15 s, so requiring it costs nothing.
 
 on:
   push:
@@ -25,13 +38,65 @@ permissions:
   contents: read
 
 jobs:
+  # Which lanes this event needs. Measured 2026-09-18: three pull requests that
+  # changed no file under rfx/, tests/ or validation/ still ran the six-shard
+  # fast suite on every push — ten pr-tests runs of roughly 35 minutes each, for
+  # changes confined to .github/, scripts/ and docs/agent/. The shards cannot
+  # observe those files.
+  #
+  # The two heavy jobs below KEEP THEIR NAMES and still run on every event, so
+  # the contexts main's branch protection requires (`guards-and-preflight`,
+  # `fast-suite (1)`..`(6)`) are always reported. When this job says the diff is
+  # not code, the six shards skip their steps individually and end SUCCESS with
+  # a line in the log saying why, and `guards-and-preflight` runs the contract
+  # tests instead of the guard suite — those pin docs/, scripts/ and these
+  # workflows, which is precisely what a "not code" diff changes.
+  #
+  # Step-level `if:`, not job-level, is deliberate. GitHub's "Troubleshooting
+  # required status checks" says a job skipped by a conditional reports Success,
+  # so a job-level `if:` would also satisfy the required context — but a skipped
+  # job shows no steps and no reason, and the same page says a skipped WORKFLOW
+  # stays Pending and blocks the merge, which is a one-character edit away
+  # (`paths:` filters) from where we are. Keeping the jobs alive and skipping
+  # their steps keeps the reason in the log and keeps that trap shut.
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code_changed: ${{ steps.classify.outputs.code_changed }}
+    steps:
+      - name: Check out repository
+        # fetch-depth: 0 — the classifier diffs base.sha...head.sha, and a
+        # shallow clone has neither commit's history to find a merge base in.
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Classify the changed paths
+        id: classify
+        # Every input arrives through the environment. The decision is
+        # scripts/ci/changed_paths.py (stdlib, unit-tested); the shell around it
+        # is scripts/ci/classify_changes.sh, which answers `true` for any push
+        # to main and for any diff it could not compute.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
+        run: bash scripts/ci/classify_changes.sh
+
   guards-and-preflight:
+    needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      # Ungated on purpose: BOTH branches of the verdict need an interpreter and
+      # the package. The false branch still runs tests/contracts below.
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -40,7 +105,49 @@ jobs:
       - name: Install package with dev dependencies
         run: pip install -e ".[dev]"
 
+      # tests/contracts/ is where the repo pins things the SHARDS cannot see:
+      # much of it asserts on docs/, scripts/, .github/workflows/, CHANGELOG.md
+      # and README.md. Skipping it on a "not code" diff would disarm exactly the
+      # gates that guard "not code" — a later PR could shrink the ruff scope
+      # pinned by test_the_lint_scope_covers_this_gates_own_script, or change
+      # scripts/dev/prune_worktrees.py past test_prune_worktrees.py, and the
+      # forbidding test would never run. So the contracts run on BOTH branches:
+      # here when the diff is not code, and inside the six shards (which collect
+      # the whole tree) when it is. Roughly 5 minutes.
+      - name: Contract tests — the gates the shards are not running today
+        if: needs.changes.outputs.code_changed == 'false'
+        # Same flags as the guard suite below, for the same reason: this is the
+        # ONLY test run on the not-code branch, so it is a required gate, and
+        # `-o addopts=""` overrides the pyproject marker filter so a future
+        # slow/slow_physics mark inside tests/contracts cannot silently deselect
+        # from it. (Two gallery-precompute tests are slow-marked today; they add
+        # 27 s.) The explicit -m "not gpu" keeps the job CPU-safe, and
+        # --strict-markers turns a marker typo into an error. The collect-count
+        # floor catches the other way a gate goes quiet: a path that stopped
+        # matching collects nothing and passes.
+        run: |
+          set -e
+          echo 'The diff touches no file under rfx/, tests/, validation/ or'
+          echo 'examples/, and no build or lane configuration, so the six'
+          echo 'physics shards have nothing to observe. The contract tests'
+          echo 'still run: they pin docs/, scripts/ and these workflows, which'
+          echo 'IS what this diff changed. The changes job above lists the'
+          echo 'paths; the classifier is scripts/ci/changed_paths.py.'
+          collected=$(python -m pytest --collect-only -q -o addopts="" -m "not gpu" tests/contracts | grep -c "::" || true)
+          echo "collected $collected contract tests"
+          if [ "$collected" -lt 500 ]; then
+            echo "FAIL: tests/contracts collected only $collected tests (<500) — silent deselection?"
+            exit 1
+          fi
+          python -m pytest tests/contracts -q -ra -p no:cacheprovider \
+            -o addopts="" -m "not gpu" --strict-markers
+
+      # `!= 'false'`, not `== 'true'`: an empty or unexpected output — a
+      # classify step that died after its checkout, a future refactor that
+      # renames the output — must run everything, not skip everything. Only the
+      # one value the classifier is known to emit for "nothing to see" skips.
       - name: Guard + preflight suite (incl. upml/Floquet regression locks)
+        if: needs.changes.outputs.code_changed != 'false'
         # -o addopts="" overrides the pyproject default marker filter so a
         # future slow/gpu mark inside these files cannot silently deselect
         # tests from the required gate; the explicit -m "not gpu" keeps the
@@ -67,6 +174,7 @@ jobs:
             -m "not gpu" --strict-markers $FILES
 
       - name: Conformal stale-check tripwire (slow-marked; xfails today, HARD-FAILS when the NaN is fixed)
+        if: needs.changes.outputs.code_changed != 'false'
         run: |
           python -m pytest -q -p no:cacheprovider -o addopts="" \
             "tests/unit/geometry/test_subpixel_pec.py::test_mesh_convergence_s21_with_conformal_pec"
@@ -88,6 +196,7 @@ jobs:
   # upgrades first. The 3.10 entry stays: it is what the published floor and
   # the weekly validation lane run.
   fast-suite:
+    needs: changes
     # The job NAME must stay `fast-suite (<group>)` on the 3.10 entry: those are
     # the contexts main's branch protection requires, and a matrix that renames
     # them to `fast-suite (3.10, 1)` leaves every required check permanently
@@ -115,18 +224,32 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Nothing to run — say so and finish green
+        if: needs.changes.outputs.code_changed == 'false'
+        run: |
+          echo 'The diff touches no file under rfx/, tests/, validation/ or'
+          echo 'examples/, and no build or lane configuration, so this shard'
+          echo 'would collect the same tests as the last run on main. The'
+          echo 'contract tests still ran, in guards-and-preflight. The changes'
+          echo 'job above lists the paths; the classifier is'
+          echo 'scripts/ci/changed_paths.py.'
+
       - name: Set up Python ${{ matrix.python-version }}
+        if: needs.changes.outputs.code_changed != 'false'
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Install package with dev dependencies
+        if: needs.changes.outputs.code_changed != 'false'
         run: pip install -e ".[dev,cad]"   # cad = trimesh/rtree/cascadio for the MeshShape import tests (#358)
 
       - name: Record the resolved JAX/numpy versions (the pin this lane really has)
+        if: needs.changes.outputs.code_changed != 'false'
         run: python -c "import jax, jaxlib, numpy; print('jax', jax.__version__, 'jaxlib', jaxlib.__version__, 'numpy', numpy.__version__)"
 
       - name: Fast suite — Python ${{ matrix.python-version }}, shard ${{ matrix.group }} of 6
+        if: needs.changes.outputs.code_changed != 'false'
         env:
           # issue #594 remedy (a): the same per-test RSS delta/peak reporter +
           # live VmHWM sampler the weekly lane got in PR #592 (issue #545).
