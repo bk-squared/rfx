@@ -34,17 +34,33 @@ pattern and passes.
    flips the flag for the whole shard; which of the two it is depends on import
    order, which is the worst of both failure modes.
 
-Scanned set: every `*.py` under `tests/`, plus the repository-root
-`conftest.py`, which loads before every shard and is the one file outside
-`tests/` whose import-time statements run in every test process.
+3. Neither of the above, because no statement in the file does it: a test
+   module that IMPORTS something which does it.
+   `tests/crossval/test_crossval_cv09_mirror_plane_gate.py` executed
+   `validation/crossval/09_half_symmetric_waveguide.py` at module scope, and
+   that script sets the same environment key. Measured in a fresh interpreter,
+   importing the test module alone gave `env=1 jax_imported=True x64=True`. No
+   AST rule over `tests/` can see that, so
+   `test_importing_a_test_module_does_not_set_the_env_flag` imports every test
+   module in a subprocess and reads the environment afterwards.
 
-Boundary, stated so a green result is not over-read: a validation script that a
-test imports (`validation/crossval/*.py` via `importlib`) is not in the scanned
-set, and neither is `rfx/` production code.
+Scanned set for the AST rule: every `*.py` under `tests/`, plus the
+repository-root `conftest.py`, which loads before every shard and is the one
+file outside `tests/` whose import-time statements run in every test process.
+The subprocess rule covers every `tests/**/test_*.py`, whatever it imports.
+
+Boundary, stated so a green result is not over-read: the AST rule reads neither
+`rfx/` production code nor the validation scripts a test may import, and the
+subprocess rule cannot check a module that raises `Skipped` on import (two do,
+for optional dependencies — it names them if it fails).
 """
 from __future__ import annotations
 
 import ast
+import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -280,3 +296,88 @@ def test_the_sanctioned_list_is_an_exact_path_not_a_basename():
         assert (REPO_ROOT / relative).is_file(), (
             f"{relative} does not exist — a stale exemption hides whatever takes its name"
         )
+
+
+# Run in a CHILD interpreter, because the question is what a fresh process looks
+# like after an import. Every module is imported in one child rather than one
+# child each: the variable is read from the environment after each import, which
+# is independent of whether jax has already been imported by an earlier one, and
+# 579 subprocesses would cost minutes instead of seconds.
+_IMPORT_PROBE = r"""
+import importlib, json, os, pathlib, sys
+
+sys.path.insert(0, os.getcwd())
+KEY = "JAX_ENABLE_X64"
+os.environ.pop(KEY, None)
+
+scanned = 0
+offenders, skipped, broken = [], [], []
+for path in sorted(pathlib.Path("tests").rglob("test_*.py")):
+    module = ".".join(path.with_suffix("").parts)
+    scanned += 1
+    try:
+        importlib.import_module(module)
+    except BaseException as exc:  # a Skipped is pytest's own, not a failure
+        target = skipped if type(exc).__name__ == "Skipped" else broken
+        target.append([module, type(exc).__name__, str(exc)[:200]])
+        continue
+    if KEY in os.environ:
+        offenders.append([module, os.environ[KEY]])
+        os.environ.pop(KEY, None)
+
+print(json.dumps({"scanned": scanned, "offenders": offenders,
+                  "skipped": skipped, "broken": broken}))
+"""
+
+
+def _run_import_probe() -> dict:
+    env = dict(os.environ)
+    env.pop(_ENV_KEY, None)
+    proc = subprocess.run(
+        [sys.executable, "-c", _IMPORT_PROBE],
+        cwd=str(REPO_ROOT), env=env, capture_output=True, text=True, timeout=1800,
+    )
+    assert proc.returncode == 0, (
+        f"the import probe exited {proc.returncode}\n"
+        f"--- stdout ---\n{proc.stdout[-2000:]}\n--- stderr ---\n{proc.stderr[-2000:]}"
+    )
+    lines = [line for line in proc.stdout.splitlines() if line.strip()]
+    assert lines, f"the import probe printed nothing\nstderr:\n{proc.stderr[-2000:]}"
+    return json.loads(lines[-1])
+
+
+def test_importing_a_test_module_does_not_set_the_env_flag():
+    """The shape the AST scan cannot see: an import that runs a script.
+
+    A module can leave `JAX_ENABLE_X64` set without containing a single
+    statement that sets it — by importing, or `exec_module`-ing, something that
+    does. That is what cv09's gate did through
+    `validation/crossval/09_half_symmetric_waveguide.py`, and why removing the
+    test module's own duplicate of the line changed nothing measurable.
+
+    So this asks the only question that settles it: after importing a test
+    module in a fresh interpreter with the variable unset, is it still unset.
+    """
+    report = _run_import_probe()
+
+    assert report["scanned"] > 400, (
+        f"the probe imported only {report['scanned']} modules — its glob is wrong, "
+        "so a clean result here means nothing"
+    )
+    assert not report["broken"], (
+        "test module(s) that could not be imported at all, so they were NOT "
+        f"checked: {[row[:2] for row in report['broken']]}. Make the module "
+        "importable, or skip it the way pytest does (`pytest.skip(..., "
+        "allow_module_level=True)`), which this probe records as skipped."
+    )
+    assert not report["offenders"], (
+        "importing these test module(s) left JAX_ENABLE_X64 set in the process: "
+        + ", ".join(f"{name} -> {value!r}" for name, value in report["offenders"])
+        + ".\n\nNothing in the module need say so: importing or exec'ing a "
+        "validation script runs ITS module-level env line. JAX reads the "
+        "variable at its first import, so this flips a process-global flag for "
+        "whatever has not imported jax yet, and leaks into every subprocess a "
+        "later test spawns. Load the script lazily (a module-scope fixture, or "
+        "an accessor called inside the tests) and restore the variable around "
+        "the load — see tests/crossval/test_crossval_cv09_mirror_plane_gate.py."
+    )

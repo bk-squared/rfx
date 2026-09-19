@@ -28,36 +28,81 @@ solves at the end carry the frequency-domain half of the falsifier.
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-# No module-level ``os.environ.setdefault("JAX_ENABLE_X64", "1")`` here. JAX reads
-# that variable once, when ``jax`` is first imported, and the repository-root
-# ``conftest.py`` imports jax at collection time — before this module is imported.
-# The line that used to sit here was therefore dead under pytest (measured: with
-# jax already imported, the setdefault leaves ``jax.config.jax_enable_x64`` False),
-# and had it ever arrived first it would have flipped a process-global flag for
-# every other test in the shard. These gates are geometry and frequency ratios and
-# run at whatever dtype the session started with. See
-# ``tests/contracts/test_no_module_level_x64.py``.
+# This module used to carry its own ``os.environ.setdefault("JAX_ENABLE_X64",
+# "1")``. It is gone, and so is the transitive one underneath it: loading cv09
+# ran the script's copy of the same line. Both are handled below. See
+# ``tests/contracts/test_no_module_level_x64.py`` for the rule and its gates.
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CV09_PATH = REPO_ROOT / "validation" / "crossval" / "09_half_symmetric_waveguide.py"
+_X64_ENV = "JAX_ENABLE_X64"
 
 
 def _load_cv09():
-    """Import cv09 without executing its ``__main__`` block."""
+    """Import cv09 without its ``__main__`` block, and without its env line.
+
+    ``09_half_symmetric_waveguide.py`` does ``os.environ.setdefault(
+    "JAX_ENABLE_X64", "1")`` at module scope, for its own standalone
+    ``python …`` use where it runs before ``import rfx``. Executing the script
+    here runs that line too, in this process. JAX reads the variable once, at
+    its first import, so the value either arrives too late to do anything or --
+    when this module is imported before jax, which is what happens outside
+    pytest -- flips a process-global flag for everything that follows. It also
+    stays in the environment of every subprocess a later test spawns.
+
+    Measured before this restore, importing this module in a fresh interpreter:
+    ``env=1 jax_imported=True x64=True``. After: ``env=None``. The variable is
+    put back exactly as it was, set or unset, so neither importing nor
+    exercising this module changes the environment.
+    """
+    had_env = _X64_ENV in os.environ
+    previous = os.environ.get(_X64_ENV)
     spec = importlib.util.spec_from_file_location("_cv09_mirror_gate", CV09_PATH)
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        if had_env:
+            os.environ[_X64_ENV] = previous
+        else:
+            os.environ.pop(_X64_ENV, None)
     return module
 
 
-cv09 = _load_cv09()
+class _LazyCv09:
+    """cv09, loaded on first attribute access rather than at import.
+
+    ``cv09 = _load_cv09()`` at module scope made merely COLLECTING this file
+    execute the validation script, in every process that collects it, before a
+    single test ran. Loading on first use moves that into the test that needs
+    it, which is what makes the guard's subprocess check
+    (``test_importing_a_test_module_does_not_set_the_env_flag``) pass rather
+    than be worked around.
+
+    A proxy rather than a fixture because all ~80 references in this file are
+    already ``cv09.<name>`` inside a function body: the proxy makes every one
+    of them lazy without touching any, where a fixture would have to be
+    threaded through the four module-level helpers as well. ``hasattr`` still
+    behaves -- a missing name raises AttributeError from the real module.
+    """
+
+    _module = None
+
+    def __getattr__(self, name: str):
+        if _LazyCv09._module is None:
+            _LazyCv09._module = _load_cv09()
+        return getattr(_LazyCv09._module, name)
+
+
+cv09 = _LazyCv09()
 
 
 def _half_axes(half_x: float, dx: float | None = None) -> dict:
