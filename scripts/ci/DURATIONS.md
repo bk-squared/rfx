@@ -100,30 +100,34 @@ real collection, with the four `--ignore` flags both workflows pass:
 - slow (`--splits 4`, `-m "not gpu and not highmem"`, 10435 tests): 69.9 / 81.4 / 83.1 / 90.8 min
   against the 120-minute cap.
 
-Then the reading that step 5 calls the check. This pull request's fast lane ran twice on this
-file, which turned out to be the useful part:
+Then the reading that step 5 calls the check. This pull request's fast lane ran three times on
+this file, which turned out to be the useful part:
 
-| group | tests | predicted | run 1 | run 2 |
-|---|---|---|---|---|
-| 1 | 4258 | 26.0 min | 20.3 | 27.2 |
-| 2 | 1808 | 25.7 min | 31.4 | 28.7 |
-| 3 | 1438 | 25.7 min | 29.7 | 29.6 |
-| 4 | 1459 | 27.1 min | 28.2 | 30.6 |
-| 5 | 898 | 26.2 min | 29.0 | 29.4 |
-| 6 | 363 | 23.2 min | 11.1 | 20.0 |
-| | | critical | **31.4** | **30.6** |
-| | | spread | 2.8x | 1.5x |
+| group | tests | predicted | run 1 | run 2 | run 3 |
+|---|---|---|---|---|---|
+| 1 | 4258 | 26.0 min | 20.3 | 27.2 | 20.0 |
+| 2 | 1808 | 25.7 min | 31.4 | 28.7 | 28.6 |
+| 3 | 1438 | 25.7 min | 29.7 | 29.6 | 23.2 |
+| 4 | 1459 | 27.1 min | 28.2 | 30.6 | 19.0 |
+| 5 | 898 | 26.2 min | 29.0 | 29.4 | 15.2 |
+| 6 | 363 | 23.2 min | 11.1 | 20.0 | 22.5 |
+| | | **critical** | **31.4** | **30.6** | **28.6** |
+| | | spread | 2.8x | 1.5x | 1.9x |
 
-Against 42 min and 8.0x on the file this replaces. **Quote the critical path, not the spread.**
-The two runs used the same split on the same file, so every per-shard difference between them is
-runner noise, and it reaches 9 minutes on group 6 and 7 on group 1. A spread computed from one
-run is therefore not a property of the file: 2.8x and 1.5x are the same configuration read twice.
-The critical path moved 0.8 min between them, which is why it is the number worth reporting.
+The lane the committed file gives, observed on pull request 1108:
+5.3 / 33.6 / 34.5 / 24.3 / 34.6 / 42.4 min, critical path 42.4, spread 8.0x.
 
-The predictions are close on groups 2 through 5 and high on 1 and 6 in both runs, so there is
-probably a real per-test difference between the regen lane and the pull-request lane on top of
-the noise. Nothing measured here identifies it. Re-read this table after the next regen rather
-than repeating a cause nobody has evidence for.
+**The reportable result is the critical path: 28.6 to 31.4 min, against 42.4.** Nothing finer is
+supportable from this lane. All three runs used the same split on the same file, so every
+difference between them is runner noise, and it reaches 14 minutes on group 5 and 9 on group 1
+and group 6. A spread from one run is not a property of the file -- 2.8x, 1.5x and 1.9x are one
+configuration read three times -- and neither is any statement about which group runs over or
+under its prediction: each of those held in one run and reversed in the next.
+
+The simulated 1.2x is not wrong, it is just finer than this lane can resolve. Do not quote it, do
+not quote a single run's spread, and do not read a per-group difference as a mechanism. Re-read
+the critical path after the next regen. (Each push produces another reading; these three are
+where the range stopped moving, not where the runs stopped.)
 
 For contrast, the file this replaces predicts 35.3 / 36.5 / 36.5 / 36.5 / 36.5 / 37.6 min on the
 fast lane — a flat-looking simulation that the lane does not obey, because 3077 of the 10224
