@@ -74,13 +74,17 @@ and nonuniform_patch_demo (lossless Q, off-lattice design edges), which are
 the two the tutorial's own text already explains; the other new variants emit
 none. #742 (the false positives and
 the never-emitted advisories that made a zero-advisory bar unworkable) is
-CLOSED. The rows that remain are statements about the examples' own meshes
-and ports, so getting to zero means changing those examples -- separate
-work from this gate, which pins whatever they say. Whether that work
-happens at all (tighten to a zero-UNEXPLAINED-advisory bar by classifying
-all of them) or the gate stays a drift pin is an open PI decision on #737;
-until it is taken, this file is a drift pin and the tracker's first
-comment's "tighten once #742 closes" plan has NOT been executed.
+CLOSED, and the "tighten once #742 closes" step the tracker's first comment
+planned HAS been executed -- as the zero-UNEXPLAINED-advisory bar described
+above, which is the form that survived #742 closing.
+
+What is still open is the OTHER reading of that comment, a bar of zero
+advisories at all. The rows that remain are true statements about the
+examples' own meshes and ports, so reaching zero means changing those
+examples -- separate work from this gate, which pins whatever they say.
+Whether it happens is a PI decision on #737. Until it is taken this file is
+both things at once: a drift pin on what every audited example emits, and a
+bar on every pinned row carrying a written disposition.
 
 Every pinned row carries a disposition. Two are ``defect-open`` -- #928 for
 cv07's congruent-feed parity and #1100 for the taper's declared-vs-realized
