@@ -145,11 +145,29 @@ fact, pre-declared body/JSON untouched)
 The "within 0.4% at all six points" reading just above is a PRE-#802
 result. The realized-board anchor reused each point's z0_measured_ohm
 from THIS file's JSON, solved on the pre-#802 f32 rasterization. Main's
-exact-coordinate rasterizer (#802/#834) moves three of the six aligned
-points' realized trace width (h_sub/3 677.3->592.7um, h_sub/5
-609.6->558.8um, h_sub/6 592.7->635.0um), so both the measured Z0 and the
-realized-board HJ anchor on those points change and the 0.4% figure is no
-longer a live bound for them. The user-facing preflight advisories were
+exact-coordinate rasterizer (#802/#834) moves three of the six points'
+realized trace width, so both the measured Z0 and the realized-board HJ
+anchor on those points change and the 0.4% figure is no longer a live
+bound for them.
+
+WHICH three, re-measured on main 2026-09-19 (issue #752 re-verification;
+metadata only, ``sim.fidelity_report(print_report=False)`` on this file's
+own ``run_one`` geometry, x64-invariant -- identical under
+JAX_ENABLE_X64=0 and 1). The 2026-09-02 list above named the wrong set
+and is superseded by this one; it is left in place because the reasoning
+around it still holds.
+
+    label             dx (um)   W frozen   W main    delta
+    aligned h_sub/3    84.667     677.3     592.667   -1 cell
+    aligned h_sub/4    63.500     635.0     571.500   -1 cell
+    aligned h_sub/5    50.800     609.6     609.600    same
+    aligned h_sub/6    42.333     592.7     592.667    same
+    misaligned 80um    80.000     560.0     640.000   +1 cell
+    misaligned 60um    60.000     600.0     600.000    same
+
+All six realized h_sub reproduce exactly (254/254/254/254/320/300um), and
+every realized trace face lands on a node; only the trace WIDTH moved,
+by exactly one cell on the three points above. The user-facing preflight advisories were
 corrected (finding A1) to state only the qualitative realized-board claim
 and to point here for the OWED re-solve. RE-SOLVE: run this script (6 FDTD
 points) on main, then regenerate the anchor with
@@ -179,7 +197,8 @@ and class docstring; the check now states the O(dx) convergence order,
 its <5% accuracy TARGET, and this re-solve pointer, and quotes no measured
 percentage.
 
-F3 -- the misaligned pair's "~0.2% still representative" sentence was
+F3 -- SUPERSEDED IN PART, see the note at the end of this block. The
+misaligned pair's "~0.2% still representative" sentence was
 asserted, not measured. Geometry invariance (realized W unchanged at #802)
 is necessary but not sufficient: the MSL extractor lane itself moved after
 this sweep ran (#698 port metric sizing, #771 N-probe fit span, #791,
@@ -191,6 +210,18 @@ Z0=57.572 ohm vs frozen 57.576 ohm; against HJ(560um,320um)=57.463 ohm
 that is +0.190%, vs the frozen row's +0.197%. So the misaligned half of
 the anchor IS live-representative, on evidence. The aligned half is still
 re-solve-owed, and two measured points do not make a six-point bound.
+
+F3's PREMISE DOES NOT HOLD ON MAIN (re-measured 2026-09-19, issue #752
+re-verification). "Realized W unchanged at #802" is false for misaligned
+80um: main rasterizes its trace at y 1120.000..1760.000um = 640.000um
+(8 cells), not the frozen 560.000um. HJ on the realized board therefore
+reads 53.11 ohm there, not 57.46, so pairing the frozen Z0=57.572 ohm
+with a live geometry rebuild is exactly the mismatch this whole issue is
+about. F3's conclusion -- that the misaligned half is live-representative
+-- rested on that premise and does not survive it. Of the misaligned
+pair only 60um still has its frozen geometry on main. Nothing in the
+frozen JSON changes; what changes is that neither half of the anchor can
+be called live without the owed six-point re-solve.
 
 COST OF THE OWED RE-SOLVE (measured, so nobody has to guess again): the
 frozen JSON's own ``wallclock_s`` column sums to 5686.6 s = 94.8 min on

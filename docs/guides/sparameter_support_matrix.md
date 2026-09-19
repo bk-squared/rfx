@@ -310,9 +310,10 @@ record compatibility, and the assumptions needed to interpret V/I as power.
   a uniform-permittivity `eps_override` around 1 with the nominal launch and
   reference model held fixed; it is an AD acceptance fixture, not an
   absolute line-impedance accuracy claim. Raw V/I, wave matrices, S and
-  actual field dtypes are retained in
-  `docs/research_notes/issue729/gpu-observable-ad-369367260436/`.
-  [Diagnosis and limits](../research_notes/issue729/ad-referee-diagnosis.md).
+  actual field dtypes were retained under `docs/research_notes/issue729/`,
+  which `docs/.gitignore` excludes from the repository — a clean clone does
+  not have them, so they are named here for provenance rather than linked,
+  and no claim on this page rests on a reader opening them.
   Historical #530 and #560 measurements remain in
   `scripts/diagnostics/msl_ad_band_mean_owner_measurement/owner_runs_20260804.md`
   and `scripts/diagnostics/msl_ad_z0_anchor_probe_run_20260806.md`. Their
