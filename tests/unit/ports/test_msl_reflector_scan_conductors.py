@@ -237,7 +237,6 @@ def test_the_measured_board_shape_warns_now():
     assert all(_pm.MSL_PROBE_CLEARANCE_GUIDANCE in m for m in hits)
     assert all("does not certify accuracy when absent" in m for m in hits)
     assert all("if it is empty, extend the uniform feed region" in m for m in hits)
-    _retraction = ("Neither 'S11/S21 are unaffected' nor the retired "
-                   "'-5 to -10 dB' figure is right.")
+    _retraction = _pm.MSL_PROBE_CLEARANCE_RETRACTION
     assert not any("-5 to -10 dB" in m.replace(_retraction, "") for m in hits)
     assert not any("are unaffected" in m.replace(_retraction, "") for m in hits)

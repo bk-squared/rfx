@@ -144,6 +144,14 @@ MSL_EPS_EFF_PROXY = 5.0
 #: can assert the run id survives every rewording of the sentence.
 MSL_PROBE_CLEARANCE_WITNESS = "VESSL 369367260508, cv06b fixed-source"
 
+#: The ONE sentence allowed to quote either retired claim, because it is what
+#: retracts them. Named so every test that asserts "this site does not state a
+#: retired claim" can strip exactly this and nothing else -- three of them do.
+MSL_PROBE_CLEARANCE_RETRACTION = (
+    "Neither 'S11/S21 are unaffected' nor the retired '-5 to -10 dB' figure "
+    "is right."
+)
+
 #: What probe-clearance corruption does, in one sentence, with its numbers.
 #: Both the preflight layout warning and ``compute_msl_s_matrix``'s Z0 guard
 #: embed this, so the two cannot drift apart again (#726).
@@ -154,9 +162,9 @@ MSL_PROBE_CLEARANCE_EFFECT = (
     "railed on 51/51 bins over 3-5 GHz against 0/51 for the control - while "
     "raw S11 at the 3.77125 GHz notch bin moved +0.026895 -> +0.018065 dB, a "
     "difference of 0.009 dB, because S11/S21 normalize with the analytic "
-    "Hammerstad-Jensen Z0 rather than the fit. Neither 'S11/S21 are "
-    "unaffected' nor the retired '-5 to -10 dB' figure is right. That "
-    "comparison's producer verdict was not_read (the low-signal checks "
+    "Hammerstad-Jensen Z0 rather than the fit. "
+    + MSL_PROBE_CLEARANCE_RETRACTION +
+    " That comparison's producer verdict was not_read (the low-signal checks "
     "flagged both arms' notch bins), so 0.009 dB is a difference between two "
     "arms and not an accuracy certificate."
 )

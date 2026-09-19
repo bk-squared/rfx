@@ -323,10 +323,9 @@ _RETIRED_CLAIMS = (
 
 #: The ONE sentence allowed to quote both retired claims, because it is what
 #: retracts them. Every other occurrence at either site is a regression.
-_RETRACTION = (
-    "Neither 'S11/S21 are unaffected' nor the retired '-5 to -10 dB' figure "
-    "is right."
-)
+#: Read from the module so a reworded retraction cannot silently widen what
+#: these tests forgive.
+_RETRACTION = preflight_msl.MSL_PROBE_CLEARANCE_RETRACTION
 
 
 def _preflight_layout_message(sim):

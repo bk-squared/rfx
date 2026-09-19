@@ -1081,7 +1081,13 @@ def test_fitted_impedance_and_beta_cannot_change_production_s(tmp_path, monkeypa
     b, dump_b, warnings_b = _run_with(planes, tmp_path, "fit_b", **run_args)
     assert any("Fitted Z0/beta are not used in S11/S21" in w
                and "does not certify those inputs" in w for w in warnings_b)
-    assert not any("S11/S21 are unaffected" in w for w in warnings_b)
+    # #726: the guard now also carries the measurement, whose one retraction
+    # sentence QUOTES the retired claim in order to withdraw it. Strip exactly
+    # that sentence; anywhere else it would still be the guard asserting it.
+    from rfx.preflight.msl import MSL_PROBE_CLEARANCE_RETRACTION as _RETRACT
+    assert any(_RETRACT in w for w in warnings_b)
+    assert not any("S11/S21 are unaffected" in w.replace(_RETRACT, "")
+                   for w in warnings_b)
     assert a.assembly == b.assembly == "multi_drive_solve"
     assert np.max(a.cond_a) < 1e3 and np.max(b.cond_a) < 1e3
     assert not np.array_equal(a.Z0, b.Z0)
