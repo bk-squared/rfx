@@ -19,7 +19,7 @@ request 939 — shard 1 held 3426 tests summing to 1149.7 s and spent 1817 s of 
 0.195 s per test unaccounted for.
 
 That reading no longer describes this lane. The falsifier is the shard the committed file assigns
-to group 1, measured three ways:
+to group 1, priced three ways. Measured 2026-09-18, when that shard held 3067 tests:
 
 | | shard 1 |
 |---|---|
@@ -27,13 +27,14 @@ to group 1, measured three ways:
 | predicted with 0.3 s added to each of its 3067 tests | 19.5 min |
 | **observed**, `fast-suite (1)` on pull request 1108 | **5 min 19 s** |
 
-The floored model is 3.7x over the observation; the unfloored model is 1.1 min under it. Whatever
-per-test overhead the 2026-09-08 runner had, the runner this lane uses now does not have it at
-anything like 0.195 s, and adding 0.3 s to 10625 entries adds 53 minutes of fiction spread evenly
-across the lane. Evenly is the problem: a constant per test does not model a real cost, it just
-pulls every shard toward equal test COUNTS and away from equal time. On this file it raises the
-predicted critical path from 27.1 min to 34.5 min while the observed lane runs at the unfloored
-prediction.
+The floored model is 3.7x over the observation; the unfloored model is 1.1 min under it. One
+reading of a noisy runner cannot separate 4.2 from 5.3, but it settles 19.5: shard 1 has come in
+at 4.5-5.3 min in every one of the four observed runs of the committed file listed under Balance,
+so the floored model is wrong by a factor, not by noise. Whatever per-test overhead the
+2026-09-08 runner had, the runner this lane uses now does not have it at anything like 0.195 s,
+and adding 0.3 s to 10625 entries adds 53 minutes of fiction spread evenly across the lane.
+Evenly is the problem: a constant per test does not model a real cost, it just pulls every shard
+toward equal test COUNTS and away from equal time.
 
 So the floor is gone, and step 4 of Regenerating below says not to re-add it. Two consequences to
 keep in mind:
@@ -92,46 +93,58 @@ overwrite this one from the a6000 map.
 
 ## Balance
 
-Simulated on this file with `pytest_split.algorithms.Algorithms['duration_based_chunks']` over the
-real collection, with the four `--ignore` flags both workflows pass:
+Every number here is anchored, because both of its inputs move. The collection grows with the
+tree: measured at c0ee0a7d the fast lane's selection holds 10472 tests and the slow lane's 10683,
+where the same measurement three days earlier gave 10224 and 10435. And a shard time is one
+reading of a noisy runner. So the simulation below is quoted at one commit, and the lane is
+quoted as a range over repeated runs.
 
-- fast (`--splits 6`, 10224 tests): 23.2 / 25.7 / 25.7 / 26.0 / 26.2 / 27.1 min — spread 3.9 min,
-  critical path 27.1 min.
-- slow (`--splits 4`, `-m "not gpu and not highmem"`, 10435 tests): 69.9 / 81.4 / 83.1 / 90.8 min
+Simulated at c0ee0a7d with `pytest_split.algorithms.Algorithms['duration_based_chunks']` over
+that collection, with the four `--ignore` flags both workflows pass:
+
+- fast (`--splits 6`), this file: 21.5 / 26.3 / 27.0 / 27.4 / 27.6 / 27.9 min, critical path
+  27.9. 10158 of the 10472 collected tests have a recorded duration.
+- fast (`--splits 6`), the file this replaces: 35.3 / 37.4 / 37.4 / 37.4 / 37.5 / 39.2 min,
+  critical path 39.2 -- flat-looking, and the lane never obeys it, because 3325 of the same
+  10472 are absent from that file and pytest-split charges every absent test the average of the
+  ones it knows.
+- slow (`--splits 4`, `-m "not gpu and not highmem"`), this file: 67.4 / 83.3 / 85.6 / 96.6 min
   against the 120-minute cap.
 
-Then the reading that step 5 calls the check. This pull request's fast lane ran three times on
-this file, which turned out to be the useful part:
+Then the reading step 5 calls the check, which is the lane itself. This file, five runs of this
+pull request's fast lane (the tree grew between runs, so the split is not identical across
+columns; compare down a column, not across a row):
 
-| group | tests | predicted | run 1 | run 2 | run 3 |
+| group | run 1 | run 2 | run 3 | run 4 | run 5 |
 |---|---|---|---|---|---|
-| 1 | 4258 | 26.0 min | 20.3 | 27.2 | 20.0 |
-| 2 | 1808 | 25.7 min | 31.4 | 28.7 | 28.6 |
-| 3 | 1438 | 25.7 min | 29.7 | 29.6 | 23.2 |
-| 4 | 1459 | 27.1 min | 28.2 | 30.6 | 19.0 |
-| 5 | 898 | 26.2 min | 29.0 | 29.4 | 15.2 |
-| 6 | 363 | 23.2 min | 11.1 | 20.0 | 22.5 |
-| | | **critical** | **31.4** | **30.6** | **28.6** |
-| | | spread | 2.8x | 1.5x | 1.9x |
+| 1 | 20.3 | 27.2 | 20.0 | 27.0 | 15.7 |
+| 2 | 31.4 | 28.7 | 28.6 | 31.0 | 23.6 |
+| 3 | 29.7 | 29.6 | 23.2 | 22.3 | 28.5 |
+| 4 | 28.2 | 30.6 | 19.0 | 19.4 | 30.4 |
+| 5 | 29.0 | 29.4 | 15.2 | 26.4 | 28.3 |
+| 6 | 11.1 | 20.0 | 22.5 | 22.2 | 22.2 |
+| **critical** | **31.4** | **30.6** | **28.6** | **31.0** | **30.4** |
+| spread | 2.8x | 1.5x | 1.9x | 1.6x | 1.9x |
 
-The lane the committed file gives, observed on pull request 1108:
-5.3 / 33.6 / 34.5 / 24.3 / 34.6 / 42.4 min, critical path 42.4, spread 8.0x.
+The file this replaces, measured the same way: four runs of the fast lane on three branches that
+do not touch `.test_durations` (pull requests 1108, 1105 and 1107).
 
-**The reportable result is the critical path: 28.6 to 31.4 min, against 42.4.** Nothing finer is
-supportable from this lane. All three runs used the same split on the same file, so every
-difference between them is runner noise, and it reaches 14 minutes on group 5 and 9 on group 1
-and group 6. A spread from one run is not a property of the file -- 2.8x, 1.5x and 1.9x are one
-configuration read three times -- and neither is any statement about which group runs over or
-under its prediction: each of those held in one run and reversed in the next.
+| | run 1 | run 2 | run 3 | run 4 |
+|---|---|---|---|---|
+| **critical** | **42.4** | **41.6** | **37.7** | **35.8** |
+| spread | 8.0x | 8.7x | 8.3x | 7.9x |
 
-The simulated 1.2x is not wrong, it is just finer than this lane can resolve. Do not quote it, do
-not quote a single run's spread, and do not read a per-group difference as a mechanism. Re-read
-the critical path after the next regen. (Each push produces another reading; these three are
-where the range stopped moving, not where the runs stopped.)
+**The result: critical path 28.6-31.4 min against 35.8-42.4.** Nothing finer is supportable.
+Within either block the split is the same file's, so most of the movement is runner noise, and it
+reaches 14 minutes on group 5 and 11 on group 1.
 
-For contrast, the file this replaces predicts 35.3 / 36.5 / 36.5 / 36.5 / 36.5 / 37.6 min on the
-fast lane — a flat-looking simulation that the lane does not obey, because 3077 of the 10224
-collected tests are absent from it and pytest-split charges every absent test the average of the
-ones it knows. What that lane actually did on pull request 1108, shards 1 through 6:
-5m19s / 33m35s / 34m32s / 24m20s / 34m38s / 42m23s — 8.0x apart, 42 min of wall clock. Reading the
-merged pull request's own shard times is step 5 for exactly this reason.
+The two spreads are not the same kind of number, which is why both are ranges and only one of
+them means anything. The old file reads 7.9-8.7x across four runs because its shard 1 lands at
+4.5-5.3 min every time: that imbalance is systematic and survives the noise, and it is what this
+refresh removes. This file reads 1.5-2.8x across five runs of an almost unchanged split, so its
+spread IS the noise -- no run of it says anything the next run does not contradict, and neither
+does any claim about which group ran over or under its prediction.
+
+So quote the critical path. Do not quote the simulated 1.2x, which is finer than this lane can
+resolve, and do not read a per-group difference on this file as a mechanism. Re-read the critical
+path after the next regen, and re-measure the collection while you are there.
