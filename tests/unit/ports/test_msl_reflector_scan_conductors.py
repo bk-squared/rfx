@@ -228,8 +228,16 @@ def test_the_measured_board_shape_warns_now():
     hits = [m for m in msgs
             if "from a strong reflector" in m and "metal" in m]
     assert hits, msgs
-    # #726: proximity is a layout diagnostic, not a predicted error in dB.
-    assert all("The two-wave model includes standing waves" in m for m in hits)
-    assert all("does not quantify the S-parameter error" in m for m in hits)
+    # #726: proximity is a layout diagnostic, and what it costs is now a
+    # MEASURED statement rather than a predicted error in dB. The row carries
+    # the measurement and its witness, says what to gate on, and states
+    # neither of the two retired claims outside the sentence retracting them.
+    import rfx.preflight.msl as _pm
+    assert all(_pm.MSL_PROBE_CLEARANCE_EFFECT in m for m in hits)
+    assert all(_pm.MSL_PROBE_CLEARANCE_GUIDANCE in m for m in hits)
+    assert all("does not certify accuracy when absent" in m for m in hits)
     assert all("if it is empty, extend the uniform feed region" in m for m in hits)
-    assert not any("-5 to -10 dB" in m for m in hits)
+    _retraction = ("Neither 'S11/S21 are unaffected' nor the retired "
+                   "'-5 to -10 dB' figure is right.")
+    assert not any("-5 to -10 dB" in m.replace(_retraction, "") for m in hits)
+    assert not any("are unaffected" in m.replace(_retraction, "") for m in hits)

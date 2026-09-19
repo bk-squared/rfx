@@ -95,6 +95,167 @@ _MSL_REALIZED_THICKNESS_TOL = 0.083
 MSL_EPS_EFF_PROXY = 5.0
 
 
+# --------------------------------------------------------------------------
+# Issue #726: ONE text for what probe-clearance corruption does, read by
+# BOTH sites that warn about it.
+#
+# The two used to contradict each other on the same run. The extractor's Z0
+# guard said "The V·I-split S11/S21 are unaffected"; preflight said the same
+# condition "will bias ... |S11|@notch — physical |S11|→1 at a quarter-wave
+# open stub may read as -5 to -10 dB instead of 0 dB". Both were prose, and
+# they decided whether a whole class of results was readable.
+#
+# The measurement that settles it (asked for as item 1 of #726, and the
+# reason neither number below may be paraphrased): VESSL run 369367260508,
+# fixture cv06b fixed-source, same source / load / DUT, with ONLY the p1
+# observation offset varied between the two arms. Both arms settled below
+# −118 dB.
+#
+#   near arm (probes at the reflector)   control arm (compliant offset)
+#   ----------------------------------   ------------------------------
+#   β scan railed on 51/51 bins,         railed on 0/51 bins
+#     3–5 GHz
+#   raw S11 at the 3.77125 GHz notch     +0.018065 dB
+#     bin: +0.026895 dB
+#
+#   difference in raw S11 at that bin: −0.008830 dB
+#
+# So the corruption is real and it lands on the FITTED quantities: β rails
+# and Z0 rides the standing wave (on the board runs the fitted Z0 ripple
+# correlates with |S11| in dB at r ≈ 0.77 while `reliable` is True on 100 %
+# of in-band bins). The V·I-split S11 normalizes with the ANALYTIC
+# Hammerstad-Jensen Z0, and it moved by 0.009 dB — not "unaffected", and not
+# −5 to −10 dB either.
+#
+# The producer verdict on that comparison was ``not_read``: the existing
+# low-signal checks marked both arms' notch bins False, so 0.009 dB is a
+# measured DIFFERENCE between two arms, never an accuracy certificate for
+# either. The −5 to −10 dB figure came from the shorted-line ladder, which
+# was withdrawn on 2026-09-13 (its arms changed source and load, its near
+# arm put the last probe on the realized short, and finite ground with open
+# CPML established no exact |S11| = 1 oracle). It must not be quoted as
+# measured.
+#
+# The raw coherent power excess seen on the same fixture (~1.011–1.013) is
+# issue #838 and has nothing to do with this condition.
+# --------------------------------------------------------------------------
+
+#: Witness for :data:`MSL_PROBE_CLEARANCE_EFFECT`; kept separate so a test
+#: can assert the run id survives every rewording of the sentence.
+MSL_PROBE_CLEARANCE_WITNESS = "VESSL 369367260508, cv06b fixed-source"
+
+#: What probe-clearance corruption does, in one sentence, with its numbers.
+#: Both the preflight layout warning and ``compute_msl_s_matrix``'s Z0 guard
+#: embed this, so the two cannot drift apart again (#726).
+MSL_PROBE_CLEARANCE_EFFECT = (
+    "Measured (" + MSL_PROBE_CLEARANCE_WITNESS + ", only the p1 observation "
+    "offset varied, both arms settled below -118 dB): standing-wave content "
+    "at the probes corrupts the FITTED Z0/beta - the near arm's beta scan "
+    "railed on 51/51 bins over 3-5 GHz against 0/51 for the control - while "
+    "raw S11 at the 3.77125 GHz notch bin moved +0.026895 -> +0.018065 dB, a "
+    "difference of 0.009 dB, because S11/S21 normalize with the analytic "
+    "Hammerstad-Jensen Z0 rather than the fit. Neither 'S11/S21 are "
+    "unaffected' nor the retired '-5 to -10 dB' figure is right. That "
+    "comparison's producer verdict was not_read (the low-signal checks "
+    "flagged both arms' notch bins), so 0.009 dB is a difference between two "
+    "arms and not an accuracy certificate."
+)
+
+#: What a caller should do, including when the feed admits no compliant
+#: offset at all ("interval empty") - #726 item 3.
+MSL_PROBE_CLEARANCE_GUIDANCE = (
+    "Gate on probe_clearance for the geometric condition and beta_railed "
+    "for the fitted-value symptom; reliable is a per-bin fit-quality mask "
+    "and gates neither. When no compliant offset exists on the available "
+    "feed length, keep the analytic Hammerstad-Jensen Z0 for normalization "
+    "(already the production path), treat the fitted Z0/beta as UNREADABLE "
+    "rather than merely uncertain, and read S11/S21 with the 0.009 dB "
+    "caveat above. The fix is to lengthen the uniform feed region or move "
+    "the reference plane; raising n_probe_offset alone moves the probes "
+    "toward the reflector."
+)
+
+
+def preflight_msl_probe_clearance(self, _w) -> None:
+    """Emit the probe-clearance condition on the ``calculator="msl"`` route.
+
+    Issue #726 item 2. ``preflight_sparameters(calculator="msl")`` is the
+    "should this simulation use this calculator?" check a caller runs before
+    an expensive solve, and it returned NOTHING on a port whose deepest probe
+    sat inside a reflector: measured on the four-direction fixture in
+    ``tests/unit/ports/test_msl_clearance_diagnostic.py``, that route gave 0
+    findings while ``preflight()`` gave 18 including the layout warning, and
+    the result object's ``probe_clearance`` said ``insufficient``. The
+    condition applied and the route the caller actually runs was silent.
+
+    It emits under the existing ``msl_port_geometry`` slug rather than a new
+    one: the same check family speaking about the same port, which is the
+    precedent checks 2c and 5 set (see
+    ``tests/unit/preflight/test_preflight_advisory_emission_contract.py``).
+    Callers that want only this route filter on
+    ``source == "preflight_sparameters"``.
+
+    This is deliberately SHORT next to ``_check_msl_port_geometry``'s check 4,
+    which stays the full layout treatment on ``preflight()``. It carries the
+    same :data:`MSL_PROBE_CLEARANCE_EFFECT` and
+    :data:`MSL_PROBE_CLEARANCE_GUIDANCE` text, so the routing lane cannot
+    contradict either of the other two sites — which is the whole of #726.
+
+    Mirrors the waveguide setup-audit block in ``preflight_sparameters``:
+    warnings are raised here and folded into the report by the caller, so the
+    coded fields survive into ``PreflightIssue``.
+    """
+    grid = None
+    try:
+        grid = self._build_realized_grid()
+    except Exception:  # noqa: BLE001 - preflight collects, never crashes
+        grid = None
+    entries = list(getattr(self, "_msl_ports", ()) or ())
+    resolver = getattr(self, "_resolve_msl_probe_entries", None)
+    if grid is not None and callable(resolver):
+        try:
+            with _w.catch_warnings(record=True):
+                _w.simplefilter("always")
+                entries = list(resolver(grid))
+        except (TypeError, ValueError, AttributeError):
+            pass
+    for pe in entries:
+        try:
+            record = msl_probe_clearance_for_port(self, pe, grid)
+        except Exception as exc:  # noqa: BLE001
+            _w.warn(PreflightWarning(
+                f"MSL port {pe.name!r}: the probe-clearance scan could not "
+                f"run on this route ({type(exc).__name__}: {exc}), so a "
+                f"clean read here is not evidence that the probes are clear.",
+                code="msl_port_geometry",
+                source="preflight_sparameters"), stacklevel=3)
+            continue
+        if record.status == "satisfied":
+            continue
+        if record.status == "unavailable":
+            _w.warn(PreflightWarning(
+                f"MSL port {pe.name!r}: probe clearance is UNAVAILABLE "
+                f"({record.note}); a clean read here is not evidence that "
+                f"the probes are clear of a downstream reflector. "
+                f"{MSL_PROBE_CLEARANCE_GUIDANCE}",
+                code="msl_port_geometry",
+                source="preflight_sparameters"), stacklevel=3)
+            continue
+        gap = record.deepest_gap_m
+        gap_txt = ("unknown" if gap is None
+                   else f"{gap * 1e6:.0f}um")
+        _w.warn(PreflightWarning(
+            f"MSL port {pe.name!r}: probe clearance is INSUFFICIENT before "
+            f"compute_msl_s_matrix runs — the deepest probe sits {gap_txt} "
+            f"from {record.reflector}, against the "
+            f"{msl_min_probe_clearance(float(self._freq_max)) * 1e6:.0f}um "
+            f"layout recommendation. {MSL_PROBE_CLEARANCE_EFFECT} "
+            f"{MSL_PROBE_CLEARANCE_GUIDANCE} preflight() reports the full "
+            f"layout interval for this port.",
+            code="msl_port_geometry",
+            source="preflight_sparameters"), stacklevel=3)
+
+
 def msl_min_probe_clearance(freq_max: float) -> float:
     """Existing layout recommendation: λ_g/4 at ``freq_max`` and epsilon=5.
 
@@ -1376,18 +1537,14 @@ def _check_msl_port_geometry(
                     f"distance estimated from registered conductor bounds); recommended "
                     f"≥ {min_probe_clear*1e6:.0f}µm "
                     f"(= λ_g/4 at f_max with ε_eff_proxy={MSL_EPS_EFF_PROXY:.1f}). "
-                    f"The two-wave model includes standing waves, but "
-                    f"fields outside that model can affect both measured "
-                    f"V/I and fitted Z0/beta near a discontinuity. This "
-                    f"layout warning does not quantify the S-parameter "
-                    f"error or certify accuracy when absent. Available "
-                    f"layout: {interval_txt}. Choose an offset within a "
-                    f"nonempty interval; if it is empty, extend the uniform "
-                    f"feed region to fit the source standoff, full probe "
-                    f"ladder and reflector clearance. Increasing the "
-                    f"offset alone moves probes closer to the reflector. "
-                    f"Check settling and observation-plane sensitivity "
-                    f"before interpreting S.",
+                    f"{MSL_PROBE_CLEARANCE_EFFECT} This layout warning does "
+                    f"not certify accuracy when absent. Available layout: "
+                    f"{interval_txt}. Choose an offset within a nonempty "
+                    f"interval; if it is empty, extend the uniform feed "
+                    f"region to fit the source standoff, full probe ladder "
+                    f"and reflector clearance. "
+                    f"{MSL_PROBE_CLEARANCE_GUIDANCE} Check settling and "
+                    f"observation-plane sensitivity before interpreting S.",
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),

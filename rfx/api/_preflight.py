@@ -1027,6 +1027,36 @@ class _PreflightMixin:
         # waveguide ports there is no layout to audit. Emitted as warnings by
         # the check sites (the repo idiom) and folded into the report here, so
         # the coded fields survive into PreflightIssue.
+        # Issue #726 item 2: the msl route used to return NOTHING on a port
+        # whose deepest probe sat inside a reflector (measured: 0 findings
+        # here against 18 from preflight(), same sim, while the result
+        # object's probe_clearance read "insufficient"). Same fold-in shape
+        # as the waveguide block below.
+        if key == "msl" and not len(issues):   # refuses bool() (#980)
+            if list(self._msl_ports):
+                import warnings as _mslmod
+                # Function-local, like compute_msl_s_matrix's own import of
+                # msl_probe_clearance_for_port: this module's namespace is
+                # pinned by SET EQUALITY in
+                # tests/locks/test_preflight_split_snapshot.py, and a new
+                # module-level name would be a surface change for a function
+                # that is not part of the #980 code motion.
+                from rfx.preflight.msl import (
+                    preflight_msl_probe_clearance,
+                )
+                with _mslmod.catch_warnings(record=True) as _msl_caught:
+                    _mslmod.simplefilter("always")
+                    preflight_msl_probe_clearance(self, _mslmod)
+                for _rec in _msl_caught:
+                    _inst = _rec.message
+                    issues.append(PreflightIssue(
+                        str(_inst),
+                        severity=getattr(_inst, "severity", "warning"),
+                        code=getattr(_inst, "code", "msl_port_geometry"),
+                        source=getattr(_inst, "source",
+                                       "preflight_sparameters"),
+                    ))
+
         if key == "waveguide" and not len(issues):   # refuses bool() (#980)
             _wg_entries = list(self._waveguide_ports)
             if _wg_entries:

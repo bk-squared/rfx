@@ -1110,6 +1110,14 @@ def compute_msl_s_matrix(
         # records and analytic reference still need their own checks.
         import warnings as _w
 
+        # Issue #726: ONE text for what probe-clearance corruption does,
+        # shared with the preflight layout warning that used to contradict
+        # this guard about the same condition. Imported, not copied.
+        from rfx.preflight.msl import (
+            MSL_PROBE_CLEARANCE_EFFECT,
+            MSL_PROBE_CLEARANCE_GUIDANCE,
+        )
+
         _S11_MAX = 1.0 + 0.05
         _Z0_TOL = 0.10
         for driven in range(n_ports):
@@ -1157,12 +1165,12 @@ def compute_msl_s_matrix(
                     "board (h_sub/W snapped to the lattice; see "
                     "sim.fidelity_report()) differs from the "
                     "declared one — not necessarily an extraction "
-                    "fault (issue #752). Fitted Z0/beta are not used in "
-                    "S11/S21, which use measured V/I and the analytic "
-                    "Z0 anchor; this does not certify those inputs. "
-                    "Check settling_db, the low-signal reliable mask, "
-                    "probe geometry and observation-plane sensitivity "
-                    "before interpreting S.",
+                    "fault (issue #752). It can also be probe-clearance "
+                    "corruption, which is the one case with a number on "
+                    "it: " + MSL_PROBE_CLEARANCE_EFFECT + " "
+                    + MSL_PROBE_CLEARANCE_GUIDANCE +
+                    " Check settling_db, probe_clearance, beta_railed and "
+                    "observation-plane sensitivity before interpreting S.",
                     stacklevel=2,
                 )
 
