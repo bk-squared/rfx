@@ -52,11 +52,19 @@ is not yet attributed. Treat rfx microstrip phase as carrying that bias until it
 is.
 → [#830](https://github.com/bk-squared/rfx/issues/830)
 
-**The microstrip `Z0` guard and preflight disagree about the same condition.**
-The guard says `|S11|` is unaffected; preflight says the same mixed-cell
-condition biases `|S11|`. One of the two statements is wrong and a user reading
-both gets contradictory advice.
-→ [#726](https://github.com/bk-squared/rfx/issues/726)
+**Microstrip `Z0` and `beta` are unreadable when the probes sit near a
+reflector.** The N-probe fit rides the standing wave instead of measuring the
+line: across the three board runs tabulated in #726 the fitted `Z0` reached
+2.4x the analytic value and its ripple tracked `|S11|` in dB at r = 0.71-0.77,
+while `reliable` was True on 100 % of in-band bins. Those three runs carry no
+VESSL id in the record. `S` itself is normalized with the analytic
+Hammerstad-Jensen `Z0` and moved far less, by 0.009 dB in one controlled
+comparison — one fixture, one bin, an arm-to-arm difference, not a bound on `S`.
+Gate on `probe_clearance` and `beta_railed`, not on `reliable`; the
+fix is a longer uniform feed or a moved reference plane. Every warning about
+this condition now carries that measurement, and `docs/guides/sparameter_support_matrix.md`
+has the full reading guidance. Settled in #726 (closed): the guard and preflight
+used to contradict each other about this, and the measurement decided it.
 
 ## Scattering
 
