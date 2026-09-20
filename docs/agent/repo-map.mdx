@@ -59,6 +59,7 @@ command is verified to return at least one hit on the current tree.
 | DFT-plane observables / objectives (differentiable) | `grep "def dft_field\|def field_energy\|def field_softmax" rfx/observables.py` | `rfx/observables.py` |
 | Realized conductor edges (what the SOLVE zeroes, not what was declared) — the ONE source; never re-derive from `pec_mask` | `grep "def realized_pec_edge_masks\|def realized_wall_planes\|def edge_is_pec\|def clear_edges" rfx/boundaries/pec.py` | `rfx/boundaries/pec.py` — volume/sheet/wire classification lives in `grep "def classify_pec_entry\|def sheet_spec_from_shape" rfx/geometry/rasterize_grid.py` |
 | Rasterization viewers (what the SOLVE actually builds, not what was declared) | `grep "def plot_rasterized_slice\|def plot_stack_profile" rfx/visualize.py` | `rfx/visualize.py` — import as `rfx.visualize.plot_rasterized_slice` / `rfx.visualize.plot_stack_profile` (not exported at top-level `rfx`, deliberately, to keep `rfx.__all__` curated — see `docs/guides/api_symbol_inventory.json`) |
+| Mesh lines for conductor sheet edges (a node 0.3 cell inside each edge, faces on nodes; the measured counterpart of the openEMS thirds rule) | `grep "def edge_aware_profile\|class SheetEdge" rfx/mesh_edges.py` | `rfx/mesh_edges.py` — feed the result to `Simulation(dx_profile=…, dy_profile=…)`; measurement in `scripts/diagnostics/pec_sheet_edge_offset.py` |
 
 ## Current port-family caveat
 

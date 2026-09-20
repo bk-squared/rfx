@@ -819,9 +819,17 @@ def fidelity_report(sim, print_report: bool = True):
                             detail=f"PLACEMENT off by {worst:.1f} um "
                                    f"({100 * worst / ext:.2f}% of the declared "
                                    f"{ext:.1f} um extent); {size_txt}",
-                            remedy="place a mesh node on this face "
-                                   "(non-uniform profile) or choose the cell "
-                                   "size / origin commensurate with it"))
+                            remedy=(
+                                "a sheet's in-plane edge is solved about 0.3 "
+                                "cell beyond its last node, so a node ON the "
+                                "edge is not the fix: put a node 0.3 cell "
+                                "INSIDE the metal with "
+                                "rfx.mesh_edges.edge_aware_profile "
+                                "(non-uniform profile for this axis)"
+                                if sheet_fp is not None else
+                                "place a mesh node on this face "
+                                "(non-uniform profile) or choose the cell "
+                                "size / origin commensurate with it")))
                     else:
                         # A curved/implicit shape has no face to put a node on;
                         # its bounding box is sampled, so the honest statement
