@@ -153,7 +153,21 @@ def build_problem():
     freq_max = 4.0e9                 # source bandwidth + dispersion check
     dx = lam / DX_FRAC
     cpml_layers = 10
-    half = HALF_FRAC * lam           # superstrate half-width
+    # Superstrate/plate half-width, SNAPPED to a whole number of cells.
+    #
+    # The reflector plate is a PEC SHEET, and a sheet realizes on the nodes
+    # its own rectangle covers (#931 §1.3), so a face that lands off a node
+    # line loses up to a full cell at EACH face. Measured on the SMOKE mesh
+    # before this snap (#737): HALF_FRAC*lam = 5.4 cells put both faces
+    # 0.1 cell above a node line, and fidelity_report read the declared
+    # 89937.7 um plate as a realized 74948.1 um one -- a reflector 16.67 %
+    # smaller than the number this script prints, on the demo whose whole
+    # subject is a finite reflector. Rounding the half-width to whole cells
+    # and forcing an EVEN lateral cell count (below) puts cx on a node and
+    # both plate faces on node lines, so declared == realized exactly.
+    # The paper lane is unchanged by both: HALF_FRAC*DX_FRAC = 0.75*20 = 15
+    # cells is already an integer and its lateral count is already even.
+    half = float(round(HALF_FRAC * lam / dx)) * dx
     slab_thick = dx * SLAB_CELLS_Z
 
     cpml_t = cpml_layers * dx
@@ -168,8 +182,11 @@ def build_problem():
     Lz = float(np.ceil((box_z_hi + m + cpml_t) / dx) * dx)
 
     # Lateral extent (binding constraint = superstrate edge clearance).
+    # An EVEN number of cells, so the centre cx = Lx/2 is a node and not a
+    # half-cell: with cx on a half-cell every face at cx +- (whole cells)
+    # is off-lattice by construction (#737).
     cx_min = cpml_t + m + half + half_lam
-    Lx = float(np.ceil((2.0 * cx_min) / dx) * dx)
+    Lx = float(2 * int(np.ceil(cx_min / dx)) * dx)
     Ly = Lx
     cx, cy = Lx / 2.0, Ly / 2.0
 

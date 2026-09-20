@@ -508,8 +508,9 @@ def test_msl_thru_line_z0_length_invariance_and_positive_sign():
     mismatch, not as a spread-lock problem.
 
     PLATFORM ENVELOPE (issue #610): both bounds above were derived/checked on
-    ONE platform with thin cross-machine headroom (0.24 pp / 0.0013). No two
-    datums share a commit, so cross-platform agreement is demonstrated as two
+    ONE platform with thin cross-machine headroom (0.24 pp / 0.0013). On the
+    RETIRED dx = 80 µm board no two datums share a commit, so cross-platform
+    agreement there is demonstrated as two
     same-regime PAIRS, not at a fixed commit: pre-drift {dev 0.4607 % @69a6956a,
     GitHub runner 0.46 % @90c79d1d, 4 rfx/ commits apart} and post-drift
     {GitHub runner 0.47 % @7f68f9fb and @8e004976, this pod 0.4676 % @1f005d0d}.
@@ -523,6 +524,30 @@ def test_msl_thru_line_z0_length_invariance_and_positive_sign():
     rows are hand- or print-captured at 2-5 dp, only the pod row is full
     float32) and tests/locks/test_msl_z0_platform_datums.py for the fast structural
     check that keeps it internally consistent with THIS test's own gate.
+
+    BOARD (issue #1084). Every row summarised in the paragraph above was
+    measured on the RETIRED dx = 80 µm board, and until 2026-09-16 the ledger
+    said so nowhere: it carried one top-level `recipe` with dx = 8e-05 while
+    naming THIS test, which has run the #931 board since the migration. The
+    ledger is now board-versioned (schema_version 2: a `boards` map, a `board`
+    key on every row, `active_board`), and the lock asserts that the active
+    board's dx IS this module's DX. The #931 board now has four rows of its
+    own, and unlike the retired board it HAS a same-commit cross-platform pair:
+    at c6788ef7 the AMD EPYC 9654 CPU host (jax 0.10.2 / numpy 2.4.6) reads
+    spread 0.000477 and an RTX 4090 GPU (jax 0.4.33, VESSL 369367261423) reads
+    0.000570 — 0.0093 pp apart, inside the 0.05 pp policy threshold, so CPU and
+    GPU AGREE on this board. The 0.16 % this docstring quotes from VESSL
+    369367259284 is the odd row: that job pinned JAX_PLATFORMS=cpu (so it is a
+    CPU measurement despite the GPU preset) and its own `git rev-parse HEAD`
+    printed 'no git', so its tree is known only as branch
+    feat/931-t2-sparams-ports. A control run at c6788ef7 on the CPU host under
+    that job's exact runtime stack (jax[cpu] 0.6.2, numpy 1.26.4) is filed as a
+    datum too, so 'stack' and 'tree' are separated rather than assumed. The
+    0.16 % itself is recorded and left UNCLASSIFIED — the policy classifies
+    same-commit disagreements, and that row has no commit.
+    Nothing here re-derives a bound: MEASURED_SPREAD_ENVELOPE is still the
+    retired board's 0.004607, and the #931 board's envelope would TIGHTEN the
+    gate, which is a PI decision and not this issue's.
 
     The envelope has DRIFTED since 2026-08-09: a full-precision pod re-measure
     at HEAD (1f005d0d) gives spread = 0.0046760 (0.4676%) vs the committed
