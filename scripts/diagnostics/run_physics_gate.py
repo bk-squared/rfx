@@ -333,8 +333,8 @@ GATE_GROUPS: tuple[GateGroup, ...] = (
     GateGroup(
         group_id="slow_nonuniform_subgrid_subpixel",
         description=(
-            "Slow nonuniform, subgrid, and subpixel convergence/crossval "
-            "checks."
+            "Slow nonuniform and subpixel convergence checks (the subgrid "
+            "crossval file this group also ran was removed under #1127)."
         ),
         tests=(
             "tests/oracle/test_nonuniform_convergence.py",
