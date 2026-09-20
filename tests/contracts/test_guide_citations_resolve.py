@@ -62,6 +62,14 @@ _REF_LINK = re.compile(r"^\[(?!\^)[^\]]+\]:[ \t]*(\S+)", re.MULTILINE)
 _SKIP_SCHEME = ("http://", "https://", "mailto:", "#", "/")
 
 
+def _strip_angle_brackets(target: str) -> str:
+    """CommonMark allows ``[text](<path with spaces>)``. Rejecting any target
+    containing ``<`` let that whole form slip the gate."""
+    if target.startswith("<") and target.endswith(">"):
+        return target[1:-1]
+    return target
+
+
 def _looks_like_a_path(target: str) -> bool:
     """A link target that could name a file: it has a directory part or a
     suffix. Keeps prose and maths out of a gate about paths."""
@@ -88,7 +96,7 @@ def unresolved_links(page_dir: Path, text: str) -> list[tuple[str, str]]:
     for raw in _LINK.findall(text) + _REF_LINK.findall(text):
         if raw.startswith(_SKIP_SCHEME):
             continue
-        target = raw.split("#", 1)[0]
+        target = _strip_angle_brackets(raw).split("#", 1)[0]
         if not target or not _looks_like_a_path(target):
             continue
         resolved = (page_dir / target).resolve()
@@ -132,6 +140,17 @@ def test_a_reference_style_link_does_not_slip_the_gate() -> None:
     ref = "See [the protocol][p].\n\n[p]: ../research_notes/issue752/fresh/protocol.md\n"
     assert len(unresolved_links(guides, ref)) == 1
     live = "See [the matrix][m].\n\n[m]: support_matrix.md\n"
+    assert unresolved_links(guides, live) == []
+
+
+def test_an_angle_bracket_target_does_not_slip_the_gate() -> None:
+    """``[text](<path>)`` is valid CommonMark. The first version of the
+    path-shape filter rejected any target containing ``<``, which meant this
+    whole form was skipped rather than checked."""
+    guides = REPO / "docs" / "guides"
+    dead = "See [the protocol](<../research_notes/issue752/fresh/protocol.md>).\n"
+    assert len(unresolved_links(guides, dead)) == 1
+    live = "See [the matrix](<support_matrix.md>).\n"
     assert unresolved_links(guides, live) == []
 
 

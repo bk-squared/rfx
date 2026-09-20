@@ -165,9 +165,9 @@ JAX_ENABLE_X64=0 and 1):
     misaligned 80um    80.000    560.0    560.000     640.000
     misaligned 60um    60.000    600.0    600.000     600.000
 
-The middle column IS the 2026-09-02 note's list (h_sub/3 677.3->592.7,
-h_sub/5 609.6->558.8, h_sub/6 592.7->635.0), measured on df819523, the
-tree that note describes. That note was CORRECT. A second move landed at
+The values on df819523 (2026-09-08) agree with the note's 2026-09-02 list
+(h_sub/3 677.3->592.7, h_sub/5 609.6->558.8, h_sub/6 592.7->635.0). That
+note was CORRECT. A second move landed at
 #931 (485a9b98, 2026-09-10, one geometry->lattice ownership contract for
 metal), which is why main today differs from both.
 
@@ -256,8 +256,8 @@ point (misaligned 80um: beta_railed 0/60 bins, reliable 9/9 in the gate, Z0
 flat over the gate 38.960-39.076 ohm, imag 0.126). On that evidence none of
 the repo's reliability gates flags these numbers.
 
-THE BOARD CHANGED TOO -- at least half of it is that, not the extractor. An
-earlier draft of this note claimed "the extractor moved, not the board" from
+THE BOARD CHANGED TOO, and how much of it is board is measured at ONE point
+only. An earlier draft of this note claimed "the extractor moved, not the board" from
 h_sub and trace-width columns alone. Those columns cannot see the CONDUCTOR's
 realization, and #931 (485a9b98) changed it on every point: before it a Box
 drawn one cell thick realized as a zero-thickness SHEET on one node plane
@@ -289,11 +289,15 @@ a separate full-HJ1980 reference. This re-solve used neither: a one-cell PEC
 volume scored against the simplified formula, with no model-error budget on
 either side.
 
-So: two known contributors (the #931 conductor realization, worth 4.27 pp at
-h_sub/3; and the anchor's own stated simplification, unbudgeted), and a -4.2%
-residual at h_sub/3 that neither explains. The residual is NOT attributed and
-no PR is named as its cause -- an earlier draft pointed at #986/#987 on the
-strength of the same columns that missed #931, which was not evidence.
+So, at the ONE point where the split was measured, it is about even: 4.27 pp
+of conductor thickness against a 4.21 pp residual. That is not dominance
+either way. The anchor's own stated simplification is a second known
+contributor with NO measured budget at all, the other five points have no
+split measured, and on the misaligned pair the total deviations are -26.5%
+and -21.9%. The residual is neither attributed to nor excluded from the
+extractor, and no PR is named as its cause -- an earlier draft pointed at
+#986/#987 on the strength of the same columns that missed #931, which was not
+evidence.
 
 OWED, deliberately not run in that PR: a six-point re-solve on node-aligned
 ZERO-THICKNESS foil boards, scored against both the repository formula and a
