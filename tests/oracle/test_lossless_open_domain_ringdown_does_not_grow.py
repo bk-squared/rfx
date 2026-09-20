@@ -19,7 +19,10 @@ effect of a contract change made for other reasons.  This is that pin.
 WHY THE FULL RECORD, AND WHY THE GPU LANE.  The unstable mode is seeded at round-off, so it
 only becomes visible once it has overtaken the decaying physical field.  How long that takes was
 MEASURED on this arm rather than estimated -- truncating the same record and scoring it with
-this file's own metrics:
+this file's own metrics.  THIS TABLE IS THE 2026-09-16 RECORD, taken on the (250, 189, 81)
+realization that existed before #1136; its ``mutated`` column is that grid's and the mutated arm
+no longer behaves this way (next section).  On today's (249, 189, 81) grid only the 150-period
+row has been re-measured: shipped -43.30, mutated -35.41.
 
     periods   steps    shipped    mutated     gate fires on the mutated arm?
        40      7109    -11.32     -14.69      no -- and the UNSTABLE arm scores BETTER
@@ -27,9 +30,11 @@ this file's own metrics:
       120     21327    -34.87     -18.40      no (rate +2.66e-5, under the bar)
       150     26659    -43.37       0.00      YES
 
-150 periods is therefore the FLOOR, not a margin: at 120 the mutated arm misses both halves of
-the gate, and at 40 it looks HEALTHIER than the shipped one.  A shortened record does not make
-this test cheaper, it makes it wrong.  (An analytic crossover estimate is deliberately not
+150 periods is therefore the FLOOR, not a margin: at 120 the SHIPPED arm has not reached the
+-40 dB bar either (-34.87), on the old grid the mutated arm missed both halves of the gate
+there, and at 40 it looked HEALTHIER than the shipped one.  A shortened record does not make
+this test cheaper, it makes it wrong.  Since #1136 the record length is bounded from ABOVE as
+well, for the falsifier: see the next-but-one section.  (An analytic crossover estimate is deliberately not
 quoted here: the growth and decay rates come from different estimators unless both are taken at
 this file's own blocking, and mixing them gives a step count that disagrees with the table
 above.)
@@ -80,9 +85,23 @@ that also had the facet, and it has not been re-derived without it.  (2) On the 
 today the mutation does not make the operator unstable on this record; it slows the decay
 (worst rate -8.4e-05 against -1.9e-04) and leaves the run 4.59 dB short of the -40 dB bar, so
 the gate is still red under it, through its SETTLING half alone -- the rate half passes
-(-8.4e-05 is below the -2.0e-05 bar).  The mutated row reproduced bit-for-bit across two GPU
-runs (369367262302 and 369367262373).  (3) The shipped arm moved by 0.07 dB between the two
+(-8.4e-05 is below the -2.0e-05 bar).  The mutated row agrees across two GPU runs
+(369367262302 and 369367262373) to the four figures the two logs print.  (3) The shipped arm moved by 0.07 dB between the two
 grids.  (4) Whether the pre-#931 rule grows on some other facet-free rig is not answered here.
+
+THE FALSIFIER NOW DEPENDS ON WHERE THE RECORD STOPS.  While the mutated arm grew, a longer
+record only made it redder.  It now DECAYS, so it is red only because it is still 4.59 dB short
+of the bar at step 26659, and a longer record would carry it under.  DERIVED, not measured
+(review of PR #1142): with the settling increment ``(20/ln 10) * rate * d(steps)`` applied from
+the tail window's start, a model that lands within ~1 dB on the shipped arm, the mutated arm
+crosses -40 dB at about 170 periods if the settling-worst probe is the fastest-decaying one
+(-1.501e-04) and about 187 if it is the slowest (-8.379e-05).  So ``NUM_PERIODS`` sits in a
+window: at least 150 for the healthy arm to settle, and not raised without re-measuring the
+mutated arm.  rfx's own truncated-ring-down advisory fires on the mutated run ("run ended at
+-36.8 dB of peak ... consider until_decay or more periods") and must NOT be followed here.  With
+a long enough record both arms pass the settling half, and the rate half does not separate them
+(-8.4e-05 passes the -2.0e-05 bar), so on today's grid this gate tells the two edge rules apart
+by a 7.89 dB difference in how far the ring-down has got by step 26659, and by nothing else.
 
 PRECISION.  The seed argument above is a float32 round-off argument, and the lane that produced
 this gate's red/green evidence pins ``JAX_ENABLE_X64=0``.  The production GPU lanes do not pin
@@ -120,17 +139,23 @@ PAD_H = 10                    # lateral padding each side, in h -- the growing a
 N_CELLS_PER_H = 4             # dx = h / N_CELLS_PER_H; the resolution the record was taken at
 F0, BW = 8.5e9, 1.6
 
-# The record the growth was measured on: 150 periods = 26659 steps.  This is a FLOOR, not a
-# margin: at 120 periods the mutated arm misses both halves of the gate.  See the docstring.
+# 150 periods = 26659 steps.  A FLOOR for the gate (the healthy arm is at -34.87 dB at 120
+# periods) and, since #1136, close to a CEILING for the falsifier: the mutated arm now decays and
+# is derived to cross -40 dB at about 170-187 periods.  Do not change it without re-measuring
+# both arms.  See the docstring.
 NUM_PERIODS = 150.0
 
 # Gate, two-sided.
-# (1) The shipped ring-down witness's own bar.  Measured on this arm: -43.37 dB shipped,
-#     0.00 dB mutated.
+# (1) The shipped ring-down witness's own bar.  Measured on this arm, shipped / mutated:
+#     -43.37 / 0.00 dB on the (250, 189, 81) grid before #1136; -43.30 / -35.41 dB on today's
+#     (249, 189, 81).
 SETTLING_DB_BAR = -40.0
-# (2) The late-time decay rate must be negative.  Measured: about -1.9e-4 per step shipped,
-#     +4.4e-4 per step mutated.  The bar sits an order of magnitude inside that gap, so a rate
-#     that is merely "not very negative" fails too.
+# (2) The late-time decay rate must be negative.  Measured worst rate per step, shipped /
+#     mutated: -1.934e-4 / +3.002e-4 before #1136; -1.926e-4 / -8.379e-5 today.  (An earlier
+#     revision quoted "+4.4e-4 mutated", a figure this file's harness produces on neither grid.)
+#     The bar sits an order of magnitude above the shipped rate, so a rate that is merely "not
+#     very negative" fails too.  It does NOT separate today's mutated arm, which passes it; the
+#     settling half does.
 MAX_LOG_RATE_PER_STEP = -2.0e-5
 
 
@@ -298,8 +323,9 @@ def test_the_gate_is_red_under_the_pre_931_edge_rule(monkeypatch):
         f"{settling:.2f} dB against {SETTLING_DB_BAR:.0f} dB. Recorded red state on the "
         f"(249, 189, 81) grid: worst -8.379e-05, settling -35.41 dB. Either the mutation stopped "
         f"reaching the solve (check that rfx.boundaries.pec._volume_edge_masks is still what "
-        f"realized_pec_edge_masks calls) or the realized fixture moved again -- in both cases "
-        f"the companion gate is no longer known to measure anything.")
+        f"realized_pec_edge_masks calls), or the realized fixture moved again, or NUM_PERIODS "
+        f"was raised (the mutated arm decays and is derived to cross the bar at about 170-187 "
+        f"periods) -- in every case the companion gate is no longer known to measure anything.")
 
 
 if __name__ == "__main__":  # measurement helper, not part of the suite
