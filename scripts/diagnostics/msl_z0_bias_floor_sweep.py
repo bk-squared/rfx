@@ -150,24 +150,30 @@ realized trace width, so both the measured Z0 and the realized-board HJ
 anchor on those points change and the 0.4% figure is no longer a live
 bound for them.
 
-WHICH three, re-measured on main 2026-09-19 (issue #752 re-verification;
+THE WIDTHS MOVED TWICE, and both lists above and below are right for
+their own date. Re-measured 2026-09-19/20 (issue #752 re-verification;
 metadata only, ``sim.fidelity_report(print_report=False)`` on this file's
 own ``run_one`` geometry, x64-invariant -- identical under
-JAX_ENABLE_X64=0 and 1). The 2026-09-02 list above named the wrong set
-and is superseded by this one; it is left in place because the reasoning
-around it still holds.
+JAX_ENABLE_X64=0 and 1):
 
-    label             dx (um)   W frozen   W main    delta
-    aligned h_sub/3    84.667     677.3     592.667   -1 cell
-    aligned h_sub/4    63.500     635.0     571.500   -1 cell
-    aligned h_sub/5    50.800     609.6     609.600    same
-    aligned h_sub/6    42.333     592.7     592.667    same
-    misaligned 80um    80.000     560.0     640.000   +1 cell
-    misaligned 60um    60.000     600.0     600.000    same
+    label             dx (um)   frozen   df819523   main today
+                                (pre-#802) (pre-#931) (post-#931)
+    aligned h_sub/3    84.667    677.3    592.667     592.667
+    aligned h_sub/4    63.500    635.0    635.000     571.500
+    aligned h_sub/5    50.800    609.6    558.800     609.600
+    aligned h_sub/6    42.333    592.7    635.000     592.667
+    misaligned 80um    80.000    560.0    560.000     640.000
+    misaligned 60um    60.000    600.0    600.000     600.000
 
-All six realized h_sub reproduce exactly (254/254/254/254/320/300um), and
-every realized trace face lands on a node; only the trace WIDTH moved,
-by exactly one cell on the three points above. The user-facing preflight advisories were
+The middle column IS the 2026-09-02 note's list (h_sub/3 677.3->592.7,
+h_sub/5 609.6->558.8, h_sub/6 592.7->635.0), measured on df819523, the
+tree that note describes. That note was CORRECT. A second move landed at
+#931 (485a9b98, 2026-09-10, one geometry->lattice ownership contract for
+metal), which is why main today differs from both.
+
+All six realized h_sub reproduce the frozen values exactly
+(254/254/254/254/320/300um) and every realized trace face lands on a
+node. But h_sub is NOT the whole board: see the conductor note below. The user-facing preflight advisories were
 corrected (finding A1) to state only the qualitative realized-board claim
 and to point here for the OWED re-solve. RE-SOLVE: run this script (6 FDTD
 points) on main, then regenerate the anchor with
@@ -240,20 +246,61 @@ the board THAT SAME BUILD realized:
     misaligned 80um    39.016      53.106    -26.53%    -98.0/ -99.7
     misaligned 60um    41.491      53.106    -21.87%    -98.9/-100.5
 
-Every point settled far below the -40 dB floor, probe clearance is SATISFIED
-on all twelve ports, and on the worst point the fit is well conditioned:
-beta_railed 0/60 bins, reliable 9/9 in the gate, Z0 flat over the gate
-(38.960-39.076 ohm, imag 0.126). So none of the repo's reliability gates
-flags these numbers -- they are a clean measurement that disagrees with the
-anchor.
+Every point settled far below the -40 dB floor. The readability numbers --
+probe clearance on all twelve ports, and the fit conditioning on the worst
+point -- are NOT in the run record above (``run_one`` returns none of those
+fields), so they are their own witness beside it,
+``msl_z0_bias_floor_sweep_readability_witness_2026-09-20.json``: clearance is
+build-only on the identical geometry, and the conditioning is ONE re-solved
+point (misaligned 80um: beta_railed 0/60 bins, reliable 9/9 in the gate, Z0
+flat over the gate 38.960-39.076 ohm, imag 0.126). On that evidence none of
+the repo's reliability gates flags these numbers.
 
-What moved is the EXTRACTOR, not the board. On the three points whose realized
-geometry is unchanged (h_sub/5, h_sub/6, misaligned 60um) the measured Z0 moved
--5.6%/-5.0%/-22.0% against the frozen rows, while the two points whose geometry
-DID move reproduce their frozen Z0 to within 0.24%. The MSL lane changed after
-this sweep ran; #986 (H->E reference-plane collocation) and #987
-(positive-real-reference power-wave normalization) are the candidates, and
-attributing it is not done here.
+THE BOARD CHANGED TOO -- at least half of it is that, not the extractor. An
+earlier draft of this note claimed "the extractor moved, not the board" from
+h_sub and trace-width columns alone. Those columns cannot see the CONDUCTOR's
+realization, and #931 (485a9b98) changed it on every point: before it a Box
+drawn one cell thick realized as a zero-thickness SHEET on one node plane
+(``rfx/fidelity.py``'s own words: "under the pre-#931 sheet rule the hi face
+was never a wall at any thickness"); after it, as a one-cell SLAB with walls on
+BOTH faces. Measured on this tree, the trace realizes:
+
+    label             trace z (um)      walls z (um)
+    aligned h_sub/3   254.0..338.7      254.0, 338.667
+    aligned h_sub/4   254.0..317.5      254.0, 317.500
+    aligned h_sub/5   254.0..304.8      254.0, 304.800
+    aligned h_sub/6   254.0..296.3      254.0, 296.333
+    misaligned 80um   240.0..320.0      240.0, 320.000
+    misaligned 60um   240.0..300.0      240.0, 300.000
+
+-- and on the misaligned pair the conductor's lower wall is at 240um, not the
+declared 254um trace plane.
+
+The discriminator, one solve on this tree: declare the SAME trace as a
+zero-thickness Box at aligned h_sub/3 and Z0 reads 46.240 ohm against the same
+HJ 48.271, i.e. -4.21% where the one-cell slab gives -8.48%. Conductor
+thickness alone is 4.27 of those 8.48 percentage points.
+
+THE ANCHOR DIFFERS TOO. ``docs/guides/msl_geometry_diagnostics.md`` records
+that ``hammerstad_jensen_z0_eps_eff`` "implements a simplified piecewise
+quasi-static formula ... It is not the complete Hammerstad-Jensen 1980 model",
+and that the fresh #752 study used node-aligned ZERO-THICKNESS foil boards with
+a separate full-HJ1980 reference. This re-solve used neither: a one-cell PEC
+volume scored against the simplified formula, with no model-error budget on
+either side.
+
+So: two known contributors (the #931 conductor realization, worth 4.27 pp at
+h_sub/3; and the anchor's own stated simplification, unbudgeted), and a -4.2%
+residual at h_sub/3 that neither explains. The residual is NOT attributed and
+no PR is named as its cause -- an earlier draft pointed at #986/#987 on the
+strength of the same columns that missed #931, which was not evidence.
+
+OWED, deliberately not run in that PR: a six-point re-solve on node-aligned
+ZERO-THICKNESS foil boards, scored against both the repository formula and a
+full HJ1980 reference. That is what separates the residual from the two
+contributors. ~48 min of CPU, so it belongs on VESSL under the 2026-09-20 rule;
+``msl_z0_bias_floor_sweep_realized_anchor_rerun.py`` (committed) says how to
+package it.
 
 ANCHOR CAVEAT, and it decides one of the two verdicts: the recipe in #752's
 body takes h from the DIELECTRIC column's realized z-extent. Check 2b of

@@ -12,9 +12,15 @@ two fixes.
 Scope is deliberately narrow, so this stays a fact check and never a style
 rule:
 
-* ``docs/guides/*.md`` only. ``docs/public/**`` is rendered by a site that
-  resolves its own slugs, and ``docs/research_notes/**`` is ignored by design.
-* Markdown LINKS with a relative target -- the thing a reader clicks. A path
+* ``docs/**/*.md``, EXCEPT ``docs/public/`` (rendered by a site that resolves
+  its own slugs, so a relative target there is not a repo path) and
+  ``docs/agent/`` (same, for the agent-facing site). ``docs/research_notes/``
+  is ignored by design and so is never scanned -- it is the tree being linked
+  INTO, not a scanned source. The first version scanned only ``docs/guides/``
+  and missed two ``docs/design_notes/931_migration/`` pages doing the same
+  thing.
+* Markdown LINKS with a relative target, inline ``[t](p)`` and reference-style
+  ``[id]: p`` alike -- the thing a reader clicks. A path
   NAMED in prose or backticks is out of scope on purpose: naming an
   out-of-repo artifact for provenance, and saying it is out of repo, is how
   both defects above were fixed, and a gate that forbade it would push writers
@@ -32,10 +38,36 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[2]
-GUIDES = sorted((REPO / "docs" / "guides").glob("*.md"))
+_EXCLUDED = ("docs/public/", "docs/agent/")
 
+
+def _scanned_pages() -> list[Path]:
+    out = []
+    for path in sorted((REPO / "docs").rglob("*.md")):
+        rel = path.relative_to(REPO).as_posix()
+        if rel.startswith(_EXCLUDED):
+            continue
+        out.append(path)
+    return out
+
+
+GUIDES = _scanned_pages()
+
+# Inline ``[text](target)`` and reference-style ``[id]: target``. The second
+# form slipped the first version of this gate entirely.
 _LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
+# ``[^id]:`` is a FOOTNOTE definition, not a link -- its body is prose, and
+# reading the first token of it as a target produced hits like "E[k+1]-E[k]".
+_REF_LINK = re.compile(r"^\[(?!\^)[^\]]+\]:[ \t]*(\S+)", re.MULTILINE)
 _SKIP_SCHEME = ("http://", "https://", "mailto:", "#", "/")
+
+
+def _looks_like_a_path(target: str) -> bool:
+    """A link target that could name a file: it has a directory part or a
+    suffix. Keeps prose and maths out of a gate about paths."""
+    if any(c in target for c in "[]<>|"):
+        return False
+    return "/" in target or bool(Path(target).suffix)
 
 
 def _tracked() -> set[str]:
@@ -53,11 +85,11 @@ def unresolved_links(page_dir: Path, text: str) -> list[tuple[str, str]]:
     The single predicate: the per-page test and the self-check both call it.
     """
     out: list[tuple[str, str]] = []
-    for raw in _LINK.findall(text):
+    for raw in _LINK.findall(text) + _REF_LINK.findall(text):
         if raw.startswith(_SKIP_SCHEME):
             continue
         target = raw.split("#", 1)[0]
-        if not target:
+        if not target or not _looks_like_a_path(target):
             continue
         resolved = (page_dir / target).resolve()
         try:
@@ -83,6 +115,24 @@ def test_every_relative_link_is_in_the_repository(page: Path) -> None:
         "say it is not in the repository, so no claim rests on a reader "
         "opening it."
     )
+
+
+def test_the_scan_covers_design_notes_too() -> None:
+    """The first version scanned only docs/guides/ and missed two pages."""
+    names = {p.relative_to(REPO).as_posix() for p in GUIDES}
+    assert "docs/guides/msl_geometry_diagnostics.md" in names
+    assert "docs/design_notes/931_migration/T6-RECOMPUTE.md" in names
+    assert not any(n.startswith(_EXCLUDED) for n in names)
+
+
+def test_a_reference_style_link_does_not_slip_the_gate() -> None:
+    """``[id]: target`` is a link a reader follows, and the inline regex
+    cannot see it."""
+    guides = REPO / "docs" / "guides"
+    ref = "See [the protocol][p].\n\n[p]: ../research_notes/issue752/fresh/protocol.md\n"
+    assert len(unresolved_links(guides, ref)) == 1
+    live = "See [the matrix][m].\n\n[m]: support_matrix.md\n"
+    assert unresolved_links(guides, live) == []
 
 
 def test_the_scan_catches_the_two_links_it_was_written_for() -> None:

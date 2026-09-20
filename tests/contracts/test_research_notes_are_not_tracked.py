@@ -193,9 +193,10 @@ REVIEWED = {
     "scripts/diagnostics/probe_fed_msl_openems_referee.py":
         (2, "prose stating that the named log is LOCAL-ONLY"),
     "tests/contracts/test_guide_citations_resolve.py":
-        (2, "sample TEXT fed to that file's own predicate -- the two dead "
-            "links it was written to catch, and the prose that replaced "
-            "them; it resolves neither and reads no file there (#752)"),
+        (3, "sample TEXT fed to that file's own predicate -- the two dead "
+            "links it was written to catch, the prose that replaced them, "
+            "and a reference-style [id]: form of the same link; it resolves "
+            "none of them and reads no file there (#752)"),
     "scripts/diagnostics/build_msl_broad_e5_envelope.py":
         (2, "scope sentence copied into the emitted JSON"),
 

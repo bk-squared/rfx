@@ -1,5 +1,5 @@
 {
- "note": "Issue #752 six-point RE-SOLVE on main (2026-09-19). NEW artifact: the pre-declared msl_z0_bias_floor_sweep.json, its as-run verdict block and msl_z0_bias_floor_sweep_realized_anchor.json are untouched and their sha256 was re-checked after this run. Every row here is freshly solved AND freshly measured on the board that same build realized, so z0_measured_ohm and z0_hj_realized_board_ohm come from one geometry -- which is what the frozen pair could no longer offer after #802/#834 moved three of the six realized trace widths.",
+ "note": "Issue #752 six-point RE-SOLVE on main (2026-09-19). NEW artifact: the pre-declared msl_z0_bias_floor_sweep.json, its as-run verdict block and msl_z0_bias_floor_sweep_realized_anchor.json are untouched and their sha256 was re-checked after this run. Every row here is freshly solved AND freshly measured on the board that same build realized, so z0_measured_ohm and z0_hj_realized_board_ohm come from one geometry -- which is what the frozen pair could no longer offer after #802/#834 moved three of the six realized trace widths. Known contributors NOT modelled here, both recorded after the run: the conductor is a one-cell PEC volume, which #931 realizes with walls on both faces (the same trace declared zero-thickness reads 4.27 percentage points differently at aligned h_sub/3), and hammerstad_jensen_z0_eps_eff is a simplified quasi-static formula, not the complete Hammerstad-Jensen 1980 model (docs/guides/msl_geometry_diagnostics.md). Neither has an error budget here, so a deviation below is not attributable to the extractor.",
  "provenance": {
   "commit": "15c1d32547512e6a52803220d8563b50aba3b36f",
   "rfx_file": "/root/workspace/bk-workspace/rfx-wt-752/rfx/__init__.py",
@@ -13,7 +13,8 @@
    "msl_z0_bias_floor_sweep.json": "f56f6b17691613d8782c1d5ce1241c1cd9bc10ef61715b203ed5cd6d4ab18362",
    "msl_z0_bias_floor_sweep_realized_anchor.json": "fbf7985d970a3976652f53a9a0fe1b65e7e7dd9e733041c04b94430b3db6863c"
   },
-  "settings": "run_one at its committed n_freqs=30, num_periods=12, enforce_passivity=False, gate 3.0-4.5 GHz"
+  "settings": "run_one at its committed n_freqs=30, num_periods=12, enforce_passivity=False, gate 3.0-4.5 GHz",
+  "produced_by": "scripts/diagnostics/msl_z0_bias_floor_sweep_realized_anchor_rerun.py (--run). That file was committed in the same PR, AFTER this artifact was written: the 2026-09-19 run used an identical uncommitted copy, which is why the committed runner's own provenance block records produced_by and this one had it added by hand. Re-running it reproduces this schema."
  },
  "predeclared_acceptance": {
   "c1_all_six_within_0p4_pct": false,
