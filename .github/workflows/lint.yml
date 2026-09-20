@@ -1,12 +1,15 @@
 name: lint
 
-# Re-enables the ruff lint gate that previously sat dormant in
-# .github/workflows/disabled/test.yml. The full CPU/GPU test suite runs on the
-# sharded `scientific-validation` workflow (and on VESSL); this workflow is the
-# cheap, fast gate that catches undefined names, unused variables, and other
-# pyflakes/pycodestyle issues on every push and pull request, so regressions
-# don't reach main unreviewed. Selector + ignore list are carried over verbatim
-# from the disabled job; production rfx/ and tests/ are clean under it today.
+# The cheap, fast gate on every push and pull request: undefined names, unused
+# variables, other pyflakes/pycodestyle findings, and the public-clone hygiene
+# scan. The full CPU/GPU suite runs on `validation.yml` (weekly, sharded) and on
+# VESSL; the bounded pytest gate runs on `pr-tests.yml`.
+#
+# Both jobs are ONE call to a script. They used to be inline shell, and on
+# 2026-09-18 a red hygiene grep on a pull request could not be reproduced
+# locally because the only copy of the command was this file. What CI runs has
+# to be runnable locally: `scripts/ci/local.sh` runs both of these and the rest
+# of the sub-three-minute gates in the same order.
 
 on:
   push:
@@ -38,45 +41,24 @@ jobs:
           python-version: "3.10"
 
       - name: Install ruff
+        # The script runs `$PYTHON -m ruff`, which this install satisfies —
+        # ruff's wheel ships an importable module, not only a console script.
         run: pip install ruff
 
-      - name: Lint rfx/, tests/, and validation/
-        run: ruff check rfx/ tests/ validation/ --select E,F,W --ignore E501,F401,E741,E731,E701,E702,E402
+      # The scope, the selector and the ignore list live in the script.
+      # tests/contracts/test_pr_body_contract.py pins the path list there.
+      - name: Lint the pinned scope
+        run: bash scripts/ci/lint.sh
 
   agent-docs-hygiene:
     # docs/agent/ pages are sanitized public exports of internal (gitignored)
-    # agent guidance. A public clone does not contain docs/agent-memory/,
-    # docs/research_notes/, CLAUDE.md, or .claude/ — so tracked agent-facing
-    # pages must never point readers at them.
+    # agent guidance, and shipped code is read by the same public-clone reader.
+    # A public clone does not contain docs/agent-memory/, docs/research_notes/,
+    # CLAUDE.md or .claude/ — so neither may point a reader at them.
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Forbid gitignored-path references in docs/agent/
-        run: |
-          hits=$(grep -rn 'research_notes\|agent-memory\|CLAUDE\.md\|\.claude/' docs/agent/ || true)
-          if [ -n "$hits" ]; then
-            echo "docs/agent/ must not reference gitignored internal paths:"
-            echo "$hits"
-            exit 1
-          fi
-          echo "docs/agent/ clean"
-
-      - name: Forbid gitignored-path references in rfx/ and examples/
-        # Shipped code (docstrings, comments, runtime message strings) must not
-        # point a public-clone reader at gitignored internal paths. A public
-        # clone has no docs/agent-memory/, CLAUDE.md, or .claude/. NOTE:
-        # research_notes is intentionally excluded from this scan — two
-        # examples have legitimate functional research_notes file paths
-        # (multilayer_ar_coating optional Meep-reference loader and the research
-        # subgrid material example's ARTIFACT_PATH); the docs/agent/ check
-        # above still forbids research_notes in exported agent pages.
-        run: |
-          hits=$(grep -rn 'agent-memory\|CLAUDE\.md\|\.claude/' rfx/ examples/ || true)
-          if [ -n "$hits" ]; then
-            echo "rfx/ and examples/ must not reference gitignored internal paths:"
-            echo "$hits"
-            exit 1
-          fi
-          echo "rfx/ and examples/ clean"
+      - name: Forbid gitignored-path references in docs/agent/, rfx/ and examples/
+        run: bash scripts/ci/docs_hygiene.sh

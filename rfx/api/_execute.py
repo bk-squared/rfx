@@ -583,12 +583,37 @@ class _ExecuteMixin:
         whenever the status is ``"absent"`` -- never NaN, because a NaN
         reaching a ``> -40`` comparison is the entire failure this closes.
         """
-        from rfx.probes.settling import probe_record_info, probe_record_settling_witness
+        from rfx.probes.settling import probe_record_settling_witness
 
         series = getattr(result, "time_series", None)
-        info = probe_record_info(series, self._probes,
-                                 getattr(self, "_internal_probe_indices", ()))
-        return probe_record_settling_witness(series, info)
+        return probe_record_settling_witness(
+            series, self._settling_probe_selection(result))
+
+    def _settling_probe_selection(self, result):
+        """Numeric probe selection metadata, with the #1090 drive flag.
+
+        The grid is read off the RESULT (``Result.grid`` /
+        ``ForwardResult.grid``) -- the grid the run actually built, not a
+        re-derivation -- so the co-location test uses the same node spine
+        that placed the sources and the probes. A lane that returns no grid
+        simply carries no flags: the witness then behaves exactly as it did
+        before this check existed rather than guessing at cell identity.
+        """
+        from rfx.probes.settling import (
+            drive_cells, probe_record_info, source_dominated_columns,
+        )
+
+        grid = getattr(result, "grid", None)
+        dominated = source_dominated_columns(
+            grid, self._probes,
+            drive_cells(grid, getattr(self, "_ports", ()),
+                        getattr(self, "_msl_ports", ())),
+        )
+        return probe_record_info(
+            getattr(result, "time_series", None), self._probes,
+            getattr(self, "_internal_probe_indices", ()),
+            source_dominated=dominated,
+        )
 
     def _attach_run_settling_witness(self, result, *, n_steps=None,
                                      num_periods=None, context="run"):
@@ -631,11 +656,9 @@ class _ExecuteMixin:
         """
         forward_result = isinstance(result, ForwardResult)
         if forward_result:
-            from rfx.probes.settling import probe_record_info
             from rfx.core.jax_utils import is_tracer
-            result = result._replace(settling_probe_info=probe_record_info(
-                result.time_series, self._probes,
-                getattr(self, "_internal_probe_indices", ())))
+            result = result._replace(
+                settling_probe_info=self._settling_probe_selection(result))
             if is_tracer(result.time_series):
                 return result
         elif not hasattr(result, "_replace") or not hasattr(result, "settling_witness"):
@@ -678,6 +701,25 @@ class _ExecuteMixin:
                 f"{witness['reason']}. This {operation} requests NTFF and/or "
                 "field-DFT output, so its truncation is unguarded (#885); "
                 "settling_db is None, which is not a pass.",
+                stacklevel=3,
+            )
+        elif witness.get("source_dominated"):
+            # A RUNTIME warning, not a preflight advisory: the emission
+            # contract (113 sites / 74 codes) is frozen, and this is a
+            # fact about the finished record, not about the declared
+            # inputs. Scoped exactly like the two above -- NTFF/field-DFT
+            # runs only, silent on library-internal driver runs -- so it
+            # cannot flood (#470). It fires only where the verdict PASSED
+            # on a dominated record, which is the #1090 vacuous pass; a
+            # dominated FAIL already warns above, in the safe direction.
+            import warnings
+            warnings.warn(
+                f"ring-down settling witness on this {operation} is "
+                f"source-dominated: {witness['qualifier']} Reported "
+                f"{witness['worst_record']} = {float(settling_db):+.1f} dB "
+                "is a source turn-off measurement, so this "
+                f"{operation}'s NTFF/field-DFT output is effectively "
+                "unguarded.",
                 stacklevel=3,
             )
         return result

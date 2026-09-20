@@ -6,6 +6,275 @@ SemVer — **BREAKING** entries are flagged in upper-case.
 
 ## [Unreleased — 2.0.0]
 
+### Fixed — `until_decay` measured the residual against itself on a domain that empties early (#1078)
+
+- The interior-energy stop of `run_until_decay` (uniform `rfx/simulation.py` and non-uniform
+  `rfx/nonuniform.py`) tracked its reference `peak_U` only from `decay_min_steps` onward, on the
+  assumption — stated in the code beside the flux-stop branch, which does NOT make it — that the
+  interior energy peaks after the source ends. On a domain that has already emptied by
+  `decay_min_steps` the reference IS the residual, nothing falls another `until_decay` below
+  itself, and the run reaches `decay_max_steps` without the criterion ever firing. The peak is now
+  tracked from the first check on both lanes; only the stop still waits for `decay_min_steps`.
+  `until_decay=0.0` (the forced-N escape) computes nothing extra and its recorded check trace is
+  unchanged.
+- Measured on the committed cv03-class guided fixture
+  (`tests/unit/runners/test_decay_flux_convergence.py`, eps=12 slab spanning the domain,
+  `until_decay=1e-5`, `decay_min_steps=2000`): the interior energy peaks at 6.28e-10 near step 701
+  and reads 6.13e-17 at step 2001 — 9.8e-8 of the peak — while the post-`min_steps` maximum reads
+  6.13e-17, a reference 1.0e7 times too small. The run went to the 8149-step cap; it now stops at
+  step 2051 with a flux-DFT transmission of 0.9074101 against the fixed-duration truth 0.9073967
+  (1.5e-5 relative, gate 2%).
+- This is what turned the GPU lane red after #1057. That change (a dielectric touching the domain
+  boundary is solved WITH its absorber pad) is correct and stays: it removed the vacuum facet that
+  used to reflect the guided mode back into the domain, which is precisely what had been keeping
+  enough energy inside for the broken reference to look like a working one. The acceptance test's
+  retired `stop_step > 3000` witness was a measurement of that facet-reflecting structure, not of
+  the criterion; it is replaced by a prompt-fire envelope and the transmission assertion it always
+  carried.
+
+### Fixed — Kottke subpixel smoothing is x64-invariant: concrete shapes are smoothed in host float64 (#833)
+
+- `compute_smoothed_eps`, `compute_inv_eps_tensor_diag` and `compute_smoothed_eps_nonuniform`
+  ran the SDF → fill-fraction → analytic-normal → Kottke chain through `jax.numpy`, so with
+  `jax_enable_x64` off every step rounded in float32 and each interface voxel landed up to
+  15 f32 ulps away from the x64=1 value (PR #1088's drift pin: max rel 1.131e-06 / 6.467e-07 /
+  1.025e-06 for ex/ey/ez on the boundary-voxel Box fixture, dx = 2.54e-4 m, ε 4). Coordinate
+  routing alone could not close that — the coordinates were already the correctly rounded
+  float32 of the exact spine. Option (a), PI decision 2026-09-16: when every input is concrete
+  (host node/centre spine, Python-float shape parameters and permittivities) the whole chain now
+  runs in numpy float64 and is cast to the active JAX dtype ONCE at the end. The formulas
+  (Kottke averaging, SDFs, `f = clip(0.5 − sdf/ℓ)`, nearest-face normals) and the output
+  dtypes/shapes are unchanged; a traced input (a Sphere radius under `jax.grad`, a traced mesh
+  axis) takes the same body through `jax.numpy` as before (witnessed bit-identical under
+  `jax.jit` at both flags). Design AD through `kottke_inv_eps_from_occupancy` is untouched.
+- **Acceptance**: `eps(x64=0) == float32(eps(x64=1))` bitwise on every voxel — measured on the
+  Box fixture, a Sphere and a Cylinder (all three SDF families), `compute_inv_eps_tensor_diag`
+  with the dielectric Box alone and with PEC Sphere + Cylinder (the PEC-limit branch), and the
+  NU sibling on the graded WR-90 fixture (47×37×67) with Box / Sphere / Cylinder. The drift pin
+  in `tests/unit/geometry/test_smoothing_coordinate_contract.py` is replaced by that lock
+  (`assert_array_equal`, no tolerance), plus a traced-radius test for the `jax.numpy` fallback.
+- **x64=1 is reproduced for float32-representable permittivities** (ε 1, 4, …): uniform lane
+  bit-identical or ≤ 4 f64 ulps (numpy vs XLA reassociation; Box ex/ey identical, ez 143 voxels
+  at 1 ulp). Two qualified exceptions, both precision corrections of the old path: (i) the old
+  accumulators were `float32` even at x64=1, so a background or shape ε that is not
+  float32-representable was rounded — with `background_eps=2.2` on the Box fixture every
+  non-interface voxel now moves by 2.167e-08 rel (4.768e-08 abs, 13 425 / 13 375 / 13 245 of
+  14 025 voxels for ex/ey/ez: 2.2 vs float32(2.2) = 2.200000047683716); (ii) NU lane ≤ 2.2e-07
+  rel on the interface voxels (1094 of 116 513 for the Box) because the geometric-mean cell
+  length that normalises the fill fraction is now formed in float64 from the exact spine; the
+  old path formed it in float32 from the float32 store (2.6e-07 rel off on every cell).
+- **x64=0 operator delta on the opt-in lane** (the default precision; stated plainly): the
+  smoothed ε at x64=0 is now the float32 image of the float64 result. On the Box fixture
+  ex max|Δ| 1.907e-06 (15 ulps, 511 voxels), ey 1.192e-06 (5 ulps, 603), ez 1.311e-06 (11 ulps,
+  538); inverse-ε 12 / 11 / 13 ulps. Sphere up to 80 ulps (1.9e-05 abs), Cylinder up to 53.
+  NU Box: ey/ez 16 ulps on 1094 voxels, and 12 voxels exactly 0.2 D inside BOTH the x-lo and
+  z-hi faces (rx == rz == −0.2 D in exact arithmetic) change by |Δε| 0.99. `_normal_box`
+  selects x on `rx >= rz`, which the exact tie would satisfy (x-normal, ε 2.105); in float64
+  the two distances round differently, rz − rx = 64 f64 ulps, so z wins (ε 3.100) — a
+  deterministic rounding result, not a convention, and base x64=1 already gave 3.100. Only
+  the x64=0 float32 evaluation gave 2.105 there; the traced (`jax.numpy`) path at x64=0 still
+  does. **Recorded limitation**: on such exact ties the concrete and traced paths now disagree
+  by 0.99 at x64=0 (3.100 vs 2.105), where before both gave 2.105. An explicit tie rule in
+  `_normal_box` would move x64=1 values on tie voxels and is a separate formula change, not
+  made here.
+  Everything under `subpixel_smoothing=False`, the staircase fallback (shapes without an SDF),
+  and `compute_conformal_weights_sdf` are bit-identical at both flags.
+- End-to-end (100 steps, 4 cm CPML cube, off-node ε 4 Box 11.3–28.7 mm, dx 2 mm, one TE10
+  port; preflight advisories identical before/after): at x64=1 all six field arrays are
+  bit-identical for `subpixel_smoothing=True`, `"kottke_pec"` and `False`; at x64=0 `False` is
+  bit-identical and the two smoothed lanes move by ≤ 8.5e-07 of the field maximum
+  (ex 3.2e-08 abs on 10 115 of 12 789 cells).
+- Build cost (reviewer-measured, 165³ grid, `compute_smoothed_eps` peak RSS delta): 943 MB
+  after vs 1327 MB before at x64=0, 943 MB vs 837 MB at x64=1, about 4× faster on the host path.
+- Mask-only shapes (no SDF) have their staircase mask evaluated before the backend is chosen,
+  so a mask that is a tracer under `jax.jit` routes the build through `jax.numpy` as before
+  (pinned at both flags in the contract file).
+- No committed gate moved. Pre-existing x64=1 red `test_compute_inv_eps_tensor_diag_returns_float32`
+  (the PEC-limit branch promotes to float64 at x64=1) is left to that test; the lock asserts
+  values only for that case and pins no x64=1 dtype there.
+
+### Added — the MSL Z0 length-invariance envelope drift is attributed to two commits (#796)
+
+- The `|Z0|` length-invariance spread on the pre-#931 MSL thru board moved 0.4607 % → 0.4676 %
+  somewhere in `90c79d1d..7f68f9fb`, and the test docstring plus
+  `tests/fixtures/msl_z0_length_invariance/platform_datums.json` recorded it as unattributed.
+  It is now bisected at full float32 precision on that exact recipe (one `git archive` tree per
+  sha, each driving its own `_run_msl_thru`; the recipe file is byte-identical, md5
+  `9faeeba500da9ced30baca8c6d939a04`, from `69a6956a` through `1f005d0d`, so the drift is `rfx/`
+  code). **TWO** commits carry it, not one: `fce10916` (#638, the CPML hi-face pad sources its
+  material one column further in) moves the legs by −0.00453 / −0.00531 / −0.00403 Ω and the
+  spread to 0.4616 %; `c9c1864f` (#659, the boundary node dropped by the half-open volume
+  rasterization gets that same material) moves them a further −0.00404 / −0.00058 / −0.00005 Ω
+  and the spread to 0.4686 %. Both are intended absorber-matching corrections with their own
+  measured witnesses, so the shift is a better-terminated board, not a regression.
+- Everything else in the window is bit-identical on this fixture — leg-8 mean|Z0[+x]|
+  `90c79d1d = ae7919a9 = 57.33811569213867`, `fce10916 = 5f23ccae = fd37c62f = 57.33358383178711`,
+  `c9c1864f = 7f68f9fb = 1f005d0d = 57.32954406738281` — which **excludes #666** (`7f68f9fb`),
+  the commit the 2026-09-13 triage had named on the reasoning that it was the window's only
+  direct MSL-extractor change.
+- **No gate, tolerance or constant moved.** `MEASURED_SPREAD_ENVELOPE` stays `0.004607` and the
+  enforced spread gate stays `gate_from_envelope(0.004607, quantum=1000) = 0.007`.
+  `gate_from_envelope(0.004686, quantum=1000)` would derive `0.008` — a one-quantum widening that
+  #610's no-silent-loosening rule forbids applying as routine maintenance even now that the drift
+  is attributed and benign; re-deriving the envelope is left as an explicit decision, and on
+  current `main` it would have to be measured on the #931 board anyway. No solver operator, no
+  observable and no user-visible behaviour changed: this release note covers a docstring, a new
+  `attribution` block plus four `role="bisect"` datum rows in the ledger, and the raw per-sha dump
+  `tests/fixtures/msl_z0_length_invariance/bisect_796.json`.
+### Fixed — the beam-steering TMTT fixture's settling witness now measures the superstrate, and its run length clears it (#918)
+
+- `validation/tmtt_paper/beam_steering_superstrate.py` carried one witness probe, at the
+  source cell (#999). That record's peak is the drive pulse, so its end/peak ratio reads
+  the source turn-off, not the structure: **-79.42 / -79.39 / -79.39 dB at 20, 40 and 80
+  periods** at the paper mesh (93×93×84), while an Ex record at the superstrate edge read
+  **-23.6 / -45.3 / -77.9 dB** and the far-field pattern moved by **max|ΔP|/max P = 4.0e-2**
+  (D(30°) +3.8102 → +3.8898 dBi) between 20 and 40 periods. `Result.settling_witness`
+  passed the -40 dB bar on a run whose NTFF output was still changing with run length.
+- The fixture keeps the source record (provenance) and adds three design-region Ex probes:
+  superstrate centre, superstrate edge (x = cx + 0.8·half — the slowest record on this
+  geometry) and air λ/4 above the slab. `NUM_PERIODS` is re-sized so the worst of them
+  clears -40 dB with margin: **paper mesh 20 → 60** (edge -23.6 → -63.2 dB; D(30°)
+  +3.8102 → +3.8781 dBi; the 60-period pattern is within 3.3e-4 of peak of a 120-period
+  run), **SMOKE 12 → 40** (edge -13.3 → -53.5 dB at the init ramp; on an 8-step Adam design
+  produced at the OLD 12-period length the edge reads -54.5 dB and the worst record,
+  probe1 at the slab centre, -53.3 dB; the shipped fixture optimizes at 40 periods and
+  returns a different design — its SMOKE run prints `settling witness PASS: worst
+  probe1(ex) -55.1 dB`, edge -58.8 dB, next to its `[done]` number). The
+  eager forwards in `main()` (bare, init, final) print their witness line so a slow design
+  shows up next to the number it would contaminate. Geometry, mesh, loss, optimizer and
+  the differentiated path are unchanged: with the new probes at the OLD run length the 12
+  NTFF leaves, the 73×73 pattern, the loss and dL/dψ are **bit-identical** to the previous
+  fixture at both meshes (CPU, JAX 0.10.2).
+- Not covered: a laterally uniform ε_r = 10 slab (the design bound) is a high-Q dielectric
+  resonator and reads **-34.1 dB at 120 periods** at the paper mesh (-30.5 dB at 80 periods
+  in SMOKE); the optimizer does not return it, and the printed witness is what guards the
+  paper's optimized design at `SMOKE=0`, which was not re-run here (GPU lane). The fidelity
+  snapshot digests geometry and preflight only, so re-capturing it left
+  `tests/data/example_fidelity_snapshot.json` byte-identical (51 variants).
+### Fixed — NU Kottke smoothing samples cell centres from the float64 spine (#833)
+
+- `compute_smoothed_eps_nonuniform` built its Yee cell centres as `node + f32(store)/2`
+  from the float32 solver store (`dx_arr` / `dy_arr` / `dz`), not from the exact float64
+  cell-size spine (`dx_arr_f64` / `dy_arr_f64` / `dz_f64`) the #802/#807 fix added. On the
+  graded WR-90 fixture (dz 20×D | 10×D/2 | 20×D, D = 0.3048 mm, `cpml_layers=8`, 47×37×67)
+  the sampled centres sat **3.704e-12 m** off `node + d_exact/2` at x64=1 on every axis, and
+  5.18e-10 / 4.44e-10 / 1.10e-09 m (x/y/z) at x64=0 — not the float32 rounding of the exact
+  centre either. The centres are now formed in host float64 from
+  `cell_sizes_from_nonuniform_grid` and cast once to the active JAX dtype (private helper
+  `_nu_yee_centres`; traced axes keep traced arithmetic): **0.0 m** at x64=1, and exactly the
+  f32 rounding of the exact centre at x64=0. The fill-fraction normalisation (geometric-mean
+  cell size) still reads the float32 store — a scale, not a sample coordinate.
+- **Who is affected**: `subpixel_smoothing=True` on the non-uniform lane only
+  (`rfx/runners/nonuniform.py`, `compute_smoothed_eps_nonuniform`). Measured forward-operator
+  delta on that fixture (after vs before): a Box on nodes (ε 2.2) — `ex`/`ey` 0 voxels differ
+  at both flags, `ez` max|Δ| 3.576e-06 on 171 voxels at x64=0 and 1.354e-08 (7.5e-09 rel) on
+  342 voxels at x64=1; an off-node Box (ε 4.0) — `ex` 7.868e-06 / 63 voxels at x64=0 and
+  6.041e-08 / 126 voxels at x64=1, `ey` 0, `ez` 4.292e-06 / 171 voxels at x64=0 and
+  1.720e-08 / 342 voxels at x64=1. On the committed reduces-to-uniform fixture the NU-vs-
+  uniform gap is unchanged for `ex`/`ey`, and for `ez` moves 2.022e-07 → 1.232e-07 at x64=1
+  and 2.384e-07 → 1.431e-06 at x64=0 (the uniform lane adds the half cell in float32
+  arithmetic, the NU lane now rounds the exact centre once; gate 1e-5 untouched). No
+  committed NU test or golden moved; the uniform lane and the binary rasterizer are untouched.
+- Correction to the #833 entry below (ab280a38, PR #998): that change made the uniform
+  smoothing coordinates the **correctly rounded float32 of the shared spine** at x64=0 — it
+  did not make them flag-independent, and smoothed-ε x64-invariance (the issue's acceptance)
+  was not achieved: on the boundary-voxel fixture (dx = 2.54e-4 m, Box 1.3–4.7 × 1.1–3.9 ×
+  0.7–2.3 mm, ε 4) `eps(x64=0)` still differs from `eps(x64=1)` on every interface voxel, max
+  rel 1.131e-06 / 6.467e-07 / 1.025e-06 for `ex`/`ey`/`ez` (15 / 5 / 11 f32 ulps; pre-fix
+  1.019e-06 / 5.661e-06 / 5.661e-06). That PR also changed the x64=0 forward operator on the
+  opt-in uniform smoothing lane (`ex` max|Δ| 3.457e-06 on 478 voxels, `ey`/`ez` 5.484e-06,
+  inverse-ε `iy`/`iz` 5.364e-06) although its body said it changed no solver operator; x64=1
+  was bit-identical, and its third consumer `compute_conformal_weights_sdf` (conformal-PEC
+  lane) was bit-identical at both flags. A measured cross-flag **drift pin** now records this
+  envelope in `tests/unit/geometry/test_smoothing_coordinate_contract.py`; it is not the
+  acceptance. Whether to compute Kottke fill fractions in host float64 for concrete shapes
+  (option a) or ratify the envelope (option b) is recorded on #833 as the PI's decision.
+### Fixed — the example-fidelity gate described coverage it no longer has, and cv21's port span was asserted against its own literal (#737, #739)
+
+- Tests and docs only: no library code, no gate threshold and no snapshot value changed.
+  The build-only example gate (`tests/contracts/test_example_fidelity_contract.py`) still
+  runs green with the same pinned data — measured 2026-09-16 at 6d721a56: `211 passed,
+  13 warnings in 83.84s` before the change and `211 passed, 13 warnings in 90.01s` after
+  (`-o addopts=""`, `JAX_ENABLE_X64=0`, optax installed).
+- The gate's own header was stale. Measured today: 137 scripts discovered = 137
+  classified (audited 34 / builder_fused_with_solve 12 / module_level_solve 7 /
+  no_solve 4 / no_simulation 80), snapshot 51 variants over 34 scripts, and on the 47
+  scripts that existed when #737 was filed the split is 25 audited / 8 fused / 6
+  module-level / 8 no-simulation. The header claimed 23/10, listed cv07 and cv15 as out
+  of scope (both are audited — `07_sheen_lpf.py::build_rfx_sim`,
+  `15_patch_antenna_rt5880.py::build_rfx_sim`) and said the gate reaches two of #722's
+  eight scripts; it reaches four (cv06b, cv11, cv07, cv15).
+- The header now says in one place what the gate is: an EMISSION-drift pin. Nothing in it
+  time-steps, so a green run is never evidence about an example's output numbers. It
+  cross-references what does verify outputs — `tests/contracts/test_tutorial_examples.py`
+  (six tutorials run end-to-end with physics asserts), `tests/unit/api/test_diagnostics.py`
+  (`hello_world` via `runpy`), and the weekly `crossval-external` job (eight scheduled
+  crossval cases) — and names the scripts with no build or run coverage anywhere
+  (`boundary_spec_demo`, `cad_mesh_import_demo`, `nonuniform_patch_demo`,
+  `nu_cavity_gate_scan`).
+- `scripts/capture_example_fidelity_snapshot.py` and the snapshot's `_comment` carried the
+  same stale counts and a "do not quote a domain extent from this file" warning that PR
+  #734 (a5a72280) made obsolete — cv11 reads 23000/11000 um there now, which is what #722
+  measures. Both corrected; the script's generated `_comment` and the committed one still
+  match byte-for-byte, so a re-capture is a no-op.
+- #739 item 3: `tests/crossval/test_coax_two_port_referee_header.py` asserted
+  `abs(B_L12_MM - 58.4595293) < 1e-4` — a committed rfx-derived constant checked against a
+  transcription of itself. `B_L12_MM` and the four `B_Z_*_REL_MM` offsets are now derived
+  from a freshly rebuilt `Grid` using the index arithmetic `compute_coaxial_two_port` runs
+  (`rfx/sparams/coax.py`): shape (55, 55, 194), pad 16, dz = 0.3747405725 mm gives feed
+  nodes 19 and 175, i.e. L12 = 156 cells = 58.459529310 mm, and offsets of 2 / 160 / 3 /
+  159 cells. Witness: perturbing `B_L12_MM`, `B_Z_FEED_TOP_REL_MM` or
+  `B_Z_LO_COAX_BOT_REL_MM` by 1e-6 mm now fails the test; the old literal assertion passed
+  under the same perturbation.
+
+### Fixed — a source on a `boundary="pec"` wall now raises the P1.6 advisory (#1075)
+
+- `_validate_cfg_source_on_reflector_plane` (code `source_decoupled`) took its reflector
+  faces from `Simulation._pec_faces`, which only an explicit `pec_faces=` kwarg or a
+  per-face `BoundarySpec` fills in. The scalar `boundary="pec"` — a PEC box on all six
+  faces — left that set empty, so the check was **skipped entirely** on the commonest way
+  of asking for a PEC wall. The face set now comes from the canonical
+  `Simulation._boundary_spec`, which covers all three spellings and carries `periodic`
+  (not `pec`) on periodic axes, so those are excluded by construction.
+- **Who is affected**: a model with a source or port whose position lies on a whole-boundary
+  PEC face, driving a tangential E, now gets a WARNING-severity advisory (`run()`/`forward()`
+  print it through the preflight banner) and `sim.preflight(strict=True)` **raises** where it
+  previously passed. The remedy is unchanged: drive normal E at that face, or offset the
+  source one cell off the plane. Nothing about a source off the face changed, no step
+  ordering on any lane changed, and PMC needed no counterpart change (there is no
+  whole-boundary PMC mode, and the PMC face set was already read off the same spec).
+- The advisory's text said the source is "silently discarded". That is true on the
+  distributed lanes and false on the single-device one, so it now names both. Measured
+  (`scripts/diagnostics/issue1075_source_on_face.py`, 20×15×15 cells at dx = 1 mm, `ez` on
+  the x_lo wall, 400 steps): the distributed lanes — which apply the PEC face after
+  injection since #1041/#1055 — return a probe peak of **exactly 0**; the single-device
+  lane, which applies it before injection, returns **8.92558e5** against **4.00560e6** for
+  the same source one cell inside. On that lane the source is not discarded at all; it
+  drives a component the mirror is supposed to hold at zero, which makes the result
+  numerically inconsistent rather than silent. No retention percentage is quoted in the
+  message: it is a cavity-mode amplitude, not a constant — swept over probe distance the
+  same fixture gives peak ratios from 0.074 (4 mm) to 2.026 (12 mm).
+- Frozen emission-site totals are unchanged (113 / 74); no new `code=` site. Extending the
+  face set left all 66 existing snapshots byte-identical, which is the measurement saying
+  no committed fixture stood on a whole-boundary PEC face; a 67th fixture now witnesses
+  that placement. One snapshot, `source_decoupled.json`, is re-blessed for the message
+  rewrite alone.
+
+### Fixed — the waveguide reference-plane device-overlap advisory could never fire (#1024)
+
+- `_validate_cfg_waveguide_reference_plane`'s third emission site read `g.bounds` off
+  the `_GeometryEntry` wrapper, which has no such attribute, under a bare
+  `except Exception: continue`; the `waveguide_reference_plane` advisory therefore never
+  emitted. It now reads `g.shape.bounding_box()` like every other geometry walk and
+  catches only the shape API's own `(NotImplementedError, TypeError)`.
+- **Who is affected**: a model whose geometry crosses a waveguide port's reference plane
+  now gets a WARNING-severity advisory (`run()`/`forward()` print it through the preflight
+  banner, and `sim.preflight(strict=True)` raises where it previously passed). The other two
+  emission sites of that check are documented as shadowed / unreachable, not deleted; the
+  frozen emission-site totals are unchanged (113 / 74). A new snapshot-lock fixture
+  witnesses the code; the 65 existing snapshots are byte-identical. cv11 (weekly
+  crossval-external lane) stays silent in all three configurations.
+
 The #931 artifact-to-carrier sweep, complete field ledger, and named unresolved
 fixture findings are recorded in the [docs-truth audit](docs/design_notes/20260908_docs_truth_audit.md).
 
@@ -33,6 +302,51 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
   rfx.runners` no longer loads `rfx.runners.distributed`, nor
   `rfx.runners._distributed_common` (which only `distributed.py` imported
   eagerly). Both still import on demand by full path.
+
+### Fixed — both distributed runners inject sources BEFORE the E ghost exchange (#1041, #1055)
+
+- A soft source in rank *d*'s **first real cell** was up to **18.6 %** of peak
+  off the same model run on one device. Both distributed step bodies exchanged
+  the E ghost rows before injecting, so the neighbour's right ghost held a
+  pre-injection E plane for one step and rank *d−1*'s H update at its last real
+  cell consumed it. `distributed_nu` had fixed this in `ac782d4f` (#931 T3);
+  #1041 measured it on `distributed_v2` and #1055 on `rfx.runners.distributed`,
+  the legacy `jax.pmap` lane, which reproduced v2's error **to four digits**.
+  All three lanes now exchange the E ghosts as the LAST stage of the E
+  half-step, so a ghost row is always a copy of the owner's finished real row.
+- Measured against the SAME model on one device (uniform 31×15×15 cells at
+  dx = 1 mm, nx = 32, 2 ranks, seam at global node 16, 300 steps,
+  `max|multi − single| / peak(|single|)`, probe 4 cells into the neighbouring
+  rank; `scripts/diagnostics/issue1041_v2_step_order.py` and its #1055 sibling
+  `issue1055_v1_step_order.py`):
+
+  | lane | boundary | before | after | lane floor (interior source) |
+  |---|---|---|---|---|
+  | v2 (`shard_map`) | pec | 1.859e-01 | 4.858e-06 | 5.100e-06 |
+  | v2 | cpml | 1.653e-01 | 1.894e-06 | 1.629e-06 |
+  | v1 (`pmap`) | pec | 1.859e-01 | **0.000e+00** | 0.000e+00 |
+  | v1 | cpml | 1.653e-01 | 1.579e-06 | 2.417e-06 |
+
+  The corrected seam sits at each lane's own floor; on v1's PEC body that floor
+  is exactly zero, i.e. bit-identical to the single-device lane.
+- **Who is affected.** On v2 this is the production path — any
+  `sim.run(devices=[...])` with a source within one cell of a rank boundary.
+  v1 is reachable only by full-path import (#1049) and as v2's `n_devices == 1`
+  fast path, where there is no seam and the defect cannot fire, so no
+  production result changes on that lane.
+- The defect is **one-sided**: only the right E ghost is live, so a source in a
+  rank's *last* real cell was never wrong. Every distributed fixture of the
+  #1038 bit-identity lock puts its source there, so the lock stays green
+  through both changes with no re-bless. Gate:
+  `tests/unit/runners/test_distributed_v2_seam_source_order.py` (1e-3,
+  parametrised over both runners, proven red on each pre-fix body).
+- **Who is affected, one more case**: with the PEC face now applied AFTER source
+  injection (as `distributed_v2` and `distributed_nu` do), a source placed ON a domain
+  PEC face is zeroed in the step it is injected on this lane too — measured: v1 probe
+  peaks `[0.01101839 0.00094625]` before (bit-identical to the single-device lane),
+  `[0. 0.]` after, and `distributed_v2` gives `[0. 0.]` on the same fixture. This is
+  lane parity, not a new divergence; the single-device lane still keeps such a source
+  (tracked separately). No repo test, example or doc places a source on a PEC face.
 
 ### Added — `sim.run(devices=...)` realizes declared PEC volumes (#1053)
 
@@ -122,6 +436,33 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
 - Preflight behaviour is inherited from the chosen lane and is not uniform:
   the MSL and mixed lanes run preflight automatically, the waveguide and
   coaxial lanes do not. Routing through `compute_s_matrix` adds none.
+
+### Fixed — the rendered API reference listed no method `Simulation` inherits from its mixins (#1019)
+
+- The pdoc-rendered reference (`docs/api`, built by the `api-reference` CI job)
+  contained **17 of 49** public `Simulation` methods short: every one defined on
+  a private mixin — `run`, `forward`, `preflight`, `preflight_sparameters`,
+  `compute_s_matrix`, `compute_waveguide_s_matrix`, `compute_msl_s_matrix`, the
+  rest of the `compute_*` family, `s_matrix_lane`, `conductor_mask`,
+  `export_scene`, `export_artifact_bundle`, `artifact_report`. Only the builder
+  side (`add_*`, mesh, AD-memory) rendered. This had been true since the Part B
+  mixin split.
+- Cause: pdoc renders a class's own members in full and reduces inherited ones
+  to a link list, then drops that list when the base's **module** is not itself
+  documented. `Simulation`'s mixins live in `rfx.api._execute`, `rfx.api._sparams`
+  … which pdoc never documents, so the block was dropped whole. The base class
+  names being private is not the trigger; the module is.
+- Fix: `docs/pdoc_templates/module.html.jinja2` (a pdoc template override, now
+  used by CI via `-t docs/pdoc_templates`) renders members inherited from an
+  undocumented module of the same package as full class attributes. Simulation
+  anchors 34 → 52, none lost. No library behaviour changed.
+- The gate that missed it is fixed too: `scripts/check_api_reference.py
+  --html-dir` checked only three module-level substrings of the HTML and
+  otherwise inspected the *live* class. It now requires an
+  `id="Simulation.<name>"` anchor for every public method on the live class.
+- Known limit: pdoc builds its search index in Python from each class's own
+  members, which no template can reach, so these methods render on the page but
+  are not found by the reference's search box.
 
 ### Fixed — a dielectric touching the domain boundary was solved with vacuum in the absorber pad whenever subpixel smoothing was on (#1043, #831)
 
@@ -285,8 +626,10 @@ fixture findings are recorded in the [docs-truth audit](docs/design_notes/202609
 ### Fixed — shared coordinates for Kottke smoothing (#833)
 
 - Build uniform-grid smoothing coordinates from the same exact host-float64
-  node spine used by rasterization, removing a separate `jnp.arange` path
-  whose positions varied with the active JAX precision setting.
+  node spine used by rasterization, removing a separate `jnp.arange` path.
+  Correction (2026-09-16 re-audit, see the #833 entry at the top of this
+  section): the positions are the correctly rounded float32 of that spine at
+  x64=0, not flag-independent, and smoothed-ε x64-invariance was not achieved.
 
 ### Fixed — MSL geometry and historical Z0 provenance (#752)
 

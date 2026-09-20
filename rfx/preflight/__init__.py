@@ -56,12 +56,14 @@ Modules:
   features the non-uniform and SBP-SAT subgridded lanes refuse. Its three
   class-BODY constants (``_MULTIBAND_RATIO_CAP``, ``_INPLANE_RATIO_CAP``,
   ``_AXIS_OF_COMPONENT``) deliberately stay on ``_PreflightMixin``.
-* :mod:`rfx.preflight.ntff` — the near-to-far-field family: four
+* :mod:`rfx.preflight.ntff` — the near-to-far-field family: three
   ``_PreflightMixin`` bodies covering the #334 inverse-design umbrella
   (PEC overlap as an error, the lambda/4 near-field advisory) with the
-  small-ground-plane check it calls, the #500 NTFF-box-in-the-absorber
-  check, and the minimum-steps hint, which emits nothing and only writes
-  ``self._ntff_min_steps_hint``. It moves no module-level name.
+  small-ground-plane check it calls, and the #500 NTFF-box-in-the-absorber
+  check. Four at leg 6: the fourth was the minimum-steps hint, which emitted
+  nothing and only wrote ``self._ntff_min_steps_hint``, and issue #1030
+  deleted it once a census found no consumer for that attribute. It moves no
+  module-level name.
 * :mod:`rfx.preflight.sources` — the source-configuration family: four
   ``_PreflightMixin`` bodies covering the #471 TFSF vacuum-boundary lane
   guard (the split's one remaining ``@staticmethod``, re-wrapped by the
@@ -109,7 +111,7 @@ Modules:
   shared values ``_validate_simulation_config`` computes once per
   ``preflight()``; :class:`~rfx.preflight._registry.ConfigCheck` is one entry
   (method name, adapter, family); and
-  :data:`~rfx.preflight._registry.CORE_CONFIG_CHECKS` holds the 37 of them in
+  :data:`~rfx.preflight._registry.CORE_CONFIG_CHECKS` holds the 36 of them in
   the exact order the hub used to call them, transcribed by an AST walk of
   that body rather than by hand.
   :func:`~rfx.preflight._registry.register_config_check` appends to

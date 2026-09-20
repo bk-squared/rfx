@@ -3151,19 +3151,29 @@ def run_nonuniform_until_decay(
                     break
             else:
                 flux_below = 0
-        elif steps_done >= min_steps:
+        elif decay_by > 0.0 or steps_done >= min_steps:
+            # Track the PEAK from the first chunk boundary, like the flux
+            # branch above; only the STOP (and the recorded check trace) waits
+            # for min_steps. Gating the peak on min_steps too reads the
+            # RESIDUAL as the reference on a domain that empties before
+            # min_steps, and no residual falls another ``decay_by`` below
+            # itself, so such a run reaches max_steps without firing (#1078;
+            # the uniform lane carried the same defect). ``decay_by == 0.0``
+            # is the forced-N escape and keeps the pre-min_steps chunks
+            # uncomputed, so its recorded trace is unchanged.
             U = _interior_energy(carry["fdtd"])
             if U > peak_U:
                 peak_U = U
-            decay_checks.append((steps_done, U, peak_U))
-            # decay_by=0.0 forced-N escape: U >= 0 so U < 0 never fires.
-            if U < decay_by * peak_U:
-                energy_below += 1
-                if energy_below >= decay_energy_consecutive:
-                    decayed_fired = True
-                    break
-            else:
-                energy_below = 0
+            if steps_done >= min_steps:
+                decay_checks.append((steps_done, U, peak_U))
+                # decay_by=0.0 forced-N escape: U >= 0 so U < 0 never fires.
+                if U < decay_by * peak_U:
+                    energy_below += 1
+                    if energy_below >= decay_energy_consecutive:
+                        decayed_fired = True
+                        break
+                else:
+                    energy_below = 0
 
     # #388: measured static-remnant advisory on cap-hit (until_decay is absorbing-only on
     # the NU lane too, so a cap-hit without firing means the energy criterion could not

@@ -1,0 +1,90 @@
+name: Finding (defect or measured limitation)
+description: Something measured is wrong, and someone will fix it or decide about it.
+title: "<name the problem, not the intended fix>"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **A finding does not go on the tracker by default.** Take the first that applies:
+
+        1. **Fix it in the PR that found it** if the fix is smaller than this form and
+           lives in a file that PR already touches. Say so in the PR body.
+        2. **Turn the class into a gate** if this has appeared before. A contract test on
+           the invariant retires every future instance; an issue retires none.
+        3. **Write it in the ledger** if it is true and nobody will act on it. That is
+           most findings, and it is not a lesser outcome.
+        4. **File it here** only for the remainder: someone will DO or DECIDE something.
+
+        Title the problem, not the fix. A number changes when an issue is closed and
+        refiled; the problem does not.
+
+  - type: textarea
+    id: what_is_wrong
+    attributes:
+      label: What is wrong
+      description: >-
+        Measured, not suspected. Give the command you ran and the REALIZED value it
+        printed, next to the value you expected. "Assert realized, not declared" is the
+        repo's most repeated defect: quote what the grid built, not what the script asked
+        for.
+      placeholder: |
+        pytest tests/unit/sparams/test_x.py::test_y -q
+        realized aperture 14 cells (declared 16); |S21| = 1.043 on a passive thru
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: >-
+        Everything a reader needs to see it themselves from a clean clone: the commands
+        in order, the commit or tag, and any fixture or VESSL run the commands read.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: action
+    attributes:
+      label: What happens next
+      description: >-
+        If nothing here is true, close this form and write the finding in the ledger
+        instead.
+      options:
+        - "someone will FIX this — say who, or which lane, in Evidence"
+        - "someone will DECIDE — say what the decision is, and who makes it"
+        - "record only → this belongs in the ledger, do not file"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: lane
+    attributes:
+      label: Lane
+      description: >-
+        The owner lane. `.github/labeler.yml` maps paths to lanes; pick the lane that
+        owns the code this touches. A workflow applies the matching `lane:*` label.
+      options:
+        - "lane:waveguide-port"
+        - "lane:msl-port"
+        - "lane:coax-mixed-port"
+        - "lane:absorber"
+        - "lane:nu-mesh"
+        - "lane:distributed"
+        - "lane:crossval"
+        - "lane:ci-infra"
+        - "lane:examples-docs"
+        - "lane:plan"
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: >-
+        Paths, PR numbers, VESSL run ids, artifact paths. A number is not reportable
+        without its witness: quote preflight output verbatim and give the energy witness
+        for any claims-bearing number from an open domain.
+    validations:
+      required: true

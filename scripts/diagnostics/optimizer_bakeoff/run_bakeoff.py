@@ -65,6 +65,17 @@ Writes ``tests/fixtures/optimizer_bakeoff/bakeoff_results.json``.
 
 Results (2026-07-08, CPU, float32, jax 0.6.2 / optax 0.2.8 / rfx 1.6.6)
 -------------------------------------------------------------------------
+STALE ROW, not re-run: the ``waveguide_taper`` row below (and the
+``optax_lbfgs beats on taper`` line under it, which is one of the two
+benchmarks the no-adopt verdict is counted from) was measured on
+``waveguide_dielectric_taper.py``'s PRE-2026-09-19 SMOKE mesh, dx = 1.0 mm on a
+23.0 x 11.0 mm guide. #1100 moved that lane to a commensurate dx = 1.27 mm and
+22 CPML cells, so ``build_waveguide_taper`` now builds a different objective
+and a re-run will produce different numbers here and in
+``tests/fixtures/optimizer_bakeoff/bakeoff_results.json``. The gate test
+replays the committed curves and runs no FDTD, so nothing is red; the verdict
+arithmetic below is stale pending a re-run. Tracked in #1122.
+
 best-loss in dB (10*log10), lower is better; margin = incumbent_dB - candidate_dB
 (positive margin = candidate beats incumbent; >= 3.0 needed to "beat")::
 
