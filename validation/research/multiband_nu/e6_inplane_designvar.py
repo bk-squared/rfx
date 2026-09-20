@@ -584,6 +584,8 @@ def main(argv=None):
     assert str(Path(rfx.__file__).resolve()).startswith(str(ROOT) + '/'), rfx.__file__
     assert all(d.platform == 'cpu' for d in jax.devices())
     out = RESULTS / f'e6_{args.arm}.json'
+    if out.exists():
+        raise FileExistsError(out)
     sha, dirty = _git_sha(), _git_dirty()          # read BEFORE the claim file exists
     # Refuse to overwrite evidence or rerun an already started arm.
     claim = out.with_suffix('.started')

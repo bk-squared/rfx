@@ -6,8 +6,8 @@ the instrument used (``adq_designvar.fit_order`` / ``fd_budget`` verbatim, the
 stored ``sigma_eff``), and must equal the recorded one -- including FIRED and
 INCONCLUSIVE ones, which are recorded results, not failures to hide. The map
 checks m1-m4 and m6 (analytic side) are re-derived live from the builder (host
-arithmetic only); m5 / m8 from the stored numbers. Files not present are
-skipped, so the test is meaningful at every commit of the lane.
+arithmetic only); m5 / m8 from the stored numbers. Completed-lane evidence
+is required; a missing artifact fails rather than skipping its verdicts.
 """
 from __future__ import annotations
 
@@ -26,11 +26,34 @@ RESULTS = Path(__file__).resolve().parents[3] / "validation/research/multiband_n
 
 def _load(arm):
     p = RESULTS / f"e6_{arm}.json"
-    if not p.exists():
-        pytest.skip(f"e6 arm {arm} not measured yet")
     d = json.loads(p.read_text())
     assert "instrument_error" not in d, d.get("instrument_error")
     return d
+
+
+def test_missing_required_artifact_is_an_error(tmp_path, monkeypatch):
+    monkeypatch.setitem(globals(), "RESULTS", tmp_path)
+    with pytest.raises(FileNotFoundError):
+        try:
+            _load("l1")
+        except pytest.skip.Exception:
+            pytest.fail("A completed witness must not skip missing evidence")
+
+
+def test_main_refuses_existing_evidence_before_measurement(tmp_path, monkeypatch):
+    out = tmp_path / "e6_l1.json"
+    original = '{"retained": true}\n'
+    out.write_text(original)
+    monkeypatch.setattr(e6, "RESULTS", tmp_path)
+
+    def forbidden_measurement():
+        pytest.fail("Existing evidence must be refused before measurement")
+
+    monkeypatch.setitem(e6.ARMS, "l1", forbidden_measurement)
+    with pytest.raises(FileExistsError, match="e6_l1.json"):
+        e6.main(["--arm", "l1"])
+    assert out.read_text() == original
+    assert not out.with_suffix(".started").exists()
 
 
 def _points(steps):

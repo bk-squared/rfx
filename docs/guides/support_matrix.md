@@ -97,12 +97,12 @@ result is accurate.
 | MSL S-matrix + nonuniform mesh | **experimental** | `mode="laplace"` and `mode="uniform"` have internal settled-S11 regression coverage only. There is no external nonuniform comparison. `mode="eigenmode"` raises. |
 | Coaxial port + nonuniform mesh | **unsupported** | The request must fail. |
 | Lumped RLC update + nonuniform mesh | **limited** | R/L/C ADE elements participate in the field update. Nonuniform S-parameters and component-value AD are not documented. |
-| Multi-band graded mesh (fine bands on **z, x or y**, unequal sizes allowed, ratio <= 1.4) | **limited** | The MESH ITSELF is documented — not any observable computed on it — and only for grading along **z**. Explicit `dz_profile` vectors with every adjacent cell ratio <= 1.4 are covered by the witness battery below. What the battery measures is the **transition law**, not a band count: each transition reflects at a level set by its ratio r, the local cells per wavelength and — for a band narrower than about a guide wavelength — the band width (the two ramp reflections of a narrow band add as a Fabry-Perot sum, bounded by twice the single-ramp value and oscillating with width; W6 row below), and transitions simply add. Widest witnessed fixture: 3 fine bands / 4 transitions (F-S4); narrowest witnessed band: 2 fine cells (W6). **Unwitnessed:** bands narrower than 2 cells, any other resolution than the two measured, and in-plane grading. `rfx.make_band_profile` builds such profiles with every interface on a node plane and the ratio law exact, seams between two protected bands included. Read the scope statement in "Multi-band graded mesh" before quoting this row: in-plane (`dx_profile` / `dy_profile`) grading is UNCOVERED, absorber-adjacent grading is EXCLUDED, and `dt` is unchanged (global min-cell CFL). |
+| Multi-band graded mesh (fine bands on **z, x or y**, unequal sizes allowed, ratio <= 1.4) | **limited** | The mesh and solver have bounded evidence, not general port, flux or far-field validation. The z battery below covers conservation, transition reflection, round-trip amplitude, order and autodiff. Separate PEC-closed in-plane witnesses cover cavity accuracy (W7), unequal-band reflection (E5), and x-band width autodiff (E6), each within its stated envelope. Bands narrower than two cells, in-plane absorber/port/TFSF behavior, and resolutions outside those envelopes remain unvalidated. `rfx.make_band_profile` places interfaces on node planes and enforces the adjacent-ratio cap, including seams between protected bands. Read the per-witness scope below; the timestep still follows the global min-cell CFL. |
 | Volumetric PEC scatterer + nonuniform waveguide | **experimental** | The device/reference handling is regression-tested, but no RF validation is documented for arbitrary iris, post, septum, branch, or T-junction geometries. The REALIZATION changed at 2.0 (#931): a PEC volume now realizes walls at both drawn faces and its drawn extent equals its realized extent, so the regression fixtures behind "regression-tested" are recomputed for the release and a fixture that has not been is not shipped. No accuracy claim moves with them, because this row makes none. |
 
 ### Multi-band graded mesh
 
-**What this row covers.** An explicit **`dz_profile`** vector holding
+**What the original z battery covers.** An explicit **`dz_profile`** vector holding
 fine bands along z, in any order — fine-coarse-fine-coarse-fine and other
 small-large-small-large patterns included — with **every adjacent cell
 ratio <= 1.4**, abrupt (a single step at the cap) or smoothly ramped.
@@ -221,8 +221,11 @@ in `validation/research/multiband_nu/`; regression packaging in
     coarse sides (1.96 / 2.744 mm around a 1.0 mm band), a bare cap step on
     one side, and two fine sizes (1.0 and 0.5 mm) in one column. The law
     generalizes to two amplitudes: R = sqrt(R_L^2 + R_R^2 - 2 R_L R_R cos(2 k_g (n_b d + c))),
-    bounded by R_L + R_R (87/87 band arms). x reproduces z to the bit; y to
-    7e-7 (float32 roundoff). Single numbers carry a ~3 % rectangular-DFT
+    bounded by R_L + R_R (87/87 band arms). On the unpinned relabel control,
+    x and z traces are bit-identical; y trace differences are below 7e-7.
+    The y reflection difference is 6.02e-6 relative, so its W5 1e-6
+    relabel criterion FIRED (`e5_relabel.json`); W1-W3 still hold.
+    Single numbers carry a ~3 % rectangular-DFT
     window systematic; quote the law and the bound, not a sub-3 % figure.
   - *Design-variable autodiff (E6, `docs/design_notes/20260913_nu_lane2_inplane_designvar_ad_predeclaration.md`):*
     d(loss)/d(band width) on x, Taylor order R1 1.945 (transient) / 1.962
@@ -231,8 +234,9 @@ in `validation/research/multiband_nu/`; regression packaging in
     Band position is FD-supported only. y not measured.
   What is still NOT covered in-plane: profiles whose two end cells differ
   (the grid refuses them — `dx_profile[0] == dx_profile[-1] == dx`, and
-  `dy_profile` ends must match — so every in-plane witness above carries
-  pinned 1.0 mm end cells); any absorber on an in-plane-graded face; the
+  `dy_profile` ends must match). The pinned E5 runs use 1.0 mm end cells,
+  E6 uses 0.5 mm, and the E5 relabel control is unpinned with matching ends.
+  Also not covered: any absorber on an in-plane-graded face; the
   energy / round-trip / order witnesses (F-S1, F-S3, F-S4) on x or y;
   ratios other than 1.3/1.4 in-plane; dielectric interiors in the
   reflection witness; ports, TFSF and waveguide observables on an
@@ -244,8 +248,10 @@ in `validation/research/multiband_nu/`; regression packaging in
   0.039-0.041) is not the `cpml_layers`-deep uniform runway the absorber
   exclusion asks for.
 
-**Honest scope — what the witnesses do and do NOT establish.** They are
-statements about the mesh and the solver on it, **for grading along z**:
+**Honest scope — what the witnesses do and do NOT establish.** The original
+battery's conservation, round-trip and global-order statements apply to
+**grading along z**; in-plane coverage is limited to the three classes above.
+On the z battery:
 the scheme conserves its discrete energy, each transition reflects at the
 modelled level, a symmetric traversal does not drift in amplitude, the
 global order stays 2 at ~1.56x the uniform-fine error amplitude, and the
