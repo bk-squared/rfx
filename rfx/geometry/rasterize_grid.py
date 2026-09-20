@@ -1023,7 +1023,7 @@ def assert_declared_span_is_filled(name, shape, mask, grid, domain, *,
         dx = float(grid.dx)
         if record is not None:
             record.append(dict(
-                entity=name, axis=axis_name, face=f"{axis_name}-hi",
+                entity=name, shape=shape, axis=axis_name, face=f"{axis_name}-hi",
                 empty_interior_nodes=empty_tail,
                 allowed_empty_interior_nodes=shortfall_limit,
                 declared_extent_m=declared,

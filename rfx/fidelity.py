@@ -591,7 +591,9 @@ def fidelity_report(sim, print_report: bool = True):
         # Reported here rather than raised (review of PR #1136, A) because
         # this report is what a user reads to FIND such a thing.
         for _shortfall in pad_fill_findings:
-            if _shortfall["entity"] != mat_name:
+            # Match the entry by the shape object the assembly rasterized,
+            # not by material name: two entries may share a material.
+            if _shortfall.get("shape") is not entry.shape:
                 continue
             item["findings"].append(dict(
                 kind="declared-span-short-of-padded-face",
