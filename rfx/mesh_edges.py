@@ -204,28 +204,151 @@ def edge_aware_profile(
                 f"sheet edge at {e.position:g} m is outside ({lo:g}, {hi:g})")
     fixed = sorted({lo, hi, *(float(f) for f in faces)})
 
-    res = [dx] * len(edges)
     # The ratio cap may make ``make_band_profile`` refine an edge cell (a
-    # protected block next to smaller cells is split). The node then sits
-    # ``edge_offset`` of the WRONG cell from the edge, so the edge cell size
-    # is fed back until the cell that straddles each edge is the one the
-    # lines were computed for.
-    for _ in range(8):
-        cells, merged, ends, res = _build(lo, hi, dx, fixed, edges, res,
-                                          edge_offset, max_ratio,
-                                          boundary_cell)
-        nodes = lo + np.concatenate([[0.0], np.cumsum(cells)])
-        realized = []
-        for e in edges:
-            k = int(np.searchsorted(nodes, e.position, side="right")) - 1
-            realized.append(float(nodes[k + 1] - nodes[k]))
-        if all(abs(a - b) <= 1e-9 * dx for a, b in zip(realized, res)):
+    # protected block next to smaller cells is split, e.g. a full-size edge
+    # cell next to a stretch that only divides into 0.77-size cells). The
+    # node then sits ``edge_offset`` of the WRONG cell from the edge, so the
+    # realized edge-cell size is fed back until the cell that straddles each
+    # edge is the one the lines were computed for. Starting from a slightly
+    # smaller edge cell often avoids the split altogether, so a few starting
+    # sizes are tried and the profile with the LARGEST smallest cell wins:
+    # the time step follows the smallest cell.
+    best = None
+    last_error = None
+    for scale in (1.0, 0.95, 0.9, 0.85, 0.8, 0.75):
+        res = [dx * scale] * len(edges)
+        try:
+            for _ in range(8):
+                cells, merged, ends, res = _build(
+                    lo, hi, dx, fixed, edges, res, edge_offset, max_ratio,
+                    boundary_cell)
+                nodes = lo + np.concatenate([[0.0], np.cumsum(cells)])
+                realized = []
+                for e in edges:
+                    k = int(np.searchsorted(nodes, e.position, side="right")) - 1
+                    realized.append(float(nodes[k + 1] - nodes[k]))
+                if all(abs(a - b) <= 1e-9 * dx for a, b in zip(realized, res)):
+                    break
+                res = [min(a, b) for a, b in zip(realized, res)]
+            else:
+                raise ValueError(
+                    "the edge cells did not settle under the ratio cap; "
+                    "raise max_ratio or lower dx")
+        except ValueError as exc:
+            last_error = exc
+            continue
+        key = (float(cells.min()), -int(cells.size))
+        if best is None or key > best[0]:
+            best = (key, cells, nodes, ends, realized)
+        if not edges:
             break
-        res = [min(a, b) for a, b in zip(realized, res)]
-    else:
-        raise ValueError(
-            "the edge cells did not settle under the ratio cap; raise "
-            "max_ratio or lower dx")
+    if best is None:
+        raise last_error
+    _, cells, nodes, ends, realized = best
     return EdgeAwareProfile(cells=cells, nodes=nodes,
                             metal_end_nodes=tuple(ends),
                             edge_cells=tuple(realized))
+
+
+def _box_corners(shape):
+    lo = getattr(shape, "corner_lo", None)
+    hi = getattr(shape, "corner_hi", None)
+    if lo is None or hi is None:
+        raise TypeError(
+            "edge_aware_profiles reads axis-aligned Box shapes (corner_lo / "
+            f"corner_hi); got {type(shape).__name__}. Pass its bounding faces "
+            "through `faces=` instead.")
+    return tuple(float(v) for v in lo), tuple(float(v) for v in hi)
+
+
+def edge_aware_profiles(
+    domain,
+    dx: float,
+    *,
+    sheets: Sequence = (),
+    solids: Sequence = (),
+    faces=None,
+    axes: str = "xy",
+    max_ratio: float = 1.3,
+    boundary_cell: float | None = None,
+    edge_offset: float = EDGE_OFFSET,
+) -> dict:
+    """Profiles for ``Simulation(dx_profile=..., dy_profile=..., dz_profile=...)``
+    straight from the drawing.
+
+    Parameters
+    ----------
+    domain : (Lx, Ly, Lz)
+        The same tuple the ``Simulation`` gets.
+    dx : float
+        Target cell size (m).
+    sheets : sequence of Box
+        Zero-thickness conductor Boxes (patches, strips, ground planes that
+        end inside the domain). Along each in-plane axis both ends become
+        sheet edges; a sheet edge that coincides with the domain boundary is
+        a wall and is skipped. The sheet's own plane becomes a face on its
+        normal axis.
+    solids : sequence of Box
+        Volumes -- dielectric slabs, PEC blocks. Every face goes ON a node.
+    faces : dict, optional
+        Extra node planes per axis, ``{"x": [...], "z": [...]}``: port
+        planes, probe planes, the faces of a shape that is not a Box.
+    axes : str
+        Which profiles to build, any of ``"x"``, ``"y"``, ``"z"``.
+    boundary_cell : float, optional
+        Pinned first/last cell (default ``dx``; the x/y absorber contract
+        needs the two end cells equal).
+
+    Returns
+    -------
+    dict
+        ``{"dx_profile": cells, "dy_profile": cells, ...}`` for the axes
+        asked for -- pass it as ``Simulation(..., dx=dx, **profiles)`` and
+        draw the geometry at its TRUE size.
+
+    Example
+    -------
+    >>> patch = Box((xc - L/2, yc - W/2, h), (xc + L/2, yc + W/2, h))
+    >>> slab = Box((0, 0, 0), (LX, LY, h))
+    >>> prof = edge_aware_profiles((LX, LY, LZ), 1e-3, sheets=[patch],
+    ...                            solids=[slab])
+    >>> sim = Simulation(freq_max=5e9, domain=(LX, LY, LZ), dx=1e-3, **prof)
+    >>> sim.add(slab, material="substrate"); sim.add(patch, material="pec")
+    """
+    names = {"x": 0, "y": 1, "z": 2}
+    if not axes or any(a not in names for a in axes):
+        raise ValueError("axes must be a non-empty subset of 'xyz'")
+    extra = {k: [float(v) for v in vals] for k, vals in (faces or {}).items()}
+    pin = float(dx) if boundary_cell is None else float(boundary_cell)
+    out = {}
+    for a in axes:
+        k = names[a]
+        hi_dom = float(domain[k])
+        tol = 1e-9 * float(dx)
+        axis_faces = list(extra.get(a, ()))
+        axis_edges = {}
+        for sh in solids:
+            lo, hi = _box_corners(sh)
+            axis_faces += [lo[k], hi[k]]
+        for sh in sheets:
+            lo, hi = _box_corners(sh)
+            thin = [i for i in range(3) if abs(hi[i] - lo[i]) <= tol]
+            if len(thin) != 1:
+                raise ValueError(
+                    "a sheet must be a Box with exactly one zero-thickness "
+                    f"axis; got extents {tuple(h - l for l, h in zip(lo, hi))}")
+            if k == thin[0]:
+                axis_faces.append(lo[k])
+                continue
+            for pos, side in ((lo[k], +1), (hi[k], -1)):
+                if tol < pos < hi_dom - tol:
+                    axis_edges[(round(pos / tol), side)] = SheetEdge(pos, side)
+        edge_pos = {round(e.position / tol) for e in axis_edges.values()}
+        axis_faces = [f for f in axis_faces
+                      if tol < f < hi_dom - tol and round(f / tol) not in edge_pos]
+        prof = edge_aware_profile(
+            0.0, hi_dom, dx, faces=axis_faces,
+            sheet_edges=list(axis_edges.values()), max_ratio=max_ratio,
+            boundary_cell=pin, edge_offset=edge_offset)
+        out[f"d{a}_profile"] = prof.cells
+    return out

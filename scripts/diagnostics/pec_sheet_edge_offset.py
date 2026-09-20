@@ -12,8 +12,11 @@ so it reads the fin's effective length.
   value first (comparator before anything else);
 * today's uniform grid at dx = 1.0 and 0.5 mm, the drawn length swept through
   the cells in 0.125 mm steps;
-* the same sweep on :func:`rfx.mesh_edges.edge_aware_profile` (TMz only:
-  ``mode="2d_tez"`` with a ``dy_profile`` returns all-zero fields today).
+* the same sweep on :func:`rfx.mesh_edges.edge_aware_profile`. The
+  non-uniform lane ignores ``mode=`` and solves a 3-D box, so TMz runs as a
+  one-cell-thick PEC box (Ez survives) and TEz as a two-cell box with
+  magnetic walls in z (Ex, Ey, Hz survive); on the uniform grid that 3-D TEz
+  arrangement reproduces the 2-D lane's number.
 
 Writes ``pec_sheet_edge_offset/pec_sheet_edge_offset.json``. Runs on CPU,
 about 20 minutes.
@@ -45,23 +48,33 @@ LENGTHS = np.round(np.arange(4.0e-3, 6.0e-3 + 1e-9, 0.125e-3), 9)
 OUT = Path(__file__).with_suffix("") / "pec_sheet_edge_offset.json"
 
 
-def lowest_resonance(mode, dx, fin_len, *, dy_profile=None, periods=60):
+def lowest_resonance(mode, dx, fin_len, *, dy_profile=None, periods=60,
+                     pmc_z=False):
     """Lowest resonance (Hz) and the realized fin-tip node (m)."""
     lo, hi = BANDS[mode]
     kw = {} if dy_profile is None else {"dy_profile": dy_profile}
-    sim = Simulation(freq_max=hi, domain=(A, B, dx), boundary="pec", dx=dx,
-                     mode=mode, **kw)
+    lz = 2 * dx if pmc_z else dx
+    if pmc_z:
+        from rfx.boundaries.spec import Boundary, BoundarySpec
+        sim = Simulation(freq_max=hi, domain=(A, B, lz), dx=dx,
+                         boundary=BoundarySpec(x="pec", y="pec",
+                                               z=Boundary(lo="pmc", hi="pmc")),
+                         **kw)
+    else:
+        sim = Simulation(freq_max=hi, domain=(A, B, lz), boundary="pec",
+                         dx=dx, mode=mode, **kw)
     tip = None
     if fin_len is not None:
-        sim.add(Box((A / 2, 0.0, 0.0), (A / 2, float(fin_len), dx)),
+        sim.add(Box((A / 2, 0.0, 0.0), (A / 2, float(fin_len), lz)),
                 material="pec")
         for row in sim.fidelity_report(print_report=False):
             if "pec" in str(row.get("entity")):
                 tip = [a["realized_um"][1] * 1e-6 for a in row["axes"]
                        if a["axis"] == "y"][0]
     comp = "ez" if mode == "2d_tmz" else "ey"
-    sim.add_source((0.0063, 0.0031, 0.0), component=comp)
-    sim.add_probe((0.0137, 0.0069, 0.0), component=comp)
+    z_obs = dx if pmc_z else 0.0
+    sim.add_source((0.0063, 0.0031, z_obs), component=comp)
+    sim.add_probe((0.0137, 0.0069, z_obs), component=comp)
     res = sim.run(num_periods=periods, compute_s_params=False)
     ts = np.asarray(res.time_series)[:, 0]
     modes = [m for m in harminv(ts[int(0.15 * len(ts)):], float(res.dt), lo, hi)
@@ -72,7 +85,35 @@ def lowest_resonance(mode, dx, fin_len, *, dy_profile=None, periods=60):
     return float(modes[0].freq), tip
 
 
+def edge_aware_sweep(out, modes=("2d_tmz", "2d_tez")):
+    for mode in modes:
+        for dx in (1e-3, 0.5e-3):
+            rows = []
+            for length in LENGTHS:
+                prof = edge_aware_profile(
+                    0.0, B, dx, boundary_cell=dx,
+                    sheet_edges=[SheetEdge(float(length), -1)])
+                f, tip = lowest_resonance(mode, dx, length,
+                                          dy_profile=prof.cells,
+                                          pmc_z=(mode == "2d_tez"))
+                rows.append({"declared_m": float(length), "tip_node_m": tip,
+                             "f_hz": f,
+                             "edge_cell_m": float(prof.edge_cells[0]),
+                             "cell_min_m": float(prof.cells.min()),
+                             "cell_max_m": float(prof.cells.max())})
+            out["edge_aware"][f"{mode}|{dx:.6f}"] = rows
+    # the 3-D TEz arrangement against the 2-D lane, uniform grid, one length
+    f3, _ = lowest_resonance("2d_tez", 1e-3, 4.75e-3, pmc_z=True)
+    out["tez_3d_pmc_uniform_check_hz"] = f3
+
+
 def main() -> int:
+    if "--edge-aware-only" in sys.argv:
+        out = json.loads(OUT.read_text())
+        edge_aware_sweep(out)
+        OUT.write_text(json.dumps(out, indent=1) + "\n")
+        print(f"updated {OUT.relative_to(_REPO)}")
+        return 0
     import rfx
     out = {"rfx_file": str(Path(rfx.__file__).resolve().relative_to(_REPO)),
            "box_m": [A, B], "lengths_m": LENGTHS.tolist(),
@@ -99,17 +140,7 @@ def main() -> int:
                 f, tip = lowest_resonance(mode, dx, length)
                 rows.append({"declared_m": float(length), "tip_node_m": tip, "f_hz": f})
             out["uniform"][f"{mode}|{dx:.6f}"] = rows
-    for dx in (1e-3, 0.5e-3):
-        rows = []
-        for length in LENGTHS:
-            prof = edge_aware_profile(0.0, B, dx, boundary_cell=dx,
-                                      sheet_edges=[SheetEdge(float(length), -1)])
-            f, tip = lowest_resonance("2d_tmz", dx, length, dy_profile=prof.cells)
-            rows.append({"declared_m": float(length), "tip_node_m": tip,
-                         "f_hz": f, "edge_cell_m": float(prof.edge_cells[0]),
-                         "cell_min_m": float(prof.cells.min()),
-                         "cell_max_m": float(prof.cells.max())})
-        out["edge_aware"][f"2d_tmz|{dx:.6f}"] = rows
+    edge_aware_sweep(out)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(out, indent=1) + "\n")
     print(f"wrote {OUT.relative_to(_REPO)}")

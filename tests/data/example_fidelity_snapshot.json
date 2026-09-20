@@ -1634,13 +1634,13 @@
               "axis": "x",
               "detail": "PLACEMENT off by 750.0 um (2.54% of the declared 29500.0 um extent); SIZE 28000.0 um (-1500.0 um, -5.08%)",
               "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             },
             {
               "axis": "y",
               "detail": "PLACEMENT off by 500.0 um (1.32% of the declared 38000.0 um extent); SIZE 37000.0 um (-1000.0 um, -2.63%)",
               "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             }
           ],
           "material": {
@@ -1661,7 +1661,14 @@
         {
           "code": "off_lattice_design_edges",
           "loc": null,
-          "message": "2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): thin_conductor[1] 'thin_conductor[1]' (sheet) y: extent 38mm, worst face residual 500\u00b5m (1.32% of the extent); thin_conductor[1] 'thin_conductor[1]' (sheet) x: extent 29.5mm, worst face residual 250\u00b5m (0.85% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: choose dx commensurate with the patterned dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on the design edges. COVERAGE: examined 4 axis extent(s) on 2 conductor Box declaration(s) on the nonuniform lane; 2 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
+          "message": "2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): thin_conductor[1] 'thin_conductor[1]' (sheet) y: extent 38mm, worst face residual 500\u00b5m (1.32% of the extent); thin_conductor[1] 'thin_conductor[1]' (sheet) x: extent 29.5mm, worst face residual 250\u00b5m (0.85% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: for a PEC VOLUME choose dx commensurate with its dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on its faces; for a SHEET see sheet_effective_size -- a node on a sheet's edge is not the fix. COVERAGE: examined 4 axis extent(s) on 2 conductor Box declaration(s) on the nonuniform lane; 2 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
+          "severity": "warning",
+          "source": "_validate_cfg_off_lattice_design_edges"
+        },
+        {
+          "code": "sheet_effective_size",
+          "loc": null,
+          "message": "4 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 4 listed): thin_conductor[1] 'thin_conductor[1]' x: drawn 29.5mm, nodes cover 28mm, solved as 28.6mm (-3.05%); thin_conductor[0] 'thin_conductor[0]' y: drawn 55mm, nodes cover 55mm, solved as 55.6mm (+1.09%); thin_conductor[1] 'thin_conductor[1]' y: drawn 38mm, nodes cover 37mm, solved as 37.6mm (-1.05%); thin_conductor[0] 'thin_conductor[0]' x: drawn 60mm, nodes cover 60mm, solved as 60.6mm (+1.00%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.30 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
           "severity": "warning",
           "source": "_validate_cfg_off_lattice_design_edges"
         }
@@ -1888,13 +1895,13 @@
               "axis": "x",
               "detail": "PLACEMENT off by 1000.0 um (1.67% of the declared 60000.0 um extent); SIZE 58000.0 um (-2000.0 um, -3.33%)",
               "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             },
             {
               "axis": "y",
               "detail": "PLACEMENT off by 1000.0 um (1.67% of the declared 60000.0 um extent); SIZE 58000.0 um (-2000.0 um, -3.33%)",
               "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             }
           ],
           "material": {
@@ -1965,13 +1972,13 @@
               "axis": "x",
               "detail": "PLACEMENT off by 1000.0 um (3.13% of the declared 32000.0 um extent); SIZE 30000.0 um (-2000.0 um, -6.25%)",
               "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             },
             {
               "axis": "y",
               "detail": "PLACEMENT off by 1000.0 um (2.50% of the declared 40000.0 um extent); SIZE 38000.0 um (-2000.0 um, -5.00%)",
               "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             }
           ],
           "material": {
@@ -1999,7 +2006,14 @@
         {
           "code": "off_lattice_design_edges",
           "loc": null,
-          "message": "4 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 4 listed): thin_conductor[1] 'thin_conductor[1]' (sheet) x: extent 32mm, worst face residual 1mm (3.13% of the extent); thin_conductor[1] 'thin_conductor[1]' (sheet) y: extent 40mm, worst face residual 1mm (2.50% of the extent); thin_conductor[0] 'thin_conductor[0]' (sheet) x: extent 60mm, worst face residual 1mm (1.67% of the extent); thin_conductor[0] 'thin_conductor[0]' (sheet) y: extent 60mm, worst face residual 1mm (1.67% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: choose dx commensurate with the patterned dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on the design edges. COVERAGE: examined 4 axis extent(s) on 2 conductor Box declaration(s) on the nonuniform lane; 2 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
+          "message": "4 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 4 listed): thin_conductor[1] 'thin_conductor[1]' (sheet) x: extent 32mm, worst face residual 1mm (3.13% of the extent); thin_conductor[1] 'thin_conductor[1]' (sheet) y: extent 40mm, worst face residual 1mm (2.50% of the extent); thin_conductor[0] 'thin_conductor[0]' (sheet) x: extent 60mm, worst face residual 1mm (1.67% of the extent); thin_conductor[0] 'thin_conductor[0]' (sheet) y: extent 60mm, worst face residual 1mm (1.67% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: for a PEC VOLUME choose dx commensurate with its dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on its faces; for a SHEET see sheet_effective_size -- a node on a sheet's edge is not the fix. COVERAGE: examined 4 axis extent(s) on 2 conductor Box declaration(s) on the nonuniform lane; 2 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
+          "severity": "warning",
+          "source": "_validate_cfg_off_lattice_design_edges"
+        },
+        {
+          "code": "sheet_effective_size",
+          "loc": null,
+          "message": "4 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 4 listed): thin_conductor[1] 'thin_conductor[1]' x: drawn 32mm, nodes cover 30mm, solved as 31.2mm (-2.50%); thin_conductor[1] 'thin_conductor[1]' y: drawn 40mm, nodes cover 38mm, solved as 39.2mm (-2.00%); thin_conductor[0] 'thin_conductor[0]' x: drawn 60mm, nodes cover 58mm, solved as 59.2mm (-1.33%); thin_conductor[0] 'thin_conductor[0]' y: drawn 60mm, nodes cover 58mm, solved as 59.2mm (-1.33%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.30 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
           "severity": "warning",
           "source": "_validate_cfg_off_lattice_design_edges"
         }
@@ -2528,7 +2542,15 @@
           "realization": "PEC sheet on node plane z = 1250.00 um (2625 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
         }
       },
-      "preflight": []
+      "preflight": [
+        {
+          "code": "sheet_effective_size",
+          "loc": null,
+          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): thin_conductor[1] 'thin_conductor[1]' y: drawn 1mm, nodes cover 1000\u00b5m, solved as 1.15mm (+15.00%); thin_conductor[0] 'thin_conductor[0]' y: drawn 8.5mm, nodes cover 8.5mm, solved as 8.65mm (+1.76%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.30 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+          "severity": "warning",
+          "source": "_validate_cfg_off_lattice_design_edges"
+        }
+      ]
     },
     "examples/tutorials/ports_and_sparams_101.py::build_waveguide_ports::default": {
       "fidelity": {
@@ -3354,7 +3376,7 @@
               "axis": "y",
               "detail": "PLACEMENT off by 28.5 um (4.75% of the declared 600.0 um extent); SIZE 571.5 um (-28.5 um, -4.75%)",
               "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             }
           ],
           "material": {
@@ -3425,7 +3447,7 @@
               "axis": "x",
               "detail": "PLACEMENT off by 28.0 um (4.67% of the declared 600.0 um extent); SIZE 571.5 um (-28.5 um, -4.75%)",
               "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             }
           ],
           "material": {
@@ -3522,7 +3544,7 @@
         {
           "code": "off_lattice_design_edges",
           "loc": null,
-          "message": "2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[1] 'pec' (sheet) y: extent 600\u00b5m, worst face residual 28.5\u00b5m (4.75% of the extent); geometry[2] 'pec' (sheet) x: extent 600\u00b5m, worst face residual 28\u00b5m (4.67% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: choose dx commensurate with the patterned dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on the design edges. COVERAGE: examined 4 axis extent(s) on 2 conductor Box declaration(s) on the uniform lane; 2 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
+          "message": "2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[1] 'pec' (sheet) y: extent 600\u00b5m, worst face residual 28.5\u00b5m (4.75% of the extent); geometry[2] 'pec' (sheet) x: extent 600\u00b5m, worst face residual 28\u00b5m (4.67% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: for a PEC VOLUME choose dx commensurate with its dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on its faces; for a SHEET see sheet_effective_size -- a node on a sheet's edge is not the fix. COVERAGE: examined 4 axis extent(s) on 2 conductor Box declaration(s) on the uniform lane; 2 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
           "severity": "warning",
           "source": "_validate_cfg_off_lattice_design_edges"
         },
@@ -3532,6 +3554,13 @@
           "message": "pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and declare it: a foil is a SHEET (add_thin_conductor, or a zero-thickness PEC Box \u2014 one node plane, normal E through it live); a thick plate is a PEC Box VOLUME (walls on both faces, lattice ownership contract #931).",
           "severity": "warning",
           "source": "_validate_cfg_pec_faces_with_finite_pec"
+        },
+        {
+          "code": "sheet_effective_size",
+          "loc": null,
+          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[1] 'pec' y: drawn 600\u00b5m, nodes cover 571.5\u00b5m, solved as 609.6\u00b5m (+1.60%); geometry[2] 'pec' x: drawn 600\u00b5m, nodes cover 571.5\u00b5m, solved as 609.6\u00b5m (+1.60%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.30 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+          "severity": "warning",
+          "source": "_validate_cfg_off_lattice_design_edges"
         }
       ]
     },
@@ -3756,13 +3785,13 @@
               "axis": "x",
               "detail": "PLACEMENT off by 66.0 um (0.53% of the declared 12466.0 um extent); SIZE 12400.0 um (-66.0 um, -0.53%)",
               "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             },
             {
               "axis": "y",
               "detail": "PLACEMENT off by 150.0 um (6.22% of the declared 2413.0 um extent); SIZE 2200.0 um (-213.0 um, -8.83%)",
               "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             }
           ],
           "material": {
@@ -3833,13 +3862,13 @@
               "axis": "x",
               "detail": "PLACEMENT off by 134.0 um (5.28% of the declared 2540.0 um extent); SIZE 2400.0 um (-140.0 um, -5.51%)",
               "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             },
             {
               "axis": "y",
               "detail": "PLACEMENT off by 120.0 um (0.59% of the declared 20320.0 um extent); SIZE 20200.0 um (-120.0 um, -0.59%)",
               "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             }
           ],
           "material": {
@@ -3916,13 +3945,13 @@
               "axis": "x",
               "detail": "PLACEMENT off by 194.0 um (1.56% of the declared 12466.0 um extent); SIZE 12200.0 um (-266.0 um, -2.13%)",
               "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             },
             {
               "axis": "y",
               "detail": "PLACEMENT off by 143.0 um (5.93% of the declared 2413.0 um extent); SIZE 2200.0 um (-213.0 um, -8.83%)",
               "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             }
           ],
           "material": {
@@ -3964,7 +3993,7 @@
         {
           "code": "off_lattice_design_edges",
           "loc": null,
-          "message": "5 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 5 listed): geometry[3] 'pec' (sheet) y: extent 2.413mm, worst face residual 70\u00b5m (2.90% of the extent); geometry[1] 'pec' (sheet) y: extent 2.413mm, worst face residual 63\u00b5m (2.61% of the extent); geometry[2] 'pec' (sheet) x: extent 2.54mm, worst face residual 66\u00b5m (2.60% of the extent); geometry[3] 'pec' (sheet) x: extent 12.47mm, worst face residual 72\u00b5m (0.58% of the extent); geometry[1] 'pec' (sheet) x: extent 12.47mm, worst face residual 66\u00b5m (0.53% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: choose dx commensurate with the patterned dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on the design edges. COVERAGE: examined 6 axis extent(s) on 3 conductor Box declaration(s) on the uniform lane; 3 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
+          "message": "5 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 5 listed): geometry[3] 'pec' (sheet) y: extent 2.413mm, worst face residual 70\u00b5m (2.90% of the extent); geometry[1] 'pec' (sheet) y: extent 2.413mm, worst face residual 63\u00b5m (2.61% of the extent); geometry[2] 'pec' (sheet) x: extent 2.54mm, worst face residual 66\u00b5m (2.60% of the extent); geometry[3] 'pec' (sheet) x: extent 12.47mm, worst face residual 72\u00b5m (0.58% of the extent); geometry[1] 'pec' (sheet) x: extent 12.47mm, worst face residual 66\u00b5m (0.53% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: for a PEC VOLUME choose dx commensurate with its dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on its faces; for a SHEET see sheet_effective_size -- a node on a sheet's edge is not the fix. COVERAGE: examined 6 axis extent(s) on 3 conductor Box declaration(s) on the uniform lane; 3 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
           "severity": "warning",
           "source": "_validate_cfg_off_lattice_design_edges"
         },
@@ -3974,6 +4003,13 @@
           "message": "pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and declare it: a foil is a SHEET (add_thin_conductor, or a zero-thickness PEC Box \u2014 one node plane, normal E through it live); a thick plate is a PEC Box VOLUME (walls on both faces, lattice ownership contract #931).",
           "severity": "warning",
           "source": "_validate_cfg_pec_faces_with_finite_pec"
+        },
+        {
+          "code": "sheet_effective_size",
+          "loc": null,
+          "message": "3 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 3 listed): geometry[1] 'pec' y: drawn 2.413mm, nodes cover 2.2mm, solved as 2.32mm (-3.85%); geometry[3] 'pec' y: drawn 2.413mm, nodes cover 2.2mm, solved as 2.32mm (-3.85%); geometry[3] 'pec' x: drawn 12.47mm, nodes cover 12.2mm, solved as 12.32mm (-1.17%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.30 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+          "severity": "warning",
+          "source": "_validate_cfg_off_lattice_design_edges"
         },
         {
           "code": "sheet_plane_realized",
@@ -4658,13 +4694,13 @@
               "axis": "x",
               "detail": "PLACEMENT off by 668.7 um (1.67% of the declared 40000.0 um extent); SIZE 38893.8 um (-1106.2 um, -2.77%)",
               "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             },
             {
               "axis": "y",
               "detail": "PLACEMENT off by 668.7 um (1.34% of the declared 50000.0 um extent); SIZE 49212.5 um (-787.5 um, -1.57%)",
               "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             }
           ],
           "material": {
@@ -4735,13 +4771,13 @@
               "axis": "x",
               "detail": "PLACEMENT off by 731.2 um (1.31% of the declared 56000.0 um extent); SIZE 54768.8 um (-1231.2 um, -2.20%)",
               "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             },
             {
               "axis": "y",
               "detail": "PLACEMENT off by 731.2 um (1.11% of the declared 66000.0 um extent); SIZE 65087.5 um (-912.5 um, -1.38%)",
               "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             }
           ],
           "material": {
@@ -4846,7 +4882,14 @@
         {
           "code": "off_lattice_design_edges",
           "loc": null,
-          "message": "2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[2] 'pec' (sheet) x: extent 40mm, worst face residual 356.2\u00b5m (0.89% of the extent); geometry[0] 'pec' (sheet) x: extent 56mm, worst face residual 293.7\u00b5m (0.52% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: choose dx commensurate with the patterned dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on the design edges. COVERAGE: examined 4 axis extent(s) on 2 conductor Box declaration(s) on the uniform lane; 2 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
+          "message": "2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[2] 'pec' (sheet) x: extent 40mm, worst face residual 356.2\u00b5m (0.89% of the extent); geometry[0] 'pec' (sheet) x: extent 56mm, worst face residual 293.7\u00b5m (0.52% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: for a PEC VOLUME choose dx commensurate with its dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on its faces; for a SHEET see sheet_effective_size -- a node on a sheet's edge is not the fix. COVERAGE: examined 4 axis extent(s) on 2 conductor Box declaration(s) on the uniform lane; 2 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
+          "severity": "warning",
+          "source": "_validate_cfg_off_lattice_design_edges"
+        },
+        {
+          "code": "sheet_effective_size",
+          "loc": null,
+          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[2] 'pec' x: drawn 40mm, nodes cover 38.89mm, solved as 39.37mm (-1.58%); geometry[0] 'pec' x: drawn 56mm, nodes cover 54.77mm, solved as 55.25mm (-1.35%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.30 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
           "severity": "warning",
           "source": "_validate_cfg_off_lattice_design_edges"
         }
@@ -5794,7 +5837,7 @@
         {
           "code": "off_lattice_design_edges",
           "loc": null,
-          "message": "20 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 5 listed): geometry[0] 'pec' (volume) y: extent 1.006m, worst face residual 1m (99.37% of the extent); geometry[8] 'pec' (volume) y: extent 1.006m, worst face residual 1m (99.37% of the extent); geometry[1] 'pec' (volume) y: extent 983.5mm, worst face residual 977.1mm (99.35% of the extent); geometry[9] 'pec' (volume) y: extent 983.5mm, worst face residual 977.1mm (99.35% of the extent); geometry[2] 'pec' (volume) y: extent 1.008m, worst face residual 1m (99.19% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: choose dx commensurate with the patterned dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on the design edges. COVERAGE: examined 30 axis extent(s) on 10 conductor Box declaration(s) on the uniform lane; 0 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
+          "message": "20 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 5 listed): geometry[0] 'pec' (volume) y: extent 1.006m, worst face residual 1m (99.37% of the extent); geometry[8] 'pec' (volume) y: extent 1.006m, worst face residual 1m (99.37% of the extent); geometry[1] 'pec' (volume) y: extent 983.5mm, worst face residual 977.1mm (99.35% of the extent); geometry[9] 'pec' (volume) y: extent 983.5mm, worst face residual 977.1mm (99.35% of the extent); geometry[2] 'pec' (volume) y: extent 1.008m, worst face residual 1m (99.19% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: for a PEC VOLUME choose dx commensurate with its dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on its faces; for a SHEET see sheet_effective_size -- a node on a sheet's edge is not the fix. COVERAGE: examined 30 axis extent(s) on 10 conductor Box declaration(s) on the uniform lane; 0 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
           "severity": "warning",
           "source": "_validate_cfg_off_lattice_design_edges"
         },
@@ -7860,6 +7903,13 @@
           "source": "_validate_cfg_pec_faces_with_finite_pec"
         },
         {
+          "code": "sheet_effective_size",
+          "loc": null,
+          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.3mm (+6.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.3mm (+1.76%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.30 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+          "severity": "warning",
+          "source": "_validate_cfg_off_lattice_design_edges"
+        },
+        {
           "code": "wire_port_dead_cell_classification_unavailable",
           "loc": null,
           "message": "Wire port at (0.008, 0.01, 0.0) (extent 0.001): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared wire-port primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- inspect the realized live/dead source edges and the intended terminal contacts on that mesh. Conductor overlap at an endpoint can be intentional; do not infer contact from the absence of this advisory.",
@@ -8024,6 +8074,13 @@
           "message": "pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and declare it: a foil is a SHEET (add_thin_conductor, or a zero-thickness PEC Box \u2014 one node plane, normal E through it live); a thick plate is a PEC Box VOLUME (walls on both faces, lattice ownership contract #931).",
           "severity": "warning",
           "source": "_validate_cfg_pec_faces_with_finite_pec"
+        },
+        {
+          "code": "sheet_effective_size",
+          "loc": null,
+          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.3mm (+6.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.3mm (+1.76%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.30 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+          "severity": "warning",
+          "source": "_validate_cfg_off_lattice_design_edges"
         }
       ]
     },
@@ -9536,6 +9593,13 @@
           "message": "pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and declare it: a foil is a SHEET (add_thin_conductor, or a zero-thickness PEC Box \u2014 one node plane, normal E through it live); a thick plate is a PEC Box VOLUME (walls on both faces, lattice ownership contract #931).",
           "severity": "warning",
           "source": "_validate_cfg_pec_faces_with_finite_pec"
+        },
+        {
+          "code": "sheet_effective_size",
+          "loc": null,
+          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.3mm (+6.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.3mm (+1.76%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.30 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+          "severity": "warning",
+          "source": "_validate_cfg_off_lattice_design_edges"
         }
       ]
     },
@@ -9688,6 +9752,13 @@
           "message": "pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and declare it: a foil is a SHEET (add_thin_conductor, or a zero-thickness PEC Box \u2014 one node plane, normal E through it live); a thick plate is a PEC Box VOLUME (walls on both faces, lattice ownership contract #931).",
           "severity": "warning",
           "source": "_validate_cfg_pec_faces_with_finite_pec"
+        },
+        {
+          "code": "sheet_effective_size",
+          "loc": null,
+          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.3mm (+6.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.3mm (+1.76%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.30 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+          "severity": "warning",
+          "source": "_validate_cfg_off_lattice_design_edges"
         }
       ]
     },
@@ -9847,6 +9918,13 @@
           "message": "1 of 2 impedance-carrying wire ports opt into reference_plane_cells \u2014 off-diagonal S entries involving a non-opted port SILENTLY stay on the legacy port-cell path (only pairs where BOTH ports opt in use the plane waves). Opt in every wire port of the S-matrix, or none.",
           "severity": "warning",
           "source": "_validate_cfg_refplane_placement"
+        },
+        {
+          "code": "sheet_effective_size",
+          "loc": null,
+          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.3mm (+6.00%); geometry[0] 'pec' x: drawn 21mm, nodes cover 21mm, solved as 21.3mm (+1.43%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.30 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+          "severity": "warning",
+          "source": "_validate_cfg_off_lattice_design_edges"
         }
       ]
     },
@@ -9999,6 +10077,13 @@
           "message": "Far-field pattern advisory: the PEC sheet backing a source (bbox (141.6, 141.6, 149.9)\u2013(224.8, 224.8, 149.9) mm) spans 83.3mm \u00d7 83.3mm = 0.83\u03bb \u00d7 0.83\u03bb at f_max=3.00GHz \u2014 a ground plane under ~1\u03bb across. Expect the radiation pattern to be shaped by ground-plane edge diffraction (broadside dip, off-axis side peaks). This is expected physics, not a solver defect, and the fixture stays fine for resonance / impedance work. For a clean broadside pattern enlarge the ground plane to at least ~1.4\u03bb; if the small ground plane is intentional, interpret the pattern accordingly.",
           "severity": "warning",
           "source": "_validate_ntff_small_ground_plane"
+        },
+        {
+          "code": "sheet_effective_size",
+          "loc": null,
+          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' x: drawn 83.28mm, nodes cover 83.28mm, solved as 88.27mm (+6.00%); geometry[0] 'pec' y: drawn 83.28mm, nodes cover 83.28mm, solved as 88.27mm (+6.00%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.30 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+          "severity": "warning",
+          "source": "_validate_cfg_off_lattice_design_edges"
         }
       ]
     },
@@ -10241,7 +10326,7 @@
               "axis": "y",
               "detail": "PLACEMENT off by 92.0 um (15.33% of the declared 600.0 um extent); SIZE 508.0 um (-92.0 um, -15.33%)",
               "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             }
           ],
           "material": {
@@ -10352,7 +10437,7 @@
         {
           "code": "off_lattice_design_edges",
           "loc": null,
-          "message": "1 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 1 listed): geometry[1] 'pec' (sheet) y: extent 600\u00b5m, worst face residual 35\u00b5m (5.83% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: choose dx commensurate with the patterned dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on the design edges. COVERAGE: examined 2 axis extent(s) on 1 conductor Box declaration(s) on the uniform lane; 1 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
+          "message": "1 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 1 listed): geometry[1] 'pec' (sheet) y: extent 600\u00b5m, worst face residual 35\u00b5m (5.83% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: for a PEC VOLUME choose dx commensurate with its dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on its faces; for a SHEET see sheet_effective_size -- a node on a sheet's edge is not the fix. COVERAGE: examined 2 axis extent(s) on 1 conductor Box declaration(s) on the uniform lane; 1 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
           "severity": "warning",
           "source": "_validate_cfg_off_lattice_design_edges"
         },
@@ -10362,6 +10447,13 @@
           "message": "pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and declare it: a foil is a SHEET (add_thin_conductor, or a zero-thickness PEC Box \u2014 one node plane, normal E through it live); a thick plate is a PEC Box VOLUME (walls on both faces, lattice ownership contract #931).",
           "severity": "warning",
           "source": "_validate_cfg_pec_faces_with_finite_pec"
+        },
+        {
+          "code": "sheet_effective_size",
+          "loc": null,
+          "message": "1 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 1 listed): geometry[1] 'pec' y: drawn 600\u00b5m, nodes cover 508\u00b5m, solved as 584.2\u00b5m (-2.63%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.30 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+          "severity": "warning",
+          "source": "_validate_cfg_off_lattice_design_edges"
         }
       ]
     },
