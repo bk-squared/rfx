@@ -28,14 +28,33 @@ rule:
 * "Resolves" means ``git ls-files`` knows it, or it is a directory holding
   tracked files. Present-but-ignored is exactly the defect, so a filesystem
   check would have passed on the machine that shipped it.
+
+WHERE THERE IS NO REPOSITORY. The GPU suite exports the tree with
+``git archive`` and runs the tests against a directory that has no ``.git``.
+The first version of this file called ``git ls-files`` at MODULE level with
+``check=True``, so that export did not fail this gate -- it failed COLLECTION,
+with ``returned non-zero exit status 128``, and took the whole GPU lane down
+with ``Interrupted: 1 error during collection`` (VESSL run 369367262260). Two
+things follow, and both are load-bearing:
+
+* No git call happens at import or collection time. The tracked set is looked
+  up inside the test, once, and cached.
+* When ``git rev-parse --is-inside-work-tree`` cannot answer -- no ``.git``, no
+  git binary -- the oracle becomes filesystem existence. That is not a
+  weakening in the place it applies: ``git archive`` writes ONLY tracked files,
+  so in an export "present" and "tracked" are the same set, and the two dead
+  links this gate exists to catch are absent there for the same reason they are
+  untracked here. In a checkout the fallback never runs, and the ignored-but-
+  present case that motivated the gate is still caught by git.
 """
 from __future__ import annotations
 
 import re
-import subprocess
 from pathlib import Path
 
 import pytest
+
+from tests._git_tracked import git_available, tracked_set
 
 REPO = Path(__file__).resolve().parents[2]
 _EXCLUDED = ("docs/public/", "docs/agent/")
@@ -78,20 +97,48 @@ def _looks_like_a_path(target: str) -> bool:
     return "/" in target or bool(Path(target).suffix)
 
 
-def _tracked() -> set[str]:
-    out = subprocess.run(["git", "ls-files"], cwd=REPO, check=True,
-                         capture_output=True, text=True).stdout
-    return set(out.splitlines())
+#: Sentinel for "look the tracked set up yourself". ``None`` is a real value
+#: here -- it means "no repository, use the filesystem" -- so it cannot double
+#: as the default.
+_LOOK_IT_UP = object()
+
+_CACHE: dict[str, frozenset[str] | None] = {}
 
 
-TRACKED = _tracked()
+def tracked_or_none(repo: Path = REPO) -> frozenset[str] | None:
+    """Every tracked path in *repo*, or ``None`` when git cannot answer.
+
+    Called from inside the tests, never at import: a repository question asked
+    at collection time turns "this tree has no git" into a collection error
+    that stops the whole session rather than one test.
+
+    An empty result from a tree git DOES claim is a checkout is treated as
+    unanswerable too. Believing it would mark every link in the repository
+    unresolved, which is a false alarm rather than a finding.
+    """
+    key = str(repo)
+    if key not in _CACHE:
+        if not git_available(repo):
+            _CACHE[key] = None
+        else:
+            tracked = tracked_set(repo)
+            _CACHE[key] = tracked or None
+    return _CACHE[key]
 
 
-def unresolved_links(page_dir: Path, text: str) -> list[tuple[str, str]]:
+def unresolved_links(page_dir: Path, text: str, *,
+                     tracked=_LOOK_IT_UP,
+                     repo: Path = REPO) -> list[tuple[str, str]]:
     """Every relative link target on the page that a clean clone lacks.
 
-    The single predicate: the per-page test and the self-check both call it.
+    The single predicate: the per-page test and the self-checks all call it.
+
+    *tracked* is the set git reports, or ``None`` to score by filesystem
+    existence instead -- see the module docstring for when that is the right
+    oracle. Left unset, it is looked up once and cached.
     """
+    if tracked is _LOOK_IT_UP:
+        tracked = tracked_or_none(repo)
     out: list[tuple[str, str]] = []
     for raw in _LINK.findall(text) + _REF_LINK.findall(text):
         if raw.startswith(_SKIP_SCHEME):
@@ -101,11 +148,16 @@ def unresolved_links(page_dir: Path, text: str) -> list[tuple[str, str]]:
             continue
         resolved = (page_dir / target).resolve()
         try:
-            rel = resolved.relative_to(REPO).as_posix()
+            rel = resolved.relative_to(repo).as_posix()
         except ValueError:
             out.append((raw, "resolves outside the repository"))
             continue
-        if rel in TRACKED or any(t.startswith(rel + "/") for t in TRACKED):
+        if tracked is None:
+            if not resolved.exists():
+                out.append((raw, "absent from this tree (no repository here, "
+                                 "so presence is what can be checked)"))
+            continue
+        if rel in tracked or any(t.startswith(rel + "/") for t in tracked):
             continue
         out.append((raw, "present locally but NOT tracked (check "
                          "docs/.gitignore)" if resolved.exists() else "absent"))
@@ -176,3 +228,77 @@ def test_the_scan_catches_the_two_links_it_was_written_for() -> None:
 
     live = "See [the support matrix](support_matrix.md) for the current state.\n"
     assert unresolved_links(guides, live) == []
+
+
+def test_without_a_repository_the_filesystem_is_the_oracle(tmp_path) -> None:
+    """Criterion (B) for the archive export: the predicate still discriminates.
+
+    A tree with no ``.git`` is what the GPU suite runs. The gate must not go
+    silent there and must not go red on every link; it must report exactly the
+    targets that are absent, because ``git archive`` writes only tracked files
+    and so absence is the same finding that untrackedness is in a checkout.
+    """
+    guides = tmp_path / "docs" / "guides"
+    guides.mkdir(parents=True)
+    (guides / "present.md").write_text("the target that exists\n")
+
+    assert tracked_or_none(tmp_path) is None, (
+        "this fixture is only meaningful where git cannot answer; "
+        f"{tmp_path} looks like a checkout")
+
+    page = "[kept](present.md) and [dropped](missing.md)\n"
+    found = unresolved_links(guides, page, repo=tmp_path)
+    assert [raw for raw, _ in found] == ["missing.md"], found
+    assert "no repository here" in found[0][1], found[0][1]
+
+
+def test_the_same_page_is_scored_by_git_where_git_can_answer(tmp_path) -> None:
+    """The fallback is not the behaviour anywhere git works.
+
+    Same directory, same page, an explicit tracked set: the file that exists on
+    disk but is not in that set is reported, which is the ignored-but-present
+    defect the gate was written for and the one thing filesystem existence
+    cannot see.
+    """
+    guides = tmp_path / "docs" / "guides"
+    guides.mkdir(parents=True)
+    (guides / "present.md").write_text("present but not committed\n")
+
+    page = "[kept](present.md)\n"
+    assert unresolved_links(guides, page, repo=tmp_path,
+                            tracked=frozenset({"docs/guides/present.md"})) == []
+    found = unresolved_links(guides, page, repo=tmp_path,
+                             tracked=frozenset({"docs/guides/other.md"}))
+    assert [raw for raw, _ in found] == ["present.md"], found
+    assert "NOT tracked" in found[0][1], found[0][1]
+
+
+def test_importing_this_module_does_not_ask_git() -> None:
+    """What actually broke the GPU lane, pinned at its own level.
+
+    The failure was not an assertion -- it was ``git ls-files`` raising at
+    MODULE level, which pytest reports as a collection error and which stops
+    the entire session, not just this file. A subprocess with an empty PATH has
+    no git binary at all, so an import that still asked would fail here.
+    """
+    import subprocess
+    import sys
+
+    code = (
+        "import importlib.util, pathlib, sys\n"
+        f"spec = importlib.util.spec_from_file_location('probe', {str(Path(__file__).resolve())!r})\n"
+        "mod = importlib.util.module_from_spec(spec)\n"
+        f"sys.path.insert(0, {str(REPO)!r})\n"
+        "spec.loader.exec_module(mod)\n"
+        "print('imported', len(mod.GUIDES))\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True, text=True,
+        env={"PATH": "", "PYTHONPATH": str(REPO),
+             "HOME": str(Path.home()), "JAX_PLATFORMS": "cpu"},
+    )
+    assert result.returncode == 0, (
+        "importing this module without a git binary failed -- something at "
+        f"module level is asking git again:\n{result.stderr}")
+    assert "imported" in result.stdout, result.stdout
