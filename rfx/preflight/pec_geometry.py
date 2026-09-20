@@ -1129,9 +1129,20 @@ def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
     from rfx.mesh_edges import EDGE_OFFSET
     domain = tuple(float(v) for v in getattr(ctx.sim, "_domain", (0.0,) * 3))
     rows = []
-    for e in boxes:
-        if e.kind != "sheet":
-            continue
+    sheets = [e for e in boxes if e.kind == "sheet"]
+    union = None
+    for e in sheets:
+        fp = np.asarray(e.sheet.footprint, dtype=bool)
+        union = fp.copy() if union is None else (union | fp)
+
+    def _continues(fp, a, i_end, i_next):
+        """The metal goes on past this end: every footprint node of the end
+        row has sheet metal (another sheet's) on the next node. A seam
+        between two abutting sheets is interior metal, not a free edge."""
+        end = np.take(fp, i_end, axis=a)
+        return bool(end.any()) and bool(np.take(union, i_next, axis=a)[end].all())
+
+    for e in sheets:
         fp = np.asarray(e.sheet.footprint, dtype=bool)
         for a in range(3):
             if a == int(e.sheet.normal_axis):
@@ -1152,9 +1163,11 @@ def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
             dom_hi = float(domain[a])
             tol = 1e-9 * max(dom_hi, 1e-12)
             add = 0.0
-            if i0 > 0 and float(e.lo[a]) > tol:
+            if (i0 > 0 and float(e.lo[a]) > tol
+                    and not _continues(fp, a, i0, i0 - 1)):
                 add += EDGE_OFFSET * float(nodes[i0] - nodes[i0 - 1])
-            if i1 + 1 < nodes.size and float(e.hi[a]) < dom_hi - tol:
+            if (i1 + 1 < nodes.size and float(e.hi[a]) < dom_hi - tol
+                    and not _continues(fp, a, i1, i1 + 1)):
                 add += EDGE_OFFSET * float(nodes[i1 + 1] - nodes[i1])
             if add == 0.0:
                 continue

@@ -820,9 +820,9 @@ def fidelity_report(sim, print_report: bool = True):
                                    f"({100 * worst / ext:.2f}% of the declared "
                                    f"{ext:.1f} um extent); {size_txt}",
                             remedy=(
-                                "a sheet's in-plane edge is solved about 0.3 "
+                                "a sheet's in-plane edge is solved about 0.35 "
                                 "cell beyond its last node, so a node ON the "
-                                "edge is not the fix: put a node 0.3 cell "
+                                "edge is not the fix: put a node 0.35 cell "
                                 "INSIDE the metal with "
                                 "rfx.mesh_edges.edge_aware_profile "
                                 "(non-uniform profile for this axis)"

@@ -4,7 +4,7 @@
       {
         "code": "ntff_pec_overlap",
         "loc": null,
-        "message": "ERROR: NTFF face x_lo at 10.00mm lies on or inside PEC geometry[0] 'pec' (realized as a volume: x walls at [5.996, 35.976] mm; declared bbox (0.005, 0.005, 0.01)\u2013(0.035, 0.035, 0.04)). NTFF box must enclose all radiators with no conductor surface on or crossing any face. Shrink or move the NTFF box.",
+        "message": "ERROR: NTFF face x_lo at 10.00mm lies on or inside PEC geometry[0] 'pec' (realized as a volume: x walls at [5.996, 35.976] mm; declared bbox (np.float64(0.005), np.float64(0.005), np.float64(0.01))\u2013(np.float64(0.035), np.float64(0.035), np.float64(0.04))). NTFF box must enclose all radiators with no conductor surface on or crossing any face. Shrink or move the NTFF box.",
         "severity": "error",
         "source": "_validate_ntff_inverse_design"
       },

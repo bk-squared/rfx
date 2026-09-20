@@ -2,16 +2,21 @@
 
 A flat PEC wall (a face) is exact on a node plane. The in-plane EDGE of a
 PEC sheet is not: on the Yee grid the sheet behaves as if it ended about
-0.3 of a cell BEYOND its last PEC node. Measured on a 2-D PEC box with a
+0.35 of a cell BEYOND its last PEC node. Measured on a 2-D PEC box with a
 thin fin, against a fine-mesh reference, for both polarizations and at two
-cell sizes (``scripts/diagnostics/pec_sheet_edge_offset.py``): +0.29 ...
-+0.32 cell. openEMS builds its meshes on the same fact -- its
+cell sizes (``scripts/diagnostics/pec_sheet_edge_offset.py``): +0.34 ...
++0.35 cell. The reference itself -- the fin tip ON a node -- converges at
+FIRST order in the cell size (measured on four grids, order 0.94 ... 1.01),
+which is the same fact read another way: an on-node edge is always a fixed
+fraction of a cell too long. The reference is therefore extrapolated at the
+measured order; a second-order extrapolation of the same runs reads 0.29 ...
+0.32 and drifts with the cell size. openEMS builds its meshes on the same fact -- its
 ``mesh_hint_from_box(metal_edge_res=r)`` puts lines at ``edge - r/3`` and
 ``edge + 2r/3`` and none on the edge (the "thirds rule").
 
-So an edge drawn ON a node line is solved about 0.3 cell too long, an edge
+So an edge drawn ON a node line is solved about 0.35 cell too long, an edge
 drawn anywhere else is first moved to a node (up to a cell) and then solved
-0.3 cell too long, and no choice of node removes the scatter: on the fin
+0.35 cell too long, and no choice of node removes the scatter: on the fin
 the uniform grid is off by up to 2.4 % in frequency at a 1 mm cell, with a
 sawtooth in the drawn length. Placing a node ``EDGE_OFFSET`` of a cell
 INSIDE the metal removes it (0.13 % worst, which is the grid's own
@@ -23,6 +28,7 @@ where the lines go; the cells between them come from
 """
 from __future__ import annotations
 
+import warnings
 from typing import NamedTuple, Sequence
 
 import numpy as np
@@ -30,8 +36,11 @@ import numpy as np
 from rfx.nonuniform import make_band_profile
 
 #: Distance from the last PEC node to the electrical edge of a PEC sheet, in
-#: cells. MEASURED on this solver (see the module docstring); openEMS uses 1/3.
-EDGE_OFFSET = 0.30
+#: cells. MEASURED on this solver against a reference extrapolated at its
+#: measured (first) order -- ``derived`` block of
+#: ``scripts/diagnostics/pec_sheet_edge_offset/pec_sheet_edge_offset.json``:
+#: 0.345 ... 0.354 over two polarizations and two cell sizes. openEMS uses 1/3.
+EDGE_OFFSET = 0.35
 
 
 class SheetEdge(NamedTuple):
@@ -85,6 +94,11 @@ def _build(lo, hi, dx, fixed, edges, res, edge_offset, max_ratio,
         else:
             continue
         span = e2.position - e1.position
+        if span <= 0.0:
+            raise ValueError(
+                f"two sheet edges at the same position {e1.position:.6g} m: "
+                "a seam between abutting sheets is interior metal, not an "
+                "edge -- leave it out")
         n = max(0, int(np.ceil(span / min(res[i], res[i + 1]) - k - 1e-9)))
         r = span / (n + k) if (n + k) > 0 else None
         if r is not None and r <= min(res[i], res[i + 1]) * (1.0 + 1e-12):
@@ -286,13 +300,17 @@ def edge_aware_profiles(
         Zero-thickness conductor Boxes (patches, strips, ground planes that
         end inside the domain). Along each in-plane axis both ends become
         sheet edges; a sheet edge that coincides with the domain boundary is
-        a wall and is skipped. The sheet's own plane becomes a face on its
-        normal axis.
+        a wall and is skipped, and so is an end that butts against another
+        sheet in the same plane over its whole width (a seam inside one
+        conductor). The sheet's own plane becomes a face on its normal axis.
     solids : sequence of Box
-        Volumes -- dielectric slabs, PEC blocks. Every face goes ON a node.
+        Volumes -- dielectric slabs, PEC blocks. Every face goes ON a node,
+        except a face that coincides with a sheet edge: the edge rule wins
+        there and the face lands ``edge_offset`` of a cell off the node.
     faces : dict, optional
         Extra node planes per axis, ``{"x": [...], "z": [...]}``: port
-        planes, probe planes, the faces of a shape that is not a Box.
+        planes, probe planes, the faces of a shape that is not a Box. A
+        declared face ON a sheet edge cannot be honoured and warns.
     axes : str
         Which profiles to build, any of ``"x"``, ``"y"``, ``"z"``.
     boundary_cell : float, optional
@@ -325,11 +343,12 @@ def edge_aware_profiles(
         k = names[a]
         hi_dom = float(domain[k])
         tol = 1e-9 * float(dx)
-        axis_faces = list(extra.get(a, ()))
-        axis_edges = {}
+        declared = list(extra.get(a, ()))
+        axis_faces = []
         for sh in solids:
             lo, hi = _box_corners(sh)
             axis_faces += [lo[k], hi[k]]
+        ends = []          # (position, metal_side, plane key, transverse span)
         for sh in sheets:
             lo, hi = _box_corners(sh)
             thin = [i for i in range(3) if abs(hi[i] - lo[i]) <= tol]
@@ -337,14 +356,44 @@ def edge_aware_profiles(
                 raise ValueError(
                     "a sheet must be a Box with exactly one zero-thickness "
                     f"axis; got extents {tuple(h - l for l, h in zip(lo, hi))}")
-            if k == thin[0]:
+            n = thin[0]
+            if k == n:
                 axis_faces.append(lo[k])
                 continue
+            t = 3 - k - n
+            plane = (n, round(lo[n] / tol))
             for pos, side in ((lo[k], +1), (hi[k], -1)):
                 if tol < pos < hi_dom - tol:
-                    axis_edges[(round(pos / tol), side)] = SheetEdge(pos, side)
-        edge_pos = {round(e.position / tol) for e in axis_edges.values()}
-        axis_faces = [f for f in axis_faces
+                    ends.append((pos, side, plane, (lo[t], hi[t])))
+        axis_edges = {}
+        for pos, side, plane, (t0, t1) in ends:
+            # An end that butts against another sheet in the same plane, over
+            # its whole width, is interior metal (a seam), not a free edge.
+            seam = any(
+                abs(p2 - pos) <= tol and s2 == -side and pl2 == plane
+                and u0 <= t0 + tol and u1 >= t1 - tol
+                for p2, s2, pl2, (u0, u1) in ends)
+            if not seam:
+                axis_edges[(round(pos / tol), side)] = SheetEdge(pos, side)
+        edge_pos = {}
+        for (key, side), e in axis_edges.items():
+            if key in edge_pos:
+                raise ValueError(
+                    f"{a} = {e.position:.6g} m is the upper end of one sheet "
+                    "and the lower end of another, and neither covers the "
+                    "other's width: the line there would have to sit inside "
+                    "both. Draw the two as one sheet, or overlap them.")
+            edge_pos[key] = e
+        for f in declared:
+            e = edge_pos.get(round(f / tol))
+            if e is not None:
+                warnings.warn(
+                    f"edge_aware_profiles: the declared {a} face at {f:.6g} m "
+                    "coincides with a sheet edge. No mesh line is put ON a "
+                    f"sheet edge, so the nearest node is {edge_offset:.2f} of "
+                    "the edge cell inside the metal. Move the plane off the "
+                    "edge if it has to sit on a node.", stacklevel=2)
+        axis_faces = [f for f in axis_faces + declared
                       if tol < f < hi_dom - tol and round(f / tol) not in edge_pos]
         prof = edge_aware_profile(
             0.0, hi_dom, dx, faces=axis_faces,

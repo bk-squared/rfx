@@ -13,7 +13,8 @@ import warnings
 import numpy as np
 import pytest
 
-from rfx.mesh_edges import EDGE_OFFSET, SheetEdge, edge_aware_profile
+from rfx.mesh_edges import (EDGE_OFFSET, SheetEdge, edge_aware_profile,
+                            edge_aware_profiles)
 
 
 def _straddling_cell(nodes, x):
@@ -92,12 +93,82 @@ def test_an_edge_outside_the_axis_is_refused():
                            sheet_edges=[SheetEdge(11e-3, -1)])
 
 
+# --- from the drawing: seams, staggered ends, a face on an edge ------------
+
+_DOM = (40e-3, 40e-3, 10e-3)
+
+
+def _sheet(x0, x1, y0, y1):
+    from rfx import Box
+    return Box((x0, y0, 2e-3), (x1, y1, 2e-3))
+
+
+def test_a_seam_between_two_abutting_sheets_is_not_an_edge():
+    """One conductor drawn as two Boxes meshes like the same conductor drawn
+    as one: the shared end is interior metal."""
+    one = edge_aware_profiles(_DOM, 1e-3, sheets=[_sheet(10e-3, 30e-3, 10e-3, 20e-3)])
+    two = edge_aware_profiles(_DOM, 1e-3, sheets=[
+        _sheet(10e-3, 20e-3, 10e-3, 20e-3), _sheet(20e-3, 30e-3, 10e-3, 20e-3)])
+    for key in one:
+        np.testing.assert_allclose(two[key], one[key], rtol=0, atol=1e-15)
+
+
+def test_a_feed_line_butting_a_wider_patch_keeps_the_patch_edge():
+    patch = _sheet(10e-3, 20e-3, 10e-3, 20e-3)
+    feed = _sheet(20e-3, 30e-3, 14e-3, 16e-3)
+    prof = edge_aware_profiles(_DOM, 1e-3, sheets=[patch, feed], axes="x")
+    nodes = np.concatenate([[0.0], np.cumsum(prof["dx_profile"])])
+    lo, hi = _straddling_cell(nodes, 20e-3)      # the patch's edge survives
+    assert (20e-3 - lo) / (hi - lo) == pytest.approx(EDGE_OFFSET, abs=1e-6)
+
+
+def test_two_staggered_sheets_meeting_end_to_end_are_refused_in_words():
+    with pytest.raises(ValueError, match="neither covers"):
+        edge_aware_profiles(_DOM, 1e-3, sheets=[
+            _sheet(10e-3, 20e-3, 10e-3, 20e-3), _sheet(20e-3, 30e-3, 15e-3, 25e-3)])
+
+
+def test_coincident_opposite_edges_are_refused_not_divided_by():
+    with pytest.raises(ValueError, match="same position"):
+        edge_aware_profile(0.0, 10e-3, 1e-3, sheet_edges=[
+            SheetEdge(5e-3, -1), SheetEdge(5e-3, +1)])
+
+
+def test_a_declared_face_on_a_sheet_edge_warns():
+    with pytest.warns(UserWarning, match="coincides with a sheet edge"):
+        edge_aware_profiles(_DOM, 1e-3, axes="x", faces={"x": [20e-3]},
+                            sheets=[_sheet(10e-3, 20e-3, 10e-3, 20e-3)])
+
+
+def _sheet_size_rows(shapes):
+    from rfx.api import Simulation
+    sim = Simulation(freq_max=5e9, domain=_DOM, dx=1e-3, boundary="pec")
+    for s in shapes:
+        sim.add(s, material="pec")
+    sim.add_source((5e-3, 5e-3, 5e-3), component="ez", amplitude_kind="field")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        report = sim.preflight()
+    return [str(i) for i in report.issues if "sheet dimension" in str(i)]
+
+
+def test_the_advisory_does_not_count_a_seam_as_a_free_edge():
+    """Two 10 mm halves of one 20 mm conductor: one free end each along x
+    (+3 %), two along y (+6 %). Counting the seam would give +6 % on x."""
+    rows = _sheet_size_rows([_sheet(10e-3, 20e-3, 10e-3, 20e-3),
+                             _sheet(20e-3, 30e-3, 10e-3, 20e-3)])
+    assert len(rows) == 1
+    assert rows[0].count("x: drawn 10mm, nodes cover 10mm, solved as 10.3mm") == 2
+    assert rows[0].count("y: drawn 10mm, nodes cover 10mm, solved as 10.6mm") == 2
+
+
 # --- physics: the fin the offset was measured on ---------------------------
 
 #: Fine-mesh reference for a 4.75 mm fin in the 20 x 10 mm PEC box, 2-D TMz,
 #: lowest resonance: dx = 0.25 mm 19.9241 GHz, dx = 0.125 mm 19.8883 GHz,
-#: Richardson 19.8764 GHz (scripts/diagnostics/pec_sheet_edge_offset.py).
-F_REF_HZ = 19.8764e9
+#: extrapolated at the tip's measured FIRST order 19.8525 GHz
+#: (scripts/diagnostics/pec_sheet_edge_offset.py).
+F_REF_HZ = 19.8525e9
 FIN_M = 4.75e-3
 
 
@@ -123,8 +194,8 @@ def _fin_resonance(dy_profile):
 
 
 def test_a_fin_that_does_not_fit_the_grid_is_solved_at_its_drawn_length():
-    """Uniform grid: the 4.75 mm fin realizes 4 cells and resonates 1.9 %
-    low against the reference. Edge-aware lines: 0.09 % -- what is left is
+    """Uniform grid: the 4.75 mm fin realizes 4 cells and resonates 1.8 %
+    low against the reference. Edge-aware lines: 0.08 % -- what is left is
     the grid's own dispersion (0.10 % on the empty box at this cell size).
     Both bounds sit between the two measurements, so the test reds if the
     rule stops working AND if the uniform grid stops showing the defect
