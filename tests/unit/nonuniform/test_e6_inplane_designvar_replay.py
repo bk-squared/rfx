@@ -12,6 +12,7 @@ skipped, so the test is meaningful at every commit of the lane.
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import numpy as np
@@ -282,8 +283,29 @@ def test_revert_cellwise_diagnostic_second_pass_reproduces_first():
     diff = gt - gn
     for i, k, ulps in ((0, "chain_w_share", 1), (1, "chain_xc_share", 28)):
         assert d["scalars_match_firstpass"][k] is False
-        assert f[k] == float(e6.J_PARAM[:, i] @ diff / (e6.J_PARAM[:, i] @ gt))        # first-pass form
-        assert d[k] == float(e6.J_PARAM[:, i] @ diff / np.asarray(d["chain_true"])[i])  # arm form
+        # The historical BLAS reductions need not repeat bit-for-bit on a
+        # different platform. Bound their roundoff, not the physics: gamma_k
+        # covers n products and additions plus the fsum reference rounding.
+        # Cancellation is charged by sum(abs(products)), not abs(sum).
+        column = e6.J_PARAM[:, i]
+        unit = np.finfo(np.float64).eps / 2
+        operations = 2 * len(column) + 2
+        gamma = operations * unit / (1 - operations * unit)
+        numerator = math.fsum(column * diff)
+        numerator_error = gamma * math.fsum(abs(column * diff))
+        denominator = math.fsum(column * gt)
+        denominator_error = gamma * math.fsum(abs(column * gt))
+        for recorded, divisor, divisor_error in (
+            (f[k], denominator, denominator_error),
+            (d[k], d["chain_true"][i], 0.0),
+        ):
+            assert abs(divisor) > divisor_error
+            quotient = numerator / divisor
+            bound = ((numerator_error + abs(quotient) * divisor_error)
+                     / (abs(divisor) - divisor_error) + 2 * unit * abs(quotient))
+            assert abs(recorded - quotient) <= bound, (k, recorded, quotient, bound)
+        # Record-to-record identity is still exact: these are historical facts,
+        # unlike a reduction newly evaluated by this machine.
         assert abs(d[k] - f[k]) == ulps * np.spacing(abs(f[k]))
     assert all(v for k, v in d["scalars_match_firstpass"].items() if k not in ("chain_w_share", "chain_xc_share"))
 
