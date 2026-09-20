@@ -6,7 +6,7 @@ reader validates against it, passes, and believes something false.
 Scope of what these tests actually pin: the top-level, excitation and observable
 key sets; the shape-kind vocabulary; the material payload including pole
 parameters; and validation of every design fixture in
-``tests/studio/test_interop_design_document.py`` against the published schema. Entry
+``tests/interop/test_interop_design_document.py`` against the published schema. Entry
 field sets are pinned only insofar as a fixture populates that family — the
 coverage guard below names any family no fixture exercises.
 

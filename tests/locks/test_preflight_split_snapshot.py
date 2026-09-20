@@ -393,7 +393,8 @@ LOCK_PROVENANCE = {
         "tests/unit/preflight/test_wire_port_gap_distance.py,"
         "tests/unit/sparams/test_mixed_port_sparam.py,"
         "tests/unit/sparams/test_waveguide_nu_sparam.py,"
-        "tests/unit/subgrid/test_subgrid_validation.py,"
+        "builder copied from tests/unit/subgrid/test_subgrid_validation.py "
+        "(removed under #1127; in git history at a6d6fce1),"
         "tests/data/preflight_split_snapshot"
     ),
     "generator": (
@@ -1603,8 +1604,9 @@ def _nonuniform_tfsf_oblique_sim():
 def _subgrid_unsupported_feature_sim():
     """An SBP-SAT refinement region with a DFT plane probe on it.
 
-    ``tests/unit/subgrid/test_subgrid_validation.py:14``'s
-    ``_vacuum_subgrid_sim()`` -- imported, not retyped -- with one
+    ``_vacuum_subgrid_sim()`` copied from
+    ``tests/unit/subgrid/test_subgrid_validation.py:14`` (removed under
+    #1127; in git history at a6d6fce1), with one
     ``add_dft_plane_probe`` added, which is the first of the five features
     ``_validate_cfg_subgrid_limitations`` refuses.
 
@@ -1615,9 +1617,12 @@ def _subgrid_unsupported_feature_sim():
     the subgrid check is reached -- which is exactly why the census counted
     ``_validate_cfg_subgrid_limitations`` at 49 calls and zero emissions.
     """
-    import tests.unit.subgrid.test_subgrid_validation as mod
+    from rfx import Simulation
 
-    sim = mod._vacuum_subgrid_sim()
+    sim = Simulation(freq_max=8e9, domain=(0.04, 0.04, 0.04), boundary="pec", dx=0.004)
+    sim.add_refinement(z_range=(0.012, 0.028), ratio=2, validation="production")
+    sim.add_source((0.02, 0.02, 0.020), "ez")
+    sim.add_probe((0.024, 0.024, 0.020), "ez")
     sim.add_dft_plane_probe(axis="z", coordinate=0.020, component="ey",
                             freqs=[8e9])
     return sim
