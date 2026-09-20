@@ -79,6 +79,7 @@
       - any-glob-to-any-file:
           - "rfx/**/nonuniform*"
           - "rfx/mesh_planner.py"
+          - "rfx/mesh_edges.py"
           - "rfx/preflight/mesh.py"
           - "rfx/amr.py"
           - "tests/unit/nonuniform/**"
