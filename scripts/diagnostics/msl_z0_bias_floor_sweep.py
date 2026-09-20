@@ -223,6 +223,46 @@ pair only 60um still has its frozen geometry on main. Nothing in the
 frozen JSON changes; what changes is that neither half of the anchor can
 be called live without the owed six-point re-solve.
 
+THE OWED RE-SOLVE RAN (2026-09-19, issue #752 re-verification). It does NOT
+restore the 0.4% reading -- it refutes it on this tree. New artifact beside
+this one, ``msl_z0_bias_floor_sweep_realized_anchor_2026-09-19.json``, with
+its own provenance (commit, rfx path, jax version, x64 flag, per-point wall
+time and settling); the pre-declared body, its JSON and its verdict block are
+untouched and their sha256 was re-checked after the run. Six fresh FDTD points
+at this file's committed settings, each scored against Hammerstad-Jensen on
+the board THAT SAME BUILD realized:
+
+    label             Z0 meas   HJ(realized)   dev      settling
+    aligned h_sub/3    44.179      48.271     -8.48%   -102.3/-100.0
+    aligned h_sub/4    45.987      49.391     -6.89%   -102.4/-103.3
+    aligned h_sub/5    44.646      47.412     -5.83%    -99.6/-103.1
+    aligned h_sub/6    45.799      48.271     -5.12%    -99.6/-103.4
+    misaligned 80um    39.016      53.106    -26.53%    -98.0/ -99.7
+    misaligned 60um    41.491      53.106    -21.87%    -98.9/-100.5
+
+Every point settled far below the -40 dB floor, probe clearance is SATISFIED
+on all twelve ports, and on the worst point the fit is well conditioned:
+beta_railed 0/60 bins, reliable 9/9 in the gate, Z0 flat over the gate
+(38.960-39.076 ohm, imag 0.126). So none of the repo's reliability gates
+flags these numbers -- they are a clean measurement that disagrees with the
+anchor.
+
+What moved is the EXTRACTOR, not the board. On the three points whose realized
+geometry is unchanged (h_sub/5, h_sub/6, misaligned 60um) the measured Z0 moved
+-5.6%/-5.0%/-22.0% against the frozen rows, while the two points whose geometry
+DID move reproduce their frozen Z0 to within 0.24%. The MSL lane changed after
+this sweep ran; #986 (H->E reference-plane collocation) and #987
+(positive-real-reference power-wave normalization) are the candidates, and
+attributing it is not done here.
+
+ANCHOR CAVEAT, and it decides one of the two verdicts: the recipe in #752's
+body takes h from the DIELECTRIC column's realized z-extent. Check 2b of
+``rfx/preflight/msl.py`` warns that the material extent is not the
+conductor-plane gap, and on the misaligned pair the two differ (320/300um
+column vs a 240um gap). Scored on the gap instead, the misaligned deviations
+are -11.88% and -10.16% rather than -26.53% and -21.87%. The aligned class is
+unaffected (both readings give 254um) and stays 5.1-8.5% out either way.
+
 COST OF THE OWED RE-SOLVE (measured, so nobody has to guess again): the
 frozen JSON's own ``wallclock_s`` column sums to 5686.6 s = 94.8 min on
 the machine that produced it. The two points re-solved on 2026-09-02 ran
