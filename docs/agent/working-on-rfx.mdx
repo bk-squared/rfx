@@ -190,7 +190,7 @@ The repository squash-merges and keeps the remote branch. Then:
 | layer | what it covers |
 |---|---|
 | CI checks | the two body lines, changelog fragments, lint, contract tests, and the physics shards whenever the diff touches code |
-| repository settings | a pull request is required and GitHub asks for zero approvals on it, squash is the only merge method, history stays linear, force-push and deleting `main` are off, and nobody is on the bypass list (the one claim in this table only an administrator can check — see below) |
+| repository settings | a pull request is required and GitHub asks for zero approvals on it, squash is the only merge method, history stays linear, force-push and deleting `main` are off |
 | weekly governance audit | skipped reviews, issues with no lane label or filed outside the forms, merged pull requests closing an issue outside every open milestone |
 
 Read all of this rather than trusting the page. Which contexts are required:
@@ -212,10 +212,10 @@ gh api repos/bk-squared/rfx/branches/main --jq .protection    # "enabled": false
 The contexts come from the one ruleset on `main`; classic branch protection was deleted
 on 2026-09-19, which is why the first command reads the rules endpoint and not
 `branches/main/protection`. All three run on a token that can only read the repository,
-which is the point of listing them. The ruleset's bypass list is the exception: GitHub
-does not return that field to a non-administrator, so an agent cannot confirm it is
-empty and that claim stays the PI's to make. Branches need not be up to date before
-merging, and no merge queue is in use.
+which is the point of listing them. The ruleset's bypass list is the exception: it is
+reported empty, but GitHub does not return that field to a non-administrator, so no
+agent can confirm it and checking it stays the PI's to do. Branches need not be up to
+date before merging, and no merge queue is in use.
 
 A pull request sees more than the eleven. Every context reported on this page's own
 pull request, and whether it blocks a merge:
@@ -249,9 +249,8 @@ audit](./agent-runbook.mdx#weekly-governance-audit).
 
 No check can tell whether a review was real. The pull-request rule requires zero
 approvals, so GitHub never asks for one, and the gate reads only that the `Review:` line
-is present and well-formed; it cannot see who read the diff. The separate-instance
-review is carried by that line, not by GitHub. Making the claim explicit is
-what lets a later audit catch a false one, and the separate-instance rule plus the
+is present and well-formed; it cannot see who read the diff. Making the claim explicit
+is what lets a later audit catch a false one, and the separate-instance rule plus the
 weekly report are the whole of the guard.
 
 ## Where things live

@@ -11,7 +11,7 @@ name: pr-tests
 # Path-aware since 2026-09-18: the `changes` job decides whether this event
 # touched anything the six physics shards can observe, and they skip their own
 # steps when it did not. Their NAMES and their SUCCESS are unchanged, which is
-# what branch protection reads. The contract tests run either way. A push to
+# what the ruleset reads. The contract tests run either way. A push to
 # main is never skipped.
 #
 # `changes` MUST BE A REQUIRED CHECK, alongside `ruff`, `guards-and-preflight`
@@ -216,7 +216,7 @@ jobs:
         # 3.11 is the non-required duplicate lane. It runs on pushes to main
         # (every merge is still exercised on both interpreters) but not on
         # pull_request events, where it doubled a PR's job count (21 → 15)
-        # for a lane main's ruleset never reads. A branch that needs the
+        # for a lane the ruleset never reads. A branch that needs the
         # 3.11 witness before merging can trigger it by pushing to main via
         # the merge itself,.
         python-version: ${{ github.event_name == 'push' && fromJSON('["3.10", "3.11"]') || fromJSON('["3.10"]') }}
