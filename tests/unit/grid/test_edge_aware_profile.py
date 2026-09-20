@@ -123,9 +123,29 @@ def test_a_feed_line_butting_a_wider_patch_keeps_the_patch_edge():
 
 
 def test_two_staggered_sheets_meeting_end_to_end_are_refused_in_words():
-    with pytest.raises(ValueError, match="neither covers"):
+    with pytest.raises(ValueError, match="cannot sit inside both"):
         edge_aware_profiles(_DOM, 1e-3, sheets=[
             _sheet(10e-3, 20e-3, 10e-3, 20e-3), _sheet(20e-3, 30e-3, 15e-3, 25e-3)])
+
+
+def test_sheets_on_different_planes_are_never_a_seam():
+    """Same x, opposite ends, but 2 mm apart in z: both are free edges. They
+    cannot share a line, so the layout is refused -- never merged as a seam
+    (which would silently drop a real edge)."""
+    from rfx import Box
+    upper = Box((20e-3, 10e-3, 4e-3), (30e-3, 20e-3, 4e-3))
+    with pytest.raises(ValueError, match="different planes"):
+        edge_aware_profiles(_DOM, 1e-3, axes="x",
+                            sheets=[_sheet(10e-3, 20e-3, 10e-3, 20e-3), upper])
+
+
+def test_the_advisory_keeps_a_free_edge_under_a_sheet_on_another_plane():
+    from rfx import Box
+    lower = _sheet(10e-3, 20e-3, 10e-3, 20e-3)
+    upper = Box((20e-3, 10e-3, 4e-3), (30e-3, 20e-3, 4e-3))
+    rows = _sheet_size_rows([lower, upper])
+    assert len(rows) == 1
+    assert rows[0].count(f"(+{200 * EDGE_OFFSET * 1e-3 / 10e-3:.2f}%)") == 4
 
 
 def test_coincident_opposite_edges_are_refused_not_divided_by():

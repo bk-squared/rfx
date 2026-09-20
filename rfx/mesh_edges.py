@@ -19,15 +19,16 @@ drawn anywhere else is first moved to a node (up to a cell) and then solved
 0.35 cell too long, and no choice of node removes the scatter: on the fin
 the uniform grid is off by up to 2.4 % in frequency at a 1 mm cell, with a
 sawtooth in the drawn length. Placing a node ``EDGE_OFFSET`` of a cell
-INSIDE the metal removes it (0.15 % worst, against 0.10 % for the empty
-box's own dispersion).
+INSIDE the metal removes it: 0.15 % worst with E along the edge (TMz) and
+0.44 % worst with E across it (TEz, mean -0.25 %), against 0.10 % and 0.05 %
+for the empty box's own dispersion.
 
 Where the number holds. It does not depend on the polarization or on the cell
 size. It does depend, mildly, on the shape of the cells around the edge: for
 a strip three cells above a ground wall -- a printed conductor's situation --
 it reads 0.37, 0.31 and 0.31 when the cell normal to the sheet is 1, 1/2 and
 1/4 of the in-plane cell (``pec_strip_over_ground_offset.py``), so the fixed
-0.35 leaves at most 0.04 cell per edge there. For a free-standing sheet with
+0.35 leaves at most 0.042 cell per edge there. For a free-standing sheet with
 strongly non-square cells it moves more (0.27 at 1/2, 0.60 at 2); pass
 ``edge_offset=`` for such a mesh. A conductor one or more cells THICK ends in
 a face between two corners and has a smaller offset, not handled here.
@@ -312,7 +313,10 @@ def edge_aware_profiles(
         sheet edges; a sheet edge that coincides with the domain boundary is
         a wall and is skipped, and so is an end that butts against another
         sheet in the same plane over its whole width (a seam inside one
-        conductor). The sheet's own plane becomes a face on its normal axis.
+        conductor). Two free ends of opposite sense at one coordinate -- on
+        one plane or on different planes of a multilayer board -- cannot
+        share a mesh line and are refused. The sheet's own plane becomes a
+        face on its normal axis.
     solids : sequence of Box
         Volumes -- dielectric slabs, PEC blocks. Every face goes ON a node,
         except a face that coincides with a sheet edge: the edge rule wins
@@ -390,9 +394,11 @@ def edge_aware_profiles(
             if key in edge_pos:
                 raise ValueError(
                     f"{a} = {e.position:.6g} m is the upper end of one sheet "
-                    "and the lower end of another, and neither covers the "
-                    "other's width: the line there would have to sit inside "
-                    "both. Draw the two as one sheet, or overlap them.")
+                    "and the lower end of another (on the same plane without "
+                    "one covering the other's width, or on different planes). "
+                    "One mesh line cannot sit inside both metals: move one "
+                    "of the two ends by at least a cell, or let the sheets "
+                    "overlap.")
             edge_pos[key] = e
         for f in declared:
             e = edge_pos.get(round(f / tol))
@@ -403,6 +409,9 @@ def edge_aware_profiles(
                     f"sheet edge, so the nearest node is {edge_offset:.2f} of "
                     "the edge cell inside the metal. Move the plane off the "
                     "edge if it has to sit on a node.", stacklevel=2)
+        # A solid's face on a sheet edge (a slab cut flush with its foil)
+        # yields to the edge rule, as the docstring says; only a DECLARED
+        # plane warns, because the caller asked for a node there.
         axis_faces = [f for f in axis_faces + declared
                       if tol < f < hi_dom - tol and round(f / tol) not in edge_pos]
         prof = edge_aware_profile(
