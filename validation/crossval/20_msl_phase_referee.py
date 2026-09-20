@@ -1755,8 +1755,35 @@ def _signed_beta_envelope(eps_r: float, w_m: float, h_m: float, t_m: float,
     passed ``t_m`` where ``dx_m`` belongs, which was inert here and wrong for
     any caller whose metal is not one cell thick (review of PR #898).
     """
-    terms = _signed_beta_envelope_terms(eps_r, w_m, h_m, t_m, f_band_top_hz, dx_m)
+    terms = _signed_beta_envelope_terms(
+        eps_r=eps_r, w_m=w_m, h_m=h_m, t_m=t_m,
+        f_band_top_hz=f_band_top_hz, dx_m=dx_m)
     return terms["lo_frac"], terms["hi_frac"]
+
+
+def _signed_beta_envelope_terms_for_layout(layout: dict) -> dict:
+    """The signed envelope for a Stage B layout, each quantity NAMED.
+
+    The Stage B main path used to spell this call positionally and had the
+    conductor thickness and the cell size in each other's slots. On the cv20
+    board those are the same number -- the metal is one cell thick -- so the
+    swap changed nothing here and nothing caught it; it is wrong the moment a
+    caller's metal is not one cell thick, which is exactly the second-dx rung
+    #830 asks for. Keywords here, and one helper the tests can reach without
+    openEMS, so the routing is checkable rather than asserted in prose.
+
+    ``t_m`` is the realized metal thickness DERIVED from this run's own wall
+    planes (``(n_planes - 1) * dx``), not spelled as ``B_DX_M``, so it cannot
+    silently disagree with the realization. ``dx_m`` is the cell size.
+    """
+    return _signed_beta_envelope_terms(
+        eps_r=B_EPS_R,
+        w_m=layout["w_trace_realized_m"],
+        h_m=layout["h_sub_realized_m"],
+        t_m=layout["t_metal_realized_m"],
+        f_band_top_hz=B_GATE_F_HI_HZ,
+        dx_m=B_DX_M,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -3115,12 +3142,13 @@ def _run_stage_b(*, sim_root: str, threads: int, nrts: int, end_criteria: float,
     # rather than spelled as B_DX_M, so the value cannot silently disagree
     # with the realization; eps_r, the band top and dx -- so the whole
     # block moves with the board rather than pinning per-fixture fractions.
+    # The call lives in _signed_beta_envelope_terms_for_layout so its
+    # thickness-vs-cell-size routing is reachable by a test without openEMS;
+    # it used to be spelled positionally here with those two swapped.
     # Under #931 both solvers really do build that one cell of metal
     # (_build_stage_b_thru asserts it); before the contract rfx did not. It never raises, so it is
     # computed AFTER the gated (raising) witnesses above and simply recorded.
-    signed_beta_envelope_terms = _signed_beta_envelope_terms(
-        B_EPS_R, layout["w_trace_realized_m"], layout["h_sub_realized_m"],
-        B_DX_M, B_GATE_F_HI_HZ, layout["t_metal_realized_m"])
+    signed_beta_envelope_terms = _signed_beta_envelope_terms_for_layout(layout)
     beta_dev_lo = signed_beta_envelope_terms["lo_frac"]
     beta_dev_hi = signed_beta_envelope_terms["hi_frac"]
     signed_beta_envelope_openems = _signed_analytic_beta_envelope_witness(

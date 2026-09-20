@@ -1,0 +1,424 @@
+{
+ "box_witness": [],
+ "builder": "scripts/diagnostics/build_msl_thru_phase_dx50um_reference.py",
+ "closed_form": {
+  "h_250um": {
+   "eps_eff": 2.872970226316938,
+   "z0_ohm": 47.41203509468273
+  },
+  "h_254um": {
+   "eps_eff": 2.8693862252597855,
+   "z0_ohm": 47.89480046631184
+  }
+ },
+ "eps_eff_spread_across_dx_frac": 0.03680572827696187,
+ "eps_r": 3.66,
+ "h_declared_m": 0.000254,
+ "refine_witness": [],
+ "rfx_file": "rfx/__init__.py",
+ "rungs": [
+  {
+   "beta_dev_vs_closed_form_h250_frac": -0.01643915951953323,
+   "box": {
+    "box_cells": [
+     532,
+     101
+    ],
+    "clearance_above_in_h_declared": 3.986220472440945,
+    "clearance_above_in_h_solver": 4.05,
+    "clearance_above_substrate_m": 0.0010125,
+    "lateral_clearance_beside_strip_m": 0.0029999999999999996,
+    "lateral_clearance_in_W": 5.000000000000001,
+    "lateral_clearance_in_h_solver": 11.999999999999998,
+    "pad_y_cells": 5,
+    "pad_z_cells": 20,
+    "refine": 4
+   },
+   "dev_vs_closed_form_h250_frac": -0.03260807307335789,
+   "dev_vs_closed_form_h254_frac": -0.031399754144987746,
+   "dx_m": 4.9999999999999996e-05,
+   "dx_um": 50.0,
+   "fidelity_rows": {
+    "conductor": {
+     "axes": {
+      "x": {
+       "declared_extent_um": 14000.0,
+       "declared_um": [
+        0.0,
+        14000.0
+       ],
+       "realized_extent_um": 13999.999999999998,
+       "realized_um": [
+        0.0,
+        13999.999999999998
+       ]
+      },
+      "y": {
+       "declared_extent_um": 599.9999999999999,
+       "declared_um": [
+        908.0,
+        1507.9999999999998
+       ],
+       "realized_extent_um": 599.9999999999999,
+       "realized_um": [
+        900.0,
+        1499.9999999999998
+       ]
+      },
+      "z": {
+       "declared_extent_um": 50.00000000000002,
+       "declared_um": [
+        254.0,
+        304.0
+       ],
+       "realized_extent_um": 49.99999999999997,
+       "realized_um": [
+        250.0,
+        300.0
+       ]
+      }
+     },
+     "entity": "geometry[1] 'pec'"
+    },
+    "substrate": {
+     "axes": {
+      "x": {
+       "declared_extent_um": 14000.0,
+       "declared_um": [
+        0.0,
+        14000.0
+       ],
+       "realized_extent_um": 14049.999999999998,
+       "realized_um": [
+        0.0,
+        14049.999999999998
+       ]
+      },
+      "y": {
+       "declared_extent_um": 2415.9999999999995,
+       "declared_um": [
+        0.0,
+        2415.9999999999995
+       ],
+       "realized_extent_um": 2450.0,
+       "realized_um": [
+        0.0,
+        2450.0
+       ]
+      },
+      "z": {
+       "declared_extent_um": 254.0,
+       "declared_um": [
+        0.0,
+        254.0
+       ],
+       "realized_extent_um": 300.0,
+       "realized_um": [
+        0.0,
+        300.0
+       ]
+      }
+     },
+     "entity": "geometry[0] 'ro4350b'"
+    }
+   },
+   "grid_shape": [
+    298,
+    66,
+    45
+   ],
+   "realized_trace": {
+    "t_metal_realized_m": 4.9999999999999996e-05,
+    "trace_realization_kind": "volume",
+    "trace_wall_planes_realized": [
+     5,
+     6
+    ],
+    "trace_wall_planes_realized_z_m": [
+     0.00025,
+     0.0003
+    ],
+    "trace_y_hi_realized_m": 0.0014999999999999998,
+    "trace_y_lo_realized_m": 0.0009,
+    "w_trace_realized_m": 0.0005999999999999998
+   },
+   "solve": {
+    "dz_m": 4.9999999999999996e-05,
+    "elapsed_s": 1.89,
+    "eps_eff": 2.779288203239614,
+    "h_solver_m": 0.00025,
+    "n_z_sub": 5,
+    "z0_static_ohm": 47.65958390966889
+   }
+  },
+  {
+   "beta_dev_vs_closed_form_h250_frac": -0.004906747499679787,
+   "box": {
+    "box_cells": [
+     1060,
+     204
+    ],
+    "clearance_above_in_h_declared": 4.035433070866142,
+    "clearance_above_in_h_solver": 4.1,
+    "clearance_above_substrate_m": 0.0010249999999999999,
+    "lateral_clearance_beside_strip_m": 0.0029999999999999996,
+    "lateral_clearance_in_W": 5.000000000000001,
+    "lateral_clearance_in_h_solver": 11.999999999999998,
+    "pad_y_cells": 10,
+    "pad_z_cells": 41,
+    "refine": 4
+   },
+   "dev_vs_closed_form_h250_frac": -0.009789418828333951,
+   "dev_vs_closed_form_h254_frac": -0.00855259830606292,
+   "dx_m": 2.4999999999999998e-05,
+   "dx_um": 25.0,
+   "fidelity_rows": {
+    "conductor": {
+     "axes": {
+      "x": {
+       "declared_extent_um": 14000.0,
+       "declared_um": [
+        0.0,
+        14000.0
+       ],
+       "realized_extent_um": 13999.999999999998,
+       "realized_um": [
+        0.0,
+        13999.999999999998
+       ]
+      },
+      "y": {
+       "declared_extent_um": 599.9999999999999,
+       "declared_um": [
+        708.0000000000001,
+        1308.0
+       ],
+       "realized_extent_um": 600.0,
+       "realized_um": [
+        699.9999999999999,
+        1300.0
+       ]
+      },
+      "z": {
+       "declared_extent_um": 25.00000000000001,
+       "declared_um": [
+        254.0,
+        279.0
+       ],
+       "realized_extent_um": 24.999999999999957,
+       "realized_um": [
+        250.0,
+        274.99999999999994
+       ]
+      }
+     },
+     "entity": "geometry[1] 'pec'"
+    },
+    "substrate": {
+     "axes": {
+      "x": {
+       "declared_extent_um": 14000.0,
+       "declared_um": [
+        0.0,
+        14000.0
+       ],
+       "realized_extent_um": 14025.0,
+       "realized_um": [
+        0.0,
+        14025.0
+       ]
+      },
+      "y": {
+       "declared_extent_um": 2016.0,
+       "declared_um": [
+        0.0,
+        2016.0
+       ],
+       "realized_extent_um": 2025.0,
+       "realized_um": [
+        0.0,
+        2025.0
+       ]
+      },
+      "z": {
+       "declared_extent_um": 254.0,
+       "declared_um": [
+        0.0,
+        254.0
+       ],
+       "realized_extent_um": 274.99999999999994,
+       "realized_um": [
+        0.0,
+        274.99999999999994
+       ]
+      }
+     },
+     "entity": "geometry[0] 'ro4350b'"
+    }
+   },
+   "grid_shape": [
+    578,
+    98,
+    80
+   ],
+   "realized_trace": {
+    "t_metal_realized_m": 2.4999999999999998e-05,
+    "trace_realization_kind": "volume",
+    "trace_wall_planes_realized": [
+     10,
+     11
+    ],
+    "trace_wall_planes_realized_z_m": [
+     0.00025,
+     0.00027499999999999996
+    ],
+    "trace_y_hi_realized_m": 0.0013,
+    "trace_y_lo_realized_m": 0.0006999999999999999,
+    "w_trace_realized_m": 0.0006000000000000001
+   },
+   "solve": {
+    "dz_m": 2.4999999999999998e-05,
+    "elapsed_s": 11.0,
+    "eps_eff": 2.8448455174901883,
+    "h_solver_m": 0.00025,
+    "n_z_sub": 10,
+    "z0_static_ohm": 47.89108211253391
+   }
+  },
+  {
+   "beta_dev_vs_closed_form_h250_frac": 0.0018598586735145695,
+   "box": {
+    "box_cells": [
+     2116,
+     405
+    ],
+    "clearance_above_in_h_declared": 3.9985236220472435,
+    "clearance_above_in_h_solver": 4.062499999999999,
+    "clearance_above_substrate_m": 0.0010156249999999998,
+    "lateral_clearance_beside_strip_m": 0.0029999999999999996,
+    "lateral_clearance_in_W": 5.000000000000001,
+    "lateral_clearance_in_h_solver": 11.999999999999998,
+    "pad_y_cells": 20,
+    "pad_z_cells": 81,
+    "refine": 4
+   },
+   "dev_vs_closed_form_h250_frac": 0.003723176421314589,
+   "dev_vs_closed_form_h254_frac": 0.004976874823333199,
+   "dx_m": 1.2499999999999999e-05,
+   "dx_um": 12.5,
+   "fidelity_rows": {
+    "conductor": {
+     "axes": {
+      "x": {
+       "declared_extent_um": 14000.0,
+       "declared_um": [
+        0.0,
+        14000.0
+       ],
+       "realized_extent_um": 13999.999999999998,
+       "realized_um": [
+        0.0,
+        13999.999999999998
+       ]
+      },
+      "y": {
+       "declared_extent_um": 599.9999999999999,
+       "declared_um": [
+        608.0,
+        1207.9999999999998
+       ],
+       "realized_extent_um": 599.9999999999999,
+       "realized_um": [
+        612.5,
+        1212.4999999999998
+       ]
+      },
+      "z": {
+       "declared_extent_um": 12.499999999999979,
+       "declared_um": [
+        254.0,
+        266.5
+       ],
+       "realized_extent_um": 12.499999999999979,
+       "realized_um": [
+        250.0,
+        262.5
+       ]
+      }
+     },
+     "entity": "geometry[1] 'pec'"
+    },
+    "substrate": {
+     "axes": {
+      "x": {
+       "declared_extent_um": 14000.0,
+       "declared_um": [
+        0.0,
+        14000.0
+       ],
+       "realized_extent_um": 14012.499999999998,
+       "realized_um": [
+        0.0,
+        14012.499999999998
+       ]
+      },
+      "y": {
+       "declared_extent_um": 1816.0,
+       "declared_um": [
+        0.0,
+        1816.0
+       ],
+       "realized_extent_um": 1824.9999999999998,
+       "realized_um": [
+        0.0,
+        1824.9999999999998
+       ]
+      },
+      "z": {
+       "declared_extent_um": 254.0,
+       "declared_um": [
+        0.0,
+        254.0
+       ],
+       "realized_extent_um": 262.5,
+       "realized_um": [
+        0.0,
+        262.5
+       ]
+      }
+     },
+     "entity": "geometry[0] 'ro4350b'"
+    }
+   },
+   "grid_shape": [
+    1138,
+    163,
+    150
+   ],
+   "realized_trace": {
+    "t_metal_realized_m": 1.2499999999999999e-05,
+    "trace_realization_kind": "volume",
+    "trace_wall_planes_realized": [
+     20,
+     21
+    ],
+    "trace_wall_planes_realized_z_m": [
+     0.00025,
+     0.0002625
+    ],
+    "trace_y_hi_realized_m": 0.0012124999999999998,
+    "trace_y_lo_realized_m": 0.0006125,
+    "w_trace_realized_m": 0.0005999999999999998
+   },
+   "solve": {
+    "dz_m": 1.2499999999999999e-05,
+    "elapsed_s": 135.51,
+    "eps_eff": 2.8836668013227,
+    "h_solver_m": 0.00025,
+    "n_z_sub": 20,
+    "z0_static_ohm": 47.95641004404481
+   }
+  }
+ ],
+ "w_trace_m": 0.0006
+}
