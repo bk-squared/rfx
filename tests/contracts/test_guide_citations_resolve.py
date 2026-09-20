@@ -64,7 +64,7 @@ from pathlib import Path
 
 import pytest
 
-from tests._git_tracked import git_available, tracked_set
+from tests._git_tracked import tracked_set
 
 REPO = Path(__file__).resolve().parents[2]
 _EXCLUDED = ("docs/public/", "docs/agent/")
@@ -144,18 +144,23 @@ def tracked_or_none(repo: Path = REPO) -> frozenset[str] | None:
         if not (Path(repo) / ".git").exists():
             _CACHE[key] = None
             return _CACHE[key]
-        tracked = tracked_set(repo) if git_available(repo) else frozenset()
+        # One subprocess, not two. ``.git`` has already decided which
+        # question is being asked, so a ``rev-parse`` first would only
+        # confirm what an empty or failed ``ls-files`` says anyway -- and
+        # ``tracked_set`` already swallows a missing binary into an empty
+        # set (review of PR #1135, D).
+        tracked = tracked_set(repo)
         if not tracked:
             raise GitCannotAnswerHere(
                 f"{repo} has a .git, so this is a checkout and the question "
                 "'is this path committed' has a real answer -- but git did "
-                "not give one. `git rev-parse --is-inside-work-tree` or "
-                "`git ls-files` failed or came back empty. Exit 128 here is "
-                "usually dubious ownership: run "
-                f"`git config --global --add safe.directory {repo}`. Falling "
-                "back to filesystem presence would pass a link that is "
-                "present but ignored, which is the defect this gate exists "
-                "to catch, so it is refused instead."
+                "not give one: `git ls-files` failed or came back empty. "
+                "Usually dubious ownership, so try "
+                f"`git config --global --add safe.directory {repo}`; a "
+                "repository that genuinely tracks nothing also lands here. "
+                "Falling back to filesystem presence would pass a link that "
+                "is present but ignored, which is the defect this gate "
+                "exists to catch, so it is refused instead."
             )
         _CACHE[key] = tracked
     return _CACHE[key]
@@ -278,16 +283,23 @@ def _git_shim(tmp_path, monkeypatch, exit_code: int) -> None:
     monkeypatch.setenv("PATH", str(binary) + os.pathsep + "/usr/bin")
 
 
-@pytest.fixture(autouse=True)
-def _clear_tracked_cache():
-    """The tracked set is cached per repo path; these tests build their own."""
+@pytest.fixture
+def clear_tracked_cache():
+    """Empty the per-repo cache around a test that builds its own tree.
+
+    Requested BY NAME, never ``autouse`` (review of PR #1135, D). Clearing it
+    for all 190 tests made each one re-ask git and cost 364 subprocesses where
+    3 will do, which is the opposite of what the module docstring promises
+    ("looked up inside the test, once, and cached") and of why
+    ``tests/_git_tracked.py`` has a ``tracked_set`` at all.
+    """
     _CACHE.clear()
     yield
     _CACHE.clear()
 
 
 def test_a_checkout_whose_git_refuses_is_an_error_not_a_fallback(
-        tmp_path, monkeypatch) -> None:
+        tmp_path, monkeypatch, clear_tracked_cache) -> None:
     """Review of PR #1135, A. The one case that must NOT reach the fallback.
 
     Exit 128 inside a real checkout is a live condition -- dubious ownership
@@ -305,7 +317,7 @@ def test_a_checkout_whose_git_refuses_is_an_error_not_a_fallback(
 
 
 def test_a_missing_git_binary_in_a_checkout_is_also_an_error(
-        tmp_path, monkeypatch) -> None:
+        tmp_path, monkeypatch, clear_tracked_cache) -> None:
     """Same verdict by the other route: ``.git`` is what decides, not whether
     the subprocess happened to run."""
     repo = tmp_path / "checkout"
@@ -315,7 +327,8 @@ def test_a_missing_git_binary_in_a_checkout_is_also_an_error(
         tracked_or_none(repo)
 
 
-def test_a_git_file_counts_as_a_checkout(tmp_path, monkeypatch) -> None:
+def test_a_git_file_counts_as_a_checkout(
+        tmp_path, monkeypatch, clear_tracked_cache) -> None:
     """A linked worktree has ``.git`` as a FILE. This repository is often
     worked in one, so keying on a directory would put every worktree on the
     weak oracle."""
@@ -328,7 +341,7 @@ def test_a_git_file_counts_as_a_checkout(tmp_path, monkeypatch) -> None:
 
 
 def test_an_export_still_falls_back_when_git_is_broken(
-        tmp_path, monkeypatch) -> None:
+        tmp_path, monkeypatch, clear_tracked_cache) -> None:
     """The harness case, with the shim in place: no ``.git``, so presence is
     the oracle and the gate runs rather than erroring."""
     guides = tmp_path / "docs" / "guides"
