@@ -1774,7 +1774,12 @@ def _signed_beta_envelope_terms_for_layout(layout: dict) -> dict:
 
     ``t_m`` is the realized metal thickness DERIVED from this run's own wall
     planes (``(n_planes - 1) * dx``), not spelled as ``B_DX_M``, so it cannot
-    silently disagree with the realization. ``dx_m`` is the cell size.
+    silently disagree with the realization. ``dx_m`` is the cell size, and it
+    DOES come from the module constant ``B_DX_M`` rather than from the layout:
+    Stage B builds one mesh, and ``_assert_matches_rfx_fixture`` refuses a
+    fixture whose ``meta['dx_m']`` is not ``B_DX_M``, so the constant is the
+    checked value here. A second mesh would come with its own fixture and its
+    own assertion, not with a second reading of this one.
     """
     return _signed_beta_envelope_terms(
         eps_r=B_EPS_R,

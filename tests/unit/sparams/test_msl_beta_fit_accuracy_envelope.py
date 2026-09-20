@@ -14,11 +14,18 @@ residual it refines is an L2 NORM, so near the true beta it is V-shaped
 that kink leaves a bias that repeats with the node period.  Measured with
 ``scripts/diagnostics/msl_beta_fit_synthetic_accuracy.py``, which dumps
 the whole curve: the bias oscillates with a period of exactly one scan
-node, +0.144 % / -0.165 %, vanishing at the nodes and at the node
+node, +0.143 % / -0.165 %, vanishing at the nodes and at the node
 midpoints.  It is the same size at complex128 as at complex64, so it is
 the scan geometry and not precision, and it does not move with the
 backward-wave amplitude or phase, because the fit is exact at the true
 beta for any gamma.
+
+The same script tests that account the decisive way: refining the SQUARE
+of the residual instead (monotone, so the argmin node is unchanged; the
+square is locally parabolic where the norm is not) drops the sweep
+maximum from 0.1649 % to 0.0161 % and removes every sign change.  What
+survives is a remainder of about -0.011 % that keeps one sign, which
+this account does not explain.
 
 The envelope pinned below is MEASURED, not desired.  It is a regression
 lock -- it bounds the error from above, so a change that shrinks the bias
@@ -49,14 +56,25 @@ W_TRACE_M = 600e-6
 H_DECLARED_M = 254e-6
 F_MID_HZ = 3.7586206896551726e9        # centre of the referee's 3.0-4.5 GHz gate band
 
-# Probe arrays.  The first is the referee fixture's own (5 planes, 11 cells of
-# 50 um).  The second is deliberately unlike it -- a different count, a
-# different spacing, a different origin -- because the bias under test is a
-# property of the beta SCAN and must not depend on the array.
+# Probe arrays the envelope lock runs on. The first is the thru fixture's own
+# (5 planes, 11 cells of 50 um); the second is deliberately unlike it.
 LAYOUTS = {
-    "cv20_5_planes_550um": np.array([4.5e-3 + n * 550e-6 for n in range(5)]),
+    "thru_5_planes_550um": np.array([4.5e-3 + n * 550e-6 for n in range(5)]),
     "unlike_9_planes_250um": np.array([1.0e-3 + n * 250e-6 for n in range(9)]),
 }
+
+# A wider set for the array-independence witness: 3 to 9 planes, 150 to 550 um
+# spacing, two origins -- a factor of ~15 in the electrical length beta*L the
+# array subtends. The bias under test is a property of the beta SCAN, so it
+# must not move across these.
+SPREAD_ARRAYS = dict(LAYOUTS, **{
+    "3_planes_150um_x0_0": np.array([n * 150e-6 for n in range(3)]),
+    "3_planes_150um_x0_4p5mm": np.array([4.5e-3 + n * 150e-6 for n in range(3)]),
+    "3_planes_300um_x0_0": np.array([n * 300e-6 for n in range(3)]),
+    "5_planes_150um_x0_0": np.array([n * 150e-6 for n in range(5)]),
+    "5_planes_250um_x0_0": np.array([n * 250e-6 for n in range(5)]),
+    "9_planes_550um_x0_0": np.array([n * 550e-6 for n in range(9)]),
+})
 
 # Swept true beta, as a fraction of the anchor: +-3 % brackets every residual
 # anyone has proposed for this board, at a step fine enough to resolve the
@@ -68,9 +86,16 @@ GAMMA_OVER_ALPHA = (0.0, 0.05, 0.2)
 # cases, complex64 and complex128 within 5e-6 of each other):
 #   max |fitted/true - 1| = 0.1655 %,  signed mean over the window = -0.0090 %.
 MEASURED_MAX_ABS_BIAS = 1.655e-3
-# The lock: the measurement plus ~50 % margin, so ordinary platform-to-platform
-# float32 drift cannot red it but a real loss of accuracy can.
-ACCURACY_ENVELOPE = 2.5e-3
+# The lock: the measurement plus half again, so ordinary platform-to-platform
+# float32 drift cannot red it but a real loss of accuracy can. Measured on the
+# other side too: this bound reds at a beta scan 1.4x coarser than the current
+# one (41 nodes -> 25) and stays green at 1.33x.
+ACCURACY_ENVELOPE = 1.5 * MEASURED_MAX_ABS_BIAS
+# MEASURED across SPREAD_ARRAYS by the same script: the worst-case bias spans
+# 0.1625 % to 0.1691 %, a spread of 6.6e-5. The witness below allows that plus
+# ~80 %, which is still 14x under the effect it is meant to separate from.
+MEASURED_ARRAY_SPREAD = 6.6e-5
+ARRAY_SPREAD_BOUND = 1.2e-4
 # What a least-squares fit of an exactly-representable model should deliver.
 TARGET_ACCURACY = 5e-4
 
@@ -119,28 +144,32 @@ def test_beta_fit_stays_inside_its_measured_accuracy_envelope(
     assert worst <= ACCURACY_ENVELOPE, (
         f"{layout}, |gamma/alpha|={gamma_over_alpha}: the beta fit is off by "
         f"{100 * worst:.4f} % on data that is exactly its own model, past the "
-        f"measured envelope {100 * ACCURACY_ENVELOPE:.4f} %. Re-measure with "
-        f"scripts/diagnostics/msl_beta_fit_synthetic_accuracy.py before "
+        f"envelope {100 * ACCURACY_ENVELOPE:.4f} % (the measured "
+        f"{100 * MEASURED_MAX_ABS_BIAS:.4f} % plus half again). Re-measure "
+        f"with scripts/diagnostics/msl_beta_fit_synthetic_accuracy.py before "
         f"moving this bound.")
 
 
 def test_beta_fit_accuracy_is_a_property_of_the_scan_not_of_the_probe_array():
-    """Two unlike arrays must see the same error.
+    """Eight unlike arrays must see the same error.
 
     This is what identifies the error as the beta scan's: the arrays differ
-    in probe count, spacing and origin, so anything the probe geometry
-    caused would separate them.  Stated as an absolute difference, so it
-    still holds if the estimator is fixed and both go to zero.
+    in probe count, spacing and origin -- a factor of ~15 in beta*L -- so
+    anything the probe geometry caused would separate them.  Stated as an
+    absolute difference, so it still holds if the estimator is fixed and all
+    of them go to zero.
     """
     worst = {
         name: float(np.max(np.abs(_sweep_bias(x, 0.0))))
-        for name, x in LAYOUTS.items()
+        for name, x in SPREAD_ARRAYS.items()
     }
     spread = max(worst.values()) - min(worst.values())
-    assert spread <= 2e-4, (
-        f"probe arrays disagree on the fit's accuracy by {100 * spread:.4f} % "
-        f"({worst}) -- the error is then not (only) the beta scan's, and the "
-        f"module docstring's account of it needs redoing")
+    assert spread <= ARRAY_SPREAD_BOUND, (
+        f"probe arrays disagree on the fit's accuracy by {100 * spread:.4f} %, "
+        f"past the {100 * ARRAY_SPREAD_BOUND:.4f} % allowed on a measured "
+        f"{100 * MEASURED_ARRAY_SPREAD:.4f} % -- the error is then not (only) "
+        f"the beta scan's, and the module docstring's account of it needs "
+        f"redoing. Per array: {worst}")
 
 
 @pytest.mark.xfail(strict=True, reason=(

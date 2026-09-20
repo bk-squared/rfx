@@ -1839,19 +1839,21 @@ def test_signed_beta_envelope_is_derived_at_runtime_and_moves_with_the_board():
     assert coarse["hi_frac"] == pytest.approx(terms["hi_frac"], abs=1e-15)
     assert coarse["lo_frac"] == pytest.approx(terms["lo_frac"], abs=1e-15)
 
-    # (7) The band this test computes IS the band the main path computes: the
-    #     same closed form on the realized board the committed run-2 artifact
-    #     records (w_trace_realized_m / h_sub_realized_m) at the same dx, which
-    #     is 0.4954 % -- the number the PR #898 review read off that artifact.
-    #     A wrapper that forwards the conductor thickness where the cell size
-    #     belongs answers a different question here the moment the two stop
-    #     being the same number.
+    # (7) The band this test computes is the band the realized board gives:
+    #     the same closed form on the dims the committed run-2 artifact
+    #     records (w_trace_realized_m / h_sub_realized_m) at the same dx,
+    #     which is 0.4954 % -- the number the PR #898 review read off that
+    #     artifact. Which argument carries the cell size and which the
+    #     conductor thickness is no longer asserted here: the main path goes
+    #     through _signed_beta_envelope_terms_for_layout, and
+    #     test_stage_b_envelope_routes_thickness_and_cell_size_to_their_own_parameters
+    #     pins that routing on a board where the two differ.
     run2_layout = json.loads(_RUN2_RESULT_PATH.read_text())["stage_b"]["layout"]
-    main_path = module._signed_beta_envelope_terms(
-        module.B_EPS_R, run2_layout["w_trace_realized_m"],
-        run2_layout["h_sub_realized_m"], module.B_DX_M,
-        module.B_GATE_F_HI_HZ, module.B_DX_M)
-    assert main_path["half_cell_rasterization_band_frac"] == pytest.approx(
+    realized_board = module._signed_beta_envelope_terms(
+        eps_r=module.B_EPS_R, w_m=run2_layout["w_trace_realized_m"],
+        h_m=run2_layout["h_sub_realized_m"], t_m=module.B_DX_M,
+        f_band_top_hz=module.B_GATE_F_HI_HZ, dx_m=module.B_DX_M)
+    assert realized_board["half_cell_rasterization_band_frac"] == pytest.approx(
         terms["half_cell_rasterization_band_frac"], rel=1e-12)
     assert terms["half_cell_rasterization_band_frac"] == pytest.approx(
         0.004954, abs=1e-6)

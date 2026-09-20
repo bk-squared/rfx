@@ -113,6 +113,7 @@ def rfx_provenance() -> str:
     except ValueError:
         return f"NOT THIS CHECKOUT: an installed rfx at {path.name}"
 
+
 def load_builder():
     spec = _ilu.spec_from_file_location("_msl_thru_builder", BUILDER)
     mod = _ilu.module_from_spec(spec)
@@ -219,6 +220,164 @@ def box_dims(sim, h_declared_m: float, w_trace_m: float, refine: int,
     }
 
 
+# ---------------------------------------------------------------------------
+# Extrapolated limits -- arithmetic on the committed rungs, no solving
+# ---------------------------------------------------------------------------
+#
+# None of the three ladders here has converged, so any statement about the
+# limit is a choice of recipe, not a measurement.  Rather than quote one
+# number, this tabulates the limit for every combination of:
+#
+#   * both step-halving ladders -- the dx ladder (dx = 50 / 25 / 12.5 um at
+#     the production refine = 4) and the internal-refinement ladder at
+#     dx = 50 um (refine = 4 / 8 / 16).  Both halve the Laplace box's fine
+#     cell dz_fine = dx / refine at each rung, so both are h-ratio-2 ladders
+#     in the same quantity;
+#   * both extrapolation recipes -- first order at the nominal h-ratio of 2,
+#     and geometric at the ratio the differences actually show;
+#   * every box correction MEASURED in these runs, each tagged with the rung
+#     it came from, since the box axis has not converged either.
+#
+# The spread of the resulting table is the answer's uncertainty.
+
+def _richardson(values: list[float], recipe: str) -> dict:
+    """Limit of a step-halving sequence, coarse -> fine.
+
+    ``first_order_h_ratio_2``: assume error ~ C*h and the nominal ratio of 2,
+    so the limit is ``e_fine + (e_fine - e_mid) / (2 - 1)``.
+    ``geometric_measured_ratio``: take the ratio the last two differences
+    actually show and sum the remaining geometric tail.
+    """
+    e_coarse, e_mid, e_fine = values[-3], values[-2], values[-1]
+    d_prev, d_last = e_mid - e_coarse, e_fine - e_mid
+    if recipe == "first_order_h_ratio_2":
+        return {"limit": e_fine + d_last / (2.0 - 1.0), "ratio": None}
+    if recipe == "geometric_measured_ratio":
+        r = d_last / d_prev
+        return {"limit": e_fine + d_last * r / (1.0 - r), "ratio": float(r)}
+    raise ValueError(recipe)
+
+
+def _measured_box_corrections(reports: dict) -> list[dict]:
+    """Every box-widening measurement in the committed JSONs, with its rung."""
+    out = []
+    for name, rep in reports.items():
+        for row in rep.get("box_witness", []):
+            out.append({
+                "source_json": name,
+                "measured_on_rung": f"dx={row['dx_um']:g} um, refine=4",
+                "box": f"{row['box']['lateral_clearance_in_W']:.0f}W/"
+                       f"{row['box']['clearance_above_in_h_solver']:.1f}h",
+                "correction_frac": float(row["rel_to_default_box_frac"]),
+            })
+        for row in rep.get("joint_witness", []):
+            # rel_to_default_frac on a joint row is against the DEFAULT rung
+            # (refine = 4, 5W box), so it carries the refinement change as
+            # well as the box change and is not a box correction. Divide out
+            # the refinement by referencing the same-refine 5W value.
+            same_refine = next(
+                (float(w["eps_eff"]) for w in rep.get("refine_witness", [])
+                 if int(w["refine"]) == int(row["refine"])), None)
+            if same_refine is None:
+                continue
+            out.append({
+                "source_json": name,
+                "measured_on_rung": f"dx={row['dx_um']:g} um, refine={row['refine']}",
+                "box": f"{row['box']['lateral_clearance_in_W']:.0f}W/"
+                       f"{row['box']['clearance_above_in_h_solver']:.1f}h",
+                "correction_frac": float(row["eps_eff"]) / same_refine - 1.0,
+            })
+    return sorted(out, key=lambda r: (r["box"], r["measured_on_rung"]))
+
+
+def extrapolation_table(out_dir: Path, ladder_name: str) -> dict:
+    """Build the limit table from the committed JSONs. Pure arithmetic."""
+    reports = {p.stem: json.loads(p.read_text())
+               for p in sorted(out_dir.glob("*.json"))
+               if p.stem != "msl_quasistatic_eps_eff_extrapolation"}
+    ladder = reports[ladder_name]
+    e_closed = float(ladder["closed_form"]["h_250um"]["eps_eff"])
+
+    rungs = sorted(ladder["rungs"], key=lambda r: -r["dx_um"])
+    dx_ladder = {
+        "name": "dx ladder (production refine = 4)",
+        "steps_um": [r["dx_um"] / 4.0 for r in rungs],
+        "labels": [f"dx={r['dx_um']:g} um" for r in rungs],
+        "values": [float(r["solve"]["eps_eff"]) for r in rungs],
+    }
+
+    conv = reports["msl_quasistatic_eps_eff_convergence"]
+    by_refine = {4: float(conv["rungs"][0]["solve"]["eps_eff"])}
+    for row in conv["refine_witness"]:
+        by_refine[int(row["refine"])] = float(row["eps_eff"])
+    refines = [r for r in (4, 8, 16) if r in by_refine]
+    refine_ladder = {
+        "name": "internal-refinement ladder at dx = 50 um",
+        "steps_um": [50.0 / r for r in refines],
+        "labels": [f"refine={r}" for r in refines],
+        "values": [by_refine[r] for r in refines],
+    }
+
+    corrections = [{"source_json": None, "measured_on_rung": "none",
+                    "box": "default 5W/4h", "correction_frac": 0.0}]
+    corrections += _measured_box_corrections(reports)
+
+    rows = []
+    for ladder_spec in (dx_ladder, refine_ladder):
+        for recipe in ("first_order_h_ratio_2", "geometric_measured_ratio"):
+            base = _richardson(ladder_spec["values"], recipe)
+            for corr in corrections:
+                limit = base["limit"] * (1.0 + corr["correction_frac"])
+                eps_dev = limit / e_closed - 1.0
+                rows.append({
+                    "ladder": ladder_spec["name"],
+                    "ladder_rungs": ladder_spec["labels"],
+                    "ladder_values": ladder_spec["values"],
+                    "ladder_steps_dz_fine_um": ladder_spec["steps_um"],
+                    "recipe": recipe,
+                    "measured_ratio": base["ratio"],
+                    "uncorrected_limit": base["limit"],
+                    "box_correction_frac": corr["correction_frac"],
+                    "box_correction_box": corr["box"],
+                    "box_correction_measured_on_rung": corr["measured_on_rung"],
+                    "limit": limit,
+                    "eps_eff_dev_vs_closed_form_frac": eps_dev,
+                    "beta_dev_vs_closed_form_frac": float(
+                        np.sqrt(limit / e_closed) - 1.0),
+                })
+
+    def _span(sel) -> dict:
+        chosen = [r for r in rows if sel(r)]
+        eps = [r["eps_eff_dev_vs_closed_form_frac"] for r in chosen]
+        bet = [r["beta_dev_vs_closed_form_frac"] for r in chosen]
+        return {"n_rows": len(chosen),
+                "eps_eff_dev_frac": [min(eps), max(eps)],
+                "beta_dev_frac": [min(bet), max(bet)]}
+
+    # The two box corrections behind the independently recomputed sets during
+    # PR #1130's round-1 review: the widest box measured (20W, on dx = 50 um /
+    # refine = 4) and the 10W step measured on the finest mesh (dx = 12.5 um).
+    verified = {("20W/16.2h", "dx=50 um, refine=4"),
+                ("10W/8.1h", "dx=12.5 um, refine=4")}
+    return {
+        "rfx_file": rfx_provenance(),
+        "closed_form_eps_eff_h250um": e_closed,
+        "support_threshold_eps_eff": e_closed * 1.015,
+        "ladders": [dx_ladder, refine_ladder],
+        "box_corrections": corrections,
+        "rows": rows,
+        "span_uncorrected": _span(lambda r: r["box_correction_frac"] == 0.0),
+        "span_box_corrections_on_dx50_refine4": _span(
+            lambda r: r["box_correction_frac"] != 0.0
+            and r["box_correction_measured_on_rung"] == "dx=50 um, refine=4"),
+        "span_box_corrections_of_the_recomputed_sets": _span(
+            lambda r: (r["box_correction_box"],
+                       r["box_correction_measured_on_rung"]) in verified),
+        "span_all_box_corrections": _span(
+            lambda r: r["box_correction_frac"] != 0.0),
+    }
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--dx-um", nargs="*", type=float, default=[50.0, 25.0, 12.5])
@@ -239,10 +398,16 @@ def main(argv=None) -> int:
         "--figures-only", action="store_true",
         help="redraw the figures from the JSONs already in --out-dir, "
              "without solving anything")
+    p.add_argument(
+        "--extrapolate-only", action="store_true",
+        help="tabulate the extrapolated limits from the JSONs already in "
+             "--out-dir, without solving anything")
     args = p.parse_args(argv)
     if args.figures_only:
         return figures_only(Path(args.out_dir), args.out_name,
                             Path(args.fig_dir))
+    if args.extrapolate_only:
+        return extrapolate_only(Path(args.out_dir), args.out_name)
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     fig_dir = Path(args.fig_dir)
@@ -410,6 +575,51 @@ def main(argv=None) -> int:
         png_path = fig_dir / f"{args.out_name}.png"
         plot(report, png_path)
         print(f"written {png_path}")
+    return 0
+
+
+def extrapolate_only(out_dir: Path, ladder_name: str) -> int:
+    """Write and print the limit table. Arithmetic on committed JSONs only."""
+    table = extrapolation_table(out_dir, ladder_name)
+    path = out_dir / "msl_quasistatic_eps_eff_extrapolation.json"
+    path.write_text(json.dumps(table, indent=1, sort_keys=True) + "\n")
+
+    print(f"rfx.__file__ (repo-relative) = {table['rfx_file']}")
+    print(f"closed form eps_eff (h=250 um) = "
+          f"{table['closed_form_eps_eff_h250um']:.9f}; support threshold "
+          f"(+1.5 %) = {table['support_threshold_eps_eff']:.6f}")
+    for lad in table["ladders"]:
+        print(f"\n{lad['name']}:")
+        print("  " + "  ".join(
+            f"{lab} (dz_fine={s:.4f} um) = {v:.6f}"
+            for lab, s, v in zip(lad["labels"], lad["steps_um"], lad["values"])))
+    print("\nmeasured box corrections:")
+    for c in table["box_corrections"]:
+        if c["correction_frac"] == 0.0:
+            continue
+        print(f"  {c['box']:>12s}  {100 * c['correction_frac']:+.4f} %"
+              f"   measured on {c['measured_on_rung']}")
+
+    print(f"\n{'ladder':<40s} {'recipe':<26s} {'ratio':>7s} {'box':>12s} "
+          f"{'limit':>9s} {'eps dev':>9s} {'beta dev':>9s}")
+    for r in table["rows"]:
+        ratio = "-" if r["measured_ratio"] is None else f"{r['measured_ratio']:.4f}"
+        print(f"{r['ladder']:<40s} {r['recipe']:<26s} {ratio:>7s} "
+              f"{r['box_correction_box']:>12s} {r['limit']:>9.6f} "
+              f"{100 * r['eps_eff_dev_vs_closed_form_frac']:>+8.3f} % "
+              f"{100 * r['beta_dev_vs_closed_form_frac']:>+8.3f} %")
+
+    print()
+    for key in ("span_uncorrected", "span_box_corrections_on_dx50_refine4",
+                "span_box_corrections_of_the_recomputed_sets",
+                "span_all_box_corrections"):
+        s = table[key]
+        print(f"{key} ({s['n_rows']} rows): eps_eff "
+              f"{100 * s['eps_eff_dev_frac'][0]:+.3f} % .. "
+              f"{100 * s['eps_eff_dev_frac'][1]:+.3f} %   beta "
+              f"{100 * s['beta_dev_frac'][0]:+.3f} % .. "
+              f"{100 * s['beta_dev_frac'][1]:+.3f} %")
+    print(f"\nwritten {path}")
     return 0
 
 

@@ -91,6 +91,22 @@ GAMMA_PHASE_LABELS = ("0", "pi/2", "pi", "random")
 NOISE_REL = 1e-4
 SEED = 830
 
+# Probe arrays for the array-dependence arm.  The error under test is a
+# property of the beta SCAN, so it must not move with the array; these span
+# 3 to 9 planes, 150 to 550 um spacing and two origins, which is a factor of
+# ~15 in the electrical length beta*L the array subtends.
+PROBE_ARRAYS = (
+    # (label, n_planes, spacing_m, x0_m) -- the first is the fixture's own.
+    ("thru_5_planes_550um_x0_4p5mm", 5, 550e-6, 4.5e-3),
+    ("9_planes_250um_x0_1mm", 9, 250e-6, 1.0e-3),
+    ("3_planes_150um_x0_0", 3, 150e-6, 0.0),
+    ("3_planes_150um_x0_4p5mm", 3, 150e-6, 4.5e-3),
+    ("3_planes_300um_x0_0", 3, 300e-6, 0.0),
+    ("5_planes_150um_x0_0", 5, 150e-6, 0.0),
+    ("5_planes_250um_x0_0", 5, 250e-6, 0.0),
+    ("9_planes_550um_x0_0", 9, 550e-6, 0.0),
+)
+
 
 def rfx_provenance() -> str:
     """Which rfx this ran against, as a repo-relative path.
@@ -105,6 +121,7 @@ def rfx_provenance() -> str:
         return str(path.relative_to(REPO_ROOT))
     except ValueError:
         return f"NOT THIS CHECKOUT: an installed rfx at {path.name}"
+
 
 # ---------------------------------------------------------------------------
 # Inputs taken from the committed fixture / from production
@@ -180,6 +197,33 @@ def widened_precision():
         yield
     finally:
         mwd.jnp = original
+
+
+# ---------------------------------------------------------------------------
+# Mechanism arm: refine the SQUARE of the residual instead of the residual
+# ---------------------------------------------------------------------------
+@contextlib.contextmanager
+def squared_objective():
+    """Make ``_estimate_beta`` refine ``r**2`` instead of ``r``.
+
+    The account under test is that the parabolic refinement is applied to an
+    L2 NORM, which is V-shaped where it reaches zero.  Its square is locally
+    parabolic there.  Squaring is monotone, so the scan's argmin node does
+    not move and nothing else about the estimator changes -- only what the
+    3-point parabola is fitted to.  The production ``_estimate_beta`` source
+    lines still run; only the residual its helper hands back is squared.
+    """
+    original = mwd._lstsq_alpha_gamma
+
+    def _squared(v, x, beta):
+        alpha, gamma, residual = original(v, x, beta)
+        return alpha, gamma, residual * residual
+
+    mwd._lstsq_alpha_gamma = _squared
+    try:
+        yield
+    finally:
+        mwd._lstsq_alpha_gamma = original
 
 
 # ---------------------------------------------------------------------------
@@ -516,6 +560,94 @@ def main(argv=None) -> int:
         print(f"  {w['ratio']:.4f} {w['gamma_over_alpha']:.2f}  "
               f"{100 * w['bias_production_frac']:+9.5f} %   "
               f"{100 * w['bias_least_squares_frac']:+9.5f} %          {ph}")
+
+    # ---- probe-array dependence ------------------------------------------
+    # The bias is claimed to belong to the beta scan. If it did not, arrays
+    # this unlike would not agree.
+    array_rows = []
+    ratios = sw["ratios"]
+    op_mean = float(np.round(op_ratio.mean(), 6))
+    for label, n_pl, spacing, x0 in PROBE_ARRAYS:
+        x_arr = x0 + np.arange(n_pl, dtype=np.float64) * spacing
+        beta0_mid = case["beta0"][f_mid]
+        beta_true = ratios * beta0_mid
+        v_arr = synth_voltages(x_arr, beta_true, np.zeros(len(ratios)))
+        out = fit_beta(v_arr, x_arr, np.full(len(ratios), beta0_mid))
+        bias = out["beta"] / beta_true - 1.0
+        j_op = int(np.argmin(np.abs(ratios - op_mean)))
+        array_rows.append({
+            "label": label, "n_planes": n_pl, "spacing_m": spacing,
+            "x0_m": x0,
+            "beta_L_rad": float(beta0_mid * spacing * (n_pl - 1)),
+            "max_abs_bias_frac": float(np.max(np.abs(bias))),
+            "bias_at_operating_ratio_frac": float(bias[j_op]),
+            "railed": int(np.count_nonzero(out["railed"])),
+        })
+    worst = [r["max_abs_bias_frac"] for r in array_rows]
+    at_op = [r["bias_at_operating_ratio_frac"] for r in array_rows]
+    report["probe_array_dependence"] = {
+        "operating_ratio_used": op_mean,
+        "freq_hz": float(case["freqs_hz"][f_mid]),
+        "rows": array_rows,
+        "max_abs_bias_band_frac": [min(worst), max(worst)],
+        "max_abs_bias_spread_frac": float(max(worst) - min(worst)),
+        "bias_at_operating_ratio_band_frac": [min(at_op), max(at_op)],
+    }
+    print(f"\n=== probe-array dependence (f = "
+          f"{case['freqs_hz'][f_mid] / 1e9:.4f} GHz, gamma = 0, "
+          f"beta/beta0 = {op_mean:.6f}) ===")
+    print(f"  {'array':<32s} {'betaL(rad)':>10s} {'max|bias|':>10s} {'@op':>10s}")
+    for r in array_rows:
+        print(f"  {r['label']:<32s} {r['beta_L_rad']:>10.4f} "
+              f"{100 * r['max_abs_bias_frac']:>9.4f} % "
+              f"{100 * r['bias_at_operating_ratio_frac']:>+9.4f} %")
+    print(f"  band {100 * min(worst):.4f} .. {100 * max(worst):.4f} %"
+          f"  (spread {100 * (max(worst) - min(worst)):.4f} %)")
+
+    # ---- mechanism: refine r**2 instead of r ------------------------------
+    mech = {}
+    x = case["x_m"]
+    beta0_mid = case["beta0"][f_mid]
+    beta_true = ratios * beta0_mid
+    v_mech = synth_voltages(x, beta_true, np.zeros(len(ratios)))
+    for arm, ctxs in (
+            ("norm_complex64", ()),
+            ("squared_complex64", (squared_objective,)),
+            ("norm_complex128", (widened_precision,)),
+            ("squared_complex128", (widened_precision, squared_objective)),
+    ):
+        with contextlib.ExitStack() as stack:
+            for factory in ctxs:
+                stack.enter_context(factory())
+            out = fit_beta(v_mech, x, np.full(len(ratios), beta0_mid))
+        bias = out["beta"] / beta_true - 1.0
+        mech[arm] = {
+            "max_abs_bias_frac": float(np.max(np.abs(bias))),
+            "mean_bias_frac": float(np.mean(bias)),
+            "min_bias_frac": float(np.min(bias)),
+            "max_bias_frac": float(np.max(bias)),
+            "sd_bias_frac": float(np.std(bias)),
+            "curve": bias.tolist(),
+        }
+    report["mechanism_squared_objective"] = {
+        "definition": (
+            "same estimator, same scan nodes, same argmin; only the quantity "
+            "the 3-point parabola is fitted to changes, from the L2 residual "
+            "norm to its square"
+        ),
+        "freq_hz": float(case["freqs_hz"][f_mid]),
+        "arms": {k: {kk: vv for kk, vv in v.items() if kk != "curve"}
+                 for k, v in mech.items()},
+        "curves": {k: v["curve"] for k, v in mech.items()},
+        "ratio": ratios.tolist(),
+    }
+    print("\n=== mechanism: refining r vs r**2 (gamma = 0, f_mid) ===")
+    for arm, v in mech.items():
+        print(f"  {arm:<20s} sweep max|bias| = {100 * v['max_abs_bias_frac']:.4f} %"
+              f"   mean = {100 * v['mean_bias_frac']:+.4f} %"
+              f"   [{100 * v['min_bias_frac']:+.4f}, "
+              f"{100 * v['max_bias_frac']:+.4f}] %"
+              f"   sd = {100 * v['sd_bias_frac']:.4f} %")
 
     # ---- curves -----------------------------------------------------------
     curves = {"ratio": sw["ratios"].tolist()}
