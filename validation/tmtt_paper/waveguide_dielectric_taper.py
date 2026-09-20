@@ -21,6 +21,34 @@ public differentiable modal S-matrix ``Simulation.compute_waveguide_s_matrix``.
 Reverse-mode AD (``jax.grad``) flows through the full FDTD solve + modal
 S-extraction; Adam descent lowers the broadband |S11|.
 
+Which guide each lane actually solves
+-------------------------------------
+Issue #1100. The declared WR-90 walls are 22.86 x 10.16 mm; a mesh that does
+not divide them rasterizes a wider guide, and the run solves THAT.
+
+  SMOKE (default), dx = 1.27 mm  ->  22.860 x 10.160 mm, exactly WR-90.
+      gcd(22.86, 10.16) = 2.54 mm, so 1.27 mm divides both walls: 18 x 8
+      transverse cells, no remainder, and preflight emits no
+      port_aperture_snap row. Two checks hold it there: ``build_sim`` calls
+      ``_assert_realized_guide``, which raises unless the grid built the
+      DECLARED walls on this lane; and the committed example-fidelity
+      snapshot pins the zero-row preflight report and the 18/8 cell counts,
+      so a mesh change that reintroduced the gap would go red in CI whether
+      or not anyone ran this file.
+  paper (SMOKE=0), dx = 0.5 mm   ->  23.000 x 10.500 mm, 46 x 21 cells,
+      +0.61 % / +3.35 %. NOT WR-90.
+  paper production, dx = 0.25 mm ->  23.000 x 10.250 mm, 92 x 41 cells,
+      +0.61 % / +0.89 %. Also NOT WR-90: 22.86/0.25 = 91.44. This is the
+      mesh the -38.0 dB figure below was measured on.
+
+Both paper meshes have a TE10 cutoff of 6.517 GHz against the declared
+6.557 GHz. Disclosed rather than re-meshed: see the QUOTE-REALIZED block
+beside the constants.
+
+Every analytic reference this file computes -- ``F_CUTOFF_TE10`` and anything
+derived from it -- comes from ``A_WG_REALIZED``/``B_WG_REALIZED``, so it
+always describes the guide the solver built.
+
 Full-resolution result
 ----------------------
 At dx = 0.5 mm the optimized 30-section taper reaches a band-mean
@@ -31,6 +59,14 @@ lowers the Yee-dispersion reflection floor, deepening the achievable match
 on the same layout. At a comparable coarse-grid solve budget, particle-swarm
 and genetic search trail the gradient by at least 11.6 dB.
 
+Those four numbers were measured on the 23.000 mm-wide guide those two meshes
+rasterize, not on WR-90, and they are quoted here unchanged. A taper is a
+broadband match to whatever guide it sits in, so they are not wrong -- they
+belong to a structure 0.61 % wider than the one the title names. DECIDED
+2026-09-19 (#1122, closed): disclosed, not corrected. No erratum and no
+re-mesh; the realized guide is recorded precisely instead, here and in
+docs/guides/known_limitations.md. Refs #1100, #825.
+
 The reverse-mode tape over the full-resolution scan (~12-14k steps) is made
 affordable by ``checkpoint_segments``: segmented gradient checkpointing reduces
 peak reverse memory from O(n_steps) to ~O(sqrt(n_steps)) at ~2x backward cost.
@@ -39,9 +75,14 @@ route.
 
 SMOKE mode
 ----------
-``SMOKE=1`` (default) uses a coarse grid (dx = 1 mm), a short integration, and
-a handful of Adam steps so the example runs in ~1-3 min on CPU. It still does
-real reverse-mode AD through the S-matrix and lowers the broadband |S11|.
+``SMOKE=1`` (default) uses a coarse commensurate grid (dx = 1.27 mm), a short
+integration, and a handful of Adam steps so the example runs in ~1-3 min on
+CPU. It still does real reverse-mode AD through the S-matrix and lowers the
+broadband |S11|. Its numbers are a smoke signal, not a result. Two things put
+its match depth about 1 dB above the old 1.0 mm lane's: at 18 x 8 transverse
+cells the Yee-dispersion floor is higher, and the taper spans 16 cells instead
+of 20, so the 12 design sections are mostly one cell wide. The console prints
+the realized span so the second one is visible rather than inferred.
 ``SMOKE=0`` switches to the paper's dx = 0.5 mm / 30-section / 120-iteration
 settings (GPU required in practice for the full-resolution scan).
 
@@ -77,9 +118,8 @@ C0 = 2.998e8
 # --------------------------------------------------------------------------
 # WR-90 geometry (X-band standard rectangular waveguide).
 # --------------------------------------------------------------------------
-A_WG = 22.86e-3          # broad-wall width (m)
-B_WG = 10.16e-3          # narrow-wall height (m)
-F_CUTOFF_TE10 = C0 / (2.0 * A_WG)     # ~6.56 GHz
+A_WG = 22.86e-3          # broad-wall width (m), declared WR-90 standard
+B_WG = 10.16e-3          # narrow-wall height (m), declared WR-90 standard
 
 EPS_LOAD = 9.0           # high-permittivity matched dielectric termination
 
@@ -88,19 +128,46 @@ SMOKE = os.environ.get("SMOKE", "1") != "0"
 if SMOKE:
     # Coarse CPU smoke: a single reverse-mode FDTD grad is a few tens of
     # seconds on this small domain, so the run is sized for 1-3 min total.
-    DX_M = 1.0e-3
-    DOMAIN_X = 0.090
-    CPML_LAYERS = 16
+    #
+    # COMMENSURATE MESH (issue #1100). gcd(22.86 mm, 10.16 mm) = 2.54 mm, so
+    # dx = 1.27 mm puts BOTH walls exactly on the lattice: 22.86/1.27 = 18
+    # and 10.16/1.27 = 8, no remainder. This lane therefore solves WR-90
+    # itself rather than a guide rounded up to the next cell, and it is
+    # coarser than the 1.0 mm mesh it replaces (18 x 8 transverse cells
+    # instead of 23 x 11), so it is also faster. Measured build-only, the
+    # realized aperture is 22.8600 x 10.1600 mm and preflight emits no
+    # port_aperture_snap row. ``_assert_realized_guide`` raises if a future
+    # dx stops dividing the declared walls, and the example-fidelity
+    # snapshot pins the result independently of anyone running this file.
+    #
+    # The taper spans 16 cells on this mesh where it spanned 20 on the old
+    # one, so the 12 design sections are mostly 1 cell wide instead of
+    # mostly 2. That, not only the coarser cell, is why the SMOKE match
+    # depth moved; ``main`` prints the realized span.
+    DX_M = 1.27e-3
+    # Every axial length is an exact cell count, so none of them is silently
+    # snapped by ``position_to_index``. The old values are in the trailing
+    # comments; each moved by less than one cell of the OLD mesh.
+    #
+    # 22, not 16: compute_waveguide_s_matrix's far-port discipline wants half
+    # a guide wavelength of absorber at the lowest measured frequency, and at
+    # 8.5 GHz on this guide lambda_g = 55.3 mm, so 27.7 mm. 16 cells of the
+    # old 1.0 mm mesh was 16.0 mm (0.29 lambda_g) and 16 of the new one is
+    # 20.3 mm (0.37); 22 cells is 27.9 mm (0.51) and clears it. The advisory
+    # that asked for this is quoted in the PR for #1100. 0.75 lambda_g would
+    # need 33 cells, which the SMOKE budget does not justify.
+    CPML_LAYERS = 22
+    DOMAIN_X = 71 * DX_M      #  90.170 mm (was 90.0)
+    TAPER_X0 = 32 * DX_M      #  40.640 mm (was 40.0), taper start (vacuum side)
+    FILL_X = 48 * DX_M        #  60.960 mm (was 60.0), eps_load fills from here
+    PORT_OFFSET = 20 * DX_M   #  25.400 mm (was 25.0)
+    REF_OFFSET = 26 * DX_M    #  33.020 mm (was 33.0)
     FREQS_HZ = np.linspace(8.5e9, 11.5e9, 4)
     N_SECTIONS = 12
     NUM_PERIODS = 60
     N_ADAM = 6
     LR = 0.3
     CHECKPOINT_SEGMENTS = 4   # tiny K for the short smoke scan
-    TAPER_X0 = 0.040          # taper start (vacuum side)
-    FILL_X = 0.060            # eps_load fills from here to the downstream CPML
-    PORT_OFFSET = 0.025
-    REF_OFFSET = 0.033
 else:
     # Paper resolution (dx = 0.5 mm, 80 mm / 30-section taper). The
     # full-resolution dx = 0.25 mm run in the paper reaches -38.0 dB; that grid
@@ -118,6 +185,33 @@ else:
     FILL_X = 0.140              # 80 mm taper (TAPER_X0 -> FILL_X), eps9 beyond
     PORT_OFFSET = 0.030
     REF_OFFSET = 0.040
+
+# QUOTE-REALIZED (issue #1100, the cv11 convention at
+# validation/crossval/11_waveguide_port_wr90.py): the walls this dx actually
+# rasterizes, ``ceil(declared/dx)*dx``, not the declared WR-90 numbers. Every
+# analytic reference below is derived from THESE, so a number this file prints
+# always belongs to the guide the solver builds.
+#
+#   dx = 1.27 mm (SMOKE)  ->  22.860 x 10.160 mm   exactly WR-90
+#   dx = 0.50 mm (paper)  ->  23.000 x 10.500 mm   +0.61 % / +3.35 %
+#
+# The paper lane is NOT re-meshed. dx = 0.635 mm or 0.3175 mm would put it on
+# the lattice, but every headline number that lane produces was measured at
+# 0.5 mm (and the production point at 0.25 mm, which realizes 23.000 x
+# 10.250 mm) on GPU-scale runs. Decided 2026-09-19 (#1122, closed): disclosed,
+# not corrected -- no erratum, no re-mesh. Refs #1100, #825.
+# Both axes use DX_M because this file builds a uniform ``Grid``, which
+# carries one cell size. ``_assert_realized_guide`` reads the grid per axis
+# (``getattr(grid, "dy", grid.dx)``) rather than assuming that here, so a grid
+# that ever grew per-axis sizes would fail the check instead of passing it.
+A_WG_REALIZED = float(np.ceil(A_WG / DX_M)) * DX_M
+B_WG_REALIZED = float(np.ceil(B_WG / DX_M)) * DX_M
+# TE10 cutoff of the guide actually solved. At dx = 1.27 mm this IS the
+# declared WR-90 cutoff (6.5573 GHz) because the mesh is commensurate; at
+# dx = 0.5 mm it is 6.5174 GHz against the declared 6.5573 GHz. The port's own
+# discrete mode solve lands a little below either (Yee dispersion on a finite
+# cell count): 6.5488 GHz at 1.27 mm, 6.5160 GHz at 0.5 mm.
+F_CUTOFF_TE10 = C0 / (2.0 * A_WG_REALIZED)
 
 F0_HZ = float(FREQS_HZ.mean())
 BANDWIDTH_REL = 0.45
@@ -156,7 +250,68 @@ def build_sim() -> Simulation:
     # claim for this case checkable rather than assumed, and it is the
     # premise make_eps_builder's docstring relies on.
     RC.assert_no_conductor(sim, label="WR-90 taper (boundary PEC only)")
+    _assert_realized_guide(sim)
     return sim
+
+
+def _assert_realized_guide(sim) -> None:
+    """Raise unless the guide this lane BUILT is the one it claims (#1100).
+
+    Two comparisons, against two different sources, because one of them alone
+    is not a check.
+
+    PREDICTION vs BUILT, on every lane. ``A_WG_REALIZED``/``B_WG_REALIZED``
+    are ``ceil(declared/dx)*dx`` and every analytic reference in this file is
+    derived from them, so the prediction is compared against the interior cell
+    count the grid actually built. This is not the tautology it looks like:
+    ``22.86e-3 / 1.27e-3`` evaluates to 17.999999999999996, so one ulp the
+    other way and ``ceil`` would predict 19 cells while the grid built 18.
+
+    DECLARED vs BUILT, on the SMOKE lane only. That lane's whole claim is that
+    its mesh is commensurate, so the guide it builds must be the declared
+    WR-90 one; ``A_WG``/``B_WG`` and the grid are independent of each other,
+    and a ``DX_M`` that does not divide them fails here. Measured: with
+    ``DX_M`` set back to 1.0e-3 this raises, where the earlier
+    prediction-only version returned normally on a 23.0 x 11.0 mm guide
+    because BOTH of its sides were derived from the same ``DX_M``.
+
+    The paper lane deliberately does NOT get the declared comparison -- it
+    solves 23.0 x 10.5 mm and says so.
+
+    ``raise``, not ``assert``: ``python -O`` strips an assert, and a geometry
+    claim that evaporates under an optimisation flag is not a gate. (The
+    neighbouring ``RC.assert_no_conductor`` raises internally for the same
+    reason, despite its name.)
+    """
+    grid = sim._build_grid()
+    for axis, name, declared, predicted in (
+        (1, "y", A_WG, A_WG_REALIZED),
+        (2, "z", B_WG, B_WG_REALIZED),
+    ):
+        # Axis-aware (repo engineering principle 2): the uniform Grid carries
+        # only dx, so this reads DX_M on every grid this file builds, but a
+        # per-axis grid would be read per axis rather than assumed cubic.
+        d_axis = float(getattr(grid, "d" + name, grid.dx))
+        n_cells = (grid.ny, grid.nz)[axis - 1] - 1 - 2 * grid.axis_pads[axis]
+        built = n_cells * d_axis
+        if abs(built - predicted) > 1e-12:
+            raise ValueError(
+                f"{name}: the grid built {n_cells} cells = "
+                f"{built * 1e3:.4f} mm, but this file's analytic references "
+                f"are derived from {predicted * 1e3:.4f} mm "
+                f"(ceil({declared * 1e3:.4f} mm / {d_axis * 1e3:.4f} mm) * "
+                f"dx). Re-derive A_WG_REALIZED/B_WG_REALIZED."
+            )
+        if SMOKE and abs(built - declared) > 1e-12:
+            raise ValueError(
+                f"{name}: the SMOKE lane claims a mesh commensurate with "
+                f"WR-90, but dx = {d_axis * 1e3:.4f} mm builds "
+                f"{n_cells} cells = {built * 1e3:.4f} mm against the declared "
+                f"{declared * 1e3:.4f} mm. gcd(22.86, 10.16) = 2.54 mm, so dx "
+                f"must be 2.54/k mm (1.27, 0.635, 0.3175, 0.254, 0.127 ...). "
+                f"Either pick one, or move this lane to the paper lane's "
+                f"disclosed treatment and re-derive every analytic reference."
+            )
 
 
 def _x_index(grid, x_m: float) -> int:
@@ -280,7 +435,9 @@ def main() -> int:
     n_sec = layout["n_sec"]
     print(f"[taper] grid.shape={grid.shape} taper cells=({layout['i_t0']},"
           f"{layout['i_fill']}) n_sections={n_sec} "
-          f"taper_len={ (FILL_X-TAPER_X0)*1e3:.0f}mm")
+          f"taper_len={(layout['i_fill']-layout['i_t0'])*DX_M*1e3:.2f}mm "
+          f"({layout['i_fill']-layout['i_t0']} cells realized, declared "
+          f"{(FILL_X-TAPER_X0)*1e3:.2f}mm)")
 
     eps_from_theta = make_eps_builder(grid, layout)
     s11_fn, loss_fn = make_objective(sim, eps_from_theta, grid)
@@ -316,10 +473,18 @@ def main() -> int:
     print(f"  optimized band-avg |S11| : {opt_db:8.2f} dB")
     print(f"  improvement              : {init_db - opt_db:8.2f} dB")
     print(f"  wall time                : {time.time()-t0:8.1f} s")
+    guide_note = ("WR-90, mesh commensurate" if SMOKE else
+                  f"NOT WR-90 — declared {A_WG*1e3:.2f} x {B_WG*1e3:.2f} mm; "
+                  f"disclosed, not corrected (#1122)")
+    print(f"  guide solved             : {A_WG_REALIZED*1e3:.3f} x "
+          f"{B_WG_REALIZED*1e3:.3f} mm ({guide_note})")
     if SMOKE:
         print("\n  (SMOKE: coarse grid / few iters. The paper run at dx=0.5mm")
         print("   reaches -26.7 dB; at production dx=0.25mm it reaches -38.0 dB,")
-        print("   beating a discretized Klopfenstein taper at -36.6 dB.)")
+        print("   beating a discretized Klopfenstein taper at -36.6 dB — all")
+        print("   three measured on the 23.000 mm-wide guide those meshes")
+        print("   rasterize (23.00 x 10.50 and 23.00 x 10.25 mm), not on")
+        print("   WR-90. Disclosed, not corrected: #1122.)")
 
     _save_figure(grid, layout, eps_from_theta, theta, s11_init, s11_opt,
                  loss_hist)

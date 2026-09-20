@@ -37,6 +37,15 @@ from rfx.grid import C0
 
 ARTIFACT_PATH = REPO_ROOT / "docs" / "research_notes" / "subgrid_material_validation_examples.json"
 
+# Cavity under study, shared by the three builders below and by run_example().
+CAVITY_A = CAVITY_B = 40e-3
+CAVITY_D = 24e-3
+DIELECTRIC_EPS_R = 2.25
+# The guarded one-sided z slab that production subgrid validation accepts.
+GUARDED_Z_RANGE = (2e-3, CAVITY_D)
+# The centered slab that production validation must REJECT.
+CENTERED_Z_RANGE = (8e-3, 16e-3)
+
 
 @dataclass(frozen=True)
 class MaterialValidationExampleResult:
@@ -65,44 +74,65 @@ def _tm110_hz(a: float, b: float, eps_r: float = 1.0) -> float:
     return float((C0 / (2.0 * math.sqrt(eps_r))) * math.sqrt((1.0 / a) ** 2 + (1.0 / b) ** 2))
 
 
-def run_example() -> MaterialValidationExampleResult:
-    a = b = 40e-3
-    d = 24e-3
-    eps_r = 2.25
-
+def build_vacuum_subgrid() -> Simulation:
+    """Arm 1: the guarded one-sided vacuum z-slab refinement (no solve)."""
+    a, b, d = CAVITY_A, CAVITY_B, CAVITY_D
     vacuum = Simulation(freq_max=10e9, domain=(a, b, d), boundary="pec", dx=2e-3, cpml_layers=0)
-    guarded_z_range = (2e-3, d)
-    zlo, zhi = guarded_z_range
+    zlo, zhi = GUARDED_Z_RANGE
     span = zhi - zlo
-    vacuum.add_refinement(z_range=guarded_z_range, ratio=2, validation="production")
+    vacuum.add_refinement(z_range=GUARDED_Z_RANGE, ratio=2, validation="production")
     vacuum.add_source((a / 3, b / 3, zlo + 0.45 * span), "ez")
     vacuum.add_probe((2 * a / 3, 2 * b / 3, zlo + 0.55 * span), "ez")
-    vacuum_report = vacuum.validate_subgrid()
+    return vacuum
 
+
+def build_dielectric_subgrid() -> Simulation:
+    """Arm 2: the centered dielectric case production validation rejects."""
+    a, b, d = CAVITY_A, CAVITY_B, CAVITY_D
     dielectric_subgrid = Simulation(
         freq_max=8e9, domain=(a, b, d), boundary="pec", dx=2e-3, cpml_layers=0,
     )
-    dielectric_subgrid.add_material("dielectric", eps_r=eps_r)
+    dielectric_subgrid.add_material("dielectric", eps_r=DIELECTRIC_EPS_R)
     # Deliberately pad the box so every Yee cell in the finite domain is dielectric.
     dielectric_subgrid.add(
         Box((-1e-3, -1e-3, -1e-3), (a + 1e-3, b + 1e-3, d + 1e-3)),
         material="dielectric",
     )
-    dielectric_subgrid.add_refinement(z_range=(8e-3, 16e-3), ratio=2, validation="production")
+    dielectric_subgrid.add_refinement(z_range=CENTERED_Z_RANGE, ratio=2, validation="production")
     dielectric_subgrid.add_source((a / 3, b / 3, d / 2), "ez")
     dielectric_subgrid.add_probe((2 * a / 3, 2 * b / 3, d / 2), "ez")
-    dielectric_report = dielectric_subgrid.validate_subgrid()
-    rejection_codes = [issue.code for issue in dielectric_report.errors]
+    return dielectric_subgrid
 
-    f_ref = _tm110_hz(a, b, eps_r)
+
+def build_uniform_reference() -> tuple[Simulation, float]:
+    """Arm 3: the uniform-lane dielectric cavity, plus its analytic TM110.
+
+    Returns the Simulation UNSOLVED so the #737 example-fidelity gate
+    (tests/contracts/test_example_fidelity_contract.py) can build all three
+    arms and pin their preflight/realization output; ``run_example()`` below
+    calls this builder and then solves, so the audited model is the one the
+    script measures.
+    """
+    a, b, d = CAVITY_A, CAVITY_B, CAVITY_D
+    f_ref = _tm110_hz(a, b, DIELECTRIC_EPS_R)
     uniform = Simulation(freq_max=2.0 * f_ref, domain=(a, b, d), boundary="pec", dx=2e-3, cpml_layers=0)
-    uniform.add_material("dielectric", eps_r=eps_r)
+    uniform.add_material("dielectric", eps_r=DIELECTRIC_EPS_R)
     uniform.add(
         Box((-1e-3, -1e-3, -1e-3), (a + 1e-3, b + 1e-3, d + 1e-3)),
         material="dielectric",
     )
     uniform.add_source((a / 3, b / 3, d / 2), "ez", waveform=GaussianPulse(f0=f_ref, bandwidth=0.8))
     uniform.add_probe((2 * a / 3, 2 * b / 3, d / 2), "ez")
+    return uniform, f_ref
+
+
+def run_example() -> MaterialValidationExampleResult:
+    vacuum_report = build_vacuum_subgrid().validate_subgrid()
+
+    dielectric_report = build_dielectric_subgrid().validate_subgrid()
+    rejection_codes = [issue.code for issue in dielectric_report.errors]
+
+    uniform, f_ref = build_uniform_reference()
     uniform_result = uniform.run(num_periods=60, compute_s_params=False)
     peak = _fft_peak(np.asarray(uniform_result.time_series).ravel(), float(uniform_result.dt), f_ref)
     err_pct = 100.0 * abs(peak - f_ref) / f_ref

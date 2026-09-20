@@ -782,3 +782,241 @@ the array the solver receives, not the absorber that acts on it. Full write-up:
 `scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep_r2.json::control.revisions.r1.cpml_full_mean_self = 0.7488520140093946`,
 `scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep_r2.json::control.revisions.r2.cpml_full_mean_self = 0.9876177418925891`,
 `scripts/diagnostics/_artifacts/cv01_cpml_813/selfcheck_r2.json::gate_verdict_cpml_full`.
+
+---
+
+## Result after #1057 — cv01's own record re-measured, and G3 stops passing
+
+Appended 2026-09-16 (KST), issue #813. The artifacts and the run-log filenames
+carry 2026-09-15, which is the same moment in UTC; the section above it really
+was the previous KST day, so the two headings are a day apart on purpose.
+Everything above stays as written; this
+section edits no number, no gate and no verdict in it. The committed record
+`validation/crossval/_01_waveguide_bend_results/crossval.json` is untouched and
+everything cited below is a new file, so every citation above still resolves
+against the run that produced it.
+
+### What was still open
+
+The section above measured #813's headline on the straight-guide self-check and
+found it passing once the guide is continued through its own absorber pad.
+cv01's **committed record** was not part of that. It is the case's own retained
+run — both arms, every flux array, and the Meep leg — measured on 2026-09-06
+(commit d2285cc5) with the facet present, and nothing re-runs it:
+`tests/crossval/test_waveguide_bend_header.py` reads it statically. On the fixed
+tree its numbers describe a solver that is gone.
+
+### How it was re-measured
+
+By cv01's own code, not a copy of it. The case script gains
+`--meep-from-record <record> --out-dir <dir>`: the rfx legs are solved live and
+the Meep arrays are taken from a record that already carries them. That is sound
+because nothing on the rfx side can move a number Meep produced, and it is
+checked rather than assumed — the donor's `rig.meep_leg`, the rfx-side
+quantities the Meep geometry is built from, the eval mask recomputed from the
+donor's own frequency axis with this run's `f_cutoff`, and the donor's headline
+band mean recomputed from its own per-bin array must all agree before anything
+is taken. `--out-dir` is required and refused inside the committed evidence
+tree, so the borrowing run cannot overwrite the record it borrows from. Meep
+does not import in this pod in any case (a numpy 1.x wheel under numpy 2.x).
+
+### The table, committed against revision
+
+| | committed 2026-09-06 | revision, UPML | revision, CPML variant |
+|---|---:|---:|---:|
+| `mean_self` | 0.9891610388008335 | 0.9910752993577158 | 0.9894314610377936 |
+| `mean_T` | 0.6373729975739039 | 0.6767373275224511 | 0.7017475699461292 |
+| Meep band mean | 0.5662407307645764 | 0.5662407307645764 | 0.5662407307645764 |
+| `abs_rfx_minus_meep` | 0.0711322668093275 | 0.1104965967578747 | 0.1355068391815528 |
+| G1, T in [0.3, 1.0] | PASS | PASS | PASS |
+| G2, self-T in [0.95, 1.05] | PASS | PASS | PASS |
+| G3, gap < 0.10 | PASS | **FAIL** | **FAIL** |
+| exit code | 0 | 1 | 1 |
+
+The Meep column is one number three times by construction: the revision borrows
+the committed record's Meep arrays, so every movement in `abs_rfx_minus_meep` is
+the rfx leg moving, and the split is not guesswork.
+
+### The gate that changed, stated plainly
+
+**G3 fails on the fixed solver, on both boundaries.** G1 and G2 pass, and G2 by
+more than before — the straight-guide flux identity reads 0.9911 against
+0.9892, which is what #813 was opened to get. What crossed a bound is the
+comparison against Meep: the rfx band mean rose 0.0394 while the borrowed leg
+did not move, and 0.10 is an absolute bound on a quantity of order 0.6.
+
+Reported, not absorbed. cv01's `expected_exit_codes` already admits 1; the CPU
+lane is untouched, because without Meep the case still exits 2 on G1 and G2
+alone; the weekly `crossval-external` lane is where this now shows.
+
+The #831 entry in `rfx-known-issues.md` says of this facet that "cv03's gates
+are green today (exit 2), so a fix moves values, not verdicts". That was scoped
+to cv03, which has no Meep leg of its own to gate. cv01 carries one **inside its
+record**, so G3 does run here, and it flips. The sentence does not carry over.
+
+### Two bit-identity witnesses
+
+Neither number is new arithmetic. Both are the same quantity measured earlier
+through a different code path, and both reproduce to sixteen digits:
+
+- UPML `mean_self` 0.9910752993577158 is the six-arm driver's post-continuation
+  `upml_full` arm — the value that driver already carries as
+  `MEASURED_UPML_MEAN_SELF_AFTER_PAD_CONTINUATION`;
+- CPML `mean_self` 0.9894314610377936 is the layer sweep's 20-layer `full` arm,
+  which is the depth cv01's CPML variant runs.
+
+One path is cv01's own script; the other is the hand-copied rig in
+`scripts/diagnostics/cv01_cpml_flux_selfcheck.py`. They agree on every digit.
+
+### Preflight, verbatim
+
+Four distinct advisories, identical on both arms of each boundary apart from the
+absorber's name, 22 emissions per boundary:
+
+```
+[PREFLIGHT] dielectric 'wg' on x: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
+[PREFLIGHT] dielectric 'wg' on y: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
+[PREFLIGHT] dielectric 'wg' on z: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
+[PREFLIGHT] all dielectric(s) ['wg'] are perfectly lossless in an open (UPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+```
+
+The CPML arms print the same four with `(CPML)` in the last. Both full run logs
+are committed under `validation/crossval/_01_waveguide_bend_logs/`.
+
+**Neither advisory added since the committed record fires here.**
+`dielectric_at_absorber_seam` (PR #1057) reports a structure ABSENT from the
+absorber the pad-continuation feature says it puts there, and cv01's guide is a
+`Box`, which is continued — so silence is the expected reading, not an
+omission. `conductor_in_thin_absorber` (#801 / #1079) needs a conductor; this
+rig has none.
+
+### Settling witness
+
+cv01 registers flux monitors and no point probe, so `run()` has no probe time
+series to score and every cv01 record carries `settling_db = None` by
+construction. `scripts/diagnostics/cv01_record_revision.py` runs both arms again
+with one `add_probe` added at the arm's own output plane and nothing else
+changed:
+
+| | straight | bend |
+|---|---:|---:|
+| UPML | −92.24 dB | −93.72 dB |
+| CPML, 20 layers | −92.16 dB | −95.41 dB |
+
+All four are far past the −40 dB bar, so neither headline is a truncation
+artefact. The probe is passive, and that is measured rather than asserted: each
+witness arm reproduces its case run's `mean_self` **and** `mean_T` bit for bit,
+so the arm that carries the settling number is the arm that carries the record's.
+
+### Where the gap sits — a geometry reading, not an attribution
+
+cv01's Meep leg builds two **finite** blocks. Their outer faces land exactly on
+the PML inner faces — clearance 0.0 at both `x_lo` and `y_hi`, computed in the
+revision from the leg's own literals — so the comparator's guide is terminated
+at the absorber with vacuum inside it, which is the construction rfx has just
+stopped carrying. Upstream's own bend run, vendored at
+`validation/crossval/_01_waveguide_bend_upstream/bend-flux.py`, instead
+continues **each arm to the cell edge, through the PML**:
+
+| upstream's bend blocks | span | cell edge | PML inner face |
+|---|---|---:|---:|
+| `mp.Vector3(sx - pad, w, mp.inf)` (:77) | x = −8 … +4 | −8 | −7 |
+| `mp.Vector3(w, sy - pad, mp.inf)` (:82) | y = −12 … +16 | +16 | +15 |
+
+in a 16 × 32 cell with `dpml = 1`, so the face that meets an absorber sits
+**inside** it rather than against it.
+
+Not `mp.inf` in x. `size=mp.Vector3(mp.inf, w, mp.inf)` at `:24` is the
+**straight** run's block — the one that produces the normalization flux — and
+reading it as the bend geometry would also push the input arm out through the
+source-side PML, which is a different normalization than the tutorial's. The
+`mp.inf` that remains in the two bend blocks above is their third component,
+the out-of-plane z extent of a 2-D cell.
+
+Line numbers rather than quotes alone are safe for once: that vendored copy is
+byte-pinned to git blob `f56ab6492a3cc55ebc1fc0c682c4981508c51955` and
+`tests/crossval/test_waveguide_bend_header.py` asserts it, so it cannot shift
+without a red test. All three block strings are greppable in it verbatim, and
+the driver pins twelve of its lines the way `RIG_LINES` pins cv01's.
+
+That is a seventh divergence from the tutorial, on top of the six this case's
+own `REPRODUCE_GATE_RECORD` do-not-repeat text already lists, and it sits in the
+one place this revision moved.
+
+The direction is measured on the rfx side and only there: removing rfx's own
+facet **raised** its band-mean T by 0.0394 on the same rig, same window, same
+step count. That is why the reading is worth recording.
+
+It is not an attribution. Meep was not re-run here and nothing in this lane
+measured the comparator's side. The cheap falsifier, named and not run: rebuild
+the Meep leg with each arm continued to the cell edge, the way upstream's bend
+run does, and see whether its band mean rises toward rfx's. Until that runs,
+G3's failure is a measured fact with an unproven cause, and #813 stays open on
+it. That rebuild is the next item under #813, not this revision's to make.
+
+### R2
+
+One attempt. It was pre-declared by the issue — re-run the committed recipe on
+the fixed solver and re-judge — and it closed on that declared observable: the
+record's own three gates, re-evaluated from the new arrays, reached a verdict.
+No second attempt on the same hypothesis is made here, and the comparator
+reading above is explicitly a next measurement rather than this one's conclusion.
+
+### Numeric provenance, after #1057
+
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.revision = 2`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::rig.boundary_layers = 10`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::rig.n_steps = 25000`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::measured.mean_self_smoothed_over_band = 0.9910752993577158`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::measured.mean_T_smoothed_over_band = 0.6767373275224511`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::measured.min_T_smoothed_over_band = 0.6041872922204279`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::measured.max_T_smoothed_over_band = 0.7169255292104887`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::measured.meep.mean_T_smoothed_over_band = 0.5662407307645764`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::measured.meep.abs_rfx_minus_meep = 0.11049659675787471`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::verdict.exit_code = 1`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::gates.G1_smoothed_T_in_0p3_1p0`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::gates.G2_straight_self_T_in_0p95_1p05`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::gates.G3_abs_rfx_minus_meep_lt_0p10`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.old_vs_new.committed_upml.mean_self_smoothed_over_band = 0.9891610388008335`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.old_vs_new.committed_upml.mean_T_smoothed_over_band = 0.6373729975739039`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.old_vs_new.committed_upml.abs_rfx_minus_meep = 0.0711322668093275`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.old_vs_new.committed_upml.exit_code = 0`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.old_vs_new.deltas_upml.mean_T_smoothed_over_band = 0.039364`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.old_vs_new.deltas_upml.mean_self_smoothed_over_band = 0.001914`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.old_vs_new.deltas_upml.abs_rfx_minus_meep = 0.039364`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.old_vs_new.meep_leg_identical`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::cpml_variant.rig.boundary_layers = 20`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::cpml_variant.measured.mean_self_smoothed_over_band = 0.9894314610377936`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::cpml_variant.measured.mean_T_smoothed_over_band = 0.7017475699461292`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::cpml_variant.measured.meep.abs_rfx_minus_meep = 0.13550683918155282`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::cpml_variant.verdict.exit_code = 1`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.settling_witness.upml.arms.straight.settling_db = -92.236316`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.settling_witness.upml.arms.bend.settling_db = -93.724518`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.settling_witness.cpml.arms.straight.settling_db = -92.159761`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.settling_witness.cpml.arms.bend.settling_db = -95.412060`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.settling_witness.upml.non_perturbation_check.mean_self_identical`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.settling_witness.upml.non_perturbation_check.mean_T_identical`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.settling_witness.cpml.non_perturbation_check.mean_self_identical`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.settling_witness.cpml.non_perturbation_check.mean_T_identical`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.preflight_verbatim.upml.lines_emitted_including_repeats = 22`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.preflight_verbatim.cpml.lines_emitted_including_repeats = 22`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.advisories_added_since_the_committed_record.upml.dielectric_at_absorber_seam`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.advisories_added_since_the_committed_record.upml.conductor_in_thin_absorber`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.advisories_added_since_the_committed_record.cpml.dielectric_at_absorber_seam`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.advisories_added_since_the_committed_record.cpml.conductor_in_thin_absorber`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.comparator_geometry_note.meep_leg_guide_clearance_into_pml_over_a.x_lo = 0`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.comparator_geometry_note.meep_leg_guide_clearance_into_pml_over_a.y_hi = 0`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.comparator_geometry_note.meep_leg_guide_ends_at_the_pml_face`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.comparator_geometry_note.upstream_bend_arms.horizontal_arm_x[0] = -8`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.comparator_geometry_note.upstream_bend_arms.horizontal_arm_x[1] = 4`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.comparator_geometry_note.upstream_bend_arms.vertical_arm_y[0] = -12`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.comparator_geometry_note.upstream_bend_arms.vertical_arm_y[1] = 16`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.comparator_geometry_note.upstream_bend_arms.cell_edge.x_lo = -8`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.comparator_geometry_note.upstream_bend_arms.cell_edge.y_hi = 16`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.comparator_geometry_note.upstream_bend_arms.pml_inner_face.x_lo = -7`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.comparator_geometry_note.upstream_bend_arms.pml_inner_face.y_hi = 15`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.comparator_geometry_note.upstream_bend_arms.horizontal_arm_reaches_the_cell_edge_at_x_lo`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.comparator_geometry_note.upstream_bend_arms.vertical_arm_reaches_the_cell_edge_at_y_hi`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.comparator_geometry_note.upstream_bend_arms.the_mp_inf_block_is_the_straight_runs`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.comparator_geometry_note.upstream_fidelity_check.checked_lines = 12`,
+`validation/crossval/_01_waveguide_bend_results/crossval_r2.json::revision.provenance.rig_fidelity_check.checked_lines = 55`.

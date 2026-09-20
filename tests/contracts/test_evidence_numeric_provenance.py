@@ -356,6 +356,20 @@ ISSUE831_RESULTS = "docs/design_notes/issue831_far_end_return_results.md"
 # table of measured numbers read out of committed artifacts.
 ISSUE1043_PAD_CONTINUATION_NOTE = (
     "docs/design_notes/issue1043_pad_continuation_results.md")
+# 2026-09-16 (#873 attempt 2): the transmission-tilt results note, opted in for
+# the same reason as the two above -- its verdict is a table of measured numbers
+# read out of tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json,
+# and its section 7 emits those citations from the artifact rather than retyping
+# them, so a number that moves without the note moving reds here.
+TILT_RESULTS = (
+    "docs/design_notes/waveguide_false_lane_transmission_tilt_results.md")
+# 2026-09-16 (#873, the near-field composition run that followed the tilt one):
+# same reason again -- the verdict IS a table of measured numbers read out of
+# near_field_composition.json, including a leg that PASSES and one that FAILS,
+# and the difference between them is which number is quoted. Its "10. Numeric
+# provenance" section emits the citations from the artifact.
+NEAR_FIELD_RESULTS = (
+    "docs/design_notes/waveguide_driven_plane_near_field_composition_results.md")
 
 # Markdown documents, with the regex that cuts them into named sites.
 MARKDOWN_SITES: dict[str, str] = {
@@ -402,6 +416,8 @@ MARKDOWN_SITES: dict[str, str] = {
     ISSUE831_PREDECLARATION: r"^#+\s+(.*\S)\s*$",
     ISSUE831_RESULTS: r"^#+\s+(.*\S)\s*$",
     ISSUE1043_PAD_CONTINUATION_NOTE: r"^#+\s+(.*\S)\s*$",
+    TILT_RESULTS: r"^#+\s+(.*\S)\s*$",
+    NEAR_FIELD_RESULTS: r"^#+\s+(.*\S)\s*$",
 }
 
 DOCUMENTS = (MANIFEST, *MARKDOWN_SITES)
@@ -421,6 +437,28 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
     # the 10-layer pair they are compared against, so the floor is the
     # reproduced count of value-carrying citations (19).
     (CV01_CPML_NOTE, "Numeric provenance, residual split"): 19,
+    # 2026-09-15 (#813, cv01's committed record re-measured after #1057): the
+    # note's third result section states a before/after gate table -- including
+    # a gate that CHANGES verdict -- and resolves every cell of it against
+    # validation/crossval/_01_waveguide_bend_results/crossval_r2.json. The
+    # floor is the reproduced count of value-carrying citations (40 of its 56;
+    # raised from 31/45 by the PR #1080 review, which replaced one existence-only
+    # citation about upstream's tutorial geometry with twelve that resolve the
+    # bend arms' actual extents).
+    (CV01_CPML_NOTE, "Numeric provenance, after #1057"): 40,
+    # 2026-09-16 (#873 attempt 2): the transmission-tilt note's verdict rests on
+    # six groups of measured numbers -- the observable and its ladder, the bound
+    # that retires four candidates, the four-plane measurement that locates the
+    # error, the profile mismatch and the post-hoc run against it, the
+    # record-length run, and the PR #1081 review's corrected bound pairing. The
+    # floor is the reproduced count (54, raised from 45 by that review: it found
+    # the bound compared against the wrong quantity, which cost six citations for
+    # the replacement numbers and three more when the artifact field itself was
+    # re-paired and the old pairing preserved beside it as colpow_over_bound).
+    # Not a round number: a rewrite that drops citations would leave a
+    # DOES-NOT-CLOSE verdict with nothing behind it, and a negative result is
+    # exactly the kind whose numbers nobody re-derives.
+    (TILT_RESULTS, "7. Numeric provenance"): 54,
     (MANIFEST, "11_waveguide_port_wr90"): 4,
     (MANIFEST, "15_patch_antenna_rt5880"): 3,
     (MANIFEST, "17_dielectric_sphere_mie"): 2,
@@ -520,9 +558,33 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
 # what the comment above each floor asks for -- but whoever hits it is not
 # looking at a bug. Lower the floor in the same commit as the removal and say
 # why, exactly as this block does.
-MIN_REFERENCES = 1270
-MIN_VALUE_CHECKED = 1207
-MIN_DISTINCT_ARTIFACTS = 77
+# 2026-09-15 (#813, cv01's record re-measured after #1057): +45 references over
+# +1 distinct artifact (validation/crossval/_01_waveguide_bend_results/
+# crossval_r2.json, cited here for the first time), 31 of them value-checked --
+# the pre-declaration's "Result after #1057" section, whose table carries a gate
+# verdict that CHANGED and must not be readable without the artifact behind it.
+# Raised by the delta, in the same commit that adds them, as the two entries
+# above did. The block above says these floors were left EQUAL to the actuals in
+# September; they are not any more -- the actuals had drifted to 1409 / 1326 / 89
+# by other PRs before this one, and absorbing that slack is not this change's to
+# make, so the delta is added to the floors and the slack is left where it is.
+# 2026-09-16 (#813, PR #1080 review): +11 references and +9 value-checked over
+# no new artifact -- the comparator note's upstream claim was wrong (it read the
+# tutorial's STRAIGHT-run mp.inf block as the bend geometry), and the correction
+# replaces one existence-only citation with twelve that resolve the bend arms'
+# measured extents. Raised by the delta, in the same commit.
+# 2026-09-16 (#873, near-field composition): +86 references over +1 distinct
+# artifact (tests/fixtures/waveguide_false_lane_column_power/
+# near_field_composition.json, cited here for the first time), all 86
+# value-checked -- the results note's section 10. Raised by the delta, in the
+# same commit that adds them, as the entries above did. The last 11 of the 86
+# arrived with the PR #1094 review: its first finding was that the note gave a
+# reason for an estimator swap that is false at one rung, and the reason that
+# does hold is three numbers already IN the artifact that nothing cited. A
+# number the argument leans on and the gate cannot see is the gap that catches.
+MIN_REFERENCES = 1412
+MIN_VALUE_CHECKED = 1333
+MIN_DISTINCT_ARTIFACTS = 79
 
 
 # --------------------------------------------------------------------------
@@ -592,6 +654,13 @@ CLASSIFICATION: dict[str, str] = {
     "docs/public/validation/cross-solver.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/validation/index.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/validation/recommended-configuration.mdx": NO_ARTIFACT_REFERENCE,
+    # #928 item 2's pre-declaration: `parses` is empty -- it carries no
+    # `<path>.json::<key>` span. Its numbers are of two kinds, neither of which
+    # this gate can resolve: the r1 values it quotes to state the defect it
+    # replaces (their keys are in the envelope artifact, cited by name in the
+    # prose), and the per-arm windows it declares, which are RECOMPUTED from
+    # each record at evaluation time and are written into no artifact key.
+    "docs/design_notes/slab_family_per_arm_lattice_window_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260829_spec01_multiband_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260830_issue786_convergence_floor.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260831_cv02_ring_judge_predeclaration.md": NO_ARTIFACT_REFERENCE,
@@ -713,6 +782,15 @@ CLASSIFICATION: dict[str, str] = {
     "docs/design_notes/cv14_rect_cavity_gate_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/estimator_resolution_regate.md": GATED,
     "docs/design_notes/geometry_setup_interop.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-16 (#810 Tier 1, the WR-90 control): neither note carries a
+    # backtick span containing `::` at all, so nothing parses and nothing is
+    # rejected. Their numbers are replayed from
+    # tests/fixtures/graded_mesh_sparameter_accuracy/wr90_control.json, whose
+    # verdicts the driver's own `--stages verdicts` recomputes from the stored
+    # per-bin values. MIN_REFERENCES / MIN_VALUE_CHECKED / MIN_DISTINCT_ARTIFACTS
+    # are unchanged: these two files add no reference to the opted-in surface.
+    "docs/design_notes/graded_mesh_sparameter_accuracy_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/graded_mesh_sparameter_accuracy_results.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/graded_z_lowz_demo_closure.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/graded_z_lowz_demo_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/i489_stage2_two_port_fdtd_predeclaration.md": NO_ARTIFACT_REFERENCE,
@@ -785,8 +863,25 @@ CLASSIFICATION: dict[str, str] = {
     "docs/design_notes/v18_waveguide_s_chain_plan.md": SYMBOL_SPAN_PARSER_SCOPE,
     "docs/design_notes/waveguide_chain_battery_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_chain_battery_remeasure_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-16 (#873 near-field composition): the pre-declaration was written
+    # before any projection coefficient existed and carries no `::` span. Its
+    # basis tables are properties of the port code and the grid, computed from
+    # rfx/sources/_waveguide_modes.py rather than read out of any artifact, so
+    # there is nothing here for this gate to resolve.
+    "docs/design_notes/waveguide_driven_plane_near_field_composition_predeclaration.md":
+        NO_ARTIFACT_REFERENCE,
+    NEAR_FIELD_RESULTS: GATED,
     "docs/design_notes/waveguide_false_lane_column_power_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_false_lane_column_power_results.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-16 (#873 attempt 2): the pre-declaration was written before any
+    # number existed and carries no `::` span at all. Its results note is the
+    # opposite case -- its verdict IS a table of measured numbers read out of
+    # transmission_tilt.json -- so GATED is the only class open to it, and its
+    # "7. Numeric provenance" section emits the citations FROM the artifact
+    # rather than retyping them.
+    "docs/design_notes/waveguide_false_lane_transmission_tilt_predeclaration.md":
+        NO_ARTIFACT_REFERENCE,
+    TILT_RESULTS: GATED,
     "docs/design_notes/waveguide_vi_envelope_sweep_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_vi_envelope_sweep_results.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/wp4e_lumped_component_value_ad_spike.md": NO_ARTIFACT_REFERENCE,

@@ -67,6 +67,16 @@ _QUANTIZED_GATE_FILES = [
     # `abs` key to 100. So the multiplier-mutation coverage here rests on the
     # test file's own derived-not-pinned tolerances, which is weaker than the
     # discovered lanes' from-outside check.
+    # #928 item 2. The slab family's per-bin windows are the one lane here that
+    # deliberately does NOT quantize -- rounding up to 1/1000 per bin would
+    # raise every sub-1e-3 bin to 1e-3, widening the gate where the derivation
+    # is tightest -- so it reads ENVELOPE_GATE_MULTIPLIER through the module
+    # object instead of calling gate_from_envelope. It is in this tripwire list
+    # because the `* 1.5 *` plant is exactly as available to it as to the
+    # others, and the from-outside check that the multiplier really moves its
+    # windows is tests/contracts/test_slab_arm_window_derivation.py::
+    # test_the_shared_multiplier_moves_every_derived_window.
+    (REPO / "validation" / "crossval" / "comparators" / "slab_arm_windows.py"),
     REPO / "tests" / "crossval" / "test_waveguide_nu_broad_e4_comparison_gates.py",
     (REPO / "scripts" / "diagnostics"
      / "build_waveguide_wr90_nu_flux_broad_e4_comparison.py"),
@@ -283,8 +293,19 @@ def test_quantized_gate_case_imports_shared_helper_not_a_local_literal(path):
     cannot by grep alone, rule out a different multiplier value -- that is
     what the falsifier tests below are for."""
     src = path.read_text(encoding="utf-8")
-    assert "_gate_policy import" in src and "gate_from_envelope" in src, (
-        f"{path.name} does not import the shared gate_from_envelope helper"
+    # Two admissible spellings of "reads the shared policy": the usual
+    # `from tests._gate_policy import gate_from_envelope`, and -- for a lane
+    # that derives a per-bin window and deliberately does not quantize it --
+    # `from tests import _gate_policy` plus a call-time
+    # `_gate_policy.ENVELOPE_GATE_MULTIPLIER` read. Accepting both widens what
+    # the `* 1.5 *` grep below covers; rejecting the second would have left the
+    # newest derived-window lane outside the tripwire entirely.
+    quantized = "_gate_policy import" in src and "gate_from_envelope" in src
+    multiplier_only = ("from tests import _gate_policy" in src
+                       and "_gate_policy.ENVELOPE_GATE_MULTIPLIER" in src)
+    assert quantized or multiplier_only, (
+        f"{path.name} reads neither the shared gate_from_envelope helper nor "
+        f"ENVELOPE_GATE_MULTIPLIER from the shared module"
     )
     # The exact pattern removed from every case: `<expr> * 1.5 * <quantum>`.
     assert re.search(r"\*\s*1\.5\s*\*", src) is None, (

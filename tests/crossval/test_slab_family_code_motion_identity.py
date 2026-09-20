@@ -145,8 +145,11 @@ def test_committed_artifacts_replay_to_the_same_verdicts(baseline, case):
                                ad["params"], ad["dt_s"], tail=ad["tail"],
                                windows=G.WINDOWS)
         else:
+            # windows=L.WINDOWS, named not defaulted (#928 item 2): this is a
+            # bit-identity REPLAY of the verdicts the baseline recorded, and
+            # those were reached under the cv04-adopted scalars.
             e2 = L.evaluate_e2(ad["freqs_hz"], ad["R_rfx"], ad["T_rfx"], ad["params"],
-                               ad["dt_s"], tail=ad["tail"])
+                               ad["dt_s"], tail=ad["tail"], windows=L.WINDOWS)
         assert e2["gates"] == want["gates"], (case, arm)
         assert e2["e2_ok"] == want["e2_ok"], (case, arm)
         for key, value in want.items():

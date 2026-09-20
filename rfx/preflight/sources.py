@@ -113,6 +113,32 @@ def _validate_cfg_source_on_reflector_plane(
     image (e.g. normal E on a PMC face) fights the symmetry and
     yields numerically inconsistent results.
 
+    Which faces are reflectors (#1075): the canonical
+    ``Simulation._boundary_spec``, NOT the legacy ``self._pec_faces``
+    view. The legacy view is filled in only by an explicit
+    ``pec_faces=`` kwarg or a per-face ``BoundarySpec``; the scalar
+    ``boundary="pec"`` -- a PEC box on all six faces, realized as
+    ``apply_pec(axes=pec_axes)`` -- left it empty, and this check was
+    therefore SKIPPED ENTIRELY on the commonest way of asking for a
+    PEC wall. Periodic axes carry ``periodic`` in the spec and are
+    excluded by construction. PMC needs no counterpart change: there
+    is no whole-boundary PMC mode, and the PMC face set handed in is
+    already read off the same spec.
+
+    The PEC tangential-E text is lane-explicit for the same issue.
+    Measured on the pre-fix tree (``scripts/diagnostics/
+    issue1075_source_on_face.py``, 20x15x15 cells at dx = 1 mm, ez on
+    the x_lo wall, 400 steps): the distributed lanes return a probe
+    peak of EXACTLY 0 -- they apply the PEC face after injection since
+    #1041/#1055 -- while the single-device lane, which applies it
+    before injection, returns 8.92558e5 against 4.00560e6 for the same
+    source one cell inside. So on that lane the source is not
+    discarded at all; it drives a component the mirror is supposed to
+    hold at zero. The retention is not a constant worth quoting in the
+    message: swept over probe distance on that fixture the peak ratio
+    runs 0.074 (4 mm) to 2.026 (12 mm), because the two placements
+    excite different modes of a closed cavity.
+
     Component-specific rule:
       PEC face (axis = ax_name): tangential E (Ex/Ey/Ez with
         component axis != ax_name) is zeroed every E update.
@@ -128,7 +154,29 @@ def _validate_cfg_source_on_reflector_plane(
     This follows the industry convention (Meep / OpenEMS /
     Tidy3D all follow the same rule).
     """
-    _all_reflector_faces = set(self._pec_faces) | set(_pmc_faces_set)
+    # The reflector faces come from the CANONICAL BoundarySpec, not from
+    # ``self._pec_faces``. Issue #1075: ``self._pec_faces`` is populated only
+    # by an explicit ``pec_faces=`` kwarg or by a per-face ``BoundarySpec``;
+    # the legacy scalar ``boundary="pec"`` -- the whole-boundary reflector,
+    # realized as ``apply_pec(axes=pec_axes)`` -- leaves it EMPTY, so this
+    # entire check used to be skipped on the most common way of asking for a
+    # PEC box. ``Simulation._build_spec_from_legacy`` already writes ``pec``
+    # on both faces of every non-periodic axis for that boundary, and
+    # ``BoundarySpec.pec_faces()`` reads them back, so the spec covers the
+    # scalar path, the ``pec_faces=`` path and the per-face path with one
+    # expression -- and excludes periodic axes, which are not reflectors.
+    # ``self._pec_faces`` is still unioned in: it is a public-ish legacy view
+    # that a caller can mutate directly without rebuilding the spec, and
+    # dropping it could only ever LOSE coverage.
+    _spec = getattr(self, "_boundary_spec", None)
+    _spec_pec_faces = set(_spec.pec_faces()) if _spec is not None else set()
+    # PMC needs no equivalent widening: there is no whole-boundary PMC mode
+    # (the scalar ``boundary=`` accepts only 'pec' / 'cpml' / 'upml'), and
+    # ``_pmc_faces_set`` is ALREADY ``self._boundary_spec.pmc_faces()``,
+    # computed in _validate_cfg_compute_cpml_thickness.
+    _all_reflector_faces = (
+        set(self._pec_faces) | _spec_pec_faces | set(_pmc_faces_set)
+    )
     if _all_reflector_faces:
         _dx_axis = [float(dx), float(dx), float(dx)]
         if (self._dz_profile is not None
@@ -188,11 +236,20 @@ def _validate_cfg_source_on_reflector_plane(
                         msg = (
                             f"Source/port at {pos} (component={pe.component}) "
                             f"sits on the PEC {face} plane and drives a "
-                            f"tangential E. PEC zeros E_tan at the plane "
-                            f"every step, so the source is silently "
-                            f"discarded. Use a normal E source at this "
-                            f"face, or offset by one cell "
-                            f"({_dx_axis[ax_i]*1e3:.3g} mm) off the plane."
+                            f"tangential E, the component a perfect conductor "
+                            f"holds at zero. What happens next DEPENDS ON THE "
+                            f"LANE (issue #1075): the distributed lanes "
+                            f"(run(devices=...), forward(distributed=True)) "
+                            f"apply the PEC face AFTER injection, so the "
+                            f"source is discarded and the probes read exactly "
+                            f"zero; the single-device lane applies it BEFORE "
+                            f"injection, so the source is NOT discarded and "
+                            f"instead drives a component the mirror should "
+                            f"force to zero, which makes the result "
+                            f"numerically inconsistent rather than silent. "
+                            f"Use a normal E source at this face, or offset "
+                            f"by one cell ({_dx_axis[ax_i]*1e3:.3g} mm) off "
+                            f"the plane."
                         )
                     elif comp_field == "h" and not is_tangential:
                         msg = (

@@ -1027,6 +1027,37 @@ class _PreflightMixin:
         # waveguide ports there is no layout to audit. Emitted as warnings by
         # the check sites (the repo idiom) and folded into the report here, so
         # the coded fields survive into PreflightIssue.
+        # Issue #726 item 2: the msl route used to return NOTHING on a port
+        # whose deepest probe sat inside a reflector (measured: 0 findings
+        # here against 18 from preflight(), same sim, while the result
+        # object's probe_clearance read "insufficient"). Same fold-in shape
+        # as the waveguide block below.
+        if key == "msl" and not len(issues):   # refuses bool() (#980)
+            if list(self._msl_ports):
+                import warnings as _mslmod
+                # Function-local, like compute_msl_s_matrix's own import of
+                # msl_probe_clearance_for_port: this module's namespace is
+                # pinned by SET EQUALITY in
+                # tests/locks/test_preflight_split_snapshot.py, and a new
+                # module-level name would be a surface change for a function
+                # that is not part of the #980 code motion.
+                from rfx.preflight.msl import (
+                    preflight_msl_probe_clearance,
+                )
+                with _mslmod.catch_warnings(record=True) as _msl_caught:
+                    _mslmod.simplefilter("always")
+                    preflight_msl_probe_clearance(
+                        self, _mslmod, skip=bool(include_general))
+                for _rec in _msl_caught:
+                    _inst = _rec.message
+                    issues.append(PreflightIssue(
+                        str(_inst),
+                        severity=getattr(_inst, "severity", "warning"),
+                        code=getattr(_inst, "code", "msl_port_geometry"),
+                        source=getattr(_inst, "source",
+                                       "preflight_sparameters"),
+                    ))
+
         if key == "waveguide" and not len(issues):   # refuses bool() (#980)
             _wg_entries = list(self._waveguide_ports)
             if _wg_entries:
@@ -1540,6 +1571,10 @@ class _PreflightMixin:
         # puts it there. Defined in the family module like the eleven above,
         # never in this class body.
         _validate_cfg_dielectric_at_absorber_seam,
+        # #801: the measured conjunction -- a conductor realizing within two
+        # cells of an absorbing face that carries six layers or fewer. Defined
+        # in the family module like the twelve above, never in this class body.
+        _validate_cfg_conductor_in_thin_absorber,
     )
 
     # ------------------------------------------------------------------
@@ -1574,22 +1609,21 @@ class _PreflightMixin:
     from rfx.preflight.sources import _validate_cfg_source_on_reflector_plane
 
     # ------------------------------------------------------------------
-    # #980 Phase 3 leg 6: the #500 NTFF-box-in-the-absorber check and the
-    # P1.7 minimum-steps hint moved VERBATIM to ``rfx/preflight/ntff.py``,
-    # bound back at their original positions. The P1.5 comment that used to
-    # sit between them is part of the first body's suite and travelled with
-    # it.
+    # #980 Phase 3 leg 6: the #500 NTFF-box-in-the-absorber check moved
+    # VERBATIM to ``rfx/preflight/ntff.py``, bound back at its original
+    # position. The P1.5 comment that used to sit after it is part of that
+    # body's suite and travelled with it.
     #
-    # ``_validate_cfg_ntff_min_steps`` emits nothing: it writes
-    # ``self._ntff_min_steps_hint``, an INSTANCE attribute, which is
-    # unaffected by where the body is defined -- ``rfx/interop/_design.py``
-    # reads that name out of ``EXCLUDED_SIMULATION_ATTRS`` and keeps doing
-    # so.
+    # The P1.7 minimum-steps hint travelled with it and was then DELETED by
+    # issue #1030: ``_validate_cfg_ntff_min_steps`` emitted nothing, it only
+    # wrote the instance attribute ``self._ntff_min_steps_hint``, and a
+    # census found that attribute had no consumer -- its only readers were
+    # ``rfx/interop/_design.py``'s ``EXCLUDED_SIMULATION_ATTRS`` (which named
+    # it to keep it OUT of the design document) and the test asserting that
+    # exclusion. Producer, registry row and exclusion row all went together;
+    # the reasoning is in ``rfx/preflight/ntff.py``'s module docstring.
     # ------------------------------------------------------------------
-    from rfx.preflight.ntff import (
-        _validate_cfg_ntff_absorber_overlap,
-        _validate_cfg_ntff_min_steps,
-    )
+    from rfx.preflight.ntff import _validate_cfg_ntff_absorber_overlap
 
     def _validate_cfg_settling_witness_present(self, _w) -> None:
         """Warn when the declared inputs cannot produce a ring-down witness.
@@ -1603,7 +1637,13 @@ class _PreflightMixin:
         say here than after the run.
 
         Silent when a probe exists, and silent when the run asks for neither
-        NTFF nor a field DFT (the rule scopes to those).
+        NTFF nor a field DFT (the rule scopes to those). Whether a
+        registered probe is INDEPENDENT of the drive is decided on the
+        finished record, not here: the run/forward witness flags a probe
+        sharing a Yee cell with a registered drive as source-dominated and
+        says so in ``settling_witness["qualifier"]`` plus a runtime warning
+        (#1090). This advisory only states the advice, which is why its
+        text names the drive cell.
 
         Both entry points use the same recorded-probe arithmetic. Forward's
         host diagnostic is available on concrete results, including after
@@ -1626,7 +1666,11 @@ class _PreflightMixin:
             "the recorded probe time series, so the result will carry settling_db=None "
             "and those DFT numbers will have no truncation guard (#885); add "
             "sim.add_probe(position, component) somewhere the field is live "
-            "and retain its time series. Inspect forward's diagnostic on "
+            "and NOT on a source/port drive cell — a record on the drive "
+            "cell peaks on the drive pulse, so its end/peak ratio measures "
+            "source turn-off rather than the structure's ring-down and does "
+            "not count as an independent witness (#1090) — and retain its "
+            "time series. Inspect forward's diagnostic on "
             "the concrete result after JIT/AD evaluation.",
             code="settling_witness_will_be_absent",
             source="_validate_cfg_settling_witness_present",

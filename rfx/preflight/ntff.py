@@ -5,12 +5,12 @@ transform can mean anything on the configuration as drawn: whether the
 requested NTFF box overlaps declared PEC (an ERROR, the #334 inverse-design
 structural gate) or sits inside the radiator's near field at lambda/4,
 whether a finite ground plane under the radiator is electrically small enough
-to shape the pattern by edge diffraction rather than by the antenna, whether
-an NTFF corner has crossed out of the domain into the absorber (#500), and
-how many steps the lowest requested far-field frequency needs. Everything
-here was relocated byte for byte out of ``rfx/api/_preflight.py`` -- same
-text, same order, same indentation, same docstrings, nothing renamed,
-reordered, tidied or rewritten.
+to shape the pattern by edge diffraction rather than by the antenna, and
+whether an NTFF corner has crossed out of the domain into the absorber
+(#500). Everything here was relocated byte for byte out of
+``rfx/api/_preflight.py`` -- same text, same order, same indentation, same
+docstrings, nothing renamed, reordered, tidied or rewritten. Issue #1030
+later DELETED a fourth body from this module; see below.
 
 The move is gated on the committed advisory-text snapshot every
 ``sim.preflight()`` fixture renders
@@ -23,15 +23,32 @@ three codes over. ``_validate_cfg_ntff_absorber_overlap`` ran on 63 and spoke
 on none -- every NTFF box in the corpus was interior -- which the
 ``ntff_absorber_overlap`` fixture closes.
 
-``_validate_cfg_ntff_min_steps`` is the interesting one and it needs no
-fixture: it has NO emission site at all. It computes a CFL-based step
-estimate and writes ``self._ntff_min_steps_hint``, an instance attribute that
-``rfx/interop/_design.py``'s ``EXCLUDED_SIMULATION_ATTRS`` then names as
-transient run-time state deliberately kept out of the design document. An
-instance write survives code motion untouched -- ``self`` is the composed
-``Simulation`` either way -- so the reader is unaffected and there is nothing
-for a report-text lock to witness. Recorded here rather than left looking
-like a hole.
+DELETED, issue #1030: ``_validate_cfg_ntff_min_steps``. Leg 6 moved it here
+verbatim and recorded that it was the one rebound name in the whole split
+with NO emission site -- it only computed a CFL-based step estimate and wrote
+``self._ntff_min_steps_hint``, an instance attribute. The follow-up census
+(#1030) found that attribute had NO consumer anywhere in ``rfx/``, ``tests/``,
+``validation/``, ``scripts/`` or ``examples/``: its only readers were
+``rfx/interop/_design.py``'s ``EXCLUDED_SIMULATION_ATTRS``, which named it to
+keep it OUT of the design document, and the test asserting that exclusion --
+readers that exist only because the attribute did.
+
+Deleted rather than given a consumer, on three measured grounds. (1) The only
+place a consumer could live is ``run()`` AFTER ``_dispatch_plan`` resolves
+``n_steps`` (``rfx/api/_execute.py``: ``_auto_preflight`` is called first,
+which is why the producer's own comment read "Can't check n_steps here"), and
+at that point ``grid.dt`` is concrete -- so a consumer would recompute the
+quantity exactly instead of reading a stored estimate. (2) The estimate was
+``dx / (C0 * 1.732) * 0.99``, a CUBIC-cell CFL guess, which this project's
+engineering rule 2 forbids: on a rectangular or non-uniform mesh it is not the
+grid's ``dt``. (3) "10 periods of the lowest NTFF frequency" is an unsourced
+heuristic, while the project's evidence-based answer to "was the run long
+enough" is the #885 energy ring-down settling witness (``Result.settling_db``
+against the -40 dB bar), measured on the run that happened rather than
+guessed from ``dx`` before it. Deleting the producer moved NO frozen emission
+number: measured 113 sites / 74 literal codes / {preflight: 2,
+preflight_sparameters: 2, finding: 1} before and after, because the body
+constructed no issue class at all.
 
 Import contract, inherited from ``rfx.api._preflight``: import ONLY external
 ``rfx.*`` / stdlib / jax / numpy, never ``rfx.api`` -- that keeps
@@ -443,23 +460,11 @@ def _validate_cfg_ntff_absorber_overlap(
     # dipole directivity benchmarks within ~0.05 dB of theory
     # (tests/unit/farfield/test_farfield_nonuniform.py). No guard needed.
 
-def _validate_cfg_ntff_min_steps(self, dx: float) -> None:
-    """P1.7: NTFF with too few steps."""
-    if self._ntff is not None:
-        _, _, ntff_freqs = self._ntff
-        if ntff_freqs is not None:
-            min_freq = float(min(ntff_freqs))
-            period = 1.0 / max(min_freq, 1.0)
-            dt_est = dx / (C0 * 1.732) * 0.99  # CFL estimate
-            min_steps_for_ntff = int(10 * period / dt_est)
-            # Can't check n_steps here (not known yet), but store hint
-            self._ntff_min_steps_hint = min_steps_for_ntff
-
 
 # ---------------------------------------------------------------------------
 # Pre-move ``__qualname__``, restored explicitly.
 #
-# Each of the four functions above was a ``def`` in the ``_PreflightMixin``
+# Each of the three functions above was a ``def`` in the ``_PreflightMixin``
 # class body, so its ``__qualname__`` read ``_PreflightMixin.<name>``; a
 # module-level ``def`` gets the bare name instead. ``rfx/api/__init__.py``
 # rewrites exactly ``<mixin>.<name>`` -> ``Simulation.<name>`` at
@@ -468,10 +473,10 @@ def _validate_cfg_ntff_min_steps(self, dx: float) -> None:
 # reports -- a user-visible behaviour change inside a pure code-motion step.
 # ``tests/unit/autodiff/test_design_mask_removed.py
 # ::test_no_public_simulation_method_leaks_a_mixin_class_name`` states the
-# rule but only walks PUBLIC members, and all four names here are private, so
-# ``tests/locks/test_preflight_split_snapshot.py`` pins these four directly.
+# rule but only walks PUBLIC members, and all three names here are private, so
+# ``tests/locks/test_preflight_split_snapshot.py`` pins these three directly.
 #
-# None of the four was a ``@staticmethod`` -- the one this leg moves is in
+# None of the three was a ``@staticmethod`` -- the one leg 6 moved is in
 # ``rfx/preflight/sources.py`` -- so this module has no decorator the facade
 # has to re-apply and every restored qualname below becomes
 # ``Simulation.<name>`` after composition.
@@ -484,7 +489,4 @@ _validate_ntff_small_ground_plane.__qualname__ = (
 )
 _validate_cfg_ntff_absorber_overlap.__qualname__ = (
     "_PreflightMixin._validate_cfg_ntff_absorber_overlap"
-)
-_validate_cfg_ntff_min_steps.__qualname__ = (
-    "_PreflightMixin._validate_cfg_ntff_min_steps"
 )

@@ -102,14 +102,33 @@ if SMOKE:
     SLAB_CELLS_Z = 1   # superstrate thickness in cells
     N_ITERS = 8
     LR = 0.12
-    NUM_PERIODS = 12.0
+    NUM_PERIODS = 40.0   # was 12: superstrate-edge witness -13.3 dB (#918)
 else:
     DX_FRAC = 20.0     # dx = lambda / 20 (paper)
     HALF_FRAC = 0.75   # 1.5-lambda aperture (steering needs aperture)
     SLAB_CELLS_Z = 2
     N_ITERS = 140
     LR = 0.08
-    NUM_PERIODS = 20.0
+    NUM_PERIODS = 60.0   # was 20: superstrate-edge witness -23.6 dB (#918)
+
+# Run length (#918).  The NTFF far field is a DFT over the whole record, so a
+# record that ends while the superstrate still rings integrates a cut
+# transient.  NUM_PERIODS is sized so the WORST design-region probe record
+# (superstrate edge, probe2 below) ends <= -40 dB below its peak with margin,
+# measured 2026-09-16 on CPU (JAX 0.10.2) at the init-ramp eps, at the bare
+# slab (eps 1) and, in SMOKE mode, at the design the fixture's own Adam loop
+# returns; the previous lengths failed that bar and moved the far field:
+#   paper mesh (93x93x84): NUM_PERIODS 20 -> 60 : edge record -23.6 -> -63.2 dB,
+#       D(30 deg) +3.8102 -> +3.8781 dBi, pattern max|dP|/maxP 3.8e-2; the
+#       60-period pattern is within 3.3e-4 of peak of a 120-period run.
+#   SMOKE (66x66x68):      NUM_PERIODS 12 -> 40 : edge record -13.3 -> -53.5 dB
+#       (ramp) / -13.2 -> -54.5 dB (SMOKE-optimized design), D(30 deg)
+#       +6.7589 -> +6.7499 dBi (ramp), within 1.8e-3 of peak of an 80-period run.
+# A LATERALLY UNIFORM eps = 10 slab (the design bound) is a high-Q dielectric
+# resonator and does NOT clear the bar at any length measured (paper mesh:
+# see the #918 record); the optimizer never returns it, and the eager
+# forwards in main() print their witness so a slow design shows up as a
+# FAILED witness line next to the number it would contaminate.
 
 
 # ---------------------------------------------------------------------------
@@ -134,7 +153,21 @@ def build_problem():
     freq_max = 4.0e9                 # source bandwidth + dispersion check
     dx = lam / DX_FRAC
     cpml_layers = 10
-    half = HALF_FRAC * lam           # superstrate half-width
+    # Superstrate/plate half-width, SNAPPED to a whole number of cells.
+    #
+    # The reflector plate is a PEC SHEET, and a sheet realizes on the nodes
+    # its own rectangle covers (#931 §1.3), so a face that lands off a node
+    # line loses up to a full cell at EACH face. Measured on the SMOKE mesh
+    # before this snap (#737): HALF_FRAC*lam = 5.4 cells put both faces
+    # 0.1 cell above a node line, and fidelity_report read the declared
+    # 89937.7 um plate as a realized 74948.1 um one -- a reflector 16.67 %
+    # smaller than the number this script prints, on the demo whose whole
+    # subject is a finite reflector. Rounding the half-width to whole cells
+    # and forcing an EVEN lateral cell count (below) puts cx on a node and
+    # both plate faces on node lines, so declared == realized exactly.
+    # The paper lane is unchanged by both: HALF_FRAC*DX_FRAC = 0.75*20 = 15
+    # cells is already an integer and its lateral count is already even.
+    half = float(round(HALF_FRAC * lam / dx)) * dx
     slab_thick = dx * SLAB_CELLS_Z
 
     cpml_t = cpml_layers * dx
@@ -149,18 +182,41 @@ def build_problem():
     Lz = float(np.ceil((box_z_hi + m + cpml_t) / dx) * dx)
 
     # Lateral extent (binding constraint = superstrate edge clearance).
+    # An EVEN number of cells, so the centre cx = Lx/2 is a node and not a
+    # half-cell: with cx on a half-cell every face at cx +- (whole cells)
+    # is off-lattice by construction (#737).
     cx_min = cpml_t + m + half + half_lam
-    Lx = float(np.ceil((2.0 * cx_min) / dx) * dx)
+    Lx = float(2 * int(np.ceil(cx_min / dx)) * dx)
     Ly = Lx
     cx, cy = Lx / 2.0, Ly / 2.0
 
     sim = Simulation(freq_max=freq_max, domain=(Lx, Ly, Lz),
                      cpml_layers=cpml_layers, dx=dx)
     sim.add_source((cx, cy, float(src_z)), "ex")     # x-oriented dipole
-    # Keep one field record at the source so NTFF results carry the shared
-    # ring-down witness (#918).  This is diagnostic only: it does not alter
-    # the source or the differentiated far-field path.
+
+    # Ring-down settling witness (#918).  ``Result.settling_witness`` scores
+    # the WORST user probe record (mean end-window energy over peak energy,
+    # last tenth of the record), so the records have to sit where the
+    # structure rings, not only where the source is driven:
+    #   probe0  source-cell Ex.  Kept for provenance, but its peak is the
+    #           drive pulse itself: it reads about -79 dB at 20, 40 and 80
+    #           periods alike at the paper mesh, i.e. it witnesses the source
+    #           turn-off, not the superstrate, and must never be the sole
+    #           record on this fixture.
+    #   probe1  superstrate centre Ex (slab mid-plane).
+    #   probe2  superstrate edge Ex at x = cx + 0.8*half -- the slowest
+    #           record on this geometry (slab resonance + edge diffraction);
+    #           NUM_PERIODS below is sized so that THIS record clears -40 dB.
+    #   probe3  air lambda/4 above the superstrate, Ex -- the radiating field
+    #           the NTFF box integrates.
+    # Diagnostic only: probe records do not enter the source or the
+    # differentiated far-field path (NTFF leaves, pattern and dL/dpsi are
+    # bit-identical with and without them, #918 audit 2026-09-16).
+    slab_mid_z = float(slab_z + 0.5 * slab_thick)
     sim.add_probe((cx, cy, float(src_z)), "ex")
+    sim.add_probe((cx, cy, slab_mid_z), "ex")
+    sim.add_probe((cx + 0.8 * half, cy, slab_mid_z), "ex")
+    sim.add_probe((cx, cy, float(slab_z + slab_thick + 0.25 * lam)), "ex")
 
     region = DesignRegion(
         corner_lo=(cx - half, cy - half, float(slab_z)),
@@ -244,6 +300,12 @@ def make_pattern_fn(sim, grid, plate, lo, hi, n_steps):
 
     si, sj, sk = lo
     ei, ej, ek = hi
+    # Ring-down witness of the most recent EAGER forward (#918).  Under
+    # jax.value_and_grad the record is traced and the entry reads
+    # status="absent" (a traced record cannot be scored); the eager calls
+    # in main() -- bare, init, final -- leave the measured verdict here so it
+    # is printed next to the number it guards.
+    witness: dict = {"settling": None}
 
     def pattern(eps_slab):
         eps_override = base_eps_r.at[si:ei + 1, sj:ej + 1, sk:ek + 1].set(
@@ -254,12 +316,25 @@ def make_pattern_fn(sim, grid, plate, lo, hi, n_steps):
             checkpoint=True,
             skip_preflight=True,
         )
+        witness["settling"] = res.settling_witness
         ff = compute_far_field(res.ntff_data, res.ntff_box, res.grid, THETA, PHI)
         # Rescale by a large constant so the float32 backward stays in range.
         power = jnp.abs(ff.E_theta) ** 2 + jnp.abs(ff.E_phi) ** 2
         return power[0] * 1e27       # (n_theta, n_phi), f-index 0
 
+    pattern.witness = witness
     return pattern, plate["realized"]
+
+
+def format_witness(pattern) -> str:
+    """One line: the settling verdict of ``pattern``'s last eager forward."""
+    w = getattr(pattern, "witness", {}).get("settling")
+    if not w or w.get("status") != "measured":
+        return f"settling witness: {w!r}"
+    per = ", ".join(f"{k} {v:+.1f} dB" for k, v in w["per_record_db"].items())
+    worst = w["per_record_db"][w["worst_record"]]
+    verdict = "PASS" if worst <= -40.0 else "FAIL (above -40 dB: record cut while still ringing)"
+    return f"settling witness {verdict}: worst {w['worst_record']} {worst:+.1f} dB [{per}]"
 
 
 # Solid-angle quadrature weights (sin(theta) d_theta d_phi) for P_rad.
@@ -330,6 +405,7 @@ def main():
     d_bare = directivity_dbi(p_bare, I_T0, I_P0)
     print(f"[ref ] bare plate-backed dipole: D({THETA0_DEG:.0f} deg) "
           f"= {d_bare:+.2f} dBi  ({time.time()-t0:.0f}s/forward)")
+    print(f"[ref ] {format_witness(pattern)}")
 
     # --- Initialization: linear permittivity ramp (dielectric wedge) ---
     nx = design_shape[0]
@@ -342,6 +418,7 @@ def main():
     d_init = directivity_dbi(p_init, I_T0, I_P0)
     print(f"[init] dielectric-wedge ramp 2->9: D({THETA0_DEG:.0f} deg) "
           f"= {d_init:+.2f} dBi")
+    print(f"[init] {format_witness(pattern)}")
 
     # --- Adam descent on the steering objective ---
     value_and_grad = jax.value_and_grad(loss)
@@ -368,6 +445,9 @@ def main():
     d_bs = 10.0 * np.log10(max(d_map[0, :].mean(), 1e-12))
     print(f"[done] D({THETA0_DEG:.0f} deg) = {d_steer:+.2f} dBi  "
           f"(bare {d_bare:+.2f} dBi)")
+    # The verdict that guards the number above: the optimized design rings
+    # differently from the init ramp NUM_PERIODS was sized on (#918).
+    print(f"[done] {format_witness(pattern)}")
     print(f"[done] realized peak {d_pk:+.2f} dBi at theta={th_pk:.1f} deg; "
           f"broadside {d_bs:+.2f} dBi")
     if th_pk > 12.0:

@@ -365,14 +365,50 @@ def _enumerate_emission_sites():
 # boundary in a shape the smoothed lane cannot continue into it. A GROWING
 # surface is the direction this pin exists for, so the number moves here in
 # the same change that adds the site, never afterwards.
-_FROZEN_TOTAL_SITES = 113
+# 113 -> 113 sites, UNCHANGED, 2026-09-15 (#1030). Recorded here because a
+# check was DELETED and these numbers did not move, which is the case this
+# file's own #854 block says to write down rather than leave to inference.
+# ``_validate_cfg_ntff_min_steps`` was removed from rfx/preflight/ntff.py and
+# from rfx/preflight/_registry.py's CORE_CONFIG_CHECKS (37 -> 36 rows): it
+# constructed NO issue class at all, so the AST walk above never counted it.
+# It only computed a cubic-cell CFL step estimate and wrote
+# ``self._ntff_min_steps_hint``, an instance attribute whose only readers were
+# rfx/interop/_design.py's EXCLUDED_SIMULATION_ATTRS (naming it to keep it OUT
+# of the design document) and the test asserting that exclusion -- readers
+# that existed only because the attribute did. Measured with the walk above on
+# the tree before and after the deletion: 113 / 74 / {preflight: 2,
+# preflight_sparameters: 2, finding: 1} either way. The 65 committed report
+# snapshots are likewise byte-identical, for the same reason.
+# _FROZEN_DYNAMIC_SITES_BY_FUNCTION is unchanged (no bare-except path touched)
+# and EMISSION_CLASSIFICATION is unchanged (no preflight call site added or
+# removed).
+# 113 -> 114, 2026-09-15 (#801). One site added:
+# ``_validate_cfg_conductor_in_thin_absorber``'s ``conductor_in_thin_absorber``
+# warning in ``rfx/preflight/absorber.py`` -- the measured-conjunction advisory
+# for a conductor realizing within two cells of an absorbing face that carries
+# six layers or fewer. A GROWING surface is the direction this pin exists for,
+# so the number moves here in the same change that adds the site.
+# 114 -> 118, 2026-09-19 (#726). Four sites added, all for the ONE condition
+# that issue is about -- a probe ladder sitting inside a downstream reflector:
+# three ``PreflightWarning``s in ``preflight_msl_probe_clearance``
+# (``rfx/preflight/msl.py``: scan-failed, clearance-unavailable,
+# clearance-insufficient) and the ``PreflightIssue`` in
+# ``preflight_sparameters``'s new msl fold-in block. The route used to return
+# ZERO findings on a port whose deepest probe sat inside a reflector while
+# ``preflight()`` reported it and the result object's ``probe_clearance`` read
+# ``insufficient``; these four are that gap closed, not a widening of what
+# preflight talks about.
+_FROZEN_TOTAL_SITES = 118
 # 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
 # site emitting that code, and the check was deleted when its own tripwire
 # XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
 # 73 -> 74, 2026-09-15 (#1043 stage B): the new advisory kind
 # ``dielectric_at_absorber_seam``. A new code is a new advisory kind, which is
 # what this count is for.
-_FROZEN_LITERAL_CODE_COUNT = 74
+# 74 -> 75, 2026-09-15 (#801): the new advisory kind
+# ``conductor_in_thin_absorber``. A new code is a new advisory kind, which is
+# what this count is for.
+_FROZEN_LITERAL_CODE_COUNT = 75
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site
@@ -388,7 +424,10 @@ _FROZEN_LITERAL_CODE_COUNT = 74
 # than naming a slug at the site -- the same shape as preflight()'s own two.
 _FROZEN_DYNAMIC_SITES_BY_FUNCTION = {
     "preflight": 2,
-    "preflight_sparameters": 2,
+    # 2 -> 3, 2026-09-19 (#726): the msl fold-in block added beside the
+    # waveguide one reads ``code=``/``source=`` off the caught
+    # PreflightWarning instance in exactly the same way.
+    "preflight_sparameters": 3,
     "finding": 1,
 }
 
