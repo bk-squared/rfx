@@ -46,9 +46,33 @@ def main() -> int:
         (case.DOM_X, case.DOM_Y, case.DOM_Z), case.DX, sheets=[ground, patch],
         faces={"x": [cx + case.FEED_OFFSET_X, cx], "y": [cy]}, axes="xy")
     print({k: (len(v), float(v.min()), float(v.max())) for k, v in prof.items()})
-    # the case imports ``Simulation`` from ``rfx`` inside its builder
+    # The case imports ``Simulation`` from ``rfx`` inside its builder, and its
+    # runner reads the z stack, the feed and dt from a UNIFORM grid
+    # (``sim._build_grid()``), which a simulation with in-plane profiles
+    # refuses. z is uniform and identical in both, so those checks are given
+    # the case's own uniform twin; the SOLVE runs on the profiled simulation.
     import rfx
-    rfx.Simulation = functools.partial(rfx.Simulation, **prof)
+    uniform_cls = rfx.Simulation
+    build = case.build_rfx_sim
+    twins = {}
+
+    def build_with_profiles(**kw):
+        rfx.Simulation = uniform_cls
+        twin = build(**kw)[0]
+        rfx.Simulation = functools.partial(uniform_cls, **prof)
+        try:
+            sim, patch_shape, geom = build(**kw)
+        finally:
+            rfx.Simulation = uniform_cls
+        twins[id(sim)] = twin
+        sim._build_grid = twin._build_grid
+        return sim, patch_shape, geom
+
+    case.build_rfx_sim = build_with_profiles
+    for name in ("assert_realized_stack", "assert_galvanic_feed"):
+        orig = getattr(case, name)
+        setattr(case, name, (lambda o: lambda sim, *a, **k: o(
+            twins.get(id(sim), sim), *a, **k))(orig))
     case.run_rfx(70.0, 181, False, out_name=OUT_NAME)
     res = Path(case.RES_DIR)
     legs = {"openEMS (committed)": json.loads((res / "openems.json").read_text()),

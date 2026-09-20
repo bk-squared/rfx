@@ -42,6 +42,15 @@
    "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
   },
   {
+   "code": "sheet_effective_size",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: thin_conductor[1] 'thin_conductor[1]' x: drawn 29.5mm, nodes cover 28mm, solved as 28.6mm (-3.05%); thin_conductor[0] 'thin_conductor[0]' y: drawn 55mm, nodes cover 55mm, solved as 55.6mm (+1.09%); thin_conductor[1] 'thin_conductor[1]' y: drawn 38mm, nodes cover 37mm, solved as 37.6mm (-1.05%); thin_conductor[0] 'thin_conductor[0]' x: drawn 60mm, nodes cover 60mm, solved as 60.6mm (+1.00%). A sheet end strictly inside the domain is solved about 0.3 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- thin_conductor[1] 'thin_conductor[1]' x: drawn 29.5mm, nodes cover 28mm, solved as 28.6mm (-3.05%) -- is what build_simulation actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "ref": "examples/tutorials/nonuniform_patch_demo.py:207 | https://github.com/bk-squared/rfx/issues/1138",
+   "rows": 1,
+   "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
+  },
+  {
    "code": "ntff_near_field",
    "disposition": "intended",
    "reason": "Teaching point 3 of the tutorial: 'Every face should sit at least half a wavelength from the radiator where the domain allows. The face below the ground plane cannot: it sits 6 mm below the ground. Preflight flags it, the run quotes the warning verbatim, and a solver-to-solver cross-check backs the placement. Preflight output is part of the result; do not suppress it.' The placement is cross-checked against openEMS at the design-mode bin (|D_rfx - D_openEMS| = 0.0659 dB).",
@@ -66,12 +75,30 @@
    "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
   },
   {
+   "code": "sheet_effective_size",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: thin_conductor[1] 'thin_conductor[1]' x: drawn 32mm, nodes cover 30mm, solved as 31.2mm (-2.50%); thin_conductor[1] 'thin_conductor[1]' y: drawn 40mm, nodes cover 38mm, solved as 39.2mm (-2.00%); thin_conductor[0] 'thin_conductor[0]' x: drawn 60mm, nodes cover 58mm, solved as 59.2mm (-1.33%); thin_conductor[0] 'thin_conductor[0]' y: drawn 60mm, nodes cover 58mm, solved as 59.2mm (-1.33%). A sheet end strictly inside the domain is solved about 0.3 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- thin_conductor[1] 'thin_conductor[1]' x: drawn 32mm, nodes cover 30mm, solved as 31.2mm (-2.50%) -- is what build_simulation actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "ref": "examples/tutorials/patch_antenna_demo.py:212 | https://github.com/bk-squared/rfx/issues/1138",
+   "rows": 1,
+   "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
+  },
+  {
    "code": "no_sources",
    "disposition": "intended",
    "reason": "The tutorial ASSERTS this row. main(): 'Because this model deliberately ends after construction, general preflight should report that there is no generic run source', then expected_build_only_advisory = bool(coaxial_report.by_code('no_sources')) and prints it. A missing row here would be the defect.",
    "ref": "examples/tutorials/ports_and_sparams_101.py:327-336",
    "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_coaxial_port::default"
+  },
+  {
+   "code": "sheet_effective_size",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: thin_conductor[1] 'thin_conductor[1]' y: drawn 1mm, nodes cover 1000µm, solved as 1.15mm (+15.00%); thin_conductor[0] 'thin_conductor[0]' y: drawn 8.5mm, nodes cover 8.5mm, solved as 8.65mm (+1.76%). A sheet end strictly inside the domain is solved about 0.3 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- thin_conductor[1] 'thin_conductor[1]' y: drawn 1mm, nodes cover 1000µm, solved as 1.15mm (+15.00%) -- is what build_microstrip_ports actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:97 | https://github.com/bk-squared/rfx/issues/1138",
+   "rows": 1,
+   "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
   },
   {
    "code": "geometry_in_absorber",
@@ -122,6 +149,15 @@
    "variant": "validation/crossval/06b_msl_notch_filter_uniform.py::_build_sim::default"
   },
   {
+   "code": "sheet_effective_size",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: geometry[1] 'pec' y: drawn 600µm, nodes cover 571.5µm, solved as 609.6µm (+1.60%); geometry[2] 'pec' x: drawn 600µm, nodes cover 571.5µm, solved as 609.6µm (+1.60%). A sheet end strictly inside the domain is solved about 0.3 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- geometry[1] 'pec' y: drawn 600µm, nodes cover 571.5µm, solved as 609.6µm (+1.60%) -- is what _build_sim actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "ref": "validation/crossval/06b_msl_notch_filter_uniform.py:523 | https://github.com/bk-squared/rfx/issues/1138",
+   "rows": 1,
+   "variant": "validation/crossval/06b_msl_notch_filter_uniform.py::_build_sim::default"
+  },
+  {
    "code": "congruent_conductor_rasterization_parity",
    "disposition": "defect-open",
    "issue": 928,
@@ -159,6 +195,15 @@
    "disposition": "intended",
    "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). Same microstrip model as cv06b: z_lo PEC face is the ground, the three sheets are the feed/patch metal. Listed in the docstring among the standing advisories.",
    "ref": "validation/crossval/07_sheen_lpf.py:265-273,715-743",
+   "rows": 1,
+   "variant": "validation/crossval/07_sheen_lpf.py::build_rfx_sim::default"
+  },
+  {
+   "code": "sheet_effective_size",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: geometry[1] 'pec' y: drawn 2.413mm, nodes cover 2.2mm, solved as 2.32mm (-3.85%); geometry[3] 'pec' y: drawn 2.413mm, nodes cover 2.2mm, solved as 2.32mm (-3.85%); geometry[3] 'pec' x: drawn 12.47mm, nodes cover 12.2mm, solved as 12.26mm (-1.65%). A sheet end strictly inside the domain is solved about 0.3 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- geometry[1] 'pec' y: drawn 2.413mm, nodes cover 2.2mm, solved as 2.32mm (-3.85%) -- is what build_rfx_sim actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "ref": "validation/crossval/07_sheen_lpf.py:706 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/crossval/07_sheen_lpf.py::build_rfx_sim::default"
   },
@@ -215,6 +260,15 @@
    "disposition": "intended",
    "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). dx = H_SUB/4 = 793.75 um is mandated by the case's own #325 avoidance rule ('UNIFORM grid only ... The rfx build ASSERTS the substrate rasterizes to exactly N_SUB=4 z-cells ... BEFORE any f0 is quoted'), which fixes the z axis exactly and leaves the in-plane patch (40 mm) and ground (56 mm) faces off-lattice by 0.89 % and 0.52 %. The script MEASURES the consequence rather than assuming it: assert_realized_stack prints the realized footprint in cells and mm next to the declared L_PATCH/W_PATCH on every run.",
    "ref": "validation/crossval/15_patch_antenna_rt5880.py:40-48,256,533-541",
+   "rows": 1,
+   "variant": "validation/crossval/15_patch_antenna_rt5880.py::build_rfx_sim::default"
+  },
+  {
+   "code": "sheet_effective_size",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: geometry[2] 'pec' x: drawn 40mm, nodes cover 38.89mm, solved as 39.37mm (-1.58%); geometry[0] 'pec' x: drawn 56mm, nodes cover 54.77mm, solved as 55.25mm (-1.35%). A sheet end strictly inside the domain is solved about 0.3 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- geometry[2] 'pec' x: drawn 40mm, nodes cover 38.89mm, solved as 39.37mm (-1.58%) -- is what build_rfx_sim actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "ref": "validation/crossval/15_patch_antenna_rt5880.py:627 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/crossval/15_patch_antenna_rt5880.py::build_rfx_sim::default"
   },
@@ -283,6 +337,15 @@
    "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::nu-drive0"
   },
   {
+   "code": "sheet_effective_size",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.3mm (+6.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.3mm (+1.76%). A sheet end strictly inside the domain is solved about 0.3 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.3mm (+6.00%) -- is what build_fix_t actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "ref": "validation/research/issue770_offdiag_adjudication.py:93 | https://github.com/bk-squared/rfx/issues/1138",
+   "rows": 1,
+   "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::nu-drive0"
+  },
+  {
    "code": "wire_port_dead_cell_classification_unavailable",
    "disposition": "intended",
    "reason": "The nu-drive0 variant is the NU arm of the adjudication (nu=True sets a uniform-valued dz_profile so the NU lane runs the same geometry); the advisory is the uniform-only-classifier limitation (#544), one row per wire port.",
@@ -295,6 +358,15 @@
    "disposition": "intended",
    "reason": "Same fixture on the uniform lane (nu=False): microstrip ground on the z_lo PEC face, finite PEC trace.",
    "ref": "validation/research/issue770_offdiag_adjudication.py:93-120",
+   "rows": 1,
+   "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::uniform-both"
+  },
+  {
+   "code": "sheet_effective_size",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.3mm (+6.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.3mm (+1.76%). A sheet end strictly inside the domain is solved about 0.3 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.3mm (+6.00%) -- is what build_fix_t actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "ref": "validation/research/issue770_offdiag_adjudication.py:93 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::uniform-both"
   },
@@ -339,10 +411,28 @@
    "variant": "validation/research/thru_feedpost_deembed.py::build_thru::band-pulse"
   },
   {
+   "code": "sheet_effective_size",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.3mm (+6.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.3mm (+1.76%). A sheet end strictly inside the domain is solved about 0.3 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.3mm (+6.00%) -- is what build_thru actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "ref": "validation/research/thru_feedpost_deembed.py:75 | https://github.com/bk-squared/rfx/issues/1138",
+   "rows": 1,
+   "variant": "validation/research/thru_feedpost_deembed.py::build_thru::band-pulse"
+  },
+  {
    "code": "pec_faces_finite_pec",
    "disposition": "intended",
    "reason": "The battery-verbatim THRU: a foil microstrip trace (zero-thickness PEC Box) over a z_lo PEC ground face. Infinite ground + finite trace is the microstrip model. The consumer harness pins this code in its own expected-code list (THRU_CODES) so a change in the fixture's emissions fails there too.",
    "ref": "validation/research/thru_feedpost_deembed.py:84-105 | validation/research/thru_feedpost_twoseg_extraction.py:321",
+   "rows": 1,
+   "variant": "validation/research/thru_feedpost_deembed.py::build_thru::insitu-refplane"
+  },
+  {
+   "code": "sheet_effective_size",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.3mm (+6.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.3mm (+1.76%). A sheet end strictly inside the domain is solved about 0.3 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.3mm (+6.00%) -- is what build_thru actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "ref": "validation/research/thru_feedpost_deembed.py:75 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/research/thru_feedpost_deembed.py::build_thru::insitu-refplane"
   },
@@ -363,10 +453,28 @@
    "variant": "validation/research/thru_feedpost_twoseg_extraction.py::build_singlepost::refplane-n10"
   },
   {
+   "code": "sheet_effective_size",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.3mm (+6.00%); geometry[0] 'pec' x: drawn 21mm, nodes cover 21mm, solved as 21.3mm (+1.43%). A sheet end strictly inside the domain is solved about 0.3 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.3mm (+6.00%) -- is what build_singlepost actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "ref": "validation/research/thru_feedpost_twoseg_extraction.py:216 | https://github.com/bk-squared/rfx/issues/1138",
+   "rows": 1,
+   "variant": "validation/research/thru_feedpost_twoseg_extraction.py::build_singlepost::refplane-n10"
+  },
+  {
    "code": "ntff_small_ground_plane",
    "disposition": "intended",
    "reason": "The finite reflector is the structure: 'An x-oriented electric dipole (Ex point source) sits a quarter wavelength above a finite PEC reflector plate'. The advisory says the pattern will carry ground-plane edge diffraction, which is exactly what a 0.83-lambda plate does and what the steering objective optimizes against. (It reads 0.83 lambda since the lattice snap in this PR; it read 0.90 lambda from the DECLARED bbox before, while the plate this lane actually realized was 0.75 lambda.)",
    "ref": "validation/tmtt_paper/beam_steering_superstrate.py:1-23,156-176,229-232",
+   "rows": 1,
+   "variant": "validation/tmtt_paper/beam_steering_superstrate.py::build_problem::default"
+  },
+  {
+   "code": "sheet_effective_size",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: geometry[0] 'pec' x: drawn 83.28mm, nodes cover 83.28mm, solved as 88.27mm (+6.00%); geometry[0] 'pec' y: drawn 83.28mm, nodes cover 83.28mm, solved as 88.27mm (+6.00%). A sheet end strictly inside the domain is solved about 0.3 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- geometry[0] 'pec' x: drawn 83.28mm, nodes cover 83.28mm, solved as 88.27mm (+6.00%) -- is what build_problem actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "ref": "validation/tmtt_paper/beam_steering_superstrate.py:139 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/tmtt_paper/beam_steering_superstrate.py::build_problem::default"
   },
@@ -399,6 +507,15 @@
    "disposition": "intended",
    "reason": "Microstrip model again: the board's ground is the z_lo PEC face and the through-line trace plus the stub are the finite PEC sheets.",
    "ref": "validation/tmtt_paper/msl_stub_notch_tuning.py:230-262",
+   "rows": 1,
+   "variant": "validation/tmtt_paper/msl_stub_notch_tuning.py::build_sim::f_target"
+  },
+  {
+   "code": "sheet_effective_size",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: geometry[1] 'pec' y: drawn 600µm, nodes cover 508µm, solved as 584.2µm (-2.63%). A sheet end strictly inside the domain is solved about 0.3 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- geometry[1] 'pec' y: drawn 600µm, nodes cover 508µm, solved as 584.2µm (-2.63%) -- is what build_sim actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "ref": "validation/tmtt_paper/msl_stub_notch_tuning.py:220 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/tmtt_paper/msl_stub_notch_tuning.py::build_sim::f_target"
   }

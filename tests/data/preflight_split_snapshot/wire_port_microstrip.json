@@ -11,7 +11,7 @@
       {
         "code": "wire_port_midpoint_in_pec",
         "loc": null,
-        "message": "Wire port at (0.008, 0.005, 0.0) (extent 0.002): its MIDPOINT V/I probe cell (center (0.008, 0.005, np.float64(0.00125))) lands inside PEC geometry 'pec'. S-parameters from this port are silently corrupted (measured: near-null forward transmission + over-unity reverse). Shorten/lengthen the extent or move the port so the midpoint cell sits in dielectric (issue #314).",
+        "message": "Wire port at (0.008, 0.005, 0.0) (extent 0.002): its MIDPOINT V/I probe cell (center (0.008, 0.005, 0.00125)) lands inside PEC geometry 'pec'. S-parameters from this port are silently corrupted (measured: near-null forward transmission + over-unity reverse). Shorten/lengthen the extent or move the port so the midpoint cell sits in dielectric (issue #314).",
         "severity": "warning",
         "source": "_validate_cfg_port_inside_pec"
       },
