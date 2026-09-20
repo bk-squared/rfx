@@ -78,7 +78,7 @@ guard. An absent warning therefore cannot be compared across port families.
 | Lumped `add_port(..., extent=None)` | `forward(port_s11_freqs=...)` | `ForwardResult.s_params`, `.freqs` (S11 vectors) | **limited** — uniform, single-device AD path; inherits the lumped-port RF limits |
 | Wire `add_port(..., extent=...)` | `run(compute_s_params=True, s_param_freqs=...)` | `Result.s_params`, `Result.freqs` | **limited** — multi-cell discrete feed across `extent`; magnitude evidence is stronger than absolute calibration evidence; nonuniform use is experimental |
 | Wire `add_port(..., extent=...)` | `forward(port_s11_freqs=...)` | `ForwardResult.s_params`, `.freqs` (S11 vectors) | **limited** — uniform, single-device AD path |
-| `add_msl_port(...)` | `compute_msl_s_matrix(...)` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta`, `.port_names`, `.reliable`, `.reference_impedances` | **limited** — E5-narrow / eigenmode-blocked; external notch agreement is characterized, not tight; `eps_override` AD checked against an f64 referee on the band-mean `\|S21\|^2` objective (f32 AD versus explicit f64-field FD; rel_err about 0.00058 at num_periods=20, threshold 0.03; issue #729 fixture repair, VESSL 369367260436); nonuniform mode is experimental |
+| `add_msl_port(...)` | `compute_msl_s_matrix(...)` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta`, `.port_names`, `.reliable`, `.probe_clearance`, `.beta_railed`, `.reference_impedances` | **limited** — E5-narrow / eigenmode-blocked; external notch agreement is characterized, not tight; `eps_override` AD checked against an f64 referee on the band-mean `\|S21\|^2` objective (f32 AD versus explicit f64-field FD; rel_err about 0.00058 at num_periods=20, threshold 0.03; issue #729 fixture repair, VESSL 369367260436); nonuniform mode is experimental |
 | `add_waveguide_port(...)` | `compute_waveguide_s_matrix(...)` | `WaveguideSMatrixResult.s_params`, `.freqs`, `.port_names`, `.port_directions`, `.reference_planes` | **limited** — broad magnitude evidence for documented uniform single-mode rectangular guides; phase and junction evidence are narrower; nonuniform configurations outside the passed Palace `normalize=flux` WR-90 cases remain experimental; chain-closed (v1.8) for uniform single-mode S on the differentiable lanes after three pre-declared chain-battery runs (VESSL run 369367257823 / 369367258205 / 369367258638; criterion 1 and 3(a) read under x64 on the flux lane, forward default float32; a float32 gradient pipeline on the flux lane is outside the declaration) — still limited, not supported |
 | `add_waveguide_port(...)` | `run(...)` | `Result.waveguide_sparams[name]` | **limited diagnostic** — per-port output, not the full multi-port matrix API |
 | `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult` | **limited** — exactly one `face="top"` port; broad-E5 analytic and broad-E4 MEEP evidence for the documented TEM-line result |
@@ -168,6 +168,48 @@ Relevant checks include `validation/crossval/05_patch_antenna.py`,
 ## Microstrip-line port
 
 **API:** `compute_msl_s_matrix(...)` with the laplace/quasi-TEM model.
+
+**Reading `Z0`/`beta` near a reflector (issue #726).** `reliable` is a per-bin
+fit-quality mask and `probe_clearance` is the geometric condition; neither is
+the other's proxy. On the three board runs tabulated in #726, `reliable` was
+True on 100 % of in-band bins while the fitted `Z0` was 2.4x the analytic value
+and its ripple tracked `|S11|` in dB at r = 0.71, 0.76 and 0.77 — quote the
+range, not the best of the three. Those runs carry no VESSL id in the record.
+
+What the condition costs was measured (VESSL `369367260508`, cv06b
+fixed-source, same source/load/DUT with only the p1 observation offset varied;
+both arms settled below −118 dB): the FITTED quantities are what corrupt — the
+near-reflector arm's β scan railed on 51/51 bins over 3–5 GHz against 0/51 for
+the compliant arm — while raw `S11` at the 3.77125 GHz notch bin read
+**+0.026895 dB on the near-reflector arm and +0.018065 dB on the compliant
+one**, against the analytic 0 dB that quarter-wave open-stub notch has. Both sit
+ABOVE unity on a passive structure, by 0.31 % and 0.21 %; that is never reported
+here as physics — they are raw, unprojected values carrying the coherent power
+excess tracked as #838.
+
+Their 0.009 dB difference is **one fixture, one bin, an arm-to-arm difference,
+not a bound on `S`**, and the comparison's producer verdict was `not_read`. What
+it does show is that `S` moves far less than the fit, because it normalizes with
+the analytic Hammerstad–Jensen `Z0` rather than the fit. The `-5 to -10 dB`
+figure an older preflight message quoted came from the shorted-line ladder and
+was withdrawn on 2026-09-13; do not cite it.
+
+So, when `probe_clearance` reports `insufficient` — including the board case
+where *no* compliant `n_probe_offset` exists on the feed length at all
+("interval empty"):
+
+- keep the analytic Hammerstad–Jensen `Z0` for normalization (already the
+  production path);
+- treat `Z0` and `beta` as UNREADABLE rather than merely uncertain, and gate on
+  `beta_railed` for the symptom — `reliable` does not gate this;
+- read `S11`/`S21` knowing nothing here bounds their error — the 0.009 dB above
+  is one fixture, one bin and an arm-to-arm difference;
+- fix it by lengthening the uniform feed region or moving the reference plane.
+  Raising `n_probe_offset` alone moves the probes TOWARD the reflector.
+
+`preflight()` reports the full compliant interval for each port, and
+`preflight_sparameters(calculator="msl")` reports the condition before a solve
+is paid for.
 
 S is a power-wave matrix with positive real analytic references available as
 `result.reference_impedances`, separately from fitted Z0 and load resistance.

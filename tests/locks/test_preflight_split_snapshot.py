@@ -93,7 +93,7 @@ report-text change and should be re-blessed as one, not normalised here.
 
 Coverage, measured -- and what it does NOT cover
 ------------------------------------------------
-65 fixtures, witnessing 63 of the 74 literal ``code=`` slugs in
+67 fixtures, witnessing 63 of the 74 literal ``code=`` slugs in
 ``rfx/api/_preflight.py`` and ``rfx/preflight/`` plus the dynamic ``uncoded``
 and ``sparam_routing_msl`` paths. Stated because the split-inventory that
 seeded this lock projected "~56 of 74" for its 12-fixture set; the measured
@@ -114,15 +114,81 @@ carrying eight codes, and took its three families (ports lumped/wire + coax,
 sources, NTFF) to ZERO unwitnessed codes -- the first leg to close its own
 family completely.
 
+Issue #1024 added the 66th, ``waveguide_refplane_in_slab``, and it carries
+``waveguide_reference_plane`` -- the code the ledger below used to file as
+unwitnessABLE. It was: the advisory's only reachable emission site read the
+wrong attribute off the geometry wrapper and swallowed the ``AttributeError``,
+so no fixture could have made it speak. See the paragraph on it further down.
+
+Issue #1075 added the 67th, ``source_decoupled_whole_boundary``, and it
+carries NO new code -- the count of witnessed slugs stays at 63. It is a
+second fixture on ``source_decoupled``, because the thing that was untested
+was not the advisory's text but the SET OF FACES it walks: the 66-fixture
+corpus reached that advisory only through a per-face ``BoundarySpec``, and
+the scalar ``boundary="pec"`` (the commonest PEC wall there is) walked an
+empty set and emitted nothing. Extending the face set left all 66 committed
+snapshots byte-identical, which is the measurement that says no existing
+fixture stood on a whole-boundary PEC face -- and is exactly why a new one
+was needed. The message text of ``source_decoupled`` itself was re-blessed
+in the same change (it now states the per-lane behaviour #1075 measured);
+that is a report-text re-bless of the kind this docstring describes above.
+
 The 11 unwitnessed codes left are the honest hole, and every one of them
 belongs to a family this lock has already discharged or to a body no builder
 reaches: the two remaining ``precision_*`` guards,
-``port_aperture_unrasterizable`` / ``waveguide_reference_plane`` /
+``port_aperture_unrasterizable`` /
 ``port_index_mirror_asymmetry`` / ``record_far_boundary_band_below_cutoff`` /
 ``waveguide_setup_audit_skipped`` / ``port_freqs_below_cutoff`` /
 ``port_source_below_cutoff`` (the waveguide leg),
-``campaign_statics_unavailable`` (leg 2) and ``mesh_import_underresolved``
-(leg 5, which needs the optional ``cad`` extra -- see below).
+``campaign_statics_unavailable`` (leg 2), ``mesh_import_underresolved``
+(leg 5, which needs the optional ``cad`` extra -- see below) and
+``dielectric_at_absorber_seam`` (#1043 stage B).
+
+SNAPSHOT CHANGE, 2026-09-15 (#801). One committed report moved, and the reason
+is written here BEFORE the regeneration because this lock's own hint says a diff
+is a behaviour change: ``guards_msl_sheet_probe`` gained two
+``conductor_in_thin_absorber`` lines. That fixture builds an MSL board whose PEC
+sheet spans the full x extent on a ``cpml_layers=4`` domain, which is exactly the
+conjunction the new advisory reports -- a conductor realizing 0 cells of
+clearance from an absorbing face that carries 4 layers. It is a true positive by
+the check's own definition and an OVER-WARN by intent: that fixture is a guards
+demo, not a claims-bearing run, and #801's one measured unpadded arm settled. The
+advisory says so in its own text, which is why it advises rather than refuses.
+No other snapshot moved, and the reason is NOT "everything else uses the default
+16 layers" -- that was the first draft of this note and it is false. SIX fixtures
+in this file set 4, 6 or 0; each is silent for its own reason, checked one by one:
+
+* ``_pec_box_subcell_sim`` (L1150, cpml 4, uniform, a real PEC Box) -- the box
+  runs 0.003..0.007 in a 0.01 domain, so it realizes SIX cells of clearance from
+  either face. Silent on the clearance conjunct, not the layer one.
+* ``L1460`` / ``L1494`` / ``L1553`` (cpml 6) -- all three carry a ``dz_profile``,
+  and the check returns early on a graded mesh: "clearance in cells" is not one
+  number at a face there. That early return is documented in the check itself.
+* ``L1633`` (cpml 6, uniform) -- its only geometry is a dielectric
+  ``Box(material="sub")``. No conductor, so nothing for this check to be near.
+* ``L1789`` -- ``boundary="pec"``, ``cpml_layers=0``: no absorbing face at all,
+  and the check's first guard returns.
+
+Written out per fixture rather than as one rule because the one-rule version was
+wrong, and a lock's prose that is wrong about WHY nothing moved is worse than no
+prose: it is what a future reader would trust instead of re-deriving.
+
+That list is MEASURED, not maintained by hand -- it was wrong in both
+directions before #1024 re-derived it. It named ``waveguide_reference_plane``,
+which #1024 now witnesses, and it omitted ``dielectric_at_absorber_seam``,
+whose own check landed on 2026-09-15 without being filed here. The two errors
+cancelled in the COUNT (11 either way) and not in the content, which is the
+failure mode a hand-kept ledger has: re-derive it with
+
+    python -c "import json,glob,sys; sys.path.insert(0,'.'); \
+    from tests.unit.preflight.test_preflight_advisory_emission_contract import \
+    _enumerate_emission_sites as E; \
+    lit={c for (_,_,c,d,_) in E() if not d}; \
+    seen={i['code'] for p in glob.glob('tests/data/preflight_split_snapshot/*.json') \
+    for r in json.load(open(p)).values() for i in r['issues']}; \
+    print(len(lit&seen), sorted(lit-seen))"
+
+whenever a fixture or an advisory is added, rather than editing the prose.
 
 ``mesh_import_underresolved`` is the one leg 5 left, and it is left for a
 reason that will not change by writing another fixture: its branch is gated
@@ -188,9 +254,11 @@ fourteen were entered (53 to 55 of the 57 fixtures each, the unconditional
 spine again) and seven of those emitted nothing. Two of the seven emit
 nothing BY CONSTRUCTION and are not holes: ``_wire_port_cell_centers`` is a
 helper that returns ``(centers, midpoint_index)`` and has no emission site at
-all, and ``_validate_cfg_ntff_min_steps`` only writes the instance attribute
+all, and ``_validate_cfg_ntff_min_steps`` only wrote the instance attribute
 ``self._ntff_min_steps_hint`` (which ``rfx/interop/_design.py``'s
-``EXCLUDED_SIMULATION_ATTRS`` then names as transient run-time state). Five
+``EXCLUDED_SIMULATION_ATTRS`` then named as transient run-time state; issue
+#1030 deleted producer, attribute and exclusion row together once a census
+found the attribute had no consumer). Five
 fixtures close the other five, and three more close codes belonging to bodies
 that already spoke.
 
@@ -222,25 +290,32 @@ and only the second needs a raise. The first is an ordinary ``dz_profile``
 mesh -- the #544 BLOCKING-1 fix SKIPS the uniform-only dead-cell
 classification on the non-uniform lane rather than building a mismatched
 substitute -- which ``wire_port_dead_cell_nu`` now witnesses from a plain
-builder. Only the ``_assemble_materials``-raises arm stays out. ``waveguide_reference_plane`` is the odd one: it has three emission
-sites and MEASURED, none of the three can fire through the public API.
+builder. Only the ``_assemble_materials``-raises arm stays out.
+``waveguide_reference_plane`` was the odd one, and issue #1024 CLOSED it: it
+has three emission sites and, measured at the time of the #980 leg-3 move,
+none of the three could fire through the public API.
 The first raises ``PreflightConfigError``, and ``add_waveguide_port`` already
 rejects an out-of-domain ``x_position``/``reference_plane`` with a
 ``ValueError`` before preflight runs (and a raise could not be rendered into
 a report anyway). The second is the branch its own source comments call
 provably dead: ``_absorber_boundary_for_axis`` returns exactly
 ``(0.0, domain_ext)`` for any nonzero CPML thickness, the same thresholds the
-hard check above it already raises on. The third walks ``self._geometry``
+hard check above it already raises on. The third walked ``self._geometry``
 reading ``g.bounds``, but that list holds ``_GeometryEntry(shape,
 material_name)`` wrappers with no ``bounds`` attribute -- every other reader
-in the file goes through ``entry.shape`` -- so the ``AttributeError`` is
+in the file goes through ``entry.shape`` -- so the ``AttributeError`` was
 swallowed by the bare ``except Exception: continue`` on the line below and
-the device-overlap advisory never fires. That third one looks like a latent
-defect rather than a design choice, but diagnosing it is not a code-motion
-leg's business: it is recorded here, NOT fixed in #980 Phase 3, because
-fixing it would change preflight output inside a step whose whole warrant is
-that output does not change. The body itself is not unexercised -- 45 of the
-48 fixtures call it -- only its three outputs are unreachable.
+the device-overlap advisory never fired. That third one looked like a latent
+defect rather than a design choice, and it was one: recorded here, NOT fixed
+in #980 Phase 3 (fixing it changes preflight output inside a step whose whole
+warrant is that output does not change), then filed as #1024 and fixed there.
+The site now reads ``g.shape.bounding_box()``, ``waveguide_refplane_in_slab``
+witnesses it, and sites 1 and 2 stay as documented no-ops -- the reasons are
+re-measured in the check's own docstring
+(``rfx/preflight/waveguide.py``). Note what the body's own call count could
+NOT have told anyone: it was never unexercised, 45 of the then-48 fixtures
+called it, and all three of its outputs were still unreachable. A body-entry
+census is a necessary witness, not a sufficient one.
 
 Each of the rest needs its own narrow fixture. A leg that moves one of those
 checks is NOT covered by this lock and should add the fixture in its own PR
@@ -749,15 +824,20 @@ _REBOUND_ON_MIXIN = {
     # self._wire_port_cell_centers (intra-module) plus the module-global
     # _component_is_dead, which this leg put in rfx/preflight/_common.py
     # rather than beside it because _RealizedPEC still reads it too.
-    # Leg 6, third module. _validate_cfg_ntff_min_steps is the one rebound
-    # name in the whole split with NO emission site: it writes the instance
-    # attribute self._ntff_min_steps_hint, which rfx/interop/_design.py names
-    # in EXCLUDED_SIMULATION_ATTRS. An instance write is unaffected by where
-    # the body is defined, so the rebind below is all that has to hold, and
-    # the snapshot has nothing of its own to pin.
+    # Leg 6, third module. _validate_cfg_ntff_min_steps was the one rebound
+    # name in the whole split with NO emission site: it wrote the instance
+    # attribute self._ntff_min_steps_hint, which rfx/interop/_design.py named
+    # in EXCLUDED_SIMULATION_ATTRS. Issue #1030 DELETED it -- a census found
+    # that attribute had no consumer, so its only readers were that exclusion
+    # row and the test asserting the exclusion. It is dropped from this tuple
+    # rather than commented, because this map pins what rfx/api/__init__.py
+    # must rebind and a deleted function is nothing to rebind; the removal IS
+    # commented in place in tests/locks/test_preflight_registry_sequence.py,
+    # and the reasoning lives in rfx/preflight/ntff.py's module docstring.
+    # The snapshot corpus is unaffected: the body emitted nothing, so no
+    # committed report byte moves.
     "rfx.preflight.ntff": (
         "_validate_cfg_ntff_absorber_overlap",
-        "_validate_cfg_ntff_min_steps",
         "_validate_ntff_inverse_design",
         "_validate_ntff_small_ground_plane",
     ),
@@ -807,6 +887,10 @@ _REBOUND_ON_MIXIN = {
         "_validate_cfg_absorber_budget_vs_grid",
         "_validate_cfg_absorber_placement",
         "_validate_cfg_compute_cpml_thickness",
+        # 2026-09-15 (#801): written in the family module like the row below,
+        # never moved, and bound on the mixin the same way -- so it wants the
+        # same qualname pin.
+        "_validate_cfg_conductor_in_thin_absorber",
         # 2026-09-15 (#1043 stage B): not a MOVED body -- written in the
         # family module, bound on the mixin the same way, so it wants the
         # same qualname pin as the eleven that moved.
@@ -1696,6 +1780,35 @@ def _source_decoupled_sim():
     return sim
 
 
+def _source_decoupled_whole_boundary_sim():
+    """A tangential-E source on the x_lo wall of a ``boundary="pec"`` box.
+
+    CONSTRUCTED, issue #1075. The sibling above asks for its PEC wall with a
+    per-face ``BoundarySpec``, which is one of the two things that populate
+    ``Simulation._pec_faces``; this fixture asks for the SAME physical wall
+    the commonest way, the scalar ``boundary="pec"``, which populates nothing
+    and used to make ``_validate_cfg_source_on_reflector_plane`` skip its
+    whole loop. Measured on the pre-fix tree
+    (``scripts/diagnostics/issue1075_source_on_face.py``, arm A): this exact
+    placement rendered "All checks passed". ``ez`` on the ``x_lo`` plane is
+    tangential, so this is the same arm of the four-way component rule as the
+    sibling -- what the fixture witnesses is the FACE SET, not the rule, and
+    the pair is what keeps the two spellings of one wall rendering alike.
+
+    ``amplitude_kind="field"`` is explicit only to keep the #571
+    ``DeprecationWarning`` out of the build; it does not reach the report.
+    """
+    from rfx import Simulation
+
+    sim = Simulation(
+        freq_max=10e9, domain=(0.02, 0.015, 0.015), dx=1e-3,
+        boundary="pec", cpml_layers=0,
+    )
+    sim.add_source((0.0, 0.0075, 0.0075), component="ez",
+                   amplitude_kind="field")
+    return sim
+
+
 def _ntff_absorber_overlap_sim():
     """An NTFF box whose lo corner is 5 mm outside the domain.
 
@@ -1755,6 +1868,35 @@ def _wire_port_dead_cell_nu_sim():
     sim, y_c = _base_sim(dz_profile=_np.full(10, 75.4e-6))
     _add_feed(sim, y_c, x=2e-3)
     return sim
+
+
+def _waveguide_refplane_in_slab_sim():
+    """A dielectric slab drawn ACROSS a waveguide port's reference plane.
+
+    Closes the ledger entry above that said ``waveguide_reference_plane``
+    could not be witnessed. It could not: the advisory's only emitting site
+    read ``g.bounds`` off a ``_GeometryEntry`` wrapper that has no such
+    attribute, under a bare ``except Exception`` (issue #1024). With that
+    site reading ``g.shape.bounding_box()`` the code is reachable from a
+    plain builder, so it is snapshotted like any other.
+
+    Built (not run) through the owning behavioural test's own module-level
+    helper, so the two cannot drift: the positive control
+    ``test_waveguide_reference_plane_device_overlap_fires_on_straddling_slab``
+    asserts on this exact geometry, and its non-firing twin moves the same
+    slab clear of both planes.
+
+    x64-invariance is by CHOICE of operating point, not by pinning an input
+    the way ``waveguide_layout_near_cutoff`` had to: this band's lowest bin
+    is 1.28x the guide's TE10 cutoff, so nothing rendered here divides by a
+    near-zero ``sqrt(1 - (f_c/f)^2)``. Measured over four processes --
+    ``JAX_ENABLE_X64`` 0/1 and ``PYTHONHASHSEED`` 5/777 -- byte-identical.
+    """
+    from tests.unit.preflight.test_preflight_absorber import (
+        _waveguide_refplane_in_slab_sim as _build,
+    )
+
+    return _build()
 
 
 # ---------------------------------------------------------------------------
@@ -1946,7 +2088,8 @@ _FIXTURES = (
     # did -- and SEVEN of those thirteen emitting nothing at all. Two of the
     # seven emit nothing by construction and need no fixture:
     # _wire_port_cell_centers is a helper that returns cell centres, and
-    # _validate_cfg_ntff_min_steps only writes self._ntff_min_steps_hint. The
+    # _validate_cfg_ntff_min_steps only wrote self._ntff_min_steps_hint
+    # (deleted by #1030; it emitted nothing, so no fixture here moves). The
     # remaining five are closed here, together with the three codes of
     # already-speaking bodies that this corpus had never reached
     # (refplane_partial_optin, wire_port_end_gap_to_conductor,
@@ -1975,6 +2118,25 @@ _FIXTURES = (
      {"strict": False}, None),
     ("wire_port_end_gap", _wire_port_end_gap_sim, {"check_ntff": False}, None),
     ("wire_port_dead_cell_nu", _wire_port_dead_cell_nu_sim, {}, None),
+    # -- 58. issue #1024 ----------------------------------------------------
+    # NOT a leg gap-closer: the ledger above recorded waveguide_reference_plane
+    # as unwitnessABLE, and it was -- its device-overlap site read the wrong
+    # attribute off the geometry wrapper and swallowed the AttributeError, so
+    # no fixture could have made it speak. #1024 fixes the site; this fixture
+    # is the text witness that the code now emits, and the FIRST committed
+    # rendering of that advisory's message.
+    ("waveguide_refplane_in_slab", _waveguide_refplane_in_slab_sim, {}, None),
+    # -- 59. issue #1075 ----------------------------------------------------
+    # Also not a leg gap-closer: source_decoupled was already witnessed, by
+    # the BoundarySpec fixture above. What was NOT witnessed is that the
+    # advisory fires at all on the scalar boundary="pec" -- it did not, and
+    # the corpus could not have shown that, because no fixture in it put a
+    # source on a whole-boundary PEC face (measured: extending the face set
+    # alone left all 66 committed snapshots byte-identical). This entry is
+    # the standing witness that the two spellings of one PEC wall now render
+    # the same advisory.
+    ("source_decoupled_whole_boundary",
+     _source_decoupled_whole_boundary_sim, {}, None),
 )
 
 _IDS = [fid for fid, _, _, _ in _FIXTURES]

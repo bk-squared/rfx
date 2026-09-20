@@ -15,6 +15,8 @@
 > live in the [support matrix](docs/guides/support_matrix.md); per-port-family
 > S-parameter limits live in the
 > [S-parameter support matrix](docs/guides/sparameter_support_matrix.md).
+> Known defects a user can hit are listed in
+> [known limitations](docs/guides/known_limitations.md).
 
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests](https://github.com/bk-squared/rfx/actions/workflows/pr-tests.yml/badge.svg)](https://github.com/bk-squared/rfx/actions)

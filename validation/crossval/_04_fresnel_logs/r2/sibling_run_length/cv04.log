@@ -1,0 +1,92 @@
+[--out-dir] writing this run's outputs under /tmp/rfx-cv04-r2-sibling
+[--nx-interior] rig-variation sibling: declared box 600 -> 1200 cells (the grow loop still runs from there). NOT this case's committed rung.
+======================================================================
+Crossval 04: Fresnel Slab — TFSF plane wave — rfx vs Analytic
+======================================================================
+Slab: eps=4.0, n=2.0, d=10 mm
+Interior (declared, may grow to settle): 1200 cells, dx=1.0 mm, CPML=20 layers
+
+======================================================================
+PART 1: rfx TFSF simulation
+======================================================================
+  [nx_interior=1200] Grid shape: (1241, 45, 1), dt=2.3351e-12 s
+  TFSF box: x_lo=25, x_hi=1215
+  Probes (TF region): refl=cell 585, trans=cell 655
+  1D ref indices: refl=770, trans=840
+  Slab: cells [615, 625)
+  v_cells=0.700, dist_hi=566, dist_lo=565
+  Safe steps: hi=1536, lo=1533
+  n_steps=1533, total time=3.58 ns
+  Simulation: 28.9s
+    refl max=6.2391e-01, trans max=5.3732e-01
+    inc max: refl=6.1947e-01, trans=6.2021e-01
+  Tail witness (last 50 steps, rel. to incident peak): scat_refl=0.0000, trans=0.0000 (this case's own limit 0.1, family -40dB bar 0.01)
+  Tail window purity: incident=3.40e-05 of peak (limit 0.001) -> clean
+
+  SETTLED at nx_interior=1200 (declared 600, 0 grow attempt(s)): n_steps=1533, tail scat_refl/trans = 0.0000/0.0000 (family bar 0.01)
+  Time-domain: /tmp/rfx-cv04-r2-sibling/04_time_domain.png
+
+======================================================================
+PART 2: rfx R(f), T(f)
+======================================================================
+  Freq range: 3.0–11.8 GHz (339 pts)
+  T(f) mean err: 0.0073, max: 0.0185
+  R(f) mean err: 0.0073, max: 0.0185
+  R+T mean: 1.0000, dev max: 0.0001
+  envelope measurement (the four scalars _04_fresnel_results/envelope.json carries), full precision:
+    mean_dR                  0.00725354218131273
+    mean_dT                  0.007252472045213216
+    mean_closure             1.7843129908379872e-05
+    per_bin_max_RT_closure   0.00014822998709895785
+
+  Fringe-resolved gate (rfx vs analytic) — issue #812, per-extremum, not a band mean:
+    kind  f_ref(GHz)  f_meas(GHz)   df(MHz)   W(MHz)    R_ref   R_meas       dR   verdict
+     max      3.7475       3.7560      +8.5     32.9   0.3600   0.3618  +0.0018        ok
+     min      7.4950       7.4678     -27.2     80.2   0.0000  -0.0000  -0.0000        ok
+     max     11.2425      11.1859     -56.6    208.7   0.3600   0.3762  +0.0162        ok
+  wrote /tmp/rfx-cv04-r2-sibling/_04_fresnel_results/lattice_witness.json
+  wrote /tmp/rfx-cv04-r2-sibling/_04_fresnel_results/envelope_measurement.json
+  cv04-aux-echo-invariant slab_eps4 (#888): record 1533 steps / echo arrival 2462 = 0.623 (limit 1.0); ok=True
+  cv04-lattice-witness slab_eps4: |rfx-lattice| mean R 2.38e-06 vs W 4.91e-05 (ceiling 1.43e-02); lattice witness: GATED -- PASS
+
+======================================================================
+PART 3: Meep simulation (optional secondary cross-check)
+======================================================================
+[SKIP] external reference unavailable (Meep: ImportError: numpy.core.multiarray failed to import) — exit 2
+       rfx self-check vs analytic still reported; NOT a crossval PASS.
+
+======================================================================
+PART 4: rfx vs Analytic comparison (Meep reference unavailable)
+======================================================================
+
+   f(GHz)     T_an    T_rfx |     R_an    R_rfx
+      4.0   0.6426   0.6406 |   0.3574   0.3594
+      5.0   0.7029   0.7008 |   0.2971   0.2992
+      7.5   1.0000   0.9999 |   0.0000   0.0001
+     10.0   0.7015   0.6831 |   0.2985   0.3169
+     11.0   0.6423   0.6252 |   0.3577   0.3748
+     11.8   0.6545   0.6426 |   0.3455   0.3576
+
+  Saved: /tmp/rfx-cv04-r2-sibling/04_fresnel_slab.png
+
+======================================================================
+SUMMARY
+======================================================================
+  Metric                           rfx      Limit
+  ------------------------- ---------- ----------
+  T(f) mean error               0.0073     0.0500
+  R(f) mean error               0.0073     0.0500
+  R+T mean dev (energy)         0.0000     0.0500
+
+  Gated witnesses (issue #341):
+  max|R+T-1| (per-bin)          0.0001     0.0600  [ok]
+  tail scat@refl (rel)          0.0000     0.1000  [ok]
+  tail total@trans (rel)        0.0000     0.1000  [ok]
+  tail window purity          3.40e-05      1e-03  [ok]
+  fringe gate vs analytic           ok
+
+  rfx accuracy: PASS
+
+  Output: 04_fresnel_slab.png, 04_time_domain.png
+
+[SKIP] Meep secondary reference unavailable — crossval inconclusive (exit 2)

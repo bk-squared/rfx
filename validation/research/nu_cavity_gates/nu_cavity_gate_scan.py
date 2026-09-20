@@ -96,7 +96,15 @@ def _graded(coarse_mm: float, fine_mm: float, dx: float, fine: float) -> list[fl
     return list(smooth_grading([dx] * n_c + [fine] * n_f + [dx] * n_c, max_ratio=1.3))
 
 
-def _tm110_error(dx_prof, dy_prof, dz_prof, dx_boundary, steps=8000) -> float:
+def build_tm110_sim(dx_prof, dy_prof, dz_prof, dx_boundary):
+    """xy-lane cavity: returns (Simulation, analytic TM110 in Hz), UNSOLVED.
+
+    Split out of ``_tm110_error`` so the #737 example-fidelity gate
+    (tests/contracts/test_example_fidelity_contract.py) can build this lane's
+    committed configuration and pin its preflight/realization output without
+    a solve. ``_tm110_error`` calls it and then runs, so the audited model is
+    the one the scan measures.
+    """
     a = float(np.sum(dx_prof))
     b = float(np.sum(dy_prof))
     d = float(np.sum(dz_prof))
@@ -107,6 +115,11 @@ def _tm110_error(dx_prof, dy_prof, dz_prof, dx_boundary, steps=8000) -> float:
     sim.add_source((a / 3, b / 3, d / 2), "ez",
                    waveform=GaussianPulse(f0=f, bandwidth=0.8))
     sim.add_probe((2 * a / 3, 2 * b / 3, d / 2), "ez")
+    return sim, float(f)
+
+
+def _tm110_error(dx_prof, dy_prof, dz_prof, dx_boundary, steps=8000) -> float:
+    sim, f = build_tm110_sim(dx_prof, dy_prof, dz_prof, dx_boundary)
     res = sim.run(n_steps=steps, skip_preflight=True)
     modes = sorted((m.freq for m in res.find_resonances(
         freq_range=(0.6 * f, 1.5 * f))), key=lambda v: abs(v - f))
@@ -115,11 +128,15 @@ def _tm110_error(dx_prof, dy_prof, dz_prof, dx_boundary, steps=8000) -> float:
     return abs(modes[0] - f) / f * 100.0
 
 
-def _tm111_error(a: float, b: float, dz_prof, dx_boundary, steps=8000) -> float:
-    """z-lane leg, imitating tests/oracle/test_nonuniform_cavity_accuracy.py: uniform
-    xy from ``domain=(a, b)`` + ``dx``, genuinely graded z from ``dz_profile``,
+def build_tm111_sim(a: float, b: float, dz_prof, dx_boundary):
+    """z-lane cavity: returns (Simulation, analytic TM111 in Hz), UNSOLVED.
+
+    Imitates tests/oracle/test_nonuniform_cavity_accuracy.py: uniform xy from
+    ``domain=(a, b)`` + ``dx``, genuinely graded z from ``dz_profile``,
     analytic TM111 from NOMINAL a, b and the REALIZED graded z extent d —
-    exactly the quantities the test feeds its closed form."""
+    exactly the quantities the test feeds its closed form. Split out of
+    ``_tm111_error`` for the #737 gate, same as build_tm110_sim above.
+    """
     d = float(np.sum(dz_prof))
     f = (C0 / 2) * np.sqrt((1 / a) ** 2 + (1 / b) ** 2 + (1 / d) ** 2)
     sim = Simulation(freq_max=2 * f, domain=(a, b), boundary="pec",
@@ -129,6 +146,11 @@ def _tm111_error(a: float, b: float, dz_prof, dx_boundary, steps=8000) -> float:
     sim.add_source((a / 3, b / 3, d / 4), "ez",
                    waveform=GaussianPulse(f0=f, bandwidth=0.8))
     sim.add_probe((2 * a / 3, 2 * b / 3, d / 4), "ez")
+    return sim, float(f)
+
+
+def _tm111_error(a: float, b: float, dz_prof, dx_boundary, steps=8000) -> float:
+    sim, f = build_tm111_sim(a, b, dz_prof, dx_boundary)
     res = sim.run(n_steps=steps, skip_preflight=True)
     modes = sorted((m.freq for m in res.find_resonances(
         freq_range=(0.6 * f, 1.5 * f))), key=lambda v: abs(v - f))
@@ -151,6 +173,27 @@ _SIZE_SCALES = (0.6, 0.8, 1.0, 1.2, 1.4)
 _XY_SIZE_COMMITTED = (0.0489, 0.0390, 0.0282, 0.0139, 0.0203)
 _Z_SIZE_COMMITTED = (0.0373, 0.0306, 0.0252, 0.0264, 0.0213)
 
+# The committed configuration of each lane, in one place: `main()` scans from
+# these and the #737 example-fidelity gate builds from these, so the audited
+# model cannot drift from the scanned one.
+DX_COMMITTED, FINE_COMMITTED = 1e-3, 0.25e-3
+_AZ_COMMITTED, _BZ_COMMITTED = 40e-3, 35e-3
+
+
+def committed_xy_config() -> dict:
+    """xy lane (TM110): the graded profiles + boundary dx build_tm110_sim takes."""
+    return dict(dx_prof=_graded(19.0, 2.0, DX_COMMITTED, FINE_COMMITTED),
+                dy_prof=_graded(16.0, 2.0, DX_COMMITTED, FINE_COMMITTED),
+                dz_prof=[DX_COMMITTED] * 10,
+                dx_boundary=DX_COMMITTED)
+
+
+def committed_z_config() -> dict:
+    """z lane (TM111): the nominal a, b + graded z profile build_tm111_sim takes."""
+    return dict(a=_AZ_COMMITTED, b=_BZ_COMMITTED,
+                dz_prof=_graded(17.0, 2.0, DX_COMMITTED, FINE_COMMITTED),
+                dx_boundary=DX_COMMITTED)
+
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
@@ -164,10 +207,9 @@ def main(argv=None) -> int:
     def _want(fam: str) -> bool:
         return not args.quick and (args.only is None or fam in args.only)
 
-    dx, fine = 1e-3, 0.25e-3
-    dxp = _graded(19.0, 2.0, dx, fine)
-    dyp = _graded(16.0, 2.0, dx, fine)
-    dzp = [dx] * 10
+    dx, fine = DX_COMMITTED, FINE_COMMITTED
+    _xy = committed_xy_config()
+    dxp, dyp, dzp = _xy["dx_prof"], _xy["dy_prof"], _xy["dz_prof"]
     a, b = float(np.sum(dxp)), float(np.sum(dyp))
 
     print(f"xy extents a={a * 1e3:.4f} b={b * 1e3:.4f} mm")
@@ -205,8 +247,8 @@ def main(argv=None) -> int:
         print(f"  -> span {max(win.values()) - min(win.values()):.4f} pt")
 
     # z lane: the TM111 z-graded configuration of tests/oracle/test_nonuniform_cavity_accuracy.py
-    az, bz = 40e-3, 35e-3
-    dzp_z = _graded(17.0, 2.0, dx, fine)
+    _z = committed_z_config()
+    az, bz, dzp_z = _z["a"], _z["b"], _z["dz_prof"]
 
     if _want("z"):
         print(f"\nz lane (TM111): a={az * 1e3:.1f} b={bz * 1e3:.1f} mm, "

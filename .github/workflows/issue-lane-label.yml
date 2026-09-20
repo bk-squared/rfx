@@ -1,0 +1,87 @@
+name: issue-lane-label
+
+# Turn the Lane an issue form asked for into a label.
+#
+# The lane is the one thing every pod can query without sharing a memory:
+# `gh issue list -l lane:msl-port` answers "what does this lane own" from
+# anywhere. The forms make the author pick one; this job makes the pick
+# queryable, and MOVES the label when the dropdown is edited rather than adding
+# a second one, because an issue in two lanes makes that query lie.
+#
+# An issue with no `### Lane` section was filed outside the forms (a transferred
+# issue, or one created through the API). The script prints nothing and this job
+# does nothing; `.github/workflows/governance-audit.yml` is what reports it
+# weekly, so an old issue is not spammed with a failure every time it is edited.
+#
+# The parser is scripts/ci/issue_lane_label.py and it never sees a shell: an
+# issue body is author-controlled text.
+
+on:
+  issues:
+    types: [opened, edited]
+
+# A form submission fires `opened` and can fire `edited` moments later. Two runs
+# reconciling the same labels race, and with a remove-then-add plan the loser can
+# leave the issue with no lane at all.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  lane-label:
+    name: lane-label
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Read the live lane labels
+        # The allowed set is whatever the repository actually has, so a lane
+        # added after this file was written does not fail an issue. `grep` exits
+        # 1 on no match, which would fail the step -- hence `|| true`; an empty
+        # LANE_LABELS makes the script fall back to its own list.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          labels=$(gh label list --limit 100 --json name --jq '.[].name' | grep '^lane:' || true)
+          {
+            echo "LANE_LABELS<<EOF"
+            echo "$labels"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: Resolve the lane the form asked for
+        id: lane
+        env:
+          # Through `env:`, never interpolated into the shell: an issue body is
+          # author-controlled text, and
+          # tests/contracts/test_ci_workflows_contract.py forbids a `github.`
+          # expression inside any `run:` block.
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          # toJSON, not a comma join: a label may contain a comma.
+          CURRENT_LABELS_JSON: ${{ toJSON(github.event.issue.labels.*.name) }}
+        run: python scripts/ci/issue_lane_label.py
+
+      - name: Apply the plan
+        if: steps.lane.outputs.lane != '' || steps.lane.outputs.remove != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          LANE: ${{ steps.lane.outputs.lane }}
+          REMOVE: ${{ steps.lane.outputs.remove }}
+        run: |
+          set -euo pipefail
+          # Add first, remove second. The other order leaves the issue with no
+          # lane at all if the add fails, and an unlabelled issue is invisible to
+          # every lane query.
+          if [ -n "$LANE" ]; then
+            gh issue edit "$ISSUE_NUMBER" --add-label "$LANE"
+          fi
+          if [ -n "$REMOVE" ]; then
+            gh issue edit "$ISSUE_NUMBER" --remove-label "$REMOVE"
+          fi
