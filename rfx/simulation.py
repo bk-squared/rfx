@@ -2837,13 +2837,28 @@ def run_until_decay(
             # Interior-energy criterion. The reduction is check-step-only (the
             # whole-domain sum is the expensive part), so we compute U ONLY on
             # an eligible check step — never every step.
-            if actual_steps >= min_steps and step % check_interval == 0:
+            #
+            # The PEAK is tracked from the FIRST check, like the flux branch
+            # above, and only the STOP waits for min_steps. This block used to
+            # do both behind ``actual_steps >= min_steps``, on the assumption
+            # that the interior energy peaks after the source ends. That is
+            # false for a domain that empties before min_steps: the reference
+            # then IS the residual, no residual can fall another
+            # ``decay_by`` below itself, and the run goes to max_steps
+            # (#1078). Measured on the committed cv03-class guided fixture of
+            # tests/unit/runners/test_decay_flux_convergence.py: true peak
+            # 6.28e-10 at step 701, U = 6.13e-17 at step 2001 = 9.8e-8 of it,
+            # while the post-min_steps maximum reads 6.13e-17 — a reference
+            # 1.0e7 times too small.
+            if decay_by > 0.0 and step % check_interval == 0:
                 U = _interior_energy(carry["fdtd"])
                 if U > peak_U:
                     peak_U = U
-                # Forced-N escape preserved: decay_by=0.0 -> U < 0 is never
-                # true (U >= 0) -> never fires; check_interval > max_steps ->
-                # this branch is never entered. min/max-steps bound the loop.
+            # Forced-N escape preserved: decay_by=0.0 -> neither this branch
+            # nor the peak branch above runs, so the loop is bounded by
+            # min/max-steps alone; check_interval > max_steps -> the stop is
+            # never evaluated.
+            if decay_by > 0.0 and actual_steps >= min_steps and step % check_interval == 0:
                 if U < decay_by * peak_U:
                     energy_below += 1
                     if energy_below >= decay_energy_consecutive:

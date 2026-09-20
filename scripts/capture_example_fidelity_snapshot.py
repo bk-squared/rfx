@@ -12,18 +12,27 @@ it is not an endorsement that today's advisories are correct or complete.
 
 Regenerate after a DELIBERATE change to a committed example's declared
 geometry, materials, or preflight-relevant config -- never to silence a
-drift the gate correctly caught. If ``test_example_fidelity_contract.py``
+drift the gate correctly caught. If the re-capture ADDS or REMOVES a
+preflight row, ``tests/data/example_fidelity_advisories.json`` has to move
+with it: every pinned row carries a written disposition (#737 item 1) and
+``test_every_pinned_advisory_row_is_classified`` fails on an unclassified
+row and on a stale entry alike. That file is hand-written and this script
+does not touch it, which is why it is a sidecar and not a section of the
+snapshot this script rewrites wholesale. If ``test_example_fidelity_contract.py``
 fails and the diff is NOT an intentional change, that is the gate working:
 fix the script (or investigate why realized != declared), do not re-pin.
 
 No solves: every number below comes from ``sim.preflight()`` and
 ``sim.fidelity_report()``, neither of which time-steps. The snapshot today
-holds 51 (script, builder, variant) triples across the 34 auditable
-scripts of the 137 discovered under examples/ + validation/ (measured
-2026-09-16 at 6d721a56; the 2026-08-28 capture was 33 triples over 23
-scripts; since then cv07, cv15, cv24 and eight validation/research scripts
-joined the audited set -- 18 new variants, none removed).
-CPU-only; no GPU, and JAX warmup dominates.
+holds 62 (script, builder, variant) triples across the 39 auditable
+scripts of the 138 discovered under examples/ + validation/ (measured
+2026-09-16 at c6788ef7 + #737 item 2; the 2026-08-28 capture was 33
+triples over 23 scripts; since then cv07, cv15, cv24 and eight
+validation/research scripts joined the audited set, then #737 item 2 added
+hello_world, boundary_spec_demo (4 variants), nonuniform_patch_demo,
+nu_cavity_gate_scan (2) and 13_subgrid_material_validation (3) -- 29 new
+variants in all, none removed). CPU-only; no GPU, and JAX warmup
+dominates.
 
 Every optional dependency in ``_example_fidelity_lib.OPTIONAL_DEPENDENCIES``
 (today: optax) must be installed to regenerate. Without them this script

@@ -388,7 +388,17 @@ def _enumerate_emission_sites():
 # for a conductor realizing within two cells of an absorbing face that carries
 # six layers or fewer. A GROWING surface is the direction this pin exists for,
 # so the number moves here in the same change that adds the site.
-_FROZEN_TOTAL_SITES = 114
+# 114 -> 118, 2026-09-19 (#726). Four sites added, all for the ONE condition
+# that issue is about -- a probe ladder sitting inside a downstream reflector:
+# three ``PreflightWarning``s in ``preflight_msl_probe_clearance``
+# (``rfx/preflight/msl.py``: scan-failed, clearance-unavailable,
+# clearance-insufficient) and the ``PreflightIssue`` in
+# ``preflight_sparameters``'s new msl fold-in block. The route used to return
+# ZERO findings on a port whose deepest probe sat inside a reflector while
+# ``preflight()`` reported it and the result object's ``probe_clearance`` read
+# ``insufficient``; these four are that gap closed, not a widening of what
+# preflight talks about.
+_FROZEN_TOTAL_SITES = 118
 # 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
 # site emitting that code, and the check was deleted when its own tripwire
 # XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
@@ -414,7 +424,10 @@ _FROZEN_LITERAL_CODE_COUNT = 75
 # than naming a slug at the site -- the same shape as preflight()'s own two.
 _FROZEN_DYNAMIC_SITES_BY_FUNCTION = {
     "preflight": 2,
-    "preflight_sparameters": 2,
+    # 2 -> 3, 2026-09-19 (#726): the msl fold-in block added beside the
+    # waveguide one reads ``code=``/``source=`` off the caught
+    # PreflightWarning instance in exactly the same way.
+    "preflight_sparameters": 3,
     "finding": 1,
 }
 

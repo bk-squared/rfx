@@ -73,21 +73,13 @@ DOMAIN = (0.01, 0.01, 0.005)   # 10 x 10 x 5 mm toy box
 DX = 0.5e-3
 
 
-def _run_and_report(label: str, spec: BoundarySpec) -> None:
-    """Build a Simulation with ``spec``, run briefly, print what resolved."""
-    sim = Simulation(freq_max=10e9, domain=DOMAIN, dx=DX, boundary=spec)
-    sim.add_source((0.005, 0.005, 0.0025), component="ez",
-                   amplitude_kind="current")
-    sim.add_probe((0.006, 0.006, 0.0025), component="ez")
-    result = sim.run(n_steps=120, compute_s_params=False)
-    peak = float(np.max(np.abs(np.asarray(result.time_series))))
-    print(f"[{label:>18}] spec = {spec.to_dict()}")
-    print(f"[{label:>18}] peak |Ez| after 120 steps = {peak:.3e}")
-
-
-if __name__ == "__main__":
+# The four patterns, in the order the tutorial walks them. Declared at module
+# scope (rather than inline in main) so the #737 example-fidelity gate can name
+# one and build it: ``tests/_example_fidelity_lib.CLASSIFICATION`` looks each
+# spec up here by label, so the gate audits THESE specs, not a copy of them.
+PATTERNS: tuple[tuple[str, BoundarySpec], ...] = (
     # 1) OPEN box — the default for anything that radiates.
-    _run_and_report("open box", BoundarySpec.uniform("cpml"))
+    ("open box", BoundarySpec.uniform("cpml")),
 
     # 2) Antenna over a ground plane — one PEC face (the ground), open
     #    everywhere else. Per-face control uses Boundary(lo=..., hi=...).
@@ -97,17 +89,49 @@ if __name__ == "__main__":
     #    boundary ground is infinite, which turns the antenna into a cavity and
     #    shifts its resonance.  Do not reach for a PEC Box here: a Box is a
     #    VOLUME and a ground plane is foil.
-    _run_and_report("ground plane", BoundarySpec(
-        x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml")))
+    ("ground plane", BoundarySpec(
+        x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml"))),
 
     # 3) CLOSED cavity — all PEC. Use with harminv for resonances; do not
     #    expect fields to decay (energy is conserved).
-    _run_and_report("closed cavity", BoundarySpec.uniform("pec"))
+    ("closed cavity", BoundarySpec.uniform("pec")),
 
     # 4) Periodic unit cell — infinite array in x/y, open in z.
-    _run_and_report("periodic cell", BoundarySpec(
-        x="periodic", y="periodic", z="cpml"))
+    ("periodic cell", BoundarySpec(x="periodic", y="periodic", z="cpml")),
+)
+
+
+def build_simulation(spec: BoundarySpec) -> Simulation:
+    """Build the toy box under ``spec``, with its source and probe.
+
+    No time stepping: ``_run_and_report`` below calls this and then solves,
+    so the #737 example-fidelity gate builds the same model the tutorial
+    runs and pins its preflight/realization output without solving it.
+    """
+    sim = Simulation(freq_max=10e9, domain=DOMAIN, dx=DX, boundary=spec)
+    sim.add_source((0.005, 0.005, 0.0025), component="ez",
+                   amplitude_kind="current")
+    sim.add_probe((0.006, 0.006, 0.0025), component="ez")
+    return sim
+
+
+def _run_and_report(label: str, spec: BoundarySpec) -> None:
+    """Build a Simulation with ``spec``, run briefly, print what resolved."""
+    sim = build_simulation(spec)
+    result = sim.run(n_steps=120, compute_s_params=False)
+    peak = float(np.max(np.abs(np.asarray(result.time_series))))
+    print(f"[{label:>18}] spec = {spec.to_dict()}")
+    print(f"[{label:>18}] peak |Ez| after 120 steps = {peak:.3e}")
+
+
+def main() -> None:
+    for label, spec in PATTERNS:
+        _run_and_report(label, spec)
 
     print("\nLegacy note: the old kwargs (boundary='cpml' + pec_faces={...} /")
     print("set_periodic_axes) still work but emit DeprecationWarning; new code")
     print("should construct a BoundarySpec as above.")
+
+
+if __name__ == "__main__":
+    main()

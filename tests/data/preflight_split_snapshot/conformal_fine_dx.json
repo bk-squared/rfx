@@ -4,14 +4,14 @@
       {
         "code": "port_aperture_snap",
         "loc": null,
-        "message": "Waveguide port 'left': declared y-width 22.8600 mm is not what this grid rasterizes (dx=1.0000 mm): the port's slice covers 23.0000 mm, and the solve builds its mode template and cutoff from 23.0000 mm. Cutoffs, |S| references, and any analytic comparison computed from 22.8600 mm describe a structure this run does not solve. Choose dx so it divides the declared width, or declare the width the grid can represent.",
+        "message": "Waveguide port 'left': declared y-width 22.8600 mm is not what this grid rasterizes (dx=1.0000 mm): the port's slice covers 23.0000 mm, and with mode_profile='discrete' (the default) the solve builds its TE10 mode template and cutoff from the REALIZED aperture, 23 cells = 23.0000 mm on this axis (eigenvalues from the realized cells; the declared widths pick which eigenvalue): f_cutoff = 6.512162 GHz (analytic for the realized aperture 6.517227 GHz); the declared width would give 6.557140 GHz. Cutoffs, |S| references, and any analytic comparison computed from 22.8600 mm describe a structure this run does not solve. Choose dx so it divides the declared width, or declare the width the grid can represent.",
         "severity": "warning",
         "source": "_check_waveguide_port_aperture_snap"
       },
       {
         "code": "port_aperture_snap",
         "loc": null,
-        "message": "Waveguide port 'left': declared z-width 10.1600 mm is not what this grid rasterizes (dx=1.0000 mm): the port's slice covers 10.0000 mm, and the solve builds its mode template and cutoff from 10.0000 mm. Cutoffs, |S| references, and any analytic comparison computed from 10.1600 mm describe a structure this run does not solve. Choose dx so it divides the declared width, or declare the width the grid can represent.",
+        "message": "Waveguide port 'left': declared z-width 10.1600 mm is not what this grid rasterizes (dx=1.0000 mm): the port's slice covers 10.0000 mm, and with mode_profile='discrete' (the default) the solve builds its TE10 mode template and cutoff from the REALIZED aperture, 10 cells = 10.0000 mm on this axis (eigenvalues from the realized cells; the declared widths pick which eigenvalue): f_cutoff = 6.512162 GHz (analytic for the realized aperture 6.517227 GHz); the declared width would give 6.557140 GHz. Cutoffs, |S| references, and any analytic comparison computed from 10.1600 mm describe a structure this run does not solve. Choose dx so it divides the declared width, or declare the width the grid can represent.",
         "severity": "warning",
         "source": "_check_waveguide_port_aperture_snap"
       }
