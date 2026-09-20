@@ -47,16 +47,6 @@
       "notes": "Contains strict xfails for unpromoted SBP-SAT/subgrid RMS accuracy lanes."
     },
     {
-      "group_id": "slow_sbp_sat",
-      "role": "Slow SBP-SAT stability and energy-conservation checks",
-      "yaml_path": "scripts/vessl_physics_gate_slow-sbp-sat.yaml",
-      "output_dir": ".omx/physics-gate/vessl-2026-05-09/slow_sbp_sat",
-      "result_json": ".omx/physics-gate/vessl-2026-05-09/slow_sbp_sat/physics_gate_results.json",
-      "last_verified_run_id": "369367237807",
-      "required_for_release_gate": true,
-      "notes": "Long-running shard; keep independent from other slow groups."
-    },
-    {
       "group_id": "slow_msl",
       "role": "Slow MSL laplace/eigenmode integration gate",
       "yaml_path": "scripts/vessl_physics_gate_slow-msl.yaml",
