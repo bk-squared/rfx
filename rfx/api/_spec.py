@@ -1970,7 +1970,7 @@ class CoaxMSLTransitionResult:
     DISCLOSURE (issue #585 final-verify, finding G1): the shared passivity
     guard both attempts rely on (``rfx/validation.py``'s ``check_passivity``
     block, ``strict_passivity=True`` path — see
-    :func:`rfx.api._sparams._finalize_sparam_result`) checks only whether
+    :func:`rfx.sparams._common._finalize_sparam_result`) checks only whether
     ``max column power`` EXCEEDS its upper limit; it has no lower-bound
     check at all, so a column power far BELOW 1 on a lossless structure —
     exactly the open question above — passes it silently. That one-sided

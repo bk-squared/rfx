@@ -1369,6 +1369,19 @@ def compute_coaxial_two_port(
         strict=strict_passivity,
     )
 
+
+# Appended to the shared passivity guard's message when THIS lane refuses, so
+# the exception a caller actually reads names the way back to the matrix. The
+# shared message (rfx/sparams/_common.py) is used by five extractors and is
+# left untouched; only this lane refuses by default (issue #838).
+COAX_MSL_TRANSITION_REFUSAL_HINT = (
+    "compute_coax_msl_transition is an EXPERIMENTAL cross-family lane and "
+    "refuses a non-passive S by default (strict_passivity=True); pass "
+    "strict_passivity=False to get the diagnostic matrix back with a "
+    "UserWarning instead of this error."
+)
+
+
 def compute_coax_msl_transition(
     self,
     *,
@@ -2286,11 +2299,20 @@ def compute_coax_msl_transition(
     _warn_if_ringdown_truncated(
         settling_db, ("coax", "msl"), n_steps=int(n_steps),
     )
-    return _finalize_sparam_result(
-        result_obj,
-        extractor="compute_coax_msl_transition",
-        strict=strict_passivity,
-    )
+    try:
+        return _finalize_sparam_result(
+            result_obj,
+            extractor="compute_coax_msl_transition",
+            strict=strict_passivity,
+        )
+    except ValueError as exc:
+        # Lane-local, on purpose. _finalize_sparam_result's message is shared
+        # by five extractors and tells the reader to inspect the V/I dump --
+        # good advice, but it cannot name an escape hatch that only this lane
+        # has. Appending here keeps the other four messages byte-identical
+        # (issue #838). ValueError is preserved and the original is chained,
+        # so `except ValueError` callers and the traceback are unaffected.
+        raise ValueError(f"{exc} {COAX_MSL_TRANSITION_REFUSAL_HINT}") from exc
 
 
 # ---------------------------------------------------------------------------
