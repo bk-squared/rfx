@@ -319,22 +319,21 @@ class _CompileMixin:
                 # that does not exist, in a message about dielectric pads.
                 # It has to sit AFTER classify_pec_entry, because that is
                 # what decides which an entry is.
-                # Read the DECLARED domain, not the resolved ``self._domain``:
-                # that attribute is a mesh descriptor whose resolution is
-                # keyed on material identity, so under a trace that swaps
-                # traced materials in (differentiable_material_fit) the
-                # cache misses and the auto-mesh planner runs on a tracer
-                # and refuses. Assembly is handed a built ``grid``; it must
-                # not plan a mesh. A sim with no declared domain (fully
-                # automatic mesh) has no declared face to check against and
-                # skips. GPU run 369367262302 on a6d6fce1, regression of
-                # PR #1136.
-                _declared_domain = self._declared_mesh["_domain"]
-                if (_check_pad_fill and _declared_domain is not None
-                        and not is_tracer(mask)):
+                # Read the DECLARED domain, not ``self._domain``: that
+                # attribute is a mesh descriptor and reading it RESOLVES the
+                # mesh. differentiable_material_fit builds its grid once and
+                # then assembles a brand-new Simulation carrying traced
+                # materials on every step; that object has never resolved
+                # its mesh, so the read would run the auto-mesh planner on a
+                # tracer, which refuses. Assembly is handed a built ``grid``
+                # and must not plan a mesh. ``domain`` is a required
+                # constructor argument, so the declaration is always there.
+                # GPU run 369367262302 on a6d6fce1, regression of PR #1136.
+                if _check_pad_fill and not is_tracer(mask):
                     assert_declared_span_is_filled(
                         entry.material_name, entry.shape, mask, grid,
-                        _declared_domain, record=pad_fill_findings)
+                        self._declared_mesh["_domain"],
+                        record=pad_fill_findings)
                 eps_r = jnp.where(mask, mat.eps_r, eps_r)
                 sigma = jnp.where(mask, mat.sigma, sigma)
                 mu_r = jnp.where(mask, mat.mu_r, mu_r)
@@ -427,7 +426,9 @@ class _CompileMixin:
         boundary_pec_shapes: list = []
         conformal_faces = self._boundary_spec.conformal_faces()
         if conformal_faces:
-            big = max(self._domain) * 100.0
+            # Declared, not resolved: see the pad-fill check above.
+            _conformal_domain = self._declared_mesh["_domain"]
+            big = max(_conformal_domain) * 100.0
             for face in conformal_faces:
                 axis_name, side = face.split("_")
                 axis_idx = "xyz".index(axis_name)
@@ -438,7 +439,7 @@ class _CompileMixin:
                 # the largest waveguide-interior region all ports agree
                 # to leave free of PEC.
                 wall_lo = 0.0
-                wall_hi = float(self._domain[axis_idx])
+                wall_hi = float(_conformal_domain[axis_idx])
                 for entry in self._waveguide_ports:
                     if entry.direction[1] == axis_name:
                         # Port-normal axis — no transverse wall on this
