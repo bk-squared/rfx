@@ -1,0 +1,44 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "mesh_resolution",
+        "loc": null,
+        "message": "dielectric 'core' on x: 15.0 cells per \u03bb_eff (eps_r=4.00, freq_max=10GHz, dx=1mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
+        "severity": "warning",
+        "source": "_validate_mesh_quality"
+      },
+      {
+        "code": "mesh_resolution",
+        "loc": null,
+        "message": "dielectric 'core' on y: 15.0 cells per \u03bb_eff (eps_r=4.00, freq_max=10GHz, dx=1mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
+        "severity": "warning",
+        "source": "_validate_mesh_quality"
+      },
+      {
+        "code": "mesh_resolution",
+        "loc": null,
+        "message": "dielectric 'core' on z: 15.0 cells per \u03bb_eff (eps_r=4.00, freq_max=10GHz, dx=1mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
+        "severity": "warning",
+        "source": "_validate_mesh_quality"
+      },
+      {
+        "code": "no_sources",
+        "loc": null,
+        "message": "No sources, ports, TFSF, or waveguide/Floquet/MSL ports configured. Simulation will produce zero fields.",
+        "severity": "warning",
+        "source": "_validate_cfg_no_sources"
+      },
+      {
+        "code": "lossless_q",
+        "loc": null,
+        "message": "all dielectric(s) ['core'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)",
+        "severity": "warning",
+        "source": "_validate_cfg_lossless_resonator_in_absorber"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 5,
+    "ok": true
+  }
+}

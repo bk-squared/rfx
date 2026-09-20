@@ -1,0 +1,37 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "mesh_resolution",
+        "loc": null,
+        "message": "'pec' x-extent 2mm = 1.0 cells \u2014 below 1 cell resolution. A PEC shape passed to sim.add() is a VOLUME (realized with both faces and a shorted interior, lattice ownership contract #931 \u00a71.2), and a volume thinner than one local cell is refused at assembly (\u00a71.5) rather than snapped to a plane. If this is foil (a ground plane, patch, trace), declare a SHEET: a zero-thickness Box via add(), or add_thin_conductor(shape) \u2014 realized on the node plane nearest its mid-plane, with the normal E edge through it live. Otherwise resolve the thickness with a finer local cell.",
+        "severity": "warning",
+        "source": "_validate_mesh_quality"
+      },
+      {
+        "code": "pec_box_one_cell",
+        "loc": null,
+        "message": "1 PEC volume(s) are exactly ONE cell thick along some axis and are realized as a filled slab with walls on BOTH faces (every E edge between the two faces is shorted; lattice ownership contract #931 \u00a71.2): geometry[0] 'pec' (Box) is one cell thick along x [x: walls at 84mm and 86mm (drawn 84mm -> 86mm)]. If this is foil (a ground plane, patch or trace), declare it as a SHEET \u2014 add_thin_conductor(shape), or a zero-thickness Box via add() \u2014 which realizes on ONE node plane with the normal E edge through it live; a slab and a sheet are different conductors on this lattice. If it is a plate, an iris or a wall drawn one cell thick on purpose, no action is needed (report-only). COVERAGE: examined 1 PEC volume(s) on the uniform lane through rfx.boundaries.pec.realized_wall_planes. STALE IF: realized_wall_planes on the named entry's own edge masks returns planes more than one index apart.",
+        "severity": "warning",
+        "source": "_validate_cfg_pec_realization"
+      },
+      {
+        "code": "port_evanescent",
+        "loc": null,
+        "message": "Waveguide port 'left': max measurement frequency 9.000 GHz exceeds 0.90 \u00d7 fc_next=6.745 GHz on the REALIZED guide (40.0000 mm (y, aperture) x 20.0000 mm (z, aperture)) (fc_TE10=3.747 GHz, fc_TE01=7.495 GHz). Evanescent TE01 contamination may exceed 1 % and registers as |S11| < 1 in a lossless structure. Restrict measurement freqs below 6.745 GHz or increase port-to-obstacle distance.",
+        "severity": "warning",
+        "source": "_check_waveguide_port_evanescent"
+      },
+      {
+        "code": "port_evanescent",
+        "loc": null,
+        "message": "Waveguide port 'right': max measurement frequency 9.000 GHz exceeds 0.90 \u00d7 fc_next=6.745 GHz on the REALIZED guide (40.0000 mm (y, aperture) x 20.0000 mm (z, aperture)) (fc_TE10=3.747 GHz, fc_TE01=7.495 GHz). Evanescent TE01 contamination may exceed 1 % and registers as |S11| < 1 in a lossless structure. Restrict measurement freqs below 6.745 GHz or increase port-to-obstacle distance.",
+        "severity": "warning",
+        "source": "_check_waveguide_port_evanescent"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 4,
+    "ok": true
+  }
+}

@@ -31,12 +31,25 @@ monostatic path **byte-identical**.
 
 ## Result (PEC sphere, ka≈1, exact Mie reference)
 
+Regenerated 2026-09-13 on the converged 24-cell CPML and the derived TF/SF
+auxiliary absorber (#888). The previous row of this table — 10.49 / 1.18 /
+−0.06 dB / 0.42 dB / 0.965 — was taken on an 8-cell CPML with an auxiliary grid
+that reflected 4–6 % back into the injected field.
+
 | metric | uncorrected | corrected |
 |---|---|---|
-| forward-oblique (15–90°) max vs exact Mie | **10.49 dB** | **1.18 dB** |
-| backscatter vs exact Mie | — | −0.06 dB |
-| full-curve mean \|distance\| | — | 0.42 dB |
-| H-plane shape correlation (dB) | −0.14 (uncorrelated) | **0.965** |
+| forward-oblique (15–90°) max vs exact Mie | **10.66 dB** | **1.46 dB** |
+| backscatter vs exact Mie | — | +0.19 dB |
+| full-curve mean \|distance\| | 3.10 dB | 0.70 dB |
+| H-plane shape correlation (dB) | −0.09 (uncorrelated) | **0.977** |
+
+The corrected pattern's mean distance got **worse**, 0.42 → 0.70 dB, and that is
+a property of the #280 correction rather than of the depth: sweeping the two
+absorbers independently, both converge in CPML depth and they converge to
+different values (auxiliary 20 cells: 0.481 / 0.404 / 0.408 / 0.412 at cpml
+8 / 16 / 24 / 32; auxiliary 200 cells: 0.886 / 0.719 / 0.705 / 0.714). The
+subtraction was cancelling more of the pattern error with a contaminated
+reference field present. Why is open, and belongs to #280.
 
 The spurious lobe is removed and the corrected pattern tracks the exact analytic
 Mie bistatic. The remaining ~1 dB residual is **not** leftover leakage; its

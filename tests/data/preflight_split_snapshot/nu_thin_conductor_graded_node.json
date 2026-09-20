@@ -1,0 +1,30 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "no_sources",
+        "loc": null,
+        "message": "No sources, ports, TFSF, or waveguide/Floquet/MSL ports configured. Simulation will produce zero fields.",
+        "severity": "warning",
+        "source": "_validate_cfg_no_sources"
+      },
+      {
+        "code": "thin_conductor_graded_node",
+        "loc": null,
+        "message": "lossy thin conductor #0 sits at z = 4mm, an E node whose adjacent cells differ by 200% (500\u00b5m below, 1.5mm above). Its sheet fold is normalized by the E-node DUAL spacing 1mm \u2014 the length that node's sigma acts over \u2014 which is neither adjacent cell. That IS the correct normalization, but a sheet on a grading step is where the realized sheet resistance is most mesh-sensitive: move the sheet onto a locally uniform node (or flatten the grading there) if its loss is claims-bearing.",
+        "severity": "warning",
+        "source": "_validate_cfg_thin_conductor_graded_node"
+      },
+      {
+        "code": "nu_grading_ratio_beyond_validated_cap",
+        "loc": null,
+        "message": "dz_profile max adjacent cell ratio 3.000 exceeds the validated multi-band grading cap 1.4 (docs/guides/support_matrix.md, 'Multi-band graded mesh'). WHY: stability is unaffected (dt is the global min-cell CFL, sufficient on any tensor grid), but per-transition accuracy is witnessed only along z and only up to ratio 1.4 \u2014 the -54 dB reflection class at 30 cells/wavelength (it scales as (dz/lambda)^2), against -44 dB measured at ratio 2.0. COST: an unquantified reflection and grading-dispersion error at that transition. REMEDY: split it into ratio<=1.4 steps (e.g. rfx.smooth_grading) to stay inside the validated envelope, or accept it and say so in the report. STALE-IF: the support-matrix row raises the cap.",
+        "severity": "warning",
+        "source": "_validate_cfg_multiband_grading"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 3,
+    "ok": true
+  }
+}

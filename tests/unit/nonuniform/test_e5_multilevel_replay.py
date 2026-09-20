@@ -28,8 +28,8 @@ Tolerances, declared before the first run of this file: chain floats
 1e-8 relative (the E1 replay bound re-declared 2026-09-11); cells 1e-12 m;
 ``c`` re-fits 1e-9 m; gate times 1e-9 relative; W4 control 1e-6 (R_meas)
 and 1e-8 (R_model) relative; W5 1e-6 relative; pin bridge 1.5e-4 absolute.
-Files not present are skipped, so the test is meaningful at every commit
-of the lane. Runtime: 19 cell regenerations (~0.4 s each) plus stored
+All completed-lane artifacts are required; missing evidence fails collection
+or replay. Runtime: 19 cell regenerations (~0.4 s each) plus stored
 re-solves — about 20 s.
 """
 
@@ -60,8 +60,6 @@ GATE_REL = 1e-9
 
 
 def _load(path):
-    if not path.exists():
-        pytest.skip(f"{path.name} not present")
     with open(path) as fh:
         return json.load(fh)
 
@@ -76,8 +74,6 @@ def model_json():
 
 
 def _model_cells():
-    if not _MODEL.exists():
-        return []
     with open(_MODEL) as fh:
         m = json.load(fh)
     return [(ax, p) for ax in m["axes"] for p in m["axes"][ax]]
@@ -85,10 +81,31 @@ def _model_cells():
 
 def _axis_cells(axis):
     p = _AXIS[axis]
-    if not p.exists():
-        return []
     with open(p) as fh:
         return sorted(json.load(fh)["cells"])
+
+
+@pytest.mark.parametrize("reader", ("load", "model", "axis"))
+def test_missing_required_artifact_is_an_error(tmp_path, monkeypatch, reader):
+    path = tmp_path / "missing.json"
+    monkeypatch.setitem(globals(), "_MODEL", path)
+    monkeypatch.setitem(globals(), "_AXIS", {"x": path})
+    readers = {"load": lambda: _load(path), "model": _model_cells,
+               "axis": lambda: _axis_cells("x")}
+    with pytest.raises(FileNotFoundError):
+        try:
+            readers[reader]()
+        except pytest.skip.Exception:
+            pytest.fail("A completed witness must not skip missing evidence")
+
+
+def test_missing_control_is_an_error(monkeypatch):
+    monkeypatch.setitem(globals(), "_load", lambda path: {"cells": {}})
+    with pytest.raises(KeyError, match="S"):
+        try:
+            test_results_w4_control_against_e1()
+        except pytest.skip.Exception:
+            pytest.fail("The required S control must not be skipped")
 
 
 # --- helpers shared by model and results replays ----------------------------------------
@@ -310,8 +327,6 @@ def test_results_cell_replays_verdicts(model_json, axis, pattern):
 
 def test_results_w4_control_against_e1():
     res = _load(_AXIS["z"])
-    if "S" not in res["cells"]:
-        pytest.skip("S not measured")
     e1 = _load(_E1)
     regen = e5.w4_control(res["cells"]["S"], e1)
     stored = res["w4_control"]

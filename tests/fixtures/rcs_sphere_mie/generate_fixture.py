@@ -11,7 +11,7 @@ dx=lambda/40) once on CPU and records:
     clearly labeled NON-GATED,
   * a claim_scope string bounding what this fixture validates.
 
-Usage (from the repo root, CPU is sufficient — wall ~7 s):
+Usage (from the repo root, CPU is sufficient — wall ~25 s at CPML_LAYERS = 24):
 
     JAX_PLATFORMS=cpu python tests/fixtures/rcs_sphere_mie/generate_fixture.py
 
@@ -48,7 +48,27 @@ F0 = 3e9                 # Hz
 RADIUS = 0.0159          # m  -> ka ~ 0.9997
 RESOLUTION = 40          # dx = lambda / RESOLUTION
 DOMAIN_SIZE = 0.10       # m, cubic
-CPML_LAYERS = 8
+# DERIVED 2026-09-13, was 8. #888 fixed the TF/SF auxiliary absorber (4-6 % ->
+# 1e-06 in amplitude), and the monostatic value moved 0.57 dB -- AWAY from Mie
+# (0.063 -> 0.510 dB). The old agreement was a cancellation between the auxiliary
+# echo and this rig's own thin absorber, and the direction of the depth ladder
+# proves it: on the OLD injection the answer walked away from Mie as this
+# absorber deepened (0.097 / 0.191 / 0.231 at 8 / 16 / 24), on the clean one it
+# converges (0.510 / 0.224 / 0.185).
+#
+# The depth is read off convergence of the ANSWER, not of its distance to Mie
+# (Mie is a continuum reference, so "closer" also rewards mesh error):
+#     cpml     8       16       24       32       40
+#     dBsm  -24.8826 -25.1685 -25.2076 -25.1971 -25.1815
+#     step      --     0.286    0.039    0.011    0.016
+# Past 24 the value only wanders inside a ~0.02 dB floor. Repeating the ladder at
+# R_asymptotic = 1e-8 lands within 0.002 dB of it at 24, so depth is the lever
+# here too and the target stays at the repo default. Converged monostatic
+# -25.21 dBsm, 0.185 dB from the exact Mie series (gate: 1.0 dB).
+#
+# Cost: the grid grows 58^3 -> 90^3 (the absorber is added outside the domain,
+# the interior is unchanged).
+CPML_LAYERS = 24
 N_STEPS = 700
 BANDWIDTH = 0.5
 POLARIZATION = "ez"

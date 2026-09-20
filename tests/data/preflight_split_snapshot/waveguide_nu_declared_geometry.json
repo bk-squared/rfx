@@ -1,0 +1,23 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "port_evanescent",
+        "loc": null,
+        "message": "Waveguide port 'left': max measurement frequency 12.400 GHz exceeds 0.90 \u00d7 fc_next=11.803 GHz on the REALIZED guide (22.8600 x 10.1600 mm, declared geometry (non-uniform mesh)) (fc_TE10=6.557 GHz, fc_TE20=13.114 GHz). Evanescent TE20 contamination may exceed 1 % and registers as |S11| < 1 in a lossless structure. Restrict measurement freqs below 11.803 GHz or increase port-to-obstacle distance.",
+        "severity": "warning",
+        "source": "_check_waveguide_port_evanescent"
+      },
+      {
+        "code": "port_evanescent",
+        "loc": null,
+        "message": "Waveguide port 'right': max measurement frequency 12.400 GHz exceeds 0.90 \u00d7 fc_next=11.803 GHz on the REALIZED guide (22.8600 x 10.1600 mm, declared geometry (non-uniform mesh)) (fc_TE10=6.557 GHz, fc_TE20=13.114 GHz). Evanescent TE20 contamination may exceed 1 % and registers as |S11| < 1 in a lossless structure. Restrict measurement freqs below 11.803 GHz or increase port-to-obstacle distance.",
+        "severity": "warning",
+        "source": "_check_waveguide_port_evanescent"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 2,
+    "ok": true
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "pec_faces_finite_pec",
+        "loc": null,
+        "message": "pec_faces={y_hi, y_lo, z_hi, z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and declare it: a foil is a SHEET (add_thin_conductor, or a zero-thickness PEC Box \u2014 one node plane, normal E through it live); a thick plate is a PEC Box VOLUME (walls on both faces, lattice ownership contract #931).",
+        "severity": "warning",
+        "source": "_validate_cfg_pec_faces_with_finite_pec"
+      },
+      {
+        "code": "no_sources",
+        "loc": null,
+        "message": "No sources, ports, TFSF, or waveguide/Floquet/MSL ports configured. Simulation will produce zero fields.",
+        "severity": "warning",
+        "source": "_validate_cfg_no_sources"
+      },
+      {
+        "code": "off_lattice_design_edges",
+        "loc": null,
+        "message": "2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[0] 'pec' (volume) z: extent 10.16mm, worst face residual 160\u00b5m (1.57% of the extent); geometry[0] 'pec' (volume) y: extent 22.86mm, worst face residual 140\u00b5m (0.61% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: choose dx commensurate with the patterned dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on the design edges. COVERAGE: examined 3 axis extent(s) on 1 conductor Box declaration(s) on the uniform lane; 0 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
+        "severity": "warning",
+        "source": "_validate_cfg_off_lattice_design_edges"
+      },
+      {
+        "code": "pec_face_short_of_domain_wall",
+        "loc": null,
+        "message": "1 PEC volume face(s) stop ONE cell short of a domain wall instead of reaching it: geometry[0] 'pec' z_hi face realized at node 10 (z = 10mm) against the domain wall at node 11 (11mm) \u2014 a ONE-CELL gap of 1mm. WHY: Grid realizes a declared domain by ceil(extent/dx) cells, so the wall stands where the mesh puts it, not at the declared number; a volume's face rounds to the NEAREST node (lattice ownership contract #931 \u00a71.1), so a body drawn to the DECLARED cross-section realizes short of the realized wall. The vacuum cell left between them is a parallel-plate line along that wall, open at both ends (measured on cv11 2026-09-07: |S21| 0.22-0.33 past a PEC short, and the pec-short |S11| deficit 0.0146 -> 0.0560). REMEDY: draw the face to the REALIZED wall plane quoted above, not to the declared dimension (tests/_realized_geometry.domain_wall_positions reads it off the grid the run builds). If the gap is intended, it is a slot and this says where it is. COVERAGE: examined the realized wall planes of 1 PEC volume(s) on the uniform lane, on non-periodic axes with a non-absorbing face; sheets and wires are not examined (they have no face to draw to a wall). STALE IF: realized_wall_planes on the named entity does not reproduce the printed node.",
+        "severity": "warning",
+        "source": "_validate_cfg_pec_face_short_of_domain_wall"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 4,
+    "ok": true
+  }
+}

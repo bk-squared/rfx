@@ -200,7 +200,12 @@ def test_port_reference_sims_clearance_advisory_fires(monkeypatch):
         raise ReachedExtractor
 
     monkeypatch.setattr(
-        "rfx.api._sparams.extract_waveguide_s_matrix_flux", stop_before_solve,
+        # #980 Phase 2: compute_waveguide_s_matrix's body lives in
+        # rfx/sparams/waveguide.py, so this is where the extractor name is
+        # looked up. The re-export in rfx.api._sparams would still accept the
+        # patch and silently not be the binding the lane reads.
+        "rfx.sparams.waveguide.extract_waveguide_s_matrix_flux",
+        stop_before_solve,
     )
     with pytest.warns(UserWarning) as record, pytest.raises(ReachedExtractor):
         _tj_device(freqs, f0).compute_waveguide_s_matrix(
@@ -233,7 +238,12 @@ def test_identical_port_references_have_no_junction_clearance_advisory(
         raise ReachedExtractor
 
     monkeypatch.setattr(
-        "rfx.api._sparams.extract_waveguide_s_matrix_flux", stop_before_solve,
+        # #980 Phase 2: compute_waveguide_s_matrix's body lives in
+        # rfx/sparams/waveguide.py, so this is where the extractor name is
+        # looked up. The re-export in rfx.api._sparams would still accept the
+        # patch and silently not be the binding the lane reads.
+        "rfx.sparams.waveguide.extract_waveguide_s_matrix_flux",
+        stop_before_solve,
     )
     with warnings.catch_warnings(record=True) as record, pytest.raises(ReachedExtractor):
         warnings.simplefilter("always")

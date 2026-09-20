@@ -1,0 +1,30 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "no_sources",
+        "loc": null,
+        "message": "No sources, ports, TFSF, or waveguide/Floquet/MSL ports configured. Simulation will produce zero fields.",
+        "severity": "warning",
+        "source": "_validate_cfg_no_sources"
+      },
+      {
+        "code": "sheet_plane_realized",
+        "loc": null,
+        "message": "2 PEC sheet(s) realized (lattice ownership contract #931 \u00a71.3: one node plane each, closed footprint, normal E through the plane live), 2 of them off their declared mid-plane; worst first: thin_conductor[0] 'thin_conductor[0]' normal z: declared mid-plane 2.4mm, realized node plane 18 at 2mm (offset -0.400 cell = 400\u00b5m); thin_conductor[1] 'thin_conductor[1]' normal z: declared mid-plane 2.4mm, realized node plane 18 at 2mm (offset -0.400 cell = 400\u00b5m). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane \u2014 a laminate face, a ground level \u2014 is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the uniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.",
+        "severity": "info",
+        "source": "_validate_cfg_pec_realization"
+      },
+      {
+        "code": "congruent_conductor_rasterization_parity",
+        "loc": null,
+        "message": "1 congruent-conductor group(s) realize to UNEQUAL PEC edge sets on this lattice (design-identical conductors, different meshes). Worst group (_PatternedSheet, sheet, sorted extents 400\u00b5m x 3mm x 3.5mm): thin_conductor[0] 'thin_conductor[0]' (sheet) 13 PEC edges, lo-corner sub-lattice offsets (x,y,z)=(0.000, 0.000, 0.200) cells; thin_conductor[1] 'thin_conductor[1]' (sheet) 8 PEC edges, lo-corner sub-lattice offsets (x,y,z)=(0.020, 0.000, 0.200) cells. OBSERVED: edge-count spread 5 > tolerance 1 edge (a symmetric pair realizes identical counts; one edge is the smallest spread a rounding tie on one face can produce). WHY: congruent conductors whose faces sit at different sub-cell offsets are realized from different cell centres (volume) or node sets (sheet footprint), so the mesh invents an asymmetry the design does not have \u2014 a mirror pair whose mirror plane is off-lattice realizes asymmetrically with the same sign in every pair. COST (measured, issue #703): mirror pairs 173 vs 183 cells (5.6%) from a mirror plane 0.26 cells off the lattice; an A/B run pair differing ONLY by a 13um lattice-origin slide moved |S11| up to 3.5 dB per bin and improved every aggregate agreement metric. REMEDY: place the members at positions congruent modulo the cell size (no origin-shift prediction for this group \u2014 2 member(s) are not analytic Boxes, and scoring candidate slides would re-realize each of them 16 times inside preflight). COVERAGE: examined 2 conductor declaration(s) that report a bounding box, in 1 congruence group(s) of >=2 members on the uniform lane; skipped 0 conductor entr(y/ies) whose shape reports no bounding box (no congruence key). INFERRED: 2 member(s) of the worst group are keyed by a bounding box that is not the shape itself, so equal bounds bound congruence rather than proving it \u2014 read the named members before acting. STALE IF: re-realizing the named members through rfx.boundaries.pec.realized_pec_edge_masks gives equal edge counts (spread <= tolerance).",
+        "severity": "warning",
+        "source": "_validate_cfg_congruent_rasterization_parity"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 3,
+    "ok": true
+  }
+}

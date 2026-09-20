@@ -1,0 +1,23 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "source_on_graded_node",
+        "loc": null,
+        "message": "current source at (0.006, 0.006, 0.004) (component ex) sits at z = 4mm, an E node whose adjacent cells differ by 200% (500\u00b5m below, 1.5mm above). z is one of this component's two TRANSVERSE axes, so its control volume takes the DUAL spacing 1mm there \u2014 not the primal cell 1.5mm \u2014 and the realized current moment would be off by 1.500x on this axis alone if the primal cell were used (issue #672). That IS handled, but a source on a grading step is where the injected amplitude is most mesh-sensitive: move it onto a locally uniform node if its amplitude is claims-bearing.",
+        "severity": "warning",
+        "source": "_validate_cfg_source_on_graded_node"
+      },
+      {
+        "code": "nu_grading_ratio_beyond_validated_cap",
+        "loc": null,
+        "message": "dz_profile max adjacent cell ratio 3.000 exceeds the validated multi-band grading cap 1.4 (docs/guides/support_matrix.md, 'Multi-band graded mesh'). WHY: stability is unaffected (dt is the global min-cell CFL, sufficient on any tensor grid), but per-transition accuracy is witnessed only along z and only up to ratio 1.4 \u2014 the -54 dB reflection class at 30 cells/wavelength (it scales as (dz/lambda)^2), against -44 dB measured at ratio 2.0. COST: an unquantified reflection and grading-dispersion error at that transition. REMEDY: split it into ratio<=1.4 steps (e.g. rfx.smooth_grading) to stay inside the validated envelope, or accept it and say so in the report. STALE-IF: the support-matrix row raises the cap.",
+        "severity": "warning",
+        "source": "_validate_cfg_multiband_grading"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 2,
+    "ok": true
+  }
+}

@@ -78,7 +78,7 @@ def test_metadata_matches_consumed_windows_without_strict_findings(axis, graded,
         expected_bounds = np.array([[8, 12], [6, 14]]) * U
         expected_normal = 10 * U
     report = _report(sim, strict=True)
-    assert not report and report == [] and report.ok
+    assert not len(report) and report == [] and report.ok
     assert not report.issues and not report.errors and not report.warnings and not report.infos
     assert report.raise_for_failure() is report
     record, = report.flux_regions
@@ -176,7 +176,7 @@ def test_full_plane_and_empty_report_keep_existing_serialization_and_list_contra
     sim = _sim()
     _add(sim, size=None)
     report = _report(sim, strict=True)
-    assert report.flux_regions == [] and not report
+    assert report.flux_regions == [] and not len(report)
     assert report.to_dict() == {"ok": True, "n_issues": 0, "n_errors": 0, "issues": []}
     assert report.format() == "preflight: PASS (no issues)"
     copied = PreflightReport([PreflightIssue("existing", code="old")])

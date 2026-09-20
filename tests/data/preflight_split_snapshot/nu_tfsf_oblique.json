@@ -1,0 +1,16 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "nonuniform_tfsf",
+        "loc": null,
+        "message": "ERROR: TFSF oblique incidence is not yet supported on nonuniform z mesh. Use angle_deg=0.",
+        "severity": "error",
+        "source": "_validate_cfg_nonuniform_limitations"
+      }
+    ],
+    "n_errors": 1,
+    "n_issues": 1,
+    "ok": false
+  }
+}

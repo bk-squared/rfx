@@ -249,3 +249,241 @@ displaced **-12%** from the 0.175 reference — a defect the shipped judge score
 as a clean 0.03% run — produces `mean = 4.02%`, which **passes** G3's published
 5%. Without G4 the decoupling alone would not have caught it. Recorded in
 `test_b2_displaced_mode_passes_the_shipped_judge_and_fails_the_new_one`.
+
+## Correction 4 (2026-09-13) — G5's gate form is superseded, and its "no chosen value" claim is withdrawn
+
+Two statements in this note about the Q gate were wrong. Both are corrected in
+code; this section is the record, and the sections above are left as written.
+
+**(a) The gate form in §2 G5 was wrong on one side (#945, fixed in PR #999).**
+G5 declared
+
+    | ln( Q_rfx / Q_ref ) |  <=  ln( 1 + tau_ref / T )
+
+i.e. `Q_rfx/Q_ref` in `[1/(1+s), 1+s]` with `s = tau_ref/T`. That is not the
+image of the rate interval G5 derives it from. `Q = pi f / alpha` is monotone
+**decreasing** in the decay rate, so `alpha/alpha_ref` in `[1-s, 1+s]` maps to
+
+    Q_rfx / Q_ref  in  [ 1/(1+s), 1/(1-s) ]
+
+The lower bound matched; the upper did not, since `(1+s)(1-s) = 1-s^2 < 1`. The
+symmetric form rejected a mode whose decay rate differed by exactly the `1/T`
+the note declares as the tolerance, and it imposed a finite ceiling in the
+`s >= 1` regime — where the declared rate interval reaches zero and the
+transformed interval has no finite upper bound at all. `s >= 1` is not
+hypothetical here: the committed live board's mode 2 runs at `s = 2.8295`
+(`validation/crossval/_02_ring_resonator_results/crossval.json`, the
+`q_window` field of the second assignment row).
+
+The shipped gate is now the exact transform, in
+`ring_mode_judge.rate_interval_to_log_q_bounds`. §4's factor-five statement
+still holds on the low-Q side (the admission cut still bounds `s <= 4`, so the
+tolerated over-damping is still at most `1+s = 5`); on the high-Q side the
+bound is `1/(1-s)` below `s = 1` and unbounded above it, so the phrase "every
+admitted mode rejects a 5x Q error" now applies to the over-damped direction
+only.
+
+**(b) §4's "The Q window carries no chosen value at all" is withdrawn (#907).**
+The sentence is true about the window's *arguments* — no measured rfx quantity
+enters it, so it is not fitted to the agreement it judges, and that property is
+retained. It is false about the window's *form*. The premise §2 G5 argues from,
+"a record of length `T` cannot resolve exponential decay rates finer than
+`1/T`", was measured and refuted for this estimator: a damped exponential fixes
+its exponent from adjacent-sample ratios, and there is no Fourier separation
+limit to import. rfx's matrix-pencil harminv with `decimate=False` returns Q to
+~3e-12 relative error at `T/tau = 0.0822`, a third of the `1/4` admission cut
+(#907, comment of 2026-09-10).
+
+**(c) A second empirical prop, added under (b) and withdrawn 2026-09-13.**
+This section briefly continued: "what does degrade at short records is the
+decimated path cv02 actually runs" — with `3.49 %` at `T/tau = 0.0822` and
+`0.24 %` at the cut, from the same #907 comment. Independent review could not
+reproduce those figures and neither could a re-measurement here. At
+`T/tau = 0.0822` the record is too short for a decimation stage to leave the
+requested pencil capacity, so `decimate='auto'` decimates by nothing and there
+is no decimated path there to degrade; where a stage does fire the decimated
+path is not worse than `decimate=False`, and every measured relative Q error on
+the ladder is orders of magnitude below what was asserted. The ladder, both
+frequency bands and the per-rung decimation plans are committed as
+`tests/fixtures/cv02_ring_judge/harminv_decimation_ladder.json` (generator
+`scripts/diagnostics/cv02_harminv_decimation_ladder.py`), pinned by
+`test_the_decimation_penalty_claim_does_not_reproduce`.
+
+Whether the REAL cv02 record — multi-mode, with source contamination still in
+the analysed window — degrades under decimation is **unmeasured**; the ladder
+is a clean single exponential and does not settle it.
+
+So `tau_ref/T` is a **policy envelope with provenance**, not a derived bound,
+and that provenance is #812's published bracket alone. The `1/4` admission cut
+keeps its prior-provenance standing from #812; the sentence that also claimed
+independent support for it from the decimation measurement is withdrawn with
+(c).
+
+**The obvious alternative was checked and is not available.** The natural
+replacement for a declared envelope is the estimator's own fit residual.
+rfx's harminv reports a field named `error`, but it is not a residual:
+`rfx/harminv.py` computes `err = 1 - min(|lam|, 1/|lam|)`, and for a decaying
+pole `|lam| = exp(-alpha * dt_eff)`, so
+
+    error  ==  1 - exp(-decay * dt_eff)
+
+exactly — measured to bit equality on a clean damped exponential at cv02's own
+step, on both the decimated and undecimated paths, in
+`test_harminv_error_field_is_the_decay_restated`. It is a monotone function of
+the reported decay rate, i.e. of `1/Q` at fixed `f`, and says nothing about how
+well the pole fits the record. A tolerance built from it would scale with the
+very quantity the Q gate judges — #812's self-referential gate class. Meep's
+`err` is a signal-processing residual on the other side and is not retained by
+this case at all. Item 1 of #907's re-scoped ask therefore needs a measurement
+campaign, not a field that already exists.
+
+**What replaces the claim.** The gate's inputs are now three named objects with
+an explicit epistemic status, in `ring_mode_judge.Q_GATE_INGREDIENTS`, printed
+with every report and persisted under `gate_limits.q_gate_ingredients`:
+
+| ingredient | kind | what it is |
+|---|---|---|
+| `estimator_uncertainty` | declared-policy | the scale `s = tau_ref/T` |
+| `rate_to_q_transform` | derived | the exact interval inversion, (a) above |
+| `discretization_budget` | absent | no permitted rfx-vs-Meep disagreement has ever been declared |
+
+Because the third does not exist, a cv02 `q` PASS is a two-solver **consistency
+heuristic**, not a bound on either solver's Q accuracy. That is the reading
+recorded when #907 was closed on 2026-09-13, with the three research items
+(the estimator's real SNR / model-order uncertainty, a source-free Meep
+reference record, and a discretization budget against the exact annulus)
+deferred to a pre-declared campaign rather than settled by choosing a floor —
+a floor taken from the observed gap would have made the gate certify the
+agreement it exists to test.
+
+**(d) The retained evidence record predates (a)–(c) and keeps the old wording,
+on purpose.** `validation/crossval/_02_ring_resonator_results/crossval.json` is
+the run of 2026-09-06T17:07:57Z (commit `296cabad`). It is the only copy that
+predates the (a) transform, so re-driving today's judge on it is the falsifier
+for "the transform moved a verdict that was already committed"; regenerating it
+would turn that check into the judge against its own output. It is therefore
+pinned as-is by `CV02_RECORD_PIN` and
+`test_the_committed_record_is_still_the_pre_transform_one`, which red loudly if
+the record moves.
+
+The cost is that the withdrawn framing survives in the reader-facing artifact:
+that record's `gate_limits.note` still reads, verbatim, "the Q window is
+tau_ref/T per mode, derived from the reference Q and THIS record length -- not
+a chosen number". Read it as **superseded** by
+`ring_mode_judge.Q_GATE_INGREDIENTS`, which every record written after
+2026-09-13 carries instead. The half about the
+window's *arguments* stands — no measured rfx quantity enters it. The half
+about its *form* does not: `tau_ref/T` is declared policy with #812's bracket
+behind it, not a derived bound. No number in that record is affected; the note
+describes provenance, and the gates it reports are the ones today's judge
+reproduces.
+
+**What did not change.** No gate moved. The verdict on the committed board is
+unchanged: re-driving the judge on that record's own mode pairs and record
+length reproduces all five gates PASS. The run-length contingency #907
+describes is still present and still pinned by
+`test_verdict_lane_q_gate_is_run_length_contingent`, which remains a
+characterization test of current behaviour.
+
+---
+
+## Correction 5 (2026-09-14) — the transform is applied at each pair's own two frequencies (#945, reopened)
+
+Correction 4(a) fixed the shape of the Q interval and left a second error in
+the same line: the inverted interval was compared against a Q ratio measured
+at a *different* frequency from the reference's. #945 was reopened on
+2026-09-13 with the counterexample below. The sections above are left as
+written; this is the record.
+
+**The algebra, in three lines.** A mode's amplitude decay rate is
+`alpha = pi f / Q`, so
+
+    alpha_rfx / alpha_ref  =  (f_rfx / f_ref) * (Q_ref / Q_rfx)
+
+    ln(alpha_rfx/alpha_ref)  =  ln(f_rfx/f_ref) - ln(Q_rfx/Q_ref)
+
+and the declared interval `alpha_rfx/alpha_ref in [1-s, 1+s]` therefore maps to
+
+    ln(Q_rfx/Q_ref)  in  [ ln(f_rfx/f_ref) - log1p(s),
+                           ln(f_rfx/f_ref) - log1p(-s) ]
+
+i.e. Correction 4(a)'s interval **shifted by `ln(f_rfx/f_ref)`**. The inversion
+`Q/Q_ref in [1/(1+s), 1/(1-s)]` is the special case `f_rfx = f_ref`.
+
+**What the missing term did.** `judge()` compared `ln(Q_rfx/Q_ref)` against the
+unshifted interval, so the whole of a frequency disagreement — which cv02 gates
+separately, at 5% — was charged to the Q gate as well. Reproduction on
+`origin/main` at commit `88651a1c`: `f_ref = 1`, `Q_ref = 100`, `T = tau/0.02`
+(so `s = 0.02`), and an rfx mode 4.900% low in frequency whose decay rate is
+**exactly** the reference's, `alpha_rfx/alpha_ref = 1.000000` — dead centre of
+the declared rate interval:
+
+    freq error = 4.900%   (max_err gate < 5.0%: PASS)
+    ln(Q_rfx/Q_ref) = -0.050241
+    bounds          = [-0.019803, +0.020203]
+    ln(f_rfx/f_ref) = -0.050241   <-- the missing term
+    q_gated = True   q_pass = False
+
+`ln(Q_rfx/Q_ref)` equals the frequency term exactly, because at an equal decay
+rate a 4.9% lower frequency *is* a 4.9% lower Q. The gate rejected a mode
+sitting on the reference's own decay rate, for a frequency error its own
+frequency gate admits. After the fix the bounds read `[-0.070044, -0.030039]`
+and `q_pass = True`.
+
+**The tolerance did not move; the comparand did.** `s = tau_ref/T` is still
+built from the reference alone (`q_window`), so the envelope is still not
+fitted to the agreement it judges — §4's surviving claim about the window's
+*arguments* is untouched. What now carries both solvers' measurements is the
+quantity being compared: a decay-rate ratio is a function of both `(f, Q)`
+pairs because a rate is. Ingredient 2 in `Q_GATE_INGREDIENTS` states this: the
+transform is derived, and it is evaluated at each mode's own realized
+frequency pair.
+
+Each gated row now records what was subtracted, so the artifact is readable
+without redoing the algebra: `q_log_freq_term = ln(f_rfx/f_ref)`,
+`q_log_rate_ratio_signed = ln(alpha_rfx/alpha_ref)`, and `q_log_lower` /
+`q_log_upper` — the **shifted** bounds that actually judged the row. Those two
+keys are the same names carrying a new meaning: before this correction they
+held the fixed-frequency image, and they now hold it shifted by
+`q_log_freq_term`. Nothing was renamed or removed, and no committed artifact
+carries the old meaning — `q_log_lower` / `q_log_upper` were introduced by
+Correction 4(a), after the only retained cv02 record was written, so that
+record has no such field to reinterpret.
+
+**What did not change.** No gate constant, window or tolerance moved. Re-driving
+today's judge on the committed record's own stored inputs
+(`_02_ring_resonator_results/crossval.json`, commit `296cabad`,
+2026-09-06T17:07:57Z) reproduces all five gates PASS and every row's `q_pass`,
+before and after: the two gated rows' frequency terms are `+0.000515` and
+`+0.000306` against windows `0.7982` and `2.8295`, three to four orders of
+magnitude of margin.
+
+**How large this correction can ever be, and where it would show.** It is
+bounded by the frequency gate itself: a pair that passes `max_err < 5 %` has
+`|ln(f_rfx/f_ref)| <= ln(1.05) = 0.0488` in log-Q. Against this board's
+admissible intervals (widths `2.187` and infinite, from `s = 0.7982` and
+`2.8295`) that ceiling is negligible and the realized terms are smaller again
+by three to four orders. Against the longer-record fixture #907 uses
+(`T = 3385`, `s = 0.0642`, interval `[-0.0623, +0.0664]`, width `0.1287`) the
+same ceiling is **37.9 % of the interval's width**. So "the committed board
+does not move" is a fact about this board's windows, not a general smallness
+claim: a board whose window is narrow enough — which is exactly what a longer,
+better-settled record produces — can be flipped by the term, in either
+direction. That record is still pinned as-is by `CV02_RECORD_PIN`,
+for the reason Correction 4(d) gives — it is the only copy predating the
+transform, so re-driving the judge on it is the falsifier for "the transform
+moved a committed verdict", and regenerating it would void the falsifier
+rather than refresh it.
+
+The run-length contingency #907 describes is untouched, and
+`test_verdict_lane_q_gate_is_run_length_contingent` stays a characterization
+test of current behaviour: on that fixture the frequency term is `-2.8e-4`
+against a window that shrinks from `0.7472` to `0.0642`, so the longer record
+still fails. The frequency term is not the fix for #907 and is not offered as
+one.
+
+Pinned by `test_issue945_a_frequency_error_is_not_charged_to_the_q_gate`
+(the counterexample above), `test_issue945_the_q_gate_still_bites_at_exact_frequency`
+(the mirror: at an exact frequency, a rate 1.5x the declared scale off still
+fails, both sides), `test_issue945_the_row_reports_the_frequency_term_and_the_rate_term`
+and `test_issue945_the_frequency_term_is_refused_on_an_unphysical_frequency`.

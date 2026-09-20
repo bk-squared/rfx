@@ -1,0 +1,14 @@
+--- cpml_layers=40: interior (the new arm) ---
+  [PREFLIGHT] dielectric 'wg' on x: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
+  [PREFLIGHT] dielectric 'wg' on y: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
+  [PREFLIGHT] dielectric 'wg' on z: 11.5 cells per λ_eff (eps_r=12.00, freq_max=74.95THz, dx=100nm). Need ≥20 cells/λ_eff for phase-accurate propagation. S-parameter extraction amplifies ε-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/λ_eff.
+  [PREFLIGHT] all dielectric(s) ['wg'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
+  [FLUX REGION] Flux monitor 'input', x plane requested 4e-06 m, realized 4e-06 m: y: requested [0, 1.6e-05] m, realized [0, 1.6e-05] m; z: requested [0, 1e-07] m, realized [0, 1e-07] m Interior cells; endpoint snapping is included in the reported bounds.
+  [FLUX REGION] Flux monitor 'output', x plane requested 1.45e-05 m, realized 1.45e-05 m: y: requested [0, 1.6e-05] m, realized [0, 1.6e-05] m; z: requested [0, 1e-07] m, realized [0, 1e-07] m Interior cells; endpoint snapping is included in the reported bounds.
+    mean_self = 0.948519 (78.4s)
+
+wrote /root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a62f22ff5feef5f57/scripts/diagnostics/_artifacts/cv01_cpml_813/residual_split.json
+  absorber_cell_slots_points        10 layers   -1.2477 ->  40 layers   -0.1022
+  interior_off_guide_points         10 layers  -24.7942 ->  40 layers   -1.8330
+  interior off-guide still dominates: True
+  absorber-cell slots grew: False

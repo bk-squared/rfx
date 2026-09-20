@@ -1,0 +1,23 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "floating_port",
+        "loc": null,
+        "message": "Single-cell port at (0.01, 0.01, 0.0025) (ez) sits inside dielectric 'substrate' (eps_r=4.40) with no adjacent PEC along the z-axis. A floating single-cell port inside substrate does not couple to patch-antenna TM modes. Pass extent=<substrate_height> to create a WirePort spanning ground \u2192 patch plane (issue #71).",
+        "severity": "warning",
+        "source": "_validate_cfg_floating_single_cell_port"
+      },
+      {
+        "code": "lossless_q",
+        "loc": null,
+        "message": "all dielectric(s) ['substrate'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)",
+        "severity": "warning",
+        "source": "_validate_cfg_lossless_resonator_in_absorber"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 2,
+    "ok": true
+  }
+}

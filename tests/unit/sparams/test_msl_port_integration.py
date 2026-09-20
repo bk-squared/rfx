@@ -508,8 +508,9 @@ def test_msl_thru_line_z0_length_invariance_and_positive_sign():
     mismatch, not as a spread-lock problem.
 
     PLATFORM ENVELOPE (issue #610): both bounds above were derived/checked on
-    ONE platform with thin cross-machine headroom (0.24 pp / 0.0013). No two
-    datums share a commit, so cross-platform agreement is demonstrated as two
+    ONE platform with thin cross-machine headroom (0.24 pp / 0.0013). On the
+    RETIRED dx = 80 µm board no two datums share a commit, so cross-platform
+    agreement there is demonstrated as two
     same-regime PAIRS, not at a fixed commit: pre-drift {dev 0.4607 % @69a6956a,
     GitHub runner 0.46 % @90c79d1d, 4 rfx/ commits apart} and post-drift
     {GitHub runner 0.47 % @7f68f9fb and @8e004976, this pod 0.4676 % @1f005d0d}.
@@ -524,26 +525,76 @@ def test_msl_thru_line_z0_length_invariance_and_positive_sign():
     float32) and tests/locks/test_msl_z0_platform_datums.py for the fast structural
     check that keeps it internally consistent with THIS test's own gate.
 
+    BOARD (issue #1084). Every row summarised in the paragraph above was
+    measured on the RETIRED dx = 80 µm board, and until 2026-09-16 the ledger
+    said so nowhere: it carried one top-level `recipe` with dx = 8e-05 while
+    naming THIS test, which has run the #931 board since the migration. The
+    ledger is now board-versioned (schema_version 2: a `boards` map, a `board`
+    key on every row, `active_board`), and the lock asserts that the active
+    board's dx IS this module's DX. The #931 board now has four rows of its
+    own, and unlike the retired board it HAS a same-commit cross-platform pair:
+    at c6788ef7 the AMD EPYC 9654 CPU host (jax 0.10.2 / numpy 2.4.6) reads
+    spread 0.000477 and an RTX 4090 GPU (jax 0.4.33, VESSL 369367261423) reads
+    0.000570 — 0.0093 pp apart, inside the 0.05 pp policy threshold, so CPU and
+    GPU AGREE on this board. The 0.16 % this docstring quotes from VESSL
+    369367259284 is the odd row: that job pinned JAX_PLATFORMS=cpu (so it is a
+    CPU measurement despite the GPU preset) and its own `git rev-parse HEAD`
+    printed 'no git', so its tree is known only as branch
+    feat/931-t2-sparams-ports. A control run at c6788ef7 on the CPU host under
+    that job's exact runtime stack (jax[cpu] 0.6.2, numpy 1.26.4) is filed as a
+    datum too, so 'stack' and 'tree' are separated rather than assumed. The
+    0.16 % itself is recorded and left UNCLASSIFIED — the policy classifies
+    same-commit disagreements, and that row has no commit.
+    Nothing here re-derives a bound: MEASURED_SPREAD_ENVELOPE is still the
+    retired board's 0.004607, and the #931 board's envelope would TIGHTEN the
+    gate, which is a PI decision and not this issue's.
+
     The envelope has DRIFTED since 2026-08-09: a full-precision pod re-measure
     at HEAD (1f005d0d) gives spread = 0.0046760 (0.4676%) vs the committed
     0.004607 (0.4607%) — entering somewhere in the CI commit window
-    90c79d1d..7f68f9fb (2026-08-11/12), unattributed to a single commit.
+    90c79d1d..7f68f9fb (2026-08-11/12). ATTRIBUTED 2026-09-16 (issue #796) by a
+    full-precision per-sha bisect on THIS recipe — one git-archive tree per sha,
+    each driving its own ``_run_msl_thru``; the recipe file is byte-identical
+    (md5 9faeeba500da9ced30baca8c6d939a04) from 69a6956a through 1f005d0d, so
+    the drift is rfx/ code. TWO commits carry it, both classification (i)
+    intended absorber-matching corrections, not regressions:
+      * fce10916 (#638) — the CPML hi-face pad now sources its material one
+        column further in, so this fixture's face-flush substrate Box stops
+        being terminated by a vacuum pad. Legs move −0.00453 / −0.00531 /
+        −0.00403 Ω; spread 0.4607% → 0.4616%.
+      * c9c1864f (#659) — the boundary node dropped by the half-open volume
+        rasterization gets that same material, removing a one-cell vacuum film
+        between the structure and its own absorber. Legs move a further
+        −0.00404 / −0.00058 / −0.00005 Ω; spread 0.4616% → 0.4686%.
+    Everything else in the window is bit-identical on this fixture
+    (90c79d1d = ae7919a9; fce10916 = 5f23ccae = fd37c62f; c9c1864f = 7f68f9fb
+    = 1f005d0d), which is the measurement that EXCLUDES #666 (7f68f9fb, the
+    add_msl_port x/y generalization) — the commit the 2026-09-13 triage had
+    guessed, on the reasoning that it was the window's only direct MSL-extractor
+    change. Per-sha rows: platform_datums.json's `attribution` block and its
+    role="bisect" datums; raw per-leg dump: bisect_796.json.
     gate_from_envelope(0.004676) would derive 0.008 — a ONE-QUANTUM WIDENING.
-    Per issue #610's no-silent-loosening rule the gate STAYS 0.007: this is
-    recorded as CODE drift to diagnose later (lead's lane — bisect requires a
-    full-precision pod run of 69a6956a first, ~53 min/leg-set), NOT re-derived
-    as routine gate maintenance. Full-precision per-leg mean|Z0[+x]| moved:
+    Per issue #610's no-silent-loosening rule the gate STAYS 0.007 and
+    MEASURED_SPREAD_ENVELOPE stays 0.004607: attribution is not a licence to
+    re-derive, and on current main any re-derivation would have to be measured
+    on the #931 board, not this one. That call is the PI's, not maintenance.
+    Full-precision per-leg mean|Z0[+x]| moved:
     57.3381 → 57.32987 Ω (−0.00823) at L=8mm, 57.5778 → 57.57185 Ω (−0.00595)
     at L=10mm, 57.6030 → 57.59874 Ω (−0.00426) at L=12mm — all DECREASES
     below the 0.01 Ω print quantum that makes the CI logs' "57.34 → 57.33"
     look like a bigger move than it is; do not bisect off 2-dp prints. The
     falsifier for the "platform, not code" attribution is a same-commit
-    second-platform run reproducing spread to <0.01 pp. It has NOT been run —
-    no commit in this ledger carries two platforms' datums — so that
-    attribution is provisional. Likewise the drift WINDOW 90c79d1d..7f68f9fb
-    is inferred from 2-significant-figure CI spread prints (0.46 % vs 0.47 %
-    straddle a rounding boundary at 0.465) and cannot resolve the 0.0069 pp
-    shift; only the drift's EXISTENCE is established at full precision.
+    second-platform run reproducing spread to <0.01 pp. It HAS now been run
+    (#796): at 1f005d0d the bisect host (jax 0.10.2 / numpy 2.4.6 / py3.11)
+    reads spread 0.0046856 against this ledger's pod row's 0.0046760 on jax
+    0.6.2 — 0.00096 pp apart, inside both the 0.01 pp print quantum and the
+    0.05 pp policy threshold — and at 90c79d1d it reproduces the 2026-08-09
+    derivation legs 57.3381 / 57.5778 / 57.6030 to 4 dp. That 1f005d0d run is
+    filed in bisect_796.json, not as a datum row, so the ledger's "no two
+    datums share a commit" statement above still holds literally. The drift
+    WINDOW is likewise no longer inferred from 2-significant-figure CI prints
+    (0.46 % vs 0.47 % straddle a rounding boundary at 0.465): the two steps
+    above are measured at full float32 precision on adjacent shas.
     CLASSIFICATION POLICY (this threshold is
     POLICY, not itself measured): a same-commit cross-platform disagreement
     ≥ 0.05 pp is treated as platform variance; a shift entering between two

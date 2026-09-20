@@ -48,7 +48,16 @@ import math
 import numpy as np
 import pytest
 
-import rfx.api._preflight as _pf
+# The gate constants this file mutates live in rfx/preflight/pec_geometry.py
+# since #980 Phase 3 leg 2, and so do the ten check bodies that read them --
+# so a bare name in a check resolves in THAT module's globals. The
+# rfx.api._preflight re-export still binds all five, but patching it would
+# rebind a name no reader consults, and the four gate-mutation tests below
+# would pass on an unmutated gate: their loosened arm would still see the
+# firing fixture fire, and their tightened arm would still see the silent one
+# stay silent. Verified by falsification -- aimed at the facade after the
+# move, all four fail on their first assert.
+import rfx.preflight.pec_geometry as _pec
 from rfx import Box, Simulation
 from rfx.geometry.csg import Cylinder
 
@@ -403,10 +412,10 @@ class TestCongruenceParity:
         - tightened (tol 1 -> -1): silent fixture (spread 0) emitted 1
           advisory -> the comparison is live in both directions.
         """
-        monkeypatch.setattr(_pf, "_CONGRUENCE_SPREAD_TOL_EDGES", 100)
+        monkeypatch.setattr(_pec, "_CONGRUENCE_SPREAD_TOL_EDGES", 100)
         assert _congruence_sim(True).preflight().by_code(
             CONGRUENCE_CODE) == []
-        monkeypatch.setattr(_pf, "_CONGRUENCE_SPREAD_TOL_EDGES", -1)
+        monkeypatch.setattr(_pec, "_CONGRUENCE_SPREAD_TOL_EDGES", -1)
         assert len(_congruence_sim(False).preflight().by_code(
             CONGRUENCE_CODE)) == 1
 
@@ -475,10 +484,10 @@ class TestCongruenceParity:
           emitted 1 advisory -> the pair IS being examined, so its silence
           above is an equal count and not a skipped entry.
         """
-        monkeypatch.setattr(_pf, "_CONGRUENCE_SPREAD_TOL_EDGES", 100)
+        monkeypatch.setattr(_pec, "_CONGRUENCE_SPREAD_TOL_EDGES", 100)
         assert _sheet_congruence_sim(True).preflight().by_code(
             CONGRUENCE_CODE) == []
-        monkeypatch.setattr(_pf, "_CONGRUENCE_SPREAD_TOL_EDGES", -1)
+        monkeypatch.setattr(_pec, "_CONGRUENCE_SPREAD_TOL_EDGES", -1)
         assert len(_sheet_congruence_sim(False).preflight().by_code(
             CONGRUENCE_CODE)) == 1
 
@@ -577,9 +586,9 @@ class TestSheetCavityThickness:
         - tightened (tol 0.01 -> -1.0): the +0.1% fixture emitted 1
           advisory -> the comparison is live in both directions.
         """
-        monkeypatch.setattr(_pf, "_CAVITY_THICKNESS_TOL", 10.0)
+        monkeypatch.setattr(_pec, "_CAVITY_THICKNESS_TOL", 10.0)
         assert _cavity_sim(True).preflight().by_code(CAVITY_CODE) == []
-        monkeypatch.setattr(_pf, "_CAVITY_THICKNESS_TOL", -1.0)
+        monkeypatch.setattr(_pec, "_CAVITY_THICKNESS_TOL", -1.0)
         assert len(_cavity_sim(False).preflight().by_code(CAVITY_CODE)) == 1
 
     def test_volume_far_face_and_sheet_plane_read_flush(self):
@@ -685,10 +694,10 @@ class TestOffLatticeCensus:
         - tightened (tol 0.005 -> -1.0): the on-lattice fixture emitted 1
           advisory -> the comparison is live in both directions.
         """
-        monkeypatch.setattr(_pf, "_OFF_LATTICE_EDGE_TOL", 1.0)
+        monkeypatch.setattr(_pec, "_OFF_LATTICE_EDGE_TOL", 1.0)
         assert _off_lattice_sim(False).preflight().by_code(
             OFF_LATTICE_CODE) == []
-        monkeypatch.setattr(_pf, "_OFF_LATTICE_EDGE_TOL", -1.0)
+        monkeypatch.setattr(_pec, "_OFF_LATTICE_EDGE_TOL", -1.0)
         assert len(_off_lattice_sim(True).preflight().by_code(
             OFF_LATTICE_CODE)) == 1
 

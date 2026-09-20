@@ -376,7 +376,11 @@ def _realized(mod, case: str, f, dt) -> dict:
     else:
         params = mod.ARMS["tand1"]["params"]
         R, T, _A = mod.analytic_rta(f, params)
-        out = mod.evaluate_e2(f, R, T, params, dt)
+        # windows=mod.WINDOWS: this helper asks what the evaluator applies from
+        # the ADOPTED scalars, which after #928 item 2 is the Meep legs' window.
+        # The per-arm E2 window has no adoption to move, and is checked by
+        # tests/contracts/test_slab_arm_window_derivation.py.
+        out = mod.evaluate_e2(f, R, T, params, dt, windows=mod.WINDOWS)
     got = {"window_R_first": out["window_R"][0],
            "mean_window_R": out["mean_window_R"],
            "mean_window_T": out["mean_window_T"]}

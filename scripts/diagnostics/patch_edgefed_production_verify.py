@@ -51,7 +51,8 @@ def main():
         warnings.simplefilter("ignore")
         msgs = sim.preflight()
         res = sim.compute_msl_s_matrix(freqs=jnp.asarray(FREQS), num_periods=NUM_PERIODS)
-    nf_warn = [m for m in (msgs or []) if "fringing transient" in m]
+    # `msgs or []` would call bool() on the PreflightReport (#980).
+    nf_warn = [m for m in msgs if "fringing transient" in m]
     S11 = np.asarray(res.S)[0, 0, :]
     mag = np.abs(S11); db = 20 * np.log10(mag + 1e-30); fr = FREQS / 1e9; i = int(np.argmin(mag))
     print(f"n_probe_offset arg={arg} -> RESOLVED={resolved} cells (~{resolved*dx*1e3:.1f}mm)  dx={dx*1e6:.0f}µm")

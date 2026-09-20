@@ -1,0 +1,44 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "wire_port_on_graded_node",
+        "loc": null,
+        "message": "lumped port at (0.0035, 0.00475, 0.006000000000000001) (component ez) sits at x = 3mm, an E node whose adjacent cells differ by 100% (500\u00b5m below, 1mm above). x is one of the port's two Ampere-loop axes, so the DUAL spacing 750\u00b5m weights BOTH that leg of the loop that measures I (issue #672) and the termination conductance that realizes Z0 (issue #688). The extracted Z_in = -V/I, and every S-parameter built on it, is most mesh-sensitive here: move the port onto a locally uniform node (or flatten the grading there) if its S-parameters are claims-bearing.",
+        "severity": "warning",
+        "source": "_validate_cfg_wire_port_on_graded_node"
+      },
+      {
+        "code": "wire_port_on_graded_node",
+        "loc": null,
+        "message": "lumped port at (0.0035, 0.00475, 0.006000000000000001) (component ez) sits at y = 4mm, an E node whose adjacent cells differ by 200% (500\u00b5m below, 1.5mm above). y is one of the port's two Ampere-loop axes, so the DUAL spacing 1mm weights BOTH that leg of the loop that measures I (issue #672) and the termination conductance that realizes Z0 (issue #688). The extracted Z_in = -V/I, and every S-parameter built on it, is most mesh-sensitive here: move the port onto a locally uniform node (or flatten the grading there) if its S-parameters are claims-bearing.",
+        "severity": "warning",
+        "source": "_validate_cfg_wire_port_on_graded_node"
+      },
+      {
+        "code": "nu_grading_ratio_beyond_validated_cap",
+        "loc": null,
+        "message": "dx_profile max adjacent cell ratio 2.000 exceeds the in-plane grading threshold (the validated 1.4 multi-band cap is a z-axis envelope: no witness in it grades an in-plane axis) 1.3 (docs/guides/support_matrix.md, 'Multi-band graded mesh'). WHY: stability is unaffected (dt is the global min-cell CFL, sufficient on any tensor grid), but per-transition accuracy is witnessed only along z and only up to ratio 1.4 \u2014 the -54 dB reflection class at 30 cells/wavelength (it scales as (dz/lambda)^2), against -44 dB measured at ratio 2.0. COST: an unquantified reflection and grading-dispersion error at that transition. REMEDY: split it into ratio<=1.3 steps (e.g. rfx.smooth_grading) to stay inside the pre-existing in-plane threshold (no in-plane envelope is validated), or accept it and say so in the report. STALE-IF: the support-matrix row raises the cap.",
+        "severity": "warning",
+        "source": "_validate_cfg_multiband_grading"
+      },
+      {
+        "code": "nu_grading_ratio_beyond_validated_cap",
+        "loc": null,
+        "message": "dy_profile max adjacent cell ratio 3.000 exceeds the in-plane grading threshold (the validated 1.4 multi-band cap is a z-axis envelope: no witness in it grades an in-plane axis) 1.3 (docs/guides/support_matrix.md, 'Multi-band graded mesh'). WHY: stability is unaffected (dt is the global min-cell CFL, sufficient on any tensor grid), but per-transition accuracy is witnessed only along z and only up to ratio 1.4 \u2014 the -54 dB reflection class at 30 cells/wavelength (it scales as (dz/lambda)^2), against -44 dB measured at ratio 2.0. COST: an unquantified reflection and grading-dispersion error at that transition. REMEDY: split it into ratio<=1.3 steps (e.g. rfx.smooth_grading) to stay inside the pre-existing in-plane threshold (no in-plane envelope is validated), or accept it and say so in the report. STALE-IF: the support-matrix row raises the cap.",
+        "severity": "warning",
+        "source": "_validate_cfg_multiband_grading"
+      },
+      {
+        "code": "nu_grading_ratio_beyond_validated_cap",
+        "loc": null,
+        "message": "dz_profile max adjacent cell ratio 4.000 exceeds the validated multi-band grading cap 1.4 (docs/guides/support_matrix.md, 'Multi-band graded mesh'). WHY: stability is unaffected (dt is the global min-cell CFL, sufficient on any tensor grid), but per-transition accuracy is witnessed only along z and only up to ratio 1.4 \u2014 the -54 dB reflection class at 30 cells/wavelength (it scales as (dz/lambda)^2), against -44 dB measured at ratio 2.0. COST: an unquantified reflection and grading-dispersion error at that transition. REMEDY: split it into ratio<=1.4 steps (e.g. rfx.smooth_grading) to stay inside the validated envelope, or accept it and say so in the report. STALE-IF: the support-matrix row raises the cap.",
+        "severity": "warning",
+        "source": "_validate_cfg_multiband_grading"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 5,
+    "ok": true
+  }
+}

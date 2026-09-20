@@ -30,7 +30,8 @@ cells against 1123 for a declared PEC volume of the same sphere, so
 bringing the RCS family under the contract moves a_eff by ~1.2 % and
 needs the fixture and both gate constants regenerated.
 
-Runtime: one 58^3 x 700-step CPU run, ~7 s.
+Runtime: one 90^3 x 700-step CPU run, ~25 s (58^3 / ~7 s until the 24-cell
+absorber derivation of 2026-09-13 -- see tests/fixtures/rcs_sphere_mie/README.md).
 """
 
 import importlib.util
@@ -142,8 +143,11 @@ def test_monostatic_backscatter_matches_exact_mie():
     delta_db = abs(mono_dbsm - mie_dbsm)
     assert delta_db <= 1.0, (
         f"Monostatic RCS {mono_dbsm:.2f} dBsm is {delta_db:.2f} dB from the "
-        f"exact Mie value {mie_dbsm:.2f} dBsm (gate 1.0 dB; measured 0.06 dB "
-        "on the 2026-07-06 falsifier run and at fixture generation). "
+        f"exact Mie value {mie_dbsm:.2f} dBsm (gate 1.0 dB; measured 0.185 dB "
+        "at the 2026-09-13 regeneration, on the converged 24-cell absorber. The "
+        "0.06 dB of the 2026-07-06 run was a CANCELLATION between the pre-#888 "
+        "auxiliary echo and an 8-cell absorber -- see generate_fixture.py's "
+        "CPML_LAYERS derivation). "
         "A regression here means the monostatic extraction or the "
         "TFSF/NTFF/RCS chain drifted — see tests/fixtures/rcs_sphere_mie/."
     )

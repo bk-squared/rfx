@@ -128,6 +128,16 @@ COINCIDENTAL_VALUES: dict[tuple[str, str], str] = {
         "Meep's length unit a = 1 cm, in metres. Equal to W_MEAN_R (0.010) by "
         "arithmetic coincidence; it is the reference leg's geometry scale and "
         "enters no window.",
+    ("validation/crossval/comparators/oblique_fresnel.py", "MEEP_A_M"):
+        "the same Meep length unit as cv22's, in the oblique lane's comparator.",
+    ("validation/crossval/comparators/oblique_fresnel.py", "D_SLAB_M"):
+        "cv04's slab thickness, 10 mm in metres -- the rig's geometry, shared "
+        "with the producer. Equal to W_MEAN_R by arithmetic coincidence and "
+        "used in no gate.",
+    ("validation/crossval/comparators/oblique_fresnel.py", "SETTLING_LIMIT"):
+        "the -40 dB ring-down bar on the scattered and transmitted tails (note "
+        "section 6): a settling witness on the time record, not an R/T window, "
+        "and it equals W_MEAN_R only because -40 dB is 0.01.",
 }
 
 
@@ -447,10 +457,21 @@ def test_the_guard_fires_on_the_reviewers_rewrite_probe():
     # rule (a) alone: the artifact edited, no consumer touched
     only_artifact = same_commit_violation({_ENVELOPE_REL}, records, rewritten, base_doc)
     assert only_artifact is not None and "append-only" in only_artifact
-    # rule (b) alone: an APPENDED revision plus a re-adoption in one change
+    # rule (b) alone: an APPENDED revision plus a re-adoption in one change.
+    #
+    # The synthetic revision has to be one the artifact does not already have.
+    # This probe hard-coded "r2" and broke the day cv04 appended a real r2
+    # (#928 item 1): overwriting an existing revision exercises rule (a) --
+    # "already existed at the base and its [...] changed in place" -- which is
+    # the opposite of what these four lines are for, and the failure looks like
+    # a defect in the evidence rather than in the probe.
+    n = 2
+    while f"r{n}" in doc["revisions"]:
+        n += 1
+    probe = f"r{n}"
     appended = json.loads(json.dumps(doc))
-    appended["revisions"]["r2"] = json.loads(json.dumps(doc["revisions"]["r1"]))
-    appended["revisions"]["r2"]["bootstrap"] = False
+    appended["revisions"][probe] = json.loads(json.dumps(doc["revisions"]["r1"]))
+    appended["revisions"][probe]["bootstrap"] = False
     msg_b = same_commit_violation(both, records, appended, base_doc)
     assert msg_b is not None and "Split it" in msg_b
     # and the legitimate shapes stay legal
@@ -505,7 +526,15 @@ FANOUT: dict[str, str] = {
     "tests/crossval/test_cv22_dispersive_slab_gates.py": DIFFERENT_QUANTITY,
     "tests/crossval/test_crossval_gate_logic.py": DIFFERENT_QUANTITY,
     "tests/studio/test_interop_design_document.py": DIFFERENT_QUANTITY,
-    "rfx/api/_preflight.py": DIFFERENT_QUANTITY,
+    # rfx/api/_preflight.py was classified here until #980 Phase 3 leg 0. Its
+    # only adopted-value appearance was a 0.011 m grid coordinate in
+    # _absorber_boundary_for_axis's docstring worked example, and that
+    # function moved verbatim to rfx/preflight/_common.py. The new file
+    # carries no family marker, so it is outside the slab family and the
+    # number there is a different quantity by construction -- which is what
+    # this scan's own scope note says about any such file. Nothing to
+    # reclassify; both the entry and its reason are gone rather than
+    # repointed, because a repointed entry would red the listed-not-found arm.
     "docs/public/gallery/assets/multilayer_fresnel/manifest.json": RECORDED_OUTPUT,
     "docs/public/gallery/multilayer_fresnel.mdx": DISPLAY_WITH_SOURCE,
     "docs/public/guide/benchmarks.mdx": RESOLVING_REFERENCE,
@@ -515,10 +544,28 @@ FANOUT: dict[str, str] = {
     "docs/design_notes/20260903_test_reorg_tier3b_consolidation.md": DIFFERENT_QUANTITY,
     "validation/research/multiband_nu/results/e3_battery_after.json": DIFFERENT_QUANTITY,
     "docs/design_notes/20260904_aux_echo_record_invariant.md": RESOLVING_REFERENCE,
+    # cv26 (the oblique lane) adopts cv04's r1 through the same loader cv22 and
+    # cv23 use; its pre-declaration section 4.1 is the site the adoption record
+    # names, and it quotes the adopted values there with their producer paths.
+    "docs/design_notes/20260902_cv26_oblique_fresnel_predeclaration.md": ADOPTION_DECLARATION,
+    "docs/design_notes/20260904_cv26_round3_close.md": DIFFERENT_QUANTITY,
+    # #888's absorber lane: dated readings of what the derived absorber did to
+    # cv04/cv22/cv23, including the pre-fix envelope numbers it is compared
+    # against. No revision names it, and its section 14 states explicitly that
+    # nothing in it re-derives a window.
+    "docs/design_notes/20260904_aux_absorber_depth_derivation.md": HISTORICAL_PROSE,
     "docs/design_notes/20260905_post_merge_review_20_prs.md": HISTORICAL_PROSE,
     "docs/design_notes/20260906_issue928_ownership_decision.md": HISTORICAL_PROSE,
     "docs/design_notes/20260908_docs_truth_field_ledger.md": HISTORICAL_PROSE,
     "docs/design_notes/issue812_cv04_fringe_gate_predeclaration.md": HISTORICAL_PROSE,
+    # #928 item 2's pre-declaration. It quotes the r1 values and the windows
+    # derived from them to state the DEFECT it replaces -- cv04's |R+T-1| used
+    # to size a lattice-dispersion residual -- and nothing in it derives a
+    # window from any of them: the windows it declares come from each arm's own
+    # lattice-continuum difference and its own record
+    # (validation/crossval/comparators/slab_arm_windows.py), which carries no
+    # adopted literal at all. No revision names this note as an adoption site.
+    "docs/design_notes/slab_family_per_arm_lattice_window_predeclaration.md": HISTORICAL_PROSE,
 }
 
 # What a DISPLAY_WITH_SOURCE file must point at: the producer's envelope, or --
@@ -537,8 +584,8 @@ DIFFERENT_QUANTITY_REASON: dict[str, str] = {
     "tests/crossval/test_cv22_dispersive_slab_gates.py": "one docstring line naming the grep string that #928 deleted; every window in that file is re-derived from the artifact",
     "tests/crossval/test_crossval_gate_logic.py": "cv04's own per-bin closure ceiling test, 0.0487 against the 0.06 ceiling -- the producer's gate, not a consumer window",
     "tests/studio/test_interop_design_document.py": "a geometry centre coordinate that happens to read 0.011 m",
-    "rfx/api/_preflight.py": "a docstring worked example of the ceil(domain/dx) rounding rule, whose grid coordinate reads 0.011 m; the file enters this scan at all only because a preflight helper is named _waveguide_with_dispersive_slab",
     "docs/design_notes/20260903_test_reorg_tier3b_consolidation.md": "a pytest node id containing a parametrized 0.011",
+    "docs/design_notes/20260904_cv26_round3_close.md": "one cell of cv26's absorber depth ladder -- the MEASURED mean|dT| of the 40-cell rung at 45 deg, which happens to read the same as cv04's normal-incidence mean_closure; the close note derives no window and no revision names it as an adoption site",
     "validation/research/multiband_nu/results/e3_battery_after.json": "the runtime reciprocity warner's 0.011 bar (max|S_ij - S_ji| / max|S|) quoted in the e3 battery's captured warnings; the file names the slab family only because one battery board is the dispersive slab",
 }
 

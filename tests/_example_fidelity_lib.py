@@ -21,9 +21,14 @@ Classification is a hand-authored table (five buckets: ``audited``,
 ``no_solve``)
 because "does this script have a build step separable from its solve step"
 is a judgement call a machine cannot make reliably on its own — the AST
-heuristic in ``_functions_building_simulation`` gets it right for all 47
-scripts in this repo today (independently re-derived, matches the 2026-08-27
-audit's 23/10/6/8 split exactly), so ``test_example_fidelity_contract.py``
+heuristic in ``_functions_building_simulation`` gets it right for all 138
+scripts discovered in this repo today (re-measured 2026-09-16 at c6788ef7
+plus #737 item 2: audited 39 / builder_fused_with_solve 8 /
+module_level_solve 6 / no_solve 4 / no_simulation 81; on the 47 scripts
+that existed when #737 was filed the split is 30/4/5/8, where the
+2026-08-27 audit read 23/10/6/8 before cv07 and cv15 grew build-only entry
+points and #737 item 2 added five more), so
+``test_example_fidelity_contract.py``
 uses it as a MACHINE CHECK on top of the hand-authored table for every
 bucket, not just the two the audit required — a script whose classification
 disagrees with what its own source does is a bug in the table, not a
@@ -46,6 +51,19 @@ import jax.numpy as jnp
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SNAPSHOT_PATH = REPO_ROOT / "tests" / "data" / "example_fidelity_snapshot.json"
+ADVISORY_PATH = REPO_ROOT / "tests" / "data" / "example_fidelity_advisories.json"
+
+# Dispositions a pinned advisory row may carry (#737 item 1).
+#   intended    -- the example deliberately shows or tolerates the
+#                  condition; the reason cites the example's own
+#                  docstring/comment, or the physics.
+#   defect-open -- the example should not emit it and the fix is bigger
+#                  than the PR that classified it; an issue number is
+#                  REQUIRED so the row cannot sit in limbo.
+# There is deliberately no plain "defect": a defect small enough to fix
+# is fixed, and its row then leaves the snapshot instead of leaving an
+# entry here.
+ADVISORY_DISPOSITIONS = frozenset({"intended", "defect-open"})
 
 # Every Simulation method that actually time-steps or otherwise solves. A
 # script whose builder-candidate function calls one of these in its OWN body
@@ -243,7 +261,7 @@ def functions_building_simulation(relpath: str) -> dict[str, bool]:
 # --------------------------------------------------------------------------
 # Module loading -- exec the script's top level (imports, defs, constants),
 # never main(). Safe for every "audited" and "builder_fused_with_solve"
-# entry: all 23 audited scripts carry a main guard AND no module-scope solve
+# entry: every audited script carries a main guard AND no module-scope solve
 # call, both asserted per script by the "audited" branch of
 # test_not_auditable_classifications_are_machine_checked, so nothing solves
 # merely by loading them. Pattern matches tests/contracts/test_crossval_example_imports.py.
@@ -345,7 +363,9 @@ def _v_from(label: str, fn: Callable[[ModuleType], dict]) -> Variant:
 
 
 CLASSIFICATION: dict[str, Entry] = {
-    # ---- no_simulation (20): zero real Simulation() calls, AST-verified --
+    # ---- no_simulation: zero real Simulation() calls, AST-verified ------
+    # (bucket sizes are not written here: they rot. Count them with a
+    #  Counter over CLASSIFICATION, the way the two docstrings above say.)
     "validation/crossval/16_pec_sphere_mie_ka_sweep.py": Entry(
         "no_simulation",
         "drives the functional rfx.rcs.compute_rcs entry point directly on "
@@ -368,11 +388,20 @@ CLASSIFICATION: dict[str, Entry] = {
         "cv18/cv19's shared realized-geometry reader (#931 crossval-D): takes "
         "a built Simulation and reads realized_pec_edge_masks / "
         "realized_wall_planes -- constructs no Simulation"),
+    "validation/crossval/_exit_evidence.py": Entry(
+        "no_simulation",
+        "shared exit-code evidence helper (#946): persists a record and "
+        "amends its exit code if the process ends with a different status -- "
+        "json/atexit only, imports no rfx and constructs no Simulation"),
     "validation/crossval/_patch_feed_contract.py": Entry(
         "no_simulation",
         "cv05/cv15's explicit galvanic-feed contract (#929): reads the "
         "registered source span and realized conductor planes of a built "
         "Simulation; constructs no Simulation and performs no solve"),
+    "validation/crossval/_patch_external_geometry.py": Entry(
+        "no_simulation",
+        "cv05 external board/mesh/reference helpers (#959): consume realized "
+        "records and a supplied openEMS object; construct no rfx Simulation"),
     "validation/crossval/comparators/realized_conductors.py": Entry(
         "no_simulation",
         "crossval-side build-time realized-conductor gate (#931): takes a "
@@ -414,10 +443,26 @@ CLASSIFICATION: dict[str, Entry] = {
         "pure-numpy exact-lattice witness gate for the slab family (cv04 / cv22 "
         "/ cv23): the 1-D Yee-lattice prediction, the derived W_witness error "
         "budget and the analytic falsifiers -- no rfx Simulation"),
+    "validation/crossval/comparators/slab_arm_windows.py": Entry(
+        "no_simulation",
+        "pure-numpy per-arm continuum window for the slab family's E2 gates "
+        "(#928): the arm's own lattice-continuum difference plus that record's "
+        "lattice-witness budget -- no rfx Simulation"),
     "validation/crossval/comparators/slab_rig.py": Entry(
         "no_simulation",
         "shared quasi-1-D TFSF slab rig helpers (record-length derivation, "
         "tail witness, envelope fit) factored out of cv22 -- no Simulation()"),
+    "validation/crossval/26_oblique_slab_fresnel.py": Entry(
+        "no_simulation",
+        "cv26 oblique-slab case: drives cv04's low-level rig (Grid, "
+        "init_tfsf_2d, update_e/update_h with the Bloch phase, CPML) "
+        "directly under a main guard -- no Simulation() call"),
+    "validation/crossval/comparators/oblique_fresnel.py": Entry(
+        "no_simulation",
+        "pure-numpy oblique Fresnel oracle, Meep k_point mapping, exact "
+        "2-D Yee-lattice / CPML model, windows and falsifiers for cv26 -- "
+        "no rfx Simulation (it imports tfsf_2d's auxiliary-grid constants, "
+        "#888, rather than restating them)"),
     "validation/crossval/comparators/slab_family.py": Entry(
         "no_simulation",
         "the slab family's leaf declaration (#928): the cv04 rig constants, "
@@ -446,6 +491,11 @@ CLASSIFICATION: dict[str, Entry] = {
         "backfills the auxiliary-echo record invariant (#888) into the "
         "committed slab-family lattice_witness.json documents -- pure geometry "
         "and JSON editing, no solver, no rfx import at all"),
+    "validation/crossval/comparators/emit_cv26_lattice_witness_replay.py": Entry(
+        "no_simulation",
+        "recomputes cv26's derived lattice-witness window from the committed "
+        "per-arm records with the standard's own budget primitives -- arithmetic "
+        "on artifacts already on disk, no solver, no FDTD, no rfx import"),
     "validation/crossval/comparators/emit_cv04_fringe_gate_evidence.py": Entry(
         "no_simulation",
         "emits cv04's fringe-gate evidence JSON from the committed R(f) "
@@ -631,7 +681,7 @@ CLASSIFICATION: dict[str, Entry] = {
         "`a1_production_column()` builds one only to read its rasterized "
         "eps column) -- no separable build-only path"),
 
-    # ---- module_level_solve (6): solves at import time, no main guard ----
+    # ---- module_level_solve: solves at import time, no main guard -------
     "validation/crossval/01_waveguide_bend.py": Entry(
         "module_level_solve",
         "builds and calls .run(...) at module scope with no "
@@ -648,9 +698,6 @@ CLASSIFICATION: dict[str, Entry] = {
     "validation/crossval/05_patch_antenna.py": Entry(
         "module_level_solve",
         "builds and calls .run(...) at module scope with no main guard"),
-    "examples/tutorials/nonuniform_patch_demo.py": Entry(
-        "module_level_solve",
-        "builds and calls .run(...) at module scope with no main guard"),
     # VENDORED UPSTREAM, NOT OURS. Meep's own python/examples/bend-flux.py,
     # byte-identical to blob f56ab649 (see the sibling PROVENANCE.md); cv01's
     # reproduce-gate runs it unmodified so the comparator is checked against
@@ -665,18 +712,23 @@ CLASSIFICATION: dict[str, Entry] = {
         "vendored upstream Meep tutorial, unmodified: builds and calls "
         ".run(...) at module scope with no main guard. Do not edit."),
 
-    # ---- builder_fused_with_solve (10): build+solve share one function ---
-    "examples/quickstart/hello_world.py": Entry(
-        "builder_fused_with_solve",
-        "`main()` builds and calls .run(...) in the same function -- no "
-        "separable build-only path"),
-    "examples/tutorials/boundary_spec_demo.py": Entry(
-        "builder_fused_with_solve",
-        "`_run_and_report()` builds and calls .run(...) in the same "
-        "function for every boundary spec under test"),
+    # ---- builder_fused_with_solve: build+solve share one function -------
     "examples/tutorials/cad_mesh_import_demo.py": Entry(
         "builder_fused_with_solve",
-        "`main()` builds and calls .run(...) in the same function"),
+        "`main()` builds and calls .run(...) in the same function. NOT given "
+        "a build-only entry point with the rest of #737 item 2, on purpose: "
+        "its Simulation cannot be built without `trimesh` (the optional "
+        "[cad] extra), which one of the two lanes that collect this gate does "
+        "not install: pr-tests.yml's fast suite does install `.[dev,cad]` "
+        "(pr-tests.yml line 123, for the MeshShape import tests of #358), but "
+        "validation.yml's weekly `slow-tests` job installs `.[dev]` only "
+        "(line 92) and its `-m 'not gpu and not highmem'` selection collects "
+        "these contract files. A builder would raise "
+        "ModuleNotFoundError at BUILD time there, and OPTIONAL_DEPENDENCIES only "
+        "converts an IMPORT-time miss (inside load_module) into a visible "
+        "skip, so this script would red that lane rather than skip; the "
+        "snapshot row could not be captured on a machine without trimesh "
+        "either. Revisit if the weekly lane ever installs the cad extra"),
     "validation/crossval/07_sheen_lpf.py": Entry(
         "audited",
         "`build_rfx_sim(dx)` returns Simulation with no solve call (split out "
@@ -707,10 +759,6 @@ CLASSIFICATION: dict[str, Entry] = {
         "builder_fused_with_solve",
         "`run_point()` builds and calls sim.compute_waveguide_s_matrix(...) "
         "in the same function"),
-    "validation/research/nu_cavity_gates/nu_cavity_gate_scan.py": Entry(
-        "builder_fused_with_solve",
-        "`_tm110_error()`/`_tm111_error()` each build and call .run(...) in "
-        "the same function"),
     "validation/research/nu_cost/g4/cpml_baseline.py": Entry(
         "no_simulation",
         "G4 frozen low-level CPML reference; defines operators and state, "
@@ -729,9 +777,6 @@ CLASSIFICATION: dict[str, Entry] = {
         "`run_fixture()` builds the bench cube and calls .run(...) in the "
         "same function on purpose -- the arm's monkeypatch must be in place "
         "when the Simulation compiles"),
-    "validation/research/subgrid/13_subgrid_material_validation.py": Entry(
-        "builder_fused_with_solve",
-        "`run_example()` builds and calls .run(...) in the same function"),
 
     "validation/research/cpml_pole_pad/localize_636.py": Entry(
         "no_simulation",
@@ -756,7 +801,67 @@ CLASSIFICATION: dict[str, Entry] = {
         "builder_fused_with_solve",
         "issue #636 CFS-alpha factorial: `vacuum_floor()` (and `run_cell()` "
         "via `build_sim`) construct and call .run(...) for the same cell"),
-    # ---- audited (23): builder is separable from solve ----
+    # ---- audited: builder is separable from solve ----
+    # #737 item 2 (2026-09-16): build-only entry points on the cv07/cv15
+    # pattern for the scripts the reopen comment listed as unreachable. Each
+    # builder is the one the script's own main path calls, so what the gate
+    # pins is the model that runs, not a copy of it. cad_mesh_import_demo is
+    # the one exception and stays out of scope with its reason, above.
+    "examples/quickstart/hello_world.py": Entry(
+        "audited",
+        "`build_simulation()` returns Simulation with no solve call (split "
+        "out of main() for #737 item 2); main() consumes it and runs 120 "
+        "steps. Still ALSO run end-to-end by tests/unit/api/test_diagnostics"
+        ".py via runpy, so this example is covered twice",
+        (Builder("build_simulation", None, (_v("default"),)),)),
+    "examples/tutorials/boundary_spec_demo.py": Entry(
+        "audited",
+        "`build_simulation(spec)` returns Simulation with no solve call "
+        "(split out of _run_and_report() for #737 item 2); the four boundary "
+        "patterns the tutorial walks are declared once in the script's own "
+        "PATTERNS tuple and audited from THERE, so a spec change moves the "
+        "snapshot rather than leaving a stale copy in this table",
+        (Builder("build_simulation", None, tuple(
+            _v_from(label, lambda m, label=label: dict(
+                spec=dict(m.PATTERNS)[label]))
+            for label in ("open box", "ground plane", "closed cavity",
+                          "periodic cell"))),)),
+    "examples/tutorials/nonuniform_patch_demo.py": Entry(
+        "audited",
+        "`build_simulation(dz_profile=None)` returns Simulation with no solve "
+        "call (#737 item 2 restructured this script's module-scope body into "
+        "main(), so importing it no longer solves -- it was module_level_solve "
+        "before). Called with no argument it builds the same smooth_grading "
+        "profile main() passes it, which is the point of this tutorial: every "
+        "z is DERIVED from the built mesh (#325), so the audited geometry is "
+        "the realized one",
+        (Builder("build_simulation", None, (_v("default"),)),)),
+    "validation/research/nu_cavity_gates/nu_cavity_gate_scan.py": Entry(
+        "audited",
+        "`build_tm110_sim(...)`/`build_tm111_sim(...)` return (Simulation, "
+        "analytic f) with no solve call (split out of _tm110_error/"
+        "_tm111_error for #737 item 2); the error functions consume them and "
+        "run. Audited at each lane's COMMITTED configuration, which the "
+        "script itself now names once (committed_xy_config/committed_z_config) "
+        "and main() scans from, so the audited cavity is the one the gate "
+        "envelopes are derived from",
+        (Builder("build_tm110_sim", 0, (
+            _v_from("xy_committed", lambda m: m.committed_xy_config()),)),
+         Builder("build_tm111_sim", 0, (
+            _v_from("z_committed", lambda m: m.committed_z_config()),)))),
+    "validation/research/subgrid/13_subgrid_material_validation.py": Entry(
+        "audited",
+        "the three arms are separate builders with no solve call "
+        "(build_vacuum_subgrid / build_dielectric_subgrid / "
+        "build_uniform_reference, split out of run_example() for #737 item 2); "
+        "run_example() consumes them, calls validate_subgrid() on the first "
+        "two and solves the third. Auditing all three is the point here: the "
+        "guarded and the REJECTED subgrid arms declare geometry too, and this "
+        "gate pins what each declares without running the production "
+        "validator's verdict",
+        (Builder("build_vacuum_subgrid", None, (_v("vacuum_guarded"),)),
+         Builder("build_dielectric_subgrid", None, (_v("dielectric_centered"),)),
+         Builder("build_uniform_reference", 0, (_v("uniform_reference"),)))),
     "validation/research/issue683_sampling_order_decision.py": Entry(
         "audited",
         "issue #683 sampling-order decision harness: `build(nu, r_load, "
@@ -1122,6 +1227,40 @@ def digest_fidelity(report: list[dict]) -> dict:
             axes=axes,
         )
     return out
+
+
+def load_advisory_classification() -> list[dict]:
+    """The committed per-row disposition table (``ADVISORY_PATH``).
+
+    Separate file rather than a section inside the snapshot: the snapshot is
+    MACHINE-regenerated by ``scripts/capture_example_fidelity_snapshot.py``,
+    which rewrites the whole file, so a hand-written classification living
+    inside it would be destroyed by every re-capture. Keeping it beside the
+    snapshot means a re-capture changes what is pinned and the contract then
+    reports which rows lost (or gained) an explanation.
+    """
+    import json
+    if not ADVISORY_PATH.exists():
+        raise FileNotFoundError(
+            f"{ADVISORY_PATH} is missing -- every pinned preflight row needs "
+            "a written disposition (#737 item 1)")
+    return json.loads(ADVISORY_PATH.read_text())["entries"]
+
+
+def snapshot_advisory_counts(snapshot: dict) -> dict[tuple[str, str], int]:
+    """``{(variant, code): number of pinned rows}`` over a loaded snapshot.
+
+    The grouping key of the classification table: rows that share a code on
+    one variant are the same condition on different ports, axes or entities
+    (four ``port_aperture_snap`` rows = two ports x two transverse axes), and
+    each row's full text is pinned by the snapshot itself, so the count is
+    what the classification has to account for.
+    """
+    counts: dict[tuple[str, str], int] = {}
+    for key, variant in snapshot.items():
+        for row in variant.get("preflight", []):
+            counts[(key, row["code"])] = counts.get((key, row["code"]), 0) + 1
+    return counts
 
 
 def digest_preflight(report) -> list[dict]:

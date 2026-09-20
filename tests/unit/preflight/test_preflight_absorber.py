@@ -48,6 +48,17 @@ Sections, each formerly its own file:
    and non-absorbing boundaries stay quiet. Module constants of this
    section carry a ``DP_`` prefix (``DP_DX``, ``_dp_sim``) to coexist with
    section 2's ``DX`` / ``_sim``; values are unchanged.
+4. **Dielectric ending AT an absorber seam in a shape with no continuation
+   (issue #1043, stage B)** — written here rather than absorbed from
+   anywhere, because it is section 2's complement and shares its fixtures.
+   Section 2 reports geometry standing INSIDE the absorber; this reports
+   geometry ABSENT from it under the feature that claims to put it there.
+   The advisory ``dielectric_at_absorber_seam`` fires for a dielectric that
+   reaches a padded face in a shape the smoothed lane cannot continue — a
+   sphere's tangency, a cylinder reached across its axis, an imported mesh —
+   and stays quiet for a Box, an axis-aligned Cylinder, a PEC volume
+   (continued by neither lane), a dispersive material (section 3's subject)
+   and a non-absorbing boundary. Reuses section 3's ``DP_`` fixtures.
 
 Every assertion, tolerance, fixture value and parametrisation of the
 absorbed files is kept verbatim.
@@ -61,7 +72,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from rfx import Simulation, Box
+from rfx import Simulation, Box, Cylinder, Sphere
 from rfx.api._preflight import (
     _PreflightMixin,
     _absorber_boundary_for_axis,
@@ -316,6 +327,79 @@ def test_ntff_absorber_overlap_fires_when_corner_crosses_domain_edge():
 
 
 # --------------------------------------------------------------------- #
+# 4b. Issue #1030 — the deleted NTFF minimum-steps hint.
+#
+# ``_validate_cfg_ntff_min_steps`` sat next to the overlap check above and
+# emitted NOTHING: it computed ``int(10 / min(ntff_freqs) / (dx / (C0 *
+# 1.732) * 0.99))`` and wrote it to ``self._ntff_min_steps_hint``. A census
+# over rfx/, tests/, validation/, scripts/ and examples/ found no consumer
+# for that attribute -- its only readers were
+# ``rfx/interop/_design.py``'s ``EXCLUDED_SIMULATION_ATTRS``, which named it
+# to keep it OUT of the design document, and the test asserting that
+# exclusion. Producer, registry row and exclusion row were deleted together.
+#
+# This test pins the DECISION rather than the absence of a warning, because
+# an absence-of-warning test would have passed before the deletion too: the
+# body never warned. What it asserts is that preflight leaves no unread
+# state behind on the Simulation, on the fixture that made the old body take
+# its innermost branch (an NTFF box WITH explicit freqs -- the only input
+# shape that reached the write).
+#
+# Red-before, measured on the pre-deletion tree (rfx/ reverted, tests kept):
+# both tests below fail -- the first at its leak assert, which listed
+# ``['_ntff_min_steps_hint', '_pf_campaign_ctx']``, and the second at
+# ``hasattr(Simulation, '_validate_cfg_ntff_min_steps')``. That run is also
+# where the allowlist below came from: ``_pf_campaign_ctx`` was measured, not
+# guessed, and then traced to its reader.
+# --------------------------------------------------------------------- #
+
+#: State ``preflight()`` may leave on the ``Simulation``, each with the
+#: reader that makes it state rather than litter. Measured, not assumed:
+#: ``_pf_campaign_ctx`` is a keyed memo written AND read by
+#: ``rfx/preflight/realization.py`` (``getattr(self, "_pf_campaign_ctx",
+#: None)`` at its line 686, assigned at 690), so repeated checks in one
+#: preflight share one realization instead of rebuilding it per check.
+_PREFLIGHT_WRITES_WITH_A_READER = {
+    "_pf_campaign_ctx": "rfx/preflight/realization.py (keyed memo, same file)",
+}
+
+
+def test_preflight_leaves_no_unread_state_on_the_simulation():
+    """#1030: the write-only NTFF step hint is gone, producer and all."""
+    sim = _ntff_sim(0.01)
+    before = set(vars(sim))
+    sim.preflight(strict=False)
+    leaked = sorted(set(vars(sim)) - before - set(_PREFLIGHT_WRITES_WITH_A_READER))
+    assert leaked == [], (
+        f"preflight() left unread attribute(s) on Simulation: {leaked}. "
+        "#1030 deleted _validate_cfg_ntff_min_steps because the one "
+        "attribute it wrote (_ntff_min_steps_hint) had no consumer; a check "
+        "that stores state nobody reads is a trap. Either give the new "
+        "attribute a reader and add it to "
+        "_PREFLIGHT_WRITES_WITH_A_READER above, naming that reader, or do "
+        "not write it."
+    )
+    assert not hasattr(sim, "_ntff_min_steps_hint")
+
+
+def test_ntff_min_steps_check_is_gone_from_the_api_and_the_registry():
+    """#1030: no method, no registry row, no interop exclusion row."""
+    from rfx.interop._design import EXCLUDED_SIMULATION_ATTRS
+    from rfx.preflight._registry import CORE_CONFIG_CHECKS
+    import rfx.preflight.ntff as _ntff_mod
+
+    assert not hasattr(Simulation, "_validate_cfg_ntff_min_steps")
+    assert not hasattr(_ntff_mod, "_validate_cfg_ntff_min_steps")
+    assert "_validate_cfg_ntff_min_steps" not in {
+        c.name for c in CORE_CONFIG_CHECKS
+    }
+    assert "_ntff_min_steps_hint" not in EXCLUDED_SIMULATION_ATTRS, (
+        "the interop exclusion row outlived the attribute it excluded; "
+        "EXCLUDED_SIMULATION_ATTRS must not name state nothing can write"
+    )
+
+
+# --------------------------------------------------------------------- #
 # 5. Consumer 4 — _validate_cfg_waveguide_reference_plane.
 #
 # This is the exact check issue #500 repro-1 documents. Its absorber-
@@ -384,6 +468,152 @@ def test_waveguide_reference_plane_silent_at_mixin_level_near_edge():
         warnings.simplefilter("always")
         _PreflightMixin._validate_cfg_waveguide_reference_plane(fake, warnings, ct_lo, ct_hi)
     assert not rec, f"ports comfortably inside the domain must not warn; got {rec}"
+
+
+# --------------------------------------------------------------------- #
+# 5b. The SAME check's third emission site — the device-overlap advisory
+#     (issue #1024).
+#
+# Sites 1 and 2 above are the shadowed raise and the algebraically dead
+# absorber branch. Site 3 is the one that was supposed to speak on a real
+# configuration and could not: it read ``g.bounds`` off the list element,
+# but ``Simulation._geometry`` holds ``_GeometryEntry(shape,
+# material_name)`` wrappers with no ``bounds`` attribute, and the
+# ``AttributeError`` was swallowed by a bare ``except Exception:
+# continue``. Measured on the pre-fix tree with the straddling builder
+# below: the report carried ``['mesh_resolution', 'mesh_resolution',
+# 'mesh_resolution', 'lossless_q']`` and no ``waveguide_reference_plane``.
+#
+# Three tests: the positive control (the slab straddles the plane), the
+# non-firing control (the same slab moved clear of it -- the property the
+# fix must not trade away), and the anti-regression for the bare except
+# itself (a wrapper the check cannot read must raise, not read as "no
+# bounds"). The text witness is
+# tests/locks/test_preflight_split_snapshot.py::waveguide_refplane_in_slab,
+# which imports the straddling builder from here.
+# --------------------------------------------------------------------- #
+
+_WG_RP_DX = 0.00254            # WR-90 broad wall / 9
+_WG_RP_A = 0.02286             # WR-90 broad wall (y)
+_WG_RP_B = 0.01016             # WR-90 narrow wall (z)
+_WG_RP_DOMAIN_X = 48 * _WG_RP_DX          # 0.12192 m
+_WG_RP_PORT_L = 5 * _WG_RP_DX             # 0.01270 m, +x launch
+_WG_RP_PORT_R = 43 * _WG_RP_DX            # 0.10922 m, -x launch
+_WG_RP_REF_L = 8 * _WG_RP_DX              # 0.02032 m  <- the plane at issue
+_WG_RP_REF_R = 40 * _WG_RP_DX             # 0.10160 m
+# The slab is 4 coarse cells thick either way; only its x placement moves.
+_WG_RP_SLAB_STRADDLING = (6 * _WG_RP_DX, 10 * _WG_RP_DX)   # 15.24..25.40 mm
+_WG_RP_SLAB_CLEAR = (22 * _WG_RP_DX, 26 * _WG_RP_DX)       # 55.88..66.04 mm
+
+
+def _waveguide_refplane_sim(slab_x):
+    """Two-port WR-90 guide with an eps_r=4 slab at ``slab_x`` on x.
+
+    Every x coordinate is an integer multiple of ``dx``, so the slab faces
+    and both reference planes land on nodes at this rung and the printed
+    bounds are the drawn bounds. The band (8.4-11.6 GHz) sits 1.28x above
+    the TE10 cutoff of this guide, which is the regime
+    ``waveguide_setup_thru`` is in and NOT the near-cutoff regime that made
+    ``waveguide_layout_near_cutoff`` x64-sensitive: nothing in the rendered
+    report divides by ``sqrt(1 - (f_c/f)^2)`` near zero.
+    """
+    sim = Simulation(freq_max=11.6e9,
+                     domain=(_WG_RP_DOMAIN_X, _WG_RP_A, _WG_RP_B),
+                     dx=_WG_RP_DX, boundary="cpml", cpml_layers=10)
+    sim.add_material("diel", eps_r=4.0, sigma=0.0)
+    sim.add(Box((slab_x[0], 0.0, 0.0), (slab_x[1], _WG_RP_A, _WG_RP_B)),
+            material="diel")
+    common = dict(mode=(1, 0), mode_type="TE",
+                  freqs=np.linspace(8.4e9, 11.6e9, 5), f0=10e9,
+                  bandwidth=0.5, ref_offset=3, probe_offset=10)
+    sim.add_waveguide_port(_WG_RP_PORT_L, direction="+x", name="left",
+                           reference_plane=_WG_RP_REF_L, **common)
+    sim.add_waveguide_port(_WG_RP_PORT_R, direction="-x", name="right",
+                           reference_plane=_WG_RP_REF_R, **common)
+    return sim
+
+
+def _waveguide_refplane_in_slab_sim():
+    """The straddling case: slab x in [15.24, 25.40] mm contains 20.32 mm."""
+    return _waveguide_refplane_sim(_WG_RP_SLAB_STRADDLING)
+
+
+def _waveguide_refplane_clear_of_slab_sim():
+    """The control: the same slab moved to [55.88, 66.04] mm."""
+    return _waveguide_refplane_sim(_WG_RP_SLAB_CLEAR)
+
+
+def _refplane_findings(sim):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        report = sim.preflight(strict=False)
+    return [i for i in report if i.code == "waveguide_reference_plane"]
+
+
+def test_waveguide_reference_plane_device_overlap_fires_on_straddling_slab():
+    """Issue #1024 positive control: one advisory, for the left port only.
+
+    The right port's plane (101.60 mm) is nowhere near the slab, so a
+    second finding would mean the loop had stopped keying on the port.
+    """
+    found = _refplane_findings(_waveguide_refplane_in_slab_sim())
+    assert len(found) == 1, f"expected exactly one finding, got {found!r}"
+    msg = str(found[0])
+    assert "reference plane at 20.3 mm intersects geometry 'diel'" in msg, msg
+    assert "bounds 15.2–25.4 mm on x" in msg, msg
+    assert found[0].severity == "warning", found[0].severity
+    assert found[0].source == "_validate_cfg_waveguide_reference_plane"
+
+
+def test_waveguide_reference_plane_device_overlap_silent_when_slab_is_clear():
+    """Non-firing control: the same slab 40.6 mm further down the guide."""
+    found = _refplane_findings(_waveguide_refplane_clear_of_slab_sim())
+    assert not found, f"a slab clear of both planes must not warn; got {found!r}"
+
+
+def test_waveguide_reference_plane_device_overlap_does_not_swallow_a_bad_entry():
+    """The bare ``except Exception`` that hid issue #1024 must not return.
+
+    An entry whose ``shape`` cannot be read is a defect in the caller, not
+    a geometry entry with no bounds: it has to raise here rather than be
+    skipped, which is exactly what did NOT happen for the life of the
+    check.
+    """
+    fake = SimpleNamespace(
+        _domain=(_WG_RP_DOMAIN_X, _WG_RP_A, _WG_RP_B),
+        _geometry=[SimpleNamespace(material_name="diel")],   # no .shape
+        _waveguide_ports=[_fake_wg_port("+x", _WG_RP_PORT_L,
+                                        reference_plane=_WG_RP_REF_L)],
+    )
+    with pytest.raises(AttributeError, match="shape"):
+        _PreflightMixin._validate_cfg_waveguide_reference_plane(
+            fake, warnings, [10 * _WG_RP_DX, 0.0, 0.0],
+            [10 * _WG_RP_DX, 0.0, 0.0])
+
+
+def test_waveguide_reference_plane_device_overlap_skips_a_shape_with_no_bbox():
+    """A shape that reports no bounding box is skipped, not fatal.
+
+    ``rfx.geometry.csg.Shape.bounding_box`` raises ``NotImplementedError``
+    by default, and that is the one shape-API outcome this site is allowed
+    to swallow.
+    """
+    class _NoBBox:
+        def bounding_box(self):
+            raise NotImplementedError("no box")
+
+    fake = SimpleNamespace(
+        _domain=(_WG_RP_DOMAIN_X, _WG_RP_A, _WG_RP_B),
+        _geometry=[SimpleNamespace(shape=_NoBBox(), material_name="diel")],
+        _waveguide_ports=[_fake_wg_port("+x", _WG_RP_PORT_L,
+                                        reference_plane=_WG_RP_REF_L)],
+    )
+    with warnings.catch_warnings(record=True) as rec:
+        warnings.simplefilter("always")
+        _PreflightMixin._validate_cfg_waveguide_reference_plane(
+            fake, warnings, [10 * _WG_RP_DX, 0.0, 0.0],
+            [10 * _WG_RP_DX, 0.0, 0.0])
+    assert not rec, f"a bbox-less shape must be skipped silently; got {rec}"
 
 
 # --------------------------------------------------------------------- #
@@ -872,3 +1102,330 @@ def test_two_touching_entries_aggregate_into_one_finding():
     found = _findings(sim)
     assert len(found) == 1, found
     assert "#0" in found[0].loc and "#1" in found[0].loc
+
+
+# ---------------------------------------------------------------------------
+# 4. Dielectric ending AT an absorber seam in an un-continuable shape (#1043)
+#
+# The complement of section 2. That one reports geometry standing INSIDE the
+# absorber; this one reports geometry ABSENT from it under the feature that
+# says it puts it there. The CPML/UPML pad material extension continues a
+# boundary-touching structure outward -- the staircase lane by replicating the
+# material arrays, the smoothed lane by continuing the SHAPE. A shape with no
+# continuation across the reached face (a sphere's tangency, a cylinder reached
+# across its axis, an imported mesh) gets neither on the smoothed lane and is
+# solved with vacuum in its own pad: the end facet #831 measured as |B/A| 0.53
+# on a straight guide, worsening with absorber depth.
+#
+# Silent where nothing is lost or another check already speaks: a Box and an
+# axis-aligned Cylinder ARE continued, a PEC volume is continued by neither
+# lane, a dispersive material is section 3's subject, and a shape clear of the
+# faces has nothing to continue.
+# ---------------------------------------------------------------------------
+
+_SEAM_CODE = "dielectric_at_absorber_seam"
+
+
+def _seam_findings(sim):
+    return sim.preflight().by_code(_SEAM_CODE)
+
+
+def _seam_sphere():
+    # Tangent to x-lo at the y/z centre of the domain.
+    r = 4 * DP_DX
+    return Sphere((r, NB * DP_DX / 2, NZ * DP_DX / 2), r)
+
+
+def test_sphere_tangent_to_an_absorber_face_is_reported():
+    sim = _dp_sim()
+    sim.add_material("d", eps_r=4.0)
+    sim.add(_seam_sphere(), material="d")
+    found = _seam_findings(sim)
+    assert len(found) == 1, found
+    msg = str(found[0])
+    assert "Sphere" in msg and "x-lo" in msg, msg
+    # Declared vs solved, in input units -- the advisory says what the pad will
+    # hold, not what that costs the answer.
+    assert "eps_r = 1.0" in msg and "4" in msg, msg
+
+
+def test_box_at_the_same_seam_stays_quiet_because_it_is_continued():
+    sim = _dp_sim()
+    sim.add_material("d", eps_r=4.0)
+    sim.add(_touching_box(), material="d")
+    assert _seam_findings(sim) == []
+
+
+def test_axis_aligned_cylinder_is_continued_and_across_its_axis_is_not():
+    # Along z, reaching z-lo and z-hi: continued along its own axis, quiet.
+    along = Simulation(freq_max=2.5 * F0,
+                       domain=(NA * DP_DX, NB * DP_DX, NZ * DP_DX),
+                       dx=DP_DX, boundary="cpml", cpml_layers=8)
+    along.add_material("d", eps_r=4.0)
+    along.add(Cylinder((NA * DP_DX / 2, NB * DP_DX / 2, NZ * DP_DX / 2),
+                       3 * DP_DX, NZ * DP_DX, axis="z"), material="d")
+    assert _seam_findings(along) == []
+
+    # The same cylinder reaching an x face, which is ACROSS its axis: no
+    # continuation exists for that face, so it is reported.
+    across = Simulation(freq_max=2.5 * F0,
+                        domain=(NA * DP_DX, NB * DP_DX, NZ * DP_DX),
+                        dx=DP_DX, boundary="cpml", cpml_layers=8)
+    across.add_material("d", eps_r=4.0)
+    across.add(Cylinder((3 * DP_DX, NB * DP_DX / 2, NZ * DP_DX / 2),
+                        3 * DP_DX, 4 * DP_DX, axis="z"), material="d")
+    found = _seam_findings(across)
+    assert len(found) == 1, found
+    assert "Cylinder" in str(found[0]) and "x-lo" in str(found[0])
+
+
+def test_inset_sphere_stays_quiet():
+    sim = _dp_sim()
+    sim.add_material("d", eps_r=4.0)
+    sim.add(Sphere((NA * DP_DX / 2, NB * DP_DX / 2, NZ * DP_DX / 2),
+                   3 * DP_DX), material="d")
+    assert _seam_findings(sim) == []
+
+
+def test_pec_sphere_at_the_seam_stays_quiet():
+    """PEC is continued by NEITHER lane, so there is no gap to report."""
+    sim = _dp_sim()
+    sim.add_material("metal", sigma=1e10)
+    sim.add(_seam_sphere(), material="metal")
+    assert _seam_findings(sim) == []
+
+
+def test_non_absorbing_boundary_stays_quiet():
+    sim = _dp_sim(boundary="pec")
+    sim.add_material("d", eps_r=4.0)
+    sim.add(_seam_sphere(), material="d")
+    assert _seam_findings(sim) == []
+
+
+def test_dispersive_sphere_is_section_3s_subject_not_this_one():
+    sim = _dp_sim()
+    sim.add_material("slab", eps_r=4.0,
+                     lorentz_poles=[LorentzPole(omega_0=W0, delta=W0 / 120.0,
+                                                kappa=3.0 * W0 ** 2)])
+    sim.add(_seam_sphere(), material="slab")
+    assert _seam_findings(sim) == []
+    assert _findings(sim), "section 3's advisory should still speak here"
+
+
+def test_sphere_CROSSING_the_absorber_face_is_reported_too():
+    """Round-1 review found this one: crossing is not the same as touching.
+
+    The first draft re-derived "reaches a padded face" from ``self._domain``
+    and asked whether the bbox face landed inside ``[0, d]``. A sphere drawn
+    PAST the boundary fails that window and was silent, while the continuation
+    itself calls it unextendable — its bounding box reaches the face. Two
+    hand-written copies of one predicate is the #627 defect; the check now
+    asks the continuation, so this case comes for free rather than needing its
+    own clause.
+
+    ``geometry_in_absorber`` (#61) also speaks here. The two are not
+    redundant: that one says the structure stands in the absorber, this one
+    says the pad it stands in is still solved as vacuum.
+    """
+    sim = _dp_sim()
+    sim.add_material("d", eps_r=4.0)
+    r = 4 * DP_DX
+    sim.add(Sphere((r - 2 * DP_DX, NB * DP_DX / 2, NZ * DP_DX / 2), r),
+            material="d")
+    found = _seam_findings(sim)
+    assert len(found) == 1, found
+    assert "Sphere" in str(found[0]) and "x-lo" in str(found[0])
+
+
+def test_the_advisory_and_the_continuation_cannot_disagree():
+    """The check consumes the builder's own list, so equality is structural.
+
+    Asserted rather than assumed, because "one implementation" is a claim
+    about the code that a refactor can quietly undo.
+    """
+    from rfx.geometry.smoothing import smoothed_shape_pairs
+
+    sim = _dp_sim()
+    sim.add_material("d", eps_r=4.0)
+    sim.add(_seam_sphere(), material="d")
+    grid = sim._build_grid()
+    _, unextendable = smoothed_shape_pairs(sim, grid)
+    found = _seam_findings(sim)
+    assert len(found) == len(unextendable) == 1
+    u = unextendable[0]
+    assert "xyz"[u.axis] + "-" + u.side in str(found[0])
+    assert f"{u.eps_r:g}" in str(found[0])
+
+
+def test_a_shape_continued_on_one_axis_is_still_NAMED_on_another():
+    """Round-1 verification found this one, and it is a reporting bug.
+
+    ``extend_shapes_into_cpml_pad`` rewrites the shape as it walks the axes.
+    An axis-x cylinder spanning the full x extent IS continued along x (its
+    own axis), so by the time its radius is found reaching y-lo and z-lo the
+    finding carries the CONTINUED object, not the declared one. The advisory
+    recovered the entry by ``id()`` against ``sim._geometry`` and missed,
+    printing ``Material '?' (geometry entry #-1, Cylinder)`` -- the advisory
+    naming nothing, on exactly the multi-face case worth naming.
+
+    The entry index and material name are fields on the finding now, stamped
+    in the loop that knows them, so identity is never the question.
+    """
+    sim = _dp_sim()
+    sim.add_material("rod", eps_r=4.0)
+    span = NA * DP_DX
+    sim.add(Cylinder((span / 2, NB * DP_DX / 2, NZ * DP_DX / 2),
+                     NB * DP_DX / 2, span, axis="x"), material="rod")
+    found = _seam_findings(sim)
+    assert found, "the cylinder's transverse faces were not reported at all"
+    for f in found:
+        msg = str(f)
+        assert "'rod'" in msg, f"material name lost: {msg}"
+        assert "#-1" not in msg and "'?'" not in msg, (
+            f"the entry was recovered by identity and missed: {msg}")
+        assert "entry #0" in msg, msg
+
+
+# ---------------------------------------------------------------------------
+# 5. A conductor at an absorber face that has few layers -- #801.
+#
+# The advisory fires on a CONJUNCTION, and the tests below are built from the
+# arms that were actually measured on the isolated-patch rig rather than from
+# the rule as written: 6 layers with the ground flush against the face GREW,
+# while 8 layers at the same mesh and geometry SETTLED, and 6 layers with the
+# conductors pulled 2 cells clear SETTLED. So the check must speak on the first
+# and stay quiet on the other two, and the mutation test at the end is what says
+# the conjunction is load-bearing rather than decorative: drop either conjunct
+# and the silent cases start firing.
+# ---------------------------------------------------------------------------
+
+_THIN_ABS_CODE = "conductor_in_thin_absorber"
+
+
+def _thin_abs_findings(sim):
+    return sim.preflight().by_code(_THIN_ABS_CODE)
+
+
+def _conductor_at_face_sim(layers, inset_cells=0, dx=DP_DX):
+    """A PEC slab spanning the domain laterally, inset by whole cells or not.
+
+    Deliberately a slab and not the full rig: the advisory's subject is a
+    conductor's distance to an absorbing face in cells, and nothing else about
+    the patch fixture participates in the predicate.
+    """
+    sim = Simulation(freq_max=2.5 * F0,
+                     domain=(NA * dx, NB * dx, NZ * dx),
+                     dx=dx, boundary="cpml", cpml_layers=layers)
+    lo = inset_cells * dx
+    sim.add(Box((lo, lo, 4 * dx),
+                (NA * dx - lo, NB * dx - lo, 5 * dx)), material="pec")
+    return sim
+
+
+def test_conductor_flush_with_a_thin_absorber_is_reported():
+    found = _thin_abs_findings(_conductor_at_face_sim(layers=6))
+    assert found, "the measured growing configuration was not reported"
+    msg = str(found[0])
+    # It must say BOTH halves of the conjunction, in input units, and that the
+    # numbers are measured points rather than a derived bound.
+    assert "0 cell(s) of clearance" in msg, msg
+    assert "6 absorbing layer(s)" in msg, msg
+    assert "not a stability bound" in msg, msg
+    assert "mechanism is not established" in msg, msg
+    assert "#801" in msg, msg
+
+
+def test_the_same_conductor_with_a_default_absorber_is_silent():
+    # 8 layers is where the ladder settles at the same mesh and geometry.
+    assert _thin_abs_findings(_conductor_at_face_sim(layers=8)) == []
+
+
+def test_two_cells_of_clearance_is_silent_at_the_same_layer_count():
+    # The H1 arm: 6 layers, conductors pulled 2 cells clear, measured stable.
+    assert _thin_abs_findings(_conductor_at_face_sim(layers=6,
+                                                     inset_cells=2)) == []
+
+
+def test_one_cell_of_clearance_still_speaks():
+    # The clearance that was measured to work is 2 cells. One is inside the
+    # advised region and must not read as clear -- the check does not
+    # interpolate a boundary nobody measured.
+    found = _thin_abs_findings(_conductor_at_face_sim(layers=6, inset_cells=1))
+    assert found, "one cell of clearance was treated as clear"
+    assert "1 cell(s) of clearance" in str(found[0])
+
+
+def test_a_dielectric_at_the_same_face_is_not_this_check_s_subject():
+    sim = Simulation(freq_max=2.5 * F0,
+                     domain=(NA * DP_DX, NB * DP_DX, NZ * DP_DX),
+                     dx=DP_DX, boundary="cpml", cpml_layers=6)
+    sim.add_material("d", eps_r=4.0)
+    sim.add(Box((0.0, 0.0, 4 * DP_DX),
+                (NA * DP_DX, NB * DP_DX, 5 * DP_DX)), material="d")
+    assert _thin_abs_findings(sim) == []
+
+
+def test_a_pec_boundary_has_no_absorbing_face_to_be_near():
+    sim = Simulation(freq_max=2.5 * F0,
+                     domain=(NA * DP_DX, NB * DP_DX, NZ * DP_DX),
+                     dx=DP_DX, boundary="pec", cpml_layers=6)
+    sim.add(Box((0.0, 0.0, 4 * DP_DX),
+                (NA * DP_DX, NB * DP_DX, 5 * DP_DX)), material="pec")
+    assert _thin_abs_findings(sim) == []
+
+
+def test_a_non_absorbing_face_falls_out_without_a_rule():
+    # x periodic: _preflight_face_layers reports 0 there, so the x faces are
+    # not candidates even though the conductor spans to them. The y faces still
+    # absorb and still speak, which is what distinguishes "the check is
+    # per-face" from "the check switched itself off".
+    sim = Simulation(freq_max=2.5 * F0,
+                     domain=(NA * DP_DX, NB * DP_DX, NZ * DP_DX),
+                     dx=DP_DX, cpml_layers=6,
+                     boundary=BoundarySpec(x="periodic", y="cpml", z="cpml"))
+    sim.add(Box((0.0, 0.0, 4 * DP_DX),
+                (NA * DP_DX, NB * DP_DX, 5 * DP_DX)), material="pec")
+    found = _thin_abs_findings(sim)
+    assert found, "the absorbing y faces stopped speaking"
+    assert all("x-" not in f.loc for f in found), [f.loc for f in found]
+
+
+def test_the_conjunction_is_load_bearing(monkeypatch):
+    """Drop either conjunct and the measured-stable cases start firing.
+
+    This is the mutation that says the check measures the conjunction rather
+    than one of its halves with the other along for the ride. If either branch
+    below stops changing the verdict, the advisory has collapsed into a
+    single-condition warning and its calibration no longer means what the
+    docstring says.
+    """
+    from rfx.preflight import absorber as _abs
+
+    # Silent as shipped, both of them.
+    assert _thin_abs_findings(_conductor_at_face_sim(layers=8)) == []
+    assert _thin_abs_findings(_conductor_at_face_sim(layers=6,
+                                                     inset_cells=2)) == []
+
+    # Drop the LAYER conjunct (raise the floor past the default): the 8-layer
+    # case, measured stable, starts firing. monkeypatch rather than a
+    # hand-rolled try/finally so the restore survives an assert firing here.
+    with monkeypatch.context() as m:
+        m.setattr(_abs, "_THIN_ABSORBER_LAYER_FLOOR", 99)
+        assert _thin_abs_findings(_conductor_at_face_sim(layers=8)), (
+            "raising the layer floor did not change the verdict, so the layer "
+            "count is not actually part of the predicate")
+
+    # Drop the CLEARANCE conjunct (widen it): the 2-cell inset, measured
+    # stable, starts firing.
+    with monkeypatch.context() as m:
+        m.setattr(_abs, "_THIN_ABSORBER_CLEARANCE_CELLS", 99)
+        assert _thin_abs_findings(_conductor_at_face_sim(layers=6,
+                                                         inset_cells=2)), (
+            "widening the clearance did not change the verdict, so the "
+            "distance to the face is not actually part of the predicate")
+
+    # And restored -- the point of asserting this is that the two blocks above
+    # restore by construction, not by a finally the next editor could drop.
+    assert _thin_abs_findings(_conductor_at_face_sim(layers=8)) == []
+    assert _thin_abs_findings(_conductor_at_face_sim(layers=6,
+                                                     inset_cells=2)) == []

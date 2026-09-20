@@ -258,12 +258,23 @@ def rig_cells(nx_interior: int, dx_div: int = 1):
 # WHAT THIS IS. Every TF/SF injection in this repo reads its incident field
 # from an auxiliary grid that carries its own absorber, and that absorber
 # reflects. Measured on THIS rig's 1-D auxiliary grid
-# (``rfx/sources/tfsf.py``): |B/A| = 4.40e-02 in steady state, from a
-# reflector 6.88 cells inside its own 20-cell CPML
-# (docs/design_notes/20260903_cv04_envelope_decomposition.md sections 2, 4.1).
-# The 2-D Bloch path (``rfx/sources/tfsf_2d.py``) reflects the same 4-6 %
+# (``rfx/sources/tfsf.py``) AS IT SHIPPED BEFORE #888: |B/A| = 4.40e-02 in
+# steady state, from a reflector 6.88 cells inside its own 20-cell CPML
+# (docs/design_notes/20260903_cv04_envelope_decomposition.md sections 2, 4.1 --
+# that note is NOT in this repository; it is on branch
+# agent/cv04-aux-echo-measurement (fa2727c), summarised in #888 comment
+# 5529673679, which is the copy a reader can open).
+# The 2-D Bloch path (``rfx/sources/tfsf_2d.py``) reflected the same 4-6 %
 # class from 8 cells inside its 30-cell absorber
-# (docs/design_notes/20260903_cv26_oblique_defect_diagnosis.md section 3).
+# (docs/design_notes/20260903_cv26_oblique_defect_diagnosis.md section 3 -- also not
+# in this repository; branch agent/issue-888-oblique-diagnosis (831ea3c),
+# summarised in #888 comment 5525810073).
+# Both absorbers are now derived from a reflection target
+# (docs/design_notes/20260904_aux_absorber_depth_derivation.md): 9.43e-06 on
+# the 1-D path, and 2.3e-06 (0 deg) to 2.9e-05 (70 deg) in the gated-band mean
+# on the 2-D one, 1.2e-04 at its worst bin there. The arrival
+# guard below stays, because a smaller echo is still an echo and the bound
+# costs nothing.
 #
 # WHY NOTHING SEES IT. The case normalises R = |E_tot - E_inc|^2/|E_inc|^2 and
 # T = |E_tot|^2/|E_inc|^2 with E_inc read from that same auxiliary grid, so the
@@ -282,23 +293,45 @@ def rig_cells(nx_interior: int, dx_div: int = 1):
 # importing the echo into every number.
 #
 # WHAT IT DOES NOT DO. It bounds WHEN the echo arrives. It does not bound HOW
-# LARGE the echo is: a deeper auxiliary absorber with sigma re-derived from a
-# reflection target is the actual fix (#888 fix candidate 1, undecided), and
-# this guard would pass a rig whose absorber was ten times worse.
+# LARGE the echo is, and this guard would pass a rig whose absorber was ten
+# times worse. That gap is now closed from the other side:
+# tests/unit/sources/test_tfsf_aux_absorber_reflection.py measures the amplitude
+# on both auxiliary paths and gates it per angle (#888 fix candidate 1, taken).
 # ---------------------------------------------------------------------------
-AUX_N_CPML_1D = 20        # rfx/sources/tfsf.py: n_cpml_1d -- a hard-coded constant of the
-                          # auxiliary grid, NOT scaled by dx_div (cv04 note section 6.1)
-AUX_N_MARGIN_1D = 10      # rfx/sources/tfsf.py: n_margin
-AUX_SRC_OFFSET_1D = 3     # rfx/sources/tfsf.py: src_idx = n_cpml_1d + 3 for direction "+x"
+# The auxiliary layout below is OWNED by ``rfx/sources/tfsf.py``. This module is
+# a leaf (no rfx, no jax -- see the module docstring), so it carries the values
+# rather than importing them, and the copy is pinned against the owning module
+# by tests/crossval/test_aux_echo_record_invariant.py, which imports
+# ``rfx.sources.tfsf`` and recomputes the geometry from ITS constants. A copy
+# that drifts reds that test; before #888 there was no such pin, and the depth
+# below is exactly the number that changed (20 -> 200).
+AUX_N_CPML_1D = 200       # rfx/sources/tfsf.py: AUX_N_CPML_1D -- a constant of the auxiliary
+                          # grid, NOT scaled by dx_div (cv04 note section 6.1). Derived from a
+                          # reflection target, docs/design_notes/20260904_aux_absorber_depth_derivation.md
+AUX_N_MARGIN_1D = 10      # rfx/sources/tfsf.py: AUX_N_MARGIN_1D
+AUX_SRC_OFFSET_1D = 3     # rfx/sources/tfsf.py: AUX_SRC_OFFSET_1D, src_idx = n_cpml_1d + 3 for "+x"
 AUX_I0_1D = AUX_N_CPML_1D + AUX_N_MARGIN_1D   # tfsf.py: i0, the aux index mapping to 3-D x_lo
 # Where inside the absorber the reflection is generated, in cells from the
-# absorber's inner edge. MEASURED, not assumed: the two-mode fit
-# B/A = rho e^{-2 j k L} has a phase slope d(arg B/A)/dk = -1.277755 m, i.e.
-# a reflector at auxiliary index 638.88 with the hi CPML at 632..651
-# (cv04 note section 2), reproduced at 1038.88 on the nx_interior = 1000
-# geometry (section 9). The 2-D grid's counterpart is 8.0 cells inside its
-# 30-cell layer (#888 note section 3); it is passed explicitly there.
-AUX_REFLECTOR_DEPTH_CELLS = 6.88
+# absorber's inner edge.
+#
+# It used to be MEASURED: on the 20-cell absorber the two-mode fit
+# B/A = rho e^{-2 j k L} had a phase slope d(arg B/A)/dk = -1.277755 m, putting
+# the reflector at auxiliary index 638.88 with the hi CPML at 632..651 (cv04
+# note section 2), i.e. 6.88 cells inside; the 2-D grid's counterpart was 8.0
+# cells inside its 30-cell layer (#888 note section 3).
+#
+# On the DERIVED absorber it cannot be measured, and that is not a gap. The same
+# phase-slope fit returns 0.68 cells at 0 deg and NEGATIVE depths at 45 and 70
+# (2026-09-04 note section 4): at |B/A| ~ 1e-06 the residual backward wave is no
+# longer one specular echo from one place, so no single L describes it. The
+# constant therefore becomes a BOUND -- zero, the absorber's inner edge, the
+# earliest point a reflection could originate and so the earliest it could
+# arrive. The guard gets strictly more conservative, which is the safe
+# direction, and the amplitude statement it was standing in for now exists:
+# tests/unit/sources/test_tfsf_aux_absorber_reflection.py.
+AUX_REFLECTOR_DEPTH_CELLS = 0.0
+AUX_REFLECTOR_DEPTH_IS_BOUND = True
+AUX_REFLECTOR_DEPTH_MEASURED_AT_20_CELLS = 6.88
 # The invariant: a record is admissible only while it ENDS BEFORE the echo
 # ARRIVES. Equality is already a failure -- the last recorded step would be the
 # first contaminated one.
@@ -343,12 +376,25 @@ def aux_echo_arrival(*, n_aux: int, src_idx: int, aux_n_cpml: int,
 
 
 def slab_aux_echo(nx_interior: int, dt: float, *, dx_div: int = 1,
-                  n_steps: int | None = None) -> dict:
+                  n_steps: int | None = None,
+                  aux_n_cpml: int | None = None,
+                  aux_n_margin: int | None = None,
+                  aux_src_offset: int | None = None,
+                  reflector_depth_cells: float | None = None) -> dict:
     """``aux_echo_arrival`` at the slab family's own rig (cv04, cv22, cv23).
 
     The auxiliary layout is ``rfx/sources/tfsf.py``'s:
-    ``n_1d = 20 + 10 + (x_hi - x_lo + 2) + 10 + 20``, source at 23, ``i0`` at
-    30 mapping to the 3-D ``x_lo``; its constants do NOT scale with ``dx_div``.
+    ``n_1d = 2 n_cpml + 2 margin + (x_hi - x_lo + 2)``, source at
+    ``n_cpml + 3``, ``i0`` at ``n_cpml + margin`` mapping to the 3-D ``x_lo``;
+    its constants do NOT scale with ``dx_div``.
+
+    The four ``aux_*`` / ``reflector_depth_cells`` arguments default to the
+    SHIPPED layout and exist for one purpose: replaying a committed artifact
+    against the layout THAT artifact declares, so an artifact produced before
+    #888 deepened the absorber can still be checked for internal arithmetic
+    consistency instead of only reported as different. A producer must never
+    pass them -- writing a record under a layout the source does not have is
+    exactly the drift the witness is here to prevent.
 
     The speed is ``v_cells = c dt/dx``, the Courant cell speed
     ``derive_record_length`` already uses. On the 1-D Yee lattice that is the
@@ -357,29 +403,34 @@ def slab_aux_echo(nx_interior: int, dt: float, *, dx_div: int = 1,
     earlier than this says. ``echo_arrival_steps`` is the earlier of the two
     probes: the record is bounded by whichever is contaminated first.
     """
+    n_cpml = AUX_N_CPML_1D if aux_n_cpml is None else int(aux_n_cpml)
+    margin = AUX_N_MARGIN_1D if aux_n_margin is None else int(aux_n_margin)
+    src_off = AUX_SRC_OFFSET_1D if aux_src_offset is None else int(aux_src_offset)
+    depth = (AUX_REFLECTOR_DEPTH_CELLS if reflector_depth_cells is None
+             else float(reflector_depth_cells))
     K = int(dx_div)
     dx = DX_M / K
     cells = rig_cells(nx_interior, K)
     x_lo = cells["x_lo"]
     x_hi = cells["nx"] - x_lo - 1          # rfx/sources/tfsf.py: x_hi = nx - offset - 1
-    n_1d = 2 * AUX_N_CPML_1D + 2 * AUX_N_MARGIN_1D + (x_hi - x_lo + 2)
-    src_idx = AUX_N_CPML_1D + AUX_SRC_OFFSET_1D
+    n_1d = 2 * n_cpml + 2 * margin + (x_hi - x_lo + 2)
+    src_idx = n_cpml + src_off
     v_cells = C0 * float(dt) / dx
     tau = 1.0 / (math.pi * TFSF_F0_HZ * TFSF_BW)
     lead = SRC_T0_OVER_TAU * tau / float(dt)
     probes = {}
     for name, px in (("refl", cells["probe_refl"]), ("trans", cells["probe_trans"])):
         probes[name] = aux_echo_arrival(
-            n_aux=n_1d, src_idx=src_idx, aux_n_cpml=AUX_N_CPML_1D,
-            reflector_depth_cells=AUX_REFLECTOR_DEPTH_CELLS,
-            probe_aux_index=AUX_I0_1D + (px - x_lo),
+            n_aux=n_1d, src_idx=src_idx, aux_n_cpml=n_cpml,
+            reflector_depth_cells=depth,
+            probe_aux_index=(n_cpml + margin) + (px - x_lo),
             v_cells=v_cells, lead_steps=lead)
     first = min(probes, key=lambda k: probes[k]["arrival_steps"])
     out = {
         "schema": AUX_ECHO_SCHEMA, "issue": 888,
         "nx_interior": int(nx_interior) * K, "dx_div": K,
-        "aux_n_1d": int(n_1d), "aux_n_cpml": AUX_N_CPML_1D, "aux_src_idx": int(src_idx),
-        "aux_reflector_depth_cells": AUX_REFLECTOR_DEPTH_CELLS,
+        "aux_n_1d": int(n_1d), "aux_n_cpml": n_cpml, "aux_src_idx": int(src_idx),
+        "aux_reflector_depth_cells": depth,
         "aux_reflector_index": probes["trans"]["reflector_index"],
         "v_cells": float(v_cells), "pulse_lead_steps": float(lead),
         "echo_arrival_probe": first,
@@ -411,8 +462,9 @@ def aux_echo_failure_message(echo: dict) -> str:
         f"{echo['record_steps']} steps against an auxiliary-absorber echo arrival of "
         f"{echo['echo_arrival_steps']} steps -- ratio "
         f"{echo['record_over_echo_arrival']:.3f} >= {AUX_ECHO_RATIO_LIMIT:.1f}. "
-        f"The TF/SF auxiliary grid's own absorber reflects 4-6 % in amplitude "
-        f"(|B/A| = 4.40e-02 on this 1-D path) from "
+        f"The TF/SF auxiliary grid's own absorber reflects (|B/A| = 9.43e-06 on "
+        f"this 1-D path since #888 derived its depth; 4.40e-02 on the 20-cell "
+        f"layer it replaced), earliest at "
         f"{echo['aux_reflector_depth_cells']} cells inside its "
         f"{echo['aux_n_cpml']}-cell layer; that -x wave is injected into the "
         f"total-field region and, because R and T are normalised by the SAME "

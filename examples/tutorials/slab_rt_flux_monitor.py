@@ -35,7 +35,7 @@ Run:  python examples/slab_rt_flux_monitor.py
 import numpy as np
 
 from rfx import Box, Simulation
-from rfx.probes.probes import flux_spectrum
+from rfx.probes.probes import flux_spectrum, subtract_flux_monitors
 
 C0 = 299_792_458.0
 
@@ -159,15 +159,10 @@ def main():
     slab_refl_fm = res_slab.flux_monitors["refl"]
     slab_trans_flux = np.asarray(flux_spectrum(res_slab.flux_monitors["trans"]))
 
-    # Field-level subtraction for the reflected (scattered) flux — recipe detail (a).
-    # FluxMonitor is a NamedTuple; the accumulated DFT fields are e1_dft, e2_dft,
-    # h1_dft, h2_dft.
-    scat_refl_fm = slab_refl_fm._replace(
-        e1_dft=slab_refl_fm.e1_dft - ref_refl_fm.e1_dft,
-        e2_dft=slab_refl_fm.e2_dft - ref_refl_fm.e2_dft,
-        h1_dft=slab_refl_fm.h1_dft - ref_refl_fm.h1_dft,
-        h2_dft=slab_refl_fm.h2_dft - ref_refl_fm.h2_dft,
-    )
+    # Field-level subtraction for the reflected (scattered) flux — recipe detail
+    # (a). Subtracting the FLUXES instead would leave the incident/scattered
+    # cross terms in the answer, because flux is bilinear in E and H.
+    scat_refl_fm = subtract_flux_monitors(slab_refl_fm, ref_refl_fm)
     scat_refl_flux = np.asarray(flux_spectrum(scat_refl_fm))
 
     transmittance = slab_trans_flux / ref_trans_flux

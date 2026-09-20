@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 
 from rfx import Box, Simulation
-import rfx.api._sparams as sparams
+import rfx.sparams.mixed as mixed_lane
 from rfx.probes.probes import DFTPlaneProbe
 
 U = 2.0**-12
@@ -132,7 +132,12 @@ def test_mixed_affine_h_matches_constant_reference_and_refutes_single_plane(
         return tuple(jnp.asarray(planes[right].accumulator) for _, right in names)
 
     with monkeypatch.context() as mutation:
-        mutation.setattr(sparams, "_collocated_msl_h", right_only)
+        # #980 Phase 2 moved compute_mixed_s_matrix verbatim into
+        # rfx/sparams/mixed.py, so ``_collocated_msl_h`` is looked up as a
+        # global of THAT module now. Patching the ``rfx.api._sparams``
+        # re-export would still succeed and silently not be the binding the
+        # lane reads -- the falsifier below would then measure nothing.
+        mutation.setattr(mixed_lane, "_collocated_msl_h", right_only)
         bypassed, wrong = extract()
     np.testing.assert_allclose(wrong["i_msl"], expected_current * (1 + SLOPE / 2),
                                rtol=2e-6, atol=1e-12)

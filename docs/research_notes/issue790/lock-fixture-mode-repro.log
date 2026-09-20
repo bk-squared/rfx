@@ -1,2 +1,0 @@
-Retained WAL connection makes the fixture mode switch fail: database is locked
-All control connections explicitly closed.

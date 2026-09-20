@@ -26,6 +26,7 @@ for _p in (_HERE, _REPO_ROOT):
         sys.path.insert(0, _p)
 
 import dispersive_eps as de  # noqa: E402
+import slab_arm_windows  # noqa: E402
 import slab_family  # noqa: E402
 from tests._gate_policy import gate_from_envelope  # noqa: E402
 
@@ -156,6 +157,13 @@ ARM_ORDER = ("debye", "lorentz", "drude")
 # Whether to re-adopt a settled revision, and whether W_BIN's own recipe
 # should track it, is open under issue #928 -- not decided here, and not
 # something a producer re-run may do to this file silently either way.
+#
+# 2026-09-16 SCOPE (#928 item 2): what this adoption still feeds is now the
+# MEEP legs alone. The E2 gates (G1_*, G2_*) take a window derived per arm
+# from its own lattice and its own record; W_BIN / W_MEAN_R / W_MEAN_T below
+# reach only evaluate_e4. That narrowing is stated again beside the constants
+# themselves about 115 lines down, and it is repeated here because this block
+# is the one a reader looking for "what does cv22 adopt from cv04" opens first.
 # ---------------------------------------------------------------------------
 CV04_ADOPTION = {
     "envelope": slab_family.CV04_ENVELOPE_REL,
@@ -272,11 +280,32 @@ def _f(x):
 # is INCOMPLETE, not passing (#928).
 DECLARED_GATES = ("G1_R", "G1_T", "G2_R", "G2_T", "G3_passivity", "G3_tail")
 
-# This case's windows, as a record the evaluator is HANDED. Nothing below reads
-# W_BIN / W_MEAN_R / W_MEAN_T from the module namespace: cv23 calls the same
-# evaluator and must be judged by cv23's adoption, not by this one (#928
-# round-2 review).
+# This case's cv04-adopted windows, as a record the evaluator is HANDED.
+# Nothing below reads W_BIN / W_MEAN_R / W_MEAN_T from the module namespace:
+# cv23 calls the same evaluator and must be judged by cv23's adoption, not by
+# this one (#928 round-2 review).
+#
+# SCOPE, after the per-arm re-derivation (#928 item 2, pre-declaration
+# docs/design_notes/slab_family_per_arm_lattice_window_predeclaration.md):
+# these three are now the MEEP legs' windows only (evaluate_e4's G4/G5). The
+# E2 gates G1_*/G2_* take `arm_windows(...)` below, derived from the arm's own
+# lattice-continuum difference and its own record, with no cv04 in it. The
+# borrowing survives here because the term a G4 window must cover is MEEP's
+# discretization -- neither cv04's nor the rfx arm's -- and section 7 of the
+# pre-declaration measures a per-arm Meep derivation and says why adopting it
+# in the same change would be self-certification.
 WINDOWS = slab_family.Windows(W_BIN, W_MEAN_R, W_MEAN_T)
+
+
+def arm_windows(arm_doc: dict, *, model: str | None = None, params: dict | None = None):
+    """The E2 windows for ONE arm, derived from that arm's own lattice and
+    record (#928 item 2). ``arm_doc`` is the per-arm block of an ``rfx*.json``,
+    or the same shape a case script has in hand before it writes one.
+
+    Re-exported from the leaf ``slab_arm_windows`` rather than reimplemented:
+    cv23 needs the identical derivation and a contract test re-derives it from
+    outside without importing either consumer."""
+    return slab_arm_windows.from_arm_doc(arm_doc, model=model, params=params)
 
 
 def evaluate_e2(freqs_hz, R_rfx, T_rfx, model: str, params: dict, dt: float,
@@ -304,12 +333,10 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, model: str, params: dict, dt: float,
     w_ade_R, w_ade_T, R_ade, T_ade = ade_window(f, model, params, dt)
     dR = np.abs(R_rfx - R_an)
     dT = np.abs(T_rfx - T_an)
-    win_R = windows.w_bin + w_ade_R
-    win_T = windows.w_bin + w_ade_T
+    win_R, win_T, mean_win_R, mean_win_T, win_prov = slab_arm_windows.resolve(
+        windows, w_ade_R, w_ade_T, g)
     g1_R = bool(np.all(dR[g] <= win_R[g]))
     g1_T = bool(np.all(dT[g] <= win_T[g]))
-    mean_win_R = windows.w_mean_R + _f(np.mean(w_ade_R[g]))
-    mean_win_T = windows.w_mean_T + _f(np.mean(w_ade_T[g]))
     g2_R = bool(np.mean(dR[g]) <= mean_win_R)
     g2_T = bool(np.mean(dT[g]) <= mean_win_T)
     closure = R_rfx + T_rfx - 1.0
@@ -327,6 +354,7 @@ def evaluate_e2(freqs_hz, R_rfx, T_rfx, model: str, params: dict, dt: float,
         "max_dR_gated": _f(dR[g].max()), "max_dT_gated": _f(dT[g].max()),
         "mean_dR_gated": _f(dR[g].mean()), "mean_dT_gated": _f(dT[g].mean()),
         "mean_window_R": mean_win_R, "mean_window_T": mean_win_T,
+        "window_derivation": win_prov,
         "worst_bin_R_hz": _f(f[g][np.argmax(dR[g])]),
         "worst_bin_T_hz": _f(f[g][np.argmax(dT[g])]),
         "n_bins_gated": int(g.sum()),
@@ -453,6 +481,8 @@ AUX_N_MARGIN_1D = slab_family.AUX_N_MARGIN_1D
 AUX_SRC_OFFSET_1D = slab_family.AUX_SRC_OFFSET_1D
 AUX_I0_1D = slab_family.AUX_I0_1D
 AUX_REFLECTOR_DEPTH_CELLS = slab_family.AUX_REFLECTOR_DEPTH_CELLS
+AUX_REFLECTOR_DEPTH_IS_BOUND = slab_family.AUX_REFLECTOR_DEPTH_IS_BOUND
+AUX_REFLECTOR_DEPTH_MEASURED_AT_20_CELLS = slab_family.AUX_REFLECTOR_DEPTH_MEASURED_AT_20_CELLS
 AUX_ECHO_RATIO_LIMIT = slab_family.AUX_ECHO_RATIO_LIMIT
 AUX_ECHO_SCHEMA = slab_family.AUX_ECHO_SCHEMA
 
@@ -513,7 +543,7 @@ def meep_ladder_summary(results_dir: str, rfx_doc: dict, resolutions=MEEP_LADDER
     out = {"schema": "cv22-meep-ladder/v1", "resolutions": list(resolutions), "arms": {}}
     for arm, ad in rfx_doc["arms"].items():
         e2 = evaluate_e2(ad["freqs_hz"], ad["R_rfx"], ad["T_rfx"], ad["model"], ad["params"], ad["dt_s"],
-                         tail=ad["tail"], windows=WINDOWS)
+                         tail=ad["tail"], windows=arm_windows(ad))
         rungs = {}
         for res in resolutions:
             p = os.path.join(results_dir, f"meep_{arm}__res{res}.json")

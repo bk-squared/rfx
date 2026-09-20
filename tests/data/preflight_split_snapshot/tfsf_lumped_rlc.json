@@ -1,0 +1,16 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "tfsf_lumped_rlc_unstable",
+        "loc": null,
+        "message": "add_lumped_rlc(...) + a TFSF plane-wave source is numerically unstable (fields diverge, C-independent). This is the TFSF\u2194lumped-ADE coupling, not a missing circuit path \u2014 a PEC-gap structure does NOT cure it (tested, #425). Use the validated PORT-fed lane (add_port + forward(rlc_values_override=...)) for varactor/tunable-load design.",
+        "severity": "warning",
+        "source": "_validate_cfg_tfsf_with_lumped_rlc"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 1,
+    "ok": true
+  }
+}

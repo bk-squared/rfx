@@ -719,7 +719,14 @@ def test_two_plane_is_gone_from_the_package():
     assert hits == [], "\n".join(hits)
     knob = re.compile(r"\brealization\s*=")
     bad = []
-    for p in (RFX_ROOT / "rfx" / "api").glob("*.py"):
+    # rfx/preflight/ is globbed alongside rfx/api/ because #980 Phase 3 moves
+    # the preflight bodies -- including every realized-PEC reader this scan
+    # exists for -- out of rfx/api/_preflight.py into that package. A scan
+    # that stayed pinned to rfx/api/ would keep passing while the code it is
+    # meant to cover walked out from under it.
+    scanned = [*(RFX_ROOT / "rfx" / "api").glob("*.py"),
+               *(RFX_ROOT / "rfx" / "preflight").glob("*.py")]
+    for p in scanned:
         for n, line in enumerate(p.read_text().splitlines(), 1):
             if knob.search(line):
                 bad.append(f"{p}:{n}: {line.strip()}")

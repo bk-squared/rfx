@@ -1,0 +1,16 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "refplane_near_field",
+        "loc": null,
+        "message": "2 reference-plane port(s) use reference_plane_cells < 10 \u2014 planes this close sit in the port near field. Measured on the canonical thru (dx = 0.5 mm, 2026-07-10 battery): N=3 planes read Zc = 52-53 ohm with |Im(Zc)/Re(Zc)| up to 8.2% and beta/(w/c) = 1.16-1.20 (vs the clean mid-line constants at N=10), and the closed-box-referee |S21| residual was -3.1%. The Phase-0 pre-registration rule (issue #313) places BOTH planes (N and 2N cells) >= 10 cells from every port \u2014 prefer reference_plane_cells >= 10 when the line length allows it.",
+        "severity": "warning",
+        "source": "_validate_cfg_refplane_placement"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 1,
+    "ok": true
+  }
+}

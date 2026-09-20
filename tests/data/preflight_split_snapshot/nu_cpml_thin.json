@@ -1,0 +1,23 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "nonuniform_cpml_thin",
+        "loc": null,
+        "message": "CPML z-thickness is 0.6mm (6 cells), much thinner than xy-thickness 3.0mm. Absorbing performance may be asymmetric. Consider more z cells or fewer CPML layers.",
+        "severity": "warning",
+        "source": "_validate_cfg_nonuniform_limitations"
+      },
+      {
+        "code": "nu_grading_ratio_beyond_validated_cap",
+        "loc": null,
+        "message": "dz_profile max adjacent cell ratio 5.000 exceeds the validated multi-band grading cap 1.4 (docs/guides/support_matrix.md, 'Multi-band graded mesh'). WHY: stability is unaffected (dt is the global min-cell CFL, sufficient on any tensor grid), but per-transition accuracy is witnessed only along z and only up to ratio 1.4 \u2014 the -54 dB reflection class at 30 cells/wavelength (it scales as (dz/lambda)^2), against -44 dB measured at ratio 2.0. COST: an unquantified reflection and grading-dispersion error at that transition. REMEDY: split it into ratio<=1.4 steps (e.g. rfx.smooth_grading) to stay inside the validated envelope, or accept it and say so in the report. STALE-IF: the support-matrix row raises the cap.",
+        "severity": "warning",
+        "source": "_validate_cfg_multiband_grading"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 2,
+    "ok": true
+  }
+}

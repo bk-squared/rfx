@@ -1,0 +1,30 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "no_sources",
+        "loc": null,
+        "message": "No sources, ports, TFSF, or waveguide/Floquet/MSL ports configured. Simulation will produce zero fields.",
+        "severity": "warning",
+        "source": "_validate_cfg_no_sources"
+      },
+      {
+        "code": "lossless_q",
+        "loc": null,
+        "message": "all dielectric(s) ['diel_hi', 'diel_lo'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)",
+        "severity": "warning",
+        "source": "_validate_cfg_lossless_resonator_in_absorber"
+      },
+      {
+        "code": "sheet_slot_vacuum",
+        "loc": null,
+        "message": "ERROR-GRADE: 1 PEC sheet(s) sit in a SLOT of the dielectric stack: geometry[2] 'pec' at node plane 22 (z = 3mm): eps_r on the plane 1.0 over 81 footprint node(s) while the cell below carries eps_r 3.5 and the cell above eps_r 2.5; the normal E edge from the plane into the upper cell (500\u00b5m long) runs on vacuum. WHY: the stack was drawn with a gap for the foil (dielectric below ends at its bottom face, dielectric above starts at its top face), the node sampler is half-open [lo, hi) so neither box reaches the sheet's node plane, and a sheet owns no cell and writes no material (lattice ownership contract #931 \u00a71.3) \u2014 so the one cell whose normal edge reads that node is vacuum in series with the cavity (the #702 measurement: 17% on a 127um stack). REMEDY: extend the dielectric boxes to the sheet plane (draw the laminates edge-to-edge at the foil's plane; a foil has no thickness on this lattice). Nothing is re-sampled for you. COVERAGE: examined 1 sheet(s) on the uniform lane against the run's own assembled eps_r. STALE IF: eps_r at the named plane is not 1.0 on the assembled arrays.",
+        "severity": "warning",
+        "source": "_validate_cfg_sheet_slot_vacuum"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 3,
+    "ok": true
+  }
+}

@@ -53,7 +53,9 @@ import time
 import numpy as np
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, SCRIPT_DIR)
 sys.path.insert(0, os.path.join(SCRIPT_DIR, "comparators"))
+import _exit_evidence  # noqa: E402  (SCRIPT_DIR on sys.path)
 import cv22_dispersive_gates as G  # noqa: E402
 import dispersive_eps as DE  # noqa: E402
 import lattice_witness as LW  # noqa: E402
@@ -263,8 +265,16 @@ def main(argv=None) -> int:
     print("=" * 70)
     print(f"Crossval 22: dispersive slab -- arms {arms}; falsifier={a.falsifier}; smoke={a.smoke}")
     print("=" * 70)
-    print(f"  windows: W_bin={G.W_BIN}, W_mean_R={G.W_MEAN_R}, W_mean_T={G.W_MEAN_T} "
-          f"(cv04 envelope x {G.gate_from_envelope(1.0, quantum=1000):g}); gated band "
+    # Say which window judges WHICH gate. Printing the cv04 scalars alone read
+    # as "these are the gates" and they no longer are: the E2 windows are
+    # derived per arm from its own lattice and record, and are printed with
+    # each arm below (#928 item 2).
+    print("  E2 windows (G1_*, G2_*): per arm, MULTIPLIER x (|lattice - continuum| "
+          "at that arm's own eps(f), dx, dt + that record's lattice-witness budget); "
+          "printed per arm below")
+    print(f"  E4 windows (G4_*, G5_*): W_bin={G.W_BIN}, W_mean_R={G.W_MEAN_R}, "
+          f"W_mean_T={G.W_MEAN_T} (cv04 envelope {G.CV04_ADOPTED['revision']} x "
+          f"{G.gate_from_envelope(1.0, quantum=1000):g}); gated band "
           f"{G.BAND_GATED_HZ[0]/1e9:.0f}-{G.BAND_GATED_HZ[1]/1e9:.0f} GHz")
 
     doc = {
@@ -314,8 +324,18 @@ def main(argv=None) -> int:
         # whose witness is absent (None) makes the verdict FAIL, never PASS
         # (#928). The analytic falsifier checks, which have no run behind them,
         # keep the default.
+        # The E2 windows are DERIVED from this arm's own lattice-continuum
+        # difference and its own record, never borrowed from cv04 (#928 item 2,
+        # docs/design_notes/slab_family_per_arm_lattice_window_predeclaration.md).
+        # `params` (declared), never `params_run`: a falsifier must not size the
+        # window meant to catch it.
+        awin = G.slab_arm_windows.from_run(run, model, params)
+        print(f"  E2 window: per-bin R {min(awin.R):.2e}-{max(awin.R):.2e}, "
+              f"T {min(awin.T):.2e}-{max(awin.T):.2e}; band mean R {awin.mean_R:.2e}, "
+              f"T {awin.mean_T:.2e} (W_lat mean R {awin.parts['mean_W_lat_R_gated']:.2e}, "
+              f"record floor mean R {awin.parts['mean_W_wit_R_gated']:.2e})")
         e2 = G.evaluate_e2(run["freqs_hz"], run["R_rfx"], run["T_rfx"], model, params, run["dt_s"],
-                           tail=run["tail"], require_complete=True, windows=G.WINDOWS)
+                           tail=run["tail"], require_complete=True, windows=awin)
         e2["params_run"] = {k: float(v) for k, v in params_run.items()}
         e2["band_inc_ok"] = run["band_inc_ok"]
         e2["inc_amp_rel"] = np.asarray(run["inc_amp_rel"]).tolist()
@@ -396,10 +416,12 @@ def main(argv=None) -> int:
     elif a.falsifier is not None:
         summary += f"  [falsifier {a.falsifier}: smoke run, verdict not evaluated -- see the E2 gates line]"
     doc["verdict"] = {"rfx_self_ok": not any_e2_fail, "meep_present": not any_meep_missing,
-                      "e4_ok": not any_e4_fail, "exit_code": rc, "summary": summary}
+                      "e4_ok": not any_e4_fail}
     out_path = os.path.join(out_dir, f"rfx__{a.tag}.json" if a.tag else G.rfx_json_name(a.falsifier))
-    with open(out_path, "w") as fh:
-        json.dump(doc, fh, indent=1)
+    # write_record puts exit_code and summary INTO the verdict block and arms
+    # the finalizer that amends them if this process ends with a different
+    # status than the verdict above declared (#946).
+    rc = _exit_evidence.write_record(out_path, doc, exit_code=rc, summary=summary)
     print(f"\n  artifact: {out_path}")
     print(f"\n{summary}")
     return rc
