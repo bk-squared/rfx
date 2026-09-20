@@ -61,8 +61,22 @@ a SEPARATE instance did the reading, and the check can only enforce that the
 claim is present and well-formed, not that it is true. Making the claim
 explicit is what lets a later audit catch it.
 
-Closing references in the raw body must occupy a line containing only closing
-items, because a closing keyword in prose still closes an issue on squash merge.
+Closing keywords. GitHub links a PR to every issue its BODY names after a closing
+keyword (close / fix / resolve and their inflections) and closes that issue when
+the PR merges -- wherever the keyword sits, negated or not, inside inline code or
+not. PR #1086's "It does not close #737." closed #737 two seconds after the merge
+(2026-09-16); PR #1125's "It was opened as `Fixes #752`; that is withdrawn" closed
+#752 (2026-09-20). So a closing reference passes only where it STARTS a line and
+is followed at once by the end of the line or by punctuation (``Closes #12``,
+``Closes #12. One-line summary``); inside a sentence it fails. The scan reads the raw body, because the #752 keyword sat in
+inline code and still closed the issue.
+
+NOT covered here: commit messages. This repository builds its squash message from
+the branch's commit messages (``squash_merge_commit_message: COMMIT_MESSAGES``),
+so a closing keyword in ANY commit message of the branch also closes the issue --
+"Rejected: Close #726 from settling alone", in commit 7908487c, closed #726 that
+way on 2026-09-12 while the PR body said only "Refs #726". This check never sees
+commit messages.
 
 Usage
 -----
@@ -444,30 +458,57 @@ def _check_review(lines: list[str]) -> list[str]:
     return [problem]
 
 
+CLOSING_PREFIX = "closing keyword: "
+_CLOSING_IN_PROSE = (
+    "a closing keyword inside a sentence closes the issue when the PR merges - "
+    "start the line with it and end the sentence there (`Closes #N.`), or write "
+    '"the closing keyword for #N is withdrawn"'
+)
+_CLOSING_BARE_LIST = (
+    "GitHub closes only the first issue of a list like this - repeat the keyword "
+    "for each one (`Closes #12, closes #13`)"
+)
+
+
 def _check_closing_keywords(body: str) -> list[str]:
-    """Reject closing references in prose, including code and HTML comments."""
+    """Reject a closing reference that sits inside a sentence (see the module docstring).
+
+    Accepted: a line that starts with its closing items -- an optional list bullet
+    first -- followed at once by the end of the line or by punctuation:
+    ``Closes #12``, ``Closes #12. Summary``, ``Fixes #12, fixes #13``,
+    ``Closes #12 -- the static half``. Whatever follows is scanned like any other
+    text. ``Closes #12, #13`` gets its own message: GitHub closes only #12.
+    """
     keyword = r"\b(?:close[sd]?|fix(?:es|ed)?|resolve[sd]?)\b"
     reference = (
         r"(?:#[0-9]+|[\w.-]+/[\w.-]+#[0-9]+|"
         r"https://github\.com/[\w.-]+/[\w.-]+/issues/[0-9]+)"
     )
     item = rf"{keyword}:?\s+{reference}"
+    joiner = r"(?:\s*,\s*|\s+and\s+|\s+)"
     closing = re.compile(item, re.IGNORECASE)
-    allowed = re.compile(
-        rf"{item}(?:(?:\s*,\s*|\s+and\s+|\s+){item})*\.?",
-        re.IGNORECASE,
+    first = re.compile(rf"(?:[-*+]\s+)?{item}", re.IGNORECASE)
+    # ...and then the line ends, or punctuation follows at once: "Closes #12.", "Closes #12 -- why",
+    # "Fixes #12, option (b): ...". "Fixes #12 is withdrawn" has words there instead, and fails.
+    lead = re.compile(
+        rf"(?:[-*+]\s+)?{item}(?:{joiner}{item})*(?=\s*$|\s*[.;:,(]|\s+[—–-]+\s)", re.IGNORECASE
     )
+    bare_tail = re.compile(rf"(?:\s*,\s*|\s+and\s+){reference}", re.IGNORECASE)
     problems: list[str] = []
-    for number, raw in enumerate(body.splitlines(), 1):
+    # Same line-ending normalisation as body_lines(), so "line N" means one thing.
+    for number, raw in enumerate(body.replace("\r\n", "\n").replace("\r", "\n").split("\n"), 1):
         line = raw.strip()
-        if allowed.fullmatch(line):
+        head = first.match(line)
+        if head and bare_tail.match(line, head.end()):
+            problems.append(f"{CLOSING_PREFIX}line {number}: {line[:120]!r}: {_CLOSING_BARE_LIST}")
             continue
-        for _ in closing.finditer(line):
-            problems.append(
-                f"line {number}: {line[:120]!r}: "
-                "a closing keyword in prose closes the issue on squash merge - "
-                'put it on a line of its own, or write "the closing keyword for #N is withdrawn"'
-            )
+        rest = line
+        while (started := lead.match(rest)) is not None:  # "Closes #12. Closes #13." is two leads
+            rest = rest[started.end():].lstrip(" .")
+        problems += [
+            f"{CLOSING_PREFIX}line {number}: {line[:120]!r}: {_CLOSING_IN_PROSE}"
+            for _ in closing.finditer(rest)
+        ]
     return problems
 
 
@@ -494,6 +535,8 @@ def failure_report(problems: list[str], env: dict[str, str] | None = None) -> st
     lanes, lane_source = allowed_lanes(env)
     out = ["PR body contract FAILED:"]
     out += [f"  - {problem}" for problem in problems]
+    if problems and all(problem.startswith(CLOSING_PREFIX) for problem in problems):
+        return "\n".join(out + ["", "Contract: scripts/ci/check_pr_body.py"])
     out += [
         "",
         # No literal "<pre>" in this text: an unterminated one swallows the
