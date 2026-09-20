@@ -16,13 +16,13 @@ conductor's hi-face footprint (500 of them on the reference arm), and that overh
 thin absorber grew.  Neither alone does.  Nothing pinned any of it; the growth stopped as a side
 effect of a contract change made for other reasons.  This is that pin.
 
-WHY THE FULL RECORD, AND WHY THE GPU LANE.  The unstable mode is seeded at round-off, so it
-only becomes visible once it has overtaken the decaying physical field.  How long that takes was
-MEASURED on this arm rather than estimated -- truncating the same record and scoring it with
-this file's own metrics.  THIS TABLE IS THE 2026-09-16 RECORD, taken on the (250, 189, 81)
-realization that existed before #1136; its ``mutated`` column is that grid's and the mutated arm
-no longer behaves this way (next section).  On today's (249, 189, 81) grid only the 150-period
-row has been re-measured: shipped -43.30, mutated -35.41.
+WHY THE FULL RECORD, AND WHY THE GPU LANE.  The unstable mode is seeded at round-off, so it only
+becomes visible once it has overtaken the decaying physical field.  How long that takes was
+MEASURED on this arm rather than estimated -- truncating the same record and scoring it with this
+file's own metrics.  THIS TABLE IS THE 2026-09-16 RECORD, taken on the (250, 189, 81) realization
+that existed before #1136; its ``mutated`` column is that grid's and the mutated arm no longer
+behaves this way (see WHAT THE MUTATION DOES NOW, below).  On today's (249, 189, 81) grid only the
+150-period row has been re-measured: shipped -43.30, mutated -35.41.
 
     periods   steps    shipped    mutated     gate fires on the mutated arm?
        40      7109    -11.32     -14.69      no -- and the UNSTABLE arm scores BETTER
@@ -30,14 +30,14 @@ row has been re-measured: shipped -43.30, mutated -35.41.
       120     21327    -34.87     -18.40      no (rate +2.66e-5, under the bar)
       150     26659    -43.37       0.00      YES
 
-150 periods is therefore the FLOOR, not a margin: at 120 the SHIPPED arm has not reached the
--40 dB bar either (-34.87), on the old grid the mutated arm missed both halves of the gate
-there, and at 40 it looked HEALTHIER than the shipped one.  A shortened record does not make
-this test cheaper, it makes it wrong.  Since #1136 the record length is bounded from ABOVE as
-well, for the falsifier: see the next-but-one section.  (An analytic crossover estimate is deliberately not
-quoted here: the growth and decay rates come from different estimators unless both are taken at
-this file's own blocking, and mixing them gives a step count that disagrees with the table
-above.)
+150 periods is therefore the FLOOR, not a margin: at 120 the SHIPPED arm has not reached the -40 dB
+bar either (-34.87), on the old grid the mutated arm missed both halves of the gate there, and at
+40 it looked HEALTHIER than the shipped one.  A shortened record does not make this test cheaper,
+it makes it wrong.  Since #1136 the record length is bounded from ABOVE as well, for the falsifier:
+see THE FALSIFIER NOW DEPENDS ON WHERE THE RECORD STOPS, below.  (An analytic crossover estimate
+for the OLD grid's growing arm is deliberately not quoted here: the growth and decay rates come
+from different estimators unless both are taken at this file's own blocking, and mixing them gives
+a step count that disagrees with the table above.)
 
 The full arm is 26 s on rtx4090 against ~53 min on a CPU pod, so the gate lives on the GPU lane.
 
@@ -77,17 +77,17 @@ With that cell gone the mutated arm no longer grows:
     a6d6fce1    (249, 189, 81)    shipped        -1.926e-04       -43.30 dB   green
     a6d6fce1    (249, 189, 81)    mutated        -8.379e-05       -35.41 dB   red (settling only)
 
-Read it exactly this far and no further.  (1) The growth record needed BOTH the pre-#931 edge
-rule AND the 250-cell realization; the 250-cell realization carried the x-hi vacuum pad facet
-(#1070), and the extra cell and the facet were not separated -- no run has the cell without the
-facet.  So "overhang ring plus a thin absorber grew" above is the 2026-09-16 reading of a rig
-that also had the facet, and it has not been re-derived without it.  (2) On the grid rfx builds
-today the mutation does not make the operator unstable on this record; it slows the decay
-(worst rate -8.4e-05 against -1.9e-04) and leaves the run 4.59 dB short of the -40 dB bar, so
-the gate is still red under it, through its SETTLING half alone -- the rate half passes
-(-8.4e-05 is below the -2.0e-05 bar).  The mutated row agrees across two GPU runs
-(369367262302 and 369367262373) to the four figures the two logs print.  (3) The shipped arm moved by 0.07 dB between the two
-grids.  (4) Whether the pre-#931 rule grows on some other facet-free rig is not answered here.
+Read it exactly this far and no further.  (1) The growth record needed BOTH the pre-#931 edge rule
+AND the 250-cell realization; the 250-cell realization carried the x-hi vacuum pad facet (#1070),
+and the extra cell and the facet were not separated -- no run has the cell without the facet.  So
+"overhang ring plus a thin absorber grew" above is the 2026-09-16 reading of a rig that also had
+the facet, and it has not been re-derived without it.  (2) On the grid rfx builds today the
+mutation does not make the operator unstable on this record; it slows the decay (worst rate
+-8.4e-05 against -1.9e-04) and leaves the run 4.59 dB short of the -40 dB bar, so the gate is still
+red under it, through its SETTLING half alone -- the rate half passes (-8.4e-05 is below the
+-2.0e-05 bar).  The mutated row agrees across two GPU runs (369367262302 and 369367262373) to the
+four figures the two logs print.  (3) The shipped arm moved by 0.07 dB between the two grids.  (4)
+Whether the pre-#931 rule grows on some other facet-free rig is not answered here.
 
 THE FALSIFIER NOW DEPENDS ON WHERE THE RECORD STOPS.  While the mutated arm grew, a longer
 record only made it redder.  It now DECAYS, so it is red only because it is still 4.59 dB short
