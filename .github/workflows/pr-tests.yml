@@ -46,7 +46,7 @@ jobs:
   # observe those files.
   #
   # The two heavy jobs below KEEP THEIR NAMES and still run on every event, so
-  # the contexts main's branch protection requires (`guards-and-preflight`,
+  # the contexts main's ruleset requires (`guards-and-preflight`,
   # `fast-suite (1)`..`(6)`) are always reported. When this job says the diff is
   # not code, the six shards skip their steps individually and end SUCCESS with
   # a line in the log saying why, and `guards-and-preflight` runs the contract
@@ -199,7 +199,7 @@ jobs:
   fast-suite:
     needs: changes
     # The job NAME must stay `fast-suite (<group>)` on the 3.10 entry: those are
-    # the contexts main's branch protection requires, and a matrix that renames
+    # the contexts main's ruleset requires, and a matrix that renames
     # them to `fast-suite (3.10, 1)` leaves every required check permanently
     # unreported, so no PR can merge. The 3.11 entry gets its own suffixed name.
     # Groups 5 and 6 (added 2026-09-05, #890) produce `fast-suite (5)` / `(6)`,
@@ -216,7 +216,7 @@ jobs:
         # 3.11 is the non-required duplicate lane. It runs on pushes to main
         # (every merge is still exercised on both interpreters) but not on
         # pull_request events, where it doubled a PR's job count (21 → 15)
-        # for a lane branch protection never reads. A branch that needs the
+        # for a lane main's ruleset never reads. A branch that needs the
         # 3.11 witness before merging can trigger it by pushing to main via
         # the merge itself,.
         python-version: ${{ github.event_name == 'push' && fromJSON('["3.10", "3.11"]') || fromJSON('["3.10"]') }}

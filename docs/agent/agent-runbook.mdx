@@ -117,11 +117,11 @@ there. Count them yourself rather than trusting a number here:
 `grep -rl 'docs/\|scripts/\|workflows' tests/contracts/*.py | wc -l`.
 
 **`changes` must be a required check too**, alongside `ruff`,
-`guards-and-preflight` and `fast-suite (1)`…`(6)`, and since 2026-09-19 the ruleset
-requires it. `needs: changes` means a `changes` job that dies of a runner fault leaves
-the heavy jobs skipped by dependency, and a skipped job does not fail a required
-context — a merge would go through having run nothing. The job is 15 s, so requiring it
-costs nothing.
+`guards-and-preflight`, `fast-suite (1)`…`(6)`, `pr-body-contract` and
+`changelog-fragment`, and since 2026-09-19 the ruleset requires it. `needs: changes`
+means a `changes` job that dies of a runner fault leaves the heavy jobs skipped by
+dependency, and a skipped job does not fail a required context — a merge would go
+through having run nothing. The job is 15 s, so requiring it costs nothing.
 
 The classifier fails open everywhere else: a push to `main`, a missing sha, a diff that
 would not compute, and any verdict other than the literal `false` all run the full lane.
