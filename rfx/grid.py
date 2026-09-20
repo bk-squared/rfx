@@ -195,15 +195,19 @@ class Grid:
         # Grid dimensions (including CPML padding)
         # +1 fence-post correction: N cells need N+1 nodes so that
         # PEC walls at index 0 and index N span exactly N*dx.
-        self.nx = (int(np.ceil(domain[0] / self.dx)) + 1
+        #
+        # ``cells_spanning`` rather than a bare ``ceil`` (#1070): a declared
+        # length is an arithmetic expression, and one ULP of float dust in
+        # ``domain/dx`` used to buy a whole cell that no declared Box reaches.
+        self.nx = (cells_spanning(domain[0], self.dx) + 1
                    + self.pad_x_lo + self.pad_x_hi)
-        self.ny = (int(np.ceil(domain[1] / self.dx)) + 1
+        self.ny = (cells_spanning(domain[1], self.dx) + 1
                    + self.pad_y_lo + self.pad_y_hi)
 
         if self.is_2d:
             self.nz = 1  # single cell in z, use periodic z BC
         else:
-            self.nz = (int(np.ceil(domain[2] / self.dx)) + 1
+            self.nz = (cells_spanning(domain[2], self.dx) + 1
                        + self.pad_z_lo + self.pad_z_hi)
 
         self.shape = (self.nx, self.ny, self.nz)

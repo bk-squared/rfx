@@ -16,19 +16,6 @@ not an accuracy guarantee, and a preflight pass is not a convergence study.
 
 ---
 
-## Geometry at the domain edge
-
-**A dielectric that spans the declared domain can be solved with vacuum in one
-absorber pad.** When `domain / dx` lands one unit in the last place above an
-integer, the grid buys a cell that no `Box` fills, and the pad extension then
-replicates that empty node through the whole pad on that face — so the structure
-ends in a vacuum facet at the interior/pad seam while the other three pads carry
-the material correctly. You see it in `fidelity_report()` as a realized extent
-short of the declaration, and in the solved fields as a reflection from a face
-that should have been transparent. Choose a `domain` commensurate with `dx`, and
-read the realized bounds rather than the declared ones.
-→ [#1070](https://github.com/bk-squared/rfx/issues/1070)
-
 ## Ports and extraction
 
 **The coax→microstrip transition over-reads power by about a factor of three.**

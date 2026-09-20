@@ -30,6 +30,7 @@ from rfx.geometry.rasterize_grid import (
     GridCoords,
     cell_sizes_from_uniform_grid,
     centres_from_uniform_grid,
+    assert_declared_span_is_filled,
     classify_pec_entry,
     extend_cpml_pad_materials,
 )
@@ -269,9 +270,21 @@ class _CompileMixin:
         _pec_sheets = pec_sheets if pec_sheets is not None else []
         _pec_wires = pec_wires if pec_wires is not None else []
 
+        # #1070: a structure declared out to a padded face must rasterize to
+        # within the one node the half-open Box rule costs it. Checked only
+        # when a pad will actually be filled from that edge, and only on a
+        # concrete mask -- under an outer jit the mask is a tracer and the
+        # question cannot be asked on the host.
+        _check_pad_fill = (include_cpml_pad_extension
+                           and self._boundary in ("cpml", "upml")
+                           and self._cpml_layers > 0)
+
         for entry in self._geometry:
             mat = self._resolve_material(entry.material_name)
             mask = entry.shape.mask(grid)
+            if _check_pad_fill and not is_tracer(mask):
+                assert_declared_span_is_filled(
+                    entry.material_name, entry.shape, mask, grid, self._domain)
 
             if mat.sigma >= self._PEC_SIGMA_THRESHOLD:
                 # True PEC (#931): volume cells into pec_mask (centre

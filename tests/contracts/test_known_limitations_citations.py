@@ -60,7 +60,16 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # sites now call smoothed_shape_pairs, the one implementation the
 # runners use, and tests/unit/sparams/test_waveguide_lane_pad_continuation.py
 # pins the pad -- the page's own rule for when an entry goes.
-CITED_ISSUES = frozenset({1070, 838, 830, 820, 737, 715, 1022})
+# #1070 (a dielectric spanning the declared domain solved with vacuum in one
+# absorber pad) left on 2026-09-20 with its whole section, which it was the
+# only entry in. The arithmetic that bought the unfilled cell is gone
+# (rfx.grid.cells_spanning) and the invariant behind it is asserted at
+# assembly (rfx.geometry.rasterize_grid.assert_declared_span_is_filled), so
+# a structure declared out to a padded face can no longer be rasterized more
+# than the documented one node short of it. Pinned by
+# tests/unit/grid/test_cell_count_ulp_snap.py and
+# tests/unit/geometry/test_declared_span_reaches_padded_face.py.
+CITED_ISSUES = frozenset({838, 830, 820, 737, 715, 1022})
 
 # Numbers the prose names for provenance rather than as a live defect: a CLOSED
 # issue quoted to say what part of the problem is already fixed. #1043 (the
