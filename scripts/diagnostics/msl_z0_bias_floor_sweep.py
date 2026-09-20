@@ -262,8 +262,9 @@ RE-VERIFICATION CONCLUSION (issue #752, written by the leader session
 Re-verification of #752 on main (2026-09-19/20). Six points re-solved with
 ``run_one``'s committed settings (artifact
 ``msl_z0_bias_floor_sweep_realized_anchor_2026-09-19.json``, commit
-15c1d325, jax 0.10.2, x64 off, all points settled below -98 dB on both
-drives).
+15c1d325, jax 0.10.2, x64 off, all points settled at or below -98.0 dB on
+both drives (worst stored value -98.0 dB, misaligned 80 um, port 0; values
+stored to one decimal)).
 
 Measured against Hammerstad-Jensen on the board each run realized: aligned
 h_sub/3 -8.48 %, h_sub/4 -6.89 %, h_sub/5 -5.83 %, h_sub/6 -5.12 %;
@@ -275,7 +276,10 @@ on, and neither has a full error budget here:
 1. The board. #931 (485a9b98, 2026-09-10) changed how a one-cell-thick
    conductor realizes: before it a zero-thickness sheet on one node plane,
    after it a slab with walls on both faces (``rfx/fidelity.py:227-228``);
-   on three points the trace's z placement also moved one cell. One
+   on three points the trace's z placement also moved one cell
+   (reviewer's builds of df819523 against the PR head: h_sub/6
+   296.3-338.7 -> 254.0-296.3 um; 80 um 320-400 -> 240-320; 60 um
+   300-360 -> 240-300). One
    measurement of the size of this: at aligned h_sub/3 the same trace
    declared as a zero-thickness Box reads 46.240 ohm (-4.21 %) where the
    one-cell slab reads 44.179 ohm (-8.48 %). At that one point conductor
