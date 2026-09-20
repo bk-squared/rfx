@@ -1634,13 +1634,13 @@
               "axis": "x",
               "detail": "PLACEMENT off by 750.0 um (2.54% of the declared 29500.0 um extent); SIZE 28000.0 um (-1500.0 um, -5.08%)",
               "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             },
             {
               "axis": "y",
               "detail": "PLACEMENT off by 500.0 um (1.32% of the declared 38000.0 um extent); SIZE 37000.0 um (-1000.0 um, -2.63%)",
               "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             }
           ],
           "material": {
@@ -1668,7 +1668,7 @@
         {
           "code": "sheet_effective_size",
           "loc": null,
-          "message": "4 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 4 listed): thin_conductor[1] 'thin_conductor[1]' x: drawn 29.5mm, nodes cover 28mm, solved as 28.6mm (-3.05%); thin_conductor[0] 'thin_conductor[0]' y: drawn 55mm, nodes cover 55mm, solved as 55.6mm (+1.09%); thin_conductor[1] 'thin_conductor[1]' y: drawn 38mm, nodes cover 37mm, solved as 37.6mm (-1.05%); thin_conductor[0] 'thin_conductor[0]' x: drawn 60mm, nodes cover 60mm, solved as 60.6mm (+1.00%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.30 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+          "message": "3 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 3 listed): thin_conductor[1] 'thin_conductor[1]' x: drawn 29.5mm, nodes cover 28mm, solved as 28.7mm (-2.71%); thin_conductor[0] 'thin_conductor[0]' y: drawn 55mm, nodes cover 55mm, solved as 55.7mm (+1.27%); thin_conductor[0] 'thin_conductor[0]' x: drawn 60mm, nodes cover 60mm, solved as 60.7mm (+1.17%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
           "severity": "warning",
           "source": "_validate_cfg_off_lattice_design_edges"
         }
@@ -1895,13 +1895,13 @@
               "axis": "x",
               "detail": "PLACEMENT off by 1000.0 um (1.67% of the declared 60000.0 um extent); SIZE 58000.0 um (-2000.0 um, -3.33%)",
               "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             },
             {
               "axis": "y",
               "detail": "PLACEMENT off by 1000.0 um (1.67% of the declared 60000.0 um extent); SIZE 58000.0 um (-2000.0 um, -3.33%)",
               "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             }
           ],
           "material": {
@@ -1972,13 +1972,13 @@
               "axis": "x",
               "detail": "PLACEMENT off by 1000.0 um (3.13% of the declared 32000.0 um extent); SIZE 30000.0 um (-2000.0 um, -6.25%)",
               "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             },
             {
               "axis": "y",
               "detail": "PLACEMENT off by 1000.0 um (2.50% of the declared 40000.0 um extent); SIZE 38000.0 um (-2000.0 um, -5.00%)",
               "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             }
           ],
           "material": {
@@ -2013,7 +2013,7 @@
         {
           "code": "sheet_effective_size",
           "loc": null,
-          "message": "4 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 4 listed): thin_conductor[1] 'thin_conductor[1]' x: drawn 32mm, nodes cover 30mm, solved as 31.2mm (-2.50%); thin_conductor[1] 'thin_conductor[1]' y: drawn 40mm, nodes cover 38mm, solved as 39.2mm (-2.00%); thin_conductor[0] 'thin_conductor[0]' x: drawn 60mm, nodes cover 58mm, solved as 59.2mm (-1.33%); thin_conductor[0] 'thin_conductor[0]' y: drawn 60mm, nodes cover 58mm, solved as 59.2mm (-1.33%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.30 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+          "message": "4 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 4 listed): thin_conductor[1] 'thin_conductor[1]' x: drawn 32mm, nodes cover 30mm, solved as 31.4mm (-1.88%); thin_conductor[1] 'thin_conductor[1]' y: drawn 40mm, nodes cover 38mm, solved as 39.4mm (-1.50%); thin_conductor[0] 'thin_conductor[0]' x: drawn 60mm, nodes cover 58mm, solved as 59.4mm (-1.00%); thin_conductor[0] 'thin_conductor[0]' y: drawn 60mm, nodes cover 58mm, solved as 59.4mm (-1.00%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
           "severity": "warning",
           "source": "_validate_cfg_off_lattice_design_edges"
         }
@@ -2546,7 +2546,7 @@
         {
           "code": "sheet_effective_size",
           "loc": null,
-          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): thin_conductor[1] 'thin_conductor[1]' y: drawn 1mm, nodes cover 1000\u00b5m, solved as 1.15mm (+15.00%); thin_conductor[0] 'thin_conductor[0]' y: drawn 8.5mm, nodes cover 8.5mm, solved as 8.65mm (+1.76%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.30 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): thin_conductor[1] 'thin_conductor[1]' y: drawn 1mm, nodes cover 1000\u00b5m, solved as 1.175mm (+17.50%); thin_conductor[0] 'thin_conductor[0]' y: drawn 8.5mm, nodes cover 8.5mm, solved as 8.675mm (+2.06%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
           "severity": "warning",
           "source": "_validate_cfg_off_lattice_design_edges"
         }
@@ -3376,7 +3376,7 @@
               "axis": "y",
               "detail": "PLACEMENT off by 28.5 um (4.75% of the declared 600.0 um extent); SIZE 571.5 um (-28.5 um, -4.75%)",
               "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             }
           ],
           "material": {
@@ -3447,7 +3447,7 @@
               "axis": "x",
               "detail": "PLACEMENT off by 28.0 um (4.67% of the declared 600.0 um extent); SIZE 571.5 um (-28.5 um, -4.75%)",
               "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             }
           ],
           "material": {
@@ -3558,7 +3558,7 @@
         {
           "code": "sheet_effective_size",
           "loc": null,
-          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[1] 'pec' y: drawn 600\u00b5m, nodes cover 571.5\u00b5m, solved as 609.6\u00b5m (+1.60%); geometry[2] 'pec' x: drawn 600\u00b5m, nodes cover 571.5\u00b5m, solved as 609.6\u00b5m (+1.60%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.30 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[1] 'pec' y: drawn 600\u00b5m, nodes cover 571.5\u00b5m, solved as 615.9\u00b5m (+2.66%); geometry[2] 'pec' x: drawn 600\u00b5m, nodes cover 571.5\u00b5m, solved as 615.9\u00b5m (+2.66%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
           "severity": "warning",
           "source": "_validate_cfg_off_lattice_design_edges"
         }
@@ -3785,13 +3785,13 @@
               "axis": "x",
               "detail": "PLACEMENT off by 66.0 um (0.53% of the declared 12466.0 um extent); SIZE 12400.0 um (-66.0 um, -0.53%)",
               "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             },
             {
               "axis": "y",
               "detail": "PLACEMENT off by 150.0 um (6.22% of the declared 2413.0 um extent); SIZE 2200.0 um (-213.0 um, -8.83%)",
               "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             }
           ],
           "material": {
@@ -3862,13 +3862,13 @@
               "axis": "x",
               "detail": "PLACEMENT off by 134.0 um (5.28% of the declared 2540.0 um extent); SIZE 2400.0 um (-140.0 um, -5.51%)",
               "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             },
             {
               "axis": "y",
               "detail": "PLACEMENT off by 120.0 um (0.59% of the declared 20320.0 um extent); SIZE 20200.0 um (-120.0 um, -0.59%)",
               "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             }
           ],
           "material": {
@@ -3945,13 +3945,13 @@
               "axis": "x",
               "detail": "PLACEMENT off by 194.0 um (1.56% of the declared 12466.0 um extent); SIZE 12200.0 um (-266.0 um, -2.13%)",
               "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             },
             {
               "axis": "y",
               "detail": "PLACEMENT off by 143.0 um (5.93% of the declared 2413.0 um extent); SIZE 2200.0 um (-213.0 um, -8.83%)",
               "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             }
           ],
           "material": {
@@ -4007,7 +4007,7 @@
         {
           "code": "sheet_effective_size",
           "loc": null,
-          "message": "3 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 3 listed): geometry[1] 'pec' y: drawn 2.413mm, nodes cover 2.2mm, solved as 2.32mm (-3.85%); geometry[3] 'pec' y: drawn 2.413mm, nodes cover 2.2mm, solved as 2.32mm (-3.85%); geometry[3] 'pec' x: drawn 12.47mm, nodes cover 12.2mm, solved as 12.26mm (-1.65%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.30 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[1] 'pec' y: drawn 2.413mm, nodes cover 2.2mm, solved as 2.34mm (-3.03%); geometry[3] 'pec' y: drawn 2.413mm, nodes cover 2.2mm, solved as 2.34mm (-3.03%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
           "severity": "warning",
           "source": "_validate_cfg_off_lattice_design_edges"
         },
@@ -4694,13 +4694,13 @@
               "axis": "x",
               "detail": "PLACEMENT off by 668.7 um (1.67% of the declared 40000.0 um extent); SIZE 38893.8 um (-1106.2 um, -2.77%)",
               "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             },
             {
               "axis": "y",
               "detail": "PLACEMENT off by 668.7 um (1.34% of the declared 50000.0 um extent); SIZE 49212.5 um (-787.5 um, -1.57%)",
               "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             }
           ],
           "material": {
@@ -4771,13 +4771,13 @@
               "axis": "x",
               "detail": "PLACEMENT off by 731.2 um (1.31% of the declared 56000.0 um extent); SIZE 54768.8 um (-1231.2 um, -2.20%)",
               "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             },
             {
               "axis": "y",
               "detail": "PLACEMENT off by 731.2 um (1.11% of the declared 66000.0 um extent); SIZE 65087.5 um (-912.5 um, -1.38%)",
               "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             }
           ],
           "material": {
@@ -4889,7 +4889,7 @@
         {
           "code": "sheet_effective_size",
           "loc": null,
-          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[2] 'pec' x: drawn 40mm, nodes cover 38.89mm, solved as 39.37mm (-1.58%); geometry[0] 'pec' x: drawn 56mm, nodes cover 54.77mm, solved as 55.25mm (-1.35%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.30 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[2] 'pec' x: drawn 40mm, nodes cover 38.89mm, solved as 39.45mm (-1.38%); geometry[0] 'pec' x: drawn 56mm, nodes cover 54.77mm, solved as 55.32mm (-1.21%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
           "severity": "warning",
           "source": "_validate_cfg_off_lattice_design_edges"
         }
@@ -7905,7 +7905,7 @@
         {
           "code": "sheet_effective_size",
           "loc": null,
-          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.3mm (+6.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.3mm (+1.76%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.30 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
           "severity": "warning",
           "source": "_validate_cfg_off_lattice_design_edges"
         },
@@ -8078,7 +8078,7 @@
         {
           "code": "sheet_effective_size",
           "loc": null,
-          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.3mm (+6.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.3mm (+1.76%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.30 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
           "severity": "warning",
           "source": "_validate_cfg_off_lattice_design_edges"
         }
@@ -9597,7 +9597,7 @@
         {
           "code": "sheet_effective_size",
           "loc": null,
-          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.3mm (+6.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.3mm (+1.76%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.30 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
           "severity": "warning",
           "source": "_validate_cfg_off_lattice_design_edges"
         }
@@ -9756,7 +9756,7 @@
         {
           "code": "sheet_effective_size",
           "loc": null,
-          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.3mm (+6.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.3mm (+1.76%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.30 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
           "severity": "warning",
           "source": "_validate_cfg_off_lattice_design_edges"
         }
@@ -9922,7 +9922,7 @@
         {
           "code": "sheet_effective_size",
           "loc": null,
-          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.3mm (+6.00%); geometry[0] 'pec' x: drawn 21mm, nodes cover 21mm, solved as 21.3mm (+1.43%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.30 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 21mm, nodes cover 21mm, solved as 21.35mm (+1.67%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
           "severity": "warning",
           "source": "_validate_cfg_off_lattice_design_edges"
         }
@@ -10081,7 +10081,7 @@
         {
           "code": "sheet_effective_size",
           "loc": null,
-          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' x: drawn 83.28mm, nodes cover 83.28mm, solved as 88.27mm (+6.00%); geometry[0] 'pec' y: drawn 83.28mm, nodes cover 83.28mm, solved as 88.27mm (+6.00%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.30 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' x: drawn 83.28mm, nodes cover 83.28mm, solved as 89.1mm (+7.00%); geometry[0] 'pec' y: drawn 83.28mm, nodes cover 83.28mm, solved as 89.1mm (+7.00%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
           "severity": "warning",
           "source": "_validate_cfg_off_lattice_design_edges"
         }
@@ -10326,7 +10326,7 @@
               "axis": "y",
               "detail": "PLACEMENT off by 92.0 um (15.33% of the declared 600.0 um extent); SIZE 508.0 um (-92.0 um, -15.33%)",
               "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.3 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.3 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             }
           ],
           "material": {
@@ -10447,13 +10447,6 @@
           "message": "pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and declare it: a foil is a SHEET (add_thin_conductor, or a zero-thickness PEC Box \u2014 one node plane, normal E through it live); a thick plate is a PEC Box VOLUME (walls on both faces, lattice ownership contract #931).",
           "severity": "warning",
           "source": "_validate_cfg_pec_faces_with_finite_pec"
-        },
-        {
-          "code": "sheet_effective_size",
-          "loc": null,
-          "message": "1 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 1 listed): geometry[1] 'pec' y: drawn 600\u00b5m, nodes cover 508\u00b5m, solved as 584.2\u00b5m (-2.63%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.30 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
-          "severity": "warning",
-          "source": "_validate_cfg_off_lattice_design_edges"
         }
       ]
     },
