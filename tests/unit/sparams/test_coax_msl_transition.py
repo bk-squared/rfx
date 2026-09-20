@@ -4162,19 +4162,19 @@ def test_settled_run_driver_fixture_selection_is_explicit_for_every_label():
 
 
 # ---------------------------------------------------------------------------
-# Part 9 -- this cross-family lane refuses a non-passive S by default (#838).
+# Part 6 -- this cross-family lane refuses a non-passive S by default (#838).
 #
 # PI decision 2026-09-20: port/S-parameter work stops at pure single-family
 # ports, so this lane's MSL-side power over-read is not going to be attributed
 # or corrected. What the issue closes on instead is the BEHAVIOUR -- a default
 # call does not hand back a matrix the shared guard rejects.
 #
-# Both checks are pure post-processing: no FDTD, no fixture. The second drives
-# the same production epilogue the method returns through
+# All three checks are pure post-processing: no FDTD, no fixture. The last two
+# drive the same production epilogue the method returns through
 # (``_finalize_sparam_result(..., strict=strict_passivity)``) with the flag
-# READ OFF the method's own signature, so the two halves cannot drift -- move
-# the default back to False and the synthetic non-passive S stops raising, so
-# both tests go red, not just the signature one. This is the same
+# READ OFF the method's own signature, so the halves cannot drift -- move the
+# default back to False and the synthetic non-passive S stops raising, so the
+# behaviour test goes red too, not just the signature one. This is the same
 # "exercise the shared guard directly rather than pay for a second FDTD run"
 # move as test_coax_msl_transition_attempt2_instrument_verification above.
 # ---------------------------------------------------------------------------
@@ -4186,7 +4186,7 @@ _SYNTHETIC_NONPASSIVE_S = [[[1.2 + 0j], [1.2 + 0j]],
                            [[0.05 + 0j], [1.2 + 0j]]]
 
 # Column power 0.25 on both columns -- passive, so the same default call path
-# must return it untouched. Without this control the test above would also
+# must return it untouched. Without this control the behaviour test would also
 # pass if the lane refused unconditionally.
 _SYNTHETIC_PASSIVE_S = [[[0.3 + 0j], [0.4 + 0j]],
                         [[0.4 + 0j], [0.3 + 0j]]]
