@@ -302,7 +302,11 @@ same claim.
 
 The pad is pinned by
 `tests/unit/sparams/test_waveguide_lane_pad_continuation.py`, which captures
-the array the lane itself hands the solver.
+the array the lane itself hands the solver — once per site, because the two
+sites hand down different arrays: Stage 1 goes through `compute_smoothed_eps`
+and reads `eps = 4.0` in the pad, Stage 2 (`kottke_pec`) goes through
+`compute_inv_eps_tensor_diag` and reads `1/eps = 0.25`. A test of one is blind
+to the other (review of PR #1131, F5).
 `scripts/diagnostics/waveguide_lane_pad_continuation_census.py` re-runs the
 census and the build-only pad comparison, printing the lane's and the runner's
 captured columns next to the pre-fold construction that measured the gap

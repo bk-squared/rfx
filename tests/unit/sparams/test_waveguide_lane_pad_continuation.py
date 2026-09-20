@@ -75,35 +75,45 @@ def _guide(with_slab: bool, *, slab_reaches_pad: bool = True):
     return sim
 
 
-def _capture_smoothed_eps(call, monkeypatch) -> dict:
-    """Return what ``call`` handed to ``compute_smoothed_eps``, or ``{}``.
+def _capture(call, monkeypatch, *, attr: str = "compute_smoothed_eps",
+             stop_after: int = 1) -> dict:
+    """Record what ``call`` handed to ``rfx.geometry.smoothing.<attr>``.
 
-    The lane and the runners both import the function INSIDE their smoothing
-    block, so patching the attribute on ``rfx.geometry.smoothing`` reaches the
-    real call rather than a re-export. This is the pattern
+    The lane and the runners both import these functions INSIDE their
+    smoothing block, so patching the attribute on ``rfx.geometry.smoothing``
+    reaches the real call rather than a re-export. This is the pattern
     ``tests/unit/boundaries/test_boundary_touching_dielectric_pad_continuation
     .py`` uses for the runner; the difference is that nothing here runs the
-    scan -- the spy raises once the array exists.
+    scan -- the spy raises once it has the calls it was asked for.
+
+    ``stop_after`` is 1 for the Stage-1 site, which smooths once, and 2 for
+    the Stage-2 ``kottke_pec`` site, which builds a device tensor and then a
+    vacuum reference tensor. Returns ``{"calls": [...], "stopped": bool}``;
+    each call carries its positional ``args``, its ``kwargs`` and its ``out``.
     """
     from rfx.geometry import smoothing as _smoothing
 
-    captured: dict = {}
-    real = _smoothing.compute_smoothed_eps
+    captured: dict = {"calls": [], "stopped": False}
+    real = getattr(_smoothing, attr)
 
-    def _spy(grid, shapes, background_eps=1.0):
-        out = real(grid, shapes, background_eps=background_eps)
-        captured["aniso_eps"] = tuple(np.asarray(c) for c in out)
-        captured["shapes"] = shapes
-        captured["grid"] = grid
-        raise _StopAfterCapture
+    def _spy(*args, **kwargs):
+        out = real(*args, **kwargs)
+        captured["calls"].append({
+            "args": args,
+            "kwargs": kwargs,
+            "out": tuple(np.asarray(c) for c in out),
+        })
+        if len(captured["calls"]) >= stop_after:
+            raise _StopAfterCapture
+        return out
 
-    monkeypatch.setattr(_smoothing, "compute_smoothed_eps", _spy)
+    monkeypatch.setattr(_smoothing, attr, _spy)
     try:
         call()
     except _StopAfterCapture:
         # Recorded rather than assumed: if any layer between here and the
         # entry point swallowed the abort, the call would have gone on to
-        # time-step and this flag would be missing.
+        # time-step and this flag would stay False.
         captured["stopped"] = True
     finally:
         # Two captures run in one test, so the spy must come off before the
@@ -113,20 +123,34 @@ def _capture_smoothed_eps(call, monkeypatch) -> dict:
     return captured
 
 
+def _first(captured) -> dict:
+    """The one captured call, with the grid it was given.
+
+    An empty capture comes back as ``{"stopped": False}`` so the caller's own
+    "this fixture is not on the smoothed lane" assertion is what fires, rather
+    than an ``IndexError`` here.
+    """
+    if not captured["calls"]:
+        return {"stopped": False}
+    call = captured["calls"][0]
+    return {"aniso_eps": call["out"], "grid": call["args"][0],
+            "shapes": call["args"][1], "stopped": captured["stopped"]}
+
+
 def _lane_capture(sim, monkeypatch) -> dict:
-    return _capture_smoothed_eps(
+    return _first(_capture(
         lambda: sim.compute_waveguide_s_matrix(subpixel_smoothing=True,
                                                n_steps=N_STEPS),
         monkeypatch,
-    )
+    ))
 
 
 def _runner_capture(sim, monkeypatch) -> dict:
-    return _capture_smoothed_eps(
+    return _first(_capture(
         lambda: sim.run(n_steps=N_STEPS, subpixel_smoothing=True,
                         skip_preflight=True),
         monkeypatch,
-    )
+    ))
 
 
 def _pad_column(captured) -> np.ndarray:
@@ -243,3 +267,59 @@ def test_a_guide_with_no_dielectric_is_unaffected(monkeypatch) -> None:
         "the lane never called smoothed_shape_pairs on an empty guide")
     assert captured["pairs"] == [], captured["pairs"]
     assert captured["unextendable"] == [], captured["unextendable"]
+
+
+def test_the_kottke_pec_route_carries_the_dielectric_into_the_pad(
+        monkeypatch) -> None:
+    """The Stage-2 site, read off its own tensor (review of PR #1131, F5).
+
+    ``subpixel_smoothing="kottke_pec"`` does not reach
+    ``compute_smoothed_eps`` at all: it feeds ``smoothed_shape_pairs`` into
+    ``compute_inv_eps_tensor_diag`` instead. Every test above is blind to it,
+    so restoring the #1066 defect at that site alone left them green while the
+    lane handed vacuum down the whole pad on this route.
+
+    Two calls are captured because the site makes two: the device tensor, and
+    then a vacuum reference tensor that passes ``dielectric_shapes=[]`` and by
+    construction cannot carry a facet. What is asserted is the array rather
+    than the shape list -- ``1/4`` in the pad is the same statement about the
+    solver's input that the Stage-1 tests make with ``4.0``, and it does not
+    re-test ``smoothed_shape_pairs`` against its own convention.
+    """
+    sim = _guide(with_slab=True)
+    captured = _capture(
+        lambda: sim.compute_waveguide_s_matrix(
+            subpixel_smoothing="kottke_pec", n_steps=N_STEPS),
+        monkeypatch, attr="compute_inv_eps_tensor_diag", stop_after=2,
+    )
+    assert captured["stopped"], (
+        "the lane never built two inverse-eps tensors -- this fixture is not "
+        "on the kottke_pec route and proves nothing about it")
+    assert len(captured["calls"]) == 2, len(captured["calls"])
+
+    device = [c for c in captured["calls"]
+              if c["kwargs"].get("dielectric_shapes")]
+    reference = [c for c in captured["calls"]
+                 if not c["kwargs"].get("dielectric_shapes")]
+    assert len(device) == 1 and len(reference) == 1, (
+        [sorted(c["kwargs"]) for c in captured["calls"]])
+
+    grid = device[0]["args"][0]
+    pad = int(grid.face_pads[1])
+    assert pad == CPML_CELLS, pad
+
+    inv_xx = device[0]["out"][0]
+    jm, km = inv_xx.shape[1] // 2, inv_xx.shape[2] // 2
+    pad_column = inv_xx[inv_xx.shape[0] - pad:, jm, km].astype(float)
+    np.testing.assert_allclose(pad_column, 0.25, rtol=0, atol=1e-12)
+    assert not np.any(np.isclose(pad_column, 1.0)), (
+        f"the x-hi pad the kottke_pec route hands the solver is back to "
+        f"vacuum: {pad_column!r} -- inverse permittivity, so 1.0 is eps_r = 1 "
+        "and 0.25 is the eps_r = 4 slab continued through its own absorber"
+    )
+
+    # The reference run is vacuum on purpose; if it ever stopped being so,
+    # device minus reference would cancel the slab instead of the guide.
+    ref_xx = reference[0]["out"][0]
+    ref_column = ref_xx[ref_xx.shape[0] - pad:, jm, km].astype(float)
+    np.testing.assert_allclose(ref_column, 1.0, rtol=0, atol=1e-12)
