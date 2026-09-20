@@ -37,7 +37,7 @@
 # numpy-2 pymeep for any python version. The parent image's openEMS bindings
 # were likewise built against `numpy<2`. So this image is a numpy-1 environment
 # and the lane must pin a jax that still supports numpy 1.x; that is why
-# scripts/vessl_crossval_solvers_lane.yaml installs `jax[cuda12]==0.6.2` with
+# scripts/vessl_crossval_solvers_lane.yaml installs `jax[cpu]==0.6.2` with
 # an explicit `numpy<2`, the same pair scripts/vessl_crossval_external.yaml has
 # been running on this cluster since PR #563.
 

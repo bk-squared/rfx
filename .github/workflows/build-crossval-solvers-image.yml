@@ -14,7 +14,7 @@ name: build-crossval-solvers-image
 #
 # Like its sibling, this workflow only builds and publishes. Pointing the lane
 # YAML at a new tag is a separate commit, gated on (a) this workflow having
-# produced a real image and (b) scripts/vessl_image_pull_smoke.yaml confirming
+# produced a real image and (b) scripts/vessl_crossval_solvers_pull_smoke.yaml confirming
 # the cluster can pull it (the ghcr package's first private -> public flip is a
 # manual step GITHUB_TOKEN cannot perform).
 
