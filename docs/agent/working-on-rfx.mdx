@@ -190,28 +190,32 @@ The repository squash-merges and keeps the remote branch. Then:
 | layer | what it covers |
 |---|---|
 | CI checks | the two body lines, changelog fragments, lint, contract tests, and the physics shards whenever the diff touches code |
-| repository settings | a pull request is required (administrators excepted), squash is the only merge method, conversations must be resolved, force-push is off |
+| repository settings | a pull request is required and nobody is on the bypass list, squash is the only merge method, history stays linear, force-push and deleting `main` are off |
 | weekly governance audit | skipped reviews, issues with no lane label or filed outside the forms, merged pull requests closing an issue outside every open milestone |
 
 Read the required contexts rather than trusting this page:
 
 ```
-gh api repos/bk-squared/rfx/branches/main/protection --jq '.required_status_checks.contexts'
+gh api repos/bk-squared/rfx/rules/branches/main \
+  --jq '.[]|select(.type=="required_status_checks")|.parameters.required_status_checks[].context'
 ```
 
-On 2026-09-19 that returns eight: `ruff`, `guards-and-preflight` and
-`fast-suite (1)`…`(6)`. The one ruleset on `main` has enforcement disabled, so classic
-branch protection is what binds, and no merge queue is in use.
+On 2026-09-20 that returns eleven: `ruff`, `guards-and-preflight`,
+`fast-suite (1)`…`(6)`, `changes`, `pr-body-contract` and `changelog-fragment`. They
+come from the one ruleset on `main`, whose enforcement is active; classic branch
+protection was deleted on 2026-09-19, which is why the command above reads the rules
+endpoint — any token with read access can run it. Branches need not be up to date
+before merging, and no merge queue is in use.
 
-A pull request sees more than the eight. Every context reported on this page's own
+A pull request sees more than the eleven. Every context reported on this page's own
 pull request, and whether it blocks a merge:
 
 | context | required |
 |---|---|
 | `ruff`, `guards-and-preflight`, `fast-suite (1)`…`(6)` | yes |
-| `changes` | no, and that is the hole below |
-| `pr-body-contract`, `changelog-fragment`, `lane-label` | no |
-| `agent-docs-hygiene`, `public-docs-source`, `api-reference` | no |
+| `changes` | yes, for the reason below |
+| `pr-body-contract`, `changelog-fragment` | yes |
+| `lane-label`, `agent-docs-hygiene`, `public-docs-source`, `api-reference` | no |
 | `quality-gates`, `clean-wheel-smoke` on ubuntu, macos and windows | no |
 
 A first documentation pull request runs under `agent-docs-hygiene`, which greps for a
@@ -219,13 +223,13 @@ fixed list of known internal paths that a public clone does not carry, and
 `public-docs-source`, which checks that the published site still resolves to its
 source pages. Both are fast, and `bash scripts/ci/local.sh` runs the hygiene one.
 
-`pr-body-contract` and `changelog-fragment` are not among them, so a red run on either
-is visible and blocks nothing until somebody makes them required. **`changes` is not
-an advisory like those two: leaving it unrequired is a hole.** The heavy jobs declare
-`needs: changes`, so if that job dies of a runner fault they are skipped by dependency
-instead of failing, and a skipped required context does not block anything — the merge
-proceeds with no tests having run. It must be a required context; the reasoning is in
-the header of `.github/workflows/pr-tests.yml` and in [What runs on a
+The checks in the bottom two rows of that table are outside the eleven, so a red run on
+one of them is visible and blocks nothing. **`changes` is required for a reason the
+other ten do not share.** The heavy jobs declare `needs: changes`, so if that job dies
+of a runner fault they are skipped by dependency instead of failing, and a skipped
+required context does not block anything — the merge would proceed with no tests having
+run. Requiring `changes` is what closes that, so do not drop it from the ruleset; the
+reasoning is in the header of `.github/workflows/pr-tests.yml` and in [What runs on a
 PR](./agent-runbook.mdx#what-runs-on-a-pr-and-how-to-run-it-locally).
 
 The weekly audit reports what no single-PR gate can see, and it is a list to look at

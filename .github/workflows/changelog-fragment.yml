@@ -8,8 +8,9 @@ name: changelog-fragment
 # true: no direct CHANGELOG.md edit outside a release PR, and a fragment for
 # every change under rfx/.
 #
-# Mark this job a REQUIRED check in branch protection — until it is required,
-# a red run only advises and both rules are convention, not enforcement.
+# This job is a REQUIRED check in branch protection on main, carried by the
+# ruleset since 2026-09-19 — before that a red run only advised and both rules
+# were convention, not enforcement.
 
 on:
   pull_request:

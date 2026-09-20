@@ -5,7 +5,7 @@ name: pr-tests
 # actually run on every PR and push-to-main. The full "not gpu" suite remains
 # on validation.yml (weekly, sharded) — that run OOM'd unsharded on the 7 GB
 # runner, so this job is deliberately scoped to the affected surface to stay
-# fast and memory-safe. Mark this job a REQUIRED check in branch protection so
+# fast and memory-safe. Its jobs are REQUIRED checks in the `main` ruleset, so
 # the tripwire/regression-locks gate merges.
 #
 # Path-aware since 2026-09-18: the `changes` job decides whether this event
@@ -14,12 +14,13 @@ name: pr-tests
 # what branch protection reads. The contract tests run either way. A push to
 # main is never skipped.
 #
-# `changes` MUST BE A REQUIRED CHECK in branch protection, alongside `ruff`,
-# `guards-and-preflight` and `fast-suite (1)`..`(6)`. Without it the gate has a
-# hole: `needs: changes` means a `changes` job that dies of a runner fault
-# leaves the heavy jobs SKIPPED by dependency, and a skipped job does not fail a
-# required context — so a merge would go through having run no tests at all. The
-# job is a checkout plus a stdlib script, 15 s, so requiring it costs nothing.
+# `changes` MUST BE A REQUIRED CHECK, alongside `ruff`, `guards-and-preflight`
+# and `fast-suite (1)`..`(6)`, and the `main` ruleset has required it since
+# 2026-09-19. Without it the gate has a hole: `needs: changes` means a `changes`
+# job that dies of a runner fault leaves the heavy jobs SKIPPED by dependency,
+# and a skipped job does not fail a required context — so a merge would go
+# through having run no tests at all. The job is a checkout plus a stdlib
+# script, 15 s, so requiring it costs nothing.
 
 on:
   push:
@@ -202,7 +203,7 @@ jobs:
     # them to `fast-suite (3.10, 1)` leaves every required check permanently
     # unreported, so no PR can merge. The 3.11 entry gets its own suffixed name.
     # Groups 5 and 6 (added 2026-09-05, #890) produce `fast-suite (5)` / `(6)`,
-    # which are NOT yet in branch protection; (1)-(4) stay required and lighter.
+    # required since 2026-09-19 like (1)-(4).
     name: >-
       ${{ matrix.python-version == '3.10'
           && format('fast-suite ({0})', matrix.group)
