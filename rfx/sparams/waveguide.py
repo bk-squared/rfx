@@ -638,13 +638,24 @@ def compute_waveguide_s_matrix(
     #
     # Folding it moved no committed verdict, which is why it could be folded
     # at all: ``subpixel_smoothing`` defaults to False (see this function's
-    # signature), both blocks below sit behind that flag, and an AST census
-    # of the whole tree finds four callers passing a truthy value out of 161
-    # call sites into this lane -- three fences that raise before the solve,
-    # and one real solve whose only interior geometry is a PEC box reaching
-    # no pad (PEC is continued by neither lane).
+    # signature), both blocks below sit behind that flag, and an AST census of
+    # the whole tree finds four in-tree callers passing a truthy value --
+    # three fences that raise before the solve, and one real solve whose only
+    # interior geometry is a PEC box reaching no pad (PEC is continued by
+    # neither lane). The census this PR adds brings that to seven, its own
+    # three being build-only.
     # ``scripts/diagnostics/waveguide_lane_pad_continuation_census.py``
     # re-runs both that census and the pad comparison.
+    #
+    # WHAT THE CENSUS DOES NOT ESTABLISH (review of PR #1131, F3). It matches
+    # on the callee name, so of 177 calls into this lane's entry points it can
+    # classify 7 explicit and leaves 17 UNKNOWN -- they forward ``**kwargs``
+    # and could be passing the flag. ``compute_s_matrix``
+    # (``rfx/sparams/dispatch.py:452``) reaches this function that way. That
+    # the other 153 pass neither IS a census result; that the 17 do not pass
+    # it is not, and "everything else takes the default" was a grep result
+    # reported as a census result. The script now prints the three buckets
+    # separately.
     # Stage 2 unified path: subpixel_smoothing="kottke_pec" routes
     # through compute_inv_eps_tensor_diag and skips the Stage 1
     # eps_correction + apply_conformal_pec chain entirely. Both
@@ -660,6 +671,14 @@ def compute_waveguide_s_matrix(
             compute_inv_eps_tensor_diag, smoothed_shape_pairs,
             warn_unextendable_shapes,
         )
+        # ``warn_unextendable_shapes`` defaults to stacklevel 3, chosen for
+        # the runners. This lane sits one wrapper deeper, so an unextendable
+        # shape reported here can be attributed to a different frame than the
+        # same shape reported from ``rfx/runners/uniform.py``. The text and
+        # the condition are identical; only the file:line Python prints in
+        # front of it can differ. Left as is -- no fixture in the tree
+        # exercises it, and a per-caller stacklevel is a change to the
+        # helper's contract, not to this fold.
         shape_eps_pairs, _unextendable = smoothed_shape_pairs(self, grid)
         warn_unextendable_shapes(_unextendable)
         aniso_inv_eps = compute_inv_eps_tensor_diag(

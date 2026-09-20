@@ -286,14 +286,28 @@ pre-declaration ("refactoring and measurement changes do not travel together",
 #928).
 
 **FOLDED, #1066 (2026-09-20).** Both sites now call `smoothed_shape_pairs`, and
-the census above was re-run rather than trusted: the same four callers, out of
-161 call sites into the lane, 157 of which take the `False` default and so
-never enter either block. No committed verdict moved. The pad is pinned by
-`tests/unit/sparams/test_waveguide_lane_pad_continuation.py`, and
-`scripts/diagnostics/waveguide_lane_pad_continuation_census.py` re-runs both
-the census and the build-only pad comparison that measured the gap
-(`eps_xx = 1.0` down all 8 CPML cells before, 4.0 after, on a WR-90 guide with
-an `eps_r = 4` slab reaching the x-hi face).
+the census above was re-run rather than trusted: the same four in-tree callers
+pass a truthy value, and none of them reaches a pad with a dielectric. No
+committed verdict moved.
+
+The census counts by callee name, and that is a limit worth stating rather than
+rounding off (review of PR #1131, F3). Of 177 calls into the lane's entry
+points it classifies 7 explicit — the four above plus three this PR adds, all
+build-only — and leaves 17 UNKNOWN, because they forward `**kwargs` and could
+be passing the flag; `compute_s_matrix` (`rfx/sparams/dispatch.py:452`) reaches
+the lane that way. The remaining 153 pass neither, and that much the census
+does establish. What it cannot establish is the 17: "everything else takes the
+default" was a grep result reported as a census result, and the two are not the
+same claim.
+
+The pad is pinned by
+`tests/unit/sparams/test_waveguide_lane_pad_continuation.py`, which captures
+the array the lane itself hands the solver.
+`scripts/diagnostics/waveguide_lane_pad_continuation_census.py` re-runs the
+census and the build-only pad comparison, printing the lane's and the runner's
+captured columns next to the pre-fold construction that measured the gap
+(`eps_xx = 1.0` down all 8 CPML cells then, 4.0 on both lanes now, on a WR-90
+guide with an `eps_r = 4` slab reaching the x-hi face).
 
 ## 9. What this does not close
 
