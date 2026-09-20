@@ -176,7 +176,10 @@ def measure_floor(loss, x, v):
     res2 = ys - np.polyval(np.polyfit(hs, ys, 2), hs)
     res3 = ys - np.polyval(np.polyfit(hs, ys, 3), hs)
     sigma = float(np.sqrt(np.sum(res2 ** 2) / (len(hs) - 3)))
-    return sigma, float(np.sqrt(np.mean(res3 ** 2)) >= 0.9 * np.sqrt(np.mean(res2 ** 2)))
+    return {'sigma': sigma,
+            'reliable': bool(np.sqrt(np.mean(res3 ** 2)) >= 0.9 * np.sqrt(np.mean(res2 ** 2))),
+            'hs': hs.tolist(), 'losses': ys.tolist(),
+            'quadratic_residuals': res2.tolist(), 'cubic_residuals': res3.tolist()}
 
 
 def judge_control(loss, x, v, ad_rel, scale, loss0, use_floor):
@@ -184,8 +187,9 @@ def judge_control(loss, x, v, ad_rel, scale, loss0, use_floor):
     sigma = None
     floor = None
     if use_floor:
-        sigma, reliable = measure_floor(loss, x, v)
-        floor = {'sigma': sigma, 'sigma_in_ulp': sigma / adq.ulp(loss0), 'reliable': reliable}
+        floor = measure_floor(loss, x, v)
+        sigma = floor['sigma']
+        floor['sigma_in_ulp'] = sigma / adq.ulp(loss0)
     order = adq.fit_order(pts, loss0, ad_rel, sigma=sigma)
     fd = adq.fd_budget(pts, ad_rel, scale, sigma=sigma)
     return {'order': order, 'lane_order_verdict': lane_order_verdict(order), 'fd': fd, 'floor': floor,
@@ -195,7 +199,10 @@ def judge_control(loss, x, v, ad_rel, scale, loss0, use_floor):
 def controls_arm(name, loss_fns, cells_of, jac, x0, names, scales, tied_cells, use_floor, revert_control=None):
     """Generic: loss_fns = {label: (loss_cells(cells, stop_dt), n_steps)}; x0 = nominal delta/param vector;
     jac = d cells / d x (n_cells x n_x); names/scales per control; tied_cells = indices of the dt-setting set."""
-    out = {'arm': name, 'provenance': provenance(), 'selfcheck': adq.selfcheck(), 'losses': {}}
+    out = {'arm': name, 'provenance': provenance(), 'selfcheck': adq.selfcheck(), 'losses': {},
+           'nominal': np.asarray(x0, float).tolist(), 'jacobian': np.asarray(jac, float).tolist(),
+           'control_names': list(names), 'control_scales': list(scales),
+           'tied_cells': np.asarray(tied_cells).tolist(), 'hs': list(HS)}
     assert out['selfcheck']['all_pass'], out['selfcheck']
     for i in range(len(names)):
         assert float(np.ptp(jac[tied_cells, i])) == 0.0, (names[i], 'induced direction not constant on the tied set')
@@ -204,7 +211,8 @@ def controls_arm(name, loss_fns, cells_of, jac, x0, names, scales, tied_cells, u
         loss0 = float(loss(jnp.asarray(x0, jnp.float32)))
         g_cell = np.asarray(jax.jit(jax.grad(loss_cells))(jnp.asarray(cells_of(jnp.asarray(x0, jnp.float32)))), float)
         g_x = jac.T @ g_cell
-        rec = {'loss0': loss0, 'loss_ulp': adq.ulp(loss0), 'g_cell': g_cell.tolist(), 'g_x_chain': g_x.tolist(), 'controls': {}}
+        rec = {'loss0': loss0, 'loss_ulp': adq.ulp(loss0), 'g_cell': g_cell.tolist(),
+               'g_x_chain': g_x.tolist(), 'n_steps': _n, 'controls': {}}
         for i, nm in enumerate(names):
             # x0 may be longer than names (zsmooth: full P0 with the four thickness controls in front);
             # the step direction lives in x0's space, the control index is shared.
@@ -222,9 +230,12 @@ def controls_arm(name, loss_fns, cells_of, jac, x0, names, scales, tied_cells, u
             v = np.zeros(len(x0)); v[i] = scales[i]
             ad_nodt = float(gx_nodt[i] * scales[i])
             r = judge_control(loss, np.asarray(x0, float), v, ad_nodt, scales[i], loss0, use_floor)
-            fwd_same = float(loss_nodt(jnp.asarray(x0, jnp.float32))) == loss0
-            rec['revert'] = {'control': revert_control, 'forward_identical': fwd_same, 'dt_share': float((g_x[i] - gx_nodt[i]) / g_x[i]) if g_x[i] else None,
-                             'lane_order_verdict': r['lane_order_verdict'], 'order': r['order'], 'fd_verdict': r['fd']['verdict']}
+            forward_nodt = float(loss_nodt(jnp.asarray(x0, jnp.float32)))
+            rec['revert'] = {**r, 'control': revert_control,
+                             'forward_identical': forward_nodt == loss0, 'forward_loss': forward_nodt,
+                             'dt_share': float((g_x[i] - gx_nodt[i]) / g_x[i]) if g_x[i] else None,
+                             'g_cell': g_nodt.tolist(), 'g_x_chain': gx_nodt.tolist(),
+                             'ad_relative': ad_nodt, 'fd_verdict': r['fd']['verdict']}
             print(name, label, 'REVERT', revert_control, r['lane_order_verdict'], r['fd']['verdict'], 'dt_share', rec['revert']['dt_share'], flush=True)
         rec['coverage'] = adq.coverage(g_cell, jac)
         held = [i for i, nm in enumerate(names) if rec['controls'][nm]['lane_order_verdict'] == 'HELD' and rec['controls'][nm]['fd']['verdict'] == 'HELD']
@@ -277,8 +288,13 @@ def arm_zsmooth():
 
 
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument('--arm', choices=('y', 'pos', 'zsmooth'), required=True); a = ap.parse_args()
-    out_path = RESULTS / f'e7_{a.arm}.json'
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--arm', choices=('y', 'pos', 'zsmooth'), required=True)
+    ap.add_argument('--out', type=Path, help='Separate output path for a new, explicitly declared witness')
+    a = ap.parse_args()
+    out_path = a.out if a.out is not None else RESULTS / f'e7_{a.arm}.json'
+    if out_path.exists():
+        raise FileExistsError(out_path)
     claim = out_path.with_suffix('.started')
     with claim.open('x') as f:
         f.write(f'{time.time()}\n')

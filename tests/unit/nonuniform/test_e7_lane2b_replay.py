@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sys
 
 import jax
 import jax.numpy as jnp
@@ -28,11 +29,91 @@ SCALES = {"y": (e6.W0, e6.W0), "pos": (e6.W0, e6.W0), "zsmooth": tuple(float(s) 
 
 def _load(arm):
     p = RESULTS / f"e7_{arm}.json"
-    if not p.exists():
-        pytest.skip(f"lane-2b arm {arm} not measured yet")
     d = json.loads(p.read_text())
     assert d["arm"] == arm
     return d
+
+
+def test_missing_required_artifact_is_an_error(tmp_path, monkeypatch):
+    monkeypatch.setitem(globals(), "RESULTS", tmp_path)
+    with pytest.raises(FileNotFoundError):
+        try:
+            _load("y")
+        except pytest.skip.Exception:
+            pytest.fail("A completed witness must not skip missing evidence")
+
+
+def test_main_refuses_existing_evidence_before_measurement(tmp_path, monkeypatch):
+    out = tmp_path / "e7_y.json"
+    original = '{"retained": true}\n'
+    out.write_text(original)
+    monkeypatch.setattr(e7, "RESULTS", tmp_path)
+    monkeypatch.setattr(sys, "argv", ["e7_lane2b", "--arm", "y"])
+
+    def forbidden_measurement():
+        pytest.fail("Existing evidence must be refused before measurement")
+
+    monkeypatch.setattr(e7, "arm_y", forbidden_measurement)
+    with pytest.raises(FileExistsError, match="e7_y.json"):
+        e7.main()
+    assert out.read_text() == original
+    assert not out.with_suffix(".started").exists()
+
+
+def test_main_writes_supplement_without_replacing_frozen_evidence(tmp_path, monkeypatch):
+    frozen = tmp_path / "e7_y.json"
+    original = '{"retained": true}\n'
+    frozen.write_text(original)
+    out = tmp_path / "supplement.json"
+    monkeypatch.setattr(e7, "RESULTS", tmp_path)
+    monkeypatch.setattr(sys, "argv", ["e7_lane2b", "--arm", "y", "--out", str(out)])
+    monkeypatch.setattr(e7, "arm_y", lambda: {"arm": "y", "sentinel": 17})
+    e7.main()
+    assert json.loads(out.read_text())["sentinel"] == 17
+    assert frozen.read_text() == original
+
+
+def test_floor_retains_the_actual_loss_samples():
+    def loss(q):
+        return jnp.float32(0.1306) + 0.37 * q[0] + 2.9 * q[0] ** 2
+
+    x, v = np.zeros(1), np.ones(1)
+    expected = [float(loss(jnp.asarray(x + h * v, jnp.float32))) for h in e7.FLOOR_HS]
+    result = e7.judge_control(loss, x, v, 0.37, 1.0, float(loss(x)), True)
+    floor = result["floor"]
+    assert floor["hs"] == list(e7.FLOOR_HS)
+    assert floor["losses"] == expected
+    hs = np.asarray(e7.FLOOR_HS)
+    residual = np.asarray(expected) - np.polyval(np.polyfit(hs, expected, 2), hs)
+    np.testing.assert_array_equal(floor["quadratic_residuals"], residual)
+    assert floor["sigma"] == pytest.approx(np.linalg.norm(residual) / np.sqrt(len(hs) - 3))
+
+
+def test_revert_retains_gradient_and_judge_inputs():
+    def loss_cells(cells, stop_dt=False):
+        q = cells[0] - 1.0
+        dt_term = jax.lax.stop_gradient(q) if stop_dt else q
+        # The cubic gives central FD a nonzero h^2 truncation term; without
+        # it Richardson's validity check correctly reports INCONCLUSIVE.
+        return jnp.float32(0.1306) + 0.37 * q + 2.9 * q ** 2 + 0.5 * q ** 3 + 0.05 * dt_term
+
+    result = e7.controls_arm(
+        "synthetic", {"l1": (loss_cells, 1)}, lambda q: q,
+        np.eye(1), np.ones(1), ("w",), (1.0,), np.array([0]),
+        use_floor=True, revert_control="w",
+    )
+    rec = result["losses"]["l1"]
+    rv = rec["revert"]
+    np.testing.assert_allclose(rec["g_cell"], [0.42], rtol=1e-6)
+    np.testing.assert_allclose(rv["g_cell"], [0.37], rtol=1e-6)
+    assert rv["ad_relative"] == pytest.approx(0.37, rel=1e-6)
+    assert rv["forward_identical"] is True
+    assert [p["h"] for p in rv["points"]] == list(adq.HS)
+    assert rv["floor"]["hs"] == list(e7.FLOOR_HS)
+    order = adq.fit_order(rv["points"], rec["loss0"], rv["ad_relative"], sigma=rv["floor"]["sigma"])
+    fd = adq.fd_budget(rv["points"], rv["ad_relative"], 1.0, sigma=rv["floor"]["sigma"])
+    assert order["verdict"] == rv["order"]["verdict"]
+    assert fd["verdict"] == rv["fd"]["verdict"] == rv["fd_verdict"] == "FIRED"
 
 
 def _jacobian(arm):
