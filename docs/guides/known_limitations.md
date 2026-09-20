@@ -29,21 +29,27 @@ that should have been transparent. Choose a `domain` commensurate with `dx`, and
 read the realized bounds rather than the declared ones.
 → [#1070](https://github.com/bk-squared/rfx/issues/1070)
 
-**The waveguide S-parameter lane does not continue a boundary-touching
-dielectric into its absorber pad.** The runners do this since #1043; this lane
-rebuilds its own smoothed permittivity and does not, so a dielectric reaching a
-port's absorber is still solved with `eps_r = 1` in its own pad. Affects
-`compute_waveguide_s_matrix` on structures whose dielectric runs into the port
-face. Wavelength-scale clearance between the dielectric and the absorber avoids
-it.
-→ [#1066](https://github.com/bk-squared/rfx/issues/1066)
-
 ## Ports and extraction
 
 **The coax→microstrip transition over-reads power by about a factor of three.**
-Measured twice independently on the MSL port's power-wave normalization.
-Transition S-parameters from that path are not usable as an absolute power
-reference.
+Measured twice independently on the MSL port's power-wave normalization: the
+returned matrix's own MSL-driven column power runs about 3x the incident power
+(the coax-driven column reads 0.379 / 0.379 / 0.367 on the same run), and a
+six-face Poynting flux box on the same run reads the same factor. The matrix is
+therefore not passive — `compute_coax_msl_transition(...)` returns it with a
+`UserWarning` unless `strict_passivity=True`, which raises instead — and
+transition S-parameters from that path are not usable as an absolute power
+reference. Scope: cross-family transition lanes are not pursued further before
+2.0, so this over-read will not be attributed or corrected; use the
+single-family extractors separately (`compute_msl_s_matrix(...)`, the coaxial
+two-port and line-reflection lanes) for a result you can cite.
+
+The single-family microstrip lane does not carry this ~3x: the V·I-over-Poynting-flux
+oracle (`scripts/diagnostics/msl_vi_flux_oracle/msl_vi_flux_oracle.json`) bounds its power
+scale against the true flux to about 1 % on both committed meshes, and a 3x over-read cannot
+hide inside 1 %. That lane has its own limits — see the
+[S-parameter support matrix](sparameter_support_matrix.md) — including a raw passivity excess
+above 17 GHz recorded in `validation/crossval/07_sheen_lpf.py`.
 → [#838](https://github.com/bk-squared/rfx/issues/838)
 
 **Microstrip propagation constant sits about 0.9 % above the Hammerstad–Jensen

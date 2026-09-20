@@ -788,6 +788,11 @@ def test_the_lint_workflow_calls_the_script() -> None:
 
 
 def test_workflow_asks_to_be_a_required_check() -> None:
-    """A gate nobody made required is advisory, which is what prose already was."""
+    """A gate nobody made required is advisory, which is what prose already was.
+
+    `pr-body-contract` has been required on `main` since 2026-09-19. This keeps
+    the workflow header saying so, because dropping the requirement puts the two
+    body lines straight back to prose.
+    """
     text = _WORKFLOW.read_text(encoding="utf-8")
     assert "REQUIRED check in branch protection" in text
