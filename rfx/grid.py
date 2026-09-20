@@ -7,6 +7,51 @@ import numpy as np
 # Speed of light in vacuum (m/s)
 C0 = 299_792_458.0
 
+#: How many machine epsilons of ``length/dx`` count as float dust rather than
+#: as declared sub-cell intent (issue #1070).
+#:
+#: A declared domain length is an ARITHMETIC EXPRESSION, not a literal: the
+#: rig in #1070 writes ``38*h + 2*(pad*h)``, and the #801 patch fixture,
+#: the WR-90 lanes and the MSL boards all build theirs the same way. Each
+#: multiply, each add and the division itself rounds, and each rounding costs
+#: at most half an ULP of the result. Eight of them is a generous bound on a
+#: handful of summed terms -- the rig above spends three -- and the tolerance
+#: it buys is ``8 * eps * max(1, r)``, which at r = 232 is 4.12e-13, or 14.5
+#: ULP of r. So the rule absorbs a deviation of up to 14 ULP there and takes
+#: 15 as real.
+#:
+#: The distance to the nearest case anyone could MEAN is the reason this is
+#: safe: a domain one part in 1e6 longer than 232 cells sits 8.2e9 ULP away,
+#: nine orders of magnitude outside the band. An ABSOLUTE tolerance has no
+#: such separation at either end of the useful range -- ``round(r, 9)`` is
+#: coarser than an ULP for a million-cell domain and finer than one for a
+#: domain of a few cells -- which is why this is relative.
+CELL_COUNT_ULP_BUDGET = 8
+
+
+def cells_spanning(length: float, dx: float, *,
+                   ulp_budget: int = CELL_COUNT_ULP_BUDGET) -> int:
+    """Cells needed to span *length* at cell size *dx* (issue #1070).
+
+    ``ceil(length / dx)``, except that a ratio sitting within
+    ``ulp_budget * eps * max(1, r)`` of an integer is taken to BE that
+    integer. Plain ``ceil`` buys a whole extra cell for one ULP of float
+    dust, and nothing downstream fills it: it lies outside every declared
+    Box, so it rasterizes as vacuum, and at a face that abuts an absorber
+    the pad extension then replicates that vacuum outward (#1070, the
+    staircase-lane twin of #831).
+
+    This is a LENGTH question only. A step count is not one -- see
+    ``Grid.num_timesteps``, which still takes a plain ``ceil`` because
+    running a fraction of a step over is right and running one short is not.
+    """
+    ratio = length / dx
+    nearest = round(ratio)
+    if abs(ratio - nearest) <= ulp_budget * float(np.finfo(float).eps) * max(
+            1.0, abs(ratio)):
+        return int(nearest)
+    return int(np.ceil(ratio))
+
 
 class Grid:
     """Rectilinear FDTD grid with uniform cell size.
