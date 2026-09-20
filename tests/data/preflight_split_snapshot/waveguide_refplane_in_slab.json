@@ -1,0 +1,44 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "mesh_resolution",
+        "loc": null,
+        "message": "dielectric 'diel' on x: 5.1 cells per \u03bb_eff (eps_r=4.00, freq_max=11.6GHz, dx=2.54mm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.",
+        "severity": "warning",
+        "source": "_validate_mesh_quality"
+      },
+      {
+        "code": "mesh_resolution",
+        "loc": null,
+        "message": "dielectric 'diel' on y: 5.1 cells per \u03bb_eff (eps_r=4.00, freq_max=11.6GHz, dx=2.54mm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.",
+        "severity": "warning",
+        "source": "_validate_mesh_quality"
+      },
+      {
+        "code": "mesh_resolution",
+        "loc": null,
+        "message": "dielectric 'diel' on z: 5.1 cells per \u03bb_eff (eps_r=4.00, freq_max=11.6GHz, dx=2.54mm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.",
+        "severity": "warning",
+        "source": "_validate_mesh_quality"
+      },
+      {
+        "code": "lossless_q",
+        "loc": null,
+        "message": "all dielectric(s) ['diel'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)",
+        "severity": "warning",
+        "source": "_validate_cfg_lossless_resonator_in_absorber"
+      },
+      {
+        "code": "waveguide_reference_plane",
+        "loc": null,
+        "message": "waveguide_port reference plane at 20.3 mm intersects geometry 'diel' (bounds 15.2\u201325.4 mm on x). Modal decomposition assumes a uniform cross-section at the port plane; reported S-params will mix modes. Move the reference plane into the empty-guide region.",
+        "severity": "warning",
+        "source": "_validate_cfg_waveguide_reference_plane"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 5,
+    "ok": true
+  }
+}

@@ -1,5 +1,5 @@
 name: rfx-gpu-suite
-description: "W2.4 maintained GPU harness: full gpu-marked pytest suite on current main (run per release tag + after GPU-touching merges)"
+description: "W2.4 maintained GPU harness: full gpu-marked pytest suite on origin/main (or RFX_GPU_SUITE_REF), exported with git archive so the primary checkout is never the thing under test (run per release tag + after GPU-touching merges)"
 tags: [rfx, gpu-suite, ci-trust, w24]
 resources:
   cluster: remilab-c0
@@ -14,18 +14,35 @@ mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
   set -euo pipefail
-  cd /root/workspace/byungkwan-workspace/research/rfx
-  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx || true
+  primary=/root/workspace/byungkwan-workspace/research/rfx
+  cd "$primary"
+  git config --global --add safe.directory "$primary" || true
   echo "=== rfx GPU suite (W2.4 maintained harness) ==="
   echo "=== provenance ==="
-  git rev-parse HEAD || true
+  # The suite tests the REF it is asked for (default origin/main), never
+  # whatever the primary checkout happens to have checked out. Measured
+  # 2026-09-15 (run 369367261080): the primary checkout sat 6 commits behind
+  # main after the #1038 runner merges, so a "post-merge" GPU run silently
+  # tested pre-merge code. The tree is exported with `git archive` into a
+  # scratch dir, so the PI's checkout is not touched (no checkout, no worktree
+  # metadata, no detached HEAD). Override with RFX_GPU_SUITE_REF=<sha|branch>.
+  git fetch -q origin
+  ref="${RFX_GPU_SUITE_REF:-origin/main}"
+  sha=$(git rev-parse "$ref")
+  short=$(git rev-parse --short "$ref")
+  echo "suite ref: $ref = $sha"
+  echo "primary checkout HEAD: $(git rev-parse HEAD) (informational; the suite runs $ref, not this HEAD)"
   git status --short || true
-  echo "=== install runtime dependencies (repo path, no editable install) ==="
+  src="/tmp/rfx-gpu-suite-$short"
+  rm -rf "$src" && mkdir -p "$src"
+  git archive --format=tar "$sha" | tar -xf - -C "$src"
+  echo "=== install runtime dependencies (exported tree, no editable install) ==="
   python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest
-  export RFX_REPO_ROOT="/root/workspace/byungkwan-workspace/research/rfx"
+  export RFX_REPO_ROOT="$src"
   export PYTHONPATH="$RFX_REPO_ROOT:${PYTHONPATH:-}"
-  python -c "import jax, rfx; print('probe ok | jax', jax.__version__, '| devices', jax.devices(), '| rfx', getattr(rfx, '__version__', '?'))"
-  out=".omx/gpu-suite/$(date -u +%Y%m%dT%H%M%SZ)-$(git rev-parse --short HEAD)"
+  cd "$src"
+  python -c "import jax, rfx; print('probe ok | jax', jax.__version__, '| devices', jax.devices(), '| rfx', getattr(rfx, '__version__', '?'), '| from', rfx.__file__)"
+  out="$primary/.omx/gpu-suite/$(date -u +%Y%m%dT%H%M%SZ)-$short"
   mkdir -p "$out"
   echo "=== gpu-marked suite (249 tests at authoring time) ==="
   # NOTE: the 'distributed' pytest marker is declared but currently has ZERO

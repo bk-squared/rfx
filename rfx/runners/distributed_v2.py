@@ -13,6 +13,16 @@ sources, point probes, lumped ports, and dispersive materials
 Single-device fallback: when only 1 device is available, sharding is skipped
 and a plain jit path is used.
 
+Declared PEC (#1053): a PEC VOLUME is realized here.  ``pec_mask`` is
+sharded with the material arrays and applied in both step bodies after
+source injection and immediately before the E ghost exchange, which is
+``distributed_nu``'s stage 8 at the #1041 ordering.  Declared SHEETS and
+sub-cell WIRES own no cell, this lane has no other carrier for them, and
+they are refused rather than silently dropped.  Note the single-device fast
+path below delegates to the pmap runner, which still drops the mask and so
+still refuses a volume (#1055); ``Simulation.run(devices=...)`` never reaches
+it, because ``rfx/api/_execute.py`` routes here only for ``len(devices) > 1``.
+
 Known limitations (transparent single-device fallback):
 - TFSF plane-wave sources: require full-domain field injection, not
   compatible with slab decomposition.  Detected and warned at runtime.
@@ -20,6 +30,7 @@ Known limitations (transparent single-device fallback):
   cross-section on one device.  Detected and warned at runtime.
 - Non-divisible nx: automatically padded to nearest multiple of n_devices
   with PEC-filled cells, then trimmed after gathering.
+- Declared PEC sheets and sub-cell wires: refused (see above).
 
 The public entry point ``run_distributed`` has an identical signature to the
 pmap version in ``distributed.py`` so callers need no changes.
@@ -36,7 +47,6 @@ import numpy as np
 from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
 from jax.experimental.shard_map import shard_map
 
-from rfx.core.jax_utils import is_tracer
 from rfx.core.yee import (
     FDTDState,
     MaterialArrays,
@@ -67,7 +77,20 @@ from rfx.runners.distributed import (
     _apply_cpml_e_distributed,
     _apply_cpml_h_distributed,
 )
-from rfx.runners._distributed_common import exchange_component_shmap
+from rfx.runners._distributed_common import (
+    apply_pec_face_shmap,
+    apply_pec_mask_shmap,
+    apply_pmc_face_shmap,
+    exchange_component_shmap,
+    inject_sources_shmap,
+    sample_probes_shmap,
+    shard_stacked,
+    shard_stacked_psi,
+    split_array_x,
+    unstack_and_gather,
+    update_e_nu_shmap,
+    update_h_nu_shmap,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -145,139 +168,19 @@ def _exchange_e_ghosts_shmap(state: FDTDState, mesh: Mesh, n_devices: int) -> FD
 # Device-conditional PEC inside shard_map
 # ---------------------------------------------------------------------------
 
-def _apply_pec_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
-                     nx_local_with_ghost: int, pad_x: int = 0) -> FDTDState:
-    """Apply PEC boundary conditions using shard_map for device identity.
-
-    ``pad_x`` (#622): when the last rank's slab carries alignment-pad
-    cells past the real x-hi face (global node ``nx - 1``), the face
-    must act on that real node, not on the padded slab end.
-    """
-
-    @partial(
-        shard_map,
-        mesh=mesh,
-        in_specs=(
-            P("x"),  # ex
-            P("x"),  # ey
-            P("x"),  # ez
-        ),
-        out_specs=(
-            P("x"),
-            P("x"),
-            P("x"),
-        ),
-        check_rep=False,
-    )
-    def _pec(ex, ey, ez):
-        ghost = 1
-
-        # Y-axis PEC (all devices)
-        ex = ex.at[:, 0, :].set(0.0)
-        ex = ex.at[:, -1, :].set(0.0)
-        ez = ez.at[:, 0, :].set(0.0)
-        ez = ez.at[:, -1, :].set(0.0)
-
-        # Z-axis PEC (all devices)
-        ex = ex.at[:, :, 0].set(0.0)
-        ex = ex.at[:, :, -1].set(0.0)
-        ey = ey.at[:, :, 0].set(0.0)
-        ey = ey.at[:, :, -1].set(0.0)
-
-        device_idx = lax.axis_index("x")
-
-        # X-lo PEC: device 0 only
-        is_first = (device_idx == 0)
-        ey_xlo = jnp.where(is_first, 0.0, ey[ghost, :, :])
-        ez_xlo = jnp.where(is_first, 0.0, ez[ghost, :, :])
-        ey = ey.at[ghost, :, :].set(ey_xlo)
-        ez = ez.at[ghost, :, :].set(ez_xlo)
-
-        # X-hi PEC: device N-1 only (skip ghost AND alignment pad, #622)
-        is_last = (device_idx == n_devices - 1)
-        last_real = nx_local_with_ghost - 1 - ghost - pad_x
-        ey_xhi = jnp.where(is_last, 0.0, ey[last_real, :, :])
-        ez_xhi = jnp.where(is_last, 0.0, ez[last_real, :, :])
-        ey = ey.at[last_real, :, :].set(ey_xhi)
-        ez = ez.at[last_real, :, :].set(ez_xhi)
-
-        return ex, ey, ez
-
-    ex, ey, ez = _pec(state.ex, state.ey, state.ez)
-    return state._replace(ex=ex, ey=ey, ez=ez)
+# #1038 leg 3. ``_apply_pec_shmap``'s body now lives as
+# ``apply_pec_face_shmap`` in ``_distributed_common.py`` (the NU runner
+# carried a copy that differed only in its parameter spelling and three
+# comments). Kept as a module-local alias so the existing call sites are
+# unchanged.
+_apply_pec_shmap = apply_pec_face_shmap
 
 
-def _apply_pmc_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
-                     nx_local_with_ghost: int,
-                     pmc_faces: frozenset, pad_x: int = 0) -> FDTDState:
-    """PMC (``H_tangential = 0``) for the sharded uniform scan body.
-
-    Dual of :func:`_apply_pec_shmap`. Hook point is the H-half of the
-    scan body (after H ghost exchange, before E update) — OQ9 directive.
-    PMC must fire before the next E-update reads H via curl, so it is
-    NOT placed at the E-half mirror of PEC's call site.
-
-    Y- and Z-face PMC is local to every rank; X-face PMC is rank-
-    conditional and acts on the first / last real cell, not the seam
-    ghost — nor the alignment-pad cells when ``pad_x > 0`` (#622).
-    """
-    if not pmc_faces:
-        return state
-
-    @partial(
-        shard_map,
-        mesh=mesh,
-        in_specs=(
-            P("x"),  # hx
-            P("x"),  # hy
-            P("x"),  # hz
-        ),
-        out_specs=(
-            P("x"),
-            P("x"),
-            P("x"),
-        ),
-        check_rep=False,
-    )
-    def _pmc(hx, hy, hz):
-        ghost = 1
-
-        # Yee convention: _hi PMC acts on index -2 (0.5·dx INSIDE the
-        # wall), not -1 (ghost outside). See rfx/boundaries/pmc.py.
-        if "y_lo" in pmc_faces:
-            hx = hx.at[:, 0, :].set(0.0)
-            hz = hz.at[:, 0, :].set(0.0)
-        if "y_hi" in pmc_faces:
-            hx = hx.at[:, -2, :].set(0.0)
-            hz = hz.at[:, -2, :].set(0.0)
-        if "z_lo" in pmc_faces:
-            hx = hx.at[:, :, 0].set(0.0)
-            hy = hy.at[:, :, 0].set(0.0)
-        if "z_hi" in pmc_faces:
-            hx = hx.at[:, :, -2].set(0.0)
-            hy = hy.at[:, :, -2].set(0.0)
-
-        device_idx = lax.axis_index("x")
-        is_first = (device_idx == 0)
-        is_last = (device_idx == n_devices - 1)
-        last_real = nx_local_with_ghost - 1 - ghost - pad_x
-        last_inside = last_real - 1
-
-        if "x_lo" in pmc_faces:
-            hy_new = jnp.where(is_first, 0.0, hy[ghost, :, :])
-            hz_new = jnp.where(is_first, 0.0, hz[ghost, :, :])
-            hy = hy.at[ghost, :, :].set(hy_new)
-            hz = hz.at[ghost, :, :].set(hz_new)
-        if "x_hi" in pmc_faces:
-            hy_new = jnp.where(is_last, 0.0, hy[last_inside, :, :])
-            hz_new = jnp.where(is_last, 0.0, hz[last_inside, :, :])
-            hy = hy.at[last_inside, :, :].set(hy_new)
-            hz = hz.at[last_inside, :, :].set(hz_new)
-
-        return hx, hy, hz
-
-    hx, hy, hz = _pmc(state.hx, state.hy, state.hz)
-    return state._replace(hx=hx, hy=hy, hz=hz)
+# #1038 leg 3. ``_apply_pmc_shmap``'s body now lives as
+# ``apply_pmc_face_shmap`` in ``_distributed_common.py`` (the NU runner carried
+# a byte-identical copy once the slab-length parameter was spelled the same).
+# Kept as a module-local alias so the existing call sites are unchanged.
+_apply_pmc_shmap = apply_pmc_face_shmap
 
 
 # ---------------------------------------------------------------------------
@@ -495,9 +398,7 @@ def _init_cpml_sharded(grid, nx_local, n_devices, mesh):
         # arr: (n_devices, n_cpml, d1, d2) — merge device+cpml dims then shard
         # Re-interpret as (n_devices * n_cpml, d1, d2) so x-sharding distributes
         # the first axis across devices correctly.  Each device owns n_cpml rows.
-        n_dev, n_c, d1, d2 = arr.shape
-        merged = arr.reshape(n_dev * n_c, d1, d2)
-        return jax.device_put(merged, shd)
+        return shard_stacked_psi(arr, shd)
 
     def _shard_psi_field(arr):
         # arr: (n_devices, n_cpml, d1, d2) same as above
@@ -623,6 +524,12 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # Single-device fast path: skip all sharding overhead.
     # ------------------------------------------------------------------
     if n_devices == 1:
+        # This lane realizes a declared PEC volume (#1053) but the pmap
+        # runner does not, so a volume is refused HERE and runs at
+        # n_devices >= 2. Not reachable from Simulation.run(devices=...),
+        # which dispatches here only for len(devices) > 1; a direct caller
+        # passing one device gets the pmap refusal, which is honest about
+        # that runner (#1055).
         from rfx.runners.distributed import run_distributed as _pmap_run
         return _pmap_run(sim, n_steps=n_steps, devices=devices,
                          exchange_interval=exchange_interval, **kwargs)
@@ -638,20 +545,32 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         or getattr(sim, "_dx_profile", None) is not None
         or getattr(sim, "_dy_profile", None) is not None
     )
-    # PRE-EXISTING GAP, not a #931 regression (verified 2026-09-07): this
-    # lane assembles ``pec_mask`` and never applies it. Its step body only
-    # calls the DOMAIN-FACE PEC (``_apply_pec_shmap``); no geometry PEC —
-    # volume, sheet or wire — reaches the field update here. #931 did not
-    # introduce this and does not fix it; threading sheets in would only
-    # make the drop harder to see.
+    # Declared PEC on this lane, after #1053: VOLUMES are realized, SHEETS
+    # and WIRES are not.
     #
-    # What #931 DID introduce was a refusal that named "redraw it as a
-    # volume" as the remedy — advice that on this lane produces a run with
-    # the metal still missing and no sign of it (measured: a two-device run
-    # probing inside a declared PEC Box returns a trace bit-identical to
-    # the same model with the Box deleted). Since the drop is the same for
-    # all three kinds, the refusal is the same for all three: a declared
-    # PEC volume is refused here too rather than solved away.
+    # A volume is carried as ``pec_mask``, which #1053 legs 1-2 shard next
+    # to the material arrays and apply in both step bodies through
+    # ``apply_pec_mask_shmap`` — after source injection and the domain
+    # faces, immediately before the E ghost exchange, i.e. distributed_nu's
+    # stage 8 at the #1041 ordering. Gated end-to-end against the
+    # single-device lane by tests/unit/runners/
+    # test_distributed_v2_pec_body_seam.py (three bodies; seam-face body
+    # 3.074e-05 relative against a 1e-3 gate, 3.203e-01 with the stage one
+    # step late).
+    #
+    # A sheet and a sub-cell wire own no cell, so the mask carries neither.
+    # Nothing else on this lane does either: the step body's only other PEC
+    # is the DOMAIN FACE (``_apply_pec_shmap``). Declaring one here would
+    # put metal in the model that is absent from every rank with no sign of
+    # it, so both are still refused.
+    #
+    # The pre-#1053 refusal covered volumes too, because the mask was
+    # assembled and then dropped (measured then: a two-device run probing
+    # inside a declared PEC Box returned a trace bit-identical to the same
+    # model with the Box deleted). It also had to warn that redrawing a
+    # sheet as a volume did NOT help. Both statements are now false HERE
+    # and both stay true of the pmap lane in ``distributed.py``, whose copy
+    # of the message is a separate string and is out of #1053 scope (#1055).
     _d_pec_sheets: list = []
     _d_pec_wires: list = []
     if is_nu:
@@ -669,27 +588,24 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             sim._assemble_materials(grid, pec_sheets=_d_pec_sheets,
                                     pec_wires=_d_pec_wires)
         )
-    _d_pec_volume = (pec_mask is not None
-                     and not is_tracer(pec_mask)
-                     and bool(jnp.any(pec_mask)))
-    if _d_pec_sheets or _d_pec_wires or _d_pec_volume:
+    if _d_pec_sheets or _d_pec_wires:
         _d_declared = []
         if _d_pec_sheets:
             _d_declared.append(f"{len(_d_pec_sheets)} PEC sheet(s)")
         if _d_pec_wires:
             _d_declared.append(f"{len(_d_pec_wires)} sub-cell wire(s)")
-        if _d_pec_volume:
-            _d_declared.append(
-                f"a PEC volume of {int(jnp.sum(pec_mask))} cell(s)")
         raise NotImplementedError(
-            "run_distributed_v2() does not realize declared PEC geometry of "
-            "ANY kind (#931): this lane carries geometry PEC only as a cell "
-            "mask, its step body applies domain-face PEC alone, and a sheet "
-            "or a wire owns no cell to begin with. Declared here: "
-            f"{', '.join(_d_declared)} — all of it would be absent from "
-            "every rank with no sign of it. Redrawing a sheet as a volume "
-            "does NOT help on this lane (measured: a probe inside a declared "
-            "PEC Box reads a trace bit-identical to empty geometry). Use "
+            "run_distributed_v2() does not realize declared PEC SHEETS or "
+            "sub-cell WIRES: this lane carries geometry PEC only as a cell "
+            "mask, and a sheet or a wire owns no cell to begin with, so it "
+            "would be absent from every rank with no sign of it. Declared "
+            f"here: {', '.join(_d_declared)}. A declared PEC VOLUME is a "
+            "different case and DOES run here: since #1053 this lane shards "
+            "pec_mask and applies it in both step bodies, at the #1041 "
+            "ordering. So redrawing a sheet as a volume does realize metal "
+            "on this lane — but a volume is not the same object as a sheet "
+            "(it shorts the normal E edge between its two faces, #690), so "
+            "redraw only if that is the conductor you meant. Otherwise use "
             "sim.run() without devices=, which realizes all three, or model "
             "the conductor as a sigma fill, which rides in the material "
             "arrays this lane does shard.")
@@ -757,8 +673,6 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     if is_nu:
         from rfx.runners.distributed_nu import (
             _build_sharded_inv_dx_arrays,
-            _update_h_local_nu,
-            _update_e_local_nu,
             split_1d_with_ghost as _split_1d_with_ghost_helper,
         )
         inv_dx_global, inv_dx_h_global, _dx_padded = (
@@ -869,6 +783,30 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     state_slabs = _split_state(full_state, n_devices, ghost)
     materials_slabs = _split_materials(materials, n_devices, ghost)
 
+    # #1053 leg 1: carry the realized-PEC cell mask into the sharded world.
+    # ``pec_mask`` is the full-domain primal-cell occupancy of every declared
+    # PEC VOLUME, already padded to ``nx_padded`` above (with ``True``, the
+    # high-x alignment convention ``shard_pec_mask_x_slab`` also uses). Until
+    # now this lane built it and dropped it on the floor.
+    #
+    # ``pad_value=False`` fills the PHYSICAL-boundary ghost rows -- device 0's
+    # left ghost and device N-1's right ghost. It must be False and not True:
+    # a True there puts a spurious PEC wall on the whole x_lo / x_hi node
+    # plane of the outer ranks and shorts a CPML face (#689/#931, recorded at
+    # distributed_nu.py:538-547). Interior ghost rows get the seam
+    # neighbour's real value from the slicing, which is what lets a rank's
+    # first/last real cell see its true x neighbour under the four-incident-
+    # cell rule.
+    #
+    # ``split_array_x`` + ``shard_stacked`` reproduce
+    # ``distributed_nu.shard_pec_mask_x_slab`` BIT-IDENTICALLY -- verified on
+    # (nx, pad_x) in {(8,0), (7,1), (16,0)}, ny=nz=6, n_devices=2, random
+    # masks, jnp.array_equal True on every case. So this lane needs no sharder
+    # of its own, and the two lanes cannot disagree about slab layout.
+    pec_mask_slabs = (
+        None if pec_mask is None
+        else split_array_x(pec_mask, n_devices, ghost, pad_value=False))
+
     # Shard the stacked slabs: shape (n_devices, nx_local, ny, nz) ->
     # each device owns nx_local rows of the sharded (n_devices*nx_local, ny, nz) array.
     shd = _x_sharding(mesh)
@@ -902,9 +840,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
 
     def _shard_stacked(arr):
         """Merge device axis into x, then shard."""
-        n_dev = arr.shape[0]
-        rest = arr.shape[1:]
-        return jax.device_put(arr.reshape(n_dev * rest[0], *rest[1:]), shd)
+        return shard_stacked(arr, shd)
 
     def _shard_stacked_5d(arr):
         """(n_devices, n_poles, nx_local, ny, nz) -> shard along device dim.
@@ -936,6 +872,16 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     mat_mu_r  = _shard_stacked(materials_slabs.mu_r)
     sharded_materials = MaterialArrays(
         eps_r=mat_eps_r, sigma=mat_sigma, mu_r=mat_mu_r)
+
+    # #1053 leg 1. ``None`` whenever the model declares no PEC volume, which
+    # is every fixture of the #1038 bit-identity lock -- so the stage leg 2
+    # hooks on this is a no-op branch there and the lock stays 15/15. The step
+    # bodies read this as a CLOSURE VARIABLE, next to ``sharded_materials``,
+    # not through ``run_distributed``'s ``**kwargs``: that kwargs bag is
+    # forwarded only on the ``n_devices == 1`` fast path and is silently
+    # discarded at exactly the device counts this stage exists for.
+    sharded_pec_mask = (
+        None if pec_mask_slabs is None else _shard_stacked(pec_mask_slabs))
 
     # ------------------------------------------------------------------
     # Dispersive materials
@@ -1066,76 +1012,16 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
 
     def _inject_sources_shmap(st, src_vals_step):
         """Inject sources on their owning device using shard_map."""
-        if n_src == 0:
-            return st
-
-        # Build per-device injection: shard_map gives each device its slab
-        # We need device identity inside shard_map.
-        @partial(
-            shard_map,
-            mesh=mesh,
-            in_specs=(
-                P("x"),  # ex
-                P("x"),  # ey
-                P("x"),  # ez
-                P(),     # src_vals_step: replicated scalar vector
-            ),
-            out_specs=(P("x"), P("x"), P("x")),
-            check_rep=False,
+        return inject_sources_shmap(
+            st, src_vals_step, mesh, n_src,
+            src_local_specs, src_device_ids,
         )
-        def _inject(ex, ey, ez, sv):
-            device_idx = lax.axis_index("x")
-            for idx_s in range(n_src):
-                li, lj, lk, lc = src_local_specs[idx_s]
-                dev_id = src_device_ids[idx_s]
-                val = jnp.where(device_idx == dev_id, sv[idx_s], 0.0)
-                if lc == "ex":
-                    ex = ex.at[li, lj, lk].add(val)
-                elif lc == "ey":
-                    ey = ey.at[li, lj, lk].add(val)
-                elif lc == "ez":
-                    ez = ez.at[li, lj, lk].add(val)
-            return ex, ey, ez
-
-        ex, ey, ez = _inject(st.ex, st.ey, st.ez, src_vals_step)
-        return st._replace(ex=ex, ey=ey, ez=ez)
 
     def _sample_probes_shmap(st):
         """Sample probes on their owning devices, then sum across devices."""
-        if n_prb == 0:
-            return jnp.zeros(0, dtype=jnp.float32)
-
-        @partial(
-            shard_map,
-            mesh=mesh,
-            in_specs=(P("x"), P("x"), P("x"),
-                      P("x"), P("x"), P("x")),
-            out_specs=P(),
-            check_rep=False,
+        return sample_probes_shmap(
+            st, mesh, n_prb, prb_local_specs, prb_device_ids,
         )
-        def _sample(ex, ey, ez, hx, hy, hz):
-            device_idx = lax.axis_index("x")
-            samples = []
-            for idx_p in range(n_prb):
-                li, lj, lk, lc = prb_local_specs[idx_p]
-                dev_id = prb_device_ids[idx_p]
-                if lc == "ex":
-                    raw = ex[li, lj, lk]
-                elif lc == "ey":
-                    raw = ey[li, lj, lk]
-                elif lc == "ez":
-                    raw = ez[li, lj, lk]
-                elif lc == "hx":
-                    raw = hx[li, lj, lk]
-                elif lc == "hy":
-                    raw = hy[li, lj, lk]
-                else:
-                    raw = hz[li, lj, lk]
-                val = jnp.where(device_idx == dev_id, raw, 0.0)
-                samples.append(val)
-            return lax.psum(jnp.stack(samples), "x")
-
-        return _sample(st.ex, st.ey, st.ez, st.hx, st.hy, st.hz)
 
     # ------------------------------------------------------------------
     # H and E local updates via shard_map
@@ -1143,35 +1029,16 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
 
     def _update_h_shmap(st, mat):
         if is_nu:
-            @partial(
-                shard_map,
-                mesh=mesh,
-                in_specs=(
-                    P("x"), P("x"), P("x"),  # ex, ey, ez
-                    P("x"), P("x"), P("x"),  # hx, hy, hz
-                    P(),                     # step
-                    P("x"), P("x"), P("x"),  # eps_r, sigma, mu_r
-                    P("x"), P(None), P(None),  # inv_dx, inv_dy, inv_dz
-                    P("x"), P(None), P(None),  # inv_dx_h, inv_dy_h, inv_dz_h
-                ),
-                out_specs=(P("x"), P("x"), P("x"), P()),
-                check_rep=False,
-            )
-            def _h_nu(ex, ey, ez, hx, hy, hz, step, eps_r, sigma, mu_r,
-                      invdx, invdy, invdz, invdxh, invdyh, invdzh):
-                _st = FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=step)
-                _mat = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
-                new_st = _update_h_local_nu(
-                    _st, _mat, dt,
-                    invdx, invdy, invdz, invdxh, invdyh, invdzh)
-                return new_st.hx, new_st.hy, new_st.hz, new_st.step
-
-            hx, hy, hz, step = _h_nu(
-                st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, st.step,
-                mat.eps_r, mat.sigma, mat.mu_r,
+            # #1038 leg 4: this branch held a renamed copy (`_h_nu`) of
+            # distributed_nu.py's own `_h` wrapper -- inventory §2.4, 0.884
+            # similarity, the def name plus one re-wrapped argument list. One
+            # shared body now, in _distributed_common; the uniform branch below
+            # and the `is_nu` dispatch itself are untouched.
+            return update_h_nu_shmap(
+                st, mat, mesh, dt,
                 inv_dx_sharded, inv_dy_rep, inv_dz_rep,
-                inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep)
-            return st._replace(hx=hx, hy=hy, hz=hz, step=step)
+                inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep,
+            )
 
         @partial(
             shard_map,
@@ -1200,31 +1067,16 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         """E update (with optional dispersion) via shard_map."""
         if is_nu:
             # NU path: no dispersion (blocked upstream).
-            @partial(
-                shard_map,
-                mesh=mesh,
-                in_specs=(
-                    P("x"), P("x"), P("x"),
-                    P("x"), P("x"), P("x"),
-                    P(),
-                    P("x"), P("x"), P("x"),
-                    P("x"), P(None), P(None),
-                ),
-                out_specs=(P("x"), P("x"), P("x"), P()),
-                check_rep=False,
+            # #1038 leg 4: this branch held a renamed copy (`_e_nu`) of
+            # distributed_nu.py's own `_e` wrapper -- inventory §2.4, 0.947
+            # similarity, the def name and nothing else. One shared body now,
+            # in _distributed_common; the `is_nu` dispatch, the dispersive
+            # branch below and the (state, db_st, lr_st) return shape are
+            # untouched.
+            new_st = update_e_nu_shmap(
+                st, mat, mesh, dt,
+                inv_dx_sharded, inv_dy_rep, inv_dz_rep,
             )
-            def _e_nu(ex, ey, ez, hx, hy, hz, step, eps_r, sigma, mu_r,
-                      invdx, invdy, invdz):
-                _st = FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=step)
-                _mat = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
-                new_st = _update_e_local_nu(_st, _mat, dt, invdx, invdy, invdz)
-                return new_st.ex, new_st.ey, new_st.ez, new_st.step
-
-            ex, ey, ez, step = _e_nu(
-                st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, st.step,
-                mat.eps_r, mat.sigma, mat.mu_r,
-                inv_dx_sharded, inv_dy_rep, inv_dz_rep)
-            new_st = st._replace(ex=ex, ey=ey, ez=ez, step=step)
             # db_st / lr_st are passthrough (dummies) in NU path.
             return new_st, db_st, lr_st
 
@@ -1309,7 +1161,24 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # ------------------------------------------------------------------
 
     def step_fn_cpml(carry, xs):
-        """Single FDTD step (CPML path) operating on sharded arrays."""
+        """Single FDTD step (CPML path) operating on sharded arrays.
+
+        Stage order (#1041)::
+
+            H -> CPML-H -> exch H -> PMC face -> E -> CPML-E
+              -> sources -> PEC mask -> exch E -> probes
+
+        The E ghost exchange is the LAST stage of the E half-step, so a
+        ghost row is always a copy of the owner's FINISHED real row -- a
+        row the realized-PEC mask stage has already zeroed where the
+        geometry says metal (#1053). This is ``distributed_nu.py``'s order
+        since ``ac782d4f`` (#931 T3) and
+        the mirror of the H half, which applies the PMC face before the H
+        exchange "so the zero propagates via the exchange". Until #1041
+        this body exchanged BEFORE injecting, which lagged a seam-cell
+        source by one step in the neighbour's copy -- see the comment on
+        stage 7 for the measurement that moved it.
+        """
         _step_idx, src_vals = xs
         st = carry["fdtd"]
         cpml_st = carry["cpml"]
@@ -1352,16 +1221,61 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             mesh, n_devices, ghost=ghost, eps_r=sharded_materials.eps_r,
             pad_x=pad_x)
 
-        # 6. Exchange E ghost cells
+        # 6. Source injection
+        st = _inject_sources_shmap(st, src_vals)
+
+        # 6b. Realized-PEC cell mask (#1053). Geometry PEC, as opposed to the
+        #     domain faces step_fn_pec applies -- this body has no domain-face
+        #     PEC at all, because its faces are CPML. Each rank realizes the
+        #     per-component edge masks on its own slab by calling the one
+        #     owner, rfx.boundaries.pec.realized_pec_edge_masks, and zeroes
+        #     only its REAL cells; the ghost rows are forced False inside the
+        #     kernel so a seam cell is zeroed exactly once, by the rank that
+        #     owns it.
+        #
+        #     POSITION IS LOAD-BEARING: after injection, immediately BEFORE
+        #     the E ghost exchange. The exchange then hands the neighbour a
+        #     FINISHED row. Exchanging first leaves rank 0's right ghost
+        #     carrying the un-zeroed Ey/Ez of the seam plane rank 1 zeroes a
+        #     stage later, and rank 0's next H update at its last real cell
+        #     reads that stale plane -- measured on the nu lane at 2.107e-01
+        #     final-step error against a 5e-5 gate (ac782d4f, #931 T3), versus
+        #     7.773e-08 in this order.
+        if sharded_pec_mask is not None:
+            st = apply_pec_mask_shmap(
+                st, sharded_pec_mask, mesh, n_devices, nx_local)
+
+        # 7. Exchange E ghost cells -- LAST stage of the E half-step, so a
+        #    ghost row is a copy of the owner's FINISHED real row (#1041,
+        #    the ordering distributed_nu.py took in ac782d4f / #931 T3).
+        #    Exchanging before injection left a source at rank d's first
+        #    real cell out of rank d-1's right ghost for one step, and
+        #    rank d-1's next H update read the pre-injection plane.
+        #    Measured by scripts/diagnostics/issue1041_v2_step_order.py on a
+        #    seam-cell ez source, 2 ranks, 300 steps, boundary="cpml",
+        #    against the SAME model on one device: the probe 4 cells into
+        #    the neighbouring rank went from 1.653e-01 relative (first
+        #    divergent step 4, the causal arrival) to 1.894e-06 (step 50),
+        #    which is the interior-source control's own lane-difference
+        #    floor of 1.629e-06 on this geometry.
+        #
+        #    The defect is ONE-SIDED, which is worth knowing before reading
+        #    any lock result. Only the RIGHT E ghost is live: rank d-1's H
+        #    at its last REAL cell consumes it. A rank's LEFT E ghost feeds
+        #    only its own H at that same index, and the H exchange
+        #    (stage 3 / stage 2) overwrites that H with the neighbour's
+        #    authoritative value before anything reads it. So a source in
+        #    rank d's LAST real cell was never affected -- measured
+        #    bit-identical between the two orderings on both bodies -- and
+        #    that is exactly where every distributed_v2_* fixture of the
+        #    #1038 bit-identity lock puts its source, which is why that lock
+        #    stays 13/13 green through this change.
         st = lax.cond(
             do_exchange,
             lambda s: _exchange_e_ghosts_shmap(s, mesh, n_devices),
             lambda s: s,
             st,
         )
-
-        # 7. Source injection
-        st = _inject_sources_shmap(st, src_vals)
 
         # 8. Probe sampling
         probe_out = _sample_probes_shmap(st)
@@ -1370,7 +1284,22 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                 "debye": db_st, "lorentz": lr_st}, probe_out
 
     def step_fn_pec(carry, xs):
-        """Single FDTD step (PEC path) operating on sharded arrays."""
+        """Single FDTD step (PEC path) operating on sharded arrays.
+
+        Stage order (#1041)::
+
+            H -> exch H -> PMC face -> E -> sources -> PEC face
+              -> PEC mask -> exch E -> probes
+
+        Same invariant as ``step_fn_cpml``: the E ghost exchange is last,
+        so a ghost row is a copy of the owner's finished real row. The
+        PEC face moved with it for lane parity with ``distributed_nu``;
+        on THIS lane that half of the move is provably and measurably
+        inert (stage 6 comment), because the DOMAIN-FACE PEC is the only
+        thing it touches. The realized-PEC cell mask of stage 5b is a
+        different matter entirely and is why the invariant is load-bearing
+        rather than merely tidy (#1053).
+        """
         _step_idx, src_vals = xs
         st = carry["fdtd"]
         db_st = carry["debye"]
@@ -1399,19 +1328,55 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             debye_coeffs_sharded, db_st,
             lorentz_coeffs_sharded, lr_st)
 
-        # 4. Exchange E ghost cells
+        # 4. Source injection
+        st = _inject_sources_shmap(st, src_vals)
+
+        # 5. PEC boundaries (domain faces only; a declared PEC VOLUME is
+        #    realized at stage 5b below, and declared sheets/wires are
+        #    refused -- see the NotImplementedError in run_distributed).
+        #    Injection runs BEFORE the face, matching distributed_nu stage 7.
+        #    The two lanes therefore both differ from the single-device lane,
+        #    which applies the faces before its soft-source loop; the
+        #    difference is observable only for a source placed ON a domain
+        #    PEC face, where the tangential E is zeroed in the same step it
+        #    is injected. #1041 measured no such fixture and did not change
+        #    it -- a source on a PEC face is its own question.
+        st = _apply_pec_shmap(st, mesh, n_devices, nx_local, pad_x=pad_x)
+
+        # 5b. Realized-PEC cell mask (#1053), AFTER the domain faces and
+        #     immediately before the E ghost exchange -- distributed_nu's
+        #     stage 8, in distributed_nu's position. See the long note on
+        #     step_fn_cpml stage 6b: getting this one stage later, after the
+        #     exchange, cost 2.107e-01 against a 5e-5 gate when the nu lane
+        #     had it there. The domain-face PEC above did NOT move; its
+        #     position relative to the exchange was measured inert (#1041
+        #     fixture P, bit-identical), and that measurement does not
+        #     transfer to a body mask, which is the whole reason this stage
+        #     goes here and not next to it.
+        if sharded_pec_mask is not None:
+            st = apply_pec_mask_shmap(
+                st, sharded_pec_mask, mesh, n_devices, nx_local)
+
+        # 6. Exchange E ghost cells -- LAST stage of the E half-step, so a
+        #    ghost row is a copy of the owner's FINISHED real row (#1041,
+        #    the ordering distributed_nu.py took in ac782d4f / #931 T3).
+        #    Same measurement as step_fn_cpml above, boundary="pec": the
+        #    probe 4 cells into the neighbouring rank went from 1.859e-01
+        #    relative (first divergent step 4) to 4.858e-06 (step 43),
+        #    against an interior-source floor of 5.100e-06. Same one-sided
+        #    reachability as step_fn_cpml: a source in rank d's LAST real
+        #    cell is unaffected either way (measured bit-identical).
+        #    The PEC half of the move is inert on THIS lane and was measured
+        #    to be so (#1041 fixture P, bit-identical): apply_pec_face_shmap
+        #    zeroes the y/z faces on every x row INCLUDING the ghosts, and
+        #    its x_lo / x_hi faces act on rank 0's first and rank N-1's last
+        #    real cell, whose exchanged copies the receiving rank discards.
         st = lax.cond(
             do_exchange,
             lambda s: _exchange_e_ghosts_shmap(s, mesh, n_devices),
             lambda s: s,
             st,
         )
-
-        # 5. PEC boundaries
-        st = _apply_pec_shmap(st, mesh, n_devices, nx_local, pad_x=pad_x)
-
-        # 6. Source injection
-        st = _inject_sources_shmap(st, src_vals)
 
         # 7. Probe sampling
         probe_out = _sample_probes_shmap(st)
@@ -1460,18 +1425,11 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         # in ``jax.grad`` to drive an objective from the gathered
         # ``final_state``. Pure JAX reshape + ``gather_array_x`` (already
         # JAX-friendly) keeps the gather in the trace. Mirrors the
-        # already-correct ``distributed_nu.py::_unstack_and_gather``.
-        total_x = sharded_arr.shape[0]
-        assert total_x == n_devices * nx_local
-        stacked = jnp.reshape(
-            sharded_arr,
-            (n_devices, nx_local) + tuple(sharded_arr.shape[1:]),
+        # already-correct ``distributed_nu.py::_unstack_and_gather`` -- as of
+        # #1038 leg 2b it IS that function, shared.
+        return unstack_and_gather(
+            sharded_arr, n_devices, nx_local, ghost, pad_x, nx,
         )
-        gathered = gather_array_x(stacked, ghost)
-        # Trim padding cells if nx was padded
-        if pad_x > 0:
-            gathered = gathered[:nx]
-        return gathered
 
     final_state = FDTDState(
         ex=_unstack_and_gather(final_state_sharded.ex),

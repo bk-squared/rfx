@@ -1,0 +1,4 @@
+# No blank issues. The tracker holds work someone will DO or DECIDE; a finding
+# nobody will act on belongs in the ledger, and a blank issue is how the
+# distinction stopped being made.
+blank_issues_enabled: false

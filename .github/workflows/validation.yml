@@ -118,6 +118,12 @@ jobs:
       # "not highmem" (issue #545 step 3): the 7 confirmed memory-heavy tests
       # move to the weekly-a6000-lane (formerly slow-tests-highmem) job below, see the block comment above
       # this job for why.
+      #
+      # `-m` on the command line REPLACES pyproject's addopts marker expression
+      # ("not gpu and not slow and not slow_physics"), it does not AND with it,
+      # so this lane deliberately RE-INCLUDES slow and slow_physics: those gates
+      # run here and nowhere else on a schedule (issue #717 item 1). Verified by
+      # --collect-only and by run 32004256088, where the e4 gates executed.
       - name: Run slow suite — shard ${{ matrix.group }} of 4
         env:
           RFX_WEEKLY_RSS: "1"
@@ -218,7 +224,16 @@ jobs:
     # Existing slow-tests stays on the workflow's Monday cron untouched; this
     # lane shares the same schedule + manual dispatch and is gated so adding it
     # does not change any other job's behaviour.
-    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 6 * * 1'
+    #
+    # The gate is on the trigger, not on a cron literal (issue #717 review,
+    # 2026-09-13). It used to read `github.event.schedule == '0 6 * * 1'`, a
+    # copy of `on.schedule.cron` above: editing the cron there would have made
+    # this lane skip on every scheduled run forever, silently. The `if:` still
+    # exists so that adding a `push`/`pull_request` trigger to this workflow
+    # does not put a 120-minute Meep job on every push.
+    # tests/contracts/test_validation_workflow_signal.py pins that no job `if:`
+    # re-states a cron literal.
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 120  # cv02 ring resonator with real Meep can be slow
     defaults:
@@ -338,3 +353,162 @@ jobs:
           name: crossval-external-logs
           path: crossval_logs/
           retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  # Signal (issue #717 item 1). This workflow is scheduled, so nobody is
+  # watching when it ends. The last green scheduled run was 2026-06-29
+  # (28367818290); every scheduled run after it — 2026-07-06 through
+  # 2026-09-07, nine failures plus the 2026-08-24 cancellation — produced no
+  # issue, no comment and no notification. (An earlier revision of this comment
+  # wrote "every scheduled run from 2026-08-07 to 2026-09-07 ended red"; that
+  # start date was a workflow_dispatch, not a schedule, and 2026-08-24 ended
+  # cancelled rather than failed. `gh run list --workflow=validation.yml` is the
+  # source.) The #693 audit's two reds sat in exactly that hole for nine days.
+  # This job is the watcher.
+  #
+  # What fires when:
+  #   * The job-summary verdict is written on EVERY trigger, green or red, so a
+  #     manual dispatch also gets a one-glance per-job result line.
+  #   * The tracking issue is opened/updated on `schedule` ONLY. A manual
+  #     dispatch is already watched by whoever pressed the button, and it often
+  #     runs on a feature branch (run 33587773688 ran on fix/802-...), where a
+  #     red job is expected and an auto-filed issue would be noise.
+  #
+  # De-duplication: the title is a fixed string and the step comments on the
+  # OPEN issue carrying that exact title instead of opening a second one. Only
+  # OPEN issues are matched — once a maintainer closes it, the next red week
+  # opens a fresh issue rather than reviving a thread already dispositioned.
+  #
+  # `cancelled` counts as not-green deliberately: run 32700177994 (2026-08-24)
+  # ended cancelled and nobody heard that either. The price is that a
+  # hand-cancelled scheduled run also gets a comment.
+  #
+  # `skipped` also counts as not-green (issue #717 review, 2026-09-13). No job
+  # in this workflow is supposed to skip on either trigger: slow-tests and
+  # weekly-a6000-lane carry no `if:` at all, and crossval-external's `if:` is
+  # true for both `schedule` and `workflow_dispatch`. So a skip here means the
+  # lane quietly stopped covering something — the exact silent-gap class #717
+  # exists to close — and the notifier must say so instead of printing "all
+  # green". tests/contracts/test_validation_workflow_signal.py pins both halves
+  # of that argument.
+  #
+  # This job must never be the reason the workflow is red — a notifier that
+  # fails the run it reports on is worse than no notifier — so the summary step
+  # is the only part allowed to fail and every API call degrades instead of
+  # throwing. The issue-filing failure degrades to `core.error`, not
+  # `core.warning`: if the token cannot write issues, this notifier is back to
+  # the pre-#717 status quo (a job summary nobody reads on a scheduled run), and
+  # that must at least show up as an annotation on the run. `core.error` cannot
+  # red the job on its own, so the "never red the run" rule still holds.
+  notify:
+    needs: [slow-tests, weekly-a6000-lane, crossval-external]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write  # the tracking issue below; nothing else in this job writes
+    steps:
+      - name: Per-job verdicts to the job summary
+        id: verdicts
+        env:
+          # toJSON(needs) arrives through the environment, never spliced into
+          # the script body (Actions script-injection footgun).
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          failed=$(printf '%s' "$NEEDS_JSON" | jq -r '
+            to_entries
+            | map(select(.value.result != "success"))
+            | map("\(.key) (\(.value.result))")
+            | join(", ")')
+          all=$(printf '%s' "$NEEDS_JSON" | jq -r '
+            to_entries | map("\(.key)=\(.value.result)") | join(" ")')
+          echo "per job: $all"
+          {
+            echo "## scientific-validation — lane verdict"
+            echo ""
+            if [ -n "$failed" ]; then
+              echo "**Not green: ${failed}**"
+            else
+              echo "**All jobs green.**"
+            fi
+            echo ""
+            echo "Per job: \`${all}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          printf 'failed_jobs=%s\n' "$failed" >> "$GITHUB_OUTPUT"
+
+      - name: Open or update the tracking issue
+        if: steps.verdicts.outputs.failed_jobs != '' && github.event_name == 'schedule'
+        uses: actions/github-script@v7
+        env:
+          FAILED_JOBS: ${{ steps.verdicts.outputs.failed_jobs }}
+        with:
+          script: |
+            const TITLE = 'weekly scientific-validation lane is red';
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+
+            // needs.* collapses a matrix into ONE result, so ask the API which
+            // individual jobs ("slow-tests (3)") were not green. Filtering on
+            // status === 'completed' also drops this job, still in flight.
+            let rows = [];
+            try {
+              const jobs = await github.paginate(
+                github.rest.actions.listJobsForWorkflowRun,
+                { owner, repo, run_id: context.runId, per_page: 100 },
+              );
+              rows = jobs
+                .filter((job) => job.status === 'completed')
+                .filter((job) => job.conclusion !== 'success')
+                .map((job) => `| \`${job.name}\` | ${job.conclusion} | [log](${job.html_url}) |`);
+            } catch (err) {
+              core.warning(`could not list per-job conclusions: ${err.message}`);
+            }
+
+            const detail = rows.length
+              ? ['| job | conclusion | |', '|---|---|---|', ...rows].join('\n')
+              : `Per-job detail unavailable from the API; aggregated: ${process.env.FAILED_JOBS}`;
+
+            const body = [
+              `The scheduled \`scientific-validation\` run on \`${context.sha.slice(0, 8)}\` did not end green.`,
+              '',
+              detail,
+              '',
+              `Run: ${runUrl}`,
+              '',
+              'Written by the `notify` job in `.github/workflows/validation.yml` (issue #717).',
+              'It comments on this one issue instead of opening a new one every week.',
+              'Close the issue once the lane is green again; the next red run opens a fresh one.',
+            ].join('\n');
+
+            try {
+              const open = await github.paginate(github.rest.issues.listForRepo, {
+                owner, repo, state: 'open', per_page: 100,
+              });
+              const existing = open.find(
+                (issue) => !issue.pull_request && issue.title === TITLE,
+              );
+              if (existing) {
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: existing.number, body,
+                });
+                core.notice(`commented on #${existing.number}`);
+              } else {
+                const created = await github.rest.issues.create({
+                  owner, repo, title: TITLE, body,
+                });
+                core.notice(`opened #${created.data.number}`);
+              }
+            } catch (err) {
+              // A notifier that reds the run it reports on helps nobody, so
+              // this does not rethrow. It is core.error rather than
+              // core.warning because this branch IS the pre-#717 failure mode:
+              // a denied `issues: write` leaves only a job summary nobody reads
+              // on a scheduled run. core.error annotates the run without
+              // failing it.
+              core.error(`could not file the tracking issue: ${err.message}`);
+            }
+
+            await core.summary.addRaw(`\n${detail}\n`).write();

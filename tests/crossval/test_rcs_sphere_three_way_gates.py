@@ -47,7 +47,14 @@ _RFX_FINE = _REPO_ROOT / "tests/fixtures/rcs_sphere_mie/fixture.json"
 # Measured Bempp-vs-Mie floor is 0.151 dB across the ladder; gate at 0.5 dB
 # leaves margin without being loose enough to hide a harness regression.
 _BEMPP_SELF_ANCHOR_DB = 0.5
-# All three independent methods land within this at ka~1 (measured max 0.063 dB).
+# All three independent methods land within this at ka~1. The bound is UNCHANGED
+# at 0.30; what moved is the worst pair. #888 derived the TF/SF auxiliary
+# absorber from a reflection target, which took the rfx column off an 8-cell-CPML
+# cancellation, and `rfx_vs_bempp` went 0.035 -> 0.213 dB: from 12 % of this
+# ceiling to 71 %. That is the honest distance, not a regression -- but there is
+# 0.087 dB of headroom left, so the next change to this rig re-measures the
+# spread before it assumes the bound still holds. (The spreads are recomputed
+# from the sigmas below, never read from the fixture.)
 _THREE_WAY_CLOSE_DB = 0.30
 
 
@@ -218,8 +225,15 @@ def test_rfx_fine_column_is_a_resolvable_reference_not_a_copy(fx):
     assert three_way["rfx_fine_ref"].endswith("::monostatic.rfx_sigma_over_pi_a2")
     expected = json.loads(_RFX_FINE.read_text())["monostatic"]["rfx_sigma_over_pi_a2"]
     assert _rfx_fine(fx) == expected
-    assert three_way["rfx_fine_witness_status"] == "carried-unwitnessed"
+    # Was "carried-unwitnessed" while the 8-cell rig's 0.063 dB agreement with
+    # Mie stood unexplained. #888 supplied the witness the note asked for -- a
+    # CPML depth ladder measured on both injections -- so the status names it,
+    # and the note still has to carry the mechanism.
+    assert three_way["rfx_fine_witness_status"] == "witnessed-cpml-depth"
     assert "CPML" in three_way["rfx_fine_witness_note"]
+    note = three_way["rfx_fine_witness_note"].lower()
+    for phrase in ("cancellation", "converge", "0.185"):
+        assert phrase in note, phrase
 
 
 def test_the_resolver_refuses_a_duplicate_and_a_malformed_keypath(fx, tmp_path):

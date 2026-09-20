@@ -1330,6 +1330,23 @@ def make_core_step(ctx: _StepContext):
     aniso_eps = ctx.aniso_eps
     aniso_inv_eps = ctx.aniso_inv_eps
 
+    # #1043. ``apply_cpml_e`` builds its psi coefficient from a permittivity,
+    # and it has to be the SAME one the Yee half of this timestep used, or the
+    # two halves integrate different media and the combined update can
+    # amplify (see that function's ``inv_eps_r_update`` docstring for the
+    # derivation and the measured spectral radius). ``None`` on every path
+    # that has no anisotropic array, which keeps those byte-identical.
+    # The guard mirrors ``_update_e_with_optional_dispersion``'s own
+    # ``debye is None and lorentz is None``: with a dispersion model active the
+    # E update never consults the anisotropic arrays, so neither may this.
+    _aniso_is_live = not (ctx.use_debye or ctx.use_lorentz)
+    if _aniso_is_live and aniso_inv_eps is not None:
+        cpml_inv_eps_r = aniso_inv_eps
+    elif _aniso_is_live and aniso_eps is not None:
+        cpml_inv_eps_r = tuple(1.0 / e for e in aniso_eps)
+    else:
+        cpml_inv_eps_r = None
+
     # #677 surface-impedance sheet: Holland exponential-stepping A/B built
     # once from the FINAL run materials (background eps_r/sigma at the sheet
     # cells + the ctx's sigma_sheet), applied per step at tangential edges.
@@ -1463,7 +1480,8 @@ def make_core_step(ctx: _StepContext):
             if ctx.use_cpml:
                 st, cpml_new = ctx.apply_cpml_e(
                     st, ctx.cpml_params, cpml_new, grid, ctx.cpml_axes,
-                    materials=materials)
+                    materials=materials,
+                    inv_eps_r_update=cpml_inv_eps_r)
             # Re-enforce Kottke-frozen E cells after CPML-E correction.
             # CPML adds a psi-driven correction that can thaw cells
             # where inv_eps==0; re-zero them here so the frozen
@@ -2819,13 +2837,28 @@ def run_until_decay(
             # Interior-energy criterion. The reduction is check-step-only (the
             # whole-domain sum is the expensive part), so we compute U ONLY on
             # an eligible check step — never every step.
-            if actual_steps >= min_steps and step % check_interval == 0:
+            #
+            # The PEAK is tracked from the FIRST check, like the flux branch
+            # above, and only the STOP waits for min_steps. This block used to
+            # do both behind ``actual_steps >= min_steps``, on the assumption
+            # that the interior energy peaks after the source ends. That is
+            # false for a domain that empties before min_steps: the reference
+            # then IS the residual, no residual can fall another
+            # ``decay_by`` below itself, and the run goes to max_steps
+            # (#1078). Measured on the committed cv03-class guided fixture of
+            # tests/unit/runners/test_decay_flux_convergence.py: true peak
+            # 6.28e-10 at step 701, U = 6.13e-17 at step 2001 = 9.8e-8 of it,
+            # while the post-min_steps maximum reads 6.13e-17 — a reference
+            # 1.0e7 times too small.
+            if decay_by > 0.0 and step % check_interval == 0:
                 U = _interior_energy(carry["fdtd"])
                 if U > peak_U:
                     peak_U = U
-                # Forced-N escape preserved: decay_by=0.0 -> U < 0 is never
-                # true (U >= 0) -> never fires; check_interval > max_steps ->
-                # this branch is never entered. min/max-steps bound the loop.
+            # Forced-N escape preserved: decay_by=0.0 -> neither this branch
+            # nor the peak branch above runs, so the loop is bounded by
+            # min/max-steps alone; check_interval > max_steps -> the stop is
+            # never evaluated.
+            if decay_by > 0.0 and actual_steps >= min_steps and step % check_interval == 0:
                 if U < decay_by * peak_U:
                     energy_below += 1
                     if energy_below >= decay_energy_consecutive:

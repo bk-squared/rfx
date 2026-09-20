@@ -1,0 +1,63 @@
+name: changelog-fragment
+
+# CHANGELOG.md was the repo's main merge-conflict source (#934): every PR
+# appended to the same `## [Unreleased]` block of one 5500-line file, so any
+# two concurrent PRs conflicted on pure text adjacency. Entries are now written
+# as one file per PR under changelog.d/ and assembled at release time by
+# scripts/changelog/assemble.py. This job enforces the two rules that keep that
+# true: no direct CHANGELOG.md edit outside a release PR, and a fragment for
+# every change under rfx/.
+#
+# Mark this job a REQUIRED check in branch protection — until it is required,
+# a red run only advises and both rules are convention, not enforcement.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+# Superseded runs on the same PR/branch are cancelled: a force-push or a
+# stacked-leg rebase used to leave the previous run queued, and on a busy day
+# (2026-09-15: six branches × 21 jobs against the plan's concurrent-job limit)
+# that held every PR for an hour. Pushes to main are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  fragment:
+    name: changelog-fragment
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        # fetch-depth: 0 — the check diffs base.sha...head.sha, and a shallow
+        # clone has neither commit's history to compute the merge base from.
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Require a changelog fragment
+        # The checker is stdlib-only; nothing is installed.
+        env:
+          # toJSON, not join(..., ','): a label may contain a comma, and a
+          # label named 'pre,release' would otherwise read as 'release'.
+          PR_LABELS_JSON: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          # Through the environment, never interpolated into the shell: event
+          # data is attacker-controlled text, and
+          # tests/contracts/test_ci_workflows_contract.py forbids a `github.`
+          # expression inside any `run:` block rather than judging case by case.
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python scripts/ci/check_changelog_fragment.py \
+            --base "$BASE_SHA" \
+            --head "$HEAD_SHA"

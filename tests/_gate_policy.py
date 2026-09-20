@@ -28,6 +28,17 @@ Consumers (as of this writing):
   * validation/crossval/16_pec_sphere_mie_ka_sweep.py   (--write-fixture self-check)
   * validation/crossval/17_dielectric_sphere_mie.py     (--write-fixture self-check)
   * validation/crossval/19_wr90_iris_filter_aghanim.py  (--write-fixture self-check)
+  * tests/unit/farfield/test_rcs280_reference_subtraction.py    (quantum=100,  dB pattern mean, #888/#280)
+  * tests/unit/sources/test_tfsf_aux_absorber_reflection.py     (quantum=1e5..1e7, |B/A| reflection amplitude, #888)
+
+This list is a SNAPSHOT of the quantized-gate lanes, not a discovered set, and
+it has drifted: ``grep -rl gate_from_envelope tests/ validation/ scripts/``
+finds considerably more files than appear above. What actually binds the lanes
+is ``tests/contracts/test_gate_policy_is_shared.py`` -- its fixture-glob
+discovery for the ``gates``-dict cases, and its hand-listed
+``_QUANTIZED_GATE_FILES`` tripwire for the flat-JSON ones. Reconciling this
+docstring against the full grep is not in PR #1005's scope; the two lanes added
+above are the ones that PR introduces.
 
 #931 (lattice ownership contract), and this is a CHECKLIST, not a change:
 ``ENVELOPE_GATE_MULTIPLIER`` does not move. What moves is the measured

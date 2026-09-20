@@ -1,0 +1,55 @@
+name: governance-audit
+
+# The weekly look at the intake rules no single PR can be checked against:
+# how often the review exception is claimed, which issues were filed outside the
+# forms, and which merged work sat outside every open milestone.
+#
+# NOT a required check, and not a gate. The report exits 1 whenever it has rows
+# so the scheduled run shows up RED in the Actions list and somebody opens it;
+# a green weekly summary nobody opens reports nothing. Making this required
+# would block every merge on a report about last week.
+#
+# The report itself is scripts/ci/governance_audit.py, which classifies a JSON
+# payload -- `--input` replays one without touching the network, and
+# tests/contracts/test_governance_audit.py runs the classifier on fixtures.
+
+on:
+  schedule:
+    # Mondays 00:00 UTC. GitHub delays scheduled runs under load, so treat the
+    # window as "the last seven days", not "since exactly last Monday".
+    - cron: "0 0 * * 1"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "How many days back to look"
+        required: false
+        default: "7"
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  audit:
+    name: governance-audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Report
+        # Through `env:`, never interpolated into the shell: a workflow_dispatch
+        # input is author-controlled text, and
+        # tests/contracts/test_ci_workflows_contract.py forbids a `github.`
+        # expression inside any `run:` block.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DAYS: ${{ inputs.days || '7' }}
+        run: python scripts/ci/governance_audit.py --days "$DAYS"

@@ -247,7 +247,9 @@ def test_explicit_baseline_probe_settings_preserve_its_resolved_inputs():
 
 def test_fixed_environment_preserves_the_three_measured_metal_geometries():
     mod = _load(BUILDER, "_cv06b_fixed_environment_metal")
-    previous = json.loads((REPO_ROOT / "docs/research_notes/issue953/gpu-369367260669/artifacts/plan.json").read_text())
+    previous = json.loads((REPO_ROOT
+                           / "tests/fixtures/msl_notch_uniform_environment/realized_metal_plan.json"
+                           ).read_text())
     for label, _, _, geometry in mod.prepare_inputs():
         metal = {key: value for key, value in geometry.items() if key != "comparison_environment"}
         assert mod._plain(metal) == previous["inputs"][label]["realized_metal"]

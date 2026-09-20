@@ -57,6 +57,17 @@ def build_rectangular_broad_e4_comparison(
     mean_mag_tol: float = MEAN_MAG_ABS_TOL,
 ) -> dict[str, Any]:
     text = cv11_stdout.read_text(encoding="utf-8")
+    normalization = {geometry: None for geometry, _ in GEOMETRY_COMPONENTS}
+    for line in text.splitlines():
+        if not line.startswith("CV11_EXTRACTION_MODE "):
+            continue
+        record = json.loads(line.split(" ", 1)[1])
+        geometry, mode = record["geometry"], record["normalize"]
+        if geometry not in normalization or not (type(mode) is bool or mode == "flux"):
+            raise ValueError(f"invalid cv11 extraction record: {record}")
+        if normalization[geometry] is not None:
+            raise ValueError(f"duplicate cv11 extraction record for {geometry}")
+        normalization[geometry] = mode
     output_dir.mkdir(parents=True, exist_ok=True)
 
     per_pair: list[dict[str, Any]] = []
@@ -112,7 +123,7 @@ def build_rectangular_broad_e4_comparison(
             f"E4-broad-external-{solver_tag}-rectangular-wr90-multigeometry-te10"
         ),
         "claim": (
-            "rfx rectangular_waveguide_port compute_waveguide_s_matrix(normalize='flux') "
+            "rfx rectangular_waveguide_port compute_waveguide_s_matrix "
             f"magnitude comparison against {reference_column} ({solver_kind}) across "
             "the WR-90 empty / PEC-short / dielectric-slab geometry axis "
             f"{'passes' if status == 'passed' else 'fails'} the broad-E4 magnitude "
@@ -126,12 +137,19 @@ def build_rectangular_broad_e4_comparison(
             "grid. Phase conventions are not compared (magnitude metric)."
         ),
         "r5_reference_note": (
-            "Meep res-3/4 gives a non-physical PEC-short |S11|=1.1985>1; rfx is "
-            "1.0000 (||S11|-1|<=4e-4) and Palace FEM agrees to <=4e-4, so the "
-            "converged Palace reference is used for the |Gamma|->1 geometry. The "
-            "disagreement was a reference defect, not an rfx residual (R4/R5)."
+            "Historical R4/R5 reference selection: Meep res-3/4 gave a "
+            "non-physical PEC-short |S11|=1.1985>1; the then-current rfx and "
+            "Palace FEM comparison agreed to <=4e-4, motivating the converged "
+            "Palace reference. That historical rfx envelope is not a claim "
+            "about this capture; current residuals are the measured pairs below."
         ),
         "external_reference_column": reference_column,
+        "normalization_by_geometry": normalization,
+        "normalization_note": (
+            "Values come from CV11_EXTRACTION_MODE records in the producer stdout; "
+            "null means the historical stdout did not record the mode. No flux "
+            "algorithm or AD coverage is inferred from a magnitude table."
+        ),
         "source_cv11_stdout": str(cv11_stdout),
         "max_mag_abs_tol": max_mag_tol,
         "mean_mag_abs_tol": mean_mag_tol,

@@ -17,7 +17,7 @@ from rfx.grid import Grid
 from rfx.probes.probes import DFTPlaneProbe
 import rfx.simulation as engine
 
-PATH = Path(__file__).resolve().parents[2] / "docs/research_notes/issue953/consumed_plan.py"
+PATH = Path(__file__).resolve().parent / "_msl_notch_consumed_plan.py"
 spec = importlib.util.spec_from_file_location("cv06b_consumed_plan", PATH)
 plan = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(plan)

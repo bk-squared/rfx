@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 REPO = Path(__file__).resolve().parents[2]
-SCRIPT = REPO / 'docs/research_notes/issue726/collocation/review_coupon_records.py'
+SCRIPT = REPO / 'tests/contracts/_msl_coupon_record_review.py'
 spec = importlib.util.spec_from_file_location('coupon_review', SCRIPT)
 reviewer = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(reviewer)

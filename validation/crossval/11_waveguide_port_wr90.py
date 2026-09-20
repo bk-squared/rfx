@@ -684,9 +684,17 @@ def assert_realized_short(sim) -> dict:
 def _s_params(
     sim: Simulation,
     *,
+    geometry: str | None = None,
     num_periods: int = NUM_PERIODS_LONG,
-    normalize: bool = True,
+    normalize: bool | str = True,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    # Record the argument actually passed below; magnitude tables alone do
+    # not identify which extraction algorithm produced them.
+    import json
+    if geometry is not None:
+        print("CV11_EXTRACTION_MODE " + json.dumps({
+            "geometry": geometry, "normalize": normalize,
+        }, sort_keys=True))
     result = sim.compute_waveguide_s_matrix(
         num_periods=num_periods,
         normalize=normalize,
@@ -701,7 +709,7 @@ def _s_params(
 
 def run_rfx_empty() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     sim = _build_sim(FREQS_HZ)
-    return _s_params(sim)
+    return _s_params(sim, geometry="empty")
 
 
 def run_rfx_pec_short() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -719,7 +727,7 @@ def run_rfx_pec_short() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
           f"({r['n_cells']} PEC cells, {r['n_sheets']} sheets); reflection "
           f"plane {r['planes_m'][0]*1e3:.3f} mm == declared "
           f"{PEC_SHORT_X*1e3:.3f} mm")
-    return _s_params(sim, normalize=False)
+    return _s_params(sim, geometry="pec_short", normalize=False)
 
 
 def run_rfx_slab(eps_r: float, slab_length_m: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -727,7 +735,7 @@ def run_rfx_slab(eps_r: float, slab_length_m: float) -> tuple[np.ndarray, np.nda
     lo = (slab_lo_x, 0.0, 0.0)
     hi = (slab_hi_x, DOMAIN_Y, DOMAIN_Z)
     sim = _build_sim(FREQS_HZ, obstacles=[(lo, hi, eps_r)])
-    return _s_params(sim)
+    return _s_params(sim, geometry="slab")
 
 
 # =============================================================================

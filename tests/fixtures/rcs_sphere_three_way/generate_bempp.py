@@ -3,7 +3,11 @@
 Emits the COMPLETE ``fixture.json`` mechanically (Bempp BEM column + exact-Mie
 column re-derived from scipy + rfx-fine value sourced from the sibling
 ``rcs_sphere_mie/fixture.json`` + provenance), so regeneration needs no hand
-editing. Independent surface-integral-equation (BEM) cross-check of monostatic
+editing. When the fixture IS hand-edited anyway -- bempp is not a CI dependency
+and is absent on most machines here -- the edit records itself in
+``provenance.hand_edited`` and a later regeneration clears that field.
+
+Independent surface-integral-equation (BEM) cross-check of monostatic
 PEC-sphere backscatter RCS: Bempp meshes the TRUE curved surface with triangles
 (no FDTD staircase), so it confirms exact Mie with a *different error class* than
 any FDTD code (Meep/openEMS).
@@ -147,16 +151,26 @@ def main():
                 f"dx=lambda/{rfx_fine['geometry']['resolution_cells_per_lambda']}, "
                 f"{rfx_fine['geometry']['cells_per_radius']:.2f} cells/radius; the "
                 "0.0004 dB ka=0.9997-vs-1.0 mismatch is below any rounded figure"),
-            "rfx_fine_witness_status": "carried-unwitnessed",
+            "rfx_fine_witness_status": "witnessed-cpml-depth",
             "rfx_fine_witness_note": (
-                "The reference fixes the SOURCE of this column, not its value. The "
-                "sibling run used an 8-cell CPML rig, and a depth ladder on the "
-                "#928 investigation branch reads 3.7957 at 24 cells -- i.e. the "
-                "0.063 dB agreement with Mie at this rung may be a cancellation "
-                "rather than a converged number. That ladder is NOT on main and is "
-                "not evidence here. Correcting the value is a measurement change: "
-                "it goes with a section-3.2 rig-variation witness (CPML depth) in "
-                "its own PR, not with this reference fix."),
+                "WITNESSED 2026-09-13 (#888). The reference fixes the SOURCE of "
+                "this column; this note fixes what its value rests on. The "
+                "8-cell-CPML run behind the old 3.585 was a CANCELLATION, not a "
+                "converged number: deriving the TF/SF auxiliary absorber from a "
+                "reflection target moved the sibling's monostatic 0.57 dB, AWAY "
+                "from Mie (0.063 -> 0.510 dB), and the direction of the depth "
+                "ladder is what settles which reading is the accident. On the old "
+                "injection the answer walked away from Mie as this rig's own "
+                "absorber deepened (|rfx - Mie| 0.097 / 0.191 / 0.231 dB at "
+                "8 / 16 / 24 cells); on the clean one it converges (0.510 / 0.224 "
+                "/ 0.185). The depth is read off convergence of the ANSWER, not of "
+                "its distance to Mie -- Mie is a continuum reference, so 'closer' "
+                "also rewards mesh error: dBsm -24.8826 / -25.1685 / -25.2076 / "
+                "-25.1971 / -25.1815 at 8 / 16 / 24 / 32 / 40, steps 0.286 / 0.039 "
+                "/ 0.011 / 0.016, i.e. past 24 the value only wanders inside a "
+                "~0.02 dB floor. The sibling fixture is regenerated at CPML 24 and "
+                "this column follows it. The ladder above was re-measured on this "
+                "tree, not carried from the branch that first found it."),
             "bempp_over_pi_a2": bempp1,
             "spread_db": {
                 "rfx_vs_mie": 10 * np.log10(rfx_val / mie1),
@@ -171,13 +185,28 @@ def main():
             "staircase-free curved mesh, so that coarse-ladder gap is rfx-side resolution "
             "(staircasing + near-field NTFF box; the sibling fixture also records a large "
             "domain-size swing), independently confirmed by a non-FDTD method -- consistent "
-            "with the two-regime finding (rcs_sphere_mie fine ~0.06 dB). Stated as an "
+            "with the two-regime finding (rcs_sphere_mie fine 0.185 dB on the converged "
+            "24-cell absorber; the 0.06 dB this note used to quote was the 8-cell "
+            "cancellation, see rfx_fine_witness_note). Stated as an "
             "rfx-centric distance; no solver is framed as wrong."),
+        # `hand_edited` is None here BECAUSE this is the producer: a regenerated
+        # fixture is by definition not hand-edited, and emitting the key clears a
+        # previous edit's disclosure instead of leaving it to rot. An edit made
+        # without re-running (bempp is not a CI dependency and is often absent)
+        # must fill it in and say which keys it touched -- `rfx_commit` dates the
+        # BEMPP run only, so it cannot date such an edit (PR #1005 review,
+        # finding 10).
         "provenance": {
-            "rfx_commit": sha, "bempp_version": bem.__version__,
+            "rfx_commit": sha,
+            "rfx_commit_scope": (
+                "The commit of the BEMPP run. Every number under `bempp` was produced "
+                "by generate_bempp.py at this sha and is untouched since. It does NOT "
+                "date the `three_way_ka1` rfx column -- see `hand_edited`."),
+            "bempp_version": bem.__version__,
             "producer": "tests/fixtures/rcs_sphere_three_way/generate_bempp.py",
             "env": "OPENBLAS_NUM_THREADS<=64 required (192-core box core-dumps otherwise); "
                    "import name is bempp_cl (not bempp) in 0.4.x",
+            "hand_edited": None,
         },
     }
     (_HERE / "fixture.json").write_text(json.dumps(fixture, indent=2) + "\n")

@@ -297,7 +297,12 @@ def test_public_waveguide_advisory_policy(monkeypatch, normalize, strict,
         assert kwargs["return_settling"] is True
         return s, np.array([-80., -80.])
 
-    monkeypatch.setattr("rfx.api._sparams." + target, extract)
+    # #980 Phase 2 moved compute_waveguide_s_matrix verbatim into
+    # rfx/sparams/waveguide.py, so the extractor it calls is a global of
+    # THAT module now. Patch where the name is looked up -- patching
+    # "rfx.api._sparams.<target>" still succeeds (the name is re-exported
+    # there) but would no longer be the binding the lane reads.
+    monkeypatch.setattr("rfx.sparams.waveguide." + target, extract)
     expected = loose_expected if normalize is False else (
         "silent" if power <= 1.10 else "hard")
     with warnings.catch_warnings(record=True) as rec:

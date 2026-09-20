@@ -503,13 +503,79 @@ def test_referee_fixture_rebuilds_and_matches_the_declared_discretization():
     # Non-geometric literals this constant block also carries -- these are
     # NOT touched by the #739 fencepost fix (they don't come off grid.shape)
     # and stay asserted here so the rewrite does not silently drop them.
+    # B_L12_MM and the four B_Z_*_REL_MM offsets DO come off the grid and
+    # are pinned against it in
+    # ``test_referee_axial_reference_planes_match_rebuilt_grid_indices``
+    # below (#739 item 3) -- this test used to assert B_L12_MM against its
+    # own rounded literal, which is the tautology #739 named.
     assert module.B_A_MM == 0.635
     assert module.B_B_MM == 2.055
     assert module.B_PTFE_EPS_R == 2.1
-    assert abs(module.B_L12_MM - 58.4595293) < 1e-4
     # Z0 = sqrt(L'/C') closed form must land close to the standard SMA/PTFE
     # value (~48.6 ohm) this repo's other coax lanes all cite.
     assert 48.0 < module.B_Z0_OHM < 49.0
+
+
+def _referee_axial_reference_planes(grid) -> dict[str, float]:
+    """Pad-relative axial planes in mm, recomputed from the rebuilt grid.
+
+    Transcribes the index arithmetic ``compute_coaxial_two_port`` itself
+    runs (``rfx/sparams/coax.py``, the ``z_hi_coax_top``/``z_feed_top``/
+    ``z_lo_coax_bot``/``z_feed_bot`` block: 2 cells in from each CPML pad
+    for the stamped line, 1 more for the feed plane) and applies it to a
+    freshly built ``Grid`` -- so the referee's committed constants are
+    checked against rfx's own layout rule, not against themselves. The
+    offsets are the only transcription left; if rfx moves them this test
+    goes red, which is the correct signal that cv21's constants are stale.
+    """
+    nz = grid.shape[2]
+    pad_lo, pad_hi = int(grid.pad_z_lo), int(grid.pad_z_hi)
+    dz_mm = float(grid.dx) * 1e3
+    z_hi_coax_top = nz - pad_hi - 2
+    z_feed_top = z_hi_coax_top - 1
+    z_lo_coax_bot = pad_lo + 2
+    z_feed_bot = z_lo_coax_bot + 1
+    return {
+        "lo_coax_bot_mm": (z_lo_coax_bot - pad_lo) * dz_mm,
+        "hi_coax_top_mm": (z_hi_coax_top - pad_lo) * dz_mm,
+        "feed_bot_mm": (z_feed_bot - pad_lo) * dz_mm,
+        "feed_top_mm": (z_feed_top - pad_lo) * dz_mm,
+        "l12_mm": (z_feed_top - z_feed_bot) * dz_mm,
+        "l12_cells": z_feed_top - z_feed_bot,
+    }
+
+
+def test_referee_axial_reference_planes_match_rebuilt_grid_indices():
+    """#739 item 3: ``B_L12_MM`` and the four ``B_Z_*_REL_MM`` offsets are
+    pinned against the REBUILT grid's index arithmetic, not against their
+    own literals.
+
+    The old assertion here read ``abs(B_L12_MM - 58.4595293) < 1e-4`` --
+    a committed rfx-derived number checked against a transcription of
+    itself, which passes no matter what the solver does, and the block's
+    own comment called those constants "non-geometric". They are
+    geometric: on the rebuilt fixture (shape (55, 55, 194), pad 16,
+    dz = 0.3747405725 mm) the feed planes land on interior nodes 19 and
+    175, i.e. 3 and 159 cells in from the lo pad, so L12 = 156 cells =
+    58.459529310 mm and the four offsets are 2 / 160 / 3 / 159 cells.
+    Perturb any literal in the referee's constant block and this fails.
+    """
+    module = _load_referee_module()
+    grid = _rebuild_referee_grid()
+    planes = _referee_axial_reference_planes(grid)
+
+    # The cell counts, stated so a failure says WHICH plane moved.
+    assert planes["l12_cells"] == 156
+
+    assert abs(module.B_Z_LO_COAX_BOT_REL_MM - planes["lo_coax_bot_mm"]) < 1e-9
+    assert abs(module.B_Z_HI_COAX_TOP_REL_MM - planes["hi_coax_top_mm"]) < 1e-9
+    assert abs(module.B_Z_FEED_BOT_REL_MM - planes["feed_bot_mm"]) < 1e-9
+    assert abs(module.B_Z_FEED_TOP_REL_MM - planes["feed_top_mm"]) < 1e-9
+    assert abs(module.B_L12_MM - planes["l12_mm"]) < 1e-9
+
+    # L12 is the port-to-port span the de-embedding uses; state it as a
+    # cell count against dx so a dx change cannot slip through as "same mm".
+    assert abs(module.B_L12_MM - 156 * module.B_DX_MM) < 1e-9
 
 
 def test_referee_interior_span_constants_match_rebuilt_grid_fencepost():
