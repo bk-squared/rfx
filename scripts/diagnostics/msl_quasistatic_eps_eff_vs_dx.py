@@ -354,9 +354,10 @@ def extrapolation_table(out_dir: Path, ladder_name: str) -> dict:
                 "eps_eff_dev_frac": [min(eps), max(eps)],
                 "beta_dev_frac": [min(bet), max(bet)]}
 
-    # The two box corrections behind the independently recomputed sets during
-    # PR #1130's round-1 review: the widest box measured (20W, on dx = 50 um /
-    # refine = 4) and the 10W step measured on the finest mesh (dx = 12.5 um).
+    # The two box corrections behind the two independently recomputed sets: the
+    # widest box measured (20W, on dx = 50 um / refine = 4), used by the session
+    # leader's recomputation, and the 10W step measured on the finest mesh
+    # (dx = 12.5 um), used by the round-1 reviewer's.
     verified = {("20W/16.2h", "dx=50 um, refine=4"),
                 ("10W/8.1h", "dx=12.5 um, refine=4")}
     return {

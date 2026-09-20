@@ -91,11 +91,16 @@ MEASURED_MAX_ABS_BIAS = 1.655e-3
 # other side too: this bound reds at a beta scan 1.4x coarser than the current
 # one (41 nodes -> 25) and stays green at 1.33x.
 ACCURACY_ENVELOPE = 1.5 * MEASURED_MAX_ABS_BIAS
-# MEASURED across SPREAD_ARRAYS by the same script: the worst-case bias spans
-# 0.1625 % to 0.1691 %, a spread of 6.6e-5. The witness below allows that plus
-# ~80 %, which is still 14x under the effect it is meant to separate from.
-MEASURED_ARRAY_SPREAD = 6.6e-5
-ARRAY_SPREAD_BOUND = 1.2e-4
+# MEASURED across SPREAD_ARRAYS: the worst-case bias spans 0.1625 % to 0.1691 %,
+# a spread of 6.6e-5 on the script's 0.0005 ratio grid and 6.3e-5 on this test's
+# 0.001 grid. The bound has to stay green when the beta scan alone gets coarser,
+# because the failure message below tells the reader the scan is NOT the cause:
+# with the scan degraded the spread was measured at 1.36e-4 (25 nodes), 7.0e-5
+# (21) and 1.09e-4 (11) -- non-monotone, all under 2e-4. So the bound is 2e-4:
+# about 3x the measurement, and still 8x under the 0.165 % effect it separates
+# array dependence from.
+MEASURED_ARRAY_SPREAD = 6.3e-5
+ARRAY_SPREAD_BOUND = 2e-4
 # What a least-squares fit of an exactly-representable model should deliver.
 TARGET_ACCURACY = 5e-4
 
