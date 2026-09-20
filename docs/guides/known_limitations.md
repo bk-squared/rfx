@@ -42,20 +42,32 @@ it.
 
 **The coax→microstrip transition over-reads power by about a factor of three.**
 Measured twice independently on the MSL port's power-wave normalization: the
-returned matrix's own column power runs about 3x the incident power, and a
+returned matrix's own MSL-driven column power runs about 3x the incident power
+(the coax-driven column reads 0.379 / 0.379 / 0.367 on the same run), and a
 six-face Poynting flux box on the same run reads the same factor. The matrix is
 therefore not passive — `compute_coax_msl_transition(...)` returns it with a
 `UserWarning` unless `strict_passivity=True`, which raises instead — and
 transition S-parameters from that path are not usable as an absolute power
 reference. Scope: cross-family transition lanes are not pursued further before
-2.0, so this over-read will not be attributed or fixed; use the single-family
-extractors separately (`compute_msl_s_matrix(...)`, the coaxial two-port and
-line-reflection lanes) for a result you can cite. The single-family microstrip
-lane does not share the defect: the committed thru-coupon golden
-(`tests/fixtures/msl_s_matrix_golden.json`) reads a maximum column power of
-1.0000789 over its 10 bins, and the V·I-over-Poynting-flux oracle
-(`scripts/diagnostics/msl_vi_flux_oracle/`) reads 1.0083 to 1.0118 on 60 of 60
-admissible cells.
+2.0, so this over-read will not be attributed or corrected; use the
+single-family extractors separately (`compute_msl_s_matrix(...)`, the coaxial
+two-port and line-reflection lanes) for a result you can cite.
+
+What says the single-family microstrip lane does not share this ~3x over-read is
+the V·I-over-Poynting-flux oracle
+(`scripts/diagnostics/msl_vi_flux_oracle/msl_vi_flux_oracle.json`): 1.0083 to
+1.0090 on the aligned `h_sub/3` mesh and 1.0105 to 1.0118 on the 80 µm mesh,
+30 of 30 admissible cells each, both HELD. It has to be that oracle rather than
+the thru coupon, because a per-port amplitude constant cancels from `S` between
+like ports, so a like-port column power is blind to the voltage scale (the
+committed thru-coupon golden `tests/fixtures/msl_s_matrix_golden.json` does read
+a maximum column power of 1.0000789 over its 10 bins, which bounds the matrix,
+not the scale). That lane is not defect-free either — it just does not carry the
+~3x: its own raw output shows a tracked excess of about 1 % on the same class,
+with coherent power gains near 1.0113 and 1.0131 on the equal-reference
+notch-filter case, and `validation/crossval/07_sheen_lpf.py` recording 3 of 120
+`passivity_correction` bins above 0.05, worst 0.6572 at 17.870 GHz — all three
+above 17 GHz and outside that case's 5–15 GHz quotable band.
 → [#838](https://github.com/bk-squared/rfx/issues/838)
 
 **Microstrip propagation constant sits about 0.9 % above the Hammerstad–Jensen
