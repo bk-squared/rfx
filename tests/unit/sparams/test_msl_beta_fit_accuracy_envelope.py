@@ -27,11 +27,14 @@ maximum from 0.1649 % to 0.0161 % and removes every sign change.  What
 survives is a remainder of about -0.011 % that keeps one sign, which
 this account does not explain.
 
-The envelope pinned below is MEASURED, not desired.  It is a regression
-lock -- it bounds the error from above, so a change that shrinks the bias
-passes -- and the accuracy the fit ought to have is named separately, as
-a strict xfail, so that fixing the estimator turns this module red and
-forces the bound to be tightened rather than quietly left loose.
+That refinement is what ``_estimate_beta`` now does.  On the same data the
+sweep maximum is 0.0162 % on the production layout and 0.036 % on the
+shortest arrays here (3 planes at 150 um, beta*L about 0.04 rad), where
+what is left is the conditioning of a short array and no longer the scan.
+
+The bound pinned below is the accuracy a two-wave fit of exactly
+representable data should have, 0.05 %, with the measured values beside it.
+It is an upper bound: a better estimator passes.
 
 Attribution of the cv20 signed-beta residual (#830) is a separate
 question and is not decided here.
@@ -82,27 +85,15 @@ SPREAD_ARRAYS = dict(LAYOUTS, **{
 RATIOS = np.round(np.arange(0.97, 1.03 + 1e-9, 0.001), 6)
 GAMMA_OVER_ALPHA = (0.0, 0.05, 0.2)
 
-# MEASURED (scripts/diagnostics/msl_beta_fit_synthetic_accuracy.py, 17424
-# cases, complex64 and complex128 within 5e-6 of each other):
-#   max |fitted/true - 1| = 0.1655 %,  signed mean over the window = -0.0090 %.
-MEASURED_MAX_ABS_BIAS = 1.655e-3
-# The lock: the measurement plus half again, so ordinary platform-to-platform
-# float32 drift cannot red it but a real loss of accuracy can. Measured on the
-# other side too: this bound reds at a beta scan 1.4x coarser than the current
-# one (41 nodes -> 25) and stays green at 1.33x.
-ACCURACY_ENVELOPE = 1.5 * MEASURED_MAX_ABS_BIAS
-# MEASURED across SPREAD_ARRAYS: the worst-case bias spans 0.1625 % to 0.1691 %,
-# a spread of 6.6e-5 on the script's 0.0005 ratio grid and 6.3e-5 on this test's
-# 0.001 grid. The bound has to stay green when the beta scan alone gets coarser,
-# because the failure message below tells the reader the scan is NOT the cause:
-# with the scan degraded the spread was measured at 1.36e-4 (25 nodes), 7.0e-5
-# (21) and 1.09e-4 (11) -- non-monotone, all under 2e-4. So the bound is 2e-4:
-# about 3x the measurement, and still 8x under the 0.165 % effect it separates
-# array dependence from.
-MEASURED_ARRAY_SPREAD = 6.3e-5
-ARRAY_SPREAD_BOUND = 2e-4
+# MEASURED after the squared-residual refinement (this file's own sweep):
+#   production layout 0.0162 %, worst of SPREAD_ARRAYS 0.0361 % (3 planes,
+#   150 um).  Before it: 0.1655 %, identical on every array.
+MEASURED_MAX_ABS_BIAS = 1.62e-4
+MEASURED_WORST_ARRAY_BIAS = 3.62e-4
 # What a least-squares fit of an exactly-representable model should deliver.
+# The bound reds if the refinement goes back to the L2 norm (0.1655 %).
 TARGET_ACCURACY = 5e-4
+ACCURACY_ENVELOPE = TARGET_ACCURACY
 
 
 def _anchor(freq_hz: float) -> float:
@@ -149,45 +140,21 @@ def test_beta_fit_stays_inside_its_measured_accuracy_envelope(
     assert worst <= ACCURACY_ENVELOPE, (
         f"{layout}, |gamma/alpha|={gamma_over_alpha}: the beta fit is off by "
         f"{100 * worst:.4f} % on data that is exactly its own model, past the "
-        f"envelope {100 * ACCURACY_ENVELOPE:.4f} % (the measured "
-        f"{100 * MEASURED_MAX_ABS_BIAS:.4f} % plus half again). Re-measure "
-        f"with scripts/diagnostics/msl_beta_fit_synthetic_accuracy.py before "
+        f"{100 * ACCURACY_ENVELOPE:.4f} % a two-wave fit should reach "
+        f"(measured {100 * MEASURED_MAX_ABS_BIAS:.4f} %). Re-measure with "
+        f"scripts/diagnostics/msl_beta_fit_synthetic_accuracy.py before "
         f"moving this bound.")
 
 
-def test_beta_fit_accuracy_is_a_property_of_the_scan_not_of_the_probe_array():
-    """Eight unlike arrays must see the same error.
+def test_beta_fit_reaches_target_accuracy_on_every_probe_array():
+    """0.05 % on data that is exactly the fitted model, for eight unlike arrays.
 
-    This is what identifies the error as the beta scan's: the arrays differ
-    in probe count, spacing and origin -- a factor of ~15 in beta*L -- so
-    anything the probe geometry caused would separate them.  Stated as an
-    absolute difference, so it still holds if the estimator is fixed and all
-    of them go to zero.
+    The arrays differ in probe count, spacing and origin -- a factor of ~15
+    in beta*L.  Before the squared-residual refinement all eight read the
+    same 0.165 %; now the long arrays read 0.016 % and the shortest 0.036 %.
     """
-    worst = {
-        name: float(np.max(np.abs(_sweep_bias(x, 0.0))))
-        for name, x in SPREAD_ARRAYS.items()
-    }
-    spread = max(worst.values()) - min(worst.values())
-    assert spread <= ARRAY_SPREAD_BOUND, (
-        f"probe arrays disagree on the fit's accuracy by {100 * spread:.4f} %, "
-        f"past the {100 * ARRAY_SPREAD_BOUND:.4f} % allowed on a measured "
-        f"{100 * MEASURED_ARRAY_SPREAD:.4f} % -- the error is then not (only) "
-        f"the beta scan's, and the module docstring's account of it needs "
-        f"redoing. Per array: {worst}")
-
-
-@pytest.mark.xfail(strict=True, reason=(
-    "MEASURED 2026-09-20 (#830): the 3-point parabolic refinement in "
-    "_estimate_beta is applied to an L2-norm residual, which is V-shaped at "
-    "its minimum rather than parabolic, leaving a bias that repeats with the "
-    "scan-node period -- up to 0.166 %, about +0.12 % at the beta/beta0 the "
-    "cv20 fixture sits at. Not fixed here: the fix is an estimator change and "
-    "is a decision for the issue, not a side effect of measuring it. When it "
-    "IS fixed this xfail turns into a failure, which is the point -- tighten "
-    "ACCURACY_ENVELOPE to TARGET_ACCURACY and delete this marker."))
-def test_beta_fit_reaches_the_accuracy_a_two_wave_fit_should_have():
-    """0.05 % on data that is exactly the fitted model, for any array."""
-    for name, x_m in LAYOUTS.items():
+    for name, x_m in {**LAYOUTS, **SPREAD_ARRAYS}.items():
         worst = float(np.max(np.abs(_sweep_bias(x_m, 0.0))))
-        assert worst <= TARGET_ACCURACY, f"{name}: {100 * worst:.4f} %"
+        assert worst <= TARGET_ACCURACY, (
+            f"{name}: {100 * worst:.4f} % (measured worst array "
+            f"{100 * MEASURED_WORST_ARRAY_BIAS:.4f} %)")

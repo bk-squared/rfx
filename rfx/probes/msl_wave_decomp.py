@@ -590,7 +590,7 @@ def _estimate_beta(
     Stage (a) of the N-probe extractor.  ``beta0`` is the analytic
     Hammerstad-Jensen guess ``ω·√ε_eff/c``; the scan brackets it by
     ``±_BETA_SCAN_FRAC`` and the minimum-residual node is refined by a
-    3-point parabolic interpolation.  Fully JAX-traceable: the grid size
+    3-point parabolic interpolation of the squared residual.  Fully JAX-traceable: the grid size
     is a static Python int and all reductions use ``jnp``.
 
     Returns
@@ -634,7 +634,17 @@ def _estimate_beta(
     # Clamp so the 3-point parabolic stencil stays in range.
     k = jnp.clip(k_raw, 1, _BETA_SCAN_NODES - 2)
     b_lo, b_mid, _ = grid[k - 1], grid[k], grid[k + 1]
-    r_lo, r_mid, r_hi = resids[k - 1], resids[k], resids[k + 1]
+    # Refine on the SQUARED residual. ``_lstsq_alpha_gamma`` returns the L2
+    # norm, which is V-shaped at its minimum (it reaches ~0 at the true beta
+    # and turns), so a parabola through three norm samples lands off the
+    # vertex: measured on synthetic two-wave data as a bias of -0.165 % ...
+    # +0.143 % oscillating with a period of exactly one scan node. The square
+    # is locally parabolic, and the same three samples then give 0.016 %
+    # (scripts/diagnostics/msl_beta_fit_synthetic_accuracy.py). The argmin is
+    # unchanged -- squaring is monotone on r >= 0 -- so the rail detector
+    # below sees exactly what it saw before.
+    r_lo, r_mid, r_hi = (resids[k - 1] ** 2, resids[k] ** 2,
+                         resids[k + 1] ** 2)
     # Parabolic vertex offset (in grid-step units), clamped to [-1, 1].
     # Double-where idiom: the single-where form computed `num / denom`
     # in the untaken branch, and when catastrophic cancellation drives

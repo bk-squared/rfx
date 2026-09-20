@@ -231,6 +231,15 @@ def test_nprobe_grad_is_nonzero():
     """Sanity: the gradient is not silently zeroed out (a dead pipeline)."""
     theta = jnp.asarray(1.2, dtype=jnp.float32)
     grad_ad = jax.grad(_s11_mag_loss)(theta)
-    assert abs(float(grad_ad)) > 1e-4, (
+    # Floor re-derived 2026-09-20. It was 1e-4 against a measured -3.45e-4,
+    # but that gradient was mostly the beta estimator's own artefact: the
+    # 3-point parabola through the L2-norm residual left a bias that
+    # oscillates with the scan node, and its slope in theta dominated d|S11|.
+    # With the refinement on the squared residual the same loss reads
+    # +4.08e-5, and central differences agree on both sides of the change
+    # (h = 0.01/0.03/0.1: +3.65e-5/+4.41e-5/+4.07e-5 now; -3.44e-4/-3.47e-4/
+    # -3.45e-4 before). AD was healthy throughout; the floor sits 4x under
+    # the measured value and still catches a zeroed pipeline.
+    assert abs(float(grad_ad)) > 1e-5, (
         f"gradient {grad_ad} ~ 0 — AD likely not flowing through lstsq"
     )
