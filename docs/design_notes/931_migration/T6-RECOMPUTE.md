@@ -1,7 +1,10 @@
 # T6 (oracle / contracts / locks / studio) — recompute ledger for #931
 
 **2026-09-13 correction for the Leontovich rows below:**
-[#947's controlled comparison](../../research_notes/2026-09-13_issue947_oracle_repair.md)
+#947's controlled comparison (written up under
+`docs/research_notes/2026-09-13_issue947_oracle_repair.md`, which
+`docs/.gitignore` excludes from the repository — named for provenance, not
+linked)
 isolates a gap and eight displaced conductivity values in the absorber,
 introduced by #834 before #931. Correcting only its bounds recovers the
 historical O3 envelope and the original 0.72494 endpoint diagnostic, with

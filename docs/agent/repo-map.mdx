@@ -75,23 +75,19 @@ gate against is still azimuthally symmetric (TM0n only) (see its docstring /
 older `Simulation.compute_coaxial_s_matrix(...)` path remains
 deprecated/experimental and must not be presented as the promoted coaxial claims
 surface. For a coax<->microstrip transition, `Simulation.compute_coax_msl_transition(...)`
-(issue #489 leg 4) exists but is **EXPERIMENTAL, DIAGNOSTIC-ONLY**: two committed fixtures
-(attempt 1, then a longer-MSL-ladder attempt 2 per R2's escape clause), plus a settled
-VESSL run (`369367252283`, `n_steps=135000`, 2026-08-06) of attempt 2's own fixture that
-clears the -40 dB ring-down rule for the first time on this lane. gamma-vs-beta is now
-**CONFIRMED** (a third checkpoint, at full settling, still in-band `[0.8,1.3]`). Passivity
-is **ATTRIBUTED**: the settled max`|S|` is `0.9933` with the guard clean — the earlier
-sub-settled excursions above 1 are now understood as truncation artifacts, not a real
-violation. Reciprocity is now **MEASURED**, not merely disclosed — worst deviation `91.4%`
-at full settling, explained by none of this lane's three retracted attributions and
-deliberately NOT adjudicated between a genuine physical asymmetry and a surviving
-extraction-instrument limitation. The MSL-driven column-power open question is
-correspondingly SHARPENED (~99% of incident power unaccounted for at 6/8 GHz, only ~20% at
-10 GHz), with a named but not-yet-run discriminating check (a closed-box, PEC-wall variant
-of the fixture) as the next step (see
-`docs/guides/sparameter_support_matrix.md`'s "Coax<->MSL transition" section and
-`tests/unit/sparams/test_coax_msl_transition.py`) — still do not cite it as a validated transition
-result.
+(issue #489 leg 4) exists but is **EXPERIMENTAL, DIAGNOSTIC-ONLY**. On the corrected
+settled run (VESSL `369367257614`, PR #837) the MSL side's power-wave normalization
+over-reads power by about 3x, so the matrix the call returns is NOT passive — max`|S|`
+`1.7046`, MSL-driven column power `2.9563` / `2.9172` / `2.8609` at 6/8/10 GHz — and it
+comes back with a `UserWarning` unless `strict_passivity=True`, which raises instead
+(issue #838). Per the PI decision of 2026-09-20 the cross-family transition lanes are not
+pursued further before 2.0, so that over-read will not be attributed or corrected; use the
+single-family extractors separately for anything citable. Any earlier reading of this lane,
+including the attempt-2 settled run, was taken through three instrument defects since
+fixed and is withdrawn. The current numbers and their witnesses live in
+`docs/guides/sparameter_support_matrix.{md,json}`'s "Coax<->MSL transition" lane and
+`tests/unit/sparams/test_coax_msl_transition.py` — read those rather than restating from
+here, and do not cite this lane as a validated transition result.
 
 ## What NOT to do
 

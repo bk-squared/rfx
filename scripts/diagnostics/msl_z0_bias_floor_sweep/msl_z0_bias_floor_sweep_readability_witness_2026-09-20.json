@@ -1,0 +1,130 @@
+{
+ "method": "Measured AFTER the six-point run, separately and not from it: the solve records that run_one returns carry no probe_clearance, beta_railed or reliable field, so these are not re-typed from it. clearance_and_conductor is BUILD-ONLY (no time stepping) on the identical geometry; fit_conditioning is ONE re-solved point.",
+ "provenance": {
+  "commit": "28c17ce4c9e07b4e791801b581301aa3df147d5b",
+  "rfx_file": "/root/workspace/bk-workspace/rfx-wt-752/rfx/__init__.py",
+  "jax_version": "0.10.2",
+  "jax_enable_x64": "0",
+  "python": "3.11.16"
+ },
+ "probe_clearance_build_only": {
+  "aligned h_sub/3": {
+   "msl_0": "satisfied",
+   "msl_1": "satisfied"
+  },
+  "aligned h_sub/4": {
+   "msl_0": "satisfied",
+   "msl_1": "satisfied"
+  },
+  "aligned h_sub/5": {
+   "msl_0": "satisfied",
+   "msl_1": "satisfied"
+  },
+  "aligned h_sub/6": {
+   "msl_0": "satisfied",
+   "msl_1": "satisfied"
+  },
+  "misaligned 80um": {
+   "msl_0": "satisfied",
+   "msl_1": "satisfied"
+  },
+  "misaligned 60um": {
+   "msl_0": "satisfied",
+   "msl_1": "satisfied"
+  }
+ },
+ "conductor_realization_build_only": {
+  "aligned h_sub/3": {
+   "trace_realized_z_um": [
+    254.0,
+    338.667
+   ],
+   "trace_realized_z_extent_um": 84.667,
+   "trace_wall_planes_z_um": [
+    254.0,
+    338.667
+   ]
+  },
+  "aligned h_sub/4": {
+   "trace_realized_z_um": [
+    254.0,
+    317.5
+   ],
+   "trace_realized_z_extent_um": 63.5,
+   "trace_wall_planes_z_um": [
+    254.0,
+    317.5
+   ]
+  },
+  "aligned h_sub/5": {
+   "trace_realized_z_um": [
+    254.0,
+    304.8
+   ],
+   "trace_realized_z_extent_um": 50.8,
+   "trace_wall_planes_z_um": [
+    254.0,
+    304.8
+   ]
+  },
+  "aligned h_sub/6": {
+   "trace_realized_z_um": [
+    254.0,
+    296.333
+   ],
+   "trace_realized_z_extent_um": 42.333,
+   "trace_wall_planes_z_um": [
+    254.0,
+    296.333
+   ]
+  },
+  "misaligned 80um": {
+   "trace_realized_z_um": [
+    240.0,
+    320.0
+   ],
+   "trace_realized_z_extent_um": 80.0,
+   "trace_wall_planes_z_um": [
+    240.0,
+    320.0
+   ]
+  },
+  "misaligned 60um": {
+   "trace_realized_z_um": [
+    240.0,
+    300.0
+   ],
+   "trace_realized_z_extent_um": 60.0,
+   "trace_wall_planes_z_um": [
+    240.0,
+    300.0
+   ]
+  }
+ },
+ "fit_conditioning_one_point": {
+  "label": "misaligned 80um",
+  "bins_in_gate": 9,
+  "bins_total": 30,
+  "beta_railed_in_gate": [
+   0,
+   0
+  ],
+  "beta_railed_all_bins": 0,
+  "beta_railed_size": 60,
+  "reliable_in_gate": [
+   9,
+   9
+  ],
+  "z0_real_gate_min_ohm": 38.96,
+  "z0_real_gate_max_ohm": 39.076,
+  "z0_imag_gate_mean_ohm": 0.126,
+  "probe_clearance": [
+   "satisfied",
+   "satisfied"
+  ],
+  "settling_db": [
+   -98.0,
+   -99.7
+  ]
+ }
+}

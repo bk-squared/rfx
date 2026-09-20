@@ -86,5 +86,13 @@ port-accuracy certificate.
 The fresh #752 study uses newly measured, node-aligned zero-thickness foil
 boards with the dielectric top and validated port top on the same plane.
 It retains both the repository formula and a separate full HJ1980 reference.
-The [frozen protocol](../research_notes/issue752/fresh/protocol.md) specifies
-geometry, pulse coverage, the original 0.4% hypothesis, and rejection screens.
+Its frozen protocol — geometry, pulse coverage, the original 0.4% hypothesis
+and the rejection screens — was written under `docs/research_notes/issue752/`,
+which `docs/.gitignore` excludes from the repository. A clean clone does not
+have it, so this page no longer links it: a citation nobody can follow is not
+evidence. What IS tracked, and what a reader should go to instead, is
+`scripts/diagnostics/msl_z0_bias_floor_sweep.py` (its post-run review notes
+carry the declared-vs-realized reasoning and the dated corrections) together
+with the two committed artifacts beside it,
+`msl_z0_bias_floor_sweep/msl_z0_bias_floor_sweep.json` and
+`..._realized_anchor.json`.
