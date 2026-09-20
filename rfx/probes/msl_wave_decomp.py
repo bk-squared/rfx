@@ -590,7 +590,7 @@ def _estimate_beta(
     Stage (a) of the N-probe extractor.  ``beta0`` is the analytic
     Hammerstad-Jensen guess ``ω·√ε_eff/c``; the scan brackets it by
     ``±_BETA_SCAN_FRAC`` and the minimum-residual node is refined by a
-    3-point parabolic interpolation of the squared residual.  Fully JAX-traceable: the grid size
+    3-point parabola through the squared residual.  Fully JAX-traceable: the grid size
     is a static Python int and all reductions use ``jnp``.
 
     Returns
@@ -622,6 +622,13 @@ def _estimate_beta(
     # the threshold was designed around.  Normalizing restores the
     # threshold's meaning.  (α/γ/Z0 keep absolute scale — the final
     # lstsq in `extract_msl_nprobe` runs on the RAW v.)
+    # Since the refinement runs on the SQUARED residual the second difference
+    # is ~2*r_mid times smaller than it was on the norm (measured on a 3-plane,
+    # 150 um array: 4.0e-6 -> 1.3e-11). After the normalization above r_mid
+    # cannot fall below the float32 floor (~1e-7), so `denom` only reaches
+    # 1e-20 when the residual curve is flat to noise -- which is when the
+    # guard should fire -- and the clip to [-1, 1] bounds what a
+    # noise-dominated `frac` can do to one grid step.
     v_scale = jnp.max(jnp.abs(v))
     v_n = v / jnp.where(v_scale > 0.0, v_scale, 1.0)
 
