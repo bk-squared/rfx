@@ -463,6 +463,105 @@ def test_a_plain_missing_line_does_not_get_the_adornment_hint() -> None:
 
 
 # --------------------------------------------------------------------------
+# Closing keywords: the raw body becomes the squash commit message
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "Closes #12",
+        "Fixes: #12",
+        "Fixes #12, fixes #13",
+        "resolves bk-squared/rfx#12.",
+        "  Close #12 and CLOSED #13  ",
+        "fix #12 fixed #13",
+        "resolve #12, resolved #13.",
+        "Closes https://github.com/bk-squared/rfx/issues/12",
+    ],
+)
+def test_closing_references_on_their_own_line_pass(line: str) -> None:
+    assert cpb.check(body("Lane: lane:ci-infra", ACCEPT, line), ENV) == []
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "Rejected: Close #726 was considered and dropped",
+        "Fixes #752 is withdrawn from the PR body",
+        "FIXES #9 later",
+        "fixed https://github.com/bk-squared/rfx/issues/9 yesterday",
+        "- Closes #12",
+    ],
+)
+def test_closing_references_in_prose_fail_and_quote_the_line(line: str) -> None:
+    problems = cpb.check(body("Lane: lane:ci-infra", ACCEPT, line), ENV)
+    assert len(problems) == 1
+    assert repr(line) in problems[0]
+    assert problems[0].endswith(
+        "a closing keyword in prose closes the issue on squash merge - "
+        'put it on a line of its own, or write "the closing keyword for #N is withdrawn"'
+    )
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "the closing keyword for #752 is withdrawn",
+        "Part of #1127",
+        "this fixes the grid",
+        "closes the gap",
+        "prefix #3",
+        "suffixes #3",
+        "Refs #12",
+        "#12",
+    ],
+)
+def test_prose_without_a_closing_reference_passes(line: str) -> None:
+    assert cpb.check(body("Lane: lane:ci-infra", ACCEPT, line), ENV) == []
+
+
+@pytest.mark.parametrize(
+    "wrapped",
+    [
+        "```\nFixes #752 is withdrawn from the PR body\n```",
+        "`Fixes #752 is withdrawn from the PR body`",
+        "<!-- Fixes #752 is withdrawn from the PR body -->",
+    ],
+    ids=["fence", "inline-code", "html-comment"],
+)
+def test_closing_references_in_markup_still_fail(wrapped: str) -> None:
+    problems = cpb.check(body("Lane: lane:ci-infra", ACCEPT, wrapped), ENV)
+    assert len(problems) == 1
+    assert "Fixes #752 is withdrawn from the PR body" in problems[0]
+
+
+def test_two_offending_closing_lines_report_problems_in_line_order() -> None:
+    first = "Rejected: Close #726 was considered and dropped"
+    second = "Fixes #752 is withdrawn from the PR body"
+    problems = cpb.check(body("Lane: lane:ci-infra", ACCEPT, first, second), ENV)
+    assert len(problems) == 2
+    assert repr(first) in problems[0]
+    assert repr(second) in problems[1]
+
+
+def test_each_closing_reference_in_prose_is_a_problem() -> None:
+    line = "Rejected: Fixes #12 and resolves #13 were considered"
+    problems = cpb.check(body("Lane: lane:ci-infra", ACCEPT, line), ENV)
+    assert len(problems) == 2
+    assert all(repr(line) in problem for problem in problems)
+
+
+def test_closing_problem_reports_raw_line_number_and_trims_the_quote() -> None:
+    line = "   Fixes #752 is withdrawn " + "x" * 140 + "   "
+    text = body("Lane: lane:ci-infra", ACCEPT, "<!--\ncontext\n-->", "", line)
+    problems = cpb.check(text, ENV)
+    assert len(problems) == 1
+    assert problems[0].startswith(f"line 7: {line.strip()[:120]!r}: ")
+    assert line.strip()[:121] not in problems[0]
+
+
+# --------------------------------------------------------------------------
 # The command-line entry points
 # --------------------------------------------------------------------------
 

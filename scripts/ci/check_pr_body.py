@@ -61,6 +61,9 @@ a SEPARATE instance did the reading, and the check can only enforce that the
 claim is present and well-formed, not that it is true. Making the claim
 explicit is what lets a later audit catch it.
 
+Closing references in the raw body must occupy a line containing only closing
+items, because a closing keyword in prose still closes an issue on squash merge.
+
 Usage
 -----
     PR_BODY="$(gh pr view 123 --json body --jq .body)" python scripts/ci/check_pr_body.py
@@ -441,12 +444,43 @@ def _check_review(lines: list[str]) -> list[str]:
     return [problem]
 
 
+def _check_closing_keywords(body: str) -> list[str]:
+    """Reject closing references in prose, including code and HTML comments."""
+    keyword = r"\b(?:close[sd]?|fix(?:es|ed)?|resolve[sd]?)\b"
+    reference = (
+        r"(?:#[0-9]+|[\w.-]+/[\w.-]+#[0-9]+|"
+        r"https://github\.com/[\w.-]+/[\w.-]+/issues/[0-9]+)"
+    )
+    item = rf"{keyword}:?\s+{reference}"
+    closing = re.compile(item, re.IGNORECASE)
+    allowed = re.compile(
+        rf"{item}(?:(?:\s*,\s*|\s+and\s+|\s+){item})*\.?",
+        re.IGNORECASE,
+    )
+    problems: list[str] = []
+    for number, raw in enumerate(body.splitlines(), 1):
+        line = raw.strip()
+        if allowed.fullmatch(line):
+            continue
+        for _ in closing.finditer(line):
+            problems.append(
+                f"line {number}: {line[:120]!r}: "
+                "a closing keyword in prose closes the issue on squash merge - "
+                'put it on a line of its own, or write "the closing keyword for #N is withdrawn"'
+            )
+    return problems
+
+
 def check(body: str, env: dict[str, str] | None = None) -> list[str]:
     """Return the problems with *body*. Empty list means the body passes."""
     lanes, lane_source = allowed_lanes(env)
     lines = body_lines(body)
     labels = pr_lane_labels(env)
-    return _check_lane(lines, lanes, lane_source, labels) + _check_review(lines)
+    return (
+        _check_lane(lines, lanes, lane_source, labels)
+        + _check_review(lines)
+        + _check_closing_keywords(body)
+    )
 
 
 def failure_report(problems: list[str], env: dict[str, str] | None = None) -> str:
