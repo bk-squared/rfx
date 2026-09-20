@@ -49,7 +49,7 @@ OUT = Path(__file__).with_suffix("") / "pec_sheet_edge_offset.json"
 
 
 def lowest_resonance(mode, dx, fin_len, *, dy_profile=None, periods=60,
-                     pmc_z=False):
+                     pmc_z=False, thickness=0.0):
     """Lowest resonance (Hz) and the realized fin-tip node (m)."""
     lo, hi = BANDS[mode]
     kw = {} if dy_profile is None else {"dy_profile": dy_profile}
@@ -65,7 +65,8 @@ def lowest_resonance(mode, dx, fin_len, *, dy_profile=None, periods=60,
                          dx=dx, mode=mode, **kw)
     tip = None
     if fin_len is not None:
-        sim.add(Box((A / 2, 0.0, 0.0), (A / 2, float(fin_len), lz)),
+        sim.add(Box((A / 2, 0.0, 0.0),
+                    (A / 2 + float(thickness), float(fin_len), lz)),
                 material="pec")
         for row in sim.fidelity_report(print_report=False):
             if "pec" in str(row.get("entity")):
@@ -107,7 +108,34 @@ def edge_aware_sweep(out, modes=("2d_tmz", "2d_tez")):
     out["tez_3d_pmc_uniform_check_hz"] = f3
 
 
+def thick_fin(mode):
+    """The same sweep for a fin that is a PEC VOLUME 1 mm thick: its tip is a
+    face between two corners, not a sheet edge. Reference at dx = 0.25 and
+    0.125 mm (the fin is 4 and 8 cells thick there), uniform grid at 1.0 and
+    0.5 mm. Written to its own record."""
+    t = 1.0e-3
+    out = {"mode": mode, "thickness_m": t, "reference": {}, "uniform": {}}
+    for dx in (0.25e-3, 0.125e-3):
+        for length in LENGTHS[::2]:
+            f, _ = lowest_resonance(mode, dx, length, thickness=t)
+            out["reference"].setdefault(f"{length:.6f}", {})[f"{dx:.6f}"] = f
+    for d in out["reference"].values():
+        d["richardson_hz"] = d["0.000125"] + (d["0.000125"] - d["0.000250"]) / 3.0
+    for dx in (1e-3, 0.5e-3):
+        rows = []
+        for length in LENGTHS:
+            f, tip = lowest_resonance(mode, dx, length, thickness=t)
+            rows.append({"declared_m": float(length), "tip_node_m": tip, "f_hz": f})
+        out["uniform"][f"{dx:.6f}"] = rows
+    path = OUT.with_name(f"thick_fin_{mode}.json")
+    path.write_text(json.dumps(out, indent=1) + "\n")
+    print(f"wrote {path.relative_to(_REPO)}")
+    return 0
+
+
 def main() -> int:
+    if "--thick-fin" in sys.argv:
+        return thick_fin(sys.argv[sys.argv.index("--thick-fin") + 1])
     if "--edge-aware-only" in sys.argv:
         out = json.loads(OUT.read_text())
         edge_aware_sweep(out)
