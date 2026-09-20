@@ -55,7 +55,12 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # the method, fully disclosed and gateable on probe_clearance /
 # beta_railed. No open work stands behind it, so the entry carries no
 # arrow and 726 sits in RESOLVED_REFERENCES.
-CITED_ISSUES = frozenset({1070, 1066, 838, 830, 820, 737, 715, 1022})
+# #1066 (the waveguide S-parameter lane not continuing a dielectric into
+# its absorber pad) left on 2026-09-20: both of that lane's smoothing
+# sites now call smoothed_shape_pairs, the one implementation the
+# runners use, and tests/unit/sparams/test_waveguide_lane_pad_continuation.py
+# pins the pad -- the page's own rule for when an entry goes.
+CITED_ISSUES = frozenset({1070, 838, 830, 820, 737, 715, 1022})
 
 # Numbers the prose names for provenance rather than as a live defect: a CLOSED
 # issue quoted to say what part of the problem is already fixed. #1043 (the

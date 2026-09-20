@@ -7,7 +7,7 @@ workflows call the scripts, that the scripts exist and are executable, and that
 `scripts/ci/local.sh` still runs the same list the runbook tells authors to run.
 
 The other half is the path-aware lane. `pr-tests.yml` must keep reporting the
-contexts branch protection requires (`guards-and-preflight`, `fast-suite (1)`
+contexts the `main` ruleset requires (`guards-and-preflight`, `fast-suite (1)`
 through `(6)`) on every event, while doing no work when the diff touches nothing
 the shards can observe. That is a shape a later edit can break silently -- a
 renamed job leaves a required context permanently unreported and no pull request
@@ -140,11 +140,13 @@ def test_no_event_data_is_interpolated_into_a_run_block(path: Path) -> None:
 
 
 def test_the_required_job_names_still_exist() -> None:
-    """Branch protection requires these contexts BY NAME.
+    """The `main` ruleset requires these contexts BY NAME.
 
     A rename leaves every required check permanently unreported and blocks every
-    merge until someone edits branch protection, which is not visible from the
-    repository.
+    merge until someone edits the ruleset. What the ruleset requires IS readable
+    from the repository -- `gh api repos/bk-squared/rfx/rules/branches/main` --
+    but nothing reads it back against this file at pull-request time, so the
+    names are pinned here instead.
     """
     jobs = load(PR_TESTS)["jobs"]
     for name in HEAVY_JOBS:
@@ -403,12 +405,14 @@ def test_the_setup_steps_the_skip_path_needs_are_not_themselves_skipped() -> Non
 
 
 def test_the_workflow_asks_for_changes_to_be_a_required_check() -> None:
-    """`needs: changes` is a hole until `changes` is required.
+    """`needs: changes` is a hole unless `changes` is required.
 
     A `changes` job that dies of a runner fault leaves both heavy jobs SKIPPED by
     dependency, and a skipped job does not fail a required context -- so a merge
-    would go through having run no tests. Requiring `changes` closes it; the job
-    is a checkout and a stdlib script.
+    would go through having run no tests. The `main` ruleset has required
+    `changes` since 2026-09-19, and the job is a checkout and a stdlib script, so
+    keeping it costs nothing. This pins the reason in both the workflow and the
+    runbook, so a later edit cannot quietly drop it.
     """
     text = PR_TESTS.read_text(encoding="utf-8")
     assert "`changes` MUST BE A REQUIRED CHECK" in text

@@ -145,11 +145,35 @@ fact, pre-declared body/JSON untouched)
 The "within 0.4% at all six points" reading just above is a PRE-#802
 result. The realized-board anchor reused each point's z0_measured_ohm
 from THIS file's JSON, solved on the pre-#802 f32 rasterization. Main's
-exact-coordinate rasterizer (#802/#834) moves three of the six aligned
-points' realized trace width (h_sub/3 677.3->592.7um, h_sub/5
-609.6->558.8um, h_sub/6 592.7->635.0um), so both the measured Z0 and the
-realized-board HJ anchor on those points change and the 0.4% figure is no
-longer a live bound for them. The user-facing preflight advisories were
+exact-coordinate rasterizer (#802/#834) moves three of the six points'
+realized trace width, so both the measured Z0 and the realized-board HJ
+anchor on those points change and the 0.4% figure is no longer a live
+bound for them.
+
+THE WIDTHS MOVED TWICE, and both lists above and below are right for
+their own date. Re-measured 2026-09-19/20 (issue #752 re-verification;
+metadata only, ``sim.fidelity_report(print_report=False)`` on this file's
+own ``run_one`` geometry, x64-invariant -- identical under
+JAX_ENABLE_X64=0 and 1):
+
+    label             dx (um)   frozen   df819523   main today
+                                (pre-#802) (pre-#931) (post-#931)
+    aligned h_sub/3    84.667    677.3    592.667     592.667
+    aligned h_sub/4    63.500    635.0    635.000     571.500
+    aligned h_sub/5    50.800    609.6    558.800     609.600
+    aligned h_sub/6    42.333    592.7    635.000     592.667
+    misaligned 80um    80.000    560.0    560.000     640.000
+    misaligned 60um    60.000    600.0    600.000     600.000
+
+The values on df819523 (2026-09-08) agree with the note's 2026-09-02 list
+(h_sub/3 677.3->592.7, h_sub/5 609.6->558.8, h_sub/6 592.7->635.0). That
+note was CORRECT. A second move landed at
+#931 (485a9b98, 2026-09-10, one geometry->lattice ownership contract for
+metal), which is why main today differs from both.
+
+All six realized h_sub reproduce the frozen values exactly
+(254/254/254/254/320/300um) and every realized trace face lands on a
+node. But h_sub is NOT the whole board: see the conductor note below. The user-facing preflight advisories were
 corrected (finding A1) to state only the qualitative realized-board claim
 and to point here for the OWED re-solve. RE-SOLVE: run this script (6 FDTD
 points) on main, then regenerate the anchor with
@@ -179,7 +203,8 @@ and class docstring; the check now states the O(dx) convergence order,
 its <5% accuracy TARGET, and this re-solve pointer, and quotes no measured
 percentage.
 
-F3 -- the misaligned pair's "~0.2% still representative" sentence was
+F3 -- SUPERSEDED IN PART, see the note at the end of this block. The
+misaligned pair's "~0.2% still representative" sentence was
 asserted, not measured. Geometry invariance (realized W unchanged at #802)
 is necessary but not sufficient: the MSL extractor lane itself moved after
 this sweep ran (#698 port metric sizing, #771 N-probe fit span, #791,
@@ -191,6 +216,94 @@ Z0=57.572 ohm vs frozen 57.576 ohm; against HJ(560um,320um)=57.463 ohm
 that is +0.190%, vs the frozen row's +0.197%. So the misaligned half of
 the anchor IS live-representative, on evidence. The aligned half is still
 re-solve-owed, and two measured points do not make a six-point bound.
+
+F3's PREMISE DOES NOT HOLD ON MAIN (re-measured 2026-09-19, issue #752
+re-verification). "Realized W unchanged at #802" is false for misaligned
+80um: main rasterizes its trace at y 1120.000..1760.000um = 640.000um
+(8 cells), not the frozen 560.000um. HJ on the realized board therefore
+reads 53.11 ohm there, not 57.46, so pairing the frozen Z0=57.572 ohm
+with a live geometry rebuild is exactly the mismatch this whole issue is
+about. F3's conclusion -- that the misaligned half is live-representative
+-- rested on that premise and does not survive it. Of the misaligned
+pair only 60um still has its frozen geometry on main. Nothing in the
+frozen JSON changes; what changes is that neither half of the anchor can
+be called live without the owed six-point re-solve.
+
+THE OWED RE-SOLVE RAN (2026-09-19, issue #752 re-verification). It does NOT
+restore the 0.4% reading -- it refutes it on this tree. New artifact beside
+this one, ``msl_z0_bias_floor_sweep_realized_anchor_2026-09-19.json``, with
+its own provenance (commit, rfx path, jax version, x64 flag, per-point wall
+time and settling); the pre-declared body, its JSON and its verdict block are
+untouched and their sha256 was re-checked after the run. Six fresh FDTD points
+at this file's committed settings, each scored against Hammerstad-Jensen on
+the board THAT SAME BUILD realized:
+
+    label             Z0 meas   HJ(realized)   dev      settling
+    aligned h_sub/3    44.179      48.271     -8.48%   -102.3/-100.0
+    aligned h_sub/4    45.987      49.391     -6.89%   -102.4/-103.3
+    aligned h_sub/5    44.646      47.412     -5.83%    -99.6/-103.1
+    aligned h_sub/6    45.799      48.271     -5.12%    -99.6/-103.4
+    misaligned 80um    39.016      53.106    -26.53%    -98.0/ -99.7
+    misaligned 60um    41.491      53.106    -21.87%    -98.9/-100.5
+
+Every point settled far below the -40 dB floor. The readability numbers --
+probe clearance on all twelve ports, and the fit conditioning on the worst
+point -- are NOT in the run record above (``run_one`` returns none of those
+fields), so they are their own witness beside it,
+``msl_z0_bias_floor_sweep_readability_witness_2026-09-20.json``: clearance is
+build-only on the identical geometry, and the conditioning is ONE re-solved
+point (misaligned 80um: beta_railed 0/60 bins, reliable 9/9 in the gate, Z0
+flat over the gate 38.960-39.076 ohm, imag 0.126). On that evidence none of
+the repo's reliability gates flags these numbers.
+
+RE-VERIFICATION CONCLUSION (issue #752, written by the leader session
+2026-09-20; pasted verbatim, wrapped only):
+--------------------------------------------------------------------------
+Re-verification of #752 on main (2026-09-19/20). Six points re-solved with
+``run_one``'s committed settings (artifact
+``msl_z0_bias_floor_sweep_realized_anchor_2026-09-19.json``, commit
+15c1d325, jax 0.10.2, x64 off, all points settled at or below -98.0 dB on
+both drives (worst stored value -98.0 dB, misaligned 80 um, port 0; values
+stored to one decimal)).
+
+Measured against Hammerstad-Jensen on the board each run realized: aligned
+h_sub/3 -8.48 %, h_sub/4 -6.89 %, h_sub/5 -5.83 %, h_sub/6 -5.12 %;
+misaligned 80 um -26.53 %, 60 um -21.87 %. The frozen artifact's "≤ 0.38 %
+on the realized board" does not hold on this tree.
+
+Two things are known to differ from the tree the frozen figure was taken
+on, and neither has a full error budget here:
+1. The board. #931 (485a9b98, 2026-09-10) changed how a one-cell-thick
+   conductor realizes: before it a zero-thickness sheet on one node plane,
+   after it a slab with walls on both faces (``rfx/fidelity.py:227-228``);
+   on three points the trace's z placement also moved one cell
+   (reviewer's builds of df819523 against the PR head: h_sub/6
+   296.3-338.7 -> 254.0-296.3 um; 80 um 320-400 -> 240-320; 60 um
+   300-360 -> 240-300). One
+   measurement of the size of this: at aligned h_sub/3 the same trace
+   declared as a zero-thickness Box reads 46.240 ohm (-4.21 %) where the
+   one-cell slab reads 44.179 ohm (-8.48 %). At that one point conductor
+   thickness accounts for 4.27 of 8.48 percentage points and a -4.21 %
+   residual remains.
+2. The anchor. ``hammerstad_jensen_z0_eps_eff`` is the simplified quasi-
+   static form, not the full HJ-1980 model
+   (``docs/guides/msl_geometry_diagnostics.md:79-82``); its error against
+   the full model is not measured here.
+
+What this does and does not establish: the split between board change and
+residual is measured at one point and is about even there; the other five
+points have no split measured. The residual is not attributed to the
+extractor and not excluded from it. No pull request is named as a cause.
+An earlier version of this PR named #986/#987 from columns (dielectric
+height, trace width) that cannot see conductor realization; that reading
+is withdrawn.
+
+Owed, not run here: the six points re-solved on node-aligned zero-
+thickness foil boards (the geometry ``msl_geometry_diagnostics.md:85-86``
+describes), scored against both the repository formula and a full HJ-1980
+reference. About 48 min of CPU; under the 2026-09-20 rule it runs on VESSL
+(remilab-c0); the committed runner's docstring says how to package it.
+Until it runs, #752 stays open with this measurement as its state.
 
 COST OF THE OWED RE-SOLVE (measured, so nobody has to guess again): the
 frozen JSON's own ``wallclock_s`` column sums to 5686.6 s = 94.8 min on

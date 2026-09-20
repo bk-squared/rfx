@@ -101,8 +101,8 @@ EVENT_NAME=pull_request BASE_SHA=origin/main HEAD_SHA=HEAD bash scripts/ci/class
 ```
 
 `guards-and-preflight` and `fast-suite (1)`…`(6)` keep their names and still report
-SUCCESS on every pull request — those are the contexts branch protection requires, and
-a renamed or absent job leaves a required check unreported and blocks every merge.
+SUCCESS on every pull request — those are contexts the `main` ruleset requires, and a
+renamed or absent job leaves a required check unreported and blocks every merge.
 
 **`tests/contracts/` runs either way.** Much of what lives there asserts on `docs/`,
 `scripts/`, `.github/workflows/`, `CHANGELOG.md` and `README.md` — the very paths the
@@ -117,10 +117,11 @@ there. Count them yourself rather than trusting a number here:
 `grep -rl 'docs/\|scripts/\|workflows' tests/contracts/*.py | wc -l`.
 
 **`changes` must be a required check too**, alongside `ruff`,
-`guards-and-preflight` and `fast-suite (1)`…`(6)`. `needs: changes` means a `changes`
-job that dies of a runner fault leaves the heavy jobs skipped by dependency, and a
-skipped job does not fail a required context — a merge would go through having run
-nothing. The job is 15 s.
+`guards-and-preflight`, `fast-suite (1)`…`(6)`, `pr-body-contract` and
+`changelog-fragment`, and since 2026-09-19 the ruleset requires it. `needs: changes`
+means a `changes` job that dies of a runner fault leaves the heavy jobs skipped by
+dependency, and a skipped job does not fail a required context — a merge would go
+through having run nothing. The job is 15 s, so requiring it costs nothing.
 
 The classifier fails open everywhere else: a push to `main`, a missing sha, a diff that
 would not compute, and any verdict other than the literal `false` all run the full lane.
@@ -246,9 +247,10 @@ no event here at all, because an event triggered by `GITHUB_TOKEN` creates no
 workflow run. `.github/pull_request_template.md` seeds both stubs, and
 `tests/contracts/test_pr_body_contract.py` pins the accepted forms.
 
-**The gate binds only once `pr-body-contract` is a required check in branch
-protection.** Until then a red run is visible but does not block a merge, which
-is the same advisory state the prose rule was in.
+**The gate binds: `pr-body-contract` is a required check in the `main` ruleset
+as of 2026-09-19.** Before that a red run was visible but did not block a merge,
+which was the same advisory state the prose rule was in.
+
 ## Changelog fragments
 
 Do NOT append to `CHANGELOG.md`. Add `changelog.d/<number>.<type>.md` holding
@@ -258,8 +260,8 @@ under `rfx/`; a direct `CHANGELOG.md` edit needs the `release` label. Naming,
 content shape and the assembler commands are in `changelog.d/README.md`;
 `python scripts/changelog/assemble.py --check` validates what you wrote.
 
-Both rules bind only once the `changelog-fragment` check is REQUIRED in branch
-protection — until then a red run advises and does not block.
+Both rules bind: `changelog-fragment` is a required check in the `main` ruleset
+as of 2026-09-19, so a red run blocks the merge.
 
 ## Weekly governance audit
 
@@ -269,7 +271,7 @@ It reports what no single-PR gate can see, over the last seven days:
 
 | row | why it is listed |
 |---|---|
-| merged PR with no accepted `Review:` line | the gate binds new PRs only once it is a required check |
+| merged PR with no accepted `Review:` line | the gate has only been required since 2026-09-19, and a body can be edited after the merge |
 | merged PR claiming `Review: skipped` | the rule has two exceptions; an exception claimed weekly is not one |
 | issue opened with no `lane:*` label | invisible to `gh issue list -l lane:...`, so no session can find it |
 | issue opened with no `### Lane` section | filed outside the forms, so nobody answered "who will DO or DECIDE" |
