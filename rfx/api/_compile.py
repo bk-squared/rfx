@@ -319,10 +319,22 @@ class _CompileMixin:
                 # that does not exist, in a message about dielectric pads.
                 # It has to sit AFTER classify_pec_entry, because that is
                 # what decides which an entry is.
-                if _check_pad_fill and not is_tracer(mask):
+                # Read the DECLARED domain, not the resolved ``self._domain``:
+                # that attribute is a mesh descriptor whose resolution is
+                # keyed on material identity, so under a trace that swaps
+                # traced materials in (differentiable_material_fit) the
+                # cache misses and the auto-mesh planner runs on a tracer
+                # and refuses. Assembly is handed a built ``grid``; it must
+                # not plan a mesh. A sim with no declared domain (fully
+                # automatic mesh) has no declared face to check against and
+                # skips. GPU run 369367262302 on a6d6fce1, regression of
+                # PR #1136.
+                _declared_domain = self._declared_mesh["_domain"]
+                if (_check_pad_fill and _declared_domain is not None
+                        and not is_tracer(mask)):
                     assert_declared_span_is_filled(
                         entry.material_name, entry.shape, mask, grid,
-                        self._domain, record=pad_fill_findings)
+                        _declared_domain, record=pad_fill_findings)
                 eps_r = jnp.where(mask, mat.eps_r, eps_r)
                 sigma = jnp.where(mask, mat.sigma, sigma)
                 mu_r = jnp.where(mask, mat.mu_r, mu_r)
