@@ -280,8 +280,10 @@ def fidelity_report(sim, print_report: bool = True):
     The list LEADS with a ``"domain (the solved box)"`` pseudo-entity —
     the only row a cavity/waveguide model has, since there the box IS the
     geometry. Its per-axis ``n_cells`` / ``realized_extent_um`` are the
-    wall-to-wall CELL count and length, i.e. ``ceil(L/dx)`` cells, not the
-    ``ceil(L/dx) + 1`` node count the grid allocates. An axis the solve
+    wall-to-wall CELL count and length, i.e. ``cells_spanning(L, dx)`` cells,
+    not the ``+ 1`` node count the grid allocates. That was a bare
+    ``ceil(L / dx)`` until #1070, which made a ratio within a few ULP of an
+    integer snap to it rather than buy a cell no declared Box reaches. An axis the solve
     does not have — ``z`` under ``mode="2d_tmz"``, where ``grid.nz == 1``
     and the declared ``Lz`` is ignored — is not compared: that axis dict
     carries a ``note`` key (rendered by the printed report) instead of a
@@ -304,13 +306,20 @@ def fidelity_report(sim, print_report: bool = True):
     # the two derivations drifting apart unnoticed.
     assembled_sheets: list = []
     assembled_wires: list = []
+    pad_fill_findings: list = []
     if nonuniform:
         from rfx.runners.nonuniform import assemble_materials_nu
         out = assemble_materials_nu(sim_audit, grid, pec_sheets=assembled_sheets,
                                     pec_wires=assembled_wires)
     else:
+        # #1070 / review of PR #1136 A: collect the declared-but-unfilled
+        # spans instead of letting the assembly raise. This report exists to
+        # say where the realized model differs from the declared one, and a
+        # pad seam the structure does not reach is exactly that; refusing to
+        # produce the report would hide the row that names it.
         out = sim_audit._assemble_materials(grid, pec_sheets=assembled_sheets,
-                                            pec_wires=assembled_wires)
+                                            pec_wires=assembled_wires,
+                                            pad_fill_findings=pad_fill_findings)
     mats, pec_mask = out[0], out[3]
     eps = np.asarray(mats.eps_r, dtype=float)
     sigma_arr = np.asarray(mats.sigma, dtype=float)
@@ -380,9 +389,10 @@ def fidelity_report(sim, print_report: bool = True):
         i_lo = p_lo
         # DEFENSIVE ONLY — unreachable on both grid classes as they are
         # built today, and NOT evidence that "the pads consumed the axis"
-        # is a state this code has ever seen. Grid: shape[a] = ceil(L/dx)
-        # + 1 + p_lo + p_hi, so i_hi - i_lo = ceil(L/dx) >= 0
-        # (rfx/grid.py:151). NonUniformGrid: shape[a] = p_lo + len(profile)
+        # is a state this code has ever seen. Grid: shape[a] =
+        # cells_spanning(L, dx) + 1 + p_lo + p_hi, so i_hi - i_lo =
+        # cells_spanning(L, dx) >= 0 (rfx.grid.Grid.__init__; a bare
+        # ceil(L/dx) until #1070). NonUniformGrid: shape[a] = p_lo + len(profile)
         # + p_hi + 1 (the trailing bounding node, rfx/nonuniform.py
         # _append_bounding_node), so i_hi - i_lo = len(profile) >= 1. The
         # clamp exists so a future grid layout cannot turn a negative index
@@ -575,6 +585,36 @@ def fidelity_report(sim, print_report: bool = True):
             report.append(item)
             continue
 
+        # #1070: the declared span reaches a padded hi face and the realized
+        # mask stops more than the one node the half-open rule costs it, so
+        # the CPML pad on that face is filled by replicating a vacuum column.
+        # Reported here rather than raised (review of PR #1136, A) because
+        # this report is what a user reads to FIND such a thing.
+        for _shortfall in pad_fill_findings:
+            if _shortfall["entity"] != mat_name:
+                continue
+            item["findings"].append(dict(
+                kind="declared-span-short-of-padded-face",
+                axis=_shortfall["axis"],
+                detail=(
+                    f"declared out to the {_shortfall['face']} face "
+                    f"({_shortfall['declared_extent_m'] * 1e6:.1f} um = "
+                    f"{_shortfall['declared_cells']!r} cells) but the "
+                    f"realized mask stops "
+                    f"{_shortfall['empty_interior_nodes']} interior nodes "
+                    f"short of it, and that face carries a "
+                    f"{_shortfall['pad_cells']}-cell absorber filled by "
+                    f"replicating the interior edge — so the pad is vacuum "
+                    f"and the structure ends in a facet inside its own "
+                    f"absorber (#1070, #831). One node short is the "
+                    f"documented half-open [lo, hi) shortfall and is "
+                    f"repaired; "
+                    f"{_shortfall['empty_interior_nodes']} is not"),
+                remedy=("choose a domain length commensurate with dx, or "
+                        "check what put an interior node beyond the "
+                        "declared span — rfx.grid.cells_spanning absorbs "
+                        "float dust in domain/dx, so a shortfall with that "
+                        "in place has another cause")))
         # A PEC mask does not change eps, so a dielectric whose cells were
         # later claimed by a conductor looks untouched in eps alone (trap T5).
         if mat_name not in ("pec", "lossy-sheet"):

@@ -152,6 +152,20 @@ def test_zero_and_negative_lengths_behave_as_they_did(ratio: float) -> None:
     assert cells_spanning(ratio * DX, DX) == int(math.ceil(ratio))
 
 
+@pytest.mark.parametrize("ratio", [1e-17, 1e-16, 1.7e-15, 1.8e-15, 1e-9])
+def test_a_positive_length_below_the_dust_band_still_gets_a_cell(
+        ratio: float) -> None:
+    """Zero is reachable from above (review of PR #1136, G).
+
+    For ``0 < r < 8*eps`` the nearest integer is 0 and the dust test passes,
+    so an unguarded snap returned 0 cells for a real length where ``ceil``
+    returned 1. Everywhere else the snap gives back a cell the ratio did not
+    need; here it would have taken away one the length does need, which is a
+    different thing and not what the rule is for.
+    """
+    assert cells_spanning(ratio * DX, DX) == 1 == int(math.ceil(ratio))
+
+
 # --- cell sizes that are not exactly representable -------------------------
 
 @pytest.mark.parametrize("dx,terms,expected", [

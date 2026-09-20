@@ -49,8 +49,18 @@ def cells_spanning(length: float, dx: float, *,
     nearest = round(ratio)
     if abs(ratio - nearest) <= ulp_budget * float(np.finfo(float).eps) * max(
             1.0, abs(ratio)):
-        return int(nearest)
-    return int(np.ceil(ratio))
+        cells = int(nearest)
+    else:
+        cells = int(np.ceil(ratio))
+    # A POSITIVE length always needs a cell (review of PR #1136, G). Zero is
+    # the one integer the dust band can reach from above while the length is
+    # still real: for 0 < r < 8*eps the nearest integer is 0, and snapping
+    # there would return fewer cells than the declared length needs, where
+    # every other snap returns one fewer cell than a ratio that did not need
+    # it. ``ceil`` gave 1 and so does this.
+    if ratio > 0.0 and cells < 1:
+        return 1
+    return cells
 
 
 class Grid:
