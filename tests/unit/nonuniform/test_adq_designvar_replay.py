@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sys
 
 import numpy as np
 import pytest
@@ -20,11 +21,38 @@ RESULTS = Path(__file__).resolve().parents[3] / "validation/research/multiband_n
 
 def _load(arm):
     p = RESULTS / f"adq_{arm}.json"
-    if not p.exists():
-        pytest.skip(f"adq arm {arm} not measured yet")
     d = json.loads(p.read_text())
     assert "instrument_error" not in d, d.get("instrument_error")
     return d
+
+
+def test_missing_required_artifact_is_an_error(tmp_path, monkeypatch):
+    monkeypatch.setitem(globals(), "RESULTS", tmp_path)
+    with pytest.raises(FileNotFoundError):
+        try:
+            _load("stack_l1")
+        except pytest.skip.Exception:
+            pytest.fail("A completed witness must not skip missing evidence")
+
+
+def test_main_refuses_existing_evidence_before_measurement(tmp_path, monkeypatch):
+    out = tmp_path / "validation/research/multiband_nu/results/adq_stack_l1.json"
+    out.parent.mkdir(parents=True)
+    original = '{"retained": true}\n'
+    out.write_text(original)
+    monkeypatch.setattr(adq, "ROOT", tmp_path)
+    monkeypatch.setattr(adq.rfx, "__file__", str(tmp_path / "rfx/__init__.py"))
+    monkeypatch.setattr(sys, "argv", ["adq_designvar", "--arm", "stack_l1"])
+    monkeypatch.setattr(adq.subprocess, "check_output", lambda *args, **kwargs: "baseline\n")
+
+    def forbidden_measurement(arm):
+        pytest.fail("Existing evidence must be refused before measurement")
+
+    monkeypatch.setattr(adq, "measure_stack", forbidden_measurement)
+    with pytest.raises(FileExistsError, match="adq_stack_l1.json"):
+        adq.main()
+    assert out.read_text() == original
+    assert not out.with_suffix(".started").exists()
 
 
 def test_frozen_constants():
