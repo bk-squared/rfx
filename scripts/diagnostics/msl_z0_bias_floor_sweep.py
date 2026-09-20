@@ -256,63 +256,50 @@ point (misaligned 80um: beta_railed 0/60 bins, reliable 9/9 in the gate, Z0
 flat over the gate 38.960-39.076 ohm, imag 0.126). On that evidence none of
 the repo's reliability gates flags these numbers.
 
-THE BOARD CHANGED TOO, and how much of it is board is measured at ONE point
-only. An earlier draft of this note claimed "the extractor moved, not the board" from
-h_sub and trace-width columns alone. Those columns cannot see the CONDUCTOR's
-realization, and #931 (485a9b98) changed it on every point: before it a Box
-drawn one cell thick realized as a zero-thickness SHEET on one node plane
-(``rfx/fidelity.py``'s own words: "under the pre-#931 sheet rule the hi face
-was never a wall at any thickness"); after it, as a one-cell SLAB with walls on
-BOTH faces. Measured on this tree, the trace realizes:
+RE-VERIFICATION CONCLUSION (issue #752, written by the leader session
+2026-09-20; pasted verbatim, wrapped only):
+--------------------------------------------------------------------------
+Re-verification of #752 on main (2026-09-19/20). Six points re-solved with
+``run_one``'s committed settings (artifact
+``msl_z0_bias_floor_sweep_realized_anchor_2026-09-19.json``, commit
+15c1d325, jax 0.10.2, x64 off, all points settled below -98 dB on both
+drives).
 
-    label             trace z (um)      walls z (um)
-    aligned h_sub/3   254.0..338.7      254.0, 338.667
-    aligned h_sub/4   254.0..317.5      254.0, 317.500
-    aligned h_sub/5   254.0..304.8      254.0, 304.800
-    aligned h_sub/6   254.0..296.3      254.0, 296.333
-    misaligned 80um   240.0..320.0      240.0, 320.000
-    misaligned 60um   240.0..300.0      240.0, 300.000
+Measured against Hammerstad-Jensen on the board each run realized: aligned
+h_sub/3 -8.48 %, h_sub/4 -6.89 %, h_sub/5 -5.83 %, h_sub/6 -5.12 %;
+misaligned 80 um -26.53 %, 60 um -21.87 %. The frozen artifact's "≤ 0.38 %
+on the realized board" does not hold on this tree.
 
--- and on the misaligned pair the conductor's lower wall is at 240um, not the
-declared 254um trace plane.
+Two things are known to differ from the tree the frozen figure was taken
+on, and neither has a full error budget here:
+1. The board. #931 (485a9b98, 2026-09-10) changed how a one-cell-thick
+   conductor realizes: before it a zero-thickness sheet on one node plane,
+   after it a slab with walls on both faces (``rfx/fidelity.py:227-228``);
+   on three points the trace's z placement also moved one cell. One
+   measurement of the size of this: at aligned h_sub/3 the same trace
+   declared as a zero-thickness Box reads 46.240 ohm (-4.21 %) where the
+   one-cell slab reads 44.179 ohm (-8.48 %). At that one point conductor
+   thickness accounts for 4.27 of 8.48 percentage points and a -4.21 %
+   residual remains.
+2. The anchor. ``hammerstad_jensen_z0_eps_eff`` is the simplified quasi-
+   static form, not the full HJ-1980 model
+   (``docs/guides/msl_geometry_diagnostics.md:79-82``); its error against
+   the full model is not measured here.
 
-The discriminator, one solve on this tree: declare the SAME trace as a
-zero-thickness Box at aligned h_sub/3 and Z0 reads 46.240 ohm against the same
-HJ 48.271, i.e. -4.21% where the one-cell slab gives -8.48%. Conductor
-thickness alone is 4.27 of those 8.48 percentage points.
+What this does and does not establish: the split between board change and
+residual is measured at one point and is about even there; the other five
+points have no split measured. The residual is not attributed to the
+extractor and not excluded from it. No pull request is named as a cause.
+An earlier version of this PR named #986/#987 from columns (dielectric
+height, trace width) that cannot see conductor realization; that reading
+is withdrawn.
 
-THE ANCHOR DIFFERS TOO. ``docs/guides/msl_geometry_diagnostics.md`` records
-that ``hammerstad_jensen_z0_eps_eff`` "implements a simplified piecewise
-quasi-static formula ... It is not the complete Hammerstad-Jensen 1980 model",
-and that the fresh #752 study used node-aligned ZERO-THICKNESS foil boards with
-a separate full-HJ1980 reference. This re-solve used neither: a one-cell PEC
-volume scored against the simplified formula, with no model-error budget on
-either side.
-
-So, at the ONE point where the split was measured, it is about even: 4.27 pp
-of conductor thickness against a 4.21 pp residual. That is not dominance
-either way. The anchor's own stated simplification is a second known
-contributor with NO measured budget at all, the other five points have no
-split measured, and on the misaligned pair the total deviations are -26.5%
-and -21.9%. The residual is neither attributed to nor excluded from the
-extractor, and no PR is named as its cause -- an earlier draft pointed at
-#986/#987 on the strength of the same columns that missed #931, which was not
-evidence.
-
-OWED, deliberately not run in that PR: a six-point re-solve on node-aligned
-ZERO-THICKNESS foil boards, scored against both the repository formula and a
-full HJ1980 reference. That is what separates the residual from the two
-contributors. ~48 min of CPU, so it belongs on VESSL under the 2026-09-20 rule;
-``msl_z0_bias_floor_sweep_realized_anchor_rerun.py`` (committed) says how to
-package it.
-
-ANCHOR CAVEAT, and it decides one of the two verdicts: the recipe in #752's
-body takes h from the DIELECTRIC column's realized z-extent. Check 2b of
-``rfx/preflight/msl.py`` warns that the material extent is not the
-conductor-plane gap, and on the misaligned pair the two differ (320/300um
-column vs a 240um gap). Scored on the gap instead, the misaligned deviations
-are -11.88% and -10.16% rather than -26.53% and -21.87%. The aligned class is
-unaffected (both readings give 254um) and stays 5.1-8.5% out either way.
+Owed, not run here: the six points re-solved on node-aligned zero-
+thickness foil boards (the geometry ``msl_geometry_diagnostics.md:85-86``
+describes), scored against both the repository formula and a full HJ-1980
+reference. About 48 min of CPU; under the 2026-09-20 rule it runs on VESSL
+(remilab-c0); the committed runner's docstring says how to package it.
+Until it runs, #752 stays open with this measurement as its state.
 
 COST OF THE OWED RE-SOLVE (measured, so nobody has to guess again): the
 frozen JSON's own ``wallclock_s`` column sums to 5686.6 s = 94.8 min on
