@@ -332,7 +332,7 @@ class _CompileMixin:
                 if _check_pad_fill and not is_tracer(mask):
                     assert_declared_span_is_filled(
                         entry.material_name, entry.shape, mask, grid,
-                        self._declared_mesh["_domain"],
+                        self._unresolved_domain,
                         record=pad_fill_findings)
                 eps_r = jnp.where(mask, mat.eps_r, eps_r)
                 sigma = jnp.where(mask, mat.sigma, sigma)
@@ -427,7 +427,7 @@ class _CompileMixin:
         conformal_faces = self._boundary_spec.conformal_faces()
         if conformal_faces:
             # Declared, not resolved: see the pad-fill check above.
-            _conformal_domain = self._declared_mesh["_domain"]
+            _conformal_domain = self._unresolved_domain
             big = max(_conformal_domain) * 100.0
             for face in conformal_faces:
                 axis_name, side = face.split("_")
@@ -468,7 +468,7 @@ class _CompileMixin:
                     corner_hi[axis_idx] = wall_lo
                 else:  # hi
                     # Always inject on the hi side. The grid often
-                    # extends past ``self._domain`` due to dx-snap or
+                    # extends past the declared domain due to dx-snap or
                     # CPML padding on other axes, so a fractional cell
                     # exists at the wall even when ``wall_hi`` equals
                     # the user-declared domain extent. When no

@@ -51,3 +51,15 @@ def test_assembly_of_a_fresh_sim_never_resolves_its_mesh(monkeypatch, boundary):
 
     monkeypatch.setattr(_mesh._MeshField, "__get__", _refuse)
     fresh._assemble_materials(grid)
+
+
+def test_after_a_freeze_assembly_sees_the_frozen_domain_not_the_callers_container():
+    """``_freeze_mesh`` owns a snapshot so a caller-owned list mutated afterwards
+    cannot move the model; the unresolved read must honour it (review of #1140)."""
+    dom = [0.024, 0.009, 0.009]
+    sim = Simulation(freq_max=5e9, domain=dom, dx=1.5e-3)
+    sim.freeze_mesh()
+    dom[2] = 0.050
+    assert tuple(sim._unresolved_domain) == (0.024, 0.009, 0.009)
+    assert tuple(sim._unresolved_domain) == tuple(sim._domain)
+

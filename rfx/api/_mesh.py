@@ -50,6 +50,23 @@ class _MeshMixin:
         return {name: self.__dict__.get(name) for name in (
             "_dx", "_domain", "_dx_profile", "_dy_profile", "_dz_profile")}
 
+    @property
+    def _unresolved_domain(self):
+        """The domain, read without planning a mesh.
+
+        The frozen snapshot when the mesh is frozen, otherwise the caller's
+        declaration. Material assembly uses this: it is handed a built grid
+        and must never run the mesh planner (a fresh simulation carrying
+        traced materials would run it on a tracer, PR #1140). The frozen
+        snapshot comes first so that a caller-owned mutable ``domain``
+        container mutated after ``freeze_mesh()`` cannot move what assembly
+        sees, which is what ``_freeze_mesh`` exists to guarantee. On every
+        uniform-grid path the value equals the resolved ``_domain``:
+        resolution replaces the declared z extent only together with a
+        non-uniform dz profile, which the uniform grid builder refuses.
+        """
+        return (self.__dict__.get("_frozen_mesh") or self._declared_mesh)["_domain"]
+
     def _resolve_mesh(self):
         """Return one cached, host-side resolution of the current declaration.
 
