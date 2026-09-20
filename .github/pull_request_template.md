@@ -11,9 +11,10 @@ do not replace the `Lane:` line — most PRs earn two of them or none, and which
 lane OWNS the change is not derivable from paths. When labels are present the
 line must name one of them.
 
-A closing keyword must START its line (`Closes #N.` then the summary). Inside a
-sentence GitHub still closes the issue on merge - even negated, even in inline
-code - and the `pr-body` check fails it. Several issues: repeat the keyword for each.
+To close an issue, START a line with the keyword (`Closes #N.` then the summary);
+for several issues repeat the keyword. To NOT close one, do not write a closing
+keyword in front of its number at all: GitHub closes on it even when the sentence
+negates it, and the `pr-body` check fails it inside a sentence.
 
 Keep the repo habit of quoting measured evidence below.
 -->

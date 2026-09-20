@@ -468,9 +468,9 @@ def test_a_plain_missing_line_does_not_get_the_adornment_hint() -> None:
 # --------------------------------------------------------------------------
 
 _IN_PROSE = (
-    "a closing keyword inside a sentence closes the issue when the PR merges - "
-    "start the line with it and end the sentence there (`Closes #N.`), or write "
-    '"the closing keyword for #N is withdrawn"'
+    "a closing keyword inside a sentence closes the issue when the PR merges. "
+    'If you do NOT mean to close it, take the keyword out ("the closing keyword '
+    'for #N is withdrawn"); if you do, start a line with it (`Closes #N.`)'
 )
 
 
@@ -491,6 +491,8 @@ _IN_PROSE = (
         "Closes #627 — the static half.",
         "Fixes #1075, option (b): no lane's step ordering changes",
         "Closes #780 (SPEC-01). Lifts the single-band limit.",
+        "1. Closes #12",
+        "2) Fixes #12, fixes #13.",
     ],
 )
 def test_a_closing_reference_that_starts_its_line_passes(line: str) -> None:
@@ -519,7 +521,10 @@ def test_a_closing_reference_inside_a_sentence_fails_and_quotes_the_line(line: s
     assert problems[0].endswith(_IN_PROSE)
 
 
-@pytest.mark.parametrize("line", ["Closes #12, #13", "Closes #12 and #13", "- Fixes #12, bk-squared/rfx#13."])
+@pytest.mark.parametrize(
+    "line",
+    ["Closes #12, #13", "Closes #12 and #13", "- Fixes #12, bk-squared/rfx#13.", "Fixes #12, fixes #13, #14"],
+)
 def test_a_list_with_one_keyword_is_told_that_only_the_first_issue_closes(line: str) -> None:
     problems = cpb.check(body("Lane: lane:ci-infra", ACCEPT, line), ENV)
     assert len(problems) == 1

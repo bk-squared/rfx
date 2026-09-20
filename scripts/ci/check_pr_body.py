@@ -63,13 +63,20 @@ explicit is what lets a later audit catch it.
 
 Closing keywords. GitHub links a PR to every issue its BODY names after a closing
 keyword (close / fix / resolve and their inflections) and closes that issue when
-the PR merges -- wherever the keyword sits, negated or not, inside inline code or
-not. PR #1086's "It does not close #737." closed #737 two seconds after the merge
-(2026-09-16); PR #1125's "It was opened as `Fixes #752`; that is withdrawn" closed
-#752 (2026-09-20). So a closing reference passes only where it STARTS a line and
-is followed at once by the end of the line or by punctuation (``Closes #12``,
-``Closes #12. One-line summary``); inside a sentence it fails. The scan reads the raw body, because the #752 keyword sat in
-inline code and still closed the issue.
+the PR merges -- wherever the keyword sits, negated or not. PR #1086's "It does
+not close #737." was the only closing reference to #737 in that body, and #737
+closed two seconds after the merge (2026-09-16). PR #635's "Closes #626 and
+#632." shows the other half: the body link closed #626 only.
+
+So a closing reference passes only where it STARTS a line and is followed at once
+by the end of the line or by punctuation (``Closes #12``, ``Closes #12. One-line
+summary``); inside a sentence it fails. That form is for a close you MEAN: a
+withdrawal moved to the start of a line ("Fixes #12: withdrawn") passes this
+check and still closes the issue -- take the keyword out instead.
+
+The scan reads the raw body. Nothing in this repository's record shows that a code
+fence, inline code or an HTML comment hides a keyword from GitHub, so the check
+does not assume it.
 
 NOT covered here: commit messages. This repository builds its squash message from
 the branch's commit messages (``squash_merge_commit_message: COMMIT_MESSAGES``),
@@ -460,9 +467,9 @@ def _check_review(lines: list[str]) -> list[str]:
 
 CLOSING_PREFIX = "closing keyword: "
 _CLOSING_IN_PROSE = (
-    "a closing keyword inside a sentence closes the issue when the PR merges - "
-    "start the line with it and end the sentence there (`Closes #N.`), or write "
-    '"the closing keyword for #N is withdrawn"'
+    "a closing keyword inside a sentence closes the issue when the PR merges. "
+    'If you do NOT mean to close it, take the keyword out ("the closing keyword '
+    'for #N is withdrawn"); if you do, start a line with it (`Closes #N.`)'
 )
 _CLOSING_BARE_LIST = (
     "GitHub closes only the first issue of a list like this - repeat the keyword "
@@ -487,11 +494,12 @@ def _check_closing_keywords(body: str) -> list[str]:
     item = rf"{keyword}:?\s+{reference}"
     joiner = r"(?:\s*,\s*|\s+and\s+|\s+)"
     closing = re.compile(item, re.IGNORECASE)
-    first = re.compile(rf"(?:[-*+]\s+)?{item}", re.IGNORECASE)
+    bullet = r"(?:(?:[-*+]|[0-9]+[.)])\s+)?"
+    first = re.compile(rf"{bullet}{item}", re.IGNORECASE)
     # ...and then the line ends, or punctuation follows at once: "Closes #12.", "Closes #12 -- why",
     # "Fixes #12, option (b): ...". "Fixes #12 is withdrawn" has words there instead, and fails.
     lead = re.compile(
-        rf"(?:[-*+]\s+)?{item}(?:{joiner}{item})*(?=\s*$|\s*[.;:,(]|\s+[—–-]+\s)", re.IGNORECASE
+        rf"{bullet}{item}(?:{joiner}{item})*(?=\s*$|\s*[.;:,(]|\s+[—–-]+\s)", re.IGNORECASE
     )
     bare_tail = re.compile(rf"(?:\s*,\s*|\s+and\s+){reference}", re.IGNORECASE)
     problems: list[str] = []
@@ -505,6 +513,9 @@ def _check_closing_keywords(body: str) -> list[str]:
         rest = line
         while (started := lead.match(rest)) is not None:  # "Closes #12. Closes #13." is two leads
             rest = rest[started.end():].lstrip(" .")
+        if rest != line and bare_tail.match(rest):  # "Fixes #12, fixes #13, #14": #14 stays open
+            problems.append(f"{CLOSING_PREFIX}line {number}: {line[:120]!r}: {_CLOSING_BARE_LIST}")
+            continue
         problems += [
             f"{CLOSING_PREFIX}line {number}: {line[:120]!r}: {_CLOSING_IN_PROSE}"
             for _ in closing.finditer(rest)
