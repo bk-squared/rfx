@@ -53,27 +53,12 @@ reference. Scope: cross-family transition lanes are not pursued further before
 single-family extractors separately (`compute_msl_s_matrix(...)`, the coaxial
 two-port and line-reflection lanes) for a result you can cite.
 
-What says the single-family microstrip lane does not share this ~3x over-read is
-the V·I-over-Poynting-flux oracle
-(`scripts/diagnostics/msl_vi_flux_oracle/msl_vi_flux_oracle.json`): 1.0083 to
-1.0090 on the aligned `h_sub/3` mesh and 1.0105 to 1.0118 on the oracle file's
-own mixed-cell 80 µm mesh, 30 of 30 admissible cells each, both HELD. It has to
-be that oracle rather than the thru coupon, because a per-port amplitude constant
-cancels from `S` between like ports, so a like-port column power cannot see the
-power scale at all (the committed thru-coupon golden
-`tests/fixtures/msl_s_matrix_golden.json` does read a maximum column power of
-1.0000789 over its 10 bins, which bounds the matrix, not the scale). The oracle
-bounds that power scale against the true Poynting flux to about 1 %, and a 3x
-over-read cannot hide inside 1 %. What the oracle is blind to is a different
-thing, and it says so itself: `Re(V·conj(I))/flux` is exactly invariant under the
-power-preserving rescale `(V, I) → (aV, I/a)`, so a defect that moved `V` and `I`
-in that opposing pattern would pass it, and its own file states that as a
-structural blind direction it does not close
-(`scripts/diagnostics/msl_vi_flux_oracle.py:138-159`). That lane is not
-defect-free either — it just does not carry the ~3x: on the same class,
-`validation/crossval/07_sheen_lpf.py` records 3 of 120 `passivity_correction`
-bins above 0.05, worst 0.6572 at 17.870 GHz, all three above 17 GHz, and that
-case makes no magnitude claim above 15 GHz.
+The single-family microstrip lane does not carry this ~3x: the V·I-over-Poynting-flux
+oracle (`scripts/diagnostics/msl_vi_flux_oracle/msl_vi_flux_oracle.json`) bounds its power
+scale against the true flux to about 1 % on both committed meshes, and a 3x over-read cannot
+hide inside 1 %. That lane has its own limits — see the
+[S-parameter support matrix](sparameter_support_matrix.md) — including a raw passivity excess
+above 17 GHz recorded in `validation/crossval/07_sheen_lpf.py`.
 → [#838](https://github.com/bk-squared/rfx/issues/838)
 
 **Microstrip propagation constant sits about 0.9 % above the Hammerstad–Jensen
