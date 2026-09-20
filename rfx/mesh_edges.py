@@ -19,8 +19,18 @@ drawn anywhere else is first moved to a node (up to a cell) and then solved
 0.35 cell too long, and no choice of node removes the scatter: on the fin
 the uniform grid is off by up to 2.4 % in frequency at a 1 mm cell, with a
 sawtooth in the drawn length. Placing a node ``EDGE_OFFSET`` of a cell
-INSIDE the metal removes it (0.13 % worst, which is the grid's own
-dispersion).
+INSIDE the metal removes it (0.15 % worst, against 0.10 % for the empty
+box's own dispersion).
+
+Where the number holds. It does not depend on the polarization or on the cell
+size. It does depend, mildly, on the shape of the cells around the edge: for
+a strip three cells above a ground wall -- a printed conductor's situation --
+it reads 0.37, 0.31 and 0.31 when the cell normal to the sheet is 1, 1/2 and
+1/4 of the in-plane cell (``pec_strip_over_ground_offset.py``), so the fixed
+0.35 leaves at most 0.04 cell per edge there. For a free-standing sheet with
+strongly non-square cells it moves more (0.27 at 1/2, 0.60 at 2); pass
+``edge_offset=`` for such a mesh. A conductor one or more cells THICK ends in
+a face between two corners and has a smaller offset, not handled here.
 
 :func:`edge_aware_profile` builds such an axis profile. It only computes
 where the lines go; the cells between them come from

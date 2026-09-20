@@ -153,13 +153,19 @@ def _sheet_size_rows(shapes):
 
 
 def test_the_advisory_does_not_count_a_seam_as_a_free_edge():
-    """Two 10 mm halves of one 20 mm conductor: one free end each along x
-    (+3 %), two along y (+6 %). Counting the seam would give +6 % on x."""
+    """Two 10 mm halves of one 20 mm conductor have one free end each along
+    x and two along y, so x reads half of y's relative error. Counting the
+    seam would make them equal."""
+    import re
     rows = _sheet_size_rows([_sheet(10e-3, 20e-3, 10e-3, 20e-3),
                              _sheet(20e-3, 30e-3, 10e-3, 20e-3)])
     assert len(rows) == 1
-    assert rows[0].count("x: drawn 10mm, nodes cover 10mm, solved as 10.3mm") == 2
-    assert rows[0].count("y: drawn 10mm, nodes cover 10mm, solved as 10.6mm") == 2
+    rel = {ax: [float(v) for v in re.findall(
+        rf"{ax}: drawn 10mm, nodes cover 10mm, solved as [0-9.]+mm "
+        r"\(\+([0-9.]+)%\)", rows[0])] for ax in "xy"}
+    assert rel["x"] == [pytest.approx(100 * EDGE_OFFSET * 1e-3 / 10e-3)] * 2
+    assert rel["y"] == [pytest.approx(200 * EDGE_OFFSET * 1e-3 / 10e-3)] * 2
+
 
 
 # --- physics: the fin the offset was measured on ---------------------------
