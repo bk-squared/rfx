@@ -45,10 +45,12 @@ Measured twice independently on the MSL port's power-wave normalization: the
 returned matrix's own MSL-driven column power runs about 3x the incident power
 (the coax-driven column reads 0.379 / 0.379 / 0.367 on the same run), and a
 six-face Poynting flux box on the same run reads the same factor. The matrix is
-therefore not passive — `compute_coax_msl_transition(...)` returns it with a
-`UserWarning` unless `strict_passivity=True`, which raises instead — and
-transition S-parameters from that path are not usable as an absolute power
-reference. Scope: cross-family transition lanes are not pursued further before
+therefore not passive — `compute_coax_msl_transition(...)` refuses it by
+default (`strict_passivity=True`, raising `ValueError`); pass
+`strict_passivity=False` to get the diagnostic matrix back with a
+`UserWarning` — and transition S-parameters from that path are not usable as
+an absolute power reference. Scope: cross-family transition lanes are not
+pursued further before
 2.0, so this over-read will not be attributed or corrected; use the
 single-family extractors separately (`compute_msl_s_matrix(...)`, the coaxial
 two-port and line-reflection lanes) for a result you can cite.

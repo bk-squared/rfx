@@ -1387,7 +1387,7 @@ def compute_coax_msl_transition(
     msl_probe_spacing_cells: int | None = None,
     feed_impedance: float | None = None,
     cond_warn: float = 1.0e3,
-    strict_passivity: bool = False,
+    strict_passivity: bool = True,
     skip_preflight: bool = False,
     extra_flux_monitors: "list | None" = None,
     return_ladder_voltages: bool = False,
@@ -1404,7 +1404,10 @@ def compute_coax_msl_transition(
         CoaxMSLTransitionResult`'s class docstring for the full honesty
         contract, including why the MSL side is extracted via the coax
         matrix-pencil fit rather than the diagnostic-only N-probe fit
-        #488 uses).
+        #488 uses). Since issue #838 this lane REFUSES by default: a
+        non-passive extracted S raises ``ValueError`` unless the caller
+        passes ``strict_passivity=False``, which returns the diagnostic
+        matrix with a ``UserWarning`` instead.
 
     Generalizes issue #488's mixed lumped/wire<->MSL assembler
     (:meth:`compute_mixed_s_matrix`) to a coax<->MSL pair by combining,
@@ -1559,6 +1562,16 @@ def compute_coax_msl_transition(
         ``result.ladder_split_reflection_decades`` (computed when
         ``return_ladder_voltages=True``, ``None`` otherwise), which say
         whether the ladder actually disagrees with itself.
+    strict_passivity : bool, default ``True``
+        Default ``True``: this lane REFUSES a non-passive extracted S,
+        raising ``ValueError`` from the shared guard
+        (:func:`_warn_if_nonpassive_smatrix` via
+        :func:`_finalize_sparam_result`) instead of returning the matrix.
+        Pass ``strict_passivity=False`` to get the diagnostic matrix back
+        with a ``UserWarning`` instead of the raise. The default is
+        ``True`` here and ``False`` on the single-family coax lanes
+        (:meth:`compute_coaxial_s_matrix`, :meth:`compute_coaxial_two_port`),
+        which are unaffected by this (issue #838, PI decision 2026-09-20).
 
     ``extra_flux_monitors`` (issue #589 flux-adjudication instrument):
     an ENERGY-WITNESS channel, not an extractor change. Pass the entry

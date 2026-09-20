@@ -4159,3 +4159,112 @@ def test_settled_run_driver_fixture_selection_is_explicit_for_every_label():
         "msl_probe_count", "msl_probe_start_cells"}   # spacing is INHERITED
     with pytest.raises(ValueError, match="unknown --fixture"):
         drv._select_fixture(t_self, "attempt4", 4242)
+
+
+# ---------------------------------------------------------------------------
+# Part 9 -- this cross-family lane refuses a non-passive S by default (#838).
+#
+# PI decision 2026-09-20: port/S-parameter work stops at pure single-family
+# ports, so this lane's MSL-side power over-read is not going to be attributed
+# or corrected. What the issue closes on instead is the BEHAVIOUR -- a default
+# call does not hand back a matrix the shared guard rejects.
+#
+# Both checks are pure post-processing: no FDTD, no fixture. The second drives
+# the same production epilogue the method returns through
+# (``_finalize_sparam_result(..., strict=strict_passivity)``) with the flag
+# READ OFF the method's own signature, so the two halves cannot drift -- move
+# the default back to False and the synthetic non-passive S stops raising, so
+# both tests go red, not just the signature one. This is the same
+# "exercise the shared guard directly rather than pay for a second FDTD run"
+# move as test_coax_msl_transition_attempt2_instrument_verification above.
+# ---------------------------------------------------------------------------
+
+# Synthetic, not measured: a 2x2 whose driven-port-1 column power is 2.88 and
+# driven-port-0 column power 1.4425, both above the guard's 1.10 hard limit
+# (tol=0.10). No FDTD run produced these numbers and none is implied by them.
+_SYNTHETIC_NONPASSIVE_S = [[[1.2 + 0j], [1.2 + 0j]],
+                           [[0.05 + 0j], [1.2 + 0j]]]
+
+# Column power 0.25 on both columns -- passive, so the same default call path
+# must return it untouched. Without this control the test above would also
+# pass if the lane refused unconditionally.
+_SYNTHETIC_PASSIVE_S = [[[0.3 + 0j], [0.4 + 0j]],
+                        [[0.4 + 0j], [0.3 + 0j]]]
+
+
+def _transition_strict_passivity_default():
+    """``strict_passivity``'s default as the PUBLIC method carries it."""
+    import inspect
+    from rfx.api import Simulation
+    return inspect.signature(
+        Simulation.compute_coax_msl_transition
+    ).parameters["strict_passivity"].default
+
+
+def _synthetic_transition_result(s_params):
+    """The three fields ``_warn_if_nonpassive_smatrix`` reads off a result."""
+    from types import SimpleNamespace
+    return SimpleNamespace(
+        s_params=np.asarray(s_params, dtype=complex),
+        freqs=np.asarray([6.0e9]),
+        port_names=("coax", "msl"),
+    )
+
+
+def test_cross_family_transition_defaults_to_refusing_single_family_lanes_do_not():
+    """The signature invariant: this cross-family lane refuses by default.
+
+    Pinned in BOTH directions. The single-family coax lanes are a separate
+    decision and keep ``False``; a blanket flip of every ``strict_passivity``
+    in ``rfx/sparams/coax.py`` fails here rather than landing unnoticed.
+    """
+    import inspect
+    from rfx.api import Simulation
+
+    assert _transition_strict_passivity_default() is True, (
+        "compute_coax_msl_transition must refuse a non-passive S by default "
+        "(issue #838, PI decision 2026-09-20)"
+    )
+    for name in ("compute_coaxial_s_matrix", "compute_coaxial_two_port"):
+        default = inspect.signature(
+            getattr(Simulation, name)).parameters["strict_passivity"].default
+        assert default is False, (
+            f"{name} is a single-family lane and was not part of the #838 "
+            f"decision, but its strict_passivity default is {default!r}"
+        )
+
+
+def test_transition_default_raises_on_a_nonpassive_s_and_false_returns_it():
+    """What a caller gets, on the production epilogue, with no FDTD.
+
+    ``strict=`` is the method's own signature default, so this measures the
+    shipped behaviour rather than a restated constant.
+    """
+    from rfx.sparams._common import _finalize_sparam_result
+
+    strict_default = _transition_strict_passivity_default()
+    bad = _synthetic_transition_result(_SYNTHETIC_NONPASSIVE_S)
+
+    with pytest.raises(ValueError, match="UNRELIABLE"):
+        _finalize_sparam_result(
+            bad, extractor="compute_coax_msl_transition", strict=strict_default)
+
+    with pytest.warns(UserWarning, match="UNRELIABLE"):
+        returned = _finalize_sparam_result(
+            bad, extractor="compute_coax_msl_transition", strict=False)
+    assert returned is bad
+    np.testing.assert_array_equal(
+        returned.s_params, np.asarray(_SYNTHETIC_NONPASSIVE_S, dtype=complex))
+
+
+def test_transition_default_returns_a_passive_s_unchanged():
+    """The refusal is conditional on the guard, not on the flag alone."""
+    from rfx.sparams._common import _finalize_sparam_result
+
+    good = _synthetic_transition_result(_SYNTHETIC_PASSIVE_S)
+    returned = _finalize_sparam_result(
+        good, extractor="compute_coax_msl_transition",
+        strict=_transition_strict_passivity_default())
+    assert returned is good
+    np.testing.assert_array_equal(
+        returned.s_params, np.asarray(_SYNTHETIC_PASSIVE_S, dtype=complex))

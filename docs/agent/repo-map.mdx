@@ -77,10 +77,11 @@ deprecated/experimental and must not be presented as the promoted coaxial claims
 surface. For a coax<->microstrip transition, `Simulation.compute_coax_msl_transition(...)`
 (issue #489 leg 4) exists but is **EXPERIMENTAL, DIAGNOSTIC-ONLY**. On the corrected
 settled run (VESSL `369367257614`, PR #837) the MSL side's power-wave normalization
-over-reads power by about 3x, so the matrix the call returns is NOT passive — max`|S|`
-`1.7046`, MSL-driven column power `2.9563` / `2.9172` / `2.8609` at 6/8/10 GHz — and it
-comes back with a `UserWarning` unless `strict_passivity=True`, which raises instead
-(issue #838). Per the PI decision of 2026-09-20 the cross-family transition lanes are not
+over-reads power by about 3x, so the extracted matrix is NOT passive — max`|S|`
+`1.7046`, MSL-driven column power `2.9563` / `2.9172` / `2.8609` at 6/8/10 GHz — and the
+call refuses it by default (`strict_passivity=True`, raising `ValueError`);
+`strict_passivity=False` returns it with a `UserWarning` instead (issue #838). Per
+the PI decision of 2026-09-20 the cross-family transition lanes are not
 pursued further before 2.0, so that over-read will not be attributed or corrected; use the
 single-family extractors separately for anything citable. Any earlier reading of this lane,
 including the attempt-2 settled run, was taken through three instrument defects since
