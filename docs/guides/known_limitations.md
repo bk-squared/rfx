@@ -41,9 +41,21 @@ it.
 ## Ports and extraction
 
 **The coax→microstrip transition over-reads power by about a factor of three.**
-Measured twice independently on the MSL port's power-wave normalization.
-Transition S-parameters from that path are not usable as an absolute power
-reference.
+Measured twice independently on the MSL port's power-wave normalization: the
+returned matrix's own column power runs about 3x the incident power, and a
+six-face Poynting flux box on the same run reads the same factor. The matrix is
+therefore not passive — `compute_coax_msl_transition(...)` returns it with a
+`UserWarning` unless `strict_passivity=True`, which raises instead — and
+transition S-parameters from that path are not usable as an absolute power
+reference. Scope: cross-family transition lanes are not pursued further before
+2.0, so this over-read will not be attributed or fixed; use the single-family
+extractors separately (`compute_msl_s_matrix(...)`, the coaxial two-port and
+line-reflection lanes) for a result you can cite. The single-family microstrip
+lane does not share the defect: the committed thru-coupon golden
+(`tests/fixtures/msl_s_matrix_golden.json`) reads a maximum column power of
+1.0000789 over its 10 bins, and the V·I-over-Poynting-flux oracle
+(`scripts/diagnostics/msl_vi_flux_oracle/`) reads 1.0083 to 1.0118 on 60 of 60
+admissible cells.
 → [#838](https://github.com/bk-squared/rfx/issues/838)
 
 **Microstrip propagation constant sits about 0.9 % above the Hammerstad–Jensen
