@@ -279,14 +279,21 @@ issue's own F1 PEC-short gate driver
 (`scripts/diagnostics/cpml_subpixel_stability/f1_pec_short_gate.py:143`, which
 passes no `subpixel_smoothing` and declares only PEC).
 
-So it is a **latent gap, not a live wrong number**. Left alone because the lane
-is v1.8 chain-closed — 185 verdicts replay against a frozen artifact, and
-moving its numbers is a measurement change wanting its own pre-declaration
-("refactoring and measurement changes do not travel together", #928). Folding
-it into `smoothed_shape_pairs` when the waveguide lane next opens for a
-measurement change is tracked as **#1066**. For whoever takes it: the
-reference run passes `dielectric_shapes=[]` and cannot carry a facet, so only
-the device run can.
+So it is a **latent gap, not a live wrong number**. Left alone at the time
+because the lane is v1.8 chain-closed — 185 verdicts replay against a frozen
+artifact, and moving its numbers is a measurement change wanting its own
+pre-declaration ("refactoring and measurement changes do not travel together",
+#928).
+
+**FOLDED, #1066 (2026-09-20).** Both sites now call `smoothed_shape_pairs`, and
+the census above was re-run rather than trusted: the same four callers, out of
+161 call sites into the lane, 157 of which take the `False` default and so
+never enter either block. No committed verdict moved. The pad is pinned by
+`tests/unit/sparams/test_waveguide_lane_pad_continuation.py`, and
+`scripts/diagnostics/waveguide_lane_pad_continuation_census.py` re-runs both
+the census and the build-only pad comparison that measured the gap
+(`eps_xx = 1.0` down all 8 CPML cells before, 4.0 after, on a WR-90 guide with
+an `eps_r = 4` slab reaching the x-hi face).
 
 ## 9. What this does not close
 

@@ -29,15 +29,6 @@ that should have been transparent. Choose a `domain` commensurate with `dx`, and
 read the realized bounds rather than the declared ones.
 → [#1070](https://github.com/bk-squared/rfx/issues/1070)
 
-**The waveguide S-parameter lane does not continue a boundary-touching
-dielectric into its absorber pad.** The runners do this since #1043; this lane
-rebuilds its own smoothed permittivity and does not, so a dielectric reaching a
-port's absorber is still solved with `eps_r = 1` in its own pad. Affects
-`compute_waveguide_s_matrix` on structures whose dielectric runs into the port
-face. Wavelength-scale clearance between the dielectric and the absorber avoids
-it.
-→ [#1066](https://github.com/bk-squared/rfx/issues/1066)
-
 ## Ports and extraction
 
 **The coax→microstrip transition over-reads power by about a factor of three.**
