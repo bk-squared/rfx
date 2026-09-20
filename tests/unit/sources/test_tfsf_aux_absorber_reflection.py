@@ -60,7 +60,9 @@ from tests._aux_absorber_reflection import (
 from tests._gate_policy import gate_from_envelope
 
 # ---------------------------------------------------------------------------
-# The profile that SHIPPED, restated so it can be run as a falsifier.
+# The profile that SHIPPED before this lane. It is no longer run through the rig (the
+# tests that showed it missing the bar were removed under #1127; git history 609becd5):
+# the dispatch test below passes it as an OVERRIDE and checks that it arrives.
 # tfsf_2d.py before this lane: cpml_order = 4, kappa_max = 7.0,
 # sigma_max = 0.8 (m+1)/(eta dx) * kappa_max. That sigma is the SAME number
 # _cpml_profile produces at R_asymptotic = exp(-2 * 0.8 * n) for depth n, which
@@ -70,15 +72,14 @@ SHIPPED_2D = {"aux_n_cpml": 30, "aux_cpml_order": 4, "aux_cpml_kappa_max": 7.0,
               "aux_cpml_r_asymptotic": math.exp(-2 * 0.8 * 30)}
 
 # MEASURED maxima of the DECLARED absorber (n = 200, R_asym = 1e-28, re-derived at
-# 82 deg -- see the module comment) at the FAST rig, and the fit residual
-# each came with. Reproduced by the tests below; the gate is derived from the
-# measurement through gate_from_envelope, so widening it means editing a shared,
-# reviewer-visible object rather than a local literal (#528).
+# 82 deg -- see the module comment) at the FAST rig. Reproduced by the gate below to
+# 5 %; the bar is derived from the measurement through gate_from_envelope, so widening
+# it means editing a shared, reviewer-visible object rather than a local literal (#528).
 FAST_MEASURED = {
-    0.0:  {"max": 6.4413e-06, "resid": 3.2e-07, "quantum": 1e7},
-    30.0: {"max": 7.8540e-05, "resid": 5.7e-04, "quantum": 1e6},
-    45.0: {"max": 7.5086e-05, "resid": 6.8e-04, "quantum": 1e6},
-    60.0: {"max": 3.1941e-04, "resid": 2.0e-03, "quantum": 1e5},
+    0.0:  {"max": 6.4413e-06, "quantum": 1e7},
+    30.0: {"max": 7.8540e-05, "quantum": 1e6},
+    45.0: {"max": 7.5086e-05, "quantum": 1e6},
+    60.0: {"max": 3.1941e-04, "quantum": 1e5},
 }
 
 # MEASURED maxima at the FULL rig, which does resolve 70 degrees.
