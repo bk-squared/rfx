@@ -384,6 +384,7 @@ length reproduces all five gates PASS. The run-length contingency #907
 describes is still present and still pinned by
 `test_verdict_lane_q_gate_is_run_length_contingent`, which remains a
 characterization test of current behaviour.
+
 > **Superseded by Correction 6 below (#907).** That test is deleted; the
 > contingency it pinned is now declared permanent rather than characterized as
 > pending. The sentence above is kept as the record of what was believed here.
@@ -480,14 +481,14 @@ rather than refresh it.
 
 The run-length contingency #907 describes is untouched, and
 `test_verdict_lane_q_gate_is_run_length_contingent` stays a characterization
-test of current behaviour
-> **Superseded by Correction 6 below (#907).** The test is deleted and the
-> contingency is declared permanent. Retained for the record.
-
-: on that fixture the frequency term is `-2.8e-4`
+test of current behaviour: on that fixture the frequency term is `-2.8e-4`
 against a window that shrinks from `0.7472` to `0.0642`, so the longer record
 still fails. The frequency term is not the fix for #907 and is not offered as
 one.
+
+> **Superseded by Correction 6 below (#907).** The test is deleted and the
+> contingency is declared permanent. The sentence above is kept as the record
+> of what was believed here.
 
 Pinned by `test_issue945_a_frequency_error_is_not_charged_to_the_q_gate`
 (the counterexample above), `test_issue945_the_q_gate_still_bites_at_exact_frequency`
