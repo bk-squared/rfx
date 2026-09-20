@@ -393,8 +393,10 @@ LOCK_PROVENANCE = {
         "tests/unit/preflight/test_wire_port_gap_distance.py,"
         "tests/unit/sparams/test_mixed_port_sparam.py,"
         "tests/unit/sparams/test_waveguide_nu_sparam.py,"
-        "builder copied from tests/unit/subgrid/test_subgrid_validation.py "
-        "(removed under #1127; in git history at a6d6fce1),"
+        # "fixture" is a list of EXISTING paths (test_lock_provenance_gate.py checks each).
+        # tests/unit/subgrid/test_subgrid_validation.py used to be listed here: its five-line
+        # builder is now retyped in _subgrid_unsupported_feature_sim() below, because that file
+        # was removed under #1127 (in git history at a6d6fce1).
         "tests/data/preflight_split_snapshot"
     ),
     "generator": (
