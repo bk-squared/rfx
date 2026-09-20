@@ -39,13 +39,23 @@ things follow, and both are load-bearing:
 
 * No git call happens at import or collection time. The tracked set is looked
   up inside the test, once, and cached.
-* When ``git rev-parse --is-inside-work-tree`` cannot answer -- no ``.git``, no
-  git binary -- the oracle becomes filesystem existence. That is not a
-  weakening in the place it applies: ``git archive`` writes ONLY tracked files,
-  so in an export "present" and "tracked" are the same set, and the two dead
-  links this gate exists to catch are absent there for the same reason they are
-  untracked here. In a checkout the fallback never runs, and the ignored-but-
-  present case that motivated the gate is still caught by git.
+* In a tree with no ``.git`` the oracle becomes filesystem existence. That is
+  not a weakening in the place it applies: ``git archive`` writes ONLY tracked
+  files, so in an export "present" and "tracked" are the same set, and the two
+  dead links this gate exists to catch are absent there for the same reason
+  they are untracked here. In a checkout the fallback never runs -- by
+  construction, not by hope: a tree WITH ``.git`` must get an answer out of
+  git and raises if it cannot (review of PR #1135, A).
+
+WHY THIS FILE FALLS BACK AND ITS SIBLING SKIPS.
+``tests/contracts/test_research_notes_are_not_tracked.py`` meets the same
+missing repository and answers it differently, on purpose. It asks whether a
+file is TRACKED though ignored, and nothing but git can answer that: in an
+export the ignored files are simply absent, so there is no evidence either
+way and the honest verdict is "unanswerable", which is a skip. This file asks
+whether a link target is PRESENT for someone who clones, and an export is a
+valid witness for exactly that, because it holds the tracked files and nothing
+else. Same missing tool, two different questions, two different right answers.
 """
 from __future__ import annotations
 
@@ -105,24 +115,49 @@ _LOOK_IT_UP = object()
 _CACHE: dict[str, frozenset[str] | None] = {}
 
 
+class GitCannotAnswerHere(RuntimeError):
+    """A checkout whose git refuses to answer. Not a licence to guess."""
+
+
 def tracked_or_none(repo: Path = REPO) -> frozenset[str] | None:
-    """Every tracked path in *repo*, or ``None`` when git cannot answer.
+    """Every tracked path in *repo*, or ``None`` in a tree that has no ``.git``.
 
     Called from inside the tests, never at import: a repository question asked
     at collection time turns "this tree has no git" into a collection error
     that stops the whole session rather than one test.
 
-    An empty result from a tree git DOES claim is a checkout is treated as
-    unanswerable too. Believing it would mark every link in the repository
-    unresolved, which is a false alarm rather than a finding.
+    The two cases are decided by ``.git``, not by whether git happens to
+    succeed (review of PR #1135, A). Keying on success conflated an EXPORT,
+    where presence is a valid oracle, with a CHECKOUT whose git refused --
+    exit 128 is a live condition here, dubious ownership being the reason the
+    GPU harness sets ``safe.directory`` -- and in the second case the weaker
+    oracle silently passes a present-but-untracked link that real git catches.
+    So a tree with ``.git`` must get an answer from git, and raises if it
+    cannot. That is what makes "in a checkout the fallback never runs", in the
+    module docstring above, true by construction rather than by hope.
+
+    ``.git`` is a directory in a clone and a file in a linked worktree;
+    ``exists()`` covers both.
     """
     key = str(repo)
     if key not in _CACHE:
-        if not git_available(repo):
+        if not (Path(repo) / ".git").exists():
             _CACHE[key] = None
-        else:
-            tracked = tracked_set(repo)
-            _CACHE[key] = tracked or None
+            return _CACHE[key]
+        tracked = tracked_set(repo) if git_available(repo) else frozenset()
+        if not tracked:
+            raise GitCannotAnswerHere(
+                f"{repo} has a .git, so this is a checkout and the question "
+                "'is this path committed' has a real answer -- but git did "
+                "not give one. `git rev-parse --is-inside-work-tree` or "
+                "`git ls-files` failed or came back empty. Exit 128 here is "
+                "usually dubious ownership: run "
+                f"`git config --global --add safe.directory {repo}`. Falling "
+                "back to filesystem presence would pass a link that is "
+                "present but ignored, which is the defect this gate exists "
+                "to catch, so it is refused instead."
+            )
+        _CACHE[key] = tracked
     return _CACHE[key]
 
 
@@ -230,6 +265,83 @@ def test_the_scan_catches_the_two_links_it_was_written_for() -> None:
     assert unresolved_links(guides, live) == []
 
 
+def _git_shim(tmp_path, monkeypatch, exit_code: int) -> None:
+    """Put a git on PATH that always exits *exit_code*, and nothing else."""
+    import os
+    import stat
+
+    binary = tmp_path / "shimbin"
+    binary.mkdir()
+    shim = binary / "git"
+    shim.write_text(f"#!/bin/sh\necho 'git: shimmed' >&2\nexit {exit_code}\n")
+    shim.chmod(shim.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+    monkeypatch.setenv("PATH", str(binary) + os.pathsep + "/usr/bin")
+
+
+@pytest.fixture(autouse=True)
+def _clear_tracked_cache():
+    """The tracked set is cached per repo path; these tests build their own."""
+    _CACHE.clear()
+    yield
+    _CACHE.clear()
+
+
+def test_a_checkout_whose_git_refuses_is_an_error_not_a_fallback(
+        tmp_path, monkeypatch) -> None:
+    """Review of PR #1135, A. The one case that must NOT reach the fallback.
+
+    Exit 128 inside a real checkout is a live condition -- dubious ownership
+    is why the GPU harness sets ``safe.directory`` -- and treating it like an
+    export would quietly swap the strong oracle for the weak one and pass a
+    present-but-ignored link that real git catches.
+    """
+    repo = tmp_path / "checkout"
+    (repo / ".git").mkdir(parents=True)
+    _git_shim(tmp_path, monkeypatch, 128)
+
+    with pytest.raises(GitCannotAnswerHere) as excinfo:
+        tracked_or_none(repo)
+    assert "safe.directory" in str(excinfo.value)
+
+
+def test_a_missing_git_binary_in_a_checkout_is_also_an_error(
+        tmp_path, monkeypatch) -> None:
+    """Same verdict by the other route: ``.git`` is what decides, not whether
+    the subprocess happened to run."""
+    repo = tmp_path / "checkout"
+    (repo / ".git").mkdir(parents=True)
+    monkeypatch.setenv("PATH", "")
+    with pytest.raises(GitCannotAnswerHere):
+        tracked_or_none(repo)
+
+
+def test_a_git_file_counts_as_a_checkout(tmp_path, monkeypatch) -> None:
+    """A linked worktree has ``.git`` as a FILE. This repository is often
+    worked in one, so keying on a directory would put every worktree on the
+    weak oracle."""
+    repo = tmp_path / "linked"
+    repo.mkdir()
+    (repo / ".git").write_text("gitdir: /elsewhere/.git/worktrees/linked\n")
+    _git_shim(tmp_path, monkeypatch, 128)
+    with pytest.raises(GitCannotAnswerHere):
+        tracked_or_none(repo)
+
+
+def test_an_export_still_falls_back_when_git_is_broken(
+        tmp_path, monkeypatch) -> None:
+    """The harness case, with the shim in place: no ``.git``, so presence is
+    the oracle and the gate runs rather than erroring."""
+    guides = tmp_path / "docs" / "guides"
+    guides.mkdir(parents=True)
+    (guides / "present.md").write_text("the target that exists\n")
+    _git_shim(tmp_path, monkeypatch, 128)
+
+    assert tracked_or_none(tmp_path) is None
+    found = unresolved_links(guides, "[kept](present.md) and [gone](missing.md)\n",
+                             repo=tmp_path)
+    assert [raw for raw, _ in found] == ["missing.md"], found
+
+
 def test_without_a_repository_the_filesystem_is_the_oracle(tmp_path) -> None:
     """Criterion (B) for the archive export: the predicate still discriminates.
 
@@ -273,13 +385,20 @@ def test_the_same_page_is_scored_by_git_where_git_can_answer(tmp_path) -> None:
     assert "NOT tracked" in found[0][1], found[0][1]
 
 
-def test_importing_this_module_does_not_ask_git() -> None:
+def test_this_module_imports_where_there_is_no_git_binary() -> None:
     """What actually broke the GPU lane, pinned at its own level.
 
     The failure was not an assertion -- it was ``git ls-files`` raising at
     MODULE level, which pytest reports as a collection error and which stops
-    the entire session, not just this file. A subprocess with an empty PATH has
-    no git binary at all, so an import that still asked would fail here.
+    the entire session, not just this file. A subprocess with an empty PATH
+    has no git binary at all, so an import that still asked and did not
+    swallow the error would fail here.
+
+    Named for what it checks (review of PR #1135, C). It does NOT pin "no git
+    call at import": a module-level ``tracked_set(REPO)`` would pass it,
+    because that helper returns an empty set rather than raising. What it pins
+    is that COLLECTION SURVIVES where git does not exist, which is the
+    property the GPU lane needs and the one that was lost.
     """
     import subprocess
     import sys
@@ -300,5 +419,6 @@ def test_importing_this_module_does_not_ask_git() -> None:
     )
     assert result.returncode == 0, (
         "importing this module without a git binary failed -- something at "
-        f"module level is asking git again:\n{result.stderr}")
+        "module level is asking git and letting the failure out:\n"
+        f"{result.stderr}")
     assert "imported" in result.stdout, result.stdout
