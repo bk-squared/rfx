@@ -18,14 +18,21 @@ Exit codes (rfx crossval convention):
   0 = all PASS including the Meep cross-check. Five gates (see
       validation/crossval/comparators/ring_mode_judge.py): every Meep mode
       assigned a distinct rfx mode (unmatched = FAIL), >=2 modes, mean AND max
-      |df|/f < 5%, and Q within tau_ref/T of the reference for every mode whose
-      decay the record actually observed.
+      |df|/f < 5%, and Q inside the interval obtained by transforming the
+      DECLARED decay-rate scale s = tau_ref/T, for every mode whose decay the
+      record actually observed. That interval is asymmetric and is unbounded
+      above on the high-Q side once s >= 1 (#945). The q gate is a two-solver
+      consistency heuristic, not a Q-accuracy guarantee: see
+      ring_mode_judge.Q_GATE_INGREDIENTS (#907).
   1 = rfx self-check failed (rfx Harminv found no ring modes — broken physics)
   2 = rfx self-check OK but Meep reference is unavailable — inconclusive
       crossval, NOT a pass. CI must not treat this as green.
 
 Run:
   JAX_ENABLE_X64=1 python validation/crossval/02_ring_resonator.py
+
+Re-judge a retained record without solving anything:
+  python 02_ring_resonator.py --replay <record.json> --out-dir <dir>
 """
 
 import os
@@ -39,7 +46,117 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, SCRIPT_DIR)
+import _exit_evidence  # noqa: E402  (SCRIPT_DIR on sys.path)
+
 C0 = 2.998e8
+
+
+# =============================================================================
+# The verdict, decided in one place and read by three: the tail below, the
+# retained record, and --replay. Defined at the TOP so a replay reaches them
+# without the solve.
+# =============================================================================
+def _exit_code(rfx_ok: bool, have_meep: bool, judged_ok: bool) -> int:
+    """The one place the verdict is decided; the tail prints it unchanged."""
+    if not have_meep:
+        return 2 if rfx_ok else 1
+    return 0 if (rfx_ok and judged_ok) else 1
+
+
+def _summary(code: int) -> str:
+    """The one spelling of the summary, keyed on the code it describes (#946)."""
+    if code == 0:
+        return "ALL CHECKS PASSED"
+    if code == 2:
+        return "[SKIP] Meep reference unavailable — crossval inconclusive (exit 2)"
+    return "SOME CHECKS FAILED"
+
+
+def _load_judge():
+    """The shared judge module, loaded from its file (no rfx, no solver)."""
+    import importlib.util as _ilu
+    path = os.path.join(SCRIPT_DIR, "comparators", "ring_mode_judge.py")
+    spec = _ilu.spec_from_file_location("cv02_ring_mode_judge", path)
+    module = _ilu.module_from_spec(spec)
+    sys.modules["cv02_ring_mode_judge"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _replay(argv) -> int:
+    """Re-judge a committed record from the mode lists IT retained.
+
+    ``--replay <record.json> --out-dir <dir>`` reads a record this case wrote,
+    re-runs ``ring_mode_judge.judge`` on the stored Meep and rfx mode lists at
+    the stored record length, and re-emits the record through the same writer
+    the live run uses. No FDTD, no Meep, no harminv -- the point is the
+    decision stage and the write, not the solve.
+
+    It exists because the #946 contract has to be tested on THIS script rather
+    than on a fixture that imitates it: the record here is written ~250 lines
+    ahead of the ``sys.exit`` at the bottom, with PART 4's visualisation in
+    between, which is exactly the gap the abandoned #907 branch fell into. The
+    out-dir is required and must not be the committed results directory -- a
+    replay is a re-judge on TODAY's judge, not a reproduction of the run, and
+    the record it writes says so in ``replay.note``.
+    """
+    import argparse
+    import dataclasses
+    import json as _j
+    parser = argparse.ArgumentParser(prog="02_ring_resonator.py --replay")
+    parser.add_argument("--replay", required=True, metavar="RECORD")
+    parser.add_argument("--out-dir", required=True)
+    a = parser.parse_args(argv)
+    # A replay is a re-judge, not a reproduction: it must never land in the
+    # committed evidence tree, whatever --out-dir says (#967 / PR #977).
+    out_dir = _exit_evidence.refuse_evidence_tree(a.out_dir, "--out-dir")
+    with open(a.replay) as fh:
+        doc = _j.load(fh)
+    judge = _load_judge()
+    m = doc["measured"]
+    rig = doc["rig"]
+    reference = [judge.ReferenceMode(freq=row["freq_c_over_a"], Q=row["Q"])
+                 for row in m["meep_modes"]]
+    solver = [judge.SolverMode(freq=row["freq_c_over_a"], Q=row["Q"],
+                               amplitude=row["amplitude"])
+              for row in m["rfx_modes"]]
+    band = rig["band_c_over_a"]
+    re_verdict = judge.judge(reference, solver,
+                             float(rig["record_length_meep_units"]),
+                             f_min=float(band[0]), f_max=float(band[1]))
+    rfx_self_ok = len(solver) >= 1
+    have_meep = bool(reference)
+    rc_declared = _exit_code(rfx_self_ok, have_meep, bool(re_verdict.passed))
+    doc["replay"] = {
+        "source": os.path.abspath(a.replay),
+        "of_schema": doc.get("schema"),
+        "note": ("the judge was re-run on the source record's own stored mode "
+                 "lists at its stored record length; no solver ran, and the "
+                 "judge is TODAY's, not the one the source run used "
+                 "(#946 contract replay)"),
+    }
+    doc["measured"]["assignment"] = [dataclasses.asdict(row)
+                                     for row in re_verdict.rows]
+    doc["gates"] = dict(re_verdict.gates)
+    doc["verdict"] = {
+        "rfx_self_ok": bool(rfx_self_ok),
+        "meep_present": have_meep,
+        "judge_passed": bool(re_verdict.passed),
+    }
+    out_path = os.path.join(out_dir, "crossval.json")
+    rc = _exit_evidence.write_record(out_path, doc, exit_code=rc_declared,
+                                     summary=_summary)
+    print(f"  replay artifact: {out_path}")
+    print(f"\n{_summary(rc)}")
+    return rc
+
+
+if "--replay" in sys.argv[1:]:
+    # One name for the process outcome on this path too -- the source contract
+    # (tests/crossval/test_cv02_ring_mode_judge.py) reads every sys.exit here.
+    _rc = _replay(sys.argv[1:])
+    sys.exit(_rc)
 
 # =============================================================================
 # Meep tutorial parameters (UNCHANGED)
@@ -173,14 +290,9 @@ sim_rfx.add_source(position=(src_rfx_x, src_rfx_y, 0), component="ez",
 sim_rfx.add_probe(position=(src_rfx_x, src_rfx_y, 0), component="ez")
 
 # Load the shared judge + settling-witness module ONCE. PART 2 (below) uses the
-# per-mode settling witness; PART 3 uses the judge. Both drive this same code.
-import importlib.util as _ilu
-
-_judge_path = os.path.join(SCRIPT_DIR, "comparators", "ring_mode_judge.py")
-_judge_spec = _ilu.spec_from_file_location("cv02_ring_mode_judge", _judge_path)
-ring_mode_judge = _ilu.module_from_spec(_judge_spec)
-sys.modules["cv02_ring_mode_judge"] = ring_mode_judge
-_judge_spec.loader.exec_module(ring_mode_judge)
+# per-mode settling witness; PART 3 uses the judge. Both drive this same code,
+# and so does --replay, through the same loader at the top of this file.
+ring_mode_judge = _load_judge()
 
 dt_rfx = dx / (C0 * math.sqrt(2)) * 0.99
 
@@ -201,9 +313,14 @@ source_off_time = 2.0 * wf_main.t0
 #     **the cv02 verdict lane does not use the tau-scaled record.**
 #
 #     Why not, honestly: not because a fixed record is better physics, but
-#     because this judge's per-mode Q window ``tau_ref/T`` is a record-length
-#     RESOLUTION bound, so it shrinks as 1/T while the rfx-vs-Meep Q gap (a
-#     discretization offset) stays put. Measured on the committed
+#     because this judge's per-mode Q window ``tau_ref/T`` shrinks as 1/T
+#     while the rfx-vs-Meep Q gap does not. (What CAUSES that gap is
+#     UNRESOLVED. An earlier version of this comment called it "a
+#     discretization offset"; #907 retracted that attribution as an overclaim
+#     on 2026-09-10 -- a counterexample moves Q while leaving all three
+#     frequencies inside the two solvers' mutual agreement, so the frequency
+#     agreement cannot pin the geometry. The T-independence below is measured;
+#     the mechanism is not.) Measured on the committed
 #     reference/rfx mode pair (tests/crossval/test_cv02_ring_mode_judge.py's
 #     MEEP_REFERENCE / RFX_TODAY, re-driven at four lengths):
 #         T = 291  (committed): gate q PASS  (mode-1 |lnQ| 0.070 vs window 0.747)
@@ -221,14 +338,21 @@ source_off_time = 2.0 * wf_main.t0
 #     evidence: at T/tau=0.126 the judge's own floor calls it UNRESOLVED, i.e.
 #     not a measurement.)
 #     So a LONGER, better-settled record would red a physically sound case.
-#     That is a comparator defect, not an rfx defect, and fixing it means
-#     giving the Q window a floor that encodes the expected discretization Q
-#     gap -- a change to a claims-bearing gate, with its own root cause and
-#     evidence. It is NOT done in this change; it is tracked as issue #907 --
-#     the tau_ref/T window shrinks with T faster than the physics does, so a
-#     longer record fails a stable Q (see ring_mode_judge.q_window "Known
-#     limitation"). Until it is fixed the verdict lane's PASS is contingent on
-#     the record staying short, and this comment is the record of that.
+#     That is a comparator defect, not an rfx defect. It is STILL PRESENT.
+#     Issue #907 was closed on 2026-09-13 as a design item, not as a repair:
+#     the separable mathematical defect inside it (the rate-to-Q transform)
+#     was fixed under #945, and the three remaining ingredients -- the rfx
+#     estimator's real SNR / model-order uncertainty, a source-free Meep
+#     reference record regenerated under the same conditions, and a
+#     spatial/timestep discretization budget against the exact annulus --
+#     were deferred to a pre-declared campaign rather than settled by
+#     choosing a floor. A floor set from the observed rfx-vs-Meep gap would
+#     have made the gate certify the agreement it is supposed to test, so it
+#     was refused. Consequently the verdict lane's PASS remains contingent on
+#     the record staying short (see ring_mode_judge.q_window "Known
+#     limitation" and Q_GATE_INGREDIENTS), and this comment is the record of
+#     that. Read a cv02 q PASS as two-solver consistency, not as a bound on
+#     rfx's Q accuracy.
 #
 #   * Meep ABSENT (exit 2, inconclusive -- there is NO verdict to preserve):
 #     the record is scaled at runtime to the slowest RESOLVED in-band mode's
@@ -464,9 +588,21 @@ rfx_freqs_meep = [f * a / C0 for f, Q, amp in rfx_modes]
 # (The module was loaded once as `ring_mode_judge` in PART 2 for the settling
 # witness; it is reused here for the judge.)
 
-# Record length harminv actually saw, in Meep units (a/c). Every Q window below
-# is tau_ref / T computed from THIS and from the reference Q -- no chosen
-# number. See docs/design_notes/20260831_cv02_ring_judge_predeclaration.md.
+# Record length harminv actually saw, in Meep units (a/c). Every "Q window"
+# below is the DECLARED rate scale s = tau_ref/T, computed from THIS record and
+# from the reference Q. Not fitted to the rfx-vs-Meep gap it judges (no measured
+# rfx quantity enters it) -- but "not fitted" is not "derived": the 1/T form is a
+# policy envelope, refuted as this estimator's error law in #907. What IS derived
+# is the transform of that scale into Q bounds (#945,
+# ring_mode_judge.rate_interval_to_log_q_bounds), applied at each pair's OWN two
+# frequencies: the interval bounds the decay-RATE ratio and alpha = pi f / Q
+# carries both f and Q, so each row's bounds are the transform shifted by
+# ln(f_rfx/f_ref) and the artifact records that term per row (q_log_freq_term)
+# beside the rate ratio it produces (q_log_rate_ratio_signed). Without the shift a
+# frequency error admitted by the 5% gate below was charged to the Q gate as well.
+# The three ingredients are named
+# separately in ring_mode_judge.Q_GATE_INGREDIENTS and printed by the report.
+# See docs/design_notes/20260831_cv02_ring_judge_predeclaration.md.
 record_T_meep = analysis_duration * C0 / a
 fmin_meep = fcen - df / 2
 fmax_meep = fcen + df / 2
@@ -500,22 +636,18 @@ matched = [(row.ref_freq, row.ref_Q, row.rfx_freq, row.rfx_Q)
 # both mode lists, the assignment and its per-mode error and Q window, the gate
 # table, the exit code this run is about to return, the run's provenance and
 # the realized rig, as values.
+#
+# `_exit_code` and `_summary` are defined at the TOP of this file so --replay
+# can reach them without the solve; this is still the only place the verdict
+# is decided.
 # =============================================================================
-def _exit_code(rfx_ok: bool, have_meep: bool, judged_ok: bool) -> int:
-    """The one place the verdict is decided; the tail prints it unchanged."""
-    if not have_meep:
-        return 2 if rfx_ok else 1
-    return 0 if (rfx_ok and judged_ok) else 1
-
-
 _dataclasses = __import__("dataclasses")
-_json = __import__("json")
 _dt = __import__("datetime")
 _platform = __import__("platform")
 _subprocess = __import__("subprocess")
 
 _rfx_self_ok = len(rfx_modes) >= 1
-_rc = _exit_code(_rfx_self_ok, HAVE_MEEP, bool(verdict.passed))
+_rc_declared = _exit_code(_rfx_self_ok, HAVE_MEEP, bool(verdict.passed))
 try:
     _commit = _subprocess.check_output(["git", "rev-parse", "HEAD"],
                                        cwd=SCRIPT_DIR, text=True,
@@ -588,24 +720,34 @@ _doc = {
         "freq_tol_pct": float(ring_mode_judge.FREQ_TOL_PCT),
         "min_matched_modes": int(ring_mode_judge.MIN_MATCHED),
         "q_record_min_efolds": float(ring_mode_judge.Q_RECORD_MIN_EFOLDS),
-        "note": ("the Q window is tau_ref/T per mode, derived from the "
-                 "reference Q and THIS record length -- not a chosen number"),
+        "note": ("the per-mode 'q_window' is the DECLARED rate scale "
+                 "s = tau_ref/T (policy, not this estimator's error law, "
+                 "#907); the gate is its exact transform into log-Q bounds "
+                 "(derived, #945) evaluated at that pair's own frequencies, "
+                 "stored per row as q_log_lower / q_log_upper beside the "
+                 "signed q_log_ratio_signed, the shift q_log_freq_term = "
+                 "ln(f_rfx/f_ref) and the quantity the interval actually "
+                 "bounds, q_log_rate_ratio_signed = ln(alpha_rfx/alpha_ref)"),
+        "q_gate_character": ring_mode_judge.Q_GATE_CHARACTER,
+        "q_gate_ingredients": [
+            _dataclasses.asdict(_ing)
+            for _ing in ring_mode_judge.Q_GATE_INGREDIENTS
+        ],
     },
     "verdict": {
         "rfx_self_ok": bool(_rfx_self_ok),
         "meep_present": bool(HAVE_MEEP),
         "judge_passed": bool(verdict.passed),
-        "exit_code": _rc,
-        "summary": ("ALL CHECKS PASSED" if _rc == 0 else
-                    ("[SKIP] Meep reference unavailable — crossval inconclusive (exit 2)"
-                     if _rc == 2 else "SOME CHECKS FAILED")),
     },
 }
 _out_dir = os.path.join(SCRIPT_DIR, "_02_ring_resonator_results")
-os.makedirs(_out_dir, exist_ok=True)
 _artifact = os.path.join(_out_dir, "crossval.json")
-with open(_artifact, "w") as _fh:
-    _json.dump(_doc, _fh, indent=1)
+# write_record puts exit_code and summary INTO the verdict block and arms the
+# finalizer that amends them if this process ends with a different status
+# (#946): the abandoned #907 branch added a `sys.exit(2)` vacuity guard after
+# this write, and the retained record went on claiming a pass.
+_rc = _exit_evidence.write_record(_artifact, _doc, exit_code=_rc_declared,
+                                  summary=_summary)
 print(f"\n  artifact: {_artifact}")
 
 # =============================================================================
@@ -829,7 +971,9 @@ if not HAVE_MEEP:
     else:
         print("\nSOME CHECKS FAILED — rfx Harminv found no ring modes (exit 1)")
     # Same prints, same codes; the value comes from _exit_code() above so the
-    # retained artifact records the code this script actually returns (#928).
+    # retained artifact records the code this script actually returns (#928),
+    # and _exit_evidence amends the record if any exit path below this write
+    # ever returns a different one (#946).
     sys.exit(_rc)
 
 # Meep present → evaluate the full cross-check.

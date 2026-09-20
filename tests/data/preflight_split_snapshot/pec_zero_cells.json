@@ -1,0 +1,23 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "no_sources",
+        "loc": null,
+        "message": "No sources, ports, TFSF, or waveguide/Floquet/MSL ports configured. Simulation will produce zero fields.",
+        "severity": "warning",
+        "source": "_validate_cfg_no_sources"
+      },
+      {
+        "code": "pec_zero_cells",
+        "loc": null,
+        "message": "geometry[0] 'pec' cannot be realized on this lattice and run()/forward() will raise: PEC volume 'pec' (Cylinder) rasterizes to ZERO cells on this grid: no primal-cell centre lies inside it, so it would silently vanish (the #369 vaporized-metal class, now an error). A filament (a via or post thinner than a cell) is a PolylineWire, not a volume; a volume needs a radius of at least ~0.87 of the local cell (half the cell diagonal) to be sure of one centre \u2014 resolve the mesh or redraw the body. (lattice ownership contract #931 \u00a71.5; preflight reports it here so the whole configuration is audited before the raise).",
+        "severity": "error",
+        "source": "_validate_cfg_pec_realization"
+      }
+    ],
+    "n_errors": 1,
+    "n_issues": 2,
+    "ok": false
+  }
+}

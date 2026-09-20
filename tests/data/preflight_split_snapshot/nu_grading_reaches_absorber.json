@@ -1,0 +1,16 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "nu_grading_reaches_absorber",
+        "loc": null,
+        "message": "dz_profile is not uniform within the 4 interior cells adjacent to the z_hi absorber face (max adjacent cell-ratio deviation 0.0909). WHY: the absorber pad replicates the outermost interior cell, so a transition in that runway changes the discrete medium in the boundary-NORMAL direction exactly where the absorber starts \u2014 the documented PML breakdown class \u2014 and gives the transition's own reflection no runway to separate from the absorber's. COST: the validated multi-band envelope does not cover it at all; no witness in it MEASURES an accuracy observable with an absorber present (every accuracy witness is PEC-closed at cpml_layers = 0; the one absorber-bearing witness checks the AD path only) (docs/guides/support_matrix.md, 'Multi-band graded mesh'). REMEDY: keep at least 4 uniform interior cells against that face, or close it with PEC/PMC. STALE-IF: a witness that SCORES an accuracy observable with an absorber present is added to that row.",
+        "severity": "warning",
+        "source": "_validate_cfg_multiband_grading"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 1,
+    "ok": true
+  }
+}

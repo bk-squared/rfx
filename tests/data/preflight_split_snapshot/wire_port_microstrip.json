@@ -1,0 +1,30 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "absorber_proximity",
+        "loc": null,
+        "message": "Source/port at (0.008, 0.005, 0.0) is within 2 cells (1mm) of the domain edge on the z-axis, just past which the CPML absorber is active. Fields there carry CPML fringe/reflection error; move inward for claims-bearing measurement.",
+        "severity": "warning",
+        "source": "_validate_cfg_absorber_placement"
+      },
+      {
+        "code": "wire_port_midpoint_in_pec",
+        "loc": null,
+        "message": "Wire port at (0.008, 0.005, 0.0) (extent 0.002): its MIDPOINT V/I probe cell (center (0.008, 0.005, np.float64(0.00125))) lands inside PEC geometry 'pec'. S-parameters from this port are silently corrupted (measured: near-null forward transmission + over-unity reverse). Shorten/lengthen the extent or move the port so the midpoint cell sits in dielectric (issue #314).",
+        "severity": "warning",
+        "source": "_validate_cfg_port_inside_pec"
+      },
+      {
+        "code": "pec_box_one_cell",
+        "loc": null,
+        "message": "1 PEC volume(s) are exactly ONE cell thick along some axis and are realized as a filled slab with walls on BOTH faces (every E edge between the two faces is shorted; lattice ownership contract #931 \u00a71.2): geometry[0] 'pec' (Box) is one cell thick along z [z: walls at 1mm and 1.5mm (drawn 1mm -> 1.5mm)]. If this is foil (a ground plane, patch or trace), declare it as a SHEET \u2014 add_thin_conductor(shape), or a zero-thickness Box via add() \u2014 which realizes on ONE node plane with the normal E edge through it live; a slab and a sheet are different conductors on this lattice. If it is a plate, an iris or a wall drawn one cell thick on purpose, no action is needed (report-only). COVERAGE: examined 1 PEC volume(s) on the uniform lane through rfx.boundaries.pec.realized_wall_planes. STALE IF: realized_wall_planes on the named entry's own edge masks returns planes more than one index apart.",
+        "severity": "warning",
+        "source": "_validate_cfg_pec_realization"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 3,
+    "ok": true
+  }
+}

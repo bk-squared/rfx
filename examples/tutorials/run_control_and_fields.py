@@ -95,7 +95,7 @@ def main() -> None:
     # domain, and no geometry overlaps the absorbing cells.  The explicit call
     # keeps the full report visible; each run below skips the duplicate check.
     report = sim.preflight()
-    if report:
+    if len(report):   # PreflightReport refuses bool() (#980)
         raise RuntimeError("Run-control setup has unexpected advisories")
 
     # Fixed n_steps means exactly 120 updates.  It makes no promise that the

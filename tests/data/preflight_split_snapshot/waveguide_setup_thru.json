@@ -1,0 +1,36 @@
+{
+  "preflight": {
+    "issues": [],
+    "n_errors": 0,
+    "n_issues": 0,
+    "ok": true
+  },
+  "preflight_sparameters": {
+    "issues": [
+      {
+        "code": "record_shorter_than_far_boundary_round_trip",
+        "loc": "waveguide_port[0]",
+        "message": "the record is shorter than 3 x the far-boundary round trip \u2014 waveguide_port[0] (+x): T/tau_far = 1.061. T = 1.7252 ns (1425 steps x dt = 1.2107 ps; num_periods = 20 at freq_max = 11.6 GHz), tau_far = 2 x far_path / v_g = 1.6259 ns. far_path = 152.4 mm (port plane 12.7 mm to the x-hi outer wall on a 121.9 mm domain, absorber pad 43.18 mm included); v_g(f_min)/c = 0.62533 at f_min = 8.4 GHz with the port's discrete cutoff f_c = 6.5551 GHz. num_periods >= 57 makes T/tau_far >= 3. Finer grids need more \u2014 measured 3, 5 and 8 at a/18, a/36 and a/72 on the WR-90 battery. A multimode port is audited on its lowest-cutoff mode, so this is a lower bound.",
+        "severity": "warning",
+        "source": "_validate_cfg_record_vs_far_boundary"
+      },
+      {
+        "code": "record_shorter_than_far_boundary_round_trip",
+        "loc": "waveguide_port[1]",
+        "message": "the record is shorter than 3 x the far-boundary round trip \u2014 waveguide_port[1] (-x): T/tau_far = 1.061. T = 1.7252 ns (1425 steps x dt = 1.2107 ps; num_periods = 20 at freq_max = 11.6 GHz), tau_far = 2 x far_path / v_g = 1.6259 ns. far_path = 152.4 mm (port plane 109.2 mm to the x-lo outer wall on a 121.9 mm domain, absorber pad 43.18 mm included); v_g(f_min)/c = 0.62533 at f_min = 8.4 GHz with the port's discrete cutoff f_c = 6.5551 GHz. num_periods >= 57 makes T/tau_far >= 3. Finer grids need more \u2014 measured 3, 5 and 8 at a/18, a/36 and a/72 on the WR-90 battery. A multimode port is audited on its lowest-cutoff mode, so this is a lower bound.",
+        "severity": "warning",
+        "source": "_validate_cfg_record_vs_far_boundary"
+      },
+      {
+        "code": "port_index_mirror_known_e_plane_offset",
+        "loc": "waveguide_port[0]/waveguide_port[1] on x",
+        "message": "waveguide port index mirror audit, source E plane (x-axis): i(+) = 88, i(-) = 241, sum = 329 on n_axis = 329; the covariant sum for a primal plane is 328. The +1 difference is the KNOWN shipped offset \u2014 apply_waveguide_port_e places the '-' port's E correction at x_index + 1 \u2014 not an asymmetry in this setup. Reported as information.",
+        "severity": "info",
+        "source": "_validate_cfg_port_index_mirror_covariance"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 3,
+    "ok": true
+  }
+}

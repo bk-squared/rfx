@@ -863,6 +863,127 @@ def _warn_if_flux_subnormal_flush(mon: FluxMonitor, flux) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Two-run reference subtraction
+# ---------------------------------------------------------------------------
+
+_FLUX_ACCUMULATOR_FIELDS = ("e1_dft", "e2_dft", "h1_dft", "h2_dft")
+# Everything that is NOT an accumulator describes WHICH plane, WHICH
+# frequencies and WHICH area weights the accumulators belong to. Derived from
+# ``_fields`` so a future FluxMonitor field is covered without editing here.
+_FLUX_METADATA_FIELDS = tuple(
+    name for name in FluxMonitor._fields if name not in _FLUX_ACCUMULATOR_FIELDS
+)
+
+
+def _flux_meta_equal(a, b) -> bool:
+    """Equality test for one non-accumulator ``FluxMonitor`` field.
+
+    ``np.array_equal`` for the array-valued metadata (``freqs``, ``dA``),
+    plain ``==`` for the scalar / string fields. Traced values compare equal
+    by convention: their contents are unavailable under ``jit``/``grad``, so
+    the check is skipped rather than crashing the trace (same tracer-safety
+    convention as the issue #304 subnormal guard above).
+    """
+    if isinstance(a, jax.core.Tracer) or isinstance(b, jax.core.Tracer):
+        return True
+    if hasattr(a, "shape") or hasattr(b, "shape"):
+        import numpy as np
+        return bool(np.array_equal(np.asarray(a), np.asarray(b)))
+    return bool(a == b)
+
+
+def subtract_flux_monitors(sample: FluxMonitor, ref: FluxMonitor) -> FluxMonitor:
+    """Remove a reference (incident) field from a flux monitor, field-level.
+
+    The two-run reference subtraction of
+    ``docs/agent/recipe-rt-measurement.mdx`` (critical detail (a)): pass the
+    monitor from the run WITH the scatterer and the monitor from the otherwise
+    identical run WITHOUT it, and call :func:`flux_spectrum` on the result to
+    get the scattered flux.
+
+    Parameters
+    ----------
+    sample : FluxMonitor
+        Monitor from the run with the scatterer present.
+    ref : FluxMonitor
+        Monitor from the reference run — same plane, same frequencies.
+
+    Returns
+    -------
+    FluxMonitor
+        ``sample`` with each of the four tangential DFT accumulators replaced
+        by ``sample.<field> - ref.<field>``. Every other field (``freqs``,
+        ``axis``, ``index``, ``dA``, ``total_steps``, ``window``,
+        ``window_alpha``, ``lo1``/``hi1``/``lo2``/``hi2``) is carried over
+        from ``sample`` unchanged.
+
+    Raises
+    ------
+    TypeError
+        If either argument is not a ``FluxMonitor``.
+    ValueError
+        If the four accumulators disagree in shape, or if any non-accumulator
+        field differs. Nothing is broadcast: two monitors that do not describe
+        the same plane and the same frequencies have no meaningful difference,
+        and a silent broadcast would return a plausible-looking number instead
+        of an error.
+
+    Notes
+    -----
+    The subtraction has to happen on the FIELDS, never on the fluxes. Poynting
+    flux is bilinear in E and H, so writing the sample fields as incident plus
+    scattered (``E_s = E_i + E_r``, ``H_s = H_i + H_r``) gives
+
+        ``flux(sample) - flux(ref) = flux(scattered)
+                                     + Re(E_i x H_r* + E_r x H_i*) dA``
+
+    and those cross terms are the same order as the scattered flux itself —
+    they vanish only for a null scatterer. Maxwell's equations are linear, so
+    differencing the accumulators first and forming the Poynting product
+    afterwards is exact. ``flux_spectrum(sample) - flux_spectrum(ref)`` is not
+    an approximation of this; it is a different quantity.
+
+    Tracer-safe: the subtraction is plain array arithmetic and stays on the AD
+    tape, so ``jax.grad`` through
+    ``flux_spectrum(subtract_flux_monitors(...))`` works. Shape checks run on
+    tracers too; the equality check on array-valued metadata is undecidable
+    under ``jit``/``grad`` and is skipped there.
+    """
+    if not isinstance(sample, FluxMonitor) or not isinstance(ref, FluxMonitor):
+        raise TypeError(
+            "subtract_flux_monitors expects two FluxMonitor instances, got "
+            f"{type(sample).__name__} and {type(ref).__name__}."
+        )
+
+    for name in _FLUX_ACCUMULATOR_FIELDS:
+        sample_shape = getattr(sample, name).shape
+        ref_shape = getattr(ref, name).shape
+        if sample_shape != ref_shape:
+            raise ValueError(
+                f"FluxMonitor.{name} shape mismatch: sample {sample_shape} vs "
+                f"ref {ref_shape}. subtract_flux_monitors does not broadcast — "
+                "the two monitors must cover the same plane region and the "
+                "same frequencies."
+            )
+
+    for name in _FLUX_METADATA_FIELDS:
+        if not _flux_meta_equal(getattr(sample, name), getattr(ref, name)):
+            raise ValueError(
+                f"FluxMonitor.{name} differs between sample and ref "
+                f"({getattr(sample, name)!r} vs {getattr(ref, name)!r}): the "
+                "monitors do not describe the same plane / frequencies, so "
+                "their field difference is not a scattered field."
+            )
+
+    return sample._replace(
+        e1_dft=sample.e1_dft - ref.e1_dft,
+        e2_dft=sample.e2_dft - ref.e2_dft,
+        h1_dft=sample.h1_dft - ref.h1_dft,
+        h2_dft=sample.h2_dft - ref.h2_dft,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Wire port voltage / current extraction
 # ---------------------------------------------------------------------------
 

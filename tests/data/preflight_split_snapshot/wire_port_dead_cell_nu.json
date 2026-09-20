@@ -1,0 +1,51 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "pec_faces_finite_pec",
+        "loc": null,
+        "message": "pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and declare it: a foil is a SHEET (add_thin_conductor, or a zero-thickness PEC Box \u2014 one node plane, normal E through it live); a thick plate is a PEC Box VOLUME (walls on both faces, lattice ownership contract #931).",
+        "severity": "warning",
+        "source": "_validate_cfg_pec_faces_with_finite_pec"
+      },
+      {
+        "code": "uncoded",
+        "loc": null,
+        "message": "PEC sheet pec realizes on node plane 3 of axis z, and the cells on BOTH sides of that plane carry the same dielectric (eps_r = 3.66) over 665 of its footprint nodes. The sheet is therefore buried half a cell inside the dielectric instead of lying on its interface, so the realized cavity carries half a cell of the wrong medium in series (#931; the #702 measurement was 17 % on a 127 um stack). Draw the dielectric bodies up to the sheet plane, or move the sheet to the interface. Nothing is re-sampled.",
+        "severity": "warning",
+        "source": null
+      },
+      {
+        "code": "wire_port_dead_cell_classification_unavailable",
+        "loc": null,
+        "message": "Wire port at (0.002, 0.0015, 0.0) (extent 0.000254): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared wire-port primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- inspect the realized live/dead source edges and the intended terminal contacts on that mesh. Conductor overlap at an endpoint can be intentional; do not infer contact from the absence of this advisory.",
+        "severity": "warning",
+        "source": "_validate_cfg_port_inside_pec"
+      },
+      {
+        "code": "lossless_q",
+        "loc": null,
+        "message": "all dielectric(s) ['sub'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)",
+        "severity": "warning",
+        "source": "_validate_cfg_lossless_resonator_in_absorber"
+      },
+      {
+        "code": "sheet_plane_realized",
+        "loc": null,
+        "message": "1 PEC sheet(s) realized (lattice ownership contract #931 \u00a71.3: one node plane each, closed footprint, normal E through the plane live), 1 of them off their declared mid-plane; worst first: geometry[1] 'pec' normal z: declared mid-plane 254\u00b5m, realized node plane 3 at 226.2\u00b5m (offset -0.369 cell = 27.8\u00b5m). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane \u2014 a laminate face, a ground level \u2014 is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the nonuniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.",
+        "severity": "info",
+        "source": "_validate_cfg_pec_realization"
+      },
+      {
+        "code": "off_lattice_design_edges",
+        "loc": null,
+        "message": "2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[1] 'pec' (sheet) y: extent 600\u00b5m, worst face residual 22\u00b5m (3.67% of the extent); geometry[1] 'pec' (sheet) x: extent 8mm, worst face residual 41.33\u00b5m (0.52% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: choose dx commensurate with the patterned dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on the design edges. COVERAGE: examined 2 axis extent(s) on 1 conductor Box declaration(s) on the nonuniform lane; 1 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
+        "severity": "warning",
+        "source": "_validate_cfg_off_lattice_design_edges"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 6,
+    "ok": true
+  }
+}

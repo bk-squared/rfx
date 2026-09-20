@@ -1,0 +1,23 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "absorber_overlap",
+        "loc": null,
+        "message": "Probe at (0.025, 0.01143, -0.001) is near/inside CPML region (CPML z-thickness: lo=16mm, hi=16mm). Signal will be attenuated. Move probe to interior.",
+        "severity": "warning",
+        "source": "_validate_cfg_absorber_placement"
+      },
+      {
+        "code": "absorber_proximity",
+        "loc": null,
+        "message": "Source/port at (0.001, 0.01143, 0.005) is within 2 cells (2mm) of the domain edge on the x-axis, just past which the CPML absorber is active. Fields there carry CPML fringe/reflection error; move inward for claims-bearing measurement.",
+        "severity": "warning",
+        "source": "_validate_cfg_absorber_placement"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 2,
+    "ok": true
+  }
+}

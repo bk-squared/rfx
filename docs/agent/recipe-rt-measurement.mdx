@@ -58,7 +58,7 @@ Subtract the DFT accumulators at the field level before computing the power flux
 ```python
 import numpy as np
 from rfx import Simulation, Box
-from rfx.probes.probes import flux_spectrum
+from rfx.probes.probes import flux_spectrum, subtract_flux_monitors
 
 def build_sim(with_slab: bool) -> Simulation:
     sim = Simulation(
@@ -99,13 +99,7 @@ slab_refl_fm = res_slab.flux_monitors["refl"]
 slab_trans_flux = np.asarray(flux_spectrum(res_slab.flux_monitors["trans"]))
 
 # Field-level subtraction for reflection
-# (FluxMonitor is a NamedTuple; field names: e1_dft, e2_dft, h1_dft, h2_dft)
-scat_refl_fm = slab_refl_fm._replace(
-    e1_dft=slab_refl_fm.e1_dft - ref_refl_fm.e1_dft,
-    e2_dft=slab_refl_fm.e2_dft - ref_refl_fm.e2_dft,
-    h1_dft=slab_refl_fm.h1_dft - ref_refl_fm.h1_dft,
-    h2_dft=slab_refl_fm.h2_dft - ref_refl_fm.h2_dft,
-)
+scat_refl_fm = subtract_flux_monitors(slab_refl_fm, ref_refl_fm)
 scat_refl_flux = np.asarray(flux_spectrum(scat_refl_fm))
 
 # Reflection and transmission coefficients
@@ -121,6 +115,11 @@ Poynting flux is bilinear in E and H. If you subtract the pre-computed flux
 values (`F_slab - F_ref`), the cross terms do not cancel, and the result is
 wrong for all scatterers. Subtracting the E and H DFT accumulators first, then
 calling `flux_spectrum`, is exact because Maxwell's equations are linear.
+
+`subtract_flux_monitors(sample, ref)` does exactly that, so nobody has to write
+out the four private accumulator field names — and it raises `ValueError`
+instead of broadcasting when the two monitors do not cover the same plane and
+the same frequencies.
 
 ### (b) `until_decay` is load-bearing
 

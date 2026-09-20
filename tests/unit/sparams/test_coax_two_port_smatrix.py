@@ -531,12 +531,17 @@ def test_compute_coaxial_two_port_drive_index_matches_physical_port(monkeypatch)
 
     import rfx.simulation as _simulation_mod
     import rfx.sources.coaxial_port as _coax_mod
-    import rfx.api._sparams as _sparams_mod
+    # #980 Phase 2 moved compute_coaxial_two_port verbatim into
+    # rfx/sparams/coax.py, so ``_assemble_coaxial_two_port_from_voltages`` is
+    # looked up as a global of THAT module. Patching the ``rfx.api._sparams``
+    # re-export would still succeed and silently stop biting -- ``captured``
+    # would stay empty and the drive-index check below would never run.
+    import rfx.sparams.coax as _coax_lane_mod
 
     monkeypatch.setattr(_simulation_mod, "run", _fake_run)
     monkeypatch.setattr(_coax_mod, "coaxial_line_plane_voltage", _fake_voltage)
     monkeypatch.setattr(
-        _sparams_mod, "_assemble_coaxial_two_port_from_voltages", _fake_assemble
+        _coax_lane_mod, "_assemble_coaxial_two_port_from_voltages", _fake_assemble
     )
 
     sim.compute_coaxial_two_port(n_steps=10, freqs=np.array([8.0e9]), probe_count=12)

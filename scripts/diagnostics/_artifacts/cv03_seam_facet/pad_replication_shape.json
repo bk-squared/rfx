@@ -1,0 +1,77 @@
+{
+  "schema": "issue831-pad-replication-shape-v1",
+  "issue": 831,
+  "landing_issue": 1043,
+  "runs_fdtd": false,
+  "provenance": {
+    "commit": "37e4d84bedbbab4bf94aade158fc58b3464baaa9",
+    "branch": "diag/831-cv03-far-end-return"
+  },
+  "rig": "cv01 committed build, cpml, 20 layers, guide centre row",
+  "nx": 201,
+  "pad_x_lo": 20,
+  "pad_x_hi": 20,
+  "eps_wg": 12.0,
+  "variants": {
+    "committed (no replication)": {
+      "pad_lo_value": 1.0,
+      "pad_hi_value": 1.0,
+      "interior_edge_lo": 6.5,
+      "interior_edge_hi": 6.5,
+      "n_cells_at_eps_wg": 159,
+      "pad_is_the_material": false,
+      "row_around_lo_seam": [
+        1.0,
+        1.0,
+        6.5,
+        12.0,
+        12.0
+      ]
+    },
+    "naive extend_cpml_pad_materials on the smoothed array": {
+      "pad_lo_value": 6.5,
+      "pad_hi_value": 6.5,
+      "interior_edge_lo": 6.5,
+      "interior_edge_hi": 6.5,
+      "n_cells_at_eps_wg": 159,
+      "pad_is_the_material": false,
+      "row_around_lo_seam": [
+        6.5,
+        6.5,
+        6.5,
+        12.0,
+        12.0
+      ]
+    },
+    "sourced one column inward": {
+      "pad_lo_value": 12.0,
+      "pad_hi_value": 12.0,
+      "interior_edge_lo": 6.5,
+      "interior_edge_hi": 6.5,
+      "n_cells_at_eps_wg": 199,
+      "pad_is_the_material": true,
+      "row_around_lo_seam": [
+        12.0,
+        12.0,
+        6.5,
+        12.0,
+        12.0
+      ]
+    },
+    "reference: _assemble_materials (the interior route)": {
+      "pad_lo_value": 12.0,
+      "pad_hi_value": 12.0,
+      "interior_edge_lo": 12.0,
+      "interior_edge_hi": 12.0,
+      "n_cells_at_eps_wg": 201,
+      "pad_is_the_material": true,
+      "row_around_lo_seam": [
+        12.0,
+        12.0,
+        12.0,
+        12.0,
+        12.0
+      ]
+    }
+  }
+}

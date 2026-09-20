@@ -12,9 +12,43 @@ Reads, and turns into an instrument, two diagnoses:
   normal incidence, the echo-free control, and the structural finding this lane
   closes.
 
+**Neither is in this repository** — both branches are unmerged, so the paths above
+do not resolve in a checkout. What does resolve: #888 comments
+[5525810073](https://github.com/bk-squared/rfx/issues/888#issuecomment-5525810073) and
+[5529673679](https://github.com/bk-squared/rfx/issues/888#issuecomment-5529673679),
+which carry each diagnosis's decisive measurements and name its branch and sha.
+
 **No window, gate threshold, record length or committed physics number is
 changed here.** This lane adds a witness and a precondition gate. The one thing
 it does change is artifact bytes, deliberately and only additively — see §6.
+
+> **SUPERSEDED IN PART, 2026-09-13 (#888, PR #1005).** Everything below that
+> quotes the auxiliary *layout* describes the grid as it was when this note was
+> written: `n_cpml_1d = 20`, `n_margin = 10`, `n_1d = 20 + 10 + n_tfsf + 10 + 20`,
+> `i0 = 30`, `src_idx = 23`, and a reflector fitted 6.88 cells inside the layer
+> (§1.1, §1.2, §2). That grid no longer exists. `rfx/sources/tfsf.py` now derives
+> its absorber from a reflection target at `AUX_N_CPML_1D = 200`, so the live
+> layout is `n_1d = 2·200 + 2·10 + n_tfsf`, `i0 = 210`, `src_idx = 203`, and the
+> reflector depth is a **bound at the absorber's inner edge (0 cells)** rather
+> than a fitted position — at `|B/A| ≈ 1e-06` the residual backward wave is no
+> longer one specular echo from one place, so no single reflector index describes
+> it.
+>
+> **The mechanism, the arithmetic and the invariant in this note are unchanged**;
+> only the numbers plugged into them moved. The direction is the safe one: the
+> arrival comes 19 to 20 steps EARLIER at all 13 committed slab-family rungs
+> (ratios 0.520-0.610 → 0.525-0.617 against a limit of 1.0), because the reflector
+> moves out by 180 cells while the source and both probe references move in by
+> 180, leaving only the 13.76-cell reflector-depth term.
+>
+> Where the live numbers live: `validation/crossval/comparators/slab_family.py`
+> (the constants, pinned against `rfx.sources.tfsf` by the test below),
+> `tests/crossval/test_aux_echo_record_invariant.py` (the pin, the two-way
+> recompute waiver `_ABSORBER_RECOMPUTE_PENDING`, and the earlier-arrival
+> assertion), and
+> `docs/design_notes/20260904_aux_absorber_depth_derivation.md` §2, §12 and §14
+> for the derivation and its validity domain. Read those for anything you intend
+> to act on; read this note for why the invariant exists.
 
 ---
 
@@ -65,7 +99,10 @@ slab_aux_echo(nx_interior, dt, dx_div, n_steps)        -> the block, at this fam
 
 The auxiliary grid's layout is `rfx/sources/tfsf.py`'s, and its constants are
 **not** scaled by `dx_div` (the case refines the 3-D rig; `tfsf.py` hard-codes
-the auxiliary one):
+the auxiliary one). **The four numbers in the block below are the pre-#888 ones
+— see the supersession header at the top of this note; `tfsf.py` now carries
+`n_cpml_1d = 200`, `i0 = 210`, `src_idx = 203`.** The derivation is what this
+section is for, and it does not change with them:
 
 ```
 n_cpml_1d = 20 ; n_margin = 10 ; n_tfsf = x_hi - x_lo + 2
@@ -392,8 +429,10 @@ addition had to keep green; it does, because the backfilled key and the key
 
 ## 8. Reproduction
 
-All local, `~/Documents/rfx/.venv/bin/python`, worktree
-`~/Documents/rfx-worktrees/echo-invariant`. No VESSL run was needed.
+All local CPU, no VESSL run needed. Run from the repository root; every command
+below is repo-relative. (This paragraph named PR #892's author's home directory
+and venv until 2026-09-14 -- paths nobody else can follow, the same class as the
+two corrected in `20260904_aux_absorber_depth_derivation.md` section 6.)
 
 * the invariant at every committed rung —
   `python validation/crossval/comparators/emit_aux_echo_witness.py --check`

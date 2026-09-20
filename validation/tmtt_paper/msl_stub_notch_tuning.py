@@ -559,7 +559,7 @@ def main() -> int:
     # N-probe extractor from sitting in the stub-junction standing-wave
     # region; see `_check_msl_port_geometry` in rfx/api.py).
     pre_msgs = sim.preflight()
-    if pre_msgs:
+    if len(pre_msgs):     # PreflightReport refuses bool() (#980)
         print("\nPreflight warnings:")
         for m in pre_msgs:
             print(f"  - {m}")

@@ -4,6 +4,10 @@ This page describes what can be used now. It does not treat a passing unit test
 as RF validation, and it does not infer support for one combination from support
 for another.
 
+Known defects that a user can hit inside these limits are listed separately in
+[known limitations](known_limitations.md); this page states what is supported,
+that one states what is currently wrong.
+
 Status terms:
 
 - **supported** — documented for routine use within the stated limits

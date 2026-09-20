@@ -15,6 +15,42 @@ Status terms on this page are **supported**, **limited**, **experimental**,
 **not documented**, and **unsupported** as defined in
 `docs/guides/support_matrix.md`.
 
+## Which method should I call?
+
+If you are not sure which of the APIs below your simulation needs, do not
+guess from the table: ask the simulation.
+
+```python
+sim.s_matrix_lane()          # -> 'compute_waveguide_s_matrix'
+res = sim.compute_s_matrix() # routes to that method, forwarding kwargs
+```
+
+`Simulation.compute_s_matrix(**kwargs)` reads the registered ports, picks
+exactly one of the calculators below, and forwards every keyword argument to
+it unchanged — the delegate's own defaults, preconditions, warnings and
+result type are what you get, identical to calling it directly.
+`Simulation.s_matrix_lane()` returns the same choice as a string and runs no
+FDTD, so you can check the routing on a half-built simulation.
+
+| Registered | Routes to |
+|---|---|
+| waveguide ports only | `compute_waveguide_s_matrix(...)` |
+| MSL ports only | `compute_msl_s_matrix(...)` |
+| one coaxial port only | **ambiguous** — pass `lane="compute_coaxial_line_reflection"` or `lane="compute_coaxial_two_port"` |
+| one coaxial + one MSL port | `compute_coax_msl_transition(...)` |
+| lumped/wire `add_port(...)` + MSL | `compute_mixed_s_matrix(...)` |
+| lumped/wire only | raises, naming `run(compute_s_params=True)` — that lane returns a `Result`, not an S-matrix result type |
+| anything else | raises, naming the registered families and the method each one has on its own |
+
+Three deliberate refusals. It never guesses between
+`compute_coaxial_line_reflection` and `compute_coaxial_two_port`: both require
+exactly one `add_coaxial_port(...)` and reject every other family, so their
+registrations are identical and only you know which measurement you meant.
+It never calls `run()` for you, because that lane's `n_steps` has no default
+to supply. And it never routes to `compute_coaxial_s_matrix(...)`, the
+deprecated single-plane path, which `lane=` also cannot select — call it
+directly if you need it.
+
 ## Result and metric convention
 
 Full matrices use
@@ -42,7 +78,7 @@ guard. An absent warning therefore cannot be compared across port families.
 | Lumped `add_port(..., extent=None)` | `forward(port_s11_freqs=...)` | `ForwardResult.s_params`, `.freqs` (S11 vectors) | **limited** — uniform, single-device AD path; inherits the lumped-port RF limits |
 | Wire `add_port(..., extent=...)` | `run(compute_s_params=True, s_param_freqs=...)` | `Result.s_params`, `Result.freqs` | **limited** — multi-cell discrete feed across `extent`; magnitude evidence is stronger than absolute calibration evidence; nonuniform use is experimental |
 | Wire `add_port(..., extent=...)` | `forward(port_s11_freqs=...)` | `ForwardResult.s_params`, `.freqs` (S11 vectors) | **limited** — uniform, single-device AD path |
-| `add_msl_port(...)` | `compute_msl_s_matrix(...)` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta`, `.port_names`, `.reliable`, `.reference_impedances` | **limited** — E5-narrow / eigenmode-blocked; external notch agreement is characterized, not tight; `eps_override` AD checked against an f64 referee on the band-mean `\|S21\|^2` objective (f32 AD versus explicit f64-field FD; rel_err about 0.00058 at num_periods=20, threshold 0.03; issue #729 fixture repair, VESSL 369367260436); nonuniform mode is experimental |
+| `add_msl_port(...)` | `compute_msl_s_matrix(...)` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta`, `.port_names`, `.reliable`, `.probe_clearance`, `.beta_railed`, `.reference_impedances` | **limited** — E5-narrow / eigenmode-blocked; external notch agreement is characterized, not tight; `eps_override` AD checked against an f64 referee on the band-mean `\|S21\|^2` objective (f32 AD versus explicit f64-field FD; rel_err about 0.00058 at num_periods=20, threshold 0.03; issue #729 fixture repair, VESSL 369367260436); nonuniform mode is experimental |
 | `add_waveguide_port(...)` | `compute_waveguide_s_matrix(...)` | `WaveguideSMatrixResult.s_params`, `.freqs`, `.port_names`, `.port_directions`, `.reference_planes` | **limited** — broad magnitude evidence for documented uniform single-mode rectangular guides; phase and junction evidence are narrower; nonuniform configurations outside the passed Palace `normalize=flux` WR-90 cases remain experimental; chain-closed (v1.8) for uniform single-mode S on the differentiable lanes after three pre-declared chain-battery runs (VESSL run 369367257823 / 369367258205 / 369367258638; criterion 1 and 3(a) read under x64 on the flux lane, forward default float32; a float32 gradient pipeline on the flux lane is outside the declaration) — still limited, not supported |
 | `add_waveguide_port(...)` | `run(...)` | `Result.waveguide_sparams[name]` | **limited diagnostic** — per-port output, not the full multi-port matrix API |
 | `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult` | **limited** — exactly one `face="top"` port; broad-E5 analytic and broad-E4 MEEP evidence for the documented TEM-line result |
@@ -132,6 +168,48 @@ Relevant checks include `validation/crossval/05_patch_antenna.py`,
 ## Microstrip-line port
 
 **API:** `compute_msl_s_matrix(...)` with the laplace/quasi-TEM model.
+
+**Reading `Z0`/`beta` near a reflector (issue #726).** `reliable` is a per-bin
+fit-quality mask and `probe_clearance` is the geometric condition; neither is
+the other's proxy. On the three board runs tabulated in #726, `reliable` was
+True on 100 % of in-band bins while the fitted `Z0` was 2.4x the analytic value
+and its ripple tracked `|S11|` in dB at r = 0.71, 0.76 and 0.77 — quote the
+range, not the best of the three. Those runs carry no VESSL id in the record.
+
+What the condition costs was measured (VESSL `369367260508`, cv06b
+fixed-source, same source/load/DUT with only the p1 observation offset varied;
+both arms settled below −118 dB): the FITTED quantities are what corrupt — the
+near-reflector arm's β scan railed on 51/51 bins over 3–5 GHz against 0/51 for
+the compliant arm — while raw `S11` at the 3.77125 GHz notch bin read
+**+0.026895 dB on the near-reflector arm and +0.018065 dB on the compliant
+one**, against the analytic 0 dB that quarter-wave open-stub notch has. Both sit
+ABOVE unity on a passive structure, by 0.31 % and 0.21 %; that is never reported
+here as physics — they are raw, unprojected values carrying the coherent power
+excess tracked as #838.
+
+Their 0.009 dB difference is **one fixture, one bin, an arm-to-arm difference,
+not a bound on `S`**, and the comparison's producer verdict was `not_read`. What
+it does show is that `S` moves far less than the fit, because it normalizes with
+the analytic Hammerstad–Jensen `Z0` rather than the fit. The `-5 to -10 dB`
+figure an older preflight message quoted came from the shorted-line ladder and
+was withdrawn on 2026-09-13; do not cite it.
+
+So, when `probe_clearance` reports `insufficient` — including the board case
+where *no* compliant `n_probe_offset` exists on the feed length at all
+("interval empty"):
+
+- keep the analytic Hammerstad–Jensen `Z0` for normalization (already the
+  production path);
+- treat `Z0` and `beta` as UNREADABLE rather than merely uncertain, and gate on
+  `beta_railed` for the symptom — `reliable` does not gate this;
+- read `S11`/`S21` knowing nothing here bounds their error — the 0.009 dB above
+  is one fixture, one bin and an arm-to-arm difference;
+- fix it by lengthening the uniform feed region or moving the reference plane.
+  Raising `n_probe_offset` alone moves the probes TOWARD the reflector.
+
+`preflight()` reports the full compliant interval for each port, and
+`preflight_sparameters(calculator="msl")` reports the condition before a solve
+is paid for.
 
 S is a power-wave matrix with positive real analytic references available as
 `result.reference_impedances`, separately from fitted Z0 and load resistance.
@@ -365,11 +443,10 @@ ports are required. `run()` provides only per-port diagnostics.
   main maximum and mean linear-magnitude differences are `0.0193` and
   `0.00195`.
   > **Historical record — 2026-06-16 numbers; quote them with their date
-  > (2026-08-31, issue #812 Phase 0).
-  > issue #812 Phase 0).** They come from
+  > (2026-08-31, issue #812 Phase 0).** Those historical values come from
   > `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json`,
   > which was committed at `b0322c1` (2026-06-16, PR #181) and never
-  > regenerated. Its **provenance is settled**: feeding
+  > regenerated at the time of that audit. Its **provenance is settled**: feeding
   > `git show b0322c1:tests/fixtures/waveguide_broad_e5/cv11_wr90_fresh_stdout.txt`
   > (that stdout as it stood at the artifact's own commit — it was overwritten
   > later, at `20e5533`) to the artifact's own builder
@@ -379,21 +456,21 @@ ports are required. `run()` provides only per-port diagnostics.
   > differing at ~1 ulp (`5.3e-18`, `1.7e-18`).
   >
   > What was wrong with that record was its **age**. The cv11 stdouts committed in that
-  > directory today are from 2026-08-28 (`20e5533`, #724/#730), and the same
+  > directory at the August audit were from 2026-08-28 (`20e5533`, #724/#730), and the same
   > builder on them rebuilds the slab `S11` `max_mag_abs_diff` to `0.0186` /
   > `0.0194` / `0.0193` against the artifact's `0.0707` (3.6x-3.8x better) and
   > the slab `S11` `mean_mag_abs_diff` to `0.007705`-`0.007771` against
   > `0.043976`. The artifact's slab-`S11` rfx magnitude range
-  > `[0.0397, 0.5924]` reads `[0.0018, 0.5243--0.5251]` on the current runs,
+  > `[0.0397, 0.5924]` reads `[0.0018, 0.5243--0.5251]` on those August runs,
   > while the Palace reference column is identical throughout — the delta is
   > entirely on the rfx leg, which is what a code change between June and
   > August looks like.
   >
   > **Direction matters: that historical record understated the family.** Every
-  > pre-fix/current run cited there was
+  > August run cited there was
   > *better*, and `0.0707` is inside the artifact's own `max_mag_abs_tol` of
   > `0.1`. No gate is at risk and no rectangular-waveguide physics verdict is
-  > challenged. Two minor warts remain: `source_cv11_stdout` records a `/tmp`
+  > challenged by that audit. Two minor warts remained in the June artifact: `source_cv11_stdout` records a `/tmp`
   > path even though a file of that basename is committed beside the artifact,
   > and there is no `setup` block (no commit, `dx`, `NUM_PERIODS` or
   > `CPML_LAYERS`).
@@ -403,11 +480,15 @@ ports are required. `run()` provides only per-port diagnostics.
   > run of its own producing script". That is withdrawn — it rebuilt only from
   > the working-tree revision of those stdouts, never from their content at the
   > artifact's commit. Settling this needed `git show`, not an FDTD run. The
-  > later refresh is recorded in `provenance.refresh_2026_09_13` and explains
-  > the June→August and August→current-main changes rather than silently
-  > re-pinning a value. Full record: the
+  > later refresh is recorded in `provenance.refresh_2026_09_13`. Its material
+  > A/B explains the September pre-fix→post-fix change. The June→August 3.7x
+  > improvement remains unattributed; CPML and aperture changes are candidates.
+  > Full record: the
   > artifact's own `provenance` key and
   > `docs/design_notes/20260831_cv11_broad_e4_artifact_provenance.md`.
+- The pinned producer uses `normalize=True` for empty/slab and `False` for
+  PEC short. These refreshed magnitudes do not validate the `"flux"` extractor
+  or its AD path; the normalization audit is retained in the artifact.
 - The refreshed artifact is sourced from current-main VESSL run `369367260736`
   (producer commit `8206031d`) and is reproduced by the committed stdout. Its
   load-bearing slab S11 values are

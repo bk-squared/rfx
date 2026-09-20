@@ -293,9 +293,18 @@ def test_issue169_decay_reaches_flux_converged_value():
 
     SUCCESS CRITERION: the decay run's flux-DFT transmission at its stop step
     must be within ``_TOL`` of the fixed-duration converged truth. With
-    Criterion A this PASSES (de-risk at res=8: fires near step ~4351, well past
-    the old ~2151 under-run point and below the cap, with T within ~0.13% of
-    truth).
+    Criterion A this PASSES (measured 2026-09-16 on main + #1078: fires at step
+    2051 with T 0.9074101 against truth 0.9073967, 1.5e-5 relative).
+
+    The stop step moved from ~4351 to ~2051 with two changes, and neither is a
+    weakening of this gate. #1057 continued the eps=12 slab through its own
+    absorber pad, so the guided mode now leaves through the PML instead of
+    reflecting off a vacuum facet at the interior/pad seam, and the domain
+    empties an order of magnitude sooner. #1078 then fixed the criterion's
+    reference: ``peak_U`` was tracked only from ``decay_min_steps``, so on a
+    domain that empties before that step the reference WAS the residual and
+    the run went to the cap; the peak is now tracked from the first check,
+    like the flux-stop branch beside it.
     """
     _TOL = 0.02  # 2% of the converged transmission
 
@@ -329,15 +338,28 @@ def test_issue169_decay_reaches_flux_converged_value():
         f"decay run hit max_steps cap {decay_cap}; criterion never fired"
     )
 
-    # Positive witness (Criterion A): the energy stop must land in the
-    # CONVERGED range — well PAST the old single-cell point-field under-run
-    # (~2151 steps), where the flux DFT had not yet integrated the slow tail.
-    # The interior-energy criterion fires only after the energy has actually
-    # left the domain, which on this geometry is ~4351 steps (de-risk). We pin
-    # a generous lower bound that still excludes the old under-run point.
-    assert stop_step > 3000, (
-        f"decay stopped at step {stop_step}; Criterion A should fire well past "
-        "the old ~2151-step point-field under-run, in the flux-converged range"
+    # Positive witness (Criterion A): the energy stop must fire PROMPTLY once
+    # the domain has emptied, and the transmission it reports must be the
+    # converged one (asserted below — that is the gate, not the step number).
+    #
+    # The retired form of this witness was ``stop_step > 3000``, on the
+    # measurement that the energy leaves this geometry at ~4351 steps. That
+    # number belonged to a DIFFERENT structure: before #1057 the smoothed lane
+    # ended the eps=12 slab at the interior/absorber seam in a vacuum facet,
+    # and the facet reflected the guided mode back into the domain. With the
+    # slab continued through its own absorber pad (#1043/#1057 — what a
+    # PML-terminated guide is supposed to be), the domain empties BEFORE
+    # ``decay_min_steps``: measured here, the interior energy peaks at
+    # 6.28e-10 near step 701 and reads 6.13e-17 at step 2001, i.e. 9.8e-8 of
+    # the peak, so the criterion fires at the first eligible check (2051) and
+    # the flux DFT is already converged there (T 0.9074101 vs truth 0.9073967,
+    # 1.5e-5 relative — the assertion below). Pinned as a regression envelope
+    # with headroom rather than as the measured 2051.
+    assert stop_step <= 2500, (
+        f"decay stopped at step {stop_step}; with the slab continued through "
+        "its absorber pad the interior energy is ~1e-7 of peak by "
+        "decay_min_steps, so Criterion A must fire within a few checks of it. "
+        "A later stop means the domain is holding energy it should not."
     )
 
     # The fix criterion: decay-stop transmission within tol of the converged

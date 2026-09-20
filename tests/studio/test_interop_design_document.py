@@ -857,8 +857,6 @@ _FORBIDDEN_KEYS = frozenset(
         "energy",
         # preflight scratch
         "preflight",
-        "ntff_min_steps_hint",
-        "_ntff_min_steps_hint",
         # run-time control (run()/forward() kwargs, not design state)
         "n_steps",
         "num_periods",

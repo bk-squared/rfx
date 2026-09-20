@@ -1,0 +1,23 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "mesh_resolution",
+        "loc": null,
+        "message": "'pec' z-extent 200\u00b5m = 0.4 cells \u2014 below 1 cell resolution. A PEC shape passed to sim.add() is a VOLUME (realized with both faces and a shorted interior, lattice ownership contract #931 \u00a71.2), and a volume thinner than one local cell is refused at assembly (\u00a71.5) rather than snapped to a plane. If this is foil (a ground plane, patch, trace), declare a SHEET: a zero-thickness Box via add(), or add_thin_conductor(shape) \u2014 realized on the node plane nearest its mid-plane, with the normal E edge through it live. Otherwise resolve the thickness with a finer local cell.",
+        "severity": "warning",
+        "source": "_validate_mesh_quality"
+      },
+      {
+        "code": "pec_box_subcell",
+        "loc": null,
+        "message": "geometry[0] 'pec' cannot be realized on this lattice and run()/forward() will raise: PEC Box 'pec' is thinner than one cell along z (0.0002 m against a local cell of 0.0005 m): a Box passed to sim.add() is a VOLUME; declare a sheet (a zero-thickness Box or add_thin_conductor) or resolve the thickness. Nothing is inferred from raster thickness or drawing direction (lattice ownership contract \u00a71.5). (lattice ownership contract #931 \u00a71.5; preflight reports it here so the whole configuration is audited before the raise).",
+        "severity": "error",
+        "source": "_validate_cfg_pec_realization"
+      }
+    ],
+    "n_errors": 1,
+    "n_issues": 2,
+    "ok": false
+  }
+}

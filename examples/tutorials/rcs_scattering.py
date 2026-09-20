@@ -115,9 +115,9 @@ def main() -> None:
     # a functional API, so this matching Simulation makes its public setup
     # checks visible without reaching into private state.
     report = sim.preflight()
-    if report:
+    if len(report):   # PreflightReport refuses bool() (#980)
         raise RuntimeError("Sphere scattering setup has unexpected advisories")
-    print(f"TFSF plane-wave setup ready: {not report}")
+    print(f"TFSF plane-wave setup ready: {not len(report)}")
 
     grid, materials = build_rcs_inputs()
 

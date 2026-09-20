@@ -1,0 +1,23 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "no_sources",
+        "loc": null,
+        "message": "No sources, ports, TFSF, or waveguide/Floquet/MSL ports configured. Simulation will produce zero fields.",
+        "severity": "warning",
+        "source": "_validate_cfg_no_sources"
+      },
+      {
+        "code": "dispersive_pole_at_absorber_face",
+        "loc": "geometry[#0 x-lo+x-hi+y-lo Q=60]",
+        "message": "Dispersive material 'slab' (geometry entry #0, Q=60) touches absorbing face(s) x-lo+x-hi+y-lo. The realized absorber there matches no declared material: a lo-face pad replicates the material's STATIC eps/sigma/mu without its dispersion poles (#627a; poles are deliberately not extended, #627b), and at a hi face ending at the domain face the pad stays background and the rasterizer's dropped boundary node is left unrepaired (#808 gate) \u2014 a band-limited impedance step instead of a matched continuation. This is a fidelity limitation, not an instability. Do NOT extend pole masks into the pad to fix it: measured divergent (issue #636 factorial, docs/design_notes/i636_cpml_pole_pad_predeclaration.md \u2014 surface-polariton modes of the eps(omega)<0 band inside the absorber grow without bound; the Drude cell diverges even under the CFS alpha rule); this material's pole family is in that divergence-risk class, so the in-band mismatch is also resonance-sharp. And do not extend the statics for it either: the eps_inf-without-pole surround silently moved a committed Debye recovery past its gate (issue #808, docs/design_notes/issue808_debye_pad_predeclaration.md). Mitigations: leave >= 1 cell of background material between the dispersive structure and the domain face, add pole damping (lower Q), or move the resonance out of band.",
+        "severity": "warning",
+        "source": "_validate_cfg_dispersive_pole_at_absorber_face"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 2,
+    "ok": true
+  }
+}

@@ -2,7 +2,7 @@
   "schema": "rfx.rcs_sphere_mie_monostatic_fixture",
   "schema_version": 1,
   "issue": 276,
-  "claim_scope": "MONOSTATIC (backscatter) RCS MAGNITUDE of a staircased PEC sphere at ka~1, at the committed resolution (dx=lambda/40, ~6.4 cells per radius), vs the exact Mie series. This is NOT a bistatic validation: the same run shows a spurious forward-oblique lobe at scattering angles 25-55 deg (~10 dB high vs Mie; TFSF/NTFF forward-face contamination suspected) and a forward-scatter delta of 1.64 dB. Those are recorded in bistatic_trace_non_gated for inspection and are deliberately NOT gated.",
+  "claim_scope": "MONOSTATIC (backscatter) RCS MAGNITUDE of a staircased PEC sphere at ka~1, at the committed resolution (dx=lambda/40, ~6.4 cells per radius), vs the exact Mie series. This is NOT a bistatic validation: the same run shows a spurious forward-oblique lobe at scattering angles 25-55 deg (~10 dB high vs Mie; TFSF/NTFF forward-face contamination suspected) and a forward-scatter delta of 1.85 dB. Those are recorded in bistatic_trace_non_gated for inspection and are deliberately NOT gated.",
   "geometry": {
     "f0_hz": 3000000000.0,
     "radius_m": 0.0159,
@@ -11,27 +11,27 @@
     "resolution_cells_per_lambda": 40,
     "cells_per_radius": 6.364402936380741,
     "grid_shape": [
-      58,
-      58,
-      58
+      90,
+      90,
+      90
     ],
     "domain_m": [
       0.1,
       0.1,
       0.1
     ],
-    "cpml_layers": 8,
+    "cpml_layers": 24,
     "n_steps": 700,
     "bandwidth": 0.5,
     "polarization": "ez",
     "pec_sigma_s_per_m": 10000000.0
   },
   "monostatic": {
-    "rfx_sigma_over_pi_a2": 3.584995414250318,
-    "rfx_dbsm": -25.455672741889146,
+    "rfx_sigma_over_pi_a2": 3.795695735714078,
+    "rfx_dbsm": -25.20764486710678,
     "mie_sigma_over_pi_a2": 3.637213989031767,
     "mie_dbsm": -25.392870259132977,
-    "abs_delta_db": 0.0628,
+    "abs_delta_db": 0.1852,
     "extraction": "RCSResult.monostatic_rcs \u2014 far field evaluated exactly at the backscatter direction (theta=pi/2, phi=pi for +x incidence), post issue-#276 fix."
   },
   "mie_oracle_witnesses": {
@@ -48,230 +48,230 @@
     "trace": [
       {
         "scattering_angle_deg": 0.0,
-        "rfx_sigma_over_pi_a2": 2.4623529409634424,
+        "rfx_sigma_over_pi_a2": 2.582134163720579,
         "mie_sigma_over_pi_a2": 1.6863616486068083,
-        "abs_delta_db": 1.644
+        "abs_delta_db": 1.85
       },
       {
         "scattering_angle_deg": 5.0,
-        "rfx_sigma_over_pi_a2": 2.1439462190468994,
+        "rfx_sigma_over_pi_a2": 2.2039515107567826,
         "mie_sigma_over_pi_a2": 1.690367662588042,
-        "abs_delta_db": 1.032
+        "abs_delta_db": 1.152
       },
       {
         "scattering_angle_deg": 10.0,
-        "rfx_sigma_over_pi_a2": 1.8774455141640969,
+        "rfx_sigma_over_pi_a2": 1.8214390279938788,
         "mie_sigma_over_pi_a2": 1.7024210501738155,
-        "abs_delta_db": 0.425
+        "abs_delta_db": 0.293
       },
       {
         "scattering_angle_deg": 15.0,
-        "rfx_sigma_over_pi_a2": 3.0025867850185843,
+        "rfx_sigma_over_pi_a2": 2.9009796485450736,
         "mie_sigma_over_pi_a2": 1.7226193070385603,
-        "abs_delta_db": 2.413
+        "abs_delta_db": 2.264
       },
       {
         "scattering_angle_deg": 20.0,
-        "rfx_sigma_over_pi_a2": 6.453193943729794,
+        "rfx_sigma_over_pi_a2": 6.473184174940801,
         "mie_sigma_over_pi_a2": 1.751097479696038,
-        "abs_delta_db": 5.665
+        "abs_delta_db": 5.678
       },
       {
         "scattering_angle_deg": 25.0,
-        "rfx_sigma_over_pi_a2": 11.856310682814865,
+        "rfx_sigma_over_pi_a2": 12.156577428420333,
         "mie_sigma_over_pi_a2": 1.787990452716075,
-        "abs_delta_db": 8.216
+        "abs_delta_db": 8.324
       },
       {
         "scattering_angle_deg": 30.0,
-        "rfx_sigma_over_pi_a2": 17.484525563701407,
+        "rfx_sigma_over_pi_a2": 18.106282193701386,
         "mie_sigma_over_pi_a2": 1.8333866170347328,
-        "abs_delta_db": 9.794
+        "abs_delta_db": 9.946
       },
       {
         "scattering_angle_deg": 35.0,
-        "rfx_sigma_over_pi_a2": 21.135953508379334,
+        "rfx_sigma_over_pi_a2": 21.964834491616955,
         "mie_sigma_over_pi_a2": 1.8872784073942899,
-        "abs_delta_db": 10.492
+        "abs_delta_db": 10.659
       },
       {
         "scattering_angle_deg": 40.0,
-        "rfx_sigma_over_pi_a2": 21.361379768304534,
+        "rfx_sigma_over_pi_a2": 22.184515914315796,
         "mie_sigma_over_pi_a2": 1.9495155238429638,
-        "abs_delta_db": 10.397
+        "abs_delta_db": 10.561
       },
       {
         "scattering_angle_deg": 45.0,
-        "rfx_sigma_over_pi_a2": 18.22650464022756,
+        "rfx_sigma_over_pi_a2": 18.844196175925855,
         "mie_sigma_over_pi_a2": 2.0197662941441012,
-        "abs_delta_db": 9.554
+        "abs_delta_db": 9.699
       },
       {
         "scattering_angle_deg": 50.0,
-        "rfx_sigma_over_pi_a2": 13.154927249080707,
+        "rfx_sigma_over_pi_a2": 13.474324378691529,
         "mie_sigma_over_pi_a2": 2.097491662092714,
-        "abs_delta_db": 7.974
+        "abs_delta_db": 8.078
       },
       {
         "scattering_angle_deg": 55.0,
-        "rfx_sigma_over_pi_a2": 8.048969919295251,
+        "rfx_sigma_over_pi_a2": 8.107864140719473,
         "mie_sigma_over_pi_a2": 2.1819348474911426,
-        "abs_delta_db": 5.669
+        "abs_delta_db": 5.701
       },
       {
         "scattering_angle_deg": 60.0,
-        "rfx_sigma_over_pi_a2": 4.323748501538195,
+        "rfx_sigma_over_pi_a2": 4.244324720504531,
         "mie_sigma_over_pi_a2": 2.272128013703097,
-        "abs_delta_db": 2.794
+        "abs_delta_db": 2.714
       },
       {
         "scattering_angle_deg": 65.0,
-        "rfx_sigma_over_pi_a2": 2.4252074029772364,
+        "rfx_sigma_over_pi_a2": 2.3392114795102423,
         "mie_sigma_over_pi_a2": 2.366915515188657,
-        "abs_delta_db": 0.106
+        "abs_delta_db": 0.051
       },
       {
         "scattering_angle_deg": 70.0,
-        "rfx_sigma_over_pi_a2": 1.9721759005781516,
+        "rfx_sigma_over_pi_a2": 1.9645816053842189,
         "mie_sigma_over_pi_a2": 2.4649916864759525,
-        "abs_delta_db": 0.969
+        "abs_delta_db": 0.985
       },
       {
         "scattering_angle_deg": 75.0,
-        "rfx_sigma_over_pi_a2": 2.249686028921327,
+        "rfx_sigma_over_pi_a2": 2.343370865346426,
         "mie_sigma_over_pi_a2": 2.56494984489109,
-        "abs_delta_db": 0.57
+        "abs_delta_db": 0.392
       },
       {
         "scattering_angle_deg": 80.0,
-        "rfx_sigma_over_pi_a2": 2.6637502218621196,
+        "rfx_sigma_over_pi_a2": 2.837897792904378,
         "mie_sigma_over_pi_a2": 2.665338325872505,
-        "abs_delta_db": 0.003
+        "abs_delta_db": 0.272
       },
       {
         "scattering_angle_deg": 85.0,
-        "rfx_sigma_over_pi_a2": 2.9339864728377663,
+        "rfx_sigma_over_pi_a2": 3.154316810397492,
         "mie_sigma_over_pi_a2": 2.764719001687031,
-        "abs_delta_db": 0.258
+        "abs_delta_db": 0.573
       },
       {
         "scattering_angle_deg": 90.0,
-        "rfx_sigma_over_pi_a2": 3.043110147460255,
+        "rfx_sigma_over_pi_a2": 3.285540710024506,
         "mie_sigma_over_pi_a2": 2.861723839054995,
-        "abs_delta_db": 0.267
+        "abs_delta_db": 0.6
       },
       {
         "scattering_angle_deg": 95.0,
-        "rfx_sigma_over_pi_a2": 3.0944959360453113,
+        "rfx_sigma_over_pi_a2": 3.355439814638537,
         "mie_sigma_over_pi_a2": 2.9551055628912843,
-        "abs_delta_db": 0.2
+        "abs_delta_db": 0.552
       },
       {
         "scattering_angle_deg": 100.0,
-        "rfx_sigma_over_pi_a2": 3.2078463300793474,
+        "rfx_sigma_over_pi_a2": 3.5032368731658847,
         "mie_sigma_over_pi_a2": 3.0437793089821037,
-        "abs_delta_db": 0.228
+        "abs_delta_db": 0.611
       },
       {
         "scattering_angle_deg": 105.0,
-        "rfx_sigma_over_pi_a2": 3.484938853268688,
+        "rfx_sigma_over_pi_a2": 3.8424712369835397,
         "mie_sigma_over_pi_a2": 3.1268531455893442,
-        "abs_delta_db": 0.471
+        "abs_delta_db": 0.895
       },
       {
         "scattering_angle_deg": 110.0,
-        "rfx_sigma_over_pi_a2": 4.002367811251383,
+        "rfx_sigma_over_pi_a2": 4.450237980405856,
         "mie_sigma_over_pi_a2": 3.203646398876545,
-        "abs_delta_db": 0.967
+        "abs_delta_db": 1.427
       },
       {
         "scattering_angle_deg": 115.0,
-        "rfx_sigma_over_pi_a2": 4.784814440408893,
+        "rfx_sigma_over_pi_a2": 5.339666432871873,
         "mie_sigma_over_pi_a2": 3.273695719366723,
-        "abs_delta_db": 1.648
+        "abs_delta_db": 2.125
       },
       {
         "scattering_angle_deg": 120.0,
-        "rfx_sigma_over_pi_a2": 5.761019769294626,
+        "rfx_sigma_over_pi_a2": 6.418996260348083,
         "mie_sigma_over_pi_a2": 3.33674969018783,
-        "abs_delta_db": 2.372
+        "abs_delta_db": 2.841
       },
       {
         "scattering_angle_deg": 125.0,
-        "rfx_sigma_over_pi_a2": 6.747809493665321,
+        "rfx_sigma_over_pi_a2": 7.483092374372306,
         "mie_sigma_over_pi_a2": 3.3927534462060955,
-        "abs_delta_db": 2.986
+        "abs_delta_db": 3.435
       },
       {
         "scattering_angle_deg": 130.0,
-        "rfx_sigma_over_pi_a2": 7.500525862170858,
+        "rfx_sigma_over_pi_a2": 8.272918023154382,
         "mie_sigma_over_pi_a2": 3.4418252204721407,
-        "abs_delta_db": 3.383
+        "abs_delta_db": 3.809
       },
       {
         "scattering_angle_deg": 135.0,
-        "rfx_sigma_over_pi_a2": 7.8160750258769385,
+        "rfx_sigma_over_pi_a2": 8.583839499605684,
         "mie_sigma_over_pi_a2": 3.4842269624533886,
-        "abs_delta_db": 3.509
+        "abs_delta_db": 3.916
       },
       {
         "scattering_angle_deg": 140.0,
-        "rfx_sigma_over_pi_a2": 7.626467512515712,
+        "rfx_sigma_over_pi_a2": 8.357091794365617,
         "mie_sigma_over_pi_a2": 3.520331204877265,
-        "abs_delta_db": 3.357
+        "abs_delta_db": 3.755
       },
       {
         "scattering_angle_deg": 145.0,
-        "rfx_sigma_over_pi_a2": 7.022468283048381,
+        "rfx_sigma_over_pi_a2": 7.695858285616088,
         "mie_sigma_over_pi_a2": 3.550586230985185,
-        "abs_delta_db": 2.962
+        "abs_delta_db": 3.36
       },
       {
         "scattering_angle_deg": 150.0,
-        "rfx_sigma_over_pi_a2": 6.197517787987066,
+        "rfx_sigma_over_pi_a2": 6.802175735518391,
         "mie_sigma_over_pi_a2": 3.575481357405156,
-        "abs_delta_db": 2.389
+        "abs_delta_db": 2.793
       },
       {
         "scattering_angle_deg": 155.0,
-        "rfx_sigma_over_pi_a2": 5.355656228283122,
+        "rfx_sigma_over_pi_a2": 5.883425280481405,
         "mie_sigma_over_pi_a2": 3.5955138464782603,
-        "abs_delta_db": 1.731
+        "abs_delta_db": 2.139
       },
       {
         "scattering_angle_deg": 160.0,
-        "rfx_sigma_over_pi_a2": 4.640553137906639,
+        "rfx_sigma_over_pi_a2": 5.085320373217705,
         "mie_sigma_over_pi_a2": 3.6111586383265544,
-        "abs_delta_db": 1.089
+        "abs_delta_db": 1.487
       },
       {
         "scattering_angle_deg": 165.0,
-        "rfx_sigma_over_pi_a2": 4.1144497132070645,
+        "rfx_sigma_over_pi_a2": 4.475622376867292,
         "mie_sigma_over_pi_a2": 3.6228417820886145,
-        "abs_delta_db": 0.553
+        "abs_delta_db": 0.918
       },
       {
         "scattering_angle_deg": 170.0,
-        "rfx_sigma_over_pi_a2": 3.7784677955526225,
+        "rfx_sigma_over_pi_a2": 4.065615111964633,
         "mie_sigma_over_pi_a2": 3.6309181727215956,
-        "abs_delta_db": 0.173
+        "abs_delta_db": 0.491
       },
       {
         "scattering_angle_deg": 175.0,
-        "rfx_sigma_over_pi_a2": 3.6083665668762834,
+        "rfx_sigma_over_pi_a2": 3.8426641137549113,
         "mie_sigma_over_pi_a2": 3.635653979417406,
-        "abs_delta_db": 0.033
+        "abs_delta_db": 0.24
       },
       {
         "scattering_angle_deg": 180.0,
-        "rfx_sigma_over_pi_a2": 3.5849954142503186,
+        "rfx_sigma_over_pi_a2": 3.7956957357140784,
         "mie_sigma_over_pi_a2": 3.637213989031767,
-        "abs_delta_db": 0.063
+        "abs_delta_db": 0.185
       }
     ]
   },
   "provenance": {
     "generator": "tests/fixtures/rcs_sphere_mie/generate_fixture.py",
-    "wall_seconds_cpu": 5.2
+    "wall_seconds_cpu": 142.9
   }
 }

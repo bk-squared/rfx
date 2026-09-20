@@ -15,9 +15,14 @@ Pre-declaration:
 from __future__ import annotations
 
 import ast
+import dataclasses
 import importlib.util
+import io
+import json
 import math
+import re
 import sys
+import tokenize
 from pathlib import Path
 
 import numpy as np
@@ -27,7 +32,17 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 JUDGE_PATH = REPO_ROOT / "validation/crossval/comparators/ring_mode_judge.py"
 TRIALS_PATH = REPO_ROOT / "scripts/diagnostics/cv02_judge_tautology_trials.py"
 TRIALS_JSON = REPO_ROOT / "tests/fixtures/cv02_ring_judge/tautology_trials_200k.json"
+LADDER_JSON = REPO_ROOT / "tests/fixtures/cv02_ring_judge/harminv_decimation_ladder.json"
+
+#: Ceiling for the LIVE decimation re-measurement (relative Q error). Not a
+#: physics gate: it separates "orders of magnitude below the withdrawn claim"
+#: from "anywhere near it", loosely enough that a different LAPACK cannot red
+#: it. Committed ladder values are ~1e-12 to ~1e-13; the smallest figure the
+#: withdrawn claim asserted is 2.4e-3.
+LIVE_ERROR_CEILING = 1e-8
 SCRIPT_PATH = REPO_ROOT / "validation/crossval/02_ring_resonator.py"
+PREDECLARATION_PATH = (
+    REPO_ROOT / "docs/design_notes/20260831_cv02_ring_judge_predeclaration.md")
 
 
 def _load(name: str, path: Path):
@@ -289,9 +304,11 @@ def test_b2_scan_every_displacement_past_the_window_is_now_caught(
 
 
 def test_b3_wrong_q_on_the_gated_mode_passes_the_shipped_judge_and_fails() -> None:
-    """Mode 2's Q is five times too low -- a radiation-loss error a staircased
-    curved boundary can produce. The shipped judge gates no Q at all; the
-    corrected transformed interval rejects this low-Q side."""
+    """Mode 2's Q is five times too low -- the size of radiation-loss error a
+    curved boundary's discretization can produce. (Which discretization detail
+    produces the REAL cv02 gap is unresolved; this one is injected, so nothing
+    here rests on that.) The shipped judge gates no Q at all; the corrected
+    transformed interval rejects this low-Q side."""
     defect = [
         rmj.SolverMode(0.147213, 357.6 / 5.0),
         rmj.SolverMode(0.175298, 1864.1),
@@ -308,8 +325,16 @@ def test_b3_wrong_q_on_the_gated_mode_passes_the_shipped_judge_and_fails() -> No
 
 
 def test_b3_the_q_gate_is_two_sided() -> None:
-    """An over-damped mode (Q too LOW) fails too -- the log form is symmetric,
-    so a leaky boundary is caught as well as a lossless one."""
+    """An over-damped mode (Q too LOW) fails too, so a leaky boundary is caught
+    as well as a lossless one.
+
+    Two-sided is NOT symmetric. #945 replaced the symmetric ``+-log1p(s)``
+    window with the transformed rate interval, whose sides differ and whose
+    high-Q side is unbounded for ``s >= 1``
+    (:func:`rate_interval_to_log_q_bounds`). The low-Q side stays finite at
+    every ``s``, which is why this direction is gated at all; the earlier
+    wording here claimed symmetry and was wrong after #999.
+    """
     defect = [
         rmj.SolverMode(0.147213, 357.6 / 5.0),
         rmj.SolverMode(0.175298, 1864.1),
@@ -348,8 +373,17 @@ def test_the_assignment_contains_no_tolerance() -> None:
     assert rmj.assign([0.12, 0.18], [0.1805]) == [None, 0]
 
 
-def test_q_window_is_the_record_length_resolution_limit() -> None:
-    """delta_Q/Q = tau/T, with tau = Q_ref/(pi f_ref). No fitted constant."""
+def test_q_window_is_tau_ref_over_record_length() -> None:
+    """``s = tau_ref/T``, with ``tau = Q_ref/(pi f_ref)``. No fitted constant.
+
+    The name says the formula and nothing more, deliberately. This test used
+    to be called ``..._is_the_record_length_resolution_limit``; #907 measured
+    that reading false (a damped exponential has no ``1/T`` separation limit
+    to import), so the claim is withdrawn here as well as in the module
+    docstring, the report header, the artifact note and the pre-declaration.
+    What survives is the algebra: no constant in this function was fitted to
+    the board it judges.
+    """
     for freq, q in [(0.118101575043663, 80.683059081382),
                     (0.147162555528154, 316.29272471914),
                     (0.175246750722663, 1677.48461212767)]:
@@ -357,8 +391,10 @@ def test_q_window_is_the_record_length_resolution_limit() -> None:
         t_over_tau, window = rmj.q_window(freq, q, RECORD_T)
         assert t_over_tau == pytest.approx(RECORD_T / tau, rel=1e-12)
         assert window == pytest.approx(tau / RECORD_T, rel=1e-12)
-    # A longer record buys a tighter window, linearly. This is the property
-    # that makes the gate track the instrument instead of a chosen number.
+    # A longer record buys a tighter window, linearly. That 1/T scaling is
+    # what makes the window shrink faster than the rfx-vs-Meep Q gap does --
+    # the "Known limitation" in q_window, i.e. a defect, NOT the virtue this
+    # comment used to claim. Pinned here so the scaling cannot change silently.
     _, w1 = rmj.q_window(0.147162555528154, 316.29272471914, RECORD_T)
     _, w2 = rmj.q_window(0.147162555528154, 316.29272471914, 4 * RECORD_T)
     assert w2 == pytest.approx(w1 / 4.0, rel=1e-12)
@@ -409,6 +445,862 @@ def test_q_rate_interval_maps_to_asymmetric_q_bounds() -> None:
     )
     assert high_q.gates["q"] is True
     assert low_q.gates["q"] is False
+
+# --- #945: the transform, as a pure function on synthetic intervals ---------
+#
+# ``rate_interval_to_log_q_bounds`` takes the declared rate scale ``s`` and
+# this pair's frequency shift ``log_freq_ratio = ln(f_rfx/f_ref)`` -- no mode
+# list, no record, no solver -- so both arguments can be exercised directly.
+# The tests below drive the shift at its default ``0.0``, i.e. the pure
+# fixed-frequency image, which is the whole of the FIRST #945 claim: that
+# image of ``[1-s, 1+s]`` under ``Q = pi f / alpha`` is ``[1/(1+s), 1/(1-s)]``,
+# asymmetric for every ``s > 0`` and unbounded above at ``s >= 1``. The
+# frequency shift -- the second #945 claim -- is driven by the
+# ``test_issue945_*`` block further down.
+
+
+@pytest.mark.parametrize("s", [1e-12, 1e-6, 0.01, 0.1, 0.25, 0.5, 0.798,
+                               0.9, 0.999, 0.999999])
+def test_rate_bounds_invert_the_rate_interval_exactly(s: float) -> None:
+    """Round trip: exponentiating each log-Q bound returns the rate edge that
+    produced it. ``exp(-lower) = 1+s`` and ``exp(-upper) = 1-s``."""
+    lower, upper = rmj.rate_interval_to_log_q_bounds(s)
+    assert math.exp(-lower) == pytest.approx(1.0 + s, rel=1e-12)
+    assert math.exp(-upper) == pytest.approx(1.0 - s, rel=1e-9, abs=1e-15)
+    # the interval straddles equality, and the upper side is the wider one
+    assert lower < 0.0 < upper
+    assert upper > -lower
+
+
+@pytest.mark.parametrize("s,q_ratio_upper", [(0.25, 4.0 / 3.0),
+                                             (0.5, 2.0),
+                                             (0.798, 1.0 / 0.202)])
+def test_rate_bounds_upper_side_is_one_over_one_minus_s(s, q_ratio_upper
+                                                        ) -> None:
+    """The #945 table, in the shipped function. The symmetric window this
+    replaced capped the high-Q side at ``1+s``; the transform's own upper edge
+    is ``1/(1-s)``, larger for every ``s > 0`` because ``(1+s)(1-s) < 1``."""
+    _lower, upper = rmj.rate_interval_to_log_q_bounds(s)
+    assert math.exp(upper) == pytest.approx(q_ratio_upper, rel=1e-12)
+    old_symmetric_cap = math.log1p(s)
+    assert upper > old_symmetric_cap
+    assert math.exp(upper) > (1.0 + s)
+
+
+def test_rate_bounds_lower_side_matches_the_old_symmetric_window() -> None:
+    """The defect was one-sided. The rfx-too-lossy edge is unchanged, so this
+    fix cannot mask a Q that is too LOW -- criterion (B) of the #812 re-gate
+    (a wrong Q must still fail) keeps its low-side detection intact."""
+    for s in (0.05, 0.25, 0.5, 0.798, 2.0, 4.0):
+        lower, _upper = rmj.rate_interval_to_log_q_bounds(s)
+        assert lower == pytest.approx(-math.log1p(s), rel=1e-15)
+
+
+def test_rate_bounds_upper_side_diverges_as_s_approaches_one() -> None:
+    """The s -> 1 limit. The admissible rate interval's lower edge ``1-s``
+    reaches zero, so an arbitrarily small decay rate -- an arbitrarily large Q
+    -- is admitted, and the upper log bound grows without limit."""
+    # binary eps so that 1-(1-eps) is eps exactly and the expected value is
+    # not itself a rounding of a decimal literal
+    eps_values = tuple(2.0 ** -k for k in (7, 14, 26, 40, 52))
+    uppers = [rmj.rate_interval_to_log_q_bounds(1.0 - eps)[1]
+              for eps in eps_values]
+    # strictly increasing, and each step is the exact -log(eps)
+    assert uppers == sorted(uppers)
+    for eps, upper in zip(eps_values, uppers):
+        assert upper == pytest.approx(-math.log(eps), rel=1e-12)
+    assert uppers[-1] > 36.0
+    # and the limit itself is attained, not approached: exactly at s = 1 the
+    # bound is +inf, so the function is continuous from below into infinity.
+    assert rmj.rate_interval_to_log_q_bounds(1.0)[1] == math.inf
+    assert uppers[-1] < rmj.rate_interval_to_log_q_bounds(1.0)[1]
+    # the low-Q side stays finite there -- only one side is unbounded
+    assert rmj.rate_interval_to_log_q_bounds(1.0)[0] == pytest.approx(
+        -math.log(2.0))
+
+
+@pytest.mark.parametrize("s", [1.0, 1.0 + 1e-12, 2.0, 2.8295108704304397,
+                               4.0, 1e6])
+def test_rate_bounds_have_no_finite_upper_side_above_s_one(s: float) -> None:
+    """``s >= 1`` is cv02's operating regime, not an edge case: the committed
+    live board's mode 2 runs at ``s = 2.8295``. The stated policy admits any
+    positive rate below ``alpha_ref``, so there is no finite Q ceiling to
+    impose; the low-Q side stays bounded by the positive-rate edge ``1+s``."""
+    lower, upper = rmj.rate_interval_to_log_q_bounds(s)
+    assert upper == math.inf
+    assert lower == pytest.approx(-math.log1p(s), rel=1e-15)
+    assert math.isfinite(lower)
+
+
+def test_rate_bounds_degenerate_and_invalid_inputs() -> None:
+    """``s = 0`` is a point interval (equality only); ``s = inf`` is no record
+    and therefore no restriction; a negative or NaN scale is a caller bug and
+    is refused rather than absolute-valued into a plausible answer."""
+    assert rmj.rate_interval_to_log_q_bounds(0.0) == (0.0, 0.0)
+    assert rmj.rate_interval_to_log_q_bounds(math.inf) == (-math.inf, math.inf)
+    for bad in (-1e-12, -1.0, float("nan")):
+        with pytest.raises(ValueError):
+            rmj.rate_interval_to_log_q_bounds(bad)
+
+
+def test_q_log_bounds_composes_the_policy_scale_with_the_transform() -> None:
+    """The per-mode entry point is exactly ``q_window`` feeding the pure
+    transform -- no second, divergent copy of the algebra."""
+    for freq, q, record in [(0.118, 80.7, 291.0), (0.147, 316.3, 291.0),
+                            (0.175, 1677.5, 3385.0), (1.0, 10.0, 0.0)]:
+        _t_over_tau, window = rmj.q_window(freq, q, record)
+        assert (rmj.q_log_bounds(freq, q, record)
+                == rmj.rate_interval_to_log_q_bounds(window))
+
+
+def test_issue945_a_mode_on_the_declared_rate_bound_is_admitted() -> None:
+    """The reproduction from #945, driven through ``judge``.
+
+    ``f_ref = 1/pi``, ``Q_ref = 10``, ``T = 20`` gives ``tau = 10``,
+    ``s = 0.5``, ``alpha_ref = 0.1`` and ``1/T = 0.05``. A mode whose decay
+    rate differs by EXACTLY the tolerance the gate claims to allow
+    (``alpha_rfx = 0.05``, hence ``Q_rfx = 20``) used to be REJECTED, because
+    the symmetric window stopped at ``ln(1+s) = 0.405`` while the mode sits at
+    ``ln 2 = 0.693``. Both rate edges are now admitted, and a mode past either
+    edge is still rejected -- the gate did not become one-sided, it became the
+    right two sides."""
+    f_ref, q_ref, record = 1.0 / math.pi, 10.0, 20.0
+    band = dict(f_min=0.2, f_max=0.5)
+    alpha_ref = math.pi * f_ref / q_ref
+
+    def _q_from_rate(alpha: float) -> float:
+        return math.pi * f_ref / alpha
+
+    def _gate(q_rfx: float) -> "rmj.Verdict":
+        return rmj.judge([rmj.ReferenceMode(f_ref, q_ref)],
+                         [rmj.SolverMode(f_ref, q_rfx)], record,
+                         min_matched=1, **band)
+
+    assert alpha_ref == pytest.approx(0.1)
+    # the record resolves this mode, so the row really is Q-gated
+    row = _gate(q_ref).rows[0]
+    assert row.q_gated is True
+    assert row.q_window == pytest.approx(0.5)
+
+    slow = _q_from_rate(alpha_ref - 1.0 / record)          # Q = 20, the issue
+    assert slow == 20.0
+    assert _gate(slow).gates["q"] is True
+    # what the old symmetric window said about the very same mode
+    assert abs(math.log(slow / q_ref)) > math.log1p(0.5)
+
+    # The mirror edge, on the rfx-too-lossy side, taken as Q_ref/(1+s) rather
+    # than through alpha: the endpoints are reconstructed through a logarithm,
+    # so re-deriving them by a different arithmetic route lands one ULP off
+    # and a boundary row flips. That is the endpoint's numerical sensitivity,
+    # not the gate's, and the interior checks below are what pin the gate.
+    fast = q_ref / (1.0 + 0.5)
+    assert _gate(fast).gates["q"] is True
+
+    # a step outside either declared rate edge still fails
+    assert _gate(slow * (1.0 + 1e-9)).gates["q"] is False
+    assert _gate(fast * (1.0 - 1e-9)).gates["q"] is False
+    # and comfortably inside, both sides pass
+    assert _gate(slow * 0.99).gates["q"] is True
+    assert _gate(fast * 1.01).gates["q"] is True
+
+
+# --- #907: the three ingredients, named and printed -------------------------
+
+
+def test_q_gate_ingredients_separate_derived_from_declared_policy() -> None:
+    """#907's ask, in executable form: the estimator scale, the transform and
+    the discretization budget are three separate quantities with three
+    different epistemic statuses, and the module says which is which."""
+    kinds = {item.name: item.kind for item in rmj.Q_GATE_INGREDIENTS}
+    assert kinds == {
+        "estimator_uncertainty": "declared-policy",
+        "rate_to_q_transform": "derived",
+        "discretization_budget": "absent",
+    }
+    for item in rmj.Q_GATE_INGREDIENTS:
+        assert item.quantity and item.basis and item.source
+    # the absent one must not be dressed up as a value
+    budget = [i for i in rmj.Q_GATE_INGREDIENTS
+              if i.name == "discretization_budget"][0]
+    assert "none declared" in budget.quantity
+    # and the consequence is stated, not left to the reader
+    assert "consistency heuristic" in rmj.Q_GATE_CHARACTER
+    assert "NOT a Q-accuracy guarantee" in rmj.Q_GATE_CHARACTER
+
+
+def test_the_report_prints_which_ingredients_are_policy() -> None:
+    """The crossval log is where a reader meets this gate. The split has to be
+    in the printed report, not only in the source."""
+    text = rmj.format_report(_judge(RFX_TODAY))
+    assert "Q gate ingredients" in text
+    for item in rmj.Q_GATE_INGREDIENTS:
+        assert item.name in text
+        assert f"[{item.kind:>15}]" in text
+    assert "consistency heuristic" in text
+    # the old claim that the window is not a chosen value is gone
+    assert "not chosen values" not in text
+    assert "DECLARED rate scale" in text
+
+
+def test_q_window_docstring_withdraws_the_1_over_T_resolution_claim() -> None:
+    """The docstring used to argue the window from a Fourier-style ``1/T``
+    resolution limit. #907 measured that claim false for this estimator, so
+    the withdrawal has to live where the number is produced."""
+    doc = rmj.q_window.__doc__
+    assert "DECLARED-POLICY" in doc
+    assert "refuted" in doc
+    assert "decimate=False" in doc
+    assert "Known limitation" in doc          # the T-dependence still stands
+    # and the derived half is not tarred with it
+    assert "derived" in rmj.rate_interval_to_log_q_bounds.__doc__
+
+
+def test_harminv_error_field_is_the_decay_restated() -> None:
+    """Why ingredient 1 is a stated policy and not a fit residual (#907, item 1).
+
+    The obvious alternative to a declared envelope is to take the estimator's
+    own residual. rfx's harminv reports one, ``HarminvMode.error``, but it is
+    not a residual: ``rfx/harminv.py`` computes
+    ``err = 1 - min(|lam|, 1/|lam|)``, and for a decaying pole
+    ``|lam| = exp(-alpha * dt_eff)``, so
+
+        error  ==  1 - exp(-decay * dt_eff)
+
+    exactly -- a strictly increasing function of the reported decay rate, i.e.
+    of ``1/Q`` at fixed ``f``. It carries no information about how well the
+    pole fits the record. A tolerance built from it would scale with the very
+    quantity the Q gate judges, which is #812's self-referential gate class.
+
+    Measured here rather than argued, on a clean single damped exponential at
+    cv02's own step, on both harminv paths. On the decimated path the identity
+    holds against the DECIMATED step, which is the same statement.
+    """
+    from rfx.harminv import harminv
+
+    dt = 2.3350677933821873e-16           # cv02's step
+    freq = 1.2e14
+    n_samples = 1500                      # enough for the decimation to fire
+
+    for decimate in (False, "auto"):
+        for q_in in (80.0, 1700.0):
+            alpha = math.pi * freq / q_in
+            t = np.arange(n_samples) * dt
+            signal = np.exp(-alpha * t) * np.cos(2 * math.pi * freq * t)
+            modes = harminv(signal, dt, freq * 0.5, freq * 1.5,
+                            decimate=decimate)
+            assert modes, f"no modes at Q={q_in}, decimate={decimate!r}"
+            mode = max(modes, key=lambda m: m.amplitude)
+            # dt_eff is dt on the undecimated path and an integer multiple of
+            # it otherwise; recover it from the identity rather than from the
+            # decimation rule, then check it IS that integer multiple.
+            dt_eff = -math.log1p(-mode.error) / mode.decay
+            factor = dt_eff / dt
+            assert factor == pytest.approx(round(factor), rel=1e-6)
+            assert round(factor) >= 1
+            if decimate is False:
+                assert round(factor) == 1
+            assert mode.error == pytest.approx(
+                1.0 - math.exp(-mode.decay * dt_eff), rel=1e-12)
+            # monotone in the decay, so it ranks modes by Q, not by fit
+            # quality: the longer-lived mode reports the SMALLER "error"
+            assert mode.error > 0.0
+
+def test_the_decimation_penalty_claim_does_not_reproduce() -> None:
+    """The second empirical prop under ingredient 1, withdrawn and pinned.
+
+    ``q_window`` briefly read: "what DOES degrade at short records is the
+    decimated path cv02 actually runs (3.49% there, 0.24% at the 0.25 cut)".
+    Those figures came from a comment on #907 and were never pinned by any
+    artifact, test or table in this repo. Re-measured on the configuration
+    that sentence names, they do not reproduce, and at the shorter of the two
+    rungs they cannot: no decimation stage fires there at all, so there is no
+    decimated path to measure.
+
+    Both halves are checked here -- the committed ladder
+    (``tests/fixtures/cv02_ring_judge/harminv_decimation_ladder.json``,
+    regenerate with ``scripts/diagnostics/cv02_harminv_decimation_ladder.py``)
+    and a live re-measurement of the two rungs that carry the claim, so the
+    artifact cannot rot into a number nobody re-runs.
+    """
+    from rfx.harminv import _decimation_plan, harminv
+
+    doc = json.loads(LADDER_JSON.read_text(encoding="utf-8"))
+    rows = {row["t_over_tau"]: row for row in doc["rows"]}
+    claimed = doc["withdrawn_claim"]["asserted_relative_q_error"]
+    assert set(claimed) == {"0.0822", "0.25"}
+
+    # (a) the shorter rung: 'auto' chooses no decimation, in BOTH bands, so
+    #     "the decimated path ... 3.49% there" has no path to be about.
+    short = rows[0.0822]
+    for band in short["bands"].values():
+        assert band["decimation_fires"] is False
+        assert band["decimation_factors"] == []
+        assert band["dt_eff_over_dt"] == 1.0
+        assert band["auto"]["relative_q_error"] == band["no_decimation"][
+            "relative_q_error"]
+
+    # (b) the 0.25 cut: decimation DOES fire, and the decimated path is not
+    #     worse than the undecimated one -- the opposite of the claim's sign.
+    cut = rows[0.25]
+    for band in cut["bands"].values():
+        assert band["decimation_fires"] is True
+        assert band["dt_eff_over_dt"] > 1.0
+        assert band["auto"]["relative_q_error"] <= band["no_decimation"][
+            "relative_q_error"]
+
+    # (c) every measured error on every rung is orders of magnitude below what
+    #     was asserted. Stated as a ratio so the assertion says "not close".
+    for key, asserted in claimed.items():
+        row = rows[float(key)]
+        for band in row["bands"].values():
+            assert band["auto"]["relative_q_error"] * 1e6 < asserted
+
+    # (d) both bands land on the SAME decimation plan on every rung. That is a
+    #     plan-stability check, NOT an independent witness -- and the two are
+    #     easy to confuse here, so: f_max enters harminv only through the
+    #     decimation target and a pass-band filter, the two targets factor to
+    #     one plan, and the two columns are then the same computation reporting
+    #     the same error to every digit. Agreement by construction is not
+    #     evidence. The independent witness is legs (a)/(b), auto vs
+    #     decimate=False -- different sample counts, different pencil sizes.
+    #     What (d) buys is that a plan differing between bands would make every
+    #     other leg band-contingent; that is worth pinning, and it is all.
+    for row in doc["rows"]:
+        plans = {tuple(b["decimation_factors"]) for b in row["bands"].values()}
+        assert len(plans) == 1, (row["t_over_tau"], plans)
+        errors = {b["auto"]["relative_q_error"] for b in row["bands"].values()}
+        assert len(errors) == 1, (row["t_over_tau"], errors)
+
+    # (e) live, on the two rungs the claim named: the artifact is reproducible
+    #     from today's rfx, not just a file somebody committed once.
+    #
+    #     The decimation PLAN is integer and deterministic, so it is compared
+    #     exactly. The Q error is not: it is a ~1e-12 residue of an SVD, and a
+    #     different LAPACK reds an exact comparison for no physical reason
+    #     (the cross-machine-float class from the PR #119 slow-suite fixes).
+    #     What the claim turns on is the ORDER, so that is what is asserted --
+    #     LIVE_ERROR_CEILING sits four decades above anything measured here and
+    #     three below the smallest figure the withdrawn claim asserted.
+    dt = doc["signal"]["dt_s"]
+    freq = doc["signal"]["freq_hz"]
+    q_true = doc["signal"]["Q"]
+    tau = doc["signal"]["tau_s"]
+    band = doc["bands"]["withdrawn_claim_band"]
+    for key in ("0.0822", "0.25"):
+        t_over_tau = float(key)
+        n_samples = int(round(t_over_tau * tau / dt))
+        stored = rows[t_over_tau]["bands"]["withdrawn_claim_band"]
+        assert n_samples == stored["n_samples"]
+        factors, _ = _decimation_plan(n_samples, dt, band["f_max_hz"], "auto")
+        assert list(factors) == stored["decimation_factors"]
+        t = np.arange(n_samples) * dt
+        signal = np.exp(-t / tau) * np.cos(2 * math.pi * freq * t)
+        modes = harminv(signal, dt, band["f_min_hz"], band["f_max_hz"],
+                        decimate="auto")
+        assert modes
+        best = min(modes, key=lambda m: abs(m.freq - freq))
+        measured = abs(best.Q - q_true) / q_true
+        assert measured < LIVE_ERROR_CEILING, (key, measured)
+        assert stored["auto"]["relative_q_error"] < LIVE_ERROR_CEILING
+        assert LIVE_ERROR_CEILING < claimed[key] / 1e3
+
+
+def test_q_window_docstring_withdraws_the_decimation_penalty_claim() -> None:
+    """The withdrawal has to live where the number was quoted, and the two
+    figures must not survive anywhere in the cv02 surfaces."""
+    doc = rmj.q_window.__doc__
+    assert "WITHDRAWN" in doc
+    assert "harminv_decimation_ladder.json" in doc
+    assert "UNMEASURED" in doc
+    basis = next(i.basis for i in rmj.Q_GATE_INGREDIENTS
+                 if i.name == "estimator_uncertainty")
+    # the prop is not cited as a motivation any more ("motivated by ... and by
+    # the measured degradation ..."); it survives only as a named withdrawal
+    assert "and by the measured degradation" not in basis
+    assert "WITHDRAWN" in basis
+    assert "UNMEASURED" in basis
+    assert "harminv_decimation_ladder.json" in basis
+    # the figures survive in exactly one place -- quoted inside the sentence
+    # that withdraws them -- and nowhere on the script
+    judge_source = JUDGE_PATH.read_text(encoding="utf-8")
+    assert judge_source.count("3.49%") == 1
+    assert "briefly read" in judge_source
+    assert "3.49" not in SCRIPT_PATH.read_text(encoding="utf-8")
+
+
+def _flatten_prose(text: str, *, python_source: bool = False) -> str:
+    """The prose of ``text``, on one line.
+
+    ``python_source=True`` keeps only the prose of the file, in source order:
+    comments and triple-quoted strings. Every other token is dropped --
+    identifiers, so a test's own name is not read as an assertion, and
+    ordinary string literals, so the sentences pinned below (ordinary
+    literals, every one of them) are not part of any surface they judge.
+
+    Each comment token loses its OWN leading ``#`` before the join, so a claim
+    re-wrapped across three comment lines reads as one sentence. Joining first
+    and stripping afterwards left every hash but the first inline, which let a
+    revert walk past this guard by moving one line break (review of
+    2026-09-14). Quotes and rst/markdown emphasis go the same way, and
+    whitespace collapses, so re-wrapping a surface is free and rewording it is
+    not.
+    """
+    if python_source:
+        def _prose(tok: tokenize.TokenInfo) -> str | None:
+            if tok.type == tokenize.COMMENT:
+                return tok.string.lstrip("#")
+            if (tok.type == tokenize.STRING
+                    and tok.string.lstrip("rbuRBUf").startswith(('"""', "'''"))):
+                return tok.string
+            return None
+
+        text = " ".join(
+            prose
+            for prose in (_prose(tok) for tok
+                          in tokenize.generate_tokens(io.StringIO(text).readline))
+            if prose is not None)
+    lines = [line.strip().lstrip("#").strip() for line in text.splitlines()]
+    flat = " ".join(lines)
+    for markup in ('"', "'", "`", "*"):
+        flat = flat.replace(markup, " ")
+    return re.sub(r"\s+", " ", flat).strip()
+
+
+#: Sentence boundary on the flattened form. Decimals and version strings have
+#: no space after the dot, so they do not split; ``e.g.`` splits, which only
+#: makes the check below stricter.
+_SENTENCE = re.compile(r"(?<=[.;:])\s+")
+
+#: Key phrases of the mechanism #907 retracted. Spelled out rather than
+#: assembled from fragments: ordinary string literals are not part of any
+#: surface ``_flatten_prose`` produces, so this cannot match itself. If that
+#: ever stopped being true these literals would appear as unpinned sentences
+#: and the test would go red, which is the safe direction.
+_RETRACTED_MECHANISM = ("staircas", "discretization offset", "subpixel")
+
+
+def _mechanism_sentences(flat: str) -> tuple[str, ...]:
+    """The sentences of ``flat`` that name the retracted mechanism."""
+    return tuple(sentence for sentence in _SENTENCE.split(flat)
+                 if any(key in sentence for key in _RETRACTED_MECHANISM))
+
+
+#: Every sentence, on every cv02 surface, that is allowed to name the
+#: mechanism #907 retracted -- flattened by ``_flatten_prose``. Adding a
+#: sentence, deleting one, or changing the words of one reds the test below.
+_MECHANISM_SENTENCES = {
+    "ring_mode_judge.py": (
+        "This paragraph used to assert a staircased ring boundary and"
+        " subpixel treatment as the cause;",
+    ),
+    "02_ring_resonator.py": (
+        "An earlier version of this comment called it a discretization"
+        " offset ;",
+    ),
+    "predeclaration note": (
+        "a staircased dielectric ring s radiation loss is precisely the"
+        " quantity a curved boundary gets wrong, and no gate looks at it.",
+    ),
+    # the ingredient strings are persisted into every future crossval.json,
+    # so the mechanism may not enter them at all.
+    "persisted gate ingredients": (),
+    "this test file": (
+        "#907 (2026-09-10) retracted the attribution of the rfx-vs-Meep Q gap"
+        " to the ring s staircased curved boundary and its subpixel"
+        " treatment, as an overclaim:",
+        "(Why it does not is UNRESOLVED -- #907 retracted the discretization"
+        " offset attribution this docstring used to state;",
+    ),
+}
+
+
+def test_the_staircasing_attribution_is_withdrawn_everywhere() -> None:
+    """#907 (2026-09-10) retracted the attribution of the rfx-vs-Meep Q gap to
+    the ring's staircased curved boundary and its subpixel treatment, as an
+    overclaim: a counterexample moves Q while every frequency stays inside the
+    two solvers' observed mutual agreement, so the frequency agreement cannot
+    pin the geometry, and the log decomposition cannot settle it either.
+
+    ONE rule, after three rounds in which a cleverer reading of the prose was
+    each time walked past by a cleverer re-assertion (an exact-phrase check, a
+    +/-6-line proximity window, then a sentence-order rule paired with a
+    copula check): on each surface below, the sentences naming the retracted
+    mechanism must be EXACTLY the ones pinned in ``_MECHANISM_SENTENCES``.
+    Nothing is read for meaning.
+
+    So this is a revert tripwire, not a proof that the prose is honest: it
+    cannot judge a new sentence, only notice that one appeared. Editing a
+    pinned sentence -- including editing it for the better -- reds this test
+    on purpose, so the retraction is re-read before it moves. Re-wrapping is
+    free, because each surface is flattened to one line first.
+    """
+    surfaces = {
+        "ring_mode_judge.py": _flatten_prose(
+            JUDGE_PATH.read_text(encoding="utf-8"), python_source=True),
+        "02_ring_resonator.py": _flatten_prose(
+            SCRIPT_PATH.read_text(encoding="utf-8"), python_source=True),
+        "predeclaration note": _flatten_prose(
+            PREDECLARATION_PATH.read_text(encoding="utf-8")),
+        "persisted gate ingredients": _flatten_prose(
+            " ".join([rmj.Q_GATE_CHARACTER]
+                     + [str(value) for item in rmj.Q_GATE_INGREDIENTS
+                        for value in dataclasses.asdict(item).values()])),
+        "this test file": _flatten_prose(
+            Path(__file__).read_text(encoding="utf-8"), python_source=True),
+    }
+    assert set(surfaces) == set(_MECHANISM_SENTENCES)
+    for name, flat in surfaces.items():
+        found = _mechanism_sentences(flat)
+        pinned = _MECHANISM_SENTENCES[name]
+        assert found == pinned, (
+            name,
+            "unpinned: %r" % ([s for s in found if s not in pinned],),
+            "gone: %r" % ([s for s in pinned if s not in found],))
+    # and the judge no longer prescribes the floor that was refused
+    assert "encoding the expected" not in rmj.q_window.__doc__
+    assert "certify the agreement" in rmj.q_window.__doc__
+
+
+def test_gated_row_retains_the_signed_ratio_and_the_bounds_that_judged_it(
+) -> None:
+    """An asymmetric interval cannot be audited from an absolute ``|ln Q|``:
+    the side decides. The row keeps the signed value and both bounds, so the
+    retained artifact re-derives its own verdict without the judge.
+
+    The bounds it keeps are this pair's own -- the transform evaluated at
+    ``ln(f_rfx/f_ref)`` (#945, second correction), NOT the fixed-frequency
+    image. Asserting the shifted pair is the point: with the unshifted one
+    stored, a reader re-deriving the verdict from the row would get a
+    different inequality from the one the judge evaluated."""
+    verdict = _judge(RFX_TODAY)
+    gated = verdict.q_gated_rows
+    assert gated
+    for row in gated:
+        assert row.q_log_ratio == pytest.approx(abs(row.q_log_ratio_signed))
+        lower, upper = rmj.q_log_bounds(row.ref_freq, row.ref_Q,
+                                        verdict.record_length,
+                                        rfx_freq=row.rfx_freq)
+        assert row.q_log_lower == lower and row.q_log_upper == upper
+        assert row.q_pass is (lower <= row.q_log_ratio_signed <= upper)
+        # and the stored pair really is the shifted one -- non-vacuous only
+        # because these rows have a nonzero frequency disagreement
+        assert row.q_log_freq_term != 0.0
+        unshifted_lower, _unshifted_upper = rmj.q_log_bounds(
+            row.ref_freq, row.ref_Q, verdict.record_length)
+        assert row.q_log_lower != unshifted_lower
+        assert row.q_log_lower == pytest.approx(
+            unshifted_lower + row.q_log_freq_term)
+    # ungated rows carry no bounds at all rather than misleading defaults
+    for row in verdict.rows:
+        if not row.q_gated:
+            assert row.q_log_ratio_signed is None
+            assert row.q_log_lower is None and row.q_log_upper is None
+            assert row.q_log_freq_term is None
+            assert row.q_log_rate_ratio_signed is None
+
+
+# --- #945 reopened: the frequency term the fixed-frequency inversion drops --
+#
+# ``rate_interval_to_log_q_bounds`` inverts the rate interval correctly AT ONE
+# FREQUENCY. The two solvers report two. cv02 gates the frequency disagreement
+# separately at 5%; without the ``ln(f_rfx/f_ref)`` term every bit of that
+# disagreement is charged to the Q gate as well.
+
+
+def test_issue945_a_frequency_error_is_not_charged_to_the_q_gate() -> None:
+    """The PI's counterexample, driven through ``judge``. RED before the fix.
+
+    ``f_ref = 1``, ``Q_ref = 100``, ``T = tau/0.02`` gives ``s = 0.02``. The
+    rfx mode sits 4.9% low in frequency -- INSIDE the 5% frequency gate -- and
+    its decay rate is EXACTLY the reference's, i.e. dead centre of the
+    declared rate interval ``[1-s, 1+s]``. Because ``Q = pi f / alpha``, an
+    equal rate at a 4.9% lower frequency IS a 4.9% lower Q, so the
+    fixed-frequency reading saw ``ln(Q_rfx/Q_ref) = -0.0502`` -- exactly
+    ``ln(f_rfx/f_ref)`` -- against bounds ``[-0.0198, +0.0202]`` and failed a
+    mode that is on the reference's own decay rate."""
+    f_ref, q_ref = 1.0, 100.0
+    alpha_ref = math.pi * f_ref / q_ref
+    s = 0.02
+    record = (q_ref / (math.pi * f_ref)) / s          # T = tau / s
+
+    f_rfx = 0.951                                     # 4.9% low
+    q_rfx = math.pi * f_rfx / alpha_ref               # SAME decay rate
+
+    # a second, exact pair so the count gate is met without a second defect
+    verdict = rmj.judge(
+        [rmj.ReferenceMode(f_ref, q_ref), rmj.ReferenceMode(2.0, 100.0)],
+        [rmj.SolverMode(f_rfx, q_rfx), rmj.SolverMode(2.0, 100.0)],
+        record, f_min=0.5, f_max=2.5)
+    row = verdict.rows[0]
+
+    # the premise: the window really is s = 0.02 and the row really is gated
+    assert row.q_window == pytest.approx(s)
+    assert row.q_gated is True
+    # the frequency error is inside the gate cv02 judges frequency with
+    assert row.freq_err_pct == pytest.approx(4.9, abs=1e-9)
+    assert verdict.gates["max_err"] is True
+    # the decay rate is dead centre of the declared interval
+    alpha_rfx = math.pi * f_rfx / q_rfx
+    assert alpha_rfx / alpha_ref == pytest.approx(1.0, abs=1e-15)
+    assert row.q_log_rate_ratio_signed == pytest.approx(0.0, abs=1e-12)
+    # what the fixed-frequency reading saw, and where it came from
+    assert row.q_log_ratio_signed == pytest.approx(math.log(f_rfx / f_ref))
+    assert row.q_log_freq_term == pytest.approx(math.log(f_rfx / f_ref))
+    unshifted = rmj.rate_interval_to_log_q_bounds(s)
+    assert not (unshifted[0] <= row.q_log_ratio_signed <= unshifted[1]), (
+        "the counterexample is vacuous unless the UNSHIFTED interval rejects "
+        "it -- that rejection is the defect")
+    # and the shipped gate admits it
+    assert row.q_pass is True
+    assert verdict.gates["q"] is True
+    assert verdict.passed is True
+
+
+def test_issue945_the_q_gate_still_bites_at_exact_frequency() -> None:
+    """The mirror of the test above: the fix must not turn the gate off.
+
+    Same rig, frequency EXACT (so the term is zero and nothing is subtracted),
+    decay rate 1.5x the declared scale off. The row must FAIL -- on both
+    sides, because the interval is two-sided."""
+    f_ref, q_ref = 1.0, 100.0
+    alpha_ref = math.pi * f_ref / q_ref
+    s = 0.02
+    record = (q_ref / (math.pi * f_ref)) / s
+
+    for direction in (+1.0, -1.0):
+        alpha_rfx = alpha_ref * (1.0 + direction * 1.5 * s)
+        q_rfx = math.pi * f_ref / alpha_rfx            # frequency EXACT
+        verdict = rmj.judge(
+            [rmj.ReferenceMode(f_ref, q_ref), rmj.ReferenceMode(2.0, 100.0)],
+            [rmj.SolverMode(f_ref, q_rfx), rmj.SolverMode(2.0, 100.0)],
+            record, f_min=0.5, f_max=2.5)
+        row = verdict.rows[0]
+        assert row.q_gated is True
+        assert row.freq_err_pct == pytest.approx(0.0)
+        assert row.q_log_freq_term == 0.0
+        assert row.q_log_rate_ratio_signed == pytest.approx(
+            math.log1p(direction * 1.5 * s))
+        assert row.q_pass is False, direction
+        assert verdict.gates["q"] is False
+        assert verdict.passed is False
+
+    # and 0.5x the scale, the same way, passes -- so the failures above are
+    # the gate biting and not the rig being broken
+    for direction in (+1.0, -1.0):
+        alpha_rfx = alpha_ref * (1.0 + direction * 0.5 * s)
+        verdict = rmj.judge(
+            [rmj.ReferenceMode(f_ref, q_ref), rmj.ReferenceMode(2.0, 100.0)],
+            [rmj.SolverMode(f_ref, math.pi * f_ref / alpha_rfx),
+             rmj.SolverMode(2.0, 100.0)],
+            record, f_min=0.5, f_max=2.5)
+        assert verdict.gates["q"] is True, direction
+
+
+def test_issue945_the_row_reports_the_frequency_term_and_the_rate_term(
+) -> None:
+    """Both halves of the subtraction are on the row and in the report.
+
+    A reader must be able to see WHAT was subtracted, not just that the
+    verdict changed: the row carries ``q_log_freq_term = ln(f_rfx/f_ref)``
+    and ``q_log_rate_ratio_signed = ln(alpha_rfx/alpha_ref)``, they satisfy
+    the identity that defines them, and the rate term is inside the DECLARED
+    interval ``[log1p(-s), log1p(s)]`` exactly when the row passes."""
+    verdict = _judge(RFX_TODAY)
+    gated = verdict.q_gated_rows
+    assert gated
+    for row in gated:
+        # the identity: ln(alpha_rfx/alpha_ref) = ln(f) - ln(Q)
+        assert row.q_log_freq_term == pytest.approx(
+            math.log(row.rfx_freq / row.ref_freq), rel=1e-15)
+        assert row.q_log_rate_ratio_signed == pytest.approx(
+            row.q_log_freq_term - row.q_log_ratio_signed, rel=1e-15)
+        # and it is the quantity the DECLARED interval bounds
+        s = row.q_window
+        rate_lower = -math.inf if s >= 1.0 else math.log1p(-s)
+        rate_upper = math.log1p(s)
+        in_rate_interval = (
+            rate_lower <= row.q_log_rate_ratio_signed <= rate_upper)
+        assert row.q_pass is in_rate_interval
+
+    # the printed report says what was subtracted, per row
+    text = rmj.format_report(verdict)
+    assert "shifted by ln(f_rfx/f_ref)" in text
+    assert "ln(alpha_rfx/alpha_ref)" in text
+    for row in gated:
+        assert f"{row.q_log_freq_term:+.6f}" in text
+
+    # and the persisted row carries both keys (the script uses asdict)
+    payload = json.loads(json.dumps(
+        [dataclasses.asdict(row) for row in verdict.rows]))
+    for was, row in zip(payload, verdict.rows):
+        assert was["q_log_freq_term"] == (
+            None if row.q_log_freq_term is None else row.q_log_freq_term)
+        assert "q_log_rate_ratio_signed" in was
+
+
+def test_issue945_the_frequency_term_is_refused_on_an_unphysical_frequency(
+) -> None:
+    """``ln(f_rfx/f_ref)`` needs two positive frequencies. A non-positive or
+    non-finite one is a caller bug and is refused rather than clamped into a
+    plausible answer -- the same rule :func:`rate_interval_to_log_q_bounds`
+    already applies to a negative rate scale."""
+    assert rmj.log_frequency_term(0.15, None) == 0.0
+    assert rmj.log_frequency_term(0.15, 0.15) == 0.0
+    assert rmj.log_frequency_term(1.0, 2.0) == pytest.approx(math.log(2.0))
+    for bad in (0.0, -1.0, math.inf, math.nan):
+        with pytest.raises(ValueError):
+            rmj.log_frequency_term(1.0, bad)
+        with pytest.raises(ValueError):
+            rmj.log_frequency_term(bad, 1.0)
+    for bad in (math.inf, -math.inf, math.nan):
+        with pytest.raises(ValueError):
+            rmj.rate_interval_to_log_q_bounds(0.5, bad)
+
+
+def test_the_persisted_ingredient_payload_round_trips_through_json() -> None:
+    """The script writes the ingredients and the per-row bounds into the
+    retained record with ``dataclasses.asdict`` + ``json.dump``. An
+    unserializable field would only surface on a live Meep host, so it is
+    checked here instead."""
+    verdict = _judge(RFX_TODAY)
+    payload = {
+        "q_gate_character": rmj.Q_GATE_CHARACTER,
+        "q_gate_ingredients": [dataclasses.asdict(item)
+                               for item in rmj.Q_GATE_INGREDIENTS],
+        "assignment": [dataclasses.asdict(row) for row in verdict.rows],
+    }
+    back = json.loads(json.dumps(payload, indent=1))
+    assert [i["kind"] for i in back["q_gate_ingredients"]] == [
+        "declared-policy", "derived", "absent"]
+    gated = [r for r in back["assignment"] if r["q_gated"]]
+    assert gated
+    for row in gated:
+        assert row["q_log_lower"] is not None
+        assert row["q_log_ratio_signed"] is not None
+    # the s >= 1 row keeps its unbounded high-Q side through the round trip
+    # (Python's json writes Infinity; other committed crossval records do too)
+    unbounded = [r for r in gated if r["q_window"] >= 1.0]
+    assert unbounded
+    assert all(r["q_log_upper"] == math.inf for r in unbounded)
+
+CV02_RECORD = REPO_ROOT / "validation/crossval/_02_ring_resonator_results/crossval.json"
+
+#: WHICH retained record the guard below is a guard against. The check is only
+#: a check because this record was written BEFORE the asymmetric transform
+#: existed -- re-driving today's judge on it then answers "did the transform
+#: move an answer that was already committed?". Regenerate the record with
+#: today's judge and the comparison becomes the judge against its own output,
+#: which cannot detect a verdict move at all. So the identity is pinned here:
+#: a regeneration reds this test loudly instead of quietly voiding it.
+#:
+#: If you regenerated the record on purpose, do NOT simply retype these two
+#: strings. Re-establish the guard against a copy of the record that predates
+#: the transform under test (the commit named below still carries it), or
+#: delete the guard and say in the PR body that the falsifier is gone.
+CV02_RECORD_PIN = {
+    "commit": "296cabada23343eede7beb05a0a4f98f7bb64adf",
+    "date_utc": "2026-09-06T17:07:57Z",
+}
+
+
+def test_the_committed_record_is_still_the_pre_transform_one() -> None:
+    """The guard below is void if the record moved. Fail loudly when it does.
+
+    Nothing else in the suite notices a regenerated
+    ``_02_ring_resonator_results/crossval.json``: the verdict comparison would
+    keep passing while silently comparing today's judge against a record that
+    same judge had just written.
+    """
+    doc = json.loads(CV02_RECORD.read_text(encoding="utf-8"))
+    assert {k: doc[k] for k in CV02_RECORD_PIN} == CV02_RECORD_PIN, (
+        "the retained cv02 record is not the one the transform guard was "
+        "established against -- read CV02_RECORD_PIN before touching this"
+    )
+
+
+def test_the_committed_record_reproduces_its_own_verdict_through_the_judge(
+) -> None:
+    """The #945 transform must not move a verdict that is already committed.
+
+    The retained record carries both mode lists, the band, the record length
+    and the gate table it was written with. Re-driving today's judge on those
+    stored inputs has to return the same five gates. This is the falsifier for
+    "widening the high-Q side changed a committed answer": if it ever fires,
+    the record is NOT to be regenerated to make it green -- the divergence is
+    the finding.
+
+    Which record that is, and why regenerating it would void this check
+    rather than refresh it: :data:`CV02_RECORD_PIN` and the test above.
+    """
+    doc = json.loads(CV02_RECORD.read_text(encoding="utf-8"))
+    assert {k: doc[k] for k in CV02_RECORD_PIN} == CV02_RECORD_PIN
+    f_min, f_max = doc["rig"]["band_c_over_a"]
+    verdict = rmj.judge(
+        [rmj.ReferenceMode(m["freq_c_over_a"], m["Q"])
+         for m in doc["measured"]["meep_modes"]],
+        [rmj.SolverMode(m["freq_c_over_a"], m["Q"], m["amplitude"])
+         for m in doc["measured"]["rfx_modes"]],
+        doc["rig"]["record_length_meep_units"],
+        f_min=f_min, f_max=f_max,
+    )
+    assert verdict.gates == doc["gates"]
+    assert verdict.passed is doc["verdict"]["judge_passed"]
+    # per row, too -- a gate table can agree while a row's reason changed
+    stored = doc["measured"]["assignment"]
+    assert len(verdict.rows) == len(stored)
+    for row, was in zip(verdict.rows, stored):
+        assert row.ref_freq == pytest.approx(was["ref_freq"])
+        assert row.q_gated is was["q_gated"]
+        assert row.q_pass is was["q_pass"]
+        assert row.q_window == pytest.approx(was["q_window"])
+        if was["q_log_ratio"] is not None:
+            assert row.q_log_ratio == pytest.approx(was["q_log_ratio"])
+    # and the record really does exercise the s >= 1 branch this PR is about,
+    # so the check above is not vacuous
+    assert any(r.q_gated and r.q_window >= 1.0 for r in verdict.rows)
+
+def test_script_persists_the_ingredient_split_and_drops_the_old_claim(
+) -> None:
+    """Revert-proof, on the script: the retained artifact must carry the named
+    ingredients and the heuristic reading, and must not re-assert that the Q
+    window is derived rather than chosen."""
+    source = SCRIPT_PATH.read_text(encoding="utf-8")
+    assert "q_gate_ingredients" in source
+    assert "Q_GATE_INGREDIENTS" in source
+    assert "Q_GATE_CHARACTER" in source
+    assert "not a chosen number" not in source
+    assert "consistency heuristic" in source
+
+
+def test_the_retained_record_keeps_its_superseded_note_and_a_pointer_to_that(
+) -> None:
+    """The one surface the withdrawal could not reach, and the pointer that
+    stands in for reaching it.
+
+    ``_02_ring_resonator_results/crossval.json`` still carries the framing this
+    PR withdraws -- its ``gate_limits.note`` calls the window "not a chosen
+    number" -- and it CANNOT be regenerated to fix that: the record is pinned
+    (:data:`CV02_RECORD_PIN`) because it is the only copy predating the
+    transform, so re-driving today's judge on it is the falsifier for "the
+    transform moved a committed verdict". Regenerating would void the
+    falsifier to fix a sentence.
+
+    So the correction lives beside the record instead, on the surface a reader
+    arrives from: the manifest entry that points at it. This test keeps the two
+    tied together -- if the record's note is ever fixed at the source, the
+    pointer can go with it; while the note stands, the pointer must too.
+    """
+    record = json.loads(CV02_RECORD.read_text(encoding="utf-8"))
+    note = record["gate_limits"]["note"]
+    manifest = json.loads(
+        (REPO_ROOT / "validation/crossval/manifest.json").read_text(
+            encoding="utf-8"))
+    case = next(c for c in manifest["cases"] if c["id"] == "02_ring_resonator")
+    if "not a chosen number" in note:
+        assert "superseded by ring_mode_judge.Q_GATE_INGREDIENTS" in (
+            case["claim_scope"]), (
+            "the retained record still calls the Q window 'not a chosen "
+            "number'; the manifest must say that wording is superseded")
 
 
 def test_reference_side_carries_the_same_q_floor_as_rfx() -> None:
@@ -784,9 +1676,11 @@ def test_verdict_lane_q_gate_is_run_length_contingent() -> None:
     """Why the Meep (verdict) lane keeps its calibrated record instead of the
     tau-scaled one -- executable, so the qualification cannot rot.
 
-    The judge's Q window ``tau_ref/T`` is a record-length RESOLUTION bound: it
-    shrinks as 1/T. The rfx-vs-Meep Q gap is a discretization offset and does
-    not. So on the very same (frozen) mode pair the q gate passes at the
+    The judge's Q window ``tau_ref/T`` shrinks as 1/T. The rfx-vs-Meep Q gap
+    does not. (Why it does not is UNRESOLVED -- #907 retracted the
+    "discretization offset" attribution this docstring used to state; the
+    T-independence is what is measured, the mechanism is not.) So on the very
+    same (frozen) mode pair the q gate passes at the
     committed record and fails at a longer, better-settled one, with the
     frequency gates and the |ln Q| values unchanged. That is a comparator
     defect tracked as issue #907 -- the tau_ref/T window shrinks with T faster
@@ -796,9 +1690,19 @@ def test_verdict_lane_q_gate_is_run_length_contingent() -> None:
 
     CHARACTERIZATION TEST. It pins the CURRENT, DEFECTIVE behaviour: the
     assertion ``longer.gates["q"] is False`` is the bug, not the requirement.
-    When #907 is fixed this test must be INVERTED (a longer, better-settled
-    record has to keep the PASS) or deleted along with it -- do not "repair"
-    the judge to keep this assertion green."""
+    When the contingency is fixed this test must be INVERTED (a longer,
+    better-settled record has to keep the PASS) or deleted along with it -- do
+    not "repair" the judge to keep this assertion green.
+
+    **#907 being CLOSED is not that fix.** It was closed on 2026-09-13 as a
+    design item: its separable mathematical defect went to #945, and the three
+    ingredients that would let a floor be derived -- the rfx estimator's real
+    SNR / model-order uncertainty, a source-free Meep reference record, and a
+    discretization budget against the exact annulus -- were deferred to a
+    pre-declared campaign rather than settled by choosing a number. Setting the
+    floor from the observed gap was refused, because it would make the gate
+    certify the agreement it exists to test. So this test stays as written
+    until that campaign lands."""
     committed = _judge(RFX_TODAY)                      # T = RECORD_T = 291
     longer = rmj.judge(MEEP_REFERENCE, RFX_TODAY, 3385.0,
                        f_min=0.1, f_max=0.2)           # 1 e-fold of tau_slow
@@ -833,6 +1737,23 @@ def test_cv02_persists_and_exits_through_one_decision_value() -> None:
     reports inconclusive (the failure found on the abandoned #907 branch).
     This source contract keeps that invariant cheap and always-on: adding an
     exit path with a literal or another expression fails review immediately.
+
+    It is no longer the only contract, and it was never sufficient on its own:
+    reading the source cannot see an exit the process takes by another route
+    (an uncaught exception in the tail, a ``sys.exit`` inside something the
+    tail calls), which is why #946 was reopened after PR #999.  The executing
+    contract lives in
+    ``tests/crossval/test_crossval_exit_code_is_the_process_exit_code.py``,
+    which runs cv02 in a subprocess with a forced late exit and compares the
+    persisted code with the subprocess's own return code.  This test keeps its
+    cheap half of the job: ``_rc`` is one value, so there is one value for
+    that file to measure.
+
+    What changed in the record shape (#946): ``exit_code`` and ``summary`` are
+    no longer written into ``_doc`` by hand.  ``_exit_evidence.write_record``
+    puts them into the verdict block and returns the code, so the script
+    cannot hold a second copy that drifts from the value it exits with -- and
+    ``_rc`` is now the name that write binds.
     """
     tree = ast.parse(SCRIPT_PATH.read_text(encoding="utf-8"),
                      filename=str(SCRIPT_PATH))
@@ -852,11 +1773,28 @@ def test_cv02_persists_and_exits_through_one_decision_value() -> None:
         for node in exit_calls
     ), "every cv02 exit path must use the persisted _rc decision"
 
-    persisted = [
-        node_value for node in ast.walk(tree)
+    # No hand-written "exit_code" key survives: the one road into the record
+    # is write_record, and it is what binds _rc.
+    hand_written = [
+        key.lineno for node in ast.walk(tree)
         if isinstance(node, ast.Dict)
-        for key, node_value in zip(node.keys, node.values)
+        for key in node.keys
         if isinstance(key, ast.Constant) and key.value == "exit_code"
     ]
-    assert len(persisted) == 1
-    assert isinstance(persisted[0], ast.Name) and persisted[0].id == "_rc"
+    assert hand_written == [], (
+        "cv02 puts an exit code into a document by hand at line(s) "
+        f"{hand_written}; route it through _exit_evidence.write_record (#946)")
+
+    writes = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Attribute)
+        and node.value.func.attr == "write_record"
+    ]
+    assert len(writes) == 2, (
+        "cv02 must write its record in exactly two places -- the live run and "
+        f"--replay -- found {len(writes)}")
+    assert all(len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+               for node in writes)
+    assert {node.targets[0].id for node in writes} == {"_rc", "rc"}

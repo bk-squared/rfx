@@ -438,6 +438,8 @@ def main():
     assert all(d.platform == 'cpu' for d in jax.devices())
     out = ROOT / f'validation/research/multiband_nu/results/adq_{args.arm}.json'
     # Refuse to overwrite evidence or rerun an already started arm.
+    if out.exists():
+        raise FileExistsError(out)
     claim = out.with_suffix('.started')
     with claim.open('x') as f:
         f.write(f'{time.time()}\n')

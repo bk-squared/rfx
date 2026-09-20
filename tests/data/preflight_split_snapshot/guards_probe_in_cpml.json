@@ -1,0 +1,23 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "absorber_overlap",
+        "loc": null,
+        "message": "Probe at (0.01, 0.01, 0.022) is near/inside CPML region (CPML z-thickness: lo=23.98mm, hi=23.98mm). Signal will be attenuated. Move probe to interior.",
+        "severity": "warning",
+        "source": "_validate_cfg_absorber_placement"
+      },
+      {
+        "code": "absorber_overlap",
+        "loc": null,
+        "message": "Source/port at (0.01, 0.01, 0.0225) is near/inside CPML region (CPML z-thickness: lo=23.98mm, hi=23.98mm). Energy will be absorbed. Move source to interior.",
+        "severity": "warning",
+        "source": "_validate_cfg_absorber_placement"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 2,
+    "ok": true
+  }
+}

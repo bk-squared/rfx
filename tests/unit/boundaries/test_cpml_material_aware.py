@@ -395,9 +395,13 @@ def test_distributed_nu_cpml_forward_is_ad_finite():
 #
 # Companion to section 2 (which guards the LIVE shard_map runner reached via
 # ``sim.run(devices=...)``). This one guards the LEGACY pmap runner
-# ``rfx.runners.distributed.run_distributed``, which is reached only by direct
-# import (the package re-exports it as ``rfx.runners.run_distributed``;
-# ``sim.run(devices=...)`` routes to ``distributed_v2`` instead).
+# ``rfx.runners.distributed.run_distributed``. Since #1038 leg 6 that full module
+# path is the ONLY way in: the package no longer re-exports the name (it used to
+# be available as ``rfx.runners.run_distributed``, which pointed the public name
+# at a runner ``sim.run()`` does not dispatch to). ``sim.run(devices=...)``
+# routes to ``distributed_v2`` instead, and reaches this runner only as v2's
+# ``n_devices == 1`` fast path. The import at the top of this file is by full
+# path already, so leg 6 changed nothing for these tests.
 #
 # Before #205 the pmap scan body passed ``None`` to the (since-#227
 # material-aware) CPML kernels (witnessed: eps_r=9, 2 devices -> inf on

@@ -67,6 +67,13 @@ logs/
 !docs/guide/images/*.png
 !docs/public/examples/assets/*.png
 !docs/crossval/figures/*.png
+# 2026-09-16 (#873): design-note figures. The workspace rule that a
+# claims-bearing number needs a NAMED figure artifact makes these evidence, not
+# decoration, and an evidence file nobody can resolve from a fresh clone is the
+# defect the numeric-provenance gate exists to stop. Negated rather than left to
+# `git add -f`, which is how docs/design_notes/931_migration/'s figures got in
+# and is invisible to the next author.
+!docs/design_notes/figures/*.png
 **/*.gif
 **/benchmark_results.json
 examples/*.json

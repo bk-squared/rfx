@@ -917,7 +917,10 @@ def test_fence_msl_junction_mixed_s_matrix():
         _mixed_probe_fed_msl().compute_mixed_s_matrix(
             freqs=np.linspace(1e9, 4e9, 3), num_periods=1.0,
             skip_preflight=True)
-    _fence(go, where=("_sparams.py", "compute_mixed_s_matrix"),
+    # #980 Phase 2 moved the body (and with it this fence) verbatim from
+    # rfx/api/_sparams.py to rfx/sparams/mixed.py; the frame basename tracks
+    # the file, the lane and the enclosing function are unchanged.
+    _fence(go, where=("mixed.py", "compute_mixed_s_matrix"),
            match=r"on the MSL junction S-parameter lane")
 
 
@@ -1071,7 +1074,7 @@ def test_fence_waveguide_s_matrix_subpixel():
             warnings.simplefilter("ignore")
             _wr90().compute_waveguide_s_matrix(n_steps=4,
                                                subpixel_smoothing=True)
-    _fence(go, where=("_sparams.py", "compute_waveguide_s_matrix"),
+    _fence(go, where=("waveguide.py", "compute_waveguide_s_matrix"),
            match=r"on the waveguide S-matrix lane")
 
 
@@ -1080,7 +1083,7 @@ def test_fence_waveguide_s_matrix_multimode():
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             _wr90(n_modes=2).compute_waveguide_s_matrix(n_steps=4)
-    _fence(go, where=("_sparams.py", "compute_waveguide_s_matrix"),
+    _fence(go, where=("waveguide.py", "compute_waveguide_s_matrix"),
            match=r"on the multimode waveguide S-matrix path")
 
 
@@ -1151,10 +1154,12 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
         (__name__, "test_fence_adi_run"),
     ("rfx/api/_execute.py", "run", "subgridded (SBP-SAT) run()"):
         (__name__, "test_fence_subgridded_run"),
-    ("rfx/api/_sparams.py", "compute_mixed_s_matrix",
+    ("rfx/sparams/mixed.py", "compute_mixed_s_matrix",
      "MSL junction S-parameter"):
         (__name__, "test_fence_msl_junction_mixed_s_matrix"),
-    ("rfx/api/_sparams.py", "compute_coax_msl_transition", "coax-MSL transition"):
+    # #980 Phase 2 moved compute_coax_msl_transition (and this call site with
+    # it) verbatim from rfx/api/_sparams.py to rfx/sparams/coax.py.
+    ("rfx/sparams/coax.py", "compute_coax_msl_transition", "coax-MSL transition"):
         ("tests.unit.ports.test_msl_realized_port_contract",
          "test_direct_transition_cannot_silently_drop_lossy_sheets"),
     ("rfx/differentiable_material_fit.py", "forward",
@@ -1182,10 +1187,10 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
         (__name__, "test_fence_forward_upml"),
     ("rfx/api/_execute.py", "forward", "dispersive (Debye/Lorentz)"):
         (__name__, "test_fence_forward_dispersive_overlap"),
-    ("rfx/api/_sparams.py", "compute_waveguide_s_matrix",
+    ("rfx/sparams/waveguide.py", "compute_waveguide_s_matrix",
      "waveguide S-matrix lane"):
         (__name__, "test_fence_waveguide_s_matrix_subpixel"),
-    ("rfx/api/_sparams.py", "compute_waveguide_s_matrix",
+    ("rfx/sparams/waveguide.py", "compute_waveguide_s_matrix",
      "multimode waveguide S-matrix path"):
         (__name__, "test_fence_waveguide_s_matrix_multimode"),
     ("rfx/runners/uniform.py", "run_uniform", "boundary='upml'"):

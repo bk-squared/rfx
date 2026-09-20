@@ -327,8 +327,12 @@ This teaching board is coarse — 0.25 mm cells across a 1 mm substrate — so t
 run prints the extractor's advisory that the reported Z0 deviates from the
 analytic Hammerstad–Jensen value by more than 10 %. Z0 rides on the N-probe fit,
 which carries Yee-staircase bias at this cell size, and the rasterized board is
-not exactly the declared one (issue #752); the V·I-split S11/S21 are unaffected.
-Refine the mesh before quoting Z0.
+not exactly the declared one (issue #752). The advisory also reports this port's
+probe clearance, and on this board it is satisfied — so standing-wave content at
+the probes is not the cause here, and the remedy is a finer mesh, not a longer
+feed. The fitted Z0 and beta do not enter S11/S21, which use the measured V/I
+and the analytic Z0 anchor; that is a dataflow fact and not a certificate for
+those inputs. Refine the mesh before quoting Z0.
 
 ### Feed direction
 

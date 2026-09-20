@@ -1081,7 +1081,18 @@ def test_fitted_impedance_and_beta_cannot_change_production_s(tmp_path, monkeypa
     b, dump_b, warnings_b = _run_with(planes, tmp_path, "fit_b", **run_args)
     assert any("Fitted Z0/beta are not used in S11/S21" in w
                and "does not certify those inputs" in w for w in warnings_b)
-    assert not any("S11/S21 are unaffected" in w for w in warnings_b)
+    # #726: the guard appends the clearance measurement only when the port's
+    # probe_clearance is NOT satisfied (review P1b -- on a satisfied port that
+    # text is the wrong advice for the guard's common trigger, coarse-mesh
+    # staircase bias). This fixture registers no reflector, so the clearance
+    # is satisfied and neither the measurement nor the sentence retracting
+    # the old claim is present -- but the claim itself must still be absent.
+    # Strip the retraction anyway, so this assertion keeps its meaning if the
+    # fixture ever grows a reflector.
+    from rfx.preflight.msl import MSL_PROBE_CLEARANCE_RETRACTION as _RETRACT
+    assert any("probe clearance is satisfied" in w for w in warnings_b)
+    assert not any("S11/S21 are unaffected" in w.replace(_RETRACT, "")
+                   for w in warnings_b)
     assert a.assembly == b.assembly == "multi_drive_solve"
     assert np.max(a.cond_a) < 1e3 and np.max(b.cond_a) < 1e3
     assert not np.array_equal(a.Z0, b.Z0)

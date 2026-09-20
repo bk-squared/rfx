@@ -119,9 +119,9 @@ The final joint fit and the case's existing exact discrete-lattice oracle give:
 
 The maximum signed lattice residuals supporting the three final automatic
 rows are resolved by the numeric-provenance contract from the retained reports:
-`docs/research_notes/issue872/cv24-uniform-joint-adjudication.json::variants.candidate_auto.residual_ppm.TM111 = -0.4619`,
-`docs/research_notes/issue872/cv24-single_band-joint-adjudication.json::variants.candidate_auto.residual_ppm.TE201 = -0.0171`,
-and `docs/research_notes/issue872/cv24-metric_defect-joint-adjudication.json::variants.candidate_auto.residual_ppm.TE102 = 5545.7482`
+`tests/fixtures/harminv_record_support/cavity_joint_adjudication_uniform.json::variants.candidate_auto.residual_ppm.TM111 = -0.4619`,
+`tests/fixtures/harminv_record_support/cavity_joint_adjudication_single_band.json::variants.candidate_auto.residual_ppm.TE201 = -0.0171`,
+and `tests/fixtures/harminv_record_support/cavity_joint_adjudication_metric_defect.json::variants.candidate_auto.residual_ppm.TE102 = 5545.7482`
 (each stored in ppm).
 
 The falsifier is a fresh run of cv24's existing metric swap on the same
@@ -131,9 +131,11 @@ measurement does not make the wrong FDTD operator pass. The three retained-
 record regressions complete in about 3 s without any FDTD solve. The baseline
 automatic estimator fails the two healthy-record stationarity checks.
 
-The original preprocessing-only reports remain under
-`docs/research_notes/issue872/`; final reports are `*-joint.json`, with
-`*-joint-adjudication.json` produced by
+The three adjudication reports this note quotes are committed under
+`tests/fixtures/harminv_record_support/`, so a reader who clones the repo can
+open them. The rest of that run's preprocessing-only reports stay local and are
+mirrored at `docs/research-archive/rfx/research_notes/` in the workspace repo;
+final reports are `*-joint.json`, with `*-joint-adjudication.json` produced by
 `scripts/diagnostics/harminv_cavity_adjudication.py`. Replay reuses baseline
 results only after matching source hashes and the full input metadata.
 Both automatic and explicitly undecimated paths were evaluated. No lattice,
@@ -194,8 +196,10 @@ Reproduction helpers:
 
 All three VESSL runs (two bootstrap failures before any solve and the final
 successful test) were deleted only after their full provider logs were
-backed up and hashed under `docs/research_notes/vessl_logs/`. No running
-external experiment was terminated.
+backed up and hashed under `docs/research_notes/vessl_logs/`, which is
+local-only in this public repo and mirrored at
+`docs/research-archive/rfx/research_notes/vessl_logs/` in the workspace repo.
+No running external experiment was terminated.
 
 ## CI follow-up: short-record capacity correction
 
@@ -207,7 +211,7 @@ minimum-sample check therefore allowed a saturated model matrix.
 
 The new plan stops after factor 9, retaining 186 samples and 61 columns.
 The unchanged 0.03% continuum gate now passes at
-`docs/research_notes/issue872/capacity-impact/report.json::records[52].after.continuum_error_pct = 0.0227`
+`tests/fixtures/harminv_record_support/capacity_impact_report.json::records[52].after.continuum_error_pct = 0.0227`
 (percent units), versus 0.0827% with the earlier crop-only plan. A fresh full
 stage1 FDTD gate also passes. Its old 3.5% test-side assertion was stale; the
 test now names the same existing 0.03% constant already enforced by the script.
@@ -223,7 +227,7 @@ and originally insufficient records retain their existing dimension limits.
 The impact replay checks 53 actual estimator inputs in the same environment:
 30 cv02/cv24 inputs, two Meep-version inputs, 20 fed/unfed GPU probe traces,
 and the failing stage1 input. The first
-`docs/research_notes/issue872/capacity-impact/report.json::unchanged_records = 52`
+`tests/fixtures/harminv_record_support/capacity_impact_report.json::unchanged_records = 52`
 have identical plans and **exactly identical mode outputs** before/after the
 capacity correction; only stage1 changes. Source and input hashes, both mode
 lists and a reproduction script are retained in `capacity-impact/`. This
