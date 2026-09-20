@@ -19,7 +19,8 @@ are the ones this script claims to add. It refuses to write otherwise.
 WHERE THE TREES COME FROM. Eight of the ten resolvable shas are in this clone
 or can be fetched from origin. Two -- ``c3189960`` and ``296cabad`` -- are
 refused by origin outright ("upload-pack: not our ref") and survive only in the
-read-only primary checkout on NFS. Their trees are recorded in :data:`TREES`
+one read-only checkout that fetched them before they became unreachable. Their
+trees are recorded in :data:`tests._fixture_provenance.RECORDED_CODE_TREES`
 with the donor named, because a clone that never had those objects still has to
 be able to check the annotation against main, and the check that matters is
 "is this tree on main", which any full clone can answer.
