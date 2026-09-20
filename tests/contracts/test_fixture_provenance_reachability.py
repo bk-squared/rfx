@@ -499,6 +499,15 @@ NOT_A_SHA: dict[tuple[str, str], str] = {
         "a dated main reference ('main@2026-08-17'), written by hand as a datum label",
     ("tests/fixtures/msl_z0_length_invariance/platform_datums.json", "datums[3].commit"):
         "a dated main reference ('main@2026-08-24'), written by hand as a datum label",
+    ("tests/fixtures/msl_z0_length_invariance/platform_datums.json", "datums[9].commit"):
+        "the literal string 'not recorded', written by hand. The row's own `source` "
+        "field says why: the run copied a work tree without its git directory, so "
+        "`git rev-parse HEAD` printed 'no git' and there was nothing to record. That "
+        "is the writer-side half of this issue, and it is what "
+        "tests._fixture_provenance.capture() now raises on instead of stamping. The "
+        "row itself cannot be repaired after the fact -- the tree it measured was a "
+        "branch work tree that no longer exists -- so the label stays and is declared. "
+        "Arrived on main in 906ce0eb (#1099) while this branch was open",
     ("tests/fixtures/rcs_mie_e4/rcs_pec_sphere_mie.json", "meta.commit"):
         "a descriptive label ('post-276-97ca6a5') that embeds a short sha rather "
         "than being one",
@@ -656,6 +665,31 @@ def test_the_annotation_table_has_no_stale_entries() -> None:
             problems.append(f"{key}: this site passes on its own now -- delete the "
                             "exemption rather than let it outlive its reason")
     assert not problems, "stale ANNOTATED entries:\n  " + "\n  ".join(problems)
+
+
+def test_the_not_a_sha_table_has_no_stale_entries() -> None:
+    """The same two directions ANNOTATED gets, because it is the same kind of table.
+
+    NOT_A_SHA's own comment claimed it was "asserted exactly, both directions"
+    and nothing asserted it: an entry whose site was deleted, or whose value was
+    later replaced by a real sha, would have sat here forever declaring a label
+    that no longer exists. The forward direction -- a label nobody declared --
+    already reds in the gate above; these are the two reverse ones.
+    """
+    live = {(rel, keypath): sha for rel, keypath, sha, _ in _sites()}
+    problems = []
+    for key, reason in NOT_A_SHA.items():
+        if not reason or not reason.strip():
+            problems.append(f"{key}: empty reason -- a declared label with no reason "
+                            "is indistinguishable from a generator that failed open")
+            continue
+        if key not in live:
+            problems.append(f"{key}: names no site that exists today -- delete it")
+            continue
+        if _HEX.match(live[key]):
+            problems.append(f"{key}: the value is a sha now ({live[key][:8]}) -- "
+                            "delete the entry and let the reachability arms judge it")
+    assert not problems, "stale NOT_A_SHA entries:\n  " + "\n  ".join(problems)
 
 
 def test_no_provenance_yet_is_exact() -> None:

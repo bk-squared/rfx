@@ -267,6 +267,17 @@ jobs:
         # missing. Without this, the provenance contract would SKIP and the job
         # would still be green -- a skip and a pass look identical in the
         # summary, which is the shape of defect #1013 exists to stop.
+        #
+        # Gated like every other step in this job (#1115): what it protects is
+        # the sharded pytest below, and that step does not run on the not-code
+        # branch. On that branch tests/contracts runs in guards-and-preflight
+        # instead, from a depth-1 checkout with no RFX_PROVENANCE_GATE_REQUIRED,
+        # so the provenance gate skips there with its stated reason. That costs
+        # nothing this gate is for: a not-code diff touches no file under
+        # tests/, so it can add no fixture, and every push to main classifies as
+        # code (scripts/ci/classify_changes.sh), which is where this gate's true
+        # positive is meant to land.
+        if: needs.changes.outputs.code_changed != 'false'
         run: |
           set -eu
           # Each check runs on its own line and its status is TESTED. An earlier
