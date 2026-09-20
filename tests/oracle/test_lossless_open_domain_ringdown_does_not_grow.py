@@ -52,17 +52,45 @@ run.  A least-squares slope over many blocks does not have that sensitivity.
 
 THE FALSIFIER IS IN THIS FILE.  ``test_the_gate_is_red_under_the_pre_931_edge_rule`` runs the
 same arm with one mutation -- ``rfx.boundaries.pec._volume_edge_masks`` replaced by the
-``a3e4dba4^`` body -- and requires the rate to come out POSITIVE.  A gate whose red state has
-never been observed is not known to measure anything (this repo has been bitten by exactly that;
-see the "a physics gate can bind an artifact" lesson).  Keep the two together: if the mutation
-test stops being red, this gate has stopped discriminating and the green one means nothing.
+``a3e4dba4^`` body -- and requires THIS GATE'S OWN PREDICATE to come out red.  A gate whose red
+state has never been observed is not known to measure anything (this repo has been bitten by
+exactly that; see the "a physics gate can bind an artifact" lesson).  Keep the two together: if
+the mutation test stops being red, this gate has stopped discriminating and the green one means
+nothing.
+
+WHAT THE MUTATION DOES NOW, AND WHAT IT DID (measured 2026-09-20, VESSL 369367262373, rtx4090,
+float32, this file's ``__main__`` run unchanged at two commits; logs
+``bk-workspace/.1141-ringdown/20260920T163029Z/``).  Until #1136 the falsifier required GROWTH,
+a positive rate on every probe.  #1136 (#1070) sizes the grid from the declared length: this
+fixture's x ratio is ``232.00000000000003`` and ``ceil`` had bought a 233rd cell, which no Box
+filled and which the CPML pad extension replicated as a vacuum column through the x-hi pad.
+With that cell gone the mutated arm no longer grows:
+
+    commit      realized grid     arm       worst log rate/step   settling    gate
+    eb9efeae    (250, 189, 81)    shipped        -1.934e-04       -43.37 dB   green
+    eb9efeae    (250, 189, 81)    mutated        +3.002e-04         0.00 dB   red (grows)
+    a6d6fce1    (249, 189, 81)    shipped        -1.926e-04       -43.30 dB   green
+    a6d6fce1    (249, 189, 81)    mutated        -8.379e-05       -35.41 dB   red (settling only)
+
+Read it exactly this far and no further.  (1) The growth record needed BOTH the pre-#931 edge
+rule AND the 250-cell realization; the 250-cell realization carried the x-hi vacuum pad facet
+(#1070), and the extra cell and the facet were not separated -- no run has the cell without the
+facet.  So "overhang ring plus a thin absorber grew" above is the 2026-09-16 reading of a rig
+that also had the facet, and it has not been re-derived without it.  (2) On the grid rfx builds
+today the mutation does not make the operator unstable on this record; it slows the decay
+(worst rate -8.4e-05 against -1.9e-04) and leaves the run 4.59 dB short of the -40 dB bar, so
+the gate is still red under it, through its SETTLING half alone -- the rate half passes
+(-8.4e-05 is below the -2.0e-05 bar).  The mutated row reproduced bit-for-bit across two GPU
+runs (369367262302 and 369367262373).  (3) The shipped arm moved by 0.07 dB between the two
+grids.  (4) Whether the pre-#931 rule grows on some other facet-free rig is not answered here.
 
 PRECISION.  The seed argument above is a float32 round-off argument, and the lane that produced
 this gate's red/green evidence pins ``JAX_ENABLE_X64=0``.  The production GPU lanes do not pin
 it, so an x64 session would change the seed amplitude and could move the step at which the
 mutated arm turns up.  That is covered rather than assumed: ``conftest.py``'s ``_no_x64_leak``
-(#646) fails a session that has flipped x64 globally, and an x64 run would make the FALSIFIER
-fail loudly -- which is the right failure, because it says the red state was not reproduced.
+(#646) fails a session that has flipped x64 globally, and an x64 run could move the mutated arm's
+settling figure; if that takes it under the bar the FALSIFIER fails loudly -- which is the right
+failure, because it says the red state was not reproduced.
 
 WHAT THIS GATE DOES NOT COVER.  It pins ONE point: ``n = 4`` (dx = h/4) with
 ``cpml_layers = 8``, the arm #931 fixed.  It is not a statement about other resolutions or other
@@ -70,8 +98,9 @@ absorber depths, and it should not be read as one -- thinner absorbers on this s
 a live, separately tracked question (#801).
 
 Related: #801 (the growth record and the live thin-absorber class), #931 (the contract change
-that ended the n = 4 / 8-layer growth), #1070 (a separate absorber-pad defect found on the same
-fixture).
+that ended the n = 4 / 8-layer growth), #1070 / #1136 (the absorber-pad defect found on the same
+fixture, whose fix removed the cell the growth record depended on), #1141 (the decision to
+record this rather than re-pin the old grid).
 """
 from __future__ import annotations
 
@@ -254,18 +283,23 @@ def test_lossless_open_domain_ringdown_decays_on_every_probe():
 @pytest.mark.gpu
 @pytest.mark.slow_physics
 def test_the_gate_is_red_under_the_pre_931_edge_rule(monkeypatch):
-    """The falsifier: with the pre-#931 edge rule the same arm must GROW.
+    """The falsifier: with the pre-#931 edge rule the gate above must be RED.
 
-    One mutation, and it is the one the bisect landed on. If this ever passes quietly, the gate
-    above has stopped discriminating and its green tells you nothing.
+    One mutation, and it is the one the bisect landed on. It asserts the gate's own predicate,
+    not growth: since #1136 the mutated arm decays, slowly, and misses the settling bar by
+    4.59 dB (module docstring, 2026-09-20 table). If this ever passes quietly, the gate above
+    has stopped discriminating and its green tells you nothing.
     """
     rates, settling, _preflight = _run_rates(monkeypatch=monkeypatch, legacy=True)
-    assert min(rates) > 0.0 and settling > SETTLING_DB_BAR, (
-        f"the pre-#931 edge rule no longer makes this arm grow: per-probe log rates {rates} "
-        f"per step (best {min(rates):.3e}), settling {settling:.2f} dB. Either the mutation "
-        f"stopped reaching the solve (check that rfx.boundaries.pec._volume_edge_masks is still "
-        f"what realized_pec_edge_masks calls) or the fixture stopped exciting the instability -- "
-        f"in both cases the companion gate is no longer known to measure anything.")
+    gate_green = settling <= SETTLING_DB_BAR and max(rates) < MAX_LOG_RATE_PER_STEP
+    assert not gate_green, (
+        f"the pre-#931 edge rule no longer turns the gate red: per-probe log rates {rates} per "
+        f"step (worst {max(rates):.3e} against {MAX_LOG_RATE_PER_STEP:.1e}), settling "
+        f"{settling:.2f} dB against {SETTLING_DB_BAR:.0f} dB. Recorded red state on the "
+        f"(249, 189, 81) grid: worst -8.379e-05, settling -35.41 dB. Either the mutation stopped "
+        f"reaching the solve (check that rfx.boundaries.pec._volume_edge_masks is still what "
+        f"realized_pec_edge_masks calls) or the realized fixture moved again -- in both cases "
+        f"the companion gate is no longer known to measure anything.")
 
 
 if __name__ == "__main__":  # measurement helper, not part of the suite
