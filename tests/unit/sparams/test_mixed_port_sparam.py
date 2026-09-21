@@ -1101,7 +1101,11 @@ def test_wire_port_dead_cell_classification_unavailable_on_assemble_exception(
 
 def test_wire_port_advisory_does_not_swallow_a_timeout_signal(monkeypatch):
     """Regression test for the studio-packaging CI failure on PR #555's
-    original head (f3a3db7): a broad ``except Exception`` in the new
+    original head (f3a3db7). The workflow, ``rfx.experiments`` and the studio
+    test named below have since left this repository with Studio; they are
+    history here, and the test itself uses only built-in exceptions.
+
+    A broad ``except Exception`` in the new
     dead-cell classification code caught
     ``rfx.experiments.worker.RunTimedOut`` (at the time, a
     ``TimeoutError`` subclass) a SIGALRM handler raises asynchronously

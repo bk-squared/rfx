@@ -405,6 +405,11 @@ def compute_s_matrix(self, *, lane: str | None = None, **kwargs):
     ------
     ValueError
         No ports registered, or ``lane=`` contradicts the registrations.
+        Also raised by the chosen lane itself: ``compute_coax_msl_transition``
+        (1 coaxial + 1 MSL) refuses a non-passive extracted S by default and
+        is the only lane in the table that does — forward
+        ``strict_passivity=False`` through ``**kwargs`` to get the diagnostic
+        matrix with a warning instead (issue #838).
     NotImplementedError
         Lumped/wire-only (use the run lane), a single coaxial port with no
         ``lane=``, or a combination of port families no calculator covers.

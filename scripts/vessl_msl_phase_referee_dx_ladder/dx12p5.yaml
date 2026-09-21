@@ -1,0 +1,79 @@
+name: rfx-830-msl-ladder-dx12p5
+description: "issue #830 H-b, rung 3 of 3 (REPORT-ONLY, outside the decision rule): the MSL phase-referee thru fixture re-solved on current main at dx = 12.5 um, with every cell-counted length held constant in METRES at its dx = 50 um value (CPML 400 um = 32 layers, probe-0 offset 2500 um = 200 cells, probe spacing 550 um = 44 cells). 53.4 M cells, 4x the timesteps of dx = 50 um; local smoke measured 3.0 GiB peak at dx = 25 um (6.8 M cells), so this rung is expected around 24 GiB against the preset's 48 Gi. Same stack as VESSL 369367259200 (remilab-c0, gpu-rtx4090, rfx-openems image, JAX on CPU). Submit: scripts/vessl_submit.sh scripts/vessl_msl_phase_referee_dx_ladder/dx12p5.yaml msl-phase-referee-dx12p5"
+tags: [rfx, issue-830, msl, phase-referee, dx-ladder, dx12p5]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_PLATFORMS: "cpu"
+  MPLBACKEND: "Agg"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  echo "=== rfx #830 H-b dx ladder: rung dx = 12.5 um (report-only rung) ==="
+  date -u
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  SRC=/root/workspace/byungkwan-workspace/research/rfx-wt-830-ladder
+  test -d "$SRC" || { echo "ERROR: ladder worktree missing at $SRC"; exit 3; }
+
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  git config --global --add safe.directory "$SRC"
+  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx/.git
+
+  RUNS=/root/workspace/claude-workspace/rfx/runs
+  OUT=$RUNS/msl-phase-referee-dx12p5-$(date -u +%Y%m%dT%H%M%SZ)
+  mkdir -p "$OUT"
+  echo "$OUT" > "$RUNS/msl-phase-referee-dx12p5.latest"
+  echo "artifacts: $OUT"
+
+  WORK=/root/work/rfx830-ladder-dx12p5
+  # The solver writes straight into $OUT on NFS, so every file it has
+  # already written survives a hard kill. $WORK holds only the staged
+  # checkout. The trap is then just a permissions fix.
+  trap 'chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
+
+  DIRTY=$(git -C "$SRC" status --porcelain)
+  if [ -n "$DIRTY" ]; then
+    echo "ERROR: the ladder worktree is DIRTY; a run cannot record which code it read."
+    echo "$DIRTY"
+    exit 4
+  fi
+  SHA=$(git -C "$SRC" rev-parse HEAD)
+  BRANCH=$(git -C "$SRC" rev-parse --abbrev-ref HEAD)
+  echo "$SHA" > "$OUT/commit.txt"
+  echo "$BRANCH" > "$OUT/branch.txt"
+  echo "worktree $SRC @ $SHA ($BRANCH), clean"
+
+  rm -rf "$WORK"
+  mkdir -p "$WORK"
+  cp -a "$SRC/." "$WORK/"
+  cd "$WORK"
+  "$PY" -m pip uninstall -y -q jax-cuda12-plugin jax-cuda12-pjrt 2>/dev/null || true
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7"
+  export RFX_REPO_ROOT="$WORK"
+  export PYTHONPATH="$WORK"
+  "$PY" -c "import jax, rfx, os; print('probe ok | jax', jax.__version__, '| backend', jax.default_backend(), '| rfx', getattr(rfx, '__version__', '?'), '| from', os.path.dirname(rfx.__file__))"
+
+  echo "=== solve ==="
+  # POSIX sh has no pipefail, so $? after a pipe is tee's, not the solver's.
+  # The solver writes its own rc to a file from inside the pipe's left side.
+  set +e
+  { timeout 345600 "$PY" -u scripts/diagnostics/msl_phase_referee_dx_ladder.py --dx-um 12.5 --out-dir "$OUT" 2>&1; echo $? > "$OUT/solver.rc"; } | tee "$OUT/solver.log"
+  set -e
+  rc=$(cat "$OUT/solver.rc")
+
+  echo "rung=dx12p5 rc=$rc sha=$SHA branch=$BRANCH out=$OUT" > "$OUT/summary.txt"
+  date -u >> "$OUT/summary.txt"
+  ls -la "$OUT" | tee -a "$OUT/summary.txt"
+  chmod -R a+rX "$OUT" 2>/dev/null || true
+  echo "LADDER_RUNG=dx12p5 RC=$rc"
+  exit "$rc"

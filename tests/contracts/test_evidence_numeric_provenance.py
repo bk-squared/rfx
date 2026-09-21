@@ -646,7 +646,6 @@ CLASSIFICATION: dict[str, str] = {
     "docs/public/guide/probes-sparams.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/guide/quickstart.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/guide/sources-ports.mdx": NO_ARTIFACT_REFERENCE,
-    "docs/public/guide/studio-experiments.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/guide/tutorial-convergence.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/guide/tutorial-patch-antenna.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/guide/validation.mdx": NO_ARTIFACT_REFERENCE,

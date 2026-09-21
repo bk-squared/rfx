@@ -16,19 +16,6 @@ not an accuracy guarantee, and a preflight pass is not a convergence study.
 
 ---
 
-## Geometry at the domain edge
-
-**A dielectric that spans the declared domain can be solved with vacuum in one
-absorber pad.** When `domain / dx` lands one unit in the last place above an
-integer, the grid buys a cell that no `Box` fills, and the pad extension then
-replicates that empty node through the whole pad on that face — so the structure
-ends in a vacuum facet at the interior/pad seam while the other three pads carry
-the material correctly. You see it in `fidelity_report()` as a realized extent
-short of the declaration, and in the solved fields as a reflection from a face
-that should have been transparent. Choose a `domain` commensurate with `dx`, and
-read the realized bounds rather than the declared ones.
-→ [#1070](https://github.com/bk-squared/rfx/issues/1070)
-
 ## Ports and extraction
 
 **The coax→microstrip transition over-reads power by about a factor of three.**
@@ -36,10 +23,11 @@ Measured twice independently on the MSL port's power-wave normalization: the
 returned matrix's own MSL-driven column power runs about 3x the incident power
 (the coax-driven column reads 0.379 / 0.379 / 0.367 on the same run), and a
 six-face Poynting flux box on the same run reads the same factor. The matrix is
-therefore not passive — `compute_coax_msl_transition(...)` returns it with a
-`UserWarning` unless `strict_passivity=True`, which raises instead — and
-transition S-parameters from that path are not usable as an absolute power
-reference. Scope: cross-family transition lanes are not pursued further before
+therefore not passive — `compute_coax_msl_transition(...)` refuses it by default
+(`strict_passivity=True`, raising `ValueError`); pass `strict_passivity=False` to
+get the diagnostic matrix back with a `UserWarning` — and transition
+S-parameters from that path are not usable as an absolute power reference.
+Scope: cross-family transition lanes are not pursued further before
 2.0, so this over-read will not be attributed or corrected; use the
 single-family extractors separately (`compute_msl_s_matrix(...)`, the coaxial
 two-port and line-reflection lanes) for a result you can cite.
@@ -52,11 +40,15 @@ hide inside 1 %. That lane has its own limits — see the
 above 17 GHz recorded in `validation/crossval/07_sheen_lpf.py`.
 → [#838](https://github.com/bk-squared/rfx/issues/838)
 
-**Microstrip propagation constant sits about 0.9 % above the Hammerstad–Jensen
-closed form on every in-band bin.** The offset is systematic, not scatter, and it
-is not yet attributed. Treat rfx microstrip phase as carrying that bias until it
-is.
-→ [#830](https://github.com/bk-squared/rfx/issues/830)
+**The fitted microstrip propagation constant sits 1.0 to 1.3 % above the
+Hammerstad–Jensen closed form on every in-band bin.** On a 600 µm trace over
+250 µm of RO4350B a float64 refit of the probe phasors reads 1.32 … 1.33 % with
+five cells under the strip and 0.97 … 1.04 % with ten, over 3.0–4.5 GHz; the
+offset is not attributed and no trend is claimed, because the strip is one cell
+thick in each run. It is the FITTED `beta`, a diagnostic that does not enter S
+(pinned by a test), so it is not a bias on the phase of an S-parameter. Stated
+in the Microstrip-line row of the [support matrix](support_matrix.md); #830 is
+closed as characterized.
 
 **Microstrip `Z0` and `beta` are unreadable when the probes sit near a
 reflector.** The N-probe fit rides the standing wave instead of measuring the

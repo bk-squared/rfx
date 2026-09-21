@@ -1839,22 +1839,92 @@ def test_signed_beta_envelope_is_derived_at_runtime_and_moves_with_the_board():
     assert coarse["hi_frac"] == pytest.approx(terms["hi_frac"], abs=1e-15)
     assert coarse["lo_frac"] == pytest.approx(terms["lo_frac"], abs=1e-15)
 
-    # (7) The band this test computes IS the band the main path computes: the
-    #     same closed form on the realized board the committed run-2 artifact
-    #     records (w_trace_realized_m / h_sub_realized_m) at the same dx, which
-    #     is 0.4954 % -- the number the PR #898 review read off that artifact.
-    #     A wrapper that forwards the conductor thickness where the cell size
-    #     belongs answers a different question here the moment the two stop
-    #     being the same number.
+    # (7) The band this test computes is the band the realized board gives:
+    #     the same closed form on the dims the committed run-2 artifact
+    #     records (w_trace_realized_m / h_sub_realized_m) at the same dx,
+    #     which is 0.4954 % -- the number the PR #898 review read off that
+    #     artifact. Which argument carries the cell size and which the
+    #     conductor thickness is no longer asserted here: the main path goes
+    #     through _signed_beta_envelope_terms_for_layout, and
+    #     test_stage_b_envelope_routes_thickness_and_cell_size_to_their_own_parameters
+    #     pins that routing on a board where the two differ.
     run2_layout = json.loads(_RUN2_RESULT_PATH.read_text())["stage_b"]["layout"]
-    main_path = module._signed_beta_envelope_terms(
-        module.B_EPS_R, run2_layout["w_trace_realized_m"],
-        run2_layout["h_sub_realized_m"], module.B_DX_M,
-        module.B_GATE_F_HI_HZ, module.B_DX_M)
-    assert main_path["half_cell_rasterization_band_frac"] == pytest.approx(
+    realized_board = module._signed_beta_envelope_terms(
+        eps_r=module.B_EPS_R, w_m=run2_layout["w_trace_realized_m"],
+        h_m=run2_layout["h_sub_realized_m"], t_m=module.B_DX_M,
+        f_band_top_hz=module.B_GATE_F_HI_HZ, dx_m=module.B_DX_M)
+    assert realized_board["half_cell_rasterization_band_frac"] == pytest.approx(
         terms["half_cell_rasterization_band_frac"], rel=1e-12)
     assert terms["half_cell_rasterization_band_frac"] == pytest.approx(
         0.004954, abs=1e-6)
+
+
+def test_stage_b_envelope_routes_thickness_and_cell_size_to_their_own_parameters():
+    """Conductor thickness reaches ``t_m`` and cell size reaches ``dx_m``.
+
+    The Stage B main path spelled this call positionally with those two
+    arguments in each other's slots. On this board the metal is exactly one
+    cell thick, so the two quantities are the same number and the swap
+    changed nothing measurable -- which is why it survived a review that had
+    already written the warning down (``_signed_beta_envelope``'s own
+    docstring, PR #898).
+
+    Pinned here as an INVARIANT rather than a value, on a layout whose metal
+    is deliberately NOT one cell thick:
+
+      * the Bahl-Garg thickness term is exactly linear in the conductor
+        thickness, so tripling ``t_metal_realized_m`` must triple it;
+      * the half-cell rasterization band is a function of the MESH alone, so
+        tripling the conductor thickness must leave it untouched;
+      * and tripling the cell size must do the mirror image.
+
+    A call with the two transposed fails every one of these: the thickness
+    term stops moving with thickness and the rasterization band starts to.
+    """
+    module = _load_referee_module()
+    fixture = module._load_rfx_fixture(str(RFX_FIXTURE_PATH))
+    layout = module._stage_b_layout(fixture)
+
+    # The board this fixture really is: one cell of metal, so the swap is
+    # inert here and this call alone could never catch it.
+    assert layout["t_metal_realized_m"] == pytest.approx(module.B_DX_M, rel=1e-12)
+    base = module._signed_beta_envelope_terms_for_layout(layout)
+    assert base["inputs"]["t_m"] == pytest.approx(
+        layout["t_metal_realized_m"], rel=1e-12)
+    assert base["inputs"]["dx_m"] == pytest.approx(module.B_DX_M, rel=1e-12)
+
+    # (1) Thicker metal, same mesh: the thickness term triples exactly, the
+    #     rasterization band does not move at all.
+    thick = dict(layout)
+    thick["t_metal_realized_m"] = 3.0 * layout["t_metal_realized_m"]
+    got = module._signed_beta_envelope_terms_for_layout(thick)
+    assert got["thickness_eps_eff_frac"] / base["thickness_eps_eff_frac"] == (
+        pytest.approx(3.0, rel=1e-12))
+    assert got["half_cell_rasterization_band_frac"] == pytest.approx(
+        base["half_cell_rasterization_band_frac"], rel=1e-12)
+    assert got["hi_frac"] == pytest.approx(base["hi_frac"], abs=1e-15)
+    assert got["lo_frac"] < base["lo_frac"]
+
+    # (2) Coarser mesh, same metal: the mirror image.
+    coarse_dx = 3.0 * module.B_DX_M
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(module, "B_DX_M", coarse_dx)
+        got = module._signed_beta_envelope_terms_for_layout(layout)
+    assert got["inputs"]["dx_m"] == pytest.approx(coarse_dx, rel=1e-12)
+    assert got["thickness_eps_eff_frac"] == pytest.approx(
+        base["thickness_eps_eff_frac"], rel=1e-12)
+    assert got["half_cell_rasterization_band_frac"] > (
+        base["half_cell_rasterization_band_frac"])
+    assert got["lo_frac"] == pytest.approx(base["lo_frac"], abs=1e-15)
+    assert got["hi_frac"] == pytest.approx(base["hi_frac"], abs=1e-15)
+
+    # (3) The wrapper forwards the same way.
+    lo, hi = module._signed_beta_envelope(
+        module.B_EPS_R, layout["w_trace_realized_m"],
+        layout["h_sub_realized_m"], 3.0 * layout["t_metal_realized_m"],
+        module.B_GATE_F_HI_HZ, module.B_DX_M)
+    thick_terms = module._signed_beta_envelope_terms_for_layout(thick)
+    assert (lo, hi) == (thick_terms["lo_frac"], thick_terms["hi_frac"])
 
 
 def test_signed_beta_envelope_flags_rfx_and_reports_what_it_cannot_attribute(capsys):

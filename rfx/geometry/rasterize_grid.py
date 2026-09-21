@@ -15,6 +15,7 @@ import jax.numpy as jnp
 
 from rfx.core.jax_utils import is_tracer
 from rfx.core.yee import MaterialArrays
+from rfx.geometry.csg import declared_bounds
 from rfx.geometry._pole_keying import (
     _accumulate_pole_mask,
     _spec_from_pole_masks,
@@ -874,6 +875,185 @@ def periodic_flags_from_axes(periodic_axes) -> tuple[bool, bool, bool]:
     return tuple(ax in s for ax in "xyz")
 
 
+class PadFillShortfall(ValueError):
+    """A declared structure is not rasterized to a face whose pad is filled
+    from it (issue #1070).
+
+    ``ValueError`` and not ``RuntimeError`` (review of PR #1136, A): the
+    degrade guards that let an advisory path survive a bad build already catch
+    ``(ValueError, TypeError, NotImplementedError, KeyError, AttributeError,
+    IndexError)`` -- see ``rfx/preflight/realization.py`` -- and a new
+    exception type outside that set turned a reportable finding into a hard
+    failure of the report.
+    """
+
+
+#: The half-open ``[lo, hi)`` Box rule costs the hi face exactly one node, and
+#: ``extend_cpml_pad_materials``'s #627a fallback is built to look exactly that
+#: one column inward. Two is the number that silently breaks it.
+_DOCUMENTED_HI_FACE_SHORTFALL = 1
+
+
+def assert_declared_span_is_filled(name, shape, mask, grid, domain, *,
+                                   shortfall_limit=_DOCUMENTED_HI_FACE_SHORTFALL,
+                                   record=None):
+    """Raise when a structure declared out to a padded face is not rasterized
+    to within one node of it (issue #1070).
+
+    The #627a fallback in ``extend_cpml_pad_materials`` sources a hi pad from
+    one column inside the interior edge when that edge is vacuum, and its
+    docstring states the bound: the rasterizer's hi-face shortfall for a single
+    box is "deterministically one node ... never more". That is true of the
+    half-open ``[lo, hi)`` rule on its own. It stopped being true once grid
+    sizing could invent a SECOND empty node -- ``ceil`` of a ratio one ULP
+    above an integer allocated a cell no declared Box reaches -- and the
+    fallback then found vacuum in both columns it inspects, gave up, and filled
+    the whole absorber with vacuum.
+
+    So this asserts the bound the fallback documents rather than the arithmetic
+    that broke it: any route that leaves more than one unfilled interior node
+    between a declared structure and a HI face's pad is caught here, whatever
+    produced it.
+
+    **What is checked, exactly** (review of PR #1136, D): hi faces only, and
+    the PROJECTED presence profile along the axis -- ``mask.any`` over the
+    other two -- so a per-column shortfall inside a shape that reaches the
+    face somewhere is not detected. A cylinder touching the face at its apex
+    is filled there and short in its neighbouring columns, and this reports
+    nothing.
+
+    Per-column DETECTION would be cheap: the last present index per column is
+    one device-side reduction to a 2-D array, the same order of work as the
+    projection. Per-column ADJUDICATION is what is missing. The declared reach
+    is known only per SHAPE, from its bounding box, so every column of that
+    cylinder would be scored against a face only its apex was declared to
+    touch, and the check would fire on a correctly realized shape. Detecting
+    more than can be adjudicated turns a fact check into a false alarm, so the
+    projection stands until there is a per-column declared extent to score
+    against.
+
+    The hi-face asymmetry is the rasterizer's, not an oversight. The half-open ``[lo, hi)`` rule costs the
+    hi face a node and costs the lo face nothing, so a shortfall at a lo face
+    is not a rounding artifact; and ``extend_cpml_pad_materials`` fills a lo
+    pad by replicating the boundary node itself, which carries whatever the
+    structure put there. A five-node gap at a lo face is therefore silent
+    here. That is a declared gap, and replicating vacuum into the pad in front
+    of it is right.
+
+    **A deliberately different predicate lives in
+    ``rfx.geometry.smoothing.smoothed_shape_pairs``** (review of PR #1136, B).
+    That one decides whether to CONTINUE a shape into a pad, and it asks about
+    the REALIZED interior-edge node on both faces with a sub-cell tolerance.
+    This one decides whether a shortfall is a DEFECT, and asks about the
+    DECLARED face, because the invariant is "declared reaches the face but
+    realized does not" -- scoring that against the realized edge would compare
+    a thing with itself. The two cannot be made to agree everywhere and that
+    module's ``_PAD_REACH_TOL_CELLS`` comment already records why: one rule is
+    a cell-centre test and the other is sub-cell. Where they differ, the
+    smoothing predicate governs what the smoothed lane solves and this one
+    governs whether the staircase lane's pad fill is trustworthy.
+
+    Two conditions, and both are needed. The structure must be DECLARED out to
+    the face -- a box that stops short of it is the overwhelmingly common air
+    gap before an absorber, which is left alone and correctly replicates plain
+    vacuum -- and its realized mask must then stop more than one node short.
+
+    Checked only where the shape states a declared span. Every geometry entry
+    class in the package has ``bounding_box`` today -- Box, Cylinder, Sphere,
+    PolylineWire, Via, MeshShape, CurvedPatch -- and ``union``/``difference``
+    in ``rfx.geometry.csg`` are FUNCTIONS over masks, not entry classes, so
+    nothing currently reaches the skip (review of PR #1136, E). It is kept as
+    the contract for a future shape that cannot state one, because a reach
+    test needs a declared extent and there is no honest default for a shape
+    without one.
+
+    Two bounding boxes in the tree are not provably TIGHT, which is a
+    different risk and the live one: ``rfx/geometry/curved.py`` clamps its arc
+    height, and ``rfx/geometry/via.py`` uses ``pad_radius``. A box wider than
+    the shape makes this check think a structure was declared out to a face it
+    does not reach, which would be a false report rather than a missed one.
+    Neither appears in a pad-touching fixture today.
+
+    *record*, when given a list, makes this REPORT instead of raise: each
+    shortfall is appended as a dict and the caller decides what to do with it.
+    ``fidelity_report`` passes one, because an audit whose job is to show the
+    difference between the declared and the realized model must show this
+    difference too rather than refuse to run (review of PR #1136, A).
+    """
+    import numpy as _np
+
+    if mask is None or domain is None:
+        return
+    if getattr(mask, "shape", None) is None or len(mask.shape) != 3:
+        return
+    bounds = declared_bounds(shape)
+    if bounds is None:
+        return
+    _, declared_hi = bounds
+
+    pads = grid.face_pads
+    eps = float(_np.finfo(float).eps)
+    for axis in range(min(3, len(domain), len(declared_hi))):
+        lo_pad, hi_pad = pads[2 * axis], pads[2 * axis + 1]
+        if hi_pad <= 0:
+            continue
+        face = float(domain[axis])
+        # "Reaches the face" with the same relative slack the sizing rule
+        # uses, so a declared length written as an expression still counts as
+        # reaching the face it was written to reach.
+        if float(declared_hi[axis]) < face - 8.0 * eps * max(1.0, abs(face)):
+            continue
+        n_int = mask.shape[axis] - lo_pad - hi_pad
+        if n_int <= shortfall_limit + 1:
+            continue
+        # Reduce on whatever backend holds the mask and pull only the 1-D
+        # profile to the host. Materialising the full boolean volume per
+        # geometry entry would cost a device-to-host copy of the grid on
+        # every assembly, for a question about one axis.
+        others = tuple(a for a in range(3) if a != axis)
+        profile = _np.asarray(mask.any(axis=others)).astype(bool)
+        profile = profile[lo_pad:lo_pad + n_int]
+        if not profile.any():
+            continue
+        empty_tail = int(n_int - 1 - _np.flatnonzero(profile)[-1])
+        if empty_tail <= shortfall_limit:
+            continue
+        axis_name = "xyz"[axis]
+        declared = float(domain[axis])
+        dx = float(grid.dx)
+        if record is not None:
+            record.append(dict(
+                entity=name, shape=shape, axis=axis_name, face=f"{axis_name}-hi",
+                empty_interior_nodes=empty_tail,
+                allowed_empty_interior_nodes=shortfall_limit,
+                declared_extent_m=declared,
+                declared_cells=declared / dx,
+                interior_nodes=n_int,
+                last_filled_interior_node=n_int - 1 - empty_tail,
+                pad_cells=int(hi_pad),
+            ))
+            continue
+        raise PadFillShortfall(
+            f"{name!r} is declared out to the {axis_name}-hi face but its "
+            f"rasterized mask stops {empty_tail} interior nodes short of it, "
+            f"and that face carries a {hi_pad}-cell absorber pad which is "
+            f"filled by replicating from the interior edge. One node short is "
+            f"the documented half-open [lo, hi) Box shortfall and is repaired "
+            f"(#627a); {empty_tail} is not, so the pad would be filled with "
+            f"vacuum and the structure would end in a facet inside its own "
+            f"absorber (#1070, #831).\n"
+            f"  declared {axis_name} extent: {declared * 1e6:.4f} um "
+            f"= {declared / dx!r} cells at dx = {dx * 1e6:.4f} um\n"
+            f"  interior nodes on {axis_name}: {n_int}; "
+            f"last filled: {n_int - 1 - empty_tail}\n"
+            f"Likeliest cause: the grid was sized with one cell more than the "
+            f"declared length reaches. rfx.grid.cells_spanning absorbs that; "
+            f"if this fires with it in place, the extra node came from "
+            f"somewhere else and the cause is worth finding before it is "
+            f"suppressed."
+        )
+
+
 def extend_cpml_pad_materials(
     eps_r: jnp.ndarray,
     sigma: jnp.ndarray,
@@ -916,15 +1096,31 @@ def extend_cpml_pad_materials(
     if the naive interior-edge column is vacuum (``eps_r==1 & sigma==0 &
     mu_r==1``) but the column immediately inside it is not, replicate from
     that inner column instead. This is bounded to exactly one column
-    inward — the rasterizer's hi-face shortfall for a single box is
-    deterministically one node (Box docstring: "the shortfall is entirely
-    at the hi face"), never more — so a genuine multi-cell vacuum buffer
+    inward — the rasterizer's hi-face shortfall for a single box is one
+    node (Box docstring: "the shortfall is entirely at the hi face"), and
+    that "never more" is CHECKED at assembly rather than assumed, by
+    :func:`assert_declared_span_is_filled` (#1070; it was an assumption
+    about the rasterizer, and grid sizing broke it from outside) — so a
+    genuine multi-cell vacuum buffer
     between a structure and the CPML pad (the overwhelmingly common case:
     almost every example leaves an air gap before the absorber) is left
     completely alone and still replicates plain vacuum, exactly as before.
     An unbounded backward scan for "the last non-vacuum column" was
     considered and rejected: it would bridge that common air gap and smear
     an unrelated interior structure's material into the pad.
+
+    **What now guarantees that bound (#1070).** It was an assumption about
+    the rasterizer, and grid sizing broke it from outside: ``ceil`` of a
+    ratio one ULP above an integer allocated a cell no declared Box
+    reaches, so the shortfall became TWO nodes, this fallback found vacuum
+    in both columns it inspects, and the pad was filled with vacuum. The
+    arithmetic is fixed at the source (``rfx.grid.cells_spanning``) and the
+    bound itself is now asserted rather than assumed:
+    :func:`assert_declared_span_is_filled` runs at assembly and raises when
+    a structure declared out to a padded face is rasterized more than one
+    node short of it, whatever produced the gap. The "never more" above is
+    therefore a checked precondition of this fallback, not a belief about
+    its caller.
 
     **The dropped node itself is repaired too (#655).** #627a fixed where
     the pad SOURCES its material but still wrote it only to the pad, so the

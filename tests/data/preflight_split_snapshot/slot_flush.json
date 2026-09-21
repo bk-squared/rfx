@@ -14,10 +14,17 @@
         "message": "all dielectric(s) ['diel_hi', 'diel_lo'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)",
         "severity": "warning",
         "source": "_validate_cfg_lossless_resonator_in_absorber"
+      },
+      {
+        "code": "sheet_effective_size",
+        "loc": null,
+        "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[2] 'pec' x: drawn 4mm, nodes cover 4mm, solved as 4.35mm (+8.75%); geometry[2] 'pec' y: drawn 4mm, nodes cover 4mm, solved as 4.35mm (+8.75%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+        "severity": "warning",
+        "source": "_validate_cfg_off_lattice_design_edges"
       }
     ],
     "n_errors": 0,
-    "n_issues": 2,
+    "n_issues": 3,
     "ok": true
   }
 }

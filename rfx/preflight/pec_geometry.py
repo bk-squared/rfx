@@ -1112,6 +1112,95 @@ def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
         source="_validate_cfg_sheet_cavity_thickness",
     ))
 
+#: A sheet's electrical size differing from its drawing by more than this is
+#: reported. 1 % is the frequency tolerance the project judges results by; a
+#: resonant dimension moves the resonance by about its own relative error.
+_SHEET_EFFECTIVE_SIZE_TOL = 1e-2
+
+
+def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
+    """A PEC sheet is solved about ``EDGE_OFFSET`` of a cell LONGER at each
+    in-plane end than the nodes it covers (measured:
+    ``scripts/diagnostics/pec_sheet_edge_offset.py``), so the size the solve
+    sees is ``covered node span + EDGE_OFFSET * (cell beyond each end)``.
+    Reported in input units against the drawn size; an end that lies on the
+    domain wall is a wall, not an edge, and adds nothing. This fires for a
+    sheet drawn exactly ON the lattice too -- that sheet is 0.7 cell long."""
+    from rfx.mesh_edges import EDGE_OFFSET
+    domain = tuple(float(v) for v in getattr(ctx.sim, "_domain", (0.0,) * 3))
+    rows = []
+    sheets = [e for e in boxes if e.kind == "sheet"]
+    union = None
+    for e in sheets:
+        fp = np.asarray(e.sheet.footprint, dtype=bool)
+        union = fp.copy() if union is None else (union | fp)
+
+    def _continues(fp, a, i_end, i_next):
+        """The metal goes on past this end: every footprint node of the end
+        row has sheet metal (another sheet's) on the next node. A seam
+        between two abutting sheets is interior metal, not a free edge."""
+        end = np.take(fp, i_end, axis=a)
+        return bool(end.any()) and bool(np.take(union, i_next, axis=a)[end].all())
+
+    for e in sheets:
+        fp = np.asarray(e.sheet.footprint, dtype=bool)
+        for a in range(3):
+            if a == int(e.sheet.normal_axis):
+                continue
+            ext = float(e.hi[a] - e.lo[a])
+            if ext <= 0.0:
+                continue
+            other = tuple(i for i in range(3) if i != a)
+            idx = np.flatnonzero(fp.any(axis=other))
+            if idx.size == 0:
+                continue
+            nodes = np.asarray(ctx.nodes[a], dtype=float)
+            i0, i1 = int(idx[0]), int(idx[-1])
+            span = float(nodes[i1] - nodes[i0])
+            # An end drawn at (or past) the declared domain boundary is not
+            # a free edge: it meets a wall, or it continues into the
+            # absorber pad. Only ends strictly inside the domain count.
+            dom_hi = float(domain[a])
+            tol = 1e-9 * max(dom_hi, 1e-12)
+            add = 0.0
+            if (i0 > 0 and float(e.lo[a]) > tol
+                    and not _continues(fp, a, i0, i0 - 1)):
+                add += EDGE_OFFSET * float(nodes[i0] - nodes[i0 - 1])
+            if (i1 + 1 < nodes.size and float(e.hi[a]) < dom_hi - tol
+                    and not _continues(fp, a, i1, i1 + 1)):
+                add += EDGE_OFFSET * float(nodes[i1 + 1] - nodes[i1])
+            if add == 0.0:
+                continue
+            eff = span + add
+            rel = (eff - ext) / ext
+            if abs(rel) > _SHEET_EFFECTIVE_SIZE_TOL:
+                rows.append((abs(rel), rel, e, a, ext, span, eff))
+    if not rows:
+        return
+    rows.sort(key=lambda t: -t[0])
+    lines = "; ".join(
+        f"{e.label} '{e.name}' {'xyz'[a]}: drawn {_fmt_len(ext)}, nodes "
+        f"cover {_fmt_len(span)}, solved as {_fmt_len(eff)} ({rel:+.2%})"
+        for _, rel, e, a, ext, span, eff in rows[:_CAMPAIGN_MAX_OFFENDERS])
+    _w.warn(PreflightWarning(
+        f"{len(rows)} conductor sheet dimension(s) are solved more than "
+        f"{_SHEET_EFFECTIVE_SIZE_TOL:.0%} off their drawn size (worst "
+        f"{min(len(rows), _CAMPAIGN_MAX_OFFENDERS)} listed): {lines}. "
+        "OBSERVED: the node span the sheet's realized footprint covers on "
+        f"this run's grid, plus {EDGE_OFFSET:.2f} of the adjacent cell at "
+        "each free in-plane edge -- a PEC sheet's edge is solved that far "
+        "beyond its last node (measured on this solver, both "
+        "polarizations; a flat wall has no such offset). REMEDY: build the "
+        "in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, "
+        "dx, sheets=[...], solids=[...]) and pass them as "
+        "Simulation(dx_profile=..., dy_profile=...); a node ON the edge is "
+        "not the fix. STALE IF: the footprint's node span on the run's node "
+        "coordinates does not reproduce the printed numbers.",
+        code="sheet_effective_size",
+        source="_validate_cfg_off_lattice_design_edges",
+    ))
+
+
 def _validate_cfg_off_lattice_design_edges(self, _w, ctx) -> None:
     """#703 check 4: census of conductor design edges landing off-lattice.
 
@@ -1159,6 +1248,7 @@ def _validate_cfg_off_lattice_design_edges(self, _w, ctx) -> None:
             rel = res / ext
             if rel > _OFF_LATTICE_EDGE_TOL:
                 offenders.append((rel, e, a, ext, res))
+    _warn_sheet_effective_size(_w, ctx, boxes)
     if not offenders:
         return
     offenders.sort(key=lambda t: -t[0])
@@ -1187,9 +1277,11 @@ def _validate_cfg_off_lattice_design_edges(self, _w, ctx) -> None:
         "points — three different boards solved under one name; the "
         "same campaign's board survived at dx=50um only because every "
         "patterned dimension happened to be an exact multiple of 50um. "
-        "REMEDY: choose dx commensurate with the patterned dimensions, "
-        "slide the lattice origin onto the worst face, or (non-uniform "
-        "lane) place mesh nodes on the design edges. COVERAGE: "
+        "REMEDY: for a PEC VOLUME choose dx commensurate with its "
+        "dimensions, slide the lattice origin onto the worst face, or "
+        "(non-uniform lane) place mesh nodes on its faces; for a SHEET see "
+        "sheet_effective_size -- a node on a sheet's edge is not the fix. "
+        "COVERAGE: "
         f"examined {n_axes} axis extent(s) on {len(boxes)} conductor "
         f"Box declaration(s) on the {ctx.lane} lane; {n_normal_axes} "
         "sheet normal axis/axes reported by sheet_plane_realized "

@@ -133,8 +133,10 @@ LOCK_PROVENANCE = {
         "tests/unit/runners/test_distributed_nu_smoke.py,"
         "tests/unit/runners/test_distributed.py,"
         "tests/unit/runners/test_distributed_nu_kernel.py,"
-        "tests/unit/runners/test_distributed_nu_pec_mask_lane_parity.py,"
-        "tests/unit/subgrid/test_subgrid_source_injection_dtype.py"
+        "tests/unit/runners/test_distributed_nu_pec_mask_lane_parity.py"
+        # "fixture" is a list of EXISTING paths (test_lock_provenance_gate.py checks each).
+        # tests/unit/subgrid/test_subgrid_source_injection_dtype.py, the source of case 13 below,
+        # was removed under #1127 (in git history at a6d6fce1); the case and its baseline stay.
     ),
     "generator": "tests/locks/test_runner_split_bit_identity.py (RFX_RUNNER_BASELINE_CAPTURE=1)",
     "commit": "9866bafd",
@@ -593,8 +595,10 @@ def _f_distributed_v2_pec_body_interior():
 
 
 # --- 13: tests/unit/subgrid/test_subgrid_source_injection_dtype.py:123
-#     (_coarse_shadow_source_subgrid_sim). Chosen over the inventory's
-#     suggestion (test_subgrid_fine_shape_parity.py's builders) because those
+#     (_coarse_shadow_source_subgrid_sim), removed under #1127; in git history
+#     at a6d6fce1. Chosen over the inventory's suggestion
+#     (test_subgrid_fine_shape_parity.py's builders, also removed under #1127;
+#     in git history at a6d6fce1) because those
 #     build a validation REGION and never call the runner at all -- its
 #     centered slab is refused by the production z-slab validator. This one
 #     runs run_subgridded_path end to end, through both the coarse-shadow

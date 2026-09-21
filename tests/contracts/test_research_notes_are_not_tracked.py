@@ -20,6 +20,18 @@ gated citation, that file is not a note -- move it to ``tests/fixtures/`` or
 next to its consumer and cite it there. The numeric-provenance gate already
 says as much when it refuses an untracked artifact: "Commit the artifact or
 cite one that is committed."
+
+WHERE THERE IS NO REPOSITORY, THIS GATE SKIPS. The GPU suite runs against a
+``git archive`` export with no ``.git``, and the question here -- is this file
+TRACKED though ignored -- has no oracle without git. The ignored files are
+simply absent from an export, so their absence is evidence of nothing and a
+pass would be a guess. Skipping says so.
+
+Its sibling ``tests/contracts/test_guide_citations_resolve.py`` does NOT skip
+there, and the difference is the question rather than the tooling: that gate
+asks whether a link target is PRESENT for someone who clones, and an export is
+a valid witness for that, holding the tracked files and nothing else. Same
+missing tool, two different questions (review of PR #1135, B).
 """
 
 from __future__ import annotations

@@ -463,6 +463,152 @@ def test_a_plain_missing_line_does_not_get_the_adornment_hint() -> None:
 
 
 # --------------------------------------------------------------------------
+# Closing keywords: GitHub links the PR to every issue its body names after one,
+# wherever it sits, and closes that issue on merge (#1132)
+# --------------------------------------------------------------------------
+
+_IN_PROSE = (
+    "a closing keyword inside a sentence closes the issue when the PR merges. "
+    'If you do NOT mean to close it, take the keyword out ("the closing keyword '
+    'for #N is withdrawn"); if you do, start a line with it (`Closes #N.`)'
+)
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "Closes #12",
+        "Closes #12.",
+        "Fixes: #12",
+        "- Closes #12",
+        "Fixes #12, fixes #13",
+        "resolves bk-squared/rfx#12.",
+        "  Close #12 and CLOSED #13  ",
+        "Closes https://github.com/bk-squared/rfx/issues/12",
+        # the house style of this repo's merged PRs: the close, then a summary
+        "Closes #958. Makes the taper commensurate.",
+        "Closes #790. Closes #978.",
+        "Closes #627 — the static half.",
+        "Fixes #1075, option (b): no lane's step ordering changes",
+        "Closes #780 (SPEC-01). Lifts the single-band limit.",
+        "1. Closes #12",
+        "2) Fixes #12, fixes #13.",
+    ],
+)
+def test_a_closing_reference_that_starts_its_line_passes(line: str) -> None:
+    assert cpb.check(body("Lane: lane:ci-infra", ACCEPT, line), ENV) == []
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        # the two sentences that closed an open issue, verbatim from the merged PR bodies
+        "It does not close #737. The three decisions the tracker needs from the PI",  # PR #1086
+        "It was opened as `Fixes #752`; that is withdrawn. What it does fix still",  # PR #1125
+        "Rejected: Close #726 from settling alone",
+        "Fixes #752 is withdrawn from the PR body",
+        "Closes #742 items 1-2; item 3 rides with the next PR",  # closes ALL of #742
+        "FIXES #9 later",
+        "fixed https://github.com/bk-squared/rfx/issues/9 yesterday",
+        "Stacked on the flip PR. Closes #770.",  # intended, but not at the start of its line
+    ],
+)
+def test_a_closing_reference_inside_a_sentence_fails_and_quotes_the_line(line: str) -> None:
+    problems = cpb.check(body("Lane: lane:ci-infra", ACCEPT, line), ENV)
+    assert len(problems) == 1
+    assert problems[0].startswith(cpb.CLOSING_PREFIX)
+    assert repr(line) in problems[0]
+    assert problems[0].endswith(_IN_PROSE)
+
+
+@pytest.mark.parametrize(
+    "line",
+    ["Closes #12, #13", "Closes #12 and #13", "- Fixes #12, bk-squared/rfx#13.", "Fixes #12, fixes #13, #14"],
+)
+def test_a_list_with_one_keyword_is_told_that_only_the_first_issue_closes(line: str) -> None:
+    problems = cpb.check(body("Lane: lane:ci-infra", ACCEPT, line), ENV)
+    assert len(problems) == 1
+    assert repr(line) in problems[0]
+    assert "closes only the first issue" in problems[0]
+    assert "`Closes #12, closes #13`" in problems[0]
+
+
+def test_text_after_an_accepted_close_is_still_scanned() -> None:
+    line = "Closes #12. It does not fix #13 though."
+    problems = cpb.check(body("Lane: lane:ci-infra", ACCEPT, line), ENV)
+    assert len(problems) == 1 and problems[0].endswith(_IN_PROSE)
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "the closing keyword for #752 is withdrawn",
+        "Part of #1127",
+        "this fixes the grid",
+        "closes the gap",
+        "prefix #3",
+        "suffixes #3",
+        "Refs #12",
+        "#12",
+        "The ledger declared #928 RESOLVED while the tracker had it open",
+    ],
+)
+def test_prose_without_a_closing_reference_passes(line: str) -> None:
+    assert cpb.check(body("Lane: lane:ci-infra", ACCEPT, line), ENV) == []
+
+
+@pytest.mark.parametrize(
+    "wrapped",
+    [
+        "```\nFixes #752 is withdrawn from the PR body\n```",
+        "`Fixes #752 is withdrawn from the PR body`",
+        "<!-- Fixes #752 is withdrawn from the PR body -->",
+    ],
+    ids=["fence", "inline-code", "html-comment"],
+)
+def test_closing_references_in_markup_still_fail(wrapped: str) -> None:
+    """The #752 keyword sat in inline code and GitHub closed the issue anyway."""
+    problems = cpb.check(body("Lane: lane:ci-infra", ACCEPT, wrapped), ENV)
+    assert len(problems) == 1
+    assert "Fixes #752 is withdrawn from the PR body" in problems[0]
+
+
+def test_two_offending_closing_lines_report_problems_in_line_order() -> None:
+    first = "Rejected: Close #726 was considered and dropped"
+    second = "Fixes #752 is withdrawn from the PR body"
+    problems = cpb.check(body("Lane: lane:ci-infra", ACCEPT, first, second), ENV)
+    assert len(problems) == 2
+    assert repr(first) in problems[0]
+    assert repr(second) in problems[1]
+
+
+def test_each_closing_reference_in_prose_is_a_problem() -> None:
+    line = "Rejected: Fixes #12 and resolves #13 were considered"
+    problems = cpb.check(body("Lane: lane:ci-infra", ACCEPT, line), ENV)
+    assert len(problems) == 2
+    assert all(repr(line) in problem for problem in problems)
+
+
+def test_closing_problem_reports_the_body_line_number_and_trims_the_quote() -> None:
+    line = "   Fixes #752 is withdrawn " + "x" * 140 + "   "
+    # CRLF and a lone CR must count as one line break each, as body_lines() counts them.
+    text = "Lane: lane:ci-infra\r\n" + ACCEPT + "\r<!--\ncontext\n-->\n\n" + line
+    problems = cpb.check(text, ENV)
+    assert len(problems) == 1
+    assert problems[0].startswith(f"{cpb.CLOSING_PREFIX}line 7: {line.strip()[:120]!r}: ")
+    assert line.strip()[:121] not in problems[0]
+
+
+def test_a_body_that_fails_only_on_a_closing_keyword_is_not_told_to_fill_in_lane_and_review() -> None:
+    problems = cpb.check(body("Lane: lane:ci-infra", ACCEPT, "It does not close #737."), ENV)
+    report = cpb.failure_report(problems, ENV)
+    assert "It does not close #737." in report
+    assert "Fill these two lines in" not in report
+    both = cpb.failure_report(problems + ["no `Lane:` line"], ENV)
+    assert "Fill these two lines in" in both
+
+
+# --------------------------------------------------------------------------
 # The command-line entry points
 # --------------------------------------------------------------------------
 
