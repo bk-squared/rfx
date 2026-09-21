@@ -568,6 +568,15 @@ def _raise_face_inside_injected_region(box, axis, face, idx, required,
     reads = ", ".join(n for off in offsets for n in _sample_names(off, idx))
     inside = [n for off in offsets if p_lo <= idx + off <= p_hi
               for n in _sample_names(off, idx)]
+    if inside:
+        where = f"{_listed(inside)} inside the injected region"
+    else:
+        # The face sits beyond the FAR plane: nothing it reads is
+        # total-field, the box simply lies to one side of the injected
+        # region and does not enclose it.
+        side = "below" if idx < p_lo else "above"
+        where = (f"all of them lie {side} the injected region, on the wrong "
+                 "side of it, so the box does not enclose it")
     direction = ">=" if required > idx else "<="
     remedy = f"move {face} from {idx} to {direction} {required}"
     if shape is not None:
@@ -591,7 +600,7 @@ def _raise_face_inside_injected_region(box, axis, face, idx, required,
         f"does not cancel around the box — so every sample a face parallel "
         f"to an injection plane reads must be scattered-field. With "
         f"{box.collocation} collocation this face reads {reads}; "
-        f"{_listed(inside)} inside the injected region.\n"
+        f"{where}.\n"
         "Invariant: every sample a box face parallel to an injection plane "
         "reads lies in the scattered-field region.\n"
         f"Remedy: {remedy}."

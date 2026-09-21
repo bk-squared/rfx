@@ -104,6 +104,22 @@ def test_a_face_inside_the_injected_region_is_refused(i_lo, i_hi, face,
     assert exc.value.face == face
 
 
+@pytest.mark.parametrize("i_lo, i_hi, face, side", [
+    (X_HI + 3, X_HI + 8, "i_lo", "above"),
+    (2, X_LO - 3, "i_hi", "below"),
+])
+def test_a_box_wholly_to_one_side_is_refused_with_its_own_sentence(
+        i_lo, i_hi, face, side):
+    """No sample of the offending face is total-field here — the box just
+    does not enclose the injected region. The refusal has to say that, as a
+    placement error, not fall over while listing samples it cannot find."""
+    with pytest.raises(NTFFBoxPlacementError) as exc:
+        require_box_encloses_injected_region(_box(i_lo, i_hi), PLANES)
+    assert (exc.value.axis, exc.value.face) == ("x", face)
+    assert f"lie {side} the injected region" in str(exc.value)
+    assert "does not enclose" in str(exc.value)
+
+
 def test_node_collocation_may_sit_one_cell_closer():
     """The legacy layout reads E[idx] and H[idx] only, never idx-1.
 
@@ -246,16 +262,21 @@ def test_oblique_source_reports_both_injected_axes():
     """
     from rfx.sources.tfsf_oblique_open import init_tfsf_methodB
 
-    grid = Grid(freq_max=30e9, domain=(0.09, 0.09, 0.006), dx=0.002,
+    # NOT square: on a square domain the y planes equal the x planes and a
+    # y entry copied from x would pass unnoticed.
+    grid = Grid(freq_max=30e9, domain=(0.09, 0.066, 0.006), dx=0.002,
                 cpml_layers=6)
     nx, ny, nz = grid.shape
+    assert nx != ny
     cfg, _ = init_tfsf_methodB(nx, ny, 0.002, grid.dt, nz=nz, cpml_layers=6,
                                tfsf_margin=6, f0=10e9, polarization="ez",
                                direction="+x", theta_deg=20.0)
     planes = tfsf_injection_planes(cfg)
     assert set(planes) == {"x", "y"}
-    assert planes["x"] == (cfg.x_lo, cfg.x_hi)
-    assert planes["y"] == (cfg.y_lo, cfg.y_hi)
+    # The source sets its planes cpml + margin = 12 cells in from each end.
+    assert planes["x"] == (12, nx - 12)
+    assert planes["y"] == (12, ny - 12)
+    assert planes["x"] != planes["y"]
 
     kz = nz // 2
     enclosing = NTFFBox.from_grid(
