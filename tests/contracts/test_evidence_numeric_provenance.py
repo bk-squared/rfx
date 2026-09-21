@@ -818,6 +818,14 @@ CLASSIFICATION: dict[str, str] = {
     # and from grid builds, not out of a committed JSON key, so it carries no
     # `<path>.json::<key>` span for this gate to resolve.
     "docs/design_notes/coax_conductor_realization.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-21 (reduced v2.0 battery, coax family): written before the first
+    # battery solve, so there is no artifact for it to cite. Its one `::` span
+    # names a test helper (`...test_coax_two_port_smatrix.py::_sim`), which this
+    # parser rejects by construction -- a rejected span keeps the document out
+    # of GATED but does not make it SYMBOL_SPAN_PARSER_SCOPE, which also needs
+    # a resolvable reference. Its numbers are the band, the rungs and the
+    # analytic TEM referee, none of which is read out of a JSON key.
+    "docs/design_notes/coax_chain_battery_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/cv10_pmc_realization_regate.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/cv14_rect_cavity_gate_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/estimator_resolution_regate.md": GATED,
