@@ -241,9 +241,24 @@ reading is worth: Mie is a continuum reference and this sphere is staircased
 at 6.4 cells per radius, so the distance to Mie also contains mesh error. The
 evidence for the surface rule is the dipole oracle and the extinction test,
 not this row. The fixture's non-gated bistatic trace moved by 0.1-0.8 dB angle
-by angle; its known defects — a forward-oblique lobe about 10 dB above Mie at
-25-55 degrees, and a forward-scatter excess, 1.85 dB before and 1.75 dB now —
-are still there, so they do not come from the surface rule.
+by angle; its forward-oblique lobe, about 10 dB above Mie at 25-55 degrees, is
+still there — it is the TFSF incident-field leakage of #280, which
+`compute_rcs(subtract_incident_reference=True)` removes, not the surface rule.
+The sibling fixture that gates that correction
+(`tests/fixtures/rcs280_reference_subtraction/`) was regenerated too, since it
+shares the sphere's backscatter value: its corrected curve keeps the same mean
+distance to Mie (0.7048 -> 0.7036 dB, inside the 5 % pin on its measured
+0.705) and changes shape — a plateau at 55-75 degrees is gone, the curve now
+falls smoothly from +1.75 dB at forward scatter to -0.10 dB at backscatter,
+and its correlation with the Mie curve goes from 0.977 to 1.000. The forward
+excess itself (1.85 dB before, 1.75 dB now) is not explained by this change.
+A third fixture references the sphere's backscatter,
+`tests/fixtures/rcs_sphere_three_way/` (rfx / exact Mie / a Bempp surface
+integral-equation solve): its rfx-derived spreads were updated by hand, as its
+own provenance note records was done the last time the rfx value moved, since
+the Bempp run does not depend on rfx. The three methods now sit within 0.10 dB
+of each other at ka = 1 (rfx -0.102 dB and Bempp -0.028 dB from Mie); with
+the first-order rule rfx was the outlier at +0.185 dB.
 
 The assertions in `tests/oracle/test_farfield.py` and
 `test_farfield_nonuniform.py` are analytic expectations with tolerance bands

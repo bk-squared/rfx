@@ -38,10 +38,18 @@ that reflected 4–6 % back into the injected field.
 
 | metric | uncorrected | corrected |
 |---|---|---|
-| forward-oblique (15–90°) max vs exact Mie | **10.66 dB** | **1.46 dB** |
-| backscatter vs exact Mie | — | +0.19 dB |
-| full-curve mean \|distance\| | 3.10 dB | 0.70 dB |
-| H-plane shape correlation (dB) | −0.09 (uncorrelated) | **0.977** |
+| forward-oblique (15–90°) max vs exact Mie | **10.32 dB** | **1.67 dB** |
+| backscatter vs exact Mie | — | −0.10 dB |
+| full-curve mean \|distance\| | 2.91 dB | 0.70 dB |
+| H-plane shape correlation (dB) | −0.06 (uncorrelated) | **1.000** |
+
+Regenerated 2026-09-21 with the second-order NTFF surface rule (#1159). With the
+first-order rule the same table read 10.66 / 1.46 dB, +0.19 dB, 3.10 / 0.70 dB
+and −0.09 / 0.977. The mean distance did not move (0.7048 → 0.7036 dB). The
+shape did: the corrected curve used to carry a plateau at 55–75° and now falls
+smoothly from +1.75 dB at forward scatter to −0.10 dB at backscatter, which is
+why the correlation with Mie went from 0.977 to 1.000. The depth sweeps quoted
+below were measured with the first-order rule and were not redone.
 
 The corrected pattern's mean distance got **worse**, 0.42 → 0.70 dB, and that is
 a property of the #280 correction rather than of the depth: sweeping the two
