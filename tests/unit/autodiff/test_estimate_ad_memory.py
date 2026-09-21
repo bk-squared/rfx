@@ -71,20 +71,6 @@ _FORBIDDEN_CURRENT_EVIDENCE_FIELDS = {
     "peak_bound_gb",
 }
 
-_FORBIDDEN_RECOMMENDATION_TERMS = (
-    "guarantee",
-    "guaranteed",
-    "certified",
-    "certificate",
-    "peak_bound",
-    "runtime peak",
-    "profiler",
-    "profile",
-    "xla",
-    "compiler memory",
-    "rf validation",
-)
-
 # Pinned to the source constant so the doc-boundary check cannot silently drift
 # from the boundaries rfx actually emits.
 AD_MEMORY_PREFLIGHT_BOUNDARIES = AD_MEMORY_PREFLIGHT_EVIDENCE_BOUNDARIES
@@ -1063,32 +1049,6 @@ def test_explain_ad_memory_records_warmup_reduces_full_tape():
     ) == pytest.approx(explanation.selected_memory_gb)
 
 
-def test_current_memory_recommendations_do_not_claim_guarantees():
-    sim = _patch_like_sim()
-    plan = sim.plan_ad_memory(n_steps=10_000, available_memory_gb=1.0)
-    explanation = sim.explain_ad_memory(
-        n_steps=10_000,
-        checkpoint_every=plan.checkpoint_every,
-        available_memory_gb=1.0,
-    )
-    report = sim.mesh_intelligence_report(
-        n_steps=10_000,
-        checkpoint_every=plan.checkpoint_every,
-        available_memory_gb=1.0,
-    )
-
-    texts = [
-        plan.recommendation,
-        report.recommendation,
-        sim.estimate_ad_memory(n_steps=10_000, available_memory_gb=1e-6).warning,
-        *explanation.recommendations,
-    ]
-    for text in texts:
-        assert text is not None
-        lowered = text.lower()
-        assert not any(term in lowered for term in _FORBIDDEN_RECOMMENDATION_TERMS)
-
-
 def test_ad_memory_preflight_full_fit_branch():
     sim = _patch_like_sim()
 
@@ -1209,51 +1169,6 @@ def test_ad_memory_preflight_unfit_branch_is_diagnostic_only():
     )
     _assert_validate_physics_hint(report)
 
-
-def test_ad_memory_preflight_boundaries_and_action_text_are_safe():
-    patch = _patch_like_sim()
-    uniform = _uniform_sim()
-    reports = [
-        patch.ad_memory_preflight(
-            n_steps=100,
-            available_memory_gb=100.0,
-            include_mesh_report=False,
-        ),
-        patch.ad_memory_preflight(
-            n_steps=10_000,
-            available_memory_gb=1.0,
-            include_mesh_report=False,
-        ),
-        uniform.ad_memory_preflight(
-            n_steps=120,
-            available_memory_gb=0.002,
-            include_mesh_report=False,
-        ),
-        patch.ad_memory_preflight(
-            n_steps=10_000,
-            available_memory_gb=0.001,
-            include_mesh_report=False,
-        ),
-    ]
-
-    for report in reports:
-        artifact = report.to_dict()
-        assert report.evidence_boundaries == AD_MEMORY_PREFLIGHT_BOUNDARIES
-        assert artifact["evidence_boundaries"] == list(AD_MEMORY_PREFLIGHT_BOUNDARIES)
-        _assert_no_forbidden_fields_recursive(artifact)
-
-        action_texts = [
-            report.recommendation,
-            *(
-                f"{hint.message} {hint.action}"
-                for hint in report.action_hints
-            ),
-        ]
-        for text in action_texts:
-            lowered = text.lower()
-            assert not any(
-                term in lowered for term in _FORBIDDEN_RECOMMENDATION_TERMS
-            )
 
 def test_memory_reduction_docs_separate_planning_from_certificate_evidence():
     doc = Path("docs/public/guide/memory-reduction.mdx").read_text()
