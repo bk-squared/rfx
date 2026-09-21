@@ -40,6 +40,18 @@ hide inside 1 %. That lane has its own limits — see the
 above 17 GHz recorded in `validation/crossval/07_sheen_lpf.py`.
 → [#838](https://github.com/bk-squared/rfx/issues/838)
 
+**The microstrip S-matrix can come back non-passive, and says so.**
+`compute_msl_s_matrix(...)` returns the S it extracted; it no longer projects it
+onto the passive set by default, so that the S a user reads and the S a gradient
+differentiates are one function. When a bin's largest singular value exceeds 1
+(beyond float32 rounding) the call warns with the bin count and the worst value,
+and `result.sigma_max_excess` carries the per-bin amount. A passive structure
+cannot do that: read it as a record that ended before ring-down or a mesh too
+coarse for the geometry (`settling_db`, `reliable`), not as gain.
+`enforce_passivity=True` returns the projected matrix instead. The raw excess is
+not yet gated on a reflecting fixture; that is part of the v2.0 microstrip
+battery ([chain-closure contract](../design_notes/chain_closure_contract.md)).
+
 **The fitted microstrip propagation constant sits 1.0 to 1.3 % above the
 Hammerstad–Jensen closed form on every in-band bin.** On a 600 µm trace over
 250 µm of RO4350B a float64 refit of the probe phasors reads 1.32 … 1.33 % with
