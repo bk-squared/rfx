@@ -256,10 +256,18 @@ def test_every_stored_summary_follows_from_the_stored_s11(fixture, key):
     np.testing.assert_allclose(_complex(entry["referee"]["analytic_realized_length"]),
                                an, rtol=1e-9, atol=1e-12)
     mv = entry["magnitude_vs_analytic"]
-    assert mv["max_abs_db_diff"] == pytest.approx(
-        float(np.abs(_db(s11) - _db(an)).max()), rel=1e-9)
     assert mv["abs_gamma_load"] == pytest.approx(abs(gamma_of(z_load, d["zc_ohm"])),
                                                  rel=1e-12)
+    if entry["dut"] == "matched":
+        # A dB difference against an identically-zero reference is a difference
+        # against the log floor. The artifact must not carry one.
+        assert mv["applies"] is False
+        assert "max_abs_db_diff" not in mv
+        assert "within_bar" not in mv
+    else:
+        assert mv["applies"] is True
+        assert mv["max_abs_db_diff"] == pytest.approx(
+            float(np.abs(_db(s11) - _db(an)).max()), rel=1e-9)
 
 
 @pytest.mark.parametrize("key", ALL_SOLVES)
@@ -366,12 +374,27 @@ def test_the_ladder_follows_from_the_stored_curves(fixture, kind, dut):
     assert lad["rungs_um"] == list(RUNGS_UM), lad["rungs_um"]
     fine = fixture["solves"][lad["finest"]]
     fine_db = np.asarray(fine["s11_db"], dtype=float)
+    fine_abs = np.asarray(fine["abs_s11"], dtype=float)
     for row in lad["rows"]:
-        cur = np.asarray(fixture["solves"][row["rung"]]["s11_db"], dtype=float)
-        assert row["max_db_diff_vs_finest"] == pytest.approx(
-            float(np.abs(cur - fine_db).max()), rel=1e-9), row["rung"]
-        assert row["magnitude_within_2dB_vs_finest"] == bool(
-            np.abs(cur - fine_db).max() <= fixture["bar"]["magnitude_db"])
+        entry = fixture["solves"][row["rung"]]
+        cur_abs = np.asarray(entry["abs_s11"], dtype=float)
+        assert row["max_abs_diff_vs_finest"] == pytest.approx(
+            float(np.abs(cur_abs - fine_abs).max()), rel=1e-9), row["rung"]
+        if dut == "matched":
+            # No dB comparison against a deep null, rung to rung or otherwise.
+            assert "max_db_diff_vs_finest" not in row, row["rung"]
+            assert row["matched_floor_abs"] == pytest.approx(
+                float(cur_abs.max()), rel=1e-12), row["rung"]
+        else:
+            cur = np.asarray(entry["s11_db"], dtype=float)
+            assert row["max_db_diff_vs_finest"] == pytest.approx(
+                float(np.abs(cur - fine_db).max()), rel=1e-9), row["rung"]
+            assert row["magnitude_within_2dB_vs_finest"] == bool(
+                np.abs(cur - fine_db).max() <= fixture["bar"]["magnitude_db"])
+        # The recommendation follows from the NAMED flags, so a renamed key
+        # cannot drop out of the decision unnoticed.
+        assert row["deciding_flags"], row["rung"]
+        assert row["all_inside_bar"] == all(bool(row[f]) for f in row["deciding_flags"])
     qualifying = [r["rung"] for r in lad["rows"] if r["all_inside_bar"]]
     assert lad["coarsest_rung_within_bar"] == (qualifying[0] if qualifying else None)
 

@@ -1455,17 +1455,35 @@ def _solve_entry(rec: dict) -> dict:
     }
 
     # Magnitude against the closed form. |Gamma_L| is constant in frequency, so
-    # the comparison is a curve against a constant and the dB distance is the
-    # bar's own quantity.
-    an_mag_db = 20.0 * np.log10(np.maximum(np.abs(an_real), 1e-300))
-    entry["magnitude_vs_analytic"] = {
-        "abs_gamma_load": abs(complex(d["gamma_load"]["real"], d["gamma_load"]["imag"])),
-        "max_abs_db_diff": float(np.abs(mag_db - an_mag_db).max()),
-        "argmax_bin": int(np.argmax(np.abs(mag_db - an_mag_db))),
-        "max_abs_diff": float(np.abs(mag - np.abs(an_real)).max()),
-        "bar_db": BAR["magnitude_db"],
-        "within_bar": bool(np.abs(mag_db - an_mag_db).max() <= BAR["magnitude_db"]),
-    }
+    # for a reflecting DUT the comparison is a curve against a constant and the
+    # dB distance is the bar's own quantity.
+    #
+    # The matched control is the exception the PI ruled on: its closed form is
+    # identically zero, so a dB difference against it is a difference against a
+    # floor constant and says nothing (it reads ~6000 dB). That case is judged
+    # by its own upper bound below and carries no dB comparison at all — not a
+    # comparison recorded as failing, which would be a number nobody may read.
+    if dut == "matched":
+        entry["magnitude_vs_analytic"] = {
+            "applies": False,
+            "why": ("the closed form is identically zero for a matched load, so "
+                    "there is no magnitude to be within 2 dB of. The pre-declaration "
+                    "holds this case to an upper bound instead; see matched_floor."),
+            "abs_gamma_load": 0.0,
+            "max_abs_diff": float(np.abs(mag - np.abs(an_real)).max()),
+        }
+    else:
+        an_mag_db = 20.0 * np.log10(np.maximum(np.abs(an_real), 1e-300))
+        entry["magnitude_vs_analytic"] = {
+            "applies": True,
+            "abs_gamma_load": abs(complex(d["gamma_load"]["real"],
+                                          d["gamma_load"]["imag"])),
+            "max_abs_db_diff": float(np.abs(mag_db - an_mag_db).max()),
+            "argmax_bin": int(np.argmax(np.abs(mag_db - an_mag_db))),
+            "max_abs_diff": float(np.abs(mag - np.abs(an_real)).max()),
+            "bar_db": BAR["magnitude_db"],
+            "within_bar": bool(np.abs(mag_db - an_mag_db).max() <= BAR["magnitude_db"]),
+        }
 
     if dut == "matched":
         # A deep null: held to an upper bound, never compared in dB rung to rung.
@@ -1524,18 +1542,28 @@ def _ladder(fix: dict, kind: str, dut: str) -> dict | None:
         cur_abs = np.asarray(cur["abs_s11"], dtype=float)
         row = {
             "rung": k,
-            "max_db_diff_vs_finest": float(np.abs(cur_db - fine_db).max()),
             "max_abs_diff_vs_finest": float(np.abs(cur_abs - fine_abs).max()),
-            "magnitude_within_2dB_vs_finest": bool(
-                np.abs(cur_db - fine_db).max() <= BAR["magnitude_db"]),
-            "magnitude_within_2dB_vs_analytic": cur["magnitude_vs_analytic"]["within_bar"],
             "passivity_within_bar": cur["passivity"]["within_bar"],
             "resolution": cur["resolution"],
         }
+        # The flags that decide the recommended cell size are listed by name,
+        # never collected by matching the key text: a renamed key would then
+        # drop out of the decision silently and every rung would qualify.
+        deciding = ["passivity_within_bar"]
         if dut == "matched":
+            # A deep null is compared in AMPLITUDE, not in dB: the floor halves
+            # with the cell size, and a ratio of dB values would read ~1 for a
+            # sequence that is in fact first order.
+            row["matched_floor_abs"] = cur["matched_floor"]["max_abs_s11"]
             row["matched_floor_db"] = cur["matched_floor"]["max_db"]
             row["matched_floor_within_bar"] = cur["matched_floor"]["within_bar"]
+            deciding.append("matched_floor_within_bar")
         else:
+            row["max_db_diff_vs_finest"] = float(np.abs(cur_db - fine_db).max())
+            row["magnitude_within_2dB_vs_finest"] = bool(
+                np.abs(cur_db - fine_db).max() <= BAR["magnitude_db"])
+            row["magnitude_within_2dB_vs_analytic"] = \
+                cur["magnitude_vs_analytic"]["within_bar"]
             fine_cross = [r["measured_hz"] for r in fine["phase"]["matched_realized"]]
             cur_cross = [r["measured_hz"] for r in cur["phase"]["matched_realized"]]
             pairs = [(a, b) for a, b in zip(cur_cross, fine_cross)
@@ -1546,9 +1574,10 @@ def _ladder(fix: dict, kind: str, dut: str) -> dict | None:
                 pairs and max(abs(a - b) / b for a, b in pairs) <= BAR["frequency_frac"])
             row["crossing_frac_vs_analytic"] = cur["phase"]["max_frac"]
             row["crossing_within_1pct_vs_analytic"] = cur["phase"]["within_bar"]
-        flags = [v for kk, v in row.items()
-                 if isinstance(v, bool) and kk.endswith(("_vs_finest", "_within_bar"))]
-        row["all_inside_bar"] = all(flags) if flags else False
+            deciding += ["magnitude_within_2dB_vs_finest",
+                         "crossing_within_1pct_vs_finest"]
+        row["deciding_flags"] = deciding
+        row["all_inside_bar"] = all(bool(row[f]) for f in deciding)
         lad["rows"].append(row)
     # The support matrix asks for one cell size: the coarsest rung whose every
     # quantity sits inside the bar against the finest. Arithmetic over the
@@ -1557,7 +1586,7 @@ def _ladder(fix: dict, kind: str, dut: str) -> dict | None:
     lad["coarsest_rung_within_bar"] = qualifying[0]["rung"] if qualifying else None
     # Successive differences and their ratio, on the quantity the DUT has.
     if dut == "matched":
-        seq = [fix["solves"][k]["matched_floor"]["max_db"] for k in have]
+        seq = [fix["solves"][k]["matched_floor"]["max_abs_s11"] for k in have]
     else:
         seq = []
         for k in have:
@@ -1565,6 +1594,9 @@ def _ladder(fix: dict, kind: str, dut: str) -> dict | None:
                  if r["measured_hz"] is not None]
             seq.append(c[0] if c else None)
     lad["ladder_sequence"] = seq
+    lad["ladder_quantity"] = ("the matched control's worst |S11| in amplitude"
+                              if dut == "matched"
+                              else "the lowest measured phase crossing, in Hz")
     if all(v is not None for v in seq) and len(seq) >= 3:
         diffs = [abs(seq[i + 1] - seq[i]) for i in range(len(seq) - 1)]
         lad["successive_diff"] = diffs
