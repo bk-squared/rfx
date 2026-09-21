@@ -812,6 +812,12 @@ CLASSIFICATION: dict[str, str] = {
     # arm IS cv01's rig and must reproduce the committed cpml_full number, or
     # no other layer count in the table is readable.
     CV01_CPML_NOTE: GATED,
+    # 2026-09-21 (the coax conductor realization): the record behind moving the
+    # coax pin and wall from a per-node conductivity to PEC edge masks. Its
+    # numbers come from the diagnostic's run records on meas/coax-chain-battery
+    # and from grid builds, not out of a committed JSON key, so it carries no
+    # `<path>.json::<key>` span for this gate to resolve.
+    "docs/design_notes/coax_conductor_realization.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/cv10_pmc_realization_regate.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/cv14_rect_cavity_gate_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/estimator_resolution_regate.md": GATED,

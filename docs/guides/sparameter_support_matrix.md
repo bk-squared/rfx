@@ -870,7 +870,18 @@ do not fit; it does not silently use fewer planes.
   a `0.05` tolerance and maximum recurrence residual is `0.00588` against
   `0.03`.
 - Use about four or more annulus cells; the committed gate requires at least
-  3.5. Coarser cases are reported as under-resolved.
+  3.5. Coarser cases are reported as under-resolved. **That recommendation was
+  calibrated against a defect, not against the mesh** (2026-09-21): the pin and
+  the outer conductor were realized as `sigma = PEC_SIGMA` per node, which damps
+  only the plus-side edges of a conductor cell, and the resulting one-sided wall
+  put the fitted phase constant 8-18 % above `omega sqrt(eps_r)/c` and lost up
+  to 15 % of the column power, both shrinking with the mesh in a way that looked
+  like under-resolution. With the conductors realized as PEC edge masks the
+  phase constant is within 1 % of the analytic value at 4, 6 and 9 annulus
+  cells and the column power within 0.007 of unity; the cell-size
+  recommendation is being re-derived on the fixed lane and this line will be
+  replaced by that measurement. See
+  `docs/design_notes/coax_conductor_realization.md`.
 - The matched-load fixture reaches `|Gamma|` deviation `0.0929` because of the
   single-cell annular resistor and is reported separately rather than used as a
   method gate.
@@ -904,7 +915,14 @@ default-scale green promoted-lane run VESSL `369367252220`) brackets — it does
 (not an idealized analytic one), its phase; a mesh-refinement convergence
 witness (VESSL `369367251845`) moved the measured/analytic `beta` ratio from
 `1.1208` to `1.0662` (annulus `3.79` -> `5.68` cells, implied convergence
-order `p ~= 1.5`, two-point, from a single 1.5x step); the `eps_scale` AD
+order `p ~= 1.5`, two-point, from a single 1.5x step) -- **that witness was
+measuring the conductor realization, not the mesh** (2026-09-21): a
+homogeneously filled PEC-bounded coax carries TEM at `omega sqrt(eps_r)/c`
+whatever the staircase does to the cross-section, so a `beta` ratio of `1.12`
+was never a resolution statement. It came from the per-node `sigma`
+realization, and with the conductors realized as PEC edge masks the same ratio
+is `1.0018`, `1.0050` and `1.0068` at 4, 6 and 9 annulus cells. The refinement
+"convergence order" read off it is therefore not a convergence order; the `eps_scale` AD
 channel below is `GRAD_SAFE`;
 issue #812 P1 (2026-09-01) adds the leg that phase bracketing was missing --
 the referee's phase-vs-own-`beta` witness is **E1** (a coherent
