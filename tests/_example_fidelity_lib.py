@@ -383,8 +383,9 @@ CLASSIFICATION: dict[str, Entry] = {
         "-- constructs no Simulation"),
     "validation/crossval/comparators/spectral_features.py": Entry(
         "no_simulation",
-        "pure-numpy sub-bin spectral-feature estimators shared by cv06b/cv07 "
-        "and the Palace referee producers (#812 P3) -- no rfx import at all"),
+        "pure-numpy sub-bin spectral-feature estimators shared by the Sheen "
+        "low-pass filter and the Palace referee producers (#812 P3) -- no rfx "
+        "import at all"),
     "validation/crossval/comparators/patch_mode_identification.py": Entry(
         "no_simulation",
         "pure-math patch cavity mode identification (#812) -- closed-form "
@@ -803,9 +804,6 @@ CLASSIFICATION: dict[str, Entry] = {
         (Builder("build_sim", None, (
             _v("with_slab=False", with_slab=False),
             _v("with_slab=True", with_slab=True))),)),
-    "validation/crossval/06b_msl_notch_filter_uniform.py": Entry(
-        "audited", "`_build_sim()` returns Simulation with no solve call",
-        (Builder("_build_sim", None, (_v("default"),)),)),
     "validation/research/subgrid/12_subgrid_disjoint_prototype.py": Entry(
         "audited",
         "`_build_disjoint_simulation()` returns Simulation with no solve call",

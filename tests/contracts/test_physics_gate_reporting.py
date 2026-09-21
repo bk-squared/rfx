@@ -384,10 +384,17 @@ def test_waveguide_report_parser_captures_cv11_gates_and_refs():
 
 
 def test_msl_report_parser_captures_notch_demo_gates():
-    """The cv06b stdout contract, including the #812-P3 estimator-resolution
-    lines. The frequency window was TIGHTENED 15% -> 4.0% with that re-gate
-    (derivation: docs/design_notes/estimator_resolution_regate.md), so the
-    old 6.2% sample no longer passes -- locked below."""
+    """The stdout contract of the MSL notch filter's retired script, including
+    the #812-P3 estimator-resolution lines. The frequency window was TIGHTENED
+    15% -> 4.0% with that re-gate (derivation:
+    docs/design_notes/estimator_resolution_regate.md), so the old 6.2% sample
+    no longer passes -- locked below.
+
+    The case was rebuilt on 2026-09-22 as tests/crossval/msl_notch_filter/ and
+    its script removed, so report_msl_envelope's three restated windows
+    (_CV06B_FREQ_TOL_PCT, _CV06B_BW_RATIO_WINDOW, _CV06B_WITNESS_BINS) no
+    longer have a case to be pinned against; the stdout samples below are
+    synthetic and read no removed file."""
     parsed = msl_report.parse_cv06b_stdout(
         "\n".join(
             [
@@ -478,20 +485,6 @@ def test_cv06b_shallow_row_used_above_is_the_committed_artifact_row():
     assert round(row["notch_depth_db"], 2) == -28.97
     assert row["G2_pass"] is False
     assert row["depth_witness_pass"] is True
-
-
-def test_report_mirrored_cv06b_windows_match_the_case_that_owns_them():
-    """report_msl_envelope parses stdout instead of importing cv06b, so it
-    RESTATES three windows. A restated number is a number that can rot: pin it
-    to the case that owns it."""
-    spec = importlib.util.spec_from_file_location(
-        "_cv06b_case",
-        REPO_ROOT / "validation/crossval/06b_msl_notch_filter_uniform.py")
-    cv = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(cv)
-    assert msl_report._CV06B_FREQ_TOL_PCT == cv.NOTCH_FREQ_TOL_PCT
-    assert msl_report._CV06B_BW_RATIO_WINDOW == cv.STOPBAND_BW_RATIO_WINDOW
-    assert msl_report._CV06B_WITNESS_BINS == cv.HALF_GRID_WITNESS_BINS
 
 
 def test_msl_report_infers_legacy_xfail_count_from_stdout(tmp_path: Path):

@@ -27,8 +27,8 @@ Fix (2026-05-02)
 A microstrip quasi-TEM mode requires a PEC trace conductor above the substrate.
 Without the trace, the Ez source excites a TM-like substrate mode giving
 Z0 ≈ 1600–2500 Ω and |S21| ≈ 0.  Following the canonical microstrip-trace
-pattern (``sim.add(Box(...), material="pec")``, as in
-``validation/crossval/06b_msl_notch_filter_uniform.py``),
+pattern (``sim.add(Box(...), material="pec")``, as in the MSL notch
+filter case, ``tests/crossval/msl_notch_filter/``),
 we add a one-cell-thick PEC strip at z = H_SUB spanning the full line length.
 
 The 3-probe extractor in ``compute_msl_s_matrix`` was also corrected to apply a

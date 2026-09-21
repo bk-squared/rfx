@@ -43,7 +43,7 @@ names the count and the worst value. Passing `enforce_passivity=True` clips
 the assembled S singular values and preserves the changed raw values in
 `S_raw` with `passivity_correction`. Projection,
 `reliable`, `probe_clearance`, and `cond_a` do not certify RF accuracy.
-The equal-reference cv06b records retained with issue #726 still show raw
+The equal-reference MSL notch filter records retained with issue #726 still show raw
 coherent power gain above one; this normalization change does not explain
 or remove that residual.
 

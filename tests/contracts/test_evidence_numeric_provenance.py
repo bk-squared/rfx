@@ -480,7 +480,10 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
     # 2026-09-21: six rows left the table with their cases (cv04, cv17, cv22,
     # cv23, cv24, cv26) and took 91 of its 100 checked citations. Floor lowered
     # to the measured remainder, 9.
-    (BENCHMARKS, "Reference cases"): 9,
+    # 2026-09-22: the MSL notch filter's row left the table when the case was
+    # rebuilt as tests/crossval/msl_notch_filter/, and took 5 of the 9. Floor
+    # lowered to the measured remainder, 4.
+    (BENCHMARKS, "Reference cases"): 4,
 }
 
 # Anti-vacuity census. A green gate must mean the references are right, not that
@@ -579,9 +582,18 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
 # STAYS -- the MSL thru-line phase case's own tests load it -- and is still
 # cited by that case's sites, so no artifact leaves the count. Measured after
 # both changes: 389 references, 361 value-checked, 35 artifacts.
-MIN_REFERENCES = 389
-MIN_VALUE_CHECKED = 361
-MIN_DISTINCT_ARTIFACTS = 35
+# 2026-09-22 (the MSL notch filter rebuilt as tests/crossval/msl_notch_filter/):
+# its manifest entry, validation README row and public benchmarks row left the
+# gated surface, and 35 citations in two sections of the estimator-resolution
+# re-gate note reach the case's committed falsifier summaries under
+# validation/crossval/_06b_msl_notch_results/ (REMOVED_ARTIFACT_PREFIXES,
+# skipped per citation; that note carries the dated removal header). Two
+# artifacts leave the distinct count with them. Measured after the removal:
+# 340 references, 319 value-checked, 33 artifacts. The floors are lowered to
+# the measured values.
+MIN_REFERENCES = 340
+MIN_VALUE_CHECKED = 319
+MIN_DISTINCT_ARTIFACTS = 33
 
 
 # --------------------------------------------------------------------------
@@ -973,6 +985,14 @@ REMOVED_ARTIFACT_PREFIXES: tuple[str, ...] = (
     # it is here so a citation added later cannot resolve against a tree that
     # no longer holds the artifact. Those artifacts are at commit 3883a836.
     "validation/crossval/_21_coax_two_port_referee_logs/",
+    # 2026-09-22, the MSL notch filter: the case was rebuilt as
+    # tests/crossval/msl_notch_filter/ and its script, committed run records
+    # and falsifier summaries went with it. Two opted-in sections of
+    # docs/design_notes/estimator_resolution_regate.md cited these summaries
+    # 35 times; those citations are skipped now and the note carries the dated
+    # removal header. Those artifacts are at commit 876b3408.
+    "validation/crossval/_06b_msl_notch_results/",
+    "tests/fixtures/msl_notch_e4/",
 )
 
 

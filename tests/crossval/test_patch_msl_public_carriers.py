@@ -22,29 +22,6 @@ def _text(path):
     return (ROOT / path).read_text()
 
 
-@pytest.mark.parametrize("section,field,places,scale", [
-    ("criterion_A_baseline", "err_pct", 4, 1),
-    ("criterion_A_baseline", "bw_ratio", 4, 1),
-    ("criterion_A_baseline", "witness_bins", 4, 1),
-    ("criterion_A_baseline", "z0_median_ohm", 2, 1),
-    ("criterion_A_baseline", "f_notch_refined_hz", 4, 1e-9),
-    ("criterion_A_baseline", "notch_depth_db", 2, 1),
-    ("stub_1cell", "refined_delta_pct", 4, 1),
-    ("stub_1cell", "true_shift_pct", 4, 1),
-    ("stub_1cell", "bin_argmin_delta_pct", 4, 1),
-    ("stub_narrow", "bw_ratio", 4, 1),
-    ("stub_narrow", "err_pct", 4, 1),
-])
-def test_cv06b_current_result_quotes_committed_summary(section, field, places, scale):
-    artifact = _json("validation/crossval/_06b_msl_notch_results/"
-                     "cv06b_build_falsifiers_summary.json")
-    current = _text("validation/crossval/06b_msl_notch_filter_uniform.py").split(
-        "  COMMITTED POST-#931 RESULT", 1)[1].split("\nScope:", 1)[0]
-    assert f"{artifact[section][field] * scale:.{places}f}" in current
-    assert "FALSIFIED" in current
-    assert "electrical-width attribution remains unresolved" in current
-
-
 def test_patch_demo_directivity_comment_uses_current_measurement():
     artifact = _json("tests/fixtures/patch_canonical_farfield_e4/"
                      "canonical_farfield_e4_measured_369367259302.json")

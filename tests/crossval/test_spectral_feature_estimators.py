@@ -1,6 +1,8 @@
 """Integrity tests for the shared sub-bin spectral-feature estimators (#812 P3).
 
-Two things must hold for the cv06b/cv07 re-gate to mean anything:
+Two things must hold for the Sheen low-pass filter re-gate to mean anything
+(the MSL notch filter's old gates, which shared them, were retired with that
+case on 2026-09-22):
 
  1. Factoring the log-parabolic vertex out of the two Palace referee producers
     changed NOTHING -- ``refined_extremum`` must reproduce the committed
@@ -12,7 +14,7 @@ Two things must hold for the cv06b/cv07 re-gate to mean anything:
     estimator. That is the whole reason it can be used as an in-run proof of
     sub-bin resolution rather than an assertion of it.
 
-Plus the closed-form checks the cv06b stopband-width gate rests on.
+Plus the closed-form checks the retired stopband-width gate rested on.
 """
 from __future__ import annotations
 
@@ -28,7 +30,6 @@ MODULE = REPO_ROOT / "validation/crossval/comparators/spectral_features.py"
 REFEREE = REPO_ROOT / "tests/fixtures/sheen_lpf_e4/sheen_lpf_palace_referee.json"
 RFX_LEG = REPO_ROOT / "validation/crossval/_07_sheen_results/rfx.json"
 OEMS_LEG = REPO_ROOT / "validation/crossval/_07_sheen_results/openems.json"
-NOTCH_DX50 = REPO_ROOT / "tests/fixtures/msl_notch_e4/msl_stub_notch_rfx_dx50.json"
 
 _LOWER_WIN = (6.3, 7.5)
 _UPPER_WIN = (7.5, 8.6)
@@ -91,7 +92,7 @@ def test_transmission_zero_counter_finds_the_doublet_and_rejects_ripple(sf):
 
 
 def test_ideal_shunt_open_stub_bandwidth_closed_form(sf):
-    """cv06b's stopband-width gate rests on |S21| = 2/(2 + j r tan theta):
+    """The retired stopband-width gate rested on |S21| = 2/(2 + j r tan theta):
     the -10 dB fractional bandwidth is (4/pi) atan(r/6). Check the estimator
     recovers it from a synthetic sweep of that exact model."""
     f0, r = 3.6424, 1.0
@@ -104,24 +105,10 @@ def test_ideal_shunt_open_stub_bandwidth_closed_form(sf):
                                            rel=2e-3)
 
 
-def test_committed_notch_fixture_matches_the_ideal_stub_bandwidth(sf):
-    """Prior provenance for cv06b's T2 window: a real committed rfx run of the
-    same open-stub notch (dx=50um sibling board) on the same 63.6364 MHz grid
-    lands within 5% of the closed form, i.e. 4x inside the +-20% window."""
-    d = json.loads(NOTCH_DX50.read_text())
-    f = np.asarray(d["freqs_ghz"], dtype=float)
-    s21 = np.asarray(d["s21_mag"], dtype=float)
-    r = sf.refined_extremum(f, s21)
-    lo, hi, _ = sf.band_at_level(f, s21, -10.0, r["index"])
-    ratio = ((hi - lo) / r["refined_f"]) / (4.0 / np.pi * np.arctan(1.0 / 6.0))
-    assert 0.80 < ratio < 1.20
-    assert ratio == pytest.approx(0.9512, abs=0.005)
-
-
-def test_worst_sampled_notch_minimum_on_the_cv06b_grid(sf):
+def test_worst_sampled_notch_minimum_on_the_63_mhz_grid(sf):
     """The audit's finding, re-derived: on a 63.6364 MHz grid an ideal r=1
-    stub's WORST sampled minimum is ~-31 dB, i.e. >20 dB inside cv06b's
-    -10 dB depth gate, so that gate cannot fail while a notch exists."""
+    stub's WORST sampled minimum is ~-31 dB, i.e. >20 dB inside the retired
+    -10 dB depth gate, so that gate could not fail while a notch exists."""
     f0, h = 3.6424e9, 63.6364e6
     theta = 0.5 * np.pi * (1.0 + (h / 2.0) / f0)
     worst_db = 20.0 * np.log10(2.0 / np.sqrt(4.0 + np.tan(theta) ** 2))
@@ -131,12 +118,13 @@ def test_worst_sampled_notch_minimum_on_the_cv06b_grid(sf):
 
 def test_half_grid_witness_is_unpassable_by_a_bare_argmin_on_a_float32_axis(sf):
     """#812 round-2 review (B3): with the spread measured in GLOBAL bins
-    (``f[1]-f[0]``) a bare argmin on cv06b's float32 sweep read 0.99999 at
+    (``f[1]-f[0]``) a bare argmin on a 100-point float32 sweep read 0.99999 at
     dozens of bin positions and PASSED ``< 1.0``.  The witness now measures
     in the LOCAL bin between the two argmin bins, so adjacent argmin bins
     score exactly 1.0 -- numerator and denominator are the same float
-    subtraction -- at every position.  The committed cv06b artifact records
-    the same sweep (``case_D_quantised_estimator.float32_axis_sweep``)."""
+    subtraction -- at every position.  ``tests/fixtures/cv06b_estimator_regate/
+    cv06b_estimator_falsifiers.json`` records the same sweep
+    (``case_D_quantised_estimator.float32_axis_sweep``)."""
     f = np.linspace(0.7e9, 7.0e9, 100).astype(np.float32).astype(np.float64)
     n_global_below, n_local_below, n = 0, 0, 0
     for k in range(1, 99):
