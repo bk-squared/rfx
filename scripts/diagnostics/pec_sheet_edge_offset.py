@@ -233,6 +233,26 @@ def generality(variant, mode):
     return 0
 
 
+def thick_order(mode):
+    """Convergence order of the on-node reference for the 1 mm THICK fin, on
+    four grids (the fin is 2 ... 16 cells thick), three lengths. The thick-fin
+    records were extrapolated at second order without this measurement."""
+    t = 1.0e-3
+    grids = (0.5e-3, 0.25e-3, 0.125e-3, 0.0625e-3)
+    out = {"mode": mode, "thickness_m": t, "grids_m": list(grids), "rows": []}
+    for length in (4.0e-3, 5.0e-3, 6.0e-3):
+        f = [lowest_resonance(mode, dx, length, thickness=t)[0] for dx in grids]
+        row = {"length_m": length, "f_hz": f, "order": []}
+        for i in range(len(grids) - 2):
+            d1, d2 = f[i] - f[i + 1], f[i + 1] - f[i + 2]
+            row["order"].append(float(np.log2(d1 / d2)) if d1 * d2 > 0 else None)
+        out["rows"].append(row)
+        print(row, flush=True)
+    path = OUT.with_name(f"thick_fin_order_{mode}.json")
+    path.write_text(json.dumps(out, indent=1) + "\n")
+    return 0
+
+
 def reference_order():
     """Observed convergence order of the on-node reference at the fin tip.
 
@@ -265,6 +285,8 @@ def main() -> int:
     if "--generality" in sys.argv:
         i = sys.argv.index("--generality")
         return generality(sys.argv[i + 1], sys.argv[i + 2])
+    if "--thick-order" in sys.argv:
+        return thick_order(sys.argv[sys.argv.index("--thick-order") + 1])
     if "--reference-order" in sys.argv:
         return reference_order()
     if "--thick-fin" in sys.argv:
