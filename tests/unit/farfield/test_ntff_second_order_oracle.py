@@ -511,6 +511,64 @@ def test_box_touching_the_array_boundary_is_refused():
 
 
 # ---------------------------------------------------------------------------
+# The half-cell interpolation must land exactly on the face
+# ---------------------------------------------------------------------------
+
+def test_normal_interpolation_lands_on_the_face_plane():
+    """The two H weights of a face must reconstruct the face's own position.
+
+    The tangential H of a face at node plane ``idx`` is stored at the centres
+    of cells ``idx-1`` and ``idx``. Whatever weights the box carries, mixing
+    those two positions with them has to give the node plane back — that is
+    what makes the interpolation exact for a field varying linearly across
+    the face, and it is the property a flat 1/2 loses when the two cells have
+    different widths.
+    """
+    dz_widths = np.array([1.0, 1.0, 2.0, 3.0, 3.0, 3.0]) * 1.0e-3
+    dx_widths = np.full(6, 1.0e-3)
+    grid = _GradedGrid(dx_widths, dx_widths, dz_widths)
+    # Both z faces straddle a change of cell width: node 2 between 1.0 and
+    # 2.0 mm, node 3 between 2.0 and 3.0 mm.
+    box = NTFFBox(i_lo=1, i_hi=5, j_lo=1, j_hi=5, k_lo=2, k_hi=3,
+                  freqs=jnp.asarray([FREQ], dtype=jnp.float32))
+    box = with_face_centre_collocation(box, grid)
+
+    zn = _nodes(dz_widths)
+    zc = 0.5 * (zn[:-1] + zn[1:])
+    for idx, w in ((box.k_lo, box.w_z_lo), (box.k_hi, box.w_z_hi)):
+        mixed = w * zc[idx - 1] + (1.0 - w) * zc[idx]
+        assert np.isclose(mixed, zn[idx], rtol=0, atol=1e-15), (
+            f"z face at node {idx}: weights put the H sample at {mixed:.6e} m, "
+            f"not on the face at {zn[idx]:.6e} m")
+    # The graded axis needs real weights; the uniform ones must stay at 1/2.
+    assert box.w_z_lo != 0.5 and box.w_z_hi != 0.5
+    assert box.w_x_lo == 0.5 and box.w_y_hi == 0.5
+
+
+def test_boxes_built_for_a_new_run_collocate_at_the_face_centre():
+    """The second-order layout has to reach the runners, not just exist."""
+    from rfx import Simulation
+    from rfx.farfield import make_ntff_box
+    from rfx.grid import Grid
+
+    grid = Grid(freq_max=5e9, domain=(0.06, 0.06, 0.06), dx=3.0e-3,
+                cpml_layers=4)
+    assert make_ntff_box(grid, (0.02,) * 3, (0.04,) * 3,
+                         [3e9]).collocation == "face_centre"
+    assert NTFFBox.from_grid(grid, i_lo=4, i_hi=16, j_lo=4, j_hi=16,
+                             k_lo=4, k_hi=16,
+                             freqs=jnp.asarray([3e9])).collocation == "face_centre"
+
+    sim = Simulation(freq_max=5e9, domain=(0.06, 0.06, 0.06), dx=3.0e-3,
+                     boundary="cpml", cpml_layers=4)
+    sim.add_source((0.03, 0.03, 0.03), "ez")
+    sim.add_ntff_box(corner_lo=(0.021,) * 3, corner_hi=(0.039,) * 3,
+                     freqs=[3e9])
+    res = sim.run(n_steps=8, skip_preflight=True)
+    assert res.ntff_box.collocation == "face_centre"
+
+
+# ---------------------------------------------------------------------------
 # The area element of a face is the product of the two widths that span it
 # ---------------------------------------------------------------------------
 
