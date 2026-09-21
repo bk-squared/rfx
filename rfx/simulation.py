@@ -1978,9 +1978,10 @@ def make_core_step(ctx: _StepContext):
         # channels (v, i, v_port) are accumulated POST-injection below.
         if ctx.use_wire_sparams or ctx.use_lumped_sparams:
             from rfx.probes.probes import _ampere_loop
-        if ctx.use_wire_sparams:
-            # WIRE lane only — see the scope note at the lumped block below.
+            # Both families advance their H-derived current by dt/2 to the
+            # E time level; one import for both blocks.
             from rfx.core.dft_utils import half_step_current_phase as _half_i_phase
+        if ctx.use_wire_sparams:
             new_wire_refs = []
             for accs, wp_meta in zip(carry["wire_sparam_accs"], ctx.wire_sparam_meta):
                 v_ref_dft = accs[4]
@@ -2123,7 +2124,6 @@ def make_core_step(ctx: _StepContext):
         # is unchanged (phase computed at the pre slot and reused), so a
         # PASSIVE port reads bit-identically to the old slot in V.
         if ctx.use_lumped_sparams:
-            from rfx.core.dft_utils import half_step_current_phase as _half_i_phase_l
             new_lumped_accs = []
             for accs, lp_meta, (v_ref_new_l, phase_l) in zip(
                     carry["lumped_sparam_accs"], ctx.lumped_sparam_meta,
@@ -2138,7 +2138,7 @@ def make_core_step(ctx: _StepContext):
                 # (E^{n+1}).  Withheld on this lane until the slot above
                 # was post-injection, because that is the correction's
                 # premise (2026-09-05 scope note).
-                i_phase_l = phase_l * _half_i_phase_l(
+                i_phase_l = phase_l * _half_i_phase(
                     lp_meta.freqs.astype(jnp.float64), dt).astype(jnp.complex64)
                 new_lumped_accs.append((
                     v_dft_l + v_l * phase_l,

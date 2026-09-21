@@ -102,10 +102,26 @@ define an S-parameter port.
 - A driven one-cell port on a solved known load: a 4-cell parallel-plate TEM
   line (`Zc = eta0`, PEC plates, magnetic side walls) terminated in `R`, whose
   `|S11| = |(R - Zc)/(R + Zc)|` at every frequency. At `R = Zc/2`, `Zc`, and
-  `2 Zc` over 1–10 GHz the port lands within `0.00043` at 1 GHz and `0.042` at
-  10 GHz of that closed form — the fixture's own discretization at 30 cells per
-  wavelength, since the wire port reads the same residual bin for bin on the
-  identical cell. `tests/unit/ports/test_lumped_port_known_load_line.py`;
+  `2 Zc` the port lands within `0.00043` of that closed form at 1 GHz, rising
+  to `0.042` at 10 GHz. The low-frequency bins are what this evidence carries,
+  together with the removal of `|S11| > 1` (the previous extractor read 0.714,
+  1.248 and 4.757 on the same three loads).
+
+  The residual at the top of the band is **not characterized**. What is
+  measured about it: it is antisymmetric in `R` (`+0.0339` at `R = Zc/2`,
+  `-0.0339` at `R = 2 Zc`, at 10 GHz) and fits a single effective reference
+  impedance — solving `|Γ| = |(R - Zc_eff)/(R + Zc_eff)|` gives
+  `Zc_eff/eta0 = 1.0805` from one load and `1.0782` from the other, the same
+  number to 0.2 % from two independent loads. No cause is claimed for it.
+  The fixture admits no mesh refinement: its cross-section is one cell tall
+  and one cell wide by construction, which is how `Zc = eta0·h/w` is arranged,
+  and refining `dx` on the fixed physical structure leaves the one-cell port
+  no longer bridging the gap — `|S11|` then reads about 1.0 at every load,
+  a different structure rather than a finer one. So this fixture's convergence
+  is **not shown**, and by the v2 accuracy bar the residual says nothing either
+  way. That the wire port reads the same residual bin for bin separates lane
+  from lane; it is one witness on a shared fixture, not a second one.
+  `tests/unit/ports/test_lumped_port_known_load_line.py`;
   `scripts/diagnostics/lumped_port_known_load_line.py` prints the run.
 - The open, short, matched, resistive, capacitor, inductor, series-RLC, and
   parallel-RLC checks with `max_abs_diff 7.91e-8` against a `2.20e-6` tolerance

@@ -35,13 +35,24 @@ DX = 1e-3
 N_NODES = 5
 FREQS_HZ = np.array([1.0, 2.5, 5.0, 7.5, 10.0]) * 1e9
 
-# The distance BOTH lanes sit from the closed form on this fixture, measured
-# 2026-09-21 at the commit that landed the fix: 0.00043 at 1 GHz rising to
-# 0.04206 at 10 GHz (30 cells per wavelength at the top bin, port and load
-# two cells apart).  This is the discretization of the fixture, not of the
-# lane: the wire port — the already-validated Gamma_L-exact extractor — has
-# the same residual bin for bin.  The bound below is that measured envelope
-# with margin; it is NOT a knob to widen when a lane drifts.
+# An EMPIRICAL envelope on a fixture whose convergence is not shown, not a
+# discretization estimate.  Measured 2026-09-21: both lanes sit 0.00043 from
+# the closed form at 1 GHz, rising to 0.04206 at 10 GHz.
+#
+# What is known about that residual: it is antisymmetric in R (+0.0339 at
+# R = Zc/2, -0.0339 at R = 2 Zc, at 10 GHz) and fits ONE effective reference
+# impedance — Zc_eff/eta0 = 1.0805 from one load and 1.0782 from the other.
+# No cause is claimed.  The fixture cannot be mesh-refined: its cross-section
+# is one cell in each transverse direction BY CONSTRUCTION, which is how
+# Zc = eta0*h/w is arranged, so refining dx on the fixed structure leaves the
+# one-cell port no longer bridging the gap and |S11| goes to about 1.0 at
+# every load.  That the wire lane reads the same residual separates lane from
+# lane on a shared fixture; it is not a second witness for the fixture.
+#
+# So this bound is a lock on measured behaviour, not a derived error bar.
+# Widening it needs a written root cause, the same as any other gate; the
+# evidence these tests carry is the low-frequency agreement and the passivity
+# bound below, not the size of this number.
 CLOSED_FORM_ATOL = 0.05
 
 

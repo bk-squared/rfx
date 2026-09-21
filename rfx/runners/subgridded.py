@@ -9,6 +9,7 @@ import jax
 import jax.numpy as jnp
 
 from rfx.core.yee import EPS_0, MU_0
+from rfx.probes.probes import PreDecisionLumpedDiagonalWarning
 from rfx.grid import Grid
 
 
@@ -650,6 +651,7 @@ def _run_subgridded_once(
             "sampling slot depends on inject_sources_before_e_coupling, so "
             "the correction is not derivable here. Diagnostic only; do not "
             "report these S-parameters as physics.",
+            PreDecisionLumpedDiagonalWarning,
             stacklevel=2,
         )
         v_dft = result.lumped_sparam_v_dft_f

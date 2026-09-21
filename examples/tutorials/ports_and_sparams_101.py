@@ -74,6 +74,12 @@ def build_generic_port_demo(*, add_component: bool) -> Simulation:
         # here, co-located moves max |S11| by 0.00000 and one cell away by
         # 0.00868.  The component is in the model either way — it changes the
         # fields — but only the second placement is something S11 can show.
+        #
+        # R is 500 ohm and not 50 for a separate reason: a series R+C on a
+        # cell that carries no port conductance is unstable below roughly
+        # 180 ohm and drives the fields to non-finite values with nothing
+        # warning (scripts/diagnostics/lumped_rlc_adjacent_to_port_nan.py).
+        # C follows R to keep the element's effect visible in this band.
         sim.add_lumped_rlc(
             RLC_POSITION,
             component="ez",
