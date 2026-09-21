@@ -21,8 +21,8 @@ fixture gave 1.7062 and 1.7074 dBi — the two rules differ by 0.006-0.007 dB
 here while both sit 0.05-0.06 dB low, so the offset is common to both and is
 not a property of the surface rule. Its cause was not investigated: it is
 thirty times inside the 2 dB accuracy bar, on a 0.3-wavelength domain whose
-NTFF box is one cell from the absorber (preflight emits six lambda/4
-near-field advisories on this fixture).
+NTFF box faces realize three cells from the source (preflight emits six
+lambda/4 near-field advisories on this fixture).
 """
 import numpy as np
 import pytest
@@ -37,8 +37,10 @@ N_STEPS = 600
 
 
 def _nu_dipole_directivity(dz_profile):
-    # cpml_layers=6 -> 9 mm CPML per x/y face; interior is 9-21 mm, so the
-    # 10-20 mm NTFF box sits fully inside (no absorber overlap; preflight clean).
+    # The 6-layer CPML (9 mm) is padded OUTSIDE the declared 30 mm domain
+    # (realized 33 cells per x/y axis), so the 10-20 mm NTFF box — realized
+    # 10.5-19.5 mm — sits seven cells from the absorber and three from the
+    # source.
     sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03), dx=1.5e-3,
                      dz_profile=dz_profile, boundary="cpml", cpml_layers=6)
     sim.add_source((0.015, 0.015, 0.015), "ez")

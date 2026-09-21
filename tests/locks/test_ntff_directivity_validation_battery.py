@@ -703,8 +703,9 @@ def test_dx_ladder_directivity_converges_and_ratio_stable(base_rung):
 # The z profile must REALIZE the uniform fixture's grid, not merely declare
 # the same cell size. 28 cells of 3.0 mm builds 33 x 33 x 41 against the
 # uniform rung's 33 x 33 x 33 — the +z absorber eight cells further out —
-# and the flux box, which sits one cell from the absorber, follows it: the
-# ratio reads 0.4953 at 28 cells and 0.5039 at 21. That is a different
+# and the power ratio follows it (caveat 2 records the same sensitivity to
+# the absorber's thickness): 0.4953 at 28 cells and 0.5039 at 21, the NTFF
+# power unchanged to 1e-5 and the flux-box power moving. That is a different
 # structure, not a different lane. At 20 cells both lanes realize
 # 33 x 33 x 33 and the NU lane reproduces the uniform one.
 #

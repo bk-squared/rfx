@@ -15,8 +15,8 @@ lattice, relative to node (i, j, k): ex at (i+1/2, j, k), ey at (i, j+1/2, k),
 ez at (i, j, k+1/2), hx at (i, j+1/2, k+1/2), hy at (i+1/2, j, k+1/2), hz at
 (i+1/2, j+1/2, k). For a face at node plane i, the two E components straddle
 the face cell along different in-plane edges and the two H components sit
-**half a cell off the face along its normal** — they are stored at the centre
-of the cell outside the face, not on the face. The integral read all four at
+**half a cell off the face along its normal** — they are stored at the centres
+of the cells on either side of the face, not on the face. The integral read all four at
 the same array index and treated them as if they all sat at the cell's
 lower-corner node.
 
@@ -254,8 +254,9 @@ transient. With the record settled — 600 steps, unchanged to 3000, tail/peak
 0.05-0.06 dB low and differ from each other by 0.006-0.007 dB, so the offset
 is common to both and is not a property of the surface rule. Its cause was
 not investigated: it is thirty times inside the 2 dB bar, on a
-0.3-wavelength domain whose box is one cell from the absorber. The test now
-runs 600 steps and asserts the settling witness.
+0.3-wavelength domain whose box faces realize three cells from the source
+(and seven from the absorber, which rfx pads outside the declared domain).
+The test now runs 600 steps and asserts the settling witness.
 
 The non-uniform lane, which the uniform gates never reached:
 
@@ -269,9 +270,10 @@ both lanes 33 x 33 x 33) the non-uniform lane reproduces the uniform one:
 NTFF-to-flux power ratio 0.5003210 against 0.5003207, directivity 1.761428040
 dBi against 1.7614298 dBi. The far-field chain is the same on both lanes,
 accumulation slot included, and the battery now asserts it. The fixture also
-asserts the realized grid shape, because the flux box sits one cell from the
-absorber and its power follows where the absorber is; a z profile with a
-different cell count is a different structure, not a different lane.
+asserts the realized grid shape, because the power ratio follows where the
+absorber is (the battery's caveat 2 records the same sensitivity to the
+absorber's thickness); a z profile with a different cell count is a different
+structure, not a different lane.
 
 `tests/crossval/` and `validation/crossval/` were not run (another session
 owns them this week).
@@ -302,11 +304,12 @@ Against the v2 accuracy bar (power and magnitude within 2 dB of the reference
 on a converged mesh) the old rule was already inside on every fixture above;
 its largest error here is 0.23 dB, on the half-wave dipole. This change does
 not rescue a failing result. It changes the order of the error: the old one
-halved per halving of the mesh and grew with the size of the box drawn round
-the radiator, the new one falls by four and does not grow with the box — at
-box half-width 9 / 18 / 27 mm the directivity error was 0.0212 / 0.0677 /
-0.1660 dB and is now 0.00013 / 0.00050 / 0.00204 dB
+halved per halving of the mesh and grew to a sixth of a dB as the box drawn
+round the radiator was enlarged, the new one falls by four and stays eighty
+times smaller over the same sweep — at box half-width 9 / 18 / 27 mm the
+directivity error was 0.0212 / 0.0677 / 0.1660 dB and is now 0.00013 /
+0.00050 / 0.00204 dB
 (`test_directivity_error_does_not_grow_with_the_huygens_box`). A user gets a
-far field whose error no longer depends on how large they drew the box, and a
-radiated power that agrees with an independent flux box to 0.06 % instead of
-1 %.
+far field that is good to a few thousandths of a dB however large they drew
+the box (up to the 27 mm tested), and a radiated power that agrees with an
+independent flux box to 0.06 % instead of 1 %.
