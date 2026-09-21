@@ -1,0 +1,123 @@
+name: rfx-msl-notch-openems-reference
+description: "The MSL notch filter -- regenerate its openEMS reference from openEMS's OWN tutorial. A 600 um microstrip line on 254 um of lossless RO4350B carries a 12 mm open-circuit stub; the stub is a quarter wavelength near 3.7 GHz, where |S21| collapses into a transmission notch. openEMS ships that exact structure as python/Tutorials/MSL_NotchFilter.py. STAGE A is this repository's faithful port of the tutorial, verbatim, and is the reproduce gate: the measured notch must land in the same 0.80-1.05 x analytic band the port used (recorded reproduction 3.6711 GHz measured vs 3.6872 GHz analytic, 0.44 %, VESSL 369367251705). If it does not, the job exits 1 and no Stage B record is written. STAGE B changes NO geometry at all (leader decision, 2026-09-22): it is the tutorial's own model at two mesh rungs -- the tutorial's own resolution and half that cell size -- so the record carries its own mesh statement. Because the coarse rung is then Stage A's model, it is not solved twice: it carries Stage A's arrays and says so in its own source field. The shorter-arm question moved to rfx's own box. Every real pass carries the sanity gates ported from validation/crossval/20_msl_phase_referee.py: the stdout/stderr scan for unused primitives and off-mesh ports, nonzero excitation energy and non-empty port traces, openEMS's own end-criteria warning treated as a failure, and passivity max(|S11|^2+|S21|^2) <= 1.05. The job clones the pinned commit itself into /tmp and refuses to measure anything else. Env: EXPECT (the commit, placeholder FILL_BEFORE_SUBMIT refuses). CPU lane, remilab-c0. Submit with scripts/vessl_submit.sh so the run id is recorded -- the record's run_id field is null by design, VESSL does not export the id into the pod."
+tags: [rfx, crossval, msl-notch-filter, openems, reference]
+resources:
+  cluster: remilab-c0
+  cpu: 8
+  memory: 16Gi
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  # OMP_NUM_THREADS=1: openEMS's own numThreads (passed explicitly as
+  # --threads 8 below, matching resources.cpu=8) does the parallelism --
+  # three independently-chosen numbers is how the coax lane oversubscribed.
+  OMP_NUM_THREADS: "1"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  # REQUIRED. The commit this job measures. The job clones the branch itself
+  # and checks this commit out; a clone whose HEAD does not start with this
+  # string exits 3 rather than measuring the wrong tree. The placeholder
+  # refuses too -- an unpinned run produces a record with no provenance.
+  EXPECT: "FILL_BEFORE_SUBMIT"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  echo "=== The MSL notch filter: openEMS reference from openEMS's own tutorial ==="
+  date
+
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  "$PY" --version
+  echo "RFX_OPENEMS_COMMIT=${RFX_OPENEMS_COMMIT:-unset(pre-stamp image)}"
+  # Import probes first: if the image's bindings are not importable, fail here
+  # and not forty minutes into a stage.
+  "$PY" -c "from openEMS.openEMS import openEMS; print('openEMS from image: OK')"
+  "$PY" -c "from CSXCAD.CSXCAD import ContinuousStructure; from openEMS.ports import MSLPort; print('CSXCAD + MSLPort: OK')"
+
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+
+  if [ "$EXPECT" = "FILL_BEFORE_SUBMIT" ]; then
+    echo "FATAL: EXPECT still holds the FILL_BEFORE_SUBMIT placeholder -- pin the commit before submitting"
+    exit 3
+  fi
+
+  SRC=/tmp/rfx-msl-notch-ref
+  rm -rf "$SRC"
+  git clone -q --branch crossval/msl-notch-filter https://github.com/bk-squared/rfx.git "$SRC"
+  git config --global --add safe.directory "$SRC" || true
+  git -C "$SRC" checkout -q "$EXPECT"
+  # Provenance capture must fail loudly: no fallback, no placeholder. A run that
+  # dies here costs a relaunch; one that finishes with no commit costs the
+  # evidence chain.
+  sha=$(git -C "$SRC" rev-parse HEAD)
+  short=$(git -C "$SRC" rev-parse --short HEAD)
+  case "$sha" in
+    "$EXPECT"*) echo "provenance: $sha (matches EXPECT=$EXPECT)" ;;
+    *) echo "WRONG TREE: clone HEAD is $sha, EXPECT is $EXPECT -- refusing to measure"; exit 3 ;;
+  esac
+  cd "$SRC"
+  git status --short || true
+
+  if ! "$PY" -c "import numpy, h5py" >/dev/null 2>&1; then
+    "$PY" -m pip install -q "numpy<2" "h5py>=3.8"
+  fi
+  "$PY" -c "import numpy; print('numpy', numpy.__version__)"
+
+  primary=/root/workspace/byungkwan-workspace/research/rfx
+  out="$primary/.omx/msl-notch-openems/$(date -u +%Y%m%dT%H%M%SZ)-$short"
+  mkdir -p "$out"
+  echo "$sha" > "$out/commit.txt"
+  echo "artifacts: $out"
+
+  DRV=tests/crossval/msl_notch_filter/reference/make_openems_reference.py
+  test -f "$DRV" || { echo "STALE CLONE: the reference maker is missing at $DRV"; exit 3; }
+
+  # Pure-numpy checks first, seconds each: a constant or a layout bug must not
+  # burn a stage.
+  "$PY" -u "$DRV" --self-check | tee "$out/self_check.log"
+  "$PY" -u "$DRV" --dry-run --stage both | tee "$out/stage_plan.log"
+
+  # POSIX rc capture across a pipe. ${PIPESTATUS[0]} is a bashism and the VESSL
+  # runner shell is dash/busybox-ash, so the left side of the pipe runs in a
+  # subshell that writes its own rc to a file; the file is read back after.
+  ( set +e
+    timeout 21600 "$PY" -u "$DRV" --stage both \
+      --output "$out/openems_tutorial.json" \
+      --sim-root /tmp/msl_notch_openems --threads 8 2>&1
+    echo $? > "$out/exit_code"
+  ) | tee "$out/run.log"
+  rc=$(cat "$out/exit_code")
+  echo "msl_notch_openems_reference_rc=$rc"
+
+  # Settling positive control, quoted from this run's own log: openEMS's
+  # max-timesteps warning must appear for each stage's SMOKE pass (NrTS=200,
+  # EndCriteria=0.0, which by construction can never converge) and must be
+  # absent from every REAL pass. Same binary, same stream, only the smoke/real
+  # split differs. The smoke passes write their own capture files under the
+  # sim root, which is where the phrase lives when it is not in the driver log.
+  echo "===== settling positive control (openEMS's own max-timesteps warning) ====="
+  grep -rn "reached before the end-criteria of" /tmp/msl_notch_openems || echo "(phrase absent from every captured stage log)"
+
+  echo "===== record summary ====="
+  if [ -f "$out/openems_tutorial.json" ]; then
+    "$PY" -c 'import json,sys; a=json.load(open(sys.argv[1])); g=a["meta"].get("stage_a_gate") or {}; print("stage_a gate passed=%s measured=%s Hz dev=%s %%" % (g.get("passed"), g.get("measured_f_notch_hz"), g.get("deviation_pct"))); [print("%-16s notch=%.4f GHz depth=%.2f dB max_energy_sum=%.4f" % (k, a[k]["notch"]["refined_f_ghz"], a[k]["notch"]["depth_db"], a[k]["max_energy_sum"])) for k in ("stage_a","stage_b_coarse","stage_b_fine") if a.get(k)]' "$out/openems_tutorial.json" || true
+  else
+    echo "(no record written)"
+  fi
+
+  ls -la "$out"
+  echo "artifacts persisted to (mounted, survives teardown): $out"
+  echo "run_id is NOT in the record: VESSL does not export it into the pod, the submitter writes it"
+
+  echo "=== verdict ==="
+  case "$rc" in
+    0) echo "PASS: the reproduce gate passed and both Stage B rungs were written. Read the stage plan's PML / measurement-plane lines before quoting a Stage B number." ;;
+    1) echo "GATE FAILED: the reproduce gate or a sanity gate failed -- the log names which. No number from this run is usable." ;;
+    2) echo "openEMS NOT IMPORTABLE despite the image probes passing -- investigate the bindings" ;;
+    3) echo "CONFIG ERROR in the maker script, not a physics finding" ;;
+    124) echo "TIMEOUT: the 21600 s budget was exhausted -- report the wall clock, do NOT shorten the record to fit" ;;
+    *) echo "ERROR: unexpected exit code $rc" ;;
+  esac
+  exit "$rc"
