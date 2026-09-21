@@ -202,14 +202,59 @@ def test_port_terminals_hold_signal_on_both_faces(kind, nu):
         sim._msl_ports = [SimpleNamespace(position=(6., 4., 1.), width=2.,
                                          height=3., direction="-x")]
     grid = sim._build_nonuniform_grid() if nu else sim._build_grid()
-    if kind == "lumped":
-        # Its nodes are z=3 and z=4; the ground at z=1 is not incident.
-        assert continued_conductor_shape(sim, grid, signal).corner_lo[0] < -2.
-    else:
-        assert continued_conductor_shape(sim, grid, signal) is signal
+    assert continued_conductor_shape(sim, grid, signal) is signal
     realized_ground = continued_conductor_shape(sim, grid, ground)
     assert realized_ground.corner_lo[0] < -2.
     assert realized_ground.corner_hi[0] > 10.
+
+
+@pytest.mark.parametrize("kind", ("equal", "wide_signal", "two_cell_lumped", "same_exact"))
+def test_terminal_ownership_keeps_the_signal_declared(kind):
+    sim = _sim()
+    if kind == "equal":
+        reference = Box((0., 1., 4.), (8., 2., 4.))
+        signal = Box((0., 5., 4.), (8., 6., 4.))
+        sim.add_port((4., 2., 4.), component="ey", extent=3.)
+    else:
+        reference = (Box((0., 3., 1.), (8., 5., 1.)) if kind == "wide_signal"
+                     else Box((0., 0., 0.), (8., 8., 1.)) if kind == "same_exact"
+                     else Box((0., 0., 1.), (8., 8., 1.)))
+        signal = (Box((0., 1., 4.), (8., 7., 4.)) if kind == "wide_signal"
+                  else Box((0., 3., 2.), (8., 5., 2.)) if kind == "same_exact"
+                  else Box((0., 3., 3.), (8., 5., 3.)))
+        sim.add_port((4., 4., 0. if kind == "same_exact" else 1.), component="ez",
+                     **({"extent": 3.} if kind == "wide_signal" else {}))
+    sim.add(reference, material="pec")
+    sim.add(signal, material="pec")
+    grid = sim._build_grid()
+    assert continued_conductor_shape(sim, grid, signal) is signal
+    solved_reference = continued_conductor_shape(sim, grid, reference)
+    if kind in ("equal", "wide_signal"):
+        assert solved_reference is reference
+    else:
+        assert solved_reference.corner_lo[0] < -2.
+        assert solved_reference.corner_hi[0] > 10.
+
+
+@pytest.mark.parametrize("offset", (0., .5, 1.))
+def test_pec_reference_slack_holds_post_on_its_terminal_axis(offset):
+    from rfx.geometry.rasterize_grid import coords_from_uniform_grid
+    from rfx.geometry.smoothing import _declared_conductor_lattice, _port_terminal_owners
+
+    sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
+                     boundary="cpml", cpml_layers=2, pec_faces={"z_lo"})
+    post = Box((3., 3., 2.), (5., 5., 8.))
+    sim.add(post, material="pec")
+    sim.add_port((4., 4., offset), component="ez", extent=2.-offset)
+    grid = sim._build_grid()
+    coords = coords_from_uniform_grid(grid)
+    candidates = [(post, _declared_conductor_lattice(sim, grid, post, coords))]
+    assert _port_terminal_owners((4., 4., offset), (4., 4., 2.), candidates,
+                                 (coords.x, coords.y, coords.z), sim._pec_faces) == ("z_lo", 0)
+    assert continued_conductor_shape(sim, grid, post) is post
+    cells = np.asarray(sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])[3])
+    assert cells[5:7, 5:7, 7].all()
+    assert not cells[:, :, 8:10].any()
 
 
 def test_one_traced_mesh_axis_keeps_every_conductor_face_declared():

@@ -172,17 +172,44 @@ def test_wire_fed_line_strip_empty_and_ground_full():
     assert not bad, bad
 
 
-def test_port_pair_holds_only_the_face_both_conductors_reach():
+@pytest.mark.parametrize("kind", ("partial_reference", "equal", "wide_signal", "dangling_lumped"))
+def test_port_pair_holds_signal_and_no_wider_shared_reference(kind):
     from rfx import Box, Simulation
     sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
                      boundary="cpml", cpml_layers=2)
-    sim.add(Box((0., 0., 1.), (4., 8., 1.)), material="pec")
-    sim.add(Box((0., 3., 4.), (8., 5., 4.)), material="pec")
-    sim.add_port((2., 4., 1.), component="ez", extent=3.)
+    if kind == "equal":
+        sim.add(Box((0., 1., 4.), (8., 2., 4.)), material="pec")
+        sim.add(Box((0., 5., 4.), (8., 6., 4.)), material="pec")
+        sim.add_port((4., 2., 4.), component="ey", extent=3.)
+    else:
+        reference = (Box((0., 0., 1.), (4., 8., 1.)) if kind == "partial_reference"
+                     else Box((0., 3., 1.), (8., 5., 1.)) if kind == "wide_signal"
+                     else Box((0., 0., 1.), (8., 8., 1.)))
+        signal = (Box((0., 1., 4.), (8., 7., 4.)) if kind == "wide_signal"
+                  else Box((0., 3., 4.), (8., 5., 4.)))
+        sim.add(reference, material="pec")
+        sim.add(signal, material="pec")
+        sim.add_port((2., 4., 3. if kind == "dangling_lumped" else 1.), component="ez",
+                     **({} if kind == "dangling_lumped" else {"extent": 3.}))
     grid, arrays, poles, nodes = assembled_arrays(sim)
-    rows = [(1, "x-lo")]
+    rows = [(1, "x-lo"), (1, "x-hi")]
+    if kind in ("equal", "wide_signal"):
+        rows += [(0, "x-lo"), (0, "x-hi")]
     _assert_empty_sheet_faces(grid, arrays, rows)
-    assert arrays["sheet_1"][-2, 5:8, 6].all()
-    assert arrays["sheet_0"][0, :, 3].all()
+    assert arrays["sheet_1"][2].any() and arrays["sheet_1"][-3].any()
+    if kind in ("partial_reference", "dangling_lumped"):
+        assert arrays["sheet_0"][0, :, 3].all()
     bad, _ = violations(sim, grid, arrays, poles, nodes, held_faces=rows)
     assert not bad, bad
+
+
+@pytest.mark.parametrize("offset", (0., .5, 1.))
+def test_pec_floor_post_stops_at_the_high_absorber(offset):
+    from rfx import Box, Simulation
+    sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
+                     boundary="cpml", cpml_layers=2, pec_faces={"z_lo"})
+    sim.add(Box((3., 3., 2.), (5., 5., 8.)), material="pec")
+    sim.add_port((4., 4., offset), component="ez", extent=2.-offset)
+    _, arrays, _, _ = assembled_arrays(sim, include_smoothed=False)
+    assert arrays["pec_mask"][5:7, 5:7, 7].all()
+    assert not arrays["pec_mask"][:, :, 8:10].any()

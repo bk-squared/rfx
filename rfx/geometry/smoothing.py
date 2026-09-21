@@ -716,8 +716,76 @@ def _conductor_face_area(lattice, grid, nodes, axis, side):
     return area
 
 
+def _terminal_support_distance(point, lattice, nodes, axis, *, slack=False):
+    """Axial support distance, with exact or one-cell transverse incidence."""
+    best = float("inf")
+    for mask, cell_axes in lattice:
+        indices, lower, upper = [], [], []
+        for a, values in enumerate(nodes):
+            line = np.asarray(values)
+            lo = line
+            hi = (np.r_[line[1:], line[-1] + line[-1]-line[-2]]
+                  if cell_axes[a] else line)
+            lower.append(lo)
+            upper.append(hi)
+            eps = 16*np.finfo(float).eps*max(np.max(np.abs(line)), np.min(np.diff(line)))
+            k = int(np.clip(np.searchsorted(line, point[a]), 1, len(line)-1))
+            width = float(line[k]-line[k-1]) if slack else 0.
+            indices.append(np.arange(len(line)) if a == axis else np.flatnonzero(
+                (hi >= point[a]-width-eps) & (lo <= point[a]+width+eps)))
+        if not all(len(i) for i in indices):
+            continue
+        occupied = np.argwhere(mask[np.ix_(*indices)])
+        if not len(occupied):
+            continue
+        along = indices[axis][occupied[:, axis]]
+        distance = np.maximum(np.maximum(lower[axis][along]-point[axis],
+                                         point[axis]-upper[axis][along]), 0.)
+        best = min(best, float(distance.min()))
+    return best
+
+
+def _port_terminal_owners(reference, signal, candidates, nodes, pec_faces):
+    """Reserve both exact contacts, then fill unowned ends within one cell.
+
+    Candidate indices name geometry entries; PEC face strings name boundary
+    references. If both ends touch the same conductor, the reference keeps it.
+    Each slack search excludes the other end's already assigned owner.
+    """
+    axis = int(np.argmax(np.abs(np.subtract(signal, reference))))
+    eligible, exact_owners = [], []
+    for point in (reference, signal):
+        line = np.asarray(nodes[axis])
+        k = int(np.clip(np.searchsorted(line, point[axis]), 1, len(line)-1))
+        width = float(line[k]-line[k-1])
+        eps = 16*np.finfo(float).eps*max(np.max(np.abs(line)), width)
+        distances = [(i, _terminal_support_distance(point, lattice, nodes, axis, slack=True))
+                     for i, (_, lattice) in enumerate(candidates)]
+        exact = [i for i, (_, lattice) in enumerate(candidates)
+                 if _terminal_support_distance(point, lattice, nodes, axis) <= eps]
+        for face in sorted(pec_faces):
+            a = "xyz".index(face[0])
+            boundary = float(nodes[a][0 if face.endswith("lo") else -1])
+            distance = abs(point[a]-boundary)
+            if a == axis or distance <= eps:
+                distances.append((face, distance))
+            if distance <= eps:
+                exact.append(face)
+        eligible.append(sorted([(owner, d) for owner, d in distances if d <= width+eps],
+                               key=lambda item: item[1]))
+        exact_owners.append(exact)
+    owners = [row[0] if row else None for row in exact_owners]
+    if owners[0] == owners[1]:
+        owners[1] = None
+    for end in (0, 1):
+        if owners[end] is None:
+            owners[end] = next((owner for owner, _ in eligible[end]
+                                if owner != owners[1-end]), None)
+    return tuple(owners)
+
+
 def _port_carrying_conductor(sim, grid, shape, lattice, coords):
-    """Faces held at the declared bound by a port bridging a larger partner."""
+    """Hold the signal owner, and a reference no wider on a shared face."""
     nodes = (coords.x, coords.y, coords.z)
     pairs = _port_terminal_pairs(sim, grid, nodes)
     touched = [(a, b) for a, b in pairs
@@ -725,43 +793,38 @@ def _port_carrying_conductor(sim, grid, shape, lattice, coords):
                or _terminal_on_lattice(b, lattice, nodes)]
     if not touched:
         return set()
-    candidates = [e.shape for e in getattr(sim, "_geometry", ())
-                  if sim._resolve_material(e.material_name).sigma >= sim._PEC_SIGMA_THRESHOLD]
-    candidates += [tc.shape for tc in getattr(sim, "_thin_conductors", ())]
+    shapes = [e.shape for e in getattr(sim, "_geometry", ())
+              if sim._resolve_material(e.material_name).sigma >= sim._PEC_SIGMA_THRESHOLD]
+    shapes += [tc.shape for tc in getattr(sim, "_thin_conductors", ())]
+    if not any(other is shape for other in shapes):
+        shapes.append(shape)
+    candidates = []
+    for other in shapes:
+        if other is shape:
+            candidates.append((shape, lattice))
+            continue
+        try:
+            other_lattice = _declared_conductor_lattice(sim, grid, other, coords)
+        except (ValueError, TypeError, IndexError, NotImplementedError):
+            # A refused sibling has no realized terminal. Its own report
+            # site attributes the refusal; it is not this entry's error.
+            continue
+        candidates.append((other, other_lattice))
+    own_index = next(i for i, (candidate, _) in enumerate(candidates) if candidate is shape)
     own_faces = _conductor_reached_faces(sim, grid, shape, lattice, nodes)
     held = set()
-    for first, second in touched:
-        for terminal, opposite in ((first, second), (second, first)):
-            if not _terminal_on_lattice(terminal, lattice, nodes):
-                continue
-            for face in getattr(sim, "_pec_faces", ()):
-                a = "xyz".index(face[0])
-                line = np.asarray(nodes[a])
-                k = 0 if face.endswith("lo") else len(line)-1
-                slack = 16 * np.finfo(float).eps * max(np.max(np.abs(line)),
-                                                       float(np.min(np.diff(line))))
-                if abs(opposite[a]-float(line[k])) <= slack:
-                    held.update((axis, side) for axis, side in own_faces if axis != a)
-        for other in candidates:
-            if other is shape:
-                continue
-            try:
-                other_lattice = _declared_conductor_lattice(sim, grid, other, coords)
-            except (ValueError, TypeError, IndexError, NotImplementedError):
-                # A refused sibling has no realized terminal. Its own report
-                # site attributes the refusal; it is not this entry's error.
-                continue
-            bridged = ((_terminal_on_lattice(first, lattice, nodes)
-                        and _terminal_on_lattice(second, other_lattice, nodes))
-                       or (_terminal_on_lattice(second, lattice, nodes)
-                           and _terminal_on_lattice(first, other_lattice, nodes)))
-            if not bridged:
-                continue
+    for reference, signal in touched:
+        reference_owner, signal_owner = _port_terminal_owners(
+            reference, signal, candidates, nodes, getattr(sim, "_pec_faces", ()))
+        if signal_owner == own_index:
+            held.update(own_faces)
+        elif reference_owner == own_index and isinstance(signal_owner, int):
+            other, other_lattice = candidates[signal_owner]
             common = own_faces & _conductor_reached_faces(
                 sim, grid, other, other_lattice, nodes)
             held.update((a, s) for a, s in common
                         if _conductor_face_area(lattice, grid, nodes, a, s)
-                        < _conductor_face_area(other_lattice, grid, nodes, a, s))
+                        <= _conductor_face_area(other_lattice, grid, nodes, a, s))
     return held
 
 
@@ -769,8 +832,8 @@ def continued_conductor_shape(sim, grid, shape, *, unextendable=None):
     """Return the conducting geometry solved through absorbing faces (C2/C5).
 
     Reached declared faces and occupied outermost interior lattice layers
-    continue. On each face only the smaller of two port-bridged conductors
-    reaching that face is held back. A PEC boundary is a larger partner.
+    continue. The port's far-end owner stays declared on every reached face.
+    Its reference continues unless it is no wider on a shared reached face.
     Port-generated structures do not call this function.
     """
     from rfx.core.jax_utils import is_tracer
