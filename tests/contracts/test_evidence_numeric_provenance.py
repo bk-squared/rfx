@@ -17,8 +17,8 @@ The contract
 A document may cite a quantity by writing, inside a single-backtick code span,
 an **artifact reference**::
 
-    `validation/crossval/_18_wr90_iris_results/rfx.json::gates.fine_gate_abs`
-    `validation/crossval/_18_wr90_iris_results/rfx.json::gates.fine_gate_abs = 0.04`
+    `validation/crossval/_15_patch_results/openems.json::f_dip_hz`
+    `validation/crossval/_15_patch_results/openems.json::f_dip_hz = 2330000000`
     `validation/crossval/_15_patch_results/rfx.json::f_primary_hz = 2.3139 GHz`
 
 - the path is repo-relative and must name a committed JSON file;
@@ -451,13 +451,13 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
     # 2026-09-21: the WR-90 waveguide-port case and the five-iris band-pass
     # filter case left the manifest and the validation README, so their four
     # rows here have no site to measure.
+    # 2026-09-22: the WR-90 inductive iris case left the manifest and the
+    # validation README, so its two rows here have no site to measure.
     (MANIFEST, "15_patch_antenna_rt5880"): 3,
-    (MANIFEST, "18_wr90_iris_modematch"): 4,
-    # 2026-09-03: floors for the cv15/cv18 README rows re-based to the rows that
-    # #847 / #846 rewrote after this gate was drafted (see the note, "Re-basing
-    # two floors"); those rows cite in the value-checked form and carry 2 each.
+    # 2026-09-03: the floor for the cv15 README row re-based to the row that
+    # #847 rewrote after this gate was drafted (see the note, "Re-basing
+    # two floors"); that row cites in the value-checked form and carries 2.
     ("validation/README.md", "crossval/15_patch_antenna_rt5880.py"): 2,
-    ("validation/README.md", "crossval/18_wr90_iris_modematch.py"): 2,
     (CV11_NOTE, "7. Numeric provenance (appended 2026-09-01, #812 round 2 \u2014 no finding changed)"): 6,
     # 2026-09-21: the lattice-witness standard's four case sections (5.1 cv23,
     # 5.2 cv22, 5.3 cv04, 8.1 cv22 Debye) left this table with the slab family.
@@ -561,12 +561,20 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
 # artifacts that went with the filter case (REMOVED_ARTIFACT_PREFIXES, skipped
 # per citation). Measured after the removal: 403 references, 373 value-checked,
 # 31 artifacts. The floors are lowered to the measured values.
+# 2026-09-22 (the WR-90 inductive iris case removed): its manifest entry and
+# README row left the gated surface with their two REQUIRED_SITES floors, and
+# 11 citations in two dated notes (the #812 geometry-sensitivity predeclaration
+# and the chain-closure contract) reach artifacts that went with the case
+# (REMOVED_ARTIFACT_PREFIXES, skipped per citation; both notes carry the dated
+# removal header). Measured after the removal: 385 references, 356
+# value-checked, 28 artifacts. The floors are lowered to the measured values.
 # 2026-09-21 (open-boundary contract): +15 references, all value-checked, over +7
 # distinct artifacts (the patch ring-down records under
-# scripts/diagnostics/open_boundary_contract/). Raised in the same commit.
-MIN_REFERENCES = 418
-MIN_VALUE_CHECKED = 388
-MIN_DISTINCT_ARTIFACTS = 38
+# scripts/diagnostics/open_boundary_contract/). Raised by the delta, on top of
+# the iris removal above: 400 references, 371 value-checked, 35 artifacts.
+MIN_REFERENCES = 400
+MIN_VALUE_CHECKED = 371
+MIN_DISTINCT_ARTIFACTS = 35
 
 
 # --------------------------------------------------------------------------
@@ -946,6 +954,12 @@ REMOVED_ARTIFACT_PREFIXES: tuple[str, ...] = (
     "validation/crossval/_11_wr90_port_results/",
     "validation/crossval/_19_iris_filter_results/",
     "tests/fixtures/wr90_iris_filter/",
+    # 2026-09-22, the WR-90 inductive iris case: its comparison became the
+    # analytic test tests/oracle/test_wr90_inductive_iris_mode_matching.py and
+    # the frozen record went with the script. Those artifacts are at commit
+    # e367e7bf.
+    "validation/crossval/_18_wr90_iris_results/",
+    "tests/fixtures/wr90_iris_modematch/",
 )
 
 

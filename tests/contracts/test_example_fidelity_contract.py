@@ -125,13 +125,10 @@ importing it no longer solves).
 * ``builder_fused_with_solve`` (build and solve share one function with
   no separable build-only path) in that 47-set, i.e. the scripts this
   gate does NOT reach: examples/tutorials/cad_mesh_import_demo.py, cv09,
-  cv10, cv18. "Out of this snapshot" is not "unverified": cv09 is REBUILT
+  cv10. "Out of this snapshot" is not "unverified": cv09 is REBUILT
   build-only from its own constants and helpers in
   tests/crossval/test_cv09_cv10_body_contract_controls.py (cv10 only at
-  the spec level there, via ``_common_spec()``) and both solve weekly;
-  cv18's gates replay a frozen fixture
-  (tests/crossval/test_wr90_iris_modematch_gates.py) and its realized
-  geometry is checked build-time in test_wr90_iris_realized_is_shared.py.
+  the spec level there, via ``_common_spec()``) and both solve weekly.
   cad_mesh_import_demo is the one script of #737 item 2 that did NOT get a
   builder, and it is the one with no build or run coverage anywhere: its
   Simulation needs ``trimesh`` (the optional [cad] extra), which the lane

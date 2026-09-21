@@ -115,9 +115,6 @@ ALLOWED = {
         "cv15's claim_scope names the deleted `two_plane=True` ground as the "
         "#740 repair the #931 sheet declaration replaced (dated history)",
     # -- crossval groups A/C/D landed 2026-09-07; dated history only
-    "validation/crossval/18_wr90_iris_modematch.py":
-        "cv18 docstring/print record that the flag put the far face back for "
-        "t = 1 only; the case's own irises are volumes",
     "scripts/diagnostics/cv15_before_after_931.py":
         "the BEFORE row of the cv15 decomposition names the #768 two_plane leg",
 }
