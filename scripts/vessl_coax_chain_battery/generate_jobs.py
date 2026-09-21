@@ -102,7 +102,10 @@ def jobs() -> list[dict]:
             ))
     for dut in DUTS:
         out.append(dict(
-            key=f"solve-{dut}-r{CLAIMS_RUNG}-double", preset="gpu-rtx4090",
+            # "double" before the rung, not after: vessl_submit.sh finds a run
+            # directory by `-name "<prefix>*"`, so a prefix that EXTENDS another
+            # one would have the shorter job record the longer job's id.
+            key=f"solve-{dut}-double-r{CLAIMS_RUNG}", preset="gpu-rtx4090",
             cli=(f"--stage solve --dut {dut} --rung {CLAIMS_RUNG} "
                  f"--record-units {DOUBLE_RECORD_UNITS} --tag double"),
             description=(f"Coax chain battery: {dut} at the claims rung with the record "
