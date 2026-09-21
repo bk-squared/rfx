@@ -1,5 +1,7 @@
 # issue #812 P1 — self-referential phase gates (cv20, cv21): threshold pre-declaration
 
+> The coax thru-line case, the phase-identity evidence builder and the coax job files this note names were removed on 2026-09-21; they are at rfx commit 3883a836.
+
 Lane: `phase-gates` (issue #812 audit pattern **P1**, the two cases the Phase-1 batch
 #815–#818 did not touch).
 Pre-declared: 2026-09-01, in the commit that carries this file, **before** any of the
