@@ -356,11 +356,10 @@ def anchor_residuals(graded_profile=None) -> dict:
     return out
 
 
-ENVELOPE_GATE_MULTIPLIER = 1.5   # tests/_gate_policy.py (the gate test asserts equality)
-
-
-def gate_from_envelope(measured_envelope: float, *, quantum: float) -> float:
-    return math.ceil(measured_envelope * ENVELOPE_GATE_MULTIPLIER * quantum) / quantum
+# The envelope rule has ONE definition (tests/_gate_policy.py, #528). This module
+# used to carry its own copy of the multiplier and the rounding, pinned equal by
+# a cv24 gate test that left with the case; it imports the shared one now.
+from tests._gate_policy import gate_from_envelope  # noqa: E402
 
 
 def estimator_floor() -> float:
