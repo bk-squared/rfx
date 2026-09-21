@@ -1,5 +1,7 @@
 # Issue #498 / #517 — PREDECLARATION: mixed-lane reference-plane measurement + openEMS referee
 
+> The coax thru-line case, the phase-identity evidence builder and the coax job files this note names were removed on 2026-09-21; they are at rfx commit 3883a836.
+
 **Status: PREDECLARATION. Written and committed BEFORE any run.** Nothing in this
 document is a result. Every number quoted here is either (a) already committed on
 `main` (with its artifact path), or (b) a *prediction* stated so that the run can

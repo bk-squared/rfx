@@ -572,8 +572,15 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
 # distinct artifacts (the patch ring-down records under
 # scripts/diagnostics/open_boundary_contract/). Raised by the delta, on top of
 # the iris removal above: 400 references, 371 value-checked, 35 artifacts.
-MIN_REFERENCES = 400
-MIN_VALUE_CHECKED = 371
+# 2026-09-22 (the coax thru-line case removed): its manifest entry and
+# validation README row left the gated surface, taking the 11 citations they
+# carried (10 value-checked). Every one of them reached
+# validation/crossval/_issue812_phase_identity/regate_evidence.json, which
+# STAYS -- the MSL thru-line phase case's own tests load it -- and is still
+# cited by that case's sites, so no artifact leaves the count. Measured after
+# both changes: 389 references, 361 value-checked, 35 artifacts.
+MIN_REFERENCES = 389
+MIN_VALUE_CHECKED = 361
 MIN_DISTINCT_ARTIFACTS = 35
 
 
@@ -960,6 +967,12 @@ REMOVED_ARTIFACT_PREFIXES: tuple[str, ...] = (
     # e367e7bf.
     "validation/crossval/_18_wr90_iris_results/",
     "tests/fixtures/wr90_iris_modematch/",
+    # 2026-09-22, the coax thru-line case: its openEMS referee and the two
+    # committed VESSL run records went with it. No citation in the opted-in
+    # surface reached this directory, so nothing is silenced by listing it --
+    # it is here so a citation added later cannot resolve against a tree that
+    # no longer holds the artifact. Those artifacts are at commit 3883a836.
+    "validation/crossval/_21_coax_two_port_referee_logs/",
 )
 
 

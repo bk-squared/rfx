@@ -70,13 +70,15 @@ jobs:
     timeout-minutes: 120  # 2026-09-07: shard 3 hit 95 min against 90 on the 08-31 run; durations regenerated the same day
     # 2026-09-21: five shards, was four. On the scheduled run of that day shard 2 of 4
     # passed 2,888 tests, failed none and was cut at the 120-minute limit. The cause
-    # was ONE mispriced test: .test_durations prices
-    # test_msl_sparam_ad.py::test_compute_msl_s_matrix_ad_smoke_has_finite_gradient
-    # at 8 s and it ran 2,220 s, so pytest-split's 87-minute estimate for that shard
-    # was really 124. (Removed tests are not the cause: pytest-split drops durations
-    # of ids it does not collect before it splits.) With five shards the same run
-    # replays at about 105 minutes for that shard; regenerating the durations file,
-    # so that the test is priced at what it costs, is what restores the margin.
+    # was ONE mispriced test: .test_durations priced
+    # test_msl_sparam_ad.py::test_compute_msl_s_matrix_end_to_end_matches_historical_base
+    # at 202 s and it ran 2,247 s, so pytest-split's 87-minute estimate for that shard
+    # was really 124. (An earlier version of this comment named the AD smoke test in
+    # the same file; the log gap belonged to the test that started after it. Removed
+    # tests are not the cause either: pytest-split drops durations of ids it does not
+    # collect before it splits.) With five shards the same run replays at about 105
+    # minutes for that shard; the regenerated durations file of 2026-09-21 prices the
+    # test at what it costs, which is what restores the margin.
     strategy:
       # Shard the full "not gpu and not highmem" suite across parallel jobs.
       # Each shard is a FRESH process running its slice serially, so the

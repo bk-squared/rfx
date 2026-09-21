@@ -964,8 +964,8 @@ def _openems_common_setup(f_max):
 # Reproduce-gate record -- audit artifact (docs/agent-memory/task_recipes/
 # external_solver_comparator.md step 2). Committed UNRUN; a VESSL run fills
 # these fields AND must supply a log path under a git-TRACKED prefix (same
-# PR #548 lesson validation/crossval/20_msl_phase_referee.py and
-# validation/crossval/21_coax_two_port_referee.py already paid for -- .omx/
+# PR #548 lesson validation/crossval/20_msl_phase_referee.py and the coax
+# thru-line case already paid for -- .omx/
 # and docs/research_notes/vessl_logs/ are both gitignored and therefore
 # unreadable by any reviewer outside the machine that ran the job).
 # ---------------------------------------------------------------------------

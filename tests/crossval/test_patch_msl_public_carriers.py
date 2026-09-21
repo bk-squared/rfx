@@ -85,7 +85,13 @@ def test_msl_current_replay_quotes_fixture_and_labels_historical_openems(carrier
                          ("analytic_beta_openems_max_abs_dev_frac", 100)]:
         assert f"{replay[field] * scale:.4f}" in source
     normalized = " ".join(source.split())
-    assert "historical run-2" in normalized and "openEMS" in normalized
+    # The solver's name is matched case-insensitively: the public pages spell
+    # it "OpenEMS" and the scripts "openEMS". Until 2026-09-22 the exact
+    # lower-case spelling happened to be present in benchmarks.mdx only in the
+    # coax thru-line case's row, so removing that row -- which says nothing
+    # about this case -- red this check on a spelling, not on the label it is
+    # here to enforce.
+    assert "historical run-2" in normalized and "openems" in normalized.lower()
 
 
 def test_patch_farfield_beam_peak_prose_quotes_committed_cut_angles():

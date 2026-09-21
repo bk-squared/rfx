@@ -838,6 +838,15 @@ def _build_step_setup(
                 "compute_rcs for open-domain oblique scattering."
             )
 
+    # The far-field integral is over the SCATTERED field, which it only is
+    # when the Huygens box encloses the whole injected region. Plain ints,
+    # evaluated here at trace time.
+    if use_tfsf and use_ntff:
+        from rfx.farfield import require_box_encloses_injected_region
+        from rfx.sources.tfsf import tfsf_injection_planes
+        require_box_encloses_injected_region(
+            ntff, tfsf_injection_planes(tfsf[0]), shape=grid.shape)
+
     # ---- (2,4) fourth-order-in-space stencil (PR-1b) ----
     # order=2 is the default and BYTE-IDENTICAL: dt and every kernel call are
     # untouched.  order=4 is reachable ONLY on the plain uniform-Cartesian

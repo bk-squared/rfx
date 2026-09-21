@@ -2,7 +2,7 @@
 
 Numbered studies validating rfx against analytic references and
 independent solvers. Each numbered script is self-contained: the openEMS
-configurations (e.g. 07, 15, 20, 21) are embedded in the scripts
+configurations (e.g. 07, 15, 20) are embedded in the scripts
 themselves; `comparators/` holds the shared comparison harness;
 `_*_results/`/`_*_logs/` directories carry committed reference outputs.
 

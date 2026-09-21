@@ -425,6 +425,193 @@ def _require_face_centre_margin(box: NTFFBox, shape) -> None:
     _raise_face_centre_margin(box, counts, grid=None)
 
 
+# ---------------------------------------------------------------------------
+# TFSF injection planes vs the box faces parallel to them
+# ---------------------------------------------------------------------------
+
+_AXIS_FACE_ATTRS = {"x": ("i_lo", "i_hi"), "y": ("j_lo", "j_hi"),
+                    "z": ("k_lo", "k_hi")}
+_AXIS_INDEX = {"x": 0, "y": 1, "z": 2}
+
+
+class NTFFBoxPlacementError(ValueError):
+    """A box face parallel to a TFSF injection plane reads injected field.
+
+    Carries the offending face and the nearest index that satisfies the
+    invariant, so a caller can act on it without parsing the message.
+    """
+
+    def __init__(self, message, *, axis, face, index, required_index,
+                 plane_lo, plane_hi):
+        super().__init__(message)
+        self.axis = axis
+        self.face = face
+        self.index = index
+        self.required_index = required_index
+        self.plane_lo = plane_lo
+        self.plane_hi = plane_hi
+
+
+def _face_sample_offsets(box: NTFFBox) -> tuple[int, int]:
+    """Lowest and highest offset, relative to the face node, that a box face
+    reads out of the state arrays along its own normal.
+
+    ``face_centre`` interpolates the tangential H across the face from the two
+    half-cell planes that straddle it — the one at ``idx-1`` and the one at
+    ``idx`` — while E stays on the face node ``idx``: offsets -1 and 0. The
+    legacy ``node`` layout takes E and H both at ``idx``: offset 0 only. All
+    three of ``_x_face`` / ``_y_face`` / ``_z_face`` in ``accumulate_ntff``
+    use the same pair, so one rule covers every axis.
+    """
+    if bool(getattr(box, "face_centre", False)):
+        return -1, 0
+    return 0, 0
+
+
+def _sample_names(off: int, idx: int) -> tuple:
+    """The stored samples a face at ``idx`` reads at offset ``off``."""
+    if off == 0:
+        return (f"E[{idx}]", f"H[{idx}]")
+    return (f"H[{idx + off}]",)
+
+
+def _listed(names) -> str:
+    """``a``, ``a and b``, ``a, b and c`` — with the matching verb."""
+    names = list(names)
+    verb = " is" if len(names) == 1 else " are"
+    if len(names) == 1:
+        return names[0] + verb
+    return ", ".join(names[:-1]) + " and " + names[-1] + verb
+
+
+def require_box_encloses_injected_region(
+    box: NTFFBox,
+    planes: "dict[str, tuple[int, int]]",
+    *,
+    context: "str | None" = None,
+    shape=None,
+) -> None:
+    """Refuse a Huygens box that does not enclose the injected region.
+
+    INVARIANT: every sample that a box face PARALLEL to an injection plane
+    reads lies in the scattered-field region.
+
+    A total-field/scattered-field source injects a plane wave between two
+    node planes on each axis it drives (``planes`` maps that axis to the
+    pair). Between them the grid carries incident + scattered field; outside,
+    scattered only. The far-field integral is a surface integral of the
+    SCATTERED field, and it is only that when the box surrounds the whole
+    injected region: then the incident wave enters and leaves through the
+    box and cancels in the sum. Two ways to break it, both silent:
+
+    * a face that reads samples from both regions — the full incident H
+      lands on a face that should carry scattered field only;
+    * a face wholly inside the injected region while the opposite face is
+      outside it — no single face mixes, but the incident wave no longer
+      cancels around the box.
+
+    Measured on an 18 mm eps_r=4 cube at 9/10/11 GHz, against a clean box
+    (1.2049e-03 m^2 band backscatter): the mixed high face gives
+    1.4405e-01 m^2 (+20.8 dB), and the split box (low face one cell inside
+    the low plane, high face correctly outside) 4.9577e-03 m^2 (+6.1 dB).
+    A box wholly inside the injected region reports 1.94e-03 m^2 of
+    backscatter from an EMPTY domain, so it measures the source, not a
+    scatterer.
+
+    Which samples a face reads depends on its collocation, so the required
+    indices are derived from ``box.face_centre`` rather than written down as
+    a number of cells. The node layout is NOT exempt: the split box under
+    ``collocation="node"`` measures +16.2 dB.
+
+    Axes the source does not inject on are not checked. rfx's normal-
+    incidence source is two x planes and its slab is infinite in y and z, so
+    every closed box crosses it there; that is a different matter, handled by
+    ``compute_rcs(..., subtract_incident_reference=True)``.
+
+    ``context`` is appended verbatim — a caller that owns the levers (domain
+    size, margins, offsets) uses it to say which of them to move. ``shape``
+    lets the message say the domain is too small instead of naming an index
+    the array cannot hold.
+
+    Raises :class:`NTFFBoxPlacementError` (a ``ValueError``). Runs on Python
+    ints at trace time — no JAX arrays, so it is safe to call from a runner
+    before the scan is built.
+    """
+    if not planes:
+        return
+    lo_off, hi_off = _face_sample_offsets(box)
+    for axis in ("x", "y", "z"):
+        if axis not in planes:
+            continue
+        p_lo, p_hi = (int(v) for v in planes[axis])
+        lo_attr, hi_attr = _AXIS_FACE_ATTRS[axis]
+        lo, hi = int(getattr(box, lo_attr)), int(getattr(box, hi_attr))
+        # Every sample the low face reads must sit below p_lo, every sample
+        # the high face reads above p_hi.
+        lo_required = p_lo - 1 - hi_off
+        hi_required = p_hi + 1 - lo_off
+        if lo > lo_required:
+            _raise_face_inside_injected_region(
+                box, axis, lo_attr, lo, lo_required, p_lo, p_hi,
+                lo_off, hi_off, context, shape)
+        if hi < hi_required:
+            _raise_face_inside_injected_region(
+                box, axis, hi_attr, hi, hi_required, p_lo, p_hi,
+                lo_off, hi_off, context, shape)
+
+
+def _raise_face_inside_injected_region(box, axis, face, idx, required,
+                                       p_lo, p_hi, lo_off, hi_off,
+                                       context, shape):
+    """Name the face, the samples that are not scattered, and where to move."""
+    offsets = list(range(lo_off, hi_off + 1))
+    reads = ", ".join(n for off in offsets for n in _sample_names(off, idx))
+    inside = [n for off in offsets if p_lo <= idx + off <= p_hi
+              for n in _sample_names(off, idx)]
+    if inside:
+        where = f"{_listed(inside)} inside the injected region"
+    else:
+        # The face sits beyond the FAR plane: nothing it reads is
+        # total-field, the box simply lies to one side of the injected
+        # region and does not enclose it.
+        side = "below" if idx < p_lo else "above"
+        where = (f"all of them lie {side} the injected region, on the wrong "
+                 "side of it, so the box does not enclose it")
+    direction = ">=" if required > idx else "<="
+    remedy = f"move {face} from {idx} to {direction} {required}"
+    if shape is not None:
+        n = int(shape[_AXIS_INDEX[axis]])
+        # The face-centre averages already need 1 <= face <= n-1
+        # (_face_centre_margin_failures); an index outside that is not a
+        # placement the caller can reach on this grid.
+        if not (1 <= required <= n - 1):
+            remedy = (
+                f"no {face} works on this grid: the box would have to reach "
+                f"index {required}, and the {axis} axis is {n} cells with "
+                f"faces limited to [1, {n - 1}]. Enlarge the domain along "
+                f"{axis}, or move the injection planes inward"
+            )
+    message = (
+        f"NTFF box {axis} face {face}={idx} does not clear the TFSF "
+        f"injection planes. The wave is injected between {axis} index "
+        f"{p_lo} and {p_hi}: E and H stored at index i carry incident + "
+        f"scattered there and scattered only outside. A Huygens box has to "
+        f"enclose the whole injected region — otherwise the incident wave "
+        f"does not cancel around the box — so every sample a face parallel "
+        f"to an injection plane reads must be scattered-field. With "
+        f"{box.collocation} collocation this face reads {reads}; "
+        f"{where}.\n"
+        "Invariant: every sample a box face parallel to an injection plane "
+        "reads lies in the scattered-field region.\n"
+        f"Remedy: {remedy}."
+    )
+    if context:
+        message += f"\n{context}"
+    raise NTFFBoxPlacementError(
+        message, axis=axis, face=face, index=idx, required_index=required,
+        plane_lo=p_lo, plane_hi=p_hi)
+
+
 def accumulate_ntff(
     ntff_data: NTFFData,
     state,
