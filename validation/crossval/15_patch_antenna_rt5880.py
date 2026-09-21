@@ -1208,8 +1208,7 @@ def _stack_check_ok(sc, tol=1e-9, eps_tol=1e-4):
 
     Pure function (synthetic dicts in, bool+detail out) so
     ``tests/crossval/test_crossval_cv15_wall_planes.py`` can pin the gate MATH
-    without a solve, following ``tests/crossval/test_crossval_gate_logic.py``'s
-    precedent for this crossval directory.
+    without a solve, the established precedent for this crossval directory.
     """
     if not sc:
         return False, "missing stack_check (leg predates the #740 wall-plane self-check)"

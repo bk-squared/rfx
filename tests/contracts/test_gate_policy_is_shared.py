@@ -49,9 +49,7 @@ GATE_POLICY = REPO / "tests" / "_gate_policy.py"
 # own --write-fixture self-check.
 _QUANTIZED_GATE_FILES = [
     REPO / "tests" / "crossval" / "test_wr90_iris_modematch_gates.py",
-    REPO / "tests" / "crossval" / "test_wr90_iris_filter_gates.py",
     REPO / "validation" / "crossval" / "18_wr90_iris_modematch.py",
-    REPO / "validation" / "crossval" / "19_wr90_iris_filter_aghanim.py",
     # #576 review F5. This lane is in the tripwire list but NOT in _REAL_CASES
     # below, and that is a real coverage gap, not an oversight: the mutation
     # falsifiers discover cases from `tests/fixtures/**/fixture.json` files
@@ -132,7 +130,6 @@ _MARGIN_CEIL_FILES = [
 
 _CROSSVAL_SCRIPTS = [
     REPO / "validation" / "crossval" / "18_wr90_iris_modematch.py",
-    REPO / "validation" / "crossval" / "19_wr90_iris_filter_aghanim.py",
 ]
 
 _ENVELOPE_KEY_RE = re.compile(
@@ -146,15 +143,14 @@ def _discover_real_cases() -> list[tuple[str, tuple[str, str], tuple[str, str], 
     ``tests/fixtures/**/fixture.json`` -- derived from the glob rather than
     hand-maintained (#528 review MEDIUM 2), so a new quantized-gate case
     is picked up automatically instead of needing this file edited too --
-    modulo the suffix map: #499's case 19 (anticipated here before it
-    landed) gates in integer MHz, which required adding ``mhz`` -> 1 to
-    ``_QUANTUM_BY_SUFFIX`` in the same PR; a future case reusing an
-    existing suffix costs nothing.
+    modulo the suffix map: the integer-MHz suffix ``mhz`` -> 1 was added
+    for the five-iris band-pass filter case, which has since been removed;
+    a future case reusing an existing suffix costs nothing.
 
     Descriptive, not authoritative: as of this writing this discovers
-    exactly 3 cases -- wr90_iris_modematch {fine, richardson},
-    wr90_iris_filter {f0} (measured 2026-09-21, after the dielectric-sphere
-    fixture left with its case). Four OTHER committed fixture.json files exist
+    exactly 2 cases -- wr90_iris_modematch {fine, richardson} (measured
+    2026-09-21, after the five-iris band-pass filter fixture left with its
+    case). Four OTHER committed fixture.json files exist
     (rcs280_reference_subtraction, rcs_cube_bem, rcs_sphere_mie,
     rcs_sphere_three_way) and are correctly excluded: none has a top-level
     ``gates`` dict with a matching envelope/gate key pair.
@@ -244,9 +240,10 @@ def test_real_cases_are_discovered_from_the_fixture_glob_not_hand_maintained():
     every other assertion in this file (they'd vacuously succeed over zero
     cases) -- assert a floor AND that today's known cases are all in it.
 
-    2026-09-21: the floor drops from 4 to 3, the measured count after the
-    dielectric-sphere fixture left with its case."""
-    assert len(_REAL_CASES) >= 3, (
+    2026-09-21: the floor drops from 4 to 3 when the dielectric-sphere
+    fixture left with its case, and to 2 when the five-iris band-pass
+    filter fixture left with its case -- the measured count."""
+    assert len(_REAL_CASES) >= 2, (
         f"only {len(_REAL_CASES)} real gated cases discovered via the "
         f"fixture glob -- an empty or broken glob would silently pass "
         f"every other case-driven assertion in this file"
@@ -257,8 +254,6 @@ def test_real_cases_are_discovered_from_the_fixture_glob_not_hand_maintained():
          ("gates", "fine_measured_envelope_abs")),
         ("tests/fixtures/wr90_iris_modematch/fixture.json",
          ("gates", "richardson_measured_envelope_abs")),
-        ("tests/fixtures/wr90_iris_filter/fixture.json",
-         ("gates", "f0_measured_envelope_mhz")),
     }
     assert expected <= discovered
 

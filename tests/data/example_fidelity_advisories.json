@@ -216,46 +216,6 @@
    "variant": "validation/crossval/07_sheen_lpf.py::build_rfx_sim::default"
   },
   {
-   "code": "port_aperture_snap",
-   "disposition": "intended",
-   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). cv11 declares the WR-90 standard 22.86 x 10.16 mm and QUOTES THE REALIZED GUIDE for every reference it computes: 'QUOTE-REALIZED (#722, #724): the walls this dx actually rasterizes (ceil(declared/dx)*dx) ... At dx=1mm this is 23.000 x 11.000 mm -- an EXACT rectangular guide, so F_CUTOFF_TE10 below is the true TE10 cutoff of the structure the solver builds.' A mesh-based fix was evaluated and withdrawn in writing. The row's own cutoff clause now agrees with that convention (#1101): on the default mode_profile='discrete' it reads the BUILT cfg.f_cutoff, 6.512162 GHz. The script's own F_CUTOFF_TE10 = C0/(2*A_WG_REALIZED) is 6.517391 GHz -- the script uses C0 = 2.998e8 (line 290), 0.0025 % off the exact c the advisory uses, which is why the advisory's realized-aperture analytic value reads 6.517227 GHz and not the script's number. Script constant against built: 0.080 %, the Yee discretisation of the same 23-cell guide. The advisory's own declared-width analytic value, 6.557140 GHz, is 0.691 % above the built one; cv11 has no declared-width constant of its own to compare, which is the point of its QUOTE-REALIZED convention. Script and advisory describe the same guide, so the row stays a disclosure of the declared-vs-realized gap rather than a defect.",
-   "ref": "validation/crossval/11_waveguide_port_wr90.py:290,295-308 | https://github.com/bk-squared/rfx/issues/1101",
-   "rows": 4,
-   "variant": "validation/crossval/11_waveguide_port_wr90.py::_build_sim::empty"
-  },
-  {
-   "code": "port_evanescent",
-   "disposition": "intended",
-   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). The band IS the case: FREQS_HZ = linspace(8.2, 12.4, 21) GHz is WR-90's standard X-band, and the MEEP/analytic references are computed over it. The advisory is a 0.9*fc_next proximity heuristic: on the realized 23 x 11 mm guide fc_TE20 = 13.034 GHz, so the whole band is BELOW the TE20 cutoff and TE20 is evanescent, not propagating. Both variants are symmetric about the guide centre (empty guide; full-cross-section PEC plug) and driven with a centred TE10 template, which does not couple to the odd-symmetry TE20.",
-   "ref": "validation/crossval/11_waveguide_port_wr90.py:310-313",
-   "rows": 2,
-   "variant": "validation/crossval/11_waveguide_port_wr90.py::_build_sim::empty"
-  },
-  {
-   "code": "pec_faces_finite_pec",
-   "disposition": "intended",
-   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). The y/z PEC faces ARE the guide walls (boundary x=cpml, y=z=pec) and the finite PEC object is the short-circuit plug. That is the structure the case measures (|S11| = 1 at every frequency); the advisory's antenna framing does not apply to a closed guide.",
-   "ref": "validation/crossval/11_waveguide_port_wr90.py:28-33,505-520",
-   "rows": 1,
-   "variant": "validation/crossval/11_waveguide_port_wr90.py::_build_sim::pec_short"
-  },
-  {
-   "code": "port_aperture_snap",
-   "disposition": "intended",
-   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). cv11 declares the WR-90 standard 22.86 x 10.16 mm and QUOTES THE REALIZED GUIDE for every reference it computes: 'QUOTE-REALIZED (#722, #724): the walls this dx actually rasterizes (ceil(declared/dx)*dx) ... At dx=1mm this is 23.000 x 11.000 mm -- an EXACT rectangular guide, so F_CUTOFF_TE10 below is the true TE10 cutoff of the structure the solver builds.' A mesh-based fix was evaluated and withdrawn in writing. The row's own cutoff clause now agrees with that convention (#1101): on the default mode_profile='discrete' it reads the BUILT cfg.f_cutoff, 6.512162 GHz. The script's own F_CUTOFF_TE10 = C0/(2*A_WG_REALIZED) is 6.517391 GHz -- the script uses C0 = 2.998e8 (line 290), 0.0025 % off the exact c the advisory uses, which is why the advisory's realized-aperture analytic value reads 6.517227 GHz and not the script's number. Script constant against built: 0.080 %, the Yee discretisation of the same 23-cell guide. The advisory's own declared-width analytic value, 6.557140 GHz, is 0.691 % above the built one; cv11 has no declared-width constant of its own to compare, which is the point of its QUOTE-REALIZED convention. Script and advisory describe the same guide, so the row stays a disclosure of the declared-vs-realized gap rather than a defect.",
-   "ref": "validation/crossval/11_waveguide_port_wr90.py:290,295-308 | https://github.com/bk-squared/rfx/issues/1101",
-   "rows": 4,
-   "variant": "validation/crossval/11_waveguide_port_wr90.py::_build_sim::pec_short"
-  },
-  {
-   "code": "port_evanescent",
-   "disposition": "intended",
-   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). The band IS the case: FREQS_HZ = linspace(8.2, 12.4, 21) GHz is WR-90's standard X-band, and the MEEP/analytic references are computed over it. The advisory is a 0.9*fc_next proximity heuristic: on the realized 23 x 11 mm guide fc_TE20 = 13.034 GHz, so the whole band is BELOW the TE20 cutoff and TE20 is evanescent, not propagating. Both variants are symmetric about the guide centre (empty guide; full-cross-section PEC plug) and driven with a centred TE10 template, which does not couple to the odd-symmetry TE20.",
-   "ref": "validation/crossval/11_waveguide_port_wr90.py:310-313",
-   "rows": 2,
-   "variant": "validation/crossval/11_waveguide_port_wr90.py::_build_sim::pec_short"
-  },
-  {
    "code": "off_lattice_design_edges",
    "disposition": "intended",
    "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). dx = H_SUB/4 = 793.75 um is mandated by the case's own #325 avoidance rule ('UNIFORM grid only ... The rfx build ASSERTS the substrate rasterizes to exactly N_SUB=4 z-cells ... BEFORE any f0 is quoted'), which fixes the z axis exactly and leaves the in-plane patch (40 mm) and ground (56 mm) faces off-lattice by 0.89 % and 0.52 %. The script MEASURES the consequence rather than assuming it: assert_realized_stack prints the realized footprint in cells and mm next to the declared L_PATCH/W_PATCH on every run.",
@@ -271,22 +231,6 @@
    "ref": "validation/crossval/15_patch_antenna_rt5880.py:627 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/crossval/15_patch_antenna_rt5880.py::build_rfx_sim::default"
-  },
-  {
-   "code": "off_lattice_design_edges",
-   "disposition": "intended",
-   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). The iris fins are drawn with big = 1.0 m in the two transverse axes (Box((cur*dx, -big, -big), (..., fy_lo, big))) so that each fin spans the whole guide cross-section and the domain clips it. The 99.37 % residuals the advisory reports are the distance from those deliberately over-drawn +-1 m faces to the nearest node, i.e. a property of the over-draw idiom, not of the iris geometry. The dimensions that carry the physics (iris thickness t_cells, aperture d_cells, cavity L_cells) are declared in CELLS and asserted per iris by raster_assert().",
-   "ref": "validation/crossval/19_wr90_iris_filter_aghanim.py:535-556,559-575",
-   "rows": 1,
-   "variant": "validation/crossval/19_wr90_iris_filter_aghanim.py::build::gated"
-  },
-  {
-   "code": "pec_faces_finite_pec",
-   "disposition": "intended",
-   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). Same as cv11's pec_short: y/z PEC faces are the WR-90 guide walls, the finite PEC objects are the five irises. A closed guide with irises is the structure, not an antenna with a truncated ground plane.",
-   "ref": "validation/crossval/19_wr90_iris_filter_aghanim.py:527-533",
-   "rows": 1,
-   "variant": "validation/crossval/19_wr90_iris_filter_aghanim.py::build::gated"
   },
   {
    "code": "mesh_resolution",

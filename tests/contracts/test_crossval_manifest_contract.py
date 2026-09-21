@@ -314,7 +314,7 @@ def test_runner_derives_cpu_policy_from_manifest() -> None:
 
 def test_runner_exit_classification_matches_manifest_contract() -> None:
     """Each arm names a script whose manifest entry carries the property it
-    exercises: 11_waveguide_port_wr90 declares exit codes [0, 1] and no
+    exercises: 06b_msl_notch_filter_uniform declares exit codes [0, 1] and no
     failure sentinel (so exit 0 is a clean PASS and exit 2 is undeclared),
     and 07_sheen_lpf declares [0, 1, 2] with openEMS/CSXCAD as external
     dependencies (so exit 2 is inconclusive and an unimportable reference
@@ -328,14 +328,14 @@ def test_runner_exit_classification_matches_manifest_contract() -> None:
     runner = _load_runner()
 
     assert (
-        runner.classify("11_waveguide_port_wr90.py", 0, "ALL CHECKS PASSED", False)[
+        runner.classify("06b_msl_notch_filter_uniform.py", 0, "ALL CHECKS PASSED", False)[
             0
         ]
         == "PASS"
     )
     assert (
         runner.classify(
-            "11_waveguide_port_wr90.py", 1, "numeric gate failed", False
+            "06b_msl_notch_filter_uniform.py", 1, "numeric gate failed", False
         )[0]
         == "FAIL"
     )
@@ -345,16 +345,16 @@ def test_runner_exit_classification_matches_manifest_contract() -> None:
     )
     assert (
         runner.classify(
-            "11_waveguide_port_wr90.py", 2, "unexpected inconclusive", False
+            "06b_msl_notch_filter_uniform.py", 2, "unexpected inconclusive", False
         )[0]
         == "FAIL"
     )
     assert (
-        runner.classify("11_waveguide_port_wr90.py", 124, "", True)[0] == "TIMEOUT"
+        runner.classify("06b_msl_notch_filter_uniform.py", 124, "", True)[0] == "TIMEOUT"
     )
     assert (
         runner.classify(
-            "11_waveguide_port_wr90.py",
+            "06b_msl_notch_filter_uniform.py",
             3,
             "unexpected process error",
             False,
@@ -500,18 +500,23 @@ def test_repo_map_defers_crossval_claims_to_manifest() -> None:
 
 
 def test_vessl_external_lane_matches_manifest_classification() -> None:
+    """The on-demand external-solver lane left with the WR-90 waveguide-port
+    case on 2026-09-21: it was the only case the lane ran. The tier stays in
+    the manifest's vocabulary, so the pairing this test used to check is
+    "no case claims the tier AND no lane YAML claims a case" -- either half
+    alone would let a case declare a lane that cannot run it.
+    """
     manifest = _load_manifest()
     expected_cases = {
         case["id"]
         for case in manifest["cases"]
         if "vessl-external" in case["execution_tiers"]
     }
-    vessl_text = (REPO_ROOT / "scripts" / "vessl_crossval_external.yaml").read_text(
-        encoding="utf-8"
-    )
+    lane_yaml = REPO_ROOT / "scripts" / "vessl_crossval_external.yaml"
     configured_cases = set(
         re.findall(
-            r"validation/crossval/([0-9][0-9a-z]*_[A-Za-z0-9_]+)\.py", vessl_text
+            r"validation/crossval/([0-9][0-9a-z]*_[A-Za-z0-9_]+)\.py",
+            lane_yaml.read_text(encoding="utf-8") if lane_yaml.is_file() else "",
         )
     )
     assert configured_cases == expected_cases

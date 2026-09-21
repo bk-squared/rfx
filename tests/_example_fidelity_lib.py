@@ -390,9 +390,6 @@ CLASSIFICATION: dict[str, Entry] = {
         "crossval-side build-time realized-conductor gate (#931): takes a "
         "built Simulation and delegates to the shared realized-edge spelling "
         "-- constructs no Simulation"),
-    "validation/crossval/comparators/fdfd_hplane.py": Entry(
-        "no_simulation",
-        "plain numpy/scipy.sparse FDFD comparator -- no rfx import at all"),
     "validation/crossval/comparators/spectral_features.py": Entry(
         "no_simulation",
         "pure-numpy sub-bin spectral-feature estimators shared by cv06b/cv07 "
@@ -822,24 +819,6 @@ CLASSIFICATION: dict[str, Entry] = {
     "validation/crossval/06b_msl_notch_filter_uniform.py": Entry(
         "audited", "`_build_sim()` returns Simulation with no solve call",
         (Builder("_build_sim", None, (_v("default"),)),)),
-    "validation/crossval/11_waveguide_port_wr90.py": Entry(
-        "audited",
-        "`_build_sim(freqs, ...)` returns Simulation with no solve call; "
-        "main() drives it at the empty-guide and PEC-short configurations",
-        (Builder("_build_sim", None, (
-            _v_from("empty", lambda m: dict(freqs=m.FREQS_HZ)),
-            _v_from("pec_short", lambda m: dict(
-                freqs=m.FREQS_HZ, pec_short_x=m.PEC_SHORT_X)),
-        )),)),
-    "validation/crossval/19_wr90_iris_filter_aghanim.py": Entry(
-        "audited",
-        "`build(geo, ...)` returns (Simulation, cpml_cells, guide_length) "
-        "with no solve call; main()'s gated leg calls it on "
-        "rasterized_geometry(GATED_CELLS, allow_asymmetric=False)",
-        (Builder("build", 0, (
-            _v_from("gated", lambda m: dict(
-                geo=m.rasterized_geometry(m.GATED_CELLS, allow_asymmetric=False))),
-        )),)),
     "validation/research/subgrid/12_subgrid_disjoint_prototype.py": Entry(
         "audited",
         "`_build_disjoint_simulation()` returns Simulation with no solve call",

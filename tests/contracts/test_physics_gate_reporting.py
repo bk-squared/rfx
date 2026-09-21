@@ -801,8 +801,12 @@ def test_port_external_reference_audit_blocks_until_every_family_has_broad_e5(tm
     assert audit["vessl_yaml_contract_status"] == "passed"
     assert audit["vessl_yaml_contract_launchable_family_count"] == 7
     # 2026-09-21: wire_port's only diagnostic command compared the JSON written
-    # by the cv05 patch case, which was removed; six families carry one now.
-    assert audit["vessl_yaml_contract_diagnostic_command_family_count"] == 6
+    # by the cv05 patch case, which was removed. rectangular_waveguide_port's
+    # only diagnostic command ran the WR-90 waveguide-port case and fed its
+    # stdout to the external generic comparator; that case was removed too and
+    # the step left its shard YAML, which still carries the dependency audit and
+    # the family readiness report. Five families carry a diagnostic command now.
+    assert audit["vessl_yaml_contract_diagnostic_command_family_count"] == 5
     assert audit["comparison_artifact_coverage_status"] == "blocked"
     # broad-E5 envelope coverage stays "blocked" on a clean checkout: although
     # rectangular_waveguide_port's envelopes are now committed (see below), the
@@ -1394,9 +1398,13 @@ def test_port_external_shard_execution_manifest_covers_all_required_families():
     assert manifest["required_family_count"] == 7
     assert manifest["launchable_family_count"] == 7
     # 2026-09-21: wire_port's only diagnostic command compared the JSON written
-    # by the cv05 patch case, which was removed with that case.
-    assert manifest["diagnostic_command_family_count"] == 6
-    assert manifest["missing_diagnostic_command_families"] == ["wire_port"]
+    # by the cv05 patch case, and rectangular_waveguide_port's ran the WR-90
+    # waveguide-port case; both cases were removed with their commands. Their
+    # shard YAMLs stay launchable -- each still emits its family readiness
+    # report -- so only the diagnostic-command count moves.
+    assert manifest["diagnostic_command_family_count"] == 5
+    assert sorted(manifest["missing_diagnostic_command_families"]) == [
+        "rectangular_waveguide_port", "wire_port"]
     for row in manifest["shards"]:
         assert row["has_launchable_yaml"] is True
         assert row["expected_result_json"].endswith(

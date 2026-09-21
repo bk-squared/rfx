@@ -148,8 +148,9 @@ importing it no longer solves).
 
 WHAT THIS DOES NOT COVER. Against #722's own list of eight scripts that
 solved geometry other than what they declared (cv06b, cv20, cv11, cv16,
-cv17, cv07, cv09, cv15), this gate now reaches FOUR: cv06b, cv11, cv07
-and cv15 (the last two arrived with their build-only entry points).
+cv17, cv07, cv09, cv15), this gate now reaches THREE: cv06b, cv07 and
+cv15 (the last two arrived with their build-only entry points; the WR-90
+waveguide-port case left the table with its case on 2026-09-21).
 cv20/cv16/cv17 are ``no_simulation`` and cv09 is
 ``builder_fused_with_solve``, so a no-solve gate cannot see them as those
 scripts stand today. Nor does it reach cv21's fence-post error (#739, cv21
@@ -562,14 +563,14 @@ def test_no_reason_is_boilerplate_across_different_advisories() -> None:
 
     The thing worth blocking is one sentence pasted over unrelated rows, which
     is what a generic "intended, the example means it" looks like: it spans
-    codes. Repetition WITHIN a code is not that. Four pairs in this file share
-    a reason today and each is a sibling pair emitting the same advisory --
-    cv11's empty and pec_short variants (port_aperture_snap, then
-    port_evanescent), the two supraconvergence studies w4 and w4r
+    codes. Repetition WITHIN a code is not that. The pairs in this file that
+    share a reason today are each a sibling pair emitting the same advisory --
+    the off-diagonal adjudication study's two drive variants
+    (sheet_effective_size), the two supraconvergence studies w4 and w4r
     (mesh_resolution), and the thru fixture's band-pulse and insitu-refplane
-    variants (pec_faces_finite_pec). Forcing four artificial rewordings would
-    make the file worse, not more honest; a reason crossing codes stays a
-    failure.
+    variants (pec_faces_finite_pec, sheet_effective_size). Forcing artificial
+    rewordings would make the file worse, not more honest; a reason crossing
+    codes stays a failure.
     """
     by_reason: dict[str, set[str]] = {}
     where_by_reason: dict[str, list[str]] = {}

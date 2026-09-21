@@ -441,30 +441,28 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
     # DOES-NOT-CLOSE verdict with nothing behind it, and a negative result is
     # exactly the kind whose numbers nobody re-derives.
     (TILT_RESULTS, "7. Numeric provenance"): 54,
-    (MANIFEST, "11_waveguide_port_wr90"): 4,
+    # 2026-09-21: the WR-90 waveguide-port case and the five-iris band-pass
+    # filter case left the manifest and the validation README, so their four
+    # rows here have no site to measure.
     (MANIFEST, "15_patch_antenna_rt5880"): 3,
     (MANIFEST, "18_wr90_iris_modematch"): 4,
-    (MANIFEST, "19_wr90_iris_filter_aghanim"): 4,
-    ("validation/README.md", "crossval/11_waveguide_port_wr90.py"): 4,
     # 2026-09-03: floors for the cv15/cv18 README rows re-based to the rows that
     # #847 / #846 rewrote after this gate was drafted (see the note, "Re-basing
     # two floors"); those rows cite in the value-checked form and carry 2 each.
     ("validation/README.md", "crossval/15_patch_antenna_rt5880.py"): 2,
     ("validation/README.md", "crossval/18_wr90_iris_modematch.py"): 2,
-    ("validation/README.md", "crossval/19_wr90_iris_filter_aghanim.py"): 6,
     (CV11_NOTE, "7. Numeric provenance (appended 2026-09-01, #812 round 2 \u2014 no finding changed)"): 6,
     # 2026-09-21: the lattice-witness standard's four case sections (5.1 cv23,
     # 5.2 cv22, 5.3 cv04, 8.1 cv22 Debye) left this table with the slab family.
     # Every citation under them reaches an artifact in REMOVED_ARTIFACT_PREFIXES,
     # so each section now carries zero checked references and its floor no longer
     # holds. The note itself is unchanged apart from its removal header.
-    # 2026-09-03 (#884): the cv19 witness note's two load-bearing sections. §6.2
-    # cites the committed unitarity that U3's floor is compared against; §6.3
-    # cites the empty_s11 and r=2 anchor values it says were deliberately NOT
-    # changed. A "we changed nothing" claim is worth exactly as much as its
-    # numbers still resolving.
-    (CV19_WITNESS_NOTE, "6.2 The three checks, with the shipped measurements"): 1,
-    (CV19_WITNESS_NOTE, "6.3 What did NOT change"): 2,
+    # 2026-09-21: the FDFD unitarity witness note's two load-bearing sections
+    # (§6.2, §6.3) left this table with the five-iris band-pass filter case.
+    # Every citation under them reaches an artifact in
+    # REMOVED_ARTIFACT_PREFIXES, so each section now carries zero checked
+    # references and its floor no longer holds. The note itself is unchanged
+    # apart from its removal header.
     # 2026-09-21: the auxiliary-echo note's section 3 read its 18 per-rung
     # ratios out of the slab family's committed artifacts. Those artifacts are
     # in REMOVED_ARTIFACT_PREFIXES, the section carries zero checked references,
@@ -550,9 +548,15 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
 # (REMOVED_ARTIFACT_PREFIXES, skipped per citation). Measured after the removal:
 # 431 references, 401 value-checked, 33 artifacts. The floors are lowered to the
 # measured values.
-MIN_REFERENCES = 431
-MIN_VALUE_CHECKED = 401
-MIN_DISTINCT_ARTIFACTS = 33
+# 2026-09-21 (the WR-90 waveguide-port case and the five-iris band-pass filter
+# case removed): their manifest entries, README rows and benchmarks rows left
+# the gated surface, and the FDFD unitarity witness note's citations reach
+# artifacts that went with the filter case (REMOVED_ARTIFACT_PREFIXES, skipped
+# per citation). Measured after the removal: 403 references, 373 value-checked,
+# 31 artifacts. The floors are lowered to the measured values.
+MIN_REFERENCES = 403
+MIN_VALUE_CHECKED = 373
+MIN_DISTINCT_ARTIFACTS = 31
 
 
 # --------------------------------------------------------------------------
@@ -926,6 +930,11 @@ REMOVED_ARTIFACT_PREFIXES: tuple[str, ...] = (
     "tests/fixtures/golden_workflows/",
     "tests/fixtures/rcs_dielectric_sphere_mie/",
     "tests/fixtures/slab_family_windows_baseline.json",
+    # 2026-09-21, the WR-90 waveguide-port case and the five-iris band-pass
+    # filter case. Those artifacts are at commit df7ea62c.
+    "validation/crossval/_11_wr90_port_results/",
+    "validation/crossval/_19_iris_filter_results/",
+    "tests/fixtures/wr90_iris_filter/",
 )
 
 

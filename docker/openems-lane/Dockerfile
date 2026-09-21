@@ -2,7 +2,7 @@
 #
 # openEMS solver-environment image for rfx's external-openEMS VESSL referee
 # lanes (scripts/vessl_coax_two_port_referee.yaml,
-# scripts/vessl_msl_phase_referee.yaml, scripts/vessl_crossval_external.yaml,
+# scripts/vessl_msl_phase_referee.yaml,
 # scripts/vessl_coax_two_port_referee_mesh_refinement.yaml). Each of those
 # lanes today pays apt-get + a source build of openEMS-Project (fparser +
 # CSXCAD + openEMS, ~30-60 min) on EVERY run. Motivation: 2026-08-04, the
@@ -58,10 +58,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # repush (same tag, different content -- ghcr tags are mutable) becomes
 # visible in the RUN LOG itself, not only in a registry API call.
 
-# apt superset of the four lanes' dependency lists -- verified identical
-# across all four at authoring time (diffed against
-# scripts/vessl_coax_two_port_referee.yaml, scripts/vessl_msl_phase_referee.yaml,
-# scripts/vessl_crossval_external.yaml, and PR #561's
+# apt superset of the lanes' dependency lists -- verified identical
+# across all of them at authoring time (diffed against
+# scripts/vessl_coax_two_port_referee.yaml, scripts/vessl_msl_phase_referee.yaml
+# and PR #561's
 # scripts/vessl_coax_two_port_referee_mesh_refinement.yaml -- no
 # reconciliation across differing lists was needed, they already agree).
 # Plain archive.ubuntu.com: GitHub Actions runners have healthy network, so

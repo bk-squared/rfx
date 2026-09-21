@@ -91,7 +91,6 @@ The current reference lane should remain tied to concrete reproducible evidence,
 - `python -m pytest tests/contracts/test_crossval_manifest_contract.py -q`
 - `PYTHONPATH=. python scripts/run_crossval_cpu.py`
 - `JAX_PLATFORM_NAME=cpu python -m pytest tests/unit/api/test_api.py tests/unit/nonuniform/test_nonuniform_api.py tests/oracle/test_nonuniform_convergence.py -q`
-- `vessl run create -f scripts/vessl_crossval_external.yaml`
 - `vessl run create -f scripts/vessl_gpu_suite.yaml`
 
 The scheduled external-reference membership is also read from

@@ -21,9 +21,7 @@ one case doubled its gate with every existing guard still green.
 Consumers (as of this writing):
   * tests/unit/sparams/test_msl_port_integration.py              (quantum=1000, |Z0| length-spread, #518)
   * tests/crossval/test_wr90_iris_modematch_gates.py        (quantum=100, abs |S11|)
-  * tests/crossval/test_wr90_iris_filter_gates.py            (quantum=1,   MHz)
   * validation/crossval/18_wr90_iris_modematch.py       (--write-fixture self-check)
-  * validation/crossval/19_wr90_iris_filter_aghanim.py  (--write-fixture self-check)
   * tests/unit/farfield/test_rcs280_reference_subtraction.py    (quantum=100,  dB pattern mean, #888/#280)
   * tests/unit/sources/test_tfsf_aux_absorber_reflection.py     (quantum=1e5..1e7, |B/A| reflection amplitude, #888)
 
@@ -46,8 +44,6 @@ the regenerated gates):
 
   * cv18 (``fine_gate_abs`` 0.04, ``richardson_gate_abs`` 0.01) — the fin
     aperture loses its ``- 1``;
-  * cv19 (``f0_gate_mhz`` 19.0 from a 12.1230 MHz envelope) — the iris and
-    cavity lose their ``+1`` / ``-1`` pair;
   * cv05 / cv06b / cv07 / cv15 — foil becomes a sheet, so every measured
     envelope on those boards is measured on a different board.
 

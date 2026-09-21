@@ -33,7 +33,5 @@ This record is a bracket, not a judgment: it states where the two solvers land
 on the same geometry class. No committed rfx gate cites these numbers; the
 battery's gates remain anchored to the in-repo closed-box flux referee.
 
-The historical VESSL job YAML is unavailable in a clean clone. The tracked
-`scripts/vessl_crossval_external.yaml` is related template material, not a
-reconstruction of that job; use this record and the committed result only as
-historical diagnostic evidence.
+The historical VESSL job YAML is unavailable in a clean clone; use this record
+and the committed result only as historical diagnostic evidence.

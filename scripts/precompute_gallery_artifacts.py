@@ -429,9 +429,8 @@ def _build_waveguide_wr90(quick: bool) -> CaseResult:
     """Empty WR-90 waveguide port: matched-load reference (|S11|=0, |S21|=1).
 
     Reuses the canonical ``add_waveguide_port`` + ``compute_waveguide_s_matrix``
-    pipeline from ``validation/crossval/11_waveguide_port_wr90.py`` for the
-    empty-guide geometry. The matched-load analytic reference is exact, so this
-    is an E5 case.
+    pipeline for the empty-guide geometry. The matched-load analytic reference
+    is exact, so this is an E5 case.
     """
     import jax.numpy as jnp
 

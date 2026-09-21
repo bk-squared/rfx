@@ -6,9 +6,8 @@ file pins the replacement: identification of every ring-down mode against the
 DECLARED TM_mn0 spectrum, with the design member required to be found.
 
 Everything here is a pure function over frequency lists -- no FDTD, no solver
--- following ``tests/test_crossval_gate_logic.py`` and
-``tests/test_crossval_cv15_wall_planes.py``'s precedent for this crossval
-directory.  The live-FDTD reproductions live in
+-- following ``tests/test_crossval_cv15_wall_planes.py``'s precedent for
+this crossval directory.  The live-FDTD reproductions live in
 ``docs/design_notes/20260901_patch_mode_identification_predeclaration.md``'s
 measurement log and in ``tests/fixtures/patch_mode_identification/``.
 

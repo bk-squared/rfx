@@ -83,8 +83,7 @@
     follow-up rather than changed silently here.
 
     PRECISION: this script pins no JAX_ENABLE_X64 anywhere (unlike cv01/03
-    at "1" or cv11 at "0" — validation/crossval/11_waveguide_port_wr90.py),
-    so every number above and below is at the JAX default precision for
+    at "1"), so every number above and below is at the JAX default precision for
     this environment (confirmed here: jax.config.jax_enable_x64 == False).
     Because rasterization is float32-sensitive at cell edges
     (rfx/geometry/csg.py), the realized board this note quotes can in

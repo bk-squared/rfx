@@ -1,5 +1,7 @@
 # cv19 FDFD unitarity witness: what 1.4655e-09 actually is, and what the gate should be
 
+> The five-iris band-pass filter case was removed on 2026-09-21; the artifacts cited here are at commit df7ea62c.
+
 Issue #884. Sections 0–3 are the diagnosis, recorded first and unchanged. Section 4 is
 the proposal that came out of it; **section 6 records what actually shipped**, including
 the two places where the implementation's measured numbers differ from section 4's draft

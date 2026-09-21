@@ -218,7 +218,6 @@
         "tests/oracle/test_waveguide_port_validation_battery.py",
         "tests/unit/sparams/test_waveguide_phase_gate.py",
         "tests/unit/sparams/test_waveguide_twoport_contract_v1.py",
-        "validation/crossval/11_waveguide_port_wr90.py",
         "tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json",
         "tests/fixtures/waveguide_broad_e5/waveguide_wr28_kaband_broad_e5_envelope.json",
         "tests/fixtures/waveguide_broad_e5/waveguide_wr62_kuband_broad_e5_envelope.json",
@@ -265,7 +264,6 @@
       "numeric_metrics": [
         "uniform empty guide max |S11| < 0.02 and max column power < 1.02",
         "uniform PEC short min |S11| >= 0.99 and max |S11| < 1.03",
-        "cv11 gates: band-mean linear-magnitude difference < 0.10 for S11 and < 0.07 for S21; masked band-mean phase difference < 60 degrees where reference magnitude >= 0.30; maximum complex-S difference < 0.30",
         "Current-main refreshed Palace WR-90 empty/PEC-short/slab comparison over 8.2--12.4 GHz (VESSL 369367260736, producer commit 8206031d): max_mag_abs_diff 0.0193 and mean_mag_abs_diff 0.001953, all five pairs passed unchanged tolerances. The historical June 0.0707/0.00943 artifact, August pre-#931 0.0186--0.0194 record, current-main pre-fix 0.1500/0.1055 failure and 11-node-to-10-mm material A/B are preserved under `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::provenance.refresh_2026_09_13`; no tolerance moved and no general phase/junction/nonuniform claim follows. The producer uses normalize=True for empty/slab and False for PEC short; this is not flux or AD validation. June-to-August attribution remains unresolved; the material A/B explains September only.",
         "uniform analytic WR-band slabs with normalize=flux: per-case |S11| differences 0.005--0.041",
         "issue #490 Lane 1 broad-E5 Airy PHASE (same 5 WR bands / 20 cases as the magnitude envelope, reference-plane-corrected): max phase diff 11.99 degrees against a measured-envelope gate of 15.0 degrees; planted-defect falsifier (the wrong pre-session S21 reference-plane formula) reds at 179.87 degrees; domain-size invariance witness (WR-340, +100mm growth) holds the pass verdict (8.92 -> 7.73 degrees)",

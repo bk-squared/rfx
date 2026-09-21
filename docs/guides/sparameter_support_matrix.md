@@ -532,10 +532,6 @@ ports are required. `run()` provides only per-port diagnostics.
 - The validation battery requires empty-guide `max |S11| < 0.02`, maximum column
   power `< 1.02`, symmetric-obstacle mean reciprocity error `< 0.01`, and a
   PEC-short result with `min |S11| >= 0.99` and `max |S11| < 1.03`.
-- The cv11 cross-solver gates use a band-mean linear-magnitude difference of
-  `0.10` for S11 and `0.07` for S21, a masked band-mean phase difference of
-  `60 degrees` where reference magnitude is at least `0.30`, and a maximum
-  complex-S difference of `0.30`.
 
 This supports broad magnitude use inside the documented uniform, single-mode
 rectangular-guide limits. Phase evidence covers fewer configurations; do not
@@ -711,9 +707,9 @@ Per criterion, on run 3:
   `0.1487` in magnitude, `16.94 degrees` in phase). The referee set is this battery's Airy slab and PEC short **plus** the five
   broad-E5 replay bands (WR-340, WR-62, WR-28, WR-15, WR-10), replayed by
   `tests/crossval/test_waveguide_broad_e5.py` at zero run cost. The phase
-  referee is analytic Airy only; cv18, cv19 and the Meep T-junction are
-  magnitude-only flux gates with no AD leg, so they support 3(d) and never
-  carry criterion 1 or 3(a).
+  referee is analytic Airy only; the single WR-90 inductive iris and the Meep
+  T-junction are magnitude-only flux gates with no AD leg, so they support
+  3(d) and never carry criterion 1 or 3(a).
 - **Criterion 4 (artifacts) — met.** Each run's artifact carries the
   pre-declaration path and the commit it was read at, the tracked driver and
   the tracked VESSL YAML it ran under; the replay tests re-derive every stored

@@ -295,7 +295,7 @@ def test_cv15_builder_rejects_an_unknown_patch_kind():
 
 # ---------------------------------------------------------------------------
 # compare()'s stack-geometry gate: pinned with synthetic dicts (no solve),
-# following test_crossval_gate_logic.py's precedent for this directory.
+# the established precedent for this directory.
 # ---------------------------------------------------------------------------
 
 def _good_stack_check(cv15):
