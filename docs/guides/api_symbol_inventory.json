@@ -480,7 +480,8 @@
         "field_scale",
         "magnetic_ratio",
         "reference_plane_axial_index_offset",
-        "eps_r"
+        "eps_r",
+        "shell_inner_radius"
       ]
     },
     "build_runtime_report": {
