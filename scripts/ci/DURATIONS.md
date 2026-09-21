@@ -2,15 +2,17 @@
 
 Regenerated 2026-09-21 on `main` (`150ed1d8`, assembled at `2bad0f51`) from `regen-durations` run
 [35613805791](https://github.com/bk-squared/rfx/actions/runs/35613805791). **8286 entries in the
-file**, of which **58 of them carried unchanged** from the 10625-entry file this replaces, plus one
+file**, of which **57 of them carried unchanged** from the 10625-entry file this replaces, plus one
 entry set by hand (below). Nine of that run's ten jobs succeeded; `slow (3)` was killed by the runner
 twice — lost communication on the first try, exit 137 at 31 % on the rerun, in
 `tests/unit/geometry/test_mesh_import.py`, so it is memory, not time — as `slow (3)` was on
 2026-09-16 too. The merge therefore keeps a committed value for a currently collected test that no
-shard measured (that is the 58), and drops the 3731 committed entries whose tests no longer exist
-(the cross-validation removals of 2026-09-21, PRs 1156–1170). 1008 collected tests have no entry
-at all — never measured, and absent from the file this replaces; pytest-split places them by its
-default for unknown ids.
+shard measured (that is the 57), and drops the 3719 committed entries whose tests no longer exist
+(the cross-validation removals of 2026-09-21, PRs 1156–1170). Of the 9294 tests the three
+collections (fast, slow, highmem) select on this Mac at `2bad0f51`, 1008 have no entry — no shard
+measured them and the replaced file had none either; pytest-split places them by its default for
+unknown ids. The counts here are computed from the artifacts, the replaced file and those
+collection lists; the contract below checks the first two against the file.
 
 **One entry is not a measurement of this run.**
 `tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_end_to_end_matches_historical_base`
@@ -51,14 +53,9 @@ toward equal test COUNTS and away from equal time.
 So the floor is gone, and step 4 of Regenerating below says not to re-add it. Two consequences to
 keep in mind:
 
-- The 297 carried entries still have the old additive 0.3 s inside them, because nothing
-  re-measured those tests. Measured breakdown: 65 are still collected (53 by the slow lane, 12 by
-  the a6000 highmem lane) and 232 are nodeids no current selection collects at all — stale ids the
-  seed dragged forward. pytest-split drops durations for uncollected ids, so the 232 cost nothing
-  but bytes; the 65 are 0.3 s over, each, until a regen that completes re-measures them. Across the
-  whole file 246 of 10625 entries are uncollected.
-- `tests/contracts/test_test_durations_provenance.py` pins the retirement: it fails if the
-  minimum entry ever climbs back above 0.3 s, which is what re-adding the floor would do.
+- The 57 carried entries predate the 2026-09-18 floor retirement, so each may still hold the old
+  additive 0.3 s (at most 17 s in total, 0.09 % of the file). No collected test that has an entry
+  is priced from anything but a runner measurement or one of those 57.
 
 An earlier version of this note blamed a pytest-split threshold that supposedly drops short setup
 and teardown readings. That was backwards — `STORE_DURATIONS_SETUP_AND_TEARDOWN_THRESHOLD` is
@@ -68,21 +65,24 @@ longer stands on the 2026-09-08 measurement either.
 ## Sources
 
 - The fresh measurements come from the six `fast` shards and `slow (1)`, `(2)`, `(4)` of run
-  35107932217, measured on `ubuntu-latest`, the same runner class the lanes use. `slow (3)` was
-  killed; rather than drop the tests only that shard measures, `merge_test_durations.py` seeds
-  from the committed file first and lets later inputs win.
-- 12 entries measured on the a6000 lane (VESSL run 369367259335, `-m "highmem and not gpu"`,
-  13 passed in 254 s) are among the 297 carried. These 12 carry `slow` or `slow_physics` as well
-  as `highmem`, so the fast lane deselects them through pyproject's default `-m` expression and
-  the weekly lane excludes them by marker. No GitHub split uses their time.
-- Recorded total: 20143.7 s (5.60 h), against 19486.5 s (5.41 h) for the file this replaces.
+  35613805791, measured on `ubuntu-latest`, the same runner class the lanes use. `slow (3)` died
+  twice (see the head of this file); rather than drop the tests only that shard measures, the merge
+  keeps the committed value for a currently collected test that no shard measured, which is what the
+  57 carried are. An id measured by more than one shard takes the last input's value
+  (`merge_test_durations.py`, later inputs win); the slow shards were passed last, and they read
+  about 17 % faster than the fast shards on the same ids, so fast-shard prices sit a little low.
+- 12 of the 57 carried are the highmem-marked entries measured on the a6000 lane on 2026-09-16
+  (VESSL run 369367259335, `-m "highmem and not gpu"`). They carry `slow` or `slow_physics` as well
+  as `highmem`, so no GitHub split uses their time.
+- Recorded total: 18394.0 s (5.11 h), against 20143.7 s (5.60 h) for the file this replaces — the
+  difference is mostly the removed cross-validation tests.
 
 ## The one highmem test the fast lane does run
 
 `tests/unit/ports/test_msl_source_fixture_static.py::test_auto_eps_msl_gradient_matches_fd_mini_referee`
 carries `highmem` and nothing else, so pyproject's default `-m 'not gpu and not slow and not
 slow_physics'` does not deselect it and it runs in a fast shard. Its entry must therefore be a
-runner measurement, and it is: 35.295652 s from run 35107932217 (the a6000 says 28.9 s). It is the
+runner measurement, and it is: 36.254243 s from run 35613805791 (the a6000 said 28.9 s). It is the
 one highmem-marked entry the regen refreshed; the other 12 carried. When regenerating, do not
 overwrite this one from the a6000 map.
 
