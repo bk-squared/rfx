@@ -650,6 +650,10 @@ CLASSIFICATION: dict[str, Entry] = {
         "control, and the smooth spectral observable on the AD-Q z stack; every "
         "solve goes through make_nonuniform_grid + run_nonuniform under jax.grad "
         "with the AD-Q judges -- no Simulation"),
+    "validation/research/multiband_nu/paired_gradient.py": Entry(
+        "no_simulation",
+        "Host-side paired-loss gradient adjudication from retained scalar "
+        "samples and their evaluation uncertainty; no Simulation or solver call"),
     "validation/research/multiband_nu/adq_designvar.py": Entry(
         "no_simulation",
         "AD-Q design-variable autodiff witness (2026-09-13 lane): Taylor-"

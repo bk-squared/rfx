@@ -734,6 +734,9 @@ CLASSIFICATION: dict[str, str] = {
     "docs/design_notes/20260913_nu_ad_directional_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260913_nu_ad_designvar_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260915_nu_lane2b_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    # Separate instrument declaration; no measured artifact-field citation.
+    # Analytic and metamorphic controls live in test_paired_gradient_judge.py.
+    "docs/design_notes/20260921_nu_paired_gradient_predeclaration.md": NO_ARTIFACT_REFERENCE,
     # 2026-09-14 (nu full-functionality lane 1): none of the four carries a
     # `path.json::key` span (parses empty); the AD-Q notes are replayed from
     # results/adq_*.json by tests/unit/nonuniform/test_adq_designvar_replay.py,
