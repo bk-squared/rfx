@@ -362,24 +362,13 @@ record compatibility, and the assumptions needed to interpret V/I as power.
   `1.4122%` rfx / `0.3068%` openEMS, all three gates passing. This combines
   regenerated rfx data with historical run-2 openEMS fields; it does not
   establish a fresh matched-board post-#931 openEMS result.
-  **Accuracy statement for the fitted `beta` (issue #830, closed 2026-09-21 as
-  a stated accuracy).** With the current rfx fixture, the replay above reads rfx's
-  fitted `beta` at most `1.4122%` from the Hammerstad-Jensen closed form of the
-  board rfx realizes; that replay pairs regenerated rfx data with historical
-  openEMS fields and is not a matched-board run. The last matched run
-  (2026-08-27, a pre-2.0 realization;
-  `validation/crossval/_20_msl_phase_referee_logs/20260827T102342Z_result.json`,
-  `stage_b.cross_solver_report`, against
-  `regate_evidence.json::cv20.eps_eff_hammerstad_jensen_realized_board`) reads,
-  signed, over the nine gated bins of 3.0-4.5 GHz: rfx `+0.869 %` to `+0.936 %`,
-  every bin above the closed form; openEMS `-0.309 %` to `+0.082 %`. The offset
-  is unattributed. `beta` is a fitted diagnostic and does not enter S. What a
-  user's phase carries is the through phase: on that matched run it differs from
-  openEMS by at most `0.342 degrees` against the 3-degree gate, which is 0.03 %
-  to 1.1 % of the 32-44 degree electrical length of the 5 mm span, largest at
-  the low band edge and changing sign between the 3.91 and 4.07 GHz bins. All of this is one mesh
-  (`dx = 50 um`, the trace one cell thick); no tracked refinement exists, so no
-  convergence behaviour is claimed.
+  **The fitted `beta` is a diagnostic and does not enter S** (pinned by
+  `tests/unit/sparams/test_msl_fitted_beta_does_not_enter_s.py`). Its reading
+  against the closed form on a two-step cell-size ladder, and what is and is not
+  claimed from it, is stated in the Microstrip-line row of
+  [`support_matrix.md`](support_matrix.md) from the records in
+  `scripts/diagnostics/msl_phase_referee_dx_ladder/` (#1147); issue #830 is
+  closed as characterized.
   See `validation/crossval/20_msl_phase_referee.py` (manifest entry
   `20_msl_phase_referee`), `tests/crossval/test_msl_phase_referee_header.py`, and
   `docs/design_notes/issue812_phase_identity_predeclaration.md`.
