@@ -753,9 +753,17 @@ def stage_solve(args, out: Path) -> None:
         "preflight": pf,
         "cost": est,
     })
-    _log(f"solve dut={dut} dx={dx*1e6:.0f} um num_periods={args.num_periods}")
+    _log(f"solve dut={dut} dx={dx*1e6:.0f} um num_periods={args.num_periods}"
+         + (f" report_every={args.report_every}" if args.report_every else ""))
+    rec["report_every"] = args.report_every
+    # Progress reporting is off by default and bit-exact when on (it threads the
+    # carry through ceil(n_steps/report_every) calls to the SAME compiled scan,
+    # locked by tests/unit/runners/test_run_progress_reporting.py). It exists
+    # because the finest rung solved for hours with a log that said nothing
+    # after the cost line, so slow was indistinguishable from wedged.
+    extra = {} if args.report_every is None else {"report_every": int(args.report_every)}
     with _Captured() as cap:
-        res = solve(sim, num_periods=args.num_periods)
+        res = solve(sim, num_periods=args.num_periods, **extra)
     _log_witness(f"solve {dut} {dx*1e6:.0f} um", res)
     rec["warnings"] = cap.warnings
     rec["wall_s"] = cap.wall
@@ -1784,6 +1792,9 @@ def main() -> int:
     ap.add_argument("--out", required=True, help="directory for the stage JSONs")
     ap.add_argument("--fixture-out", default=str(REPO / ARTIFACT))
     ap.add_argument("--run-id", default=None, help="the compute run id, recorded as-is")
+    ap.add_argument("--report-every", type=int, default=None,
+                    help="solve only: print a progress line every N timesteps. Off by "
+                         "default; the reported solve is bit-exact either way.")
     ap.add_argument("--run-index", default=None,
                     help="assemble only: a JSON mapping each stage file to its "
                          "compute run id and run directory name")
