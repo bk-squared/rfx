@@ -1754,6 +1754,7 @@ class _ExecuteMixin:
                     component=pe.component,
                     freqs=_s11_freqs_arr,
                     impedance=float(pe.impedance),
+                    excite=bool(_drive_this_port),
                 ))
 
         # MSL ports — full cross-section distributed feed; built like the
@@ -2199,11 +2200,31 @@ class _ExecuteMixin:
         s_params_out = getattr(result, "s_params", None)
         freqs_out = getattr(result, "freqs", None)
         if result.lumped_port_sparams:
-            from rfx.probes.probes import extract_lumped_s11
+            # A GENUINELY driven one-cell lumped port uses the driven
+            # terminal reflection S_kk = (V - Z0*I)/(V + Z0*I) on the
+            # POST-injection V/I pair.  The historical
+            # extract_lumped_s11 here was the PASSIVE port-branch
+            # convention applied to a driven port (the reciprocal class)
+            # on a pre-injection sample: on the known-load line
+            # (scripts/diagnostics/lumped_port_known_load_line.py) it read
+            # |S11| 0.714 / 1.248 / 4.757 where the closed form is
+            # 0.333 / 0 / 0.333.  Same correction the wire family made in
+            # #764/#683; the one-cell gap IS the whole gap, so the
+            # single-cell V is the KVL-constrained V_port here.  A passive
+            # port keeps the load-independent port-branch reading.
+            from rfx.probes.probes import (
+                driven_port_reflection,
+                extract_lumped_s11,
+            )
             s_list = []
             for spec, accs in result.lumped_port_sparams:
-                v_dft, i_dft = accs
-                s_list.append(extract_lumped_s11(v_dft, i_dft, z0=spec.impedance))
+                v_dft, i_dft = accs[0], accs[1]
+                if getattr(spec, "excite", True):
+                    s_list.append(
+                        driven_port_reflection(v_dft, i_dft, spec.impedance))
+                else:
+                    s_list.append(
+                        extract_lumped_s11(v_dft, i_dft, z0=spec.impedance))
             s_params_out = s_list[0] if len(s_list) == 1 else jnp.stack(s_list, axis=0)
             freqs_out = result.lumped_port_sparams[0][0].freqs
         elif result.wire_port_sparams:

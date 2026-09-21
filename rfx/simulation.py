@@ -139,13 +139,20 @@ class LumpedPortSParamSpec(NamedTuple):
         Frequencies (Hz) at which to accumulate V and I DFTs.
     impedance : float
         Port reference impedance Z0 (ohms).
+    excite : bool
+        Whether this port is genuinely driven in THIS pass.  A driven port
+        reads its diagonal from the terminal V/I pair
+        (:func:`rfx.probes.probes.driven_port_reflection`); a passive one
+        keeps the load-independent port-branch reading
+        (:func:`rfx.probes.probes.extract_lumped_s11`).  Mirrors
+        :class:`WireSParamSpec.excite`.
 
     Notes
     -----
     V is sampled as ``-E·dx`` and I as the curl-H loop integral times
-    ``dx`` at the port cell.  S11 is computed post-hoc via the wave
-    decomposition ``a = (-V + Z0·I)/(2√Z0)``, ``b = (-V - Z0·I)/(2√Z0)``,
-    ``S11 = b/a`` — exact, no time-gating heuristic.  Issue #72.
+    ``dx`` at the port cell, both AFTER source injection, with the Yee
+    half-step phase on I.  Issue #72; sampling slot and diagonal formula
+    decided by scripts/diagnostics/lumped_port_known_load_line.py.
     """
     i: int
     j: int
@@ -153,6 +160,7 @@ class LumpedPortSParamSpec(NamedTuple):
     component: str
     freqs: jnp.ndarray
     impedance: float
+    excite: bool = True
 
 
 class DesignBoxSpec(NamedTuple):
@@ -1309,10 +1317,15 @@ def _build_step_setup(
         # Initialize V, I DFT accumulators per lumped port (issue #72).
         # No V_inc accumulator needed: the wave decomposition
         # ``a = (-V + Z0·I)/(2√Z0)`` is exact regardless of source pulse shape.
+        # The third channel is the PRE-injection drive sample (the
+        # historical #72 v_dft, bit-for-bit), kept because the #308
+        # off-diagonal incident wave is calibrated against it; the
+        # physical V/I are accumulated post-injection.
         carry_init["lumped_sparam_accs"] = tuple(
             (
                 jnp.zeros(len(lp.freqs), dtype=_sparam_acc_dtype),  # v_dft
                 jnp.zeros(len(lp.freqs), dtype=_sparam_acc_dtype),  # i_dft
+                jnp.zeros(len(lp.freqs), dtype=_sparam_acc_dtype),  # v_ref_dft
             )
             for lp in lumped_port_sparams
         )
@@ -1975,33 +1988,22 @@ def make_core_step(ctx: _StepContext):
                 phase = jnp.exp(-1j * 2.0 * jnp.pi * wp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
                 new_wire_refs.append((v_ref_dft + v_ref * phase, phase))
 
-        # Lumped port S-param DFT accumulation BEFORE source injection
-        # (issue #72).  Same wave-decomposition pattern as the wire-port
-        # path but for single-cell lumped ports.
+        # Lumped-port DRIVE-REFERENCE DFT accumulation at the historical
+        # PRE-injection slot (issue #72): the #308 off-diagonal incident
+        # wave is calibrated against this sample, so it is kept as its own
+        # channel — bit-identical to the pre-decision `v_dft` — and feeds
+        # ONLY the off-diagonal denominator in decompose_lumped_s_matrix.
+        # The physical V/I are accumulated POST-injection below.  Mirrors
+        # the wire-port block above (issue #683).
         if ctx.use_lumped_sparams:
-            new_lumped_accs = []
+            new_lumped_refs = []
             for accs, lp_meta in zip(carry["lumped_sparam_accs"], ctx.lumped_sparam_meta):
-                v_dft_l, i_dft_l = accs
+                v_ref_dft_l = accs[2]
                 li, lj, lk = lp_meta.i, lp_meta.j, lp_meta.k
-                v_l = -getattr(st, lp_meta.component)[li, lj, lk] * dx
-                # #692: shared loop — see the wire-port block above.
-                i_val_l = _ampere_loop(
-                    st, (li, lj, lk), lp_meta.component, dx, periodic)
+                v_ref_l = -getattr(st, lp_meta.component)[li, lj, lk] * dx
                 t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
                 phase_l = jnp.exp(-1j * 2.0 * jnp.pi * lp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
-                # NOTE (item B2, 2026-09-05): NO half-step current phase
-                # correction on this LUMPED lane — same reason the #683
-                # sampling flip above stopped at the wire family. The
-                # correction's premise is E = E^{n+1} at the sample; here V
-                # is the PRE-injection sample at a DRIVEN cell, which #683
-                # measured is not a field time level of the discrete update,
-                # so the V/I stagger is not established to be dt/2. Deciding
-                # it needs a lumped known-load run, not a wire-port one
-                # (see rfx/probes/probes.py::update_sparam_probe).
-                new_lumped_accs.append((
-                    v_dft_l + v_l * phase_l,
-                    i_dft_l + i_val_l * phase_l,
-                ))
+                new_lumped_refs.append((v_ref_dft_l + v_ref_l * phase_l, phase_l))
 
         # Reference-plane V/I DFT accumulation (issue #313 opt-in) — same
         # rect-DFT kernel as the port-cell channels.  This slot is before
@@ -2102,6 +2104,44 @@ def make_core_step(ctx: _StepContext):
                     vinc_dft,
                     v_port_dft + v_port * phase,
                     v_ref_new,
+                ))
+
+        # Lumped-port PHYSICAL V/I DFT accumulation AFTER source injection.
+        # Decided by the lumped known-load decision run
+        # (scripts/diagnostics/lumped_port_known_load_line.py), which the
+        # 2026-09-05 scope note said was the missing input: on a
+        # parallel-plate line terminated in a known R, the pre-injection
+        # slot read |S11| 0.714 / 1.248 / 4.757 against a closed form of
+        # 0.333 / 0 / 0.333, and its terminal V/(Zc·I) was -0.167 / +0.110
+        # / +0.659 where the load is 0.5 / 1.0 / 2.0.  The one-cell WIRE
+        # port on the SAME cell — same sigma (setup_wire_port with
+        # n_live=1), same injection (apply_wire_port with n_live=1) — read
+        # 0.334 / 0.0004 / 0.333 and 0.500 / 0.999 / 1.988.  The physics
+        # was never the difference; the extraction lane was.  `t` stamping
+        # is unchanged (phase computed at the pre slot and reused), so a
+        # PASSIVE port reads bit-identically to the old slot in V.
+        if ctx.use_lumped_sparams:
+            from rfx.core.dft_utils import half_step_current_phase as _half_i_phase_l
+            new_lumped_accs = []
+            for accs, lp_meta, (v_ref_new_l, phase_l) in zip(
+                    carry["lumped_sparam_accs"], ctx.lumped_sparam_meta,
+                    new_lumped_refs):
+                v_dft_l, i_dft_l = accs[0], accs[1]
+                li, lj, lk = lp_meta.i, lp_meta.j, lp_meta.k
+                v_l = -getattr(st, lp_meta.component)[li, lj, lk] * dx
+                # #692: shared loop — see the wire-port block above.
+                i_val_l = _ampere_loop(
+                    st, (li, lj, lk), lp_meta.component, dx, periodic)
+                # Yee half-step: I is H-derived (H^{n+1/2}), V is E-derived
+                # (E^{n+1}).  Withheld on this lane until the slot above
+                # was post-injection, because that is the correction's
+                # premise (2026-09-05 scope note).
+                i_phase_l = phase_l * _half_i_phase_l(
+                    lp_meta.freqs.astype(jnp.float64), dt).astype(jnp.complex64)
+                new_lumped_accs.append((
+                    v_dft_l + v_l * phase_l,
+                    i_dft_l + i_val_l * i_phase_l,
+                    v_ref_new_l,
                 ))
 
         if ctx.use_tfsf:
