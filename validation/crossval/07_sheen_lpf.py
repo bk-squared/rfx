@@ -822,8 +822,11 @@ def run_rfx(dx, num_periods, n_freqs):
           f"n_freqs={n_freqs}) ...")
     import time
     t0 = time.time()
+    # record taken under the projected default; kept explicit until the v2.0
+    # MSL battery re-measures on raw S
     res = sim.compute_msl_s_matrix(freqs=jnp.asarray(freqs),
-                                   num_periods=num_periods)
+                                   num_periods=num_periods,
+                                   enforce_passivity=True)
     dt = time.time() - t0
     print(f"  done in {dt:.1f} s")
 

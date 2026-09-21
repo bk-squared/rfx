@@ -865,6 +865,81 @@ def _project_passive(S):
                 jax.device_put(correction, S[0, 0, :].sharding))
 
 
+def _passivity_excess(S):
+    """Per-frequency ``max(sigma_max(S(f)) - 1, 0)`` of an assembled S.
+
+    The same quantity :func:`_project_passive` returns as its ``correction``,
+    measured WITHOUT projecting — what a lane needs when it ships the raw
+    extraction and still has to say how non-physical it is. Returns a
+    ``(n_freqs,)`` host array in the input's real dtype; a bin whose matrix
+    is non-finite stays NaN so the caller's finiteness audit still sees it.
+
+    Concrete arrays only. A tracer has no value to take singular values of,
+    so every caller gates on :func:`rfx.core.jax_utils.is_tracer` first.
+    """
+    s_t = np.asarray(S).transpose(2, 0, 1)  # (n_freqs, n_ports, n_ports)
+    real_dtype = s_t.real.dtype
+    work_dtype = np.complex128 if np.iscomplexobj(s_t) else np.float64
+    finite = np.all(np.isfinite(s_t), axis=(1, 2))
+    excess = np.full(s_t.shape[0], np.nan, dtype=real_dtype)
+    if np.any(finite):
+        sig = np.linalg.svd(s_t[finite].astype(work_dtype), compute_uv=False)
+        excess[finite] = np.maximum(sig[:, 0] - 1.0, 0.0)
+    return excess
+
+
+def _warn_if_passivity_excess(
+    excess, freqs, *, extractor: str, envelope: float = 0.05
+) -> None:
+    """One aggregate warning naming a RETURNED S that is not passive.
+
+    The companion of :func:`_warn_if_passivity_projected`: that one reports
+    what a projection removed, this one reports what was left in place. It
+    fires on the lane that ships the raw extraction, so the message has to
+    say three things the caller cannot see from ``S`` alone — how many bins
+    exceed the bound and by how much, that ``S`` is the extraction itself
+    with nothing clipped, and how to get the projected matrix instead.
+
+    The cause sentence is the same one
+    :func:`_warn_if_passivity_projected` gives and no stronger: a passive
+    structure cannot scatter more power than it receives, so a raw
+    ``sigma_max > 1`` is a measurement artifact — ``reliable`` and
+    ``settling_db`` are the fields that say which one.
+    """
+    exc = np.asarray(excess)
+    finite = np.isfinite(exc)
+    if not np.any(exc[finite] > 0.0):
+        return
+
+    import warnings
+
+    f = np.asarray(freqs)
+    n_touched = int((exc[finite] > 0.0).sum())
+    n_big = int((exc[finite] > envelope).sum())
+    k = int(np.nanargmax(np.where(finite, exc, -np.inf)))
+    warnings.warn(
+        f"{extractor}: the returned S is not passive at {n_touched} of "
+        f"{exc.size} frequency bins, worst sigma_max = {1.0 + exc[k]:.3f} at "
+        f"{f[k] / 1e9:.3f} GHz. S is returned exactly as extracted — nothing "
+        f"is clipped, and the per-bin amounts are in passivity_excess. "
+        + (
+            f"{n_big} bins exceed the {1.0 + envelope:.2f} extraction "
+            f"envelope. "
+            if n_big
+            else ""
+        )
+        + "A passive structure cannot scatter more power than it receives, "
+        "so these bins are a measurement artifact rather than physics — the "
+        "usual causes are a record that ended before the structure rang "
+        "down and a mesh too coarse for the geometry (see settling_db and "
+        "reliable for which). Pass enforce_passivity=True to get S projected "
+        "onto the passive set instead; that projection is skipped on the "
+        "eps_override channel, so the measured and the differentiated S stay "
+        "the same function.",
+        stacklevel=2,
+    )
+
+
 def _warn_if_passivity_projected(
     correction, freqs, *, envelope: float = 0.05
 ) -> None:

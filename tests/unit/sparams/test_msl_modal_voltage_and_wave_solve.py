@@ -690,10 +690,12 @@ def test_v_span_stops_below_the_realized_trace_plane(dx, label, tmp_path):
 # #523 — which assembly produced S must be RECORDED, not just warned about
 # --------------------------------------------------------------------------
 #
-# The fallback is invisible in the numbers: with the default
-# enforce_passivity=True the projection clips exactly the >1 column power that
-# the fallback warning tells the user to expect. So a caller who reads only S
-# cannot tell a solved result from a fallback one. These tests pin the marker,
+# The fallback can be invisible in the numbers: under enforce_passivity=True
+# the projection clips exactly the >1 column power that the fallback warning
+# tells the user to expect, so a caller who reads only S cannot tell a solved
+# result from a fallback one. (The default stopped projecting on 2026-09-21,
+# which leaves that symptom in S — the marker is still what disambiguates it
+# from the other causes of column power > 1.) These tests pin the marker,
 # and — the gap the post-merge sweep found — give the SOLVE branch its first
 # fast end-to-end coverage: the pre-existing wiring fixture feeds identical
 # planes to every drive, so A is exactly singular and only the fallback ran.
@@ -892,13 +894,22 @@ def test_solve_branch_is_recorded_and_is_the_default(tmp_path):
     )
 
 
-def test_fallback_is_recorded_even_though_the_numbers_hide_it(tmp_path):
+def test_fallback_is_recorded_and_its_symptom_survives_to_the_caller(tmp_path):
     """Identical planes per drive -> A singular -> fallback, and it SHOWS.
 
-    The mutation twin for #523: with the default passivity projection the
-    fallback's own symptom (column power > 1) is clipped away, so this test
-    asserts the MARKER, not the numbers — and checks that the numbers really
-    do look innocent, which is why the marker has to exist.
+    PREMISE REWRITTEN 2026-09-21, as this test's previous version asked for
+    in writing ("if this ever fails the projection stopped hiding the
+    symptom — good news, but this test's premise needs rewriting"). It did:
+    ``enforce_passivity`` stopped being the default, so nothing clips the
+    fallback's column power any more. MEASURED on this fixture: the returned
+    column power is exactly 2.0 (both |S| entries 1.0) where the projection
+    used to bring it to <= 1.
+
+    The marker is still the point of #523. A column power above 1 has several
+    causes — an under-settled record, a standing-wave null, a mis-scaled
+    current — and only one of them is the fallback; ``assembly`` is what
+    disambiguates. What changed is that the symptom now reaches the caller
+    too, on the default path, instead of only through ``S_raw``.
     """
     res, dump, _warns = _run_with(_fake_run_z_profile(_MARKER), tmp_path, "fell_back")
     assert res.assembly == "single_ratio_fallback", (
@@ -907,13 +918,15 @@ def test_fallback_is_recorded_even_though_the_numbers_hide_it(tmp_path):
     meta = json.loads(str(np.load(dump, allow_pickle=True)["metadata_json"]))
     assert meta["production_smatrix_assembly"] == "single_ratio_fallback"
 
-    # ... and the reason a marker is needed: after the default projection the
-    # returned S carries no >1 column power to betray the fallback.
+    # Nothing clipped: the raw matrix is what was returned.
+    assert res.S_raw is None and res.passivity_correction is None
     col = np.abs(np.asarray(res.S)[:, 0, :]) ** 2
-    assert float(np.sum(col, axis=0).max()) <= 1.0 + 1e-5, (
-        "if this ever fails the projection stopped hiding the symptom — "
-        "good news, but this test's premise needs rewriting"
+    assert float(np.sum(col, axis=0).max()) > 1.0 + 1e-5, (
+        "the fallback's column power must reach the caller unclipped"
     )
+    # ... and it is measured, not merely present: passivity_excess is the
+    # field a caller reads for how far over the bound the returned S is.
+    assert float(np.max(np.asarray(res.passivity_excess))) > 0.0
 
 
 def test_assembly_marker_is_none_under_tracing(tmp_path):

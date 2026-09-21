@@ -33,9 +33,15 @@ that this model failed. The distinction between equivalent-circuit power,
 modal fields, and reference impedances is discussed by Williams in
 [Traveling Waves and Power Waves](https://www.nist.gov/system/files/documents/2017/05/09/MicrowaveCircuitTheory-proof.pdf).
 
-`enforce_passivity=True` clips the assembled S singular values and preserves
-changed raw values in `S_raw` with `passivity_correction`. Use
-`enforce_passivity=False` to diagnose the raw extraction. Projection,
+`S` is the raw extraction. `enforce_passivity` defaults to `False` because the
+projection cannot run on two of the three channels — never under tracing, and
+never on `eps_override` even when concrete — so while it was the default the
+measured `S` and the differentiated `S` were different functions wherever a
+bin was non-passive. What is left in `S` is measured rather than hidden:
+`passivity_excess` carries `max(sigma_max(S(f)) - 1, 0)` per bin and a warning
+names the count and the worst value. Passing `enforce_passivity=True` clips
+the assembled S singular values and preserves the changed raw values in
+`S_raw` with `passivity_correction`. Projection,
 `reliable`, `probe_clearance`, and `cond_a` do not certify RF accuracy.
 The equal-reference cv06b records retained with issue #726 still show raw
 coherent power gain above one; this normalization change does not explain

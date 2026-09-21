@@ -346,8 +346,9 @@ committed fixtures, which store S magnitudes only with no V/I dump; checking the
 means re-running the extractor and reading `reliable`. That is not a false alarm: at a
 −30 dB notch the passive port's wave split really is low-signal, so the extractor
 cannot certify the depth there. It does mean a filter measurement loses its most
-interesting bin to the screen; read the depth from `.S_raw` or a flux monitor
-with that caveat rather than treating the screen as free.
+interesting bin to the screen; read the depth from `.S` — the raw extraction,
+since 2026-09-21 — or a flux monitor with that caveat rather than treating the
+screen as free.
 
 The filter below is therefore the right per-bin screen — it keeps exactly the
 bins where no plane the solve reads had collapsed:

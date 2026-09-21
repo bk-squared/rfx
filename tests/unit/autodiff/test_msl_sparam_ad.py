@@ -601,7 +601,10 @@ def test_compute_msl_s_matrix_ad_smoke_has_finite_gradient():
             # eps_override=None path and would compare two different
             # functions (PR #468 defect class; see this test's docstring,
             # "CROSS-CHECK CORRECTION"). This flag makes objective() return
-            # the identical (raw) reduction either way.
+            # the identical (raw) reduction either way. Since 2026-09-21 it
+            # is also the default — kept explicit anyway, because what this
+            # objective needs is a MODE-INDEPENDENT flag, not whichever
+            # value the default happens to hold.
             enforce_passivity=False,
         )
         return msl_band_mean_s21_sq(result.S)
@@ -721,6 +724,21 @@ def test_compute_msl_s_matrix_end_to_end_matches_historical_base():
     captured by PR #516. The lock's remaining headroom against that S is
     2e-3 - 1.2e-4; the next deliberate re-baseline should quote this number
     as its starting point.
+
+    MEASURED, NOT RE-BASELINED (2026-09-21, the raw-S default). This test's
+    call takes the default, so ``result.S`` used to be the PROJECTED matrix
+    and is now the raw extraction. The committed golden .npy stays the
+    projected capture, so the quantity being compared moved — by a measured
+    amount, read offline from the capture's own provenance JSON
+    (tests/fixtures/msl_s_matrix_golden.json, which stores both matrices of
+    that same run): the projection was active at 9 of the 10 bins, worst
+    correction 1.2607e-4, and max|S_raw - S_projected| = 6.9689e-5. That is
+    28x inside the unchanged atol of 2e-3, so the golden is NOT re-baselined
+    and the tolerance is NOT moved. The lock's headroom against the raw S is
+    2e-3 - 6.97e-5 on the capture host; the 1.2307e-4 cross-version figure
+    above is measured on the projected matrix and remains the larger term.
+    ``qualify_result`` is unaffected: it already read ``S`` when ``S_raw`` is
+    None, and its physical checks were always on the raw matrix.
     """
     from tests._msl_fixture_qualification import qualify_result
 

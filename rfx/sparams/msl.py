@@ -39,6 +39,8 @@ from rfx.sparams._common import (
     _warn_msl_beta_scan_railed,
     _warn_if_ringdown_truncated,
     _project_passive,
+    _passivity_excess,
+    _warn_if_passivity_excess,
     _warn_if_passivity_projected,
     _warn_if_nonpassive_smatrix,
     _warn_ntff_box_dropped,
@@ -60,7 +62,7 @@ def compute_msl_s_matrix(
     eps_override: "jnp.ndarray | None" = None,
     checkpoint_every: int | None = None,
     checkpoint_segments: int | None = None,
-    enforce_passivity: bool = True,
+    enforce_passivity: bool = False,
     report_every: int | None = None,
 ) -> "MSLSMatrixResult":
     """Compute MSL S from probe-plane V/I with fitted line diagnostics.
@@ -72,28 +74,45 @@ def compute_msl_s_matrix(
     transmission S differs from the legacy voltage ratio by
     sqrt(R_input/R_output); equal-reference results are unchanged.
 
-    ``enforce_passivity=True`` (default) projects the assembled S(f) onto
-    the passive set per frequency (singular values clipped to 1 — the
-    nearest matrix in spectral norm with ``||S||_2 <= 1``), so the
-    returned ``S`` satisfies the passive bound at every frequency on the
-    plain measurement path. This is constraint enforcement, not a physics
-    fix: the unprojected matrix is kept in ``S_raw``, the per-bin clip
-    amount in ``passivity_correction``, and a warning names the touched
-    bins. Bins with a large correction are measurement artifacts (see
-    ``reliable`` / ``settling_db`` for the cause) — the projection bounds
-    them, it does not make them trustworthy, and it is NOT small where
-    the raw extraction is bad: on a thru fixture whose raw sigma_max ran
-    1.19-1.91, projecting moved |S21| 1.000 -> 0.61-0.72 and rotated its
-    phase by up to 17 degrees, while ``Z0`` and ``beta`` stay raw. Never
-    quote projected values as physics where ``passivity_correction`` is
-    large. Set ``False`` to get the raw extraction in ``S`` unchanged.
+    ``S`` is the RAW extracted S-matrix on every channel — concrete,
+    ``eps_override``, traced — and the default ``enforce_passivity=False``
+    is what makes that one statement instead of three. The projection
+    below cannot run under tracing or on the ``eps_override`` channel (it
+    would zero the gradient wherever the clip bites), so while it was the
+    default the S a caller measured and the S ``jax.grad`` differentiated
+    were different functions wherever it bit. One function, chosen to be
+    the measured one (PI decision, 2026-09-21; the contract is
+    ``docs/design_notes/chain_closure_contract.md``).
 
-    EXEMPTION: no projection is applied on the ``eps_override`` channel
-    (traced or concrete) so that finite-difference and ``jax.grad``
-    objectives see the same raw function; ``S`` is then the raw
-    extraction with ``S_raw``/``passivity_correction`` absent, no
-    projection warning fires, and ``S`` may exceed the bound (measured
-    sigma_max 1.18 on a coarse thru).
+    A raw S may exceed the passive bound, and the result says so rather
+    than hiding it: ``passivity_excess[k] = max(sigma_max(S(f_k)) - 1, 0)``
+    is filled on every concrete call (``None`` only under tracing), and a
+    warning names the bin count and the worst ``sigma_max`` whenever any
+    bin exceeds 0. A passive structure cannot scatter more power than it
+    receives, so such a bin is a measurement artifact — the usual causes
+    are a record that ended before the structure rang down and a mesh too
+    coarse for the geometry (``settling_db`` and ``reliable`` say which).
+
+    ``enforce_passivity=True`` opts back into the post-process: the
+    assembled S(f) is projected onto the passive set per frequency
+    (singular values clipped to 1 — the nearest matrix in spectral norm
+    with ``||S||_2 <= 1``), the unprojected matrix is kept in ``S_raw``,
+    the per-bin clip amount in ``passivity_correction``, and a warning
+    names the touched bins. It is constraint enforcement, not a physics
+    fix, and it is NOT small where the raw extraction is bad: on a thru
+    fixture whose raw sigma_max ran 1.19-1.91, projecting moved |S21|
+    1.000 -> 0.61-0.72 and rotated its phase by up to 17 degrees, while
+    ``Z0`` and ``beta`` stay raw. Never quote projected values as physics
+    where ``passivity_correction`` is large.
+
+    EXEMPTION (unchanged): even with ``enforce_passivity=True`` no
+    projection is applied under tracing or on the ``eps_override``
+    channel (traced or concrete), so that finite-difference and
+    ``jax.grad`` objectives see the same function; ``S`` is then the raw
+    extraction with ``S_raw``/``passivity_correction`` absent and no
+    projection warning. ``passivity_excess`` is still filled on the
+    concrete ``eps_override`` channel, so the bound violation stays
+    visible there (measured sigma_max 1.18 on a coarse thru).
 
     Surface-impedance sheets (``add_thin_conductor(...,
     surface_impedance_f0=...)``) are supported on this lane (#677/#679):
@@ -189,6 +208,11 @@ def compute_msl_s_matrix(
         :class:`ValueError` instead. With the N-probe extractor (Fix C)
         ``|q|`` and ``Z0`` should be healthy so this rarely fires — it
         is the safety net for pathological geometries.
+    enforce_passivity : bool
+        Opt into the passivity projection as a post-process. ``False``
+        (default) returns the raw extracted ``S``; see the section above
+        for what each setting costs and which channels the projection can
+        reach. Changed from ``True`` on 2026-09-21.
     checkpoint_segments : int or None
         Gradient-checkpointing segment count for the reverse-mode AD tape on
         the **uniform** mesh (the standard MSL path), forwarded to
@@ -1017,10 +1041,10 @@ def compute_msl_s_matrix(
             if not _bad:
                 S = S_solved.astype(_complex_dtype)
             # Persist WHICH rule produced S (issue #523). A transient
-            # warning is not enough: with the default
-            # enforce_passivity=True the projection clips away the
-            # fallback's own symptom (column power > 1), so a fallback
-            # result can look healthy in every number a caller reads.
+            # warning is not enough: under enforce_passivity=True the
+            # projection clips away the fallback's own symptom (column
+            # power > 1), so a fallback result can look healthy in every
+            # number a caller reads.
             # None while tracing — _bad cannot be evaluated on a tracer,
             # so the solve result is taken as-is and no claim is made.
             msl_assembly = (
@@ -1222,9 +1246,10 @@ def compute_msl_s_matrix(
                 "s_reference_impedances_ohm": z0_hj_per_port,
                 "production_smatrix_schema": "S[receiver_port, driven_port, frequency_index]",
                 "production_smatrix_stage": (
-                    "PRE-passivity-projection raw extraction; "
-                    "MSLSMatrixResult.S is the post-projection value "
-                    "when enforce_passivity=True (default)"
+                    "PRE-passivity-projection raw extraction; the same "
+                    "matrix MSLSMatrixResult.S carries by default, and "
+                    "MSLSMatrixResult.S_raw when enforce_passivity=True "
+                    "clipped something"
                 ),
                 # v3 (issue #523): production_smatrix is no longer always
                 # the N-probe-fit-derived S. Record WHICH assembly made
@@ -1232,7 +1257,8 @@ def compute_msl_s_matrix(
                 #
                 # NB production_smatrix is written PRE-projection, so a
                 # fallback dump does still carry the >1 column power
-                # (MSLSMatrixResult.S is post-projection and does not).
+                # (an enforce_passivity=True MSLSMatrixResult.S is
+                # post-projection and does not).
                 # The marker is not a substitute for that symptom — it is
                 # more specific: >1 column power has several causes, only
                 # one of which is the fallback.
@@ -1306,6 +1332,13 @@ def compute_msl_s_matrix(
 
         s_raw = None
         passivity_correction = None
+        # Measure the bound violation of the RAW extraction before any
+        # opt-in projection can hide it. Concrete channels only — a
+        # tracer has no singular values — but that includes the concrete
+        # eps_override channel, which the projection below never reaches.
+        passivity_excess = (
+            None if is_tracer(S) else _passivity_excess(S)
+        )
         # Projection runs on the CONCRETE MEASUREMENT channel only:
         # never under tracing (min(sigma,1) zeroes/deforms the objective
         # gradient wherever the clip is active — measured, it flipped the
@@ -1314,6 +1347,9 @@ def compute_msl_s_matrix(
         # difference objective sees the projected function while
         # jax.grad sees the raw one, and the committed AD==FD gates
         # compare two different functions (review finding, PR #468).
+        # Those two exemptions are why it is no longer the default: a
+        # post-process that CANNOT run on two of the three channels
+        # cannot be the shipped definition of S (PI, 2026-09-21).
         if enforce_passivity and eps_override is None and not is_tracer(S):
             s_projected, correction = _project_passive(S)
             if bool(np.any(np.asarray(correction) > 0.0)):
@@ -1331,6 +1367,7 @@ def compute_msl_s_matrix(
             settling_db=settling_db_runs,
             S_raw=s_raw,
             passivity_correction=passivity_correction,
+            passivity_excess=passivity_excess,
             assembly=msl_assembly,
             cond_a=msl_cond_a,
             beta_railed=beta_railed,
@@ -1344,6 +1381,14 @@ def compute_msl_s_matrix(
         )
         if passivity_correction is not None and not is_tracer(passivity_correction):
             _warn_if_passivity_projected(passivity_correction, freqs_arr)
+        elif passivity_excess is not None:
+            # Nothing was clipped, so whatever excess the extraction has
+            # is in the matrix being returned. One warning, not two: the
+            # projection warning above already reports the same bins.
+            _warn_if_passivity_excess(
+                passivity_excess, freqs_arr,
+                extractor="compute_msl_s_matrix",
+            )
         # The raw-extraction self-check still audits what was MEASURED:
         # run it on the unprojected matrix so the projection can never
         # silence the artifact diagnosis.

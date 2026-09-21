@@ -1,5 +1,13 @@
 """Passivity enforcement on compute_msl_s_matrix: strict ||S||_2 <= 1, loudly.
 
+``enforce_passivity=True`` is an OPT-IN post-process since 2026-09-21 (PI
+decision; the returned S must be the raw extraction on every channel, because
+the projection cannot run under tracing or on the eps_override channel —
+``tests/unit/autodiff/test_msl_forward_identity.py`` is that contract). Every
+end-to-end test below that wants the projection therefore asks for it by
+name; the one that pins the unprojected path runs the bare call and an
+explicit ``False`` side by side, so the default cannot drift back.
+
 The bound is enforced by per-frequency singular-value clipping (nearest
 passive matrix in spectral norm). It is constraint enforcement, not a
 physics fix: the raw extraction is preserved in S_raw, the per-bin clip in
@@ -187,12 +195,18 @@ def _thru():
 FREQS = jnp.linspace(2e9, 18e9, 16)
 
 
-def test_default_result_is_strictly_passive_and_loud():
+def test_enforced_result_is_strictly_passive_and_loud():
+    """MEASURED on this fixture, 2026-09-21: the clip IS active (14 of 16
+    bins at freqs 2-18 GHz x 16, num_periods=2.0) but only in float32 noise
+    — raw sigma_max runs 1.000000003 to 1.000000119 around a passive
+    |S21| = 1 thru. The assertions below are about the mechanism (bound held,
+    raw kept, clip recorded, warned), not about the size of the clip."""
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        res = _thru().compute_msl_s_matrix(freqs=FREQS, num_periods=2.0)
+        res = _thru().compute_msl_s_matrix(freqs=FREQS, num_periods=2.0,
+                                           enforce_passivity=True)
 
-    assert np.all(_sigma_max(res.S) <= 1.0), "the default S must satisfy the bound at every frequency"
+    assert np.all(_sigma_max(res.S) <= 1.0), "the enforced S must satisfy the bound at every frequency"
 
     # Nothing hidden: raw kept, correction recorded, warning fired.
     assert res.S_raw is not None
@@ -204,21 +218,34 @@ def test_default_result_is_strictly_passive_and_loud():
     assert any("settling witness" in m for m in messages)
 
 
-def test_enforce_passivity_false_returns_the_raw_extraction():
+@pytest.mark.parametrize("kwargs", [{}, {"enforce_passivity": False}],
+                         ids=["default", "explicit_false"])
+def test_the_unprojected_default_returns_the_raw_extraction(kwargs):
+    """The default and an explicit False are the same call (PI 2026-09-21).
+
+    ``passivity_excess`` is what keeps the bound violation visible here, and
+    it must agree with an offline singular-value read of the returned S —
+    which is the check that would go red if the field were wired to the
+    projected matrix or to a stale array.
+    """
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         res = _thru().compute_msl_s_matrix(freqs=FREQS, num_periods=2.0,
-                                           enforce_passivity=False)
+                                           **kwargs)
     assert res.S_raw is None and res.passivity_correction is None
     # The truncated raw extraction genuinely violates the bound — that is
-    # exactly what the default projects away.
-    assert float(_sigma_max(res.S).max()) > 1.0
+    # exactly what enforce_passivity=True projects away.
+    sigma = _sigma_max(res.S)
+    assert float(sigma.max()) > 1.0
+    assert np.allclose(np.asarray(res.passivity_excess),
+                       np.maximum(sigma - 1.0, 0.0), rtol=1e-5, atol=1e-12)
 
 
 def test_projection_agrees_with_offline_projection_of_the_raw():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        res = _thru().compute_msl_s_matrix(freqs=FREQS, num_periods=2.0)
+        res = _thru().compute_msl_s_matrix(freqs=FREQS, num_periods=2.0,
+                                           enforce_passivity=True)
     S_off, corr_off = _project_passive(jnp.asarray(np.asarray(res.S_raw)))
     assert np.allclose(np.asarray(res.S), np.asarray(S_off), atol=1e-6)
     assert np.allclose(np.asarray(res.passivity_correction),

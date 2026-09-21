@@ -169,6 +169,25 @@ Relevant checks include `validation/crossval/05_patch_antenna.py`,
 
 **API:** `compute_msl_s_matrix(...)` with the laplace/quasi-TEM model.
 
+**What `S` is (changed 2026-09-21).** `S` is the RAW extracted matrix on every
+channel — the measured call, `eps_override`, and under tracing — so the S a
+caller reads and the S `jax.grad` differentiates are one function. The
+passivity projection that used to be the default could not run on the other
+two channels (clipping singular values zeroes the gradient where it bites, and
+an eager finite-difference cross-check would then compare a projected function
+against a raw one), so it became an opt-in: `enforce_passivity=True` projects
+the concrete measurement channel, keeps the unprojected matrix in `S_raw` and
+the per-bin clip in `passivity_correction`, and is still skipped on the
+`eps_override` channel. A raw `S` may exceed `‖S‖₂ ≤ 1`; that violation is not
+hidden — `passivity_excess` records `max(σ_max(S(f)) − 1, 0)` per bin on every
+concrete call and a warning names the bin count and the worst `σ_max`. A
+passive structure cannot scatter more power than it receives, so those bins are
+a measurement artifact: read `settling_db` and `reliable` for which. Records
+committed before this change were taken through the projection, and the scripts
+that produced them (`validation/crossval/06b_msl_notch_filter_uniform.py`,
+`07_sheen_lpf.py`, `scripts/diagnostics/build_msl_thru_phase_dx50um_reference.py`)
+now pass `enforce_passivity=True` explicitly so they stay reproducible.
+
 **Reading `Z0`/`beta` near a reflector (issue #726).** `reliable` is a per-bin
 fit-quality mask and `probe_clearance` is the geometric condition; neither is
 the other's proxy. On the three board runs tabulated in #726, `reliable` was

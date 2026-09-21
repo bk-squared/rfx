@@ -1667,15 +1667,33 @@ class MSLSMatrixResult:
         any S value from this result.
     S_raw : (n_ports, n_ports, n_freqs) complex, optional
         The S-matrix exactly as extracted, BEFORE passivity projection.
-        Stored whenever the projection changed anything, so no information
-        is discarded by enforcing the bound.
+        ``None`` on the default path, where ``S`` already IS that matrix;
+        set only when ``enforce_passivity=True`` clipped something, so no
+        information is discarded by enforcing the bound.
     passivity_correction : (n_freqs,) float, optional
         Per-frequency amount clipped by the passivity projection:
-        ``max(sigma_max(S_raw(f)) - 1, 0)``. Zero where the extraction was
-        already passive. This is the honesty metric — a bin with a large
-        correction is a measurement artifact (check ``reliable`` and
-        ``settling_db`` for the cause), and its projected value inherits
-        that uncertainty.
+        ``max(sigma_max(S_raw(f)) - 1, 0)``. ``None`` unless
+        ``enforce_passivity=True`` actually clipped a bin — it records
+        what the projection REMOVED, so on the default path there is
+        nothing for it to record and ``passivity_excess`` is the field to
+        read.
+    passivity_excess : (n_freqs,) float, optional
+        Per-frequency ``max(sigma_max(S(f)) - 1, 0)`` of the RAW
+        extraction, measured before any opt-in projection and filled on
+        every concrete call (``None`` only while tracing, which has no
+        value to take singular values of). Zero where the extraction was
+        already passive. This is the honesty metric, and it does not
+        depend on ``enforce_passivity``: a bin with a large excess is a
+        measurement artifact (check ``reliable`` and ``settling_db`` for
+        the cause), whether the returned ``S`` carries that excess or a
+        projection clipped it away. Where a projection did clip,
+        ``passivity_correction`` equals this on the touched bins.
+
+        NOT the same quantity as the ``passivity_excess`` key of
+        :func:`rfx.io.network_quality_metrics` despite the shared name: that one is a
+        single SCALAR over the whole sweep and is measured in POWER
+        (``max(sigma_max^2 - 1, 0)``). This field is per frequency and in
+        amplitude. Do not compare the two numbers.
     port_names : tuple[str, ...]
     assembly : str, optional
         Which rule produced ``S`` — ``"multi_drive_solve"`` (normal:
@@ -1687,11 +1705,13 @@ class MSLSMatrixResult:
         that port is not matched.
 
         **Read this before trusting a fallback result.** The fallback's
-        characteristic symptom is column power above 1, and with the default
-        ``enforce_passivity=True`` that symptom is clipped out of ``S`` — but
-        it is not erased from the result: ``passivity_correction`` records
-        how much was clipped and ``S_raw`` keeps the unprojected matrix, and
-        the run also emits both a fallback warning and a passivity-guard
+        characteristic symptom is column power above 1, which the default
+        ``enforce_passivity=False`` leaves standing in ``S`` and
+        ``passivity_excess`` measures. Under ``enforce_passivity=True``
+        the symptom is clipped out of ``S`` — but it is not erased from
+        the result: ``passivity_correction`` records how much was clipped
+        and ``S_raw`` keeps the unprojected matrix, and the run also emits
+        both a fallback warning and a passivity-guard
         warning. So a fallback is not silent; this field is simply the
         *specific* signal. Column power above 1 has several causes (an
         under-settled record, a standing-wave null, a mis-scaled current) and
@@ -1737,6 +1757,7 @@ class MSLSMatrixResult:
     # Same order as port_names; independent of the frequency-wise signal mask.
     probe_clearance: tuple[MSLProbeClearance, ...] | None = None
     reference_impedances: np.ndarray | None = None
+    passivity_excess: np.ndarray | None = None
 
 
 @dataclass
