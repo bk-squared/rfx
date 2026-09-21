@@ -45,11 +45,28 @@ run: |-
     | ( cd "$WORK" && tar -xf - )
   cd "$WORK"
   "$PY" -m pip uninstall -y -q jax-cuda12-plugin jax-cuda12-pjrt 2>/dev/null || true
-  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy>=2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest pytest-split optax
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy>=2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest pytest-split optax ruff
   export PYTHONPATH="$WORK"
   git config --global --add safe.directory "*"
   "$PY" -c "import rfx, os; print('rfx from', os.path.dirname(rfx.__file__))"
-  { timeout 20000 sh -c '
+  # `set +e` on purpose: the outer block runs with `set -e`, and a red suite is
+  # a RESULT here, not a reason to stop before the others have run. Each suite
+  # writes its own log next to the record and echoes its own exit code, so a
+  # red one is named rather than hidden behind whatever ran last. The first
+  # attempt wrapped these in `sh -c` and every one came back 127, because $PY
+  # was not exported into that shell — run 369367262737.
+  set +e
+  timeout 4000 "$PY" -m pytest tests/oracle/test_lumped_wire_chain_battery.py -q -p no:cacheprovider > "$OUT/replay.log" 2>&1
+  echo "replay_rc=$?"; tail -25 "$OUT/replay.log"
+  timeout 6000 "$PY" -m pytest tests/contracts -q -p no:cacheprovider > "$OUT/contracts.log" 2>&1
+  echo "contracts_rc=$?"; tail -8 "$OUT/contracts.log"
+  timeout 4000 "$PY" -m pytest tests/unit/sparams/test_wire_port_sparams_forward.py tests/unit/sparams/test_lumped_port_sparams_jit.py tests/unit/autodiff/test_lumped_rlc_ad.py -q -p no:cacheprovider > "$OUT/portunit.log" 2>&1
+  echo "portunit_rc=$?"; tail -6 "$OUT/portunit.log"
+  "$PY" -m ruff check scripts/diagnostics/lumped_wire_chain_battery_measure.py scripts/diagnostics/lumped_port_known_load_line.py tests/oracle/test_lumped_wire_chain_battery.py --select E,F,W --ignore E501,F401,E741,E731,E701,E702,E402 > "$OUT/ruff.log" 2>&1
+  echo "ruff_rc=$?"; cat "$OUT/ruff.log"
+  bash scripts/ci/docs_hygiene.sh > "$OUT/hygiene.log" 2>&1
+  echo "hygiene_rc=$?"; cat "$OUT/hygiene.log"
+  set -e
       "$PY" -m pytest tests/oracle/test_lumped_wire_chain_battery.py -q -p no:cacheprovider; echo "replay_rc=$?";
       "$PY" -m pytest tests/contracts -q -p no:cacheprovider; echo "contracts_rc=$?";
       "$PY" -m pytest tests/unit/sparams/test_wire_port_sparams_forward.py tests/unit/sparams/test_lumped_port_sparams_jit.py tests/unit/autodiff/test_lumped_rlc_ad.py -q -p no:cacheprovider; echo "portunit_rc=$?";
