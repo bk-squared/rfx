@@ -138,7 +138,9 @@ def test_the_detector_ignores_pmc_outside_a_construction():
     src = ('"""PMC wall in prose, and PMCHWT."""\n'
            'label = "pmc"\n'
            's = BoundarySpec.uniform("cpml")\n'
-           'b = Boundary(lo="pec", hi="cpml")\n')
+           'b = Boundary(lo="pec", hi="cpml")\n'
+           # a token that only CONTAINS "pmc": a substring matcher must not fire
+           'c = Boundary(lo="pmchwt", hi="cpml")\n')
     assert not _constructs_pmc_face(ast.parse(src))
 
 
