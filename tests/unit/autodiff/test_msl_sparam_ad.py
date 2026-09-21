@@ -540,8 +540,12 @@ def test_compute_msl_s_matrix_ad_smoke_has_finite_gradient():
     smoke's ``objective()`` does not pass ``eps_override``, so under
     ``jax.grad`` the traced call has ``is_tracer(S) == True`` and the
     projection is SKIPPED (AD sees the RAW S), while an EAGER call — like
-    the informal FD cross-check — has a concrete ``S`` and DOES get
-    projected (default ``enforce_passivity=True``). That is the PR #468
+    the informal FD cross-check — had a concrete ``S`` and DID get
+    projected, because ``enforce_passivity`` defaulted to ``True`` then.
+    (It defaults to ``False`` since 2026-09-21, which closes this defect
+    class on the non-``eps_override`` channel for a caller who passes
+    nothing; the explicit flag below is kept regardless, see its comment.)
+    That is the PR #468
     defect class the comment at that call site warns about
     ("a finite-difference objective sees the projected function while
     jax.grad sees the raw one"), recurring here on the non-``eps_override``
