@@ -377,7 +377,7 @@ record compatibility, and the assumptions needed to interpret V/I as power.
   user's phase carries is the through phase: on that matched run it differs from
   openEMS by at most `0.342 degrees` against the 3-degree gate, which is 0.03 %
   to 1.1 % of the 32-44 degree electrical length of the 5 mm span, largest at
-  the low band edge and crossing zero near 3.9 GHz. All of this is one mesh
+  the low band edge and changing sign between the 3.91 and 4.07 GHz bins. All of this is one mesh
   (`dx = 50 um`, the trace one cell thick); no tracked refinement exists, so no
   convergence behaviour is claimed.
   See `validation/crossval/20_msl_phase_referee.py` (manifest entry
@@ -736,9 +736,11 @@ reference run IS the device run, so the number is a construction
 (`docs/design_notes/waveguide_false_lane_column_power_results.md`, "Framing
 correction to #873"). The comparisons that carry weight are the `eps_r = 4`
 slab in the same artifact, power closure `7.11e-3` on this lane against
-`1.10e-4` on the flux lane at the coarse rung, and the interior flux monitors,
-which put the slab's physical power imbalance at `6.887e-05`
-(`closure_witness.json`). The mechanism is named in
+`1.10e-4` on the flux lane (both report-only, at the coarse rung), and the
+interior flux monitors, which put the slab's physical power imbalance at
+`6.887e-05` (`closure_witness.json`, a separate, earlier coarse-rung closure
+run; both of its routes are magnitude-only flux, so the port's modal impedance
+never enters it). The mechanism is named in
 `docs/design_notes/waveguide_driven_plane_near_field_composition_results.md`,
 measured on this same artifact: the port's transverse mode templates are
 cell-centred while `Ez` and `Hy` are node-registered in the broad-wall

@@ -357,12 +357,19 @@ interior monitors put the physical power imbalance at 6.887e-05 —
 `max_f |closure_S(false) − closure_M| = 1.756e-02`, 800x the flux lane's disagreement and
 still inside 0.02. The `thru|coarse|false` cell shows 1.825e-02 on an EMPTY guide, where no
 DUT can absorb anything, which corroborates the reading: the V/I lane's ~1.8 % is extractor
-error, not lost power. The specific mechanism — a Yee `Z_TE` magnitude error — is INFERRED here,
-not instrumented. What supports it: the extractor's own docstring records ~3 % `Z_TE` error on
+error, not lost power. (Dated reading, superseded on two counts. These are run 1's numbers, on
+the N+1-cell port of #868; the gated artifact `fixture_v18_close.json` reads 7.114e-03 for the
+slab cell and 6.135e-03 on the empty guide. And the mechanism has since been measured, on that
+artifact: cell-centred port templates against node-registered `Ez`/`Hy`, a TE20 near field at
+the driven port read back as TE10 —
+`docs/design_notes/waveguide_driven_plane_near_field_composition_results.md`, issue #873,
+closed 2026-09-21 as a stated accuracy.) The mechanism this paragraph originally named — a Yee
+`Z_TE` magnitude error — was INFERRED here, not instrumented. What supports it: the extractor's own docstring records ~3 % `Z_TE` error on
 `normalize=False` S11 at `dx/λ = 0.07`, and the excess falls as `dx²` across the battery's rungs
 (1.8253e-02, 4.0817e-03, 9.8341e-04 at dx = 2.54, 1.27, 0.635 mm; ratios 4.47 and 4.15). The
 missing step is a direct comparison of the lane's modal `Z_TE` against the analytic value at the
-coarse rung. Tracked in issue #873. Not gated — it was not pre-declared, and the plan's WP3
+coarse rung (that step was overtaken by the near-field composition measurement; #873 is closed).
+Not gated — it was not pre-declared, and the plan's WP3
 comparison is against the flux lane.
 
 **Provenance.** `provenance.run_lane` reads `"local"` — this measurement ran on a CPU
