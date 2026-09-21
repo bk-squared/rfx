@@ -6,6 +6,7 @@ envelope can only decay.  A run whose envelope turns and climbs is not a resonan
 a truncated transient -- it is the update operator with an eigenvalue outside the unit circle,
 and the only question is how long you have to wait to see it.
 
+LEADER: v5 live and off arms both use n=3, pad 10h, six layers; v3 live -44.796 dB, -2.66e-4/step; off 0.00 dB, +5.84e-4/step.
 WHY THIS FIXTURE.  An isolated patch on a grounded substrate with the lateral domain padded and
 a thin absorber is the configuration that produced rfx's longest unexplained growth record.  The
 diagnosis (branch ``diag/801-patch-ringdown-padding``, artifacts under
@@ -16,6 +17,7 @@ conductor's hi-face footprint (500 of them on the reference arm), and that overh
 thin absorber grew.  Neither alone does.  Nothing pinned any of it; the growth stopped as a side
 effect of a contract change made for other reasons.  This is that pin.
 
+LEADER: retain the eight-layer measurements as the dated record; update the six-layer live-arm statement.
 WHY THE FULL RECORD, AND WHY THE GPU LANE.  The unstable mode is seeded at round-off, so it only
 becomes visible once it has overtaken the decaying physical field.  How long that takes was
 MEASURED on this arm rather than estimated -- truncating the same record and scoring it with this
@@ -30,6 +32,7 @@ behaves this way (see WHAT THE MUTATION DOES NOW, below).  On today's (249, 189,
       120     21327    -34.87     -18.40      no (rate +2.66e-5, under the bar)
       150     26659    -43.37       0.00      YES
 
+LEADER: retain the eight-layer measurements as the dated record; update the six-layer live-arm statement.
 150 periods is therefore the FLOOR, not a margin: at 120 the SHIPPED arm has not reached the -40 dB
 bar either (-34.87), on the old grid the mutated arm missed both halves of the gate there, and at
 40 it looked HEALTHIER than the shipped one.  A shortened record does not make this test cheaper,
@@ -39,6 +42,7 @@ for the OLD grid's growing arm is deliberately not quoted here: the growth and d
 from different estimators unless both are taken at this file's own blocking, and mixing them gives
 a step count that disagrees with the table above.)
 
+LEADER: retain the eight-layer measurements as the dated record; update the six-layer live-arm statement.
 The full arm is 26 s on rtx4090 against ~53 min on a CPU pod, so the gate lives on the GPU lane.
 
 TWO-SIDED, because a one-sided reflection bar has already pinned a diverging run in this repo:
@@ -46,6 +50,7 @@ the assertion is ``settling_db <= -40`` AND a negative fitted decay rate on ever
 rate is fitted log-linearly on BLOCK MAXIMA -- the series oscillates at ~f0, so ``env[::k]``
 aliases and can render a growing envelope flat -- over the last half of the record.
 
+LEADER: retain the eight-layer measurements as the dated record; update the six-layer live-arm statement.
 A FITTED RATE RATHER THAN A MIN-TO-END RATIO, and the reason is blocking, so the blocking is
 quoted with it.  That ratio on the shipped (healthy) arm depends entirely on how coarsely the
 envelope is blocked: 1.00 at 20 blocks, 1.00 at 40 (this file's ``n_blocks``), 1.36 at 80, 2.28
@@ -55,6 +60,7 @@ It is not chosen because its verdict moves with a parameter that has nothing to 
 physics, and a finer blocking turns the TM010/TM001 beat into an "upturn" on a perfectly healthy
 run.  A least-squares slope over many blocks does not have that sensitivity.
 
+LEADER: v5 live and off arms both use n=3, pad 10h, six layers; v3 live -44.796 dB, -2.66e-4/step; off 0.00 dB, +5.84e-4/step.
 THE FALSIFIER IS IN THIS FILE.  ``test_the_gate_is_red_under_the_pre_931_edge_rule`` runs the
 same arm with one mutation -- ``rfx.boundaries.pec._volume_edge_masks`` replaced by the
 ``a3e4dba4^`` body -- and requires THIS GATE'S OWN PREDICATE to come out red.  A gate whose red
@@ -63,6 +69,7 @@ exactly that; see the "a physics gate can bind an artifact" lesson).  Keep the t
 the mutation test stops being red, this gate has stopped discriminating and the green one means
 nothing.
 
+LEADER: v5 live and off arms both use n=3, pad 10h, six layers; v3 live -44.796 dB, -2.66e-4/step; off 0.00 dB, +5.84e-4/step.
 SINCE #801 (2026-09-21) THE FALSIFIER IS A DIFFERENT MODEL, and everything below this paragraph
 about the pre-#931 edge rule is the dated record of the falsifier it replaced.  What made this rig
 grow was never the edge rule alone: the ground plane stopped at the absorber entrance, so inside
@@ -122,6 +129,7 @@ mutated arm turns up.  That is covered rather than assumed: ``conftest.py``'s ``
 settling figure; if that takes it under the bar the FALSIFIER fails loudly -- which is the right
 failure, because it says the red state was not reproduced.
 
+LEADER: v5 live and off arms both use n=3, pad 10h, six layers; v3 live -44.796 dB, -2.66e-4/step; off 0.00 dB, +5.84e-4/step.
 WHAT THIS GATE DOES NOT COVER.  It pins ONE point: ``n = 4`` (dx = h/4) with
 ``cpml_layers = 8``, the arm #931 fixed.  It is not a statement about other resolutions or other
 absorber depths, and it should not be read as one -- thinner absorbers on this same fixture are
@@ -275,7 +283,7 @@ def _settling_db(time_series):
 
 
 def _run_rates(monkeypatch=None, continuation_off=False):
-    sim = _build(n=3, pad_h=10, cpml=6) if continuation_off else _build()
+    sim = _build(n=3, pad_h=10, cpml=6)
     if continuation_off:
         from rfx.geometry import smoothing
         monkeypatch.setattr(smoothing, "continued_conductor_shape",
@@ -355,12 +363,12 @@ if __name__ == "__main__":  # measurement helper, not part of the suite
 
     for continuation_off in (False, True):
         with _patched(continuation_off):
-            sim_ = _build(n=3, pad_h=10, cpml=6) if continuation_off else _build()
+            sim_ = _build(n=3, pad_h=10, cpml=6)
             res_ = sim_.run(num_periods=NUM_PERIODS, skip_preflight=True)
             ts_ = np.asarray(res_.time_series)
         r = _late_time_log_rate_per_step(ts_)
         settle = _settling_db(ts_)
-        print(f"n={3 if continuation_off else N_CELLS_PER_H} pad={PAD_H} "
+        print(f"n={3} pad={PAD_H} "
               f"periods={NUM_PERIODS} steps={ts_.shape[0]} "
               f"continuation_off={continuation_off!s:5s} -> rates {[f'{v:+.3e}' for v in r]} "
               f"worst {max(r):+.3e} settling {settle:.2f} dB", flush=True)
