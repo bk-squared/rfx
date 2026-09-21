@@ -77,3 +77,25 @@ stage writes its own JSON; an assembler joins them into
 `tests/fixtures/msl_chain_battery/fixture.json`, which one replay test reads. `num_periods` is
 chosen per rung from the settling witness of a short pilot at 100 um and written into the record;
 a record above -40 dB is re-run longer, not interpreted.
+
+## Addendum 2026-09-21 (leader; written after the 100 and 50 um rungs, before the 25 um rung was read)
+
+Three things the note above left open were settled while the battery ran. None moves a verdict
+number.
+
+1. **Record length and drive**, from the pilot the last paragraph asks for: 20 source periods (10
+   reads -37 dB on the settling witness, 20 reads -68 dB), and a drive of `f0 = 4 GHz`,
+   `bandwidth = 1.0` instead of the shipped `f0 = 3.5 GHz`, `bandwidth = 0.8`, because the shipped
+   pulse is about 39 dB below its own peak at 7 GHz and leaves 6.4 - 7.0 GHz unreliable on both
+   ports. Both pilots are in the fixture.
+2. **Deep nulls (PI ruling, 2026-09-21).** A quantity that is near zero by construction is not
+   compared in dB from rung to rung. (a) The thru's |S11| is held to an upper bound, -20 dB at every
+   bin of every rung, and recorded as the line's own reflection floor. (b) The 2 dB comparison
+   applies to the thru's |S21| and to the notch's |S21| and |S11| OUTSIDE the notch core — the bins
+   where the finest rung's |S21| is at or below -20 dB. (c) Inside the core the verdict is the notch
+   FREQUENCY against 1 %; the depth is recorded per rung with no comparison. The depth read -42.5 dB
+   at 100 um and -33.8 dB at 50 um purely from where the 50 MHz bin fell.
+3. **The AD stage runs on a 48 GB card.** On the 24 GB card the reverse-mode checkpoint stack asked
+   for 14.08 GiB in one allocation on top of about 10 GiB in use. Nothing was reduced to make it
+   fit; the numbers go in the record and, as a statement of cost, in the support matrix.
+
