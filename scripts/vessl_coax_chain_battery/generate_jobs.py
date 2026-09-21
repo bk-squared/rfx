@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+"""Write one VESSL job specification per (DUT, rung, stage) of the coax battery.
+
+One job per measurement, submitted together; the scheduler queues them. Every
+job pins the commit it must run (``RFX_SHA``, no fallback), refuses a worktree
+that moved or is dirty, copies the tree to node-local storage, writes its stage
+JSON there and copies it back to the run directory from an EXIT trap, so a job
+that dies still leaves what it had.
+
+Regenerate the campaign with::
+
+    python scripts/vessl_coax_chain_battery/generate_jobs.py \
+        --sha <pushed HEAD> --src <worktree path> --out <directory>
+
+then submit each file with ``sh scripts/vessl_submit.sh <yaml> <prefix>``.
+The committed copies carry the sha the campaign actually ran at.
+"""
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+IMAGE = "ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8"
+CLUSTER = "remilab-c0"
+DRIVER = "scripts/diagnostics/coax_chain_battery_measure.py"
+RUNS = "/root/workspace/claude-workspace/rfx/runs"
+
+RUNGS = (4, 6, 9)
+CLAIMS_RUNG = 9
+TWO_PORT_DUTS = ("bead", "thru")
+ONE_PORT_DUTS = ("short", "open", "r25", "r100")
+DUTS = TWO_PORT_DUTS + ONE_PORT_DUTS
+
+RECORD_UNITS = 12.0
+DOUBLE_RECORD_UNITS = 24.0
+
+TEMPLATE = """name: {name}
+description: "{description}"
+tags: [rfx, coax-chain-battery, {tag}]
+resources:
+  cluster: {cluster}
+  preset: {preset}
+image: {image}
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  MPLBACKEND: "Agg"
+  RFX_SHA: "{sha}"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  command -v git >/dev/null 2>&1 || {{ apt-get update -qq && apt-get install -y -qq git; }}
+  SRC={src}
+  git config --global --add safe.directory "$SRC"
+  git config --global --add safe.directory "$(git -C "$SRC" rev-parse --absolute-git-dir)"
+  SHA=$(git -C "$SRC" rev-parse HEAD)
+  test "$SHA" = "$RFX_SHA" || {{ echo "FATAL: worktree moved: $SHA"; exit 3; }}
+  test -z "$(git -C "$SRC" status --porcelain)" || {{ echo "FATAL: dirty worktree"; exit 3; }}
+  RUNS={runs}
+  OUT=$RUNS/{prefix}-$(date -u +%Y%m%dT%H%M%SZ)
+  mkdir -p "$OUT"
+  echo "$SHA" > "$OUT/commit.txt"
+  echo "$OUT" > "$RUNS/{prefix}.latest"
+  WORK=/root/work/{prefix}
+  rm -rf "$WORK"; mkdir -p "$WORK"; cp -a "$SRC/." "$WORK/"; cd "$WORK"
+  mkdir -p "$WORK/out"
+  trap 'rc=$?; echo "$rc" > "$OUT/job.rc"; cp -a "$WORK/out/." "$OUT/" 2>/dev/null || true; chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
+  "$PY" -m pip install -q "jax[cuda12]==0.6.2" "numpy>=2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest pytest-split optax
+  export PYTHONPATH="$WORK"
+  git config --global --add safe.directory "*"
+  WSHA=$(git -C "$WORK" rev-parse HEAD)
+  test "$WSHA" = "$RFX_SHA" || {{ echo "FATAL: the work copy resolves $WSHA"; exit 3; }}
+  "$PY" -c "import rfx, os; print('rfx from', os.path.dirname(rfx.__file__))"
+  {{ timeout 20000 "$PY" {driver} {cli} --out "$WORK/out" --run-id "{prefix}" 2>&1; echo "rc=$?"; }} | tee "$OUT/run.log" | tail -60
+  echo COAX_BATTERY_STAGE_DONE
+"""
+
+
+def jobs() -> list[dict]:
+    out: list[dict] = []
+    out.append(dict(
+        key="pilot", preset="gpu-rtx4090",
+        cli=f"--stage pilot --rung 4 --record-units {RECORD_UNITS}",
+        description=("Coax chain battery pilot: record-length ladder, the wider drive, "
+                     "the bead-mask control and the AD boards' own settling, at the "
+                     "coarsest rung."),
+    ))
+    for dut in DUTS:
+        for rung in RUNGS:
+            out.append(dict(
+                key=f"solve-{dut}-r{rung}", preset="gpu-rtx4090",
+                cli=(f"--stage solve --dut {dut} --rung {rung} "
+                     f"--record-units {RECORD_UNITS}"),
+                description=(f"Coax chain battery: {dut} at {rung} annulus cells, "
+                             f"{RECORD_UNITS:g} record units."),
+            ))
+    for dut in DUTS:
+        out.append(dict(
+            key=f"solve-{dut}-r{CLAIMS_RUNG}-double", preset="gpu-rtx4090",
+            cli=(f"--stage solve --dut {dut} --rung {CLAIMS_RUNG} "
+                 f"--record-units {DOUBLE_RECORD_UNITS} --tag double"),
+            description=(f"Coax chain battery: {dut} at the claims rung with the record "
+                         f"doubled — the contract's substitute for the energy witness "
+                         f"this lane does not emit on the eps_scale path."),
+        ))
+    out.append(dict(
+        key="identity", preset="gpu-rtx4090",
+        cli=f"--stage identity --rung 4 --record-units {RECORD_UNITS}",
+        description=("Coax chain battery: forward identity, the untraced numpy path "
+                     "against the no-op jnp path and the bead in two containers."),
+    ))
+    out.append(dict(
+        key="adfd-twoport", preset="gpu-a6000-1",
+        cli="--stage adfd-twoport",
+        description=("Coax chain battery: reverse-mode AD against a float64-loss central "
+                     "finite difference on the two-port bead. 48 GB preset — this lane "
+                     "has no checkpoint_segments, so the tape is O(n_steps)."),
+    ))
+    out.append(dict(
+        key="adfd-oneport", preset="gpu-a6000-1",
+        cli="--stage adfd-oneport",
+        description=("Coax chain battery: the same AD/FD comparison on the one-port "
+                     "short. 48 GB preset."),
+    ))
+    out.append(dict(
+        key="plane", preset="gpu-rtx4090",
+        cli=f"--stage plane --rung 6 --record-units {RECORD_UNITS}",
+        description=("Coax chain battery: reference-plane invariance — the bead "
+                     "translated 4 cells along the line, the grid untouched."),
+    ))
+    return out
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--sha", required=True, help="the pushed commit every job must see")
+    ap.add_argument("--src", required=True, help="the worktree the jobs read")
+    ap.add_argument("--out", required=True, help="directory to write the YAMLs into")
+    args = ap.parse_args()
+
+    dest = Path(args.out)
+    dest.mkdir(parents=True, exist_ok=True)
+    written = []
+    for job in jobs():
+        prefix = f"coax-battery-{job['key']}"
+        text = TEMPLATE.format(
+            name=f"rfx-{prefix}", description=job["description"], tag=job["key"],
+            cluster=CLUSTER, preset=job["preset"], image=IMAGE, sha=args.sha,
+            src=args.src, runs=RUNS, prefix=prefix, driver=DRIVER, cli=job["cli"])
+        path = dest / f"{job['key']}.yaml"
+        path.write_text(text)
+        written.append((path, prefix))
+    for path, prefix in written:
+        print(f"sh scripts/vessl_submit.sh {path} {prefix}")
+    print(f"\n{len(written)} job specifications in {dest}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
