@@ -492,6 +492,11 @@ def _run_subgridded_once(
             k_lo=lo_idx[2],
             k_hi=hi_idx[2],
             freqs=jnp.asarray(ntff_freqs, dtype=jnp.float32),
+            # Accumulate at the centre of each face cell (second-order
+            # surface integral). The fine grid is uniform, so the half-cell
+            # interpolation weights for the tangential H are the default 1/2
+            # on every face.
+            collocation="face_centre",
         )
         ntff_data_f = init_ntff_data(ntff_box_f)
 
