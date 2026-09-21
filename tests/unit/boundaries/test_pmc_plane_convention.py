@@ -27,6 +27,8 @@ carry the #722 ninth-surface offset with no stated convention.
 from __future__ import annotations
 
 import ast
+
+import pytest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -112,6 +114,32 @@ def test_pmc_face_construction_is_exactly_the_expected_set():
     assert not missing, (
         f"EXPECTED_PMC_SCRIPTS names a script that no longer constructs a "
         f"pmc boundary face: {missing} -- remove it from the set")
+
+
+_PMC_SNIPPETS = {
+    "Boundary-lo": 'b = Boundary(lo="pmc", hi="cpml")\n',
+    "Boundary-hi": 'b = Boundary(lo="cpml", hi="pmc")\n',
+    "BoundarySpec-axis": 's = BoundarySpec(x="cpml", y="pmc", z="cpml")\n',
+    "BoundarySpec-uniform": 's = BoundarySpec.uniform("pmc")\n',
+}
+
+
+@pytest.mark.parametrize("spelling", sorted(_PMC_SNIPPETS))
+def test_the_detector_fires_on_each_spelling(spelling):
+    """Positive control for the scan itself. While cv09 was listed in
+    EXPECTED_PMC_SCRIPTS, a detector that stopped firing showed up as cv09
+    going missing. With no PMC script left in the tree the scan alone cannot
+    tell a working detector from a dead one, so the spellings are checked here
+    on source text that does not depend on the repository."""
+    assert _constructs_pmc_face(ast.parse(_PMC_SNIPPETS[spelling]))
+
+
+def test_the_detector_ignores_pmc_outside_a_construction():
+    src = ('"""PMC wall in prose, and PMCHWT."""\n'
+           'label = "pmc"\n'
+           's = BoundarySpec.uniform("cpml")\n'
+           'b = Boundary(lo="pec", hi="cpml")\n')
+    assert not _constructs_pmc_face(ast.parse(src))
 
 
 def test_pmc_false_hits_are_not_flagged():

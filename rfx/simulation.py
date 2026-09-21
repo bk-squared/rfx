@@ -2567,7 +2567,7 @@ def run_until_decay(
          structures with a clean ring-down envelope, and is **not** suitable
          for flux / S-parameter / transmission gating on guided / low-loss
          closed geometries — for those use a fixed ``n_steps`` via
-         :func:`run` (see ``validation/crossval/03_straight_waveguide_flux.py``).
+         :func:`run`.
     report_every : int or None
         Issue #667. When set, emit one ``  [PROGRESS] ...`` line every *N*
         steps plus a final line at the actual stop step. ``None`` (default)

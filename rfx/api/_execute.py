@@ -3534,8 +3534,7 @@ class _ExecuteMixin:
             *instantaneous* single-cell field; that fallback keeps the original
             limitation (valid only for lossy / radiating ring-down, not flux /
             S-param / transmission gating on guided / low-loss closed geometries
-            — use a fixed ``n_steps`` there, see
-            ``validation/crossval/03_straight_waveguide_flux.py`` and the
+            — use a fixed ``n_steps`` there, see the
             :func:`rfx.simulation.run_until_decay` note).
             **Non-uniform (dx/dy/dz-profile) meshes (issue #383):** the same
             interior-energy stop runs on absorbing (``cpml``/``upml``)
