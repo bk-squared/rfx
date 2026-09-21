@@ -99,6 +99,46 @@ reaches 2041.6 / 2051.5 / 2052.2 / 2052.4 um across that same ladder and the
 impedance term the wall contributes is within 0.6 % of the declared value at
 every cell size.
 
+## The board, not only the mesh: what the oracle's ladder showed
+
+`tests/oracle/test_coax_conductor_realization.py` was first built on the
+committed AD gate's board — 8x8x12 mm, three probe planes, 13 bins over
+6-12 GHz — which realizes **3.789 annulus cells**. It asserted a 1 % bar on that
+single mesh, which the v2 accuracy bar does not allow, so
+`scripts/diagnostics/coax_conductor_oracle_ladder.py` ran the same four
+comparisons across rungs on that board AND on the 60 mm board above, with the
+outcomes declared before any solve.
+
+| board | annulus cells | `beta` S21 phase | `beta` pencil | column power |
+|---|---|---|---|---|
+| 12 mm, 3 probes | 3.789 | 4.60 % | 6.97 % | [0.96805, 1.07928] |
+| 12 mm, 3 probes | 6 | 1.51 % | 4.62 % | [0.75896, 0.98550] |
+| 12 mm, 3 probes | 9 | 13.58 % | 9.91 % | [0.74582, 1.19195] |
+| 60 mm, 12 probes | 3.789 | **0.01 %** | **0.30 %** | **[0.98153, 0.99342]** |
+| 60 mm, 12 probes | 4 | **0.00 %** | **0.18 %** | **[0.98587, 0.99678]** |
+
+At the same cell size the two boards disagree completely, and refining the short
+one makes its worst comparison worse rather than better. Two things condition
+that, both properties of the lane rather than of this change.
+
+**The probe planes are placed by cell index**, `rfx/sparams/coax.py`:
+`probes_z = z_dut + probe_start_cells + probe_spacing_cells * k`. Refining dx
+therefore pulls the array towards the DUT. In wavelengths at band centre the
+whole array spans 0.065 -> 0.041 -> 0.0275 on the 12 mm board (0.410 -> 0.173
+radians across three planes) against 0.638 -> 0.403 -> 0.269 on the 60 mm one
+(4.006 -> 1.687 radians across twelve).
+
+**The reference-plane separation moves too.** On the 12 mm board `l12` goes
+10.493 -> 10.887 -> 11.360 mm across the ladder, 8.3 %, while the settling
+witness degrades from -64.98 to -53.50 dB; on the 60 mm board `l12` moves 0.2 %
+(58.460 -> 58.575 mm) and the record stays below -67 dB. `beta` from the phase
+slope is `omega l12 / (-slope)`, so `l12` scales it directly. Every one of these
+runs reports `status='passed'`.
+
+The shipped code was checked against the diagnostic wrapper at the same rung:
+the 60 mm board at 4 annulus cells through `compute_coaxial_two_port` gives
+0.00 % and 0.18 %, against arm 4's 1.0000 and 1.0018.
+
 ## What is still open
 
 The **pin**'s rasterized radius is unchanged by this and is not monotone in dx

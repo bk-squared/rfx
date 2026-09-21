@@ -16,15 +16,31 @@ contract — is what this file pins.
 
 Marked ``slow_physics``: the thru is a two-drive FDTD and the two Z0 legs are
 one-port solves, so this is minutes on CPU rather than the fast lane's seconds.
-The numbers below were measured on the fixed lane; the diagnostic that produced
-the before-numbers, and the mutation that puts the old realization back, are
-``scripts/diagnostics/coax_conductor_mutation.py``.
 
-BEFORE (sigma realization, same fixtures, from that mutation):
-  thru      beta/beta_analytic 1.1867 (pencil) / 1.1795 (unwrapped S21 phase),
+Two sets of before-numbers exist and they are NOT interchangeable, so each is
+labelled with the board it was measured on:
+
+BEFORE, on THESE fixtures, from ``scripts/diagnostics/coax_conductor_mutation.py``
+(the sigma realization put back with every helper call left in place):
+  thru      beta 16.62 % (unwrapped S21 phase) / 24.78 % (pencil) from
+            omega sqrt(eps_r)/c; column power [0.92406, 1.03789]
+  25 ohm    Z0 57.176 ohm      100 ohm   Z0 57.539 ohm
+BEFORE, on the DIAGNOSTIC's 60 mm board at 4 annulus cells, from
+``scripts/diagnostics/coax_shell_seal_diagnostic.py`` arm 0 (branch
+``meas/coax-chain-battery``):
+  thru      beta/beta_analytic 1.1867 (pencil) / 1.1795 (S21 phase),
             max column power 0.8786
   25 ohm    Z0 46.169 ohm      100 ohm   Z0 48.697 ohm
-AFTER (this lane): the numbers asserted below.
+
+FIXTURE UNDER REVIEW. These boards realize 3.789 annulus cells and this file
+asserts a 1 % bar on that single mesh, which the v2 accuracy bar does not allow
+("a comparison made on a mesh that has not been shown to converge says nothing
+either way"). ``scripts/diagnostics/coax_conductor_oracle_ladder.py`` runs these
+same four comparisons across 3.789/4/6/9 annulus cells on this board and on the
+diagnostic's 60 mm one; at the time of writing the 60 mm board is inside every
+bar at 3.789 cells (beta 0.01 % / 0.30 %, column power [0.98153, 0.99342]) and
+this board is outside all of them at every rung. The bars below are unchanged
+and left asserting pending that decision.
 """
 from __future__ import annotations
 

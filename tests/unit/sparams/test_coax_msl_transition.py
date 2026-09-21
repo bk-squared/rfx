@@ -799,7 +799,7 @@ def test_attempt1_pin_axis_pec_column_is_continuous_because_ground_is_solid():
     z_stub_lo = int(grid.pad_z_lo) + 2
     z_stub_hi = z_junction_idx - 1
 
-    materials, _, _ = stamp_coaxial_line(
+    materials, _, coax_cells = stamp_coaxial_line(
         grid, materials, center_xy=center_xy, z_lo_index=z_stub_lo,
         z_hi_index=z_stub_hi, pin_radius=PIN_R, outer_radius=OUTER_R,
     )
@@ -809,7 +809,13 @@ def test_attempt1_pin_axis_pec_column_is_continuous_because_ground_is_solid():
     trace_idx = int(grid.position_to_index((JUNCTION_X, Y_C, N_TRACE * DX))[2])
 
     registered_pec = pec[i0, j0, :]
-    stamped_pec = sigma[i0, j0, :] >= 0.5 * PEC_SIGMA
+    # The pin and the outer conductor are returned as a cell mask for
+    # realized_pec_edge_masks rather than written into materials.sigma, so the
+    # sigma term alone no longer finds them. The claim this test makes -- no
+    # gap on the pin axis from the stub to the trace -- is unchanged and still
+    # holds; the conductor just lives in a different array now.
+    stamped_pec = (np.asarray(coax_cells)[i0, j0, :]
+                   | (sigma[i0, j0, :] >= 0.5 * PEC_SIGMA))
     combined = registered_pec | stamped_pec
 
     span = combined[z_stub_lo:trace_idx + 1]
@@ -2689,7 +2695,13 @@ def test_flux_spectrum_exact_f64_matches_default_on_healthy_magnitudes():
 # ---------------------------------------------------------------------------
 PIN_R_CELLS = int(round(PIN_R / DX))          # 2
 CLEAR_R_CELLS = int(round(CLEAR_R / DX))      # 4  (= PIN_R_CELLS + 2, as predeclared)
-SHELL_INNER_CELLS = int(round((OUTER_R - DX) / DX))   # 5: stamp_coaxial_line's shell_thickness = min(dz, (b-a)/2) = dz
+# 5 cells = 500 um. This WAS where stamp_coaxial_line put the wall's inner
+# face, back when shell_thickness = min(dz, (b-a)/2) = dz made it one cell
+# inside b. The wall's inner face is now b itself with the thickness fixed in
+# metres and growing outward, so this no longer names the wall -- it is kept as
+# the geometric radius the ground-coverage rings below are cut at, and those
+# rings still read 32/32 covered on both fixtures.
+SHELL_INNER_CELLS = int(round((OUTER_R - DX) / DX))
 OUTER_R_CELLS = int(round(OUTER_R / DX))      # 6
 N_GROUND_BOXES_3 = 20
 HOLE_CELLS_3 = 49        # |{(di, dj): di^2 + dj^2 <= 16}|
@@ -3110,7 +3122,16 @@ def _stamp_like_method(sim, grid, materials):
     """Apply compute_coax_msl_transition's own coax-stub stamps at its own
     z indices (z_stub_lo = pad_z_lo + 2, z_stub_hi = z_junction_idx - 1,
     resistor at z_feed = z_stub_lo + 1) -- returns (materials, shell_inner,
-    z_stub_lo, z_stub_hi)."""
+    coax_pec_cells, z_stub_lo, z_stub_hi).
+
+    ``coax_pec_cells`` is where the pin and the outer conductor now live:
+    ``stamp_coaxial_line`` returns them as a cell mask for
+    ``realized_pec_edge_masks`` instead of writing ``sigma = PEC_SIGMA``, so a
+    caller that inspects only ``materials.sigma`` no longer sees the conductor
+    at all. The resistor is given the same mask, which is how the production
+    lane threads it (``rfx/sparams/coax.py``, the
+    ``stamp_coaxial_line`` / ``stamp_coaxial_annular_resistor`` pair).
+    """
     from rfx.sources.coaxial_port import (
         stamp_coaxial_line, stamp_coaxial_annular_resistor,
         coaxial_tem_characteristic_impedance,
@@ -3120,7 +3141,7 @@ def _stamp_like_method(sim, grid, materials):
     z_junction_idx = int(grid.position_to_index(port.position)[2])
     z_stub_lo = int(grid.pad_z_lo) + 2
     z_stub_hi = z_junction_idx - 1
-    materials, shell_inner, _ = stamp_coaxial_line(
+    materials, shell_inner, coax_pec_cells = stamp_coaxial_line(
         grid, materials, center_xy=center_xy, z_lo_index=z_stub_lo,
         z_hi_index=z_stub_hi, pin_radius=PIN_R, outer_radius=OUTER_R,
     )
@@ -3128,9 +3149,9 @@ def _stamp_like_method(sim, grid, materials):
         grid, materials, center_xy=center_xy, z_index=z_stub_lo + 1,
         pin_radius=PIN_R, outer_radius=OUTER_R,
         target_impedance=float(coaxial_tem_characteristic_impedance(PIN_R, OUTER_R)),
-        shell_inner_radius=shell_inner,
+        shell_inner_radius=shell_inner, pec_cell_mask=coax_pec_cells,
     )
-    return materials, shell_inner, z_stub_lo, z_stub_hi
+    return materials, shell_inner, coax_pec_cells, z_stub_lo, z_stub_hi
 
 
 def _assert_clearance_annulus_open(sim):
@@ -3159,7 +3180,7 @@ def _post_stamp_junction_open_fraction(sim):
     sigma-PEC; 'dielectric' at node 24 = not sigma-PEC AND eps == EPS_COAX."""
     from rfx.sources.coaxial_port import PEC_SIGMA
     grid, materials, pec, i0, j0, kj = _assemble_junction_realized(sim)
-    materials, _, _, z_stub_hi = _stamp_like_method(sim, grid, materials)
+    materials, _, _, _, z_stub_hi = _stamp_like_method(sim, grid, materials)
     assert z_stub_hi == kj - 1
     sigma = np.asarray(materials.sigma)
     eps = np.asarray(materials.eps_r)
@@ -3394,19 +3415,31 @@ def test_attempt2_junction_is_shorted_by_registered_ground():
 # its discriminating partner is named in the docstring.
 @pytest.mark.parametrize("fixture", sorted(_JUNCTION_FIXTURES))
 def test_junction_pin_axis_is_pec_continuous_stub_to_trace(fixture):
-    """INVARIANT (did-not-over-carve, pin side): registered pec_mask OR
-    stamped sigma >= PEC_SIGMA/2 on the axis for every z in [z_stub_lo,
-    trace node], AND the axis cell at the junction node is REGISTERED PEC
-    (the pin). Passes on attempt 2 too -- through solid ground -- so it is
-    only meaningful together with test_attempt3_ground_clearance_annulus_
-    is_open, which is what distinguishes 'pin' from 'ground' at that node."""
+    """INVARIANT (did-not-over-carve, pin side): registered pec_mask OR the
+    coax stamper's own conductor cells OR stamped sigma >= PEC_SIGMA/2 on the
+    axis for every z in [z_stub_lo, trace node], AND the axis cell at the
+    junction node is REGISTERED PEC (the pin). Passes on attempt 2 too --
+    through solid ground -- so it is only meaningful together with
+    test_attempt3_ground_clearance_annulus_is_open, which is what
+    distinguishes 'pin' from 'ground' at that node.
+
+    The coax cells are a third term because ``stamp_coaxial_line`` returns the
+    pin and the outer conductor as a mask for ``realized_pec_edge_masks``
+    instead of writing them into ``materials.sigma``; reading only ``sigma``
+    here would look for the pin where it no longer is and report the whole
+    stub as a gap. The invariant is unchanged and still holds -- measured
+    continuous on both fixtures -- only the array it is read from moved.
+    """
     from rfx.sources.coaxial_port import PEC_SIGMA
     sim = _JUNCTION_FIXTURES[fixture]()
     grid, materials, pec, i0, j0, kj = _assemble_junction_realized(sim)
-    materials, _, z_stub_lo, _ = _stamp_like_method(sim, grid, materials)
+    materials, _, coax_cells, z_stub_lo, _ = _stamp_like_method(
+        sim, grid, materials)
     sigma = np.asarray(materials.sigma)
     trace_idx = int(grid.position_to_index((JUNCTION_X, Y_C, N_TRACE * DX))[2])
-    column = pec[i0, j0, :] | (sigma[i0, j0, :] >= 0.5 * PEC_SIGMA)
+    column = (pec[i0, j0, :]
+              | np.asarray(coax_cells)[i0, j0, :]
+              | (sigma[i0, j0, :] >= 0.5 * PEC_SIGMA))
     span = column[z_stub_lo:trace_idx + 1]
     assert np.all(span), f"gap at indices {z_stub_lo + np.where(~span)[0]}"
     assert bool(pec[i0, j0, kj]), "axis cell at the junction node is not registered PEC (pin)"
@@ -3423,8 +3456,17 @@ def test_junction_coax_shell_contacts_ground(fixture):
     test_attempt3_ground_clearance_annulus_is_open."""
     sim = _JUNCTION_FIXTURES[fixture]()
     grid, materials, pec, i0, j0, kj = _assemble_junction_realized(sim)
-    _, shell_inner, _, _ = _stamp_like_method(sim, grid, materials)
-    assert int(round(shell_inner / DX)) == SHELL_INNER_CELLS
+    _, shell_inner, _, _, _ = _stamp_like_method(sim, grid, materials)
+    # The wall's inner face is the DECLARED outer radius. It used to be
+    # ``b - min(dz, (b-a)/2)``, i.e. one cell inside b, which made the
+    # dielectric annulus and hence the line's impedance move with the mesh;
+    # the thickness is now fixed in metres and grows outward from b instead.
+    # Equality against the declared radius, not against a cell count, is what
+    # that change makes assertable here -- SHELL_INNER_CELLS stays as the
+    # geometric radius the ground-coverage rings below are cut at.
+    assert shell_inner == pytest.approx(OUTER_R, rel=0.0, abs=1e-15), (
+        f"wall inner face {shell_inner*1e6:.2f} um is not the declared outer "
+        f"radius {OUTER_R*1e6:.2f} um")
     shell = _lattice_ring_mask(grid, i0, j0, SHELL_INNER_CELLS, OUTER_R_CELLS)
     lip = _lattice_ring_mask(grid, i0, j0, CLEAR_R_CELLS, SHELL_INNER_CELLS)
     assert int(shell.sum()) == SHELL_CELLS_3 and int(lip.sum()) == LIP_CELLS_3

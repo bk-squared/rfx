@@ -876,12 +876,14 @@ do not fit; it does not silently use fewer planes.
   only the plus-side edges of a conductor cell, and the resulting one-sided wall
   put the fitted phase constant 8-18 % above `omega sqrt(eps_r)/c` and lost up
   to 15 % of the column power, both shrinking with the mesh in a way that looked
-  like under-resolution. With the conductors realized as PEC edge masks the
-  phase constant is within 1 % of the analytic value at 4, 6 and 9 annulus
-  cells and the column power within 0.007 of unity; the cell-size
-  recommendation is being re-derived on the fixed lane and this line will be
-  replaced by that measurement. See
-  `docs/design_notes/coax_conductor_realization.md`.
+  like under-resolution. With the conductors realized as PEC edge masks, and
+  measured on the 60 mm two-port board, the phase constant is within 0.7 % of
+  the analytic value at 3.79, 4, 6 and 9 annulus cells and the column power
+  spans [0.982, 0.997] at the two rungs where both ends were recorded. The
+  cell-size recommendation is being re-derived on the fixed lane and this line
+  will be replaced by that measurement; note that the board and its probe
+  ladder, not only the cell size, decide whether these comparisons settle at
+  all. See `docs/design_notes/coax_conductor_realization.md`.
 - The matched-load fixture reaches `|Gamma|` deviation `0.0929` because of the
   single-cell annular resistor and is reported separately rather than used as a
   method gate.
