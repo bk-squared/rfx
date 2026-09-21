@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import warnings
+from dataclasses import replace
 
 import jax
 import numpy as np
@@ -65,8 +66,12 @@ def assemble_interface_eps_nu(sim, grid, materials):
     # The bounding node has no outgoing real cell: copy the last centre.
     for x in centres:
         x[-1] = x[-2]
+    from rfx.geometry.smoothing import continued_conductor_shape
+    geometry = [replace(entry, shape=continued_conductor_shape(sim, grid, entry.shape))
+                if sim._resolve_material(entry.material_name).sigma >= sim._PEC_SIGMA_THRESHOLD
+                else entry for entry in sim._geometry]
     cell, debye, lorentz, pec, *_ = rasterize_geometry(
-        sim._geometry, sim._resolve_material, GridCoords(*centres, grid.shape),
+        geometry, sim._resolve_material, GridCoords(*centres, grid.shape),
         pec_sigma_threshold=sim._PEC_SIGMA_THRESHOLD)
     if debye is not None or lorentz is not None:
         raise ValueError("interface_eps='dual_average' cannot combine with Debye/Lorentz materials")
@@ -173,9 +178,13 @@ def assemble_materials_nu(
     centres = centres_from_nonuniform_grid(grid, coords)
     _pec_sheets = pec_sheets if pec_sheets is not None else []
     _pec_wires = pec_wires if pec_wires is not None else []
+    from rfx.geometry.smoothing import continued_conductor_shape
+    geometry = [replace(entry, shape=continued_conductor_shape(sim, grid, entry.shape))
+                if sim._resolve_material(entry.material_name).sigma >= sim._PEC_SIGMA_THRESHOLD
+                else entry for entry in sim._geometry]
 
     result = rasterize_geometry(
-        sim._geometry,
+        geometry,
         sim._resolve_material,
         coords,
         pec_sigma_threshold=sim._PEC_SIGMA_THRESHOLD,
@@ -237,9 +246,11 @@ def assemble_materials_nu(
     # rfx.boundaries.pec.realized_pec_edge_masks. A shape thicker than one
     # local cell along its normal is refused ("not a sheet; use add()").
     if sim._thin_conductors:
-        pec_tcs = [tc for tc in sim._thin_conductors
+        conductors = [replace(tc, shape=continued_conductor_shape(sim, grid, tc.shape))
+                      for tc in sim._thin_conductors]
+        pec_tcs = [tc for tc in conductors
                    if getattr(tc, "is_pec", False)]
-        lossy_tcs = [tc for tc in sim._thin_conductors
+        lossy_tcs = [tc for tc in conductors
                      if not getattr(tc, "is_pec", False)]
         for tc in pec_tcs:
             _pec_sheets.append(sheet_spec_from_shape(

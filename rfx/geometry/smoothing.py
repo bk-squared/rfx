@@ -346,6 +346,7 @@ class UnextendableShape(NamedTuple):
     eps_r: float = 1.0
     entry_index: int = -1
     material_name: str = "?"
+    conductor: bool = False
 
 
 def warn_unextendable_shapes(unextendable, *, stacklevel: int = 3) -> None:
@@ -361,6 +362,17 @@ def warn_unextendable_shapes(unextendable, *, stacklevel: int = 3) -> None:
     if not unextendable:
         return
     import warnings as _w
+    conductors = [u for u in unextendable if u.conductor]
+    if conductors:
+        faces = ", ".join(
+            f"{type(u.shape).__name__} at {'xyz'[u.axis]}-{u.side} ({u.reason})"
+            for u in conductors)
+        _w.warn("Conducting geometry reaches an absorbing face but has no "
+                f"geometry continuation: {faces}. Its declared shape is "
+                "solved unchanged.", stacklevel=stacklevel)
+    unextendable = [u for u in unextendable if not u.conductor]
+    if not unextendable:
+        return
     faces = ", ".join(
         f"{type(u.shape).__name__} at {'xyz'[u.axis]}-{u.side} "
         f"(eps_r {u.eps_r:g}; {u.reason})"
@@ -417,6 +429,8 @@ def extend_shapes_into_cpml_pad(
     shapes: list[tuple[Shape, float]],
     node_coords,
     pads,
+    *,
+    declared_domain=None,
 ) -> tuple[list[tuple[Shape, float]], list["UnextendableShape"]]:
     """Continue boundary-touching shapes out through the absorber pads.
 
@@ -472,6 +486,9 @@ def extend_shapes_into_cpml_pad(
         bbox_lo, bbox_hi = bounds
         current = shape
         for axis in range(3):
+            # A sheet continues in its plane; its normal remains a plane.
+            if isinstance(shape, Box) and bbox_lo[axis] == bbox_hi[axis]:
+                continue
             nodes = node_coords[axis]
             # PER AXIS, not per run. A mesh-as-design-variable profile makes
             # ONE axis' node positions tracers (a traced dz leaves x and y
@@ -498,6 +515,14 @@ def extend_shapes_into_cpml_pad(
                     reaches = (float(bbox_hi[axis])
                                >= edge - _PAD_REACH_TOL_CELLS * cell)
                     target = float(nodes[n - 1]) + _PAD_CONTINUE_CELLS * cell
+                if declared_domain is not None and axis < len(declared_domain):
+                    from rfx.grid import CELL_COUNT_ULP_BUDGET
+                    face = 0.0 if side == "lo" else float(declared_domain[axis])
+                    slack = (CELL_COUNT_ULP_BUDGET * np.finfo(float).eps
+                             * max(cell, abs(face)))
+                    reaches = reaches or (
+                        float(bbox_lo[axis]) <= face + slack if side == "lo"
+                        else float(bbox_hi[axis]) >= face - slack)
                 if not reaches:
                     continue
                 if isinstance(current, Box):
@@ -518,6 +543,63 @@ def extend_shapes_into_cpml_pad(
                         float(eps_r)))
         out.append((current, eps_r))
     return out, unextendable
+
+
+def continued_conductor_shape(sim, grid, shape, *, unextendable=None):
+    """Return the conducting geometry solved through absorbing faces (C2/C5).
+
+    MSL signal entries stay declared on the face behind their termination.
+    The window is the strip width plus a local cell at either side, and
+    substrate bottom (exclusive) through substrate top plus a local cell.
+    Coaxial and mixed fixtures have no entry exception. Port-generated
+    structures are not geometry entries and do not call this function.
+    """
+    from rfx.core.jax_utils import is_tracer
+    from rfx.geometry.csg import declared_bounds
+    from rfx.geometry.rasterize_grid import (
+        coords_from_nonuniform_grid, coords_from_uniform_grid)
+
+    if (getattr(sim, "_boundary", None) not in ("cpml", "upml")
+            or int(getattr(sim, "_cpml_layers", 0)) <= 0):
+        return shape
+    coords = (coords_from_nonuniform_grid(grid) if hasattr(grid, "dx_arr")
+              else coords_from_uniform_grid(grid))
+    nodes = (coords.x, coords.y, coords.z)
+    pads = [[getattr(grid, f"pad_{a}_lo"), getattr(grid, f"pad_{a}_hi")]
+            for a in "xyz"]
+    bounds = declared_bounds(shape)
+    # The mixed line includes explicit lumped/wire terminations; v2 leaves
+    # its geometry continued for measurement, as it does coax-to-MSL.
+    mixed = any(p.impedance > 0 for p in getattr(sim, "_ports", ()))
+    if bounds is not None and not getattr(sim, "_coaxial_ports", ()) and not mixed:
+        lo, hi = bounds
+        for port in getattr(sim, "_msl_ports", ()):
+            axis = "xyz".index(port.direction[-1])
+            width_axis = 1 - axis
+            if axis not in (0, 1) or any(is_tracer(nodes[a]) for a in (width_axis, 2)):
+                continue
+            # Local cells at the port's transverse position, on graded grids too.
+            widths = []
+            for a in (width_axis, 2):
+                line = np.asarray(nodes[a])
+                k = int(np.clip(np.searchsorted(line, port.position[a]), 1, len(line)-1))
+                widths.append(float(line[k] - line[k-1]))
+            wlo = port.position[width_axis] - port.width / 2 - widths[0]
+            whi = port.position[width_axis] + port.width / 2 + widths[0]
+            zlo = port.position[2]
+            zhi = zlo + port.height + widths[1]
+            if (hi[width_axis] >= wlo and lo[width_axis] <= whi
+                    and hi[2] > zlo and lo[2] <= zhi):
+                pads[axis][0 if port.direction[0] == "+" else 1] = 0
+    pairs, findings = extend_shapes_into_cpml_pad(
+        [(shape, 1.0)], nodes, pads,
+        declared_domain=sim._unresolved_domain)
+    findings = [u._replace(shape=shape, conductor=True) for u in findings]
+    if unextendable is None:
+        warn_unextendable_shapes(findings)
+    else:
+        unextendable.extend(findings)
+    return pairs[0][0]
 
 
 def smoothed_shape_pairs(sim, grid):
@@ -581,24 +663,26 @@ def smoothed_shape_pairs(sim, grid):
     # 1e6, the value every other reader of this threshold defaults to
     # (rfx/surrogate.py, rfx/fidelity.py, rfx/pcb.py). An ``inf``
     # default fails OPEN: a sim without the attribute would classify a
-    # PEC material as a dielectric and continue metal into the pad,
-    # which is the one thing both lanes agree never to do.
+    # PEC material as a dielectric and miss its port-entry exception.
     pec_sigma = float(getattr(sim, "_PEC_SIGMA_THRESHOLD", 1e6))
     for idx, (entry, (shape, eps_r)) in enumerate(zip(sim._geometry, pairs)):
         mat = sim._resolve_material(entry.material_name)
-        # PEC volumes are not continued on EITHER lane: ``pec_mask`` is not in
-        # ``extend_cpml_pad_materials``' signature, so the staircase lane ends
-        # a PEC structure at the seam too, and the two lanes have to agree
-        # about what stands in a pad.
+        # Both lanes realize conductors through the same geometry helper.
         if float(getattr(mat, "sigma", 0.0)) >= pec_sigma:
-            out.append((shape, eps_r))
+            unext = []
+            solved = continued_conductor_shape(sim, grid, shape, unextendable=unext)
+            out.append((solved, eps_r))
+            unextendable.extend(u._replace(entry_index=idx,
+                                          material_name=entry.material_name)
+                                for u in unext)
             continue
         if (getattr(mat, "debye_poles", None)
                 or getattr(mat, "lorentz_poles", None)):
             out.append((shape, eps_r))
             continue
         one, unext = extend_shapes_into_cpml_pad(
-            [(shape, eps_r)], node_coords, pads)
+            [(shape, eps_r)], node_coords, pads,
+            declared_domain=sim._unresolved_domain)
         out.extend(one)
         # Stamp the entry's identity HERE, in the loop that knows it, and put
         # the DECLARED shape back. The builder reports whatever object it held

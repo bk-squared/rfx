@@ -241,9 +241,8 @@ def run_uniform(
         )
         # #1043 stage B: the pairs carry the CPML/UPML pad continuation, so a
         # dielectric that touches the domain edge is solved with the material
-        # in its own pad instead of a vacuum facet at the seam. PEC shapes are
-        # NOT continued — ``pec_mask`` is not extended on the staircase lane
-        # either, and the two lanes have to agree about what stands in a pad.
+        # in its own pad instead of a vacuum facet at the seam. PEC shapes
+        # arrive continued from assembly, with the MSL entry exception.
         shape_eps_pairs, _unextendable = smoothed_shape_pairs(sim, grid)
         warn_unextendable_shapes(_unextendable)
         aniso_inv_eps = compute_inv_eps_tensor_diag(

@@ -230,8 +230,8 @@ def _apply_batched_thin_conductors(
     ``Simulation._assemble_materials`` runs it.
 
     This is the second half of the #642 fix. ``_assemble_materials``
-    extends the CPML pad and only THEN applies conductors, so ``run()``'s
-    padding never contains one. The batched path re-extends the pad per
+    extends the material arrays and only THEN applies thin conductors from
+    their continued geometry. The batched path re-extends the pad per
     swept value; to reproduce ``run()`` it must therefore re-extend the
     *pre-conductor* arrays and re-apply the conductors afterwards, which
     is exactly this call plus the ``include_thin_conductors=False``
@@ -253,7 +253,10 @@ def _apply_batched_thin_conductors(
     -------
     (eps_r, sigma, mu_r) — same shapes as the inputs.
     """
-    conductors = tuple(sim._thin_conductors)
+    from dataclasses import replace
+    from rfx.geometry.smoothing import continued_conductor_shape
+    conductors = tuple(replace(tc, shape=continued_conductor_shape(sim, grid, tc.shape))
+                       for tc in sim._thin_conductors)
     if not conductors:
         return eps_r, sigma, mu_r
 

@@ -990,6 +990,15 @@ def _validate_cfg_dielectric_at_absorber_seam(self, _w) -> None:
     for u in unextendable:
         idx, mat_name = u.entry_index, u.material_name
         axis_name = "xyz"[u.axis]
+        if u.conductor:
+            _w.warn(PreflightWarning(
+                f"Conductor '{mat_name}' (geometry entry #{idx}, "
+                f"{type(u.shape).__name__}) reaches the {axis_name}-{u.side} "
+                f"absorber seam, and {u.reason}. Its declared shape is "
+                "solved unchanged.", code="conductor_at_absorber_seam",
+                loc=f"geometry[#{idx}] {axis_name}-{u.side}",
+                source="_validate_cfg_dielectric_at_absorber_seam"), stacklevel=3)
+            continue
         _w.warn(
             PreflightWarning(
                 f"Material '{mat_name}' (geometry entry #{idx}, "

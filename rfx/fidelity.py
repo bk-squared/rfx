@@ -110,17 +110,21 @@ def _entity_mask(entry, sim, grid, nonuniform, *, pec_volume: bool = False):
     Dielectrics keep the node sampler, because that is what the assembly
     writes their ``eps_r`` / ``sigma`` with.
     """
+    from rfx.geometry.smoothing import continued_conductor_shape
+    shape = entry.shape
+    if pec_volume or hasattr(entry, "sigma_bulk"):
+        shape = continued_conductor_shape(sim, grid, shape)
     if pec_volume:
         from rfx.geometry.rasterize_grid import (
             cell_centres_from_nodes, pec_volume_cell_mask)
         coords, sizes = _contract_coords(sim, grid, nonuniform)
         centres = cell_centres_from_nodes(coords, sizes)
-        return np.asarray(pec_volume_cell_mask(entry.shape, centres), dtype=bool)
+        return np.asarray(pec_volume_cell_mask(shape, centres), dtype=bool)
     if nonuniform:
         from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
         c = coords_from_nonuniform_grid(grid)
-        return np.asarray(entry.shape.mask_on_coords(c.x, c.y, c.z), dtype=bool)
-    return np.asarray(entry.shape.mask(grid), dtype=bool)
+        return np.asarray(shape.mask_on_coords(c.x, c.y, c.z), dtype=bool)
+    return np.asarray(shape.mask(grid), dtype=bool)
 
 
 def _declared_material(sim, name):
@@ -185,8 +189,9 @@ def _pec_sheet_spec(sim, entry, kind_src, grid, nonuniform):
         normal = zero[0]
     coords, sizes = _contract_coords(sim, grid, nonuniform)
     try:
+        from rfx.geometry.smoothing import continued_conductor_shape
         return sheet_spec_from_shape(
-            entry.shape, coords, sizes, normal_axis=normal,
+            continued_conductor_shape(sim, grid, entry.shape), coords, sizes, normal_axis=normal,
             refuse_thick=(kind_src == "thin_conductor"))
     except ValueError:
         return None
@@ -206,7 +211,8 @@ def _contract_refusals(sim, grid, nonuniform):
         if not _assembled_as_pec(sim, entry):
             continue
         try:
-            classify_pec_entry(entry.shape, coords, centres, sizes,
+            from rfx.geometry.smoothing import continued_conductor_shape
+            classify_pec_entry(continued_conductor_shape(sim, grid, entry.shape), coords, centres, sizes,
                                name=entry.material_name)
         except ValueError as exc:
             out[i] = str(exc)

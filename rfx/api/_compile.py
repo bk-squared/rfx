@@ -11,6 +11,7 @@ LEAF mixin module — it must NEVER do ``from rfx.api import ...`` or
 from __future__ import annotations
 
 import math  # noqa: F401  (used by moved method bodies)
+from dataclasses import replace
 
 import jax
 import jax.numpy as jnp
@@ -207,11 +208,11 @@ class _CompileMixin:
 
             Only ``rfx.vmap_sweep`` passes False, and it needs this
             because the ORDER here is load-bearing: the pad is extended
-            BEFORE conductors are applied, so ``run()``'s padding never
-            contains a conductor. The batched sweep path has to re-extend
+            BEFORE thin conductors are applied. Their geometry now continues
+            through reached absorbing faces before application. The batched sweep path has to re-extend
             the pad for each swept value, and extending the *finished*
-            arrays would replicate the conductor outward — a pad
-            ``run()`` never builds (issue #642). Handing that path the
+            arrays would copy the conductor's array values instead of realizing
+            its continued geometry (issue #642). Handing that path the
             pre-conductor arrays and letting it re-apply the same shared
             ``apply_thin_conductor`` afterwards reproduces this order
             instead of approximating it.
@@ -289,18 +290,20 @@ class _CompileMixin:
         _check_pad_fill = (include_cpml_pad_extension
                            and self._boundary in ("cpml", "upml")
                            and self._cpml_layers > 0)
+        from rfx.geometry.smoothing import continued_conductor_shape
 
         for entry in self._geometry:
             mat = self._resolve_material(entry.material_name)
             mask = entry.shape.mask(grid)
 
             if mat.sigma >= self._PEC_SIGMA_THRESHOLD:
+                solved_shape = continued_conductor_shape(self, grid, entry.shape)
                 # True PEC (#931): volume cells into pec_mask (centre
                 # sampled, §1.1); a zero-thickness Box is a sheet; a
                 # sub-cell PolylineWire is a filament. eps/sigma stay at
                 # vacuum values either way.
                 cells, sheet, wire = classify_pec_entry(
-                    entry.shape, _coords, _centres, _cell_sizes,
+                    solved_shape, _coords, _centres, _cell_sizes,
                     name=entry.material_name)
                 if cells is not None:
                     pec_mask = pec_mask | cells
@@ -308,17 +311,17 @@ class _CompileMixin:
                     mask = cells
                 elif sheet is not None:
                     _pec_sheets.append(sheet)
+                    mask = sheet.footprint
                 else:
                     _pec_wires.append(wire)
-                pec_shapes.append(entry.shape)
+                pec_shapes.append(solved_shape)
+                if _check_pad_fill and wire is None and not is_tracer(mask):
+                    assert_declared_span_is_filled(
+                        entry.material_name, entry.shape, mask, grid,
+                        self._unresolved_domain, record=pad_fill_findings)
             else:
-                # #1070, and only here (review of PR #1136, C): the pad
-                # extension replicates eps/sigma/mu, never ``pec_mask``, so
-                # the vacuum-in-the-pad failure this checks for cannot happen
-                # to a PEC entry. Asking about one would report a condition
-                # that does not exist, in a message about dielectric pads.
-                # It has to sit AFTER classify_pec_entry, because that is
-                # what decides which an entry is.
+                # Dielectric node occupancy; conductors are checked above
+                # after their cell/sheet classification.
                 # Read the DECLARED domain, not ``self._domain``: that
                 # attribute is a mesh descriptor and reading it RESOLVES the
                 # mesh. differentiable_material_fit builds its grid once and
@@ -401,12 +404,13 @@ class _CompileMixin:
 
         # Apply thin conductors (#931: PEC thin sheets go to ``pec_sheets``,
         # never to pec_mask; f0 sheets to ``sheet_specs``; DC folds to sigma).
-        # NOTE the position: this runs AFTER the pad extension above, so a
-        # conductor never lands in the CPML padding. rfx.vmap_sweep depends
+        # This runs AFTER material-array extension, with continued geometry.
+        # rfx.vmap_sweep depends
         # on being able to observe the state just before this loop — see
         # ``include_thin_conductors`` in this method's docstring (#642).
         if include_thin_conductors:
             for tc in self._thin_conductors:
+                tc = replace(tc, shape=continued_conductor_shape(self, grid, tc.shape))
                 materials, pec_mask = apply_thin_conductor(
                     grid, tc, materials, pec_mask=pec_mask,
                     sheet_specs=sheet_specs, sheets=_pec_sheets)

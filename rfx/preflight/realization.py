@@ -429,6 +429,7 @@ class _CampaignStaticsContext:
             _local_cell as _rasterize_local_cell,
         )
         from rfx.materials.thin_conductor import sheet_bounds
+        from rfx.geometry.smoothing import continued_conductor_shape
         sim = self.sim
         out = []
 
@@ -475,7 +476,8 @@ class _CampaignStaticsContext:
             lo, hi = _bounds(entry.shape)
             try:
                 cells, sheet, wire = classify_pec_entry(
-                    entry.shape, self.coords, self.centres, self.cell_sizes,
+                    continued_conductor_shape(sim, self.grid, entry.shape),
+                    self.coords, self.centres, self.cell_sizes,
                     name=entry.material_name)
             except self._NARROW_EXCS as exc:
                 # A shape that cannot be rasterized is a FINDING, not a
@@ -515,7 +517,8 @@ class _CampaignStaticsContext:
                 continue
             try:
                 sheet = sheet_spec_from_shape(
-                    tc.shape, self.coords, self.cell_sizes, name=label,
+                    continued_conductor_shape(sim, self.grid, tc.shape),
+                    self.coords, self.cell_sizes, name=label,
                     lane=self.lane or "", refuse_thick=True)
             except ValueError as exc:
                 out.append(_EntryRealization(
