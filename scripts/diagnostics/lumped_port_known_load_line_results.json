@@ -1,6 +1,6 @@
 {
   "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx-wt-lumped-fix/rfx/__init__.py",
-  "git_commit": "b4cf8f29",
+  "git_commit": "91b84254",
   "jax_version": "0.6.2",
   "numpy_version": "2.2.6",
   "zc_ohm": 376.730313668,
