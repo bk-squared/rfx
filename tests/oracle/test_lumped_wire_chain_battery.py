@@ -333,6 +333,7 @@ def test_the_phase_crossings_at_the_claims_rung_land_within_one_percent(fixture,
     assert meas, f"{key}: the measured angle crosses no multiple of pi in band"
     worst = 0.0
     detail = []
+    partners = []
     for m in range(-4000, 4000):
         f_an = (phi - m * math.pi) / slope
         if not (freqs[0] <= f_an <= freqs[-1]):
@@ -343,8 +344,17 @@ def test_the_phase_crossings_at_the_claims_rung_land_within_one_percent(fixture,
         best = min(same, key=lambda f: abs(f - f_an))
         frac = abs(best - f_an) / f_an
         detail.append((f_an, best, frac))
+        partners.append(best)
         worst = max(worst, frac)
     assert detail, f"{key}: no analytic crossing fell inside the measured band"
+    # Nearest-neighbour matching alone cannot see a shift of a whole crossing
+    # period: the curve would alias onto its neighbour and every distance would
+    # come back small. Two analytic crossings sharing one measured partner is
+    # exactly that, so it is a failure rather than a small number.
+    assert len(set(partners)) == len(partners), (
+        f"{key}: two analytic crossings matched the same measured crossing "
+        f"({partners}) — the measured phase is shifted by about a whole crossing "
+        "period, which nearest-neighbour matching would otherwise hide")
     assert worst <= fixture["bar"]["frequency_frac"], (
         f"{key}: the worst phase crossing is {worst * 100:.3f} % from the closed "
         f"form (bar {fixture['bar']['frequency_frac'] * 100:.1f} %); "
