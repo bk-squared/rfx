@@ -579,25 +579,48 @@ def declared(kind: str, dut: str, dx: float, eps_r: float = EPS_R_AIR) -> dict:
 # ---------------------------------------------------------------------------
 
 def realized_grid(sim: Simulation, kind: str, dut: str, dx: float) -> dict:
+    """What the SIMULATION holds, resolved onto the grid it will build.
+
+    Every index here comes from the position the simulation itself carries
+    (``sim._ports``, ``sim._lumped_rlc``) and not from ``layout``, so the
+    comparison in ``assert_realized_grid`` is between two independent things.
+    Reading the declared node back out of ``layout`` and asserting it equals
+    ``layout`` is the tautology this function exists to avoid: measured that
+    way, the guard accepted a port built on node 0 and a load moved a whole
+    cell, because both sides moved together.
+    """
     grid = sim._build_grid()
     shape = [int(s) for s in grid.shape]
-    lay = layout(kind, dut, dx)
+    ports = list(getattr(sim, "_ports", []))
+    elements = list(getattr(sim, "_lumped_rlc", []))
     out = {
         "grid_shape_nodes": shape,
         "n_cells": int(np.prod([max(s - 1, 1) for s in shape])),
         "dt_s": float(grid.dt),
         "courant_c_dt_over_dx": float(C0 * grid.dt / dx),
-        "port_index": [int(v) for v in grid.position_to_index((PORT_NODE * dx, 0.0, 0.0))],
+        "n_ports": len(ports),
         "boundary_faces": {
             "pec": sorted(getattr(grid, "pec_faces", set()) or set()),
             "pmc": sorted(getattr(grid, "pmc_faces", set()) or set()),
         },
     }
-    if lay["i_rlc"] is not None:
-        out["rlc_indices"] = [
-            [int(v) for v in grid.position_to_index((lay["i_rlc"] * dx, 0.0, k * dx))]
-            for k in range(lay["n_h_cells"])]
-        out["rlc_values_ohm"] = [float(s.R) for s in sim._lumped_rlc]
+    if ports:
+        p = ports[0]
+        out["port_index"] = [int(v) for v in grid.position_to_index(p.position)]
+        out["port_position_m"] = [float(v) for v in p.position]
+        out["port_component"] = p.component
+        out["port_impedance_ohm"] = float(p.impedance)
+        out["port_extent_m"] = None if p.extent is None else float(p.extent)
+        out["port_extent_cells"] = (None if p.extent is None
+                                    else int(round(p.extent / dx)))
+        out["port_excite"] = bool(p.excite)
+    out["n_rlc_elements"] = len(elements)
+    if elements:
+        out["rlc_indices"] = [[int(v) for v in grid.position_to_index(e.position)]
+                              for e in elements]
+        out["rlc_positions_m"] = [[float(v) for v in e.position] for e in elements]
+        out["rlc_values_ohm"] = [float(e.R) for e in elements]
+        out["rlc_components"] = [e.component for e in elements]
     return out
 
 
@@ -612,27 +635,44 @@ def assert_realized_grid(sim: Simulation, kind: str, dut: str, dx: float) -> dic
     """
     m = realized_grid(sim, kind, dut, dx)
     lay = layout(kind, dut, dx)
+    d = declared(kind, dut, dx)
     problems = []
     want_shape = [lay["n_nodes_x"], 2, lay["n_h_cells"] + 1]
     if m["grid_shape_nodes"] != want_shape:
         problems.append(f"grid is {m['grid_shape_nodes']} nodes, declared {want_shape}")
-    if m["port_index"] != [PORT_NODE, 0, 0]:
-        problems.append(f"the port resolved to node {m['port_index']}, declared "
-                        f"{[PORT_NODE, 0, 0]}")
+    if m["n_ports"] != 1:
+        problems.append(f"{m['n_ports']} port(s) registered, declared 1")
+    else:
+        if m["port_index"] != [PORT_NODE, 0, 0]:
+            problems.append(f"the port resolved to node {m['port_index']}, declared "
+                            f"{[PORT_NODE, 0, 0]}")
+        if not math.isclose(m["port_impedance_ohm"], d["zref_ohm"], rel_tol=1e-9):
+            problems.append(f"port impedance {m['port_impedance_ohm']} ohm, declared "
+                            f"{d['zref_ohm']}")
+        want_extent = None if kind == "lumped" else lay["n_h_cells"]
+        if m["port_extent_cells"] != want_extent:
+            problems.append(f"port extent {m['port_extent_cells']} cell(s), declared "
+                            f"{want_extent} for a {kind} port")
+        if not m["port_excite"]:
+            problems.append("the port is passive; this battery drives its one port")
     want_pec = {"z_lo", "z_hi"} | ({"x_hi"} if dut == "short" else set())
     want_pmc = {"x_lo", "y_lo", "y_hi"} | (set() if dut == "short" else {"x_hi"})
     if set(m["boundary_faces"]["pec"]) != want_pec:
         problems.append(f"PEC faces {m['boundary_faces']['pec']}, declared {sorted(want_pec)}")
     if set(m["boundary_faces"]["pmc"]) != want_pmc:
         problems.append(f"PMC faces {m['boundary_faces']['pmc']}, declared {sorted(want_pmc)}")
-    if lay["i_rlc"] is not None:
+    want_n = lay["n_h_cells"] if lay["i_rlc"] is not None else 0
+    if m["n_rlc_elements"] != want_n:
+        problems.append(f"{m['n_rlc_elements']} load element(s), declared {want_n}")
+    elif want_n:
         want = [[lay["i_rlc"], 0, k] for k in range(lay["n_h_cells"])]
-        if m.get("rlc_indices") != want:
-            problems.append(f"the load resolved to nodes {m.get('rlc_indices')}, "
+        if m["rlc_indices"] != want:
+            problems.append(f"the load resolved to nodes {m['rlc_indices']}, "
                             f"declared {want}")
-        if len(m.get("rlc_values_ohm", [])) != lay["n_h_cells"]:
-            problems.append(f"{len(m.get('rlc_values_ohm', []))} load element(s), "
-                            f"declared {lay['n_h_cells']}")
+        total = sum(m["rlc_values_ohm"])
+        if not math.isclose(total, d["r_total_ohm"], rel_tol=1e-9):
+            problems.append(f"the load sums to {total} ohm, declared "
+                            f"{d['r_total_ohm']}")
     if problems:
         raise RuntimeError(
             "assert_realized_grid: the built channel is not the declared channel "

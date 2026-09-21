@@ -213,18 +213,35 @@ def test_the_realized_channel_is_the_declared_channel(fixture, key):
     if entry is None:
         pytest.skip(f"no {key} record")
     d, g, ps = entry["declared"], entry["realized_grid"], entry["port_spec"]
+    # These fields exist because the driver resolves the port and the load from
+    # the positions the SIMULATION carries. An older driver read them back out
+    # of its own layout and compared layout to layout, which accepted a port
+    # built on node 0 and a load moved a whole cell; a record without them was
+    # written by that driver and is not evidence.
+    assert "n_ports" in g and "n_rlc_elements" in g, (
+        f"{key}: the realized block predates the independent resolution and "
+        "cannot say where the port and the load actually landed")
     assert g["grid_shape_nodes"] == [d["n_nodes_x"], 2, d["n_h_cells"] + 1], key
+    assert g["n_ports"] == 1, key
     assert g["port_index"] == [d["i_port"], 0, 0], key
+    assert g["port_impedance_ohm"] == pytest.approx(d["zref_ohm"], rel=1e-9), key
+    assert g["port_extent_cells"] == (None if entry["kind"] == "lumped"
+                                      else d["n_h_cells"]), key
+    assert g["port_excite"] is True, key
     want_pec = {"z_lo", "z_hi"} | ({"x_hi"} if entry["dut"] == "short" else set())
+    want_pmc = ({"x_lo", "y_lo", "y_hi"}
+                | (set() if entry["dut"] == "short" else {"x_hi"}))
     assert set(g["boundary_faces"]["pec"]) == want_pec, key
+    assert set(g["boundary_faces"]["pmc"]) == want_pmc, key
     assert ps["impedance_ohm"] == pytest.approx(d["zref_ohm"], rel=1e-9), key
     if entry["kind"] == "wire":
         assert ps["n_live"] == d["n_h_cells"], key
         assert ps["excite"] is True, key
-    if d["i_rlc"] is not None:
+    want_n = d["n_h_cells"] if d["i_rlc"] is not None else 0
+    assert g["n_rlc_elements"] == want_n, key
+    if want_n:
         assert g["rlc_indices"] == [[d["i_rlc"], 0, k]
                                     for k in range(d["n_h_cells"])], key
-        assert len(g["rlc_values_ohm"]) == d["n_h_cells"], key
         assert sum(g["rlc_values_ohm"]) == pytest.approx(d["r_total_ohm"], rel=1e-9), key
     # The realized length follows from the node layout, not from a stored float.
     assert d["length_m_realized"] == pytest.approx(
