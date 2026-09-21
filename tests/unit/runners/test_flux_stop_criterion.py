@@ -7,6 +7,8 @@ the static charge (and near-Nyquist grid buzz) does not carry — a *radiation-s
 appropriate for radiation / S-parameter measurements. It is opt-in: with ``radiated_flux_box=None``
 the default interior-energy criterion is used, byte-identically.
 """
+import warnings
+
 import numpy as np
 import pytest
 
@@ -49,7 +51,14 @@ def _stop_step(radiated_flux_box):
 def test_flux_stops_while_energy_floors():
     """On a soft-source fixture the energy criterion FLOORS (static charge) while the opt-in
     radiated-flux criterion STOPS — the #388 motivation."""
-    rE = _stop_step(None)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        rE = _stop_step(None)
+    # Pin WHY the energy run reached its cap: the run's own #388 advisory must say the energy
+    # left inside is electrostatic. A cap-hit for any other reason (trapped resonance, a failing
+    # absorber) would keep `nE >= 5900` green while no longer testing this scene.
+    assert [w for w in caught if "issue #388" in str(w.message) and "H-share" in str(w.message)], (
+        "the energy run capped, but not with the static-remnant advisory")
     rF = _stop_step(FLUX_BOX)
     nE = np.asarray(rE.time_series).shape[0]
     nF = np.asarray(rF.time_series).shape[0]

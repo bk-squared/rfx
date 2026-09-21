@@ -643,6 +643,10 @@ def test_y_directed_thru_reproduces_the_x_directed_thru():
         for m in ms:
             if "deprecated" in m.lower():
                 continue
+            # "12 x 8 cells", "80µm x 80µm": a multiplication sign is not an axis, and the swap
+            # below would turn it into a confusing diff. No advisory of this fixture has one;
+            # the day one does, say so instead.
+            assert " x " not in m, f"advisory uses ' x ' as a multiplication sign: {m[:120]!r}"
             if mirrored:
                 m = _axis.sub(lambda k: "y" if k.group(1) == "x" else "x", m)
             out.append(re.sub(r"[-+]?\d[\d.,]*(?:[eE][-+]?\d+)?", "#", m))
