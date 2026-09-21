@@ -870,42 +870,7 @@ do not fit; it does not silently use fewer planes.
   a `0.05` tolerance and maximum recurrence residual is `0.00588` against
   `0.03`.
 - Use about four or more annulus cells; the committed gate requires at least
-  3.5. Coarser cases are reported as under-resolved. **That recommendation was
-  calibrated against a defect, not against the mesh** (2026-09-21): the pin and
-  the outer conductor were realized as `sigma = PEC_SIGMA` per node, which damps
-  only the plus-side edges of a conductor cell, and the resulting one-sided wall
-  put the fitted phase constant 8-18 % above `omega sqrt(eps_r)/c` and lost up
-  to 15 % of the column power, both shrinking with the mesh in a way that looked
-  like under-resolution. With the conductors realized as PEC edge masks, and
-  measured on the 60 mm two-port board, the phase constant is within 0.7 % of
-  the analytic value at 3.79, 4, 6 and 9 annulus cells and the column power
-  spans [0.982, 0.997] at the two rungs where both ends were recorded. The
-  cell-size recommendation is being re-derived on the fixed lane and this line
-  will be replaced by that measurement; note that the board and its probe
-  ladder, not only the cell size, decide whether these comparisons settle at
-  all. See `docs/design_notes/coax_conductor_realization.md`.
-- **Refining the mesh shortens the probe array; raise `probe_spacing_cells` or
-  `probe_count` yourself.** `probe_start_cells` and `probe_spacing_cells` are
-  counted in CELLS, so the probe planes sit at fixed cell offsets from the DUT
-  and a finer `dx` pulls them physically closer together. The matrix-pencil fit
-  and the phase-slope estimate both work on the phase the array spans, so that
-  span is what has to stay useful — the lane does not rescale it for you.
-  Measured on the two committed boards, the span of the WHOLE array at band
-  centre:
-
-  | annulus cells | 8x8x60 mm, 12 probes (start 8, spacing 4) | 8x8x12 mm, 3 probes (start 4, spacing 2) |
-  |---|---|---|
-  | 3.79 | 4.006 rad = 0.638 wavelengths | 0.410 rad = 0.065 wavelengths |
-  | 4 | 3.795 rad = 0.604 | 0.388 rad = 0.062 |
-  | 6 | 2.530 rad = 0.403 | 0.259 rad = 0.041 |
-  | 9 | 1.687 rad = 0.269 | 0.173 rad = 0.028 |
-
-  The 12-probe board still spans a quarter wavelength at 9 annulus cells; the
-  3-probe board is down to 0.17 rad, and its fitted phase constant gets WORSE
-  with refinement (4.60 % at 3.79 cells, 13.58 % at 9) for that reason rather
-  than because of the line. The reference-plane separation moves too — 8.3 %
-  across that ladder on the 12 mm board against 0.2 % on the 60 mm one — and
-  the phase-slope estimate divides by it.
+  3.5. Coarser cases are reported as under-resolved.
 - The matched-load fixture reaches `|Gamma|` deviation `0.0929` because of the
   single-cell annular resistor and is reported separately rather than used as a
   method gate.
@@ -939,14 +904,7 @@ default-scale green promoted-lane run VESSL `369367252220`) brackets — it does
 (not an idealized analytic one), its phase; a mesh-refinement convergence
 witness (VESSL `369367251845`) moved the measured/analytic `beta` ratio from
 `1.1208` to `1.0662` (annulus `3.79` -> `5.68` cells, implied convergence
-order `p ~= 1.5`, two-point, from a single 1.5x step) -- **that witness was
-measuring the conductor realization, not the mesh** (2026-09-21): a
-homogeneously filled PEC-bounded coax carries TEM at `omega sqrt(eps_r)/c`
-whatever the staircase does to the cross-section, so a `beta` ratio of `1.12`
-was never a resolution statement. It came from the per-node `sigma`
-realization, and with the conductors realized as PEC edge masks the same ratio
-is `1.0018`, `1.0050` and `1.0068` at 4, 6 and 9 annulus cells. The refinement
-"convergence order" read off it is therefore not a convergence order; the `eps_scale` AD
+order `p ~= 1.5`, two-point, from a single 1.5x step); the `eps_scale` AD
 channel below is `GRAD_SAFE`;
 issue #812 P1 (2026-09-01) adds the leg that phase bracketing was missing --
 the referee's phase-vs-own-`beta` witness is **E1** (a coherent
