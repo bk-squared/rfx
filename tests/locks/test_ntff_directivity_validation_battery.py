@@ -78,9 +78,13 @@ values are kept beside them because the gates used to be set on those.
     (monotone; was 0.0391 -> 0.0147 -> 0.0064);
     flux ratio 0.5003 / 0.5150 / 0.5226 (was 0.4948 / 0.5128 / 0.5215;
     per-rung bands, see caveat 2)
-  non-uniform lane, same fixture forced through the NU runner
-    (dz_profile = 28 x 3.0 mm): D = 1.7614008 dBi (err +0.00049 dB),
-    P_ntff/P_flux = 0.4953183, ring-down settling -78.45 dB
+  non-uniform lane, same fixture forced through the NU runner on a z
+    profile that REALIZES the same 33 x 33 x 33 grid (dz_profile = 20 x
+    3.0 mm): D = 1.761428040 dBi (err +0.000515 dB), P_ntff/P_flux =
+    0.500321038, ring-down settling -78.40 dB. The two lanes agree to
+    1.8e-06 dB and 3.4e-07. A profile with a different cell count moves
+    the +z absorber and the flux box one cell inside it: 28 cells realizes
+    33 x 33 x 41 and reads 0.4953, 21 cells reads 0.5039
   box-size witness (slow_physics, 0.09 m domain, dx=1.5 mm, 800 steps):
     |D err| 0.00013 / 0.00050 / 0.00204 dB at box half-width 9 / 18 / 27 mm
     (was 0.0212 / 0.0677 / 0.1660 dB with the first-order rule)
@@ -324,6 +328,20 @@ def _net_outward_power(face_flux: dict) -> float:
             - (face_flux["x_lo"] + face_flux["y_lo"] + face_flux["z_lo"]))
 
 
+def _realized_shape(grid) -> tuple:
+    """(nx, ny, nz) the run actually built, not what the fixture declared.
+
+    A ``Grid`` carries ``shape``; a ``NonUniformGrid`` is a NamedTuple with
+    nx/ny/nz. Both are read here so two lanes can be compared on what they
+    realized — the rule the repo repeats most often, and the one that
+    matters here because the absorber position follows the cell count.
+    """
+    shape = getattr(grid, "shape", None)
+    if shape is not None and len(shape) == 3:
+        return tuple(int(v) for v in shape)
+    return (int(grid.nx), int(grid.ny), int(grid.nz))
+
+
 def _run_rung(dx: float, n_steps: int, *, component: str = "ez",
               source_pos: tuple = None) -> dict:
     """Run one fixture rung; return the derived calibration observables."""
@@ -346,6 +364,7 @@ def _run_rung(dx: float, n_steps: int, *, component: str = "ez",
                            THETA_GRID, PHI_GRID)
     return {
         "dx": dx,
+        "shape": _realized_shape(res.grid),
         "tail_over_peak": tail_over_peak,
         "face_jnp": face_jnp,
         "face_f64": face_f64,
@@ -681,21 +700,26 @@ def test_dx_ladder_directivity_converges_and_ratio_stable(base_rung):
 # ===========================================================================
 # Non-uniform lane: the same fixture, forced through the NU runner
 # ===========================================================================
-# Measured on this tree (2026-09-21), dz_profile = 28 uniform 3.0 mm cells:
-#   D = 1.7614008 dBi (|err| 0.00049 dB), P_ntff/P_flux = 0.4953183,
-#   ring-down settling -78.45 dB, probe tail/peak 1.26e-04.
-# Band 0.003 on the ratio, centred on that MEASUREMENT and not on the
-# derived 0.5, separates it from both slot mutations: E stamped at n*dt
-# gives 0.4872163 (0.0081 away, 2.7x the band) and moving the NU runner's
-# NTFF accumulate above its E update gives 0.5012531 (0.0059 away, 2.0x).
-# The measurement sits 0.0047 from the derived 0.5 while the uniform lane
-# sits 0.00032 from it; that difference is NOT explained here and this band
-# makes no claim about it — it is a stability lock on the NU slot, in the
-# same spirit as the per-rung ladder bands.
-_NU_RATIO_CENTER = 0.4953183
-_NU_RATIO_BAND = 0.003
+# The z profile must REALIZE the uniform fixture's grid, not merely declare
+# the same cell size. 28 cells of 3.0 mm builds 33 x 33 x 41 against the
+# uniform rung's 33 x 33 x 33 — the +z absorber eight cells further out —
+# and the flux box, which sits one cell from the absorber, follows it: the
+# ratio reads 0.4953 at 28 cells and 0.5039 at 21. That is a different
+# structure, not a different lane. At 20 cells both lanes realize
+# 33 x 33 x 33 and the NU lane reproduces the uniform one.
+#
+# Measured on this tree (2026-09-21), dz_profile = 20 uniform 3.0 mm cells:
+#   realized 33 x 33 x 33, D = 1.761428040 dBi (|err| 0.000515 dB),
+#   P_ntff/P_flux = 0.500321038 (uniform rung: 0.500320703),
+#   ring-down settling -78.40 dB, probe tail/peak 1.30e-04.
+# The ratio is therefore gated against the DERIVED 0.5 with the same
+# tolerance as the uniform lane, not against a lane-specific centre.
+_NU_Z_CELLS = 20
 _NU_D_ERR_MAX_DB = 0.005
 _NU_SETTLING_MAX_DB = -40.0
+# Cross-lane agreement, measured: ratio 3.4e-07 apart, D 1.8e-06 dB apart.
+_NU_VS_UNIFORM_RATIO_MAX = 1e-4
+_NU_VS_UNIFORM_D_MAX_DB = 1e-4
 
 
 def _build_nu_sim(dx: float, nz_cells: int) -> Simulation:
@@ -723,27 +747,42 @@ def _build_nu_sim(dx: float, nz_cells: int) -> Simulation:
 
 
 @pytest.mark.slow_physics
-def test_nonuniform_lane_power_calibration_and_slot():
+def test_nonuniform_lane_power_calibration_and_slot(base_rung):
     """The NU runner must hand the accumulator the same E/H pair as the uniform one.
 
     The non-uniform runner builds its NTFF box inline and calls
     ``accumulate_ntff`` from its own scan body, so neither the uniform
     lane's gates nor the box constructors' tests say anything about it.
-    The flux box here is independent of the NTFF chain and does not move
-    under either mutation, which is what makes the ratio a slot witness
+    The flux box is independent of the NTFF chain and does not move under
+    either slot mutation, which is what makes the ratio a slot witness
     rather than a scale witness.
 
-    Measured on this tree: D = 1.7614008 dBi, ratio = 0.4953183, settling
-    -78.45 dB. Mutations: E stamped at n*dt -> ratio 0.4872163, D err
-    0.0117 dB; NTFF accumulate moved above the NU E update -> ratio
-    0.5012531, D err 0.0122 dB. Both cross both gates.
+    The realized grid shape is asserted first. The flux box sits one cell
+    from the absorber and its power follows where the absorber is, so a z
+    profile with a different cell count is a different STRUCTURE and its
+    ratio is not comparable: 28 cells realizes 33 x 33 x 41 and reads
+    0.4953, 21 cells reads 0.5039. On the 20-cell profile, which realizes
+    the uniform fixture's own 33 x 33 x 33, the two lanes agree.
+
+    Measured on this tree: D = 1.761428040 dBi against the uniform rung's
+    1.761429829, ratio 0.500321038 against 0.500320703, settling -78.40 dB.
+    Mutations, same fixture: E stamped at n*dt -> ratio 0.492221, D err
+    0.010 dB; NTFF accumulate moved above the NU E update -> ratio 0.506219,
+    D err 0.011 dB. Both cross the gates.
     """
-    sim = _build_nu_sim(BASE_DX_M, 28)
+    sim = _build_nu_sim(BASE_DX_M, _NU_Z_CELLS)
     res = sim.run(n_steps=BASE_N_STEPS)
     assert type(res.grid).__name__ == "NonUniformGrid", (
         f"fixture did not take the NU lane (grid {type(res.grid).__name__})")
     assert res.ntff_box.collocation == "face_centre", (
         "NU runner built a legacy-collocation NTFF box")
+
+    shape = _realized_shape(res.grid)
+    assert shape == base_rung["shape"], (
+        f"NU fixture realized {shape} against the uniform rung's "
+        f"{base_rung['shape']}; a different cell count moves the absorber "
+        f"and the flux box with it, so the two are not the same structure "
+        f"and their power ratios are not comparable")
 
     settling = getattr(res, "settling_db", None)
     assert settling is not None and settling < _NU_SETTLING_MAX_DB, (
@@ -757,17 +796,27 @@ def test_nonuniform_lane_power_calibration_and_slot():
     p_ntff = float(_total_radiated_power(ff)[0])
     d_dbi = float(directivity(ff)[0])
     ratio = p_ntff / p_flux
-    print(f"\n[ntff-battery NU lane] D={d_dbi:.7f} dBi, ratio={ratio:.7f}, "
+    ratio_uniform = base_rung["p_ntff"] / base_rung["p_flux_f64"]
+    print(f"\n[ntff-battery NU lane] realized {shape}, D={d_dbi:.9f} dBi, "
+          f"ratio={ratio:.9f} (uniform {ratio_uniform:.9f}), "
           f"settling={settling:.2f} dB")
 
     err_db = abs(d_dbi - D_THEORY_DBI)
     assert err_db < _NU_D_ERR_MAX_DB, (
         f"NU lane D = {d_dbi:.6f} dBi vs theory {D_THEORY_DBI:.4f} "
-        f"(|err| {err_db:.6f} dB, measured 0.00049, gate {_NU_D_ERR_MAX_DB})")
-    assert abs(ratio - _NU_RATIO_CENTER) < _NU_RATIO_BAND, (
-        f"NU lane P_ntff/P_flux = {ratio:.7f} outside {_NU_RATIO_CENTER} "
-        f"+/- {_NU_RATIO_BAND} — the NU runner's NTFF slot or the transform's "
-        f"absolute scale has moved")
+        f"(|err| {err_db:.6f} dB, measured 0.000515, gate {_NU_D_ERR_MAX_DB})")
+    assert abs(ratio - _RATIO_PREDICTED) < _RATIO_TOL_BASE, (
+        f"NU lane P_ntff/P_flux = {ratio:.7f}, predicted {_RATIO_PREDICTED} "
+        f"(measured 0.500321, gate +/-{_RATIO_TOL_BASE}) — the NU runner's "
+        f"NTFF slot, or the absolute scale of the transform, has moved")
+    assert abs(ratio - ratio_uniform) < _NU_VS_UNIFORM_RATIO_MAX, (
+        f"the two lanes disagree on the NTFF/flux power ratio: NU "
+        f"{ratio:.9f} vs uniform {ratio_uniform:.9f} (measured 3.4e-07 apart "
+        f"on the same realized grid, gate {_NU_VS_UNIFORM_RATIO_MAX})")
+    assert abs(d_dbi - base_rung["d_dbi"]) < _NU_VS_UNIFORM_D_MAX_DB, (
+        f"the two lanes disagree on directivity: NU {d_dbi:.9f} dBi vs "
+        f"uniform {base_rung['d_dbi']:.9f} dBi (measured 1.8e-06 dB apart, "
+        f"gate {_NU_VS_UNIFORM_D_MAX_DB} dB)")
 
 
 # ===========================================================================

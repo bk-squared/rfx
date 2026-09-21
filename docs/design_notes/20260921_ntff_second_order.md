@@ -168,7 +168,7 @@ runs the gates. Unmutated on this branch: oracle 32 passed, battery fast
 |---|---|---|---|
 | M1 | integrate at the corner node again (`centre=False` in the numpy position call) | RED | oracle error bound + convergence rate, all three meshes; 2.256e-01 / 1.134e-01 / 5.673e-02, ratios 1.99, 2.00 |
 | M2 | no normal interpolation for H (weight 0 on the lower-index cell) | RED | same; 1.935e-01 / 9.737e-02 / 4.873e-02, ratios 1.99, 2.00 |
-| M3 | E stamped at n*dt | RED | oracle (3.404e-01 / 3.427e-01 / 3.433e-01, ratios 0.99, 1.00); battery `test_ntff_absolute_power_calibration_vs_flux_box`, `test_dipole_directivity_regression_lock`, the ladder, the NU lane, the 27 mm box |
+| M3 | E stamped at n*dt | RED | oracle (3.404e-01 / 3.427e-01 / 3.433e-01, ratios 0.99, 1.00); battery `test_ntff_absolute_power_calibration_vs_flux_box` (ratio 0.4922200), `test_dipole_directivity_regression_lock`, the ladder, the NU lane (ratio 0.492220329, D err 0.010132 dB), the 27 mm box |
 | M4 | no in-plane half-cell average for E | RED | oracle; 2.977e-02 / 1.324e-02 / 6.366e-03, ratios 2.25, 2.08 |
 | M5 | y-face area element back to dx*dy | RED | `test_scalar_face_area_elements_span_their_own_face` |
 | M6 | face-cell layout recorded as a str again | RED | `test_box_is_a_valid_jax_pytree`, both refusal tests, the subgridded wiring test |
@@ -179,7 +179,7 @@ runs the gates. Unmutated on this branch: oracle 32 passed, battery fast
 | M11 | weight read from the wrong cell (producer swap) | RED | the same, plus `test_normal_weight_does_not_wrap_at_index_zero` and `test_normal_interpolation_lands_on_the_face_plane` |
 | M12 | x and y cell widths crossed in the weight builder | RED | `test_accumulator_lands_on_the_face_cell_centre_exactly` |
 | M13 | NTFF accumulate moved above the E update, uniform runner | RED | battery fast ratio + directivity; slow ladder and the 27 mm box |
-| M14 | NTFF accumulate moved above the E update, NU runner | RED | battery slow `test_nonuniform_lane_power_calibration_and_slot`; fast lane green, as for M8 |
+| M14 | NTFF accumulate moved above the E update, NU runner | RED | battery slow `test_nonuniform_lane_power_calibration_and_slot`: ratio 0.506218892 against 0.5 +/- 0.003 and D err 0.010687 dB against 0.005. Fast lane green, as for M8 |
 | M15 | flush-box refusal removed | RED | all three refusal tests |
 | M16 | NU far-field fixture back to 200 steps | RED | both `test_nu_ntff_dipole_directivity` cases, on the settling witness |
 
@@ -257,18 +257,21 @@ not investigated: it is thirty times inside the 2 dB bar, on a
 0.3-wavelength domain whose box is one cell from the absorber. The test now
 runs 600 steps and asserts the settling witness.
 
-Two lanes the uniform gates never reached, measured here for the first time:
+The non-uniform lane, which the uniform gates never reached:
 
-| lane | D | |err| vs 1.760913 dBi | P_ntff / P_flux | settling |
-|---|---|---|---|---|
-| non-uniform runner, battery fixture | 1.7614008 dBi | 0.00049 dB | 0.4953183 | -78.45 dB |
-| uniform runner, same fixture | 1.7614298 dBi | 0.00052 dB | 0.5003207 | -- |
+| lane | realized grid | D | \|err\| vs 1.760913 dBi | P_ntff / P_flux | settling |
+|---|---|---|---|---|---|
+| non-uniform runner, 20 z cells | 33 x 33 x 33 | 1.761428040 dBi | 0.000515 dB | 0.500321038 | -78.40 dB |
+| uniform runner, same fixture | 33 x 33 x 33 | 1.761429829 dBi | 0.000517 dB | 0.500320703 | -- |
 
-The NU lane's power ratio sits 0.0047 from the derived 0.5 while the uniform
-lane sits 0.00032 from it. That difference is recorded, not explained; the
-NU gate is a band on the measurement, not a claim about the derived value.
-
-LEADER FILLS — what this says about the transform.
+On a z profile that realizes the same grid as the uniform fixture (20 cells;
+both lanes 33 x 33 x 33) the non-uniform lane reproduces the uniform one:
+NTFF-to-flux power ratio 0.5003210 against 0.5003207, directivity 1.761428040
+dBi against 1.7614298 dBi. The far-field chain is the same on both lanes,
+accumulation slot included, and the battery now asserts it. The fixture also
+asserts the realized grid shape, because the flux box sits one cell from the
+absorber and its power follows where the absorber is; a z profile with a
+different cell count is a different structure, not a different lane.
 
 `tests/crossval/` and `validation/crossval/` were not run (another session
 owns them this week).
