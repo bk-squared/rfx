@@ -680,7 +680,18 @@ def test_off_lattice_pec_box_reports_the_cell_count_the_solve_builds(lane):
             material="pec")
 
     rz = realized(sim)
-    n_solve = int(np.asarray(rz.pec_mask, dtype=bool).sum())
+    # Counted inside the declared domain. The box fills the first cell layer on
+    # x-lo and y-lo (0.3 dx is inside the cell whose centre is at 0.5 dx), so it
+    # continues through those two absorbers (#801), and those cells are rfx's
+    # continuation, not the drawing the report is about.
+    g = rz.grid
+    full = np.asarray(rz.pec_mask, dtype=bool)
+    interior = full[g.pad_x_lo:full.shape[0] - g.pad_x_hi,
+                    g.pad_y_lo:full.shape[1] - g.pad_y_hi,
+                    g.pad_z_lo:full.shape[2] - g.pad_z_hi]
+    assert int(full.sum()) > int(interior.sum()), (
+        "the box reaches x-lo and y-lo and must continue into their absorbers")
+    n_solve = int(interior.sum())
     item = _geo(sim.fidelity_report(print_report=False), 0)
 
     assert item["n_cells"] == n_solve, (item["n_cells"], n_solve)
