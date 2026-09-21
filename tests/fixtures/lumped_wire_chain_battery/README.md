@@ -38,7 +38,7 @@ the closed form to `S11 = Gamma_L * exp(-2 j beta L)`: the magnitude is
 | `solves` | one entry per (port kind, DUT, cell size): complex S11, the curves, the grid the driver asserted before solving, the port specification the solve returned, the verbatim preflight text, every warning, the record-doubling witness, wall time and peak memory |
 | `ladder` | the three cell sizes side by side per (port kind, DUT): dB distance to the finest rung, phase-crossing distance, the matched floor, successive differences and their ratio, and the coarsest rung that sits inside the bar |
 | `identity` | the no-op `eps_override` call against the plain call, per port kind |
-| `adfd` | reverse-mode AD against a float64-loss central finite difference, in the load resistance and in a permittivity scale, with the comparator's ULP span recorded before its verdict and the closed form's own derivative beside both |
+| `adfd` | reverse-mode AD against a float64-loss central finite difference, in the load resistance and in a permittivity scale. One entry per (port kind, leg, cell size), with `predeclared_rung` marking the one the pre-declaration named. Each case records the comparator's ULP span before its verdict, the closed form's own derivative, the three pairwise distances, and where on the curve the derivative was taken |
 | `pilot` | the record-length and drive ladder the battery's `num_periods` and drive were chosen from |
 | `openems_context` | whether a recorded openEMS lumped comparison was readable, and what it is |
 
@@ -53,6 +53,21 @@ node and an open on an H half-node, so the two cannot both land an integer
 number of cells from the port, and because the lattice's numerical dispersion at
 the coarsest rung is of the same size as the difference. The replay test reads
 the realized-length reference, which is the one the `deviations` block names.
+
+## Two things the artifact says about its own instruments
+
+The `adfd` block carries `what_the_ulp_span_does_not_say`. The span is
+`|f_plus - f_minus|` in ULPs of the loss, so it answers whether the two LOSS
+values are resolved from each other, not whether the DERIVATIVE is. An objective
+whose true derivative is zero gives two losses millions of ULPs apart whose
+difference is round-off, and the span passes it. Read each case's `closed_form`
+gradient and the loss beside it before reading its `rel_err`.
+
+Every reflecting solve carries `phase.angle_slope_rad_per_hz`. The declared
+phase test is the crossing frequencies, and those cannot see a conjugated S:
+`angle = phi - 2 beta L` and `angle = phi + 2 beta L` cross multiples of pi at
+the same frequencies. The slope can. It is recorded as a fact with no threshold
+— a second criterion is the PI's to declare, not the driver's to invent.
 
 ## The recorded openEMS comparison is context
 
