@@ -1024,25 +1024,47 @@ def _beta(rec_result) -> np.ndarray:
     return np.asarray(d["real"], dtype=float) + 1j * np.asarray(d["imag"], dtype=float)
 
 
+def _vertex_delta(y0: float, y1: float, y2: float) -> float:
+    denom = y0 - 2.0 * y1 + y2
+    return 0.0 if denom == 0.0 else 0.5 * (y0 - y2) / denom
+
+
 def parabolic_min(freqs: np.ndarray, y: np.ndarray) -> dict:
-    """Minimum of ``y`` over ``freqs``: the raw bin, and the vertex of the
-    parabola through that bin and its two neighbours. Both are kept — the raw
-    bin is what the grid can say, the interpolated value is an estimate whose
-    error the grid bounds."""
+    """Locate the minimum of ``|S21|`` three ways and keep all three.
+
+    * the raw bin — what the sweep can say without any model;
+    * the vertex of the parabola through ``|S21|`` at that bin and its
+      neighbours;
+    * the vertex of the parabola through ``|S21|^2``. Near a simple
+      transmission zero ``S21 ~ a (f - f0)``, so ``|S21|^2`` IS a parabola
+      there and ``|S21|`` is a V — which makes this the estimator the physics
+      justifies and the other one a check on it.
+
+    The spread between the two interpolated values is recorded beside them: on
+    a sweep whose bin is wider than the bar, it is the only empirical handle on
+    what the interpolation costs.
+    """
     k = int(np.argmin(y))
-    out = {"bin_index": k, "bin_hz": float(freqs[k]), "bin_value": float(y[k])}
+    step = float(freqs[1] - freqs[0])
+    out = {"bin_index": k, "bin_hz": float(freqs[k]), "bin_value": float(y[k]),
+           "bin_width_hz": step}
     if 0 < k < len(y) - 1:
-        y0, y1, y2 = float(y[k - 1]), float(y[k]), float(y[k + 1])
-        denom = y0 - 2.0 * y1 + y2
-        delta = 0.0 if denom == 0.0 else 0.5 * (y0 - y2) / denom
-        step = float(freqs[k + 1] - freqs[k])
-        out["interp_hz"] = float(freqs[k]) + delta * step
-        out["interp_delta_bins"] = float(delta)
-        out["interp_value"] = y1 - 0.25 * (y0 - y2) * delta
+        d_mag = _vertex_delta(float(y[k - 1]), float(y[k]), float(y[k + 1]))
+        sq = np.asarray(y, dtype=float) ** 2
+        d_sq = _vertex_delta(float(sq[k - 1]), float(sq[k]), float(sq[k + 1]))
+        out["interp_hz"] = float(freqs[k]) + d_sq * step
+        out["interp_delta_bins"] = float(d_sq)
+        out["interp_on"] = "|S21|^2"
+        out["interp_hz_on_magnitude"] = float(freqs[k]) + d_mag * step
+        out["interp_delta_bins_on_magnitude"] = float(d_mag)
+        out["estimator_spread_hz"] = abs(out["interp_hz"] - out["interp_hz_on_magnitude"])
     else:
         out["interp_hz"] = float(freqs[k])
         out["interp_delta_bins"] = 0.0
-        out["interp_value"] = float(y[k])
+        out["interp_on"] = "|S21|^2"
+        out["interp_hz_on_magnitude"] = float(freqs[k])
+        out["interp_delta_bins_on_magnitude"] = 0.0
+        out["estimator_spread_hz"] = 0.0
         out["at_band_edge"] = True
     return out
 
@@ -1211,6 +1233,21 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                 "z0_real_median_ohm": float(np.median(np.real(
                     np.asarray(rec["result"]["Z0"]["real"], dtype=float)))),
             }
+            # What a support-matrix line has to state about a cell size: cells
+            # per guided wavelength at the top of the band, and cells across
+            # the two smallest patterned dimensions.
+            dx_r = rec["declared"]["dx_m"]
+            eps_eff_hj = rec["declared"]["hj_eps_eff"]
+            lam_g_hi = C0 / (freqs.max() * math.sqrt(eps_eff_hj))
+            entry["resolution"] = {
+                "dx_m": dx_r,
+                "cells_per_guided_wavelength_at_f_max": lam_g_hi / dx_r,
+                "f_max_hz": float(freqs.max()),
+                "cells_across_substrate": rec["declared"]["h_sub_m"] / dx_r,
+                "cells_across_trace": rec["declared"]["w_trace_m"] / dx_r,
+                "smallest_patterned_dimension_m": min(rec["declared"]["h_sub_m"],
+                                                      rec["declared"]["w_trace_m"]),
+            }
             entry["settled"] = bool(rec["result"]["settling_db"] is not None
                                     and np.all(np.asarray(rec["result"]["settling_db"])
                                                <= BAR["settling_db"]))
@@ -1226,6 +1263,15 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                                                    notch["bin_index"])
                 f_an = rec["declared"]["f_notch_analytic_hz"]
                 entry["f_notch_analytic_hz"] = f_an
+                # What the sweep can resolve, against what the bar asks for.
+                entry["notch_resolution"] = {
+                    "bin_width_hz": notch["bin_width_hz"],
+                    "bin_width_frac_of_analytic": notch["bin_width_hz"] / f_an,
+                    "bar_frequency_frac": BAR["frequency_frac"],
+                    "estimator_spread_hz": notch["estimator_spread_hz"],
+                    "estimator_spread_frac_of_analytic":
+                        notch["estimator_spread_hz"] / f_an,
+                }
                 entry["notch_vs_analytic_frac"] = {
                     "bin": abs(notch["bin_hz"] - f_an) / f_an,
                     "interp": abs(notch["interp_hz"] - f_an) / f_an,
@@ -1240,6 +1286,27 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                 entry["notch_vs_analytic_realized_frac"] = {
                     "bin": abs(notch["bin_hz"] - f_an_real) / f_an_real,
                     "interp": abs(notch["interp_hz"] - f_an_real) / f_an_real,
+                }
+                # And on the SOLVED size the pre-declaration names: a PEC
+                # sheet's edge is solved 0.35 cell beyond its last node, so
+                # the trace is W + 0.7 dx wide (two free edges) and the stub
+                # is L_stub + 0.35 dx long (one free end; the other joins the
+                # line). Three references, one measurement, no choice made
+                # here about which one the family should be read against.
+                dx_e = rec["declared"]["dx_m"]
+                _, eps_eff_solved = hammerstad_jensen_z0_eps_eff(
+                    W_TRACE + 0.7 * dx_e, H_SUB, EPS_R)
+                f_an_solved = C0 / (4.0 * (L_STUB + 0.35 * dx_e)
+                                    * math.sqrt(eps_eff_solved))
+                entry["solved_sheet_size_m"] = {
+                    "trace_w": W_TRACE + 0.7 * dx_e,
+                    "stub_len": L_STUB + 0.35 * dx_e,
+                    "rule": "a PEC sheet edge is solved 0.35 cell past its last node",
+                }
+                entry["f_notch_analytic_solved_hz"] = f_an_solved
+                entry["notch_vs_analytic_solved_frac"] = {
+                    "bin": abs(notch["bin_hz"] - f_an_solved) / f_an_solved,
+                    "interp": abs(notch["interp_hz"] - f_an_solved) / f_an_solved,
                 }
             fix["solves"][f"{dut}_{um}um"] = entry
 

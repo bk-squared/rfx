@@ -54,6 +54,12 @@ def _vertex(freqs, y, k):
     return -b / (2.0 * a)
 
 
+def _notch_hz(freqs, s21, k):
+    """The battery's notch estimator: the parabola vertex on |S21|^2, which is
+    the quantity a simple transmission zero makes quadratic."""
+    return _vertex(freqs, np.abs(s21) ** 2, k)
+
+
 def _stopband_edges(freqs, y_db, level, k):
     """Linear crossings of ``level`` bracketing bin ``k``, found by walking out
     from the minimum. Independent of the assembler's version."""
@@ -162,7 +168,14 @@ def test_every_stored_summary_follows_from_the_stored_s(fixture, key):
     assert entry["notch"]["bin_index"] == k
     assert entry["notch"]["bin_hz"] == pytest.approx(freqs[k], rel=1e-15)
     if 0 < k < len(mag) - 1:
-        assert entry["notch"]["interp_hz"] == pytest.approx(_vertex(freqs, mag, k), rel=1e-9)
+        assert entry["notch"]["interp_on"] == "|S21|^2"
+        assert entry["notch"]["interp_hz"] == pytest.approx(_notch_hz(freqs, S[1, 0, :], k),
+                                                            rel=1e-9)
+        assert entry["notch"]["interp_hz_on_magnitude"] == pytest.approx(
+            _vertex(freqs, mag, k), rel=1e-9)
+        assert entry["notch"]["estimator_spread_hz"] == pytest.approx(
+            abs(entry["notch"]["interp_hz"] - entry["notch"]["interp_hz_on_magnitude"]),
+            rel=1e-9)
     assert entry["notch_depth_db"] == pytest.approx(_db(mag)[k], abs=1e-9)
 
     f_lo, f_hi = _stopband_edges(freqs, _db(mag), -10.0, k)
@@ -237,7 +250,7 @@ def test_the_notch_frequency_at_the_claims_rung_matches_the_quarter_wave_value(f
     S = _complex(entry["S"])
     freqs = np.asarray(entry["freqs_hz"], dtype=float)
     k = int(np.argmin(np.abs(S[1, 0, :])))
-    f_meas = _vertex(freqs, np.abs(S[1, 0, :]), k)
+    f_meas = _notch_hz(freqs, S[1, 0, :], k)
     _, eps_eff = _hj(entry["declared"]["w_trace_m"], entry["declared"]["h_sub_m"],
                      entry["declared"]["eps_r"])
     f_an = C0 / (4.0 * entry["declared"]["l_stub_m"] * math.sqrt(eps_eff))
