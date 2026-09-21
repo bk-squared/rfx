@@ -432,6 +432,45 @@ def ds11_deps_short(zc0: float, eps_r: float, beta, length_m: float, zref: float
     return 2.0 * zref * dzin / (zin + zref) ** 2
 
 
+def fit_electrical_length(s11_short, freqs, eps_r: float) -> dict:
+    """The line's OWN electrical length, fitted from a short's phase.
+
+    A short referenced to the line's own Zc gives ``S11 = -exp(-2 j beta L)``,
+    so the unwrapped angle is ``pi - 2 beta L`` and is linear in frequency with
+    slope ``-4 pi sqrt(eps_r) L / c``. A least-squares straight line through
+    ``unwrap(angle(S11))`` against frequency therefore returns the length the
+    LATTICE realizes, which is not the length that was drawn: the numerical
+    dispersion and the half-cell the port and the termination sit on both land
+    in it.
+
+    The fit is `numpy.polyfit(freqs, unwrap(angle(S11)), 1)` over the whole
+    band, unweighted. Its residual is reported so a reader can see whether the
+    angle really was a straight line — on a lossless line it is, and a large
+    residual would mean the record is not the line this fit assumes.
+    """
+    ang = np.unwrap(np.angle(np.asarray(s11_short)))
+    f = np.asarray(freqs, dtype=float)
+    slope, intercept = np.polyfit(f, ang, 1)
+    resid = ang - (slope * f + intercept)
+    length = -float(slope) * C0 / (4.0 * math.pi * math.sqrt(eps_r))
+    return {
+        "length_m": length,
+        "slope_rad_per_hz": float(slope),
+        "intercept_rad": float(intercept),
+        "max_abs_residual_rad": float(np.abs(resid).max()),
+        "rms_residual_rad": float(np.sqrt(np.mean(resid ** 2))),
+        "eps_r": eps_r,
+        "n_bins": int(f.size),
+        "fit": ("least squares straight line through unwrap(angle(S11)) against "
+                "frequency over the whole band, unweighted; "
+                "L = -slope * c / (4 pi sqrt(eps_r)), from "
+                "angle = pi - 2 beta L with beta = omega sqrt(eps_r) / c"),
+        "what_it_is_not": ("not the drawn length. The lattice's numerical "
+                           "dispersion and the half-cell the port and the "
+                           "termination sit on are both inside it."),
+    }
+
+
 def numerical_beta(freq_hz, dx: float, dt: float, eps_r: float = EPS_R_AIR):
     """The Yee lattice's own phase constant along the propagation axis for a
     wave with no transverse variation:
@@ -1146,6 +1185,31 @@ def _bin_context(s11_meas: np.ndarray, s11_an: np.ndarray, which: str) -> dict:
             "angle_diff_rad": float(np.angle(s11_meas[k]) - np.angle(s11_an[k]))}
 
 
+def _fitted_length(args, kind: str, dx: float, eps_r: float) -> dict:
+    """Solve the SHORT of this channel at this rung and fit its length.
+
+    One extra solve per AD stage, so the fitted length comes from the same
+    commit, the same drive and the same record length as the gradients it sits
+    beside rather than from another job's record.
+    """
+    sim = build_sim(kind, "short", dx, drive=args.drive, eps_r=eps_r)
+    assert_realized_grid(sim, kind, "short", dx, eps_r)
+    with _Captured():
+        res = solve_s11(sim, num_periods=args.num_periods)
+    s11 = _s11_of(res)
+    fit = fit_electrical_length(s11, FREQS, eps_r)
+    fit["declared_length_m"] = layout(kind, "short", dx)["length_m_realized"]
+    fit["frac_from_declared"] = abs(
+        fit["length_m"] - fit["declared_length_m"]) / fit["declared_length_m"]
+    fit["s11_short"] = _c(s11)
+    _log(f"fitted electrical length at {dx * 1e6:.0f} um, eps_r={eps_r}: "
+         f"{fit['length_m'] * 1e3:.5f} mm against the declared "
+         f"{fit['declared_length_m'] * 1e3:.5f} mm "
+         f"({fit['frac_from_declared'] * 100:.3f} %), rms residual "
+         f"{fit['rms_residual_rad']:.3e} rad")
+    return fit
+
+
 def stage_adfd_r(args, out: Path) -> None:
     """theta = the total load resistance, entered through ``rlc_values_override``."""
     dx = args.rung * 1e-6
@@ -1182,6 +1246,10 @@ def stage_adfd_r(args, out: Path) -> None:
     })
     _write(out, rec)
 
+    fit = _fitted_length(args, kind, dx, EPS_R_AIR)
+    rec["fitted_electrical_length"] = fit
+    _write(out, rec)
+
     # The curve the objectives are scalars OF, at theta0. A gradient reported
     # without the S it differentiates cannot be read (workspace rule R5).
     with _Captured():
@@ -1215,9 +1283,17 @@ def stage_adfd_r(args, out: Path) -> None:
             return _f64_guard(_make(sim64, which)(jnp.float64(theta)))
 
         case = _ad_fd_case(which, theta0, f32, f64, AD_FD_REL_H)
-        # The closed form's own derivative, as a third witness beside AD and FD.
-        case["closed_form"] = _closed_form_dr(kind, dut, dx, theta0, which)
+        # The closed form's own derivative, as a third witness beside AD and FD,
+        # on BOTH lengths: the one that was drawn and the one the lattice
+        # realizes. Which of the two carries criterion 3a is not settled here.
+        case["closed_form"] = _closed_form_dr(kind, dut, dx, theta0, which,
+                                              label="declared")
+        case["closed_form_fitted_length"] = _closed_form_dr(
+            kind, dut, dx, theta0, which, length_m=fit["length_m"],
+            label="fitted from the short's phase at this rung")
         case["pairwise"] = _pairwise(case)
+        case["pairwise_fitted_length"] = _pairwise(
+            {**case, "closed_form": case["closed_form_fitted_length"]})
         case["bin_context"] = _bin_context(s11_theta0, an_theta0, which)
         rec["cases"].append(case)
         _write(out, rec)
@@ -1226,11 +1302,12 @@ def stage_adfd_r(args, out: Path) -> None:
     _write(out, rec)
 
 
-def _closed_form_dr(kind, dut, dx, r_ohm, which) -> dict:
-    """d(objective)/dR from the closed forms, on the REALIZED line length."""
+def _closed_form_dr(kind, dut, dx, r_ohm, which, length_m=None, label="") -> dict:
+    """d(objective)/dR from the closed forms, on a stated line length."""
     lay = layout(kind, dut, dx)
     d = declared(kind, dut, dx)
-    zc, zref, L = d["zc_ohm"], d["zref_ohm"], lay["length_m_realized"]
+    zc, zref = d["zc_ohm"], d["zref_ohm"]
+    L = lay["length_m_realized"] if length_m is None else float(length_m)
     beta = line_beta(FREQS)
     s = s11_closed_form(zc, beta, L, r_ohm, zref)
     ds = ds11_dr(zc, beta, L, r_ohm, zref)
@@ -1240,15 +1317,23 @@ def _closed_form_dr(kind, dut, dx, r_ohm, which) -> dict:
     else:
         val = float(np.real(s[_AD_MID_BIN]))
         grad = float(np.real(ds[_AD_MID_BIN]))
-    return {"loss": val, "grad": grad, "length_m": L,
-            "what": "the analytic derivative of the same objective on the "
-                    "realized line length; a reference, compared with nothing here"}
+    return {"loss": val, "grad": grad, "length_m": L, "length_source": label or "declared",
+            "what": "the analytic derivative of the same objective on the stated "
+                    "line length; a reference, compared with nothing here"}
 
 
-def stage_adfd_eps(args, out: Path) -> None:
-    """theta scales the permittivity of the filled, short-terminated line."""
+def stage_adfd_eps(args, out: Path, dut: str = "short") -> None:
+    """theta scales the permittivity of the filled line.
+
+    Two terminations, and the difference between them is the point. On a SHORT
+    the line is lossless and referenced to its own Zc, so ``|S11| = 1`` at every
+    frequency: the band mean of ``|S11|^2`` is the constant 1 and its derivative
+    is identically zero. That leg is the pre-declared one and is kept as
+    measured. On the RESISTIVE termination the same objective moves with eps,
+    so its derivative is a number AD and FD can both be wrong about.
+    """
     dx = args.rung * 1e-6
-    kind, dut = args.kind, "short"
+    kind = args.kind
     d = declared(kind, dut, dx, eps_r=EPS_R_FILL)
     sim = build_sim(kind, dut, dx, drive=args.drive, eps_r=EPS_R_FILL)
     geo = assert_realized_grid(sim, kind, dut, dx, EPS_R_FILL)
@@ -1256,7 +1341,8 @@ def stage_adfd_eps(args, out: Path) -> None:
     eps32 = _own_eps(sim, jnp.float32)
     n_filled = int(np.count_nonzero(np.asarray(eps32) > 1.0 + 1e-6))
 
-    rec = _base(args, "adfd-eps", kind, dut, dx)
+    rec = _base(args, "adfd-eps" if dut == "short" else "adfd-eps-res",
+                kind, dut, dx)
     rec.update({
         "drive": args.drive, "num_periods": float(args.num_periods),
         "declared": d, "realized_grid": geo, "preflight": pf,
@@ -1268,9 +1354,18 @@ def stage_adfd_eps(args, out: Path) -> None:
             "n_cells_total": int(np.asarray(eps32).size), "theta0": 1.0},
         "min_fd_ulp_span": MIN_FD_ULP_SPAN,
         "objectives": {
-            "band_mean_s11_sq": {"band_hz": list(AD_BAND),
-                                 "bins": [int(i) for i in _AD_BAND_IDX],
-                                 "what": "mean over the band of |S11(f)|^2"},
+            "band_mean_s11_sq": {
+                "band_hz": list(AD_BAND),
+                "bins": [int(i) for i in _AD_BAND_IDX],
+                "what": "mean over the band of |S11(f)|^2",
+                "degenerate_on_this_dut": bool(dut == "short"),
+                "why": ("a short referenced to the line's own Zc gives |S11| = 1 "
+                        "at every frequency, so this objective is the constant 1 "
+                        "and its derivative is identically zero")
+                if dut == "short" else
+                ("a resistive termination makes |S11| depend on eps through both "
+                 "Zc and beta, so this objective has a derivative to compare"),
+            },
             "re_s11_at_mid_band": {"bin_index": _AD_MID_BIN,
                                    "bin_hz": float(FREQS[_AD_MID_BIN]),
                                    "what": "Re(S11) at that bin"},
@@ -1279,12 +1374,17 @@ def stage_adfd_eps(args, out: Path) -> None:
     })
     _write(out, rec)
 
+    fit = _fitted_length(args, kind, dx, EPS_R_FILL)
+    rec["fitted_electrical_length"] = fit
+    _write(out, rec)
+
     with _Captured():
         s11_theta0 = _s11_of(solve_s11(sim, num_periods=args.num_periods))
     _zc_fill = ETA0 * N_H[kind] / math.sqrt(EPS_R_FILL)
+    _zl = 0.0 if dut == "short" else d["r_total_ohm"]
     an_theta0 = s11_from_zin(
         zin_terminated_line(_zc_fill, line_beta(FREQS, EPS_R_FILL),
-                            layout(kind, dut, dx)["length_m_realized"], 0.0),
+                            layout(kind, dut, dx)["length_m_realized"], _zl),
         d["zref_ohm"])
     rec["s11_at_theta0"] = _c(s11_theta0)
     rec["analytic_at_theta0"] = _c(an_theta0)
@@ -1300,7 +1400,9 @@ def stage_adfd_eps(args, out: Path) -> None:
             return _objective(r.s_params.reshape(-1), which)
         return loss
 
-    for which in ("band_mean_s11_sq", "re_s11_at_mid_band"):
+    objectives = (("band_mean_s11_sq", "re_s11_at_mid_band") if dut == "short"
+                  else ("band_mean_s11_sq",))
+    for which in objectives:
         f32 = _make(sim, eps32, which)
 
         def f64(theta, which=which):
@@ -1314,8 +1416,14 @@ def stage_adfd_eps(args, out: Path) -> None:
             return _f64_guard(_make(sim64, eps64, which)(jnp.float64(theta)))
 
         case = _ad_fd_case(which, 1.0, f32, f64, AD_FD_REL_H)
-        case["closed_form"] = _closed_form_deps(kind, dut, dx, which)
+        case["closed_form"] = _closed_form_deps(kind, dut, dx, which,
+                                                label="declared")
+        case["closed_form_fitted_length"] = _closed_form_deps(
+            kind, dut, dx, which, length_m=fit["length_m"],
+            label="fitted from the short's phase at this rung")
         case["pairwise"] = _pairwise(case)
+        case["pairwise_fitted_length"] = _pairwise(
+            {**case, "closed_form": case["closed_form_fitted_length"]})
         case["bin_context"] = _bin_context(s11_theta0, an_theta0, which)
         rec["cases"].append(case)
         _write(out, rec)
@@ -1324,16 +1432,35 @@ def stage_adfd_eps(args, out: Path) -> None:
     _write(out, rec)
 
 
-def _closed_form_deps(kind, dut, dx, which) -> dict:
+def _closed_form_deps(kind, dut, dx, which, length_m=None, label="") -> dict:
     """d(objective)/dtheta from the closed forms, where theta scales eps_r, so
-    the chain rule carries a factor of ``eps_r`` over ``d/d(eps_r)``."""
+    the chain rule carries a factor of ``eps_r`` over ``d/d(eps_r)``.
+
+    ``dut`` selects the termination: a short (the pre-declared leg, whose
+    band-mean objective is identically constant) or the resistive load.
+    """
     lay = layout(kind, dut, dx)
     d = declared(kind, dut, dx, eps_r=EPS_R_FILL)
-    zc0, zref, L = ETA0 * N_H[kind], d["zref_ohm"], lay["length_m_realized"]
+    zc0, zref = ETA0 * N_H[kind], d["zref_ohm"]
+    L = lay["length_m_realized"] if length_m is None else float(length_m)
     beta = line_beta(FREQS, EPS_R_FILL)
     zc = zc0 / math.sqrt(EPS_R_FILL)
-    s = s11_from_zin(zin_terminated_line(zc, beta, L, 0.0), zref)
-    ds = ds11_deps_short(zc0, EPS_R_FILL, beta, L, zref) * EPS_R_FILL
+    if dut == "short":
+        s = s11_from_zin(zin_terminated_line(zc, beta, L, 0.0), zref)
+        ds = ds11_deps_short(zc0, EPS_R_FILL, beta, L, zref) * EPS_R_FILL
+    else:
+        # A resistive load: Zc moves with eps and ZL does not, so the derivative
+        # is taken by a central difference of the SAME closed form in float64.
+        # Arithmetic on a formula, not on a solve.
+        r = d["r_total_ohm"]
+        h = 1e-6
+
+        def _s_at(e):
+            zc_e = zc0 / math.sqrt(e)
+            return s11_from_zin(
+                zin_terminated_line(zc_e, line_beta(FREQS, e), L, r), zref)
+        s = _s_at(EPS_R_FILL)
+        ds = (_s_at(EPS_R_FILL * (1.0 + h)) - _s_at(EPS_R_FILL * (1.0 - h))) / (2.0 * h)
     if which == "band_mean_s11_sq":
         val = float(np.mean(np.abs(s[_AD_BAND_IDX]) ** 2))
         grad = float(np.mean(2.0 * np.real(np.conj(s[_AD_BAND_IDX]) * ds[_AD_BAND_IDX])))
@@ -1341,8 +1468,64 @@ def _closed_form_deps(kind, dut, dx, which) -> dict:
         val = float(np.real(s[_AD_MID_BIN]))
         grad = float(np.real(ds[_AD_MID_BIN]))
     return {"loss": val, "grad": grad, "length_m": L, "eps_r": EPS_R_FILL,
+            "dut": dut, "length_source": label or "declared",
             "what": "the analytic derivative of the same objective w.r.t. the "
                     "same scaling theta; a reference, compared with nothing here"}
+
+
+# ---------------------------------------------------------------------------
+# stage: what the run() path returns on the same build
+#
+# NOT in the v2.0 chain. The contract scopes this family to the differentiable
+# S11 of forward(port_s11_freqs=...) and says so in as many words; the S matrix
+# of run(compute_s_params=True) is a numpy post-process. This stage exists
+# because the two disagree on this channel in a way worth recording, and a
+# number nobody wrote down is a number the next session measures again.
+# ---------------------------------------------------------------------------
+
+def stage_notinchain(args, out: Path) -> None:
+    dx = args.rung * 1e-6
+    kind = args.kind
+    rec = _base(args, "notinchain", kind, None, dx)
+    rec.update({
+        "drive": args.drive, "num_periods": float(args.num_periods),
+        "scope": ("run(compute_s_params=True) is NOT in the v2.0 chain for this "
+                  "family. Nothing here is compared against a bar and nothing "
+                  "here gates anything; it is recorded because the two paths "
+                  "disagree on this channel."),
+        "cases": [],
+    })
+    _write(out, rec)
+
+    for dut in DUTS:
+        sim_f = build_sim(kind, dut, dx, drive=args.drive)
+        assert_realized_grid(sim_f, kind, dut, dx)
+        n_steps = n_steps_for(sim_f, args.num_periods)
+        with _Captured() as cap_f:
+            s_fwd = _s11_of(solve_s11(sim_f, num_periods=args.num_periods))
+        sim_r = build_sim(kind, dut, dx, drive=args.drive)
+        with _Captured() as cap_r:
+            res_r = sim_r.run(n_steps=n_steps, compute_s_params=True,
+                              s_param_freqs=FREQS, skip_preflight=True)
+        s_run = np.asarray(res_r.s_params).reshape(-1)
+        d = np.abs(s_run - s_fwd)
+        _log(f"notinchain {kind} {dut}: forward max|S11| {np.abs(s_fwd).max():.6f} | "
+             f"run max|S11| {np.abs(s_run).max():.6f} | max|diff| {d.max():.6f}")
+        rec["cases"].append({
+            "dut": dut,
+            "n_steps": n_steps,
+            "forward_s11": _c(s_fwd),
+            "run_s11": _c(s_run),
+            "forward_abs": _f(np.abs(s_fwd)),
+            "run_abs": _f(np.abs(s_run)),
+            "run_abs_is_exactly_one": bool(np.all(np.abs(s_run) == 1.0)),
+            "max_abs_difference": float(d.max()),
+            "forward_warnings": cap_f.warnings,
+            "run_warnings": cap_r.warnings,
+        })
+        _write(out, rec)
+    rec["peak_memory"] = peak_memory()
+    _write(out, rec)
 
 
 # ---------------------------------------------------------------------------
@@ -1748,6 +1931,99 @@ def openems_context() -> dict:
     return out
 
 
+KNOWN_LOAD_RECORD = "scripts/diagnostics/lumped_port_known_load_line.json"
+
+
+def port_kind_ab() -> dict:
+    """The A/B the lumped leg turns on, read from the record its own script
+    wrote rather than recomputed here.
+
+    ``scripts/diagnostics/lumped_port_known_load_line.py`` declares ONE cell of
+    ONE line two ways — a lumped port and a wire port, differing by `extent=dx`
+    on `add_port` — in front of three loads whose reflection is an exact number.
+    Nothing in this function solves anything or changes a digit; it lifts the
+    three loads, five bins, both port kinds and both `V/(Zc I)` columns into the
+    artifact so a reader of the fixture does not have to run the script.
+    """
+    path = REPO / KNOWN_LOAD_RECORD
+    out = {"producer": "scripts/diagnostics/lumped_port_known_load_line.py",
+           "record": KNOWN_LOAD_RECORD}
+    if not path.exists():
+        out["present"] = False
+        out["note"] = ("the record has not been produced in this tree; run the "
+                       "producer with no arguments to write it")
+        return out
+    d = json.loads(path.read_text())
+    out["present"] = True
+    out["commit"] = d.get("commit")
+    out["channel"] = d.get("channel")
+    out["freqs_hz"] = d.get("freqs_hz")
+    out["what"] = (
+        "one cell of one line declared two ways. The only difference between "
+        "the two rows of each load is extent=dx on add_port. Zref is the line's "
+        "own Zc, so |S11| is |Gamma_L| at every bin whatever the length and "
+        "whatever beta.")
+    out["loads"] = {}
+    for name, e in d.get("loads", {}).items():
+        row = {"r_over_zc": e["r_over_zc"], "r_ohm": e["r_ohm"],
+               "closed_form_abs_s11": e["closed_form_abs_s11"]}
+        for kind, m in e["ports"].items():
+            row[kind] = {
+                "abs_s11": m["abs_s11"],
+                "v_over_zc_i_real": m["v_over_zc_i_real"],
+                "v_over_zc_i_imag": m["v_over_zc_i_imag"],
+                "nonpassive_warning": m["nonpassive_warning"],
+                "max_abs_from_closed_form": float(np.max(np.abs(
+                    np.asarray(m["abs_s11"]) - e["closed_form_abs_s11"]))),
+            }
+        out["loads"][name] = row
+    return out
+
+
+def _degenerate_objective_evidence(fix: dict) -> dict:
+    """What the ULP-span floor did on an objective with no derivative.
+
+    Derived from the records already in the fixture: for every leg whose
+    objective the driver marked degenerate, the span the comparator reported and
+    the floor it was held to. The floor is computed on the two LOSS values, so
+    it passes when those differ by many ULPs even though their DIFFERENCE is
+    round-off. This block states that with the numbers beside it; it changes no
+    threshold and gates nothing.
+    """
+    rows = []
+    for name, block in sorted(fix.get("adfd", {}).items()):
+        obj = block.get("objectives", {}).get("band_mean_s11_sq", {})
+        if not obj.get("degenerate_on_this_dut"):
+            continue
+        for case in block["cases"]:
+            if case["objective"] != "band_mean_s11_sq":
+                continue
+            rows.append({
+                "leg": name, "rung_um": block["rung_um"], "dut": block["dut"],
+                "ulp_span": case["fd"]["ulp_span"],
+                "floor": block["min_fd_ulp_span"],
+                "span_above_floor": bool(case["fd"]["ulp_span"]
+                                         >= block["min_fd_ulp_span"]),
+                "ad_grad": case["ad"]["grad"],
+                "fd_grad": case["fd"]["grad"],
+                "closed_form_grad": case["closed_form"]["grad"],
+                "ad_loss": case["ad"]["loss"],
+                "rel_err_ad_vs_fd": case["rel_err"],
+            })
+    return {
+        "rows": rows,
+        "what_the_floor_is": ("|f_plus - f_minus| in ULPs of the loss, held to "
+                              "MIN_FD_ULP_SPAN"),
+        "what_it_did_here": ("passed at every rung listed above while both "
+                             "gradients were round-off around a derivative that "
+                             "is analytically zero"),
+        "why": ("the floor is computed on the two LOSS values, which do differ "
+                "by many ULPs. It is their DIFFERENCE that is round-off, and the "
+                "floor as this repository defines it does not look at that."),
+        "nothing_is_regated_here": True,
+    }
+
+
 def _load_stage(out: Path, name: str) -> dict | None:
     p = out / name
     if not p.exists():
@@ -1785,6 +2061,8 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
         "adfd": {},
         "pilot": None,
         "openems_context": openems_context(),
+        "port_kind_ab": port_kind_ab(),
+        "not_in_chain_observations": {},
     }
 
     for kind in KINDS:
@@ -1859,7 +2137,7 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
         # pre-declaration places stage 3a at the coarsest rung; a finer rung is
         # extra evidence about the same leg, so it is collected under its own
         # key rather than replacing the declared one.
-        for leg in ("adfd-r", "adfd-eps"):
+        for leg in ("adfd-r", "adfd-eps", "adfd-eps-res"):
           for um in RUNGS_UM:
             name = f"{leg}_{kind}_{um}um.json"
             ad = _load_stage(out, name)
@@ -1876,6 +2154,7 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                 "min_fd_ulp_span": ad["min_fd_ulp_span"],
                 "s11_at_theta0": ad.get("s11_at_theta0"),
                 "analytic_at_theta0": ad.get("analytic_at_theta0"),
+                "fitted_electrical_length": ad.get("fitted_electrical_length"),
                 "cases": ad["cases"],
                 "bar": BAR["ad_fd_rel"],
                 "what_the_ulp_span_does_not_say": (
@@ -1887,6 +2166,45 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                     "the span passes. Read each case's closed_form gradient and "
                     "the loss beside it before reading its rel_err."),
             }
+
+    for kind in KINDS:
+        nic = _load_stage(out, f"notinchain_{kind}_{COARSEST_RUNG_UM}um.json")
+        if nic is None:
+            continue
+        # Derived here, from the stored arrays: is the run() path's S11 the
+        # same complex array for every load? That is a sharper statement than
+        # a magnitude near one, and it is the one the numbers support.
+        runs = {c["dut"]: _cx(c["run_s11"]) for c in nic["cases"]}
+        fwds = {c["dut"]: _cx(c["forward_s11"]) for c in nic["cases"]}
+        ref = next(iter(runs.values())) if runs else None
+        same = {d: bool(np.array_equal(v, ref)) for d, v in runs.items()}
+        fwd_spread = (float(max(np.abs(v).max() for v in fwds.values())
+                            - min(np.abs(v).min() for v in fwds.values()))
+                      if fwds else None)
+        fix["not_in_chain_observations"][kind] = {
+            "provenance": fixture_provenance(
+                nic["provenance"], index,
+                f"notinchain_{kind}_{COARSEST_RUNG_UM}um.json"),
+            "scope": nic["scope"],
+            "rung_um": nic["rung_um"],
+            "num_periods": nic["num_periods"],
+            "cases": nic["cases"],
+            "run_path_load_independence": {
+                "identical_to_first_dut": same,
+                "all_identical": bool(all(same.values())),
+                "run_abs_min": (float(min(np.abs(v).min() for v in runs.values()))
+                                if runs else None),
+                "run_abs_max": (float(max(np.abs(v).max() for v in runs.values()))
+                                if runs else None),
+                "forward_abs_spread_across_duts": fwd_spread,
+                "what": ("whether run(compute_s_params=True) returned the SAME "
+                         "complex array for a short, an open, R = Zc/2, R = Zc "
+                         "and R = 2 Zc on this channel, and what range the "
+                         "forward path covered over the same five loads"),
+            },
+        }
+
+    fix["degenerate_objective_evidence"] = _degenerate_objective_evidence(fix)
 
     fixture_out.parent.mkdir(parents=True, exist_ok=True)
     tmp = fixture_out.with_suffix(".json.tmp")
@@ -1902,7 +2220,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--stage", choices=("pilot", "solve", "identity",
-                                        "adfd-r", "adfd-eps"))
+                                        "adfd-r", "adfd-eps", "adfd-eps-res",
+                                        "notinchain"))
     ap.add_argument("--assemble", action="store_true")
     ap.add_argument("--kind", choices=KINDS, default="wire")
     ap.add_argument("--dut", choices=DUTS, default="res_double")
@@ -1950,7 +2269,12 @@ def main() -> int:
     elif args.stage == "adfd-r":
         stage_adfd_r(args, out / f"adfd-r_{args.kind}_{um}um.json")
     elif args.stage == "adfd-eps":
-        stage_adfd_eps(args, out / f"adfd-eps_{args.kind}_{um}um.json")
+        stage_adfd_eps(args, out / f"adfd-eps_{args.kind}_{um}um.json", "short")
+    elif args.stage == "adfd-eps-res":
+        stage_adfd_eps(args, out / f"adfd-eps-res_{args.kind}_{um}um.json",
+                       "res_double")
+    elif args.stage == "notinchain":
+        stage_notinchain(args, out / f"notinchain_{args.kind}_{um}um.json")
     return 0
 
 
