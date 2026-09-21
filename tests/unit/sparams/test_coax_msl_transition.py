@@ -2530,6 +2530,24 @@ def test_extra_flux_monitors_entry_validation():
         )
 
 
+@pytest.mark.xfail(
+    strict=True,
+    raises=ValueError,
+    reason=(
+        "The attempt-2 board cannot be BUILT since PR #981 added validate_msl_port_geometry: "
+        "its MSL port declares the ground at z = 2.6 mm, and on that column the realized "
+        "conductor planes are at 2.4, 2.5 and 2.8 mm, so the port's reference has no metal "
+        "under it and the builder refuses (rfx/sources/msl_port.py, reached from "
+        "compute_coax_msl_transition). Measured on main df08175c, 2026-09-21: this test "
+        "dies in 3.5 s with that ValueError, before a single time step; it has been the red "
+        "in shard 3 of the weekly lane since then (#1022). The QUESTION this test asks -- "
+        "opt-in flux monitors must not move S by one bit -- is still wanted, so it is not "
+        "removed. Repairing the board is coax-MSL lane work, deferred past v2.0 (PI, "
+        "2026-09-20). raises=ValueError keeps this from absorbing any other failure, and "
+        "strict=True turns the day the board builds again into an XPASS error that forces "
+        "this marker off."
+    ),
+)
 @pytest.mark.slow_physics
 def test_extra_flux_monitors_do_not_perturb_s():
     """The #589 non-perturbation witness: S bit-identical with and without
