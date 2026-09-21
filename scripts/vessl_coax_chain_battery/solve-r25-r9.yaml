@@ -1,0 +1,45 @@
+name: rfx-coax-battery-solve-r25-r9
+description: "Coax chain battery: r25 at 9 annulus cells, 12 record units."
+tags: [rfx, coax-chain-battery, solve-r25-r9]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  MPLBACKEND: "Agg"
+  RFX_SHA: "669c45cb59721955b5135056ad5c12b16e96b292"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  SRC=/root/workspace/byungkwan-workspace/research/rfx-wt-coax-battery
+  git config --global --add safe.directory "$SRC"
+  git config --global --add safe.directory "$(git -C "$SRC" rev-parse --absolute-git-dir)"
+  SHA=$(git -C "$SRC" rev-parse HEAD)
+  test "$SHA" = "$RFX_SHA" || { echo "FATAL: worktree moved: $SHA"; exit 3; }
+  test -z "$(git -C "$SRC" status --porcelain)" || { echo "FATAL: dirty worktree"; exit 3; }
+  RUNS=/root/workspace/claude-workspace/rfx/runs
+  OUT=$RUNS/coax-battery-solve-r25-r9-$(date -u +%Y%m%dT%H%M%SZ)
+  mkdir -p "$OUT"
+  echo "$SHA" > "$OUT/commit.txt"
+  echo "$OUT" > "$RUNS/coax-battery-solve-r25-r9.latest"
+  WORK=/root/work/coax-battery-solve-r25-r9
+  rm -rf "$WORK"; mkdir -p "$WORK"; cp -a "$SRC/." "$WORK/"; cd "$WORK"
+  mkdir -p "$WORK/out"
+  trap 'rc=$?; echo "$rc" > "$OUT/job.rc"; cp -a "$WORK/out/." "$OUT/" 2>/dev/null || true; chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
+  "$PY" -m pip install -q "jax[cuda12]==0.6.2" "numpy>=2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest pytest-split optax
+  export PYTHONPATH="$WORK"
+  git config --global --add safe.directory "*"
+  WSHA=$(git -C "$WORK" rev-parse HEAD)
+  test "$WSHA" = "$RFX_SHA" || { echo "FATAL: the work copy resolves $WSHA"; exit 3; }
+  "$PY" -c "import rfx, os; print('rfx from', os.path.dirname(rfx.__file__))"
+  { timeout 20000 "$PY" scripts/diagnostics/coax_chain_battery_measure.py --stage solve --dut r25 --rung 9 --record-units 12.0 --out "$WORK/out" --run-id "coax-battery-solve-r25-r9" 2>&1; echo "rc=$?"; } | tee "$OUT/run.log" | tail -60
+  echo COAX_BATTERY_STAGE_DONE

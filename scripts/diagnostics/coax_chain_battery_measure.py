@@ -172,15 +172,38 @@ PLANE_SHIFT_CELLS = 4
 # channel are the battery's own. Every reduced value is recorded in the stage
 # JSON beside the estimate that forced it.
 AD_RUNG = 4
-AD_DOMAIN_TWOPORT = (0.008, 0.008, 0.026)
+AD_DOMAIN_TWOPORT = (0.008, 0.008, 0.022)
 AD_DOMAIN_ONEPORT = (0.008, 0.008, 0.020)   # the committed one-port AD fixture
 AD_FREQS = np.array([5.0e9, 8.0e9, 11.0e9])
-AD_PROBE_COUNT = 6
-AD_PROBE_START_CELLS = 6
-AD_PROBE_SPACING_CELLS = 3
+AD_PROBE_COUNT = 4
+AD_PROBE_START_CELLS = 4
+AD_PROBE_SPACING_CELLS = 2
 AD_ONE_PORT_PROBE_COUNT = 9                 # the committed one-port AD fixture
 AD_RECORD_UNITS = 9.0              # the longest record whose tape fits the budget below
-AD_TAPE_BUDGET_BYTES = 30 * 2 ** 30         # the a6000-1 preset's 48 GB, with room
+AD_TAPE_BUDGET_BYTES = 24 * 2 ** 30         # see AD_PRIOR_ATTEMPT
+
+# What the reverse-mode tape cost on the card it did not fit, quoted from the
+# FAILED first attempt so the stage's memory is a recorded number and not
+# folklore: the board, the allocation, and the run.
+AD_PRIOR_ATTEMPT = {
+    "outcome": "RESOURCE_EXHAUSTED",
+    "preset": "gpu-a6000-1",
+    "device_memory_gb": 48,
+    "domain_m": [0.008, 0.008, 0.026],
+    "probe_count": 6,
+    "n_steps": 1800,
+    "tape_estimate_bytes": int(29.51 * 2 ** 30),
+    "persistent_after_rematerialisation_bytes": 34814020556,
+    "transient_request_bytes": 7624715296,
+    "allocator_note": ("XLA could not rematerialise below 18.46 GiB and settled at "
+                       "32.42 GiB, then asked for 7.10 GiB on top; JAX preallocates "
+                       "75 % of the card by default, which is 36 GB here"),
+    "compute_run_id": "369367262657",
+    "measured_at_commit": "669c45cb59721955b5135056ad5c12b16e96b292",
+    "resolution": ("the z extent cut from 26 mm to 22 mm and the probe ladder from "
+                   "6/6/3 to 4/4/2 — the cell size, the cross-section, the record "
+                   "length in traversals and the design channel are unchanged"),
+}
 
 # theta channels. Two-port: theta multiplies eps_r inside the bead, so
 # theta0 = 4.0 is the battery's own bead. One-port: theta is ADDED to eps_r in
@@ -1511,6 +1534,46 @@ def _S(block) -> np.ndarray:
             + 1j * np.asarray(block["imag"], dtype=float))
 
 
+def measured_beta(gamma_block: dict, freqs: np.ndarray, eps_fill: float) -> dict:
+    """What the extractor's own matrix-pencil fit says the line does.
+
+    ``gamma = alpha + j beta`` is fitted from the field's SHAPE along z, so it is
+    independent of any amplitude normalization. ``eps_eff = (beta c / omega)^2``
+    is the permittivity a uniform TEM line would need to propagate at that
+    phase constant; on a coax filled with one dielectric the analytic value is
+    the fill's own, and a partially filled line can only sit BELOW it. The
+    number is recorded per rung so the ladder says whether the gap is a
+    discretization that refines away.
+    """
+    g = (np.asarray(gamma_block["real"], dtype=float)
+         + 1j * np.asarray(gamma_block["imag"], dtype=float))
+    freqs = np.asarray(freqs, dtype=float)
+    beta = np.imag(g)
+    alpha = np.real(g)
+    # gamma is (drive, array, freq) on the two-port lane and (freq,) on the
+    # one-port lane; average whatever leading axes there are.
+    axes = tuple(range(beta.ndim - 1))
+    beta_bar = beta.mean(axis=axes) if axes else beta
+    alpha_bar = alpha.mean(axis=axes) if axes else alpha
+    omega = 2.0 * np.pi * freqs
+    beta_analytic = omega * math.sqrt(eps_fill) / C0
+    eps_eff = (beta_bar * C0 / omega) ** 2
+    return {
+        "beta_fitted_rad_per_m": beta_bar.astype(float).tolist(),
+        "alpha_fitted_neper_per_m": alpha_bar.astype(float).tolist(),
+        "beta_analytic_rad_per_m": beta_analytic.astype(float).tolist(),
+        "beta_ratio_fitted_over_analytic": (beta_bar / beta_analytic).astype(float).tolist(),
+        "max_beta_ratio": float(np.max(beta_bar / beta_analytic)),
+        "min_beta_ratio": float(np.min(beta_bar / beta_analytic)),
+        "eps_eff_fitted": eps_eff.astype(float).tolist(),
+        "eps_eff_analytic": eps_fill,
+        "max_eps_eff_fitted": float(np.max(eps_eff)),
+        "mean_eps_eff_fitted": float(np.mean(eps_eff)),
+        "per_arm_beta_spread": (float(np.max(beta.max(axis=axes) - beta.min(axis=axes)))
+                                if axes else 0.0),
+    }
+
+
 def power_metrics(S: np.ndarray) -> dict:
     """Column power, reciprocity and power closure, with their curves."""
     col = np.sum(np.abs(S) ** 2, axis=0)
@@ -1689,6 +1752,7 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                 "recurrence_residual": res["recurrence_residual"],
                 "fit_residual": res["fit_residual"],
                 "gamma": res["gamma"],
+                "measured_beta": measured_beta(res["gamma"], freqs, float(PTFE_EPS_R)),
                 "resolution": {
                     "dx_m": rec["declared"]["dx_m"],
                     "annulus_cells": rec["declared"]["annulus_cells"],
@@ -1734,13 +1798,33 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                         length_m=real["bead_length_realized_m"],
                         d_port1_m=real["d_port1_to_bead_m"],
                         d_port2_m=real["d_port2_to_bead_m"])
+                    # The same closed form fed the line's OWN fitted phase
+                    # constant instead of the fill's declared one. It is a
+                    # CONSISTENCY witness, not a second opinion: the fitted
+                    # eps_eff and the measured S come from the same field, so a
+                    # common-mode error in the extracted phase moves both
+                    # together and this comparison cannot see it. What it does
+                    # separate is a referee that disagrees because the realized
+                    # line propagates differently from the declared one, from a
+                    # referee that disagrees because the DUT is wrong.
+                    mb = measured_beta(res["gamma"], freqs, float(PTFE_EPS_R))
+                    eps_eff_bar = float(np.mean(mb["eps_eff_fitted"]))
+                    ref_fit = bead_referee(
+                        freqs, a=a, b=b, eps_fill=eps_eff_bar,
+                        eps_scale=BEAD_EPS_SCALE,
+                        length_m=real["bead_length_realized_m"],
+                        d_port1_m=real["d_port1_to_bead_m"],
+                        d_port2_m=real["d_port2_to_bead_m"])
+                    entry["referee_fitted_eps_eff"] = ref_fit
+                    entry["referee_fitted_eps_eff_value"] = eps_eff_bar
                     entry["referee_declared_length"] = ref_dec
                     entry["referee_realized_length"] = ref_real
                     entry["reflection_zero_measured"] = parabolic_min(
                         freqs, np.abs(S[0, 0, :]))
                     # The deep-null ruling: dB distance to the referee only
                     # where the ANALYTIC |S11| is above the null level.
-                    for tag, refr in (("declared", ref_dec), ("realized", ref_real)):
+                    for tag, refr in (("declared", ref_dec), ("realized", ref_real),
+                                      ("fitted_eps_eff", ref_fit)):
                         an11 = np.asarray(refr["abs_S11"], dtype=float)
                         an21 = np.asarray(refr["abs_S21"], dtype=float)
                         core = 20.0 * np.log10(np.maximum(an11, 1e-300)) <= BAR["deep_null_db"]
@@ -1951,10 +2035,85 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
             row["all_inside_bar"] = all(v for v in row.values() if isinstance(v, bool))
             row["resolution"] = fix["solves"][k]["resolution"]
             inside.append(row)
+        lad["measured_beta"] = {
+            "mean_eps_eff_fitted": [fix["solves"][k]["measured_beta"]["mean_eps_eff_fitted"]
+                                    for k in have],
+            "max_beta_ratio": [fix["solves"][k]["measured_beta"]["max_beta_ratio"]
+                               for k in have],
+            "eps_eff_analytic": float(PTFE_EPS_R),
+            "what": ("the extractor's own fitted phase constant against "
+                     "omega*sqrt(eps_fill)/c, rung by rung; a ratio that walks toward 1 "
+                     "as the annulus is refined is a discretization, one that does not "
+                     "is a property of the realized line"),
+        }
+        lad["realized_cross_section"] = {
+            "shell_inner_radius_m": [fix["solves"][k]["realized"]["shell_inner_radius_m"]
+                                     for k in have],
+            "pin_cells_cross_section": [fix["solves"][k]["realized"]["pin_cells_cross_section"]
+                                        for k in have],
+            "fill_cells_cross_section": [fix["solves"][k]["realized"]["fill_cells_cross_section"]
+                                         for k in have],
+            "realized_fill_radius_max_m": [
+                fix["solves"][k]["realized"]["realized_fill_radius_max_m"] for k in have],
+            "realized_pin_radius_max_m": [
+                fix["solves"][k]["realized"]["realized_pin_radius_max_m"] for k in have],
+            "z_tem_on_realized_radii_ohm": [
+                coaxial_tem_characteristic_impedance(
+                    fix["solves"][k]["realized"]["pin_radius_m"],
+                    fix["solves"][k]["realized"]["shell_inner_radius_m"],
+                    float(PTFE_EPS_R)) for k in have],
+            "z_tem_on_declared_radii_ohm": coaxial_tem_characteristic_impedance(
+                a, b, float(PTFE_EPS_R)),
+            "what": ("stamp_coaxial_line makes the outer conductor one cell thick, so "
+                     "its inner radius is b - dx and moves with the mesh. These rows are "
+                     "the cross-section each rung actually built; a ladder whose rungs "
+                     "do not realize one line is refining the geometry as well as the "
+                     "mesh, which the contract's dx-ladder guard asks it not to."),
+        }
         lad["rung_within_bar_vs_finest"] = inside
         qualifying = [r for r in inside if r["all_inside_bar"]]
         lad["coarsest_rung_within_bar"] = qualifying[0]["rung"] if qualifying else None
         fix["ladder"][dut] = lad
+
+    # --- the line's own two witnesses, per rung ----------------------------
+    z_tem_analytic = coaxial_tem_characteristic_impedance(a, b, float(PTFE_EPS_R))
+    fix["line_witnesses"] = {
+        "what": ("per rung: the effective permittivity the fitted phase constant "
+                 "implies, and the characteristic impedance the resistive loads "
+                 "imply. On a uniform lossless TEM line both come from one L' and "
+                 "C', so they are not independent witnesses of each other."),
+        "eps_eff_analytic": float(PTFE_EPS_R),
+        "z_tem_analytic_ohm": z_tem_analytic,
+        "rungs": [],
+    }
+    for rung in RUNGS:
+        row = {"rung_annulus_cells": rung}
+        for dut in DUTS:
+            e = fix["solves"].get(f"{dut}_rung{rung}")
+            if e is None:
+                continue
+            row.setdefault("eps_eff_fitted", {})[dut] = e["measured_beta"]["mean_eps_eff_fitted"]
+            if dut in ONE_PORT_LOAD_OHM:
+                zn = (np.asarray(e["z0_numerical_ohm"]["real"], dtype=float)
+                      + 1j * np.asarray(e["z0_numerical_ohm"]["imag"], dtype=float))
+                finite = np.isfinite(np.real(zn))
+                if finite.any():
+                    row.setdefault("z0_numerical_median_ohm", {})[dut] = float(
+                        np.median(np.real(zn)[finite]))
+        if "eps_eff_fitted" in row:
+            vals = list(row["eps_eff_fitted"].values())
+            row["eps_eff_fitted_mean"] = float(np.mean(vals))
+            row["eps_eff_fitted_spread"] = float(np.max(vals) - np.min(vals))
+            # What Z0 a line with THAT eps_eff would have, if the extra slowing
+            # were a permittivity: Z0 scales as 1/sqrt(eps).
+            row["z_tem_if_eps_eff_were_a_permittivity_ohm"] = (
+                z_tem_analytic * math.sqrt(float(PTFE_EPS_R) / row["eps_eff_fitted_mean"]))
+        if "z0_numerical_median_ohm" in row:
+            zs = list(row["z0_numerical_median_ohm"].values())
+            row["z0_numerical_mean_ohm"] = float(np.mean(zs))
+            row["z0_frac_vs_analytic"] = float(
+                (np.mean(zs) - z_tem_analytic) / z_tem_analytic)
+        fix["line_witnesses"]["rungs"].append(row)
 
     # --- forward identity ---------------------------------------------------
     ident = _load_stage(out, f"identity_rung{AD_RUNG}.json")
@@ -2005,6 +2164,8 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
         freqs = np.asarray(a_rec["result"]["freqs_hz"], dtype=float)
         delta = pl["shift_m"]
         beta = tem_beta(freqs, float(PTFE_EPS_R))
+        beta_fit = np.asarray(measured_beta(
+            a_rec["result"]["gamma"], freqs, float(PTFE_EPS_R))["beta_fitted_rad_per_m"])
         mag_a = 20.0 * np.log10(np.maximum(np.abs(Sa), 1e-300))
         mag_b = 20.0 * np.log10(np.maximum(np.abs(Sb), 1e-300))
         dmag = np.abs(mag_a - mag_b)
@@ -2028,6 +2189,13 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
             "base_settling": a_rec["result"]["settling"],
             "shifted_settling": b_rec["result"]["settling"],
             "analytic_beta_rad_per_m": beta.astype(float).tolist(),
+            "fitted_beta_rad_per_m": beta_fit.astype(float).tolist(),
+            "predicted_rotation_from_fitted_beta_rad":
+                (2.0 * beta_fit * delta).astype(float).tolist(),
+            "rotation_s11_residual_from_fitted_beta_rad": np.abs(np.angle(np.exp(
+                1j * (rot11 - 2.0 * beta_fit * delta)))).astype(float).tolist(),
+            "rotation_s22_residual_from_fitted_beta_rad": np.abs(np.angle(np.exp(
+                1j * (rot22 + 2.0 * beta_fit * delta)))).astype(float).tolist(),
             "mag_diff_db": dmag.astype(float).tolist(),
             "max_mag_diff_db": float(dmag.max()),
             "max_mag_diff_db_outside_null_core": (
@@ -2055,6 +2223,25 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                 np.angle(np.exp(1j * (rot11 + pred)))))),
             "bar_magnitude_db": BAR["magnitude_db"],
         }
+
+    ctl = _load_stage(out, f"solve_thru_rung{RUNGS[0]}_steps6000.json")
+    if ctl is not None:
+        S = _S(ctl["result"]["S"])
+        fix["controls"] = {"thru_at_the_committed_step_count": {
+            "provenance": fixture_provenance(
+                ctl["provenance"], index,
+                f"solve_thru_rung{RUNGS[0]}_steps6000.json"),
+            "what": ("the thru at the coarsest rung with n_steps = 6000, the step "
+                     "count tests/unit/sparams/test_coax_two_port_smatrix.py's own "
+                     "slow_physics gate uses; everything else is this battery's"),
+            "n_steps": ctl["n_steps"], "record_units": ctl["record_units"],
+            "rung_annulus_cells": ctl["rung_annulus_cells"],
+            "freqs_hz": ctl["result"]["freqs_hz"], "S": ctl["result"]["S"],
+            "settling": ctl["result"]["settling"],
+            "abs_s21": np.abs(S[1, 0, :]).astype(float).tolist(),
+            "abs_s11": np.abs(S[0, 0, :]).astype(float).tolist(),
+            "max_column_power": float(np.max(np.sum(np.abs(S) ** 2, axis=0))),
+        }}
 
     fixture_out.parent.mkdir(parents=True, exist_ok=True)
     tmp = fixture_out.with_suffix(".json.tmp")
