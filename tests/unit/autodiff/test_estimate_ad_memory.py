@@ -1080,6 +1080,10 @@ def test_ad_memory_preflight_full_fit_branch():
         "static_ad_explainability",
     )
     assert artifact["mesh_report"] is None
+    # The serialised report must carry the PREFLIGHT honesty labels, not the neighbouring
+    # certificate tuple: to_dict() builds this list, so it is not the constant compared with
+    # itself. (Moved here from a removed wording test, #1127.)
+    assert artifact["evidence_boundaries"] == list(AD_MEMORY_PREFLIGHT_BOUNDARIES)
     assert json.loads(report.to_json()) == artifact
 
 
