@@ -244,7 +244,7 @@ def generate_coaxial_reference_plane_dft_dump(
     _raw_spec, gap_accs = result.lumped_port_sparams[0]
     gap_v_dft, gap_i_dft = gap_accs[0], gap_accs[1]
     # A DRIVEN port's S11 is the terminal reflection.  This used to be
-    # driven_port_reflection, the passive port-branch reading, which on a driven
+    # extract_lumped_s11, the passive port-branch reading, which on a driven
     # port is the reciprocal of the physical reflection
     # (scripts/diagnostics/lumped_port_known_load_line.py).
     gap_s11 = np.asarray(
