@@ -16,6 +16,45 @@ Phase 3: Lumped ports + Debye/Lorentz dispersive materials.
          ADE (auxiliary differential equation) state is carried through
          the scan loop; updates are purely local (no cross-device
          exchange needed for polarization fields).
+
+LEGACY LANE -- not the production distributed path (#1038 leg 6, PI decision
+2026-09-15). ``Simulation.run(devices=...)`` dispatches to
+``rfx.runners.distributed_v2.run_distributed`` (``shard_map``) for uniform and
+non-uniform grids alike; v2 is the single distributed development trunk. This
+module is NOT merged into v2: the two are not bit-identical (max |delta|
+2.794e-09 on a 9.4145e-03 peak) and they disagree on the odd-``nx`` rule (this
+module refuses an odd ``nx``, v2 pads it).
+
+The module stays, and stays supported, for three live roles:
+
+* ``distributed_v2.py:56`` imports twelve domain splitting, local-update and
+  CPML names from here (``gather_array_x``, ``_split_state``,
+  ``_split_materials``, the Debye/Lorentz splitters,
+  ``_apply_cpml_{e,h}_distributed``, ...);
+* ``rfx/api/_execute.py`` imports ``_split_materials`` from here for the
+  distributed non-uniform forward path;
+* ``distributed_v2.run_distributed`` delegates to this module's
+  ``run_distributed`` verbatim as its single-device fast path
+  (``distributed_v2.py:514-517``, ``if n_devices == 1``), so this code still
+  runs under every one-device ``sim.run(devices=[...])`` call.
+
+As of #1038 leg 6 it is no longer re-exported from ``rfx.runners``; import it
+by full module path.
+
+STEP ORDER: the same as v2 and ``distributed_nu`` since #1055. Both scan
+bodies here inject sources (and, on the PEC path, apply the domain-face PEC)
+BEFORE the E ghost exchange, so the exchange is the last stage of the E
+half-step and a ghost row is always a copy of the owner's FINISHED real row.
+Until #1055 this module exchanged first -- the defect #1041 measured and fixed
+on v2 (#1056), reproduced here to four digits: a soft source in rank 1's FIRST
+real cell read 1.859e-01 (pec) / 1.653e-01 (cpml) relative to the SAME model on
+one device, and 0.000e+00 (pec) / 1.579e-06 (cpml) after the reorder -- the
+interior-source control on the same geometry, which is order-insensitive, sits
+at 0.000e+00 / 2.417e-06, so the corrected seam is at the lane floor
+(``scripts/diagnostics/issue1055_v1_step_order.py``, gated by
+``tests/unit/runners/test_distributed_v2_seam_source_order.py``, which
+parametrises over both runners). The three step orders no longer diverge, so a
+reader comparing the lanes does not have to work out which one is the odd one.
 """
 
 from __future__ import annotations
@@ -48,6 +87,10 @@ from rfx.materials.lorentz import LorentzCoeffs, LorentzState
 from rfx.runners._distributed_common import (
     cpml_coeff_e_vacuum,
     cpml_coeff_h_vacuum,
+    gather_array_x,
+    split_array_x,
+    split_poles_x,
+    zeros_psi_stacked,
 )
 
 
@@ -55,75 +98,19 @@ from rfx.runners._distributed_common import (
 # Domain splitting / gathering
 # ---------------------------------------------------------------------------
 
-def split_array_x(arr, n_devices, ghost=1, pad_value=0.0):
-    """Split a 3D array into N slabs along x with ghost cells.
-
-    Parameters
-    ----------
-    arr : ndarray, shape (nx, ny, nz)
-    n_devices : int
-    ghost : int
-        Number of ghost cells on each side.
-    pad_value : float
-        Value used for ghost cells at the physical boundary (device 0
-        left ghost and device N-1 right ghost).  Default 0.0 is correct
-        for field arrays; use 1.0 for eps_r and mu_r to avoid division
-        by zero in the Yee update.
-
-    Returns
-    -------
-    slabs : ndarray, shape (n_devices, nx_local + 2*ghost, ny, nz)
-    """
-    nx = arr.shape[0]
-    nx_per = nx // n_devices
-    slabs = []
-    for i in range(n_devices):
-        x_start = i * nx_per
-        x_end = x_start + nx_per
-
-        # Desired range including ghosts
-        want_lo = x_start - ghost
-        want_hi = x_end + ghost
-
-        # Clamp to valid array range
-        g_lo = max(0, want_lo)
-        g_hi = min(nx, want_hi)
-
-        slab_data = arr[g_lo:g_hi]
-
-        # Pad where the desired range exceeds array bounds
-        pad_lo = g_lo - want_lo   # > 0 when want_lo < 0
-        pad_hi = want_hi - g_hi   # > 0 when want_hi > nx
-
-        if pad_lo > 0 or pad_hi > 0:
-            pad_widths = [(pad_lo, pad_hi)] + [(0, 0)] * (arr.ndim - 1)
-            slab_data = jnp.pad(slab_data, pad_widths, mode='constant',
-                                constant_values=pad_value)
-
-        slabs.append(slab_data)
-    return jnp.stack(slabs)
-
-
-def gather_array_x(slabs, ghost=1):
-    """Gather slabs back into a single array, stripping ghost cells.
-
-    Parameters
-    ----------
-    slabs : ndarray, shape (n_devices, nx_local + 2*ghost, ny, nz)
-    ghost : int
-
-    Returns
-    -------
-    arr : ndarray, shape (nx, ny, nz)
-    """
-    # Strip ghost cells from each slab and concatenate
-    inner = slabs[:, ghost:-ghost, :, :]  # (n_devices, nx_per, ny, nz)
-    n_devices = inner.shape[0]
-    # Reshape: merge device and x dims
-    nx_per = inner.shape[1]
-    ny = inner.shape[2]
-    nz = inner.shape[3]
-    return inner.reshape(n_devices * nx_per, ny, nz)
+# #1038 leg 2: ``split_array_x`` and ``gather_array_x`` moved VERBATIM to
+# rfx/runners/_distributed_common.py and are re-exported here, at the position
+# they were defined, so ``rfx.runners.distributed.split_array_x`` and
+# ``...gather_array_x`` keep resolving for the three external importers
+# (tests/unit/runners/test_distributed.py, test_distributed_v2_gather_traceable.py,
+# and distributed_v2.py:57). They had to move before any consolidation of the
+# helpers that CALL them: ``_distributed_common`` is imported by distributed.py
+# ten lines above their old definitions, so a shared body calling them could not
+# import them from here. Measured, not assumed:
+#   ImportError: cannot import name 'gather_array_x' from partially initialized
+#   module 'rfx.runners.distributed' (most likely due to a circular import)
+# Both are closure-free module-level functions whose only global is ``jnp``, so
+# the move needs no signature change.
 
 
 def _split_state(state, n_devices, ghost=1):
@@ -206,10 +193,8 @@ def _split_debye_state(state: DebyeState, n_devices, ghost=1):
     n_poles = state.px.shape[0]
 
     def _split_poles(arr):
-        return jnp.stack([
-            split_array_x(arr[p], n_devices, ghost, pad_value=0.0)
-            for p in range(n_poles)
-        ], axis=1)  # (n_devices, n_poles, nx_local, ny, nz)
+        # (n_devices, n_poles, nx_local, ny, nz)
+        return split_poles_x(arr, n_poles, n_devices, ghost)
 
     return DebyeState(
         px=_split_poles(state.px),
@@ -237,10 +222,7 @@ def _split_lorentz_coeffs(coeffs: LorentzCoeffs, n_devices, ghost=1):
     n_poles = coeffs.a.shape[0]
 
     def _split_poles(arr):
-        return jnp.stack([
-            split_array_x(arr[p], n_devices, ghost, pad_value=0.0)
-            for p in range(n_poles)
-        ], axis=1)
+        return split_poles_x(arr, n_poles, n_devices, ghost)
 
     return LorentzCoeffs(
         ca=ca, cb=cb,
@@ -256,10 +238,7 @@ def _split_lorentz_state(state: LorentzState, n_devices, ghost=1):
     n_poles = state.px.shape[0]
 
     def _split_poles(arr):
-        return jnp.stack([
-            split_array_x(arr[p], n_devices, ghost, pad_value=0.0)
-            for p in range(n_poles)
-        ], axis=1)
+        return split_poles_x(arr, n_poles, n_devices, ghost)
 
     return LorentzState(
         px=_split_poles(state.px),
@@ -695,7 +674,7 @@ def _init_cpml_distributed(grid, nx_local, n_devices):
 
     def _zeros(dim1, dim2):
         """Zero psi array: (n_devices, n_cpml, dim1, dim2)."""
-        return jnp.zeros((n_devices, n, dim1, dim2), dtype=jnp.float32)
+        return zeros_psi_stacked(n_devices, n, dim1, dim2)
 
     # X-face psi: perpendicular dims are (ny, nz) or transposed
     # Y/Z-face psi: perpendicular dims include nx_local (slab-local x)
@@ -1555,7 +1534,23 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                              step_indices, src_waveforms_dev, src_mask,
                              prb_mask, debye_coeffs_dev, debye_state_dev,
                              lorentz_coeffs_dev, lorentz_state_dev):
-            """Scan body over timesteps on one device (CPML path)."""
+            """Scan body over timesteps on one device (CPML path).
+
+            Stage order (#1055)::
+
+                H -> CPML-H -> exch H -> PMC face -> E -> CPML-E
+                  -> sources -> exch E -> probes
+
+            The E ghost exchange is the LAST stage of the E half-step, so a
+            ghost row is always a copy of the owner's FINISHED real row --
+            the mirror of the H half, which applies the PMC face before the
+            H exchange so the zero propagates via the exchange. This is
+            ``distributed_v2``'s order since #1056 and ``distributed_nu``'s
+            since ``ac782d4f`` (#931 T3). Until #1055 this body exchanged
+            BEFORE injecting, which lagged a seam-cell source by one step in
+            the neighbour's copy -- see the comment on stage 7 for the
+            measurement that moved it.
+            """
 
             def step_fn(carry, xs):
                 _step_idx, src_vals = xs
@@ -1607,21 +1602,48 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                     n_devices, ghost=ghost, axis_name="devices",
                     eps_r=materials_slab.eps_r)
 
-                # 6. Exchange E ghost cells (conditionally skip)
-                st = lax.cond(
-                    do_exchange,
-                    lambda s: _exchange_e_ghosts(s, n_devices, "devices"),
-                    lambda s: s,
-                    st,
-                )
-
-                # 7. Source injection (only on owning device)
+                # 6. Source injection (only on owning device)
                 for idx_s in range(n_src):
                     li, lj, lk, lc = src_local_specs[idx_s]
                     val = src_vals[idx_s] * src_mask[idx_s]
                     field = getattr(st, lc)
                     field = field.at[li, lj, lk].add(val)
                     st = st._replace(**{lc: field})
+
+                # 7. Exchange E ghost cells -- LAST stage of the E half-step,
+                #    so a ghost row is a copy of the owner's FINISHED real row
+                #    (#1055, matching distributed_v2 since #1056 and
+                #    distributed_nu since ac782d4f / #931 T3). Exchanging
+                #    before injection left a source at rank d's first real
+                #    cell out of rank d-1's right ghost for one step, and
+                #    rank d-1's next H update read the pre-injection plane.
+                #    Measured by scripts/diagnostics/issue1055_v1_step_order.py
+                #    on a seam-cell ez source, 2 ranks, 300 steps,
+                #    boundary="cpml", against the SAME model on ONE device:
+                #    the probe 4 cells into the neighbouring rank went from
+                #    1.653e-01 relative (first divergent step 4, the causal
+                #    arrival of the source's own wavefront) to 1.579e-06
+                #    (step 50), which is BELOW this body's own lane floor --
+                #    the interior-source control, source 8 cells from the
+                #    seam, sits at 2.417e-06 / 2.894e-05 on the same geometry
+                #    and is bit-identical between the two orderings.
+                #
+                #    The defect is ONE-SIDED. Only the RIGHT E ghost is live:
+                #    rank d-1's H at its last REAL cell consumes it. A rank's
+                #    LEFT E ghost feeds only its own H at that same index, and
+                #    the H exchange (stage 3) overwrites that H with the
+                #    neighbour's authoritative value before anything reads it.
+                #    So a source in rank d's LAST real cell was never affected
+                #    -- measured bit-identical between the two orderings --
+                #    and that is exactly where both distributed_v1_* fixtures
+                #    of the #1038 bit-identity lock put their source, which is
+                #    why that lock stays 13/13 green through this change.
+                st = lax.cond(
+                    do_exchange,
+                    lambda s: _exchange_e_ghosts(s, n_devices, "devices"),
+                    lambda s: s,
+                    st,
+                )
 
                 # 8. Probe sampling (only on owning device)
                 samples = []
@@ -1651,7 +1673,20 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                              step_indices, src_waveforms_dev, src_mask,
                              prb_mask, debye_coeffs_dev, debye_state_dev,
                              lorentz_coeffs_dev, lorentz_state_dev):
-            """Scan body over timesteps on one device (PEC path)."""
+            """Scan body over timesteps on one device (PEC path).
+
+            Stage order (#1055)::
+
+                H -> exch H -> PMC face -> E -> sources -> PEC face
+                  -> exch E -> probes
+
+            Same invariant as the CPML body: the E ghost exchange is last,
+            so a ghost row is a copy of the owner's finished real row. The
+            PEC face moved with it for parity with ``distributed_v2`` /
+            ``distributed_nu``; on THIS lane that half of the move is
+            measurably inert (stage 6 comment), because the DOMAIN-FACE PEC
+            is the only PEC this lane applies at all.
+            """
 
             def step_fn(carry, xs):
                 _step_idx, src_vals = xs
@@ -1689,24 +1724,51 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                 if has_lorentz:
                     lr_st = new_lr
 
-                # 4. Exchange E ghost cells (conditionally skip)
-                st = lax.cond(
-                    do_exchange,
-                    lambda s: _exchange_e_ghosts(s, n_devices, "devices"),
-                    lambda s: s,
-                    st,
-                )
-
-                # 5. PEC boundaries
-                st = _apply_pec_local(st, n_devices, nx_local, "devices")
-
-                # 6. Source injection (only on owning device)
+                # 4. Source injection (only on owning device)
                 for idx_s in range(n_src):
                     li, lj, lk, lc = src_local_specs[idx_s]
                     val = src_vals[idx_s] * src_mask[idx_s]
                     field = getattr(st, lc)
                     field = field.at[li, lj, lk].add(val)
                     st = st._replace(**{lc: field})
+
+                # 5. PEC boundaries (domain faces only; declared PEC geometry
+                #    of any kind is REFUSED on this lane, see the
+                #    NotImplementedError in run_distributed). Injection runs
+                #    BEFORE the face, matching distributed_v2 stage 5 and
+                #    distributed_nu stage 7. Both distributed lanes therefore
+                #    differ from the single-device lane, which applies the
+                #    faces before its soft-source loop; the difference is
+                #    observable only for a source placed ON a domain PEC face,
+                #    where the tangential E is zeroed in the same step it is
+                #    injected. #1055 measured no such fixture and did not
+                #    change it -- a source on a PEC face is its own question.
+                st = _apply_pec_local(st, n_devices, nx_local, "devices")
+
+                # 6. Exchange E ghost cells -- LAST stage of the E half-step,
+                #    so a ghost row is a copy of the owner's FINISHED real row
+                #    (#1055; the ordering distributed_v2 took in #1056 and
+                #    distributed_nu in ac782d4f / #931 T3). Same measurement
+                #    as the CPML body above, boundary="pec": the probe 4 cells
+                #    into the neighbouring rank went from 1.859e-01 relative
+                #    (first divergent step 4) to 0.000e+00 -- on THIS body the
+                #    corrected lane is bit-identical to the single-device
+                #    lane, as are both of its controls, so the floor is zero
+                #    and the seam sits on it. Same one-sided reachability as
+                #    the CPML body: a source in rank d's LAST real cell is
+                #    unaffected either way (measured bit-identical).
+                #    The PEC half of the move is inert on THIS lane and was
+                #    measured to be so (#1055 fixture P, bit-identical):
+                #    _apply_pec_local zeroes the y/z faces on every x row
+                #    INCLUDING the ghosts, and its x_lo / x_hi faces act on
+                #    rank 0's first and rank N-1's last real cell, whose
+                #    exchanged copies the receiving rank discards.
+                st = lax.cond(
+                    do_exchange,
+                    lambda s: _exchange_e_ghosts(s, n_devices, "devices"),
+                    lambda s: s,
+                    st,
+                )
 
                 # 7. Probe sampling (only on owning device)
                 samples = []

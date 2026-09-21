@@ -5,86 +5,169 @@ solving, WITHOUT solving, and compares its ``preflight()`` +
 ``fidelity_report()`` output against a committed snapshot
 (``tests/data/example_fidelity_snapshot.json``, regenerable with
 ``scripts/capture_example_fidelity_snapshot.py``). It is cheap precisely
-because neither call time-steps: measured 2026-08-28 on this repo's CPU
-lane, ``85 passed ... in 53.66s`` for all 33 script/builder/variant triples
-(``84 passed, 1 skipped in 50.26s`` without optax installed, which is CI's
-configuration -- see OPTIONAL_DEPENDENCIES).
+because neither call time-steps: measured 2026-09-18 on this repo's CPU
+lane, ``208 passed, 20 warnings in 91.44s`` for all 62 script/builder/variant
+triples with optax installed. That is a dated reading of THIS file, so a later
+PR that adds a test moves it; the 62 is the load-bearing number and
+``test_discovery_matches_classification_table`` is what holds it. (For history: the same
+lane measured ``194 passed, 13 warnings in 91.71s`` at c6788ef7, before the
+#737-item-2 builders took it from 51 triples to 62.) On a machine without optax
+beam_steering_superstrate.py declares it in OPTIONAL_DEPENDENCIES and
+skips rather than failing -- that is CI's configuration.
 
-SNAPSHOT, not a zero-advisory bar. What ships here PINS what each example
-emits TODAY, so any DRIFT from that baseline fails CI. It is NOT a claim
-that today's advisories are correct or that the examples are clean: read a
-green run as "this example did not change since the snapshot was taken."
+EMISSION-DRIFT PIN PLUS A ZERO-*UNEXPLAINED*-ADVISORY BAR -- STILL NOT A
+PHYSICS CHECK. Nothing here time-steps: what is pinned is the TEXT each example
+EMITS at build time (its preflight rows and its fidelity/realization
+report), so a green run says "this example's declared geometry and its
+build-time advisories did not change since the snapshot was taken." It
+says nothing about whether the example's OUTPUT numbers are right, and
+nothing about whether today's advisories are correct or the examples are
+clean. Never quote a green run here as example correctness.
 
-Measured on the snapshot as committed (2026-08-28, 33 variants): 37
-preflight rows over 11 variants, all severity="warning", codes
-mesh_resolution 7, msl_port_geometry 6, off_lattice_design_edges 5,
-pec_faces_finite_pec 4, port_evanescent 4, lossless_q 3, no_sources 2, and
-one each of adi_3d_accuracy, floating_port, ntff_near_field,
-ntff_small_ground_plane, sheet_cavity_electrical_thickness,
-geometry_in_absorber. #742 (the false positives and the never-emitted
-advisories that made a zero-advisory bar unworkable) is CLOSED: #744 took
-``absorber_budget_exceeds_axis`` off axes with no absorber and 9 rows left
-this snapshot with it. The 37 that remain are statements about the
-examples' own meshes and ports, so getting to zero means changing those
+WHAT DOES VERIFY EXAMPLE OUTPUTS (the other half of #737, and the reason
+this gate's coverage table is not the coverage table):
+
+* ``tests/contracts/test_tutorial_examples.py`` RUNS six committed
+  tutorials end-to-end in a subprocess with time stepping and asserts
+  physics (peak directivity within 0.3 dB of 1.76 dBi, a TE101 error
+  bound, a backscatter/GO ratio window, preflight banner counts):
+  materials_and_dispersion, antenna_farfield_pattern,
+  ports_and_sparams_101, run_control_and_fields, rcs_scattering,
+  resonance_harminv. All six are ALSO audited here, so a change in one of
+  them shows up in two places: a snapshot diff (what it declares) and an
+  end-to-end failure (what it computes). That file carries no pytest
+  marker either, so it is in the same PR fast suite as this gate.
+* ``tests/unit/api/test_diagnostics.py`` runs
+  ``examples/quickstart/hello_world.py`` end-to-end via
+  ``runpy.run_path``. Since #737 item 2 that script is ALSO audited here
+  (``build_simulation``), so it is covered twice: what it declares and
+  what it computes.
+* the weekly ``crossval-external`` job (validation.yml) builds AND solves
+  the eight scheduled crossval cases (01, 02, 03, 04, 09, 10, 22, 23).
+
+EVERY PINNED ADVISORY ROW CARRIES A WRITTEN DISPOSITION (#737 item 1,
+2026-09-16). ``tests/data/example_fidelity_advisories.json`` classifies
+each (variant, code) group of pinned preflight rows as ``intended`` -- the
+example deliberately shows or tolerates the condition, with its own
+docstring/comment or the physics as the reason -- or ``defect-open``, with
+the issue number tracking the fix; ``test_every_pinned_advisory_row_is_
+classified`` asserts the mapping is a bijection with the row counts, so a
+new advisory, a retired one, and a stale entry all fail here. That is the
+"tighten once #742 closes" step the tracker's first comment planned: the
+bar is zero UNEXPLAINED advisories, not zero advisories. It does NOT
+assert that an advisory is correct, and it does not block a new one --
+it blocks an unexplained one.
+
+HOW MANY ROWS, AND OF WHAT -- do not look for a number here. The counts
+live in ``tests/data/example_fidelity_snapshot.json`` (what is pinned) and
+``tests/data/example_fidelity_advisories.json`` (what is classified), and
+``test_every_pinned_advisory_row_is_classified`` asserts the two agree, per
+(variant, code) and in total. A count written into this docstring is a third
+copy nobody updates: it read "91 rows, 90 warning + 1 info" while the
+snapshot held 90 and 89, because this PR's own fix to
+beam_steering_superstrate retired an ``off_lattice_design_edges`` row and
+the prose stayed behind. Read the data files.
+
+Qualitatively, of the eleven variants #737 item 2 added only two scripts emit
+anything: 13_subgrid_material_validation's dielectric arms (mesh resolution)
+and nonuniform_patch_demo (lossless Q, off-lattice design edges), which are
+the two the tutorial's own text already explains; the other new variants emit
+none. #742 (the false positives and
+the never-emitted advisories that made a zero-advisory bar unworkable) is
+CLOSED, and the "tighten once #742 closes" step the tracker's first comment
+planned HAS been executed -- as the zero-UNEXPLAINED-advisory bar described
+above, which is the form that survived #742 closing.
+
+What is still open is the OTHER reading of that comment, a bar of zero
+advisories at all. The rows that remain are true statements about the
+examples' own meshes and ports, so reaching zero means changing those
 examples -- separate work from this gate, which pins whatever they say.
+Whether it happens is a PI decision on #737. Until it is taken this file is
+both things at once: a drift pin on what every audited example emits, and a
+bar on every pinned row carrying a written disposition.
 
-KNOWN WRONG AND PINNED ANYWAY: every ``domain`` row's
-``realized_extent_um`` / ``n_cells`` is one cell too large, because
-``rfx/fidelity.py`` sums the NODE-count slice of the cell-size array (N
-interior nodes bound N-1 cells). 95 ``domain-extent-quantized`` findings in
-this snapshot are that artefact -- cv14's 50 mm cavity at dx = 1 mm reads
-51 cells / 51000.0 um and is flagged as not dividing evenly. That is #729
-site 1, fixed by the open PR #734, NOT by this one: two PRs editing the
-same block with different 2-D semantics is worse than one honest header.
-When #734 lands, this gate will flag the drift -- that is the gate working,
-and the re-capture belongs to #734. Do not quote a domain extent from this
-file as a measurement until then.
+Every pinned row carries a disposition. Two are ``defect-open`` -- #928 for
+cv07's congruent-feed parity and #1100 for the taper's declared-vs-realized
+WR-90 guide -- and the rest are ``intended``. Again the totals are in the two
+data files, not here. The rows the eleven #737-item-2 variants
+added are classified against the examples' own text: the patch demo states that
+it models FR4 lossless and quotes frequencies rather than Q, and that a graded
+mesh trades accuracy for cells; the subgrid script's coarse dielectric arm exists
+to be rejected, and its uniform twin reuses that mesh so the two are comparable
+and is checked against the analytic TM110 resonance.
 
-COVERAGE (measured 2026-08-27, re-derive with test_discovery_matches_
-classification_table and the Counter in this module's own analysis): of the
-47 scripts under examples/ and validation/,
+The #729 site-1 defect this header used to warn about (every ``domain``
+row's ``realized_extent_um``/``n_cells`` one cell too large, because
+``rfx/fidelity.py`` summed a NODE-count slice) was FIXED by PR #734
+(merged a5a72280) and the snapshot was re-captured after it: cv11's WR-90
+guide now reads 23000/11000 um, which is what #722 measures, not the old
+24000/12000. The snapshot's own ``_comment`` records that re-capture and a
+second one (2026-09-02, #833 item 2).
 
-* 23 are AUDITED here (33 script/builder/variant triples -- several
-  builders are called at more than one input, e.g. booleans or cell sizes,
-  matching what each script's own ``main()`` drives);
-* 10 are ``builder_fused_with_solve``: build and solve share one function
-  with no separable build-only path (e.g. cv07/cv15's ``run_rfx()`` builds
-  ``sim`` and calls a solve entrypoint in the same function). This gate
-  does NOT cover them -- notably cv07, cv09, cv10, cv15, cv18,
-  examples/quickstart/hello_world.py, examples/tutorials/boundary_spec_demo.py,
-  examples/tutorials/cad_mesh_import_demo.py,
-  validation/research/nu_cavity_gates/nu_cavity_gate_scan.py, and
-  validation/research/subgrid/13_subgrid_material_validation.py are ALL
-  OUT OF SCOPE until they get a builder separable from their solve;
-* 6 are ``module_level_solve``: importing the module solves at module scope
-  (cv01-cv05, examples/tutorials/nonuniform_patch_demo.py) -- also out of
-  scope, and deliberately never imported by this test;
+COVERAGE (measured 2026-09-16 at c6788ef7 + this PR; re-derive with
+``test_discovery_matches_classification_table`` and a Counter over
+``lib.CLASSIFICATION``). Discovery sees 138 scripts under examples/ +
+validation/, all 138 classified: audited 39, builder_fused_with_solve 8,
+module_level_solve 6, no_solve 4, no_simulation 81; the snapshot holds 62
+variants over those 39 audited scripts.
+
+Against the 47 scripts that existed when #737 was filed (ed3484c1 -- the
+tracker's own denominator, kept here because the tracker's table is stated
+in it): 30 audited / 4 builder_fused_with_solve / 5 module_level_solve /
+8 no_simulation. The moves since the 2026-08-27 audit's 23/10/6/8: cv07
+and cv15 grew build-only entry points (23->25, 10->8), and #737 item 2
+(2026-09-16) added five more -- hello_world, boundary_spec_demo,
+nu_cavity_gate_scan and 13_subgrid_material_validation out of
+``builder_fused_with_solve``, and nonuniform_patch_demo out of
+``module_level_solve`` (its module-scope body moved into ``main()``, so
+importing it no longer solves).
+
+* ``builder_fused_with_solve`` (build and solve share one function with
+  no separable build-only path) in that 47-set, i.e. the scripts this
+  gate does NOT reach: examples/tutorials/cad_mesh_import_demo.py, cv09,
+  cv10, cv18. "Out of this snapshot" is not "unverified": cv09 is REBUILT
+  build-only from its own constants and helpers in
+  tests/crossval/test_cv09_cv10_body_contract_controls.py (cv10 only at
+  the spec level there, via ``_common_spec()``) and both solve weekly;
+  cv18's gates replay a frozen fixture
+  (tests/crossval/test_wr90_iris_modematch_gates.py) and its realized
+  geometry is checked build-time in test_wr90_iris_realized_is_shared.py.
+  cad_mesh_import_demo is the one script of #737 item 2 that did NOT get a
+  builder, and it is the one with no build or run coverage anywhere: its
+  Simulation needs ``trimesh`` (the optional [cad] extra), which the lane
+  running this gate does not install, and a build-time ModuleNotFoundError
+  would red the gate rather than skip (OPTIONAL_DEPENDENCIES only covers
+  an import-time miss). Its CLASSIFICATION entry carries that reason.
+* ``module_level_solve`` (importing the module solves at module scope):
+  cv01-cv05 -- also out of scope, and deliberately never imported by this
+  test. cv01/cv02 have ``--replay`` re-judge subprocess tests and cv05 a
+  ``RFX_CV05_BUILD_ONLY=1`` subprocess build test.
 * 8 build no rfx ``Simulation`` at all (cv16/cv17/cv20/cv21, the two
-  crossval comparator subdirs, and the two research RCWA scripts) -- out of
-  scope BY CONSTRUCTION.
+  crossval comparator subdirs, and the two research RCWA scripts) -- out
+  of scope BY CONSTRUCTION.
 
 WHAT THIS DOES NOT COVER. Against #722's own list of eight scripts that
 solved geometry other than what they declared (cv06b, cv20, cv11, cv16,
-cv17, cv07, cv09, cv15), this gate reaches TWO: cv06b and cv11.
-cv20/cv16/cv17 are ``no_simulation`` and cv07/cv09/cv15 are
+cv17, cv07, cv09, cv15), this gate now reaches FOUR: cv06b, cv11, cv07
+and cv15 (the last two arrived with their build-only entry points).
+cv20/cv16/cv17 are ``no_simulation`` and cv09 is
 ``builder_fused_with_solve``, so a no-solve gate cannot see them as those
 scripts stand today. Nor does it reach cv21's fence-post error (#739, cv21
-is ``no_simulation``) or cv15's cavity (#740). It DOES pin
+is ``no_simulation``; that one is pinned against a rebuilt grid in
+tests/crossval/test_coax_two_port_referee_header.py instead). It DOES pin
 differentiable_s11_design's two domain widths (#738); that script's third
 declared width, the port aperture, falls under fidelity_report's own
 out-of-scope port row. A green run here is not evidence that the #722
-campaign's class is closed -- closing it needs the remaining six scripts to
-grow a builder separable from their solve.
+campaign's class is closed.
 
-Every one of the 47 is EXPLICITLY classified in
+Every discovered script is EXPLICITLY classified in
 ``tests/_example_fidelity_lib.CLASSIFICATION`` (enumerate-and-classify: a
 new script with no entry fails ``test_discovery_matches_classification_
-table`` instead of silently passing uncovered), and the two out-of-scope
-buckets required to be machine-checkable by the 2026-08-27 review are
-verified against each script's own AST in
-``test_not_auditable_classifications_are_machine_checked`` below (extended,
-cheaply, to all four buckets: a classification that disagrees with what the
-script's source actually does is a bug in the table, not a judgement call).
+table`` instead of silently passing uncovered), and all four out-of-scope
+buckets are verified against each script's own AST in
+``test_not_auditable_classifications_are_machine_checked`` below: a
+classification that disagrees with what the script's source actually does
+is a bug in the table, not a judgement call.
 
 Discovery is a recursive, unfiltered glob (see ``_example_fidelity_lib``'s
 module docstring) -- no one-level ``*/*.py`` pattern to miss a doubly-nested
@@ -340,6 +423,172 @@ def test_example_matches_snapshot(
     actual = json.loads(json.dumps(lib.digest_variant(sim)))
     expected = snapshot[key]
     assert actual == expected, _diff_message(key, expected, actual)
+
+
+def test_every_pinned_advisory_row_is_classified() -> None:
+    """Zero UNEXPLAINED advisories: the bar #737's first comment planned.
+
+    The snapshot pins WHAT each audited example emits. This asserts that every
+    pinned preflight row also has a WRITTEN disposition in
+    ``tests/data/example_fidelity_advisories.json`` -- intended (the example
+    deliberately shows or tolerates it, with its own docstring/comment or the
+    physics as the reason) or defect-open (it should not emit it, with the
+    issue that tracks the fix). The mapping is a bijection with the row counts
+    checked, so all three drift directions fail here rather than silently:
+
+    * a NEW advisory row on an audited example -> no entry -> fails;
+    * a row that DISAPPEARS (an example fixed, or an advisory retired)
+      -> stale entry -> fails;
+    * the same (variant, code) firing more or fewer times -> count mismatch.
+
+    This does NOT judge whether an advisory is correct, and it does not stop a
+    new advisory from landing -- it stops one from landing unexplained.
+    """
+    snapshot = _load_snapshot()
+    pinned = lib.snapshot_advisory_counts(snapshot)
+    entries = lib.load_advisory_classification()
+
+    seen: dict[tuple[str, str], int] = {}
+    for entry in entries:
+        key = (entry["variant"], entry["code"])
+        assert key not in seen, (
+            f"two classification entries for {key} -- one entry per "
+            "(variant, code), with `rows` counting the pinned rows it covers")
+        seen[key] = entry["rows"]
+
+    missing = sorted(k for k in pinned if k not in seen)
+    assert not missing, (
+        "pinned preflight row(s) with no written disposition: "
+        f"{missing} -- classify them in tests/data/"
+        "example_fidelity_advisories.json (#737 item 1); a new advisory on an "
+        "audited example is either intended (say why, citing the example) or "
+        "an example defect (fix it, or file an issue and use 'defect-open')")
+    stale = sorted(k for k in seen if k not in pinned)
+    assert not stale, (
+        f"classification entr(ies) for row(s) that are no longer pinned: "
+        f"{stale} -- the example or the advisory changed; drop the entry (and "
+        "say so in the PR) instead of leaving a claim about a row nobody emits")
+    wrong = {k: (seen[k], pinned[k]) for k in pinned if seen[k] != pinned[k]}
+    assert not wrong, (
+        f"row-count mismatch (classified, pinned): {wrong} -- the same code "
+        "now fires a different number of times on that variant")
+    assert sum(seen.values()) == sum(pinned.values()), (
+        "row totals disagree after the per-key check -- this cannot happen "
+        "and means the two tables were built from different snapshots")
+
+
+# A ``ref`` is a ``|``-separated list of pointers. Each is either a tracker URL
+# or ``<path>:<spec>``, where the spec is a comma-separated list of line numbers
+# and ``start-end`` ranges. Both forms are already in use and both are good
+# evidence; what was NOT checked before is whether the path exists and whether
+# the lines are inside the file, so ``a.py:1`` passed.
+_REF_PATH_RE = re.compile(r"^(?P<path>[^\s:|]+):(?P<spec>[0-9,\-]+)$")
+_REF_CHUNK_RE = re.compile(r"^(?P<start>\d+)(?:-(?P<end>\d+))?$")
+_REF_URL_PREFIX = "https://github.com/bk-squared/rfx/"
+# 12 words is not a style preference: a one-line "intended, see the docstring"
+# is the failure this file exists to prevent, and it fits in eleven.
+_MIN_REASON_WORDS = 12
+
+
+def _check_ref(where: str, ref: str) -> None:
+    """Every pointer in *ref* resolves: a real file, a line inside it."""
+    parts = [part.strip() for part in ref.split("|")]
+    assert parts and all(parts), (
+        f"{where}: ref has an empty pointer -- {ref!r}")
+    for part in parts:
+        if part.startswith(_REF_URL_PREFIX):
+            continue
+        match = _REF_PATH_RE.match(part)
+        assert match, (
+            f"{where}: ref pointer {part!r} is neither a tracker URL under "
+            f"{_REF_URL_PREFIX} nor '<path>:<lines>' (a line, a 'start-end' "
+            "range, or a comma-separated list of those)")
+        path = lib.REPO_ROOT / match.group("path")
+        assert path.is_file(), (
+            f"{where}: ref names {match.group('path')!r}, which is not a file "
+            "in the tree -- a pointer nobody can follow is not evidence")
+        n_lines = len(path.read_text(encoding="utf-8").splitlines())
+        for chunk in match.group("spec").split(","):
+            bounds = _REF_CHUNK_RE.match(chunk)
+            assert bounds, f"{where}: ref line spec {chunk!r} is not N or N-M"
+            start = int(bounds.group("start"))
+            end = int(bounds.group("end") or start)
+            assert 1 <= start <= end <= n_lines, (
+                f"{where}: ref points at {match.group('path')}:{chunk}, but "
+                f"that file has {n_lines} lines -- the reason cannot be read "
+                "there")
+
+
+def test_advisory_classifications_are_well_formed() -> None:
+    """A disposition has to carry its evidence, and defect-open its issue.
+
+    Enforced per entry: a disposition from ``lib.ADVISORY_DISPOSITIONS``, a
+    ``reason`` long enough to be a reason, and a ``ref`` whose every pointer
+    RESOLVES -- an existing file and a line inside it, or a tracker URL. The
+    ref check used to be ``ref.strip()``, which ``a.py:1`` passes; a pointer
+    nobody can follow is the same as no evidence, and the whole value of this
+    file is that a reader can go and check.
+
+    ``defect-open`` additionally needs an integer issue number, so a row
+    cannot be parked as a known defect with nothing tracking it.
+    """
+    for entry in lib.load_advisory_classification():
+        where = f"{entry.get('variant')} :: {entry.get('code')}"
+        for field in ("variant", "code", "rows", "disposition", "reason", "ref"):
+            assert field in entry, f"{where}: classification entry lacks {field!r}"
+        assert entry["disposition"] in lib.ADVISORY_DISPOSITIONS, (
+            f"{where}: unknown disposition {entry['disposition']!r} -- "
+            f"expected one of {sorted(lib.ADVISORY_DISPOSITIONS)}")
+        assert isinstance(entry["rows"], int) and entry["rows"] >= 1, (
+            f"{where}: rows must be a positive int, got {entry['rows']!r}")
+        reason = entry["reason"].strip()
+        assert len(reason) >= 80 and len(reason.split()) >= _MIN_REASON_WORDS, (
+            f"{where}: the reason is the point of this file -- write why this "
+            "row is there, citing the example's own docstring/comment or the "
+            f"physics (at least {_MIN_REASON_WORDS} words; this one has "
+            f"{len(reason.split())})")
+        assert entry["ref"].strip(), (
+            f"{where}: ref must point at the lines (or the issue) the reason "
+            "is read from")
+        _check_ref(where, entry["ref"])
+        if entry["disposition"] == "defect-open":
+            assert isinstance(entry.get("issue"), int), (
+                f"{where}: 'defect-open' requires an integer issue number -- "
+                "file the issue rather than parking the row")
+
+
+def test_no_reason_is_boilerplate_across_different_advisories() -> None:
+    """A repeated reason is allowed only between rows of the SAME code.
+
+    The thing worth blocking is one sentence pasted over unrelated rows, which
+    is what a generic "intended, the example means it" looks like: it spans
+    codes. Repetition WITHIN a code is not that. Four pairs in this file share
+    a reason today and each is a sibling pair emitting the same advisory --
+    cv11's empty and pec_short variants (port_aperture_snap, then
+    port_evanescent), the two supraconvergence studies w4 and w4r
+    (mesh_resolution), and the thru fixture's band-pulse and insitu-refplane
+    variants (pec_faces_finite_pec). Forcing four artificial rewordings would
+    make the file worse, not more honest; a reason crossing codes stays a
+    failure.
+    """
+    by_reason: dict[str, set[str]] = {}
+    where_by_reason: dict[str, list[str]] = {}
+    for entry in lib.load_advisory_classification():
+        reason = entry["reason"].strip()
+        by_reason.setdefault(reason, set()).add(entry["code"])
+        where_by_reason.setdefault(reason, []).append(
+            f"{entry['variant']} :: {entry['code']}")
+
+    shared_across_codes = {
+        reason: sorted(codes) for reason, codes in by_reason.items() if len(codes) > 1
+    }
+    assert not shared_across_codes, (
+        "the same reason text is used for different advisory codes: "
+        + "; ".join(
+            f"{codes} <- {where_by_reason[reason][:4]}"
+            for reason, codes in shared_across_codes.items())
+        + " -- write what THAT row is doing there. A sentence that fits two "
+        "different advisories explains neither.")
 
 
 def test_optional_dependency_declarations_are_grounded() -> None:

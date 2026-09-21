@@ -1,5 +1,19 @@
 """Phase B: Non-uniform FDTD kernels for the shard_map distributed runner.
 
+Lane policy (#1053, PI decision 2026-09-15). ``distributed_v2.py`` is the
+distributed development trunk: ``Simulation.run(devices=...)`` dispatches
+there for uniform AND non-uniform grids, and since #1065/#1068 it realizes
+declared PEC volumes through the shared ``apply_pec_mask_shmap`` stage at the
+#1041 ordering. THIS module is the ``forward(distributed=True)`` NU lane and
+stays: it uniquely carries NU-grid CPML / Debye / Lorentz, ``checkpoint_every``,
+``n_warmup``, ``emit_time_series`` and tracer-safe array inputs, none of which
+v2 has (v2 raises on NU dispersion). Retiring it would require porting those,
+not the two stages #1053 moved. New distributed features go to v2; kernels
+both lanes need go to ``_distributed_common.py`` with an ``is``-identity guard
+in ``tests/locks/test_runner_split_bit_identity.py``. Soft occupancy
+(``_apply_pec_occupancy_nu_shmap``) is deliberately NOT ported to v2: ``run()``
+has no ``pec_occupancy_override`` caller; revisit when v2 serves ``forward()``.
+
 This module supplies the NU analogues of the uniform kernels used by
 ``rfx/runners/distributed_v2.py`` so the distributed path can accept
 ``NonUniformGrid`` without silently dropping the profile. The uniform
@@ -42,14 +56,28 @@ from rfx.core.yee import (
     _shift_bwd,
 )
 from rfx.core.jax_utils import is_tracer  # noqa: F401  (Phase 2C reuse target)
-from rfx.boundaries.pec import (
-    realized_pec_edge_masks,
-    _volume_occupancy_masks,
-)
+# ``realized_pec_edge_masks`` moved out with the hard-mask kernel in #1053
+# leg 2; the soft-occupancy kernel below is the remaining owner-rule caller in
+# this module.
+from rfx.boundaries.pec import _volume_occupancy_masks
 from rfx.runners._distributed_common import (
+    _update_e_local_nu,
+    _update_h_local_nu,
+    apply_pec_face_shmap,
+    apply_pec_mask_shmap,
+    apply_pmc_face_shmap,
     cpml_coeff_e_vacuum,
     cpml_coeff_h_vacuum,
     exchange_component_shmap,
+    inject_sources_shmap,
+    sample_probes_shmap,
+    shard_stacked,
+    shard_stacked_poles,
+    shard_stacked_psi,
+    unstack_and_gather,
+    update_e_nu_shmap,
+    update_h_nu_shmap,
+    zeros_psi_stacked,
 )
 
 
@@ -124,71 +152,14 @@ def _build_sharded_inv_dx_arrays(grid, n_devices, pad_x=0):
 # ---------------------------------------------------------------------------
 # Local NU update kernels (operate on per-device slab including ghosts)
 # ---------------------------------------------------------------------------
-
-def _update_h_local_nu(state, materials, dt,
-                      inv_dx_slab, inv_dy_full, inv_dz_full,
-                      inv_dx_h_slab, inv_dy_h_full, inv_dz_h_full):
-    """H update on a local slab using NU inverse spacings.
-
-    Mirrors ``rfx/core/yee.py::update_h_nu`` but accepts pre-sliced
-    per-device ``inv_dx`` / ``inv_dx_h`` (length nx_local), while
-    y/z spacings are replicated (full-axis).
-    """
-    ex, ey, ez = state.ex, state.ey, state.ez
-    mu = materials.mu_r * MU_0
-
-    curl_x = (
-        (_shift_fwd(ez, 1) - ez) * inv_dy_h_full[None, :, None]
-        - (_shift_fwd(ey, 2) - ey) * inv_dz_h_full[None, None, :]
-    )
-    curl_y = (
-        (_shift_fwd(ex, 2) - ex) * inv_dz_h_full[None, None, :]
-        - (_shift_fwd(ez, 0) - ez) * inv_dx_h_slab[:, None, None]
-    )
-    curl_z = (
-        (_shift_fwd(ey, 0) - ey) * inv_dx_h_slab[:, None, None]
-        - (_shift_fwd(ex, 1) - ex) * inv_dy_h_full[None, :, None]
-    )
-
-    hx = state.hx - (dt / mu) * curl_x
-    hy = state.hy - (dt / mu) * curl_y
-    hz = state.hz - (dt / mu) * curl_z
-
-    return state._replace(hx=hx, hy=hy, hz=hz)
-
-
-def _update_e_local_nu(state, materials, dt,
-                      inv_dx_slab, inv_dy_full, inv_dz_full):
-    """E update on a local slab using NU inverse (cell-local) spacings.
-
-    Mirrors ``rfx/core/yee.py::update_e_nu``.
-    """
-    hx, hy, hz = state.hx, state.hy, state.hz
-    eps = materials.eps_r * EPS_0
-    sigma = materials.sigma
-
-    sigma_dt_2eps = sigma * dt / (2.0 * eps)
-    ca = (1.0 - sigma_dt_2eps) / (1.0 + sigma_dt_2eps)
-    cb = (dt / eps) / (1.0 + sigma_dt_2eps)
-
-    curl_x = (
-        (hz - _shift_bwd(hz, 1)) * inv_dy_full[None, :, None]
-        - (hy - _shift_bwd(hy, 2)) * inv_dz_full[None, None, :]
-    )
-    curl_y = (
-        (hx - _shift_bwd(hx, 2)) * inv_dz_full[None, None, :]
-        - (hz - _shift_bwd(hz, 0)) * inv_dx_slab[:, None, None]
-    )
-    curl_z = (
-        (hy - _shift_bwd(hy, 0)) * inv_dx_slab[:, None, None]
-        - (hx - _shift_bwd(hx, 1)) * inv_dy_full[None, :, None]
-    )
-
-    ex = ca * state.ex + cb * curl_x
-    ey = ca * state.ey + cb * curl_y
-    ez = ca * state.ez + cb * curl_z
-
-    return state._replace(ex=ex, ey=ey, ez=ez, step=state.step + 1)
+#
+# #1038 leg 4 (prerequisite): ``_update_h_local_nu`` and ``_update_e_local_nu``
+# moved VERBATIM to ``rfx/runners/_distributed_common.py`` and are re-imported
+# at the top of this module, so ``rfx.runners.distributed_nu._update_h_local_nu``
+# and ``..._update_e_local_nu`` keep resolving for every existing importer.
+# They had to move because leg 4's shared NU shard wrappers call them and this
+# module sits ABOVE ``_distributed_common`` in the runner DAG -- the shared
+# module may not import from here. See that module for the full rationale.
 
 
 # ---------------------------------------------------------------------------
@@ -638,227 +609,30 @@ def _exchange_e_ghosts_nu(state: FDTDState, mesh, n_devices: int) -> FDTDState:
     )
 
 
-def _apply_pec_face_nu_shmap(state: FDTDState, mesh, n_devices: int,
-                             nx_local: int, pad_x: int = 0) -> FDTDState:
-    """Apply PEC on physical domain faces (x_lo, x_hi, y, z) using shard_map.
-
-    Mirrors ``rfx/runners/distributed_v2.py::_apply_pec_shmap`` exactly:
-    Y- and Z-face PEC is local to every rank; X-face PEC is rank-
-    conditional (only rank 0 zeroes x_lo, only rank N-1 zeroes x_hi).
-
-    Critically, the X-face PEC acts on the **first real cell**
-    (``ghost``) and the **last real cell** (``nx_local - 1 - ghost -
-    pad_x``), NOT on the seam ghost cells (which belong to
-    neighbouring ranks) and NOT on the alignment-pad cells (which are
-    beyond the real domain face — #622: with ``pad_x > 0`` the last
-    rank's slab carries ``pad_x`` inert cells past global node
-    ``nx - 1``; the physical face stays at that real node, not at the
-    padded slab end). This is V3 bullet 7 ("Hard PEC only acts on
-    physical boundary or masked cells, not on seam ghosts") and V3
-    bullet 6 ("Hard PEC does not re-zero interior seam cells of
-    neighbouring ranks").
-    """
-    @partial(
-        shard_map,
-        mesh=mesh,
-        in_specs=(P("x"), P("x"), P("x")),
-        out_specs=(P("x"), P("x"), P("x")),
-        check_rep=False,
-    )
-    def _pec(ex, ey, ez):
-        ghost = 1
-
-        # Y-axis PEC (every rank — the y boundary is local to all ranks)
-        ex = ex.at[:, 0, :].set(0.0)
-        ex = ex.at[:, -1, :].set(0.0)
-        ez = ez.at[:, 0, :].set(0.0)
-        ez = ez.at[:, -1, :].set(0.0)
-
-        # Z-axis PEC (every rank — z boundary is local to all ranks)
-        ex = ex.at[:, :, 0].set(0.0)
-        ex = ex.at[:, :, -1].set(0.0)
-        ey = ey.at[:, :, 0].set(0.0)
-        ey = ey.at[:, :, -1].set(0.0)
-
-        device_idx = lax.axis_index("x")
-
-        # X-lo PEC: only rank 0; act on first REAL cell (skip ghost)
-        is_first = (device_idx == 0)
-        ey_xlo = jnp.where(is_first, 0.0, ey[ghost, :, :])
-        ez_xlo = jnp.where(is_first, 0.0, ez[ghost, :, :])
-        ey = ey.at[ghost, :, :].set(ey_xlo)
-        ez = ez.at[ghost, :, :].set(ez_xlo)
-
-        # X-hi PEC: only rank N-1; act on last REAL cell (skip ghost AND
-        # the alignment pad — #622).
-        is_last = (device_idx == n_devices - 1)
-        last_real = nx_local - 1 - ghost - pad_x
-        ey_xhi = jnp.where(is_last, 0.0, ey[last_real, :, :])
-        ez_xhi = jnp.where(is_last, 0.0, ez[last_real, :, :])
-        ey = ey.at[last_real, :, :].set(ey_xhi)
-        ez = ez.at[last_real, :, :].set(ez_xhi)
-
-        return ex, ey, ez
-
-    ex, ey, ez = _pec(state.ex, state.ey, state.ez)
-    return state._replace(ex=ex, ey=ey, ez=ez)
+# #1038 leg 3. ``_apply_pec_face_nu_shmap``'s body now lives as
+# ``apply_pec_face_shmap`` in ``_distributed_common.py``; it was a copy of
+# ``distributed_v2.py::_apply_pec_shmap`` differing only in the parameter
+# spelling (renamed in the preceding commit) and three comments. Kept as a
+# module-local alias so the existing call sites are unchanged.
+_apply_pec_face_nu_shmap = apply_pec_face_shmap
 
 
-def _apply_pmc_face_nu_shmap(state: FDTDState, mesh, n_devices: int,
-                             nx_local: int, pmc_faces: frozenset,
-                             pad_x: int = 0) -> FDTDState:
-    """Apply PMC (``H_tan = 0``) on physical domain faces using shard_map.
-
-    Electromagnetic dual of :func:`_apply_pec_face_nu_shmap`: PEC zeroes
-    tangential E, PMC zeroes tangential H. Hook point is the H-half of
-    the scan body (before the H ghost exchange) so the zero propagates
-    to neighbour ranks via the exchange — matching single-device
-    ordering at ``rfx/simulation.py:699-705``
-    (``apply_cpml_h`` -> ``apply_pmc_faces``).
-
-    Y- and Z-face PMC is local to every rank; X-face PMC is rank-
-    conditional (only rank 0 zeroes x_lo, only rank N-1 zeroes x_hi),
-    and acts on the **first real cell** (``ghost``) / **last real cell**
-    (``nx_local - 1 - ghost - pad_x``) — NOT the seam ghost, and NOT
-    the alignment-pad cells (#622, same class as the PEC face fix).
-    """
-    if not pmc_faces:
-        return state
-
-    @partial(
-        shard_map,
-        mesh=mesh,
-        in_specs=(P("x"), P("x"), P("x")),
-        out_specs=(P("x"), P("x"), P("x")),
-        check_rep=False,
-    )
-    def _pmc(hx, hy, hz):
-        ghost = 1
-
-        # Yee convention: _hi PMC acts on index -2 (0.5·dx INSIDE the
-        # wall), not -1 (ghost outside). See rfx/boundaries/pmc.py.
-        if "y_lo" in pmc_faces:
-            hx = hx.at[:, 0, :].set(0.0)
-            hz = hz.at[:, 0, :].set(0.0)
-        if "y_hi" in pmc_faces:
-            hx = hx.at[:, -2, :].set(0.0)
-            hz = hz.at[:, -2, :].set(0.0)
-        if "z_lo" in pmc_faces:
-            hx = hx.at[:, :, 0].set(0.0)
-            hy = hy.at[:, :, 0].set(0.0)
-        if "z_hi" in pmc_faces:
-            hx = hx.at[:, :, -2].set(0.0)
-            hy = hy.at[:, :, -2].set(0.0)
-
-        device_idx = lax.axis_index("x")
-        is_first = (device_idx == 0)
-        is_last = (device_idx == n_devices - 1)
-        last_real = nx_local - 1 - ghost - pad_x
-        last_inside = last_real - 1
-
-        if "x_lo" in pmc_faces:
-            hy_new = jnp.where(is_first, 0.0, hy[ghost, :, :])
-            hz_new = jnp.where(is_first, 0.0, hz[ghost, :, :])
-            hy = hy.at[ghost, :, :].set(hy_new)
-            hz = hz.at[ghost, :, :].set(hz_new)
-        if "x_hi" in pmc_faces:
-            hy_new = jnp.where(is_last, 0.0, hy[last_inside, :, :])
-            hz_new = jnp.where(is_last, 0.0, hz[last_inside, :, :])
-            hy = hy.at[last_inside, :, :].set(hy_new)
-            hz = hz.at[last_inside, :, :].set(hz_new)
-
-        return hx, hy, hz
-
-    hx, hy, hz = _pmc(state.hx, state.hy, state.hz)
-    return state._replace(hx=hx, hy=hy, hz=hz)
+# #1038 leg 3. ``_apply_pmc_face_nu_shmap``'s body now lives as
+# ``apply_pmc_face_shmap`` in ``_distributed_common.py``; once the slab-length
+# parameter was spelled the same on both runners the two kernels were byte
+# identical. Kept as a module-local alias so the existing call sites are
+# unchanged.
+_apply_pmc_face_nu_shmap = apply_pmc_face_shmap
 
 
-def _apply_pec_mask_nu_shmap(state: FDTDState, sharded_pec_mask, mesh,
-                             n_devices: int, nx_local: int) -> FDTDState:
-    """Apply geometry-defined PEC mask zeroing on x-sharded fields.
-
-    Each rank owns the PEC cells inside its real-cell range
-    ``[ghost, ghost + nx_per_rank)``.  Per V3 bullet 6, we must NOT
-    re-zero PEC cells that live in another rank's slab; per V3 bullet 7,
-    seam ghost cells must not be acted on.
-
-    The implementation:
-      * computes the per-component edge masks on the local slab
-        including ghost cells by CALLING
-        ``rfx.boundaries.pec.realized_pec_edge_masks`` — the same
-        function every single-device lane calls (#931 §1.7), so the two
-        lanes cannot drift apart again (they did twice: an inlined
-        ``jnp.roll`` copy through #689, then the pre-#931 sheet rule
-        after the single-device lanes moved to the volume rule);
-      * gates the mask so ghost-cell rows are forced to ``False`` before
-        zeroing the field — interior real cells use their slab-local
-        neighbour computation, and the **first/last real cells** see the
-        ghost neighbour (which carries the seam-neighbour's PEC status
-        because ``shard_pec_mask_x_slab`` populated it).
-
-    The ghost rows are therefore NOT zeroed here.  They are refilled from
-    the owner rank's (already zeroed) real row by the E ghost exchange,
-    which the scan body runs AFTER this step (stage 9).  That order is
-    load-bearing: the next H update at a rank's last real cell reads
-    ``Ey``/``Ez`` on its right ghost plane, and when a body's cell is the
-    neighbour's first real cell those edges are PEC only in the
-    neighbour's copy.  Exchanging first handed this rank the un-zeroed
-    value (#931 seam-cell divergence, 2.107e-01 final-step error).
-    """
-    if sharded_pec_mask is None:
-        return state
-
-    @partial(
-        shard_map,
-        mesh=mesh,
-        in_specs=(P("x"), P("x"), P("x"), P("x")),
-        out_specs=(P("x"), P("x"), P("x")),
-        check_rep=False,
-    )
-    def _pec_mask(ex, ey, ez, mask):
-        # ONE neighbour rule for both lanes: call the shared helper rather
-        # than re-spelling it (#689 changed the rule and this copy did not
-        # follow, so the two lanes disagreed at a y/z domain face —
-        # measured on two 4x4 plates in a (6,6,10) domain, real cells only:
-        #
-        #   placement           single-device      this lane, inlined roll
-        #   z faces  k=0 & k=9  [32, 32,  0]       [32, 32, 32]
-        #   y faces  j=0 & j=5  [32,  0, 32]       [32, 32, 32]
-        #   z interior k=1,k=8  [32, 32,  0]       [32, 32,  0]   (agreed)
-        #
-        # ``periodic=(True, False, False)``: the SHARDED axis keeps the
-        # wrap, which is what the inlined copy relied on and is correct
-        # here — a slab's ghost rows carry the seam neighbour's PEC status
-        # (``shard_pec_mask_x_slab``), and the wrap only ever reaches
-        # indices 0 and nx_local-1, both ghosts, both forced False below.
-        # So no REAL cell sees the x wrap and the x behaviour is unchanged.
-        # y and z have no ghosts and no periodic BC on this lane (the NU
-        # runners install none), so they take the same zero-pad convention
-        # ``rfx/nonuniform.py``'s ``apply_pec_mask(st, pec_mask)`` takes.
-        mask_ex, mask_ey, mask_ez = realized_pec_edge_masks(
-            mask, periodic=(True, False, False))
-
-        # Force ghost rows to False so we never touch a neighbour rank's
-        # cells.  Real cells span [ghost, nx_local - ghost).
-        ghost = 1
-        ghost_zero = jnp.zeros_like(mask_ex[0:1, :, :])
-        mask_ex = mask_ex.at[0:ghost, :, :].set(ghost_zero[0:ghost, :, :])
-        mask_ex = mask_ex.at[nx_local - ghost:nx_local, :, :].set(
-            ghost_zero[0:ghost, :, :])
-        mask_ey = mask_ey.at[0:ghost, :, :].set(ghost_zero[0:ghost, :, :])
-        mask_ey = mask_ey.at[nx_local - ghost:nx_local, :, :].set(
-            ghost_zero[0:ghost, :, :])
-        mask_ez = mask_ez.at[0:ghost, :, :].set(ghost_zero[0:ghost, :, :])
-        mask_ez = mask_ez.at[nx_local - ghost:nx_local, :, :].set(
-            ghost_zero[0:ghost, :, :])
-
-        ex = ex * (1.0 - mask_ex.astype(ex.dtype))
-        ey = ey * (1.0 - mask_ey.astype(ey.dtype))
-        ez = ez * (1.0 - mask_ez.astype(ez.dtype))
-        return ex, ey, ez
-
-    ex, ey, ez = _pec_mask(state.ex, state.ey, state.ez, sharded_pec_mask)
-    return state._replace(ex=ex, ey=ey, ez=ez)
+# #1053 leg 2. ``_apply_pec_mask_nu_shmap``'s body now lives as
+# ``apply_pec_mask_shmap`` in ``_distributed_common.py``, so ``distributed_v2``
+# can apply the same realized-PEC rule from the same function object. The
+# kernel was already runner-agnostic, so nothing but the def name changed.
+# Kept as a module-local alias: this lane's own call site (stage 8 of
+# ``run_nonuniform_distributed_pec.step_fn``) and the #1038 lock fixture
+# ``distributed_nu_pec_mask_seam`` both import it under this name.
+_apply_pec_mask_nu_shmap = apply_pec_mask_shmap
 
 
 def _apply_pec_occupancy_nu_shmap(state: FDTDState, sharded_pec_occupancy,
@@ -1031,7 +805,7 @@ def init_cpml_for_sharded_nu(sharded_grid: ShardedNUGrid, n_devices: int,
 
     def _zeros(d1, d2):
         # (n_devices, n_cpml, d1, d2) — same dtype as single-device init
-        return jnp.zeros((n_devices, n, d1, d2), dtype=jnp.float32)
+        return zeros_psi_stacked(n_devices, n, d1, d2)
 
     cpml_state_stacked = CPMLState(
         # E-field psi arrays
@@ -1093,9 +867,7 @@ def shard_cpml_state_x_slab(cpml_state_stacked, sharded_grid: ShardedNUGrid,
     shd = NamedSharding(mesh, _P("x"))
 
     def _shard_psi(arr):
-        n_dev, n_c, d1, d2 = arr.shape
-        merged = arr.reshape(n_dev * n_c, d1, d2)
-        return jax.device_put(merged, shd)
+        return shard_stacked_psi(arr, shd)
 
     return CPMLState(
         psi_ex_ylo=_shard_psi(cpml_state_stacked.psi_ex_ylo),
@@ -1200,17 +972,12 @@ def shard_debye_coeffs_x_slab(debye_coeffs, sharded_grid: ShardedNUGrid,
 
     def _shard_3d(arr):
         # (n_devices, nx_local, ny, nz) -> (n_devices*nx_local, ny, nz)
-        n_dev = arr.shape[0]
-        rest = arr.shape[1:]
-        return jax.device_put(arr.reshape(n_dev * rest[0], *rest[1:]), shd)
+        return shard_stacked(arr, shd)
 
     def _shard_4d(arr):
         # (n_devices, n_poles, nx_local, ny, nz) ->
         # (n_devices*n_poles, nx_local, ny, nz)
-        n_dev, n_poles, nx_loc, ny_a, nz_a = arr.shape
-        return jax.device_put(
-            arr.reshape(n_dev * n_poles, nx_loc, ny_a, nz_a), shd,
-        )
+        return shard_stacked_poles(arr, shd)
 
     return DebyeCoeffs(
         ca=_shard_3d(coeffs_slabs.ca),
@@ -1254,10 +1021,7 @@ def shard_debye_state_x_slab(debye_state, sharded_grid: ShardedNUGrid,
     shd = NamedSharding(mesh, _P("x"))
 
     def _shard_4d(arr):
-        n_dev, n_poles, nx_loc, ny_a, nz_a = arr.shape
-        return jax.device_put(
-            arr.reshape(n_dev * n_poles, nx_loc, ny_a, nz_a), shd,
-        )
+        return shard_stacked_poles(arr, shd)
 
     return DebyeState(
         px=_shard_4d(state_slabs.px),
@@ -1313,15 +1077,10 @@ def shard_lorentz_coeffs_x_slab(lorentz_coeffs, sharded_grid: ShardedNUGrid,
     shd = NamedSharding(mesh, _P("x"))
 
     def _shard_3d(arr):
-        n_dev = arr.shape[0]
-        rest = arr.shape[1:]
-        return jax.device_put(arr.reshape(n_dev * rest[0], *rest[1:]), shd)
+        return shard_stacked(arr, shd)
 
     def _shard_4d(arr):
-        n_dev, n_poles, nx_loc, ny_a, nz_a = arr.shape
-        return jax.device_put(
-            arr.reshape(n_dev * n_poles, nx_loc, ny_a, nz_a), shd,
-        )
+        return shard_stacked_poles(arr, shd)
 
     return LorentzCoeffs(
         ca=_shard_3d(coeffs_slabs.ca),
@@ -1370,10 +1129,7 @@ def shard_lorentz_state_x_slab(lorentz_state, sharded_grid: ShardedNUGrid,
     shd = NamedSharding(mesh, _P("x"))
 
     def _shard_4d(arr):
-        n_dev, n_poles, nx_loc, ny_a, nz_a = arr.shape
-        return jax.device_put(
-            arr.reshape(n_dev * n_poles, nx_loc, ny_a, nz_a), shd,
-        )
+        return shard_stacked_poles(arr, shd)
 
     return LorentzState(
         px=_shard_4d(state_slabs.px),
@@ -2255,9 +2011,7 @@ def run_nonuniform_distributed_pec(
     state_slabs = _split_state(full_state, n_devices, ghost)
 
     def _shard_stacked(arr):
-        n_dev = arr.shape[0]
-        rest = arr.shape[1:]
-        return jax.device_put(arr.reshape(n_dev * rest[0], *rest[1:]), shd)
+        return shard_stacked(arr, shd)
 
     sharded_state = FDTDState(
         ex=_shard_stacked(state_slabs.ex),
@@ -2301,63 +2055,24 @@ def run_nonuniform_distributed_pec(
     # Per-step shmap-wrapped helpers
     # ------------------------------------------------------------------
     def _update_h_shmap(st, mat):
-        @partial(
-            shard_map,
-            mesh=mesh,
-            in_specs=(
-                P("x"), P("x"), P("x"),  # ex, ey, ez
-                P("x"), P("x"), P("x"),  # hx, hy, hz
-                P(),                     # step
-                P("x"), P("x"), P("x"),  # eps_r, sigma, mu_r
-                P("x"), P(None), P(None),  # inv_dx, inv_dy, inv_dz
-                P("x"), P(None), P(None),  # inv_dx_h, inv_dy_h, inv_dz_h
-            ),
-            out_specs=(P("x"), P("x"), P("x"), P()),
-            check_rep=False,
-        )
-        def _h(ex, ey, ez, hx, hy, hz, step, eps_r, sigma, mu_r,
-               invdx, invdy, invdz, invdxh, invdyh, invdzh):
-            _st = FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=step)
-            _mat = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
-            new_st = _update_h_local_nu(
-                _st, _mat, dt, invdx, invdy, invdz, invdxh, invdyh, invdzh)
-            return new_st.hx, new_st.hy, new_st.hz, new_st.step
-
-        hx, hy, hz, step = _h(
-            st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, st.step,
-            mat.eps_r, mat.sigma, mat.mu_r,
+        # #1038 leg 4: body moved VERBATIM to
+        # _distributed_common.update_h_nu_shmap, which distributed_v2.py's
+        # `if is_nu:` branch also calls now. The eight locals this closure read
+        # are passed explicitly; the call sites below did not move.
+        return update_h_nu_shmap(
+            st, mat, mesh, dt,
             inv_dx_sharded, inv_dy_rep, inv_dz_rep,
             inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep,
         )
-        return st._replace(hx=hx, hy=hy, hz=hz, step=step)
 
     def _update_e_shmap(st, mat):
-        @partial(
-            shard_map,
-            mesh=mesh,
-            in_specs=(
-                P("x"), P("x"), P("x"),
-                P("x"), P("x"), P("x"),
-                P(),
-                P("x"), P("x"), P("x"),
-                P("x"), P(None), P(None),
-            ),
-            out_specs=(P("x"), P("x"), P("x"), P()),
-            check_rep=False,
-        )
-        def _e(ex, ey, ez, hx, hy, hz, step, eps_r, sigma, mu_r,
-               invdx, invdy, invdz):
-            _st = FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=step)
-            _mat = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
-            new_st = _update_e_local_nu(_st, _mat, dt, invdx, invdy, invdz)
-            return new_st.ex, new_st.ey, new_st.ez, new_st.step
-
-        ex, ey, ez, step = _e(
-            st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, st.step,
-            mat.eps_r, mat.sigma, mat.mu_r,
+        # #1038 leg 4: body moved VERBATIM to
+        # _distributed_common.update_e_nu_shmap, shared with the `is_nu`
+        # branch of distributed_v2.run_distributed.
+        return update_e_nu_shmap(
+            st, mat, mesh, dt,
             inv_dx_sharded, inv_dy_rep, inv_dz_rep,
         )
-        return st._replace(ex=ex, ey=ey, ez=ez, step=step)
 
     # ------------------------------------------------------------------
     # Phase 2D: dispersive E shmap helper
@@ -2601,68 +2316,15 @@ def run_nonuniform_distributed_pec(
             return new_state, new_db_st, new_lr_st
 
     def _inject_sources_shmap(st, src_vals_step):
-        if n_src == 0:
-            return st
-
-        @partial(
-            shard_map,
-            mesh=mesh,
-            in_specs=(P("x"), P("x"), P("x"), P()),
-            out_specs=(P("x"), P("x"), P("x")),
-            check_rep=False,
+        return inject_sources_shmap(
+            st, src_vals_step, mesh, n_src,
+            src_local_specs, src_device_ids,
         )
-        def _inject(ex, ey, ez, sv):
-            device_idx = lax.axis_index("x")
-            for idx_s in range(n_src):
-                li, lj, lk, lc = src_local_specs[idx_s]
-                dev_id = src_device_ids[idx_s]
-                val = jnp.where(device_idx == dev_id, sv[idx_s], 0.0)
-                if lc == "ex":
-                    ex = ex.at[li, lj, lk].add(val)
-                elif lc == "ey":
-                    ey = ey.at[li, lj, lk].add(val)
-                elif lc == "ez":
-                    ez = ez.at[li, lj, lk].add(val)
-            return ex, ey, ez
-
-        ex, ey, ez = _inject(st.ex, st.ey, st.ez, src_vals_step)
-        return st._replace(ex=ex, ey=ey, ez=ez)
 
     def _sample_probes_shmap(st):
-        if n_prb == 0:
-            return jnp.zeros(0, dtype=jnp.float32)
-
-        @partial(
-            shard_map,
-            mesh=mesh,
-            in_specs=(P("x"), P("x"), P("x"),
-                      P("x"), P("x"), P("x")),
-            out_specs=P(),
-            check_rep=False,
+        return sample_probes_shmap(
+            st, mesh, n_prb, prb_local_specs, prb_device_ids,
         )
-        def _sample(ex, ey, ez, hx, hy, hz):
-            device_idx = lax.axis_index("x")
-            samples = []
-            for idx_p in range(n_prb):
-                li, lj, lk, lc = prb_local_specs[idx_p]
-                dev_id = prb_device_ids[idx_p]
-                if lc == "ex":
-                    raw = ex[li, lj, lk]
-                elif lc == "ey":
-                    raw = ey[li, lj, lk]
-                elif lc == "ez":
-                    raw = ez[li, lj, lk]
-                elif lc == "hx":
-                    raw = hx[li, lj, lk]
-                elif lc == "hy":
-                    raw = hy[li, lj, lk]
-                else:
-                    raw = hz[li, lj, lk]
-                val = jnp.where(device_idx == dev_id, raw, 0.0)
-                samples.append(val)
-            return lax.psum(jnp.stack(samples), "x")
-
-        return _sample(st.ex, st.ey, st.ez, st.hx, st.hy, st.hz)
 
     # ------------------------------------------------------------------
     # Phase 2C: shmap-wrapped CPML helpers (no-op when CPML disabled)
@@ -3041,8 +2703,6 @@ def run_nonuniform_distributed_pec(
     # ------------------------------------------------------------------
     # Gather sharded state -> full-domain (nx, ny, nz)
     # ------------------------------------------------------------------
-    from rfx.runners.distributed import gather_array_x
-
     def _unstack_and_gather(sharded_arr):
         # Phase 2F: must remain traceable under ``jax.grad``.  The prior
         # ``np.array(sharded_arr)`` call broke whenever a caller wrapped
@@ -3050,18 +2710,9 @@ def run_nonuniform_distributed_pec(
         # gathered ``final_state`` arrays.  Use pure JAX reshape +
         # ``gather_array_x`` (already JAX-friendly) so the gather stays
         # in the JAX trace.
-        total_x = sharded_arr.shape[0]
-        assert total_x == n_devices * nx_local, (
-            f"unstack: total_x={total_x} != n_devices*nx_local={n_devices * nx_local}"
+        return unstack_and_gather(
+            sharded_arr, n_devices, nx_local, ghost, pad_x, sharded_grid.nx,
         )
-        stacked = jnp.reshape(
-            sharded_arr,
-            (n_devices, nx_local) + tuple(sharded_arr.shape[1:]),
-        )
-        gathered = gather_array_x(stacked, ghost)
-        if pad_x > 0:
-            gathered = gathered[: sharded_grid.nx]
-        return gathered
 
     final_state = FDTDState(
         ex=_unstack_and_gather(final_state_sharded.ex),

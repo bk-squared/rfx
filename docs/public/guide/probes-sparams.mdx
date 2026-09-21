@@ -178,7 +178,11 @@ proof of mesh convergence or external accuracy.
 `compute_coaxial_line_reflection()` is not one of those five full-matrix lanes;
 use its returned recurrence and fit diagnostics.
 
-Warnings leave every computed value intact. If a passive model exceeds its
+Warnings leave every computed value intact, with one exception:
+`compute_coax_msl_transition()` refuses a non-passive S instead of returning
+it, raising `ValueError` on a matrix the other calculators would hand back
+with a warning. Pass `strict_passivity=False` to that calculator to get the
+diagnostic matrix and the warning. If a passive model exceeds its
 documented limit, treat that frequency bin as suspect and check settling time,
 normalization, the reference plane, and the extraction setup. Silence only
 means that an implemented check did not fire; it does not certify passivity.
@@ -298,8 +302,13 @@ Hammerstad–Jensen value by more than 10 %. Z0 rides on the N-probe fit, which
 carries Yee-staircase bias at this cell size. The raster is no longer part of
 that story: `fidelity_report()` on this board shows zero face residual on every
 axis of both conductors and of the substrate, so what the solver realizes is the
-board that was declared ([How conductors land on the lattice](/rfx/guide/materials-geometry/#how-conductors-land-on-the-lattice)). The V·I-split S11/S21 are
-unaffected; refine the mesh before quoting Z0.
+board that was declared ([How conductors land on the lattice](/rfx/guide/materials-geometry/#how-conductors-land-on-the-lattice)). This port's probe clearance is
+satisfied, which the advisory says, so standing-wave content at the probes is
+not the cause either. The fitted Z0 and beta do not enter S11/S21, which use the
+measured V/I and the analytic Z0 anchor — a dataflow fact, not a certificate for
+those inputs. Refine the mesh before quoting Z0. When probe clearance is NOT
+satisfied the advisory says that instead, and what it costs is on the
+[S-parameter support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/sparameter_support_matrix.md).
 
 #### Low-signal MSL bins
 

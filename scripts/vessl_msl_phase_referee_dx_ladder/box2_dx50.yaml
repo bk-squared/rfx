@@ -1,0 +1,79 @@
+name: rfx-830-msl-box2-dx50
+description: "issue #830 H-d (lateral/top truncation): the MSL phase-referee thru at dx = 50 um with the lateral side allowance and the air height each DOUBLED and nothing else changed. Probe planes, feed planes, line length, port margin, CPML thickness (400 um, 8 layers), frequencies and record length are identical to the dx = 50 rung; the script asserts the five probe planes per port are at the same x and that the realized board is still W = 600.000 um, inlaid, 250 um of dielectric under the strip. Measured at build time: strip-edge-to-sidewall clearance 950 -> 1850 um, air height 1550 -> 3050 um, grid (297, 66, 45) -> (297, 102, 75), and the strip-minus-substrate lateral offset stays -25.0 um in BOTH arms, so the two differ in the box and in nothing else. Output prefix is msl-phase-referee-box2-* on purpose: msl-phase-referee-dx50* would also glob this job's directory and the two submitters would race. Same stack as VESSL 369367259200. Submit: scripts/vessl_submit.sh scripts/vessl_msl_phase_referee_dx_ladder/box2_dx50.yaml msl-phase-referee-box2"
+tags: [rfx, issue-830, msl, phase-referee, box-scale, hypothesis-hd, dx50]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_PLATFORMS: "cpu"
+  MPLBACKEND: "Agg"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  echo "=== rfx #830 H-d: dx = 50 um, box doubled laterally and above ==="
+  date -u
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  SRC=/root/workspace/byungkwan-workspace/research/rfx-wt-830-ladder
+  test -d "$SRC" || { echo "ERROR: ladder worktree missing at $SRC"; exit 3; }
+
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  git config --global --add safe.directory "$SRC"
+  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx/.git
+
+  RUNS=/root/workspace/claude-workspace/rfx/runs
+  OUT=$RUNS/msl-phase-referee-box2-dx50-$(date -u +%Y%m%dT%H%M%SZ)
+  mkdir -p "$OUT"
+  echo "$OUT" > "$RUNS/msl-phase-referee-box2-dx50.latest"
+  echo "artifacts: $OUT"
+
+  WORK=/root/work/rfx830-box2-dx50
+  # The solver writes straight into $OUT on NFS, so every file it has
+  # already written survives a hard kill. $WORK holds only the staged
+  # checkout. The trap is then just a permissions fix.
+  trap 'chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
+
+  DIRTY=$(git -C "$SRC" status --porcelain)
+  if [ -n "$DIRTY" ]; then
+    echo "ERROR: the ladder worktree is DIRTY; a run cannot record which code it read."
+    echo "$DIRTY"
+    exit 4
+  fi
+  SHA=$(git -C "$SRC" rev-parse HEAD)
+  BRANCH=$(git -C "$SRC" rev-parse --abbrev-ref HEAD)
+  echo "$SHA" > "$OUT/commit.txt"
+  echo "$BRANCH" > "$OUT/branch.txt"
+  echo "worktree $SRC @ $SHA ($BRANCH), clean"
+
+  rm -rf "$WORK"
+  mkdir -p "$WORK"
+  cp -a "$SRC/." "$WORK/"
+  cd "$WORK"
+  "$PY" -m pip uninstall -y -q jax-cuda12-plugin jax-cuda12-pjrt 2>/dev/null || true
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7"
+  export RFX_REPO_ROOT="$WORK"
+  export PYTHONPATH="$WORK"
+  "$PY" -c "import jax, rfx, os; print('probe ok | jax', jax.__version__, '| backend', jax.default_backend(), '| rfx', getattr(rfx, '__version__', '?'), '| from', os.path.dirname(rfx.__file__))"
+
+  echo "=== solve ==="
+  # POSIX sh has no pipefail, so $? after a pipe is tee's, not the solver's.
+  # The solver writes its own rc to a file from inside the pipe's left side.
+  set +e
+  { timeout 21600 "$PY" -u scripts/diagnostics/msl_phase_referee_dx_ladder.py --dx-um 50 --box-scale 2 --out-dir "$OUT" 2>&1; echo $? > "$OUT/solver.rc"; } | tee "$OUT/solver.log"
+  set -e
+  rc=$(cat "$OUT/solver.rc")
+
+  echo "rung=dx50-box2 rc=$rc sha=$SHA branch=$BRANCH out=$OUT" > "$OUT/summary.txt"
+  date -u >> "$OUT/summary.txt"
+  ls -la "$OUT" | tee -a "$OUT/summary.txt"
+  chmod -R a+rX "$OUT" 2>/dev/null || true
+  echo "LADDER_RUNG=dx50-box2 RC=$rc"
+  exit "$rc"

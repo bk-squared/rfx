@@ -179,6 +179,7 @@ from rfx.probes.probes import (
     init_wire_sparam_probe, update_wire_sparam_probe,
     extract_s_matrix_wire,
     FluxMonitor, init_flux_monitor, update_flux_monitor, flux_spectrum,
+    subtract_flux_monitors,
 )
 from rfx.sweep import parametric_sweep, SweepResult, plot_sweep
 from rfx.vmap_sweep import vmap_material_sweep, VmapSweepResult
@@ -312,7 +313,7 @@ __all__ = [
     "summarize_batch_manifest",
     # probes / measurements / spectral
     "wire_port_voltage", "wire_port_current",
-    "FluxMonitor", "flux_spectrum",
+    "FluxMonitor", "flux_spectrum", "subtract_flux_monitors",
     "harminv", "harminv_from_probe", "HarminvMode",
     # eigenmode (optional scipy)
     "WaveguideMode", "solve_waveguide_modes",

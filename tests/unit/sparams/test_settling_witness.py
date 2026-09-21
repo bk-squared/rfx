@@ -174,6 +174,18 @@ _SPARAMS_SRC = pathlib.Path(
 _EXECUTE_SRC = pathlib.Path(
     __import__("rfx.api._execute", fromlist=["_execute"]).__file__
 )
+# #980 Phase 2 moves the ``compute_*`` bodies verbatim out of
+# ``rfx/api/_sparams.py`` into per-family modules under ``rfx/sparams/``, one
+# leg per PR. The scan follows the code by globbing that package rather than
+# naming each module as it lands -- exactly the widening the
+# ``_functions_producing_settling_db`` docstring below asks for when a
+# producing module appears; without it a moved lane drops out of the inventory
+# and ``test_the_known_lanes_are_all_covered`` goes red (or, worse, the routing
+# gate passes vacuously for it).
+_SPARAMS_PKG_SRCS = tuple(sorted(
+    pathlib.Path(__import__("rfx.sparams", fromlist=["sparams"]).__file__)
+    .parent.glob("*.py")
+))
 
 
 def _catch(fn):
@@ -271,14 +283,17 @@ def _functions_producing_settling_db():
     """(name, routes_through_warner) for every function that attaches a
     ``settling_db=`` to a result object.
 
-    Two modules do so: ``_sparams.py`` (the S-matrix lanes) and, since #885,
-    ``_execute.py`` (the ``run()`` lane, which attaches the witness to
-    ``Result``). ``_spec.py`` only declares the field. The scan was widened
-    with the second module the moment it appeared, per the instruction the
-    first version of this docstring left for exactly that case.
+    Three places do so: ``_sparams.py`` (the S-matrix lanes still in the
+    mixin), since #885 ``_execute.py`` (the ``run()`` lane, which attaches the
+    witness to ``Result``), and since the #980 split every module under
+    ``rfx/sparams/`` (the lane bodies moved verbatim out of ``_sparams.py``,
+    globbed so a later leg needs no edit here). ``_spec.py`` only declares the
+    field. The scan was widened with each further module the moment it
+    appeared, per the instruction the first version of this docstring left
+    for exactly that case.
     """
     out = []
-    for src in (_SPARAMS_SRC, _EXECUTE_SRC):
+    for src in (_SPARAMS_SRC, _EXECUTE_SRC, *_SPARAMS_PKG_SRCS):
         out.extend(_producers_in(ast.parse(src.read_text(encoding="utf-8"))))
     return out
 

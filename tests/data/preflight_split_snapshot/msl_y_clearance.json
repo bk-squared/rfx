@@ -1,0 +1,78 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "mesh_resolution",
+        "loc": null,
+        "message": "'pec' z-extent 80\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A PEC shape passed to sim.add() is a VOLUME (realized with both faces and a shorted interior, lattice ownership contract #931 \u00a71.2), and a volume thinner than one local cell is refused at assembly (\u00a71.5) rather than snapped to a plane. If this is foil (a ground plane, patch, trace), declare a SHEET: a zero-thickness Box via add(), or add_thin_conductor(shape) \u2014 realized on the node plane nearest its mid-plane, with the normal E edge through it live. Otherwise resolve the thickness with a finer local cell.",
+        "severity": "warning",
+        "source": "_validate_mesh_quality"
+      },
+      {
+        "code": "pec_faces_finite_pec",
+        "loc": null,
+        "message": "pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and declare it: a foil is a SHEET (add_thin_conductor, or a zero-thickness PEC Box \u2014 one node plane, normal E through it live); a thick plate is a PEC Box VOLUME (walls on both faces, lattice ownership contract #931).",
+        "severity": "warning",
+        "source": "_validate_cfg_pec_faces_with_finite_pec"
+      },
+      {
+        "code": "lossless_q",
+        "loc": null,
+        "message": "all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)",
+        "severity": "warning",
+        "source": "_validate_cfg_lossless_resonator_in_absorber"
+      },
+      {
+        "code": "pec_box_one_cell",
+        "loc": null,
+        "message": "1 PEC volume(s) are exactly ONE cell thick along some axis and are realized as a filled slab with walls on BOTH faces (every E edge between the two faces is shorted; lattice ownership contract #931 \u00a71.2): geometry[1] 'pec' (Box) is one cell thick along z [z: walls at 240\u00b5m and 320\u00b5m (drawn 254\u00b5m -> 334\u00b5m)]. If this is foil (a ground plane, patch or trace), declare it as a SHEET \u2014 add_thin_conductor(shape), or a zero-thickness Box via add() \u2014 which realizes on ONE node plane with the normal E edge through it live; a slab and a sheet are different conductors on this lattice. If it is a plate, an iris or a wall drawn one cell thick on purpose, no action is needed (report-only). COVERAGE: examined 1 PEC volume(s) on the uniform lane through rfx.boundaries.pec.realized_wall_planes. STALE IF: realized_wall_planes on the named entry's own edge masks returns planes more than one index apart.",
+        "severity": "warning",
+        "source": "_validate_cfg_pec_realization"
+      },
+      {
+        "code": "off_lattice_design_edges",
+        "loc": null,
+        "message": "2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[1] 'pec' (volume) z: extent 80\u00b5m, worst face residual 14\u00b5m (17.50% of the extent); geometry[1] 'pec' (volume) y: extent 600\u00b5m, worst face residual 40\u00b5m (6.67% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: for a PEC VOLUME choose dx commensurate with its dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on its faces; for a SHEET see sheet_effective_size -- a node on a sheet's edge is not the fix. COVERAGE: examined 3 axis extent(s) on 1 conductor Box declaration(s) on the uniform lane; 0 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
+        "severity": "warning",
+        "source": "_validate_cfg_off_lattice_design_edges"
+      },
+      {
+        "code": "msl_port_geometry",
+        "loc": null,
+        "message": "MSL port 'msl_0' (trace W=600\u00b5m, h_sub=254\u00b5m): lateral clearance to \u2212y absorbing boundary = -400\u00b5m (domain edge + 640\u00b5m calibrated CPML buffer) < recommended 508\u00b5m (= 2\u00b7h_sub). Fringing field will be clipped \u2192 Z0 may be biased HIGH by ~27%, mesh-conv may diverge. Increase domain y-extent OR move port further from sidewall.",
+        "severity": "warning",
+        "source": "_check_msl_port_geometry"
+      },
+      {
+        "code": "msl_port_geometry",
+        "loc": null,
+        "message": "MSL port 'msl_0' (trace W=600\u00b5m, h_sub=254\u00b5m): lateral clearance to +y absorbing boundary = -400\u00b5m (domain edge + 640\u00b5m calibrated CPML buffer) < recommended 508\u00b5m (= 2\u00b7h_sub). Fringing field will be clipped \u2192 Z0 may be biased HIGH by ~27%, mesh-conv may diverge. Increase domain y-extent OR move port further from sidewall.",
+        "severity": "warning",
+        "source": "_check_msl_port_geometry"
+      },
+      {
+        "code": "msl_port_geometry",
+        "loc": null,
+        "message": "MSL port 'msl_0': only 3 normal interval(s) between the validated ground and trace planes. Validated conductor-plane gap=240.0\u00b5m over 3 normal interval(s), from z=0.0\u00b5m to 240.0\u00b5m (declared height=254.0\u00b5m). Separately, the declared-material column has 4 same-permittivity sample slot(s), extent 320.0\u00b5m. This material extent is not the conductor-plane gap. The existing resolution recommendation is at least 4 normal intervals and an aligned declared substrate interface. On a uniform mesh, refine to dx \u2264 63.5\u00b5m and align the declared ground z=0.0\u00b5m and trace z=254.0\u00b5m with nodes; on a profiled mesh, place sufficient nodes between those faces. Geometry screening does not quantify Z0 error. The historical sweep and its realized-board Hammerstad-Jensen anchor are pre-#802 records; a new matched-geometry measurement is needed before quoting a current accuracy bound.",
+        "severity": "warning",
+        "source": "_check_msl_port_geometry"
+      },
+      {
+        "code": "msl_port_geometry",
+        "loc": null,
+        "message": "MSL port 'msl_0': the declared trace plane at z=254.0\u00b5m sits 0.175 of a cell above its lower mesh node (that cell is 80.0\u00b5m) \u2014 this lands in the [0.10, 0.40] mixed-cell danger zone of the existing declared-face alignment heuristic. The fraction alone does not establish material/PEC overlap. Historical substrate-air/trace mixed-cell runs with AD-traceable ``pec_occupancy_override`` reported unphysical |S21|\u00b2 > 1 (cited, not remeasured on this checkout: runs #563/#567, 2026-05-08, dx\u2208[75,82]\u00b5m h_sub=254\u00b5m). A hard ``Box(material='pec')`` avoids that specific bug ON THE DEFAULT RUN PATH (subpixel_smoothing=False and no conformal PEC face \u2014 the shipped defaults): a PEC Box is a VOLUME that occupies whole primal cells with walls on both faces (lattice ownership contract #931), and a foil trace declared as a SHEET (zero-thickness Box / add_thin_conductor) is one node plane; neither enters ``pec_occupancy_override``. That is NOT a blanket exemption \u2014 two opt-in lanes DO give a hard PEC box fractional cell occupancy: subpixel_smoothing='kottke_pec' (the inv-eps tensor is built over the PEC shapes) and the Stage-1 conformal PEC lane (which replaces the binary pec_mask with fractional weights); rfx/runners/uniform.py. Plain subpixel_smoothing=True does NOT: 'pec' carries eps_r=1.0 in the material library, so a PEC box enters the smoother as vacuum and stays whole-cell through pec_mask. The alignment advice below still applies on the two lanes that do. Validated conductor-plane gap=240.0\u00b5m over 3 normal interval(s), from z=0.0\u00b5m to 240.0\u00b5m (declared height=254.0\u00b5m). Separately, the declared-material column has 4 same-permittivity sample slot(s), extent 320.0\u00b5m. This material extent is not the conductor-plane gap. The declared-face fraction and material extent describe geometry; neither predicts a Z0 error. The frozen sweep cannot establish a current extractor accuracy bound. To snap onto a mesh matching the DECLARED board instead, set dx = 63.5\u00b5m (= h_sub/4) or 84.7\u00b5m (= h_sub/3), aligning the declared ground z=0.0\u00b5m and trace z=254.0\u00b5m.",
+        "severity": "warning",
+        "source": "_check_msl_port_geometry"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 9,
+    "ok": true
+  },
+  "preflight_sparameters": {
+    "issues": [],
+    "n_errors": 0,
+    "n_issues": 0,
+    "ok": true
+  }
+}

@@ -716,8 +716,15 @@ class Result(NamedTuple):
         ``"absent"``), ``route`` (``"probe_records"`` or ``None``),
         ``worst_record``, ``per_record_db`` (per-probe dB),
         ``skipped_records`` (records below the #869 underflow floor, skipped
-        rather than scored) and ``reason`` (what would make an absent witness
-        measurable). ``None`` only on lanes that never attach it.
+        rather than scored), ``reason`` (what would make an absent witness
+        measurable), ``source_dominated_records`` (probes sharing a Yee cell
+        with a registered source/port drive), ``source_dominated`` and
+        ``qualifier``. A source-dominated record peaks on the drive pulse,
+        so its end/peak ratio measures source turn-off rather than
+        ring-down; it never carries the verdict while an independent scored
+        record exists, and when every scored record is dominated the
+        qualifier says the number is not an independent witness (#1090).
+        ``None`` only on lanes that never attach it.
     """
     state: object
     time_series: jnp.ndarray
@@ -1049,9 +1056,10 @@ class ForwardResult(NamedTuple):
     user-probe record using the same host diagnostic as ``run()``. They
     report absence while records are traced; read them on the returned
     concrete result, not as gradient objectives. Numeric
-    ``settling_probe_info`` preserves the selected columns and component
-    labels without inserting strings into a JAX result tree. These lazy
-    properties are not stored fields in ``_asdict()``.
+    ``settling_probe_info`` preserves the selected columns, component
+    labels and the #1090 source-dominated flag as integers, without
+    inserting strings into a JAX result tree. These lazy properties are
+    not stored fields in ``_asdict()``.
 
     ``lumped_port_sparams`` exposes the raw per-port (V_dft, I_dft) tuples
     accumulated inside the JIT scan body when ``forward(port_s11_freqs=...)``
@@ -1612,6 +1620,37 @@ class MSLSMatrixResult:
         unavailable; physical probe coordinates and signed gap estimates
         accompany it. This is independent of ``reliable`` and does not
         certify mode purity or S accuracy.
+
+        **The two fields answer different questions** (issue #726).
+        ``reliable`` is a per-bin FIT-QUALITY mask; ``probe_clearance`` is
+        the GEOMETRIC condition, and neither is the other's proxy — on the
+        board runs that opened #726 ``reliable`` was True on 100 % of in-band
+        bins while the fitted Z0 was 2.4x the analytic value. What the
+        geometric condition costs was measured (VESSL 369367260508, cv06b
+        fixed-source, same source/load/DUT with only the p1 observation
+        offset varied, both arms settled below −118 dB): the FITTED Z0/beta
+        are what corrupt — the near-reflector arm's β scan railed on 51/51
+        bins over 3–5 GHz against 0/51 for the compliant arm — while raw S11
+        at the 3.77125 GHz notch bin read +0.026895 dB on the near-reflector
+        arm and +0.018065 dB on the compliant one, against the analytic 0 dB
+        that quarter-wave open-stub notch has. Both sit ABOVE unity on a
+        passive structure, by 0.31 % and 0.21 %, which is never reported here
+        as physics: they are raw, unprojected values carrying the coherent
+        power excess tracked as #838. Their 0.009 dB difference is one
+        fixture (cv06b), one bin (3.77125 GHz), an arm-to-arm difference —
+        NOT a bound on ``S`` — and the comparison's producer verdict was
+        ``not_read``. What it does show is that ``S`` moves far less than the
+        fit, because it normalizes with the analytic Hammerstad–Jensen Z0
+        rather than with the fit.
+
+        So: gate on ``probe_clearance`` for the layout, on ``beta_railed``
+        for the fitted-value symptom, and treat ``Z0``/``beta`` as
+        UNREADABLE — not merely uncertain — when the status is
+        ``insufficient``. ``S`` stands with the 0.009 dB caveat. The fix is
+        a longer uniform feed or a moved reference plane; raising
+        ``n_probe_offset`` alone moves the probes toward the reflector.
+        ``rfx.preflight.msl.MSL_PROBE_CLEARANCE_EFFECT`` is the single text
+        every warning about this condition embeds.
     settling_db : (n_ports,) float, optional
         Ring-down settling witness per driven-port run: the WORST (largest)
         over ALL port probe planes of ``10*log10(mean Ez^2 over the last 10%
@@ -1747,6 +1786,10 @@ class MixedSMatrixResult:
     probe_clearance : tuple[MSLProbeClearance, ...], optional
         MSL-only downstream layout diagnoses, in MSL registration order.
         Lumped/wire ports have no entries here, as with ``reliable``.
+        Same contract as :attr:`MSLSMatrixResult.probe_clearance`, including
+        what the ``insufficient`` status costs and what to gate on (#726):
+        the FITTED Z0/beta go unreadable, ``S`` carries a measured 0.009 dB
+        caveat, and ``reliable`` gates neither.
     beta_railed : np.ndarray | None
         (n_msl, n_freqs) bool — β-scan rail mask from each MSL port's
         own driven run, same criterion as
@@ -1797,6 +1840,15 @@ class CoaxMSLTransitionResult:
     own MSL extractor choice, made because the coax matrix-pencil fit
     deterministically pins the propagation-constant branch
     (``beta = Im(gamma) > 0``) while the N-probe fit does not.
+
+    REFUSES BY DEFAULT (issue #838, PI decision 2026-09-20):
+    :meth:`_SparamMixin.compute_coax_msl_transition` takes
+    ``strict_passivity=True`` as its default, so a non-passive extracted S
+    raises ``ValueError`` from the shared guard instead of being returned;
+    pass ``strict_passivity=False`` to get the diagnostic matrix with a
+    ``UserWarning``. The single-family coax lanes
+    (:class:`CoaxialSMatrixResult`, :class:`CoaxialTwoPortResult`) keep the
+    ``False`` default.
 
     Like :class:`MixedSMatrixResult`, ``s_params`` is in the **Kurokawa
     power-wave convention**: each port's raw modal-voltage wave amplitude
@@ -1918,7 +1970,7 @@ class CoaxMSLTransitionResult:
     DISCLOSURE (issue #585 final-verify, finding G1): the shared passivity
     guard both attempts rely on (``rfx/validation.py``'s ``check_passivity``
     block, ``strict_passivity=True`` path — see
-    :func:`rfx.api._sparams._finalize_sparam_result`) checks only whether
+    :func:`rfx.sparams._common._finalize_sparam_result`) checks only whether
     ``max column power`` EXCEEDS its upper limit; it has no lower-bound
     check at all, so a column power far BELOW 1 on a lossless structure —
     exactly the open question above — passes it silently. That one-sided

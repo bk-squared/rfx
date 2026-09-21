@@ -74,10 +74,23 @@ from rfx.topology import topology_optimize as _topology_optimize_fn
 from rfx import Simulation
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
-_PREFLIGHT_SRC = _REPO_ROOT / "rfx" / "api" / "_preflight.py"
+# The preflight check sites. #980 Phase 3 takes rfx/api/_preflight.py apart a
+# family at a time into rfx/preflight/, so the scan has to follow the code:
+# a moved check takes its emission sites out of the facade, and a scan that
+# still reads only the facade would record that as a SHRINKING surface and
+# invite someone to re-freeze the counts downward -- the surface would then be
+# unpinned wherever the code actually lives. Both paths are read and the sites
+# summed, so pure code motion leaves the frozen numbers below unchanged and
+# only a real new advisory moves them. Globbed, not listed, for the reason
+# tests/unit/nonuniform/test_dz_only_dispatch_contract.py gives at its own
+# rfx/preflight/ row: a later leg must not have to remember this file.
+_PREFLIGHT_SRCS = (
+    _REPO_ROOT / "rfx" / "api" / "_preflight.py",
+    *sorted((_REPO_ROOT / "rfx" / "preflight").glob("*.py")),
+)
 
 # ---------------------------------------------------------------------------
-# S1: frozen check-site surface (rfx/api/_preflight.py).
+# S1: frozen check-site surface (rfx/api/_preflight.py + rfx/preflight/).
 # ---------------------------------------------------------------------------
 
 _ISSUE_CLASSES = {
@@ -87,12 +100,16 @@ _ISSUE_CLASSES = {
 
 
 def _enumerate_emission_sites():
-    """AST walk over ``rfx/api/_preflight.py``: every construction of an
+    """AST walk over the preflight sources: every construction of an
     issue-carrying class, with its line, enclosing function, and whether
     its ``code=`` is a source literal or computed at runtime (``getattr``
     off a caught exception -- ``preflight()``'s own uncoded fallback).
+
+    Walks ``rfx/api/_preflight.py`` and every module of ``rfx/preflight/``
+    and returns one flat list, so a site that changes FILE under #980 Phase
+    3 does not change the totals frozen below. Line numbers are per file and
+    were never part of the freeze anyway.
     """
-    tree = ast.parse(_PREFLIGHT_SRC.read_text())
     sites = []
 
     class _V(ast.NodeVisitor):
@@ -119,7 +136,8 @@ def _enumerate_emission_sites():
                 sites.append((node.lineno, name, code, dynamic, enclosing))
             self.generic_visit(node)
 
-    _V().visit(tree)
+    for src in _PREFLIGHT_SRCS:
+        _V().visit(ast.parse(src.read_text()))
     return sites
 
 
@@ -321,8 +339,84 @@ def _enumerate_emission_sites():
 # #910 adds one shared finite-flux finding constructor. Its three explicit
 # slugs are passed to that dynamic-code emitter; they are frozen separately
 # below instead of being mistaken for constructor-local literal codes.
-_FROZEN_TOTAL_SITES = 113
-_FROZEN_LITERAL_CODE_COUNT = 74
+# 113 -> 113 sites / 74 -> 74 literal codes, UNCHANGED, issue #980 Phase 3.
+# Recorded here because the scan's INPUT changed and the numbers did not.
+# The split moves whole check bodies out of rfx/api/_preflight.py into
+# rfx/preflight/, so the walk above now reads both paths and sums them. A
+# scan left on the facade alone would have watched this surface shrink by 17
+# sites on the MSL leg and by comparable counts on each leg after it, and the
+# only way to keep it green would have been to re-freeze the counts downward
+# -- which is how a surface stops being pinned where the code actually is.
+# Measured before and after the widening on the pre-move tree: 113 / 74 /
+# {preflight: 2, preflight_sparameters: 2, finding: 1} either way.
+# 113 -> 112, 2026-09-15 (#1043 / PR #1047). One site left, deliberately:
+# ``_validate_cfg_conformal_fine_dx``'s ``conformal_nan`` warning was
+# DELETED with the check. Its own comment named
+# ``test_mesh_convergence_s21_with_conformal_pec`` (xfail strict=True) as
+# the tripwire that would say the advisory had gone stale, and that test
+# XPASSed once the CPML psi coefficient read the permittivity the E update
+# uses. A SHRINKING surface is the direction this pin is least worried
+# about, but it is re-frozen here rather than left to drift, because the
+# point of the number is that every move is a conscious edit.
+# 112 -> 113, 2026-09-15 (#1043 stage B). One site added:
+# ``_validate_cfg_dielectric_at_absorber_seam``'s ``dielectric_at_absorber_seam``
+# warning in ``rfx/preflight/absorber.py`` -- the seam counterpart of
+# ``geometry_in_absorber``, reporting a dielectric that ends AT the pad
+# boundary in a shape the smoothed lane cannot continue into it. A GROWING
+# surface is the direction this pin exists for, so the number moves here in
+# the same change that adds the site, never afterwards.
+# 113 -> 113 sites, UNCHANGED, 2026-09-15 (#1030). Recorded here because a
+# check was DELETED and these numbers did not move, which is the case this
+# file's own #854 block says to write down rather than leave to inference.
+# ``_validate_cfg_ntff_min_steps`` was removed from rfx/preflight/ntff.py and
+# from rfx/preflight/_registry.py's CORE_CONFIG_CHECKS (37 -> 36 rows): it
+# constructed NO issue class at all, so the AST walk above never counted it.
+# It only computed a cubic-cell CFL step estimate and wrote
+# ``self._ntff_min_steps_hint``, an instance attribute whose only readers were
+# rfx/interop/_design.py's EXCLUDED_SIMULATION_ATTRS (naming it to keep it OUT
+# of the design document) and the test asserting that exclusion -- readers
+# that existed only because the attribute did. Measured with the walk above on
+# the tree before and after the deletion: 113 / 74 / {preflight: 2,
+# preflight_sparameters: 2, finding: 1} either way. The 65 committed report
+# snapshots are likewise byte-identical, for the same reason.
+# _FROZEN_DYNAMIC_SITES_BY_FUNCTION is unchanged (no bare-except path touched)
+# and EMISSION_CLASSIFICATION is unchanged (no preflight call site added or
+# removed).
+# 113 -> 114, 2026-09-15 (#801). One site added:
+# ``_validate_cfg_conductor_in_thin_absorber``'s ``conductor_in_thin_absorber``
+# warning in ``rfx/preflight/absorber.py`` -- the measured-conjunction advisory
+# for a conductor realizing within two cells of an absorbing face that carries
+# six layers or fewer. A GROWING surface is the direction this pin exists for,
+# so the number moves here in the same change that adds the site.
+# 114 -> 118, 2026-09-19 (#726). Four sites added, all for the ONE condition
+# that issue is about -- a probe ladder sitting inside a downstream reflector:
+# three ``PreflightWarning``s in ``preflight_msl_probe_clearance``
+# (``rfx/preflight/msl.py``: scan-failed, clearance-unavailable,
+# clearance-insufficient) and the ``PreflightIssue`` in
+# ``preflight_sparameters``'s new msl fold-in block. The route used to return
+# ZERO findings on a port whose deepest probe sat inside a reflector while
+# ``preflight()`` reported it and the result object's ``probe_clearance`` read
+# ``insufficient``; these four are that gap closed, not a widening of what
+# preflight talks about.
+# 118 -> 119, 2026-09-20 (#1138): ``sheet_effective_size`` -- one
+# ``PreflightWarning`` in ``_warn_sheet_effective_size``
+# (``rfx/preflight/pec_geometry.py``), emitted from inside the existing
+# off-lattice check. A conductor sheet's solved size (node span plus the
+# measured edge offset at each free end) against its drawn size, in input
+# units; no existing site reported it, including for a sheet drawn exactly on
+# the lattice.
+_FROZEN_TOTAL_SITES = 119
+# 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
+# site emitting that code, and the check was deleted when its own tripwire
+# XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
+# 73 -> 74, 2026-09-15 (#1043 stage B): the new advisory kind
+# ``dielectric_at_absorber_seam``. A new code is a new advisory kind, which is
+# what this count is for.
+# 74 -> 75, 2026-09-15 (#801): the new advisory kind
+# ``conductor_in_thin_absorber``. A new code is a new advisory kind, which is
+# what this count is for.
+# 75 -> 76, 2026-09-20 (#1138): the new advisory kind ``sheet_effective_size``.
+_FROZEN_LITERAL_CODE_COUNT = 76
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site
@@ -338,7 +432,10 @@ _FROZEN_LITERAL_CODE_COUNT = 74
 # than naming a slug at the site -- the same shape as preflight()'s own two.
 _FROZEN_DYNAMIC_SITES_BY_FUNCTION = {
     "preflight": 2,
-    "preflight_sparameters": 2,
+    # 2 -> 3, 2026-09-19 (#726): the msl fold-in block added beside the
+    # waveguide one reads ``code=``/``source=`` off the caught
+    # PreflightWarning instance in exactly the same way.
+    "preflight_sparameters": 3,
     "finding": 1,
 }
 
@@ -346,8 +443,9 @@ _FROZEN_DYNAMIC_SITES_BY_FUNCTION = {
 def test_preflight_emission_site_surface_is_frozen():
     sites = _enumerate_emission_sites()
     assert len(sites) == _FROZEN_TOTAL_SITES, (
-        f"rfx/api/_preflight.py now has {len(sites)} PreflightWarning/"
-        "PreflightErrorWarning/PreflightIssue/PreflightConfigError "
+        f"rfx/api/_preflight.py + rfx/preflight/ now have {len(sites)} "
+        "PreflightWarning/PreflightErrorWarning/PreflightIssue/"
+        "PreflightConfigError "
         f"construction sites, not the frozen {_FROZEN_TOTAL_SITES} (issue "
         "#737/#742). Update _FROZEN_TOTAL_SITES in this file -- widening "
         "this surface without a conscious edit here is the failure mode "
@@ -462,6 +560,24 @@ EMISSION_CLASSIFICATION = {
         DIAGNOSTIC_ONLY,
         "measured: no preflight()/_auto_preflight() call in this method; "
         "EXPERIMENTAL per its own docstring"),
+    "Simulation.compute_s_matrix": (
+        AUTO,
+        "issue #980 Phase 1 dispatcher (rfx/sparams/dispatch.py): calls no "
+        "preflight of its own, and its ACTUAL emission behaviour is whatever "
+        "the lane it selects does -- which this binary table cannot express. "
+        "AUTO is the MEASURED value and is recorded as such rather than "
+        "argued: the dispatcher reaches preflight through the "
+        "self.compute_msl_s_matrix()/self.compute_mixed_s_matrix() branches "
+        "of its own if-chain (both AUTO above), so _reaches_preflight is "
+        "True. READ IT AS: preflight runs on SOME lanes this method can "
+        "select, not on all of them. On the waveguide and the three coaxial "
+        "lanes -- each DIAGNOSTIC_ONLY in its own row above -- routing "
+        "through compute_s_matrix() adds no preflight, exactly as calling "
+        "them directly adds none. The dispatch is deliberately written as "
+        "explicit self.<method>(...) calls rather than a getattr lookup so "
+        "that this gate can measure it at all; a getattr indirection would "
+        "have hidden every branch and let the method sit here as "
+        "DIAGNOSTIC_ONLY on a technicality."),
 }
 
 _PREFLIGHT_CALL_NAMES = {"preflight", "_auto_preflight", "preflight_sparameters"}

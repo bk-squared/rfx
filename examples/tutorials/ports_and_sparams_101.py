@@ -80,7 +80,7 @@ def run_generic_s11(*, add_component: bool) -> np.ndarray:
     # Expect "All checks passed" for both generic-port models.  The explicit
     # call makes the complete report visible once, so run() skips its repeat.
     report = sim.preflight()
-    if report:
+    if len(report):   # PreflightReport refuses bool() (#980)
         raise RuntimeError("Generic-port setup has unexpected advisories")
 
     result = sim.run(
@@ -333,7 +333,7 @@ def main() -> None:
     coaxial_route = coaxial.preflight_sparameters(calculator="coaxial")
     expected_build_only_advisory = bool(coaxial_report.by_code("no_sources"))
     print(f"Coax build-only advisory observed: {expected_build_only_advisory}")
-    print(f"Coaxial port setup ready: {not coaxial_route}")
+    print(f"Coaxial port setup ready: {not len(coaxial_route)}")
 
 
 if __name__ == "__main__":

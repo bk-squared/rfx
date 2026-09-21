@@ -5,6 +5,14 @@ on:
     branches: [main]
   pull_request:
 
+# Superseded runs on the same PR/branch are cancelled: a force-push or a
+# stacked-leg rebase used to leave the previous run queued, and on a busy day
+# (2026-09-15: six branches × 21 jobs against the plan's concurrent-job limit)
+# that held every PR for an hour. Pushes to main are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -35,23 +43,6 @@ jobs:
           npm run lint --prefix studio
           npm run typecheck --prefix studio
           npm run build --prefix studio
-      - name: CPU Studio integration suite
-        run: |
-          pytest -q \
-            tests/studio/test_golden_workflow_contracts.py \
-            tests/studio/test_canonical_experiment_v2.py \
-            tests/studio/test_experiment_spec.py \
-            tests/studio/test_experiment_repository.py \
-            tests/studio/test_experiment_cpu_smoke.py \
-            tests/studio/test_experiment_cli.py \
-            tests/studio/test_durable_experiments.py \
-            tests/studio/test_durable_worker_lifecycle.py \
-            tests/studio/test_studio_api.py \
-            tests/studio/test_agent_control_plane.py \
-            tests/studio/test_mcp_contract.py \
-            tests/studio/test_provider_journey_smoke.py \
-            tests/studio/test_analysis_studies_replay.py \
-            tests/studio/test_operations_security_isolation.py
 
   clean-wheel-smoke:
     strategy:

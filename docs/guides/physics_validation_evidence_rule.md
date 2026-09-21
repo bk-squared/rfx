@@ -36,6 +36,56 @@ validation.
 Missing external reference data or missing solver dependencies must be reported
 as **SKIP / unknown**, not PASS.
 
+## Retained records: the exit code is the run's, not the verdict stage's
+
+A crossval case that retains a record (`validation/crossval/manifest.json`,
+`evidence_status: committed`) writes it before the run ends, so that a failure
+in the plotting stage that follows cannot take the measurement with it. The
+record therefore has to be kept honest about an outcome it states early:
+
+- the exit code in the record is the status the **process returned**, not the
+  one the gate stage decided;
+- when those differ the record keeps both — `exit_code` is the process's,
+  `exit_code_declared` and `summary_declared` are the gate stage's, and
+  `exit_code_reconciliation` says how the difference was observed;
+- the amended `summary` is neutral text naming both codes. It is never the
+  case's own pass/fail wording re-run on the new code: that wording spells
+  verdicts the gate stage reached, so applied to a code it did not reach it
+  states a verdict the run never produced — "ALL CHECKS PASSED" beside
+  `all_gates_ok: false`, or a skip reason beside `meep_present: true`;
+- a case gets this by writing through
+  `validation/crossval/_exit_evidence.py::write_record`, which is also what
+  puts the code into the document, so a script cannot hold a second copy that
+  drifts (issue #946).
+
+A record whose `exit_code` can disagree with the run defeats the retained-
+evidence rule in the one direction that matters: it manufactures a success.
+Two tests compare the two numbers, and both are needed:
+
+- `tests/contracts/test_crossval_exit_code_evidence.py` pins the mechanism on
+  a crossval-shaped fixture and pins, statically, that every writer routes
+  through it;
+- `tests/crossval/test_crossval_exit_code_is_the_process_exit_code.py` RUNS
+  cv01 and cv02 in subprocesses with a forced late exit and compares the
+  persisted code with the subprocess's own return code. A source-only contract
+  cannot see an exit taken by another route, which is why #946 stayed open
+  after PR #999 shipped one.
+
+Nothing that re-judges a record may write into `validation/crossval/`. cv01's
+and cv02's `--replay` and the contract test's forced-exit knob both refuse an
+absolute path inside that tree, through one helper
+(`_exit_evidence.refuse_evidence_tree`), and both refuse **before** anything
+reaches disk — a guard that fires after the write is a report, not a guard.
+
+The one writer deliberately outside this rule is
+`scripts/crossval/merge_cv26_arm_shards.py`: it assembles a case verdict from
+shards that already ran, so the `exit_code` it writes is the case's and its own
+process status is only "did the merge succeed". Amending one with the other
+would replace a verdict with a statement about file-combining. It says so at
+the line that writes the key. cv26's committed `_26_oblique_results/rfx.json`
+is one of its outputs (`merged_from_shards: true`, 7 shards); cv26's own writer
+produces the per-shard and per-arm records beside it, and is migrated.
+
 ## Port / S-parameter-specific requirement
 
 For any port extractor promoted beyond experimental status, prefer E3 before

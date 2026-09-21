@@ -1,0 +1,86 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "mesh_resolution",
+        "loc": null,
+        "message": "Gap between PEC structures: 2.5mm = 1.0 cells along z \u2014 coupling may be under-resolved.",
+        "severity": "warning",
+        "source": "_validate_mesh_quality"
+      },
+      {
+        "code": "settling_witness_will_be_absent",
+        "loc": null,
+        "message": "this simulation requests NTFF far-field output but registers no point probe. run() and forward() score their ring-down settling witness from the recorded probe time series, so the result will carry settling_db=None and those DFT numbers will have no truncation guard (#885); add sim.add_probe(position, component) somewhere the field is live and NOT on a source/port drive cell \u2014 a record on the drive cell peaks on the drive pulse, so its end/peak ratio measures source turn-off rather than the structure's ring-down and does not count as an independent witness (#1090) \u2014 and retain its time series. Inspect forward's diagnostic on the concrete result after JIT/AD evaluation.",
+        "severity": "warning",
+        "source": "_validate_cfg_settling_witness_present"
+      },
+      {
+        "code": "sheet_effective_size",
+        "loc": null,
+        "message": "4 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 4 listed): geometry[1] 'pec' x: drawn 29.5mm, nodes cover 25mm, solved as 26.75mm (-9.32%); geometry[1] 'pec' y: drawn 38mm, nodes cover 35mm, solved as 36.75mm (-3.29%); geometry[0] 'pec' y: drawn 55mm, nodes cover 55mm, solved as 56.75mm (+3.18%); geometry[0] 'pec' x: drawn 60mm, nodes cover 60mm, solved as 61.75mm (+2.92%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+        "severity": "warning",
+        "source": "_validate_cfg_off_lattice_design_edges"
+      },
+      {
+        "code": "off_lattice_design_edges",
+        "loc": null,
+        "message": "2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[1] 'pec' (sheet) y: extent 38mm, worst face residual 1mm (2.63% of the extent); geometry[1] 'pec' (sheet) x: extent 29.5mm, worst face residual 250\u00b5m (0.85% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: for a PEC VOLUME choose dx commensurate with its dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on its faces; for a SHEET see sheet_effective_size -- a node on a sheet's edge is not the fix. COVERAGE: examined 4 axis extent(s) on 2 conductor Box declaration(s) on the uniform lane; 2 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
+        "severity": "warning",
+        "source": "_validate_cfg_off_lattice_design_edges"
+      },
+      {
+        "code": "ntff_near_field",
+        "loc": null,
+        "message": "NTFF face x_lo is 28.00mm from geometry 'pec' \u2014 below \u03bb/4 = 31.23mm at f_max=2.40GHz. NTFF will integrate reactive near-field; directivity / pattern likely corrupted. Move NTFF box \u2265 \u03bb/2 from any radiating/scattering structure (Huygens-equivalence rule).",
+        "severity": "warning",
+        "source": "_validate_ntff_inverse_design"
+      },
+      {
+        "code": "ntff_near_field",
+        "loc": null,
+        "message": "NTFF face x_hi is 28.00mm from geometry 'pec' \u2014 below \u03bb/4 = 31.23mm at f_max=2.40GHz. NTFF will integrate reactive near-field; directivity / pattern likely corrupted. Move NTFF box \u2265 \u03bb/2 from any radiating/scattering structure (Huygens-equivalence rule).",
+        "severity": "warning",
+        "source": "_validate_ntff_inverse_design"
+      },
+      {
+        "code": "ntff_near_field",
+        "loc": null,
+        "message": "NTFF face y_lo is 28.00mm from geometry 'pec' \u2014 below \u03bb/4 = 31.23mm at f_max=2.40GHz. NTFF will integrate reactive near-field; directivity / pattern likely corrupted. Move NTFF box \u2265 \u03bb/2 from any radiating/scattering structure (Huygens-equivalence rule).",
+        "severity": "warning",
+        "source": "_validate_ntff_inverse_design"
+      },
+      {
+        "code": "ntff_near_field",
+        "loc": null,
+        "message": "NTFF face y_hi is 28.00mm from geometry 'pec' \u2014 below \u03bb/4 = 31.23mm at f_max=2.40GHz. NTFF will integrate reactive near-field; directivity / pattern likely corrupted. Move NTFF box \u2265 \u03bb/2 from any radiating/scattering structure (Huygens-equivalence rule).",
+        "severity": "warning",
+        "source": "_validate_ntff_inverse_design"
+      },
+      {
+        "code": "ntff_near_field",
+        "loc": null,
+        "message": "NTFF face z_lo is 6.00mm from geometry 'pec' \u2014 below \u03bb/4 = 31.23mm at f_max=2.40GHz. NTFF will integrate reactive near-field; directivity / pattern likely corrupted. Move NTFF box \u2265 \u03bb/2 from any radiating/scattering structure (Huygens-equivalence rule).",
+        "severity": "warning",
+        "source": "_validate_ntff_inverse_design"
+      },
+      {
+        "code": "ntff_near_field",
+        "loc": null,
+        "message": "NTFF face z_hi is 25.50mm from geometry 'pec' \u2014 below \u03bb/4 = 31.23mm at f_max=2.40GHz. NTFF will integrate reactive near-field; directivity / pattern likely corrupted. Move NTFF box \u2265 \u03bb/2 from any radiating/scattering structure (Huygens-equivalence rule).",
+        "severity": "warning",
+        "source": "_validate_ntff_inverse_design"
+      },
+      {
+        "code": "ntff_small_ground_plane",
+        "loc": null,
+        "message": "Far-field pattern advisory: the PEC sheet backing a source (bbox (40.0, 40.0, 10.0)\u2013(100.0, 95.0, 10.0) mm) spans 60.0mm \u00d7 55.0mm = 0.48\u03bb \u00d7 0.44\u03bb at f_max=2.40GHz \u2014 a ground plane under ~1\u03bb across. Expect the radiation pattern to be shaped by ground-plane edge diffraction (broadside dip, off-axis side peaks). This is expected physics, not a solver defect, and the fixture stays fine for resonance / impedance work. For a clean broadside pattern enlarge the ground plane to at least ~1.4\u03bb; if the small ground plane is intentional, interpret the pattern accordingly.",
+        "severity": "warning",
+        "source": "_validate_ntff_small_ground_plane"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 11,
+    "ok": true
+  }
+}

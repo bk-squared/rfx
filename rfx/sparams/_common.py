@@ -584,6 +584,11 @@ def _msl_axis_spacing(grid, axis: int):
 def _resolve_msl_auto_offsets(sim, entries, grid):
     """Issue #469: solve the probe-offset interval for AUTO-offset ports.
 
+    When the interval comes out EMPTY this is the third site that speaks
+    about probe-clearance corruption, so it carries the same #726 guidance
+    text as ``compute_msl_s_matrix``'s Z0 guard and preflight's layout
+    warning. Imported, not copied.
+
     ``add_msl_port``'s auto-default is the UPSTREAM-only lower edge
     (``offset_min = max(3, λ/(4π·dx), 5·h_sub/dx)``); the downstream
     constraint — the deepest probe ≥ λ_g/4 (at f_max) clear of the nearest
@@ -773,6 +778,10 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
             _fields["n_probe_offset"] = (off_min + off_max) // 2
             resolved.append(dataclasses.replace(pe, **_fields))
         else:
+            from rfx.preflight.msl import (
+                MSL_PROBE_CLEARANCE_EFFECT as _MSL_PROBE_CLEARANCE_EFFECT,
+                MSL_PROBE_CLEARANCE_GUIDANCE as _MSL_PROBE_CLEARANCE_GUIDANCE,
+            )
             warnings.warn(
                 f"MSL port {pe.name!r}: the upstream and downstream "
                 f"probe clearances are mutually unsatisfiable on this "
@@ -783,9 +792,11 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
                 f"{clear*1e6:.0f}µm (λ_g/4 at f_max) clear of the "
                 f"reflector {d_refl*1e3:.2f}mm from the feed). "
                 f"The feed line is too short for a clean N-probe "
-                f"measurement — keeping the upstream-priority offset "
-                f"{off_min}; expect standing-wave bias at the deep "
-                f"probes. Extend the feed line to fix (issue #469).",
+                f"measurement (issue #469) — keeping the upstream-priority "
+                f"offset {off_min}, which puts the deep probes inside the "
+                f"reflector's near field. "
+                + _MSL_PROBE_CLEARANCE_EFFECT + " "
+                + _MSL_PROBE_CLEARANCE_GUIDANCE,
                 stacklevel=3,
             )
             resolved.append(

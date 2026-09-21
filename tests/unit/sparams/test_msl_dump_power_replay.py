@@ -125,8 +125,7 @@ def test_spatial_audit_uses_power_metric_even_for_unequal_legacy_voltage_s(tmp_p
     payload.update(metadata_json=json.dumps(meta), raw_i1_left=payload['raw_i1'],
                    raw_i1_same_index=payload['raw_i1'])
     np.savez(path, **payload)
-    script = (Path(__file__).resolve().parents[3]
-              / 'docs/research_notes/issue726/collocation/audit_current_impact.py')
+    script = Path(__file__).resolve().parent / '_msl_current_alignment_audit.py'
     spec = importlib.util.spec_from_file_location('msl_current_audit', script)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -139,10 +138,10 @@ def test_spatial_audit_uses_power_metric_even_for_unequal_legacy_voltage_s(tmp_p
     assert report['same_index_max_coherent_power_gain'] == pytest.approx(expected_gain)
 
 
-@pytest.mark.parametrize('case', ['coupon/call-0-raw-vi.npz', 'ad/call-2-raw-vi.npz'])
+@pytest.mark.parametrize('case', ['coupon_call0_raw_vi.npz', 'ad_call2_raw_vi.npz'])
 def test_recorded_v3_real_fields_replay_without_guessing_reference_or_receiving_role(case):
-    root = Path(__file__).resolve().parents[3]
-    path = root / 'docs/research_notes/issue726/collocation/gpu-369367260604' / case
+    root = Path(__file__).resolve().parents[2]
+    path = root / 'fixtures/msl_port_vi_dump_replay' / case
     dump = load_port_vi_dump_npz(path)
     result = replay_smatrix_from_port_vi_dump(dump)
     np.testing.assert_allclose(result.s_params, dump.production_smatrix, rtol=1e-6, atol=3e-7)

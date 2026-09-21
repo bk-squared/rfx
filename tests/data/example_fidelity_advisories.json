@@ -1,0 +1,514 @@
+{
+ "_comment": "Per-row disposition for every preflight advisory pinned in example_fidelity_snapshot.json (#737 item 1). The snapshot pins WHAT each audited example emits; this file says WHY each of those rows is there, so the gate is a zero-UNEXPLAINED-advisory bar rather than a drift pin. Entries are keyed by (variant, code) and carry the number of pinned rows that pair covers -- rows that share a code on one variant are the same condition on different ports, axes or entities, and the snapshot already pins each one's full text. test_example_fidelity_contract.py asserts the mapping is a bijection and that the row counts add up, so a new advisory, a removed one, or a stale entry all fail. disposition: 'intended' = the example deliberately shows or tolerates this condition (reason cites the example's own docstring/comment or the physics); 'defect-open' = the example should not emit this and the fix needs work beyond this file's PR, with the issue number that tracks it. A defect small enough to fix leaves no entry -- the row is gone from the snapshot instead. validation/crossval/* scripts belong to the crossval leader session (#928): their rows are classified here, never edited.",
+ "entries": [
+  {
+   "code": "adi_3d_accuracy",
+   "disposition": "intended",
+   "reason": "This variant exists to SHOW the advisory. The tutorial reads TE101 three ways (yee, ADI at factor 2, ADI at factor 5) and prints the frequency error each way 'so the accuracy-vs-timestep trade is visible rather than asserted'; its own docstring says the default factor 5 'carries a visible wavelength-scale error (shown below)'. run_and_read() prints the report verbatim and labels it 'quoted verbatim, not suppressed'.",
+   "ref": "examples/tutorials/adi_solver_demo.py:26-31,40-45,102-105",
+   "rows": 1,
+   "variant": "examples/tutorials/adi_solver_demo.py::build_cavity::adi_cfl5"
+  },
+  {
+   "code": "floating_port",
+   "disposition": "intended",
+   "reason": "The demo never time-steps: its docstring is 'Create a shareable rfx artifact bundle (scene + mesh + report) WITHOUT running FDTD', and main() only calls export_artifact_bundle(). The advisory is about excitation coupling during a solve (a single-cell port in substrate cannot drive the patch TM mode, issue #71); this scene has no patch and no solve, and the advisory itself is part of what the exported review report carries. No number this example prints depends on the port.",
+   "ref": "examples/tutorials/artifact_report_demo.py:1-13,45-58",
+   "rows": 1,
+   "variant": "examples/tutorials/artifact_report_demo.py::build_demo_simulation::default"
+  },
+  {
+   "code": "no_sources",
+   "disposition": "intended",
+   "reason": "make_sim() is the shared EMPTY domain factory -- 'Build the small open domain shared by every material example'. The script always follows it with add_sample(), which adds the source and probe. The advisory therefore describes the half-built simulation this build-only gate audits, not anything the example runs: the six end-to-end solves in main() all go through add_sample() first. It is a statement about the audited entry point, not about the example's physics.",
+   "ref": "examples/tutorials/materials_and_dispersion.py:41-57",
+   "rows": 1,
+   "variant": "examples/tutorials/materials_and_dispersion.py::make_sim::default"
+  },
+  {
+   "code": "lossless_q",
+   "disposition": "intended",
+   "reason": "The tutorial models FR4 with sigma=0 on purpose and says so at the build: 'FR4 is modelled lossless (sigma=0) so preflight's infinite-Q advisory will fire: legitimate here -- we quote mode FREQUENCIES, not absolute Q (real FR4 tan_delta ~0.02 would cap Q near ~50).' It reports frequencies, never a Q, so the advisory names a modelling choice the example has already justified.",
+   "ref": "examples/tutorials/nonuniform_patch_demo.py:358-361",
+   "rows": 1,
+   "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
+  },
+  {
+   "code": "off_lattice_design_edges",
+   "disposition": "intended",
+   "reason": "The example's subject IS the graded mesh: its own Rule 2 states 'NU TRADES ACCURACY FOR CELLS', and the z profile is built by ceil() onto a graded spine, so a design edge that does not land on a node is the trade the tutorial is demonstrating. The build prints the realized PEC sheet planes next to the declaration, which is the disclosure this advisory asks for.",
+   "ref": "examples/tutorials/nonuniform_patch_demo.py:18,109-119,362-365",
+   "rows": 1,
+   "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
+  },
+  {
+   "code": "sheet_effective_size",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: thin_conductor[1] 'thin_conductor[1]' x: drawn 29.5mm, nodes cover 28mm, solved as 28.7mm (-2.71%); thin_conductor[0] 'thin_conductor[0]' y: drawn 55mm, nodes cover 55mm, solved as 55.7mm (+1.27%); thin_conductor[0] 'thin_conductor[0]' x: drawn 60mm, nodes cover 60mm, solved as 60.7mm (+1.17%). A sheet end strictly inside the domain is solved about 0.35 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- thin_conductor[1] 'thin_conductor[1]' x: drawn 29.5mm, nodes cover 28mm, solved as 28.7mm (-2.71%) -- is what build_simulation actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "ref": "examples/tutorials/nonuniform_patch_demo.py:207 | https://github.com/bk-squared/rfx/issues/1138",
+   "rows": 1,
+   "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
+  },
+  {
+   "code": "ntff_near_field",
+   "disposition": "intended",
+   "reason": "Teaching point 3 of the tutorial: 'Every face should sit at least half a wavelength from the radiator where the domain allows. The face below the ground plane cannot: it sits 6 mm below the ground. Preflight flags it, the run quotes the warning verbatim, and a solver-to-solver cross-check backs the placement. Preflight output is part of the result; do not suppress it.' The placement is cross-checked against openEMS at the design-mode bin (|D_rfx - D_openEMS| = 0.0659 dB).",
+   "ref": "examples/tutorials/patch_antenna_demo.py:23-29,314-322,421-427",
+   "rows": 1,
+   "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
+  },
+  {
+   "code": "ntff_small_ground_plane",
+   "disposition": "intended",
+   "reason": "The geometry is the openEMS 'Simple Patch Antenna' tutorial verbatim -- a 60 x 60 mm finite ground plane -- and the finite plane is the structure under test, not an oversight. main()'s comment lists this row among the advisories expected on this fixture: 'the small-ground-plane pattern advisory (60 mm = 0.56 lambda at f_max, so edge diffraction shapes the pattern) -- expected physics, shared with the openEMS reference, not a solver defect'.",
+   "ref": "examples/tutorials/patch_antenna_demo.py:3-7,421-435",
+   "rows": 1,
+   "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
+  },
+  {
+   "code": "off_lattice_design_edges",
+   "disposition": "intended",
+   "reason": "Same reason, stated in the same comment: 'the off-lattice conductor-face residual on the patch and ground outlines (1 mm on a 2 mm cell). Measured 2026-09-07: four advisories, and both of the last two fire.' The patch (32 x 40 mm) and ground (60 x 60 mm) are the published openEMS dimensions and dx = 2 mm is 'coarse on purpose' with a measured 22-minute runtime; re-cutting either to the lattice would stop the fixture from being the reference geometry its +3.5 % / -0.07 dB comparison is built on.",
+   "ref": "examples/tutorials/patch_antenna_demo.py:3-7,139-153,421-435",
+   "rows": 1,
+   "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
+  },
+  {
+   "code": "sheet_effective_size",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: thin_conductor[1] 'thin_conductor[1]' x: drawn 32mm, nodes cover 30mm, solved as 31.4mm (-1.88%); thin_conductor[1] 'thin_conductor[1]' y: drawn 40mm, nodes cover 38mm, solved as 39.4mm (-1.50%); thin_conductor[0] 'thin_conductor[0]' x: drawn 60mm, nodes cover 58mm, solved as 59.4mm (-1.00%); thin_conductor[0] 'thin_conductor[0]' y: drawn 60mm, nodes cover 58mm, solved as 59.4mm (-1.00%). A sheet end strictly inside the domain is solved about 0.35 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- thin_conductor[1] 'thin_conductor[1]' x: drawn 32mm, nodes cover 30mm, solved as 31.4mm (-1.88%) -- is what build_simulation actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "ref": "examples/tutorials/patch_antenna_demo.py:212 | https://github.com/bk-squared/rfx/issues/1138",
+   "rows": 1,
+   "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
+  },
+  {
+   "code": "no_sources",
+   "disposition": "intended",
+   "reason": "The tutorial ASSERTS this row. main(): 'Because this model deliberately ends after construction, general preflight should report that there is no generic run source', then expected_build_only_advisory = bool(coaxial_report.by_code('no_sources')) and prints it. A missing row here would be the defect.",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:327-336",
+   "rows": 1,
+   "variant": "examples/tutorials/ports_and_sparams_101.py::build_coaxial_port::default"
+  },
+  {
+   "code": "sheet_effective_size",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: thin_conductor[1] 'thin_conductor[1]' y: drawn 1mm, nodes cover 1000µm, solved as 1.175mm (+17.50%); thin_conductor[0] 'thin_conductor[0]' y: drawn 8.5mm, nodes cover 8.5mm, solved as 8.675mm (+2.06%). A sheet end strictly inside the domain is solved about 0.35 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- thin_conductor[1] 'thin_conductor[1]' y: drawn 1mm, nodes cover 1000µm, solved as 1.175mm (+17.50%) -- is what build_microstrip_ports actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:97 | https://github.com/bk-squared/rfx/issues/1138",
+   "rows": 1,
+   "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
+  },
+  {
+   "code": "geometry_in_absorber",
+   "disposition": "intended",
+   "reason": "The slab Box is drawn (-1 m, -1 m) to (1 m, 1 m) transversally ON PURPOSE and the code says why: 'The material Box must span the full transverse extent (incl. CPML padding): with TFSF the transverse axes are periodic, so any cell outside the material mask breaks the plane-wave assumption (detail (c)).' The advisory measures the declared face at -1 m, which is an over-draw that the domain clips, not material sitting in the absorber by accident.",
+   "ref": "examples/tutorials/slab_rt_flux_monitor.py:94-97",
+   "rows": 1,
+   "variant": "examples/tutorials/slab_rt_flux_monitor.py::build_sim::with_slab=True"
+  },
+  {
+   "code": "lossless_q",
+   "disposition": "intended",
+   "reason": "Docstring: 'Preflight will flag the under-resolution and the lossless slab -- both are expected here: this is a fast method demo, we measure R/T (not Q), and a lossless slab is what matches the lossless analytic Fresnel reference.' The advisory's own text carves this out ('Harmless if you are not measuring Q').",
+   "ref": "examples/tutorials/slab_rt_flux_monitor.py:21-25",
+   "rows": 1,
+   "variant": "examples/tutorials/slab_rt_flux_monitor.py::build_sim::with_slab=True"
+  },
+  {
+   "code": "mesh_resolution",
+   "disposition": "intended",
+   "reason": "Same docstring sentence: the grid 'is kept coarse for speed; halving dx reduces the error toward the analytic curve', and the under-resolution is named as expected. Three rows = the three axes of the one dielectric.",
+   "ref": "examples/tutorials/slab_rt_flux_monitor.py:21-25",
+   "rows": 3,
+   "variant": "examples/tutorials/slab_rt_flux_monitor.py::build_sim::with_slab=True"
+  },
+  {
+   "code": "lossless_q",
+   "disposition": "intended",
+   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). The case gates notch FREQUENCY (G1, against a fringing-free quarter-wave oracle) and -10 dB stopband fractional BANDWIDTH (G2, against the ideal shunt-open-stub closed form); both oracles are lossless, so a lossless RO4350B is what matches them. The loss-sensitive quantity, notch depth, is explicitly demoted in the docstring: 'the depth is a demonstration that the notch resolves, not a calibrated magnitude.'",
+   "ref": "validation/crossval/06b_msl_notch_filter_uniform.py:222-226,289-297",
+   "rows": 1,
+   "variant": "validation/crossval/06b_msl_notch_filter_uniform.py::_build_sim::default"
+  },
+  {
+   "code": "off_lattice_design_edges",
+   "disposition": "intended",
+   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). Disclosed with the number, in the docstring's 'Preflight honesty' section: the dx = 63.5 um mesh 'does NOT retire, and marginally WORSENS, the off-lattice conductor-edge warning -- this run's own preflight, quoted verbatim: ... 28.5um (4.75% of the extent) -- the expected price of quoting the realized width instead of re-declaring W_TRACE on a lattice multiple.' gcd(254, 600) um = 2 um, so no sane cubic cell puts both H_SUB and W_TRACE on the lattice.",
+   "ref": "validation/crossval/06b_msl_notch_filter_uniform.py:60-72,203-212",
+   "rows": 1,
+   "variant": "validation/crossval/06b_msl_notch_filter_uniform.py::_build_sim::default"
+  },
+  {
+   "code": "pec_faces_finite_pec",
+   "disposition": "intended",
+   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). A microstrip board models its ground as the infinite z_lo PEC face and its trace/stub as finite PEC; that pairing is the model, not a mistake. _build_sim declares exactly that: boundary=BoundarySpec(x='cpml', y='cpml', z=Boundary(lo='pec', hi='cpml')) with the trace and stub as zero-thickness PEC sheets on the z = H_SUB node plane. The advisory's own subject -- an antenna whose finite ground plane has been replaced by a domain face, cavity instead of radiator -- does not arise: this design has no finite ground plane to lose.",
+   "ref": "validation/crossval/06b_msl_notch_filter_uniform.py:538-560",
+   "rows": 1,
+   "variant": "validation/crossval/06b_msl_notch_filter_uniform.py::_build_sim::default"
+  },
+  {
+   "code": "sheet_effective_size",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: geometry[1] 'pec' y: drawn 600µm, nodes cover 571.5µm, solved as 615.9µm (+2.66%); geometry[2] 'pec' x: drawn 600µm, nodes cover 571.5µm, solved as 615.9µm (+2.66%). A sheet end strictly inside the domain is solved about 0.35 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- geometry[1] 'pec' y: drawn 600µm, nodes cover 571.5µm, solved as 615.9µm (+2.66%) -- is what _build_sim actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "ref": "validation/crossval/06b_msl_notch_filter_uniform.py:523 | https://github.com/bk-squared/rfx/issues/1138",
+   "rows": 1,
+   "variant": "validation/crossval/06b_msl_notch_filter_uniform.py::_build_sim::default"
+  },
+  {
+   "code": "congruent_conductor_rasterization_parity",
+   "disposition": "defect-open",
+   "issue": 928,
+   "reason": "The two 50-ohm feeds are the same declared object (2.413 x 12.47 mm sheets) and this mesh realizes them UNEQUAL: geometry[1] 1437 PEC edges vs geometry[3] 1414, spread 23 against a tolerance of 1. 23 = 12 + 11 is one node column of a 12-row-wide sheet, i.e. the two feeds differ by one cell of length. The docstring argues for dx = 200 um precisely BECAUSE it keeps the feeds symmetric ('the two feeds stay SYMMETRIC', 12 node rows each) and refuses dx = H_SUB/4 for realizing them 12 and 13 rows WIDE -- that argument is about the transverse width and does not cover the propagation length, which this advisory measures. Reported to the crossval leader on #928 (comment linked in ref); not edited here.",
+   "ref": "validation/crossval/07_sheen_lpf.py:118-133,634-648 | https://github.com/bk-squared/rfx/issues/928#issuecomment-5699614129",
+   "rows": 1,
+   "variant": "validation/crossval/07_sheen_lpf.py::build_rfx_sim::default"
+  },
+  {
+   "code": "lossless_q",
+   "disposition": "intended",
+   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). Named in the docstring's PREFLIGHT WARNINGS section as one of 'the standing pec_faces and lossless-dielectric advisories'. The registered output is the stopband STRUCTURE (argmin null position, passband/stopband shape) against openEMS and a Palace referee, both run on the same lossless Duroid; the case is explicitly 'not an rfx magnitude-accuracy claim at dx=200um'.",
+   "ref": "validation/crossval/07_sheen_lpf.py:265-285",
+   "rows": 1,
+   "variant": "validation/crossval/07_sheen_lpf.py::build_rfx_sim::default"
+  },
+  {
+   "code": "msl_port_geometry",
+   "disposition": "intended",
+   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). Quoted in the docstring with the number and the reason: 'BOTH ports at 900 um from the x-CPML (geometry-limited, PORT_MARGIN=2.5 mm; recommended 2*h_sub = 1588 um)'. The board's published length is what limits it, and the leg stores its preflight verbatim in _07_sheen_results/rfx.json.",
+   "ref": "validation/crossval/07_sheen_lpf.py:265-272",
+   "rows": 2,
+   "variant": "validation/crossval/07_sheen_lpf.py::build_rfx_sim::default"
+  },
+  {
+   "code": "off_lattice_design_edges",
+   "disposition": "intended",
+   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). The declared-vs-realized table is written out in the docstring (GEOMETRY CONVENTION #722): wide section 2540 -> 2600 um, substrate 794 -> 800 um, each feed 2413 -> 2400 um, offset -3303.5 -> -3200 um, with gcd(2540, 794, 2413, 20320) = 1 um given as the reason no cubic cell can realize all four. The on-lattice redraw is refused with a measurement (dx = H_SUB/4 makes the two feeds 12 and 13 rows wide).",
+   "ref": "validation/crossval/07_sheen_lpf.py:40-57,143-152",
+   "rows": 1,
+   "variant": "validation/crossval/07_sheen_lpf.py::build_rfx_sim::default"
+  },
+  {
+   "code": "pec_faces_finite_pec",
+   "disposition": "intended",
+   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). Same microstrip model as cv06b: z_lo PEC face is the ground, the three sheets are the feed/patch metal. Listed in the docstring among the standing advisories.",
+   "ref": "validation/crossval/07_sheen_lpf.py:265-273,715-743",
+   "rows": 1,
+   "variant": "validation/crossval/07_sheen_lpf.py::build_rfx_sim::default"
+  },
+  {
+   "code": "sheet_effective_size",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: geometry[1] 'pec' y: drawn 2.413mm, nodes cover 2.2mm, solved as 2.34mm (-3.03%); geometry[3] 'pec' y: drawn 2.413mm, nodes cover 2.2mm, solved as 2.34mm (-3.03%). A sheet end strictly inside the domain is solved about 0.35 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- geometry[1] 'pec' y: drawn 2.413mm, nodes cover 2.2mm, solved as 2.34mm (-3.03%) -- is what build_rfx_sim actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "ref": "validation/crossval/07_sheen_lpf.py:706 | https://github.com/bk-squared/rfx/issues/1138",
+   "rows": 1,
+   "variant": "validation/crossval/07_sheen_lpf.py::build_rfx_sim::default"
+  },
+  {
+   "code": "sheet_plane_realized",
+   "disposition": "intended",
+   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). Severity info, and the number is in the docstring: 'sheet plane k = 4, z = 800.0 um = the realized substrate top (declared foil plane 794.0 um, +6.0 um)'. The docstring then refuses the on-lattice redraw with the feed-asymmetry measurement and states why the pathology does not arise here ('the sheet lands on the realized substrate TOP ... so there is no vacuum slot').",
+   "ref": "validation/crossval/07_sheen_lpf.py:118-127,143-158",
+   "rows": 1,
+   "variant": "validation/crossval/07_sheen_lpf.py::build_rfx_sim::default"
+  },
+  {
+   "code": "port_aperture_snap",
+   "disposition": "intended",
+   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). cv11 declares the WR-90 standard 22.86 x 10.16 mm and QUOTES THE REALIZED GUIDE for every reference it computes: 'QUOTE-REALIZED (#722, #724): the walls this dx actually rasterizes (ceil(declared/dx)*dx) ... At dx=1mm this is 23.000 x 11.000 mm -- an EXACT rectangular guide, so F_CUTOFF_TE10 below is the true TE10 cutoff of the structure the solver builds.' A mesh-based fix was evaluated and withdrawn in writing. The row's own cutoff clause now agrees with that convention (#1101): on the default mode_profile='discrete' it reads the BUILT cfg.f_cutoff, 6.512162 GHz. The script's own F_CUTOFF_TE10 = C0/(2*A_WG_REALIZED) is 6.517391 GHz -- the script uses C0 = 2.998e8 (line 290), 0.0025 % off the exact c the advisory uses, which is why the advisory's realized-aperture analytic value reads 6.517227 GHz and not the script's number. Script constant against built: 0.080 %, the Yee discretisation of the same 23-cell guide. The advisory's own declared-width analytic value, 6.557140 GHz, is 0.691 % above the built one; cv11 has no declared-width constant of its own to compare, which is the point of its QUOTE-REALIZED convention. Script and advisory describe the same guide, so the row stays a disclosure of the declared-vs-realized gap rather than a defect.",
+   "ref": "validation/crossval/11_waveguide_port_wr90.py:290,295-308 | https://github.com/bk-squared/rfx/issues/1101",
+   "rows": 4,
+   "variant": "validation/crossval/11_waveguide_port_wr90.py::_build_sim::empty"
+  },
+  {
+   "code": "port_evanescent",
+   "disposition": "intended",
+   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). The band IS the case: FREQS_HZ = linspace(8.2, 12.4, 21) GHz is WR-90's standard X-band, and the MEEP/analytic references are computed over it. The advisory is a 0.9*fc_next proximity heuristic: on the realized 23 x 11 mm guide fc_TE20 = 13.034 GHz, so the whole band is BELOW the TE20 cutoff and TE20 is evanescent, not propagating. Both variants are symmetric about the guide centre (empty guide; full-cross-section PEC plug) and driven with a centred TE10 template, which does not couple to the odd-symmetry TE20.",
+   "ref": "validation/crossval/11_waveguide_port_wr90.py:310-313",
+   "rows": 2,
+   "variant": "validation/crossval/11_waveguide_port_wr90.py::_build_sim::empty"
+  },
+  {
+   "code": "pec_faces_finite_pec",
+   "disposition": "intended",
+   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). The y/z PEC faces ARE the guide walls (boundary x=cpml, y=z=pec) and the finite PEC object is the short-circuit plug. That is the structure the case measures (|S11| = 1 at every frequency); the advisory's antenna framing does not apply to a closed guide.",
+   "ref": "validation/crossval/11_waveguide_port_wr90.py:28-33,505-520",
+   "rows": 1,
+   "variant": "validation/crossval/11_waveguide_port_wr90.py::_build_sim::pec_short"
+  },
+  {
+   "code": "port_aperture_snap",
+   "disposition": "intended",
+   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). cv11 declares the WR-90 standard 22.86 x 10.16 mm and QUOTES THE REALIZED GUIDE for every reference it computes: 'QUOTE-REALIZED (#722, #724): the walls this dx actually rasterizes (ceil(declared/dx)*dx) ... At dx=1mm this is 23.000 x 11.000 mm -- an EXACT rectangular guide, so F_CUTOFF_TE10 below is the true TE10 cutoff of the structure the solver builds.' A mesh-based fix was evaluated and withdrawn in writing. The row's own cutoff clause now agrees with that convention (#1101): on the default mode_profile='discrete' it reads the BUILT cfg.f_cutoff, 6.512162 GHz. The script's own F_CUTOFF_TE10 = C0/(2*A_WG_REALIZED) is 6.517391 GHz -- the script uses C0 = 2.998e8 (line 290), 0.0025 % off the exact c the advisory uses, which is why the advisory's realized-aperture analytic value reads 6.517227 GHz and not the script's number. Script constant against built: 0.080 %, the Yee discretisation of the same 23-cell guide. The advisory's own declared-width analytic value, 6.557140 GHz, is 0.691 % above the built one; cv11 has no declared-width constant of its own to compare, which is the point of its QUOTE-REALIZED convention. Script and advisory describe the same guide, so the row stays a disclosure of the declared-vs-realized gap rather than a defect.",
+   "ref": "validation/crossval/11_waveguide_port_wr90.py:290,295-308 | https://github.com/bk-squared/rfx/issues/1101",
+   "rows": 4,
+   "variant": "validation/crossval/11_waveguide_port_wr90.py::_build_sim::pec_short"
+  },
+  {
+   "code": "port_evanescent",
+   "disposition": "intended",
+   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). The band IS the case: FREQS_HZ = linspace(8.2, 12.4, 21) GHz is WR-90's standard X-band, and the MEEP/analytic references are computed over it. The advisory is a 0.9*fc_next proximity heuristic: on the realized 23 x 11 mm guide fc_TE20 = 13.034 GHz, so the whole band is BELOW the TE20 cutoff and TE20 is evanescent, not propagating. Both variants are symmetric about the guide centre (empty guide; full-cross-section PEC plug) and driven with a centred TE10 template, which does not couple to the odd-symmetry TE20.",
+   "ref": "validation/crossval/11_waveguide_port_wr90.py:310-313",
+   "rows": 2,
+   "variant": "validation/crossval/11_waveguide_port_wr90.py::_build_sim::pec_short"
+  },
+  {
+   "code": "off_lattice_design_edges",
+   "disposition": "intended",
+   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). dx = H_SUB/4 = 793.75 um is mandated by the case's own #325 avoidance rule ('UNIFORM grid only ... The rfx build ASSERTS the substrate rasterizes to exactly N_SUB=4 z-cells ... BEFORE any f0 is quoted'), which fixes the z axis exactly and leaves the in-plane patch (40 mm) and ground (56 mm) faces off-lattice by 0.89 % and 0.52 %. The script MEASURES the consequence rather than assuming it: assert_realized_stack prints the realized footprint in cells and mm next to the declared L_PATCH/W_PATCH on every run.",
+   "ref": "validation/crossval/15_patch_antenna_rt5880.py:40-48,256,533-541",
+   "rows": 1,
+   "variant": "validation/crossval/15_patch_antenna_rt5880.py::build_rfx_sim::default"
+  },
+  {
+   "code": "sheet_effective_size",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: geometry[2] 'pec' x: drawn 40mm, nodes cover 38.89mm, solved as 39.45mm (-1.38%); geometry[0] 'pec' x: drawn 56mm, nodes cover 54.77mm, solved as 55.32mm (-1.21%). A sheet end strictly inside the domain is solved about 0.35 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- geometry[2] 'pec' x: drawn 40mm, nodes cover 38.89mm, solved as 39.45mm (-1.38%) -- is what build_rfx_sim actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "ref": "validation/crossval/15_patch_antenna_rt5880.py:627 | https://github.com/bk-squared/rfx/issues/1138",
+   "rows": 1,
+   "variant": "validation/crossval/15_patch_antenna_rt5880.py::build_rfx_sim::default"
+  },
+  {
+   "code": "off_lattice_design_edges",
+   "disposition": "intended",
+   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). The iris fins are drawn with big = 1.0 m in the two transverse axes (Box((cur*dx, -big, -big), (..., fy_lo, big))) so that each fin spans the whole guide cross-section and the domain clips it. The 99.37 % residuals the advisory reports are the distance from those deliberately over-drawn +-1 m faces to the nearest node, i.e. a property of the over-draw idiom, not of the iris geometry. The dimensions that carry the physics (iris thickness t_cells, aperture d_cells, cavity L_cells) are declared in CELLS and asserted per iris by raster_assert().",
+   "ref": "validation/crossval/19_wr90_iris_filter_aghanim.py:535-556,559-575",
+   "rows": 1,
+   "variant": "validation/crossval/19_wr90_iris_filter_aghanim.py::build::gated"
+  },
+  {
+   "code": "pec_faces_finite_pec",
+   "disposition": "intended",
+   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). Same as cv11's pec_short: y/z PEC faces are the WR-90 guide walls, the finite PEC objects are the five irises. A closed guide with irises is the structure, not an antenna with a truncated ground plane.",
+   "ref": "validation/crossval/19_wr90_iris_filter_aghanim.py:527-533",
+   "rows": 1,
+   "variant": "validation/crossval/19_wr90_iris_filter_aghanim.py::build::gated"
+  },
+  {
+   "code": "mesh_resolution",
+   "disposition": "intended",
+   "reason": "The 2 mm gap the advisory measures is the fixture's defining dimension: two PEC bars at z = 5 mm and z = 7 mm with the driven wire port in between, and the build-time check asserts exactly those wall planes ([3, 4, 5, 7, 8, 9] mm). The decision quantity is rho(f) = v/i at the driven cell against a known external load, which is a circuit-law measurement on that gap, not a propagation measurement that needs cells per wavelength.",
+   "ref": "validation/research/issue683_sampling_order_decision.py:19-21,90-112",
+   "rows": 1,
+   "variant": "validation/research/issue683_sampling_order_decision.py::build::nu-matched"
+  },
+  {
+   "code": "wire_port_dead_cell_classification_unavailable",
+   "disposition": "intended",
+   "reason": "The variant IS the NU arm: 'POST = NU lane, uniform-valued dz_profile, run()' is one of the two arms the experiment compares, so dz_profile is set by construction. The advisory reports an rfx limitation (the shared wire-port primitive covers the uniform path only, issue #544), not a property of this fixture, and the fixture answers it directly: RC.assert_wall_planes checks the realized live/dead terminals the advisory asks the reader to inspect.",
+   "ref": "validation/research/issue683_sampling_order_decision.py:6-8,90-112",
+   "rows": 2,
+   "variant": "validation/research/issue683_sampling_order_decision.py::build::nu-matched"
+  },
+  {
+   "code": "mesh_resolution",
+   "disposition": "intended",
+   "reason": "Every row is a deliberate feature of the FIX-A falsifier fixture. The 'short' load is four 1-cell PEC columns bridging the 1 mm gap between two electrode plates ('pec' x/y-extent 500 um = 1.0 cells), and the gap rows (1000 um = 2 cells along z, 500 um = 1 cell along x/y, and the 0-cell gaps where the columns touch the plates) are the terminals the experiment measures rho(f) across. The pre-declaration binds this geometry; the build asserts the realized wall planes rather than trusting a thickness convention.",
+   "ref": "validation/research/issue764_wireport_norm_falsifiers.py:3-4,71-129",
+   "rows": 13,
+   "variant": "validation/research/issue764_wireport_norm_falsifiers.py::build_fix_a::short"
+  },
+  {
+   "code": "pec_box_one_cell",
+   "disposition": "intended",
+   "reason": "The four one-cell PEC volumes named by the advisory ARE the shorting columns of the 'short' load. 'Realized as a filled slab with walls on BOTH faces' is what a short across the gap has to be, and the script's own comment makes that the point: 'a volume realizes walls at BOTH its faces and shorts every normal edge between them at ANY thickness, so the gap faces at z = 3.5 mm and z = 4.5 mm are terminals by construction'.",
+   "ref": "validation/research/issue764_wireport_norm_falsifiers.py:92-111",
+   "rows": 1,
+   "variant": "validation/research/issue764_wireport_norm_falsifiers.py::build_fix_a::short"
+  },
+  {
+   "code": "wire_port_dead_cell_classification_unavailable",
+   "disposition": "intended",
+   "reason": "Same as issue683: the battery is declared 'NU lane only (POST-injection ordering, measured correct per #683)' and runs with an explicit dz_profile, so the uniform-only dead-cell classifier (#544) cannot speak. The fixture replaces it with an explicit build-time terminal assertion.",
+   "ref": "validation/research/issue764_wireport_norm_falsifiers.py:5-9,119-128",
+   "rows": 1,
+   "variant": "validation/research/issue764_wireport_norm_falsifiers.py::build_fix_a::short"
+  },
+  {
+   "code": "pec_faces_finite_pec",
+   "disposition": "intended",
+   "reason": "FIX-T is the canonical two-port THRU battery fixture, verbatim: a microstrip trace over a z_lo PEC ground (boundary z=Boundary(lo='pec', hi='cpml')). Infinite ground + finite trace is the microstrip model. The harness prints every preflight row verbatim per arm (preflight_verbatim()).",
+   "ref": "validation/research/issue770_offdiag_adjudication.py:38-40,93-120,123-129",
+   "rows": 1,
+   "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::nu-drive0"
+  },
+  {
+   "code": "sheet_effective_size",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%). A sheet end strictly inside the domain is solved about 0.35 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%) -- is what build_fix_t actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "ref": "validation/research/issue770_offdiag_adjudication.py:93 | https://github.com/bk-squared/rfx/issues/1138",
+   "rows": 1,
+   "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::nu-drive0"
+  },
+  {
+   "code": "wire_port_dead_cell_classification_unavailable",
+   "disposition": "intended",
+   "reason": "The nu-drive0 variant is the NU arm of the adjudication (nu=True sets a uniform-valued dz_profile so the NU lane runs the same geometry); the advisory is the uniform-only-classifier limitation (#544), one row per wire port.",
+   "ref": "validation/research/issue770_offdiag_adjudication.py:93-101",
+   "rows": 2,
+   "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::nu-drive0"
+  },
+  {
+   "code": "pec_faces_finite_pec",
+   "disposition": "intended",
+   "reason": "Same fixture on the uniform lane (nu=False): microstrip ground on the z_lo PEC face, finite PEC trace.",
+   "ref": "validation/research/issue770_offdiag_adjudication.py:93-120",
+   "rows": 1,
+   "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::uniform-both"
+  },
+  {
+   "code": "sheet_effective_size",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%). A sheet end strictly inside the domain is solved about 0.35 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%) -- is what build_fix_t actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "ref": "validation/research/issue770_offdiag_adjudication.py:93 | https://github.com/bk-squared/rfx/issues/1138",
+   "rows": 1,
+   "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::uniform-both"
+  },
+  {
+   "code": "mesh_resolution",
+   "disposition": "intended",
+   "reason": "The study IS a mesh-refinement study: 'Arms: multiband P-C at s in {1, 1.5, 2, 3}; uniform-fine control at the same scales; reference = uniform-fine at s=2/3.' The audited variant is the s = 1.5 arm, so a coarse-cell advisory on the substrate (10.7 cells/lambda_eff) and the superstrate (15.0, exactly at the bar) is the arm doing its job -- supraconvergence is measured BY running under-resolved arms against a fine reference. Silencing it would delete the observable.",
+   "ref": "validation/research/multiband_nu/w4_supraconvergence.py:1-11",
+   "rows": 4,
+   "variant": "validation/research/multiband_nu/w4_supraconvergence.py::build_sim::s1.5_multiband"
+  },
+  {
+   "code": "mesh_resolution",
+   "disposition": "intended",
+   "reason": "The study IS a mesh-refinement study: 'Arms: multiband P-C at s in {1, 1.5, 2, 3}; uniform-fine control at the same scales; reference = uniform-fine at s=2/3.' The audited variant is the s = 1.5 arm, so a coarse-cell advisory on the substrate (10.7 cells/lambda_eff) and the superstrate (15.0, exactly at the bar) is the arm doing its job -- supraconvergence is measured BY running under-resolved arms against a fine reference. Silencing it would delete the observable.",
+   "ref": "validation/research/multiband_nu/w4r_port_supraconvergence.py:1-11",
+   "rows": 4,
+   "variant": "validation/research/multiband_nu/w4r_port_supraconvergence.py::build_sim::s1.5_multiband"
+  },
+  {
+   "code": "mesh_resolution",
+   "disposition": "intended",
+   "reason": "This variant exists to be REJECTED: the script is 'intentionally conservative' and demonstrates that 'a centered homogeneous dielectric cavity is rejected by production validation with precise fail-closed reasons'. The advisory reads 'dielectric on x: 12.5 cells per lambda_eff ... Need >=15'; the coarse mesh is the case under test, and no observable is claimed from this arm.",
+   "ref": "validation/research/subgrid/13_subgrid_material_validation.py:3-18",
+   "rows": 3,
+   "variant": "validation/research/subgrid/13_subgrid_material_validation.py::build_dielectric_subgrid::dielectric_centered"
+  },
+  {
+   "code": "mesh_resolution",
+   "disposition": "intended",
+   "reason": "The uniform arm deliberately reuses the rejected case's mesh so the two are comparable: it 'is solved on the uniform reference lane and checked against the analytic TM110 resonance, proving that the material setup is physically meaningful even though that centered subgrid case is [rejected]'. Its claim is checked against a closed form, which is what makes 12.5 cells/lambda_eff acceptable to state.",
+   "ref": "validation/research/subgrid/13_subgrid_material_validation.py:3-20",
+   "rows": 3,
+   "variant": "validation/research/subgrid/13_subgrid_material_validation.py::build_uniform_reference::uniform_reference"
+  },
+  {
+   "code": "pec_faces_finite_pec",
+   "disposition": "intended",
+   "reason": "The battery-verbatim THRU: a foil microstrip trace (zero-thickness PEC Box) over a z_lo PEC ground face. Infinite ground + finite trace is the microstrip model. The consumer harness pins this code in its own expected-code list (THRU_CODES) so a change in the fixture's emissions fails there too.",
+   "ref": "validation/research/thru_feedpost_deembed.py:84-105 | validation/research/thru_feedpost_twoseg_extraction.py:321",
+   "rows": 1,
+   "variant": "validation/research/thru_feedpost_deembed.py::build_thru::band-pulse"
+  },
+  {
+   "code": "sheet_effective_size",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%). A sheet end strictly inside the domain is solved about 0.35 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%) -- is what build_thru actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "ref": "validation/research/thru_feedpost_deembed.py:75 | https://github.com/bk-squared/rfx/issues/1138",
+   "rows": 1,
+   "variant": "validation/research/thru_feedpost_deembed.py::build_thru::band-pulse"
+  },
+  {
+   "code": "pec_faces_finite_pec",
+   "disposition": "intended",
+   "reason": "The battery-verbatim THRU: a foil microstrip trace (zero-thickness PEC Box) over a z_lo PEC ground face. Infinite ground + finite trace is the microstrip model. The consumer harness pins this code in its own expected-code list (THRU_CODES) so a change in the fixture's emissions fails there too.",
+   "ref": "validation/research/thru_feedpost_deembed.py:84-105 | validation/research/thru_feedpost_twoseg_extraction.py:321",
+   "rows": 1,
+   "variant": "validation/research/thru_feedpost_deembed.py::build_thru::insitu-refplane"
+  },
+  {
+   "code": "sheet_effective_size",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%). A sheet end strictly inside the domain is solved about 0.35 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%) -- is what build_thru actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "ref": "validation/research/thru_feedpost_deembed.py:75 | https://github.com/bk-squared/rfx/issues/1138",
+   "rows": 1,
+   "variant": "validation/research/thru_feedpost_deembed.py::build_thru::insitu-refplane"
+  },
+  {
+   "code": "pec_faces_finite_pec",
+   "disposition": "intended",
+   "reason": "Same microstrip line as build_thru, single-post arm: z_lo PEC ground, finite PEC trace. Pinned in SINGLEPOST_CODES.",
+   "ref": "validation/research/thru_feedpost_twoseg_extraction.py:216-252,325-326",
+   "rows": 1,
+   "variant": "validation/research/thru_feedpost_twoseg_extraction.py::build_singlepost::refplane-n10"
+  },
+  {
+   "code": "refplane_partial_optin",
+   "disposition": "intended",
+   "reason": "Stated as deliberate in the script, next to the code list that pins it: 'refplane_partial_optin is the DELIBERATE design: only the driven port opts into the plane instrument (the passive far termination stays on the default path; the harness consumes raw plane accumulators only).' The advisory's failure mode (off-diagonal S entries silently on the legacy path) cannot bite a harness that reads the raw plane accumulators of the driven port and never asks for an off-diagonal S entry.",
+   "ref": "validation/research/thru_feedpost_twoseg_extraction.py:322-326",
+   "rows": 1,
+   "variant": "validation/research/thru_feedpost_twoseg_extraction.py::build_singlepost::refplane-n10"
+  },
+  {
+   "code": "sheet_effective_size",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 21mm, nodes cover 21mm, solved as 21.35mm (+1.67%). A sheet end strictly inside the domain is solved about 0.35 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%) -- is what build_singlepost actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "ref": "validation/research/thru_feedpost_twoseg_extraction.py:216 | https://github.com/bk-squared/rfx/issues/1138",
+   "rows": 1,
+   "variant": "validation/research/thru_feedpost_twoseg_extraction.py::build_singlepost::refplane-n10"
+  },
+  {
+   "code": "ntff_small_ground_plane",
+   "disposition": "intended",
+   "reason": "The finite reflector is the structure: 'An x-oriented electric dipole (Ex point source) sits a quarter wavelength above a finite PEC reflector plate'. The advisory says the pattern will carry ground-plane edge diffraction, which is exactly what a 0.83-lambda plate does and what the steering objective optimizes against. (It reads 0.83 lambda since the lattice snap in this PR; it read 0.90 lambda from the DECLARED bbox before, while the plate this lane actually realized was 0.75 lambda.)",
+   "ref": "validation/tmtt_paper/beam_steering_superstrate.py:1-23,156-176,229-232",
+   "rows": 1,
+   "variant": "validation/tmtt_paper/beam_steering_superstrate.py::build_problem::default"
+  },
+  {
+   "code": "sheet_effective_size",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: geometry[0] 'pec' x: drawn 83.28mm, nodes cover 83.28mm, solved as 89.1mm (+7.00%); geometry[0] 'pec' y: drawn 83.28mm, nodes cover 83.28mm, solved as 89.1mm (+7.00%). A sheet end strictly inside the domain is solved about 0.35 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- geometry[0] 'pec' x: drawn 83.28mm, nodes cover 83.28mm, solved as 89.1mm (+7.00%) -- is what build_problem actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "ref": "validation/tmtt_paper/beam_steering_superstrate.py:139 | https://github.com/bk-squared/rfx/issues/1138",
+   "rows": 1,
+   "variant": "validation/tmtt_paper/beam_steering_superstrate.py::build_problem::default"
+  },
+  {
+   "code": "lossless_q",
+   "disposition": "intended",
+   "reason": "The demo's observable is the |S21|^2 notch of a shunt open stub as a function of stub LENGTH, optimized by jax.grad; the references it is scored against (the analytic quarter-wave stub length, the brute-force L scan on the same lossless board) are lossless. A dielectric loss tangent would move the notch DEPTH, which the demo reports as a design output of its own cost surface and not against any measured board.",
+   "ref": "validation/tmtt_paper/msl_stub_notch_tuning.py:1-30,138-142",
+   "rows": 1,
+   "variant": "validation/tmtt_paper/msl_stub_notch_tuning.py::build_sim::f_target"
+  },
+  {
+   "code": "msl_port_geometry",
+   "disposition": "intended",
+   "reason": "The 2 normal intervals the advisory counts are the declared mesh: DX = 127e-6 with the comment 'h_sub / 2 -- 2 substrate cells. Demo geometry of record. Refining to 80 um (cv06b standard) gives a cleaner eps_eff staircase but exposes a dx-fragility in the plane lane (|S21|^2 > 1 unphysical) that is a follow-up; for now the demo runs at h_sub/2 where the extractor is well behaved.' One row per MSL port.",
+   "ref": "validation/tmtt_paper/msl_stub_notch_tuning.py:140-152",
+   "rows": 2,
+   "variant": "validation/tmtt_paper/msl_stub_notch_tuning.py::build_sim::f_target"
+  },
+  {
+   "code": "off_lattice_design_edges",
+   "disposition": "intended",
+   "reason": "Disclosed in the source with the arithmetic that makes it unavoidable: 'The residual +5.8% width error is NOT fixable by redrawing: W_TRACE / DX = 4.72 is not an integer, and gcd(254 um, 600 um) = 2 um, so no sane uniform dx puts both the substrate top and both trace edges on node lines. That is disclosed here, not absorbed.' The substrate face, which the port checks key off, IS on a node (H_SUB / DX = 2 exactly).",
+   "ref": "validation/tmtt_paper/msl_stub_notch_tuning.py:242-259",
+   "rows": 1,
+   "variant": "validation/tmtt_paper/msl_stub_notch_tuning.py::build_sim::f_target"
+  },
+  {
+   "code": "pec_faces_finite_pec",
+   "disposition": "intended",
+   "reason": "Microstrip model again: the board's ground is the z_lo PEC face and the through-line trace plus the stub are the finite PEC sheets.",
+   "ref": "validation/tmtt_paper/msl_stub_notch_tuning.py:230-262",
+   "rows": 1,
+   "variant": "validation/tmtt_paper/msl_stub_notch_tuning.py::build_sim::f_target"
+  }
+ ]
+}

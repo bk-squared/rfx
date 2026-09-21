@@ -1,0 +1,51 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "mesh_resolution",
+        "loc": null,
+        "message": "dielectric 'core' on x: 15.0 cells per \u03bb_eff (eps_r=4.00, freq_max=10GHz, dx=1mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
+        "severity": "warning",
+        "source": "_validate_mesh_quality"
+      },
+      {
+        "code": "mesh_resolution",
+        "loc": null,
+        "message": "dielectric 'core' on y: 15.0 cells per \u03bb_eff (eps_r=4.00, freq_max=10GHz, dx=1mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
+        "severity": "warning",
+        "source": "_validate_mesh_quality"
+      },
+      {
+        "code": "mesh_resolution",
+        "loc": null,
+        "message": "dielectric 'core' on z: 15.0 cells per \u03bb_eff (eps_r=4.00, freq_max=10GHz, dx=1mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
+        "severity": "warning",
+        "source": "_validate_mesh_quality"
+      },
+      {
+        "code": "no_sources",
+        "loc": null,
+        "message": "No sources, ports, TFSF, or waveguide/Floquet/MSL ports configured. Simulation will produce zero fields.",
+        "severity": "warning",
+        "source": "_validate_cfg_no_sources"
+      },
+      {
+        "code": "lossless_q",
+        "loc": null,
+        "message": "all dielectric(s) ['core'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)",
+        "severity": "warning",
+        "source": "_validate_cfg_lossless_resonator_in_absorber"
+      },
+      {
+        "code": "sheet_effective_size",
+        "loc": null,
+        "message": "4 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 4 listed): thin_conductor[0] 'thin_conductor[0]' x: drawn 6mm, nodes cover 6mm, solved as 6.7mm (+11.67%); thin_conductor[0] 'thin_conductor[0]' y: drawn 6mm, nodes cover 6mm, solved as 6.7mm (+11.67%); thin_conductor[1] 'thin_conductor[1]' x: drawn 6mm, nodes cover 6mm, solved as 6.7mm (+11.67%); thin_conductor[1] 'thin_conductor[1]' y: drawn 6mm, nodes cover 6mm, solved as 6.7mm (+11.67%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+        "severity": "warning",
+        "source": "_validate_cfg_off_lattice_design_edges"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 6,
+    "ok": true
+  }
+}

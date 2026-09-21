@@ -640,12 +640,56 @@ def _kappa_correction(kappa, curl_slice, shape_broadcast):
 def apply_cpml_e(
     state, cpml_params, cpml_state: CPMLState, grid,
     axes: str = "xyz", materials=None,  # per-cell eps_r for material-aware CPML (None = free-space)
+    inv_eps_r_update=None,  # per-component 1/eps_r the E update itself used (#1043)
 ) -> tuple:
     """Apply CPML correction to E-field update on all 6 faces.
 
     Accepts either legacy ``CPMLParams`` (single profile, backward
     compatible) or ``CPMLAxisParams`` (per-axis profiles for
     anisotropic grids).
+
+    Parameters
+    ----------
+    inv_eps_r_update : (inv_ex, inv_ey, inv_ez) or None
+        Per-component INVERSE relative permittivity that the E half-step
+        itself used, when that is not ``materials.eps_r`` — i.e. the
+        subpixel-smoothing paths: ``1/aniso_eps`` for Stage 1
+        (``update_e_aniso``) and ``aniso_inv_eps`` as-is for Stage 2
+        (``update_e_aniso_inv``, where ``inv = 0`` is a frozen PEC cell and
+        correctly receives no psi correction). ``None`` keeps the
+        ``materials.eps_r`` coefficient and every byte with it.
+
+        **Why this exists (#1043).** The E update in a CPML cell is assembled
+        from two halves, and until this parameter they could take their
+        permittivity from two different arrays::
+
+            E^{n+1} = E^n + (dt/(eps_a*EPS_0)) * curl      <- update_e_aniso
+                          + (dt/(eps_b*EPS_0)) * psi       <- here
+
+        ``kappa_max`` defaults to 1.0, so the kappa term below is exactly zero
+        and ``ce * psi`` is the whole correction. With
+        ``psi = b*psi_prev + c*curl`` and ``c in (-1, 0]``, the instantaneous
+        curl coefficient is proportional to ``1/eps_a + c/eps_b``, which is
+        non-negative for every ``c`` when ``eps_a == eps_b`` and goes NEGATIVE
+        once ``|c| * eps_a / eps_b > 1``. A one-cell amplification analysis
+        puts the spectral radius at exactly 1.0 for ``eps_b >= eps_a`` and
+        above 1 for every ``eps_b < eps_a`` (2.21 at the measured failing
+        cell, eps_a = 6.5 against eps_b = 1.0). #203/#205 are the same
+        inequality reached from the other side — ``materials=`` omitted, so
+        ``eps_b = 1`` inside an ``eps_a = eps_r`` dielectric — and they read
+        as "exponential divergence -> all-NaN s11".
+
+        A subpixel-smoothed interface cell inside a CPML pad has
+        ``eps_a != eps_b`` by construction: the smoothed array carries the
+        Kottke interface value while the staircase ``materials.eps_r`` at the
+        same cell reads whichever side the sample point fell on.
+
+        NOT addressed here, and deliberately: ``update_e_aniso`` divides its
+        curl coefficient by ``(1 + sigma*dt/(2*eps))`` and the psi coefficient
+        below does not. That is a second inconsistency of the same family, it
+        is identically zero wherever the absorber pad is lossless (every
+        configuration measured for #1043), and no witness for it exists — so
+        it is recorded rather than silently changed.
     """
     n = grid.cpml_layers
     n_x, n_y, n_z = _axis_buffer_depths(grid, n)
@@ -659,17 +703,55 @@ def apply_cpml_e(
     # Material-aware CPML: use local eps_r so guided modes in dielectric
     # waveguides see an impedance-matched absorber (equivalent to UPML).
     # Falls back to free-space eps_0 when materials is None.
-    if materials is not None:
-        _ce_full = dt / (materials.eps_r * EPS_0)  # (nx, ny, nz)
-        # Pre-slice to each PML face region for broadcasting with psi arrays
-        ce_xlo = _ce_full[:n_x, :, :]
-        ce_xhi = _ce_full[-n_x:, :, :]
-        ce_ylo = _ce_full[:, :n_y, :]
-        ce_yhi = _ce_full[:, -n_y:, :]
-        ce_zlo = _ce_full[:, :, :n_z]
-        ce_zhi = _ce_full[:, :, -n_z:]
+    if inv_eps_r_update is not None:
+        # Follow the ambient MATERIAL dtype, exactly as the ``materials``
+        # branch below does (#646 promote-never-pin: eps_r carries the run's
+        # material precision). ``compute_smoothed_eps`` returns float64 under
+        # JAX_ENABLE_X64 while ``materials.eps_r`` stays float32, and letting
+        # that through changed the psi-scatter precision — and with it the
+        # field bytes of runs whose pads hold nothing but vacuum, which this
+        # change must not touch.
+        _mat_dtype = (materials.eps_r.dtype if materials is not None
+                      and hasattr(materials.eps_r, "dtype") else None)
+
+        def _ce_from_inv(inv):
+            inv = jnp.asarray(inv)
+            if _mat_dtype is not None:
+                inv = inv.astype(_mat_dtype)
+            return dt * inv / EPS_0
+
+        _ce_ex, _ce_ey, _ce_ez = (_ce_from_inv(v) for v in inv_eps_r_update)
+    elif materials is not None:
+        # One array for all three components — the slices below are then
+        # value-for-value what the single ``_ce_full`` produced.
+        _ce_ex = _ce_ey = _ce_ez = dt / (materials.eps_r * EPS_0)
     else:
-        ce_xlo = ce_xhi = ce_ylo = ce_yhi = ce_zlo = ce_zhi = dt / EPS_0
+        _ce_ex = _ce_ey = _ce_ez = None
+
+    def _face(arr, axis: int, lo: bool):
+        """Slice a per-component coefficient to one PML face region."""
+        if arr is None:
+            return dt / EPS_0
+        if axis == 0:
+            return arr[:n_x, :, :] if lo else arr[-n_x:, :, :]
+        if axis == 1:
+            return arr[:, :n_y, :] if lo else arr[:, -n_y:, :]
+        return arr[:, :, :n_z] if lo else arr[:, :, -n_z:]
+
+    # Only the 12 (component, face) pairs the corrections below actually
+    # write: x faces drive Ey/Ez, y faces drive Ex/Ez, z faces drive Ex/Ey.
+    ce_ey_xlo = _face(_ce_ey, 0, True)
+    ce_ey_xhi = _face(_ce_ey, 0, False)
+    ce_ez_xlo = _face(_ce_ez, 0, True)
+    ce_ez_xhi = _face(_ce_ez, 0, False)
+    ce_ex_ylo = _face(_ce_ex, 1, True)
+    ce_ex_yhi = _face(_ce_ex, 1, False)
+    ce_ez_ylo = _face(_ce_ez, 1, True)
+    ce_ez_yhi = _face(_ce_ez, 1, False)
+    ce_ex_zlo = _face(_ce_ex, 2, True)
+    ce_ex_zhi = _face(_ce_ex, 2, False)
+    ce_ey_zlo = _face(_ce_ey, 2, True)
+    ce_ey_zhi = _face(_ce_ey, 2, False)
 
     # Unpack per-face profiles and cell sizes (T7 Phase 2 PR1 — 6 faces).
     if isinstance(cpml_params, CPMLAxisParams):
@@ -736,8 +818,8 @@ def apply_cpml_e(
         curl_hz_dx_xlo = (hz_xlo - hz_shifted_xlo) / dx_x_lo
 
         new_psi_ey_xlo = b_x_lo * cpml_state.psi_ey_xlo + c_x_lo * curl_hz_dx_xlo
-        ey = ey.at[:n_x, :, :].add(-ce_xlo * new_psi_ey_xlo)
-        ey = ey.at[:n_x, :, :].add(-ce_xlo * (1.0 / k_x_lo - 1.0) * curl_hz_dx_xlo)
+        ey = ey.at[:n_x, :, :].add(-ce_ey_xlo * new_psi_ey_xlo)
+        ey = ey.at[:n_x, :, :].add(-ce_ey_xlo * (1.0 / k_x_lo - 1.0) * curl_hz_dx_xlo)
 
         # --- X-hi: Ey correction from dHz/dx ---
         hz_xhi = state.hz[-n_x:, :, :]
@@ -745,8 +827,8 @@ def apply_cpml_e(
         curl_hz_dx_xhi = (hz_xhi - hz_shifted_xhi) / dx_x_hi
 
         new_psi_ey_xhi = b_x_hi * cpml_state.psi_ey_xhi + c_x_hi * curl_hz_dx_xhi
-        ey = ey.at[-n_x:, :, :].add(-ce_xhi * new_psi_ey_xhi)
-        ey = ey.at[-n_x:, :, :].add(-ce_xhi * (1.0 / k_x_hi - 1.0) * curl_hz_dx_xhi)
+        ey = ey.at[-n_x:, :, :].add(-ce_ey_xhi * new_psi_ey_xhi)
+        ey = ey.at[-n_x:, :, :].add(-ce_ey_xhi * (1.0 / k_x_hi - 1.0) * curl_hz_dx_xhi)
 
         # --- X-lo: Ez correction from dHy/dx ---
         hy_xlo = state.hy[:n_x, :, :]
@@ -756,8 +838,8 @@ def apply_cpml_e(
 
         new_psi_ez_xlo = b_x_lo * cpml_state.psi_ez_xlo + c_x_lo * curl_hy_dx_xlo_t
         correction_ez_xlo = jnp.transpose(new_psi_ez_xlo, (0, 2, 1))
-        ez = ez.at[:n_x, :, :].add(ce_xlo * correction_ez_xlo)
-        ez = ez.at[:n_x, :, :].add(ce_xlo * (1.0 / k_x_lo - 1.0) * curl_hy_dx_xlo)
+        ez = ez.at[:n_x, :, :].add(ce_ez_xlo * correction_ez_xlo)
+        ez = ez.at[:n_x, :, :].add(ce_ez_xlo * (1.0 / k_x_lo - 1.0) * curl_hy_dx_xlo)
 
         # --- X-hi: Ez correction from dHy/dx ---
         hy_xhi = state.hy[-n_x:, :, :]
@@ -767,8 +849,8 @@ def apply_cpml_e(
 
         new_psi_ez_xhi = b_x_hi * cpml_state.psi_ez_xhi + c_x_hi * curl_hy_dx_xhi_t
         correction_ez_xhi = jnp.transpose(new_psi_ez_xhi, (0, 2, 1))
-        ez = ez.at[-n_x:, :, :].add(ce_xhi * correction_ez_xhi)
-        ez = ez.at[-n_x:, :, :].add(ce_xhi * (1.0 / k_x_hi - 1.0) * curl_hy_dx_xhi)
+        ez = ez.at[-n_x:, :, :].add(ce_ez_xhi * correction_ez_xhi)
+        ez = ez.at[-n_x:, :, :].add(ce_ez_xhi * (1.0 / k_x_hi - 1.0) * curl_hy_dx_xhi)
     else:
         new_psi_ey_xlo = cpml_state.psi_ey_xlo
         new_psi_ey_xhi = cpml_state.psi_ey_xhi
@@ -789,9 +871,9 @@ def apply_cpml_e(
 
         new_psi_ex_ylo = b_y_lo * cpml_state.psi_ex_ylo + c_y_lo * curl_hz_dy_ylo_t
         correction_ex_ylo = jnp.transpose(new_psi_ex_ylo, (1, 0, 2))
-        ex = ex.at[:, :n_y, :].add(ce_ylo * correction_ex_ylo)
+        ex = ex.at[:, :n_y, :].add(ce_ex_ylo * correction_ex_ylo)
         kappa_corr_ylo = jnp.transpose((1.0 / k_y_lo - 1.0) * curl_hz_dy_ylo_t, (1, 0, 2))
-        ex = ex.at[:, :n_y, :].add(ce_ylo * kappa_corr_ylo)
+        ex = ex.at[:, :n_y, :].add(ce_ex_ylo * kappa_corr_ylo)
 
         # --- Y-hi: Ex correction from dHz/dy ---
         hz_yhi = state.hz[:, -n_y:, :]
@@ -802,9 +884,9 @@ def apply_cpml_e(
 
         new_psi_ex_yhi = b_y_hi * cpml_state.psi_ex_yhi + c_y_hi * curl_hz_dy_yhi_t
         correction_ex_yhi = jnp.transpose(new_psi_ex_yhi, (1, 0, 2))
-        ex = ex.at[:, -n_y:, :].add(ce_yhi * correction_ex_yhi)
+        ex = ex.at[:, -n_y:, :].add(ce_ex_yhi * correction_ex_yhi)
         kappa_corr_yhi = jnp.transpose((1.0 / k_y_hi - 1.0) * curl_hz_dy_yhi_t, (1, 0, 2))
-        ex = ex.at[:, -n_y:, :].add(ce_yhi * kappa_corr_yhi)
+        ex = ex.at[:, -n_y:, :].add(ce_ex_yhi * kappa_corr_yhi)
 
         # --- Y-lo: Ez correction from dHx/dy ---
         hx_ylo = state.hx[:, :n_y, :]
@@ -815,9 +897,9 @@ def apply_cpml_e(
 
         new_psi_ez_ylo = b_y_lo * cpml_state.psi_ez_ylo + c_y_lo * curl_hx_dy_ylo_t
         correction_ez_ylo = jnp.transpose(new_psi_ez_ylo, (2, 0, 1))
-        ez = ez.at[:, :n_y, :].add(-ce_ylo * correction_ez_ylo)
+        ez = ez.at[:, :n_y, :].add(-ce_ez_ylo * correction_ez_ylo)
         kappa_corr_ez_ylo = jnp.transpose((1.0 / k_y_lo - 1.0) * curl_hx_dy_ylo_t, (2, 0, 1))
-        ez = ez.at[:, :n_y, :].add(-ce_ylo * kappa_corr_ez_ylo)
+        ez = ez.at[:, :n_y, :].add(-ce_ez_ylo * kappa_corr_ez_ylo)
 
         # --- Y-hi: Ez correction from dHx/dy ---
         hx_yhi = state.hx[:, -n_y:, :]
@@ -828,9 +910,9 @@ def apply_cpml_e(
 
         new_psi_ez_yhi = b_y_hi * cpml_state.psi_ez_yhi + c_y_hi * curl_hx_dy_yhi_t
         correction_ez_yhi = jnp.transpose(new_psi_ez_yhi, (2, 0, 1))
-        ez = ez.at[:, -n_y:, :].add(-ce_yhi * correction_ez_yhi)
+        ez = ez.at[:, -n_y:, :].add(-ce_ez_yhi * correction_ez_yhi)
         kappa_corr_ez_yhi = jnp.transpose((1.0 / k_y_hi - 1.0) * curl_hx_dy_yhi_t, (2, 0, 1))
-        ez = ez.at[:, -n_y:, :].add(-ce_yhi * kappa_corr_ez_yhi)
+        ez = ez.at[:, -n_y:, :].add(-ce_ez_yhi * kappa_corr_ez_yhi)
     else:
         new_psi_ex_ylo = cpml_state.psi_ex_ylo
         new_psi_ex_yhi = cpml_state.psi_ex_yhi
@@ -851,10 +933,10 @@ def apply_cpml_e(
 
         new_psi_ex_zlo = b_zl * cpml_state.psi_ex_zlo + c_zl * curl_hy_dz_zlo_t
         correction_ex_zlo = jnp.transpose(new_psi_ex_zlo, (1, 2, 0))
-        ex = ex.at[:, :, :n_z].add(-ce_zlo * correction_ex_zlo)
+        ex = ex.at[:, :, :n_z].add(-ce_ex_zlo * correction_ex_zlo)
         # κ correction for Z-lo Ex
         kappa_corr_ex_zlo = jnp.transpose((1.0 / k_zl - 1.0) * curl_hy_dz_zlo_t, (1, 2, 0))
-        ex = ex.at[:, :, :n_z].add(-ce_zlo * kappa_corr_ex_zlo)
+        ex = ex.at[:, :, :n_z].add(-ce_ex_zlo * kappa_corr_ex_zlo)
 
         # --- Z-hi: Ex correction from dHy/dz ---
         hy_zhi = state.hy[:, :, -n_z:]
@@ -865,9 +947,9 @@ def apply_cpml_e(
 
         new_psi_ex_zhi = b_zh * cpml_state.psi_ex_zhi + c_zh * curl_hy_dz_zhi_t
         correction_ex_zhi = jnp.transpose(new_psi_ex_zhi, (1, 2, 0))
-        ex = ex.at[:, :, -n_z:].add(-ce_zhi * correction_ex_zhi)
+        ex = ex.at[:, :, -n_z:].add(-ce_ex_zhi * correction_ex_zhi)
         kappa_corr_ex_zhi = jnp.transpose((1.0 / k_zh - 1.0) * curl_hy_dz_zhi_t, (1, 2, 0))
-        ex = ex.at[:, :, -n_z:].add(-ce_zhi * kappa_corr_ex_zhi)
+        ex = ex.at[:, :, -n_z:].add(-ce_ex_zhi * kappa_corr_ex_zhi)
 
         # --- Z-lo: Ey correction from dHx/dz ---
         hx_zlo = state.hx[:, :, :n_z]
@@ -878,9 +960,9 @@ def apply_cpml_e(
 
         new_psi_ey_zlo = b_zl * cpml_state.psi_ey_zlo + c_zl * curl_hx_dz_zlo_t
         correction_ey_zlo = jnp.transpose(new_psi_ey_zlo, (2, 1, 0))
-        ey = ey.at[:, :, :n_z].add(ce_zlo * correction_ey_zlo)
+        ey = ey.at[:, :, :n_z].add(ce_ey_zlo * correction_ey_zlo)
         kappa_corr_ey_zlo = jnp.transpose((1.0 / k_zl - 1.0) * curl_hx_dz_zlo_t, (2, 1, 0))
-        ey = ey.at[:, :, :n_z].add(ce_zlo * kappa_corr_ey_zlo)
+        ey = ey.at[:, :, :n_z].add(ce_ey_zlo * kappa_corr_ey_zlo)
 
         # --- Z-hi: Ey correction from dHx/dz ---
         hx_zhi = state.hx[:, :, -n_z:]
@@ -891,9 +973,9 @@ def apply_cpml_e(
 
         new_psi_ey_zhi = b_zh * cpml_state.psi_ey_zhi + c_zh * curl_hx_dz_zhi_t
         correction_ey_zhi = jnp.transpose(new_psi_ey_zhi, (2, 1, 0))
-        ey = ey.at[:, :, -n_z:].add(ce_zhi * correction_ey_zhi)
+        ey = ey.at[:, :, -n_z:].add(ce_ey_zhi * correction_ey_zhi)
         kappa_corr_ey_zhi = jnp.transpose((1.0 / k_zh - 1.0) * curl_hx_dz_zhi_t, (2, 1, 0))
-        ey = ey.at[:, :, -n_z:].add(ce_zhi * kappa_corr_ey_zhi)
+        ey = ey.at[:, :, -n_z:].add(ce_ey_zhi * kappa_corr_ey_zhi)
     else:
         new_psi_ex_zlo = cpml_state.psi_ex_zlo
         new_psi_ex_zhi = cpml_state.psi_ex_zhi

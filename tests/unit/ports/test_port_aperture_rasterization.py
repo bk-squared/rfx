@@ -44,6 +44,8 @@ import pytest
 from rfx import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.geometry.csg import Box
+from rfx.sources.waveguide_port import cutoff_frequency
+import rfx.preflight.waveguide as wgpf
 from tests._realized_geometry import assert_wall_planes, realized
 
 _A_WR90 = 22.86e-3
@@ -65,7 +67,22 @@ def _pec_walls():
                         z=Boundary(lo="pec", hi="pec"))
 
 
-def _build(*, dx, domain, y_range=None, z_range=None, freqs, f0=None):
+def _transverse_pec(direction):
+    """CPML on the launch axis, PEC on the two transverse ones.
+
+    The same boundary shape as :func:`_pec_walls`, written for an arbitrary
+    launch normal so the y- and z-normal fixtures are the x-normal one with
+    the axes rotated and nothing else changed.
+    """
+    normal = direction[1]
+    kw = {}
+    for ax in "xyz":
+        kw[ax] = "cpml" if ax == normal else Boundary(lo="pec", hi="pec")
+    return BoundarySpec(**kw)
+
+
+def _build(*, dx, domain, y_range=None, z_range=None, freqs, f0=None,
+           mode_profile=None):
     sim = Simulation(freq_max=12e9, domain=domain, dx=dx,
                       boundary=_pec_walls(), cpml_layers=_CPML_LAYERS)
     kw = {}
@@ -73,6 +90,8 @@ def _build(*, dx, domain, y_range=None, z_range=None, freqs, f0=None):
         kw["y_range"] = y_range
     if z_range is not None:
         kw["z_range"] = z_range
+    if mode_profile is not None:
+        kw["mode_profile"] = mode_profile
     sim.add_waveguide_port(0.024, direction="+x", mode=(1, 0), mode_type="TE",
                             freqs=freqs, f0=f0 or 9.75e9, name="p0", **kw)
     return sim
@@ -287,6 +306,541 @@ def test_aperture_can_snap_above_the_declared_width():
     snaps = [str(i) for i in _issues(sim)
              if getattr(i, "code", None) == "port_aperture_snap"]
     assert any("22.8600" in t and "23.0000" in t for t in snaps), snaps
+
+
+# --------------------------------------------------------------------------
+# 2b. #1101: the advisory must name the cutoff's REAL source, per profile.
+#
+# The message used to say "the solve builds its mode template and cutoff
+# from <the width _range_to_slice reports>" on every port. That is true on
+# ``mode_profile="analytic"`` and false on the API default ``"discrete"``,
+# where ``init_waveguide_port`` takes ``f_c`` from the discrete eigenvalue
+# of the aperture's own CELL widths. Both fixtures below are the SAME
+# geometry -- WR-90 declared, dx = 1 mm, no explicit range, so the reported
+# width is the declared 22.860 mm and the realized aperture is 23 cells --
+# and they differ only in the profile, which is what makes the two messages
+# a contrast rather than two separate claims.
+#
+# Build-only: ``preflight()`` never steps time, and neither does the
+# ``_build_waveguide_port_config`` call these tests use as the oracle. The
+# oracle is the BUILT config, not a formula re-derived here: a formula
+# copied into a test drifts with the builder in the same direction as the
+# message would, which is exactly the tautology #1101 was.
+# --------------------------------------------------------------------------
+
+_SNAP_DX = 1e-3
+_SNAP_DOMAIN = (0.10, _A_WR90, _B_WR90)
+
+
+def _snap_sim(mode_profile):
+    return _build(dx=_SNAP_DX, domain=_SNAP_DOMAIN,
+                  freqs=jnp.asarray([9e9]), f0=9e9,
+                  mode_profile=mode_profile)
+
+
+def _built_cfg(sim):
+    """The port config the RUN builds, read on the same grid preflight uses."""
+    grid = sim._build_grid()
+    entry = sim._waveguide_ports[0]
+    return grid, sim._build_waveguide_port_config(
+        entry, grid, jnp.asarray(entry.freqs), 1)
+
+
+def _snap_rows(sim):
+    rows = [str(i) for i in _issues(sim)
+            if getattr(i, "code", None) == "port_aperture_snap"]
+    assert rows, "the WR-90-at-dx=1mm fixture must snap on both axes"
+    return rows
+
+
+def _ghz(hz):
+    return f"{float(hz) / 1e9:.6f}"
+
+
+def test_discrete_profile_row_quotes_the_built_cutoff_and_the_realized_aperture():
+    """#1101, the default path: the cutoff is the realized aperture's.
+
+    Pins the INVARIANT -- the row quotes the number the builder produced,
+    and names the realized aperture as its source -- not a value. The
+    declared-width analytic cutoff is asserted to be a DIFFERENT number, so
+    the check cannot pass on a message that quotes the declared one.
+    """
+    sim = _snap_sim("discrete")
+    grid, cfg = _built_cfg(sim)
+    declared_analytic = cutoff_frequency(_A_WR90, _B_WR90, 1, 0)
+    assert _ghz(cfg.f_cutoff) != _ghz(declared_analytic), (
+        "fixture no longer separates the two cutoffs, so this test could "
+        f"pass on the wrong one: both read {_ghz(cfg.f_cutoff)} GHz"
+    )
+    n_cells_y = int(cfg.u_hi - cfg.u_lo)
+
+    for row in _snap_rows(sim):
+        assert "realized aperture" in row.lower(), (
+            f"the discrete profile builds the cutoff from the realized "
+            f"aperture and the row must say so; got {row!r}"
+        )
+        assert f"f_cutoff = {_ghz(cfg.f_cutoff)} GHz" in row, (
+            f"the row must quote the BUILT cutoff "
+            f"{_ghz(cfg.f_cutoff)} GHz; got {row!r}"
+        )
+        assert f"the declared width would give {_ghz(declared_analytic)} GHz" in row, (
+            f"the row must still offer the declared-width analytic value "
+            f"for comparison; got {row!r}"
+        )
+    y_row = [r for r in _snap_rows(sim) if "y-width" in r][0]
+    assert f"{n_cells_y} cells" in y_row, (
+        f"the y row must quote the realized aperture's own cell count "
+        f"({n_cells_y}); got {y_row!r}"
+    )
+
+
+def test_analytic_profile_row_says_the_cutoff_comes_from_the_declared_width():
+    """#1101, the other path: ``mode_profile="analytic"`` really does read
+    ``cutoff_frequency(port.a, port.b, m, n)``, and with no explicit range
+    ``port.a`` IS the declared width. The pre-#1101 sentence was right here,
+    so the row keeps saying so -- and quotes the same three numbers, so a
+    reader can tell the two paths apart without rebuilding the port."""
+    sim = _snap_sim("analytic")
+    grid, cfg = _built_cfg(sim)
+    declared_analytic = cutoff_frequency(_A_WR90, _B_WR90, 1, 0)
+    assert _ghz(cfg.f_cutoff) == _ghz(declared_analytic), (
+        "with no explicit range the analytic profile's cutoff IS the "
+        f"declared width's: built {_ghz(cfg.f_cutoff)} GHz vs "
+        f"{_ghz(declared_analytic)} GHz"
+    )
+    for row in _snap_rows(sim):
+        assert "mode_profile='analytic'" in row, (
+            f"the row must name the profile whose behaviour it describes; "
+            f"got {row!r}"
+        )
+        assert "declared" in row and "REALIZED aperture" not in row, (
+            f"on the analytic profile the cutoff does NOT come from the "
+            f"realized aperture; got {row!r}"
+        )
+        assert f"f_cutoff = {_ghz(cfg.f_cutoff)} GHz" in row, row
+
+
+def test_the_two_profiles_do_not_get_the_same_cutoff_sentence():
+    """The whole of #1101 in one assertion: one message for two different
+    builds is how the wrong narrative got pinned onto 12 gate rows."""
+    discrete = _snap_rows(_snap_sim("discrete"))[0]
+    analytic = _snap_rows(_snap_sim("analytic"))[0]
+    assert discrete != analytic, (
+        "the two profiles build the cutoff from different widths; one "
+        f"sentence cannot describe both. Got {discrete!r}"
+    )
+
+
+def test_the_discrete_row_names_the_mode_and_who_picks_the_eigenvalue():
+    """#1101 review P7. Two claims the row has to carry.
+
+    The number is ONE mode's cutoff, so the row names that mode. And
+    "built from the realized aperture" alone overstates the mechanism:
+    ``_discrete_te_mode_profiles`` solves on the realized cell widths but
+    SELECTS among the eigenvectors by overlap with the analytic profile
+    built from the declared ``port.a``/``port.b``, which its own TE30/TE21
+    comment says can decide the answer. Both halves belong in the clause.
+    """
+    sim = _snap_sim("discrete")
+    _grid, cfg = _built_cfg(sim)
+    m, n = tuple(cfg.mode_indices)
+    for row in _snap_rows(sim):
+        assert f"{cfg.mode_type}{m}{n} mode template" in row, (
+            f"the row must name the mode its cutoff belongs to "
+            f"({cfg.mode_type}{m}{n}); got {row!r}"
+        )
+        assert ("eigenvalues from the realized cells; the declared widths "
+                "pick which eigenvalue") in row, (
+            f"the row must not claim the realized aperture alone decides "
+            f"the eigenvalue; got {row!r}"
+        )
+
+
+# --------------------------------------------------------------------------
+# 2c. #1101 review P1: the discrete mode solve is a DENSE eigh of an
+#     (nu*nv, nu*nv) matrix, so preflight must not run it on a large
+#     aperture. Measured on this pod, two-port WR-90 preflight(strict=False):
+#     0.07 s at dx = 1 mm (230 cells), 0.39 s at 0.5 mm (920), 4.79 s at
+#     0.25 mm (3731) and 127.21 s / 10.7 GB at 0.125 mm (14823). The budget
+#     is a committed constant; these tests pin the BEHAVIOUR on either side
+#     of it, not the constant's value.
+# --------------------------------------------------------------------------
+
+class _BuilderMustNotRun(AssertionError):
+    """Raised by the monkeypatched builder, so a call cannot pass silently."""
+
+
+def _wr90_sim(dx, mode_profile="discrete"):
+    """WR-90 declared at an arbitrary dx. Every dx below snaps on both axes."""
+    return _build(dx=dx, domain=(0.10, _A_WR90, _B_WR90),
+                  freqs=jnp.asarray([9e9]), f0=9e9,
+                  mode_profile=mode_profile)
+
+
+def _cells(sim):
+    grid = sim._build_grid()
+    entry = sim._waveguide_ports[0]
+    spans = sim._port_transverse_spans(entry, grid, None)
+    return (int(round(spans["y"]["rasterized"] / grid.dx))
+            * int(round(spans["z"]["rasterized"] / grid.dx)))
+
+
+def test_an_aperture_over_the_budget_never_calls_the_port_builder(monkeypatch):
+    """The cost guard, pinned where it matters: the builder is not CALLED.
+
+    Timing a test would be flaky; refusing to let the builder run at all is
+    not. 0.125 mm is the 14823-cell / 127 s case from the table above.
+    """
+    sim = _wr90_sim(0.125e-3)
+    assert _cells(sim) > wgpf.WAVEGUIDE_PREFLIGHT_DISCRETE_CELL_BUDGET, (
+        "fixture no longer exceeds the budget, so this test proves nothing"
+    )
+
+    def _boom(self, *a, **k):
+        raise _BuilderMustNotRun(
+            "preflight built a port config for an over-budget aperture")
+
+    monkeypatch.setattr(type(sim), "_build_waveguide_port_config", _boom)
+    rows = _snap_rows(sim)
+    for row in rows:
+        assert "f_cutoff is not solved here" in row, row
+        assert "analytic (realized aperture)" in row, row
+        assert "O(dx^2)" in row, row
+        assert (f"{wgpf.WAVEGUIDE_PREFLIGHT_DISCRETE_CELL_BUDGET}-cell budget"
+                in row), row
+
+
+def test_an_aperture_under_the_budget_still_reads_the_built_cutoff():
+    """The other side of the same guard: under the budget nothing changed."""
+    sim = _wr90_sim(0.5e-3)
+    assert _cells(sim) <= wgpf.WAVEGUIDE_PREFLIGHT_DISCRETE_CELL_BUDGET
+    _grid, cfg = _built_cfg(sim)
+    for row in _snap_rows(sim):
+        assert f"f_cutoff = {_ghz(cfg.f_cutoff)} GHz" in row, row
+        assert "is not solved here" not in row, row
+
+
+def test_the_analytic_profile_is_not_subject_to_the_budget():
+    """``mode_profile="analytic"`` has no eigensolve — ``cutoff_frequency``
+    and the profile helpers are closed form — so the budget must not refuse
+    it. The same 0.125 mm aperture that the discrete path declines."""
+    sim = _wr90_sim(0.125e-3, mode_profile="analytic")
+    assert _cells(sim) > wgpf.WAVEGUIDE_PREFLIGHT_DISCRETE_CELL_BUDGET
+    _grid, cfg = _built_cfg(sim)
+    for row in _snap_rows(sim):
+        assert f"f_cutoff = {_ghz(cfg.f_cutoff)} GHz" in row, row
+        assert "is not solved here" not in row, row
+
+
+# --------------------------------------------------------------------------
+# 2d. #1101 review P4: both "could not read it" strings must be reachable.
+# --------------------------------------------------------------------------
+
+def test_a_builder_failure_falls_back_to_the_analytic_realized_value(monkeypatch):
+    """``preflight(strict=False)`` COLLECTS findings and never crashes, so a
+    builder that raises has to leave a row that says so rather than an
+    exception. Reached in the wild when ``_build_waveguide_port_config``
+    rejects measurement planes that leave the domain."""
+    sim = _snap_sim("discrete")
+    grid = sim._build_grid()
+    entry = sim._waveguide_ports[0]
+    spans = sim._port_transverse_spans(entry, grid, None)
+    realized_analytic = cutoff_frequency(
+        spans["y"]["rasterized"], spans["z"]["rasterized"], 1, 0)
+
+    def _raise(self, *a, **k):
+        raise ValueError("synthetic build failure")
+
+    monkeypatch.setattr(type(sim), "_build_waveguide_port_config", _raise)
+    rows = _snap_rows(sim)
+    for row in rows:
+        assert "f_cutoff could not be read here" in row, row
+        assert "ValueError: synthetic build failure" in row, (
+            f"the row must say WHY it could not read the cutoff; got {row!r}"
+        )
+        assert f"{_ghz(realized_analytic)} GHz, analytic (realized aperture)" in row, row
+
+
+def test_a_port_with_one_unrasterizable_axis_asserts_nothing_about_the_cutoff():
+    """The other fallback. With one transverse axis rejected by the compiler
+    there is no (a, b) pair, so the row keeps the half it can measure and
+    says nothing about the cutoff. Live on a committed shape: WR-90 declared
+    at dx = 1 mm with EXPLICIT ranges — y rasterizes to 23.000 mm, wider than
+    the 22.860 mm domain, which ``_range_to_slice`` rejects, while z still
+    snaps 10.160 -> 10.000 mm."""
+    sim = _build(dx=1e-3, domain=(0.10, _A_WR90, _B_WR90),
+                 y_range=(0.0, _A_WR90), z_range=(0.0, _B_WR90),
+                 freqs=jnp.asarray([9e9]), f0=9e9)
+    codes = _codes(sim)
+    assert "port_aperture_unrasterizable" in codes, codes
+    rows = _snap_rows(sim)
+    for row in rows:
+        assert "the cutoff this port builds could not be read on this grid" in row, row
+        assert "f_cutoff = " not in row, (
+            f"nothing may be asserted about a cutoff that was not read; "
+            f"got {row!r}"
+        )
+
+
+# --------------------------------------------------------------------------
+# 2e. #1101 review P5: the (u, v) axis mapping, on all three launch normals.
+#
+# ``_build_waveguide_port_config`` assigns ``WaveguidePort.a`` to the u axis
+# and ``.b`` to the v axis, per launch normal: x-normal -> (y, z), y-normal ->
+# (x, z), z-normal -> (x, y). The advisory quotes a per-axis cell count, so a
+# swapped mapping would print b's count against a's width. Every fixture above
+# is x-normal; these two cover the other two normals with DIFFERENT counts on
+# the two axes, so a swap cannot pass.
+# --------------------------------------------------------------------------
+
+_UV_CASES = [
+    # (id, direction, domain, long axis, short axis)
+    # The long transverse wall is 22.86 mm (23 cells at dx = 1 mm), the short
+    # one 10.16 mm (11 cells); the launch axis is 100 mm.
+    ("y_normal", "+y", (_A_WR90, 0.10, _B_WR90), "x", "z"),
+    ("z_normal", "+z", (_A_WR90, _B_WR90, 0.10), "x", "y"),
+]
+
+
+@pytest.mark.parametrize("case", _UV_CASES, ids=[c[0] for c in _UV_CASES])
+def test_each_axis_row_quotes_its_own_realized_cell_count(case):
+    _id, direction, domain, long_ax, short_ax = case
+    sim = Simulation(freq_max=12e9, domain=domain, dx=1e-3,
+                     boundary=_transverse_pec(direction),
+                     cpml_layers=_CPML_LAYERS)
+    sim.add_waveguide_port(0.024, direction=direction, mode=(1, 0),
+                           mode_type="TE", freqs=jnp.asarray([9e9]),
+                           f0=9e9, name="p0")
+    rows = {}
+    for row in _snap_rows(sim):
+        for ax in (long_ax, short_ax):
+            if f"declared {ax}-width" in row:
+                rows[ax] = row
+    assert set(rows) == {long_ax, short_ax}, (
+        f"{_id}: expected a snap row on both transverse axes, got "
+        f"{sorted(rows)}"
+    )
+    # 22.860 mm -> 23 cells, 10.160 mm -> 11 cells at dx = 1 mm. Different
+    # counts on the two axes is what makes a swapped mapping visible.
+    assert "23 cells = 23.0000 mm" in rows[long_ax], (
+        f"{_id}: the {long_ax} row must carry the 23-cell count of the "
+        f"22.860 mm wall; got {rows[long_ax]!r}"
+    )
+    assert "11 cells = 11.0000 mm" in rows[short_ax], (
+        f"{_id}: the {short_ax} row must carry the 11-cell count of the "
+        f"10.160 mm wall; got {rows[short_ax]!r}"
+    )
+
+
+# --------------------------------------------------------------------------
+# 2g. #1101 re-review N1: a multimode port, on both sides of the budget.
+#
+# ``init_multimode_waveguide_port`` IGNORES ``port.mode`` and enumerates modes
+# by cutoff, so without a built config there is no mode to name and no
+# mode-specific cutoff to quote. The first version of the budget returned no
+# reading at all in that case, which made an OVER-BUDGET multimode port say
+# "the cutoff this port builds could not be read on this grid" -- a false
+# reason, since the check had declined on COST. The row now gives the real
+# one and quotes no frequency it cannot attribute.
+# --------------------------------------------------------------------------
+
+def _multimode_sim(dx, n_modes=3):
+    sim = Simulation(freq_max=12e9, domain=(0.10, _A_WR90, _B_WR90), dx=dx,
+                     boundary=_pec_walls(), cpml_layers=_CPML_LAYERS)
+    sim.add_waveguide_port(0.024, direction="+x", mode=(1, 0), mode_type="TE",
+                           freqs=jnp.asarray([9e9]), f0=9e9, name="p0",
+                           n_modes=n_modes)
+    return sim
+
+
+def test_a_multimode_port_under_the_budget_names_the_driven_mode():
+    """Only the lowest-cutoff config is driven; the others are passive
+    listeners with their own cutoffs. The row quotes the driven one and has
+    to say so, and the mode comes off that config, never off ``entry.mode``
+    (which the multimode builder ignores)."""
+    sim = _multimode_sim(1e-3)
+    grid = sim._build_grid()
+    entry = sim._waveguide_ports[0]
+    cfgs = sim._build_waveguide_port_config(
+        entry, grid, jnp.asarray(entry.freqs), 1)
+    assert isinstance(cfgs, list) and len(cfgs) == 3, type(cfgs)
+    driven = cfgs[0]
+    m, n = tuple(driven.mode_indices)
+    for row in _snap_rows(sim):
+        assert f"driven {driven.mode_type}{m}{n} mode template" in row, (
+            f"the row must name the DRIVEN mode; got {row!r}"
+        )
+        assert f"f_cutoff = {_ghz(driven.f_cutoff)} GHz" in row, row
+
+
+def test_a_multimode_port_over_the_budget_says_it_declined_on_cost(monkeypatch):
+    """The N1 defect. The reason must be the budget, not a failed read, and
+    the row must quote no cutoff -- there is no mode to attribute one to."""
+    sim = _multimode_sim(0.125e-3)
+    assert _cells(sim) > wgpf.WAVEGUIDE_PREFLIGHT_DISCRETE_CELL_BUDGET
+
+    def _boom(self, *a, **k):
+        raise _BuilderMustNotRun(
+            "preflight built a multimode port over the budget")
+
+    monkeypatch.setattr(type(sim), "_build_waveguide_port_config", _boom)
+    for row in _snap_rows(sim):
+        assert "could not be read on this grid" not in row, (
+            f"declining on cost is not a failed read; got {row!r}"
+        )
+        assert "this port carries 3 modes" in row, row
+        assert (f"over the {wgpf.WAVEGUIDE_PREFLIGHT_DISCRETE_CELL_BUDGET}"
+                f"-cell budget") in row, row
+        assert "so no cutoff is quoted here" in row, row
+        assert "f_cutoff = " not in row, (
+            f"no frequency may be quoted for an unnamed mode; got {row!r}"
+        )
+        assert "GHz" not in row, (
+            f"every frequency in this clause belongs to a mode this row "
+            f"cannot name; got {row!r}"
+        )
+
+
+def test_a_multimode_build_failure_is_not_reported_as_a_budget_decline(monkeypatch):
+    """The same reading carries two different reasons; they must not blur."""
+    sim = _multimode_sim(1e-3)
+    assert _cells(sim) <= wgpf.WAVEGUIDE_PREFLIGHT_DISCRETE_CELL_BUDGET
+
+    def _raise(self, *a, **k):
+        raise ValueError("synthetic multimode failure")
+
+    monkeypatch.setattr(type(sim), "_build_waveguide_port_config", _raise)
+    for row in _snap_rows(sim):
+        assert "the build raised (ValueError: synthetic multimode failure)" in row, row
+        assert "over the" not in row.split("so no cutoff")[0].split(
+            "this port carries")[1], row
+
+
+# --------------------------------------------------------------------------
+# 2f. #1101 review: no cubic-cell assumption (repo engineering principle 2).
+#
+# A transverse span is ``cells * that axis' own cell size``, never
+# ``cells * dx``. The uniform ``Grid`` carries only ``dx``, so on every grid
+# that reaches this family today the per-axis read returns ``dx`` and nothing
+# moves numerically -- that no-op is asserted below rather than assumed. The
+# ``dy != dz`` case is exercised through a proxy grid, because the only grid
+# class with per-axis sizes is ``NonUniformGrid`` and
+# ``_check_waveguide_port_evanescent`` routes that to the declared-geometry
+# lane before the spans are computed.
+#
+# What is deliberately NOT made axis-aware here: ``_range_to_slice``'s index
+# math. ``_build_waveguide_port_config`` calls it with ``grid.dx`` on every
+# axis, and preflight mirroring the builder is the whole point of this check.
+# That cubic assumption lives in the builder and is out of #1101's scope.
+# --------------------------------------------------------------------------
+
+class _AnisotropicGridProxy:
+    """A real grid with two transverse cell sizes bolted on.
+
+    Everything except ``dy``/``dz`` delegates to the grid the simulation
+    actually built, so the slices, pads and node counts under test are the
+    committed ones and only the per-axis cell size is synthetic.
+    """
+
+    def __init__(self, grid, dy=None, dz=None):
+        self._grid = grid
+        if dy is not None:
+            self.dy = dy
+        if dz is not None:
+            self.dz = dz
+
+    def __getattr__(self, name):
+        return getattr(self._grid, name)
+
+
+def test_the_per_axis_cell_size_is_a_no_op_on_a_uniform_grid():
+    """The uniform ``Grid`` has no ``dy``/``dz``, so the axis-aware read must
+    return ``dx`` and every span must be bit-identical to the scalar form.
+    This is what keeps the 12 pinned gate rows from moving."""
+    sim = _snap_sim("discrete")
+    grid = sim._build_grid()
+    assert not hasattr(grid, "dy") and not hasattr(grid, "dz"), (
+        "the uniform Grid grew per-axis cell sizes; re-check this no-op"
+    )
+    for ax in "xyz":
+        assert wgpf._transverse_cell_size(grid, ax) == float(grid.dx)
+    spans = sim._port_transverse_spans(sim._waveguide_ports[0], grid, None)
+    for ax, rec in spans.items():
+        ai = "xyz".index(ax)
+        n_axis = (grid.nx, grid.ny, grid.nz)[ai]
+        slc, _ = sim._range_to_slice(
+            getattr(sim._waveguide_ports[0], f"{ax}_range"),
+            sim._domain[ai], grid.dx, n_axis, grid.axis_pads[ai])
+        assert rec["rasterized"] == float((slc[1] - slc[0] - 1) * grid.dx)
+    for row in _snap_rows(sim):
+        assert f"(dx={grid.dx * 1e3:.4f} mm)" in row, (
+            f"on a cubic grid the row must still name dx; got {row!r}"
+        )
+
+
+def test_a_nonuniform_axis_size_is_read_per_axis_not_from_dx():
+    """``getattr(grid, "dy", grid.dx)`` has to reach the span arithmetic.
+
+    The proxy gives y cells twice dx and z cells three times dx, so a span
+    still computed from ``dx`` would read the cubic number and fail here.
+    """
+    sim = _snap_sim("discrete")
+    grid = sim._build_grid()
+    dx = float(grid.dx)
+    proxy = _AnisotropicGridProxy(grid, dy=2.0 * dx, dz=3.0 * dx)
+    assert wgpf._transverse_cell_size(proxy, "x") == dx
+    assert wgpf._transverse_cell_size(proxy, "y") == 2.0 * dx
+    assert wgpf._transverse_cell_size(proxy, "z") == 3.0 * dx
+
+    entry = sim._waveguide_ports[0]
+    cubic = sim._port_transverse_spans(entry, grid, None)
+    aniso = sim._port_transverse_spans(entry, proxy, None)
+    for ax, factor in (("y", 2.0), ("z", 3.0)):
+        assert aniso[ax]["rasterized"] == pytest.approx(
+            cubic[ax]["rasterized"] * factor), (
+            f"the {ax} span must scale with d{ax}, not stay on dx: "
+            f"{aniso[ax]['rasterized']} vs {cubic[ax]['rasterized']}"
+        )
+        assert aniso[ax]["guide"] == pytest.approx(
+            cubic[ax]["guide"] * factor), ax
+
+    reading = wgpf._waveguide_port_cutoff_reading(sim, entry, proxy, aniso)
+    assert reading is not None
+    # The cell COUNT is unchanged -- the same slice, bigger cells -- which is
+    # the thing a dx-based division would get wrong once the span moved.
+    for ax in ("y", "z"):
+        assert reading["cells"][ax] == int(
+            round(cubic[ax]["rasterized"] / dx)), ax
+
+
+def test_an_anisotropic_grid_names_the_axis_cell_size_it_used():
+    """A row that computed its span from ``dy`` must not print ``dx=``."""
+    sim = _snap_sim("discrete")
+    grid = sim._build_grid()
+    dx = float(grid.dx)
+    proxy = _AnisotropicGridProxy(grid, dy=2.0 * dx, dz=3.0 * dx)
+    entry = sim._waveguide_ports[0]
+    spans = sim._port_transverse_spans(entry, proxy, None)
+
+    import contextlib as _c
+    import io as _io
+    import warnings as _wmod
+    with _c.redirect_stdout(_io.StringIO()):
+        with _wmod.catch_warnings(record=True) as caught:
+            _wmod.simplefilter("always")
+            sim._check_waveguide_port_aperture_snap(proxy, None)
+    rows = [str(r.message) for r in caught
+            if getattr(r.message, "code", None) == "port_aperture_snap"]
+    assert rows, "the anisotropic proxy must still snap on both axes"
+    by_axis = {ax: [r for r in rows if f"declared {ax}-width" in r]
+               for ax in ("y", "z")}
+    for ax, factor in (("y", 2.0), ("z", 3.0)):
+        assert by_axis[ax], f"no {ax} row"
+        row = by_axis[ax][0]
+        assert f"(d{ax}={factor * dx * 1e3:.4f} mm)" in row, (
+            f"the {ax} row must name d{ax}, not dx; got {row!r}"
+        )
+        assert f"covers {spans[ax]['rasterized'] * 1e3:.4f} mm" in row, row
 
 
 # --------------------------------------------------------------------------

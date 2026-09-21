@@ -569,3 +569,178 @@ def test_the_cv04_material_rung_is_the_committed_sigma_zero_arm():
     print(f"lattice-witness-summary cv04-material sigma_zero: |rfx-lattice| mean R "
           f"{ok['mean_dR_lattice_gated']:.2e} vs W {ok['mean_W_witness_R_gated']:.2e}; "
           f"|rfx-TMM| is the lattice term")
+
+
+# ===========================================================================
+# 3. GL1's validity domain (#1015, note section 13)
+# ===========================================================================
+
+def test_the_family_default_is_zero_by_construction_and_changes_nothing():
+    """The domain's DEFAULT is the slab family's: no term, so every gated bin is
+    inside it and the gate is what it was before the domain existed.
+
+    Both halves matter. ``unmodelled_term=None`` must also emit NO ``domain``
+    block, because the committed family artifacts were written without one and a
+    new key would move every byte of them."""
+    f = np.linspace(4.0e9, 10.0e9, 40)
+    w = np.full_like(f, 1e-3)
+    assert np.all(LW.witness_domain(w))                       # no term at all
+    assert np.all(LW.witness_domain(w, 0.0))                  # an explicit zero
+    assert np.all(LW.witness_domain(w, np.zeros_like(w)))     # an explicit zero per bin
+
+    entries = _rfx_rungs(_R22)
+    ad = entries["lorentz"]
+    default = LW.evaluate(ad)
+    explicit = LW.evaluate(ad, unmodelled_term={})
+    assert "domain" not in default
+    assert "domain" in explicit
+    assert default["gates"] == explicit["gates"]
+    assert {k: v for k, v in explicit.items() if k != "domain"} == default
+    assert explicit["domain"]["R"]["domain_fraction"] == 1.0
+    assert explicit["domain"]["R"]["n_bins_in_domain"] == default["n_bins_gated"]
+
+
+def test_gl1_is_judged_only_where_the_unmodelled_term_is_inside_the_window():
+    """The domain, both directions, on a real rung with real breaches.
+
+    cv22's Lorentz arm under F3 (eps' 1 % high) puts 12 of 229 gated R bins
+    beyond the window. Declare the window invalid exactly there and GL1 passes;
+    declare it invalid everywhere ELSE -- the same amount of exclusion, aimed at
+    the other bins -- and GL1 still fails. A domain that passed both ways would
+    be excluding bins rather than scoping the bound."""
+    entries = _rfx_rungs(_R22)
+    ad = entries["lorentz"]
+    bad = LW.defective_params("eps_x1p01", ad["model"], ad["params"])
+    fired = LW.evaluate(ad, params=bad)
+    assert fired["gates"]["GL1_R"] is False and fired["n_bins_R_over_window"] == 12
+
+    w = np.asarray(fired["W_witness_R"]); d = np.asarray(fired["dR_lattice"])
+    beyond = d > w
+    off_the_breaches = LW.evaluate(ad, params=bad, unmodelled_term={"R": np.where(beyond, 2.0 * w, 0.0)})
+    assert off_the_breaches["gates"]["GL1_R"] is True
+    assert off_the_breaches["domain"]["R"]["n_bins_beyond_in_domain"] == 0
+    assert off_the_breaches["domain"]["R"]["n_bins_beyond_outside_domain"] == 12
+
+    off_the_rest = LW.evaluate(ad, params=bad, unmodelled_term={"R": np.where(beyond, 0.0, 2.0 * w)})
+    assert off_the_rest["gates"]["GL1_R"] is False
+    assert off_the_rest["domain"]["R"]["n_bins_beyond_in_domain"] == 12
+    assert off_the_rest["domain"]["R"]["n_bins_beyond_outside_domain"] == 0
+
+    # GL2, the band mean, is NOT domain-restricted: it is the gate cv26 keeps.
+    for r in (fired, off_the_breaches, off_the_rest):
+        assert r["gates"]["GL2_R"] == fired["gates"]["GL2_R"]
+
+
+def test_the_domain_shrinks_monotonically_in_the_unmodelled_term():
+    """A bigger omitted term can only take bins OUT of the domain. The window is
+    already monotone in every witness it reads; the domain must not give a case
+    a way to buy coverage back by measuring a larger echo."""
+    f = np.linspace(4.0e9, 10.0e9, 64)
+    w = 1e-3 * (1.0 + np.sin(np.linspace(0.0, 3.0, f.size)) ** 2)
+    prev = LW.witness_domain(w, np.zeros_like(w))
+    for scale in (0.5, 0.9, 1.0, 1.5, 4.0):
+        cur = LW.witness_domain(w, scale * w)
+        assert np.all(cur <= prev), scale        # subset, bin by bin
+        prev = cur
+    assert not np.any(LW.witness_domain(w, 4.0 * w))
+
+
+def test_an_unmodelled_term_must_be_a_finite_magnitude():
+    w = np.full(8, 1e-3)
+    with pytest.raises(ValueError, match="magnitude"):
+        LW.witness_domain(w, -np.ones(8) * 1e-6)
+    with pytest.raises(ValueError, match="non-finite"):
+        LW.witness_domain(w, np.full(8, np.nan))
+    entries = _rfx_rungs(_R22)
+    with pytest.raises(TypeError, match="mapping"):
+        LW.evaluate(entries["lorentz"], unmodelled_term=np.zeros(229))
+
+
+def test_domain_report_accounts_for_every_breach_it_is_shown():
+    """The split is a partition: in-domain plus out-of-domain is the breach
+    count, and the coverage is the domain's share of the gated bins."""
+    rng = np.random.default_rng(1015)
+    w = rng.uniform(1e-4, 1e-3, 200)
+    d = rng.uniform(0.0, 2e-3, 200)
+    u = rng.uniform(0.0, 2e-3, 200)
+    g = rng.random(200) > 0.2
+    rep = LW.domain_report(w, d, u, gated=g)
+    assert rep["n_bins_gated"] == int(g.sum())
+    assert rep["n_bins_beyond_in_domain"] + rep["n_bins_beyond_outside_domain"] == int((d[g] > w[g]).sum())
+    assert rep["n_bins_in_domain"] == int(((u <= w) & g).sum())
+    assert rep["domain_fraction"] == pytest.approx(rep["n_bins_in_domain"] / rep["n_bins_gated"])
+
+
+@pytest.mark.parametrize("case,case_id,results", [
+    ("cv22", "22_dispersive_slab_fresnel", _R22),
+    ("cv23", "23_lossy_slab_fresnel", _R23),
+    ("cv04", "04_multilayer_fresnel", _R04),
+])
+def test_the_family_puts_its_absorber_echo_outside_the_record_by_arrival(case, case_id, results):
+    """WHY the family's unmodelled term is zero by construction rather than by
+    measurement (note section 13.3): both absorber echoes are excluded by
+    ARRIVAL, not admitted by amplitude, and the reference is the infinite
+    lattice, which has no absorber in it. If a rung ever fails this, the family's
+    total domain becomes a measurement and section 13.6's first refutation
+    fires."""
+    doc = _witness_doc(results, case_id)
+    for name, r in doc["rungs"].items():
+        assert r["gates"]["precond_cpml_gate"], (case, name)
+        assert r["gates"]["precond_aux_echo_record"], (case, name)
+        echo = r["aux_echo"]
+        assert echo["echo_arrival_steps"] > echo["record_steps"], (case, name, echo)
+        assert "domain" not in r, (case, name, "a family artifact carries no domain block")
+
+
+def test_gl1_catches_falsifiers_that_gl2_lets_through():
+    """The measurement that rejected option (B) of #1015, pinned so the reason
+    GL1 was KEPT cannot quietly stop being true.
+
+    Replayed over cv22's and cv23's committed rungs, GL2 never fires without
+    GL1, and a set of falsifiers is caught by GL1 ALONE -- cv22's Lorentz arm
+    under F3 (the 1 % eps' defect), cv23's tand0p1 at dx/2 under F2 (the
+    continuum as the witness model), and EVERY F4 that fires anywhere
+    (``eps_continuum``, the falsifier for the one ingredient this lane adds:
+    carrying eps_num into the lattice). Demoting GL1 to reported turns them all
+    silent, F4 among them, and those rows of ``_F_FIRES`` would have to be
+    flipped to False.
+
+    COUNTING, because the two counts differ and the note quotes the second.
+    This test iterates committed rung NAMES: 12 of them over cv22 and cv23,
+    60 entries, 180 rows, 38 GL1-only rows, 6 GL1-only falsifiers. But
+    ``tand3`` and ``tand3_dx2`` are the SAME MESH (note section 5.1; same dx,
+    same n_steps, R_rfx equal element for element), so on DISTINCT MESHES --
+    which is what note section 13.3 claims, cv04 included -- it is 60 entries,
+    180 rows, 32 GL1-only rows and 5 GL1-only falsifiers, with F4 firing four
+    times across three meshes. The assertions below are on rung names, because
+    that is what this replay enumerates; the note does the de-duplication."""
+    expect_gl1_only = {
+        ("cv22", "lorentz", "eps_x1p01"), ("cv22", "drude", "eps_continuum"),
+        ("cv23", "tand1", "eps_continuum"), ("cv23", "tand3", "eps_continuum"),
+        ("cv23", "tand0p1_dx2", "continuum"), ("cv23", "tand3_dx2", "eps_continuum"),
+    }
+    seen, gl2_without_gl1, n_rows, n_gl1_only_rows = set(), [], 0, 0
+    for case, results in (("cv22", _R22), ("cv23", _R23)):
+        for name, ad in _rfx_rungs(results).items():
+            for kind in LW.FALSIFIER_KINDS:
+                g = LW.evaluate_falsifier(ad, kind)["gates"]
+                for o in "RTA":
+                    n_rows += 1
+                    if not g[f"GL1_{o}"] and g[f"GL2_{o}"]:
+                        n_gl1_only_rows += 1
+                gl1 = all(g[f"GL1_{o}"] for o in "RTA")
+                gl2 = all(g[f"GL2_{o}"] for o in "RTA")
+                if not gl1 and gl2:
+                    seen.add((case, name, kind))
+                if gl1 and not gl2:
+                    gl2_without_gl1.append((case, name, kind))
+    assert gl2_without_gl1 == [], gl2_without_gl1
+    assert seen == expect_gl1_only, sorted(seen)
+    assert (n_rows, n_gl1_only_rows) == (180, 38), (n_rows, n_gl1_only_rows)
+    # every F4 that fires anywhere is in that set: demoting GL1 retires the
+    # falsifier this lane's one new ingredient is checked by. Four firings, on
+    # three distinct meshes -- tand3_dx2 repeats tand3 (see the docstring).
+    fires_f4 = {r for r in seen if r[2] == "eps_continuum"}
+    assert len(fires_f4) == 4, sorted(fires_f4)
+    assert len({(c, "tand3" if n == "tand3_dx2" else n, k) for c, n, k in fires_f4}) == 3
+    assert len({(c, "tand3" if n == "tand3_dx2" else n, k) for c, n, k in seen}) == 5

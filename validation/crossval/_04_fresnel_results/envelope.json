@@ -3,7 +3,7 @@
  "producer": "04_multilayer_fresnel",
  "producer_script": "validation/crossval/04_multilayer_fresnel.py",
  "calibration_revision": "r1",
- "latest_revision": "r1",
+ "latest_revision": "r2",
  "what_this_is": "The cv04 measurement envelope the slab-family consumers derive their windows from. EVIDENCE, not a gate: the gate is round-up(value * multiplier) at the consumer's quantum (tests/_gate_policy.py), computed from these values and written down nowhere else. Revisions are append-only and, once written, immutable; a consumer moves only when its own adoption record is edited and reviewed.",
  "revisions": {
   "r1": {
@@ -153,6 +153,180 @@
    },
    "rig_hash": "sha256:24164f616573af51b91f5c596e7b79e521005c4a872218fede25d009ed9dd211",
    "revision_hash": "sha256:59dafc9ab63239d74d6fec16fa4e89f7c055636fb6e14bf4123d724c05635686"
+  },
+  "r2": {
+   "status": "active",
+   "bootstrap": false,
+   "witness_status": "run-length-witnessed; mesh-unwitnessed",
+   "witness_note": "r1 was CARRIED: neither of the two rig variations methodology section 3.2 asks of a user-visible number existed as a committed sibling. One of them does now. The run-length sibling is the SAME rig on a larger declared box -- 1200 interior cells, 1533 steps against this revision's 800 / 990 -- committed at validation/crossval/_04_fresnel_results/r2/sibling_run_length/envelope_measurement.json and validation/crossval/_04_fresnel_results/r2/sibling_run_length/lattice_witness.json, and it splits the four values in two. The two band-mean errors do not move with record length (mean_dR 7.2547e-03 -> 7.2535e-03, 0.02 %; mean_dT 7.2656e-03 -> 7.2525e-03, 0.18 %), so they are a property of the discretisation. The two energy-closure values DO: mean_closure 4.5899e-05 -> 1.7843e-05 and per_bin_max_RT_closure 3.6950e-04 -> 1.4823e-04, both about x0.4 for a x1.55 record. A longer record makes them smaller again; they are not converged and they are not a discretisation envelope. What is STILL not witnessed is the mesh: cv04 runs one dx rung and there is no dx/2 sibling, so nothing here bounds the second-order term by measuring it at two cell sizes.",
+   "values": {
+    "mean_dR": 0.007255,
+    "mean_dT": 0.007266,
+    "mean_closure": 4.59e-05,
+    "per_bin_max_RT_closure": 0.0003695
+   },
+   "value_provenance": {
+    "mean_dR": {
+     "measured_in": "validation/crossval/_04_fresnel_results/r2/envelope_measurement.json::values.mean_dR",
+     "measured_value": 0.0072546871444541475,
+     "rounding": "4 significant digits of the measured value. The artifact carries the full float; this block carries the rounded one because the measurement is float32 FDTD and its low digits are backend-dependent."
+    },
+    "mean_dT": {
+     "measured_in": "validation/crossval/_04_fresnel_results/r2/envelope_measurement.json::values.mean_dT",
+     "measured_value": 0.007265614562112771,
+     "rounding": "4 significant digits of the measured value. The artifact carries the full float; this block carries the rounded one because the measurement is float32 FDTD and its low digits are backend-dependent."
+    },
+    "mean_closure": {
+     "measured_in": "validation/crossval/_04_fresnel_results/r2/envelope_measurement.json::values.mean_closure",
+     "measured_value": 4.589913851628832e-05,
+     "rounding": "4 significant digits of the measured value. The artifact carries the full float; this block carries the rounded one because the measurement is float32 FDTD and its low digits are backend-dependent."
+    },
+    "per_bin_max_RT_closure": {
+     "measured_in": "validation/crossval/_04_fresnel_results/r2/envelope_measurement.json::values.per_bin_max_RT_closure",
+     "measured_value": 0.0003694962926279466,
+     "rounding": "4 significant digits of the measured value. The artifact carries the full float; this block carries the rounded one because the measurement is float32 FDTD and its low digits are backend-dependent."
+    }
+   },
+   "measurement_identity": {
+    "observables": {
+     "mean_dR": "arithmetic mean over the masked bins of |R_rfx(f) - R_tmm(f)|",
+     "mean_dT": "arithmetic mean over the masked bins of |T_rfx(f) - T_tmm(f)|",
+     "mean_closure": "arithmetic mean over the masked bins of |R_rfx(f) + T_rfx(f) - 1|",
+     "per_bin_max_RT_closure": "max over the masked bins of |R_rfx(f) + T_rfx(f) - 1|"
+    },
+    "units": "absolute power ratio (R, T and their sum are dimensionless powers); every value is an absolute, not relative, difference",
+    "normalization": "R = |FFT(E_total - E_inc, refl probe)|^2 / |FFT(E_inc, refl probe)|^2 and T = |FFT(E_total, trans probe)|^2 / |FFT(E_inc, trans probe)|^2, each bin normalized by the SAME run's 1-D auxiliary incident field at the same x (TFSF two-grid), so no separate reference run enters. IDENTICAL to r1 -- the four observables, the mask rule, the normalisation and the extraction convention are unchanged; what changed is the rig they were measured on.",
+    "frequency_mask": "3 GHz < f < 15 GHz AND incident |FFT| > 0.02 of its own peak, on the rFFT grid of the 990-step record zero-padded by nfft_oversample = 8 (nfft 8192). REALIZED band: 3.032065-11.814599 GHz, 169 bins, df 52.276989 MHz. r1's realized band was 3.032100-11.866600 GHz in 170 bins: the mask RULE is the same, the auxiliary absorber that supplies the incident spectrum it thresholds is not, so the top bin falls outside. The consumers' 4-10 GHz gated band is a SUBSET declared by the consumers, not by this artifact.",
+    "reference": "exact normal-incidence transfer-matrix (Fresnel) R, T of the same slab; no external solver enters these four values",
+    "extraction_convention": "single-run TFSF, scattered field at the reflection probe by subtracting the 1-D incident, total field at the transmission probe; power ratios, magnitudes only (no phase); float32 fields (jax_x64 false).",
+    "raw_data_identity": {
+     "artifacts": [
+      "validation/crossval/_04_fresnel_results/r2/envelope_measurement.json",
+      "validation/crossval/_04_fresnel_results/r2/lattice_witness.json"
+     ],
+     "note": "r1 recorded, as part of its own evidence, that this rung's per-bin R(f)/T(f) arrays were committed NOWHERE. They are now: validation/crossval/_04_fresnel_results/r2/envelope_measurement.json carries freqs_hz, R_rfx, T_rfx, R_analytic, T_analytic and abs_RT_closure for all 169 bins, and the four values above are its own reduction of them, rounded. A reader recomputes rather than trusting a log line."
+    },
+    "processing_revision": "cv04 at commit 1fb3a4a5: the settling-extension loop (#974), the fringe gate (#812) and the lattice witness, on the #888-derived 200-cell auxiliary absorber. The four observables are computed by the same lines that computed r1's."
+   },
+   "supersedes": {
+    "revision": "r1",
+    "why": "r1 is a measurement of a rig that no longer exists. #888 replaced the 20-cell TF/SF auxiliary absorber with a 200-cell one whose sigma is derived from a reflection target (rfx/sources/tfsf.py::AUX_N_CPML_1D, docs/design_notes/20260904_aux_absorber_depth_derivation.md), so the incident field r1's R and T were normalised by is not the one this code injects. r1 was additionally taken on the pre-#974 719-step / 600-cell record, which did not settle. Both moved; this revision holds them apart nowhere -- it is one measurement of today's rig, and the run-length sibling is what separates the record-length share from the rest.",
+    "what_did_not_change": "the observables, the mask rule, the normalisation, the analytic reference and the extraction convention -- see measurement_identity.normalization. A key-by-key comparison of the two measurement_identity blocks differs only in frequency_mask (the realized band) and processing_revision.",
+    "note": "ADOPTION IS NOT IMPLIED. Nothing derives a window from this revision until a consumer's own CV04_ADOPTION record names it, in its own reviewed change (#928, guard (b) in tests/contracts/test_calibration_envelope_ownership.py). r1 stays `active` and stays adopted."
+   },
+   "lattice_identification": {
+    "claim": "on the gated band the rfx-vs-transfer-matrix residual is almost entirely this slab's Yee-lattice term, in BOTH R and T. That is the sentence r1 could make for R only: at r1's rung more than half of the T residual was record truncation.",
+    "rfx_vs_lattice_mean_dR_gated": {
+     "value": 1.6903189896762683e-05,
+     "source": "validation/crossval/_04_fresnel_results/r2/lattice_witness.json::rungs.slab_eps4.mean_dR_lattice_gated",
+     "means": "|R_rfx - R_lattice| in the gated mean at THIS rung; the envelope value is |R_rfx - R_transfer_matrix| over the wider evaluated mask"
+    },
+    "rfx_vs_lattice_mean_dT_gated": {
+     "value": 2.3919505404107717e-05,
+     "source": "validation/crossval/_04_fresnel_results/r2/lattice_witness.json::rungs.slab_eps4.mean_dT_lattice_gated",
+     "means": "the same for T. 9.52e-05 at r1's rung, 2.39e-05 here: the T residual against the lattice fell with the absorber, which is why the identification now covers T as well as R."
+    },
+    "witness_gated_here": {
+     "value": true,
+     "source": "validation/crossval/_04_fresnel_results/r2/lattice_witness.json::gated_here",
+     "means": "true: this rung settles to its own tails (0.0004 / 0.0001 of the incident peak, family bar 0.01) and the GL1/GL2 accuracy gates decide the witness. All six pass."
+    },
+    "lattice_component_fraction_of_mean_dR": {
+     "value": 0.9968,
+     "band": "the consumers' gated 4.0253-9.9849 GHz band, 115 bins",
+     "how": "1 - mean|R_rfx - R_lattice| / mean|R_rfx - R_tmm| over the gated bins: 1 - 1.690319e-05 / 5.312166e-03. Both means are over the SAME bins, which is what r1 could not do -- its envelope mean is over the full mask and its witness mean over the gated subset, and it wrote this field null rather than divide one by the other.",
+     "for_T": 0.9955
+    },
+    "settling_residual_gated": {
+     "value": 2.127e-05,
+     "for_T": 2.434e-05,
+     "band": "the same gated band",
+     "how": "|gated mean dR at 990 steps - gated mean dR at 1533 steps| = |5.312166e-03 - 5.290896e-03|, from this revision and its run-length sibling validation/crossval/_04_fresnel_results/r2/sibling_run_length/envelope_measurement.json. 0.40 % of the gated mean in R, 0.46 % in T: what is left of record truncation in the band-mean errors at this rung. r1 wrote this field null because no sibling existed."
+    },
+    "settled_sibling_rung": {
+     "value": 2.9573408548679272e-05,
+     "source": "validation/crossval/_23_lossy_results/lattice_witness.json::rungs.tand0p1.mean_dR_lattice_gated",
+     "window": {
+      "value": 0.0012799824834729728,
+      "source": "validation/crossval/_23_lossy_results/lattice_witness.json::rungs.tand0p1.mean_W_witness_R_gated"
+     },
+     "means": "cv23's settled lossy arm, kept from r1 as the cross-case corroboration it was. This revision no longer NEEDS it: cv04's own rung is now inside its own witness window by 33x in R and 18x in T (mean_W_witness_R_gated 5.623310e-04, mean_W_witness_T_gated 4.267939e-04)."
+    }
+   },
+   "run_provenance": {
+    "run_id": null,
+    "rung": "the committed cv04 rung on the derived auxiliary absorber",
+    "producer_run_author": "local:cv04-envelope-r2-evidence",
+    "measured_on": "nx_interior 800 after one grow from the declared 600, 990 steps, aux_n_cpml 200",
+    "code_sha": "1fb3a4a58b0b94007e878f3af459f09d44362c5b",
+    "gallery_snapshot_git_sha": null,
+    "backend": "cpu",
+    "jax_x64": false,
+    "run_id_note": "null because this run did not need a job queue. r1 came off VESSL (369367246779; the #974 settled record it was never re-derived against came off 369367260232), and the precedent is stated so the difference is visible rather than implied: on this CPU the case takes 43 s wall including both grow attempts, which is under the threshold for the CPU lane, so it ran locally. code_sha is the commit the run was taken at -- r1 records null for it, and that gap is the reason this field exists.",
+    "raw_log": "validation/crossval/_04_fresnel_logs/r2/cv04.log",
+    "exit_code": 2,
+    "exit_code_note": "2 = rfx self-check vs the analytic transfer matrix PASSES and the optional Meep secondary reference is unavailable, so the crossval is inconclusive. IDENTICAL to r1's committed run (validation/crossval/_04_fresnel_logs/cv04.rc = 2, '[SKIP] external reference unavailable'). The Meep leg contributes nothing to these four values -- measurement_identity.reference says no external solver enters them -- and no committed cv04 artifact holds a Meep array to borrow, so there is no leg here to carry over or to re-run."
+   },
+   "rig": {
+    "aux_n_cpml": 200,
+    "cons_max_limit": 0.06,
+    "d_slab_m": 0.01,
+    "dt_s": 2.335067793382187e-12,
+    "dx_m": 0.001,
+    "eps_slab": 4.0,
+    "grid_freq_max_hz": 20000000000.0,
+    "grid_mode": "2d_tmz",
+    "mask_amp_frac": 0.02,
+    "mask_f_hi_hz": 15000000000.0,
+    "mask_f_lo_hz": 3000000000.0,
+    "n_cpml": 20,
+    "n_steps": 990,
+    "nfft_oversample": 8,
+    "nx_interior_cells": 800,
+    "nx_interior_cells_declared": 600,
+    "probe_offset_cells": 30,
+    "record_length_law": "cv04 CPML round-trip rule: v_cells = c0*dt/dx; n_steps = min(int(2*dist_to_cpml_hi/v_cells*0.95), int(2*dist_to_cpml_lo/v_cells*0.95), 8000), the probes 30 cells either side of the slab, evaluated on whatever box the settling-extension loop (#974) stops on. NOT the ring-down (-40 dB) law cv22/cv23 derive for their own records.",
+    "tail_limit": 0.1,
+    "tail_purity_limit": 0.001,
+    "tail_window_steps": 50,
+    "tfsf_amplitude": 1.0,
+    "tfsf_bandwidth": 0.5,
+    "tfsf_direction": "+x",
+    "tfsf_f0_hz": 10000000000.0,
+    "tfsf_margin_cells": 5,
+    "tfsf_polarization": "ez"
+   },
+   "rig_provenance": {
+    "aux_n_cpml": "cv04-artifact",
+    "cons_max_limit": "cv04-source",
+    "d_slab_m": "cv04-source",
+    "dt_s": "cv04-artifact",
+    "dx_m": "cv04-source",
+    "eps_slab": "cv04-source",
+    "grid_freq_max_hz": "cv04-source",
+    "grid_mode": "cv04-source",
+    "mask_amp_frac": "cv04-source",
+    "mask_f_hi_hz": "cv04-source",
+    "mask_f_lo_hz": "cv04-source",
+    "n_cpml": "cv04-artifact",
+    "n_steps": "cv04-artifact",
+    "nfft_oversample": "cv04-source",
+    "nx_interior_cells": "cv04-artifact",
+    "nx_interior_cells_declared": "cv04-artifact",
+    "probe_offset_cells": "cv04-source",
+    "record_length_law": "cv04-source",
+    "tail_limit": "cv04-source",
+    "tail_purity_limit": "cv04-source",
+    "tail_window_steps": "cv04-source",
+    "tfsf_amplitude": "cv04-source",
+    "tfsf_bandwidth": "cv04-source",
+    "tfsf_direction": "cv04-source",
+    "tfsf_f0_hz": "cv04-source",
+    "tfsf_margin_cells": "cv04-source",
+    "tfsf_polarization": "cv04-source"
+   },
+   "rig_hash": "sha256:7b787fc8d1d843cce7d1c9b983951fc531cf3c21647277239c72825fe6b4c162",
+   "revision_hash": "sha256:f1e365c0c61891f815c6dd86d6faeb792c5427c086729b9a4c44ea76c4ed5d6f"
   }
  },
  "notes": [
@@ -161,7 +335,8 @@
   "rig_provenance says, per key, whether the value is attested by a committed run snapshot (gallery-manifest) or only declared by the committed producer script (cv04-source). Nothing here is read from today's library defaults.",
   "The rig is the PRODUCER's. cv22 and cv23 run their own record-length recipe on the same grid and TFSF; that is a consumer property and is not described here.",
   "Adopting different evidence -- for example cv04 re-run with the corrected injection plane, where the per-bin closure is reported as 0.0043 -- is a NEW revision plus an edit to each consumer's adoption record, in a PR that says so. It is never a consequence of re-running the producer.",
-  "The revision block holds the measurement and the configuration that produced it, and nothing about who cites it: `adopted_by` used to live inside it, so a third adopter would have changed revision_hash on a merged revision and broken both existing consumers' pins. The rig_provenance legend moved out for the same reason -- it is a key to the artifact's vocabulary, not part of the measurement. This is the LAST bootstrap-time re-stamp of r1: from here the immutability rule is what applies."
+  "The revision block holds the measurement and the configuration that produced it, and nothing about who cites it: `adopted_by` used to live inside it, so a third adopter would have changed revision_hash on a merged revision and broken both existing consumers' pins. The rig_provenance legend moved out for the same reason -- it is a key to the artifact's vocabulary, not part of the measurement. This is the LAST bootstrap-time re-stamp of r1: from here the immutability rule is what applies.",
+  "2026-09-16: revision r2 appended -- the same measurement on the #888-derived auxiliary absorber and the #974 settled record, with a run-length sibling. `latest_revision` names the newest revision PRESENT, not the adopted one; `calibration_revision` stays r1 because nothing has re-adopted. It moves here rather than in the adoption change because guard (b) refuses a diff that touches this artifact and an adoption record together, so a field on this artifact can only ever move in an evidence change. The shape is the one tests/crossval/test_cv22_dispersive_slab_gates.py::test_unadopted_new_evidence_leaves_the_windows_alone builds and asserts on: append the revision, move latest_revision, and every window stays where it was."
  ],
  "rig_provenance_keys": {
   "gallery-manifest": "read out of docs/public/gallery/assets/multilayer_fresnel/manifest.json::provenance.params",

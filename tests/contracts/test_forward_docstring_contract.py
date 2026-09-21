@@ -106,7 +106,16 @@ def test_all_is_curated_subset():
     # MSLSMatrixResult/MixedSMatrixResult so callers can type their separate
     # layout diagnosis. H-sampling helpers stay off this star-import surface.
     assert "MSLProbeClearance" in names
-    assert len(names) < 217, f"rfx.__all__ too large to be curated: {len(names)}"
+    # Re-specced 217 -> 218 for `subtract_flux_monitors` (#980): ONE name, the
+    # two-run reference subtraction that every R/T measurement needs. It was
+    # previously spelled out in the recipe doc and the tutorial as a
+    # `_replace` over four PRIVATE accumulator field names, i.e. the public
+    # docs instructed users to reach inside a NamedTuple. Poynting flux is
+    # bilinear, so subtracting fluxes instead of fields is silently wrong —
+    # this belongs next to `flux_spectrum` on the star surface, not in each
+    # caller. The validation helpers (`_flux_meta_equal`) stay private.
+    assert "subtract_flux_monitors" in names
+    assert len(names) < 218, f"rfx.__all__ too large to be curated: {len(names)}"
     missing = [n for n in names if not hasattr(rfx, n)]
     assert not missing, f"rfx.__all__ lists names not on the package: {missing}"
 

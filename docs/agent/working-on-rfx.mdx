@@ -1,0 +1,270 @@
+---
+title: Working on rfx — the coordination contract
+description: "How a task on rfx is claimed, checked, reviewed and landed, and which machine check enforces each step."
+---
+
+# Working on rfx
+
+## What this page is
+
+The ordered narrative of one task on this repository: how work is claimed, checked,
+reviewed and landed, and why each rule is a machine check rather than a sentence
+somebody has to remember.
+
+**This page is not the reference.** The [agent runbook](./agent-runbook.mdx) holds the
+commands, the exact contracts and the measured numbers, and it wins wherever the two
+disagree. Each section below is a paragraph and a link into it.
+
+The repository's engineering standard — physics, evidence, what counts as a witness —
+is installed per checkout from a private governance repository and is **not** part of
+a public clone. Working from a public clone, the tracked sources are this page, the
+runbook, [Repo map and feature discovery](./repo-map.mdx), which is where to look
+before writing new simulation code, `docs/guides/known_limitations.md` and the support
+matrix under `docs/guides/`.
+
+The workflow exists because prose did not hold. Measured on 2026-09-18 and reported in
+PR #1112: of the 90 pull requests merged since 2026-09-11, 35 carried no review trace
+at all, and all 17 open pull requests lacked one. Several sessions in several pods,
+some Claude and some Codex, commit under a single account, so neither the author field
+nor the assignee says who did what, and no session's memory reaches another. The
+tracker and the pull-request body are the only shared store, and everything below is a
+CI check, a repository setting, or a row in a weekly report.
+
+## Before you start
+
+Find the current campaign. Work belongs to the open milestone unless the PI says
+otherwise:
+
+```
+gh api repos/bk-squared/rfx/milestones --jq '.[] | select(.state=="open") | "\(.number) \(.title)"'
+```
+
+On 2026-09-19 that returns two, and `port/S-param basic support` is the campaign in
+progress with its eleven open issues. Not every open issue carries a milestone yet —
+12 of the 31 open today do — so the milestone is not a census of the work. It is where
+the pull requests are going.
+
+Then find who owns the lane. `gh issue list -l lane:msl-port` answers that from any
+machine, and [Lanes](./agent-runbook.mdx#lanes) explains where a lane comes from and
+what the labels can and cannot say. Ten `lane:*` labels exist and nine are mapped to
+paths; `lane:plan` has none on purpose, because it marks trackers and deferred
+decisions that nobody implements from. The labels name the lane that owns a change,
+never the session driving it; which session drives a lane is recorded in the private
+governance appendix that the engineering standard points at, not in an issue. Do not pick
+up an issue in another lane without a comment on that issue from its owner or from the PI. The convention this replaced was a lock emoji in a comment, and
+under it an issue was closed on 2026-09-16 under another session's claim.
+
+## One task, one worktree, one branch
+
+One task gets one worktree and one branch. Never work in the standing clone, and never
+`git stash` in a tree others share — the stash stack is repository-global across
+worktrees, so a stash is another session's lost work.
+
+```
+git fetch -q origin
+git worktree add -b fix/1041-seam-source /path/to/rfx-wt-seam origin/main
+```
+
+Branch-name prefixes follow the kind of change. In use: `fix/`, `feat/`, `refactor/`,
+`ci/`, `docs/`, `test/`, `dev/` and `agent/`, plus a few one-off prefixes such as
+`governance/`, `gate/`, `evidence/` and `diag/`. The prefix is a convention and nothing
+reads it — the `Lane:` line in the pull-request body is the record of which lane the
+work belongs to.
+
+**Removing the worktree is the last step of the task, after the merge.** Sessions
+rarely do it, which is why `python scripts/dev/prune_worktrees.py` exists. It removes a
+worktree whose commits survive without it — merged, pushed and idle, or detached on a
+ref that contains it and older than `--days` — and refuses everything else, including
+every unpushed branch. What each class means and why the local branch is a separate
+decision are in [Worktree hygiene](./agent-runbook.mdx#worktree-hygiene).
+
+## Filing an issue
+
+A finding does not go on the tracker by default. Take the first that applies: fix it in
+the pull request that found it, turn the class into a gate, write it where durable
+notes go, and only then file an issue — and only when someone will DO or DECIDE
+something. Blank issues are off, and the two forms make that last question a required
+field; their fields, the *record only* dropdown option and the lane label they apply
+are in [Filing an issue](./agent-runbook.mdx#filing-an-issue).
+
+Title the problem, not the intended fix. A number changes when an issue is closed and
+refiled; the problem does not.
+
+## Before every push
+
+Run every short gate locally first. `bash scripts/ci/local.sh` is the six of them in
+the order CI runs them, stopping at the first failure, and it calls the same scripts
+the workflows call; pass a file path to check a pull-request body too. It does not run
+the six simulator shards or the guard suite, so a green local run is a pass on the
+short gates only. The step list and what each one costs are in [What runs on a PR, and
+how to run it
+locally](./agent-runbook.mdx#what-runs-on-a-pr-and-how-to-run-it-locally).
+
+**One push per review round.** Every push to a pull request cancels that branch's
+in-flight CI lane and starts a new one; a push to `main` is never cancelled. Measured with `gh run list --workflow=pr-tests.yml` on 2026-09-18, across the
+three pull requests that touched no simulator code: 13 `pr-tests` runs, 8 of them
+cancelled by a newer push.
+
+The heavy lane is path-aware, so what a push costs depends on what it touches. A diff
+confined to docs, most of `scripts/` or `changelog.d/` skips the six simulator shards
+and runs the contract tests in their place; anything touching `rfx/`, `tests/`,
+`validation/`, `examples/` or the lane configuration runs everything, as does any push
+to `main`. This page's own pull request is the docs-only case: run 35416500768 finished
+in 5m13s, of which `guards-and-preflight` was 4m52s. What the shards cost when they do
+run is in the runbook. Ask the classifier before pushing, in the NUL-separated form
+its own usage gives, since a path containing a quote or a newline cannot be recovered
+from line-split output:
+
+```
+git diff -z --name-only --no-renames origin/main...HEAD | python scripts/ci/changed_paths.py --stdin --null
+```
+
+## The PR body
+
+Two lines, each exactly once, starting flush left, outside code fences, HTML comments
+and `pre` blocks. The template seeds both:
+
+```
+Lane: lane:ci-infra
+Review: opus (separate instance) — ACCEPT
+```
+
+`Lane:` is required on every pull request even though a labeler applies lane labels
+from the changed paths, because most pull requests touch more than one lane's paths
+(measured over the 60 pull requests merged before 2026-09-18) and some touch none, so
+the labels cannot say which lane owns the change. `Review:`
+takes four accepted forms and no others; `REJECT` never passes, and neither does an
+unedited angle-bracketed placeholder. The forms, the accepted separators and what the
+check does with the labels are in [PR body
+contract](./agent-runbook.mdx#pr-body-contract).
+
+Two conventions the check does not read. Rounds of review go on a separate `Review
+history:` line naming each round's verdict, its findings in short, and the commits
+that closed them. `Fixes #N` links the issue the work closes.
+
+A changelog entry is a file, never an edit to `CHANGELOG.md`: add
+`changelog.d/<number>.<type>.md` whenever the change touches `rfx/`, and say in the
+body when none is owed. Naming and content shape are in [Changelog
+fragments](./agent-runbook.mdx#changelog-fragments) and `changelog.d/README.md`.
+
+## Review before merge
+
+**A merged change is read by an agent instance other than the one that wrote it.** Not
+the author re-reading their own diff, and not a fork of the author's context. Spawn the
+reviewer separately. The verdict is `ACCEPT`, `ACCEPT WITH CHANGES` or `REJECT`, every
+finding cites `file:line`, and the reviewer separates what they reproduced from what
+they only read. The engineering standard states the job:
+
+> Find what the AUTHOR DID NOT CHECK. Re-run their evidence only to confirm it
+> reproduces; spend the rest on what their tests cannot see — wrong physics behind a
+> passing number, a tautological test, a pull-request-body claim the diff does not
+> support, a gate moved without a derived root cause, a defect the change introduces
+> elsewhere. Default to UNRESOLVED over CONFIRMED when you could not reproduce it.
+
+Fixes go back to the **same** reviewer, who re-runs the checks that produced the
+findings. A big change gets two directions: a verification review that receives the
+finding list and confirms each one is closed, and a fresh-eyes review that receives no
+list. The first looks at the places that were fixed; the second looks at what the
+fixing introduced.
+
+Two exceptions, and only two: (a) an easily reverted pure docs or comment change, and
+(b) the PI said to skip. Either one is recorded on the `Review: skipped` line with its
+literal `(a)` or `(b)`, so the weekly audit can say which was claimed.
+
+## After merge
+
+The repository squash-merges and keeps the remote branch. Then:
+
+- Remove the worktree, and let `prune_worktrees.py` decide about the local branch.
+- Land the always-on check with the fix, not after it: the smallest test or preflight
+  gate that would have caught the root cause, pinning the invariant rather than a
+  value. A rule nobody runs is not enforcement, which is why so much of
+  `tests/contracts/` asserts on configuration —
+  `test_every_glob_matches_something_tracked` fails when a glob in
+  `.github/labeler.yml` owns no tracked file.
+- Update the ledger for classification and rationale only. Open or closed is the
+  tracker's answer, and every time the ledger repeated status the two drifted.
+
+## What the machine enforces and what it cannot
+
+| layer | what it covers |
+|---|---|
+| CI checks | the two body lines, changelog fragments, lint, contract tests, and the physics shards whenever the diff touches code |
+| repository settings | a pull request is required and GitHub asks for zero approvals on it, squash is the only merge method, history stays linear, force-push and deleting `main` are off |
+| weekly governance audit | skipped reviews, issues with no lane label or filed outside the forms, merged pull requests closing an issue outside every open milestone |
+
+Read all of this rather than trusting the page. Which contexts are required:
+
+```
+gh api repos/bk-squared/rfx/rules/branches/main \
+  --jq '.[]|select(.type=="required_status_checks")|.parameters.required_status_checks[].context'
+```
+
+On 2026-09-20 that returns eleven: `ruff`, `guards-and-preflight`,
+`fast-suite (1)`…`(6)`, `changes`, `pr-body-contract` and `changelog-fragment`. That
+they bind, and that nothing older binds instead:
+
+```
+gh api repos/bk-squared/rfx/rulesets --jq '.[].enforcement'   # active
+gh api repos/bk-squared/rfx/branches/main --jq .protection    # "enabled": false
+```
+
+The contexts come from the one ruleset on `main`; classic branch protection was deleted
+on 2026-09-19, which is why the first command reads the rules endpoint and not
+`branches/main/protection`. All three run on a token that can only read the repository,
+which is the point of listing them. The ruleset's bypass list is the exception: it is
+reported empty, but GitHub does not return that field to a non-administrator, so no
+agent can confirm it and checking it stays the PI's to do. Branches need not be up to
+date before merging, and no merge queue is in use.
+
+A pull request sees more than the eleven. Every context reported on this page's own
+pull request, and whether it blocks a merge:
+
+| context | required |
+|---|---|
+| `ruff`, `guards-and-preflight`, `fast-suite (1)`…`(6)` | yes |
+| `changes` | yes, for the reason below |
+| `pr-body-contract`, `changelog-fragment` | yes |
+| `lane-label`, `agent-docs-hygiene`, `public-docs-source`, `api-reference` | no |
+| `quality-gates`, `clean-wheel-smoke` on ubuntu, macos and windows | no |
+
+A first documentation pull request runs under `agent-docs-hygiene`, which greps for a
+fixed list of known internal paths that a public clone does not carry, and
+`public-docs-source`, which checks that the published site still resolves to its
+source pages. Both are fast, and `bash scripts/ci/local.sh` runs the hygiene one.
+
+The checks in the bottom two rows of that table are outside the eleven, so a red run on
+one of them is visible and blocks nothing. **`changes` is required for a reason the
+other ten do not share.** The heavy jobs declare `needs: changes`, so if that job dies
+of a runner fault they are skipped by dependency instead of failing, and a skipped
+required context does not block anything — the merge would proceed with no tests having
+run. Requiring `changes` is what closes that, so do not drop it from the ruleset; the
+reasoning is in the header of `.github/workflows/pr-tests.yml` and in [What runs on a
+PR](./agent-runbook.mdx#what-runs-on-a-pr-and-how-to-run-it-locally).
+
+The weekly audit reports what no single-PR gate can see, and it is a list to look at
+rather than a gate: a non-empty table exits 1 only so the scheduled run shows up red
+and somebody opens it. Its rows and how to run it on demand are in [Weekly governance
+audit](./agent-runbook.mdx#weekly-governance-audit).
+
+No check can tell whether a review was real. The pull-request rule requires zero
+approvals, so GitHub never asks for one, and the gate reads only that the `Review:` line
+is present and well-formed; it cannot see who read the diff. Making the claim explicit
+is what lets a later audit catch a false one, and the separate-instance rule plus the
+weekly report are the whole of the guard.
+
+## Where things live
+
+- **Commands, contracts, cadences, GPU and cross-validation harnesses** — the [agent
+  runbook](./agent-runbook.mdx), which is the reference this page defers to.
+- **Engineering rules** — the installed engineering standard, which a public clone does
+  not carry. Its absence is not a missing file to create.
+- **User-visible defects** — `docs/guides/known_limitations.md`, one entry per subject,
+  linked from the README and the support matrix. An entry leaves when a committed test
+  pins the fix.
+- **Durable internal knowledge** — a versioned ledger outside this repository, carrying
+  classification, rationale and measurements, never open or closed. The installed
+  standard says where it is.
+- **The mechanics** — `.github/labeler.yml` for the path-to-lane map,
+  `.github/ISSUE_TEMPLATE/` for the forms, `.github/pull_request_template.md` for the
+  two lines, and `scripts/ci/` for every gate as a script you can run.

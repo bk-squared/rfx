@@ -16,6 +16,7 @@ on:
       - "pyproject.toml"
       - "scripts/check_api_reference.py"
       - "docs/guides/api_symbol_inventory.json"
+      - "docs/pdoc_templates/**"
   pull_request:
     paths:
       - "docs/public/**"
@@ -29,6 +30,15 @@ on:
       - "pyproject.toml"
       - "scripts/check_api_reference.py"
       - "docs/guides/api_symbol_inventory.json"
+      - "docs/pdoc_templates/**"
+
+# Superseded runs on the same PR/branch are cancelled: a force-push or a
+# stacked-leg rebase used to leave the previous run queued, and on a busy day
+# (2026-09-15: six branches × 21 jobs against the plan's concurrent-job limit)
+# that held every PR for an hour. Pushes to main are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -64,11 +74,17 @@ jobs:
           python-version: "3.10"
 
       - name: Install package + pdoc
-        run: pip install -e ".[dev]" pdoc
+        # pdoc pinned to the major it was measured against (16.0.0): docs/pdoc_templates/
+        # extends pdoc's own default/module.html.jinja2 and overrides two of its macros
+        # (issue #1019), so a major bump can change that contract underneath us. The
+        # anchor gate below is the tripwire if it ever does.
+        run: pip install -e ".[dev]" "pdoc>=16,<17"
 
       - name: Regenerate API reference at HEAD
         # rfx.dashboard needs the optional streamlit extra — excluded.
-        run: python -m pdoc -o docs/api rfx '!rfx.dashboard'
+        # -t docs/pdoc_templates: without it pdoc drops every Simulation method
+        # inherited from the private mixins (run/forward/preflight/compute_*, #1019).
+        run: python -m pdoc -t docs/pdoc_templates -o docs/api rfx '!rfx.dashboard'
 
       - name: Gate — symbol inventory drift + required symbols in rendered HTML
         run: python scripts/check_api_reference.py --html-dir docs/api

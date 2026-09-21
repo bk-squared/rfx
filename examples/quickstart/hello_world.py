@@ -22,9 +22,15 @@ from rfx import Simulation
 from rfx.sources.sources import GaussianPulse
 
 
-def main() -> None:
-    t_start = time.time()
+def build_simulation() -> Simulation:
+    """Build the 20 mm PEC box with its source and probe — no time stepping.
 
+    Separated from ``main()`` so the #737 example-fidelity gate
+    (``tests/contracts/test_example_fidelity_contract.py``) can build this
+    example and pin its preflight/realization output without solving it.
+    ``main()`` calls it, so what the gate builds is what running the script
+    runs.
+    """
     # 1. Build the domain.
     #    A 20 mm vacuum cube. `freq_max` is the highest frequency of interest,
     #    here 10 GHz. `dx` is the cell size (2 mm), so the box is about 10
@@ -59,6 +65,14 @@ def main() -> None:
     #    Records the Ez field at one point over time, two cells from the
     #    source so the pulse arrival is visible in the trace.
     sim.add_probe((0.014, 0.01, 0.01), "ez")
+
+    return sim
+
+
+def main() -> None:
+    t_start = time.time()
+
+    sim = build_simulation()
 
     # 4. Run the time-stepping.
     #    120 steps is enough for the pulse to reach the probe and ring inside

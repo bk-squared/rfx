@@ -22,6 +22,12 @@ the conductor and a probe above it:
 construction) and must agree to the bit on every lane. ``volume`` is a
 different object — it shorts the normal edge between its two faces — and
 must differ from ``sheet`` while still differing from ``none``.
+
+The distributed lanes were absent from this battery because they refused
+every kind of declared PEC. #1053 gave the shard_map lane
+(``rfx/runners/distributed_v2.py``) a realized-PEC mask stage, so ``volume``
+now has a row there; ``sheet`` and ``thin`` own no cell on that lane and its
+narrowed refusal is asserted in the same row.
 """
 
 from __future__ import annotations
@@ -152,6 +158,61 @@ def test_the_vmap_sweep_fast_path_realizes_the_same_conductor():
         batched = float(np.max(np.abs(ts[0, :, 0])))
         single = _peak(_build(kind))
         assert batched == pytest.approx(single, rel=2e-3), (kind, batched, single)
+
+
+#: The shard_map distributed lane against the uniform lane, relative on the
+#: probe peak. Measured on this fixture at 2 virtual CPU devices (2026-09-15,
+#: jax 0.10.2, float32, 200 steps): the empty-domain LANE FLOOR is 1.472e-06
+#: and the ``volume`` row is 1.035e-05, so the gate carries ~190x headroom
+#: over the number it gates. It is the same 2e-3 the vmap row above uses, and
+#: for the same reason: these lanes run different kernels and different
+#: float32 fusions over the same declaration, so the contract is "same
+#: conductor", not "same arithmetic". The defect it has to reject is the one
+#: this lane shipped until #1053 — the body absent altogether, which moves
+#: the peak by 3.3e-01 relative (``volume`` against ``none``, measured on the
+#: uniform lane), 166x the gate.
+V2_LANE_REL_GATE = 2e-3
+
+
+def test_the_shmap_distributed_lane_realizes_the_same_conductor():
+    """#1053: ``sim.run(devices=...)`` realizes a declared PEC VOLUME.
+
+    Until #1053 this lane assembled ``pec_mask``, dropped it, and refused
+    rather than run a board without its metal. It now shards the mask and
+    applies it in both step bodies at the #1041 ordering, so the volume row
+    joins the battery. The seam matters on this fixture: at 2 devices the
+    21-node domain pads to 22 and splits at x = 11 mm, and the conductor's
+    4–16 mm footprint straddles that.
+
+    A sheet and a sub-cell wire own no cell, the mask is the lane's only
+    carrier, and nothing else there realizes them — so those stay refused,
+    and this row asserts the refusal rather than leaving it to a unit test.
+    A silent drop on either half is exactly what this file exists to catch.
+    """
+    import jax
+
+    if jax.device_count() < 2:
+        pytest.skip("needs 2 devices; see tests/unit/runners/"
+                    "test_device_count_sentinel.py, which FAILS rather than "
+                    "skips when the environment provides fewer")
+    devs = jax.devices()[:2]
+
+    single = _peak(_build("volume"))
+    distributed = _peak(_build("volume"), devices=devs)
+    assert distributed == pytest.approx(single, rel=V2_LANE_REL_GATE), (
+        f"the shard_map lane reads {distributed:.8e} where the uniform lane "
+        f"reads {single:.8e} for the same declared PEC volume")
+
+    # teeth: the conductor must move THIS lane's own trace, so a lane that
+    # dropped the body could not pass the comparison by arithmetic.
+    empty = _peak(_build("none"), devices=devs)
+    assert distributed != pytest.approx(empty, rel=100 * V2_LANE_REL_GATE), (
+        f"the declared volume did not change the shard_map lane's trace: "
+        f"{distributed:.8e} with the conductor, {empty:.8e} without")
+
+    for kind in ("sheet", "thin"):
+        with pytest.raises(NotImplementedError, match="SHEETS"):
+            _peak(_build(kind), devices=devs)
 
 
 def _adi_conductor(kind, mode="3d", **kwargs):

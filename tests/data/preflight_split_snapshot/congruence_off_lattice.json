@@ -1,0 +1,51 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "mesh_resolution",
+        "loc": null,
+        "message": "Gap between PEC structures: 1.52mm = 1.5 cells along x \u2014 coupling may be under-resolved.",
+        "severity": "warning",
+        "source": "_validate_mesh_quality"
+      },
+      {
+        "code": "no_sources",
+        "loc": null,
+        "message": "No sources, ports, TFSF, or waveguide/Floquet/MSL ports configured. Simulation will produce zero fields.",
+        "severity": "warning",
+        "source": "_validate_cfg_no_sources"
+      },
+      {
+        "code": "pec_box_one_cell",
+        "loc": null,
+        "message": "2 PEC volume(s) are exactly ONE cell thick along some axis and are realized as a filled slab with walls on BOTH faces (every E edge between the two faces is shorted; lattice ownership contract #931 \u00a71.2): geometry[0] 'pec' (Box) is one cell thick along z [z: walls at 2mm and 3mm (drawn 2mm -> 3mm)]; geometry[1] 'pec' (Box) is one cell thick along z [z: walls at 2mm and 3mm (drawn 2mm -> 3mm)]. If this is foil (a ground plane, patch or trace), declare it as a SHEET \u2014 add_thin_conductor(shape), or a zero-thickness Box via add() \u2014 which realizes on ONE node plane with the normal E edge through it live; a slab and a sheet are different conductors on this lattice. If it is a plate, an iris or a wall drawn one cell thick on purpose, no action is needed (report-only). COVERAGE: examined 2 PEC volume(s) on the uniform lane through rfx.boundaries.pec.realized_wall_planes. STALE IF: realized_wall_planes on the named entry's own edge masks returns planes more than one index apart.",
+        "severity": "warning",
+        "source": "_validate_cfg_pec_realization"
+      },
+      {
+        "code": "congruent_conductor_rasterization_parity",
+        "loc": null,
+        "message": "1 congruent-conductor group(s) realize to UNEQUAL PEC edge sets on this lattice (design-identical conductors, different meshes). Worst group (Box, volume, sorted extents 1mm x 3mm x 3.5mm): geometry[0] 'pec' (volume) 64 PEC edges, lo-corner sub-lattice offsets (x,y,z)=(0.000, 0.000, 0.000) cells; geometry[1] 'pec' (volume) 82 PEC edges, lo-corner sub-lattice offsets (x,y,z)=(0.020, 0.000, 0.000) cells. OBSERVED: edge-count spread 18 > tolerance 1 edge (a symmetric pair realizes identical counts; one edge is the smallest spread a rounding tie on one face can produce). WHY: congruent conductors whose faces sit at different sub-cell offsets are realized from different cell centres (volume) or node sets (sheet footprint), so the mesh invents an asymmetry the design does not have \u2014 a mirror pair whose mirror plane is off-lattice realizes asymmetrically with the same sign in every pair. COST (measured, issue #703): mirror pairs 173 vs 183 cells (5.6%) from a mirror plane 0.26 cells off the lattice; an A/B run pair differing ONLY by a 13um lattice-origin slide moved |S11| up to 3.5 dB per bin and improved every aggregate agreement metric. REMEDY: slide the lattice origin by -20\u00b5m along x (re-realized with that slide, the group's spread drops to 0 edge(s)), or move the members' shared symmetry plane onto a node or half-node. COVERAGE: examined 2 conductor declaration(s) that report a bounding box, in 1 congruence group(s) of >=2 members on the uniform lane; skipped 0 conductor entr(y/ies) whose shape reports no bounding box (no congruence key). STALE IF: re-realizing the named members through rfx.boundaries.pec.realized_pec_edge_masks gives equal edge counts (spread <= tolerance).",
+        "severity": "warning",
+        "source": "_validate_cfg_congruent_rasterization_parity"
+      },
+      {
+        "code": "off_lattice_design_edges",
+        "loc": null,
+        "message": "2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[0] 'pec' (volume) x: extent 3.5mm, worst face residual 500\u00b5m (14.29% of the extent); geometry[1] 'pec' (volume) x: extent 3.5mm, worst face residual 480\u00b5m (13.71% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: for a PEC VOLUME choose dx commensurate with its dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on its faces; for a SHEET see sheet_effective_size -- a node on a sheet's edge is not the fix. COVERAGE: examined 6 axis extent(s) on 2 conductor Box declaration(s) on the uniform lane; 0 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
+        "severity": "warning",
+        "source": "_validate_cfg_off_lattice_design_edges"
+      },
+      {
+        "code": "sheet_cavity_electrical_thickness",
+        "loc": null,
+        "message": "1 conductor-bounded cavit(y/ies) differ from the physical stack by more than 1% in electrical thickness: [x] geometry[0] (volume, plane k=20 at 4mm, declared face 4.5mm, snap -500\u00b5m)/geometry[1] (volume, k=22 at 6mm, declared face 6.02mm, snap -20\u00b5m) at in-plane column (18,18): sum(d/eps) mesh 2mm vs physical 1.52mm (+31.6%); sum(d*sqrt(eps)) mesh 2mm vs physical 1.52mm (+31.6%); plane-to-plane 2mm vs face-to-face 1.52mm; the capacitance measure (sum d/eps) governs (gap << lambda at freq_max). OBSERVED: mesh sums run over the cells strictly between two adjacent REALIZED wall planes (rfx.boundaries.pec.realized_wall_planes on each conductor's own edges) on the run's own spacings and assembled eps_r; physical sums run between the DECLARED faces through the geometry Box spans at the pair's shared column. The difference is exactly the printed per-plane snap (a declared face that is not on a node realizes on the nearest node plane; a sheet realizes on one plane, so a foil declared with two faces reads its thickness as cavity \u2014 the sheet model's honest cost) plus any vacuum cell the drawing left at a sheet plane. WHY BOTH MEASURES: the same defect class measured 17.3% as a series capacitance and 3.2% as phase length (#703) \u2014 a bare percentage invites 'correcting' a right number into a wrong one, so both are printed and the governing one is named. REMEDY: put the declared faces on mesh nodes (dx = h/N, or preserved regions on the non-uniform lane) and, for a foil, declare the sheet ON the interface it bounds so no snap is resolved for you; a vacuum cell is fixed by extending the dielectric to the sheet plane. Nothing else is a defect: a plane-to-plane cavity that equals the declared stack is what the contract promises. COVERAGE: examined 1 adjacent plane pair(s) from 2 conductor(s) on the uniform lane (a sheet's normal plane, a volume's two faces per axis; coplanar sheet rims are not paired); physical stack computed from Box entries only \u2014 0 non-Box dielectric entr(y/ies) ignored (said so, per #703); 0 pair(s) skipped (conductor cell between). STALE IF: re-summing the printed column disagrees with these numbers, or realized_wall_planes on the named entries does not return the printed planes.",
+        "severity": "warning",
+        "source": "_validate_cfg_sheet_cavity_thickness"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 6,
+    "ok": true
+  }
+}

@@ -1,0 +1,123 @@
+# Path -> owner lane. This file is the source of which lane a change belongs to.
+#
+# Ten `lane:*` labels were hand-applied to 32 issues on 2026-09-18 and the
+# mapping lived only in a pinned legend issue. A lane is really a set of PATHS,
+# and a path -> label file is the standard tool, so the mapping lives here and
+# `.github/workflows/labeler.yml` applies it to every pull request.
+#
+# Read with `actions/labeler@v5` syntax. Globs are minimatch: `**` spans path
+# segments, `*` does not. `sync-labels: true` in the workflow means a lane label
+# is REMOVED once the paths that justified it leave the diff, so the labels
+# track the diff rather than accumulating over a branch's life.
+#
+# Two lane labels on one PR is information, not an error: a change that touches
+# the waveguide extractor and the MSL extractor really does belong to both.
+# The PR body's `Lane:` line then names the primary one, and
+# `scripts/ci/check_pr_body.py` requires that line as soon as a PR carries more
+# than one lane label.
+#
+# Globs are deduplicated on purpose -- `rfx/**/*waveguide*` covers the four
+# files an explicit list would name, and a glob that only repeats another one
+# hides the day the narrow path moves. `tests/contracts/test_governance_intake_contract.py`
+# fails if any glob below matches nothing tracked, because a dead glob is
+# configuration that silently owns nothing.
+#
+# NOT every path is owned, by design. `rfx/` core (grid, simulation, api,
+# materials, experiments, studio), `studio/`, `scripts/diagnostics/`,
+# `validation/research/` and most of `tests/unit/` carry no lane; a PR confined
+# to them gets no label and must carry the `Lane:` line itself. `changelog.d/`
+# is deliberately unowned: every PR adds a fragment there, so owning it would
+# put a second label on every pull request. `lane:plan` is deliberately absent
+# too -- it marks trackers and deferred decisions that nobody implements from,
+# so no path can imply it.
+
+"lane:waveguide-port":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "rfx/**/*waveguide*"
+          - "tests/**/*waveguide*"
+          - "scripts/**/*waveguide*"
+
+"lane:msl-port":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "rfx/**/msl*"
+          - "rfx/microstrip.py"
+          - "tests/**/*msl*"
+          - "scripts/**/*msl*"
+
+"lane:coax-mixed-port":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "rfx/**/coax*"
+          - "rfx/sparams/mixed.py"
+          - "rfx/**/*wire*"
+          - "rfx/lumped.py"
+          - "tests/**/*coax*"
+          # NOT `tests/**/*mixed*`: that also owns tests/unit/grid/
+          # test_mixed_precision.py, which is f32/f64 arithmetic and has nothing
+          # to do with a mixed-mode port. The contract test pins that file as a
+          # must-NOT-match.
+          - "tests/**/*mixed_port*"
+          - "tests/**/*mixed_refplane*"
+          - "tests/**/*wire*"
+          - "tests/**/*lumped*"
+          - "scripts/**/*coax*"
+
+"lane:absorber":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "rfx/boundaries/**"
+          - "rfx/preflight/absorber.py"
+          - "rfx/geometry/smoothing.py"
+          - "tests/unit/boundaries/**"
+          - "tests/**/*pml*"
+          - "tests/**/*smoothing*"
+
+"lane:nu-mesh":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "rfx/**/nonuniform*"
+          - "rfx/mesh_planner.py"
+          - "rfx/mesh_edges.py"
+          - "rfx/preflight/mesh.py"
+          - "rfx/amr.py"
+          - "tests/unit/nonuniform/**"
+          - "tests/**/*nonuniform*"
+          - "tests/**/*_nu_*"
+
+"lane:distributed":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "rfx/runners/*distributed*"
+          - "tests/**/*distributed*"
+          - "tests/**/*shard*"
+
+"lane:crossval":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "validation/crossval/**"
+          - "tests/crossval/**"
+          - "scripts/crossval/**"
+
+"lane:ci-infra":
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/**"
+          - "scripts/ci/**"
+          - "scripts/dev/**"
+          - "scripts/changelog/**"
+          - "tests/contracts/**"
+          - "conftest.py"
+          - ".test_durations"
+          - "docker/**"
+
+"lane:examples-docs":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "docs/**"
+          - "examples/**"
+          - "validation/tmtt_paper/**"
+          - "gallery-deploy/**"
+          - "README.md"
+          - "ROADMAP.md"

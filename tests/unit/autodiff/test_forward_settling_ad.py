@@ -51,7 +51,8 @@ def test_port_material_ad_matches_resolved_fd_with_forward_diagnostics(monkeypat
                 plain = forward(alpha)
         assert np.isfinite([value, grad]).all() and float(grad) != 0
         assert np.isfinite(reported.settling_db)
-        assert reported.settling_probe_info == ((0, 2),)
+        # (column, component code, #1090 source-dominated flag).
+        assert reported.settling_probe_info == ((0, 2, 0),)
         np.testing.assert_array_equal(reported.time_series, plain.time_series)
         np.testing.assert_array_equal(reported.s_params, plain.s_params)
 
@@ -87,7 +88,7 @@ def test_each_public_forward_dispatch_exposes_the_probe_witness(lane, recorded, 
                              distributed=lane == "fwd_distributed_nu")
     assert len(calls) == 1 and calls[0]["n_steps"] == 100
     assert settling_verdict(result.settling_db) == ("fail" if recorded else "absent")
-    assert result.settling_probe_info == (((0, 2),) if recorded else ())
+    assert result.settling_probe_info == (((0, 2, 0),) if recorded else ())
     scoped = [str(w.message) for w in caught
               if "witness FAILED" in str(w.message) or "no ring-down settling witness" in str(w.message)]
     assert len(scoped) == 1 and "forward()" in scoped[0]

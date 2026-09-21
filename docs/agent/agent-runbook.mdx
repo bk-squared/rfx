@@ -4,6 +4,9 @@ title: Agent runbook — commands, lanes and cadences
 
 # Agent runbook
 
+**New here? Read [working-on-rfx](./working-on-rfx.mdx) first** — it is the workflow
+every session follows; this page is the commands.
+
 Operational reference for agents working from a public clone: the exact
 commands, validation lanes, and cadences. Current support authority lives in
 the tracked `docs/guides/support_matrix.{md,json}` and
@@ -18,11 +21,271 @@ rather than trusting the figure beside it.
 | what | command |
 |---|---|
 | test | `pytest` — live count: `python -m pytest --collect-only -q \| tail -1` |
-| lint | `ruff check rfx/ tests/ --select E,F,W --ignore E501,F401,E741,E731,E701,E702,E402` |
-| preflight | `sim.preflight()` — multi-check suite; grep `def _validate_` in `rfx/api/_preflight.py` for the live set |
+| lint | `scripts/ci/lint.sh` — the scope, selector and ignore list CI uses, in one file |
+| preflight | `sim.preflight()` — multi-check suite; grep `def _validate_` in `rfx/preflight/*.py` AND `rfx/api/_preflight.py` for the live set (the check families live in the package; the facade keeps the entry points and the request validators) |
 
-Lint is gated in CI by `.github/workflows/lint.yml` on every push/PR. Note CI lints
-`rfx/ tests/ validation/`; `scripts/` is out of scope.
+Lint is gated in CI by `.github/workflows/lint.yml` on every push/PR, and that
+workflow does nothing but call `scripts/ci/lint.sh`. The scope is `rfx/ tests/
+validation/ scripts/ci/ scripts/dev/ scripts/changelog/` — the packages under test
+plus every script that gates a merge. The rest of `scripts/` is out of scope and has
+its own backlog.
+
+### Adding a preflight check
+
+The configuration checks are data, not a call list: `rfx/preflight/_registry.py` holds
+`CORE_CONFIG_CHECKS`, and `_PreflightMixin._validate_simulation_config` builds the
+shared context once and iterates it. So a new check is three steps in its own family
+module and NO edit to `rfx/api/_preflight.py`: write the function with `self` first,
+bind it on `_PreflightMixin` the way the other families do, then call
+`register_config_check(ConfigCheck(name, adapter, family))` at module import. The
+registry docstring carries the worked example.
+
+Registration appends, and extras run after the whole core sequence — which is the
+point, because `PreflightReport` preserves emission order and 65 committed reports in
+`tests/locks/test_preflight_split_snapshot.py` pin it. A check that genuinely has to
+speak earlier is a change to `CORE_CONFIG_CHECKS`, and reds both that lock and
+`tests/locks/test_preflight_registry_sequence.py`, which pins the sequence and the
+arguments each check receives. Neither red is one to regenerate past: it means
+preflight output moved.
+
+## What runs on a PR, and how to run it locally
+
+One standing instruction: run `scripts/ci/local.sh` before every push. It is every
+short gate a PR must pass, in the order CI runs them, stopping at the first failure.
+Measure it rather than trusting this sentence: on 2026-09-18 `tests/contracts` alone
+was 5 min 16 s of it, and everything else together was under ten seconds.
+
+`scripts/ci/local.sh` runs, in order: ruff, docs-hygiene, changelog-fragment, pr-body, workflow-yaml, contract-tests.
+
+```
+scripts/ci/local.sh                   # the six steps; pr-body reports skipped
+scripts/ci/local.sh /tmp/body.md      # also check that PR body
+PYTHON=.venv/bin/python scripts/ci/local.sh
+```
+
+Each gate is a script, not a line of yaml, because a gate you cannot run is one you
+debug by pushing. `scripts/ci/lint.sh` and `scripts/ci/docs_hygiene.sh` are the whole
+of `lint.yml`; `scripts/ci/check_pr_body.py` is the whole of `pr-body.yml`;
+`scripts/ci/check_changelog_fragment.py` is the whole of `changelog-fragment.yml`. The
+local runner calls those same files, so a green local run and a green CI run mean the
+same thing. `tests/contracts/test_ci_workflows_contract.py` fails if a command moves
+back inline, and if this list and `local.sh` stop agreeing.
+
+The changelog step diffs `origin/main...HEAD` and asks the two questions CI asks: is
+there a fragment for a change under `rfx/`, and was `CHANGELOG.md` edited without the
+`release` label. Override the endpoints with `CHANGELOG_BASE=` and `CHANGELOG_HEAD=`.
+`assemble.py --check`, which validates fragment names and headings, runs after it and
+answers a different question — it never notices a missing fragment.
+
+Set `PYTHON=` once and every step and every script the runner calls uses that
+interpreter, ruff included.
+
+What it does NOT run is the heavy half — the six-shard fast suite and the
+guard/preflight suite in `pr-tests.yml`, 22 to 42 minutes a shard. Those start only when
+the diff touches code:
+
+| the diff touches | the shards run |
+|---|---|
+| `rfx/`, `tests/`, `validation/`, `examples/` | yes |
+| `pyproject.toml`, `setup.*`, any `conftest.py`, any `.test_durations` | yes |
+| `pr-tests.yml`, `changed_paths.py`, `classify_changes.sh` — the lane itself | yes |
+| anything else: `docs/`, other workflows, the rest of `scripts/`, `changelog.d/` | no — but `tests/contracts` still does |
+| any push to `main` | always yes |
+
+The `changes` job decides, and its log prints the changed paths and the verdict. Ask it
+yourself before you push:
+
+```
+git diff -z --name-only --no-renames origin/main...HEAD | python scripts/ci/changed_paths.py --stdin --null
+EVENT_NAME=pull_request BASE_SHA=origin/main HEAD_SHA=HEAD bash scripts/ci/classify_changes.sh
+```
+
+`guards-and-preflight` and `fast-suite (1)`…`(6)` keep their names and still report
+SUCCESS on every pull request — those are contexts the `main` ruleset requires, and a
+renamed or absent job leaves a required check unreported and blocks every merge.
+
+**`tests/contracts/` runs either way.** Much of what lives there asserts on `docs/`,
+`scripts/`, `.github/workflows/`, `CHANGELOG.md` and `README.md` — the very paths the
+classifier calls not-code. `test_the_lint_scope_covers_this_gates_own_script` pins
+`scripts/ci/lint.sh`; `test_prune_worktrees.py` pins `scripts/dev/prune_worktrees.py`;
+`test_support_matrix_parity.py` pins a file under `docs/guides/`. Skipping them on a
+docs or scripts diff would disarm exactly the gates that watch docs and scripts, so a
+later PR could shrink the ruff scope and the test forbidding it would never run. When
+the verdict is false, `guards-and-preflight` runs `pytest tests/contracts` in place of
+the guard suite; when it is true, the six shards collect the whole tree and pick them up
+there. Count them yourself rather than trusting a number here:
+`grep -rl 'docs/\|scripts/\|workflows' tests/contracts/*.py | wc -l`.
+
+**`changes` must be a required check too**, alongside `ruff`,
+`guards-and-preflight`, `fast-suite (1)`…`(6)`, `pr-body-contract` and
+`changelog-fragment`, and since 2026-09-19 the ruleset requires it. `needs: changes`
+means a `changes` job that dies of a runner fault leaves the heavy jobs skipped by
+dependency, and a skipped job does not fail a required context — a merge would go
+through having run nothing. The job is 15 s, so requiring it costs nothing.
+
+The classifier fails open everywhere else: a push to `main`, a missing sha, a diff that
+would not compute, and any verdict other than the literal `false` all run the full lane.
+Work steps gate on `!= 'false'`, not `== 'true'`, so an empty or unexpected output runs
+everything rather than skipping everything.
+
+## Filing an issue
+
+A finding does not go on the tracker by default. Take the first that applies:
+
+1. **Fix it in the PR that found it** — the fix is smaller than the issue body and
+   lives in a file that PR already touches. Say so in the PR body.
+2. **Turn the class into a gate** — the finding has appeared before. A contract test
+   on the invariant retires every future instance; an issue retires none.
+3. **Write it down where durable notes go** — it is true and nobody will act on it.
+   That is most findings, and it is not a lesser outcome.
+4. **File an issue** — only for the remainder: someone will DO or DECIDE something.
+
+`.github/ISSUE_TEMPLATE/` makes step 4 answerable instead of assumed. Two forms,
+and blank issues are off:
+
+| form | for | required fields |
+|---|---|---|
+| Finding | something measured is wrong | what is wrong (command + realized value), reproduction, what happens next, lane, evidence |
+| Decision request | work is blocked until someone chooses | the question, options, what blocks on it, lane |
+
+"What happens next" is a dropdown whose third option is *record only → this belongs
+in the ledger, do not file*. Picking it means closing the form, not submitting it.
+
+Title the problem, not the intended fix. A number changes when an issue is closed
+and refiled; the problem does not.
+
+## Lanes
+
+A lane is a set of PATHS, and `.github/labeler.yml` is the map. Change a file under
+`rfx/boundaries/`, and `.github/workflows/labeler.yml` puts `lane:absorber` on the
+pull request; stop changing it, and the label comes off, because the job runs with
+`sync-labels: true` on every push.
+
+Two lane labels on one PR is information, not an error — a change touching the
+waveguide extractor and the MSL extractor really is in both lanes. It is also the
+common case: 32 of the 60 most recently merged PRs would earn two or more. The
+body's `Lane:` line is what names the primary one, and it stays required on every
+PR for exactly that reason.
+
+Not every path is owned. `rfx/` core, `studio/`, `scripts/diagnostics/`,
+`validation/research/` and most of `tests/unit/` map to no lane; a PR confined to
+them gets no label and carries the `Lane:` line itself. `changelog.d/` is
+deliberately unowned — every PR adds a fragment there, and owning it would put a
+second label on every pull request. `lane:plan` has no paths at all: it marks
+trackers and deferred decisions that nobody implements from.
+
+On an issue the lane comes from the form's Lane dropdown.
+`.github/workflows/issue-lane-label.yml` reads the rendered `### Lane` section with
+`scripts/ci/issue_lane_label.py` and applies the label, moving it rather than adding
+a second one when the dropdown is edited. An issue with no `### Lane` section was
+filed outside the forms; nothing happens to it, and the weekly audit lists it. An
+issue whose body has TWO answered `### Lane` sections — which the form cannot
+produce, so somebody pasted one — is also left alone, with the conflicting lines
+printed in the job log, and so is one naming a value that is not a lane label.
+
+**No issue body can make that job fail.** It runs on every edit of every issue, so a
+red check would follow the issue around for a word its author typed. Everything it
+declines to do goes to the job log and the exit code stays 0.
+
+Both of those leave a well-formed issue with no lane label, and the job stays green,
+so nothing on the issue says so. That is why the weekly audit asks whether the issue
+carries a `lane:*` LABEL, not whether its body has the heading. The two questions are
+separate rows: an issue can have been filed through the form and still never have got
+a label.
+
+Query a lane from any machine with `gh issue list -l lane:msl-port`. Who currently
+DRIVES each lane is a separate question the labels do not answer — that lives in the
+pinned lane-board issue, which the labeler file replaces as the path mapping.
+
+Every glob in `.github/labeler.yml` is checked against `git ls-files` by
+`tests/contracts/test_governance_intake_contract.py`; a glob that matches nothing is
+a failure, because it is configuration that silently owns nothing.
+
+## PR body contract
+
+Every PR body carries two lines, each exactly once, outside code fences, HTML
+comments and `pre` blocks:
+
+- `Lane: lane:<label>` — the owner lane, one of the repository's `lane:*` labels
+  (`gh label list | grep '^lane:'`). Required on every PR. The `lane:*` labels
+  `.github/workflows/labeler.yml` applies from the changed paths do NOT replace it:
+  measured over the 60 most recently merged PRs, 32 earn two or more lane labels and
+  6 earn none, so for 38 of 60 the labels cannot say which lane owns the change. The
+  labels are automatic and informational; the line is the claim. When the PR does
+  carry lane labels the line must name one of them, because a line contradicting the
+  paths means either the line is wrong or a path is missing from
+  `.github/labeler.yml`. A lane label the repository no longer has is reported as a
+  warning and never fails the check.
+- `Review: <who read it> (separate instance) — ACCEPT` (or `ACCEPT WITH CHANGES`).
+  A merged change is read by an agent instance other than the one that wrote it;
+  several pods push under one GitHub account, so the body is the only provenance.
+  `REJECT` never passes.
+
+`<who read it>` names the reviewing instance. A field that is nothing but an
+angle-bracketed span is an unedited stub and fails; a name that merely contains
+brackets, such as `claude <noreply@anthropic.com>`, is fine.
+
+Two exceptions take a `Review: skipped` line, and the reason must open with the
+literal `(a)` or `(b)` so a later audit can tell which was claimed:
+
+```
+Review: skipped — (a) <easily reverted pure docs/comment change>
+Review: skipped — (b) <the PI instructed the skip>
+```
+
+The separator before the verdict may be an em dash, an en dash or a plain
+hyphen, and the failure text names all three. Both lines must start flush left:
+a claim inside a bullet, block quote or bold run does not count, because the
+point of the contract is that the two lines are greppable across every PR.
+
+The check is `scripts/ci/check_pr_body.py` (stdlib only; `--file PATH` to run it
+against a body locally), gated by `.github/workflows/pr-body.yml` on open, edit,
+reopen, synchronize, label and unlabel. It reads the PR's labels from the API at
+check time rather than from the event payload: on `opened` the payload's label list
+is empty because the labeler has not run yet, and a label the labeler applies fires
+no event here at all, because an event triggered by `GITHUB_TOKEN` creates no
+workflow run. `.github/pull_request_template.md` seeds both stubs, and
+`tests/contracts/test_pr_body_contract.py` pins the accepted forms.
+
+**The gate binds: `pr-body-contract` is a required check in the `main` ruleset
+as of 2026-09-19.** Before that a red run was visible but did not block a merge,
+which was the same advisory state the prose rule was in.
+
+## Changelog fragments
+
+Do NOT append to `CHANGELOG.md`. Add `changelog.d/<number>.<type>.md` holding
+exactly the entry you would have pasted under `## [Unreleased]` — that is what
+keeps two concurrent PRs from conflicting on one file. Required for any change
+under `rfx/`; a direct `CHANGELOG.md` edit needs the `release` label. Naming,
+content shape and the assembler commands are in `changelog.d/README.md`;
+`python scripts/changelog/assemble.py --check` validates what you wrote.
+
+Both rules bind: `changelog-fragment` is a required check in the `main` ruleset
+as of 2026-09-19, so a red run blocks the merge.
+
+## Weekly governance audit
+
+`.github/workflows/governance-audit.yml` runs `scripts/ci/governance_audit.py`
+Mondays at 00:00 UTC, and on demand through `workflow_dispatch` with a `days` input.
+It reports what no single-PR gate can see, over the last seven days:
+
+| row | why it is listed |
+|---|---|
+| merged PR with no accepted `Review:` line | the gate has only been required since 2026-09-19, and a body can be edited after the merge |
+| merged PR claiming `Review: skipped` | the rule has two exceptions; an exception claimed weekly is not one |
+| issue opened with no `lane:*` label | invisible to `gh issue list -l lane:...`, so no session can find it |
+| issue opened with no `### Lane` section | filed outside the forms, so nobody answered "who will DO or DECIDE" |
+| merged PR closing an issue outside every open milestone | work off the current campaign |
+| merged PR closing no issue | INFORMATIONAL only, never red: housekeeping legitimately closes nothing, and this was 65 of 102 merged PRs the week the report was written |
+
+**It is a report, not a gate.** A non-empty table exits 1 so the scheduled run shows
+up red in the Actions list and somebody opens it. Do not make it a required check —
+it would block every merge on a report about last week.
+
+Run it yourself with `python scripts/ci/governance_audit.py --days 7`, which needs
+`gh` authenticated. `--dump PATH` saves the payload and `--input PATH` replays it
+with no network, which is how `tests/contracts/test_governance_audit.py` exercises
+the classifier.
 
 ## GPU validation
 
@@ -32,6 +295,15 @@ on gpu-rtx4090:
 ```
 vessl run create -f scripts/vessl_gpu_suite.yaml
 ```
+
+**What it tests: `origin/main`, exported with `git archive` into a scratch dir** — NOT
+the HEAD of the pod's primary checkout, and it never touches that checkout. Override
+the ref with `RFX_GPU_SUITE_REF=<sha|branch>` in the run's `env` when validating a
+branch. (Before 2026-09-15 the harness ran the primary checkout's HEAD as it stood;
+a "post-merge" run then silently tested code 6 commits behind main — VESSL run
+369367261080. The provenance block prints both the suite ref and the primary HEAD so
+the log itself says what was tested.) Artifacts still land under the primary
+checkout's `.omx/gpu-suite/<utc>-<short sha>/` on the shared volume.
 
 **Cadence**: per release tag AND after any GPU-touching merge. Record pass/fail
 counts in tracked release notes or a committed validation artifact suitable
@@ -60,6 +332,51 @@ Historical environment notes and green-baseline logs that are absent from a
 public clone are non-authoritative here. Treat the tracked harness, current
 command result, support contracts, and committed artifacts as the available
 evidence; do not infer a pass from unavailable history.
+
+## Worktree hygiene
+
+Agent sessions create a worktree per task and rarely remove it. One clone held 22
+worktrees, 13 of them from pull requests merged weeks earlier, plus seven entries
+pointing at directories that no longer existed.
+
+```
+git fetch origin
+python scripts/dev/prune_worktrees.py          # dry run: classify and print
+python scripts/dev/prune_worktrees.py --apply  # remove what is safe elsewhere
+```
+
+The script asks `git worktree list` where the worktrees are, so it never scans
+directories and finds them wherever they live. A worktree is removed only when its
+commits survive the removal: the branch is merged into `origin/main` or its pull
+request is merged, or the branch is on origin with no open pull request and its last
+commit is older than `--days` (default 7).
+
+The local branch is a separate decision from the worktree. It is deleted only when
+origin already has its tip or the tip is an ancestor of `origin/main`, and only when
+some other ref contains it. This repository squash-merges, so a merged branch is never
+an ancestor of `main`: a commit made after the merge lives on that branch alone, and
+the branch stays even though its worktree goes. **No unpushed branch is deleted on any
+path.** `--archive` pushes one to origin first, and only then may its worktree be
+removed.
+
+Nothing else is removed. A worktree is kept, and listed with the reason, when it has
+uncommitted changes, an open pull request, a branch origin does not have, a detached
+HEAD no ref contains, or ignored files that are not regenerable caches. That last case
+matters here: `git worktree remove --force` deletes ignored files too, and some of the
+directories this repo ignores hold working notes that exist in no other copy.
+Caches such as `__pycache__` and `.ruff_cache` do not block a removal; anything else
+ignored does, until `--remove-ignored` says otherwise.
+
+Pull-request state comes from `gh`, restricted to pull requests whose head repository
+is this one, since `gh pr list --head` matches a branch name across forks too. If `gh`
+fails, a dry run marks those rows `?` and unreliable, and `--apply` aborts with exit 2
+before touching anything. `--no-gh` runs offline: it prints a banner, treats only an
+ancestor of `origin/main` as merged, and removes no pushed-idle worktree, because
+without `gh` an open pull request cannot be ruled out.
+
+**Remove a task's worktree as the last step of the task**, after the pull request
+merges. The script is the cleanup for what earlier sessions left behind, not a
+substitute for that step.
 
 ## Where the role fences live
 

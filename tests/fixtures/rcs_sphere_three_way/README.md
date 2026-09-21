@@ -30,19 +30,26 @@ Backscatter `sigma/(pi a^2)`, PEC sphere, `a = 0.015 m`, incidence `+x`, `E‖z`
 Bempp reproduces exact Mie to **≤ 0.15 dB** across the ladder. `h`-refinement at
 ka=1 converges monotonically (`a/3 → a/5 → a/8`: −0.109 → −0.046 → −0.018 dB).
 
-**Three-way at ka≈1** — three independent methods within 0.07 dB:
+**Three-way at ka≈1** — three independent methods within 0.22 dB:
 
 | method | sigma/(pi a^2) | vs Mie |
 |--------|----------------|--------|
 | exact Mie (scipy) | 3.638 | — |
-| rfx FDTD, fine (λ/40, 6.4 cells/radius) | 3.585 | −0.063 dB |
+| rfx FDTD, fine (λ/40, 6.4 cells/radius, 24-cell CPML) | 3.796 | +0.185 dB |
 | Bempp BEM (h=a/6, N=1884) | 3.614 | −0.028 dB |
+
+The rfx row read 3.585 / −0.063 dB until 2026-09-13. That agreement was a
+cancellation between an 8-cell CPML and the pre-#888 TF/SF auxiliary echo, and
+it does not survive either fix: see `fixture.json::three_way_ka1.rfx_fine_witness_note`
+for the depth ladder that shows the old rig walking away from Mie as its own
+absorber improved, and the clean one converging.
 
 The rfx **coarse** E4 ladder (λ/10–15, 1–5 cells/radius; `rcs_mie_e4`, 13.9 dB
 envelope) carries 4.7–9.3 dB error; Bempp confirming Mie to ≤0.15 dB at the same
 ka is a non-FDTD witness that this is rfx **resolution** (staircasing + near-field
-NTFF box), consistent with the two-regime finding (fine = 0.06 dB). Stated as an
-rfx-centric distance; no solver is framed as wrong.
+NTFF box), consistent with the two-regime finding (fine = 0.185 dB on the
+converged 24-cell absorber). Stated as an rfx-centric distance; no solver is
+framed as wrong.
 
 ## Files
 

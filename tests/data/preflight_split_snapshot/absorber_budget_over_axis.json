@@ -1,0 +1,16 @@
+{
+  "preflight": {
+    "issues": [
+      {
+        "code": "absorber_budget_exceeds_axis",
+        "loc": null,
+        "message": "cpml_layers=16 exceeds the z-axis grid extent (10 cells: ceil(20mm/2.998mm)+1 interior nodes + 0/2 absorber cells, from z=Boundary(lo='pec', hi='cpml')). The absorber you asked for is unaffected \u2014 the layer budget is clamped to the axis for the CPML scratch buffers only, and the clamped region carries no active absorber layers (issue #647). It does mean the layer count was sized for a coarser mesh or a larger domain than this one; set that face's lo_thickness/hi_thickness explicitly if you meant a thinner absorber.",
+        "severity": "warning",
+        "source": "_validate_cfg_absorber_budget_vs_grid"
+      }
+    ],
+    "n_errors": 0,
+    "n_issues": 1,
+    "ok": true
+  }
+}

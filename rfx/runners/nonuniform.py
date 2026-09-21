@@ -701,6 +701,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     -------
     Result
     """
+    # every single-device non-uniform solve (run AND forward) enters here
+    sim._require_mode_the_nonuniform_lane_solves()
     from rfx.api import Result
 
     _validate_interface_eps_nu(sim, subpixel_smoothing=subpixel_smoothing,
@@ -849,10 +851,15 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 stacklevel=2,
             )
         else:
-            shape_eps_pairs = [
-                (entry.shape, sim._resolve_material(entry.material_name).eps_r)
-                for entry in sim._geometry
-            ]
+            # #1043 stage B: the pairs carry the CPML/UPML pad continuation,
+            # the NU mirror of the two uniform sites. Same shared builder, so
+            # the three cannot drift the way the array-side replication did
+            # before #627.
+            from rfx.geometry.smoothing import (
+                smoothed_shape_pairs, warn_unextendable_shapes,
+            )
+            shape_eps_pairs, _unextendable = smoothed_shape_pairs(sim, grid)
+            warn_unextendable_shapes(_unextendable)
             if shape_eps_pairs:
                 aniso_eps = compute_smoothed_eps_nonuniform(
                     grid, shape_eps_pairs, background_eps=1.0,

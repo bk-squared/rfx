@@ -1,5 +1,5 @@
 {
-  "_comment": "Public API surface pinned by scripts/check_api_reference.py. Regenerate with: python scripts/check_api_reference.py --write (and rebuild docs/api with pdoc: python -m pdoc -o docs/api rfx '!rfx.dashboard').",
+  "_comment": "Public API surface pinned by scripts/check_api_reference.py. Regenerate with: python scripts/check_api_reference.py --write (and rebuild docs/api with pdoc: python -m pdoc -t docs/pdoc_templates -o docs/api rfx '!rfx.dashboard').",
   "rfx_exports": {
     "ADCompiledMemoryCertificate": {
       "kind": "class"
@@ -2151,6 +2151,13 @@
         "late_fraction"
       ]
     },
+    "subtract_flux_monitors": {
+      "kind": "function",
+      "params": [
+        "sample",
+        "ref"
+      ]
+    },
     "suggest_refinement_regions": {
       "kind": "function",
       "params": [
@@ -2624,6 +2631,10 @@
       "enforce_passivity",
       "report_every"
     ],
+    "compute_s_matrix": [
+      "lane",
+      "kwargs"
+    ],
     "compute_waveguide_s_matrix": [
       "n_steps",
       "num_periods",
@@ -2749,6 +2760,9 @@
       "skip_preflight",
       "report_every",
       "report_label"
+    ],
+    "s_matrix_lane": [
+      "lane"
     ],
     "set_periodic_axes": [
       "axes"

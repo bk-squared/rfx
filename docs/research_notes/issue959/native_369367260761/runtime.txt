@@ -1,1 +1,0 @@
-jax 0.6.2 cpu openEMS 0.37.0 CSXCAD 0.7.0

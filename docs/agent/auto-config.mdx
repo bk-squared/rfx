@@ -19,6 +19,22 @@ for RF judgement or support-matrix checks.
 5. Promote to a longer run only after the smoke output has sane field/probe
    amplitudes and the selected feature lane is documented.
 
+## Gating on the preflight report
+
+Read the gate off the report, never off its truthiness. `sim.preflight()`
+returns a `PreflightReport`, which is a list of findings, so plain list
+truthiness says the opposite of what a gate means: a clean report is EMPTY
+and therefore falsy, while a report carrying nothing but advisories is
+truthy. `if not sim.preflight(): raise ...` and `assert sim.preflight()`
+both read as "stop unless this passed" and do the reverse — the assert
+passes exactly when there are problems and fails on a clean run. Boolean
+evaluation raises `TypeError` for that reason: the trap is loud at the call
+site instead of a run that quietly skipped its own gate. Use
+`report.raise_for_failure()` to stop on error-severity findings, `report.ok`
+or `report.errors` for a condition, and `len(report)` when you mean "did
+preflight find anything at all", which is the stricter gate that also
+rejects advisories.
+
 ## Python sketch
 
 ```python

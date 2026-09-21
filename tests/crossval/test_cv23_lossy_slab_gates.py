@@ -343,7 +343,13 @@ def test_rfx_falsifiers_exceed_the_windows_analytically(name):
     arm, bad = L.apply_falsifier(name)
     good = L.ARMS[arm]["params"]
     Rb, Tb, _ = L.analytic_rta(f, bad)
-    e2 = L.evaluate_e2(f, Rb, Tb, good, dt)          # defective "measurement" vs the true oracle
+    # windows=L.WINDOWS, stated rather than defaulted (#928 item 2): this check
+    # is ANALYTIC -- there is no run, so no record and no per-arm window to
+    # derive -- and what it pins is the pre-declaration's own band-mean margin
+    # against the cv04-adopted scalar, which after #928 is the MEEP legs'
+    # window. The live E2 gate is judged per arm; the artifact test below does
+    # that on the same falsifiers.
+    e2 = L.evaluate_e2(f, Rb, Tb, good, dt, windows=L.WINDOWS)   # defective "measurement" vs the true oracle
     assert not e2["e2_ok"], name
     assert not (e2["gates"]["G2_R"] and e2["gates"]["G2_T"] and e2["gates"]["G2_A"]), name
     ratios = {"R": e2["mean_dR_gated"] / e2["mean_window_R"], "T": e2["mean_dT_gated"] / e2["mean_window_T"],
@@ -374,7 +380,10 @@ def test_meep_falsifiers_exceed_the_e4_windows_analytically(name):
     eps_bad = np.conj(de.eps_meep_convention(f, bad))
     Rm, Tm = de.tmm_slab_rt(f, eps_bad, L.D_SLAB_M)
     R, T, _ = L.analytic_rta(f, p)
-    e2 = L.evaluate_e2(f, R, T, p, dt)
+    # The E4 gates are judged by the cv04-adopted scalars (evaluate_e4 takes
+    # WINDOWS unconditionally); this e2 is only their carrier, so it is built
+    # with the same scalars rather than a per-arm window it would not use.
+    e2 = L.evaluate_e2(f, R, T, p, dt, windows=L.WINDOWS)
     meep_doc = {"freqs_hz": f.tolist(), "R": Rm.tolist(), "T": Tm.tolist(), "dt_meep_s": dt_meep,
                 "meep_params": bad, "precheck": {"passed": False}, "eps_averaging": False}
     e4 = L.evaluate_e4(e2, meep_doc)
@@ -398,8 +407,26 @@ def _read(path: Path) -> dict:
 
 
 def _replay_e2(arm_doc: dict) -> dict:
+    """REPLAY of the verdicts the artifact itself recorded -- NOT the live gate.
+
+    The committed records were judged by the cv04-adopted scalar windows, so
+    reproducing their ``gates`` dict requires those windows, named here rather
+    than inherited from a default (#928 item 2). Every comparison against
+    ``arm_doc["gates"]`` uses this. What the case script would write TODAY is
+    ``_live_e2``; on the declared arms the two agree, and on four of the
+    falsifier records they do not -- the design note's section 6 tables which.
+    """
     return L.evaluate_e2(arm_doc["freqs_hz"], arm_doc["R_rfx"], arm_doc["T_rfx"],
-                         arm_doc["params"], arm_doc["dt_s"], tail=arm_doc["tail"])
+                         arm_doc["params"], arm_doc["dt_s"], tail=arm_doc["tail"],
+                         windows=L.WINDOWS)
+
+
+def _live_e2(arm_doc: dict) -> dict:
+    """The verdict the LIVE gate reaches: windows derived from this arm's own
+    lattice-continuum difference and its own record (#928 item 2)."""
+    return L.evaluate_e2(arm_doc["freqs_hz"], arm_doc["R_rfx"], arm_doc["T_rfx"],
+                         arm_doc["params"], arm_doc["dt_s"], tail=arm_doc["tail"],
+                         dx=arm_doc["run"]["dx_m"], windows=L.arm_windows(arm_doc))
 
 
 def _baseline() -> dict:
@@ -462,6 +489,18 @@ def test_baseline_artifact_replays_and_passes_e2_on_all_arms():
         re = _replay_e2(ad)
         assert re["gates"] == {k: v for k, v in ad["gates"].items() if k in re["gates"]}, arm
         assert re["e2_ok"], (arm, re["gates"], re["max_dR_gated"], re["max_dT_gated"], re["max_dA_gated"])
+        # ... and the LIVE gate, which is what a re-run would be judged by: the
+        # declared arms pass it too, and by a margin, so the replay above is a
+        # provenance check and not the only thing standing behind this case.
+        live = _live_e2(ad)
+        assert live["e2_ok"], (arm, live["gates"])
+        assert live["gates"] == re["gates"], (arm, live["gates"], re["gates"])
+        lg = np.asarray(live["gated"], dtype=bool)
+        for obs in ("R", "T", "A"):
+            used = float(np.max(np.asarray(live["d" + obs])[lg]
+                                / np.asarray(live["window_" + obs])[lg]))
+            assert used < 1.0, (arm, obs, used)
+            print(f"cv23-summary rfx {arm} live per-arm window: worst bin uses {used:.3f} of it in {obs}")
         # section 13 predictions (the lattice at the arm's recipe), reported
         pred = _R2_LATTICE_PRED[(arm, L.ARM_DX_DIV[arm])]
         print(f"cv23-summary rfx {arm} vs lattice prediction: mean|dR| {ad['mean_dR_gated']:.5f} (pred {pred[0]:.5f}) "
@@ -506,8 +545,20 @@ def test_rfx_falsifier_artifacts_fail_for_the_declared_reason(name):
     assert ad["params_run"] == pytest.approx(bad)
     assert ad["params"] == pytest.approx(L.ARMS[arm]["params"])
     assert ad["run"]["dx_div"] == L.ARM_DX_DIV[arm], "falsifiers run at the arm's primary recipe"
-    re = L.evaluate_e2(ad["freqs_hz"], ad["R_rfx"], ad["T_rfx"], L.ARMS[arm]["params"], ad["dt_s"], tail=ad["tail"])
+    # REPLAY of the artifact's own recorded verdicts (cv04-adopted scalars),
+    # then the LIVE per-arm verdict. The two differ on four of these records --
+    # the live window is tighter, so the falsifier fails on MORE gates -- and
+    # the design note's section 6 tables every one of them.
+    re = L.evaluate_e2(ad["freqs_hz"], ad["R_rfx"], ad["T_rfx"], L.ARMS[arm]["params"],
+                       ad["dt_s"], tail=ad["tail"], windows=L.WINDOWS)
     assert re["gates"] == {k: v for k, v in ad["gates"].items() if k in re["gates"]}
+    live = L.evaluate_e2(ad["freqs_hz"], ad["R_rfx"], ad["T_rfx"], L.ARMS[arm]["params"],
+                         ad["dt_s"], tail=ad["tail"], dx=ad["run"]["dx_m"],
+                         windows=L.arm_windows(dict(ad, params=L.ARMS[arm]["params"])))
+    assert not live["e2_ok"], (name, live["gates"])
+    for gate, was in re["gates"].items():
+        if was is False:
+            assert live["gates"][gate] is False, (name, gate, "the live window let a falsifier back through")
     assert not re["e2_ok"]
     assert not (re["gates"]["G2_R"] and re["gates"]["G2_T"] and re["gates"]["G2_A"]), "must fail on a band-mean"
     if name == L.PASSIVITY_FALSIFIER:
@@ -629,6 +680,8 @@ def test_r2_rfx_dx_ladder_against_the_lattice_prediction(arm):
         assert d["tail"]["ok"], (tag, d["tail"]["scat_refl_rel"], d["tail"]["total_trans_rel"])
         re = _replay_e2(d)
         assert re["gates"] == {k: v for k, v in d["gates"].items() if k in re["gates"]}
+        live = _live_e2(d)
+        assert live["e2_ok"] and live["gates"] == re["gates"], (tag, live["gates"])
         f = np.asarray(d["freqs_hz"]); g = np.asarray(d["gated"])
         Rl, Tl, Al = L.lattice_rta(f[g], d["params"], d["run"]["dx_m"], d["dt_s"])
         Rx = np.asarray(d["R_rfx"])[g]; Tx = np.asarray(d["T_rfx"])[g]

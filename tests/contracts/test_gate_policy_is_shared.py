@@ -67,6 +67,16 @@ _QUANTIZED_GATE_FILES = [
     # `abs` key to 100. So the multiplier-mutation coverage here rests on the
     # test file's own derived-not-pinned tolerances, which is weaker than the
     # discovered lanes' from-outside check.
+    # #928 item 2. The slab family's per-bin windows are the one lane here that
+    # deliberately does NOT quantize -- rounding up to 1/1000 per bin would
+    # raise every sub-1e-3 bin to 1e-3, widening the gate where the derivation
+    # is tightest -- so it reads ENVELOPE_GATE_MULTIPLIER through the module
+    # object instead of calling gate_from_envelope. It is in this tripwire list
+    # because the `* 1.5 *` plant is exactly as available to it as to the
+    # others, and the from-outside check that the multiplier really moves its
+    # windows is tests/contracts/test_slab_arm_window_derivation.py::
+    # test_the_shared_multiplier_moves_every_derived_window.
+    (REPO / "validation" / "crossval" / "comparators" / "slab_arm_windows.py"),
     REPO / "tests" / "crossval" / "test_waveguide_nu_broad_e4_comparison_gates.py",
     (REPO / "scripts" / "diagnostics"
      / "build_waveguide_wr90_nu_flux_broad_e4_comparison.py"),
@@ -92,6 +102,37 @@ _QUANTIZED_GATE_FILES = [
     # block lives in the consolidated crossval module (tier-3b reorg), which
     # also appears in _MARGIN_CEIL_FILES below: one file, two gate shapes.
     REPO / "tests" / "crossval" / "test_waveguide_broad_e5.py",
+    # #888 / #280, PR #1005 review finding 4. Two lanes with the same coverage
+    # shape as the flat-JSON ones above -- neither keeps a `gates` dict in a
+    # `tests/fixtures/**/fixture.json`, so the _REAL_CASES glob does not reach
+    # either -- and what stands in for that is weaker, which is worth naming
+    # rather than dressing up. There is NO from-outside check on these two: each
+    # file re-derives its own bar in-file, through the shared
+    # gate_from_envelope, from a MEASURED envelope pinned beside it. A change to
+    # ENVELOPE_GATE_MULTIPLIER therefore moves both bars, but nothing outside
+    # either file recomputes them independently, so a coherent in-file plant
+    # (move the envelope AND the bar together) is not caught here the way the
+    # discovered lanes' from-outside cross-derivation catches it. Same gap the
+    # E4 / E5 pairs above carry, for the same reason.
+    #
+    # Both DEVIATE from _QUANTUM_BY_SUFFIX, and in the tightening direction
+    # only -- which is why they are listed rather than granted an exception:
+    #
+    #   * rcs280 gates a dB quantity at quantum=100 where the suffix map says
+    #     `db` -> 10. The envelope is sub-dB (0.705 dB mean |corrected - Mie|),
+    #     so a 0.1 dB quantum rounds 1.0575 up to 1.1 and hands the bar 0.0425
+    #     dB of pure quantization slack, 4% of the bar itself. Two decimals give
+    #     1.06 -- TIGHTER than the suffix map, within one quantum of the
+    #     derivation. A dB suffix earns quantum=10 when the envelope is of order
+    #     the quantum; this one is not.
+    #   * the aux-absorber lane gates dimensionless |B/A| reflection amplitudes
+    #     of 6.4e-06 to 3.2e-04, per angle, at quantum 1e7 / 1e6 / 1e5. The
+    #     `abs` -> 100 of the suffix map would quantize every one of them to
+    #     0.01, four decades above the measurement -- a bar that gates nothing.
+    #     Each quantum is chosen so the round-up is the last significant figure
+    #     of that angle's own measurement.
+    REPO / "tests" / "unit" / "farfield" / "test_rcs280_reference_subtraction.py",
+    REPO / "tests" / "unit" / "sources" / "test_tfsf_aux_absorber_reflection.py",
 ]
 
 # The bounded-margin consumers: a PINNED module constant checked against
@@ -252,8 +293,19 @@ def test_quantized_gate_case_imports_shared_helper_not_a_local_literal(path):
     cannot by grep alone, rule out a different multiplier value -- that is
     what the falsifier tests below are for."""
     src = path.read_text(encoding="utf-8")
-    assert "_gate_policy import" in src and "gate_from_envelope" in src, (
-        f"{path.name} does not import the shared gate_from_envelope helper"
+    # Two admissible spellings of "reads the shared policy": the usual
+    # `from tests._gate_policy import gate_from_envelope`, and -- for a lane
+    # that derives a per-bin window and deliberately does not quantize it --
+    # `from tests import _gate_policy` plus a call-time
+    # `_gate_policy.ENVELOPE_GATE_MULTIPLIER` read. Accepting both widens what
+    # the `* 1.5 *` grep below covers; rejecting the second would have left the
+    # newest derived-window lane outside the tripwire entirely.
+    quantized = "_gate_policy import" in src and "gate_from_envelope" in src
+    multiplier_only = ("from tests import _gate_policy" in src
+                       and "_gate_policy.ENVELOPE_GATE_MULTIPLIER" in src)
+    assert quantized or multiplier_only, (
+        f"{path.name} reads neither the shared gate_from_envelope helper nor "
+        f"ENVELOPE_GATE_MULTIPLIER from the shared module"
     )
     # The exact pattern removed from every case: `<expr> * 1.5 * <quantum>`.
     assert re.search(r"\*\s*1\.5\s*\*", src) is None, (

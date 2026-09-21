@@ -317,6 +317,10 @@ AUX_ECHO_NOTE = "docs/design_notes/20260904_aux_echo_record_invariant.md"
 # residuals plus the three predeclared tolerances, every one of them read out of
 # the two committed receipts of VESSL run 369367260765.
 CPML_STAGGER_NOTE = "docs/design_notes/2026-09-13_cpml_yee_stagger_correction.md"
+# 2026-09-14 (#813): the cv01 CPML flux self-check pre-declaration. Its result
+# section quotes the four-point cpml_layers sweep -- the numbers that decide a
+# pre-declared gate -- so they are resolved here rather than retyped.
+CV01_CPML_NOTE = "docs/design_notes/cv01_cpml_flux_selfcheck_predeclaration.md"
 # 2026-09-06 (#928): the public benchmarks page is the single largest carrier of
 # measured numbers in the repository (93 references) and was NOT under this gate.
 # Every public "Validated comparison" row quotes an artifact value; a page that
@@ -339,6 +343,39 @@ NEWLY_GATED_NOTES = (
     "docs/design_notes/issue812_phase_identity_predeclaration.md",
     "docs/design_notes/issue812_phase_identity_results.md",
 )
+
+ISSUE1043_STABILITY_NOTE = (
+    "docs/design_notes/issue1043_cpml_subpixel_coefficient_results.md")
+ISSUE1043_F1_NOTE = (
+    "docs/design_notes/issue1043_f1_pec_short_gate_results.md")
+# 2026-09-15 (#1043 stage B): the #831 diagnosis lane's two notes arrive from
+# the unmerged branch that produced them, because section 8.4 of the
+# pre-declaration is the falsifier the stage-B PR is judged by and a falsifier
+# a reviewer cannot re-run is not one. Both carry resolvable citations into
+# issue812_cv03_dispersion_matched_frequency.json, so GATED is the only
+# classification available to them -- there is no "resolvable but not opted
+# in" class, deliberately.
+ISSUE831_PREDECLARATION = (
+    "docs/design_notes/issue831_far_end_return_predeclaration.md")
+ISSUE831_RESULTS = "docs/design_notes/issue831_far_end_return_results.md"
+# Stage B's own results note, opted in for the same reason: its verdict IS a
+# table of measured numbers read out of committed artifacts.
+ISSUE1043_PAD_CONTINUATION_NOTE = (
+    "docs/design_notes/issue1043_pad_continuation_results.md")
+# 2026-09-16 (#873 attempt 2): the transmission-tilt results note, opted in for
+# the same reason as the two above -- its verdict is a table of measured numbers
+# read out of tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json,
+# and its section 7 emits those citations from the artifact rather than retyping
+# them, so a number that moves without the note moving reds here.
+TILT_RESULTS = (
+    "docs/design_notes/waveguide_false_lane_transmission_tilt_results.md")
+# 2026-09-16 (#873, the near-field composition run that followed the tilt one):
+# same reason again -- the verdict IS a table of measured numbers read out of
+# near_field_composition.json, including a leg that PASSES and one that FAILS,
+# and the difference between them is which number is quoted. Its "10. Numeric
+# provenance" section emits the citations from the artifact.
+NEAR_FIELD_RESULTS = (
+    "docs/design_notes/waveguide_driven_plane_near_field_composition_results.md")
 
 # Markdown documents, with the regex that cuts them into named sites.
 MARKDOWN_SITES: dict[str, str] = {
@@ -369,6 +406,28 @@ MARKDOWN_SITES: dict[str, str] = {
     # section is a two-arm residual table read out of the two committed
     # receipts of VESSL run 369367260765. See CLASSIFICATION below.
     CPML_STAGGER_NOTE: r"^#+\s+(.*\S)\s*$",
+    # 2026-09-14 (#813 layer sweep): the cv01 CPML pre-declaration was
+    # NO_ARTIFACT_REFERENCE while it carried no citation at all. Its
+    # "Result 2026-09-14" section is a table of measured numbers read out of
+    # scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json, which is
+    # exactly the shape this gate exists for, so the note is opted in with the
+    # section that carries them.
+    CV01_CPML_NOTE: r"^#+\s+(.*\S)\s*$",
+    # 2026-09-15 (#1043 / PR #1047 verification round): both results notes are
+    # opted in because their verdicts ARE tables of measured numbers read out
+    # of the committed stability / PEC-short artifacts -- exactly the shape
+    # this gate exists for. It is opted in for a measured reason: a
+    # transcription slip survived review in one of them (the 80-period head
+    # range read the bin-0 value 0.9969 instead of the bin-5 minimum 0.9552),
+    # and value-checked citations are what catches that class rather than the
+    # instance.
+    ISSUE1043_STABILITY_NOTE: r"^#+\s+(.*\S)\s*$",
+    ISSUE1043_F1_NOTE: r"^#+\s+(.*\S)\s*$",
+    ISSUE831_PREDECLARATION: r"^#+\s+(.*\S)\s*$",
+    ISSUE831_RESULTS: r"^#+\s+(.*\S)\s*$",
+    ISSUE1043_PAD_CONTINUATION_NOTE: r"^#+\s+(.*\S)\s*$",
+    TILT_RESULTS: r"^#+\s+(.*\S)\s*$",
+    NEAR_FIELD_RESULTS: r"^#+\s+(.*\S)\s*$",
 }
 
 DOCUMENTS = (MANIFEST, *MARKDOWN_SITES)
@@ -377,6 +436,39 @@ DOCUMENTS = (MANIFEST, *MARKDOWN_SITES)
 # floor is a deliberate act that belongs in the same commit as the reason.
 REQUIRED_SITES: dict[tuple[str, str], int] = {
     ("docs/design_notes/20260911_harminv_record_support.md", "Actual FDTD records"): 3,
+    # 2026-09-14 (#813 Arm 1): the cv01 CPML note's result section states its
+    # verdict as a table and resolves every cell in "Numeric provenance". The
+    # floor is the reproduced count (26 of its 35 references carry a value),
+    # not a round number: a rewrite that drops the citations would leave the
+    # table's numbers with nothing behind them.
+    (CV01_CPML_NOTE, "Numeric provenance"): 26,
+    # 2026-09-14 (#813 round-1 review): the interior arm that splits the
+    # 40-layer residual. Its whole claim is the two halves of that split and
+    # the 10-layer pair they are compared against, so the floor is the
+    # reproduced count of value-carrying citations (19).
+    (CV01_CPML_NOTE, "Numeric provenance, residual split"): 19,
+    # 2026-09-15 (#813, cv01's committed record re-measured after #1057): the
+    # note's third result section states a before/after gate table -- including
+    # a gate that CHANGES verdict -- and resolves every cell of it against
+    # validation/crossval/_01_waveguide_bend_results/crossval_r2.json. The
+    # floor is the reproduced count of value-carrying citations (40 of its 56;
+    # raised from 31/45 by the PR #1080 review, which replaced one existence-only
+    # citation about upstream's tutorial geometry with twelve that resolve the
+    # bend arms' actual extents).
+    (CV01_CPML_NOTE, "Numeric provenance, after #1057"): 40,
+    # 2026-09-16 (#873 attempt 2): the transmission-tilt note's verdict rests on
+    # six groups of measured numbers -- the observable and its ladder, the bound
+    # that retires four candidates, the four-plane measurement that locates the
+    # error, the profile mismatch and the post-hoc run against it, the
+    # record-length run, and the PR #1081 review's corrected bound pairing. The
+    # floor is the reproduced count (54, raised from 45 by that review: it found
+    # the bound compared against the wrong quantity, which cost six citations for
+    # the replacement numbers and three more when the artifact field itself was
+    # re-paired and the old pairing preserved beside it as colpow_over_bound).
+    # Not a round number: a rewrite that drops citations would leave a
+    # DOES-NOT-CLOSE verdict with nothing behind it, and a negative result is
+    # exactly the kind whose numbers nobody re-derives.
+    (TILT_RESULTS, "7. Numeric provenance"): 54,
     (MANIFEST, "11_waveguide_port_wr90"): 4,
     (MANIFEST, "15_patch_antenna_rt5880"): 3,
     (MANIFEST, "17_dielectric_sphere_mie"): 2,
@@ -460,9 +552,58 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
 # and +2 distinct artifacts (the red/green witness receipts of VESSL run
 # 369367260765, cited here for the first time). Raised in the same commit that
 # adds them.
-MIN_REFERENCES = 1152
-MIN_VALUE_CHECKED = 1107
-MIN_DISTINCT_ARTIFACTS = 62
+# 2026-09-14 (#813 Arm 1): +35 references over +1 distinct artifact
+# (scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json), 26 of them
+# value-checked -- the cv01 CPML pre-declaration's result section, opted in as
+# CV01_CPML_NOTE above. Raised by the delta in the same commit that adds them.
+# 2026-09-14 (#813 round-1 review, residual split): +23 references over +2
+# distinct artifacts (residual_split.json, and selfcheck.json cited for the
+# first time), 19 of them value-checked. Same note, its second provenance
+# section.
+#
+# What the three numbers below actually did, said plainly because the two
+# entries above say "raised by the delta" and this one is NOT that. The
+# minimums went 1175 -> 1270 (+95), 1121 -> 1207 (+86) and 61 -> 77 (+16),
+# while this pass adds only +23 references, +19 value-checked and +2
+# artifacts. The difference -- 72 references, 67 value-checked, 14 artifacts
+# -- is PRE-EXISTING SLACK that had accumulated between the old floors and the
+# real population, and it is absorbed here rather than left as headroom.
+#
+# So these floors now EQUAL the current actuals, with zero slack. That is
+# stricter than this file has been, deliberately, and it has a consequence
+# worth stating rather than discovering: the next legitimate removal of a
+# single cited number ANYWHERE in the opted-in surface reds this gate. That is
+# the intent -- a removal should be a decision someone writes down, which is
+# what the comment above each floor asks for -- but whoever hits it is not
+# looking at a bug. Lower the floor in the same commit as the removal and say
+# why, exactly as this block does.
+# 2026-09-15 (#813, cv01's record re-measured after #1057): +45 references over
+# +1 distinct artifact (validation/crossval/_01_waveguide_bend_results/
+# crossval_r2.json, cited here for the first time), 31 of them value-checked --
+# the pre-declaration's "Result after #1057" section, whose table carries a gate
+# verdict that CHANGED and must not be readable without the artifact behind it.
+# Raised by the delta, in the same commit that adds them, as the two entries
+# above did. The block above says these floors were left EQUAL to the actuals in
+# September; they are not any more -- the actuals had drifted to 1409 / 1326 / 89
+# by other PRs before this one, and absorbing that slack is not this change's to
+# make, so the delta is added to the floors and the slack is left where it is.
+# 2026-09-16 (#813, PR #1080 review): +11 references and +9 value-checked over
+# no new artifact -- the comparator note's upstream claim was wrong (it read the
+# tutorial's STRAIGHT-run mp.inf block as the bend geometry), and the correction
+# replaces one existence-only citation with twelve that resolve the bend arms'
+# measured extents. Raised by the delta, in the same commit.
+# 2026-09-16 (#873, near-field composition): +86 references over +1 distinct
+# artifact (tests/fixtures/waveguide_false_lane_column_power/
+# near_field_composition.json, cited here for the first time), all 86
+# value-checked -- the results note's section 10. Raised by the delta, in the
+# same commit that adds them, as the entries above did. The last 11 of the 86
+# arrived with the PR #1094 review: its first finding was that the note gave a
+# reason for an estimator swap that is false at one rung, and the reason that
+# does hold is three numbers already IN the artifact that nothing cited. A
+# number the argument leans on and the gate cannot see is the gap that catches.
+MIN_REFERENCES = 1412
+MIN_VALUE_CHECKED = 1333
+MIN_DISTINCT_ARTIFACTS = 79
 
 
 # --------------------------------------------------------------------------
@@ -532,6 +673,13 @@ CLASSIFICATION: dict[str, str] = {
     "docs/public/validation/cross-solver.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/validation/index.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/validation/recommended-configuration.mdx": NO_ARTIFACT_REFERENCE,
+    # #928 item 2's pre-declaration: `parses` is empty -- it carries no
+    # `<path>.json::<key>` span. Its numbers are of two kinds, neither of which
+    # this gate can resolve: the r1 values it quotes to state the defect it
+    # replaces (their keys are in the envelope artifact, cited by name in the
+    # prose), and the per-arm windows it declares, which are RECOMPUTED from
+    # each record at evaluation time and are written into no artifact key.
+    "docs/design_notes/slab_family_per_arm_lattice_window_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260829_spec01_multiband_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260830_issue786_convergence_floor.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260831_cv02_ring_judge_predeclaration.md": NO_ARTIFACT_REFERENCE,
@@ -547,6 +695,17 @@ CLASSIFICATION: dict[str, str] = {
     "docs/design_notes/20260903_lattice_witness_standard.md": GATED,
     "docs/design_notes/20260903_test_reorg_tier3b_consolidation.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260904_aux_echo_record_invariant.md": GATED,
+    "docs/design_notes/20260902_cv26_oblique_fresnel_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260904_cv26_round3_close.md": SYMBOL_SPAN_PARSER_SCOPE,
+    # 2026-09-13 (#888 r2): one resolvable span,
+    # `validation/crossval/_04_fresnel_results/lattice_witness.json::gated_here`,
+    # alongside several `tests/....py::test_name` spans (and
+    # `tests/_gate_policy.py::gate_from_envelope`) that this parser rejects by
+    # construction. The note's own measurements are not quoted out of a
+    # committed artifact -- they are the lane's raw readings, replayed by
+    # tests/unit/sources/test_tfsf_aux_absorber_reflection.py and
+    # tests/crossval/test_aux_echo_record_invariant.py.
+    "docs/design_notes/20260904_aux_absorber_depth_derivation.md": SYMBOL_SPAN_PARSER_SCOPE,
     "docs/design_notes/20260905_post_merge_review_20_prs.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260905_post_v18_plan_rasterization_preflight_cst.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260905_v18_close_predeclaration.md": NO_ARTIFACT_REFERENCE,
@@ -607,6 +766,15 @@ CLASSIFICATION: dict[str, str] = {
     # `others` and never `parses`; NO_ARTIFACT_REFERENCE only checks `parses`.
     "docs/design_notes/20260910_cv05_crossval_disposition.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260911_harminv_record_support.md": GATED,
+    # 2026-09-14 (#1015 pre-declaration): `parses` is empty. Its two `::` spans
+    # are a symbol reference (`oblique_fresnel.py::evaluate_e2`) and a TEMPLATE
+    # with placeholders in the key path
+    # (`lattice_witness.json::rungs.<rung>.falsifiers.<kind>.gates`), and the
+    # file it names carries no directory, so both land in `others`. The note is
+    # a decision rule written BEFORE its measurements existed and quotes no
+    # measured value at all; the measurements live in section 13 of the
+    # lattice-witness standard, which IS gated.
+    "docs/design_notes/20260914_lattice_witness_gl1_predeclaration.md": NO_ARTIFACT_REFERENCE,
     # 2026-09-13 (#717 crossval lane decision): `parses` is empty -- the note
     # cites no artifact key at all. Its five `::` spans are pytest node ids
     # (`test_crossval_comprehensive.py::TestPECCavity::test_rfx_vs_analytical`
@@ -633,10 +801,29 @@ CLASSIFICATION: dict[str, str] = {
     # citation to this note (cv18's Richardson envelope); opted in rather than
     # left failing NO_ARTIFACT_REFERENCE's own vacuity check.
     "docs/design_notes/chain_closure_contract.md": GATED,
+    # 2026-09-13 (issue #813 attribution): the pre-declaration for cv01's CPML
+    # flux self-check. It carried no `::` span at all -- neither a resolvable
+    # `path.json::key` nor one this parser rejects -- so `parses` and `others`
+    # were both empty, and the classification was NO_ARTIFACT_REFERENCE.
+    # 2026-09-14 (#813 Arm 1): its "Result 2026-09-14" section now cites the
+    # layer sweep's own artifact key by key, so it is GATED. The artifact-side
+    # control is unchanged and stronger than this gate: the sweep's 10-layer
+    # arm IS cv01's rig and must reproduce the committed cpml_full number, or
+    # no other layer count in the table is readable.
+    CV01_CPML_NOTE: GATED,
     "docs/design_notes/cv10_pmc_realization_regate.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/cv14_rect_cavity_gate_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/estimator_resolution_regate.md": GATED,
     "docs/design_notes/geometry_setup_interop.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-16 (#810 Tier 1, the WR-90 control): neither note carries a
+    # backtick span containing `::` at all, so nothing parses and nothing is
+    # rejected. Their numbers are replayed from
+    # tests/fixtures/graded_mesh_sparameter_accuracy/wr90_control.json, whose
+    # verdicts the driver's own `--stages verdicts` recomputes from the stored
+    # per-bin values. MIN_REFERENCES / MIN_VALUE_CHECKED / MIN_DISTINCT_ARTIFACTS
+    # are unchanged: these two files add no reference to the opted-in surface.
+    "docs/design_notes/graded_mesh_sparameter_accuracy_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/graded_mesh_sparameter_accuracy_results.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/graded_z_lowz_demo_closure.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/graded_z_lowz_demo_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/i489_stage2_two_port_fdtd_predeclaration.md": NO_ARTIFACT_REFERENCE,
@@ -659,6 +846,35 @@ CLASSIFICATION: dict[str, str] = {
     "docs/design_notes/issue812_cv17_cv18_geometry_sensitivity_predeclaration.md": GATED,
     "docs/design_notes/issue812_phase_identity_predeclaration.md": GATED,
     "docs/design_notes/issue812_phase_identity_results.md": GATED,
+    # 2026-09-15 (#1043 Stage A, CPML + subpixel psi coefficient): neither note
+    # carries a `::` span at all -- `parses` and `others` are both empty. Every
+    # number in the results note is replayed by
+    # scripts/diagnostics/cpml_subpixel_stability/ into
+    # scripts/diagnostics/_artifacts/cpml_subpixel_stability/*.json, and the
+    # load-bearing ones are additionally pinned by
+    # tests/unit/boundaries/test_cpml_subpixel_coefficient_consistency.py,
+    # which is a stronger check than a key lookup.
+    "docs/design_notes/issue1043_cpml_subpixel_coefficient_predeclaration.md":
+        NO_ARTIFACT_REFERENCE,
+    ISSUE1043_STABILITY_NOTE: GATED,
+    # 2026-09-15 (#1043 review round 1, F1): the pre-declaration's only `::`
+    # span is a pytest node id
+    # (`test_subpixel_pec.py::test_pec_short_s11_with_conformal_face_pec`), so
+    # it lands in `others` and never in `parses`; the results note carries no
+    # `::` span at all. Every number in both is replayed by
+    # scripts/diagnostics/cpml_subpixel_stability/f1_pec_short_gate.py and the
+    # load-bearing ones are pinned by the two gates in
+    # tests/unit/geometry/test_subpixel_pec.py.
+    "docs/design_notes/issue1043_f1_pec_short_gate_predeclaration.md":
+        NO_ARTIFACT_REFERENCE,
+    ISSUE1043_F1_NOTE: GATED,
+    # 2026-09-15 (#1043 stage B): the #831 diagnosis notes and stage B's own
+    # results note. All three carry resolvable citations, so GATED is the only
+    # class open to them -- see the constants above for why the two #831 notes
+    # travel with this change at all.
+    ISSUE831_PREDECLARATION: GATED,
+    ISSUE831_RESULTS: GATED,
+    ISSUE1043_PAD_CONTINUATION_NOTE: GATED,
     "docs/design_notes/mixed_refplane_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/portgrid_m0m1_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/portgrid_m0m1_results.md": NO_ARTIFACT_REFERENCE,
@@ -680,8 +896,25 @@ CLASSIFICATION: dict[str, str] = {
     "docs/design_notes/v18_waveguide_s_chain_plan.md": SYMBOL_SPAN_PARSER_SCOPE,
     "docs/design_notes/waveguide_chain_battery_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_chain_battery_remeasure_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-16 (#873 near-field composition): the pre-declaration was written
+    # before any projection coefficient existed and carries no `::` span. Its
+    # basis tables are properties of the port code and the grid, computed from
+    # rfx/sources/_waveguide_modes.py rather than read out of any artifact, so
+    # there is nothing here for this gate to resolve.
+    "docs/design_notes/waveguide_driven_plane_near_field_composition_predeclaration.md":
+        NO_ARTIFACT_REFERENCE,
+    NEAR_FIELD_RESULTS: GATED,
     "docs/design_notes/waveguide_false_lane_column_power_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_false_lane_column_power_results.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-16 (#873 attempt 2): the pre-declaration was written before any
+    # number existed and carries no `::` span at all. Its results note is the
+    # opposite case -- its verdict IS a table of measured numbers read out of
+    # transmission_tilt.json -- so GATED is the only class open to it, and its
+    # "7. Numeric provenance" section emits the citations FROM the artifact
+    # rather than retyping them.
+    "docs/design_notes/waveguide_false_lane_transmission_tilt_predeclaration.md":
+        NO_ARTIFACT_REFERENCE,
+    TILT_RESULTS: GATED,
     "docs/design_notes/waveguide_vi_envelope_sweep_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_vi_envelope_sweep_results.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/wp4e_lumped_component_value_ad_spike.md": NO_ARTIFACT_REFERENCE,

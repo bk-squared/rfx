@@ -231,6 +231,17 @@ def test_nprobe_grad_is_nonzero():
     """Sanity: the gradient is not silently zeroed out (a dead pipeline)."""
     theta = jnp.asarray(1.2, dtype=jnp.float32)
     grad_ad = jax.grad(_s11_mag_loss)(theta)
-    assert abs(float(grad_ad)) > 1e-4, (
-        f"gradient {grad_ad} ~ 0 — AD likely not flowing through lstsq"
+    # This is a dead-pipeline check and nothing more. The loss plants
+    # alpha = 1 and gamma = 0.3*exp(j*theta), so |S11|^2 = 0.09 for every
+    # theta and its TRUE derivative is exactly zero; whatever AD returns here
+    # is float32 fit error, not physics. It read -3.45e-4 while the beta
+    # refinement ran through the L2 norm and +4.08e-5 after it moved to the
+    # squared residual (central differences agree with AD on both sides), and
+    # a better estimator will shrink it further. A floor on that number would
+    # require the numerical error to stay large -- the 1e-4 floor did exactly
+    # that and went red when the estimator improved. A zeroed or
+    # stop_gradient-ed pipeline returns exactly 0.0, which is all this asserts.
+    assert float(grad_ad) != 0.0, (
+        f"gradient is exactly {grad_ad} — AD is not flowing through the "
+        f"lstsq/beta-refinement pipeline"
     )

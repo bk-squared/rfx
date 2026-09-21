@@ -1,0 +1,95 @@
+{#
+    rfx pdoc template override — issue #1019.
+
+    `Simulation` is composed from five private mixins (`_MeshMixin`,
+    `_PreflightMixin`, `_SparamMixin`, `_CompileMixin`, `_ExecuteMixin`,
+    `_ArtifactsMixin`) that live in undocumented modules (`rfx.api._*`).
+
+    pdoc renders a class's `own_members` in full and reduces everything else to
+    an "Inherited Members" link list — and that link list is dropped entirely
+    when the base's module is not one of `all_modules`
+    (`templates/default/module.html.jinja2`, macro `inherited`, the
+    `{% if base[0] not in all_modules %}{% continue %}` guard added for
+    pdoc#715). Because `rfx.api._execute` & co. are never documented modules,
+    every method `Simulation` inherits from them — `run`, `forward`,
+    `preflight`, `compute_*`, `export_*` — vanished from the rendered
+    reference: 17 of 49 public methods, measured 2026-09-15 with pdoc 16.0.0.
+
+    This override renders those members in full instead of dropping them,
+    exactly where the class defines them. It changes WHICH members are
+    rendered, nothing else: members inherited from a *documented* module still
+    go through pdoc's normal "Inherited Members" link list, and members
+    inherited from outside the package (`object`, `tuple`, …) stay excluded.
+
+    Used by `python -m pdoc -t docs/pdoc_templates …`; the anchors it produces
+    are gated by `scripts/check_api_reference.py --html-dir`.
+#}
+{% extends "default/module.html.jinja2" %}
+
+{#
+    True when `attr` should be rendered as a full member of class `cls`:
+    either it is one of pdoc's own members, or it is inherited from a module
+    of this same package that pdoc is not documenting separately (the private
+    mixins). Same "output is treated as a boolean" convention as pdoc's own
+    `is_public` macro.
+#}
+{% macro is_rendered_attr(cls, attr) %}
+    {% if attr in cls.own_members %}
+        true
+    {% elif attr.taken_from[0] not in all_modules
+            and attr.taken_from[0].split(".")[0]
+                == (cls.taken_from[0] or cls.modulename).split(".")[0] %}
+        true
+    {% endif %}
+{% endmacro %}
+
+{% macro nav_members(members) %}
+    <ul class="memberlist">
+        {% for m in members if is_public(m) | trim %}
+            <li>
+                {% if m.kind == "class" %}
+                    <a class="class" href="#{{ m.qualname }}">{{ m.qualname }}</a>
+                    {% set ns = namespace(attrs=[]) %}
+                    {% for attr in m.members.values() %}
+                        {% if is_rendered_attr(m, attr) | trim %}
+                            {% set ns.attrs = ns.attrs + [attr] %}
+                        {% endif %}
+                    {% endfor %}
+                    {% if ns.attrs %}
+                        {{ nav_members(ns.attrs) | indent(12) }}
+                    {% endif %}
+                {% elif m.kind == "module" %}
+                    <a class="module" href="#{{ m.name }}">{{ m.name }}</a>
+                {% elif m.name == "__init__" %}
+                    <a class="function" href="#{{ m.qualname }}">{{ m.qualname.split(".")[-2] }}</a>
+                {% else %}
+                    <a class="{{ m.kind }}" href="#{{ m.qualname }}">{{ m.name }}</a>
+                {% endif %}
+            </li>
+        {% endfor %}
+    </ul>
+{% endmacro %}
+
+{% block module_contents %}
+    {% for m in module.flattened_own_members if is_public(m) | trim %}
+        <section id="{{ m.qualname or m.name }}">
+            {{ member(m) }}
+            {% if m.kind == "class" %}
+                {% for attr in m.members.values() if attr.kind != "class" and is_public(attr) | trim and is_rendered_attr(m, attr) | trim %}
+                    <div id="{{ attr.qualname }}" class="classattr">
+                        {{ member(attr) }}
+                    </div>
+                {% endfor %}
+                {% set inherited_members = inherited(m) | trim %}
+                {% if inherited_members %}
+                    <div class="inherited">
+                        <h5>Inherited Members</h5>
+                        <dl>
+                            {{ inherited_members }}
+                        </dl>
+                    </div>
+                {% endif %}
+            {% endif %}
+        </section>
+    {% endfor %}
+{% endblock %}

@@ -1,0 +1,71 @@
+{
+  "preflight": {
+    "flux_regions": [
+      {
+        "axis": "x",
+        "cell_slices": [
+          [
+            16,
+            19
+          ],
+          [
+            14,
+            21
+          ]
+        ],
+        "clamped": false,
+        "clamped_ends": [
+          [
+            false,
+            false
+          ],
+          [
+            false,
+            false
+          ]
+        ],
+        "lane": "nonuniform",
+        "name": "window",
+        "normal_index": 18,
+        "realized_bounds_m": [
+          [
+            0.0078125,
+            0.01123046875
+          ],
+          [
+            0.005859375,
+            0.01318359375
+          ]
+        ],
+        "realized_coordinate_m": 0.0101318359375,
+        "requested_bounds_m": [
+          [
+            0.0078125,
+            0.01171875
+          ],
+          [
+            0.005859375,
+            0.013671875
+          ]
+        ],
+        "requested_center_m": [
+          0.009765625,
+          0.009765625
+        ],
+        "requested_coordinate_m": 0.009765625,
+        "requested_size_m": [
+          0.00390625,
+          0.0078125
+        ],
+        "tangential_axes": [
+          "y",
+          "z"
+        ]
+      }
+    ],
+    "issues": [],
+    "n_errors": 0,
+    "n_issues": 0,
+    "ok": true
+  }
+}
