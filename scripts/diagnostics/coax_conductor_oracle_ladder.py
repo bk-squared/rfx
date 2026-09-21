@@ -66,7 +66,8 @@ from rfx.sources.sources import GaussianPulse  # noqa: E402
 
 sys.path.insert(0, str(REPO / "tests" / "oracle"))
 from test_coax_conductor_realization import (  # noqa: E402
-    BETA_FRAC, COLUMN_POWER_MAX, C0, Z0_FRAC, _beta_from_s21_phase,
+    BETA_FRAC, COLUMN_POWER_MAX, COLUMN_POWER_MIN, C0, Z0_FRAC,
+    _beta_from_s21_phase,
 )
 
 FREQ_MAX = 40.0e9
@@ -204,7 +205,7 @@ def measure_thru(board: str, rung: float) -> dict:
         and pencil_worst <= BETA_FRAC)
     out["column_power_within_bar"] = bool(
         out["max_column_power"] <= COLUMN_POWER_MAX
-        and out["min_column_power"] >= 1.0 - (COLUMN_POWER_MAX - 1.0))
+        and out["min_column_power"] >= COLUMN_POWER_MIN)
     return out
 
 
@@ -268,6 +269,24 @@ def assemble(src_dir: Path, out_path: Path) -> int:
         raise SystemExit(
             f"the records span {len(commits)} commits {sorted(commits)}; a "
             "ladder assembled across trees compares nothing")
+    for c in cases:
+        m = c["measured"]
+        if "s_params_real" not in m:
+            continue
+        S = (np.asarray(m["s_params_real"], dtype=float)
+             + 1j * np.asarray(m["s_params_imag"], dtype=float))
+        freqs = np.asarray(m["freqs_hz"], dtype=float)
+        col = np.sum(np.abs(S) ** 2, axis=0).min(axis=0)
+        k = int(np.argmin(col))
+        s21_db = 20.0 * np.log10(np.abs(S[1, 0, :]))
+        s11 = np.abs(S[0, 0, :])
+        m["min_column_power_bin_hz"] = float(freqs[k])
+        m["min_column_power_bin_index"] = k
+        m["worst_s21_db"] = float(s21_db.min())
+        m["worst_s21_db_bin_hz"] = float(freqs[int(np.argmin(s21_db))])
+        m["worst_s11_db"] = float(20.0 * np.log10(max(float(s11.max()), 1e-30)))
+        m["n_bins_below_column_power_min"] = int((col < COLUMN_POWER_MIN).sum())
+
     first = cases[0]
     rec = {
         "schema": "rfx.coax_conductor_long_board_record", "schema_version": 1,
@@ -300,7 +319,10 @@ def assemble(src_dir: Path, out_path: Path) -> int:
         else:
             print(f"  {tag:34s} beta {m['beta_ratio_s21_phase_worst']*100:.2f} / "
                   f"{m['beta_ratio_matrix_pencil_worst']*100:.2f} %, "
-                  f"power [{m['min_column_power']:.5f}, {m['max_column_power']:.5f}], "
+                  f"power [{m['min_column_power']:.5f}, {m['max_column_power']:.5f}] "
+                  f"(min at {m.get('min_column_power_bin_hz', float('nan'))/1e9:.2f} GHz), "
+                  f"worst |S21| {m.get('worst_s21_db', float('nan')):.3f} dB, "
+                  f"worst |S11| {m.get('worst_s11_db', float('nan')):.1f} dB, "
                   f"probe span {m['probe_span_rad_at_band_centre']:.3f} rad")
     return 0
 

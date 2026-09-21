@@ -11,7 +11,7 @@
  "jax_version": "0.6.2",
  "numpy_version": "2.2.6",
  "python": "3.10.13",
- "utc": "2026-09-21T16:14:25.457807+00:00",
+ "utc": "2026-09-21T16:22:06.491839+00:00",
  "cases": [
   {
    "schema": "rfx.coax_conductor_oracle_ladder",
@@ -4060,7 +4060,13 @@
      -64.92381639168234
     ],
     "beta_within_bar": false,
-    "column_power_within_bar": false
+    "column_power_within_bar": false,
+    "min_column_power_bin_hz": 12000000000.0,
+    "min_column_power_bin_index": 12,
+    "worst_s21_db": -0.09385186571444536,
+    "worst_s21_db_bin_hz": 12000000000.0,
+    "worst_s11_db": -23.540966003404264,
+    "n_bins_below_column_power_min": 0
    }
   },
   {
@@ -4310,7 +4316,13 @@
      -60.56263107059586
     ],
     "beta_within_bar": false,
-    "column_power_within_bar": false
+    "column_power_within_bar": false,
+    "min_column_power_bin_hz": 6000000000.0,
+    "min_column_power_bin_index": 0,
+    "worst_s21_db": -0.48971331832137766,
+    "worst_s21_db_bin_hz": 6000000000.0,
+    "worst_s11_db": -25.679511232436237,
+    "n_bins_below_column_power_min": 13
    }
   },
   {
@@ -4560,7 +4572,13 @@
      -53.47010424437285
     ],
     "beta_within_bar": false,
-    "column_power_within_bar": false
+    "column_power_within_bar": false,
+    "min_column_power_bin_hz": 6000000000.0,
+    "min_column_power_bin_index": 0,
+    "worst_s21_db": -2.373989304038254,
+    "worst_s21_db_bin_hz": 6000000000.0,
+    "worst_s11_db": -12.54470419427723,
+    "n_bins_below_column_power_min": 13
    }
   },
   {
@@ -5558,7 +5576,13 @@
      -70.1457030932257
     ],
     "beta_within_bar": true,
-    "column_power_within_bar": true
+    "column_power_within_bar": true,
+    "min_column_power_bin_hz": 5400000000.0,
+    "min_column_power_bin_index": 14,
+    "worst_s21_db": -0.0682157837169798,
+    "worst_s21_db_bin_hz": 5400000000.0,
+    "worst_s11_db": -47.170321060279704,
+    "n_bins_below_column_power_min": 0
    }
   },
   {
@@ -6556,7 +6580,13 @@
      -67.31267925576188
     ],
     "beta_within_bar": true,
-    "column_power_within_bar": true
+    "column_power_within_bar": true,
+    "min_column_power_bin_hz": 5400000000.0,
+    "min_column_power_bin_index": 14,
+    "worst_s21_db": -0.05005054524558395,
+    "worst_s21_db_bin_hz": 5400000000.0,
+    "worst_s11_db": -50.45384923780519,
+    "n_bins_below_column_power_min": 0
    }
   },
   {
@@ -7554,7 +7584,13 @@
      -58.806213672452074
     ],
     "beta_within_bar": true,
-    "column_power_within_bar": true
+    "column_power_within_bar": true,
+    "min_column_power_bin_hz": 8700000256.0,
+    "min_column_power_bin_index": 47,
+    "worst_s21_db": -0.05184728654698114,
+    "worst_s21_db_bin_hz": 8700000256.0,
+    "worst_s11_db": -48.70262219777786,
+    "n_bins_below_column_power_min": 0
    }
   },
   {
@@ -8552,7 +8588,13 @@
      -58.921439952346006
     ],
     "beta_within_bar": true,
-    "column_power_within_bar": false
+    "column_power_within_bar": false,
+    "min_column_power_bin_hz": 11900000256.0,
+    "min_column_power_bin_index": 79,
+    "worst_s21_db": -0.08437376537111504,
+    "worst_s21_db_bin_hz": 11900000256.0,
+    "worst_s11_db": -42.542225690914734,
+    "n_bins_below_column_power_min": 0
    }
   }
  ]
