@@ -1852,6 +1852,17 @@ def _build_nu_scan(
     use_waveguide_ports = len(waveguide_ports) > 0
     use_tfsf = tfsf is not None
 
+    # A Huygens face that straddles a TFSF injection plane reads E from one
+    # field region and part of its H from the other, which feeds the whole
+    # incident H into a face that should carry scattered field only. Same
+    # check the uniform lane runs (rfx/simulation.py), same helper.
+    if use_tfsf and use_ntff:
+        from rfx.farfield import require_x_faces_in_one_field_region
+        from rfx.sources.tfsf import tfsf_x_field_planes
+        _x_planes = tfsf_x_field_planes(tfsf[0])
+        if _x_planes is not None:
+            require_x_faces_in_one_field_region(ntff_box, *_x_planes)
+
     # CPML: only initialize when cpml_layers > 0 (skip for PEC boundary)
     use_cpml = grid.cpml_layers > 0
 

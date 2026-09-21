@@ -425,6 +425,122 @@ def _require_face_centre_margin(box: NTFFBox, shape) -> None:
     _raise_face_centre_margin(box, counts, grid=None)
 
 
+# ---------------------------------------------------------------------------
+# TFSF field regions vs the box's x faces
+# ---------------------------------------------------------------------------
+
+_TOTAL = "total-field"
+_SCATTERED = "scattered-field"
+
+
+def _x_sample_offsets(box: NTFFBox) -> tuple[int, int]:
+    """Lowest and highest x offset, relative to the face node, that an x face
+    of ``box`` reads out of the state arrays.
+
+    ``face_centre`` interpolates the tangential H across the face from the two
+    half-cell planes that straddle it — the one at ``idx-1`` and the one at
+    ``idx`` — while E stays on the face node ``idx``: offsets -1 and 0. The
+    legacy ``node`` layout takes E and H both at ``idx``: offset 0 only.
+    """
+    if bool(getattr(box, "face_centre", False)):
+        return -1, 0
+    return 0, 0
+
+
+def _tfsf_region(i: int, x_lo: int, x_hi: int) -> str:
+    """Which TFSF field region the x samples stored at index ``i`` belong to.
+
+    The plane-wave source corrects ``E[x_lo]`` and ``E[x_hi+1]`` after the E
+    update and ``H[x_lo-1]`` and ``H[x_hi]`` after the H update
+    (``rfx/sources/tfsf.py`` module docstring). Reading the signs off those
+    four corrections: the E node at index ``i`` and the H plane at index ``i``
+    (physically ``i+1/2``) carry incident + scattered for ``x_lo <= i <= x_hi``
+    and scattered only outside. One membership test serves both fields.
+    """
+    return _TOTAL if x_lo <= i <= x_hi else _SCATTERED
+
+
+def require_x_faces_in_one_field_region(box: NTFFBox, x_lo: int, x_hi: int) -> None:
+    """Refuse an NTFF box whose x face straddles a TFSF injection plane.
+
+    INVARIANT: every sample a box face reads belongs to ONE field region.
+
+    A total-field/scattered-field plane wave is injected between the two x
+    planes ``x_lo`` and ``x_hi``. Inside them the grid holds incident +
+    scattered field, outside it holds scattered only. A face that reads its E
+    from one region and part of its H from the other feeds the far-field
+    integral the full incident H on a face that should carry scattered field
+    only. Nothing downstream can see it: the transform runs, the run finishes,
+    and the backscatter comes out large by roughly the ratio of incident to
+    scattered amplitude.
+
+    Which samples a face reads depends on its collocation, so the allowed
+    indices are derived from ``box.face_centre``, not written down as a
+    number of cells.
+
+    Raises ``ValueError``. Runs on Python ints at trace time — no JAX arrays,
+    so it is safe to call from a runner before the scan is built.
+    """
+    x_lo = int(x_lo)
+    x_hi = int(x_hi)
+    lo_off, hi_off = _x_sample_offsets(box)
+    for attr, idx in (("i_lo", int(box.i_lo)), ("i_hi", int(box.i_hi))):
+        regions = {
+            off: _tfsf_region(idx + off, x_lo, x_hi)
+            for off in range(lo_off, hi_off + 1)
+        }
+        if len(set(regions.values())) == 1:
+            continue
+        _raise_mixed_x_face(box, attr, idx, x_lo, x_hi, lo_off, hi_off, regions)
+
+
+def _sample_names(off: int, idx: int) -> str:
+    """The stored samples an x face at ``idx`` reads at offset ``off``."""
+    if off == 0:
+        return f"E[{idx}] and H[{idx}] are"
+    return f"H[{idx + off}] is"
+
+
+def _raise_mixed_x_face(box, attr, idx, x_lo, x_hi, lo_off, hi_off, regions):
+    """Name the face, the offending sample and the nearest index that works."""
+    # Allowed placements, from the same offsets the face actually reads.
+    # Outside on the low side, wholly inside the total-field slab, outside on
+    # the high side. Empty ranges drop out below.
+    out_low = x_lo - 1 - hi_off
+    in_low, in_high = x_lo - lo_off, x_hi - hi_off
+    out_high = x_hi + 1 - lo_off
+    outward_txt = f"<= {out_low}" if idx <= x_lo else f">= {out_high}"
+    inward = None
+    if in_low <= in_high:
+        inward = in_low if abs(in_low - idx) <= abs(in_high - idx) else in_high
+    per_sample = "; ".join(
+        f"{_sample_names(off, idx)} {regions[off]}"
+        for off in sorted(regions)
+    )
+    remedy = (
+        f"move {attr} from {idx} to {outward_txt} — the scattered-field side, "
+        "which is where a scattering / RCS box belongs"
+    )
+    if inward is not None:
+        remedy += (
+            f"; or to {inward} to put the whole face inside the total-field "
+            "region, which is also unmixed"
+        )
+    raise ValueError(
+        f"NTFF box x face {attr}={idx} reads samples from BOTH TFSF field "
+        f"regions. The plane wave is injected between x index {x_lo} and "
+        f"{x_hi}: E and H stored at index i carry incident + scattered "
+        f"({_TOTAL}) for {x_lo} <= i <= {x_hi}, and scattered only "
+        f"({_SCATTERED}) outside. "
+        f"With {box.collocation} collocation this face reads {per_sample}. "
+        "Mixing them puts the whole incident field into a face that should "
+        "carry scattered field only, and the far field comes out wrong with "
+        "no other symptom.\n"
+        "Invariant: every sample a box face reads belongs to one field "
+        f"region.\nRemedy: {remedy}."
+    )
+
+
 def accumulate_ntff(
     ntff_data: NTFFData,
     state,

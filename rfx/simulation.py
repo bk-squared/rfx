@@ -838,6 +838,17 @@ def _build_step_setup(
                 "compute_rcs for open-domain oblique scattering."
             )
 
+    # A Huygens face that straddles a TFSF injection plane reads E from one
+    # field region and part of its H from the other, which feeds the whole
+    # incident H into a face that should carry scattered field only. Plain
+    # ints, evaluated here at trace time.
+    if use_tfsf and use_ntff:
+        from rfx.farfield import require_x_faces_in_one_field_region
+        from rfx.sources.tfsf import tfsf_x_field_planes
+        _x_planes = tfsf_x_field_planes(tfsf[0])
+        if _x_planes is not None:
+            require_x_faces_in_one_field_region(ntff, *_x_planes)
+
     # ---- (2,4) fourth-order-in-space stencil (PR-1b) ----
     # order=2 is the default and BYTE-IDENTICAL: dt and every kernel call are
     # untouched.  order=4 is reachable ONLY on the plain uniform-Cartesian
