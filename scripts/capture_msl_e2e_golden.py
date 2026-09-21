@@ -66,6 +66,11 @@ def main():
     freqs = jnp.linspace(t.F_MAX / 10, t.F_MAX, 10, dtype=jnp.float32)
     result = sim.compute_msl_s_matrix(freqs=freqs, num_periods=args.num_periods)
     qualification = qualify_result(result)
+    # Same call the test takes, default and all. Since 2026-09-21 that default
+    # is enforce_passivity=False, so on a fresh capture "S_projected" holds the
+    # RAW matrix and equals "S_raw" -- the key name is kept so the schema of
+    # the committed 2026-09-09 report stays readable, and
+    # "passivity_projection_applied" below says which of the two it carries.
     projected = np.asarray(result.S, dtype=np.complex128)
     raw = projected if result.S_raw is None else np.asarray(result.S_raw)
     report = {
@@ -98,8 +103,13 @@ def main():
         "S_raw": complex_pairs(raw), "S_projected": complex_pairs(projected),
         "Z0": complex_pairs(result.Z0), "beta": complex_pairs(result.beta),
         "assembly": result.assembly, "qualification": qualification,
+        # True only when a projection ran AND clipped: then "S_projected" is
+        # the projected matrix and differs from "S_raw". False means the two
+        # keys hold the same matrix.
+        "passivity_projection_applied": bool(result.S_raw is not None),
     }
-    for name in ("reliable", "settling_db", "cond_a", "beta_railed", "passivity_correction"):
+    for name in ("reliable", "settling_db", "cond_a", "beta_railed",
+                 "passivity_correction", "passivity_excess"):
         value = getattr(result, name, None)
         report[name] = None if value is None else np.asarray(value).tolist()
     old = np.load(t.E2E_GOLDEN_PATH)

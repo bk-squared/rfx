@@ -42,6 +42,12 @@ solver fixed.
 
 ### A. Microstrip `|S11| > 1` (non-passive)
 
+`compute_msl_s_matrix` returns the raw extraction, so a bound violation
+reaches you instead of being clipped. Read `result.passivity_excess` —
+`max(σ_max(S(f)) − 1, 0)` per bin — to see how far over and where, then
+`settling_db` and `reliable` for the cause. `enforce_passivity=True` bounds
+the matrix as a post-process; it does not make the touched bins measurements.
+
 Check probe placement first: the default probe offset is floored to clear
 the source fringing transient; with the floor the reference patch device is
 passive at every tested mesh.
