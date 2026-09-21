@@ -154,17 +154,17 @@ def _build_sim(kind, with_slab):
     return sim
 
 
-@pytest.mark.parametrize("kind,eps_inf", [("debye", DEBYE_EPS_INF),
-                                          ("lorentz", LOR_EPS_INF),
-                                          ("drude", DRUDE_EPS_INF)])
-def test_the_slab_the_grid_builds_is_the_slab_the_oracle_assumes(kind, eps_inf):
+@pytest.mark.parametrize("kind", ["debye", "lorentz", "drude"])
+def test_the_slab_the_grid_builds_is_the_slab_the_oracle_assumes(kind):
     """Realized, not declared. The closed form is evaluated at ``D_SLAB``; the
     FDTD run sees whatever the rasterizer built. One cell more or less (8.5 or
     7.5 mm for 8.0) moves the Drude arm's mean error only to 0.0097 / 0.0081,
     inside its 0.01 gate (reviewer's measurement, 2026-09-21), so the reflection
     gates cannot see it and the cell count is asserted here instead: exactly
-    ``D_SLAB / DX`` cells along x, every one at the material's ``eps_inf`` (no
-    partially filled face cell), no build of FDTD fields needed."""
+    ``D_SLAB / DX`` cells along x in one block, the same in every transverse
+    row (the Box is oversized in y on purpose). No FDTD fields are stepped.
+    Faces drawn off the lattice show up here as a lost cell: this path fills
+    cells all-or-nothing (reviewer's probe at DX/4 and DX/2: 15 cells)."""
     sim = _build_sim(kind, with_slab=True)
     grid = sim._build_grid()
     eps = np.asarray(sim._assemble_materials(grid)[0].eps_r)
@@ -174,8 +174,8 @@ def test_the_slab_the_grid_builds_is_the_slab_the_oracle_assumes(kind, eps_inf):
         f"{kind}: slab realizes {len(filled)} cells = {len(filled) * DX * 1e3:.2f} mm, "
         f"the oracle uses {D_SLAB * 1e3:.2f} mm")
     assert np.all(np.diff(filled) == 1), f"{kind}: the realized slab is not one block"
-    assert np.allclose(row[filled], eps_inf, rtol=1e-6), (
-        f"{kind}: face cells are partially filled: {sorted(set(row[filled].tolist()))}")
+    assert (eps == eps[:, :1, :]).all(), (
+        f"{kind}: the realized slab is not the same in every transverse row")
 
 
 def _measure_R(kind):
