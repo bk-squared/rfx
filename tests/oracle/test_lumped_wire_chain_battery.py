@@ -673,12 +673,23 @@ def test_the_fitted_electrical_length_follows_from_its_own_short(fixture):
         s11 = _complex(fit["s11_short"])
         freqs = np.asarray(fixture["freqs_hz"], dtype=float)
         slope, intercept = np.polyfit(freqs, np.unwrap(np.angle(s11)), 1)
-        assert fit["slope_rad_per_hz"] == pytest.approx(float(slope), rel=1e-9), name
-        length = -float(slope) * C0 / (4.0 * math.pi * math.sqrt(fit["eps_r"]))
-        assert fit["length_m"] == pytest.approx(length, rel=1e-9), name
+        # Two checks with two different jobs. The length must follow from the
+        # STORED slope exactly — that is arithmetic and catches a hand edit.
+        exact = -fit["slope_rad_per_hz"] * C0 / (4.0 * math.pi * math.sqrt(fit["eps_r"]))
+        assert fit["length_m"] == pytest.approx(exact, rel=1e-15), name
+        # The stored slope must come from the stored S11, which is a looser
+        # question: the driver takes the angle of a complex64 array, so its
+        # unwrap and polyfit run in float32 while this re-derivation runs in
+        # float64. The two agree to about float32 epsilon (1.5e-08 on the legs
+        # measured here) and no tighter. A bound of 1e-9 would not be a tighter
+        # test of the fit, only a test of which dtype ran it — and `rel` alone
+        # would not even catch that, because pytest.approx keeps a 1e-12
+        # ABSOLUTE floor and these slopes are of order 1e-09.
+        assert fit["slope_rad_per_hz"] == pytest.approx(float(slope), rel=1e-6,
+                                                        abs=0.0), name
         assert fit["frac_from_declared"] == pytest.approx(
             abs(fit["length_m"] - fit["declared_length_m"]) / fit["declared_length_m"],
-            rel=1e-9), name
+            rel=1e-12), name
         # The fit's own residual has to be carried: a straight line is an
         # assumption about the record, and the lattice's dispersion is not
         # linear in frequency.
