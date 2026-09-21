@@ -88,8 +88,9 @@ LADDER_M = (
 )
 
 # Record length in periods of freq_max — the value the retired script ran
-# with, kept because the ring-down witness (SETTLING_DB) confirms it at every
-# rung: −109 to −111 dB at h/2 … h/8 (VESSL run 369367263038).
+# with, kept because the ring-down witness (SETTLING_DB) confirms it: −109 to
+# −111 dB at every rung of a four-rung run h/2 … h/8 (VESSL run 369367263038;
+# the case's own ladder below stops at h/6).
 NUM_PERIODS = 20.0
 N_FREQS = 100
 # The band both references cover; the notch is searched inside it, never over
