@@ -97,8 +97,28 @@ either way.
 
 **A box must now sit at least one cell inside the array bounds on every
 axis**, because the half-cell averages read one index further out than the
-face. Nothing upstream guaranteed that, so `accumulate_ntff` refuses a box
-that does not, with the offending axes named.
+face. Nothing upstream guaranteed that. Two configurations that ran before
+now raise: a 2-D run (`mode="2d_tmz"`, one cell in z) and a box spanning the
+whole domain with `cpml_layers=0`. The refusal happens in
+`with_face_centre_collocation`, where the grid is still in hand, so it can
+name the offending axis in metres as well as in cells and give the range that
+axis can carry a face in; `accumulate_ntff` keeps an index-only backstop for
+boxes built by hand, and the subgridded runner checks before its scan. A
+1-cell axis is told the transform needs a 3-D box rather than to move its
+faces. Verbatim, for the flush-box case:
+
+```
+NTFF box has no room for the face-centre half-cell averages. Moving a face
+sample to the centre of its cell reads one index further out than the face
+itself, so every face must sit at least one cell inside the array bounds
+(1 <= lo < hi <= n-1).
+  x: faces at index 0 and 20 of 21 cells (0 m and 0.06 m); this axis can
+     carry a face anywhere in [0.003 m, 0.06 m]
+  ...
+Remedy: move each face at least one cell further inside the domain. The
+corners come from Simulation.add_ntff_box(corner_lo=..., corner_hi=...)
+(rfx.farfield.make_ntff_box).
+```
 
 ## Measured convergence
 
@@ -114,17 +134,25 @@ components. Uniform mesh:
 | face-centre (now) | 1.479e-02 | 3.691e-03 | 9.225e-04 | 4.01, 4.00 |
 | node rule (before) | 3.174e-01 | 1.599e-01 | 8.011e-02 | 1.99, 2.00 |
 
-Same box and dipoles on a mesh whose z cells stretch smoothly by 3x across
-the axis (per-cell ratio 1.10 at the coarse mesh, 1.03 at the fine one), read
-through the `dx_arr`/`dy_arr`/`dz` path:
+Same box and dipoles on a mesh whose cells stretch smoothly by 3x across one
+axis (per-cell ratio 1.10 at the coarse mesh, 1.03 at the fine one), read
+through the `dx_arr`/`dy_arr`/`dz` path. Every axis is graded in turn,
+because the accumulator's slicing, the edge arrays and the area element are
+written out per axis and a defect can hide on one of them:
 
-| surface sampling | lambda/10 | lambda/20 | lambda/40 | ratios |
+| graded axis | lambda/10 | lambda/20 | lambda/40 | ratios |
 |---|---|---|---|---|
-| face-centre (now) | 1.663e-02 | 4.789e-03 | 1.339e-03 | 3.47, 3.58 |
-| node rule (before) | 3.205e-01 | 1.621e-01 | 8.165e-02 | 1.98, 1.99 |
+| x, face-centre (now) | 1.577e-02 | 4.234e-03 | 1.128e-03 | 3.72, 3.75 |
+| y, face-centre (now) | 1.859e-02 | 5.237e-03 | 1.442e-03 | 3.55, 3.63 |
+| z, face-centre (now) | 1.663e-02 | 4.789e-03 | 1.339e-03 | 3.47, 3.58 |
+| z, node rule (before) | 3.205e-01 | 1.621e-01 | 8.165e-02 | 1.98, 1.99 |
 
 The graded family is not a pure halving — the grading ratio changes with the
 cell count — so its ratios sit below 4 while the uniform ones do not.
+
+The numpy and JAX transforms are checked against each other on a uniform box
+and on a box graded on all three axes: relative L2 between them 4e-07 to
+7e-07, which is float32 in the JAX path, not geometry.
 
 At lambda/20 the midpoint rule's own quadrature error on the radiation phase,
 (k*d)^2/24, is 4.1e-3, so 3.7e-3 is the floor of what this rule can reach on
@@ -132,17 +160,32 @@ that mesh.
 
 ## Mutation evidence
 
-Each row re-introduces one defect in `rfx/farfield.py` with every helper call
-left in place, then runs
-`tests/unit/farfield/test_ntff_second_order_oracle.py`. Unmutated: 16 passed.
+Every row re-introduces one defect with every helper call left in place, then
+runs the gates. Unmutated on this branch: oracle 32 passed, battery fast
+8 passed, battery slow_physics 5 passed, NU fixture slow_physics 2 passed.
 
-| mutation | result | oracle error, lambda/10 / /20 / /40 | ratios |
+| # | mutation | verdict | caught by |
 |---|---|---|---|
-| integrate at the corner node again (`centre=False` in the position call) | RED | 2.256e-01 / 1.134e-01 / 5.673e-02 | 1.99, 2.00 |
-| no normal interpolation for H (weight 0 on the inner cell) | RED | 1.935e-01 / 9.737e-02 / 4.873e-02 | 1.99, 2.00 |
-| E stamped at n*dt | RED | 3.404e-01 / 3.427e-01 / 3.433e-01 | 0.99, 1.00 |
-| no in-plane half-cell average for E | RED | 2.977e-02 / 1.324e-02 / 6.366e-03 | 2.25, 2.08 |
-| y-face area back to dx*dy | RED | (area invariant test) | — |
+| M1 | integrate at the corner node again (`centre=False` in the numpy position call) | RED | oracle error bound + convergence rate, all three meshes; 2.256e-01 / 1.134e-01 / 5.673e-02, ratios 1.99, 2.00 |
+| M2 | no normal interpolation for H (weight 0 on the lower-index cell) | RED | same; 1.935e-01 / 9.737e-02 / 4.873e-02, ratios 1.99, 2.00 |
+| M3 | E stamped at n*dt | RED | oracle (3.404e-01 / 3.427e-01 / 3.433e-01, ratios 0.99, 1.00); battery `test_ntff_absolute_power_calibration_vs_flux_box`, `test_dipole_directivity_regression_lock`, the ladder, the NU lane, the 27 mm box |
+| M4 | no in-plane half-cell average for E | RED | oracle; 2.977e-02 / 1.324e-02 / 6.366e-03, ratios 2.25, 2.08 |
+| M5 | y-face area element back to dx*dy | RED | `test_scalar_face_area_elements_span_their_own_face` |
+| M6 | face-cell layout recorded as a str again | RED | `test_box_is_a_valid_jax_pytree`, both refusal tests, the subgridded wiring test |
+| M7 | JAX transform back on the corner node (numpy left alone) | RED | both `test_jax_transform_matches_numpy_on_a_*_box` |
+| M8 | NU runner loses its `with_face_centre_collocation` call | RED | `test_nonuniform_runner_hands_back_a_face_centre_box`; battery slow `test_nonuniform_lane_power_calibration_and_slot`. Battery FAST lane stays green — the NU gate is slow_physics |
+| M9 | subgridded runner loses `face_centre=True` | RED | `test_subgridded_runner_hands_back_a_face_centre_box` |
+| M10 | weights applied to the wrong side (consumer swap) | RED | `test_accumulator_lands_on_the_face_cell_centre_exactly` |
+| M11 | weight read from the wrong cell (producer swap) | RED | the same, plus `test_normal_weight_does_not_wrap_at_index_zero` and `test_normal_interpolation_lands_on_the_face_plane` |
+| M12 | x and y cell widths crossed in the weight builder | RED | `test_accumulator_lands_on_the_face_cell_centre_exactly` |
+| M13 | NTFF accumulate moved above the E update, uniform runner | RED | battery fast ratio + directivity; slow ladder and the 27 mm box |
+| M14 | NTFF accumulate moved above the E update, NU runner | RED | battery slow `test_nonuniform_lane_power_calibration_and_slot`; fast lane green, as for M8 |
+| M15 | flush-box refusal removed | RED | all three refusal tests |
+| M16 | NU far-field fixture back to 200 steps | RED | both `test_nu_ntff_dipole_directivity` cases, on the settling witness |
+
+M1-M4, M10-M12 are the ones the far-field oracle alone could not separate:
+M10-M12 are all second order either way, and only the accumulate-level
+exactness check sees them.
 
 Not vacuous: perturbing the oracle's reference far field by a constant factor
 and re-running the unmutated code turns the gates red at
@@ -172,27 +215,95 @@ far-field files, plus 8 passed on
 | locks NTFF battery, x-dipole rung | D | 1.799945 dBi | 1.761379 dBi | 1.760913 dBi (analytic) | yes: 0.0390 -> 0.0005 dB |
 | oracle test_farfield | short-dipole D | 1.836 dBi | 1.770 dBi | 1.76 dBi (analytic) | yes: 0.076 -> 0.010 dB |
 | oracle test_farfield | half-wave dipole D | 2.380 dBi | 2.156 dBi | 2.15 dBi (analytic) | yes: 0.230 -> 0.006 dB |
-| test_farfield_nonuniform, uniform-z via NU | D | 1.7218 dBi | 1.7075 dBi | 1.7609 dBi (analytic) | no: 0.039 -> 0.053 dB |
-| test_farfield_nonuniform, graded-z | D | 1.7167 dBi | 1.7135 dBi | 1.7609 dBi (analytic) | no: 0.044 -> 0.047 dB |
+| test_farfield_nonuniform, uniform-z via NU (settled, 600 steps) | D | 1.7062 dBi | 1.7001 dBi | 1.7609 dBi (analytic) | no: 0.055 -> 0.061 dB |
+| test_farfield_nonuniform, graded-z (settled, 600 steps) | D | 1.7074 dBi | 1.7002 dBi | 1.7609 dBi (analytic) | no: 0.054 -> 0.061 dB |
 
-Every one of these assertions is an analytic expectation with a tolerance
-band (0.25 dB, 0.75 dB, 0.5 dB, 0.3 dB respectively); none is a recorded
-snapshot, and no gate was re-pinned. The two non-uniform rows sit on a
-fixture whose NTFF box is 5 mm from the source while lambda/4 is 25 mm —
-preflight emits six near-field advisories on it.
+The assertions in `tests/oracle/test_farfield.py` and
+`test_farfield_nonuniform.py` are analytic expectations with tolerance bands
+(0.75 dB, 0.5 dB, 0.3 dB). The locks battery is different: `_LADDER_RUNGS`
+carried per-rung error caps and power-ratio centres measured with the old
+rule. They stayed green, but at those caps a full revert of this change would
+have stayed green too. This PR re-pins them to what the corrected transform
+measures and rewrites the battery's caveat 2, which attributed part of the
+ratio offset to the E time label removed here. The root cause of the move is
+the one this note describes; the caps only tighten.
+
+| rung | old cap | old measured | new measured | new cap |
+|---|---|---|---|---|
+| dx 3.00 mm, 400 steps | 0.15 dB | 0.0391 dB | 0.00052 dB | 0.005 dB |
+| dx 1.50 mm, 800 steps | 0.08 dB | 0.0147 dB | 0.00012 dB | 0.002 dB |
+| dx 0.75 mm, 1600 steps | 0.04 dB | 0.0064 dB | 0.00006 dB | 0.001 dB |
+
+| ratio centre | old | new |
+|---|---|---|
+| dx 3.00 mm | 0.4948 | 0.5003207 |
+| dx 1.50 mm | 0.5128 | 0.5150090 |
+| dx 0.75 mm | 0.5215 | 0.5225705 |
+
+Band +/-0.02 per rung, unchanged. The two fast base-rung gates move with
+them: the directivity cap 0.25 -> 0.005 dB and the derived-0.5 power-ratio
+tolerance 0.05 -> 0.003.
+
+The two non-uniform rows say nothing about the transform. That test stopped
+at 200 steps, when the field at the probe had not begun to decay (end/peak
+0.94 and 1.00; the run's own settling witness fails at -1.5 dB and -0.2 dB
+against the -40 dB rule), so both columns of those rows are from a cut
+transient. With the record settled — 600 steps, unchanged to 3000, tail/peak
+1.3e-4 — the fixture gives 1.7062 / 1.7074 dBi with the old rule and
+1.7001 / 1.7002 dBi with this one, against 1.7609 dBi. Both rules sit
+0.05-0.06 dB low and differ from each other by 0.006-0.007 dB, so the offset
+is common to both and is not a property of the surface rule. Its cause was
+not investigated: it is thirty times inside the 2 dB bar, on a
+0.3-wavelength domain whose box is one cell from the absorber. The test now
+runs 600 steps and asserts the settling witness.
+
+Two lanes the uniform gates never reached, measured here for the first time:
+
+| lane | D | |err| vs 1.760913 dBi | P_ntff / P_flux | settling |
+|---|---|---|---|---|
+| non-uniform runner, battery fixture | 1.7614008 dBi | 0.00049 dB | 0.4953183 | -78.45 dB |
+| uniform runner, same fixture | 1.7614298 dBi | 0.00052 dB | 0.5003207 | -- |
+
+The NU lane's power ratio sits 0.0047 from the derived 0.5 while the uniform
+lane sits 0.00032 from it. That difference is recorded, not explained; the
+NU gate is a band on the measurement, not a claim about the derived value.
 
 LEADER FILLS — what this says about the transform.
 
 `tests/crossval/` and `validation/crossval/` were not run (another session
 owns them this week).
 
+## The subgridded lane
+
+Experimental (3D SBP-SAT falsified, PR #90). It gets a wiring assertion only
+— that its inline box comes back face-centre — and no accuracy claim is made
+for its far field here.
+
 ## Where the numbers live
 
-- Oracle, mutations and the always-on gate:
+- Oracle, the accumulate-level exactness check, the numpy/JAX parity check,
+  the pytree check, the runner wiring checks and the refusal messages:
   `tests/unit/farfield/test_ntff_second_order_oracle.py`
+- The re-pinned rungs, the NU lane slot witness and the box-size witness:
+  `tests/locks/test_ntff_directivity_validation_battery.py`
+- The settled non-uniform fixture:
+  `tests/unit/farfield/test_farfield_nonuniform.py`
 - The transform: `rfx/farfield.py`
   (`accumulate_ntff`, `compute_far_field`, `compute_far_field_jax`,
-  `with_face_centre_collocation`, `_scalar_face_dS`,
-  `_require_face_centre_margin`)
+  `with_face_centre_collocation`, `_normal_weight`, `_scalar_face_dS`,
+  `_raise_face_centre_margin`)
 
-LEADER FILLS — verdict against the v2 accuracy bar.
+## Verdict against the v2 accuracy bar
+
+Against the v2 accuracy bar (power and magnitude within 2 dB of the reference
+on a converged mesh) the old rule was already inside on every fixture above;
+its largest error here is 0.23 dB, on the half-wave dipole. This change does
+not rescue a failing result. It changes the order of the error: the old one
+halved per halving of the mesh and grew with the size of the box drawn round
+the radiator, the new one falls by four and does not grow with the box — at
+box half-width 9 / 18 / 27 mm the directivity error was 0.0212 / 0.0677 /
+0.1660 dB and is now 0.00013 / 0.00050 / 0.00204 dB
+(`test_directivity_error_does_not_grow_with_the_huygens_box`). A user gets a
+far field whose error no longer depends on how large they drew the box, and a
+radiated power that agrees with an independent flux box to 0.06 % instead of
+1 %.
