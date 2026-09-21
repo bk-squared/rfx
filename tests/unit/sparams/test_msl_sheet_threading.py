@@ -12,9 +12,17 @@ completing-is-not-the-property lesson of
 
 O1  (removed 2026-09-21, #1022) no-sheet identity against a byte-exact golden.
     It answered a one-time question -- did removing the fence change the
-    no-sheet result -- and every deliberate change to the MSL lane since (#931,
-    #981, #986) made its golden stale by design. Unintended drift of the MSL S
-    is what ``tests/fixtures/msl_s_matrix_golden.json`` is for.
+    no-sheet result. Every deliberate change to the MSL lane since made the
+    golden stale by design: max |S - golden| was 2.660e-07 at the capture commit
+    a96c23f7 (the platform floor off VESSL), 5.331e-05 after f990f9a0 (PR #981,
+    MSL source interval) and 3.726e-03 after 65edc345 (PR #986, current
+    interpolated onto the voltage reference plane), as bisected on #1022.
+    WHAT IS NO LONGER PINNED: the absolute S of the UNIFORM-grid MSL lane on this
+    board; no committed test compares it with a stored reference any more. What
+    remains is a different thing: ``test_msl_sparam_ad.py`` holds the
+    NON-UNIFORM coupon to ``msl_s_matrix_golden.npy`` within rtol 5e-3 / atol
+    2e-3, also on the weekly lane. The no-sheet run itself still executes here
+    as the baseline of O2 and O3.
 O2  Rs->0 limit — a tiny-Rs0 f0 sheet reproduces the PEC-sheet realization
     of the same mask (the #677 footprint-identity tooth, through the full
     MSL extraction).
@@ -111,7 +119,7 @@ SHEET_Z = H_SUB + 3.5 * DX    # 2 cells above the 1-cell trace, in air
 SHEET_X = (4.5e-3, 7.5e-3)    # clear of feeds; probe 0 clears it by ONE cell (see docstring)
 SHEET_HALF_W = 0.7e-3
 
-#: The full-settle frequency grid (matches the golden capture exactly).
+#: The full-settle frequency grid.
 FREQS = np.linspace(0.5e9, 5e9, 16)
 #: Quasi-TEM gate band at dx=80um (same window as the integration gate).
 GATE = (FREQS >= 3.0e9) & (FREQS <= 4.5e9)
