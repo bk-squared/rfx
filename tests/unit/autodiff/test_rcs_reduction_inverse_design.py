@@ -10,21 +10,28 @@ run(tfsf, ntff) + compute_rcs_jax. Ground truth is the RAM impedance-matching ph
   • gradient descent (keeping the best iterate) reduces the band RCS by ~41% and lands at the
     RAM optimum σ_coat*≈0.3 S/m.
 
-RE-PINNED 2026-09-22 (issue #1172), with the root cause. This cube scatters FORWARD 10-20 dB harder
-than backward. On the far face of the Huygens box the electric and magnetic equivalent currents of
-that forward wave must cancel toward the backscatter direction. Before #1159 the far-field rule read
-E and H a full timestep apart (omega*dt = 20.6 deg at 10 GHz on this mesh) and half a cell apart
-(k*dx/2 = 18 deg), so the cancellation failed and about a third of the forward-scattered field leaked
-into the backscatter. Measured on this fixture, old rule -> second-order rule: forward scatter
-1.13e-2 / 8.66e-3 / 8.47e-3 -> 1.08e-2 / 8.86e-3 / 9.38e-3 m^2 (unchanged within 0.4 dB), backscatter
-1.03e-3 / 1.41e-3 / 2.71e-3 -> 1.84e-4 / 7.81e-5 / 9.42e-4 m^2 (4.6-12.6 dB lower). Mesh refinement of
-the band backscatter at sigma = 0, dx = 3 / 1.5 / 1 mm: second-order rule 1.205e-3 / 9.95e-4 / 9.38e-4
-(limit ~8.9e-4), old rule 5.15e-3 / 2.17e-3 / 1.65e-3 — the old rule was heading to the same value from
-7.6 dB away. The old expectations here ("~47 %", "sigma* ~ 1.9") were read off the leakage-dominated
-curve, and 1.9 is also exactly this optimizer's first step (lr*0.2/sqrt(0.001) = 6.3*lr), whatever the
-gradient. Scan at this mesh with the corrected rule: RCS/RCS(0) = 0.617 / 0.591 / 0.599 / 0.619 / 0.726
-at sigma = 0.2 / 0.3 / 0.4 / 0.5 / 1.0. jax.grad agrees with central differences on the corrected
-rule (1.0001 at sigma = 1.9, 1.0095 at 0.5 with the difference still converging in h).
+RE-PINNED 2026-09-22 (issue #1172), with the root cause. The body is a homogeneous lossy dielectric cube
+(eps_r = 4 plus sigma in the same block — "coating" above is the historical name of the knob). It scatters
+FORWARD 10-20 dB harder than backward, so the backscatter is a small difference of large numbers on the
+Huygens box. Before #1159 the far-field rule read E and H a full timestep apart (omega*dt = 20.6 deg at
+10 GHz on this mesh) and half a cell apart (k*dx/2 = 18 deg); the electric and magnetic equivalent currents
+then fail to cancel toward the backscatter direction on every face, the far face most of all. Measured on
+this fixture, old rule -> second-order rule: forward scatter 1.13e-2 / 8.66e-3 / 8.47e-3 -> 1.08e-2 /
+8.86e-3 / 9.38e-3 m^2 (within 0.45 dB), backscatter 1.03e-3 / 1.41e-3 / 2.71e-3 -> 1.84e-4 / 7.81e-5 /
+9.42e-4 m^2 (4.6-12.6 dB lower).
+Which rule is right is decided by the equivalence principle, not by either rule: the far field may not
+depend on where the box is drawn. Band backscatter at sigma = 0 over 12 box placements on one run (all
+faces in the scattered-field region, x faces >= 2 cells outside the TFSF planes): second-order rule
+1.14e-3 ... 1.23e-3 m^2 (0.34 dB), old rule 1.86e-3 ... 9.89e-3 (7.25 dB), the new time stamp with the old
+node layout 6.6e-4 ... 3.5e-3 (7.31 dB) — it is the face-centre collocation that buys the invariance. At
+dx = 1.5 mm (4 placements): 0.20 dB against 5.11 dB, and the old rule's range has come down to straddle
+the new rule's 9.5e-4 ... 1.0e-3. The old expectations here ("~47 %", "sigma* ~ 1.9") were read off the
+box-dependent curve, and 1.9 is also exactly this optimizer's first step (lr*0.2/sqrt(0.001) = 6.3*lr),
+whatever the gradient. Scan at this mesh with the corrected rule: RCS/RCS(0) = 0.617 / 0.591 / 0.599 /
+0.619 / 0.726 at sigma = 0.2 / 0.3 / 0.4 / 0.5 / 1.0. jax.grad agrees with central differences on the
+corrected rule (1.0001 at sigma = 1.9, 1.0095 at 0.5 with the difference still converging in h).
+The box's far x face sits 2 cells outside the TFSF plane on purpose: the face-centre rule interpolates H
+from the plane one cell nearer, and at 1 cell that plane carries total-field H (band backscatter 1.4e-1).
 
 Builds on tests/unit/autodiff/test_rcs_jax_differentiable.py (equivalence to Mie-validated numpy + FD gradient).
 Harness: docs/research_notes/experiments/i404_oblique_20260720/rcs_reduction_diag.py
@@ -116,6 +123,7 @@ def test_rcs_reduction_inverse_design_reduces_backscatter():
         best, s_best = last, s
     # Measured: best/r0 = 0.591 at sigma = 0.32 (scan minimum 0.591 at 0.3).
     assert best < 0.65 * r0, f"RCS reduction too small: {r0:.4e} -> {best:.4e} ({(1-best/r0)*100:.1f}%)"
-    # The optimum's LOCATION is the physics this fixture carries: with the pre-#1159 far-field rule the
-    # backscatter was mostly leaked forward scatter and the minimum sat near sigma = 1.0.
-    assert 0.15 <= s_best <= 0.6, f"RAM optimum moved: best iterate at sigma_coat = {s_best:.2f} S/m"
+    # The optimum's LOCATION is what discriminates: the 0.65 bar above also passes on the pre-#1159
+    # far-field rule (0.484 there), whose minimum sat near sigma = 1.0 (best iterate 0.87). One-sided on
+    # purpose: no iterate can land in (0, 6.3*lr), so a lower bound could never fire.
+    assert s_best <= 0.6, f"RAM optimum moved: best iterate at sigma_coat = {s_best:.2f} S/m"
