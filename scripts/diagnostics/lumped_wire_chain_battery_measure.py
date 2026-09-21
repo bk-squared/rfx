@@ -1503,7 +1503,27 @@ def _solve_entry(rec: dict) -> dict:
                                            F_LO, F_HI)
         rows = match_crossings(meas["crossings"], an_cross)
         fracs = [r["frac"] for r in rows if r["frac"] is not None]
+        # The slope of the unwrapped angle, measured and analytic. The crossing
+        # test above cannot see a conjugated S: angle = phi - 2 beta L and
+        # angle = phi + 2 beta L cross multiples of pi at the SAME frequencies,
+        # so a flipped time convention would pass it unchanged. This pair of
+        # numbers is where that would show. Recorded as a fact with no
+        # threshold — the pre-declaration's phase test is the crossings, and
+        # inventing a second criterion here is not this driver's to do.
+        ang = np.unwrap(np.angle(s11))
+        slope_meas = float(np.polyfit(freqs, ang, 1)[0])
+        slope_an = float(np.polyfit(freqs, np.unwrap(np.angle(an_real)), 1)[0])
         entry["phase"] = {
+            "angle_slope_rad_per_hz": {
+                "measured": slope_meas,
+                "analytic_realized_length": slope_an,
+                "ratio": (slope_meas / slope_an) if slope_an != 0.0 else None,
+                "same_sign": bool(slope_meas * slope_an > 0.0),
+                "what": ("a least-squares slope of the unwrapped angle over the "
+                         "whole band. The crossing comparison is blind to a "
+                         "conjugated S because both conventions cross multiples "
+                         "of pi at the same frequencies; this is not."),
+            },
             "measured": meas,
             "analytic_realized_length": an_cross,
             "analytic_declared_length": an_cross_decl,

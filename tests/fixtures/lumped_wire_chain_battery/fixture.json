@@ -35,8 +35,8 @@
    "what_it_costs": "the open's realized length is (N_L - 0.5) cells and shrinks toward 30 mm as the mesh refines: 29.5, 29.75, 29.875 mm. Every analytic comparison in this fixture uses the REALIZED length, which is exact at every rung; the declared-length comparison is recorded beside it."
   }
  ],
- "assembled_utc": "2026-09-21T10:49:48.018620+00:00",
- "assembler_commit": "7fa96e5655233a9ca84aaa35f11c6a40407e507f",
+ "assembled_utc": "2026-09-21T10:51:08.922792+00:00",
+ "assembler_commit": "e9c82a6faa3b72e75a23f7f89939c76baadb566e",
  "channel": {
   "l_line_m": 0.03,
   "n_h_cells": {
@@ -1378,6 +1378,13 @@
     "within_bar": true
    },
    "phase": {
+    "angle_slope_rad_per_hz": {
+     "measured": -1.2509885472922975e-09,
+     "analytic_realized_length": -1.2575070131710091e-09,
+     "ratio": 0.9948163582306596,
+     "same_sign": true,
+     "what": "a least-squares slope of the unwrapped angle over the whole band. The crossing comparison is blind to a conjugated S because both conventions cross multiples of pi at the same frequencies; this is not."
+    },
     "measured": {
      "bin_width_hz": 100000000.0,
      "unwrapped_angle_rad": [
@@ -2853,6 +2860,13 @@
     "within_bar": true
    },
    "phase": {
+    "angle_slope_rad_per_hz": {
+     "measured": -1.2539456266325876e-09,
+     "analytic_realized_length": -1.2575070131710091e-09,
+     "ratio": 0.9971678992632885,
+     "same_sign": true,
+     "what": "a least-squares slope of the unwrapped angle over the whole band. The crossing comparison is blind to a conjugated S because both conventions cross multiples of pi at the same frequencies; this is not."
+    },
     "measured": {
      "bin_width_hz": 100000000.0,
      "unwrapped_angle_rad": [
@@ -4328,6 +4342,13 @@
     "within_bar": true
    },
    "phase": {
+    "angle_slope_rad_per_hz": {
+     "measured": -1.2556543594483023e-09,
+     "analytic_realized_length": -1.2575070131710091e-09,
+     "ratio": 0.99852672493807,
+     "same_sign": true,
+     "what": "a least-squares slope of the unwrapped angle over the whole band. The crossing comparison is blind to a conjugated S because both conventions cross multiples of pi at the same frequencies; this is not."
+    },
     "measured": {
      "bin_width_hz": 100000000.0,
      "unwrapped_angle_rad": [
@@ -5803,6 +5824,13 @@
     "within_bar": true
    },
    "phase": {
+    "angle_slope_rad_per_hz": {
+     "measured": -1.2266487101649393e-09,
+     "analytic_realized_length": -1.2365485629514921e-09,
+     "ratio": 0.9919939636152073,
+     "same_sign": true,
+     "what": "a least-squares slope of the unwrapped angle over the whole band. The crossing comparison is blind to a conjugated S because both conventions cross multiples of pi at the same frequencies; this is not."
+    },
     "measured": {
      "bin_width_hz": 100000000.0,
      "unwrapped_angle_rad": [
@@ -7256,6 +7284,13 @@
     "within_bar": true
    },
    "phase": {
+    "angle_slope_rad_per_hz": {
+     "measured": -1.2412402275076744e-09,
+     "analytic_realized_length": -1.2470277880612506e-09,
+     "ratio": 0.9953589161292274,
+     "same_sign": true,
+     "what": "a least-squares slope of the unwrapped angle over the whole band. The crossing comparison is blind to a conjugated S because both conventions cross multiples of pi at the same frequencies; this is not."
+    },
     "measured": {
      "bin_width_hz": 100000000.0,
      "unwrapped_angle_rad": [
@@ -8709,6 +8744,13 @@
     "within_bar": true
    },
    "phase": {
+    "angle_slope_rad_per_hz": {
+     "measured": -1.2491621961285362e-09,
+     "analytic_realized_length": -1.2522674006161299e-09,
+     "ratio": 0.997520334326306,
+     "same_sign": true,
+     "what": "a least-squares slope of the unwrapped angle over the whole band. The crossing comparison is blind to a conjugated S because both conventions cross multiples of pi at the same frequencies; this is not."
+    },
     "measured": {
      "bin_width_hz": 100000000.0,
      "unwrapped_angle_rad": [
@@ -10190,6 +10232,13 @@
     "within_bar": true
    },
    "phase": {
+    "angle_slope_rad_per_hz": {
+     "measured": -1.2451977554925212e-09,
+     "analytic_realized_length": -1.257507013171009e-09,
+     "ratio": 0.9902113804936579,
+     "same_sign": true,
+     "what": "a least-squares slope of the unwrapped angle over the whole band. The crossing comparison is blind to a conjugated S because both conventions cross multiples of pi at the same frequencies; this is not."
+    },
     "measured": {
      "bin_width_hz": 100000000.0,
      "unwrapped_angle_rad": [
@@ -11693,6 +11742,13 @@
     "within_bar": true
    },
    "phase": {
+    "angle_slope_rad_per_hz": {
+     "measured": -1.2512052870868496e-09,
+     "analytic_realized_length": -1.257507013171009e-09,
+     "ratio": 0.9949887149589182,
+     "same_sign": true,
+     "what": "a least-squares slope of the unwrapped angle over the whole band. The crossing comparison is blind to a conjugated S because both conventions cross multiples of pi at the same frequencies; this is not."
+    },
     "measured": {
      "bin_width_hz": 100000000.0,
      "unwrapped_angle_rad": [
@@ -13196,6 +13252,13 @@
     "within_bar": true
    },
    "phase": {
+    "angle_slope_rad_per_hz": {
+     "measured": -1.2543271090523712e-09,
+     "analytic_realized_length": -1.257507013171009e-09,
+     "ratio": 0.9974712633127835,
+     "same_sign": true,
+     "what": "a least-squares slope of the unwrapped angle over the whole band. The crossing comparison is blind to a conjugated S because both conventions cross multiples of pi at the same frequencies; this is not."
+    },
     "measured": {
      "bin_width_hz": 100000000.0,
      "unwrapped_angle_rad": [
@@ -14699,6 +14762,13 @@
     "within_bar": true
    },
    "phase": {
+    "angle_slope_rad_per_hz": {
+     "measured": -1.2705417861977085e-09,
+     "analytic_realized_length": -1.257507013171009e-09,
+     "ratio": 1.0103655668637825,
+     "same_sign": true,
+     "what": "a least-squares slope of the unwrapped angle over the whole band. The crossing comparison is blind to a conjugated S because both conventions cross multiples of pi at the same frequencies; this is not."
+    },
     "measured": {
      "bin_width_hz": 100000000.0,
      "unwrapped_angle_rad": [
@@ -16202,6 +16272,13 @@
     "within_bar": true
    },
    "phase": {
+    "angle_slope_rad_per_hz": {
+     "measured": -1.2639871277176705e-09,
+     "analytic_realized_length": -1.257507013171009e-09,
+     "ratio": 1.0051531438622525,
+     "same_sign": true,
+     "what": "a least-squares slope of the unwrapped angle over the whole band. The crossing comparison is blind to a conjugated S because both conventions cross multiples of pi at the same frequencies; this is not."
+    },
     "measured": {
      "bin_width_hz": 100000000.0,
      "unwrapped_angle_rad": [
@@ -17705,6 +17782,13 @@
     "within_bar": true
    },
    "phase": {
+    "angle_slope_rad_per_hz": {
+     "measured": -1.2607319041771552e-09,
+     "analytic_realized_length": -1.257507013171009e-09,
+     "ratio": 1.0025645113485404,
+     "same_sign": true,
+     "what": "a least-squares slope of the unwrapped angle over the whole band. The crossing comparison is blind to a conjugated S because both conventions cross multiples of pi at the same frequencies; this is not."
+    },
     "measured": {
      "bin_width_hz": 100000000.0,
      "unwrapped_angle_rad": [

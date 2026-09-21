@@ -361,6 +361,26 @@ def test_the_phase_crossings_at_the_claims_rung_land_within_one_percent(fixture,
         f"analytic/measured/frac = {[(round(a / 1e9, 5), round(b / 1e9, 5), round(c, 5)) for a, b, c in detail]}")
 
 
+@pytest.mark.parametrize("key", REFLECTING)
+def test_the_recorded_phase_slope_follows_from_the_stored_s11(fixture, key):
+    """The crossing comparison cannot see a conjugated S — both time conventions
+    cross multiples of pi at the same frequencies — so the artifact records the
+    slope of the unwrapped angle as well. This re-derives it, and checks it is a
+    slope of the S11 beside it rather than a number somebody typed.
+
+    No threshold is asserted: the pre-declaration's phase test is the crossings,
+    and a second criterion is the PI's to declare, not this test's to invent.
+    """
+    entry = _solve(fixture, key)
+    s11 = _complex(entry["s11"])
+    freqs = np.asarray(entry["freqs_hz"], dtype=float)
+    block = entry["phase"]["angle_slope_rad_per_hz"]
+    measured = float(np.polyfit(freqs, np.unwrap(np.angle(s11)), 1)[0])
+    assert block["measured"] == pytest.approx(measured, rel=1e-9), key
+    assert block["same_sign"] == bool(
+        block["measured"] * block["analytic_realized_length"] > 0.0), key
+
+
 @pytest.mark.parametrize("kind", KINDS)
 def test_the_matched_control_stays_under_its_floor(fixture, kind):
     """A deep null, held to an upper bound rather than compared in dB rung to
