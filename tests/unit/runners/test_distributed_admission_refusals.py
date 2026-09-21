@@ -69,7 +69,12 @@ def _assert_refused(sim, entry, *features, **kwargs):
     with pytest.raises(NotImplementedError) as exc:
         _run(sim, entry, **kwargs)
     message = str(exc.value)
-    for feature in (*features, LANES[entry], "omit devices=...", "rfx.runners."):
+    if entry == "api":
+        remedy = "omit devices=... (use a single-device run() instead)"
+    else:
+        remedy = "call sim.run(...) without devices= instead of calling this runner"
+        assert "omit devices=..." not in message, message
+    for feature in (*features, LANES[entry], remedy, "rfx.runners."):
         assert feature in message, message
 
 
@@ -127,7 +132,8 @@ def test_explicit_bloch_phase_is_refused():
     with pytest.raises(NotImplementedError, match="Bloch.*") as exc:
         distributed_v2.refuse_unsupported_distributed_features(
             sim, lane="direct helper", bloch=phase)
-    assert "omit devices=..." in str(exc.value)
+    assert ("call sim.run(...) without devices= instead of calling this runner"
+            in str(exc.value))
     for entry in ("v2", "v1"):
         _assert_refused(_build(entry=entry), entry, "Bloch", bloch=phase)
     sim._bloch = phase

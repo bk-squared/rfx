@@ -445,6 +445,11 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
     Call after the TFSF and waveguide single-device fallbacks, before sharding.
     ``bloch`` also accepts an explicit phase from a direct caller.
     """
+    single_device_hint = (
+        "omit devices=... (use a single-device run() instead)"
+        if lane == "distributed multi-device run()"
+        else "call sim.run(...) without devices= instead of calling this runner"
+    )
     periodic_axes = getattr(sim, "_periodic_axes", "") or ""
     if bloch is None:
         bloch = getattr(sim, "_bloch", None)
@@ -459,8 +464,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
             f"supported on the {lane} path; the lane would use the declared "
             "non-periodic wall instead "
             "(rfx.runners.distributed._update_h_local / _update_e_local). "
-            "Remove the periodic axes / Bloch phase, or omit devices=... "
-            "(use a single-device run() instead)."
+            f"Remove the periodic axes / Bloch phase, or {single_device_hint}."
         )
 
     ports = getattr(sim, "_ports", ()) or ()
@@ -471,8 +475,8 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
             "neither a source nor its resistive termination "
             "(rfx.runners.distributed_v2.run_distributed / "
             "rfx.runners.distributed.run_distributed port setup). "
-            "Remove extent=... to use a single-cell lumped port, or omit "
-            "devices=... (use a single-device run() instead)."
+            "Remove extent=... to use a single-cell lumped port, or "
+            f"{single_device_hint}."
         )
 
     if any(not pe.excite for pe in ports):
@@ -482,8 +486,8 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
             "waveform (or raise in make_port_source for waveform=None) "
             "(rfx.runners.distributed_v2.run_distributed / "
             "rfx.runners.distributed.run_distributed port setup). "
-            "Remove the passive-port configuration (excite=True), or omit "
-            "devices=... (use a single-device run() instead)."
+            "Remove the passive-port configuration (excite=True), or "
+            f"{single_device_hint}."
         )
 
     monitors = []
@@ -497,8 +501,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
             "the corresponding result.flux_monitors / result.ntff_data "
             "would be None (rfx.runners.distributed_v2.run_distributed / "
             "rfx.runners.distributed.run_distributed result assembly). "
-            "Remove the flux monitors / NTFF box, or omit devices=... "
-            "(use a single-device run() instead)."
+            f"Remove the flux monitors / NTFF box, or {single_device_hint}."
         )
 
 
