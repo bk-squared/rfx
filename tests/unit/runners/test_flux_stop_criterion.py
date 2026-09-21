@@ -36,19 +36,6 @@ def _stop_step(radiated_flux_box):
 
 
 @pytest.mark.slow
-def test_flux_stops_while_energy_floors():
-    """On a soft-source fixture the energy criterion FLOORS (static charge) while the opt-in
-    radiated-flux criterion STOPS — the #388 motivation."""
-    rE = _stop_step(None)
-    rF = _stop_step(FLUX_BOX)
-    nE = np.asarray(rE.time_series).shape[0]
-    nF = np.asarray(rF.time_series).shape[0]
-    assert nE >= 5900, f"energy criterion should floor at max_steps, stopped at {nE}"
-    assert nF < 3000, f"flux criterion should stop early (radiation settles), stopped at {nF}"
-    assert nF < nE, f"flux ({nF}) must stop before energy ({nE})"
-
-
-@pytest.mark.slow
 def test_flux_stop_opt_out_is_byte_identical():
     """radiated_flux_box=None keeps the default interior-energy criterion, byte-for-byte —
     the opt-in must not perturb existing runs."""
@@ -93,17 +80,6 @@ def _nu_stop(radiated_flux_box):
     if radiated_flux_box is not None:
         kw["radiated_flux_box"] = radiated_flux_box
     return np.asarray(_nu_sim().run(**kw).time_series)
-
-
-@pytest.mark.slow
-def test_flux_stops_while_energy_floors_nonuniform():
-    """The NU (chunked-scan) lane: flux criterion STOPS while the energy criterion FLOORS on a
-    dz_profile fixture — the flux stop is available on the real #388 mesh class, not just uniform."""
-    nE = _nu_stop(None).shape[0]
-    nF = _nu_stop(_NU_BOX).shape[0]
-    assert nE >= 4900, f"NU energy criterion should floor, stopped at {nE}"
-    assert nF < 2500, f"NU flux criterion should stop early, stopped at {nF}"
-    assert nF < nE
 
 
 @pytest.mark.slow

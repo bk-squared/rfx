@@ -645,7 +645,11 @@ def test_y_directed_thru_reproduces_the_x_directed_thru():
             # x<->y rotation that letter legitimately swaps, so it is
             # masked like the other axis spellings above. z is the
             # substrate normal on both lanes and stays.
-            m = re.sub(r"(?<=\s)([xy])(?=: extent )", "@", m)
+            # The sheet_effective_size advisory (2026-09) names the same axis in
+            # the same place ("'pec' y: drawn 600µm, nodes cover ..."), so it is
+            # masked by the same rule; its rows are ordered by |error|, not by
+            # axis, so the order survives the rotation.
+            m = re.sub(r"(?<=\s)([xy])(?=: (?:extent|drawn) )", "@", m)
             out.append(re.sub(r"[-+]?\d[\d.,]*(?:[eE][-+]?\d+)?", "#", m))
         return sorted(out)
 
