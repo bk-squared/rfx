@@ -128,7 +128,43 @@ FIX_ONLY = [
      '"$PY" scripts/diagnostics/coax_conductor_mutation.py --out "$WORK/out" '
      '--run-id mutation',
      "the (b) falsifier: the sigma realization put back, every helper call left"),
+    # The geometry test carries no marker, so the oracle job's ``-m
+    # slow_physics`` deselected all 8 of its cases. It needs its own run.
+    ("geometry", "cpu-32-mem-64",
+     f'{PYTEST} tests/unit/sparams/test_coax_conductor_geometry.py',
+     "the no-solve geometry test, which the oracle job's marker deselected"),
 ]
+
+# The oracle's four comparisons as a mesh ladder. Its gate asserts on ONE mesh,
+# which the v2 accuracy bar does not allow, and its board realizes 3.789
+# annulus cells. These rungs are the ones NOT already measured: the diagnostic
+# recorded the long board at 4, 6 and 9 cells under the same realization
+# (design note, arm 4), so only the gate's own rung on the long board and the
+# gate board's own refinement are missing. ``thru_long`` at rung 4 is carried
+# as a cross-check that the shipped code reproduces the wrapper's arm-4 number.
+LADDER = [
+    # (board, rung, label, load_ohm, preset)
+    ("thru_long", 3.789288121451007, "thrulong-r379", None, "gpu-rtx4090"),
+    ("thru_long", 4.0, "thrulong-r4", None, "gpu-rtx4090"),
+    ("thru_gate", 3.789288121451007, "thrugate-r379", None, "gpu-rtx4090"),
+    ("thru_gate", 6.0, "thrugate-r6", None, "gpu-rtx4090"),
+    ("thru_gate", 9.0, "thrugate-r9", None, "gpu-rtx4090"),
+    ("load_gate", 6.0, "loadgate25-r6", 25.0, "gpu-rtx4090"),
+    ("load_gate", 9.0, "loadgate25-r9", 25.0, "gpu-rtx4090"),
+    ("load_gate", 6.0, "loadgate100-r6", 100.0, "gpu-rtx4090"),
+    ("load_gate", 9.0, "loadgate100-r9", 100.0, "gpu-rtx4090"),
+]
+
+
+def ladder_groups():
+    for board, rung, label, load, preset in LADDER:
+        cmd = ('"$PY" scripts/diagnostics/coax_conductor_oracle_ladder.py '
+               f'--board {board} --rung {rung!r} --out "$WORK/out" '
+               f'--run-id {label}')
+        if load is not None:
+            cmd += f" --load-ohm {load!r}"
+        yield (f"ladder-{label}", preset, cmd,
+               f"the oracle's comparisons on {board} at {rung:g} annulus cells")
 
 
 def main() -> int:
@@ -139,16 +175,24 @@ def main() -> int:
     ap.add_argument("--before-sha", required=True)
     ap.add_argument("--before-src", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--only", default=None,
+                    help="emit only the jobs whose name contains this text; "
+                         "the collision guard still runs over ALL names")
     args = ap.parse_args()
 
     dest = Path(args.out)
     dest.mkdir(parents=True, exist_ok=True)
     written = []
-    cases = [("after", args.sha, args.src, GROUPS + FIX_ONLY),
+    cases = [("after", args.sha, args.src,
+              GROUPS + FIX_ONLY + list(ladder_groups())),
              ("before", args.before_sha, args.before_src, GROUPS)]
+    all_names = []
     for side, sha, src, groups in cases:
         for key, preset, cmd, desc in groups:
             name = f"coaxfix-{side}-{key}"
+            all_names.append(name)
+            if args.only and args.only not in name:
+                continue
             text = TEMPLATE.format(
                 name=f"rfx-{name}", description=f"{desc} ({side}).", tag=name,
                 cluster=CLUSTER, preset=preset, image=IMAGE, sha=sha, src=src,
@@ -157,8 +201,11 @@ def main() -> int:
             path.write_text(text)
             written.append((path, name))
 
-    prefixes = [n for _, n in written]
-    bad = [(a, b) for a, b in itertools.permutations(prefixes, 2) if b.startswith(a)]
+    # Over ALL names, not just the emitted ones: a run directory is found by
+    # ``-name "<prefix>*"``, so a name that prefixes another collides whether or
+    # not this invocation happened to emit both.
+    bad = [(a, b) for a, b in itertools.permutations(all_names, 2)
+           if b.startswith(a)]
     if bad:
         raise SystemExit(f"run prefixes collide: {bad}")
     for path, prefix in written:
