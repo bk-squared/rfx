@@ -35,8 +35,8 @@
    "what_it_costs": "the open's realized length is (N_L - 0.5) cells and shrinks toward 30 mm as the mesh refines: 29.5, 29.75, 29.875 mm. Every analytic comparison in this fixture uses the REALIZED length, which is exact at every rung; the declared-length comparison is recorded beside it."
   }
  ],
- "assembled_utc": "2026-09-21T10:51:08.922792+00:00",
- "assembler_commit": "e9c82a6faa3b72e75a23f7f89939c76baadb566e",
+ "assembled_utc": "2026-09-21T11:04:09.219148+00:00",
+ "assembler_commit": "0e71c0f062df0d3e3d3698a1a9ffd2f76eed4adc",
  "channel": {
   "l_line_m": 0.03,
   "n_h_cells": {
@@ -229,11 +229,7 @@
     "n_cells": 124,
     "dt_s": 1.9065748695310057e-12,
     "courant_c_dt_over_dx": 0.5715767664977295,
-    "port_index": [
-     1,
-     0,
-     0
-    ],
+    "n_ports": 1,
     "boundary_faces": {
      "pec": [
       "x_hi",
@@ -245,7 +241,23 @@
       "y_hi",
       "y_lo"
      ]
-    }
+    },
+    "port_index": [
+     1,
+     0,
+     0
+    ],
+    "port_position_m": [
+     0.001,
+     0.0,
+     0.0
+    ],
+    "port_component": "ez",
+    "port_impedance_ohm": 1506.921254672,
+    "port_extent_m": 0.004,
+    "port_extent_cells": 4,
+    "port_excite": true,
+    "n_rlc_elements": 0
    },
    "port_spec": {
     "kind": "wire",
@@ -291,9 +303,9 @@
      "count": 3
     }
    ],
-   "wall_s": 0.901203315006569,
+   "wall_s": 1.2395799499936402,
    "peak_memory": {
-    "host_peak_rss_bytes": 432082944,
+    "host_peak_rss_bytes": 400384000,
     "device": {
      "TFRT_CPU_0": {}
     }
@@ -1633,7 +1645,7 @@
     "n_crossings": 4
    },
    "provenance": {
-    "commit": "a0badacb150ac333aa2153df2992df169218a83a",
+    "commit": "f6114cf2ec53954e8d47154226f7f42e9ea17953",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
     "jax_default_backend": "cpu",
@@ -1642,13 +1654,13 @@
     ],
     "jax_enable_x64": false,
     "python": "3.10.13",
-    "platform": "Linux-5.15.0-191-generic-x86_64-with-glibc2.31",
-    "utc": "2026-09-21T10:27:48.558850+00:00",
+    "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.31",
+    "utc": "2026-09-21T10:57:20.720533+00:00",
     "rfx_version": "1.8.0",
     "rfx_import_tail": "rfx/__init__.py",
     "rfx_resolved_inside_the_run_tree": true,
-    "compute_run_id": "369367262686",
-    "compute_run_dir": "lw-wire-solves-20260921T102715Z"
+    "compute_run_id": "369367262709",
+    "compute_run_dir": "lw-wire-solves-20260921T105656Z"
    }
   },
   "wire_short_500um": {
@@ -1711,11 +1723,7 @@
     "n_cells": 244,
     "dt_s": 9.532874347655029e-13,
     "courant_c_dt_over_dx": 0.5715767664977295,
-    "port_index": [
-     1,
-     0,
-     0
-    ],
+    "n_ports": 1,
     "boundary_faces": {
      "pec": [
       "x_hi",
@@ -1727,7 +1735,23 @@
       "y_hi",
       "y_lo"
      ]
-    }
+    },
+    "port_index": [
+     1,
+     0,
+     0
+    ],
+    "port_position_m": [
+     0.0005,
+     0.0,
+     0.0
+    ],
+    "port_component": "ez",
+    "port_impedance_ohm": 1506.921254672,
+    "port_extent_m": 0.002,
+    "port_extent_cells": 4,
+    "port_excite": true,
+    "n_rlc_elements": 0
    },
    "port_spec": {
     "kind": "wire",
@@ -1773,9 +1797,9 @@
      "count": 3
     }
    ],
-   "wall_s": 0.891825616999995,
+   "wall_s": 1.6536391330882907,
    "peak_memory": {
-    "host_peak_rss_bytes": 441643008,
+    "host_peak_rss_bytes": 408772608,
     "device": {
      "TFRT_CPU_0": {}
     }
@@ -3115,7 +3139,7 @@
     "n_crossings": 4
    },
    "provenance": {
-    "commit": "a0badacb150ac333aa2153df2992df169218a83a",
+    "commit": "f6114cf2ec53954e8d47154226f7f42e9ea17953",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
     "jax_default_backend": "cpu",
@@ -3124,13 +3148,13 @@
     ],
     "jax_enable_x64": false,
     "python": "3.10.13",
-    "platform": "Linux-5.15.0-191-generic-x86_64-with-glibc2.31",
-    "utc": "2026-09-21T10:27:50.384704+00:00",
+    "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.31",
+    "utc": "2026-09-21T10:57:23.622716+00:00",
     "rfx_version": "1.8.0",
     "rfx_import_tail": "rfx/__init__.py",
     "rfx_resolved_inside_the_run_tree": true,
-    "compute_run_id": "369367262686",
-    "compute_run_dir": "lw-wire-solves-20260921T102715Z"
+    "compute_run_id": "369367262709",
+    "compute_run_dir": "lw-wire-solves-20260921T105656Z"
    }
   },
   "wire_short_250um": {
@@ -3193,11 +3217,7 @@
     "n_cells": 484,
     "dt_s": 4.766437173827514e-13,
     "courant_c_dt_over_dx": 0.5715767664977295,
-    "port_index": [
-     1,
-     0,
-     0
-    ],
+    "n_ports": 1,
     "boundary_faces": {
      "pec": [
       "x_hi",
@@ -3209,7 +3229,23 @@
       "y_hi",
       "y_lo"
      ]
-    }
+    },
+    "port_index": [
+     1,
+     0,
+     0
+    ],
+    "port_position_m": [
+     0.00025,
+     0.0,
+     0.0
+    ],
+    "port_component": "ez",
+    "port_impedance_ohm": 1506.921254672,
+    "port_extent_m": 0.001,
+    "port_extent_cells": 4,
+    "port_excite": true,
+    "n_rlc_elements": 0
    },
    "port_spec": {
     "kind": "wire",
@@ -3255,9 +3291,9 @@
      "count": 3
     }
    ],
-   "wall_s": 0.8410624729585834,
+   "wall_s": 1.5872858627699316,
    "peak_memory": {
-    "host_peak_rss_bytes": 449449984,
+    "host_peak_rss_bytes": 411918336,
     "device": {
      "TFRT_CPU_0": {}
     }
@@ -4597,7 +4633,7 @@
     "n_crossings": 4
    },
    "provenance": {
-    "commit": "a0badacb150ac333aa2153df2992df169218a83a",
+    "commit": "f6114cf2ec53954e8d47154226f7f42e9ea17953",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
     "jax_default_backend": "cpu",
@@ -4606,13 +4642,13 @@
     ],
     "jax_enable_x64": false,
     "python": "3.10.13",
-    "platform": "Linux-5.15.0-191-generic-x86_64-with-glibc2.31",
-    "utc": "2026-09-21T10:27:52.212864+00:00",
+    "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.31",
+    "utc": "2026-09-21T10:57:26.806230+00:00",
     "rfx_version": "1.8.0",
     "rfx_import_tail": "rfx/__init__.py",
     "rfx_resolved_inside_the_run_tree": true,
-    "compute_run_id": "369367262686",
-    "compute_run_dir": "lw-wire-solves-20260921T102715Z"
+    "compute_run_id": "369367262709",
+    "compute_run_dir": "lw-wire-solves-20260921T105656Z"
    }
   },
   "wire_open_1000um": {
@@ -4675,11 +4711,7 @@
     "n_cells": 124,
     "dt_s": 1.9065748695310057e-12,
     "courant_c_dt_over_dx": 0.5715767664977295,
-    "port_index": [
-     1,
-     0,
-     0
-    ],
+    "n_ports": 1,
     "boundary_faces": {
      "pec": [
       "z_hi",
@@ -4691,7 +4723,23 @@
       "y_hi",
       "y_lo"
      ]
-    }
+    },
+    "port_index": [
+     1,
+     0,
+     0
+    ],
+    "port_position_m": [
+     0.001,
+     0.0,
+     0.0
+    ],
+    "port_component": "ez",
+    "port_impedance_ohm": 1506.921254672,
+    "port_extent_m": 0.004,
+    "port_extent_cells": 4,
+    "port_excite": true,
+    "n_rlc_elements": 0
    },
    "port_spec": {
     "kind": "wire",
@@ -4737,9 +4785,9 @@
      "count": 3
     }
    ],
-   "wall_s": 0.8409942110301927,
+   "wall_s": 1.6469609360210598,
    "peak_memory": {
-    "host_peak_rss_bytes": 452407296,
+    "host_peak_rss_bytes": 415064064,
     "device": {
      "TFRT_CPU_0": {}
     }
@@ -6057,7 +6105,7 @@
     "n_crossings": 3
    },
    "provenance": {
-    "commit": "a0badacb150ac333aa2153df2992df169218a83a",
+    "commit": "f6114cf2ec53954e8d47154226f7f42e9ea17953",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
     "jax_default_backend": "cpu",
@@ -6066,13 +6114,13 @@
     ],
     "jax_enable_x64": false,
     "python": "3.10.13",
-    "platform": "Linux-5.15.0-191-generic-x86_64-with-glibc2.31",
-    "utc": "2026-09-21T10:27:54.026559+00:00",
+    "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.31",
+    "utc": "2026-09-21T10:57:30.106167+00:00",
     "rfx_version": "1.8.0",
     "rfx_import_tail": "rfx/__init__.py",
     "rfx_resolved_inside_the_run_tree": true,
-    "compute_run_id": "369367262686",
-    "compute_run_dir": "lw-wire-solves-20260921T102715Z"
+    "compute_run_id": "369367262709",
+    "compute_run_dir": "lw-wire-solves-20260921T105656Z"
    }
   },
   "wire_open_500um": {
@@ -6135,11 +6183,7 @@
     "n_cells": 244,
     "dt_s": 9.532874347655029e-13,
     "courant_c_dt_over_dx": 0.5715767664977295,
-    "port_index": [
-     1,
-     0,
-     0
-    ],
+    "n_ports": 1,
     "boundary_faces": {
      "pec": [
       "z_hi",
@@ -6151,7 +6195,23 @@
       "y_hi",
       "y_lo"
      ]
-    }
+    },
+    "port_index": [
+     1,
+     0,
+     0
+    ],
+    "port_position_m": [
+     0.0005,
+     0.0,
+     0.0
+    ],
+    "port_component": "ez",
+    "port_impedance_ohm": 1506.921254672,
+    "port_extent_m": 0.002,
+    "port_extent_cells": 4,
+    "port_excite": true,
+    "n_rlc_elements": 0
    },
    "port_spec": {
     "kind": "wire",
@@ -6197,9 +6257,9 @@
      "count": 3
     }
    ],
-   "wall_s": 0.887061421002727,
+   "wall_s": 1.609192742034793,
    "peak_memory": {
-    "host_peak_rss_bytes": 455385088,
+    "host_peak_rss_bytes": 415064064,
     "device": {
      "TFRT_CPU_0": {}
     }
@@ -7517,7 +7577,7 @@
     "n_crossings": 3
    },
    "provenance": {
-    "commit": "a0badacb150ac333aa2153df2992df169218a83a",
+    "commit": "f6114cf2ec53954e8d47154226f7f42e9ea17953",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
     "jax_default_backend": "cpu",
@@ -7526,13 +7586,13 @@
     ],
     "jax_enable_x64": false,
     "python": "3.10.13",
-    "platform": "Linux-5.15.0-191-generic-x86_64-with-glibc2.31",
-    "utc": "2026-09-21T10:27:55.763040+00:00",
+    "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.31",
+    "utc": "2026-09-21T10:57:33.517642+00:00",
     "rfx_version": "1.8.0",
     "rfx_import_tail": "rfx/__init__.py",
     "rfx_resolved_inside_the_run_tree": true,
-    "compute_run_id": "369367262686",
-    "compute_run_dir": "lw-wire-solves-20260921T102715Z"
+    "compute_run_id": "369367262709",
+    "compute_run_dir": "lw-wire-solves-20260921T105656Z"
    }
   },
   "wire_open_250um": {
@@ -7595,11 +7655,7 @@
     "n_cells": 484,
     "dt_s": 4.766437173827514e-13,
     "courant_c_dt_over_dx": 0.5715767664977295,
-    "port_index": [
-     1,
-     0,
-     0
-    ],
+    "n_ports": 1,
     "boundary_faces": {
      "pec": [
       "z_hi",
@@ -7611,7 +7667,23 @@
       "y_hi",
       "y_lo"
      ]
-    }
+    },
+    "port_index": [
+     1,
+     0,
+     0
+    ],
+    "port_position_m": [
+     0.00025,
+     0.0,
+     0.0
+    ],
+    "port_component": "ez",
+    "port_impedance_ohm": 1506.921254672,
+    "port_extent_m": 0.001,
+    "port_extent_cells": 4,
+    "port_excite": true,
+    "n_rlc_elements": 0
    },
    "port_spec": {
     "kind": "wire",
@@ -7657,9 +7729,9 @@
      "count": 3
     }
    ],
-   "wall_s": 0.8374455309822224,
+   "wall_s": 1.5479343561455607,
    "peak_memory": {
-    "host_peak_rss_bytes": 457027584,
+    "host_peak_rss_bytes": 416112640,
     "device": {
      "TFRT_CPU_0": {}
     }
@@ -8977,7 +9049,7 @@
     "n_crossings": 3
    },
    "provenance": {
-    "commit": "a0badacb150ac333aa2153df2992df169218a83a",
+    "commit": "f6114cf2ec53954e8d47154226f7f42e9ea17953",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
     "jax_default_backend": "cpu",
@@ -8986,13 +9058,13 @@
     ],
     "jax_enable_x64": false,
     "python": "3.10.13",
-    "platform": "Linux-5.15.0-191-generic-x86_64-with-glibc2.31",
-    "utc": "2026-09-21T10:27:57.566698+00:00",
+    "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.31",
+    "utc": "2026-09-21T10:57:36.805044+00:00",
     "rfx_version": "1.8.0",
     "rfx_import_tail": "rfx/__init__.py",
     "rfx_resolved_inside_the_run_tree": true,
-    "compute_run_id": "369367262686",
-    "compute_run_dir": "lw-wire-solves-20260921T102715Z"
+    "compute_run_id": "369367262709",
+    "compute_run_dir": "lw-wire-solves-20260921T105656Z"
    }
   },
   "wire_res_half_1000um": {
@@ -9055,11 +9127,7 @@
     "n_cells": 128,
     "dt_s": 1.9065748695310057e-12,
     "courant_c_dt_over_dx": 0.5715767664977295,
-    "port_index": [
-     1,
-     0,
-     0
-    ],
+    "n_ports": 1,
     "boundary_faces": {
      "pec": [
       "z_hi",
@@ -9072,6 +9140,22 @@
       "y_lo"
      ]
     },
+    "port_index": [
+     1,
+     0,
+     0
+    ],
+    "port_position_m": [
+     0.001,
+     0.0,
+     0.0
+    ],
+    "port_component": "ez",
+    "port_impedance_ohm": 1506.921254672,
+    "port_extent_m": 0.004,
+    "port_extent_cells": 4,
+    "port_excite": true,
+    "n_rlc_elements": 4,
     "rlc_indices": [
      [
       31,
@@ -9094,11 +9178,39 @@
       3
      ]
     ],
+    "rlc_positions_m": [
+     [
+      0.031,
+      0.0,
+      0.0
+     ],
+     [
+      0.031,
+      0.0,
+      0.001
+     ],
+     [
+      0.031,
+      0.0,
+      0.002
+     ],
+     [
+      0.031,
+      0.0,
+      0.003
+     ]
+    ],
     "rlc_values_ohm": [
      188.365156834,
      188.365156834,
      188.365156834,
      188.365156834
+    ],
+    "rlc_components": [
+     "ez",
+     "ez",
+     "ez",
+     "ez"
     ]
    },
    "port_spec": {
@@ -9145,9 +9257,9 @@
      "count": 3
     }
    ],
-   "wall_s": 0.9273529060301371,
+   "wall_s": 1.6289406302385032,
    "peak_memory": {
-    "host_peak_rss_bytes": 459096064,
+    "host_peak_rss_bytes": 420306944,
     "device": {
      "TFRT_CPU_0": {}
     }
@@ -10487,7 +10599,7 @@
     "n_crossings": 4
    },
    "provenance": {
-    "commit": "a0badacb150ac333aa2153df2992df169218a83a",
+    "commit": "f6114cf2ec53954e8d47154226f7f42e9ea17953",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
     "jax_default_backend": "cpu",
@@ -10496,13 +10608,13 @@
     ],
     "jax_enable_x64": false,
     "python": "3.10.13",
-    "platform": "Linux-5.15.0-191-generic-x86_64-with-glibc2.31",
-    "utc": "2026-09-21T10:27:59.403697+00:00",
+    "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.31",
+    "utc": "2026-09-21T10:57:40.031397+00:00",
     "rfx_version": "1.8.0",
     "rfx_import_tail": "rfx/__init__.py",
     "rfx_resolved_inside_the_run_tree": true,
-    "compute_run_id": "369367262686",
-    "compute_run_dir": "lw-wire-solves-20260921T102715Z"
+    "compute_run_id": "369367262709",
+    "compute_run_dir": "lw-wire-solves-20260921T105656Z"
    }
   },
   "wire_res_half_500um": {
@@ -10565,11 +10677,7 @@
     "n_cells": 248,
     "dt_s": 9.532874347655029e-13,
     "courant_c_dt_over_dx": 0.5715767664977295,
-    "port_index": [
-     1,
-     0,
-     0
-    ],
+    "n_ports": 1,
     "boundary_faces": {
      "pec": [
       "z_hi",
@@ -10582,6 +10690,22 @@
       "y_lo"
      ]
     },
+    "port_index": [
+     1,
+     0,
+     0
+    ],
+    "port_position_m": [
+     0.0005,
+     0.0,
+     0.0
+    ],
+    "port_component": "ez",
+    "port_impedance_ohm": 1506.921254672,
+    "port_extent_m": 0.002,
+    "port_extent_cells": 4,
+    "port_excite": true,
+    "n_rlc_elements": 4,
     "rlc_indices": [
      [
       61,
@@ -10604,11 +10728,39 @@
       3
      ]
     ],
+    "rlc_positions_m": [
+     [
+      0.0305,
+      0.0,
+      0.0
+     ],
+     [
+      0.0305,
+      0.0,
+      0.0005
+     ],
+     [
+      0.0305,
+      0.0,
+      0.001
+     ],
+     [
+      0.0305,
+      0.0,
+      0.0015
+     ]
+    ],
     "rlc_values_ohm": [
      188.365156834,
      188.365156834,
      188.365156834,
      188.365156834
+    ],
+    "rlc_components": [
+     "ez",
+     "ez",
+     "ez",
+     "ez"
     ]
    },
    "port_spec": {
@@ -10655,9 +10807,9 @@
      "count": 3
     }
    ],
-   "wall_s": 0.8688417600351386,
+   "wall_s": 1.5646774438209832,
    "peak_memory": {
-    "host_peak_rss_bytes": 459911168,
+    "host_peak_rss_bytes": 421355520,
     "device": {
      "TFRT_CPU_0": {}
     }
@@ -11997,7 +12149,7 @@
     "n_crossings": 4
    },
    "provenance": {
-    "commit": "a0badacb150ac333aa2153df2992df169218a83a",
+    "commit": "f6114cf2ec53954e8d47154226f7f42e9ea17953",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
     "jax_default_backend": "cpu",
@@ -12006,13 +12158,13 @@
     ],
     "jax_enable_x64": false,
     "python": "3.10.13",
-    "platform": "Linux-5.15.0-191-generic-x86_64-with-glibc2.31",
-    "utc": "2026-09-21T10:28:01.331245+00:00",
+    "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.31",
+    "utc": "2026-09-21T10:57:43.334171+00:00",
     "rfx_version": "1.8.0",
     "rfx_import_tail": "rfx/__init__.py",
     "rfx_resolved_inside_the_run_tree": true,
-    "compute_run_id": "369367262686",
-    "compute_run_dir": "lw-wire-solves-20260921T102715Z"
+    "compute_run_id": "369367262709",
+    "compute_run_dir": "lw-wire-solves-20260921T105656Z"
    }
   },
   "wire_res_half_250um": {
@@ -12075,11 +12227,7 @@
     "n_cells": 488,
     "dt_s": 4.766437173827514e-13,
     "courant_c_dt_over_dx": 0.5715767664977295,
-    "port_index": [
-     1,
-     0,
-     0
-    ],
+    "n_ports": 1,
     "boundary_faces": {
      "pec": [
       "z_hi",
@@ -12092,6 +12240,22 @@
       "y_lo"
      ]
     },
+    "port_index": [
+     1,
+     0,
+     0
+    ],
+    "port_position_m": [
+     0.00025,
+     0.0,
+     0.0
+    ],
+    "port_component": "ez",
+    "port_impedance_ohm": 1506.921254672,
+    "port_extent_m": 0.001,
+    "port_extent_cells": 4,
+    "port_excite": true,
+    "n_rlc_elements": 4,
     "rlc_indices": [
      [
       121,
@@ -12114,11 +12278,39 @@
       3
      ]
     ],
+    "rlc_positions_m": [
+     [
+      0.03025,
+      0.0,
+      0.0
+     ],
+     [
+      0.03025,
+      0.0,
+      0.00025
+     ],
+     [
+      0.03025,
+      0.0,
+      0.0005
+     ],
+     [
+      0.03025,
+      0.0,
+      0.00075
+     ]
+    ],
     "rlc_values_ohm": [
      188.365156834,
      188.365156834,
      188.365156834,
      188.365156834
+    ],
+    "rlc_components": [
+     "ez",
+     "ez",
+     "ez",
+     "ez"
     ]
    },
    "port_spec": {
@@ -12165,9 +12357,9 @@
      "count": 3
     }
    ],
-   "wall_s": 0.8868294960120693,
+   "wall_s": 1.5401462502777576,
    "peak_memory": {
-    "host_peak_rss_bytes": 464240640,
+    "host_peak_rss_bytes": 423452672,
     "device": {
      "TFRT_CPU_0": {}
     }
@@ -13507,7 +13699,7 @@
     "n_crossings": 4
    },
    "provenance": {
-    "commit": "a0badacb150ac333aa2153df2992df169218a83a",
+    "commit": "f6114cf2ec53954e8d47154226f7f42e9ea17953",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
     "jax_default_backend": "cpu",
@@ -13516,13 +13708,13 @@
     ],
     "jax_enable_x64": false,
     "python": "3.10.13",
-    "platform": "Linux-5.15.0-191-generic-x86_64-with-glibc2.31",
-    "utc": "2026-09-21T10:28:03.126998+00:00",
+    "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.31",
+    "utc": "2026-09-21T10:57:46.579165+00:00",
     "rfx_version": "1.8.0",
     "rfx_import_tail": "rfx/__init__.py",
     "rfx_resolved_inside_the_run_tree": true,
-    "compute_run_id": "369367262686",
-    "compute_run_dir": "lw-wire-solves-20260921T102715Z"
+    "compute_run_id": "369367262709",
+    "compute_run_dir": "lw-wire-solves-20260921T105656Z"
    }
   },
   "wire_res_double_1000um": {
@@ -13585,11 +13777,7 @@
     "n_cells": 128,
     "dt_s": 1.9065748695310057e-12,
     "courant_c_dt_over_dx": 0.5715767664977295,
-    "port_index": [
-     1,
-     0,
-     0
-    ],
+    "n_ports": 1,
     "boundary_faces": {
      "pec": [
       "z_hi",
@@ -13602,6 +13790,22 @@
       "y_lo"
      ]
     },
+    "port_index": [
+     1,
+     0,
+     0
+    ],
+    "port_position_m": [
+     0.001,
+     0.0,
+     0.0
+    ],
+    "port_component": "ez",
+    "port_impedance_ohm": 1506.921254672,
+    "port_extent_m": 0.004,
+    "port_extent_cells": 4,
+    "port_excite": true,
+    "n_rlc_elements": 4,
     "rlc_indices": [
      [
       31,
@@ -13624,11 +13828,39 @@
       3
      ]
     ],
+    "rlc_positions_m": [
+     [
+      0.031,
+      0.0,
+      0.0
+     ],
+     [
+      0.031,
+      0.0,
+      0.001
+     ],
+     [
+      0.031,
+      0.0,
+      0.002
+     ],
+     [
+      0.031,
+      0.0,
+      0.003
+     ]
+    ],
     "rlc_values_ohm": [
      753.460627336,
      753.460627336,
      753.460627336,
      753.460627336
+    ],
+    "rlc_components": [
+     "ez",
+     "ez",
+     "ez",
+     "ez"
     ]
    },
    "port_spec": {
@@ -13675,9 +13907,9 @@
      "count": 3
     }
    ],
-   "wall_s": 0.9279621829628013,
+   "wall_s": 1.6797254239208996,
    "peak_memory": {
-    "host_peak_rss_bytes": 464269312,
+    "host_peak_rss_bytes": 424501248,
     "device": {
      "TFRT_CPU_0": {}
     }
@@ -15017,7 +15249,7 @@
     "n_crossings": 4
    },
    "provenance": {
-    "commit": "a0badacb150ac333aa2153df2992df169218a83a",
+    "commit": "f6114cf2ec53954e8d47154226f7f42e9ea17953",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
     "jax_default_backend": "cpu",
@@ -15026,13 +15258,13 @@
     ],
     "jax_enable_x64": false,
     "python": "3.10.13",
-    "platform": "Linux-5.15.0-191-generic-x86_64-with-glibc2.31",
-    "utc": "2026-09-21T10:28:05.035229+00:00",
+    "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.31",
+    "utc": "2026-09-21T10:57:49.791045+00:00",
     "rfx_version": "1.8.0",
     "rfx_import_tail": "rfx/__init__.py",
     "rfx_resolved_inside_the_run_tree": true,
-    "compute_run_id": "369367262686",
-    "compute_run_dir": "lw-wire-solves-20260921T102715Z"
+    "compute_run_id": "369367262709",
+    "compute_run_dir": "lw-wire-solves-20260921T105656Z"
    }
   },
   "wire_res_double_500um": {
@@ -15095,11 +15327,7 @@
     "n_cells": 248,
     "dt_s": 9.532874347655029e-13,
     "courant_c_dt_over_dx": 0.5715767664977295,
-    "port_index": [
-     1,
-     0,
-     0
-    ],
+    "n_ports": 1,
     "boundary_faces": {
      "pec": [
       "z_hi",
@@ -15112,6 +15340,22 @@
       "y_lo"
      ]
     },
+    "port_index": [
+     1,
+     0,
+     0
+    ],
+    "port_position_m": [
+     0.0005,
+     0.0,
+     0.0
+    ],
+    "port_component": "ez",
+    "port_impedance_ohm": 1506.921254672,
+    "port_extent_m": 0.002,
+    "port_extent_cells": 4,
+    "port_excite": true,
+    "n_rlc_elements": 4,
     "rlc_indices": [
      [
       61,
@@ -15134,11 +15378,39 @@
       3
      ]
     ],
+    "rlc_positions_m": [
+     [
+      0.0305,
+      0.0,
+      0.0
+     ],
+     [
+      0.0305,
+      0.0,
+      0.0005
+     ],
+     [
+      0.0305,
+      0.0,
+      0.001
+     ],
+     [
+      0.0305,
+      0.0,
+      0.0015
+     ]
+    ],
     "rlc_values_ohm": [
      753.460627336,
      753.460627336,
      753.460627336,
      753.460627336
+    ],
+    "rlc_components": [
+     "ez",
+     "ez",
+     "ez",
+     "ez"
     ]
    },
    "port_spec": {
@@ -15185,9 +15457,9 @@
      "count": 3
     }
    ],
-   "wall_s": 0.8628082370269112,
+   "wall_s": 1.6102774352766573,
    "peak_memory": {
-    "host_peak_rss_bytes": 464728064,
+    "host_peak_rss_bytes": 424501248,
     "device": {
      "TFRT_CPU_0": {}
     }
@@ -16527,7 +16799,7 @@
     "n_crossings": 4
    },
    "provenance": {
-    "commit": "a0badacb150ac333aa2153df2992df169218a83a",
+    "commit": "f6114cf2ec53954e8d47154226f7f42e9ea17953",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
     "jax_default_backend": "cpu",
@@ -16536,13 +16808,13 @@
     ],
     "jax_enable_x64": false,
     "python": "3.10.13",
-    "platform": "Linux-5.15.0-191-generic-x86_64-with-glibc2.31",
-    "utc": "2026-09-21T10:28:06.934168+00:00",
+    "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.31",
+    "utc": "2026-09-21T10:57:53.142911+00:00",
     "rfx_version": "1.8.0",
     "rfx_import_tail": "rfx/__init__.py",
     "rfx_resolved_inside_the_run_tree": true,
-    "compute_run_id": "369367262686",
-    "compute_run_dir": "lw-wire-solves-20260921T102715Z"
+    "compute_run_id": "369367262709",
+    "compute_run_dir": "lw-wire-solves-20260921T105656Z"
    }
   },
   "wire_res_double_250um": {
@@ -16605,11 +16877,7 @@
     "n_cells": 488,
     "dt_s": 4.766437173827514e-13,
     "courant_c_dt_over_dx": 0.5715767664977295,
-    "port_index": [
-     1,
-     0,
-     0
-    ],
+    "n_ports": 1,
     "boundary_faces": {
      "pec": [
       "z_hi",
@@ -16622,6 +16890,22 @@
       "y_lo"
      ]
     },
+    "port_index": [
+     1,
+     0,
+     0
+    ],
+    "port_position_m": [
+     0.00025,
+     0.0,
+     0.0
+    ],
+    "port_component": "ez",
+    "port_impedance_ohm": 1506.921254672,
+    "port_extent_m": 0.001,
+    "port_extent_cells": 4,
+    "port_excite": true,
+    "n_rlc_elements": 4,
     "rlc_indices": [
      [
       121,
@@ -16644,11 +16928,39 @@
       3
      ]
     ],
+    "rlc_positions_m": [
+     [
+      0.03025,
+      0.0,
+      0.0
+     ],
+     [
+      0.03025,
+      0.0,
+      0.00025
+     ],
+     [
+      0.03025,
+      0.0,
+      0.0005
+     ],
+     [
+      0.03025,
+      0.0,
+      0.00075
+     ]
+    ],
     "rlc_values_ohm": [
      753.460627336,
      753.460627336,
      753.460627336,
      753.460627336
+    ],
+    "rlc_components": [
+     "ez",
+     "ez",
+     "ez",
+     "ez"
     ]
    },
    "port_spec": {
@@ -16695,9 +17007,9 @@
      "count": 3
     }
    ],
-   "wall_s": 0.8733869309653528,
+   "wall_s": 1.5604623854160309,
    "peak_memory": {
-    "host_peak_rss_bytes": 465756160,
+    "host_peak_rss_bytes": 426598400,
     "device": {
      "TFRT_CPU_0": {}
     }
@@ -18037,7 +18349,7 @@
     "n_crossings": 4
    },
    "provenance": {
-    "commit": "a0badacb150ac333aa2153df2992df169218a83a",
+    "commit": "f6114cf2ec53954e8d47154226f7f42e9ea17953",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
     "jax_default_backend": "cpu",
@@ -18046,13 +18358,13 @@
     ],
     "jax_enable_x64": false,
     "python": "3.10.13",
-    "platform": "Linux-5.15.0-191-generic-x86_64-with-glibc2.31",
-    "utc": "2026-09-21T10:28:08.751726+00:00",
+    "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.31",
+    "utc": "2026-09-21T10:57:56.282926+00:00",
     "rfx_version": "1.8.0",
     "rfx_import_tail": "rfx/__init__.py",
     "rfx_resolved_inside_the_run_tree": true,
-    "compute_run_id": "369367262686",
-    "compute_run_dir": "lw-wire-solves-20260921T102715Z"
+    "compute_run_id": "369367262709",
+    "compute_run_dir": "lw-wire-solves-20260921T105656Z"
    }
   },
   "wire_matched_1000um": {
@@ -18115,11 +18427,7 @@
     "n_cells": 128,
     "dt_s": 1.9065748695310057e-12,
     "courant_c_dt_over_dx": 0.5715767664977295,
-    "port_index": [
-     1,
-     0,
-     0
-    ],
+    "n_ports": 1,
     "boundary_faces": {
      "pec": [
       "z_hi",
@@ -18132,6 +18440,22 @@
       "y_lo"
      ]
     },
+    "port_index": [
+     1,
+     0,
+     0
+    ],
+    "port_position_m": [
+     0.001,
+     0.0,
+     0.0
+    ],
+    "port_component": "ez",
+    "port_impedance_ohm": 1506.921254672,
+    "port_extent_m": 0.004,
+    "port_extent_cells": 4,
+    "port_excite": true,
+    "n_rlc_elements": 4,
     "rlc_indices": [
      [
       31,
@@ -18154,11 +18478,39 @@
       3
      ]
     ],
+    "rlc_positions_m": [
+     [
+      0.031,
+      0.0,
+      0.0
+     ],
+     [
+      0.031,
+      0.0,
+      0.001
+     ],
+     [
+      0.031,
+      0.0,
+      0.002
+     ],
+     [
+      0.031,
+      0.0,
+      0.003
+     ]
+    ],
     "rlc_values_ohm": [
      376.730313668,
      376.730313668,
      376.730313668,
      376.730313668
+    ],
+    "rlc_components": [
+     "ez",
+     "ez",
+     "ez",
+     "ez"
     ]
    },
    "port_spec": {
@@ -18205,9 +18557,9 @@
      "count": 3
     }
    ],
-   "wall_s": 0.8555614610086195,
+   "wall_s": 1.6683404557406902,
    "peak_memory": {
-    "host_peak_rss_bytes": 465764352,
+    "host_peak_rss_bytes": 426598400,
     "device": {
      "TFRT_CPU_0": {}
     }
@@ -19296,7 +19648,7 @@
     "what": "the port's own reflection floor at this cell size \u2014 the number a user needs in order to know how well a port of this kind can be matched."
    },
    "provenance": {
-    "commit": "a0badacb150ac333aa2153df2992df169218a83a",
+    "commit": "f6114cf2ec53954e8d47154226f7f42e9ea17953",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
     "jax_default_backend": "cpu",
@@ -19305,13 +19657,13 @@
     ],
     "jax_enable_x64": false,
     "python": "3.10.13",
-    "platform": "Linux-5.15.0-191-generic-x86_64-with-glibc2.31",
-    "utc": "2026-09-21T10:28:10.658537+00:00",
+    "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.31",
+    "utc": "2026-09-21T10:57:59.623094+00:00",
     "rfx_version": "1.8.0",
     "rfx_import_tail": "rfx/__init__.py",
     "rfx_resolved_inside_the_run_tree": true,
-    "compute_run_id": "369367262686",
-    "compute_run_dir": "lw-wire-solves-20260921T102715Z"
+    "compute_run_id": "369367262709",
+    "compute_run_dir": "lw-wire-solves-20260921T105656Z"
    }
   },
   "wire_matched_500um": {
@@ -19374,11 +19726,7 @@
     "n_cells": 248,
     "dt_s": 9.532874347655029e-13,
     "courant_c_dt_over_dx": 0.5715767664977295,
-    "port_index": [
-     1,
-     0,
-     0
-    ],
+    "n_ports": 1,
     "boundary_faces": {
      "pec": [
       "z_hi",
@@ -19391,6 +19739,22 @@
       "y_lo"
      ]
     },
+    "port_index": [
+     1,
+     0,
+     0
+    ],
+    "port_position_m": [
+     0.0005,
+     0.0,
+     0.0
+    ],
+    "port_component": "ez",
+    "port_impedance_ohm": 1506.921254672,
+    "port_extent_m": 0.002,
+    "port_extent_cells": 4,
+    "port_excite": true,
+    "n_rlc_elements": 4,
     "rlc_indices": [
      [
       61,
@@ -19413,11 +19777,39 @@
       3
      ]
     ],
+    "rlc_positions_m": [
+     [
+      0.0305,
+      0.0,
+      0.0
+     ],
+     [
+      0.0305,
+      0.0,
+      0.0005
+     ],
+     [
+      0.0305,
+      0.0,
+      0.001
+     ],
+     [
+      0.0305,
+      0.0,
+      0.0015
+     ]
+    ],
     "rlc_values_ohm": [
      376.730313668,
      376.730313668,
      376.730313668,
      376.730313668
+    ],
+    "rlc_components": [
+     "ez",
+     "ez",
+     "ez",
+     "ez"
     ]
    },
    "port_spec": {
@@ -19464,9 +19856,9 @@
      "count": 3
     }
    ],
-   "wall_s": 0.8427672800025903,
+   "wall_s": 1.56882883887738,
    "peak_memory": {
-    "host_peak_rss_bytes": 466124800,
+    "host_peak_rss_bytes": 427646976,
     "device": {
      "TFRT_CPU_0": {}
     }
@@ -20555,7 +20947,7 @@
     "what": "the port's own reflection floor at this cell size \u2014 the number a user needs in order to know how well a port of this kind can be matched."
    },
    "provenance": {
-    "commit": "a0badacb150ac333aa2153df2992df169218a83a",
+    "commit": "f6114cf2ec53954e8d47154226f7f42e9ea17953",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
     "jax_default_backend": "cpu",
@@ -20564,13 +20956,13 @@
     ],
     "jax_enable_x64": false,
     "python": "3.10.13",
-    "platform": "Linux-5.15.0-191-generic-x86_64-with-glibc2.31",
-    "utc": "2026-09-21T10:28:12.489912+00:00",
+    "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.31",
+    "utc": "2026-09-21T10:58:03.079722+00:00",
     "rfx_version": "1.8.0",
     "rfx_import_tail": "rfx/__init__.py",
     "rfx_resolved_inside_the_run_tree": true,
-    "compute_run_id": "369367262686",
-    "compute_run_dir": "lw-wire-solves-20260921T102715Z"
+    "compute_run_id": "369367262709",
+    "compute_run_dir": "lw-wire-solves-20260921T105656Z"
    }
   },
   "wire_matched_250um": {
@@ -20633,11 +21025,7 @@
     "n_cells": 488,
     "dt_s": 4.766437173827514e-13,
     "courant_c_dt_over_dx": 0.5715767664977295,
-    "port_index": [
-     1,
-     0,
-     0
-    ],
+    "n_ports": 1,
     "boundary_faces": {
      "pec": [
       "z_hi",
@@ -20650,6 +21038,22 @@
       "y_lo"
      ]
     },
+    "port_index": [
+     1,
+     0,
+     0
+    ],
+    "port_position_m": [
+     0.00025,
+     0.0,
+     0.0
+    ],
+    "port_component": "ez",
+    "port_impedance_ohm": 1506.921254672,
+    "port_extent_m": 0.001,
+    "port_extent_cells": 4,
+    "port_excite": true,
+    "n_rlc_elements": 4,
     "rlc_indices": [
      [
       121,
@@ -20672,11 +21076,39 @@
       3
      ]
     ],
+    "rlc_positions_m": [
+     [
+      0.03025,
+      0.0,
+      0.0
+     ],
+     [
+      0.03025,
+      0.0,
+      0.00025
+     ],
+     [
+      0.03025,
+      0.0,
+      0.0005
+     ],
+     [
+      0.03025,
+      0.0,
+      0.00075
+     ]
+    ],
     "rlc_values_ohm": [
      376.730313668,
      376.730313668,
      376.730313668,
      376.730313668
+    ],
+    "rlc_components": [
+     "ez",
+     "ez",
+     "ez",
+     "ez"
     ]
    },
    "port_spec": {
@@ -20723,9 +21155,9 @@
      "count": 3
     }
    ],
-   "wall_s": 0.8916260260157287,
+   "wall_s": 1.5981374136172235,
    "peak_memory": {
-    "host_peak_rss_bytes": 469065728,
+    "host_peak_rss_bytes": 427646976,
     "device": {
      "TFRT_CPU_0": {}
     }
@@ -21814,7 +22246,7 @@
     "what": "the port's own reflection floor at this cell size \u2014 the number a user needs in order to know how well a port of this kind can be matched."
    },
    "provenance": {
-    "commit": "a0badacb150ac333aa2153df2992df169218a83a",
+    "commit": "f6114cf2ec53954e8d47154226f7f42e9ea17953",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
     "jax_default_backend": "cpu",
@@ -21823,13 +22255,13 @@
     ],
     "jax_enable_x64": false,
     "python": "3.10.13",
-    "platform": "Linux-5.15.0-191-generic-x86_64-with-glibc2.31",
-    "utc": "2026-09-21T10:28:14.305209+00:00",
+    "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.31",
+    "utc": "2026-09-21T10:58:06.194263+00:00",
     "rfx_version": "1.8.0",
     "rfx_import_tail": "rfx/__init__.py",
     "rfx_resolved_inside_the_run_tree": true,
-    "compute_run_id": "369367262686",
-    "compute_run_dir": "lw-wire-solves-20260921T102715Z"
+    "compute_run_id": "369367262709",
+    "compute_run_dir": "lw-wire-solves-20260921T105656Z"
    }
   }
  },
@@ -22393,7 +22825,7 @@
  "identity": {
   "wire": {
    "provenance": {
-    "commit": "a0badacb150ac333aa2153df2992df169218a83a",
+    "commit": "f6114cf2ec53954e8d47154226f7f42e9ea17953",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
     "jax_default_backend": "cpu",
@@ -22403,12 +22835,12 @@
     "jax_enable_x64": false,
     "python": "3.10.13",
     "platform": "Linux-5.15.0-191-generic-x86_64-with-glibc2.31",
-    "utc": "2026-09-21T10:28:20.271049+00:00",
+    "utc": "2026-09-21T10:57:47.498486+00:00",
     "rfx_version": "1.8.0",
     "rfx_import_tail": "rfx/__init__.py",
     "rfx_resolved_inside_the_run_tree": true,
-    "compute_run_id": "369367262688",
-    "compute_run_dir": "lw-wire-ad-20260921T102745Z"
+    "compute_run_id": "369367262711",
+    "compute_run_dir": "lw-wire-ad-20260921T105710Z"
    },
    "kind": "wire",
    "dut": "res_double",
@@ -22830,7 +23262,7 @@
  "adfd": {
   "wire_adfd-r_1000um": {
    "provenance": {
-    "commit": "a0badacb150ac333aa2153df2992df169218a83a",
+    "commit": "f6114cf2ec53954e8d47154226f7f42e9ea17953",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
     "jax_default_backend": "cpu",
@@ -22840,12 +23272,12 @@
     "jax_enable_x64": false,
     "python": "3.10.13",
     "platform": "Linux-5.15.0-191-generic-x86_64-with-glibc2.31",
-    "utc": "2026-09-21T10:28:23.403642+00:00",
+    "utc": "2026-09-21T10:57:50.508251+00:00",
     "rfx_version": "1.8.0",
     "rfx_import_tail": "rfx/__init__.py",
     "rfx_resolved_inside_the_run_tree": true,
-    "compute_run_id": "369367262688",
-    "compute_run_dir": "lw-wire-ad-20260921T102745Z"
+    "compute_run_id": "369367262711",
+    "compute_run_dir": "lw-wire-ad-20260921T105710Z"
    },
    "kind": "wire",
    "dut": "res_double",
@@ -23288,7 +23720,7 @@
       "grad": 9.783884888747707e-05,
       "loss_dtype": "float32",
       "grad_finite": true,
-      "wall_s": 2.748811295023188,
+      "wall_s": 2.675112255034037,
       "warnings": []
      },
      "fd": {
@@ -23298,7 +23730,7 @@
       "grad": 9.78391939398619e-05,
       "loss_dtype": "float64",
       "ulp_span": 42495522465024.0,
-      "wall_s": 1.5873288559960201,
+      "wall_s": 1.4910036019864492,
       "warnings": []
      },
      "comparator": {
@@ -23369,7 +23801,7 @@
       "grad": 0.00014745895168744028,
       "loss_dtype": "float32",
       "grad_finite": true,
-      "wall_s": 2.5331726840231568,
+      "wall_s": 2.4566696389811113,
       "warnings": []
      },
      "fd": {
@@ -23379,7 +23811,7 @@
       "grad": 0.00014745967260765893,
       "loss_dtype": "float64",
       "ulp_span": 16011926247664.0,
-      "wall_s": 1.3795377039932646,
+      "wall_s": 1.3607327479985543,
       "warnings": []
      },
      "comparator": {
@@ -23435,7 +23867,7 @@
   },
   "wire_adfd-eps_1000um": {
    "provenance": {
-    "commit": "a0badacb150ac333aa2153df2992df169218a83a",
+    "commit": "0e71c0f062df0d3e3d3698a1a9ffd2f76eed4adc",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
     "jax_default_backend": "cpu",
@@ -23445,12 +23877,12 @@
     "jax_enable_x64": false,
     "python": "3.10.13",
     "platform": "Linux-5.15.0-191-generic-x86_64-with-glibc2.31",
-    "utc": "2026-09-21T10:28:34.078987+00:00",
+    "utc": "2026-09-21T11:00:39.634793+00:00",
     "rfx_version": "1.8.0",
     "rfx_import_tail": "rfx/__init__.py",
     "rfx_resolved_inside_the_run_tree": true,
-    "compute_run_id": "369367262688",
-    "compute_run_dir": "lw-wire-ad-20260921T102745Z"
+    "compute_run_id": "369367262713",
+    "compute_run_dir": "lw-wire-eps-ladder-20260921T110025Z"
    },
    "kind": "wire",
    "dut": "short",
@@ -23894,7 +24326,7 @@
       "grad": -3.1565516565024154e-06,
       "loss_dtype": "float32",
       "grad_finite": true,
-      "wall_s": 2.558894963003695,
+      "wall_s": 2.3465291149914265,
       "warnings": []
      },
      "fd": {
@@ -23904,7 +24336,7 @@
       "grad": -3.183675822970855e-06,
       "loss_dtype": "float64",
       "ulp_span": 57352005.0,
-      "wall_s": 1.4123549159849063,
+      "wall_s": 1.3678554079961032,
       "warnings": []
      },
      "comparator": {
@@ -23976,7 +24408,7 @@
       "grad": 1.067664623260498,
       "loss_dtype": "float32",
       "grad_finite": true,
-      "wall_s": 2.1251031489809975,
+      "wall_s": 2.0819324040203355,
       "warnings": []
      },
      "fd": {
@@ -23986,7 +24418,7 @@
       "grad": 1.0676489649774634,
       "loss_dtype": "float64",
       "ulp_span": 19233053923340.0,
-      "wall_s": 1.360650883987546,
+      "wall_s": 1.1909884909982793,
       "warnings": []
      },
      "comparator": {
@@ -24043,7 +24475,7 @@
   },
   "wire_adfd-eps_500um": {
    "provenance": {
-    "commit": "d9188fab75c98639eac6753bd140d0e4ce88e618",
+    "commit": "0e71c0f062df0d3e3d3698a1a9ffd2f76eed4adc",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
     "jax_default_backend": "cpu",
@@ -24053,12 +24485,12 @@
     "jax_enable_x64": false,
     "python": "3.10.13",
     "platform": "Linux-5.15.0-191-generic-x86_64-with-glibc2.31",
-    "utc": "2026-09-21T10:45:04.368497+00:00",
+    "utc": "2026-09-21T11:00:49.097351+00:00",
     "rfx_version": "1.8.0",
     "rfx_import_tail": "rfx/__init__.py",
     "rfx_resolved_inside_the_run_tree": true,
-    "compute_run_id": "369367262702",
-    "compute_run_dir": "lw-wire-eps-ladder-20260921T104442Z"
+    "compute_run_id": "369367262713",
+    "compute_run_dir": "lw-wire-eps-ladder-20260921T110025Z"
    },
    "kind": "wire",
    "dut": "short",
@@ -24502,7 +24934,7 @@
       "grad": -2.8140420909039676e-06,
       "loss_dtype": "float32",
       "grad_finite": true,
-      "wall_s": 2.269265398965217,
+      "wall_s": 2.3302292070002295,
       "warnings": []
      },
      "fd": {
@@ -24512,7 +24944,7 @@
       "grad": -5.56976076371285e-07,
       "loss_dtype": "float64",
       "ulp_span": 5016794.5,
-      "wall_s": 1.3163616200326942,
+      "wall_s": 1.3675749250105582,
       "warnings": []
      },
      "comparator": {
@@ -24584,7 +25016,7 @@
       "grad": 0.7819607257843018,
       "loss_dtype": "float32",
       "grad_finite": true,
-      "wall_s": 2.0975863829953596,
+      "wall_s": 2.0709937309729867,
       "warnings": []
      },
      "fd": {
@@ -24594,7 +25026,7 @@
       "grad": 0.7819480445905858,
       "loss_dtype": "float64",
       "ulp_span": 14086323688965.0,
-      "wall_s": 1.232714157027658,
+      "wall_s": 1.2927729100338183,
       "warnings": []
      },
      "comparator": {
@@ -24651,7 +25083,7 @@
   },
   "wire_adfd-eps_250um": {
    "provenance": {
-    "commit": "d9188fab75c98639eac6753bd140d0e4ce88e618",
+    "commit": "0e71c0f062df0d3e3d3698a1a9ffd2f76eed4adc",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
     "jax_default_backend": "cpu",
@@ -24661,12 +25093,12 @@
     "jax_enable_x64": false,
     "python": "3.10.13",
     "platform": "Linux-5.15.0-191-generic-x86_64-with-glibc2.31",
-    "utc": "2026-09-21T10:45:13.731104+00:00",
+    "utc": "2026-09-21T11:00:58.589816+00:00",
     "rfx_version": "1.8.0",
     "rfx_import_tail": "rfx/__init__.py",
     "rfx_resolved_inside_the_run_tree": true,
-    "compute_run_id": "369367262702",
-    "compute_run_dir": "lw-wire-eps-ladder-20260921T104442Z"
+    "compute_run_id": "369367262713",
+    "compute_run_dir": "lw-wire-eps-ladder-20260921T110025Z"
    },
    "kind": "wire",
    "dut": "short",
@@ -25110,7 +25542,7 @@
       "grad": 5.534436695597833e-06,
       "loss_dtype": "float32",
       "grad_finite": true,
-      "wall_s": 2.82764864503406,
+      "wall_s": 2.655147211975418,
       "warnings": []
      },
      "fd": {
@@ -25120,7 +25552,7 @@
       "grad": -1.3107165353076766e-07,
       "loss_dtype": "float64",
       "ulp_span": 1180588.5,
-      "wall_s": 1.4624781669699587,
+      "wall_s": 1.4396393579663709,
       "warnings": []
      },
      "comparator": {
@@ -25192,7 +25624,7 @@
       "grad": 0.6236206293106079,
       "loss_dtype": "float32",
       "grad_finite": true,
-      "wall_s": 2.639829027990345,
+      "wall_s": 2.5380079580354504,
       "warnings": []
      },
      "fd": {
@@ -25202,7 +25634,7 @@
       "grad": 0.6236713912408653,
       "loss_dtype": "float64",
       "ulp_span": 11235064980776.0,
-      "wall_s": 1.4222014300175942,
+      "wall_s": 1.4521774830063805,
       "warnings": []
      },
      "comparator": {
@@ -25260,7 +25692,7 @@
  },
  "pilot": {
   "provenance": {
-   "commit": "a0badacb150ac333aa2153df2992df169218a83a",
+   "commit": "f6114cf2ec53954e8d47154226f7f42e9ea17953",
    "jax_version": "0.6.2",
    "numpy_version": "2.2.6",
    "jax_default_backend": "cpu",
@@ -25269,13 +25701,13 @@
    ],
    "jax_enable_x64": false,
    "python": "3.10.13",
-   "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.31",
-   "utc": "2026-09-21T10:27:49.749572+00:00",
+   "platform": "Linux-5.15.0-191-generic-x86_64-with-glibc2.31",
+   "utc": "2026-09-21T10:57:16.766254+00:00",
    "rfx_version": "1.8.0",
    "rfx_import_tail": "rfx/__init__.py",
    "rfx_resolved_inside_the_run_tree": true,
-   "compute_run_id": "369367262687",
-   "compute_run_dir": "lw-wire-pilot-20260921T102719Z"
+   "compute_run_id": "369367262710",
+   "compute_run_dir": "lw-wire-pilot-20260921T105656Z"
   },
   "kind": "wire",
   "dut": "open",
@@ -25401,7 +25833,7 @@
      1.000616192817688,
      1.0005719661712646
     ],
-    "wall_s": 1.4327217461541295,
+    "wall_s": 0.9921861119801179,
     "warnings": [
      {
       "warning": "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.",
@@ -25507,7 +25939,7 @@
      1.000002145767212,
      1.0000126361846924
     ],
-    "wall_s": 1.57177289808169,
+    "wall_s": 0.8496670380118303,
     "warnings": [
      {
       "warning": "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.",
@@ -25613,7 +26045,7 @@
      1.0000054836273193,
      1.0000077486038208
     ],
-    "wall_s": 1.6264393138699234,
+    "wall_s": 0.8492430709884502,
     "warnings": [
      {
       "warning": "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.",
@@ -25719,7 +26151,7 @@
      1.0000028610229492,
      1.0000097751617432
     ],
-    "wall_s": 1.5657385820522904,
+    "wall_s": 0.8954990729689598,
     "warnings": [
      {
       "warning": "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.",
@@ -25825,7 +26257,7 @@
      0.9999985098838806,
      0.9999948740005493
     ],
-    "wall_s": 1.6783477552235126,
+    "wall_s": 0.9087330579641275,
     "warnings": [
      {
       "warning": "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.",
@@ -25931,7 +26363,7 @@
      0.9999996423721313,
      0.9999996423721313
     ],
-    "wall_s": 1.567179949954152,
+    "wall_s": 0.8381649850052781,
     "warnings": [
      {
       "warning": "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.",
@@ -26037,7 +26469,7 @@
      0.9999998211860657,
      0.9999994039535522
     ],
-    "wall_s": 1.4069225401617587,
+    "wall_s": 0.8213768299901858,
     "warnings": [
      {
       "warning": "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.",
@@ -26143,7 +26575,7 @@
      0.9999998211860657,
      0.9999995827674866
     ],
-    "wall_s": 1.5753400041721761,
+    "wall_s": 0.8298657250124961,
     "warnings": [
      {
       "warning": "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.",
