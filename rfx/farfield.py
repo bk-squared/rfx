@@ -492,6 +492,10 @@ def accumulate_ntff(
                 state.hy[idx, j0:j1, k0:k1],
                 state.hz[idx, j0:j1, k0:k1],
             ], axis=-1)  # (nj, nk, 4)
+        # The lower-index H plane. It cannot wrap to the far side of the
+        # array: _require_face_centre_margin above refuses any face with
+        # idx < 1 before a face-centre box reaches this point.
+        below = idx - 1
         # Face-cell centre (x_node[idx], y_centre[j], z_centre[k]).
         # ey sits at y_centre already and needs half a cell in z; ez sits at
         # z_centre and needs half a cell in y; hy and hz sit half a cell off
@@ -502,12 +506,12 @@ def accumulate_ntff(
                     + state.ey[idx, j0:j1, k0 + 1:k1 + 1])
         ez = 0.5 * (state.ez[idx, j0:j1, k0:k1]
                     + state.ez[idx, j0 + 1:j1 + 1, k0:k1])
-        hy_lo = 0.5 * (state.hy[idx - 1, j0:j1, k0:k1]
-                       + state.hy[idx - 1, j0 + 1:j1 + 1, k0:k1])
+        hy_lo = 0.5 * (state.hy[below, j0:j1, k0:k1]
+                       + state.hy[below, j0 + 1:j1 + 1, k0:k1])
         hy_hi = 0.5 * (state.hy[idx, j0:j1, k0:k1]
                         + state.hy[idx, j0 + 1:j1 + 1, k0:k1])
-        hz_lo = 0.5 * (state.hz[idx - 1, j0:j1, k0:k1]
-                       + state.hz[idx - 1, j0:j1, k0 + 1:k1 + 1])
+        hz_lo = 0.5 * (state.hz[below, j0:j1, k0:k1]
+                       + state.hz[below, j0:j1, k0 + 1:k1 + 1])
         hz_hi = 0.5 * (state.hz[idx, j0:j1, k0:k1]
                         + state.hz[idx, j0:j1, k0 + 1:k1 + 1])
         return jnp.stack([
@@ -524,17 +528,21 @@ def accumulate_ntff(
                 state.hx[i0:i1, idx, k0:k1],
                 state.hz[i0:i1, idx, k0:k1],
             ], axis=-1)
+        # The lower-index H plane. It cannot wrap to the far side of the
+        # array: _require_face_centre_margin above refuses any face with
+        # idx < 1 before a face-centre box reaches this point.
+        below = idx - 1
         # Face-cell centre (x_centre[i], y_node[idx], z_centre[k]).
         ex = 0.5 * (state.ex[i0:i1, idx, k0:k1]
                     + state.ex[i0:i1, idx, k0 + 1:k1 + 1])
         ez = 0.5 * (state.ez[i0:i1, idx, k0:k1]
                     + state.ez[i0 + 1:i1 + 1, idx, k0:k1])
-        hx_lo = 0.5 * (state.hx[i0:i1, idx - 1, k0:k1]
-                       + state.hx[i0 + 1:i1 + 1, idx - 1, k0:k1])
+        hx_lo = 0.5 * (state.hx[i0:i1, below, k0:k1]
+                       + state.hx[i0 + 1:i1 + 1, below, k0:k1])
         hx_hi = 0.5 * (state.hx[i0:i1, idx, k0:k1]
                         + state.hx[i0 + 1:i1 + 1, idx, k0:k1])
-        hz_lo = 0.5 * (state.hz[i0:i1, idx - 1, k0:k1]
-                       + state.hz[i0:i1, idx - 1, k0 + 1:k1 + 1])
+        hz_lo = 0.5 * (state.hz[i0:i1, below, k0:k1]
+                       + state.hz[i0:i1, below, k0 + 1:k1 + 1])
         hz_hi = 0.5 * (state.hz[i0:i1, idx, k0:k1]
                         + state.hz[i0:i1, idx, k0 + 1:k1 + 1])
         return jnp.stack([
@@ -551,17 +559,21 @@ def accumulate_ntff(
                 state.hx[i0:i1, j0:j1, idx],
                 state.hy[i0:i1, j0:j1, idx],
             ], axis=-1)
+        # The lower-index H plane. It cannot wrap to the far side of the
+        # array: _require_face_centre_margin above refuses any face with
+        # idx < 1 before a face-centre box reaches this point.
+        below = idx - 1
         # Face-cell centre (x_centre[i], y_centre[j], z_node[idx]).
         ex = 0.5 * (state.ex[i0:i1, j0:j1, idx]
                     + state.ex[i0:i1, j0 + 1:j1 + 1, idx])
         ey = 0.5 * (state.ey[i0:i1, j0:j1, idx]
                     + state.ey[i0 + 1:i1 + 1, j0:j1, idx])
-        hx_lo = 0.5 * (state.hx[i0:i1, j0:j1, idx - 1]
-                       + state.hx[i0 + 1:i1 + 1, j0:j1, idx - 1])
+        hx_lo = 0.5 * (state.hx[i0:i1, j0:j1, below]
+                       + state.hx[i0 + 1:i1 + 1, j0:j1, below])
         hx_hi = 0.5 * (state.hx[i0:i1, j0:j1, idx]
                         + state.hx[i0 + 1:i1 + 1, j0:j1, idx])
-        hy_lo = 0.5 * (state.hy[i0:i1, j0:j1, idx - 1]
-                       + state.hy[i0:i1, j0 + 1:j1 + 1, idx - 1])
+        hy_lo = 0.5 * (state.hy[i0:i1, j0:j1, below]
+                       + state.hy[i0:i1, j0 + 1:j1 + 1, below])
         hy_hi = 0.5 * (state.hy[i0:i1, j0:j1, idx]
                         + state.hy[i0:i1, j0 + 1:j1 + 1, idx])
         return jnp.stack([

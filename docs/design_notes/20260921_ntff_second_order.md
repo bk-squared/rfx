@@ -204,7 +204,10 @@ and re-running the unmutated code turns the gates red at
 ## What moved in the existing gates
 
 Same test files, same fixtures, run against `origin/main` and against this
-branch. Nothing changed colour: 113 passed on both sides across
+branch. One committed gate changed colour, in CI rather than in the files the
+author and the reviewers had run: the anti-drift check of the PEC-sphere Mie
+fixture (last row, and the paragraph under the table). Everything else kept
+its colour: 113 passed on both sides across
 `tests/unit/farfield`, `tests/oracle/test_farfield.py`,
 `tests/oracle/test_oblique_rcs_specular.py`,
 `tests/unit/grid/test_x64_scan_carry_dtypes.py` and the four autodiff
@@ -222,6 +225,25 @@ far-field files, plus 8 passed on
 | oracle test_farfield | half-wave dipole D | 2.380 dBi | 2.156 dBi | 2.15 dBi (analytic) | yes: 0.230 -> 0.006 dB |
 | test_farfield_nonuniform, uniform-z via NU (settled, 600 steps) | D | 1.7062 dBi | 1.7001 dBi | 1.7609 dBi (analytic) | no: 0.055 -> 0.061 dB |
 | test_farfield_nonuniform, graded-z (settled, 600 steps) | D | 1.7074 dBi | 1.7002 dBi | 1.7609 dBi (analytic) | no: 0.054 -> 0.061 dB |
+| PEC sphere ka = 1, `tests/oracle/test_rcs_mie_fixture.py` | monostatic RCS | -25.2076 dBsm | -25.4944 dBsm | -25.3929 dBsm (exact Mie series) | 0.185 -> 0.102 dB, see below |
+
+**The sphere's backscatter moved 0.287 dB**, past that fixture's 0.25 dB
+anti-drift tolerance, so `fixture.json` was regenerated with
+`generate_fixture.py` as its message asks. It is the largest move in this
+table because `compute_rcs` draws its Huygens box near the edge of the domain
+— the large-box case of the sweep in the verdict section, at lambda/40. The
+absorber-depth ladder that fixture's README derives `CPML_LAYERS = 24` from
+was re-measured: -25.2555 / -25.4767 / -25.4944 / -25.4797 / -25.4663 dBsm at
+8 / 16 / 24 / 32 / 40 cells (steps 0.221 / 0.018 / 0.015 / 0.013), every rung
+0.28-0.37 dB below its first-order reading, the same conclusion. The new value
+is nearer the Mie series, but that fixture's README already warns what such a
+reading is worth: Mie is a continuum reference and this sphere is staircased
+at 6.4 cells per radius, so the distance to Mie also contains mesh error. The
+evidence for the surface rule is the dipole oracle and the extinction test,
+not this row. The fixture's non-gated bistatic trace moved by 0.1-0.8 dB angle
+by angle; its known defects — a forward-oblique lobe about 10 dB above Mie at
+25-55 degrees, and a forward-scatter excess, 1.85 dB before and 1.75 dB now —
+are still there, so they do not come from the surface rule.
 
 The assertions in `tests/oracle/test_farfield.py` and
 `test_farfield_nonuniform.py` are analytic expectations with tolerance bands

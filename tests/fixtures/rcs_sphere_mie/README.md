@@ -23,7 +23,7 @@ gate test `tests/oracle/test_rcs_mie_fixture.py`.
 staircased PEC sphere at ka≈1.0, at the committed resolution
 (dx=λ/40, ≈6.4 cells per sphere radius, 24-cell CPML, 90³ grid), against the
 exact Mie series. The gate is |Δ| ≤ 1.0 dB on this single configuration; the
-measured distance is 0.185 dB.
+measured distance is 0.102 dB (0.185 dB before the second-order NTFF rule of #1159).
 
 **This is NOT a bistatic validation.** The same run that produced this
 fixture (2026-07-06 falsifier, reproduced by `generate_fixture.py`) shows:
@@ -61,9 +61,15 @@ Mie — Mie is a continuum reference, so "closer" also rewards mesh error:
 
 | CPML cells | 8 | 16 | 24 | 32 | 40 |
 |---|---|---|---|---|---|
-| monostatic (dBsm) | −24.8826 | −25.1685 | −25.2076 | −25.1971 | −25.1815 |
-| step from previous | — | 0.286 | 0.039 | 0.011 | 0.016 |
+| monostatic (dBsm) | −25.2555 | −25.4767 | −25.4944 | −25.4797 | −25.4663 |
+| step from previous | — | 0.221 | 0.018 | 0.015 | 0.013 |
+
+(Re-measured 2026-09-21 with the second-order NTFF surface rule of #1159, which
+moved every rung by −0.28 to −0.37 dB. With the first-order rule the ladder read
+−24.8826 / −25.1685 / −25.2076 / −25.1971 / −25.1815, steps 0.286 / 0.039 /
+0.011 / 0.016 — the same conclusion. The |rfx − Mie| numbers quoted in the
+paragraph above were read with the first-order rule.)
 
 Past 24 the value only wanders inside a ~0.02 dB floor, so `CPML_LAYERS = 24`
-and the fixture reads 0.185 dB from Mie. The grid grows 58³ → 90³; the interior
+and the fixture reads 0.102 dB from Mie. The grid grows 58³ → 90³; the interior
 is unchanged.
