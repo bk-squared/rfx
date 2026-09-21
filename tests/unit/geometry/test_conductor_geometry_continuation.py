@@ -182,9 +182,12 @@ def test_occupied_layer_reaches_without_a_declared_face(axis, side, kind):
     assert np.take(mask, 0 if side == 0 else -2, axis=axis).any()
 
 
+@pytest.mark.parametrize("nu", (False, True))
 @pytest.mark.parametrize("kind", ("wire", "lumped", "coax", "mixed"))
-def test_port_terminals_hold_signal_on_both_faces(kind):
-    sim = _sim()
+def test_port_terminals_hold_signal_on_both_faces(kind, nu):
+    sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
+                     boundary="cpml", cpml_layers=2,
+                     **({"dz_profile": np.ones(8)} if nu else {}))
     signal = Box((0., 3., 4.), (8., 5., 4.))
     ground = Box((0., 0., 1.), (8., 8., 1.))
     sim.add(signal, material="pec")
@@ -198,7 +201,7 @@ def test_port_terminals_hold_signal_on_both_faces(kind):
     if kind == "mixed":
         sim._msl_ports = [SimpleNamespace(position=(6., 4., 1.), width=2.,
                                          height=3., direction="-x")]
-    grid = sim._build_grid()
+    grid = sim._build_nonuniform_grid() if nu else sim._build_grid()
     assert continued_conductor_shape(sim, grid, signal) is signal
     realized_ground = continued_conductor_shape(sim, grid, ground)
     assert realized_ground.corner_lo[0] < -2.

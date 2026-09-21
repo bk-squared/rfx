@@ -18,7 +18,11 @@ def _port_entries(sim, grid, nodes, entries):
         a = "xyz".index(p.component[-1])
         start, end = list(p.position), list(p.position)
         if p.extent is None:
-            idx = grid.position_to_index(p.position)
+            if hasattr(grid, "dx_arr"):
+                from rfx.nonuniform import position_to_index
+                idx = position_to_index(grid, p.position)
+            else:
+                idx = grid.position_to_index(p.position)
             start = [float(nodes[t][idx[t]]) for t in range(3)]
             end = start.copy()
             end[a] = float(nodes[a][min(idx[a]+1, len(nodes[a])-1)])

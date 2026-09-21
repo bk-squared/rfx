@@ -614,6 +614,11 @@ def _conductor_reached_faces(sim, grid, shape, lattice, nodes):
 
 def _port_terminal_pairs(sim, grid, nodes):
     """Physical terminal pairs used by the existing port constructors."""
+    if hasattr(grid, "dx_arr"):
+        from rfx.nonuniform import position_to_index
+        index_of = lambda point: position_to_index(grid, point)
+    else:
+        index_of = grid.position_to_index
     pairs = []
     for port in getattr(sim, "_msl_ports", ()):
         bottom = tuple(port.position)
@@ -628,15 +633,17 @@ def _port_terminal_pairs(sim, grid, nodes):
             end = list(start)
             end[axis] += port.extent
         else:
-            index = grid.position_to_index(port.position)
+            index = index_of(port.position)
             start = tuple(float(nodes[a][index[a]]) for a in range(3))
             end = list(start)
             end[axis] = float(nodes[axis][min(index[axis] + 1, len(nodes[axis])-1)])
         pairs.append((start, tuple(end)))
     if getattr(sim, "_coaxial_ports", ()):
+        from types import SimpleNamespace
         from rfx.sources.coaxial_port import _coaxial_port_geometry
         for port in sim._coaxial_ports:
-            tip = _coaxial_port_geometry(grid, port)[4]
+            tip = _coaxial_port_geometry(
+                SimpleNamespace(position_to_index=index_of), port)[4]
             pairs.append((tuple(port.position), tuple(tip)))
     return pairs
 
