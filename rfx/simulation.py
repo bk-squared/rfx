@@ -238,7 +238,9 @@ class SimResult(NamedTuple):
         Final V/I/V_inc DFT accumulators for wire port S-params.
     lumped_port_sparams : tuple | None
         Final V/I DFT accumulators for lumped port S-params (issue #72).
-        Each entry is ``(LumpedPortSParamSpec, (v_dft, i_dft))``.
+        Each entry is ``(LumpedPortSParamSpec, (v_dft, i_dft, v_ref_dft))``;
+        v/i are POST-injection (i with the Yee half-step phase) and
+        v_ref is the PRE-injection drive sample.
     wire_refplane_sparams : tuple | None
         Final reference-plane V/I DFT accumulators for the opt-in wire
         S-matrix plane path (issue #313).  Each entry is

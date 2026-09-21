@@ -242,7 +242,7 @@ def generate_coaxial_reference_plane_dft_dump(
         dtype=np.complex128,
     )
     _raw_spec, gap_accs = result.lumped_port_sparams[0]
-    gap_v_dft, gap_i_dft = gap_accs
+    gap_v_dft, gap_i_dft = gap_accs[0], gap_accs[1]
     gap_s11 = np.asarray(
         extract_lumped_s11(gap_v_dft, gap_i_dft, z0=port.impedance),
         dtype=np.complex128,

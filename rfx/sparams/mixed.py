@@ -713,6 +713,16 @@ def compute_mixed_s_matrix(
                     # reference — not a pre-injection sample.
                     vref_lw[run_idx, i_port, :] = np.asarray(
                         vi[4] if len(vi) > 4 else vi[0])
+                else:
+                    # Same reason on the lumped family, whose physical
+                    # channels moved post-injection on 2026-09-21
+                    # (scripts/diagnostics/lumped_port_known_load_line.py):
+                    # vi[2] is its pre-injection drive sample, bit-identical
+                    # to the pre-decision vi[0] this lane was calibrated
+                    # against. A shorter tuple is pre-decision data, where
+                    # vi[0] IS that sample.
+                    vref_lw[run_idx, i_port, :] = np.asarray(
+                        vi[2] if len(vi) > 2 else vi[0])
 
             planes = raw.get("dft_planes")
             if not planes:
@@ -810,7 +820,7 @@ def compute_mixed_s_matrix(
             np.asarray([pe.impedance for pe in lw_entries]),
             n_live_lw, np.asarray(z0_hj_per_port),
             wire_mode, drive_plan,
-            v_ref_lw=(vref_lw if wire_mode else None),
+            v_ref_lw=vref_lw,
         )
         S = jnp.asarray(S, dtype=_complex_dtype)
 

@@ -124,7 +124,7 @@ def generate_coaxial_gap_vi_dump(
     if not result.lumped_port_sparams:
         raise RuntimeError("coaxial diagnostic produced no V/I DFT accumulators")
     raw_spec, accs = result.lumped_port_sparams[0]
-    v_dft, i_dft = accs
+    v_dft, i_dft = accs[0], accs[1]
     diagnostic_s11 = np.asarray(extract_lumped_s11(v_dft, i_dft, z0=port.impedance), dtype=np.complex128)
 
     # Convert from the runner's FDTD sign convention to the public dump replay
