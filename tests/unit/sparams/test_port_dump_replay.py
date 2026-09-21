@@ -217,6 +217,10 @@ def test_lumped_extract_s_matrix_can_emit_replayable_real_vi_dump(tmp_path):
         metadata=PortDumpMetadata(
             commit_hash="test",
             geometry={"kind": "small_two_port_lumped_smoke"},
+            # rfx's lumped production diagonal is the driven terminal
+            # reflection; the dump says so, as the wire dump says which
+            # off-diagonal frame it used.
+            diagonal_frame="driven_terminal",
         ),
         port_names=extraction.port_names,
         driven_port_indices=extraction.driven_port_indices,

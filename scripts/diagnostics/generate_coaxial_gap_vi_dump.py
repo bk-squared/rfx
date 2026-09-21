@@ -135,6 +135,9 @@ def generate_coaxial_gap_vi_dump(
 
     metadata = PortDumpMetadata(
         commit_hash=_git_commit(),
+        # The coaxial gap probe is a lumped port, whose production
+        # diagonal is the driven terminal reflection.
+        diagonal_frame="driven_terminal",
         geometry={
             "kind": "single_coaxial_gap_diagnostic_pec_cavity",
             "domain_m": list(domain),
