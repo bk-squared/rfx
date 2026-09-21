@@ -22,7 +22,7 @@ the case is created or its geometry changes.
 | copied from | `tests/fixtures/msl_notch_e4/msl_stub_notch_openems_dx50.json` (git mv, 2026-09-22) |
 | produced by | `research/microwave-energy`, `results/msl_stub_notch_for_rfx_y2/msl_stub_notch_openems_L12p0mm_dx50um.json` (a private repo; the producing script is not in this repo) |
 | arrays | `freqs_ghz`, `s11_mag`, `s21_mag` linear; `s11_db`, `s21_db` in dB |
-| Tutorial reproduction | not recorded — no reproduction of an openEMS known-good example exists in this repo or beside the source file |
+| Tutorial reproduction | not recorded for this record. The source directory on the lab share holds three result JSONs and no log (listed 2026-09-22). A separate openEMS tutorial reproduction exists in this repo for a different structure (the MSL thru-line phase case, `validation/crossval/20_msl_phase_referee.py`, 0.44 % on its own notch); it says nothing about this run |
 
 Its own `meta.physicality` line: "passive: max(|S11|^2+|S21|^2)<=1.00 across
 2-7GHz (dx=80um refs violate this; NOT used)".
@@ -44,12 +44,12 @@ Its own `meta.physicality` line: "passive: max(|S11|^2+|S21|^2)<=1.00 across
 | device | GPU rtx4090, cluster remilab-c0 |
 | passivity probe | 11 points, 2–7 GHz, step 0.5 GHz, on the same mesh as each sweep |
 | copied from | `tests/fixtures/msl_notch_e4/msl_stub_notch_palace_referee.json` (git mv, 2026-09-22) |
-| job directory | `scripts/diagnostics/palace_notch_referee/` — the mesh, the Palace configs, the two VESSL job files and the `port-S.csv` gate that produced this record |
+| job directory | `scripts/diagnostics/palace_notch_referee/` — the mesh, the Palace configs, the two VESSL job files and the `port-S.csv` gate that produced the sweeps (the arrays) |
 | arrays | LINEAR magnitude, converted from Palace's dB columns by `10**(dB/20)` |
+| derived fields | `notch.parabolic_f_ghz`, `notch.bin_f_ghz`, `notch.depth_db`, `notch.s11_at_notch`, `max_energy_sum` and the `referee` block were computed from the arrays by `scripts/diagnostics/build_msl_notch_palace_referee.py` (removed at rfx commit 2ce4c28d). The notch rule is the log-parabolic vertex through the deepest bin, now `validation/crossval/comparators/spectral_features.py::refined_extremum`; the case's fast test reproduces `parabolic_f_ghz` from the arrays with it |
 | Tutorial reproduction | the file records none; `meta.method` and `meta.geometry` are what it states about its own setup |
 
-The file also carries a `referee` block written by the producer that was removed
-with the old case. It is not read by this case's test.
+The `referee` block is not read by this case's test.
 
 ## The two notch frequencies
 

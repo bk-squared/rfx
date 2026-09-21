@@ -21,10 +21,14 @@ References (``reference/``, provenance in ``reference/PROVENANCE.md``):
   recorded for it.
 
 The ladder is dx = h_sub/n so the substrate top always lands on a node plane
-(issue #723): 127 µm (n = 2), 63.5 µm (n = 4), 42.33 µm (n = 6).  The bar is
-the v2 accuracy bar — a converged mesh first, then the trend over frequency,
-2 dB in magnitude and 1 % in frequency — and nothing else.  No threshold here
-is derived from a run, and this case commits no record of a run.
+(issue #723): 127 µm (n = 2), 63.5 µm (n = 4), 42.33 µm (n = 6).  The
+thresholds are the v2 accuracy bar (1 % in frequency, 2 dB in magnitude) and
+the three rules the PI approved with it on 2026-09-22: the mesh statement
+(the last two rungs within 1 %), the deep-null exclusion (a bin where either
+curve is below −20 dB is judged by position only) and the ring-down witness
+(−40 dB, the repo's rule).  Every one is a named constant below with its
+source.  No threshold is derived from a run, and this case commits no record
+of a run.
 
 How to run it
 -------------
@@ -83,22 +87,33 @@ LADDER_M = (
     SUBSTRATE_THICKNESS_M / 6,   # 42.33 µm
 )
 
-# Record length in periods of freq_max.  Set from the ring-down witness, not
-# from a comparison: see SETTLING_DB below.
+# Record length in periods of freq_max — the value the retired script ran
+# with, kept because the ring-down witness (SETTLING_DB) confirms it at every
+# rung: −109 to −111 dB at h/2 … h/8 (VESSL run 369367263038).
 NUM_PERIODS = 20.0
 N_FREQS = 100
+# The band both references cover; the notch is searched inside it, never over
+# rfx's wider sweep.
+REFERENCE_BAND_HZ = (2.0e9, 7.0e9)
 
-# ------------------------------------------------------------- the v2 bar
+# ------------------------------------------------------------ thresholds
+# The v2 accuracy bar (rfx CLAUDE.md, PI 2026-09-20):
 FREQ_BAR = 0.01          # resonances, cutoffs, notches, band edges: within 1 %
 MAG_BAR_DB = 2.0         # power and magnitude: within 2 dB
-DEEP_NULL_DB = -20.0     # below this the reference's own null is not compared
-LADDER_AGREEMENT = 0.01  # last two rungs must differ by < 1 %
-SETTLING_DB = -40.0      # ring-down witness; above it the record was truncated
-# Witness, not a comparison: a passive structure cannot scatter more power than
-# it receives, so a raw extraction above the passive bound is a measurement
-# artefact and the rung stops instead of being compared.
-PASSIVITY_EXCESS_BAR = 0.02
+# Rules approved by the PI with this case's plan (2026-09-22):
+LADDER_AGREEMENT = 0.01  # mesh statement: the last two rungs differ by < 1 %
+DEEP_NULL_DB = -20.0     # a bin where either curve is below this is judged by
+#                          position only, never by magnitude
+# Witnesses on rfx's own record, not comparisons (rfx CLAUDE.md, Validation
+# rules): a record that has not rung down to −40 dB is truncation-suspect, and
+# a passive structure cannot scatter more power than it receives, so a raw
+# extraction more than one percent above the passive bound is a measurement
+# artefact — the rung stops instead of being compared.  Measured on the four
+# rungs of run 369367263038: settling −109 … −111 dB, excess 0.002 … 0.004.
+SETTLING_DB = -40.0
+PASSIVITY_EXCESS_BAR = 0.01
 
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 _REFERENCE_DIR = Path(__file__).resolve().parent / "reference"
 _PALACE_JSON = _REFERENCE_DIR / "palace_fem.json"
 _OPENEMS_JSON = _REFERENCE_DIR / "openems_dx50um.json"
@@ -173,10 +188,13 @@ def _build_trace_as_volume(dx: float) -> Simulation:
     return sim
 
 
-def _build_short_stub(dx: float, cells_short: int) -> Simulation:
-    """The board with the stub drawn ``cells_short`` cells shorter than 12 mm.
+def _build_short_stub(dx: float, cells_short: int, lift_cells: int = 0) -> Simulation:
+    """The board with the stub drawn ``cells_short`` cells shorter than 12 mm
+    and, with ``lift_cells``, its near end drawn that many cells clear of the
+    main line (the open end then stays where :func:`build` puts it when
+    ``cells_short == lift_cells``: a floating strip, not a stub).
 
-    Everything but the stub Box's far face is what :func:`build` declares.
+    Everything else is what :func:`build` declares.
     """
     sim = Simulation(
         freq_max=FREQ_MAX_HZ,
@@ -192,7 +210,8 @@ def _build_short_stub(dx: float, cells_short: int) -> Simulation:
     y_hi = TRACE_CENTRE_Y_M + TRACE_WIDTH_M / 2.0
     sim.add(Box((0.0, y_lo, SUBSTRATE_THICKNESS_M),
                 (DOMAIN_X_M, y_hi, SUBSTRATE_THICKNESS_M)), material="pec")
-    sim.add(Box((STUB_CENTRE_X_M - TRACE_WIDTH_M / 2.0, y_hi, SUBSTRATE_THICKNESS_M),
+    sim.add(Box((STUB_CENTRE_X_M - TRACE_WIDTH_M / 2.0, y_hi + lift_cells * dx,
+                 SUBSTRATE_THICKNESS_M),
                 (STUB_CENTRE_X_M + TRACE_WIDTH_M / 2.0,
                  y_hi + STUB_LENGTH_M - cells_short * dx,
                  SUBSTRATE_THICKNESS_M)), material="pec")
@@ -265,14 +284,28 @@ def realized_geometry(sim: Simulation) -> dict:
     if stub_cols.size == 0:
         return out
     i0, i1 = int(stub_cols.min()), int(stub_cols.max())
-    stub_edges = np.flatnonzero(my[i0:i1 + 1, :, k].any(axis=0))
-    open_j = int(stub_edges.max()) + 1
+    # ``Ey[i, j, k]`` spans node row j -> j+1 on column i.  Counted from the
+    # main line's far row upward, the stub's transverse edges must START at
+    # that row (the T is joined — measured: the lattice does realize the edge
+    # j1 -> j1+1 when the stub Box begins at the trace's edge) and run without
+    # a gap to the open end.  A stub drawn clear of the line realizes its
+    # first edge higher up, and a stub that also keeps its open end in place
+    # has the same length by the old measure — so the joint is checked, not
+    # only the length.
+    above = np.flatnonzero(my[i0:i1 + 1, j1:, k].any(axis=0)) + j1
+    first_j, last_j = int(above.min()), int(above.max())
+    open_j = last_j + 1
+    contiguous = (last_j - first_j + 1) == int(above.size)
     out.update(
         stub_cols=(i0, i1),
         n_stub_cols=int(stub_cols.size),
         stub_x_m=(float(xs[i0]), float(xs[i1])),
         stub_width_node_span_m=float(xs[i1] - xs[i0]),
         stub_width_strip_m=float(stub_cols.size) * dx,
+        stub_first_edge_row=first_j,
+        stub_gap_rows=first_j - j1,
+        stub_contiguous=contiguous,
+        stub_attached=(first_j == j1) and contiguous,
         stub_open_row=open_j,
         stub_open_y_m=float(ys[open_j]),
         stub_length_m=float(ys[open_j] - ys[j1]),
@@ -318,6 +351,14 @@ def assert_realized(sim: Simulation, dx: float) -> dict:
             f"({dx*1e6:.2f}µm) from the declared {TRACE_WIDTH_M*1e6:.0f}µm "
             f"(node span {g['trace_width_node_span_m']*1e6:.1f}µm over "
             f"{g['n_trace_rows']} rows).")
+    if not g["stub_attached"]:
+        raise AssertionError(
+            f"dx={dx*1e6:.2f}µm: the stub is not joined to the main line: its "
+            f"first transverse PEC edge is at node row {g['stub_first_edge_row']}, "
+            f"{g['stub_gap_rows']} row(s) above the line's far row "
+            f"{g['trace_rows'][1]}"
+            + ("" if g["stub_contiguous"] else ", and its edges are not contiguous")
+            + ". A floating strip beside a through line is not a shunt stub.")
     if abs(g["stub_length_m"] - STUB_LENGTH_M) > dx:
         raise AssertionError(
             f"dx={dx*1e6:.2f}µm: realized stub length "
@@ -415,30 +456,46 @@ def run_rung(dx: float) -> dict:
 
 
 # --------------------------------------------------------------- estimator
-def notch_frequency(freqs, s21_mag) -> dict:
-    """Notch frequency, depth and −10 dB bandwidth of a |S21| minimum.
+def _load_refined_extremum():
+    """The repository's one notch estimator, ``refined_extremum`` in
+    ``validation/crossval/comparators/spectral_features.py`` (the module that
+    exists so the cases and the referee producers cannot drift apart).  Loaded
+    by path because ``validation/`` is not a package; it imports numpy only."""
+    import importlib.util
 
-    The frequency is the vertex of the parabola through the minimum bin and
-    its two neighbours, fitted in dB.  This is the estimator the Palace record
-    used for its ``parabolic_f_ghz`` (a parabola in dB and one in ln|S| have
-    the same vertex, dB being 20/ln10 times ln|S|), and the second fast test
-    below pins that it reproduces the recorded value.
+    path = _REPO_ROOT / "validation" / "crossval" / "comparators" / "spectral_features.py"
+    spec = importlib.util.spec_from_file_location("_msl_notch_spectral_features", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.refined_extremum
+
+
+_refined_extremum = _load_refined_extremum()
+
+
+def notch_frequency(freqs, s21_mag, lo=None, hi=None) -> dict:
+    """Notch frequency, depth and −10 dB bandwidth of a |S21| minimum inside
+    ``[lo, hi]`` (same units as ``freqs``; ``None`` means the whole array).
+
+    The frequency is the shared estimator's: the deepest bin in the band and
+    the vertex of the parabola through it and its two neighbours, fitted in
+    log|S| (the same vertex as a fit in dB).  The Palace record's
+    ``parabolic_f_ghz`` was computed from its arrays with that rule by the
+    producer the case removal retired, so the second fast test below is a
+    regression pin of the shared estimator on a frozen number, not an
+    independent check of it.
 
     The bandwidth is the width between the two linear-interpolated crossings
     of −10 dB either side of the minimum bin; ``nan`` when the curve does not
-    come back up to −10 dB inside the band.
+    come back up to −10 dB inside the array.
     """
     f = np.asarray(freqs, dtype=float)
     s = np.asarray(s21_mag, dtype=float)
     y = 20.0 * np.log10(np.maximum(s, 1e-300))
-    i = int(np.argmin(s))
-    h = float(f[i + 1] - f[i]) if i + 1 < f.size else float(f[i] - f[i - 1])
-    if 0 < i < f.size - 1:
-        denom = float(y[i - 1] - 2.0 * y[i] + y[i + 1])
-        shift = 0.0 if denom <= 0.0 else float(
-            np.clip(0.5 * float(y[i - 1] - y[i + 1]) / denom, -1.0, 1.0))
-    else:
-        shift = 0.0
+    ext = _refined_extremum(f, s, lo, hi, transform="log")
+    i = int(ext["index"])
+    h = float(ext["bin_width"])
+    shift = float(ext["sub_bin_shift"])
 
     def _cross(lo_idx: int, hi_idx: int, step: int) -> float:
         j = lo_idx
@@ -454,8 +511,8 @@ def notch_frequency(freqs, s21_mag) -> dict:
     f_hi = _cross(i, f.size - 1, +1)
     return {
         "index": i,
-        "bin_f": float(f[i]),
-        "f": float(f[i]) + shift * h,
+        "bin_f": float(ext["bin_f"]),
+        "f": float(ext["refined_f"]),
         "sub_bin_shift": shift,
         "depth_db": float(y[i]),
         "bw_10db": float(f_hi - f_lo),
@@ -485,14 +542,21 @@ def _interp_db(freqs_hz, s21_db, ref_f_ghz) -> np.ndarray:
 
 
 def _compare(label: str, rung: dict, ref_f_ghz, ref_s21_mag) -> dict:
-    """ΔdB of rfx − reference at every reference frequency the reference does
-    not put in its own deep null, plus the notch-frequency distance."""
+    """ΔdB of rfx − reference at every reference frequency where BOTH curves
+    are above the deep-null level, plus the notch-frequency distance.
+
+    The exclusion is two-sided on purpose: a bin where one curve is in its
+    null and the other is not is the two notches sitting at different
+    frequencies, which the frequency bar already judges; counting it again
+    as a magnitude error would score one offset twice."""
     ref_db = _db(ref_s21_mag)
     ours = _interp_db(rung["freqs_hz"], _db(np.abs(rung["s21"])), ref_f_ghz)
-    keep = (ref_db >= DEEP_NULL_DB) & np.isfinite(ours)
+    keep = (ref_db >= DEEP_NULL_DB) & (ours >= DEEP_NULL_DB) & np.isfinite(ours)
     delta = ours - ref_db
-    ref_notch = notch_frequency(np.asarray(ref_f_ghz, float) * 1e9, ref_s21_mag)
-    our_notch = notch_frequency(rung["freqs_hz"], np.abs(rung["s21"]))
+    lo, hi = REFERENCE_BAND_HZ
+    ref_notch = notch_frequency(np.asarray(ref_f_ghz, float) * 1e9, ref_s21_mag,
+                                lo, hi)
+    our_notch = notch_frequency(rung["freqs_hz"], np.abs(rung["s21"]), lo, hi)
     max_abs = float(np.max(np.abs(delta[keep]))) if keep.any() else float("nan")
     out = dict(
         label=label, ref_f_ghz=np.asarray(ref_f_ghz, float), ref_db=ref_db,
@@ -510,7 +574,7 @@ def _print_comparison(c: dict) -> None:
           f"{c['ref_notch_ghz']:.4f} GHz -> {c['notch_pct']:.3f} %")
     print(f"    |S21| dB compared at {c['n_compared']} of "
           f"{c['ref_f_ghz'].size} reference frequencies "
-          f"(reference above {DEEP_NULL_DB:.0f} dB); "
+          f"(both curves above {DEEP_NULL_DB:.0f} dB); "
           f"max |ΔdB| = {c['max_abs_delta_db']:.3f} dB")
     print("    f_GHz, ref_dB, rfx_dB, delta_dB, compared")
     for f, r, o, d, k in zip(c["ref_f_ghz"], c["ref_db"], c["ours_db"],
@@ -538,7 +602,7 @@ def test_msl_notch_filter_matches_the_fem_reference(tmp_path):
         print(f"\n=== rung dx = {dx*1e6:.3f} µm ===")
         r = run_rung(dx)
         s21_db = _db(np.abs(r["s21"]))
-        n = notch_frequency(r["freqs_hz"], np.abs(r["s21"]))
+        n = notch_frequency(r["freqs_hz"], np.abs(r["s21"]), *REFERENCE_BAND_HZ)
         r["notch"] = n
         r["s21_db"] = s21_db
         print(f"  notch {n['f']/1e9:.5f} GHz (bin {n['bin_f']/1e9:.5f}, "
@@ -625,7 +689,8 @@ def test_msl_notch_filter_matches_the_fem_reference(tmp_path):
     assert mid["max_abs_delta_db"] <= MAG_BAR_DB, (
         f"|S21| differs from the FEM reference by up to "
         f"{mid['max_abs_delta_db']:.3f} dB (bar {MAG_BAR_DB:.0f} dB) over the "
-        f"{mid['n_compared']} reference frequencies above {DEEP_NULL_DB:.0f} dB.")
+        f"{mid['n_compared']} reference frequencies where both curves are above "
+        f"{DEEP_NULL_DB:.0f} dB.")
 
 
 def _write_figure(results, palace, openems, tmp_path) -> Path:
@@ -685,11 +750,24 @@ def test_the_lattice_builds_the_declared_board():
     print(f"  trace drawn as a one-cell volume: {volume.value}")
     assert "sheet" in str(volume.value)
 
+    # The stub lifted three cells clear of the line AND shortened by the same
+    # three cells: the open end does not move, so the length measured from the
+    # line's far row is the shipped one and only the joint can tell the two
+    # boards apart (a review of this case found the length check alone let
+    # this board through).
+    with pytest.raises(AssertionError) as floating:
+        assert_realized(_build_short_stub(dx, 3, lift_cells=3), dx)
+    print(f"  stub lifted three cells, open end unmoved: {floating.value}")
+    assert "not joined" in str(floating.value)
+
 
 def test_the_reference_files_are_what_the_provenance_says():
     """The two frozen references load, carry the bands and point counts
-    PROVENANCE.md states, and the notch estimator reproduces the Palace
-    record's own ``parabolic_f_ghz`` (this pins the estimator, not rfx)."""
+    PROVENANCE.md states, and the shared notch estimator reproduces the
+    ``parabolic_f_ghz`` frozen in the Palace record.  That number was computed
+    from the record's own arrays with the same log-parabolic vertex rule by
+    the retired producer, so this is a regression pin of the estimator on a
+    frozen value (to 1 kHz), not an independent check of it and not of rfx."""
     palace = _load(_PALACE_JSON)
     openems = _load(_OPENEMS_JSON)
 
@@ -714,5 +792,5 @@ def test_the_reference_files_are_what_the_provenance_says():
               f"{rec['notch']['parabolic_f_ghz']:.6f} GHz, depth "
               f"{got['depth_db']:.4f} dB vs {rec['notch']['depth_db']:.4f} dB")
         assert got["f"] / 1e9 == pytest.approx(
-            rec["notch"]["parabolic_f_ghz"], abs=1e-3)
+            rec["notch"]["parabolic_f_ghz"], abs=1e-6)
         assert got["depth_db"] == pytest.approx(rec["notch"]["depth_db"], abs=1e-6)

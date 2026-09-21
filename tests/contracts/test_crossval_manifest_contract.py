@@ -336,7 +336,9 @@ def test_runner_exit_classification_matches_manifest_contract() -> None:
     runner = _load_runner()
 
     assert (
-        runner.classify("20_msl_phase_referee.py", 0, "ALL CHECKS PASSED", False)[
+        # stdout carries no pass phrase on purpose: with no failure sentinel
+        # declared, exit 0 alone must classify as PASS.
+        runner.classify("20_msl_phase_referee.py", 0, "referee finished", False)[
             0
         ]
         == "PASS"
