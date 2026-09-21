@@ -88,9 +88,9 @@ def test_comparator_matches_rfx_evaluation(arm):
     assert np.all(eps_c.imag < 0)
 
 
-@pytest.mark.xfail(strict=True, reason="rfx.material_fit.eval_lorentz drops a Drude pole "
-                   "(omega_0 == 0 -> delta_eps = 0, material_fit.py:495); when this "
-                   "is fixed the Drude arm above can use it.")
+# 2026-09-21: this was a strict xfail recording that eval_lorentz dropped a Drude
+# pole (omega_0 == 0 -> delta_eps = 0). eval_lorentz now evaluates the pole
+# fields directly, so it is an ordinary test.
 def test_rfx_eval_lorentz_keeps_a_drude_pole():
     params = gates.ARMS["drude"]["params"]
     pole = drude_pole(**de.rfx_pole_args("drude", params))

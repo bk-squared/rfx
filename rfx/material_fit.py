@@ -472,29 +472,29 @@ def eval_debye(freqs: np.ndarray, eps_inf: float,
 
 def eval_lorentz(freqs: np.ndarray, eps_inf: float,
                  poles: list[LorentzPole]) -> np.ndarray:
-    """Evaluate a Lorentz model at given frequencies.
+    """Evaluate a Lorentz or Drude pole model at given frequencies.
 
     Parameters
     ----------
     freqs : (N,) array in Hz
     eps_inf : high-frequency permittivity
-    poles : list of LorentzPole
+    poles : list of LorentzPole (``lorentz_pole`` or ``drude_pole``; a Drude
+        pole has ``omega_0 == 0`` and gives eps_inf - omega_p^2 / (w^2 - j*gamma*w))
 
     Returns
     -------
     eps_complex : (N,) complex array
     """
-    pole_tuples = []
+    # Straight from the pole fields: eps = eps_inf + sum kappa / (w0^2 - w^2 + 2j*delta*w).
+    # For w0 > 0 this is the Lorentz form (kappa = delta_eps * w0^2). It used to
+    # go through delta_eps = kappa / w0^2 and set delta_eps = 0 when w0 == 0, so a
+    # Drude pole (``drude_pole``: w0 = 0, kappa = omega_p^2) came back as a
+    # dispersionless eps_inf.
+    omega = 2.0 * np.pi * np.asarray(freqs, dtype=float)
+    eps = np.full(omega.shape, eps_inf, dtype=complex)
     for p in poles:
-        # Recover delta_eps and gamma from LorentzPole fields
-        w0 = p.omega_0
-        gamma = 2.0 * p.delta
-        if w0 > 0:
-            delta_eps = p.kappa / (w0 ** 2)
-        else:
-            delta_eps = 0.0
-        pole_tuples.append((delta_eps, w0, gamma))
-    return _lorentz_model(freqs, eps_inf, pole_tuples)
+        eps = eps + p.kappa / (p.omega_0 ** 2 - omega ** 2 + 2j * p.delta * omega)
+    return eps
 
 
 # ---------------------------------------------------------------------------
