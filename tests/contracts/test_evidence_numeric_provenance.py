@@ -870,6 +870,11 @@ CLASSIFICATION: dict[str, str] = {
         NO_ARTIFACT_REFERENCE,
     TILT_RESULTS: GATED,
     "docs/design_notes/20260921_crossval_role_redesign.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-21 (second-order NTFF): no `::` span at all. Its numbers are not
+    # quoted out of a committed JSON; each table names the test that replays
+    # it (tests/unit/farfield/test_ntff_second_order_oracle.py, the locks NTFF
+    # battery, tests/unit/farfield/test_farfield_nonuniform.py).
+    "docs/design_notes/20260921_ntff_second_order.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_vi_envelope_sweep_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_vi_envelope_sweep_results.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/wp4e_lumped_component_value_ad_spike.md": NO_ARTIFACT_REFERENCE,
