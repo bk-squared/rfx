@@ -368,7 +368,11 @@ record compatibility, and the assumptions needed to interpret V/I as power.
   claimed from it, is stated in the Microstrip-line row of
   [`support_matrix.md`](support_matrix.md) from the records in
   `scripts/diagnostics/msl_phase_referee_dx_ladder/` (#1147); issue #830 is
-  closed as characterized.
+  closed as characterized. The `0.94%` above and the ladder's `1.32 %` are not
+  the same comparison: the former is against the closed form of the board
+  openEMS realizes (substrate 300 um,
+  `regate_evidence.json::cv20.eps_eff_hammerstad_jensen_realized_board`), the
+  latter against the board rfx realizes (250 um, `…rfx_board_post_931`).
   See `validation/crossval/20_msl_phase_referee.py` (manifest entry
   `20_msl_phase_referee`), `tests/crossval/test_msl_phase_referee_header.py`, and
   `docs/design_notes/issue812_phase_identity_predeclaration.md`.

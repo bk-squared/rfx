@@ -40,7 +40,7 @@ hide inside 1 %. That lane has its own limits — see the
 above 17 GHz recorded in `validation/crossval/07_sheen_lpf.py`.
 → [#838](https://github.com/bk-squared/rfx/issues/838)
 
-**The fitted microstrip propagation constant sits about 1 % above the
+**The fitted microstrip propagation constant sits 1.0 to 1.3 % above the
 Hammerstad–Jensen closed form on every in-band bin.** On a 600 µm trace over
 250 µm of RO4350B a float64 refit of the probe phasors reads 1.32 … 1.33 % with
 five cells under the strip and 0.97 … 1.04 % with ten, over 3.0–4.5 GHz; the
