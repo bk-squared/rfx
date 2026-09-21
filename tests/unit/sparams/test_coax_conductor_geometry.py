@@ -209,3 +209,63 @@ def test_the_conductor_is_not_written_into_sigma():
     assert np.all(r[fill] > SMA_PIN_RADIUS), "dielectric inside the pin radius"
     assert np.all(r[fill] <= SMA_OUTER_RADIUS + math.sqrt(2.0) * float(grid.dx)), (
         "dielectric beyond the declared outer radius by more than a cell diagonal")
+
+
+@pytest.mark.parametrize("dx", CELL_SIZES_M)
+def test_the_tem_source_injects_over_the_annulus_the_stamper_actually_built(dx):
+    """The source's outer injection radius IS the stamper's dielectric edge.
+
+    ``build_coaxial_tem_plane_source_specs`` selects its cells with
+    ``pin_radius <= r <= shell_inner_radius`` and normalises the 1/r mode with
+    ``log(outer_radius / pin_radius)``. Those two have to describe the same
+    annulus. They did not: the builder carried its own copy of the wall
+    formula the stamper used to use (``b - min(dz, (b-a)/2)``), so once the
+    wall moved out to ``b`` the builder kept injecting over ``[a, b-dx]`` while
+    normalising over ``ln(b/a)`` -- one ring of dielectric excited by nothing,
+    against a mode normalised as though it were.
+
+    No solve: this compares the radius the builder resolves against the radius
+    the stamper returned, at four cell sizes, plus the cells each admits.
+    """
+    from rfx.sources.coaxial_port import build_coaxial_tem_plane_source_specs
+
+    grid, materials, shell_inner, cells = _line(dx)
+    sim = Simulation(freq_max=40e9, domain=(0.008, 0.008, 0.040),
+                     boundary="cpml", dx=dx)
+    sim.add_coaxial_port((CENTRE[0], CENTRE[1], 0.020), face="top",
+                         pin_length=5e-3,
+                         waveform=GaussianPulse(f0=8e9, bandwidth=1.2))
+    port = sim._coaxial_ports[0]
+
+    assert shell_inner == pytest.approx(float(port.outer_radius), abs=1e-15), (
+        f"the stamper's dielectric edge {shell_inner*1e6:.3f} um is not the "
+        f"declared outer radius {float(port.outer_radius)*1e6:.3f} um")
+
+    spec = build_coaxial_tem_plane_source_specs(
+        grid=grid, port=port, n_steps=8)
+    n_default = int(spec.source_cell_count)
+    spec_explicit = build_coaxial_tem_plane_source_specs(
+        grid=grid, port=port, n_steps=8, shell_inner_radius=shell_inner)
+    assert int(spec_explicit.source_cell_count) == n_default, (
+        "passing the stamper's own shell_inner_radius changed the source cell "
+        "count, so the builder's default disagrees with the stamper")
+
+    # The stale formula is one cell tighter; assert it would have differed, so
+    # this test cannot pass by both sides being wrong in the same way.
+    stale = float(port.outer_radius) - min(
+        float(grid.dx),
+        0.5 * (float(port.outer_radius) - float(port.pin_radius)))
+    spec_stale = build_coaxial_tem_plane_source_specs(
+        grid=grid, port=port, n_steps=8, shell_inner_radius=stale)
+    assert int(spec_stale.source_cell_count) < n_default, (
+        f"the pre-fix radius {stale*1e6:.3f} um admits "
+        f"{int(spec_stale.source_cell_count)} cells and the stamper's "
+        f"{shell_inner*1e6:.3f} um admits {n_default}; if these are equal this "
+        "test is not discriminating and the comparison above proves nothing")
+
+    # Every cell the source injects on must be dielectric, not conductor.
+    k = int(grid.shape[2]) // 2
+    r = _radius(grid)
+    admitted = (r >= float(port.pin_radius)) & (r <= shell_inner)
+    assert not (admitted & cells[:, :, k]).any(), (
+        "the source injects on a cell the stamper realized as conductor")

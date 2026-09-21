@@ -1117,8 +1117,14 @@ def build_coaxial_tem_plane_source_specs(
     magnetic_ratio: float = 1.0,
     reference_plane_axial_index_offset: int = 0,
     eps_r: float = PTFE_EPS_R,
+    shell_inner_radius: float | None = None,
 ) -> CoaxialPlaneSourceSpec:
     """Return TFSF-style transverse E/M source specs for a coaxial port.
+
+    ``shell_inner_radius`` is the inner face of the outer conductor, i.e. the
+    outer edge of the PTFE annulus the source injects on. Pass the value
+    :func:`stamp_coaxial_line` returned for this line; omitted, it defaults to
+    the declared ``port.outer_radius``, which is where that function puts it.
 
     Bakes a Yee-half-step-correct one-side TFSF correction pair into per-
     cell ``SourceSpec`` / ``MagneticSourceSpec`` lists. The additive
@@ -1264,23 +1270,22 @@ def build_coaxial_tem_plane_source_specs(
     coeff_h = jnp.float32(dt_step / (MU_0 * dz))
     coeff_e = jnp.float32(dt_step / (float(eps_r) * EPS_0 * dz))
 
-    # Inner edge of the outer-conductor shell stamped by
-    # ``setup_coaxial_port``. The shell is a SIGMA STAMP
-    # (``sigma = PEC_SIGMA`` on those cells), not a PEC mask entry: it is
-    # a lossy-volume conductor model and is explicitly out of the #931
-    # lattice ownership contract (design note §1.8, "sigma-fill
-    # conductors"). Nothing zeroes its E; the field decays inside the
-    # conductive cells instead. Source cells must still stay strictly
-    # inside the PTFE annulus [pin_radius, shell_inner] — injecting at
-    # radii in [shell_inner, outer_radius] lands in those lossy cells and
-    # breaks the TFSF cancellation symmetry.  (Earlier revisions of this
-    # comment claimed ``apply_pec_mask`` zeroed the shell every step;
-    # that was never true of a sigma stamp.)
-    shell_thickness = min(
-        float(dz),
-        0.5 * (float(port.outer_radius) - float(port.pin_radius)),
-    )
-    shell_inner_radius = float(port.outer_radius) - shell_thickness
+    # Inner edge of the outer conductor. Source cells stay inside the PTFE
+    # annulus ``[pin_radius, shell_inner]``: injecting at a radius that lands
+    # in a conductor cell breaks the TFSF cancellation symmetry.
+    #
+    # ``stamp_coaxial_line`` puts that inner face at the DECLARED outer radius
+    # and grows the wall outward from there, so the annulus is [a, b] and this
+    # bound is ``port.outer_radius``. It used to recompute
+    # ``b - min(dz, (b-a)/2)`` here, a second copy of a formula that has since
+    # moved; with the wall now at b that copy would have excluded the
+    # outermost ring of dielectric from the injection while ``log_ratio``
+    # above still normalised over the full ``ln(b/a)`` — the two disagreed.
+    # Callers that hold the stamper's own return value pass it as
+    # ``shell_inner_radius`` so the two cannot drift again.
+    if shell_inner_radius is None:
+        shell_inner_radius = float(port.outer_radius)
+    shell_inner_radius = float(shell_inner_radius)
 
     # Time-series amplitude scales (cell-independent factors lifted out).
     h_factor = jnp.float32(h_sign) * coeff_h * jnp.float32(field_scale) * e_inc_table

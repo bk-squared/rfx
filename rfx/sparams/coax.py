@@ -253,6 +253,16 @@ def compute_coaxial_s_matrix(
             reference_plane_axial_index_offset=int(
                 reference_plane_axial_index_offset
             ),
+            # DEPRECATED lane: its geometry comes from ``setup_coaxial_port``,
+            # which still stamps the shell as sigma with the inner face one
+            # cell inside b. Passed explicitly so this lane keeps the radius
+            # its own stamp uses rather than picking up the new default.
+            shell_inner_radius=(
+                float(ports[driven].outer_radius)
+                - min(float(grid.dx),
+                      0.5 * (float(ports[driven].outer_radius)
+                             - float(ports[driven].pin_radius)))
+            ),
         )
         z_tem_arr[driven, :] = complex(spec.z_tem_ohm)
 
@@ -702,7 +712,7 @@ def compute_coaxial_line_reflection(
     )
     spec = build_coaxial_tem_plane_source_specs(
         grid=grid, port=src_port, n_steps=int(n_steps), field_scale=float(field_scale),
-        magnetic_ratio=1.0,
+        magnetic_ratio=1.0, shell_inner_radius=shell_inner,
     )
 
     planes = []
@@ -1201,10 +1211,12 @@ def compute_coaxial_two_port(
     spec_top = build_coaxial_tem_plane_source_specs(
         grid=grid, port=src_port_top, n_steps=int(n_steps),
         field_scale=float(field_scale), magnetic_ratio=1.0,
+        shell_inner_radius=shell_inner,
     )
     spec_bot = build_coaxial_tem_plane_source_specs(
         grid=grid, port=src_port_bot, n_steps=int(n_steps),
         field_scale=float(field_scale), magnetic_ratio=1.0,
+        shell_inner_radius=shell_inner,
     )
 
     n_bot = len(probes_bot)
@@ -1949,6 +1961,7 @@ def compute_coax_msl_transition(
     spec_coax = build_coaxial_tem_plane_source_specs(
         grid=grid, port=src_port, n_steps=int(n_steps),
         field_scale=float(field_scale), magnetic_ratio=1.0,
+        shell_inner_radius=shell_inner,
     )
     ref_coax_m = (z_junction_idx - grid.pad_z_lo) * dz
     z_planes_coax_m = np.array(
