@@ -1,5 +1,5 @@
 name: rfx-physics-gate-port-external-waveguide-broad
-description: "Broad-E5 external-reference shard: rectangular_waveguide_port WR90 comparison + readiness"
+description: "Broad-E5 external-reference shard: rectangular_waveguide_port dependency audit + readiness report (the WR-90 comparison step left with the waveguide-port case, 2026-09-21)"
 tags: [rfx, physics-gate, port-external, waveguide-broad, sparameter-validation]
 resources:
   cluster: remilab-c0
