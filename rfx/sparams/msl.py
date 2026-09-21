@@ -39,8 +39,8 @@ from rfx.sparams._common import (
     _warn_msl_beta_scan_railed,
     _warn_if_ringdown_truncated,
     _project_passive,
-    _passivity_excess,
-    _warn_if_passivity_excess,
+    _sigma_max_excess,
+    _warn_if_sigma_max_excess,
     _warn_if_passivity_projected,
     _warn_if_nonpassive_smatrix,
     _warn_ntff_box_dropped,
@@ -85,7 +85,7 @@ def compute_msl_s_matrix(
     ``docs/design_notes/chain_closure_contract.md``).
 
     A raw S may exceed the passive bound, and the result says so rather
-    than hiding it: ``passivity_excess[k] = max(sigma_max(S(f_k)) - 1, 0)``
+    than hiding it: ``sigma_max_excess[k] = max(sigma_max(S(f_k)) - 1, 0)``
     is filled on every concrete call (``None`` only under tracing), and a
     warning names the bin count and the worst ``sigma_max`` whenever any
     bin exceeds 0. A passive structure cannot scatter more power than it
@@ -110,7 +110,7 @@ def compute_msl_s_matrix(
     channel (traced or concrete), so that finite-difference and
     ``jax.grad`` objectives see the same function; ``S`` is then the raw
     extraction with ``S_raw``/``passivity_correction`` absent and no
-    projection warning. ``passivity_excess`` is still filled on the
+    projection warning. ``sigma_max_excess`` is still filled on the
     concrete ``eps_override`` channel, so the bound violation stays
     visible there (measured sigma_max 1.18 on a coarse thru).
 
@@ -1336,8 +1336,8 @@ def compute_msl_s_matrix(
         # opt-in projection can hide it. Concrete channels only — a
         # tracer has no singular values — but that includes the concrete
         # eps_override channel, which the projection below never reaches.
-        passivity_excess = (
-            None if is_tracer(S) else _passivity_excess(S)
+        sigma_max_excess = (
+            None if is_tracer(S) else _sigma_max_excess(S)
         )
         # Projection runs on the CONCRETE MEASUREMENT channel only:
         # never under tracing (min(sigma,1) zeroes/deforms the objective
@@ -1367,7 +1367,7 @@ def compute_msl_s_matrix(
             settling_db=settling_db_runs,
             S_raw=s_raw,
             passivity_correction=passivity_correction,
-            passivity_excess=passivity_excess,
+            sigma_max_excess=sigma_max_excess,
             assembly=msl_assembly,
             cond_a=msl_cond_a,
             beta_railed=beta_railed,
@@ -1381,12 +1381,12 @@ def compute_msl_s_matrix(
         )
         if passivity_correction is not None and not is_tracer(passivity_correction):
             _warn_if_passivity_projected(passivity_correction, freqs_arr)
-        elif passivity_excess is not None:
+        elif sigma_max_excess is not None:
             # Nothing was clipped, so whatever excess the extraction has
             # is in the matrix being returned. One warning, not two: the
             # projection warning above already reports the same bins.
-            _warn_if_passivity_excess(
-                passivity_excess, freqs_arr,
+            _warn_if_sigma_max_excess(
+                sigma_max_excess, freqs_arr,
                 extractor="compute_msl_s_matrix",
             )
         # The raw-extraction self-check still audits what was MEASURED:

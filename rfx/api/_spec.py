@@ -1675,9 +1675,9 @@ class MSLSMatrixResult:
         ``max(sigma_max(S_raw(f)) - 1, 0)``. ``None`` unless
         ``enforce_passivity=True`` actually clipped a bin — it records
         what the projection REMOVED, so on the default path there is
-        nothing for it to record and ``passivity_excess`` is the field to
+        nothing for it to record and ``sigma_max_excess`` is the field to
         read.
-    passivity_excess : (n_freqs,) float, optional
+    sigma_max_excess : (n_freqs,) float, optional
         Per-frequency ``max(sigma_max(S(f)) - 1, 0)`` of the RAW
         extraction, measured before any opt-in projection and filled on
         every concrete call (``None`` only while tracing, which has no
@@ -1689,7 +1689,7 @@ class MSLSMatrixResult:
         projection clipped it away. Where a projection did clip,
         ``passivity_correction`` equals this on the touched bins.
 
-        NOT the same quantity as the ``passivity_excess`` key of
+        NOT the same quantity as the ``sigma_max_excess`` key of
         :func:`rfx.io.network_quality_metrics` despite the shared name: that one is a
         single SCALAR over the whole sweep and is measured in POWER
         (``max(sigma_max^2 - 1, 0)``). This field is per frequency and in
@@ -1707,7 +1707,7 @@ class MSLSMatrixResult:
         **Read this before trusting a fallback result.** The fallback's
         characteristic symptom is column power above 1, which the default
         ``enforce_passivity=False`` leaves standing in ``S`` and
-        ``passivity_excess`` measures. Under ``enforce_passivity=True``
+        ``sigma_max_excess`` measures. Under ``enforce_passivity=True``
         the symptom is clipped out of ``S`` — but it is not erased from
         the result: ``passivity_correction`` records how much was clipped
         and ``S_raw`` keeps the unprojected matrix, and the run also emits
@@ -1757,7 +1757,7 @@ class MSLSMatrixResult:
     # Same order as port_names; independent of the frequency-wise signal mask.
     probe_clearance: tuple[MSLProbeClearance, ...] | None = None
     reference_impedances: np.ndarray | None = None
-    passivity_excess: np.ndarray | None = None
+    sigma_max_excess: np.ndarray | None = None
 
 
 @dataclass

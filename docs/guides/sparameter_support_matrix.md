@@ -179,7 +179,7 @@ against a raw one), so it became an opt-in: `enforce_passivity=True` projects
 the concrete measurement channel, keeps the unprojected matrix in `S_raw` and
 the per-bin clip in `passivity_correction`, and is still skipped on the
 `eps_override` channel. A raw `S` may exceed `‖S‖₂ ≤ 1`; that violation is not
-hidden — `passivity_excess` records `max(σ_max(S(f)) − 1, 0)` per bin on every
+hidden — `sigma_max_excess` records `max(σ_max(S(f)) − 1, 0)` per bin on every
 concrete call and a warning names the bin count and the worst `σ_max`. A
 passive structure cannot scatter more power than it receives, so those bins are
 a measurement artifact: read `settling_db` and `reliable` for which. Records

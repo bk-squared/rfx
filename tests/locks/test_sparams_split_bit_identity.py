@@ -295,7 +295,7 @@ _LEGS = (
     ("waveguide_flux", lambda: _waveguide_result("flux"),
      ("s_params", "freqs", "reference_planes", "settling_db",
       "s21_phase_residual_deg_rms")),
-    # passivity_excess joined MSLSMatrixResult when enforce_passivity stopped
+    # sigma_max_excess joined MSLSMatrixResult when enforce_passivity stopped
     # being the default (PI, 2026-09-21): a numeric field the dataclass
     # carries, so the witness has to name it. On this leg's own record the
     # projection was active only in the float32 noise around a passive
@@ -304,7 +304,7 @@ _LEGS = (
     # predate that and this lock skips without one.
     ("msl", _msl_result,
      ("S", "freqs", "Z0", "beta", "reliable", "settling_db", "S_raw",
-      "passivity_correction", "passivity_excess", "cond_a",
+      "passivity_correction", "sigma_max_excess", "cond_a",
       "reference_impedances")),
     ("mixed", _mixed_result,
      ("S", "freqs", "z0_ref", "settling_db", "s21_power_witness", "reliable",

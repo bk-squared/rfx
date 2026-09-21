@@ -223,7 +223,7 @@ def test_enforced_result_is_strictly_passive_and_loud():
 def test_the_unprojected_default_returns_the_raw_extraction(kwargs):
     """The default and an explicit False are the same call (PI 2026-09-21).
 
-    ``passivity_excess`` is what keeps the bound violation visible here, and
+    ``sigma_max_excess`` is what keeps the bound violation visible here, and
     it must agree with an offline singular-value read of the returned S —
     which is the check that would go red if the field were wired to the
     projected matrix or to a stale array.
@@ -237,7 +237,7 @@ def test_the_unprojected_default_returns_the_raw_extraction(kwargs):
     # exactly what enforce_passivity=True projects away.
     sigma = _sigma_max(res.S)
     assert float(sigma.max()) > 1.0
-    assert np.allclose(np.asarray(res.passivity_excess),
+    assert np.allclose(np.asarray(res.sigma_max_excess),
                        np.maximum(sigma - 1.0, 0.0), rtol=1e-5, atol=1e-12)
 
 

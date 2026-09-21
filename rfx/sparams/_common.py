@@ -865,7 +865,7 @@ def _project_passive(S):
                 jax.device_put(correction, S[0, 0, :].sharding))
 
 
-def _passivity_excess(S):
+def _sigma_max_excess(S):
     """Per-frequency ``max(sigma_max(S(f)) - 1, 0)`` of an assembled S.
 
     The same quantity :func:`_project_passive` returns as its ``correction``,
@@ -888,7 +888,7 @@ def _passivity_excess(S):
     return excess
 
 
-def _warn_if_passivity_excess(
+def _warn_if_sigma_max_excess(
     excess, freqs, *, extractor: str, envelope: float = 0.05
 ) -> None:
     """One aggregate warning naming a RETURNED S that is not passive.
@@ -908,20 +908,26 @@ def _warn_if_passivity_excess(
     """
     exc = np.asarray(excess)
     finite = np.isfinite(exc)
-    if not np.any(exc[finite] > 0.0):
+    # Same margin _project_passive clips to: a lossless thru reads
+    # sigma_max = 1 + O(eps) in float32, and a warning that fires on
+    # rounding teaches the caller to ignore it. The field keeps the raw
+    # value; only the warning has a floor.
+    floor = 64.0 * float(np.finfo(exc.dtype if exc.dtype.kind == "f"
+                                  else np.float32).eps)
+    if not np.any(exc[finite] > floor):
         return
 
     import warnings
 
     f = np.asarray(freqs)
-    n_touched = int((exc[finite] > 0.0).sum())
+    n_touched = int((exc[finite] > floor).sum())
     n_big = int((exc[finite] > envelope).sum())
     k = int(np.nanargmax(np.where(finite, exc, -np.inf)))
     warnings.warn(
         f"{extractor}: the returned S is not passive at {n_touched} of "
         f"{exc.size} frequency bins, worst sigma_max = {1.0 + exc[k]:.3f} at "
         f"{f[k] / 1e9:.3f} GHz. S is returned exactly as extracted — nothing "
-        f"is clipped, and the per-bin amounts are in passivity_excess. "
+        f"is clipped, and the per-bin amounts are in sigma_max_excess. "
         + (
             f"{n_big} bins exceed the {1.0 + envelope:.2f} extraction "
             f"envelope. "

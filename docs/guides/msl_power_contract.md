@@ -38,7 +38,7 @@ projection cannot run on two of the three channels — never under tracing, and
 never on `eps_override` even when concrete — so while it was the default the
 measured `S` and the differentiated `S` were different functions wherever a
 bin was non-passive. What is left in `S` is measured rather than hidden:
-`passivity_excess` carries `max(sigma_max(S(f)) - 1, 0)` per bin and a warning
+`sigma_max_excess` carries `max(sigma_max(S(f)) - 1, 0)` per bin and a warning
 names the count and the worst value. Passing `enforce_passivity=True` clips
 the assembled S singular values and preserves the changed raw values in
 `S_raw` with `passivity_correction`. Projection,

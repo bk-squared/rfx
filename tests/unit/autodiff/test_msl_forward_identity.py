@@ -225,10 +225,10 @@ def test_the_returned_s_is_the_planted_one_on_both_channels():
             err_msg=f"{label} channel did not return the planted S")
 
 
-def test_passivity_excess_measures_the_returned_matrix_on_both_channels():
+def test_sigma_max_excess_measures_the_returned_matrix_on_both_channels():
     """The bound violation stays measurable without projecting it away.
 
-    ``passivity_excess`` is computed from the singular values of the RAW S,
+    ``sigma_max_excess`` is computed from the singular values of the RAW S,
     and the planted matrix's own singular values are the oracle — this does
     not re-run the extractor's helper against itself.
     """
@@ -236,8 +236,8 @@ def test_passivity_excess_measures_the_returned_matrix_on_both_channels():
     expected = np.maximum(_sigma_max(planted) - 1.0, 0.0)
     for kwargs in ({}, {"eps_override": _noop_eps_override(sim)}):
         result = _compute(_build_planted_sim(_NONPASSIVE_SCALE)[0], **kwargs)
-        assert result.passivity_excess is not None
-        np.testing.assert_allclose(np.asarray(result.passivity_excess),
+        assert result.sigma_max_excess is not None
+        np.testing.assert_allclose(np.asarray(result.sigma_max_excess),
                                    expected, rtol=1e-4, atol=1e-6)
 
 
@@ -249,7 +249,7 @@ def test_a_passive_extraction_reports_zero_excess_and_says_nothing():
         warnings.simplefilter("always")
         result = sim.compute_msl_s_matrix(n_steps=1, freqs=FREQS,
                                           num_periods=1.0)
-    assert np.all(np.asarray(result.passivity_excess) == 0.0)
+    assert np.all(np.asarray(result.sigma_max_excess) == 0.0)
     assert not [str(w.message) for w in caught
                 if "is not passive" in str(w.message)]
 
@@ -367,3 +367,24 @@ def test_live_thru_eps_override_matches_the_plain_call():
     assert plain.S_raw is None, "the plain call must return the raw extraction"
     np.testing.assert_allclose(np.asarray(override.S), np.asarray(plain.S),
                                rtol=1e-5, atol=1e-7)
+
+
+def test_the_raw_path_warning_has_a_rounding_floor():
+    """A lossless thru reads sigma_max = 1 + O(eps) in float32. The field
+    keeps that value; the warning does not fire on it, and does fire on an
+    excess that is not rounding."""
+    import warnings
+
+    from rfx.sparams._common import _warn_if_sigma_max_excess
+
+    freqs = np.array([1e9, 2e9])
+    with warnings.catch_warnings(record=True) as quiet:
+        warnings.simplefilter("always")
+        _warn_if_sigma_max_excess(np.array([1.19e-7, 0.0], dtype=np.float32),
+                                  freqs, extractor="x")
+    assert not quiet
+    with warnings.catch_warnings(record=True) as loud:
+        warnings.simplefilter("always")
+        _warn_if_sigma_max_excess(np.array([1.0e-3, 0.0], dtype=np.float32),
+                                  freqs, extractor="x")
+    assert len(loud) == 1 and "1 of 2 frequency bins" in str(loud[0].message)

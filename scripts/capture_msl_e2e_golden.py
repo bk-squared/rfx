@@ -109,7 +109,7 @@ def main():
         "passivity_projection_applied": bool(result.S_raw is not None),
     }
     for name in ("reliable", "settling_db", "cond_a", "beta_railed",
-                 "passivity_correction", "passivity_excess"):
+                 "passivity_correction", "sigma_max_excess"):
         value = getattr(result, name, None)
         report[name] = None if value is None else np.asarray(value).tolist()
     old = np.load(t.E2E_GOLDEN_PATH)

@@ -924,9 +924,9 @@ def test_fallback_is_recorded_and_its_symptom_survives_to_the_caller(tmp_path):
     assert float(np.sum(col, axis=0).max()) > 1.0 + 1e-5, (
         "the fallback's column power must reach the caller unclipped"
     )
-    # ... and it is measured, not merely present: passivity_excess is the
+    # ... and it is measured, not merely present: sigma_max_excess is the
     # field a caller reads for how far over the bound the returned S is.
-    assert float(np.max(np.asarray(res.passivity_excess))) > 0.0
+    assert float(np.max(np.asarray(res.sigma_max_excess))) > 0.0
 
 
 def test_assembly_marker_is_none_under_tracing(tmp_path):
