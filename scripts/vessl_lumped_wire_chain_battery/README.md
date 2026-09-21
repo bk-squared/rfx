@@ -18,3 +18,17 @@ permissions; it is the second line of defence, not the first.
 
 `--kind lumped` is the only difference between these files and the lumped leg's;
 no lumped job has been submitted.
+
+## Check the run block parses before submitting
+
+A job specification is a YAML file whose `run:` value is a shell script, and
+only the YAML half gets checked by anything. Two of this battery's jobs died on
+the other half: one on `cp -a` racing a `.pyc`, and one on an unterminated
+quoted string left behind when an edit replaced the first line of a multi-line
+construct and not the rest — the YAML parsed perfectly and the shell did not.
+
+Before submitting, extract the block and check it with both shells:
+
+    python -c "import yaml,sys; sys.stdout.write(yaml.safe_load(open(sys.argv[1]))['run'])" \
+        scripts/vessl_lumped_wire_chain_battery/<file>.yaml > /tmp/runblock.sh
+    sh -n /tmp/runblock.sh && bash -n /tmp/runblock.sh
