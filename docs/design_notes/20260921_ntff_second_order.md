@@ -35,6 +35,15 @@ A fourth, latent: the scalar area element returned dx*dy for every face,
 which is the wrong pair for a y face (spanned by x and z) on any grid whose
 y cells differ from its z cells. Not reachable from `Simulation` today.
 
+T. Martin, 'An improved near- to far-zone transformation for the
+finite-difference time-domain method', IEEE Trans. Antennas Propag.
+46(9):1263-1271, 1998 (doi:10.1109/8.719968) treats the same stagger and
+reports that integrating E and H on two displaced surfaces is more accurate
+than averaging one of them onto a single surface; rfx keeps one surface,
+because the box, its accumulators and every consumer are built around it, and
+moves all four components to the face-cell centre instead - second order
+either way.
+
 ## The design
 
 1. **Collocate at the face-cell centre while accumulating.** For an x face at
@@ -46,8 +55,9 @@ y cells differ from its z cells. Not reachable from `Simulation` today.
 
    The in-plane averages are between two NODES, so they are exact midpoints
    on any mesh. The normal interpolation is between two CELL CENTRES, so it
-   carries linear weights from the two adjacent cell widths,
-   w_in = d_out / (d_in + d_out), which reduce to 1/2 on a uniform axis. The
+   carries linear weights from the two adjacent cell widths: the weight on
+   the LOWER-INDEX sample is d[idx] / (d[idx-1] + d[idx]), which reduces to
+   1/2 on a uniform axis. The
    weights are read off the grid at box-construction time and reach the scan
    as Python floats, so nothing inside `lax.scan` touches a grid attribute.
 
@@ -60,13 +70,27 @@ y cells differ from its z cells. Not reachable from `Simulation` today.
 3. **Time stamps.** E at (n+1)*dt, H at (n+1/2)*dt — each field stamped with
    its own sample time, which makes the half-step register exact.
 
-4. **Old dumps stay readable.** `NTFFBox` carries `collocation`, defaulting to
-   `"node"` (the pre-existing layout). `accumulate_ntff` and
+4. **Old dumps stay readable.** `NTFFBox` carries `face_centre`, defaulting to
+   False (the pre-existing layout); `box.collocation` is a read-only property
+   giving the readable name. It is a bool and not the string because every
+   field of that NamedTuple is a JAX pytree LEAF, and a str leaf makes the
+   whole box an invalid `jit`/`vmap`/`tree_map` argument — which it had never
+   been before this field existed. `accumulate_ntff` and
    `compute_far_field(_jax)` both honour it, so accumulators saved by an
    earlier run are read with the geometry they were accumulated with. Every
-   path that builds a box for a new run sets `"face_centre"`:
-   `make_ntff_box`, `NTFFBox.from_grid`, and the two runners that build a box
-   inline (`rfx/runners/nonuniform.py`, `rfx/runners/subgridded.py`).
+   path that builds a box for a new run sets it: `make_ntff_box`,
+   `NTFFBox.from_grid`, and the two runners that build a box inline
+   (`rfx/runners/nonuniform.py`, `rfx/runners/subgridded.py`).
+
+   The legacy setting reproduces the old READ geometry only. Accumulation
+   always stamps E at (n+1)*dt now, whatever the collocation — the time
+   register was a defect, not a layout choice, and a saved accumulator has
+   its stamps baked in already.
+
+   For reference, the flux monitor in the same scan body stamps E at n*dt and
+   H at (n-1/2)*dt: the same E-H register as the NTFF accumulator, one step
+   earlier in absolute time, which is a common phase that cancels in every
+   magnitude.
 
 5. Kahan summation, the `ntff_accum_dtype` policy (#646), the oblique-Bloch
    complex-field path (#404) and the direction chunking (#727) are untouched.

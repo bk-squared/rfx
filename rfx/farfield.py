@@ -411,13 +411,15 @@ def _require_face_centre_margin(box: NTFFBox, shape) -> None:
     """Refuse a box that has no room for the half-cell averages.
 
     Moving a face sample to the centre of its face cell reads one index
-    further out than the face itself: the tangential H needs the cell
-    INSIDE the low face (``lo-1``) and the in-plane averages need the node
-    one past the high face (``hi``, and ``hi+1`` never — the half-open range
-    stops at ``hi``). So every box face must be at least one cell away from
-    the array boundary. Nothing upstream guarantees it (``make_ntff_box``
-    just rounds the requested corners), so it is checked here — the one
-    point all three runners pass through.
+    further out than the face itself: the tangential H needs the cell on the
+    LOWER-INDEX side of every face (``lo-1`` at the low face) and the
+    in-plane averages need the node one past the high face (``hi``, and
+    ``hi+1`` never — the half-open range stops at ``hi``). So every box face
+    must be at least one cell away from the array boundary. Nothing upstream
+    guarantees it (``make_ntff_box`` just rounds the requested corners), so
+    this is the backstop — the one point all three runners pass through.
+    ``with_face_centre_collocation`` refuses earlier, with the grid still in
+    hand, so a user gets the offending face in metres.
     """
     counts = (int(shape[0]), int(shape[1]), int(shape[2]))
     _raise_face_centre_margin(box, counts, grid=None)
@@ -482,7 +484,7 @@ def accumulate_ntff(
     if face_centre:
         _require_face_centre_margin(box, state.ex.shape)
 
-    def _x_face(idx, w_in):
+    def _x_face(idx, w_lo):
         if not face_centre:
             return jnp.stack([
                 state.ey[idx, j0:j1, k0:k1],
@@ -493,26 +495,28 @@ def accumulate_ntff(
         # Face-cell centre (x_node[idx], y_centre[j], z_centre[k]).
         # ey sits at y_centre already and needs half a cell in z; ez sits at
         # z_centre and needs half a cell in y; hy and hz sit half a cell off
-        # the face in x and each need one in-plane half cell as well.
+        # the face in x — at the centres of cells idx-1 (lower-index side)
+        # and idx (higher-index side) — and each need one in-plane half
+        # cell as well.
         ey = 0.5 * (state.ey[idx, j0:j1, k0:k1]
                     + state.ey[idx, j0:j1, k0 + 1:k1 + 1])
         ez = 0.5 * (state.ez[idx, j0:j1, k0:k1]
                     + state.ez[idx, j0 + 1:j1 + 1, k0:k1])
-        hy_in = 0.5 * (state.hy[idx - 1, j0:j1, k0:k1]
+        hy_lo = 0.5 * (state.hy[idx - 1, j0:j1, k0:k1]
                        + state.hy[idx - 1, j0 + 1:j1 + 1, k0:k1])
-        hy_out = 0.5 * (state.hy[idx, j0:j1, k0:k1]
+        hy_hi = 0.5 * (state.hy[idx, j0:j1, k0:k1]
                         + state.hy[idx, j0 + 1:j1 + 1, k0:k1])
-        hz_in = 0.5 * (state.hz[idx - 1, j0:j1, k0:k1]
+        hz_lo = 0.5 * (state.hz[idx - 1, j0:j1, k0:k1]
                        + state.hz[idx - 1, j0:j1, k0 + 1:k1 + 1])
-        hz_out = 0.5 * (state.hz[idx, j0:j1, k0:k1]
+        hz_hi = 0.5 * (state.hz[idx, j0:j1, k0:k1]
                         + state.hz[idx, j0:j1, k0 + 1:k1 + 1])
         return jnp.stack([
             ey, ez,
-            w_in * hy_in + (1.0 - w_in) * hy_out,
-            w_in * hz_in + (1.0 - w_in) * hz_out,
+            w_lo * hy_lo + (1.0 - w_lo) * hy_hi,
+            w_lo * hz_lo + (1.0 - w_lo) * hz_hi,
         ], axis=-1)
 
-    def _y_face(idx, w_in):
+    def _y_face(idx, w_lo):
         if not face_centre:
             return jnp.stack([
                 state.ex[i0:i1, idx, k0:k1],
@@ -525,21 +529,21 @@ def accumulate_ntff(
                     + state.ex[i0:i1, idx, k0 + 1:k1 + 1])
         ez = 0.5 * (state.ez[i0:i1, idx, k0:k1]
                     + state.ez[i0 + 1:i1 + 1, idx, k0:k1])
-        hx_in = 0.5 * (state.hx[i0:i1, idx - 1, k0:k1]
+        hx_lo = 0.5 * (state.hx[i0:i1, idx - 1, k0:k1]
                        + state.hx[i0 + 1:i1 + 1, idx - 1, k0:k1])
-        hx_out = 0.5 * (state.hx[i0:i1, idx, k0:k1]
+        hx_hi = 0.5 * (state.hx[i0:i1, idx, k0:k1]
                         + state.hx[i0 + 1:i1 + 1, idx, k0:k1])
-        hz_in = 0.5 * (state.hz[i0:i1, idx - 1, k0:k1]
+        hz_lo = 0.5 * (state.hz[i0:i1, idx - 1, k0:k1]
                        + state.hz[i0:i1, idx - 1, k0 + 1:k1 + 1])
-        hz_out = 0.5 * (state.hz[i0:i1, idx, k0:k1]
+        hz_hi = 0.5 * (state.hz[i0:i1, idx, k0:k1]
                         + state.hz[i0:i1, idx, k0 + 1:k1 + 1])
         return jnp.stack([
             ex, ez,
-            w_in * hx_in + (1.0 - w_in) * hx_out,
-            w_in * hz_in + (1.0 - w_in) * hz_out,
+            w_lo * hx_lo + (1.0 - w_lo) * hx_hi,
+            w_lo * hz_lo + (1.0 - w_lo) * hz_hi,
         ], axis=-1)
 
-    def _z_face(idx, w_in):
+    def _z_face(idx, w_lo):
         if not face_centre:
             return jnp.stack([
                 state.ex[i0:i1, j0:j1, idx],
@@ -552,18 +556,18 @@ def accumulate_ntff(
                     + state.ex[i0:i1, j0 + 1:j1 + 1, idx])
         ey = 0.5 * (state.ey[i0:i1, j0:j1, idx]
                     + state.ey[i0 + 1:i1 + 1, j0:j1, idx])
-        hx_in = 0.5 * (state.hx[i0:i1, j0:j1, idx - 1]
+        hx_lo = 0.5 * (state.hx[i0:i1, j0:j1, idx - 1]
                        + state.hx[i0 + 1:i1 + 1, j0:j1, idx - 1])
-        hx_out = 0.5 * (state.hx[i0:i1, j0:j1, idx]
+        hx_hi = 0.5 * (state.hx[i0:i1, j0:j1, idx]
                         + state.hx[i0 + 1:i1 + 1, j0:j1, idx])
-        hy_in = 0.5 * (state.hy[i0:i1, j0:j1, idx - 1]
+        hy_lo = 0.5 * (state.hy[i0:i1, j0:j1, idx - 1]
                        + state.hy[i0:i1, j0 + 1:j1 + 1, idx - 1])
-        hy_out = 0.5 * (state.hy[i0:i1, j0:j1, idx]
+        hy_hi = 0.5 * (state.hy[i0:i1, j0:j1, idx]
                         + state.hy[i0:i1, j0 + 1:j1 + 1, idx])
         return jnp.stack([
             ex, ey,
-            w_in * hx_in + (1.0 - w_in) * hx_out,
-            w_in * hy_in + (1.0 - w_in) * hy_out,
+            w_lo * hx_lo + (1.0 - w_lo) * hx_hi,
+            w_lo * hy_lo + (1.0 - w_lo) * hy_hi,
         ], axis=-1)
 
     # Kahan compensated summation: maintains near-float64 precision in float32.
