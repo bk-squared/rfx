@@ -75,7 +75,8 @@ def test_jit_path_matches_python_loop_extractor():
     from rfx.boundaries.pec import apply_pec
     from rfx.sources.sources import LumpedPort, setup_lumped_port, apply_lumped_port
     from rfx.probes.probes import (
-        init_sparam_probe, update_sparam_probe, extract_s11,
+        init_sparam_probe, update_lumped_drive_ref_probe,
+        update_sparam_probe, extract_s11,
     )
 
     a, b, d = 0.05, 0.05, 0.025
@@ -101,8 +102,15 @@ def test_jit_path_matches_python_loop_extractor():
         state = update_h(state, materials, dt, dx)
         state = update_e(state, materials, dt, dx)
         state = apply_pec(state)
-        sprobe = update_sparam_probe(sprobe, state, grid, port, dt)
+        # The eager loop must use the same two slots the JIT scan uses:
+        # the PRE-injection drive sample into v_ref, the PHYSICAL V/I after
+        # injection (scripts/diagnostics/lumped_port_known_load_line.py).
+        # Sampling only before injection, as this loop did, compares the JIT
+        # path against a different measurement rather than a different
+        # implementation of the same one.
+        sprobe = update_lumped_drive_ref_probe(sprobe, state, grid, port, dt)
         state = apply_lumped_port(state, grid, port, t, materials)
+        sprobe = update_sparam_probe(sprobe, state, grid, port, dt)
 
     s11_loop = np.array(extract_s11(sprobe, z0=50.0))
 

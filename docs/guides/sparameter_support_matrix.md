@@ -129,7 +129,7 @@ define an S-parameter port.
   calculation.
 - Analytic extractor and V/I replay checks validate algebra and reproducibility;
   they do not establish a generally calibrated lumped-port result.
-- The experimental subgridded runner's diagnostic lumped S-matrix
+- The subgridded runner's diagnostic lumped S-matrix
   (`diagnostic_lumped_sparam_freqs`) is still on the pre-2026-09-21 convention
   and warns when it returns; it is diagnostic output, not physics.
 - Every lumped-port `|S11|` changed on 2026-09-21. A driven port now reads its
