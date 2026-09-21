@@ -316,9 +316,14 @@ def test_runner_exit_classification_matches_manifest_contract() -> None:
     """Each arm names a script whose manifest entry carries the property it
     exercises: 11_waveguide_port_wr90 declares exit codes [0, 1] and no
     failure sentinel (so exit 0 is a clean PASS and exit 2 is undeclared),
-    04_multilayer_fresnel declares [0, 1, 2] with pymeep as an external
-    dependency (so exit 2 is inconclusive and a missing meep is an env skip),
-    and 07_sheen_lpf carries the "SOME CHECKS FAILED" sentinel.
+    and 07_sheen_lpf declares [0, 1, 2] with openEMS/CSXCAD as external
+    dependencies (so exit 2 is inconclusive and an unimportable reference
+    solver is an env skip) as well as carrying the "SOME CHECKS FAILED"
+    sentinel.
+
+    No case declares ``pymeep`` any more, so the env-skip arm uses the
+    solver-agnostic packaging marker the runner recognises
+    (``ENV_BROKEN_REF_MARKERS``) rather than the meep import error.
     """
     runner = _load_runner()
 
@@ -335,7 +340,7 @@ def test_runner_exit_classification_matches_manifest_contract() -> None:
         == "FAIL"
     )
     assert (
-        runner.classify("04_multilayer_fresnel.py", 2, "reference unavailable", False)[0]
+        runner.classify("07_sheen_lpf.py", 2, "reference unavailable", False)[0]
         == "SELF-CHECK-ONLY"
     )
     assert (
@@ -367,9 +372,9 @@ def test_runner_exit_classification_matches_manifest_contract() -> None:
     )
     assert (
         runner.classify(
-            "04_multilayer_fresnel.py",
+            "07_sheen_lpf.py",
             1,
-            "ModuleNotFoundError: No module named 'meep'",
+            "A module that was compiled using NumPy 1.x cannot be run",
             False,
         )[0]
         == "ENV-SKIP"
@@ -466,16 +471,17 @@ def test_public_validation_docs_match_manifest() -> None:
         assert (REPO_ROOT / referenced_path).exists(), referenced_path
 
 
-def test_scheduled_workflow_loads_manifest_instead_of_copying_case_list() -> None:
+def test_the_weekly_workflow_runs_no_crossval_script() -> None:
+    """Until 2026-09-21 validation.yml ran the scheduled cross-validation cases
+    with a live Meep and this test pinned that it read them from the manifest.
+    The job left with the last scheduled case: CI does not run external solvers
+    (docs/design_notes/20260921_crossval_role_redesign.md). What is pinned now is
+    that it does not come back as a hand-copied script list."""
     workflow_text = (REPO_ROOT / ".github" / "workflows" / "validation.yml").read_text(
         encoding="utf-8"
     )
-    assert "validation/crossval/manifest.json" in workflow_text
-    assert "scheduled_external_order" in workflow_text
-    assert "expected_exit_codes" in workflow_text
-    assert "could not load scheduled cases from crossval manifest" in workflow_text
-    assert "crossval manifest selected no scheduled cases" in workflow_text
     assert "scripts=(" not in workflow_text
+    assert "validation/crossval/" not in workflow_text
 
 
 def test_repo_map_defers_crossval_claims_to_manifest() -> None:

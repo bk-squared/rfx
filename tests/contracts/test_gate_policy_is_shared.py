@@ -49,9 +49,7 @@ GATE_POLICY = REPO / "tests" / "_gate_policy.py"
 # own --write-fixture self-check.
 _QUANTIZED_GATE_FILES = [
     REPO / "tests" / "crossval" / "test_wr90_iris_modematch_gates.py",
-    REPO / "tests" / "crossval" / "test_rcs_dielectric_sphere_mie_gates.py",
     REPO / "tests" / "crossval" / "test_wr90_iris_filter_gates.py",
-    REPO / "validation" / "crossval" / "17_dielectric_sphere_mie.py",
     REPO / "validation" / "crossval" / "18_wr90_iris_modematch.py",
     REPO / "validation" / "crossval" / "19_wr90_iris_filter_aghanim.py",
     # #576 review F5. This lane is in the tripwire list but NOT in _REAL_CASES
@@ -65,16 +63,6 @@ _QUANTIZED_GATE_FILES = [
     # `abs` key to 100. So the multiplier-mutation coverage here rests on the
     # test file's own derived-not-pinned tolerances, which is weaker than the
     # discovered lanes' from-outside check.
-    # #928 item 2. The slab family's per-bin windows are the one lane here that
-    # deliberately does NOT quantize -- rounding up to 1/1000 per bin would
-    # raise every sub-1e-3 bin to 1e-3, widening the gate where the derivation
-    # is tightest -- so it reads ENVELOPE_GATE_MULTIPLIER through the module
-    # object instead of calling gate_from_envelope. It is in this tripwire list
-    # because the `* 1.5 *` plant is exactly as available to it as to the
-    # others, and the from-outside check that the multiplier really moves its
-    # windows is tests/contracts/test_slab_arm_window_derivation.py::
-    # test_the_shared_multiplier_moves_every_derived_window.
-    (REPO / "validation" / "crossval" / "comparators" / "slab_arm_windows.py"),
     REPO / "tests" / "crossval" / "test_waveguide_nu_broad_e4_comparison_gates.py",
     (REPO / "scripts" / "diagnostics"
      / "build_waveguide_wr90_nu_flux_broad_e4_comparison.py"),
@@ -143,7 +131,6 @@ _MARGIN_CEIL_FILES = [
 ]
 
 _CROSSVAL_SCRIPTS = [
-    REPO / "validation" / "crossval" / "17_dielectric_sphere_mie.py",
     REPO / "validation" / "crossval" / "18_wr90_iris_modematch.py",
     REPO / "validation" / "crossval" / "19_wr90_iris_filter_aghanim.py",
 ]
@@ -165,14 +152,12 @@ def _discover_real_cases() -> list[tuple[str, tuple[str, str], tuple[str, str], 
     existing suffix costs nothing.
 
     Descriptive, not authoritative: as of this writing this discovers
-    exactly 4 cases -- wr90_iris_modematch {fine, richardson},
-    rcs_dielectric_sphere_mie {coarse}, wr90_iris_filter {f0}.
-    Four OTHER committed fixture.json files exist
+    exactly 3 cases -- wr90_iris_modematch {fine, richardson},
+    wr90_iris_filter {f0} (measured 2026-09-21, after the dielectric-sphere
+    fixture left with its case). Four OTHER committed fixture.json files exist
     (rcs280_reference_subtraction, rcs_cube_bem, rcs_sphere_mie,
     rcs_sphere_three_way) and are correctly excluded: none has a top-level
-    ``gates`` dict with a matching envelope/gate key pair. Dielectric's
-    ``fine_rung_witness_envelope_db`` is also correctly excluded -- it has
-    no ``fine_gate_db`` sibling (that rung is reported, never gated).
+    ``gates`` dict with a matching envelope/gate key pair.
     """
     cases: list[tuple[str, tuple[str, str], tuple[str, str], int]] = []
     for fixture_path in sorted(REPO.glob("tests/fixtures/**/fixture.json")):
@@ -257,8 +242,11 @@ def test_gate_policy_module_defines_exactly_one_multiplier():
 def test_real_cases_are_discovered_from_the_fixture_glob_not_hand_maintained():
     """#528 review MEDIUM 2: an empty or broken glob must not silently pass
     every other assertion in this file (they'd vacuously succeed over zero
-    cases) -- assert a floor AND that today's 6 known cases are all in it."""
-    assert len(_REAL_CASES) >= 4, (
+    cases) -- assert a floor AND that today's known cases are all in it.
+
+    2026-09-21: the floor drops from 4 to 3, the measured count after the
+    dielectric-sphere fixture left with its case."""
+    assert len(_REAL_CASES) >= 3, (
         f"only {len(_REAL_CASES)} real gated cases discovered via the "
         f"fixture glob -- an empty or broken glob would silently pass "
         f"every other case-driven assertion in this file"
@@ -269,8 +257,6 @@ def test_real_cases_are_discovered_from_the_fixture_glob_not_hand_maintained():
          ("gates", "fine_measured_envelope_abs")),
         ("tests/fixtures/wr90_iris_modematch/fixture.json",
          ("gates", "richardson_measured_envelope_abs")),
-        ("tests/fixtures/rcs_dielectric_sphere_mie/fixture.json",
-         ("gates", "coarse_measured_envelope_db")),
         ("tests/fixtures/wr90_iris_filter/fixture.json",
          ("gates", "f0_measured_envelope_mhz")),
     }

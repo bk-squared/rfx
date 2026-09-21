@@ -21,10 +21,8 @@ one case doubled its gate with every existing guard still green.
 Consumers (as of this writing):
   * tests/unit/sparams/test_msl_port_integration.py              (quantum=1000, |Z0| length-spread, #518)
   * tests/crossval/test_wr90_iris_modematch_gates.py        (quantum=100, abs |S11|)
-  * tests/crossval/test_rcs_dielectric_sphere_mie_gates.py   (quantum=10,  dB)
   * tests/crossval/test_wr90_iris_filter_gates.py            (quantum=1,   MHz)
   * validation/crossval/18_wr90_iris_modematch.py       (--write-fixture self-check)
-  * validation/crossval/17_dielectric_sphere_mie.py     (--write-fixture self-check)
   * validation/crossval/19_wr90_iris_filter_aghanim.py  (--write-fixture self-check)
   * tests/unit/farfield/test_rcs280_reference_subtraction.py    (quantum=100,  dB pattern mean, #888/#280)
   * tests/unit/sources/test_tfsf_aux_absorber_reflection.py     (quantum=1e5..1e7, |B/A| reflection amplitude, #888)

@@ -208,9 +208,9 @@ class CaseResult:
 def _build_multilayer_fresnel(quick: bool) -> CaseResult:
     """Normal-incidence dielectric slab R/T vs the exact transfer matrix.
 
-    Replicates the rfx-only path of ``validation/crossval/04_multilayer_fresnel.py``
-    (2D TMz TFSF plane wave, single-run scattered/total field measurement) and
-    maps the lossless-reciprocal-slab physics onto a 2-port S-matrix:
+    A 2D TMz TFSF plane wave with a single-run scattered/total field
+    measurement, which maps the lossless-reciprocal-slab physics onto a 2-port
+    S-matrix:
     ``|S11|^2 = R``, ``|S21|^2 = T``. The complex analytic ``(r, t)`` from the
     transfer matrix is exported so the Touchstone carries phase, and the gallery
     plot compares rfx |S| against the analytic curve.

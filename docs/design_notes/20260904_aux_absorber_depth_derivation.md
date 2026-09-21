@@ -1,5 +1,7 @@
 # The auxiliary absorber: what it reflects, and what depth that costs
 
+> cv04 and cv26 were removed on 2026-09-21; the artifacts cited here are at commit b4cf8f29.
+
 **Status:** MEASUREMENT + PRE-DECLARATION (no case re-run yet) · **Opened:** 2026-09-04
 **Branch:** `agent/issue-888-aux-absorber` (b27dc2bb), base `origin/main` @ `b59e1d9`. Superseded by `fix/888-aux-absorber-r2` (PR #1005), rebased onto `d56f68eb`.
 **Issue:** #888 · **PI decision A (2026-09-04):** deepen the auxiliary absorber, re-derive

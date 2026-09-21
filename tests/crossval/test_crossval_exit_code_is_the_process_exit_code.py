@@ -10,11 +10,13 @@ That is what reopened the issue.
 
 The two cases #946 was written about, cv01 and cv02, were removed on
 2026-09-21, and the subprocess replays that drove them through their
-``--replay`` path went with them. What executes here is what does not depend on
-those two: the write path against every committed record, the refusal that
-keeps the forcing knob out of the committed evidence tree, and the two tail
-endings (``KeyboardInterrupt``, a ``sys.excepthook`` displaced after ours)
-driven on fixtures in ``tmp_path``.
+``--replay`` path went with them. The remaining writers (cv22, cv23, cv24,
+cv26) were removed the same day, and with them the byte-for-byte replay of
+their committed records. What executes here is what depends on no case at all:
+the refusal that keeps the forcing knob out of the committed evidence tree, the
+two tail endings (``KeyboardInterrupt``, a ``sys.excepthook`` displaced after
+ours) driven on fixtures in ``tmp_path``, and the record-side scan for an
+undeclared writer.
 """
 
 from __future__ import annotations
@@ -38,88 +40,14 @@ SELFTEST_ENV = "RFX_EXIT_EVIDENCE_SELFTEST"
 #: Kept here as well as in the contract test on purpose: this file is the one
 #: that EXECUTES, and a writer that appears without a guard has to fail a test
 #: somebody runs, not only a test somebody reads.
-DECLARED_WRITERS = {
-    # cv22 keeps a second out-dir for its diagnostic arms; both hold records
-    # this case wrote, and both are therefore its own to amend.
-    "22_dispersive_slab_fresnel.py": ("_22_dispersive_results",
-                                      "_22_dispersive_diag"),
-    "23_lossy_slab_fresnel.py": ("_23_lossy_results",),
-    "24_nu_rect_cavity_pozar.py": ("_24_nu_cavity_results",),
-    "26_oblique_slab_fresnel.py": ("_26_oblique_results",),
-}
-
-
-# --------------------------------------------------------------------------
-# The contract, executed
-# --------------------------------------------------------------------------
-
-
-def _committed_records() -> "list[Path]":
-    """Every committed record under a declared writer's out-dir that carries
-    an ``exit_code``."""
-    out = []
-    for dirs in DECLARED_WRITERS.values():
-        for name in dirs:
-            for record in sorted((CROSSVAL_DIR / name).glob("**/*.json")):
-                try:
-                    doc = json.loads(record.read_text())
-                except (ValueError, UnicodeDecodeError):
-                    continue
-                verdict = doc.get("verdict") if isinstance(doc, dict) else None
-                if isinstance(verdict, dict) and "exit_code" in verdict:
-                    out.append(record)
-    return out
-
-
-def test_the_new_writer_reproduces_every_committed_record_byte_for_byte(
-        tmp_path: Path) -> None:
-    """The migration must not have changed what a re-run produces.
-
-    Most of these writers had no defect to fix; they were migrated for
-    uniformity, and the price of that would be real if it moved a byte -- a
-    manifest entry that claims a re-run reproduces its record bit-identically
-    (#937) depends on it, and cv24's six records carry ``exit_code``/``summary``
-    ahead of ``arms`` rather than after.
-
-    Re-running the physics to check that is not available here (Meep, FDTD, an
-    8-hour lane). What IS checkable, and is the only thing the migration
-    touched, is the write path: given the same document and the same declared
-    code, does ``write_record`` emit the same bytes the old ``json.dump`` did?
-    So each committed record is taken apart -- its ``exit_code``/``summary``
-    removed from the verdict block -- and put back together through the real
-    helper, and the result is compared with the file on disk. Any difference
-    in key order, indent, separators or escaping fails here.
-    """
-    helper = _load_helper()
-    records = _committed_records()
-    assert len(records) >= 40, (
-        f"only {len(records)} committed records found; the glob is wrong")
-
-    mismatched = []
-    try:
-        for index, record in enumerate(records):
-            doc = json.loads(record.read_text())
-            verdict = doc["verdict"]
-            code = verdict["exit_code"]
-            summary = verdict.get("summary")
-            reserved_first = list(verdict)[:2] == ["exit_code", "summary"]
-            rest = {k: v for k, v in verdict.items()
-                    if k not in ("exit_code", "summary")}
-            doc["verdict"] = (helper.reserve_verdict(**rest) if reserved_first
-                              else rest)
-            # into tmp_path, never beside the original: this test must not put
-            # a file into the evidence tree even for a moment (#967, PR #977).
-            produced = tmp_path / f"{index:03d}_{record.name}"
-            helper.write_record(str(produced), doc, exit_code=code,
-                                summary=summary, arm=False)
-            if produced.read_bytes() != record.read_bytes():
-                mismatched.append(record.relative_to(REPO_ROOT).as_posix())
-    finally:
-        helper._reset_for_tests()
-
-    assert mismatched == [], (
-        "the migrated writer does not reproduce these committed records: %s"
-        % mismatched)
+#:
+#: 2026-09-21: the four writers that were here (cv22, cv23, cv24, cv26) left
+#: with their cases, and no surviving crossval script calls ``write_record``.
+#: The byte-for-byte replay of their committed records and the per-writer
+#: routing check went with them; the record-side scan below still reads every
+#: committed ``_*`` directory, so a new writer that produces output without
+#: being declared here fails there.
+DECLARED_WRITERS: "dict[str, tuple[str, ...]]" = {}
 
 
 # --------------------------------------------------------------------------
@@ -194,7 +122,7 @@ def test_the_forced_exit_knob_refuses_before_it_writes_anything(
     reinstating the defect overwrote that record with the fixture's two-key
     document.
     """
-    results = CROSSVAL_DIR / "_22_dispersive_results"
+    results = CROSSVAL_DIR / "_07_sheen_results"
     committed = results / "rfx.json"
     committed_before = committed.read_bytes()
     probe = results / "_exit_evidence_selftest_guard_probe.json"
@@ -297,17 +225,6 @@ def _calls_write_record(path: Path) -> bool:
         if isinstance(func, ast.Name) and func.id == "write_record":
             return True
     return False
-
-
-@pytest.mark.parametrize("script", sorted(DECLARED_WRITERS))
-def test_every_declared_writer_routes_through_the_helper(script: str) -> None:
-    """One road in, per case, named so a failure says which case left it."""
-    path = CROSSVAL_DIR / script
-    assert path.is_file(), f"declared writer {script} no longer exists"
-    assert _calls_write_record(path), (
-        f"{script} persists an exit code without _exit_evidence.write_record, "
-        "so nothing will amend that code if the process ends differently "
-        "(#946)")
 
 
 def test_no_committed_record_carries_an_exit_code_from_an_undeclared_case() -> None:

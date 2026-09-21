@@ -15,11 +15,11 @@ API supports --
 
 -- and asserts the detected set is exactly the expected set, which is empty
 since the cv09 half-symmetric-waveguide case was removed on 2026-09-21
-(measured 2026-08-28: ``grep -i pmc`` over validation/ and examples/
-also hits ``validation/crossval/17_dielectric_sphere_mie.py`` ("PMCHWT", an
-unrelated acronym) and ``examples/tutorials/boundary_spec_demo.py`` (PMC
-named only in prose, never constructed) -- neither is a real PMC user and
-this AST scan must not flag either). A script that starts constructing a
+(measured 2026-08-28: ``grep -i pmc`` over validation/ and examples/ also hit
+the dielectric-sphere case's "PMCHWT", an unrelated acronym -- that case was
+removed on 2026-09-21 -- and ``examples/tutorials/boundary_spec_demo.py`` (PMC
+named only in prose, never constructed); neither is a real PMC user and this
+AST scan must not flag either.) A script that starts constructing a
 ``pmc`` face with a spelling this scan does not recognise, or a script this
 scan does not yet know about, must fail loudly here rather than silently
 carry the #722 ninth-surface offset with no stated convention.
@@ -145,12 +145,13 @@ def test_the_detector_ignores_pmc_outside_a_construction():
 
 
 def test_pmc_false_hits_are_not_flagged():
-    """Two known false hits for a plain text/string grep -- 'PMCHWT' (an
-    unrelated acronym) and boundary_spec_demo.py's PMC-in-prose -- must NOT
-    appear in the AST-detected set, proving this is a construction scan,
-    not a substring grep."""
+    """The known false hit for a plain text/string grep --
+    boundary_spec_demo.py's PMC-in-prose -- must NOT appear in the AST-detected
+    set, proving this is a construction scan, not a substring grep. (The second
+    one, a 'PMCHWT' acronym, left with the dielectric-sphere case on
+    2026-09-21; the inline 'pmchwt' token in the detector test above covers the
+    same substring class.)"""
     found = _pmc_scripts()
-    assert "validation/crossval/17_dielectric_sphere_mie.py" not in found
     assert "examples/tutorials/boundary_spec_demo.py" not in found
 
 

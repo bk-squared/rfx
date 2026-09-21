@@ -317,16 +317,16 @@ in the fast suite via in-file XLA host-device sentinels.
 
 ## External cross-validation
 
-Two lanes:
+CI does not run external solvers (the weekly `crossval-external` Meep job left
+`validation.yml` on 2026-09-21 with the last scheduled case; see
+`docs/design_notes/20260921_crossval_role_redesign.md`). One on-demand lane remains:
 
-1. **Weekly CI** — `crossval-external` in `validation.yml`, conda-forge Meep.
-   Exit-2 = visible SKIP, exit-1 = red.
-2. **On-demand source-built openEMS** — `scripts/vessl_crossval_external.yaml`
-   (cv05 + cv11) on the free `remilab-c0` cluster:
+1. **On-demand source-built openEMS** — `scripts/vessl_crossval_external.yaml`
+   (cv11) on the free `remilab-c0` cluster:
    ```
    vessl run create -f scripts/vessl_crossval_external.yaml
    ```
-   Run it per release tag and after any change to the cv05/cv11 physics paths.
+   Run it per release tag and after any change to the cv11 physics paths.
 
 Historical environment notes and green-baseline logs that are absent from a
 public clone are non-authoritative here. Treat the tracked harness, current

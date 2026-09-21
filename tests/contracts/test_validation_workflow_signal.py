@@ -14,10 +14,12 @@ reddening anything:
 2. No job gates itself on a copy of ``on.schedule.cron``. A duplicated cron
    literal stops matching the moment the schedule is edited, and the job then
    skips on every scheduled run forever with nothing saying so.
-3. The workflow declares exactly one cron. ``crossval-external`` is gated on the
-   trigger (``github.event_name == 'schedule'``) rather than on a cron literal,
-   so a second cron entry would put a 120-minute Meep job on that schedule too.
-   Adding one is allowed; doing it without re-reading that gate is not.
+3. The workflow declares exactly one cron. Every job here runs on every
+   trigger, so a second cron entry would put the slow suite and a GPU seat
+   (``weekly-a6000-lane``) on that schedule too. Adding one is allowed; doing it
+   without re-reading what it starts is not. (Until 2026-09-21 the reason was a
+   120-minute Meep job, ``crossval-external``; it left with the last scheduled
+   cross-validation case.)
 4. The notifier counts ``skipped`` as not green. No job here is supposed to skip
    on either trigger, so a skip means the lane quietly stopped covering
    something.
@@ -110,10 +112,9 @@ def test_no_job_gates_itself_on_a_copy_of_the_cron() -> None:
 def test_validation_declares_exactly_one_cron() -> None:
     crons = _crons(_workflow())
     assert crons == ["0 6 * * 1"], (
-        f"validation.yml now declares {crons}. crossval-external is gated on "
-        "github.event_name == 'schedule', so every cron here runs a 120-minute "
-        "Meep job and the weekly-a6000-lane holds a GPU seat. Re-read those two "
-        "gates before adding a schedule, then update this test."
+        f"validation.yml now declares {crons}. Every cron here runs the slow "
+        "suite and the weekly-a6000-lane holds a GPU seat. Re-read what a new "
+        "schedule starts before adding it, then update this test."
     )
 
 

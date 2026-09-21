@@ -366,10 +366,6 @@ CLASSIFICATION: dict[str, Entry] = {
     # ---- no_simulation: zero real Simulation() calls, AST-verified ------
     # (bucket sizes are not written here: they rot. Count them with a
     #  Counter over CLASSIFICATION, the way the two docstrings above say.)
-    "validation/crossval/17_dielectric_sphere_mie.py": Entry(
-        "no_simulation",
-        "drives the functional rfx.rcs.compute_rcs entry point directly on "
-        "a hand-built Grid/MaterialArrays -- no Simulation object exists"),
     "validation/crossval/20_msl_phase_referee.py": Entry(
         "no_simulation",
         "Stage A drives openEMS/ContinuousStructure and explicitly does NOT "
@@ -402,65 +398,6 @@ CLASSIFICATION: dict[str, Entry] = {
     "validation/crossval/comparators/fdfd_hplane.py": Entry(
         "no_simulation",
         "plain numpy/scipy.sparse FDFD comparator -- no rfx import at all"),
-    "validation/crossval/comparators/nu_cavity_gates.py": Entry(
-        "no_simulation",
-        "pure-numpy Pozar spectrum, exact-lattice prediction, allowance, "
-        "windows and gates for cv24 -- no rfx import at all"),
-    "validation/crossval/22_dispersive_slab_fresnel.py": Entry(
-        "no_simulation",
-        "cv22 dispersive-slab case: drives cv04's low-level rig (Grid, "
-        "init_tfsf, update_e_debye/lorentz) directly under a main guard -- "
-        "no Simulation() call; the documented add_material path is stated "
-        "as NOT exercised in its manifest entry"),
-    "validation/crossval/comparators/cv22_dispersive_gates.py": Entry(
-        "no_simulation",
-        "pure-numpy windows, falsifiers and TMM/ADE evaluation for cv22 -- "
-        "no rfx Simulation"),
-    "validation/crossval/comparators/dispersive_eps.py": Entry(
-        "no_simulation",
-        "pure-numpy Debye/Lorentz/Drude eps(f) and the rfx->Meep material "
-        "mapping (unit-tested to 1e-9 before any FDTD) -- no rfx import"),
-    "validation/crossval/23_lossy_slab_fresnel.py": Entry(
-        "no_solve",
-        "cv23 lossy-slab case: two arms build a Simulation through the "
-        "documented add_material(sigma=) path and assemble its material "
-        "arrays (asserted bit-identical to the direct construction) but time "
-        "stepping is the low-level rig's -- Simulation.run() is never called"),
-    "validation/crossval/comparators/cv23_lossy_gates.py": Entry(
-        "no_simulation",
-        "pure-numpy windows, falsifiers and TMM evaluation for cv23 (R, T and "
-        "absorption A) -- no rfx Simulation"),
-    "validation/crossval/comparators/lattice_witness.py": Entry(
-        "no_simulation",
-        "pure-numpy exact-lattice witness gate for the slab family (cv04 / cv22 "
-        "/ cv23): the 1-D Yee-lattice prediction, the derived W_witness error "
-        "budget and the analytic falsifiers -- no rfx Simulation"),
-    "validation/crossval/comparators/slab_arm_windows.py": Entry(
-        "no_simulation",
-        "pure-numpy per-arm continuum window for the slab family's E2 gates "
-        "(#928): the arm's own lattice-continuum difference plus that record's "
-        "lattice-witness budget -- no rfx Simulation"),
-    "validation/crossval/comparators/slab_rig.py": Entry(
-        "no_simulation",
-        "shared quasi-1-D TFSF slab rig helpers (record-length derivation, "
-        "tail witness, envelope fit) factored out of cv22 -- no Simulation()"),
-    "validation/crossval/26_oblique_slab_fresnel.py": Entry(
-        "no_simulation",
-        "cv26 oblique-slab case: drives cv04's low-level rig (Grid, "
-        "init_tfsf_2d, update_e/update_h with the Bloch phase, CPML) "
-        "directly under a main guard -- no Simulation() call"),
-    "validation/crossval/comparators/oblique_fresnel.py": Entry(
-        "no_simulation",
-        "pure-numpy oblique Fresnel oracle, Meep k_point mapping, exact "
-        "2-D Yee-lattice / CPML model, windows and falsifiers for cv26 -- "
-        "no rfx Simulation (it imports tfsf_2d's auxiliary-grid constants, "
-        "#888, rather than restating them)"),
-    "validation/crossval/comparators/slab_family.py": Entry(
-        "no_simulation",
-        "the slab family's leaf declaration (#928): the cv04 rig constants, "
-        "the gated band, the incident-pulse and ring-down helpers, and the "
-        "calibration-envelope loader that resolves a consumer's adoption "
-        "record against the producer's artifact -- stdlib + numpy, no rfx"),
     "validation/crossval/comparators/spectral_features.py": Entry(
         "no_simulation",
         "pure-numpy sub-bin spectral-feature estimators shared by cv06b/cv07 "
@@ -470,25 +407,6 @@ CLASSIFICATION: dict[str, Entry] = {
         "pure-math patch cavity mode identification (#812) -- closed-form "
         "TM_mn0 spectrum plus a frequency-list assignment; no rfx import at "
         "all"),
-    "validation/crossval/comparators/emit_aux_echo_witness.py": Entry(
-        "no_simulation",
-        "backfills the auxiliary-echo record invariant (#888) into the "
-        "committed slab-family lattice_witness.json documents -- pure geometry "
-        "and JSON editing, no solver, no rfx import at all"),
-    "validation/crossval/comparators/emit_cv26_lattice_witness_replay.py": Entry(
-        "no_simulation",
-        "recomputes cv26's derived lattice-witness window from the committed "
-        "per-arm records with the standard's own budget primitives -- arithmetic "
-        "on artifacts already on disk, no solver, no FDTD, no rfx import"),
-    "validation/crossval/comparators/emit_cv04_fringe_gate_evidence.py": Entry(
-        "no_simulation",
-        "emits cv04's fringe-gate evidence JSON from the committed R(f) "
-        "artifact with numpy/scipy only (issue #812) -- no solver, no rfx "
-        "import at all"),
-    "validation/crossval/comparators/fringe_gate.py": Entry(
-        "no_simulation",
-        "pure numpy/scipy fringe-extremum comparator for cv04's etalon R(f) "
-        "(issue #812) -- no rfx import at all"),
     "validation/crossval/palace/mesh_patch.py": Entry(
         "no_simulation",
         "gmsh mesh-generation utility for the Palace comparator -- no rfx "
@@ -639,9 +557,6 @@ CLASSIFICATION: dict[str, Entry] = {
         "eps column) -- no separable build-only path"),
 
     # ---- module_level_solve: solves at import time, no main guard -------
-    "validation/crossval/04_multilayer_fresnel.py": Entry(
-        "module_level_solve",
-        "builds and calls .run(...) at module scope with no main guard"),
 
     # ---- builder_fused_with_solve: build+solve share one function -------
     "examples/tutorials/cad_mesh_import_demo.py": Entry(
@@ -920,21 +835,6 @@ CLASSIFICATION: dict[str, Entry] = {
             _v_from("empty", lambda m: dict(freqs=m.FREQS_HZ)),
             _v_from("pec_short", lambda m: dict(
                 freqs=m.FREQS_HZ, pec_short_x=m.PEC_SHORT_X)),
-        )),)),
-    "validation/crossval/24_nu_rect_cavity_pozar.py": Entry(
-        "audited",
-        "`build_cavity(lane, dxy, dz_profile)` returns Simulation with no "
-        "solve call; main() drives it once per arm (uniform / graded / "
-        "uniform-fine) through run_arm()",
-        (Builder("build_cavity", None, (
-            _v_from("uniform", lambda m: dict(
-                lane="uniform", dxy=m.G.DX_COARSE, dz_profile=m.G.PROFILES["uniform"])),
-            _v_from("single_band", lambda m: dict(
-                lane="nonuniform", dxy=m.G.DX_COARSE, dz_profile=m.G.PROFILES["single_band"])),
-            _v_from("multi_band", lambda m: dict(
-                lane="nonuniform", dxy=m.G.DX_COARSE, dz_profile=m.G.PROFILES["multi_band"])),
-            _v_from("uniform_fine", lambda m: dict(
-                lane="uniform", dxy=m.G.DZ_FINE, dz_profile=m.G.PROFILES["uniform_fine"])),
         )),)),
     "validation/crossval/19_wr90_iris_filter_aghanim.py": Entry(
         "audited",

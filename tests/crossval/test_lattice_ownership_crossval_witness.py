@@ -185,14 +185,6 @@ _ALLOWED = {
     "tests/crossval/test_patch_mode_identification.py":
         "resolves two frozen #740 ring-down legs by role; the old key "
         "spelling is the fallback",
-    "tests/crossval/test_rcs_dielectric_sphere_mie_gates.py":
-        "asserts the three #702 helpers are GONE from "
-        "rfx.geometry.rasterize_grid (not hasattr) — it names them to "
-        "refuse them, which is this guard's own job one level down",
-    "tests/crossval/test_cv23_lossy_slab_gates.py":
-        "names resample_sheet_node_materials as the retired mechanism its "
-        "one-cell-lossy-body pin used to guard against; history in a "
-        "docstring, no call",
 }
 
 

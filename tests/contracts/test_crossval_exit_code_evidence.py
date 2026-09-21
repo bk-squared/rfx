@@ -33,9 +33,14 @@ Two halves:
 The two boundaries the mechanism cannot cover -- ``os._exit`` skipping
 ``atexit``, and a ``sys.exit`` the script catches itself -- are asserted here
 rather than left to the reader, so the guarantee is not read wider than it is.
-And the guarantee it DOES make -- a host process's exit status never reaches
-an embedded case's record -- is asserted for both ways of embedding a case,
-``importlib`` + ``main()`` and ``runpy`` under ``run_name="__main__"``.
+
+2026-09-21: the arms that drove a COMMITTED case in a subprocess -- the
+end-to-end arming check, and the two embedding arms (``importlib`` + ``main()``
+and ``runpy`` under ``run_name="__main__"``) that showed a host process's exit
+status never reaches an embedded case's record -- left with cv23 and cv24. No
+surviving crossval case routes a write through the helper, so those three have
+no anchor. What remains is the fixture and wrapper-fixture coverage of the same
+predicate, plus the static half.
 """
 
 from __future__ import annotations
@@ -54,12 +59,13 @@ HELPER = CROSSVAL_DIR / "_exit_evidence.py"
 
 # The writers migrated in #946. New cases may join; a case leaving this set
 # silently is the regression this assertion catches.
-MIGRATED_WRITERS = frozenset({
-    "22_dispersive_slab_fresnel.py",
-    "23_lossy_slab_fresnel.py",
-    "24_nu_rect_cavity_pozar.py",
-    "26_oblique_slab_fresnel.py",
-})
+#
+# 2026-09-21: the four writers that were here (cv22, cv23, cv24, cv26) left
+# with their cases, and no surviving crossval script calls ``write_record``.
+# The set is empty rather than removed: the exact-set assertion below still
+# refuses a file under validation/crossval/ that starts calling the helper
+# without being declared here.
+MIGRATED_WRITERS: frozenset[str] = frozenset()
 
 # A crossval-shaped script: decide, persist, then do the optional stage that
 # may or may not exit differently. `LATE` is spliced in where cv01's plot and
@@ -403,90 +409,6 @@ def test_a_record_persisted_unarmed_says_so_on_stderr(tmp_path: Path) -> None:
     assert "case_write_helper" in proc.stderr
 
 
-CV23 = CROSSVAL_DIR / "23_lossy_slab_fresnel.py"
-# --smoke evaluates no gate and --out-dir keeps the write out of
-# validation/crossval (#967 / PR #977).
-CV23_SMOKE = ["--smoke", "--no-plots", "--arms", "tand1", "--out-dir"]
-
-
-def test_the_committed_case_arms_when_it_is_the_program(tmp_path: Path) -> None:
-    """cv23 in a subprocess, run the way evidence is produced: as the program.
-
-    The fixture tests above pin what arming DOES. This one pins that a
-    committed crossval case is wired into it end to end -- through its own
-    argument parsing and its own writer -- and that the arming predicate still
-    accepts the only shape that produces evidence. Arming is visible from
-    outside because an unarmed write announces itself on stderr, so the
-    absence of that line is the assertion.
-    """
-    out_dir = tmp_path / "cv23_out"
-    out_dir.mkdir()
-
-    proc = subprocess.run([sys.executable, str(CV23), *CV23_SMOKE,
-                           str(out_dir)],
-                          cwd=str(tmp_path), capture_output=True, text=True)
-    record = out_dir / "rfx.json"
-    assert record.is_file(), proc.stdout[-4000:] + proc.stderr[-4000:]
-    doc = json.loads(record.read_text())
-
-    assert proc.returncode == 0
-    assert doc["verdict"]["exit_code"] == proc.returncode
-    assert doc["verdict"]["summary"].startswith("SMOKE OK")
-    assert "EXIT-CODE EVIDENCE UNARMED" not in proc.stderr   # it armed,
-    assert "EXIT-CODE RECONCILED" not in proc.stderr         # and agreed
-    # The measurement the case wrote is still the case's own.
-    assert doc["arms"]["tand1"]["e2_ok"] in (True, False)
-
-
-# A host that runs the case as ``__main__`` through runpy, swallows the exit
-# the case asked for, and then returns a status of its own. Two diagnostics
-# harnesses embed a case this way: cv0104_dielectric_control_witness.py hands
-# over sys.argv as this wrapper does, harminv_record_capture.py keeps its own.
-# The wrapper here takes the harder variant -- with argv handed over, nothing
-# in sys.argv or sys.modules distinguishes it from a direct run.
-RUNPY_HOST = '''\
-import runpy
-import sys
-
-sys.argv = [{script!r}, "--smoke", "--no-plots", "--arms", "tand1",
-            "--out-dir", {out_dir!r}]
-try:
-    runpy.run_path({script!r}, run_name="__main__")
-except SystemExit as exc:
-    print("the case asked for exit", exc.code, file=sys.stderr)
-sys.exit(2)
-'''
-
-
-def test_a_case_run_as_main_by_runpy_is_not_armed(tmp_path: Path) -> None:
-    """runpy makes ``__name__ == "__main__"`` true; it must not be enough.
-
-    The host here returns 2 for a case that declared 0, so a mechanism that
-    armed on the module name alone would write the host's status into the
-    case's record -- a manufactured exit code, which is what #946 is about.
-    The record keeps what the case itself decided, and the host is told the
-    record is unarmed and why.
-    """
-    out_dir = tmp_path / "cv23_out"
-    out_dir.mkdir()
-    host = tmp_path / "runpy_host.py"
-    host.write_text(RUNPY_HOST.format(script=str(CV23), out_dir=str(out_dir)))
-
-    proc = subprocess.run([sys.executable, str(host)], cwd=str(tmp_path),
-                          capture_output=True, text=True)
-    record = out_dir / "rfx.json"
-    assert record.is_file(), proc.stdout[-4000:] + proc.stderr[-4000:]
-    doc = json.loads(record.read_text())
-
-    assert proc.returncode == 2
-    assert doc["verdict"]["exit_code"] == 0  # what the case itself returned
-    assert "exit_code_declared" not in doc["verdict"]
-    assert "exit_code_reconciliation" not in doc["verdict"]
-    assert "EXIT-CODE RECONCILED" not in proc.stderr
-    assert "EXIT-CODE EVIDENCE UNARMED" in proc.stderr
-    assert "EMBEDDED" in proc.stderr
-
-
 # Why the arming predicate walks the stack instead of reading sys.argv or
 # sys.modules: under runpy both report a direct run.
 RUNPY_LOOKALIKE_CASE = '''\
@@ -574,54 +496,6 @@ def test_a_wrapper_below_the_case_does_not_arm(tmp_path: Path,
     assert proc.returncode == 0, proc.stdout[-2000:] + proc.stderr[-2000:]
     assert json.loads(record.read_text())["verdict"]["exit_code"] == 0
     assert "EXIT-CODE EVIDENCE UNARMED" in proc.stderr
-
-
-# The same case driven as a LIBRARY: imported under its own module name and
-# called by a host whose exit status has nothing to do with the case. This is
-# how tests/crossval/test_cv23_lossy_slab_gates.py drives it.
-EMBEDDED_WRAPPER = '''\
-import importlib.util
-import sys
-
-spec = importlib.util.spec_from_file_location("cv23_embedded", {script!r})
-mod = importlib.util.module_from_spec(spec)
-sys.modules["cv23_embedded"] = mod
-spec.loader.exec_module(mod)
-rc = mod.main(["--smoke", "--no-plots", "--arms", "tand1",
-               "--out-dir", {out_dir!r}])
-print("the case returned", rc)
-sys.exit(2)
-'''
-
-
-def test_a_host_process_exit_status_never_stamps_an_embedded_case(
-        tmp_path: Path) -> None:
-    """An imported case is not the program, so its record is not armed.
-
-    A pytest run that drives ``main()`` in-process, and a ``pytest.raises(
-    SystemExit)`` elsewhere in the same session, must not be able to write
-    their own status into a case record.
-    """
-    out_dir = tmp_path / "cv23_out"
-    out_dir.mkdir()
-    wrapper = tmp_path / "embedded_wrapper.py"
-    wrapper.write_text(EMBEDDED_WRAPPER.format(
-        script=str(CV23), out_dir=str(out_dir)))
-
-    proc = subprocess.run([sys.executable, str(wrapper)], cwd=str(tmp_path),
-                          capture_output=True, text=True)
-    record = out_dir / "rfx.json"
-    assert record.is_file(), proc.stdout[-4000:] + proc.stderr[-4000:]
-    doc = json.loads(record.read_text())
-
-    assert proc.returncode == 2
-    assert doc["verdict"]["exit_code"] == 0  # what the case itself returned
-    assert "exit_code_reconciliation" not in doc["verdict"]
-    assert "EXIT-CODE RECONCILED" not in proc.stderr
-    # ...and the host is told the record is unarmed, so "nothing happened"
-    # and "the mechanism is off here" are not the same silence.
-    assert "EXIT-CODE EVIDENCE UNARMED" in proc.stderr
-
 
 def _load_helper():
     """Import ``_exit_evidence`` the way a crossval script does."""
@@ -804,58 +678,6 @@ def test_writers_leave_through_sys_exit_only() -> None:
     assert problems == {}, (
         "these scripts persist an exit code but can leave by a door the "
         "finalizer cannot see: %s" % problems)
-
-
-CV24_RESULTS = CROSSVAL_DIR / "_24_nu_cavity_results"
-
-
-def test_reserved_verdict_slots_keep_the_committed_key_order(
-        tmp_path: Path) -> None:
-    """cv24's records carry exit_code/summary BEFORE the rest of the block.
-
-    ``write_record`` fills a key in place when it exists and appends it
-    otherwise, so the position is the caller's. cv01/cv02 let it append,
-    matching their records; cv24 reserves the slots first. Getting this wrong
-    costs no gate -- and produces a re-run diff nobody can explain, which is
-    the evidence problem this whole file is about.
-    """
-    helper = _load_helper()
-    record = tmp_path / "rfx.json"
-    doc = {"arms": {}, "verdict": helper.reserve_verdict(arms=["uniform"])}
-    try:
-        helper.write_record(str(record), doc, exit_code=0,
-                            summary="SMOKE OK", arm=False)
-    finally:
-        helper._reset_for_tests()
-    produced = list(json.loads(record.read_text())["verdict"])
-
-    assert produced == ["exit_code", "summary", "arms"]
-    committed = sorted(CV24_RESULTS.glob("*.json"))
-    assert committed, "no committed cv24 record to compare the order against"
-    for path in committed:
-        assert list(json.loads(path.read_text())["verdict"]) == produced, path
-
-
-def test_the_case_that_commits_that_order_is_the_one_that_reserves() -> None:
-    """cv24 must still go through ``reserve_verdict``.
-
-    The test above pins what the helper produces; this pins that cv24 asks
-    for it. Without the reservation cv24 emits arms/exit_code/summary and
-    every committed record under _24_nu_cavity_results/ reads
-    exit_code/summary/arms.
-    """
-    tree = ast.parse((CROSSVAL_DIR / "24_nu_rect_cavity_pozar.py").read_text())
-    reserved = [
-        node.lineno for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and ((isinstance(node.func, ast.Attribute)
-              and node.func.attr == "reserve_verdict")
-             or (isinstance(node.func, ast.Name)
-                 and node.func.id == "reserve_verdict"))
-    ]
-    assert reserved, (
-        "24_nu_rect_cavity_pozar.py no longer reserves its verdict slots, so "
-        "a re-run reorders the block against its committed records")
 
 
 def test_no_case_script_passes_arm_explicitly() -> None:

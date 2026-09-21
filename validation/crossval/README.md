@@ -1,11 +1,10 @@
 # Solver cross-validation suite
 
-18 numbered studies validating rfx against analytic references and
-independent solvers. Each numbered script is self-contained: the Meep
-configurations (cases 01–04) and openEMS configurations (e.g. 05, 07, 15,
-20, 21) are embedded in the scripts themselves; `comparators/` holds the
-shared comparison harness; `_*_results/`/`_*_logs/` directories carry
-committed reference outputs.
+Numbered studies validating rfx against analytic references and
+independent solvers. Each numbered script is self-contained: the openEMS
+configurations (e.g. 07, 15, 20, 21) are embedded in the scripts
+themselves; `comparators/` holds the shared comparison harness;
+`_*_results/`/`_*_logs/` directories carry committed reference outputs.
 
 - `palace/` — Palace (FEM) setups for the X-band patch four-solver study;
   see [`palace/README.md`](palace/README.md).

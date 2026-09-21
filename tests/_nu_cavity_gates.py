@@ -1,11 +1,15 @@
-"""cv24 -- non-uniform (graded-z) rectangular PEC cavity vs the exact Pozar
+"""Non-uniform (graded-z) rectangular PEC cavity vs the exact Pozar
 spectrum: profiles, windows, allowance, exact-lattice prediction, mode
 identification, record length and gates. Pure numpy; no rfx import.
 
-Pre-declaration (read it first):
-  docs/design_notes/20260902_cv24_nu_cavity_predeclaration.md
+These are the gates of the former cv24 cross-validation case, removed
+2026-09-21; the module is kept because
+``tests/oracle/test_harminv_retained_cavity_records.py`` and
+``scripts/diagnostics/harminv_cavity_adjudication.py`` judge retained records
+with them. Its pre-declaration, for the derivations, is
+``docs/design_notes/20260902_cv24_nu_cavity_predeclaration.md``.
 
-Every number the case script and its gate test use lives HERE, once. The
+Every number lives HERE, once. The
 FDTD never enters this module: the exact-lattice prediction is a
 frequency-domain eigenvalue computation on the SAME difference operators
 ``rfx.nonuniform._profile_to_inv_arrays`` builds (mirrored below in float64,
@@ -24,9 +28,9 @@ discrete eigenfrequency is
     sin(omega dt / 2) = (c0 dt / 2) sqrt(mu_x(m) + mu_y(n) + mu_z(l))
 
 with ``mu_axis(i)`` the i-th eigenvalue of that axis's 1-D primal operator
-(``mu(0) = 0``). ``tests/crossval/test_cv24_nu_cavity_gates.py`` checks this
-separation against a dense 3-D assembly of the same operators on a small
-graded box, so the separable formula is not taken on trust.
+(``mu(0) = 0``). The case's own gate test checked this separation against a
+dense 3-D assembly of the same operators on a small graded box; that test left
+with the case.
 """
 
 from __future__ import annotations

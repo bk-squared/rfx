@@ -1,5 +1,7 @@
 # cv26 oblique-slab Fresnel — pre-declaration (gap lane 4, oblique incidence and the CPML at grazing)
 
+> cv26 was removed on 2026-09-21; the artifacts cited here are at commit b4cf8f29.
+
 Date: 2026-09-02 (written), committed 2026-09-03 · Lane: `agent/gap4-oblique-fresnel` ·
 Case: `validation/crossval/26_oblique_slab_fresnel.py` (new; id `26_oblique_slab_fresnel`;
 claims-bearing, E2 + E4).

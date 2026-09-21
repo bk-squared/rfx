@@ -250,8 +250,8 @@ FEED_OFFSET_X = -9.0e-3    # inset feed, 9 mm off centre along L
 N_SUB = 4
 # Distinct eps_r values the declared build may produce: vacuum (1.0) and the
 # laminate (EPS_R). #931: a PEC sheet owns no cell and writes no material, so
-# declaring the ground and the patch must not add a third -- cv17's G17-B
-# pattern (validation/crossval/17_dielectric_sphere_mie.py) applied to the
+# declaring the ground and the patch must not add a third -- the G17-B pattern
+# of the former cv17 dielectric-sphere case (removed 2026-09-21) applied to the
 # sheet side, and the witness for the deleted #702 own-cell resample.
 N_DISTINCT_EPS_EXPECTED = 2
 DX = H_SUB / N_SUB         # 793.75 um uniform (H_SUB == 4*DX exactly)

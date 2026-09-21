@@ -443,7 +443,6 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
     (TILT_RESULTS, "7. Numeric provenance"): 54,
     (MANIFEST, "11_waveguide_port_wr90"): 4,
     (MANIFEST, "15_patch_antenna_rt5880"): 3,
-    (MANIFEST, "17_dielectric_sphere_mie"): 2,
     (MANIFEST, "18_wr90_iris_modematch"): 4,
     (MANIFEST, "19_wr90_iris_filter_aghanim"): 4,
     ("validation/README.md", "crossval/11_waveguide_port_wr90.py"): 4,
@@ -451,42 +450,14 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
     # #847 / #846 rewrote after this gate was drafted (see the note, "Re-basing
     # two floors"); those rows cite in the value-checked form and carry 2 each.
     ("validation/README.md", "crossval/15_patch_antenna_rt5880.py"): 2,
-    ("validation/README.md", "crossval/17_dielectric_sphere_mie.py"): 3,
     ("validation/README.md", "crossval/18_wr90_iris_modematch.py"): 2,
     ("validation/README.md", "crossval/19_wr90_iris_filter_aghanim.py"): 6,
     (CV11_NOTE, "7. Numeric provenance (appended 2026-09-01, #812 round 2 \u2014 no finding changed)"): 6,
-    # 2026-09-03, the lattice-witness standard. Section 5.3 is the one the review
-    # found reconstructed numbers in; its floor is the point of opting the note in.
-    (LATTICE_NOTE, "5.1 cv23 \u2014 nine committed entries, eight distinct meshes, all green"): 4,
-    (LATTICE_NOTE, "5.2 cv22 \u2014 three rungs, all green; the pole lattice predicts the residual a priori"): 8,
-    # 2026-09-10: cv04's settling-extension fix landed (PI override of this
-    # section's own 8.3, "no new physics" -- see the commit message). Two
-    # passes, both reproduced with this file's own parser rather than
-    # asserted:
-    #   Pass 1 (c9b86b5e): PRE-FIX the section carried 16 live citations.
-    #   `lattice_witness.json` was regenerated in place and no longer holds
-    #   the pre-fix 719-step values under those keys, so 10 were demoted to
-    #   plain historical text (6 stayed live, unaffected keys -- that 6 is
-    #   already inside the 16 - 10, not an addition to it) and 7 new live
-    #   citations to the POST-FIX 990-step record were added:
-    #   16 - 10 + 7 = 13 (the 6 that stayed live are the 16 - 10).
-    #   Pass 2 (PR #974 adversarial review): re-checked the 10 demotions and
-    #   found only 4 were forced -- W_witness,R/T and the worst-per-bin
-    #   ratios R/T have no other committed home, so they stay plain text
-    #   with a `git show e079b0b5:...` retrieval note. The other 6 were
-    #   re-lived by pointing them at sources the fix does not change: the
-    #   a-priori ceiling and \u0393 (ringdown rate) are geometry-derived and
-    #   numerically unchanged, so they now cite the CURRENT artifact (+2);
-    #   the four |rfx-lattice| gated-mean citations (dR, dT, each appearing
-    #   twice) now cite the IMMUTABLE r1 revision of `envelope.json`, which
-    #   archived them before the fix and does not move when the producer is
-    #   re-run (+4, previously plain text under the same keys). The section
-    #   also gained 2 live citations to the re-run F2/F3 falsifier
-    #   separations at the settled rung, which now discriminate where they
-    #   previously did not: 13 + 2 + 4 + 2 = 21.
-    # Floor set to the reproduced count (21), not a round number.
-    (LATTICE_NOTE, "5.3 cv04 \u2014 the witness was REPORTED, not gated; the derivation said why, and the settling-extension fix (2026-09-10) closed it"): 21,
-    (LATTICE_NOTE, "8.1 cv22 Debye at a 3e-4 settling bar (the only rung a claim requires)"): 3,
+    # 2026-09-21: the lattice-witness standard's four case sections (5.1 cv23,
+    # 5.2 cv22, 5.3 cv04, 8.1 cv22 Debye) left this table with the slab family.
+    # Every citation under them reaches an artifact in REMOVED_ARTIFACT_PREFIXES,
+    # so each section now carries zero checked references and its floor no longer
+    # holds. The note itself is unchanged apart from its removal header.
     # 2026-09-03 (#884): the cv19 witness note's two load-bearing sections. §6.2
     # cites the committed unitarity that U3's floor is compared against; §6.3
     # cites the empty_s11 and r=2 anchor values it says were deliberately NOT
@@ -494,15 +465,17 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
     # numbers still resolving.
     (CV19_WITNESS_NOTE, "6.2 The three checks, with the shipped measurements"): 1,
     (CV19_WITNESS_NOTE, "6.3 What did NOT change"): 2,
-    # 2026-09-04 (#888): section 3 IS the finding -- 13 per-rung ratios plus
-    # cv04's arrival, record and fitted reflector index, every one of them read
-    # back out of the artifact the run wrote rather than retyped from a note.
-    (AUX_ECHO_NOTE, "3. The per-case ratios, read from the committed artifacts"): 18,
+    # 2026-09-21: the auxiliary-echo note's section 3 read its 18 per-rung
+    # ratios out of the slab family's committed artifacts. Those artifacts are
+    # in REMOVED_ARTIFACT_PREFIXES, the section carries zero checked references,
+    # and its floor no longer holds.
     # 2026-09-06 (#928): the public benchmarks table. This is the page a reader
     # takes "validated" from, so its measured numbers are the ones that must
-    # keep resolving. 93 references parse there; 91 of them carry a value,
-    # which is what this floor counts (the other two are existence-only).
-    (BENCHMARKS, "Reference cases"): 85,
+    # keep resolving.
+    # 2026-09-21: six rows left the table with their cases (cv04, cv17, cv22,
+    # cv23, cv24, cv26) and took 91 of its 100 checked citations. Floor lowered
+    # to the measured remainder, 9.
+    (BENCHMARKS, "Reference cases"): 9,
 }
 
 # Anti-vacuity census. A green gate must mean the references are right, not that
@@ -570,9 +543,16 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
 # skipped per citation; the 24 other citations in those notes stay checked).
 # Measured after the removal: 1386 references, 1338 value-checked, 82 artifacts.
 # Only the floor that no longer holds is lowered.
-MIN_REFERENCES = 1386
-MIN_VALUE_CHECKED = 1333
-MIN_DISTINCT_ARTIFACTS = 79
+# 2026-09-21 (cv04/cv17/cv22/cv23/cv24/cv26 removed): six benchmarks rows, the
+# cv17 manifest entry and README row left the gated surface, and 955 citations
+# across the lattice-witness standard, the auxiliary-echo note and the four slab
+# pre-declarations reach artifacts that went with those cases
+# (REMOVED_ARTIFACT_PREFIXES, skipped per citation). Measured after the removal:
+# 431 references, 401 value-checked, 33 artifacts. The floors are lowered to the
+# measured values.
+MIN_REFERENCES = 431
+MIN_VALUE_CHECKED = 401
+MIN_DISTINCT_ARTIFACTS = 33
 
 
 # --------------------------------------------------------------------------
@@ -671,8 +651,8 @@ CLASSIFICATION: dict[str, str] = {
     # `tests/_gate_policy.py::gate_from_envelope`) that this parser rejects by
     # construction. The note's own measurements are not quoted out of a
     # committed artifact -- they are the lane's raw readings, replayed by
-    # tests/unit/sources/test_tfsf_aux_absorber_reflection.py and
-    # tests/crossval/test_aux_echo_record_invariant.py.
+    # tests/unit/sources/test_tfsf_aux_absorber_reflection.py (its companion,
+    # the auxiliary-echo record invariant, was removed 2026-09-21).
     "docs/design_notes/20260904_aux_absorber_depth_derivation.md": SYMBOL_SPAN_PARSER_SCOPE,
     "docs/design_notes/20260905_post_merge_review_20_prs.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260905_post_v18_plan_rasterization_preflight_cst.md": NO_ARTIFACT_REFERENCE,
@@ -927,6 +907,20 @@ REMOVED_ARTIFACT_PREFIXES: tuple[str, ...] = (
     "validation/crossval/_01_waveguide_bend_results/",
     "validation/crossval/_05_patch_results/",
     "tests/fixtures/patch_mode_identification/cv05_ringdown_spectra.json",
+    # 2026-09-21, the slab family (cv04, cv22, cv23, cv26), the graded-z
+    # cavity (cv24) and the dielectric sphere (cv17). Those artifacts are at
+    # commit b4cf8f29.
+    "validation/crossval/_04_fresnel_results/",
+    "validation/crossval/_04_fresnel_logs/",
+    "validation/crossval/_17_dielectric_results/",
+    "validation/crossval/_22_dispersive_results/",
+    "validation/crossval/_22_dispersive_diag/",
+    "validation/crossval/_23_lossy_results/",
+    "validation/crossval/_24_nu_cavity_results/",
+    "validation/crossval/_26_oblique_results/",
+    "tests/fixtures/golden_workflows/",
+    "tests/fixtures/rcs_dielectric_sphere_mie/",
+    "tests/fixtures/slab_family_windows_baseline.json",
 )
 
 

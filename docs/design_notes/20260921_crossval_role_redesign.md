@@ -91,12 +91,19 @@ PI chooses the criterion, as the v2 bar already says.
 
 1. Remove cv01, cv02, cv05, cv10 and what serves only them.
 2. Remove the closed-form cases that `tests/oracle/` already covers and that share no file with a
-   surviving case: cavity (14), PMC symmetry plane (09), PEC sphere (16), WR-90 empty guide, short and
-   slab (11), 2-D slab guide (03).
-3. Add four small oracle tests for physics that only a cross-validation case compared with a closed
-   form — a Drude slab, TM and 60 degree oblique incidence, a mesh with two fine bands (#810), a
-   dielectric sphere — then remove the slab family (04, 22, 23, 26, tied together through cv04's
-   envelope file), the graded-mesh cavity (24) and the dielectric sphere (17).
+   surviving case: cavity (14), PMC symmetry plane (09), PEC sphere (16), 2-D slab guide (03). Done in
+   #1157. The WR-90 empty guide, short and slab (11) waits for the iris family: it also produces the
+   waveguide port's external-comparison records.
+3. Keep, as small analytic tests, the two closed-form comparisons that only a leaving case carried — a
+   Drude slab's R(f) and a PEC cavity on a z mesh with two fine bands (#1158) — then remove the slab
+   family (04, 22, 23, 26, tied together through cv04's envelope file), the graded-mesh cavity (24) and
+   the dielectric sphere (17). What was NOT carried over, and why: cv26's "TM" arms were TE runs on the
+   dual (mu) slab, and rfx has no oblique TM source, so there is no product feature to pin; oblique TE
+   stays compared at 30 and 45 degrees only; the dielectric sphere's monostatic RCS is, by that case's
+   own record, not converged (it moves 11.7 dB at ka 1.75 and 29 dB at ka 2.5 when only the clearance to
+   the domain walls changes), which is the behaviour issue #820 measures on the PEC sphere and the one
+   open question in this lane whose suspected cause is in the product. The two-band cavity test does
+   not answer issue #810, which asks about S-parameters on a multi-band mesh.
 4. Rebuild what is left under the rules above, one family per PR: microstrip (06b, 20), patch (15 with an
    FEM reference, which answers #715), iris (18). PI decisions pending: 07 (Sheen low-pass filter),
    19 (five-iris filter), 21 (coax; its lane is deferred).
