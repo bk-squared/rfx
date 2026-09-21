@@ -50,7 +50,9 @@ def test_occupied_patch_ground_continues_on_both_high_faces():
     module = lib.load_module("tests/oracle/test_lossless_open_domain_ringdown_does_not_grow.py")
     sim = module._build(n=2, pad_h=10, cpml=4)
     try:
-        grid, arrays, poles, nodes = assembled_arrays(sim)
+        # This oracle calls run() with subpixel_smoothing=False. Its actual
+        # step receives staircase materials and PEC edges, no tensor.
+        grid, arrays, poles, nodes = assembled_arrays(sim, include_smoothed=False)
         bad, exceptions = violations(sim, grid, arrays, poles, nodes)
         assert not exceptions
         assert not bad, bad

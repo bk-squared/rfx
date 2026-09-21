@@ -71,7 +71,7 @@ def _port_entries(sim, grid, nodes, entries):
     return held
 
 
-def assembled_arrays(sim):
+def assembled_arrays(sim, *, include_smoothed=True):
     from rfx.boundaries.pec import realized_pec_edge_masks
     from rfx.geometry.rasterize_grid import (
         coords_from_uniform_grid, coords_from_nonuniform_grid)
@@ -103,7 +103,7 @@ def assembled_arrays(sim):
         arrays[f"impedance_{i}"] = np.asarray(sheet.mask)
     # Build the same tensor as the uniform kottke_pec runner, from the
     # assembler's shapes and production smoothed dielectric pairs.
-    if not nu:
+    if not nu and include_smoothed:
         pairs, _ = smoothed_shape_pairs(sim, grid)
         tensor = compute_inv_eps_tensor_diag(grid, dielectric_shapes=pairs,
                                              pec_shapes=pec_shapes, background_eps=1.)
@@ -114,7 +114,7 @@ def assembled_arrays(sim):
                                           periodic=sim._periodic_flags())
         for axis, arr in zip("xyz", fenced):
             arrays["fenced_"+axis] = np.asarray(arr)
-    if nu and debye is None and lorentz is None:
+    if nu and include_smoothed and debye is None and lorentz is None:
         from rfx.geometry.smoothing import compute_smoothed_eps_nonuniform
         pairs, _ = smoothed_shape_pairs(sim, grid)
         if pairs:
