@@ -207,6 +207,24 @@ def _log(msg: str) -> None:
     print(f"[msl-battery {stamp}] {msg}", flush=True)
 
 
+def _log_witness(tag: str, res) -> None:
+    """One readable line per solve while the job is still running: the record's
+    settling, how much of the band the extractor called reliable, the worst
+    passivity excess and the sampled |S21| minimum."""
+    S = np.asarray(res.S)
+    settling = np.asarray(res.settling_db) if res.settling_db is not None else np.array([np.nan])
+    reliable = (float(np.mean(np.asarray(res.reliable))) if res.reliable is not None
+                else float("nan"))
+    excess = (float(np.max(res.sigma_max_excess)) if res.sigma_max_excess is not None
+              else float("nan"))
+    col = float(np.max(np.sum(np.abs(S) ** 2, axis=0)))
+    k = int(np.argmin(np.abs(S[1, 0, :])))
+    _log(f"{tag}: settling {np.array2string(settling, precision=2)} dB | reliable "
+         f"{reliable*100:.1f} % | max sigma_max excess {excess:.4g} | max column power "
+         f"{col:.5f} | min |S21| {abs(S[1, 0, k]):.5g} at "
+         f"{np.asarray(res.freqs)[k]/1e9:.4f} GHz")
+
+
 def _write(path: Path, obj: dict) -> None:
     """Persist atomically, BEFORE anything optional runs (printing is not
     persisting), then drop the compile cache so the next case does not inherit
@@ -671,6 +689,7 @@ def stage_pilot(args, out: Path) -> None:
             _log(f"pilot drive={drive} num_periods={npd}")
             with _Captured() as cap:
                 res = solve(sim, num_periods=npd)
+            _log_witness(f"pilot drive={drive} num_periods={npd}", res)
             case = {
                 "drive": drive,
                 "num_periods": float(npd),
@@ -710,6 +729,7 @@ def stage_solve(args, out: Path) -> None:
     _log(f"solve dut={dut} dx={dx*1e6:.0f} um num_periods={args.num_periods}")
     with _Captured() as cap:
         res = solve(sim, num_periods=args.num_periods)
+    _log_witness(f"solve {dut} {dx*1e6:.0f} um", res)
     rec["warnings"] = cap.warnings
     rec["wall_s"] = cap.wall
     rec["peak_memory"] = peak_memory()
@@ -744,6 +764,7 @@ def stage_identity(args, out: Path) -> None:
     _log("identity: plain call")
     with _Captured() as cap_plain:
         res_plain = solve(sim, num_periods=args.num_periods)
+    _log_witness("identity plain", res_plain)
     rec["plain"] = _result_record(res_plain)
     rec["plain_warnings"] = cap_plain.warnings
     rec["plain_wall_s"] = cap_plain.wall
@@ -758,6 +779,7 @@ def stage_identity(args, out: Path) -> None:
     _log("identity: no-op eps_override call")
     with _Captured() as cap_ov:
         res_ov = solve(sim, num_periods=args.num_periods, eps_override=eps)
+    _log_witness("identity eps_override", res_ov)
     rec["override"] = _result_record(res_ov)
     rec["override_warnings"] = cap_ov.warnings
     rec["override_wall_s"] = cap_ov.wall
@@ -845,7 +867,6 @@ def stage_adfd(args, out: Path) -> None:
         },
         "cases": [],
     })
-    _write(out, rec)
 
     eps32 = _own_eps(sim, jnp.float32)
     mask32 = jnp.asarray(_substrate_mask(sim))
@@ -854,6 +875,7 @@ def stage_adfd(args, out: Path) -> None:
         "n_cells_scaled": int(np.count_nonzero(np.asarray(mask32))),
         "n_cells_total": int(np.asarray(mask32).size),
     }
+    _write(out, rec)
 
     def _obj_factory(simx, epsx, maskx, which):
         def objective(theta):
@@ -969,6 +991,7 @@ def stage_plane(args, out: Path) -> None:
         _log(f"plane arm={tag} n_probe_offset={off}")
         with _Captured() as cap:
             res = solve(sim, num_periods=args.num_periods)
+        _log_witness(f"plane arm={tag}", res)
         rec["arms"].append({
             "tag": tag, "n_probe_offset": off,
             "realized": geo, "preflight": pf,
@@ -1075,6 +1098,35 @@ def power_metrics(S: np.ndarray) -> dict:
     }
 
 
+def referee_context() -> dict:
+    """The committed openEMS / Palace / rfx notch records, read as they stand.
+
+    They were measured on a DIFFERENT board — h_sub = 254 um against this
+    battery's 300 um, which moves the quarter-wave notch by about 0.6 % on the
+    closed form alone — so they are carried as context and compared with
+    nothing. The pre-declaration says so; this function does no arithmetic on
+    them beyond reading the numbers out of their own files.
+    """
+    root = REPO / "tests" / "fixtures" / "msl_notch_e4"
+    out: dict = {"note": "a different board (h_sub = 254 um); context, not a comparison",
+                 "records": {}}
+    for tag, name, path in (("openems", "openEMS", "msl_stub_notch_openems_dx50.json"),
+                            ("palace", "Palace FEM", "msl_stub_notch_palace_referee.json"),
+                            ("rfx_dx50", "rfx", "msl_stub_notch_rfx_dx50.json")):
+        p = root / path
+        if not p.exists():
+            continue
+        d = json.loads(p.read_text())
+        entry = {"solver": name, "path": f"tests/fixtures/msl_notch_e4/{path}",
+                 "meta": d.get("meta")}
+        if "notch" in d:
+            entry["notch"] = d["notch"]
+        if "referee" in d:
+            entry["referee"] = d["referee"]
+        out["records"][tag] = entry
+    return out
+
+
 def _load_stage(out: Path, name: str) -> dict | None:
     p = out / name
     if not p.exists():
@@ -1103,6 +1155,7 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
         "adfd": None,
         "plane": None,
         "pilot": None,
+        "referee_context": referee_context(),
     }
 
     pilot = _load_stage(out, "pilot_100um.json")
