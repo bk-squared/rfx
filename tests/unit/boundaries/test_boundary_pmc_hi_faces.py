@@ -1,7 +1,7 @@
 """Regression lock: PMC enforcement on every ``_hi`` face (fix 2026-04).
 
-Background — discovered 2026-04-19 while building
-``validation/crossval/09_half_symmetric_waveguide.py``:
+Background — discovered 2026-04-19 while building the cv09
+half-symmetric-waveguide case (removed 2026-09-21):
 ``apply_pmc_faces`` zeroed the ghost half-cell ``0.5·dx`` OUTSIDE the
 wall on ``_hi`` faces (array index ``-1``). In a Yee grid with forward-
 difference update, that cell does not drive the interior E curl, so the

@@ -41,7 +41,7 @@ CASE_ID = "24_nu_rect_cavity_pozar"
 RESULTS_DIRNAME = "_24_nu_cavity_results"
 
 # ---------------------------------------------------------------------------
-# cv14's cavity, verbatim (validation/crossval/14_rect_cavity_pozar.py)
+# cv14's cavity, verbatim (that case was removed 2026-09-21)
 # ---------------------------------------------------------------------------
 A_X, B_Y, D_Z = 0.050, 0.030, 0.040          # metres (x, y, z)
 DX_COARSE = 1.0e-3                            # cv14's cell (exact divisor)
@@ -629,8 +629,8 @@ def estimator_floor() -> float:
     return gate_from_envelope(worst, quantum=1e6)
 
 
-# cv14's committed claims tolerance (validation/crossval/14_rect_cavity_pozar.py
-# gate 1 / gate 2), unchanged on every arm.
+# cv14's committed claims tolerance (that case's gate 1 / gate 2; the case
+# was removed 2026-09-21), unchanged on every arm.
 CV14_TOL_TE101 = 0.01
 CV14_TOL_HIGHER = 0.02
 # #785 F-S1 energy envelope (validation/research/multiband_nu/w1_energy_drift.py)

@@ -91,7 +91,8 @@ def test_crossval_02_ring_smoke():
 
 
 def test_crossval_03_straight_flux_smoke():
-    """03_straight_waveguide_flux.py — boundary=BoundarySpec.uniform('upml')."""
+    """The former cv03 straight-waveguide flux case, removed 2026-09-21 —
+    boundary=BoundarySpec.uniform('upml')."""
     a = 1.0e-6
     dx = a / 10
     dom_x, dom_y = 12 * a, 10 * a

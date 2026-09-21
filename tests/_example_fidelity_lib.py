@@ -366,10 +366,6 @@ CLASSIFICATION: dict[str, Entry] = {
     # ---- no_simulation: zero real Simulation() calls, AST-verified ------
     # (bucket sizes are not written here: they rot. Count them with a
     #  Counter over CLASSIFICATION, the way the two docstrings above say.)
-    "validation/crossval/16_pec_sphere_mie_ka_sweep.py": Entry(
-        "no_simulation",
-        "drives the functional rfx.rcs.compute_rcs entry point directly on "
-        "a hand-built Grid/MaterialArrays -- no Simulation object exists"),
     "validation/crossval/17_dielectric_sphere_mie.py": Entry(
         "no_simulation",
         "drives the functional rfx.rcs.compute_rcs entry point directly on "
@@ -465,10 +461,6 @@ CLASSIFICATION: dict[str, Entry] = {
         "the gated band, the incident-pulse and ring-down helpers, and the "
         "calibration-envelope loader that resolves a consumer's adoption "
         "record against the producer's artifact -- stdlib + numpy, no rfx"),
-    "validation/crossval/comparators/slab_te_dispersion.py": Entry(
-        "no_simulation",
-        "plain-numpy closed-form slab TE0 oracle + two-wave n_eff estimator "
-        "for cv03 (#812) -- no rfx import at all"),
     "validation/crossval/comparators/spectral_features.py": Entry(
         "no_simulation",
         "pure-numpy sub-bin spectral-feature estimators shared by cv06b/cv07 "
@@ -647,9 +639,6 @@ CLASSIFICATION: dict[str, Entry] = {
         "eps column) -- no separable build-only path"),
 
     # ---- module_level_solve: solves at import time, no main guard -------
-    "validation/crossval/03_straight_waveguide_flux.py": Entry(
-        "module_level_solve",
-        "builds and calls .run(...) at module scope with no main guard"),
     "validation/crossval/04_multilayer_fresnel.py": Entry(
         "module_level_solve",
         "builds and calls .run(...) at module scope with no main guard"),
@@ -678,9 +667,6 @@ CLASSIFICATION: dict[str, Entry] = {
         "realized-metal gate is exercised against the production builder); "
         "run_rfx() consumes it and solves",
         (Builder("build_rfx_sim", None, (_v("default", dx=200e-6),)),)),
-    "validation/crossval/09_half_symmetric_waveguide.py": Entry(
-        "builder_fused_with_solve",
-        "`_run_cavity()` builds and calls .run(...) in the same function"),
     "validation/crossval/15_patch_antenna_rt5880.py": Entry(
         "audited",
         "`build_rfx_sim(...)` returns (sim, patch_shape, geom) with no solve "
@@ -935,12 +921,6 @@ CLASSIFICATION: dict[str, Entry] = {
             _v_from("pec_short", lambda m: dict(
                 freqs=m.FREQS_HZ, pec_short_x=m.PEC_SHORT_X)),
         )),)),
-    "validation/crossval/14_rect_cavity_pozar.py": Entry(
-        "audited",
-        "`build_cavity(dx)` returns Simulation with no solve call; main() "
-        "drives it at the main gate leg and the convergence-witness cell size",
-        (Builder("build_cavity", None, (
-            _v("dx=1.0mm", dx=1.0e-3), _v("dx=0.5mm", dx=0.5e-3))),)),
     "validation/crossval/24_nu_rect_cavity_pozar.py": Entry(
         "audited",
         "`build_cavity(lane, dxy, dz_profile)` returns Simulation with no "

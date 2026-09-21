@@ -1,6 +1,7 @@
 """Dielectric-sphere monostatic RCS vs exact Mie — ka sweep 0.5-2.5 (campaign item 6).
 
-The material-path twin of the PEC ka-sweep (``16_pec_sphere_mie_ka_sweep.py``):
+The material-path twin of the former cv16 PEC ka-sweep case (removed
+2026-09-21):
 a lossless eps_r = 2.56 (m = 1.6) sphere, gated against the full
 Bohren-Huffman dielectric Mie series RE-DERIVED in this script (with
 Rayleigh / m->1 / n_max-convergence / unitarity self-witnesses run before any
@@ -74,8 +75,8 @@ ka = 1.25 ever exceeds its gate, move the coarse fence DOWN to ka <= 1.0
 rather than widen the gate.
 
 GEOMETRY-FIDELITY CONVENTION (issue #725, applied 2026-08-27; PR #721
-review group C — material-path twin of the same fix in
-``16_pec_sphere_mie_ka_sweep.py``, applied here in lockstep): a sphere is
+review group C — material-path twin of the same fix in the former cv16
+PEC ka-sweep case, applied here in lockstep): a sphere is
 a CURVED body, so no cell size realizes it exactly, and a bounding-box
 extent mismatch is NOT load-bearing here — trace the reference chain in
 ``run_point``: the radius enters ONLY through ``ka`` (the Mie series
@@ -115,9 +116,9 @@ material value.
     claim SEPARATELY from the dB tolerance so a_eff can never silently
     absorb a real rasterization regression.
   * Centre offset and the falsifier: identical mechanism and per-point
-    numbers to the PEC sweep (same rasterization, same mesh) — see
-    ``16_pec_sphere_mie_ka_sweep.py``'s GEOMETRY-FIDELITY CONVENTION
-    note for the full derivation; not re-run independently here.
+    numbers to the PEC sweep (same rasterization, same mesh) — the full
+    derivation was in the former cv16 case's GEOMETRY-FIDELITY CONVENTION
+    note, removed 2026-09-21; not re-run independently here.
   * ``claim_scope`` in the fixture payload below still states the OLD
     (declared-radius) convention. Per PR #721 review required change 3,
     updating it — and the internal-consistency assertions in

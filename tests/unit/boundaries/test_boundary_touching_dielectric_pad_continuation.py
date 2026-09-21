@@ -212,8 +212,7 @@ def test_solved_pad_column_carries_the_guide_material(boundary, monkeypatch):
 
 def _measure_round_trip(boundary, layers, monkeypatch) -> dict:
     """One long record: stability, settling witness, and the two-wave fit."""
-    cmp_mod = _load("slab_te_dispersion",
-                    "validation/crossval/comparators/slab_te_dispersion.py")
+    cmp_mod = _load("slab_te_dispersion", "tests/_slab_te_dispersion.py")
 
     freqs = np.linspace(0.10 * C0 / A, 0.20 * C0 / A, 40)
     sim = _build(boundary, layers)

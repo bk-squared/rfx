@@ -313,22 +313,29 @@ def test_runner_derives_cpu_policy_from_manifest() -> None:
 
 
 def test_runner_exit_classification_matches_manifest_contract() -> None:
+    """Each arm names a script whose manifest entry carries the property it
+    exercises: 11_waveguide_port_wr90 declares exit codes [0, 1] and no
+    failure sentinel (so exit 0 is a clean PASS and exit 2 is undeclared),
+    04_multilayer_fresnel declares [0, 1, 2] with pymeep as an external
+    dependency (so exit 2 is inconclusive and a missing meep is an env skip),
+    and 07_sheen_lpf carries the "SOME CHECKS FAILED" sentinel.
+    """
     runner = _load_runner()
 
     assert (
-        runner.classify("14_rect_cavity_pozar.py", 0, "ALL CHECKS PASSED", False)[
+        runner.classify("11_waveguide_port_wr90.py", 0, "ALL CHECKS PASSED", False)[
             0
         ]
         == "PASS"
     )
     assert (
         runner.classify(
-            "14_rect_cavity_pozar.py", 1, "numeric gate failed", False
+            "11_waveguide_port_wr90.py", 1, "numeric gate failed", False
         )[0]
         == "FAIL"
     )
     assert (
-        runner.classify("03_straight_waveguide_flux.py", 2, "reference unavailable", False)[0]
+        runner.classify("04_multilayer_fresnel.py", 2, "reference unavailable", False)[0]
         == "SELF-CHECK-ONLY"
     )
     assert (
@@ -338,11 +345,11 @@ def test_runner_exit_classification_matches_manifest_contract() -> None:
         == "FAIL"
     )
     assert (
-        runner.classify("14_rect_cavity_pozar.py", 124, "", True)[0] == "TIMEOUT"
+        runner.classify("11_waveguide_port_wr90.py", 124, "", True)[0] == "TIMEOUT"
     )
     assert (
         runner.classify(
-            "14_rect_cavity_pozar.py",
+            "11_waveguide_port_wr90.py",
             3,
             "unexpected process error",
             False,
@@ -360,7 +367,7 @@ def test_runner_exit_classification_matches_manifest_contract() -> None:
     )
     assert (
         runner.classify(
-            "03_straight_waveguide_flux.py",
+            "04_multilayer_fresnel.py",
             1,
             "ModuleNotFoundError: No module named 'meep'",
             False,

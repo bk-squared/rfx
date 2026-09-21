@@ -273,9 +273,7 @@ jobs:
           export MPLBACKEND=Agg
           export JAX_ENABLE_X64=1
 
-          # The canonical manifest owns scheduled membership and order. cv09
-          # is a pure analytic/internal reference but remains in this lane so
-          # it also exercises it end to end.
+          # The canonical manifest owns scheduled membership and order.
           if ! scheduled_output="$(python - <<'PY'
           import json
           from pathlib import Path

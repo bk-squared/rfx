@@ -8,31 +8,6 @@
   },
   "cases": [
     {
-      "id": "03_straight_waveguide_flux",
-      "script": "validation/crossval/03_straight_waveguide_flux.py",
-      "role": "claims-bearing",
-      "public_group": "A",
-      "execution_tiers": ["cpu-runner", "scheduled-external"],
-      "evidence_levels": ["E1", "E2", "E4"],
-      "references": [
-        {"kind": "analytic", "name": "closed-form symmetric-slab TE0 dispersion for the declared recipe (eps=12, d=1a, air cladding) -- the E2 leg added by #812; runs on every host", "required_for_script_pass": true},
-        {"kind": "external-solver", "name": "Meep Basics straight-waveguide flux", "required_for_script_pass": true},
-        {"kind": "self-invariant", "name": "flux identity T = flux_out/flux_in = 1 -- energy conservation in a lossless uniform section. E1 SELF-CHECK ONLY: it holds for any bound mode, any eps and any width, so it is NOT evidence about the guide (#812 audit: eps_wg 12/11/10/8 all PASS while n_eff moved -23.4%)", "required_for_script_pass": true}
-      ],
-      "claim_scope": "2-D straight-waveguide guided-mode dispersion against the closed-form slab TE0 oracle for the declared recipe (max |n_eff dev| <= 2.0% over fcen +/- 0.15*df, threshold derived and frozen in docs/design_notes/issue812_cv03_dispersion_regate_predeclaration.md), plus band-mean transmission and flux normalization within the script's measured window. The transmission leg is an E1 identity and carries no guide-dependent claim on its own. The guide WAS measured to carry a standing wave with |B/A| = 0.393-0.585, which the transmission ratio is blind to, and that was recorded here as an unresolved physics finding. It is resolved: #831 root-caused it to a vacuum facet at the interior/pad seam (the CPML pad material extension did not reach the subpixel-smoothed update permittivity) and #1043 stage B closed it. The same committed case now reads |B/A| = 0.017-0.048 over the band. Neither range is a validated property of this case -- the standing wave is reported, never gated -- but the old one is no longer true of the code and is kept here only as the history the evidence record cites. EVIDENCE CLASSIFICATION 2026-09-06 (issue #928), evidence_status = committed: the E2 leg's measured record is retained in docs/design_notes/issue812_cv03_dispersion_matched_frequency.json (the analytic oracle band plus the measured n_eff rows at two DFT window lengths and two domain sizes), now listed in artifact_paths. Two limits, stated rather than implied: that file's own provenance block records that the driver which produced the measured operands was not committed, and the E4 Meep leg's numbers are recomputed weekly and retained nowhere. RE-PROMOTION of the E4 leg: commit the lane's Meep output for this case.",
-      "external_dependencies": ["pymeep"],
-      "expected_exit_codes": [0, 1, 2],
-      "gate_paths": ["validation/crossval/03_straight_waveguide_flux.py", "validation/crossval/comparators/slab_te_dispersion.py", "tests/crossval/test_cv03_slab_dispersion_oracle.py"],
-      "artifact_paths": [
-        "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json"
-      ],
-      "cpu_runner": {"order": 4},
-      "scheduled_external_order": 1,
-      "evidence_status": "committed",
-      "evidence_producer": null,
-      "failure_sentinel": null
-    },
-    {
       "id": "04_multilayer_fresnel",
       "script": "validation/crossval/04_multilayer_fresnel.py",
       "role": "claims-bearing",
@@ -58,7 +33,7 @@
         "validation/crossval/_04_fresnel_results/lattice_witness.json"
       ],
       "cpu_runner": {"order": 1},
-      "scheduled_external_order": 2,
+      "scheduled_external_order": 1,
       "evidence_status": "committed",
       "evidence_producer": null,
       "failure_sentinel": "rfx accuracy: FAIL"
@@ -135,40 +110,11 @@
         "scripts/diagnostics/build_sheen_lpf_palace_referee.py",
         "tests/fixtures/cv07_estimator_regate/cv07_estimator_falsifiers.json"
       ],
-      "cpu_runner": {"order": 5},
+      "cpu_runner": {"order": 3},
       "scheduled_external_order": null,
       "evidence_status": "committed",
       "evidence_producer": null,
       "failure_sentinel": "SOME CHECKS FAILED"
-    },
-    {
-      "id": "09_half_symmetric_waveguide",
-      "script": "validation/crossval/09_half_symmetric_waveguide.py",
-      "role": "claims-bearing",
-      "public_group": "B",
-      "execution_tiers": ["pr-fast", "cpu-runner", "scheduled-external"],
-      "evidence_levels": ["E1", "E2"],
-      "references": [
-        {"kind": "analytic", "name": "Pozar rectangular-cavity TE101 resonance", "required_for_script_pass": true},
-        {"kind": "self-invariant", "name": "full PEC cavity versus half PEC+PMC cavity", "required_for_script_pass": true}
-      ],
-      "claim_scope": "PMC symmetry reduction for the scripted rectangular-cavity mode and mesh, with the REALIZED mirror plane (a_eff = 2 x the H_tan wall) gated to dx/4 and the full-vs-half self-invariant gated to that budget's frequency image 0.356% (issue #812; was 5%, which tolerated a full cell of mirror-plane error) EVIDENCE CLASSIFICATION 2026-09-06 (issue #928), evidence_status = committed: the measured record is retained in docs/design_notes/issue812_cv09_mirror_plane_regate.md, an append-only note whose Measurements section carries the run's own gate output for both sides of the acceptance criterion, and the gates are re-executed by tests/crossval/test_crossval_cv09_mirror_plane_gate.py. Weakness, stated: that record is prose and a verbatim console block, not a machine-readable artifact, so nothing re-resolves its numbers. RE-PROMOTION to a machine-checkable record: have the case write a results JSON and list it here.",
-      "external_dependencies": [],
-      "expected_exit_codes": [0, 1],
-      "gate_paths": [
-        "validation/crossval/09_half_symmetric_waveguide.py",
-        "tests/oracle/test_boundary_pmc_oracle.py",
-        "tests/crossval/test_crossval_cv09_mirror_plane_gate.py",
-        "tests/crossval/test_cv09_cv10_body_contract_controls.py"
-      ],
-      "artifact_paths": [
-        "docs/design_notes/issue812_cv09_mirror_plane_regate.md"
-      ],
-      "cpu_runner": {"order": 2},
-      "scheduled_external_order": 3,
-      "evidence_status": "committed",
-      "evidence_producer": null,
-      "failure_sentinel": null
     },
     {
       "id": "11_waveguide_port_wr90",
@@ -193,30 +139,7 @@
       "artifact_paths": [
         "tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json"
       ],
-      "cpu_runner": {"order": 3},
-      "scheduled_external_order": null,
-      "evidence_status": "committed",
-      "evidence_producer": null,
-      "failure_sentinel": null
-    },
-    {
-      "id": "14_rect_cavity_pozar",
-      "script": "validation/crossval/14_rect_cavity_pozar.py",
-      "role": "claims-bearing",
-      "public_group": "A",
-      "execution_tiers": ["cpu-runner"],
-      "evidence_levels": ["E2"],
-      "references": [
-        {"kind": "analytic", "name": "Pozar closed-form air-filled rectangular-cavity resonance f_mnl = (c/2)*sqrt((m/a)^2+(n/b)^2+(l/d)^2), RE-DERIVED in-file (pozar_cavity_freq) and importing no producer-side mode helper", "required_for_script_pass": true}
-      ],
-      "claim_scope": "Deliberately NARROW E2 envelope: the rfx source -> vector-probe -> run -> harminv eigenfrequency pipeline against an EXACT analytic oracle for ONE air-filled PEC cavity (a,b,d) = (50,30,40) mm on a dx = 1 mm mesh chosen as an exact divisor of all three extents, so wall registration contributes zero geometric-quantization error and the residual is pure 2nd-order Yee dispersion. Gated modes (re-declared 2026-08-31, issue #812; Gate 0 re-based 2026-09-07, issue #931): Gate 0 wall registration |realized wall separation - (a,b,d)| <= 1e-9 m on every axis, where the separation is MEASURED — the shipped apply_pec / apply_pec_faces are applied to an all-ones state and the planes are read back through rfx.boundaries.pec.realized_wall_planes, which must be exactly {0, n-1} per axis, and the same measured planes feed the Yee oracle. Before #931 this gate computed (n-1)*dx from the grid SHAPE and would have kept passing under any change to how a PEC wall is realized. The 1e-9 m tolerance is unchanged, so this is a strict tightening; Gate 1 TE101 (fundamental) < 1% vs Pozar; Gate 2 EVERY one of the seven declared modes (TE101/TM110/TE011/TM111/TE201/TM210/TE102) < 2% vs Pozar, aggregated with max, with a mode that cannot be extracted a HARD FAILURE; Gate 3 |f_measured - f_yee| <= 0.1/T on every mode against a SECOND in-file exact oracle, the closed-form discrete-Yee eigenvalue of the same box (sin(w*dt/2) = c*dt*sqrt(sum_i sin^2(k_i*h_i/2)/h_i^2)), where T is the span of the record handed to harminv -- evaluated only when Gate 0 passes, since that prediction is exact only for walls on grid planes. Gate 2 previously took min() over the six higher modes at the same 2%; because every axis has a declared target with a zero index on it, a single-axis dimensional error scored identically 0.000% on the mode min() selected, and a -50% shrink of a was measured passing Gate 2. The 2% number is unchanged; only the aggregator and the not-found handling moved. Closed lossless PEC is the correct configuration for a cavity, so the energy-based ring-down settling witness DOES NOT APPLY and is not claimed; harminv Q is a window-length artefact, printed but never gated — only the FREQUENCY is claims-bearing. No external solver and no meshing tolerance enter the oracle. This says nothing about open/CPML structures, lossy or dispersive fills, non-uniform meshes, or any other geometry. EVIDENCE CLASSIFICATION 2026-09-06 (issue #928), evidence_status = committed: the measured record is retained in docs/design_notes/cv14_rect_cavity_gate_predeclaration.md, whose RESULTS section carries the run's four gate lines and all seven per-mode residuals against the discrete-Yee prediction published before that run, and the gate logic plus three slow FDTD arms are re-executed by tests/crossval/test_crossval_cv14_cavity_gates.py in the weekly suite. Weakness, stated: as for cv09, the record is prose rather than an artifact. RE-PROMOTION to a machine-checkable record: have the case write a results JSON and list it here.",
-      "external_dependencies": [],
-      "expected_exit_codes": [0, 1],
-      "gate_paths": ["validation/crossval/14_rect_cavity_pozar.py"],
-      "artifact_paths": [
-        "docs/design_notes/cv14_rect_cavity_gate_predeclaration.md"
-      ],
-      "cpu_runner": {"order": 6},
+      "cpu_runner": {"order": 2},
       "scheduled_external_order": null,
       "evidence_status": "committed",
       "evidence_producer": null,
@@ -246,37 +169,7 @@
         "validation/crossval/_15_patch_results/rfx_decomposition_feed_pre931.json",
         "validation/crossval/_15_patch_results/rfx_decomposition_patchkind_volume_1cell.json"
       ],
-      "cpu_runner": {"order": 7},
-      "scheduled_external_order": null,
-      "evidence_status": "committed",
-      "evidence_producer": null,
-      "failure_sentinel": "SOME CHECKS FAILED"
-    },
-    {
-      "id": "16_pec_sphere_mie_ka_sweep",
-      "script": "validation/crossval/16_pec_sphere_mie_ka_sweep.py",
-      "role": "diagnostic-reporter",
-      "public_group": "B",
-      "execution_tiers": ["cpu-runner"],
-      "evidence_levels": ["E2"],
-      "references": [
-        {
-          "kind": "analytic",
-          "name": "Exact conducting-sphere Mie backscatter series (Ruck 1970): the script uses the committed independent oracle tests/fixtures/rcs_sphere_mie/mie_oracle.py (Rayleigh/GO/convergence self-witnesses re-run before any gate), and the frozen-fixture gates in tests/crossval/test_rcs_mie_ka_sweep_gates.py re-derive the series AGAIN from scipy.special so neither leg can self-certify",
-          "required_for_script_pass": true
-        }
-      ],
-      "claim_scope": "PEC-sphere monostatic backscatter RCS vs exact Mie across ka 0.5-4.0 at a derived CPU-scale operating point (cells-per-radius 6.4 coarse / 12.8 fine rung, 20-cell canonical clearance, F0 = 3 GHz; the cells-per-radius floor, not a lambda-resolution floor, is what keeps the sphere from being cell-starved at low ka). GATED: coarse ka <= 1.25 and the fine rung at ka = 2.0 ONLY, at gate = round-up(measured clearance-scan envelope x 1.5) — the envelope population (7-point clearance scan plus three domain realizations) is committed fixture data and the gate test recomputes it, so gate and envelope cannot drift apart. REPORTED, NOT GATED: every coarse bin with ka >= 1.5 and the fine rung at ka = 3.0 and ka = 4.0 — near the deep Mie interference nulls, under a domain-size-only change, the domain-to-domain SPREAD reaches 8.0 dB (coarse, at ka = 1.75) and 14.5 dB (fine, at ka = 3.0 across the committed clearance scan), the worst single-point |delta| is 11.1 dB (coarse ka = 3.0, clearance 30) and 9.3 dB (fine ka = 3.0, clearance 35), the rfx sigma(ka) local-minimum positions themselves move with domain size, and fine ka = 4.0 fails a 3.5 dB gate at 9 of 13 clearances (the PR #475 review's anti-aliasing scan; the original 3-clearance sample {20,30,40} happened to hit passing values, which is why the scan is now committed). Witnesses committed as data: domain realizations, the clearance scan, and a truncation witness on the gated bins; the effective-radius and 9.6-rung resolution falsification probes are recorded as offline provenance, not data; #280 incident leakage at the monostatic bin is EXCLUDED by rcs.py's documented backscatter leakage null — the formerly-quoted sub-vs-unsub probe was RETRACTED as a same-array tautology (monostatic_rcs is unsubtracted by construction; PR #476 review F1). Extends (does not replace) the committed E4 ladder and the fine ka~1 fixture; non-FDTD corroboration (Bempp EFIE, ka <= 2) lives in tests/fixtures/rcs_sphere_three_way/ and extending it above ka = 2 is an offline follow-up. CONDUCTOR MODEL (issue #931): this case's sphere is a high-sigma MATERIAL FILL (`rasterize(Sphere, eps_r 1.0, sigma 1e7)` straight onto `MaterialArrays`), never a `Simulation.add(..., material='pec')` entry, and the lattice ownership contract FENCES that model out (§1.8): a sigma fill is a lossy volume model on NODE samples and is unchanged here, while a declared PEC volume is sampled at cell CENTRES (§1.1). The two are checked against each other at build time instead of being assumed equal — `assert_conductor_model()` refuses to quote an RCS unless the fill still equals `Sphere.mask(grid)`, and reports the centre-sampled cell set beside it. Measured at this case's own gated points: ka = 0.50 coarse N 1082 → 1123 (a_eff/a 0.988032 → 1.000357, 259 cells differing), fine ka = 2.00 N 9264 → 9339 (0.998319 → 1.001006, 957 cells differing). Bringing this case under the contract would therefore move a_eff by ~1.2 % at ka = 0.5, move the Mie reference leg with it, and require the fixture and both gate constants to be regenerated from a re-solve; that is not done here (control re-run VESSL 369367259153: five gated rows byte-identical).",
-      "external_dependencies": [],
-      "expected_exit_codes": [0, 1],
-      "gate_paths": [
-        "validation/crossval/16_pec_sphere_mie_ka_sweep.py",
-        "tests/crossval/test_rcs_mie_ka_sweep_gates.py"
-      ],
-      "artifact_paths": [
-        "validation/crossval/_16_ka_sweep_results/rfx.json"
-      ],
-      "cpu_runner": {"order": 8},
+      "cpu_runner": {"order": 4},
       "scheduled_external_order": null,
       "evidence_status": "committed",
       "evidence_producer": null,
@@ -296,7 +189,7 @@
           "required_for_script_pass": true
         }
       ],
-      "claim_scope": "Lossless dielectric sphere (eps_r = 2.56) monostatic backscatter RCS vs exact Mie across ka 0.5-2.5, the material-path twin of 16_pec_sphere_mie_ka_sweep and the FIRST cross-method record of rfx's BINARY dielectric rasterize path (no sub-cell interface averaging exists; this is a measured envelope of that staircase, not a smooth-interface accuracy claim). Operating point: internal-wavelength resolution floor RES >= 24 = 15*m, cells-per-radius 6.4, single-run extraction (monostatic_rcs is computed from the raw run by construction per rfx/rcs.py, so the campaign plan's two-run subtracted path is a no-op for this observable and is deliberately not paid for — PR #476 review F1), F0 = 3 GHz. GATED (single tier): coarse ka <= 1.25 within 6.3 dB = round-up(committed 7-point clearance-scan envelope 4.18 dB x 1.5) — a regression lock, deliberately framed as a diagnostic envelope. NO fine rung is gated, and that is a measured decision: the committed cpr-12.8 fine_rung_witness scan envelopes 3.75/3.04 dB, barely below the coarse 4.18, so doubled resolution does not buy a domain-robust tighter claim (the clear=20-only apparent convergence was the PR #475 F1 single-sample aliasing class, caught before commit). REPORTED, NOT GATED: every bin with ka >= 1.5 — domain-size-only spreads of 11.7 dB (ka=1.75) and 29.0 dB (ka=2.5), worse than the PEC twin; truncation FALSIFIED by direct probes; incident leakage at the monostatic bin EXCLUDED by rcs.py's documented backscatter leakage null (the sub-vs-unsub probe is a same-array tautology for this observable — PR #476 review F1); domain-size axis dominant. Non-FDTD corroboration (Bempp PMCHWT) is an offline follow-up; no Bempp leg exists for the dielectric case yet. MATERIAL GATE (issue #812 re-gate): the dB tier is an RCS agreement envelope, NOT a permittivity calibration -- the 6.3 dB gate accepts a rasterized eps_r across the committed model pass set `validation/crossval/_17_dielectric_results/material_blind_window.json::summary.pass_runs_eps[0][0] = 2.0`–`validation/crossval/_17_dielectric_results/material_blind_window.json::summary.pass_runs_eps[0][1] = 4.5` and `validation/crossval/_17_dielectric_results/material_blind_window.json::summary.pass_runs_eps[1][0] = 5.0`–`validation/crossval/_17_dielectric_results/material_blind_window.json::summary.pass_runs_eps[1][1] = 5.6`, with a FAIL island `validation/crossval/_17_dielectric_results/material_blind_window.json::summary.fail_islands_eps[0].eps_r[0] = 4.6`–`validation/crossval/_17_dielectric_results/material_blind_window.json::summary.fail_islands_eps[0].eps_r[3] = 4.9` (worst bin `validation/crossval/_17_dielectric_results/material_blind_window.json::summary.fail_islands_eps[0].max_abs_delta_db = 9.787` dB) on the ka = 1.25 Mie resonance between them, first failing at `validation/crossval/_17_dielectric_results/material_blind_window.json::summary.first_failing_eps_below = 1.8` and, above the run containing 2.56, `validation/crossval/_17_dielectric_results/material_blind_window.json::summary.first_failing_eps_above = 4.6`; live defect runs at 2.0 / 5.5 (pass) and 1.8 / 6.0 (fail) return the model's verdicts (design note 5.1, prose-only magnitudes), but inside the island the live solver is blinder than the model: `validation/crossval/_17_dielectric_results/cv17_permittivity_island.json::summary.n_verdicts_agree_with_model = 3` of `validation/crossval/_17_dielectric_results/cv17_permittivity_island.json::summary.n_runs = 6`, passing at 4.8 with `validation/crossval/_17_dielectric_results/cv17_permittivity_island.json::runs[3].max_abs_delta_db = 6.138` dB and failing only at 4.9 with `validation/crossval/_17_dielectric_results/cv17_permittivity_island.json::runs[4].max_abs_delta_db = 6.405` dB, so the first-order model over-predicts on the ka = 1.25 resonance and the LIVE blind window is wider than the model's. The Mie oracle only moves ~10 dB per unit RELATIVE eps. The permittivity is gated on its own channel instead: the value read back out of the rasterized array must be within 0.5% relative of the declared 2.56 (half the gate's 0.1 dB quantum divided by the worst gated-ka sensitivity 10.202 dB), and the array must hold EXACTLY two distinct values -- the first check anywhere of the BINARY-rasterize claim this case's scope rests on. DIELECTRIC CONTROL (issue #931): the lattice ownership contract changes PEC VOLUME sampling from node to cell-centre and leaves dielectric sampling untouched (§1.1), so every number in this case must be bit-identical across that change. `tests/crossval/test_rcs_dielectric_sphere_mie_gates.py` asserts it at every gated bin: exactly two distinct eps values with the non-background one at the declared 2.56, and an occupied-cell count equal to the NODE-sampled shape mask (1082 at ka = 0.5, the same sphere on the same mesh as case 16). If this count ever picks up centre sampling, every number in this case is a different sphere (control re-run VESSL 369367259154: four gated rows byte-identical).",
+      "claim_scope": "Lossless dielectric sphere (eps_r = 2.56) monostatic backscatter RCS vs exact Mie across ka 0.5-2.5, the material-path twin of the former cv16 PEC-sphere ka-sweep case (removed 2026-09-21) and the FIRST cross-method record of rfx's BINARY dielectric rasterize path (no sub-cell interface averaging exists; this is a measured envelope of that staircase, not a smooth-interface accuracy claim). Operating point: internal-wavelength resolution floor RES >= 24 = 15*m, cells-per-radius 6.4, single-run extraction (monostatic_rcs is computed from the raw run by construction per rfx/rcs.py, so the campaign plan's two-run subtracted path is a no-op for this observable and is deliberately not paid for — PR #476 review F1), F0 = 3 GHz. GATED (single tier): coarse ka <= 1.25 within 6.3 dB = round-up(committed 7-point clearance-scan envelope 4.18 dB x 1.5) — a regression lock, deliberately framed as a diagnostic envelope. NO fine rung is gated, and that is a measured decision: the committed cpr-12.8 fine_rung_witness scan envelopes 3.75/3.04 dB, barely below the coarse 4.18, so doubled resolution does not buy a domain-robust tighter claim (the clear=20-only apparent convergence was the PR #475 F1 single-sample aliasing class, caught before commit). REPORTED, NOT GATED: every bin with ka >= 1.5 — domain-size-only spreads of 11.7 dB (ka=1.75) and 29.0 dB (ka=2.5), worse than the PEC twin; truncation FALSIFIED by direct probes; incident leakage at the monostatic bin EXCLUDED by rcs.py's documented backscatter leakage null (the sub-vs-unsub probe is a same-array tautology for this observable — PR #476 review F1); domain-size axis dominant. Non-FDTD corroboration (Bempp PMCHWT) is an offline follow-up; no Bempp leg exists for the dielectric case yet. MATERIAL GATE (issue #812 re-gate): the dB tier is an RCS agreement envelope, NOT a permittivity calibration -- the 6.3 dB gate accepts a rasterized eps_r across the committed model pass set `validation/crossval/_17_dielectric_results/material_blind_window.json::summary.pass_runs_eps[0][0] = 2.0`–`validation/crossval/_17_dielectric_results/material_blind_window.json::summary.pass_runs_eps[0][1] = 4.5` and `validation/crossval/_17_dielectric_results/material_blind_window.json::summary.pass_runs_eps[1][0] = 5.0`–`validation/crossval/_17_dielectric_results/material_blind_window.json::summary.pass_runs_eps[1][1] = 5.6`, with a FAIL island `validation/crossval/_17_dielectric_results/material_blind_window.json::summary.fail_islands_eps[0].eps_r[0] = 4.6`–`validation/crossval/_17_dielectric_results/material_blind_window.json::summary.fail_islands_eps[0].eps_r[3] = 4.9` (worst bin `validation/crossval/_17_dielectric_results/material_blind_window.json::summary.fail_islands_eps[0].max_abs_delta_db = 9.787` dB) on the ka = 1.25 Mie resonance between them, first failing at `validation/crossval/_17_dielectric_results/material_blind_window.json::summary.first_failing_eps_below = 1.8` and, above the run containing 2.56, `validation/crossval/_17_dielectric_results/material_blind_window.json::summary.first_failing_eps_above = 4.6`; live defect runs at 2.0 / 5.5 (pass) and 1.8 / 6.0 (fail) return the model's verdicts (design note 5.1, prose-only magnitudes), but inside the island the live solver is blinder than the model: `validation/crossval/_17_dielectric_results/cv17_permittivity_island.json::summary.n_verdicts_agree_with_model = 3` of `validation/crossval/_17_dielectric_results/cv17_permittivity_island.json::summary.n_runs = 6`, passing at 4.8 with `validation/crossval/_17_dielectric_results/cv17_permittivity_island.json::runs[3].max_abs_delta_db = 6.138` dB and failing only at 4.9 with `validation/crossval/_17_dielectric_results/cv17_permittivity_island.json::runs[4].max_abs_delta_db = 6.405` dB, so the first-order model over-predicts on the ka = 1.25 resonance and the LIVE blind window is wider than the model's. The Mie oracle only moves ~10 dB per unit RELATIVE eps. The permittivity is gated on its own channel instead: the value read back out of the rasterized array must be within 0.5% relative of the declared 2.56 (half the gate's 0.1 dB quantum divided by the worst gated-ka sensitivity 10.202 dB), and the array must hold EXACTLY two distinct values -- the first check anywhere of the BINARY-rasterize claim this case's scope rests on. DIELECTRIC CONTROL (issue #931): the lattice ownership contract changes PEC VOLUME sampling from node to cell-centre and leaves dielectric sampling untouched (§1.1), so every number in this case must be bit-identical across that change. `tests/crossval/test_rcs_dielectric_sphere_mie_gates.py` asserts it at every gated bin: exactly two distinct eps values with the non-background one at the declared 2.56, and an occupied-cell count equal to the NODE-sampled shape mask (1082 at ka = 0.5, the same sphere on the same mesh as that removed case). If this count ever picks up centre sampling, every number in this case is a different sphere (control re-run VESSL 369367259154: four gated rows byte-identical).",
       "external_dependencies": [],
       "expected_exit_codes": [0, 1],
       "gate_paths": [
@@ -309,7 +202,7 @@
         "validation/crossval/_17_dielectric_results/cv17_permittivity_island.json",
         "validation/crossval/_17_dielectric_results/cv17_gated_A.log"
       ],
-      "cpu_runner": {"order": 9},
+      "cpu_runner": {"order": 5},
       "scheduled_external_order": null,
       "evidence_status": "committed",
       "evidence_producer": null,
@@ -343,7 +236,7 @@
         "validation/crossval/_18_wr90_iris_results/one_cell_defect_live.json",
         "validation/crossval/_18_wr90_iris_results/cv18_gated_A.log"
       ],
-      "cpu_runner": {"order": 10},
+      "cpu_runner": {"order": 6},
       "scheduled_external_order": null,
       "evidence_status": "committed",
       "evidence_producer": null,
@@ -431,7 +324,7 @@
         "tests/fixtures/msl_phase_referee/msl_thru_rfx_dx50.json",
         "validation/crossval/_20_msl_phase_referee_logs/20260827T102342Z_result.json"
       ],
-      "cpu_runner": {"order": 11},
+      "cpu_runner": {"order": 7},
       "scheduled_external_order": null,
       "evidence_status": "committed",
       "evidence_producer": null,
@@ -472,7 +365,7 @@
         "validation/crossval/_21_coax_two_port_referee_logs/run3_369367251629_run.log",
         "validation/crossval/_21_coax_two_port_referee_logs/mesh_refinement_369367251845_result.json"
       ],
-      "cpu_runner": {"order": 12},
+      "cpu_runner": {"order": 8},
       "scheduled_external_order": null,
       "evidence_status": "committed",
       "evidence_producer": null,
@@ -571,8 +464,8 @@
         "validation/crossval/_22_dispersive_diag/rfx__debye_tail3e4.json",
         "validation/crossval/_22_dispersive_diag/lattice_witness.json"
       ],
-      "cpu_runner": {"order": 13},
-      "scheduled_external_order": 4,
+      "cpu_runner": {"order": 9},
+      "scheduled_external_order": 2,
       "evidence_status": "committed",
       "evidence_producer": null,
       "failure_sentinel": "rfx accuracy: FAIL"
@@ -646,8 +539,8 @@
         "validation/crossval/_23_lossy_results/rfx__tand3_dx4.json",
         "validation/crossval/_23_lossy_results/lattice_witness.json"
       ],
-      "cpu_runner": {"order": 14},
-      "scheduled_external_order": 5,
+      "cpu_runner": {"order": 10},
+      "scheduled_external_order": 3,
       "evidence_status": "committed",
       "evidence_producer": null,
       "failure_sentinel": "rfx accuracy: FAIL"

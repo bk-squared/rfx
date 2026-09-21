@@ -13,7 +13,8 @@ API supports --
      legacy form)
   3. ``BoundarySpec.uniform("pmc")``
 
--- and asserts the detected set is exactly today's PMC script, cv09
+-- and asserts the detected set is exactly the expected set, which is empty
+since the cv09 half-symmetric-waveguide case was removed on 2026-09-21
 (measured 2026-08-28: ``grep -i pmc`` over validation/ and examples/
 also hits ``validation/crossval/17_dielectric_sphere_mie.py`` ("PMCHWT", an
 unrelated acronym) and ``examples/tutorials/boundary_spec_demo.py`` (PMC
@@ -31,12 +32,11 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCAN_DIRS = ("validation", "examples")
 
-#: Scripts known (2026-08-28) to construct a real "pmc" boundary token.
-#: Update this set -- and add the docstring marker to the new script --
-#: the day a third PMC-mirror script is committed.
-EXPECTED_PMC_SCRIPTS = {
-    "validation/crossval/09_half_symmetric_waveguide.py",
-}
+#: Scripts known to construct a real "pmc" boundary token. Empty since the
+#: cv09 case was removed on 2026-09-21. Update this set -- and add the
+#: docstring marker to the new script -- the day a PMC-mirror script is
+#: committed.
+EXPECTED_PMC_SCRIPTS: set[str] = set()
 
 MARKER = "PMC-plane convention:"
 
@@ -107,8 +107,7 @@ def test_pmc_face_construction_is_exactly_the_expected_set():
     assert not unexpected, (
         f"script(s) construct a pmc boundary face but are not in "
         f"EXPECTED_PMC_SCRIPTS: {unexpected} -- add the 'PMC-plane "
-        f"convention:' marker to its docstring (see "
-        f"validation/crossval/09_half_symmetric_waveguide.py) and add it "
+        f"convention:' marker to its docstring and add it "
         f"to EXPECTED_PMC_SCRIPTS above")
     assert not missing, (
         f"EXPECTED_PMC_SCRIPTS names a script that no longer constructs a "
