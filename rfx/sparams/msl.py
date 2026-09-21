@@ -1388,6 +1388,7 @@ def compute_msl_s_matrix(
             _warn_if_sigma_max_excess(
                 sigma_max_excess, freqs_arr,
                 extractor="compute_msl_s_matrix",
+                projection_requested=bool(enforce_passivity),
             )
         # The raw-extraction self-check still audits what was MEASURED:
         # run it on the unprojected matrix so the projection can never

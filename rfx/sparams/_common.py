@@ -889,7 +889,8 @@ def _sigma_max_excess(S):
 
 
 def _warn_if_sigma_max_excess(
-    excess, freqs, *, extractor: str, envelope: float = 0.05
+    excess, freqs, *, extractor: str, envelope: float = 0.05,
+    projection_requested: bool = False,
 ) -> None:
     """One aggregate warning naming a RETURNED S that is not passive.
 
@@ -938,10 +939,17 @@ def _warn_if_sigma_max_excess(
         "so these bins are a measurement artifact rather than physics — the "
         "usual causes are a record that ended before the structure rang "
         "down and a mesh too coarse for the geometry (see settling_db and "
-        "reliable for which). Pass enforce_passivity=True to get S projected "
-        "onto the passive set instead; that projection is skipped on the "
-        "eps_override channel, so the measured and the differentiated S stay "
-        "the same function.",
+        "reliable for which). "
+        + (
+            "enforce_passivity=True was passed, and the projection is skipped "
+            "on the eps_override channel so that the measured and the "
+            "differentiated S stay the same function."
+            if projection_requested
+            else "Pass enforce_passivity=True to get S projected onto the "
+            "passive set instead; that projection is skipped on the "
+            "eps_override channel, so the measured and the differentiated S "
+            "stay the same function."
+        ),
         stacklevel=2,
     )
 

@@ -179,7 +179,10 @@ def main(argv: list[str] | None = None) -> int:
 
     print("Running rfx 2-port S-matrix sweep (2 drives)...")
     t0 = time.time()
-    res = sim.compute_msl_s_matrix(n_freqs=N_FREQS, num_periods=NUM_PERIODS)
+    # record taken under the projected default; kept explicit until the v2.0
+    # MSL battery re-measures on raw S
+    res = sim.compute_msl_s_matrix(n_freqs=N_FREQS, num_periods=NUM_PERIODS,
+                                   enforce_passivity=True)
     print(f"  ... done in {time.time() - t0:.1f}s")
     print()
 
