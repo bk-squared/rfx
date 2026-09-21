@@ -1,6 +1,6 @@
 """Material-aware CPML regressions across every scan body (issues #203-#205).
 
-One fix, seven scan bodies. Every FDTD loop in rfx applies the CPML
+One fix, six scan bodies. Every FDTD loop in rfx applies the CPML
 correction with a coefficient that must be ``dt/(eps_r*eps_0)`` (E) and
 ``dt/(mu_r*mu_0)`` (H) for the LOCAL material. Each scan body below once
 called ``apply_cpml_e/h`` WITHOUT ``materials=`` (or passed ``None``), so
@@ -27,8 +27,6 @@ Sections (one per scan body; each was its own file before tier 3b of the
 6. lumped / wire S-parameter extractor re-runs
    ``rfx.probes.probes.extract_s_matrix[_wire]`` (#203) — was
    ``test_lumped_wire_sparam_cpml_dielectric.py``.
-7. subgrid coarse-grid scan bodies (#205, last leg; research lane) — was
-   ``test_subgrid_cpml_dielectric.py``.
 
 Multi-device sections (2-4) set the CPU host-device sentinel before importing
 jax and SKIP cleanly when < 2 devices are available (the XLA_FLAGS sentinel is
@@ -40,7 +38,7 @@ in no CI lane).
 
 The witnesses, run parameters, thresholds and tolerances of every original
 file are kept verbatim; only the module-level helper names carry a section
-prefix so the seven fixtures can coexist.
+prefix so the six fixtures can coexist.
 """
 
 import os
@@ -53,7 +51,6 @@ import jax.numpy as jnp
 import pytest
 
 from rfx import Box, GaussianPulse, Simulation
-from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.runners.distributed import run_distributed as legacy_run
 import rfx.runners.distributed_nu as _dnu
 import rfx.runners.nonuniform as _rnu
@@ -700,82 +697,3 @@ def test_wire_port_sparam_cpml_dielectric_finite_passive():
     assert max_s11 <= 1.0 + 1e-3, (
         f"driven wire diagonal not passive: max|S11|={max_s11:.4f} "
         f"(physical gate restored by the #683 flip)")
-
-
-# ===========================================================================
-# 7. Subgrid coarse-grid scan bodies (issue #205, last leg)
-# ===========================================================================
-#
-# The subgrid coarse-grid scan bodies (``rfx/subgridding/jit_runner.py`` — the
-# ``Simulation.add_refinement`` API lane — and the eager
-# ``rfx/subgridding/runner.py``) called ``apply_cpml_h/e`` WITHOUT
-# ``materials=``. This was the last remaining CPML scan body without
-# ``materials=`` (after #203/#204, #208, #224, #227-#229).
-#
-# WHY ``validation="research"``: the production subgrid envelope structurally
-# rejects every CPML-adjacent configuration (measured 2026-07-03:
-# ``z_slab_requires_guarded_boundary`` for centered slabs,
-# ``boundary_terminated_requires_pec_no_cpml`` + ``subgrid_overlaps_absorber``
-# for boundary-touching slabs — even all-vacuum with x/y-only CPML). The buggy
-# code path is therefore reachable only through the research lane, which these
-# tests exercise deliberately; it is a divergence regression, not a
-# physics-accuracy claim for the experimental subgrid lane.
-#
-# Witness measured on the pre-fix tree (research lane, dielectric filling the
-# domain incl. all x/y CPML faces, z=PEC): eps_r=4 and eps_r=10 both diverge to
-# all-NaN, while the vacuum control stays finite and absorbing (tail/peak
-# ~1e-2). Post-fix all three are finite and absorbing; the vacuum control
-# changes only at float32 round-off (~6e-8 absolute on ~1e-3-scale fields).
-
-
-def _subgrid_dielectric_cpml_sim(eps_r):
-    """Subgrid (z-slab refinement) sim with x/y CPML, z PEC, and a dielectric
-    filling the entire domain — every x/y CPML cell is dielectric, forcing
-    absorption through dielectric-filled CPML on the coarse grid."""
-    lz = 0.016
-    sim = Simulation(
-        freq_max=10e9, domain=(0.02, 0.02, lz), dx=1.0e-3,
-        boundary=BoundarySpec(
-            x=Boundary(lo="cpml", hi="cpml"),
-            y=Boundary(lo="cpml", hi="cpml"),
-            z=Boundary(lo="pec", hi="pec"),
-        ),
-        cpml_layers=5,
-    )
-    sim.add_refinement((0.0, 0.006), ratio=2, validation="research")
-    if eps_r is not None:
-        sim.add_material("diel", eps_r=eps_r)
-        sim.add(Box((-1.0, -1.0, -1.0), (1.0, 1.0, 1.0)), material="diel")
-    sim.add_source((0.010, 0.010, 0.003), "ez",
-                   waveform=GaussianPulse(f0=4e9, bandwidth=0.7))
-    sim.add_probe((0.015, 0.010, 0.003), "ez")
-    return sim
-
-
-def test_subgrid_cpml_dielectric_stable_and_absorbing():
-    """Subgrid coarse-grid CPML in a dielectric-filled domain must stay finite
-    and absorb. Pre-fix (free-space CPML coefficients in the dielectric) this
-    diverged to all-NaN at eps_r=4 and eps_r=10 (issue #205)."""
-    for eps_r in (4.0, 10.0):
-        res = _subgrid_dielectric_cpml_sim(eps_r).run(n_steps=1500)
-        ts = np.abs(np.asarray(res.time_series).reshape(-1))
-        assert ts.size > 0
-        assert np.all(np.isfinite(ts)), \
-            f"subgrid CPML diverged (non-finite) in eps_r={eps_r} dielectric (issue #205)"
-        peak = float(ts.max())
-        tail = float(ts[-150:].max())
-        assert tail <= 0.05 * peak, \
-            f"subgrid CPML did not absorb (eps_r={eps_r}): tail/peak={tail / max(peak, 1e-30):.3e}"
-
-
-def test_subgrid_cpml_vacuum_control_still_absorbing():
-    """Vacuum control: the materials-aware coefficient path with all-vacuum
-    arrays must behave like the old materials=None fallback (same finite,
-    absorbing run — only float32 round-off moves)."""
-    res = _subgrid_dielectric_cpml_sim(None).run(n_steps=1500)
-    ts = np.abs(np.asarray(res.time_series).reshape(-1))
-    assert np.all(np.isfinite(ts))
-    peak = float(ts.max())
-    tail = float(ts[-150:].max())
-    assert tail <= 0.05 * peak, \
-        f"subgrid vacuum CPML control regressed: tail/peak={tail / max(peak, 1e-30):.3e}"

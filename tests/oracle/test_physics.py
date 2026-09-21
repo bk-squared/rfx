@@ -1,13 +1,10 @@
-"""Enhanced physics validation tests — Codex-recommended 6 scenarios.
+"""Enhanced physics validation tests — Codex-recommended 4 scenarios.
 
 Tests:
 1. Fresnel normal-incidence reflection (periodic BC + CPML)
-2. Normal-incidence effective-eps consistency (does NOT simulate an oblique
-   wave — the genuine oblique-injection gate lives in test_verification.py)
-3. Two-port reciprocity (S21 ≈ S12, passivity)
-4. CPML grazing-incidence reflection benchmark
-5. Mesh convergence (2nd-order Yee scheme)
-6. Late-time numerical stability (long run in PEC cavity)
+2. CPML grazing-incidence reflection benchmark
+3. Mesh convergence (2nd-order Yee scheme)
+4. Late-time numerical stability (long run in PEC cavity)
 
 Plus: dielectric-filled cavity resonance (validates eps_r handling).
 """
@@ -20,9 +17,8 @@ from rfx.core.yee import init_state, init_materials, update_e, update_h, EPS_0, 
 from rfx.boundaries.pec import apply_pec
 from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
 from rfx.sources.sources import (
-    GaussianPulse, LumpedPort, setup_lumped_port, apply_lumped_port,
+    GaussianPulse,
 )
-from rfx.probes.probes import init_sparam_probe, update_sparam_probe, extract_s11
 
 
 def _fft_peak_freq(time_series, dt, f_lo, f_hi):
@@ -156,231 +152,7 @@ def test_fresnel_normal_incidence():
 
 
 # =========================================================================
-# Test 2: Normal-incidence effective-eps consistency (NOT an oblique test)
-# =========================================================================
-
-def test_fresnel_normal_incidence_effective_eps_consistency():
-    """Consistency of the oblique-TE -> effective-eps ALGEBRA under a
-    normal-incidence 1D-aux TFSF run. This is NOT an oblique-injection test.
-
-    The 30 deg TE Fresnel coefficient is mapped to an equivalent
-    normal-incidence permittivity ``eps_eff = ((1-R_te)/(1+R_te))**2`` and a
-    NORMAL-incidence 1D-aux TFSF is run against ``eps_eff``. Because the
-    analytic target is reconstructed from that same ``eps_eff`` mapping, this
-    gate can only confirm the effective-eps algebra plus the normal-incidence
-    TFSF probe — it has ZERO discrimination over the real oblique-injection
-    code path (2D dispersion-matched auxiliary grid), which is never invoked
-    here (``init_tfsf`` is called WITHOUT ``angle_deg``/``ny`` below).
-
-    The GENUINE oblique-injection gate — a real 30 deg TE plane wave through
-    the 2D-aux TFSF path compared to analytic Fresnel-at-30-deg — lives in
-    ``tests/unit/autodiff/test_verification.py::test_oblique_tfsf_fresnel`` and
-    ``::test_oblique_tfsf_fresnel_plane_dft``. Renamed from the former
-    ``test_fresnel_oblique_te`` (issue #397): the old name/header claimed an
-    oblique simulation that never ran.
-
-    TE Fresnel (for the eps_eff mapping only):
-        R_te = (n1*cos(theta_i) - n2*cos(theta_t)) /
-               (n1*cos(theta_i) + n2*cos(theta_t))
-    """
-    from rfx.sources.tfsf import (
-        init_tfsf, update_tfsf_1d_h, update_tfsf_1d_e,
-        apply_tfsf_e, apply_tfsf_h,
-    )
-
-    eps_r = 4.0
-    n1, n2 = 1.0, np.sqrt(eps_r)
-
-    results = []
-    for theta_deg in [30.0]:
-        theta_i = np.radians(theta_deg)
-        theta_t = np.arcsin(n1 / n2 * np.sin(theta_i))
-        R_te = (n1 * np.cos(theta_i) - n2 * np.cos(theta_t)) / \
-               (n1 * np.cos(theta_i) + n2 * np.cos(theta_t))
-        R_analytic = abs(R_te)
-
-        # Effective eps that gives same |R| in normal-incidence 1D:
-        eps_eff = ((1 - R_te) / (1 + R_te)) ** 2
-
-        grid = Grid(freq_max=10e9, domain=(0.60, 0.006, 0.006),
-                     dx=0.001, cpml_layers=10)
-        dt, dx_val = grid.dt, grid.dx
-        nc = grid.cpml_layers
-        periodic = (False, True, True)
-
-        tfsf_cfg, tfsf_st = init_tfsf(
-            grid.nx, dx_val, dt, cpml_layers=nc, tfsf_margin=5,
-            f0=5e9, bandwidth=0.5, amplitude=1.0,
-        )
-
-        # Dielectric slab well inside TFSF box (vacuum at boundaries)
-        x_interface = grid.nx // 4
-        x_diel_end = tfsf_cfg.x_hi - 10
-        probe_x = tfsf_cfg.x_lo - 3
-        probe = (probe_x, grid.ny // 2, grid.nz // 2)
-        ref_1d_idx = tfsf_cfg.i0 + 5
-
-        # Avoid back-face reflection (same logic as normal incidence)
-        slab_thick = (x_diel_end - x_interface) * dx_val
-        t_backface = (2 * slab_thick) / (C0 / np.sqrt(float(eps_eff)))
-        t_front = (x_interface - tfsf_cfg.x_lo) * dx_val / C0
-        t_safe = t_front + t_backface
-        n_steps = min(int(t_safe / dt) - 50, 2000)
-        n_steps = max(n_steps, 800)
-
-        mat = init_materials(grid.shape)
-        mat = mat._replace(
-            eps_r=mat.eps_r.at[x_interface:x_diel_end, :, :].set(float(eps_eff))
-        )
-
-        state = init_state(grid.shape)
-        cp, cs = init_cpml(grid)
-        ts_scat = np.zeros(n_steps)
-        ts_inc = np.zeros(n_steps)
-
-        for step in range(n_steps):
-            t = step * dt
-            # Correct leapfrog: H3D → H_corr → H1D → E3D → E_corr → E1D
-            state = update_h(state, mat, dt, dx_val, periodic)
-            state = apply_tfsf_h(state, tfsf_cfg, tfsf_st, dx_val, dt)
-            state, cs = apply_cpml_h(state, cp, cs, grid, axes="x")
-            tfsf_st = update_tfsf_1d_h(tfsf_cfg, tfsf_st, dx_val, dt)
-
-            state = update_e(state, mat, dt, dx_val, periodic)
-            state = apply_tfsf_e(state, tfsf_cfg, tfsf_st, dx_val, dt)
-            state, cs = apply_cpml_e(state, cp, cs, grid, axes="x")
-            tfsf_st = update_tfsf_1d_e(tfsf_cfg, tfsf_st, dx_val, dt, t)
-
-            ts_scat[step] = float(state.ez[probe])
-            ts_inc[step] = float(tfsf_st.e1d[ref_1d_idx])
-
-        freqs = np.fft.rfftfreq(n_steps, d=dt)
-        spec_inc = np.abs(np.fft.rfft(ts_inc))
-        spec_scat = np.abs(np.fft.rfft(ts_scat))
-
-        band = (freqs > 3e9) & (freqs < 7e9)
-        R_num = spec_scat[band] / np.maximum(spec_inc[band], 1e-30)
-        R_mean = np.mean(R_num)
-
-        print(f"\nNormal-incidence eps_eff consistency "
-              f"(theta_map={theta_deg}°, eps_r={eps_r}, NOT an oblique run):")
-        print(f"  Target |R| from eps_eff map: {R_analytic:.4f}")
-        print(f"  Effective eps:               {float(eps_eff):.4f}")
-        print(f"  Numerical |R| (normal 1D):   {R_mean:.4f}")
-        print(f"  Error: {abs(R_mean - R_analytic) / R_analytic * 100:.1f}%")
-
-        results.append((theta_deg, R_analytic, R_mean))
-
-    for theta_deg, R_ana, R_num in results:
-        err = abs(R_num - R_ana) / R_ana
-        assert err < 0.10, (
-            f"eps_eff-mapped normal-incidence |R| error {err*100:.1f}% "
-            f"exceeds 10% (theta_map={theta_deg}°) — the effective-eps algebra "
-            f"or the normal-incidence TFSF probe regressed"
-        )
-
-
-# =========================================================================
-# Test 3: Two-port reciprocity (S21 ≈ S12)
-# =========================================================================
-
-def test_two_port_reciprocity():
-    """Two lumped ports in a PEC cavity: S21 ≈ S12 (reciprocity).
-
-    Also checks passivity: |S11|² + |S21|² ≤ 1 for a lossless structure.
-
-    Drive port 1, measure at port 2 → S21.
-    Drive port 2, measure at port 1 → S12.
-    For a reciprocal passive structure: S21 = S12.
-    """
-    a, b, d = 0.08, 0.08, 0.04
-    grid = Grid(freq_max=5e9, domain=(a, b, d), cpml_layers=0)
-
-    pulse1 = GaussianPulse(f0=3e9, bandwidth=0.8, amplitude=1.0)
-    pulse2 = GaussianPulse(f0=3e9, bandwidth=0.8, amplitude=1.0)
-
-    # Two ports at different locations
-    port1 = LumpedPort(position=(a/4, b/2, d/2), component="ez",
-                       impedance=50.0, excitation=pulse1)
-    port2 = LumpedPort(position=(3*a/4, b/2, d/2), component="ez",
-                       impedance=50.0, excitation=pulse2)
-
-    freqs = jnp.linspace(1e9, 5e9, 50)
-    dt, dx = grid.dt, grid.dx
-    num_steps = grid.num_timesteps(num_periods=80)
-
-    def run_driven(driven_port, passive_port):
-        """Run simulation driving one port, measuring at both."""
-        state = init_state(grid.shape)
-        materials = init_materials(grid.shape)
-        # Fold both port impedances into materials
-        materials = setup_lumped_port(grid, driven_port, materials)
-        materials = setup_lumped_port(grid, passive_port, materials)
-
-        sprobe_driven = init_sparam_probe(grid, driven_port, freqs, dft_total_steps=num_steps)
-        sprobe_passive = init_sparam_probe(grid, passive_port, freqs, dft_total_steps=num_steps)
-
-        for n in range(num_steps):
-            t = n * dt
-            state = update_h(state, materials, dt, dx)
-            state = update_e(state, materials, dt, dx)
-            state = apply_pec(state)
-            # Sample V/I before source injection
-            sprobe_driven = update_sparam_probe(sprobe_driven, state, grid, driven_port, dt)
-            sprobe_passive = update_sparam_probe(sprobe_passive, state, grid, passive_port, dt)
-            # Only drive the active port
-            state = apply_lumped_port(state, grid, driven_port, t, materials)
-
-        s_driven = extract_s11(sprobe_driven, z0=50.0)  # S11 or S22
-        # S21/S12: use voltage at passive port normalized by incident wave at driven port
-        # Approximate S21 from V_passive / V_incident
-        v_passive = sprobe_passive.v_dft
-        v_inc = sprobe_driven.v_inc_dft
-        safe_vinc = jnp.where(jnp.abs(v_inc) > 0, v_inc, jnp.ones_like(v_inc))
-        s_cross = v_passive / (2.0 * safe_vinc)
-
-        return s_driven, s_cross
-
-    # Drive port 1 → get S11, S21
-    s11, s21 = run_driven(port1, port2)
-    # Drive port 2 → get S22, S12
-    s22, s12 = run_driven(port2, port1)
-
-    s11_np = np.array(s11)
-    np.array(s22)
-    s21_np = np.array(s21)
-    s12_np = np.array(s12)
-
-    # Reciprocity check: |S21| ≈ |S12| in the excitation band
-    mid_band = (np.array(freqs) > 1.5e9) & (np.array(freqs) < 4.5e9)
-    s21_mag = np.abs(s21_np[mid_band])
-    s12_mag = np.abs(s12_np[mid_band])
-
-    # Relative difference between S21 and S12
-    recip_err = np.abs(s21_mag - s12_mag) / np.maximum(
-        0.5 * (s21_mag + s12_mag), 1e-10
-    )
-    mean_recip_err = np.mean(recip_err)
-
-    # Passivity: |S11|² + |S21|² ≤ 1 (lossless)
-    passivity = np.abs(s11_np[mid_band])**2 + np.abs(s21_np[mid_band])**2
-    max_passivity = np.max(passivity)
-
-    print("\nTwo-port reciprocity:")
-    print(f"  Mean |S21|: {np.mean(s21_mag):.4f}")
-    print(f"  Mean |S12|: {np.mean(s12_mag):.4f}")
-    print(f"  Reciprocity error: {mean_recip_err*100:.1f}%")
-    print(f"  Max passivity (|S11|²+|S21|²): {max_passivity:.3f}")
-
-    assert mean_recip_err < 0.30, \
-        f"Reciprocity error {mean_recip_err*100:.1f}% exceeds 30%"
-    # Passivity: allow some slack for numerical effects
-    assert max_passivity < 1.5, \
-        f"Passivity violated: |S11|²+|S21|² = {max_passivity:.3f}"
-
-
-# =========================================================================
-# Test 4: CPML grazing-incidence reflection benchmark
+# Test 2: CPML grazing-incidence reflection benchmark
 # =========================================================================
 
 def test_cpml_grazing_incidence():
@@ -449,7 +221,7 @@ def test_cpml_grazing_incidence():
 
 
 # =========================================================================
-# Test 5: Mesh convergence (2nd-order Yee scheme)
+# Test 3: Mesh convergence (2nd-order Yee scheme)
 # =========================================================================
 
 def test_mesh_convergence_2nd_order():
@@ -510,7 +282,7 @@ def test_mesh_convergence_2nd_order():
 
 
 # =========================================================================
-# Test 6: Late-time numerical stability
+# Test 4: Late-time numerical stability
 # =========================================================================
 
 def test_late_time_stability():

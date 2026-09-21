@@ -1,0 +1,295 @@
+{
+ "box_witness": [
+  {
+   "box": {
+    "box_cells": [
+     1012,
+     184
+    ],
+    "clearance_above_in_h_declared": 8.070866141732283,
+    "clearance_above_in_h_solver": 8.2,
+    "clearance_above_substrate_m": 0.0020499999999999997,
+    "lateral_clearance_beside_strip_m": 0.005999999999999999,
+    "lateral_clearance_in_W": 10.000000000000002,
+    "lateral_clearance_in_h_solver": 23.999999999999996,
+    "pad_y_cells": 120,
+    "pad_z_cells": 41,
+    "refine": 4
+   },
+   "dx_um": 50.0,
+   "eps_eff": 2.7472904611898814,
+   "rel_to_default_box_frac": -0.011512926947423119,
+   "scale": 2.0,
+   "z0_static_ohm": 47.169760205113725
+  },
+  {
+   "box": {
+    "box_cells": [
+     1972,
+     344
+    ],
+    "clearance_above_in_h_declared": 15.94488188976378,
+    "clearance_above_in_h_solver": 16.2,
+    "clearance_above_substrate_m": 0.00405,
+    "lateral_clearance_beside_strip_m": 0.011999999999999999,
+    "lateral_clearance_in_W": 20.000000000000004,
+    "lateral_clearance_in_h_solver": 47.99999999999999,
+    "pad_y_cells": 240,
+    "pad_z_cells": 81,
+    "refine": 4
+   },
+   "dx_um": 50.0,
+   "eps_eff": 2.736844587591499,
+   "rel_to_default_box_frac": -0.01527139776243469,
+   "scale": 4.0,
+   "z0_static_ohm": 47.01972527580759
+  }
+ ],
+ "builder": "scripts/diagnostics/build_msl_thru_phase_dx50um_reference.py",
+ "closed_form": {
+  "h_250um": {
+   "eps_eff": 2.872970226316938,
+   "z0_ohm": 47.41203509468273
+  },
+  "h_254um": {
+   "eps_eff": 2.8693862252597855,
+   "z0_ohm": 47.89480046631184
+  }
+ },
+ "eps_r": 3.66,
+ "h_declared_m": 0.000254,
+ "joint_witness": [
+  {
+   "box": {
+    "box_cells": [
+     2024,
+     368
+    ],
+    "clearance_above_in_h_declared": 8.070866141732283,
+    "clearance_above_in_h_solver": 8.2,
+    "clearance_above_substrate_m": 0.0020499999999999997,
+    "lateral_clearance_beside_strip_m": 0.005999999999999999,
+    "lateral_clearance_in_W": 10.000000000000002,
+    "lateral_clearance_in_h_solver": 23.999999999999996,
+    "pad_y_cells": 120,
+    "pad_z_cells": 41,
+    "refine": 8
+   },
+   "box_scale": 2.0,
+   "dx_um": 50.0,
+   "eps_eff": 2.8239393880530277,
+   "refine": 8,
+   "rel_to_default_frac": 0.016065690762608664,
+   "z0_static_ohm": 46.19261904569818
+  }
+ ],
+ "refine_witness": [
+  {
+   "box": {
+    "box_cells": [
+     266,
+     51
+    ],
+    "clearance_above_in_h_declared": 4.035433070866142,
+    "clearance_above_in_h_solver": 4.1,
+    "clearance_above_substrate_m": 0.0010249999999999999,
+    "lateral_clearance_beside_strip_m": 0.0029999999999999996,
+    "lateral_clearance_in_W": 5.000000000000001,
+    "lateral_clearance_in_h_solver": 11.999999999999998,
+    "pad_y_cells": 5,
+    "pad_z_cells": 20,
+    "refine": 2
+   },
+   "dx_um": 50.0,
+   "eps_eff": 2.642372972632836,
+   "refine": 2,
+   "rel_to_refine4_frac": -0.049262696271363926,
+   "strip_air_gap_um": 12.499999999999998,
+   "z0_static_ohm": 49.399739840795185
+  },
+  {
+   "box": {
+    "box_cells": [
+     1064,
+     203
+    ],
+    "clearance_above_in_h_declared": 4.010826771653543,
+    "clearance_above_in_h_solver": 4.074999999999999,
+    "clearance_above_substrate_m": 0.00101875,
+    "lateral_clearance_beside_strip_m": 0.0029999999999999996,
+    "lateral_clearance_in_W": 5.000000000000001,
+    "lateral_clearance_in_h_solver": 11.999999999999998,
+    "pad_y_cells": 5,
+    "pad_z_cells": 20,
+    "refine": 8
+   },
+   "dx_um": 50.0,
+   "eps_eff": 2.85705091665469,
+   "refine": 8,
+   "rel_to_refine4_frac": 0.027979362962226695,
+   "strip_air_gap_um": 3.1249999999999996,
+   "z0_static_ohm": 46.676741802633366
+  },
+  {
+   "box": {
+    "box_cells": [
+     2128,
+     405
+    ],
+    "clearance_above_in_h_declared": 3.9985236220472435,
+    "clearance_above_in_h_solver": 4.062499999999999,
+    "clearance_above_substrate_m": 0.0010156249999999998,
+    "lateral_clearance_beside_strip_m": 0.0029999999999999996,
+    "lateral_clearance_in_W": 5.000000000000001,
+    "lateral_clearance_in_h_solver": 11.999999999999998,
+    "pad_y_cells": 5,
+    "pad_z_cells": 20,
+    "refine": 16
+   },
+   "dx_um": 50.0,
+   "eps_eff": 2.900927666757866,
+   "refine": 16,
+   "rel_to_refine4_frac": 0.04376640874324078,
+   "strip_air_gap_um": 1.5624999999999998,
+   "z0_static_ohm": 46.14019319447673
+  }
+ ],
+ "rfx_file": "rfx/__init__.py",
+ "rungs": [
+  {
+   "beta_dev_vs_closed_form_h250_frac": -0.01643915951953323,
+   "box": {
+    "box_cells": [
+     532,
+     101
+    ],
+    "clearance_above_in_h_declared": 3.986220472440945,
+    "clearance_above_in_h_solver": 4.05,
+    "clearance_above_substrate_m": 0.0010125,
+    "lateral_clearance_beside_strip_m": 0.0029999999999999996,
+    "lateral_clearance_in_W": 5.000000000000001,
+    "lateral_clearance_in_h_solver": 11.999999999999998,
+    "pad_y_cells": 5,
+    "pad_z_cells": 20,
+    "refine": 4
+   },
+   "dev_vs_closed_form_h250_frac": -0.03260807307335789,
+   "dev_vs_closed_form_h254_frac": -0.031399754144987746,
+   "dx_m": 4.9999999999999996e-05,
+   "dx_um": 50.0,
+   "fidelity_rows": {
+    "conductor": {
+     "axes": {
+      "x": {
+       "declared_extent_um": 14000.0,
+       "declared_um": [
+        0.0,
+        14000.0
+       ],
+       "realized_extent_um": 13999.999999999998,
+       "realized_um": [
+        0.0,
+        13999.999999999998
+       ]
+      },
+      "y": {
+       "declared_extent_um": 599.9999999999999,
+       "declared_um": [
+        908.0,
+        1507.9999999999998
+       ],
+       "realized_extent_um": 599.9999999999999,
+       "realized_um": [
+        900.0,
+        1499.9999999999998
+       ]
+      },
+      "z": {
+       "declared_extent_um": 50.00000000000002,
+       "declared_um": [
+        254.0,
+        304.0
+       ],
+       "realized_extent_um": 49.99999999999997,
+       "realized_um": [
+        250.0,
+        300.0
+       ]
+      }
+     },
+     "entity": "geometry[1] 'pec'"
+    },
+    "substrate": {
+     "axes": {
+      "x": {
+       "declared_extent_um": 14000.0,
+       "declared_um": [
+        0.0,
+        14000.0
+       ],
+       "realized_extent_um": 14049.999999999998,
+       "realized_um": [
+        0.0,
+        14049.999999999998
+       ]
+      },
+      "y": {
+       "declared_extent_um": 2415.9999999999995,
+       "declared_um": [
+        0.0,
+        2415.9999999999995
+       ],
+       "realized_extent_um": 2450.0,
+       "realized_um": [
+        0.0,
+        2450.0
+       ]
+      },
+      "z": {
+       "declared_extent_um": 254.0,
+       "declared_um": [
+        0.0,
+        254.0
+       ],
+       "realized_extent_um": 300.0,
+       "realized_um": [
+        0.0,
+        300.0
+       ]
+      }
+     },
+     "entity": "geometry[0] 'ro4350b'"
+    }
+   },
+   "grid_shape": [
+    298,
+    66,
+    45
+   ],
+   "realized_trace": {
+    "t_metal_realized_m": 4.9999999999999996e-05,
+    "trace_realization_kind": "volume",
+    "trace_wall_planes_realized": [
+     5,
+     6
+    ],
+    "trace_wall_planes_realized_z_m": [
+     0.00025,
+     0.0003
+    ],
+    "trace_y_hi_realized_m": 0.0014999999999999998,
+    "trace_y_lo_realized_m": 0.0009,
+    "w_trace_realized_m": 0.0005999999999999998
+   },
+   "solve": {
+    "dz_m": 4.9999999999999996e-05,
+    "elapsed_s": 1.95,
+    "eps_eff": 2.779288203239614,
+    "h_solver_m": 0.00025,
+    "n_z_sub": 5,
+    "z0_static_ohm": 47.65958390966889
+   }
+  }
+ ],
+ "w_trace_m": 0.0006
+}

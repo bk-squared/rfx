@@ -100,7 +100,15 @@ def test_ports_and_sparams_101_tutorial_runs():
     # statement is the second kind: this board is clean AND its realized planes
     # are what it declared, which the tutorial prints itself and which the
     # assertion further down pins.  Measured 2026-09-08: four clean reports.
-    assert output.count("[PREFLIGHT] All checks passed") >= 4
+    #
+    # 2026-09-20: three. The microstrip board's report is no longer clean, and
+    # that is the true state: its 1 mm trace is four cells wide, a PEC sheet
+    # is solved about 0.35 cell beyond its last node at each free edge, and
+    # preflight now says so (``sheet_effective_size``: drawn 1 mm, solved as
+    # 1.175 mm, +17.5 %). The three reports that stay clean are the two
+    # generic-port models and the waveguide, which have no sheet edge.
+    assert output.count("[PREFLIGHT] All checks passed") >= 3
+    assert "solved more than 1% off their drawn size" in output
     assert "Microstrip port setup ready: True" in output
     # The declared foils must BE the realized wall planes, and the gap between
     # them the height the MSL ports were told.  build_microstrip_ports() raises

@@ -1,0 +1,39 @@
+{
+  "box_scale": 2.0,
+  "dx_um": 50.0,
+  "elapsed_s": 1771.33,
+  "gated": {
+    "production": {
+      "E_frac_max": 0.028343441538864367,
+      "E_frac_mean": 0.028066609291926194,
+      "E_frac_min": 0.02783414608459811,
+      "signed_beta_dev_frac_max": 0.015265596041975416,
+      "signed_beta_dev_frac_mean": 0.014988763795037243,
+      "signed_beta_dev_frac_min": 0.014756300587709159
+    },
+    "refit_float64_lsq": {
+      "E_frac_max": 0.02774096296997941,
+      "E_frac_mean": 0.027287042660288252,
+      "E_frac_min": 0.026892898342619986,
+      "signed_beta_dev_frac_max": 0.014663117473090459,
+      "signed_beta_dev_frac_mean": 0.0142091971633993,
+      "signed_beta_dev_frac_min": 0.013815052845731035
+    }
+  },
+  "grid_shape": [
+    297,
+    102,
+    75
+  ],
+  "n_cells_total": 2272050,
+  "n_warnings": 6,
+  "peak_rss_gib": 1.507,
+  "rc": 0,
+  "settling_db": [
+    -98.97596745885588,
+    -101.92014095456308
+  ],
+  "smoke": false,
+  "tag": "dx50-box2",
+  "thickness_prediction_beta_frac": -0.013077845496888951
+}

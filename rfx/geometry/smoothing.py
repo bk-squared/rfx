@@ -456,16 +456,20 @@ def extend_shapes_into_cpml_pad(
         caller surfaces them.
     """
     from rfx.core.jax_utils import is_tracer
-    from rfx.geometry.csg import Box, Cylinder
+    from rfx.geometry.csg import Box, Cylinder, declared_bounds
 
     out: list[tuple[Shape, float]] = []
     unextendable: list[UnextendableShape] = []
     for shape, eps_r in shapes:
-        try:
-            bbox_lo, bbox_hi = shape.bounding_box()
-        except (NotImplementedError, AttributeError):
+        # Same retrieval as the assembly check
+        # ``rfx.geometry.rasterize_grid.assert_declared_span_is_filled``:
+        # both ask "how far was this drawn" through ``declared_bounds`` so a
+        # shape excluded from one is excluded from the other (PR #1136, B).
+        bounds = declared_bounds(shape)
+        if bounds is None:
             out.append((shape, eps_r))
             continue
+        bbox_lo, bbox_hi = bounds
         current = shape
         for axis in range(3):
             nodes = node_coords[axis]

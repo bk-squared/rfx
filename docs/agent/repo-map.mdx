@@ -59,6 +59,7 @@ command is verified to return at least one hit on the current tree.
 | DFT-plane observables / objectives (differentiable) | `grep "def dft_field\|def field_energy\|def field_softmax" rfx/observables.py` | `rfx/observables.py` |
 | Realized conductor edges (what the SOLVE zeroes, not what was declared) — the ONE source; never re-derive from `pec_mask` | `grep "def realized_pec_edge_masks\|def realized_wall_planes\|def edge_is_pec\|def clear_edges" rfx/boundaries/pec.py` | `rfx/boundaries/pec.py` — volume/sheet/wire classification lives in `grep "def classify_pec_entry\|def sheet_spec_from_shape" rfx/geometry/rasterize_grid.py` |
 | Rasterization viewers (what the SOLVE actually builds, not what was declared) | `grep "def plot_rasterized_slice\|def plot_stack_profile" rfx/visualize.py` | `rfx/visualize.py` — import as `rfx.visualize.plot_rasterized_slice` / `rfx.visualize.plot_stack_profile` (not exported at top-level `rfx`, deliberately, to keep `rfx.__all__` curated — see `docs/guides/api_symbol_inventory.json`) |
+| Mesh lines for conductor sheet edges (a node 0.35 cell inside each edge, faces on nodes; the measured counterpart of the openEMS thirds rule) | `grep "def edge_aware_profile\|class SheetEdge" rfx/mesh_edges.py` | `rfx/mesh_edges.py` — feed the result to `Simulation(dx_profile=…, dy_profile=…)`; measurement in `scripts/diagnostics/pec_sheet_edge_offset.py` |
 
 ## Current port-family caveat
 
@@ -77,10 +78,11 @@ deprecated/experimental and must not be presented as the promoted coaxial claims
 surface. For a coax<->microstrip transition, `Simulation.compute_coax_msl_transition(...)`
 (issue #489 leg 4) exists but is **EXPERIMENTAL, DIAGNOSTIC-ONLY**. On the corrected
 settled run (VESSL `369367257614`, PR #837) the MSL side's power-wave normalization
-over-reads power by about 3x, so the matrix the call returns is NOT passive — max`|S|`
-`1.7046`, MSL-driven column power `2.9563` / `2.9172` / `2.8609` at 6/8/10 GHz — and it
-comes back with a `UserWarning` unless `strict_passivity=True`, which raises instead
-(issue #838). Per the PI decision of 2026-09-20 the cross-family transition lanes are not
+over-reads power by about 3x, so the extracted matrix is NOT passive — max`|S|`
+`1.7046`, MSL-driven column power `2.9563` / `2.9172` / `2.8609` at 6/8/10 GHz — and the
+call refuses it by default (`strict_passivity=True`, raising `ValueError`);
+`strict_passivity=False` returns it with a `UserWarning` instead (issue #838). Per
+the PI decision of 2026-09-20 the cross-family transition lanes are not
 pursued further before 2.0, so that over-read will not be attributed or corrected; use the
 single-family extractors separately for anything citable. Any earlier reading of this lane,
 including the attempt-2 settled run, was taken through three instrument defects since

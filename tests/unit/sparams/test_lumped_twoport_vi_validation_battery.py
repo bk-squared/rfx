@@ -596,10 +596,20 @@ def test_thru_preflight_code_set_is_the_contract_set():
 
     So the marker is off and the assertion below is a plain lock.  It is
     the one that would catch preflight growing a message back.
+
+    2026-09-20, a second code, and it is true of this fixture: the 5 mm
+    trace is drawn exactly on five 1 mm cells, and a PEC sheet's in-plane
+    edge is solved about 0.35 cell beyond its last node, so the trace is
+    solved 5.35 mm wide (+7.00 %) -- ``sheet_effective_size``.  The fixture
+    is a referee for the V/I extraction, not a width-accurate line, and is
+    left as drawn; the lock now names both codes.
     """
     report = _build_thru().preflight()
     codes = sorted(getattr(i, "code", None) for i in report)
-    assert codes == ["pec_faces_finite_pec"], codes
+    assert codes == ["pec_faces_finite_pec", "sheet_effective_size"], codes
+    size = [str(i) for i in report
+            if getattr(i, "code", None) == "sheet_effective_size"]
+    assert "y: drawn 5mm, nodes cover 5mm, solved as 5.35mm" in size[0]
 
 
 # ===========================================================================

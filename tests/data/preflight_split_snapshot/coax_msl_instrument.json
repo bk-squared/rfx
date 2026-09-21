@@ -72,6 +72,13 @@
         "source": "_validate_cfg_lossless_resonator_in_absorber"
       },
       {
+        "code": "sheet_effective_size",
+        "loc": null,
+        "message": "4 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 4 listed): geometry[5] 'pec' y: drawn 600\u00b5m, nodes cover 600\u00b5m, solved as 670\u00b5m (+11.67%); geometry[1] 'pec' x: drawn 600\u00b5m, nodes cover 600\u00b5m, solved as 635\u00b5m (+5.83%); geometry[4] 'pec' y: drawn 1.3mm, nodes cover 1.3mm, solved as 1.335mm (+2.69%); geometry[3] 'pec' y: drawn 1.3mm, nodes cover 1.3mm, solved as 1.335mm (+2.69%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+        "severity": "warning",
+        "source": "_validate_cfg_off_lattice_design_edges"
+      },
+      {
         "code": "msl_port_geometry",
         "loc": null,
         "message": "MSL port 'msl_0' (trace W=600\u00b5m, h_sub=300\u00b5m): lateral clearance to +y absorbing boundary = 600\u00b5m (domain edge + 800\u00b5m calibrated CPML buffer) < recommended 600\u00b5m (= 2\u00b7h_sub). Fringing field will be clipped \u2192 Z0 may be biased HIGH by ~0%, mesh-conv may diverge. Increase domain y-extent OR move port further from sidewall.",
@@ -87,7 +94,7 @@
       }
     ],
     "n_errors": 0,
-    "n_issues": 12,
+    "n_issues": 13,
     "ok": true
   },
   "preflight_sparameters": {

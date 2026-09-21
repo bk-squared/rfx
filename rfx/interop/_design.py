@@ -61,15 +61,16 @@ rfx already has four setup serialisers and every one of them is box-level:
   provenance/report summary that self-declares it is "not a CAD export";
 - ``rfx/config/_shapes.py`` — the YAML config CLI, ``_SUPPORTED_SHAPES =
   ("box",)``;
-- ``rfx/experiments/canonical.py`` (``rfx-experiment/v1``) — "P0 supports box
-  geometry", geometry carried as ``bounds_m``.
+- the experiment document of the former studio layer (``rfx-experiment/v1``,
+  box-only, geometry carried as ``bounds_m``) — moved out of this package with
+  studio; named here because this module was shaped to fold into its successor.
 
 This module is deliberately **not** a fifth independent vocabulary.  The
 ``geometry`` and ``materials`` sections are shaped so they can be folded into
 a future ``rfx-experiment/v2`` mechanically: shapes use the ``{"kind":
 "<snake_case>", "params": {...}}`` discriminated union of
-``rfx/interop/_shapes.py`` — the same ``kind`` spelling the config layer and
-``canonical.py`` already use for a box — and materials use the
+``rfx/interop/_shapes.py`` — the same spelling the config layer already uses
+for a box — and materials use the
 ``rfx/interop/_materials.py`` payload verbatim.  A consumer that wants
 box-only geometry can filter on ``kind == "box"``; it does not need a second
 shape decoder.
@@ -101,7 +102,7 @@ whose ``non_portable`` list has been edited is refused.  A downstream tool
 cannot strip the annotation to make rfx-only state look portable.
 
 Status: **provisional**.  Round-trip fidelity is gated by
-``tests/studio/test_interop_design_document.py``; no external emitter exists yet.
+``tests/interop/test_interop_design_document.py``; no external emitter exists yet.
 """
 
 from __future__ import annotations
@@ -742,7 +743,7 @@ def _dump_list(
 # Exported / excluded attribute inventory
 # ---------------------------------------------------------------------------
 #
-# Anti-drift ledger.  ``tests/studio/test_interop_design_document.py`` asserts that
+# Anti-drift ledger.  ``tests/interop/test_interop_design_document.py`` asserts that
 # every ``self._*`` attribute a fresh ``Simulation`` carries appears in exactly
 # one of these two tuples, so a new builder field cannot slip into rfx without
 # a decision being recorded here.

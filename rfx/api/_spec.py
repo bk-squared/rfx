@@ -1841,6 +1841,15 @@ class CoaxMSLTransitionResult:
     deterministically pins the propagation-constant branch
     (``beta = Im(gamma) > 0``) while the N-probe fit does not.
 
+    REFUSES BY DEFAULT (issue #838, PI decision 2026-09-20):
+    :meth:`_SparamMixin.compute_coax_msl_transition` takes
+    ``strict_passivity=True`` as its default, so a non-passive extracted S
+    raises ``ValueError`` from the shared guard instead of being returned;
+    pass ``strict_passivity=False`` to get the diagnostic matrix with a
+    ``UserWarning``. The single-family coax lanes
+    (:class:`CoaxialSMatrixResult`, :class:`CoaxialTwoPortResult`) keep the
+    ``False`` default.
+
     Like :class:`MixedSMatrixResult`, ``s_params`` is in the **Kurokawa
     power-wave convention**: each port's raw modal-voltage wave amplitude
     (``forward_amp``/``backward_amp``, both in **volts** — the matrix-pencil
@@ -1961,7 +1970,7 @@ class CoaxMSLTransitionResult:
     DISCLOSURE (issue #585 final-verify, finding G1): the shared passivity
     guard both attempts rely on (``rfx/validation.py``'s ``check_passivity``
     block, ``strict_passivity=True`` path — see
-    :func:`rfx.api._sparams._finalize_sparam_result`) checks only whether
+    :func:`rfx.sparams._common._finalize_sparam_result`) checks only whether
     ``max column power`` EXCEEDS its upper limit; it has no lower-bound
     check at all, so a column power far BELOW 1 on a lossless structure —
     exactly the open question above — passes it silently. That one-sided

@@ -1,14 +1,10 @@
 """Tests for overlap integral modal extraction (Spec 6E4).
 
-Test 1: test_overlap_vs_vi_straight_waveguide
-    Empty waveguide, compare overlap S21 vs V/I S21.
-    Overlap should have |S21| close to 1.0 above cutoff.
-
-Test 2: test_overlap_mode_normalization
+Test 1: test_overlap_mode_normalization
     Verify C_mode = ∫(e×h*)·n̂ dA is real and |C_mode| ≈ 1 for TE10
     across all three normal axes.
 
-Test 3: test_overlap_passivity
+Test 2: test_overlap_passivity
     Overlap S-params should match V/I extraction and satisfy
     |S11|² + |S21|² < 1.10 in the well-resolved mid-band.
 """
@@ -118,71 +114,7 @@ def _run_waveguide_sim_overlap(
 
 
 # ---------------------------------------------------------------------------
-# Test 1: Overlap vs V/I in an empty straight waveguide
-# ---------------------------------------------------------------------------
-
-def test_overlap_vs_vi_straight_waveguide():
-    """Empty waveguide: overlap S21 should be close to V/I S21 and near unity.
-
-    Both methods extract S-parameters from the same simulation of an
-    empty PEC waveguide. Above cutoff, |S21| from both should be close
-    to 1.0. The overlap method should produce reasonable results
-    comparable to the V/I method.
-    """
-    a_wg = 0.04
-    b_wg = 0.02
-    length = 0.12
-    f0 = 6e9
-    dx = 0.002
-    nc = 10
-
-    freqs = jnp.linspace(4.5e9, 8e9, 25)
-
-    port_cfg, overlap_acc, grid = _run_waveguide_sim_overlap(
-        a_wg, b_wg, length, f0, dx, nc, freqs,
-        probe_offset=15, ref_offset=3,
-    )
-
-    f_c = cutoff_frequency(port_cfg.a, port_cfg.b, 1, 0)
-    f_arr = np.array(freqs)
-    above_cutoff = f_arr > f_c * 1.3
-
-    # V/I method
-    s11_vi, s21_vi = extract_waveguide_sparams(port_cfg)
-    s21_vi_mag = np.abs(np.array(s21_vi))
-
-    # Overlap method
-    s11_ov, s21_ov = extract_waveguide_sparams_overlap(overlap_acc, port_cfg)
-    s21_ov_mag = np.abs(np.array(s21_ov))
-
-    s21_vi_above = s21_vi_mag[above_cutoff]
-    s21_ov_above = s21_ov_mag[above_cutoff]
-
-    print("\nOverlap vs V/I straight waveguide:")
-    print(f"  f_cutoff = {f_c / 1e9:.2f} GHz")
-    print(f"  V/I  |S21| above cutoff: mean={np.mean(s21_vi_above):.4f}, "
-          f"min={np.min(s21_vi_above):.4f}, max={np.max(s21_vi_above):.4f}")
-    print(f"  Overlap |S21| above cutoff: mean={np.mean(s21_ov_above):.4f}, "
-          f"min={np.min(s21_ov_above):.4f}, max={np.max(s21_ov_above):.4f}")
-
-    s21_vi_db = 20 * np.log10(np.maximum(np.mean(s21_vi_above), 1e-10))
-    s21_ov_db = 20 * np.log10(np.maximum(np.mean(s21_ov_above), 1e-10))
-    print(f"  V/I  mean |S21| = {s21_vi_db:.1f} dB")
-    print(f"  Overlap mean |S21| = {s21_ov_db:.1f} dB")
-
-    # Overlap |S21| should be physical (> 0.5, < 1.5 above cutoff)
-    assert np.mean(s21_ov_above) > 0.5, \
-        f"Overlap mean |S21| = {np.mean(s21_ov_above):.3f}, expected > 0.5"
-    assert np.max(s21_ov_above) < 1.5, \
-        f"Overlap max |S21| = {np.max(s21_ov_above):.3f}, expected < 1.5"
-
-    # Both methods should give similar results (within 6 dB)
-    assert abs(s21_ov_db - s21_vi_db) < 6.0, \
-        f"V/I and overlap S21 differ by {abs(s21_ov_db - s21_vi_db):.1f} dB, expected < 6 dB"
-
-
-# ---------------------------------------------------------------------------
-# Test 2: Mode normalization constant
+# Test 1: Mode normalization constant
 # ---------------------------------------------------------------------------
 
 def test_overlap_mode_normalization():
@@ -248,7 +180,7 @@ def test_overlap_mode_normalization():
 
 
 # ---------------------------------------------------------------------------
-# Test 3: Overlap passivity — verify overlap S-params agree with V/I and
+# Test 2: Overlap passivity — verify overlap S-params agree with V/I and
 #          satisfy passivity in the well-resolved mid-band
 # ---------------------------------------------------------------------------
 

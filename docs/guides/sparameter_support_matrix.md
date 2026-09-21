@@ -84,7 +84,7 @@ guard. An absent warning therefore cannot be compared across port families.
 | `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult` | **limited** — exactly one `face="top"` port; broad-E5 analytic and broad-E4 MEEP evidence for the documented TEM-line result |
 | `add_coaxial_port(...)` | `compute_coaxial_s_matrix(...)` | `CoaxialSMatrixResult` | **experimental and deprecated** — older single-plane V/I path; can produce non-physical `\|S11\| > 1` for a lossless short |
 | `add_coaxial_port(...)` | `compute_coaxial_two_port(...)` | `CoaxialTwoPortResult` | **validated with scope** (issue #489, PI decision 2026-08-06) — two-drive through-line 2-port solve on one coax geometry family; bracketed by an external openEMS referee (`validation/crossval/21_coax_two_port_referee.py`, VESSL run-3 `369367251629` + VESSL `369367252220`) on `\|S21\|` and, via the port's own measured `beta`, phase, plus a mesh-refinement convergence witness (VESSL `369367251845`, `p ~= 1.5`) and a `GRAD_SAFE` `eps_scale` AD gate; every DUT it can currently gate against is still azimuthally symmetric (TM0n only) — coax<->planar transitions are the separate `compute_coax_msl_transition(...)` lane (own row below, own status, unaffected by this promotion) |
-| `add_coaxial_port(...)` + `add_msl_port(...)` | `compute_coax_msl_transition(...)` | `CoaxMSLTransitionResult` | **experimental, diagnostic-only** (issue #489 leg 4) — coax-to-microstrip transition, two-drive. The attempt-2 readings this row used to quote (91.4% reciprocity worst deviation, ~99% of the MSL-driven column power missing at 6/8 GHz, both from VESSL `369367252283`) were taken through three instrument defects that are now fixed: a fixture that was a short (the predeclared clearance hole was never realized, PR #804), inverted wave-role labels making `S_code = inv(S_true)` (#822), and an MSL fit window inside the port's near field (#823). Do not cite those numbers. On the corrected-label settled runs (VESSL `369367257613` / `369367257614`, PR #837, 2026-09-01) the junction is an ordinary low-loss transition: a six-face flux box closes to ≤0.2% and 91-98% of the net power crosses the junction, and ONE diagonal port renormalization `k ≈ 0.57` (flat to 1.2% over 6-10 GHz) restores reciprocity, giving `\|S21\|` 0.981/0.972/0.952 and column powers within 3.5% of unity. What is left is one named defect: the MSL side's power-wave normalization over-reads power by ~3x, measured by two instruments (the S-matrix's own reciprocity asymmetry and a Poynting flux box) — issue #838, isolated, mechanism unresolved, not fixed. Those column powers are the RENORMALIZED reading; as returned, unrenormalized, the matrix is not passive, and the "Corrected settled reading" block in this file's Coax<->MSL transition section carries that reading and its witnesses in full. Scope: cross-family transition lanes are not pursued further before 2.0 (PI decision 2026-09-20), so this over-read will not be attributed or fixed — for a validated result use the single-family extractors separately, `compute_msl_s_matrix(...)` for the microstrip line and `compute_coaxial_two_port(...)` / `compute_coaxial_line_reflection(...)` for the coax. The flux-adjudication lane is under a PI hard stop (2026-08-07). The section below is this lane's history and has NOT been re-baselined against the corrections — do not treat as a validated transition |
+| `add_coaxial_port(...)` + `add_msl_port(...)` | `compute_coax_msl_transition(...)` | `CoaxMSLTransitionResult` | **experimental, diagnostic-only** (issue #489 leg 4) — coax-to-microstrip transition, two-drive. The attempt-2 readings this row used to quote (91.4% reciprocity worst deviation, ~99% of the MSL-driven column power missing at 6/8 GHz, both from VESSL `369367252283`) were taken through three instrument defects that are now fixed: a fixture that was a short (the predeclared clearance hole was never realized, PR #804), inverted wave-role labels making `S_code = inv(S_true)` (#822), and an MSL fit window inside the port's near field (#823). Do not cite those numbers. On the corrected-label settled runs (VESSL `369367257613` / `369367257614`, PR #837, 2026-09-01) the junction is an ordinary low-loss transition: a six-face flux box closes to ≤0.2% and 91-98% of the net power crosses the junction, and ONE diagonal port renormalization `k ≈ 0.57` (flat to 1.2% over 6-10 GHz) restores reciprocity, giving `\|S21\|` 0.981/0.972/0.952 and column powers within 3.5% of unity. What is left is one named defect: the MSL side's power-wave normalization over-reads power by ~3x, measured by two instruments (the S-matrix's own reciprocity asymmetry and a Poynting flux box) — issue #838, isolated, mechanism unresolved, not fixed. Those column powers are the RENORMALIZED reading; as returned, unrenormalized, the matrix is not passive, so this lane refuses it by default (`strict_passivity=True`, raising `ValueError`) and `strict_passivity=False` returns it with a `UserWarning` instead, and the "Corrected settled reading" block in this file's Coax<->MSL transition section carries that reading and its witnesses in full. Scope: cross-family transition lanes are not pursued further before 2.0 (PI decision 2026-09-20), so this over-read will not be attributed or fixed — for a validated result use the single-family extractors separately, `compute_msl_s_matrix(...)` for the microstrip line and `compute_coaxial_two_port(...)` / `compute_coaxial_line_reflection(...)` for the coax. The flux-adjudication lane is under a PI hard stop (2026-08-07). The section below is this lane's history and has NOT been re-baselined against the corrections — do not treat as a validated transition |
 | `add_port(...)` + `add_msl_port(...)` | `compute_mixed_s_matrix(...)` | `MixedSMatrixResult` | **experimental**, diagnostic, not in the validated set — off-diagonal magnitudes from Poynting flux; internal reciprocity witness 9.0% (flux channel) vs 55% (wave channel) on the probe-fed MSL fixture; absolute \|S\| is NOT validated (no external-solver referee has been run); with `enforce_passivity=True` (default) the returned diagonal is a joint SVD-projected value — read `S_raw`/`passivity_correction` for what was measured |
 | `add_floquet_port(...)` | no documented high-level S-parameter API | none | **experimental** — broadside diagnostic helpers only; no calibrated Floquet-port result |
 | Sources, TFSF, probes, DFT planes, flux monitors | none | field, resonance, or flux results | **not a port** — no impedance or S-matrix reference plane |
@@ -362,6 +362,17 @@ record compatibility, and the assumptions needed to interpret V/I as power.
   `1.4122%` rfx / `0.3068%` openEMS, all three gates passing. This combines
   regenerated rfx data with historical run-2 openEMS fields; it does not
   establish a fresh matched-board post-#931 openEMS result.
+  **The fitted `beta` is a diagnostic and does not enter S** (pinned by
+  `tests/unit/sparams/test_msl_fitted_beta_does_not_enter_s.py`). Its reading
+  against the closed form on a two-step cell-size ladder, and what is and is not
+  claimed from it, is stated in the Microstrip-line row of
+  [`support_matrix.md`](support_matrix.md) from the records in
+  `scripts/diagnostics/msl_phase_referee_dx_ladder/` (#1147); issue #830 is
+  closed as characterized. The `0.94%` above and the ladder's `1.32 %` are not
+  the same comparison: the former is against the closed form of the board
+  openEMS realizes (substrate 300 um,
+  `regate_evidence.json::cv20.eps_eff_hammerstad_jensen_realized_board`), the
+  latter against the board rfx realizes (250 um, `…rfx_board_post_931`).
   See `validation/crossval/20_msl_phase_referee.py` (manifest entry
   `20_msl_phase_referee`), `tests/crossval/test_msl_phase_referee_header.py`, and
   `docs/design_notes/issue812_phase_identity_predeclaration.md`.
@@ -703,12 +714,36 @@ disagreement instead of demonstrating closure. That witness is independent in
 the **plane index only**: both routes integrate the same transverse window with
 the same uniform `dA` through the same flux kernel, so an area-weighting or
 shared-kernel error cancels in both ratios, and neither route sees the
-reference-plane de-embedding, which is phase-only (PR #870, `1bccdfba`). A
-separate observation from the same comparison is open as issue #873: the
-`normalize=False` extractor reports `1.825e-2` column power on an **empty**
-WR-90 guide at the coarse rung, falling about 4x per dx halving, while the flux
-lane on the same solved fields reads `3.33e-5` there — read as a discretization
-term in the V/I lane's own normalization rather than lost power, and not gated.
+reference-plane de-embedding, which is phase-only (PR #870, `1bccdfba`).
+
+**Accuracy statement for the `normalize=False` lane (issue #873, closed
+2026-09-21 as a stated accuracy, not a defect).** An empty guide can neither
+reflect nor absorb, yet on the empty WR-90 control this lane reads column power
+`1.0061` / `1.0012` / `1.0003` at `a/9` / `a/18` / `a/36` (excess `6.135e-3` /
+`1.161e-3` / `2.546e-4`, i.e. `0.027` / `0.005` / `0.001 dB`; `tests/fixtures/waveguide_chain_battery/fixture_v18_close.json`,
+`dut = "thru"`, the gated artifact), falling 5.3x and then 4.6x per `dx`
+halving. Run 1's `fixture.json` read `1.825e-2` there against `3.33e-5` on the
+flux lane, but it measured the N+1-cell port of #868 and is history. The flux
+lane's empty-guide reading is not evidence either way: on an empty guide its
+reference run IS the device run, so the number is a construction
+(`docs/design_notes/waveguide_false_lane_column_power_results.md`, "Framing
+correction to #873"). The comparisons that carry weight are the `eps_r = 4`
+slab in the same artifact, power closure `7.11e-3` on this lane against
+`1.10e-4` on the flux lane (both report-only, at the coarse rung), and the
+interior flux monitors, which put the slab's physical power imbalance at
+`6.887e-05` (`closure_witness.json`, a separate, earlier coarse-rung closure
+run; both of its routes are magnitude-only flux, so the port's modal impedance
+never enters it). The mechanism is named in
+`docs/design_notes/waveguide_driven_plane_near_field_composition_results.md`,
+measured on this same artifact: the port's transverse mode templates are
+cell-centred while `Ez` and `Hy` are node-registered in the broad-wall
+direction. Injected, that half-cell offset launches a TE20 near field at the
+driven port; read back, the same offset counts that TE20 as TE10, and the
+product is second order in `dx`. TE20's decay along the guide matches the
+attenuation constant tabulated before the run to within 1.2-2.9 %. That note's
+pre-declared decision rule came out NOT CONFIRMED because it had named TE30;
+TE20 is a re-identification. The excess is a few hundredths of a dB at nine
+cells across the guide and is not gated.
 
 Artifacts: replays `tests/oracle/test_waveguide_chain_battery.py` (run 1),
 `tests/oracle/test_waveguide_chain_battery_guide_cell_aperture.py` (run 2),
@@ -1116,8 +1151,9 @@ times the incident power; the coax-driven column reads `0.3793` / `0.3789` /
 `0.3670` on the same run, so the excess is on the MSL-driven column only. The
 returned matrix is therefore not passive: max`|S|` is `1.7046` and the shared
 passivity guard raises on this result.
-`compute_coax_msl_transition(...)` returns the matrix with a `UserWarning`;
-`strict_passivity=True` raises instead. Reciprocity worst deviation is
+`compute_coax_msl_transition(...)` refuses that matrix by default
+(`strict_passivity=True`, raising `ValueError`); `strict_passivity=False`
+returns it with a `UserWarning` instead. Reciprocity worst deviation is
 `0.6763` on pair `(0, 1)`, and both drives settle to `-128.49` / `-118.75` dB.
 A second instrument on the same run reads the same factor: the six-face Poynting
 flux box gives the MSL-side power `2.89` to `3.15` times the extractor's own

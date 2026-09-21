@@ -1,0 +1,889 @@
+{
+ "box_corrections": [
+  {
+   "box": "default 5W/4h",
+   "correction_frac": 0.0,
+   "measured_on_rung": "none",
+   "source_json": null
+  },
+  {
+   "box": "10W/8.1h",
+   "correction_frac": -0.01141720233864385,
+   "measured_on_rung": "dx=12.5 um, refine=4",
+   "source_json": "msl_quasistatic_eps_eff_box_dx12"
+  },
+  {
+   "box": "10W/8.1h",
+   "correction_frac": -0.011131841583091218,
+   "measured_on_rung": "dx=25 um, refine=4",
+   "source_json": "msl_quasistatic_eps_eff_box_dx25"
+  },
+  {
+   "box": "10W/8.2h",
+   "correction_frac": -0.011512926947423119,
+   "measured_on_rung": "dx=50 um, refine=4",
+   "source_json": "msl_quasistatic_eps_eff_convergence"
+  },
+  {
+   "box": "10W/8.2h",
+   "correction_frac": -0.011589407948120356,
+   "measured_on_rung": "dx=50 um, refine=8",
+   "source_json": "msl_quasistatic_eps_eff_convergence"
+  },
+  {
+   "box": "20W/16.2h",
+   "correction_frac": -0.01527139776243469,
+   "measured_on_rung": "dx=50 um, refine=4",
+   "source_json": "msl_quasistatic_eps_eff_convergence"
+  },
+  {
+   "box": "20W/16.3h",
+   "correction_frac": -0.015036699650801122,
+   "measured_on_rung": "dx=25 um, refine=4",
+   "source_json": "msl_quasistatic_eps_eff_box_dx25"
+  }
+ ],
+ "closed_form_eps_eff_h250um": 2.872970226316938,
+ "ladders": [
+  {
+   "labels": [
+    "dx=50 um",
+    "dx=25 um",
+    "dx=12.5 um"
+   ],
+   "name": "dx ladder (production refine = 4)",
+   "steps_um": [
+    12.5,
+    6.25,
+    3.125
+   ],
+   "values": [
+    2.779288203239614,
+    2.8448455174901883,
+    2.8836668013227
+   ]
+  },
+  {
+   "labels": [
+    "refine=4",
+    "refine=8",
+    "refine=16"
+   ],
+   "name": "internal-refinement ladder at dx = 50 um",
+   "steps_um": [
+    12.5,
+    6.25,
+    3.125
+   ],
+   "values": [
+    2.779288203239614,
+    2.85705091665469,
+    2.900927666757866
+   ]
+  }
+ ],
+ "rfx_file": "rfx/__init__.py",
+ "rows": [
+  {
+   "beta_dev_vs_closed_form_frac": 0.008581068467459874,
+   "box_correction_box": "default 5W/4h",
+   "box_correction_frac": 0.0,
+   "box_correction_measured_on_rung": "none",
+   "eps_eff_dev_vs_closed_form_frac": 0.017235771670963018,
+   "ladder": "dx ladder (production refine = 4)",
+   "ladder_rungs": [
+    "dx=50 um",
+    "dx=25 um",
+    "dx=12.5 um"
+   ],
+   "ladder_steps_dz_fine_um": [
+    12.5,
+    6.25,
+    3.125
+   ],
+   "ladder_values": [
+    2.779288203239614,
+    2.8448455174901883,
+    2.8836668013227
+   ],
+   "limit": 2.9224880851552117,
+   "measured_ratio": null,
+   "recipe": "first_order_h_ratio_2",
+   "uncorrected_limit": 2.9224880851552117
+  },
+  {
+   "beta_dev_vs_closed_form_frac": 0.002806953027196135,
+   "box_correction_box": "10W/8.1h",
+   "box_correction_frac": -0.01141720233864385,
+   "box_correction_measured_on_rung": "dx=12.5 um, refine=4",
+   "eps_eff_dev_vs_closed_form_frac": 0.005621785039689131,
+   "ladder": "dx ladder (production refine = 4)",
+   "ladder_rungs": [
+    "dx=50 um",
+    "dx=25 um",
+    "dx=12.5 um"
+   ],
+   "ladder_steps_dz_fine_um": [
+    12.5,
+    6.25,
+    3.125
+   ],
+   "ladder_values": [
+    2.779288203239614,
+    2.8448455174901883,
+    2.8836668013227
+   ],
+   "limit": 2.889121447354719,
+   "measured_ratio": null,
+   "recipe": "first_order_h_ratio_2",
+   "uncorrected_limit": 2.9224880851552117
+  },
+  {
+   "beta_dev_vs_closed_form_frac": 0.0029516759086991584,
+   "box_correction_box": "10W/8.1h",
+   "box_correction_frac": -0.011131841583091218,
+   "box_correction_measured_on_rung": "dx=25 um, refine=4",
+   "eps_eff_dev_vs_closed_form_frac": 0.005912064208068335,
+   "ladder": "dx ladder (production refine = 4)",
+   "ladder_rungs": [
+    "dx=50 um",
+    "dx=25 um",
+    "dx=12.5 um"
+   ],
+   "ladder_steps_dz_fine_um": [
+    12.5,
+    6.25,
+    3.125
+   ],
+   "ladder_values": [
+    2.779288203239614,
+    2.8448455174901883,
+    2.8836668013227
+   ],
+   "limit": 2.8899554107627923,
+   "measured_ratio": null,
+   "recipe": "first_order_h_ratio_2",
+   "uncorrected_limit": 2.9224880851552117
+  },
+  {
+   "beta_dev_vs_closed_form_frac": 0.0027584008839864893,
+   "box_correction_box": "10W/8.2h",
+   "box_correction_frac": -0.011512926947423119,
+   "box_correction_measured_on_rung": "dx=50 um, refine=4",
+   "eps_eff_dev_vs_closed_form_frac": 0.005524410543409575,
+   "ladder": "dx ladder (production refine = 4)",
+   "ladder_rungs": [
+    "dx=50 um",
+    "dx=25 um",
+    "dx=12.5 um"
+   ],
+   "ladder_steps_dz_fine_um": [
+    12.5,
+    6.25,
+    3.125
+   ],
+   "ladder_values": [
+    2.779288203239614,
+    2.8448455174901883,
+    2.8836668013227
+   ],
+   "limit": 2.888841693326105,
+   "measured_ratio": null,
+   "recipe": "first_order_h_ratio_2",
+   "uncorrected_limit": 2.9224880851552117
+  },
+  {
+   "beta_dev_vs_closed_form_frac": 0.0027196075342532655,
+   "box_correction_box": "10W/8.2h",
+   "box_correction_frac": -0.011589407948120356,
+   "box_correction_measured_on_rung": "dx=50 um, refine=8",
+   "eps_eff_dev_vs_closed_form_frac": 0.0054466113336471,
+   "ladder": "dx ladder (production refine = 4)",
+   "ladder_rungs": [
+    "dx=50 um",
+    "dx=25 um",
+    "dx=12.5 um"
+   ],
+   "ladder_steps_dz_fine_um": [
+    12.5,
+    6.25,
+    3.125
+   ],
+   "ladder_values": [
+    2.779288203239614,
+    2.8448455174901883,
+    2.8836668013227
+   ],
+   "limit": 2.888618178512827,
+   "measured_ratio": null,
+   "recipe": "first_order_h_ratio_2",
+   "uncorrected_limit": 2.9224880851552117
+  },
+  {
+   "beta_dev_vs_closed_form_frac": 0.0008502183561727161,
+   "box_correction_box": "20W/16.2h",
+   "box_correction_frac": -0.01527139776243469,
+   "box_correction_measured_on_rung": "dx=50 um, refine=4",
+   "eps_eff_dev_vs_closed_form_frac": 0.0017011595835985105,
+   "ladder": "dx ladder (production refine = 4)",
+   "ladder_rungs": [
+    "dx=50 um",
+    "dx=25 um",
+    "dx=12.5 um"
+   ],
+   "ladder_steps_dz_fine_um": [
+    12.5,
+    6.25,
+    3.125
+   ],
+   "ladder_values": [
+    2.779288203239614,
+    2.8448455174901883,
+    2.8836668013227
+   ],
+   "limit": 2.8778576071508306,
+   "measured_ratio": null,
+   "recipe": "first_order_h_ratio_2",
+   "uncorrected_limit": 2.9224880851552117
+  },
+  {
+   "beta_dev_vs_closed_form_frac": 0.0009694815019565262,
+   "box_correction_box": "20W/16.3h",
+   "box_correction_frac": -0.015036699650801122,
+   "box_correction_measured_on_rung": "dx=25 um, refine=4",
+   "eps_eff_dev_vs_closed_form_frac": 0.00193990289829582,
+   "ladder": "dx ladder (production refine = 4)",
+   "ladder_rungs": [
+    "dx=50 um",
+    "dx=25 um",
+    "dx=12.5 um"
+   ],
+   "ladder_steps_dz_fine_um": [
+    12.5,
+    6.25,
+    3.125
+   ],
+   "ladder_values": [
+    2.779288203239614,
+    2.8448455174901883,
+    2.8836668013227
+   ],
+   "limit": 2.878543509585688,
+   "measured_ratio": null,
+   "recipe": "first_order_h_ratio_2",
+   "uncorrected_limit": 2.9224880851552117
+  },
+  {
+   "beta_dev_vs_closed_form_frac": 0.011604543102838427,
+   "box_correction_box": "default 5W/4h",
+   "box_correction_frac": 0.0,
+   "box_correction_measured_on_rung": "none",
+   "eps_eff_dev_vs_closed_form_frac": 0.023343751626302645,
+   "ladder": "dx ladder (production refine = 4)",
+   "ladder_rungs": [
+    "dx=50 um",
+    "dx=25 um",
+    "dx=12.5 um"
+   ],
+   "ladder_steps_dz_fine_um": [
+    12.5,
+    6.25,
+    3.125
+   ],
+   "ladder_values": [
+    2.779288203239614,
+    2.8448455174901883,
+    2.8836668013227
+   ],
+   "limit": 2.9400361297098434,
+   "measured_ratio": 0.5921731888546896,
+   "recipe": "geometric_measured_ratio",
+   "uncorrected_limit": 2.9400361297098434
+  },
+  {
+   "beta_dev_vs_closed_form_frac": 0.005813118303792164,
+   "box_correction_box": "10W/8.1h",
+   "box_correction_frac": -0.01141720233864385,
+   "box_correction_measured_on_rung": "dx=12.5 um, refine=4",
+   "eps_eff_dev_vs_closed_form_frac": 0.011660028951998358,
+   "ladder": "dx ladder (production refine = 4)",
+   "ladder_rungs": [
+    "dx=50 um",
+    "dx=25 um",
+    "dx=12.5 um"
+   ],
+   "ladder_steps_dz_fine_um": [
+    12.5,
+    6.25,
+    3.125
+   ],
+   "ladder_values": [
+    2.779288203239614,
+    2.8448455174901883,
+    2.8836668013227
+   ],
+   "limit": 2.9064691423340228,
+   "measured_ratio": 0.5921731888546896,
+   "recipe": "geometric_measured_ratio",
+   "uncorrected_limit": 2.9400361297098434
+  },
+  {
+   "beta_dev_vs_closed_form_frac": 0.005958275028419058,
+   "box_correction_box": "10W/8.1h",
+   "box_correction_frac": -0.011131841583091218,
+   "box_correction_measured_on_rung": "dx=25 um, refine=4",
+   "eps_eff_dev_vs_closed_form_frac": 0.011952051098152339,
+   "ladder": "dx ladder (production refine = 4)",
+   "ladder_rungs": [
+    "dx=50 um",
+    "dx=25 um",
+    "dx=12.5 um"
+   ],
+   "ladder_steps_dz_fine_um": [
+    12.5,
+    6.25,
+    3.125
+   ],
+   "ladder_values": [
+    2.779288203239614,
+    2.8448455174901883,
+    2.8836668013227
+   ],
+   "limit": 2.9073081132653487,
+   "measured_ratio": 0.5921731888546896,
+   "recipe": "geometric_measured_ratio",
+   "uncorrected_limit": 2.9400361297098434
+  },
+  {
+   "beta_dev_vs_closed_form_frac": 0.0057644206133598,
+   "box_correction_box": "10W/8.2h",
+   "box_correction_frac": -0.011512926947423119,
+   "box_correction_measured_on_rung": "dx=50 um, refine=4",
+   "eps_eff_dev_vs_closed_form_frac": 0.011562069771727135,
+   "ladder": "dx ladder (production refine = 4)",
+   "ladder_rungs": [
+    "dx=50 um",
+    "dx=25 um",
+    "dx=12.5 um"
+   ],
+   "ladder_steps_dz_fine_um": [
+    12.5,
+    6.25,
+    3.125
+   ],
+   "ladder_values": [
+    2.779288203239614,
+    2.8448455174901883,
+    2.8836668013227
+   ],
+   "limit": 2.9061877085257093,
+   "measured_ratio": 0.5921731888546896,
+   "recipe": "geometric_measured_ratio",
+   "uncorrected_limit": 2.9400361297098434
+  },
+  {
+   "beta_dev_vs_closed_form_frac": 0.005725510970834291,
+   "box_correction_box": "10W/8.2h",
+   "box_correction_frac": -0.011589407948120356,
+   "box_correction_measured_on_rung": "dx=50 um, refine=8",
+   "eps_eff_dev_vs_closed_form_frac": 0.011483803417545513,
+   "ladder": "dx ladder (production refine = 4)",
+   "ladder_rungs": [
+    "dx=50 um",
+    "dx=25 um",
+    "dx=12.5 um"
+   ],
+   "ladder_steps_dz_fine_um": [
+    12.5,
+    6.25,
+    3.125
+   ],
+   "ladder_values": [
+    2.779288203239614,
+    2.8448455174901883,
+    2.8836668013227
+   ],
+   "limit": 2.9059628516204232,
+   "measured_ratio": 0.5921731888546896,
+   "recipe": "geometric_measured_ratio",
+   "uncorrected_limit": 2.9400361297098434
+  },
+  {
+   "beta_dev_vs_closed_form_frac": 0.0038505178299781395,
+   "box_correction_box": "20W/16.2h",
+   "box_correction_frac": -0.01527139776243469,
+   "box_correction_measured_on_rung": "dx=50 um, refine=4",
+   "eps_eff_dev_vs_closed_form_frac": 0.0077158621475152955,
+   "ladder": "dx ladder (production refine = 4)",
+   "ladder_rungs": [
+    "dx=50 um",
+    "dx=25 um",
+    "dx=12.5 um"
+   ],
+   "ladder_steps_dz_fine_um": [
+    12.5,
+    6.25,
+    3.125
+   ],
+   "ladder_values": [
+    2.779288203239614,
+    2.8448455174901883,
+    2.8836668013227
+   ],
+   "limit": 2.8951376685371155,
+   "measured_ratio": 0.5921731888546896,
+   "recipe": "geometric_measured_ratio",
+   "uncorrected_limit": 2.9400361297098434
+  },
+  {
+   "beta_dev_vs_closed_form_frac": 0.0039701384969446085,
+   "box_correction_box": "20W/16.3h",
+   "box_correction_frac": -0.015036699650801122,
+   "box_correction_measured_on_rung": "dx=25 um, refine=4",
+   "eps_eff_dev_vs_closed_form_frac": 0.007956038993574,
+   "ladder": "dx ladder (production refine = 4)",
+   "ladder_rungs": [
+    "dx=50 um",
+    "dx=25 um",
+    "dx=12.5 um"
+   ],
+   "ladder_steps_dz_fine_um": [
+    12.5,
+    6.25,
+    3.125
+   ],
+   "ladder_values": [
+    2.779288203239614,
+    2.8448455174901883,
+    2.8836668013227
+   ],
+   "limit": 2.895827689464893,
+   "measured_ratio": 0.5921731888546896,
+   "recipe": "geometric_measured_ratio",
+   "uncorrected_limit": 2.9400361297098434
+  },
+  {
+   "beta_dev_vs_closed_form_frac": 0.012424544375529756,
+   "box_correction_box": "default 5W/4h",
+   "box_correction_frac": 0.0,
+   "box_correction_measured_on_rung": "none",
+   "eps_eff_dev_vs_closed_form_frac": 0.02500345805399906,
+   "ladder": "internal-refinement ladder at dx = 50 um",
+   "ladder_rungs": [
+    "refine=4",
+    "refine=8",
+    "refine=16"
+   ],
+   "ladder_steps_dz_fine_um": [
+    12.5,
+    6.25,
+    3.125
+   ],
+   "ladder_values": [
+    2.779288203239614,
+    2.85705091665469,
+    2.900927666757866
+   ],
+   "limit": 2.944804416861042,
+   "measured_ratio": null,
+   "recipe": "first_order_h_ratio_2",
+   "uncorrected_limit": 2.944804416861042
+  },
+  {
+   "beta_dev_vs_closed_form_frac": 0.006628425078284206,
+   "box_correction_box": "10W/8.1h",
+   "box_correction_frac": -0.01141720233864385,
+   "box_correction_measured_on_rung": "dx=12.5 um, refine=4",
+   "eps_eff_dev_vs_closed_form_frac": 0.013300786175586943,
+   "ladder": "internal-refinement ladder at dx = 50 um",
+   "ladder_rungs": [
+    "refine=4",
+    "refine=8",
+    "refine=16"
+   ],
+   "ladder_steps_dz_fine_um": [
+    12.5,
+    6.25,
+    3.125
+   ],
+   "ladder_values": [
+    2.779288203239614,
+    2.85705091665469,
+    2.900927666757866
+   ],
+   "limit": 2.9111829889860075,
+   "measured_ratio": null,
+   "recipe": "first_order_h_ratio_2",
+   "uncorrected_limit": 2.944804416861042
+  },
+  {
+   "beta_dev_vs_closed_form_frac": 0.00677369946618156,
+   "box_correction_box": "10W/8.1h",
+   "box_correction_frac": -0.011131841583091218,
+   "box_correction_measured_on_rung": "dx=25 um, refine=4",
+   "eps_eff_dev_vs_closed_form_frac": 0.01359328193682141,
+   "ladder": "internal-refinement ladder at dx = 50 um",
+   "ladder_rungs": [
+    "refine=4",
+    "refine=8",
+    "refine=16"
+   ],
+   "ladder_steps_dz_fine_um": [
+    12.5,
+    6.25,
+    3.125
+   ],
+   "ladder_values": [
+    2.779288203239614,
+    2.85705091665469,
+    2.900927666757866
+   ],
+   "limit": 2.9120233205993578,
+   "measured_ratio": null,
+   "recipe": "first_order_h_ratio_2",
+   "uncorrected_limit": 2.944804416861042
+  },
+  {
+   "beta_dev_vs_closed_form_frac": 0.006579687913762289,
+   "box_correction_box": "10W/8.2h",
+   "box_correction_frac": -0.011512926947423119,
+   "box_correction_measured_on_rung": "dx=50 um, refine=4",
+   "eps_eff_dev_vs_closed_form_frac": 0.013202668120567251,
+   "ladder": "internal-refinement ladder at dx = 50 um",
+   "ladder_rungs": [
+    "refine=4",
+    "refine=8",
+    "refine=16"
+   ],
+   "ladder_steps_dz_fine_um": [
+    12.5,
+    6.25,
+    3.125
+   ],
+   "ladder_values": [
+    2.779288203239614,
+    2.85705091665469,
+    2.900927666757866
+   ],
+   "limit": 2.910901098735272,
+   "measured_ratio": null,
+   "recipe": "first_order_h_ratio_2",
+   "uncorrected_limit": 2.944804416861042
+  },
+  {
+   "beta_dev_vs_closed_form_frac": 0.006540746731287239,
+   "box_correction_box": "10W/8.2h",
+   "box_correction_frac": -0.011589407948120356,
+   "box_correction_measured_on_rung": "dx=50 um, refine=8",
+   "eps_eff_dev_vs_closed_form_frac": 0.013124274830377258,
+   "ladder": "internal-refinement ladder at dx = 50 um",
+   "ladder_rungs": [
+    "refine=4",
+    "refine=8",
+    "refine=16"
+   ],
+   "ladder_steps_dz_fine_um": [
+    12.5,
+    6.25,
+    3.125
+   ],
+   "ladder_values": [
+    2.779288203239614,
+    2.85705091665469,
+    2.900927666757866
+   ],
+   "limit": 2.910675877146613,
+   "measured_ratio": null,
+   "recipe": "first_order_h_ratio_2",
+   "uncorrected_limit": 2.944804416861042
+  },
+  {
+   "beta_dev_vs_closed_form_frac": 0.004664233730944156,
+   "box_correction_box": "20W/16.2h",
+   "box_correction_frac": -0.01527139776243469,
+   "box_correction_measured_on_rung": "dx=50 um, refine=4",
+   "eps_eff_dev_vs_closed_form_frac": 0.009350222538185404,
+   "ladder": "internal-refinement ladder at dx = 50 um",
+   "ladder_rungs": [
+    "refine=4",
+    "refine=8",
+    "refine=16"
+   ],
+   "ladder_steps_dz_fine_um": [
+    12.5,
+    6.25,
+    3.125
+   ],
+   "ladder_values": [
+    2.779288203239614,
+    2.85705091665469,
+    2.900927666757866
+   ],
+   "limit": 2.8998331372785824,
+   "measured_ratio": null,
+   "recipe": "first_order_h_ratio_2",
+   "uncorrected_limit": 2.944804416861042
+  },
+  {
+   "beta_dev_vs_closed_form_frac": 0.004783951361788219,
+   "box_correction_box": "20W/16.3h",
+   "box_correction_frac": -0.015036699650801122,
+   "box_correction_measured_on_rung": "dx=25 um, refine=4",
+   "eps_eff_dev_vs_closed_form_frac": 0.009590788914208614,
+   "ladder": "internal-refinement ladder at dx = 50 um",
+   "ladder_rungs": [
+    "refine=4",
+    "refine=8",
+    "refine=16"
+   ],
+   "ladder_steps_dz_fine_um": [
+    12.5,
+    6.25,
+    3.125
+   ],
+   "ladder_values": [
+    2.779288203239614,
+    2.85705091665469,
+    2.900927666757866
+   ],
+   "limit": 2.90052427731435,
+   "measured_ratio": null,
+   "recipe": "first_order_h_ratio_2",
+   "uncorrected_limit": 2.944804416861042
+  },
+  {
+   "beta_dev_vs_closed_form_frac": 0.014645880833134672,
+   "box_correction_box": "default 5W/4h",
+   "box_correction_frac": 0.0,
+   "box_correction_measured_on_rung": "none",
+   "eps_eff_dev_vs_closed_form_frac": 0.029506263491647866,
+   "ladder": "internal-refinement ladder at dx = 50 um",
+   "ladder_rungs": [
+    "refine=4",
+    "refine=8",
+    "refine=16"
+   ],
+   "ladder_steps_dz_fine_um": [
+    12.5,
+    6.25,
+    3.125
+   ],
+   "ladder_values": [
+    2.779288203239614,
+    2.85705091665469,
+    2.900927666757866
+   ],
+   "limit": 2.9577408428183047,
+   "measured_ratio": 0.5642389286106038,
+   "recipe": "geometric_measured_ratio",
+   "uncorrected_limit": 2.9577408428183047
+  },
+  {
+   "beta_dev_vs_closed_form_frac": 0.008837044409285344,
+   "box_correction_box": "10W/8.1h",
+   "box_correction_frac": -0.01141720233864385,
+   "box_correction_measured_on_rung": "dx=12.5 um, refine=4",
+   "eps_eff_dev_vs_closed_form_frac": 0.01775218217246244,
+   "ladder": "internal-refinement ladder at dx = 50 um",
+   "ladder_rungs": [
+    "refine=4",
+    "refine=8",
+    "refine=16"
+   ],
+   "ladder_steps_dz_fine_um": [
+    12.5,
+    6.25,
+    3.125
+   ],
+   "ladder_values": [
+    2.779288203239614,
+    2.85705091665469,
+    2.900927666757866
+   ],
+   "limit": 2.923971717150577,
+   "measured_ratio": 0.5642389286106038,
+   "recipe": "geometric_measured_ratio",
+   "uncorrected_limit": 2.9577408428183047
+  },
+  {
+   "beta_dev_vs_closed_form_frac": 0.008982637540239535,
+   "box_correction_box": "10W/8.1h",
+   "box_correction_frac": -0.011131841583091218,
+   "box_correction_measured_on_rung": "dx=25 um, refine=4",
+   "eps_eff_dev_vs_closed_form_frac": 0.018045962857658582,
+   "ladder": "internal-refinement ladder at dx = 50 um",
+   "ladder_rungs": [
+    "refine=4",
+    "refine=8",
+    "refine=16"
+   ],
+   "ladder_steps_dz_fine_um": [
+    12.5,
+    6.25,
+    3.125
+   ],
+   "ladder_values": [
+    2.779288203239614,
+    2.85705091665469,
+    2.900927666757866
+   ],
+   "limit": 2.9248157403122126,
+   "measured_ratio": 0.5642389286106038,
+   "recipe": "geometric_measured_ratio",
+   "uncorrected_limit": 2.9577408428183047
+  },
+  {
+   "beta_dev_vs_closed_form_frac": 0.008788200311717453,
+   "box_correction_box": "10W/8.2h",
+   "box_correction_frac": -0.011512926947423119,
+   "box_correction_measured_on_rung": "dx=50 um, refine=4",
+   "eps_eff_dev_vs_closed_form_frac": 0.01765363308815382,
+   "ladder": "internal-refinement ladder at dx = 50 um",
+   "ladder_rungs": [
+    "refine=4",
+    "refine=8",
+    "refine=16"
+   ],
+   "ladder_steps_dz_fine_um": [
+    12.5,
+    6.25,
+    3.125
+   ],
+   "ladder_values": [
+    2.779288203239614,
+    2.85705091665469,
+    2.900927666757866
+   ],
+   "limit": 2.9236885885655277,
+   "measured_ratio": 0.5642389286106038,
+   "recipe": "geometric_measured_ratio",
+   "uncorrected_limit": 2.9577408428183047
+  },
+  {
+   "beta_dev_vs_closed_form_frac": 0.00874917368932615,
+   "box_correction_box": "10W/8.2h",
+   "box_correction_frac": -0.011589407948120356,
+   "box_correction_measured_on_rung": "dx=50 um, refine=8",
+   "eps_eff_dev_vs_closed_form_frac": 0.017574895418898118,
+   "ladder": "internal-refinement ladder at dx = 50 um",
+   "ladder_rungs": [
+    "refine=4",
+    "refine=8",
+    "refine=16"
+   ],
+   "ladder_steps_dz_fine_um": [
+    12.5,
+    6.25,
+    3.125
+   ],
+   "ladder_values": [
+    2.779288203239614,
+    2.85705091665469,
+    2.900927666757866
+   ],
+   "limit": 2.923462377586066,
+   "measured_ratio": 0.5642389286106038,
+   "recipe": "geometric_measured_ratio",
+   "uncorrected_limit": 2.9577408428183047
+  },
+  {
+   "beta_dev_vs_closed_form_frac": 0.006868543476728606,
+   "box_correction_box": "20W/16.2h",
+   "box_correction_frac": -0.01527139776243469,
+   "box_correction_measured_on_rung": "dx=50 um, refine=4",
+   "eps_eff_dev_vs_closed_form_frac": 0.013784263842949063,
+   "ladder": "internal-refinement ladder at dx = 50 um",
+   "ladder_rungs": [
+    "refine=4",
+    "refine=8",
+    "refine=16"
+   ],
+   "ladder_steps_dz_fine_um": [
+    12.5,
+    6.25,
+    3.125
+   ],
+   "ladder_values": [
+    2.779288203239614,
+    2.85705091665469,
+    2.900927666757866
+   ],
+   "limit": 2.9125720059294276,
+   "measured_ratio": 0.5642389286106038,
+   "recipe": "geometric_measured_ratio",
+   "uncorrected_limit": 2.9577408428183047
+  },
+  {
+   "beta_dev_vs_closed_form_frac": 0.006988523777160749,
+   "box_correction_box": "20W/16.3h",
+   "box_correction_frac": -0.015036699650801122,
+   "box_correction_measured_on_rung": "dx=25 um, refine=4",
+   "eps_eff_dev_vs_closed_form_frac": 0.014025887018905392,
+   "ladder": "internal-refinement ladder at dx = 50 um",
+   "ladder_rungs": [
+    "refine=4",
+    "refine=8",
+    "refine=16"
+   ],
+   "ladder_steps_dz_fine_um": [
+    12.5,
+    6.25,
+    3.125
+   ],
+   "ladder_values": [
+    2.779288203239614,
+    2.85705091665469,
+    2.900927666757866
+   ],
+   "limit": 2.9132661821199384,
+   "measured_ratio": 0.5642389286106038,
+   "recipe": "geometric_measured_ratio",
+   "uncorrected_limit": 2.9577408428183047
+  }
+ ],
+ "span_all_box_corrections": {
+  "beta_dev_frac": [
+   0.0008502183561727161,
+   0.008982637540239535
+  ],
+  "eps_eff_dev_frac": [
+   0.0017011595835985105,
+   0.018045962857658582
+  ],
+  "n_rows": 24
+ },
+ "span_box_corrections_of_the_recomputed_sets": {
+  "beta_dev_frac": [
+   0.0008502183561727161,
+   0.008837044409285344
+  ],
+  "eps_eff_dev_frac": [
+   0.0017011595835985105,
+   0.01775218217246244
+  ],
+  "n_rows": 8
+ },
+ "span_box_corrections_on_dx50_refine4": {
+  "beta_dev_frac": [
+   0.0008502183561727161,
+   0.008788200311717453
+  ],
+  "eps_eff_dev_frac": [
+   0.0017011595835985105,
+   0.01765363308815382
+  ],
+  "n_rows": 8
+ },
+ "span_uncorrected": {
+  "beta_dev_frac": [
+   0.008581068467459874,
+   0.014645880833134672
+  ],
+  "eps_eff_dev_frac": [
+   0.017235771670963018,
+   0.029506263491647866
+  ],
+  "n_rows": 4
+ },
+ "support_threshold_eps_eff": 2.916064779711692
+}

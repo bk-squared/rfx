@@ -333,12 +333,11 @@ GATE_GROUPS: tuple[GateGroup, ...] = (
     GateGroup(
         group_id="slow_nonuniform_subgrid_subpixel",
         description=(
-            "Slow nonuniform, subgrid, and subpixel convergence/crossval "
-            "checks."
+            "Slow nonuniform and subpixel convergence checks (the subgrid "
+            "crossval file this group also ran was removed under #1127)."
         ),
         tests=(
             "tests/oracle/test_nonuniform_convergence.py",
-            "tests/unit/subgrid/test_subgrid_crossval.py",
             "tests/unit/geometry/test_subpixel.py",
             "tests/unit/geometry/test_subpixel_pec.py",
         ),
@@ -355,23 +354,7 @@ GATE_GROUPS: tuple[GateGroup, ...] = (
             {
                 "claim": "SBP-SAT/subgrid RMS accuracy promotion",
                 "evidence_level": "E5",
-                "reason": "strict-xfailed until the subgrid crossval ladder is restored",
-            },
-        ),
-    ),
-    GateGroup(
-        group_id="slow_sbp_sat",
-        description="Slow SBP-SAT stability and energy-conservation checks.",
-        tests=(
-            "tests/unit/subgrid/test_sbp_sat.py",
-        ),
-        pytest_args=("-m", "slow"),
-        claim_level="E1",
-        validated_claims=(
-            {
-                "claim": "slow SBP-SAT stability/energy regression gate",
-                "evidence_level": "E1",
-                "artifact": "slow_sbp_sat result JSON",
+                "reason": "not pursued: the subgrid crossval ladder and its tests were removed under #1127 (the SBP-SAT prototype is not developed)",
             },
         ),
     ),
