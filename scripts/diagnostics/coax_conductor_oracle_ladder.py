@@ -313,6 +313,11 @@ def main() -> int:
     ap.add_argument("--load-ohm", type=float, default=None)
     ap.add_argument("--out", required=True)
     ap.add_argument("--run-id", default=None)
+    ap.add_argument("--record-units", type=float, default=None,
+                    help="one-way traversals of the z extent to record; the\n"
+                         "default is the battery's 12. A finer mesh leaves the\n"
+                         "box less settled at the same PHYSICAL record, so this\n"
+                         "is how that is measured rather than argued.")
     ap.add_argument("--assemble", default=None,
                     help="merge every ladder_*.json under this directory into "
                          "the single committed record written to --out")
@@ -320,6 +325,9 @@ def main() -> int:
 
     if args.assemble:
         return assemble(Path(args.assemble), Path(args.out))
+    global RECORD_UNITS
+    if args.record_units is not None:
+        RECORD_UNITS = float(args.record_units)
     if args.board is None or args.rung is None:
         raise SystemExit("--board and --rung are required unless --assemble")
 
