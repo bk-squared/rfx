@@ -40,6 +40,9 @@ from rfx import (
 # R/L/C component in the circuit -> sim.add_lumped_rlc(...)
 
 PORT_POSITION = (9.3e-3, 9.3e-3, 9.3e-3)
+# One cell along x from the feed — see build_generic_port_demo() for why the
+# component is not co-located with it.
+RLC_POSITION = (9.3e-3 + 0.020 / 15, 9.3e-3, 9.3e-3)
 S11_FREQS = np.asarray([4.5e9, 5.0e9, 5.5e9], dtype=np.float32)
 S11_STEPS = 600
 
@@ -61,13 +64,21 @@ def build_generic_port_demo(*, add_component: bool) -> Simulation:
     )
     if add_component:
         # add_lumped_rlc() represents a circuit component; it is not another
-        # port.  Co-locating it with this feed makes its effect on S11 easy to
-        # see.  Two non-zero values select the full series RLC update.
+        # port.  Two non-zero values select the full series RLC update.
+        #
+        # It sits ONE CELL from the feed, not on it.  A driven port reads S11
+        # from the V/I pair at its own cell, where the current is what leaves
+        # that cell into the surrounding field.  A component inside the feed
+        # cell is in parallel with the source rather than in the network the
+        # port measures, so it changes the drive level and not S11: measured
+        # here, co-located moves max |S11| by 0.00000 and one cell away by
+        # 0.00868.  The component is in the model either way — it changes the
+        # fields — but only the second placement is something S11 can show.
         sim.add_lumped_rlc(
-            PORT_POSITION,
+            RLC_POSITION,
             component="ez",
-            R=50.0,
-            C=0.05e-12,
+            R=500.0,
+            C=0.20e-12,
             topology="series",
         )
     return sim
