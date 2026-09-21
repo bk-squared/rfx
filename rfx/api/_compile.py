@@ -290,14 +290,16 @@ class _CompileMixin:
         _check_pad_fill = (include_cpml_pad_extension
                            and self._boundary in ("cpml", "upml")
                            and self._cpml_layers > 0)
-        from rfx.geometry.smoothing import continued_conductor_shape
+        from rfx.geometry.smoothing import continued_conductor_shape, warn_unextendable_shapes
+        conductor_findings = []
 
         for entry in self._geometry:
             mat = self._resolve_material(entry.material_name)
             mask = entry.shape.mask(grid)
 
             if mat.sigma >= self._PEC_SIGMA_THRESHOLD:
-                solved_shape = continued_conductor_shape(self, grid, entry.shape)
+                solved_shape = continued_conductor_shape(
+                    self, grid, entry.shape, unextendable=conductor_findings)
                 # True PEC (#931): volume cells into pec_mask (centre
                 # sampled, §1.1); a zero-thickness Box is a sheet; a
                 # sub-cell PolylineWire is a filament. eps/sigma stay at
@@ -419,7 +421,8 @@ class _CompileMixin:
         # ``include_thin_conductors`` in this method's docstring (#642).
         if include_thin_conductors:
             for tc in self._thin_conductors:
-                tc = replace(tc, shape=continued_conductor_shape(self, grid, tc.shape))
+                tc = replace(tc, shape=continued_conductor_shape(
+                    self, grid, tc.shape, unextendable=conductor_findings))
                 materials, pec_mask = apply_thin_conductor(
                     grid, tc, materials, pec_mask=pec_mask,
                     sheet_specs=sheet_specs, sheets=_pec_sheets)
@@ -520,6 +523,7 @@ class _CompileMixin:
                                 lane="uniform")
         from rfx.geometry.rasterize_grid import refuse_vaporized_sheets as _rvs
         _rvs(_pec_sheets, lane="uniform", periodic=self._periodic_flags())
+        warn_unextendable_shapes(conductor_findings)
         return materials, debye_spec, lorentz_spec, pec_mask if has_pec else None, pec_shapes, boundary_pec_shapes, kerr_chi3
 
     @staticmethod

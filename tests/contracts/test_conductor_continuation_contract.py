@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 import jax
+import numpy as np
 import pytest
 
 # Importable on its own, not only after a sibling module has put tests/ on the path.
@@ -15,6 +16,23 @@ CASES = [(path, builder, variant)
          for path, entry in sorted(lib.CLASSIFICATION.items()) if entry.kind == "audited"
          for builder in entry.builders for variant in builder.variants]
 
+# Entry indices in the committed drawings, not a port-classification algorithm.
+HELD_FACES = {
+    "validation/crossval/06b_msl_notch_filter_uniform.py": [(1, "x-lo"), (1, "x-hi")],
+    "validation/crossval/07_sheen_lpf.py": [(1, "x-lo"), (3, "x-hi")],
+    "validation/tmtt_paper/msl_stub_notch_tuning.py": [(1, "x-lo"), (1, "x-hi")],
+}
+
+
+def _assert_empty_sheet_faces(grid, arrays, rows):
+    for sheet_index, face in rows:
+        axis = "xyz".index(face[0])
+        pad = getattr(grid, "pad_"+face.replace("-", "_"))
+        assert pad > 0
+        footprint = arrays[f"sheet_{sheet_index}"]
+        layers = range(pad) if face.endswith("lo") else range(grid.shape[axis]-pad, grid.shape[axis])
+        assert not np.take(footprint, list(layers), axis=axis).any(), (sheet_index, face)
+
 
 @pytest.mark.parametrize("path,builder,variant", CASES,
                          ids=[f"{p}:{b.fn}:{v.label}" for p, b, v in CASES])
@@ -25,8 +43,11 @@ def test_absorbing_columns_equal_the_face(path, builder, variant):
         sim = result if builder.result_index is None else result[builder.result_index]
         try:
             grid, arrays, poles, nodes = assembled_arrays(sim)
-            bad, _ = violations(sim, grid, arrays, poles, nodes)
+            rows = HELD_FACES.get(path, ())
+            bad, _ = violations(sim, grid, arrays, poles, nodes, held_faces=rows)
             assert not bad, bad
+            # These three drawings put the dielectric first, then PEC sheets.
+            _assert_empty_sheet_faces(grid, arrays, [(i-1, face) for i, face in rows])
         finally:
             jax.clear_caches()
 
@@ -76,7 +97,8 @@ def test_port_exception_is_only_the_terminal_entry():
     sim.add_port((4., 2., 0.), component="ez", extent=3.)
     sim.add(Box((.1, 5., 3.), (7.9, 7., 5.)), material="pec")
     grid, arrays, poles, nodes = assembled_arrays(sim)
-    bad, exceptions = violations(sim, grid, arrays, poles, nodes)
+    rows = [(0, "x-lo"), (0, "x-hi")]
+    bad, exceptions = violations(sim, grid, arrays, poles, nodes, held_faces=rows)
     assert not bad, bad
     assert {item[2] for item in exceptions} == {"port-terminal:pec"}
     assert arrays["sheet_0"][2].any()
@@ -87,5 +109,93 @@ def test_port_exception_is_only_the_terminal_entry():
     occupied = np.argwhere(arrays["pec_mask"][0])
     j, k = occupied[0]
     arrays["pec_mask"][0, j, k] = False
-    bad, _ = violations(sim, grid, arrays, poles, nodes)
+    _assert_empty_sheet_faces(grid, arrays, rows)
+    bad, _ = violations(sim, grid, arrays, poles, nodes, held_faces=rows)
     assert any(b["array"] == "pec_mask" and b["differences"] == 1 for b in bad)
+
+
+def fed_patch(kind="wire"):
+    from rfx import Box
+    module = lib.load_module("tests/oracle/test_lossless_open_domain_ringdown_does_not_grow.py")
+    sim = module._build(n=2, pad_h=10, cpml=4)
+    ground, patch = sim._geometry[0].shape, sim._geometry[2].shape
+    x, y = [(lo+hi)/2 for lo, hi in zip(patch.corner_lo[:2], patch.corner_hi[:2])]
+    z = ground.corner_hi[2]
+    top = patch.corner_lo[2]
+    if kind == "thin":
+        sim._geometry.pop(2)
+        sim.add_thin_conductor(Box((*patch.corner_lo[:2], top),
+                                   (*patch.corner_hi[:2], top)),
+                               sigma_bulk=5.8e7, thickness=1e-6)
+    if kind == "nu":
+        sim._dz_profile = np.full(32, module.H/2)
+    if kind == "coax":
+        sim.add_coaxial_port((x, y, z), face="bottom", pin_length=top-z)
+    elif kind == "lumped":
+        # The one-cell lump touches the ground; the two-cell substrate and
+        # patch stay as declared in the oracle.
+        sim.add_port((x, y, z), component="ez")
+    else:
+        sim.add_port((x, y, z), component="ez", extent=top-z)
+    return sim
+
+
+@pytest.mark.parametrize("kind", ["wire", "lumped", "coax", "nu", "thin"])
+def test_fed_patch_ground_fills_all_lateral_absorbers(kind):
+    sim = fed_patch(kind)
+    try:
+        grid, arrays, poles, nodes = assembled_arrays(sim, include_smoothed=False)
+        # Literal cell layer z=5h .. 5h+dx in the unchanged n=2 drawing.
+        k = grid.pad_z_lo + 10
+        cells = arrays["pec_mask"]
+        assert cells[:-1, :-1, k].all()
+        bad, exceptions = violations(sim, grid, arrays, poles, nodes)
+        assert not exceptions
+        assert not bad, bad
+    finally:
+        jax.clear_caches()
+
+
+def test_wire_fed_line_strip_empty_and_ground_full():
+    from rfx import Box, Simulation
+    sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
+                     boundary="cpml", cpml_layers=2)
+    sim.add(Box((0., 0., 1.), (8., 8., 1.)), material="pec")
+    sim.add(Box((0., 3., 4.), (8., 5., 4.)), material="pec")
+    sim.add_port((2., 4., 1.), component="ez", extent=3.)
+    sim.add_port((6., 4., 1.), component="ez", extent=3.)
+    grid, arrays, poles, nodes = assembled_arrays(sim)
+    assert arrays["sheet_0"][:, :, 3].all()
+    rows = [(1, "x-lo"), (1, "x-hi")]
+    _assert_empty_sheet_faces(grid, arrays, rows)
+    bad, _ = violations(sim, grid, arrays, poles, nodes, held_faces=rows)
+    assert not bad, bad
+
+
+def test_terminal_one_cell_above_ground_does_not_hold_it():
+    from rfx import Box, Simulation
+    sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
+                     boundary="cpml", cpml_layers=2, pec_faces={"z_hi"})
+    sim.add(Box((0., 0., 2.), (8., 8., 2.)), material="pec")
+    sim.add_port((4., 4., 3.), component="ez", extent=5.)
+    grid, arrays, poles, nodes = assembled_arrays(sim)
+    assert arrays["sheet_0"][:, :, 4].all()
+    bad, exceptions = violations(sim, grid, arrays, poles, nodes)
+    assert not exceptions
+    assert not bad, bad
+
+
+def test_port_pair_holds_only_the_face_both_conductors_reach():
+    from rfx import Box, Simulation
+    sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
+                     boundary="cpml", cpml_layers=2)
+    sim.add(Box((0., 0., 1.), (4., 8., 1.)), material="pec")
+    sim.add(Box((0., 3., 4.), (8., 5., 4.)), material="pec")
+    sim.add_port((2., 4., 1.), component="ez", extent=3.)
+    grid, arrays, poles, nodes = assembled_arrays(sim)
+    rows = [(1, "x-lo")]
+    _assert_empty_sheet_faces(grid, arrays, rows)
+    assert arrays["sheet_1"][-2, 5:8, 6].all()
+    assert arrays["sheet_0"][0, :, 3].all()
+    bad, _ = violations(sim, grid, arrays, poles, nodes, held_faces=rows)
+    assert not bad, bad

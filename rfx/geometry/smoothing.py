@@ -452,6 +452,8 @@ def extend_shapes_into_cpml_pad(
     *,
     declared_domain=None,
     occupied_faces=None,
+    skip_faces=(),
+    conductor=False,
 ) -> tuple[list[tuple[Shape, float]], list["UnextendableShape"]]:
     """Continue boundary-touching shapes out through the absorber pads.
 
@@ -476,6 +478,11 @@ def extend_shapes_into_cpml_pad(
         (reflector / periodic / no absorber) and is never continued, which is
         how per-face ``BoundarySpec`` allocation reaches this function without
         being re-derived here.
+    skip_faces : collection of (axis, side)
+        Faces held at their declared bounds by the conductor port-pair rule.
+    conductor : bool
+        Keep a conducting Box's zero-extent normal axis unchanged. Dielectric
+        Boxes retain their existing continuation along all reached axes.
 
     Returns
     -------
@@ -508,7 +515,7 @@ def extend_shapes_into_cpml_pad(
         current = shape
         for axis in range(3):
             # A sheet continues in its plane; its normal remains a plane.
-            if isinstance(shape, Box) and bbox_lo[axis] == bbox_hi[axis]:
+            if conductor and isinstance(shape, Box) and bbox_lo[axis] == bbox_hi[axis]:
                 continue
             nodes = node_coords[axis]
             # PER AXIS, not per run. A mesh-as-design-variable profile makes
@@ -524,6 +531,8 @@ def extend_shapes_into_cpml_pad(
             cell_lo, cell_hi = _axis_cells(nodes)
             for side, pad, cell in (("lo", int(pads[axis][0]), cell_lo),
                                     ("hi", int(pads[axis][1]), cell_hi)):
+                if (axis, side) in skip_faces:
+                    continue
                 if pad <= 0 or cell <= 0.0 or n < 2:
                     continue
                 if side == "lo":
@@ -661,18 +670,29 @@ def _port_terminal_pairs(sim, grid, nodes):
 
 
 def _terminal_on_lattice(point, lattice, nodes):
-    """Whether occupied cells/nodes/edges are within one local terminal cell."""
+    """Read only the lattice elements incident to the terminal point.
+
+    Between nodes, the containing cell and its bounding nodes are incident.
+    At a node, that node and the two adjoining cells are incident.
+    """
     for mask, cell_axes in lattice:
         indices = []
         for axis, line in enumerate(nodes):
             line = np.asarray(line)
-            k = int(np.clip(np.searchsorted(line, point[axis]), 1, len(line)-1))
-            width = float(line[k] - line[k-1])
-            lower = line
-            upper = (np.r_[line[1:], line[-1] + width]
-                     if cell_axes[axis] else line)
-            indices.append(np.flatnonzero((upper >= point[axis]-width)
-                                          & (lower <= point[axis]+width)))
+            p = float(point[axis])
+            slack = 16 * np.finfo(float).eps * max(abs(p), np.max(np.abs(line)),
+                                                   float(np.min(np.diff(line))))
+            exact = np.flatnonzero(np.abs(line-p) <= slack)
+            if exact.size:
+                k = int(exact[0])
+                incident = [k-1, k] if cell_axes[axis] else [k]
+            else:
+                k = int(np.searchsorted(line, p))
+                incident = [k-1] if cell_axes[axis] else [k-1, k]
+                if k == 0 or k == len(line):
+                    incident = []
+            limit = len(line)-int(cell_axes[axis])
+            indices.append(np.asarray([i for i in incident if 0 <= i < limit], dtype=int))
         if all(len(i) for i in indices) and mask[np.ix_(*indices)].any():
             return True
     return False
@@ -701,17 +721,19 @@ def _conductor_face_area(lattice, grid, nodes, axis, side):
 
 
 def _port_carrying_conductor(sim, grid, shape, lattice, coords):
+    """Faces held at the declared bound by a port bridging a larger partner."""
     nodes = (coords.x, coords.y, coords.z)
     pairs = _port_terminal_pairs(sim, grid, nodes)
     touched = [(a, b) for a, b in pairs
                if _terminal_on_lattice(a, lattice, nodes)
                or _terminal_on_lattice(b, lattice, nodes)]
     if not touched:
-        return False
+        return set()
     candidates = [e.shape for e in getattr(sim, "_geometry", ())
                   if sim._resolve_material(e.material_name).sigma >= sim._PEC_SIGMA_THRESHOLD]
     candidates += [tc.shape for tc in getattr(sim, "_thin_conductors", ())]
     own_faces = _conductor_reached_faces(sim, grid, shape, lattice, nodes)
+    held = set()
     for first, second in touched:
         for terminal, opposite in ((first, second), (second, first)):
             if not _terminal_on_lattice(terminal, lattice, nodes):
@@ -720,14 +742,19 @@ def _port_carrying_conductor(sim, grid, shape, lattice, coords):
                 a = "xyz".index(face[0])
                 line = np.asarray(nodes[a])
                 k = 0 if face.endswith("lo") else len(line)-1
-                local = abs(float(line[1]-line[0] if k == 0 else line[-1]-line[-2]))
-                if abs(opposite[a]-float(line[k])) <= local:
-                    return True
-        larger = False
+                slack = 16 * np.finfo(float).eps * max(np.max(np.abs(line)),
+                                                       float(np.min(np.diff(line))))
+                if abs(opposite[a]-float(line[k])) <= slack:
+                    held.update((axis, side) for axis, side in own_faces if axis != a)
         for other in candidates:
             if other is shape:
                 continue
-            other_lattice = _declared_conductor_lattice(sim, grid, other, coords)
+            try:
+                other_lattice = _declared_conductor_lattice(sim, grid, other, coords)
+            except (ValueError, TypeError, IndexError, NotImplementedError):
+                # A refused sibling has no realized terminal. Its own report
+                # site attributes the refusal; it is not this entry's error.
+                continue
             bridged = ((_terminal_on_lattice(first, lattice, nodes)
                         and _terminal_on_lattice(second, other_lattice, nodes))
                        or (_terminal_on_lattice(second, lattice, nodes)
@@ -736,21 +763,18 @@ def _port_carrying_conductor(sim, grid, shape, lattice, coords):
                 continue
             common = own_faces & _conductor_reached_faces(
                 sim, grid, other, other_lattice, nodes)
-            if any(_conductor_face_area(lattice, grid, nodes, a, s)
-                   > _conductor_face_area(other_lattice, grid, nodes, a, s)
-                   for a, s in common):
-                larger = True
-        if not larger:
-            return True
-    return False
+            held.update((a, s) for a, s in common
+                        if _conductor_face_area(lattice, grid, nodes, a, s)
+                        < _conductor_face_area(other_lattice, grid, nodes, a, s))
+    return held
 
 
 def continued_conductor_shape(sim, grid, shape, *, unextendable=None):
     """Return the conducting geometry solved through absorbing faces (C2/C5).
 
     Reached declared faces and occupied outermost interior lattice layers
-    continue. An entry carrying a port terminal stays declared on every
-    face; the larger reference conductor of a bridged pair continues.
+    continue. On each face only the smaller of two port-bridged conductors
+    reaching that face is held back. A PEC boundary is a larger partner.
     Port-generated structures do not call this function.
     """
     from rfx.core.jax_utils import is_tracer
@@ -769,22 +793,20 @@ def continued_conductor_shape(sim, grid, shape, *, unextendable=None):
                   + " is traced; conductor continuation is disabled on every face")
         findings = [UnextendableShape(
             shape, traced_axes[0], "all", reason, conductor=True)]
-        if getattr(sim, "_conductor_traced_warning", None) != traced_axes:
-            if unextendable is not None:
-                unextendable.extend(findings)
-            else:
-                warn_unextendable_shapes(findings)
-            sim._conductor_traced_warning = traced_axes
+        if unextendable is not None:
+            unextendable.extend(findings)
+        else:
+            warn_unextendable_shapes(findings)
         return shape
     pads = [[getattr(grid, f"pad_{a}_lo"), getattr(grid, f"pad_{a}_hi")]
             for a in "xyz"]
     lattice = _declared_conductor_lattice(sim, grid, shape, coords)
     occupied = _occupied_conductor_faces(lattice, grid)
-    if _port_carrying_conductor(sim, grid, shape, lattice, coords):
-        return shape
+    held = _port_carrying_conductor(sim, grid, shape, lattice, coords)
     pairs, findings = extend_shapes_into_cpml_pad(
         [(shape, 1.0)], nodes, pads,
-        declared_domain=sim._unresolved_domain, occupied_faces=occupied)
+        declared_domain=sim._unresolved_domain, occupied_faces=occupied,
+        skip_faces=held, conductor=True)
     findings = [u._replace(shape=shape, conductor=True) for u in findings]
     if unextendable is None:
         warn_unextendable_shapes(findings)

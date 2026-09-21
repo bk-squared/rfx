@@ -202,7 +202,11 @@ def test_port_terminals_hold_signal_on_both_faces(kind, nu):
         sim._msl_ports = [SimpleNamespace(position=(6., 4., 1.), width=2.,
                                          height=3., direction="-x")]
     grid = sim._build_nonuniform_grid() if nu else sim._build_grid()
-    assert continued_conductor_shape(sim, grid, signal) is signal
+    if kind == "lumped":
+        # Its nodes are z=3 and z=4; the ground at z=1 is not incident.
+        assert continued_conductor_shape(sim, grid, signal).corner_lo[0] < -2.
+    else:
+        assert continued_conductor_shape(sim, grid, signal) is signal
     realized_ground = continued_conductor_shape(sim, grid, ground)
     assert realized_ground.corner_lo[0] < -2.
     assert realized_ground.corner_hi[0] > 10.
@@ -225,13 +229,21 @@ def test_one_traced_mesh_axis_keeps_every_conductor_face_declared():
     @jax.jit
     def traced(dz):
         traced_grid = grid._replace(dz=dz)
-        first = continued_conductor_shape(sim, traced_grid, shape)
-        second = continued_conductor_shape(sim, traced_grid, shape)
+        first_findings, second_findings = [], []
+        first = continued_conductor_shape(sim, traced_grid, shape, unextendable=first_findings)
+        second = continued_conductor_shape(sim, traced_grid, shape, unextendable=second_findings)
+        assert len(first_findings) == len(second_findings) == 1
+        from rfx.geometry.smoothing import warn_unextendable_shapes
+        warn_unextendable_shapes(first_findings)
         return jnp.asarray((first.corner_lo, first.corner_hi,
                             second.corner_lo, second.corner_hi))
 
     with pytest.warns(UserWarning, match="mesh axis z is traced") as caught:
         actual = np.asarray(traced(grid.dz))
     assert len(caught) == 1
+    assert not hasattr(sim, "_conductor_traced_warning")
+    traced.clear_cache()
+    with pytest.warns(UserWarning, match="mesh axis z is traced"):
+        traced(grid.dz)
     np.testing.assert_array_equal(actual, np.asarray([
         (0., 0., 2.), (8., 8., 6.), (0., 0., 2.), (8., 8., 6.)]))

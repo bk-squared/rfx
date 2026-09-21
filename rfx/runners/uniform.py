@@ -244,7 +244,8 @@ def run_uniform(
         # in its own pad instead of a vacuum facet at the seam. PEC shapes
         # arrive continued from assembly, with the MSL entry exception.
         shape_eps_pairs, _unextendable = smoothed_shape_pairs(sim, grid)
-        warn_unextendable_shapes(_unextendable)
+        # Assembly already emitted the conductor findings for this run.
+        warn_unextendable_shapes([u for u in _unextendable if not u.conductor])
         aniso_inv_eps = compute_inv_eps_tensor_diag(
             grid,
             dielectric_shapes=shape_eps_pairs,
@@ -275,7 +276,7 @@ def run_uniform(
         )
         # #1043 stage B: same pad continuation as the Stage-2 site above.
         shape_eps_pairs, _unextendable = smoothed_shape_pairs(sim, grid)
-        warn_unextendable_shapes(_unextendable)
+        warn_unextendable_shapes([u for u in _unextendable if not u.conductor])
         if shape_eps_pairs:
             aniso_eps = compute_smoothed_eps(grid, shape_eps_pairs, background_eps=1.0)
 

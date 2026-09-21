@@ -2,79 +2,6 @@
 import numpy as np
 
 
-def _port_entries(sim, grid, nodes, entries):
-    """Independent terminal declarations for the array exception inventory.
-
-    The continued-shape helper and its ownership predicates are not used.
-    Registered endpoints and declared support determine the named entries.
-    """
-    from rfx.geometry.csg import declared_bounds
-    pairs = []
-    for p in sim._msl_ports:
-        pairs.append((p.position, (*p.position[:2], p.position[2]+p.height)))
-    for p in sim._ports:
-        if p.impedance <= 0:
-            continue
-        a = "xyz".index(p.component[-1])
-        start, end = list(p.position), list(p.position)
-        if p.extent is None:
-            if hasattr(grid, "dx_arr"):
-                from rfx.nonuniform import position_to_index
-                idx = position_to_index(grid, p.position)
-            else:
-                idx = grid.position_to_index(p.position)
-            start = [float(nodes[t][idx[t]]) for t in range(3)]
-            end = start.copy()
-            end[a] = float(nodes[a][min(idx[a]+1, len(nodes[a])-1)])
-        else:
-            end[a] += p.extent
-        pairs.append((start, end))
-    directions = dict(top=(2,-1), bottom=(2,1), front=(1,-1),
-                      back=(1,1), left=(0,1), right=(0,-1))
-    for p in sim._coaxial_ports:
-        axis, sign = directions[p.face]
-        end = list(p.position)
-        end[axis] += sign*p.pin_length
-        pairs.append((p.position, end))
-    boxes = [(s, n, declared_bounds(s)) for s, n in entries]
-
-    def touches(bounds, point):
-        if bounds is None:
-            return False
-        for a, line in enumerate(nodes):
-            k = int(np.clip(np.searchsorted(line, point[a]), 1, len(line)-1))
-            d = float(line[k]-line[k-1])
-            if point[a] < bounds[0][a]-d or point[a] > bounds[1][a]+d:
-                return False
-        return True
-
-    def area(bounds, a):
-        return np.prod([max(bounds[1][t]-bounds[0][t],
-                            float(np.min(np.diff(nodes[t]))))
-                        for t in range(3) if t != a])
-
-    held = set()
-    for first, second in pairs:
-        for shape, name, bounds in boxes:
-            if not (touches(bounds, first) or touches(bounds, second)):
-                continue
-            larger = False
-            for other, _, b in boxes:
-                if other is shape or b is None:
-                    continue
-                if not ((touches(bounds, first) and touches(b, second))
-                        or (touches(bounds, second) and touches(b, first))):
-                    continue
-                for a in range(3):
-                    common = ((bounds[0][a] <= 0 and b[0][a] <= 0)
-                              or (bounds[1][a] >= sim._unresolved_domain[a]
-                                  and b[1][a] >= sim._unresolved_domain[a]))
-                    larger |= common and area(bounds, a) > area(b, a)
-            if not larger:
-                held.add(id(shape))
-    return held
-
-
 def assembled_arrays(sim, *, include_smoothed=True):
     from rfx.boundaries.pec import realized_pec_edge_masks
     from rfx.geometry.rasterize_grid import (
@@ -133,19 +60,18 @@ def assembled_arrays(sim, *, include_smoothed=True):
     return grid, arrays, poles, (coords.x, coords.y, coords.z)
 
 
-def violations(sim, grid, arrays, poles, nodes):
+def violations(sim, grid, arrays, poles, nodes, *, held_faces=()):
     """Compare valid lattice layers, reporting every unexplained difference.
 
     Exceptions are constructed from declarations, independently of the
-    geometry continuation code: pole columns, MSL signal entries, and
+    geometry continuation code: pole columns, literal held-face rows, and
     unsupported conducting shapes' rasterized transverse support.
     """
     from rfx.geometry.csg import Box, Cylinder, declared_bounds
     findings, exceptions = [], []
-    entries = [(e.shape, e.material_name) for e in sim._geometry
+    entries = [(i, e.shape, e.material_name) for i, e in enumerate(sim._geometry)
                if sim._resolve_material(e.material_name).sigma >= sim._PEC_SIGMA_THRESHOLD]
-    entries += [(tc.shape, f"thin[{i}]") for i, tc in enumerate(sim._thin_conductors)]
-    port_entries = _port_entries(sim, grid, nodes, entries)
+    entries += [(len(sim._geometry)+i, tc.shape, f"thin[{i}]") for i, tc in enumerate(sim._thin_conductors)]
     for axis in range(3):
         for side in (0, 1):
             pad = getattr(grid, "pad_"+"xyz"[axis]+("_hi" if side else "_lo"))
@@ -159,7 +85,7 @@ def violations(sim, grid, arrays, poles, nodes):
                 exempt |= columns
                 exceptions.append((axis, side, f"pole[{i}]", int(columns.sum())))
             per_array = {name: exempt.copy() for name in arrays}
-            for shape, name in entries:
+            for index, shape, name in entries:
                 bounds = declared_bounds(shape)
                 if bounds is None:
                     continue
@@ -170,7 +96,7 @@ def violations(sim, grid, arrays, poles, nodes):
                 if reached and not isinstance(shape, Box):
                     if not isinstance(shape, Cylinder) or "xyz".index(shape.axis) != axis:
                         reason = "unsupported:"+name
-                if id(shape) in port_entries:
+                if (index, "xyz"[axis]+("-hi" if side else "-lo")) in held_faces:
                     reason = "port-terminal:"+name
                 if reason is None:
                     continue

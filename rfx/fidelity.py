@@ -220,8 +220,9 @@ def _contract_refusals(sim, grid, nonuniform):
         if not _assembled_as_pec(sim, entry):
             continue
         try:
-            from rfx.geometry.smoothing import continued_conductor_shape
-            classify_pec_entry(continued_conductor_shape(sim, grid, entry.shape), coords, centres, sizes,
+            # Continuation first classifies the declaration too; refusal is
+            # owned by this entry, before any port-partner lookup.
+            classify_pec_entry(entry.shape, coords, centres, sizes,
                                name=entry.material_name)
         except ValueError as exc:
             out[i] = str(exc)

@@ -205,10 +205,11 @@ class _EntryRealization:
 
     def __init__(self, *, label, name, shape, kind, cells=None, sheet=None,
                  wire=None, error=None, lo=None, hi=None, declared_mid=None,
-                 tie_planes=None):
+                 tie_planes=None, solved_shape=None):
         self.label = label
         self.name = name
         self.shape = shape
+        self.solved_shape = shape if solved_shape is None else solved_shape
         self.kind = kind
         self.cells = None if cells is None else np.asarray(cells, dtype=bool)
         self.sheet = sheet
@@ -271,14 +272,14 @@ class _EntryRealization:
             if self.kind == "volume":
                 centres = cell_centres_from_nodes(coords, ctx.cell_sizes)
                 cells = interior_lattice_mask(
-                    pec_volume_cell_mask(self.shape, centres), ctx.grid,
+                    pec_volume_cell_mask(self.solved_shape, centres), ctx.grid,
                     cell_axes=(True, True, True))
                 if not cells.any():
                     return None
                 edges = _realized_edges_np(cells, (), (), ctx.periodic, shape)
             elif self.kind == "sheet":
                 sp = sheet_spec_from_shape(
-                    self.shape, coords, ctx.cell_sizes,
+                    self.solved_shape, coords, ctx.cell_sizes,
                     normal_axis=int(self.sheet.normal_axis), name=self.name)
                 sp = replace(sp, footprint=interior_lattice_mask(sp.footprint, ctx.grid))
                 edges = _realized_edges_np(None, [sp], (), ctx.periodic, shape)
@@ -478,8 +479,9 @@ class _CampaignStaticsContext:
             label = f"geometry[{i}]"
             lo, hi = _bounds(entry.shape)
             try:
+                solved = continued_conductor_shape(sim, self.grid, entry.shape)
                 cells, sheet, wire = classify_pec_entry(
-                    continued_conductor_shape(sim, self.grid, entry.shape),
+                    solved,
                     self.coords, self.centres, self.cell_sizes,
                     name=entry.material_name)
             except self._NARROW_EXCS as exc:
@@ -499,12 +501,12 @@ class _CampaignStaticsContext:
             if cells is not None:
                 out.append(_EntryRealization(
                     label=label, name=entry.material_name, shape=entry.shape,
-                    kind="volume", cells=cells, lo=lo, hi=hi))
+                    kind="volume", cells=cells, lo=lo, hi=hi, solved_shape=solved))
             elif sheet is not None:
                 mid, tie = _tie(sheet, lo, hi)
                 out.append(_EntryRealization(
                     label=label, name=entry.material_name, shape=entry.shape,
-                    kind="sheet", sheet=sheet, lo=lo, hi=hi,
+                    kind="sheet", sheet=sheet, lo=lo, hi=hi, solved_shape=solved,
                     declared_mid=mid, tie_planes=tie))
             else:
                 out.append(_EntryRealization(
@@ -519,8 +521,9 @@ class _CampaignStaticsContext:
                     lo=lo, hi=hi))
                 continue
             try:
+                solved = continued_conductor_shape(sim, self.grid, tc.shape)
                 sheet = sheet_spec_from_shape(
-                    continued_conductor_shape(sim, self.grid, tc.shape),
+                    solved,
                     self.coords, self.cell_sizes, name=label,
                     lane=self.lane or "", refuse_thick=True)
             except ValueError as exc:
@@ -531,7 +534,8 @@ class _CampaignStaticsContext:
             mid, tie = _tie(sheet, lo, hi)
             out.append(_EntryRealization(
                 label=label, name=label, shape=tc.shape, kind="sheet",
-                sheet=sheet, lo=lo, hi=hi, declared_mid=mid, tie_planes=tie))
+                sheet=sheet, lo=lo, hi=hi, declared_mid=mid, tie_planes=tie,
+                solved_shape=solved))
         self._entries = out
         return out
 
