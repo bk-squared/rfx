@@ -137,6 +137,94 @@ def test_sheet_normal_is_not_extruded(normal):
     assert not np.take(sheets[0].footprint, [0, 1], axis=normal).any()
 
 
+@pytest.mark.parametrize("kind", ["sheet", "impedance", "wire"])
+@pytest.mark.parametrize("zero_face", [None, 0, 1, 2, 3, 4, 5])
+def test_other_lattices_corners_and_zero_pad(kind, zero_face):
+    pads = [2, 1, 1, 2, 2, 1]
+    if zero_face is not None:
+        pads[zero_face] = 0
+    rng = np.random.default_rng(801)
+    original = rng.random(SHAPE) > 0.5
+    if kind == "wire":
+        wire = WireSpec((jnp.asarray(original),) * 3)
+        _, _, wires, _ = extend_cpml_pad_conductors(None, (), (wire,), (), *pads)
+        for component, edges in enumerate(wires[0].edges):
+            np.testing.assert_array_equal(edges, _expected(original, pads, (component,)))
+    else:
+        for normal in range(3):
+            mask = np.zeros_like(original)
+            plane = SHAPE[normal] // 2
+            selection = [slice(None)] * 3
+            selection[normal] = plane
+            mask[tuple(selection)] = original[tuple(selection)]
+            if kind == "sheet":
+                sheet = SheetSpec(normal, plane, jnp.asarray(mask))
+                _, sheets, _, _ = extend_cpml_pad_conductors(None, (sheet,), (), (), *pads)
+                np.testing.assert_array_equal(sheets[0].footprint, _expected(mask, pads, normal=normal))
+            else:
+                sigma = mask * rng.uniform(1.0, 7.0, SHAPE).astype(np.float32)
+                spec = SheetImpedanceSpec(jnp.asarray(mask), normal, 3.0,
+                                          jnp.asarray(sigma), plane)
+                _, _, _, specs = extend_cpml_pad_conductors(None, (), (), (spec,), *pads)
+                np.testing.assert_array_equal(specs[0].mask, _expected(mask, pads, normal=normal))
+                np.testing.assert_array_equal(specs[0].sigma_sheet, _expected(sigma, pads, normal=normal))
+
+
+@pytest.mark.parametrize("kind", ["sheet", "impedance", "wire"])
+@pytest.mark.parametrize("axis", range(3))
+def test_other_lattices_mirror(kind, axis):
+    pads = [2, 1, 1, 2, 2, 1]
+    flipped_pads = list(pads)
+    flipped_pads[2 * axis:2 * axis + 2] = pads[2 * axis:2 * axis + 2][::-1]
+    rng = np.random.default_rng(801)
+
+    def flip(array, cell_axes=()):
+        physical = tuple(slice(0, n - int(a in cell_axes)) for a, n in enumerate(SHAPE))
+        result = array.copy()
+        result[physical] = np.flip(array[physical], axis=axis)
+        return result
+
+    if kind == "wire":
+        originals = tuple(rng.random(SHAPE) > 0.5 for _ in range(3))
+        mirrored = tuple(flip(a, (c,)) for c, a in enumerate(originals))
+        wire = WireSpec(tuple(jnp.asarray(a) for a in originals))
+        mirror = WireSpec(tuple(jnp.asarray(a) for a in mirrored))
+        _, _, a, _ = extend_cpml_pad_conductors(None, (), (wire,), (), *pads)
+        _, _, b, _ = extend_cpml_pad_conductors(None, (), (mirror,), (), *flipped_pads)
+        for c in range(3):
+            np.testing.assert_array_equal(a[0].edges[c], _expected(originals[c], pads, (c,)))
+            np.testing.assert_array_equal(b[0].edges[c], flip(np.asarray(a[0].edges[c]), (c,)))
+    else:
+        for normal in range(3):
+            plane = SHAPE[normal] // 2
+            mirrored_plane = SHAPE[normal] - 1 - plane if axis == normal else plane
+            mask = np.zeros(SHAPE, dtype=bool)
+            selection = [slice(None)] * 3
+            selection[normal] = plane
+            mask[tuple(selection)] = (rng.random(SHAPE) > 0.5)[tuple(selection)]
+            if kind == "sheet":
+                sheet = SheetSpec(normal, plane, jnp.asarray(mask))
+                mirror = SheetSpec(normal, mirrored_plane, jnp.asarray(flip(mask)))
+                _, a, _, _ = extend_cpml_pad_conductors(None, (sheet,), (), (), *pads)
+                _, b, _, _ = extend_cpml_pad_conductors(None, (mirror,), (), (), *flipped_pads)
+                np.testing.assert_array_equal(a[0].footprint, _expected(mask, pads, normal=normal))
+                np.testing.assert_array_equal(b[0].footprint, flip(np.asarray(a[0].footprint)))
+                assert b[0].plane == mirrored_plane
+            else:
+                sigma = mask * rng.uniform(1.0, 7.0, SHAPE).astype(np.float32)
+                spec = SheetImpedanceSpec(jnp.asarray(mask), normal, 3.0,
+                                          jnp.asarray(sigma), plane)
+                mirror = replace(spec, mask=jnp.asarray(flip(mask)),
+                                 sigma_sheet=jnp.asarray(flip(sigma)), plane=mirrored_plane)
+                _, _, _, a = extend_cpml_pad_conductors(None, (), (), (spec,), *pads)
+                _, _, _, b = extend_cpml_pad_conductors(None, (), (), (mirror,), *flipped_pads)
+                np.testing.assert_array_equal(a[0].mask, _expected(mask, pads, normal=normal))
+                np.testing.assert_array_equal(a[0].sigma_sheet, _expected(sigma, pads, normal=normal))
+                np.testing.assert_array_equal(b[0].mask, flip(np.asarray(a[0].mask)))
+                np.testing.assert_array_equal(b[0].sigma_sheet, flip(np.asarray(a[0].sigma_sheet)))
+                assert b[0].plane == mirrored_plane
+
+
 @pytest.mark.parametrize("sheet", [False, True])
 def test_box_primitive_fractional_realized_face(sheet):
     sim = Simulation(freq_max=1e9, domain=(5.4e-3, 6e-3, 6e-3), dx=1e-3,
