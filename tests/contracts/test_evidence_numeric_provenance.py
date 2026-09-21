@@ -970,10 +970,15 @@ def test_the_cited_population_is_still_present() -> None:
 
 @pytest.mark.parametrize("prefix", REMOVED_ARTIFACT_PREFIXES)
 def test_a_skipped_artifact_prefix_is_really_gone(prefix: str) -> None:
-    assert not (_REPO / prefix).exists(), (
+    # The skip is a string prefix, so "is this path missing" is not enough: a
+    # string that is no path at all (``.../patch_mode_identification/cv15_``)
+    # would pass that and still silence citations to live files. What must hold
+    # is that NO tracked file starts with it.
+    live = sorted(t for t in _TRACKED() if t.startswith(prefix))
+    assert not live, (
         f"{prefix} is listed in REMOVED_ARTIFACT_PREFIXES, so citations under it "
-        f"are skipped, but it exists in the tree. Remove the prefix so those "
-        f"citations are checked again."
+        f"are skipped, but {len(live)} tracked file(s) start with it, e.g. "
+        f"{live[0]}. Remove or narrow the prefix so those citations are checked."
     )
 
 
