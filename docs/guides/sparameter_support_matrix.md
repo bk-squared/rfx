@@ -99,9 +99,19 @@ define an S-parameter port.
 
 **RF evidence (E2/E3/E4-partial):**
 
-- Closed-form open, short, matched, resistive, capacitor, inductor, series-RLC,
-  and parallel-RLC extractor checks have `max_abs_diff 7.91e-8` against a
-  `2.20e-6` tolerance.
+- A driven one-cell port on a solved known load: a 4-cell parallel-plate TEM
+  line (`Zc = eta0`, PEC plates, magnetic side walls) terminated in `R`, whose
+  `|S11| = |(R - Zc)/(R + Zc)|` at every frequency. At `R = Zc/2`, `Zc`, and
+  `2 Zc` over 1–10 GHz the port lands within `0.00043` at 1 GHz and `0.042` at
+  10 GHz of that closed form — the fixture's own discretization at 30 cells per
+  wavelength, since the wire port reads the same residual bin for bin on the
+  identical cell. `tests/unit/ports/test_lumped_port_known_load_line.py`;
+  `scripts/diagnostics/lumped_port_known_load_line.py` prints the run.
+- The open, short, matched, resistive, capacitor, inductor, series-RLC, and
+  parallel-RLC checks with `max_abs_diff 7.91e-8` against a `2.20e-6` tolerance
+  are **synthetic algebra**: they feed the extractor constructed V/I phasors and
+  confirm it reproduces the circuit formula. They exercise no solved field, so
+  they did not detect the extraction defect the known-load line above found.
 - A real two-port V/I replay covers 9 frequencies and 2 ports with
   `max_abs_diff 1.13e-7` against `9.84e-7`.
 - A three-case uniform-grid replay/passivity/reciprocity check has maximum replay
@@ -119,8 +129,18 @@ define an S-parameter port.
   calculation.
 - Analytic extractor and V/I replay checks validate algebra and reproducibility;
   they do not establish a generally calibrated lumped-port result.
+- The experimental subgridded runner's diagnostic lumped S-matrix
+  (`diagnostic_lumped_sparam_freqs`) is still on the pre-2026-09-21 convention
+  and warns when it returns; it is diagnostic output, not physics.
+- Every lumped-port `|S11|` changed on 2026-09-21. A driven port now reads its
+  terminal V/I pair; it used to read the passive port-branch algebra on a
+  pre-injection sample, which returns the reciprocal of the physical
+  reflection. Stored V/I dumps replay unchanged (`diagonal_frame:
+  "port_branch"` in the dump metadata).
 
-Relevant implementations and tests include `tests/unit/sparams/test_sparam.py`,
+Relevant implementations and tests include
+`tests/unit/ports/test_lumped_port_known_load_line.py`,
+`tests/unit/sparams/test_sparam.py`,
 `tests/unit/sparams/test_port_dump_replay.py`,
 `scripts/diagnostics/report_lumped_analytic_oracles.py`, and
 `scripts/diagnostics/build_lumped_openems_sweep_comparison.py`.

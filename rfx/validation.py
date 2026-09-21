@@ -554,6 +554,7 @@ def replay_smatrix_from_vi_dump(
     port_names: Any | None = None,
     driven_port_indices: Any | None = None,
     current_convention: str = "positive_into_dut",
+    diagonal_frame: str = "driven_terminal",
     reference_plane_offsets_m: Any | None = None,
     propagation_constants: Any | None = None,
     source: str = "vi_dump_replay",
@@ -571,6 +572,18 @@ def replay_smatrix_from_vi_dump(
     expressed in this dump's into-DUT voltage convention ``V = -V_fdtd``;
     the overall sign is pinned empirically by the DC falsifier on the
     canonical thru, S21(DC) -> +1)
+
+    ``diagonal_frame`` selects the DRIVEN diagonal.  The default,
+    ``"driven_terminal"``, is the terminal reflection of the driven
+    circuit, ``(V_fdtd - Z0 I)/(V_fdtd + Z0 I)`` — the wave pair in which
+    the stored voltage and current are a consistent into-DUT pair at a
+    driven port.  ``"port_branch"`` is the pre-2026-09-21 reading
+    ``b/a`` on the stored ``(V, I)``, which the known-load decision run
+    (scripts/diagnostics/lumped_port_known_load_line.py) measured as the
+    reciprocal of the physical reflection: |S11| 4.757 on R = 2 Zc where
+    the closed form is 0.333.  Keep it only to replay a dump whose
+    recorded production S-matrix predates that run.  The off-diagonal
+    role channel is unchanged by this switch.
 
     with current positive **into** the DUT by default.  If the dump records
     current positive out of the DUT, set ``current_convention="positive_out_of_dut"``
@@ -611,11 +624,23 @@ def replay_smatrix_from_vi_dump(
     z = _impedance_vector(port_impedances, n_ports)
     z_view = z.reshape(1, n_ports, 1)
     sqrt_z = np.sqrt(z_view)
+    frame = diagonal_frame.lower().replace("-", "_")
+    if frame not in {"driven_terminal", "port_branch"}:
+        raise ValueError(
+            "diagonal_frame must be 'driven_terminal' or 'port_branch'"
+        )
+
     a = (v + z_view * i) / (2.0 * sqrt_z)
     b = (v - z_view * i) / (2.0 * sqrt_z)
     # Passive-receive channel (issue #308): the production receive b-wave in
     # this dump's into-DUT convention.  Selected per role in the loop below.
     b_recv = -(v + z_view * i) / (2.0 * sqrt_z)
+    # Driven-terminal wave pair: the same split on ``V_fdtd = -V``, which is
+    # the pair that satisfies the circuit law at an excited port.  Kept as
+    # its own pair rather than reusing ``a``/``b`` so the reference-plane
+    # shift below applies to each wave in its own role.
+    a_drv = (-v + z_view * i) / (2.0 * sqrt_z)
+    b_drv = (-v - z_view * i) / (2.0 * sqrt_z)
 
     if reference_plane_offsets_m is not None:
         if propagation_constants is None:
@@ -641,6 +666,8 @@ def replay_smatrix_from_vi_dump(
         a = a / shift
         b = b * shift
         b_recv = b_recv * shift
+        a_drv = a_drv / shift
+        b_drv = b_drv * shift
 
     if driven_port_indices is None:
         driven = tuple(range(n_driven))
@@ -668,6 +695,18 @@ def replay_smatrix_from_vi_dump(
                 out=np.full((n_ports, n_freqs), np.nan + 1j * np.nan),
                 where=np.abs(denom.reshape(1, n_freqs)) > 0.0,
             )
+        if frame == "driven_terminal":
+            # The diagonal is the driven terminal reflection; the
+            # off-diagonals above keep their own (unchanged) role channel
+            # and their own incident-wave denominator.
+            d_denom = a_drv[drive_i, driven_port, :]
+            with np.errstate(divide="ignore", invalid="ignore"):
+                s[driven_port, driven_port, :] = np.divide(
+                    b_drv[drive_i, driven_port, :],
+                    d_denom,
+                    out=np.full((n_freqs,), np.nan + 1j * np.nan),
+                    where=np.abs(d_denom) > 0.0,
+                )
 
     names = tuple(str(name) for name in port_names) if port_names is not None else _default_port_names(n_ports)
     return PortSMatrixObservable(
@@ -890,6 +929,10 @@ def replay_smatrix_from_port_vi_dump(dump: PortVIDump) -> PortSMatrixObservable:
     if dump.metadata.get("schema") == "rfx.msl_nprobe_dump":
         return _replay_msl_port_vi_dump(dump)
     current_convention = str(dump.metadata.get("current_convention", "positive_into_dut"))
+    # ``diagonal_frame`` tells the replay which driven diagonal the dump's
+    # recorded production S-matrix used; absent, the current one.  A dump
+    # taken before 2026-09-21 carries "port_branch".
+    diagonal_frame = str(dump.metadata.get("diagonal_frame", "driven_terminal"))
     return replay_smatrix_from_vi_dump(
         dump.voltages,
         dump.currents,
@@ -898,6 +941,7 @@ def replay_smatrix_from_port_vi_dump(dump: PortVIDump) -> PortSMatrixObservable:
         port_names=dump.port_names,
         driven_port_indices=dump.driven_port_indices,
         current_convention=current_convention,
+        diagonal_frame=diagonal_frame,
         reference_plane_offsets_m=dump.reference_plane_offsets_m,
         propagation_constants=dump.propagation_constants,
         source="port_vi_dump",

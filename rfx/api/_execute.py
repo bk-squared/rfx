@@ -2245,17 +2245,17 @@ class _ExecuteMixin:
             # measurement 2026-08-29 and landed with the decomposer
             # recalibration), so the driven diagonal here is the
             # validated terminal reading (Gamma_L-exact class).
-            from rfx.probes.probes import extract_lumped_s11
+            from rfx.probes.probes import (
+                driven_port_reflection,
+                extract_lumped_s11,
+            )
             w_list = []
             for spec, accs in result.wire_port_sparams:
                 v_dft, i_dft = accs[0], accs[1]
                 v_port_dft = accs[3]
                 if spec.excite:
-                    denom = v_port_dft + spec.impedance * i_dft
-                    safe_denom = jnp.where(jnp.abs(denom) > 0, denom,
-                                           jnp.ones_like(denom))
-                    w_list.append(
-                        (v_port_dft - spec.impedance * i_dft) / safe_denom)
+                    w_list.append(driven_port_reflection(
+                        v_port_dft, i_dft, spec.impedance))
                 else:
                     w_list.append(
                         extract_lumped_s11(v_dft, i_dft, z0=spec.impedance))

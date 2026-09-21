@@ -883,10 +883,9 @@ def run_uniform(
                 # diagonal is the validated terminal pair — Gamma_L-exact
                 # class, physical passivity restored (the six formerly
                 # keyed uniform gates are physical locks again).
-                denom = v_port_dft + z0 * i_dft
-                safe_denom = jnp.where(jnp.abs(denom) > 0, denom,
-                                       jnp.ones_like(denom))
-                S[j, j, :] = np.array((v_port_dft - z0 * i_dft) / safe_denom)
+                from rfx.probes.probes import driven_port_reflection
+                S[j, j, :] = np.array(
+                    driven_port_reflection(v_port_dft, i_dft, z0))
             else:
                 # Passive port: legacy per-cell diagnostic diagonal,
                 # byte-frozen (issue #764 scope: no physical falsifier can

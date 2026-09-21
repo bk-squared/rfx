@@ -2090,19 +2090,21 @@ def _make_step_fn(ctx):
                 * lumped_sparam_freqs_arr
                 * (step_idx.astype(jnp.float32) * dt)
             )
-            # NOTE (item B2, 2026-09-05): the Yee half-step current phase
-            # correction `rfx.core.dft_utils.half_step_current_phase` is
-            # deliberately NOT applied on this LUMPED lane. Its derivation
-            # needs E = E^{n+1} at the sample. On the wire lane that holds
-            # (post-injection sample, issue #683). It does not hold at a
-            # driven lumped cell: #683 measured the pre-injection sample is
-            # "not any field time level of the discrete update", and on THIS
-            # runner the slot is not even fixed — whether this block runs
-            # pre- or post-injection depends on the runtime
+            # NOTE: the Yee half-step current phase correction
+            # `rfx.core.dft_utils.half_step_current_phase` is NOT applied on
+            # this LUMPED lane, and this lane alone keeps the pre-decision
+            # sampling and diagonal conventions. Its derivation needs
+            # E = E^{n+1} at the sample. The uniform lumped lane now has
+            # that (post-injection, decided 2026-09-21 by
+            # scripts/diagnostics/lumped_port_known_load_line.py, which also
+            # moved the diagonal to the driven terminal reflection). On THIS
+            # runner the slot is not fixed — whether this block runs pre- or
+            # post-injection depends on the runtime
             # ``inject_sources_before_e_coupling`` flag (see the fine-grid
-            # source injection below), so no single dt/2 offset is derivable
-            # here at all. See the scoping note in
-            # rfx/probes/probes.py::update_sparam_probe.
+            # source injection below) — so no single dt/2 offset is
+            # derivable here at all, and the same argument blocks the slot
+            # move. rfx/runners/subgridded.py warns the caller that this
+            # diagnostic S-matrix is on the old convention.
             v_dft = carry["lumped_sparam_v"]
             i_dft = carry["lumped_sparam_i"]
 

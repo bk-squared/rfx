@@ -1176,10 +1176,12 @@ def update_wire_sparam_probe(
     apply_wire_port() (issue #683, decided by measurement 2026-08-29):
     the post-injection E is the true field level ``E^{n+1}`` of the
     discrete update, and only the post-injection V/I pair satisfies the
-    known-load circuit law at an excited port (the previous contract —
-    sample before injection, issue #72 — survives for LUMPED ports in
-    ``update_sparam_probe`` pending their own decision run; the #683
-    measurement was made on wire ports).  The PRE-injection drive-sample
+    known-load circuit law at an excited port.  The LUMPED family kept the
+    earlier contract — sample before injection, issue #72 — until its own
+    known-load decision run
+    (scripts/diagnostics/lumped_port_known_load_line.py, 2026-09-21)
+    measured the same verdict there; ``update_sparam_probe`` samples in
+    this slot now too.  The PRE-injection drive-sample
     reference channel is accumulated separately by
     ``update_wire_drive_ref_probe`` (call it BEFORE apply_wire_port) —
     the #308/#313 off-diagonal calibration is pinned against that sample

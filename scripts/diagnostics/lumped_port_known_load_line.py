@@ -33,6 +33,11 @@ terminal V/I pair of this circuit.
 
 Run with no arguments. Prints the three load blocks and writes
 ``lumped_port_known_load_line_results.json`` beside this file.
+
+Two records are committed beside it: ``..._results_before_fix.json``, run on
+b4cf8f29 where the lumped lane read |S11| 0.714 / 1.248 / 4.757 against a
+closed form of 0.333 / 0 / 0.333, and ``..._results.json`` from the commit
+that fixed it, where the lumped lane is bit-identical to the wire lane.
 """
 
 from __future__ import annotations
