@@ -638,6 +638,23 @@ def _refuse_subcell(subcell, shape, name):
         "direction (lattice ownership contract §1.5).")
 
 
+def interior_lattice_mask(mask, grid, *, cell_axes=(False, False, False)):
+    """Copy occupancy inside the realized domain for drawn-versus-solved reports.
+
+    Node axes include both face nodes; cell axes stop before the high face
+    node. Absorber continuation is excluded without changing array indices.
+    """
+    arr = np.asarray(mask, dtype=bool)
+    out = np.zeros_like(arr)
+    interior = tuple(slice(
+        int(getattr(grid, f"pad_{a}_lo")),
+        arr.shape[i] - int(getattr(grid, f"pad_{a}_hi"))
+        - int(cell_axes[i] and arr.shape[i] > 1))
+        for i, a in enumerate("xyz"))
+    out[interior] = arr[interior]
+    return out
+
+
 def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
                        cell_sizes=None, *, name=None):
     """Classify one PEC geometry entry (``sim.add(shape, material=pec)``).

@@ -1127,12 +1127,13 @@ def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
     domain wall is a wall, not an edge, and adds nothing. This fires for a
     sheet drawn exactly ON the lattice too -- that sheet is 0.7 cell long."""
     from rfx.mesh_edges import EDGE_OFFSET
+    from rfx.geometry.rasterize_grid import interior_lattice_mask
     domain = tuple(float(v) for v in getattr(ctx.sim, "_domain", (0.0,) * 3))
     rows = []
     sheets = [e for e in boxes if e.kind == "sheet"]
     union = None
     for e in sheets:
-        fp = np.asarray(e.sheet.footprint, dtype=bool)
+        fp = interior_lattice_mask(e.sheet.footprint, ctx.grid)
         union = fp.copy() if union is None else (union | fp)
 
     def _continues(fp, a, i_end, i_next):
@@ -1143,7 +1144,7 @@ def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
         return bool(end.any()) and bool(np.take(union, i_next, axis=a)[end].all())
 
     for e in sheets:
-        fp = np.asarray(e.sheet.footprint, dtype=bool)
+        fp = interior_lattice_mask(e.sheet.footprint, ctx.grid)
         for a in range(3):
             if a == int(e.sheet.normal_axis):
                 continue

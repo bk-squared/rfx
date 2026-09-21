@@ -315,13 +315,14 @@ class _CompileMixin:
                 else:
                     _pec_wires.append(wire)
                 pec_shapes.append(solved_shape)
-                if _check_pad_fill and wire is None and not is_tracer(mask):
-                    assert_declared_span_is_filled(
-                        entry.material_name, entry.shape, mask, grid,
-                        self._unresolved_domain, record=pad_fill_findings)
             else:
-                # Dielectric node occupancy; conductors are checked above
-                # after their cell/sheet classification.
+                # #1070, and only here (review of PR #1136, C): the pad
+                # extension replicates eps/sigma/mu, never ``pec_mask``, so
+                # the vacuum-in-the-pad failure this checks for cannot happen
+                # to a PEC entry. Asking about one would report a condition
+                # that does not exist, in a message about dielectric pads.
+                # It has to sit AFTER classify_pec_entry, because that is
+                # what decides which an entry is.
                 # Read the DECLARED domain, not ``self._domain``: that
                 # attribute is a mesh descriptor and reading it RESOLVES the
                 # mesh. differentiable_material_fit builds its grid once and

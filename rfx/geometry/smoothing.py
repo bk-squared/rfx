@@ -313,7 +313,8 @@ _PAD_CONTINUE_CELLS = 2.0
 class UnextendableShape(NamedTuple):
     """One (shape, axis, side) a pad continuation could not express.
 
-    ``axis`` is 0/1/2 and ``side`` is ``"lo"`` / ``"hi"``. It carries the
+    ``axis`` is 0/1/2 and ``side`` is ``"lo"`` / ``"hi"`` (``"all"``
+    when a traced mesh axis disables conductor continuation). It carries the
     shape's declared ``eps_r`` so a caller can say what the pad will hold
     instead of what was drawn, without re-resolving the material.
 
@@ -360,6 +361,12 @@ def warn_unextendable_shapes(unextendable, *, stacklevel: int = 3) -> None:
         return
     import warnings as _w
     conductors = [u for u in unextendable if u.conductor]
+    traced = [u for u in conductors if u.side == "all"]
+    if traced:
+        _w.warn("Conducting geometry is kept as declared: "
+                + "; ".join(dict.fromkeys(u.reason for u in traced))
+                + ". No continuation is applied.", stacklevel=stacklevel)
+        conductors = [u for u in conductors if u.side != "all"]
     if conductors:
         faces = ", ".join(
             f"{type(u.shape).__name__} at {'xyz'[u.axis]}-{u.side} ({u.reason})"
@@ -563,12 +570,17 @@ def _declared_conductor_lattice(sim, grid, shape, coords):
     with jax.ensure_compile_time_eval():
         if thin is not None:
             if thin.is_pec or thin.surface_impedance_f0 is not None:
-                sheet = sheet_spec_from_shape(shape, coords, sizes, refuse_thick=True)
+                name = f"thin_conductor[{sim._thin_conductors.index(thin)}]"
+                sheet = sheet_spec_from_shape(
+                    shape, coords, sizes, name=name, refuse_thick=True)
                 return [(np.asarray(sheet.footprint), (False, False, False))]
             return [(np.asarray(shape.mask_on_coords(coords.x, coords.y, coords.z)),
                      (False, False, False))]
         centres = cell_centres_from_nodes(coords, sizes)
-        cells, sheet, wire = classify_pec_entry(shape, coords, centres, sizes)
+        name = next((e.material_name for e in getattr(sim, "_geometry", ())
+                     if e.shape is shape), None)
+        cells, sheet, wire = classify_pec_entry(
+            shape, coords, centres, sizes, name=name)
         if cells is not None:
             return [(np.asarray(cells), (True, True, True))]
         if sheet is not None:
@@ -751,14 +763,25 @@ def continued_conductor_shape(sim, grid, shape, *, unextendable=None):
     coords = (coords_from_nonuniform_grid(grid) if hasattr(grid, "dx_arr")
               else coords_from_uniform_grid(grid))
     nodes = (coords.x, coords.y, coords.z)
+    traced_axes = tuple(a for a, n in enumerate(nodes) if is_tracer(n))
+    if traced_axes:
+        reason = ("mesh axis " + ", ".join("xyz"[a] for a in traced_axes)
+                  + " is traced; conductor continuation is disabled on every face")
+        findings = [UnextendableShape(
+            shape, traced_axes[0], "all", reason, conductor=True)]
+        if getattr(sim, "_conductor_traced_warning", None) != traced_axes:
+            if unextendable is not None:
+                unextendable.extend(findings)
+            else:
+                warn_unextendable_shapes(findings)
+            sim._conductor_traced_warning = traced_axes
+        return shape
     pads = [[getattr(grid, f"pad_{a}_lo"), getattr(grid, f"pad_{a}_hi")]
             for a in "xyz"]
-    occupied = set()
-    if not any(is_tracer(n) for n in nodes):
-        lattice = _declared_conductor_lattice(sim, grid, shape, coords)
-        occupied = _occupied_conductor_faces(lattice, grid)
-        if _port_carrying_conductor(sim, grid, shape, lattice, coords):
-            return shape
+    lattice = _declared_conductor_lattice(sim, grid, shape, coords)
+    occupied = _occupied_conductor_faces(lattice, grid)
+    if _port_carrying_conductor(sim, grid, shape, lattice, coords):
+        return shape
     pairs, findings = extend_shapes_into_cpml_pad(
         [(shape, 1.0)], nodes, pads,
         declared_domain=sim._unresolved_domain, occupied_faces=occupied)

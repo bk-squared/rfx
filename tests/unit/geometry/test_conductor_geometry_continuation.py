@@ -206,3 +206,32 @@ def test_port_terminals_hold_signal_on_both_faces(kind, nu):
     realized_ground = continued_conductor_shape(sim, grid, ground)
     assert realized_ground.corner_lo[0] < -2.
     assert realized_ground.corner_hi[0] > 10.
+
+
+def test_one_traced_mesh_axis_keeps_every_conductor_face_declared():
+    import jax
+    import jax.numpy as jnp
+
+    sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
+                     boundary="cpml", cpml_layers=2, dz_profile=np.ones(8))
+    shape = Box((0., 0., 2.), (8., 8., 6.))
+    sim.add(shape, material="pec")
+    grid = sim._build_nonuniform_grid()
+    from rfx.runners.nonuniform import assemble_materials_nu
+    concrete = assemble_materials_nu(sim, grid, pec_sheets=[], pec_wires=[])[3]
+    assert np.asarray(concrete)[0].any()
+    assert np.asarray(concrete)[-2].any()
+
+    @jax.jit
+    def traced(dz):
+        traced_grid = grid._replace(dz=dz)
+        first = continued_conductor_shape(sim, traced_grid, shape)
+        second = continued_conductor_shape(sim, traced_grid, shape)
+        return jnp.asarray((first.corner_lo, first.corner_hi,
+                            second.corner_lo, second.corner_hi))
+
+    with pytest.warns(UserWarning, match="mesh axis z is traced") as caught:
+        actual = np.asarray(traced(grid.dz))
+    assert len(caught) == 1
+    np.testing.assert_array_equal(actual, np.asarray([
+        (0., 0., 2.), (8., 8., 6.), (0., 0., 2.), (8., 8., 6.)]))

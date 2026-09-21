@@ -111,6 +111,7 @@ def _entity_mask(entry, sim, grid, nonuniform, *, pec_volume: bool = False):
     writes their ``eps_r`` / ``sigma`` with.
     """
     from rfx.geometry.smoothing import continued_conductor_shape
+    from rfx.geometry.rasterize_grid import interior_lattice_mask
     shape = entry.shape
     if pec_volume or hasattr(entry, "sigma_bulk"):
         shape = continued_conductor_shape(sim, grid, shape)
@@ -119,12 +120,16 @@ def _entity_mask(entry, sim, grid, nonuniform, *, pec_volume: bool = False):
             cell_centres_from_nodes, pec_volume_cell_mask)
         coords, sizes = _contract_coords(sim, grid, nonuniform)
         centres = cell_centres_from_nodes(coords, sizes)
-        return np.asarray(pec_volume_cell_mask(shape, centres), dtype=bool)
+        return interior_lattice_mask(pec_volume_cell_mask(shape, centres), grid,
+                                     cell_axes=(True, True, True))
     if nonuniform:
         from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
         c = coords_from_nonuniform_grid(grid)
-        return np.asarray(shape.mask_on_coords(c.x, c.y, c.z), dtype=bool)
-    return np.asarray(shape.mask(grid), dtype=bool)
+        mask = np.asarray(shape.mask_on_coords(c.x, c.y, c.z), dtype=bool)
+    else:
+        mask = np.asarray(shape.mask(grid), dtype=bool)
+    return (interior_lattice_mask(mask, grid)
+            if hasattr(entry, "sigma_bulk") else mask)
 
 
 def _declared_material(sim, name):
@@ -171,7 +176,7 @@ def _pec_sheet_spec(sim, entry, kind_src, grid, nonuniform):
     """The :class:`SheetSpec` this entry realizes as under #931, or None
     when the entry is not a sheet declaration (a PEC volume, a dielectric,
     a lossy sheet)."""
-    from rfx.geometry.rasterize_grid import sheet_spec_from_shape
+    from rfx.geometry.rasterize_grid import interior_lattice_mask, sheet_spec_from_shape
     if kind_src == "thin_conductor":
         if not getattr(entry, "is_pec", False):
             return None
@@ -189,10 +194,13 @@ def _pec_sheet_spec(sim, entry, kind_src, grid, nonuniform):
         normal = zero[0]
     coords, sizes = _contract_coords(sim, grid, nonuniform)
     try:
+        from dataclasses import replace
         from rfx.geometry.smoothing import continued_conductor_shape
-        return sheet_spec_from_shape(
+        sheet = sheet_spec_from_shape(
             continued_conductor_shape(sim, grid, entry.shape), coords, sizes, normal_axis=normal,
             refuse_thick=(kind_src == "thin_conductor"))
+        return replace(sheet, footprint=jnp.asarray(
+            interior_lattice_mask(sheet.footprint, grid)))
     except ValueError:
         return None
 
@@ -578,6 +586,16 @@ def fidelity_report(sim, print_report: bool = True):
                     declared_lo=tuple(float(v) for v in lo),
                     declared_hi=tuple(float(v) for v in hi),
                     n_cells=int(mask.sum()), findings=[])
+        if (pec_assembled and i not in refused) or kind_src == "thin_conductor":
+            from rfx.geometry.csg import declared_bounds
+            from rfx.geometry.smoothing import continued_conductor_shape
+            declared = declared_bounds(entry.shape)
+            solved = declared_bounds(continued_conductor_shape(sim, grid, entry.shape))
+            if declared is not None and solved is not None:
+                item["continued_faces"] = [
+                    f"{'xyz'[a]}-{'hi' if side else 'lo'}"
+                    for a in range(3) for side in (0, 1)
+                    if solved[side][a] != declared[side][a]]
         if sheet_fp is not None:
             item["n_cells"] = 0
             item["n_sheet_nodes"] = int(sheet_fp.sum())
@@ -739,7 +757,12 @@ def fidelity_report(sim, print_report: bool = True):
         pad_hit = []
         for a in range(3):
             idx = np.where(mask.any(axis=tuple(x for x in range(3) if x != a)))[0]
-            if len(idx) and (nodes[a][idx.min()] < -1e-12
+            drawn_in_pad = (
+                (float(lo[a]) < -1e-12 and getattr(grid, f"pad_{'xyz'[a]}_lo") > 0)
+                or (float(hi[a]) > domain[a] + 1e-12
+                    and getattr(grid, f"pad_{'xyz'[a]}_hi") > 0))
+            if len(idx) and (drawn_in_pad
+                             or nodes[a][idx.min()] < -1e-12
                              or nodes[a][idx.max() + 1] > domain[a] + 1e-12):
                 pad_hit.append(_axis_names()[a])
         if pad_hit:
@@ -1061,6 +1084,9 @@ def _print(report):
         if "realization" in it:
             head += f" — {it['realization']}"
         print(f"  {head}")
+        if it.get("continued_faces"):
+            print("    continues through absorber faces: "
+                  + ", ".join(it["continued_faces"]))
         if "n_sheet_nodes" in it:
             print(f"    sheet nodes: {it['n_sheet_nodes']} (owns no cell)")
         elif "n_cells" in it:
