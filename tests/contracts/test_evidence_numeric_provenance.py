@@ -561,12 +561,12 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
 # artifacts that went with the filter case (REMOVED_ARTIFACT_PREFIXES, skipped
 # per citation). Measured after the removal: 403 references, 373 value-checked,
 # 31 artifacts. The floors are lowered to the measured values.
-# 2026-09-21 (open-boundary contract): +14 references, all value-checked, over +6
+# 2026-09-21 (open-boundary contract): +15 references, all value-checked, over +7
 # distinct artifacts (the patch ring-down records under
 # scripts/diagnostics/open_boundary_contract/). Raised in the same commit.
-MIN_REFERENCES = 417
-MIN_VALUE_CHECKED = 387
-MIN_DISTINCT_ARTIFACTS = 37
+MIN_REFERENCES = 418
+MIN_VALUE_CHECKED = 388
+MIN_DISTINCT_ARTIFACTS = 38
 
 
 # --------------------------------------------------------------------------

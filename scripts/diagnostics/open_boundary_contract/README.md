@@ -30,3 +30,6 @@ The records name two fixtures by the labels they had when the runs were made: "c
 filter (`validation/crossval/06b_msl_notch_filter_uniform.py`), "cv20" the MSL phase-referee line
 (`validation/crossval/20_msl_phase_referee.py`). The `ports/` before/after pair used plumbing smoke
 fixtures whose |S11| is numerical noise and carries no information; `msl/` replaced it.
+
+Absolute paths in these records (`/root/workspace/…`) are the lab pod's. The rule files some briefs
+name there are private and are not part of this repository; nothing from them is quoted here.
