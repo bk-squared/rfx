@@ -160,18 +160,21 @@ define an S-parameter port.
     So a **passive** port keeps the port-branch formula and still changes
     value: measured `max |dS| = 0.026`, `max |d|S|| = 0.0022` on a two-port
     PEC fixture, with its voltage bit-identical either side of the slot.
-  - the **off-diagonal**, through the same current. `S21`/`S12` move by up to
-    1.94 % on a CPML two-port and 0.37 % on the matched line.
-  The lumped off-diagonal is not validated either side of that move: on the
-  matched line it reads `|S21| ~ 2.25` where the closed form is `1`, before
-  and after, while the wire lane on the identical cells reads `1.00005`. See
-  `tests/unit/ports/test_lumped_two_port_matched_line.py`, whose closed-form
-  off-diagonal check is a strict xfail for that reason.
-- A V/I dump written after that date carries a `drive_ref_voltages` channel,
-  the pre-injection drive sample the off-diagonal incident wave is built on.
-  Dumps written before it replay unchanged — pinned by
-  `tests/fixtures/lumped_two_port_vi_dump_pre_driven_diagonal.npz`, which
-  carries neither that channel nor a `diagonal_frame` key.
+  - the **off-diagonal**, by the whole decomposition. The lumped N-port
+    S-matrix is now the wire family's decomposition evaluated at one live
+    cell, not a separately calibrated per-cell convention: a one-cell lumped
+    port and a one-cell wire port are the same port, so they have one
+    S-matrix. On the matched line the lumped `|S21|` went `2.24752 ->
+    1.00005` against a closed form of `1`, with the wire lane unchanged, and
+    the two lanes now agree to exactly `0.0` on complex S, every entry.
+  Gated by `tests/unit/ports/test_lumped_two_port_matched_line.py` against
+  the closed form on both entries and both lanes, plus lumped == wire on the
+  full matrix.
+- A V/I dump records which frame its production S used, in its
+  `diagonal_frame` metadata; the whole-port frame needs no channel beyond the
+  stored V and I. Dumps written before this change replay unchanged — pinned
+  by `tests/fixtures/lumped_two_port_vi_dump_pre_driven_diagonal.npz`, which
+  carries no `diagonal_frame` key and so selects the legacy per-cell frame.
 
 Relevant implementations and tests include
 `tests/unit/ports/test_lumped_port_known_load_line.py`,

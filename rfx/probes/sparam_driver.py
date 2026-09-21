@@ -334,9 +334,6 @@ def compute_lumped_wire_s_matrix_via_scan(
                 freqs=jnp.asarray(freqs),
                 voltages=-v_all,
                 currents=i_all,
-                # Same into-DUT sign as ``voltages``; the off-diagonal
-                # incident wave is built on this channel.
-                drive_ref_voltages=-vref_all,
                 port_impedances=z0,
                 port_names=tuple(f"port_{idx}" for idx in range(n_ports)),
                 driven_port_indices=tuple(range(n_ports)),

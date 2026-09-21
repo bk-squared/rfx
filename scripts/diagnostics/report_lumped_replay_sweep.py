@@ -173,10 +173,6 @@ def _run_case(case: LumpedSweepCase, output_dir: Path) -> dict:
         port_names=extraction.port_names,
         driven_port_indices=extraction.driven_port_indices,
         production_smatrix=np.asarray(extraction.s_params, dtype=np.complex128),
-        # The production off-diagonal incident wave is built on the
-        # pre-injection drive sample; without this channel the replay
-        # cannot reproduce S21.
-        drive_ref_voltages=extraction.drive_ref_voltages,
     )
 
     dump = load_port_vi_dump_npz(dump_path)

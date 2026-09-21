@@ -312,13 +312,6 @@ class PortVIReplayBundle(NamedTuple):
     port_impedances: object
     port_names: tuple[str, ...]
     driven_port_indices: tuple[int, ...]
-    # PRE-injection drive-sample voltages, same shape and same into-DUT sign
-    # as ``voltages``.  The production off-diagonal incident wave is built on
-    # this channel, so without it a dump cannot replay its own S21; the wire
-    # bundle carries ``raw_drive_ref_voltages_fdt`` for the same reason.
-    # ``None`` marks a dump taken before the lumped sampling slot moved, where
-    # ``voltages`` IS the pre-injection sample.
-    drive_ref_voltages: object = None
 
 
 class WirePortVIReplayBundle(NamedTuple):
@@ -1285,76 +1278,51 @@ def update_wire_drive_ref_probe(
 def decompose_lumped_s_matrix(v, i, z0, v_ref=None):
     """Lumped-port N-port S-matrix from accumulated V/I DFTs.
 
-    DIAGONAL (every one is a DRIVEN reading here — column *j* comes from
-    the drive run of port *j*): the driven terminal reflection
+    A one-cell lumped port and a one-cell wire port are the same port: they
+    fold the same sigma into the same cell (``setup_wire_port`` at
+    ``n_live = 1`` is ``setup_lumped_port``) and inject the same voltage into
+    it (likewise ``apply_wire_port``). So the S MATRIX is the wire family's
+    validated decomposition evaluated at one live cell, not a second
+    convention that happens to agree on the diagonal — and this function
+    delegates to :func:`decompose_wire_s_matrix` to make that true by
+    construction rather than by two copies agreeing today.
+
+    For a one-cell port the whole-gap line integral IS the single cell, so
+    ``v_port = v`` and ``port_cell_counts = 1``. The whole-port frame (issue
+    #770) then gives
 
         S[j,j] = (V[j,j] - Z0[j]·I[j,j]) / (V[j,j] + Z0[j]·I[j,j])
+        S[i,j] = (V[j,i] - Z0[i]·I[j,i]) / (V[j,j] + Z0[j]·I[j,j])   (i != j)
 
-    on the POST-injection V/I pair, whenever the pre-injection reference
-    channel ``v_ref`` is supplied (i.e. the caller is on the post-decision
-    sampling contract).  ``v_ref=None`` marks pre-decision data — a stored
-    V/I dump or a legacy replay — and keeps the historical passive-branch
-    diagonal so those reproduce byte-for-byte.
+    — one incident wave for the whole column, the physical one at the driven
+    port.
 
-    OFF-DIAGONAL — wave decomposition with the FDTD sign convention
-    (``V = -E·dx``), role-selected per port (issue #308):
+    WHY THIS REPLACED THE PER-CELL #308 FRAME. That frame built the
+    off-diagonal incident wave as ``(-V_ref[j,j] + Z0[j]·I[j,j])``: negated,
+    and on the pre-injection sample. On a two-port parallel-plate line matched
+    at both ends, where the closed form is ``S11 = 0`` and ``|S21| = 1`` at
+    every bin, it read ``|S21| = 2.247 … 2.077`` while the wire lane on the
+    IDENTICAL cells read ``1.00005 … 1.00459``
+    (tests/unit/ports/test_lumped_two_port_matched_line.py). One port, two
+    answers, and only one of them is the closed form.
 
-        a_j = (-V_ref[j,j] + Z0[j]·I[j,j]) / (2·√Z0[j])  # incident at driven port j
-        b_i = (V[j,i] - Z0[i]·I[j,i]) / (2·√Z0[i])       # arriving at PASSIVE port i≠j
-        S[i,j] = b_i / a_j
-
-    The incident wave ``a_j`` is built on the PRE-injection drive sample
-    (``v_ref[j,j]``, bit-identical to the pre-decision ``v[j,j]``) because
-    the #308 receive-wave sign was pinned empirically against that sample;
-    at a passive receive port pre- and post-injection V are the same
-    sample (no source at its own cells), so ``b_i`` is unchanged.  This
-    mirrors :func:`decompose_wire_s_matrix`'s #683 × #764 recalibration.
-
-    At a passive receive port the
-    historical ``(-V - Z0·I)`` channel structurally cancelled the arriving
-    wave: the port-cell resistor law makes ``-V == +Z0_cell·I`` identically
-    at a matched port, so a matched thru read |S21| near-null (verified,
-    issue #308).  The receive channel is therefore the orthogonal
-    combination ``±(V - Z0·I)``, and the overall sign is pinned
-    EMPIRICALLY by the low-frequency falsifier on the canonical 2-port
-    thru (2026-07-10): under ``(V - Z0·I)`` the measured S21(DC) -> +1
-    (the DC thru limit); the first-cut opposite sign ``(-V + Z0·I)``
-    measured S21(DC) -> -1 (the pi sat in the raw cross-port phasors,
-    arg(V2/V1) ≈ pi - beta·L, from the source-driven cell field sense in
-    ``V = -E·dx``).
-
-    Sign convention: multiports whose ports share the same field component
-    carry a single global receive-wave sign, pinned by that DC witness on
-    the canonical thru.  A multiport mixing components (e.g. one ``ez``
-    and one ``ey`` port) has no orientation input to relate the per-port
-    voltage polarities, so its off-diagonal S entries remain defined only
-    up to a ±1 (pi-phase) factor (fence unchanged).
-
-    OPEN item: the port-based |S21| MAGNITUDE is deflated relative to the
-    extractor-independent flux referee (flux-true |S21| 0.97-1.0 vs
-    0.52-0.67 here on the canonical thru); the Phase-0 closed-box referee
-    traced it to the port-cell wave definitions themselves (near-field
-    dominated, do not conserve power) — see issue #313.  The opt-in
-    ``add_port(reference_plane_cells=N)`` reference-plane path
-    (``rfx.probes.refplane``) replaces the opted off-diagonals with line
-    plane waves; THIS default port-cell path keeps the deflation and its
-    committed regression locks unchanged.
-
-    The safe-denominator guard replaces a zero incident wave by 1 (so
-    S → 0 / 1 = 0 rather than NaN).  Mirrors ``extract_s_matrix`` exactly.
+    ``v_ref`` marks post-decision data. Its VALUES are not consumed by the
+    whole-port frame — the incident wave is built on ``v`` — but its presence
+    is what distinguishes a caller on the current sampling contract from a
+    stored pre-2026-09-21 dump. ``v_ref=None`` keeps the legacy per-cell
+    algebra byte-for-byte so such a dump replays to its recorded S-matrix.
 
     Parameters
     ----------
     v, i : (n_ports, n_ports, n_freqs) complex
         ``v[j, i]`` / ``i[j, i]`` are the V/I DFT phasors at receive port *i*
-        when driving port *j* (FDTD sign convention).
+        when driving port *j* (FDTD sign convention, ``V = -E·dx``).
     z0 : (n_ports,) real
         Per-port reference impedance.
     v_ref : (n_ports, n_ports, n_freqs) complex or None
-        PRE-injection drive-sample reference phasors; only the drive
-        diagonal ``v_ref[j, j]`` is consumed (off-diagonal incident wave).
-        ``None`` marks pre-decision data, where ``v`` IS the pre-injection
-        sample and the diagonal keeps the passive-branch algebra.
+        PRE-injection drive-sample phasors. Presence selects the whole-port
+        frame; ``None`` selects the legacy per-cell frame, where ``v`` IS the
+        pre-injection sample.
 
     Returns
     -------
@@ -1364,34 +1332,18 @@ def decompose_lumped_s_matrix(v, i, z0, v_ref=None):
     v = jnp.asarray(v)
     i = jnp.asarray(i)
     z0 = jnp.asarray(z0)
-    driven_diagonal = v_ref is not None
-    v_ref = v if v_ref is None else jnp.asarray(v_ref)
     n_ports = v.shape[0]
-    n_freqs = v.shape[-1]
-    S = jnp.zeros((n_ports, n_ports, n_freqs), dtype=jnp.complex64)
-    for j in range(n_ports):
-        z0_j = z0[j]
-        a_j = (-v_ref[j, j] + z0_j * i[j, j]) / (2.0 * jnp.sqrt(z0_j))
-        safe_a = jnp.where(jnp.abs(a_j) > 0, a_j, jnp.ones_like(a_j))
-        for ri in range(n_ports):
-            z0_i = z0[ri]
-            if ri == j and driven_diagonal:
-                # Driven terminal reflection on the post-injection pair.
-                S = S.at[ri, j, :].set(
-                    driven_port_reflection(v[j, ri], i[j, ri], z0_i)
-                    .astype(jnp.complex64))
-                continue
-            if ri == j:
-                # Pre-decision data: passive-branch diagonal, byte-frozen
-                # so stored V/I dumps replay to their recorded S-matrix.
-                b_i = (-v[j, ri] - z0_i * i[j, ri]) / (2.0 * jnp.sqrt(z0_i))
-            else:
-                # Passive receive port: orthogonal wave channel; sign pinned
-                # by the DC falsifier (S21(DC) -> +1 on the canonical thru,
-                # issue #308).
-                b_i = (v[j, ri] - z0_i * i[j, ri]) / (2.0 * jnp.sqrt(z0_i))
-            S = S.at[ri, j, :].set((b_i / safe_a).astype(jnp.complex64))
-    return S
+    ones = [1] * n_ports
+
+    if v_ref is not None:
+        # The wire decomposition at one live cell. v_port = v because a
+        # one-cell gap's line integral is that one cell.
+        return decompose_wire_s_matrix(v, i, z0, ones, v_port=v, v_ref=v_ref)
+
+    # Pre-decision data: the legacy per-cell frame, byte-frozen so a stored
+    # dump replays to the S-matrix recorded with it.  Same call, without the
+    # whole-port channel, which is exactly what selects that frame there.
+    return decompose_wire_s_matrix(v, i, z0, ones, v_port=None, v_ref=None)
 
 
 def decompose_wire_s_matrix(v, i, z0, port_cell_counts, v_port=None,
@@ -1686,10 +1638,6 @@ def extract_s_matrix(
         np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
         if return_vi_dump else None
     )
-    raw_vref = (
-        np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
-        if return_vi_dump else None
-    )
     raw_i = (
         np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
         if return_vi_dump else None
@@ -1782,11 +1730,6 @@ def extract_s_matrix(
                 # same per-role convention.
                 raw_v[j, i, :] = np.asarray(-sprobes[i].v_dft, dtype=np.complex128)
                 raw_i[j, i, :] = np.asarray(sprobes[i].i_dft, dtype=np.complex128)
-                # The PRE-injection drive sample, in the same into-DUT sign.
-                # The off-diagonal incident wave is built on it, so a replay
-                # needs it to reproduce S21.
-                raw_vref[j, i, :] = np.asarray(-sprobes[i].v_ref_dft,
-                                               dtype=np.complex128)
 
     z0_arr = np.asarray([p.impedance for p in ports], dtype=np.float64)
     S = np.asarray(
@@ -1799,7 +1742,6 @@ def extract_s_matrix(
             freqs=jnp.asarray(freqs),
             voltages=raw_v,
             currents=raw_i,
-            drive_ref_voltages=raw_vref,
             port_impedances=np.asarray([p.impedance for p in ports], dtype=np.float64),
             port_names=tuple(f"port_{idx}" for idx in range(n_ports)),
             driven_port_indices=tuple(range(n_ports)),

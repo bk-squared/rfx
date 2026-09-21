@@ -124,7 +124,7 @@ def generate_coaxial_gap_vi_dump(
     if not result.lumped_port_sparams:
         raise RuntimeError("coaxial diagnostic produced no V/I DFT accumulators")
     raw_spec, accs = result.lumped_port_sparams[0]
-    v_dft, i_dft, v_ref_dft = accs[0], accs[1], accs[2]
+    v_dft, i_dft = accs[0], accs[1]
     # This gap is a DRIVEN port, so its S11 is the terminal reflection.  It
     # used to be extract_lumped_s11 — the passive port-branch reading, which
     # on a driven port is the reciprocal of the physical reflection
@@ -139,7 +139,6 @@ def generate_coaxial_gap_vi_dump(
     # convention used by rfx.validation: voltage/current positive into the DUT.
     voltages = -np.asarray(v_dft, dtype=np.complex128).reshape(1, 1, -1)
     currents = np.asarray(i_dft, dtype=np.complex128).reshape(1, 1, -1)
-    drive_ref_voltages = -np.asarray(v_ref_dft, dtype=np.complex128).reshape(1, 1, -1)
     production_smatrix = diagnostic_s11.reshape(1, 1, -1)
 
     metadata = PortDumpMetadata(
@@ -204,7 +203,6 @@ def generate_coaxial_gap_vi_dump(
         port_names=("coax_gap",),
         driven_port_indices=(0,),
         production_smatrix=production_smatrix,
-        drive_ref_voltages=drive_ref_voltages,
     )
 
     dump = load_port_vi_dump_npz(dump_path)

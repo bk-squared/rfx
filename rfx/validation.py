@@ -123,11 +123,6 @@ class PortVIDump:
     production_smatrix: np.ndarray | None = None
     reference_plane_offsets_m: np.ndarray | None = None
     propagation_constants: np.ndarray | None = None
-    #: PRE-injection drive-sample voltages, same shape and sign convention as
-    #: ``voltages``.  A production off-diagonal whose incident wave is built
-    #: on that sample cannot be replayed without it.  ``None`` marks a dump
-    #: whose production S used ``voltages`` for both.
-    drive_ref_voltages: np.ndarray | None = None
 
 
 @dataclass(frozen=True)
@@ -569,7 +564,6 @@ def replay_smatrix_from_vi_dump(
     driven_port_indices: Any | None = None,
     current_convention: str = "positive_into_dut",
     diagonal_frame: str = "port_branch",
-    drive_ref_voltages: Any | None = None,
     reference_plane_offsets_m: Any | None = None,
     propagation_constants: Any | None = None,
     source: str = "vi_dump_replay",
@@ -602,14 +596,11 @@ def replay_smatrix_from_vi_dump(
     says so in its metadata; see :func:`replay_smatrix_from_port_vi_dump`.
     The off-diagonal role channel is unchanged by this switch.
 
-    ``drive_ref_voltages`` is the PRE-injection drive sample, in the same
-    shape and sign convention as ``voltages``.  When a production extractor
-    builds its off-diagonal INCIDENT wave on that sample rather than on the
-    voltage it reports (rfx's lumped lane does, since the #308 receive-wave
-    sign was calibrated against it), the replay needs the same channel to
-    reproduce S21; without it the off-diagonals come out wrong and
-    sign-flipped.  ``None`` means the incident wave is built on ``voltages``,
-    which is right for every dump whose production S did the same.
+    In the ``"driven_terminal"`` frame the whole column shares ONE incident
+    wave, the physical one at the driven port, so the diagonal and the
+    off-diagonals have the same denominator.  That is the wire family's
+    whole-port frame, which rfx's lumped lane now evaluates at one live cell,
+    and it needs no channel beyond the stored V and I.
 
     with current positive **into** the DUT by default.  If the dump records
     current positive out of the DUT, set ``current_convention="positive_out_of_dut"``
@@ -656,20 +647,9 @@ def replay_smatrix_from_vi_dump(
             "diagonal_frame must be 'driven_terminal' or 'port_branch'"
         )
 
-    v_ref = v if drive_ref_voltages is None else _as_driven_port_array(
-        "drive_ref_voltages", drive_ref_voltages)
-    if v_ref.shape != v.shape:
-        raise ValueError(
-            "drive_ref_voltages and voltages shape mismatch: "
-            f"{v_ref.shape} vs {v.shape}")
-
     a = (v + z_view * i) / (2.0 * sqrt_z)
     b = (v - z_view * i) / (2.0 * sqrt_z)
-    # Incident wave on the PRE-injection drive sample, for a production
-    # off-diagonal calibrated against it.  Identical to ``a`` when no such
-    # channel is supplied, and identical in value at a passive port either
-    # way (no source at its own cells).
-    a_ref = (v_ref + z_view * i) / (2.0 * sqrt_z)
+
     # Passive-receive channel (issue #308): the production receive b-wave in
     # this dump's into-DUT convention.  Selected per role in the loop below.
     b_recv = -(v + z_view * i) / (2.0 * sqrt_z)
@@ -706,7 +686,6 @@ def replay_smatrix_from_vi_dump(
         b_recv = b_recv * shift
         a_drv = a_drv / shift
         b_drv = b_drv * shift
-        a_ref = a_ref / shift
 
     if driven_port_indices is None:
         driven = tuple(range(n_driven))
@@ -723,33 +702,24 @@ def replay_smatrix_from_vi_dump(
     s = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
     for drive_i, driven_port in enumerate(driven):
         # Role-selected numerator (issue #308): the reflected-wave channel at
-        # the driven port, the passive-receive channel everywhere else.  The
-        # off-diagonal denominator is the drive-reference incident wave; the
-        # diagonal keeps its own.
+        # the driven port, the passive-receive channel everywhere else.
         numer = b_recv[drive_i, :, :].copy()
-        numer[driven_port, :] = b[drive_i, driven_port, :]
-        denom = np.broadcast_to(
-            a_ref[drive_i, driven_port, :], (n_ports, n_freqs)).copy()
-        denom[driven_port, :] = a[drive_i, driven_port, :]
+        if frame == "driven_terminal":
+            # Whole-port frame: ONE incident wave for the whole column, the
+            # physical one at the driven port, for the diagonal and the
+            # off-diagonals alike.
+            numer[driven_port, :] = b_drv[drive_i, driven_port, :]
+            denom = a_drv[drive_i, driven_port, :]
+        else:
+            numer[driven_port, :] = b[drive_i, driven_port, :]
+            denom = a[drive_i, driven_port, :]
         with np.errstate(divide="ignore", invalid="ignore"):
             s[:, driven_port, :] = np.divide(
                 numer,
-                denom,
+                denom.reshape(1, n_freqs),
                 out=np.full((n_ports, n_freqs), np.nan + 1j * np.nan),
-                where=np.abs(denom) > 0.0,
+                where=np.abs(denom.reshape(1, n_freqs)) > 0.0,
             )
-        if frame == "driven_terminal":
-            # The diagonal is the driven terminal reflection; the
-            # off-diagonals above keep their own (unchanged) role channel
-            # and their own incident-wave denominator.
-            d_denom = a_drv[drive_i, driven_port, :]
-            with np.errstate(divide="ignore", invalid="ignore"):
-                s[driven_port, driven_port, :] = np.divide(
-                    b_drv[drive_i, driven_port, :],
-                    d_denom,
-                    out=np.full((n_freqs,), np.nan + 1j * np.nan),
-                    where=np.abs(d_denom) > 0.0,
-                )
 
     names = tuple(str(name) for name in port_names) if port_names is not None else _default_port_names(n_ports)
     return PortSMatrixObservable(
@@ -812,7 +782,6 @@ def save_port_vi_dump_npz(
     production_smatrix: Any | None = None,
     reference_plane_offsets_m: Any | None = None,
     propagation_constants: Any | None = None,
-    drive_ref_voltages: Any | None = None,
 ) -> None:
     """Write a compact ``.npz`` V/I dump for independent replay."""
 
@@ -849,13 +818,6 @@ def save_port_vi_dump_npz(
         payload["reference_plane_offsets_m"] = np.asarray(reference_plane_offsets_m, dtype=np.float64)
     if propagation_constants is not None:
         payload["propagation_constants"] = np.asarray(propagation_constants, dtype=np.complex128)
-    if drive_ref_voltages is not None:
-        vref = _as_driven_port_array("drive_ref_voltages", drive_ref_voltages)
-        if vref.shape != v.shape:
-            raise ValueError(
-                "drive_ref_voltages and voltages shape mismatch: "
-                f"{vref.shape} vs {v.shape}")
-        payload["drive_ref_voltages"] = vref
     np.savez(path, **payload)
 
 
@@ -871,7 +833,6 @@ def load_port_vi_dump_npz(path: str | Path) -> PortVIDump:
         production = data["production_smatrix"] if "production_smatrix" in data else None
         offsets = data["reference_plane_offsets_m"] if "reference_plane_offsets_m" in data else None
         gamma = data["propagation_constants"] if "propagation_constants" in data else None
-        vref = data["drive_ref_voltages"] if "drive_ref_voltages" in data else None
         # Production MSL diagnostics retain N voltage probes as
         # raw_v[driven, port, probe, frequency].  PortVIDump's canonical V/I
         # view is the wave-split plane at probe zero.
@@ -896,7 +857,6 @@ def load_port_vi_dump_npz(path: str | Path) -> PortVIDump:
             production_smatrix=None if production is None else np.asarray(production, dtype=np.complex128),
             reference_plane_offsets_m=None if offsets is None else np.asarray(offsets, dtype=np.float64),
             propagation_constants=None if gamma is None else np.asarray(gamma, dtype=np.complex128),
-            drive_ref_voltages=None if vref is None else np.asarray(vref, dtype=np.complex128),
         )
 
 
@@ -997,7 +957,6 @@ def replay_smatrix_from_port_vi_dump(dump: PortVIDump) -> PortSMatrixObservable:
         driven_port_indices=dump.driven_port_indices,
         current_convention=current_convention,
         diagonal_frame=diagonal_frame,
-        drive_ref_voltages=dump.drive_ref_voltages,
         reference_plane_offsets_m=dump.reference_plane_offsets_m,
         propagation_constants=dump.propagation_constants,
         source="port_vi_dump",

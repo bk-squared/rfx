@@ -11,30 +11,26 @@ cell and the line is matched at both ends. Then
 
 at every frequency, independent of the line length.
 
-What it pins, and what it deliberately does not
------------------------------------------------
-The DIAGONAL is gated against the closed form, on both lanes, and lumped is
-required to equal wire on the identical cells. That is a second, independent
-fixture for the 2026-09-21 driven-diagonal change: measured here, the lumped
-diagonal went from ``max |S11| = 1.24831`` before it to ``0.04206`` after,
-which is the wire lane's number to every digit.
+What it pins
+------------
+Both entries, on both lanes, against the closed form — and lumped against wire
+on the identical cells, where the two must agree because they ARE the same
+port (same sigma, same injection, same V/I channels at ``n_live = 1``).
 
-The OFF-DIAGONAL is NOT gated to a value, because the value is wrong and
-pinning it would freeze the defect. Measured on this fixture:
+This fixture is what moved the lumped off-diagonal. Measured here across the
+2026-09-21 work:
 
-    lumped  |S21|  before 2.24752 ... 2.08434   after 2.24739 ... 2.07659
-    wire    |S21|  before 1.00005 ... 1.00459   after 1.00005 ... 1.00459
+    lumped  |S11|  1.24831 -> 0.04206      (closed form 0)
+    lumped  |S21|  2.24752 -> 1.00005      (closed form 1)
+    wire    |S21|  1.00005 (unchanged)
 
-against a closed form of 1 at every bin. The lumped off-diagonal is a factor
-2.25 out, before this change and after it — the change moves it by at most
-7.8e-03 (0.37 %), which is the Yee half-step phase now carried on every port's
-current. It neither caused that error nor fixed it. The wire lane, on the
-identical cells, is within 0.5 %.
-
-So the closed-form off-diagonal check below is ``xfail(strict=True)``: it
-records the right answer, it does not lock the wrong one, and it turns red the
-day someone fixes the lumped off-diagonal convention without updating this
-file. No cause is claimed for the factor here.
+The diagonal moved when a driven port started reading its terminal V/I pair.
+The off-diagonal moved when the lumped N-port decomposition stopped being a
+separately calibrated per-cell convention and became the wire family's
+whole-port decomposition evaluated at one live cell — the per-cell frame built
+its incident wave as ``(-V_ref + Z0 I)``, negated and on the pre-injection
+sample, and read 2.25 where the closed form is 1 while the wire lane on the
+same cells read 1.00005. One port cannot have two answers.
 """
 
 import numpy as np
@@ -107,19 +103,28 @@ def test_the_wire_off_diagonal_matches_the_closed_form():
         f"closed form |S21| = 1 at every bin; wire read {np.round(s21, 5)}")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "The lumped off-diagonal reads |S21| ~ 2.25 where the closed form is "
-        "1, on this fixture, both before and after the 2026-09-21 driven-"
-        "diagonal change (2.24752 -> 2.24739 at 1 GHz). The wire lane on the "
-        "identical cells reads 1.00005. This records the right answer without "
-        "locking the wrong one; when the lumped off-diagonal convention is "
-        "fixed, this turns red and should become a plain assertion."
-    ),
-)
 def test_the_lumped_off_diagonal_matches_the_closed_form():
-    """|S21| = 1 on a matched lossless line. The lumped lane does not read it."""
+    """|S21| = 1 on a matched lossless line. The lumped lane reads it too.
+
+    The gate is the wire lane's own measured envelope on this fixture, 0.01
+    against a worst bin of 0.00459. Before the lumped decomposition became
+    the wire one at n_live = 1, this read 2.24752.
+    """
     s21 = np.abs(_s_matrix("lumped")[1, 0])
     assert np.abs(s21 - 1.0).max() <= 0.01, (
         f"closed form |S21| = 1 at every bin; lumped read {np.round(s21, 5)}")
+
+
+def test_the_two_lanes_agree_on_every_entry_of_the_same_cells():
+    """One port, one S-matrix — diagonal and off-diagonal alike.
+
+    This is the gate that makes the two lanes one implementation rather than
+    two that happen to agree: the lumped decomposition IS the wire
+    decomposition at one live cell, so every entry must match, not just the
+    diagonal. Measured: exactly 0.0 on complex S, all four entries.
+    """
+    lumped = _s_matrix("lumped")
+    wire = _s_matrix("wire")
+    assert np.allclose(lumped, wire, rtol=0.0, atol=1e-6), (
+        f"lumped {np.round(np.abs(lumped), 6)} vs wire "
+        f"{np.round(np.abs(wire), 6)}")
