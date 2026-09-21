@@ -198,6 +198,7 @@ def _pec_sheet_spec(sim, entry, kind_src, grid, nonuniform):
         from rfx.geometry.smoothing import continued_conductor_shape
         sheet = sheet_spec_from_shape(
             continued_conductor_shape(sim, grid, entry.shape), coords, sizes, normal_axis=normal,
+            name=getattr(entry, "material_name", kind_src),
             refuse_thick=(kind_src == "thin_conductor"))
         return replace(sheet, footprint=jnp.asarray(
             interior_lattice_mask(sheet.footprint, grid)))

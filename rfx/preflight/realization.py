@@ -258,8 +258,9 @@ class _EntryRealization:
         that leaves the node range, an emptied volume)."""
         from rfx.geometry.rasterize_grid import (
             GridCoords, cell_centres_from_nodes, pec_volume_cell_mask,
-            sheet_spec_from_shape,
+            sheet_spec_from_shape, interior_lattice_mask,
         )
+        from dataclasses import replace
         nodes = [np.asarray(ctx.coords.x), np.asarray(ctx.coords.y),
                  np.asarray(ctx.coords.z)]
         nodes[axis] = nodes[axis] + np.float64(shift_m)
@@ -269,8 +270,9 @@ class _EntryRealization:
         try:
             if self.kind == "volume":
                 centres = cell_centres_from_nodes(coords, ctx.cell_sizes)
-                cells = np.asarray(pec_volume_cell_mask(self.shape, centres),
-                                   dtype=bool)
+                cells = interior_lattice_mask(
+                    pec_volume_cell_mask(self.shape, centres), ctx.grid,
+                    cell_axes=(True, True, True))
                 if not cells.any():
                     return None
                 edges = _realized_edges_np(cells, (), (), ctx.periodic, shape)
@@ -278,6 +280,7 @@ class _EntryRealization:
                 sp = sheet_spec_from_shape(
                     self.shape, coords, ctx.cell_sizes,
                     normal_axis=int(self.sheet.normal_axis), name=self.name)
+                sp = replace(sp, footprint=interior_lattice_mask(sp.footprint, ctx.grid))
                 edges = _realized_edges_np(None, [sp], (), ctx.periodic, shape)
             else:
                 return None
@@ -536,6 +539,37 @@ class _CampaignStaticsContext:
         """Realized (not refused, not lossy) conductor entries."""
         return [e for e in self.entry_realizations() if e.is_pec]
 
+    def interior_pec_entries(self) -> list:
+        """Per-entry conductors for comparisons with the user's drawing.
+
+        Absorber continuation is excluded from cell, footprint and edge
+        counts; physical overlap checks retain the full ``pec_entries``.
+        """
+        import copy
+        from dataclasses import replace
+        from rfx.geometry.rasterize_grid import interior_lattice_mask
+
+        if hasattr(self, "_interior_entries"):
+            return self._interior_entries
+        out = []
+        for entry in self.pec_entries():
+            e = copy.copy(entry)
+            e._edges = None
+            if e.cells is not None:
+                e.cells = interior_lattice_mask(
+                    e.cells, self.grid, cell_axes=(True, True, True))
+            if e.sheet is not None:
+                e.sheet = replace(e.sheet, footprint=interior_lattice_mask(
+                    e.sheet.footprint, self.grid))
+            if e.wire is not None:
+                e.wire = replace(e.wire, edges=tuple(
+                    interior_lattice_mask(mask, self.grid,
+                                          cell_axes=tuple(a == c for a in range(3)))
+                    for c, mask in enumerate(e.wire.edges)))
+            out.append(e)
+        self._interior_entries = out
+        return out
+
     def rasterize(self, shape) -> np.ndarray:
         """This shape's PRODUCTION node mask on this lane's grid (dielectric
         sampling — node, half-open). Conductors do NOT go through here;
@@ -558,7 +592,7 @@ class _CampaignStaticsContext:
         carries whether the bounds ARE the shape (``exact``).
         """
         keyed, unkeyed = [], []
-        for e in self.pec_entries():
+        for e in self.interior_pec_entries():
             bounds = _shape_bounds(e.shape)
             if bounds is None:
                 unkeyed.append(e)
