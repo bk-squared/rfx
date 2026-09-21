@@ -842,6 +842,7 @@ CLASSIFICATION: dict[str, str] = {
     ISSUE831_RESULTS: GATED,
     ISSUE1043_PAD_CONTINUATION_NOTE: GATED,
     "docs/design_notes/mixed_refplane_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/msl_chain_battery_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/portgrid_m0m1_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/portgrid_m0m1_results.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/portgrid_m1b_retry_predeclaration.md": NO_ARTIFACT_REFERENCE,
