@@ -96,6 +96,7 @@ number.
    FREQUENCY against 1 %; the depth is recorded per rung with no comparison. The depth read -42.5 dB
    at 100 um and -33.8 dB at 50 um purely from where the 50 MHz bin fell.
 3. **The AD stage runs on a 48 GB card.** On the 24 GB card the reverse-mode checkpoint stack asked
-   for 14.08 GiB in one allocation on top of about 10 GiB in use. Nothing was reduced to make it
+   for 14.08 GiB in one allocation while the allocator's own summary showed its pool a little over
+   half full (the log prints a usage bar, not a byte count). Nothing was reduced to make it
    fit; the numbers go in the record and, as a statement of cost, in the support matrix.
 
