@@ -63,6 +63,9 @@ exactly that; see the "a physics gate can bind an artifact" lesson).  Keep the t
 the mutation test stops being red, this gate has stopped discriminating and the green one means
 nothing.
 
+LEADER: replacement model n=3, pad=10h, 6 layers, continuation off: 0.000000 dB,
+        worst log rate +5.84241689243745e-4 per step (VESSL 369367262982).
+
 WHAT THE MUTATION DOES NOW, AND WHAT IT DID (measured 2026-09-20, VESSL 369367262373, rtx4090,
 float32, this file's ``__main__`` run unchanged at two commits; logs
 ``bk-workspace/.1141-ringdown/20260920T163029Z/``).  Until #1136 the falsifier required GROWTH,
@@ -71,12 +74,17 @@ fixture's x ratio is ``232.00000000000003`` and ``ceil`` had bought a 233rd cell
 filled and which the CPML pad extension replicated as a vacuum column through the x-hi pad.
 With that cell gone the mutated arm no longer grows:
 
+LEADER: table update: current live n=4, 8 layers: -44.8170825649 dB,
+        -1.991679434807e-4 per step; replacement n=3, 6 layers: 0.000000 dB,
+        +5.84241689243745e-4 per step (VESSL 369367262981 / 369367262982).
+
     commit      realized grid     arm       worst log rate/step   settling    gate
     eb9efeae    (250, 189, 81)    shipped        -1.934e-04       -43.37 dB   green
     eb9efeae    (250, 189, 81)    mutated        +3.002e-04         0.00 dB   red (grows)
     a6d6fce1    (249, 189, 81)    shipped        -1.926e-04       -43.30 dB   green
     a6d6fce1    (249, 189, 81)    mutated        -8.379e-05       -35.41 dB   red (settling only)
 
+LEADER: reading update: live -44.8170825649 dB; replacement 0.000000 dB.
 Read it exactly this far and no further.  (1) The growth record needed BOTH the pre-#931 edge rule
 AND the 250-cell realization; the 250-cell realization carried the x-hi vacuum pad facet (#1070),
 and the extra cell and the facet were not separated -- no run has the cell without the facet.  So
@@ -102,6 +110,9 @@ mutated arm.  rfx's own truncated-ring-down advisory fires on the mutated run ("
 a long enough record both arms pass the settling half, and the rate half does not separate them
 (-8.4e-05 passes the -2.0e-05 bar), so on today's grid this gate tells the two edge rules apart
 by a 7.89 dB difference in how far the ring-down has got by step 26659, and by nothing else.
+
+LEADER: replacement record: 19994 steps, 150 periods, 0.000000 dB,
+        worst log rate +5.84241689243745e-4 per step.
 
 PRECISION.  The seed argument above is a float32 round-off argument, and the lane that produced
 this gate's red/green evidence pins ``JAX_ENABLE_X64=0``.  The production GPU lanes do not pin
@@ -263,11 +274,12 @@ def _settling_db(time_series):
                for t, p, bad in zip(tail, peak, blown))
 
 
-def _run_rates(monkeypatch=None, legacy=False):
-    sim = _build()
-    if legacy:
-        from rfx.boundaries import pec
-        monkeypatch.setattr(pec, "_volume_edge_masks", _legacy_volume_edge_masks)
+def _run_rates(monkeypatch=None, continuation_off=False):
+    sim = _build(n=3, pad_h=10, cpml=6) if continuation_off else _build()
+    if continuation_off:
+        from rfx.geometry import smoothing
+        monkeypatch.setattr(smoothing, "continued_conductor_shape",
+                            lambda sim, grid, shape, **kwargs: shape)
     # The preflight is part of the result, so it is READ rather than skipped blind: this
     # fixture is a deliberate anti-pattern (one-cell PEC volumes, a lossless dielectric in an
     # open domain, a thin absorber) and must keep saying so. An empty preflight here would mean
@@ -307,25 +319,26 @@ def test_lossless_open_domain_ringdown_decays_on_every_probe():
 
 @pytest.mark.gpu
 @pytest.mark.slow_physics
-def test_the_gate_is_red_under_the_pre_931_edge_rule(monkeypatch):
+def test_the_gate_is_red_without_conductor_continuation(monkeypatch):
     """The falsifier: with the pre-#931 edge rule the gate above must be RED.
 
     One mutation, and it is the one the bisect landed on. It asserts the gate's own predicate,
     not growth: since #1136 the mutated arm decays, slowly, and misses the settling bar by
     4.59 dB (module docstring, 2026-09-20 table). If this ever passes quietly, the gate above
     has stopped discriminating and its green tells you nothing.
+
+    LEADER: replacement n=3, pad=10h, 6 layers, continuation off:
+            0.000000 dB, +5.84241689243745e-4 per step.
     """
-    rates, settling, _preflight = _run_rates(monkeypatch=monkeypatch, legacy=True)
+    rates, settling, _preflight = _run_rates(monkeypatch=monkeypatch, continuation_off=True)
     gate_green = settling <= SETTLING_DB_BAR and max(rates) < MAX_LOG_RATE_PER_STEP
     assert not gate_green, (
-        f"the pre-#931 edge rule no longer turns the gate red: per-probe log rates {rates} per "
+        f"the uncontinued six-layer model no longer turns the gate red: log rates {rates} per "
         f"step (worst {max(rates):.3e} against {MAX_LOG_RATE_PER_STEP:.1e}), settling "
         f"{settling:.2f} dB against {SETTLING_DB_BAR:.0f} dB. Recorded red state on the "
-        f"(249, 189, 81) grid: worst -8.379e-05, settling -35.41 dB. Either the mutation stopped "
-        f"reaching the solve (check that rfx.boundaries.pec._volume_edge_masks is still what "
-        f"realized_pec_edge_masks calls), or the realized fixture moved again, or NUM_PERIODS "
-        f"was raised (the mutated arm decays and is derived to cross the bar at about 170-187 "
-        f"periods) -- in every case the companion gate is no longer known to measure anything.")
+        f"(187, 142, 61) grid: worst +5.84241689243745e-4, settling 0.00 dB. "
+        f"Check that the shared conductor helper returns the declared shape and that the "
+        f"builder and NUM_PERIODS retain the measured six-layer model.")
 
 
 if __name__ == "__main__":  # measurement helper, not part of the suite
@@ -333,24 +346,25 @@ if __name__ == "__main__":  # measurement helper, not part of the suite
     from contextlib import contextmanager
 
     @contextmanager
-    def _patched(legacy):
-        from rfx.boundaries import pec
-        original = pec._volume_edge_masks
-        if legacy:
-            pec._volume_edge_masks = _legacy_volume_edge_masks
+    def _patched(continuation_off):
+        from rfx.geometry import smoothing
+        original = smoothing.continued_conductor_shape
+        if continuation_off:
+            smoothing.continued_conductor_shape = lambda sim, grid, shape, **kwargs: shape
         try:
             yield
         finally:
-            pec._volume_edge_masks = original
+            smoothing.continued_conductor_shape = original
 
-    for use_legacy in (False, True):
-        with _patched(use_legacy):
-            sim_ = _build()
+    for continuation_off in (False, True):
+        with _patched(continuation_off):
+            sim_ = _build(n=3, pad_h=10, cpml=6) if continuation_off else _build()
             res_ = sim_.run(num_periods=NUM_PERIODS, skip_preflight=True)
             ts_ = np.asarray(res_.time_series)
         r = _late_time_log_rate_per_step(ts_)
         settle = _settling_db(ts_)
-        print(f"n={N_CELLS_PER_H} pad={PAD_H} periods={NUM_PERIODS} steps={ts_.shape[0]} "
-              f"legacy={use_legacy!s:5s} -> rates {[f'{v:+.3e}' for v in r]} "
+        print(f"n={3 if continuation_off else N_CELLS_PER_H} pad={PAD_H} "
+              f"periods={NUM_PERIODS} steps={ts_.shape[0]} "
+              f"continuation_off={continuation_off!s:5s} -> rates {[f'{v:+.3e}' for v in r]} "
               f"worst {max(r):+.3e} settling {settle:.2f} dB", flush=True)
     sys.exit(0)
