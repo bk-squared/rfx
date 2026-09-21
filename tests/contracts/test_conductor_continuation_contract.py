@@ -172,19 +172,6 @@ def test_wire_fed_line_strip_empty_and_ground_full():
     assert not bad, bad
 
 
-def test_terminal_one_cell_above_ground_does_not_hold_it():
-    from rfx import Box, Simulation
-    sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
-                     boundary="cpml", cpml_layers=2, pec_faces={"z_hi"})
-    sim.add(Box((0., 0., 2.), (8., 8., 2.)), material="pec")
-    sim.add_port((4., 4., 3.), component="ez", extent=5.)
-    grid, arrays, poles, nodes = assembled_arrays(sim)
-    assert arrays["sheet_0"][:, :, 4].all()
-    bad, exceptions = violations(sim, grid, arrays, poles, nodes)
-    assert not exceptions
-    assert not bad, bad
-
-
 def test_port_pair_holds_only_the_face_both_conductors_reach():
     from rfx import Box, Simulation
     sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,

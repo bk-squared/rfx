@@ -670,29 +670,25 @@ def _port_terminal_pairs(sim, grid, nodes):
 
 
 def _terminal_on_lattice(point, lattice, nodes):
-    """Read only the lattice elements incident to the terminal point.
+    """Whether occupied cells/nodes/edges are within one local cell of the terminal.
 
-    Between nodes, the containing cell and its bounding nodes are incident.
-    At a node, that node and the two adjoining cells are incident.
+    One cell, not exact incidence: committed fixtures declare a port terminal one
+    node off the conductor it stands on (the coax-to-MSL transition: ground cell
+    layer z = 2.4..2.5 mm, MSL lower terminal z = 2.6 mm). Exact incidence lost
+    that ground as the strip's partner and let the strip continue into the
+    absorber beside it (review of PR #1178, measured on that fixture).
     """
     for mask, cell_axes in lattice:
         indices = []
         for axis, line in enumerate(nodes):
             line = np.asarray(line)
-            p = float(point[axis])
-            slack = 16 * np.finfo(float).eps * max(abs(p), np.max(np.abs(line)),
-                                                   float(np.min(np.diff(line))))
-            exact = np.flatnonzero(np.abs(line-p) <= slack)
-            if exact.size:
-                k = int(exact[0])
-                incident = [k-1, k] if cell_axes[axis] else [k]
-            else:
-                k = int(np.searchsorted(line, p))
-                incident = [k-1] if cell_axes[axis] else [k-1, k]
-                if k == 0 or k == len(line):
-                    incident = []
-            limit = len(line)-int(cell_axes[axis])
-            indices.append(np.asarray([i for i in incident if 0 <= i < limit], dtype=int))
+            k = int(np.clip(np.searchsorted(line, point[axis]), 1, len(line)-1))
+            width = float(line[k] - line[k-1])
+            lower = line
+            upper = (np.r_[line[1:], line[-1] + width]
+                     if cell_axes[axis] else line)
+            indices.append(np.flatnonzero((upper >= point[axis]-width)
+                                          & (lower <= point[axis]+width)))
         if all(len(i) for i in indices) and mask[np.ix_(*indices)].any():
             return True
     return False

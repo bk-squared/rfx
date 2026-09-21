@@ -73,7 +73,10 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # 2026-09-21: the PI closed it as a stated accuracy in the support matrix. The
 # offset is still real and unattributed, so the prose stays without the arrow
 # and 830 sits in RESOLVED_REFERENCES.
-CITED_ISSUES = frozenset({838, 820, 737, 715, 1022})
+# #801 (a lossless grounded patch gaining energy behind a thin absorber) joined
+# on 2026-09-22 for the part PR #1178 does not fix: with a traced mesh axis no
+# conductor is continued into the absorber, so that run keeps the old behaviour.
+CITED_ISSUES = frozenset({838, 820, 737, 715, 1022, 801})
 
 # Numbers the prose names for provenance rather than as a live defect: a CLOSED
 # issue quoted to say what part of the problem is already fixed. #1043 (the

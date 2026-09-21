@@ -76,6 +76,19 @@ this condition now carries that measurement, and `docs/guides/sparameter_support
 has the full reading guidance. Settled in #726 (closed): the guard and preflight
 used to contradict each other about this, and the measurement decided it.
 
+## Absorbing boundaries
+
+**With the mesh as a design variable, a ground plane still ends at the absorber.**
+A conductor drawn to an absorbing boundary is continued through the absorber, so
+a grounded board stays grounded inside it. When any mesh axis is traced
+(`dz_profile` and its siblings under `jax.grad`), nothing is continued and a
+`UserWarning` says so: the run then has the older behaviour, in which a lossless
+patch on a grounded substrate gained energy with six absorber layers or fewer
+(0 dB settling, +5.8e-4 per step on the six-layer rig, against −44.8 dB with the
+ground continued). Use eight or more absorber layers for such a run, or draw the
+ground past the domain face by the absorber thickness.
+→ [#801](https://github.com/bk-squared/rfx/issues/801)
+
 ## Scattering
 
 **Monostatic RCS is not translation-invariant.** Moving the same target inside a
