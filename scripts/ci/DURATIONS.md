@@ -1,11 +1,23 @@
 # .test_durations — provenance
 
-Regenerated 2026-09-16 on `main` from `regen-durations` run
-[35107932217](https://github.com/bk-squared/rfx/actions/runs/35107932217). **10625 entries in the
-file**, of which **297 of them carried unchanged** from the 7594-entry file this replaces. Nine of
-that run's ten jobs succeeded; `slow (3)` was killed by the runner (the exit-143 class
-`validation.yml` documents), so the merge seeded from the committed file and let the fresh
-measurements overwrite what they cover — that seeding is what the 297 are.
+Regenerated 2026-09-21 on `main` (`150ed1d8`, assembled at `2bad0f51`) from `regen-durations` run
+[35613805791](https://github.com/bk-squared/rfx/actions/runs/35613805791). **8286 entries in the
+file**, of which **58 of them carried unchanged** from the 10625-entry file this replaces, plus one
+entry set by hand (below). Nine of that run's ten jobs succeeded; `slow (3)` was killed by the runner
+twice — lost communication on the first try, exit 137 at 31 % on the rerun, in
+`tests/unit/geometry/test_mesh_import.py`, so it is memory, not time — as `slow (3)` was on
+2026-09-16 too. The merge therefore keeps a committed value for a currently collected test that no
+shard measured (that is the 58), and drops the 3731 committed entries whose tests no longer exist
+(the cross-validation removals of 2026-09-21, PRs 1156–1170). 1008 collected tests have no entry
+at all — never measured, and absent from the file this replaces; pytest-split places them by its
+default for unknown ids.
+
+**One entry is not a measurement of this run.**
+`tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_end_to_end_matches_historical_base`
+is priced at 2247 s, read from the weekly lane's run 35599919970 (shard 2 of 4, 12:58:29 → 13:35:56
+on 2026-09-21). The file this replaces priced it at 202.2 s; that gap is what cut shard 2 at the
+120-minute limit that day. Its shard is the one the regeneration cannot finish, so a runner
+measurement of it does not exist; the weekly run's clock is the closest thing.
 
 Every entry is a raw measurement. **No floor is added** — see below.
 
@@ -102,15 +114,19 @@ where the same measurement three days earlier gave 10224 and 10435. And a shard 
 reading of a noisy runner. So the simulation below is quoted at one commit, and the lane is
 quoted as a range over repeated runs.
 
-Simulated at c0ee0a7d with `pytest_split.algorithms.Algorithms['duration_based_chunks']` over
-that collection, with the four `--ignore` flags both workflows pass:
+Simulated at `2bad0f51` with `pytest --collect-only --splits N --group k` (the plugin's own
+`duration_based_chunks` estimate), with the four `--ignore` flags both workflows pass:
 
-- fast (`--splits 6`), this file: 21.5 / 26.3 / 27.0 / 27.4 / 27.6 / 27.9 min, critical path
-  27.9. 10158 of the 10472 collected tests have a recorded duration.
-- fast (`--splits 6`), the file this replaces: 35.3 / 37.4 / 37.4 / 37.4 / 37.5 / 39.2 min,
-  critical path 39.2 -- flat-looking, and the lane never obeys it, because 3325 of the same
-  10472 are absent from that file and pytest-split charges every absent test the average of the
-  ones it knows.
+- fast (`--splits 6`), this file: 21.8 / 21.3 / 19.8 / 19.8 / 20.9 / 14.3 min, critical path 21.8.
+  8646 tests collected.
+- slow (`--splits 5`, `-m "not gpu and not highmem"`, five shards since PR 1166), this file:
+  64.9 / 64.8 / 71.1 / 65.3 / 57.7 min, critical path 71.1 against the 120-minute job limit.
+  8859 tests collected. Before this file the same lane ran 33 / 113 / 52 / 71 / 70 min on
+  2026-09-21 (run 35614412972), the 113 being the shard that held the 2247-second test at its old
+  202-second price.
+
+Earlier readings, kept for the record:
+
 - slow (`--splits 4`, `-m "not gpu and not highmem"`), this file: 67.4 / 83.3 / 85.6 / 96.6 min
   against the 120-minute cap.
 
