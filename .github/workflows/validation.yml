@@ -235,7 +235,7 @@ jobs:
     # re-states a cron literal.
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     runs-on: ubuntu-latest
-    timeout-minutes: 120  # cv02 ring resonator with real Meep can be slow
+    timeout-minutes: 120
     defaults:
       run:
         shell: bash -el {0}  # login shell so the conda env is active per step
@@ -273,9 +273,9 @@ jobs:
           export MPLBACKEND=Agg
           export JAX_ENABLE_X64=1
 
-          # The canonical manifest owns scheduled membership and order. cv09/
-          # cv10 are pure analytic/internal references but remain in this lane
-          # so it also exercises them end to end.
+          # The canonical manifest owns scheduled membership and order. cv09
+          # is a pure analytic/internal reference but remains in this lane so
+          # it also exercises it end to end.
           if ! scheduled_output="$(python - <<'PY'
           import json
           from pathlib import Path
@@ -318,7 +318,7 @@ jobs:
             fi
             log="crossval_logs/${s}.log"
             echo ">>> running ${s} ..."
-            # Per-script generous timeout (cv02 with real Meep is the slowest).
+            # Per-script generous timeout.
             timeout 5400 python "validation/crossval/${s}.py" > "$log" 2>&1
             code=$?
             case $code in

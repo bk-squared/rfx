@@ -1,8 +1,8 @@
 """#325 grid-build lock: the patch substrate must rasterize to a UNIFORM-FINE
 band with the coarse<->fine grading transition held clear of the resonator.
 
-Background: cv05 (05_patch_antenna.py) placed the ground/substrate/patch stack at
-a FIXED pre-smoothing z (`air_below = 12mm`) while `smooth_grading` inserts
+Background: the former cv05 patch case (removed 2026-09-21) placed the
+ground/substrate/patch stack at a FIXED pre-smoothing z (`air_below = 12mm`) while `smooth_grading` inserts
 transition cells that shift the fine band up — so the 1.5mm FR4 substrate built as
 2 coarse cells / 1.361mm, not 6 fine cells (#325). Re-registering the stack onto a
 6-cell band that sits ADJACENT to a grading transition was a FIRED STOP (research
@@ -26,8 +26,8 @@ masked NODE plane, so a foil needed a masked cell to hang its plane on, and
 the cavity the mesh actually built was 2.0 mm where the board is 1.5 mm.
 Nothing about the #325 property this file locks depends on those cells —
 the substrate still has to build N_SUB fine cells and the transition still
-has to stay CLEARANCE_MIN away — and the live cv05 migration is
-validation/crossval/05_patch_antenna.py's own (owner X-A).
+has to stay CLEARANCE_MIN away — and the live cv05 migration was that
+case's own (owner X-A).
 """
 import numpy as np
 import pytest
@@ -116,13 +116,12 @@ def test_committed_patch_crossval_geometry_fails_the_lock():
     """Fails-closed guard: the committed cv05 geometry (fixed air_below=12mm, no
     buffer) rasterizes the substrate to 2 coarse cells — the lock must reject it.
 
-    NOTE (drift risk, PR #379 review): cv05's z-mesh is inline module-level code
-    (`05_patch_antenna.py`), not an importable function, so this test HAND-COPIES
-    cv05's raw_dz construction (N_BELOW=12, N_ABOVE=25, DX=1mm, fixed substrate
-    z=[12,13.5]mm — verified matching today). If cv05's air_below/dx/n_sub ever
-    change, this frozen copy would silently stop reflecting cv05. When cv05 adopts
-    build_uniform_fine_z (pending the §1-B physics witness), refactor this to
-    import cv05's real construction so the guard tracks the live geometry.
+    NOTE (drift risk, PR #379 review): cv05's z-mesh was inline module-level
+    code, not an importable function, so this test HAND-COPIES cv05's raw_dz
+    construction (N_BELOW=12, N_ABOVE=25, DX=1mm, fixed substrate
+    z=[12,13.5]mm — verified matching when it was written). The case was
+    removed on 2026-09-21, so this frozen copy is now the only carrier of that
+    geometry.
 
     #931: the ground's reserved fine cell is dropped from this copy too (a
     foil owns no cell). The number it locks does not move — measured, the

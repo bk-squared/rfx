@@ -1,5 +1,5 @@
 name: rfx-crossval-external
-description: "W2.5(c) on-demand external-crossval lane: cv11 vs committed Meep/Palace references (CPU node, remilab-c0 lab cluster). No fixed cadence -- run per release tag and whenever the cv11 physics path changes; free on the lab cluster, so submit as needed: vessl run create -f scripts/vessl_crossval_external.yaml. cv05 was dropped from this lane 2026-09-10 (issues #959/#965, docs/design_notes/20260910_cv05_crossval_disposition.md) when it left the scheduled crossval cases; this is now a single-case lane and retires if cv11 also leaves (audit MOVE list)."
+description: "W2.5(c) on-demand external-crossval lane: cv11 vs committed Meep/Palace references (CPU node, remilab-c0 lab cluster). No fixed cadence -- run per release tag and whenever the cv11 physics path changes; free on the lab cluster, so submit as needed: vessl run create -f scripts/vessl_crossval_external.yaml. This is a single-case lane and retires if cv11 also leaves (audit MOVE list)."
 tags: [rfx, crossval-external, ci-trust, w25]
 resources:
   cluster: remilab-c0
@@ -53,11 +53,6 @@ run: |-
 
   out=".omx/crossval-external/$(date -u +%Y%m%dT%H%M%SZ)"
   mkdir -p "$out"
-
-  # cv05 ran here until 2026-09-10, when it left the scheduled crossval cases
-  # (issues #959/#965, docs/design_notes/20260910_cv05_crossval_disposition.md).
-  # Removed rather than left in with the manifest case gone -- this lane
-  # would otherwise still spend up to 7200s on a case nothing else schedules.
 
   # -- cv11: WR-90 vs committed Meep/Palace references --
   set +e

@@ -87,8 +87,6 @@ ALLOWED = {
         "the canonical contract page; names the keyword to say it is gone",
     "docs/public/api/geometry-materials.mdx":
         "API page; names the keyword to say passing it raises TypeError",
-    "docs/public/guide/benchmarks.mdx":
-        "names the retired one-plane/two_plane A/B as history",
     "scripts/diagnostics/slow_931_farfield_attribution.py":
         "attribution diagnostic; its header cites the removed map by commit "
         "(a3e4dba4^:rfx/boundaries/pec.py tangential_edge_masks) to say which "
@@ -117,8 +115,6 @@ ALLOWED = {
         "cv15's claim_scope names the deleted `two_plane=True` ground as the "
         "#740 repair the #931 sheet declaration replaced (dated history)",
     # -- crossval groups A/C/D landed 2026-09-07; dated history only
-    "validation/crossval/05_patch_antenna.py":
-        "cv05 docstring cites the 2026-08-28 two_plane A/B verdict as history",
     "validation/crossval/18_wr90_iris_modematch.py":
         "cv18 docstring/print record that the flag put the far face back for "
         "t = 1 only; the case's own irises are volumes",

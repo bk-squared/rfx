@@ -316,19 +316,19 @@ def test_runner_exit_classification_matches_manifest_contract() -> None:
     runner = _load_runner()
 
     assert (
-        runner.classify("10_pmc_cpml_half_symmetric.py", 0, "ALL CHECKS PASSED", False)[
+        runner.classify("14_rect_cavity_pozar.py", 0, "ALL CHECKS PASSED", False)[
             0
         ]
         == "PASS"
     )
     assert (
         runner.classify(
-            "10_pmc_cpml_half_symmetric.py", 1, "numeric gate failed", False
+            "14_rect_cavity_pozar.py", 1, "numeric gate failed", False
         )[0]
         == "FAIL"
     )
     assert (
-        runner.classify("01_waveguide_bend.py", 2, "reference unavailable", False)[0]
+        runner.classify("03_straight_waveguide_flux.py", 2, "reference unavailable", False)[0]
         == "SELF-CHECK-ONLY"
     )
     assert (
@@ -338,11 +338,11 @@ def test_runner_exit_classification_matches_manifest_contract() -> None:
         == "FAIL"
     )
     assert (
-        runner.classify("10_pmc_cpml_half_symmetric.py", 124, "", True)[0] == "TIMEOUT"
+        runner.classify("14_rect_cavity_pozar.py", 124, "", True)[0] == "TIMEOUT"
     )
     assert (
         runner.classify(
-            "10_pmc_cpml_half_symmetric.py",
+            "14_rect_cavity_pozar.py",
             3,
             "unexpected process error",
             False,
@@ -351,7 +351,7 @@ def test_runner_exit_classification_matches_manifest_contract() -> None:
     )
     assert (
         runner.classify(
-            "01_waveguide_bend.py",
+            "07_sheen_lpf.py",
             0,
             "SOME CHECKS FAILED",
             False,
@@ -360,7 +360,7 @@ def test_runner_exit_classification_matches_manifest_contract() -> None:
     )
     assert (
         runner.classify(
-            "02_ring_resonator.py",
+            "03_straight_waveguide_flux.py",
             1,
             "ModuleNotFoundError: No module named 'meep'",
             False,
@@ -447,7 +447,6 @@ def test_public_validation_docs_match_manifest() -> None:
     ).read_text(encoding="utf-8")
     canonical_paths = {
         "validation/crossval/manifest.json",
-        "validation/crossval/01_waveguide_bend.py",
         "scripts/run_crossval_cpu.py",
     }
     referenced_paths = set(

@@ -55,8 +55,6 @@ HELPER = CROSSVAL_DIR / "_exit_evidence.py"
 # The writers migrated in #946. New cases may join; a case leaving this set
 # silently is the regression this assertion catches.
 MIGRATED_WRITERS = frozenset({
-    "01_waveguide_bend.py",
-    "02_ring_resonator.py",
     "22_dispersive_slab_fresnel.py",
     "23_lossy_slab_fresnel.py",
     "24_nu_rect_cavity_pozar.py",
@@ -137,9 +135,9 @@ def test_late_exit_path_rewrites_the_persisted_exit_code(tmp_path: Path) -> None
     assert doc["verdict"]["judge_passed"] is True
 
 
-# A gate stage's own code->text mapping, verbatim in shape from cv01 and cv02
-# (01_waveguide_bend.py:_summary, 02_ring_resonator.py:_summary): every exit
-# code it knows about gets a sentence describing a verdict THAT STAGE reached.
+# A gate stage's own code->text mapping, verbatim in shape from the former
+# cv01 and cv02 cases, removed 2026-09-21: every exit code it knows about gets
+# a sentence describing a verdict THAT STAGE reached.
 GATE_MAPPING_FIXTURE = '''\
 import sys
 

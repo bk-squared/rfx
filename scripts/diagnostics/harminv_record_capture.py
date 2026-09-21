@@ -1,8 +1,8 @@
-"""Capture actual cv02/cv24 estimator inputs without replacing repo evidence.
+"""Capture actual cv24 estimator inputs without replacing repo evidence.
 
-Run against a disposable checkout of the baseline commit. cv02 executes its
-existing Meep-absent record ladder; cv24 runs the chosen full-length arm and
-captures its nine channel/window inputs, skipping estimator/energy work.
+Run against a disposable checkout of the baseline commit. cv24 runs the chosen
+full-length arm and captures its nine channel/window inputs, skipping
+estimator/energy work.
 cv24 capture is NOT a crossval verdict. Every NPZ is reusable by both old
 and new estimators, so a comparison never conflates changes in FDTD fields
 with changes in extraction. ``--out`` must name a new directory.
@@ -17,7 +17,6 @@ import json
 import os
 from pathlib import Path
 import platform
-import runpy
 import sys
 
 
@@ -25,7 +24,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--repo", type=Path, required=True, help="disposable baseline checkout")
     ap.add_argument("--commit", required=True)
-    ap.add_argument("--case", choices=["cv02", "cv24-uniform", "cv24-single_band",
+    ap.add_argument("--case", choices=["cv24-uniform", "cv24-single_band",
                                        "cv24-metric_defect"], required=True)
     ap.add_argument("--out", type=Path, required=True)
     args = ap.parse_args()
@@ -35,8 +34,8 @@ def main():
     out.mkdir(parents=True, exist_ok=False)
     os.chdir(repo)
     sys.path.insert(0, str(repo))
-    # cv02 pins x64 before importing JAX; cv24 uses the default float32 lane.
-    os.environ["JAX_ENABLE_X64"] = "1" if args.case == "cv02" else "0"
+    # cv24 uses the default float32 lane.
+    os.environ["JAX_ENABLE_X64"] = "0"
     if hasattr(os, "sched_getaffinity"):
         os.sched_setaffinity(0, sorted(os.sched_getaffinity(0))[:4])
 
@@ -59,35 +58,21 @@ def main():
                       sha256=hashlib.sha256((out / name).read_bytes()).hexdigest())
         records.append(record)
         print(f"captured {name}: {signal.size} samples", flush=True)
-        if args.case == "cv02":
-            result = original(signal, dt, f_min, f_max, **kwargs)
-            record["baseline_modes"] = [m._asdict() for m in result]
-            return result
         return []  # Capture only; no numerical verdict is constructed here.
 
     module.harminv = capture
     exit_code, arm = None, None
     try:
-        if args.case == "cv02":
-            # Explicitly select the rfx-only ladder; never launch Meep by
-            # accident on a workstation where it happens to be installed.
-            sys.modules["meep"] = None
-            try:
-                runpy.run_path(str(repo / "validation/crossval/02_ring_resonator.py"),
-                               run_name="__main__")
-            except SystemExit as exc:
-                exit_code = exc.code
-        else:
-            path = repo / "validation/crossval/24_nu_rect_cavity_pozar.py"
-            spec = importlib.util.spec_from_file_location("_cv24_capture", path)
-            case = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(case)
-            name = args.case.removeprefix("cv24-")
-            metric_swap = name == "metric_defect"
-            rig = case.G.ARMS["single_band" if metric_swap else name]
-            arm = case.run_arm(name, rig["lane"], rig["dx"], case.G.PROFILES[rig["profile"]],
-                               smoke=False, search_band_hz=case.G.BAND_HZ, with_energy=False,
-                               metric_swap=metric_swap)
+        path = repo / "validation/crossval/24_nu_rect_cavity_pozar.py"
+        spec = importlib.util.spec_from_file_location("_cv24_capture", path)
+        case = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(case)
+        name = args.case.removeprefix("cv24-")
+        metric_swap = name == "metric_defect"
+        rig = case.G.ARMS["single_band" if metric_swap else name]
+        arm = case.run_arm(name, rig["lane"], rig["dx"], case.G.PROFILES[rig["profile"]],
+                           smoke=False, search_band_hz=case.G.BAND_HZ, with_energy=False,
+                           metric_swap=metric_swap)
     finally:
         module.harminv = original
         summary = dict(case=args.case, source_commit=args.commit,

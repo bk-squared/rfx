@@ -93,7 +93,6 @@
         "missing broader external validation outside the cited probe-feed cases"
       ],
       "evidence_artifacts": [
-        "validation/crossval/05_patch_antenna.py",
         "tests/unit/sparams/test_twoport_wire_port.py",
         "tests/unit/sparams/test_wire_sparam.py",
         "tests/unit/sparams/test_wire_port_sparams_forward.py",

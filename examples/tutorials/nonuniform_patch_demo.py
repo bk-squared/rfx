@@ -93,7 +93,7 @@ OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                        "nonuniform_patch_demo")
 
 # =============================================================================
-# Geometry constants (identical to validation/crossval/05_patch_antenna.py)
+# Geometry constants (identical to the former cv05 patch case, removed 2026-09-21)
 # =============================================================================
 f_design  = 2.4e9
 eps_r     = 4.3

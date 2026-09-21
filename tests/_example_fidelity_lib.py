@@ -398,10 +398,6 @@ CLASSIFICATION: dict[str, Entry] = {
         "cv05/cv15's explicit galvanic-feed contract (#929): reads the "
         "registered source span and realized conductor planes of a built "
         "Simulation; constructs no Simulation and performs no solve"),
-    "validation/crossval/_patch_external_geometry.py": Entry(
-        "no_simulation",
-        "cv05 external board/mesh/reference helpers (#959): consume realized "
-        "records and a supplied openEMS object; construct no rfx Simulation"),
     "validation/crossval/comparators/realized_conductors.py": Entry(
         "no_simulation",
         "crossval-side build-time realized-conductor gate (#931): takes a "
@@ -469,10 +465,6 @@ CLASSIFICATION: dict[str, Entry] = {
         "the gated band, the incident-pulse and ring-down helpers, and the "
         "calibration-envelope loader that resolves a consumer's adoption "
         "record against the producer's artifact -- stdlib + numpy, no rfx"),
-    "validation/crossval/comparators/ring_mode_judge.py": Entry(
-        "no_simulation",
-        "plain numpy/scipy mode-list comparator for cv02 (#812) -- compares "
-        "two lists of extracted modes, no rfx import at all"),
     "validation/crossval/comparators/slab_te_dispersion.py": Entry(
         "no_simulation",
         "plain-numpy closed-form slab TE0 oracle + two-wave n_eff estimator "
@@ -655,35 +647,12 @@ CLASSIFICATION: dict[str, Entry] = {
         "eps column) -- no separable build-only path"),
 
     # ---- module_level_solve: solves at import time, no main guard -------
-    "validation/crossval/01_waveguide_bend.py": Entry(
-        "module_level_solve",
-        "builds and calls .run(...) at module scope with no "
-        "`if __name__ == '__main__':` guard -- importing this module solves"),
-    "validation/crossval/02_ring_resonator.py": Entry(
-        "module_level_solve",
-        "builds and calls .run(...) at module scope with no main guard"),
     "validation/crossval/03_straight_waveguide_flux.py": Entry(
         "module_level_solve",
         "builds and calls .run(...) at module scope with no main guard"),
     "validation/crossval/04_multilayer_fresnel.py": Entry(
         "module_level_solve",
         "builds and calls .run(...) at module scope with no main guard"),
-    "validation/crossval/05_patch_antenna.py": Entry(
-        "module_level_solve",
-        "builds and calls .run(...) at module scope with no main guard"),
-    # VENDORED UPSTREAM, NOT OURS. Meep's own python/examples/bend-flux.py,
-    # byte-identical to blob f56ab649 (see the sibling PROVENANCE.md); cv01's
-    # reproduce-gate runs it unmodified so the comparator is checked against
-    # upstream's own code rather than a transcription of it. Classified rather
-    # than excluded from discovery on purpose: the recursive-and-unfiltered
-    # sweep exists because a filter let a file land unclassified and green
-    # (2026-08-27 review), and re-adding a filter for this one would reopen it.
-    # It is `module_level_solve` because that is what upstream wrote, not a
-    # style we chose -- and it must not be "fixed" to add a main guard.
-    "validation/crossval/_01_waveguide_bend_upstream/bend-flux.py": Entry(
-        "module_level_solve",
-        "vendored upstream Meep tutorial, unmodified: builds and calls "
-        ".run(...) at module scope with no main guard. Do not edit."),
 
     # ---- builder_fused_with_solve: build+solve share one function -------
     "examples/tutorials/cad_mesh_import_demo.py": Entry(
@@ -712,11 +681,6 @@ CLASSIFICATION: dict[str, Entry] = {
     "validation/crossval/09_half_symmetric_waveguide.py": Entry(
         "builder_fused_with_solve",
         "`_run_cavity()` builds and calls .run(...) in the same function"),
-    "validation/crossval/10_pmc_cpml_half_symmetric.py": Entry(
-        "builder_fused_with_solve",
-        "`_run_half()` (behind `run_uniform()`/`run_nonuniform()`) and "
-        "`run_full_image()` each build and call .run(...) in the same "
-        "function"),
     "validation/crossval/15_patch_antenna_rt5880.py": Entry(
         "audited",
         "`build_rfx_sim(...)` returns (sim, patch_shape, geom) with no solve "

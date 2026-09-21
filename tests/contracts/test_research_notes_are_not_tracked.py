@@ -186,8 +186,6 @@ REVIEWED = {
         (1, "forbidden-prefix guard, not a read"),
     "tests/crossval/test_sheen_lpf_header.py":
         (1, "forbidden-prefix guard, not a read"),
-    "tests/crossval/test_waveguide_bend_header.py":
-        (1, "forbidden-prefix guard, not a read"),
 
     # Assertion / warning text that happens to cite a note. No path resolution.
     "tests/unit/api/test_api.py":

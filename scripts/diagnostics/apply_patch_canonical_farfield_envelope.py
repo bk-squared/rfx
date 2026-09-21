@@ -7,12 +7,11 @@ tests/crossval/test_patch_canonical_farfield_e4.py. Nothing is typed: every
 value comes out of the record, and the script refuses if a value it is about to
 write is not the one the record proposes.
 
-Line-number discipline: validation/crossval/manifest.json and
-validation/README.md cite
-``tests/crossval/test_patch_canonical_farfield_e4.py:134,140,141`` and
-tests/contracts/test_evidence_citation_pointers.py gates those pointers, so the
-rewrite must keep D_ABS_TOL_DB on 134, F_RES_REL_LO on 140 and F_RES_REL_HI on
-141. The script checks that after writing and restores the file if it moved.
+Line-number discipline: the rewrite keeps D_ABS_TOL_DB on line 134,
+F_RES_REL_LO on 140 and F_RES_REL_HI on 141, checks that after writing and
+restores the file if a constant moved. (The documents that cited those lines,
+and the contract that gated the pointers, left with the cv05 patch case on
+2026-09-21.)
 
 Why this is a script and not an edit. The constants are the output of a solve
 that costs ~15 min of cluster time, and the whole point of #931's recompute rule

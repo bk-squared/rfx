@@ -13,8 +13,8 @@ API supports --
      legacy form)
   3. ``BoundarySpec.uniform("pmc")``
 
--- and asserts the detected set is exactly today's two PMC scripts, cv09 and
-cv10 (measured 2026-08-28: ``grep -i pmc`` over validation/ and examples/
+-- and asserts the detected set is exactly today's PMC script, cv09
+(measured 2026-08-28: ``grep -i pmc`` over validation/ and examples/
 also hits ``validation/crossval/17_dielectric_sphere_mie.py`` ("PMCHWT", an
 unrelated acronym) and ``examples/tutorials/boundary_spec_demo.py`` (PMC
 named only in prose, never constructed) -- neither is a real PMC user and
@@ -36,7 +36,6 @@ SCAN_DIRS = ("validation", "examples")
 #: the day a third PMC-mirror script is committed.
 EXPECTED_PMC_SCRIPTS = {
     "validation/crossval/09_half_symmetric_waveguide.py",
-    "validation/crossval/10_pmc_cpml_half_symmetric.py",
 }
 
 MARKER = "PMC-plane convention:"

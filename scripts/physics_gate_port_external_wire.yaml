@@ -43,33 +43,6 @@ run: |-
   dependency_audit_rc=$?
   set -e
   echo "external_solver_dependency_audit_rc=$dependency_audit_rc"
-  echo "=== crossval05 patch rfx/openEMS run ==="
-  crossval_json="$out/crossval05_patch_openems_rfx.json"
-  set +e
-  RFX_CROSSVAL05_JSON="$crossval_json" \
-    timeout "${RFX_WIRE_OPENEMS_TIMEOUT:-1800}" \
-    python validation/crossval/05_patch_antenna.py \
-      > "$out/crossval05.stdout.txt" \
-      2> "$out/crossval05.stderr.txt"
-  crossval_rc=$?
-  set -e
-  echo "$crossval_rc" > "$out/crossval05.rc"
-  echo "crossval05_rc=$crossval_rc"
-  if [ "$crossval_rc" -eq 0 ]; then
-    echo "=== generic patch/wire comparator ==="
-    set +e
-    python scripts/diagnostics/build_patch_openems_wire_sparameter_comparison.py \
-      --crossval-json "$crossval_json" \
-      --output-dir "$out/patch_wire_openems_generic_comparison"
-    comparison_rc=$?
-    set -e
-    echo "patch_wire_openems_comparison_rc=$comparison_rc"
-    if [ "$comparison_rc" -eq 0 ]; then
-      cat "$out/patch_wire_openems_generic_comparison/patch_wire_openems_generic_sparameter_comparison.json"
-    fi
-  else
-    echo "crossval05 failed or timed out; broad-E5 shard remains blocked"
-  fi
   echo "=== broad-E5 readiness report ==="
   set +e
   python scripts/diagnostics/report_port_external_reference_shard.py \

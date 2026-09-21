@@ -800,7 +800,9 @@ def test_port_external_reference_audit_blocks_until_every_family_has_broad_e5(tm
     assert audit["surface_coverage_status"] == "passed"
     assert audit["vessl_yaml_contract_status"] == "passed"
     assert audit["vessl_yaml_contract_launchable_family_count"] == 7
-    assert audit["vessl_yaml_contract_diagnostic_command_family_count"] == 7
+    # 2026-09-21: wire_port's only diagnostic command compared the JSON written
+    # by the cv05 patch case, which was removed; six families carry one now.
+    assert audit["vessl_yaml_contract_diagnostic_command_family_count"] == 6
     assert audit["comparison_artifact_coverage_status"] == "blocked"
     # broad-E5 envelope coverage stays "blocked" on a clean checkout: although
     # rectangular_waveguide_port's envelopes are now committed (see below), the
@@ -1391,8 +1393,10 @@ def test_port_external_shard_execution_manifest_covers_all_required_families():
     assert manifest["status"] == "passed"
     assert manifest["required_family_count"] == 7
     assert manifest["launchable_family_count"] == 7
-    assert manifest["diagnostic_command_family_count"] == 7
-    assert manifest["missing_diagnostic_command_families"] == []
+    # 2026-09-21: wire_port's only diagnostic command compared the JSON written
+    # by the cv05 patch case, which was removed with that case.
+    assert manifest["diagnostic_command_family_count"] == 6
+    assert manifest["missing_diagnostic_command_families"] == ["wire_port"]
     for row in manifest["shards"]:
         assert row["has_launchable_yaml"] is True
         assert row["expected_result_json"].endswith(

@@ -161,8 +161,8 @@ intended model is a distributed microstrip line.
   are not external RF validation.
 - `forward(port_s11_freqs=...)` is uniform and single-device only.
 
-Relevant checks include `validation/crossval/05_patch_antenna.py`,
-`tests/unit/sparams/test_twoport_wire_port.py`, `tests/unit/sparams/test_wire_port_sparams_forward.py`, and
+Relevant checks include `tests/unit/sparams/test_twoport_wire_port.py`,
+`tests/unit/sparams/test_wire_port_sparams_forward.py`, and
 `scripts/diagnostics/report_wire_replay_sweep.py`.
 
 ## Microstrip-line port

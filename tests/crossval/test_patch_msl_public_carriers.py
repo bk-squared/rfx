@@ -88,19 +88,6 @@ def test_msl_current_replay_quotes_fixture_and_labels_historical_openems(carrier
     assert "historical run-2" in normalized and "openEMS" in normalized
 
 
-@pytest.mark.parametrize("carrier", ["validation/README.md",
-                                    "docs/public/guide/benchmarks.mdx"])
-@pytest.mark.parametrize("run", ["patch_len_22p0mm", "patch_len_38p0mm"])
-def test_patch_mode_carriers_quote_the_current_fixture_member(carrier, run):
-    modes = _json("tests/fixtures/patch_mode_identification/"
-                  "cv05_ringdown_spectra.json")["runs"][run]["modes"]
-    # These carriers discuss the second pole: the rejected TM110 at 22 mm,
-    # and the weak pole accepted as TM100 at 38 mm. Do not replace either
-    # with the lowest-frequency pole just because its index used to be zero.
-    expected = f"runs.{run}.modes[1].freq = {modes[1]['freq'] / 1e9:.6f} GHz"
-    assert expected in _text(carrier)
-
-
 def test_patch_farfield_beam_peak_prose_quotes_committed_cut_angles():
     cuts = _json("tests/fixtures/patch_canonical_farfield_e4/"
                  "canonical_farfield_e4_measured_369367259302.json")["measured"]["cuts_deg"]

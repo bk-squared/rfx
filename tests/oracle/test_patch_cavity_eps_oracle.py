@@ -2,9 +2,10 @@
 
 Promoted from scripts/diagnostics/kottke_cavity_sanity.py — the clean, closed-PEC
 cavity oracle that isolates the collocated-ε interface error the patch (#330)
-residual is partly attributed to. cv05 (05_patch_antenna.py) was demoted to a
-diagnostic-reporter (2026-07-15 first-principles review); its manifest gate_paths
-delegate patch-accuracy evidence HERE, among others.
+residual is partly attributed to. The former cv05 patch case was demoted to a
+diagnostic-reporter (2026-07-15 first-principles review) and removed on
+2026-09-21; its manifest gate_paths delegated patch-accuracy evidence HERE,
+among others.
 
 Two claims, with HONEST oracle labelling (per the review's B-Q2 correction):
 

@@ -49,7 +49,7 @@ def _assert_no_legacy_deprecation(records) -> None:
 
 
 def test_crossval_01_bend_smoke():
-    """01_waveguide_bend.py — boundary=BoundarySpec.uniform(boundary)."""
+    """The former cv01 waveguide-bend case — boundary=BoundarySpec.uniform(boundary)."""
     a = 1.0e-6
     dx = a / 10
     sx, sy = 10 * a, 10 * a
@@ -70,7 +70,7 @@ def test_crossval_01_bend_smoke():
 
 
 def test_crossval_02_ring_smoke():
-    """02_ring_resonator.py — boundary=BoundarySpec.uniform('upml')."""
+    """The former cv02 ring-resonator case — boundary=BoundarySpec.uniform('upml')."""
     a = 1.0e-6
     dx = a / 10
     domain = 10 * a
@@ -111,7 +111,7 @@ def test_crossval_03_straight_flux_smoke():
 
 
 def test_crossval_05_patch_smoke():
-    """05_patch_antenna.py — boundary=BoundarySpec.uniform('cpml')."""
+    """The former cv05 patch case — boundary=BoundarySpec.uniform('cpml')."""
     sim = Simulation(
         freq_max=4e9,
         domain=(0.02, 0.02, 0.005),

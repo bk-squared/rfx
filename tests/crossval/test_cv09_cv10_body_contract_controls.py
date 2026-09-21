@@ -1,21 +1,19 @@
-"""cv09 and cv10 are the CONTROLS for the #931 body-ownership contract.
+"""cv09 is a CONTROL for the #931 body-ownership contract.
 
 Design note §1.8 fences domain-boundary PEC out of the contract:
 `BoundarySpec` faces are not bodies and keep their own convention (E_tan = 0
 on the face plane at index 0 / N). cv09 (full and half waveguide cavity,
-PEC + PMC mirror) and cv10 (free-space PMC + CPML composition) are built with
-ZERO geometry entities -- their walls are boundary faces only -- so nothing
-in `realized_pec_edge_masks` can reach them. If a cv09 or cv10 gate moves
-during #931 work, something touched boundary faces that should not have.
+PEC + PMC mirror) is built with ZERO geometry entities -- its walls are
+boundary faces only -- so nothing in `realized_pec_edge_masks` can reach them.
+If a cv09 gate moves during #931 work, something touched boundary faces that
+should not have.
 
-This file states that structurally and cheaply (no solve). The physics arms
-are the scripts themselves, re-run on this branch:
+This file states that structurally and cheaply (no solve). The physics arm is
+the script itself, re-run on this branch:
 
   cv09: a_eff 22.8600 mm (residual 0.0 um < DX/4 = 127.0 um) on every axis of
         both cavities; f_full 8.1958 GHz, f_half 8.1959 GHz, invariant
         0.0006 % < 0.3556 %; ALL CHECKS PASSED.
-  cv10: uniform and non-uniform paths PASS; G3 max|H_tan| on y_lo bit-exact
-        0.0; G4 image control |R-1| = 0.0033 %.
 """
 from __future__ import annotations
 
@@ -27,7 +25,6 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CV09 = REPO_ROOT / "validation/crossval/09_half_symmetric_waveguide.py"
-CV10 = REPO_ROOT / "validation/crossval/10_pmc_cpml_half_symmetric.py"
 
 
 def _load(path, name):
@@ -43,15 +40,10 @@ def cv09():
     return _load(CV09, "_cv09_body_controls")
 
 
-@pytest.fixture(scope="module")
-def cv10():
-    return _load(CV10, "_cv10_body_controls")
-
-
-@pytest.mark.parametrize("path", [CV09, CV10])
+@pytest.mark.parametrize("path", [CV09])
 def test_neither_control_declares_a_conductor_body(path):
-    """No `sim.add(...)`, no shape primitive, no thin conductor: these cases
-    have nothing for the body-ownership contract to own. Source-level, so it
+    """No `sim.add(...)`, no shape primitive, no thin conductor: this case
+    has nothing for the body-ownership contract to own. Source-level, so it
     reds if someone adds a body to a control."""
     code = [ln for ln in path.read_text(encoding="utf-8").splitlines()
             if not ln.lstrip().startswith("#")]
@@ -98,12 +90,3 @@ def test_cv09_mirror_plane_is_unmoved_by_the_contract(cv09):
     a_eff = cv09.mirror_a_eff(cv09.realized_axes(sim))
     assert a_eff == pytest.approx(0.02286, abs=1e-9)
     assert abs(a_eff - cv09.a) < cv09.GEOM_TOL
-
-
-def test_cv10_builds_no_materials_at_all(cv10):
-    """cv10's composition lock is free space plus boundaries. Its
-    `_common_spec` names only faces; a material or a body appearing here
-    would mean the control stopped being one."""
-    spec = cv10._common_spec()
-    assert set(getattr(spec, "__dataclass_fields__", {"x", "y", "z"})) >= {
-        "x", "y", "z"}

@@ -19,14 +19,14 @@ Locks three physics requirements before Stage 2 can be promoted to claims-bearin
    preserve the same total energy to a comparable degree.
 
 Step 5 gate still pending:
-  - cv05 patch antenna gate: run validation/crossval/05_patch_antenna.py with
-    subpixel_smoothing="kottke_pec" and verify resonance within 5% of OpenEMS.
-    (Full crossval run, not included here; see rfx-known-issues.md.)
+  - Patch antenna gate: the case that carried it, the former cv05 patch case,
+    was removed 2026-09-21; see rfx-known-issues.md.
   - Rotated PEC cavity: blocked on rfx lacking a rotation/affine geometry
     primitive (Box, Cylinder, Sphere are all axis-aligned).
 
-Step 6 (deprecation warnings): deferred — design doc requires cv05 + rotated
-cavity to be green for 30 days before Stage 1 functions emit DeprecationWarning.
+Step 6 (deprecation warnings): deferred — design doc requires the patch gate
+above plus the rotated cavity to be green for 30 days before Stage 1 functions
+emit DeprecationWarning.
 """
 
 from __future__ import annotations

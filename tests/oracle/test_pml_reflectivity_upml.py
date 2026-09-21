@@ -3,8 +3,9 @@
 Gap (physics audit 2026-07-20): UPML is in the documented boundary baseline
 (``docs/guides/support_matrix.md``: pec / cpml / upml) yet had NO reflection or
 absorption physics gate in pytest. ``test_pml_reflectivity.py`` is CPML-only
-(and gpu/slow), and the only UPML coverage lived OUTSIDE pytest (crossval
-``01_waveguide_bend.py`` Meep T-match, weekly lane). No committed pytest oracle
+(and gpu/slow), and the only UPML coverage lived OUTSIDE pytest (the former
+cv01 waveguide-bend case, removed 2026-09-21: a Meep T-match on the weekly
+lane). No committed pytest oracle
 could fail on wrong UPML physics.
 
 This module adds two oracles, both built on the issue-#398 clean-reference

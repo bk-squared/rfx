@@ -8,54 +8,6 @@
   },
   "cases": [
     {
-      "id": "01_waveguide_bend",
-      "script": "validation/crossval/01_waveguide_bend.py",
-      "role": "claims-bearing",
-      "public_group": "A",
-      "execution_tiers": ["cpu-runner", "scheduled-external"],
-      "evidence_levels": ["E1", "E4"],
-      "references": [
-        {"kind": "external-solver", "name": "Meep Basics 90-degree waveguide bend", "required_for_script_pass": true},
-        {"kind": "self-invariant", "name": "straight-waveguide transmission", "required_for_script_pass": true}
-      ],
-      "claim_scope": "2-D dielectric bend transmittance and straight-guide normalization under the script's published thresholds EVIDENCE CLASSIFICATION 2026-09-06 (issue #928), evidence_status = committed: this case retained nothing -- the weekly scheduled lane recomputed it and discarded the numbers with the runner, so no clone could check them. It now writes validation/crossval/_01_waveguide_bend_results/crossval.json before its plotting stage, and that file is the committed run of 2026-09-06T23:22:02Z: exit 0, G1_smoothed_T_in_0p3_1p0=PASS, G2_straight_self_T_in_0p95_1p05=PASS, G3_abs_rfx_minus_meep_lt_0p10=PASS, rfx 1.8.0 / Meep 1.34.0 / JAX_ENABLE_X64=1 / RFX_BOUNDARY=upml, commit d2285cc5. It carries the gate table, the per-bin quantities the gates read, the exit code the script returned, the run's provenance and the realized rig as values, so a reader checks the numbers without re-running the case. The artifact records the RAW flux spectra of both legs as well as the ratios, so an independent re-run is compared bin by bin and a difference attributed to a leg rather than to the ratio; the recipe for that comparison is in the file (comparison_recipe). Measured: a second run on the same commit and rig reproduced every recorded array and scalar bit-identically, the Meep leg included. GATE HONESTY DISCLOSURE (2026-09-10; the reproduce-gate sentence was added 2026-09-13 against main d56f68eb after commit dbaf75f9 inserted the tutorial anchor into the script and shifted every line this paragraph cited. On 2026-09-14 the bare 01:NNN pointers were replaced by the source text each one pointed at: refreshing line numbers twice in four days is what rot looks like, a quoted line survives an insertion where a number does not, and tests/contracts/test_evidence_citation_pointers.py sees only pointers written as path.py:LINE, so it never covered these. Every quoted string below is greppable, verbatim, in validation/crossval/01_waveguide_bend.py, EXCEPT the two marked STALE where they are used): G3 is an ABSOLUTE bound of 0.10 on quantities of order 0.6 -- the two lines that applied it when this paragraph was written read \"if gap < 0.10:\" and \"abs(mean_T - meep_mean) < 0.10\", and BOTH ARE STALE (grep exits 1 on each): PR #1040 lifted the three gates into a _gates() helper, so neither string has been in the file since, and this sentence claimed otherwise for five days. The lines that apply G3 today are \"G3_MAX_ABS_GAP = 0.10\" and \"abs(mean_T - meep_mean) < G3_MAX_ABS_GAP\", both greppable verbatim; the disclosure the stale pair carried is unchanged and still true -- the committed run passes at abs_rfx_minus_meep=0.0711 while the RELATIVE disagreement is 12.56% OF THE MEEP VALUE, which is the denominator meant here: 0.0711/0.56624, rfx 0.63737 against Meep 0.56624 -- 11.16% if rfx is the denominator instead. The absolute framing is what lets a 12.6% gap read as agreement. G1's window [0.3, 1.0] against the same measured 0.6374 is a factor of 3.33x, with no stated derivation. No falsifier exists anywhere in this file. The comparator's epsilon=12 and feed-width literals -- \"material=mp.Medium(epsilon=12)\", which appears twice, and the source's \"size=mp.Vector3(0, 1))\" -- are not read from the \"eps_wg = 12.0\" / \"w_wg = 1.0 * a\" rfx declares once and builds from -- if either changes, the Meep block does not follow. Most load-bearing: the script names Meep's own published \"Basics\" bend tutorial as its reference (the docstring line ending \"tutorial geometry.\" and the line \"Reference: https://meep.readthedocs.io/en/latest/Python_Tutorials/Basics/\"), but the Meep leg it gates against -- labelled \"(single-run method comparison)\" in the PASS criteria -- is a SINGLE LOCAL RUN, never checked against the tutorial's own transmittance. The REPRODUCE_GATE_RECORD dbaf75f9 added for issue #973 does not change that and does not claim to: its status is UNRUN, it anchors on our own recorded run of upstream's unmodified bend-flux.py rather than on a published number, and its own do_not_repeat text forbids reusing that number for this comparator leg, which diverges from the tutorial in six of ten parameters. So no reproduce-gate stands between the local Meep run and G3's verdict, and the tutorial reference is a GEOMETRY source for this case, not a numeric anchor. Re-gating needs that reproduce-gate RUN first; not done here. REVISION 2026-09-15 (issue #813): the committed run above was measured with cv01's guide ending in a vacuum facet at the interior/absorber seam -- run(subpixel_smoothing=True) rebuilt the update permittivity from the declared geometry with no absorber-pad extension, so a structure touching a domain face was solved with eps_r = 1 inside its own absorber (#831 measured it, #1043 named it, PR #1057 fixed it) -- and nothing re-runs it, because tests/crossval/test_waveguide_bend_header.py reads the record statically. validation/crossval/_01_waveguide_bend_results/crossval_r2.json is the same recipe re-measured on the fixed tree: the rfx legs solved by this case's own code through its --meep-from-record path, the Meep leg taken unchanged from the record above (no rfx change can move a number Meep produced, and the donor's rig.meep_leg, the rfx-side quantities its geometry is derived from, its eval mask recomputed from its own frequency axis, and its own headline band mean recomputed from its own per-bin array are all asserted before anything is taken). Both records stand, dated: the 2026-09-06 run is NOT edited and NOT withdrawn, and nothing here adopts the revision as a calibration. What moved on the UPML arm, which is the arm this case is defined by: mean_self 0.9891610388008335 -> 0.9910752993577158, mean_T 0.6373729975739039 -> 0.6767373275224511, abs_rfx_minus_meep 0.0711322668093275 -> 0.11049659675787471, exit 0 -> 1. G1 and G2 still PASS, G2 by more than before. G3 does NOT: the rfx band mean rose by 0.0394 while the borrowed Meep leg did not move, and 0.10 is an absolute bound on a quantity of order 0.6. The CPML variant (20 absorber layers since #813/#1027) passes G2 at 0.9894314610377936 and fails G3 at 0.13550683918155282. Settling witness, from companion arms that add one point probe and change nothing else (cv01 registers no probe, so its own records carry settling_db = null by construction): -92.24 / -93.72 dB upml straight / bend, -92.16 / -95.41 dB cpml, each companion arm reproducing its case run's mean_self and mean_T bit for bit. Neither advisory added since the committed record fires on this rig (dielectric_at_absorber_seam, conductor_in_thin_absorber); the four that do are quoted verbatim in the revision and in both committed run logs under validation/crossval/_01_waveguide_bend_logs/. The revision records a geometry reading beside the G3 failure and NOT an attribution: this case's Meep leg builds two finite blocks whose outer faces land exactly on the PML inner faces, so its guide is terminated at the absorber with vacuum inside it -- the construction rfx stopped carrying -- while upstream's own bend run continues each arm to the CELL EDGE, through the PML: horizontal block \"mp.Vector3(sx - pad, w, mp.inf)\" spanning x = -8 .. +4 (bend-flux.py:77) and vertical block \"mp.Vector3(w, sy - pad, mp.inf)\" spanning y = -12 .. +16 (:82), in a 16 x 32 cell with dpml = 1, so the face that meets an absorber sits inside it rather than against it. NOT mp.inf in x -- that block, \"size=mp.Vector3(mp.inf, w, mp.inf)\" at :24, belongs to the STRAIGHT normalization run, and reading it as the bend geometry would also push the input arm out through the source-side PML, a different normalization than the tutorial's. Line numbers rather than quotes alone are safe here for once: the vendored copy is byte-pinned to git blob f56ab6492a3cc55ebc1fc0c682c4981508c51955 and tests/crossval/test_waveguide_bend_header.py asserts it, so it cannot shift without a red test. The three quoted block strings are greppable in it verbatim. That is a SEVENTH divergence from the tutorial, on top of the six this case's REPRODUCE_GATE_RECORD do_not_repeat text already lists, and it is in the one place this revision moved. Meep was not re-run here and nothing measured its side, so the falsifier is named rather than claimed: rebuild the Meep leg with each arm continued to the cell edge, the way upstream's bend run does, and see whether its band mean rises toward rfx's. #813 stays open on that.",
-      "external_dependencies": ["pymeep"],
-      "expected_exit_codes": [0, 1, 2],
-      "gate_paths": ["validation/crossval/01_waveguide_bend.py"],
-      "artifact_paths": [
-        "validation/crossval/_01_waveguide_bend_results/crossval.json",
-        "validation/crossval/_01_waveguide_bend_results/crossval_r2.json"
-      ],
-      "cpu_runner": {"order": 1},
-      "scheduled_external_order": 1,
-      "evidence_status": "committed",
-      "evidence_producer": null,
-      "failure_sentinel": "SOME CHECKS FAILED"
-    },
-    {
-      "id": "02_ring_resonator",
-      "script": "validation/crossval/02_ring_resonator.py",
-      "role": "claims-bearing",
-      "public_group": "A",
-      "execution_tiers": ["cpu-runner", "scheduled-external"],
-      "evidence_levels": ["E4"],
-      "references": [
-        {"kind": "external-solver", "name": "Meep Basics ring-resonator modes", "required_for_script_pass": true}
-      ],
-      "claim_scope": "2-D ring-resonator mode frequencies matched to Meep, one-to-one, within the published mode-count and 5% frequency gates (mean AND per mode), with every Meep mode required to have an rfx counterpart and Q gated on each mode whose decay the harminv record actually observed EVIDENCE CLASSIFICATION 2026-09-06 (issue #928), evidence_status = committed: this case retained nothing -- the weekly scheduled lane recomputed it and discarded the numbers with the runner, so no clone could check them. It now writes validation/crossval/_02_ring_resonator_results/crossval.json before its plotting stage, and that file is the committed run of 2026-09-06T17:07:57Z: exit 0, unmatched=PASS, count=PASS, mean_err=PASS, max_err=PASS, q=PASS, rfx 1.8.0 / Meep 1.34.0 / JAX_ENABLE_X64=1, commit 296cabad. It carries the gate table, the per-bin quantities the gates read, the exit code the script returned, the run's provenance and the realized rig as values, so a reader checks the numbers without re-running the case. SUPERSEDED WORDING 2026-09-13 (issue #907): that record predates the Q-gate correction and is pinned as-is (it is the only pre-transform copy, so re-driving today's judge on it is the falsifier for 'the transform moved a committed verdict'). Its gate_limits.note still calls the tau_ref/T window 'not a chosen number'; read that as superseded by ring_mode_judge.Q_GATE_INGREDIENTS -- the window's arguments are reference-only, but its form is declared policy, not a derived bound. No number in the record is affected; see docs/design_notes/20260831_cv02_ring_judge_predeclaration.md, Correction 4(d).",
-      "external_dependencies": ["pymeep"],
-      "expected_exit_codes": [0, 1, 2],
-      "gate_paths": ["validation/crossval/02_ring_resonator.py", "validation/crossval/comparators/ring_mode_judge.py"],
-      "artifact_paths": [
-        "validation/crossval/_02_ring_resonator_results/crossval.json"
-      ],
-      "cpu_runner": {"order": 6},
-      "scheduled_external_order": 2,
-      "evidence_status": "committed",
-      "evidence_producer": null,
-      "failure_sentinel": null
-    },
-    {
       "id": "03_straight_waveguide_flux",
       "script": "validation/crossval/03_straight_waveguide_flux.py",
       "role": "claims-bearing",
@@ -74,8 +26,8 @@
       "artifact_paths": [
         "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json"
       ],
-      "cpu_runner": {"order": 7},
-      "scheduled_external_order": 3,
+      "cpu_runner": {"order": 4},
+      "scheduled_external_order": 1,
       "evidence_status": "committed",
       "evidence_producer": null,
       "failure_sentinel": null
@@ -105,34 +57,11 @@
         "validation/crossval/_04_fresnel_results/fringe_gate_geometry.json",
         "validation/crossval/_04_fresnel_results/lattice_witness.json"
       ],
-      "cpu_runner": {"order": 2},
-      "scheduled_external_order": 4,
+      "cpu_runner": {"order": 1},
+      "scheduled_external_order": 2,
       "evidence_status": "committed",
       "evidence_producer": null,
       "failure_sentinel": "rfx accuracy: FAIL"
-    },
-    {
-      "id": "05_patch_antenna",
-      "script": "validation/crossval/05_patch_antenna.py",
-      "role": "diagnostic-reporter",
-      "public_group": "B",
-      "execution_tiers": ["external-manual"],
-      "evidence_levels": ["E2", "E4"],
-      "references": [
-        {"kind": "analytic", "name": "Balanis transmission-line patch resonance (printed reference, NOT a pass gate)", "required_for_script_pass": false},
-        {"kind": "external-solver", "name": "OpenEMS Simple Patch Antenna (coarse, no thirds-rule; presence required for a full run, numeric comparison reported not gated)", "required_for_script_pass": true},
-        {"kind": "external-solver", "name": "openEMS Simple_Patch thirds-rule canonical recipe — COMMITTED reference fixture tests/fixtures/patch_canonical_farfield_e4/ (f_res 2.4221 GHz, D 6.79 dBi, our 2026-07-11 run; envelope-locked by tests/crossval/test_patch_canonical_farfield_e4.py)", "required_for_script_pass": false}
-      ],
-      "claim_scope": "INTEGRATION/SMOKE diagnostic-reporter only (demoted from claims-bearing 2026-07-15, see docs/research_notes/20260715_cv05_first_principles_review.md): exercises probe-fed patch + finite-GP + CPML + NU-graded-z + openEMS lumped port end-to-end and REPORTS a coarse-mesh (dx=1mm) resonance. It does NOT establish accuracy. Since the lattice ownership contract (#931) both conductors are DECLARED PEC SHEETS on the substrate floor and top node planes (`sim.add_thin_conductor`), the z profile is built block by block so those two planes and the six 250 µm substrate cells between them are exact nodes, and the build asserts the realized wall planes against the declaration before any solve (`assert_realized_sheets`, reading `realized_pec_edge_masks` / `realized_wall_planes`; gated by tests/crossval/test_cv05_realized_sheet_planes.py). Before that migration the two conductors were 250 µm PEC Boxes — sub-cell on this mesh, so neither a volume nor a sheet — placed by a nearest-node argmin: walls at 12.0000 and 13.8161 mm, a 1.8161 mm cavity against a 1.5 mm laminate (+21.1 %) whose top 455 µm was air. The openEMS leg has always modelled both conductors as 2-D PEC at z = 0 and z = h_sub, so the two tools now solve the same 1.5 mm cavity for the first time; the pre-#931 rfx-vs-openEMS figures are therefore a comparison between two different cavities and are NOT a baseline this case preserves (rfx-known-issues.md, 2026-08-28 A/B verdict: exactness of the cavity and agreement with the external reference point in opposite directions). The realized in-plane patch is 28 x 37 mm from a 29.5 x 38.0 mm declaration — the faces sit half a 1 mm cell off the lattice, which is mesh resolution, reported in the result JSON, not absorbed. Authoritative patch-accuracy evidence remains DELEGATED to the committed tests in gate_paths, including the canonical thirds-rule far-field ENVELOPE LOCK test_patch_canonical_farfield_e4.py (committed openEMS reference 2.4221 GHz / 6.79 dBi; D within D_ABS_TOL_DB, f_res inside the [F_RES_REL_LO, F_RES_REL_HI] coarse-dx bias band — a regression lock, not an accuracy claim. CORRECTION 2026-08-31 (#812 Phase 0, documentation only — no gate value changed here): this sentence previously read 'D within 0.5 dB, f_res inside the documented [-12%, -5%]'. Those were the PRE-#693 envelopes, pinned on the WRONG member of the patch's near-degenerate TM pair (the 40 mm cross mode, 2.2147 GHz) instead of the 32 mm feed-axis design mode that the committed openEMS 2.4221 GHz reference actually is. The test itself was repinned on 2026-08-27 by PR #716 / commit 12d2f00 (F_RES_REL_LO=+0.06, F_RES_REL_HI=+0.16, D_ABS_TOL_DB=1.0, at tests/crossval/test_patch_canonical_farfield_e4.py:157,163,164 (D_ABS_TOL_DB, F_RES_REL_LO, F_RES_REL_HI)); this manifest text was not updated with it and kept quoting the retired band — with the SIGN FLIPPED relative to what the test now asserts. Authoritative source for these numbers: tests/crossval/test_patch_canonical_farfield_e4.py:157,163,164 (D_ABS_TOL_DB, F_RES_REL_LO, F_RES_REL_HI) -- cite the NAMES, not only the lines: this pointer read ':111-116' until 2026-08-31 and had been stale since the commit that wrote it (f88f992 added 6 docstring lines to the same file in the same commit), so :111 landed on an unrelated comment. Gated by tests/contracts/test_evidence_citation_pointers.py. #931: the [+6%, +16%] band's stated mechanism was the one-plane sheet's own-cell vacuum term the contract deletes, so it was re-measured on the migrated canonical build on 2026-09-07 by group X-A (VESSL 369367259302, record tests/fixtures/patch_canonical_farfield_e4/canonical_farfield_e4_measured_369367259302.json: settling -42.9 dB against the -40 dB bar, |D| 0.0659 dB where the one-cell-ground board read 0.60, f_res +3.51 % where it read +11.3 %, mode-pair ratio 1.2322 against the TL model's 1.232). D_ABS_TOL_DB is HELD at 1.0 (the rule gives 0.1; a rerun may not narrow a gate), F_RES_REL_LO/HI moved +0.06/+0.16 -> -0.02/+0.09 by the same measured +/- 5 pp outward-rounding rule, and the mode-pair band [1.15, 1.30] was not moved. The band now straddles zero, so the resonance gate is no longer sign-locked -- a change of kind stated in the gate's own docstring, not re-tuned to resemble the old band; this text cites the three constants by NAME only and carries no band inline.) MODE IDENTIFICATION (issue #812, 2026-09-01): the reported resonance was selected as argmin |f - f_analytic| and judged against that same anchor, so it re-anchored silently over a [-22.1 %, +47.8 %] window; it is now the mode ASSIGNED to the design member TM100 of the declared TM_mn0 spectrum (validation/crossval/comparators/patch_mode_identification.py), with an identification tolerance derived from the spectrum itself (12.4988 %, i.e. a log-symmetric [-11.11 %, +12.50 %] window) that is NOT an accuracy claim. The rfx leg enters all_ok; the openEMS leg is REPORTED, not gated: on the real run (VESSL 369367259142, 2026-09-07, `validation/crossval/_05_patch_results/cv05_run_openems_369367259142.json::openems_mode_id_ok` is false while `validation/crossval/_05_patch_results/cv05_run_openems_369367259142.json::rfx_mode_id_ok` is true, `validation/crossval/_05_patch_results/cv05_run_openems_369367259142.json::rfx_vs_analytic_pct = 0.95` %; the 369367257743 record stays committed as the before half of the pair, its openems_* keys and declared_modes_hz untouched by the rfx contract) openEMS's port-voltage ring-down carried seven poles above the pre-declared Q floor, three of them low-Q spurious, so every declared member was claimed by two or three measured modes and the identifier refused to name a resonance -- a Q floor derived from that spectrum's statistics would have to be pre-declared before the leg can be gated. Criterion (B), measured: a 22.0 mm patch (analytic +23.36 %) is assigned TM110 and FAILS by name (`tests/fixtures/patch_mode_identification/cv05_ringdown_spectra.json::runs.patch_len_22p0mm.modes[1].freq = 3.043213 GHz` vs the declared TM100 `tests/fixtures/patch_mode_identification/cv05_ringdown_spectra.json::_declared_TM100_hz = 2.423510 GHz`) where the old argmin returned it silently; the declared 29.5 mm build identifies all three modes (`tests/fixtures/patch_mode_identification/cv05_ringdown_spectra.json::runs.baseline.modes[1].freq = 2.446497 GHz`, +0.95 %; on the sheet-declared board the pole ORDER changed -- TM010, the b-axis mode the length hook does not touch, is resolved in every leg and is modes[0], so the cited index moved to modes[1] and the claims did not). The fixture is regenerated from the repo by scripts/diagnostics/build_cv05_ringdown_spectra.py (VESSL 369367259142, 2026-09-07; reproducibility re-checked on the merged tree by VESSL 369367259288, rc 0, md5 b9ff9a20520ffcaba19a38e741878abe, worktree untouched). ONE FALSIFIER FIRED against the instrument on the committed (cluster-built) fixture: at 38.0 mm (-25 %) a weak third pole (`tests/fixtures/patch_mode_identification/cv05_ringdown_spectra.json::runs.patch_len_38p0mm.modes[1].freq = 2.702632 GHz`, +11.52 % of TM100, amplitude an order below the others) sits inside the identification window and is named TM100, so that length PASSES there (it fired on the round-1 macOS build, which had no such pole; on the rebuilt sheet-board fixture it fires again by the same mechanism, amplitude 3.10e4 against 3.67e5 for its neighbours); a spurious low-amplitude pole in the design window is accepted, and no amplitude floor is added after the fact. Each run record in the fixture now carries `realized_stack` -- the sheet planes, the node-to-node cavity and the realized footprints of the build that produced it, read from `realized_pec_edge_masks` / `realized_wall_planes` rather than restated from the declaration. On the declared build that is: ground sheet on node plane k=22 at z = 12.0000 mm, patch sheet on k=28 at z = 13.5000 mm, a 1.5000 mm cavity node-to-node over six 250 µm FR4 cells, ground footprint 60.0 × 55.0 mm and patch 28.0 × 37.0 mm. The `_realized_x_cell_census` is re-measured on every rebuild rather than copied forward, and its unit changed with the measurement: it counts the tangential E edges the patch footprint stands on -- the realized conductor length -- instead of the masked nodes, so off-lattice rows read one lower than the pre-#931 block (29.5 mm -> 28 edges, was 29 nodes) while on-lattice rows hold (22.0 mm -> 22 either way, 38.0 mm -> 38). One consequence is recorded rather than hidden: 22.5 mm and 22.0 mm now realize the SAME 22 edges, so those two legs are one board with one ring-down, and tests/crossval/test_patch_mode_identification.py::test_cv05_22p5_and_22p0_are_one_realization_since_931 fails if a future change separates them again.",
-      "external_dependencies": ["openEMS", "CSXCAD"],
-      "expected_exit_codes": [0, 1, 2],
-      "gate_paths": ["tests/locks/test_patch_edgefed_resonance_harminv.py", "tests/locks/test_patch_edgefed_s11_passivity.py", "tests/oracle/test_patch_cavity_eps_oracle.py", "tests/crossval/test_patch_canonical_farfield_e4.py"],
-      "artifact_paths": ["tests/fixtures/patch_canonical_farfield_e4/patch_farfield_openems.json", "validation/crossval/_05_patch_results/cv05_run_openems_369367257743.json", "validation/crossval/_05_patch_results/cv05_run_openems_369367259142.json", "scripts/diagnostics/patch_tutorial_openems.py", "scripts/diagnostics/patch_tutorial_rfx.py"],
-      "cpu_runner": {"excluded_reason": "Retired from automated scheduling 2026-09-10 (issues #959/#965, docs/design_notes/20260910_cv05_crossval_disposition.md): none of its four gate_paths tests check this case's own board (they measure different geometries or an idealized cavity); the test that does, tests/crossval/test_cv05_realized_sheet_planes.py, runs the script by subprocess in RFX_CV05_BUILD_ONLY=1 mode and needs no schedule slot of its own. The openEMS comparison this case would otherwise run is REPORTED, not gated, per its own claim_scope, and issue #959 (28x37mm realized vs 29.5x38.0mm declared) means that comparison is currently between two different antennas. Script retained (do not delete): scripts/diagnostics/build_cv05_ringdown_spectra.py execs it directly to regenerate the GATED test_patch_mode_identification.py fixture, and four more files key registry/allowlist entries on this exact path. Run by hand via scripts/vessl_crossval05_openems.yaml or scripts/vessl_cv05_openems_and_ringdown_fixture.yaml if the openEMS leg is ever needed again."},
-      "scheduled_external_order": null,
-      "evidence_status": "committed",
-      "evidence_producer": null,
-      "failure_sentinel": null
     },
     {
       "id": "06b_msl_notch_filter_uniform",
@@ -206,7 +135,7 @@
         "scripts/diagnostics/build_sheen_lpf_palace_referee.py",
         "tests/fixtures/cv07_estimator_regate/cv07_estimator_falsifiers.json"
       ],
-      "cpu_runner": {"order": 8},
+      "cpu_runner": {"order": 5},
       "scheduled_external_order": null,
       "evidence_status": "committed",
       "evidence_producer": null,
@@ -235,38 +164,10 @@
       "artifact_paths": [
         "docs/design_notes/issue812_cv09_mirror_plane_regate.md"
       ],
-      "cpu_runner": {"order": 3},
-      "scheduled_external_order": 5,
+      "cpu_runner": {"order": 2},
+      "scheduled_external_order": 3,
       "evidence_status": "committed",
       "evidence_producer": null,
-      "failure_sentinel": null
-    },
-    {
-      "id": "10_pmc_cpml_half_symmetric",
-      "script": "validation/crossval/10_pmc_cpml_half_symmetric.py",
-      "role": "diagnostic-reporter",
-      "public_group": "B",
-      "execution_tiers": ["pr-fast", "cpu-runner", "scheduled-external"],
-      "evidence_levels": ["E1"],
-      "references": [
-        {"kind": "self-invariant", "name": "peak stability under per-face PMC+CPML composition", "required_for_script_pass": true},
-        {"kind": "self-invariant", "name": "PMC realization: H_tan == 0.0 bit-exact on the declared y_lo face", "required_for_script_pass": true},
-        {"kind": "self-invariant", "name": "image-doubling control arm: half-domain PMC amplitude reproduces the mirrored full-domain image-source amplitude within 2 %", "required_for_script_pass": true}
-      ],
-      "claim_scope": "uniform and non-uniform PMC+CPML composition regression lock, bit-exact PMC realization, and an absolute image-doubling amplitude control; not an external cross-solver claim",
-      "external_dependencies": [],
-      "expected_exit_codes": [0, 1],
-      "gate_paths": [
-        "validation/crossval/10_pmc_cpml_half_symmetric.py",
-        "tests/unit/boundaries/test_boundary_pmc_composition.py",
-        "tests/crossval/test_crossval10_pmc_regate.py",
-        "tests/crossval/test_cv09_cv10_body_contract_controls.py"
-      ],
-      "artifact_paths": [],
-      "cpu_runner": {"order": 4},
-      "scheduled_external_order": 6,
-      "evidence_status": "external-scheduled",
-      "evidence_producer": ".github/workflows/validation.yml::crossval-external",
       "failure_sentinel": null
     },
     {
@@ -292,7 +193,7 @@
       "artifact_paths": [
         "tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json"
       ],
-      "cpu_runner": {"order": 5},
+      "cpu_runner": {"order": 3},
       "scheduled_external_order": null,
       "evidence_status": "committed",
       "evidence_producer": null,
@@ -315,7 +216,7 @@
       "artifact_paths": [
         "docs/design_notes/cv14_rect_cavity_gate_predeclaration.md"
       ],
-      "cpu_runner": {"order": 9},
+      "cpu_runner": {"order": 6},
       "scheduled_external_order": null,
       "evidence_status": "committed",
       "evidence_producer": null,
@@ -345,7 +246,7 @@
         "validation/crossval/_15_patch_results/rfx_decomposition_feed_pre931.json",
         "validation/crossval/_15_patch_results/rfx_decomposition_patchkind_volume_1cell.json"
       ],
-      "cpu_runner": {"order": 10},
+      "cpu_runner": {"order": 7},
       "scheduled_external_order": null,
       "evidence_status": "committed",
       "evidence_producer": null,
@@ -375,7 +276,7 @@
       "artifact_paths": [
         "validation/crossval/_16_ka_sweep_results/rfx.json"
       ],
-      "cpu_runner": {"order": 11},
+      "cpu_runner": {"order": 8},
       "scheduled_external_order": null,
       "evidence_status": "committed",
       "evidence_producer": null,
@@ -408,7 +309,7 @@
         "validation/crossval/_17_dielectric_results/cv17_permittivity_island.json",
         "validation/crossval/_17_dielectric_results/cv17_gated_A.log"
       ],
-      "cpu_runner": {"order": 12},
+      "cpu_runner": {"order": 9},
       "scheduled_external_order": null,
       "evidence_status": "committed",
       "evidence_producer": null,
@@ -442,7 +343,7 @@
         "validation/crossval/_18_wr90_iris_results/one_cell_defect_live.json",
         "validation/crossval/_18_wr90_iris_results/cv18_gated_A.log"
       ],
-      "cpu_runner": {"order": 13},
+      "cpu_runner": {"order": 10},
       "scheduled_external_order": null,
       "evidence_status": "committed",
       "evidence_producer": null,
@@ -530,7 +431,7 @@
         "tests/fixtures/msl_phase_referee/msl_thru_rfx_dx50.json",
         "validation/crossval/_20_msl_phase_referee_logs/20260827T102342Z_result.json"
       ],
-      "cpu_runner": {"order": 14},
+      "cpu_runner": {"order": 11},
       "scheduled_external_order": null,
       "evidence_status": "committed",
       "evidence_producer": null,
@@ -571,7 +472,7 @@
         "validation/crossval/_21_coax_two_port_referee_logs/run3_369367251629_run.log",
         "validation/crossval/_21_coax_two_port_referee_logs/mesh_refinement_369367251845_result.json"
       ],
-      "cpu_runner": {"order": 15},
+      "cpu_runner": {"order": 12},
       "scheduled_external_order": null,
       "evidence_status": "committed",
       "evidence_producer": null,
@@ -670,8 +571,8 @@
         "validation/crossval/_22_dispersive_diag/rfx__debye_tail3e4.json",
         "validation/crossval/_22_dispersive_diag/lattice_witness.json"
       ],
-      "cpu_runner": {"order": 16},
-      "scheduled_external_order": 7,
+      "cpu_runner": {"order": 13},
+      "scheduled_external_order": 4,
       "evidence_status": "committed",
       "evidence_producer": null,
       "failure_sentinel": "rfx accuracy: FAIL"
@@ -745,8 +646,8 @@
         "validation/crossval/_23_lossy_results/rfx__tand3_dx4.json",
         "validation/crossval/_23_lossy_results/lattice_witness.json"
       ],
-      "cpu_runner": {"order": 17},
-      "scheduled_external_order": 8,
+      "cpu_runner": {"order": 14},
+      "scheduled_external_order": 5,
       "evidence_status": "committed",
       "evidence_producer": null,
       "failure_sentinel": "rfx accuracy: FAIL"
