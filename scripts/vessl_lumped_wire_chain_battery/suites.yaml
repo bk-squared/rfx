@@ -55,6 +55,14 @@ run: |-
   # red one is named rather than hidden behind whatever ran last. The first
   # attempt wrapped these in `sh -c` and every one came back 127, because $PY
   # was not exported into that shell — run 369367262737.
+  # `git init -b main` is used by 44 of the contract tests and arrived in git
+  # 2.28. The image's git rejected it with exit 129 on run 369367262739, so
+  # those tests errored on the lane while passing on the pod. Record the
+  # version, try once for a newer one, and record that too: a suite that could
+  # not run is not a suite that passed.
+  git --version
+  apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq git >/dev/null 2>&1
+  echo "git after upgrade attempt: $(git --version)"
   set +e
   timeout 4000 "$PY" -m pytest tests/oracle/test_lumped_wire_chain_battery.py -q -p no:cacheprovider > "$OUT/replay.log" 2>&1
   echo "replay_rc=$?"; tail -25 "$OUT/replay.log"
@@ -67,4 +75,5 @@ run: |-
   bash scripts/ci/docs_hygiene.sh > "$OUT/hygiene.log" 2>&1
   echo "hygiene_rc=$?"; cat "$OUT/hygiene.log"
   set -e
+  cp -f "$OUT/replay.log" /root/work/lw-suites/out.log 2>/dev/null || true
   echo BATTERY_STAGE_DONE
