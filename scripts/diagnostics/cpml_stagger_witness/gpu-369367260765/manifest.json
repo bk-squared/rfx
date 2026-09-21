@@ -8,72 +8,72 @@
   "cited_by": "docs/design_notes/2026-09-13_cpml_yee_stagger_correction.md",
   "files": [
     {
-      "path": "docs/research_notes/cpml_stagger/gpu-369367260765/launch.json",
+      "path": "scripts/diagnostics/cpml_stagger_witness/gpu-369367260765/launch.json",
       "bytes": 1148,
       "sha256": "fe702a3c020ee4ba56f8e5ec8ecf9a086515ad589ec6821fa3eeb29f059ed5e8"
     },
     {
-      "path": "docs/research_notes/cpml_stagger/gpu-369367260765/environment.json",
+      "path": "scripts/diagnostics/cpml_stagger_witness/gpu-369367260765/environment.json",
       "bytes": 625,
       "sha256": "691cf4734541c8b59c33a96c24783980ed4b65ddaea9f7b3b3de2e88c9f5c2b4"
     },
     {
-      "path": "docs/research_notes/cpml_stagger/gpu-369367260765/exit-code.txt",
+      "path": "scripts/diagnostics/cpml_stagger_witness/gpu-369367260765/exit-code.txt",
       "bytes": 2,
       "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     {
-      "path": "docs/research_notes/cpml_stagger/gpu-369367260765/run.yaml",
+      "path": "scripts/diagnostics/cpml_stagger_witness/gpu-369367260765/run.yaml",
       "bytes": 8075,
       "sha256": "faba1070d61548113c97271240cdad8e517ea8947b691b6d0271e6c6800a39fa"
     },
     {
-      "path": "docs/research_notes/cpml_stagger/gpu-369367260765/artifacts/commits.txt",
+      "path": "scripts/diagnostics/cpml_stagger_witness/gpu-369367260765/artifacts/commits.txt",
       "bytes": 92,
       "sha256": "39ed08be52125f928c7c9f4e18be98216e76dcb03a154e10cdd27cfe2e940d34"
     },
     {
-      "path": "docs/research_notes/cpml_stagger/gpu-369367260765/artifacts/comparator.sha256",
+      "path": "scripts/diagnostics/cpml_stagger_witness/gpu-369367260765/artifacts/comparator.sha256",
       "bytes": 268,
       "sha256": "a7818acf59d28f57a29621187c47f46283d930660b55f0641bb1a4cad5a48547"
     },
     {
-      "path": "docs/research_notes/cpml_stagger/gpu-369367260765/artifacts/green_lane_tests.log",
+      "path": "scripts/diagnostics/cpml_stagger_witness/gpu-369367260765/artifacts/green_lane_tests.log",
       "bytes": 417,
       "sha256": "31bdf215fc1d210b8b5aa0d171c29bb0f5d27c26ac9f9024246d16dcfd3004b3"
     },
     {
-      "path": "docs/research_notes/cpml_stagger/gpu-369367260765/artifacts/green_witness.json",
+      "path": "scripts/diagnostics/cpml_stagger_witness/gpu-369367260765/artifacts/green_witness.json",
       "bytes": 738821,
       "sha256": "185b86b03fc296749d86cc26b7891e80472b9d165080513c1bbfae12d2e65390"
     },
     {
-      "path": "docs/research_notes/cpml_stagger/gpu-369367260765/artifacts/green_witness.log",
+      "path": "scripts/diagnostics/cpml_stagger_witness/gpu-369367260765/artifacts/green_witness.log",
       "bytes": 945,
       "sha256": "517bc79375dfde6ed450aa951be5a9b61174c5c7bd585008427d0071c6842a80"
     },
     {
-      "path": "docs/research_notes/cpml_stagger/gpu-369367260765/artifacts/red_lane_tests.log",
+      "path": "scripts/diagnostics/cpml_stagger_witness/gpu-369367260765/artifacts/red_lane_tests.log",
       "bytes": 422,
       "sha256": "2ca7a3b4800f6745e00bf196330daa926e391821829f1fcf8c5e32698844480d"
     },
     {
-      "path": "docs/research_notes/cpml_stagger/gpu-369367260765/artifacts/red_witness.json",
+      "path": "scripts/diagnostics/cpml_stagger_witness/gpu-369367260765/artifacts/red_witness.json",
       "bytes": 738974,
       "sha256": "90df7f78a6d617114c8622a272ec36d3c9a3c8fd91e6063b554bafa845f5a03c"
     },
     {
-      "path": "docs/research_notes/cpml_stagger/gpu-369367260765/artifacts/red_witness.log",
+      "path": "scripts/diagnostics/cpml_stagger_witness/gpu-369367260765/artifacts/red_witness.log",
       "bytes": 935,
       "sha256": "9f5484a97e6d0e2a9d596b077548745923c394403098ad3ad4796d6acc31be86"
     },
     {
-      "path": "docs/research_notes/cpml_stagger/gpu-369367260765/artifacts/summary.txt",
+      "path": "scripts/diagnostics/cpml_stagger_witness/gpu-369367260765/artifacts/summary.txt",
       "bytes": 2107,
       "sha256": "2342173f4ca356f392eead02587f9348c6dc4b434505255d7b127f64a22fe483"
     },
     {
-      "path": "docs/research_notes/vessl_logs/369367260765-cpml-stagger-witness-completed.log.gz",
+      "path": "scripts/diagnostics/cpml_stagger_witness/gpu-369367260765/369367260765-cpml-stagger-witness-completed.log.gz",
       "bytes": 4443,
       "sha256": "5fccbe3e8f8bb3241d7045dfa4559d8c98107c96a13485522c6223e84e1361e3",
       "raw_bytes": 19913,
