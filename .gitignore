@@ -7,12 +7,9 @@ __pycache__/
 .omx/
 .gjc/
 .omo/
-.rfx-experiments/
 .playwright-cli/
 build/
 output/
-studio/node_modules/
-studio/*.tsbuildinfo
 docs-site/
 CLAUDE.md
 AGENTS.md

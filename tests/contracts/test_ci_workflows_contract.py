@@ -581,7 +581,7 @@ def test_code_changed(paths: list[str], expected: bool) -> None:
 
 
 def test_a_directory_that_merely_starts_with_a_code_prefix_is_not_code() -> None:
-    """`rfx/` is a prefix of `rfx-studio-notes/` only if you forget the slash."""
+    """`rfx/` is a prefix of `rfx-notes/` only if you forget the slash."""
     assert changed_paths.code_changed(["rfx-notes/scratch.md"]) is False
     assert changed_paths.code_changed(["testsuite-design.md"]) is False
     assert changed_paths.code_changed(["docs/setup.md"]) is False
@@ -594,7 +594,7 @@ def test_paths_are_normalised_before_they_are_classified() -> None:
 
 
 def test_a_nested_conftest_or_durations_file_counts() -> None:
-    assert changed_paths.code_changed(["studio/conftest.py"]) is True
+    assert changed_paths.code_changed(["examples/conftest.py"]) is True
     assert changed_paths.code_changed(["gallery-deploy/.test_durations"]) is True
 
 

@@ -23,7 +23,7 @@
 # configuration that silently owns nothing.
 #
 # NOT every path is owned, by design. `rfx/` core (grid, simulation, api,
-# materials, experiments, studio), `studio/`, `scripts/diagnostics/`,
+# materials), `scripts/diagnostics/`,
 # `validation/research/` and most of `tests/unit/` carry no lane; a PR confined
 # to them gets no label and must carry the `Lane:` line itself. `changelog.d/`
 # is deliberately unowned: every PR adds a fragment there, so owning it would

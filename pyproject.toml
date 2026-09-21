@@ -37,8 +37,6 @@ dependencies = [
 [project.scripts]
 rfx = "rfx.cli:main"
 rfx-dashboard = "rfx.dashboard.cli:main"
-rfx-studio = "rfx.studio.cli:main"
-rfx-agent-mcp = "rfx.agents.stdio:main"
 rfx-diagnose = "rfx.diagnostics:main"
 
 [project.optional-dependencies]
@@ -55,10 +53,8 @@ dashboard = ["streamlit>=1.30", "pandas"]
 # exact contiguous-grouping behavior (PR regenerating .test_durations, #533/#545); an
 # unpinned minor bump changing either would silently invalidate the balance without a
 # code-visible signal.
-dev = ["pytest>=7.0", "pytest-xdist", "pytest-split>=0.11,<0.12", "ruff>=0.15,<0.16", "mypy>=1.10,<2", "httpx>=0.27", "build>=1,<2", "tomli>=2; python_version < '3.11'", "rfx-fdtd[studio]"]
-agent = ["mcp>=1.27,<2"]
-studio = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1", "mcp>=1.27,<2", "openai>=2.17,<3"]
-all = ["rfx-fdtd[optimization,visualization,dashboard,agent,studio,cad,dev]"]
+dev = ["pytest>=7.0", "pytest-xdist", "pytest-split>=0.11,<0.12", "ruff>=0.15,<0.16", "mypy>=1.10,<2", "build>=1,<2", "tomli>=2; python_version < '3.11'"]
+all = ["rfx-fdtd[optimization,visualization,dashboard,cad,dev]"]
 
 [project.urls]
 Homepage = "https://remilab.ai/rfx/"
@@ -71,7 +67,6 @@ include = ["rfx*"]
 
 [tool.setuptools.package-data]
 rfx = ["py.typed"]
-"rfx.studio" = ["static/**/*", "templates/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
