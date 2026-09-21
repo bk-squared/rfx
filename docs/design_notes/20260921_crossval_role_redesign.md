@@ -14,8 +14,7 @@ organized, not a physics finding.
    number out of an example.
 4. **A structure with an exact closed form is not cross-validated against another solver.** The closed
    form is the stronger reference, and `tests/oracle/` already holds those comparisons. External
-   comparison is kept for structures that have none: microstrip circuits, patch antennas, waveguide
-   irises and filters.
+   comparison is kept for structures that have none: microstrip circuits and patch antennas.
 5. `validation/crossval/` goes away as a code location. cv01, cv02, cv05 and cv10 are removed outright
    (one reference, which is another FDTD solver; a demoted case whose two legs are not the same
    antenna; a self-consistency check). The closed-form cases go next, after checking that
@@ -104,9 +103,7 @@ PI chooses the criterion, as the v2 bar already says.
    the domain walls changes), which is the behaviour issue #820 measures on the PEC sphere and the one
    open question in this lane whose suspected cause is in the product. The two-band cavity test does
    not answer issue #810, which asks about S-parameters on a multi-band mesh.
-4. Rebuild what is left under the rules above, one family per PR: microstrip (06b, 20), patch (15 with an
-   FEM reference, which answers #715), iris (18). PI decisions pending: 07 (Sheen low-pass filter),
-   19 (five-iris filter), 21 (coax; its lane is deferred).
+4. Which cases stay was delegated to the lane by the PI (2026-09-21). Rebuilt under the rules above, one per PR: the MSL notch filter, the Sheen low-pass filter, the RT5880 patch antenna (with a finite-element reference, which answers #715). The WR-90 inductive iris is compared with in-repo mode matching, not with an external solver, so it became an analytic test (tests/oracle/test_wr90_inductive_iris_mode_matching.py). Removed: the WR-90 waveguide port (closed forms), the five-iris band-pass filter (high-Q, no external data of known provenance), the coax thru line (closed forms). The MSL thru-line phase case waits for the MSL lane, whose probe-fed referee loads it.
 5. When the last case has moved: delete `manifest.json`, the exit-code evidence machinery and the
    contracts that exist only to keep them consistent; narrow the numeric-provenance gate to public pages.
 

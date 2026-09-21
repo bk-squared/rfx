@@ -563,10 +563,10 @@ def test_thin_absorber_advisory_honours_per_face_thickness_overrides():
 # both absorbing faces equally thin), so single-value substitutions at five
 # separate branch points all survived. The worst of them: gating the call site
 # on ``if not self._geometry`` or ``if normalize != "flux"`` left all 40 tests
-# green, and BOTH of those conditions are the actual settings of
-# ``validation/crossval/18_wr90_iris_modematch.py`` — the script that motivated
-# issue #494. A one-line regression restoring precisely the #494 blind spot on
-# precisely the motivating script was invisible.
+# green, and BOTH of those conditions are the actual settings of the WR-90
+# inductive iris case — the setup that motivated issue #494. A one-line
+# regression restoring precisely the #494 blind spot on precisely the
+# motivating setup was invisible.
 # --------------------------------------------------------------------------- #
 def _two_port_with_obstacle(cpml_layers, *, freqs=_FREQS, dx=0.004):
     """A two-port sim that is NOT empty — mirrors a real crossval setup."""
@@ -579,9 +579,9 @@ def _two_port_with_obstacle(cpml_layers, *, freqs=_FREQS, dx=0.004):
 
 @pytest.mark.parametrize("normalize", [False, "flux"])
 def test_advisory_fires_with_geometry_present_and_under_flux(normalize):
-    """The option combination the motivating crossval script actually uses.
+    """The option combination the motivating setup actually uses.
 
-    ``18_wr90_iris_modematch.py`` runs `normalize="flux"` with PEC boxes
+    The WR-90 inductive iris case runs `normalize="flux"` with PEC boxes
     registered. Gating the advisory on either condition must not hide it.
     """
     sim = _two_port_with_obstacle(10)

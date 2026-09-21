@@ -173,9 +173,6 @@ _ALLOWED = {
         "docstring history of the #740 ground patch (:65, :79, :112) and one "
         "line at :264 recording that the PREVIOUS version OR'd the base "
         "tangential_edge_masks with the extension; the live code calls neither",
-    "validation/crossval/18_wr90_iris_modematch.py":
-        "two docstring sentences (:516, :967) explaining that the far face was "
-        "never a wall and that the flag put it back for t = 1 only",
     "tests/crossval/test_patch_canonical_farfield_e4.py":
         "one comment (:147) citing the #740 arm's -4.7% as the prediction the "
         "post-#931 measurement was checked against",

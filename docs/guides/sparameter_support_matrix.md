@@ -893,9 +893,9 @@ stays replayable because its reference values are embedded (#574 scope item 3).
   *effective* electrical thickness of an obstacle — field interaction with the
   discontinuity, not a cutoff — remains a measured quantity rather than a
   geometric one; what changed is that its geometric starting point is now the
-  drawn thickness with no `±1` correction. See `run_point` in
-  `validation/crossval/18_wr90_iris_modematch.py` for the realized-plane assert
-  pattern.
+  drawn thickness with no `±1` correction. See `assert_realized_iris` in
+  `tests/oracle/test_wr90_inductive_iris_mode_matching.py` for the
+  realized-plane assert pattern.
 - Size the absorber from the guide wavelength at the **lowest** measured
   frequency, where `lambda_g` is longest and the `cpml_layers=16` default is
   weakest. `compute_waveguide_s_matrix` documents `>= 0.5 * lambda_g` and now

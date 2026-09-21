@@ -586,8 +586,8 @@ def test_referee_interior_span_constants_match_rebuilt_grid_fencepost():
     then multiplied by dx -- double-counting one fencepost cell per axis
     (rfx's own grid.py, Grid.__init__, "+1 fence-post correction: N cells
     need N+1 nodes"; the single WR-90 inductive iris case already gets
-    this right against a live sim._build_grid() --
-    18_wr90_iris_modematch.py:317-318). This is the tautology the old
+    this right against a live sim._build_grid()). This is the tautology
+    the old
     ``test_geometry_constants_match_the_rasterized_rfx_fixture`` could
     not catch: its own anti-regression guard, ``abs(B_CLEAR_X_MM - 8.0) >
     0.1``, passes for BOTH the pre-#739 8.619mm and the corrected

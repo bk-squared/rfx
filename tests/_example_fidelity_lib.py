@@ -375,11 +375,6 @@ CLASSIFICATION: dict[str, Entry] = {
         "no_simulation",
         "same two-stage openEMS-referee shape as cv20: no rfx Simulation is "
         "constructed by this script"),
-    "validation/crossval/_wr90_iris_realized.py": Entry(
-        "no_simulation",
-        "cv18/cv19's shared realized-geometry reader (#931 crossval-D): takes "
-        "a built Simulation and reads realized_pec_edge_masks / "
-        "realized_wall_planes -- constructs no Simulation"),
     "validation/crossval/_patch_feed_contract.py": Entry(
         "no_simulation",
         "cv05/cv15's explicit galvanic-feed contract (#929): reads the "
@@ -585,10 +580,6 @@ CLASSIFICATION: dict[str, Entry] = {
         "the realized edge set itself, through realized_pec_edge_masks / "
         "realized_wall_planes",
         (Builder("build_rfx_sim", 0, (_v("default", do_gain=False),)),)),
-    "validation/crossval/18_wr90_iris_modematch.py": Entry(
-        "builder_fused_with_solve",
-        "`run_point()` builds and calls sim.compute_waveguide_s_matrix(...) "
-        "in the same function"),
     "validation/research/nu_cost/g4/cpml_baseline.py": Entry(
         "no_simulation",
         "G4 frozen low-level CPML reference; defines operators and state, "
