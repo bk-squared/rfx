@@ -1,9 +1,14 @@
 """Absorber columns must contain the adjacent solved cross-section."""
+import sys
+from pathlib import Path
+
 import jax
 import pytest
 
-import _example_fidelity_lib as lib
-from _conductor_continuation_contract import assembled_arrays, violations
+# Importable on its own, not only after a sibling module has put tests/ on the path.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import _example_fidelity_lib as lib  # noqa: E402
+from _conductor_continuation_contract import assembled_arrays, violations  # noqa: E402
 
 
 CASES = [(path, builder, variant)
