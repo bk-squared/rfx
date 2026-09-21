@@ -35,7 +35,15 @@ run: |-
   LOG="$OUT/run.log"
   trap 'rc=$?; echo "$rc" > "$OUT/job.rc"; cp -f /root/work/lw-wire-ad/out.log "$LOG" 2>/dev/null || true; chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
   WORK=/root/work/lw-wire-ad
-  rm -rf "$WORK"; mkdir -p "$WORK"; cp -a "$SRC/." "$WORK/"; cd "$WORK"
+  rm -rf "$WORK"; mkdir -p "$WORK"
+  # tar rather than `cp -a`, excluding the caches: a pytest run in the
+  # source worktree rewrites .pyc files while the copy is in flight, and
+  # cp then exits non-zero ("replaced while being copied"), which under
+  # `set -e` kills the job before a single solve. Measured on run
+  # 369367262712, which died three seconds in for exactly that reason.
+  ( cd "$SRC" && tar -cf - --exclude=__pycache__ --exclude=.pytest_cache . ) \
+    | ( cd "$WORK" && tar -xf - )
+  cd "$WORK"
   "$PY" -m pip uninstall -y -q jax-cuda12-plugin jax-cuda12-pjrt 2>/dev/null || true
   "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy>=2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest pytest-split optax
   export PYTHONPATH="$WORK"

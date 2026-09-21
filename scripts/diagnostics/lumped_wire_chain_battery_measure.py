@@ -624,8 +624,16 @@ def realized_grid(sim: Simulation, kind: str, dut: str, dx: float) -> dict:
     return out
 
 
-def assert_realized_grid(sim: Simulation, kind: str, dut: str, dx: float) -> dict:
+def assert_realized_grid(sim: Simulation, kind: str, dut: str, dx: float,
+                        eps_r: float = EPS_R_AIR) -> dict:
     """Refuse to solve unless the built grid IS the declared channel.
+
+    ``eps_r`` is the filling the caller BUILT with. It has to be passed, because
+    the port's reference impedance is the filled line's Zc: a stage that builds
+    an eps_r = 2.2 line and asks this function for the air line's declaration is
+    comparing two different channels. That mismatch is what the first run of the
+    permittivity stage hit once this guard stopped comparing the layout to
+    itself.
 
     No FDTD step runs here. What it catches: a domain that rounded to a
     different node count, a port or element that snapped to the wrong node
@@ -635,8 +643,9 @@ def assert_realized_grid(sim: Simulation, kind: str, dut: str, dx: float) -> dic
     """
     m = realized_grid(sim, kind, dut, dx)
     lay = layout(kind, dut, dx)
-    d = declared(kind, dut, dx)
+    d = declared(kind, dut, dx, eps_r)
     problems = []
+    m["eps_r_declared"] = eps_r
     want_shape = [lay["n_nodes_x"], 2, lay["n_h_cells"] + 1]
     if m["grid_shape_nodes"] != want_shape:
         problems.append(f"grid is {m['grid_shape_nodes']} nodes, declared {want_shape}")
@@ -1242,7 +1251,7 @@ def stage_adfd_eps(args, out: Path) -> None:
     kind, dut = args.kind, "short"
     d = declared(kind, dut, dx, eps_r=EPS_R_FILL)
     sim = build_sim(kind, dut, dx, drive=args.drive, eps_r=EPS_R_FILL)
-    geo = assert_realized_grid(sim, kind, dut, dx)
+    geo = assert_realized_grid(sim, kind, dut, dx, EPS_R_FILL)
     pf = preflight_record(sim)
     eps32 = _own_eps(sim, jnp.float32)
     n_filled = int(np.count_nonzero(np.asarray(eps32) > 1.0 + 1e-6))
