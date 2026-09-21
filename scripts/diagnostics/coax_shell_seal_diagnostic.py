@@ -24,6 +24,9 @@ its ring-down witness):
      construction
   3  shell inner radius at the DECLARED outer radius b (the dielectric fills
      a..b as drawn), extending outward 3 cells
+  4  arm 3's geometry, but the conductors realized as PEC EDGE MASKS through
+     ``realized_pec_edge_masks`` instead of as stamped sigma
+  5  the AS-SHIPPED geometry with that same edge-mask realization
 
 Nothing under ``rfx/`` changes. The arms are installed by rebinding
 ``rfx.sources.coaxial_port.stamp_coaxial_line``, which
@@ -55,6 +58,7 @@ import jax.numpy as jnp  # noqa: E402
 
 import rfx.simulation as _rfx_simulation  # noqa: E402
 import rfx.sources.coaxial_port as _cp  # noqa: E402
+from rfx.boundaries.pec import realized_pec_edge_masks  # noqa: E402
 from rfx.geometry.csg import Cylinder  # noqa: E402
 from rfx.sources.coaxial_port import PEC_SIGMA, PTFE_EPS_R  # noqa: E402
 
@@ -73,7 +77,11 @@ DRIVER = "scripts/diagnostics/coax_shell_seal_diagnostic.py"
 BATTERY = "scripts/diagnostics/coax_chain_battery_measure.py"
 PREDECLARATION = "docs/design_notes/coax_chain_battery_predeclaration.md"
 
-ARMS = (0, 1, 2, 3)
+ARMS = (0, 1, 2, 3, 4, 5)
+# Arms that realize the conductor as PEC edges rather than as a lossy sigma.
+EDGE_MASK_ARMS = (4, 5)
+# Which stamping geometry each edge-mask arm inherits.
+EDGE_MASK_GEOMETRY = {4: 3, 5: 0}
 THICK_CELLS = 3
 # Arm 2 fills the cross-section with conductor, but PEC must not reach the CPML:
 # running it into the absorber is documented unstable (stamp_coaxial_line's own
@@ -83,6 +91,9 @@ ARM2_PAD_MARGIN_CELLS = 2
 
 _ORIGINAL_STAMP = _cp.stamp_coaxial_line
 _ORIGINAL_RUN = _rfx_simulation.run
+
+# Set by main() before the solve; read by the run wrapper.
+_EDGE_MASK_ARM = False
 
 # What the wrapped run() saw, one entry per drive.
 _CAPTURED: list[dict] = []
@@ -116,7 +127,7 @@ def make_stamp(arm: int):
     def stamp(grid, materials, *, center_xy, z_lo_index, z_hi_index,
               pin_radius=_cp.SMA_PIN_RADIUS, outer_radius=_cp.SMA_OUTER_RADIUS,
               eps_r=PTFE_EPS_R):
-        if arm == 0:
+        if EDGE_MASK_GEOMETRY.get(arm, arm) == 0:
             return _ORIGINAL_STAMP(
                 grid, materials, center_xy=center_xy, z_lo_index=z_lo_index,
                 z_hi_index=z_hi_index, pin_radius=pin_radius,
@@ -130,8 +141,9 @@ def make_stamp(arm: int):
         center = (float(center_xy[0]), float(center_xy[1]), zc)
         a, b = float(pin_radius), float(outer_radius)
 
+        geometry = EDGE_MASK_GEOMETRY.get(arm, arm)
         shipped_thickness = min(dz, 0.5 * (b - a))
-        if arm in (1, 2):
+        if geometry in (1, 2):
             shell_inner_radius = b - shipped_thickness
         else:                                   # arm 3: the dielectric fills a..b
             shell_inner_radius = b
@@ -140,7 +152,7 @@ def make_stamp(arm: int):
         shell_inner_mask = _cylinder_mask(grid, center, shell_inner_radius, height)
         axial = _cylinder_mask(grid, center, max(b, shell_inner_radius) * 10.0, height)
 
-        if arm == 2:
+        if geometry == 2:
             # Every cell outside the shell's inner radius, out to a margin short
             # of the CPML pad.
             keep = np.zeros(tuple(int(s) for s in grid.shape), dtype=bool)
@@ -169,17 +181,87 @@ def make_stamp(arm: int):
     return stamp
 
 
+def edge_mask_realization(grid, materials):
+    """Turn the stamped PEC into the repo's own PEC EDGE realization.
+
+    ``rfx/core/yee.py`` applies ``materials.sigma`` per NODE to the three E
+    components co-indexed with that node, so a sigma-stamped conductor cell
+    damps only its three plus-side edges and the edges entering it from the
+    minus side keep living on the neighbouring fill node. The repo's volume
+    conductors do not work that way: ``realized_pec_edge_masks`` is "the one
+    function that turns conductor geometry into PEC E edges" and puts walls on
+    BOTH faces with every normal edge between them shorted.
+
+    The PEC cells' sigma is ZEROED here, so the conductor is realized by the
+    edge masks ALONE and the two mechanisms are not both acting. The annular
+    resistor feeds are left untouched: their conductivity is the finite value
+    that sets the feed impedance, far below the PEC threshold.
+    """
+    sigma = np.asarray(materials.sigma)
+    cell_mask = sigma >= 0.5 * PEC_SIGMA
+    edges = realized_pec_edge_masks(cell_mask, sheets=(), wires=(),
+                                    periodic=(False, False, False))
+    cleared = materials._replace(sigma=jnp.asarray(np.where(cell_mask, 0.0, sigma)))
+    return cleared, tuple(np.asarray(e) for e in edges), cell_mask
+
+
 def wrapped_run(grid, materials, n_steps, **kw):
     """The lane's own ``run``, with the inputs and the DFT planes kept.
 
-    A wrapper, not a replacement: the solve is the shipped one, and nothing it
-    returns is modified.
+    A wrapper, not a replacement: on the sigma arms the solve is the shipped one
+    and nothing it returns is modified. On the edge-mask arms the conductor is
+    handed over as ``pec_edge_masks``, which ``rfx.simulation.run`` accepts
+    pre-realized, and the PEC sigma is cleared so only one realization acts.
     """
+    edges = cell_mask = None
+    if _EDGE_MASK_ARM:
+        if kw.get("pec_edge_masks") is not None:
+            raise RuntimeError("the lane already passed pec_edge_masks; this "
+                               "wrapper would have to merge rather than set them")
+        materials, edges, cell_mask = edge_mask_realization(grid, materials)
+        kw["pec_edge_masks"] = edges
     result = _ORIGINAL_RUN(grid, materials, n_steps, **kw)
     _CAPTURED.append({"grid": grid, "materials": materials,
                       "dft_planes": result.dft_planes,
-                      "n_steps": int(n_steps)})
+                      "n_steps": int(n_steps),
+                      "pec_edge_masks": edges, "pec_cell_mask": cell_mask})
     return result
+
+
+def shorted_edge_census(grid, cell_mask, edges, center_xy, z_index: int) -> dict:
+    """How many E edges each realization kills on one z slice, and the radii the
+    edge realization actually puts the conductor boundary at."""
+    r = _radial_grid(grid, center_xy)
+    cells = np.asarray(cell_mask)[:, :, z_index]
+    # sigma-per-node damps the three components co-indexed with the cell
+    sigma_only = 3 * int(cells.sum())
+    mx, my, mz = (np.asarray(e)[:, :, z_index] for e in edges)
+    any_edge = mx | my | mz
+    out = {
+        "z_index": int(z_index),
+        "n_conductor_cells": int(cells.sum()),
+        "n_edges_shorted_by_sigma_per_node": sigma_only,
+        "n_edges_shorted_by_edge_masks": int(mx.sum() + my.sum() + mz.sum()),
+        "per_component_edge_masks": {"ex": int(mx.sum()), "ey": int(my.sum()),
+                                     "ez": int(mz.sum())},
+        "n_cells_with_any_shorted_edge": int(any_edge.sum()),
+        "what": ("sigma per node damps the three plus-side edges of each "
+                 "conductor cell; the edge masks short every edge the lattice "
+                 "ownership rule assigns to the conductor, both faces included"),
+    }
+    if any_edge.any():
+        mid = 0.5 * (r[cells].min() + r[cells].max()) if cells.any() else float(r.max())
+        inner = any_edge & (r < mid)
+        outer = any_edge & (r >= mid)
+        out["edge_realized_pin_radius_max_m"] = float(r[inner].max()) if inner.any() else None
+        out["edge_realized_shell_radius_min_m"] = float(r[outer].min()) if outer.any() else None
+        a_e = out["edge_realized_pin_radius_max_m"]
+        b_e = out["edge_realized_shell_radius_min_m"]
+        if a_e and b_e and b_e > a_e > 0:
+            out["b_over_a_edge_realized"] = b_e / a_e
+            out["z_tem_on_edge_realized_radii_ohm"] = \
+                _cp.coaxial_tem_characteristic_impedance(a_e, b_e, float(PTFE_EPS_R))
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -420,6 +502,9 @@ def main() -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--arm", type=int, choices=ARMS, required=True)
     ap.add_argument("--rung", type=int, choices=cb.RUNGS, default=4)
+    ap.add_argument("--dut", choices=("thru",) + cb.ONE_PORT_DUTS, default="thru",
+                    help="the one-port loads give a Z0 the two-port result does "
+                         "not carry")
     ap.add_argument("--record-units", type=float, default=cb.DEFAULT_RECORD_UNITS)
     ap.add_argument("--out", required=True)
     ap.add_argument("--run-id", default=None)
@@ -427,12 +512,15 @@ def main() -> int:
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"shell_seal_arm{args.arm}_rung{args.rung}.json"
+    tag = "" if args.dut == "thru" else f"_{args.dut}"
+    out_path = out_dir / f"shell_seal_arm{args.arm}_rung{args.rung}{tag}.json"
+    lane = "two_port" if args.dut == "thru" else "one_port"
 
     rec = {
         "schema": SCHEMA, "schema_version": SCHEMA_VERSION,
         "driver": DRIVER, "battery_driver": BATTERY, "predeclaration": PREDECLARATION,
-        "arm": args.arm, "rung_annulus_cells": args.rung, "dut": "thru",
+        "arm": args.arm, "rung_annulus_cells": args.rung, "dut": args.dut,
+        "lane": lane,
         "arm_description": {
             0: "as shipped (control)",
             1: f"shell {THICK_CELLS} cells thick, inner radius as shipped, extending outward",
@@ -440,7 +528,13 @@ def main() -> int:
                 f"{ARM2_PAD_MARGIN_CELLS} cells short of the CPML pad laterally"),
             3: (f"shell inner radius at the DECLARED outer radius b, extending outward "
                 f"{THICK_CELLS} cells"),
+            4: ("arm 3's geometry, conductors realized as PEC EDGE MASKS through "
+                "realized_pec_edge_masks instead of as stamped sigma"),
+            5: ("the as-shipped geometry, conductors realized as PEC EDGE MASKS"),
         }[args.arm],
+        "conductor_realization": ("pec_edge_masks (sigma cleared in those cells)"
+                                  if args.arm in EDGE_MASK_ARMS
+                                  else "stamped sigma, as the lane ships"),
         "hypothesis": (
             "the shipped one-cell staircased ring is not closed, so the inner mode "
             "couples to the exterior; two coupled lines with beta_in > beta_out repel "
@@ -454,35 +548,44 @@ def main() -> int:
 
     # Install the arm. Both are rebindings of module attributes the lane looks up
     # at call time; nothing under rfx/ is edited.
+    global _EDGE_MASK_ARM
+    _EDGE_MASK_ARM = args.arm in EDGE_MASK_ARMS
     _cp.stamp_coaxial_line = make_stamp(args.arm)
     _rfx_simulation.run = wrapped_run
     _CAPTURED.clear()
 
-    sim = cb.build_sim(args.rung, "thru")
+    sim = cb.build_sim(args.rung, args.dut)
     grid = sim._build_grid()
-    layout = cb.axial_layout(grid, "two_port")
+    layout = cb.axial_layout(grid, lane)
     port = sim._coaxial_ports[0]
     a, b = float(port.pin_radius), float(port.outer_radius)
     center_xy = (float(port.position[0]), float(port.position[1]))
     n_steps = cb.record_steps(grid, args.record_units)
     rec["n_steps"] = n_steps
     rec["record_units"] = float(args.record_units)
-    rec["declared"] = cb.declared(args.rung, "thru")
+    rec["declared"] = cb.declared(args.rung, args.dut)
     rec["layout"] = layout
-    rec["probe_coordinates"] = probe_plane_coordinates(grid, layout)
-    rec["cost"] = cb.cost_estimate(grid, n_steps, cb.N_FREQS,
-                                   2 * 2 * cb.PROBE_COUNT, 2)
+    if lane == "two_port":
+        rec["probe_coordinates"] = probe_plane_coordinates(grid, layout)
+    rec["cost"] = cb.cost_estimate(
+        grid, n_steps, cb.N_FREQS,
+        (2 * 2 * cb.PROBE_COUNT) if lane == "two_port" else (2 * cb.PROBE_COUNT),
+        2 if lane == "two_port" else 1)
     cb._write(out_path, rec)
 
     cb._log(f"arm {args.arm} rung {args.rung}: {rec['arm_description']}")
     with cb._Captured() as cap:
-        res = cb.solve_two_port(sim, n_steps=n_steps)
-    cb._log_two_port(f"shell arm {args.arm} rung {args.rung}", res)
-
+        if lane == "two_port":
+            res = cb.solve_two_port(sim, n_steps=n_steps)
+            cb._log_two_port(f"shell arm {args.arm} rung {args.rung}", res)
+            rec["result"] = cb._two_port_record(res)
+        else:
+            res = cb.solve_one_port(sim, args.dut, n_steps=n_steps)
+            cb._log_one_port(f"shell arm {args.arm} rung {args.rung} {args.dut}", res)
+            rec["result"] = cb._one_port_record(res)
     rec["warnings"] = cap.warnings
     rec["wall_s"] = cap.wall
     rec["peak_memory"] = cb.peak_memory()
-    rec["result"] = cb._two_port_record(res)
     cb._write(out_path, rec)
 
     # --- what the arm actually built, and where the energy went --------------
@@ -494,9 +597,26 @@ def main() -> int:
     z_probe = int(layout["probes_bot"][-1])
     rec["realized_cross_section"] = realized_cross_section(
         g, mats, center_xy, a, b, z_probe)
+    if first.get("pec_edge_masks") is not None:
+        rec["shorted_edge_census"] = shorted_edge_census(
+            g, first["pec_cell_mask"], first["pec_edge_masks"], center_xy, z_probe)
+    else:
+        sig = np.asarray(mats.sigma)[:, :, z_probe]
+        rec["shorted_edge_census"] = {
+            "z_index": int(z_probe),
+            "n_conductor_cells": int((sig >= 0.5 * PEC_SIGMA).sum()),
+            "n_edges_shorted_by_sigma_per_node": 3 * int((sig >= 0.5 * PEC_SIGMA).sum()),
+            "n_edges_shorted_by_edge_masks": None,
+            "what": "this arm realizes the conductor as sigma; no edge mask was used",
+        }
 
-    comp = connected_components_of_the_non_conductor(
-        np.asarray(mats.sigma)[:, :, z_probe])
+    # On the edge-mask arms the solved sigma is cleared inside the conductor, so
+    # the connectivity question is asked of the conductor CELL MASK the edge
+    # realization was built from, which is the same geometry the sigma arms stamp.
+    conductor_slice = (np.asarray(first["pec_cell_mask"])[:, :, z_probe] * PEC_SIGMA
+                       if first.get("pec_cell_mask") is not None
+                       else np.asarray(mats.sigma)[:, :, z_probe])
+    comp = connected_components_of_the_non_conductor(conductor_slice)
     free4 = comp.pop("labels_free_4")
     free8 = comp.pop("labels_free_8")
     r = _radial_grid(g, center_xy)
@@ -519,10 +639,10 @@ def main() -> int:
         "geometry the hypothesis names")
     rec["connected_components"] = comp
     cb._write(out_path, rec)          # persist BEFORE the optional stage below
-    np.save(out_dir / f"shell_seal_arm{args.arm}_rung{args.rung}_sigma_slice.npy",
-            np.asarray(mats.sigma)[:, :, z_probe])
-    np.save(out_dir / f"shell_seal_arm{args.arm}_rung{args.rung}_labels4.npy", free4)
-    np.save(out_dir / f"shell_seal_arm{args.arm}_rung{args.rung}_labels8.npy", free8)
+    stem = f"shell_seal_arm{args.arm}_rung{args.rung}{tag}"
+    np.save(out_dir / f"{stem}_sigma_slice.npy", conductor_slice)
+    np.save(out_dir / f"{stem}_labels4.npy", free4)
+    np.save(out_dir / f"{stem}_labels8.npy", free8)
 
     try:
         rec["exterior_energy"] = exterior_energy_ratio(
@@ -533,6 +653,39 @@ def main() -> int:
     cb._write(out_path, rec)
 
     # --- the two phase-constant estimates ------------------------------------
+    if lane == "one_port":
+        gam = np.asarray(res.s11)
+        freqs = np.asarray(res.freqs, dtype=float)
+        zn = np.asarray(res.z0_numerical_ohm)
+        finite = np.isfinite(np.real(zn))
+        rec["beta_from_matrix_pencil"] = cb.measured_beta(
+            rec["result"]["gamma"], freqs, float(PTFE_EPS_R))
+        refr = cb.one_port_referee(args.dut, a=a, b=b, eps_fill=float(PTFE_EPS_R))
+        rec["summary"] = {
+            "lane": "one_port", "dut": args.dut,
+            "abs_s11": np.abs(gam).astype(float).tolist(),
+            "max_abs_s11": float(np.abs(gam).max()),
+            "column_power": float((np.abs(gam) ** 2).max()),
+            "z0_numerical_median_ohm": (float(np.median(np.real(zn)[finite]))
+                                        if finite.any() else None),
+            "z0_numerical_ohm": cb._c(zn),
+            "analytic_referee": refr,
+            "max_beta_ratio_matrix_pencil": rec["beta_from_matrix_pencil"]["max_beta_ratio"],
+            "eps_eff_matrix_pencil": rec["beta_from_matrix_pencil"]["mean_eps_eff_fitted"],
+            "shorted_edges": rec["shorted_edge_census"],
+            "z_tem_on_edge_realized_radii_ohm": rec["shorted_edge_census"].get(
+                "z_tem_on_edge_realized_radii_ohm"),
+            "settling": rec["result"]["settling"],
+        }
+        cb._write(out_path, rec)
+        sm = rec["summary"]
+        cb._log(f"arm {args.arm} rung {args.rung} {args.dut}: |Gamma| max "
+                f"{sm['max_abs_s11']:.5f} | Z0 {sm['z0_numerical_median_ohm']} ohm | "
+                f"analytic |Gamma| {refr['abs_gamma']:.5f} | beta ratio "
+                f"{sm['max_beta_ratio_matrix_pencil']:.4f} | Z_TEM on edge radii "
+                f"{sm['z_tem_on_edge_realized_radii_ohm']}")
+        return 0
+
     S = np.asarray(res.s_params)
     freqs = np.asarray(res.freqs, dtype=float)
     planes = np.asarray(res.reference_planes, dtype=float)
@@ -558,6 +711,9 @@ def main() -> int:
         "eps_eff_matrix_pencil": rec["beta_from_matrix_pencil"]["mean_eps_eff_fitted"],
         "eps_eff_s21_phase": rec["beta_from_s21_phase"]["eps_eff_from_phase_slope"],
         "exterior_energy_max_ratio": rec["exterior_energy"].get("max_ratio"),
+        "shorted_edges": rec["shorted_edge_census"],
+        "z_tem_on_edge_realized_radii_ohm": rec["shorted_edge_census"].get(
+            "z_tem_on_edge_realized_radii_ohm"),
         "non_conductor_components_4connected": comp["n_components_free_4connected"],
         "non_conductor_components_8connected": comp["n_components_free_8connected"],
         "shell_has_a_face_width_gap": comp[
