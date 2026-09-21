@@ -42,8 +42,6 @@ from patch_mode_identification import (   # noqa: E402
 )
 
 # ---- the two cases' DECLARED geometry (constants, not measurements) ----
-CV05 = dict(eps_r=4.3, h=1.5e-3, a=29.5e-3, b=38.0e-3, c0=2.998e8,
-            band=(1.5e9, 3.5e9))
 CV15 = dict(eps_r=2.2, h=3.175e-3, a=40.0e-3, b=50.0e-3, c0=2.99792458e8,
             band=(1.6e9, 3.4e9))
 
@@ -68,8 +66,7 @@ def _load_cv15():
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("case,expected_hz", [(CV05, 2423509824.70113),
-                                             (CV15, 2415595433.5060616)])
+@pytest.mark.parametrize("case,expected_hz", [(CV15, 2415595433.5060616)])
 def test_design_member_reproduces_the_scripts_own_closed_form(case, expected_hz):
     """TM100 of the declared spectrum must BE the case's single-mode Balanis
     anchor. If these two ever diverge the identification would be judging a
@@ -104,7 +101,7 @@ def test_cv15_declared_constants_are_the_scripts_own():
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("case,expected_pct", [(CV05, 12.4988), (CV15, 10.6198)])
+@pytest.mark.parametrize("case,expected_pct", [(CV15, 10.6198)])
 def test_identification_tolerance_is_the_derived_value(case, expected_pct):
     """tol = sqrt(min adjacent declared ratio) - 1, the largest tolerance for
     which "nearest declared member" is unique. Pinned to the value the design
@@ -117,7 +114,7 @@ def test_identification_tolerance_is_the_derived_value(case, expected_pct):
     assert tol * 100 == pytest.approx(expected_pct, abs=1e-3)
 
 
-@pytest.mark.parametrize("case", [CV05, CV15])
+@pytest.mark.parametrize("case", [CV15])
 def test_tolerance_windows_of_adjacent_members_do_not_overlap(case):
     """The defining property: at the derived tolerance no frequency can be
     inside two members' windows, so "nearest member" is never a coin flip."""
@@ -133,7 +130,7 @@ def test_tolerance_windows_of_adjacent_members_do_not_overlap(case):
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("case", [CV05, CV15])
+@pytest.mark.parametrize("case", [CV15])
 def test_declared_spectrum_identifies_itself(case):
     members = _members(case)
     ident = identify_patch_modes(list(members.values()), members)
@@ -146,7 +143,7 @@ def test_declared_spectrum_identifies_itself(case):
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("case", [CV05, CV15])
+@pytest.mark.parametrize("case", [CV15])
 def test_design_mode_24_percent_high_fails_because_the_member_is_not_found(case):
     """The audit's cv05 defect: the true design mode is +24 % off its declared
     place. The OLD selector promoted whichever mode sat nearest the anchor and

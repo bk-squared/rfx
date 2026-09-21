@@ -523,195 +523,18 @@ def run_profile_stage() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Arm E: does cv01 carry the same facet?  (section 9 of the pre-declaration)
-# ---------------------------------------------------------------------------
-# cv01's rig is IMPORTED, never copied: this calls
-# ``scripts/diagnostics/cv01_cpml_flux_selfcheck.py``'s own ``run_arm``, so the
-# geometry, source, monitors and the mean_self arithmetic are the committed
-# ones.  Two things are added, both through one explicit Simulation subclass
-# that attaches probes at run() and delegates -- probes do not change the
-# fields, and nothing else about the rig moves:
-#   * a DFT plane probe on the guide centre line, read with the SAME estimator
-#     cv03 uses, so |B/A| (the quantity that can see a facet) is measured;
-#   * a point probe, so settling_db has a record to score.
-# The widened arm swaps the guide Box for one that spans the pad, by patching
-# ``rfx.Box`` for the duration of that call only.  The patch's effect is
-# asserted on the solved permittivity, not assumed.
-CV01_FIT_LO_A = 5.0
-CV01_FIT_HI_A = 13.0
-
-
-def _cv01_module():
-    import importlib.util
-    path = REPO / "scripts" / "diagnostics" / "cv01_cpml_flux_selfcheck.py"
-    spec = importlib.util.spec_from_file_location("cv01_selfcheck", path)
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules["cv01_selfcheck"] = mod
-    spec.loader.exec_module(mod)
-    return mod
-
-
-def _cv01_solved_eps_row(cv01, widen_a):
-    """Centre-row eps the solver receives for cv01's committed build."""
-    import rfx
-    from rfx import Simulation
-    from rfx.boundaries.spec import BoundarySpec
-    from rfx.geometry.smoothing import compute_smoothed_eps
-    Box = rfx.Box
-    sim = Simulation(freq_max=0.25 * cv01.C0 / cv01.a,
-                     domain=(cv01.sx, cv01.sy, cv01.dx), dx=cv01.dx,
-                     boundary=BoundarySpec.uniform("cpml"),
-                     cpml_layers=20, mode="2d_tmz")
-    sim.add_material("wg", eps_r=cv01.eps_wg)
-    x0, x1 = ((0.0, cv01.sx) if widen_a is None
-              else (-widen_a * cv01.a, cv01.sx + widen_a * cv01.a))
-    sim.add(Box((x0, cv01.wg_y - cv01.w_wg / 2, 0),
-                (x1, cv01.wg_y + cv01.w_wg / 2, cv01.dx)), material="wg")
-    grid = sim._build_grid()
-    mats, *_ = sim._assemble_materials(grid)
-    pairs = [(e.shape, sim._resolve_material(e.material_name).eps_r)
-             for e in sim._geometry]
-    _, _, az = compute_smoothed_eps(grid, pairs, background_eps=1.0)
-    jy = int(round(cv01.wg_y / cv01.dx)) + int(grid.pad_y_lo)
-    built = np.asarray(mats.eps_r)[:, jy, 0]
-    solved = np.asarray(az)[:, jy, 0]
-    return {
-        "widen_a": widen_a,
-        "nx": int(grid.shape[0]),
-        "pad_x_lo": int(grid.pad_x_lo), "pad_x_hi": int(grid.pad_x_hi),
-        "centre_row_index_y": int(jy),
-        "built_n_at_eps_wg": int(np.sum(np.isclose(built, cv01.eps_wg))),
-        "solved_n_at_eps_wg": int(np.sum(np.isclose(solved, cv01.eps_wg,
-                                                    rtol=1e-3))),
-        "built_first3": [float(v) for v in built[:3]],
-        "solved_first3": [float(v) for v in solved[:3]],
-        "built_last3": [float(v) for v in built[-3:]],
-        "solved_last3": [float(v) for v in solved[-3:]],
-    }
-
-
-def run_cv01_arm() -> dict:
-    sys.path.insert(0, str(COMPARATORS))
-    from slab_te_dispersion import measure_neff_two_wave
-
-    import rfx
-    from rfx.api import Simulation as _SimCls
-    cv01 = _cv01_module()
-
-    captured: dict = {}
-
-    class _Instrumented(_SimCls):
-        """cv01's Simulation plus two probes; the rig itself is untouched."""
-
-        def run(self, *a, **kw):
-            fit_c = 0.5 * (CV01_FIT_LO_A + CV01_FIT_HI_A) * cv01.a
-            self.add_probe(position=(fit_c, cv01.wg_y, cv01.dx / 2),
-                           component="ez")
-            self.add_dft_plane_probe(axis="y", coordinate=cv01.wg_y,
-                                     component="ez", freqs=cv01.freqs,
-                                     name="guide_axis_ez")
-            res = super().run(*a, **kw)
-            captured["res"] = res
-            return res
-
-    _orig_box = rfx.Box
-
-    def _widened_box(lo, hi, *a, **kw):
-        # cv01 adds exactly one Box, spanning the full declared x extent.
-        if abs(lo[0]) < 1e-18 and abs(hi[0] - cv01.sx) < 1e-18:
-            lo = (-2.0 * cv01.a, lo[1], lo[2])
-            hi = (cv01.sx + 2.0 * cv01.a, hi[1], hi[2])
-        return _orig_box(lo, hi, *a, **kw)
-
-    out = {
-        "why": ("Arm E: cv01 Run 1, committed cpml_layers, control vs a guide "
-                "Box widened past the pad, both with subpixel_smoothing=True"),
-        "cv01_rig": {
-            "sx_m": float(cv01.sx), "sy_m": float(cv01.sy),
-            "dx_m": float(cv01.dx), "eps_wg": float(cv01.eps_wg),
-            "n_steps": int(cv01.n_steps),
-            "cpml_layers_for_cpml_boundary": 20,
-            "committed_cpml_full_mean_self":
-                float(cv01.SWEEP_BASELINE_CPML_FULL_MEAN_SELF),
-            "committed_upml_full_mean_self":
-                float(cv01.COMMITTED_UPML_MEAN_SELF),
-        },
-        "fit_window_rfx_a": [CV01_FIT_LO_A, CV01_FIT_HI_A],
-        "instrument_check": {
-            "control": _cv01_solved_eps_row(cv01, None),
-            "widened": _cv01_solved_eps_row(cv01, 2.0),
-        },
-        "arms": {},
-    }
-    _ic = out["instrument_check"]
-    print(f"[cv01 instrument] control solved eps=12 cells "
-          f"{_ic['control']['solved_n_at_eps_wg']}/{_ic['control']['nx']}, "
-          f"built {_ic['control']['built_n_at_eps_wg']}/{_ic['control']['nx']}",
-          flush=True)
-    print(f"[cv01 instrument] widened solved eps=12 cells "
-          f"{_ic['widened']['solved_n_at_eps_wg']}/{_ic['widened']['nx']}",
-          flush=True)
-
-    _sim_orig = rfx.Simulation
-    for label, widen in (("control", False), ("widened", True)):
-        captured.clear()
-        rfx.Simulation = _Instrumented
-        if widen:
-            rfx.Box = _widened_box
-        t0 = time.time()
-        try:
-            arm = cv01.run_arm("cpml", None, cpml_layers=20)
-        finally:
-            rfx.Simulation = _sim_orig
-            rfx.Box = _orig_box
-        res = captured.get("res")
-        line = np.asarray(res.dft_planes["guide_axis_ez"].accumulator)[:, :, 0]
-        xx = (np.arange(line.shape[1]) - res.grid.pad_x_lo) * cv01.dx
-        win = ((xx >= CV01_FIT_LO_A * cv01.a - 1e-18)
-               & (xx <= CV01_FIT_HI_A * cv01.a + 1e-18))
-        fits = measure_neff_two_wave(line[:, win], xx[win],
-                                     np.asarray(cv01.freqs), c0=cv01.C0,
-                                     eps_core=cv01.eps_wg, eps_clad=1.0)
-        ba = np.array([f.b_over_a for f in fits])
-        resid = np.array([f.rel_residual for f in fits])
-        f_over_c = np.asarray(cv01.freqs) * cv01.a / cv01.C0
-        carrier = int(np.argmin(np.abs(f_over_c - 0.15)))
-        ez = np.abs(line[carrier, :])
-        seam_hi = line.shape[1] - int(res.grid.pad_x_hi) - 1
-        arm.pop("preflight_report", None)
-        arm.update({
-            "label": label,
-            "b_over_a_carrier_bin": float(ba[carrier]),
-            "two_wave_rel_residual_carrier": float(resid[carrier]),
-            "b_over_a": [float(v) for v in ba],
-            "two_wave_rel_residual": [float(v) for v in resid],
-            "carrier_bin_index": carrier,
-            "carrier_bin_f_c_over_a": float(f_over_c[carrier]),
-            "fit_window_grid_index": [int(np.nonzero(win)[0][0]),
-                                      int(np.nonzero(win)[0][-1])],
-            "fit_window_n_samples": int(win.sum()),
-            "ez_abs_carrier_full_x": [float(v) for v in ez],
-            "ez_abs_seam_hi": float(ez[seam_hi]),
-            "swr_fit_window": float(ez[win].max() / ez[win].min()),
-            "settling_db": (None if getattr(res, "settling_db", None) is None
-                            else float(res.settling_db)),
-            "settling_witness": getattr(res, "settling_witness", None),
-            "wall_s": round(time.time() - t0, 1),
-        })
-        out["arms"][label] = arm
-        print(f"[cv01 {label}] mean_self={arm['mean_self']:.6f} "
-              f"|B/A|={arm['b_over_a_carrier_bin']:.4f} "
-              f"resid={arm['two_wave_rel_residual_carrier']:.4f} "
-              f"settling={arm['settling_db']} ({arm['wall_s']}s)", flush=True)
-    return out
-
+# Arm E (did cv01 carry the same facet?) ran cv01's own rig through
+# scripts/diagnostics/cv01_cpml_flux_selfcheck.py. cv01 was removed on
+# 2026-09-21, so the arm went with it; its committed output stays at
+# scripts/diagnostics/_artifacts/cv03_seam_facet/cv01.json and the code is at
+# commit 66ed61c2.
 
 # ---------------------------------------------------------------------------
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--stage", default="all",
                     choices=("all", "profile", "tof", "sweep", "noext",
-                             "bprime", "cv01"))
+                             "bprime"))
     ap.add_argument("--output", required=True)
     args = ap.parse_args()
 
@@ -744,8 +567,6 @@ def main() -> None:
         out["stages"]["noext"] = run_fdtd_arms(_noext_arms())
     if args.stage in ("all", "bprime"):
         out["stages"]["bprime"] = run_fdtd_arms(_bprime_arms())
-    if args.stage in ("all", "cv01"):
-        out["stages"]["cv01"] = run_cv01_arm()
 
     dest = pathlib.Path(args.output)
     dest.parent.mkdir(parents=True, exist_ok=True)
