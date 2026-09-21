@@ -149,7 +149,7 @@ For host-side report checks on any S-matrix cube, use
 from rfx import network_quality_metrics
 
 quality = network_quality_metrics(s_matrix)
-print(quality["sigma_max_excess"], quality["reciprocity_error"])
+print(quality["passivity_excess"], quality["reciprocity_error"])
 ```
 
 This helper reports finite-data, passivity, reciprocity, max-magnitude, and

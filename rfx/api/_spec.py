@@ -1689,11 +1689,11 @@ class MSLSMatrixResult:
         projection clipped it away. Where a projection did clip,
         ``passivity_correction`` equals this on the touched bins.
 
-        NOT the same quantity as the ``sigma_max_excess`` key of
-        :func:`rfx.io.network_quality_metrics` despite the shared name: that one is a
-        single SCALAR over the whole sweep and is measured in POWER
-        (``max(sigma_max^2 - 1, 0)``). This field is per frequency and in
-        amplitude. Do not compare the two numbers.
+        Near neighbour, different quantity: the ``passivity_excess`` key of
+        :func:`rfx.io.network_quality_metrics` is a single SCALAR over the
+        whole sweep, measured in POWER (``max(sigma_max^2 - 1, 0)``). This
+        field is per frequency and in amplitude. The two names differ so
+        the numbers are not read as interchangeable; do not compare them.
     port_names : tuple[str, ...]
     assembly : str, optional
         Which rule produced ``S`` — ``"multi_drive_solve"`` (normal:
