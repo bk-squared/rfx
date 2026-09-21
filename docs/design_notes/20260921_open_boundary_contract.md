@@ -153,14 +153,16 @@ absorbers' inner boundaries. The bundle's own copies of these figures are not tr
 tracks figures under `docs/design_notes/figures/` only); `MANIFEST.txt` carries their hashes. The two
 panels are cut through each run's own maximum of |E| (z index 15 and 16).
 
-**A third intervention, without touching the conductor, and what it leaves open.** The pad-0 four-layer
+**A second way of changing the cross-section, without touching the conductor, and what it leaves open.** The pad-0 four-layer
 arm settles when the grid is sized the pre-#1136 way
 (`scripts/diagnostics/open_boundary_contract/result_main_pad0_ceil_sizing.json::arms[0].settling_db = -43.71`, grid (85, 56, 41) against
 (85, 55, 41)): `ceil` buys one interior y cell that no Box fills, the pad extension copies that vacuum
 outward, and the +y absorber then holds NO ungrounded substrate, while −y, −x and +x keep it exactly as
 before. Replacing the ungrounded slab by vacuum on ONE face removes the growth, and empties the +x face
-with it (energy share at +x 0.144 → 0.002, `dumps/TABLE.md`). So the missing conductor is the condition
-in all three interventions, but it is not sufficient on every face: on main, three faces carrying it
+with it (energy share at +x 0.144 → 0.002, `dumps/TABLE.md`); what is left of the field sits at −y (0.621
+of a field that has decayed to −43.7 dB). So both changes to the cross-section inside the absorber remove
+the growth, restoring the conductor on all four faces and removing the ungrounded substrate on one,
+but the ungrounded substrate is not sufficient on every face: on main, three faces carrying it
 did not grow within 150 periods once +y was vacuum, and with PR #1012 the growing field sits on lo and
 hi faces alike. Which faces carry the growth, and why, is set by the absorber as well as by the
 structure, and is not resolved here. The layer count is not the root cause either, though it changes
@@ -218,7 +220,8 @@ Closes: issue #801 (the growth is C2's missing half, not the layer count); the f
 #1138 (C3). Makes PR #1012 a precondition (C4). Moves, when C2 is implemented: every result whose
 conductor reaches an absorbing face, which among committed structures is the patch ring-down oracle;
 the preflight advisory `conductor_in_thin_absorber` (its premise, a thin absorber, is not the cause).
-Leaves open, on record: why a few-layer CPML amplifies a wave travelling parallel to its face; the
+Leaves open, on record: which absorber faces carry the growth and why (section 5); why a few-layer
+CPML amplifies a wave travelling parallel to its face; the
 microstrip lane's passivity correction, which reports a column power of 0.99998 where the raw value is
 1.045 (a matter for that lane).
 
