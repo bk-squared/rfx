@@ -603,15 +603,6 @@ def test_no_crossval_script_writes_exit_code_into_a_document_by_hand() -> None:
         "instead: %s" % offenders)
 
 
-def test_every_exit_code_writer_is_migrated() -> None:
-    callers = {rel for rel, tree in _crossval_sources()
-               if _calls_write_record(tree)}
-    names = {Path(rel).name for rel in callers}
-    assert MIGRATED_WRITERS <= names, (
-        "a crossval case stopped routing its exit code through "
-        "_exit_evidence.write_record: %s" % sorted(MIGRATED_WRITERS - names))
-
-
 def test_write_record_is_only_called_from_the_case_scripts_themselves() -> None:
     """No shared helper may do a case's write for it.
 

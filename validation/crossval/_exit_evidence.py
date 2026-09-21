@@ -77,10 +77,10 @@ SystemExit)`` in an unrelated test would otherwise be read as this run's
 outcome. A host that EMBEDS a case with ``runpy.run_path(case,
 run_name="__main__")`` passes the first condition and fails the second: the
 case's module body runs under the host's, one step of a longer job, so the
-host's status is not the case's verdict either. Two such harnesses live in
-this repo (``scripts/diagnostics/harminv_record_capture.py``,
-``scripts/diagnostics/cv0104_dielectric_control_witness.py``); the second
-condition is what keeps a future one from stamping cv01's or cv02's record.
+host's status is not the case's verdict either. Two such harnesses lived in
+this repo until 2026-09-21 (a harminv record capture and a dielectric control
+witness, removed with the cases they ran); the second condition is what keeps
+a future one from stamping a case's record.
 
 The second condition is a stack walk because the cheap checks do not work:
 ``runpy`` rewrites ``sys.argv[0]`` to the case's path and installs a
