@@ -14,9 +14,3 @@ themselves; `comparators/` holds the shared comparison harness;
   branch `research/calibration-inverse`,
   `scripts/research/calibration/crossval/`.
 - `manifest.json` — machine-readable index of the numbered studies.
-- `_exit_evidence.py` — the one way a case puts an exit code into a retained
-  record. It writes the record immediately (a crash in the plotting stage must
-  not take the measurement with it) and amends the code if the process ends
-  with a different status, so an exit path added after the writer cannot leave
-  the committed file claiming a pass. See the "Retained records" section of
-  [`docs/guides/physics_validation_evidence_rule.md`](../../docs/guides/physics_validation_evidence_rule.md).
