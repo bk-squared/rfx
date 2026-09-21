@@ -1365,12 +1365,16 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
             lad["notch_frac_vs_finest"] = [abs(f - fs[-1]) / fs[-1] for f in fs]
         # |S21| and |S11| against the finest rung, off the notch core.
         fine = fix["solves"][have[-1]]
+        idx = {"s21": (1, 0), "s11": (0, 0)}
         for key, name in (("s21_db", "s21"), ("s11_db", "s11")):
             fine_db = np.asarray(fine[key], dtype=float)
+            i, j = idx[name]
+            fine_abs = np.abs(_S(fine)[i, j, :])
             rows = []
             for k in have:
                 cur = np.asarray(fix["solves"][k][key], dtype=float)
                 d = np.abs(cur - fine_db)
+                d_abs = np.abs(np.abs(_S(fix["solves"][k])[i, j, :]) - fine_abs)
                 core = np.zeros(len(d), dtype=bool)
                 if dut == "notch":
                     core = fine_db <= -20.0        # the notch's -20 dB core
@@ -1380,6 +1384,12 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                     "max_db_diff_vs_finest": float(d.max()),
                     "max_db_diff_vs_finest_outside_notch_core": float(d[outside].max())
                     if outside.any() else None,
+                    # The same difference in amplitude. A 2 dB bar on a quantity
+                    # sitting 30 dB down is not the test it is on a quantity near
+                    # 0 dB, and only the pair of numbers shows which case a row is.
+                    "max_abs_diff_vs_finest": float(d_abs.max()),
+                    "finest_min_abs": float(fine_abs.min()),
+                    "finest_max_abs": float(fine_abs.max()),
                     "n_bins_in_core": int(core.sum()),
                 })
             lad[f"{name}_vs_finest"] = rows
