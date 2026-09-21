@@ -17,9 +17,13 @@ source turn-on. It now runs 600 steps and asserts the settling witness.
 Measured settled (600 steps; unchanged to 1200, probe tail/peak 1.5e-04):
 uniform-z-via-NU 1.7001 dBi, graded-z 1.7002 dBi, both against a theoretical
 1.7609 dBi. With the pre-2026-09-21 first-order surface rule the same settled
-fixture gave 1.7062 and 1.7074 dBi — the two rules differ by 0.006-0.007 dB
-here while both sit 0.05-0.06 dB low, so the offset is common to both and is
-not a property of the surface rule. Its cause was not investigated: it is
+fixture gave 1.7062 and 1.7074 dBi. Both rules sit 0.05-0.06 dB low, and
+that bulk is common to both. The 0.006-0.007 dB between them IS the surface
+rule: the first-order rule reads high on every fixture measured (+0.039 /
++0.015 / +0.006 dB on the locks-battery ladder), and here that bias happens
+to point toward the analytic value. Which rule is closer to THIS fixture's
+true directivity is not known, because the fixture's own 0.06 dB offset is
+unexplained. Its cause was not investigated: it is
 thirty times inside the 2 dB accuracy bar, on a 0.3-wavelength domain whose
 NTFF box faces realize three cells from the source (preflight emits six
 lambda/4 near-field advisories on this fixture).

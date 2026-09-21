@@ -360,9 +360,12 @@ def test_box_is_a_valid_jax_pytree():
     """Every field of NTFFBox is a pytree LEAF, so none of them may be a str.
 
     ``compute_far_field_jax`` runs inside ``jax.grad`` and the box travels
-    with it. A non-numeric leaf makes the whole box unusable as a jit/vmap
-    argument and as a ``tree_map`` target — which it was not before the
-    face-cell layout was recorded on it.
+    with it. A non-numeric leaf makes the whole box an invalid ``tree_map``
+    target and an invalid argument to any jitted function, even one that only
+    reads ``freqs`` — which it was not before the face-cell layout was
+    recorded on it. This does NOT make a TRACED box work in the transform or
+    the accumulator: both read the box's indices and layout flag as Python
+    values (as they did before this change), so production closes over the box.
     """
     from rfx.grid import Grid
     from rfx.farfield import make_ntff_box
@@ -411,7 +414,10 @@ def test_jax_transform_matches_numpy_on_a_uniform_box():
     ``compute_far_field_jax`` is the one that runs inside ``jax.grad``; it
     carries its own copy of the face geometry, so it can drift from the numpy
     twin without a single existing test noticing. The bound is set by float32
-    in the JAX path, not by the geometry.
+    in the JAX path, not by the geometry. Measured on CPU (4e-7 to 7e-7). The
+    JAX transform's matmul/einsum carry no ``precision=`` argument; on a GPU
+    that lowers them to TF32 the phase k*r.r' loses digits and this bound
+    would need HIGHEST precision on those two calls or a re-measured value.
     """
     dx = LAMBDA / 20
     n = int(round(0.7 * 20)) + 6

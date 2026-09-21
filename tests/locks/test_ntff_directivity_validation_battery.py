@@ -821,12 +821,13 @@ def test_nonuniform_lane_power_calibration_and_slot(base_rung):
 
 
 # ===========================================================================
-# Box-size witness: the error must not grow with the size of the box
+# Box-size witness: the error must stay small however large the box is drawn
 # ===========================================================================
 # Same dipole, same margins, the Huygens box drawn at three sizes. A
 # first-order surface rule integrates a larger surface with a larger
-# per-cell error and the pattern error grows with the box; a second-order
-# one does not. Measured (this tree, 0.09 m domain, dx = 1.5 mm, 800 steps,
+# per-cell error and the pattern error reaches a sixth of a dB; the
+# second-order one grows too, from a base eighty times lower, and stays at
+# thousandths of a dB. Measured (this tree, 0.09 m domain, dx = 1.5 mm, 800 steps,
 # CPML 6): |D err| 0.00013 / 0.00050 / 0.00204 dB at half-width 9 / 18 /
 # 27 mm. The first-order rule on the same fixture: 0.0212 / 0.0677 /
 # 0.1660 dB. Cap 0.01 dB — ~5x the worst measurement here and below the
@@ -842,15 +843,16 @@ _BOX_SWEEP_ERR_MAX_DB = 0.01
 @pytest.mark.slow_physics
 @pytest.mark.parametrize("half_width_m", _BOX_SWEEP_HALF_WIDTHS_M,
                          ids=["hw9mm", "hw18mm", "hw27mm"])
-def test_directivity_error_does_not_grow_with_the_huygens_box(half_width_m):
+def test_directivity_error_stays_small_however_large_the_huygens_box(half_width_m):
     """Drawing the box further from the radiator must not cost accuracy.
 
     The equivalence principle says any closed surface round the source
     gives the same far field, so the only reason the answer can depend on
     the box is the surface rule. Measured |D err| 0.00013 / 0.00050 /
     0.00204 dB at half-width 9 / 18 / 27 mm; with the first-order rule the
-    same fixture gave 0.0212 / 0.0677 / 0.1660 dB, i.e. it grew by 8x
-    across the sweep.
+    same fixture gave 0.0212 / 0.0677 / 0.1660 dB. Both grow with the box;
+    this gate is an absolute cap that the first-order rule fails at every
+    size, not a claim that the error is flat.
     """
     lo = _BOX_SWEEP_CENTER_M - half_width_m
     hi = _BOX_SWEEP_CENTER_M + half_width_m
@@ -884,3 +886,4 @@ def test_directivity_error_does_not_grow_with_the_huygens_box(half_width_m):
         f"exceeds cap {_BOX_SWEEP_ERR_MAX_DB} (measured 0.00013 / 0.00050 / "
         f"0.00204 across the sweep) — the far field depends on how large the "
         f"Huygens box was drawn")
+

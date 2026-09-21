@@ -97,7 +97,12 @@ either way.
 
 **A box must now sit at least one cell inside the array bounds on every
 axis**, because the half-cell averages read one index further out than the
-face. Nothing upstream guaranteed that. Two configurations that ran before
+face. For a box drawn on the domain corners that further sample is
+the innermost absorber cell. rfx grades the CPML conductivity to exactly zero
+there (`rfx/boundaries/cpml.py`: `rho = 1 - arange(n)/(n-1)`, `sigma =
+sigma_max * rho**order`), so that cell is updated as free space and the sample
+is an ordinary one; no clearance from the absorber is needed beyond what the
+equivalence principle already asks. Nothing upstream guaranteed that. Two configurations that ran before
 now raise: a 2-D run (`mode="2d_tmz"`, one cell in z) and a box spanning the
 whole domain with `cpml_layers=0`. The refusal happens in
 `with_face_centre_collocation`, where the grid is still in hand, so it can
@@ -251,8 +256,12 @@ against the -40 dB rule), so both columns of those rows are from a cut
 transient. With the record settled — 600 steps, unchanged to 3000, tail/peak
 1.3e-4 — the fixture gives 1.7062 / 1.7074 dBi with the old rule and
 1.7001 / 1.7002 dBi with this one, against 1.7609 dBi. Both rules sit
-0.05-0.06 dB low and differ from each other by 0.006-0.007 dB, so the offset
-is common to both and is not a property of the surface rule. Its cause was
+0.05-0.06 dB low, and that bulk is common to both. The 0.006-0.007 dB between
+them is the surface rule: the first-order rule reads high on every fixture
+measured (+0.039 / +0.015 / +0.006 dB on the battery ladder), and here that
+bias happens to point toward the analytic value. Which rule is closer to this
+fixture's true directivity is not known, because the fixture's own 0.06 dB
+offset is unexplained. Its cause was
 not investigated: it is thirty times inside the 2 dB bar, on a
 0.3-wavelength domain whose box faces realize three cells from the source
 (and seven from the absorber, which rfx pads outside the declared domain).
@@ -309,7 +318,7 @@ round the radiator was enlarged, the new one falls by four and stays eighty
 times smaller over the same sweep — at box half-width 9 / 18 / 27 mm the
 directivity error was 0.0212 / 0.0677 / 0.1660 dB and is now 0.00013 /
 0.00050 / 0.00204 dB
-(`test_directivity_error_does_not_grow_with_the_huygens_box`). A user gets a
+(`test_directivity_error_stays_small_however_large_the_huygens_box`). A user gets a
 far field that is good to a few thousandths of a dB however large they drew
 the box (up to the 27 mm tested), and a radiated power that agrees with an
 independent flux box to 0.06 % instead of 1 %.
