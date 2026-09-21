@@ -7,10 +7,17 @@
         "message": "1 of 2 impedance-carrying wire ports opt into reference_plane_cells \u2014 off-diagonal S entries involving a non-opted port SILENTLY stay on the legacy port-cell path (only pairs where BOTH ports opt in use the plane waves). Opt in every wire port of the S-matrix, or none.",
         "severity": "warning",
         "source": "_validate_cfg_refplane_placement"
+      },
+      {
+        "code": "sheet_effective_size",
+        "loc": null,
+        "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): thin_conductor[0] 'thin_conductor[0]' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); thin_conductor[0] 'thin_conductor[0]' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+        "severity": "warning",
+        "source": "_validate_cfg_off_lattice_design_edges"
       }
     ],
     "n_errors": 0,
-    "n_issues": 1,
+    "n_issues": 2,
     "ok": true
   }
 }

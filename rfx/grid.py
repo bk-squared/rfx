@@ -7,6 +7,61 @@ import numpy as np
 # Speed of light in vacuum (m/s)
 C0 = 299_792_458.0
 
+#: How many machine epsilons of ``length/dx`` count as float dust rather than
+#: as declared sub-cell intent (issue #1070).
+#:
+#: A declared domain length is an ARITHMETIC EXPRESSION, not a literal: the
+#: rig in #1070 writes ``38*h + 2*(pad*h)``, and the #801 patch fixture,
+#: the WR-90 lanes and the MSL boards all build theirs the same way. Each
+#: multiply, each add and the division itself rounds, and each rounding costs
+#: at most half an ULP of the result. Eight of them is a generous bound on a
+#: handful of summed terms -- the rig above spends three -- and the tolerance
+#: it buys is ``8 * eps * max(1, r)``, which at r = 232 is 4.12e-13, or 14.5
+#: ULP of r. So the rule absorbs a deviation of up to 14 ULP there and takes
+#: 15 as real.
+#:
+#: The distance to the nearest case anyone could MEAN is the reason this is
+#: safe: a domain one part in 1e6 longer than 232 cells sits 8.2e9 ULP away,
+#: nine orders of magnitude outside the band. An ABSOLUTE tolerance has no
+#: such separation at either end of the useful range -- ``round(r, 9)`` is
+#: coarser than an ULP for a million-cell domain and finer than one for a
+#: domain of a few cells -- which is why this is relative.
+CELL_COUNT_ULP_BUDGET = 8
+
+
+def cells_spanning(length: float, dx: float, *,
+                   ulp_budget: int = CELL_COUNT_ULP_BUDGET) -> int:
+    """Cells needed to span *length* at cell size *dx* (issue #1070).
+
+    ``ceil(length / dx)``, except that a ratio sitting within
+    ``ulp_budget * eps * max(1, r)`` of an integer is taken to BE that
+    integer. Plain ``ceil`` buys a whole extra cell for one ULP of float
+    dust, and nothing downstream fills it: it lies outside every declared
+    Box, so it rasterizes as vacuum, and at a face that abuts an absorber
+    the pad extension then replicates that vacuum outward (#1070, the
+    staircase-lane twin of #831).
+
+    This is a LENGTH question only. A step count is not one -- see
+    ``Grid.num_timesteps``, which still takes a plain ``ceil`` because
+    running a fraction of a step over is right and running one short is not.
+    """
+    ratio = length / dx
+    nearest = round(ratio)
+    if abs(ratio - nearest) <= ulp_budget * float(np.finfo(float).eps) * max(
+            1.0, abs(ratio)):
+        cells = int(nearest)
+    else:
+        cells = int(np.ceil(ratio))
+    # A POSITIVE length always needs a cell (review of PR #1136, G). Zero is
+    # the one integer the dust band can reach from above while the length is
+    # still real: for 0 < r < 8*eps the nearest integer is 0, and snapping
+    # there would return fewer cells than the declared length needs, where
+    # every other snap returns one fewer cell than a ratio that did not need
+    # it. ``ceil`` gave 1 and so does this.
+    if ratio > 0.0 and cells < 1:
+        return 1
+    return cells
+
 
 class Grid:
     """Rectilinear FDTD grid with uniform cell size.
@@ -150,15 +205,19 @@ class Grid:
         # Grid dimensions (including CPML padding)
         # +1 fence-post correction: N cells need N+1 nodes so that
         # PEC walls at index 0 and index N span exactly N*dx.
-        self.nx = (int(np.ceil(domain[0] / self.dx)) + 1
+        #
+        # ``cells_spanning`` rather than a bare ``ceil`` (#1070): a declared
+        # length is an arithmetic expression, and one ULP of float dust in
+        # ``domain/dx`` used to buy a whole cell that no declared Box reaches.
+        self.nx = (cells_spanning(domain[0], self.dx) + 1
                    + self.pad_x_lo + self.pad_x_hi)
-        self.ny = (int(np.ceil(domain[1] / self.dx)) + 1
+        self.ny = (cells_spanning(domain[1], self.dx) + 1
                    + self.pad_y_lo + self.pad_y_hi)
 
         if self.is_2d:
             self.nz = 1  # single cell in z, use periodic z BC
         else:
-            self.nz = (int(np.ceil(domain[2] / self.dx)) + 1
+            self.nz = (cells_spanning(domain[2], self.dx) + 1
                        + self.pad_z_lo + self.pad_z_hi)
 
         self.shape = (self.nx, self.ny, self.nz)

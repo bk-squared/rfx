@@ -29,9 +29,10 @@ and no mode fit.
 WHERE EACH INSTRUMENT IS VALID, AND WHY THAT IS ASSERTED RATHER THAN ASSUMED.
 The two-mode fit resolves an angle only if the record is long enough for the
 gated band to carry bins at that angle's x group velocity. At the reduced
-settings the fast lane can afford, 70 degrees leaves four bins and a fit
-residual of 0.24 -- the fit has failed, and a bar applied to its output would be
-judging noise. So every measurement returns ``fit_resid_max`` and the caller
+settings the fast lane can afford, 70 degrees left four bins and a fit
+residual of 0.24 when this lane was built -- the fit has failed, and a bar applied
+to its output would be judging noise. (The test that pinned that reading was removed
+under #1127; it is in git history at 609becd5.) So every measurement returns ``fit_resid_max`` and the caller
 must check it against ``FIT_RESID_LIMIT``: outside the instrument's own validity
 domain the answer is NOT-APPLICABLE, never a pass and never a fail. The same
 discipline the gates themselves are held to (#812), applied to the instrument.
@@ -92,10 +93,12 @@ F0_HZ = 10.0e9
 CUTOFF_ARG = math.sqrt(math.log(1000.0))     # cv26's bandwidth_for
 
 # A fit whose residual exceeds this has not resolved the field into two modes;
-# its |B/A| is not a measurement. MEASURED, not chosen: at the fast rig the
-# residual runs 3.2e-07 (0 deg), 5.7e-04 (30 deg), 6.8e-04 (45 deg),
+# its |B/A| is not a measurement. MEASURED when this lane was built, not chosen: at
+# the fast rig the residual ran 3.2e-07 (0 deg), 5.7e-04 (30 deg), 6.8e-04 (45 deg),
 # 2.0e-03 (60 deg) and 2.4e-01 (70 deg) -- two decades of clear air between the
-# angles the rig resolves and the one it does not.
+# angles the rig resolves and the one it does not. The gate still checks every angle
+# it measures against this limit; the per-angle readings themselves are no longer
+# pinned by a test (#1127).
 FIT_RESID_LIMIT = 1.0e-2
 
 # Both 2-D rigs here -- and GRAZE_RIG in the test file -- run at DX_M / F0_HZ

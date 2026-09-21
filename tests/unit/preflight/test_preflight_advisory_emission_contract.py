@@ -398,7 +398,14 @@ def _enumerate_emission_sites():
 # ``preflight()`` reported it and the result object's ``probe_clearance`` read
 # ``insufficient``; these four are that gap closed, not a widening of what
 # preflight talks about.
-_FROZEN_TOTAL_SITES = 118
+# 118 -> 119, 2026-09-20 (#1138): ``sheet_effective_size`` -- one
+# ``PreflightWarning`` in ``_warn_sheet_effective_size``
+# (``rfx/preflight/pec_geometry.py``), emitted from inside the existing
+# off-lattice check. A conductor sheet's solved size (node span plus the
+# measured edge offset at each free end) against its drawn size, in input
+# units; no existing site reported it, including for a sheet drawn exactly on
+# the lattice.
+_FROZEN_TOTAL_SITES = 119
 # 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
 # site emitting that code, and the check was deleted when its own tripwire
 # XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
@@ -408,7 +415,8 @@ _FROZEN_TOTAL_SITES = 118
 # 74 -> 75, 2026-09-15 (#801): the new advisory kind
 # ``conductor_in_thin_absorber``. A new code is a new advisory kind, which is
 # what this count is for.
-_FROZEN_LITERAL_CODE_COUNT = 75
+# 75 -> 76, 2026-09-20 (#1138): the new advisory kind ``sheet_effective_size``.
+_FROZEN_LITERAL_CODE_COUNT = 76
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site

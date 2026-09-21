@@ -30,6 +30,13 @@
         "source": "_validate_cfg_lossless_resonator_in_absorber"
       },
       {
+        "code": "sheet_effective_size",
+        "loc": null,
+        "message": "1 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 1 listed): geometry[3] 'pec' y: drawn 600\u00b5m, nodes cover 600\u00b5m, solved as 670\u00b5m (+11.67%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+        "severity": "warning",
+        "source": "_validate_cfg_off_lattice_design_edges"
+      },
+      {
         "code": "uncoded",
         "loc": null,
         "message": "PEC sheet pec realizes on node plane 33 of axis z, and the cells on BOTH sides of that plane carry the same dielectric (eps_r = 2.1) over 48 of its footprint nodes. The sheet is therefore buried half a cell inside the dielectric instead of lying on its interface, so the realized cavity carries half a cell of the wrong medium in series (#931; the #702 measurement was 17 % on a 127 um stack). Draw the dielectric bodies up to the sheet plane, or move the sheet to the interface. Nothing is re-sampled.",
@@ -66,7 +73,7 @@
       }
     ],
     "n_errors": 1,
-    "n_issues": 9,
+    "n_issues": 10,
     "ok": false
   }
 }

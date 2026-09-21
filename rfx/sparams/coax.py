@@ -1369,6 +1369,19 @@ def compute_coaxial_two_port(
         strict=strict_passivity,
     )
 
+
+# Appended to the shared passivity guard's message when THIS lane refuses, so
+# the exception a caller actually reads names the way back to the matrix. The
+# shared message (rfx/sparams/_common.py) is used by five extractors and is
+# left untouched; only this lane refuses by default (issue #838).
+COAX_MSL_TRANSITION_REFUSAL_HINT = (
+    "compute_coax_msl_transition is an EXPERIMENTAL cross-family lane and "
+    "refuses a non-passive S by default (strict_passivity=True); pass "
+    "strict_passivity=False to get the diagnostic matrix back with a "
+    "UserWarning instead of this error."
+)
+
+
 def compute_coax_msl_transition(
     self,
     *,
@@ -1387,7 +1400,7 @@ def compute_coax_msl_transition(
     msl_probe_spacing_cells: int | None = None,
     feed_impedance: float | None = None,
     cond_warn: float = 1.0e3,
-    strict_passivity: bool = False,
+    strict_passivity: bool = True,
     skip_preflight: bool = False,
     extra_flux_monitors: "list | None" = None,
     return_ladder_voltages: bool = False,
@@ -1404,7 +1417,10 @@ def compute_coax_msl_transition(
         CoaxMSLTransitionResult`'s class docstring for the full honesty
         contract, including why the MSL side is extracted via the coax
         matrix-pencil fit rather than the diagnostic-only N-probe fit
-        #488 uses).
+        #488 uses). Since issue #838 this lane REFUSES by default: a
+        non-passive extracted S raises ``ValueError`` unless the caller
+        passes ``strict_passivity=False``, which returns the diagnostic
+        matrix with a ``UserWarning`` instead.
 
     Generalizes issue #488's mixed lumped/wire<->MSL assembler
     (:meth:`compute_mixed_s_matrix`) to a coax<->MSL pair by combining,
@@ -1559,6 +1575,16 @@ def compute_coax_msl_transition(
         ``result.ladder_split_reflection_decades`` (computed when
         ``return_ladder_voltages=True``, ``None`` otherwise), which say
         whether the ladder actually disagrees with itself.
+    strict_passivity : bool, default ``True``
+        Default ``True``: this lane REFUSES a non-passive extracted S,
+        raising ``ValueError`` from the shared guard
+        (:func:`_warn_if_nonpassive_smatrix` via
+        :func:`_finalize_sparam_result`) instead of returning the matrix.
+        Pass ``strict_passivity=False`` to get the diagnostic matrix back
+        with a ``UserWarning`` instead of the raise. The default is
+        ``True`` here and ``False`` on the single-family coax lanes
+        (:meth:`compute_coaxial_s_matrix`, :meth:`compute_coaxial_two_port`),
+        which are unaffected by this (issue #838, PI decision 2026-09-20).
 
     ``extra_flux_monitors`` (issue #589 flux-adjudication instrument):
     an ENERGY-WITNESS channel, not an extractor change. Pass the entry
@@ -2273,11 +2299,20 @@ def compute_coax_msl_transition(
     _warn_if_ringdown_truncated(
         settling_db, ("coax", "msl"), n_steps=int(n_steps),
     )
-    return _finalize_sparam_result(
-        result_obj,
-        extractor="compute_coax_msl_transition",
-        strict=strict_passivity,
-    )
+    try:
+        return _finalize_sparam_result(
+            result_obj,
+            extractor="compute_coax_msl_transition",
+            strict=strict_passivity,
+        )
+    except ValueError as exc:
+        # Lane-local, on purpose. _finalize_sparam_result's message is shared
+        # by five extractors and tells the reader to inspect the V/I dump --
+        # good advice, but it cannot name an escape hatch that only this lane
+        # has. Appending here keeps the other four messages byte-identical
+        # (issue #838). ValueError is preserved and the original is chained,
+        # so `except ValueError` callers and the traceback are unaffected.
+        raise ValueError(f"{exc} {COAX_MSL_TRANSITION_REFUSAL_HINT}") from exc
 
 
 # ---------------------------------------------------------------------------

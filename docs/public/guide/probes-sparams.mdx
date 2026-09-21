@@ -178,7 +178,11 @@ proof of mesh convergence or external accuracy.
 `compute_coaxial_line_reflection()` is not one of those five full-matrix lanes;
 use its returned recurrence and fit diagnostics.
 
-Warnings leave every computed value intact. If a passive model exceeds its
+Warnings leave every computed value intact, with one exception:
+`compute_coax_msl_transition()` refuses a non-passive S instead of returning
+it, raising `ValueError` on a matrix the other calculators would hand back
+with a warning. Pass `strict_passivity=False` to that calculator to get the
+diagnostic matrix and the warning. If a passive model exceeds its
 documented limit, treat that frequency bin as suspect and check settling time,
 normalization, the reference plane, and the extraction setup. Silence only
 means that an implemented check did not fire; it does not certify passivity.

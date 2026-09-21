@@ -990,7 +990,7 @@ def test_fidelity_report_realized_extent_comes_from_the_wall_planes():
 def test_degenerate_sheet_and_wire_declarations_are_refused():
     """The sheet/wire analogue of the empty-PolylineWire refusal.
 
-    ``tests/studio/test_interop_value_validation.py`` already refuses an
+    ``tests/interop/test_interop_value_validation.py`` already refuses an
     empty point list because a schema-valid document in which the conductor
     is simply not there is the worst possible outcome. The same failure is
     available one layer down: a footprint that rasterizes to zero nodes, and

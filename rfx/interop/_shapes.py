@@ -22,9 +22,10 @@ comes back with tuples and compares unequal while describing identical geometry.
 a ``tuple`` of tuples, matching what those classes declare.
 
 Vocabulary: the discriminator is ``kind`` with snake_case names, matching the
-two document layers that already name shapes — ``rfx/config/_shapes.py``
-(``shape: "box"``) and ``rfx/experiments/canonical.py`` (``kind: "box"``) — so
-the repo does not grow a third name for the same primitive.  Parameter names
+document layer that already names shapes — ``rfx/config/_shapes.py``
+(``shape: "box"``); the experiment document that spelled it ``kind: "box"`` left
+this package with studio — so the repo does not grow another name for the same
+primitive.  Parameter names
 are the *constructor* names, which is what makes the registry pinnable against
 each live class signature; per-layer spellings of a box (``bounds``,
 ``bounds_m``) stay an adapter concern for those layers.

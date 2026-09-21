@@ -525,7 +525,7 @@ FANOUT: dict[str, str] = {
     "tests/contracts/test_calibration_envelope_ownership.py": DIFFERENT_QUANTITY,
     "tests/crossval/test_cv22_dispersive_slab_gates.py": DIFFERENT_QUANTITY,
     "tests/crossval/test_crossval_gate_logic.py": DIFFERENT_QUANTITY,
-    "tests/studio/test_interop_design_document.py": DIFFERENT_QUANTITY,
+    "tests/interop/test_interop_design_document.py": DIFFERENT_QUANTITY,
     # rfx/api/_preflight.py was classified here until #980 Phase 3 leg 0. Its
     # only adopted-value appearance was a 0.011 m grid coordinate in
     # _absorber_boundary_for_axis's docstring worked example, and that
@@ -583,7 +583,7 @@ DIFFERENT_QUANTITY_REASON: dict[str, str] = {
     "tests/contracts/test_calibration_envelope_ownership.py": "this file lists the literals it searches for, and the reasons quote them",
     "tests/crossval/test_cv22_dispersive_slab_gates.py": "one docstring line naming the grep string that #928 deleted; every window in that file is re-derived from the artifact",
     "tests/crossval/test_crossval_gate_logic.py": "cv04's own per-bin closure ceiling test, 0.0487 against the 0.06 ceiling -- the producer's gate, not a consumer window",
-    "tests/studio/test_interop_design_document.py": "a geometry centre coordinate that happens to read 0.011 m",
+    "tests/interop/test_interop_design_document.py": "a geometry centre coordinate that happens to read 0.011 m",
     "docs/design_notes/20260903_test_reorg_tier3b_consolidation.md": "a pytest node id containing a parametrized 0.011",
     "docs/design_notes/20260904_cv26_round3_close.md": "one cell of cv26's absorber depth ladder -- the MEASURED mean|dT| of the 40-cell rung at 45 deg, which happens to read the same as cv04's normal-incidence mean_closure; the close note derives no window and no revision names it as an adoption site",
     "validation/research/multiband_nu/results/e3_battery_after.json": "the runtime reciprocity warner's 0.011 bar (max|S_ij - S_ji| / max|S|) quoted in the e3 battery's captured warnings; the file names the slab family only because one battery board is the dispersive slab",

@@ -603,3 +603,28 @@ def rasterize(
         sigma = jnp.where(m, sig, sigma)
 
     return eps_r, sigma
+
+
+def declared_bounds(shape):
+    """The shape's DECLARED bounding box, or ``None`` where it has none.
+
+    One retrieval for every caller that asks "how far was this drawn", so the
+    question is asked the same way and the same shapes are excluded from it
+    (review of PR #1136, B). Two callers today: the pad continuation in
+    ``rfx.geometry.smoothing.smoothed_shape_pairs`` and the assembly check in
+    ``rfx.geometry.rasterize_grid.assert_declared_span_is_filled``.
+
+    ``None`` means "this shape cannot say", not "it reaches nothing". A CSG
+    union or difference has no exact declared box -- a bounding box would
+    over-state its reach -- and a shape may refuse for its own reasons. Only
+    ``NotImplementedError`` and ``AttributeError`` are treated that way; any
+    other exception is a defect in the shape and is left to propagate rather
+    than silently turned into "no opinion".
+    """
+    getter = getattr(shape, "bounding_box", None)
+    if getter is None:
+        return None
+    try:
+        return getter()
+    except (NotImplementedError, AttributeError):
+        return None

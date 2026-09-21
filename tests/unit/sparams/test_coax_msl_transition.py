@@ -2438,7 +2438,7 @@ def test_coax_msl_transition_attempt2_instrument_verification():
     # no FDTD involved). On the real strict_passivity=True path,
     # compute_coax_msl_transition does not call _warn_if_nonpassive_smatrix
     # directly either -- it returns through the shared
-    # rfx.api._sparams._finalize_sparam_result(result_obj,
+    # rfx.sparams._common._finalize_sparam_result(result_obj,
     # extractor="compute_coax_msl_transition", strict=strict_passivity)
     # epilogue (also used by compute_waveguide_s_matrix and
     # compute_coaxial_s_matrix), which is the one call site that actually
@@ -2530,6 +2530,25 @@ def test_extra_flux_monitors_entry_validation():
         )
 
 
+@pytest.mark.xfail(
+    strict=True,
+    raises=ValueError,
+    reason=(
+        "The attempt-2 board cannot be BUILT since PR #981 added validate_msl_port_geometry: "
+        "its MSL port declares the ground at z = 2.6 mm, and on that column the realized "
+        "conductor planes are at 2.4, 2.5, 2.8 and 2.9 mm, so the port's reference has no metal "
+        "under it and the builder refuses (rfx/sources/msl_port.py, reached from "
+        "compute_coax_msl_transition). Measured on main df08175c, 2026-09-21: this test "
+        "dies in 3.5 s with that ValueError, before a single time step; it has been the red "
+        "in shard 3 of the weekly lane since then (#1022). The QUESTION this test asks -- "
+        "opt-in flux monitors must not move S by one bit -- is still wanted, so it is not "
+        "removed. Repairing the board is coax-MSL lane work, deferred past v2.0 (PI, "
+        "2026-09-20). raises=ValueError alone is broad -- this function also raises ValueError for "
+        "bad monitor entries -- so the body below checks the MESSAGE and turns any other "
+        "ValueError into an AssertionError, which this marker does not absorb. strict=True turns "
+        "the day the board builds again into an XPASS error that forces this marker off."
+    ),
+)
 @pytest.mark.slow_physics
 def test_extra_flux_monitors_do_not_perturb_s():
     """The #589 non-perturbation witness: S bit-identical with and without
@@ -2545,12 +2564,21 @@ def test_extra_flux_monitors_do_not_perturb_s():
     not a tolerance to loosen silently.
     """
     n_steps = 1000  # bit-identity is step-count independent; keep it cheap
-    r_off = _build_coax_msl_transition_sim_attempt2().compute_coax_msl_transition(
-        **_attempt2_kwargs(n_steps))
-    r_on = _build_coax_msl_transition_sim_attempt2().compute_coax_msl_transition(
-        **_attempt2_kwargs(n_steps),
-        extra_flux_monitors=_attempt2_scratch_flux_entries(),
-    )
+    try:
+        r_off = _build_coax_msl_transition_sim_attempt2().compute_coax_msl_transition(
+            **_attempt2_kwargs(n_steps))
+    except ValueError as exc:
+        # The xfail marker is for ONE ValueError: the board's MSL ground has no metal under it.
+        # Any other ValueError must surface as a failure instead of being absorbed.
+        assert "no longitudinal conductor edge meets it" in str(exc), exc
+        raise
+    try:
+        r_on = _build_coax_msl_transition_sim_attempt2().compute_coax_msl_transition(
+            **_attempt2_kwargs(n_steps),
+            extra_flux_monitors=_attempt2_scratch_flux_entries(),
+        )
+    except ValueError as exc:  # the board built, so a ValueError here is the monitors' fault
+        raise AssertionError(f"extra_flux_monitors was rejected: {exc}") from exc
 
     assert r_off.flux_monitors is None
     assert np.array_equal(np.asarray(r_off.s_params), np.asarray(r_on.s_params)), (
@@ -4159,3 +4187,267 @@ def test_settled_run_driver_fixture_selection_is_explicit_for_every_label():
         "msl_probe_count", "msl_probe_start_cells"}   # spacing is INHERITED
     with pytest.raises(ValueError, match="unknown --fixture"):
         drv._select_fixture(t_self, "attempt4", 4242)
+
+
+# ---------------------------------------------------------------------------
+# Part 6 -- this cross-family lane refuses a non-passive S by default (#838).
+#
+# PI decision 2026-09-20: port/S-parameter work stops at pure single-family
+# ports, so this lane's MSL-side power over-read is not going to be attributed
+# or corrected. What the issue closes on instead is the BEHAVIOUR -- a default
+# call does not hand back a matrix the shared guard rejects.
+#
+# All three checks are pure post-processing: no FDTD, no fixture. The last two
+# drive the same production epilogue the method returns through
+# (``_finalize_sparam_result(..., strict=strict_passivity)``) with the flag
+# READ OFF the method's own signature, so the halves cannot drift -- move the
+# default back to False and the synthetic non-passive S stops raising, so the
+# behaviour test goes red too, not just the signature one. This is the same
+# "exercise the shared guard directly rather than pay for a second FDTD run"
+# move as test_coax_msl_transition_attempt2_instrument_verification above.
+# ---------------------------------------------------------------------------
+
+# Synthetic, not measured: a 2x2 whose driven-port-1 column power is 2.88 and
+# driven-port-0 column power 1.4425, both above the guard's 1.10 hard limit
+# (tol=0.10). No FDTD run produced these numbers and none is implied by them.
+_SYNTHETIC_NONPASSIVE_S = [[[1.2 + 0j], [1.2 + 0j]],
+                           [[0.05 + 0j], [1.2 + 0j]]]
+
+# Column power 0.25 on both columns -- passive, so the same default call path
+# must return it untouched. Without this control the behaviour test would also
+# pass if the lane refused unconditionally.
+_SYNTHETIC_PASSIVE_S = [[[0.3 + 0j], [0.4 + 0j]],
+                        [[0.4 + 0j], [0.3 + 0j]]]
+
+
+def _transition_strict_passivity_default():
+    """``strict_passivity``'s default as the PUBLIC method carries it."""
+    import inspect
+    from rfx.api import Simulation
+    return inspect.signature(
+        Simulation.compute_coax_msl_transition
+    ).parameters["strict_passivity"].default
+
+
+def _synthetic_transition_result(s_params):
+    """The three fields ``_warn_if_nonpassive_smatrix`` reads off a result."""
+    from types import SimpleNamespace
+    return SimpleNamespace(
+        s_params=np.asarray(s_params, dtype=complex),
+        freqs=np.asarray([6.0e9]),
+        port_names=("coax", "msl"),
+    )
+
+
+def test_cross_family_transition_defaults_to_refusing_single_family_lanes_do_not():
+    """The signature invariant: this cross-family lane refuses by default.
+
+    Pinned in BOTH directions. The single-family coax lanes are a separate
+    decision and keep ``False``; a blanket flip of every ``strict_passivity``
+    in ``rfx/sparams/coax.py`` fails here rather than landing unnoticed.
+    """
+    import inspect
+    from rfx.api import Simulation
+
+    assert _transition_strict_passivity_default() is True, (
+        "compute_coax_msl_transition must refuse a non-passive S by default "
+        "(issue #838, PI decision 2026-09-20)"
+    )
+    for name in ("compute_coaxial_s_matrix", "compute_coaxial_two_port"):
+        default = inspect.signature(
+            getattr(Simulation, name)).parameters["strict_passivity"].default
+        assert default is False, (
+            f"{name} is a single-family lane and was not part of the #838 "
+            f"decision, but its strict_passivity default is {default!r}"
+        )
+
+
+def test_transition_default_raises_on_a_nonpassive_s_and_false_returns_it():
+    """The guard's own two outcomes, fed the method's signature default.
+
+    SCOPE, stated because an earlier revision of this docstring overclaimed
+    it: this pins the DEFAULT and the shared GUARD, not the path between
+    them. It calls ``_finalize_sparam_result`` directly, so it stays green if
+    the method stops forwarding ``strict_passivity`` to it. The wiring is
+    pinned by ``test_transition_forwards_its_strict_passivity_to_the_guard``
+    and the two end-to-end tests below.
+    """
+    from rfx.sparams._common import _finalize_sparam_result
+
+    strict_default = _transition_strict_passivity_default()
+    bad = _synthetic_transition_result(_SYNTHETIC_NONPASSIVE_S)
+
+    with pytest.raises(ValueError, match="UNRELIABLE"):
+        _finalize_sparam_result(
+            bad, extractor="compute_coax_msl_transition", strict=strict_default)
+
+    with pytest.warns(UserWarning, match="UNRELIABLE"):
+        returned = _finalize_sparam_result(
+            bad, extractor="compute_coax_msl_transition", strict=False)
+    assert returned is bad
+    np.testing.assert_array_equal(
+        returned.s_params, np.asarray(_SYNTHETIC_NONPASSIVE_S, dtype=complex))
+
+
+def test_transition_default_returns_a_passive_s_unchanged():
+    """The refusal is conditional on the guard, not on the flag alone."""
+    from rfx.sparams._common import _finalize_sparam_result
+
+    good = _synthetic_transition_result(_SYNTHETIC_PASSIVE_S)
+    returned = _finalize_sparam_result(
+        good, extractor="compute_coax_msl_transition",
+        strict=_transition_strict_passivity_default())
+    assert returned is good
+    np.testing.assert_array_equal(
+        returned.s_params, np.asarray(_SYNTHETIC_PASSIVE_S, dtype=complex))
+
+
+# ---------------------------------------------------------------------------
+# The three above pin the DEFAULT and the GUARD. None of them notices if the
+# method stops handing one to the other: a reviewer mutated the lane's only return
+# from `strict=strict_passivity` to `strict=False` -- which reverts this
+# change's entire user-visible effect -- and the whole fast lane of this file
+# and test_sparam_passivity_guard.py stayed green (94 passed). The three
+# checks below close that, cheapest first.
+# ---------------------------------------------------------------------------
+
+def _finalize_call_in_transition_source():
+    """The ``_finalize_sparam_result(...)`` Call node inside the method."""
+    import ast
+    import inspect
+    import textwrap
+    from rfx.api import Simulation
+
+    tree = ast.parse(textwrap.dedent(
+        inspect.getsource(Simulation.compute_coax_msl_transition)))
+    calls = [
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+        and n.func.id == "_finalize_sparam_result"
+    ]
+    assert len(calls) == 1, (
+        f"expected exactly one _finalize_sparam_result call in "
+        f"compute_coax_msl_transition, found {len(calls)}"
+    )
+    return calls[0]
+
+
+def test_transition_forwards_its_strict_passivity_to_the_guard():
+    """The wiring, as a source fact -- no grid, no FDTD, milliseconds.
+
+    The end-to-end tests below prove the same thing by running the method,
+    but they cost a grid build each. This one is the always-on gate: it fails
+    the moment ``strict=`` at the lane's only return stops being the
+    ``strict_passivity`` parameter, which is the single token the whole
+    behaviour change rides on.
+    """
+    import ast
+
+    call = _finalize_call_in_transition_source()
+    strict_kw = [k for k in call.keywords if k.arg == "strict"]
+    assert len(strict_kw) == 1, (
+        "the lane's _finalize_sparam_result call must pass strict= explicitly"
+    )
+    value = strict_kw[0].value
+    assert isinstance(value, ast.Name) and value.id == "strict_passivity", (
+        "strict= must be the method's own strict_passivity parameter, not a "
+        f"literal or a derived expression (found {ast.dump(value)})"
+    )
+
+
+# --- End-to-end: the real method, a planted non-passive S, 1 FDTD step ------
+#
+# The assembler is the thinnest seam that leaves the whole tail real -- the
+# result construction, the ring-down warning and the real
+# _finalize_sparam_result(..., strict=strict_passivity). Patch it where the
+# lane LOOKS THE NAME UP (rfx.sparams.coax's own global, per the #980 Phase 2
+# move), the same reason test_sparam_passivity_guard.py gives for patching
+# "rfx.sparams.waveguide.<target>" rather than the re-export.
+#
+# n_steps=1 is the floor: a grid build and one step, ~30 s on a loaded pod,
+# and the numbers it produces are discarded by the patch. The escape hatch's
+# end-to-end return path is already paid for by
+# test_coax_msl_transition_ladder_dump.py:99, a real call carrying
+# strict_passivity=False that gets a result back.
+
+_PLANTED_NONPASSIVE_S = _SYNTHETIC_NONPASSIVE_S  # column power 2.88, limit 1.10
+
+
+def _plant_nonpassive_assembler(monkeypatch, n_freqs):
+    """Make the lane's assembler return a known non-passive S, nothing else."""
+    import rfx.sparams.coax as _coax
+
+    s = np.repeat(np.asarray(_PLANTED_NONPASSIVE_S, dtype=complex), n_freqs,
+                  axis=2)
+    per_freq = np.ones(n_freqs, dtype=float)
+    resid = np.zeros((2, 2, n_freqs), dtype=float)
+    cplx = np.zeros((2, 2, n_freqs), dtype=complex)
+
+    def _planted(**kwargs):
+        return (s, per_freq, per_freq, resid, resid,
+                cplx, cplx.copy(), cplx.copy())
+
+    monkeypatch.setattr(
+        _coax, "_assemble_coax_msl_transition_from_voltages", _planted)
+    return s
+
+
+def _instrument_kwargs_without_the_flag(n_steps=1):
+    """The vetted instrument fixture's kwargs, minus ``strict_passivity``.
+
+    Removing it is the point: the call must take the method's own default.
+    """
+    from tests._coax_msl_instrument_fixture import instrument_kwargs
+
+    kw = instrument_kwargs(n_steps)
+    assert kw.pop("strict_passivity") is False, (
+        "the shared fixture stopped pinning strict_passivity=False; this test "
+        "removes that key to exercise the DEFAULT and needs to know it was there"
+    )
+    return kw
+
+
+def test_default_call_refuses_a_nonpassive_s_and_says_how_to_get_it_back():
+    """A default call on the real method: raises, and names the escape hatch."""
+    from tests._coax_msl_instrument_fixture import build_instrument_junction
+    from rfx.sparams.coax import COAX_MSL_TRANSITION_REFUSAL_HINT
+
+    mp = pytest.MonkeyPatch()
+    try:
+        _plant_nonpassive_assembler(mp, n_freqs=3)
+        sim = build_instrument_junction()
+        with pytest.raises(ValueError, match="UNRELIABLE") as caught:
+            sim.compute_coax_msl_transition(**_instrument_kwargs_without_the_flag())
+    finally:
+        mp.undo()
+
+    message = str(caught.value)
+    assert "strict_passivity=False" in message, message
+    assert COAX_MSL_TRANSITION_REFUSAL_HINT in message, message
+    # The shared guard's own text survives ahead of the lane's hint, and the
+    # original exception is chained rather than swallowed.
+    assert "passivity_violation" in message, message
+    assert isinstance(caught.value.__cause__, ValueError)
+    assert COAX_MSL_TRANSITION_REFUSAL_HINT not in str(caught.value.__cause__)
+
+
+def test_compute_s_matrix_route_into_this_lane_refuses_by_default():
+    """The dispatcher forwards the default, so the lane refuses there too.
+
+    ``sim.compute_s_matrix()`` picks this lane for 1 coaxial + 1 MSL port
+    (rfx/sparams/dispatch.py) and forwards ``**kwargs`` verbatim, so a caller
+    who never names the method still gets the refusal. The dispatch test file
+    compares the two routes only with ``strict_passivity=False`` supplied, so
+    nothing else covers the default here.
+    """
+    from tests._coax_msl_instrument_fixture import build_instrument_junction
+
+    mp = pytest.MonkeyPatch()
+    try:
+        _plant_nonpassive_assembler(mp, n_freqs=3)
+        sim = build_instrument_junction()
+        with pytest.raises(ValueError, match="UNRELIABLE") as caught:
+            sim.compute_s_matrix(**_instrument_kwargs_without_the_flag())
+    finally:
+        mp.undo()
+    assert "strict_passivity=False" in str(caught.value)
