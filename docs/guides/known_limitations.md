@@ -40,11 +40,13 @@ hide inside 1 %. That lane has its own limits — see the
 above 17 GHz recorded in `validation/crossval/07_sheen_lpf.py`.
 → [#838](https://github.com/bk-squared/rfx/issues/838)
 
-**Microstrip propagation constant sits about 0.9 % above the Hammerstad–Jensen
-closed form on every in-band bin.** The offset is systematic, not scatter, and it
-is not yet attributed. Treat rfx microstrip phase as carrying that bias until it
-is.
-→ [#830](https://github.com/bk-squared/rfx/issues/830)
+**The fitted microstrip propagation constant sits about 0.9 % above the
+Hammerstad–Jensen closed form on every in-band bin.** The offset is systematic,
+not scatter, and it is not attributed (at most 1.41 % on the current-fixture
+replay). It is the FITTED `beta`, a diagnostic that does not enter S; the through
+phase a user receives differs from openEMS by at most 0.34 degrees on the last
+matched run. One mesh, no tracked refinement. Recorded as a stated accuracy in
+the [S-parameter support matrix](sparameter_support_matrix.md); #830 is closed.
 
 **Microstrip `Z0` and `beta` are unreadable when the probes sit near a
 reflector.** The N-probe fit rides the standing wave instead of measuring the

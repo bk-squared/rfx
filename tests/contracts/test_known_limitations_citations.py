@@ -69,7 +69,11 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # than the documented one node short of it. Pinned by
 # tests/unit/grid/test_cell_count_ulp_snap.py and
 # tests/unit/geometry/test_declared_span_reaches_padded_face.py.
-CITED_ISSUES = frozenset({838, 830, 820, 737, 715, 1022})
+# #830 (the fitted microstrip beta sitting ~0.9 % above the closed form) left on
+# 2026-09-21: the PI closed it as a stated accuracy in the support matrix. The
+# offset is still real and unattributed, so the prose stays without the arrow
+# and 830 sits in RESOLVED_REFERENCES.
+CITED_ISSUES = frozenset({838, 820, 737, 715, 1022})
 
 # Numbers the prose names for provenance rather than as a live defect: a CLOSED
 # issue quoted to say what part of the problem is already fixed. #1043 (the
@@ -77,7 +81,7 @@ CITED_ISSUES = frozenset({838, 830, 820, 737, 715, 1022})
 # boundary of what remains. These are allowed to appear without a citation line;
 # a number that is neither cited nor listed here fails the test below, which is
 # what makes the exception a decision rather than a gap.
-RESOLVED_REFERENCES = frozenset({726, 1043, 1100, 1122})
+RESOLVED_REFERENCES = frozenset({726, 830, 1043, 1100, 1122})
 # #1100 and #1122 join it together: the taper entry names both to record which
 # half was fixed and what was decided about the other, and both are closed.
 

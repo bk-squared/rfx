@@ -363,16 +363,23 @@ record compatibility, and the assumptions needed to interpret V/I as power.
   regenerated rfx data with historical run-2 openEMS fields; it does not
   establish a fresh matched-board post-#931 openEMS result.
   **Accuracy statement for the fitted `beta` (issue #830, closed 2026-09-21 as
-  a stated accuracy).** Signed, over the nine gated bins of 3.0-4.5 GHz on the
-  committed record
-  (`validation/crossval/_20_msl_phase_referee_logs/20260827T102342Z_result.json`,
-  `stage_b.cross_solver_report.beta_rfx_real` / `beta_openems_real`, against
-  `regate_evidence.json::cv20.eps_eff_hammerstad_jensen_realized_board`): rfx
-  `+0.869 %` to `+0.936 %`, every bin above the closed form; openEMS `-0.309 %`
-  to `+0.082 %`. The fixture is `dx = 50 um` with a one-cell-thick trace, and the
-  offset is unattributed. `beta` is a fitted diagnostic and does not enter S,
-  and the raw cross-solver `angle(S21)` numbers above are what a user's phase
-  inherits. Expect about 1 % in electrical length at this resolution.
+  a stated accuracy).** With the current rfx fixture, the replay above reads rfx's
+  fitted `beta` at most `1.4122%` from the Hammerstad-Jensen closed form of the
+  board rfx realizes; that replay pairs regenerated rfx data with historical
+  openEMS fields and is not a matched-board run. The last matched run
+  (2026-08-27, a pre-2.0 realization;
+  `validation/crossval/_20_msl_phase_referee_logs/20260827T102342Z_result.json`,
+  `stage_b.cross_solver_report`, against
+  `regate_evidence.json::cv20.eps_eff_hammerstad_jensen_realized_board`) reads,
+  signed, over the nine gated bins of 3.0-4.5 GHz: rfx `+0.869 %` to `+0.936 %`,
+  every bin above the closed form; openEMS `-0.309 %` to `+0.082 %`. The offset
+  is unattributed. `beta` is a fitted diagnostic and does not enter S. What a
+  user's phase carries is the through phase: on that matched run it differs from
+  openEMS by at most `0.342 degrees` against the 3-degree gate, which is 0.03 %
+  to 1.1 % of the 32-44 degree electrical length of the 5 mm span, largest at
+  the low band edge and crossing zero near 3.9 GHz. All of this is one mesh
+  (`dx = 50 um`, the trace one cell thick); no tracked refinement exists, so no
+  convergence behaviour is claimed.
   See `validation/crossval/20_msl_phase_referee.py` (manifest entry
   `20_msl_phase_referee`), `tests/crossval/test_msl_phase_referee_header.py`, and
   `docs/design_notes/issue812_phase_identity_predeclaration.md`.
@@ -719,19 +726,29 @@ reference-plane de-embedding, which is phase-only (PR #870, `1bccdfba`).
 **Accuracy statement for the `normalize=False` lane (issue #873, closed
 2026-09-21 as a stated accuracy, not a defect).** An empty guide can neither
 reflect nor absorb, yet on the empty WR-90 control this lane reads column power
-`1.0183` / `1.0041` / `1.0010` at `a/9` / `a/18` / `a/36` (excess `1.825e-2` at
-the coarse rung against `3.33e-5` on the flux lane; `0.079` / `0.018` /
-`0.004 dB`; `tests/fixtures/waveguide_chain_battery/fixture.json`, `dut = "thru"`),
-falling about 4x per `dx` halving, while the flux lane on the same solved fields
-reads `1.6e-5` to `3.3e-5`. The mechanism is named and measured in
-`docs/design_notes/waveguide_driven_plane_near_field_composition_results.md`:
-the port's transverse mode templates are cell-centred while the `Ez` and `Hy`
-they integrate sit on nodes. Injected, that half-cell offset launches a TE20
-near field at the driven port; read back, the same offset counts that TE20 as
-TE10. The product is second order in `dx` and accounts for 94-98 % of the
-measured modal-power offset. It is a fraction of a tenth of a dB at nine cells
-across the guide and is not gated; prefer `normalize="flux"` on meshes coarser
-than `a/18`.
+`1.0061` / `1.0012` / `1.0003` at `a/9` / `a/18` / `a/36` (excess `6.135e-3` /
+`1.161e-3` / `2.546e-4`, i.e. `0.027` / `0.005` / `0.001 dB`; `tests/fixtures/waveguide_chain_battery/fixture_v18_close.json`,
+`dut = "thru"`, the gated artifact), falling 5.3x and then 4.6x per `dx`
+halving. Run 1's `fixture.json` read `1.825e-2` there against `3.33e-5` on the
+flux lane, but it measured the N+1-cell port of #868 and is history. The flux
+lane's empty-guide reading is not evidence either way: on an empty guide its
+reference run IS the device run, so the number is a construction
+(`docs/design_notes/waveguide_false_lane_column_power_results.md`, "Framing
+correction to #873"). The comparisons that carry weight are the `eps_r = 4`
+slab in the same artifact, power closure `7.11e-3` on this lane against
+`1.10e-4` on the flux lane at the coarse rung, and the interior flux monitors,
+which put the slab's physical power imbalance at `6.887e-05`
+(`closure_witness.json`). The mechanism is named in
+`docs/design_notes/waveguide_driven_plane_near_field_composition_results.md`,
+measured on this same artifact: the port's transverse mode templates are
+cell-centred while `Ez` and `Hy` are node-registered in the broad-wall
+direction. Injected, that half-cell offset launches a TE20 near field at the
+driven port; read back, the same offset counts that TE20 as TE10, and the
+product is second order in `dx`. TE20's decay along the guide matches the
+attenuation constant tabulated before the run to within 1.2-2.9 %. That note's
+pre-declared decision rule came out NOT CONFIRMED because it had named TE30;
+TE20 is a re-identification. The excess is a few hundredths of a dB at nine
+cells across the guide and is not gated.
 
 Artifacts: replays `tests/oracle/test_waveguide_chain_battery.py` (run 1),
 `tests/oracle/test_waveguide_chain_battery_guide_cell_aperture.py` (run 2),
