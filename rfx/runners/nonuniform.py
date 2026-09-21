@@ -188,6 +188,7 @@ def assemble_materials_nu(
         sim._resolve_material,
         coords,
         pec_sigma_threshold=sim._PEC_SIGMA_THRESHOLD,
+        pole_geometry_entries=sim._geometry,
         centres=centres,
         cell_sizes=cell_sizes,
         sheets=_pec_sheets,

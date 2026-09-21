@@ -296,15 +296,11 @@ def _get_normal_fn(shape: Shape):
 #: continuing it would move the structure to the boundary and throw away the
 #: resolution the lane exists to provide.
 #:
-#: The consequence, stated rather than left to be found: on the hi face the two
-#: lanes disagree over a one-cell window. The staircase lane's rule is a
-#: cell-centre test, so ``extend_cpml_pad_materials``' #627a fallback continues
-#: any box with ``corner_hi > interior_hi - dx`` (the half-open convention drops
-#: the last node, and the fallback promotes from one column inward); this lane
-#: continues only ``corner_hi >= interior_hi``. No tolerance makes them agree
-#: everywhere, because one rule is a cell-centre test and the other is sub-cell.
-#: A structure meant to reach the boundary should be drawn to it, and then both
-#: lanes continue it.
+#: The declared face is also a reach target, using cells_spanning's
+#: relative tolerance. A declaration spanning 535.43 cells therefore reaches
+#: the rounded 536-cell domain's absorber. Bounds short of both targets keep
+#: their declared end, even when a neighbouring occupied cell is copied by
+#: the separate material-array extension.
 _PAD_REACH_TOL_CELLS = 1e-6
 
 #: How far past the array the continued face is pushed, in local cells. The
@@ -347,6 +343,7 @@ class UnextendableShape(NamedTuple):
     entry_index: int = -1
     material_name: str = "?"
     conductor: bool = False
+    collection: str = "geometry"
 
 
 def warn_unextendable_shapes(unextendable, *, stacklevel: int = 3) -> None:
@@ -368,8 +365,8 @@ def warn_unextendable_shapes(unextendable, *, stacklevel: int = 3) -> None:
             f"{type(u.shape).__name__} at {'xyz'[u.axis]}-{u.side} ({u.reason})"
             for u in conductors)
         _w.warn("Conducting geometry reaches an absorbing face but has no "
-                f"geometry continuation: {faces}. Its declared shape is "
-                "solved unchanged.", stacklevel=stacklevel)
+                f"geometry continuation: {faces}. No continuation is applied "
+                "across those faces.", stacklevel=stacklevel)
     unextendable = [u for u in unextendable if not u.conductor]
     if not unextendable:
         return
@@ -630,8 +627,6 @@ def smoothed_shape_pairs(sim, grid):
     """
     pairs = [(entry.shape, sim._resolve_material(entry.material_name).eps_r)
              for entry in sim._geometry]
-    if not pairs:
-        return pairs, []
     if (getattr(sim, "_boundary", None) not in ("cpml", "upml")
             or int(getattr(sim, "_cpml_layers", 0)) <= 0):
         return pairs, []
@@ -667,6 +662,10 @@ def smoothed_shape_pairs(sim, grid):
     pec_sigma = float(getattr(sim, "_PEC_SIGMA_THRESHOLD", 1e6))
     for idx, (entry, (shape, eps_r)) in enumerate(zip(sim._geometry, pairs)):
         mat = sim._resolve_material(entry.material_name)
+        if (getattr(mat, "debye_poles", None)
+                or getattr(mat, "lorentz_poles", None)):
+            out.append((shape, eps_r))
+            continue
         # Both lanes realize conductors through the same geometry helper.
         if float(getattr(mat, "sigma", 0.0)) >= pec_sigma:
             unext = []
@@ -675,10 +674,6 @@ def smoothed_shape_pairs(sim, grid):
             unextendable.extend(u._replace(entry_index=idx,
                                           material_name=entry.material_name)
                                 for u in unext)
-            continue
-        if (getattr(mat, "debye_poles", None)
-                or getattr(mat, "lorentz_poles", None)):
-            out.append((shape, eps_r))
             continue
         one, unext = extend_shapes_into_cpml_pad(
             [(shape, eps_r)], node_coords, pads,
@@ -693,6 +688,14 @@ def smoothed_shape_pairs(sim, grid):
             u._replace(shape=shape, entry_index=idx,
                        material_name=entry.material_name)
             for u in unext)
+    # Thin entries are rasterized separately, but share the unsupported-face
+    # report even when the simulation contains no ordinary geometry entries.
+    for idx, tc in enumerate(getattr(sim, "_thin_conductors", ())):
+        unext = []
+        continued_conductor_shape(sim, grid, tc.shape, unextendable=unext)
+        unextendable.extend(u._replace(entry_index=idx,
+                                      material_name=f"thin_conductor[{idx}]",
+                                      collection="thin_conductor") for u in unext)
     return out, unextendable
 
 

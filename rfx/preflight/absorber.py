@@ -991,16 +991,13 @@ def _validate_cfg_dielectric_at_absorber_seam(self, _w) -> None:
         idx, mat_name = u.entry_index, u.material_name
         axis_name = "xyz"[u.axis]
         if u.conductor:
-            _w.warn(PreflightWarning(
-                f"Conductor '{mat_name}' (geometry entry #{idx}, "
+            message = (
+                f"Conductor '{mat_name}' ({u.collection} entry #{idx}, "
                 f"{type(u.shape).__name__}) reaches the {axis_name}-{u.side} "
-                f"absorber seam, and {u.reason}. Its declared shape is "
-                "solved unchanged.", code="conductor_at_absorber_seam",
-                loc=f"geometry[#{idx}] {axis_name}-{u.side}",
-                source="_validate_cfg_dielectric_at_absorber_seam"), stacklevel=3)
-            continue
-        _w.warn(
-            PreflightWarning(
+                f"absorber seam, and {u.reason}. No continuation is applied "
+                "across this face.")
+        else:
+            message = (
                 f"Material '{mat_name}' (geometry entry #{idx}, "
                 f"{type(u.shape).__name__}) reaches the {axis_name}-{u.side} "
                 f"absorber seam, and {u.reason}. With subpixel smoothing the "
@@ -1008,9 +1005,12 @@ def _validate_cfg_dielectric_at_absorber_seam(self, _w) -> None:
                 f"{u.eps_r:g}, so the structure is terminated by an end facet "
                 f"at the interior/pad boundary (issue #1043). Move it clear "
                 f"of the face, or declare it as a Box / axis-aligned "
-                f"Cylinder, which are continued.",
+                f"Cylinder, which are continued.")
+        _w.warn(
+            PreflightWarning(
+                message,
                 code="dielectric_at_absorber_seam",
-                loc=f"geometry[#{idx}] {axis_name}-{u.side}",
+                loc=f"{u.collection}[#{idx}] {axis_name}-{u.side}",
                 source="_validate_cfg_dielectric_at_absorber_seam",
             ),
             stacklevel=3,

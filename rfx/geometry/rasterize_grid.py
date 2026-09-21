@@ -734,6 +734,7 @@ def rasterize_geometry(
     sheets: list | None = None,
     wires: list | None = None,
     periodic=(False, False, False),
+    pole_geometry_entries=None,
 ):
     """Rasterize geometry entries onto material arrays.
 
@@ -744,6 +745,9 @@ def rasterize_geometry(
     ----------
     geometry_entries : list of _GeometryEntry
         Each has .shape (Shape) and .material_name (str).
+    pole_geometry_entries : list or None
+        Original entries in the same order, before conductor continuation.
+        When provided, dispersion masks retain this declared occupancy.
     material_resolver : callable(name) -> MaterialSpec
         Resolves material name to MaterialSpec.
     coords : GridCoords
@@ -802,7 +806,7 @@ def rasterize_geometry(
     debye_masks_by_pole: dict[DebyePole | int, tuple[DebyePole, jnp.ndarray]] = {}
     lorentz_masks_by_pole: dict[LorentzPole | int, tuple[LorentzPole, jnp.ndarray]] = {}
 
-    for entry in geometry_entries:
+    for entry_index, entry in enumerate(geometry_entries):
         mat = material_resolver(entry.material_name)
         mask = entry.shape.mask_on_coords(coords.x, coords.y, coords.z)
 
@@ -838,13 +842,20 @@ def rasterize_geometry(
             chi3_arr = jnp.where(mask, mat.chi3, chi3_arr)
             has_kerr = True
 
+        pole_mask = mask
+        if pole_geometry_entries is not None and (mat.debye_poles or mat.lorentz_poles):
+            declared = pole_geometry_entries[entry_index].shape
+            pole_mask = declared.mask_on_coords(coords.x, coords.y, coords.z)
+            if mat.sigma >= pec_sigma_threshold and cells is not None:
+                pole_mask = pec_volume_cell_mask(declared, centres)
+
         if mat.debye_poles:
             for pole in mat.debye_poles:
-                _accumulate_pole_mask(debye_masks_by_pole, pole, mask)
+                _accumulate_pole_mask(debye_masks_by_pole, pole, pole_mask)
 
         if mat.lorentz_poles:
             for pole in mat.lorentz_poles:
-                _accumulate_pole_mask(lorentz_masks_by_pole, pole, mask)
+                _accumulate_pole_mask(lorentz_masks_by_pole, pole, pole_mask)
 
     materials = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
 

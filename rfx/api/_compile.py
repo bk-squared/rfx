@@ -345,13 +345,21 @@ class _CompileMixin:
                 chi3_arr = jnp.where(mask, mat.chi3, chi3_arr)
                 has_kerr = True
 
+            pole_mask = mask
+            if mat.debye_poles or mat.lorentz_poles:
+                # Poles retain their declared occupancy, before continuation.
+                pole_mask = entry.shape.mask(grid)
+                if mat.sigma >= self._PEC_SIGMA_THRESHOLD and cells is not None:
+                    from rfx.geometry.rasterize_grid import pec_volume_cell_mask
+                    pole_mask = pec_volume_cell_mask(entry.shape, _centres)
+
             if mat.debye_poles:
                 for pole in mat.debye_poles:
-                    _accumulate_pole_mask(debye_masks_by_pole, pole, mask)
+                    _accumulate_pole_mask(debye_masks_by_pole, pole, pole_mask)
 
             if mat.lorentz_poles:
                 for pole in mat.lorentz_poles:
-                    _accumulate_pole_mask(lorentz_masks_by_pole, pole, mask)
+                    _accumulate_pole_mask(lorentz_masks_by_pole, pole, pole_mask)
 
         # Extend material properties into CPML padding so that guided
         # modes in dielectric waveguides see an impedance-matched absorber

@@ -56,15 +56,34 @@ def test_corner_pad_zero_and_fractional_declared_face():
     assert solved.corner_lo[2] == 0.
 
 
-def test_cylinder_axis_continues_and_cross_axis_is_reported():
+@pytest.mark.parametrize("axis", range(3))
+@pytest.mark.parametrize("side", (0, 1))
+@pytest.mark.parametrize("cross_side", (0, 1))
+def test_cylinder_axis_continues_and_cross_axis_is_reported(axis, side, cross_side):
     sim = _sim()
     grid = sim._build_grid()
-    shape = Cylinder((4., 1., 4.), radius=1., height=8., axis="x")
+    cross_axis = (axis + 1) % 3
+    center = [4., 4., 4.]
+    center[axis] = 3. if side == 0 else 5.
+    center[cross_axis] = 1. if cross_side == 0 else 7.
+    shape = Cylinder(tuple(center), radius=1., height=6., axis="xyz"[axis])
     findings = []
     solved = continued_conductor_shape(sim, grid, shape, unextendable=findings)
-    assert solved.height > 8.
+    assert solved.height > 6.
     assert solved.radius == 1.
-    assert [(u.axis, u.side, u.conductor) for u in findings] == [(1, "lo", True)]
+    assert [(u.axis, u.side, u.conductor) for u in findings] == [
+        (cross_axis, "hi" if cross_side else "lo", True)]
+    # Unsupported thin geometry is reported even without ordinary entries.
+    from rfx.geometry.smoothing import smoothed_shape_pairs, warn_unextendable_shapes
+    sim.add_thin_conductor(Cylinder((4., 4., 4.), radius=4., height=0., axis="z"),
+                           sigma_bulk=5.8e7, thickness=0.01)
+    pairs, thin_findings = smoothed_shape_pairs(sim, grid)
+    assert not pairs
+    assert {(u.axis, u.side, u.collection) for u in thin_findings} == {
+        (a, s, "thin_conductor") for a in (0, 1) for s in ("lo", "hi")}
+    with pytest.warns(UserWarning, match="No continuation is applied") as caught:
+        warn_unextendable_shapes(thin_findings)
+    assert "eps_r" not in str(caught[0].message)
 
 
 @pytest.mark.parametrize("direction", ("+x", "-x", "+y", "-y"))
@@ -103,3 +122,33 @@ def test_mirror_cells(axis):
     reflected_lo[axis], reflected_hi[axis] = 8-hi[axis], 8-lo[axis]
     np.testing.assert_array_equal(np.flip(actual, axis), build(reflected_lo, reflected_hi))
     assert np.take(actual, 0, axis=axis).any()
+
+
+@pytest.mark.parametrize("nu", (False, True))
+@pytest.mark.parametrize("sheet", (False, True))
+@pytest.mark.parametrize("kind", ("debye", "lorentz"))
+def test_conductor_continues_but_pole_occupancy_stays_declared(nu, sheet, kind):
+    from rfx.materials.debye import DebyePole
+    from rfx.materials.lorentz import LorentzPole
+    from rfx.geometry.smoothing import smoothed_shape_pairs
+    from rfx.runners.nonuniform import assemble_materials_nu
+    sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
+                     boundary="cpml", cpml_layers=2,
+                     **({"dz_profile": np.ones(8)} if nu else {}))
+    pole = (DebyePole(delta_eps=1., tau=1e-10) if kind == "debye" else
+            LorentzPole(omega_0=1e9, delta=1e7, kappa=1e18))
+    sim.add_material("conducting_pole", sigma=1e7, **{kind+"_poles": [pole]})
+    declared = Box((0., 2., 4. if sheet else 2.),
+                   (8., 6., 4. if sheet else 6.))
+    sim.add(declared, material="conducting_pole")
+    grid = sim._build_nonuniform_grid() if nu else sim._build_grid()
+    sheets = []
+    result = (assemble_materials_nu(sim, grid, pec_sheets=sheets, pec_wires=[])
+              if nu else sim._assemble_materials(grid, pec_sheets=sheets, pec_wires=[]))
+    mask = np.asarray(result[1 if kind == "debye" else 2][1][0])
+    assert not mask[:2].any() and not mask[-3:-1].any()
+    assert mask.sum() == (32 if sheet else 128)
+    conductor = np.asarray(sheets[0].footprint if sheet else result[3])
+    assert conductor[:2].any() and conductor[-3:-1].any()
+    pairs, _ = smoothed_shape_pairs(sim, grid)
+    assert pairs[0][0] is declared
