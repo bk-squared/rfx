@@ -186,8 +186,8 @@ def _is_solve_call(node: ast.AST) -> bool:
 
 def real_simulation_call_count(relpath: str) -> int:
     """AST count of real ``Simulation(...)`` calls (text/docstring mentions
-    do not count -- e.g. cv21's docstring mentions "Simulation" but the
-    script never constructs one)."""
+    do not count -- a script whose prose names "Simulation" may never
+    construct one)."""
     return sum(1 for n in ast.walk(_parse(relpath)) if _is_simulation_call(n))
 
 
@@ -371,10 +371,6 @@ CLASSIFICATION: dict[str, Entry] = {
         "Stage A drives openEMS/ContinuousStructure and explicitly does NOT "
         "import rfx (own docstring); Stage B only reads a committed rfx-"
         "produced JSON record -- no Simulation is built by this script"),
-    "validation/crossval/21_coax_two_port_referee.py": Entry(
-        "no_simulation",
-        "same two-stage openEMS-referee shape as cv20: no rfx Simulation is "
-        "constructed by this script"),
     "validation/crossval/_patch_feed_contract.py": Entry(
         "no_simulation",
         "cv05/cv15's explicit galvanic-feed contract (#929): reads the "

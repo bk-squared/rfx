@@ -1,8 +1,7 @@
 """Tests for ``compute_coax_msl_transition`` (issue #489 leg 4).
 
-Structure (mirrors ``tests/unit/sparams/test_coax_two_port_smatrix.py`` and
-``tests/crossval/test_coax_two_port_referee_header.py``, the two closest
-precedents):
+Structure (mirrors ``tests/unit/sparams/test_coax_two_port_smatrix.py``, the
+closest precedent):
 
 1. Pure-assembly tests (no FDTD) for
    :func:`rfx.api._sparams._assemble_coax_msl_transition_from_voltages` —
@@ -11,9 +10,9 @@ precedents):
    normalization is load-bearing (the pre-declared "impedance-convention
    mismatch" failure mode: skipping it silently corrupts the off-diagonal
    when the two ports' reference impedances differ).
-2. A PREDECLARATION fill-contract test (UNRUN <=> no numbers, mirrors
-   ``test_coax_two_port_referee_header.py``'s
-   ``REPRODUCE_GATE_RECORD`` pattern) for the one committed FDTD fixture.
+2. A PREDECLARATION fill-contract test (UNRUN <=> no numbers, mirrors the
+   repository's ``REPRODUCE_GATE_RECORD`` pattern) for the one committed
+   FDTD fixture.
 3. The FDTD fixture itself (``@pytest.mark.slow_physics``), asserting the
    predeclared witnesses at DIAGNOSTIC honesty level — this gate pins the
    MEASURED envelope of THIS fixture only, no claim beyond it.
@@ -1291,9 +1290,8 @@ PREDECLARATION_ATTEMPT2 = {
 
 
 SETTLED_RUN_RECORD = {
-    # Fill-contract pattern (mirrors REPRODUCE_GATE_RECORD in
-    # tests/crossval/test_coax_two_port_referee_header.py): UNRUN <=> no numbers,
-    # no log path. This is the settled-run predeclaration issue #585
+    # Fill-contract pattern (mirrors the repository's REPRODUCE_GATE_RECORD
+    # convention): UNRUN <=> no numbers, no log path. This is the settled-run predeclaration issue #585
     # review requires (finding B2/B4 + restructure item (c)): the local
     # runtime available to this session cannot reach the -40 dB rule at
     # attempt 2's domain size (extrapolated ~60 min locally from the two
@@ -1453,9 +1451,9 @@ SETTLED_RUN_RECORD = {
 
 
 def test_settled_run_record_is_committed_unrun_and_self_consistent():
-    """Fail-loud-honest invariant (mirrors test_coax_two_port_referee_
-    header.py's own REPRODUCE_GATE_RECORD test): UNRUN <=> no numbers, no
-    log path, no run id.
+    """Fail-loud-honest invariant (mirrors the repository's own
+    REPRODUCE_GATE_RECORD tests): UNRUN <=> no numbers, no log path, no
+    run id.
     """
     r = SETTLED_RUN_RECORD
     required = {

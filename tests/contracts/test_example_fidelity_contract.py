@@ -150,9 +150,7 @@ cv15 (the last two arrived with their build-only entry points; the WR-90
 waveguide-port case left the table with its case on 2026-09-21).
 cv20/cv16/cv17 are ``no_simulation`` and cv09 is
 ``builder_fused_with_solve``, so a no-solve gate cannot see them as those
-scripts stand today. Nor does it reach cv21's fence-post error (#739, cv21
-is ``no_simulation``; that one is pinned against a rebuilt grid in
-tests/crossval/test_coax_two_port_referee_header.py instead). It DOES pin
+scripts stand today. It DOES pin
 differentiable_s11_design's two domain widths (#738); that script's third
 declared width, the port aperture, falls under fidelity_report's own
 out-of-scope port row. A green run here is not evidence that the #722

@@ -14,9 +14,8 @@ does not have it -- ``07_sheen_lpf.py`` defers its openEMS import into
 functions specifically so this works) and checks the record's CONTRACT
 shape, not one pinned finding: UNRUN <=> no numbers, no log path; RUN <=>
 numbers present AND a log path under a git-tracked prefix that actually
-exists on disk. Mirrors ``tests/crossval/test_coax_two_port_referee_header.py``
-'s ``test_reproduce_gate_record_is_committed_unrun_and_self_consistent``,
-the established pattern for this repo's REPRODUCE_GATE_RECORD convention.
+exists on disk. Mirrors this repo's established REPRODUCE_GATE_RECORD
+convention.
 
 issue #971: this case's own reproduce-gate record used to be absent, and a
 sibling case's (cv06b's) number was cited here as if it were this
@@ -120,8 +119,8 @@ def test_reproduce_gate_record_is_committed_unrun_and_self_consistent():
     This is the test that must go RED if someone later claims reproduced
     numbers without a log path pointing at the run that produced them --
     not a pinned number that rots after the first real VESSL run. Same
-    tracked-path requirement ``test_coax_two_port_referee_header.py``'s
-    twin test enforces: a FILLED (``status == "RUN"``) record's
+    tracked-path requirement every header suite's twin test enforces: a
+    FILLED (``status == "RUN"``) record's
     ``log_path`` must live under a git-TRACKED prefix, not ``.omx/`` or
     ``docs/research_notes/vessl_logs/`` (both gitignored -- unreadable by a
     reviewer outside the machine that ran the job).

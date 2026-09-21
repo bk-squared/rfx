@@ -1392,8 +1392,7 @@ class CoaxialTwoPortResult:
     twin). The EXPERIMENTAL label held through three legs closing in
     sequence — wiring pin, mesh-refinement convergence witness, and an
     ``eps_scale`` AD gate — and lifted once a fourth, an external referee,
-    also closed. Evidence chain: an external openEMS referee (crossval 21,
-    ``validation/crossval/21_coax_two_port_referee.py``, VESSL run-3
+    also closed. Evidence chain: an external openEMS referee (VESSL run-3
     ``369367251629`` and the first default-scale green promoted-lane run
     VESSL ``369367252220``) brackets — it does not judge — this method's own
     ``|S21|`` on the through-line class, and, via the port's own measured
