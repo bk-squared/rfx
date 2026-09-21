@@ -624,36 +624,31 @@ def test_y_directed_thru_reproduces_the_x_directed_thru():
     rx, wx = _thru("x", n_freqs=12, num_periods=12)
     ry, wy = _thru("y", n_freqs=12, num_periods=12)
 
-    # Preflight output is part of the result (repo rule): the two lanes
-    # must raise the SAME advisories. Normalised for (a) axis letters,
-    # (b) numeric literals -- the reported Z0 differs in its last printed
-    # digit (57.61 vs 57.60 ohm) purely from the float32 fit above, and
-    # (c) one-shot import-time DeprecationWarnings, which fire only for
-    # whichever lane happens to run first in the process.
+    # Preflight output is part of the result (repo rule): the two lanes must raise the SAME
+    # advisories once the y lane's axis letters are read through the x<->y mirror that built it.
+    # The y lane's standalone x / y tokens are SWAPPED, not blanked: blanking both lanes to one
+    # placeholder (what this test did until 2026-09-21, one spelling at a time -- "y-CPML",
+    # "y: extent", then "y: drawn" reddened the weekly lane) also hides a real asymmetry, e.g. the
+    # y lane reporting a different dimension as off-size. Also normalised: numeric literals (the
+    # reported Z0 differs in its last printed digit, 57.61 vs 57.60 ohm, from the float32 fit
+    # above) and one-shot import-time DeprecationWarnings, which fire only for whichever lane
+    # runs first in the process. z is the substrate normal on both lanes and is left alone.
     import re
 
-    def _canon(ms):
+    # a standalone axis letter ("'pec' y: drawn", "y-CPML", "[y]", "y_lo"), not the y of "entr(y/ies)"
+    _axis = re.compile(r"(?<![A-Za-z0-9(])([xy])(?![A-Za-z0-9/])")
+
+    def _canon(ms, *, mirrored):
         out = []
         for m in ms:
             if "deprecated" in m.lower():
                 continue
-            m = (m.replace("y-CPML", "@-CPML").replace("x-CPML", "@-CPML")
-                  .replace("domain x-extent", "domain @-extent")
-                  .replace("domain y-extent", "domain @-extent"))
-            # #705's off-lattice census names the in-plane axis of each
-            # conductor-Box edge ("'pec' y: extent 600µm ..."); under the
-            # x<->y rotation that letter legitimately swaps, so it is
-            # masked like the other axis spellings above. z is the
-            # substrate normal on both lanes and stays.
-            # The sheet_effective_size advisory (2026-09) names the same axis in
-            # the same place ("'pec' y: drawn 600µm, nodes cover ..."), so it is
-            # masked by the same rule; its rows are ordered by |error|, not by
-            # axis, so the order survives the rotation.
-            m = re.sub(r"(?<=\s)([xy])(?=: (?:extent|drawn) )", "@", m)
+            if mirrored:
+                m = _axis.sub(lambda k: "y" if k.group(1) == "x" else "x", m)
             out.append(re.sub(r"[-+]?\d[\d.,]*(?:[eE][-+]?\d+)?", "#", m))
         return sorted(out)
 
-    cx, cy = _canon(wx), _canon(wy)
+    cx, cy = _canon(wx, mirrored=False), _canon(wy, mirrored=True)
     assert cx == cy, (
         "the two lanes produced different advisories:\n"
         f"only in x: {[m for m in cx if m not in cy]}\n"

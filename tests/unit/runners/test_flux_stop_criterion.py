@@ -11,7 +11,17 @@ import numpy as np
 import pytest
 
 from rfx.api import Simulation
-from rfx.sources.sources import GaussianPulse
+from rfx.sources.sources import ModulatedGaussian
+
+# The scene this module is about needs a source WITH DC content: that is what leaves a static
+# charge behind. ``GaussianPulse(f0=4e9, bandwidth=0.8)``, used here until 2026-09-21, has
+# almost none. It only looked like flooring because the energy criterion tracked its peak from
+# ``decay_min_steps`` (fixed by #1098); once that was fixed both criteria stopped at the first
+# eligible check (701 / 700) and the two "energy floors" tests went red on the weekly lane.
+# Measured on main 72d4b0ff with the waveform below: energy runs to its cap (6000 uniform,
+# 5000 non-uniform), the flux criterion stops at 801 and 1000. Same waveform as the static-
+# remnant fixture in tests/unit/sources/test_source_dc_floor_guards.py.
+_HIGH_DC = dict(f0=2.2e9, bandwidth=1.2)
 
 DOM = (0.08, 0.08, 0.08)
 DX = 0.002
@@ -22,7 +32,7 @@ FLUX_BOX = ((0.022, 0.022, 0.022), (0.058, 0.058, 0.058))
 def _sim():
     s = Simulation(freq_max=8e9, domain=DOM, dx=DX, boundary="cpml", cpml_layers=10, mode="3d")
     s.add_source(position=(CX, CX, CX), component="ez",
-                 waveform=GaussianPulse(f0=4e9, bandwidth=0.8))
+                 waveform=ModulatedGaussian(**_HIGH_DC))
     s.add_probe((CX, CX, CX), component="ez")
     return s
 
@@ -33,6 +43,19 @@ def _stop_step(radiated_flux_box):
     if radiated_flux_box is not None:
         kw["radiated_flux_box"] = radiated_flux_box
     return _sim().run(**kw)
+
+
+@pytest.mark.slow
+def test_flux_stops_while_energy_floors():
+    """On a soft-source fixture the energy criterion FLOORS (static charge) while the opt-in
+    radiated-flux criterion STOPS — the #388 motivation."""
+    rE = _stop_step(None)
+    rF = _stop_step(FLUX_BOX)
+    nE = np.asarray(rE.time_series).shape[0]
+    nF = np.asarray(rF.time_series).shape[0]
+    assert nE >= 5900, f"energy criterion should floor at max_steps, stopped at {nE}"
+    assert nF < 3000, f"flux criterion should stop early (radiation settles), stopped at {nF}"
+    assert nF < nE, f"flux ({nF}) must stop before energy ({nE})"
 
 
 @pytest.mark.slow
@@ -66,7 +89,7 @@ def _nu_sim():
     s = Simulation(freq_max=8e9, domain=(0.06, 0.06, 0.0), dx=1.5e-3, dz_profile=dz,
                    boundary="cpml", cpml_layers=8, mode="3d")
     s.add_source(position=(0.03, 0.03, 0.03), component="ez",
-                 waveform=GaussianPulse(f0=4e9, bandwidth=0.8))
+                 waveform=ModulatedGaussian(**_HIGH_DC))
     s.add_probe((0.03, 0.03, 0.03), component="ez")
     return s
 
@@ -74,17 +97,28 @@ def _nu_sim():
 _NU_BOX = ((0.018, 0.018, 0.015), (0.042, 0.042, 0.045))
 
 
-def _nu_stop(radiated_flux_box):
+def _nu_stop(radiated_flux_box, *, explicit_none=False):
     kw = dict(until_decay=1e-3, decay_check_interval=100, decay_min_steps=600,
               decay_max_steps=5000, skip_preflight=True)
-    if radiated_flux_box is not None:
+    if radiated_flux_box is not None or explicit_none:
         kw["radiated_flux_box"] = radiated_flux_box
     return np.asarray(_nu_sim().run(**kw).time_series)
 
 
 @pytest.mark.slow
+def test_flux_stops_while_energy_floors_nonuniform():
+    """The NU (chunked-scan) lane: flux criterion STOPS while the energy criterion FLOORS on a
+    dz_profile fixture — the flux stop is available on the real #388 mesh class, not just uniform."""
+    nE = _nu_stop(None).shape[0]
+    nF = _nu_stop(_NU_BOX).shape[0]
+    assert nE >= 4900, f"NU energy criterion should floor, stopped at {nE}"
+    assert nF < 2500, f"NU flux criterion should stop early, stopped at {nF}"
+    assert nF < nE
+
+
+@pytest.mark.slow
 def test_flux_stop_opt_out_byte_identical_nonuniform():
     """NU opt-out (radiated_flux_box=None) is byte-identical to the NU energy run."""
-    a = _nu_stop(None)
-    b = _nu_stop(None)
+    a = _nu_stop(None)                        # keyword omitted
+    b = _nu_stop(None, explicit_none=True)    # radiated_flux_box=None passed explicitly
     assert a.shape == b.shape and np.array_equal(a, b)
