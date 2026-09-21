@@ -607,23 +607,6 @@ class Simulation(
         # (_check_stencil_order_supported) rejects every unsupported runner.
         self._stencil_order = stencil_order
 
-        if self._mode != "3d" and any(
-                p is not None for p in (dx_profile, dy_profile, dz_profile)):
-            # The non-uniform lane has no 2-D reduction: it never reads
-            # ``mode`` and solves the full 3-D update on a one-cell-thick box.
-            # With PEC z walls that box keeps only Ez, so a 2d_tez model came
-            # back with every field zero and no message; with an absorber in
-            # z the one cell is not a 2-D problem at all.
-            raise ValueError(
-                f"mode={self._mode!r} cannot be combined with dx_profile / "
-                "dy_profile / dz_profile: the non-uniform lane solves 3-D "
-                "only and would ignore the mode. Build the 2-D problem as a "
-                "thin 3-D box instead -- mode='3d', a domain one or two "
-                "cells thick in z, and z walls chosen for the polarization: "
-                "boundary=BoundarySpec(x=..., y=..., z='pec') keeps Ez "
-                "(TMz); z=Boundary(lo='pmc', hi='pmc') keeps Ex, Ey, Hz "
-                "(TEz).")
-
         if self._solver == "adi":
             if self._mode not in ("2d_tmz", "3d"):
                 raise ValueError("solver='adi' supports mode='3d' or mode='2d_tmz'")

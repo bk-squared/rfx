@@ -2789,6 +2789,7 @@ class _ExecuteMixin:
         # dispatch. This is execution legality, independent of preflight.
         if self._solver == "adi":
             self._require_uniform_mesh("solver='adi'")
+        self._require_mode_the_nonuniform_lane_solves()
         is_nonuniform = self._uses_nonuniform_mesh
 
         def _reject_lane_precision(lane: str) -> None:

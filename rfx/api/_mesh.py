@@ -160,6 +160,39 @@ class _MeshMixin:
         return (self._build_nonuniform_grid() if self._uses_nonuniform_mesh
                 else self._build_grid())
 
+    def _require_mode_the_nonuniform_lane_solves(self):
+        """The non-uniform lane has no 2-D reduction: it never reads ``mode``
+        and runs the full 3-D update on the thin box a 2-D model declares.
+        Decided on the RESOLVED mesh, because auto-meshing, a design-document
+        round trip or a cloned simulation can all make the mesh non-uniform
+        without the caller passing a profile.
+
+        * ``2d_tmz`` between PEC z walls IS that 3-D box (Ez is the only
+          field a one-cell PEC box keeps; byte-identical to ``mode="3d"``),
+          so it runs.
+        * ``2d_tez`` came back with every field zero for the same reason,
+          and ``2d_tmz`` with any other z wall is not a 2-D problem. Refused.
+        """
+        mode = getattr(self, "_mode", "3d")
+        if mode == "3d" or not self._uses_nonuniform_mesh:
+            return
+        spec = getattr(self, "_boundary_spec", None)
+        z_walls = ((spec.z.lo, spec.z.hi) if spec is not None
+                   else (self._boundary, self._boundary))
+        if mode == "2d_tmz" and all(str(w) == "pec" for w in z_walls):
+            return
+        raise ValueError(
+            f"mode={mode!r} resolved to a non-uniform mesh (an axis profile "
+            "was given, or auto-meshing produced one), and the non-uniform "
+            "lane solves 3-D only -- it would ignore the mode"
+            + (" and return zero TEz fields" if mode == "2d_tez" else "")
+            + ". Build the 2-D problem as a thin 3-D box: mode='3d' and, "
+            "for TMz, a z extent of ONE cell with PEC z walls; for TEz, a z "
+            "extent of TWO cells with magnetic z walls, "
+            "boundary=BoundarySpec(x=..., y=..., z=Boundary(lo='pmc', "
+            "hi='pmc')) (one cell between magnetic walls holds no TEz field "
+            "either). Or pass an explicit uniform dx= so the 2-D lane runs.")
+
     def _require_uniform_mesh(self, consumer):
         if self._uses_nonuniform_mesh:
             raise NotImplementedError(

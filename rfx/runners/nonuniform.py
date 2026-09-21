@@ -701,6 +701,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     -------
     Result
     """
+    # every single-device non-uniform solve (run AND forward) enters here
+    sim._require_mode_the_nonuniform_lane_solves()
     from rfx.api import Result
 
     _validate_interface_eps_nu(sim, subpixel_smoothing=subpixel_smoothing,

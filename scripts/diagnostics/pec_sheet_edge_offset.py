@@ -15,7 +15,7 @@ so it reads the fin's effective length.
 * today's uniform grid at dx = 1.0 and 0.5 mm, the drawn length swept through
   the cells in 0.125 mm steps;
 * the same sweep on :func:`rfx.mesh_edges.edge_aware_profile`. The
-  non-uniform lane is 3-D only (``mode=`` with a profile is refused), so TMz runs as a
+  non-uniform lane ignores ``mode=`` and solves a 3-D box, so TMz runs as a
   one-cell-thick PEC box (Ez survives) and TEz as a two-cell box with
   magnetic walls in z (Ex, Ey, Hz survive); on the uniform grid that 3-D TEz
   arrangement reproduces the 2-D lane's number.
@@ -111,7 +111,7 @@ def lowest_resonance(mode, dx, fin_len, *, dy_profile=None, periods=60,
                          **kw)
     else:
         sim = Simulation(freq_max=hi, domain=(A, B, lz), boundary="pec",
-                         dx=cell, mode="3d" if kw else mode, **kw)
+                         dx=cell, mode=mode, **kw)
     tip = None
     if eps_left is not None:
         sim.add_material("fill", eps_r=float(eps_left))
