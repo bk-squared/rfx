@@ -130,6 +130,28 @@ AD_FD_H = 1e-3
 AD_BAND = (3e9, 5e9)          # objective 1 averages |S21|^2 over this band
 MIN_FD_ULP_SPAN = 1.0e4       # below this the FD reference resolves nothing
 
+# What the reverse-mode tape costs, and the card it does not fit on. Quoted
+# from the FAILED first attempt so the stage's memory is a recorded number and
+# not folklore: the allocation, the geometry that produces it, and the run.
+AD_PRIOR_ATTEMPT = {
+    "outcome": "RESOURCE_EXHAUSTED",
+    "preset": "gpu-rtx4090",
+    "device_memory_gb": 24,
+    "requested_bytes": 15115664096,
+    "requested_gib": 15115664096 / 2 ** 30,
+    "checkpoint_segments": 118,
+    "inner_segment_steps": 127,
+    "leapfrog_carry_bytes": 56623104,
+    "carry_note": ("field carry plus the CPML psi slabs at the 100 um rung; "
+                   "118 checkpoints plus the 127 steps of the segment being "
+                   "replayed is 245 carries in one allocation"),
+    "allocator_note": "the allocator's own summary showed the card about 55 % full",
+    "compute_run_id": "369367262574",
+    "measured_at_commit": "5b65e770b5fff2a7f7b8c735ec4a3d4869943dc4",
+    "resolution": ("re-run unchanged on gpu-a6000-1 (48 GB); nothing about the "
+                   "board, the record length or the objectives was reduced"),
+}
+
 # The bar (contract, "The v2.0 battery for lumped/wire, MSL and coax").
 # Recorded beside each measurement; never applied as a verdict here.
 BAR = {
@@ -857,6 +879,9 @@ def stage_adfd(args, out: Path) -> None:
         "theta0": AD_THETA0, "fd_h": AD_FD_H,
         "n_steps": n_steps, "checkpoint_segments": segments,
         "min_fd_ulp_span": MIN_FD_ULP_SPAN,
+        "device": [str(d) for d in jax.devices()],
+        "device_kind": [getattr(d, "device_kind", "?") for d in jax.devices()],
+        "prior_attempt": AD_PRIOR_ATTEMPT,
         "objectives": {
             "band_mean_s21_sq": {"band_hz": list(AD_BAND),
                                  "what": "mean over the band of |S21(f)|^2"},
@@ -1173,6 +1198,126 @@ def fixture_provenance(p: dict, index: dict | None, stage_file: str) -> dict:
     return out
 
 
+def drive_spectrum_rel_db(f_hz: float, f0: float, bandwidth: float) -> float:
+    """A differentiated Gaussian's amplitude at ``f_hz``, in dB below its own
+    peak. ``s(t) = -2 (t-t0)/tau exp(-((t-t0)/tau)^2)`` with
+    ``tau = 1/(f0 bw pi)`` transforms to ``|S(f)| ~ f exp(-(f/(f0 bw))^2)``,
+    whose peak sits at ``f0 bw / sqrt(2)``. Closed form, no measurement."""
+    w = f0 * bandwidth
+    peak_f = w / math.sqrt(2.0)
+    amp = f_hz * math.exp(-(f_hz / w) ** 2)
+    peak = peak_f * math.exp(-0.5)
+    return 20.0 * math.log10(max(amp, 1e-300) / peak)
+
+
+def pilot_drive_comparison(pilot: dict, num_periods: float, chosen: str) -> dict:
+    """The two drives on the same board at the same record length.
+
+    Which bins an extractor calls reliable depends on how much the drive put
+    there, and that is a fact about a band and a pulse rather than about this
+    battery — which is why it is its own block with the bins named.
+    """
+    out: dict = {
+        "num_periods": float(num_periods),
+        "battery_drive": chosen,
+        "band_hz": [float(FREQS[0]), float(FREQS[-1])],
+        "drives": {},
+        "what_reliable_means": (
+            "reliable[p, k] is False when both |V| and |I| at port p fall below "
+            "10 % of that record's own band medians in at least one driven run; "
+            "a true transmission zero can do that legitimately"),
+    }
+    for c in pilot.get("cases", []):
+        if float(c["num_periods"]) != float(num_periods):
+            continue
+        r = c["result"]
+        rel = np.asarray(r["reliable"]) if r["reliable"] is not None else None
+        freqs = np.asarray(r["freqs_hz"], dtype=float)
+        wf = DRIVES[c["drive"]]
+        bad = []
+        if rel is not None:
+            for p in range(rel.shape[0]):
+                for k in np.flatnonzero(~rel[p]):
+                    bad.append({"port_index": int(p), "bin_index": int(k),
+                                "hz": float(freqs[k])})
+        S = _S(r)
+        out["drives"][c["drive"]] = {
+            "f0_hz": wf["f0"], "bandwidth": wf["bandwidth"],
+            "reliable_fraction": None if rel is None else float(rel.mean()),
+            "n_unreliable_pairs": len(bad),
+            "unreliable": bad,
+            "spectrum_rel_db_at_band_lo": drive_spectrum_rel_db(
+                float(FREQS[0]), wf["f0"], wf["bandwidth"]),
+            "spectrum_rel_db_at_band_hi": drive_spectrum_rel_db(
+                float(FREQS[-1]), wf["f0"], wf["bandwidth"]),
+            "settling_db": r["settling_db"],
+            "max_column_power": float(np.max(np.sum(np.abs(S) ** 2, axis=0))),
+            "max_sigma_max_excess": (None if r["sigma_max_excess"] is None
+                                     else float(np.max(r["sigma_max_excess"]))),
+            "wall_s": c["wall_s"],
+        }
+    return out
+
+
+def richardson(f_coarse: float, f_fine: float, order: int, ratio: float = 2.0) -> float:
+    """``f_fine + (f_fine - f_coarse) / (ratio**order - 1)``.
+
+    The limit a sequence converging at ``order`` in the cell size would reach.
+    Arithmetic on two numbers; it asserts nothing about the order the sequence
+    actually has, which is what the successive-difference ratio is for.
+    """
+    return f_fine + (f_fine - f_coarse) / (ratio ** order - 1.0)
+
+
+def _notch_extrapolation(fix: dict, have: list[str], lad: dict) -> dict | None:
+    """The limits a first- and a second-order sequence would reach, from the two
+    finest rungs, against every analytic reference the battery records.
+
+    Arithmetic, labelled as such. Neither limit is a claim about the order of
+    the sequence: the successive-difference ratio beside them is what speaks to
+    that, and with three rungs it is one number.
+    """
+    if len(have) < 2:
+        return None
+    coarse_key, fine_key = have[-2], have[-1]
+    out: dict = {
+        "kind": "arithmetic only — no claim about the sequence's actual order",
+        "from_rungs": [coarse_key, fine_key],
+        "refinement_ratio": 2.0,
+        "formula": "f_fine + (f_fine - f_coarse) / (ratio**order - 1)",
+        "successive_diff_ratio": lad.get("successive_diff_ratio"),
+        "readings": {},
+    }
+    for tag, key in (("s21_sq", "interp_hz"),
+                     ("magnitude", "interp_hz_on_magnitude")):
+        f_c = fix["solves"][coarse_key]["notch"][key]
+        f_f = fix["solves"][fine_key]["notch"][key]
+        limits = {f"order_{p}_hz": richardson(f_c, f_f, p) for p in (1, 2)}
+        entry = {"coarse_hz": f_c, "fine_hz": f_f, **limits}
+        # Against the declared-board closed form.
+        f_dec = fix["solves"][fine_key]["f_notch_analytic_hz"]
+        entry["vs_analytic_declared"] = {
+            "analytic_hz": f_dec,
+            **{f"order_{p}_frac": abs(limits[f"order_{p}_hz"] - f_dec) / f_dec
+               for p in (1, 2)},
+        }
+        # And against the same closed form fed each rung's SOLVED sheet size
+        # (trace W + 0.7 dx, stub L + 0.35 dx — the sheet-edge offset in
+        # rfx/mesh_edges.py). That reference moves with the rung, so it is
+        # listed per rung rather than collapsed to one number.
+        entry["vs_analytic_solved_per_rung"] = [{
+            "rung": k,
+            "analytic_solved_hz": fix["solves"][k]["f_notch_analytic_solved_hz"],
+            **{f"order_{p}_frac":
+               abs(limits[f"order_{p}_hz"]
+                   - fix["solves"][k]["f_notch_analytic_solved_hz"])
+               / fix["solves"][k]["f_notch_analytic_solved_hz"]
+               for p in (1, 2)},
+        } for k in have]
+        out["readings"][tag] = entry
+    return out
+
+
 def _load_stage(out: Path, name: str) -> dict | None:
     p = out / name
     if not p.exists():
@@ -1219,6 +1364,8 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                 if c["result"]["sigma_max_excess"] is not None else None,
                 "wall_s": c["wall_s"],
             } for c in pilot["cases"]],
+            "drive_comparison": pilot_drive_comparison(
+                pilot, DEFAULT_NUM_PERIODS, args.drive),
         }
 
     for dut in DUTS:
@@ -1363,6 +1510,18 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
             lad["successive_diff_ratio"] = (
                 None if len(diffs) < 2 or diffs[0] == 0.0 else diffs[1] / diffs[0])
             lad["notch_frac_vs_finest"] = [abs(f - fs[-1]) / fs[-1] for f in fs]
+            # The three readings side by side at every rung, with the spread
+            # between the two interpolations.
+            lad["notch_readings"] = [{
+                "rung": k,
+                "bin_hz": fix["solves"][k]["notch"]["bin_hz"],
+                "interp_hz_on_s21_sq": fix["solves"][k]["notch"]["interp_hz"],
+                "interp_hz_on_magnitude":
+                    fix["solves"][k]["notch"]["interp_hz_on_magnitude"],
+                "estimator_spread_hz": fix["solves"][k]["notch"]["estimator_spread_hz"],
+                "bin_width_hz": fix["solves"][k]["notch"]["bin_width_hz"],
+            } for k in have]
+            lad["extrapolation"] = _notch_extrapolation(fix, have, lad)
         # |S21| and |S11| against the finest rung, off the notch core.
         fine = fix["solves"][have[-1]]
         idx = {"s21": (1, 0), "s11": (0, 0)}
