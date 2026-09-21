@@ -263,14 +263,9 @@ def _accumulate_oracle(box, phasors, *, dt, n_steps,
     return data
 
 
-def _relative_error(dx_w, dy_w, dz_w, grid, *, collocation="face_centre",
-                    margin=3, e_time_offset=1.0, theta=None, phi=None):
-    """Complex relative L2 error of the transformed far field, one mesh.
-
-    Builds the box ``margin`` cells inside the array on every axis, fills the
-    lattice with the exact dipole fields, runs the production accumulate +
-    transform, and compares with the closed-form far field.
-    """
+def _accumulated_case(dx_w, dy_w, dz_w, grid, *, collocation="face_centre",
+                      margin=3, e_time_offset=1.0):
+    """Box, accumulated DFT and DFT scale for one mesh of the dipole oracle."""
     nx, ny, nz = len(dx_w), len(dy_w), len(dz_w)
     i_lo, i_hi = margin, nx - margin
     j_lo, j_hi = margin, ny - margin
@@ -293,6 +288,22 @@ def _relative_error(dx_w, dy_w, dz_w, grid, *, collocation="face_centre",
     n_steps = STEPS_PER_PERIOD
     data = _accumulate_oracle(box, phasors, dt=dt, n_steps=n_steps,
                               e_time_offset=e_time_offset)
+    # A running DFT of a real single-tone field over an integer number of
+    # periods returns (total time / 2) times the phasor, exactly.
+    return box, data, 0.5 * n_steps * dt, (r_src, me, mm)
+
+
+def _relative_error(dx_w, dy_w, dz_w, grid, *, collocation="face_centre",
+                    margin=3, e_time_offset=1.0, theta=None, phi=None):
+    """Complex relative L2 error of the transformed far field, one mesh.
+
+    Builds the box ``margin`` cells inside the array on every axis, fills the
+    lattice with the exact dipole fields, runs the production accumulate +
+    transform, and compares with the closed-form far field.
+    """
+    box, data, scale, (r_src, me, mm) = _accumulated_case(
+        dx_w, dy_w, dz_w, grid, collocation=collocation, margin=margin,
+        e_time_offset=e_time_offset)
 
     if theta is None:
         theta = np.linspace(0.05, np.pi - 0.05, 25)
@@ -300,9 +311,6 @@ def _relative_error(dx_w, dy_w, dz_w, grid, *, collocation="face_centre",
         phi = np.linspace(0.0, 2.0 * np.pi, 16, endpoint=False)
     ff = compute_far_field(data, box, grid, theta, phi)
 
-    # A running DFT of a real single-tone field over an integer number of
-    # periods returns (total time / 2) times the phasor, exactly.
-    scale = 0.5 * n_steps * dt
     got = np.stack([np.asarray(ff.E_theta[0]) / scale,
                     np.asarray(ff.E_phi[0]) / scale])
     ref_th, ref_ph = _dipole_far_field(theta, phi, r_src, me, mm)
@@ -345,6 +353,85 @@ def test_second_order_oracle_convergence_rate():
 
 
 # ---------------------------------------------------------------------------
+# The box stays a valid JAX pytree
+# ---------------------------------------------------------------------------
+
+def test_box_is_a_valid_jax_pytree():
+    """Every field of NTFFBox is a pytree LEAF, so none of them may be a str.
+
+    ``compute_far_field_jax`` runs inside ``jax.grad`` and the box travels
+    with it. A non-numeric leaf makes the whole box unusable as a jit/vmap
+    argument and as a ``tree_map`` target — which it was not before the
+    face-cell layout was recorded on it.
+    """
+    from rfx.grid import Grid
+    from rfx.farfield import make_ntff_box
+
+    grid = Grid(freq_max=5e9, domain=(0.06, 0.06, 0.06), dx=3.0e-3,
+                cpml_layers=4)
+    box = make_ntff_box(grid, (0.021,) * 3, (0.039,) * 3, [3e9])
+    assert box.collocation == "face_centre"
+
+    leaves = jax.tree_util.tree_leaves(box)
+    assert leaves, "box has no leaves"
+    for leaf in leaves:
+        # Raises TypeError for anything JAX cannot make an array of.
+        jnp.asarray(leaf)
+
+    # A jit call taking the box as an argument must trace and return.
+    assert float(jax.jit(lambda bx: bx.freqs.sum())(box)) == pytest.approx(3e9)
+
+    # tree_map must round-trip it with the layout preserved.
+    doubled = jax.tree_util.tree_map(lambda x: x, box)
+    assert doubled.collocation == "face_centre"
+    assert doubled.i_lo == box.i_lo and doubled.w_x_lo == box.w_x_lo
+
+
+# ---------------------------------------------------------------------------
+# The differentiable transform must agree with the numpy one
+# ---------------------------------------------------------------------------
+
+def _numpy_jax_parity(dx_w, dy_w, dz_w, grid):
+    """Relative L2 between compute_far_field and compute_far_field_jax."""
+    from rfx.farfield import compute_far_field_jax
+
+    box, data, _scale, _src = _accumulated_case(dx_w, dy_w, dz_w, grid)
+    theta = np.linspace(0.05, np.pi - 0.05, 17)
+    phi = np.linspace(0.0, 2.0 * np.pi, 12, endpoint=False)
+    ref = compute_far_field(data, box, grid, theta, phi)
+    got = compute_far_field_jax(data, box, grid, theta, phi)
+    a = np.stack([np.asarray(ref.E_theta[0]), np.asarray(ref.E_phi[0])])
+    b = np.stack([np.asarray(got.E_theta[0]), np.asarray(got.E_phi[0])])
+    return float(np.linalg.norm(b - a) / np.linalg.norm(a))
+
+
+def test_jax_transform_matches_numpy_on_a_uniform_box():
+    """The two implementations must place the samples in the same place.
+
+    ``compute_far_field_jax`` is the one that runs inside ``jax.grad``; it
+    carries its own copy of the face geometry, so it can drift from the numpy
+    twin without a single existing test noticing. The bound is set by float32
+    in the JAX path, not by the geometry.
+    """
+    dx = LAMBDA / 20
+    n = int(round(0.7 * 20)) + 6
+    w = np.full(n, dx)
+    err = _numpy_jax_parity(w, w, w, _UniformGrid(dx, n))
+    assert err < 1.0e-5, f"numpy/JAX far fields disagree by {err:.3e}"
+
+
+def test_jax_transform_matches_numpy_on_a_graded_box():
+    """Same, with every axis graded, so the edge-array branch is exercised."""
+    dx = LAMBDA / 20
+    n = int(round(0.7 * 20)) + 6
+    gx = _graded_widths(n, n * dx, end_ratio=2.0)
+    gy = _graded_widths(n, n * dx, end_ratio=2.5)
+    gz = _graded_widths(n, n * dx, end_ratio=3.0)
+    err = _numpy_jax_parity(gx, gy, gz, _GradedGrid(gx, gy, gz))
+    assert err < 1.0e-5, f"numpy/JAX far fields disagree by {err:.3e}"
+
+
+# ---------------------------------------------------------------------------
 # T2 — the same on a graded mesh (dx_arr / dy_arr / dz path)
 # ---------------------------------------------------------------------------
 
@@ -361,35 +448,146 @@ def _graded_widths(n, total, end_ratio=3.0):
     return w * (total / w.sum())
 
 
-def _graded_case(cells_per_lambda, box_lambda=0.7, margin=3):
+def _graded_case(cells_per_lambda, axis=2, box_lambda=0.7, margin=3):
     dx = LAMBDA / cells_per_lambda
     n = int(round(box_lambda * cells_per_lambda)) + 2 * margin
     uniform = np.full(n, dx)
-    graded = _graded_widths(n, n * dx)
-    grid = _GradedGrid(uniform, uniform, graded)
-    return _relative_error(uniform, uniform, graded, grid, margin=margin)
+    widths = [uniform, uniform, uniform]
+    widths[axis] = _graded_widths(n, n * dx)
+    grid = _GradedGrid(*widths)
+    return _relative_error(*widths, grid, margin=margin)
 
 
+@pytest.mark.parametrize("axis", [0, 1, 2], ids=["graded-x", "graded-y", "graded-z"])
 @pytest.mark.parametrize("cells_per_lambda,bound", [(20, 7.0e-3), (40, 2.0e-3)])
-def test_second_order_oracle_graded_axis(cells_per_lambda, bound):
-    """A z-graded mesh must stay accurate and keep improving with refinement.
+def test_second_order_oracle_graded_axis(axis, cells_per_lambda, bound):
+    """A graded mesh must stay accurate and keep improving with refinement.
 
-    The z cells stretch by 1.15 per cell over the top two thirds of the axis,
-    so the two cells straddling a z face differ in width and the half-cell
-    interpolation of the tangential H has to use their real widths.
+    The cells on one axis stretch smoothly by 3x across it, so the two cells
+    straddling each face of that axis differ in width and the half-cell
+    interpolation of the tangential H has to use their real widths. Run on
+    every axis in turn: the accumulator's slicing, the edge arrays and the
+    area element are all written out per axis, so a defect can hide on one.
     """
-    err = _graded_case(cells_per_lambda)
+    err = _graded_case(cells_per_lambda, axis=axis)
     assert err < bound, (
         f"graded-mesh NTFF far field off by {err:.3e} at lambda/"
         f"{cells_per_lambda}-class sampling (bound {bound:.1e})")
 
 
-def test_graded_axis_improves_with_refinement():
-    coarse = _graded_case(20)
-    fine = _graded_case(40)
+@pytest.mark.parametrize("axis", [0, 1, 2], ids=["graded-x", "graded-y", "graded-z"])
+def test_graded_axis_improves_with_refinement(axis):
+    coarse = _graded_case(20, axis=axis)
+    fine = _graded_case(40, axis=axis)
     assert fine < coarse / 2.0, (
         f"graded-mesh error did not improve with refinement: {coarse:.3e} -> "
         f"{fine:.3e}")
+
+
+# ---------------------------------------------------------------------------
+# The accumulator must land exactly on the face-cell centre
+# ---------------------------------------------------------------------------
+
+def _linear_coeffs(seed):
+    """Distinct (a, bx, by, bz) per field component, none of them zero."""
+    rng = np.random.default_rng(seed)
+    return rng.uniform(0.5, 1.5), *rng.uniform(20.0, 90.0, size=3)
+
+
+def test_accumulator_lands_on_the_face_cell_centre_exactly():
+    """A field linear in space must come out of the accumulator exactly.
+
+    Both moves the accumulator makes — the in-plane midpoint between two
+    nodes, and the weighted interpolation of the tangential H across the face
+    — are linear interpolations, and linear interpolation is exact for a
+    linear field. So every one of the four stored components of every one of
+    the six faces has to equal the analytic field AT THE FACE-CELL CENTRE to
+    round-off.
+
+    That makes any wrong weight an O(1) error rather than an O(h^2) one: a
+    weight applied to the wrong side of the face, the two weights swapped, or
+    the x and y cell widths crossed all land the H sample somewhere that is
+    not the face, and a field with a non-zero slope along the normal says so
+    immediately. The far-field oracle cannot see these — it is second order
+    either way.
+
+    Positions here are built from the cell widths this test defines, not from
+    any helper in ``rfx/farfield.py``.
+    """
+    n = 10
+    # A different grading on each axis, so crossing two of them shows.
+    wx = _graded_widths(n, n * 2.0e-3, end_ratio=2.0)
+    wy = _graded_widths(n, n * 2.0e-3, end_ratio=3.0)
+    wz = _graded_widths(n, n * 2.0e-3, end_ratio=4.0)
+    grid = _GradedGrid(wx, wy, wz)
+
+    xn, yn, zn = _nodes(wx)[:n], _nodes(wy)[:n], _nodes(wz)[:n]
+    xc = 0.5 * (_nodes(wx)[:-1] + _nodes(wx)[1:])
+    yc = 0.5 * (_nodes(wy)[:-1] + _nodes(wy)[1:])
+    zc = 0.5 * (_nodes(wz)[:-1] + _nodes(wz)[1:])
+
+    # Asymmetric face indices, so a swapped lo/hi weight cannot cancel.
+    box = NTFFBox(i_lo=2, i_hi=n - 3, j_lo=3, j_hi=n - 2, k_lo=2, k_hi=n - 2,
+                  freqs=jnp.asarray([0.0], dtype=jnp.float32))
+    box = with_face_centre_collocation(box, grid)
+
+    comps = ("ex", "ey", "ez", "hx", "hy", "hz")
+    coeffs = {c: _linear_coeffs(i) for i, c in enumerate(comps)}
+
+    def analytic(comp, X, Y, Z):
+        a, bx, by, bz = coeffs[comp]
+        return a + bx * X + by * Y + bz * Z
+
+    layout = {
+        "ex": (xc, yn, zn), "ey": (xn, yc, zn), "ez": (xn, yn, zc),
+        "hx": (xn, yc, zc), "hy": (xc, yn, zc), "hz": (xc, yc, zn),
+    }
+
+    with enable_x64():
+        arrays = {}
+        for comp, (ax, ay, az) in layout.items():
+            X, Y, Z = np.meshgrid(ax, ay, az, indexing="ij")
+            arrays[comp] = jnp.asarray(analytic(comp, X, Y, Z),
+                                       dtype=jnp.float64)
+        state = FDTDState(step=jnp.asarray(0, dtype=jnp.int32), **arrays)
+        dt = 1.0e-12
+        data = init_ntff_data(box, field_dtype=jnp.float64)
+        data = accumulate_ntff(data, state, box, dt,
+                               jnp.asarray(0, dtype=jnp.int32))
+
+        # At zero frequency both phase factors are exactly dt, so the
+        # accumulator holds dt times the collocated sample.
+        faces = {
+            "x_lo": (data.x_lo, ("ey", "ez", "hy", "hz"),
+                     (xn[box.i_lo], yc[box.j_lo:box.j_hi], zc[box.k_lo:box.k_hi]), 0),
+            "x_hi": (data.x_hi, ("ey", "ez", "hy", "hz"),
+                     (xn[box.i_hi], yc[box.j_lo:box.j_hi], zc[box.k_lo:box.k_hi]), 0),
+            "y_lo": (data.y_lo, ("ex", "ez", "hx", "hz"),
+                     (xc[box.i_lo:box.i_hi], yn[box.j_lo], zc[box.k_lo:box.k_hi]), 1),
+            "y_hi": (data.y_hi, ("ex", "ez", "hx", "hz"),
+                     (xc[box.i_lo:box.i_hi], yn[box.j_hi], zc[box.k_lo:box.k_hi]), 1),
+            "z_lo": (data.z_lo, ("ex", "ey", "hx", "hy"),
+                     (xc[box.i_lo:box.i_hi], yc[box.j_lo:box.j_hi], zn[box.k_lo]), 2),
+            "z_hi": (data.z_hi, ("ex", "ey", "hx", "hy"),
+                     (xc[box.i_lo:box.i_hi], yc[box.j_lo:box.j_hi], zn[box.k_hi]), 2),
+        }
+        for name, (acc, comps_here, (cx, cy, cz), axis) in faces.items():
+            got = np.asarray(acc[0]).real.astype(np.float64) / dt
+            if axis == 0:
+                Y, Z = np.meshgrid(cy, cz, indexing="ij")
+                X = np.full_like(Y, cx)
+            elif axis == 1:
+                X, Z = np.meshgrid(cx, cz, indexing="ij")
+                Y = np.full_like(X, cy)
+            else:
+                X, Y = np.meshgrid(cx, cy, indexing="ij")
+                Z = np.full_like(X, cz)
+            for c, comp in enumerate(comps_here):
+                want = analytic(comp, X, Y, Z)
+                err = np.max(np.abs(got[..., c] - want)) / np.max(np.abs(want))
+                assert err < 1e-11, (
+                    f"face {name}, component {comp}: accumulated sample is not "
+                    f"the field at the face-cell centre (max rel dev {err:.3e})")
 
 
 # ---------------------------------------------------------------------------
@@ -501,7 +699,7 @@ def test_box_touching_the_array_boundary_is_refused():
     n = 12
     box = NTFFBox(i_lo=0, i_hi=n - 1, j_lo=2, j_hi=n - 2, k_lo=2, k_hi=n - 2,
                   freqs=jnp.asarray([FREQ], dtype=jnp.float32),
-                  collocation="face_centre")
+                  face_centre=True)
     zeros = jnp.zeros((n, n, n), dtype=jnp.float32)
     state = FDTDState(ex=zeros, ey=zeros, ez=zeros, hx=zeros, hy=zeros,
                       hz=zeros, step=jnp.asarray(0, dtype=jnp.int32))
@@ -545,9 +743,8 @@ def test_normal_interpolation_lands_on_the_face_plane():
     assert box.w_x_lo == 0.5 and box.w_y_hi == 0.5
 
 
-def test_boxes_built_for_a_new_run_collocate_at_the_face_centre():
-    """The second-order layout has to reach the runners, not just exist."""
-    from rfx import Simulation
+def test_box_constructors_collocate_at_the_face_centre():
+    """The two shared constructors build the second-order layout."""
     from rfx.farfield import make_ntff_box
     from rfx.grid import Grid
 
@@ -559,12 +756,58 @@ def test_boxes_built_for_a_new_run_collocate_at_the_face_centre():
                              k_lo=4, k_hi=16,
                              freqs=jnp.asarray([3e9])).collocation == "face_centre"
 
+
+def test_uniform_runner_hands_back_a_face_centre_box():
+    """The second-order layout has to reach the run, not just the constructor."""
+    from rfx import Simulation
+
     sim = Simulation(freq_max=5e9, domain=(0.06, 0.06, 0.06), dx=3.0e-3,
                      boundary="cpml", cpml_layers=4)
     sim.add_source((0.03, 0.03, 0.03), "ez")
     sim.add_ntff_box(corner_lo=(0.021,) * 3, corner_hi=(0.039,) * 3,
                      freqs=[3e9])
     res = sim.run(n_steps=8, skip_preflight=True)
+    assert res.ntff_box.collocation == "face_centre"
+
+
+def test_nonuniform_runner_hands_back_a_face_centre_box():
+    """The non-uniform runner builds its box inline, bypassing make_ntff_box.
+
+    Deleting its ``with_face_centre_collocation`` call leaves the accumulator
+    on the legacy layout and the whole far-field suite green, because every
+    other test that exercises this lane has a tolerance band wider than the
+    difference.
+    """
+    from rfx import Simulation
+
+    sim = Simulation(freq_max=5e9, domain=(0.06, 0.06, 0.06), dx=3.0e-3,
+                     dz_profile=np.full(28, 3.0e-3),
+                     boundary="cpml", cpml_layers=4)
+    sim.add_source((0.03, 0.03, 0.03), "ez")
+    sim.add_ntff_box(corner_lo=(0.021,) * 3, corner_hi=(0.039,) * 3,
+                     freqs=[3e9])
+    res = sim.run(n_steps=8, skip_preflight=True)
+    assert type(res.grid).__name__ == "NonUniformGrid", "not the NU lane"
+    assert res.ntff_box.collocation == "face_centre"
+
+
+def test_subgridded_runner_hands_back_a_face_centre_box():
+    """Same for the subgridded runner, which also builds its box inline.
+
+    The subgridded lane is an EXPERIMENTAL prototype (3D SBP-SAT falsified,
+    PR #90), so this is a wiring assertion only — no accuracy claim is made
+    for its far field here.
+    """
+    from rfx import Simulation
+
+    sim = Simulation(freq_max=5e9, domain=(0.06, 0.06, 0.06), dx=3.0e-3,
+                     boundary="cpml", cpml_layers=4)
+    sim.add_source((0.03, 0.03, 0.012), "ez")
+    sim.add_refinement(z_range=(0.0, 0.024), ratio=2, validation="research")
+    sim.add_ntff_box(corner_lo=(0.021, 0.021, 0.006),
+                     corner_hi=(0.039, 0.039, 0.018), freqs=[3e9])
+    res = sim.run(n_steps=8, skip_preflight=True)
+    assert res.ntff_data is not None, "subgrid lane accumulated no NTFF data"
     assert res.ntff_box.collocation == "face_centre"
 
 
@@ -598,7 +841,7 @@ def _scan_once(field_dtype, accum_dtype, complex_fields=False):
     n = 12
     box = NTFFBox(i_lo=2, i_hi=n - 2, j_lo=2, j_hi=n - 2, k_lo=2, k_hi=n - 2,
                   freqs=jnp.asarray([FREQ], dtype=jnp.float32),
-                  collocation="face_centre", w_x_lo=0.4, w_x_hi=0.6)
+                  face_centre=True, w_x_lo=0.4, w_x_hi=0.6)
     data = init_ntff_data(box, field_dtype=field_dtype)
     arr = jnp.ones((n, n, n), dtype=field_dtype)
     state = FDTDState(ex=arr, ey=arr, ez=arr, hx=arr, hy=arr, hz=arr,

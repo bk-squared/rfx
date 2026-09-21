@@ -53,27 +53,38 @@ class NTFFBox(NamedTuple):
     cpml_hi_z: int = 0
     # Where on a face cell the four stored tangential components live.
     #
-    # "face_centre" — the accumulator holds E and H already moved to the
-    #   CENTRE of the face cell, so the surface integral is a midpoint rule
-    #   and the transform is second order in the cell size. Every path that
-    #   builds a box for a NEW run sets this.
-    # "node" — the legacy layout: each component is stored exactly where the
+    # True — the accumulator holds E and H already moved to the CENTRE of the
+    #   face cell, so the surface integral is a midpoint rule and the
+    #   transform is second order in the cell size. Every path that builds a
+    #   box for a NEW run sets this.
+    # False — the legacy layout: each component is stored exactly where the
     #   Yee lattice puts it and the integral places all four at the cell's
     #   lower-corner node. First order, and the tangential H is half a cell
     #   off the face along the normal. Kept as the DEFAULT so accumulators
     #   dumped by an earlier run are read back with the geometry they were
     #   accumulated with instead of being silently reinterpreted.
-    collocation: str = "node"
-    # Linear weight on the H sample one cell INSIDE the face (index ``idx-1``)
-    # when the tangential H is interpolated across the face onto the node
-    # plane. ``w = d_out / (d_in + d_out)`` from the two cell widths adjacent
-    # to the face; 0.5 on a uniform axis. Unused when collocation == "node".
+    #
+    # This is a bool and not the readable string, because every field of this
+    # NamedTuple is a JAX PYTREE LEAF: a str leaf makes the whole box an
+    # invalid argument to ``jax.jit``/``vmap``/``tree_map``, which it was not
+    # before this field existed. Read ``box.collocation`` for the name.
+    face_centre: bool = False
+    # Linear weight on the H sample at the LOWER-INDEX side of the face
+    # (index ``idx-1``) when the tangential H is interpolated across the face
+    # onto the node plane. ``w = d[idx] / (d[idx-1] + d[idx])`` from the two
+    # cell widths adjacent to the face; 0.5 on a uniform axis. Unused when
+    # ``face_centre`` is False.
     w_x_lo: float = 0.5
     w_x_hi: float = 0.5
     w_y_lo: float = 0.5
     w_y_hi: float = 0.5
     w_z_lo: float = 0.5
     w_z_hi: float = 0.5
+
+    @property
+    def collocation(self) -> str:
+        """Readable name of the face-cell layout: face_centre or node."""
+        return "face_centre" if self.face_centre else "node"
 
     @classmethod
     def from_grid(cls, grid, *, i_lo, i_hi, j_lo, j_hi, k_lo, k_hi, freqs,
@@ -171,37 +182,132 @@ def _cell_widths(grid, axis: int):
 
 
 def _normal_weight(widths, idx: int) -> float:
-    """Weight on the H sample at ``idx-1`` when interpolating onto node ``idx``.
+    """Weight on the LOWER-INDEX H sample when interpolating onto node ``idx``.
 
     The tangential H of a face at node plane ``idx`` is stored at the two
-    neighbouring CELL CENTRES, ``idx-1`` (inside the box) and ``idx``
-    (outside). The node sits ``d[idx-1]/2`` from the first and ``d[idx]/2``
-    from the second, so the linear weight on the inner sample is
-    ``d[idx] / (d[idx-1] + d[idx])`` — exactly 1/2 when the two cells are
-    the same width.
+    neighbouring CELL CENTRES, ``idx-1`` (the lower-index side) and ``idx``
+    (the higher-index side). The node sits ``d[idx-1]/2`` from the first and
+    ``d[idx]/2`` from the second, so the linear weight on the lower-index
+    sample is ``d[idx] / (d[idx-1] + d[idx])`` — exactly 1/2 when the two
+    cells are the same width.
     """
     if widths is None:
         return 0.5
-    d_in = float(widths[idx - 1])
-    d_out = float(widths[idx])
-    total = d_in + d_out
+    if idx < 1 or idx >= len(widths):
+        # Python would wrap idx-1 to the last cell and return a plausible
+        # number for a face that has no cell on one side of it. A box at
+        # index 0 is refused later with a message; do not invent a weight
+        # for it here.
+        return 0.5
+    d_lo = float(widths[idx - 1])
+    d_hi = float(widths[idx])
+    total = d_lo + d_hi
     if total <= 0.0:
         return 0.5
-    return d_out / total
+    return d_hi / total
+
+
+_AXIS_NAMES = ("x", "y", "z")
+
+
+def _grid_axis_counts(grid):
+    """(nx, ny, nz) off a grid object, or None when it does not say."""
+    shape = getattr(grid, "shape", None)
+    if shape is not None and len(shape) == 3:
+        return tuple(int(v) for v in shape)
+    n = [getattr(grid, name, None) for name in ("nx", "ny", "nz")]
+    if all(v is not None for v in n):
+        return tuple(int(v) for v in n)
+    return None
+
+
+def _axis_node_positions(grid, axis: int, cpml_lo: int, n: int):
+    """Node coordinates on ``axis`` in metres, in the transform's own frame.
+
+    Physical zero sits at the inner edge of the lo-face CPML, the same
+    convention ``_face_positions`` uses, so these are the numbers a caller
+    passed to ``corner_lo`` / ``corner_hi``.
+    """
+    widths = _cell_widths(grid, axis)
+    if widths is not None:
+        edges = np.concatenate([[0.0], np.cumsum(widths)])
+        return edges[:n + 1] - edges[min(cpml_lo, len(edges) - 1)]
+    dx = float(getattr(grid, "dx", 0.0) or 0.0)
+    d = float(getattr(grid, "dy", dx)) if axis == 1 else dx
+    return (np.arange(n + 1, dtype=np.float64) - cpml_lo) * d
+
+
+def _face_centre_margin_failures(box: NTFFBox, counts):
+    """Axes whose faces have no room for the half-cell averages.
+
+    Returns a list of ``(axis_index, lo, hi, n)``.
+    """
+    bounds = ((box.i_lo, box.i_hi), (box.j_lo, box.j_hi), (box.k_lo, box.k_hi))
+    bad = []
+    for axis, ((lo, hi), n) in enumerate(zip(bounds, counts)):
+        if lo < 1 or hi > n - 1 or hi <= lo:
+            bad.append((axis, int(lo), int(hi), int(n)))
+    return bad
+
+
+def _raise_face_centre_margin(box: NTFFBox, counts, grid=None):
+    """Refuse a box with no room, naming the axis in cells and in metres."""
+    bad = _face_centre_margin_failures(box, counts)
+    if not bad:
+        return
+    cpml = ((box.cpml_lo_x, box.cpml_lo_y, box.cpml_lo_z))
+    lines = []
+    flat = False
+    for axis, lo, hi, n in bad:
+        name = _AXIS_NAMES[axis]
+        if n < 3:
+            flat = True
+            lines.append(
+                f"  {name}: the grid is {n} cell(s) deep, so no box can have "
+                f"a cell on both sides of both {name} faces")
+            continue
+        detail = f"  {name}: faces at index {lo} and {hi} of {n} cells"
+        if grid is not None:
+            pos = _axis_node_positions(grid, axis, int(cpml[axis]), n)
+            detail += (
+                f" ({pos[lo]:.6g} m and {pos[hi]:.6g} m); this axis can carry "
+                f"a face anywhere in [{pos[1]:.6g} m, {pos[n - 1]:.6g} m]")
+        lines.append(detail)
+    remedy = (
+        "the far-field transform needs a 3-D box: give every axis at least "
+        "three cells" if flat else
+        "move each face at least one cell further inside the domain")
+    raise ValueError(
+        "NTFF box has no room for the face-centre half-cell averages. "
+        "Moving a face sample to the centre of its cell reads one index "
+        "further out than the face itself, so every face must sit at least "
+        "one cell inside the array bounds (1 <= lo < hi <= n-1).\n"
+        + "\n".join(lines)
+        + f"\nRemedy: {remedy}. The corners come from "
+          "Simulation.add_ntff_box(corner_lo=..., corner_hi=...) "
+          "(rfx.farfield.make_ntff_box)."
+    )
 
 
 def with_face_centre_collocation(box: NTFFBox, grid) -> NTFFBox:
     """Return ``box`` set up to accumulate at the centre of each face cell.
 
-    Fills in ``collocation="face_centre"`` and the six half-cell
+    Fills in ``face_centre=True`` and the six half-cell
     interpolation weights read off this grid's cell widths. Any grid whose
     axes are uniform gets 1/2 on every face.
+
+    Refuses here, where the grid is still in hand and the offending face can
+    be named in metres, rather than leaving it to the index-only backstop in
+    ``accumulate_ntff``.
     """
+    counts = _grid_axis_counts(grid)
+    if counts is not None:
+        _raise_face_centre_margin(box, counts, grid)
     wx = _cell_widths(grid, 0)
     wy = _cell_widths(grid, 1)
     wz = _cell_widths(grid, 2)
     return box._replace(
-        collocation="face_centre",
+        face_centre=True,
         w_x_lo=_normal_weight(wx, box.i_lo),
         w_x_hi=_normal_weight(wx, box.i_hi),
         w_y_lo=_normal_weight(wy, box.j_lo),
@@ -313,21 +419,8 @@ def _require_face_centre_margin(box: NTFFBox, shape) -> None:
     just rounds the requested corners), so it is checked here — the one
     point all three runners pass through.
     """
-    nx, ny, nz = int(shape[0]), int(shape[1]), int(shape[2])
-    bad = []
-    for name, lo, hi, n in (
-        ("x", box.i_lo, box.i_hi, nx),
-        ("y", box.j_lo, box.j_hi, ny),
-        ("z", box.k_lo, box.k_hi, nz),
-    ):
-        if lo < 1 or hi > n - 1 or hi <= lo:
-            bad.append(f"{name}: [{lo}, {hi}) in a {n}-cell axis")
-    if bad:
-        raise ValueError(
-            "NTFF box has no room for the face-centre half-cell averages. "
-            "Each face must sit at least one cell inside the array bounds "
-            "(1 <= lo < hi <= n-1). Offending axes — " + "; ".join(bad)
-        )
+    counts = (int(shape[0]), int(shape[1]), int(shape[2]))
+    _raise_face_centre_margin(box, counts, grid=None)
 
 
 def accumulate_ntff(
@@ -385,7 +478,7 @@ def accumulate_ntff(
     i0, i1 = box.i_lo, box.i_hi
     j0, j1 = box.j_lo, box.j_hi
     k0, k1 = box.k_lo, box.k_hi
-    face_centre = getattr(box, "collocation", "node") == "face_centre"
+    face_centre = bool(getattr(box, "face_centre", False))
     if face_centre:
         _require_face_centre_margin(box, state.ex.shape)
 
@@ -703,7 +796,7 @@ def compute_far_field(
     i0, i1 = box.i_lo, box.i_hi
     j0, j1 = box.j_lo, box.j_hi
     k0, k1 = box.k_lo, box.k_hi
-    face_centre = getattr(box, "collocation", "node") == "face_centre"
+    face_centre = bool(getattr(box, "face_centre", False))
 
     # Build edge positions for graded axes (physical origin at the inner edge
     # of the lo-face CPML, matching the uniform formula (idx - cpml_lo) * d).
@@ -1019,7 +1112,7 @@ def compute_far_field_jax(
     i0, i1 = box.i_lo, box.i_hi
     j0, j1 = box.j_lo, box.j_hi
     k0, k1 = box.k_lo, box.k_hi
-    face_centre = getattr(box, "collocation", "node") == "face_centre"
+    face_centre = bool(getattr(box, "face_centre", False))
 
     # Edge positions for graded axes (#743: x and y were previously read as
     # the boundary scalar, so a graded in-plane mesh was integrated with the
