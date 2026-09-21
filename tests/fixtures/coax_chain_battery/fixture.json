@@ -16,8 +16,8 @@
   "settling_db": -40.0,
   "deep_null_db": -20.0
  },
- "assembled_utc": "2026-09-21T10:59:36.132608+00:00",
- "assembler_commit": "669c45cb59721955b5135056ad5c12b16e96b292",
+ "assembled_utc": "2026-09-21T11:11:15.961466+00:00",
+ "assembler_commit": "eb8a6c7d8d283545ee5aeb26c499604e788f09cb",
  "line": {
   "pin_radius_m": 0.000635,
   "outer_radius_m": 0.002055,
@@ -59711,6 +59711,174 @@
   ]
  },
  "adfd": {
+  "two_port": {
+   "provenance": {
+    "commit": "eb8a6c7d8d283545ee5aeb26c499604e788f09cb",
+    "jax_version": "0.6.2",
+    "numpy_version": "2.2.6",
+    "jax_default_backend": "gpu",
+    "jax_devices": [
+     "cuda:0"
+    ],
+    "jax_enable_x64": false,
+    "python": "3.10.13",
+    "platform": "Linux-5.15.0-191-generic-x86_64-with-glibc2.31",
+    "utc": "2026-09-21T11:04:12.599881+00:00",
+    "rfx_version": "1.8.0",
+    "rfx_import_tail": "rfx/__init__.py",
+    "rfx_resolved_inside_the_run_tree": true,
+    "compute_run_id": "369367262714",
+    "compute_run_dir": "coax-battery-adfd-twoport-retry-20260921T110221Z"
+   },
+   "lane": "two_port",
+   "dut": "bead",
+   "domain_m": [
+    0.008,
+    0.008,
+    0.022
+   ],
+   "rung_annulus_cells": 4,
+   "n_steps": 1500,
+   "record_units": 9.0,
+   "freqs_hz": [
+    5000000000.0,
+    8000000000.0,
+    11000000000.0
+   ],
+   "probe_count": 4,
+   "theta0": 4.0,
+   "fd_h": 0.008,
+   "min_fd_ulp_span": 10000.0,
+   "reduced_because": "neither coax lane exposes checkpoint_segments, so the reverse-mode tape keeps one full carry per step; the board's z extent and the frequency set are reduced to fit it, the cell size and cross-section are the battery's own. The estimate that forced it is in `cost`.",
+   "cost": {
+    "grid_shape": [
+     56,
+     56,
+     95
+    ],
+    "n_cells": 297920,
+    "dt_s": 6.768340786835069e-13,
+    "n_steps": 1500,
+    "n_drives": 2,
+    "n_freqs": 3,
+    "n_dft_planes": 16,
+    "cell_steps": 893760000,
+    "field_bytes_f32": 7150080,
+    "cpml_psi_bytes_f32": 7053312,
+    "dft_accumulator_bytes": 1204224,
+    "carry_bytes": 15407616,
+    "reverse_tape_estimate_bytes": 23111424000
+   },
+   "design_variable": {
+    "what": "theta REPLACES the eps_r multiplier inside the bead (eps_scale = theta there, 1 elsewhere); theta0 is the battery's own bead value",
+    "bead_z_cells": [
+     39,
+     56
+    ],
+    "n_cells_scaled": 53312,
+    "n_cells_total": 297920,
+    "bead_mask": "full_cross_section"
+   },
+   "anchor": {
+    "bin_index": 2,
+    "bin_hz": 11000000000.0,
+    "what": "the bin of largest |S11| at theta0",
+    "abs_s11_at_theta0": 0.5466539859771729
+   },
+   "cases": [
+    {
+     "objective": "band_mean_s21_sq",
+     "ad": {
+      "loss": 0.6996077299118042,
+      "grad": -0.07019345462322235,
+      "loss_dtype": "float32",
+      "wall_s": 65.97347737598466,
+      "warnings": []
+     },
+     "fd": {
+      "f_plus": 0.6990329426834397,
+      "f_minus": 0.700155637799367,
+      "h": 0.008,
+      "grad": -0.0701684447454512,
+      "loss_dtype": "float64",
+      "ulp_span": 10112338611481.0
+     },
+     "comparator": {
+      "ulp_span": 10112338611481.0,
+      "floor": 10000.0,
+      "interpretable": true
+     },
+     "rel_err": 0.000356426280529399,
+     "same_sign": true
+    },
+    {
+     "objective": "band_mean_s11_sq",
+     "ad": {
+      "loss": 0.20735204219818115,
+      "grad": 0.05911999195814133,
+      "loss_dtype": "float32",
+      "wall_s": 66.39434630103642,
+      "warnings": []
+     },
+     "fd": {
+      "f_plus": 0.20776637291811295,
+      "f_minus": 0.20681989157478675,
+      "h": 0.008,
+      "grad": 0.05915508395788749,
+      "loss_dtype": "float64",
+      "ulp_span": 34100584200936.0
+     },
+     "comparator": {
+      "ulp_span": 34100584200936.0,
+      "floor": 10000.0,
+      "interpretable": true
+     },
+     "rel_err": 0.0005932203523055404,
+     "same_sign": true
+    },
+    {
+     "objective": "re_s21_s11_conj_at_max_s11",
+     "ad": {
+      "loss": 0.03808531165122986,
+      "grad": -0.0391073040664196,
+      "loss_dtype": "float32",
+      "wall_s": 65.98682987096254,
+      "warnings": []
+     },
+     "fd": {
+      "f_plus": 0.03776197049300484,
+      "f_minus": 0.03838462483395835,
+      "h": 0.008,
+      "grad": -0.03891589630959473,
+      "loss_dtype": "float64",
+      "ulp_span": 89733947452764.0
+     },
+     "comparator": {
+      "ulp_span": 89733947452764.0,
+      "floor": 10000.0,
+      "interpretable": true
+     },
+     "rel_err": 0.004918497965513377,
+     "same_sign": true
+    }
+   ],
+   "bar": 0.05,
+   "peak_memory": {
+    "host_peak_rss_bytes": 3163529216,
+    "device": {
+     "cuda:0": {
+      "bytes_in_use": 300544,
+      "peak_bytes_in_use": 32042953216,
+      "bytes_limit": 46957970915,
+      "bytes_reserved": 0,
+      "peak_bytes_reserved": 0,
+      "largest_free_block_bytes": 0,
+      "pool_bytes": 46957970688,
+      "peak_pool_bytes": 46957970688
+     }
+    }
+   }
+  },
   "one_port": {
    "provenance": {
     "commit": "669c45cb59721955b5135056ad5c12b16e96b292",
