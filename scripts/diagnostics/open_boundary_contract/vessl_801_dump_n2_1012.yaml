@@ -1,0 +1,25 @@
+name: rfx-801-dump-n2-with-1012
+description: "#801: final-field dump of the still-growing 4-layer patch arm on main + PR #1012, to see whether the growing wave still sits on the hi faces only. float32."
+tags: [rfx, issue-801, diagnostic]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_ENABLE_X64: "0"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  base=/root/workspace/bk-workspace/.801-measure
+  echo "=== provenance (the run aborts if any of this is missing) ==="
+  cat "$base/PROVENANCE.txt"
+  sha256sum "$base/dump_fields.py" "$base/leader_dump_n2_1012.py" "$base/src-main-plus-1012/rfx/boundaries/cpml.py" "$base/src-main-plus-1012/rfx/grid.py"
+  python -m pip install -q "scipy>=1.11" pytest
+  cd "$base"
+  python "$base/leader_dump_n2_1012.py"
+  echo "=== done ==="

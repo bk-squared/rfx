@@ -133,8 +133,16 @@ received; `eps_r`, `mu_r`, `sigma` equal to the baseline arrays; `cont/variant_n
 
 (`result_main.json`, `cont/TABLE.md`.) The growing field is a wave running along the +x and +y
 absorber faces at substrate height, on substrate that has no ground under it inside the absorber
-(`dumps/TABLE.md`; figure `dumps/n2_pad10_main/leader_z.png`). Four layers are enough once the
-cross-section continues. The layer count, the lateral pad and the one-cell sensitivity recorded on
+(`dumps/TABLE.md`). Four layers are enough once the
+cross-section continues.
+
+![The growing field of the four-layer arm: a wave on the +x and +y absorber faces at substrate height](figures/open_boundary_growing_wave_on_absorber_faces.png)
+
+![The same arm with the ground plane continued through the absorber: the patch ringing down](figures/open_boundary_ground_continued.png)
+
+Energy-like density on a log scale clipped eight decades below its maximum; dashed lines are the
+absorbers' inner boundaries. The bundle's own copies of these figures are not tracked (the repository
+tracks figures under `docs/design_notes/figures/` only); `MANIFEST.txt` carries their hashes. The layer count, the lateral pad and the one-cell sensitivity recorded on
 issue #801 were views of that missing conductor.
 
 **C5, a two-conductor line.** Scope first (`ports/CENSUS.md`, 87 committed structures built without

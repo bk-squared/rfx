@@ -1,0 +1,29 @@
+name: rfx-801-thin-absorber-arms
+description: "#801: five ring-down arms scored with the committed oracle's metrics on two exported trees (main df08175c; main + PR #1012). Pre-declared on the issue before the run. float32."
+tags: [rfx, issue-801, diagnostic]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_ENABLE_X64: "0"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  base=/root/workspace/bk-workspace/.801-measure
+  echo "=== provenance (the run aborts if any of this is missing) ==="
+  cat "$base/PROVENANCE.txt"
+  sha256sum "$base/src-main/rfx/boundaries/cpml.py" "$base/src-main-plus-1012/rfx/boundaries/cpml.py" "$base/run_arms.py"
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest
+  echo "=== tree: src-main ==="
+  cd "$base/src-main"
+  python "$base/run_arms.py" "$base/src-main" "$base/result_main.json"
+  echo "=== tree: src-main-plus-1012 ==="
+  cd "$base/src-main-plus-1012"
+  python "$base/run_arms.py" "$base/src-main-plus-1012" "$base/result_main_plus_1012.json"
+  echo "=== done ==="

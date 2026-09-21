@@ -1,0 +1,28 @@
+name: rfx-801-pad0-main-ceil-sizing
+description: "#801: the pad-0 four-layer arm on today's main (df08175c) with ONLY the grid sizing put back to plain ceil, so the realized grid is the old (85,56,41). Separates #1136's cell from everything else merged since 1fc9e38f. float32."
+tags: [rfx, issue-801, diagnostic]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_ENABLE_X64: "0"
+  ARMS: "n2_pad0_cpml4"
+  CEIL_SIZING: "1"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  base=/root/workspace/bk-workspace/.801-measure
+  echo "=== provenance (the run aborts if any of this is missing) ==="
+  cat "$base/PROVENANCE.txt"
+  sha256sum "$base/src-main/rfx/boundaries/cpml.py" "$base/src-main/rfx/grid.py" "$base/run_arms.py"
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest
+  echo "=== tree: src-main, CEIL_SIZING=1 ==="
+  cd "$base/src-main"
+  python "$base/run_arms.py" "$base/src-main" "$base/result_main_pad0_ceil_sizing.json"
+  echo "=== done ==="
