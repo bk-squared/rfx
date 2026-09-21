@@ -471,10 +471,54 @@ def test_the_forward_identity_holds_on_the_eps_override_channel(fixture, kind):
     np.testing.assert_allclose(b, a, rtol=ident["rtol"], atol=ident["atol"])
 
 
-def _adfd_cases(fixture):
+# The window a first-order sequence's successive ratio falls in. A quantity
+# converging at first order in the cell size halves each time the mesh halves,
+# so the ratio sits near 0.5; the window is wide enough for the second-order
+# term that is still present at these cell sizes and narrow enough to exclude a
+# sequence that is not converging at all (a ratio near 1).
+FIRST_ORDER_RATIO_WINDOW = (0.35, 0.75)
+
+
+def _is_degenerate(block, case) -> bool:
+    """Whether this case's objective has no derivative to compare.
+
+    Band-mean |S11|^2 on a SHORT-terminated line referenced to its own Zc is
+    identically 1, so its derivative with respect to anything is zero and both
+    AD and FD return round-off. The driver marks that on the objective; the
+    marking is what every gate below reads, so a leg cannot be excused from a
+    comparison without the artifact saying it is degenerate.
+    """
+    return bool(block["objectives"][case["objective"]].get("degenerate_on_this_dut"))
+
+
+def _adfd_cases(fixture, *, degenerate=False):
+    """Every AD/FD case. ``degenerate`` selects which half: the comparisons run
+    on the non-degenerate cases, and the degenerate ones are checked for being
+    left alone."""
     for name, block in fixture.get("adfd", {}).items():
         for case in block["cases"]:
-            yield name, block, case
+            if _is_degenerate(block, case) is bool(degenerate):
+                yield name, block, case
+
+
+def _closed_form_distance(case) -> float:
+    """Distance between the solver's gradient and the closed form's, symmetric
+    and normalised by the larger of the two. Re-derived here from the two
+    stored gradients rather than read out of the assembler's `pairwise` block.
+    """
+    a, b = case["ad"]["grad"], case["closed_form"]["grad"]
+    return abs(a - b) / max(abs(a), abs(b), 1e-300)
+
+
+def _adfd_ladders(fixture):
+    """Group the non-degenerate cases into (port kind, leg, objective) families
+    that were measured at all three cell sizes, with the closed-form distance at
+    each. A family measured at one rung has no sequence and is not returned."""
+    fams: dict = {}
+    for name, block, case in _adfd_cases(fixture):
+        key = (block["kind"], block["leg"], case["objective"])
+        fams.setdefault(key, {})[block["rung_um"]] = _closed_form_distance(case)
+    return {k: v for k, v in fams.items() if set(v) == set(RUNGS_UM)}
 
 
 def test_the_adfd_block_states_what_its_validity_assert_does_not_cover(fixture):
@@ -498,6 +542,16 @@ def test_the_adfd_block_states_what_its_validity_assert_does_not_cover(fixture):
 
 
 def test_the_gradient_matches_a_float64_finite_difference(fixture):
+    """Criterion 3a as the contract defines it: the derivative rfx returns is
+    the derivative of the line rfx solves.
+
+    The bar is 0.05 and it is asserted on every NON-degenerate leg at every
+    rung. A degenerate objective is excluded because there is no derivative
+    there to agree about — see
+    ``test_the_degenerate_records_carry_no_comparison``, which holds those
+    records to being left alone rather than to a number. PI decision of
+    2026-09-21, in the pre-declaration's addendum.
+    """
     ads = list(_adfd_cases(fixture))
     if not ads:
         pytest.skip("no AD/FD stage is assembled")
@@ -523,31 +577,102 @@ def test_the_gradient_matches_a_float64_finite_difference(fixture):
         assert rel <= block["bar"], f"{tag}: AD vs FD rel_err {rel:.4f}"
 
 
-def test_the_pairwise_gradient_falsifier(fixture):
-    """The pre-declaration's fourth falsifier, exactly as written: 'If AD, FD and
-    the closed-form derivative disagree by more than 5 % pairwise where the FD is
-    interpretable, criterion 3a is open.'
+def test_the_closed_form_distance_shrinks_with_the_cell(fixture):
+    """The closed form is a third witness, not a bar. PI decision, 2026-09-21.
 
-    The closed form is a different object from AD and FD — it differentiates the
-    continuum line, they differentiate the lattice — so this is the leg that can
-    separate a gradient defect from a discretisation offset. It asserts the
-    falsifier rather than a verdict.
+    AD against FD is what carries criterion 3a, and it is asserted at 0.05 next
+    door. The closed form is a different object from both: it differentiates the
+    CONTINUUM line while AD and FD differentiate the LATTICE one, and at these
+    cell sizes the solved line's phase is itself only converged to a fraction of
+    a percent. Holding a continuum formula to 5 % against a lattice derivative
+    was a fault of the original declaration — the addendum in
+    ``docs/design_notes/lumped_wire_chain_battery_predeclaration.md`` records
+    that and what replaces it.
+
+    What replaces it is the statement the third witness can actually support:
+    the distance to the closed form SHRINKS as the mesh refines, and shrinks at
+    a rate consistent with first order. A gradient that disagreed with the
+    continuum for a reason other than discretisation would not do that — it
+    would sit at a ratio near 1, which is what the window excludes.
+
+    Both ratios are re-derived from the two stored gradients at each rung, never
+    read out of the assembler's own `pairwise` block. On the measurement this
+    ships with they are 0.557 and 0.530 on the resistive permittivity leg, and
+    0.728 and 0.646 on the mid-band one.
     """
-    ads = list(_adfd_cases(fixture))
-    if not ads:
-        pytest.skip("no AD/FD stage is assembled")
-    failures = []
-    for name, block, case in ads:
-        pw = case["pairwise"]
-        if not pw["interpretable"]:
+    fams = _adfd_ladders(fixture)
+    if not fams:
+        pytest.skip("no AD leg was measured at all three rungs")
+    lo, hi = FIRST_ORDER_RATIO_WINDOW
+    problems = []
+    for (kind, leg, objective), dist in sorted(fams.items()):
+        seq = [dist[um] for um in RUNGS_UM]          # 1000, 500, 250 um
+        tag = f"{kind}/{leg}/{objective}"
+        if not (seq[0] > seq[1] > seq[2]):
+            problems.append(
+                f"{tag}: the distance to the closed form does not shrink with "
+                f"the cell: {seq[0]:.5f} -> {seq[1]:.5f} -> {seq[2]:.5f}")
             continue
-        if pw["max_rel"] > pw["bar"]:
-            failures.append(
-                f"{name}/{case['objective']}: {pw['rel']} with grads {pw['grads']} "
-                f"and bin context {case.get('bin_context')}")
-    assert not failures, (
-        "AD, FD and the closed-form derivative disagree by more than the bar:\n"
-        + "\n".join(failures))
+        ratios = [seq[1] / seq[0], seq[2] / seq[1]]
+        if not all(lo <= r <= hi for r in ratios):
+            problems.append(
+                f"{tag}: successive ratios {ratios[0]:.4f}, {ratios[1]:.4f} are "
+                f"not both inside the first-order window [{lo}, {hi}]; the "
+                f"distances are {seq[0]:.5f} -> {seq[1]:.5f} -> {seq[2]:.5f}")
+    assert not problems, (
+        "the closed-form witness does not converge like a discretisation "
+        "offset:\n" + "\n".join(problems))
+
+
+def test_the_degenerate_records_carry_no_comparison(fixture):
+    """Band-mean |S11|^2 on a SHORT is identically 1, so its derivative is zero
+    and both AD and FD return round-off about it. Those records stay in the
+    artifact as measured and are held to nothing.
+
+    What is asserted is that they are left alone on purpose rather than by
+    accident: the objective says so, the closed form's own derivative really is
+    zero, and the record carries no verdict. The last clause is checked by
+    asking the two gates' own selectors whether they picked the case up — so a
+    leg cannot lose its marking and quietly slip back under a bar, and cannot
+    keep its marking while a bar is applied anyway.
+    """
+    degenerate = list(_adfd_cases(fixture, degenerate=True))
+    if not degenerate:
+        pytest.skip("no degenerate objective was measured")
+    gated = {(n, c["objective"]) for n, _b, c in _adfd_cases(fixture)}
+    laddered = set()
+    for (kind, leg, objective) in _adfd_ladders(fixture):
+        laddered.add((kind, leg, objective))
+    for name, block, case in degenerate:
+        tag = f"{name}/{case['objective']}"
+        assert block["objectives"][case["objective"]]["degenerate_on_this_dut"] is True, tag
+        assert block["objectives"][case["objective"]].get("why"), (
+            f"{tag}: marked degenerate with no reason recorded")
+        # The closed form's derivative for a constant objective is zero, and the
+        # record has to show that rather than assert it.
+        assert abs(case["closed_form"]["grad"]) <= 1e-12, (
+            f"{tag}: the closed form's derivative is "
+            f"{case['closed_form']['grad']:.6e}, which is not zero — then the "
+            "objective is not constant and this record should be compared")
+        # Neither gate may have selected it.
+        assert (name, case["objective"]) not in gated, (
+            f"{tag}: a degenerate case reached the AD-vs-FD gate")
+        assert (block["kind"], block["leg"], case["objective"]) not in laddered, (
+            f"{tag}: a degenerate case reached the convergence gate")
+        # And it carries no pass/fail of its own.
+        verdicts = [k for k in _walk_keys(case)
+                    if k in ("within_bar", "passed", "ok", "verdict")]
+        assert not verdicts, f"{tag}: the record carries a verdict key {verdicts}"
+
+
+def _walk_keys(obj):
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            yield k
+            yield from _walk_keys(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            yield from _walk_keys(v)
 
 
 def test_the_openems_record_is_carried_as_context_only(fixture):

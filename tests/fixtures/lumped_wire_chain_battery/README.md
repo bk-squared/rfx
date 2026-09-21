@@ -72,6 +72,19 @@ the only difference. Its producer is
 and rewrites its own JSON, so a change to the lumped lane can be measured
 against that record rather than against a description of it.
 
+## How the gradient legs are read
+
+Criterion 3a is carried by AD against a float64 finite difference, asserted at
+5 % on every non-degenerate leg at every cell size; the closed-form derivative
+is a third witness of a different object — it differentiates the continuum line
+where AD and FD differentiate the lattice one — so it is held only to shrinking
+with the mesh at a first-order rate, not to a bar. Band-mean `|S11|^2` on the
+short-terminated line is identically 1 and therefore has no derivative to
+compare, so those three records are marked `degenerate_on_this_dut` and carry no
+comparison at all. Both decisions, and the numbers behind them, are in the
+addendum to
+[`docs/design_notes/lumped_wire_chain_battery_predeclaration.md`](../../../docs/design_notes/lumped_wire_chain_battery_predeclaration.md).
+
 ## Every AD leg carries two closed forms
 
 One on the length that was DRAWN and one on the line's own electrical length,
