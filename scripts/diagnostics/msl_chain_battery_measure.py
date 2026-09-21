@@ -1149,6 +1149,30 @@ def referee_context() -> dict:
     return out
 
 
+def fixture_provenance(p: dict, index: dict | None, stage_file: str) -> dict:
+    """The provenance a committed artifact may carry.
+
+    The stage JSONs record absolute paths because that is what a person
+    debugging a job needs. A fixture is committed to a public repository, so
+    the machine paths are reduced to the question they exist to answer — did
+    ``import rfx`` resolve to this run's own tree, or to something installed
+    elsewhere — and the run is named by its compute id rather than by a
+    directory on one pod.
+    """
+    out = {k: p[k] for k in (
+        "commit", "jax_version", "numpy_version", "jax_default_backend",
+        "jax_devices", "jax_enable_x64", "python", "platform", "utc",
+        "rfx_version") if k in p}
+    rfx_file, repo = p.get("rfx_file", ""), p.get("repo", "")
+    out["rfx_import_tail"] = "/".join(Path(rfx_file).parts[-2:]) if rfx_file else None
+    out["rfx_resolved_inside_the_run_tree"] = bool(
+        repo and rfx_file and rfx_file.startswith(repo.rstrip("/") + "/"))
+    entry = (index or {}).get(stage_file, {})
+    out["compute_run_id"] = entry.get("vessl_run_id")
+    out["compute_run_dir"] = entry.get("run_dir")
+    return out
+
+
 def _load_stage(out: Path, name: str) -> dict | None:
     p = out / name
     if not p.exists():
@@ -1157,6 +1181,7 @@ def _load_stage(out: Path, name: str) -> dict | None:
 
 
 def stage_assemble(args, out: Path, fixture_out: Path) -> None:
+    index = json.loads(Path(args.run_index).read_text()) if args.run_index else None
     fix = {
         "schema": SCHEMA,
         "schema_version": SCHEMA_VERSION,
@@ -1183,7 +1208,7 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
     pilot = _load_stage(out, "pilot_100um.json")
     if pilot is not None:
         fix["pilot"] = {
-            "provenance": pilot["provenance"],
+            "provenance": fixture_provenance(pilot["provenance"], index, "pilot_100um.json"),
             "cases": [{
                 "drive": c["drive"],
                 "num_periods": c["num_periods"],
@@ -1210,7 +1235,8 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                 "rung_um": um,
                 "num_periods": rec["num_periods"],
                 "drive": rec["drive"],
-                "provenance": rec["provenance"],
+                "provenance": fixture_provenance(rec["provenance"], index,
+                                                 f"solve_{dut}_{um}um.json"),
                 "realized": rec["realized"],
                 "declared": rec["declared"],
                 "preflight_text": rec["preflight"]["text"],
@@ -1276,16 +1302,27 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                     "bin": abs(notch["bin_hz"] - f_an) / f_an,
                     "interp": abs(notch["interp_hz"] - f_an) / f_an,
                 }
-                # The same closed form on the REALIZED stub and trace width, so
-                # a reader can see how much of any offset is the lattice.
+                # The same closed form on the REALIZED lengths, so a reader can
+                # see how much of any offset is the lattice. `stub_len_m` runs
+                # from the line's far edge, which is where L_stub is drawn from
+                # — the same length, as built. The centreline variant is a
+                # different length (it adds half the trace width) and is kept
+                # under its own name rather than folded in here.
                 _, eps_eff_real = hammerstad_jensen_z0_eps_eff(
                     rec["realized"]["trace_w_electrical_m"], H_SUB, EPS_R)
-                f_an_real = C0 / (4.0 * rec["realized"]["stub_len_centreline_m"]
+                f_an_real = C0 / (4.0 * rec["realized"]["stub_len_m"]
                                   * math.sqrt(eps_eff_real))
                 entry["f_notch_analytic_realized_hz"] = f_an_real
                 entry["notch_vs_analytic_realized_frac"] = {
                     "bin": abs(notch["bin_hz"] - f_an_real) / f_an_real,
                     "interp": abs(notch["interp_hz"] - f_an_real) / f_an_real,
+                }
+                f_an_centre = C0 / (4.0 * rec["realized"]["stub_len_centreline_m"]
+                                    * math.sqrt(eps_eff_real))
+                entry["f_notch_analytic_centreline_hz"] = f_an_centre
+                entry["notch_vs_analytic_centreline_frac"] = {
+                    "bin": abs(notch["bin_hz"] - f_an_centre) / f_an_centre,
+                    "interp": abs(notch["interp_hz"] - f_an_centre) / f_an_centre,
                 }
                 # And on the SOLVED size the pre-declaration names: a PEC
                 # sheet's edge is solved 0.35 cell beyond its last node, so
@@ -1348,6 +1385,26 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
             lad[f"{name}_vs_finest"] = rows
         lad["max_column_power"] = [fix["solves"][k]["power"]["max_column_power"]
                                    for k in have]
+        # The support matrix asks for one cell size: the coarsest rung whose
+        # every quantity sits inside the bar against the finest. Pure
+        # arithmetic over the thresholds already in `bar` -- a boolean per
+        # rung, not a recommendation sentence.
+        inside = []
+        for i, k in enumerate(have):
+            row = {"rung": k}
+            for name in ("s21", "s11"):
+                worst = lad[f"{name}_vs_finest"][i]["max_db_diff_vs_finest_outside_notch_core"]
+                row[f"{name}_within_2dB"] = None if worst is None else bool(
+                    worst <= BAR["magnitude_db"])
+            if dut == "notch":
+                row["notch_within_1pct"] = bool(
+                    lad["notch_frac_vs_finest"][i] <= BAR["frequency_frac"])
+            row["all_inside_bar"] = all(v for v in row.values() if isinstance(v, bool))
+            row["resolution"] = fix["solves"][k]["resolution"]
+            inside.append(row)
+        lad["rung_within_bar_vs_finest"] = inside
+        qualifying = [r for r in inside if r["all_inside_bar"]]
+        lad["coarsest_rung_within_bar"] = qualifying[0]["rung"] if qualifying else None
         lad["z0_real_median_ohm"] = [fix["solves"][k]["z0_real_median_ohm"] for k in have]
         lad["settled"] = [fix["solves"][k]["settled"] for k in have]
         fix["ladder"][dut] = lad
@@ -1358,7 +1415,8 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
         a = _S(ident["plain"])
         b = _S(ident["override"])
         fix["identity"] = {
-            "provenance": ident["provenance"],
+            "provenance": fixture_provenance(ident["provenance"], index,
+                                             "identity_100um.json"),
             "num_periods": ident["num_periods"],
             "rung_um": ident["rung_um"],
             "plain_S": ident["plain"]["S"],
@@ -1378,7 +1436,7 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
     ad = _load_stage(out, "adfd_100um.json")
     if ad is not None:
         fix["adfd"] = {
-            "provenance": ad["provenance"],
+            "provenance": fixture_provenance(ad["provenance"], index, "adfd_100um.json"),
             "num_periods": ad["num_periods"],
             "rung_um": ad["rung_um"],
             "theta0": ad["theta0"], "fd_h": ad["fd_h"],
@@ -1414,7 +1472,7 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
         pred = 2.0 * np.real(beta_a) * delta
         pred_shifted = 2.0 * np.real(beta_b) * delta
         fix["plane"] = {
-            "provenance": pl["provenance"],
+            "provenance": fixture_provenance(pl["provenance"], index, "plane_50um.json"),
             "num_periods": pl["num_periods"], "rung_um": pl["rung_um"],
             "shift_cells": pl["shift_cells"],
             "displacement_m": pl["realized_plane_displacement_m"],
@@ -1438,6 +1496,17 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                 np.angle(np.exp(1j * (rot11 - pred)))).astype(float).tolist(),
             "rotation_s21_residual_rad": np.abs(
                 np.angle(np.exp(1j * (rot21 - pred)))).astype(float).tolist(),
+            # The same residuals against the opposite sign. Which one is small
+            # says which phase convention the extractor carries; neither being
+            # small is the finding.
+            "rotation_s11_residual_opposite_sign_rad": np.abs(
+                np.angle(np.exp(1j * (rot11 + pred)))).astype(float).tolist(),
+            "rotation_s21_residual_opposite_sign_rad": np.abs(
+                np.angle(np.exp(1j * (rot21 + pred)))).astype(float).tolist(),
+            "max_rotation_residual_rad": float(np.max(np.abs(
+                np.angle(np.exp(1j * (rot11 - pred)))))),
+            "max_rotation_residual_opposite_sign_rad": float(np.max(np.abs(
+                np.angle(np.exp(1j * (rot11 + pred)))))),
             "bar_magnitude_db": BAR["magnitude_db"],
         }
 
@@ -1462,6 +1531,9 @@ def main() -> int:
     ap.add_argument("--out", required=True, help="directory for the stage JSONs")
     ap.add_argument("--fixture-out", default=str(REPO / ARTIFACT))
     ap.add_argument("--run-id", default=None, help="the compute run id, recorded as-is")
+    ap.add_argument("--run-index", default=None,
+                    help="assemble only: a JSON mapping each stage file to its "
+                         "compute run id and run directory name")
     ap.add_argument("--estimate-only", action="store_true",
                     help="print the cell/step/byte estimate and exit")
     args = ap.parse_args()
