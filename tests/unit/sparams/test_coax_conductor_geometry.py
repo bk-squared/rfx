@@ -269,3 +269,108 @@ def test_the_tem_source_injects_over_the_annulus_the_stamper_actually_built(dx):
     admitted = (r >= float(port.pin_radius)) & (r <= shell_inner)
     assert not (admitted & cells[:, :, k]).any(), (
         "the source injects on a cell the stamper realized as conductor")
+
+
+class _Captured(Exception):
+    """Raised by the spy once it has the runner's arguments."""
+
+
+def _capture_runner_args(monkeypatch, call):
+    """Run *call* until it reaches ``rfx.simulation.run``, then stop.
+
+    The lanes do ``from rfx.simulation import run as _run`` INSIDE the
+    function, so the lookup happens at call time and patching the module
+    attribute reaches it. The spy raises before stepping, which is what keeps
+    this in the fast lane: no FDTD, and the assertions still see exactly the
+    arrays the runner would have been given.
+    """
+    import rfx.simulation
+
+    seen = {}
+
+    def _spy(grid, materials, n_steps, **kw):
+        seen["grid"] = grid
+        seen["materials"] = materials
+        seen["pec_edge_masks"] = kw.get("pec_edge_masks")
+        raise _Captured
+
+    monkeypatch.setattr(rfx.simulation, "run", _spy)
+    with pytest.raises(_Captured):
+        call()
+    assert seen, "the lane never reached rfx.simulation.run"
+    return seen
+
+
+def _one_port_call(dx):
+    sim = Simulation(freq_max=40e9, domain=(0.008, 0.008, 0.020),
+                     boundary="cpml", dx=dx)
+    sim.add_coaxial_port((CENTRE[0], CENTRE[1], 0.010), face="top",
+                         pin_length=5e-3,
+                         waveform=GaussianPulse(f0=8e9, bandwidth=1.2))
+    return lambda: sim.compute_coaxial_line_reflection(
+        termination="matched", dut_impedance=50.0, n_steps=8,
+        freqs=np.array([8e9]), probe_count=3)
+
+
+def _two_port_call(dx):
+    sim = Simulation(freq_max=40e9, domain=(0.008, 0.008, 0.012),
+                     boundary="cpml", dx=dx)
+    sim.add_coaxial_port((CENTRE[0], CENTRE[1], 0.006), face="top",
+                         pin_length=5e-3,
+                         waveform=GaussianPulse(f0=8e9, bandwidth=1.2))
+    return lambda: sim.compute_coaxial_two_port(
+        n_steps=8, freqs=np.array([8e9]), probe_count=3,
+        probe_start_cells=4, probe_spacing_cells=2)
+
+
+@pytest.mark.parametrize("lane,builder", [("one_port", _one_port_call),
+                                          ("two_port", _two_port_call)])
+def test_the_lane_hands_the_runner_pec_edges_and_no_pec_sigma(monkeypatch, lane,
+                                                              builder):
+    """The conductors reach ``run`` as PEC EDGE MASKS, with no PEC sigma left.
+
+    This is the structural half of the oracle and it needs no solve, so it
+    belongs in the fast lane where a regression shows up on every PR rather
+    than weekly. It pins the two halves of the change that mutation (b) flips:
+    revive the defect and ``pec_edge_masks`` goes back to ``None`` while
+    ``materials.sigma`` carries ``PEC_SIGMA`` again, and both assertions below
+    go red without any FDTD being run.
+
+    The third assertion is the one that is not a restatement of the helper:
+    it maps every shorted edge to its radius and requires that none of them
+    lies strictly inside the dielectric annulus. A mask built from the wrong
+    radii, or one that swallowed the PTFE, fails it even though
+    ``realized_pec_edge_masks`` was called correctly.
+    """
+    from rfx.sources.coaxial_port import PEC_SIGMA
+
+    dx = ANNULUS / 4.0
+    seen = _capture_runner_args(monkeypatch, builder(dx))
+
+    masks = seen["pec_edge_masks"]
+    assert masks is not None, (
+        f"the {lane} lane passed pec_edge_masks=None; the conductors are then "
+        "realized by nothing at all")
+    masks = tuple(np.asarray(m) for m in masks)
+    assert len(masks) == 3, f"expected ex/ey/ez masks, got {len(masks)}"
+    assert any(m.any() for m in masks), (
+        "the edge masks are empty, so no conductor edge is shorted")
+
+    sigma = np.asarray(seen["materials"].sigma)
+    assert float(sigma.max()) < 0.5 * float(PEC_SIGMA), (
+        f"the {lane} lane still stamps sigma >= PEC_SIGMA/2 (max "
+        f"{float(sigma.max()):.3e}); a conductor realized BOTH ways damps its "
+        "plus-side edges twice")
+
+    # No shorted edge may sit strictly inside the PTFE annulus.
+    grid = seen["grid"]
+    r = _radius(grid)
+    k = int(grid.shape[2]) // 2
+    inside = (r > SMA_PIN_RADIUS + math.sqrt(2.0) * float(grid.dx)) & (
+        r < SMA_OUTER_RADIUS - math.sqrt(2.0) * float(grid.dx))
+    for name, m in zip(("ex", "ey", "ez"), masks):
+        plane = m[:, :, k] if m.ndim == 3 else m
+        bad = int((plane[:inside.shape[0], :inside.shape[1]] & inside).sum())
+        assert bad == 0, (
+            f"{bad} {name} edges are shorted strictly inside the dielectric "
+            "annulus, more than a cell diagonal from either conductor")

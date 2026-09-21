@@ -884,6 +884,28 @@ do not fit; it does not silently use fewer planes.
   will be replaced by that measurement; note that the board and its probe
   ladder, not only the cell size, decide whether these comparisons settle at
   all. See `docs/design_notes/coax_conductor_realization.md`.
+- **Refining the mesh shortens the probe array; raise `probe_spacing_cells` or
+  `probe_count` yourself.** `probe_start_cells` and `probe_spacing_cells` are
+  counted in CELLS, so the probe planes sit at fixed cell offsets from the DUT
+  and a finer `dx` pulls them physically closer together. The matrix-pencil fit
+  and the phase-slope estimate both work on the phase the array spans, so that
+  span is what has to stay useful — the lane does not rescale it for you.
+  Measured on the two committed boards, the span of the WHOLE array at band
+  centre:
+
+  | annulus cells | 8x8x60 mm, 12 probes (start 8, spacing 4) | 8x8x12 mm, 3 probes (start 4, spacing 2) |
+  |---|---|---|
+  | 3.79 | 4.006 rad = 0.638 wavelengths | 0.410 rad = 0.065 wavelengths |
+  | 4 | 3.795 rad = 0.604 | 0.388 rad = 0.062 |
+  | 6 | 2.530 rad = 0.403 | 0.259 rad = 0.041 |
+  | 9 | 1.687 rad = 0.269 | 0.173 rad = 0.028 |
+
+  The 12-probe board still spans a quarter wavelength at 9 annulus cells; the
+  3-probe board is down to 0.17 rad, and its fitted phase constant gets WORSE
+  with refinement (4.60 % at 3.79 cells, 13.58 % at 9) for that reason rather
+  than because of the line. The reference-plane separation moves too — 8.3 %
+  across that ladder on the 12 mm board against 0.2 % on the 60 mm one — and
+  the phase-slope estimate divides by it.
 - The matched-load fixture reaches `|Gamma|` deviation `0.0929` because of the
   single-cell annular resistor and is reported separately rather than used as a
   method gate.

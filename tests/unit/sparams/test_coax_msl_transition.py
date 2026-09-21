@@ -3457,13 +3457,18 @@ def test_junction_coax_shell_contacts_ground(fixture):
     sim = _JUNCTION_FIXTURES[fixture]()
     grid, materials, pec, i0, j0, kj = _assemble_junction_realized(sim)
     _, shell_inner, _, _, _ = _stamp_like_method(sim, grid, materials)
-    # The wall's inner face is the DECLARED outer radius. It used to be
-    # ``b - min(dz, (b-a)/2)``, i.e. one cell inside b, which made the
-    # dielectric annulus and hence the line's impedance move with the mesh;
-    # the thickness is now fixed in metres and grows outward from b instead.
-    # Equality against the declared radius, not against a cell count, is what
-    # that change makes assertable here -- SHELL_INNER_CELLS stays as the
-    # geometric radius the ground-coverage rings below are cut at.
+    # ROOT CAUSE for this re-pin: the outer conductor's inner face moved from
+    # one cell inside the declared outer radius (``b - min(dz, (b-a)/2)``) to
+    # the declared ``b`` itself, with the wall thickness fixed in metres and
+    # growing outward. The old placement made the dielectric annulus -- and so
+    # the line's characteristic impedance -- a function of the mesh: Z_TEM on
+    # the realized radii ran 40.5 -> 45.3 ohm across a 3.79-to-9-annulus-cell
+    # ladder against a declared 48.59. Record:
+    # docs/design_notes/coax_conductor_realization.md, "The second change: the
+    # wall's inner radius". Equality against the declared radius, not against a
+    # cell count, is what that change makes assertable here; SHELL_INNER_CELLS
+    # stays as the geometric radius the ground-coverage rings below are cut at,
+    # and those counts are unchanged.
     assert shell_inner == pytest.approx(OUTER_R, rel=0.0, abs=1e-15), (
         f"wall inner face {shell_inner*1e6:.2f} um is not the declared outer "
         f"radius {OUTER_R*1e6:.2f} um")

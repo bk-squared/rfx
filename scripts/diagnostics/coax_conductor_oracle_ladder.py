@@ -162,9 +162,29 @@ def measure_thru(board: str, rung: float) -> dict:
     pencil_worst = float(np.max(np.abs(beta_fit / beta_analytic - 1.0)))
 
     col = np.sum(np.abs(S) ** 2, axis=0)
+
+    # The probe array's own span, which a dx ladder shortens because the lane
+    # places planes by cell index (rfx/sparams/coax.py). Recorded per rung so a
+    # replay can see how much phase the estimators actually had to work with.
+    probes = spec["probes"]
+    span_cells = int(probes.get("probe_spacing_cells", 0)) * (
+        int(probes.get("probe_count", 1)) - 1)
+    span_m = span_cells * float(grid.dx)
+    f_mid = float(freqs[len(freqs) // 2])
+    span_rad = 2.0 * np.pi * f_mid * math.sqrt(float(PTFE_EPS_R)) / C0 * span_m
+
     out = {
         "n_steps": n_steps, "record_units": RECORD_UNITS,
         "reference_plane_separation_m": l12,
+        "probe_span_cells": span_cells,
+        "probe_span_m": span_m,
+        "probe_span_rad_at_band_centre": float(span_rad),
+        "probe_span_wavelengths_at_band_centre": float(span_rad / (2.0 * np.pi)),
+        "band_centre_hz": f_mid,
+        # The complex S itself, so a replay re-derives every comparison rather
+        # than restating the numbers this script already computed.
+        "s_params_real": np.real(S).astype(float).tolist(),
+        "s_params_imag": np.imag(S).astype(float).tolist(),
         "annulus_cells": float(getattr(res, "annulus_cells", float("nan"))),
         "beta_ratio_s21_phase_worst": phase_worst,
         "beta_ratio_matrix_pencil_worst": pencil_worst,
@@ -202,6 +222,7 @@ def measure_load(board: str, rung: float, load_ohm: float) -> dict:
     finite = np.isfinite(np.real(z0))
     measured = float(np.median(np.real(z0)[finite])) if finite.any() else float("nan")
     frac = abs(measured - declared) / declared
+    s11 = np.asarray(res.s11)
     return {
         "n_steps": n_steps, "record_units": RECORD_UNITS,
         "load_ohm": float(load_ohm),
@@ -209,22 +230,98 @@ def measure_load(board: str, rung: float, load_ohm: float) -> dict:
         "z0_ohm": measured, "declared_z_tem_ohm": declared,
         "frac_vs_declared": frac, "within_bar": bool(frac <= Z0_FRAC),
         "n_finite_bins": int(finite.sum()), "n_bins": int(finite.size),
-        "abs_gamma": np.abs(np.asarray(res.s11)).astype(float).tolist(),
+        # Complex Gamma and the per-bin Z0, so the replay re-derives the median
+        # from the reflection rather than trusting the scalar above.
+        "s11_real": np.real(s11).astype(float).tolist(),
+        "s11_imag": np.imag(s11).astype(float).tolist(),
+        "z0_per_bin_real": np.real(z0).astype(float).tolist(),
+        "freqs_hz": np.asarray(res.freqs, dtype=float).tolist(),
+        "abs_gamma": np.abs(s11).astype(float).tolist(),
         "status": str(getattr(res, "status", "")),
         "settling_db": np.asarray(getattr(res, "settling_db", []),
                                   dtype=float).tolist(),
     }
 
 
+def assemble(src_dir: Path, out_path: Path) -> int:
+    """Merge the per-rung run records into the one committed record.
+
+    Every case ran as its own VESSL job (wall time is the largest case, not
+    their sum), so the record is assembled from their JSONs rather than
+    produced by one long job. The assembler refuses a mixed-commit set: a
+    record whose rungs came from different trees would compare a ladder
+    against itself.
+    """
+    files = sorted(src_dir.rglob("ladder_*.json"))
+    if not files:
+        raise SystemExit(f"no ladder_*.json under {src_dir}")
+    cases, commits = [], set()
+    for f in files:
+        d = json.loads(f.read_text())
+        if "measured" not in d:
+            print(f"  skipping {f.name}: no measurement (the job died before "
+                  "its solve returned)")
+            continue
+        commits.add(d["commit"])
+        cases.append(d)
+    if len(commits) != 1:
+        raise SystemExit(
+            f"the records span {len(commits)} commits {sorted(commits)}; a "
+            "ladder assembled across trees compares nothing")
+    first = cases[0]
+    rec = {
+        "schema": "rfx.coax_conductor_long_board_record", "schema_version": 1,
+        "commit": first["commit"],
+        "what": ("the coaxial line's two constants as a mesh ladder on the "
+                 "diagnostic's own boards, under the PEC-edge conductor "
+                 "realization; the fast replay re-derives every comparison "
+                 "from the complex S stored here"),
+        "bars": first["bars"],
+        "jax_version": first["jax_version"],
+        "numpy_version": first["numpy_version"],
+        "python": first["python"],
+        "utc": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+        "cases": sorted(cases, key=lambda c: (c["board"], c.get("measured", {})
+                                              .get("load_ohm", 0.0),
+                                              c["rung_annulus_cells"])),
+    }
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(rec, indent=1))
+    boards = sorted({c["board"] for c in cases})
+    print(f"[assemble] {len(cases)} cases, boards {boards}, "
+          f"commit {rec['commit'][:8]} -> {out_path}")
+    for c in rec["cases"]:
+        m = c["measured"]
+        tag = (f"{c['board']} r{c['rung_annulus_cells']:.4g}"
+               + (f" {m['load_ohm']:g}ohm" if "load_ohm" in m else ""))
+        if "load_ohm" in m:
+            print(f"  {tag:34s} Z0 {m['z0_ohm']:.3f} "
+                  f"({m['frac_vs_declared']*100:.2f} %)")
+        else:
+            print(f"  {tag:34s} beta {m['beta_ratio_s21_phase_worst']*100:.2f} / "
+                  f"{m['beta_ratio_matrix_pencil_worst']*100:.2f} %, "
+                  f"power [{m['min_column_power']:.5f}, {m['max_column_power']:.5f}], "
+                  f"probe span {m['probe_span_rad_at_band_centre']:.3f} rad")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--board", required=True, choices=sorted(BOARDS))
-    ap.add_argument("--rung", required=True, type=float)
+    ap.add_argument("--board", choices=sorted(BOARDS))
+    ap.add_argument("--rung", type=float)
     ap.add_argument("--load-ohm", type=float, default=None)
     ap.add_argument("--out", required=True)
     ap.add_argument("--run-id", default=None)
+    ap.add_argument("--assemble", default=None,
+                    help="merge every ladder_*.json under this directory into "
+                         "the single committed record written to --out")
     args = ap.parse_args()
+
+    if args.assemble:
+        return assemble(Path(args.assemble), Path(args.out))
+    if args.board is None or args.rung is None:
+        raise SystemExit("--board and --rung are required unless --assemble")
 
     spec = BOARDS[args.board]
     if spec["lane"] == "load" and args.load_ohm is None:
