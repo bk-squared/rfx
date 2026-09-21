@@ -208,3 +208,30 @@ microstrip lane's passivity correction, which reports a column power of 0.99998 
 - "The strip, the outer wall and the ground close a conducting loop": refuted by the one-cell inset.
 - "The slow residual relaxes with time constant eps/alpha": refuted; the decay time does not scale
   inversely with `alpha` (0.29, 0.54, 0.63, 0.65 ns at factors 0.01, 0.25, 1, 4).
+
+## 8. Numeric provenance
+
+The figures the contract rests on, as value-checked artifact references (the numeric-provenance gate
+resolves each key and compares it to the precision written). Figures quoted from the Markdown tables of
+the record bundle (the microstrip and `alpha` tables of section 5) are outside what that gate can
+resolve; their files are named where they are quoted.
+
+The patch ring-down rig on main, worst late-time log rate per step and settling:
+`scripts/diagnostics/open_boundary_contract/result_main.json::arms[1].worst_rate_per_step = 2.55e-3`,
+`scripts/diagnostics/open_boundary_contract/result_main.json::arms[3].worst_rate_per_step = 7.68e-4`,
+`scripts/diagnostics/open_boundary_contract/result_main.json::arms[0].worst_rate_per_step = 5.84e-4`,
+`scripts/diagnostics/open_boundary_contract/result_main.json::arms[4].settling_db = -43.30`,
+`scripts/diagnostics/open_boundary_contract/result_main.json::arms[4].worst_rate_per_step = -1.93e-4`.
+
+The same arms with the ground plane continued through the absorber:
+`scripts/diagnostics/open_boundary_contract/cont/n2_pad10_cpml4_a/result.json::settling_db = -44.81`,
+`scripts/diagnostics/open_boundary_contract/cont/n2_pad10_cpml4_a/result.json::worst_rate_per_step = -3.94e-4`,
+`scripts/diagnostics/open_boundary_contract/cont/n2_pad0_cpml4_a/result.json::settling_db = -43.04`,
+`scripts/diagnostics/open_boundary_contract/cont/n2_pad0_cpml4_a/result.json::worst_rate_per_step = -3.82e-4`,
+`scripts/diagnostics/open_boundary_contract/cont/n3_pad10_cpml6_a/result.json::settling_db = -44.80`,
+`scripts/diagnostics/open_boundary_contract/cont/n3_pad10_cpml6_a/result.json::worst_rate_per_step = -2.66e-4`,
+`scripts/diagnostics/open_boundary_contract/cont/n4_pad10_cpml8_a/result.json::settling_db = -44.82`,
+`scripts/diagnostics/open_boundary_contract/cont/n4_pad10_cpml8_a/result.json::worst_rate_per_step = -1.99e-4`.
+
+The four-layer arm on main with PR #1012 still grows, more slowly:
+`scripts/diagnostics/open_boundary_contract/result_main_plus_1012.json::arms[1].worst_rate_per_step = 8.03e-4`.
