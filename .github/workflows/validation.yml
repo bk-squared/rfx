@@ -68,6 +68,11 @@ jobs:
     # 90 not 60: the slowest shard reached ~52 min on 2026-07-27 and the slow
     # suite grows weekly; the 60-min ceiling left <15% headroom.
     timeout-minutes: 120  # 2026-09-07: shard 3 hit 95 min against 90 on the 08-31 run; durations regenerated the same day
+    # 2026-09-21: five shards, was four. On the scheduled run of that day shard 2 of 4
+    # passed 2,888 tests, failed none and was cut at the 120-minute limit; pytest-split
+    # had estimated 87 min for it from a durations file that about 2,000 removed tests
+    # had made stale. One test alone took 37 min
+    # (test_msl_sparam_ad.py::test_compute_msl_s_matrix_ad_smoke_has_finite_gradient).
     strategy:
       # Shard the full "not gpu and not highmem" suite across parallel jobs.
       # Each shard is a FRESH process running its slice serially, so the
@@ -78,7 +83,7 @@ jobs:
       # report all of its failures.
       fail-fast: false
       matrix:
-        group: [1, 2, 3, 4]
+        group: [1, 2, 3, 4, 5]
 
     steps:
       - name: Check out repository
@@ -124,13 +129,13 @@ jobs:
       # so this lane deliberately RE-INCLUDES slow and slow_physics: those gates
       # run here and nowhere else on a schedule (issue #717 item 1). Verified by
       # --collect-only and by run 32004256088, where the e4 gates executed.
-      - name: Run slow suite — shard ${{ matrix.group }} of 4
+      - name: Run slow suite — shard ${{ matrix.group }} of 5
         env:
           RFX_WEEKLY_RSS: "1"
         run: >
           pytest -v -ra -s
           -m "not gpu and not highmem"
-          --splits 4 --group ${{ matrix.group }}
+          --splits 5 --group ${{ matrix.group }}
           --ignore=tests/crossval/test_meep_crossval.py
           --ignore=tests/crossval/test_meep_crossval_dielectric_cavity.py
           --ignore=tests/crossval/test_openems_crossval.py
