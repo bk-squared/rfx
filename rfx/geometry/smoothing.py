@@ -422,12 +422,29 @@ def _continue_cylinder(shape, axis: int, side: str, target: float):
     return Cylinder(tuple(centre), shape.radius, hi - lo, shape.axis)
 
 
+def _reaches_pad_face(bounds, axis, side, edge, cell, declared_domain,
+                      occupied_faces=None):
+    lo, hi = bounds
+    reaches = ((float(lo[axis]) <= edge + _PAD_REACH_TOL_CELLS*cell
+                if side == "lo" else
+                float(hi[axis]) >= edge - _PAD_REACH_TOL_CELLS*cell)
+               if occupied_faces is None else (axis, side) in occupied_faces)
+    if declared_domain is not None and axis < len(declared_domain):
+        from rfx.grid import CELL_COUNT_ULP_BUDGET
+        face = 0.0 if side == "lo" else float(declared_domain[axis])
+        slack = CELL_COUNT_ULP_BUDGET * np.finfo(float).eps * max(cell, abs(face))
+        reaches = reaches or (float(lo[axis]) <= face+slack if side == "lo"
+                              else float(hi[axis]) >= face-slack)
+    return reaches
+
+
 def extend_shapes_into_cpml_pad(
     shapes: list[tuple[Shape, float]],
     node_coords,
     pads,
     *,
     declared_domain=None,
+    occupied_faces=None,
 ) -> tuple[list[tuple[Shape, float]], list["UnextendableShape"]]:
     """Continue boundary-touching shapes out through the absorber pads.
 
@@ -504,22 +521,12 @@ def extend_shapes_into_cpml_pad(
                     continue
                 if side == "lo":
                     edge = float(nodes[pad])
-                    reaches = (float(bbox_lo[axis])
-                               <= edge + _PAD_REACH_TOL_CELLS * cell)
                     target = float(nodes[0]) - _PAD_CONTINUE_CELLS * cell
                 else:
                     edge = float(nodes[n - 1 - pad])
-                    reaches = (float(bbox_hi[axis])
-                               >= edge - _PAD_REACH_TOL_CELLS * cell)
                     target = float(nodes[n - 1]) + _PAD_CONTINUE_CELLS * cell
-                if declared_domain is not None and axis < len(declared_domain):
-                    from rfx.grid import CELL_COUNT_ULP_BUDGET
-                    face = 0.0 if side == "lo" else float(declared_domain[axis])
-                    slack = (CELL_COUNT_ULP_BUDGET * np.finfo(float).eps
-                             * max(cell, abs(face)))
-                    reaches = reaches or (
-                        float(bbox_lo[axis]) <= face + slack if side == "lo"
-                        else float(bbox_hi[axis]) >= face - slack)
+                reaches = _reaches_pad_face(bounds, axis, side, edge, cell,
+                                           declared_domain, occupied_faces)
                 if not reaches:
                     continue
                 if isinstance(current, Box):
@@ -542,17 +549,192 @@ def extend_shapes_into_cpml_pad(
     return out, unextendable
 
 
+def _declared_conductor_lattice(sim, grid, shape, coords):
+    """Classify once on the same lattice the assembler uses, before growth."""
+    from rfx.geometry.rasterize_grid import (
+        cell_centres_from_nodes, cell_sizes_from_nonuniform_grid,
+        cell_sizes_from_uniform_grid, classify_pec_entry, sheet_spec_from_shape)
+
+    sizes = (cell_sizes_from_nonuniform_grid(grid) if hasattr(grid, "dx_arr")
+             else cell_sizes_from_uniform_grid(grid))
+    thin = next((tc for tc in getattr(sim, "_thin_conductors", ())
+                 if tc.shape is shape), None)
+    # Concrete geometry must remain concrete inside an outer jit too.
+    with jax.ensure_compile_time_eval():
+        if thin is not None:
+            if thin.is_pec or thin.surface_impedance_f0 is not None:
+                sheet = sheet_spec_from_shape(shape, coords, sizes, refuse_thick=True)
+                return [(np.asarray(sheet.footprint), (False, False, False))]
+            return [(np.asarray(shape.mask_on_coords(coords.x, coords.y, coords.z)),
+                     (False, False, False))]
+        centres = cell_centres_from_nodes(coords, sizes)
+        cells, sheet, wire = classify_pec_entry(shape, coords, centres, sizes)
+        if cells is not None:
+            return [(np.asarray(cells), (True, True, True))]
+        if sheet is not None:
+            return [(np.asarray(sheet.footprint), (False, False, False))]
+        return [(np.asarray(mask), tuple(a == component for a in range(3)))
+                for component, mask in enumerate(wire.edges)]
+
+
+def _occupied_conductor_faces(lattice, grid):
+    faces = set()
+    for axis, letter in enumerate("xyz"):
+        for side in ("lo", "hi"):
+            pad = int(getattr(grid, f"pad_{letter}_{side}"))
+            if not pad:
+                continue
+            for mask, cell_axes in lattice:
+                index = (pad if side == "lo" else
+                         grid.shape[axis] - 1 - pad - int(cell_axes[axis]))
+                if np.take(mask, index, axis=axis).any():
+                    faces.add((axis, side))
+    return faces
+
+
+def _conductor_reached_faces(sim, grid, shape, lattice, nodes):
+    from rfx.geometry.csg import declared_bounds
+    occupied = _occupied_conductor_faces(lattice, grid)
+    bounds = declared_bounds(shape)
+    if bounds is None:
+        return occupied
+    reached = set()
+    for axis, line in enumerate(nodes):
+        if bounds[0][axis] == bounds[1][axis]:
+            continue
+        cells = _axis_cells(line)
+        for side, cell in zip(("lo", "hi"), cells):
+            pad = int(getattr(grid, f"pad_{'xyz'[axis]}_{side}"))
+            if pad and _reaches_pad_face(
+                    bounds, axis, side, float(line[pad if side == "lo" else -1-pad]),
+                    cell, sim._unresolved_domain, occupied):
+                reached.add((axis, side))
+    return reached
+
+
+def _port_terminal_pairs(sim, grid, nodes):
+    """Physical terminal pairs used by the existing port constructors."""
+    pairs = []
+    for port in getattr(sim, "_msl_ports", ()):
+        bottom = tuple(port.position)
+        top = (*bottom[:2], bottom[2] + port.height)
+        pairs.append((bottom, top))
+    for port in getattr(sim, "_ports", ()):
+        if port.impedance <= 0:
+            continue
+        axis = "xyz".index(port.component[-1])
+        if port.extent is not None:
+            start = tuple(port.position)
+            end = list(start)
+            end[axis] += port.extent
+        else:
+            index = grid.position_to_index(port.position)
+            start = tuple(float(nodes[a][index[a]]) for a in range(3))
+            end = list(start)
+            end[axis] = float(nodes[axis][min(index[axis] + 1, len(nodes[axis])-1)])
+        pairs.append((start, tuple(end)))
+    if getattr(sim, "_coaxial_ports", ()):
+        from rfx.sources.coaxial_port import _coaxial_port_geometry
+        for port in sim._coaxial_ports:
+            tip = _coaxial_port_geometry(grid, port)[4]
+            pairs.append((tuple(port.position), tuple(tip)))
+    return pairs
+
+
+def _terminal_on_lattice(point, lattice, nodes):
+    """Whether occupied cells/nodes/edges are within one local terminal cell."""
+    for mask, cell_axes in lattice:
+        indices = []
+        for axis, line in enumerate(nodes):
+            line = np.asarray(line)
+            k = int(np.clip(np.searchsorted(line, point[axis]), 1, len(line)-1))
+            width = float(line[k] - line[k-1])
+            lower = line
+            upper = (np.r_[line[1:], line[-1] + width]
+                     if cell_axes[axis] else line)
+            indices.append(np.flatnonzero((upper >= point[axis]-width)
+                                          & (lower <= point[axis]+width)))
+        if all(len(i) for i in indices) and mask[np.ix_(*indices)].any():
+            return True
+    return False
+
+
+def _conductor_face_area(lattice, grid, nodes, axis, side):
+    """Area of occupied lattice support on a face, in square metres.
+
+    A sheet/filament uses its node dual widths; a volume uses primal widths.
+    This compares the conducting support of the two port terminals on the
+    same solved lattice, including graded transverse cells.
+    """
+    others = [a for a in range(3) if a != axis]
+    area = 0.
+    for mask, cell_axes in lattice:
+        pad = int(getattr(grid, f"pad_{'xyz'[axis]}_{side}"))
+        index = pad if side == "lo" else grid.shape[axis]-1-pad-int(cell_axes[axis])
+        plane = np.take(mask, index, axis=axis)
+        widths = []
+        for a in others:
+            d = np.diff(np.asarray(nodes[a]))
+            widths.append(np.r_[d, d[-1]] if cell_axes[a]
+                          else np.r_[d[0]/2, (d[:-1]+d[1:])/2, d[-1]/2])
+        area += float(np.sum(plane * widths[0][:, None] * widths[1][None, :]))
+    return area
+
+
+def _port_carrying_conductor(sim, grid, shape, lattice, coords):
+    nodes = (coords.x, coords.y, coords.z)
+    pairs = _port_terminal_pairs(sim, grid, nodes)
+    touched = [(a, b) for a, b in pairs
+               if _terminal_on_lattice(a, lattice, nodes)
+               or _terminal_on_lattice(b, lattice, nodes)]
+    if not touched:
+        return False
+    candidates = [e.shape for e in getattr(sim, "_geometry", ())
+                  if sim._resolve_material(e.material_name).sigma >= sim._PEC_SIGMA_THRESHOLD]
+    candidates += [tc.shape for tc in getattr(sim, "_thin_conductors", ())]
+    own_faces = _conductor_reached_faces(sim, grid, shape, lattice, nodes)
+    for first, second in touched:
+        for terminal, opposite in ((first, second), (second, first)):
+            if not _terminal_on_lattice(terminal, lattice, nodes):
+                continue
+            for face in getattr(sim, "_pec_faces", ()):
+                a = "xyz".index(face[0])
+                line = np.asarray(nodes[a])
+                k = 0 if face.endswith("lo") else len(line)-1
+                local = abs(float(line[1]-line[0] if k == 0 else line[-1]-line[-2]))
+                if abs(opposite[a]-float(line[k])) <= local:
+                    return True
+        larger = False
+        for other in candidates:
+            if other is shape:
+                continue
+            other_lattice = _declared_conductor_lattice(sim, grid, other, coords)
+            bridged = ((_terminal_on_lattice(first, lattice, nodes)
+                        and _terminal_on_lattice(second, other_lattice, nodes))
+                       or (_terminal_on_lattice(second, lattice, nodes)
+                           and _terminal_on_lattice(first, other_lattice, nodes)))
+            if not bridged:
+                continue
+            common = own_faces & _conductor_reached_faces(
+                sim, grid, other, other_lattice, nodes)
+            if any(_conductor_face_area(lattice, grid, nodes, a, s)
+                   > _conductor_face_area(other_lattice, grid, nodes, a, s)
+                   for a, s in common):
+                larger = True
+        if not larger:
+            return True
+    return False
+
+
 def continued_conductor_shape(sim, grid, shape, *, unextendable=None):
     """Return the conducting geometry solved through absorbing faces (C2/C5).
 
-    MSL signal entries stay declared on the face behind their termination.
-    The window is the strip width plus a local cell at either side, and
-    substrate bottom (exclusive) through substrate top plus a local cell.
-    Coaxial and mixed fixtures have no entry exception. Port-generated
-    structures are not geometry entries and do not call this function.
+    Reached declared faces and occupied outermost interior lattice layers
+    continue. An entry carrying a port terminal stays declared on every
+    face; the larger reference conductor of a bridged pair continues.
+    Port-generated structures do not call this function.
     """
     from rfx.core.jax_utils import is_tracer
-    from rfx.geometry.csg import declared_bounds
     from rfx.geometry.rasterize_grid import (
         coords_from_nonuniform_grid, coords_from_uniform_grid)
 
@@ -564,33 +746,15 @@ def continued_conductor_shape(sim, grid, shape, *, unextendable=None):
     nodes = (coords.x, coords.y, coords.z)
     pads = [[getattr(grid, f"pad_{a}_lo"), getattr(grid, f"pad_{a}_hi")]
             for a in "xyz"]
-    bounds = declared_bounds(shape)
-    # The mixed line includes explicit lumped/wire terminations; v2 leaves
-    # its geometry continued for measurement, as it does coax-to-MSL.
-    mixed = any(p.impedance > 0 for p in getattr(sim, "_ports", ()))
-    if bounds is not None and not getattr(sim, "_coaxial_ports", ()) and not mixed:
-        lo, hi = bounds
-        for port in getattr(sim, "_msl_ports", ()):
-            axis = "xyz".index(port.direction[-1])
-            width_axis = 1 - axis
-            if axis not in (0, 1) or any(is_tracer(nodes[a]) for a in (width_axis, 2)):
-                continue
-            # Local cells at the port's transverse position, on graded grids too.
-            widths = []
-            for a in (width_axis, 2):
-                line = np.asarray(nodes[a])
-                k = int(np.clip(np.searchsorted(line, port.position[a]), 1, len(line)-1))
-                widths.append(float(line[k] - line[k-1]))
-            wlo = port.position[width_axis] - port.width / 2 - widths[0]
-            whi = port.position[width_axis] + port.width / 2 + widths[0]
-            zlo = port.position[2]
-            zhi = zlo + port.height + widths[1]
-            if (hi[width_axis] >= wlo and lo[width_axis] <= whi
-                    and hi[2] > zlo and lo[2] <= zhi):
-                pads[axis][0 if port.direction[0] == "+" else 1] = 0
+    occupied = set()
+    if not any(is_tracer(n) for n in nodes):
+        lattice = _declared_conductor_lattice(sim, grid, shape, coords)
+        occupied = _occupied_conductor_faces(lattice, grid)
+        if _port_carrying_conductor(sim, grid, shape, lattice, coords):
+            return shape
     pairs, findings = extend_shapes_into_cpml_pad(
         [(shape, 1.0)], nodes, pads,
-        declared_domain=sim._unresolved_domain)
+        declared_domain=sim._unresolved_domain, occupied_faces=occupied)
     findings = [u._replace(shape=shape, conductor=True) for u in findings]
     if unextendable is None:
         warn_unextendable_shapes(findings)

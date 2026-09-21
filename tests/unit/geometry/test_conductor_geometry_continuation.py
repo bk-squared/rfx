@@ -92,8 +92,11 @@ def test_port_signal_stays_declared_and_ground_continues(direction):
     sim._msl_ports = [SimpleNamespace(position=(4., 4., 2.), width=2.,
                                      height=1., direction=direction)]
     grid = sim._build_grid()
-    signal = Box((0., 0., 3.), (8., 8., 3.))
+    signal = (Box((0., 3., 3.), (8., 5., 3.)) if direction[-1] == "x"
+              else Box((3., 0., 3.), (5., 8., 3.)))
     ground = Box((0., 0., 2.), (8., 8., 2.))
+    sim.add(signal, material="pec")
+    sim.add(ground, material="pec")
     strip = continued_conductor_shape(sim, grid, signal)
     plane = continued_conductor_shape(sim, grid, ground)
     axis = "xy".index(direction[-1])
@@ -103,7 +106,7 @@ def test_port_signal_stays_declared_and_ground_continues(direction):
     else:
         assert strip.corner_hi[axis] == 8.
         assert plane.corner_hi[axis] > 10.
-    assert strip.corner_lo[2] == strip.corner_hi[2] == 3.
+    assert strip is signal
     assert plane.corner_lo[2] == plane.corner_hi[2] == 2.
 
 
@@ -152,3 +155,51 @@ def test_conductor_continues_but_pole_occupancy_stays_declared(nu, sheet, kind):
     assert conductor[:2].any() and conductor[-3:-1].any()
     pairs, _ = smoothed_shape_pairs(sim, grid)
     assert pairs[0][0] is declared
+
+
+@pytest.mark.parametrize("axis", range(3))
+@pytest.mark.parametrize("side", (0, 1))
+@pytest.mark.parametrize("kind", ("volume", "sheet", "thin"))
+def test_occupied_layer_reaches_without_a_declared_face(axis, side, kind):
+    sim = _sim()
+    lo, hi = [2., 2., 2.], [6., 6., 6.]
+    # The volume occupies the end cell although its bound misses the node.
+    # Sheets use their closed rasterizer's node tolerance, not half a cell.
+    inset = .1 if kind == "volume" else 5e-10
+    (lo if side == 0 else hi)[axis] = inset if side == 0 else 8.-inset
+    if kind != "volume":
+        normal = (axis+1) % 3
+        lo[normal] = hi[normal] = 4.
+    shape = Box(tuple(lo), tuple(hi))
+    if kind == "thin":
+        sim.add_thin_conductor(shape, sigma_bulk=5.8e7, thickness=.01)
+    else:
+        sim.add(shape, material="pec")
+    grid = sim._build_grid()
+    sheets = []
+    result = sim._assemble_materials(grid, pec_sheets=sheets, pec_wires=[])
+    mask = np.asarray(result[3] if kind == "volume" else sheets[0].footprint)
+    assert np.take(mask, 0 if side == 0 else -2, axis=axis).any()
+
+
+@pytest.mark.parametrize("kind", ("wire", "lumped", "coax", "mixed"))
+def test_port_terminals_hold_signal_on_both_faces(kind):
+    sim = _sim()
+    signal = Box((0., 3., 4.), (8., 5., 4.))
+    ground = Box((0., 0., 1.), (8., 8., 1.))
+    sim.add(signal, material="pec")
+    sim.add(ground, material="pec")
+    if kind in ("wire", "mixed"):
+        sim.add_port((4., 4., 1.), component="ez", extent=3.)
+    elif kind == "lumped":
+        sim.add_port((4., 4., 3.), component="ez")
+    else:
+        sim.add_coaxial_port((4., 4., 1.), face="bottom", pin_length=3.)
+    if kind == "mixed":
+        sim._msl_ports = [SimpleNamespace(position=(6., 4., 1.), width=2.,
+                                         height=3., direction="-x")]
+    grid = sim._build_grid()
+    assert continued_conductor_shape(sim, grid, signal) is signal
+    realized_ground = continued_conductor_shape(sim, grid, ground)
+    assert realized_ground.corner_lo[0] < -2.
+    assert realized_ground.corner_hi[0] > 10.
