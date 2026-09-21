@@ -40,6 +40,9 @@ the closed form to `S11 = Gamma_L * exp(-2 j beta L)`: the magnitude is
 | `identity` | the no-op `eps_override` call against the plain call, per port kind |
 | `adfd` | reverse-mode AD against a float64-loss central finite difference, in the load resistance and in a permittivity scale. One entry per (port kind, leg, cell size), with `predeclared_rung` marking the one the pre-declaration named. Each case records the comparator's ULP span before its verdict, the closed form's own derivative, the three pairwise distances, and where on the curve the derivative was taken |
 | `pilot` | the record-length and drive ladder the battery's `num_periods` and drive were chosen from |
+| `port_kind_ab` | one cell of one line declared two ways, in front of three loads whose reflection is an exact number. Lifted from the record `scripts/diagnostics/lumped_port_known_load_line.py` writes, not recomputed here |
+| `not_in_chain_observations` | what `run(compute_s_params=True)` returns on the same builds. Not in the v2.0 chain, carries no bar and no pass/fail |
+| `degenerate_objective_evidence` | the legs whose objective has no derivative, and what the ULP-span floor did on them |
 | `openems_context` | whether a recorded openEMS lumped comparison was readable, and what it is |
 
 ## Three analytic references per solve, on purpose
@@ -53,6 +56,32 @@ node and an open on an H half-node, so the two cannot both land an integer
 number of cells from the port, and because the lattice's numerical dispersion at
 the coarsest rung is of the same size as the difference. The replay test reads
 the realized-length reference, which is the one the `deviations` block names.
+
+## Both port kinds are here, and one of them is red
+
+The battery runs the lumped port and the wire port through the same assertions
+on the same channel. The wire leg passes them; the lumped leg does not, and its
+records are here because that is the measurement, not despite it. Nothing about
+the lumped leg is loosened, xfailed or skipped: the replay test asserts the
+pre-declared bar on both and reports what it finds.
+
+`port_kind_ab` is the sharpest form of it — one cell, three loads whose
+reflection is an exact number, and the port declared two ways with `extent=dx`
+the only difference. Its producer is
+`scripts/diagnostics/lumped_port_known_load_line.py`, which takes no arguments
+and rewrites its own JSON, so a change to the lumped lane can be measured
+against that record rather than against a description of it.
+
+## Every AD leg carries two closed forms
+
+One on the length that was DRAWN and one on the line's own electrical length,
+fitted from that rung's short-circuit phase. The fit is a least-squares
+straight line through `unwrap(angle(S11))` against frequency, unweighted, over
+the whole band, with `L = -slope * c / (4 pi sqrt(eps_r))`; its residual ships
+beside it, because the lattice's dispersion is not linear in frequency and a
+straight line is an assumption about the record. Which of the two lengths a
+derivative should be compared against is a question this artifact does not
+settle, so it stores both and settles nothing.
 
 ## Two things the artifact says about its own instruments
 
