@@ -20,8 +20,7 @@ one case doubled its gate with every existing guard still green.
 
 Consumers (as of this writing):
   * tests/unit/sparams/test_msl_port_integration.py              (quantum=1000, |Z0| length-spread, #518)
-  * tests/crossval/test_wr90_iris_modematch_gates.py        (quantum=100, abs |S11|)
-  * validation/crossval/18_wr90_iris_modematch.py       (--write-fixture self-check)
+  * tests/oracle/test_wr90_inductive_iris_mode_matching.py      (quantum=100, abs |S11|)
   * tests/unit/farfield/test_rcs280_reference_subtraction.py    (quantum=100,  dB pattern mean, #888/#280)
   * tests/unit/sources/test_tfsf_aux_absorber_reflection.py     (quantum=1e5..1e7, |B/A| reflection amplitude, #888)
 
@@ -29,7 +28,8 @@ This list is a SNAPSHOT of the quantized-gate lanes, not a discovered set, and
 it has drifted: ``grep -rl gate_from_envelope tests/ validation/ scripts/``
 finds considerably more files than appear above. What actually binds the lanes
 is ``tests/contracts/test_gate_policy_is_shared.py`` -- its fixture-glob
-discovery for the ``gates``-dict cases, and its hand-listed
+discovery for the ``gates``-dict cases (empty since 2026-09-22, when the
+WR-90 inductive iris fixture left with its case), and its hand-listed
 ``_QUANTIZED_GATE_FILES`` tripwire for the flat-JSON ones. Reconciling this
 docstring against the full grep is not in PR #1005's scope; the two lanes added
 above are the ones that PR introduces.
@@ -42,8 +42,6 @@ the SAME commit as the regenerated fixture, with a written root cause. The
 cases that needed that (the figures here are the pre-#931 baselines, not
 the regenerated gates):
 
-  * cv18 (``fine_gate_abs`` 0.04, ``richardson_gate_abs`` 0.01) — the fin
-    aperture loses its ``- 1``;
   * cv05 / cv06b / cv07 / cv15 — foil becomes a sheet, so every measured
     envelope on those boards is measured on a different board.
 
@@ -96,12 +94,10 @@ not a guarantee; (2) and (3) are the load-bearing checks.
 
 Coordination note: if ``ENVELOPE_GATE_MULTIPLIER`` is ever deliberately
 changed, the PROSE restatements of "x 1.5" scattered through docstrings,
-comments, and printed diagnostics in the six consumer files above (roughly
-30 occurrences, none of them load-bearing -- they are not touched by this
-module and nothing here checks them) will read stale, including the
-runtime mismatch message in ``validation/crossval/18_wr90_iris_modematch.py``
-(``f"must equal round-up(env x 1.5) = {required}"``). Re-derive and update
-those by hand in the same change; this module does not do it for you.
+comments, and printed diagnostics in the consumer files above (none of them
+load-bearing -- they are not touched by this module and nothing here checks
+them) will read stale. Re-derive and update those by hand in the same
+change; this module does not do it for you.
 """
 
 from __future__ import annotations

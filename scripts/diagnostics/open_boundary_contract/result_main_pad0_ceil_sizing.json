@@ -1,0 +1,29 @@
+{
+ "tree_root": "/root/workspace/bk-workspace/.801-measure/src-main",
+ "rfx_file": "/root/workspace/bk-workspace/.801-measure/src-main/rfx/__init__.py",
+ "x64": false,
+ "ceil_sizing": true,
+ "num_periods": 150.0,
+ "arms": [
+  {
+   "arm": "n2_pad0_cpml4",
+   "n": 2,
+   "pad_h": 0,
+   "cpml_layers": 4,
+   "grid": [
+    85,
+    56,
+    41
+   ],
+   "steps": 13330,
+   "rates_per_step": [
+    -0.0003852545372072762,
+    -0.00038343158863834206,
+    -0.0004022405286145271,
+    -0.00038596728447488595
+   ],
+   "worst_rate_per_step": -0.00038343158863834206,
+   "settling_db": -43.7064403512774
+  }
+ ]
+}

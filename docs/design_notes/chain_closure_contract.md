@@ -1,5 +1,7 @@
 # Chain-closure contract (v2.0 per-family definition)
 
+> The WR-90 inductive iris case was removed on 2026-09-22; the artifacts cited here are at commit e367e7bf.
+
 Status: contract document, the first v1.8 deliverable
 (`docs/agent-memory/rfx-known-issues.md:196-197`). Criteria source: `ROADMAP.md:25-32`. Audited
 base: main 1c38b0d7, 2026-09-02. The seven questions raised here were decided by the PI on the same

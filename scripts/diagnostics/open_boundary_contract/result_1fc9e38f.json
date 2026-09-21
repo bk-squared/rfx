@@ -1,0 +1,48 @@
+{
+ "tree_root": "/root/workspace/bk-workspace/.801-measure/src-1fc9e38f",
+ "rfx_file": "/root/workspace/bk-workspace/.801-measure/src-1fc9e38f/rfx/__init__.py",
+ "x64": false,
+ "num_periods": 150.0,
+ "arms": [
+  {
+   "arm": "n2_pad10_cpml4",
+   "n": 2,
+   "pad_h": 10,
+   "cpml_layers": 4,
+   "grid": [
+    126,
+    95,
+    41
+   ],
+   "steps": 13330,
+   "rates_per_step": [
+    0.0026784468610291383,
+    0.0025723569946161395,
+    0.0026419762365463115,
+    0.002687552153019566
+   ],
+   "worst_rate_per_step": 0.002687552153019566,
+   "settling_db": 0.0
+  },
+  {
+   "arm": "n2_pad0_cpml4",
+   "n": 2,
+   "pad_h": 0,
+   "cpml_layers": 4,
+   "grid": [
+    85,
+    56,
+    41
+   ],
+   "steps": 13330,
+   "rates_per_step": [
+    -0.0003852545372072762,
+    -0.00038343158863834206,
+    -0.0004022405286145271,
+    -0.00038596728447488595
+   ],
+   "worst_rate_per_step": -0.00038343158863834206,
+   "settling_db": -43.7064403512774
+  }
+ ]
+}

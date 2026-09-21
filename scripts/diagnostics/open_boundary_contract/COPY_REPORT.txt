@@ -1,0 +1,38 @@
+Mechanical record-copy verification; no record content was edited.
+Source: /root/workspace/bk-workspace/.801-measure
+Destination: /root/workspace/bk-workspace/rfx-wt-obc/scripts/diagnostics/open_boundary_contract
+Copied files: 114
+Copied bytes: 1369427
+Skipped requested records: 4 (missing; see SKIPPED.txt)
+Maximum permitted file size: 150000 bytes.
+PNG files: the two explicitly named dumps figures and the explicitly named cont figure.
+SHA256(source) == SHA256(destination): 114 match; 0 do not match.
+All copied sizes and SHA256 values also match MANIFEST.txt.
+
+Final destination statistics (including MANIFEST.txt, SKIPPED.txt, COPY_REPORT.txt):
+$ find /root/workspace/bk-workspace/rfx-wt-obc/scripts/diagnostics/open_boundary_contract -type f | wc -l
+117
+$ du -sh /root/workspace/bk-workspace/rfx-wt-obc/scripts/diagnostics/open_boundary_contract
+1.7M	/root/workspace/bk-workspace/rfx-wt-obc/scripts/diagnostics/open_boundary_contract
+
+Ten largest files (bytes, relative path):
+133965 dumps/n2_pad10_main1012/leader_z.png
+125579 ports/REPORT.md
+120168 dumps/n2_pad10_main/leader_z.png
+107200 cont/n2_pad10_cpml4_a/slices.png
+99539 cont/REPORT.md
+74001 ports/CENSUS.md
+58871 msl/REPORT.md
+56916 cont/build_check.txt
+42941 msl/TABLE_display.md
+33487 msl_inset/REPORT.md
+
+Exclusion checks (counts):
+.npz: 0
+__pycache__: 0
+src-*: 0
+files over 150000 bytes: 0
+symlinks: 0
+other excluded types: 0
+PASS: no .npz, __pycache__, src-*, or file over 150000 bytes is present.
+PASS: all 114 copied records match their sources byte for byte.

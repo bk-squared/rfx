@@ -1,0 +1,206 @@
+{
+  "counts": {
+    "records": 87,
+    "audited": 62,
+    "completed": 87,
+    "affected": 25,
+    "nonuniform": 16,
+    "audited_nonuniform": 14,
+    "readback_component_checks": 24,
+    "readback_component_equal": 24
+  },
+  "checks": [
+    {
+      "lane": "msl_two_port",
+      "index": 62,
+      "variant": "baseline",
+      "readback": "assembly_received_00.npz",
+      "component": "x",
+      "equal": 1
+    },
+    {
+      "lane": "msl_two_port",
+      "index": 62,
+      "variant": "baseline",
+      "readback": "assembly_received_00.npz",
+      "component": "y",
+      "equal": 1
+    },
+    {
+      "lane": "msl_two_port",
+      "index": 62,
+      "variant": "baseline",
+      "readback": "assembly_received_00.npz",
+      "component": "z",
+      "equal": 1
+    },
+    {
+      "lane": "msl_two_port",
+      "index": 62,
+      "variant": "baseline",
+      "readback": "assembly_received_01.npz",
+      "component": "x",
+      "equal": 1
+    },
+    {
+      "lane": "msl_two_port",
+      "index": 62,
+      "variant": "baseline",
+      "readback": "assembly_received_01.npz",
+      "component": "y",
+      "equal": 1
+    },
+    {
+      "lane": "msl_two_port",
+      "index": 62,
+      "variant": "baseline",
+      "readback": "assembly_received_01.npz",
+      "component": "z",
+      "equal": 1
+    },
+    {
+      "lane": "msl_two_port",
+      "index": 62,
+      "variant": "continued",
+      "readback": "assembly_received_00.npz",
+      "component": "x",
+      "equal": 1
+    },
+    {
+      "lane": "msl_two_port",
+      "index": 62,
+      "variant": "continued",
+      "readback": "assembly_received_00.npz",
+      "component": "y",
+      "equal": 1
+    },
+    {
+      "lane": "msl_two_port",
+      "index": 62,
+      "variant": "continued",
+      "readback": "assembly_received_00.npz",
+      "component": "z",
+      "equal": 1
+    },
+    {
+      "lane": "msl_two_port",
+      "index": 62,
+      "variant": "continued",
+      "readback": "assembly_received_01.npz",
+      "component": "x",
+      "equal": 1
+    },
+    {
+      "lane": "msl_two_port",
+      "index": 62,
+      "variant": "continued",
+      "readback": "assembly_received_01.npz",
+      "component": "y",
+      "equal": 1
+    },
+    {
+      "lane": "msl_two_port",
+      "index": 62,
+      "variant": "continued",
+      "readback": "assembly_received_01.npz",
+      "component": "z",
+      "equal": 1
+    },
+    {
+      "lane": "mixed",
+      "index": 81,
+      "variant": "baseline",
+      "readback": "assembly_received_00.npz",
+      "component": "x",
+      "equal": 1
+    },
+    {
+      "lane": "mixed",
+      "index": 81,
+      "variant": "baseline",
+      "readback": "assembly_received_00.npz",
+      "component": "y",
+      "equal": 1
+    },
+    {
+      "lane": "mixed",
+      "index": 81,
+      "variant": "baseline",
+      "readback": "assembly_received_00.npz",
+      "component": "z",
+      "equal": 1
+    },
+    {
+      "lane": "mixed",
+      "index": 81,
+      "variant": "baseline",
+      "readback": "assembly_received_01.npz",
+      "component": "x",
+      "equal": 1
+    },
+    {
+      "lane": "mixed",
+      "index": 81,
+      "variant": "baseline",
+      "readback": "assembly_received_01.npz",
+      "component": "y",
+      "equal": 1
+    },
+    {
+      "lane": "mixed",
+      "index": 81,
+      "variant": "baseline",
+      "readback": "assembly_received_01.npz",
+      "component": "z",
+      "equal": 1
+    },
+    {
+      "lane": "mixed",
+      "index": 81,
+      "variant": "continued",
+      "readback": "assembly_received_00.npz",
+      "component": "x",
+      "equal": 1
+    },
+    {
+      "lane": "mixed",
+      "index": 81,
+      "variant": "continued",
+      "readback": "assembly_received_00.npz",
+      "component": "y",
+      "equal": 1
+    },
+    {
+      "lane": "mixed",
+      "index": 81,
+      "variant": "continued",
+      "readback": "assembly_received_00.npz",
+      "component": "z",
+      "equal": 1
+    },
+    {
+      "lane": "mixed",
+      "index": 81,
+      "variant": "continued",
+      "readback": "assembly_received_01.npz",
+      "component": "x",
+      "equal": 1
+    },
+    {
+      "lane": "mixed",
+      "index": 81,
+      "variant": "continued",
+      "readback": "assembly_received_01.npz",
+      "component": "y",
+      "equal": 1
+    },
+    {
+      "lane": "mixed",
+      "index": 81,
+      "variant": "continued",
+      "readback": "assembly_received_01.npz",
+      "component": "z",
+      "equal": 1
+    }
+  ]
+}

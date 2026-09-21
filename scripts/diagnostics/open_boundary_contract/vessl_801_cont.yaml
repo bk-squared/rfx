@@ -1,0 +1,27 @@
+name: rfx-801-conductor-continuation
+description: "#801: ground-plane lateral bounds extended; four arms, 150 periods, float32."
+tags: [rfx, issue-801, diagnostic]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_ENABLE_X64: "0"
+  PYTHONDONTWRITEBYTECODE: "1"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  base=/root/workspace/bk-workspace/.801-measure
+  cat "$base/PROVENANCE.txt"
+  sha256sum "$base/cont_run.py" "$base/cont_build_check.py" "$base/src-main/rfx/boundaries/cpml.py" "$base/src-main/rfx/grid.py"
+  python -m pip install -q "scipy>=1.11" pytest
+  python -B "$base/cont_run.py" n2_pad10_cpml4 --require-gpu
+  python -B "$base/cont_run.py" n2_pad0_cpml4 --require-gpu
+  python -B "$base/cont_run.py" n3_pad10_cpml6 --require-gpu
+  python -B "$base/cont_run.py" n4_pad10_cpml8 --require-gpu
+
