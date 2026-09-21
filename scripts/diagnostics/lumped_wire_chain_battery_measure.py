@@ -1786,18 +1786,27 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                 "warnings": {"plain": ident["plain_warnings"],
                              "override": ident["override_warnings"]},
             }
+        # Every rung an AD leg was measured at, not only the coarsest. The
+        # pre-declaration places stage 3a at the coarsest rung; a finer rung is
+        # extra evidence about the same leg, so it is collected under its own
+        # key rather than replacing the declared one.
         for leg in ("adfd-r", "adfd-eps"):
-            name = f"{leg}_{kind}_{COARSEST_RUNG_UM}um.json"
+          for um in RUNGS_UM:
+            name = f"{leg}_{kind}_{um}um.json"
             ad = _load_stage(out, name)
             if ad is None:
                 continue
-            fix["adfd"][f"{kind}_{leg}"] = {
+            fix["adfd"][f"{kind}_{leg}_{um}um"] = {
                 "provenance": fixture_provenance(ad["provenance"], index, name),
                 "kind": kind, "dut": ad["dut"], "rung_um": ad["rung_um"],
+                "leg": leg,
+                "predeclared_rung": bool(um == COARSEST_RUNG_UM),
                 "num_periods": ad["num_periods"],
                 "design_variable": ad["design_variable"],
                 "objectives": ad["objectives"],
                 "min_fd_ulp_span": ad["min_fd_ulp_span"],
+                "s11_at_theta0": ad.get("s11_at_theta0"),
+                "analytic_at_theta0": ad.get("analytic_at_theta0"),
                 "cases": ad["cases"],
                 "bar": BAR["ad_fd_rel"],
             }
