@@ -1,0 +1,74 @@
+name: rfx-fdfd-gpu-p2
+description: "P2, study P's secondary: the paper-geometry square spiral (3 turns, r_out 218 um, W 30 um, S 14 um, M2 3 um, rfic_spiral.py's stack, vacuum) on the level-invariant fixture with a valid uniform-current protocol (10 MHz, 2e6 S/m: delta = 3.75 W): cuDSS plans, level-1 wall check, the sigma plateau at level 2 (4 cells across W) plus the 1 MHz RC twin, forward L at levels 1-2. Submit: bash validation/vessl/submit.sh p2"
+tags: [rfx, fdfd, gpu, cudss, p2]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: "noninteractive"
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "16"
+  LANG: "C.UTF-8"
+  JAX_PLATFORMS: "cpu"
+  RFX_FDFD_BACKEND: "cudss"
+  RFX_P_BLOCKS: "plans walls plateau levels"
+  RFX_P_PAPER_PLANS: "2 3"
+  RFX_P_PAPER_PLATEAU: "2"
+  RFX_P_PAPER_LEVELS: "1 2"
+  RFX_P_FACTOR_CACHE: "1"
+  RFX_P_DEADLINE_S: "4200"
+  RFX_FDFD_CUDSS_HYBRID: "0"
+  RFX_FDFD_CUDSS_FREE_FORWARD: "1"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+import:
+  /root/upload/: volume://vessl-storage/rfx-fdfd-gpu-p-20260915
+run: |-
+  set -eu
+  echo "=== rfx fdfd GPU lane p2 (lane_p2_paper.py, sha256 05871cbebcbfecaa) ==="
+  date -u
+  nvidia-smi || echo "nvidia-smi FAILED"
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  "$PY" -V
+  OUT=/root/workspace/claude-workspace/rfx/runs/fdfd-gpu-p2-$(date -u +%Y%m%dT%H%M%SZ)
+  mkdir -p "$OUT"
+  echo "$OUT" > /root/workspace/claude-workspace/rfx/runs/fdfd-gpu-p2.latest
+  trap 'chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
+  echo "artifacts: $OUT"
+  export RFX_OUT="$OUT"
+  WORK=/root/work/rfx-fdfd-gpu-p2
+  rm -rf "$WORK"; mkdir -p "$WORK"
+  echo "=== source: the uploaded tarball, imported at /root/upload/rfx-src-p.tgz ==="
+  ls -la /root/upload/ || true
+  test -f /root/upload/rfx-src-p.tgz || { echo "ERROR: import did not deliver /root/upload/rfx-src-p.tgz"; exit 3; }
+  tar xzf /root/upload/rfx-src-p.tgz -C "$WORK"
+  cd "$WORK"
+  test -f "$WORK/rfx/fdfd/_cudss.py" || { echo "ERROR: payload did not unpack"; ls -la "$WORK"; exit 3; }
+  echo "=== pip install (PyPI at job start) ==="
+  "$PY" -m pip install -q jax[cpu]==0.6.2 "numpy<2.3" "scipy>=1.14" shapely pytest 2>&1 | tail -5
+  set +e
+  "$PY" -m pip install -q "nvmath-python[cu12]" cupy-cuda12x 2>&1 | tail -10
+  gpu_pip=$?
+  set -e
+  echo "gpu_pip_rc=$gpu_pip" | tee "$OUT/pip.rc"
+  "$PY" -m pip freeze > "$OUT/pip-freeze.txt" 2>/dev/null || true
+  export PYTHONPATH="$WORK"
+  export RFX_REPO_ROOT="$WORK"
+  export MPLBACKEND=Agg
+  "$PY" -c "import jax, rfx, rfx.fdfd.linear_solve as ls; print('probe ok | jax', jax.__version__, '| jax backend', jax.default_backend(), '| default_backend', ls.get_default_backend())"
+  "$PY" -c "from rfx.fdfd import _cudss; import json; print('backends:', json.dumps(_cudss.availability(), indent=1))" | tee "$OUT/backends.txt"
+  echo "=== lane p2 ==="
+  set +x
+  echo IiIiUDIsIHRoZSBzZWNvbmRhcnkgbGFuZSBvZiBzdHVkeSBQOiB0aGUgcGFwZXItZ2VvbWV0cnkgc3F1YXJlIHNwaXJhbC4KClN0dWR5IEgncyAzLXR1cm4gc3F1YXJlIHNwaXJhbCAoYGByX291dGBgIDIxOCB1bSwgVyAzMCB1bSwgUyAxNCB1bSwgTTIgMyB1bSwKYGB2YWxpZGF0aW9uL2ZkZmQvcmZpY19zcGlyYWwucHlgYCdzIHN0YWNrLCB2YWN1dW0gZGllbGVjdHJpY3MpIG9uIHRoZSBTQU1FCmxldmVsLWludmFyaWFudCBmaXh0dXJlIGFzIHRoZSBzbWFsbCBzcGlyYWwgKHdhbGxzIGF0IGBgd2FsbF93YGAgd2lkdGhzLAp0aGUgbGlkIHRoZSBzYW1lIGRpc3RhbmNlIGFib3ZlIHRoZSBzdGFjaywgdGhlIHBoeXNpY2FsIHNob3J0IHN0YW5kYXJkIGFuZApwb3J0IGdhcCwgbmVzdGVkIGpvaW50IHJlZmluZW1lbnQpLCB3aXRoIGEgVkFMSUQgdW5pZm9ybS1jdXJyZW50IHByb3RvY29sOgp0aGUgZWFybGllciBsYW5lIHVzZWQgM2U2IFMvbSBhdCAxMDAgTUh6LCBhIDI5IHVtIHNraW4gZGVwdGggb24gYSAzMCB1bQpzdHJpcC4gSGVyZSAoMTAgTUh6LCAyZTYgUy9tKTogZGVsdGEgPSAxMTIuNSB1bSA9IDMuNzUgVyA9IDM3LjUgdC4KCkJsb2NrczogYGBwbGFuc2BgIChjdURTUyBwbGFuLW9ubHkgZXN0aW1hdGVzIGF0IGBgUkZYX1BfUEFQRVJfUExBTlNgYCksCmBgcGxhdGVhdWBgICh0aGUgc2lnbWEgc3dlZXAgYXQgMTAgTUh6IGF0IGxldmVsIGBgUkZYX1BfUEFQRVJfUExBVEVBVWBgLAp3aGljaCBoYXMgNCBjZWxscyBhY3Jvc3MgVywgcGx1cyB0aGUgMSBNSHogLyAyZTcgdHdpbiB3aXRoIHRoZSBzYW1lIGRlbHRhKSwKYGBsZXZlbHNgYCAoZm9yd2FyZCBMX2R1dCBhdCBgYFJGWF9QX1BBUEVSX0xFVkVMU2BgKSBhbmQgYGB3YWxsc2BgIChsZXZlbCAxCmF0IDUgLyAxMCAvIDIwIFcpLgoiIiIKZnJvbSBfX2Z1dHVyZV9fIGltcG9ydCBhbm5vdGF0aW9ucwoKaW1wb3J0IG9zCmltcG9ydCBwYXRobGliCmltcG9ydCBzeXMKaW1wb3J0IHRpbWUKZnJvbSB0eXBpbmcgaW1wb3J0IEFueQoKc3lzLnBhdGguaW5zZXJ0KDAsIHN0cihwYXRobGliLlBhdGgoX19maWxlX18pLnJlc29sdmUoKS5wYXJlbnRzWzJdKSkKc3lzLnBhdGguaW5zZXJ0KDAsIHN0cihwYXRobGliLlBhdGgoX19maWxlX18pLnJlc29sdmUoKS5wYXJlbnQpKQoKaW1wb3J0IF9ncHVfbGFuZV9saWIgYXMgbGliICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICMgbm9xYTogRTQwMgpmcm9tIGxhbmVfcDBfcHJvYmUgaW1wb3J0IGZvcndhcmQsIGhvc3RfbWVtb3J5LCBsb2FkX2lsICAgICAgICAgICAgICMgbm9xYTogRTQwMgoKCmRlZiBtYWluKCkgLT4gaW50OgogICAgaW1wb3J0IGpheAogICAgamF4LmNvbmZpZy51cGRhdGUoImpheF9lbmFibGVfeDY0IiwgVHJ1ZSkKCiAgICBmcm9tIHJmeC5mZGZkIGltcG9ydCBfY3Vkc3MKICAgIGltcG9ydCByZnguZmRmZC5saW5lYXJfc29sdmUgYXMgbHMKICAgIHJlYyA9IGxpYi5SZWNvcmRlcigicDJfcGFwZXIuanNvbiIsICJQMiIpCiAgICByZWNbImVudiJdID0gbGliLmVudl9yZWNvcmQoKQogICAgcmVjWyJob3N0X21lbW9yeV9nYiJdID0gaG9zdF9tZW1vcnkoKQogICAgYmFja2VuZCA9IG9zLmVudmlyb24uZ2V0KCJSRlhfRkRGRF9CQUNLRU5EIiwgImN1ZHNzIikKICAgIGJsb2NrcyA9IG9zLmVudmlyb24uZ2V0KCJSRlhfUF9CTE9DS1MiLCAicGxhbnMgd2FsbHMgcGxhdGVhdSBsZXZlbHMiKS5zcGxpdCgpCiAgICBkZWFkbGluZSA9IHJlYy50MCArIGZsb2F0KG9zLmVudmlyb24uZ2V0KCJSRlhfUF9ERUFETElORV9TIiwgIjQyMDAiKSkKICAgIGxzLmZhY3Rvcl9jYWNoZV9zaXplKGludChvcy5lbnZpcm9uLmdldCgiUkZYX1BfRkFDVE9SX0NBQ0hFIiwgIjEiKSkpCiAgICBpZiBiYWNrZW5kICE9ICJzdXBlcmx1IiBhbmQgbm90IGxzLmJhY2tlbmRfYXZhaWxhYmxlKGJhY2tlbmQpOgogICAgICAgIHJlY1siYmxvY2tlZCJdID0geyJiYWNrZW5kIjogYmFja2VuZCwgInJlYXNvbiI6IF9jdWRzcy51bmF2YWlsYWJsZV9yZWFzb24oYmFja2VuZCl9CiAgICAgICAgcmV0dXJuIDMKICAgIGlsID0gbG9hZF9pbCgpCiAgICBmMCwgczAgPSBpbC5QQVBFUl9GUkVRLCBpbC5QQVBFUl9TSUdNQQogICAgcmVjWyJmaXh0dXJlIl0gPSBkaWN0KGlsLlBBUEVSLCBmcmVxPWYwLCBzaWdtYT1zMCwgc2tpbl9kZXB0aD1pbC5za2luX2RlcHRoKGYwLCBzMCksCiAgICAgICAgICAgICAgICAgICAgICAgICAgbWV0YWxfY2VsbHNfbGV2ZWwxPTEpCgogICAgaWYgInBsYW5zIiBpbiBibG9ja3M6CiAgICAgICAgcGxhbnM6IGRpY3Rbc3RyLCBBbnldID0ge30KICAgICAgICBmb3IgbSBpbiBbaW50KHYpIGZvciB2IGluIG9zLmVudmlyb24uZ2V0KCJSRlhfUF9QQVBFUl9QTEFOUyIsICIyIDMiKS5zcGxpdCgpXToKICAgICAgICAgICAgaWYgdGltZS50aW1lKCkgPiBkZWFkbGluZToKICAgICAgICAgICAgICAgIGJyZWFrCiAgICAgICAgICAgIHRyeToKICAgICAgICAgICAgICAgIHQwID0gdGltZS50aW1lKCkKICAgICAgICAgICAgICAgIG1vZGVsID0gaWwuYnVpbGQoaWwuc3BlY19wYXBlcihtKSkKICAgICAgICAgICAgICAgIGQsIHIsIGMsIGIgPSBsaWIuZHV0X3N5c3RlbV9hdChOb25lLCBtb2RlbCwgZjAsIHMwKQogICAgICAgICAgICAgICAgcCA9IF9jdWRzcy5wbGFuX2VzdGltYXRlKGQsIHIsIGMsIGludChiLnNoYXBlWzBdKSwKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICBtPWludChiLnNoYXBlWzFdKSBpZiBiLm5kaW0gPiAxIGVsc2UgMSkKICAgICAgICAgICAgICAgIHBbImdyaWQiXSA9IGlsLm1vZGVsX3JlY29yZChtb2RlbCkKICAgICAgICAgICAgICAgIHBbImFzc2VtYmx5X3NlY29uZHMiXSA9IHRpbWUudGltZSgpIC0gdDAKICAgICAgICAgICAgICAgIHBsYW5zW3N0cihtKV0gPSBwCiAgICAgICAgICAgICAgICBwcmludChmIiAgcGFwZXIgcGxhbiBtPXttfTogTj17cFsnZ3JpZCddWyduX3Vua25vd25zJ119IHBlcm0gIgogICAgICAgICAgICAgICAgICAgICAgZiJ7cC5nZXQoJ3Blcm1hbmVudF9kZXZpY2VfbWVtb3J5X2diJywgZmxvYXQoJ25hbicpKTouMmZ9IEdCIiwgZmx1c2g9VHJ1ZSkKICAgICAgICAgICAgICAgIGRlbCBtb2RlbCwgZCwgciwgYywgYgogICAgICAgICAgICBleGNlcHQgRXhjZXB0aW9uIGFzIGV4YzoKICAgICAgICAgICAgICAgIHBsYW5zW3N0cihtKV0gPSB7ImVycm9yIjogZiJ7dHlwZShleGMpLl9fbmFtZV9ffToge2V4Y30ifQogICAgICAgICAgICByZWNbInBsYW5zIl0gPSBwbGFucwoKICAgIGlmICJ3YWxscyIgaW4gYmxvY2tzIGFuZCB0aW1lLnRpbWUoKSA8IGRlYWRsaW5lOgogICAgICAgIHdhbGxzOiBkaWN0W3N0ciwgQW55XSA9IHsibGV2ZWwiOiAxLCAicnVucyI6IHt9fQogICAgICAgIGZvciB3IGluICg1LjAsIDEwLjAsIDIwLjApOgogICAgICAgICAgICB0cnk6CiAgICAgICAgICAgICAgICBtb2RlbCA9IGlsLmJ1aWxkKGlsLnNwZWNfcGFwZXIoMSwgd2FsbF93PXcpKQogICAgICAgICAgICAgICAgciA9IGZvcndhcmQoaWwsIG1vZGVsLCBiYWNrZW5kLCBzaWdtYT1zMCwgZnJlcT1mMCkKICAgICAgICAgICAgICAgIHJbImdyaWQiXSA9IGlsLm1vZGVsX3JlY29yZChtb2RlbCkKICAgICAgICAgICAgICAgIHdhbGxzWyJydW5zIl1bZiJ7dzpnfSJdID0gcgogICAgICAgICAgICAgICAgcHJpbnQoZiIgIHBhcGVyIHdhbGxzIHt3Omd9IFc6IEw9e3JbJ0xfZHV0J10gKiAxZTEyOi4yZn0gcEgiLCBmbHVzaD1UcnVlKQogICAgICAgICAgICBleGNlcHQgRXhjZXB0aW9uIGFzIGV4YzoKICAgICAgICAgICAgICAgIHdhbGxzWyJydW5zIl1bZiJ7dzpnfSJdID0geyJlcnJvciI6IGYie3R5cGUoZXhjKS5fX25hbWVfX306IHtleGN9In0KICAgICAgICAgICAgcmVjWyJ3YWxscyJdID0gd2FsbHMKCiAgICBpZiAicGxhdGVhdSIgaW4gYmxvY2tzIGFuZCB0aW1lLnRpbWUoKSA8IGRlYWRsaW5lOgogICAgICAgIGx2bCA9IGludChvcy5lbnZpcm9uLmdldCgiUkZYX1BfUEFQRVJfUExBVEVBVSIsICIyIikpCiAgICAgICAgcGw6IGRpY3Rbc3RyLCBBbnldID0geyJsZXZlbCI6IGx2bCwgInJ1bnMiOiBbXX0KICAgICAgICByZWNbInBsYXRlYXUiXSA9IHBsCiAgICAgICAgdHJ5OgogICAgICAgICAgICBtb2RlbCA9IGlsLmJ1aWxkKGlsLnNwZWNfcGFwZXIobHZsKSkKICAgICAgICAgICAgcGxbImdyaWQiXSA9IGlsLm1vZGVsX3JlY29yZChtb2RlbCkKICAgICAgICAgICAgY2FzZXMgPSBbKGYwLCBzKSBmb3IgcyBpbiBpbC5QQVBFUl9QTEFURUFVX1NJR01BU10gKyBbCiAgICAgICAgICAgICAgICAoaWwuUEFQRVJfRlJFUV9SQywgaWwuUEFQRVJfU0lHTUFfUkMpXQogICAgICAgICAgICBmb3IgZiwgcyBpbiBjYXNlczoKICAgICAgICAgICAgICAgIGlmIHRpbWUudGltZSgpID4gZGVhZGxpbmU6CiAgICAgICAgICAgICAgICAgICAgYnJlYWsKICAgICAgICAgICAgICAgIHIgPSBmb3J3YXJkKGlsLCBtb2RlbCwgYmFja2VuZCwgc2lnbWE9cywgZnJlcT1mKQogICAgICAgICAgICAgICAgclsic2tpbl9kZXB0aCJdID0gaWwuc2tpbl9kZXB0aChmLCBzKQogICAgICAgICAgICAgICAgclsic2tpbl9vdmVyX3dpZHRoIl0gPSByWyJza2luX2RlcHRoIl0gLyBpbC5QQVBFUlsid2lkdGgiXQogICAgICAgICAgICAgICAgcGxbInJ1bnMiXS5hcHBlbmQocikKICAgICAgICAgICAgICAgIHByaW50KGYiICBwYXBlciBwbGF0ZWF1IGY9e2Y6LjBlfSBzaWdtYT17czouMGV9IGRlbHRhL1c9IgogICAgICAgICAgICAgICAgICAgICAgZiJ7clsnc2tpbl9vdmVyX3dpZHRoJ106LjJmfSBMPXtyWydMX2R1dCddICogMWUxMjouMmZ9IHBIIiwgZmx1c2g9VHJ1ZSkKICAgICAgICAgICAgICAgIHJlY1sicGxhdGVhdSJdID0gcGwKICAgICAgICAgICAgZGVsIG1vZGVsCiAgICAgICAgZXhjZXB0IEV4Y2VwdGlvbiBhcyBleGM6CiAgICAgICAgICAgIHBsWyJlcnJvciJdID0gZiJ7dHlwZShleGMpLl9fbmFtZV9ffToge2V4Y30iCiAgICAgICAgcmVjWyJwbGF0ZWF1Il0gPSBwbAoKICAgIGlmICJsZXZlbHMiIGluIGJsb2NrczoKICAgICAgICBsdjogZGljdFtzdHIsIEFueV0gPSB7fQogICAgICAgIHJlY1sibGV2ZWxzIl0gPSBsdgogICAgICAgIGZvciBtIGluIFtpbnQodikgZm9yIHYgaW4gb3MuZW52aXJvbi5nZXQoIlJGWF9QX1BBUEVSX0xFVkVMUyIsICIxIDIiKS5zcGxpdCgpXToKICAgICAgICAgICAgaWYgdGltZS50aW1lKCkgPiBkZWFkbGluZToKICAgICAgICAgICAgICAgIGJyZWFrCiAgICAgICAgICAgIHRyeToKICAgICAgICAgICAgICAgIG1vZGVsID0gaWwuYnVpbGQoaWwuc3BlY19wYXBlcihtKSkKICAgICAgICAgICAgICAgIHIgPSBmb3J3YXJkKGlsLCBtb2RlbCwgYmFja2VuZCwgc2lnbWE9czAsIGZyZXE9ZjApCiAgICAgICAgICAgICAgICByWyJncmlkIl0gPSBpbC5tb2RlbF9yZWNvcmQobW9kZWwpCiAgICAgICAgICAgICAgICByWyJtIl0gPSBtCiAgICAgICAgICAgICAgICBsdltzdHIobSldID0gcgogICAgICAgICAgICAgICAgcHJpbnQoZiIgIHBhcGVyIGxldmVsIHttfTogTj17clsnZ3JpZCddWyduX3Vua25vd25zJ119ICIKICAgICAgICAgICAgICAgICAgICAgIGYiTD17clsnTF9kdXQnXSAqIDFlMTI6LjJmfSBwSCAoe3JbJ3NlY29uZHMnXTouMGZ9IHMpIiwgZmx1c2g9VHJ1ZSkKICAgICAgICAgICAgICAgIGRlbCBtb2RlbAogICAgICAgICAgICBleGNlcHQgRXhjZXB0aW9uIGFzIGV4YzoKICAgICAgICAgICAgICAgIGx2W3N0cihtKV0gPSB7ImVycm9yIjogZiJ7dHlwZShleGMpLl9fbmFtZV9ffToge2V4Y30ifQogICAgICAgICAgICAgICAgcHJpbnQoZiIgIHBhcGVyIGxldmVsIHttfSBGQUlMRUQ6IHtleGN9IiwgZmx1c2g9VHJ1ZSkKICAgICAgICAgICAgcmVjWyJsZXZlbHMiXSA9IGx2CiAgICByZWMuZHVtcCgpCiAgICBwcmludChmIlAyIGRvbmUgaW4ge3JlY1snc2Vjb25kcyddOi4wZn0gcyIsIGZsdXNoPVRydWUpCiAgICByZXR1cm4gMAoKCmlmIF9fbmFtZV9fID09ICJfX21haW5fXyI6CiAgICBvcy5lbnZpcm9uLnNldGRlZmF1bHQoIk1QTEJBQ0tFTkQiLCAiQWdnIikKICAgIHN5cy5leGl0KG1haW4oKSkK | base64 -d > "$WORK/validation/vessl/_lane_embedded.py"
+  set -x
+  cmp -s "$WORK/validation/vessl/_lane_embedded.py" "$WORK/validation/vessl/lane_p2_paper.py" && echo "embedded lane == repo lane" || echo "NOTE: embedded lane differs from the tarball copy"
+  set +e
+  ( timeout 4800 "$PY" -u "$WORK/validation/vessl/_lane_embedded.py"; echo $? > "$OUT/p2.rc" ) 2>&1 | tee "$OUT/p2.log"
+  set -e
+  rc=$(cat "$OUT/p2.rc" 2>/dev/null || echo 99)
+  ls -la "$OUT"
+  chmod -R a+rX "$OUT" 2>/dev/null || true
+  echo "LANE=p2 RC=$rc"
+  exit "$rc"

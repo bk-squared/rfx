@@ -1,0 +1,10 @@
++ timeout 6600 python -u /root/work/rfx-fdfd-gpu-j2/validation/vessl/_lane_embedded.py
+  plan W/3: N=509580 permanent 8.63 GB peak 8.63 GB (1.2 s)
+  W/1: N=85785 2 cells across W
+    L_diff=3089.74 pH  gap -13.22 %  (7 s)
+  W/3: N=509580 6 cells across W
+    L_diff=2999.18 pH  gap -15.76 %  (23 s)
+  cusolver probe cudss: 0.7 s residual 8.061e-09
+  cusolver probe cusolver: 20.7 s residual 1.505e-08
+J2 done in 96 s -> /root/workspace/claude-workspace/rfx/runs/fdfd-gpu-j2-20260915T061323Z/j2_paper.json
++ echo 0

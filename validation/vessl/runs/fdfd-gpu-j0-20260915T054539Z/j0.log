@@ -1,0 +1,9 @@
++ timeout 2400 python -u /root/work/rfx-fdfd-gpu-j0/validation/vessl/_lane_embedded.py
+env: {'python': '3.10.13', 'jax': '0.6.2', 'scipy': '1.15.3', 'numpy': '2.2.6', 'jax_devices': ['TFRT_CPU_0'], 'nvidia_smi': 'NVIDIA GeForce RTX 4090, 24564 MiB, 391 MiB, 535.288.01'}
+backends: {'cudss': {'backend': 'cudss', 'available': True, 'reason': None, 'nvmath_version': '1.0.0', 'cupy_version': '14.2.0', 'device_count': 1, 'device_name': 'NVIDIA GeForce RTX 4090', 'device_arrays': True, 'min_cudss': '0.4.0', 'threading_lib': '/opt/conda/lib/python3.10/site-packages/nvidia/cu12/lib/libcudss_mtlayer_gomp.so.0', 'host_nthreads': 16}, 'cusolver': {'backend': 'cusolver', 'available': True, 'reason': None, 'cupy_version': '14.2.0', 'device_count': 1, 'device_name': 'NVIDIA GeForce RTX 4090'}}
+  selftest cudss: residual_N 3.74e-16 residual_T 3.86e-16 diff_N 1.40e-15 diff_T 1.23e-15 cross_thread_ok True (0.2 s)
+  selftest cusolver: residual_N 1.22e-15 residual_T 1.25e-15 diff_N 2.75e-15 diff_T 2.77e-15 cross_thread_ok True (0.1 s)
+  W/3: [46, 49, 15] N=108898
+  DUT system captured: N=108898 nnz=1370206 rhs=(108898, 2)
+    superlu   cold   136.72 s  warm    0.54 s  residual 1.787e-08  dev 0.46 GB
+    cudss     cold     0.97 s  warm    0.10 s  residual 3.854e-09  dev 2.04 GB

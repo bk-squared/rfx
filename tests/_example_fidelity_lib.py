@@ -407,6 +407,78 @@ CLASSIFICATION: dict[str, Entry] = {
         "crossval-side build-time realized-conductor gate (#931): takes a "
         "built Simulation and delegates to the shared realized-edge spelling "
         "-- constructs no Simulation"),
+    "validation/crossval/comparators/spiral_greenhouse.py": Entry(
+        "no_simulation",
+        "numpy/scipy Greenhouse partial-inductance referee for the rfx.fdfd spiral studies -- no rfx import"),
+    "validation/fdfd/corner_convergence.py": Entry(
+        "no_simulation",
+        "rfx.fdfd L-bend corner-decomposition study -- builds rfx.fdfd.spiral models, no Simulation"),
+    "validation/fdfd/fasthenry_referee.py": Entry(
+        "no_simulation",
+        "study F: drives the pinned FastHenry binary (validation/referees/fasthenry) as an "
+        "independent magnetoquasistatic referee for the rfx.fdfd spiral -- writes .inp decks, "
+        "reads Zc.mat and evaluates the Greenhouse referee; imports rfx.fdfd.gds for the "
+        "centreline only, constructs no Simulation"),
+    "validation/fdfd/gpu_scaling.py": Entry(
+        "no_simulation",
+        "assembles the harvested VESSL GPU lane JSONs into the extended spiral ladder -- no solve, no Simulation"),
+    "validation/fdfd/invariant_ladder.py": Entry(
+        "no_simulation",
+        "rfx.fdfd level-invariant spiral fixture study: builds rfx.fdfd.spiral models, reads the "
+        "harvested VESSL GPU lanes, evaluates the Greenhouse referee -- no Simulation"),
+    "validation/fdfd/memory_probe.py": Entry(
+        "no_simulation",
+        "rfx.fdfd.linear_solve memory probe (SuperLU thread affinity) -- no Simulation"),
+    "validation/fdfd/rfic_spiral.py": Entry(
+        "no_simulation",
+        "rfx.fdfd paper-scale RFIC spiral study (parts A/B): builds rfx.fdfd.spiral models, "
+        "assembles the harvested VESSL GPU lane JSONs and runs level-1 rfx.fdfd wall / "
+        "remesh checks on the CPU -- no Simulation"),
+    "validation/fdfd/rfic_design.py": Entry(
+        "no_simulation",
+        "rfx.fdfd paper-scale RFIC spiral gradient design (part C): L-BFGS-B on "
+        "rfx.fdfd.spiral, assembles the harvested VESSL GPU lane JSONs -- no Simulation"),
+    "validation/fdfd/spiral_convergence.py": Entry(
+        "no_simulation",
+        "rfx.fdfd frequency-domain spiral validation study -- builds rfx.fdfd.spiral models, never the FDTD Simulation"),
+    "validation/fdfd/spiral_design.py": Entry(
+        "no_simulation",
+        "rfx.fdfd gradient design loop on the spiral model -- no Simulation"),
+    "validation/fdfd/straight_bar_convergence.py": Entry(
+        "no_simulation",
+        "rfx.fdfd straight-bar decomposition study -- no Simulation"),
+    "validation/vessl/_gpu_lane_lib.py": Entry(
+        "no_simulation",
+        "measurement helpers imported by the rfx.fdfd VESSL GPU lanes -- no Simulation"),
+    "validation/vessl/build_gpu_lanes.py": Entry(
+        "no_simulation",
+        "generates the rfx.fdfd VESSL GPU lane YAMLs -- no solve, no Simulation"),
+    "validation/vessl/lane_j0_probe.py": Entry(
+        "no_simulation",
+        "VESSL GPU lane J0: rfx.fdfd backend equality probe (cuDSS vs SuperLU) -- no Simulation"),
+    "validation/vessl/lane_j1_scale.py": Entry(
+        "no_simulation",
+        "VESSL GPU lane J1: rfx.fdfd spiral levels W/4, W/6 -- no Simulation"),
+    "validation/vessl/lane_j2_paper.py": Entry(
+        "no_simulation",
+        "VESSL GPU lane J2: rfx.fdfd paper-geometry spiral levels -- no Simulation"),
+    "validation/vessl/lane_p0_probe.py": Entry(
+        "no_simulation",
+        "VESSL GPU lane P0: rfx.fdfd invariant-fixture probe (plans, walls, P6, plateau) -- no Simulation"),
+    "validation/vessl/lane_p1_ladder.py": Entry(
+        "no_simulation",
+        "VESSL GPU lane P1: rfx.fdfd invariant-fixture joint convergence ladder -- no Simulation"),
+    "validation/vessl/lane_p2_paper.py": Entry(
+        "no_simulation",
+        "VESSL GPU lane P2: rfx.fdfd paper-geometry spiral on the invariant fixture -- no Simulation"),
+    "validation/vessl/lane_p3_hybrid.py": Entry(
+        "no_simulation",
+        "VESSL GPU lane P3: rfx.fdfd cuDSS hybrid (host+device) memory mode with an explicit "
+        "device limit, gate H1 and the level-5 host-memory feasibility -- no Simulation"),
+    "validation/vessl/lane_r_rfic.py": Entry(
+        "no_simulation",
+        "VESSL GPU lane R: rfx.fdfd paper-scale RFIC spiral (levels, sweep, gradients, "
+        "design loop) through cuDSS -- no Simulation"),
     "validation/crossval/comparators/fdfd_hplane.py": Entry(
         "no_simulation",
         "plain numpy/scipy.sparse FDFD comparator -- no rfx import at all"),

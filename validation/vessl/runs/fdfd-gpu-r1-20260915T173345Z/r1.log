@@ -1,0 +1,45 @@
++ timeout 5100 python -u /root/work/rfx-fdfd-gpu-r1/validation/vessl/_lane_embedded.py
+=== block tsi1 ===
+  tsi 120 um level 1: N=87340 L=3094.69 pH Q=20.3307 (9 s)
+  tsi 190 um level 1: N=100126 L=3294.16 pH Q=21.0587 (6 s)
+  tsi 300 um level 1: N=112912 L=3381.15 pH Q=22.4697 (7 s)
+  uniform silicon level 1: N=87340 L=3260.56 pH Q=21.0477
+  block tsi1: 24 s
+=== block levels ===
+  level 1: N=100126 W cells 2 L=3294.165 pH Q=21.05868 L_se=3440.888 pH Q_se=13.62269 (3 s, dev 2.26 GB)
+  level 2: N=772892 W cells 4 L=3506.983 pH Q=23.63078 L_se=3661.394 pH Q_se=14.76267 (77 s, dev 22.54 GB)
+  block levels: 80 s
+=== block grad ===
+  grad level 2: L=3506.983 pH Q=23.63078 dL=[3.5988932615007006e-05, -6.783872036937958e-05, -0.00011531296297257158] dQ=[-17713.737992112874, 39950.1500820369, -31216.21976402487] (228 s)
+  block grad: 228 s
+=== block fd ===
+    FD r_out -2h: L=3351.1505 pH Q=23.68474 (72 s)
+    FD r_out -1h: L=3428.7964 pH Q=23.66365 (72 s)
+    FD r_out +1h: L=3585.7071 pH Q=23.58656 (72 s)
+    FD r_out +2h: L=3664.9663 pH Q=23.53138 (72 s)
+  FD4 r_out: dL=3.59889328e-05 dQ=-1.77137166e+04
+    FD width -2h: L=3576.7080 pH Q=23.64626 (72 s)
+    FD width -1h: L=3541.7106 pH Q=23.63933 (72 s)
+    FD width +1h: L=3472.5217 pH Q=23.62060 (72 s)
+    FD width +2h: L=3438.3238 pH Q=23.60876 (72 s)
+  FD4 width: dL=-1.15312963e-04 dQ=-3.12162233e+04
+  block fd: 578 s
+=== block sweep ===
+  sweep 0.5 GHz: L=3495.906 pH Q=17.0197
+  sweep 1 GHz: L=3448.514 pH Q=21.0778
+  sweep 2 GHz: L=3470.868 pH Q=23.6740
+  sweep 2.45 GHz: L=3506.983 pH Q=23.6308
+  sweep 3.5 GHz: L=3645.922 pH Q=22.1583
+  sweep 5 GHz: L=4001.509 pH Q=18.4621
+  sweep 6.5 GHz: L=4644.504 pH Q=14.1217
+  sweep 8 GHz: L=5872.722 pH Q=9.7309
+  block sweep: 506 s
+=== block tsi2 ===
+  tsi 120 um level 2: L=3303.974 pH Q=22.63703
+  block tsi2: 57 s
+=== block plans ===
+  plan 190:2:2: N=772892 perm 20.51 GB peak 20.51 GB hybrid_min 4.02 GB
+  plan 190:2:3: N=2577198 perm 106.71 GB peak 106.71 GB hybrid_min 16.54 GB
+  block plans: 22 s
+lane done in 1495 s -> /root/workspace/claude-workspace/rfx/runs/fdfd-gpu-r1-20260915T173345Z/r1_study.json
++ echo 0

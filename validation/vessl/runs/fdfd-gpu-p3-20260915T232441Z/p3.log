@@ -1,0 +1,15 @@
++ timeout 5700 python -u /root/work/rfx-fdfd-gpu-p3/validation/vessl/_lane_embedded.py
+host: total        used        free      shared  buff/cache   available
+Mem:            251           3         230           0          16         245
+Swap:             7           0           7
+  cgroup {'version': 2, 'limit_gb': 32.0, 'memory.max': '34359738368', 'memory.current_gb': 6.769733428955078}
+  h1 plans: in-core 11.373609337955713 GB, hybrid min 2.7335859425365925 GB, limit 6.00 GB
+  h1 probe in_core: factor 22.7 s solve 0.63 s residual 1.508e-08 device peak 12.46 GB
+  h1 probe hybrid: factor 29.2 s solve 1.27 s residual 1.433e-08 device peak 12.49 GB
+    cudss     L_dut=308.6307 pH  grad=['1.143614e-05', '-1.115304e-05', '-2.384237e-05']  158.6 s
+    cudss     L_dut=308.6307 pH  grad=['1.143614e-05', '-1.115304e-05', '-2.384237e-05']  199.9 s
+  H1: rel L 3.002e-10 worst rel grad 1.624e-09 slowdown 1.26x passed False
+  m5: factor 91.87 GB, hybrid host estimate 97.60 GB, in use 16.39 GB, allowed 32.0 GB -> fits False
+  m5 NOT RUN: host memory: the level-5 factor needs >= 97.60 GB of host memory in hybrid mode (in-core factor 91.87 GB, cuDSS hybrid host estimate 97.60 GB) + 16.39 GB in use + 4 GB margin, and this container may hold 32.0 GB (cgroup limit 32.0 GB; node MemTotal 251.5681037902832 GB)
+P3 done in 458 s -> /root/workspace/claude-workspace/rfx/runs/fdfd-gpu-p3-20260915T232441Z/p3_ladder.json
++ echo 0

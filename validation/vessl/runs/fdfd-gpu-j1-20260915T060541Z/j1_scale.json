@@ -1,0 +1,671 @@
+{
+ "lane": "J1",
+ "started_utc": "2026-09-15T06:06:43Z",
+ "artifact_dir": "/root/workspace/claude-workspace/rfx/runs/fdfd-gpu-j1-20260915T060541Z",
+ "env": {
+  "python": "3.10.13",
+  "platform": "Linux-5.15.0-191-generic-x86_64-with-glibc2.31",
+  "numpy": "2.2.6",
+  "scipy": "1.15.3",
+  "jax": "0.6.2",
+  "jax_platforms_env": "cpu",
+  "jax_devices": [
+   "TFRT_CPU_0"
+  ],
+  "jax_default_backend": "cpu",
+  "default_backend": "cudss",
+  "env_backend": "cudss",
+  "cudss_hybrid_memory": false,
+  "cudss_free_forward": true,
+  "backends": {
+   "cudss": {
+    "backend": "cudss",
+    "available": true,
+    "reason": null,
+    "nvmath_version": "1.0.0",
+    "cupy_version": "14.2.0",
+    "device_count": 1,
+    "device_name": "NVIDIA GeForce RTX 4090",
+    "device_arrays": true,
+    "min_cudss": "0.4.0",
+    "threading_lib": "/opt/conda/lib/python3.10/site-packages/nvidia/cu12/lib/libcudss_mtlayer_gomp.so.0",
+    "host_nthreads": 16,
+    "ir_steps": null
+   },
+   "cusolver": {
+    "backend": "cusolver",
+    "available": true,
+    "reason": null,
+    "cupy_version": "14.2.0",
+    "device_count": 1,
+    "device_name": "NVIDIA GeForce RTX 4090"
+   }
+  },
+  "device_memory_gb": {
+   "used": 0.38232421875,
+   "free": 23.26739501953125,
+   "total": 23.64971923828125,
+   "pool_used": 0.0,
+   "pool_total": 0.0
+  },
+  "cpu_count": 32,
+  "omp_num_threads": "16",
+  "nvmath_version": "1.0.0",
+  "cupy_version": "14.2.0",
+  "nvidia_smi": "NVIDIA GeForce RTX 4090, 24564 MiB, 391 MiB, 535.288.01"
+ },
+ "seconds": 287.46308612823486,
+ "finished_utc": "2026-09-15T06:11:30Z",
+ "config": {
+  "backend": "cudss",
+  "divs": [
+   4.0,
+   6.0
+  ],
+  "grad": true,
+  "grad_max_div": 1000000000.0,
+  "pec": true,
+  "fd_div": "4",
+  "fd_param": 2,
+  "deadline_seconds": 5400.0,
+  "factor_cache_size": 1,
+  "hybrid_memory": false,
+  "free_forward": true
+ },
+ "fixture": {
+  "freq": 100000000.0,
+  "n_turns": 2,
+  "r_out": 5.2e-05,
+  "spacing": 1e-05,
+  "width": 1e-05,
+  "lead": 1.5000000000000002e-05,
+  "margin": 1e-05,
+  "base_dz": 1e-05,
+  "metal_cells": 2,
+  "pad_cells": 4,
+  "pad_ratio": 1.5,
+  "sigma_volumetric": 3000000.0,
+  "ground_height": 2.6000000000000005e-05,
+  "underpass_depth": 4e-06,
+  "reference_plane_shift": 5e-06,
+  "eps_dielectrics": 1.0,
+  "stack": {
+   "t_si": 2e-05,
+   "t_ox_low": 1e-06,
+   "t_m1": 2e-06,
+   "t_via": 2e-06,
+   "t_m2": 2e-06,
+   "t_ox_high": 3e-06,
+   "t_air": 1e-05
+  },
+  "fd_step_rel": 0.01
+ },
+ "referee": {
+  "greenhouse": {
+   "total": 3.4513331839248287e-10,
+   "self_sum": 3.820185019855248e-10,
+   "mutual_sum": 1.6771423928419256e-11,
+   "image_sum": -5.365660752146119e-11,
+   "worst_error": 1.6987008291362725e-11
+  },
+  "area_exact": {
+   "total": 3.493712871350631e-10,
+   "self_sum": 3.8201850198552487e-10,
+   "mutual_sum": 2.2122402297898177e-11,
+   "image_sum": -5.476961714835996e-11,
+   "worst_error": 1.584583900319699e-11
+  },
+  "corner_systematic": 0.012279222308409166,
+  "free_space_area_exact": 4.0414090428342306e-10,
+  "reference_plane": {
+   "column_centre": 3.493712871350631e-10,
+   "port_line": 3.5445635319414497e-10,
+   "far_edge": 3.442673925095764e-10
+  },
+  "reference_plane_sensitivity": [
+   0.014554905472572655,
+   -0.014608798185277383
+  ],
+  "deembedded": {
+   "total": 3.3305510896906523e-10,
+   "strip": 3.493712871350631e-10,
+   "bridge": 1.6316178165997864e-11,
+   "bridge_split_on_m2": 0.5,
+   "bridge_worst_error": 1.846497501877589e-13,
+   "per_plane": {
+    "port_line": {
+     "strip": 3.5445635319414497e-10,
+     "bridge": 2.1657400761150003e-11,
+     "deembedded": 3.32798952432995e-10
+    },
+    "column_centre": {
+     "strip": 3.493712871350631e-10,
+     "bridge": 1.6316178165997864e-11,
+     "deembedded": 3.3305510896906523e-10
+    },
+    "far_edge": {
+     "strip": 3.442673925095764e-10,
+     "bridge": 1.1164059770455161e-11,
+     "deembedded": 3.3310333273912124e-10
+    }
+   },
+   "per_split": {
+    "0": 3.324753353368699e-10,
+    "0.25": 3.329078468750609e-10,
+    "0.5": 3.3305510896906523e-10,
+    "0.75": 3.3315932626416044e-10,
+    "1": 3.3295612627415584e-10
+   },
+   "reference_plane_spread": 0.000913903729231006,
+   "reference_plane_spread_strip_only": 0.029163703657849954,
+   "split_spread": 0.002053686939100734
+  },
+  "gradient_deembedded_fd4": [
+   1.1916676450311244e-05,
+   -1.0886319762768954e-05,
+   -2.5465919025242603e-05
+  ],
+  "gradient_area_exact_fd4": [
+   1.1916676450311285e-05,
+   -9.833734864394427e-06,
+   -2.5000975026649162e-05
+  ],
+  "gradient_greenhouse_fd4": [
+   1.1998138208620537e-05,
+   -1.0029757751470544e-05,
+   -2.5608013418059798e-05
+  ]
+ },
+ "cpu_levels": {
+  "1": {
+   "base_dx": 1e-05,
+   "div": 1.0,
+   "L_dut": 2.624392626623466e-10,
+   "L_pec": 2.4487657670982894e-10,
+   "grad": [
+    9.960315883655651e-06,
+    -9.955068907479151e-06,
+    -2.0744805581785236e-05
+   ],
+   "fd": [
+    9.960315549713271e-06,
+    -9.955070504372157e-06,
+    -2.0744805648757725e-05
+   ],
+   "value_and_grad_seconds": 20.472824096679688,
+   "n_unknowns": 23062
+  },
+  "2": {
+   "base_dx": 5e-06,
+   "div": 2.0,
+   "L_dut": 2.9300470303288545e-10,
+   "L_pec": 2.6636406683059196e-10,
+   "grad": [
+    1.0793423389994091e-05,
+    -1.0377039425254427e-05,
+    -2.151402236610647e-05
+   ],
+   "fd": [
+    1.0793423668209139e-05,
+    -1.0377033491853368e-05,
+    -2.151401955884596e-05
+   ],
+   "value_and_grad_seconds": 99.95538187026978,
+   "n_unknowns": 56408
+  },
+  "3": {
+   "base_dx": 3.3333333333333337e-06,
+   "div": 3.0,
+   "L_dut": 3.005576903387643e-10,
+   "L_pec": 2.7335773063273004e-10,
+   "grad": [
+    1.0944483131605359e-05,
+    -1.0188592910094729e-05,
+    -2.2422482362389336e-05
+   ],
+   "fd": [
+    1.0944483299844529e-05,
+    -1.0188592905442761e-05,
+    -2.2422480282079162e-05
+   ],
+   "value_and_grad_seconds": 347.0937809944153,
+   "n_unknowns": 108898
+  }
+ },
+ "ir_sweep": {
+  "what": "cuDSS ir_num_steps against the reference backend's solution on the same system: residual, solution difference, wall time",
+  "reference": "superlu",
+  "n": 108898,
+  "nnz": 1370206,
+  "reference_seconds": 143.26274013519287,
+  "reference_residual": 1.786580204714393e-08,
+  "steps": {
+   "0": {
+    "ir_num_steps": 0,
+    "seconds": 3.7800605297088623,
+    "residual": 3.858128233662566e-09,
+    "rel_diff_vs_reference": 0.002396221124006362,
+    "rel_l2_diff_vs_reference": 0.0002616464864492345,
+    "ir_seen_by_backend": 0,
+    "stats": {
+     "A": {
+      "device_memory_gb": 2.03466796875
+     }
+    },
+    "factorizations": 1,
+    "solves": 1,
+    "freed_forward": 0
+   },
+   "1": {
+    "ir_num_steps": 1,
+    "seconds": 0.8524272441864014,
+    "residual": 1.310411742881999e-09,
+    "rel_diff_vs_reference": 0.002391528860745324,
+    "rel_l2_diff_vs_reference": 0.000259839761277897,
+    "ir_seen_by_backend": 1,
+    "stats": {
+     "A": {
+      "device_memory_gb": 2.03466796875
+     }
+    },
+    "factorizations": 1,
+    "solves": 1,
+    "freed_forward": 0
+   },
+   "2": {
+    "ir_num_steps": 2,
+    "seconds": 0.8514597415924072,
+    "residual": 1.3151777909334155e-09,
+    "rel_diff_vs_reference": 0.0023946899562022634,
+    "rel_l2_diff_vs_reference": 0.0002598859140238485,
+    "ir_seen_by_backend": 2,
+    "stats": {
+     "A": {
+      "device_memory_gb": 2.03466796875
+     }
+    },
+    "factorizations": 1,
+    "solves": 1,
+    "freed_forward": 0
+   },
+   "4": {
+    "ir_num_steps": 4,
+    "seconds": 0.8633310794830322,
+    "residual": 1.3167537075322057e-09,
+    "rel_diff_vs_reference": 0.0023989006385295875,
+    "rel_l2_diff_vs_reference": 0.00025990470837800646,
+    "ir_seen_by_backend": 4,
+    "stats": {
+     "A": {
+      "device_memory_gb": 2.03466796875
+     }
+    },
+    "factorizations": 1,
+    "solves": 1,
+    "freed_forward": 0
+   }
+  },
+  "div": 3.0
+ },
+ "l_dut_vs_ir": {
+  "what": "value_and_grad of L_dut at this level through cuDSS at several ir_num_steps, against the CPU study's recorded level",
+  "div": 3.0,
+  "cpu": {
+   "L_dut": 3.005576903387643e-10,
+   "grad": [
+    1.0944483131605359e-05,
+    -1.0188592910094729e-05,
+    -2.2422482362389336e-05
+   ],
+   "fd": [
+    1.0944483299844529e-05,
+    -1.0188592905442761e-05,
+    -2.2422480282079162e-05
+   ]
+  },
+  "steps": {
+   "0": {
+    "backend": "cudss",
+    "L_dut": 3.0055769019980376e-10,
+    "grad": [
+     1.094448311284238e-05,
+     -1.0188592714218773e-05,
+     -2.2422482000715717e-05
+    ],
+    "value_and_grad_seconds": 15.238715648651123,
+    "device_memory_gb_before": {
+     "used": 2.02685546875,
+     "free": 21.62286376953125,
+     "total": 23.64971923828125,
+     "pool_used": 0.0,
+     "pool_total": 0.12070178985595703
+    },
+    "device_memory_gb_peak_after": {
+     "used": 3.44287109375,
+     "free": 20.20684814453125,
+     "total": 23.64971923828125,
+     "pool_used": 0.029173851013183594,
+     "pool_total": 0.15133142471313477
+    },
+    "factor_cache_size": 1,
+    "factor_cache_entries": 1,
+    "stats": {
+     "AT": {
+      "device_memory_gb": 3.44287109375
+     }
+    },
+    "factorizations": 1,
+    "solves": 1,
+    "freed_forward": 0,
+    "L_dut_rel_vs_cpu": 4.6234236258601697e-10,
+    "grad_rel_vs_cpu": [
+     1.7143778243992662e-09,
+     1.9225025224671337e-08,
+     1.612995444182777e-08
+    ],
+    "grad_rel_vs_cpu_fd4": [
+     1.7086430097840355e-08,
+     1.8768439356485414e-08,
+     7.664792357807895e-08
+    ],
+    "worst_vs_cpu": 1.9225025224671337e-08
+   },
+   "2": {
+    "backend": "cudss",
+    "L_dut": 3.005576903850845e-10,
+    "grad": [
+     1.094448312476578e-05,
+     -1.0188592770594335e-05,
+     -2.2422482030790252e-05
+    ],
+    "value_and_grad_seconds": 6.598495721817017,
+    "device_memory_gb_before": {
+     "used": 3.43505859375,
+     "free": 20.21466064453125,
+     "total": 23.64971923828125,
+     "pool_used": 0.0,
+     "pool_total": 0.15133142471313477
+    },
+    "device_memory_gb_peak_after": {
+     "used": 3.44287109375,
+     "free": 20.20684814453125,
+     "total": 23.64971923828125,
+     "pool_used": 0.029173851013183594,
+     "pool_total": 0.15133142471313477
+    },
+    "factor_cache_size": 1,
+    "factor_cache_entries": 1,
+    "stats": {
+     "AT": {
+      "device_memory_gb": 3.44287109375
+     }
+    },
+    "factorizations": 1,
+    "solves": 1,
+    "freed_forward": 0,
+    "L_dut_rel_vs_cpu": 1.54114178198517e-10,
+    "grad_rel_vs_cpu": [
+     6.249339697998528e-10,
+     1.3691821336369762e-08,
+     1.4788687471529125e-08
+    ],
+    "grad_rel_vs_cpu_fd4": [
+     1.599698625998793e-08,
+     1.3235235465657456e-08,
+     7.79891906728175e-08
+    ],
+    "worst_vs_cpu": 1.4788687471529125e-08
+   },
+   "4": {
+    "backend": "cudss",
+    "L_dut": 3.005576903850845e-10,
+    "grad": [
+     1.0944483120054815e-05,
+     -1.0188592751979541e-05,
+     -2.24224820164093e-05
+    ],
+    "value_and_grad_seconds": 6.788207054138184,
+    "device_memory_gb_before": {
+     "used": 3.43505859375,
+     "free": 20.21466064453125,
+     "total": 23.64971923828125,
+     "pool_used": 0.0,
+     "pool_total": 0.15133142471313477
+    },
+    "device_memory_gb_peak_after": {
+     "used": 3.44287109375,
+     "free": 20.20684814453125,
+     "total": 23.64971923828125,
+     "pool_used": 0.029173851013183594,
+     "pool_total": 0.15133142471313477
+    },
+    "factor_cache_size": 1,
+    "factor_cache_entries": 1,
+    "stats": {
+     "AT": {
+      "device_memory_gb": 3.44287109375
+     }
+    },
+    "factorizations": 1,
+    "solves": 1,
+    "freed_forward": 0,
+    "L_dut_rel_vs_cpu": 1.54114178198517e-10,
+    "grad_rel_vs_cpu": [
+     1.0553759659135474e-09,
+     1.5518844392311315e-08,
+     1.5430050557520887e-08
+    ],
+    "grad_rel_vs_cpu_fd4": [
+     1.6427428249484846e-08,
+     1.5062258522433202e-08,
+     7.734782752732144e-08
+    ],
+    "worst_vs_cpu": 1.5518844392311315e-08
+   }
+  }
+ },
+ "levels": {
+  "4": {
+   "base_dx": 2.5e-06,
+   "div": 4.0,
+   "grid": {
+    "shape": [
+     58,
+     62,
+     15
+    ],
+    "n_unknowns": 172747,
+    "wall_x": [
+     -9.246875e-05,
+     9.246874999999844e-05
+    ],
+    "wall_y": [
+     -0.00010246874999999994,
+     9.246874999999975e-05
+    ],
+    "lid_z": 0.000161875,
+    "n_z_lines": 16,
+    "build_seconds": 0.2464616298675537
+   },
+   "backend": "cudss",
+   "build_seconds": 0.24654746055603027,
+   "L_dut": 3.0221694077890034e-10,
+   "grad": [
+    1.0834353319757008e-05,
+    -9.961494134096606e-06,
+    -2.2749617084871722e-05
+   ],
+   "value_and_grad_seconds": 20.949076175689697,
+   "device_memory_gb_before": {
+    "used": 3.43505859375,
+    "free": 20.21466064453125,
+    "total": 23.64971923828125,
+    "pool_used": 0.0,
+    "pool_total": 0.15133142471313477
+   },
+   "device_memory_gb_peak_after": {
+    "used": 5.74951171875,
+    "free": 17.90020751953125,
+    "total": 23.64971923828125,
+    "pool_used": 0.0463862419128418,
+    "pool_total": 0.2974734306335449
+   },
+   "factor_cache_size": 1,
+   "factor_cache_entries": 1,
+   "stats": {
+    "AT": {
+     "device_memory_gb": 5.74951171875
+    }
+   },
+   "factorizations": 1,
+   "solves": 1,
+   "freed_forward": 0,
+   "L_pec": 2.755667590982038e-10,
+   "pec_seconds": 7.583919048309326,
+   "L_pec_over_L_uniform_minus_1": -0.08818228922578364,
+   "fd_one_parameter": {
+    "backend": "cudss",
+    "parameter": 2,
+    "step": 1.0000000000000001e-07,
+    "fd_order": 4,
+    "fd": -2.274961481162941e-05,
+    "fd_seconds": 20.617881298065186,
+    "ad": -2.2749617084871722e-05,
+    "rel": 9.992443079281324e-08
+   }
+  },
+  "6": {
+   "base_dx": 1.6666666666666669e-06,
+   "div": 6.0,
+   "grid": {
+    "shape": [
+     83,
+     89,
+     15
+    ],
+    "n_unknowns": 352536,
+    "wall_x": [
+     -8.231250000000003e-05,
+     8.231250000000225e-05
+    ],
+    "wall_y": [
+     -9.231249999999995e-05,
+     8.231250000000061e-05
+    ],
+    "lid_z": 0.000161875,
+    "n_z_lines": 16,
+    "build_seconds": 0.5042924880981445
+   },
+   "backend": "cudss",
+   "build_seconds": 0.5043740272521973,
+   "L_dut": 3.015537615381723e-10,
+   "grad": [
+    1.0470891898209066e-05,
+    -9.676079476885134e-06,
+    -2.2950851071146244e-05
+   ],
+   "value_and_grad_seconds": 38.10807490348816,
+   "device_memory_gb_before": {
+    "used": 5.74169921875,
+    "free": 17.90802001953125,
+    "total": 23.64971923828125,
+    "pool_used": 0.0,
+    "pool_total": 0.2974734306335449
+   },
+   "device_memory_gb_peak_after": {
+    "used": 12.72412109375,
+    "free": 10.92559814453125,
+    "total": 23.64971923828125,
+    "pool_used": 0.09491539001464844,
+    "pool_total": 0.6630992889404297
+   },
+   "factor_cache_size": 1,
+   "factor_cache_entries": 1,
+   "stats": {
+    "AT": {
+     "device_memory_gb": 12.72412109375
+    }
+   },
+   "factorizations": 1,
+   "solves": 1,
+   "freed_forward": 0,
+   "L_pec": 2.757962285989051e-10,
+   "pec_seconds": 15.520511865615845,
+   "L_pec_over_L_uniform_minus_1": -0.08541605585645018
+  }
+ },
+ "extended": {
+  "levels": [
+   "1",
+   "2",
+   "3",
+   "4",
+   "6"
+  ],
+  "h": [
+   1e-05,
+   5e-06,
+   3.3333333333333337e-06,
+   2.5e-06,
+   1.6666666666666669e-06
+  ],
+  "L_dut": [
+   2.624392626623466e-10,
+   2.9300470303288545e-10,
+   3.005576903387643e-10,
+   3.0221694077890034e-10,
+   3.015537615381723e-10
+  ],
+  "referee_deembedded": 3.3305510896906523e-10,
+  "per_level_gap": {
+   "1": -0.21202451007372947,
+   "2": -0.12025158857388896,
+   "3": -0.09757369803121485,
+   "4": -0.09259178844492433,
+   "6": -0.09458298816793964
+  },
+  "richardson": {
+   "h": [
+    1e-05,
+    5e-06,
+    3.3333333333333337e-06,
+    2.5e-06,
+    1.6666666666666669e-06
+   ],
+   "values": [
+    2.624392626623466e-10,
+    2.9300470303288545e-10,
+    3.005576903387643e-10,
+    3.0221694077890034e-10,
+    3.015537615381723e-10
+   ],
+   "observed_order": null,
+   "estimates": {
+    "p1_finest_pair": 3.002274030567162e-10,
+    "p2_finest_pair": 3.0102321814558983e-10
+   },
+   "range": [
+    3.002274030567162e-10,
+    3.0102321814558983e-10
+   ]
+  },
+  "rel_range": [
+   -0.09856538761397027,
+   -0.09617594794635198
+  ],
+  "source": {
+   "1": "cpu",
+   "2": "cpu",
+   "3": "cpu",
+   "4": "gpu:cudss",
+   "6": "gpu:cudss"
+  },
+  "dL_dwidth": {
+   "1": -2.0744805581785236e-05,
+   "2": -2.151402236610647e-05,
+   "3": -2.2422482362389336e-05,
+   "4": -2.2749617084871722e-05,
+   "6": -2.2950851071146244e-05
+  }
+ }
+}

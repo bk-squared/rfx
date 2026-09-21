@@ -1,0 +1,546 @@
+{
+ "lane": "P3",
+ "started_utc": "2026-09-16T00:49:25Z",
+ "artifact_dir": "/root/workspace/claude-workspace/rfx/runs/fdfd-gpu-p3-20260916T004810Z",
+ "env": {
+  "python": "3.10.13",
+  "platform": "Linux-5.15.0-191-generic-x86_64-with-glibc2.31",
+  "numpy": "2.2.6",
+  "scipy": "1.15.3",
+  "jax": "0.6.2",
+  "jax_platforms_env": "cpu",
+  "jax_devices": [
+   "TFRT_CPU_0"
+  ],
+  "jax_default_backend": "cpu",
+  "default_backend": "cudss",
+  "env_backend": "cudss",
+  "cudss_hybrid_memory": false,
+  "cudss_free_forward": true,
+  "backends": {
+   "cudss": {
+    "backend": "cudss",
+    "available": true,
+    "reason": null,
+    "nvmath_version": "1.0.0",
+    "cupy_version": "14.2.0",
+    "device_count": 1,
+    "device_name": "NVIDIA RTX A6000",
+    "device_arrays": true,
+    "min_cudss": "0.4.0",
+    "threading_lib": "/opt/conda/lib/python3.10/site-packages/nvidia/cu12/lib/libcudss_mtlayer_gomp.so.0",
+    "host_nthreads": 16,
+    "ir_steps": null
+   },
+   "cusolver": {
+    "backend": "cusolver",
+    "available": true,
+    "reason": null,
+    "cupy_version": "14.2.0",
+    "device_count": 1,
+    "device_name": "NVIDIA RTX A6000"
+   }
+  },
+  "device_memory_gb": {
+   "used": 0.2606201171875,
+   "free": 47.2752685546875,
+   "total": 47.535888671875,
+   "pool_used": 0.0,
+   "pool_total": 0.0
+  },
+  "cpu_count": 128,
+  "omp_num_threads": "16",
+  "nvmath_version": "1.0.0",
+  "cupy_version": "14.2.0",
+  "nvidia_smi": "NVIDIA RTX A6000, 49140 MiB, 266 MiB, 535.309.01"
+ },
+ "seconds": 638.174346446991,
+ "finished_utc": "2026-09-16T01:00:04Z",
+ "config": {
+  "backend": "cudss",
+  "smoke": false,
+  "blocks": [
+   "host",
+   "h1",
+   "m5"
+  ],
+  "wall_w": 10.0,
+  "h1_level": 3,
+  "h1_limit": "6GiB",
+  "m5_level": 5,
+  "m5_limit": "40GiB",
+  "host_margin_gb": 4.0,
+  "deadline_s": 5400.0,
+  "factor_cache_size": 0,
+  "free_forward": true,
+  "h1_tolerance": 1e-09
+ },
+ "fixture": {
+  "freq": 100000000.0,
+  "sigma": 2000000.0,
+  "metal_cells": 1,
+  "wall_w": 10.0
+ },
+ "host": {
+  "meminfo": {
+   "MemTotal": 251.5681037902832,
+   "MemAvailable": 245.95772552490234,
+   "peak_rss": 0.6310462951660156
+  },
+  "cgroup": {
+   "version": 2,
+   "limit_gb": 32.0,
+   "memory.max": "34359738368",
+   "memory.current_gb": 6.768791198730469
+  },
+  "free_g": "total        used        free      shared  buff/cache   available\nMem:            251           3         230           0          16         245\nSwap:             7           0           7",
+  "nvidia_smi": "NVIDIA RTX A6000, 49140 MiB, 266 MiB",
+  "process_limit_gb": 32.0
+ },
+ "h1": {
+  "level": 3,
+  "limit": "6GiB",
+  "limit_gb": 6.0,
+  "grid": {
+   "shape": [
+    63,
+    66,
+    36
+   ],
+   "n_unknowns": 466833,
+   "wall_x": [
+    -0.000152,
+    0.000152
+   ],
+   "wall_y": [
+    -0.000162,
+    0.000152
+   ],
+   "lid_z": 0.00014000000000000001,
+   "dx_min": 2.6666666666666626e-06,
+   "dz_min": 3.333333333333324e-07,
+   "build_seconds": 1.2987616062164307
+  },
+  "plans": {
+   "in_core": {
+    "n": 466833,
+    "nnz": 5961225,
+    "hybrid_device_memory_limit": null,
+    "hybrid_memory": false,
+    "plan_seconds": 1.7586297988891602,
+    "permanent_device_memory_gb": 11.373609337955713,
+    "peak_device_memory_gb": 11.373609337955713,
+    "permanent_host_memory_gb": 0.04347728192806244,
+    "peak_host_memory_gb": 0.09230975806713104,
+    "hybrid_min_device_memory_gb": 2.7335859425365925,
+    "hybrid_max_device_memory_gb": 10.666483372449875,
+    "device_memory_gb": {
+     "used": 1.3406982421875,
+     "free": 46.1951904296875,
+     "total": 47.535888671875,
+     "pool_used": 0.12668991088867188,
+     "pool_total": 0.524803638458252
+    }
+   },
+   "hybrid": {
+    "n": 466833,
+    "nnz": 5961225,
+    "hybrid_device_memory_limit": "6GiB",
+    "hybrid_memory": true,
+    "hybrid_limit_applied": "constructor",
+    "hybrid_device_memory_limit_gb": 6.0,
+    "plan_seconds": 1.7554824352264404,
+    "permanent_device_memory_gb": 5.999999988824129,
+    "peak_device_memory_gb": 5.999999988824129,
+    "permanent_host_memory_gb": 18.78843168914318,
+    "peak_host_memory_gb": 18.78843168914318,
+    "hybrid_min_device_memory_gb": 2.7335859425365925,
+    "hybrid_max_device_memory_gb": 18.78843168914318,
+    "device_memory_gb": {
+     "used": 1.3406982421875,
+     "free": 46.1951904296875,
+     "total": 47.535888671875,
+     "pool_used": 0.12668991088867188,
+     "pool_total": 0.524803638458252
+    }
+   }
+  },
+  "limit_below_in_core_factor": true,
+  "limit_at_least_hybrid_min": true,
+  "probe": {
+   "in_core": {
+    "cold_seconds": 23.705347061157227,
+    "solve_seconds": 0.5773618221282959,
+    "factor_seconds": 23.12798523902893,
+    "residual": 1.4179585652243987e-08,
+    "device_peak_used_gb": 12.4617919921875,
+    "device_peak_pool_used_gb": 0.14060306549072266,
+    "device_peak_pool_total_gb": 0.524803638458252,
+    "device_baseline_used_gb": 0.7938232421875,
+    "device_samples": 97,
+    "hybrid_memory": false,
+    "hybrid_device_memory_limit": null,
+    "stats": {
+     "A": {
+      "hybrid_memory": false,
+      "device_memory_gb": 12.4617919921875
+     }
+    },
+    "factorizations": 1,
+    "solves": 2,
+    "freed_forward": 0
+   },
+   "hybrid": {
+    "cold_seconds": 30.764768600463867,
+    "solve_seconds": 1.3042669296264648,
+    "factor_seconds": 29.460501670837402,
+    "residual": 1.4105771914322655e-08,
+    "device_peak_used_gb": 12.4852294921875,
+    "device_peak_pool_used_gb": 0.14060306549072266,
+    "device_peak_pool_total_gb": 0.524803638458252,
+    "device_baseline_used_gb": 11.9149169921875,
+    "device_samples": 117,
+    "hybrid_memory": true,
+    "hybrid_device_memory_limit": "6GiB",
+    "stats": {
+     "A": {
+      "hybrid_memory": true,
+      "hybrid_device_memory_limit": "6GiB",
+      "hybrid_limit_applied": "constructor",
+      "hybrid_device_memory_limit_gb": 6.0,
+      "device_memory_gb": 12.4832763671875
+     }
+    },
+    "factorizations": 1,
+    "solves": 2,
+    "freed_forward": 0
+   },
+   "in_core_repeat": {
+    "cold_seconds": 23.327218770980835,
+    "solve_seconds": 0.5490753650665283,
+    "factor_seconds": 22.778143405914307,
+    "residual": 1.4056355983386906e-08,
+    "device_peak_used_gb": 12.4637451171875,
+    "device_peak_pool_used_gb": 0.15451622009277344,
+    "device_peak_pool_total_gb": 0.524803638458252,
+    "device_baseline_used_gb": 11.9168701171875,
+    "device_samples": 96,
+    "hybrid_memory": false,
+    "hybrid_device_memory_limit": null,
+    "stats": {
+     "A": {
+      "hybrid_memory": false,
+      "device_memory_gb": 12.4637451171875
+     }
+    },
+    "factorizations": 1,
+    "solves": 2,
+    "freed_forward": 0
+   },
+   "solution_rel_diff": 8.60546155680515e-05,
+   "solution_rel_diff_control": 6.698425887215686e-05,
+   "factor_slowdown": 1.2738032027589772,
+   "solve_slowdown": 2.2590113853018896
+  },
+  "value_and_grad": {
+   "in_core": {
+    "backend": "cudss",
+    "L_dut": 3.086307030572787e-10,
+    "grad": [
+     1.1436135937024275e-05,
+     -1.1153038594406662e-05,
+     -2.3842370147203408e-05
+    ],
+    "value_and_grad_seconds": 161.09707069396973,
+    "device_memory_gb_before": {
+     "used": 11.9168701171875,
+     "free": 35.6190185546875,
+     "total": 47.535888671875,
+     "pool_used": 0.0,
+     "pool_total": 0.0
+    },
+    "device_memory_gb_peak_after": {
+     "used": 12.4559326171875,
+     "free": 35.0799560546875,
+     "total": 47.535888671875,
+     "pool_used": 0.0,
+     "pool_total": 0.524803638458252
+    },
+    "factor_cache_size": 0,
+    "factor_cache_entries": 0,
+    "device_peak_used_gb": 12.4637451171875,
+    "device_peak_pool_used_gb": 0.15451622009277344,
+    "device_baseline_used_gb": 11.9168701171875,
+    "cgroup_before": {
+     "version": 2,
+     "limit_gb": 32.0,
+     "memory.max": "34359738368",
+     "memory.current_gb": 8.370597839355469
+    },
+    "hybrid_memory": false,
+    "hybrid_device_memory_limit": null,
+    "host_memory_gb": {
+     "MemTotal": 251.5681037902832,
+     "MemAvailable": 240.72918701171875,
+     "peak_rss": 13.550636291503906
+    },
+    "cgroup": {
+     "version": 2,
+     "limit_gb": 32.0,
+     "memory.max": "34359738368",
+     "memory.current_gb": 11.9803466796875
+    }
+   },
+   "hybrid": {
+    "backend": "cudss",
+    "L_dut": 3.086307027793576e-10,
+    "grad": [
+     1.143613595035124e-05,
+     -1.1153038594337852e-05,
+     -2.3842370200065928e-05
+    ],
+    "value_and_grad_seconds": 200.70703625679016,
+    "device_memory_gb_before": {
+     "used": 11.9168701171875,
+     "free": 35.6190185546875,
+     "total": 47.535888671875,
+     "pool_used": 0.0,
+     "pool_total": 0.0
+    },
+    "device_memory_gb_peak_after": {
+     "used": 12.4578857421875,
+     "free": 35.0780029296875,
+     "total": 47.535888671875,
+     "pool_used": 0.0,
+     "pool_total": 0.524803638458252
+    },
+    "factor_cache_size": 0,
+    "factor_cache_entries": 0,
+    "device_peak_used_gb": 12.4852294921875,
+    "device_peak_pool_used_gb": 0.14060306549072266,
+    "device_baseline_used_gb": 11.9168701171875,
+    "cgroup_before": {
+     "version": 2,
+     "limit_gb": 32.0,
+     "memory.max": "34359738368",
+     "memory.current_gb": 11.776313781738281
+    },
+    "hybrid_memory": true,
+    "hybrid_device_memory_limit": "6GiB",
+    "host_memory_gb": {
+     "MemTotal": 251.5681037902832,
+     "MemAvailable": 239.46641540527344,
+     "peak_rss": 21.454021453857422
+    },
+    "cgroup": {
+     "version": 2,
+     "limit_gb": 32.0,
+     "memory.max": "34359738368",
+     "memory.current_gb": 13.242279052734375
+    }
+   },
+   "in_core_repeat": {
+    "backend": "cudss",
+    "L_dut": 3.0863070287199793e-10,
+    "grad": [
+     1.1436135927075827e-05,
+     -1.1153038567870428e-05,
+     -2.3842370107416e-05
+    ],
+    "value_and_grad_seconds": 150.69425678253174,
+    "device_memory_gb_before": {
+     "used": 11.9168701171875,
+     "free": 35.6190185546875,
+     "total": 47.535888671875,
+     "pool_used": 0.0,
+     "pool_total": 0.0
+    },
+    "device_memory_gb_peak_after": {
+     "used": 12.4559326171875,
+     "free": 35.0799560546875,
+     "total": 47.535888671875,
+     "pool_used": 0.0,
+     "pool_total": 0.524803638458252
+    },
+    "factor_cache_size": 0,
+    "factor_cache_entries": 0,
+    "device_peak_used_gb": 12.4637451171875,
+    "device_peak_pool_used_gb": 0.15451622009277344,
+    "device_baseline_used_gb": 11.9168701171875,
+    "cgroup_before": {
+     "version": 2,
+     "limit_gb": 32.0,
+     "memory.max": "34359738368",
+     "memory.current_gb": 13.038749694824219
+    },
+    "hybrid_memory": false,
+    "hybrid_device_memory_limit": null,
+    "host_memory_gb": {
+     "MemTotal": 251.5681037902832,
+     "MemAvailable": 238.88494110107422,
+     "peak_rss": 21.454021453857422
+    },
+    "cgroup": {
+     "version": 2,
+     "limit_gb": 32.0,
+     "memory.max": "34359738368",
+     "memory.current_gb": 13.823600769042969
+    }
+   }
+  },
+  "gate": {
+   "L_in_core": 3.086307030572787e-10,
+   "L_hybrid": 3.086307027793576e-10,
+   "grad_in_core": [
+    1.1436135937024275e-05,
+    -1.1153038594406662e-05,
+    -2.3842370147203408e-05
+   ],
+   "grad_hybrid": [
+    1.143613595035124e-05,
+    -1.1153038594337852e-05,
+    -2.3842370200065928e-05
+   ],
+   "rel_L": 9.0049726918343e-10,
+   "rel_grad": [
+    1.1653381652452183e-09,
+    6.169580417094485e-12,
+    2.217167149759044e-09
+   ],
+   "rel_grad_worst": 2.217167149759044e-09,
+   "rel_grad_l2": 1.899597278703071e-09,
+   "tolerance": 1e-09,
+   "slowdown_value_and_grad": 1.245876386157673,
+   "control_in_core_repeat": {
+    "L": 3.0863070287199793e-10,
+    "grad": [
+     1.1436135927075827e-05,
+     -1.1153038567870428e-05,
+     -2.3842370107416e-05
+    ],
+    "seconds": 150.69425678253174,
+    "rel_L": 6.00331568625684e-10,
+    "rel_grad": [
+     8.699133833371985e-10,
+     2.379282936572532e-09,
+     1.6687689745266367e-09
+    ],
+    "rel_grad_worst": 2.379282936572532e-09,
+    "rel_grad_l2": 1.7020979503564442e-09
+   },
+   "passed": false
+  }
+ },
+ "m5_feasibility": {
+  "level": 5,
+  "limit": "40GiB",
+  "limit_gb": 40.0,
+  "grid": {
+   "shape": [
+    105,
+    110,
+    60
+   ],
+   "n_unknowns": 2128175,
+   "wall_x": [
+    -0.000152,
+    0.000152
+   ],
+   "wall_y": [
+    -0.000162,
+    0.000152
+   ],
+   "lid_z": 0.00014000000000000001,
+   "dx_min": 1.5999999999999974e-06,
+   "dz_min": 1.9999999999999809e-07,
+   "build_seconds": 5.341822862625122
+  },
+  "plans": {
+   "in_core": {
+    "n": 2128175,
+    "nnz": 27369575,
+    "hybrid_device_memory_limit": null,
+    "hybrid_memory": false,
+    "plan_seconds": 10.11881971359253,
+    "permanent_device_memory_gb": 91.86791657283902,
+    "peak_device_memory_gb": 91.86791657283902,
+    "permanent_host_memory_gb": 0.18973389267921448,
+    "peak_host_memory_gb": 0.4175271689891815,
+    "hybrid_min_device_memory_gb": 16.777628991752863,
+    "hybrid_max_device_memory_gb": 89.05818416178226,
+    "device_memory_gb": {
+     "used": 14.3485107421875,
+     "free": 33.1873779296875,
+     "total": 47.535888671875,
+     "pool_used": 0.5811514854431152,
+     "pool_total": 2.4089670181274414
+    }
+   },
+   "hybrid": {
+    "n": 2128175,
+    "nnz": 27369575,
+    "hybrid_device_memory_limit": "40GiB",
+    "hybrid_memory": true,
+    "hybrid_limit_applied": "constructor",
+    "hybrid_device_memory_limit_gb": 40.0,
+    "plan_seconds": 10.26274824142456,
+    "permanent_device_memory_gb": 39.99999998882413,
+    "peak_device_memory_gb": 39.99999998882413,
+    "permanent_host_memory_gb": 97.60000805556774,
+    "peak_host_memory_gb": 97.60000805556774,
+    "hybrid_min_device_memory_gb": 8.752094779163599,
+    "hybrid_max_device_memory_gb": 97.60000805556774,
+    "device_memory_gb": {
+     "used": 14.3485107421875,
+     "free": 33.1873779296875,
+     "total": 47.535888671875,
+     "pool_used": 0.5811514854431152,
+     "pool_total": 2.4089670181274414
+    }
+   }
+  },
+  "host": {
+   "meminfo": {
+    "MemTotal": 251.5681037902832,
+    "MemAvailable": 237.4892120361328,
+    "peak_rss": 21.454021453857422
+   },
+   "cgroup": {
+    "version": 2,
+    "limit_gb": 32.0,
+    "memory.max": "34359738368",
+    "memory.current_gb": 15.23952865600586
+   },
+   "free_g": "total        used        free      shared  buff/cache   available\nMem:            251          12         222           0          16         237\nSwap:             7           0           7",
+   "nvidia_smi": "NVIDIA RTX A6000, 49140 MiB, 12202 MiB",
+   "process_limit_gb": 32.0
+  },
+  "in_core_factor_gb": 91.86791657283902,
+  "hybrid_plan_host_estimate_gb": 97.60000805556774,
+  "host_needed_gb": 97.60000805556774,
+  "host_in_use_gb": 15.23952865600586,
+  "host_allowed_gb": 32.0,
+  "margin_gb": 4.0,
+  "hybrid_min_device_memory_gb": 8.752094779163599,
+  "hybrid_min_device_memory_gb_in_core_plan": 16.777628991752863,
+  "limit_at_least_hybrid_min": true,
+  "fits": false,
+  "not_run": "host memory: the level-5 factor needs >= 97.60 GB of host memory in hybrid mode (in-core factor 91.87 GB, cuDSS hybrid host estimate 97.60 GB) + 15.24 GB in use + 4 GB margin, and this container may hold 32.0 GB (cgroup limit 32.0 GB; node MemTotal 251.5681037902832 GB)"
+ },
+ "host_end": {
+  "meminfo": {
+   "MemTotal": 251.5681037902832,
+   "MemAvailable": 237.49072647094727,
+   "peak_rss": 21.454021453857422
+  },
+  "cgroup": {
+   "version": 2,
+   "limit_gb": 32.0,
+   "memory.max": "34359738368",
+   "memory.current_gb": 15.23910903930664
+  },
+  "free_g": "total        used        free      shared  buff/cache   available\nMem:            251          12         222           0          16         237\nSwap:             7           0           7",
+  "nvidia_smi": "NVIDIA RTX A6000, 49140 MiB, 12202 MiB",
+  "process_limit_gb": 32.0
+ }
+}

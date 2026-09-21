@@ -1,0 +1,165 @@
++ timeout 3600 python -u /root/work/rfx-fdfd-gpu-r0/validation/vessl/_lane_embedded.py
+=== block plans ===
+  plan 190:1.5:2: N=823302 perm 22.38 GB peak 22.38 GB hybrid_min 4.13 GB
+  plan 190:2:2: N=772892 perm 20.51 GB peak 20.51 GB hybrid_min 4.02 GB
+  plan 190:0:2: N=672072 perm 16.38 GB peak 16.38 GB hybrid_min 3.08 GB
+  plan 120:1.5:2: N=722482 perm 18.43 GB peak 18.43 GB hybrid_min 3.59 GB
+  plan 190:1.5:3: N=2746509 perm 117.99 GB peak 117.99 GB hybrid_min 17.70 GB
+  block plans: 48 s
+=== block tsi1 ===
+  tsi 120 um level 1: N=93733 L=3099.13 pH Q=20.3317 (8 s)
+  tsi 190 um level 1: N=106519 L=3299.08 pH Q=21.0580 (7 s)
+  tsi 300 um level 1: N=119305 L=3384.59 pH Q=22.4716 (8 s)
+  uniform silicon level 1: N=87340 L=3260.56 pH Q=21.0477
+  block tsi1: 30 s
+=== block levels ===
+  level 1: N=106519 W cells 2 L=3299.083 pH Q=21.05803 L_se=3446.268 pH Q_se=13.60875 (3 s, dev 8.55 GB)
+ERROR:2026-09-15 17:29:54,190:jax._src.callback:95: jax.pure_callback failed
+Traceback (most recent call last):
+  File "/opt/conda/lib/python3.10/site-packages/jax/_src/callback.py", line 93, in pure_callback_impl
+    return tree_util.tree_map(np.asarray, callback(*args))
+  File "/opt/conda/lib/python3.10/site-packages/jax/_src/callback.py", line 71, in __call__
+    return tree_util.tree_leaves(self.callback_func(*args, **kwargs))
+  File "/root/work/rfx-fdfd-gpu-r0/rfx/fdfd/linear_solve.py", line 644, in f
+    return _on_factor_thread(on_thread, d, rhs)
+  File "/root/work/rfx-fdfd-gpu-r0/rfx/fdfd/linear_solve.py", line 314, in _on_factor_thread
+    return ex.submit(fn, *args).result()
+  File "/opt/conda/lib/python3.10/concurrent/futures/_base.py", line 458, in result
+    return self.__get_result()
+  File "/opt/conda/lib/python3.10/concurrent/futures/_base.py", line 403, in __get_result
+    raise self._exception
+  File "/opt/conda/lib/python3.10/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+  File "/root/work/rfx-fdfd-gpu-r0/rfx/fdfd/linear_solve.py", line 639, in on_thread
+    return lu.solve(rhs, trans=tr)
+  File "/root/work/rfx-fdfd-gpu-r0/rfx/fdfd/_cudss.py", line 571, in solve
+    _, solver, b = self._solver(trans == "T", shape)
+  File "/root/work/rfx-fdfd-gpu-r0/rfx/fdfd/_cudss.py", line 521, in _solver
+    fac_info = solver.factorize()
+  File "/opt/conda/lib/python3.10/site-packages/nvmath/internal/utils.py", line 601, in inner
+    result = wrapped_function(*args, **kwargs)
+  File "/opt/conda/lib/python3.10/site-packages/nvmath/internal/utils.py", line 601, in inner
+    result = wrapped_function(*args, **kwargs)
+  File "/opt/conda/lib/python3.10/site-packages/nvmath/internal/utils.py", line 601, in inner
+    result = wrapped_function(*args, **kwargs)
+  File "/opt/conda/lib/python3.10/site-packages/nvmath/sparse/advanced/direct_solver.py", line 1721, in factorize
+    r = self._execute(phase=cudss.Phase.FACTORIZATION, stream=stream)
+  File "/opt/conda/lib/python3.10/site-packages/nvmath/sparse/advanced/direct_solver.py", line 1831, in _execute
+    cudss.execute(self.handle, phase, self.config_ptr, self.data_ptr, self.a_ptr, self.x_ptr, self.b_ptr)
+  File "nvmath/bindings/cudss.pyx", line 380, in nvmath.bindings.cudss.execute
+  File "nvmath/bindings/cudss.pyx", line 384, in nvmath.bindings.cudss.execute
+  File "nvmath/bindings/cudss.pyx", line 266, in nvmath.bindings.cudss.check_status
+nvmath.bindings.cudss.cuDSSError: ALLOC_FAILED (2)
+ERROR:2026-09-15 17:29:57,898:jax._src.callback:95: jax.pure_callback failed
+Traceback (most recent call last):
+  File "/opt/conda/lib/python3.10/site-packages/jax/_src/callback.py", line 93, in pure_callback_impl
+    return tree_util.tree_map(np.asarray, callback(*args))
+  File "/opt/conda/lib/python3.10/site-packages/jax/_src/callback.py", line 71, in __call__
+    return tree_util.tree_leaves(self.callback_func(*args, **kwargs))
+  File "/root/work/rfx-fdfd-gpu-r0/rfx/fdfd/linear_solve.py", line 644, in f
+    return _on_factor_thread(on_thread, d, rhs)
+  File "/root/work/rfx-fdfd-gpu-r0/rfx/fdfd/linear_solve.py", line 314, in _on_factor_thread
+    return ex.submit(fn, *args).result()
+  File "/opt/conda/lib/python3.10/concurrent/futures/_base.py", line 458, in result
+    return self.__get_result()
+  File "/opt/conda/lib/python3.10/concurrent/futures/_base.py", line 403, in __get_result
+    raise self._exception
+  File "/opt/conda/lib/python3.10/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+  File "/root/work/rfx-fdfd-gpu-r0/rfx/fdfd/linear_solve.py", line 639, in on_thread
+    return lu.solve(rhs, trans=tr)
+  File "/root/work/rfx-fdfd-gpu-r0/rfx/fdfd/_cudss.py", line 571, in solve
+    _, solver, b = self._solver(trans == "T", shape)
+  File "/root/work/rfx-fdfd-gpu-r0/rfx/fdfd/_cudss.py", line 521, in _solver
+    fac_info = solver.factorize()
+  File "/opt/conda/lib/python3.10/site-packages/nvmath/internal/utils.py", line 601, in inner
+    result = wrapped_function(*args, **kwargs)
+  File "/opt/conda/lib/python3.10/site-packages/nvmath/internal/utils.py", line 601, in inner
+    result = wrapped_function(*args, **kwargs)
+  File "/opt/conda/lib/python3.10/site-packages/nvmath/internal/utils.py", line 601, in inner
+    result = wrapped_function(*args, **kwargs)
+  File "/opt/conda/lib/python3.10/site-packages/nvmath/sparse/advanced/direct_solver.py", line 1721, in factorize
+    r = self._execute(phase=cudss.Phase.FACTORIZATION, stream=stream)
+  File "/opt/conda/lib/python3.10/site-packages/nvmath/sparse/advanced/direct_solver.py", line 1831, in _execute
+    cudss.execute(self.handle, phase, self.config_ptr, self.data_ptr, self.a_ptr, self.x_ptr, self.b_ptr)
+  File "nvmath/bindings/cudss.pyx", line 380, in nvmath.bindings.cudss.execute
+  File "nvmath/bindings/cudss.pyx", line 384, in nvmath.bindings.cudss.execute
+  File "nvmath/bindings/cudss.pyx", line 266, in nvmath.bindings.cudss.check_status
+nvmath.bindings.cudss.cuDSSError: ALLOC_FAILED (2)
+ERROR:2026-09-15 17:30:01,319:jax._src.callback:95: jax.pure_callback failed
+Traceback (most recent call last):
+  File "/opt/conda/lib/python3.10/site-packages/jax/_src/callback.py", line 93, in pure_callback_impl
+    return tree_util.tree_map(np.asarray, callback(*args))
+  File "/opt/conda/lib/python3.10/site-packages/jax/_src/callback.py", line 71, in __call__
+    return tree_util.tree_leaves(self.callback_func(*args, **kwargs))
+  File "/root/work/rfx-fdfd-gpu-r0/rfx/fdfd/linear_solve.py", line 644, in f
+    return _on_factor_thread(on_thread, d, rhs)
+  File "/root/work/rfx-fdfd-gpu-r0/rfx/fdfd/linear_solve.py", line 314, in _on_factor_thread
+    return ex.submit(fn, *args).result()
+  File "/opt/conda/lib/python3.10/concurrent/futures/_base.py", line 458, in result
+    return self.__get_result()
+  File "/opt/conda/lib/python3.10/concurrent/futures/_base.py", line 403, in __get_result
+    raise self._exception
+  File "/opt/conda/lib/python3.10/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+  File "/root/work/rfx-fdfd-gpu-r0/rfx/fdfd/linear_solve.py", line 639, in on_thread
+    return lu.solve(rhs, trans=tr)
+  File "/root/work/rfx-fdfd-gpu-r0/rfx/fdfd/_cudss.py", line 571, in solve
+    _, solver, b = self._solver(trans == "T", shape)
+  File "/root/work/rfx-fdfd-gpu-r0/rfx/fdfd/_cudss.py", line 521, in _solver
+    fac_info = solver.factorize()
+  File "/opt/conda/lib/python3.10/site-packages/nvmath/internal/utils.py", line 601, in inner
+    result = wrapped_function(*args, **kwargs)
+  File "/opt/conda/lib/python3.10/site-packages/nvmath/internal/utils.py", line 601, in inner
+    result = wrapped_function(*args, **kwargs)
+  File "/opt/conda/lib/python3.10/site-packages/nvmath/internal/utils.py", line 601, in inner
+    result = wrapped_function(*args, **kwargs)
+  File "/opt/conda/lib/python3.10/site-packages/nvmath/sparse/advanced/direct_solver.py", line 1721, in factorize
+    r = self._execute(phase=cudss.Phase.FACTORIZATION, stream=stream)
+  File "/opt/conda/lib/python3.10/site-packages/nvmath/sparse/advanced/direct_solver.py", line 1831, in _execute
+    cudss.execute(self.handle, phase, self.config_ptr, self.data_ptr, self.a_ptr, self.x_ptr, self.b_ptr)
+  File "nvmath/bindings/cudss.pyx", line 380, in nvmath.bindings.cudss.execute
+  File "nvmath/bindings/cudss.pyx", line 384, in nvmath.bindings.cudss.execute
+  File "nvmath/bindings/cudss.pyx", line 266, in nvmath.bindings.cudss.check_status
+nvmath.bindings.cudss.cuDSSError: ALLOC_FAILED (2)
+  block levels FAILED: XlaRuntimeError: INTERNAL: Buffer Definition Event: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: CpuCallback error calling callback: Traceback (most recent call last):
+  File "/opt/conda/lib/python3.10/threading.py", line 973, in _bootstrap
+  File "/opt/conda/lib/python3.10/threading.py", line 1016, in _bootstrap_inner
+  File "/opt/conda/lib/python3.10/threading.py", line 953, in run
+  File "/opt/conda/lib/python3.10/concurrent/futures/thread.py", line 81, in _worker
+  File "/opt/conda/lib/python3.10/concurrent/futures/thread.py", line 62, in run
+  File "/root/work/rfx-fdfd-gpu-r0/rfx/fdfd/linear_solve.py", line 639, in on_thread
+  File "/root/work/rfx-fdfd-gpu-r0/rfx/fdfd/_cudss.py", line 571, in solve
+  File "/root/work/rfx-fdfd-gpu-r0/rfx/fdfd/_cudss.py", line 521, in _solver
+  File "/opt/conda/lib/python3.10/site-packages/nvmath/internal/utils.py", line 601, in inner
+  File "/opt/conda/lib/python3.10/site-packages/nvmath/internal/utils.py", line 601, in inner
+  File "/opt/conda/lib/python3.10/site-packages/nvmath/internal/utils.py", line 601, in inner
+  File "/opt/conda/lib/python3.10/site-packages/nvmath/sparse/advanced/direct_solver.py", line 1721, in factorize
+  File "/opt/conda/lib/python3.10/site-packages/nvmath/sparse/advanced/direct_solver.py", line 1831, in _execute
+  File "nvmath/bindings/cudss.pyx", line 266, in nvmath.bindings.cudss.check_status
+cuDSSError: ALLOC_FAILED (2)
+  block levels: 15 s
+lane done in 92 s -> /root/workspace/claude-workspace/rfx/runs/fdfd-gpu-r0-20260915T172732Z/r0_probe.json
+Exception ignored in atexit callback: <function wait_for_tokens at 0x7f3e9f28bf40>
+Traceback (most recent call last):
+  File "/opt/conda/lib/python3.10/site-packages/jax/_src/dispatch.py", line 172, in wait_for_tokens
+    runtime_tokens.block_until_ready()
+  File "/opt/conda/lib/python3.10/site-packages/jax/_src/dispatch.py", line 165, in block_until_ready
+    token.block_until_ready()
+jaxlib._jax.XlaRuntimeError: INTERNAL: Compute error: CpuCallback error calling callback: Traceback (most recent call last):
+  File "/opt/conda/lib/python3.10/threading.py", line 973, in _bootstrap
+  File "/opt/conda/lib/python3.10/threading.py", line 1016, in _bootstrap_inner
+  File "/opt/conda/lib/python3.10/threading.py", line 953, in run
+  File "/opt/conda/lib/python3.10/concurrent/futures/thread.py", line 81, in _worker
+  File "/opt/conda/lib/python3.10/concurrent/futures/thread.py", line 62, in run
+  File "/root/work/rfx-fdfd-gpu-r0/rfx/fdfd/linear_solve.py", line 639, in on_thread
+  File "/root/work/rfx-fdfd-gpu-r0/rfx/fdfd/_cudss.py", line 571, in solve
+  File "/root/work/rfx-fdfd-gpu-r0/rfx/fdfd/_cudss.py", line 521, in _solver
+  File "/opt/conda/lib/python3.10/site-packages/nvmath/internal/utils.py", line 601, in inner
+  File "/opt/conda/lib/python3.10/site-packages/nvmath/internal/utils.py", line 601, in inner
+  File "/opt/conda/lib/python3.10/site-packages/nvmath/internal/utils.py", line 601, in inner
+  File "/opt/conda/lib/python3.10/site-packages/nvmath/sparse/advanced/direct_solver.py", line 1721, in factorize
+  File "/opt/conda/lib/python3.10/site-packages/nvmath/sparse/advanced/direct_solver.py", line 1831, in _execute
+  File "nvmath/bindings/cudss.pyx", line 266, in nvmath.bindings.cudss.check_status
+cuDSSError: ALLOC_FAILED (2)
++ echo 0

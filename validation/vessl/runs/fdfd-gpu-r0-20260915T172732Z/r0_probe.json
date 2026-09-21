@@ -1,0 +1,1353 @@
+{
+ "lane": "R0",
+ "started_utc": "2026-09-15T17:28:29Z",
+ "artifact_dir": "/root/workspace/claude-workspace/rfx/runs/fdfd-gpu-r0-20260915T172732Z",
+ "env": {
+  "python": "3.10.13",
+  "platform": "Linux-5.15.0-187-generic-x86_64-with-glibc2.31",
+  "numpy": "2.2.6",
+  "scipy": "1.15.3",
+  "jax": "0.6.2",
+  "jax_platforms_env": "cpu",
+  "jax_devices": [
+   "TFRT_CPU_0"
+  ],
+  "jax_default_backend": "cpu",
+  "default_backend": "cudss",
+  "env_backend": "cudss",
+  "cudss_hybrid_memory": false,
+  "cudss_free_forward": true,
+  "backends": {
+   "cudss": {
+    "backend": "cudss",
+    "available": true,
+    "reason": null,
+    "nvmath_version": "1.0.0",
+    "cupy_version": "14.2.0",
+    "device_count": 1,
+    "device_name": "NVIDIA GeForce RTX 4090",
+    "device_arrays": true,
+    "min_cudss": "0.4.0",
+    "threading_lib": "/opt/conda/lib/python3.10/site-packages/nvidia/cu12/lib/libcudss_mtlayer_gomp.so.0",
+    "host_nthreads": 16,
+    "ir_steps": null
+   },
+   "cusolver": {
+    "backend": "cusolver",
+    "available": true,
+    "reason": null,
+    "cupy_version": "14.2.0",
+    "device_count": 1,
+    "device_name": "NVIDIA GeForce RTX 4090"
+   }
+  },
+  "device_memory_gb": {
+   "used": 0.38232421875,
+   "free": 23.26739501953125,
+   "total": 23.64971923828125,
+   "pool_used": 0.0,
+   "pool_total": 0.0
+  },
+  "cpu_count": 24,
+  "omp_num_threads": "16",
+  "nvmath_version": "1.0.0",
+  "cupy_version": "14.2.0",
+  "nvidia_smi": "NVIDIA GeForce RTX 4090, 24564 MiB, 391 MiB, 535.309.01"
+ },
+ "seconds": 92.37507176399231,
+ "finished_utc": "2026-09-15T17:30:01Z",
+ "host_memory_gb": {
+  "MemTotal": 125.56709671020508,
+  "MemAvailable": 122.53683853149414,
+  "peak_rss": 0.6070899963378906
+ },
+ "config": {
+  "backend": "cudss",
+  "blocks": [
+   "plans",
+   "tsi1",
+   "levels"
+  ],
+  "deadline_s": 3000.0,
+  "factor_cache_size": 0,
+  "free_forward": true,
+  "hybrid_memory": false,
+  "hybrid_limit": null,
+  "t_si": 0.00019,
+  "si_grade": 1.5,
+  "freq": 2450000000.0,
+  "sigma_metal": 30500000.0,
+  "sigma_si": 2.0,
+  "resolved_level": 2,
+  "box": [
+   [
+    0.0002,
+    0.00026
+   ],
+   [
+    1e-05,
+    1.8e-05
+   ],
+   [
+    2.2e-05,
+    3.2e-05
+   ]
+  ],
+  "lam": 100.0
+ },
+ "plans": {
+  "190:1.5:2": {
+   "n": 823302,
+   "nnz": 10531110,
+   "hybrid_memory": false,
+   "plan_seconds": 1.9707212448120117,
+   "permanent_device_memory_gb": 22.384686831384897,
+   "peak_device_memory_gb": 22.384686831384897,
+   "permanent_host_memory_gb": 0.07664290070533752,
+   "peak_host_memory_gb": 0.16317932307720184,
+   "hybrid_min_device_memory_gb": 4.1339857913553715,
+   "hybrid_max_device_memory_gb": 21.24424311518669,
+   "device_memory_gb": {
+    "used": 2.37060546875,
+    "free": 21.27911376953125,
+    "total": 23.64971923828125,
+    "pool_used": 0.22376203536987305,
+    "pool_total": 0.9270663261413574
+   },
+   "grid": {
+    "shape": [
+     90,
+     92,
+     32
+    ],
+    "n_unknowns": 823302,
+    "level": 2,
+    "cells_across_width": 4,
+    "wall_x": [
+     -0.000518,
+     0.000518
+    ],
+    "wall_y": [
+     -0.0005480000000000001,
+     0.000518
+    ],
+    "lid_z": 0.00056454,
+    "t_si": 0.00018999999999999998,
+    "dx_min": 6.499999999999995e-06,
+    "dz_min": 7.499999999999911e-07,
+    "n_z_cells": 32,
+    "n_si_cells": 14,
+    "dz_si": [
+     3e-05,
+     3e-05,
+     2.0954681306206787e-05,
+     2.0954681306206794e-05,
+     1.5172903904669141e-05,
+     1.5172903904669141e-05,
+     1.098642396590079e-05,
+     1.098642396590079e-05,
+     7.955069927080755e-06,
+     7.955069927080755e-06,
+     5.760121559222539e-06,
+     5.760121559222539e-06,
+     4.17079933691996e-06,
+     4.170799336919987e-06
+    ],
+    "port_gap_m": 6e-05,
+    "build_seconds": 1.568462610244751
+   },
+   "assembly_seconds": 9.91089391708374
+  },
+  "190:2:2": {
+   "n": 772892,
+   "nnz": 9880172,
+   "hybrid_memory": false,
+   "plan_seconds": 1.8373847007751465,
+   "permanent_device_memory_gb": 20.513189811259508,
+   "peak_device_memory_gb": 20.513189811259508,
+   "permanent_host_memory_gb": 0.07174304127693176,
+   "peak_host_memory_gb": 0.1529357135295868,
+   "hybrid_min_device_memory_gb": 4.0154147036373615,
+   "hybrid_max_device_memory_gb": 19.441790014505386,
+   "device_memory_gb": {
+    "used": 2.37060546875,
+    "free": 21.27911376953125,
+    "total": 23.64971923828125,
+    "pool_used": 0.2099466323852539,
+    "pool_total": 0.9270663261413574
+   },
+   "grid": {
+    "shape": [
+     90,
+     92,
+     30
+    ],
+    "n_unknowns": 772892,
+    "level": 2,
+    "cells_across_width": 4,
+    "wall_x": [
+     -0.000518,
+     0.000518
+    ],
+    "wall_y": [
+     -0.0005480000000000001,
+     0.000518
+    ],
+    "lid_z": 0.00056454,
+    "t_si": 0.00018999999999999998,
+    "dx_min": 6.499999999999995e-06,
+    "dz_min": 7.499999999999911e-07,
+    "n_z_cells": 30,
+    "n_si_cells": 12,
+    "dz_si": [
+     3e-05,
+     3e-05,
+     1.5995157611586304e-05,
+     1.599515761158631e-05,
+     1.599515761158631e-05,
+     1.599515761158631e-05,
+     1.773232266772697e-05,
+     1.773232266772694e-05,
+     9.82907686275679e-06,
+     9.829076862756818e-06,
+     5.448285246343601e-06,
+     5.448285246343628e-06
+    ],
+    "port_gap_m": 6e-05,
+    "build_seconds": 1.1088614463806152
+   },
+   "assembly_seconds": 6.509366035461426
+  },
+  "190:0:2": {
+   "n": 672072,
+   "nnz": 8578296,
+   "hybrid_memory": false,
+   "plan_seconds": 1.5553526878356934,
+   "permanent_device_memory_gb": 16.3751426525414,
+   "peak_device_memory_gb": 16.3751426525414,
+   "permanent_host_memory_gb": 0.06190715730190277,
+   "peak_host_memory_gb": 0.13241177797317505,
+   "hybrid_min_device_memory_gb": 3.0772180445492268,
+   "hybrid_max_device_memory_gb": 15.443409189581871,
+   "device_memory_gb": {
+    "used": 2.37060546875,
+    "free": 21.27911376953125,
+    "total": 23.64971923828125,
+    "pool_used": 0.18231678009033203,
+    "pool_total": 0.9270663261413574
+   },
+   "grid": {
+    "shape": [
+     90,
+     92,
+     26
+    ],
+    "n_unknowns": 672072,
+    "level": 2,
+    "cells_across_width": 4,
+    "wall_x": [
+     -0.000518,
+     0.000518
+    ],
+    "wall_y": [
+     -0.0005480000000000001,
+     0.000518
+    ],
+    "lid_z": 0.00056454,
+    "t_si": 0.00018999999999999998,
+    "dx_min": 6.499999999999995e-06,
+    "dz_min": 7.499999999999911e-07,
+    "n_z_cells": 26,
+    "n_si_cells": 8,
+    "dz_si": [
+     3e-05,
+     3e-05,
+     2.1666666666666667e-05,
+     2.166666666666666e-05,
+     2.1666666666666674e-05,
+     2.166666666666666e-05,
+     2.166666666666666e-05,
+     2.166666666666666e-05
+    ],
+    "port_gap_m": 6e-05,
+    "build_seconds": 1.0450758934020996
+   },
+   "assembly_seconds": 6.183666467666626
+  },
+  "120:1.5:2": {
+   "n": 722482,
+   "nnz": 9229234,
+   "hybrid_memory": false,
+   "plan_seconds": 1.7153966426849365,
+   "permanent_device_memory_gb": 18.42624056711793,
+   "peak_device_memory_gb": 18.42624056711793,
+   "permanent_host_memory_gb": 0.06657944619655609,
+   "peak_host_memory_gb": 0.1424567699432373,
+   "hybrid_min_device_memory_gb": 3.587311390787363,
+   "hybrid_max_device_memory_gb": 17.42628999054432,
+   "device_memory_gb": {
+    "used": 2.37060546875,
+    "free": 21.27911376953125,
+    "total": 23.64971923828125,
+    "pool_used": 0.19613218307495117,
+    "pool_total": 0.9270663261413574
+   },
+   "grid": {
+    "shape": [
+     90,
+     92,
+     28
+    ],
+    "n_unknowns": 722482,
+    "level": 2,
+    "cells_across_width": 4,
+    "wall_x": [
+     -0.000518,
+     0.000518
+    ],
+    "wall_y": [
+     -0.0005480000000000001,
+     0.000518
+    ],
+    "lid_z": 0.00049454,
+    "t_si": 0.00011999999999999999,
+    "dx_min": 6.499999999999995e-06,
+    "dz_min": 7.499999999999911e-07,
+    "n_z_cells": 28,
+    "n_si_cells": 10,
+    "dz_si": [
+     3e-05,
+     3e-05,
+     1.1582658398943484e-05,
+     1.1582658398943477e-05,
+     8.276713491549927e-06,
+     8.276713491549927e-06,
+     5.9143578150809616e-06,
+     5.9143578150809616e-06,
+     4.226270294425632e-06,
+     4.2262702944256185e-06
+    ],
+    "port_gap_m": 6e-05,
+    "build_seconds": 1.027688980102539
+   },
+   "assembly_seconds": 6.4666523933410645
+  },
+  "190:1.5:3": {
+   "n": 2746509,
+   "nnz": 35319957,
+   "hybrid_memory": false,
+   "plan_seconds": 7.756798982620239,
+   "permanent_device_memory_gb": 117.98741025105119,
+   "peak_device_memory_gb": 117.98741025105119,
+   "permanent_host_memory_gb": 0.2496553659439087,
+   "peak_host_memory_gb": 0.5424429327249527,
+   "hybrid_min_device_memory_gb": 17.69543870165944,
+   "hybrid_max_device_memory_gb": 114.49196617305279,
+   "device_memory_gb": {
+    "used": 8.51904296875,
+    "free": 15.13067626953125,
+    "total": 23.64971923828125,
+    "pool_used": 0.7499704360961914,
+    "pool_total": 3.6902523040771484
+   },
+   "grid": {
+    "shape": [
+     135,
+     138,
+     48
+    ],
+    "n_unknowns": 2746509,
+    "level": 3,
+    "cells_across_width": 6,
+    "wall_x": [
+     -0.000518,
+     0.000518
+    ],
+    "wall_y": [
+     -0.0005480000000000001,
+     0.000518
+    ],
+    "lid_z": 0.00056454,
+    "t_si": 0.00018999999999999998,
+    "dx_min": 4.333333333333321e-06,
+    "dz_min": 4.99999999999985e-07,
+    "n_z_cells": 48,
+    "n_si_cells": 21,
+    "dz_si": [
+     2e-05,
+     2e-05,
+     1.9999999999999998e-05,
+     1.3969787537471198e-05,
+     1.3969787537471191e-05,
+     1.3969787537471191e-05,
+     1.0115269269779428e-05,
+     1.0115269269779428e-05,
+     1.0115269269779428e-05,
+     7.3242826439338514e-06,
+     7.3242826439338785e-06,
+     7.3242826439338514e-06,
+     5.303379951387179e-06,
+     5.303379951387152e-06,
+     5.303379951387179e-06,
+     3.840081039481702e-06,
+     3.840081039481675e-06,
+     3.840081039481702e-06,
+     2.7805328912799824e-06,
+     2.7805328912799824e-06,
+     2.7805328912799824e-06
+    ],
+    "port_gap_m": 6e-05,
+    "build_seconds": 4.230624198913574
+   },
+   "assembly_seconds": 18.608611345291138
+  }
+ },
+ "tsi_level1": {
+  "120": {
+   "freq": 2450000000.0,
+   "theta": [
+    0.000218,
+    1.4e-05,
+    3e-05
+   ],
+   "sigma_metal": 30500000.0,
+   "sigma_si": 2.0,
+   "L_diff": 3.0991282230518086e-09,
+   "Q_diff": 20.3317141631367,
+   "L_se": 3.258915531203019e-09,
+   "Q_se": 12.892537280418514,
+   "L_z11_open": -1.3271922905873068e-08,
+   "L_raw": 3.2542242568945666e-09,
+   "Z_dut": [
+    [
+     [
+      121.9911532784819,
+      -204.30537995049457
+     ],
+     [
+      119.90060086756897,
+      -225.98373910928228
+     ]
+    ],
+    [
+     [
+      119.90060086755267,
+      -225.98373910932614
+     ],
+     [
+      120.15649952622306,
+      -199.95472582355933
+     ]
+    ]
+   ],
+   "seconds": 8.171226501464844,
+   "S": {
+    "dut": [
+     [
+      [
+       0.13872680414523486,
+       0.2765927194608548
+      ],
+      [
+       0.6985267036693185,
+       -0.47684636131178615
+      ]
+     ],
+     [
+      [
+       0.6985267036693308,
+       -0.4768463613119352
+      ],
+      [
+       0.12653295246455873,
+       0.2867566176949515
+      ]
+     ]
+    ],
+    "open": [
+     [
+      [
+       0.9329366246977584,
+       -0.05646138028802926
+      ],
+      [
+       0.007801574523476133,
+       0.0065624842825659675
+      ]
+     ],
+     [
+      [
+       0.007801574523477368,
+       0.006562484282585355
+      ],
+      [
+       0.9331962059421709,
+       -0.0558645260917413
+      ]
+     ]
+    ],
+    "short": [
+     [
+      [
+       -0.9970900823103385,
+       0.039070443969893065
+      ],
+      [
+       0.0007441384379280814,
+       0.005507797501410496
+      ]
+     ],
+     [
+      [
+       0.0007441384379280815,
+       0.005507797501410494
+      ],
+      [
+       -0.9971690442476069,
+       0.038193544656120224
+      ]
+     ]
+    ],
+    "deembedded": [
+     [
+      [
+       0.1496347989474891,
+       0.28962391924064246
+      ],
+      [
+       0.748253205095798,
+       -0.4541585271704359
+      ]
+     ],
+     [
+      [
+       0.7482532050958269,
+       -0.4541585271705936
+      ],
+      [
+       0.1366215701294463,
+       0.2991971526209985
+      ]
+     ]
+    ]
+   },
+   "s_stats": {
+    "dut": {
+     "reciprocity": 1.495560354366443e-13,
+     "max_singular_value": 0.9464013864535956
+    },
+    "open": {
+     "reciprocity": 1.9426573305462597e-14,
+     "max_singular_value": 0.9421753883286937
+    },
+    "short": {
+     "reciprocity": 1.7381083054899885e-18,
+     "max_singular_value": 0.9984238984436625
+    },
+    "deembedded": {
+     "reciprocity": 1.60292560797642e-13,
+     "max_singular_value": 0.9626112978386671
+    }
+   },
+   "reciprocity_worst": 1.60292560797642e-13,
+   "passivity_worst": 0.9984238984436625,
+   "device_memory_gb_after": 8.55029296875,
+   "grid": {
+    "shape": [
+     45,
+     46,
+     14
+    ],
+    "n_unknowns": 93733,
+    "level": 1,
+    "cells_across_width": 2,
+    "wall_x": [
+     -0.000518,
+     0.000518
+    ],
+    "wall_y": [
+     -0.0005480000000000001,
+     0.000518
+    ],
+    "lid_z": 0.00049454,
+    "t_si": 0.00012,
+    "dx_min": 1.299999999999999e-05,
+    "dz_min": 1.5000000000000094e-06,
+    "n_z_cells": 14,
+    "n_si_cells": 5,
+    "dz_si": [
+     6e-05,
+     2.3165316797886947e-05,
+     1.6553426983099853e-05,
+     1.1828715630161937e-05,
+     8.452540588851264e-06
+    ],
+    "port_gap_m": 6e-05,
+    "build_seconds": 0.11880970001220703
+   }
+  },
+  "190": {
+   "freq": 2450000000.0,
+   "theta": [
+    0.000218,
+    1.4e-05,
+    3e-05
+   ],
+   "sigma_metal": 30500000.0,
+   "sigma_si": 2.0,
+   "L_diff": 3.299083228204668e-09,
+   "Q_diff": 21.05803028299765,
+   "L_se": 3.4462678374927835e-09,
+   "Q_se": 13.608747243494388,
+   "L_z11_open": -1.7130884088110136e-08,
+   "L_raw": 3.5403572510657522e-09,
+   "Z_dut": [
+    [
+     [
+      170.33930027200037,
+      -263.7094720434549
+     ],
+     [
+      167.9487700369676,
+      -285.657540609814
+     ]
+    ],
+    [
+     [
+      167.948770036998,
+      -285.65754060958966
+     ],
+     [
+      167.9699297805963,
+      -256.82016857273425
+     ]
+    ]
+   ],
+   "seconds": 7.000574588775635,
+   "S": {
+    "dut": [
+     [
+      [
+       0.1680571336679758,
+       0.2982877168548445
+      ],
+      [
+       0.6660567188072954,
+       -0.4794528887022498
+      ]
+     ],
+     [
+      [
+       0.6660567188071829,
+       -0.47945288870173686
+      ],
+      [
+       0.15571722497774299,
+       0.31212017315142726
+      ]
+     ]
+    ],
+    "open": [
+     [
+      [
+       0.896235368970623,
+       -0.08172137899207556
+      ],
+      [
+       0.01840678745130464,
+       0.013460560992740962
+      ]
+     ],
+     [
+      [
+       0.01840678745129115,
+       0.013460560992635862
+      ],
+      [
+       0.8967740989301435,
+       -0.0810313510574534
+      ]
+     ]
+    ],
+    "short": [
+     [
+      [
+       -0.9950796752836488,
+       0.057282082452091265
+      ],
+      [
+       0.001442481050624924,
+       0.00926027365848568
+      ]
+     ],
+     [
+      [
+       0.0014424810506249264,
+       0.009260273658485698
+      ],
+      [
+       -0.9951712640511462,
+       0.05644337338301404
+      ]
+     ]
+    ],
+    "deembedded": [
+     [
+      [
+       0.18027197776886272,
+       0.3214523080722629
+      ],
+      [
+       0.740262726503388,
+       -0.4497620954217952
+      ]
+     ],
+     [
+      [
+       0.7402627265031805,
+       -0.4497620954212411
+      ],
+      [
+       0.16628914880742493,
+       0.33438034008833223
+      ]
+     ]
+    ]
+   },
+   "s_stats": {
+    "dut": {
+     "reciprocity": 5.251319228998555e-13,
+     "max_singular_value": 0.9327710270092913
+    },
+    "open": {
+     "reciprocity": 1.059620669825965e-13,
+     "max_singular_value": 0.9174305404516867
+    },
+    "short": {
+     "reciprocity": 1.7510452491825717e-17,
+     "max_singular_value": 0.9977045510983037
+    },
+    "deembedded": {
+     "reciprocity": 5.916379565949825e-13,
+     "max_singular_value": 0.9625620829541575
+    }
+   },
+   "reciprocity_worst": 5.916379565949825e-13,
+   "passivity_worst": 0.9977045510983037,
+   "device_memory_gb_after": 8.55029296875,
+   "grid": {
+    "shape": [
+     45,
+     46,
+     16
+    ],
+    "n_unknowns": 106519,
+    "level": 1,
+    "cells_across_width": 2,
+    "wall_x": [
+     -0.000518,
+     0.000518
+    ],
+    "wall_y": [
+     -0.0005480000000000001,
+     0.000518
+    ],
+    "lid_z": 0.0005645400000000001,
+    "t_si": 0.00019,
+    "dx_min": 1.299999999999999e-05,
+    "dz_min": 1.5000000000000094e-06,
+    "n_z_cells": 16,
+    "n_si_cells": 7,
+    "dz_si": [
+     6e-05,
+     4.190936261241358e-05,
+     3.0345807809338283e-05,
+     2.197284793180161e-05,
+     1.5910139854161484e-05,
+     1.1520243118445106e-05,
+     8.341598673839947e-06
+    ],
+    "port_gap_m": 6e-05,
+    "build_seconds": 0.14466428756713867
+   }
+  },
+  "300": {
+   "freq": 2450000000.0,
+   "theta": [
+    0.000218,
+    1.4e-05,
+    3e-05
+   ],
+   "sigma_metal": 30500000.0,
+   "sigma_si": 2.0,
+   "L_diff": 3.384594947104836e-09,
+   "Q_diff": 22.47155087870912,
+   "L_se": 3.516429518806138e-09,
+   "Q_se": 14.861508359758254,
+   "L_z11_open": -2.202077359687513e-08,
+   "L_raw": 3.758721140831451e-09,
+   "Z_dut": [
+    [
+     [
+      224.70027888262126,
+      -338.98347273570425
+     ],
+     [
+      222.14427349404855,
+      -360.07502609180887
+     ]
+    ],
+    [
+     [
+      222.1442734940582,
+      -360.075026091769
+     ],
+     [
+      221.9068348802092,
+      -329.06478820398536
+     ]
+    ]
+   ],
+   "seconds": 7.507441520690918,
+   "S": {
+    "dut": [
+     [
+      [
+       0.1858941156357919,
+       0.3030843402198671
+      ],
+      [
+       0.632773055163141,
+       -0.4811291661450514
+      ]
+     ],
+     [
+      [
+       0.6327730551631127,
+       -0.4811291661449574
+      ],
+      [
+       0.17435336015150377,
+       0.3200348541832673
+      ]
+     ]
+    ],
+    "open": [
+     [
+      [
+       0.8438557457142287,
+       -0.11507933597750228
+      ],
+      [
+       0.03658990494074911,
+       0.02362676326320132
+      ]
+     ],
+     [
+      [
+       0.03658990494075441,
+       0.02362676326325134
+      ],
+      [
+       0.8452920123167924,
+       -0.11391641407369225
+      ]
+     ]
+    ],
+    "short": [
+     [
+      [
+       -0.9911490018401768,
+       0.08574344051629644
+      ],
+      [
+       0.0028793874960774493,
+       0.015218570706080486
+      ]
+     ],
+     [
+      [
+       0.0028793874960774245,
+       0.01521857070608029
+      ],
+      [
+       -0.9912615741545389,
+       0.0849609600221461
+      ]
+     ]
+    ],
+    "deembedded": [
+     [
+      [
+       0.19742631967975102,
+       0.3400869220605373
+      ],
+      [
+       0.7416231484285594,
+       -0.4431408901366723
+      ]
+     ],
+     [
+      [
+       0.7416231484285395,
+       -0.44314089013659125
+      ],
+      [
+       0.18302300612607955,
+       0.3554262407619185
+      ]
+     ]
+    ]
+   },
+   "s_stats": {
+    "dut": {
+     "reciprocity": 9.820511009455042e-14,
+     "max_singular_value": 0.9130219946539632
+    },
+    "open": {
+     "reciprocity": 5.0299164728523285e-14,
+     "max_singular_value": 0.8858433076106973
+    },
+    "short": {
+     "reciprocity": 1.9757626537465201e-16,
+     "max_singular_value": 0.9965558423405351
+    },
+    "deembedded": {
+     "reciprocity": 8.344720155737546e-14,
+     "max_singular_value": 0.9645052555845436
+    }
+   },
+   "reciprocity_worst": 9.820511009455042e-14,
+   "passivity_worst": 0.9965558423405351,
+   "device_memory_gb_after": 8.55029296875,
+   "grid": {
+    "shape": [
+     45,
+     46,
+     18
+    ],
+    "n_unknowns": 119305,
+    "level": 1,
+    "cells_across_width": 2,
+    "wall_x": [
+     -0.000518,
+     0.000518
+    ],
+    "wall_y": [
+     -0.0005480000000000001,
+     0.000518
+    ],
+    "lid_z": 0.00067454,
+    "t_si": 0.0003,
+    "dx_min": 1.299999999999999e-05,
+    "dz_min": 1.4999999999999823e-06,
+    "n_z_cells": 18,
+    "n_si_cells": 9,
+    "dz_si": [
+     6e-05,
+     4.0080010255019465e-05,
+     4.0080010255019445e-05,
+     5.540392732550047e-05,
+     3.8293343035072144e-05,
+     2.6467078988582564e-05,
+     1.8293160499105226e-05,
+     1.2643621201658913e-05,
+     8.738848440041744e-06
+    ],
+    "port_gap_m": 6e-05,
+    "build_seconds": 0.15442991256713867
+   }
+  }
+ },
+ "uniform_vs_graded": {
+  "level": 1,
+  "uniform": {
+   "freq": 2450000000.0,
+   "theta": [
+    0.000218,
+    1.4e-05,
+    3e-05
+   ],
+   "sigma_metal": 30500000.0,
+   "sigma_si": 2.0,
+   "L_diff": 3.260560011976739e-09,
+   "Q_diff": 21.047747340514732,
+   "L_se": 3.4022695499223455e-09,
+   "Q_se": 13.764332112549637,
+   "L_z11_open": -1.734927997915476e-08,
+   "L_raw": 3.4972893999643103e-09,
+   "Z_dut": [
+    [
+     [
+      172.16952184869507,
+      -267.07141558516685
+     ],
+     [
+      169.77576429212695,
+      -288.8187999820045
+     ]
+    ],
+    [
+     [
+      169.77576429218038,
+      -288.8187999818468
+     ],
+     [
+      169.76670002136058,
+      -260.3737626156321
+     ]
+    ]
+   ],
+   "seconds": 6.281819105148315,
+   "S": {
+    "dut": [
+     [
+      [
+       0.16528009480219827,
+       0.2978025451442969
+      ],
+      [
+       0.6725708515908783,
+       -0.47674983287298867
+      ]
+     ],
+     [
+      [
+       0.672570851590859,
+       -0.47674983287259476
+      ],
+      [
+       0.15302429682851917,
+       0.3109436397061312
+      ]
+     ]
+    ],
+    "open": [
+     [
+      [
+       0.9004378847685958,
+       -0.07997656154069951
+      ],
+      [
+       0.017019589444481925,
+       0.012930446030585255
+      ]
+     ],
+     [
+      [
+       0.01701958944446864,
+       0.012930446030535715
+      ],
+      [
+       0.9009333375372292,
+       -0.07929931722283098
+      ]
+     ]
+    ],
+    "short": [
+     [
+      [
+       -0.9950936932007297,
+       0.05718592890797324
+      ],
+      [
+       0.001447342115907289,
+       0.009295535468797637
+      ]
+     ],
+     [
+      [
+       0.001447342115907289,
+       0.009295535468797638
+      ],
+      [
+       -0.9951917971456145,
+       0.05628020504576156
+      ]
+     ]
+    ],
+    "deembedded": [
+     [
+      [
+       0.17697021014222614,
+       0.3197991595844171
+      ],
+      [
+       0.7445728920273034,
+       -0.44653433639535867
+      ]
+     ],
+     [
+      [
+       0.7445728920272291,
+       -0.4465343363949339
+      ],
+      [
+       0.16319454903794367,
+       0.3320574662458333
+      ]
+     ]
+    ]
+   },
+   "s_stats": {
+    "dut": {
+     "reciprocity": 3.9437511304811463e-13,
+     "max_singular_value": 0.9348363033972287
+    },
+    "open": {
+     "reciprocity": 5.129047628471283e-14,
+     "max_singular_value": 0.9201280302470989
+    },
+    "short": {
+     "reciprocity": 1.734723475976807e-18,
+     "max_singular_value": 0.9977188554379147
+    },
+    "deembedded": {
+     "reciprocity": 4.3121606808240275e-13,
+     "max_singular_value": 0.9627958523566944
+    }
+   },
+   "reciprocity_worst": 4.3121606808240275e-13,
+   "passivity_worst": 0.9977188554379147,
+   "device_memory_gb_after": 8.55029296875,
+   "grid": {
+    "shape": [
+     45,
+     46,
+     13
+    ],
+    "n_unknowns": 87340,
+    "level": 1,
+    "cells_across_width": 2,
+    "wall_x": [
+     -0.000518,
+     0.000518
+    ],
+    "wall_y": [
+     -0.0005480000000000001,
+     0.000518
+    ],
+    "lid_z": 0.0005645400000000001,
+    "t_si": 0.00019,
+    "dx_min": 1.299999999999999e-05,
+    "dz_min": 1.5000000000000094e-06,
+    "n_z_cells": 13,
+    "n_si_cells": 4,
+    "dz_si": [
+     6e-05,
+     4.333333333333334e-05,
+     4.333333333333335e-05,
+     4.333333333333332e-05
+    ],
+    "port_gap_m": 6e-05,
+    "build_seconds": 0.1196589469909668
+   }
+  }
+ },
+ "levels": {
+  "1": {
+   "freq": 2450000000.0,
+   "theta": [
+    0.000218,
+    1.4e-05,
+    3e-05
+   ],
+   "sigma_metal": 30500000.0,
+   "sigma_si": 2.0,
+   "L_diff": 3.2990832282024892e-09,
+   "Q_diff": 21.058030283030647,
+   "L_se": 3.4462678374889822e-09,
+   "Q_se": 13.6087472435157,
+   "L_z11_open": -1.713088408817942e-08,
+   "L_raw": 3.540357251063271e-09,
+   "Z_dut": [
+    [
+     [
+      170.33930027338977,
+      -263.7094720445215
+     ],
+     [
+      167.9487700384021,
+      -285.6575406108676
+     ]
+    ],
+    [
+     [
+      167.94877003839883,
+      -285.65754061069146
+     ],
+     [
+      167.96992978203684,
+      -256.8201685738566
+     ]
+    ]
+   ],
+   "seconds": 2.7414896488189697,
+   "S": {
+    "dut": [
+     [
+      [
+       0.1680571336677984,
+       0.2982877168551569
+      ],
+      [
+       0.6660567188077154,
+       -0.47945288870166786
+      ]
+     ],
+     [
+      [
+       0.6660567188075729,
+       -0.4794528887012979
+      ],
+      [
+       0.1557172249776913,
+       0.31212017315169016
+      ]
+     ]
+    ],
+    "open": [
+     [
+      [
+       0.8962353689706265,
+       -0.0817213789920866
+      ],
+      [
+       0.018406787451301625,
+       0.01346056099272681
+      ]
+     ],
+     [
+      [
+       0.018406787451290006,
+       0.013460560992623586
+      ],
+      [
+       0.8967740989301476,
+       -0.08103135105715316
+      ]
+     ]
+    ],
+    "short": [
+     [
+      [
+       -0.9950796752836488,
+       0.05728208245209147
+      ],
+      [
+       0.0014424810506249294,
+       0.009260273658485713
+      ]
+     ],
+     [
+      [
+       0.0014424810506249324,
+       0.009260273658485718
+      ],
+      [
+       -0.9951712640511462,
+       0.056443373383014056
+      ]
+     ]
+    ],
+    "deembedded": [
+     [
+      [
+       0.1802719777686177,
+       0.3214523080725668
+      ],
+      [
+       0.7402627265037552,
+       -0.44976209542121137
+      ]
+     ],
+     [
+      [
+       0.7402627265035299,
+       -0.44976209542080975
+      ],
+      [
+       0.16628914880745277,
+       0.3343803400885258
+      ]
+     ]
+    ]
+   },
+   "s_stats": {
+    "dut": {
+     "reciprocity": 3.964943927116892e-13,
+     "max_singular_value": 0.9327710270093845
+    },
+    "open": {
+     "reciprocity": 1.0387660084556778e-13,
+     "max_singular_value": 0.9174305404516782
+    },
+    "short": {
+     "reciprocity": 6.024887181797866e-18,
+     "max_singular_value": 0.9977045510983037
+    },
+    "deembedded": {
+     "reciprocity": 4.60537937815314e-13,
+     "max_singular_value": 0.9625620829542249
+    }
+   },
+   "reciprocity_worst": 4.60537937815314e-13,
+   "passivity_worst": 0.9977045510983037,
+   "device_memory_gb_after": 8.55029296875,
+   "grid": {
+    "shape": [
+     45,
+     46,
+     16
+    ],
+    "n_unknowns": 106519,
+    "level": 1,
+    "cells_across_width": 2,
+    "wall_x": [
+     -0.000518,
+     0.000518
+    ],
+    "wall_y": [
+     -0.0005480000000000001,
+     0.000518
+    ],
+    "lid_z": 0.0005645400000000001,
+    "t_si": 0.00019,
+    "dx_min": 1.299999999999999e-05,
+    "dz_min": 1.5000000000000094e-06,
+    "n_z_cells": 16,
+    "n_si_cells": 7,
+    "dz_si": [
+     6e-05,
+     4.190936261241358e-05,
+     3.0345807809338283e-05,
+     2.197284793180161e-05,
+     1.5910139854161484e-05,
+     1.1520243118445106e-05,
+     8.341598673839947e-06
+    ],
+    "port_gap_m": 6e-05,
+    "build_seconds": 0.13934016227722168
+   },
+   "host_memory_gb": {
+    "MemTotal": 125.56709671020508,
+    "MemAvailable": 116.71963882446289,
+    "peak_rss": 11.017047882080078
+   }
+  },
+  "error": "XlaRuntimeError: INTERNAL: Buffer Definition Event: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: CpuCallback error calling callback: Traceback (most recent call last):\n  File \"/opt/conda/lib/python3.10/threading.py\", line 973, in _bootstrap\n  File \"/opt/conda/lib/python3.10/threading.py\", line 1016, in _bootstrap_inner\n  File \"/opt/conda/lib/python3.10/threading.py\", line 953, in run\n  File \"/opt/conda/lib/python3.10/concurrent/futures/thread.py\", line 81, in _worker\n  File \"/opt/conda/lib/python3.10/concurrent/futures/thread.py\", line 62, in run\n  File \"/root/work/rfx-fdfd-gpu-r0/rfx/fdfd/linear_solve.py\", line 639, in on_thread\n  File \"/root/work/rfx-fdfd-gpu-r0/rfx/fdfd/_cudss.py\", line 571, in solve\n  File \"/root/work/rfx-fdfd-gpu-r0/rfx/fdfd/_cudss.py\", line 521, in _solver\n  File \"/opt/conda/lib/python3.10/site-packages/nvmath/internal/utils.py\", line 601, in inner\n  File \"/opt/conda/lib/python3.10/site-packages/nvmath/internal/utils.py\", line 601, in inner\n  File \"/opt/conda/lib/python3.10/site-packages/nvmath/internal/utils.py\", line 601, in inner\n  File \"/opt/conda/lib/python3.10/site-packages/nvmath/sparse/advanced/direct_solver.py\", line 1721, in factorize\n  File \"/opt/conda/lib/python3.10/site-packages/nvmath/sparse/advanced/direct_solver.py\", line 1831, in _execute\n  File \"nvmath/bindings/cudss.pyx\", line 266, in nvmath.bindings.cudss.check_status\ncuDSSError: ALLOC_FAILED (2)",
+  "traceback": "del)\n  File \"/root/work/rfx-fdfd-gpu-r0/validation/vessl/_lane_embedded.py\", line 136, in solve\n    r = rs.forward(model, **kw)\n  File \"/root/work/rfx-fdfd-gpu-r0/validation/fdfd/rfic_spiral.py\", line 410, in forward\n    jax.block_until_ready(r.L_diff)\n  File \"/opt/conda/lib/python3.10/site-packages/jax/_src/api.py\", line 3136, in block_until_ready\n    try_to_block(arrays[0])\n  File \"/opt/conda/lib/python3.10/site-packages/jax/_src/api.py\", line 3119, in try_to_block\n    return x.block_until_ready()\njaxlib._jax.XlaRuntimeError: INTERNAL: Buffer Definition Event: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: Error dispatching computation: CpuCallback error calling callback: Traceback (most recent call last):\n  File \"/opt/conda/lib/python3.10/threading.py\", line 973, in _bootstrap\n  File \"/opt/conda/lib/python3.10/threading.py\", line 1016, in _bootstrap_inner\n  File \"/opt/conda/lib/python3.10/threading.py\", line 953, in run\n  File \"/opt/conda/lib/python3.10/concurrent/futures/thread.py\", line 81, in _worker\n  File \"/opt/conda/lib/python3.10/concurrent/futures/thread.py\", line 62, in run\n  File \"/root/work/rfx-fdfd-gpu-r0/rfx/fdfd/linear_solve.py\", line 639, in on_thread\n  File \"/root/work/rfx-fdfd-gpu-r0/rfx/fdfd/_cudss.py\", line 571, in solve\n  File \"/root/work/rfx-fdfd-gpu-r0/rfx/fdfd/_cudss.py\", line 521, in _solver\n  File \"/opt/conda/lib/python3.10/site-packages/nvmath/internal/utils.py\", line 601, in inner\n  File \"/opt/conda/lib/python3.10/site-packages/nvmath/internal/utils.py\", line 601, in inner\n  File \"/opt/conda/lib/python3.10/site-packages/nvmath/internal/utils.py\", line 601, in inner\n  File \"/opt/conda/lib/python3.10/site-packages/nvmath/sparse/advanced/direct_solver.py\", line 1721, in factorize\n  File \"/opt/conda/lib/python3.10/site-packages/nvmath/sparse/advanced/direct_solver.py\", line 1831, in _execute\n  File \"nvmath/bindings/cudss.pyx\", line 266, in nvmath.bindings.cudss.check_status\ncuDSSError: ALLOC_FAILED (2)\n",
+  "device_memory_gb_at_error": {
+   "used": 23.63623046875,
+   "free": 0.01348876953125,
+   "total": 23.64971923828125,
+   "pool_used": 0.22376203536987305,
+   "pool_total": 3.6902523040771484
+  }
+ },
+ "host_memory_gb_end": {
+  "MemTotal": 125.56709671020508,
+  "MemAvailable": 115.71051788330078,
+  "peak_rss": 11.017047882080078
+ }
+}

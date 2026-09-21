@@ -1,0 +1,254 @@
+{
+ "lane": "J0",
+ "started_utc": "2026-09-15T05:48:12Z",
+ "artifact_dir": "/root/workspace/claude-workspace/rfx/runs/fdfd-gpu-j0-20260915T054539Z",
+ "env": {
+  "python": "3.10.13",
+  "platform": "Linux-5.15.0-191-generic-x86_64-with-glibc2.31",
+  "numpy": "2.2.6",
+  "scipy": "1.15.3",
+  "jax": "0.6.2",
+  "jax_platforms_env": "cpu",
+  "jax_devices": [
+   "TFRT_CPU_0"
+  ],
+  "jax_default_backend": "cpu",
+  "default_backend": "superlu",
+  "env_backend": "superlu",
+  "cudss_hybrid_memory": false,
+  "cudss_free_forward": false,
+  "backends": {
+   "cudss": {
+    "backend": "cudss",
+    "available": true,
+    "reason": null,
+    "nvmath_version": "1.0.0",
+    "cupy_version": "14.2.0",
+    "device_count": 1,
+    "device_name": "NVIDIA GeForce RTX 4090",
+    "device_arrays": true,
+    "min_cudss": "0.4.0",
+    "threading_lib": "/opt/conda/lib/python3.10/site-packages/nvidia/cu12/lib/libcudss_mtlayer_gomp.so.0",
+    "host_nthreads": 16
+   },
+   "cusolver": {
+    "backend": "cusolver",
+    "available": true,
+    "reason": null,
+    "cupy_version": "14.2.0",
+    "device_count": 1,
+    "device_name": "NVIDIA GeForce RTX 4090"
+   }
+  },
+  "device_memory_gb": {
+   "used": 0.38232421875,
+   "free": 23.26739501953125,
+   "total": 23.64971923828125,
+   "pool_used": 0.0,
+   "pool_total": 0.0
+  },
+  "cpu_count": 32,
+  "omp_num_threads": "16",
+  "nvmath_version": "1.0.0",
+  "cupy_version": "14.2.0",
+  "nvidia_smi": "NVIDIA GeForce RTX 4090, 24564 MiB, 391 MiB, 535.288.01"
+ },
+ "seconds": 1.681603193283081,
+ "finished_utc": "2026-09-15T05:48:13Z",
+ "gpu_backends_available": [
+  "cudss",
+  "cusolver"
+ ],
+ "selftest": {
+  "cudss": {
+   "backend": "cudss",
+   "n": 400,
+   "m": 3,
+   "residual_N_gpu": 3.73790498902771e-16,
+   "residual_N_superlu": 6.648593153127695e-16,
+   "diff_N": 1.4042943005427247e-15,
+   "residual_T_gpu": 3.864167830024168e-16,
+   "residual_T_superlu": 6.935839636479757e-16,
+   "diff_T": 1.2262799001161374e-15,
+   "cross_thread_diff": 1.2412670766236366e-16,
+   "cross_thread_rel": 1.1936859665774883e-16,
+   "cross_thread_ok": true,
+   "factorizations": 2,
+   "replans": 0,
+   "freed_forward": 0,
+   "hybrid_memory": false,
+   "free_forward": false,
+   "threading_lib": "/opt/conda/lib/python3.10/site-packages/nvidia/cu12/lib/libcudss_mtlayer_gomp.so.0",
+   "host_nthreads": 16,
+   "solves": 4,
+   "stats": {
+    "A": {
+     "plan_permanent_device_gb": 0.002933356910943985,
+     "plan_peak_device_gb": 0.002933356910943985,
+     "lu_nnz": 83108,
+     "npivots": 0,
+     "device_memory_gb": 0.46435546875
+    },
+    "AT": {
+     "plan_permanent_device_gb": 0.002933356910943985,
+     "plan_peak_device_gb": 0.002933356910943985,
+     "lu_nnz": 83108,
+     "npivots": 0,
+     "device_memory_gb": 0.47216796875
+    }
+   },
+   "device_memory_gb": {
+    "used": 0.47216796875,
+    "free": 23.17755126953125,
+    "total": 23.64971923828125,
+    "pool_used": 0.00017547607421875,
+    "pool_total": 0.0004420280456542969
+   },
+   "seconds": 0.21305418014526367
+  },
+  "cusolver": {
+   "backend": "cusolver",
+   "n": 400,
+   "m": 3,
+   "residual_N_gpu": 1.2152846461954048e-15,
+   "residual_N_superlu": 6.648593153127695e-16,
+   "diff_N": 2.746126388872213e-15,
+   "residual_T_gpu": 1.25228996476324e-15,
+   "residual_T_superlu": 6.935839636479757e-16,
+   "diff_T": 2.7742699101848566e-15,
+   "cross_thread_diff": 0.0,
+   "cross_thread_rel": 0.0,
+   "cross_thread_ok": true,
+   "factorizations": 12,
+   "replans": 0,
+   "freed_forward": 0,
+   "hybrid_memory": false,
+   "free_forward": false,
+   "threading_lib": "/opt/conda/lib/python3.10/site-packages/nvidia/cu12/lib/libcudss_mtlayer_gomp.so.0",
+   "host_nthreads": 16,
+   "solves": 4,
+   "stats": {
+    "A": {
+     "nnz": 3597,
+     "device_memory_gb": 0.45654296875
+    },
+    "AT": {
+     "nnz": 3597,
+     "device_memory_gb": 0.46435546875
+    }
+   },
+   "device_memory_gb": {
+    "used": 0.46435546875,
+    "free": 23.18536376953125,
+    "total": 23.64971923828125,
+    "pool_used": 0.0001392364501953125,
+    "pool_total": 0.0004420280456542969
+   },
+   "seconds": 0.13374042510986328
+  }
+ },
+ "backends_compared": [
+  "superlu",
+  "cudss",
+  "cusolver"
+ ],
+ "cpu_reference": {
+  "levels": {
+   "1": {
+    "base_dx": 1e-05,
+    "div": 1.0,
+    "L_dut": 2.624392626623466e-10,
+    "grad": [
+     9.960315883655651e-06,
+     -9.955068907479151e-06,
+     -2.0744805581785236e-05
+    ],
+    "fd": [
+     9.960315549713271e-06,
+     -9.955070504372157e-06,
+     -2.0744805648757725e-05
+    ],
+    "fd_order": 4,
+    "value_and_grad_seconds": 20.472824096679688,
+    "fd_seconds": 177.77656507492065,
+    "grad_vs_fd_rel": [
+     3.3527289235595705e-08,
+     1.6041001469983507e-07,
+     3.228398024053693e-09
+    ]
+   },
+   "2": {
+    "base_dx": 5e-06,
+    "div": 2.0,
+    "L_dut": 2.9300470303288545e-10,
+    "grad": [
+     1.0793423389994091e-05,
+     -1.0377039425254427e-05,
+     -2.151402236610647e-05
+    ],
+    "fd": [
+     1.0793423668209139e-05,
+     -1.0377033491853368e-05,
+     -2.151401955884596e-05
+    ],
+    "fd_order": 4,
+    "value_and_grad_seconds": 99.95538187026978,
+    "fd_seconds": 1153.8434641361237,
+    "grad_vs_fd_rel": [
+     2.577634828310952e-08,
+     5.717820091011924e-07,
+     1.304851703581399e-07
+    ]
+   },
+   "3": {
+    "base_dx": 3.3333333333333337e-06,
+    "div": 3.0,
+    "L_dut": 3.005576903387643e-10,
+    "grad": [
+     1.0944483131605359e-05,
+     -1.0188592910094729e-05,
+     -2.2422482362389336e-05
+    ],
+    "fd": [
+     1.0944483299844529e-05,
+     -1.0188592905442761e-05,
+     -2.2422480282079162e-05
+    ],
+    "fd_order": 4,
+    "value_and_grad_seconds": 347.0937809944153,
+    "fd_seconds": 5033.551932096481,
+    "grad_vs_fd_rel": [
+     1.5372052299794593e-08,
+     4.5658587696379807e-10,
+     9.277787951640969e-08
+    ]
+   }
+  },
+  "referee_deembedded": 3.3305510896906523e-10,
+  "n_unknowns": {
+   "1": 23062,
+   "2": 56408,
+   "3": 108898
+  }
+ },
+ "g1_grid": {
+  "shape": [
+   46,
+   49,
+   15
+  ],
+  "n_unknowns": 108898,
+  "wall_x": [
+   -0.00010262500000000004,
+   0.00010262499999999923
+  ],
+  "wall_y": [
+   -0.00011262500000000004,
+   0.00010262499999999989
+  ],
+  "lid_z": 0.000161875,
+  "n_z_lines": 16,
+  "build_seconds": 0.36081814765930176,
+  "build_seconds_here": 0.3608877658843994
+ }
+}

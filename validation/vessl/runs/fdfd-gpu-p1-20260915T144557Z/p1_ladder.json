@@ -1,0 +1,636 @@
+{
+ "lane": "P1",
+ "started_utc": "2026-09-15T14:46:52Z",
+ "artifact_dir": "/root/workspace/claude-workspace/rfx/runs/fdfd-gpu-p1-20260915T144557Z",
+ "env": {
+  "python": "3.10.13",
+  "platform": "Linux-5.15.0-187-generic-x86_64-with-glibc2.31",
+  "numpy": "2.2.6",
+  "scipy": "1.15.3",
+  "jax": "0.6.2",
+  "jax_platforms_env": "cpu",
+  "jax_devices": [
+   "TFRT_CPU_0"
+  ],
+  "jax_default_backend": "cpu",
+  "default_backend": "cudss",
+  "env_backend": "cudss",
+  "cudss_hybrid_memory": false,
+  "cudss_free_forward": true,
+  "backends": {
+   "cudss": {
+    "backend": "cudss",
+    "available": true,
+    "reason": null,
+    "nvmath_version": "1.0.0",
+    "cupy_version": "14.2.0",
+    "device_count": 1,
+    "device_name": "NVIDIA GeForce RTX 4090",
+    "device_arrays": true,
+    "min_cudss": "0.4.0",
+    "threading_lib": "/opt/conda/lib/python3.10/site-packages/nvidia/cu12/lib/libcudss_mtlayer_gomp.so.0",
+    "host_nthreads": 16,
+    "ir_steps": null
+   },
+   "cusolver": {
+    "backend": "cusolver",
+    "available": true,
+    "reason": null,
+    "cupy_version": "14.2.0",
+    "device_count": 1,
+    "device_name": "NVIDIA GeForce RTX 4090"
+   }
+  },
+  "device_memory_gb": {
+   "used": 0.38232421875,
+   "free": 23.26739501953125,
+   "total": 23.64971923828125,
+   "pool_used": 0.0,
+   "pool_total": 0.0
+  },
+  "cpu_count": 24,
+  "omp_num_threads": "16",
+  "nvmath_version": "1.0.0",
+  "cupy_version": "14.2.0",
+  "nvidia_smi": "NVIDIA GeForce RTX 4090, 24564 MiB, 391 MiB, 535.309.01"
+ },
+ "seconds": 194.14270520210266,
+ "finished_utc": "2026-09-15T14:50:06Z",
+ "host_memory_gb": {
+  "MemTotal": 125.56709671020508,
+  "MemAvailable": 122.49484252929688,
+  "peak_rss": 0.6061019897460938
+ },
+ "config": {
+  "backend": "cudss",
+  "levels": [
+   1,
+   2,
+   3
+  ],
+  "xlevels": [
+   [
+    2,
+    3
+   ]
+  ],
+  "wall_w": 10.0,
+  "fd_level": "3",
+  "thru_levels": [
+   1,
+   2,
+   3
+  ],
+  "hybrid_levels": [],
+  "deadline_s": 4200.0,
+  "factor_cache_size": 1,
+  "free_forward": true
+ },
+ "fixture": {
+  "freq": 100000000.0,
+  "sigma": 2000000.0,
+  "short_gap": 1e-05,
+  "port_gap": 1e-05,
+  "base_dz": 1e-05,
+  "metal_cells": 1,
+  "pad_ratio": 1.5,
+  "wall_w": 10.0,
+  "skin_depth": 3.558812717085886e-05
+ },
+ "levels": {
+  "1": {
+   "m": 1,
+   "metal_cells": 1,
+   "hybrid_memory": false,
+   "grid": {
+    "shape": [
+     21,
+     22,
+     12
+    ],
+    "n_unknowns": 18643,
+    "wall_x": [
+     -0.000152,
+     0.000152
+    ],
+    "wall_y": [
+     -0.000162,
+     0.000152
+    ],
+    "lid_z": 0.00014000000000000001,
+    "dx_min": 7.999999999999991e-06,
+    "dz_min": 1.0000000000000006e-06,
+    "build_seconds": 0.20409083366394043
+   },
+   "build_seconds_here": 0.20418858528137207,
+   "factor": {
+    "n": 18643,
+    "nnz": 229963,
+    "rhs_shape": [
+     18643,
+     2
+    ],
+    "reference": "cudss",
+    "per_backend": {
+     "cudss": {
+      "cold_seconds": 2.295945882797241,
+      "warm_seconds": 0.022188901901245117,
+      "factor_seconds": 2.273756980895996,
+      "solve_seconds": 0.022188901901245117,
+      "residual": 1.0000055334265184e-09,
+      "residual_warm": 8.953181650341898e-10,
+      "warm_is_bit_identical": false,
+      "device_memory_gb_before": {
+       "used": 0.38232421875,
+       "free": 23.26739501953125,
+       "total": 23.64971923828125,
+       "pool_used": 0.0,
+       "pool_total": 0.0
+      },
+      "device_memory_gb_after": {
+       "used": 0.64208984375,
+       "free": 23.00762939453125,
+       "total": 23.64971923828125,
+       "pool_used": 0.004909515380859375,
+       "pool_total": 0.020293235778808594
+      },
+      "device_memory_gb_delta": 0.259765625,
+      "stats": {
+       "A": {
+        "device_memory_gb": 0.64208984375
+       }
+      },
+      "factorizations": 1,
+      "solves": 2,
+      "freed_forward": 0
+     }
+    },
+    "reference_scale": 2785290.82427851
+   },
+   "L_dut": 2.592230128025796e-10,
+   "grad": [
+    9.860094859594503e-06,
+    -9.814381587766655e-06,
+    -2.04904473386432e-05
+   ],
+   "value_and_grad_seconds": 6.880300283432007,
+   "device_memory_gb_before": {
+    "used": 0.63427734375,
+    "free": 23.01544189453125,
+    "total": 23.64971923828125,
+    "pool_used": 0.0,
+    "pool_total": 0.020293235778808594
+   },
+   "device_memory_gb_peak_after": {
+    "used": 0.80419921875,
+    "free": 22.84552001953125,
+    "total": 23.64971923828125,
+    "pool_used": 0.004909515380859375,
+    "pool_total": 0.025434494018554688
+   },
+   "factor_cache_size": 1,
+   "factor_cache_entries": 1,
+   "stats": {
+    "AT": {
+     "device_memory_gb": 0.80419921875
+    }
+   },
+   "factorizations": 1,
+   "solves": 1,
+   "freed_forward": 0,
+   "host_memory_gb": {
+    "MemTotal": 125.56709671020508,
+    "MemAvailable": 121.07550811767578,
+    "peak_rss": 2.1946487426757812
+   },
+   "rc_twin": {
+    "L_dut": 2.5953261057192397e-10,
+    "L_raw": 2.809772849541075e-10,
+    "Q_diff": 0.013436782662293,
+    "re_z_diff": 1.2136026357377987,
+    "sigma": 20000000.0,
+    "freq": 10000000.0,
+    "seconds": 0.9660069942474365,
+    "device_memory_gb_after": 0.80419921875,
+    "stats": {
+     "A": {
+      "device_memory_gb": 0.80419921875
+     }
+    },
+    "factorizations": 1,
+    "solves": 1,
+    "freed_forward": 0
+   }
+  },
+  "2": {
+   "m": 2,
+   "metal_cells": 1,
+   "hybrid_memory": false,
+   "grid": {
+    "shape": [
+     42,
+     44,
+     24
+    ],
+    "n_unknowns": 140990,
+    "wall_x": [
+     -0.000152,
+     0.000152
+    ],
+    "wall_y": [
+     -0.000162,
+     0.000152
+    ],
+    "lid_z": 0.00014000000000000001,
+    "dx_min": 3.999999999999995e-06,
+    "dz_min": 4.999999999999986e-07,
+    "build_seconds": 0.18370342254638672
+   },
+   "build_seconds_here": 0.1837916374206543,
+   "factor": {
+    "n": 140990,
+    "nnz": 1784606,
+    "rhs_shape": [
+     140990,
+     2
+    ],
+    "reference": "cudss",
+    "per_backend": {
+     "cudss": {
+      "cold_seconds": 1.5693531036376953,
+      "warm_seconds": 0.08272409439086914,
+      "factor_seconds": 1.4866290092468262,
+      "solve_seconds": 0.08272409439086914,
+      "residual": 4.322248302772696e-09,
+      "residual_warm": 4.2882843701624395e-09,
+      "warm_is_bit_identical": false,
+      "device_memory_gb_before": {
+       "used": 0.79638671875,
+       "free": 22.85333251953125,
+       "total": 23.64971923828125,
+       "pool_used": 0.0,
+       "pool_total": 0.025434494018554688
+      },
+      "device_memory_gb_after": {
+       "used": 2.94091796875,
+       "free": 20.70880126953125,
+       "total": 23.64971923828125,
+       "pool_used": 0.03796863555908203,
+       "pool_total": 0.18255043029785156
+      },
+      "device_memory_gb_delta": 2.14453125,
+      "stats": {
+       "A": {
+        "device_memory_gb": 2.94091796875
+       }
+      },
+      "factorizations": 1,
+      "solves": 2,
+      "freed_forward": 0
+     }
+    },
+    "reference_scale": 3276095.109739889
+   },
+   "L_dut": 2.98524912863029e-10,
+   "grad": [
+    1.1078696158236317e-05,
+    -1.1094565221280408e-05,
+    -2.250581511269111e-05
+   ],
+   "value_and_grad_seconds": 15.016825437545776,
+   "device_memory_gb_before": {
+    "used": 2.93310546875,
+    "free": 20.71661376953125,
+    "total": 23.64971923828125,
+    "pool_used": 0.0,
+    "pool_total": 0.18255043029785156
+   },
+   "device_memory_gb_peak_after": {
+    "used": 5.16943359375,
+    "free": 18.48028564453125,
+    "total": 23.64971923828125,
+    "pool_used": 0.03796863555908203,
+    "pool_total": 0.2224431037902832
+   },
+   "factor_cache_size": 1,
+   "factor_cache_entries": 1,
+   "stats": {
+    "AT": {
+     "device_memory_gb": 5.16943359375
+    }
+   },
+   "factorizations": 1,
+   "solves": 1,
+   "freed_forward": 0,
+   "host_memory_gb": {
+    "MemTotal": 125.56709671020508,
+    "MemAvailable": 118.55792617797852,
+    "peak_rss": 5.426052093505859
+   },
+   "rc_twin": {
+    "L_dut": 2.9882233625188194e-10,
+    "L_raw": 3.25063458358977e-10,
+    "Q_diff": 0.014464243702845426,
+    "re_z_diff": 1.298067255480179,
+    "sigma": 20000000.0,
+    "freq": 10000000.0,
+    "seconds": 4.644298315048218,
+    "device_memory_gb_after": 5.16943359375,
+    "stats": {
+     "A": {
+      "device_memory_gb": 5.16943359375
+     }
+    },
+    "factorizations": 1,
+    "solves": 1,
+    "freed_forward": 0
+   }
+  },
+  "3": {
+   "m": 3,
+   "metal_cells": 1,
+   "hybrid_memory": false,
+   "grid": {
+    "shape": [
+     63,
+     66,
+     36
+    ],
+    "n_unknowns": 466833,
+    "wall_x": [
+     -0.000152,
+     0.000152
+    ],
+    "wall_y": [
+     -0.000162,
+     0.000152
+    ],
+    "lid_z": 0.00014000000000000001,
+    "dx_min": 2.6666666666666626e-06,
+    "dz_min": 3.333333333333324e-07,
+    "build_seconds": 0.6278440952301025
+   },
+   "build_seconds_here": 0.6279468536376953,
+   "factor": {
+    "n": 466833,
+    "nnz": 5961225,
+    "rhs_shape": [
+     466833,
+     2
+    ],
+    "reference": "cudss",
+    "per_backend": {
+     "cudss": {
+      "cold_seconds": 11.274684429168701,
+      "warm_seconds": 0.30686116218566895,
+      "factor_seconds": 10.967823266983032,
+      "solve_seconds": 0.30686116218566895,
+      "residual": 1.4396861014528946e-08,
+      "residual_warm": 1.4368754791764615e-08,
+      "warm_is_bit_identical": false,
+      "device_memory_gb_before": {
+       "used": 5.16162109375,
+       "free": 18.48809814453125,
+       "total": 23.64971923828125,
+       "pool_used": 0.0,
+       "pool_total": 0.2224431037902832
+      },
+      "device_memory_gb_after": {
+       "used": 12.81005859375,
+       "free": 10.83966064453125,
+       "total": 23.64971923828125,
+       "pool_used": 0.12668991088867188,
+       "pool_total": 0.6666030883789062
+      },
+      "device_memory_gb_delta": 7.6484375,
+      "stats": {
+       "A": {
+        "device_memory_gb": 12.81005859375
+       }
+      },
+      "factorizations": 1,
+      "solves": 2,
+      "freed_forward": 0
+     }
+    },
+    "reference_scale": 4165548.408627737
+   },
+   "error": "XlaRuntimeError: INTERNAL: CpuCallback error calling callback: Traceback (most recent call last):\n  File \"/opt/conda/lib/python3.10/threading.py\", line 973, in _bootstrap\n  File \"/opt/conda/lib/python3.10/threading.py\", line 1016, in _bootstrap_inner\n  File \"/opt/conda/lib/python3.10/threading.py\", line 953, in run\n  File \"/opt/conda/lib/python3.10/concurrent/futures/thread.py\", line 81, in _worker\n  File \"/opt/conda/lib/python3.10/concurrent/futures/thread.py\", line 62, in run\n  File \"/root/work/rfx-fdfd-gpu-p1/rfx/fdfd/linear_solve.py\", line 639, in on_thread\n  File \"/root/work/rfx-fdfd-gpu-p1/rfx/fdfd/_cudss.py\", line 571, in solve\n  File \"/root/work/rfx-fdfd-gpu-p1/rfx/fdfd/_cudss.py\", line 521, in _solver\n  File \"/opt/conda/lib/python3.10/site-packages/nvmath/internal/utils.py\", line 601, in inner\n  File \"/opt/conda/lib/python3.10/site-packages/nvmath/internal/utils.py\", line 601, in inner\n  File \"/opt/conda/lib/python3.10/site-packages/nvmath/internal/utils.py\", line 601, in inner\n  File \"/opt/conda/lib/python3.10/site-packages/nvmath/sparse/advanced/direct_solver.py\", line 1721, in factorize\n  File \"/opt/conda/lib/python3.10/site-packages/nvmath/sparse/advanced/direct_solver.py\", line 1831, in _execute\n  File \"nvmath/bindings/cudss.pyx\", line 266, in nvmath.bindings.cudss.check_status\ncuDSSError: ALLOC_FAILED (2)",
+   "device_memory_gb_at_error": {
+    "used": 23.64013671875,
+    "free": 0.00958251953125,
+    "total": 23.64971923828125,
+    "pool_used": 0.23946666717529297,
+    "pool_total": 0.799858570098877
+   }
+  }
+ },
+ "xlevels": {
+  "mc2_m3": {
+   "m": 3,
+   "metal_cells": 2,
+   "hybrid_memory": false,
+   "grid": {
+    "shape": [
+     63,
+     66,
+     45
+    ],
+    "n_unknowns": 581430,
+    "wall_x": [
+     -0.000152,
+     0.000152
+    ],
+    "wall_y": [
+     -0.000162,
+     0.000152
+    ],
+    "lid_z": 0.00014000000000000001,
+    "dx_min": 2.6666666666666626e-06,
+    "dz_min": 3.333333333333324e-07,
+    "build_seconds": 0.8511078357696533
+   },
+   "build_seconds_here": 0.8517346382141113,
+   "factor": {
+    "n": 581430,
+    "nnz": 7436946,
+    "rhs_shape": [
+     581430,
+     2
+    ],
+    "reference": "cudss",
+    "per_backend": {
+     "cudss": {
+      "cold_seconds": 18.013723850250244,
+      "warm_seconds": 0.3834049701690674,
+      "factor_seconds": 17.630318880081177,
+      "solve_seconds": 0.3834049701690674,
+      "residual": 4.412915041476057e-08,
+      "residual_warm": 4.4180283184141154e-08,
+      "warm_is_bit_identical": false,
+      "device_memory_gb_before": {
+       "used": 23.63232421875,
+       "free": 0.01739501953125,
+       "total": 23.64971923828125,
+       "pool_used": 0.0,
+       "pool_total": 0.799858570098877
+      },
+      "device_memory_gb_after": {
+       "used": 17.97412109375,
+       "free": 5.67559814453125,
+       "total": 23.64971923828125,
+       "pool_used": 0.1580190658569336,
+       "pool_total": 1.1323165893554688
+      },
+      "device_memory_gb_delta": -5.658203125,
+      "stats": {
+       "A": {
+        "device_memory_gb": 17.97412109375
+       }
+      },
+      "factorizations": 1,
+      "solves": 2,
+      "freed_forward": 0
+     }
+    },
+    "reference_scale": 4426387.990216801
+   },
+   "error": "XlaRuntimeError: INTERNAL: CpuCallback error calling callback: Traceback (most recent call last):\n  File \"/opt/conda/lib/python3.10/threading.py\", line 973, in _bootstrap\n  File \"/opt/conda/lib/python3.10/threading.py\", line 1016, in _bootstrap_inner\n  File \"/opt/conda/lib/python3.10/threading.py\", line 953, in run\n  File \"/opt/conda/lib/python3.10/concurrent/futures/thread.py\", line 81, in _worker\n  File \"/opt/conda/lib/python3.10/concurrent/futures/thread.py\", line 62, in run\n  File \"/root/work/rfx-fdfd-gpu-p1/rfx/fdfd/linear_solve.py\", line 639, in on_thread\n  File \"/root/work/rfx-fdfd-gpu-p1/rfx/fdfd/_cudss.py\", line 571, in solve\n  File \"/root/work/rfx-fdfd-gpu-p1/rfx/fdfd/_cudss.py\", line 521, in _solver\n  File \"/opt/conda/lib/python3.10/site-packages/nvmath/internal/utils.py\", line 601, in inner\n  File \"/opt/conda/lib/python3.10/site-packages/nvmath/internal/utils.py\", line 601, in inner\n  File \"/opt/conda/lib/python3.10/site-packages/nvmath/internal/utils.py\", line 601, in inner\n  File \"/opt/conda/lib/python3.10/site-packages/nvmath/sparse/advanced/direct_solver.py\", line 1721, in factorize\n  File \"/opt/conda/lib/python3.10/site-packages/nvmath/sparse/advanced/direct_solver.py\", line 1831, in _execute\n  File \"nvmath/bindings/cudss.pyx\", line 266, in nvmath.bindings.cudss.check_status\ncuDSSError: ALLOC_FAILED (2)",
+   "device_memory_gb_at_error": {
+    "used": 23.62451171875,
+    "free": 0.02520751953125,
+    "total": 23.64971923828125,
+    "pool_used": 0.3160381317138672,
+    "pool_total": 1.243135929107666
+   }
+  }
+ },
+ "thru": {
+  "bar_length": 4e-05,
+  "levels": {
+   "1": {
+    "L_dut": 1.5949603396414998e-12,
+    "L_raw": 2.420092640744367e-11,
+    "Q_diff": 0.006533642616849395,
+    "re_z_diff": 0.15338199468893043,
+    "sigma": 2000000.0,
+    "freq": 100000000.0,
+    "seconds": 3.046595811843872,
+    "device_memory_gb_after": 23.62451171875,
+    "stats": {
+     "A": {
+      "device_memory_gb": 23.62451171875
+     }
+    },
+    "factorizations": 1,
+    "solves": 1,
+    "freed_forward": 0,
+    "grid": {
+     "shape": [
+      15,
+      11,
+      12
+     ],
+     "n_unknowns": 6932,
+     "wall_x": [
+      -0.000125,
+      0.000125
+     ],
+     "wall_y": [
+      -0.000105,
+      0.000105
+     ],
+     "lid_z": 0.00014000000000000001,
+     "dx_min": 9.999999999999999e-06,
+     "dz_min": 1.0000000000000006e-06,
+     "build_seconds": 0.1341567039489746
+    }
+   },
+   "2": {
+    "L_dut": 1.3877838638014342e-12,
+    "L_raw": 2.917812735141591e-11,
+    "Q_diff": 0.006091016853502766,
+    "re_z_diff": 0.14315677320058046,
+    "sigma": 2000000.0,
+    "freq": 100000000.0,
+    "seconds": 3.9476218223571777,
+    "device_memory_gb_after": 23.62451171875,
+    "stats": {
+     "A": {
+      "device_memory_gb": 23.62451171875
+     }
+    },
+    "factorizations": 1,
+    "solves": 1,
+    "freed_forward": 0,
+    "grid": {
+     "shape": [
+      30,
+      22,
+      24
+     ],
+     "n_unknowns": 51412,
+     "wall_x": [
+      -0.000125,
+      0.000125
+     ],
+     "wall_y": [
+      -0.000105,
+      0.000105
+     ],
+     "lid_z": 0.00014000000000000001,
+     "dx_min": 4.9999999999999996e-06,
+     "dz_min": 4.999999999999986e-07,
+     "build_seconds": 0.05855822563171387
+    }
+   },
+   "3": {
+    "L_dut": 1.2934507693661148e-12,
+    "L_raw": 3.067204261656369e-11,
+    "Q_diff": 0.005901385424094129,
+    "re_z_diff": 0.13771327045443416,
+    "sigma": 2000000.0,
+    "freq": 100000000.0,
+    "seconds": 9.612186670303345,
+    "device_memory_gb_after": 23.62451171875,
+    "stats": {
+     "A": {
+      "device_memory_gb": 23.62451171875
+     }
+    },
+    "factorizations": 1,
+    "solves": 1,
+    "freed_forward": 0,
+    "grid": {
+     "shape": [
+      45,
+      33,
+      36
+     ],
+     "n_unknowns": 169080,
+     "wall_x": [
+      -0.000125,
+      0.000125
+     ],
+     "wall_y": [
+      -0.000105,
+      0.000105
+     ],
+     "lid_z": 0.00014000000000000001,
+     "dx_min": 3.3333333333333308e-06,
+     "dz_min": 3.333333333333324e-07,
+     "build_seconds": 0.1868886947631836
+    }
+   }
+  },
+  "spiral_columns_x": [
+   6.999999999999994e-06,
+   4.7e-05
+  ]
+ },
+ "host_memory_gb_end": {
+  "MemTotal": 125.56709671020508,
+  "MemAvailable": 114.20669937133789,
+  "peak_rss": 15.45511245727539
+ }
+}
