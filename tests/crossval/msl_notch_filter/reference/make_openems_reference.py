@@ -123,9 +123,32 @@ proof), applied unchanged to EVERY real pass:
   * ``_log_indicates_truncation`` -- openEMS's own "reached before the
     end-criteria of" text. A real pass that trips it FAILS here;
   * ``_non_physical_guard`` -- |S| finite and <= 2;
-  * ``_passivity_witness`` -- max(|S11|^2+|S21|^2) <= 1.05, else fail.
+  * ``_passivity_witness`` -- max(|S11|^2+|S21|^2) <= 1.05 OVER 2-7 GHz, else fail.
 
-A failed gate exits non-zero and names itself.
+THE WITNESS BAND, AND WHY IT IS NOT THE WHOLE GRID (leader decision, 2026-09-22)
+--------------------------------------------------------------------------------
+The tutorial's ``CalcPort`` grid is ``linspace(1e6, 7e9, 1601)``, so its first
+bins sit near 1 MHz -- three and a half decades below the Gaussian excitation's
+3.5 GHz centre. Down there both port voltages, incident and reflected, are at the
+numerical floor, and ``uf_ref/uf_inc`` is a ratio of two such numbers rather than
+an S-parameter the structure produced. The band this record serves is 2-7 GHz,
+and that is where the witness is evaluated, via ``_passivity_witness``'s own
+``idx`` argument (the function itself is untouched). The energy sum is still
+recorded for EVERY bin, together with its maximum over the band, over the whole
+grid, and separately over 0-1 GHz and 1-2 GHz, so a reader sees where any excess
+lives instead of being told a single number.
+
+On VESSL 369367263115 (commit 09487db4) the whole-grid witness read 1.2717 and
+stopped Stage A after a ~39 s real pass. WHERE on the grid that 1.2717 sat is not
+known: no record was written. That is the second thing this script now fixes --
+see below.
+
+A failed gate exits non-zero and names itself. It also leaves its evidence: the
+record built so far -- every array measured, the four energy-sum numbers, and a
+top-level ``failed_gate`` carrying the gate's own message -- is written to
+``<output stem>_FAILED.json`` beside the requested output BEFORE the non-zero
+exit. A gate that fires and leaves nothing to look at costs a whole cluster
+cycle per iteration.
 
 EXIT CODES
 ----------
@@ -227,10 +250,15 @@ STAGE_A_GATE = {
     "f_notch_hi_hz": 1.05 * float(F_NOTCH_AN_HZ),
 }
 
-# The band the shared estimator searches, on every stage. It is the reference
-# band the case's own test reads its records over, not a window derived from any
-# run.
-NOTCH_BAND_GHZ = (2.0, 7.0)
+# The band this record serves: 2-7 GHz, what the case's own test reads its
+# reference records over. ONE constant, used by both the notch estimator and the
+# passivity witness, so the number that is gated and the number that is reported
+# cannot come from different bins. It is not a window derived from any run.
+WITNESS_BAND_HZ = (2.0e9, 7.0e9)
+NOTCH_BAND_GHZ = (WITNESS_BAND_HZ[0] / 1e9, WITNESS_BAND_HZ[1] / 1e9)
+
+# The passivity tolerance, unchanged: max(|S11|^2+|S21|^2) <= 1.05.
+PASSIVITY_TOL = 0.05
 
 # ---------------------------------------------------------------------------
 # Stage B -- the tutorial's geometry, two mesh rungs. No geometry delta.
@@ -858,6 +886,12 @@ def _dry_run(stage: str, fine_factor: float) -> int:
     print(f"notch estimator   refined_extremum(log) over "
           f"{NOTCH_BAND_GHZ[0]:.1f}-{NOTCH_BAND_GHZ[1]:.1f} GHz, "
           f"validation/crossval/comparators/spectral_features.py")
+    print(f"passivity witness max(|S11|^2+|S21|^2) <= {1.0 + PASSIVITY_TOL:.2f} over the "
+          f"SAME {NOTCH_BAND_GHZ[0]:.1f}-{NOTCH_BAND_GHZ[1]:.1f} GHz band "
+          f"(WITNESS_BAND_HZ), not over the whole 1 MHz-7 GHz grid; the energy sum "
+          f"is recorded for every bin either way")
+    print("on a failed gate   the record built so far, the four energy-sum numbers "
+          "and failed_gate go to <output stem>_FAILED.json before the non-zero exit")
     print()
     _print_delta_list()
     print()
@@ -966,6 +1000,33 @@ def _self_check(fine_factor: float) -> int:
               f"(inside PML: {plan['measplane_inside_pml_estimate']}, "
               f"downstream of the feed: {plan['measplane_downstream_of_feed']})")
 
+    print("the witness band, and the energy-sum bookkeeping:")
+    check(WITNESS_BAND_HZ == (2.0e9, 7.0e9), "witness band is 2-7 GHz")
+    check(tuple(NOTCH_BAND_GHZ) == (WITNESS_BAND_HZ[0] / 1e9, WITNESS_BAND_HZ[1] / 1e9),
+          "the notch estimator and the passivity witness read the SAME band")
+    check(PASSIVITY_TOL == 0.05, "the passivity tolerance is unchanged at 1.05")
+    f_hz = np.linspace(1.0e6, A_F_MAX_HZ, A_N_FREQS)
+    # A planted spectrum: physical in the band, over unity below it -- what a
+    # ratio of two near-floor port voltages looks like. The band witness must
+    # not see the excess; the full-grid number must report it.
+    s11_t = np.full(f_hz.shape, 0.30)
+    s21_t = np.where(f_hz < WITNESS_BAND_HZ[0], 1.20, 0.90)
+    summary = _energy_summary(f_hz, s11_t, s21_t)
+    check(abs(summary["max_energy_sum_band"] - (0.09 + 0.81)) < 1e-9,
+          "the band witness reads only in-band bins",
+          f"{summary['max_energy_sum_band']:.4f}")
+    check(abs(summary["max_energy_sum_full"] - (0.09 + 1.44)) < 1e-9,
+          "the full-grid number still reports the out-of-band excess",
+          f"{summary['max_energy_sum_full']:.4f}")
+    check(abs(summary["max_energy_sum_below_band"]["0_1_ghz"] - 1.53) < 1e-9
+          and abs(summary["max_energy_sum_below_band"]["1_2_ghz"] - 1.53) < 1e-9,
+          "0-1 GHz and 1-2 GHz are reported separately")
+    check(summary["energy_sum"].size == A_N_FREQS,
+          "the energy sum is recorded for every bin", f"{summary['energy_sum'].size}")
+    check(_failed_output_path(Path("/tmp/openems_tutorial.json")).name
+          == "openems_tutorial_FAILED.json",
+          "a failed gate's evidence file is named from the output stem")
+
     print("the shared notch estimator:")
     try:
         refined = _load_refined_extremum()
@@ -1061,6 +1122,49 @@ def _port_realized(port, unit: float) -> dict:
     return out
 
 
+class StageFailure(RuntimeError):
+    """A sanity gate fired. Carries what had been measured when it did.
+
+    The precedent's own convention (its PRECEDENT TICK-LIST item 11: "partial
+    per-bin data attached to a raised RuntimeError so a failing run still leaves
+    numbers to inspect"). ``main`` writes it to ``<output stem>_FAILED.json``.
+    """
+
+    def __init__(self, message: str, *, stage: str, partial: dict, meta: dict):
+        super().__init__(message)
+        self.stage = stage
+        self.partial = partial
+        self.meta = meta
+
+
+def _energy_summary(freqs_hz: np.ndarray, s11: np.ndarray, s21: np.ndarray) -> dict:
+    """|S11|^2+|S21|^2 per bin, and where its maxima sit.
+
+    Reported for the whole grid AND split at the band edge, so "the witness read
+    X" is never a single number a reader cannot place.
+    """
+    energy = np.abs(s11) ** 2 + np.abs(s21) ** 2
+    band = (freqs_hz >= WITNESS_BAND_HZ[0]) & (freqs_hz <= WITNESS_BAND_HZ[1])
+    below_1 = freqs_hz < 1.0e9
+    one_to_two = (freqs_hz >= 1.0e9) & (freqs_hz < WITNESS_BAND_HZ[0])
+
+    def _max(mask) -> float:
+        return float(np.max(energy[mask])) if np.any(mask) else float("nan")
+
+    return {
+        "energy_sum": energy,
+        "band_mask": band,
+        "max_energy_sum_band": _max(band),
+        "max_energy_sum_full": float(np.max(energy)) if energy.size else float("nan"),
+        "max_energy_sum_below_band": {
+            "0_1_ghz": _max(below_1),
+            "1_2_ghz": _max(one_to_two),
+        },
+        "witness_band_ghz": list(NOTCH_BAND_GHZ),
+        "passivity_tol": 1.0 + PASSIVITY_TOL,
+    }
+
+
 def _run_stage(*, label: str, sim_root: str, threads: int,
                msl_length_um: float, resolution_factor: float,
                refined_extremum) -> tuple[dict, dict]:
@@ -1068,10 +1172,20 @@ def _run_stage(*, label: str, sim_root: str, threads: int,
 
     The sequence and every gate call is the precedent's
     ``_run_stage_a_reproduce_gate`` (validation/crossval/20_msl_phase_referee.py).
-    Three things differ, all declared: the builder is selected by stage, a
-    truncated real pass RAISES here instead of being reported as a flag, and the
-    notch comes from the repository's shared estimator over 2-7 GHz instead of a
-    bare argmin over 0.5-1.5 x the analytic frequency.
+    Five things differ, all declared:
+
+      1. the builder is selected by stage;
+      2. a truncated real pass RAISES here instead of being reported as a flag;
+      3. the notch comes from the repository's shared estimator over the witness
+         band instead of a bare argmin over 0.5-1.5 x the analytic frequency;
+      4. ``_passivity_witness`` runs on every stage (the precedent's Stage A
+         runner does not call it at all) and is given the 2-7 GHz ``idx`` mask
+         through the function's own existing argument -- the function is
+         untouched;
+      5. the arrays, the notch and the four energy-sum numbers are computed and
+         stashed BEFORE ``_non_physical_guard`` and ``_passivity_witness`` run,
+         so a gate that fires still leaves them behind. Only the order of pure
+         post-processing moved; both guards still block the record.
     """
     ContinuousStructure, openEMS, MSLPort = _import_openems()
 
@@ -1088,65 +1202,97 @@ def _run_stage(*, label: str, sim_root: str, threads: int,
             nrts=nrts, end_criteria=end_criteria,
             msl_length_um=msl_length_um, resolution_factor=resolution_factor)
 
-    smoke_fdtd, _p0, _p1 = build(nrts=200, end_criteria=0.0)
-    smoke_log = _run_openems_capturing_stdout(smoke_fdtd, smoke_dir, threads=threads)
-    _scan_stdout_for_bad_patterns(smoke_log, label + "_smoke")
+    record: dict = {}
+    meta: dict = {"stage": label}
 
-    fdtd, port0, port1 = build(nrts=None, end_criteria=None)
-    mesh = _mesh_realized(fdtd)
+    def fail(exc: Exception):
+        return StageFailure(str(exc), stage=label, partial=record, meta=meta)
 
-    t0 = time.time()
-    real_log = _run_openems_capturing_stdout(fdtd, sim_dir, threads=threads)
-    _scan_stdout_for_bad_patterns(real_log, label, check_truncation=True)
-    elapsed = time.time() - t0
+    try:
+        smoke_fdtd, _p0, _p1 = build(nrts=200, end_criteria=0.0)
+        smoke_log = _run_openems_capturing_stdout(smoke_fdtd, smoke_dir, threads=threads)
+        _scan_stdout_for_bad_patterns(smoke_log, label + "_smoke")
 
-    freqs = np.linspace(1.0e6, A_F_MAX_HZ, A_N_FREQS)
-    port0.CalcPort(sim_dir, freqs)
-    port1.CalcPort(sim_dir, freqs)
+        fdtd, port0, port1 = build(nrts=None, end_criteria=None)
+        mesh = _mesh_realized(fdtd)
+        meta["mesh_realized"] = mesh
 
-    inc_peak, n_samples = _check_excitation_and_trace(port0, sim_dir, label)
+        t0 = time.time()
+        real_log = _run_openems_capturing_stdout(fdtd, sim_dir, threads=threads)
+        _scan_stdout_for_bad_patterns(real_log, label, check_truncation=True)
+        elapsed = time.time() - t0
 
-    if _log_indicates_truncation(real_log):
-        raise RuntimeError(
-            f"[{label}] SANITY GATE 'end criteria reached' FAILED: openEMS's own "
-            f"'reached before the end-criteria of' warning is in this real pass's "
-            f"captured log -- the run hit its NrTS cap before the field decayed, so "
-            f"the spectrum is truncated and no record is written."
-        )
+        freqs = np.linspace(1.0e6, A_F_MAX_HZ, A_N_FREQS)
+        port0.CalcPort(sim_dir, freqs)
+        port1.CalcPort(sim_dir, freqs)
 
-    s11 = np.asarray(port0.uf_ref, dtype=np.complex128) / np.asarray(port0.uf_inc, dtype=np.complex128)
-    s21 = np.asarray(port1.uf_ref, dtype=np.complex128) / np.asarray(port0.uf_inc, dtype=np.complex128)
-    _non_physical_guard(np.abs(s11), label + "_s11")
-    _non_physical_guard(np.abs(s21), label + "_s21")
-    passivity = _passivity_witness(s11, s21, label)
+        inc_peak, n_samples = _check_excitation_and_trace(port0, sim_dir, label)
 
-    freqs_ghz = freqs / 1e9
-    s21_mag = np.abs(s21)
-    notch = refined_extremum(freqs_ghz, s21_mag,
-                             NOTCH_BAND_GHZ[0], NOTCH_BAND_GHZ[1], transform="log")
-    energy_sum = np.asarray(passivity["balance"], dtype=float)
+        if _log_indicates_truncation(real_log):
+            raise RuntimeError(
+                f"[{label}] SANITY GATE 'end criteria reached' FAILED: openEMS's own "
+                f"'reached before the end-criteria of' warning is in this real pass's "
+                f"captured log -- the run hit its NrTS cap before the field decayed, so "
+                f"the spectrum is truncated and no record is written."
+            )
 
-    record = {
-        "freqs_ghz": freqs_ghz.tolist(),
-        "s11_mag": np.abs(s11).tolist(),
-        "s11_deg": np.degrees(np.angle(s11)).tolist(),
-        "s21_mag": s21_mag.tolist(),
-        "s21_deg": np.degrees(np.angle(s21)).tolist(),
-        "energy_sum": energy_sum.tolist(),
-        "max_energy_sum": float(passivity["max_balance"]),
-        "notch": {
-            "bin_f_ghz": float(notch["bin_f"]),
-            "refined_f_ghz": float(notch["refined_f"]),
-            "depth_db": float(notch["depth_db"]),
-            "sub_bin_shift_bins": float(notch["sub_bin_shift"]),
-            "bin_width_ghz": float(notch["bin_width"]),
-            "band_ghz": list(NOTCH_BAND_GHZ),
-            "estimator": "validation/crossval/comparators/spectral_features.py::"
-                         "refined_extremum, transform='log'",
-        },
-    }
+        s11 = np.asarray(port0.uf_ref, dtype=np.complex128) / np.asarray(port0.uf_inc, dtype=np.complex128)
+        s21 = np.asarray(port1.uf_ref, dtype=np.complex128) / np.asarray(port0.uf_inc, dtype=np.complex128)
 
-    meta = {
+        freqs_ghz = freqs / 1e9
+        s21_mag = np.abs(s21)
+        summary = _energy_summary(freqs, s11, s21)
+
+        record.update({
+            "freqs_ghz": freqs_ghz.tolist(),
+            "s11_mag": np.abs(s11).tolist(),
+            "s11_deg": np.degrees(np.angle(s11)).tolist(),
+            "s21_mag": s21_mag.tolist(),
+            "s21_deg": np.degrees(np.angle(s21)).tolist(),
+            "energy_sum": summary["energy_sum"].tolist(),
+            "max_energy_sum_band": summary["max_energy_sum_band"],
+            "max_energy_sum_full": summary["max_energy_sum_full"],
+            "max_energy_sum_below_band": summary["max_energy_sum_below_band"],
+            "witness_band_ghz": summary["witness_band_ghz"],
+            "passivity_tol": summary["passivity_tol"],
+        })
+
+        # Printed before the guards run, so the four numbers reach the log even
+        # when the next line raises.
+        print(f"  energy sum max(|S11|^2+|S21|^2): "
+              f"band {NOTCH_BAND_GHZ[0]:.1f}-{NOTCH_BAND_GHZ[1]:.1f} GHz "
+              f"{summary['max_energy_sum_band']:.4f} | "
+              f"full grid {summary['max_energy_sum_full']:.4f} | "
+              f"0-1 GHz {summary['max_energy_sum_below_band']['0_1_ghz']:.4f} | "
+              f"1-2 GHz {summary['max_energy_sum_below_band']['1_2_ghz']:.4f} "
+              f"(tol {summary['passivity_tol']:.2f}, judged on the band)", flush=True)
+
+        try:
+            notch = refined_extremum(freqs_ghz, s21_mag,
+                                     NOTCH_BAND_GHZ[0], NOTCH_BAND_GHZ[1], transform="log")
+            record["notch"] = {
+                "bin_f_ghz": float(notch["bin_f"]),
+                "refined_f_ghz": float(notch["refined_f"]),
+                "depth_db": float(notch["depth_db"]),
+                "sub_bin_shift_bins": float(notch["sub_bin_shift"]),
+                "bin_width_ghz": float(notch["bin_width"]),
+                "band_ghz": list(NOTCH_BAND_GHZ),
+                "estimator": "validation/crossval/comparators/spectral_features.py::"
+                             "refined_extremum, transform='log'",
+            }
+        except Exception as exc:
+            record["notch"] = {"error": repr(exc)}
+
+        _non_physical_guard(np.abs(s11), label + "_s11")
+        _non_physical_guard(np.abs(s21), label + "_s21")
+        # The witness function is byte-identical to the precedent's; the band is
+        # supplied through its own idx argument.
+        _passivity_witness(s11, s21, label,
+                           tol=PASSIVITY_TOL, idx=summary["band_mask"])
+    except RuntimeError as exc:
+        raise fail(exc) from exc
+
+    meta.update({
         "resolution_um": _C0 / (A_F_MAX_HZ * np.sqrt(A_SUBSTRATE_EPR)) / A_UNIT / 50.0 * resolution_factor,
         "resolution_factor": float(resolution_factor),
         "msl_length_um": float(msl_length_um),
@@ -1171,8 +1317,73 @@ def _run_stage(*, label: str, sim_root: str, threads: int,
         "smoke_stdout_log_path": os.path.join(smoke_dir, "_openems_stdout.log"),
         "openems": _openems_version(real_log),
         "plan_estimate": _plan(label, msl_length_um, resolution_factor),
-    }
+    })
     return record, meta
+
+
+def _build_artifact(records: dict, stage_meta: dict, stage_a_gate: dict,
+                    stages: list, *, failed_gate: str | None = None) -> dict:
+    """The record, whole or partial. ``failed_gate`` marks the partial one."""
+    first_meta = next((m for m in stage_meta.values() if m.get("openems")), None)
+    artifact = {
+        "meta": {
+            "tool": "openEMS",
+            "openems": (first_meta["openems"] if first_meta
+                        else {"version": None, "source": "no stage reached the solver"}),
+            "rfx_openems_commit": os.environ.get("RFX_OPENEMS_COMMIT"),
+            "tutorial_source": (
+                f"{REPRODUCE_GATE_RECORD['tutorial']['repo']}/"
+                f"{REPRODUCE_GATE_RECORD['tutorial']['path']} -- "
+                f"{REPRODUCE_GATE_RECORD['tutorial']['attribution']}, fetched verbatim "
+                f"{REPRODUCE_GATE_RECORD['tutorial']['fetched_verbatim_on']} via "
+                f"{REPRODUCE_GATE_RECORD['tutorial']['fetched_via']}"
+            ),
+            "reproduce_gate_record": REPRODUCE_GATE_RECORD,
+            "delta_list": DELTA_LIST,
+            "boundary": A_BOUNDARY,
+            "excitation": f"SetGaussExcite({A_F_MAX_HZ/2.0}, {A_F_MAX_HZ/2.0}) Hz",
+            "nrts": "openEMS library default (~1e9) on every real pass; 200 on the smoke pass",
+            "end_criteria": "openEMS library default (1e-5) on every real pass; 0.0 on the smoke pass",
+            "calcport_grid": f"linspace(1e6, {A_F_MAX_HZ}, {A_N_FREQS})",
+            "notch_estimator": "validation/crossval/comparators/spectral_features.py::"
+                               "refined_extremum, transform='log', band "
+                               f"{NOTCH_BAND_GHZ[0]:g}-{NOTCH_BAND_GHZ[1]:g} GHz",
+            "witness_band_ghz": list(NOTCH_BAND_GHZ),
+            "passivity_tol": 1.0 + PASSIVITY_TOL,
+            "passivity_witness": (
+                "max(|S11|^2+|S21|^2) over the witness band only. The CalcPort grid "
+                "starts at 1 MHz, where both port voltages are at the numerical floor "
+                "and their ratio is not an S-parameter the structure produced; the "
+                "band this record serves is 2-7 GHz. Every bin's energy sum is still "
+                "recorded, with its maximum over the band, over the whole grid, and "
+                "over 0-1 GHz and 1-2 GHz separately."
+            ),
+            "stage_a_gate": stage_a_gate,
+            "reproduce_gate_ran": "stage_a" in stages,
+            "stages_requested": stages,
+            "stages": stage_meta,
+            "produced_by": "tests/crossval/msl_notch_filter/reference/make_openems_reference.py",
+            "ci_runs_this": False,
+        },
+        "stage_a": records.get("stage_a"),
+        "stage_b_coarse": records.get("stage_b_coarse"),
+        "stage_b_fine": records.get("stage_b_fine"),
+        "run_id": None,
+    }
+    if failed_gate is not None:
+        artifact["failed_gate"] = failed_gate
+        artifact["meta"]["record_is_partial"] = True
+    return artifact
+
+
+def _failed_output_path(out: Path) -> Path:
+    return out.with_name(out.stem + "_FAILED" + out.suffix)
+
+
+def _write(artifact: dict, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as fh:
+        json.dump(artifact, fh, indent=1)
 
 
 def _stages_for(stage: str) -> list:
@@ -1269,8 +1480,19 @@ def main(argv=None) -> int:
                 label=name, sim_root=args.sim_root, threads=args.threads,
                 msl_length_um=msl_len, resolution_factor=factor,
                 refined_extremum=refined_extremum)
-        except RuntimeError as exc:
+        except StageFailure as exc:
             print(f"SANITY GATE FAILED [{name}]: {exc}", file=sys.stderr)
+            records[name] = exc.partial or None
+            stage_meta[name] = exc.meta
+            # The gate messages from the copied helpers already open with
+            # "[<stage>]", so the message is carried as it was raised.
+            failed = _build_artifact(records, stage_meta, stage_a_gate, stages,
+                                     failed_gate=str(exc))
+            path = _failed_output_path(Path(args.output))
+            _write(failed, path)
+            print(f"evidence written to {path} -- the arrays measured before the "
+                  f"gate fired, the energy-sum numbers and failed_gate.",
+                  file=sys.stderr)
             return 1
         records[name] = record
         stage_meta[name] = meta
@@ -1278,7 +1500,6 @@ def main(argv=None) -> int:
         print(f"  notch {record['notch']['refined_f_ghz']:.4f} GHz "
               f"(bin {record['notch']['bin_f_ghz']:.4f} GHz, "
               f"depth {record['notch']['depth_db']:.2f} dB), "
-              f"max energy sum {record['max_energy_sum']:.4f}, "
               f"{meta['wall_time_s']} s", flush=True)
 
         if name == "stage_a":
@@ -1298,47 +1519,20 @@ def main(argv=None) -> int:
                   f"{'PASSED' if passed else 'FAILED'}", flush=True)
             if not passed:
                 print("REPRODUCE GATE FAILED: no Stage B record is written.", file=sys.stderr)
+                failed = _build_artifact(
+                    records, stage_meta, stage_a_gate, stages,
+                    failed_gate=(f"[stage_a] reproduce gate FAILED: measured "
+                                 f"{notch_hz/1e9:.4f} GHz is outside the band "
+                                 f"{STAGE_A_GATE['f_notch_lo_hz']/1e9:.4f}-"
+                                 f"{STAGE_A_GATE['f_notch_hi_hz']/1e9:.4f} GHz"))
+                path = _failed_output_path(Path(args.output))
+                _write(failed, path)
+                print(f"evidence written to {path}", file=sys.stderr)
                 return 1
 
-    artifact = {
-        "meta": {
-            "tool": "openEMS",
-            "openems": (stage_meta[stages[0]]["openems"] if stage_meta
-                        else {"version": None, "source": "no stage ran"}),
-            "rfx_openems_commit": os.environ.get("RFX_OPENEMS_COMMIT"),
-            "tutorial_source": (
-                f"{REPRODUCE_GATE_RECORD['tutorial']['repo']}/"
-                f"{REPRODUCE_GATE_RECORD['tutorial']['path']} -- "
-                f"{REPRODUCE_GATE_RECORD['tutorial']['attribution']}, fetched verbatim "
-                f"{REPRODUCE_GATE_RECORD['tutorial']['fetched_verbatim_on']} via "
-                f"{REPRODUCE_GATE_RECORD['tutorial']['fetched_via']}"
-            ),
-            "reproduce_gate_record": REPRODUCE_GATE_RECORD,
-            "delta_list": DELTA_LIST,
-            "boundary": A_BOUNDARY,
-            "excitation": f"SetGaussExcite({A_F_MAX_HZ/2.0}, {A_F_MAX_HZ/2.0}) Hz",
-            "nrts": "openEMS library default (~1e9) on every real pass; 200 on the smoke pass",
-            "end_criteria": "openEMS library default (1e-5) on every real pass; 0.0 on the smoke pass",
-            "calcport_grid": f"linspace(1e6, {A_F_MAX_HZ}, {A_N_FREQS})",
-            "notch_estimator": "validation/crossval/comparators/spectral_features.py::"
-                               "refined_extremum, transform='log', band 2-7 GHz",
-            "stage_a_gate": stage_a_gate,
-            "reproduce_gate_ran": "stage_a" in stages,
-            "stages_requested": stages,
-            "stages": stage_meta,
-            "produced_by": "tests/crossval/msl_notch_filter/reference/make_openems_reference.py",
-            "ci_runs_this": False,
-        },
-        "stage_a": records["stage_a"],
-        "stage_b_coarse": records["stage_b_coarse"],
-        "stage_b_fine": records["stage_b_fine"],
-        "run_id": None,
-    }
-
+    artifact = _build_artifact(records, stage_meta, stage_a_gate, stages)
     out = Path(args.output)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    with open(out, "w") as fh:
-        json.dump(artifact, fh, indent=1)
+    _write(artifact, out)
     print(f"\n=== written to {out} ===")
     print("run_id is null by design: VESSL does not export the run id into the pod, "
           "so the submitter records it.")
