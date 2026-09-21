@@ -32,3 +32,21 @@ Before submitting, extract the block and check it with both shells:
     python -c "import yaml,sys; sys.stdout.write(yaml.safe_load(open(sys.argv[1]))['run'])" \
         scripts/vessl_lumped_wire_chain_battery/<file>.yaml > /tmp/runblock.sh
     sh -n /tmp/runblock.sh && bash -n /tmp/runblock.sh
+
+## What the contract suite cannot check on this image
+
+`ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8` carries **git version 2.25.1**,
+measured by the job itself on runs 369367262739 and 369367262746; an
+`apt-get install git` in the job left it at 2.25.1. Forty-four contract tests
+build a temporary repository with `git init -q -b main`, and `-b` arrived in
+git 2.28, so on this image they stop at
+
+    subprocess.CalledProcessError: Command '['git', 'init', '-q', '-b', 'main']'
+    returned non-zero exit status 129
+
+That is 2 failures and 42 errors in `tests/contracts`, all of them in
+`test_changelog_fragments`, `test_prune_worktrees` and
+`test_ci_workflows_contract`. The same 44 pass on a host with a newer git,
+where the suite is 3473 passed and nothing fails. Until the image's git moves,
+a contract run on this lane is 3429 passed with 44 tests that did not run —
+which is not the same thing as a pass, and is why the job prints the version.
