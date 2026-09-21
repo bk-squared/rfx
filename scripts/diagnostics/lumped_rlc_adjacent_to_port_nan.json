@@ -1,0 +1,253 @@
+{
+  "schema": "rfx.lumped_rlc_adjacent_to_port_nan",
+  "schema_version": 1,
+  "what": "a series R+C lumped element one cell from a port drives the fields to non-finite values, with no warning",
+  "script": "scripts/diagnostics/lumped_rlc_adjacent_to_port_nan.py",
+  "commit": "018225e6ad07857eb4540d1df071ece38e8949eb",
+  "utc": "2026-09-21T12:57:23.785055+00:00",
+  "fixture": {
+    "box_cells": 5,
+    "boundary": "pec",
+    "port_node_cells": 2,
+    "c_farad": 2e-13,
+    "topology": "series"
+  },
+  "smallest": {
+    "dx_m": 0.001,
+    "r_ohm": 50.0,
+    "c_farad": 2e-13,
+    "topology": "series",
+    "drive": "port",
+    "offset_cells": 1,
+    "n_steps": 1200,
+    "first_non_finite_step": 209,
+    "first_non_finite_components": [
+      "ex",
+      "ez",
+      "hy"
+    ],
+    "peak_abs_field_before": 4.500547056524909e+35,
+    "last_abs_field": 0.0
+  },
+  "without_a_port": {
+    "dx_m": 0.001,
+    "r_ohm": 50.0,
+    "c_farad": 2e-13,
+    "topology": "series",
+    "drive": "source",
+    "offset_cells": 1,
+    "n_steps": 1200,
+    "first_non_finite_step": 186,
+    "first_non_finite_components": [
+      "ex",
+      "ey",
+      "ez",
+      "hx",
+      "hy"
+    ],
+    "peak_abs_field_before": 5.796869536485426e+35,
+    "last_abs_field": 0.0
+  },
+  "co_located_with_the_port": {
+    "dx_m": 0.001,
+    "r_ohm": 50.0,
+    "c_farad": 2e-13,
+    "topology": "series",
+    "drive": "port",
+    "offset_cells": 0,
+    "n_steps": 1200,
+    "first_non_finite_step": null,
+    "first_non_finite_components": [],
+    "peak_abs_field_before": 43.74900817871094,
+    "last_abs_field": 0.0018771298928186297
+  },
+  "resistance_envelope": [
+    {
+      "dx_m": 0.001,
+      "r_ohm": 50.0,
+      "c_farad": 2e-13,
+      "topology": "series",
+      "drive": "port",
+      "offset_cells": 1,
+      "n_steps": 1200,
+      "first_non_finite_step": 209,
+      "first_non_finite_components": [
+        "ex",
+        "ez",
+        "hy"
+      ],
+      "peak_abs_field_before": 4.500547056524909e+35,
+      "last_abs_field": 0.0
+    },
+    {
+      "dx_m": 0.001,
+      "r_ohm": 100.0,
+      "c_farad": 2e-13,
+      "topology": "series",
+      "drive": "port",
+      "offset_cells": 1,
+      "n_steps": 1200,
+      "first_non_finite_step": 626,
+      "first_non_finite_components": [
+        "ez"
+      ],
+      "peak_abs_field_before": 2.236243409103616e+35,
+      "last_abs_field": 0.0
+    },
+    {
+      "dx_m": 0.001,
+      "r_ohm": 120.0,
+      "c_farad": 2e-13,
+      "topology": "series",
+      "drive": "port",
+      "offset_cells": 1,
+      "n_steps": 1200,
+      "first_non_finite_step": null,
+      "first_non_finite_components": [],
+      "peak_abs_field_before": 3.910069019167997e+34,
+      "last_abs_field": 3.7573191025445584e+34
+    },
+    {
+      "dx_m": 0.001,
+      "r_ohm": 150.0,
+      "c_farad": 2e-13,
+      "topology": "series",
+      "drive": "port",
+      "offset_cells": 1,
+      "n_steps": 1200,
+      "first_non_finite_step": null,
+      "first_non_finite_components": [],
+      "peak_abs_field_before": 100296163328.0,
+      "last_abs_field": 67192004608.0
+    },
+    {
+      "dx_m": 0.001,
+      "r_ohm": 180.0,
+      "c_farad": 2e-13,
+      "topology": "series",
+      "drive": "port",
+      "offset_cells": 1,
+      "n_steps": 1200,
+      "first_non_finite_step": null,
+      "first_non_finite_components": [],
+      "peak_abs_field_before": 6.8569817543029785,
+      "last_abs_field": 4.339205741882324
+    },
+    {
+      "dx_m": 0.001,
+      "r_ohm": 200.0,
+      "c_farad": 2e-13,
+      "topology": "series",
+      "drive": "port",
+      "offset_cells": 1,
+      "n_steps": 1200,
+      "first_non_finite_step": null,
+      "first_non_finite_components": [],
+      "peak_abs_field_before": 6.850711345672607,
+      "last_abs_field": 0.0001336534187430516
+    },
+    {
+      "dx_m": 0.001,
+      "r_ohm": 300.0,
+      "c_farad": 2e-13,
+      "topology": "series",
+      "drive": "port",
+      "offset_cells": 1,
+      "n_steps": 1200,
+      "first_non_finite_step": null,
+      "first_non_finite_components": [],
+      "peak_abs_field_before": 6.843502998352051,
+      "last_abs_field": 8.283201896119863e-05
+    }
+  ],
+  "cell_size_envelope": [
+    {
+      "dx_m": 0.0005,
+      "r_ohm": 50.0,
+      "c_farad": 2e-13,
+      "topology": "series",
+      "drive": "port",
+      "offset_cells": 1,
+      "n_steps": 1200,
+      "first_non_finite_step": 192,
+      "first_non_finite_components": [
+        "ey",
+        "ez",
+        "hx"
+      ],
+      "peak_abs_field_before": 1.8271828600710933e+35,
+      "last_abs_field": 0.0
+    },
+    {
+      "dx_m": 0.0005,
+      "r_ohm": 200.0,
+      "c_farad": 2e-13,
+      "topology": "series",
+      "drive": "port",
+      "offset_cells": 1,
+      "n_steps": 1200,
+      "first_non_finite_step": null,
+      "first_non_finite_components": [],
+      "peak_abs_field_before": 6.504520893096924,
+      "last_abs_field": 0.00010963324166368693
+    },
+    {
+      "dx_m": 0.001,
+      "r_ohm": 50.0,
+      "c_farad": 2e-13,
+      "topology": "series",
+      "drive": "port",
+      "offset_cells": 1,
+      "n_steps": 1200,
+      "first_non_finite_step": 209,
+      "first_non_finite_components": [
+        "ex",
+        "ez",
+        "hy"
+      ],
+      "peak_abs_field_before": 4.500547056524909e+35,
+      "last_abs_field": 0.0
+    },
+    {
+      "dx_m": 0.001,
+      "r_ohm": 200.0,
+      "c_farad": 2e-13,
+      "topology": "series",
+      "drive": "port",
+      "offset_cells": 1,
+      "n_steps": 1200,
+      "first_non_finite_step": null,
+      "first_non_finite_components": [],
+      "peak_abs_field_before": 6.850711345672607,
+      "last_abs_field": 0.0001336534187430516
+    },
+    {
+      "dx_m": 0.002,
+      "r_ohm": 50.0,
+      "c_farad": 2e-13,
+      "topology": "series",
+      "drive": "port",
+      "offset_cells": 1,
+      "n_steps": 1200,
+      "first_non_finite_step": 246,
+      "first_non_finite_components": [
+        "ez"
+      ],
+      "peak_abs_field_before": 8.193439055252907e+35,
+      "last_abs_field": 0.0
+    },
+    {
+      "dx_m": 0.002,
+      "r_ohm": 200.0,
+      "c_farad": 2e-13,
+      "topology": "series",
+      "drive": "port",
+      "offset_cells": 1,
+      "n_steps": 1200,
+      "first_non_finite_step": null,
+      "first_non_finite_components": [],
+      "peak_abs_field_before": 7.728637218475342,
+      "last_abs_field": 0.00013970948930364102
+    }
+  ]
+}
