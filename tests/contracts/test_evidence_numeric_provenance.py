@@ -790,7 +790,7 @@ CLASSIFICATION: dict[str, str] = {
     # input manifest SHA256 and solver-source SHA in the note's own header,
     # with no in-repo artifact for this gate to resolve. VESSL run
     # 369367260765 changed that -- both arms' receipts are now committed under
-    # docs/research_notes/cpml_stagger/gpu-369367260765/, and the note's
+    # scripts/diagnostics/cpml_stagger_witness/gpu-369367260765/, and the note's
     # per-channel residuals are read out of them. Opted in rather than left
     # as a table of numbers nobody re-resolves, which is what this gate is
     # for. (The operator-placement claim itself stays gated by

@@ -96,12 +96,12 @@ The section above says no GPU run had been made from this branch. That is now
 superseded: the two-arm witness ran as VESSL run 369367260765
 (`cpml-stagger-witness-r1`) on cluster remilab-c0, preset `gpu-rtx4090`, image
 `nvcr.io/nvidia/jax:24.10-py3`, 2026-09-14 01:02-01:03 KST, job exit 0. The
-receipts are committed under `docs/research_notes/cpml_stagger/gpu-369367260765/`:
+receipts are committed under `scripts/diagnostics/cpml_stagger_witness/gpu-369367260765/`:
 `manifest.json` lists every committed file with its SHA256, `launch.json` and
 `environment.json` carry the run provenance (jax 0.4.33.dev20241023+e3c6d6430,
 Python 3.10.12, one NVIDIA GeForce RTX 4090, float32), `run.yaml` is the
 submitted spec, and the full job log is
-`docs/research_notes/vessl_logs/369367260765-cpml-stagger-witness-completed.log.gz`.
+`scripts/diagnostics/cpml_stagger_witness/gpu-369367260765/369367260765-cpml-stagger-witness-completed.log.gz`.
 
 Both arms ran inside one job, on one GPU, against one comparator. The GREEN
 tree's `scripts/diagnostics/cpml_dipole_waveform_witness.py` was copied into the
@@ -112,27 +112,27 @@ three CPML solver files; the two identical digests
 (main, pre-fix) and GREEN = 47a586b136c7a2cf68595f6058bd3e456354d013 (this
 branch); `artifacts/commits.txt` holds both. Tolerances were predeclared and
 fixed, not fitted: full
-`docs/research_notes/cpml_stagger/gpu-369367260765/artifacts/green_witness.json::full_tolerance = 0.05`,
+`scripts/diagnostics/cpml_stagger_witness/gpu-369367260765/artifacts/green_witness.json::full_tolerance = 0.05`,
 late
-`docs/research_notes/cpml_stagger/gpu-369367260765/artifacts/green_witness.json::late_tolerance = 0.01`,
+`scripts/diagnostics/cpml_stagger_witness/gpu-369367260765/artifacts/green_witness.json::late_tolerance = 0.01`,
 source
-`docs/research_notes/cpml_stagger/gpu-369367260765/artifacts/green_witness.json::source_tolerance = 1e-05`.
+`scripts/diagnostics/cpml_stagger_witness/gpu-369367260765/artifacts/green_witness.json::source_tolerance = 1e-05`.
 
 Full-window peak-relative residual per channel, read out of the committed
 receipts rather than retyped from the job log:
 
 | channel | RED (fa392913, main) | GREEN (47a586b1, this branch) |
 | --- | --- | --- |
-| `middle_ez` | `docs/research_notes/cpml_stagger/gpu-369367260765/artifacts/red_witness.json::channels.middle_ez.full_relative_max = 0.0391754` | `docs/research_notes/cpml_stagger/gpu-369367260765/artifacts/green_witness.json::channels.middle_ez.full_relative_max = 0.00430682` |
-| `middle_hy` | `docs/research_notes/cpml_stagger/gpu-369367260765/artifacts/red_witness.json::channels.middle_hy.full_relative_max = 0.037326776` | `docs/research_notes/cpml_stagger/gpu-369367260765/artifacts/green_witness.json::channels.middle_hy.full_relative_max = 0.00148394` |
-| `far_ez` | `docs/research_notes/cpml_stagger/gpu-369367260765/artifacts/red_witness.json::channels.far_ez.full_relative_max = 0.0404082` | `docs/research_notes/cpml_stagger/gpu-369367260765/artifacts/green_witness.json::channels.far_ez.full_relative_max = 0.0004422755` |
-| `far_hy` | `docs/research_notes/cpml_stagger/gpu-369367260765/artifacts/red_witness.json::channels.far_hy.full_relative_max = 0.13937570731810509` FAIL | `docs/research_notes/cpml_stagger/gpu-369367260765/artifacts/green_witness.json::channels.far_hy.full_relative_max = 0.0003881940106090643` PASS |
+| `middle_ez` | `scripts/diagnostics/cpml_stagger_witness/gpu-369367260765/artifacts/red_witness.json::channels.middle_ez.full_relative_max = 0.0391754` | `scripts/diagnostics/cpml_stagger_witness/gpu-369367260765/artifacts/green_witness.json::channels.middle_ez.full_relative_max = 0.00430682` |
+| `middle_hy` | `scripts/diagnostics/cpml_stagger_witness/gpu-369367260765/artifacts/red_witness.json::channels.middle_hy.full_relative_max = 0.037326776` | `scripts/diagnostics/cpml_stagger_witness/gpu-369367260765/artifacts/green_witness.json::channels.middle_hy.full_relative_max = 0.00148394` |
+| `far_ez` | `scripts/diagnostics/cpml_stagger_witness/gpu-369367260765/artifacts/red_witness.json::channels.far_ez.full_relative_max = 0.0404082` | `scripts/diagnostics/cpml_stagger_witness/gpu-369367260765/artifacts/green_witness.json::channels.far_ez.full_relative_max = 0.0004422755` |
+| `far_hy` | `scripts/diagnostics/cpml_stagger_witness/gpu-369367260765/artifacts/red_witness.json::channels.far_hy.full_relative_max = 0.13937570731810509` FAIL | `scripts/diagnostics/cpml_stagger_witness/gpu-369367260765/artifacts/green_witness.json::channels.far_hy.full_relative_max = 0.0003881940106090643` PASS |
 
 RED's failure is far-Hy in the full window only: its three other channels pass
 the 5% requirement, its source check passes
-(`docs/research_notes/cpml_stagger/gpu-369367260765/artifacts/red_witness.json::source_relative_peak_error = 6.5534537e-07`,
+(`scripts/diagnostics/cpml_stagger_witness/gpu-369367260765/artifacts/red_witness.json::source_relative_peak_error = 6.5534537e-07`,
 the same value GREEN reports), and its late window passes on all four channels
-(`docs/research_notes/cpml_stagger/gpu-369367260765/artifacts/red_witness.json::channels.far_hy.late_relative_max = 0.00125`).
+(`scripts/diagnostics/cpml_stagger_witness/gpu-369367260765/artifacts/red_witness.json::channels.far_hy.late_relative_max = 0.00125`).
 So the arms are separated by one channel, not by a broken run, and that
 separation is **consistent with** the operator-placement argument rather than
 predicted by it: far-Hy falls 359x with the bulk and source code unchanged
@@ -141,7 +141,7 @@ establishes that E and transverse H must be sampled half a cell apart; it does
 not on its own say which observation channel a violation shows up in, so this
 is corroboration, not a channel-level prediction the run confirmed. GREEN passes every full and late
 requirement; its worst late channel is
-`docs/research_notes/cpml_stagger/gpu-369367260765/artifacts/green_witness.json::channels.far_ez.late_relative_max = 0.000174`.
+`scripts/diagnostics/cpml_stagger_witness/gpu-369367260765/artifacts/green_witness.json::channels.far_ez.late_relative_max = 0.000174`.
 The witness verdicts as printed per arm are in `artifacts/summary.txt`,
 `artifacts/red_witness.log` and `artifacts/green_witness.log`.
 
