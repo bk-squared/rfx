@@ -90,3 +90,51 @@ thirty jobs — plus one each for identity and the two AD legs. Each records its
 fallback and aborts on a dirty tree; a failed stage ships its partial JSON. An assembler joins the
 records into `tests/fixtures/lumped_wire_chain_battery/fixture.json`, which one replay test
 re-derives every assembled number from.
+
+## Addendum 2026-09-21 (leader; PI decision of the same day)
+
+Written after the battery ran. Nothing above is edited; what changed is recorded here.
+
+1. **A pre-declared falsifier fired, and how it is read.** "If AD, FD and the closed-form
+   derivative disagree by more than 5 % pairwise where the FD is interpretable, criterion 3a is
+   open." On the wire port: AD against FD agrees to 3.5e-6 ... 8.1e-5 on every non-degenerate leg
+   at every rung. Against the CLOSED FORM the permittivity legs do not: band-mean `|S11|^2` on the
+   `2 Zc` load 0.192 / 0.107 / 0.057 at 1000 / 500 / 250 um, and `Re(S11)` at 5 GHz on the short
+   0.574 / 0.418 / 0.270. The resistance leg is 0.005.
+   What the numbers say: the derivative rfx returns IS the derivative of the line rfx solves (that
+   is what AD = FD means, and it is what an optimizer receives). The solved line differs from the
+   continuum line by a reference-plane offset of a fraction of a cell: at 5 GHz the short's phase
+   reads 0.245 / 0.174 / 0.137 rad against the continuum 0.099, halving with the cell. `|S11|` is
+   blind to that; a derivative that carries `sin(2 beta L)` is not — the gradient ratio tracks the
+   sine ratio to 5 % at every rung (2.345 measured against 2.456 predicted at 1000 um). Feeding the
+   closed form the rung's own fitted electrical length removes about a third of the distance
+   (0.270 -> 0.153 at 250 um), not all of it; the rest is not attributed.
+   PI decision: criterion 3a is carried by AD against FD, as the contract defines it, and is MET.
+   The closed-form derivative stays in the record as a third witness that converges at first order
+   and is NOT held to 5 %. The falsifier as I wrote it was stricter than the contract and asked a
+   continuum formula to match a lattice derivative at a cell size where the VALUE itself is only
+   converged to 0.4 - 0.7 % in phase; that was a fault of the declaration. The replay test asserts,
+   for the closed-form distance, that it shrinks monotonically with the cell and that the successive
+   ratio is consistent with first order — not a bar.
+2. **A degenerate objective.** Band-mean `|S11|^2` on a SHORT-terminated line is identically 1, so
+   its derivative with respect to anything is zero: AD and FD both return round-off (their ratio
+   read 0.009, 4.05, 43.2 across the rungs) and the ULP-span assert passed all three, because it is
+   computed on the two loss values, not on their difference. The three records stay as measured,
+   marked degenerate, with no comparison; the non-degenerate replacement (the same objective on the
+   `2 Zc` load, `eps_r = 2.2`) is the one in item 1. A constant objective is something the ULP-span
+   floor does not detect: that is recorded as a fact about the guard.
+3. **Fixture deviation.** The port sits one cell in from the magnetic end wall, not on it: preflight
+   refuses a port on a magnetic wall plane (the wall zeroes the H that carries the wave off the
+   port), and one cell in costs nothing, the wall being a zero-length open behind the port.
+4. **The lumped leg was red by a defect, not by the mesh.** The one-cell lumped port read
+   `|S11|` 0.71 / 1.25 / 4.76 where the closed form is 1/3, 0, 1/3, with a fitted line length of
+   -30 mm; the wire port on the identical cell reads the closed form. The lumped extraction lane had
+   never received the wire lane's post-injection sampling, driven-port algebra and half-step current
+   phase, and its two-port off-diagonal read 2.25 on a matched line. Fixed in its own PR, where a
+   lumped port's S matrix becomes the wire algebra at one live cell. The lumped leg is re-run on the
+   fixed code before this battery is declared; its red records from the unfixed code stay in the
+   history of the branch.
+5. **Not in the chain, recorded:** a SINGLE wire port through `run(compute_s_params=True)` placed on
+   a magnetic-wall node plane returns the same `|S11| = 1` for every load while `forward()` is right
+   (its own tracker issue). The battery measures `forward()`.
+
