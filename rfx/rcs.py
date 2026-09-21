@@ -460,6 +460,45 @@ def compute_rcs(
         freqs=jnp.array(freqs_arr, dtype=jnp.float32),
     )
 
+    # The box must enclose the whole injected region, or the far-field
+    # integral is not over the scattered field. run() checks this too, but it
+    # only sees indices; the caller of compute_rcs never chose one. Check here
+    # with the levers that actually produced them, before the run starts.
+    from rfx.farfield import require_box_encloses_injected_region
+    from rfx.sources.tfsf import tfsf_injection_planes
+
+    _clamped = [
+        name for name, wanted, got in (
+            ("i_lo", tfsf_cfg.x_lo - ntff_offset, ntff_i_lo),
+            ("i_hi", tfsf_cfg.x_hi + ntff_offset + 1, ntff_i_hi),
+            ("j_lo", fl["y_lo"] + ntff_offset, ntff_j_lo),
+            ("j_hi", grid.ny - fl["y_hi"] - ntff_offset, ntff_j_hi),
+        ) if wanted != got
+    ]
+    _ctx = (
+        f"compute_rcs placed this box itself from ntff_offset={ntff_offset}, "
+        f"tfsf_margin={tfsf_margin}, cpml_layers={cpml_layers} on a "
+        f"{grid.nx}x{grid.ny}x{grid.nz}-cell grid "
+        f"(domain {tuple(float(v) for v in grid.domain)} m at dx={dx:.4g} m); "
+        f"realized faces i=({ntff_i_lo}, {ntff_i_hi}), "
+        f"j=({ntff_j_lo}, {ntff_j_hi}), k=({ntff_k_lo}, {ntff_k_hi}), "
+        f"injection planes {tfsf_injection_planes(tfsf_cfg)}."
+    )
+    if _clamped:
+        _ctx += (
+            " The domain bounds pulled " + ", ".join(_clamped) + " back from "
+            "the requested placement, so raising ntff_offset alone will not "
+            "move it — enlarge the domain or lower cpml_layers/tfsf_margin."
+        )
+    else:
+        _ctx += (
+            " Raise or lower ntff_offset so that every face clears the planes "
+            "above, or change tfsf_margin to move the planes."
+        )
+    require_box_encloses_injected_region(
+        ntff_box, tfsf_injection_planes(tfsf_cfg), context=_ctx,
+        shape=grid.shape)
+
     # --- 3. Run simulation with TFSF + NTFF ---
     # Open-domain Method B forces the transverse y-axis OPEN (CPML) with
     # thin-periodic z; normal incidence keeps the historical full-open defaults
