@@ -1949,15 +1949,19 @@ def test_attempt2_wide_junction_cells_are_byte_identical_to_attempt2():
         z_feed = z_lo + 1
         z_hi = z_j - 1
         cxy = (float(port.position[0]), float(port.position[1]))
-        stamped, shell_inner, _ = stamp_coaxial_line(
+        stamped, shell_inner, coax_cells = stamp_coaxial_line(
             grid, mats, center_xy=cxy, z_lo_index=z_lo, z_hi_index=z_hi,
             pin_radius=PIN_R, outer_radius=OUTER_R,
         )
+        # The mask goes to the resistor the way the production lane threads it
+        # (rfx/sparams/coax.py). Without it the resistor decides which cells to
+        # skip by testing sigma, which no longer carries the conductor, so it
+        # would paint over the pin and the wall.
         stamped = stamp_coaxial_annular_resistor(
             grid, stamped, center_xy=cxy, z_index=z_feed,
             pin_radius=PIN_R, outer_radius=OUTER_R,
             target_impedance=float(coaxial_tem_characteristic_impedance(PIN_R, OUTER_R)),
-            shell_inner_radius=shell_inner,
+            shell_inner_radius=shell_inner, pec_cell_mask=coax_cells,
         )
         return stamped, float(shell_inner)
 

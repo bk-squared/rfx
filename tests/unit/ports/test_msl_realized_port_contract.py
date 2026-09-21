@@ -409,6 +409,7 @@ def test_transition_readers_use_the_same_center_and_bounding_plane(lane, monkeyp
 @pytest.mark.parametrize("ground", [15., 15.5])
 def test_coax_stub_cannot_overwrite_the_registered_junction_and_substrate(ground, monkeypatch):
     """Capture material assembly, without asserting transition calibration."""
+    import rfx.simulation
     import rfx.sources.msl_port as sources
     from rfx.sources.coaxial_port import PEC_SIGMA, PTFE_EPS_R
     top = ground+4
@@ -430,22 +431,53 @@ def test_coax_stub_cannot_overwrite_the_registered_junction_and_substrate(ground
     class Captured(Exception):
         pass
 
-    def capture(grid_arg, port, materials, **kwargs):
+    # The invariant is checked where it means something: at the moment the coax
+    # stub has stamped and the MSL port has NOT yet, because the MSL port
+    # legitimately writes at and above the join. The conductor itself is no
+    # longer in ``materials`` -- the pin and the outer wall are realized as
+    # shorted E edges -- so it is read from the masks the lane hands the runner,
+    # one call later.
+    real_setup = sources.setup_msl_port
+
+    def capture_materials(grid_arg, port, materials, **kwargs):
         for name in ("eps_r", "sigma"):
             np.testing.assert_array_equal(getattr(materials, name)[:, :, join:],
                                           getattr(registered, name)[:, :, join:])
-        assert materials.sigma[i, j, join-1] == PEC_SIGMA
-        assert materials.sigma[i, j+4, join-1] == PEC_SIGMA
         assert materials.eps_r[i, j+2, join-1] == pytest.approx(PTFE_EPS_R)
         assert materials.sigma[i, j+2, join-1] == 0.
+        # No conductor-scale conductivity anywhere: a stamper that put the
+        # conductors back into sigma would damp their plus-side edges twice.
+        assert float(np.asarray(materials.sigma).max()) < 0.5 * PEC_SIGMA
+        return real_setup(grid_arg, port, materials, **kwargs)
+
+    def capture_masks(grid_arg, materials, n_steps, **kwargs):
+        seen_masks.append(kwargs.get("pec_edge_masks"))
         raise Captured
 
-    monkeypatch.setattr(sources, "setup_msl_port", capture)
+    seen_masks = []
+    monkeypatch.setattr(sources, "setup_msl_port", capture_materials)
+    monkeypatch.setattr(rfx.simulation, "run", capture_masks)
     with pytest.raises(Captured):
         sim.compute_coax_msl_transition(junction_x=8*DX, n_steps=1,
                                         n_freqs=2, probe_count=3,
                                         probe_start_cells=3, probe_spacing_cells=2,
                                         skip_preflight=True)
+
+    assert seen_masks and seen_masks[0] is not None, (
+        "the transition lane handed the runner no PEC edge masks, so the coax "
+        "conductors are realized by nothing")
+    ex, ey, ez = (np.asarray(m) for m in seen_masks[0])
+    # The pin carries the axial current, so its Ez edge must be shorted; the
+    # outer wall likewise. pin_radius = DX and outer_radius = 4.5 DX, so the
+    # wall's inner face is 4.5 cells out and j+5 is the first node inside it.
+    assert ez[i, j, join-1], "the pin's axial edge is not shorted"
+    assert ez[i, j+5, join-1], "the outer conductor's axial edge is not shorted"
+    # And the PTFE annulus between them is NOT metal, on any component: a mask
+    # that swallowed the dielectric would short the line out.
+    for comp, name in ((ex, "ex"), (ey, "ey"), (ez, "ez")):
+        assert not comp[i, j+2, join-1], (
+            f"the {name} edge in the PTFE annulus is shorted; the stub has "
+            "closed the gap it is supposed to leave open")
 
 
 def test_instrument_junction_has_a_connected_post_and_an_open_clearance():

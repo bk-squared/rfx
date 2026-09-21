@@ -244,7 +244,8 @@ def measure_load(board: str, rung: float, load_ohm: float) -> dict:
     }
 
 
-def assemble(src_dir: Path, out_path: Path) -> int:
+def assemble(src_dir: Path, out_path: Path,
+             record_length_dir: Path | None = None) -> int:
     """Merge the per-rung run records into the one committed record.
 
     Every case ran as its own VESSL job (wall time is the largest case, not
@@ -304,6 +305,44 @@ def assemble(src_dir: Path, out_path: Path) -> int:
                                               .get("load_ohm", 0.0),
                                               c["rung_annulus_cells"])),
     }
+    # The same board and rung solved with a LONGER record, kept beside the
+    # ladder rather than inside it: they are not extra rungs and carry no bar.
+    # A finer mesh spends a fixed physical record in more, shorter steps, so
+    # how settled the box is at the end is a property of the pair (mesh,
+    # record), and these are the facts for that pair. No cause is asserted.
+    if record_length_dir is not None:
+        probes = []
+        for f in sorted(Path(record_length_dir).rglob("ladder_*.json")):
+            d = json.loads(f.read_text())
+            m = d.get("measured")
+            if not m:
+                continue
+            S = (np.asarray(m["s_params_real"], dtype=float)
+                 + 1j * np.asarray(m["s_params_imag"], dtype=float))
+            col = np.sum(np.abs(S) ** 2, axis=0).min(axis=0)
+            probes.append({
+                "commit": d["commit"], "run_id": d.get("run_id"),
+                "board": d["board"], "rung_annulus_cells": d["rung_annulus_cells"],
+                "record_units": m["record_units"], "n_steps": m["n_steps"],
+                "settling_db": m["settling_db"], "status": m["status"],
+                "freqs_hz": m["freqs_hz"],
+                "column_power_per_bin": col.astype(float).tolist(),
+                "min_column_power": m["min_column_power"],
+                "max_column_power": m["max_column_power"],
+                "beta_ratio_s21_phase_worst": m["beta_ratio_s21_phase_worst"],
+                "beta_ratio_matrix_pencil_worst": m["beta_ratio_matrix_pencil_worst"],
+            })
+        if probes:
+            rec["record_length_probe"] = sorted(
+                probes, key=lambda x: x["record_units"])
+            print(f"[assemble] {len(probes)} record-length probes:")
+            for x in rec["record_length_probe"]:
+                print(f"    {x['record_units']:.0f} traversals, {x['n_steps']} steps: "
+                      f"power [{x['min_column_power']:.5f}, {x['max_column_power']:.5f}], "
+                      f"settling {[round(v, 2) for v in x['settling_db']]}, "
+                      f"beta {x['beta_ratio_s21_phase_worst']*100:.2f} / "
+                      f"{x['beta_ratio_matrix_pencil_worst']*100:.2f} %")
+
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(rec, indent=1))
     boards = sorted({c["board"] for c in cases})
@@ -340,13 +379,19 @@ def main() -> int:
                          "default is the battery's 12. A finer mesh leaves the\n"
                          "box less settled at the same PHYSICAL record, so this\n"
                          "is how that is measured rather than argued.")
+    ap.add_argument("--record-length-probe", default=None,
+                    help="directory of ladder_*.json solved at a non-default "
+                         "record length; stored beside the ladder as facts, "
+                         "not as extra rungs")
     ap.add_argument("--assemble", default=None,
                     help="merge every ladder_*.json under this directory into "
                          "the single committed record written to --out")
     args = ap.parse_args()
 
     if args.assemble:
-        return assemble(Path(args.assemble), Path(args.out))
+        return assemble(Path(args.assemble), Path(args.out),
+                        Path(args.record_length_probe)
+                        if args.record_length_probe else None)
     global RECORD_UNITS
     if args.record_units is not None:
         RECORD_UNITS = float(args.record_units)

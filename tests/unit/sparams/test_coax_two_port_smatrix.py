@@ -507,8 +507,16 @@ def test_compute_coaxial_two_port_drive_index_matches_physical_port(monkeypatch)
     DRIVE_PORT1, DRIVE_PORT2 = 1.0, 2.0
     ARRAY_BOT, ARRAY_TOP = 10.0, 20.0
 
+    # The signature is spelled out rather than swallowing **kwargs, so that a
+    # new argument at the real call site lands here as a TypeError instead of
+    # being silently absorbed. ``pec_edge_masks`` arrived that way: the coax
+    # conductors are realized as shorted E edges now, and the lane passes them
+    # to the runner. The stub takes it and ignores it -- what this test is
+    # about is which physical port each drive excited, and that is read below
+    # from the z-index of the source cells, not from anything here.
     def _fake_run(grid_, materials, n_steps, *, boundary, cpml_axes, sources,
-                 mag_sources, probes, dft_planes, return_state):
+                 mag_sources, probes, dft_planes, return_state,
+                 pec_edge_masks=None):
         # Identify the PHYSICAL port purely from source z-location -- NOT
         # from any call-order assumption.
         k0 = float(sources[0].k)
