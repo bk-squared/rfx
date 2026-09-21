@@ -148,11 +148,30 @@ define an S-parameter port.
 - The subgridded runner's diagnostic lumped S-matrix
   (`diagnostic_lumped_sparam_freqs`) is still on the pre-2026-09-21 convention
   and warns when it returns; it is diagnostic output, not physics.
-- Every lumped-port `|S11|` changed on 2026-09-21. A driven port now reads its
-  terminal V/I pair; it used to read the passive port-branch algebra on a
-  pre-injection sample, which returns the reciprocal of the physical
-  reflection. Stored V/I dumps replay unchanged (`diagonal_frame:
-  "port_branch"` in the dump metadata).
+- **Every lumped-port S-parameter moved on 2026-09-21**, not only the driven
+  `|S11|`. A driven port now reads its terminal V/I pair; it used to read the
+  passive port-branch algebra on a pre-injection sample, which returns the
+  reciprocal of the physical reflection. Three quantities changed:
+  - the **driven diagonal**, by the whole correction. On a two-port line
+    matched at both ends (closed form `S11 = 0`) it went from `max |S11| =
+    1.24831` to `0.04206`, which is the wire lane's number on the identical
+    cells to every digit.
+  - **every other port's current**, driven or not, by the Yee half-step phase.
+    So a **passive** port keeps the port-branch formula and still changes
+    value: measured `max |dS| = 0.026`, `max |d|S|| = 0.0022` on a two-port
+    PEC fixture, with its voltage bit-identical either side of the slot.
+  - the **off-diagonal**, through the same current. `S21`/`S12` move by up to
+    1.94 % on a CPML two-port and 0.37 % on the matched line.
+  The lumped off-diagonal is not validated either side of that move: on the
+  matched line it reads `|S21| ~ 2.25` where the closed form is `1`, before
+  and after, while the wire lane on the identical cells reads `1.00005`. See
+  `tests/unit/ports/test_lumped_two_port_matched_line.py`, whose closed-form
+  off-diagonal check is a strict xfail for that reason.
+- A V/I dump written after that date carries a `drive_ref_voltages` channel,
+  the pre-injection drive sample the off-diagonal incident wave is built on.
+  Dumps written before it replay unchanged — pinned by
+  `tests/fixtures/lumped_two_port_vi_dump_pre_driven_diagonal.npz`, which
+  carries neither that channel nor a `diagonal_frame` key.
 
 Relevant implementations and tests include
 `tests/unit/ports/test_lumped_port_known_load_line.py`,
