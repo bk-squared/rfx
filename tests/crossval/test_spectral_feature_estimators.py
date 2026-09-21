@@ -122,9 +122,10 @@ def test_half_grid_witness_is_unpassable_by_a_bare_argmin_on_a_float32_axis(sf):
     dozens of bin positions and PASSED ``< 1.0``.  The witness now measures
     in the LOCAL bin between the two argmin bins, so adjacent argmin bins
     score exactly 1.0 -- numerator and denominator are the same float
-    subtraction -- at every position.  ``tests/fixtures/cv06b_estimator_regate/
-    cv06b_estimator_falsifiers.json`` records the same sweep
-    (``case_D_quantised_estimator.float32_axis_sweep``)."""
+    subtraction -- at every position.  The MSL notch filter's estimator re-gate
+    fixture recorded the same sweep as
+    ``case_D_quantised_estimator.float32_axis_sweep``; it left with that case on
+    2026-09-22 and the sweep is rebuilt in this test instead."""
     f = np.linspace(0.7e9, 7.0e9, 100).astype(np.float32).astype(np.float64)
     n_global_below, n_local_below, n = 0, 0, 0
     for k in range(1, 99):

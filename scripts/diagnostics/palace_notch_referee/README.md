@@ -5,8 +5,9 @@ cv06b rfx-vs-openEMS notch split.
 
 ## What / why
 
-cv06b's committed cross-check (`tests/fixtures/msl_notch_e4/msl_stub_notch_{rfx,openems}_dx50.json`)
-locks a ~5.8% notch-frequency split: **rfx 3.6273 GHz, openEMS 3.4286 GHz,**
+The MSL notch filter's committed cross-check (its openEMS record is now
+`tests/crossval/msl_notch_filter/reference/openems_dx50um.json`; the rfx record left
+with the retired case) locked a ~5.8% notch-frequency split: **rfx 3.6273 GHz, openEMS 3.4286 GHz,**
 fringing-free analytic 3.69 GHz. Both refs are staircased FDTD, so neither
 resolves the open-end fringing exactly — the old narrative *guessed* openEMS was
 closer to the truth. That is a plausibility, not evidence.
@@ -29,10 +30,9 @@ rfx) is revised by this evidence: the FEM value indicates the fringing
 correction is a ~1-2% effect.
 
 The verdict is committed as evidence — the raw Palace `port-S.csv` arrays live in
-`tests/fixtures/msl_notch_e4/msl_stub_notch_palace_referee.json` (dB -> LINEAR),
-re-derived by `scripts/diagnostics/build_msl_notch_palace_referee.py`, gated by
-`tests/crossval/test_msl_notch_palace_referee_gates.py`. Those survive a clean checkout;
-this directory is the *provenance* that generated them.
+`tests/crossval/msl_notch_filter/reference/palace_fem.json` (dB -> LINEAR).
+That file survives a clean checkout; this directory is the *provenance* that
+generated it.
 
 ## Geometry lock
 

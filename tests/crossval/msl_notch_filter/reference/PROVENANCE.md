@@ -44,6 +44,7 @@ Its own `meta.physicality` line: "passive: max(|S11|^2+|S21|^2)<=1.00 across
 | device | GPU rtx4090, cluster remilab-c0 |
 | passivity probe | 11 points, 2–7 GHz, step 0.5 GHz, on the same mesh as each sweep |
 | copied from | `tests/fixtures/msl_notch_e4/msl_stub_notch_palace_referee.json` (git mv, 2026-09-22) |
+| job directory | `scripts/diagnostics/palace_notch_referee/` — the mesh, the Palace configs, the two VESSL job files and the `port-S.csv` gate that produced this record |
 | arrays | LINEAR magnitude, converted from Palace's dB columns by `10**(dB/20)` |
 | Tutorial reproduction | the file records none; `meta.method` and `meta.geometry` are what it states about its own setup |
 

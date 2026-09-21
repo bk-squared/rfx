@@ -591,9 +591,16 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
 # artifacts leave the distinct count with them. Measured after the removal:
 # 340 references, 319 value-checked, 33 artifacts. The floors are lowered to
 # the measured values.
-MIN_REFERENCES = 340
-MIN_VALUE_CHECKED = 319
-MIN_DISTINCT_ARTIFACTS = 33
+# 2026-09-22 (the MSL notch filter's leftovers): the estimator re-gate fixture
+# left with the removed stdout reporter's contract functions, and section 5 of
+# the estimator-resolution re-gate note cites it 15 times (14 value-checked);
+# those citations are skipped and that artifact leaves the distinct count. The
+# case's committed run logs left in the same pass and carried no citation.
+# Measured after the removal: 325 references, 305 value-checked, 32 artifacts.
+# The floors are lowered to the measured values.
+MIN_REFERENCES = 325
+MIN_VALUE_CHECKED = 305
+MIN_DISTINCT_ARTIFACTS = 32
 
 
 # --------------------------------------------------------------------------
@@ -993,6 +1000,14 @@ REMOVED_ARTIFACT_PREFIXES: tuple[str, ...] = (
     # removal header. Those artifacts are at commit 876b3408.
     "validation/crossval/_06b_msl_notch_results/",
     "tests/fixtures/msl_notch_e4/",
+    # 2026-09-22, the MSL notch filter's leftovers: the estimator re-gate
+    # fixture left with its only remaining reader, the contract functions that
+    # exercised the removed stdout reporter. The same note's section 5 cites it
+    # 15 times; those citations are skipped now. The case's committed run logs
+    # (validation/crossval/_06b_notch_uniform_logs/) went in the same pass but
+    # no opted-in citation ever reached them, so they need no prefix. Those
+    # artifacts are at commit 2ce4c28d.
+    "tests/fixtures/cv06b_estimator_regate/",
 )
 
 
