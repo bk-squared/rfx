@@ -511,6 +511,28 @@ def test_box_touching_the_array_boundary_is_refused():
 
 
 # ---------------------------------------------------------------------------
+# The area element of a face is the product of the two widths that span it
+# ---------------------------------------------------------------------------
+
+def test_scalar_face_area_elements_span_their_own_face():
+    """A y face is spanned by x and z, so its cell area cannot contain dy.
+
+    Written as an invariant rather than as three literals: the product of
+    the three face areas is the square of the cell volume, which only holds
+    when each face carries its own pair of widths. A rule that used dx*dy
+    everywhere gives (dx*dy)^3 instead.
+    """
+    from rfx.farfield import _scalar_face_dS
+
+    dx, dy, dz = 1.5e-3, 4.0e-3, 2.5e-3
+    areas = [_scalar_face_dS(axis, dx, dy, dz) for axis in (0, 1, 2)]
+    assert np.isclose(np.prod(areas), (dx * dy * dz) ** 2, rtol=1e-12)
+    assert np.isclose(areas[0], dy * dz, rtol=1e-12)
+    assert np.isclose(areas[1], dx * dz, rtol=1e-12)
+    assert np.isclose(areas[2], dx * dy, rtol=1e-12)
+
+
+# ---------------------------------------------------------------------------
 # T5 — the scan carry still closes under every supported dtype
 # ---------------------------------------------------------------------------
 

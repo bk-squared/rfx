@@ -546,6 +546,21 @@ def _surface_currents(fields, axis, sign):
     return J, M
 
 
+def _scalar_face_dS(axis, dx, dy, dz):
+    """Area of one face cell: the product of the two widths that SPAN it.
+
+    An x face is spanned by y and z, a y face by x and z, a z face by x and
+    y. This used to be written as ``dx*dy`` for all three, which is right by
+    coincidence for the x and z faces of a cubic grid and wrong for the y
+    face of any grid whose y cells differ from its z cells.
+    """
+    if axis == 0:
+        return dy * dz
+    if axis == 1:
+        return dx * dz
+    return dx * dy
+
+
 def _face_positions(axis, idx, other_ranges, dx, cpml_lo_x, cpml_lo_y, cpml_lo_z,
                     dy=None, z_edges=None, x_edges=None, y_edges=None,
                     centre=False):
@@ -724,21 +739,13 @@ def compute_far_field(
         return d1[:, None] * d2[None, :]
 
     def _face_dS(axis, k_lo, k_hi):
-        # A face's area element is the product of the two cell widths that
-        # SPAN it: (dy, dz) for an x face, (dx, dz) for a y face, (dx, dy)
-        # for a z face. The scalar fallback used to return dx*dy for all
-        # three, which silently weighted the y faces with dy where dz
-        # belongs on any grid with dy != dx and no edge arrays.
         if dz_arr is not None and axis in (0, 1):
             dz_face = np.asarray(dz_arr[k_lo:k_hi], dtype=np.float64)
             d_perp = dy if axis == 0 else dx
             return d_perp * dz_face  # (nk,)
-        dz_scalar = dx  # a uniform Grid is cubic in z (see _face_positions)
-        if axis == 0:
-            return dy * dz_scalar
-        if axis == 1:
-            return dx * dz_scalar
-        return dx * dy
+        # A uniform Grid is cubic in z (see _face_positions, which measures
+        # z in units of dx), so dz == dx here.
+        return _scalar_face_dS(axis, dx, dy, dx)
 
     # Observation direction unit vectors
     TH, PH = np.meshgrid(theta, phi, indexing="ij")
@@ -1045,19 +1052,13 @@ def compute_far_field_jax(
             d1, d2 = _cells_j(dx_arr, dx, a0, a1), _cells_j(dy_arr, dy, b0, b1)
         return d1[:, None] * d2[None, :]
 
-    # Per-face dS helper. Same axis-aware area element as the numpy twin:
-    # (dy, dz) spans an x face, (dx, dz) a y face, (dx, dy) a z face.
+    # Per-face dS helper — the same axis-aware area element as the numpy twin.
     def _face_dS_jax(axis, k_lo, k_hi):
         if dz_arr is not None and axis in (0, 1):
             dz_face = dz_jnp[k_lo:k_hi]
             d_perp = dy if axis == 0 else dx
             return d_perp * dz_face  # (nk,)
-        dz_scalar = dx  # a uniform Grid is cubic in z
-        if axis == 0:
-            return dy * dz_scalar
-        if axis == 1:
-            return dx * dz_scalar
-        return dx * dy
+        return _scalar_face_dS(axis, dx, dy, dx)
 
     TH, PH = jnp.meshgrid(theta, phi, indexing="ij")
     sth, cth = jnp.sin(TH), jnp.cos(TH)
