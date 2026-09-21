@@ -594,7 +594,8 @@ def test_paths_are_normalised_before_they_are_classified() -> None:
 
 
 def test_a_nested_conftest_or_durations_file_counts() -> None:
-    assert changed_paths.code_changed(["examples/conftest.py"]) is True
+    # a directory that is NOT in CODE_DIRECTORIES, so only the basename rule can say yes
+    assert changed_paths.code_changed(["gallery-deploy/conftest.py"]) is True
     assert changed_paths.code_changed(["gallery-deploy/.test_durations"]) is True
 
 

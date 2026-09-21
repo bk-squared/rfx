@@ -7,7 +7,6 @@ __pycache__/
 .omx/
 .gjc/
 .omo/
-.playwright-cli/
 build/
 output/
 docs-site/

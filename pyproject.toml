@@ -44,10 +44,10 @@ optimization = ["optax>=0.1.7"]
 visualization = ["matplotlib>=3.7", "pillow"]
 cad = ["trimesh>=4", "rtree>=1", "cascadio>=0.0.14"]  # MeshShape CAD import (#358): rtree=watertight-contains backend, cascadio=STEP/OpenCASCADE loader
 dashboard = ["streamlit>=1.30", "pandas"]
-# ruff pinned <0.16: CI installs it unpinned, and 0.16.0 turned on UP035/UP037 (pyupgrade)
-# by default, reddening the quality-gates ruff on 65 pre-existing style items in the studio
-# files with no code change. Pin for deterministic CI; adopting the 0.16 UP ruleset (+ the
-# pyupgrade cleanup) is a deliberate future bump, not a silent tool drift.
+# ruff pinned <0.16: 0.16.0 turned on UP035/UP037 (pyupgrade) by default and reddened a
+# lint job with no code change. The 65 items that were counted then sat in the studio files,
+# which have since left this package; the count was NOT re-taken on rfx/ and tests/. The pin
+# stays for deterministic CI; adopting the 0.16 UP ruleset is a deliberate future bump.
 # pytest-split pinned <0.12: the weekly slow lane's shard balance is now load-bearing on
 # --store-durations' merge-not-replace semantics and the duration_based_chunks algorithm's
 # exact contiguous-grouping behavior (PR regenerating .test_durations, #533/#545); an
