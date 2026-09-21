@@ -248,53 +248,53 @@ def connected_components_of_the_non_conductor(sigma_slice: np.ndarray) -> dict:
 
 
 def exterior_energy_ratio(grid, materials, dft_planes, center_xy, b: float,
-                          n_freqs: int, n_planes_total: int) -> dict:
+                          probe_z: list[int]) -> dict:
     """Field energy outside the declared outer radius, relative to inside.
 
-    The lane fills one ``ex`` and one ``ey`` DFT plane per probe plane, so
-    ``eps |E_t|^2`` summed over a cross-section is available without a snapshot.
-    It is a transverse-energy proxy, not the full energy: ``E_z`` and the
-    magnetic part are not in these planes, and that is stated rather than
-    implied.
+    The lane fills one ``ex`` and one ``ey`` DFT plane per probe plane, in the
+    order ``probes_bot + probes_top``, so ``eps |E_t|^2`` over a cross-section is
+    available without a snapshot. The accumulator is ``(n_freqs, nx, ny)`` —
+    checked against ``init_dft_plane_probe`` rather than assumed — and each
+    plane's own z index comes from the lane's probe order, so the permittivity
+    weight is the one at that plane.
+
+    It is a TRANSVERSE-energy proxy, not the total: ``E_z`` and the magnetic part
+    are not in these planes. Said here rather than implied.
     """
     if not dft_planes:
-        return {"available": False,
-                "why": "the wrapped run returned no DFT planes"}
+        return {"available": False, "why": "the wrapped run returned no DFT planes"}
     r = _radial_grid(grid, center_xy)
     eps = np.asarray(materials.eps_r)
     inside = r <= b
     outside = ~inside
-    rows = []
-    n_pairs = min(n_planes_total, len(dft_planes) // 2)
+    n_pairs = min(len(probe_z), len(dft_planes) // 2)
+    ins, out = [], []
     for pi in range(n_pairs):
         ex = np.asarray(dft_planes[pi * 2 + 0].accumulator)
         ey = np.asarray(dft_planes[pi * 2 + 1].accumulator)
-        # (nx, ny, n_freqs) per plane; the plane's own z index is not carried
-        # on the accumulator, so planes are reported in the lane's own order.
-        if ex.ndim != 3:
-            continue
-        zi = min(ex.shape[0], eps.shape[0])
-        e2 = np.abs(ex) ** 2 + np.abs(ey) ** 2
-        w = eps[:zi, :e2.shape[1], 0] if eps.ndim == 3 else 1.0
-        rows.append({
-            "plane_index": pi,
-            "inside_sum": [float((w * e2[..., k])[inside[:zi, :e2.shape[1]]].sum())
-                           for k in range(min(n_freqs, e2.shape[-1]))],
-            "outside_sum": [float((w * e2[..., k])[outside[:zi, :e2.shape[1]]].sum())
-                            for k in range(min(n_freqs, e2.shape[-1]))],
-        })
-    if not rows:
+        if ex.ndim != 3 or ex.shape[1:] != r.shape:
+            return {"available": False,
+                    "why": f"plane {pi} has shape {ex.shape}, expected (n_freqs,"
+                           f" {r.shape[0]}, {r.shape[1]})"}
+        w = eps[:, :, int(probe_z[pi])]                       # (nx, ny)
+        e2 = (np.abs(ex) ** 2 + np.abs(ey) ** 2) * w[None, :, :]
+        ins.append(e2[:, inside].sum(axis=1))
+        out.append(e2[:, outside].sum(axis=1))
+    if not ins:
         return {"available": False, "why": "no plane had the expected shape"}
-    ins = np.array([row["inside_sum"] for row in rows], dtype=float)
-    out = np.array([row["outside_sum"] for row in rows], dtype=float)
+    ins = np.asarray(ins, dtype=float)                        # (n_planes, n_freqs)
+    out = np.asarray(out, dtype=float)
     ratio = out / np.maximum(ins, 1e-300)
     return {
         "available": True,
-        "what": ("sum of eps |Ex|^2 + eps |Ey|^2 over each probe plane, split at "
-                 "the declared outer radius; a TRANSVERSE-field proxy — Ez and the "
+        "what": ("sum of eps (|Ex|^2 + |Ey|^2) over each probe plane, split at the "
+                 "declared outer radius; a TRANSVERSE-field proxy — Ez and the "
                  "magnetic energy are not in these planes"),
-        "per_plane_ratio": ratio.astype(float).tolist(),
+        "probe_z_indices": [int(z) for z in probe_z[:n_pairs]],
+        "per_plane_per_freq_ratio": ratio.astype(float).tolist(),
         "max_ratio": float(ratio.max()), "median_ratio": float(np.median(ratio)),
+        "ratio_at_lowest_bin": ratio[:, 0].astype(float).tolist(),
+        "ratio_at_highest_bin": ratio[:, -1].astype(float).tolist(),
         "inside_sum": ins.astype(float).tolist(),
         "outside_sum": out.astype(float).tolist(),
     }
@@ -518,13 +518,19 @@ def main() -> int:
         "not 4-connected = a ring whose cells touch only at corners, which is the "
         "geometry the hypothesis names")
     rec["connected_components"] = comp
+    cb._write(out_path, rec)          # persist BEFORE the optional stage below
     np.save(out_dir / f"shell_seal_arm{args.arm}_rung{args.rung}_sigma_slice.npy",
             np.asarray(mats.sigma)[:, :, z_probe])
     np.save(out_dir / f"shell_seal_arm{args.arm}_rung{args.rung}_labels4.npy", free4)
     np.save(out_dir / f"shell_seal_arm{args.arm}_rung{args.rung}_labels8.npy", free8)
 
-    rec["exterior_energy"] = exterior_energy_ratio(
-        g, mats, first["dft_planes"], center_xy, b, cb.N_FREQS, 2 * cb.PROBE_COUNT)
+    try:
+        rec["exterior_energy"] = exterior_energy_ratio(
+            g, mats, first["dft_planes"], center_xy, b,
+            list(layout["probes_bot"]) + list(layout["probes_top"]))
+    except Exception as exc:                      # noqa: BLE001 — recorded, never fatal
+        rec["exterior_energy"] = {"available": False, "why": f"{type(exc).__name__}: {exc}"}
+    cb._write(out_path, rec)
 
     # --- the two phase-constant estimates ------------------------------------
     S = np.asarray(res.s_params)
