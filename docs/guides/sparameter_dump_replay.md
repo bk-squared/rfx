@@ -47,6 +47,28 @@ in this schema's into-DUT voltage convention (`V = -V_fdtd`); its overall sign
 is pinned empirically by the DC falsifier on the canonical 2-port thru
 (S21(DC) -> +1).
 
+### The driven diagonal, and `diagonal_frame`
+
+The `b/a` above is the standard reflection for a pair that really is (voltage
+into the DUT, current into the DUT). rfx's own LUMPED dump is not quite that
+pair: it stores `-V_fdtd` as its into-DUT voltage, which is right at a passive
+receive port and inconsistent at the driven one. Since 2026-09-21 a driven
+lumped port's production diagonal is the terminal reflection
+
+```text
+S[driven, driven, f] = (V_fdtd - Z0 I) / (V_fdtd + Z0 I)    with V_fdtd = -V
+```
+
+so such a dump records `diagonal_frame="driven_terminal"` in its metadata and
+the replay reads it in that frame. Everything else — a dump from another
+source, and every dump written before the key existed — omits the key and
+replays with `b/a`, which is what its recorded production S used. The
+off-diagonal channel is the same either way.
+
+On the known-load line `scripts/diagnostics/lumped_port_known_load_line.py`,
+reading a driven lumped port with `b/a` gives `|S11| = 4.757` where the closed
+form is `0.333` — the reciprocal of the physical reflection.
+
 By default current is positive into the DUT. If a dump uses current positive
 out of the DUT, record `current_convention="positive_out_of_dut"`; replay flips
 the sign before wave decomposition.
