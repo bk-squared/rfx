@@ -167,9 +167,10 @@ class _MeshMixin:
         round trip or a cloned simulation can all make the mesh non-uniform
         without the caller passing a profile.
 
-        * ``2d_tmz`` between PEC z walls IS that 3-D box (Ez is the only
-          field a one-cell PEC box keeps; byte-identical to ``mode="3d"``),
-          so it runs.
+        * ``2d_tmz`` on ONE z cell between PEC walls IS that 3-D box (Ez is
+          the only field it keeps; byte-identical to ``mode="3d"``), so it
+          runs. On a thicker z stack the resonances coincide but every
+          amplitude scales with the z cell count, so that is refused too.
         * ``2d_tez`` came back with every field zero for the same reason,
           and ``2d_tmz`` with any other z wall is not a 2-D problem. Refused.
         """
@@ -179,7 +180,12 @@ class _MeshMixin:
         spec = getattr(self, "_boundary_spec", None)
         z_walls = ((spec.z.lo, spec.z.hi) if spec is not None
                    else (self._boundary, self._boundary))
-        if mode == "2d_tmz" and all(str(w) == "pec" for w in z_walls):
+        mesh = self._resolve_mesh()
+        dz = mesh["_dz_profile"]
+        n_z = (len(dz) if dz is not None
+               else max(1, int(round(float(mesh["_domain"][2])
+                                     / float(mesh["_dx"])))))
+        if mode == "2d_tmz" and n_z == 1 and all(w == "pec" for w in z_walls):
             return
         raise ValueError(
             f"mode={mode!r} resolved to a non-uniform mesh (an axis profile "

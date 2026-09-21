@@ -62,6 +62,15 @@ def test_tmz_with_a_profile_and_a_non_pec_z_wall_is_refused():
         _run(sim, "ez")
 
 
+def test_tmz_on_more_than_one_z_cell_is_refused():
+    """Between PEC walls but five cells thick: the resonances coincide with
+    the one-cell box and every amplitude is off by the cell count."""
+    sim = Simulation(freq_max=30e9, domain=(A, B, 5 * DX), dx=DX,
+                     boundary="pec", mode="2d_tmz", dy_profile=DY)
+    with pytest.raises(ValueError, match="solves 3-D only"):
+        _run(sim, "ez")
+
+
 def test_tmz_between_pec_walls_runs_and_equals_the_three_d_box():
     kw = dict(freq_max=30e9, domain=(A, B, DX), dx=DX, boundary="pec",
               dy_profile=DY)
