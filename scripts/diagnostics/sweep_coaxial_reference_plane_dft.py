@@ -28,7 +28,7 @@ from generate_coaxial_reference_plane_dft_dump import (
 )
 from rfx.core.yee import init_materials
 from rfx.grid import Grid
-from rfx.probes.probes import extract_lumped_s11, init_dft_plane_probe
+from rfx.probes.probes import driven_port_reflection, init_dft_plane_probe
 from rfx.simulation import LumpedPortSParamSpec, run
 from rfx.sources.coaxial_port import (
     PTFE_EPS_R,
@@ -190,8 +190,12 @@ def sweep_coaxial_reference_planes(
 
     _raw_spec, gap_accs = result.lumped_port_sparams[0]
     gap_v_dft, gap_i_dft = gap_accs[0], gap_accs[1]
+    # A DRIVEN port's S11 is the terminal reflection.  This used to be
+    # driven_port_reflection, the passive port-branch reading, which on a driven
+    # port is the reciprocal of the physical reflection
+    # (scripts/diagnostics/lumped_port_known_load_line.py).
     gap_s11 = np.asarray(
-        extract_lumped_s11(gap_v_dft, gap_i_dft, z0=port.impedance),
+        driven_port_reflection(gap_v_dft, gap_i_dft, port.impedance),
         dtype=np.complex128,
     )
     z0_tem = coaxial_tem_characteristic_impedance(

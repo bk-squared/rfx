@@ -12,6 +12,8 @@ import numpy as np
 from pathlib import Path
 import sys
 
+_FIXTURE_DIR = Path(__file__).resolve().parents[2] / "fixtures"
+
 from rfx import (
     PortDumpMetadata,
     compare_replayed_smatrix,
@@ -225,6 +227,9 @@ def test_lumped_extract_s_matrix_can_emit_replayable_real_vi_dump(tmp_path):
         port_names=extraction.port_names,
         driven_port_indices=extraction.driven_port_indices,
         production_smatrix=np.asarray(extraction.s_params),
+        # The off-diagonal incident wave is built on the pre-injection drive
+        # sample, so the dump has to carry it to replay its own S21.
+        drive_ref_voltages=extraction.drive_ref_voltages,
     )
 
     dump = load_port_vi_dump_npz(path)
@@ -254,6 +259,41 @@ def test_lumped_analytic_oracle_report_covers_open_short_matched_rlc():
         "parallel_rlc_200ohm_10nh_1pf",
     ):
         assert cases[name]["status"] == "passed"
+
+
+def test_a_dump_written_before_the_driven_diagonal_still_replays():
+    """A lumped dump from the old extractor replays to its own recorded S.
+
+    tests/fixtures/lumped_two_port_vi_dump_pre_driven_diagonal.npz was written
+    by the pre-2026-09-21 code on commit b4cf8f29: its production S is the
+    passive port-branch diagonal, its incident wave is built on the same
+    (pre-injection) voltage the dump stores, and it therefore carries neither
+    a ``diagonal_frame`` key nor a ``drive_ref_voltages`` channel.
+
+    Both of those absences select a legacy branch — ``"port_branch"`` for the
+    diagonal, ``voltages`` for the off-diagonal incident wave. Nothing else in
+    the repo exercises either branch with a real stored dump: every other
+    lumped dump test generates its dump at run time with today's writer, so a
+    future change could break old-dump replay with every test still green.
+    """
+    path = _FIXTURE_DIR / "lumped_two_port_vi_dump_pre_driven_diagonal.npz"
+    dump = load_port_vi_dump_npz(path)
+
+    assert dump.drive_ref_voltages is None, (
+        "this fixture is only a legacy-branch witness while it has no "
+        "drive-reference channel")
+    assert "diagonal_frame" not in dump.metadata, (
+        "this fixture is only a legacy-branch witness while it declares no "
+        "diagonal frame")
+    assert dump.production_smatrix is not None
+
+    replayed = replay_smatrix_from_port_vi_dump(dump)
+    comparison = compare_replayed_smatrix(
+        replayed,
+        type("Production", (), {"s_params": dump.production_smatrix,
+                                "freqs": dump.freqs})(),
+    )
+    assert comparison.ok, comparison.summary()
 
 
 def test_lumped_replay_sweep_smoke(tmp_path):

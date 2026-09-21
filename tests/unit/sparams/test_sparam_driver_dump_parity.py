@@ -152,6 +152,9 @@ def test_driver_lumped_dump_matches_eager_and_replays():
             port_names=drv.port_names,
             driven_port_indices=drv.driven_port_indices,
             production_smatrix=np.asarray(drv.s_params),
+            # The off-diagonal incident wave is built on the pre-injection
+            # drive sample, so the dump has to carry it to replay S21.
+            drive_ref_voltages=drv.drive_ref_voltages,
         )
         dump = load_port_vi_dump_npz(tmp)
         replayed = replay_smatrix_from_port_vi_dump(dump)

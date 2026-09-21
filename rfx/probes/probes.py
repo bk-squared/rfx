@@ -312,6 +312,13 @@ class PortVIReplayBundle(NamedTuple):
     port_impedances: object
     port_names: tuple[str, ...]
     driven_port_indices: tuple[int, ...]
+    # PRE-injection drive-sample voltages, same shape and same into-DUT sign
+    # as ``voltages``.  The production off-diagonal incident wave is built on
+    # this channel, so without it a dump cannot replay its own S21; the wire
+    # bundle carries ``raw_drive_ref_voltages_fdt`` for the same reason.
+    # ``None`` marks a dump taken before the lumped sampling slot moved, where
+    # ``voltages`` IS the pre-injection sample.
+    drive_ref_voltages: object = None
 
 
 class WirePortVIReplayBundle(NamedTuple):
@@ -484,6 +491,19 @@ def update_lumped_drive_ref_probe(
                                 probe.window_alpha)
     old_ref = probe.v_ref_dft if probe.v_ref_dft is not None else 0.0
     return probe._replace(v_ref_dft=old_ref + v_ref * phase * dt * weight)
+
+
+class PreDecisionLumpedDiagonalWarning(UserWarning):
+    """A lane still reporting a lumped diagonal on the pre-decision convention.
+
+    Raised where a runner returns a lumped-port S-matrix built the way the
+    uniform lane did before the known-load decision run
+    (scripts/diagnostics/lumped_port_known_load_line.py): a pre-injection
+    voltage, the passive port-branch algebra on a driven port, and no Yee
+    half-step current phase. On a known load that reading is the reciprocal
+    of the physical reflection. Its own category so a test can pin that the
+    lane says so rather than returning the number silently.
+    """
 
 
 def driven_port_reflection(v, i, z0):
@@ -1666,6 +1686,10 @@ def extract_s_matrix(
         np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
         if return_vi_dump else None
     )
+    raw_vref = (
+        np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
+        if return_vi_dump else None
+    )
     raw_i = (
         np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
         if return_vi_dump else None
@@ -1758,6 +1782,11 @@ def extract_s_matrix(
                 # same per-role convention.
                 raw_v[j, i, :] = np.asarray(-sprobes[i].v_dft, dtype=np.complex128)
                 raw_i[j, i, :] = np.asarray(sprobes[i].i_dft, dtype=np.complex128)
+                # The PRE-injection drive sample, in the same into-DUT sign.
+                # The off-diagonal incident wave is built on it, so a replay
+                # needs it to reproduce S21.
+                raw_vref[j, i, :] = np.asarray(-sprobes[i].v_ref_dft,
+                                               dtype=np.complex128)
 
     z0_arr = np.asarray([p.impedance for p in ports], dtype=np.float64)
     S = np.asarray(
@@ -1770,6 +1799,7 @@ def extract_s_matrix(
             freqs=jnp.asarray(freqs),
             voltages=raw_v,
             currents=raw_i,
+            drive_ref_voltages=raw_vref,
             port_impedances=np.asarray([p.impedance for p in ports], dtype=np.float64),
             port_names=tuple(f"port_{idx}" for idx in range(n_ports)),
             driven_port_indices=tuple(range(n_ports)),
