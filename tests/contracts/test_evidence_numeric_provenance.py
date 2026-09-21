@@ -882,6 +882,7 @@ CLASSIFICATION: dict[str, str] = {
     ISSUE831_PREDECLARATION: GATED,
     ISSUE831_RESULTS: GATED,
     ISSUE1043_PAD_CONTINUATION_NOTE: GATED,
+    "docs/design_notes/lumped_wire_chain_battery_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/mixed_refplane_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/msl_chain_battery_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/coax_chain_battery_predeclaration.md": NO_ARTIFACT_REFERENCE,
