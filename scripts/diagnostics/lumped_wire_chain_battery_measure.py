@@ -1809,6 +1809,14 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                 "analytic_at_theta0": ad.get("analytic_at_theta0"),
                 "cases": ad["cases"],
                 "bar": BAR["ad_fd_rel"],
+                "what_the_ulp_span_does_not_say": (
+                    "the span is |f_plus - f_minus| in ULPs of the loss, so it "
+                    "answers whether the two LOSS values are resolved from each "
+                    "other. It does not answer whether the DERIVATIVE is: an "
+                    "objective whose true derivative is zero gives two losses "
+                    "millions of ULPs apart whose difference is round-off, and "
+                    "the span passes. Read each case's closed_form gradient and "
+                    "the loss beside it before reading its rel_err."),
             }
 
     fixture_out.parent.mkdir(parents=True, exist_ok=True)

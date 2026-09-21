@@ -35,8 +35,8 @@
    "what_it_costs": "the open's realized length is (N_L - 0.5) cells and shrinks toward 30 mm as the mesh refines: 29.5, 29.75, 29.875 mm. Every analytic comparison in this fixture uses the REALIZED length, which is exact at every rung; the declared-length comparison is recorded beside it."
   }
  ],
- "assembled_utc": "2026-09-21T10:46:54.390891+00:00",
- "assembler_commit": "d9188fab75c98639eac6753bd140d0e4ce88e618",
+ "assembled_utc": "2026-09-21T10:49:48.018620+00:00",
+ "assembler_commit": "7fa96e5655233a9ca84aaa35f11c6a40407e507f",
  "channel": {
   "l_line_m": 0.03,
   "n_h_cells": {
@@ -23346,7 +23346,8 @@
      }
     }
    ],
-   "bar": 0.05
+   "bar": 0.05,
+   "what_the_ulp_span_does_not_say": "the span is |f_plus - f_minus| in ULPs of the loss, so it answers whether the two LOSS values are resolved from each other. It does not answer whether the DERIVATIVE is: an objective whose true derivative is zero gives two losses millions of ULPs apart whose difference is round-off, and the span passes. Read each case's closed_form gradient and the loss beside it before reading its rel_err."
   },
   "wire_adfd-eps_1000um": {
    "provenance": {
@@ -23953,7 +23954,8 @@
      }
     }
    ],
-   "bar": 0.05
+   "bar": 0.05,
+   "what_the_ulp_span_does_not_say": "the span is |f_plus - f_minus| in ULPs of the loss, so it answers whether the two LOSS values are resolved from each other. It does not answer whether the DERIVATIVE is: an objective whose true derivative is zero gives two losses millions of ULPs apart whose difference is round-off, and the span passes. Read each case's closed_form gradient and the loss beside it before reading its rel_err."
   },
   "wire_adfd-eps_500um": {
    "provenance": {
@@ -24560,7 +24562,8 @@
      }
     }
    ],
-   "bar": 0.05
+   "bar": 0.05,
+   "what_the_ulp_span_does_not_say": "the span is |f_plus - f_minus| in ULPs of the loss, so it answers whether the two LOSS values are resolved from each other. It does not answer whether the DERIVATIVE is: an objective whose true derivative is zero gives two losses millions of ULPs apart whose difference is round-off, and the span passes. Read each case's closed_form gradient and the loss beside it before reading its rel_err."
   },
   "wire_adfd-eps_250um": {
    "provenance": {
@@ -25167,7 +25170,8 @@
      }
     }
    ],
-   "bar": 0.05
+   "bar": 0.05,
+   "what_the_ulp_span_does_not_say": "the span is |f_plus - f_minus| in ULPs of the loss, so it answers whether the two LOSS values are resolved from each other. It does not answer whether the DERIVATIVE is: an objective whose true derivative is zero gives two losses millions of ULPs apart whose difference is round-off, and the span passes. Read each case's closed_form gradient and the loss beside it before reading its rel_err."
   }
  },
  "pilot": {

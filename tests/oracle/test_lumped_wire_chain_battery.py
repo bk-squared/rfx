@@ -440,6 +440,26 @@ def _adfd_cases(fixture):
             yield name, block, case
 
 
+def test_the_adfd_block_states_what_its_validity_assert_does_not_cover(fixture):
+    """The ULP span says the two loss values are resolved from each other, not
+    that the derivative is. An objective whose true derivative is zero gives two
+    losses millions of ULPs apart whose difference is round-off, and the span
+    passes it. The artifact has to carry that sentence, because a reader who
+    sees only `ulp_span >= floor` will read the rel_err beside it as meaningful.
+    """
+    if not fixture.get("adfd"):
+        pytest.skip("no AD/FD stage is assembled")
+    for name, block in fixture["adfd"].items():
+        assert block.get("what_the_ulp_span_does_not_say"), name
+        for case in block["cases"]:
+            # Every case must carry the closed form's own gradient and the loss,
+            # which are what a reader needs to tell a resolved derivative from a
+            # resolved pair of losses.
+            assert "closed_form" in case, f"{name}/{case['objective']}"
+            assert "grad" in case["closed_form"], f"{name}/{case['objective']}"
+            assert "loss" in case["ad"], f"{name}/{case['objective']}"
+
+
 def test_the_gradient_matches_a_float64_finite_difference(fixture):
     ads = list(_adfd_cases(fixture))
     if not ads:
