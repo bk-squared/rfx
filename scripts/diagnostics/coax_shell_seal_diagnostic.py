@@ -594,7 +594,10 @@ def main() -> int:
                            "call rfx.simulation.run")
     first = _CAPTURED[0]
     g, mats = first["grid"], first["materials"]
-    z_probe = int(layout["probes_bot"][-1])
+    # The one-port lane names its probe list "probes"; only the two-port lane
+    # has a bottom and a top array.
+    z_probe = int(layout["probes_bot"][-1] if lane == "two_port"
+                  else layout["probes"][-1])
     rec["realized_cross_section"] = realized_cross_section(
         g, mats, center_xy, a, b, z_probe)
     if first.get("pec_edge_masks") is not None:
@@ -645,9 +648,10 @@ def main() -> int:
     np.save(out_dir / f"{stem}_labels8.npy", free8)
 
     try:
+        probe_z = (list(layout["probes_bot"]) + list(layout["probes_top"])
+                   if lane == "two_port" else list(layout["probes"]))
         rec["exterior_energy"] = exterior_energy_ratio(
-            g, mats, first["dft_planes"], center_xy, b,
-            list(layout["probes_bot"]) + list(layout["probes_top"]))
+            g, mats, first["dft_planes"], center_xy, b, probe_z)
     except Exception as exc:                      # noqa: BLE001 — recorded, never fatal
         rec["exterior_energy"] = {"available": False, "why": f"{type(exc).__name__}: {exc}"}
     cb._write(out_path, rec)
