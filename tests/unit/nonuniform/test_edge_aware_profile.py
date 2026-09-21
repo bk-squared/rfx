@@ -204,8 +204,10 @@ def _fin_resonance(dy_profile):
     from rfx.harminv import harminv
     a, b, dx = 0.020, 0.010, 1e-3
     kw = {} if dy_profile is None else {"dy_profile": dy_profile}
+    # a profile runs in the non-uniform lane, which is 3-D only: the same
+    # one-cell PEC box keeps Ez there (TMz); without a profile, the 2-D lane
     sim = Simulation(freq_max=30e9, domain=(a, b, dx), boundary="pec", dx=dx,
-                     mode="2d_tmz", **kw)
+                     mode="3d" if kw else "2d_tmz", **kw)
     sim.add(Box((a / 2, 0.0, 0.0), (a / 2, FIN_M, dx)), material="pec")
     sim.add_source((0.0063, 0.0031, 0.0), component="ez")
     sim.add_probe((0.0137, 0.0069, 0.0), component="ez")
