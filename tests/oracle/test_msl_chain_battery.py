@@ -283,6 +283,64 @@ def test_the_notch_frequency_at_the_claims_rung_matches_the_quarter_wave_value(f
         f"{frac*100:.3f} % — the bar is {fixture['bar']['frequency_frac']*100:.1f} %")
 
 
+def test_the_thru_lines_reflection_stays_under_its_bound(fixture):
+    """PI 2026-09-21 (a). The control line's |S11| is a deep null, so it carries
+    an upper bound at every bin of every rung instead of a rung-to-rung dB
+    comparison — a dB difference on a quantity 30 dB down says nothing about
+    the line."""
+    lad = fixture["ladder"].get("thru")
+    if lad is None:
+        pytest.skip("the thru ladder is not assembled")
+    floor = lad["s11_reflection_floor"]
+    assert "s11_vs_finest" not in lad, (
+        "the thru carries a rung-to-rung |S11| dB comparison, which the ruling "
+        "removed")
+    for row in floor["per_rung"]:
+        entry = fixture["solves"][row["rung"]]
+        S = _complex(entry["S"])
+        measured = float(_db(S[0, 0, :]).max())
+        assert row["max_s11_db"] == pytest.approx(measured, abs=1e-9), row["rung"]
+        assert row["within_bound"] is bool(measured <= floor["bound_db"])
+        assert measured <= floor["bound_db"], (
+            f"{row['rung']}: the line reflects {measured:.2f} dB at "
+            f"{row['argmax_hz']/1e9:.3f} GHz, above the {floor['bound_db']} dB bound")
+
+
+def test_the_notch_core_is_the_bins_the_finest_rung_puts_below_the_level(fixture):
+    """PI 2026-09-21 (b). The excluded set is not a choice made per rung: it is
+    the finest rung's own |S21|, and the fixture has to show it."""
+    lad = fixture["ladder"].get("notch")
+    if lad is None:
+        pytest.skip("the notch ladder is not assembled")
+    core = lad["notch_core"]
+    fine = fixture["solves"][core["defined_by_rung"]]
+    S = _complex(fine["S"])
+    freqs = np.asarray(fine["freqs_hz"], dtype=float)
+    expect = [int(i) for i in np.flatnonzero(_db(S[1, 0, :]) <= core["level_db"])]
+    assert core["bin_indices"] == expect, "the stored core is not the measured one"
+    assert core["n_bins"] == len(expect)
+    np.testing.assert_allclose(core["bin_hz"], freqs[expect], rtol=0, atol=1e-3)
+    for name in ("s21", "s11"):
+        for row in lad[f"{name}_vs_finest"]:
+            assert row["excluded_core_bin_indices"] == expect, (name, row["rung"])
+
+
+def test_the_notch_depth_is_recorded_and_compared_with_nothing(fixture):
+    """PI 2026-09-21 (c). Inside the core the verdict is the frequency. The
+    depth is evidence; it carries no threshold and no boolean."""
+    lad = fixture["ladder"].get("notch")
+    if lad is None:
+        pytest.skip("the notch ladder is not assembled")
+    block = lad["notch_depth_db_per_rung"]
+    assert not any(isinstance(v, bool) for row in block["per_rung"] for v in row.values()), (
+        "the depth block carries a boolean, i.e. a comparison the ruling removed")
+    for row in block["per_rung"]:
+        entry = fixture["solves"][row["rung"]]
+        S = _complex(entry["S"])
+        k = int(np.argmin(np.abs(S[1, 0, :])))
+        assert row["depth_db"] == pytest.approx(float(_db(S[1, 0, :])[k]), abs=1e-9)
+
+
 def test_the_ladder_converges_and_sets_a_recommended_cell_size(fixture):
     lad = fixture["ladder"].get("notch")
     if lad is None:
@@ -299,7 +357,8 @@ def test_the_ladder_converges_and_sets_a_recommended_cell_size(fixture):
     # boolean follows from the stored curves.
     rows = lad["rung_within_bar_vs_finest"]
     for row in rows:
-        flags = [row[k] for k in ("s21_within_2dB", "s11_within_2dB", "notch_within_1pct")
+        flags = [row[k] for k in ("s21_within_2dB", "s11_within_2dB",
+                                  "notch_within_1pct", "s11_floor_within_bound")
                  if row.get(k) is not None]
         assert row["all_inside_bar"] == all(flags), row
     qualifying = [r["rung"] for r in rows if r["all_inside_bar"]]

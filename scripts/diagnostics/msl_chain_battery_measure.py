@@ -156,6 +156,11 @@ AD_PRIOR_ATTEMPT = {
 # Recorded beside each measurement; never applied as a verdict here.
 BAR = {
     "magnitude_db": 2.0,
+    # PI ruling 2026-09-21. A deep null cannot be judged by a dB difference:
+    # the thru line's own reflection is bounded instead, and the notch's core
+    # is excluded from the magnitude comparison and judged by its frequency.
+    "thru_reflection_floor_db": -20.0,
+    "notch_core_level_db": -20.0,
     "frequency_frac": 0.01,
     "column_power_max": 1.02,
     "reciprocity": 0.02,
@@ -1337,6 +1342,7 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
         "bar": BAR,
         "assembled_utc": _dt.datetime.now(_dt.timezone.utc).isoformat(),
         "assembler_commit": git_sha(),
+        "battery_drive": None,
         "board": {k: v for k, v in declared(100e-6, "notch").items()
                   if k not in ("dx_m", "dx_um", "substrate_cells_under_strip",
                                "trace_cells_across", "stub_cells_long")},
@@ -1349,6 +1355,21 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
         "pilot": None,
         "referee_context": referee_context(),
     }
+
+    # Which drive the battery actually ran, read from the solve records rather
+    # than from the CLI flag, which defaults to the shipped pulse.
+    _solve_recs = [r for r in (_load_stage(out, f"solve_{d}_{u}um.json")
+                               for d in DUTS for u in RUNGS_UM) if r is not None]
+    battery_drives = {r["drive"] for r in _solve_recs}
+    battery_periods = {float(r["num_periods"]) for r in _solve_recs}
+    if len(battery_drives) > 1 or len(battery_periods) > 1:
+        raise RuntimeError(
+            f"the solve records do not agree on a drive {sorted(battery_drives)} "
+            f"or a record length {sorted(battery_periods)}. A ladder whose rungs "
+            "were driven differently is not a ladder.")
+    chosen_drive = battery_drives.pop() if battery_drives else args.drive
+    chosen_periods = (battery_periods.pop() if battery_periods
+                      else float(args.num_periods))
 
     pilot = _load_stage(out, "pilot_100um.json")
     if pilot is not None:
@@ -1365,7 +1386,7 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                 "wall_s": c["wall_s"],
             } for c in pilot["cases"]],
             "drive_comparison": pilot_drive_comparison(
-                pilot, DEFAULT_NUM_PERIODS, args.drive),
+                pilot, chosen_periods, chosen_drive),
         }
 
     for dut in DUTS:
@@ -1525,7 +1546,32 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
         # |S21| and |S11| against the finest rung, off the notch core.
         fine = fix["solves"][have[-1]]
         idx = {"s21": (1, 0), "s11": (0, 0)}
-        for key, name in (("s21_db", "s21"), ("s11_db", "s11")):
+        freqs_l = np.asarray(fine["freqs_hz"], dtype=float)
+        # The core is one bin set per device, fixed by the FINEST rung's |S21|,
+        # and every rung's comparison is read outside it.
+        fine_s21_db = np.asarray(fine["s21_db"], dtype=float)
+        core = ((fine_s21_db <= BAR["notch_core_level_db"]) if dut == "notch"
+                else np.zeros(len(fine_s21_db), dtype=bool))
+        outside = ~core
+        core_idx = [int(i) for i in np.flatnonzero(core)]
+        lad["notch_core"] = {
+            "rule": (("PI 2026-09-21: bins where the FINEST rung's |S21| is at "
+                      "or below the level below; inside it the verdict is the "
+                      "notch frequency, not the depth")
+                     if dut == "notch" else
+                     "nothing excluded: the control line has no transmission null"),
+            "level_db": BAR["notch_core_level_db"],
+            "defined_by_rung": have[-1],
+            "n_bins": len(core_idx),
+            "bin_indices": core_idx,
+            "bin_hz": [float(freqs_l[i]) for i in core_idx],
+        }
+        # (b) magnitude comparisons: the thru's |S21| over the whole band, the
+        # notch's |S21| and |S11| outside the core. The thru's |S11| is NOT
+        # here -- see (a) below.
+        compared = ["s21", "s11"] if dut == "notch" else ["s21"]
+        for name in compared:
+            key = f"{name}_db"
             fine_db = np.asarray(fine[key], dtype=float)
             i, j = idx[name]
             fine_abs = np.abs(_S(fine)[i, j, :])
@@ -1534,10 +1580,6 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                 cur = np.asarray(fix["solves"][k][key], dtype=float)
                 d = np.abs(cur - fine_db)
                 d_abs = np.abs(np.abs(_S(fix["solves"][k])[i, j, :]) - fine_abs)
-                core = np.zeros(len(d), dtype=bool)
-                if dut == "notch":
-                    core = fine_db <= -20.0        # the notch's -20 dB core
-                outside = ~core
                 rows.append({
                     "rung": k,
                     "max_db_diff_vs_finest": float(d.max()),
@@ -1550,8 +1592,39 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                     "finest_min_abs": float(fine_abs.min()),
                     "finest_max_abs": float(fine_abs.max()),
                     "n_bins_in_core": int(core.sum()),
+                    "excluded_core_bin_indices": core_idx,
                 })
             lad[f"{name}_vs_finest"] = rows
+        if dut != "notch":
+            # (a) the line's own reflection floor: an upper bound per rung, not
+            # a difference between rungs. A rung-to-rung dB difference on a
+            # quantity that runs 30 dB down says nothing about the line.
+            lad["s11_reflection_floor"] = {
+                "rule": ("PI 2026-09-21: no rung-to-rung dB comparison on the "
+                         "thru line's |S11|; it is bounded at every bin of "
+                         "every rung"),
+                "bound_db": BAR["thru_reflection_floor_db"],
+                "per_rung": [{
+                    "rung": k,
+                    "max_s11_db": float(np.max(np.asarray(fix["solves"][k]["s11_db"],
+                                                          dtype=float))),
+                    "argmax_hz": float(freqs_l[int(np.argmax(np.asarray(
+                        fix["solves"][k]["s11_db"], dtype=float)))]),
+                    "within_bound": bool(np.max(np.asarray(
+                        fix["solves"][k]["s11_db"], dtype=float))
+                        <= BAR["thru_reflection_floor_db"]),
+                } for k in have],
+            }
+        if dut == "notch":
+            # (c) the depth, recorded and compared with nothing.
+            lad["notch_depth_db_per_rung"] = {
+                "rule": ("PI 2026-09-21: recorded, not compared -- inside the "
+                         "core the verdict is the frequency"),
+                "per_rung": [{"rung": k,
+                              "depth_db": fix["solves"][k]["notch_depth_db"],
+                              "bin_hz": fix["solves"][k]["notch"]["bin_hz"]}
+                             for k in have],
+            }
         lad["max_column_power"] = [fix["solves"][k]["power"]["max_column_power"]
                                    for k in have]
         # The support matrix asks for one cell size: the coarsest rung whose
@@ -1561,13 +1634,16 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
         inside = []
         for i, k in enumerate(have):
             row = {"rung": k}
-            for name in ("s21", "s11"):
+            for name in compared:
                 worst = lad[f"{name}_vs_finest"][i]["max_db_diff_vs_finest_outside_notch_core"]
                 row[f"{name}_within_2dB"] = None if worst is None else bool(
                     worst <= BAR["magnitude_db"])
             if dut == "notch":
                 row["notch_within_1pct"] = bool(
                     lad["notch_frac_vs_finest"][i] <= BAR["frequency_frac"])
+            else:
+                row["s11_floor_within_bound"] = bool(
+                    lad["s11_reflection_floor"]["per_rung"][i]["within_bound"])
             row["all_inside_bar"] = all(v for v in row.values() if isinstance(v, bool))
             row["resolution"] = fix["solves"][k]["resolution"]
             inside.append(row)
@@ -1678,6 +1754,14 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                 np.angle(np.exp(1j * (rot11 + pred)))))),
             "bar_magnitude_db": BAR["magnitude_db"],
         }
+
+    fix["battery_drive"] = {
+        "name": chosen_drive,
+        **({k: DRIVES[chosen_drive][k] for k in ("f0", "bandwidth")}
+           if chosen_drive in DRIVES else {}),
+        "num_periods": chosen_periods,
+        "chosen_from": "the pilot's settling witness and per-bin reliability",
+    }
 
     fixture_out.parent.mkdir(parents=True, exist_ok=True)
     tmp = fixture_out.with_suffix(".json.tmp")
