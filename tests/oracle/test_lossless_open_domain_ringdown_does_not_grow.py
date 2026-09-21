@@ -63,8 +63,16 @@ exactly that; see the "a physics gate can bind an artifact" lesson).  Keep the t
 the mutation test stops being red, this gate has stopped discriminating and the green one means
 nothing.
 
-LEADER: replacement model n=3, pad=10h, 6 layers, continuation off: 0.000000 dB,
-        worst log rate +5.84241689243745e-4 per step (VESSL 369367262982).
+SINCE #801 (2026-09-21) THE FALSIFIER IS A DIFFERENT MODEL, and everything below this paragraph
+about the pre-#931 edge rule is the dated record of the falsifier it replaced.  What made this rig
+grow was never the edge rule alone: the ground plane stopped at the absorber entrance, so inside
+the absorber the substrate had no ground under it and a wave ran along the absorber faces.  With
+the ground continued through the absorber the pre-#931 edge rule settles at -50.33 dB (VESSL
+369367262956) and shows nothing.  ``test_the_gate_is_red_without_conductor_continuation`` therefore
+switches the continuation OFF (the shared helper returns the declared shape) on the six-layer arm,
+n = 3, pad 10h, grid (187, 142, 61), 19994 steps: settling 0.00 dB, worst log rate +5.842e-04 per
+step, red through both halves of the predicate (VESSL 369367262982).  The live arm with the
+continuation reads -44.82 dB and -1.992e-04 per step (VESSL 369367262981).
 
 WHAT THE MUTATION DOES NOW, AND WHAT IT DID (measured 2026-09-20, VESSL 369367262373, rtx4090,
 float32, this file's ``__main__`` run unchanged at two commits; logs
@@ -74,17 +82,12 @@ fixture's x ratio is ``232.00000000000003`` and ``ceil`` had bought a 233rd cell
 filled and which the CPML pad extension replicated as a vacuum column through the x-hi pad.
 With that cell gone the mutated arm no longer grows:
 
-LEADER: table update: current live n=4, 8 layers: -44.8170825649 dB,
-        -1.991679434807e-4 per step; replacement n=3, 6 layers: 0.000000 dB,
-        +5.84241689243745e-4 per step (VESSL 369367262981 / 369367262982).
-
     commit      realized grid     arm       worst log rate/step   settling    gate
     eb9efeae    (250, 189, 81)    shipped        -1.934e-04       -43.37 dB   green
     eb9efeae    (250, 189, 81)    mutated        +3.002e-04         0.00 dB   red (grows)
     a6d6fce1    (249, 189, 81)    shipped        -1.926e-04       -43.30 dB   green
     a6d6fce1    (249, 189, 81)    mutated        -8.379e-05       -35.41 dB   red (settling only)
 
-LEADER: reading update: live -44.8170825649 dB; replacement 0.000000 dB.
 Read it exactly this far and no further.  (1) The growth record needed BOTH the pre-#931 edge rule
 AND the 250-cell realization; the 250-cell realization carried the x-hi vacuum pad facet (#1070),
 and the extra cell and the facet were not separated -- no run has the cell without the facet.  So
@@ -110,9 +113,6 @@ mutated arm.  rfx's own truncated-ring-down advisory fires on the mutated run ("
 a long enough record both arms pass the settling half, and the rate half does not separate them
 (-8.4e-05 passes the -2.0e-05 bar), so on today's grid this gate tells the two edge rules apart
 by a 7.89 dB difference in how far the ring-down has got by step 26659, and by nothing else.
-
-LEADER: replacement record: 19994 steps, 150 periods, 0.000000 dB,
-        worst log rate +5.84241689243745e-4 per step.
 
 PRECISION.  The seed argument above is a float32 round-off argument, and the lane that produced
 this gate's red/green evidence pins ``JAX_ENABLE_X64=0``.  The production GPU lanes do not pin
@@ -320,15 +320,12 @@ def test_lossless_open_domain_ringdown_decays_on_every_probe():
 @pytest.mark.gpu
 @pytest.mark.slow_physics
 def test_the_gate_is_red_without_conductor_continuation(monkeypatch):
-    """The falsifier: with the pre-#931 edge rule the gate above must be RED.
+    """The falsifier: without conductor continuation the gate above must be RED.
 
-    One mutation, and it is the one the bisect landed on. It asserts the gate's own predicate,
-    not growth: since #1136 the mutated arm decays, slowly, and misses the settling bar by
-    4.59 dB (module docstring, 2026-09-20 table). If this ever passes quietly, the gate above
-    has stopped discriminating and its green tells you nothing.
-
-    LEADER: replacement n=3, pad=10h, 6 layers, continuation off:
-            0.000000 dB, +5.84241689243745e-4 per step.
+    One mutation: the shared helper returns the declared shape, so the ground plane ends at the
+    absorber entrance as it did before #801, on the six-layer arm that grew on main. Measured
+    red: settling 0.00 dB, worst log rate +5.842e-04 per step (module docstring). If this ever
+    passes quietly, the gate above has stopped discriminating and its green tells you nothing.
     """
     rates, settling, _preflight = _run_rates(monkeypatch=monkeypatch, continuation_off=True)
     gate_green = settling <= SETTLING_DB_BAR and max(rates) < MAX_LOG_RATE_PER_STEP
