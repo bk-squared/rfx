@@ -708,6 +708,58 @@ def test_box_touching_the_array_boundary_is_refused():
         accumulate_ntff(data, state, box, 1e-12, jnp.asarray(0, jnp.int32))
 
 
+def test_flush_box_refusal_says_where_the_face_may_go_in_metres():
+    """A refusal a user can act on: the axis, the face in metres, the range.
+
+    This configuration ran before the transform became second order, so the
+    message is the whole of what the user gets. Indices alone do not say
+    which ``add_ntff_box`` corner to move.
+    """
+    from rfx.grid import Grid
+    from rfx.farfield import make_ntff_box
+
+    grid = Grid(freq_max=5e9, domain=(0.06, 0.06, 0.06), dx=3.0e-3,
+                cpml_layers=0)
+    with pytest.raises(ValueError) as exc:
+        make_ntff_box(grid, (0.0, 0.0, 0.0), (0.06, 0.06, 0.06), [3e9])
+    msg = str(exc.value)
+    assert "x: faces at index 0" in msg
+    assert " m)" in msg and "can carry a face anywhere in" in msg
+    assert "at least one cell further inside the domain" in msg
+    assert "add_ntff_box" in msg
+
+
+def test_single_cell_axis_is_told_the_transform_needs_three_dimensions():
+    """A 2-D grid cannot carry a Huygens box; say that, not 'move the face'."""
+    box = NTFFBox(i_lo=2, i_hi=6, j_lo=2, j_hi=6, k_lo=0, k_hi=0,
+                  freqs=jnp.asarray([FREQ], dtype=jnp.float32),
+                  face_centre=True)
+    zeros = jnp.zeros((8, 8, 1), dtype=jnp.float32)
+    state = FDTDState(ex=zeros, ey=zeros, ez=zeros, hx=zeros, hy=zeros,
+                      hz=zeros, step=jnp.asarray(0, dtype=jnp.int32))
+    data = init_ntff_data(box)
+    with pytest.raises(ValueError) as exc:
+        accumulate_ntff(data, state, box, 1e-12, jnp.asarray(0, jnp.int32))
+    msg = str(exc.value)
+    assert "z: the grid is 1 cell(s) deep" in msg
+    assert "needs a 3-D box" in msg
+
+
+def test_normal_weight_does_not_wrap_at_index_zero():
+    """``widths[idx-1]`` at idx 0 is the LAST cell in Python, not a neighbour.
+
+    A box flush with the low face is refused, but the weight is computed
+    before the refusal in some paths; it must not invent a plausible number
+    from the opposite end of the axis.
+    """
+    from rfx.farfield import _normal_weight
+
+    widths = np.array([1.0, 1.0, 1.0, 9.0])
+    assert _normal_weight(widths, 0) == 0.5
+    assert _normal_weight(widths, len(widths)) == 0.5
+    assert _normal_weight(widths, 3) == pytest.approx(9.0 / 10.0)
+
+
 # ---------------------------------------------------------------------------
 # The half-cell interpolation must land exactly on the face
 # ---------------------------------------------------------------------------
