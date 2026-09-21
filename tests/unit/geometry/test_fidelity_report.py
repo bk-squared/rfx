@@ -110,16 +110,12 @@ def test_finding_classes_are_detected():
     assert "inside-absorber" in _kinds(clamped)
 
 
-def test_exact_faces_report_continued_bounds_in_domain_coords():
+def test_exact_faces_report_zero_residual_in_domain_coords():
     rep = _fixture().fidelity_report(print_report=False)
     ground = _geo(rep, 0)
     for ax in ground["axes"]:
-        expected = (2000.0, 2500.0) if ax["axis"] in ("x", "y") else (0.0, 0.0)
-        assert max(abs(got-want) for got, want in zip(
-            ax["face_residual_um"], expected)) < 1e-6, ax
-        if ax["axis"] in ("x", "y"):
-            assert max(abs(got-want) for got, want in zip(
-                ax["realized_um"], (-2000.0, 12500.0))) < 1e-6, ax
+        assert max(ax["face_residual_um"]) < 1e-6, (
+            f"exact face read nonzero residual on {ax['axis']}: {ax}")
     # domain coordinates, not padded-array coordinates:
     assert abs(ground["axes"][2]["realized_um"][0] - 2000.0) < 1e-6
 
