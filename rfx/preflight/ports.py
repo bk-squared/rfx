@@ -95,8 +95,11 @@ def _check_coaxial_port_junction_aperture(self) -> None:
     marked for a volume's far face (the #868 class). The ring is
     defined ON THE LATTICE: ``a + dx/sqrt(2) < r <= min(a +
     dx/sqrt(2) + dx, shell_inner)`` with ``r`` the node distance from
-    the port centre and ``shell_inner = b - min(dx, (b - a)/2)`` the
-    radius ``stamp_coaxial_line`` realizes for the shell. The inner
+    the port centre and ``shell_inner = b``, the radius
+    ``stamp_coaxial_line`` realizes for the wall's inner face. That used
+    to be ``b - min(dx, (b - a)/2)``, a wall one cell thick whose inner
+    radius moved with the mesh; the wall now starts at the declared
+    outer radius and is a fixed thickness in metres. The inner
     bound is the pin's own reach: a PEC volume is centre-sampled
     (§1.1) and every node of an occupied cell carries its wall, so
     the pin's OWN nodes extend to at most ``a + dx/sqrt(2)`` (half
@@ -114,8 +117,9 @@ def _check_coaxial_port_junction_aperture(self) -> None:
 
     Report-only (severity "warning", no refusal): a calibration short
     built from REGISTERED PEC would trip it and is the user's call.
-    The repo's own calibration short is stamped via
-    ``stamp_coaxial_short_plane`` (sigma), so no current lane does.
+    The repo's own calibration short comes from
+    ``stamp_coaxial_short_plane``, which reports cells the lane realizes
+    as PEC EDGES rather than registered geometry, so no current lane does.
     Not audited (silent by construction, disclosed here): the
     non-uniform lane, 2-D mode, and a port whose position does not map
     into the grid (the compiler rejects that separately). Measured on
@@ -155,7 +159,7 @@ def _check_coaxial_port_junction_aperture(self) -> None:
         t1, t2 = [a for a in range(3) if a != axis]
         a = float(port.pin_radius)
         b = float(port.outer_radius)
-        shell_inner = b - min(dx, 0.5 * (b - a))
+        shell_inner = b
         c1 = (np.arange(grid.shape[t1]) - pads[t1]) * dx - pos[t1]
         c2 = (np.arange(grid.shape[t2]) - pads[t2]) * dx - pos[t2]
         r = np.hypot(c1[:, None], c2[None, :])

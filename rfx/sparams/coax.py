@@ -374,6 +374,30 @@ def compute_coaxial_s_matrix(
         strict=strict_passivity,
     )
 
+def _coax_pec_edge_masks(pec_cells, periodic=(False, False, False), merge_with=None):
+    """The conductor cells of a coax line, as PEC E-edge masks.
+
+    ``rfx.boundaries.pec.realized_pec_edge_masks`` is the repo's one rule for
+    turning conductor geometry into shorted edges: walls on BOTH faces, every
+    normal edge between them shorted. The coax lanes used to leave their
+    conductors as ``sigma = PEC_SIGMA``, which ``rfx/core/yee.py`` applies per
+    NODE to the three E components co-indexed with that node — so only the
+    plus-side edges of each conductor cell were damped and the edges entering it
+    from the minus side stayed live. See ``stamp_coaxial_line`` for what that
+    cost and what it was measured at.
+
+    ``merge_with`` is another lane's already-realized masks (the coax-to-MSL
+    transition has its own board); the two are unioned rather than replaced.
+    """
+    from rfx.boundaries.pec import realized_pec_edge_masks
+
+    edges = realized_pec_edge_masks(np.asarray(pec_cells), sheets=(), wires=(),
+                                    periodic=periodic)
+    if merge_with is None:
+        return tuple(edges)
+    return tuple(np.asarray(e) | np.asarray(m) for e, m in zip(edges, merge_with))
+
+
 def compute_coaxial_line_reflection(
     self,
     *,
@@ -635,22 +659,25 @@ def compute_coaxial_line_reflection(
     R_dut = float(dut_impedance) if dut_impedance is not None else R_feed
 
     materials, _, _ = self._build_materials(grid)
-    materials, shell_inner = stamp_coaxial_line(
+    materials, shell_inner, pec_cells = stamp_coaxial_line(
         grid, materials, center_xy=center_xy, z_lo_index=z_dut,
         z_hi_index=z_hi_coax, pin_radius=a, outer_radius=b,
     )
     materials = stamp_coaxial_annular_resistor(
         grid, materials, center_xy=center_xy, z_index=z_feed, pin_radius=a,
         outer_radius=b, target_impedance=R_feed, shell_inner_radius=shell_inner,
+        pec_cell_mask=pec_cells,
     )
     if termination == "short":
-        materials = stamp_coaxial_short_plane(
+        materials, short_cells = stamp_coaxial_short_plane(
             grid, materials, center_xy=center_xy, z_index=z_dut, outer_radius=b,
         )
+        pec_cells = pec_cells | short_cells
     elif termination == "matched":
         materials = stamp_coaxial_annular_resistor(
             grid, materials, center_xy=center_xy, z_index=z_dut, pin_radius=a,
             outer_radius=b, target_impedance=R_dut, shell_inner_radius=shell_inner,
+            pec_cell_mask=pec_cells,
         )
     # "open": conductors simply end at z_dut (open circuit) — no extra stamp.
 
@@ -690,7 +717,8 @@ def compute_coaxial_line_reflection(
     result = _run(
         grid, materials, int(n_steps), boundary="cpml", cpml_axes=cpml_axes,
         sources=list(spec.electric_sources), mag_sources=list(spec.magnetic_sources),
-        dft_planes=planes, return_state=False,
+        dft_planes=planes, pec_edge_masks=_coax_pec_edge_masks(pec_cells),
+        return_state=False,
     )
     if result.dft_planes is None:
         raise RuntimeError("compute_coaxial_line_reflection(): runner returned no DFT planes")
@@ -1124,17 +1152,19 @@ def compute_coaxial_two_port(
     R_feed = float(feed_impedance) if feed_impedance is not None else float(z_tem)
 
     materials, _, _ = self._build_materials(grid)
-    materials, shell_inner = stamp_coaxial_line(
+    materials, shell_inner, pec_cells = stamp_coaxial_line(
         grid, materials, center_xy=center_xy, z_lo_index=z_lo_coax_bot,
         z_hi_index=z_hi_coax_top, pin_radius=a, outer_radius=b,
     )
     materials = stamp_coaxial_annular_resistor(
         grid, materials, center_xy=center_xy, z_index=z_feed_top, pin_radius=a,
         outer_radius=b, target_impedance=R_feed, shell_inner_radius=shell_inner,
+        pec_cell_mask=pec_cells,
     )
     materials = stamp_coaxial_annular_resistor(
         grid, materials, center_xy=center_xy, z_index=z_feed_bot, pin_radius=a,
         outer_radius=b, target_impedance=R_feed, shell_inner_radius=shell_inner,
+        pec_cell_mask=pec_cells,
     )
 
     # Differentiable design channel (#489 leg 3): applied AFTER the
@@ -1200,6 +1230,10 @@ def compute_coaxial_two_port(
     ref_bot_m = (z_feed_bot - grid.pad_z_lo) * dz
     annulus_cells = float((b - a) / dz)
 
+    # Realized once, outside the per-drive loop: the geometry does not change
+    # between the two drives and the realization is not cheap.
+    _coax_edges = _coax_pec_edge_masks(pec_cells)
+
     _traced_eps = eps_scale is not None
     if _traced_eps:
         # jnp lists, one entry per drive; stacked into (2, n_planes, n_f)
@@ -1234,7 +1268,8 @@ def compute_coaxial_two_port(
         result = _run(
             grid, materials, int(n_steps), boundary="cpml", cpml_axes=cpml_axes,
             sources=list(spec.electric_sources), mag_sources=list(spec.magnetic_sources),
-            probes=witness_probes, dft_planes=planes, return_state=False,
+            probes=witness_probes, dft_planes=planes,
+            pec_edge_masks=_coax_edges, return_state=False,
             **_flux_run_kwargs,
         )
         if result.dft_planes is None:
@@ -1886,14 +1921,14 @@ def compute_coax_msl_transition(
     z_tem = coaxial_tem_characteristic_impedance(a, b)
     r_feed = float(feed_impedance) if feed_impedance is not None else float(z_tem)
     junction_materials = materials
-    materials, shell_inner = stamp_coaxial_line(
+    materials, shell_inner, coax_pec_cells = stamp_coaxial_line(
         grid, materials, center_xy=center_xy, z_lo_index=z_stub_lo,
         z_hi_index=z_stub_hi, pin_radius=a, outer_radius=b,
     )
     materials = stamp_coaxial_annular_resistor(
         grid, materials, center_xy=center_xy, z_index=z_feed,
         pin_radius=a, outer_radius=b, target_impedance=r_feed,
-        shell_inner_radius=shell_inner,
+        shell_inner_radius=shell_inner, pec_cell_mask=coax_pec_cells,
     )
     # The shared line stamper includes axial padding for standalone
     # coax runs. Here the caller owns the junction, post and laminate:
@@ -2174,7 +2209,9 @@ def compute_coax_msl_transition(
         result = _run(
             grid, materials, int(n_steps), boundary="cpml", cpml_axes="xyz",
             sources=sources, mag_sources=mag_sources, probes=witness_probes,
-            dft_planes=planes, pec_edge_masks=_cx_pec_edge_masks,
+            dft_planes=planes,
+            pec_edge_masks=_coax_pec_edge_masks(
+                coax_pec_cells, merge_with=_cx_pec_edge_masks),
             return_state=False,
             **_flux_run_kwargs,
         )

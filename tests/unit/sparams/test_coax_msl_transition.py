@@ -799,7 +799,7 @@ def test_attempt1_pin_axis_pec_column_is_continuous_because_ground_is_solid():
     z_stub_lo = int(grid.pad_z_lo) + 2
     z_stub_hi = z_junction_idx - 1
 
-    materials, _ = stamp_coaxial_line(
+    materials, _, _ = stamp_coaxial_line(
         grid, materials, center_xy=center_xy, z_lo_index=z_stub_lo,
         z_hi_index=z_stub_hi, pin_radius=PIN_R, outer_radius=OUTER_R,
     )
@@ -1943,7 +1943,7 @@ def test_attempt2_wide_junction_cells_are_byte_identical_to_attempt2():
         z_feed = z_lo + 1
         z_hi = z_j - 1
         cxy = (float(port.position[0]), float(port.position[1]))
-        stamped, shell_inner = stamp_coaxial_line(
+        stamped, shell_inner, _ = stamp_coaxial_line(
             grid, mats, center_xy=cxy, z_lo_index=z_lo, z_hi_index=z_hi,
             pin_radius=PIN_R, outer_radius=OUTER_R,
         )
@@ -3120,7 +3120,7 @@ def _stamp_like_method(sim, grid, materials):
     z_junction_idx = int(grid.position_to_index(port.position)[2])
     z_stub_lo = int(grid.pad_z_lo) + 2
     z_stub_hi = z_junction_idx - 1
-    materials, shell_inner = stamp_coaxial_line(
+    materials, shell_inner, _ = stamp_coaxial_line(
         grid, materials, center_xy=center_xy, z_lo_index=z_stub_lo,
         z_hi_index=z_stub_hi, pin_radius=PIN_R, outer_radius=OUTER_R,
     )
