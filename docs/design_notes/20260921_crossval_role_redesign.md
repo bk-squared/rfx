@@ -91,8 +91,8 @@ PI chooses the criterion, as the v2 bar already says.
 1. Remove cv01, cv02, cv05, cv10 and what serves only them.
 2. Remove the closed-form cases that `tests/oracle/` already covers and that share no file with a
    surviving case: cavity (14), PMC symmetry plane (09), PEC sphere (16), 2-D slab guide (03). Done in
-   #1157. The WR-90 empty guide, short and slab (11) waits for the iris family: it also produces the
-   waveguide port's external-comparison records.
+   #1157. The WR-90 empty guide, short and slab (11) followed in #1165; its frozen three-solver records
+   stay under `tests/fixtures/waveguide_broad_e5/` for the waveguide lane's tests.
 3. Keep, as small analytic tests, the two closed-form comparisons that only a leaving case carried — a
    Drude slab's R(f) and a PEC cavity on a z mesh with two fine bands (#1158) — then remove the slab
    family (04, 22, 23, 26, tied together through cv04's envelope file), the graded-mesh cavity (24) and
