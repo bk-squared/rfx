@@ -42,10 +42,12 @@ def _build_cavity_sim():
 
 @pytest.mark.xfail(strict=True, reason=(
     "#1196: this gate was measured on a box WITHOUT walls (#1193: forward() "
-    "never applied PEC on boundary='pec'), where no mode sits in band and "
-    "|S11| ~ 1 everywhere. With the walls the cavity's TM110 at 4.24 GHz "
-    "appears and the port's 50 ohm resistor absorbs at resonance (correct), "
-    "but |S11| also reads 0.93 at 3 GHz, off resonance, record-length "
+    "never applied PEC on boundary='pec'), where |S11| ran 0.98 -> 0.86 over "
+    "the band and cleared 0.85. With the walls the cavity's TM110 at 4.24 GHz "
+    "appears and the port's 50 ohm resistor absorbs at resonance (correct): "
+    "the 4.125 GHz point drops 0.88 -> 0.84 at the test's 60 periods (0.86 at "
+    "960, so a longer record would pass this gate again). The 0.93 at 3 GHz, "
+    "off resonance, is the same with and without walls and record-length "
     "independent -- a lumped-port extraction question tracked in #1196. "
     "Turns green when that is settled and the gate rewritten around the mode."))
 def test_pec_cavity_s11_magnitude_near_one():
