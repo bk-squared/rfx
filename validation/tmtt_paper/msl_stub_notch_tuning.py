@@ -331,7 +331,8 @@ def realized_trace_y_hi(sim, y_trace: float) -> float:
 def _root_edges(sim, y_root: float):
     """The two Ey edges meeting at node ``y_root`` (stub x column, sheet
     plane): the one below it belongs to the trace, the one above to the
-    stub. Returns ``(below, above)`` as bools."""
+    stub. Returns ``(below, above, node)``: the two edges as bools and the
+    root's relative node index."""
     grid = sim._build_grid()
     rz = RC.realize(sim, grid)
     _, ey, _ = (np.asarray(m) for m in rz.edge_masks)
