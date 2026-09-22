@@ -1772,6 +1772,63 @@ def _self_check(fine_factor: float) -> int:
           "two runs on different frequency grids are refused, not differenced")
     check(MERGE_RECORD_LENGTH_TOL == 0.05,
           "--merge allows the rungs' record lengths to differ by 5 %, no more")
+
+    print("the solver's own log, as the container actually prints it "
+          "(run 369367263401, lines 32-33, 61-63, 70-71 verbatim):")
+    real_log = "\n".join([
+        "Timestep (s)\t\t: 0.00",
+        "Timestep method name\t: Rennings_2",
+        "FDTD timestep is: 0.00 s; Nyquist rate: 149 timesteps @20006339607.00 Hz",
+        "Excitation signal length is: 1708 timesteps (0.00s)",
+        "Max. number of timesteps: 3000 ( --> 1.76 * Excitation signal length)",
+        "[@        4s] Timestep:         1110 || Speed:  122.2 MC/s "
+        "(3.632e-03 s/TS) || Energy: ~1.21e-14 (- 0.00dB)",
+        "[@        8s] Timestep:         2146 || Speed:  112.4 MC/s "
+        "(3.948e-03 s/TS) || Energy: ~3.11e-15 (- 5.91dB)",
+        "RunFDTD: Warning: Max. number of timesteps was reached before the "
+        "end-criteria of 0.0001 was reached",
+    ])
+    setup = _gate._solver_setup(real_log)
+    check(_gate._timestep_seconds(real_log) is None,
+          "the timestep line is NOT readable: openEMS prints two decimals, and "
+          "this board's dt is ~1.7e-13 s, so the line says '0.00 s'",
+          f"{_gate._timestep_seconds(real_log)!r}")
+    check(setup["nyquist_steps"] == 149
+          and abs(setup["nyquist_f_hz"] - 20006339607.0) < 1.0,
+          "the Nyquist line gives N and f", f"{setup['nyquist_steps']} timesteps @ "
+          f"{setup['nyquist_f_hz']:.6g} Hz")
+    check(abs(setup["dt_s"] - 1.0 / (2.0 * 20006339607.0 * 149)) < 1e-20
+          and abs(setup["dt_s"] - 1.677e-13) < 1e-16,
+          "dt = 1 / (2 f N) recovers the board's own timestep",
+          f"{setup['dt_s']:.6e} s")
+    check(abs(setup["dt_s_uncertainty_rel"] - 1.0 / 149) < 1e-12,
+          "and carries the floor's own bound, one step in N",
+          f"{setup['dt_s_uncertainty_rel']:.4g} relative "
+          f"({setup['dt_s_uncertainty_rel'] * 100:.2f} %)")
+    check(setup["dt_s_uncertainty_rel"] < MERGE_RECORD_LENGTH_TOL,
+          "which is inside the 5 % the merge allows between rungs")
+    check(setup["excitation_length_steps"] == 1708
+          and setup["max_timesteps_declared"] == 3000,
+          "the excitation length and the declared cap are read too",
+          f"{setup['excitation_length_steps']} / {setup['max_timesteps_declared']}")
+    check(_gate._first_int(_gate._MAX_TIMESTEPS_RE,
+                           "RunFDTD: Warning: Max. number of timesteps was "
+                           "reached before the end-criteria of 0.0001 was reached")
+          is None,
+          "openEMS's truncation WARNING is not misread as a cap declaration -- "
+          "the colon is what separates them")
+    prog = _gate._energy_progress(real_log)
+    check(prog["final_timestep"] == 2146 and abs(prog["final_energy_db"] + 5.91) < 1e-9,
+          "the progress lines parse in the container's own form -- a space after "
+          "the minus, none before dB: '(- 5.91dB)'",
+          f"timestep {prog['final_timestep']}, {prog['final_energy_db']} dB")
+    check(prog["energy_db_trace"] == [[1110, -0.0], [2146, -5.91]],
+          "and both lines land in the trace", f"{prog['energy_db_trace']}")
+    check(_gate._timesteps_executed(real_log) == 2146
+          and setup["max_timesteps_declared"] == 3000,
+          "timesteps_executed is the largest PROGRESS count (2146), not the cap "
+          "(3000) -- openEMS prints every few seconds, so a truncated run's "
+          "record length comes from the declared cap instead")
     check(B_BOUNDARY == ["PML_8", "PML_8", "MUR", "MUR", "PEC", "MUR"], "boundary")
     check(C0 == 2.99792458e8,
           "C0 is the Sheen script's own, not the tutorial gate's 2.998e8")

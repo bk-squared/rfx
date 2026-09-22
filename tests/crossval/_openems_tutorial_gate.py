@@ -669,28 +669,58 @@ _PROGRESS_LINE_RE = re.compile(
 )
 
 
-# The solver's own timestep, from its setup banner. openEMS prints this once,
-# before it starts stepping, and it is what turns a step COUNT into a record
-# LENGTH in seconds -- the quantity that has to match across mesh rungs, since
-# dt shrinks with the cell while the step count is whatever the caller capped.
+# The solver's setup banner. These patterns are matched against the REAL
+# container log (run 369367263401, persisted as
+# stage_b_coarse_real_openems_stdout.log), not written from openEMS's source:
 #
-# ASSUMPTION, STATED: like the progress pattern above, this was written from
-# openEMS's own print rather than matched against a capture -- and unlike that
-# one it is already known to be unverified in the other direction, because the
-# progress pattern matched NOTHING in the real container log (run 369367263389,
-# final_energy_db came back None). Several phrasings are accepted for that
-# reason. If none matches, dt_s and record_length_s are None and nothing else
-# changes; the job file now persists every stage's stdout log beside the record
-# so the next run settles both patterns from the real text instead of a guess.
+#   Timestep (s)\t\t: 0.00
+#   FDTD timestep is: 0.00 s; Nyquist rate: 149 timesteps @20006339607.00 Hz
+#   Excitation signal length is: 1708 timesteps (0.00s)
+#   Max. number of timesteps: 3000 ( --> 1.76 * Excitation signal length)
+#
+# THE TIMESTEP IS NOT READABLE FROM THE LINE THAT PRINTS IT. openEMS formats it
+# with two decimals, and dt here is ~1.7e-13 s, so both lines say "0.00". The
+# exact parse is still tried first -- a build that prints enough digits is then
+# used as-is -- and when it yields nothing usable dt is DERIVED from the Nyquist
+# line instead: openEMS reports the Nyquist rate as the integer number of
+# timesteps per half period at f_max, N = floor(1 / (2 f dt)), so
+#
+#     dt = 1 / (2 f N)
+#
+# and the floor bounds the error at one step in N, i.e. 1/N relative (0.67 % at
+# N = 149). That is recorded beside the value rather than left for a reader to
+# work out, and it is well inside the 5 % the merge allows between rungs.
 _DT_LINE_RE = re.compile(
-    r"(?:FDTD\s+timestep\s+is|Used\s+timestep|timestep\s+is|Timestep)"
+    r"(?:FDTD\s+timestep\s+is|Used\s+timestep|timestep\s+is)"
     r"\s*[:=]?\s*([0-9]+\.?[0-9]*(?:[eE][+-]?[0-9]+)?)\s*(?:s\b|sec)",
+    re.IGNORECASE,
+)
+# "Nyquist rate: 149 timesteps @20006339607.00 Hz"
+_NYQUIST_RE = re.compile(
+    r"Nyquist\s+rate\s*:\s*([0-9]+)\s*timesteps?\s*@\s*"
+    r"([0-9]*\.?[0-9]+(?:[eE][+-]?[0-9]+)?)\s*Hz",
+    re.IGNORECASE,
+)
+# "Excitation signal length is: 1708 timesteps (0.00s)"
+_EXCITATION_LEN_RE = re.compile(
+    r"Excitation\s+signal\s+length\s+is\s*:\s*([0-9]+)\s*timesteps?",
+    re.IGNORECASE,
+)
+# "Max. number of timesteps: 3000 ( --> 1.76 * Excitation signal length)".
+# The colon is what keeps this from matching openEMS's truncation WARNING,
+# which reads "Max. number of timesteps was reached before ...".
+_MAX_TIMESTEPS_RE = re.compile(
+    r"Max\.?\s*number\s+of\s+timesteps\s*:\s*([0-9]+)",
     re.IGNORECASE,
 )
 
 
 def _timestep_seconds(log_text: str):
-    """The solver's own dt, in seconds, or None if its banner did not say."""
+    """The solver's own dt as PRINTED, or None when the print is unusable.
+
+    On the real container log this returns None: openEMS prints "0.00 s" for a
+    1.7e-13 s timestep. ``_solver_setup`` falls back to the Nyquist line.
+    """
     for line in log_text.splitlines():
         m = _DT_LINE_RE.search(line)
         if m is None:
@@ -702,6 +732,74 @@ def _timestep_seconds(log_text: str):
         if np.isfinite(dt) and dt > 0.0:
             return dt
     return None
+
+
+def _first_int(pattern, log_text):
+    for line in log_text.splitlines():
+        m = pattern.search(line)
+        if m is not None:
+            try:
+                return int(m.group(1))
+            except ValueError:  # pragma: no cover
+                return None
+    return None
+
+
+def _solver_setup(log_text: str) -> dict:
+    """dt and the three step counts openEMS declares before it starts stepping.
+
+    ``dt_s_source`` always says which route produced the value, because the two
+    routes have different precision: an exact print is exact, and the Nyquist
+    derivation is good to one step in N.
+    """
+    out = {
+        "dt_s": None,
+        "dt_s_source": None,
+        "dt_s_uncertainty_rel": None,
+        "nyquist_steps": None,
+        "nyquist_f_hz": None,
+        "excitation_length_steps": _first_int(_EXCITATION_LEN_RE, log_text),
+        "max_timesteps_declared": _first_int(_MAX_TIMESTEPS_RE, log_text),
+    }
+
+    exact = _timestep_seconds(log_text)
+    if exact is not None:
+        out["dt_s"] = exact
+        out["dt_s_source"] = (
+            "read directly from the solver's own timestep line, matched with "
+            + _DT_LINE_RE.pattern)
+        out["dt_s_uncertainty_rel"] = 0.0
+
+    for line in log_text.splitlines():
+        m = _NYQUIST_RE.search(line)
+        if m is None:
+            continue
+        try:
+            n_steps, f_hz = int(m.group(1)), float(m.group(2))
+        except ValueError:  # pragma: no cover
+            continue
+        if n_steps <= 0 or not np.isfinite(f_hz) or f_hz <= 0.0:
+            continue
+        out["nyquist_steps"] = n_steps
+        out["nyquist_f_hz"] = f_hz
+        if out["dt_s"] is None:
+            out["dt_s"] = 1.0 / (2.0 * f_hz * n_steps)
+            out["dt_s_uncertainty_rel"] = 1.0 / n_steps
+            out["dt_s_source"] = (
+                f"DERIVED from the solver's Nyquist line ({n_steps} timesteps @ "
+                f"{f_hz:.6g} Hz): openEMS reports N = floor(1 / (2 f dt)), so "
+                f"dt = 1 / (2 f N). The solver's own timestep line prints only two "
+                f"decimals ('0.00 s' for this board), so it cannot be read. The "
+                f"floor bounds the error at one step in N = 1/{n_steps} = "
+                f"{1.0 / n_steps:.4g} relative.")
+        break
+
+    if out["dt_s"] is None:
+        out["dt_s_source"] = (
+            "UNAVAILABLE: neither the timestep line nor the Nyquist line was "
+            "found in the captured stdout (tried " + _DT_LINE_RE.pattern
+            + " then " + _NYQUIST_RE.pattern + ") -- read the persisted log")
+    return out
 
 
 def _energy_progress(log_text: str) -> dict:
@@ -1144,17 +1242,43 @@ def run_stage(*, label: str, sim_root: str, threads: int, build,
     # A step count is not a record length: dt shrinks with the cell, so two
     # rungs capped at the same NrTS have recorded different amounts of time.
     # This is what makes them comparable, and what a merge can check.
-    dt_s = _timestep_seconds(real_log)
-    n_steps = meta.get("timesteps_executed")
-    meta["dt_s"] = dt_s
+    setup = _solver_setup(real_log)
+    meta.update(setup)
+    dt_s = setup["dt_s"]
+
+    # WHICH step count. ``timesteps_executed`` is the largest number on a
+    # PROGRESS line, and openEMS prints one only every few seconds -- on the real
+    # container log (run 369367263401) the last one says 2146 while the run was
+    # capped at 3000. For a run stopped at its cap the record really is the cap
+    # long, so the declared maximum is used and the field says so. A run that
+    # ended on its own end criterion stopped where the last progress line is, so
+    # that one is used.
+    executed = meta.get("timesteps_executed")
+    declared_cap = setup["max_timesteps_declared"]
+    if truncated and declared_cap is not None:
+        steps = declared_cap
+        basis = (f"Max. number of timesteps: {declared_cap} -- the CAP, because "
+                 f"this pass was stopped by it. The last progress line says "
+                 f"{executed!r}, which is only where openEMS last printed (it "
+                 f"prints every few seconds), not where it stopped.")
+    else:
+        steps = executed
+        basis = (f"timesteps_executed = {executed!r}, the largest count on a "
+                 f"progress line. This pass reached its end criterion, so that is "
+                 f"where it stopped."
+                 if not truncated else
+                 f"timesteps_executed = {executed!r}: this pass was truncated but "
+                 f"the solver's declared cap was not found in the log, so the last "
+                 f"progress line is all there is and the record may be LONGER than "
+                 f"this says.")
+    meta["record_length_steps"] = steps
+    meta["record_length_steps_basis"] = basis
     meta["record_length_s"] = (
-        float(n_steps) * dt_s if (dt_s is not None and n_steps is not None) else None)
+        float(steps) * dt_s if (dt_s is not None and steps is not None) else None)
     meta["record_length_source"] = (
-        "timesteps_executed x dt_s, both read from the real pass's captured "
-        "stdout; dt_s matched with " + _DT_LINE_RE.pattern
-        if dt_s is not None else
-        "UNAVAILABLE: the solver's timestep was not found in the captured "
-        "stdout with " + _DT_LINE_RE.pattern + " -- read the persisted log")
+        f"record_length_steps x dt_s. Steps: {basis} dt_s: {setup['dt_s_source']}"
+        if dt_s is not None and steps is not None else
+        f"UNAVAILABLE. Steps: {basis} dt_s: {setup['dt_s_source']}")
     if truncated:
         meta["truncation_accepted"] = True
     return record, meta
