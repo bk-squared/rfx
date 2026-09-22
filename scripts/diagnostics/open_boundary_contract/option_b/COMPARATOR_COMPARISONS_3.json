@@ -1,0 +1,35 @@
+{
+  "measurements": [
+    {
+      "name": "exact_2GHz_1_8",
+      "peak_ratio_db": -47.33125912466618,
+      "DFT_at_f0_db": -30.62638727473138,
+      "reference_peak": 0.2237108051776886,
+      "difference_peak": 0.0009618868880352238,
+      "difference_peak_time_ns": 2.1548444096964405,
+      "reference_side_m": 0.2
+    },
+    {
+      "name": "frequency_2GHz_1_8",
+      "peak_ratio_db": -68.25129399141206,
+      "DFT_at_f0_db": -57.32130837233478,
+      "reference_peak": 0.22377492487430573,
+      "difference_peak": 8.654594421386719e-05,
+      "difference_peak_time_ns": 0.9373858970562763,
+      "reference_side_m": 0.7135060500399999
+    },
+    {
+      "name": "patch_source_2GHz_1_8",
+      "peak_ratio_db": -36.02974735693668,
+      "DFT_at_f0_db": -18.816762729202217,
+      "reference_peak": 1.515371561050415,
+      "difference_peak": 0.02393490812391974,
+      "difference_peak_time_ns": 2.1548444096964405,
+      "reference_side_m": 0.2
+    }
+  ],
+  "same_cpml_trace_for_two_reference_sizes": true,
+  "reference_size_only_delta_db": -20.920034866745873,
+  "source_patch_only_delta_db": 11.301511767729501,
+  "one_difference_accounting_for_48dB": "not found"
+}

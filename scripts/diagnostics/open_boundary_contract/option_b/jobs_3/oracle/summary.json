@@ -1,0 +1,129 @@
+{
+  "lane": "oracle",
+  "status": "complete",
+  "arms": [
+    {
+      "command": [
+        "oracle_3.py",
+        "exact",
+        "--scale",
+        "0",
+        "--layers",
+        "4"
+      ],
+      "returncode": 0,
+      "wall_s": 20.945798888336867
+    },
+    {
+      "command": [
+        "oracle_3.py",
+        "exact",
+        "--scale",
+        "1",
+        "--layers",
+        "4"
+      ],
+      "returncode": 0,
+      "wall_s": 19.192707824055105
+    },
+    {
+      "command": [
+        "oracle_3.py",
+        "exact",
+        "--scale",
+        "3",
+        "--layers",
+        "4"
+      ],
+      "returncode": 0,
+      "wall_s": 19.39370225695893
+    },
+    {
+      "command": [
+        "oracle_3.py",
+        "exact",
+        "--scale",
+        "0",
+        "--layers",
+        "8"
+      ],
+      "returncode": 0,
+      "wall_s": 18.69369862601161
+    },
+    {
+      "command": [
+        "oracle_3.py",
+        "exact",
+        "--scale",
+        "1",
+        "--layers",
+        "8"
+      ],
+      "returncode": 0,
+      "wall_s": 17.79223423684016
+    },
+    {
+      "command": [
+        "oracle_3.py",
+        "exact",
+        "--scale",
+        "3",
+        "--layers",
+        "8"
+      ],
+      "returncode": 0,
+      "wall_s": 16.940977800637484
+    },
+    {
+      "command": [
+        "oracle_3.py",
+        "exact",
+        "--scale",
+        "0",
+        "--layers",
+        "16"
+      ],
+      "returncode": 0,
+      "wall_s": 17.951293317135423
+    },
+    {
+      "command": [
+        "oracle_3.py",
+        "exact",
+        "--scale",
+        "1",
+        "--layers",
+        "16"
+      ],
+      "returncode": 0,
+      "wall_s": 17.88896384369582
+    },
+    {
+      "command": [
+        "oracle_3.py",
+        "exact",
+        "--scale",
+        "3",
+        "--layers",
+        "16"
+      ],
+      "returncode": 0,
+      "wall_s": 17.890038123819977
+    },
+    {
+      "command": [
+        "oracle_3.py",
+        "patch_source",
+        "--scale",
+        "1",
+        "--layers",
+        "8"
+      ],
+      "returncode": 0,
+      "wall_s": 18.139194320887327
+    }
+  ],
+  "run_id": "369367263428",
+  "commit": "e7f7e02704fd46ea7e21f127b19fc81cb66d6148",
+  "returncode": 0
+}

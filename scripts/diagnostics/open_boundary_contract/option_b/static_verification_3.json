@@ -1,0 +1,5 @@
+{
+  "oracle_s1_N8_numeric_method_AST_identical": true,
+  "capture_only": "locals copied immediately before original assertion; no stepping edits",
+  "CPU_FDTD_steps": 0
+}

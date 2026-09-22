@@ -1,0 +1,144 @@
+{
+  "mode": "exact",
+  "f0_Hz": 2000000000.0,
+  "scale": 1.0,
+  "layers": 8,
+  "alpha_max_S_per_m": 0.05,
+  "f_alpha_formula_Hz": 898755179.2261173,
+  "record_steps": 400,
+  "reference_declared_side_m": 0.2,
+  "cpml_declared_side_m": 0.06,
+  "freq_max_Hz": 5000000000.0,
+  "edits": [],
+  "oracle_sha256": "46c9de27d76464159883dbcba632507a69301aba2b363ac03aeca457943defb9",
+  "commit": "e7f7e02704fd46ea7e21f127b19fc81cb66d6148",
+  "preflight_text": "Not invoked by committed low-level oracle.",
+  "dtype": "float32",
+  "method": "20*log10(max(abs(ts_cpml-ts_ref))/max(abs(ts_ref)))",
+  "devices": [
+    "cuda:0"
+  ],
+  "run_id": "369367263428",
+  "reference": {
+    "shape": [
+      68,
+      68,
+      68
+    ],
+    "dx_m": 0.0029979245799999998,
+    "dt_s": 5.715767664977295e-12,
+    "pads": {
+      "x_lo": 0,
+      "x_hi": 0,
+      "y_lo": 0,
+      "y_hi": 0,
+      "z_lo": 0,
+      "z_hi": 0
+    },
+    "axes": {
+      "x": {
+        "nodes": 68,
+        "interior_cells": 67,
+        "face_lo_m": 0.0,
+        "face_hi_m": 0.20086094685999997,
+        "allocated_lo_m": 0.0,
+        "allocated_hi_m": 0.20086094685999997
+      },
+      "y": {
+        "nodes": 68,
+        "interior_cells": 67,
+        "face_lo_m": 0.0,
+        "face_hi_m": 0.20086094685999997,
+        "allocated_lo_m": 0.0,
+        "allocated_hi_m": 0.20086094685999997
+      },
+      "z": {
+        "nodes": 68,
+        "interior_cells": 67,
+        "face_lo_m": 0.0,
+        "face_hi_m": 0.20086094685999997,
+        "allocated_lo_m": 0.0,
+        "allocated_hi_m": 0.20086094685999997
+      }
+    },
+    "source_ijk": [
+      34,
+      34,
+      34
+    ],
+    "probe_ijk": [
+      37,
+      34,
+      34
+    ],
+    "earliest_geometric_wall_echo_s": 6.299999999999999e-10,
+    "shortest_stencil_wall_roundtrip_steps": 63
+  },
+  "cpml": {
+    "shape": [
+      38,
+      38,
+      38
+    ],
+    "dx_m": 0.0029979245799999998,
+    "dt_s": 5.715767664977295e-12,
+    "pads": {
+      "x_lo": 8,
+      "x_hi": 8,
+      "y_lo": 8,
+      "y_hi": 8,
+      "z_lo": 8,
+      "z_hi": 8
+    },
+    "axes": {
+      "x": {
+        "nodes": 38,
+        "interior_cells": 21,
+        "face_lo_m": 0.0,
+        "face_hi_m": 0.06295641617999999,
+        "allocated_lo_m": -0.023983396639999998,
+        "allocated_hi_m": 0.08693981281999999
+      },
+      "y": {
+        "nodes": 38,
+        "interior_cells": 21,
+        "face_lo_m": 0.0,
+        "face_hi_m": 0.06295641617999999,
+        "allocated_lo_m": -0.023983396639999998,
+        "allocated_hi_m": 0.08693981281999999
+      },
+      "z": {
+        "nodes": 38,
+        "interior_cells": 21,
+        "face_lo_m": 0.0,
+        "face_hi_m": 0.06295641617999999,
+        "allocated_lo_m": -0.023983396639999998,
+        "allocated_hi_m": 0.08693981281999999
+      }
+    },
+    "source_ijk": [
+      19,
+      19,
+      19
+    ],
+    "probe_ijk": [
+      22,
+      19,
+      19
+    ],
+    "earliest_geometric_wall_echo_s": 3.3e-10,
+    "shortest_stencil_wall_roundtrip_steps": 33
+  },
+  "reflectivity_db": -47.33125912466618,
+  "peak_reference": 0.2237108051776886,
+  "peak_difference": 0.0009618868880352238,
+  "window_s": [
+    0,
+    2.2805912983259406e-09
+  ],
+  "actual_field_dtype": "float32",
+  "same_trace_DFT_at_f0_db": -30.62638727473138,
+  "status": "complete",
+  "committed_minus40_assertion": "passed",
+  "wall_s": 16.819934886414558
+}

@@ -1,0 +1,51 @@
+{
+  "lane": "frequency_4",
+  "status": "complete",
+  "arms": [
+    {
+      "command": [
+        "oracle_3.py",
+        "frequency",
+        "--f0-ghz",
+        "4",
+        "--scale",
+        "0",
+        "--layers",
+        "8"
+      ],
+      "returncode": 0,
+      "wall_s": 20.09285181798623
+    },
+    {
+      "command": [
+        "oracle_3.py",
+        "frequency",
+        "--f0-ghz",
+        "4",
+        "--scale",
+        "1",
+        "--layers",
+        "8"
+      ],
+      "returncode": 0,
+      "wall_s": 18.193084105005255
+    },
+    {
+      "command": [
+        "oracle_3.py",
+        "frequency",
+        "--f0-ghz",
+        "4",
+        "--scale",
+        "3",
+        "--layers",
+        "8"
+      ],
+      "returncode": 0,
+      "wall_s": 17.438761755998712
+    }
+  ],
+  "run_id": "369367263450",
+  "commit": "e7f7e02704fd46ea7e21f127b19fc81cb66d6148",
+  "returncode": 0
+}

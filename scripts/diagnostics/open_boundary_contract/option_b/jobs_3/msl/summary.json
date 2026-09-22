@@ -1,0 +1,17 @@
+{
+  "lane": "msl",
+  "status": "complete",
+  "arms": [
+    {
+      "command": [
+        "diagnostic_3.py",
+        "msl"
+      ],
+      "returncode": 0,
+      "wall_s": 85.54317506897496
+    }
+  ],
+  "run_id": "369367263429",
+  "commit": "e7f7e02704fd46ea7e21f127b19fc81cb66d6148",
+  "returncode": 0
+}
