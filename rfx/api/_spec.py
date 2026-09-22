@@ -1540,7 +1540,7 @@ class _MSLPortEntry:
     n_probes: int = 5
     mode: str = "eigenmode"
     eps_r_sub: float | None = None
-    terminates: tuple = ()
+    terminates: tuple | None = None
 
 
 @dataclass(frozen=True)

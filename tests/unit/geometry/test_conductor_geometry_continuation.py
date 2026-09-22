@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from rfx import Box, Cylinder, Simulation
+from rfx.geometry.port_termination import held_conductor_entries, port_termination_references
 from rfx.geometry.smoothing import continued_conductor_shape
 
 
@@ -34,10 +35,10 @@ def test_explicit_termination_resolves_registered_conductors(kind, selection):
     else:
         sim.add_port((4., 4., 1.), extent=3. if kind == "wire" else None, terminates=value)
         port = sim._ports[-1]
-    assert [(ref.collection, ref.index) for ref in port.terminates] == (
-        [("_thin_conductors", 0)] if selection == "thin" else
-        [("_geometry", 0), ("_geometry", 1)] if selection == "pair" else
-        [("_geometry", 1)])
+    expected = (sim._thin_conductors if selection == "thin" else
+                sim._geometry if selection == "pair" else [sim._geometry[1]])
+    assert len(port.terminates) == len(expected)
+    assert all(ref.entry is entry for ref, entry in zip(port.terminates, expected))
     grid = sim._build_grid()
     assert continued_conductor_shape(sim, grid, strip) is strip
     solved_ground = continued_conductor_shape(sim, grid, ground)
@@ -70,13 +71,45 @@ def test_msl_default_uses_only_its_exact_realized_signal_aperture(direction, nu)
     for shape in (ground, strip, neighbour):
         sim.add(shape, material="pec")
     sim.add_msl_port((4.25, 4.25, 1.), width=2., height=3., direction=direction)
-    assert sim._msl_ports[-1].terminates == (("_geometry", 1),)
+    grid = sim._build_realized_grid()
+    def resolved():
+        assert sim._msl_ports[-1].terminates is None
+        return [ref.entry for ref in port_termination_references(
+            sim, "_msl_ports", sim._msl_ports[-1], grid)]
+    assert len(resolved()) == 1 and resolved()[0] is sim._geometry[1]
     sim.add_msl_port((4.25, 4.25, 1.), width=2., height=3.5, direction=direction)
-    assert sim._msl_ports[-1].terminates == (("_geometry", 1),)
+    assert len(resolved()) == 1 and resolved()[0] is sim._geometry[1]
     sim.add_msl_port((4.25, 4.25, 1.), width=2., height=4., direction=direction)
+    assert resolved() == []
+    sim.add_msl_port((4.25, 4.25, 1.), width=2., height=3., direction=direction, terminates=())
     assert sim._msl_ports[-1].terminates == ()
-    sim.add_msl_port((4.25, 4.25, 1.), width=2., height=3., direction=direction, terminates=[])
-    assert sim._msl_ports[-1].terminates == ()
+
+
+@pytest.mark.parametrize("thin", (False, True))
+def test_termination_references_follow_entries_through_deepcopy_and_removal(thin):
+    import copy
+    sim = _sim()
+    strip = Box((0., 3., 4.), (8., 5., 4.))
+    for _ in range(2):
+        if thin:
+            sim.add_thin_conductor(strip, sigma_bulk=5.8e7, thickness=.01)
+        else:
+            sim.add(strip, material="pec")
+    sim.add_port((4., 4., 1.), extent=3., terminates=strip)
+    copied = copy.deepcopy(sim)
+    collection = "_thin_conductors" if thin else "_geometry"
+    entries = getattr(copied, collection)
+    grid = copied._build_realized_grid()
+    held = held_conductor_entries(copied, grid)
+    assert len(held) == 1 and held[0] is entries[0]
+    assert held[0] is not getattr(sim, collection)[0]
+    sheets = []
+    copied._assemble_materials(grid, pec_sheets=sheets, pec_wires=[])
+    assert not np.asarray(sheets[0].footprint)[:2].any()
+    assert np.asarray(sheets[1].footprint)[:2].sum() == 6
+    # The remaining equal declaration is a different entry and is not held.
+    setattr(copied, collection, entries[1:])
+    assert held_conductor_entries(copied, grid) == []
 
 
 @pytest.mark.parametrize("kind", ("wire", "lumped", "coax"))

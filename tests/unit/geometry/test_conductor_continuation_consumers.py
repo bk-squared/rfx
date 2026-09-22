@@ -100,6 +100,71 @@ def test_refused_sibling_does_not_refuse_the_two_bridged_sheets():
     assert "plane z=9" in entries[2].error  # node index: two pad cells + z=7
 
 
+@pytest.mark.parametrize("extra_conductor", (False, True))
+@pytest.mark.parametrize("name_refused", (False, True))
+def test_fidelity_audit_keeps_the_named_strip_after_refused_entry_removal(
+        monkeypatch, extra_conductor, name_refused):
+    from rfx.geometry.port_termination import held_conductor_entries
+    sim = _sim()
+    refused = Box((.1, .1, 7.), (.2, .2, 7.))
+    ground = Box((0., 0., 0.), (8., 8., 0.))
+    strip = Box((0., 3., 3.), (8., 5., 3.))
+    for shape in (refused, ground, strip):
+        sim.add(shape, material="pec")
+    if extra_conductor:
+        sim.add(Box((0., 6., 5.), (8., 7., 5.)), material="pec")
+    sim.add_port((4., 4., 0.), extent=3.,
+                 terminates=[strip, refused] if name_refused else strip)
+    original = Simulation._assemble_materials
+    audits = []
+    def capture(audit, grid, *args, **kwargs):
+        result = original(audit, grid, *args, **kwargs)
+        if audit is not sim:
+            audits.append(audit)
+            held = held_conductor_entries(audit, grid)
+            assert len(held) == 1 and held[0] is sim._geometry[2]
+            sheets = kwargs["pec_sheets"]
+            assert int(np.asarray(sheets[0].footprint).sum()) == 169
+            assert int(np.asarray(sheets[1].footprint).sum()) == 27
+            assert not np.asarray(sheets[1].footprint)[:2].any()
+            assert not np.asarray(sheets[1].footprint)[-2:].any()
+        return result
+    monkeypatch.setattr(Simulation, "_assemble_materials", capture)
+    report = sim.fidelity_report(print_report=False)
+    assert len(audits) == 1
+    assert any(f["kind"] == "refused-by-contract" for f in _row(report, 0)["findings"])
+    assert _row(report, 1)["continued_faces"] == ["x-lo", "x-hi", "y-lo", "y-hi"]
+    assert _row(report, 2)["continued_faces"] == []
+
+
+@pytest.mark.parametrize("port_first", (False, True))
+@pytest.mark.parametrize("explicit_empty", (False, True))
+def test_msl_default_finds_a_strip_added_after_the_port(port_first, explicit_empty):
+    from types import SimpleNamespace
+    sim = _sim()
+    def add_port():
+        sim.add_msl_port((2., 4., 0.), width=2., height=3.,
+                         terminates=() if explicit_empty else None)
+    if port_first:
+        add_port()
+    sim.add_material("substrate", eps_r=4.)
+    sim.add(Box((0., 0., 0.), (8., 8., 3.)), material="substrate")
+    sim.add(Box((0., 0., 0.), (8., 8., 0.)), material="pec")
+    sim.add(Box((0., 3., 3.), (8., 5., 3.)), material="pec")
+    if not port_first:
+        add_port()
+    sheets = []
+    sim._assemble_materials(sim._build_grid(), pec_sheets=sheets, pec_wires=[])
+    assert int(np.asarray(sheets[0].footprint).sum()) == 169
+    assert int(np.asarray(sheets[1].footprint).sum()) == (39 if explicit_empty else 27)
+    assert int(np.asarray(sheets[1].footprint)[:2].sum()) == (6 if explicit_empty else 0)
+    assert int(np.asarray(sheets[1].footprint)[-2:].sum()) == (6 if explicit_empty else 0)
+    findings = []
+    sim._validate_cfg_port_conductor_continues(
+        SimpleNamespace(warn=lambda issue, **kwargs: findings.append(issue)))
+    assert len(findings) == (1 if explicit_empty else 0)
+
+
 def test_smoothed_pec_branch_reports_unsupported_face():
     from rfx.geometry.smoothing import smoothed_shape_pairs
     sim = _sim()

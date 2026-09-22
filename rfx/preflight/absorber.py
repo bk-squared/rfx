@@ -1023,14 +1023,13 @@ def _validate_cfg_port_conductor_continues(self, _w) -> None:
         return
     from rfx.geometry.port_termination import (
         conductor_entries, lattice_intersects_aperture, port_terminal_points,
-        registered_ports)
+        port_termination_references, registered_ports)
     from rfx.geometry.rasterize_grid import (
         coords_from_nonuniform_grid, coords_from_uniform_grid)
     from rfx.geometry.smoothing import (
         _conductor_reached_faces, _declared_conductor_lattice)
 
-    ports = [(collection, index, port) for collection, index, port in registered_ports(self)
-             if not port.terminates]
+    ports = list(registered_ports(self))
     if not ports:
         return
     try:
@@ -1043,6 +1042,8 @@ def _validate_cfg_port_conductor_continues(self, _w) -> None:
     if any(is_tracer(line) for line in nodes):
         return
     for collection, index, port in ports:
+        if port_termination_references(self, collection, port, grid):
+            continue
         terminals = port_terminal_points(collection, port, grid, nodes)
         contacts = []
         for ref, entry in conductor_entries(self):
@@ -1056,11 +1057,13 @@ def _validate_cfg_port_conductor_continues(self, _w) -> None:
             faces = _conductor_reached_faces(self, grid, entry.shape, lattice, nodes)
             if not faces:
                 continue
-            name = getattr(entry, "material_name", f"thin_conductor[{ref.index}]")
+            entry_index = next(i for i, candidate in enumerate(getattr(self, ref.collection))
+                               if candidate is entry)
+            name = getattr(entry, "material_name", f"thin_conductor[{entry_index}]")
             label = "entry" if ref.collection == "_geometry" else "thin conductor"
             face_text = ", ".join("xyz"[a]+"-"+side for a in range(3)
                                   for side in ("lo", "hi") if (a, side) in faces)
-            contacts.append(f"'{name}' ({label} {ref.index}) under its terminal "
+            contacts.append(f"'{name}' ({label} {entry_index}) under its terminal "
                             f"continues into the {face_text} absorber")
         if contacts:
             _w.warn(

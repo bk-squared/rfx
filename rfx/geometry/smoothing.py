@@ -677,7 +677,7 @@ def continued_conductor_shape(sim, grid, shape, *, entry=None, unextendable=None
         entry = next((candidate for _, candidate in conductor_entries(sim)
                       if candidate.shape is shape), None)
     held = (_conductor_reached_faces(sim, grid, shape, lattice, nodes)
-            if any(other is entry for other in held_conductor_entries(sim)) else set())
+            if any(other is entry for other in held_conductor_entries(sim, grid)) else set())
     pairs, findings = extend_shapes_into_cpml_pad(
         [(shape, 1.0)], nodes, pads,
         declared_domain=sim._unresolved_domain, occupied_faces=occupied,

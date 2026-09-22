@@ -2046,12 +2046,8 @@ class Simulation(
             self._msl_auto_probe_spacing[name] = float(_eps_eff_hj)
 
         from rfx.geometry.port_termination import resolve_terminates
-        terminated = resolve_terminates(
-            self, terminates, port=f"add_msl_port at {position}")
-        if terminates is None:
-            from rfx.geometry.port_termination import default_msl_terminates
-            terminated = default_msl_terminates(
-                self, position=position, width=width, height=height, direction=direction)
+        terminated = (None if terminates is None else resolve_terminates(
+            self, terminates, port=f"add_msl_port at {position}"))
 
         self._msl_ports.append(_MSLPortEntry(
             name=name,

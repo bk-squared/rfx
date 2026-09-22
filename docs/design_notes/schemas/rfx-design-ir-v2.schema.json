@@ -464,7 +464,12 @@
               "eps_r_sub"
             ],
             "properties": {
-              "terminates": {"$ref": "#/$defs/terminated_conductors"},
+              "terminates": {
+                "anyOf": [
+                  {"$ref": "#/$defs/terminated_conductors"},
+                  {"type": "null"}
+                ]
+              },
               "name": {
                 "type": "string",
                 "minLength": 1

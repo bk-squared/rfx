@@ -1,22 +1,24 @@
 """Declared port terminations and exact contact diagnostics."""
+from dataclasses import dataclass
 from numbers import Integral
 from types import SimpleNamespace
-from typing import NamedTuple
 
 import numpy as np
 
 
-class ConductorReference(NamedTuple):
+@dataclass(frozen=True, eq=False)
+class ConductorReference:
+    """A registered conductor, independent of its current list position."""
     collection: str
-    index: int
+    entry: object
 
 
 def conductor_entries(sim):
-    for index, entry in enumerate(sim._geometry):
+    for entry in sim._geometry:
         if sim._resolve_material(entry.material_name).sigma >= sim._PEC_SIGMA_THRESHOLD:
-            yield ConductorReference("_geometry", index), entry
-    for index, entry in enumerate(sim._thin_conductors):
-        yield ConductorReference("_thin_conductors", index), entry
+            yield ConductorReference("_geometry", entry), entry
+    for entry in sim._thin_conductors:
+        yield ConductorReference("_thin_conductors", entry), entry
 
 
 def resolve_terminates(sim, value, *, port):
@@ -25,11 +27,15 @@ def resolve_terminates(sim, value, *, port):
         return ()
     candidates = list(conductor_entries(sim))
     resolved = []
-    for item in value if isinstance(value, list) else [value]:
+    for item in value if isinstance(value, (list, tuple)) else [value]:
         reference = None
-        if isinstance(item, Integral) and not isinstance(item, bool):
+        if isinstance(item, ConductorReference):
+            reference = next((ref for ref, entry in candidates
+                              if ref.collection == item.collection and entry is item.entry), None)
+        elif isinstance(item, Integral) and not isinstance(item, bool):
             reference = next((ref for ref, _ in candidates
-                              if ref.collection == "_geometry" and ref.index == item), None)
+                              if ref.collection == "_geometry" and 0 <= item < len(sim._geometry)
+                              and ref.entry is sim._geometry[item]), None)
         else:
             reference = next((ref for ref, entry in candidates if entry.shape is item), None)
             if reference is None:
@@ -43,7 +49,7 @@ def resolve_terminates(sim, value, *, port):
                         break
         if reference is None:
             raise ValueError(f"{port}: unknown conductor in terminates={item!r}")
-        if reference not in resolved:
+        if not any(ref.entry is reference.entry for ref in resolved):
             resolved.append(reference)
     return tuple(resolved)
 
@@ -56,10 +62,23 @@ def registered_ports(sim):
             yield collection, index, port
 
 
-def held_conductor_entries(sim):
-    references = {ref for _, _, port in registered_ports(sim)
-                  for ref in port.terminates}
-    return [getattr(sim, ref.collection)[ref.index] for ref in references]
+def port_termination_references(sim, collection, port, grid):
+    """Resolve an MSL default on this realization; retain explicit names."""
+    if collection == "_msl_ports" and port.terminates is None:
+        return default_msl_terminates(
+            sim, grid, position=port.position, width=port.width,
+            height=port.height, direction=port.direction)
+    return tuple(ref for ref in port.terminates
+                 if any(entry is ref.entry for entry in getattr(sim, ref.collection)))
+
+
+def held_conductor_entries(sim, grid):
+    entries = []
+    for collection, _, port in registered_ports(sim):
+        for ref in port_termination_references(sim, collection, port, grid):
+            if not any(entry is ref.entry for entry in entries):
+                entries.append(ref.entry)
+    return entries
 
 
 def lattice_intersects_aperture(lattice, nodes, lower, upper):
@@ -96,7 +115,7 @@ def lattice_intersects_aperture(lattice, nodes, lower, upper):
     return False
 
 
-def default_msl_terminates(sim, *, position, width, height, direction):
+def default_msl_terminates(sim, grid, *, position, width, height, direction):
     """Name conductors exactly incident to the realized MSL signal aperture."""
     candidates = list(conductor_entries(sim))
     if not candidates:
@@ -106,7 +125,6 @@ def default_msl_terminates(sim, *, position, width, height, direction):
     from rfx.geometry.smoothing import _declared_conductor_lattice
     from rfx.sources.msl_port import msl_cross_section_span, msl_port_from_entry
 
-    grid = sim._build_realized_grid()
     coords = (coords_from_nonuniform_grid(grid) if hasattr(grid, "dx_arr")
               else coords_from_uniform_grid(grid))
     nodes = (coords.x, coords.y, coords.z)

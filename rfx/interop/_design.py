@@ -504,7 +504,6 @@ _SOFT_SOURCE_FIELDS: dict[str, _F] = {
 }
 
 def _termination_references(value, what):
-    from rfx.geometry.port_termination import ConductorReference
     if not isinstance(value, (list, tuple)):
         raise _refuse(f"{what}: terminated conductors must be a list")
     refs = []
@@ -515,7 +514,7 @@ def _termination_references(value, what):
         index = _integer(item[1], what=what)
         if index < 0:
             raise _refuse(f"{what}: negative conductor index {index}")
-        refs.append(ConductorReference(item[0], index))
+        refs.append((item[0], index))
     return refs
 
 
@@ -526,13 +525,29 @@ _TERMINATES = _F(
 
 
 def _termination_inputs(sim, references):
+    from rfx.geometry.port_termination import ConductorReference
+    if references is None:
+        return None
     values = []
     for collection, index in references:
         entries = getattr(sim, collection)
         if index >= len(entries):
             raise _refuse(f"terminates: unknown {collection} entry {index}")
-        values.append(index if collection == "_geometry" else entries[index].shape)
+        values.append(ConductorReference(collection, entries[index]))
     return values
+
+
+def _ports_with_termination_indices(sim, ports):
+    """Serialize current positions, preserving a lazy MSL default as null."""
+    for port in ports:
+        references = None if port.terminates is None else []
+        for ref in port.terminates or ():
+            index = next((i for i, entry in enumerate(getattr(sim, ref.collection))
+                          if entry is ref.entry), None)
+            if index is not None:
+                references.append((ref.collection, index))
+        yield (dataclasses.replace(port, terminates=references)
+               if dataclasses.is_dataclass(port) else port._replace(terminates=references))
 
 
 _LUMPED_PORT_FIELDS: dict[str, _F] = {
@@ -659,7 +674,7 @@ _FLOQUET_PORT_FIELDS: dict[str, _F] = {
 }
 
 _MSL_PORT_FIELDS: dict[str, _F] = {
-    "terminates": _TERMINATES,
+    "terminates": _opt(_TERMINATES),
     "name": _STR,
     "position": _vec(3),
     "width": _NUM,
@@ -1116,6 +1131,7 @@ def _dump_ports(sim: Any) -> tuple[list[dict], list[dict]]:
                     f"field, so the entry was not built through the public "
                     f"API and cannot be rebuilt through it"
                 )
+            entry = next(_ports_with_termination_indices(sim, [entry]))
             lumped.append(
                 {
                     name: field.dump(getattr(entry, name), f"{what}.{name}")
@@ -1460,7 +1476,7 @@ def design_to_dict(sim: Any) -> dict[str, Any]:
             "soft_sources": soft_sources,
             "lumped_ports": lumped_ports,
             "msl_ports": _dump_list(
-                _msl_ports_with_resolved_offsets(sim),
+                _ports_with_termination_indices(sim, _msl_ports_with_resolved_offsets(sim)),
                 _MSL_PORT_FIELDS,
                 _MSLPortEntry,
                 what="_msl_ports",
@@ -1472,7 +1488,7 @@ def design_to_dict(sim: Any) -> dict[str, Any]:
                 what="_waveguide_ports",
             ),
             "coaxial_ports": _dump_list(
-                sim._coaxial_ports,
+                _ports_with_termination_indices(sim, sim._coaxial_ports),
                 _COAXIAL_PORT_FIELDS,
                 CoaxialPort,
                 what="_coaxial_ports",
