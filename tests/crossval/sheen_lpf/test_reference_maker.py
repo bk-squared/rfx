@@ -424,16 +424,19 @@ def test_the_declared_design_is_still_the_library_defaults():
 
 def _part(tmp_path, name, rung, *, run_id, s21_bin17=0.5, build="bld-1",
           commit="cafe1234", note="made with --real-end-criteria 0.0001: ...",
-          record_length_s=7.4e-8, witness=None):
+          record_length_s=7.4e-8, witness=None, s11_delta=0.0,
+          notch_ghz=3.672242, stage_a_steps=14586):
     """A minimal record shaped like one rung job's output."""
+    # Four bins, two of them inside Stage A's own 2-7 GHz band. ``s21_bin17``
+    # perturbs an IN-BAND bin, which is what the tolerance is read over.
     stage_a = {
-        "freqs_ghz": [1.0, 2.0, 3.0],
-        "s11_mag": [0.1, 0.2, 0.3],
-        "s11_deg": [0.0, 1.0, 2.0],
-        "s21_mag": [0.9, s21_bin17, 0.8],
-        "s21_deg": [0.0, 1.0, 2.0],
-        "energy_sum": [0.82, 0.29, 0.73],
-        "notch": {"refined_f_ghz": 3.6711, "depth_db": -53.16},
+        "freqs_ghz": [1.0, 3.0, 5.0, 8.0],
+        "s11_mag": [0.1, 0.2, 0.3 + s11_delta, 0.4],
+        "s11_deg": [0.0, 1.0, 2.0, 3.0],
+        "s21_mag": [0.9, s21_bin17, 0.8, 0.7],
+        "s21_deg": [0.0, 1.0, 2.0, 3.0],
+        "energy_sum": [0.82, 0.29, 0.73, 0.65],
+        "notch": {"refined_f_ghz": notch_ghz, "depth_db": -53.16},
     }
     rec = {
         "meta": {
@@ -443,7 +446,8 @@ def _part(tmp_path, name, rung, *, run_id, s21_bin17=0.5, build="bld-1",
             "rfx_commit": commit,
             "stop_criteria_note": note,
             "rungs_in_this_record": [rung],
-            "stages": {"stage_a": {"stage": "stage_a"},
+            "stages": {"stage_a": {"stage": "stage_a",
+                                   "timesteps_executed": stage_a_steps},
                        m_rung(rung): {"stage": m_rung(rung),
                                       "record_length_s": record_length_s}},
         },
@@ -494,7 +498,7 @@ def test_merge_combines_three_rung_parts(tmp_path):
 @pytest.mark.parametrize("what,build,bin17,drop,dup", [
     ("a rung missing", "bld-1", 0.5, True, False),
     ("a rung twice", "bld-1", 0.5, False, True),
-    ("stage_a differs by one bin", "bld-1", 0.4242, False, False),
+    ("stage_a differs far beyond the run-to-run spread", "bld-1", 0.4242, False, False),
     ("a different openEMS build", "bld-2", 0.5, False, False),
 ])
 def test_merge_refuses_what_it_cannot_reconcile(tmp_path, what, build, bin17,
@@ -1009,3 +1013,112 @@ def test_merge_carries_each_rungs_witness(tmp_path):
     r2 = _run("--merge", *[str(p) for p in plain], "--output", str(out2))
     assert r2.returncode == 0, r2.stderr
     assert json.loads(out2.read_text())["meta"]["record_length_witness"] is None
+
+
+# ---------------------------------------------------------------------------
+# Stage A is reproducible, not bit-identical
+# ---------------------------------------------------------------------------
+def test_stage_a_parts_that_differ_by_the_run_to_run_spread_still_merge(tmp_path):
+    """openEMS on 8 threads ends the tutorial at a different step each job.
+
+    Runs 369367263406/407/408 ended at 14586 / 14688 / 12342 steps and their
+    Stage A spectra differ by ~1e-4 in the band. A merge that demanded bit
+    equality refused them; this one measures the spread and reports it.
+    """
+    parts = [
+        _part(tmp_path, "coarse.json", "coarse", run_id="a",
+              stage_a_steps=14586, notch_ghz=3.672242),
+        _part(tmp_path, "mid.json", "mid", run_id="b", s21_bin17=0.5 + 1.0e-4,
+              s11_delta=2.6e-6, stage_a_steps=14688, notch_ghz=3.672241),
+        _part(tmp_path, "fine.json", "fine", run_id="c", s21_bin17=0.5 + 1.6e-4,
+              s11_delta=1.3e-4, stage_a_steps=12342, notch_ghz=3.672277),
+    ]
+    out = tmp_path / "full.json"
+    result = _run("--merge", *[str(p) for p in parts], "--output", str(out))
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    r = json.loads(out.read_text())["meta"]["stage_a_reproducibility"]
+    assert r["band_ghz"] == [2.0, 7.0]
+    assert r["magnitude_tol"] == 1e-3
+    assert r["notch_tol_pct"] == 0.01
+    assert r["phase_compared"] is False, "phase must not enter the check"
+    assert r["max_abs_delta_s21_mag"] == pytest.approx(1.6e-4, rel=1e-6)
+    assert r["max_abs_delta_s11_mag"] == pytest.approx(1.3e-4, rel=1e-6)
+    assert r["notch_spread_pct"] == pytest.approx(
+        (3.672277 - 3.672241) / 3.672241 * 100.0, rel=1e-6)
+    assert [p["stage_a_timesteps_executed"] for p in r["per_part"]] == \
+        [14586, 14688, 12342]
+    assert [p["run_id"] for p in r["per_part"]] == ["a", "b", "c"]
+    assert "8 threads" in r["what_it_is"] and "Reported" in r["what_it_is"]
+    # Stage A's arrays still come from the first part, untouched.
+    merged_a = json.loads(out.read_text())["stage_a"]
+    first_a = json.loads(parts[0].read_text())["stage_a"]
+    assert merged_a == first_a
+
+
+def test_stage_a_parts_that_differ_far_beyond_it_are_refused(tmp_path):
+    """1e-2 is not a thread-scheduling difference."""
+    parts = [
+        _part(tmp_path, "coarse.json", "coarse", run_id="a"),
+        _part(tmp_path, "mid.json", "mid", run_id="b", s21_bin17=0.5 + 1.0e-2),
+        _part(tmp_path, "fine.json", "fine", run_id="c"),
+    ]
+    out = tmp_path / "full.json"
+    result = _run("--merge", *[str(p) for p in parts], "--output", str(out))
+    assert result.returncode == 3
+    assert "Stage A |S21| differ by 0.01" in result.stderr
+    assert "2-7 GHz" in result.stderr
+    assert not out.exists()
+
+    # The same size of difference in |S11| is refused too.
+    parts[1] = _part(tmp_path, "mid.json", "mid", run_id="b", s11_delta=1.0e-2)
+    r2 = _run("--merge", *[str(p) for p in parts], "--output", str(out))
+    assert r2.returncode == 3
+    assert "Stage A |S11| differ by 0.01" in r2.stderr
+
+
+def test_a_notch_that_moved_more_than_the_spread_is_refused(tmp_path):
+    """The magnitudes can agree while the tutorial itself has moved."""
+    parts = [
+        _part(tmp_path, "coarse.json", "coarse", run_id="a", notch_ghz=3.672242),
+        _part(tmp_path, "mid.json", "mid", run_id="b", notch_ghz=3.672241),
+        # 0.1 %: ten times the tolerance, a hundred times the measured spread.
+        _part(tmp_path, "fine.json", "fine", run_id="c", notch_ghz=3.675914),
+    ]
+    out = tmp_path / "full.json"
+    result = _run("--merge", *[str(p) for p in parts], "--output", str(out))
+    assert result.returncode == 3
+    assert "Stage A notches span" in result.stderr
+    assert not out.exists()
+
+
+def test_phase_is_not_part_of_the_stage_a_check(tmp_path):
+    """At the null the runs sit either side of a wrap: 358.6 degrees apart.
+
+    That is a wrap, not a disagreement, so a part whose Stage A phase is wildly
+    different but whose magnitudes agree still merges.
+    """
+    parts = [_part(tmp_path, f"{r}.json", r, run_id=r)
+             for r in ("coarse", "mid", "fine")]
+    d = json.loads(parts[1].read_text())
+    d["stage_a"]["s21_deg"] = [x + 358.6 for x in d["stage_a"]["s21_deg"]]
+    d["stage_a"]["s11_deg"] = [x - 179.0 for x in d["stage_a"]["s11_deg"]]
+    parts[1].write_text(json.dumps(d, indent=1))
+    out = tmp_path / "full.json"
+    result = _run("--merge", *[str(p) for p in parts], "--output", str(out))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(out.read_text())["meta"]["stage_a_reproducibility"][
+        "phase_compared"] is False
+
+
+def test_a_different_frequency_grid_is_still_refused(tmp_path):
+    """A tolerance on magnitudes is not a licence to compare different grids."""
+    parts = [_part(tmp_path, f"{r}.json", r, run_id=r)
+             for r in ("coarse", "mid", "fine")]
+    d = json.loads(parts[2].read_text())
+    d["stage_a"]["freqs_ghz"] = [1.0, 3.0, 5.5, 8.0]
+    parts[2].write_text(json.dumps(d, indent=1))
+    out = tmp_path / "full.json"
+    result = _run("--merge", *[str(p) for p in parts], "--output", str(out))
+    assert result.returncode == 3
+    assert "same grid" in result.stderr

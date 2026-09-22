@@ -97,6 +97,7 @@ run: |-
   # dies here costs a relaunch; one that finishes with no commit costs the
   # evidence chain.
   sha=$(git -C "$SRC" rev-parse HEAD)
+  export RFX_COMMIT="$sha"
   short=$(git -C "$SRC" rev-parse --short HEAD)
   case "$sha" in
     "$EXPECT"*) echo "provenance: $sha (matches EXPECT=$EXPECT)" ;;
