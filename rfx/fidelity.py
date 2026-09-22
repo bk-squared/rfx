@@ -114,7 +114,7 @@ def _entity_mask(entry, sim, grid, nonuniform, *, pec_volume: bool = False):
     from rfx.geometry.rasterize_grid import interior_lattice_mask
     shape = entry.shape
     if pec_volume or hasattr(entry, "sigma_bulk"):
-        shape = continued_conductor_shape(sim, grid, shape)
+        shape = continued_conductor_shape(sim, grid, shape, entry=entry)
     if pec_volume:
         from rfx.geometry.rasterize_grid import (
             cell_centres_from_nodes, pec_volume_cell_mask)
@@ -197,7 +197,7 @@ def _pec_sheet_spec(sim, entry, kind_src, grid, nonuniform):
         from dataclasses import replace
         from rfx.geometry.smoothing import continued_conductor_shape
         sheet = sheet_spec_from_shape(
-            continued_conductor_shape(sim, grid, entry.shape), coords, sizes, normal_axis=normal,
+            continued_conductor_shape(sim, grid, entry.shape, entry=entry), coords, sizes, normal_axis=normal,
             name=getattr(entry, "material_name", kind_src),
             refuse_thick=(kind_src == "thin_conductor"))
         return replace(sheet, footprint=jnp.asarray(
@@ -592,7 +592,7 @@ def fidelity_report(sim, print_report: bool = True):
             from rfx.geometry.csg import declared_bounds
             from rfx.geometry.smoothing import continued_conductor_shape
             declared = declared_bounds(entry.shape)
-            solved = declared_bounds(continued_conductor_shape(sim, grid, entry.shape))
+            solved = declared_bounds(continued_conductor_shape(sim, grid, entry.shape, entry=entry))
             if declared is not None and solved is not None:
                 item["continued_faces"] = [
                     f"{'xyz'[a]}-{'hi' if side else 'lo'}"

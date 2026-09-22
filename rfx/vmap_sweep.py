@@ -255,7 +255,7 @@ def _apply_batched_thin_conductors(
     """
     from dataclasses import replace
     from rfx.geometry.smoothing import continued_conductor_shape
-    conductors = tuple(replace(tc, shape=continued_conductor_shape(sim, grid, tc.shape))
+    conductors = tuple(replace(tc, shape=continued_conductor_shape(sim, grid, tc.shape, entry=tc))
                        for tc in sim._thin_conductors)
     if not conductors:
         return eps_r, sigma, mu_r

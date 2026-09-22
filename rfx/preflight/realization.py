@@ -479,7 +479,7 @@ class _CampaignStaticsContext:
             label = f"geometry[{i}]"
             lo, hi = _bounds(entry.shape)
             try:
-                solved = continued_conductor_shape(sim, self.grid, entry.shape)
+                solved = continued_conductor_shape(sim, self.grid, entry.shape, entry=entry)
                 cells, sheet, wire = classify_pec_entry(
                     solved,
                     self.coords, self.centres, self.cell_sizes,
@@ -521,7 +521,7 @@ class _CampaignStaticsContext:
                     lo=lo, hi=hi))
                 continue
             try:
-                solved = continued_conductor_shape(sim, self.grid, tc.shape)
+                solved = continued_conductor_shape(sim, self.grid, tc.shape, entry=tc)
                 sheet = sheet_spec_from_shape(
                     solved,
                     self.coords, self.cell_sizes, name=label,

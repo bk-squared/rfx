@@ -633,7 +633,7 @@ def _conductor_reached_faces(sim, grid, shape, lattice, nodes):
     return reached
 
 
-def continued_conductor_shape(sim, grid, shape, *, unextendable=None):
+def continued_conductor_shape(sim, grid, shape, *, entry=None, unextendable=None):
     """Return the conducting geometry solved through absorbing faces (C2/C5).
 
     Reached declared faces and occupied outermost interior lattice layers
@@ -666,9 +666,12 @@ def continued_conductor_shape(sim, grid, shape, *, unextendable=None):
             for a in "xyz"]
     lattice = _declared_conductor_lattice(sim, grid, shape, coords)
     occupied = _occupied_conductor_faces(lattice, grid)
-    from rfx.geometry.port_termination import held_conductor_shapes
+    from rfx.geometry.port_termination import conductor_entries, held_conductor_entries
+    if entry is None:
+        entry = next((candidate for _, candidate in conductor_entries(sim)
+                      if candidate.shape is shape), None)
     held = (_conductor_reached_faces(sim, grid, shape, lattice, nodes)
-            if any(other is shape for other in held_conductor_shapes(sim)) else set())
+            if any(other is entry for other in held_conductor_entries(sim)) else set())
     pairs, findings = extend_shapes_into_cpml_pad(
         [(shape, 1.0)], nodes, pads,
         declared_domain=sim._unresolved_domain, occupied_faces=occupied,
@@ -751,7 +754,7 @@ def smoothed_shape_pairs(sim, grid):
         # Both lanes realize conductors through the same geometry helper.
         if float(getattr(mat, "sigma", 0.0)) >= pec_sigma:
             unext = []
-            solved = continued_conductor_shape(sim, grid, shape, unextendable=unext)
+            solved = continued_conductor_shape(sim, grid, shape, entry=entry, unextendable=unext)
             out.append((solved, eps_r))
             unextendable.extend(u._replace(entry_index=idx,
                                           material_name=entry.material_name)
@@ -774,7 +777,7 @@ def smoothed_shape_pairs(sim, grid):
     # report even when the simulation contains no ordinary geometry entries.
     for idx, tc in enumerate(getattr(sim, "_thin_conductors", ())):
         unext = []
-        continued_conductor_shape(sim, grid, tc.shape, unextendable=unext)
+        continued_conductor_shape(sim, grid, tc.shape, entry=tc, unextendable=unext)
         unextendable.extend(u._replace(entry_index=idx,
                                       material_name=f"thin_conductor[{idx}]",
                                       collection="thin_conductor") for u in unext)

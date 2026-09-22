@@ -299,7 +299,7 @@ class _CompileMixin:
 
             if mat.sigma >= self._PEC_SIGMA_THRESHOLD:
                 solved_shape = continued_conductor_shape(
-                    self, grid, entry.shape, unextendable=conductor_findings)
+                    self, grid, entry.shape, entry=entry, unextendable=conductor_findings)
                 # True PEC (#931): volume cells into pec_mask (centre
                 # sampled, §1.1); a zero-thickness Box is a sheet; a
                 # sub-cell PolylineWire is a filament. eps/sigma stay at
@@ -422,7 +422,7 @@ class _CompileMixin:
         if include_thin_conductors:
             for tc in self._thin_conductors:
                 tc = replace(tc, shape=continued_conductor_shape(
-                    self, grid, tc.shape, unextendable=conductor_findings))
+                    self, grid, tc.shape, entry=tc, unextendable=conductor_findings))
                 materials, pec_mask = apply_thin_conductor(
                     grid, tc, materials, pec_mask=pec_mask,
                     sheet_specs=sheet_specs, sheets=_pec_sheets)

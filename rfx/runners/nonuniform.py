@@ -68,7 +68,7 @@ def assemble_interface_eps_nu(sim, grid, materials):
         x[-1] = x[-2]
     from rfx.geometry.smoothing import continued_conductor_shape
     geometry = [replace(entry, shape=continued_conductor_shape(
-                    sim, grid, entry.shape, unextendable=[]))
+                    sim, grid, entry.shape, entry=entry, unextendable=[]))
                 if sim._resolve_material(entry.material_name).sigma >= sim._PEC_SIGMA_THRESHOLD
                 else entry for entry in sim._geometry]
     cell, debye, lorentz, pec, *_ = rasterize_geometry(
@@ -182,7 +182,7 @@ def assemble_materials_nu(
     from rfx.geometry.smoothing import continued_conductor_shape, warn_unextendable_shapes
     conductor_findings = []
     geometry = [replace(entry, shape=continued_conductor_shape(
-                    sim, grid, entry.shape, unextendable=conductor_findings))
+                    sim, grid, entry.shape, entry=entry, unextendable=conductor_findings))
                 if sim._resolve_material(entry.material_name).sigma >= sim._PEC_SIGMA_THRESHOLD
                 else entry for entry in sim._geometry]
 
@@ -251,7 +251,7 @@ def assemble_materials_nu(
     # local cell along its normal is refused ("not a sheet; use add()").
     if sim._thin_conductors:
         conductors = [replace(tc, shape=continued_conductor_shape(
-                        sim, grid, tc.shape, unextendable=conductor_findings))
+                        sim, grid, tc.shape, entry=tc, unextendable=conductor_findings))
                       for tc in sim._thin_conductors]
         pec_tcs = [tc for tc in conductors
                    if getattr(tc, "is_pec", False)]

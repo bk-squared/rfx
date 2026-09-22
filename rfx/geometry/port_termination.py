@@ -55,10 +55,10 @@ def registered_ports(sim):
             yield collection, index, port
 
 
-def held_conductor_shapes(sim):
+def held_conductor_entries(sim):
     references = {ref for _, _, port in registered_ports(sim)
                   for ref in port.terminates}
-    return [getattr(sim, ref.collection)[ref.index].shape for ref in references]
+    return [getattr(sim, ref.collection)[ref.index] for ref in references]
 
 
 def lattice_intersects_aperture(lattice, nodes, lower, upper):

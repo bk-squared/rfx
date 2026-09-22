@@ -164,3 +164,37 @@ def test_ntff_overlap_reports_interior_wall_coordinates():
     sim._ntff = ((0., 3., 2.5), (7., 5., 3.5), np.asarray([1e6]))
     with pytest.raises(PreflightConfigError, match=r"x walls at \[0.000, 8000.000\]"):
         sim._validate_ntff_inverse_design()
+
+@pytest.mark.parametrize("nu", (False, True))
+@pytest.mark.parametrize("twin,named", (("geometry", 0), ("geometry", 1), ("thin", 0)))
+def test_termination_holds_only_the_named_entry_when_shapes_are_identical(nu, twin, named):
+    sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
+                     boundary="cpml", cpml_layers=2,
+                     **({"dz_profile": np.ones(8)} if nu else {}))
+    shape = Box((0., 3., 4.), (8., 5., 4.))
+    sim.add(shape, material="pec")
+    if twin == "thin":
+        sim.add_thin_conductor(shape, sigma_bulk=5.8e7, thickness=.01)
+    else:
+        sim.add(shape, material="pec")
+    sim.add_port((4., 4., 3.), extent=1., terminates=named)
+    grid = sim._build_realized_grid()
+    sheets = []
+    if nu:
+        from rfx.runners.nonuniform import assemble_materials_nu
+        assemble_materials_nu(sim, grid, pec_sheets=sheets, pec_wires=[])
+    else:
+        sim._assemble_materials(grid, pec_sheets=sheets, pec_wires=[])
+    assert len(sheets) == 2
+    for index, sheet in enumerate(sheets):
+        mask = np.asarray(sheet.footprint)
+        assert int(mask[:2].sum()) == (0 if index == named else 6)
+        assert int(mask[-2:].sum()) == (0 if index == named else 6)
+        assert int(mask.sum()) == (27 if index == named else 39)
+    entries = sim._campaign_ctx().entry_realizations()
+    for index, entry in enumerate(entries):
+        assert int(np.asarray(entry.sheet.footprint).sum()) == (27 if index == named else 39)
+    report = sim.fidelity_report(print_report=False)
+    rows = [row for row in report if row.get("entity", "").startswith(("geometry[", "thin_conductor["))]
+    assert [row["continued_faces"] for row in rows] == [
+        [] if index == named else ["x-lo", "x-hi"] for index in range(2)]
