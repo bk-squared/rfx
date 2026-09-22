@@ -16,7 +16,7 @@ and J. A. Kong, IEEE Trans. MTT 38(7):849-857, July 1990.
 |---|---|---|
 | `openems_sheen.json` | 27.472 × 26.320 × 3.794 mm | two openEMS MSLPorts on the x faces, `FeedShift` 2.5 mm on port 1, `MeasPlaneShift` 5.610 mm on both |
 | `palace_fem.json` | the same frame | two 50 Ω LUMPED ports (ground → strip, +z) at x = 2.5 and 24.972 mm |
-| the case's rfx runs (`test_sheen_lpf.py`) | the same box, the openEMS record's own | two rfx MSL ports at x = 2.5 and 24.972 mm, probes 6 mm upstream |
+| the case's rfx runs (`test_sheen_lpf.py`) | the same box, the openEMS record's own | two rfx MSL ports at x = 2.5 and 24.972 mm, probes 5.0 mm upstream |
 
 The openEMS record states its own comparability (`meta.comparability`): its
 S11/S21 PHASES are referenced at this board's own measurement planes,
