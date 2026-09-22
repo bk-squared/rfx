@@ -73,71 +73,49 @@ def test_pure_pec_gives_near_zero_inv_eps():
     assert jnp.all(inv_zz < 1e-9)
 
 
-def test_half_fill_y_normal_kottke_signature():
-    """Step in occupancy along ŷ:
-    - cells with occ=1 → all inv components = 0 (PEC)
-    - cells with occ=0 → 1/ε_bg (vacuum)
-    - boundary cell (occ=0.5, adjacent to PEC) → PEC-dilated (60939e0) →
-        inv_yy (perpendicular) ≈ 0  (hard PEC mirror)
-        inv_xx, inv_zz (parallel) = 0  (any f > 0 zeros parallel)"""
+def test_binary_occupancy_reduces_to_the_hard_edge_rule():
+    """#1197: at binary occupancy the tensor's zeros ARE the lattice
+    ownership contract's PEC edges (``realized_pec_edge_masks``, §1.2), and
+    everything else is the background. A 12-edge box in the middle of the
+    grid, so every component and every face/edge/corner incidence is hit.
+    The replaced builder wrote inv = 0 one cell past the occupancy in every
+    direction (a six-neighbour dilation) and moved a cavity's TM110 by
+    -3.5 % on a binary slab; this pins the limit that stops that."""
+    from rfx.boundaries.pec import realized_pec_edge_masks
+    grid = _grid()
+    occ = np.zeros(grid.shape, dtype=np.float32)
+    occ[2:5, 3:6, 1:4] = 1.0
+    inv = kottke_inv_eps_from_occupancy(grid, jnp.asarray(occ), background_eps=1.0)
+    hard = realized_pec_edge_masks(occ.astype(bool), [], [], periodic=(False, False, False))
+    for comp, want in zip(inv, hard):
+        z = np.asarray(comp) == 0.0
+        assert np.array_equal(z, np.asarray(want)), int((z != np.asarray(want)).sum())
+        assert np.allclose(np.asarray(comp)[~z], 1.0)
+
+
+def test_half_fill_step_is_between_the_two_binary_answers():
+    """A half-filled cell at the step is a lossless interpolation: every
+    component strictly between the all-air and all-metal values, the
+    tangential edges on the plane INSIDE the step already fully metal, and
+    the first air cell beyond the step untouched (that last one is the
+    dilation defect of #1197 made impossible)."""
     grid = _grid()
     nx, ny, nz = grid.shape
     occ = np.zeros(grid.shape, dtype=np.float32)
-    # Sharp half-step at j=4: occ=1 for j>=4, occ=0 for j<4.
     occ[:, ny // 2:, :] = 1.0
-    # Smooth the half-step over one cell so the central-difference
-    # gradient resolves a clear ŷ-direction normal at the interface.
-    # Use occ=0.5 at the boundary cell (j=ny//2 - 1) to mimic a
-    # 1-cell-wide sigmoid edge.
     occ[:, ny // 2 - 1, :] = 0.5
-    occ_jax = jnp.asarray(occ)
-    inv_xx, inv_yy, inv_zz = kottke_inv_eps_from_occupancy(
-        grid, occ_jax, background_eps=1.0
-    )
-    # Cells with occ=1 (interior PEC, j ≥ ny//2): all components 0.
-    interior = inv_xx[:, ny // 2 + 1:ny - 1, :]
-    assert jnp.allclose(interior, 0.0), (
-        f"interior PEC inv_xx should be 0, got max |{float(jnp.max(jnp.abs(interior))):.3e}|"
-    )
-    # Cells with occ=0 (deep vacuum, j ≤ ny//2 - 3): all components 1.
-    deep_vacuum = inv_xx[:, 1:ny // 2 - 2, :]
-    assert jnp.allclose(deep_vacuum, 1.0, atol=1e-3), (
-        f"deep-vacuum inv_xx should be 1.0; got mean {float(jnp.mean(deep_vacuum)):.4f}"
-    )
-    # Boundary cell (occ=0.5):
-    #   inv_par = 0 (any f > 0 zeros it),
-    #   inv_perp (along ŷ) = (1 − 0.5)/ε = 0.5
-    bnd_xx = inv_xx[2:nx - 2, ny // 2 - 1, 2:nz - 2]
-    bnd_yy = inv_yy[2:nx - 2, ny // 2 - 1, 2:nz - 2]
-    bnd_zz = inv_zz[2:nx - 2, ny // 2 - 1, 2:nz - 2]
-    assert jnp.allclose(bnd_xx, 0.0, atol=1e-2), (
-        f"boundary inv_xx (parallel) should be 0; got max {float(jnp.max(jnp.abs(bnd_xx))):.3e}"
-    )
-    assert jnp.allclose(bnd_zz, 0.0, atol=1e-2), (
-        f"boundary inv_zz (parallel) should be 0; got max {float(jnp.max(jnp.abs(bnd_zz))):.3e}"
-    )
-    # POST-DILATION contract (commit 60939e0 "1-cell PEC dilation via
-    # neighbor-max"): the occ=0.5 boundary cell adjacent to a PEC cell
-    # (occ=1) is neighbor-max-dilated, so interior_mask = sigmoid((1−0.5)/
-    # smooth_width) ≈ 1 and the Kottke output is ×(1−1) = 0 → inv_yy → 0
-    # (hard PEC mirror).
-    # This was calibrated against the pre-#931 binary rule
-    # `pec_mask & (roll | roll)`, which no longer exists: the binary
-    # realization is now `realized_pec_edge_masks` (an E component is PEC
-    # iff it is incident to an occupied cell -- four cells, #931 1.2).
-    # #931 1.8 fences the Kottke subpixel path OUT of the contract, so the
-    # expectations here are unchanged and this dilation is NOT claimed to be
-    # the smooth analogue of the current binary rule; it is a subpixel model
-    # with its own interior selection, and reconciling the two is the
-    # follow-up 1.8 names. The dilation's own witness stands as recorded:
-    # VESSL |s21| 0.27 -> 0.77 (the wave reflects cleanly off the open-stub
-    # end instead of leaking).  The pre-dilation
-    # 0.25 expectation (from ancestor commit ef6f570, authored ~6 min before
-    # 60939e0) is stale — see docs rfx-known-issues "Kottke occupancy dilation".
-    assert jnp.allclose(bnd_yy, 0.0, atol=1e-2), (
-        f"boundary inv_yy (perp) should be ~0 (post-60939e0 PEC dilation); "
-        f"got mean {float(jnp.mean(bnd_yy)):.4f}"
-    )
+    inv_xx, inv_yy, inv_zz = kottke_inv_eps_from_occupancy(grid, jnp.asarray(occ), background_eps=1.0)
+    j = ny // 2 - 1
+    for comp in (inv_xx, inv_yy, inv_zz):
+        a = np.asarray(comp)
+        assert np.allclose(a[:, ny // 2 + 1:, :], 0.0)            # interior metal
+        assert np.allclose(a[:, :j - 1, :], 1.0)                    # air beyond the step
+        v = a[2:nx - 2, j, 2:nz - 2]
+        assert np.all(v > 0.0) and np.all(v < 1.0), (float(v.min()), float(v.max()))
+    # Ey edges of the half cell: four incident cells all 0.5 -> 1 - 0.5**4
+    assert np.allclose(np.asarray(inv_yy)[2:nx - 2, j, 2:nz - 2], 0.5 ** 4, atol=1e-6)
+    # Ex edges on the plane between the half cell and the full cell: metal
+    assert np.allclose(np.asarray(inv_xx)[2:nx - 2, ny // 2, 2:nz - 2], 0.0)
 
 
 def test_baseline_min_preserves_dielectric_outside():
