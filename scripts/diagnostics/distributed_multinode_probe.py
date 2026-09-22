@@ -126,8 +126,14 @@ def measure(sim, args, jax, observer):
         record["run_seconds"] = time.perf_counter() - start
         record["gather_succeeded"] = True
         record["status"] = "ok"
-        record["final_state_fully_addressable"] = bool(result.state.ez.is_fully_addressable)
-        record["trace_fully_addressable"] = bool(result.time_series.is_fully_addressable)
+        # Since #1202 the multi-process path returns host numpy fields (the
+        # cross-process gather), so the JAX-only attribute is read when present.
+        for key, array in (("final_state", result.state.ez),
+                           ("trace", result.time_series)):
+            record[key + "_type"] = type(array).__module__ + "." + type(array).__name__
+            addressable = getattr(array, "is_fully_addressable", None)
+            record[key + "_fully_addressable"] = (
+                None if addressable is None else bool(addressable))
     except Exception as exc:
         record["failure_phase"] = observer.phase
         record["exception"] = exception_record(exc)
