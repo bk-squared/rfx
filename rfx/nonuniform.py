@@ -617,6 +617,61 @@ def e_node_dual_spacing_at(profile_full, k: int):
     return 0.5 * (profile_full[k - 1] + profile_full[k])
 
 
+
+def _waveguide_port_axis_metrics(grid, cfg):
+    """``(dx_h, dx_e)`` for one waveguide port: the metric each half of its
+    one-sided TFSF boundary divides by.
+
+    A waveguide port injects through two corrections half a cell apart, and
+    on a graded mesh they do not sit on the same metric. Before this, both
+    took the grid's BOUNDARY cell, so a port inside a fine band injected at
+    the boundary cell's scale: on the WR-90 fixture of
+    ``tests/unit/sparams/test_waveguide_nu_sparam.py``, 1.5 mm boundary and
+    0.75 mm band, both corrections ran at 0.5000 of the local metric (gap
+    G13, program repro R2). Where the port sits in a boundary-sized cell the
+    two numbers ARE the boundary cell, which is why every existing NU port
+    test is unaffected.
+
+    Which metric each half is entitled to is the interface's table
+    (``rfx/_grid_metric.py``), applied at the plane each correction acts on,
+    not at the port's nominal index:
+
+    * the H correction lands on the upstream half-cell, ``x_index - 1`` for
+      a ``+`` port and ``x_index`` for a ``-`` one, and differences two E
+      nodes across that one cell, so it takes the PRIMAL width there;
+    * the E correction lands on the source plane, ``x_index`` for ``+`` and
+      ``x_index + 1`` for ``-``, and sits ON a node, so it takes that node's
+      DUAL spacing.
+
+    On a uniform axis the two collapse to the same number and to
+    ``grid.dx``, so nothing on the uniform lane moves.
+
+    Host reads, per #1190: a concrete axis is resolved to Python floats here,
+    once, outside the scan. A traced axis keeps its tracer, the way the CPML
+    z pair already does, so the mesh-as-design-variable path survives.
+    """
+    axis = cfg.direction[-1].lower()
+    if axis != "x":
+        raise ValueError(
+            f"waveguide port direction {cfg.direction!r}: the non-uniform "
+            "lane injects along x only. A y- or z-propagating port would "
+            "need its own axis's cells here, and no fixture exercises one."
+        )
+    forward = cfg.direction.startswith("+")
+    h_plane = cfg.x_index - 1 if forward else cfg.x_index
+    e_plane = cfg.x_index if forward else cfg.x_index + 1
+
+    n = int(grid.nx)
+    h_plane = max(0, min(int(h_plane), n - 1))
+    e_plane = max(0, min(int(e_plane), n - 1))
+
+    cells = grid.cells("x")
+    duals = grid.duals("x")
+    if is_tracer(cells):
+        return cells[h_plane], duals[e_plane]
+    return float(cells[h_plane]), float(duals[e_plane])
+
+
 def make_nonuniform_grid(
     domain_xy: tuple[float, float],
     dz_profile: np.ndarray,
@@ -2412,8 +2467,12 @@ def _build_nu_scan(
             for cfg in waveguide_ports
         )
         waveguide_meta = tuple(waveguide_ports)
+        waveguide_port_metrics = tuple(
+            _waveguide_port_axis_metrics(grid, cfg) for cfg in waveguide_ports
+        )
     else:
         waveguide_meta = ()
+        waveguide_port_metrics = ()
 
     # TFSF 1D auxiliary state carry. Injection axis is x (uniform on
     # NU paths we support — dz-only nonuniformity), so the 1D aux runs
@@ -2459,8 +2518,9 @@ def _build_nu_scan(
             st = apply_tfsf_h(st, tfsf_cfg, carry["tfsf"], grid.dx, dt)
         if use_waveguide_ports:
             from rfx.sources.waveguide_port import apply_waveguide_port_h as _apply_wg_h_nu
-            for cfg_meta in waveguide_meta:
-                st = _apply_wg_h_nu(st, cfg_meta, step_idx, dt, grid.dx)
+            for cfg_meta, _m in zip(waveguide_meta,
+                                    waveguide_port_metrics):
+                st = _apply_wg_h_nu(st, cfg_meta, step_idx, dt, _m[0])
         if use_cpml:
             st, cpml_new = apply_cpml_h(st, cpml_params, carry["cpml"],
                                          cpml_grid, cpml_axes_eff,
@@ -2517,8 +2577,9 @@ def _build_nu_scan(
             st = apply_tfsf_e(st, tfsf_cfg, tfsf_h_state, grid.dx, dt)
         if use_waveguide_ports:
             from rfx.sources.waveguide_port import apply_waveguide_port_e as _apply_wg_e_nu
-            for cfg_meta in waveguide_meta:
-                st = _apply_wg_e_nu(st, cfg_meta, step_idx, dt, grid.dx)
+            for cfg_meta, _m in zip(waveguide_meta,
+                                    waveguide_port_metrics):
+                st = _apply_wg_e_nu(st, cfg_meta, step_idx, dt, _m[1])
         if use_cpml:
             st, cpml_new = apply_cpml_e(st, cpml_params, cpml_new,
                                          cpml_grid, cpml_axes_eff,
