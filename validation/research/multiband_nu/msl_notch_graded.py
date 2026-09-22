@@ -223,21 +223,31 @@ ARMS: dict[str, Arm] = {
 #: The offset ladder, coarse to fine -- W1 and W3 read it in this order.
 LADDER = ("A_off", "B_off", "C_off")
 
-#: The FZ ladder's five new arms
+#: The FZ ladder's new arms
 #: (``docs/design_notes/20260922_msl_notch_fz_ladder_predeclaration.md``).
 #: They are NOT in :data:`ARMS`: they are recorded in their own file and the
-#: first record's arms are reused, not re-run.
+#: first record's arms are reused, not re-run.  ``C_off_re`` is the addendum
+#: A.2 arm, declared after the independent review: it is the rung C mesh again
+#: -- the SAME rung object, so the same 12 substrate cells and 24 in-plane
+#: cells -- solved at this branch's instrument commit, because the first
+#: record's C_off was solved at 827d5ecf and rfx/ moved between the two.
 FZ_ARMS: dict[str, Arm] = {
     "Z6": Arm("Z6", "offset", case.ARM_LENGTH_M),
     "Z8": Arm("Z8", "offset", case.ARM_LENGTH_M),
     "Z16": Arm("Z16", "offset", case.ARM_LENGTH_M),
     "F16Z6": Arm("F16Z6", "offset", case.ARM_LENGTH_M),
     "ON13": Arm("ON13", "on-node", case.ARM_LENGTH_M),
+    "C_off_re": Arm("C", "offset", case.ARM_LENGTH_M),
 }
 ALL_FZ_ARMS = tuple(sorted(FZ_ARMS))
-#: The substrate-cell ladder W5 reads, coarse FZ to fine.  Its third rung is
-#: the first record's C_off: the same board at the same in-plane cell.
+#: The substrate-cell ladder as section 4 declares it, coarse FZ to fine.  Its
+#: third rung is the first record's C_off, which was solved at another commit.
 FZ_LADDER = ("Z6", "Z8", "C_off", "Z16")
+#: The same ladder with the re-measured rung in place of it: four arms, one
+#: solver build.  Addendum A.2.
+FZ_LADDER_ONE_COMMIT = ("Z6", "Z8", "C_off_re", "Z16")
+#: The arm the addendum re-measures, and the arm it replaces.
+FZ_REMEASURED = ("C_off_re", "C_off")
 #: The arms W5-W8 take from the first record rather than solving again.
 FZ_REUSED_ARMS = ("A_on", "A_off", "C_off")
 #: Every arm this module can run, whichever record it lands in.
@@ -1402,6 +1412,86 @@ def limit_at_order(h2: float, h3: float, f2: float, f3: float,
     return dict(limit=float(f3 - a * h3 ** p), amplitude=float(a))
 
 
+def _fit_at_order(h: np.ndarray, f: np.ndarray, p: float) -> dict:
+    """``f_inf`` and ``A`` of ``f = f_inf + A h^p`` by least squares at fixed p."""
+    basis = np.column_stack([np.ones_like(h), h ** p])
+    coef, *_ = np.linalg.lstsq(basis, f, rcond=None)
+    resid = f - basis @ coef
+    return dict(limit=float(coef[0]), amplitude=float(coef[1]),
+                rms_hz=float(np.sqrt(np.mean(resid ** 2))))
+
+
+def three_parameter_fit(h, f, lo: float = 1e-2, hi: float = 8.0) -> dict:
+    """The plain fit of ``f = f_inf + A h^p`` to ALL the rungs at once.
+
+    Three unknowns on four points, so it is over-determined by one and the
+    residual means something.  For a fixed ``p`` the other two are ordinary
+    linear least squares, so only ``p`` is searched: a coarse sweep of the
+    bracket, then bisection on the derivative of the residual.  This is a
+    DIFFERENT estimator from the one section 4 declares, and it is reported
+    beside it rather than in place of it -- the declared order is the one the
+    window is judged on.
+    """
+    h = np.asarray(h, dtype=float)
+    f = np.asarray(f, dtype=float)
+    grid = np.linspace(lo, hi, 400)
+    rms = np.array([_fit_at_order(h, f, p)["rms_hz"] for p in grid])
+    k = int(np.argmin(rms))
+    a = grid[max(k - 1, 0)]
+    b = grid[min(k + 1, grid.size - 1)]
+    for _ in range(200):
+        m1 = a + (b - a) / 3.0
+        m2 = b - (b - a) / 3.0
+        if _fit_at_order(h, f, m1)["rms_hz"] <= _fit_at_order(h, f, m2)["rms_hz"]:
+            b = m2
+        else:
+            a = m1
+    p = 0.5 * (a + b)
+    out = _fit_at_order(h, f, p)
+    return dict(out, order=float(p), n_points=int(h.size))
+
+
+def order_estimates(h, f) -> dict:
+    """Every order these rungs support, so the spread is in the record.
+
+    Four rungs carry more than one way to read an order, and they do not have
+    to agree.  All of them are computed and recorded; which one the window is
+    judged on is section 4's to say, not this function's.
+
+    * ``declared`` -- the least-squares slope of ``log|df|`` against the
+      MIDPOINT of each pair's ``log FZ``, which is what section 4 asks for.
+    * ``at_coarse_endpoint`` -- the same slope with each difference placed at
+      the coarser rung of its pair.
+    * ``adjacent_triples`` -- the order that exactly reproduces the ratio of
+      two successive differences, one per consecutive triple.  With four rungs
+      there are two of them, a coarse one and a fine one, and their spread is
+      the honest width of a single-power reading of this ladder.
+    * ``three_parameter`` -- ``f_inf``, ``A`` and ``p`` fitted to all four
+      notches at once, with the residual that fit leaves.
+    """
+    h = np.asarray(h, dtype=float)
+    f = np.asarray(f, dtype=float)
+    fit = fit_order_on_successive_differences(h, f)
+    triples = []
+    for i in range(h.size - 2):
+        r = richardson_limit(h[i:i + 3].tolist(), f[i:i + 3].tolist())
+        triples.append(dict(
+            rungs=[float(v) for v in h[i:i + 3]],
+            index=i, order=r["order"], limit_ghz=r["limit"] / 1e9,
+            ratio=r["ratio"], ratio_at_zero_order=r["ratio_at_zero_order"],
+            note=r["reason"]))
+    tp = three_parameter_fit(h, f)
+    return dict(
+        declared=fit["order"], at_coarse_endpoint=fit["order_at_coarse_endpoint"],
+        residuals=fit["residuals"], monotone=fit["monotone"],
+        differences=fit["differences"], reason=fit["reason"],
+        adjacent_triples=triples,
+        three_parameter_order=tp["order"],
+        three_parameter_limit_ghz=tp["limit"] / 1e9,
+        three_parameter_amplitude=tp["amplitude"],
+        three_parameter_rms_mhz=tp["rms_hz"] / 1e6)
+
+
 def _fz_arm_facts(arms: dict, keys) -> dict:
     """Notch, in-plane cell and substrate cell of each named arm."""
     return {k: dict(f_hz=notch_of(arms[k])["f"],
@@ -1410,16 +1500,34 @@ def _fz_arm_facts(arms: dict, keys) -> dict:
             for k in keys}
 
 
-def w5_fz_ladder(arms: dict) -> dict:
+def commits_of(arms: dict, keys) -> list[str]:
+    """The distinct commits the named arms were solved at, in ladder order."""
+    seen: list[str] = []
+    for k in keys:
+        sha = arms[k]["provenance"]["git_sha"]
+        if sha not in seen:
+            seen.append(sha)
+    return seen
+
+
+def w5_fz_ladder(arms: dict, ladder: tuple[str, ...] = FZ_LADDER) -> dict:
     """W5: the four notches at one in-plane cell, against their substrate cell.
 
-    Z6, Z8, C_off and Z16 are the same board with the same 24.292 um in-plane
-    cell and the substrate cut into 6, 8, 12 and 16 cells.  Anything that
-    moves between them is the substrate-normal resolution at the strip's edge
-    and nothing else, which is what makes a power-law fit in FZ meaningful
-    here.  The premise is asserted, not assumed.
+    The rungs are the same board with the same 24.292 um in-plane cell and the
+    substrate cut into 6, 8, 12 and 16 cells.  Anything that moves between
+    them is the substrate-normal resolution at the strip's edge and nothing
+    else, which is what makes a power-law fit in FZ meaningful here.  The
+    premise is asserted, not assumed.
+
+    ``ladder`` picks which third rung is used: :data:`FZ_LADDER`, the one
+    section 4 declares, whose C_off comes from the first record and another
+    solver build; or :data:`FZ_LADDER_ONE_COMMIT`, whose C_off_re is the same
+    mesh solved at this branch's commit (addendum A.2).  Both are computed and
+    both are recorded.  The commits the rungs were solved at come back in
+    ``commits``, so a reader can see whether a ladder spans one build or two
+    without going to the provenance table.
     """
-    facts = _fz_arm_facts(arms, FZ_LADDER)
+    facts = _fz_arm_facts(arms, ladder)
     fine = {k: v["fine_cell_m"] for k, v in facts.items()}
     if max(fine.values()) - min(fine.values()) > NODE_TOL_M:
         raise AssertionError(
@@ -1427,35 +1535,43 @@ def w5_fz_ladder(arms: dict) -> dict:
             f"carry {sorted((k, v * 1e6) for k, v in fine.items())} um. A "
             "ladder whose in-plane cell also moves measures both cells at "
             "once, which is the thing the previous note could not separate.")
-    fz = [facts[k]["substrate_cell_m"] for k in FZ_LADDER]
-    notches = [facts[k]["f_hz"] for k in FZ_LADDER]
+    fz = [facts[k]["substrate_cell_m"] for k in ladder]
+    notches = [facts[k]["f_hz"] for k in ladder]
+    est = order_estimates(fz, notches)
     fit = fit_order_on_successive_differences(fz, notches)
     lim = limit_at_order(fz[2], fz[3], notches[2], notches[3], fit["order"])
     ref = reference_notch_hz()
     lo, hi = P_Z_WINDOW
     held = bool(fit["monotone"] and np.isfinite(fit["order"])
                 and lo <= fit["order"] <= hi)
+    shas = commits_of(arms, ladder)
     return dict(
-        window="W5", arms=list(FZ_LADDER),
+        window="W5", arms=list(ladder),
+        commits=shas, n_commits=len(shas),
+        one_solver_build=bool(len(shas) == 1),
         fine_cell_m=float(min(fine.values())),
         substrate_cells_m=[float(v) for v in fz],
-        n_substrate_cells=[int(arms[k]["n_substrate_cells"])
-                           for k in FZ_LADDER],
+        n_substrate_cells=[int(arms[k]["n_substrate_cells"]) for k in ladder],
         notches_ghz=[v / 1e9 for v in notches],
         differences_mhz=[v / 1e6 for v in fit["differences"]],
         monotone=fit["monotone"], order=fit["order"],
         order_at_coarse_endpoint=fit["order_at_coarse_endpoint"],
+        order_adjacent_triples=[t["order"] for t in est["adjacent_triples"]],
+        adjacent_triples=est["adjacent_triples"],
+        order_three_parameter=est["three_parameter_order"],
+        limit_three_parameter_ghz=est["three_parameter_limit_ghz"],
+        rms_three_parameter_mhz=est["three_parameter_rms_mhz"],
         fit_residuals=fit["residuals"], order_window=list(P_Z_WINDOW),
         limit_ghz=lim["limit"] / 1e9, amplitude=lim["amplitude"],
         reference_ghz=ref / 1e9,
-        finest_arm=FZ_LADDER[-1],
+        finest_arm=ladder[-1],
         finest_distance_pct=100.0 * abs(notches[3] - ref) / ref,
         limit_distance_pct=(float("nan") if not np.isfinite(lim["limit"])
                             else 100.0 * abs(lim["limit"] - ref) / ref),
         note=fit["reason"], verdict="HELD" if held else "FIRED")
 
 
-def w6_attribution(arms: dict) -> dict:
+def w6_attribution(arms: dict, fine_rung: str = "C_off") -> dict:
     """W6: how the A_off -> C_off step divides between the two cells.
 
     A_off and Z6 share the substrate cell, so what separates them is the
@@ -1470,18 +1586,18 @@ def w6_attribution(arms: dict) -> dict:
     21.167 um), which is not an arm of this note.  What is printed is the
     float64 residue of the cancellation, in hertz.
     """
-    facts = _fz_arm_facts(arms, ("A_off", "Z6", "C_off"))
+    facts = _fz_arm_facts(arms, ("A_off", "Z6", fine_rung))
     if abs(facts["A_off"]["substrate_cell_m"]
            - facts["Z6"]["substrate_cell_m"]) > NODE_TOL_M:
         raise AssertionError(
             "W6: A_off and Z6 must share the substrate cell or the step "
             "between them is not an in-plane step.")
     if abs(facts["Z6"]["fine_cell_m"]
-           - facts["C_off"]["fine_cell_m"]) > NODE_TOL_M:
+           - facts[fine_rung]["fine_cell_m"]) > NODE_TOL_M:
         raise AssertionError(
-            "W6: Z6 and C_off must share the in-plane cell or the step "
+            f"W6: Z6 and {fine_rung} must share the in-plane cell or the step "
             "between them is not a substrate step.")
-    f_a, f_z6, f_c = (facts[k]["f_hz"] for k in ("A_off", "Z6", "C_off"))
+    f_a, f_z6, f_c = (facts[k]["f_hz"] for k in ("A_off", "Z6", fine_rung))
     d_z, d_f = f_z6 - f_c, f_a - f_z6
     total = f_a - f_c
     bar = DOMINANCE_FRACTION * abs(total)
@@ -1491,13 +1607,18 @@ def w6_attribution(arms: dict) -> dict:
         klass = "F dominant"
     else:
         klass = "shared"
+    shas = commits_of(arms, ("A_off", "Z6", fine_rung))
     return dict(
-        window="W6", arms=["A_off", "Z6", "C_off"],
+        window="W6", arms=["A_off", "Z6", fine_rung],
+        fine_rung=fine_rung,
+        commits=shas, n_commits=len(shas),
+        substrate_leg_commits=commits_of(arms, ("Z6", fine_rung)),
         notches_ghz={k: facts[k]["f_hz"] / 1e9 for k in facts},
         substrate_step_m=[facts["Z6"]["substrate_cell_m"],
-                          facts["C_off"]["substrate_cell_m"]],
+                          facts[fine_rung]["substrate_cell_m"]],
         inplane_step_m=[facts["A_off"]["fine_cell_m"],
                         facts["Z6"]["fine_cell_m"]],
+        inplane_leg_commits=commits_of(arms, ("A_off", "Z6")),
         delta_z_mhz=d_z / 1e6, delta_f_mhz=d_f / 1e6, total_mhz=total / 1e6,
         delta_z_fraction=d_z / total, delta_f_fraction=d_f / total,
         dominance_fraction=DOMINANCE_FRACTION,
@@ -1553,7 +1674,8 @@ def w7_offset_sign(arms: dict) -> dict:
                  "arm does not read lower than the offset arm"))
 
 
-def w8_is_z_enough(arms: dict) -> dict:
+def w8_is_z_enough(arms: dict,
+                   ladder: tuple[str, ...] = FZ_LADDER) -> dict:
     """W8: does refining the substrate alone reach the case's 1 % bar?
 
     The FZ ladder's extrapolated limit is where the notch goes as the
@@ -1570,7 +1692,7 @@ def w8_is_z_enough(arms: dict) -> dict:
     reported whatever the verdict, because a rule read off a ladder that did
     not reach the bar is still the number that ladder implies.
     """
-    w5 = w5_fz_ladder(arms)
+    w5 = w5_fz_ladder(arms, ladder)
     ref = reference_notch_hz()
     bar_pct = case.FREQ_BAR * 100.0
     pct = w5["limit_distance_pct"]
@@ -1587,9 +1709,10 @@ def w8_is_z_enough(arms: dict) -> dict:
                   notch_ghz=notch_of(arms[k])["f"] / 1e9,
                   distance_from_reference_pct=100.0 * abs(
                       notch_of(arms[k])["f"] - ref) / ref)
-             for k in FZ_LADDER]
+             for k in ladder]
     return dict(
-        window="W8", arms=list(FZ_LADDER),
+        window="W8", arms=list(ladder),
+        commits=w5["commits"], one_solver_build=w5["one_solver_build"],
         fine_cell_m=w5["fine_cell_m"],
         limit_ghz=w5["limit_ghz"], reference_ghz=ref / 1e9,
         limit_distance_pct=pct, bar_pct=bar_pct,
@@ -1623,15 +1746,65 @@ def load_fz_arms(fz_path: Path | None = None,
     return out
 
 
+def remeasurement(arms: dict) -> dict:
+    """Addendum A.2: the same rung solved twice, at two solver builds.
+
+    C_off and C_off_re declare the same mesh -- the same rung entry, so 12
+    substrate cells and 24 in-plane cells, the same board and the same
+    900 um of stub -- and were solved by two commits of ``rfx/``.  What comes
+    back is the distance between their two notches and whether the two meshes
+    really were identical, because a mesh that moved would make the comparison
+    say nothing about the solver.
+    """
+    new, old = FZ_REMEASURED
+    f_new = notch_of(arms[new])["f"]
+    f_old = notch_of(arms[old])["f"]
+    same_mesh = {}
+    for field in ("fine_cell_m", "substrate_cell_m", "z_tail_cell_m",
+                  "edge_offset_m", "n_across_metal", "n_substrate_cells",
+                  "margin_cells", "lateral_clearance_m"):
+        same_mesh[field] = bool(arms[new][field] == arms[old][field])
+    profiles_identical = all(
+        arms[new]["profiles"][a] == arms[old]["profiles"][a]
+        for a in ("x", "y", "z"))
+    return dict(
+        arms=[new, old],
+        commits=[arms[new]["provenance"]["git_sha"],
+                 arms[old]["provenance"]["git_sha"]],
+        run_ids=[arms[new]["provenance"]["run_id"],
+                 arms[old]["provenance"]["run_id"]],
+        notch_new_ghz=f_new / 1e9, notch_old_ghz=f_old / 1e9,
+        delta_mhz=(f_new - f_old) / 1e6,
+        delta_pct=100.0 * (f_new - f_old) / f_old,
+        grid_cells=[grid_cells(arms[new]), grid_cells(arms[old])],
+        wall_s=[arms[new]["wall_s"], arms[old]["wall_s"]],
+        dt_s=[arms[new]["dt_s"], arms[old]["dt_s"]],
+        mesh_fields_equal=same_mesh,
+        mesh_identical=bool(all(same_mesh.values())),
+        profiles_bit_identical=bool(profiles_identical))
+
+
 def fz_verdicts(arms: dict) -> dict:
-    """W5-W8 and the cost of the new arms, for whatever arms are present."""
+    """W5-W8 and the cost of the new arms, for whatever arms are present.
+
+    Each window that reads the ladder's third rung is computed twice: once on
+    the rung section 4 names, and once on the rung addendum A.2 re-measured at
+    this branch's commit.  Both go in the record; neither replaces the other.
+    """
     out: dict = {}
     have = set(arms)
     if set(FZ_LADDER) <= have:
-        out["W5"] = w5_fz_ladder(arms)
-        out["W8"] = w8_is_z_enough(arms)
+        out["W5"] = w5_fz_ladder(arms, FZ_LADDER)
+        out["W8"] = w8_is_z_enough(arms, FZ_LADDER)
+    if set(FZ_LADDER_ONE_COMMIT) <= have:
+        out["W5_one_commit"] = w5_fz_ladder(arms, FZ_LADDER_ONE_COMMIT)
+        out["W8_one_commit"] = w8_is_z_enough(arms, FZ_LADDER_ONE_COMMIT)
+    if set(FZ_REMEASURED) <= have:
+        out["remeasurement"] = remeasurement(arms)
     if {"A_off", "Z6", "C_off"} <= have:
-        out["W6"] = w6_attribution(arms)
+        out["W6"] = w6_attribution(arms, "C_off")
+    if {"A_off", "Z6", "C_off_re"} <= have:
+        out["W6_one_commit"] = w6_attribution(arms, "C_off_re")
     if {"A_on", "A_off", "ON13"} <= have:
         out["W7"] = w7_offset_sign(arms)
     if {"A_off", "Z6", "F16Z6"} <= have:
@@ -2075,11 +2248,18 @@ def fz_markdown_tables(arms: dict) -> str:
 
     w("### F.4 The frozen windows")
     w("")
-    if "W5" in v:
-        r = v["W5"]
-        w(f"**W5 -- the FZ ladder is a ladder.**  Four arms at one in-plane "
-          f"cell, F = {r['fine_cell_m'] * 1e6:.4f} um; only the substrate cell "
-          f"moves.")
+    for key, title in (("W5", "as section 4 declares it"),
+                       ("W5_one_commit", "addendum A.2, one solver build")):
+        if key not in v:
+            continue
+        r = v[key]
+        w(f"**W5 -- the FZ ladder is a ladder ({title}).**  Four arms at one "
+          f"in-plane cell,")
+        w(f"F = {r['fine_cell_m'] * 1e6:.4f} um; only the substrate cell "
+          f"moves.  The four rungs were solved at "
+          f"{r['n_commits']} commit{'' if r['n_commits'] == 1 else 's'} of "
+          f"`rfx/`")
+        w("(" + ", ".join(sha[:12] for sha in r["commits"]) + ").")
         w("")
         w("| arm | substrate cells | FZ (um) | notch (GHz) | step from the "
           "rung above (MHz) |")
@@ -2094,8 +2274,8 @@ def fz_markdown_tables(arms: dict) -> str:
               f"{r['notches_ghz'][i]:.5f} | {st} |")
         w("")
         w("| monotone | fitted order p_z | order window | limit (GHz) | "
-          "reference (GHz) | Z16 from the reference (%) | limit from the "
-          "reference (%) | verdict |")
+          "reference (GHz) | finest rung from the reference (%) | limit from "
+          "the reference (%) | verdict |")
         w("|---|---|---|---|---|---|---|---|")
         w(f"| {r['monotone']} | {r['order']:.4f} | "
           f"{r['order_window'][0]} to {r['order_window'][1]} | "
@@ -2103,23 +2283,57 @@ def fz_markdown_tables(arms: dict) -> str:
           f"{r['finest_distance_pct']:.4f} | "
           f"{r['limit_distance_pct']:.4f} | {r['verdict']} |")
         w("")
-        w("The order is a least-squares slope of log|step| against the "
-          "midpoint of the two rungs' log FZ.")
-        w("Placing each step at the coarser rung of its pair instead gives "
-          f"{r['order_at_coarse_endpoint']:.4f}; the fit's three residuals "
-          "are")
-        w(", ".join(f"{q:+.2e}" for q in r["fit_residuals"]) + ".")
+        w("Four rungs carry more than one way to read an order, and they do "
+          "not have to agree.  The")
+        w("window is judged on the first row, which is what section 4 asks "
+          "for; the rest are reported")
+        w("so the spread is in the record.")
+        w("")
+        w("| how the order is read | order | limit (GHz) |")
+        w("|---|---|---|")
+        # No pipe characters inside a cell: "log|step|" would end the cell.
+        w(f"| declared: least squares of the log step against the midpoint of "
+          f"each pair's log FZ | {r['order']:.4f} | {r['limit_ghz']:.5f} |")
+        w(f"| the same, each step at the coarser rung of its pair | "
+          f"{r['order_at_coarse_endpoint']:.4f} | n/a |")
+        for t in r["adjacent_triples"]:
+            cells = " / ".join(f"{q * 1e6:.3f}" for q in t["rungs"])
+            w(f"| the ratio of two successive steps, rungs {cells} um | "
+              f"{t['order']:.4f} | {t['limit_ghz']:.5f} |")
+        w(f"| f_inf + A FZ^p fitted to all four notches at once | "
+          f"{r['order_three_parameter']:.4f} | "
+          f"{r['limit_three_parameter_ghz']:.5f} |")
+        w("")
+        w(f"The three-parameter fit leaves "
+          f"{r['rms_three_parameter_mhz']:.3f} MHz rms on four points with "
+          f"three unknowns.  The")
+        w("declared fit's three residuals in the log step are "
+          + ", ".join(f"{q:+.2e}" for q in r["fit_residuals"]) + ".")
         if r["note"]:
             w("")
             w(f"Fit note: {r['note']}.")
         w("")
-    if "W6" in v:
-        r = v["W6"]
-        w("**W6 -- attribution at the A_off to C_off step.**  A_off and Z6 "
-          "share the substrate cell,")
-        w("so what separates them is the in-plane cell; Z6 and C_off share "
-          "the in-plane cell, so what")
-        w("separates them is the substrate cell.")
+    for key, title in (("W6", "section 4's rung"),
+                       ("W6_one_commit", "addendum A.2's rung")):
+        if key not in v:
+            continue
+        r = v[key]
+        fine = r["fine_rung"]
+        w(f"**W6 -- attribution at the A_off to {fine} step ({title}).**  "
+          f"A_off and Z6 share the")
+        w("substrate cell, so what separates them is the in-plane cell; Z6 "
+          f"and {fine} share the in-plane")
+        w("cell, so what separates them is the substrate cell.")
+        w("")
+        w(f"The substrate leg was solved at "
+          f"{len(r['substrate_leg_commits'])} commit"
+          f"{'' if len(r['substrate_leg_commits']) == 1 else 's'} "
+          "(" + ", ".join(q[:12] for q in r["substrate_leg_commits"]) + ") "
+          "and the in-plane leg at")
+        w(f"{len(r['inplane_leg_commits'])} "
+          "(" + ", ".join(q[:12] for q in r["inplane_leg_commits"]) + "). "
+          "A_off comes from the first record either way, so the")
+        w("in-plane leg spans two builds in both rows.")
         w("")
         w("| step | what moves | from (um) | to (um) | notch shift (MHz) | "
           "share of the total |")
@@ -2128,11 +2342,11 @@ def fz_markdown_tables(arms: dict) -> str:
           f"{r['inplane_step_m'][0] * 1e6:.4f} | "
           f"{r['inplane_step_m'][1] * 1e6:.4f} | {r['delta_f_mhz']:+.3f} | "
           f"{r['delta_f_fraction']:+.4f} |")
-        w(f"| Z6 -> C_off | substrate cell FZ | "
+        w(f"| Z6 -> {fine} | substrate cell FZ | "
           f"{r['substrate_step_m'][0] * 1e6:.4f} | "
           f"{r['substrate_step_m'][1] * 1e6:.4f} | {r['delta_z_mhz']:+.3f} | "
           f"{r['delta_z_fraction']:+.4f} |")
-        w(f"| A_off -> C_off | both | | | {r['total_mhz']:+.3f} | 1.0000 |")
+        w(f"| A_off -> {fine} | both | | | {r['total_mhz']:+.3f} | 1.0000 |")
         w("")
         w("| abs(dZ) (MHz) | abs(dF) (MHz) | bar, two thirds of abs(T) (MHz) "
           "| classification |")
@@ -2142,9 +2356,9 @@ def fz_markdown_tables(arms: dict) -> str:
         w("")
         w(f"The cross term T - dZ - dF is {r['cross_term_hz']:.3e} Hz and is "
           "zero by construction, not by")
-        w("measurement: A_off to Z6 to C_off is one path from A_off's corner "
-          "of the (F, FZ) plane to")
-        w("C_off's, so its two legs telescope.  A cross term that could be "
+        w(f"measurement: A_off to Z6 to {fine} is one path from A_off's "
+          "corner of the (F, FZ) plane to")
+        w(f"{fine}'s, so its two legs telescope.  A cross term that could be "
           "non-zero needs the fourth")
         w("corner, F = 47.244 um at FZ = 21.167 um, which is not an arm of "
           "this note.  The printed")
@@ -2191,11 +2405,17 @@ def fz_markdown_tables(arms: dict) -> str:
         w("")
         w(f"Reading, per the pre-declaration: {r['reading']}.")
         w("")
-    if "W8" in v:
-        r = v["W8"]
-        w("**W8 -- is z enough?**  Where the notch goes as the substrate cell "
-          "goes to zero at")
-        w(f"F = {r['fine_cell_m'] * 1e6:.4f} um, against the reference.")
+    for key, title in (("W8", "section 4's ladder"),
+                       ("W8_one_commit", "addendum A.2's ladder")):
+        if key not in v:
+            continue
+        r = v[key]
+        w(f"**W8 -- is z enough? ({title})**  Where the notch goes as the "
+          "substrate cell goes to")
+        w(f"zero at F = {r['fine_cell_m'] * 1e6:.4f} um, against the "
+          f"reference.  "
+          f"{'One solver build' if r['one_solver_build'] else 'Two solver builds'}"
+          f" under the four rungs.")
         w("")
         w("| arm | substrate cells | FZ (um) | notch (GHz) | from the "
           "reference (%) |")
@@ -2223,6 +2443,37 @@ def fz_markdown_tables(arms: dict) -> str:
         w(f"| {abs(r['amplitude']):.4e} | {r['order']:.4f} | "
           f"{r['substrate_cell_for_the_bar_m'] * 1e6:.4f} | "
           f"{r['n_substrate_cells_for_the_bar']} |")
+        w("")
+
+    if "remeasurement" in v:
+        r = v["remeasurement"]
+        new, old = r["arms"]
+        w("### F.4a The same rung solved twice, at two solver builds "
+          "(addendum A.2)")
+        w("")
+        w(f"`{new}` and `{old}` declare the same mesh -- the same rung entry, "
+          f"so the same {arms[new]['n_substrate_cells']} substrate cells and")
+        w(f"{arms[new]['n_across_metal']} cells across the metal, the same "
+          "board and the same stub.  What differs is the commit of `rfx/`")
+        w("that solved them.  Whether their two meshes really were identical "
+          "is checked rather than")
+        w("assumed, because a mesh that moved would make this comparison say "
+          "nothing about the solver.")
+        w("")
+        w("| arm | commit | VESSL run | notch (GHz) | grid cells | dt (fs) | "
+          "wall (s) |")
+        w("|---|---|---|---|---|---|---|")
+        for i, k in enumerate(r["arms"]):
+            w(f"| {k} | {r['commits'][i][:12]} | {r['run_ids'][i]} | "
+              f"{(r['notch_new_ghz'] if i == 0 else r['notch_old_ghz']):.6f} | "
+              f"{r['grid_cells'][i]:,} | {r['dt_s'][i] * 1e15:.4f} | "
+              f"{r['wall_s'][i]:.1f} |")
+        w("")
+        w(f"| {new} minus {old} (MHz) | same (%) | every declared mesh field "
+          "equal | all three cell profiles bit-identical |")
+        w("|---|---|---|---|")
+        w(f"| {r['delta_mhz']:+.4f} | {r['delta_pct']:+.5f} | "
+          f"{r['mesh_identical']} | {r['profiles_bit_identical']} |")
         w("")
 
     w("### F.5 Provenance")

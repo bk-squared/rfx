@@ -60,14 +60,18 @@ def test_the_five_new_arms_are_the_ones_the_note_declares():
     are NOT in ``ARMS``: the first record's replay asserts that file holds
     exactly its own eight arms, and these five go in a separate record.
     """
-    assert sorted(ins.FZ_ARMS) == ["F16Z6", "ON13", "Z16", "Z6", "Z8"]
+    assert sorted(ins.FZ_ARMS) == ["C_off_re", "F16Z6", "ON13", "Z16", "Z6",
+                                   "Z8"]
     assert set(ins.FZ_ARMS) & set(ins.ARMS) == set()
     assert ins.FZ_LADDER == ("Z6", "Z8", "C_off", "Z16")
+    assert ins.FZ_LADDER_ONE_COMMIT == ("Z6", "Z8", "C_off_re", "Z16")
+    assert ins.FZ_REMEASURED == ("C_off_re", "C_off")
     assert ins.FZ_REUSED_ARMS == ("A_on", "A_off", "C_off")
 
     h, w_metal = case.SUBSTRATE_THICKNESS_M, case.TRACE_WIDTH_M
     want = {
         # arm: (n_z, n, placement, F um, FZ um)
+        "C_off_re": (12, 24, "offset", 24.2915, 21.1667),
         "Z6": (6, 24, "offset", 24.2915, 42.3333),
         "Z8": (8, 24, "offset", 24.2915, 31.7500),
         "Z16": (16, 24, "offset", 24.2915, 15.8750),
@@ -91,9 +95,32 @@ def test_the_five_new_arms_are_the_ones_the_note_declares():
     fz = {k: h / ins.rung_spec(ins.FZ_ARMS[k].rung)[0] for k in ins.FZ_ARMS}
     fine = {k: ins.fine_cell(ins.FZ_ARMS[k].rung, ins.FZ_ARMS[k].placement)
             for k in ins.FZ_ARMS}
-    assert fine["Z6"] == fine["Z8"] == fine["Z16"]          # FZ ladder: F fixed
+    assert fine["Z6"] == fine["Z8"] == fine["Z16"] == fine["C_off_re"]
     assert fz["Z6"] == fz["F16Z6"] == fz["ON13"]            # F ladder: FZ fixed
     assert len({fz["Z6"], fz["Z8"], fz["Z16"]}) == 3        # and FZ moves
+
+
+def test_the_re_measured_rung_is_the_first_records_rung_and_not_a_new_one():
+    """Addendum A.2: C_off_re must declare C_off's mesh, not one like it.
+
+    It shares the rung ENTRY, so there is no second place for the substrate
+    cell or the in-plane cell to be written down and drift.  If the two meshes
+    were not identical, the difference between their notches would be a
+    difference of boards and would say nothing about the solver.
+    """
+    new, old = ins.FZ_ARMS["C_off_re"], ins.ARMS["C_off"]
+    assert new == old, "C_off_re and C_off must be the same Arm"
+    assert new.rung == "C" and ins.rung_spec(new.rung) == (12, 24)
+    xn, yn, zn, bn = ins.profiles(new.rung, new.placement, new.arm_length_m)
+    xo, yo, zo, bo = ins.profiles(old.rung, old.placement, old.arm_length_m)
+    for axis, a, b in (("x", xn, xo), ("y", yn, yo), ("z", zn, zo)):
+        assert a.tolist() == b.tolist(), axis
+    for field in ("fine_cell_m", "substrate_cell_m", "z_tail_cell_m",
+                  "edge_offset_m", "margin_cells", "n_across_metal",
+                  "n_substrate_cells"):
+        assert bn[field] == bo[field], field
+    assert bn["declared"] == bo["declared"]
+    assert bn["node"] == bo["node"]
 
 
 def test_the_rung_table_still_holds_the_first_notes_three_rungs():
@@ -246,14 +273,79 @@ def test_the_reference_notch_is_read_from_the_reference_file():
 
 
 # ------------------------------------------------ the windows, on fake notches
-def _fake_arms(notches_ghz: dict, fine_um: dict, fz_um: dict) -> dict:
-    """Arm records carrying nothing but what W5-W8 read."""
+def _fake_arms(notches_ghz: dict, fine_um: dict, fz_um: dict,
+               shas: dict | None = None) -> dict:
+    """Arm records carrying nothing but what W5-W8 read.
+
+    ``shas`` gives an arm the commit it was solved at; the windows count the
+    distinct ones so a reader can tell a ladder that spans two solver builds
+    from one that does not.  Left out, every arm shares one commit.
+    """
+    shas = shas or {}
     return {k: dict(_synthetic_curve(v * 1e9),
                     arm=k, fine_cell_m=fine_um[k] * 1e-6,
                     substrate_cell_m=fz_um[k] * 1e-6,
                     n_substrate_cells=int(round(
-                        case.SUBSTRATE_THICKNESS_M / (fz_um[k] * 1e-6))))
+                        case.SUBSTRATE_THICKNESS_M / (fz_um[k] * 1e-6))),
+                    provenance=dict(git_sha=shas.get(k, "a" * 40),
+                                    run_id="1"))
             for k, v in notches_ghz.items()}
+
+
+def test_a_ladder_that_spans_two_solver_builds_says_so():
+    """W5 counts the commits its rungs were solved at.
+
+    The FZ ladder's third rung came from the first record and another build of
+    ``rfx/``; addendum A.2 adds the same rung solved at this branch's commit.
+    Which of the two a window read has to be visible in the window, not only
+    in the provenance table.
+    """
+    f = {"Z6": 3.7250, "Z8": 3.7220, "C_off": 3.71663, "Z16": 3.7150}
+    mixed = ins.w5_fz_ladder(_fake_arms(
+        f, _LADDER_F, _LADDER_FZ, shas={"C_off": "b" * 40}))
+    assert mixed["n_commits"] == 2 and mixed["one_solver_build"] is False
+    assert mixed["commits"] == ["a" * 40, "b" * 40]
+    same = ins.w5_fz_ladder(_fake_arms(f, _LADDER_F, _LADDER_FZ))
+    assert same["n_commits"] == 1 and same["one_solver_build"] is True
+    # The commit count is bookkeeping; it does not touch the verdict.
+    assert mixed["order"] == pytest.approx(same["order"])
+    assert mixed["verdict"] == same["verdict"]
+
+
+def test_the_four_ways_of_reading_the_order_agree_on_an_exact_power_law():
+    """The spread the record carries is a property of the data, not of the code.
+
+    On an exact power law every reading must return the same order; on real
+    rungs they need not, and that is what putting all four in the table is
+    for.
+    """
+    h = [case.SUBSTRATE_THICKNESS_M / n for n in (6, 8, 12, 16)]
+    for p_true in (0.8, 1.0, 1.9):
+        f = [3.6e9 - 1.0e8 * (v / h[0]) ** p_true for v in h]
+        est = ins.order_estimates(h, f)
+        assert est["declared"] == pytest.approx(p_true, rel=1e-6)
+        assert est["three_parameter_order"] == pytest.approx(p_true, rel=1e-4)
+        assert est["three_parameter_rms_mhz"] < 1e-3
+        assert len(est["adjacent_triples"]) == 2
+        for t in est["adjacent_triples"]:
+            assert t["order"] == pytest.approx(p_true, rel=1e-5)
+            assert t["limit_ghz"] == pytest.approx(3.6, rel=1e-7)
+
+
+def test_the_three_parameter_fit_is_least_squares_on_all_four_rungs():
+    """It fits f_inf, A and p at once, and leaves a residual that means something."""
+    h = [case.SUBSTRATE_THICKNESS_M / n for n in (6, 8, 12, 16)]
+    # A ladder that is NOT a single power: two powers added.
+    f = [3.6e9 - 1.0e8 * (v / h[0]) - 4.0e7 * (v / h[0]) ** 3 for v in h]
+    r = ins.three_parameter_fit(h, f)
+    assert 0.5 < r["order"] < 3.0
+    assert r["rms_hz"] > 0.0 and r["n_points"] == 4
+    # No other order fits these four better than the one it returned.
+    import numpy as _np
+
+    for p in _np.linspace(0.2, 4.0, 60):
+        assert ins._fit_at_order(_np.asarray(h), _np.asarray(f),
+                                 float(p))["rms_hz"] >= r["rms_hz"] * (1 - 1e-9)
 
 
 _LADDER_FZ = {"Z6": 42.33333333333333, "Z8": 31.75,
@@ -414,6 +506,13 @@ def test_fz_verdicts_reports_only_the_windows_whose_arms_are_present():
 # ------------------------------------------------- the windows, on the records
 #: What the two records hold, transcribed from the committed files.  Pinned
 #: means pinned: a window that FIRED is pinned fired.
+#: The arms the committed FZ record holds.
+RECORDED_FZ_ARMS = ("F16Z6", "ON13", "Z16", "Z6", "Z8")
+#: Declared by the module but not yet solved.  A pre-declaration names its
+#: arms before they run, so this is the honest state between the declaration
+#: and the record, and it is asserted rather than left implicit: an arm that
+#: quietly stopped being owed would be an arm nobody noticed was missing.
+PENDING_ARMS = ("C_off_re",)
 RECORDED_NOTCH_GHZ = {
     "A_off": 3.747389,
     "A_on": 3.732318,
@@ -484,15 +583,28 @@ def fz_file():
         return json.load(fh)
 
 
-def test_the_fz_record_holds_the_five_new_arms_and_names_the_three_it_reuses(
-        fz_file, arms):
+def test_the_fz_record_holds_the_arms_it_is_pinned_to_hold(fz_file, arms):
+    """Exactly the arms below, and every one of them declared by the module.
+
+    ``RECORDED_FZ_ARMS`` is what the committed file holds; ``ins.FZ_ARMS`` is
+    what the module declares.  They are asserted separately because an arm
+    can be declared before it is solved -- that is the whole shape of a
+    pre-declaration -- and the gap between the two is what says an arm is
+    still owed.
+    """
     assert fz_file["schema"] == "msl_notch_graded_fz/1"
     assert fz_file["note"].endswith(
         "20260922_msl_notch_fz_ladder_predeclaration.md")
-    assert sorted(fz_file["arms"]) == sorted(ins.FZ_ARMS)
+    assert sorted(fz_file["arms"]) == sorted(RECORDED_FZ_ARMS)
+    assert set(RECORDED_FZ_ARMS) <= set(ins.FZ_ARMS)
+    assert set(RECORDED_FZ_ARMS) | set(PENDING_ARMS) == set(ins.FZ_ARMS)
+    assert set(RECORDED_FZ_ARMS) & set(PENDING_ARMS) == set()
+    assert sorted(set(ins.FZ_ARMS) - set(fz_file["arms"])) == sorted(
+        PENDING_ARMS), "the arms still owed are not the ones declared pending"
     assert fz_file["reused_from"] == "msl_notch_graded.json"
     assert fz_file["reused_arms"] == list(ins.FZ_REUSED_ARMS)
-    assert sorted(arms) == sorted(set(ins.FZ_ARMS) | set(ins.FZ_REUSED_ARMS))
+    assert sorted(arms) == sorted(set(RECORDED_FZ_ARMS)
+                                  | set(ins.FZ_REUSED_ARMS))
     for key, rec in sorted(fz_file["arms"].items()):
         assert rec["arm"] == key
         assert rec["smoke"] is False, f"{key} was recorded from a capped run"

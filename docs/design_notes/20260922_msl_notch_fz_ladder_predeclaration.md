@@ -136,6 +136,61 @@ Implementation: one Opus instance from this note. The leader reads the
 record and writes the conclusions. Review: a separate Opus instance, one
 round; P1/P2 fixes back to the same reviewer. Documentation to #1171.
 
+## A.2 C_off re-measured at the ladder's commit (declared after review, before running)
+
+**Status:** declared 2026-09-22 after the independent review of this branch and
+before the arm ran. It adds one solve and changes no window in §4: W5–W8 keep
+their arms, their rules and their verdicts exactly as frozen. What it adds is a
+second reading of each of them on a ladder that does not span two solver builds.
+
+### Why
+
+The ladder's third rung, C_off, is reused from the first record and was solved
+at commit `827d5ecf`. Z6, Z8 and Z16 were solved at `d558382f`. Between those
+two commits `rfx/` changed by 640 insertions and 102 deletions across 11 files
+— the non-uniform runner, the CPML setup and the Yee E update among them (the
+#1183 and #1190 work). The four notches therefore come from two solver builds,
+and the order and limit W5 fits are read off the differences between them. The
+review's arithmetic: a 1.41 MHz shift on C_off alone, 0.038 % of its notch,
+moves the fitted order from 1.37 to 1.08 and the limit from 0.63 % above the
+reference to 0.41 %. A ladder whose fitted order is that sensitive to one rung
+must not span two builds.
+
+### The arm
+
+One new solve, `C_off_re`: the SAME rung entry as C_off — n_z = 12, n = 24,
+offset placement, the same board, the same 10 mm arms — at this branch's
+instrument commit. One attempt. Same refusals R1–R4, same estimator, same
+`n_freqs` and `num_periods`. It is recorded in `msl_notch_graded_fz.json` under
+its own key; C_off is not edited and not removed.
+
+The two meshes must be identical for the comparison to be about the solver, so
+that is checked rather than assumed: every declared mesh field equal, and all
+three cell profiles compared bit-for-bit.
+
+### What is reported
+
+1. **The re-measurement itself.** f(C_off_re), f(C_off), their difference in MHz
+   and in per cent, each arm's commit, VESSL run, grid cells, time step and wall
+   time, and the two mesh checks above.
+2. **W5, W6 and W8 twice.** Once on the arms §4 names (Z6, Z8, C_off, Z16 for
+   W5 and W8; A_off, Z6, C_off for W6) and once with the re-measured rung in
+   place of C_off. Both rows stay in the tables; neither replaces the other.
+   Each block states how many commits of `rfx/` its rungs were solved at. W6's
+   in-plane leg still spans two builds in both rows, because A_off comes from
+   the first record either way, and the tables say so.
+3. **The order read more than one way.** Four rungs support several readings of
+   a single power and they need not agree, so all of them go in the record
+   rather than in prose: the declared least-squares slope of log|step| against
+   the midpoint of each pair's log FZ; the same slope with each step placed at
+   the coarser rung of its pair; the order that exactly reproduces the ratio of
+   two successive steps, one per consecutive triple (a coarse one and a fine
+   one); and a plain three-parameter fit of f = f_inf + A·FZ^p to all four
+   notches at once, with the rms it leaves. The §4 verdict is judged on the
+   declared reading and on nothing else.
+
+No conclusion is drawn here. The leader writes those.
+
 ## Results (facts)
 
 Appended after the runs; sections 0-7 above are unchanged.  Every number below is read
