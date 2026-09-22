@@ -371,5 +371,58 @@ Bars, for reading the two witness columns: ring-down -40 dB, passivity excess 0.
 | C_off | 369367263283 | 827d5ecf6021 | None | 0.4.33.dev20241023+e3c6d6430 | gpu | 2026-09-22T05:15:49+00:00 |
 | A_off_longarms | 369367263267 | 827d5ecf6021 | None | 0.4.33.dev20241023+e3c6d6430 | gpu | 2026-09-22T05:02:10+00:00 |
 
-Conclusions: leader fills.
+### Conclusions (leader, after reading the record, the five figures and R.0)
 
+**The physics.** On a mesh that is fine only across the metal edges and through
+the substrate, the stub notch converges from above along the substrate-cell
+ladder 42.3 → 31.75 → 21.2 µm: 3.7474 → 3.7322 → 3.7166 GHz, the last two
+rungs 0.42 % apart (W1 held). The convergence is FIRST order in the cell
+(fitted 0.92), not second, and its limit is 3.682 GHz — 0.22 % above the
+openEMS tutorial's 3.6744 GHz and 0.33 % from the uniform ladder's own
+extrapolated 3.67 GHz (W3 held): the graded and the uniform mesh solve the
+same board and converge to the same answer. What the finest rung actually
+reads is still 1.15 % high, so the case's 1 % bar fired (W2). Its 2 dB
+magnitude excess is only on the notch's two skirts (3.42–3.55 GHz and
+3.84–3.87 GHz, read from the record): the frequency offset counted a second
+time; passband and notch depth agree with the reference.
+
+**What the mesh buys.** At the substrate resolution of the uniform h/6 rung
+(42.3 µm) the graded mesh solves in 106 s instead of 661 s (0.16) with the
+same class of notch error (3.7474 vs the uniform rung's 3.7537 GHz, both about
+2 % high). The graded C rung (21.2 µm substrate cell, 2.4 M interior cells,
+1008 s) reaches a resolution the uniform mesh could not finish (h/8, 25 M
+cells, > 73 min) and brings the notch to 1.15 %. A microstrip stub notch is
+therefore reachable to about 1 % on this solver at 17 min on one RTX 4090,
+where the uniform mesh stops at 2 % after 11 min and does not finish the next
+rung.
+
+**Where the residual is.** The edge-offset placement (a node 0.35 cell inside
+each metal edge) RAISED the notch by 0.40 % at rung A relative to the on-node
+placement (3.7474 vs 3.7323 GHz), i.e. away from the reference: the solved
+strip width is not what keeps the notch high. The first-order term that
+remains sits elsewhere — the sheet on the substrate-top plane (the field
+singularity at a strip's edge in the plane normal to the sheet is resolved by
+FZ, and every rung cuts FZ and F together, so the ladder cannot separate the
+two), the T-junction, or the open end's fringing. Which one is a separate
+declaration; nothing here identifies it.
+
+**What this changes for a user.** A `dx_profile`/`dy_profile`/`dz_profile`
+mesh built by hand around a microstrip stub notch reproduces an external
+solver's notch to 1.15 % at the finest affordable rung and extrapolates to
+0.22 %, at 0.16 of the uniform cost at equal substrate resolution. That is
+one structure, one port family (MSL, `mode="laplace"`), ratio ≤ 1.3 in plane,
+ports and absorbers on uniform runways. The support-matrix sentence for "MSL
+S-matrix + nonuniform mesh" is queued on #1171 with this record as its
+witness; the row does not change in this PR.
+
+**Two facts about the instrument that a reader of the numbers needs.** The
+board is the case's except that the line sits 2.159 mm from the y_lo face
+instead of 1.55 mm (the absorber runway did not fit under the fine band;
+R.0 item 1). And the arms were run twice: the first attempt could not name
+its commit (`git archive` leaves nothing for `git rev-parse`; R.0 item 5) and
+the instrument now refuses to record such an arm; the second attempt read
+the same notch to every printed digit on all four repeated arms.
+
+**Not re-run.** The finest rung missed the 1 % bar by 0.15 %; by the fitted
+order a fourth rung (n_z = 16) would land near 0.9 %. That is a new
+declaration with a stated purpose, not a re-run of this one.
