@@ -1502,6 +1502,12 @@ def _run_stage(*, label: str, sim_root: str, threads: int,
               f"1-2 GHz {summary['max_energy_sum_below_band']['1_2_ghz']:.4f} "
               f"(tol {summary['passivity_tol']:.2f}, judged on the band)", flush=True)
 
+        # Inside the guarded block on purpose: a container that reports no
+        # openEMS version refuses the record, but the arrays measured above
+        # still reach the evidence file instead of a bare traceback (review,
+        # 2026-09-22).
+        openems_info = _openems_version(real_log)
+
         try:
             notch = refined_extremum(freqs_ghz, s21_mag,
                                      NOTCH_BAND_GHZ[0], NOTCH_BAND_GHZ[1], transform="log")
@@ -1557,7 +1563,7 @@ def _run_stage(*, label: str, sim_root: str, threads: int,
         "wall_time_s": round(elapsed, 1),
         "stdout_log_path": os.path.join(sim_dir, "_openems_stdout.log"),
         "smoke_stdout_log_path": os.path.join(smoke_dir, "_openems_stdout.log"),
-        "openems": _openems_version(real_log),
+        "openems": openems_info,
         "plan_estimate": _plan(label, msl_length_um, resolution_factor),
     })
     return record, meta

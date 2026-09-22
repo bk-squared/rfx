@@ -89,7 +89,7 @@ run: |-
 
   # P2-10: a killed, evicted or timed-out job still leaves its exit code and the
   # one-line summary. `rc` is unset until the solve runs, hence the default.
-  trap 'st=$?; rc_now=${rc:-$st}; echo "$rc_now" > "$out/exit_code"; { echo "msl_notch_openems_reference_rc=$rc_now"; echo "commit=$sha"; echo "image=${RFX_OPENEMS_IMAGE:-unset}"; echo "openems_build=$RFX_OPENEMS_COMMIT"; echo "record=$out/openems_tutorial.json"; echo "failed_record=$out/openems_tutorial_FAILED.json"; ls -la "$out"; } > "$out/summary.txt" 2>&1; cat "$out/summary.txt"' EXIT
+  trap 'st=$?; rc_now=${rc:-$st}; echo "$rc_now" > "$out/exit_code"; { echo "msl_notch_openems_reference_rc=$rc_now"; echo "commit=$sha"; echo "image=${RFX_OPENEMS_IMAGE:-unset}"; echo "openems_build=$RFX_OPENEMS_COMMIT"; echo "record=$out/openems_tutorial.json"; echo "failed_record=$out/openems_tutorial_FAILED.json"; ls -la "$out"; } > "$out/summary.txt" 2>&1; cat "$out/summary.txt"' EXIT INT TERM
 
   DRV=tests/crossval/msl_notch_filter/reference/make_openems_reference.py
   test -f "$DRV" || { echo "STALE CLONE: the reference maker is missing at $DRV"; exit 3; }
