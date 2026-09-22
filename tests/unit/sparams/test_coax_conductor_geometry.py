@@ -51,6 +51,13 @@ CENTRE = (0.004, 0.004)
 ANNULUS = SMA_OUTER_RADIUS - SMA_PIN_RADIUS
 CELL_SIZES_M = (ANNULUS / 2.0, ANNULUS / 4.0, ANNULUS / 6.0, ANNULUS / 9.0)
 
+# The staircase error oscillates on coarse meshes and only settles into its
+# trend once the mesh resolves the conductor boundaries, so the order is
+# fitted from this rung up. Measured exponent 0.986, residual 0.006.
+FIT_FROM_CELLS = 9.0
+ORDER_TOL = 0.15
+FIT_RESIDUAL_MAX = 0.05
+
 
 def _line(dx: float):
     sim = Simulation(freq_max=40e9, domain=(0.008, 0.008, 0.040), boundary="cpml",
@@ -393,37 +400,64 @@ def test_the_realized_cross_section_converges_toward_the_declared_impedance():
     conductors: ``Z0 = eta0 / (sqrt(eps_r) * G)`` with ``G = C/eps``, which for
     smooth circles is ``2 pi / ln(b/a)``. A staircased pair at four cells across
     its annulus genuinely does not have that impedance, and should not be
-    expected to -- the same physics sentence this change rests on says the
-    staircase moves ``Z_TEM`` and leaves ``beta`` alone.
+    expected to -- the physics sentence this change rests on says the staircase
+    moves ``Z_TEM`` and leaves ``beta`` alone.
 
-    This asserts only the thing that must be true of a convergent
-    discretisation: refining the mesh moves the realized geometric factor
-    TOWARD the continuum one, monotonically. It puts no bar on the distance at
-    any single mesh, because there is no basis for one.
+    **The error does not fall monotonically, and asserting that it does would be
+    wrong.** Which cells the rasterizer claims changes in jumps as the mesh
+    crosses the conductor boundaries, so the staircase error OSCILLATES about
+    its trend. Measured |G - Gc|/Gc: 11.51 / 20.40 / 5.69 / 7.56 / 3.85 / 2.57 /
+    1.74 % at 3.789 / 4 / 6 / 9 / 18 / 27 / 40 annulus cells -- 4 cells is worse
+    than 3.789, and 9 is worse than 6.
 
-    It exists because the one-port ``Z0`` the oracle reports cannot see this.
-    That number is ``R_dut (1 - Gamma)/(1 + Gamma)`` with ``R_dut`` declared,
-    and the annular resistor's conductivity is built from
+    What IS true, and what this asserts, is the trend once the mesh resolves the
+    boundary: fitted over the rungs from 9 cells up the error goes as
+    ``N**-0.986``, first order, with a largest log-space residual of 0.006. The
+    coarse rungs are recorded and not asserted, because an oscillation is not a
+    failure and a bar that forbade it would be measuring the rasterizer's phase
+    rather than the discretisation.
+
+    It exists because the one-port number the oracle reports cannot see any of
+    this. That figure is ``R_dut (1 - Gamma)/(1 + Gamma)`` with ``R_dut``
+    declared, and the annular resistor's conductivity is built from
     ``ln(shell_inner / a)``; the load's realized resistance and the line's
-    impedance carry the same discrete geometric factor and it cancels. The
-    blind review demonstrated that by re-rasterizing the coax half a cell
-    off-node: the realized line moved 3.7 % and the reported number moved
-    0.002 %. This estimator shares nothing with that path.
+    impedance carry the same discrete geometric factor and it cancels. The blind
+    review showed it by re-rasterizing the coax half a cell off-node: the
+    realized line moved 3.7 % and the reported number moved 0.002 %. This
+    estimator shares nothing with that path.
     """
     static = pytest.importorskip(
         "coax_realized_impedance_static",
         reason="the static witness lives in scripts/diagnostics")
-    rec = static.measure((4.0, 9.0, 18.0, 27.0))
+    all_rungs = (3.789288121451007, 4.0, 6.0, 9.0, 18.0, 27.0, 40.0)
+    rec = static.measure(all_rungs)
     g_cont = rec["geometric_factor_continuum"]
-    errs = [(r["rung_annulus_cells"],
+    rows = [(r["rung_annulus_cells"],
              abs(r["geometric_factor"] - g_cont) / g_cont,
              r["z0_realized_ohm"]) for r in rec["rungs"]]
-    trend = "  ".join(f"{n:.0f} cells: G err {e*100:.2f} %, Z0 {z:.2f} ohm"
-                      for n, e, z in errs)
-    for (n_a, e_a, _), (n_b, e_b, _) in zip(errs, errs[1:]):
-        assert e_b < e_a, (
-            f"refining from {n_a:.0f} to {n_b:.0f} annulus cells moved the "
-            f"realized geometric factor AWAY from the continuum value "
-            f"({e_a*100:.2f} % -> {e_b*100:.2f} %). A convergent cross-section "
-            f"does not do that. Ladder: {trend}")
-    print(f"[coax static] {trend}")
+    print("[coax static] " + "  ".join(
+        f"{n:.4g} cells: G err {e*100:.2f} %, Z0 {z:.2f} ohm" for n, e, z in rows))
+
+    fine = [(n, e) for n, e, _ in rows if n >= FIT_FROM_CELLS]
+    assert len(fine) >= 3, (
+        f"the fit needs at least three rungs at or above {FIT_FROM_CELLS} "
+        f"cells; got {[n for n, _ in fine]}")
+    x = np.log(np.array([n for n, _ in fine], dtype=float))
+    y = np.log(np.array([e for _, e in fine], dtype=float))
+    slope, intercept = np.polyfit(x, y, 1)
+    order = -float(slope)
+    resid = float(np.max(np.abs(y - (slope * x + intercept))))
+
+    assert abs(order - 1.0) <= ORDER_TOL, (
+        f"the realized geometric factor converges as N**-{order:.3f} over the "
+        f"rungs from {FIT_FROM_CELLS:.0f} cells up, not the first order a "
+        f"staircased boundary gives ({1.0 - ORDER_TOL:.2f}-{1.0 + ORDER_TOL:.2f} "
+        f"allowed). Errors: "
+        + ", ".join(f"{n:.4g} cells {e*100:.2f} %" for n, e, _ in rows))
+    assert resid <= FIT_RESIDUAL_MAX, (
+        f"the fitted trend does not describe the fine rungs: largest log-space "
+        f"residual {resid:.4f} over {FIT_RESIDUAL_MAX}. That is not a clean "
+        f"power law, so the order above means little. Errors: "
+        + ", ".join(f"{n:.4g} cells {e*100:.2f} %" for n, e, _ in rows))
+    print(f"[coax static] order {order:.3f} over rungs >= {FIT_FROM_CELLS:.0f} "
+          f"(residual {resid:.4f})")

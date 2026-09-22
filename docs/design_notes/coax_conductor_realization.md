@@ -104,10 +104,19 @@ taken from the PEC edge masks the lane hands the solver
 | 27 | 5.48734 | +2.57 % | 47.38 ohm |
 | 40 | 5.44295 | +1.74 % | 47.76 ohm |
 
-against a continuum `G = 2 pi / ln(b/a) = 5.35010` and `Z_TEM = 48.591 ohm`. It
-converges toward the smooth value as the mesh refines, which is what a
-convergent discretisation must do; no bar is put on the distance at any single
-mesh. **LEADER TO FILL** — what this means for the S a user receives.
+against a continuum `G = 2 pi / ln(b/a) = 5.35010` and `Z_TEM = 48.591 ohm`.
+
+It does NOT fall monotonically. Which cells the rasterizer claims changes in
+jumps as the mesh crosses the conductor boundaries, so the error oscillates
+about its trend: 11.51 / 20.40 / 5.69 / 7.56 / 3.85 / 2.57 / 1.74 % at 3.789 / 4
+/ 6 / 9 / 18 / 27 / 40 annulus cells — four cells is worse than 3.789, and nine
+is worse than six. Once the mesh resolves the boundary the trend is clean first
+order: fitted from 9 cells up the error goes as `N**-0.986` with a largest
+log-space residual of 0.006. That is what the committed check asserts; the
+coarse rungs are recorded and not gated, because an oscillation is not a failure
+and a bar forbidding it would measure the rasterizer's phase rather than the
+discretisation. **LEADER TO FILL** — what this means for the S a user
+receives.
 
 ## The second change: the wall's inner radius
 
