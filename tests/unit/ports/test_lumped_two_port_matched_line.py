@@ -36,6 +36,8 @@ same cells read 1.00005. One port cannot have two answers.
 import numpy as np
 import pytest
 
+C0 = 299792458.0
+
 from rfx import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.sources.sources import GaussianPulse
@@ -76,6 +78,20 @@ def _s_matrix(kind):
         compute_s_params=True, s_param_freqs=FREQS_HZ, skip_preflight=True,
     )
     return np.asarray(res.s_params)
+
+
+def _realized_port_separation(kind):
+    """Port-to-port distance the GRID built, in metres, and its cell size.
+
+    Read off the built grid rather than the declared geometry: the test is
+    about where the ports ended up, and a rasterization change that moved
+    them would otherwise be hidden by the declaration agreeing with itself.
+    """
+    sim = _build(kind)
+    grid = sim._build_grid()
+    idx = [grid.position_to_index(pe.position) for pe in sim._ports]
+    n_cells = abs(int(idx[1][0]) - int(idx[0][0]))
+    return n_cells * float(grid.dx), float(grid.dx)
 
 
 @pytest.mark.parametrize("kind", ["lumped", "wire"])
@@ -128,3 +144,49 @@ def test_the_two_lanes_agree_on_every_entry_of_the_same_cells():
     assert np.allclose(lumped, wire, rtol=0.0, atol=1e-6), (
         f"lumped {np.round(np.abs(lumped), 6)} vs wire "
         f"{np.round(np.abs(wire), 6)}")
+
+
+# The port's reference plane is not the cell it occupies. MEASURED on this
+# fixture: two one-cell ports two cells apart read as 1.5001 cells apart at
+# 1 GHz, rising to 1.514 at 10 GHz, and the wire lane gives the same numbers
+# to every digit. Magnitudes are unaffected (|S21| = 1.000055 ... 1.00459).
+# The offset is half a cell, frequency-independent to four digits at the low
+# end where the mesh's own dispersion is smallest; the climb above it is that
+# dispersion. This is a statement of what was measured, on both lanes, before
+# and after the 2026-09-21 work — NOT a claim about its cause.
+#
+# So the electrical length this line presents is the realized port separation
+# less half a cell. Against that, the residual phase error is 0.0002 deg at
+# 1 GHz and 0.1684 deg at 10 GHz. The gate below is 1.0 deg across the band,
+# a measured envelope with 5.9x margin on the worst bin.
+PHASE_GATE_DEG = 1.0
+REFERENCE_PLANE_OFFSET_CELLS = 0.5
+
+
+@pytest.mark.parametrize("kind", ["lumped", "wire"])
+def test_s21_lags_by_the_electrical_length_of_the_line(kind):
+    """S21 carries the phase of the line it crosses, not just its magnitude.
+
+    |S21| = 1 alone cannot see a sign error in the incident wave: the whole
+    point of the wave definition is which way the phase runs. This gates the
+    COMPLEX S21 against exp(-j*beta*L_eff) on the air line, beta = omega/c.
+    """
+    l_realized, dx = _realized_port_separation(kind)
+    l_eff = l_realized - REFERENCE_PLANE_OFFSET_CELLS * dx
+    beta = 2.0 * np.pi * FREQS_HZ / C0
+    s21 = _s_matrix(kind)[1, 0]
+
+    measured_lag_deg = np.degrees(-np.angle(s21))
+    expected_lag_deg = np.degrees(beta * l_eff)
+    err_deg = np.degrees(np.angle(s21 * np.conj(np.exp(-1j * beta * l_eff))))
+
+    worst = int(np.argmax(np.abs(err_deg)))
+    assert np.abs(err_deg).max() <= PHASE_GATE_DEG, (
+        f"{kind}: S21 lags beta*L_eff by "
+        f"{measured_lag_deg[worst]:.4f} deg at "
+        f"{FREQS_HZ[worst] / 1e9:.1f} GHz where the line's electrical length "
+        f"is {expected_lag_deg[worst]:.4f} deg "
+        f"(L_eff = {l_eff * 1e3:.4f} mm = realized {l_realized * 1e3:.4f} mm "
+        f"less half a cell); error {err_deg[worst]:+.4f} deg against a "
+        f"{PHASE_GATE_DEG} deg gate. Per bin: {np.round(err_deg, 4)} at "
+        f"{FREQS_HZ / 1e9} GHz")
