@@ -2,8 +2,8 @@
 """Gmsh mesh generator for the Sheen 1990 microstrip LPF — Palace FEM referee.
 
 Frequency-domain FEM (Palace) model of the classic Sheen low-pass filter, built
-to REFEREE the two FDTD references (rfx + openEMS) whose cv07 cross-check
-(``validation/crossval/_07_sheen_results/{rfx,openems}.json``) locks a ~2.74% first-null
+to REFEREE the two FDTD references (rfx + openEMS) whose cross-check
+(``validation/crossval/_07_sheen_results/{rfx,openems}.json``, removed 2026-09-23) locks a ~2.74% first-null
 split: rfx 8.202 GHz, openEMS 7.983 GHz (raw argmin bins, post-regeneration —
 #931, VESSL 369367259192; the earlier num_periods=20/default-offset leg read rfx 7.218 GHz,
 a ~9.6% split). Both refs are staircased FDTD, so
@@ -12,7 +12,7 @@ tetrahedral mesh (no staircase) captures the fringing exactly, so it is the righ
 independent arbiter of whether rfx's null is the expected staircase-fringing
 under-resolution.
 
-Geometry (mm) — locked to the EXACT domain frame of validation/crossval/07_sheen_lpf.py
+Geometry (mm) — locked to the EXACT domain frame of the retired validation/crossval/07_sheen_lpf.py
 (propagation x, transverse y, stack z; Sheen board mapped rfx_x = Sheen_y):
 
     substrate  eps_r = 2.2   h = 0.794 mm   (LOSSLESS — matches both FDTD refs)
@@ -57,7 +57,7 @@ import os
 
 import gmsh
 
-# --- geometry (mm) — locked to validation/crossval/07_sheen_lpf.py domain frame ---
+# --- geometry (mm) — locked to the retired 07_sheen_lpf.py domain frame ---
 X_LO, X_HI = 0.0, 27.472
 Y_LO, Y_HI = 0.0, 26.320
 H_SUB = 0.794                 # substrate thickness (z of the metal interface)

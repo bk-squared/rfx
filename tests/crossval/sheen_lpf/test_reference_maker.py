@@ -330,30 +330,43 @@ def test_the_check_itself_can_fail():
     assert "SELF-CHECK FAILED" in result.stdout
 
 
-def test_the_sheen_script_is_not_edited_by_this_case():
-    """The builder is copied from ``07_sheen_lpf.py``; that file is not ours.
+def test_the_frozen_slice_of_the_retired_script_is_what_the_proof_compares():
+    """The builder is copied from ``07_sheen_lpf.py``, which no longer exists.
 
-    The copy proof reads it at run time, so a session that "fixed" the script to
-    make the proof pass would be editing another case's file.  This test states
-    the direction of the dependency; git states whether the file moved.
+    That script left with its case on 2026-09-23, so the two slices the copy
+    proof has ever read from it are frozen in the maker with the commit and the
+    line ranges they came from.  This test states that the frozen text is still
+    the SCRIPT's text -- the script's own names, not this maker's -- and that it
+    still excludes the stop-criteria call delta 9 declines.  Whether the
+    comparison itself holds is ``--self-check``'s job, pinned above.
     """
-    assert SHEEN_SCRIPT.is_file()
     m = _load_maker()
+    assert not SHEEN_SCRIPT.exists(), (
+        "validation/crossval/07_sheen_lpf.py is back. The maker now compares "
+        "against a frozen copy of it; if the script returns, decide which of "
+        "the two is the source before touching either."
+    )
     assert m.SCRIPT_REL_PATH == "validation/crossval/07_sheen_lpf.py"
     assert m.SCRIPT_FUNCTION == "run_openems"
-    # The proof runs against the file on disk, not a pasted copy: the slice it
-    # compares against is a substring of that file, with the script's own names.
+    assert len(m.SCRIPT_FROZEN_AT_COMMIT) == 40
+    assert set(m.SCRIPT_FROZEN_LINE_RANGES) == {
+        "run_openems build block", "_openems_common_setup"}
+    # The frozen text is the SCRIPT's, in the script's own local names -- not a
+    # copy of this maker's builder, which would make the proof tautological.
     slice_ = m._script_builder_slice()
-    assert slice_ in SHEEN_SCRIPT.read_text()
+    assert slice_ == m._FROZEN_BUILDER_SLICE
     assert "FDTD.AddMSLPort" in slice_ and "fdtd." not in slice_
+    assert "f_max" in slice_ and "F_MAX" not in slice_
     # Delta 9 declines the script's stop criteria, so the call that sets them is
     # outside the compared block -- otherwise the proof would be asserting that
     # this maker adopts the cap.
     assert m.SCRIPT_SETUP_FUNCTION not in slice_
     setup = m._script_function_source(m.SCRIPT_SETUP_FUNCTION)
     assert "NrTS=30000" in setup and "EndCriteria=1e-4" in setup, (
-        "the cap delta 9 declines is no longer where the maker reads it"
+        "the cap delta 9 declines is no longer in the frozen setup slice"
     )
+    with pytest.raises(RuntimeError, match="no frozen copy"):
+        m._script_function_source("run_rfx")
 
 
 # ---------------------------------------------------------------------------

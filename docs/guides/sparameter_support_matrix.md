@@ -242,9 +242,9 @@ concrete call and a warning names the bin count and the worst `σ_max`. A
 passive structure cannot scatter more power than it receives, so those bins are
 a measurement artifact: read `settling_db` and `reliable` for which. Records
 committed before this change were taken through the projection, and the scripts
-that produced them (`validation/crossval/07_sheen_lpf.py`,
+that produced them (the Sheen low-pass filter's retired comparison script,
 `scripts/diagnostics/build_msl_thru_phase_dx50um_reference.py`)
-now pass `enforce_passivity=True` explicitly so they stay reproducible.
+passed `enforce_passivity=True` explicitly so they stayed reproducible.
 
 **Reading `Z0`/`beta` near a reflector (issue #726).** `reliable` is a per-bin
 fit-quality mask and `probe_clearance` is the geometric condition; neither is

@@ -177,11 +177,15 @@ z = H_SUB are the script's and the tutorial's alike (where the offsets are
 applied, and how often each axis is smoothed, is delta 14).
 
 That the Stage B builder IS the script's builder is not prose. ``--self-check``
-reads ``validation/crossval/07_sheen_lpf.py``'s own ``run_openems`` source,
+takes ``validation/crossval/07_sheen_lpf.py``'s own ``run_openems`` source,
 applies the three declared renames in ``COPY_SUBSTITUTIONS``, and compares the
 result with ``_build_sheen_board``'s corresponding slice character for
 character; then it applies the two declared rung substitutions in
 ``RUNG_SUBSTITUTIONS`` and compares with ``_build_sheen_board_at_rung``'s.
+That script is DELETED with its case (2026-09-23), so the two slices the proof
+has ever read from it are frozen verbatim in this file with the commit and the
+line ranges they came from -- see ``SCRIPT_FROZEN_SOURCES``. The comparison is
+unchanged; only where the compared text comes from is.
 
 THE WITNESS BAND: 2-12 GHz, AND WHY NOT THE WHOLE GRID
 ------------------------------------------------------
@@ -638,6 +642,102 @@ RUNG_SUBSTITUTION_COUNTS = {
     "mesh.AddLine('z', np.linspace(0, H_SUB, 5))": 1,
 }
 
+# ---------------------------------------------------------------------------
+# THE FROZEN SLICES OF THE RETIRED SCRIPT.
+#
+# The copy proof above used to read validation/crossval/07_sheen_lpf.py at run
+# time. That script is DELETED with its case (the Sheen low-pass filter is now
+# one cross-validation test, tests/crossval/sheen_lpf/test_sheen_lpf.py), so
+# the two pieces of it the proof compares against are frozen here verbatim.
+# They are the ONLY two texts the proof ever read from that file, and this is
+# still a character-for-character comparison -- it just compares against a
+# committed copy instead of a file that no longer exists.
+#
+# Taken from validation/crossval/07_sheen_lpf.py at commit
+# SCRIPT_FROZEN_AT_COMMIT (the last commit that touched the file), which is
+# also the commit the record in this directory was produced against:
+#
+#   _FROZEN_BUILDER_SLICE   run_openems (lines 1169-1275), the build block
+#                           between the two anchors, lines 1207-1246
+#   _FROZEN_SETUP_SOURCE    _openems_common_setup, lines 947-960
+#
+# What is lost by freezing: the proof can no longer notice someone editing that
+# script. Nobody can -- it is gone. What is kept: both builders here are still
+# derived from it by the declared substitutions and compared byte for byte, so
+# an edit to THIS file still goes red.
+# ---------------------------------------------------------------------------
+SCRIPT_FROZEN_AT_COMMIT = "58385de5a59163b0bf0e07de5f55b164dc9379fc"
+SCRIPT_FROZEN_LINE_RANGES = {
+    "run_openems build block": (1207, 1246),
+    "_openems_common_setup": (947, 960),
+}
+
+_FROZEN_BUILDER_SLICE = "\n".join([
+    '    unit = 1.0  # work in metres',
+    "    FDTD.SetBoundaryCond(['PML_8', 'PML_8', 'MUR', 'MUR', 'PEC', 'MUR'])",
+    '    mesh = CSX.GetGrid(); mesh.SetDeltaUnit(unit)',
+    '',
+    '    res = C0 / (f_max * np.sqrt(EPS_R)) / 50.0          # ~lambda/50 transverse',
+    '    res = min(res, H_SUB / 4.0)                          # >=4 substrate cells',
+    '    tm = np.array([2 * res / 3, -res / 3]) / 4',
+    '    # x (propagation)',
+    "    mesh.AddLine('x', [0.0, LX, PATCH_X0, PATCH_X1])",
+    "    mesh.SmoothMeshLines('x', res)",
+    '    # y (transverse) - refine both feed edges + patch edges',
+    '    for yc in (IN_FEED_YC, OUT_FEED_YC):',
+    "        mesh.AddLine('y', yc + W_FEED / 2 + tm)",
+    "        mesh.AddLine('y', yc - W_FEED / 2 - tm)",
+    "    mesh.AddLine('y', [0.0, LY, PATCH_Y_LO, PATCH_Y_HI])",
+    "    mesh.SmoothMeshLines('y', res)",
+    '    # z: >=4 substrate cells + air',
+    "    mesh.AddLine('z', np.linspace(0, H_SUB, 5))",
+    "    mesh.AddLine('z', LZ)",
+    "    mesh.SmoothMeshLines('z', res)",
+    '',
+    "    sub = CSX.AddMaterial('duroid', epsilon=EPS_R)",
+    '    sub.AddBox([0.0, 0.0, 0.0], [LX, LY, H_SUB])',
+    "    pec = CSX.AddMetal('PEC')",
+    '',
+    '    port = [None, None]',
+    '    # port 1: excited, propagation +x, feed spans x 0 -> PATCH_X0 at IN_FEED_YC',
+    '    port[0] = FDTD.AddMSLPort(',
+    '        1, pec, [0.0, IN_FEED_YC - W_FEED / 2, H_SUB],',
+    "        [PATCH_X0, IN_FEED_YC + W_FEED / 2, 0.0], 'x', 'z', excite=-1,",
+    '        FeedShift=PORT_MARGIN, MeasPlaneShift=0.45 * PATCH_X0, priority=10)',
+    '    # port 2: passive, propagation -x, feed spans x LX -> PATCH_X1 at OUT_FEED_YC',
+    '    out_len = LX - PATCH_X1',
+    '    port[1] = FDTD.AddMSLPort(',
+    '        2, pec, [LX, OUT_FEED_YC - W_FEED / 2, H_SUB],',
+    "        [PATCH_X1, OUT_FEED_YC + W_FEED / 2, 0.0], 'x', 'z',",
+    '        MeasPlaneShift=0.45 * out_len, priority=10)',
+    '    # wide low-impedance patch (top surface)',
+    '    pec.AddBox([PATCH_X0, PATCH_Y_LO, H_SUB], [PATCH_X1, PATCH_Y_HI, H_SUB],',
+    '               priority=10)',
+])
+
+_FROZEN_SETUP_SOURCE = "\n".join([
+    'def _openems_common_setup(f_max):',
+    '    _require_openems()',
+    '    import numpy as _np',
+    '    _np.int = int      # numpy 2.x shim: openEMS ports.py uses removed aliases',
+    '    _np.float = float',
+    '    from CSXCAD import ContinuousStructure',
+    '    from openEMS import openEMS',
+    '    # bound the run: resonant sections otherwise chase the default energy floor',
+    '    # for a very long time on CPU. 1e-4 (-40 dB) is an adequate settling floor.',
+    '    FDTD = openEMS(NrTS=30000, EndCriteria=1e-4)',
+    '    FDTD.SetGaussExcite(f_max / 2, f_max / 2)',
+    '    CSX = ContinuousStructure()',
+    '    FDTD.SetCSX(CSX)',
+    '    return FDTD, CSX',
+])
+
+SCRIPT_FROZEN_SOURCES = {
+    SCRIPT_FUNCTION: _FROZEN_BUILDER_SLICE,
+    SCRIPT_SETUP_FUNCTION: _FROZEN_SETUP_SOURCE,
+}
+
+
 
 # ---------------------------------------------------------------------------
 # STAGE B: the Sheen board. Copied from validation/crossval/07_sheen_lpf.py's
@@ -773,13 +873,6 @@ def _build_sheen_board_at_rung(ContinuousStructure, openEMS, MSLPort, *,
 # ---------------------------------------------------------------------------
 # The copy proof's own plumbing: slice a builder's body between two anchors.
 # ---------------------------------------------------------------------------
-def _repo_root() -> Path:
-    env = os.environ.get("RFX_REPO_ROOT")
-    if env:
-        return Path(env).resolve()
-    return Path(__file__).resolve().parents[4]
-
-
 def _slice_builder(text: str, what: str) -> str:
     """The build block of ``text``, from the first anchor line to the last."""
     first = text.find(BUILDER_SLICE_FIRST_LINE)
@@ -792,25 +885,25 @@ def _slice_builder(text: str, what: str) -> str:
 
 
 def _script_function_source(name: str) -> str:
-    """A named top-level function of ``07_sheen_lpf.py``, straight off disk."""
-    import ast
+    """A named piece of the retired ``07_sheen_lpf.py``, from the frozen copy.
 
-    path = _repo_root() / SCRIPT_REL_PATH
-    if not path.is_file():
+    The file is deleted with its case, so the text comes from
+    ``SCRIPT_FROZEN_SOURCES`` -- the two slices the copy proof has ever read,
+    taken verbatim at ``SCRIPT_FROZEN_AT_COMMIT``.  For ``run_openems`` the
+    frozen text IS the build block, so slicing it with the anchors is a no-op.
+    """
+    try:
+        return SCRIPT_FROZEN_SOURCES[name]
+    except KeyError:
         raise RuntimeError(
-            f"the script this builder is copied from is not at {path} -- the copy "
-            f"proof cannot run (set RFX_REPO_ROOT, or run from the repository)"
-        )
-    src = path.read_text()
-    lines = src.split("\n")
-    for node in ast.parse(src).body:
-        if isinstance(node, ast.FunctionDef) and node.name == name:
-            return "\n".join(lines[node.lineno - 1:node.end_lineno])
-    raise RuntimeError(f"{SCRIPT_REL_PATH} has no top-level {name}")
+            f"no frozen copy of {SCRIPT_REL_PATH}'s {name} -- the copy proof "
+            f"has {sorted(SCRIPT_FROZEN_SOURCES)} and that file no longer "
+            f"exists to read another one from"
+        ) from None
 
 
 def _script_builder_slice() -> str:
-    """``07_sheen_lpf.py``'s ``run_openems`` build block, straight off disk.
+    """``07_sheen_lpf.py``'s ``run_openems`` build block, from the frozen copy.
 
     The slice starts at that function's ``unit = 1.0`` line, which is AFTER its
     ``FDTD, CSX = _openems_common_setup(f_max)`` call and after its banner
@@ -2622,8 +2715,8 @@ def main(argv=None) -> int:
     try:
         _script_builder_slice()
     except Exception as exc:
-        print(f"CONFIG ERROR: the copy proof cannot read the script this builder is "
-              f"copied from: {exc}", file=sys.stderr)
+        print(f"CONFIG ERROR: the copy proof cannot read the frozen slice of the "
+              f"script this builder is copied from: {exc}", file=sys.stderr)
         return 3
 
     try:

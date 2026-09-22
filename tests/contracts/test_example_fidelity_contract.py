@@ -86,9 +86,10 @@ Whether it happens is a PI decision on #737. Until it is taken this file is
 both things at once: a drift pin on what every audited example emits, and a
 bar on every pinned row carrying a written disposition.
 
-Every pinned row carries a disposition. Two are ``defect-open`` -- #928 for
-cv07's congruent-feed parity and #1100 for the taper's declared-vs-realized
-WR-90 guide -- and the rest are ``intended``. Again the totals are in the two
+Every pinned row carries a disposition. One is ``defect-open`` -- #1100 for
+the taper's declared-vs-realized WR-90 guide -- and the rest are ``intended``.
+The Sheen low-pass filter's seven rows (including #928's congruent-feed
+parity) left with its script on 2026-09-23. Again the totals are in the two
 data files, not here. The rows the eleven #737-item-2 variants
 added are classified against the examples' own text: the patch demo states that
 it models FR4 lossless and quotes frequencies rather than Q, and that a graded
@@ -106,16 +107,24 @@ second one (2026-09-02, #833 item 2).
 
 COVERAGE (measured 2026-09-16 at c6788ef7 + this PR; re-derive with
 ``test_discovery_matches_classification_table`` and a Counter over
-``lib.CLASSIFICATION``). Discovery sees 138 scripts under examples/ +
+``lib.CLASSIFICATION``). Discovery saw 138 scripts under examples/ +
 validation/, all 138 classified: audited 39, builder_fused_with_solve 8,
-module_level_solve 6, no_solve 4, no_simulation 81; the snapshot holds 62
+module_level_solve 6, no_solve 4, no_simulation 81; the snapshot held 62
 variants over those 39 audited scripts.
+
+That block is the 2026-09-16 measurement and the classification table has
+moved several times since. Re-measured 2026-09-23, after the Sheen low-pass
+filter's script left with its case (``Counter(v.kind for v in
+lib.CLASSIFICATION.values())`` plus the snapshot's own length): 101
+classified -- audited 33, no_simulation 60, builder_fused_with_solve 5,
+no_solve 3 -- and 51 snapshot variants over those 33 audited scripts.
 
 Against the 47 scripts that existed when #737 was filed (ed3484c1 -- the
 tracker's own denominator, kept here because the tracker's table is stated
 in it): 30 audited / 4 builder_fused_with_solve / 5 module_level_solve /
-8 no_simulation. The moves since the 2026-08-27 audit's 23/10/6/8: cv07
-and cv15 grew build-only entry points (23->25, 10->8), and #737 item 2
+8 no_simulation. The moves since the 2026-08-27 audit's 23/10/6/8: the
+Sheen low-pass filter and cv15 grew build-only entry points (23->25, 10->8),
+and #737 item 2
 (2026-09-16) added five more -- hello_world, boundary_spec_demo,
 nu_cavity_gate_scan and 13_subgrid_material_validation out of
 ``builder_fused_with_solve``, and nonuniform_patch_demo out of
@@ -144,10 +153,11 @@ importing it no longer solves).
   of scope BY CONSTRUCTION.
 
 WHAT THIS DOES NOT COVER. Against #722's own list of eight scripts that
-solved geometry other than what they declared (cv06b, cv20, cv11, cv16,
-cv17, cv07, cv09, cv15), this gate now reaches THREE: cv06b, cv07 and
-cv15 (the last two arrived with their build-only entry points; the WR-90
-waveguide-port case left the table with its case on 2026-09-21).
+solved geometry other than what they declared (the MSL notch filter, cv20,
+cv11, cv16, cv17, the Sheen low-pass filter, cv09, cv15), this gate now
+reaches ONE: cv15 (it arrived with its build-only entry point; the WR-90
+waveguide-port case left the table with its case on 2026-09-21, the MSL notch
+filter on 2026-09-22 and the Sheen low-pass filter on 2026-09-23).
 cv20/cv16/cv17 are ``no_simulation`` and cv09 is
 ``builder_fused_with_solve``, so a no-solve gate cannot see them as those
 scripts stand today. It DOES pin

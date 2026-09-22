@@ -26,8 +26,8 @@ scripts discovered in this repo today (re-measured 2026-09-16 at c6788ef7
 plus #737 item 2: audited 39 / builder_fused_with_solve 8 /
 module_level_solve 6 / no_solve 4 / no_simulation 81; on the 47 scripts
 that existed when #737 was filed the split is 30/4/5/8, where the
-2026-08-27 audit read 23/10/6/8 before cv07 and cv15 grew build-only entry
-points and #737 item 2 added five more), so
+2026-08-27 audit read 23/10/6/8 before the Sheen low-pass filter and cv15
+grew build-only entry points and #737 item 2 added five more), so
 ``test_example_fidelity_contract.py``
 uses it as a MACHINE CHECK on top of the hand-authored table for every
 bucket, not just the two the audit required — a script whose classification
@@ -580,13 +580,6 @@ CLASSIFICATION: dict[str, Entry] = {
         "skip, so this script would red that lane rather than skip; the "
         "snapshot row could not be captured on a machine without trimesh "
         "either. Revisit if the weekly lane ever installs the cad extra"),
-    "validation/crossval/07_sheen_lpf.py": Entry(
-        "audited",
-        "`build_rfx_sim(dx)` returns Simulation with no solve call (split out "
-        "of run_rfx() by the #931 crossval-B migration so the build-time "
-        "realized-metal gate is exercised against the production builder); "
-        "run_rfx() consumes it and solves",
-        (Builder("build_rfx_sim", None, (_v("default", dx=200e-6),)),)),
     "validation/crossval/15_patch_antenna_rt5880.py": Entry(
         "audited",
         "`build_rfx_sim(...)` returns (sim, patch_shape, geom) with no solve "
@@ -641,8 +634,9 @@ CLASSIFICATION: dict[str, Entry] = {
         "issue #636 CFS-alpha factorial: `vacuum_floor()` (and `run_cell()` "
         "via `build_sim`) construct and call .run(...) for the same cell"),
     # ---- audited: builder is separable from solve ----
-    # #737 item 2 (2026-09-16): build-only entry points on the cv07/cv15
-    # pattern for the scripts the reopen comment listed as unreachable. Each
+    # #737 item 2 (2026-09-16): build-only entry points on the pattern the
+    # Sheen low-pass filter and cv15 set, for the scripts the reopen comment
+    # listed as unreachable. Each
     # builder is the one the script's own main path calls, so what the gate
     # pins is the model that runs, not a copy of it. cad_mesh_import_demo is
     # the one exception and stays out of scope with its reason, above.
