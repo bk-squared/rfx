@@ -55,6 +55,7 @@ import math
 import numpy as np
 
 from rfx.core.jax_utils import is_tracer
+from rfx.preflight._common import profile_boundary_cell
 from rfx.core.yee import MaterialArrays
 from rfx.grid import C0
 
@@ -178,14 +179,22 @@ def _validate_cfg_source_on_reflector_plane(
         set(self._pec_faces) | _spec_pec_faces | set(_pmc_faces_set)
     )
     if _all_reflector_faces:
-        _dx_axis = [float(dx), float(dx), float(dx)]
-        if (self._dz_profile is not None
-                and not is_tracer(self._dz_profile)):
-            _dx_axis[2] = float(self._dz_profile[0])
+        # The tolerance is half a cell AT THE FACE, and the two faces of an
+        # axis need not be the same cell. This used to take the boundary
+        # scalar on x and y whatever the mesh did, and on z it took the
+        # profile's LEADING entry for both faces -- so a port on z_hi was
+        # judged against z_lo's cell. Each face now reads its own, through
+        # the same rule the grid's ``boundary_cell(axis, side)`` applies
+        # (G17).
+        _axis_profiles = (self._dx_profile, self._dy_profile,
+                          self._dz_profile)
         for face in _all_reflector_faces:
             ax_name = face[0]
             side = face[2:]
             ax_i = "xyz".index(ax_name)
+            _face_cell = profile_boundary_cell(
+                dx, _axis_profiles[ax_i], side)
+            _dx_axis = [_face_cell, _face_cell, _face_cell]
             face_kind = "PMC" if face in _pmc_faces_set else "PEC"
             d_ext = self._domain[ax_i] if ax_i < len(self._domain) else self._domain[-1]
             plane_coord = 0.0 if side == "lo" else float(d_ext)

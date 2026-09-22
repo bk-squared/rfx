@@ -89,6 +89,8 @@ from rfx.core.jax_utils import is_tracer
 from rfx.geometry.csg import Box
 
 from rfx.preflight._common import (
+    profile_boundary_cell,
+    profile_is_constant,
     _fmt_freq,
     _fmt_len,
     PreflightConfigError,
@@ -1021,7 +1023,15 @@ def _validate_cfg_nonuniform_limitations(
     self, _w, cpml_thickness: float
 ) -> None:
     """P2: Non-uniform mesh shadow-lane limitations."""
-    if self._dz_profile is not None:
+    # Keyed on "is any axis graded", not on "was a z profile given". A
+    # dx-only or dy-only graded mesh used to skip both checks below and
+    # report All checks passed, though the TFSF auxiliary line runs along x
+    # and the absorber thickness is a per-axis question (G17).
+    _axis_profiles = (self._dx_profile, self._dy_profile, self._dz_profile)
+    _any_axis_graded = not all(
+        profile_is_constant(prof) for prof in _axis_profiles
+    )
+    if _any_axis_graded:
         # P2.3: TFSF on nonuniform mesh — narrowed scope.
         # Axis-aligned ±x incidence with angle_deg=0 runs the 1D
         # auxiliary along the uniform x axis and is supported. The
@@ -1031,7 +1041,7 @@ def _validate_cfg_nonuniform_limitations(
             if self._tfsf.direction in ("+z", "-z"):
                 raise PreflightConfigError(
                     "TFSF z-directed incidence is not yet supported on "
-                    "nonuniform z mesh. Axis-aligned incidence along x "
+                    "a non-uniform mesh. Axis-aligned incidence along x "
                     "(direction='+x' or '-x') is supported.",
                     code="nonuniform_tfsf",
                     source="_validate_cfg_nonuniform_limitations",
@@ -1039,7 +1049,7 @@ def _validate_cfg_nonuniform_limitations(
             if abs(self._tfsf.angle_deg) > 0.01:
                 raise PreflightConfigError(
                     "TFSF oblique incidence is not yet supported on "
-                    "nonuniform z mesh. Use angle_deg=0.",
+                    "a non-uniform mesh. Use angle_deg=0.",
                     code="nonuniform_tfsf",
                     source="_validate_cfg_nonuniform_limitations",
                 )
@@ -1052,12 +1062,25 @@ def _validate_cfg_nonuniform_limitations(
         # PEC/PMC (allocation 0) no longer reports a thin absorber that
         # does not exist, and a per-face `hi_thickness` is measured at the
         # thickness it actually allocates.
-        _z_layers = max(self._preflight_face_layers()["z_lo"],
-                        self._preflight_face_layers()["z_hi"])
+        _face_layers = self._preflight_face_layers()
+        _z_layers = max(_face_layers["z_lo"], _face_layers["z_hi"])
         if (self._boundary == "cpml"
                 and _z_layers > 0
                 and not is_tracer(self._dz_profile)):
-            cpml_z_thick = sum(float(d) for d in self._dz_profile[:_z_layers])
+            # The absorber on a face sits on copies of THAT face's boundary
+            # cell -- ``_pad_profile`` fills each pad with the profile's own
+            # end -- so its thickness is that cell times the face's own layer
+            # count. This used to sum the first ``max(lo, hi)`` INTERIOR
+            # cells, which is neither face's absorber: wrong cells, and the
+            # hi face measured from the lo end. Thinnest face is reported,
+            # since that is the one whose absorption is worst (G17).
+            _z_thick_by_face = {
+                _side: (_face_layers[f"z_{_side}"]
+                        * profile_boundary_cell(self._dx, self._dz_profile,
+                                                _side))
+                for _side in ("lo", "hi")
+            }
+            cpml_z_thick = min(_z_thick_by_face.values())
             if cpml_z_thick < cpml_thickness * 0.3:
                 _w.warn(
                     PreflightWarning(

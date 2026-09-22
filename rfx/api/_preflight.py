@@ -496,9 +496,45 @@ class _PreflightMixin:
                 # other two rounded to cells, so the three disagreed in a band
                 # (5h/dx = 15.2, offset 15: rounded compliant, float violating).
                 # One helper, one answer.
+                # The standoff is a LENGTH -- the source fringing decays
+                # over ~5 substrate thicknesses, which knows nothing about
+                # the mesh -- and the cell count is that length divided by
+                # the cells the runway actually has at this port. Reading
+                # the boundary scalar counted the wrong cells for a port on
+                # a graded runway: on a 2x-refined runway it asked for half
+                # the physical standoff (G17).
+                from rfx.preflight._common import (
+                    profile_cell_at as _profile_cell_at,
+                    profile_span_is_uniform as _profile_span_is_uniform,
+                )
+                from rfx.sources.msl_port import (
+                    msl_axis_roles as _msl_axis_roles,
+                )
+                _prop_axis, _, _, _ = _msl_axis_roles(pe.direction)
+                _ax_i = "xyz".index(_prop_axis)
+                _runway_profile = (self._dx_profile, self._dy_profile,
+                                   self._dz_profile)[_ax_i]
+                _runway_dx = _profile_cell_at(
+                    self._dx or 0.0, _runway_profile, float(pe.feed_x))
                 _nf_cells = msl_source_near_field_standoff_cells(
-                    float(pe.height), float(self._dx) if self._dx else 0.0)
-                if (self._dx and pe.n_probe_offset is not None
+                    float(pe.height), _runway_dx)
+                # A count is only meaningful where the cells it counts are
+                # equal. Across a ramp the answer depends on where you start,
+                # so say so rather than answer, the way the S path already
+                # refuses a reference span that leaves one grading zone.
+                _standoff_len = _nf_cells * _runway_dx
+                if not _profile_span_is_uniform(
+                        self._dx or 0.0, _runway_profile,
+                        float(pe.feed_x), _standoff_len):
+                    messages.append(
+                        f"MSL port {pe.name!r}: the source-fringing standoff "
+                        f"({_standoff_len*1e3:.3g} mm from the feed plane) "
+                        f"crosses cells of more than one size on the "
+                        f"{_prop_axis} runway, so a probe-offset in CELLS "
+                        "does not name one distance. Put the port and its "
+                        "probes inside one uniform zone of the profile."
+                    )
+                elif (self._dx and pe.n_probe_offset is not None
                         and int(pe.n_probe_offset) < _nf_cells):
                     messages.append(
                         f"MSL port {pe.name!r}: n_probe_offset="

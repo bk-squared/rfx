@@ -592,3 +592,102 @@ def _component_is_dead(edges, component: str, idx) -> bool:
         if not edges[c][ii, jj, kk]:
             return False
     return True
+
+
+# ---------------------------------------------------------------------------
+# The grid interface's metric rules, spelled on the DECLARED profiles.
+#
+# Preflight runs before a grid is necessarily built, and several checks here
+# would otherwise pay for a full ``_build_nonuniform_grid()`` just to read one
+# cell. These three helpers answer the same questions
+# ``rfx/_grid_metric.py``'s interface answers -- ``boundary_cell(axis, side)``,
+# ``cells(axis)[i]`` and ``is_constant(axis)`` -- from the profile a caller
+# declared plus the boundary scalar.
+#
+# They agree with the grid by construction, because the builder derives the
+# grid from exactly these inputs: ``make_nonuniform_grid`` pins a profile's
+# first and last cells as the boundary cells and pads each face with copies of
+# them, so the padded array's ends ARE the profile's ends.
+# ``tests/unit/preflight/test_profile_metric_helpers.py`` pins that agreement
+# against a real ``NonUniformGrid`` rather than asserting it here.
+# ---------------------------------------------------------------------------
+
+def profile_is_constant(profile, *, tol: float = 0.0) -> bool:
+    """Whether a declared axis profile has one cell size everywhere.
+
+    ``None`` means the axis was never given a profile, which is the uniform
+    case, so it is constant. A traced profile is reported NOT constant: it
+    cannot be decided on the host, and that is the safe direction for a check
+    that would otherwise be skipped.
+    """
+    if profile is None:
+        return True
+    if is_tracer(profile):
+        return False
+    a = np.asarray(profile, dtype=float)
+    if a.size == 0:
+        return True
+    return bool(np.all(np.abs(a - a[0]) <= tol))
+
+
+def profile_boundary_cell(scalar_dx: float, profile, side: str) -> float:
+    """The cell at one FACE of an axis: the grid's ``boundary_cell``.
+
+    ``side`` is ``"lo"`` or ``"hi"``. Without a profile every cell is the
+    scalar. With one, the face cell is that profile's first or last entry --
+    and the absorber cells outside it are copies of the same number, which is
+    why this is also the cell an absorber on that face sits on.
+
+    The two sides are asked for separately on purpose. Reading the leading
+    entry for both faces is the defect this replaces: on a profile whose ends
+    differ it measures the hi face with the lo face's cell.
+    """
+    if side not in ("lo", "hi"):
+        raise ValueError(f"side must be 'lo' or 'hi', got {side!r}")
+    if profile is None or is_tracer(profile):
+        return float(scalar_dx)
+    a = np.asarray(profile, dtype=float)
+    if a.size == 0:
+        return float(scalar_dx)
+    return float(a[0] if side == "lo" else a[-1])
+
+
+def profile_cell_at(scalar_dx: float, profile, coord_m: float) -> float:
+    """The cell that CONTAINS ``coord_m``, measured from the first interior
+    node: the grid's ``cells(axis)[index_of(axis, coord)]``.
+
+    Coordinates outside the profile clamp to the end cell, because a caller
+    asking about a position beyond the declared span is asking about the
+    absorber, whose cells are copies of that end.
+    """
+    if profile is None or is_tracer(profile):
+        return float(scalar_dx)
+    a = np.asarray(profile, dtype=float)
+    if a.size == 0:
+        return float(scalar_dx)
+    edges = np.concatenate([[0.0], np.cumsum(a)])
+    idx = int(np.searchsorted(edges, float(coord_m), side="right")) - 1
+    return float(a[max(0, min(idx, a.size - 1))])
+
+
+def profile_span_is_uniform(scalar_dx: float, profile,
+                            start_m: float, length_m: float) -> bool:
+    """Whether every cell a span crosses has the same size.
+
+    A check that converts a physical length into a cell count is only
+    meaningful where the cells it counts are equal; across a grading ramp the
+    count depends on where you start. Callers refuse rather than answer there.
+    """
+    if profile is None or is_tracer(profile):
+        return True
+    a = np.asarray(profile, dtype=float)
+    if a.size == 0:
+        return True
+    lo = min(float(start_m), float(start_m) + float(length_m))
+    hi = max(float(start_m), float(start_m) + float(length_m))
+    edges = np.concatenate([[0.0], np.cumsum(a)])
+    i0 = max(0, int(np.searchsorted(edges, lo, side="right")) - 1)
+    i1 = max(0, int(np.searchsorted(edges, hi, side="right")) - 1)
+    i1 = min(i1, a.size - 1)
+    seg = a[i0:i1 + 1]
+    return bool(seg.size == 0 or np.all(seg == seg[0]))
