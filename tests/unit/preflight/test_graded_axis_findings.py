@@ -157,7 +157,7 @@ def _graded_runway_board():
     return prof, float(np.sum(prof[:14 + len(ramp)])), len(ramp)
 
 
-def _msl_board(prof, feed, n_probe_offset):
+def _msl_board(prof, feed, n_probe_offset, direction="+x"):
     from rfx.geometry.csg import Box
     h, w = _NOTCH_H_SUB, 2 * _NOTCH_H_SUB
     lx, ly = float(prof.sum()), 2 * _NOTCH_H_SUB + 8 * _NOTCH_H_SUB
@@ -172,7 +172,7 @@ def _msl_board(prof, feed, n_probe_offset):
     sim.add(Box((0, y_c - w / 2, h), (lx, y_c + w / 2, h + 2 * _NOTCH_RUNWAY)),
             material="pec")
     sim.add_msl_port(position=(feed, y_c, 0), width=w, height=h,
-                     direction="+x", impedance=50.0,
+                     direction=direction, impedance=50.0,
                      n_probe_offset=n_probe_offset)
     return sim
 
@@ -284,3 +284,22 @@ def test_a_source_outside_the_fine_wall_half_cell_is_not_flagged():
     """
     report = _pec_box_with_source_below_z_hi(_z_ends(_DX, 0.2 * _DX), 0.3e-3)
     assert "source_decoupled" not in _codes(report), _codes(report)
+
+
+def test_the_span_inspected_runs_the_way_the_port_launches():
+    """The probes sit downstream of the feed, so a -x port's standoff occupies
+    the cells BELOW its feed plane and a +x port's the cells above.
+
+    This feed sits two cells into the uniform runway with the grading ramp
+    just behind it. Launching backwards, the standoff crosses the ramp and is
+    refused; launching forwards from the same plane it stays on 127 um cells
+    and only the floor is reported. An unsigned span inspects the +x side for
+    both and misses the ramp the -x port actually runs over.
+    """
+    prof, x_run, _ = _graded_runway_board()
+    feed = x_run + 2 * _NOTCH_RUNWAY
+    back = _forward_message(_msl_board(prof, feed, 7, direction="-x"))
+    fwd = _forward_message(_msl_board(prof, feed, 7, direction="+x"))
+    assert "crosses cells of more than one size" in back, back
+    assert "crosses cells of more than one size" not in fwd, fwd
+    assert "sits within the source fringing transient (10 cells" in fwd, fwd

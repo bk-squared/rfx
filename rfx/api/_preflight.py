@@ -510,7 +510,7 @@ class _PreflightMixin:
                 from rfx.sources.msl_port import (
                     msl_axis_roles as _msl_axis_roles,
                 )
-                _prop_axis, _, _, _ = _msl_axis_roles(pe.direction)
+                _prop_axis, _, _, _prop_sign = _msl_axis_roles(pe.direction)
                 _ax_i = "xyz".index(_prop_axis)
                 _runway_profile = (self._dx_profile, self._dy_profile,
                                    self._dz_profile)[_ax_i]
@@ -526,13 +526,15 @@ class _PreflightMixin:
                 # equal. Across a ramp the answer depends on where you start,
                 # so say so rather than answer, the way the S path already
                 # refuses a reference span that leaves one grading zone.
-                _standoff_len = _nf_cells * _runway_dx
+                # signed: a -x port's probes run toward smaller x, so the
+                # span to inspect is on that side of the feed plane
+                _standoff_len = _nf_cells * _runway_dx * int(_prop_sign)
                 if not _profile_span_is_uniform(
                         self._dx or 0.0, _runway_profile,
                         _feed_coord, _standoff_len):
                     messages.append(
                         f"MSL port {pe.name!r}: the source-fringing standoff "
-                        f"({_standoff_len*1e3:.3g} mm from the feed plane) "
+                        f"({abs(_standoff_len)*1e3:.3g} mm from the feed plane) "
                         f"crosses cells of more than one size on the "
                         f"{_prop_axis} runway, so a probe-offset in CELLS "
                         "does not name one distance. Put the port and its "
