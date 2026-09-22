@@ -92,8 +92,9 @@ within 0.99 % of a converged record, while `d ln|S11|² / d ln εr` was out by
 driven by a soft source instead of a port settles far more slowly (−40.9 dB in
 6000 steps against −101.5 dB for the port); there `d ln U(0) / d ln εr` read
 5.79 against a converged 6.80 and a pattern-ratio gradient 0.331 against 0.070.
-An optimizer reading those slopes is being handed the wrong descent direction,
-not a noisy one.
+In every measured case the sign of the slope was right and its size was not — an
+optimizer reading them takes steps of the wrong length, and a gate on a gradient
+value passes or fails on the record length rather than on the physics.
 
 Neither existing check sees it. `settling_verdict` scores the end of the record
 against its peak, which is a statement about the value. AD against a finite
