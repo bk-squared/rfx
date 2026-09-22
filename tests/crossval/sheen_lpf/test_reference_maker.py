@@ -423,7 +423,8 @@ def test_the_declared_design_is_still_the_library_defaults():
 
 
 def _part(tmp_path, name, rung, *, run_id, s21_bin17=0.5, build="bld-1",
-          commit="cafe1234", note="made with --real-end-criteria 0.0001: ..."):
+          commit="cafe1234", note="made with --real-end-criteria 0.0001: ...",
+          record_length_s=7.4e-8, witness=None):
     """A minimal record shaped like one rung job's output."""
     stage_a = {
         "freqs_ghz": [1.0, 2.0, 3.0],
@@ -443,10 +444,12 @@ def _part(tmp_path, name, rung, *, run_id, s21_bin17=0.5, build="bld-1",
             "stop_criteria_note": note,
             "rungs_in_this_record": [rung],
             "stages": {"stage_a": {"stage": "stage_a"},
-                       m_rung(rung): {"stage": m_rung(rung)}},
+                       m_rung(rung): {"stage": m_rung(rung),
+                                      "record_length_s": record_length_s}},
         },
         "stage_a": stage_a,
-        m_rung(rung): {"null": {"refined_f_ghz": 7.9}, "rung": rung},
+        m_rung(rung): dict({"null": {"refined_f_ghz": 7.9}, "rung": rung},
+                           **({"witness_2n": witness} if witness else {})),
         "run_id": run_id,
         "run_id_note": "filled by the submitter",
     }
@@ -731,3 +734,162 @@ def test_a_clean_run_is_untouched_by_all_of_this(tmp_path):
     assert meta["end_criteria_reached"] is True
     assert "truncation_accepted" not in meta
     assert meta["final_energy_db"] == pytest.approx(-50.02)
+
+
+# ---------------------------------------------------------------------------
+# A declared record length, and the witness that measures what it costs
+# ---------------------------------------------------------------------------
+def test_record_length_witness_needs_a_declared_length():
+    """Two lengths to compare, and a run at the shorter one that is recordable."""
+    m = _load_maker()
+    assert m.RECORD_LENGTH_WITNESS_DEFAULT is False
+    for args in (("--record-length-witness",),
+                 ("--record-length-witness", "--real-nrts", "60000"),
+                 ("--record-length-witness", "--accept-truncation")):
+        result = _run("--dry-run", *args)
+        assert result.returncode == 3, f"{args} was accepted"
+        assert "--record-length-witness needs" in result.stderr
+    ok = _run("--dry-run", "--stage", "both", "--rungs", "coarse",
+              "--real-nrts", "60000", "--accept-truncation",
+              "--record-length-witness")
+    assert ok.returncode == 0, ok.stderr
+
+
+def test_dry_run_says_a_witnessed_rung_costs_two_solves():
+    result = _run("--dry-run", "--stage", "both", "--rungs", "coarse,mid",
+                  "--real-nrts", "60000", "--accept-truncation",
+                  "--record-length-witness")
+    assert result.returncode == 0, result.stderr
+    assert "solved TWICE, at 60000 and 120000 timesteps" in result.stdout
+    assert "costs 4 Stage B solves for 2 rung(s)" in result.stdout
+    off = _run("--dry-run", "--stage", "both", "--rungs", "coarse,mid")
+    assert "record-length witness   off: 2 Stage B solve(s)" in off.stdout
+
+
+def test_the_witness_measures_only_where_both_curves_are_above_the_floor():
+    """A deep null moves for reasons that are not record length.
+
+    The floor is what keeps the witness a measure of truncation rather than of
+    the null, so the arithmetic is planted here rather than assumed.
+    """
+    import numpy as np
+
+    m = _load_maker()
+    f = np.linspace(0.5, 20.0, m.B_N_FREQS)
+    base = np.full_like(f, 0.5)                       # -6.02 dB, well above the floor
+    other = base.copy()
+    # One in-band bin moved by a known amount, above the floor.
+    i_in = int(np.argmin(np.abs(f - 6.0)))
+    other[i_in] = base[i_in] * 10 ** (0.25 / 20.0)    # +0.25 dB
+    # One in-band bin far below the floor, moved by a lot. It must be ignored.
+    i_null = int(np.argmin(np.abs(f - 8.0)))
+    base[i_null] = 10 ** (-60.0 / 20.0)
+    other[i_null] = 10 ** (-30.0 / 20.0)              # 30 dB apart, below the floor
+    # One bin outside the witness band, moved by a lot. Also ignored.
+    i_out = int(np.argmin(np.abs(f - 18.0)))
+    other[i_out] = base[i_out] * 10 ** (9.0 / 20.0)
+
+    rec_n = {"freqs_ghz": f.tolist(), "s21_mag": base.tolist(),
+             "s11_mag": np.full_like(f, 0.3).tolist()}
+    rec_2n = {"freqs_ghz": f.tolist(), "s21_mag": other.tolist(),
+              "s11_mag": np.full_like(f, 0.3).tolist()}
+    w = m.record_length_witness(rec_n, rec_2n, n_steps=60000, n2_steps=120000)
+
+    assert w["n_steps"] == 60000 and w["n2_steps"] == 120000
+    assert w["floor_db"] == -20.0
+    assert w["band_ghz"] == [2.0, 12.0]
+    assert w["max_abs_delta_s21_db"] == pytest.approx(0.25, abs=1e-6), (
+        "the witness picked up the null or the out-of-band bin"
+    )
+    assert w["f_ghz_at_max_abs_delta_s21"] == pytest.approx(6.0, abs=0.05)
+    assert w["max_abs_delta_s11_db"] == pytest.approx(0.0, abs=1e-9)
+    assert w["s21_bins_compared"] < f.size, "the floor and the band excluded nothing"
+    # No verdict anywhere in what it returns.
+    assert not [k for k in w if k in ("passed", "ok", "gate", "verdict")]
+
+
+def test_the_witness_says_so_when_the_grids_do_not_match():
+    m = _load_maker()
+    w = m.record_length_witness({"freqs_ghz": [1.0, 2.0]},
+                                {"freqs_ghz": [1.0, 2.0, 3.0]},
+                                n_steps=1, n2_steps=2)
+    assert "error" in w and "frequency grid" in w["error"]
+    assert "max_abs_delta_s21_db" not in w
+
+
+def test_the_solver_timestep_is_read_from_its_own_banner():
+    gate = _load_maker()._gate
+    assert gate._timestep_seconds("FDTD timestep is: 1.2345e-12 s; Nyquist rate: 3e-11 s") \
+        == pytest.approx(1.2345e-12)
+    assert gate._timestep_seconds("Used timestep: 4.567e-13 s") == pytest.approx(4.567e-13)
+    # A progress line is NOT a timestep declaration: no seconds after the count.
+    assert gate._timestep_seconds(
+        "[@ 4s] Timestep: 4000 || Energy: ~1e-12 (-12.4dB)") is None
+    assert gate._timestep_seconds("openEMS v0.0.36\nnothing here") is None
+
+
+def test_merge_refuses_rungs_of_different_record_lengths(tmp_path):
+    """A step cap is not a record length: dt shrinks with the cell."""
+    parts = [
+        _part(tmp_path, "coarse.json", "coarse", run_id="a", record_length_s=7.4e-8),
+        _part(tmp_path, "mid.json", "mid", run_id="b", record_length_s=7.4e-8),
+        # 20 % short: capped at the same N as the coarse rung on a finer mesh.
+        _part(tmp_path, "fine.json", "fine", run_id="c", record_length_s=5.9e-8),
+    ]
+    out = tmp_path / "full.json"
+    result = _run("--merge", *[str(p) for p in parts], "--output", str(out))
+    assert result.returncode == 3
+    assert "recorded different lengths of time" in result.stderr
+    assert "60000 / factor" in result.stderr, (
+        "the refusal does not say how to fix it"
+    )
+    assert not out.exists()
+
+
+def test_merge_refuses_when_a_rung_cannot_say_how_long_it_recorded(tmp_path):
+    parts = [_part(tmp_path, "coarse.json", "coarse", run_id="a"),
+             _part(tmp_path, "mid.json", "mid", run_id="b", record_length_s=None),
+             _part(tmp_path, "fine.json", "fine", run_id="c")]
+    out = tmp_path / "full.json"
+    result = _run("--merge", *[str(p) for p in parts], "--output", str(out))
+    assert result.returncode == 3
+    assert "record_length_s is missing" in result.stderr
+    assert "record_length_source" in result.stderr, (
+        "the refusal does not say where to look"
+    )
+
+
+def test_merge_carries_each_rungs_witness(tmp_path):
+    def w(delta21, delta11):
+        return {"n_steps": 60000, "n2_steps": 120000, "floor_db": -20.0,
+                "band_ghz": [2.0, 12.0],
+                "max_abs_delta_s21_db": delta21,
+                "f_ghz_at_max_abs_delta_s21": 6.1, "s21_bins_compared": 410,
+                "max_abs_delta_s11_db": delta11,
+                "f_ghz_at_max_abs_delta_s11": 3.2, "s11_bins_compared": 400}
+
+    parts = [
+        _part(tmp_path, "coarse.json", "coarse", run_id="a", witness=w(0.03, 0.02)),
+        _part(tmp_path, "mid.json", "mid", run_id="b", witness=w(0.05, 0.04)),
+        _part(tmp_path, "fine.json", "fine", run_id="c", witness=w(0.07, 0.06)),
+    ]
+    out = tmp_path / "full.json"
+    result = _run("--merge", *[str(p) for p in parts], "--output", str(out))
+    assert result.returncode == 0, result.stdout + result.stderr
+    merged = json.loads(out.read_text())
+    rw = merged["meta"]["record_length_witness"]
+    assert set(rw) == {"coarse", "mid", "fine"}
+    assert [rw[r]["max_abs_delta_s21_db"] for r in ("coarse", "mid", "fine")] == \
+        [0.03, 0.05, 0.07]
+    assert all(rw[r]["record_length_s"] == 7.4e-8 for r in rw)
+    assert merged["meta"]["record_length_s_spread_pct"] == pytest.approx(0.0)
+    assert merged["meta"]["record_length_s_tolerance_pct"] == 5.0
+    assert "Reported, not gated" in result.stdout
+
+    # Parts made without the flag leave the field null rather than an empty dict.
+    plain = [_part(tmp_path, f"p_{r}.json", r, run_id=r)
+             for r in ("coarse", "mid", "fine")]
+    out2 = tmp_path / "full2.json"
+    r2 = _run("--merge", *[str(p) for p in plain], "--output", str(out2))
+    assert r2.returncode == 0, r2.stderr
+    assert json.loads(out2.read_text())["meta"]["record_length_witness"] is None

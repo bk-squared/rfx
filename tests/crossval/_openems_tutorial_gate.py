@@ -669,6 +669,41 @@ _PROGRESS_LINE_RE = re.compile(
 )
 
 
+# The solver's own timestep, from its setup banner. openEMS prints this once,
+# before it starts stepping, and it is what turns a step COUNT into a record
+# LENGTH in seconds -- the quantity that has to match across mesh rungs, since
+# dt shrinks with the cell while the step count is whatever the caller capped.
+#
+# ASSUMPTION, STATED: like the progress pattern above, this was written from
+# openEMS's own print rather than matched against a capture -- and unlike that
+# one it is already known to be unverified in the other direction, because the
+# progress pattern matched NOTHING in the real container log (run 369367263389,
+# final_energy_db came back None). Several phrasings are accepted for that
+# reason. If none matches, dt_s and record_length_s are None and nothing else
+# changes; the job file now persists every stage's stdout log beside the record
+# so the next run settles both patterns from the real text instead of a guess.
+_DT_LINE_RE = re.compile(
+    r"(?:FDTD\s+timestep\s+is|Used\s+timestep|timestep\s+is|Timestep)"
+    r"\s*[:=]?\s*([0-9]+\.?[0-9]*(?:[eE][+-]?[0-9]+)?)\s*(?:s\b|sec)",
+    re.IGNORECASE,
+)
+
+
+def _timestep_seconds(log_text: str):
+    """The solver's own dt, in seconds, or None if its banner did not say."""
+    for line in log_text.splitlines():
+        m = _DT_LINE_RE.search(line)
+        if m is None:
+            continue
+        try:
+            dt = float(m.group(1))
+        except ValueError:  # pragma: no cover
+            continue
+        if np.isfinite(dt) and dt > 0.0:
+            return dt
+    return None
+
+
 def _energy_progress(log_text: str) -> dict:
     """How far the run got, and how far the box energy had fallen when it did.
 
@@ -1106,6 +1141,20 @@ def run_stage(*, label: str, sim_root: str, threads: int, build,
         "openems": openems_info,
     })
     meta.update(progress)
+    # A step count is not a record length: dt shrinks with the cell, so two
+    # rungs capped at the same NrTS have recorded different amounts of time.
+    # This is what makes them comparable, and what a merge can check.
+    dt_s = _timestep_seconds(real_log)
+    n_steps = meta.get("timesteps_executed")
+    meta["dt_s"] = dt_s
+    meta["record_length_s"] = (
+        float(n_steps) * dt_s if (dt_s is not None and n_steps is not None) else None)
+    meta["record_length_source"] = (
+        "timesteps_executed x dt_s, both read from the real pass's captured "
+        "stdout; dt_s matched with " + _DT_LINE_RE.pattern
+        if dt_s is not None else
+        "UNAVAILABLE: the solver's timestep was not found in the captured "
+        "stdout with " + _DT_LINE_RE.pattern + " -- read the persisted log")
     if truncated:
         meta["truncation_accepted"] = True
     return record, meta
