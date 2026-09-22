@@ -120,8 +120,26 @@ order: fitted from 9 cells up the error goes as `N**-0.986` with a largest
 log-space residual of 0.006. That is what the committed check asserts; the
 coarse rungs are recorded and not gated, because an oscillation is not a failure
 and a bar forbidding it would measure the rasterizer's phase rather than the
-discretisation. **LEADER TO FILL** — what this means for the S a user
-receives.
+discretisation.
+
+What this means for the S a user receives (leader, 2026-09-23, from the record):
+nothing directly. The electrostatic table is the capacitance of the primal-lattice
+cross-section, not the impedance the solver's TEM wave carries, and the two are
+not the same number on a staircased lattice. The witness that does not share the
+resistor's geometric factor is the thru line's own reflection, normalized to the
+continuum `Z_TEM` and read across 4-12 GHz: max |S11| = -47.17 / -50.45 / -48.70 /
+-42.54 dB at 3.789 / 4 / 6 / 9 annulus cells (`long_board_ladder.json`, thru_long,
+`abs_s11`). A line whose solved impedance were the electrostatic value at four
+cells (40.36 ohm against a 48.59 ohm reference) would read
+|(40.36 - 48.59)/(40.36 + 48.59)| = 0.093 = -20.7 dB, and a load carrying that
+factor while the line did not would read the same magnitude rotating with
+`2 beta L` across a band that spans many round trips; neither is in the record.
+Derived bound, |Z_solved / Z_TEM - 1| <= 2 max|S11|: 0.88 / 0.60 / 0.73 / 1.49 %.
+So the S a coax structure returns is normalized to the closed-form `Z_TEM`, and the
+solved line and its matched load agree with that reference to about 1 % from the
+coarsest rung measured; the electrostatic ladder is a rasterization diagnostic
+of the cross-section, useful for the pin-radius question, and not the port's
+impedance.
 
 ## The second change: the wall's inner radius
 
