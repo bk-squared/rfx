@@ -385,9 +385,10 @@ current MSL evidence and are corrected in this change too:
 ``validation/README.md`` (cv06b row), ``docs/guides/sparameter_support_
 matrix.md`` + ``.json`` (MSL section's analytic-notch bullet /
 ``numeric_metrics``), and ``docs/agent/port-selection.mdx`` (MSL row).
-``tests/crossval/test_msl_notch_public_carriers.py`` now couples all four to
-cv06b's own ``DX`` constant and its committed run log, so the next mesh
-change reds a test instead of silently rotting the contract.
+``tests/crossval/test_msl_notch_public_carriers.py`` coupled all four to the
+MSL notch filter's own ``DX`` constant and its committed run log; that test
+left with the case when it was rebuilt on 2026-09-22 as
+``tests/crossval/msl_notch_filter/``, and the carriers no longer quote it.
 
 ============================================================================
 PRECEDENT TICK-LIST (2026-08-03 addendum to ``external_solver_
@@ -822,8 +823,8 @@ DOCUMENTED CHECK (per ``external_solver_comparator.md`` step 2 -- the
 tutorial's own documented result, not a number invented for this
 script): the tutorial's stub is a quarter-wave open-circuit notch. Its
 analytic notch frequency, using the closed form THIS REPO ALREADY
-VALIDATES for the identical substrate/trace/stub combination
-(``validation/crossval/06b_msl_notch_filter_uniform.py``:
+VALIDATES for the identical substrate/trace/stub combination (the MSL
+notch filter case's retired script:
 ``F_NOTCH_AN = C0 / (4*STUB_LEN*sqrt(EPS_EFF))``, Hammerstad-Jensen
 ``EPS_EFF``), is independently recomputed here as
 ``F_NOTCH_AN_HZ`` (a regression-locked constant, see the header test)

@@ -1,5 +1,7 @@
 # Estimator resolution re-gate — cv06b and cv07 (issue #812, mechanism P3)
 
+> The MSL notch filter case was rebuilt on 2026-09-22 (tests/crossval/msl_notch_filter/); the artifacts cited here are at commit 876b3408.
+
 > **Historical measurements; current-artifact scope correction (2026-09-08).**
 > Sections 1–6 record the #812 runs and frozen estimator windows. Their
 > "committed"/"reproducible" numeric claims refer to those original revisions,

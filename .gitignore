@@ -56,6 +56,7 @@ logs/
 !docs/guide/images/*.png
 !docs/public/examples/assets/*.png
 !docs/crossval/figures/*.png
+!tests/fixtures/distributed_exchange_interval/M3.png
 # 2026-09-16 (#873): design-note figures. The workspace rule that a
 # claims-bearing number needs a NAMED figure artifact makes these evidence, not
 # decoration, and an evidence file nobody can resolve from a fresh clone is the

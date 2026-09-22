@@ -13,6 +13,13 @@ from rfx.api import (
     ADMemoryActionHint, ADMemoryExplainabilityReport,
     ADMemoryPreflightReport, ADCompiledMemoryCertificate,
     MeshIntelligenceReport,
+    # Gradient record-length witness. Flat import so ``rfx.<name>`` reaches it.
+    # Deliberately NOT in ``__all__`` below: that list is a curated star surface
+    # whose length tests/contracts/test_forward_docstring_contract.py caps. The
+    # value-side witness is no precedent in either direction — ``settling_verdict``
+    # reaches callers only as ``rfx.api._sparams.settling_verdict``, a private
+    # module path, so these two names are more reachable than it, not less.
+    GradientRecordLengthWitness, gradient_record_length_witness,
 )
 from rfx.ad_diagnostics import (
     ADParserHealth,

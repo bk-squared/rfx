@@ -383,8 +383,9 @@ CLASSIFICATION: dict[str, Entry] = {
         "-- constructs no Simulation"),
     "validation/crossval/comparators/spectral_features.py": Entry(
         "no_simulation",
-        "pure-numpy sub-bin spectral-feature estimators shared by cv06b/cv07 "
-        "and the Palace referee producers (#812 P3) -- no rfx import at all"),
+        "pure-numpy sub-bin spectral-feature estimators shared by the Sheen "
+        "low-pass filter and the Palace referee producers (#812 P3) -- no rfx "
+        "import at all"),
     "validation/crossval/comparators/patch_mode_identification.py": Entry(
         "no_simulation",
         "pure-math patch cavity mode identification (#812) -- closed-form "
@@ -529,6 +530,33 @@ CLASSIFICATION: dict[str, Entry] = {
         "E4 differentiable-stackup prototype (2026-09-07 lane, PR #962): "
         "MaterialArrays built by hand on make_nonuniform_grid and driven "
         "through run_nonuniform under jax.grad -- no Simulation"),
+    "validation/research/multiband_nu/e7_lane2b.py": Entry(
+        "no_simulation",
+        "Lane 2b (2026-09-15): E6 rotated onto y, a cancellation-free position "
+        "control, and the smooth spectral observable on the AD-Q z stack; every "
+        "solve goes through make_nonuniform_grid + run_nonuniform under jax.grad "
+        "with the AD-Q judges -- no Simulation"),
+    "validation/research/multiband_nu/adq_designvar.py": Entry(
+        "no_simulation",
+        "AD-Q design-variable autodiff witness (2026-09-13 lane): Taylor-"
+        "remainder order and FD error-bar judges over the E4 stackup map; "
+        "every solve goes through e4._run / w7._ad3_loss (MaterialArrays by "
+        "hand on make_nonuniform_grid + run_nonuniform under jax.grad) -- "
+        "no Simulation"),
+    "validation/research/multiband_nu/e5_multilevel_axes.py": Entry(
+        "no_simulation",
+        "E5 multi-level unequal-band witness on x, y and z (2026-09-14 lane 1 "
+        "of the NU full-functionality program): make_band_profile profiles "
+        "driven through make_nonuniform_grid + run_nonuniform on the "
+        "axis-relabeled PEC fixture, the W2 two-run method -- no Simulation"),
+    "validation/research/multiband_nu/e6_inplane_designvar.py": Entry(
+        "no_simulation",
+        "E6 in-plane design-variable AD witness (2026-09-14 lane 2 of the NU "
+        "full-functionality program): a host-built MeshMap over the "
+        "make_band_profile x profile, MaterialArrays by hand on "
+        "make_nonuniform_grid, the PEC strip as pec_edge_masks by node index, "
+        "driven through run_nonuniform under jax.grad with the AD-Q judges "
+        "-- no Simulation"),
     "validation/research/multiband_nu/w7_accuracy_ad.py": Entry(
         "builder_fused_with_solve",
         "W7 accuracy + autodiff witness (2026-09-07 lane): the A1 ladder and "
@@ -803,9 +831,6 @@ CLASSIFICATION: dict[str, Entry] = {
         (Builder("build_sim", None, (
             _v("with_slab=False", with_slab=False),
             _v("with_slab=True", with_slab=True))),)),
-    "validation/crossval/06b_msl_notch_filter_uniform.py": Entry(
-        "audited", "`_build_sim()` returns Simulation with no solve call",
-        (Builder("_build_sim", None, (_v("default"),)),)),
     "validation/research/subgrid/12_subgrid_disjoint_prototype.py": Entry(
         "audited",
         "`_build_disjoint_simulation()` returns Simulation with no solve call",
@@ -899,6 +924,18 @@ CLASSIFICATION: dict[str, Entry] = {
     # ladder scale of each script (cheapest build, same declared geometry at
     # every scale by construction -- the alignment invariant in the design
     # note's section 1), multiband profile, which is the arm under test.
+    "validation/research/multiband_nu/msl_notch_graded.py": Entry(
+        "audited",
+        "`build_graded(rung, placement, arm_length_m)` returns "
+        "`(Simulation, profiles, board)` and calls no solve entrypoint; "
+        "`run_arm` does the solve and lives behind main(). The pinned variant "
+        "is the ladder's base rung (A_off: 6 substrate cells, 12 fine cells "
+        "across the 600 um metal, node 0.35 of a cell inside each free edge), "
+        "so the graded board's preflight text is the text the recorded arm "
+        "was built with",
+        (Builder("build_graded", 0, (
+            _v("A_off", rung="A", placement="offset"),
+        )),)),
     "validation/research/multiband_nu/w4_supraconvergence.py": Entry(
         "audited",
         "`build_sim(scale, dz_profile)` returns Simulation with no solve "

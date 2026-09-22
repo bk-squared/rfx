@@ -95,7 +95,7 @@
    "code": "sheet_effective_size",
    "disposition": "defect-open",
    "issue": 1138,
-   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: thin_conductor[1] 'thin_conductor[1]' y: drawn 1mm, nodes cover 1000µm, solved as 1.175mm (+17.50%); thin_conductor[0] 'thin_conductor[0]' y: drawn 8.5mm, nodes cover 8.5mm, solved as 8.675mm (+2.06%). A sheet end strictly inside the domain is solved about 0.35 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- thin_conductor[1] 'thin_conductor[1]' y: drawn 1mm, nodes cover 1000µm, solved as 1.175mm (+17.50%) -- is what build_microstrip_ports actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: thin_conductor[1] 'thin_conductor[1]' y: drawn 1mm, nodes cover 1000\u00b5m, solved as 1.175mm (+17.50%); thin_conductor[0] 'thin_conductor[0]' y: drawn 8.5mm, nodes cover 8.5mm, solved as 8.675mm (+2.06%). A sheet end strictly inside the domain is solved about 0.35 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- thin_conductor[1] 'thin_conductor[1]' y: drawn 1mm, nodes cover 1000\u00b5m, solved as 1.175mm (+17.50%) -- is what build_microstrip_ports actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
    "ref": "examples/tutorials/ports_and_sparams_101.py:97 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
@@ -123,39 +123,6 @@
    "ref": "examples/tutorials/slab_rt_flux_monitor.py:21-25",
    "rows": 3,
    "variant": "examples/tutorials/slab_rt_flux_monitor.py::build_sim::with_slab=True"
-  },
-  {
-   "code": "lossless_q",
-   "disposition": "intended",
-   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). The case gates notch FREQUENCY (G1, against a fringing-free quarter-wave oracle) and -10 dB stopband fractional BANDWIDTH (G2, against the ideal shunt-open-stub closed form); both oracles are lossless, so a lossless RO4350B is what matches them. The loss-sensitive quantity, notch depth, is explicitly demoted in the docstring: 'the depth is a demonstration that the notch resolves, not a calibrated magnitude.'",
-   "ref": "validation/crossval/06b_msl_notch_filter_uniform.py:222-226,289-297",
-   "rows": 1,
-   "variant": "validation/crossval/06b_msl_notch_filter_uniform.py::_build_sim::default"
-  },
-  {
-   "code": "off_lattice_design_edges",
-   "disposition": "intended",
-   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). Disclosed with the number, in the docstring's 'Preflight honesty' section: the dx = 63.5 um mesh 'does NOT retire, and marginally WORSENS, the off-lattice conductor-edge warning -- this run's own preflight, quoted verbatim: ... 28.5um (4.75% of the extent) -- the expected price of quoting the realized width instead of re-declaring W_TRACE on a lattice multiple.' gcd(254, 600) um = 2 um, so no sane cubic cell puts both H_SUB and W_TRACE on the lattice.",
-   "ref": "validation/crossval/06b_msl_notch_filter_uniform.py:60-72,203-212",
-   "rows": 1,
-   "variant": "validation/crossval/06b_msl_notch_filter_uniform.py::_build_sim::default"
-  },
-  {
-   "code": "pec_faces_finite_pec",
-   "disposition": "intended",
-   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). A microstrip board models its ground as the infinite z_lo PEC face and its trace/stub as finite PEC; that pairing is the model, not a mistake. _build_sim declares exactly that: boundary=BoundarySpec(x='cpml', y='cpml', z=Boundary(lo='pec', hi='cpml')) with the trace and stub as zero-thickness PEC sheets on the z = H_SUB node plane. The advisory's own subject -- an antenna whose finite ground plane has been replaced by a domain face, cavity instead of radiator -- does not arise: this design has no finite ground plane to lose.",
-   "ref": "validation/crossval/06b_msl_notch_filter_uniform.py:538-560",
-   "rows": 1,
-   "variant": "validation/crossval/06b_msl_notch_filter_uniform.py::_build_sim::default"
-  },
-  {
-   "code": "sheet_effective_size",
-   "disposition": "defect-open",
-   "issue": 1138,
-   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: geometry[1] 'pec' y: drawn 600µm, nodes cover 571.5µm, solved as 615.9µm (+2.66%); geometry[2] 'pec' x: drawn 600µm, nodes cover 571.5µm, solved as 615.9µm (+2.66%). A sheet end strictly inside the domain is solved about 0.35 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- geometry[1] 'pec' y: drawn 600µm, nodes cover 571.5µm, solved as 615.9µm (+2.66%) -- is what _build_sim actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
-   "ref": "validation/crossval/06b_msl_notch_filter_uniform.py:523 | https://github.com/bk-squared/rfx/issues/1138",
-   "rows": 1,
-   "variant": "validation/crossval/06b_msl_notch_filter_uniform.py::_build_sim::default"
   },
   {
    "code": "congruent_conductor_rasterization_parity",
@@ -313,6 +280,30 @@
    "ref": "validation/research/issue770_offdiag_adjudication.py:93 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::uniform-both"
+  },
+  {
+   "code": "lossless_q",
+   "disposition": "intended",
+   "reason": "The substrate is declared lossless because both frozen records are: the openEMS tutorial and the Palace run solve eps_r 3.66 with no tan_delta, and this arm is compared with them. The arm quotes a notch FREQUENCY and an |S21| magnitude, never a Q, and it carries the case's own ring-down witness (-40 dB) to show the record ended after the lossless stub stopped ringing.",
+   "ref": "tests/crossval/msl_notch_filter/test_msl_notch_filter.py:95-101",
+   "rows": 1,
+   "variant": "validation/research/multiband_nu/msl_notch_graded.py::build_graded::A_off"
+  },
+  {
+   "code": "off_lattice_design_edges",
+   "disposition": "intended",
+   "reason": "This arm's subject is exactly that residual. A PEC sheet's in-plane edge is solved about 0.35 of a cell beyond its last node, so the offset arm puts the node 0.35 of a fine cell INSIDE the metal and draws the sheet at its true 600 um: the declared face then sits 16.54 um (0.35 x 47.24 um) off the nearest node BY CONSTRUCTION, which is what this row reports, and the metal's solved edge lands on the drawn one. The instrument's R3 refuses any build where that distance is not the offset the arm declares, and the build test's mutation (c) shows the refusal firing.",
+   "ref": "validation/research/multiband_nu/msl_notch_graded.py:36-41",
+   "rows": 1,
+   "variant": "validation/research/multiband_nu/msl_notch_graded.py::build_graded::A_off"
+  },
+  {
+   "code": "pec_faces_finite_pec",
+   "disposition": "intended",
+   "reason": "The board IS a microstrip: its ground is the z_lo PEC face and its line and stub are finite PEC sheets on the substrate top, which is the configuration this advisory describes. The crossval case this arm extends declares the same boundary (BoundarySpec z lo='pec') and both external records -- openEMS's own MSL_NotchFilter tutorial and the Palace FEM run -- are taken on an infinite ground plane, so a finite one would be the wrong board, not a safer one.",
+   "ref": "validation/research/multiband_nu/msl_notch_graded.py:1-12",
+   "rows": 1,
+   "variant": "validation/research/multiband_nu/msl_notch_graded.py::build_graded::A_off"
   },
   {
    "code": "mesh_resolution",

@@ -1826,6 +1826,7 @@ def _build_nu_scan(
     emit_time_series: bool = True,
     aniso_eps: tuple | None = None,
     sheet_impedance=None,
+    design_box=None,
 ) -> _NUScanSetup:
     """Build the NU scan carry + step function (pure code motion, #383).
 
@@ -1952,6 +1953,43 @@ def _build_nu_scan(
     inv_dx = grid.inv_dx
     inv_dy = grid.inv_dy
     inv_dz = grid.inv_dz
+
+    # ---- #1183 design box on the graded mesh: fence, then build Ca/Cb ----
+    # The SAME resolver the uniform lane runs (rfx.simulation), because the
+    # question it answers is the same one: does anything else in this step
+    # read ``materials`` at a design cell. What differs on this lane is only
+    # the curl, and ``update_e_box`` takes it as ``inv_d``. The flags this
+    # lane cannot produce are passed as absent: no UPML runner, no Kerr, no
+    # fourth-order stencil, no Bloch phase, no Stage-2 inverse-eps tensor.
+    design_box_coeffs = None
+    if design_box is not None:
+        from rfx.simulation import _resolve_design_box
+        design_box_coeffs = _resolve_design_box(
+            design_box,
+            grid=grid,
+            materials=materials,
+            dt=dt,
+            use_cpml=use_cpml,
+            use_upml=False,
+            cpml_axes=cpml_axes_eff,
+            use_debye=use_debye,
+            use_lorentz=use_lorentz,
+            use_kerr=False,
+            aniso_eps=aniso_eps,
+            aniso_inv_eps=None,
+            stencil_order=2,
+            bloch=None,
+            sheet_impedance=sheet_impedance,
+            cell_metas=(
+                ("source", [(s[0], s[1], s[2]) for s in sources]),
+                ("wire port", [
+                    (int(wp["mid_i"]), int(wp["mid_j"]), int(wp["mid_k"]))
+                    for wp in wire_ports
+                ]),
+                ("lumped RLC element", [(m.i, m.j, m.k) for m in rlc_metas]),
+            ),
+        )
+    use_design_box = design_box_coeffs is not None
 
     carry_init = {"fdtd": state}
     if use_cpml:
@@ -2105,6 +2143,9 @@ def _build_nu_scan(
         # Snapshot E^n for the #677 sheet operator (it REPLACES the
         # standard update at masked tangential edges with A*E^n + B*curlH).
         e_prev_sheet = (st.ex, st.ey, st.ez) if use_sheet_impedance else None
+        # #1183: the design box REDOES the E update at its own cells from
+        # the pre-update state (E^n and the same H^{n+1/2}).
+        st_prev_design = st if use_design_box else None
 
         # E update: use ADE-aware path when dispersive materials are present
         debye_new = None
@@ -2124,6 +2165,18 @@ def _build_nu_scan(
             )
         else:
             st = update_e_nu(st, materials, dt, inv_dx, inv_dy, inv_dz)
+
+        # #1183 design box: redo the E update at the design cells from the
+        # traced permittivity, on the graded-mesh curl. Same slot as the
+        # uniform lane — immediately after the E update, on the same H,
+        # before anything that reads or writes E.
+        if use_design_box:
+            from rfx.core.yee import update_e_box
+            st = update_e_box(
+                st, st_prev_design, design_box_coeffs.bounds,
+                design_box_coeffs.ca, design_box_coeffs.cb, grid.dx,
+                inv_d=(inv_dx, inv_dy, inv_dz),
+            )
 
         if use_tfsf:
             from rfx.sources.tfsf import apply_tfsf_e
@@ -2453,6 +2506,7 @@ def run_nonuniform(
     n_warmup: int = 0,
     aniso_eps: tuple | None = None,
     sheet_impedance=None,
+    design_box=None,
 ) -> dict:
     """Run non-uniform FDTD via jax.lax.scan.
 
@@ -2496,6 +2550,7 @@ def run_nonuniform(
         emit_time_series=emit_time_series,
         aniso_eps=aniso_eps,
         sheet_impedance=sheet_impedance,
+        design_box=design_box,
     )
     step_fn = setup.step_fn
     carry_init = setup.carry_init
@@ -2943,6 +2998,7 @@ def run_nonuniform_until_decay(
     emit_time_series: bool = True,
     aniso_eps: tuple | None = None,
     sheet_impedance=None,
+    design_box=None,
 ) -> dict:
     """Run non-uniform FDTD until the interior-domain energy decays (#383).
 
@@ -3044,6 +3100,7 @@ def run_nonuniform_until_decay(
         emit_time_series=emit_time_series,
         aniso_eps=aniso_eps,
         sheet_impedance=sheet_impedance,
+        design_box=design_box,
     )
     step_fn = setup.step_fn
     carry = setup.carry_init

@@ -988,9 +988,10 @@ _TUT_EPS_R = 3.66
 _TUT_U = _TUT_W_TRACE_M / _TUT_H_SUB_M
 _TUT_EPS_EFF = (_TUT_EPS_R + 1.0) / 2.0 + (_TUT_EPS_R - 1.0) / 2.0 * (1.0 + 12.0 / _TUT_U) ** -0.5
 # NAMED for the quantity it is: the tutorial's DECLARED geometry (600um
-# trace over 254um substrate) -- NOT validation/crossval/
-# 06b_msl_notch_filter_uniform.py's F_NOTCH_AN (~3.678954 GHz, eps_eff
-# 2.882252). That is a DIFFERENT quantity: cv06b's own as-built rfx
+# trace over 254um substrate) -- NOT the MSL notch filter case's retired
+# F_NOTCH_AN (~3.678954 GHz, eps_eff 2.882252; that case was rebuilt on
+# 2026-09-22 as tests/crossval/msl_notch_filter/ and its script removed).
+# That is a DIFFERENT quantity: that case's own as-built rfx
 # board's LATTICE-REALIZED electrical trace width (635um, its own
 # n_rows*DX convention, issue #723), not this tutorial's declared one.
 # Both compute Hammerstad-Jensen eps_eff on "the same substrate/trace/
@@ -1037,9 +1038,9 @@ REPRODUCE_GATE_RECORD: dict = {
     ),
     "documented_check": (
         "Quarter-wave open-stub notch: F_NOTCH = c0/(4*stub_len*"
-        "sqrt(eps_eff_HJ)), the SAME closed form validation/crossval/"
-        "06b_msl_notch_filter_uniform.py and validation/crossval/"
-        "20_msl_phase_referee.py both use, independently recomputed here "
+        "sqrt(eps_eff_HJ)), the SAME closed form the MSL notch filter case "
+        "and validation/crossval/20_msl_phase_referee.py both use, "
+        "independently recomputed here "
         "as F_NOTCH_TUTORIAL_DECLARED_HZ on the tutorial's OWN declared "
         "geometry (NOT cv06b's realized-board convention -- see the "
         "constant's own comment above)."

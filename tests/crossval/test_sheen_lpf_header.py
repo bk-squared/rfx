@@ -170,8 +170,8 @@ def test_reproduce_gate_record_is_committed_unrun_and_self_consistent():
 def test_analytic_target_is_the_tutorial_declared_quantity_not_cv06bs_realized_one():
     """Naming-collision guard (team-lead ruling, 2026-09-10): two DIFFERENT
     physical quantities share the shape of an "F_NOTCH" constant across
-    sibling crossval cases. ``06b_msl_notch_filter_uniform.py``'s
-    ``F_NOTCH_AN`` uses its own as-built rfx board's LATTICE-REALIZED
+    sibling crossval cases. The MSL notch filter case's retired
+    ``F_NOTCH_AN`` used its own as-built rfx board's LATTICE-REALIZED
     electrical trace width (635um, its own n_rows*DX convention, issue
     #723); this case's ``F_NOTCH_TUTORIAL_DECLARED_HZ`` uses the openEMS
     tutorial's DECLARED width (600um, the same value
@@ -184,12 +184,12 @@ def test_analytic_target_is_the_tutorial_declared_quantity_not_cv06bs_realized_o
     module = _load_sheen_module()
     f_declared = module.F_NOTCH_TUTORIAL_DECLARED_HZ
 
-    # cv06b_msl_notch_filter_uniform.py's own docstring-pinned value
-    # (validation/crossval/06b_msl_notch_filter_uniform.py:379-380,
-    # u=2.500, eps_eff=2.882252): F_NOTCH_AN = 3.678954 GHz. Recomputed
-    # here from the same closed form and the same realized-635um input
-    # rather than importing cv06b, so this test does not couple to that
-    # module's own import-time behaviour.
+    # The MSL notch filter case's own docstring-pinned value at rfx commit
+    # 876b3408 (that script's lines 379-380, u=2.500, eps_eff=2.882252):
+    # F_NOTCH_AN = 3.678954 GHz. Recomputed here from the same closed form
+    # and the same realized-635um input rather than imported, so this test
+    # never coupled to that module and survives its removal (the case was
+    # rebuilt on 2026-09-22 as tests/crossval/msl_notch_filter/).
     f_cv06b_realized = 2.998e8 / (4.0 * 12e-3 * math.sqrt(2.882252))
     assert f_cv06b_realized == pytest.approx(3.678954e9, rel=1e-6)
 

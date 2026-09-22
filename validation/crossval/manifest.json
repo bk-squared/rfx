@@ -8,49 +8,6 @@
   },
   "cases": [
     {
-      "id": "06b_msl_notch_filter_uniform",
-      "script": "validation/crossval/06b_msl_notch_filter_uniform.py",
-      "role": "claims-bearing",
-      "public_group": "B",
-      "execution_tiers": ["pr-fast", "gpu-manual"],
-      "evidence_levels": ["E2", "E4"],
-      "references": [
-        {"kind": "analytic", "name": "quarter-wave open-stub notch", "required_for_script_pass": true},
-        {"kind": "external-solver", "name": "OpenEMS matched-geometry dx=50 um notch artifact", "required_for_script_pass": false}
-      ],
-      "claim_scope": "uniform add_msl_port notch demonstration under analytic gates re-derived 2026-09-01 (issue #812 mechanism P3, docs/design_notes/estimator_resolution_regate.md): the notch frequency is a sub-bin log-parabolic vertex judged at <4.0% (was a 63.6364 MHz bin argmin judged at <15%), the -10 dB stopband WIDTH is gated against the ideal shunt-open-stub closed form (4/pi)atan(r/6)=0.210274 at r=1 (+-20%), a half-grid witness proves the estimate is sub-bin, and the old <-10 dB depth check is RETAINED as a witness only because the worst sampled minimum on this grid is -31.23 dB. Criterion (A) was demonstrated on THIS board on 2026-09-02 (scripts/vessl_cv06b_estimator_falsifiers.yaml, VESSL 369367257702, exit 0; pre-2.0 realization: 1.453 % / 0.9684 / 0.3175 bin / 46.48 Ω) and re-measured on the sheet-declared board on 2026-09-07 (VESSL 369367259191, exit 0), whose summary is the committed one: `validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.err_pct = 2.1649`, `validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.bw_ratio = 0.9991`, `validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.witness_bins = 0.4469`, `validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::criterion_A_baseline.z0_median_ohm = 48.19`. Criterion (B) at build level, same run: a 5-cell stub fires the width gate (`validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_narrow.bw_ratio = 0.6553`; 0.648 pre-2.0) while the retained depth witness still passes -- the blindness #812 measured, on the board itself. ONE PRE-DECLARED FALSIFIER FIRED on the pre-2.0 board and is recorded, not softened: a one-cell stub-length error (analytic shift `validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_1cell.true_shift_pct = 0.532` %, 0.30 bin) moved the refined notch estimate by only 0.145 % (the bin argmin: 0.000 %), below the declared half-of-predicted visibility criterion; not attributed (estimator under-response on a -43.5 dB, one-bin-wide null vs a physical shift smaller than the closed form). On the sheet-declared board (VESSL 369367259191) the same arm reads `validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json::stub_1cell.refined_delta_pct = 0.823` % against the same 0.532 % closed form -- the estimator now over-responds (1.55x) where it under-responded (0.27x) -- so `stub_1cell.visible` went false -> true and `verdict.all_ok` false -> true: criterion (B)'s own visibility test closes, and tests/crossval/test_cv06b_build_falsifier_plumbing.py pins that direction rather than a relaxed one. Neither the under- nor the over-response is attributed and the finer-DFT experiment is still owed; visibility is not an accuracy statement. G1's verdict does not rest on sub-bin resolution (a full-bin error is 1.75 %; 2.16 + 1.75 = 3.91 < 4.0, 0.09 pp of margin where the pre-2.0 board had 0.80). The CPU-side detection-power evidence, including the geometry-built shallow-notch ladder that replaced a near-circular round-1 construction, is tests/fixtures/cv06b_estimator_regate/cv06b_estimator_falsifiers.json (keys case_A_baseline, case_B_sub_bin_ladder, case_C_shallow_notch_from_geometry, case_D_quantised_estimator). Shipped at dx=63.5um=h_sub/4 (issue #723, was dx=80um). The committed matched-geometry dx=50 um OpenEMS/E4 artifacts in artifact_paths are NOT the same board as this script solves post-#723: this script's own substrate now realizes h_sub=254um exactly, while the E4 rfx leg (scripts/diagnostics/build_msl_notch_rfx_dx50.py, deferred, not fixed by #723) still realizes h_sub=300um at its own dx=50um. Treat the E4/OpenEMS comparison as characterizing a DIFFERENT (300um) board until that script is also fixed. Not a broad MSL-port claim. LATTICE OWNERSHIP CONTRACT (#931, 2026-09-07): the metal is declared as two zero-thickness SHEETS on the substrate-top node plane (z = 254 µm); each realizes 10 node rows, i.e. a GEOMETRIC extent of 571.5 µm (the node span `fidelity_report` prints) and an ELECTRICAL width of 635.0 µm (n_rows·dx, what the Hammerstad-Jensen reference takes). The pre-#931 rule reported 635.0 µm as the geometric extent because it zeroed one edge past each footprint's hi rim. The substrate row is bit-identical (dielectric sampling is fenced, design note §1.8), so \"h_sub=254um exactly\" stands. What #931 does move is the stub's open end, one node: quarter-wave length from the line centre 12350.75 → 12287.25 µm (−0.514 %). Every criterion-A and criterion-B value quoted above is re-read by JSON path from the re-solved run (VESSL 369367259191) at ingest, not translated; the G4 Re(Z0) median (46.48 ± 1.0 Ω on the committed run) is the pre-declared falsifier for the electrical-width convention — a median near 49.4 Ω would flip it to the 571.5 µm reading. No window moved (NOTCH_FREQ_TOL_PCT 4.0, STOPBAND_BW_FRAC_IDEAL 0.210274, BW ratio 0.80–1.20). Re-solved as VESSL run 369367259191. The pre-declared falsifier was G4's Z0 median: ~46.5 Ω would say the electrical width of an n-row strip is n·dx = 635.0 µm, ~49.4 Ω would say it is the geometric node span (n−1)·dx = 571.5 µm. Measured 48.192 Ω -- between them, 4.35 % above HJ(635.0) = 46.18 and 2.43 % below HJ(571.5) = 49.39. BOTH readings are rejected and the convention is NOT settled. Three more pre-declarations were falsified with it: the notch rose +3.67 % (3.7586 GHz) where one stub cell predicted +0.51 %, `err_pct` rose 1.4530 -> 2.1649 % where ≈0.95 % was predicted, and the half-grid witness and notch depth moved (0.3175 -> 0.4469 bin, −43.3 -> −39.44 dB) where neither was predicted to. All four gates still PASS on their own unchanged windows (G1 2.16 % < 4.0 %, G2 0.9991, G3 0.4469 bin, G4 48.2 Ω) and NOTHING is re-derived from the measurement: one board at one dx cannot settle an effective-width convention. The case still ships n·dx and both named quantities stay named. Criterion B now closes -- the one-cell stub arm went `visible: false -> true` and `verdict.all_ok false -> true`. Headline for this mesh is now 2.16 % / −39.4 dB / 48.2 Ω, superseding 1.40 / 43.3 / 46.5.",
-      "external_dependencies": [],
-      "expected_exit_codes": [0, 1],
-      "gate_paths": [
-        "validation/crossval/06b_msl_notch_filter_uniform.py",
-        "validation/crossval/comparators/spectral_features.py",
-        "tests/crossval/test_spectral_feature_estimators.py",
-        "scripts/diagnostics/cv06b_estimator_falsifiers.py",
-        "scripts/diagnostics/cv06b_shallow_stub_model.py",
-        "scripts/diagnostics/cv06b_build_falsifiers.py",
-        "tests/crossval/test_cv06b_shallow_stub_model.py",
-        "tests/crossval/test_cv06b_build_falsifier_plumbing.py",
-        "tests/crossval/test_msl_notch_e4_comparison_gates.py",
-        "scripts/diagnostics/build_msl_notch_openems_comparison.py",
-        "scripts/diagnostics/report_msl_envelope.py",
-        "tests/contracts/test_physics_gate_reporting.py",
-        "tests/crossval/test_msl_notch_public_carriers.py"
-      ],
-      "artifact_paths": [
-        "tests/fixtures/msl_notch_e4/comparison_summary.json",
-        "tests/fixtures/msl_notch_e4/msl_stub_notch_rfx_dx50.json",
-        "tests/fixtures/msl_notch_e4/msl_stub_notch_openems_dx50.json",
-        "tests/fixtures/cv06b_estimator_regate/cv06b_estimator_falsifiers.json",
-        "validation/crossval/_06b_msl_notch_results/cv06b_build_falsifiers_summary.json",
-        "validation/crossval/_06b_msl_notch_results/cv06b_baseline_run.log"
-      ],
-      "cpu_runner": {"excluded_reason": "CPU-infeasible, now measured rather than projected: a CPU run of the dx=63.5um mesh this script ships (issue #723) was abandoned UNFINISHED at 2h52m wall (JAX CPU held only ~1.9 cores on a 32-core pod), past 2.271x (the cell x timestep ratio) of EITHER measured dx=80um CPU baseline -- 2599.6s (validation/crossval/_06b_notch_uniform_logs/20260809T_run.log) and 1621.2s re-measured on origin/main cdc38bc8 (validation/crossval/_06b_notch_uniform_logs/20260828T054132Z_dx80_origin_main_cdc38bc8_run.log, a different machine), so the linear projection underpredicts here. The same mesh solves in 329.2s on a single RTX4090 (VESSL 369367256574, log _06b_notch_uniform_logs/20260827T131217Z_run.log). Run on GPU; do not budget a CPU slot for it."},
-      "scheduled_external_order": null,
-      "evidence_status": "committed",
-      "evidence_producer": null,
-      "failure_sentinel": null
-    },
-    {
       "id": "07_sheen_lpf",
       "script": "validation/crossval/07_sheen_lpf.py",
       "role": "diagnostic-reporter",

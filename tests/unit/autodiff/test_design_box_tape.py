@@ -524,16 +524,23 @@ def test_fence_fourth_order_stencil():
         _forward_with_box(sim)
 
 
-def test_fence_nonuniform_lane():
+def test_fence_nonuniform_lane_takes_a_permittivity_but_not_an_occupancy():
+    """The graded mesh carries the permittivity box since #1183.
+
+    Its float64 equality gate against ``eps_override`` on a graded mesh
+    lives in ``test_design_box_tape_nu_occupancy.py``; what is pinned here
+    is that the lane check still refuses the design OCCUPANCY, which only
+    the uniform lane carries.
+    """
     sim = Simulation(freq_max=2 * F0, domain=DOMAIN, dx=DX, boundary="cpml",
                      cpml_layers=CPML,
                      dz_profile=1.0e-3 * 1.05 ** np.arange(16, dtype=float))
     sim.add_source((4e-3, 10e-3, 8e-3), "ez", amplitude_kind="field",
                    waveform=GaussianPulse(f0=F0, bandwidth=0.8))
     sim.add_probe((20e-3, 10e-3, 8e-3), "ez")
-    with pytest.raises(NotImplementedError, match="uniform single-device"):
+    with pytest.raises(NotImplementedError, match="fwd_uniform"):
         sim.forward(design_box=(BOX_LO, BOX_HI),
-                    design_eps_override=jnp.ones((3, 3, 3), jnp.float32),
+                    design_occupancy_override=jnp.zeros((3, 3, 3), jnp.float32),
                     n_steps=4, skip_preflight=True)
 
 

@@ -198,8 +198,9 @@ def test_declared_question_and_governance_notes_present():
 
 def test_f_notch_an_matches_cv06b_closed_form():
     """Independently recompute the Hammerstad-Jensen quarter-wave-notch
-    closed form ``validation/crossval/06b_msl_notch_filter_uniform.py``
-    uses, on the DECLARED 600um/254um board, and check the two land on the
+    closed form the MSL notch filter case's retired script used (that
+    case is now ``tests/crossval/msl_notch_filter/``), on the DECLARED
+    600um/254um board, and check the two land on the
     same value (5 sig figs) -- a regression lock on the reproduce-gate's
     own oracle, and a cross-check that this script did not silently
     diverge from the repo's existing validated formula.

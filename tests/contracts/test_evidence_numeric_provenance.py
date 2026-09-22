@@ -480,7 +480,10 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
     # 2026-09-21: six rows left the table with their cases (cv04, cv17, cv22,
     # cv23, cv24, cv26) and took 91 of its 100 checked citations. Floor lowered
     # to the measured remainder, 9.
-    (BENCHMARKS, "Reference cases"): 9,
+    # 2026-09-22: the MSL notch filter's row left the table when the case was
+    # rebuilt as tests/crossval/msl_notch_filter/, and took 5 of the 9. Floor
+    # lowered to the measured remainder, 4.
+    (BENCHMARKS, "Reference cases"): 4,
 }
 
 # Anti-vacuity census. A green gate must mean the references are right, not that
@@ -579,9 +582,25 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
 # STAYS -- the MSL thru-line phase case's own tests load it -- and is still
 # cited by that case's sites, so no artifact leaves the count. Measured after
 # both changes: 389 references, 361 value-checked, 35 artifacts.
-MIN_REFERENCES = 389
-MIN_VALUE_CHECKED = 361
-MIN_DISTINCT_ARTIFACTS = 35
+# 2026-09-22 (the MSL notch filter rebuilt as tests/crossval/msl_notch_filter/):
+# its manifest entry, validation README row and public benchmarks row left the
+# gated surface, and 35 citations in two sections of the estimator-resolution
+# re-gate note reach the case's committed falsifier summaries under
+# validation/crossval/_06b_msl_notch_results/ (REMOVED_ARTIFACT_PREFIXES,
+# skipped per citation; that note carries the dated removal header). Two
+# artifacts leave the distinct count with them. Measured after the removal:
+# 340 references, 319 value-checked, 33 artifacts. The floors are lowered to
+# the measured values.
+# 2026-09-22 (the MSL notch filter's leftovers): the estimator re-gate fixture
+# left with the removed stdout reporter's contract functions, and section 5 of
+# the estimator-resolution re-gate note cites it 15 times (14 value-checked);
+# those citations are skipped and that artifact leaves the distinct count. The
+# case's committed run logs left in the same pass and carried no citation.
+# Measured after the removal: 325 references, 305 value-checked, 32 artifacts.
+# The floors are lowered to the measured values.
+MIN_REFERENCES = 325
+MIN_VALUE_CHECKED = 305
+MIN_DISTINCT_ARTIFACTS = 32
 
 
 # --------------------------------------------------------------------------
@@ -728,6 +747,25 @@ CLASSIFICATION: dict[str, str] = {
     # by tests/unit/nonuniform/test_band_accuracy_ad_replay.py, cell for cell
     # and rule for rule, which is the stronger check.
     "docs/design_notes/20260907_nu_band_accuracy_ad_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260913_nu_ad_directional_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260913_nu_ad_designvar_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260915_nu_lane2b_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-14 (nu full-functionality lane 1): none of the four carries a
+    # `path.json::key` span (parses empty); the AD-Q notes are replayed from
+    # results/adq_*.json by tests/unit/nonuniform/test_adq_designvar_replay.py,
+    # the program document is planning only (no measurement), and the lane-1
+    # note is replayed from results/e5_*.json by
+    # tests/unit/nonuniform/test_e5_multilevel_replay.py, verdict for verdict.
+    # The first three predate lane 1 and had no entry (the contract failed on
+    # this branch before lane 1 touched anything); listed here so the tree
+    # passes, with the same mechanical check as every other NU note.
+    "docs/design_notes/20260913_nu_full_functionality_program.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260913_nu_lane1_multilevel_xyz_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-14 (nu full-functionality lane 2): no `path.json::key` span
+    # (parses empty); the lane-2 note is replayed from results/e6_*.json by
+    # tests/unit/nonuniform/test_e6_inplane_designvar_replay.py, verdict for
+    # verdict, with the AD-Q judges verbatim.
+    "docs/design_notes/20260913_nu_lane2_inplane_designvar_ad_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260908_adi_interior_pec_guard.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260908_automesh_regressions.md": NO_ARTIFACT_REFERENCE,
     # 2026-09-10 (#931 lattice-ownership merge): a single `::referee` span
@@ -839,6 +877,7 @@ CLASSIFICATION: dict[str, str] = {
     ISSUE831_RESULTS: GATED,
     ISSUE1043_PAD_CONTINUATION_NOTE: GATED,
     "docs/design_notes/mixed_refplane_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/msl_chain_battery_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/portgrid_m0m1_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/portgrid_m0m1_results.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/portgrid_m1b_retry_predeclaration.md": NO_ARTIFACT_REFERENCE,
@@ -885,6 +924,12 @@ CLASSIFICATION: dict[str, str] = {
     # it (tests/unit/farfield/test_ntff_second_order_oracle.py, the locks NTFF
     # battery, tests/unit/farfield/test_farfield_nonuniform.py).
     "docs/design_notes/20260921_ntff_second_order.md": NO_ARTIFACT_REFERENCE,
+    # Pre-declaration plus a results section of fact tables. Every number in
+    # it is re-derived from validation/research/multiband_nu/results/
+    # msl_notch_graded.json by tests/unit/nonuniform/
+    # test_msl_notch_graded_replay.py, which pins the recorded verdicts
+    # (fired ones included) instead of quoting an artifact field by span.
+    "docs/design_notes/20260922_msl_notch_graded_mesh_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_vi_envelope_sweep_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_vi_envelope_sweep_results.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/wp4e_lumped_component_value_ad_spike.md": NO_ARTIFACT_REFERENCE,
@@ -973,6 +1018,22 @@ REMOVED_ARTIFACT_PREFIXES: tuple[str, ...] = (
     # it is here so a citation added later cannot resolve against a tree that
     # no longer holds the artifact. Those artifacts are at commit 3883a836.
     "validation/crossval/_21_coax_two_port_referee_logs/",
+    # 2026-09-22, the MSL notch filter: the case was rebuilt as
+    # tests/crossval/msl_notch_filter/ and its script, committed run records
+    # and falsifier summaries went with it. Two opted-in sections of
+    # docs/design_notes/estimator_resolution_regate.md cited these summaries
+    # 35 times; those citations are skipped now and the note carries the dated
+    # removal header. Those artifacts are at commit 876b3408.
+    "validation/crossval/_06b_msl_notch_results/",
+    "tests/fixtures/msl_notch_e4/",
+    # 2026-09-22, the MSL notch filter's leftovers: the estimator re-gate
+    # fixture left with its only remaining reader, the contract functions that
+    # exercised the removed stdout reporter. The same note's section 5 cites it
+    # 15 times; those citations are skipped now. The case's committed run logs
+    # (validation/crossval/_06b_notch_uniform_logs/) went in the same pass but
+    # no opted-in citation ever reached them, so they need no prefix. Those
+    # artifacts are at commit 2ce4c28d.
+    "tests/fixtures/cv06b_estimator_regate/",
 )
 
 
