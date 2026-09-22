@@ -38,7 +38,12 @@ def _assert_empty_sheet_faces(grid, arrays, rows):
                          ids=[f"{p}:{b.fn}:{v.label}" for p, b, v in CASES])
 def test_absorbing_columns_equal_the_face(path, builder, variant):
     with lib.build_only():
-        module = lib.load_module(path)
+        try:
+            module = lib.load_module(path)
+        except lib.MissingOptionalDependency as exc:
+            # A visible SKIP, as test_example_fidelity_contract does: CI has
+            # no optax, and an undeclared missing module is still an error.
+            pytest.skip(str(exc))
         result = getattr(module, builder.fn)(**variant.kwargs(module))
         sim = result if builder.result_index is None else result[builder.result_index]
         try:
