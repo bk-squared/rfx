@@ -19,7 +19,8 @@ from rfx.grid import Grid
 from rfx.core.yee import (
     FDTDState, MaterialArrays, init_state,
     update_e, update_e_aniso, update_e_aniso_inv, update_e_box, update_h,
-    e_update_coeffs, EPS_0, MU_0, _shift_bwd,
+    e_update_coeffs, edge_averaged_materials,
+    edge_averaged_e_update_coeffs, EPS_0, MU_0, _shift_bwd,
     precompute_coeffs, update_he_fast,
 )
 from rfx.boundaries.pec import (
@@ -181,7 +182,13 @@ class DesignBoxSpec(NamedTuple):
 
 
 class _DesignBoxCoeffs(NamedTuple):
-    """Resolved ``(Ca, Cb)`` for a design box, built once outside the scan."""
+    """Resolved ``(Ca, Cb)`` for a design box, built once outside the scan.
+
+    ``bounds`` is the WRITE window, not the declared box: since #1210 the
+    design material reaches one cell past the box on the plus side of each
+    transverse axis (:func:`_design_box_edge_coeffs`). ``ca`` and ``cb`` are
+    3-tuples of window-shaped arrays, one per E component.
+    """
     bounds: tuple
     ca: Any
     cb: Any
@@ -781,6 +788,59 @@ def _resolve_design_occupancy(
     return _DesignOccupancyKeep(write=write, keep=keep)
 
 
+def _design_box_window(bounds, shape):
+    """``(write bounds, computation slice, box slice inside it)`` for #1210.
+
+    The same window arithmetic :func:`rfx.boundaries.pec.pec_occupancy_box_keep`
+    does for a traced occupancy, for the same reason. A cell's permittivity
+    reaches the E components on the edges incident to it, and those are the
+    edges at the cell and at its PLUS neighbour along each transverse axis
+    (:func:`edge_averaged_materials` averages over BACKWARD neighbours). So the
+    design material moves the update one cell past the box on the plus side —
+    that layer must be written. One cell of context on the MINUS side is
+    computed and not written: its own backward neighbour lies outside the
+    window, so its value is wrong, while every cell in the write window has
+    all four of its incident cells inside.
+    """
+    i0, i1, j0, j1, k0, k1 = (int(v) for v in bounds)
+    lo = (i0, j0, k0)
+    hi = (i1, j1, k1)
+    c_lo = tuple(max(v - 1, 0) for v in lo)
+    c_hi = tuple(min(v + 1, n) for v, n in zip(hi, shape))
+    win = tuple(slice(a, b) for a, b in zip(c_lo, c_hi))
+    write_bounds = (lo[0], c_hi[0], lo[1], c_hi[1], lo[2], c_hi[2])
+    inner = tuple(slice(a - c, b - c) for a, b, c in zip(lo, c_hi, c_lo))
+    box_local = tuple(slice(a - c, b - c) for a, b, c in zip(lo, hi, c_lo))
+    return write_bounds, win, inner, box_local
+
+
+def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape):
+    """Per-component ``(Ca, Cb)`` over the design box's write window (#1210).
+
+    The design permittivity is written into a COPY of the background material
+    over the computation window, the edge average is taken there, and the write
+    window is sliced out. The box-edge cells therefore average with the
+    constant background, which is what the grid-wide update would have done
+    with the design values in ``materials``.
+    """
+    write_bounds, win, inner, box_local = _design_box_window(bounds, shape)
+    eps_box = jnp.asarray(eps_r_box)
+    sig_box = jnp.asarray(sigma_box)
+    eps = jnp.asarray(materials.eps_r)[win]
+    sig = jnp.asarray(materials.sigma)[win]
+    # Promote the BACKGROUND to the design dtype, never the other way: a
+    # traced float64 design permittivity cast down to the float32 background
+    # would silently lose the precision the x64 AD lanes run for (#646).
+    eps = eps.astype(jnp.promote_types(eps.dtype, eps_box.dtype))
+    sig = sig.astype(jnp.promote_types(sig.dtype, sig_box.dtype))
+    eps = eps.at[box_local].set(eps_box)
+    sig = sig.at[box_local].set(sig_box)
+    ca, cb = edge_averaged_e_update_coeffs(eps, sig, dt, (False, False, False))
+    return (write_bounds,
+            tuple(c[inner] for c in ca),
+            tuple(c[inner] for c in cb))
+
+
 def _resolve_design_box(
     spec: "DesignBoxSpec",
     *,
@@ -845,6 +905,13 @@ def _resolve_design_box(
 
     bounds, box_shape = _design_box_bounds(spec.bounds, grid)
     i0, i1, j0, j1, k0, k1 = bounds
+    # #1210: the design material reaches one cell past the box on the plus
+    # side of every axis, and the redo WRITES there. Every fence below is
+    # therefore held against the write window, not the declared box — a
+    # source, a sheet edge or an absorber cell in that layer is the same
+    # collision the declared box was already fenced against.
+    _write_bounds, _, _, _ = _design_box_window(bounds, tuple(grid.shape))
+    w_i0, w_i1, w_j0, w_j1, w_k0, w_k1 = _write_bounds
 
     # The absorber. apply_cpml_e's psi correction is written at the [:n] /
     # [-n:] face slabs, and its coefficient is dt/(eps_r*EPS_0) from
@@ -886,20 +953,24 @@ def _resolve_design_box(
                 pad_hi = int(getattr(grid, f"pad_{name}_hi"))
             else:
                 pad_lo = pad_hi = int(depths[axis])
-            lo, hi = bounds[2 * axis], bounds[2 * axis + 1]
+            lo = _write_bounds[2 * axis]
+            hi = _write_bounds[2 * axis + 1]
             n = grid.shape[axis]
             if lo < pad_lo or hi > n - pad_hi:
                 raise ValueError(
-                    f"design box cells [{lo}, {hi}) on axis {name} reach "
+                    f"design box cells [{bounds[2 * axis]}, "
+                    f"{bounds[2 * axis + 1]}) on axis {name} reach "
                     f"into the CPML absorber ({pad_lo} layer(s) at {name}_lo "
-                    f"and {pad_hi} at {name}_hi, on a {n}-cell axis). The "
+                    f"and {pad_hi} at {name}_hi, on a {n}-cell axis; the box's "
+                    f"update window is [{lo}, {hi}), one cell wider on the "
+                    f"plus side since #1210). The "
                     f"absorber builds its own coefficient from the background "
                     f"permittivity, which the design box no longer carries. "
-                    f"Move the box into cells [{pad_lo}, {n - pad_hi}).")
+                    f"Move the box into cells [{pad_lo}, {n - pad_hi - 1}).")
 
     def _in_box(cell) -> bool:
         i, j, k = (int(v) for v in cell)
-        return (i0 <= i < i1) and (j0 <= j < j1) and (k0 <= k < k1)
+        return (w_i0 <= i < w_i1) and (w_j0 <= j < w_j1) and (w_k0 <= k < w_k1)
 
     # A source or port cell reads the material AT SETUP to turn a current
     # into a field increment (``_source_cell_cb``) or to fold an impedance
@@ -916,10 +987,11 @@ def _resolve_design_box(
                 f"off the {kind} cells, or use eps_override.")
 
     sl = (slice(i0, i1), slice(j0, j1), slice(k0, k1))
+    w_sl = (slice(w_i0, w_i1), slice(w_j0, w_j1), slice(w_k0, w_k1))
     if sheet_impedance is not None:
         for mask in (sheet_impedance.mask_ex, sheet_impedance.mask_ey,
                      sheet_impedance.mask_ez):
-            if mask is not None and bool(jnp.any(jnp.asarray(mask)[sl])):
+            if mask is not None and bool(jnp.any(jnp.asarray(mask)[w_sl])):
                 raise ValueError(
                     f"a surface_impedance_f0 sheet (#677) has loaded edges "
                     f"inside the design box {bounds}. The sheet operator "
@@ -938,8 +1010,12 @@ def _resolve_design_box(
         raise ValueError(
             f"design conductivity has shape {tuple(jnp.shape(sigma))} but "
             f"the design box {bounds} realizes {box_shape} cells.")
-    ca, cb = e_update_coeffs(eps_r, sigma, dt)
-    return _DesignBoxCoeffs(bounds=bounds, ca=ca, cb=cb)
+    # #1210: per-component coefficients over the write window, the design
+    # values laid into a copy of the background so the box-edge cells average
+    # with the constant background exactly as the grid-wide update would.
+    write_bounds, ca, cb = _design_box_edge_coeffs(
+        bounds, eps_r, sigma, materials, dt, tuple(grid.shape))
+    return _DesignBoxCoeffs(bounds=write_bounds, ca=ca, cb=cb)
 
 
 def _build_step_setup(
@@ -1685,11 +1761,23 @@ def make_core_step(ctx: _StepContext):
     # The guard mirrors ``_update_e_with_optional_dispersion``'s own
     # ``debye is None and lorentz is None``: with a dispersion model active the
     # E update never consults the anisotropic arrays, so neither may this.
+    #
+    # #1210 made the PLAIN path per-component too: ``update_e`` builds its
+    # coefficients from the mean of eps_r over each edge's four incident
+    # cells, so ``materials.eps_r`` is no longer the permittivity the Yee half
+    # used anywhere a material interface crosses the pad. The same argument
+    # that threaded the subpixel arrays threads this one; where the pad is
+    # homogeneous the mean IS ``materials.eps_r``, so those runs keep their
+    # bytes.
     _aniso_is_live = not (ctx.use_debye or ctx.use_lorentz)
     if _aniso_is_live and aniso_inv_eps is not None:
         cpml_inv_eps_r = aniso_inv_eps
     elif _aniso_is_live and aniso_eps is not None:
         cpml_inv_eps_r = tuple(1.0 / e for e in aniso_eps)
+    elif _aniso_is_live:
+        _eps_edge, _ = edge_averaged_materials(
+            materials.eps_r, materials.sigma, periodic)
+        cpml_inv_eps_r = tuple(1.0 / e for e in _eps_edge)
     else:
         cpml_inv_eps_r = None
 
@@ -2553,7 +2641,8 @@ def run(
     # produce a 2nd-order result. Gate it on order==2.
     use_fast_he = _fast_eligible and _on_gpu and stencil_order == 2
     _fast_coeffs = (
-        precompute_coeffs(materials, dt, dx, pec_faces=_setup.pec_faces)
+        precompute_coeffs(materials, dt, dx, pec_faces=_setup.pec_faces,
+                          periodic=periodic)
         if use_fast_he else None
     )
 

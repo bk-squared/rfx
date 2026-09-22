@@ -2755,8 +2755,17 @@ def _build_nu_scan(
     # is the same condition that selects ``update_e_nu_aniso`` below, so a
     # dispersive run — which ignores ``aniso_eps`` — keeps ``materials.eps_r``
     # and stays byte-identical, as does every run with no anisotropic array.
+    # #1210: the plain graded-mesh update ``update_e_nu`` is per-component too
+    # now (the mean of eps_r over each edge's four incident cells), so it gets
+    # the same threading. Homogeneous pads keep their bytes — the mean of four
+    # equal floats is that float exactly.
     if not (use_debye or use_lorentz) and aniso_eps is not None:
         _cpml_inv_eps_r = tuple(1.0 / e for e in aniso_eps)
+    elif not (use_debye or use_lorentz):
+        from rfx.core.yee import edge_averaged_materials as _edge_avg_mats
+        _eps_edge_nu, _ = _edge_avg_mats(
+            materials.eps_r, materials.sigma, (False, False, False))
+        _cpml_inv_eps_r = tuple(1.0 / e for e in _eps_edge_nu)
     else:
         _cpml_inv_eps_r = None
 
