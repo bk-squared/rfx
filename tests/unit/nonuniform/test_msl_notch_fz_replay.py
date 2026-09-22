@@ -409,3 +409,338 @@ def test_fz_verdicts_reports_only_the_windows_whose_arms_are_present():
     assert set(out) == {"W5", "W8", "cost"}
     assert "W6" not in out and "W7" not in out
     assert sorted(out["cost"]) == sorted(arms)
+
+
+# ------------------------------------------------- the windows, on the records
+#: What the two records hold, transcribed from the committed files.  Pinned
+#: means pinned: a window that FIRED is pinned fired.
+RECORDED_NOTCH_GHZ = {
+    "A_off": 3.747389,
+    "A_on": 3.732318,
+    "C_off": 3.716635,
+    "F16Z6": 3.748281,
+    "ON13": 3.733383,
+    "Z16": 3.710389,
+    "Z6": 3.749938,
+    "Z8": 3.733780,
+}
+RECORDED_WALL_S = {
+    "A_off": 106.1,
+    "A_on": 101.4,
+    "C_off": 1007.7,
+    "F16Z6": 160.8,
+    "ON13": 91.7,
+    "Z16": 1081.9,
+    "Z6": 357.0,
+    "Z8": 715.9,
+}
+RECORDED_CELLS = {
+    "A_off": 1545600,
+    "A_on": 1502976,
+    "C_off": 3291484,
+    "F16Z6": 1758720,
+    "ON13": 1559712,
+    "Z16": 3935470,
+    "Z6": 2289728,
+    "Z8": 2647498,
+}
+RECORDED_VERDICTS = {"W5": "HELD", "W8": "HELD"}
+RECORDED_W6_CLASS = "FZ dominant"
+RECORDED_W5_ORDER = 1.3713
+RECORDED_W5_ORDER_AT_COARSE_ENDPOINT = 1.4448
+RECORDED_W5_LIMIT_GHZ = 3.69748
+RECORDED_W5_MONOTONE = True
+RECORDED_W5_FINEST_PCT = 0.9807
+RECORDED_W5_LIMIT_PCT = 0.6292
+RECORDED_W5_STEPS_MHZ = [16.158, 17.1453, 6.2457]
+RECORDED_W6_DELTA_Z_MHZ = 33.3032
+RECORDED_W6_DELTA_F_MHZ = -2.5492
+RECORDED_W6_TOTAL_MHZ = 30.7541
+RECORDED_W6_BAR_MHZ = 20.5027
+RECORDED_W7_ON_NODE_READS_LOWER = True
+RECORDED_W7_DELTA_MHZ = 14.0061
+RECORDED_W7_DELTA_PCT = 0.3752
+RECORDED_W7_FINE_CELL_GAP_PCT = 2.3622
+RECORDED_W7_F_SLOPE_MHZ_PER_UM = -0.2767
+RECORDED_W7_F_PART_MHZ = -0.3016
+RECORDED_W8_N_Z_FOR_THE_BAR = 8
+RECORDED_W8_FZ_FOR_THE_BAR_UM = 34.0311
+RECORDED_W8_AMPLITUDE = 4.924565e+13
+RECORDED_F_LADDER_GHZ = [3.747389, 3.748281, 3.749938]
+RECORDED_F_LADDER_MONOTONE = True
+RECORDED_REFERENCE_GHZ = 3.67436
+
+
+@pytest.fixture(scope="module")
+def arms():
+    """The eight arms W5-W8 read, from the two records the instrument names."""
+    assert FZ_RECORD.is_file(), f"the record is missing: {FZ_RECORD}"
+    return ins.load_fz_arms(FZ_RECORD, BASE_RECORD)
+
+
+@pytest.fixture(scope="module")
+def fz_file():
+    with FZ_RECORD.open() as fh:
+        return json.load(fh)
+
+
+def test_the_fz_record_holds_the_five_new_arms_and_names_the_three_it_reuses(
+        fz_file, arms):
+    assert fz_file["schema"] == "msl_notch_graded_fz/1"
+    assert fz_file["note"].endswith(
+        "20260922_msl_notch_fz_ladder_predeclaration.md")
+    assert sorted(fz_file["arms"]) == sorted(ins.FZ_ARMS)
+    assert fz_file["reused_from"] == "msl_notch_graded.json"
+    assert fz_file["reused_arms"] == list(ins.FZ_REUSED_ARMS)
+    assert sorted(arms) == sorted(set(ins.FZ_ARMS) | set(ins.FZ_REUSED_ARMS))
+    for key, rec in sorted(fz_file["arms"].items()):
+        assert rec["arm"] == key
+        assert rec["smoke"] is False, f"{key} was recorded from a capped run"
+        assert rec["num_periods"] == case.NUM_PERIODS
+        for field in ("freqs_hz", "s11_re", "s11_im", "s21_re", "s21_im"):
+            assert len(rec[field]) == case.N_FREQS, (key, field)
+    # The windows' own constants, as the record froze them.
+    w = fz_file["windows"]
+    assert w["W5_order_window"] == list(ins.P_Z_WINDOW)
+    assert w["W5_ladder"] == list(ins.FZ_LADDER)
+    assert w["W6_dominance_fraction"] == pytest.approx(2.0 / 3.0)
+    assert w["W8_freq_bar_pct"] == case.FREQ_BAR * 100.0
+
+
+def test_the_first_record_was_not_edited():
+    """The three reused arms come from a file this note does not write.
+
+    The pre-declaration reuses A_on, A_off and C_off rather than re-running
+    them, and the whole point of a separate record is that the first one stays
+    as it was measured.
+    """
+    with BASE_RECORD.open() as fh:
+        base = json.load(fh)
+    assert sorted(base["arms"]) == sorted(ins.ALL_ARMS)
+    assert set(base["arms"]) & set(ins.FZ_ARMS) == set()
+    assert base["schema"] == "msl_notch_graded/1"
+    assert base["note"].endswith(
+        "20260922_msl_notch_graded_mesh_predeclaration.md")
+
+
+def test_every_new_arm_names_the_run_and_the_commit_that_made_it(fz_file):
+    """Provenance, read rather than assumed, and one commit for the five.
+
+    The pre-declaration pins one commit for the whole ladder: two arms at two
+    commits would be two instruments, and the FZ ladder's whole claim is that
+    only the substrate cell moved between its rungs.
+    """
+    runs, shas = set(), set()
+    for key, rec in sorted(fz_file["arms"].items()):
+        p = rec["provenance"]
+        assert ins._SHA_RE.match(p["git_sha"]), (key, p["git_sha"])
+        assert p["run_id"] and str(p["run_id"]).isdigit(), (key, p["run_id"])
+        assert p["jax_backend"] == "gpu", (key, p["jax_backend"])
+        assert p["gpu_device_kind"], key
+        assert p["run_id"] not in runs, f"{key} reuses run {p['run_id']}"
+        runs.add(p["run_id"])
+        shas.add(p["git_sha"])
+    assert len(shas) == 1, f"the five arms span {len(shas)} commits"
+
+
+def test_the_witnesses_and_the_refusals_are_recorded_for_every_new_arm(fz_file):
+    """R1, R2, R3 before the solve and R4 after it, as each arm recorded them."""
+    for key, rec in sorted(fz_file["arms"].items()):
+        w = rec["witnesses"]
+        assert w["worst_settling_db"] <= case.SETTLING_DB, key
+        assert w["worst_sigma_excess"] <= case.PASSIVITY_EXCESS_BAR, key
+        assert max(rec["intended_node_miss_m"].values()) <= ins.NODE_TOL_M, key
+        assert rec["profile_summary"]["x"]["worst_ratio"] <= ins.CAP_XY + 1e-9
+        assert rec["profile_summary"]["y"]["worst_ratio"] <= ins.CAP_XY + 1e-9
+        assert rec["profile_summary"]["z"]["worst_ratio"] <= ins.CAP_Z + 1e-9
+        for line in rec["preflight"]:
+            for needle in ins.R2_FORBIDDEN:
+                assert needle not in line, (key, needle)
+        g = rec["realized"]
+        assert g["n_sheet_planes"] == 1 and g["n_volume_cells"] == 0, key
+        assert g["eps_above_sheet"] == 1.0, key
+        n = rec["n_across_metal"]
+        assert g["n_trace_rows"] == g["n_stub_cols"] == n + 1, key
+        assert abs(g["stub_length_m"] - case.STUB_LENGTH_M) <= ins.NODE_TOL_M
+        assert g["edge_offset_residual_m"] <= 1e-16, key
+        for port in rec["probe_runway"]["ports"]:
+            assert port["n_cells_off_coarse"] == 0, (key, port["name"])
+        lo, hi = rec["band_y_trace_m"]
+        for port in rec["port_footprint"]["ports"]:
+            assert lo <= port["y_lo_m"] and port["y_hi_m"] <= hi, key
+
+
+def test_the_odd_rung_recorded_its_straddled_centre(fz_file):
+    """ON13's mesh fact as the arm that solved it wrote it down."""
+    rec = fz_file["arms"]["ON13"]
+    assert rec["centre_is_a_node"] is False
+    assert rec["n_across_metal"] % 2 == 1
+    f = rec["fine_cell_m"]
+    for label, st in sorted(rec["centre_straddle"].items()):
+        lo, hi = st["nodes_m"]
+        assert hi - lo == pytest.approx(f, abs=ins.NODE_TOL_M), label
+        assert 0.5 * (lo + hi) == pytest.approx(st["declared_centre_m"],
+                                                abs=ins.NODE_TOL_M), label
+    assert rec["port_centre_y_m"] == pytest.approx(
+        rec["centre_straddle"]["trace_y_centre"]["declared_centre_m"])
+    for key, other in sorted(fz_file["arms"].items()):
+        if key != "ON13":
+            assert other["centre_is_a_node"] is True, key
+            assert other["centre_straddle"] == {}, key
+            assert other["n_across_metal"] % 2 == 0, key
+
+
+@pytest.mark.parametrize("key", sorted(RECORDED_NOTCH_GHZ))
+def test_each_notch_is_re_derived_from_the_curve(arms, key):
+    """The shared estimator on the recorded |S21|, against the pinned value."""
+    got = ins.notch_of(arms[key])
+    assert got["f"] == pytest.approx(arms[key]["notch"]["f"], abs=1.0)
+    assert got["f"] / 1e9 == pytest.approx(RECORDED_NOTCH_GHZ[key], abs=5e-6)
+    assert got["depth_db"] == pytest.approx(arms[key]["notch"]["depth_db"],
+                                            abs=1e-9)
+
+
+def test_the_fz_ladder_moves_only_the_substrate_cell(arms):
+    """W5's premise, on the records rather than on the declaration.
+
+    Four rungs, one in-plane cell, four substrate cells that really do refine.
+    If this were false the fitted order would be a property of the mesh and
+    not of the substrate.
+    """
+    fine = [arms[k]["fine_cell_m"] for k in ins.FZ_LADDER]
+    fz = [arms[k]["substrate_cell_m"] for k in ins.FZ_LADDER]
+    assert max(fine) - min(fine) <= ins.NODE_TOL_M
+    assert fz == sorted(fz, reverse=True)
+    assert [arms[k]["n_substrate_cells"] for k in ins.FZ_LADDER] == [6, 8, 12,
+                                                                     16]
+    assert [arms[k]["n_across_metal"] for k in ins.FZ_LADDER] == [24] * 4
+    assert [arms[k]["placement"] for k in ins.FZ_LADDER] == ["offset"] * 4
+    assert [arms[k]["arm_length_m"] for k in ins.FZ_LADDER] == [
+        case.ARM_LENGTH_M] * 4
+
+
+def test_w5_the_fz_ladder_is_a_ladder(arms):
+    r = ins.w5_fz_ladder(arms)
+    assert r["monotone"] is RECORDED_W5_MONOTONE
+    assert r["order"] == pytest.approx(RECORDED_W5_ORDER, abs=1e-4)
+    assert r["order_at_coarse_endpoint"] == pytest.approx(
+        RECORDED_W5_ORDER_AT_COARSE_ENDPOINT, abs=1e-4)
+    assert r["limit_ghz"] == pytest.approx(RECORDED_W5_LIMIT_GHZ, abs=1e-5)
+    assert r["finest_distance_pct"] == pytest.approx(RECORDED_W5_FINEST_PCT,
+                                                     abs=1e-4)
+    assert r["limit_distance_pct"] == pytest.approx(RECORDED_W5_LIMIT_PCT,
+                                                    abs=1e-4)
+    assert r["differences_mhz"] == pytest.approx(RECORDED_W5_STEPS_MHZ,
+                                                 abs=1e-3)
+    assert r["order_window"] == [0.5, 2.5]
+    assert r["reference_ghz"] == pytest.approx(RECORDED_REFERENCE_GHZ, abs=1e-5)
+    assert r["verdict"] == RECORDED_VERDICTS["W5"]
+
+
+def test_w6_attribution_at_the_a_off_to_c_off_step(arms):
+    r = ins.w6_attribution(arms)
+    assert r["delta_z_mhz"] == pytest.approx(RECORDED_W6_DELTA_Z_MHZ, abs=1e-3)
+    assert r["delta_f_mhz"] == pytest.approx(RECORDED_W6_DELTA_F_MHZ, abs=1e-3)
+    assert r["total_mhz"] == pytest.approx(RECORDED_W6_TOTAL_MHZ, abs=1e-3)
+    assert r["bar_mhz"] == pytest.approx(RECORDED_W6_BAR_MHZ, abs=1e-3)
+    assert r["classification"] == RECORDED_W6_CLASS
+    # The two legs are the whole step and the cross term cancels exactly.
+    assert r["delta_z_mhz"] + r["delta_f_mhz"] == pytest.approx(
+        r["total_mhz"], abs=1e-9)
+    assert abs(r["cross_term_hz"]) < 1e-3
+
+
+def test_w7_the_offsets_own_sign(arms):
+    r = ins.w7_offset_sign(arms)
+    assert r["on_node_reads_lower"] is RECORDED_W7_ON_NODE_READS_LOWER
+    assert r["delta_mhz"] == pytest.approx(RECORDED_W7_DELTA_MHZ, abs=1e-3)
+    assert r["delta_pct"] == pytest.approx(RECORDED_W7_DELTA_PCT, abs=1e-4)
+    assert r["fine_cell_gap_pct"] == pytest.approx(
+        RECORDED_W7_FINE_CELL_GAP_PCT, abs=1e-4)
+    assert r["f_slope_mhz_per_um"] == pytest.approx(
+        RECORDED_W7_F_SLOPE_MHZ_PER_UM, abs=1e-4)
+    assert r["f_part_of_delta_mhz"] == pytest.approx(RECORDED_W7_F_PART_MHZ,
+                                                     abs=1e-3)
+    # Its three arms share the substrate cell, and only ON13 is on-node at a
+    # cell near A_off's.
+    assert r["substrate_cell_m"] == pytest.approx(
+        case.SUBSTRATE_THICKNESS_M / 6)
+    assert r["fine_cell_on13_m"] < r["fine_cell_a_off_m"] < r[
+        "fine_cell_a_on_m"]
+
+
+def test_w8_is_z_enough(arms):
+    r = ins.w8_is_z_enough(arms)
+    assert r["w5_verdict"] == RECORDED_VERDICTS["W5"]
+    assert r["limit_ghz"] == pytest.approx(RECORDED_W5_LIMIT_GHZ, abs=1e-5)
+    assert r["limit_distance_pct"] == pytest.approx(RECORDED_W5_LIMIT_PCT,
+                                                    abs=1e-4)
+    assert r["bar_pct"] == case.FREQ_BAR * 100.0
+    assert r["verdict"] == RECORDED_VERDICTS["W8"]
+    assert r["amplitude"] == pytest.approx(RECORDED_W8_AMPLITUDE, rel=1e-4)
+    assert r["substrate_cell_for_the_bar_m"] * 1e6 == pytest.approx(
+        RECORDED_W8_FZ_FOR_THE_BAR_UM, abs=1e-3)
+    assert r["n_substrate_cells_for_the_bar"] == RECORDED_W8_N_Z_FOR_THE_BAR
+    # The rule it derives, re-derived here from its own two numbers.
+    want = (case.FREQ_BAR * ins.reference_notch_hz()
+            / abs(r["amplitude"])) ** (1.0 / r["order"])
+    assert r["substrate_cell_for_the_bar_m"] == pytest.approx(want, rel=1e-9)
+
+
+def test_the_f_ladder_reported_beside_w6(arms):
+    """Three in-plane cells at one substrate cell, W6's dF end to end."""
+    r = ins.fz_verdicts(arms)["f_ladder_at_fz_42um"]
+    assert r["arms"] == ["A_off", "F16Z6", "Z6"]
+    assert r["notches_ghz"] == pytest.approx(RECORDED_F_LADDER_GHZ, abs=5e-6)
+    assert r["monotone"] is RECORDED_F_LADDER_MONOTONE
+    assert r["fine_cells_m"] == sorted(r["fine_cells_m"], reverse=True)
+    assert r["substrate_cell_m"] == pytest.approx(
+        case.SUBSTRATE_THICKNESS_M / 6)
+
+
+def test_the_cost_of_every_arm_is_cells_and_not_nodes(arms):
+    """Both columns of F.1 and F.3, counted the way the first note counts."""
+    cost = ins.fz_verdicts(arms)["cost"]
+    for key, cells in sorted(RECORDED_CELLS.items()):
+        assert cost[key]["n_grid_cells"] == cells, key
+        assert cost[key]["n_grid_cells"] == ins.grid_cells(arms[key]), key
+        assert cost[key]["wall_s"] == pytest.approx(RECORDED_WALL_S[key],
+                                                    abs=0.05), key
+        shape = arms[key]["grid_shape"]
+        assert shape[0] * shape[1] * shape[2] > cells, key
+
+
+def test_the_tables_the_note_carries_are_generated_from_the_records(arms):
+    """`--tables` emits the Results section, and writes no conclusion.
+
+    The note's Results section is this function's output; nothing in it is
+    typed by hand, and the last line is the one that says whose the
+    interpreting sentences are.
+    """
+    md = ins.fz_markdown_tables(arms)
+    assert md.rstrip().endswith("Conclusions: leader fills.")
+    for heading in ("## Results (facts)", "### F.0", "### F.1", "### F.2",
+                    "### F.3", "### F.4", "### F.5"):
+        assert heading in md, heading
+    for key in sorted(arms):
+        assert f"| {key} |" in md, key
+    assert f"{RECORDED_W5_LIMIT_GHZ:.5f}" in md
+    assert f"{RECORDED_REFERENCE_GHZ:.5f}" in md
+    assert RECORDED_W6_CLASS in md
+    assert f"{RECORDED_W8_N_Z_FOR_THE_BAR}" in md
+    # Every row of every table has as many cells as that table's header.  A
+    # ragged row is a column silently dropped from the note.
+    tables, block = [], []
+    for ln in md.splitlines():
+        if ln.startswith("|"):
+            block.append(ln)
+        elif block:
+            tables.append(block)
+            block = []
+    if block:
+        tables.append(block)
+    assert len(tables) >= 8, f"only {len(tables)} tables in the section"
+    for t in tables:
+        assert len(t) >= 3, f"a table with no rows: {t[0]}"
+        widths = {row.count("|") for row in t}
+        assert len(widths) == 1, f"ragged table starting {t[0]!r}: {widths}"
