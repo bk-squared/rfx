@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -353,3 +354,165 @@ def test_the_sheen_script_is_not_edited_by_this_case():
     assert "NrTS=30000" in setup and "EndCriteria=1e-4" in setup, (
         "the cap delta 9 declines is no longer where the maker reads it"
     )
+
+
+# ---------------------------------------------------------------------------
+# One rung per cluster job, and putting the parts back together
+# ---------------------------------------------------------------------------
+def test_rung_selector_parses_and_refuses():
+    m = _load_maker()
+    assert m.parse_rungs(m.DEFAULT_RUNGS) == list(m.RUNG_ORDER_STAGES)
+    assert m.parse_rungs("fine,coarse") == ["stage_b_coarse", "stage_b_fine"], (
+        "a subset must come back in rung order, not in the order it was typed"
+    )
+    for spec in ("", "   ", "middle", "coarse,middle", ",,"):
+        with pytest.raises(ValueError):
+            m.parse_rungs(spec)
+
+
+def test_stage_a_runs_in_every_rung_job():
+    """Splitting the rungs across jobs does not make the gate optional."""
+    m = _load_maker()
+    for spec in ("coarse", "mid", "fine", "coarse,fine"):
+        stages = m._stages_for("both", m.parse_rungs(spec))
+        assert stages[0] == "stage_a", f"--rungs {spec} dropped the reproduce gate"
+    # --stage B still skips it, deliberately, and warns at run time.
+    assert m._stages_for("B", m.parse_rungs("mid")) == ["stage_b_mid"]
+
+
+def test_dry_run_honours_the_rung_selection():
+    result = _run("--dry-run", "--stage", "both", "--rungs", "mid")
+    assert result.returncode == 0, result.stderr
+    assert "rungs requested mid" in result.stdout
+    # The delta list names all three rungs wherever it is printed, so scope the
+    # check to the stage plan -- which is the part that says what gets solved.
+    plan = result.stdout.split("STAGE PLAN", 1)[1]
+    assert "stage_a" in plan, "the gate is still planned"
+    assert "stage_b_mid" in plan
+    assert "stage_b_coarse" not in plan and "stage_b_fine" not in plan, (
+        "the stage plan planned rungs this job will not solve"
+    )
+
+
+def test_the_stop_criteria_note_says_what_ran_and_why():
+    m = _load_maker()
+    default = m.stop_criteria_note(None, None)
+    assert "No override was given" in default
+    assert "library defaults" in default
+
+    over = m.stop_criteria_note(1e-4, None)
+    assert over.startswith("made with --real-end-criteria ")
+    # The measurement that motivated the override travels with the record, so a
+    # reader of a looser run does not have to go and find it.
+    assert "107 minutes on the coarsest rung on 8 threads" in over
+    assert "369367263243" in over and "369367263269" in over
+    assert "-40 dB of the post-source peak" in over
+
+    both = m.stop_criteria_note(1e-4, 60000)
+    assert "--real-end-criteria" in both and "--real-nrts 60000" in both
+
+
+def test_the_declared_design_is_still_the_library_defaults():
+    """An override is a CLI choice; it does not move what the script declares."""
+    m = _load_maker()
+    assert m.B_REAL_NRTS is None and m.B_REAL_END_CRITERIA is None
+    assert "library defaults" in m.DELTA_LIST[8]
+    assert "--real-end-criteria" in m.DELTA_LIST[8], (
+        "delta 9 does not mention that the override exists"
+    )
+
+
+def _part(tmp_path, name, rung, *, run_id, s21_bin17=0.5, build="bld-1",
+          commit="cafe1234", note="made with --real-end-criteria 0.0001: ..."):
+    """A minimal record shaped like one rung job's output."""
+    stage_a = {
+        "freqs_ghz": [1.0, 2.0, 3.0],
+        "s11_mag": [0.1, 0.2, 0.3],
+        "s11_deg": [0.0, 1.0, 2.0],
+        "s21_mag": [0.9, s21_bin17, 0.8],
+        "s21_deg": [0.0, 1.0, 2.0],
+        "energy_sum": [0.82, 0.29, 0.73],
+        "notch": {"refined_f_ghz": 3.6711, "depth_db": -53.16},
+    }
+    rec = {
+        "meta": {
+            "tutorial_source": "thliebig/openEMS python/Tutorials/MSL_NotchFilter.py",
+            "rfx_openems_image": "ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8",
+            "rfx_openems_commit": build,
+            "rfx_commit": commit,
+            "stop_criteria_note": note,
+            "rungs_in_this_record": [rung],
+            "stages": {"stage_a": {"stage": "stage_a"},
+                       m_rung(rung): {"stage": m_rung(rung)}},
+        },
+        "stage_a": stage_a,
+        m_rung(rung): {"null": {"refined_f_ghz": 7.9}, "rung": rung},
+        "run_id": run_id,
+        "run_id_note": "filled by the submitter",
+    }
+    p = tmp_path / name
+    p.write_text(json.dumps(rec, indent=1))
+    return p
+
+
+def m_rung(short):
+    return {"coarse": "stage_b_coarse", "mid": "stage_b_mid",
+            "fine": "stage_b_fine"}[short]
+
+
+def test_merge_combines_three_rung_parts(tmp_path):
+    parts = [_part(tmp_path, f"{r}.json", r, run_id=f"3693672633{i:02d}")
+             for i, r in enumerate(("coarse", "mid", "fine"))]
+    out = tmp_path / "full.json"
+    result = _run("--merge", *[str(p) for p in parts], "--output", str(out))
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    merged = json.loads(out.read_text())
+    for stage in ("stage_a", "stage_b_coarse", "stage_b_mid", "stage_b_fine"):
+        assert isinstance(merged[stage], dict), f"{stage} did not survive the merge"
+    assert merged["meta"]["rungs_in_this_record"] == ["coarse", "mid", "fine"]
+    assert merged["run_id"] is None
+    assert "merged_from" in merged["run_id_note"]
+    entries = merged["meta"]["merged_from"]
+    assert len(entries) == 3
+    assert [e["rungs"] for e in entries] == [["coarse"], ["mid"], ["fine"]]
+    assert [e["run_id"] for e in entries] == ["369367263300", "369367263301",
+                                              "369367263302"]
+    for e in entries:
+        assert e["maker_commit"] == "cafe1234"
+        assert e["stop_criteria_note"].startswith("made with --real-end-criteria")
+        assert Path(e["path"]).name in {"coarse.json", "mid.json", "fine.json"}
+    assert merged["meta"]["maker_commits_agree"] is True
+    # Each rung block came from its own part, not from the first one.
+    assert [merged[m_rung(r)]["rung"] for r in ("coarse", "mid", "fine")] == \
+        ["coarse", "mid", "fine"]
+
+
+@pytest.mark.parametrize("what,build,bin17,drop,dup", [
+    ("a rung missing", "bld-1", 0.5, True, False),
+    ("a rung twice", "bld-1", 0.5, False, True),
+    ("stage_a differs by one bin", "bld-1", 0.4242, False, False),
+    ("a different openEMS build", "bld-2", 0.5, False, False),
+])
+def test_merge_refuses_what_it_cannot_reconcile(tmp_path, what, build, bin17,
+                                                drop, dup):
+    """A merge does not average, choose or reconcile; it refuses and says why.
+
+    Stage A is the check that costs nothing: every rung job runs the same
+    tutorial on the same mesh and grid, so two parts that disagree on it bin for
+    bin did not come from the same solver.
+    """
+    parts = [_part(tmp_path, "coarse.json", "coarse", run_id="a"),
+             _part(tmp_path, "mid.json", "mid", run_id="b", s21_bin17=bin17,
+                   build=build)]
+    if not drop:
+        parts.append(_part(tmp_path, "fine.json", "fine", run_id="c"))
+    if dup:
+        parts.append(_part(tmp_path, "coarse2.json", "coarse", run_id="d"))
+    out = tmp_path / "full.json"
+    result = _run("--merge", *[str(p) for p in parts], "--output", str(out))
+    assert result.returncode == 3, (
+        f"{what}: expected a refusal, got rc={result.returncode}\n{result.stdout}"
+    )
+    assert "MERGE REFUSED" in result.stderr
+    assert not out.exists(), f"{what}: a refused merge still wrote a record"
