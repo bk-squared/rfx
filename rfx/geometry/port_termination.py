@@ -62,12 +62,30 @@ def registered_ports(sim):
             yield collection, index, port
 
 
+def _realization_key(sim, grid):
+    """What an MSL default depends on: this grid and this conductor list."""
+    pads = tuple(int(getattr(grid, f"pad_{a}_{s}", 0)) for a in "xyz" for s in ("lo", "hi"))
+    return (id(grid), tuple(int(n) for n in grid.shape), pads,
+            tuple(id(entry) for _, entry in conductor_entries(sim)))
+
+
 def port_termination_references(sim, collection, port, grid):
     """Resolve an MSL default on this realization; retain explicit names."""
     if collection == "_msl_ports" and port.terminates is None:
-        return default_msl_terminates(
-            sim, grid, position=port.position, width=port.width,
-            height=port.height, direction=port.direction)
+        # Memoised per realization: the helper that asks is called once per
+        # conductor, and resolving the default rasterizes every conductor, so
+        # without this an assembly with an MSL port was quadratic in the
+        # conductor count (review of PR #1178: 8.3 s at 20 conductors).
+        realization = _realization_key(sim, grid)
+        memo = sim.__dict__.get("_msl_default_memo")
+        if memo is None or memo["realization"] != realization:
+            memo = sim.__dict__["_msl_default_memo"] = {
+                "realization": realization, "ports": {}}
+        if id(port) not in memo["ports"]:
+            memo["ports"][id(port)] = default_msl_terminates(
+                sim, grid, position=port.position, width=port.width,
+                height=port.height, direction=port.direction)
+        return memo["ports"][id(port)]
     return tuple(ref for ref in port.terminates
                  if any(entry is ref.entry for entry in getattr(sim, ref.collection)))
 
