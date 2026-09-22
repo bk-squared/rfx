@@ -34,6 +34,8 @@ def main():
     parser.add_argument("--local", action="append", metavar="PRESET:NX_PER_DEVICE",
                         help="one process driving every GPU of a multi-GPU preset (repeatable)")
     parser.add_argument("--model", choices=("vacuum", "loaded"), default="vacuum")
+    parser.add_argument("--ref", default="green",
+                        help="mirror ref the jobs pin (distinct refs let queued jobs of different commits coexist)")
     parser.add_argument("--two", action="append", type=int, metavar="NX_PER_RANK",
                         help="two-worker job (repeatable); default 100/200/400")
     parser.add_argument("--two-preset", default="gpu-rtx4090")
@@ -56,7 +58,7 @@ def main():
     if args.job_suffix and not re.fullmatch(r"[A-Za-z0-9_-]+", args.job_suffix):
         parser.error("job-suffix must contain only letters, digits, underscores, hyphens")
     shape_env = {"RFX_NY": str(args.ny), "RFX_NZ": str(args.nz), "RFX_STEPS": str(args.steps),
-                 "RFX_REPEATS": str(args.repeats), "RFX_MODEL": args.model}
+                 "RFX_REPEATS": str(args.repeats), "RFX_MODEL": args.model, "RFX_REF": args.ref}
     if args.mem_fraction:
         shape_env["XLA_PYTHON_CLIENT_MEM_FRACTION"] = args.mem_fraction
     if not re.fullmatch(r"[0-9a-f]{40}", args.tooling_sha):
@@ -106,7 +108,7 @@ def main():
                    command(["test", "!", "-e", payload]), command(["mkdir", "-p", payload]),
                    command(["git", "clone", "--mirror", "--no-hardlinks", args.mirror.resolve(),
                             payload / "source.git"]),
-                   'test "$(' + command(["git", "-C", payload / "source.git", "rev-parse", "green^{commit}"])
+                   'test "$(' + command(["git", "-C", payload / "source.git", "rev-parse", f"{args.ref}^{{commit}}"])
                    + ')" = ' + shlex.quote(args.tooling_sha)]
     for name in ("multinode_probe_job.sh", "summarize_multinode_job.py"):
         preparation.append(command(["git", "-C", payload / "source.git", "show",

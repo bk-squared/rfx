@@ -59,8 +59,9 @@ run_worker() {
   command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
   source_repo=${RFX_SOURCE_ARCHIVE:-${RFX_SRC:-/root/workspace/claude-workspace/rfx/mirrors/multinode-probe.git}}
   git config --global --add safe.directory "$source_repo"
-  resolved=$(git -C "$source_repo" rev-parse 'green^{commit}')
-  [ "$resolved" = "$RFX_EXPECTED_SHA" ] || { echo "green differs from pinned SHA"; return 1; }
+  ref=${RFX_REF:-green}
+  resolved=$(git -C "$source_repo" rev-parse "$ref^{commit}")
+  [ "$resolved" = "$RFX_EXPECTED_SHA" ] || { echo "$ref differs from pinned SHA"; return 1; }
   git clone -q --no-hardlinks "$source_repo" "$work/src"
   git -C "$work/src" checkout -q --detach "$RFX_EXPECTED_SHA"
   sha=$(git -C "$work/src" rev-parse HEAD)
@@ -68,7 +69,7 @@ run_worker() {
   printf '%s\n' "$resolved" > "$out/tooling-commit.rank$rank.txt"
   tree=$(git -C "$work/src" rev-parse HEAD:rfx)
   baseline=$(git -C "$work/src" rev-parse "$RFX_EXPECTED_SHA":rfx)
-  [ "$tree" = "$baseline" ] || { echo "rfx tree differs from the pinned green commit"; return 1; }
+  [ "$tree" = "$baseline" ] || { echo "rfx tree differs from the pinned commit"; return 1; }
   printf '%s\n' "$tree" > "$out/rfx-tree.rank$rank.txt"
   for file in distributed_multinode_probe.py compare_multinode_probe.py; do
     git -C "$source_repo" show "$resolved:scripts/diagnostics/$file" > "$work/src/scripts/diagnostics/$file"
