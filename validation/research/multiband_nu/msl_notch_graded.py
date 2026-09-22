@@ -90,6 +90,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import platform
 import re
@@ -156,6 +157,14 @@ BAND_MARGIN_M = 500e-6
 #: Node tolerance for "this coordinate is a node" (R1) and for every realized
 #: length this module judges (R3).
 NODE_TOL_M = 1e-9
+#: How far a cell rebuilt from a committed record may sit from the one the
+#: record holds, in units of the last bit of a float64 (``math.ulp``).  Not a
+#: tolerance on the mesh: everything the mesh DECLARES is compared for exact
+#: equality, and this covers only the cells inside a solved geometric ramp,
+#: whose ratio is bisected on ``np.sum`` and the power ufunc.  Those differ in
+#: their last bit between the GPU job's container and the project venv.
+#: ``rebuild_report()`` measures what the difference actually is.
+RECORD_ULP_FLOOR = 8.0
 
 _H = case.SUBSTRATE_THICKNESS_M
 _W = case.TRACE_WIDTH_M
@@ -727,7 +736,18 @@ def assert_profiles_graded(prof: tuple[np.ndarray, ...], b: dict) -> dict:
                 f"R1: {label} is declared at {declared * 1e6:.6f} um and the "
                 f"profile puts it at {got * 1e6:.6f} um, {miss * 1e9:.4f} nm "
                 f"away.")
-    for label, st in b.get("centre_straddle", {}).items():
+    # b["centre_straddle"], not b.get(...): a board that does not carry the
+    # key is a board this refusal cannot judge, and .get() turned that into an
+    # empty loop -- the check would pass by being absent.  ``profiles`` always
+    # sets it, to {} when the metal's centre IS a node, so a missing key means
+    # the board came from somewhere else.
+    if "centre_straddle" not in b:
+        raise AssertionError(
+            "R1: this board carries no 'centre_straddle' entry, so whether "
+            "the metal's centre line is straddled symmetrically cannot be "
+            "judged. profiles() always sets it -- empty when the centre is a "
+            "node. A board without it did not come from profiles().")
+    for label, st in b["centre_straddle"].items():
         lo, hi = st["nodes_m"]
         f = b["fine_cell_m"]
         centre = st["declared_centre_m"]
@@ -1697,9 +1717,14 @@ def w8_is_z_enough(arms: dict,
     open end -- and no n_z closes it.
 
     ``n_substrate_cells_for_the_bar`` is DERIVED, and here is the derivation:
-    the fit says the notch stands ``|A| FZ^p`` from its limit, so the cell
-    that puts that inside ``FREQ_BAR`` of the reference is
-    ``FZ = (bar / |A|)^(1/p)`` and the rule is ``n_z = ceil(h / FZ)``.  It is
+    the fit says the notch stands ``|A| FZ^p`` from its own limit, so the cell
+    that puts that term inside ``FREQ_BAR`` OF THAT LIMIT is
+    ``FZ = (FREQ_BAR * limit / |A|)^(1/p)`` and the rule is
+    ``n_z = ceil(h / FZ)``.  The bar is a fraction of the limit and not of the
+    external reference: the quantity being bounded is how far the notch still
+    has to fall on THIS ladder, and the ladder converges to its own limit, not
+    to the reference.  Taking 1 % of the reference instead would bound a
+    different thing and, where the two differ, by a different amount.  It is
     reported whatever the verdict, because a rule read off a ladder that did
     not reach the bar is still the number that ladder implies.
     """
@@ -1709,10 +1734,12 @@ def w8_is_z_enough(arms: dict,
     pct = w5["limit_distance_pct"]
     held = bool(w5["verdict"] == "HELD" and np.isfinite(pct) and pct <= bar_pct)
     p, a = w5["order"], w5["amplitude"]
-    bar_hz = case.FREQ_BAR * ref
+    limit_hz = w5["limit_ghz"] * 1e9
+    bar_hz = case.FREQ_BAR * abs(limit_hz)
     n_z = None
     fz_for_bar = float("nan")
-    if np.isfinite(p) and np.isfinite(a) and p > 0.0 and a != 0.0:
+    if (np.isfinite(p) and np.isfinite(a) and p > 0.0 and a != 0.0
+            and np.isfinite(limit_hz)):
         fz_for_bar = float((bar_hz / abs(a)) ** (1.0 / p))
         n_z = int(np.ceil(_H / fz_for_bar - 1e-12))
     rungs = [dict(arm=k, n_substrate_cells=int(arms[k]["n_substrate_cells"]),
@@ -1730,6 +1757,8 @@ def w8_is_z_enough(arms: dict,
         w5_verdict=w5["verdict"], order=p, amplitude=a,
         substrate_cell_for_the_bar_m=fz_for_bar,
         n_substrate_cells_for_the_bar=n_z,
+        substrate_rule_bar_hz=float(bar_hz),
+        substrate_rule_bar_is="FREQ_BAR of this ladder's own fitted limit",
         rungs=rungs, verdict="HELD" if held else "FIRED")
 
 
@@ -2098,7 +2127,115 @@ def markdown_tables(arms: dict) -> str:
     return "\n".join(out)
 
 
-def fz_markdown_tables(arms: dict) -> str:
+#: Meshes the record costs without solving them.  A cost quoted for a mesh
+#: nobody built is a guess; these are built, put through R1 and R3, and their
+#: time step read off the grid the solver would step.  They are NOT arms: no
+#: field is stepped and no S parameter exists for them.
+BUILD_ONLY_MESHES: tuple[tuple[tuple[int, int], str, str], ...] = (
+    ((16, 12), "offset",
+     "the coarse in-plane band with a fine z band: A_off's 12 cells across "
+     "the metal at Z16's 16 substrate cells"),
+)
+
+
+def build_only_row(n_z: int, n: int, placement: str,
+                   note: str = "") -> dict:
+    """Cost one mesh without solving it: cells, time step, steps to the record.
+
+    Built through the same ``build_graded`` every arm uses and put through the
+    same R1 and R3, so a mesh that could not be solved cannot be costed here
+    either.  The time step is the grid's own Courant number, read off the
+    lattice rather than recomputed, and the step count is the one
+    :func:`run_arm` would derive from it for the case's ``NUM_PERIODS``.
+    """
+    sim, prof, b = build_graded((n_z, n), placement)
+    report = assert_profiles_graded(prof, b)
+    g = assert_realized_graded(sim, b)
+    dt = float(g["dt_s"])
+    return dict(
+        n_substrate_cells=int(n_z), n_across_metal=int(n),
+        placement=placement, note=note,
+        fine_cell_m=b["fine_cell_m"], substrate_cell_m=b["substrate_cell_m"],
+        z_tail_cell_m=b["z_tail_cell_m"], margin_cells=b["margin_cells"],
+        grid_shape=[int(v) for v in g["grid_shape"]],
+        n_grid_cells=int(g["n_grid_cells"]), dt_s=dt,
+        n_time_steps_derived=int(np.ceil(
+            case.NUM_PERIODS / case.FREQ_MAX_HZ / dt)),
+        num_periods=case.NUM_PERIODS,
+        worst_ratio={a: report[a]["worst_ratio"] for a in ("x", "y", "z")},
+        solved=False)
+
+
+def build_only_rows() -> list[dict]:
+    """Every mesh :data:`BUILD_ONLY_MESHES` names, costed."""
+    return [build_only_row(n_z, n, placement, note)
+            for (n_z, n), placement, note in BUILD_ONLY_MESHES]
+
+
+def rebuild_report(record_path: Path | None = None) -> dict:
+    """Rebuild every graded arm of the FIRST record and measure the difference.
+
+    The five arms were solved inside the GPU job's container and this runs in
+    whatever interpreter reads the record, so the two can disagree in the last
+    bit of ``np.sum`` and of the power ufunc -- which is what a geometric
+    ramp's cell ratio is bisected on.  Everything the mesh DECLARES is
+    compared for exact equality; the ramp cells are counted and their distance
+    measured in units of the last bit (``math.ulp``).
+
+    Counting rather than asserting: the numbers this returns are what the
+    note's F.0 prints, so they come from the record on the day it is read
+    instead of from a sentence somebody typed once.
+    """
+    path = DEFAULT_OUT if record_path is None else Path(record_path)
+    with path.open() as fh:
+        recorded = json.load(fh)["arms"]
+    out: dict = {"arms": {}, "record": path.name}
+    for key in sorted(ARMS):
+        if key not in recorded:
+            continue
+        arm = ARMS[key]
+        prof = profiles(arm.rung, arm.placement, arm.arm_length_m)[:3]
+        b = profiles(arm.rung, arm.placement, arm.arm_length_m)[3]
+        per_axis = {}
+        for axis, p in zip("xyz", prof):
+            stored = np.asarray(recorded[key]["profiles"][axis], dtype=float)
+            fine = b["substrate_cell_m"] if axis == "z" else b["fine_cell_m"]
+            ramp = ~((p == fine) | (p == C_COARSE_M))
+            moved, worst = 0, 0.0
+            for got, want in zip(p[ramp].tolist(), stored[ramp].tolist()):
+                if got != want:
+                    moved += 1
+                    worst = max(worst, abs(got - want)
+                                / math.ulp(max(abs(got), abs(want))))
+            per_axis[axis] = dict(n_ramp_cells=int(ramp.sum()),
+                                  n_cells_moved=moved, worst_ulp=float(worst),
+                                  n_cells=int(p.size),
+                                  sum_equal=bool(float(np.sum(p))
+                                                 == float(np.sum(stored))))
+        out["arms"][key] = dict(
+            per_axis=per_axis,
+            n_cells_moved=sum(v["n_cells_moved"] for v in per_axis.values()),
+            worst_ulp=max(v["worst_ulp"] for v in per_axis.values()),
+            worst_per_profile=max(v["n_cells_moved"] for v in per_axis.values()),
+            ramp_cells=[v["n_ramp_cells"] for v in per_axis.values()],
+            all_sums_equal=all(v["sum_equal"] for v in per_axis.values()))
+    per_arm = [v["n_cells_moved"] for v in out["arms"].values()]
+    per_profile = [v["worst_per_profile"] for v in out["arms"].values()]
+    ramps = [n for v in out["arms"].values() for n in v["ramp_cells"]]
+    out.update(
+        n_arms=len(out["arms"]),
+        worst_cells_moved_per_profile=max(per_profile) if per_profile else 0,
+        worst_cells_moved_per_arm=max(per_arm) if per_arm else 0,
+        total_cells_moved=sum(per_arm),
+        worst_ulp=max((v["worst_ulp"] for v in out["arms"].values()),
+                      default=0.0),
+        ramp_cells_min=min(ramps) if ramps else 0,
+        ramp_cells_max=max(ramps) if ramps else 0,
+        all_sums_equal=all(v["all_sums_equal"] for v in out["arms"].values()))
+    return out
+
+
+def fz_markdown_tables(arms: dict, build_only: list | None = None) -> str:
     """The FZ note's Results section, as tables only.
 
     Same contract as :func:`markdown_tables`: every number is read from a
@@ -2135,15 +2272,15 @@ def fz_markdown_tables(arms: dict) -> str:
       "(substrate cells, cells")
     w("across the metal) pair per rung with the two independent, which is what "
       "an FZ ladder at a")
-    w("fixed in-plane cell needs.  The five arms already recorded are rebuilt "
-      "from the first")
-    w("record and compared against it "
+    w("fixed in-plane cell needs.  The arms already recorded are rebuilt from "
+      "the first record and")
+    w("compared against it "
       "(`tests/unit/nonuniform/test_msl_notch_graded_build.py`): every cell of "
-      "every")
-    w("fine band, every cell of every coarse run, every profile sum, the fine "
-      "cell, the substrate")
-    w("cell, the solved z tail cell, every declared coordinate and every "
-      "segment length are")
+      "every fine")
+    w("band, every cell of every coarse run, every profile sum, the fine cell, "
+      "the substrate cell,")
+    w("the solved z tail cell, every declared coordinate and every segment "
+      "length are")
     w("bit-identical.  What is not is the last bit of the cells inside a "
       "solved geometric ramp:")
     w("those arms were solved in the GPU job's container (numpy on python "
@@ -2152,15 +2289,35 @@ def fz_markdown_tables(arms: dict) -> str:
       "the last bit or two")
     w("of `np.sum` and of the power ufunc, which is what the ramp's cell ratio "
       "is bisected on.")
-    w("Measured across the five arms: at most 6 of a profile's 8 to 27 ramp "
-      "cells differ, by at")
-    w("most 6 ulp, which is 8e-16 of a cell's own size, on cells in the coarse "
-      "transition away")
-    w("from the metal.  No cell touching the line, the stub or the substrate "
-      "is among them, and")
-    w("every profile sums to the same domain to the last bit.  The gate "
-      "refuses beyond 8 ulp; a")
-    w("rung changed by one cell moves these numbers by about 1e13 ulp.")
+    w("")
+    rb = rebuild_report()
+    w(f"Measured by rebuilding all {rb['n_arms']} of them against "
+      f"`{rb['record']}`, on the machine that printed this")
+    w("table rather than from a sentence typed once:")
+    w("")
+    w("| arm | ramp cells in its three profiles | cells whose last bit moved | "
+      "worst distance (ulp) | every profile sums to the same domain |")
+    w("|---|---|---|---|---|")
+    for k in sorted(rb["arms"]):
+        # NOT `v`: that name holds the verdicts this whole function reads, and
+        # shadowing it here silently emptied every window block below.
+        row = rb["arms"][k]
+        w(f"| {k} | {' / '.join(str(n) for n in row['ramp_cells'])} | "
+          f"{row['n_cells_moved']} | {row['worst_ulp']:.0f} | "
+          f"{row['all_sums_equal']} |")
+    w("")
+    w(f"So at most {rb['worst_cells_moved_per_profile']} cells of one profile "
+      f"and {rb['worst_cells_moved_per_arm']} of one arm, "
+      f"{rb['total_cells_moved']} across all {rb['n_arms']},")
+    w(f"out of profiles carrying {rb['ramp_cells_min']} to "
+      f"{rb['ramp_cells_max']} ramp cells each; worst distance "
+      f"{rb['worst_ulp']:.0f} ulp, which is")
+    w("about 1e-15 of a cell's own size, on cells in the coarse transition "
+      "away from the metal.")
+    w("No cell touching the line, the stub or the substrate is among them.  "
+      "The gate refuses beyond")
+    w(f"{RECORD_ULP_FLOOR:.0f} ulp; a rung changed by one cell moves these "
+      "numbers by about 1e13 ulp.")
     w("")
     odd = [k for k in order if arms[k].get("centre_is_a_node") is False]
     if odd:
@@ -2272,9 +2429,9 @@ def fz_markdown_tables(arms: dict) -> str:
           f"`rfx/`")
         w("(" + ", ".join(sha[:12] for sha in r["commits"]) + ").")
         w("")
-        w("| arm | substrate cells | FZ (um) | notch (GHz) | step from the "
-          "rung above (MHz) |")
-        w("|---|---|---|---|---|")
+        w("| arm | substrate cells | FZ (um) | z tail cell (um) | dt (fs) | "
+          "notch (GHz) | step from the rung above (MHz) |")
+        w("|---|---|---|---|---|---|---|")
         for i, k in enumerate(r["arms"]):
             # differences[j] is f(rung j) - f(rung j+1), so the step INTO a
             # rung from the coarser one above it is the negative of it.
@@ -2282,7 +2439,21 @@ def fz_markdown_tables(arms: dict) -> str:
                   else f"{-r['differences_mhz'][i - 1]:+.3f}")
             w(f"| {k} | {r['n_substrate_cells'][i]} | "
               f"{r['substrate_cells_m'][i] * 1e6:.4f} | "
+              f"{arms[k]['z_tail_cell_m'] * 1e6:.4f} | "
+              f"{arms[k]['dt_s'] * 1e15:.4f} | "
               f"{r['notches_ghz'][i]:.5f} | {st} |")
+        w("")
+        w("Two things move down the ladder besides the substrate cell, and "
+          "both are consequences of")
+        w("it rather than free choices.  The air column above the band is a "
+          "fixed 1.246 mm and its")
+        w("nine-cell uniform tail is solved to fill it, so the tail cell "
+          "shrinks as FZ does; and the")
+        w("time step is the Courant limit of the smallest cell, so it falls "
+          "with FZ too.  Neither")
+        w("changes the board: the metal, the substrate and the in-plane cell "
+          "are the same on all")
+        w("four rungs, which F.1 and F.2 show.")
         w("")
         w("| monotone | fitted order p_z | order window | limit (GHz) | "
           "reference (GHz) | finest rung from the reference (%) | limit from "
@@ -2444,14 +2615,21 @@ def fz_markdown_tables(arms: dict) -> str:
           f"{r['w5_verdict']} | {r['verdict']} |")
         w("")
         w("Derived, with its derivation: the fit puts the notch abs(A) FZ^p "
-          "from its limit, so the")
-        w("cell that brings that inside the bar is FZ = (bar / abs(A))^(1/p) "
-          "and the substrate rule is")
-        w("n_z = ceil(h / FZ).")
+          "from its OWN limit, so")
+        w("the cell that brings that term inside the bar is")
+        w("FZ = (bar x limit / abs(A))^(1/p) and the substrate rule is "
+          "n_z = ceil(h / FZ).  The bar")
+        w("is a fraction of the limit, not of the external reference: what is "
+          "being bounded is how")
+        w("far the notch still has to fall on this ladder, and the ladder "
+          "converges to its own limit.")
         w("")
-        w("| abs(A) | p | FZ for the bar (um) | n_z for the bar |")
-        w("|---|---|---|---|")
+        w("| abs(A) | p | bar, "
+          f"{r['bar_pct']:.0f} % of the limit (MHz) | FZ for the bar (um) | "
+          "n_z for the bar |")
+        w("|---|---|---|---|---|")
         w(f"| {abs(r['amplitude']):.4e} | {r['order']:.4f} | "
+          f"{r['substrate_rule_bar_hz'] / 1e6:.3f} | "
           f"{r['substrate_cell_for_the_bar_m'] * 1e6:.4f} | "
           f"{r['n_substrate_cells_for_the_bar']} |")
         w("")
@@ -2485,6 +2663,34 @@ def fz_markdown_tables(arms: dict) -> str:
         w("|---|---|---|---|")
         w(f"| {r['delta_mhz']:+.4f} | {r['delta_pct']:+.5f} | "
           f"{r['mesh_identical']} | {r['profiles_bit_identical']} |")
+        w("")
+
+    if build_only:
+        w("### F.4b Meshes costed but not solved")
+        w("")
+        w("Built through the same `build_graded` every arm uses and put "
+          "through the same R1 and R3,")
+        w("so a mesh that could not be solved cannot be costed here either.  "
+          "The time step is the")
+        w("grid's own Courant number read off the lattice, and the step count "
+          "is the one a run would")
+        w("derive from it for the case's "
+          f"{case.NUM_PERIODS:.0f} periods.  No field is stepped and no S "
+          "parameter exists for")
+        w("these rows.")
+        w("")
+        w("| cells across the metal | F (um) | substrate cells | FZ (um) | "
+          "z tail cell (um) | grid nodes | grid cells | dt (fs) | time steps | "
+          "what it is |")
+        w("|---|---|---|---|---|---|---|---|---|---|")
+        for r in build_only:
+            nodes = "x".join(str(v) for v in r["grid_shape"])
+            w(f"| {r['n_across_metal']} | {r['fine_cell_m'] * 1e6:.4f} | "
+              f"{r['n_substrate_cells']} | "
+              f"{r['substrate_cell_m'] * 1e6:.4f} | "
+              f"{r['z_tail_cell_m'] * 1e6:.4f} | {nodes} | "
+              f"{r['n_grid_cells']:,} | {r['dt_s'] * 1e15:.4f} | "
+              f"{r['n_time_steps_derived']:,} | {r['note']} |")
         w("")
 
     w("### F.5 Provenance")
@@ -2958,6 +3164,7 @@ def _empty_file(kind: str = "graded") -> dict:
                 "reference_band_hz": list(case.REFERENCE_BAND_HZ),
             },
             "mesh": dict(_MESH_BLOCK),
+            "build_only": [],
             "arms": {},
         }
     return {
@@ -3059,11 +3266,32 @@ def main(argv: list[str] | None = None) -> int:
                     help="print every window's arithmetic from --out")
     ap.add_argument("--tables", action="store_true",
                     help="print the note's Results section from --out")
+    ap.add_argument("--record-build-only", action="store_true",
+                    help="build the meshes BUILD_ONLY_MESHES names, cost them "
+                         "and store the rows in --out; solves nothing")
     args = ap.parse_args(argv)
     out = default_out(args.arm) if args.out is None else args.out
 
     if args.merge:
         merge_files(args.merge, out)
+        return 0
+    if args.record_build_only:
+        if not out.exists():
+            raise SystemExit(f"{out} does not exist; there is nothing to add "
+                             "a costed mesh to.")
+        with out.open() as fh:
+            data = json.load(fh)
+        rows = build_only_rows()
+        for r in rows:
+            print(f"  costed n_z={r['n_substrate_cells']} "
+                  f"n={r['n_across_metal']} {r['placement']}: "
+                  f"{r['n_grid_cells']:,} cells, dt {r['dt_s'] * 1e15:.4f} fs, "
+                  f"{r['n_time_steps_derived']:,} steps")
+        data["build_only"] = rows
+        with out.open("w") as fh:
+            json.dump(data, fh, indent=1, sort_keys=True)
+            fh.write("\n")
+        print(f"  wrote {len(rows)} costed mesh(es) into {out}")
         return 0
     if args.verdicts or args.tables:
         with out.open() as fh:
@@ -3074,8 +3302,12 @@ def main(argv: list[str] | None = None) -> int:
         # edited by the FZ note.
         if str(data.get("schema", "")).startswith("msl_notch_graded_fz/"):
             arms = load_fz_arms(out, args.base_out)
-            print(fz_markdown_tables(arms) if args.tables
-                  else json.dumps(fz_verdicts(arms), indent=1, sort_keys=True))
+            if args.tables:
+                print(fz_markdown_tables(arms, data.get("build_only")))
+            else:
+                v = dict(fz_verdicts(arms))
+                v["build_only"] = data.get("build_only")
+                print(json.dumps(v, indent=1, sort_keys=True))
         elif args.tables:
             print(markdown_tables(data["arms"]))
         else:

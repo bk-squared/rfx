@@ -397,21 +397,19 @@ RECORD = (Path(__file__).resolve().parents[3] / "validation" / "research"
 RECORDED_GRADED_ARMS = ("A_on", "A_off", "A_off_longarms", "B_off", "C_off")
 
 #: How far a solved ramp cell may sit from the one the record holds, in units
-#: of the last bit of a float64 (``math.ulp``).  Not a tolerance on the mesh:
-#: the five graded arms were solved inside the GPU job's container (numpy on
-#: python 3.10) and this gate runs in the project venv (numpy 2.4 on python
-#: 3.11), and the two disagree in the last bit or two of ``np.sum`` and of the
-#: power ufunc, which is what the geometric ramp's ratio is bisected on.
-#: Measured across the five arms on 2026-09-22: at most 6 ulp, on at most 4 of
-#: a profile's 8-27 ramp cells; 8 leaves two bits of headroom.  Everything the
-#: mesh DECLARES -- the fine cell, the substrate cell, the solved z tail cell,
-#: every cell of every fine band, every cell of every coarse run, every
-#: declared coordinate, every node index and every segment length -- is
-#: compared with ``==`` below and is bit-identical.  In metres the worst cell
-#: disagreement is 8e-16 of its own size, on cells that sit in the coarse
-#: transition away from the metal; no cell that touches the line, the stub or
-#: the substrate is among them.
-RECORD_ULP_FLOOR = 8.0
+#: of the last bit of a float64.  Defined by the instrument, not here, so the
+#: gate and the note's F.0 quote one number; ``ins.rebuild_report()`` measures
+#: what the distance actually is, and F.0 prints that measurement.
+#:
+#: Not a tolerance on the mesh: the five graded arms were solved inside the
+#: GPU job's container (numpy on python 3.10) and this gate runs in the
+#: project venv (numpy 2.4 on python 3.11), and the two disagree in the last
+#: bit or two of ``np.sum`` and of the power ufunc, which is what the
+#: geometric ramp's ratio is bisected on.  Measured 2026-09-22: at most 4
+#: cells of one profile and 7 of one arm moved, by at most 6 ulp; 8 leaves two
+#: bits of headroom.  Everything the mesh DECLARES is compared with ``==``
+#: below and is bit-identical.
+RECORD_ULP_FLOOR = ins.RECORD_ULP_FLOOR
 
 #: Fields the record holds that ``profiles`` or ``build_graded`` produces and
 #: that are exact float arithmetic on the case's constants -- no reduction, no
@@ -620,6 +618,32 @@ def test_r1_refuses_a_straddled_centre_that_is_not_symmetric():
     with pytest.raises(AssertionError, match="apart and this arm"):
         ins.assert_profiles_graded((x, y, z), bad)
 
+    # And the check cannot be switched off by dropping the key.  Reading it
+    # with .get() made exactly that possible: a board without the entry ran an
+    # empty loop and passed, so the odd-n refusal was absent rather than met.
+    dropped = {k: v for k, v in board.items() if k != "centre_straddle"}
+    with pytest.raises(AssertionError, match="no 'centre_straddle' entry"):
+        ins.assert_profiles_graded((x, y, z), dropped)
+
+
+def test_an_even_rung_carries_an_empty_straddle_rather_than_no_key():
+    """The key is always set, so its absence can mean one thing only.
+
+    An even rung has a node on the metal's centre and nothing to straddle, and
+    it says so with an empty mapping.  If it left the key out instead, the
+    refusal above could not tell "nothing to check" from "this board did not
+    come from profiles()".
+    """
+    arm = ins.FZ_ARMS["Z6"]
+    x, y, z, board = ins.profiles(arm.rung, arm.placement, arm.arm_length_m)
+    assert board["centre_is_a_node"] is True
+    assert board["centre_straddle"] == {}
+    assert "centre_straddle" in board
+    ins.assert_profiles_graded((x, y, z), board)
+    dropped = {k: v for k, v in board.items() if k != "centre_straddle"}
+    with pytest.raises(AssertionError, match="no 'centre_straddle' entry"):
+        ins.assert_profiles_graded((x, y, z), dropped)
+
 
 @pytest.mark.parametrize("key", FZ_LATTICE_ARMS)
 def test_r3_the_lattice_built_the_declared_board_on_a_new_rung(fz_built, key):
@@ -775,3 +799,51 @@ def test_the_two_records_never_hold_the_same_arm():
     # grow: the FZ arms are not in it.
     assert sorted(ins.ALL_ARMS) == ["A_off", "A_off_longarms", "A_on", "B_off",
                                     "C_off", "U_h2", "U_h4", "U_h6"]
+
+
+# ------------------------------------------- meshes costed but not solved
+def test_a_costed_mesh_is_built_and_refused_like_an_arm():
+    """F.4b: a cost quoted for a mesh nobody built is a guess.
+
+    The row goes through the same ``build_graded``, R1 and R3 an arm does, so
+    a mesh that could not be solved cannot be costed.  Nothing is stepped.
+    """
+    rows = ins.build_only_rows()
+    assert len(rows) == len(ins.BUILD_ONLY_MESHES)
+    for r, ((n_z, n), placement, _note) in zip(rows, ins.BUILD_ONLY_MESHES):
+        assert r["solved"] is False
+        assert r["n_substrate_cells"] == n_z and r["n_across_metal"] == n
+        assert r["placement"] == placement
+        assert r["substrate_cell_m"] == pytest.approx(
+            case.SUBSTRATE_THICKNESS_M / n_z)
+        assert r["fine_cell_m"] == pytest.approx(
+            ins.fine_cell((n_z, n), placement))
+        assert r["worst_ratio"]["x"] <= ins.CAP_XY + 1e-9
+        assert r["worst_ratio"]["y"] <= ins.CAP_XY + 1e-9
+        assert r["worst_ratio"]["z"] <= ins.CAP_Z + 1e-9
+        assert r["n_grid_cells"] == (r["grid_shape"][0] - 1) * (
+            r["grid_shape"][1] - 1) * (r["grid_shape"][2] - 1)
+        # The step count is the one a run would derive from this dt.
+        assert r["n_time_steps_derived"] == int(np.ceil(
+            case.NUM_PERIODS / case.FREQ_MAX_HZ / r["dt_s"]))
+        assert r["num_periods"] == case.NUM_PERIODS
+
+
+def test_the_costed_mesh_borrows_both_cells_from_recorded_arms(
+        recorded_arms):
+    """The cheap path is A_off's in-plane mesh with Z16's substrate mesh.
+
+    Both halves are cells this record measured, so the row is a cost for a
+    combination of two solved meshes rather than for a new one.
+    """
+    arms = recorded_arms
+    row = ins.build_only_rows()[0]
+    assert row["fine_cell_m"] == pytest.approx(arms["A_off"]["fine_cell_m"])
+    assert row["n_across_metal"] == arms["A_off"]["n_across_metal"]
+    fz = ins.load_fz_arms()
+    assert row["substrate_cell_m"] == pytest.approx(
+        fz["Z16"]["substrate_cell_m"])
+    assert row["n_substrate_cells"] == fz["Z16"]["n_substrate_cells"]
+    # Cheaper than the ladder's finest rung, which is the point of quoting it.
+    assert row["n_grid_cells"] < ins.grid_cells(fz["Z16"])
+    assert row["dt_s"] > fz["Z16"]["dt_s"]

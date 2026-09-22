@@ -476,8 +476,9 @@ def test_w8_asks_whether_the_fz_limit_reaches_the_bar(limit_ghz, verdict):
     assert r["limit_ghz"] == pytest.approx(limit_ghz, rel=1e-7)
     assert r["bar_pct"] == case.FREQ_BAR * 100.0
     assert r["verdict"] == verdict
-    # The substrate rule it derives, re-derived here from its own two numbers.
-    want = (case.FREQ_BAR * ins.reference_notch_hz()
+    # The substrate rule it derives, re-derived here from its own numbers.
+    # The bar is a fraction of the ladder's OWN limit, not of the reference.
+    want = (case.FREQ_BAR * abs(r["limit_ghz"]) * 1e9
             / abs(r["amplitude"])) ** (1.0 / r["order"])
     assert r["substrate_cell_for_the_bar_m"] == pytest.approx(want, rel=1e-9)
     assert r["n_substrate_cells_for_the_bar"] == int(np.ceil(
@@ -563,7 +564,7 @@ RECORDED_W7_FINE_CELL_GAP_PCT = 2.3622
 RECORDED_W7_F_SLOPE_MHZ_PER_UM = -0.2767
 RECORDED_W7_F_PART_MHZ = -0.3016
 RECORDED_W8_N_Z_FOR_THE_BAR = 8
-RECORDED_W8_FZ_FOR_THE_BAR_UM = 34.0311
+RECORDED_W8_FZ_FOR_THE_BAR_UM = 34.1871
 RECORDED_W8_AMPLITUDE = 4.924565e+13
 RECORDED_F_LADDER_GHZ = [3.747389, 3.748281, 3.749938]
 RECORDED_F_LADDER_MONOTONE = True
@@ -794,7 +795,7 @@ def test_w8_is_z_enough(arms):
         RECORDED_W8_FZ_FOR_THE_BAR_UM, abs=1e-3)
     assert r["n_substrate_cells_for_the_bar"] == RECORDED_W8_N_Z_FOR_THE_BAR
     # The rule it derives, re-derived here from its own two numbers.
-    want = (case.FREQ_BAR * ins.reference_notch_hz()
+    want = (case.FREQ_BAR * abs(r["limit_ghz"]) * 1e9
             / abs(r["amplitude"])) ** (1.0 / r["order"])
     assert r["substrate_cell_for_the_bar_m"] == pytest.approx(want, rel=1e-9)
 
@@ -840,6 +841,17 @@ def test_the_tables_the_note_carries_are_generated_from_the_records(arms):
     assert f"{RECORDED_REFERENCE_GHZ:.5f}" in md
     assert RECORDED_W6_CLASS in md
     assert f"{RECORDED_W8_N_Z_FOR_THE_BAR}" in md
+    # Every window the verdicts carry appears in the section.  A local name
+    # that shadowed `v` once emptied every window block at a stroke while the
+    # section still had its headings, its F.0, F.1, F.2, F.3 and F.5 tables
+    # and its closing line -- so "the tables were generated" is not enough to
+    # check, the windows have to be in them.
+    v = ins.fz_verdicts(arms)
+    for key in sorted(v):
+        if key.startswith("W"):
+            assert f"**{key.split('_')[0]} --" in md, key
+    assert "### F.4 The frozen windows\n\n### F.5" not in md
+
     # Every row of every table has as many cells as that table's header.  A
     # ragged row is a column silently dropped from the note.
     tables, block = [], []
@@ -856,3 +868,53 @@ def test_the_tables_the_note_carries_are_generated_from_the_records(arms):
         assert len(t) >= 3, f"a table with no rows: {t[0]}"
         widths = {row.count("|") for row in t}
         assert len(widths) == 1, f"ragged table starting {t[0]!r}: {widths}"
+
+
+# -------------------------------------- the review's P3 items, on their own
+def test_the_rebuild_report_counts_what_f0_prints():
+    """F.0's ramp-cell numbers come from the record, not from a sentence.
+
+    The first version of that paragraph said "at most 6 of a profile's ramp
+    cells", which confused the 6 ulp worst distance with a cell count.  The
+    count is now measured on every read, so it cannot drift from the record
+    again.
+    """
+    r = ins.rebuild_report()
+    assert r["n_arms"] == len(ins.ARMS)
+    assert r["record"] == ins.DEFAULT_OUT.name
+    assert r["all_sums_equal"] is True
+    assert r["worst_ulp"] <= ins.RECORD_ULP_FLOOR
+    # Per arm and per profile, and they are different numbers.
+    assert r["worst_cells_moved_per_profile"] <= r["worst_cells_moved_per_arm"]
+    assert r["total_cells_moved"] == sum(
+        v["n_cells_moved"] for v in r["arms"].values())
+    for key, v in sorted(r["arms"].items()):
+        assert len(v["ramp_cells"]) == 3
+        assert v["n_cells_moved"] <= sum(v["ramp_cells"]), key
+        assert v["worst_per_profile"] <= v["n_cells_moved"], key
+    # Every arm of the first record is covered, and none of the FZ arms is.
+    assert set(r["arms"]) == set(ins.ARMS)
+    assert set(r["arms"]) & set(ins.FZ_ARMS) == set()
+
+
+def test_the_substrate_rule_bar_is_a_fraction_of_the_ladders_own_limit(arms):
+    """W8's derived rule bounds the term that is left, not the reference gap.
+
+    The quantity is how far the notch still has to fall on THIS ladder, and
+    the ladder converges to its own limit.  Reading the bar off the external
+    reference instead bounds a different thing; where the two differ, so does
+    the cell it asks for.
+    """
+    r = ins.w8_is_z_enough(arms)
+    assert r["substrate_rule_bar_is"].endswith("own fitted limit")
+    assert r["substrate_rule_bar_hz"] == pytest.approx(
+        case.FREQ_BAR * r["limit_ghz"] * 1e9, rel=1e-12)
+    # It is NOT the reference's one per cent, and the two differ.
+    off_reference = case.FREQ_BAR * ins.reference_notch_hz()
+    assert r["substrate_rule_bar_hz"] != pytest.approx(off_reference, rel=1e-6)
+    # The cell it asks for follows from that bar and from nothing else.
+    want = (r["substrate_rule_bar_hz"] / abs(r["amplitude"])) ** (
+        1.0 / r["order"])
+    assert r["substrate_cell_for_the_bar_m"] == pytest.approx(want, rel=1e-9)
+    assert r["n_substrate_cells_for_the_bar"] == int(np.ceil(
+        case.SUBSTRATE_THICKNESS_M / want - 1e-12))
