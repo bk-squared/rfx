@@ -41,7 +41,10 @@ def main():
     template = yaml.safe_load((root / "scripts/vessl_multinode_oracle.yaml").read_text())
     yaml.add_representer(str, lambda dumper, value: dumper.represent_scalar(
         "tag:yaml.org,2002:str", value, style="|" if "\n" in value else None))
-    oracle_commands = ["#!/bin/sh", "set -eu", command(["mkdir", "-p", artifacts])]
+    # Directories made from the Mac are owned by its user; the pods reach the
+    # share as nobody, so open them or the oracle's own mkdir is refused.
+    oracle_commands = ["#!/bin/sh", "set -eu", command(["mkdir", "-p", artifacts]),
+                       command(["chmod", "777", artifacts])]
     for nx in (200, 400, 800):
         template["name"] = f"rfx-multinode-oracle-{nx}"
         template["env"].update(RFX_STAMP=args.stamp, RFX_NX=str(nx), RFX_EXPECTED_SHA=args.tooling_sha)
@@ -92,6 +95,7 @@ def main():
                  "assert m, 'Experiment number missing from submit log'; "
                  "pathlib.Path(sys.argv[2]).write_text(m[1]+'\\n'); print(m[1])")
         lines = ["#!/bin/sh", "set -eu", command(["cd", out]), command(["mkdir", "-p", receipt]),
+                 command(["chmod", "777", artifacts, receipt]),
                  "set +e", command(cli) + " > " + shlex.quote(str(log)) + " 2>&1", "rc=$?", "set -e",
                  command(["cat", log]), '[ "$rc" -eq 0 ] || exit "$rc"',
                  command(["python3", "-c", parse, log, receipt / "experiment_number.txt"])]
