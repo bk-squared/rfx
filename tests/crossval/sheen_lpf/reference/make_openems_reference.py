@@ -162,10 +162,19 @@ it.
              tutorial's 1e-6. Copied from the script; every reported length is
              converted to um or mm at the reporting boundary, once.
 
+    DELTA 14 Mesh refinement around the metal: the tutorial smooths x and y
+             twice (resolution/4 around its trace edges, then resolution); this
+             builder smooths once per axis at res and lays thirds-rule lines at
+             the two feed edges only, not at the wide section's four edges.
+             Inherited from the script and proved so; the run records what the
+             grid made of each feed edge per rung (DELTA_LIST entry 14 has the
+             full text; there is no DELTA 13).
+
 Nothing else changes: the boundary list
-``['PML_8','PML_8','MUR','MUR','PEC','MUR']``, the thirds-rule mesh offsets at
-the feed edges, MSLPort with port 1 ``excite=-1``, and the zero-thickness PEC
-sheets on z = H_SUB are the script's and the tutorial's alike.
+``['PML_8','PML_8','MUR','MUR','PEC','MUR']``, the thirds-rule OFFSET recipe,
+MSLPort with port 1 ``excite=-1``, and the zero-thickness PEC sheets on
+z = H_SUB are the script's and the tutorial's alike (where the offsets are
+applied, and how often each axis is smoothed, is delta 14).
 
 That the Stage B builder IS the script's builder is not prose. ``--self-check``
 reads ``validation/crossval/07_sheen_lpf.py``'s own ``run_openems`` source,
@@ -565,9 +574,9 @@ DELTA_LIST = [
     "straddling pair. That is the script's builder, inherited verbatim and "
     "proved so, not a choice made here, and it is recorded rather than judged: "
     "the run reports what the grid made of each declared feed edge, per rung, "
-    "in meta.feed_edges_realized (nearest line to each edge, the snap, and the "
+    "in meta.stages.<stage>.feed_edges_realized (nearest line to each edge, the snap, and the "
     "width the two lines bracket), and the realized cell sizes per axis in "
-    "meta.mesh_realized. There is no DELTA 13: this entry was written after the "
+    "meta.stages.<stage>.mesh_realized. There is no DELTA 13: this entry was written after the "
     "first twelve were numbered and the numbers are not reassigned, so that a "
     "citation of 'delta 9' keeps meaning what it meant.",
     "NOTHING ELSE: the boundary list ['PML_8','PML_8','MUR','MUR','PEC','MUR'], "
