@@ -7,9 +7,11 @@ ringing when the record ends, each bin keeps a leftover term whose phase is
 because the phase is proportional to ``T`` the spin lands in the DERIVATIVE
 magnified by the record length while staying small in the VALUE. Measured on
 the cavity below: at 1600 steps the record has decayed 46.7 dB -- a pass on the
-repo's -40 dB settling rule -- the value is converged to 0.013 %, and the
-gradient with respect to the fill permittivity is still 16.8 % away from its
-converged value. Doubling the record fixes the gradient, not the value.
+repo's -40 dB settling rule -- the POWER a user reads is converged to 0.399 %,
+and the gradient vector with respect to the fill permittivity is still 11.0 %
+away from its converged value, with its direction turned by cos 0.9989 (the
+worst single element is 16.8 % out). Doubling the record brings the gradient to
+0.12 % and leaves the power where it already was.
 
 Two existing checks do not see this. ``settling_verdict`` scores the end of the
 record against its peak, which is a statement about the value. AD against a
@@ -26,15 +28,26 @@ Mutation evidence for this gate (repo rule: a new gate ships with both arms).
     records and still reports, but the verdict is taken from
     ``worst_value_rel_change`` (the VALUE's relative change) instead of the
     gradient's. This is the tautology the issue names: the value converges
-    first, so the short 1600-step record reads 0.013 % and passes any
-    sensible tolerance while its gradient is 16.8 % out. Mutation (b) is the
-    one that matters, because it is the check a reader would believe: the
-    helper is called, both records are run, a number is compared to a
-    tolerance, and the answer is wrong. The fixture test's RED assertion is
-    what refuses it.
+    first, so the short 1600-step record reads 0.013 % on the log observable
+    (0.399 % on the power) and passes any sensible tolerance while its
+    gradient is 11.0 % out. Mutation (b) is the one that matters, because it
+    is the check a reader would believe: the helper is called, both records
+    are run, a number is compared to a tolerance, and the answer is wrong.
+    The fixture test's RED assertion is what refuses it.
 
-Neither mutation is applied by a test here. They are run by hand against the
-source and the literal pytest output is recorded in the pull request.
+(c) Only the real part of a complex sensitivity compared -- the state before
+    this review. ``test_complex_observable_compares_the_whole_complex_sensitivity``
+    goes red: the on-pole bin's sensitivity is purely imaginary, so the real
+    part alone reports 0 % where the phasor's sensitivity moved 5.5 %.
+
+(d) The report table's floor taken from the SHORT record only, and (e) taken
+    globally instead of per bin. ``test_the_report_floor_is_per_bin_and_spans_both_records``
+    goes red on (d) at bin 2 (a floor eight decades too small turns a 1e-9
+    element into a 100 % change) and on (e) at bin 1 (a weak bin that really
+    doubled gets damped to 0.1 %).
+
+No mutation is applied by a test here. They are run by hand against the source
+and the literal pytest output is recorded in the pull request.
 """
 
 from __future__ import annotations
@@ -79,25 +92,56 @@ def _spectrum_objective(p, n_steps):
     return X.real ** 2 + X.imag ** 2
 
 
-def _analytic_gradient(n_steps):
-    """d|X|^2/dp at p = 0, from the hand-derived derivative, in float64.
+def _phasor_objective(p, n_steps):
+    """The truncated pole's COMPLEX spectrum -- the shape of an S-parameter."""
+    T = n_steps * _DT
+    omega_r = _OMEGA_R0 * jnp.exp(p)
+    s = _ALPHA + 1j * (jnp.asarray(_OMEGAS) - omega_r)
+    return (1.0 - jnp.exp(-s * T)) / s
 
-    Independent of the expression above: the product rule is written out here
-    (``dX/ds`` times ``ds/dp``) instead of being obtained by differentiating
-    ``X``. That is what keeps this an oracle rather than a second copy.
+
+def _analytic_complex_sensitivity(n_steps):
+    """dX/dp at p = 0 -- the FULL complex sensitivity, hand-derived.
+
+    The product rule is written out here (``dX/ds`` times ``ds/dp``) instead of
+    being obtained by differentiating ``X``, which is what keeps this an oracle
+    rather than a second copy of the expression under test.
     """
     T = n_steps * _DT
     s = _ALPHA + 1j * (_OMEGAS - _OMEGA_R0)
     e = np.exp(-s * T)
-    X = (1.0 - e) / s
     dX_ds = T * e / s - (1.0 - e) / s ** 2
     ds_dp = -1j * _OMEGA_R0          # w_r = w_r0 exp(p) -> dw_r/dp = w_r0 at p=0
-    dX_dp = dX_ds * ds_dp
+    return dX_ds * ds_dp
+
+
+def _analytic_spectrum(n_steps):
+    """X(w) at p = 0, the converged-minus-leftover closed form."""
+    T = n_steps * _DT
+    s = _ALPHA + 1j * (_OMEGAS - _OMEGA_R0)
+    return (1.0 - np.exp(-s * T)) / s
+
+
+def _analytic_gradient(n_steps):
+    """d|X|^2/dp at p = 0, one chain-rule step past the complex sensitivity."""
+    X = _analytic_spectrum(n_steps)
+    dX_dp = _analytic_complex_sensitivity(n_steps)
     return 2.0 * (X.real * dX_dp.real + X.imag * dX_dp.imag)
 
 
+def _expected_rel(g_short, g_long):
+    """The verdict's own arithmetic on one parameter element per bin.
+
+    Floor-free by construction: with a single element the norm IS the absolute
+    value, so this is the closed form and nothing else.
+    """
+    delta = np.abs(g_long - g_short)
+    return np.where(delta == 0.0, 0.0,
+                    delta / np.where(g_long == 0.0, np.inf, np.abs(g_long)))
+
+
 def test_analytic_truncated_record_reproduces_the_closed_form_change():
-    """The witness's per-bin number IS the closed-form truncation spin."""
+    """The witness's per-bin verdict IS the closed-form truncation spin."""
     from tests._x64_compat import enable_x64
 
     n_short, factor = 1000, 2.0
@@ -105,38 +149,92 @@ def test_analytic_truncated_record_reproduces_the_closed_form_change():
 
     g_short = _analytic_gradient(n_short)
     g_long = _analytic_gradient(n_long)
-    floor_frac = 1e-3
-    scale = np.maximum(np.abs(g_long), np.abs(g_short)).max()
-    den = np.maximum(np.abs(g_long), floor_frac * scale)
-    expected = np.abs(g_long - g_short) / den
+    expected = _expected_rel(g_short, g_long)
 
     with enable_x64():
         witness = gradient_record_length_witness(
             _spectrum_objective, jnp.float64(0.0), n_short,
-            tol=1e9, factor=factor, floor_frac=floor_frac,
+            tol=1e9, factor=factor,
         )
 
-    rel = witness.grad_rel_change["<root>"]
-    assert rel.shape == (len(_OMEGAS), )
-    np.testing.assert_allclose(rel, expected, rtol=1e-6, atol=1e-9)
+    assert witness.rel_by_bin.shape == (len(_OMEGAS),)
+    np.testing.assert_allclose(witness.rel_by_bin, expected, rtol=1e-6, atol=0.0)
     np.testing.assert_allclose(witness.worst, expected.max(), rtol=1e-6)
     np.testing.assert_allclose(
         witness.grad["<root>"], g_short, rtol=1e-6, atol=0.0)
     np.testing.assert_allclose(
         witness.grad_long["<root>"], g_long, rtol=1e-6, atol=0.0)
-
-    # Which bin moves, and which does not. The second bin sits exactly on the
-    # pole: there the leftover term is in phase with the converged one, so
-    # moving the resonance does not spin it and the gradient is already right.
-    # The bin 1.5 GHz below it is out by a third of itself.
-    assert rel[1] == pytest.approx(0.0, abs=1e-9)
-    assert rel[0] > 0.3
     assert witness.worst_bin == 0
+    assert witness.rel_by_bin[0] == pytest.approx(0.3607, abs=1e-3)
     assert not witness.observable_is_scalar
+    assert not witness.observable_is_complex
+
+    # What the second bin does and does NOT say. It sits exactly on the pole,
+    # where |X|^2 is STATIONARY in w_r, so d|X|^2/dp is identically zero at
+    # every record length -- both arms below are exact zeros. That is a fact
+    # about this observable, not a measurement that the record is long enough:
+    # the witness has nothing to compare there. The same bin's COMPLEX
+    # sensitivity does move with the record
+    # (test_complex_observable_compares_the_whole_complex_sensitivity), which
+    # is why a zero here must not be read as "this bin is converged".
+    assert witness.grad["<root>"][1] == 0.0
+    assert witness.grad_long["<root>"][1] == 0.0
 
     # At this damping the record is long enough for the VALUE and not for the
     # GRADIENT -- the whole reason this witness is not the settling witness.
-    assert witness.worst_value_rel_change < 0.1 * witness.worst
+    assert witness.worst_value_rel_change == pytest.approx(0.0198, abs=5e-4)
+
+
+def test_complex_observable_compares_the_whole_complex_sensitivity():
+    """A phasor's sensitivity is two numbers, and half of one is not a check.
+
+    The same pole, differentiated as the COMPLEX spectrum instead of its
+    squared magnitude. At the bin sitting on the pole the parameter rotates the
+    phasor at constant magnitude: the real part of the sensitivity is exactly
+    zero and the imaginary part is not, and it is the imaginary part that moves
+    with the record length. Comparing only the real part reports that bin as
+    perfectly converged when its sensitivity has moved 5.5 %.
+    """
+    from tests._x64_compat import enable_x64
+
+    n_short, factor = 1000, 2.0
+    n_long = int(math.ceil(factor * n_short))
+
+    c_short = _analytic_complex_sensitivity(n_short)
+    c_long = _analytic_complex_sensitivity(n_long)
+    expected = _expected_rel(c_short, c_long)
+    x_short = _analytic_spectrum(n_short)
+    x_long = _analytic_spectrum(n_long)
+
+    with enable_x64():
+        witness = gradient_record_length_witness(
+            _phasor_objective, jnp.float64(0.0), n_short,
+            tol=1e9, factor=factor,
+        )
+
+    assert witness.observable_is_complex
+    np.testing.assert_allclose(
+        witness.grad["<root>"], c_short, rtol=1e-6, atol=0.0)
+    np.testing.assert_allclose(
+        witness.grad_long["<root>"], c_long, rtol=1e-6, atol=0.0)
+    np.testing.assert_allclose(witness.rel_by_bin, expected, rtol=1e-6, atol=0.0)
+    assert witness.rel_by_bin[0] == pytest.approx(0.36879, abs=1e-4)
+
+    # The on-pole bin: real part exactly zero, imaginary part carrying
+    # everything, and a 5.5 % record-length change that only the complex
+    # comparison can see. The |X|^2 objective reports exactly 0 % here.
+    assert c_short[1].real == 0.0 and abs(c_short[1].imag) > 0.0
+    assert witness.grad["<root>"][1].real == 0.0
+    assert witness.rel_by_bin[1] == pytest.approx(0.05541, abs=1e-4)
+    assert _expected_rel(
+        _analytic_gradient(n_short), _analytic_gradient(n_long))[1] == 0.0
+
+    # The value's relative change uses the complex magnitude, not the real part.
+    np.testing.assert_allclose(
+        witness.value_rel_change,
+        np.abs(x_long - x_short) / np.abs(x_long), rtol=1e-6, atol=0.0)
+    assert witness.worst_value_rel_change == pytest.approx(0.01010, abs=1e-4)
+    assert np.iscomplexobj(witness.value)
 
 
 def test_a_long_enough_record_passes_the_same_objective():
@@ -249,6 +347,148 @@ def test_a_two_dimensional_observable_is_refused():
             matrix_objective, jnp.float32(0.0), 1000, tol=0.05)
 
 
+def _prescribed_gradients(short_matrix, long_matrix, n_short):
+    """An objective whose gradients at the two arms are exactly given.
+
+    ``y_b = sum_e A[b, e] p_e`` makes ``dy_b/dp_e`` exactly ``A[b, e]``, so the
+    two arms' gradient vectors are whatever the two matrices say. These tests
+    are about the arithmetic of the verdict and of the report table, so they
+    use no simulation and no fixture.
+    """
+    short = np.asarray(short_matrix, dtype=np.float64)
+    long = np.asarray(long_matrix, dtype=np.float64)
+
+    def objective(params, n_steps):
+        a = short if n_steps == n_short else long
+        return jnp.asarray(a) @ params
+
+    return objective
+
+
+def test_the_report_floor_is_per_bin_and_spans_both_records():
+    """The per-element table is floored, and against the right thing.
+
+    Three bins, one two-element parameter, gradients set by hand.
+
+    * Bin 0 -- the dominant element does not move and a second element goes
+      from exactly 0 to 1e-9. Unfloored that element reads a 100 % change off
+      pure rounding; the verdict says the gradient VECTOR moved by 1e-9.
+    * Bin 1 -- a bin whose whole gradient is a millionth of bin 0's, and which
+      really did double. A floor taken globally instead of per bin would damp
+      that to 0.1 % and hide a bin that genuinely moved.
+    * Bin 2 -- the short record's gradient is 1e-8 and the long record's is 1,
+      so a floor taken from the SHORT arm alone would be eight decades too
+      small and report the trailing element as another 100 % change.
+    """
+    from tests._x64_compat import enable_x64
+
+    n_short = 100
+    short = [[1.0, 0.0], [1.0e-6, 0.0], [1.0e-8, 0.0]]
+    long = [[1.0, 1.0e-9], [2.0e-6, 1.0e-9], [1.0, 1.0e-9]]
+    objective = _prescribed_gradients(short, long, n_short)
+
+    with enable_x64():
+        witness = gradient_record_length_witness(
+            objective, jnp.zeros((2,), dtype=jnp.float64), n_short,
+            tol=1e9, factor=2.0, floor_frac=1e-3,
+        )
+
+    table = witness.grad_rel_change["<root>"]
+    assert table.shape == (3, 2)
+
+    # Bin 0: the floor keeps rounding out of the table, and the verdict is
+    # floor-free and says the vector did not move.
+    assert table[0, 1] == pytest.approx(1.0e-6, rel=1e-6)
+    assert witness.rel_by_bin[0] == pytest.approx(1.0e-9, rel=1e-6)
+
+    # Bin 1: per-bin floor. A global floor would read 1e-3 here.
+    assert table[1, 0] == pytest.approx(0.5, rel=1e-9)
+    assert table[1, 1] == pytest.approx(0.5, rel=1e-9)
+    assert witness.rel_by_bin[1] == pytest.approx(0.5, rel=1e-6)
+
+    # Bin 2: floor spans both records. From the short arm alone it would read 1.
+    assert table[2, 1] == pytest.approx(1.0e-6, rel=1e-6)
+    assert witness.rel_by_bin[2] == pytest.approx(1.0, rel=1e-6)
+
+
+def test_the_verdict_is_norm_level_not_the_worst_element():
+    """A per-element maximum is not a statement about the gradient.
+
+    One dominant element that does not move, and three elements at 1 % of it
+    that triple. Every one of those three reads a 67 % change on its own scale
+    -- this is the shape of a per-cell permittivity leaf -- while the gradient
+    vector moved 3.5 % and its direction turned by less than a twentieth of a
+    degree. The verdict is the vector; the element table locates where the
+    change sits once the verdict has already failed.
+    """
+    from tests._x64_compat import enable_x64
+
+    n_short = 100
+    short = [[1.0, 1.0e-2, 1.0e-2, 1.0e-2]]
+    long = [[1.0, 3.0e-2, 3.0e-2, 3.0e-2]]
+    objective = _prescribed_gradients(short, long, n_short)
+
+    with enable_x64():
+        witness = gradient_record_length_witness(
+            objective, jnp.zeros((4,), dtype=jnp.float64), n_short,
+            tol=0.05, factor=2.0,
+        )
+
+    delta = np.asarray(long) - np.asarray(short)
+    expected = np.linalg.norm(delta) / np.linalg.norm(np.asarray(long))
+    assert witness.worst == pytest.approx(expected, rel=1e-9)
+    assert witness.worst == pytest.approx(0.03459, abs=1e-4)
+    assert witness.passed, witness.summary()
+
+    assert witness.worst_elementwise == pytest.approx(2.0 / 3.0, rel=1e-6)
+    assert witness.worst_elementwise > 10.0 * witness.worst
+    assert witness.cosine_by_bin[0] > 0.999
+
+
+def test_a_gradient_that_vanishes_on_the_long_record_is_not_a_small_change():
+    """No floor to divide by: it reads infinite, and fails."""
+    from tests._x64_compat import enable_x64
+
+    n_short = 100
+    objective = _prescribed_gradients([[1.0]], [[0.0]], n_short)
+    with enable_x64():
+        witness = gradient_record_length_witness(
+            objective, jnp.zeros((1,), dtype=jnp.float64), n_short, tol=0.05)
+    assert witness.rel_by_bin[0] == math.inf
+    assert not witness.passed
+    assert math.isnan(witness.cosine_by_bin[0])
+
+
+def test_a_tuple_returning_objective_without_has_aux_says_so():
+    def objective(params, n_steps):
+        del n_steps
+        return jnp.sum(params ** 2), {"settling_db": -50.0}
+
+    with pytest.raises(ValueError, match="has_aux=True"):
+        gradient_record_length_witness(
+            objective, jnp.zeros((2,), dtype=jnp.float32), 100, tol=0.05)
+
+
+def test_an_integer_parameter_leaf_is_refused():
+    def objective(params, n_steps):
+        del n_steps
+        return jnp.sum(params.astype(jnp.float32) ** 2)
+
+    with pytest.raises(ValueError, match="carries no gradient"):
+        gradient_record_length_witness(
+            objective, jnp.zeros((2,), dtype=jnp.int32), 100, tol=0.05)
+
+
+def test_a_complex_parameter_leaf_is_refused():
+    def objective(params, n_steps):
+        del n_steps
+        return jnp.abs(jnp.sum(params)) ** 2
+
+    with pytest.raises(ValueError, match="is complex"):
+        gradient_record_length_witness(
+            objective, jnp.zeros((2,), dtype=jnp.complex64), 100, tol=0.05)
+
+
 def test_a_record_length_independent_objective_passes_exactly():
     """No record, no spin: the two arms agree to the bit."""
 
@@ -357,8 +597,19 @@ def test_cavity_gradient_needs_a_longer_record_than_its_value():
     green = gradient_record_length_witness(
         objective, params, n_long, tol=tol, factor=c["factor"], has_aux=True)
 
+    # The objective returns ln(power), so its own relative change is a change
+    # of a logarithm. What a user reads is the POWER, so that is what gets
+    # compared against the gradient.
+    power_rel_change = np.abs(
+        np.expm1(np.asarray(red.value_long) - np.asarray(red.value)))
+
     print("\nshort record:", red.summary())
     print("long record: ", green.summary())
+    print(f"  power |dP/P| per bin: {power_rel_change * 100} %")
+    print(f"  rel_by_bin short {red.rel_by_bin * 100} %  "
+          f"cos {red.cosine_by_bin}")
+    print(f"  rel_by_bin long  {green.rel_by_bin * 100} %  "
+          f"cos {green.cosine_by_bin}")
     for name, w in (("short", red), ("long", green)):
         for path, arr in sorted(w.grad_rel_change.items()):
             for i, f in enumerate(c["freqs_hz"]):
@@ -374,13 +625,15 @@ def test_cavity_gradient_needs_a_longer_record_than_its_value():
     assert red.settling_db == settling[n_short]
     assert red.settling_db_long == settling[n_long]
 
-    # ... and its VALUE is converged, by a wide margin over the tolerance.
-    assert red.worst_value_rel_change < 0.01 * tol, red.value_rel_change
+    # ... and the POWER a user reads is converged to well under half a percent.
+    assert power_rel_change.max() == pytest.approx(0.00399, abs=5e-4), (
+        power_rel_change)
 
     # ... while its GRADIENT is not. This assertion is the one mutation (b)
     # breaks: a verdict read off the value above would call this record good.
     assert not red.passed, red.summary()
     assert red.worst > 0.10, red.summary()
+    assert red.worst > 20.0 * power_rel_change.max(), red.summary()
 
     # Doubling the record closes it.
     assert green.passed, green.summary()
