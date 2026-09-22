@@ -770,29 +770,41 @@ def _resolve_design_box(
                 f"design box {bounds} leaves the grid on axis "
                 f"{'xyz'[axis]}: cells [{lo}, {hi}) against {n} cells.")
 
-    # The absorber. apply_cpml_e's psi correction is written only at the
-    # [:n] / [-n:] face slabs, and its coefficient is dt/(eps_r*EPS_0) from
+    # The absorber. apply_cpml_e's psi correction is written at the [:n] /
+    # [-n:] face slabs, and its coefficient is dt/(eps_r*EPS_0) from
     # ``materials`` -- the one array this design stops tracing. A box inside
-    # the slab would therefore be absorbed with the BACKGROUND permittivity
-    # while it is updated with the design one. Same depth spelling the
-    # kernel uses, so the two cannot drift.
+    # an ABSORBING slab would therefore be absorbed with the BACKGROUND
+    # permittivity while it is updated with the design one.
+    #
+    # Per FACE, not per axis. The kernel's window width
+    # (``_axis_buffer_depths``) is the axis MAXIMUM of the two pads, floored
+    # at 1, and it is applied to both faces -- but a face whose profile is
+    # the all-no-op one (b=1, c=0, kappa=1) adds exactly zero however wide
+    # that window is: psi stays at its zero init and the kappa term is
+    # (1/1 - 1). A face gets that profile exactly when its allocated pad is
+    # 0, i.e. PEC / PMC / periodic (``Grid._face_pad``), and an absorbing
+    # face's own pad IS its active layer count (the invariant stated in
+    # ``_axis_buffer_depths``'s docstring). Reading the axis maximum instead
+    # refused the ordinary patch on a ground plane: x_lo PEC + x_hi CPML at
+    # cpml_layers=5 gives axis depths (5, 1, 1), so a box sitting on the PEC
+    # wall was rejected for entering a 5-layer absorber that face does not
+    # have, and the y/z floor of 1 rejected any box touching a PEC face.
     if use_cpml or use_upml:
-        from rfx.boundaries.cpml import _axis_buffer_depths
-        depths = _axis_buffer_depths(grid, grid.cpml_layers)
         for axis, name in enumerate("xyz"):
             if name not in cpml_axes:
-                continue
-            depth = int(depths[axis])
+                continue  # no correction is written on this axis at all
+            pad_lo = int(getattr(grid, f"pad_{name}_lo", 0) or 0)
+            pad_hi = int(getattr(grid, f"pad_{name}_hi", 0) or 0)
             lo, hi = bounds[2 * axis], bounds[2 * axis + 1]
-            if lo < depth or hi > grid.shape[axis] - depth:
+            n = grid.shape[axis]
+            if lo < pad_lo or hi > n - pad_hi:
                 raise ValueError(
                     f"design box cells [{lo}, {hi}) on axis {name} reach "
-                    f"into the {depth}-layer CPML absorber of a "
-                    f"{grid.shape[axis]}-cell axis. The absorber builds its "
-                    f"own coefficient from the background permittivity, "
-                    f"which the design box no longer carries. Move the box "
-                    f"into the interior, cells [{depth}, "
-                    f"{grid.shape[axis] - depth}).")
+                    f"into the CPML absorber ({pad_lo} layer(s) at {name}_lo "
+                    f"and {pad_hi} at {name}_hi, on a {n}-cell axis). The "
+                    f"absorber builds its own coefficient from the background "
+                    f"permittivity, which the design box no longer carries. "
+                    f"Move the box into cells [{pad_lo}, {n - pad_hi}).")
 
     def _in_box(cell) -> bool:
         i, j, k = (int(v) for v in cell)
@@ -2266,11 +2278,20 @@ def run(
         Issue #1179. One static box whose E update is redone from its own
         (usually traced) permittivity, leaving ``materials`` constant so the
         reverse-mode tape holds box-shaped arrays instead of grid-shaped
-        ones. ``None`` (default) is the unchanged path. Every feature that
-        computes E some other way — UPML, dispersion, anisotropic eps, Kerr,
-        the (2,4) stencil, the Bloch path — raises, as does a box that
-        reaches into the CPML absorber or holds a source / port / RLC /
-        sheet cell (``_resolve_design_box``).
+        ones. ``None`` (default) is the unchanged path.
+
+        ``_resolve_design_box`` rejects, from what this function resolves:
+        UPML, Debye/Lorentz, anisotropic eps, Kerr, ``stencil_order=4``, the
+        Bloch path, a box reaching into the CPML absorber, and a box holding
+        a source, magnetic source, lumped/wire S-param port or RLC cell or a
+        surface-impedance sheet edge. It does NOT carry the checks that need
+        the API object: the lane (non-uniform, distributed, ADI), the
+        collision with ``eps_override`` / ``sigma_override`` /
+        ``mu_r_override``, ``pec_occupancy_override``, a PASSIVE port (it
+        leaves neither a source nor an accumulator here), and the promotion
+        of ``materials.eps_r`` to the design dtype. Those are
+        ``Simulation.forward``'s, in ``_resolve_design_box_override``; a
+        caller reaching this function directly owns them.
 
     Returns
     -------

@@ -3098,11 +3098,14 @@ class _ExecuteMixin:
                     "carrying corner_lo/corner_hi (DesignRegion, "
                     f"TopologyDesignRegion). Got {design_box!r}.") from None
 
-        # Same resolution topology_optimize uses (rfx/topology.py), so a
-        # DesignRegion selects the same cells through either entry point:
-        # nearest index of each corner, both ends inclusive. The REALIZED
-        # cell counts are what the arrays must match -- the declared extent
-        # is not it at any dx.
+        # Same index resolution topology_optimize uses (rfx/topology.py):
+        # nearest index of each corner, both ends inclusive, so a corner pair
+        # inside the interior selects the same cells through either entry
+        # point. The two differ on a corner OUTSIDE it: topology_optimize
+        # CLAMPS to the interior and runs the clamped region, this path
+        # raises (the absorber fence below). The REALIZED cell counts are
+        # what the arrays must match -- the declared extent is not it at
+        # any dx.
         lo_idx = grid.position_to_index(tuple(float(v) for v in corner_lo))
         hi_idx = grid.position_to_index(tuple(float(v) for v in corner_hi))
         bounds = tuple(
@@ -3196,11 +3199,14 @@ class _ExecuteMixin:
             instead of being written into a whole-grid ``eps_override``.
             Accepts a ``(corner_lo, corner_hi)`` pair or any object carrying
             ``corner_lo`` / ``corner_hi`` (``DesignRegion``,
-            ``TopologyDesignRegion``). Corners resolve to cells exactly as
+            ``TopologyDesignRegion``). Corners resolve to cells the way
             ``topology_optimize`` resolves them — ``grid.position_to_index``
             on each corner, both ends INCLUSIVE — and the realized cell
             counts, not the declared extent, are what
-            *design_eps_override* must match.
+            *design_eps_override* must match. One difference: a corner
+            outside the interior is CLAMPED by ``topology_optimize`` and
+            RAISES here, so a region that reaches into the absorber is a
+            smaller design region there and an error on this path.
 
             What it buys: the Yee E update is linear in the fields, so the
             backward pass needs the primal field only where a coefficient is
@@ -3660,7 +3666,6 @@ class _ExecuteMixin:
         _design_spec = None
         if _design_requested:
             _design_spec = self._resolve_design_box_override(
-
                 grid,
                 design_box=design_box,
                 design_eps_override=design_eps_override,

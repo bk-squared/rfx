@@ -282,6 +282,88 @@ def test_eps_override_is_the_grid_sized_counterexample():
         f"({4 * cells} bytes) — the counterexample stopped being one")
 
 
+def _mixed_boundary_sim(**kwargs):
+    """One absorbing face, five reflecting ones — a patch on a ground plane.
+
+    ``x_hi`` absorbs; ``x_lo``, y and z are PEC walls that allocate no pad,
+    so the design box may sit right against them.
+    """
+    from rfx.boundaries.spec import Boundary, BoundarySpec
+
+    sim = Simulation(freq_max=2 * F0, domain=DOMAIN, dx=DX, cpml_layers=CPML,
+                     boundary=BoundarySpec(x=Boundary(lo="pec", hi="cpml"),
+                                           y="pec", z="pec"), **kwargs)
+    sim.add_source((4e-3, 10e-3, 8e-3), "ez", amplitude_kind="field",
+                   waveform=GaussianPulse(f0=F0, bandwidth=0.8))
+    sim.add_probe((16e-3, 10e-3, 8e-3), "ez")
+    return sim
+
+
+def test_design_box_on_a_reflecting_wall_is_accepted_and_exact():
+    """A box against a PEC face is not inside an absorber.
+
+    The absorber window the kernel writes is the axis maximum of the two
+    pads, but a face with no allocated pad carries the all-no-op profile and
+    adds exactly zero. Reading the axis maximum refused this configuration —
+    a design region sitting on a ground plane, which is most of them.
+    """
+    with enable_x64():
+        sim = _mixed_boundary_sim(precision="float64")
+        grid = sim._build_grid()
+        assert (grid.pad_x_lo, grid.pad_x_hi) == (0, CPML)
+        assert (grid.pad_y_lo, grid.pad_z_lo) == (0, 0)
+
+        # Corner at the origin: cell 0 on all three axes, flush against the
+        # PEC x_lo, y_lo and z_lo walls.
+        lo_m, hi_m = (0.0, 0.0, 0.0), (4e-3, 4e-3, 4e-3)
+        lo = grid.position_to_index(lo_m)
+        hi = grid.position_to_index(hi_m)
+        assert lo == (0, 0, 0), lo
+        sl = tuple(slice(lo[d], hi[d] + 1) for d in range(3))
+        shape = tuple(hi[d] - lo[d] + 1 for d in range(3))
+        eps = jnp.asarray(_eps_design(shape, seed=11), jnp.float64)
+        base = sim._assemble_materials(grid)[0].eps_r
+
+        def box(e):
+            r = sim.forward(design_box=(lo_m, hi_m), design_eps_override=e,
+                            n_steps=N_STEPS, checkpoint=False,
+                            skip_preflight=True)
+            return jnp.sum(r.time_series ** 2)
+
+        def ref(e):
+            full = base.astype(jnp.float64).at[sl].set(e)
+            r = sim.forward(eps_override=full, n_steps=N_STEPS,
+                            checkpoint=False, skip_preflight=True)
+            return jnp.sum(r.time_series ** 2)
+
+        value_box, value_ref = float(box(eps)), float(ref(eps))
+        assert value_ref != 0.0, "fixture excites nothing"
+        assert abs(value_box - value_ref) / abs(value_ref) < 1e-10
+        grad_box = np.asarray(jax.grad(box)(eps))
+        grad_ref = np.asarray(jax.grad(ref)(eps))
+        assert np.linalg.norm(grad_ref) > 0.0
+        rel = np.linalg.norm(grad_box - grad_ref) / np.linalg.norm(grad_ref)
+        assert rel < 1e-10, f"gradient differs by {rel:.3e} relative"
+
+
+def test_fence_still_catches_the_one_absorbing_face():
+    """The same grid, a box run into the x_hi CPML: still refused."""
+    sim = _mixed_boundary_sim()
+    grid = sim._build_grid()
+    n_x = grid.shape[0]
+    # Last interior cell on x, then three more into the absorber.
+    x_lo_m = (n_x - grid.pad_x_hi - 1) * DX
+    lo_m = (x_lo_m, 0.0, 0.0)
+    hi_m = (x_lo_m + 3 * DX, 4e-3, 4e-3)
+    assert grid.position_to_index(hi_m)[0] > n_x - grid.pad_x_hi - 1
+    shape = tuple(grid.position_to_index(hi_m)[d]
+                  - grid.position_to_index(lo_m)[d] + 1 for d in range(3))
+    with pytest.raises(ValueError, match="CPML absorber"):
+        sim.forward(design_box=(lo_m, hi_m),
+                    design_eps_override=jnp.ones(shape, jnp.float32) * 2.0,
+                    n_steps=4, skip_preflight=True)
+
+
 def test_design_box_survives_the_gpu_baked_coefficient_path():
     """On a GPU backend the design variable must still reach the fields.
 
