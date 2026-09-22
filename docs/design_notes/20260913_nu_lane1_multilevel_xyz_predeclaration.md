@@ -1082,7 +1082,8 @@ names the JSON file but carries no double-colon artifact-key span).
 
 The `git_sha` every E5 record carries — `d6bc5dde` (`e5_model.json`),
 `ea208024` (`e5_z`, `e5_x`, `e5_y`, `e5_relabel`, `e5_pinbridge`),
-`554d4b0f` (`e5_window_scan`) — names a commit that no longer exists in
+`554d4b0f` (`e5_window_scan`), and `b4646528` (the `--refresh-w4` stamp
+inside `e5_z.json`) — names a commit that no longer exists in
 any reachable ref, locally or on GitHub (checked 2026-09-22 with
 `git cat-file -t` and the commits API, 422 for all). The branch was rebased
 onto the AD-Q tip before PR #1034 was opened (PR body, "Verification"), and
