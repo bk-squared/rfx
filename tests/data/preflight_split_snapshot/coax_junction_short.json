@@ -70,10 +70,17 @@
         "message": "Coaxial port 0 (face='bottom', pin r=200 um, outer r=600 um): at its junction plane (z=2.500 mm, node 25) 24/24 nodes of the FIRST dielectric ring outside the pin (271 < r <= 371 um; lattice-based bounds, so the pin's own realized rim, at most r = 200 um + dx/sqrt(2), is excluded) carry a REALIZED PEC wall \u2014 the first registered conductor outside the pin sits at r = 282.8 um. The pin is terminated in a short by registered geometry at this plane. The assembly is PEC-OR-only: a ground sheet declared as a full plane with a dielectric 'hole' declared AFTER it stays solid (issue #589: S00 = -0.9928 at 6 GHz measured on exactly that fixture). If a clearance aperture was intended, build the conductor WITH the hole (a patterned sheet shape via add_thin_conductor, or an annular volume); if this short is the intended calibration standard, no action is needed (report-only).",
         "severity": "warning",
         "source": "_check_coaxial_port_junction_aperture"
+      },
+      {
+        "code": "port_conductor_continues",
+        "loc": "_coaxial_ports[0]",
+        "message": "port at (0.001, 0.0017, 0.0025) names no terminated conductor; 'pec' (entry 0) under its terminal continues into the x-lo, x-hi, y-lo, y-hi absorber; pass terminates= to end it at the port.",
+        "severity": "warning",
+        "source": "_validate_cfg_port_conductor_continues"
       }
     ],
     "n_errors": 1,
-    "n_issues": 10,
+    "n_issues": 11,
     "ok": false
   }
 }
