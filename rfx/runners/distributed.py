@@ -1312,6 +1312,10 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         )
         return sim.run(n_steps=n_steps)
 
+    from rfx.runners.distributed_v2 import refuse_unsupported_distributed_features
+    refuse_unsupported_distributed_features(
+        sim, lane="distributed (v1) pmap runner", bloch=kwargs.get("bloch"))
+
     from rfx.api import Result
 
     if devices is None:

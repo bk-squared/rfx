@@ -18,7 +18,8 @@ import jax.numpy as jnp
 from rfx.grid import Grid
 from rfx.core.yee import (
     FDTDState, MaterialArrays, init_state,
-    update_e, update_e_aniso, update_e_aniso_inv, update_h, EPS_0, MU_0, _shift_bwd,
+    update_e, update_e_aniso, update_e_aniso_inv, update_e_box, update_h,
+    e_update_coeffs, EPS_0, MU_0, _shift_bwd,
     precompute_coeffs, update_he_fast,
 )
 from rfx.boundaries.pec import (
@@ -150,6 +151,38 @@ class LumpedPortSParamSpec(NamedTuple):
     component: str
     freqs: jnp.ndarray
     impedance: float
+
+
+class DesignBoxSpec(NamedTuple):
+    """One static box whose E update runs on its own permittivity (#1179).
+
+    The box is a design region: its permittivity is the quantity being
+    differentiated. Handing it here instead of writing it into
+    ``materials.eps_r`` keeps the grid-wide update coefficients constant, so
+    reverse-mode AD stores box-shaped arrays per timestep instead of
+    grid-shaped ones. The physics is unchanged — ``update_e_box`` recomputes
+    exactly what ``update_e`` would have computed at those cells.
+
+    bounds : (i0, i1, j0, j1, k0, k1)
+        Half-open cell index bounds of the box, resolved from the declared
+        corners against the grid the solve builds.
+    eps_r : box-shaped array (usually a tracer)
+        Relative permittivity at the box cells.
+    sigma : box-shaped array or None
+        Conductivity at the box cells. ``None`` (default) takes the run's own
+        ``materials.sigma`` slice, so a lossy background inside the box is
+        carried exactly rather than silently dropped.
+    """
+    bounds: tuple
+    eps_r: Any
+    sigma: Any = None
+
+
+class _DesignBoxCoeffs(NamedTuple):
+    """Resolved ``(Ca, Cb)`` for a design box, built once outside the scan."""
+    bounds: tuple
+    ca: Any
+    cb: Any
 
 
 class SimResult(NamedTuple):
@@ -661,6 +694,178 @@ def resolve_periodic(grid, periodic):
     return periodic
 
 
+def _resolve_design_box(
+    spec: "DesignBoxSpec",
+    *,
+    grid,
+    materials,
+    dt,
+    use_cpml: bool,
+    use_upml: bool,
+    cpml_axes: str,
+    use_debye: bool,
+    use_lorentz: bool,
+    use_kerr: bool,
+    aniso_eps,
+    aniso_inv_eps,
+    stencil_order: int,
+    bloch,
+    sheet_impedance,
+    cell_metas,
+) -> "_DesignBoxCoeffs":
+    """Check a design box against this run, then build its Ca/Cb (#1179).
+
+    The box carries its own permittivity, so ``materials`` stays constant and
+    the E update inside the box is redone from these coefficients. That is
+    only the same physics while NOTHING ELSE in the step reads ``materials``
+    at a design cell — and the checks below are how that is decided, in the
+    one place where every resolved flag and every port/source cell is in
+    hand. Everything unsupported raises; nothing is silently dropped, because
+    a dropped design variable is a zero gradient that looks like a converged
+    optimisation.
+
+    Raises for: UPML, Debye/Lorentz dispersion, anisotropic / subpixel
+    permittivity, Kerr, ``stencil_order=4``, the oblique-periodic Bloch path,
+    a box that reaches into the CPML absorber, and a box holding a source,
+    port, RLC element or surface-impedance sheet edge.
+    """
+    unsupported = []
+    if use_upml:
+        unsupported.append("boundary='upml'")
+    if use_debye:
+        unsupported.append("debye dispersion")
+    if use_lorentz:
+        unsupported.append("lorentz dispersion")
+    if aniso_eps is not None:
+        unsupported.append("aniso_eps (subpixel/anisotropic eps)")
+    if aniso_inv_eps is not None:
+        unsupported.append("aniso_inv_eps (Kottke inverse-eps tensor)")
+    if use_kerr:
+        unsupported.append("Kerr nonlinearity")
+    if stencil_order != 2:
+        unsupported.append(f"stencil_order={stencil_order}")
+    if bloch is not None:
+        unsupported.append("oblique-periodic Bloch path (#404)")
+    if unsupported:
+        raise NotImplementedError(
+            "the design-box permittivity (#1179) rebuilds only the plain "
+            "lossy Yee E update inside its box, so every path that computes "
+            "E some other way is rejected rather than silently ignored. "
+            "Unsupported feature(s) present: " + ", ".join(unsupported)
+            + ". Use eps_override (the whole-grid traced permittivity) for "
+            "these — it is exact on every path, at a grid-sized AD tape."
+        )
+
+    i0, i1, j0, j1, k0, k1 = (int(v) for v in spec.bounds)
+    bounds = (i0, i1, j0, j1, k0, k1)
+    box_shape = (i1 - i0, j1 - j0, k1 - k0)
+    if any(n <= 0 for n in box_shape):
+        raise ValueError(
+            f"design box {bounds} is empty (realized cell counts "
+            f"{box_shape}); it must span at least one cell per axis.")
+    for axis, (lo, hi, n) in enumerate(
+            zip((i0, j0, k0), (i1, j1, k1), grid.shape)):
+        if lo < 0 or hi > n:
+            raise ValueError(
+                f"design box {bounds} leaves the grid on axis "
+                f"{'xyz'[axis]}: cells [{lo}, {hi}) against {n} cells.")
+
+    # The absorber. apply_cpml_e's psi correction is written at the [:n] /
+    # [-n:] face slabs, and its coefficient is dt/(eps_r*EPS_0) from
+    # ``materials`` -- the one array this design stops tracing. A box inside
+    # an ABSORBING slab would therefore be absorbed with the BACKGROUND
+    # permittivity while it is updated with the design one.
+    #
+    # Per FACE, not per axis. The kernel's window width
+    # (``_axis_buffer_depths``) is the axis MAXIMUM of the two pads, floored
+    # at 1, and it is applied to both faces -- but a face whose profile is
+    # the all-no-op one (b=1, c=0, kappa=1) adds exactly zero however wide
+    # that window is: psi stays at its zero init and the kappa term is
+    # (1/1 - 1). A face gets that profile exactly when its allocated pad is
+    # 0, i.e. PEC / PMC / periodic (``Grid._face_pad``), and an absorbing
+    # face's own pad IS its active layer count (the invariant stated in
+    # ``_axis_buffer_depths``'s docstring). Reading the axis maximum instead
+    # refused the ordinary patch on a ground plane: x_lo PEC + x_hi CPML at
+    # cpml_layers=5 gives axis depths (5, 1, 1), so a box sitting on the PEC
+    # wall was rejected for entering a 5-layer absorber that face does not
+    # have, and the y/z floor of 1 rejected any box touching a PEC face.
+    #
+    # A per-face pad is that proxy only on an axis the GRID says it absorbs
+    # on. ``init_cpml`` builds a real profile on every axis ``cpml_axes`` of
+    # the RUN names, and a grid built with a narrower ``cpml_axes`` allocates
+    # no pad on the others -- so "pad 0" there means "no padding cells", not
+    # "no absorber" (the trap ``_axis_buffer_depths`` documents, measured at
+    # a 49 % energy change). On such an axis, and on a duck-typed grid with
+    # no per-face pads, fall back to the axis window: nothing is known to be
+    # a no-op there.
+    if use_cpml or use_upml:
+        from rfx.boundaries.cpml import _axis_buffer_depths
+        depths = _axis_buffer_depths(grid, grid.cpml_layers)
+        grid_axes = getattr(grid, "cpml_axes", cpml_axes)
+        for axis, name in enumerate("xyz"):
+            if name not in cpml_axes:
+                continue  # no correction is written on this axis at all
+            if name in grid_axes and hasattr(grid, f"pad_{name}_lo"):
+                pad_lo = int(getattr(grid, f"pad_{name}_lo"))
+                pad_hi = int(getattr(grid, f"pad_{name}_hi"))
+            else:
+                pad_lo = pad_hi = int(depths[axis])
+            lo, hi = bounds[2 * axis], bounds[2 * axis + 1]
+            n = grid.shape[axis]
+            if lo < pad_lo or hi > n - pad_hi:
+                raise ValueError(
+                    f"design box cells [{lo}, {hi}) on axis {name} reach "
+                    f"into the CPML absorber ({pad_lo} layer(s) at {name}_lo "
+                    f"and {pad_hi} at {name}_hi, on a {n}-cell axis). The "
+                    f"absorber builds its own coefficient from the background "
+                    f"permittivity, which the design box no longer carries. "
+                    f"Move the box into cells [{pad_lo}, {n - pad_hi}).")
+
+    def _in_box(cell) -> bool:
+        i, j, k = (int(v) for v in cell)
+        return (i0 <= i < i1) and (j0 <= j < j1) and (k0 <= k < k1)
+
+    # A source or port cell reads the material AT SETUP to turn a current
+    # into a field increment (``_source_cell_cb``) or to fold an impedance
+    # into sigma. Those reads see the background array, so a design cell
+    # under one of them would drive with the wrong permittivity.
+    for kind, cells in cell_metas:
+        hits = [tuple(int(v) for v in c) for c in cells if _in_box(c)]
+        if hits:
+            raise ValueError(
+                f"the design box {bounds} holds {kind} cell(s) {hits}. "
+                f"That cell's drive/load coefficient is built from the "
+                f"background permittivity before the time loop starts, so "
+                f"the design permittivity would not reach it. Move the box "
+                f"off the {kind} cells, or use eps_override.")
+
+    sl = (slice(i0, i1), slice(j0, j1), slice(k0, k1))
+    if sheet_impedance is not None:
+        for mask in (sheet_impedance.mask_ex, sheet_impedance.mask_ey,
+                     sheet_impedance.mask_ez):
+            if mask is not None and bool(jnp.any(jnp.asarray(mask)[sl])):
+                raise ValueError(
+                    f"a surface_impedance_f0 sheet (#677) has loaded edges "
+                    f"inside the design box {bounds}. The sheet operator "
+                    f"REPLACES the E update at those edges with coefficients "
+                    f"built from the background permittivity, so it would "
+                    f"overwrite the design update. Move the box off the "
+                    f"sheet, or use eps_override.")
+
+    eps_r = jnp.asarray(spec.eps_r)
+    if tuple(eps_r.shape) != box_shape:
+        raise ValueError(
+            f"design permittivity has shape {tuple(eps_r.shape)} but the "
+            f"design box {bounds} realizes {box_shape} cells.")
+    sigma = materials.sigma[sl] if spec.sigma is None else jnp.asarray(spec.sigma)
+    if tuple(jnp.shape(sigma)) != box_shape:
+        raise ValueError(
+            f"design conductivity has shape {tuple(jnp.shape(sigma))} but "
+            f"the design box {bounds} realizes {box_shape} cells.")
+    ca, cb = e_update_coeffs(eps_r, sigma, dt)
+    return _DesignBoxCoeffs(bounds=bounds, ca=ca, cb=cb)
+
+
 def _build_step_setup(
     grid: "Grid",
     materials: "MaterialArrays",
@@ -696,6 +901,7 @@ def _build_step_setup(
     stencil_order: int = 2,
     wire_refplane_sparams: "list | None" = None,
     sheet_impedance: "object | None" = None,
+    design_box: "DesignBoxSpec | None" = None,
 ) -> "_SimSetup":
     """Build the shared setup artefacts used by both ``run`` and ``run_until_decay``.
 
@@ -837,6 +1043,15 @@ def _build_step_setup(
                 "snapshots / final state (returned as physical fields), or "
                 "compute_rcs for open-domain oblique scattering."
             )
+
+    # The far-field integral is over the SCATTERED field, which it only is
+    # when the Huygens box encloses the whole injected region. Plain ints,
+    # evaluated here at trace time.
+    if use_tfsf and use_ntff:
+        from rfx.farfield import require_box_encloses_injected_region
+        from rfx.sources.tfsf import tfsf_injection_planes
+        require_box_encloses_injected_region(
+            ntff, tfsf_injection_planes(tfsf[0]), shape=grid.shape)
 
     # ---- (2,4) fourth-order-in-space stencil (PR-1b) ----
     # order=2 is the default and BYTE-IDENTICAL: dt and every kernel call are
@@ -1074,6 +1289,39 @@ def _build_step_setup(
     )
     waveguide_meta = tuple(waveguide_ports)
 
+    # ---- #1179 design box: fence, then build its coefficients once ----
+    design_box_coeffs = None
+    if design_box is not None:
+        design_box_coeffs = _resolve_design_box(
+            design_box,
+            grid=grid,
+            materials=materials,
+            dt=dt,
+            use_cpml=use_cpml,
+            use_upml=use_upml,
+            cpml_axes=cpml_axes,
+            use_debye=use_debye,
+            use_lorentz=use_lorentz,
+            use_kerr=use_kerr,
+            aniso_eps=aniso_eps,
+            aniso_inv_eps=aniso_inv_eps,
+            stencil_order=stencil_order,
+            bloch=_bloch,
+            sheet_impedance=sheet_impedance,
+            cell_metas=(
+                ("source", [(s.i, s.j, s.k) for s in sources]),
+                ("magnetic source", [(s.i, s.j, s.k) for s in mag_sources]),
+                ("lumped port", [(p.i, p.j, p.k) for p in lumped_sparam_meta]),
+                ("wire port", [
+                    cell
+                    for p in wire_sparam_meta
+                    for cell in (tuple(p.live_cells)
+                                 or ((p.mid_i, p.mid_j, p.mid_k),))
+                ]),
+                ("lumped RLC element", [(m.i, m.j, m.k) for m in rlc_meta]),
+            ),
+        )
+
     # ---- shared _StepContext keyword arguments ----
     # These are identical for both drivers.  Each driver extends this dict
     # with its own overrides before calling _StepContext(**ctx_kwargs).
@@ -1109,6 +1357,8 @@ def _build_step_setup(
         use_mag_sources=use_mag_sources,
         use_sheet_impedance=sheet_impedance is not None,
         sheet_impedance=sheet_impedance,
+        use_design_box=design_box_coeffs is not None,
+        design_box=design_box_coeffs,
         cpml_params=cpml_params,
         cpml_axes=cpml_axes,
         upml_coeffs=upml_coeffs,
@@ -1289,6 +1539,10 @@ class _StepContext:
     # every existing caller byte-identical)
     use_sheet_impedance: bool = False
     sheet_impedance: Any = None
+    # issue #1179 design-box permittivity (defaults keep every existing
+    # caller byte-identical)
+    use_design_box: bool = False
+    design_box: Any = None
 
     # ---- output extractors ----
     monitor_component: str = "ez"
@@ -1445,6 +1699,11 @@ def make_core_step(ctx: _StepContext):
             # A*E^n + B*curlH, so it needs the pre-update E).
             e_prev_sheet = (
                 (st.ex, st.ey, st.ez) if ctx.use_sheet_impedance else None)
+            # #1179: the design box REDOES the E update at its own cells from
+            # the pre-update state.  The whole state, because it needs E^n and
+            # the same H^{n+1/2} the update below consumes; H is not touched
+            # between the two, and a NamedTuple alias costs nothing.
+            st_prev_design = st if ctx.use_design_box else None
 
             if ctx.use_upml:
                 if ctx.use_debye or ctx.use_lorentz:
@@ -1463,6 +1722,21 @@ def make_core_step(ctx: _StepContext):
                     periodic=periodic,
                     aniso_eps=aniso_eps,
                     aniso_inv_eps=aniso_inv_eps,
+                    stencil_order=ctx.stencil_order,
+                    bloch=ctx.bloch,
+                )
+
+            # #1179 design box: redo the E update at the design cells with
+            # coefficients built from the traced permittivity, leaving the
+            # grid-wide ``materials`` constant.  Slot: immediately after the
+            # E update, on the same H, before anything that reads or writes
+            # E.  The fences in _build_step_setup guarantee that nothing
+            # later in this step reads ``materials`` at a design cell.
+            if ctx.use_design_box:
+                st = update_e_box(
+                    st, st_prev_design, ctx.design_box.bounds,
+                    ctx.design_box.ca, ctx.design_box.cb, dx,
+                    periodic=periodic,
                     stencil_order=ctx.stencil_order,
                     bloch=ctx.bloch,
                 )
@@ -1940,6 +2214,7 @@ def run(
     report_every: int | None = None,
     report_label: str = "",
     sheet_impedance: object | None = None,
+    design_box: DesignBoxSpec | None = None,
 ) -> SimResult:
     """Run a compiled FDTD simulation via ``jax.lax.scan``.
 
@@ -2014,6 +2289,24 @@ def run(
         Short tag prefixed to each progress line, e.g. ``"MSL drive p1"``,
         so the per-drive solves of one ``compute_*_s_matrix`` call are
         distinguishable in a log. Ignored when ``report_every`` is None.
+    design_box : DesignBoxSpec or None
+        Issue #1179. One static box whose E update is redone from its own
+        (usually traced) permittivity, leaving ``materials`` constant so the
+        reverse-mode tape holds box-shaped arrays instead of grid-shaped
+        ones. ``None`` (default) is the unchanged path.
+
+        ``_resolve_design_box`` rejects, from what this function resolves:
+        UPML, Debye/Lorentz, anisotropic eps, Kerr, ``stencil_order=4``, the
+        Bloch path, a box reaching into the CPML absorber, and a box holding
+        a source, magnetic source, lumped/wire S-param port or RLC cell or a
+        surface-impedance sheet edge. It does NOT carry the checks that need
+        the API object: the lane (non-uniform, distributed, ADI), the
+        collision with ``eps_override`` / ``sigma_override`` /
+        ``mu_r_override``, ``pec_occupancy_override``, a PASSIVE port (it
+        leaves neither a source nor an accumulator here), and the promotion
+        of ``materials.eps_r`` to the design dtype. Those are
+        ``Simulation.forward``'s, in ``_resolve_design_box_override``; a
+        caller reaching this function directly owns them.
 
     Returns
     -------
@@ -2065,6 +2358,7 @@ def run(
         mag_sources=mag_sources,
         stencil_order=stencil_order,
         sheet_impedance=sheet_impedance,
+        design_box=design_box,
     )
     carry_init = _setup.carry_init
     dt = _setup.dt
@@ -2115,6 +2409,12 @@ def run(
         # it waits on the thin-sheet plane-BC architecture decision (#701),
         # and the parking itself is backlog #787.
         and not _ctx["use_sheet_impedance"]
+        # #1179: same reason as the sheet operator above -- the inline H+E
+        # update has no slot for the design-box redo, and its coefficients
+        # are baked from ``materials``, which is exactly the array a design
+        # box stops carrying. A design box takes the standard path; that
+        # costs GPU scatter kernels, nothing else.
+        and not _ctx["use_design_box"]
         and aniso_eps is None
         and periodic == (False, False, False)
     )

@@ -76,6 +76,52 @@ this condition now carries that measurement, and `docs/guides/sparameter_support
 has the full reading guidance. Settled in #726 (closed): the guard and preflight
 used to contradict each other about this, and the measurement decided it.
 
+## Gradients and optimization
+
+**A gradient can be wrong by tens of percent on a record whose value is
+converged.** Every frequency-domain quantity rfx differentiates is a DFT of a
+finite time record. A structure still ringing when the record ends leaves a term
+in every bin whose phase is `(ω − ω_r)·T`; a parameter that moves the resonance
+spins that phase, and because the phase grows with the record length the spin
+lands in the derivative magnified while staying nearly invisible in the value.
+Measured on a grounded-slab patch (graded z, float32) fed by a 50 Ω wire port: a
+2200-step record settling to −39.7 dB — a pass on the −40 dB rule — gave |S11|²
+within 0.99 % of a converged record, while `d ln|S11|² / d ln εr` was out by
+9.7 % at 5.75 GHz and 23 % at 6.5 GHz, and a local-permittivity parameter by
+8.7 % and 38 %. At 4400 steps (−75 dB) the worst was 2.1 %. The same board
+driven by a soft source instead of a port settles far more slowly (−40.9 dB in
+6000 steps against −101.5 dB for the port); there `d ln U(0) / d ln εr` read
+5.79 against a converged 6.80 and a pattern-ratio gradient 0.331 against 0.070.
+In every measured case the sign of the slope was right and its size was not — an
+optimizer reading them takes steps of the wrong length, and a gate on a gradient
+value passes or fails on the record length rather than on the physics.
+
+The committed reproduction is a 30×20×20 mm lossy-filled PEC cavity
+(`tests/unit/autodiff/test_gradient_record_length_witness.py`): at 1600 steps it
+has decayed 46.7 dB, the DFT power a user reads is converged to 0.399 %, and the
+gradient with respect to the fill permittivity is 11.0 % from its converged
+value.
+
+Neither existing check sees it. `settling_verdict` scores the end of the record
+against its peak, which is a statement about the value. AD against a finite
+difference agrees to the precision floor at every record length, because both
+sides differentiate the same truncated record. Score a gradient you intend to
+report or optimize with `gradient_record_length_witness(objective, params,
+n_steps, tol=...)`: it takes the same gradient from a record `factor` times
+longer (default 2) and reports, per frequency bin,
+`‖g_long − g_short‖ / ‖g_long‖` over the whole parameter vector together with
+the cosine between the two — so a change of step length reads differently from a
+turn of the descent direction. Complex observables (an S-parameter, a DFT
+phasor) are compared as complex sensitivities, since a parameter that rotates a
+phasor at constant magnitude moves only its imaginary part. A per-element table
+comes with the result to locate where a failure sits; it is not the verdict,
+because an element carrying a millionth of the dominant sensitivity moves by
+100 % on its own rounding. The witness does not replace the −40 dB rule — a
+record too short by more than `factor` can still pass it, because both arms then
+carry a similar leftover — and it has no default tolerance, because the right bar
+depends on the structure's Q and on what the gradient is for.
+→ [#1181](https://github.com/bk-squared/rfx/issues/1181)
+
 ## Scattering
 
 **Monostatic RCS is not translation-invariant.** Moving the same target inside a

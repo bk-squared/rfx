@@ -115,6 +115,9 @@
     "GradientCheckResult": {
       "kind": "class"
     },
+    "GradientRecordLengthWitness": {
+      "kind": "class"
+    },
     "Grid": {
       "kind": "class"
     },
@@ -1088,6 +1091,18 @@
         "num_periods"
       ]
     },
+    "gradient_record_length_witness": {
+      "kind": "function",
+      "params": [
+        "objective",
+        "params",
+        "n_steps",
+        "tol",
+        "factor",
+        "has_aux",
+        "floor_frac"
+      ]
+    },
     "half_power_beamwidth": {
       "kind": "function",
       "params": [
@@ -1816,7 +1831,8 @@
         "stencil_order",
         "report_every",
         "report_label",
-        "sheet_impedance"
+        "sheet_impedance",
+        "design_box"
       ]
     },
     "run_adi_2d": {
@@ -2681,6 +2697,9 @@
       "eps_override",
       "sigma_override",
       "mu_r_override",
+      "design_box",
+      "design_eps_override",
+      "design_sigma_override",
       "pec_mask_override",
       "pec_occupancy_override",
       "n_steps",
