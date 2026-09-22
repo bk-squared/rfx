@@ -534,6 +534,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     -------
     Result
     """
+    multi_process = jax.process_count() > 1
     validate_exchange_interval(exchange_interval)
     from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
     _refuse_f0(sim._thin_conductors, "distributed (v2) runner")
@@ -935,8 +936,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
 
     # #1053 leg 1. ``None`` whenever the model declares no PEC volume, which
     # is every fixture of the #1038 bit-identity lock -- so the stage leg 2
-    # hooks on this is a no-op branch there and the lock stays 15/15. The step
-    # bodies read this as a CLOSURE VARIABLE, next to ``sharded_materials``,
+    # hooks on this is a no-op branch there and the lock stays 15/15. The single-
+    # process scan captures this as a constant, next to ``sharded_materials``,
     # not through ``run_distributed``'s ``**kwargs``: that kwargs bag is
     # forwarded only on the ``n_devices == 1`` fast path and is silently
     # discarded at exactly the device counts this stage exists for.
@@ -1220,7 +1221,10 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # Step function (operates on sharded arrays)
     # ------------------------------------------------------------------
 
-    def step_fn_cpml(carry, xs):
+    def step_fn_cpml(
+        carry, xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
+        cpml_params_arg, pec_mask_arg,
+    ):
         """Single FDTD step (CPML path) operating on sharded arrays.
 
         Stage order (#1041)::
@@ -1246,12 +1250,12 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         lr_st = carry["lorentz"]
 
         # 1. H update
-        st = _update_h_shmap(st, sharded_materials)
+        st = _update_h_shmap(st, materials_arg)
 
         # 2. CPML H correction (material-aware, #205)
         st, cpml_st = _apply_cpml_h_shmap(
-            st, cpml_params, cpml_st, n_cpml, dt, dx,
-            mesh, n_devices, ghost=ghost, mu_r=sharded_materials.mu_r,
+            st, cpml_params_arg, cpml_st, n_cpml, dt, dx,
+            mesh, n_devices, ghost=ghost, mu_r=materials_arg.mu_r,
             pad_x=pad_x)
 
         # 3. Exchange H ghost cells (conditionally skip)
@@ -1271,14 +1275,14 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
 
         # 4. E update
         st, db_st, lr_st = _update_e_shmap(
-            st, sharded_materials,
-            debye_coeffs_sharded, db_st,
-            lorentz_coeffs_sharded, lr_st)
+            st, materials_arg,
+            debye_coeffs_arg, db_st,
+            lorentz_coeffs_arg, lr_st)
 
         # 5. CPML E correction (material-aware, #205)
         st, cpml_st = _apply_cpml_e_shmap(
-            st, cpml_params, cpml_st, n_cpml, dt, dx,
-            mesh, n_devices, ghost=ghost, eps_r=sharded_materials.eps_r,
+            st, cpml_params_arg, cpml_st, n_cpml, dt, dx,
+            mesh, n_devices, ghost=ghost, eps_r=materials_arg.eps_r,
             pad_x=pad_x)
 
         # 6. Source injection
@@ -1301,9 +1305,9 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         #     reads that stale plane -- measured on the nu lane at 2.107e-01
         #     final-step error against a 5e-5 gate (ac782d4f, #931 T3), versus
         #     7.773e-08 in this order.
-        if sharded_pec_mask is not None:
+        if pec_mask_arg is not None:
             st = apply_pec_mask_shmap(
-                st, sharded_pec_mask, mesh, n_devices, nx_local)
+                st, pec_mask_arg, mesh, n_devices, nx_local)
 
         # 7. Exchange E ghost cells -- LAST stage of the E half-step, so a
         #    ghost row is a copy of the owner's FINISHED real row (#1041,
@@ -1343,7 +1347,10 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         return {"fdtd": st, "cpml": cpml_st,
                 "debye": db_st, "lorentz": lr_st}, probe_out
 
-    def step_fn_pec(carry, xs):
+    def step_fn_pec(
+        carry, xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
+        pec_mask_arg,
+    ):
         """Single FDTD step (PEC path) operating on sharded arrays.
 
         Stage order (#1041)::
@@ -1366,7 +1373,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         lr_st = carry["lorentz"]
 
         # 1. H update
-        st = _update_h_shmap(st, sharded_materials)
+        st = _update_h_shmap(st, materials_arg)
 
         # 2. Exchange H ghost cells
         do_exchange = (_step_idx % _exchange_interval == 0)
@@ -1384,9 +1391,9 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
 
         # 3. E update
         st, db_st, lr_st = _update_e_shmap(
-            st, sharded_materials,
-            debye_coeffs_sharded, db_st,
-            lorentz_coeffs_sharded, lr_st)
+            st, materials_arg,
+            debye_coeffs_arg, db_st,
+            lorentz_coeffs_arg, lr_st)
 
         # 4. Source injection
         st = _inject_sources_shmap(st, src_vals)
@@ -1413,9 +1420,9 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         #     fixture P, bit-identical), and that measurement does not
         #     transfer to a body mask, which is the whole reason this stage
         #     goes here and not next to it.
-        if sharded_pec_mask is not None:
+        if pec_mask_arg is not None:
             st = apply_pec_mask_shmap(
-                st, sharded_pec_mask, mesh, n_devices, nx_local)
+                st, pec_mask_arg, mesh, n_devices, nx_local)
 
         # 6. Exchange E ghost cells -- LAST stage of the E half-step, so a
         #    ghost row is a copy of the owner's FINISHED real row (#1041,
@@ -1461,8 +1468,39 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             "debye": debye_state_sharded,
             "lorentz": lorentz_state_sharded,
         }
-        run_fn = jax.jit(lambda carry, xs: lax.scan(step_fn_cpml, carry, xs))
-        final_carry, probe_ts = run_fn(carry_init, xs)
+        if multi_process:
+            def _run_cpml(
+                carry, scan_xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
+                cpml_params_arg, pec_mask_arg,
+            ):
+                return lax.scan(
+                    lambda scan_carry, scan_inputs: step_fn_cpml(
+                        scan_carry, scan_inputs, materials_arg,
+                        debye_coeffs_arg, lorentz_coeffs_arg,
+                        cpml_params_arg, pec_mask_arg,
+                    ),
+                    carry,
+                    scan_xs,
+                )
+
+            run_fn = jax.jit(_run_cpml)
+            final_carry, probe_ts = run_fn(
+                carry_init, xs, sharded_materials,
+                debye_coeffs_sharded, lorentz_coeffs_sharded,
+                cpml_params, sharded_pec_mask,
+            )
+        else:
+            # Capture invariants here so single-process JIT still sees constants.
+            run_fn = jax.jit(lambda carry, xs: lax.scan(
+                lambda c, x: step_fn_cpml(
+                    c, x, sharded_materials,
+                    debye_coeffs_sharded, lorentz_coeffs_sharded,
+                    cpml_params, sharded_pec_mask,
+                ),
+                carry,
+                xs,
+            ))
+            final_carry, probe_ts = run_fn(carry_init, xs)
         final_state_sharded = final_carry["fdtd"]
     else:
         carry_init = {
@@ -1470,9 +1508,49 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             "debye": debye_state_sharded,
             "lorentz": lorentz_state_sharded,
         }
-        run_fn = jax.jit(lambda carry, xs: lax.scan(step_fn_pec, carry, xs))
-        final_carry, probe_ts = run_fn(carry_init, xs)
+        if multi_process:
+            def _run_pec(
+                carry, scan_xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
+                pec_mask_arg,
+            ):
+                return lax.scan(
+                    lambda scan_carry, scan_inputs: step_fn_pec(
+                        scan_carry, scan_inputs, materials_arg,
+                        debye_coeffs_arg, lorentz_coeffs_arg,
+                        pec_mask_arg,
+                    ),
+                    carry,
+                    scan_xs,
+                )
+
+            run_fn = jax.jit(_run_pec)
+            final_carry, probe_ts = run_fn(
+                carry_init, xs, sharded_materials,
+                debye_coeffs_sharded, lorentz_coeffs_sharded,
+                sharded_pec_mask,
+            )
+        else:
+            # Capture invariants here so single-process JIT still sees constants.
+            run_fn = jax.jit(lambda carry, xs: lax.scan(
+                lambda c, x: step_fn_pec(
+                    c, x, sharded_materials,
+                    debye_coeffs_sharded, lorentz_coeffs_sharded,
+                    sharded_pec_mask,
+                ),
+                carry,
+                xs,
+            ))
+            final_carry, probe_ts = run_fn(carry_init, xs)
         final_state_sharded = final_carry["fdtd"]
+
+    if multi_process:
+        from jax.experimental import multihost_utils
+
+        # Return the full global fields and trace on every process. This host
+        # gather is absent from the single-process path, which stays traceable.
+        final_state_sharded, probe_ts = multihost_utils.process_allgather(
+            (final_state_sharded, probe_ts), tiled=True,
+        )
 
     # ------------------------------------------------------------------
     # Gather final state: sharded (n_devices*nx_local, ny, nz) ->
