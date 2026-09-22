@@ -81,8 +81,13 @@ came back to the declared geometry.** `R` there is the declared load and the
 annular resistor's conductivity is built from `ln(shell_inner/a)`, so the same
 discrete geometric factor sits in the load's realized resistance and in the
 line's impedance, and cancels; a re-rasterization that moved the realized line
-3.7 % moved this number 0.002 %. It pins the resistor's calibration against the
-declared annulus, which the wall's inner face feeds, and nothing wider.
+3.7 % (40.36 -> 38.88 ohm) moved this number 0.002 %, and putting the pre-fix
+wall placement back moves it to 40.78 ohm. **Those three figures are the blind
+reviewer's measurements (VESSL 369367263452) and are not reproduced by anything
+in this repository** -- the electrostatic table below is; the mutation script
+revives the per-node conductor, not the wall placement, so it does not produce
+the 40.78. It pins the resistor's calibration against the declared
+annulus, which the wall's inner face feeds, and nothing wider.
 
 `beta` is the constant that does come back, and that is the one this change is
 about. The impedance of the realized cross-section is a separate question with

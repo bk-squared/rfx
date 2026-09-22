@@ -255,12 +255,21 @@ def test_the_resistor_calibration_agrees_with_the_declared_annulus():
     blind review showed this directly: re-rasterizing the coax half a cell
     off-node moved the realized line 3.7 % (40.36 -> 38.88 ohm by an
     electrostatic solve on the edge masks) and moved this number 0.002 %.
+    (Reviewer's measurement; the 40.36 is reproduced by
+    ``scripts/diagnostics/coax_realized_impedance_static.py``, the 38.88 is
+    not.)
 
     What it DOES pin is worth keeping: that the resistor's sigma calibration and
     the declared annulus agree, which is a real invariant and is exactly what
-    the wall's inner face feeds. Put the pre-fix wall placement back and this
-    goes red -- 40.78 ohm against a declared 48.59 -- because ``shell_inner``
-    enters that formula.
+    the wall's inner face feeds, because ``shell_inner`` enters that formula.
+
+    This test itself cannot demonstrate that -- it replays a frozen ``Gamma``
+    and nothing in the record changes when the geometry does. The demonstration
+    needs a live solve with the pre-fix wall placement put back, where the same
+    quantity reads 40.78 ohm against a declared 48.59. That is the blind
+    reviewer's measurement (VESSL 369367263452), not reproduced by anything in
+    this repository: ``scripts/diagnostics/coax_conductor_mutation.py`` revives
+    the per-node conductor, not the wall placement.
 
     The realized cross-section's own impedance is measured by
     ``tests/unit/sparams/test_coax_conductor_geometry.py``'s convergence check,
