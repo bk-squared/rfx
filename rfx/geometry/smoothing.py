@@ -1484,9 +1484,9 @@ def kottke_inv_eps_from_occupancy(
     # with a binary PEC slab (TM110 is independent of the slab height):
     # analytic 8.833 GHz, ``apply_pec_occupancy`` 8.8305, this builder with
     # the dilation 8.5266 (-3.5 %), at a half-cell edge 8.3228 (-5.8 %). The
-    # dilation had been kept (2026-05-31 panel) on the |S21| witness of one
-    # unnamed open-stub run in 60939e0's commit message; the fixture behind
-    # that number is not recorded, and the cavity oracle above supersedes it.
+    # dilation had been kept (2026-05-31 review) on the |S21| witness of one
+    # open-stub run (run #962) in 60939e0's commit message; that run's
+    # fixture is not recorded anywhere, and the cavity oracle supersedes it.
     from rfx.boundaries.pec import _volume_occupancy_masks
     f = jnp.clip(pec_occupancy.astype(jnp.float32), 0.0, 1.0)
     # Sigmoid-floor values (1e-30 ...) are vacuum, and their gradient is

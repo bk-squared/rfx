@@ -1994,7 +1994,7 @@ class _ExecuteMixin:
                     comp = {"z": "ey", "x": "ez", "y": "ez"}[fpe.axis]
                 from rfx.simulation import make_source as _make_src
                 sources.append(_make_src(grid, tuple(center), comp, wf, n_steps))
-        # ── Port guard for the tensor lane (issue #82) ──────────
+        # ── Port guard on the occupancy (issue #82; runs on both lanes) ──
         # The tensor lane (``RFX_PEC_OCC_KOTTKE=1``) used to dilate the
         # occupancy by one cell on every face, so a probe-fed patch one
         # cell above its port wrote the patch into the port's inv_eps

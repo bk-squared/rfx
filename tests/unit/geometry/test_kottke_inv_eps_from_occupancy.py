@@ -40,10 +40,7 @@ def _grid(nx=8, ny=8, nz=8, dx=1e-4):
 
 
 def test_pure_vacuum_gives_inverse_background():
-    """occ ≡ 0 everywhere → inv_xx = inv_yy = inv_zz ≈ 1/ε_bg.
-
-    Tolerance ~5e-4 covers the ~5e-5 residual from the soft Heaviside
-    projection (sigmoid((0-0.5)/0.05) ≈ 4.5e-5)."""
+    """occ ≡ 0 everywhere → inv_xx = inv_yy = inv_zz = 1/ε_bg."""
     grid = _grid()
     occ = jnp.zeros(grid.shape, dtype=jnp.float32)
     inv_xx, inv_yy, inv_zz = kottke_inv_eps_from_occupancy(
@@ -56,14 +53,8 @@ def test_pure_vacuum_gives_inverse_background():
 
 
 def test_pure_pec_gives_near_zero_inv_eps():
-    """occ ≡ 1 everywhere → all inv components ≤ 1e-9 (effective PEC).
-
-    Uses smooth Kottke with eps_inside = 1e10 (large but finite) to
-    avoid the f=0 discontinuity of the strict PEC limit.  At f=1, this
-    gives inv ≈ 1/1e10 = 1e-10 — small enough to act as PEC at FDTD
-    timescales (Cb scales as inv·dt; for dt~1e-13 s the field barely
-    updates) but smooth across f=0.
-    """
+    """occ ≡ 1 everywhere → every edge is incident to an occupied cell, so
+    every inv component is exactly 0 (the bound below is slack)."""
     grid = _grid()
     occ = jnp.ones(grid.shape, dtype=jnp.float32)
     inv_xx, inv_yy, inv_zz = kottke_inv_eps_from_occupancy(
@@ -92,6 +83,27 @@ def test_binary_occupancy_reduces_to_the_hard_edge_rule():
         z = np.asarray(comp) == 0.0
         assert np.array_equal(z, np.asarray(want)), int((z != np.asarray(want)).sum())
         assert np.allclose(np.asarray(comp)[~z], 1.0)
+
+
+def test_periodic_seam_edges_follow_the_run_flags():
+    """A conductor on the last x plane of a periodic-x run shorts the Ey/Ez
+    edges on the x = 0 plane too (the wrap seam); non-periodic leaves them
+    air. The builder must get the run's flags: it used to read a ``periodic``
+    attribute ``Grid`` does not have and was non-periodic always, which left
+    a slit in the conductor at the seam on the tensor lane while the plain
+    lane and the hard rule shorted it."""
+    from rfx.boundaries.pec import realized_pec_edge_masks
+    grid = _grid()
+    nx = grid.shape[0]
+    occ = np.zeros(grid.shape, dtype=np.float32)
+    occ[nx - 1, :, :] = 1.0
+    for periodic in ((True, False, False), (False, False, False)):
+        inv = kottke_inv_eps_from_occupancy(grid, jnp.asarray(occ), background_eps=1.0, periodic=periodic)
+        hard = realized_pec_edge_masks(occ.astype(bool), [], [], periodic=periodic)
+        for comp, want in zip(inv, hard):
+            assert np.array_equal(np.asarray(comp) == 0.0, np.asarray(want)), periodic
+        seam_ey = np.asarray(inv[1])[0, :, :]
+        assert (seam_ey.max() == 0.0) if periodic[0] else (seam_ey.min() == 1.0), periodic
 
 
 def test_half_fill_step_is_between_the_two_binary_answers():
