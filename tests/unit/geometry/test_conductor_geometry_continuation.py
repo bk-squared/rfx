@@ -93,6 +93,24 @@ def test_unnamed_non_msl_port_ends_nothing(kind):
     assert solved.corner_lo[0] < 0. and solved.corner_hi[0] > 8.
 
 
+def test_exact_aperture_preserves_the_gap_between_parallel_wire_edges():
+    from rfx.geometry.port_termination import lattice_intersects_aperture
+
+    nodes = (np.arange(5., dtype=float),)*3
+    mask = np.zeros((5, 5, 5), dtype=bool)
+    mask[2:4, 1:3, 2] = True
+    wire = [(mask, (True, False, False))]
+    between = (2.5, 1.5, 2.)
+    on_wire = (2.5, 1., 2.)
+    assert lattice_intersects_aperture(wire, nodes, on_wire, on_wire)
+    assert not lattice_intersects_aperture(wire, nodes, between, between)
+    # The same node footprint of a sheet fills its in-plane segments.
+    sheet = [(mask, (False, False, False))]
+    assert lattice_intersects_aperture(sheet, nodes, between, between)
+    above = (2.5, 1.5, 2.5)
+    assert not lattice_intersects_aperture(sheet, nodes, above, above)
+
+
 @pytest.mark.parametrize("axis", range(3))
 @pytest.mark.parametrize("side", (0, 1))
 @pytest.mark.parametrize("kind", ("volume", "sheet", "thin"))

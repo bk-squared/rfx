@@ -67,8 +67,9 @@ def lattice_intersects_aperture(lattice, nodes, lower, upper):
     # Requiring BOTH endpoints preserves gaps and a sheet's zero-thickness
     # normal plane; it does not grow a node by a contact-search radius.
     support = list(lattice)
+    footprints = [(mask, axes) for mask, axes in lattice if not any(axes)]
     for axis in range(3):
-        for mask, cell_axes in list(support):
+        for mask, cell_axes in list(footprints):
             if cell_axes[axis]:
                 continue
             adjacent = np.zeros_like(mask)
@@ -78,6 +79,7 @@ def lattice_intersects_aperture(lattice, nodes, lower, upper):
             if adjacent.any():
                 axes = tuple(True if a == axis else cell_axes[a] for a in range(3))
                 support.append((adjacent, axes))
+                footprints.append((adjacent, axes))
     for mask, cell_axes in support:
         indices = []
         for axis, values in enumerate(nodes):
