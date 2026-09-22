@@ -1809,10 +1809,14 @@ def figure(record: dict, out_dir: Path) -> Path:
     s11 = np.asarray(record["s11_re"], float) + 1j * np.asarray(
         record["s11_im"], float)
     fig, ax = plt.subplots(figsize=(7.4, 4.4))
+    if record.get("kind") == "uniform":
+        mesh = f"uniform {record['dx_m'] * 1e6:.2f} um"
+    else:
+        mesh = (f"graded -- F {record['fine_cell_m'] * 1e6:.2f} um, "
+                f"FZ {record['substrate_cell_m'] * 1e6:.2f} um")
     ax.plot(f, case._db(np.abs(s21)), label=(
-        f"rfx graded {record['arm']} -- F {record['fine_cell_m'] * 1e6:.2f} um, "
-        f"FZ {record['substrate_cell_m'] * 1e6:.2f} um, "
-        f"{record['n_cells'] / 1e6:.2f} M cells"))
+        f"rfx {record['arm']}, {mesh}, "
+        f"{grid_cells(record) / 1e6:.2f} M cells"))
     ax.plot(f, case._db(np.abs(s11)), lw=0.8, alpha=0.6, label="rfx |S11|")
     ax.plot(stage["freqs_ghz"], case._db(stage["s21_mag"]), "k-", lw=1.0,
             label=f"openEMS tutorial {case.OPENEMS_JUDGED_STAGE} -- JUDGED")
