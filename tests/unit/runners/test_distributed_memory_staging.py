@@ -74,13 +74,18 @@ def _measure(case, explicit_args):
                 # Per device, whatever the sharding: a whole-domain array kept
                 # on one device and one replicated onto every device (P())
                 # cost a device the same memory.
-                # Judge the spatial extent (the last three axes): a per-device
-                # polarization shard (n_poles, nx_local, ny, nz) of a correct
-                # multi-pole model can hold more elements than the domain has
-                # cells without covering the domain.
+                # An x-sharded array is judged by the spatial extent of its
+                # shard (the last three axes): a correct multi-pole model's
+                # polarization shard (n_poles, nx_local, ny, nz) can hold more
+                # elements than the domain has cells without covering it. A
+                # single-device or replicated array is judged by its element
+                # count, so a device-stacked copy (n_devices, nx_local, ny, nz)
+                # kept on one device is still whole-domain.
+                split = (not arr.sharding.is_fully_replicated
+                         and len(arr.sharding.device_set) > 1)
                 spatial = (int(np.prod(shard.data.shape[-3:])) if shard.data.ndim >= 3
                            else shard.data.size)
-                if spatial >= cells:
+                if (spatial if split else shard.data.size) >= cells:
                     whole.append((str(shard.device), arr.shape, str(arr.dtype),
                                   type(arr.sharding).__name__))
         # Both scan entry variants capture the coefficient tuple directly;
