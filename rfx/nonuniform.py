@@ -269,10 +269,22 @@ class NonUniformGrid(NamedTuple):
         The bound is the interior, ``[node_of(pad_lo), node_of(last interior
         node)]``, because that is the range the edge list can represent; a
         coordinate inside an absorber pad has no interior node to name. The
-        comparison carries ``DECLARED_SPAN_TOL_M`` of slack at each end,
-        which is the accuracy the grid claims for a node position in the
-        first place -- refusing a coordinate 1e-13 m past the face would be
-        refusing something the grid cannot tell apart from the face.
+        comparison carries ``DECLARED_SPAN_TOL_M`` (1e-12 m) of slack at
+        each end. That is not a fudge factor: it is the node tolerance the
+        mesh builder itself claims. ``make_band_profile`` guarantees that
+        every declared interface lands on a cumulative node coordinate to
+        1e-12 m and that the cells sum to the declared span to the same
+        figure, and ``assert_cells_span_declared_profile`` holds the
+        constructor to it. A grid that only places a node to 1e-12 m cannot
+        tell a coordinate 1e-13 m past the face from the face, so refusing
+        one would be refusing a distinction the grid does not make. Outside
+        that band the refusal is exact.
+
+        That figure grows with the column: the builder documents 1e-11 m on
+        a 10 m column of 1e5 cells. On a board or a waveguide, the sizes
+        this lane meshes, 1e-12 m is the right order. A caller meshing
+        metres should read the builder's guarantee before trusting the
+        boundary case.
         """
         ax, _n, pad_lo, pad_hi = self._axis_layout(axis)
         if self.is_traced(ax):

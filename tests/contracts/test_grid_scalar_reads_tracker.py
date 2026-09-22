@@ -47,6 +47,16 @@ its dotted reads, keep its getattr ones, and still show a lower number -- the
 ratchet would record progress that was not made. 14 of the sites below are
 this spelling.
 
+A count to record, because it was disputed and the answer is a rule rather
+than an oversight. The 2026-09-22 review of this file reported 16 literal
+``getattr`` sites; the walker finds 14. The gap is the two that name ``dz``.
+Eight literal ``getattr(grid, "dz", ...)`` calls exist in ``rfx/``, and none
+of them counts, for the same reason ``grid.dz`` does not: on
+``NonUniformGrid`` ``dz`` IS the per-cell array, so a module reading it is
+usually doing the right thing and counting it would make this gate fire on
+correct code. The exclusion is deliberate and stays. If it is ever revisited,
+the thing to change is the ``SCALAR_ATTRS`` set, not the walker.
+
 ``.dz`` is deliberately NOT counted. On ``NonUniformGrid`` ``dz`` is already
 the per-cell ARRAY, so a ``grid.dz`` read is usually the correct spelling;
 counting it would make this gate fire on code that is right.
