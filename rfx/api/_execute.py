@@ -1440,6 +1440,17 @@ class _ExecuteMixin:
         # so does the waveguide compute path (see _sparams.py).
         cpml_axes_run = grid.cpml_axes
         pec_axes_run = "".join(a for a in "xyz" if a not in cpml_axes_run)
+        # A closed box (boundary="pec": no absorber at all, cpml_layers == 0)
+        # still reports cpml_axes == "xyz", so the line above handed the
+        # scan pec_axes == "" and the walls were never applied: the
+        # differentiable path solved an open box while run() solved the
+        # cavity (measured: 5.091 GHz against the analytic and run() 8.831 GHz
+        # TM110 of a 24 mm cube). With no absorber anywhere the walls are
+        # every non-periodic axis, which is what run() defaults to.
+        if int(getattr(grid, "cpml_layers", 0) or 0) == 0 and not cpml_axes_run.strip("xyz"):
+            if getattr(self, "_boundary", None) == "pec":
+                pec_axes_run = "".join(
+                    a for a, p in zip("xyz", periodic_bool) if not p)
 
         # Differentiable TFSF plane-wave (#404): build the 2D/1D-aux TFSF cfg and
         # force its boundary (transverse-periodic + CPML on the propagation axis),
