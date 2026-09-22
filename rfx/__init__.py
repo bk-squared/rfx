@@ -13,6 +13,10 @@ from rfx.api import (
     ADMemoryActionHint, ADMemoryExplainabilityReport,
     ADMemoryPreflightReport, ADCompiledMemoryCertificate,
     MeshIntelligenceReport,
+    # Gradient record-length witness. Flat import so ``rfx.<name>`` reaches it;
+    # deliberately NOT in ``__all__`` below, which is a curated star surface —
+    # its value-side counterpart ``settling_verdict`` is not on it either.
+    GradientRecordLengthWitness, gradient_record_length_witness,
 )
 from rfx.ad_diagnostics import (
     ADParserHealth,

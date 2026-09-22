@@ -115,6 +115,9 @@
     "GradientCheckResult": {
       "kind": "class"
     },
+    "GradientRecordLengthWitness": {
+      "kind": "class"
+    },
     "Grid": {
       "kind": "class"
     },
@@ -1086,6 +1089,18 @@
         "eps",
         "n_steps",
         "num_periods"
+      ]
+    },
+    "gradient_record_length_witness": {
+      "kind": "function",
+      "params": [
+        "objective",
+        "params",
+        "n_steps",
+        "tol",
+        "factor",
+        "has_aux",
+        "floor_frac"
       ]
     },
     "half_power_beamwidth": {
