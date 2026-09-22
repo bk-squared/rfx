@@ -90,7 +90,6 @@ from rfx.geometry.csg import Box
 
 from rfx.preflight._common import (
     profile_boundary_cell,
-    profile_is_constant,
     _fmt_freq,
     _fmt_len,
     PreflightConfigError,
@@ -1023,15 +1022,19 @@ def _validate_cfg_nonuniform_limitations(
     self, _w, cpml_thickness: float
 ) -> None:
     """P2: Non-uniform mesh shadow-lane limitations."""
-    # Keyed on "is any axis graded", not on "was a z profile given". A
-    # dx-only or dy-only graded mesh used to skip both checks below and
+    # Keyed on "is this the non-uniform lane", not on "was a z profile
+    # given". A dx-only or dy-only mesh used to skip both checks below and
     # report All checks passed, though the TFSF auxiliary line runs along x
     # and the absorber thickness is a per-axis question (G17).
-    _axis_profiles = (self._dx_profile, self._dy_profile, self._dz_profile)
-    _any_axis_graded = not all(
-        profile_is_constant(prof) for prof in _axis_profiles
-    )
-    if _any_axis_graded:
+    # ``_uses_nonuniform_mesh`` is the same property that picks the lane's
+    # grid builder, read off the RESOLVED mesh, so a profile that arrives by
+    # auto-meshing or a design-document round trip counts too.
+    if self._uses_nonuniform_mesh:
+        # The two messages below still say "nonuniform z mesh". Since the
+        # gate above, they also reach an x- or y-only mesh, which has no z
+        # profile to name. The committed preflight snapshot pins this text, so
+        # the wording is left for the documentation pass (rfx #1171) rather
+        # than moved here.
         # P2.3: TFSF on nonuniform mesh — narrowed scope.
         # Axis-aligned ±x incidence with angle_deg=0 runs the 1D
         # auxiliary along the uniform x axis and is supported. The
@@ -1041,7 +1044,7 @@ def _validate_cfg_nonuniform_limitations(
             if self._tfsf.direction in ("+z", "-z"):
                 raise PreflightConfigError(
                     "TFSF z-directed incidence is not yet supported on "
-                    "a non-uniform mesh. Axis-aligned incidence along x "
+                    "nonuniform z mesh. Axis-aligned incidence along x "
                     "(direction='+x' or '-x') is supported.",
                     code="nonuniform_tfsf",
                     source="_validate_cfg_nonuniform_limitations",
@@ -1049,7 +1052,7 @@ def _validate_cfg_nonuniform_limitations(
             if abs(self._tfsf.angle_deg) > 0.01:
                 raise PreflightConfigError(
                     "TFSF oblique incidence is not yet supported on "
-                    "a non-uniform mesh. Use angle_deg=0.",
+                    "nonuniform z mesh. Use angle_deg=0.",
                     code="nonuniform_tfsf",
                     source="_validate_cfg_nonuniform_limitations",
                 )

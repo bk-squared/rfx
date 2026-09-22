@@ -612,24 +612,6 @@ def _component_is_dead(edges, component: str, idx) -> bool:
 # against a real ``NonUniformGrid`` rather than asserting it here.
 # ---------------------------------------------------------------------------
 
-def profile_is_constant(profile, *, tol: float = 0.0) -> bool:
-    """Whether a declared axis profile has one cell size everywhere.
-
-    ``None`` means the axis was never given a profile, which is the uniform
-    case, so it is constant. A traced profile is reported NOT constant: it
-    cannot be decided on the host, and that is the safe direction for a check
-    that would otherwise be skipped.
-    """
-    if profile is None:
-        return True
-    if is_tracer(profile):
-        return False
-    a = np.asarray(profile, dtype=float)
-    if a.size == 0:
-        return True
-    return bool(np.all(np.abs(a - a[0]) <= tol))
-
-
 def profile_boundary_cell(scalar_dx: float, profile, side: str) -> float:
     """The cell at one FACE of an axis: the grid's ``boundary_cell``.
 

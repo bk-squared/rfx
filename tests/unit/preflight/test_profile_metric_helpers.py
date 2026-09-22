@@ -21,7 +21,6 @@ from rfx.nonuniform import make_nonuniform_grid
 from rfx.preflight._common import (
     profile_boundary_cell,
     profile_cell_at,
-    profile_is_constant,
     profile_span_is_uniform,
 )
 
@@ -97,20 +96,6 @@ def test_the_cell_at_a_coordinate_matches_the_grids_cells():
         midpoint = float(0.5 * (edges[k] + edges[k + 1]))
         assert profile_cell_at(grid.dx, profile, midpoint) == \
             float(grid.cells("x")[grid.pad_x_lo + k]), k
-
-
-@pytest.mark.parametrize("profile,expected", [
-    (None, True),
-    (np.full(12, _DX_COARSE), True),
-    (_band_profile(), False),
-])
-def test_is_constant_matches_the_grid(profile, expected):
-    assert profile_is_constant(profile) is expected
-    if profile is not None:
-        grid = make_nonuniform_grid(
-            (_A, _B), np.full(10, 1.016e-3), float(profile[0]),
-            cpml_layers=8, dx_profile=profile, pec_faces=_PEC)
-        assert grid.is_constant("x") is expected
 
 
 def test_a_span_inside_one_zone_is_uniform_and_one_crossing_a_ramp_is_not():
