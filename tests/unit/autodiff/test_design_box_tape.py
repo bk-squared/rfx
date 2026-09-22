@@ -570,3 +570,31 @@ def test_fence_anisotropic_and_bloch_paths():
                         ("bloch", (1.0 + 0j, 1.0 + 0j, 1.0 + 0j))):
         with pytest.raises(NotImplementedError, match="design-box"):
             _resolve_design_box(spec, **{**common, flag: value})
+
+
+def test_fence_on_an_axis_the_grid_does_not_absorb_but_the_run_does():
+    """A grid built with ``cpml_axes="z"`` allocates no pad on x, yet a direct
+    ``run(cpml_axes="xyz")`` still writes a real absorber there. A pad of 0
+    on that axis means "no padding cells", not "no absorber", so the fence
+    must fall back to the axis window and refuse a box at the x face.
+    Only ``rfx.simulation.run`` can reach this; ``Simulation.forward``
+    always passes the grid's own ``cpml_axes``.
+    """
+    from rfx.grid import Grid
+    from rfx.simulation import DesignBoxSpec, _resolve_design_box
+    from rfx.core.yee import init_materials
+
+    grid = Grid(freq_max=16e9, domain=(24e-3, 20e-3, 16e-3), dx=2e-3,
+                cpml_layers=5, cpml_axes="z")
+    assert (grid.pad_x_lo, grid.pad_x_hi) == (0, 0)
+    mats = init_materials(tuple(grid.shape))
+    box = (0, 3, 4, 7, 6, 9)
+    spec = DesignBoxSpec(bounds=box, eps_r=jnp.ones((3, 3, 3), jnp.float32) * 2.0)
+    kw = dict(grid=grid, materials=mats, dt=grid.dt, use_cpml=True, use_upml=False,
+              use_debye=False, use_lorentz=False, use_kerr=False, aniso_eps=None,
+              aniso_inv_eps=None, stencil_order=2, bloch=None,
+              sheet_impedance=None, cell_metas=())
+    with pytest.raises(ValueError, match="CPML absorber"):
+        _resolve_design_box(spec, cpml_axes="xyz", **kw)
+    # The grid's own axes: x carries no absorber, the box is accepted.
+    _resolve_design_box(spec, cpml_axes="z", **kw)

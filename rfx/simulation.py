@@ -789,12 +789,27 @@ def _resolve_design_box(
     # cpml_layers=5 gives axis depths (5, 1, 1), so a box sitting on the PEC
     # wall was rejected for entering a 5-layer absorber that face does not
     # have, and the y/z floor of 1 rejected any box touching a PEC face.
+    #
+    # A per-face pad is that proxy only on an axis the GRID says it absorbs
+    # on. ``init_cpml`` builds a real profile on every axis ``cpml_axes`` of
+    # the RUN names, and a grid built with a narrower ``cpml_axes`` allocates
+    # no pad on the others -- so "pad 0" there means "no padding cells", not
+    # "no absorber" (the trap ``_axis_buffer_depths`` documents, measured at
+    # a 49 % energy change). On such an axis, and on a duck-typed grid with
+    # no per-face pads, fall back to the axis window: nothing is known to be
+    # a no-op there.
     if use_cpml or use_upml:
+        from rfx.boundaries.cpml import _axis_buffer_depths
+        depths = _axis_buffer_depths(grid, grid.cpml_layers)
+        grid_axes = getattr(grid, "cpml_axes", cpml_axes)
         for axis, name in enumerate("xyz"):
             if name not in cpml_axes:
                 continue  # no correction is written on this axis at all
-            pad_lo = int(getattr(grid, f"pad_{name}_lo", 0) or 0)
-            pad_hi = int(getattr(grid, f"pad_{name}_hi", 0) or 0)
+            if name in grid_axes and hasattr(grid, f"pad_{name}_lo"):
+                pad_lo = int(getattr(grid, f"pad_{name}_lo"))
+                pad_hi = int(getattr(grid, f"pad_{name}_hi"))
+            else:
+                pad_lo = pad_hi = int(depths[axis])
             lo, hi = bounds[2 * axis], bounds[2 * axis + 1]
             n = grid.shape[axis]
             if lo < pad_lo or hi > n - pad_hi:
