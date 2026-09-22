@@ -16,6 +16,7 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
 from rfx.api import Simulation
 from rfx.sources.sources import GaussianPulse
@@ -39,6 +40,14 @@ def _build_cavity_sim():
     return sim
 
 
+@pytest.mark.xfail(strict=True, reason=(
+    "#1196: this gate was measured on a box WITHOUT walls (#1193: forward() "
+    "never applied PEC on boundary='pec'), where no mode sits in band and "
+    "|S11| ~ 1 everywhere. With the walls the cavity's TM110 at 4.24 GHz "
+    "appears and the port's 50 ohm resistor absorbs at resonance (correct), "
+    "but |S11| also reads 0.93 at 3 GHz, off resonance, record-length "
+    "independent -- a lumped-port extraction question tracked in #1196. "
+    "Turns green when that is settled and the gate rewritten around the mode."))
 def test_pec_cavity_s11_magnitude_near_one():
     """Closed PEC cavity → all power reflected → |S11| ≈ 1 in band."""
     sim = _build_cavity_sim()

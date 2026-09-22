@@ -19,6 +19,7 @@ import warnings
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
 from rfx import Box, Simulation
 from rfx.sources.sources import GaussianPulse
@@ -43,6 +44,12 @@ def _warned_nonpassive(recorded):
     return any("non-passive" in str(w.message) for w in recorded)
 
 
+@pytest.mark.xfail(strict=True, reason=(
+    "#1196: the |S11| > 1.10 overshoot this test pinned was produced by the "
+    "open box of #1193 (forward() applied no PEC walls on boundary='pec'); "
+    "with the walls it is 1.089 / 0.994. The warning itself is pinned by "
+    "test_passivity_helper_fires_on_gross_silent_otherwise; this needs a "
+    "fixture that is non-passive for a physical reason."))
 def test_forward_lumped_s11_passivity_warns_on_gross_violation():
     """forward() must warn when the eager extractor returns |S11| >> 1."""
     sim = _cavity(eps_r=10.0)
@@ -86,6 +93,12 @@ def test_passivity_helper_fires_on_gross_silent_otherwise():
         assert _warned_nonpassive(rec) is expect, f"helper {label}: wrong warn state"
 
 
+@pytest.mark.xfail(strict=True, reason=(
+    "#1196: the |S11| > 1.10 overshoot this test pinned was produced by the "
+    "open box of #1193 (forward() applied no PEC walls on boundary='pec'); "
+    "with the walls it is 1.089 / 0.994. The warning itself is pinned by "
+    "test_passivity_helper_fires_on_gross_silent_otherwise; this needs a "
+    "fixture that is non-passive for a physical reason."))
 def test_run_passivity_warns_on_band_edge_after_consolidation():
     """run(compute_s_params=True) warns on the eps-cavity band-edge.
 
