@@ -34,7 +34,7 @@ _ABSENT = (
     "snapshot", "aniso_eps", "aniso_inv_eps", "pec_mask", "pec_wires",
     "pec_occupancy", "conformal_weights", "wire_port_sparams",
     "lumped_port_sparams", "wire_refplane_sparams", "lumped_rlc",
-    "kerr_chi3", "mag_sources", "sheet_impedance",
+    "kerr_chi3", "mag_sources", "sheet_impedance", "design_box",
 )
 _OPTIONS = (
     "boundary", "cpml_axes", "pec_axes", "periodic", "checkpoint",
