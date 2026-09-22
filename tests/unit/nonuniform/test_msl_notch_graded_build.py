@@ -521,3 +521,257 @@ def test_the_recorded_arms_meshes_are_rebuilt_from_the_record(recorded_arms,
         assert miss <= 1e-16 and rec["intended_node_miss_m"][label] <= 1e-16, (
             key, label)
         assert miss <= ins.NODE_TOL_M
+
+
+# ------------------------------------------------------- the FZ ladder's rungs
+#: The five arms of
+#: ``docs/design_notes/20260922_msl_notch_fz_ladder_predeclaration.md``.  Every
+#: one is built and put through R1 below, which is pure arithmetic on the
+#: profiles and costs nothing.
+FZ_ARMS_BUILT = ("Z6", "Z8", "Z16", "F16Z6", "ON13")
+#: The two the lattice-level refusals and the mutations run on.  R2, R3, the
+#: probe check and the port footprint each assemble the whole grid, and on
+#: these meshes that is 10 to 270 seconds an arm, so this file runs them where
+#: they can find something the other arms cannot: ON13 is the only arm with an
+#: odd number of cells across the metal (its feed sits on no node) and Z6 is a
+#: substrate cell and an in-plane cell the rung table never paired before.
+#: Every arm gets the full set anyway before it is submitted -- that is what
+#: ``--dry-run`` does, and the record carries the result per arm.
+FZ_LATTICE_ARMS = ("ON13", "Z6")
+
+
+@pytest.fixture(scope="module")
+def fz_built():
+    """The two FZ arms the lattice tests use, built and measured once."""
+    out = {}
+    for key in FZ_LATTICE_ARMS:
+        arm = ins.FZ_ARMS[key]
+        sim, prof, board = ins.build_graded(arm.rung, arm.placement,
+                                            arm.arm_length_m)
+        out[key] = (sim, prof, board, ins.realized_graded(sim))
+    return out
+
+
+@pytest.mark.parametrize("key", FZ_ARMS_BUILT)
+def test_r1_holds_on_every_new_rung(built, key):
+    """R1 on all five new arms: nodes, ratios and runways.
+
+    The rung spec is now a ``(n_z, n)`` pair with the two independent, so
+    these meshes pair a substrate cell and an in-plane cell the first note
+    never put together.  Nothing about R1 changes for them.
+    """
+    arm = ins.FZ_ARMS[key]
+    x, y, z, board = ins.profiles(arm.rung, arm.placement, arm.arm_length_m)
+    report = ins.assert_profiles_graded((x, y, z), board)
+
+    assert np.all(x[:ins.RUNWAY_CELLS] == ins.C_COARSE_M)
+    assert np.all(x[-ins.RUNWAY_CELLS:] == ins.C_COARSE_M)
+    assert np.all(y[:ins.RUNWAY_CELLS] == ins.C_COARSE_M)
+    assert np.all(y[-ins.RUNWAY_CELLS:] == ins.C_COARSE_M)
+    assert len(set(z[-ins.RUNWAY_CELLS:].tolist())) == 1
+    assert z[-1] <= ins.C_COARSE_M
+    assert report["x"]["worst_ratio"] <= ins.CAP_XY + 1e-9
+    assert report["y"]["worst_ratio"] <= ins.CAP_XY + 1e-9
+    assert report["z"]["worst_ratio"] <= ins.CAP_Z + 1e-9
+    assert max(report["intended_node_miss_m"].values()) <= ins.NODE_TOL_M
+
+    n_z, n = ins.rung_spec(arm.rung)
+    assert board["n_substrate_cells"] == n_z
+    assert board["n_across_metal"] == n
+    # The substrate band is 2*n_z cells of exactly FZ from the ground plane up.
+    assert np.all(z[:2 * n_z] == board["substrate_cell_m"])
+    assert float(np.sum(z[:n_z])) == pytest.approx(
+        case.SUBSTRATE_THICKNESS_M, abs=ins.NODE_TOL_M)
+    # And the in-plane band is one size across the metal and its margin.
+    m = board["margin_cells"]
+    assert np.sum(x == board["fine_cell_m"]) >= n + 2 * m
+    assert np.sum(y == board["fine_cell_m"]) >= n + 2 * m
+
+
+def test_r1_refuses_a_straddled_centre_that_is_not_symmetric():
+    """The odd-n arm's own R1 statement, refused when it is false.
+
+    Thirteen cells across the metal put no node on its centre line, so R1
+    asks instead that the two rows either side be one fine cell apart with the
+    centre exactly halfway.  Moving one of those rows by a tenth of a cell has
+    to be red: without this the odd-n path would assert nothing at all.
+    """
+    arm = ins.FZ_ARMS["ON13"]
+    x, y, z, board = ins.profiles(arm.rung, arm.placement, arm.arm_length_m)
+    assert board["centre_is_a_node"] is False
+    ins.assert_profiles_graded((x, y, z), board)          # the real mesh
+
+    f = board["fine_cell_m"]
+    for label, needle in (("trace_y_centre", "straddle"),
+                          ("stub_x_centre", "straddle")):
+        st = board["centre_straddle"][label]
+        lo, hi = st["nodes_m"]
+        bad = dict(board, centre_straddle=dict(
+            board["centre_straddle"],
+            **{label: dict(st, nodes_m=(lo - 0.1 * f, hi))}))
+        with pytest.raises(AssertionError, match=needle):
+            ins.assert_profiles_graded((x, y, z), bad)
+    # A pair that is symmetric but a whole cell wide apart is refused too.
+    st = board["centre_straddle"]["trace_y_centre"]
+    lo, hi = st["nodes_m"]
+    bad = dict(board, centre_straddle=dict(
+        board["centre_straddle"],
+        trace_y_centre=dict(st, nodes_m=(lo - f, hi + f))))
+    with pytest.raises(AssertionError, match="apart and this arm"):
+        ins.assert_profiles_graded((x, y, z), bad)
+
+
+@pytest.mark.parametrize("key", FZ_LATTICE_ARMS)
+def test_r3_the_lattice_built_the_declared_board_on_a_new_rung(fz_built, key):
+    _sim, _prof, board, g = fz_built[key]
+    n = board["n_across_metal"]
+    f = board["fine_cell_m"]
+    ins._check_realized_fields(g, board)
+
+    assert g["n_sheet_planes"] == 1
+    assert g["n_volume_cells"] == 0
+    assert g["eps_below_sheet"] == pytest.approx(case.EPS_R_SUBSTRATE)
+    assert g["eps_above_sheet"] == 1.0
+    assert g["sheet_plane_z_m"] == pytest.approx(case.SUBSTRATE_THICKNESS_M,
+                                                 abs=ins.NODE_TOL_M)
+    assert g["n_trace_rows"] == g["n_stub_cols"] == n + 1
+    assert g["trace_width_node_span_m"] == pytest.approx(n * f,
+                                                         abs=ins.NODE_TOL_M)
+    assert g["stub_attached"] and g["stub_contiguous"]
+    assert g["stub_length_m"] == pytest.approx(case.STUB_LENGTH_M,
+                                               abs=ins.NODE_TOL_M)
+    assert g["n_ports"] == 2
+    # The metal is solved at its drawn size on the offset arm and 0.7 of a
+    # cell wider on the on-node one -- the same statement as the first note's
+    # two arms, on a rung that did not exist then.
+    solved = g["trace_width_node_span_m"] + 2.0 * ins.EDGE_OFFSET * f
+    if board["edge_offset_m"] == 0.0:
+        assert solved > case.TRACE_WIDTH_M * 1.05
+    else:
+        assert solved == pytest.approx(case.TRACE_WIDTH_M, abs=1e-12)
+
+
+def test_the_feed_of_the_odd_rung_sits_on_the_metals_centre(fz_built):
+    """ON13's port goes where the metal's centre is, not on the nearest node.
+
+    The MSL port lays its width span at the coordinate it is given plus and
+    minus half the trace width, so a node half a fine cell off centre would
+    drive the strip asymmetrically.  The other arms are unchanged: their
+    centre IS a node and that node is what they pass.
+    """
+    _sim, _prof, board, _g = fz_built["ON13"]
+    f = board["fine_cell_m"]
+    assert board["centre_is_a_node"] is False
+    assert board["port_centre_y_m"] == board["trace_centre_y_m"]
+    lo, hi = board["centre_straddle"]["trace_y_centre"]["nodes_m"]
+    assert board["port_centre_y_m"] - lo == pytest.approx(f / 2.0, abs=1e-12)
+    assert hi - board["port_centre_y_m"] == pytest.approx(f / 2.0, abs=1e-12)
+
+    _sim2, _p2, even, _g2 = fz_built["Z6"]
+    assert even["centre_is_a_node"] is True
+    assert even["port_centre_y_m"] == even["node"]["trace_y_centre_node"]
+
+
+def test_r2_and_the_port_checks_hold_on_a_new_rung(fz_built):
+    """R2, the probe runway and the feed footprint on the odd-n arm."""
+    sim, _prof, board, _g = fz_built["ON13"]
+    report = ins.assert_preflight_graded(sim)
+    assert report, "preflight returned nothing at all"
+    for line in report:
+        for needle in ins.R2_FORBIDDEN:
+            assert needle not in line
+
+    planes = ins.probe_planes(sim)
+    runway = ins.assert_probes_on_the_uniform_runway(sim, ins.C_COARSE_M)
+    assert len(planes) == 2 and len(runway["ports"]) == 2
+    for port in runway["ports"]:
+        assert port["n_cells_off_coarse"] == 0
+
+    got = ins.assert_port_footprint_in_fine_band(sim, board)
+    lo, hi = board["band_y_trace_m"]
+    for port in got["ports"]:
+        assert lo <= port["y_lo_m"] and port["y_hi_m"] <= hi
+        assert port["pad_cells_lo"] >= 1 and port["pad_cells_hi"] >= 1
+        assert port["eps_r_sub"] == pytest.approx(case.EPS_R_SUBSTRATE)
+
+
+# --------------------------------------- the three mutations, on the new rungs
+@pytest.mark.parametrize("key", FZ_LATTICE_ARMS)
+@pytest.mark.parametrize("field,value,needle", [
+    ("n_trace_rows", 99, "node rows"),
+    ("n_volume_cells", 7, "PEC VOLUME"),
+    ("stub_attached", False, "not joined"),
+    ("stub_length_m", case.STUB_LENGTH_M - 1e-6, "realized stub length"),
+    ("trace_width_node_span_m", 1e-3, "node span"),
+    ("eps_above_sheet", case.EPS_R_SUBSTRATE, "not air"),
+])
+def test_mutation_a_on_a_new_rung(fz_built, key, field, value, needle):
+    """Mutation (a) on the FZ rungs: the R3 body itself.
+
+    A real measurement of the arm with one field moved.  An emptied check body
+    passes every arm and every mutant alike, and a rung table that grew
+    without this would carry that hole into five new arms.
+    """
+    _sim, _prof, board, measured = fz_built[key]
+    g = dict(measured)
+    ins._check_realized_fields(g, board)          # the untouched measurement
+    g[field] = value
+    with pytest.raises(AssertionError, match=needle):
+        ins._check_realized_fields(g, board)
+
+
+def test_mutation_b_on_a_new_rung_a_stub_one_coarse_cell_short():
+    """Mutation (b) on ON13: the declared board, stub 127 um short.
+
+    Every helper the good arm calls is called here, so the refusal can only
+    come from the measurement.
+    """
+    arm = ins.FZ_ARMS["ON13"]
+    sim, prof, board = ins.build_graded(
+        arm.rung, arm.placement, arm.arm_length_m,
+        _mutate_stub_short_m=ins.C_COARSE_M)
+    ins.assert_profiles_graded(prof, board)       # the MESH is untouched
+    with pytest.raises(AssertionError, match="realized stub length"):
+        ins.assert_realized_graded(sim, board)
+
+
+def test_mutation_c_on_a_new_rung_the_offset_arm_drawn_to_its_nodes():
+    """Mutation (c) on Z6: the offset mesh with the sheets drawn to their nodes.
+
+    The realized node count, the stub length and the joint are all still
+    right, so only the edge-placement check can see it.  ON13 cannot carry
+    this mutation: its declared offset is already zero, so drawing to the
+    nodes IS the arm.
+    """
+    arm = ins.FZ_ARMS["Z6"]
+    assert arm.placement == "offset"
+    sim, prof, board = ins.build_graded(
+        arm.rung, arm.placement, arm.arm_length_m, _mutate_draw_offset=0.0)
+    ins.assert_profiles_graded(prof, board)
+    g = ins.realized_graded(sim)
+    assert g["n_trace_rows"] == board["n_across_metal"] + 1
+    assert g["stub_length_m"] == pytest.approx(case.STUB_LENGTH_M,
+                                               abs=ins.NODE_TOL_M)
+    with pytest.raises(AssertionError, match="outermost realized node"):
+        ins.assert_realized_graded(sim, board)
+
+
+def test_the_two_records_never_hold_the_same_arm():
+    """Which file an arm belongs in, and that no arm belongs in both."""
+    assert set(ins.ARMS) & set(ins.FZ_ARMS) == set()
+    assert set(ins.UNIFORM_ARMS) & set(ins.FZ_ARMS) == set()
+    for key in ins.ARMS:
+        assert ins.record_kind(key) == "graded"
+        assert ins.default_out(key) == ins.DEFAULT_OUT
+    for key in ins.UNIFORM_ARMS:
+        assert ins.record_kind(key) == "graded"
+    for key in ins.FZ_ARMS:
+        assert ins.record_kind(key) == "fz"
+        assert ins.default_out(key) == ins.DEFAULT_FZ_OUT
+    assert ins.default_out(None) == ins.DEFAULT_OUT
+    with pytest.raises(SystemExit, match="no record holds"):
+        ins.record_kind("D_off")
+    # The first record's arm list is what its own replay pins, and it did not
+    # grow: the FZ arms are not in it.
+    assert sorted(ins.ALL_ARMS) == ["A_off", "A_off_longarms", "A_on", "B_off",
+                                    "C_off", "U_h2", "U_h4", "U_h6"]
