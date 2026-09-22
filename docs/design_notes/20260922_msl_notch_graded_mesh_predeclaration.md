@@ -438,37 +438,59 @@ Both sides of the two cost ratios are grid cells and wall seconds measured by th
 
 The GPU model is not recorded for A_on, A_off, B_off, C_off, A_off_longarms: those arms ran before the instrument read `device_kind`, and their blocks are left as they were measured rather than back-filled.
 
-### Conclusions (leader, after reading the record, the five figures and R.0)
+### Conclusions (leader, after reading the record, the eight figures, R.0 and A.1)
 
 **The physics.** On a mesh that is fine only across the metal edges and through
 the substrate, the stub notch converges from above along the substrate-cell
 ladder 42.3 → 31.75 → 21.2 µm: 3.7474 → 3.7322 → 3.7166 GHz, the last two
 rungs 0.42 % apart (W1 held). The convergence is FIRST order in the cell
 (fitted 0.92), not second, and its limit is 3.682 GHz — 0.22 % above the
-openEMS tutorial's 3.6744 GHz and 0.33 % from the uniform ladder's own
-extrapolated 3.67 GHz (W3 held). The two ladders were not run on one board:
-the graded board's line sits 2.159 mm from the y_lo absorber instead of the
-case's 1.55 mm (R.0 item 1), and nothing here measures what that 609 µm does
-to the notch; what the record supports is that the two ladders extrapolate
-to limits 0.33 % (12 MHz) apart. What the finest rung actually reads is
-still 1.15 % high, so the case's 1 % bar fired (W2). Its 2 dB magnitude
-excess is only on the notch's two skirts (11 bins in 3.509–3.553 GHz and 13
-in 3.837–3.890 GHz, every one 121–216 MHz from the reference notch, passband
-maximum 0.64 dB — recomputed by the reviewer from the record, correcting the
-intervals first written here): the frequency offset counted a second time.
-The passband agrees; the notch depth reads −50.8 dB against the reference's
-−53.4 dB, a 2.6 dB gap the bar does not judge (both curves are below the
-−20 dB null level there).
+openEMS tutorial's 3.6744 GHz. What the finest rung actually reads is still
+1.15 % high, so the case's 1 % bar fired (W2). Its 2 dB magnitude excess is
+only on the notch's two skirts (11 bins in 3.509–3.553 GHz and 13 in
+3.837–3.890 GHz, every one 121–216 MHz from the reference notch, passband
+maximum 0.64 dB — recomputed by the reviewer from the record): the frequency
+offset counted a second time. The passband agrees; the notch depth reads
+−50.8 dB against the reference's −53.4 dB, a 2.6 dB gap the bar does not
+judge (both curves are below the −20 dB null level there).
+
+**The uniform ladder is not a ladder, and W3 fired for that reason.** The
+three uniform reference arms this recorder measured (A.1) read 3.8757 /
+3.7944 / 3.7484 GHz at h/2, h/4, h/6. Their successive differences, 81 MHz
+then 46 MHz, are in the ratio 1.77, and on an h/2–h/4–h/6 ladder any
+positive convergence order gives at least 1.71 (order → 0) — so the fitted
+order is 0.06 and the Richardson limit runs away (1.86 GHz, 97.6 % from the
+graded limit: W3 FIRED by its frozen rule). The record shows why: the
+uniform mesh solves a different board at each rung. Its strip realizes 4, 9
+and 14 node rows (508, 571.5, 592.7 µm as a strip) and its stub 12065,
+12001.5 and 12022.7 µm — the open end lands wherever the nearest node is —
+so the notch is not a smooth function of the cell size and no order can be
+fitted to it. The graded ladder keeps the strip at 600 µm and the stub at
+12000.0 µm on every rung by construction, which is what makes its 0.92 an
+order at all. The consequence for the window: the comparison W3 asked for
+(do the two meshes extrapolate to one answer) cannot be made from the
+uniform ladder as measured, and the 3.67 GHz the ledger quotes as the uniform
+extrapolation is not derivable from a power law either (its triple has
+difference ratio 1.57, below the order-zero bound). What stands is the graded
+limit's own 0.22 % distance from the external reference. The uniform ladder's
+own mesh statement fired as well (1.21 % between h/4 and h/6), which is the
+case's declared expected failure reproduced here at one commit. The
+re-measured uniform notches differ from the ledger's triple by up to 0.24 %
+(h/4: 3.7944 vs 3.8034), consistent with the frequency-grid change the case
+records (63.6 → 15.8 MHz bins); the estimator's sub-bin fit on the old grid
+is the likelier cause, not measured here.
 
 **What the mesh buys.** At the substrate resolution of the uniform h/6 rung
-(42.3 µm) the graded mesh solves in 106 s instead of 661 s (0.16) with the
-same class of notch error (3.7474 vs the uniform rung's 3.7537 GHz, both about
-2 % high). The graded C rung (21.2 µm substrate cell, 2.4 M interior cells,
-1008 s) reaches a resolution the uniform mesh could not finish (h/8, 25 M
-cells, > 73 min) and brings the notch to 1.15 %. A microstrip stub notch is
-therefore reachable to about 1 % on this solver at 17 min on one RTX 4090,
-where the uniform mesh stops at 2 % after 11 min and does not finish the next
-rung.
+(42.3 µm) the graded mesh solves in 106 s instead of the 672 s this recorder
+measured for h/6 (0.158 of the wall, 0.115 of the 13.44 M grid cells), with
+the same class of notch error (3.7474 vs the uniform rung's 3.7484 GHz, both
+2.0 % high). The graded C rung (21.2 µm substrate cell, 3.39 M grid cells,
+1008 s, 1.50 of the h/6 wall) reaches a resolution the uniform mesh could not
+finish (h/8, 25 M cells, > 73 min in the case's own run) and brings the notch
+to 1.15 %. A microstrip stub notch is therefore reachable to about 1 % on
+this solver at 17 min on one RTX 4090, where the uniform mesh stops at 2 %
+after 11 min and does not finish the next rung. All eight arms ran at one
+commit on the same GPU model (R.5).
 
 **Where the residual is.** The edge-offset placement (a node 0.35 cell inside
 each metal edge) RAISED the notch by 0.40 % at rung A relative to the on-node
@@ -477,30 +499,35 @@ also differ in fine cell (47.2 vs 50.0 µm), band margin and the width the
 port's Laplace feed sees, and every one of those differences works in the
 opposite direction, so the sign stands and 0.40 % is a floor on the offset's
 own effect (reviewer's reading of the record): the solved strip width is not
-what keeps the notch high. The first-order term that
-remains sits elsewhere — the sheet on the substrate-top plane (the field
-singularity at a strip's edge in the plane normal to the sheet is resolved by
-FZ, and every rung cuts FZ and F together, so the ladder cannot separate the
-two), the T-junction, or the open end's fringing. Which one is a separate
-declaration; nothing here identifies it.
+what keeps the notch high. The first-order term that remains sits elsewhere —
+the sheet on the substrate-top plane (the field singularity at a strip's edge
+in the plane normal to the sheet is resolved by FZ, and every rung cuts FZ and
+F together, so the ladder cannot separate the two), the T-junction, or the
+open end's fringing. Which one is a separate declaration; nothing here
+identifies it.
 
 **What this changes for a user.** A `dx_profile`/`dy_profile`/`dz_profile`
 mesh built by hand around a microstrip stub notch reproduces an external
 solver's notch to 1.15 % at the finest affordable rung and extrapolates to
-0.22 %, at 0.16 of the uniform cost at equal substrate resolution. That is
-one structure, one port family (MSL, `mode="laplace"`), ratio ≤ 1.3 in plane,
+0.22 %, at 0.16 of the uniform cost at equal substrate resolution, and — the
+part the uniform mesh cannot give — its ladder is a ladder: the same board at
+every rung, so a convergence order can be read off it. That is one
+structure, one port family (MSL, `mode="laplace"`), ratio ≤ 1.3 in plane,
 ports and absorbers on uniform runways. The support-matrix sentence for "MSL
 S-matrix + nonuniform mesh" is queued on #1171 with this record as its
 witness; the row does not change in this PR.
 
 **Two facts about the instrument that a reader of the numbers needs.** The
-board is the case's except that the line sits 2.159 mm from the y_lo face
-instead of 1.55 mm (the absorber runway did not fit under the fine band;
-R.0 item 1). And the arms were run twice: the first attempt could not name
-its commit (`git archive` leaves nothing for `git rev-parse`; R.0 item 5) and
-the instrument now refuses to record such an arm; the second attempt read
-the same notch to every printed digit on all four repeated arms.
+graded board is the case's except that the line sits 2.159 mm from the y_lo
+face instead of 1.55 mm (the absorber runway did not fit under the fine
+band; R.0 item 1); the uniform reference arms use the case's board unchanged,
+so the two ladders were not run on one board and nothing here measures what
+that 609 µm does to the notch. And the graded arms were run twice: the first
+attempt could not name its commit (`git archive` leaves nothing for
+`git rev-parse`; R.0 item 5) and the instrument now refuses to record such an
+arm; the second attempt read the same notch to every printed digit on all
+four repeated arms.
 
-**Not re-run.** The finest rung missed the 1 % bar by 0.15 %; by the fitted
-order a fourth rung (n_z = 16) would land near 0.9 %. That is a new
+**Not re-run.** The finest graded rung missed the 1 % bar by 0.15 %; by the
+fitted order a fourth rung (n_z = 16) would land near 0.9 %. That is a new
 declaration with a stated purpose, not a re-run of this one.
