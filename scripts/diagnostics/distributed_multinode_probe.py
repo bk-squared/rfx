@@ -207,7 +207,7 @@ def main():
                                        num_processes=args.process_count,
                                        process_id=args.process_id,
                                        local_device_ids=[args.local_device_id],
-                                       initialization_timeout=120)
+                                       initialization_timeout=900)
             initialized = True
         assert len(jax.local_devices()) == 1, str(jax.local_devices())
         assert len(jax.devices()) == args.process_count, str(jax.devices())

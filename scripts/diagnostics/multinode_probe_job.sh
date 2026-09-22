@@ -18,6 +18,7 @@ case "$RFX_KIND" in
   *) echo "Invalid RFX_KIND: $RFX_KIND"; exit 1 ;;
 esac
 job=${RFX_KIND}-${RFX_NX}
+echo "multinode worker start $(date -u +%Y-%m-%dT%H:%M:%SZ) rank=$rank world=$world host=$HOSTNAME coordinator=$coordinator"
 out=$RFX_RUNS_ROOT/multinode-$RFX_STAMP/$job
 mkdir -p "$out"
 work=$(mktemp -d /tmp/rfx-multinode.XXXXXX)

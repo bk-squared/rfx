@@ -66,6 +66,8 @@ def main():
                                     f"{args.tooling_sha}:scripts/diagnostics/{name}"])
                            + " > " + shlex.quote(str(payload / name)))
     preparation.append(command(["git", "-C", payload / "source.git", "cat-file", "-e", f"{args.tooling_sha}^{{commit}}"]))
+    preparation.append("find " + shlex.quote(str(payload)) + " -name '._*' -delete")
+    preparation.append("test \"$(find " + shlex.quote(str(payload)) + " -name '._*' | wc -l | tr -d ' ')\" = 0")
     (out / "prepare-upload.sh").write_text("\n".join(preparation) + "\n")
     for slab in (100, 200, 400):
         job = f"two-{slab}"
