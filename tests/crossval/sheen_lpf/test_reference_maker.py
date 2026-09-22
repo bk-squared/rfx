@@ -92,7 +92,7 @@ def test_dry_run_prints_the_plan_and_the_delta_list():
 def test_delta_list_says_what_changes():
     m = _load_maker()
     delta = m.DELTA_LIST
-    assert len(delta) == 13, f"expected thirteen delta entries, got {len(delta)}"
+    assert len(delta) == 14, f"expected fourteen delta entries, got {len(delta)}"
 
     # 1-5: the structure and the box.
     assert "eps_r 2.2" in delta[0] and "0.794 mm" in delta[0]
@@ -126,8 +126,33 @@ def test_delta_list_says_what_changes():
         "delta 11 does not give the substrate cell count per rung"
     )
 
-    # 13: what does NOT change.
-    assert "['PML_8','PML_8','MUR','MUR','PEC','MUR']" in delta[12]
+    # 4: the tutorial's own box, which is 100 x 30 x 3 mm (x -50..+50,
+    # y -9..+21, z 0..3), not 100 x 21 x 3.
+    assert "100 x 30 x 3 mm" in delta[3], (
+        "delta 4 misstates the tutorial's box"
+    )
+
+    # 14: the mesh refinement around the metal, inherited from the script.
+    assert delta[12].startswith("DELTA 14 (mesh refinement around the metal)")
+    assert "resolution/4" in delta[12] and "smooths ONCE per axis" in delta[12], (
+        "delta 14 does not contrast the tutorial's second smoothing with this "
+        "builder's single one"
+    )
+    assert "PATCH_X0 and PATCH_X1" in delta[12], (
+        "delta 14 does not name the wide section's two impedance steps"
+    )
+    assert "feed_edges_realized" in delta[12], (
+        "delta 14 does not say where the realized feed widths are recorded"
+    )
+    assert "no DELTA 13" in delta[12], (
+        "delta 14 does not account for the missing number"
+    )
+
+    # 15th slot is the closing entry: what does NOT change.
+    assert "['PML_8','PML_8','MUR','MUR','PEC','MUR']" in delta[13]
+    assert "see delta 14" in delta[13], (
+        "the closing entry still claims the thirds-rule placement is unchanged"
+    )
 
 
 def test_the_shared_helpers_are_not_copied_into_this_maker():
@@ -255,6 +280,40 @@ def test_copy_proof_reddens_when_the_rung_builder_drifts():
         "substrate:\n" + result.stdout
     )
     assert "two declared rung substitutions" in result.stdout
+
+
+def test_the_excitation_is_the_scripts_own():
+    """The launched spectrum is derived, not written by hand.
+
+    ``SetGaussExcite`` sits outside the build block -- the script sets it in
+    ``_openems_common_setup``, which the block excludes on purpose -- so it gets
+    its own derivation from the same renames.
+    """
+    m = _load_maker()
+    proof = m._copy_proof()
+    assert proof["excitation_matches"] and proof["excitation_rung_matches"]
+    assert proof["excitation_script"].strip() == "fdtd.SetGaussExcite(F_MAX / 2, F_MAX / 2)"
+    # And the record carries the source line, not a number formatted from a
+    # constant that nothing compares against.
+    art = m._build_artifact({}, {}, {}, ["stage_a"])
+    assert "SetGaussExcite(F_MAX / 2, F_MAX / 2)" in art["meta"]["excitation"]
+
+
+def test_excitation_proof_reddens_when_the_launched_band_moves():
+    """Mutation (b): halve the excitation centre and corner.
+
+    Every helper call, every constant and the whole plan still work; only the
+    frequencies openEMS launches change. Before the derivation existed this
+    mutation left the self-check green.
+    """
+    result = _self_check_on_a_mutant(
+        "    fdtd.SetGaussExcite(F_MAX / 2, F_MAX / 2)",
+        "    fdtd.SetGaussExcite(F_MAX / 4, F_MAX / 4)")
+    assert result.returncode != 0, (
+        "the self-check passed on a builder that launches a different band:\n"
+        + result.stdout
+    )
+    assert "SetGaussExcite statement IS the script's" in result.stdout
 
 
 def test_the_check_itself_can_fail():

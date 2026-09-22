@@ -100,7 +100,7 @@ it.
     DELTA 4  arms and box: each feed is extended by EXTEND_FEED = 4.0 mm of
              matched 50 ohm line, so the domain is 27.472 x 26.320 x 3.794 mm
              (x propagation, y transverse, z stack) against the tutorial's
-             100 x 21 x 3 mm. Y_CLEAR = 3.0 mm of substrate clears the wide
+             100 x 30 x 3 mm. Y_CLEAR = 3.0 mm of substrate clears the wide
              section transversely; Z_AIR = 3.0 mm of air sits above the trace.
     DELTA 5  axis map: rfx/openEMS x is the Sheen paper's y (propagation) and
              rfx/openEMS y is its x (transverse). The board is laid out in
@@ -239,6 +239,80 @@ the run, this script records the nearest mesh line to each declared feed edge,
 the snap distance, and the width those lines bracket. It changes nothing about
 the mesh -- the thirds-rule offsets are the script's and the tutorial's -- it
 makes the number readable instead of re-derivable.
+
+TWO BLOCKS OF THAT HEADER THAT DO NOT TRANSFER, QUOTED IN FULL SO THE JUDGEMENT
+IS CHECKABLE (the addendum's point is that a summary is how the decisive
+sentence gets dropped, so they are pasted whole and then marked)
+-------------------------------------------------------------------------------
+The first, ``07_sheen_lpf.py`` lines 135-153:
+
+    "THE MESH STAYS dx = 200 um, and the on-lattice redraw the design note
+    prescribes (S1.3, "dx = h_sub/n") is REFUSED HERE WITH THE MEASUREMENT
+    THAT REFUSES IT. dx = H_SUB/4 = 198.5 um does put the sheet exactly on
+    the DECLARED interface and realize h_sub = 794.0 um exactly - but it
+    realizes the two nominally identical 50-ohm feeds 12 and 13 node rows
+    wide (2183.5 vs 2382.0 um; HJ Z0 54.22 vs 51.19 ohm), because their
+    centres sit at different sub-cell offsets. A mesh that makes a
+    symmetric board asymmetric is a worse board than one that realizes
+    h_sub 0.76% thick, and `assert_realized_metal` now refuses it. Finer
+    aligned meshes that restore the symmetry (H_SUB/5 = 158.8 um, H_SUB/6 =
+    132.3 um; both feeds 15 and 18 rows) also change `n_probe_offset`'s
+    physical meaning - it is 30 CELLS, derived at :459-464 as 6 mm >=
+    5*h_sub upstream with a 3.2 mm >= lambda_g/4 downstream clearance - and
+    a mesh change plus a recipe re-derivation must not ride along with a
+    realization change. The S1.3 pathology does not arise at dx = 200 um:
+    the sheet lands on the realized substrate TOP (the dielectric occupies
+    cells 0..3), not buried inside the laminate, so there is no vacuum slot
+    and nothing is absorbed by a tie rule."
+
+The second, lines 154-175:
+
+    "THE PORT MISMATCH IS RE-MEASURED, NOT CLOSED. :73-86 records that
+    `add_msl_port` is handed the DECLARED width=W_FEED (2413 um) and
+    height=H_SUB (794 um) while the metal realizes something else. Under
+    the contract that gap is now visible per port and printed by
+    `assert_realized_metal`: each port's cross-section spans 13 node rows
+    (43..55 and 84..96) while its feed metal realizes 12 (44..55, 85..96) -
+    the port rounds each face to the NEAREST node while a sheet footprint
+    is closed [lo, hi], so the port integrates one row that carries no
+    metal. Handing the port the contract's realized extent (2200 um) does
+    fix the rows - measured, both ports then span exactly the metal's 12 -
+    but `width` also sets the Hammerstad-Jensen reference impedance the
+    wave split uses (a = (V + Z0*I)/2, b = (V - Z0*I)/2, rfx/api/_sparams.py),
+    and HJ(2200, 800) = 54.22 ohm on a line whose own passband median
+    Re(Z0) the current leg measures at 51.91 ohm (pre-#931: 50.30 ohm).
+    That is a 2.31-ohm mismatch, so the earlier 4-ohm rationale is historical.
+    Changing the reference to fix a one-row aperture is still not a measured
+    remedy for this port; the committed leg does not settle that choice.
+    The real remedy is S1.9's: the MSL port takes its
+    cross-section from the realized sheet footprint and its reference
+    impedance from the line, which is core work (#729 class), not a script
+    constant. Left open, measured, and named."
+
+**Both are N/A here, for one reason, and it is the same reason for both: they
+are about rfx's single-scalar cubic lattice and rfx's own port reference
+impedance, neither of which exists on the openEMS side.** rfx's
+``Simulation(dx=)`` is one scalar for all three axes, so every declared
+dimension lands where that one number puts it, and the first block is the
+measurement of what happens when the scalar is set to h_sub/4: the two
+nominally identical feeds fall on different sub-cell offsets and come out 12
+and 13 rows wide. openEMS's mesh is non-uniform and line-based -- this builder
+adds explicit lines at 0, LX and both wide-section faces and thirds-rule pairs
+at both feed edges, then smooths each axis separately -- so "198.5 um" here is
+a smoothing target per axis, not a lattice pitch that every face must land on.
+It is also, and this is the part that reads as a coincidence and is not one,
+the committed openEMS leg's own ``res_um``: 198.5 is what
+``min(c0/(F_MAX*sqrt(eps_r))/50, H_SUB/4)`` returns, which is where delta 10
+gets it. The asymmetry the first block refuses is an rfx-lattice
+outcome and does not follow from that number being the same.
+The second block is about ``add_msl_port`` being handed a declared width while
+rfx's sheet realizes another, and about the Hammerstad-Jensen reference
+impedance rfx's wave split uses. openEMS's ``AddMSLPort`` takes the port's
+cross-section as a box in metres and, on the second CalcPort pass, the system
+impedance as an explicit 50 ohm (delta 8); no Hammerstad-Jensen reference is
+computed anywhere on this side. What IS comparable -- how far the grid's lines
+sit from each declared feed edge, and what width they bracket -- is measured
+and recorded per rung, which is the tick above.
 
 A failed gate exits non-zero and names itself. It also leaves its evidence: the
 record built so far -- every array measured, the energy-sum numbers, and a
@@ -428,7 +502,7 @@ DELTA_LIST = [
     "line runs along y = 0.",
     "DELTA 4 (arms and box): each feed is extended by EXTEND_FEED = 4.0 mm of "
     "matched 50 ohm line, so the domain is 27.472 x 26.320 x 3.794 mm (x "
-    "propagation, y transverse, z stack) against the tutorial's 100 x 21 x 3 mm. "
+    "propagation, y transverse, z stack) against the tutorial's 100 x 30 x 3 mm. "
     "Y_CLEAR = 3.0 mm of substrate clears the wide section transversely and "
     "Z_AIR = 3.0 mm of air sits above the trace.",
     "DELTA 5 (axis map): rfx/openEMS x is the Sheen paper's y (propagation) and "
@@ -480,10 +554,28 @@ DELTA_LIST = [
     "DELTA 12 (CSX length unit): SetDeltaUnit(1.0), metres, in place of the "
     "tutorial's 1e-6. Copied from the script; every reported length is "
     "converted to um or mm at the reporting boundary, once.",
+    "DELTA 14 (mesh refinement around the metal): the tutorial smooths each of "
+    "x and y TWICE -- once at resolution/4 right after adding the thirds-rule "
+    "lines at its trace edges, and again at resolution after adding the arm "
+    "ends -- so its cells are up to four times finer across the trace than "
+    "across the board. This builder smooths ONCE per axis, at res, and lays "
+    "thirds-rule lines at the two 50 ohm feed edges only: the wide section's "
+    "four edges (x = PATCH_X0 and PATCH_X1, the two impedance steps, and "
+    "y = PATCH_Y_LO and PATCH_Y_HI) get an explicit mesh line each and no "
+    "straddling pair. That is the script's builder, inherited verbatim and "
+    "proved so, not a choice made here, and it is recorded rather than judged: "
+    "the run reports what the grid made of each declared feed edge, per rung, "
+    "in meta.feed_edges_realized (nearest line to each edge, the snap, and the "
+    "width the two lines bracket), and the realized cell sizes per axis in "
+    "meta.mesh_realized. There is no DELTA 13: this entry was written after the "
+    "first twelve were numbered and the numbers are not reassigned, so that a "
+    "citation of 'delta 9' keeps meaning what it meant.",
     "NOTHING ELSE: the boundary list ['PML_8','PML_8','MUR','MUR','PEC','MUR'], "
-    "the thirds-rule mesh offsets at the feed edges, MSLPort with port 1 "
-    "excite=-1, and the zero-thickness PEC sheets on z = H_SUB are the script's "
-    "and the tutorial's alike.",
+    "MSLPort with port 1 excite=-1, the zero-thickness PEC sheets on z = H_SUB, "
+    "and SetGaussExcite's own centre-equals-corner form are the script's and "
+    "the tutorial's alike. The thirds-rule OFFSETS are the same recipe too -- "
+    "but where they are applied, and how often each axis is smoothed, is not: "
+    "see delta 14.",
 ]
 
 # ---------------------------------------------------------------------------
@@ -508,6 +600,15 @@ COPY_SUBSTITUTIONS = [
     ("f_max", "F_MAX"),
 ]
 COPY_SUBSTITUTION_COUNTS = {"FDTD.": 3, "CSX.": 3, "f_max": 1}
+
+# The excitation is NOT in the build block: the script sets it inside
+# _openems_common_setup, which the build block deliberately excludes (delta 9
+# declines that function's stop criteria). It is therefore derived separately,
+# by the SAME declared renames, from that function's own SetGaussExcite
+# statement. Without this the one line that decides what frequencies are
+# launched would be the only line in either builder that nothing compares
+# against -- changing it to F_MAX / 4 used to leave every check green.
+EXCITATION_CALL = "SetGaussExcite"
 
 # The TWO substitutions that turn the copied builder's body into the rung
 # builder's body: the resolution factor, and the substrate's own z lines.
@@ -710,6 +811,42 @@ def _script_builder_slice() -> str:
     return _slice_builder(body, f"{SCRIPT_REL_PATH}::{SCRIPT_FUNCTION}")
 
 
+def _statement_containing(text: str, needle: str, what: str) -> str:
+    """The one line of ``text`` that contains ``needle``, verbatim."""
+    hits = [ln for ln in text.split("\n") if needle in ln]
+    if len(hits) != 1:
+        raise RuntimeError(
+            f"{what}: expected exactly one line containing {needle!r}, found "
+            f"{len(hits)}"
+        )
+    return hits[0]
+
+
+def _script_excitation_line() -> str:
+    """The script's own ``SetGaussExcite`` statement, with the declared renames.
+
+    Read off disk from ``_openems_common_setup``, not from the build block:
+    that is where the script sets it, and the build block excludes that
+    function on purpose (delta 9).
+    """
+    setup = _script_function_source(SCRIPT_SETUP_FUNCTION)
+    line = _statement_containing(
+        setup, EXCITATION_CALL, f"{SCRIPT_REL_PATH}::{SCRIPT_SETUP_FUNCTION}")
+    for old_, new_ in COPY_SUBSTITUTIONS:
+        line = line.replace(old_, new_)
+    return line
+
+
+def _builder_excitation_line(func) -> str:
+    """A builder's own ``SetGaussExcite`` statement, from its source.
+
+    Read from the body only (``_builder_body_after_kw`` starts at ``kw = {}``),
+    so the docstring's mention of the same call is not what gets compared.
+    """
+    return _statement_containing(
+        _builder_body_after_kw(func), EXCITATION_CALL, func.__name__)
+
+
 def _copy_proof() -> dict:
     """Derive both builders from the script's, and report what matched.
 
@@ -731,6 +868,10 @@ def _copy_proof() -> dict:
     for old, new in RUNG_SUBSTITUTIONS:
         derived_rung = derived_rung.replace(old, new)
 
+    exc_script = _script_excitation_line()
+    exc_mine = _builder_excitation_line(_build_sheen_board)
+    exc_rung = _builder_excitation_line(_build_sheen_board_at_rung)
+
     return {
         "script_slice": script,
         "mine": mine,
@@ -741,6 +882,11 @@ def _copy_proof() -> dict:
         "rung_matches": derived_rung == rung,
         "copy_counts": {old: script.count(old) for old, _ in COPY_SUBSTITUTIONS},
         "rung_counts": {old: mine.count(old) for old, _ in RUNG_SUBSTITUTIONS},
+        "excitation_script": exc_script,
+        "excitation_mine": exc_mine,
+        "excitation_rung": exc_rung,
+        "excitation_matches": exc_script == exc_mine,
+        "excitation_rung_matches": exc_script == exc_rung,
     }
 
 
@@ -1051,6 +1197,14 @@ def _run_stage_b(*, label: str, sim_root: str, threads: int,
                 feed_shift_um=0.0,
                 measplane_shift_um=0.45 * out_len * 1e6, port_obj=port1,
                 csx_unit_m=CSX_UNIT_M),
+            "excitation_energy_peak_note": (
+                "read from port 1's uf_inc AFTER both CalcPort passes, so on "
+                "Stage B it is the ref_impedance = 50 pass's incident channel. "
+                "Stage A runs only the unreferenced pass, so its own value is "
+                "that pass's. The guard the number feeds is scale-free -- it "
+                "rejects exact zero and non-finite only -- so the two are "
+                "comparable as a pass/fail, not as a magnitude."
+            ),
             "port1_feed_shift_note": (
                 "port 2 declares no FeedShift; it is the passive port, so the "
                 "0.0 above is what the script declares, not a measurement"
@@ -1114,7 +1268,13 @@ def _build_artifact(records: dict, stage_meta: dict, stage_a_gate: dict,
             ),
             "delta_list": DELTA_LIST,
             "boundary": B_BOUNDARY,
-            "excitation": f"SetGaussExcite({F_MAX/2.0}, {F_MAX/2.0}) Hz",
+            "excitation": (
+                f"{_builder_excitation_line(_build_sheen_board).strip()}"
+                f"  -- the builder's own source line, derived from "
+                f"{SCRIPT_REL_PATH}::{SCRIPT_SETUP_FUNCTION} by the renames in "
+                f"COPY_SUBSTITUTIONS and compared with it character for character "
+                f"by --self-check. F_MAX evaluates to {F_MAX!r} Hz."
+            ),
             "nrts": ("openEMS's library default (~1e9) on EVERY real pass, Stage A "
                      "and Stage B alike; 200 on every smoke pass. The retired "
                      f"script's cap of {SCRIPT_NRTS_CAP} is NOT carried -- see "
@@ -1201,7 +1361,9 @@ def _dry_run(stage: str, fine_factor: float) -> int:
     print(f"  domain          {LX*1e3:.3f} x {LY*1e3:.3f} x {LZ*1e3:.3f} mm "
           f"(x prop, y trv, z)")
     print(f"  boundary        {B_BOUNDARY}")
-    print(f"  excitation      SetGaussExcite({F_MAX/2:.4g}, {F_MAX/2:.4g}) Hz")
+    print(f"  excitation      {_builder_excitation_line(_build_sheen_board).strip()}"
+          f"   (the builder's own source line; F_MAX = {F_MAX:.4g} Hz, so "
+          f"{F_MAX/2:.4g} Hz centre and corner)")
     print(f"  NrTS / EndCrit  openEMS library defaults (~1e9 / 1e-5) on every real "
           f"pass, as Stage A; 200 / 0.0 on the smoke pass. The retired script's "
           f"{SCRIPT_NRTS_CAP} / {SCRIPT_END_CRITERIA_CAP} cap is NOT carried "
@@ -1317,14 +1479,15 @@ def _self_check(fine_factor: float) -> int:
           "status the Sheen script's own gate record still sits at is UNRUN")
 
     print("the declared deltas:")
-    check(len(DELTA_LIST) == 13, "delta list has its thirteen declared entries",
+    check(len(DELTA_LIST) == 14, "delta list has its fourteen declared entries",
           f"{len(DELTA_LIST)}")
     for i, key in enumerate([
             "DELTA 1 (substrate)", "DELTA 2 (trace)", "DELTA 3 (offset feeds)",
             "DELTA 4 (arms and box)", "DELTA 5 (axis map)", "DELTA 6 (ports)",
             "DELTA 7 (frequency grid)", "DELTA 8 (two CalcPort passes)",
             "DELTA 9 (NrTS / EndCriteria)", "DELTA 10 (mesh rule)",
-            "DELTA 11 (mesh rung)", "DELTA 12 (CSX length unit)", "NOTHING ELSE"]):
+            "DELTA 11 (mesh rung)", "DELTA 12 (CSX length unit)",
+            "DELTA 14 (mesh refinement around the metal)", "NOTHING ELSE"]):
         check(DELTA_LIST[i].startswith(key), f"entry {i+1} is {key!r}")
     check("2.413" in DELTA_LIST[1] and "20.320 x 2.540" in DELTA_LIST[1],
           "delta 2 names the feed width and the wide section")
@@ -1346,8 +1509,16 @@ def _self_check(fine_factor: float) -> int:
           "delta 11 names all three rung factors")
     check("z lines" in DELTA_LIST[10] and "4, 6 and 8 cells" in DELTA_LIST[10],
           "delta 11 says the substrate z lines scale, and by how much")
-    check("['PML_8','PML_8','MUR','MUR','PEC','MUR']" in DELTA_LIST[12],
-          "the last entry names the boundary list that does NOT change")
+    check("resolution/4" in DELTA_LIST[12] and "smooths ONCE per axis" in DELTA_LIST[12],
+          "delta 14 names the tutorial's second smoothing and this builder's one")
+    check("PATCH_X0 and PATCH_X1" in DELTA_LIST[12]
+          and "feed_edges_realized" in DELTA_LIST[12],
+          "delta 14 names the wide section's edges and where the realized widths "
+          "are recorded")
+    check("['PML_8','PML_8','MUR','MUR','PEC','MUR']" in DELTA_LIST[13]
+          and "see delta 14" in DELTA_LIST[13],
+          "the last entry names the boundary list that does NOT change, and hands "
+          "the thirds-rule question to delta 14")
 
     print("the mesh rungs:")
     check(B_COARSE_RESOLUTION_FACTOR == 1.0
@@ -1391,6 +1562,16 @@ def _self_check(fine_factor: float) -> int:
         check(proof["rung_matches"],
               "_build_sheen_board_at_rung's build block IS _build_sheen_board's with "
               "exactly the two declared rung substitutions applied")
+        # The excitation sits outside the build block (the script sets it in
+        # _openems_common_setup), so it is derived on its own, by the same
+        # renames. Without this, F_MAX/2 could become F_MAX/4 and everything
+        # above would stay green.
+        check(proof["excitation_matches"] and proof["excitation_rung_matches"],
+              "both builders' SetGaussExcite statement IS the script's, with the "
+              "declared renames applied",
+              f"script {proof['excitation_script'].strip()!r} | "
+              f"builder {proof['excitation_mine'].strip()!r} | "
+              f"rung {proof['excitation_rung'].strip()!r}")
         # Delta 9 refuses the script's stop criteria, so the compared block must
         # NOT contain the call that sets them. Asserted, not left to the anchor.
         check(SCRIPT_SETUP_FUNCTION not in proof["script_slice"],
