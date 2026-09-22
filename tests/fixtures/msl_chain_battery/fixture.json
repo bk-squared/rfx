@@ -17,8 +17,8 @@
   "identity_atol": 1e-07,
   "settling_db": -40.0
  },
- "assembled_utc": "2026-09-22T05:50:36.718001+00:00",
- "assembler_commit": "2078ba2a0bc1b0dfc0ffe2fe5f7507e741022f37",
+ "assembled_utc": "2026-09-22T05:57:19.145188+00:00",
+ "assembler_commit": "98f098291dce67f14c20acadb16670ccd2088e84",
  "battery_drive": {
   "name": "wide",
   "f0": 4000000000.0,
@@ -24483,7 +24483,28 @@
     "rel_err": 0.000579917342626438
    }
   ],
-  "bar": 0.05
+  "bar": 0.05,
+  "device": [
+   "cuda:0"
+  ],
+  "device_kind": [
+   "NVIDIA RTX A6000"
+  ],
+  "prior_attempt": {
+   "outcome": "RESOURCE_EXHAUSTED",
+   "preset": "gpu-rtx4090",
+   "device_memory_gb": 24,
+   "requested_bytes": 15115664096,
+   "requested_gib": 14.07755920290947,
+   "checkpoint_segments": 118,
+   "inner_segment_steps": 127,
+   "leapfrog_carry_bytes": 56623104,
+   "carry_note": "field carry plus the CPML psi slabs at the 100 um rung; 118 checkpoints plus the 127 steps of the segment being replayed is 245 carries in one allocation",
+   "allocator_note": "the allocator's own summary showed the card about 55 % full",
+   "compute_run_id": "369367262574",
+   "measured_at_commit": "5b65e770b5fff2a7f7b8c735ec4a3d4869943dc4",
+   "resolution": "re-run unchanged on gpu-a6000-1 (48 GB); nothing about the board, the record length or the objectives was reduced"
+  }
  },
  "plane": {
   "provenance": {

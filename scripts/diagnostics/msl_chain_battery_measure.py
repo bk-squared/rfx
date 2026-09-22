@@ -1700,6 +1700,14 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
             "design_variable": ad.get("design_variable"),
             "cases": ad["cases"],
             "bar": BAR["ad_fd_rel"],
+            # What the gradient costs and the card it did not fit on. Carried
+            # into the fixture, not left in the stage JSON: the reverse-mode
+            # tape's size is a property of this measurement that anyone reading
+            # the artifact needs, and the attempt that ran out of memory is
+            # part of how the number was obtained.
+            "device": ad.get("device"),
+            "device_kind": ad.get("device_kind"),
+            "prior_attempt": ad.get("prior_attempt"),
         }
 
     # --- reference-plane invariance ---------------------------------------
