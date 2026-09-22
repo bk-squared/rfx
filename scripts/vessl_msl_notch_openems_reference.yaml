@@ -1,5 +1,5 @@
 name: rfx-msl-notch-openems-reference
-description: "The MSL notch filter -- regenerate its openEMS reference from openEMS's OWN tutorial. A 600 um microstrip line on 254 um of lossless RO4350B carries a 12 mm open-circuit stub; the stub is a quarter wavelength near 3.7 GHz, where |S21| collapses into a transmission notch. openEMS ships that exact structure as python/Tutorials/MSL_NotchFilter.py. STAGE A is this repository's faithful port of the tutorial, verbatim, and is the reproduce gate: the measured notch must land in the same 0.80-1.05 x analytic band the port used (recorded reproduction 3.6711 GHz measured vs 3.6872 GHz analytic, 0.44 %, VESSL 369367251705). If it does not, the job exits 1 and no Stage B record is written. STAGE B changes NO geometry at all (leader decision, 2026-09-22): it is the tutorial's own model at two mesh rungs -- the tutorial's own resolution and half that cell size -- so the record carries its own mesh statement. Because the coarse rung is then Stage A's model, it is not solved twice: it carries Stage A's arrays and says so in its own source field. The shorter-arm question moved to rfx's own box. Every real pass carries the sanity gates ported from validation/crossval/20_msl_phase_referee.py: the stdout/stderr scan for unused primitives and off-mesh ports, nonzero excitation energy and non-empty port traces, openEMS's own end-criteria warning treated as a failure, and passivity max(|S11|^2+|S21|^2) <= 1.05 over 2-7 GHz -- the band this record serves, not the whole 1 MHz-7 GHz CalcPort grid, whose first bins divide two near-floor port voltages. Every bin's energy sum is recorded either way, with its maximum over the band, the full grid, 0-1 GHz and 1-2 GHz. When a gate fires the record built so far is written to openems_tutorial_FAILED.json before the non-zero exit, so a failed cycle still leaves numbers. The job clones the pinned commit itself into /tmp and refuses to measure anything else. Env: EXPECT (the commit, placeholder FILL_BEFORE_SUBMIT refuses). CPU lane, remilab-c0. Submit with scripts/vessl_submit.sh so the run id is recorded -- the record's run_id field is null by design, VESSL does not export the id into the pod."
+description: "The MSL notch filter -- regenerate its openEMS reference from openEMS's OWN tutorial. A 600 um microstrip line on 254 um of lossless RO4350B carries a 12 mm open-circuit stub; the stub is a quarter wavelength near 3.7 GHz, where |S21| collapses into a transmission notch. openEMS ships that exact structure as python/Tutorials/MSL_NotchFilter.py. STAGE A is this repository's faithful port of the tutorial, verbatim, and is the reproduce gate: the measured notch must land in the same 0.80-1.05 x analytic band the port used (recorded reproduction 3.6711 GHz measured vs 3.6872 GHz analytic, 0.44 %, VESSL 369367251705). If it does not, the job exits 1 and no Stage B record is written. STAGE B changes NO geometry at all (leader decision, 2026-09-22): it is the tutorial's own model on THREE meshes -- resolution factors 1.0, 1/sqrt(2) and 0.5 -- so the record carries its own mesh statement with two refinements. The factor scales the substrate's own z lines too (4, 6, 8 cells across the 254 um board), because that is the direction that sets the effective permittivity and therefore the notch frequency; scaling x and y alone would have left it at 4 cells on every rung. Two consequences follow by the tutorial's own rules and are listed per rung in the stage plan: FeedShift = 10*resolution moves the excitation plane (4.477, 3.166, 2.239 mm in from the port face) and PML_8 is eight CELLS, so the absorber thins (about 3.58, 2.53, 1.79 mm). Because the coarse rung is then Stage A's model, it is not solved twice: it carries Stage A's arrays and says so in its own source field. The shorter-arm question moved to rfx's own box. Every real pass carries the sanity gates ported from validation/crossval/20_msl_phase_referee.py: the stdout/stderr scan for unused primitives and off-mesh ports, nonzero excitation energy and non-empty port traces, openEMS's own end-criteria warning treated as a failure, and passivity max(|S11|^2+|S21|^2) <= 1.05 over 2-7 GHz -- the band this record serves, not the whole 1 MHz-7 GHz CalcPort grid, whose first bins divide two near-floor port voltages. Every bin's energy sum is recorded either way, with its maximum over the band, the full grid, 0-1 GHz and 1-2 GHz. When a gate fires the record built so far is written to openems_tutorial_FAILED.json before the non-zero exit, so a failed cycle still leaves numbers. The job clones the pinned commit itself into /tmp and refuses to measure anything else. Env: EXPECT (the commit, placeholder FILL_BEFORE_SUBMIT refuses). CPU lane, remilab-c0. Submit with scripts/vessl_submit.sh so the run id is recorded -- the record's run_id field is null by design, VESSL does not export the id into the pod."
 tags: [rfx, crossval, msl-notch-filter, openems, reference]
 resources:
   cluster: remilab-c0
@@ -20,6 +20,10 @@ env:
   # string exits 3 rather than measuring the wrong tree. The placeholder
   # refuses too -- an unpinned run produces a record with no provenance.
   EXPECT: "FILL_BEFORE_SUBMIT"
+  # The image tag this job runs, recorded into the record's meta beside the
+  # openEMS build commit the image stamps into RFX_OPENEMS_COMMIT. Keep it equal
+  # to `image:` above; the run block prints both.
+  RFX_OPENEMS_IMAGE: "ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8"
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
@@ -30,7 +34,15 @@ run: |-
   PY=python
   command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
   "$PY" --version
-  echo "RFX_OPENEMS_COMMIT=${RFX_OPENEMS_COMMIT:-unset(pre-stamp image)}"
+  # The image stamps the openEMS build it compiled. A record that cannot name the
+  # solver build it came from is not a reference, so an unstamped image stops here
+  # rather than producing one (the maker refuses too, for the same reason).
+  if [ -z "${RFX_OPENEMS_COMMIT:-}" ]; then
+    echo "FATAL: RFX_OPENEMS_COMMIT is empty -- this image does not stamp its openEMS build, so the record could not name the solver that produced it. Refusing to measure."
+    exit 3
+  fi
+  echo "RFX_OPENEMS_COMMIT=$RFX_OPENEMS_COMMIT"
+  echo "RFX_OPENEMS_IMAGE=${RFX_OPENEMS_IMAGE:-unset}"
   # Import probes first: if the image's bindings are not importable, fail here
   # and not forty minutes into a stage.
   "$PY" -c "from openEMS.openEMS import openEMS; print('openEMS from image: OK')"
@@ -45,8 +57,12 @@ run: |-
 
   SRC=/tmp/rfx-msl-notch-ref
   rm -rf "$SRC"
-  git clone -q --branch crossval/msl-notch-filter https://github.com/bk-squared/rfx.git "$SRC"
+  # Clone the DEFAULT branch and fetch the pinned commit by its sha. Naming the
+  # topic branch here would make the job die once that branch is merged and
+  # deleted, which is exactly when someone wants to re-run the reference.
+  git clone -q https://github.com/bk-squared/rfx.git "$SRC"
   git config --global --add safe.directory "$SRC" || true
+  git -C "$SRC" fetch -q origin "$EXPECT"
   git -C "$SRC" checkout -q "$EXPECT"
   # Provenance capture must fail loudly: no fallback, no placeholder. A run that
   # dies here costs a relaunch; one that finishes with no commit costs the
@@ -71,13 +87,29 @@ run: |-
   echo "$sha" > "$out/commit.txt"
   echo "artifacts: $out"
 
+  # P2-10: a killed, evicted or timed-out job still leaves its exit code and the
+  # one-line summary. `rc` is unset until the solve runs, hence the default.
+  trap 'st=$?; rc_now=${rc:-$st}; echo "$rc_now" > "$out/exit_code"; { echo "msl_notch_openems_reference_rc=$rc_now"; echo "commit=$sha"; echo "image=${RFX_OPENEMS_IMAGE:-unset}"; echo "openems_build=$RFX_OPENEMS_COMMIT"; echo "record=$out/openems_tutorial.json"; echo "failed_record=$out/openems_tutorial_FAILED.json"; ls -la "$out"; } > "$out/summary.txt" 2>&1; cat "$out/summary.txt"' EXIT
+
   DRV=tests/crossval/msl_notch_filter/reference/make_openems_reference.py
   test -f "$DRV" || { echo "STALE CLONE: the reference maker is missing at $DRV"; exit 3; }
 
   # Pure-numpy checks first, seconds each: a constant or a layout bug must not
-  # burn a stage.
-  "$PY" -u "$DRV" --self-check | tee "$out/self_check.log"
-  "$PY" -u "$DRV" --dry-run --stage both | tee "$out/stage_plan.log"
+  # burn a stage. `tee` returns ITS OWN status, so a failing check would sail past
+  # `set -eu` and into the solve -- capture each rc the same way the long step
+  # below does, in a subshell that writes it to a file.
+  ( set +e; "$PY" -u "$DRV" --self-check; echo $? > "$out/self_check.rc" ) | tee "$out/self_check.log"
+  sc_rc=$(cat "$out/self_check.rc")
+  if [ "$sc_rc" != "0" ]; then
+    echo "FATAL: --self-check exited $sc_rc -- see $out/self_check.log. Not starting the solver."
+    exit 3
+  fi
+  ( set +e; "$PY" -u "$DRV" --dry-run --stage both; echo $? > "$out/dry_run.rc" ) | tee "$out/stage_plan.log"
+  dr_rc=$(cat "$out/dry_run.rc")
+  if [ "$dr_rc" != "0" ]; then
+    echo "FATAL: --dry-run exited $dr_rc -- see $out/stage_plan.log. Not starting the solver."
+    exit 3
+  fi
 
   # POSIX rc capture across a pipe. ${PIPESTATUS[0]} is a bashism and the VESSL
   # runner shell is dash/busybox-ash, so the left side of the pipe runs in a
@@ -91,22 +123,49 @@ run: |-
   rc=$(cat "$out/exit_code")
   echo "msl_notch_openems_reference_rc=$rc"
 
-  # Settling positive control, quoted from this run's own log: openEMS's
-  # max-timesteps warning must appear for each stage's SMOKE pass (NrTS=200,
-  # EndCriteria=0.0, which by construction can never converge) and must be
-  # absent from every REAL pass. Same binary, same stream, only the smoke/real
-  # split differs. The smoke passes write their own capture files under the
-  # sim root, which is where the phrase lives when it is not in the driver log.
+  # Settling positive control, as a CHECK rather than a printout. openEMS's
+  # max-timesteps warning must appear in EVERY smoke pass's captured log (NrTS=200,
+  # EndCriteria=0.0 -- by construction it can never converge) and in NO real pass's
+  # (which must reach EndCriteria on its own). Same binary, same stream; only the
+  # smoke/real split differs. If that pattern does not hold, the truncation gate
+  # was not actually watching anything, and every settling statement in the record
+  # is unsupported -- so the job exits 4. It does so AFTER the record is written,
+  # below: evidence first, verdict second.
   echo "===== settling positive control (openEMS's own max-timesteps warning) ====="
-  grep -rn "reached before the end-criteria of" /tmp/msl_notch_openems || echo "(phrase absent from every captured stage log)"
+  PHRASE="reached before the end-criteria of"
+  settling_rc=0
+  smoke_logs=$(find /tmp/msl_notch_openems -name "_openems_stdout.log" -path "*_smoke/*" 2>/dev/null || true)
+  real_logs=$(find /tmp/msl_notch_openems -name "_openems_stdout.log" -not -path "*_smoke/*" 2>/dev/null || true)
+  if [ -z "$smoke_logs" ]; then
+    echo "SETTLING CONTROL: no smoke-pass log found under /tmp/msl_notch_openems -- the control cannot speak"
+    settling_rc=4
+  fi
+  for f in $smoke_logs; do
+    if grep -q "$PHRASE" "$f"; then
+      echo "  ok   smoke   $f carries the max-timesteps warning"
+    else
+      echo "  RED  smoke   $f does NOT carry the max-timesteps warning -- a 200-step pass that reported convergence means the phrase this gate greps for has changed"
+      settling_rc=4
+    fi
+  done
+  for f in $real_logs; do
+    if grep -q "$PHRASE" "$f"; then
+      echo "  RED  real    $f carries the max-timesteps warning -- that real pass was truncated"
+      settling_rc=4
+    else
+      echo "  ok   real    $f reached its end criteria"
+    fi
+  done
+  echo "settling_positive_control_rc=$settling_rc"
+  echo "$settling_rc" > "$out/settling_control.rc"
 
   echo "===== record summary ====="
   if [ -f "$out/openems_tutorial_FAILED.json" ]; then
     echo "A GATE FIRED. Its evidence is $out/openems_tutorial_FAILED.json -- the arrays measured before the gate, the four energy-sum numbers and failed_gate."
-    "$PY" -c 'import json,sys; a=json.load(open(sys.argv[1])); print("failed_gate:", a.get("failed_gate")); [print("%-16s band=%.4f full=%.4f 0-1GHz=%.4f 1-2GHz=%.4f" % (k, a[k].get("max_energy_sum_band",float("nan")), a[k].get("max_energy_sum_full",float("nan")), (a[k].get("max_energy_sum_below_band") or {}).get("0_1_ghz",float("nan")), (a[k].get("max_energy_sum_below_band") or {}).get("1_2_ghz",float("nan")))) for k in ("stage_a","stage_b_coarse","stage_b_fine") if a.get(k)]' "$out/openems_tutorial_FAILED.json" || true
+    "$PY" -c 'import json,sys; a=json.load(open(sys.argv[1])); print("failed_gate:", a.get("failed_gate")); [print("%-16s band=%.4f full=%.4f 0-1GHz=%.4f 1-2GHz=%.4f" % (k, a[k].get("max_energy_sum_band",float("nan")), a[k].get("max_energy_sum_full",float("nan")), (a[k].get("max_energy_sum_below_band") or {}).get("0_1_ghz",float("nan")), (a[k].get("max_energy_sum_below_band") or {}).get("1_2_ghz",float("nan")))) for k in ("stage_a","stage_b_coarse","stage_b_mid","stage_b_fine") if a.get(k)]' "$out/openems_tutorial_FAILED.json" || true
   fi
   if [ -f "$out/openems_tutorial.json" ]; then
-    "$PY" -c 'import json,sys; a=json.load(open(sys.argv[1])); g=a["meta"].get("stage_a_gate") or {}; print("stage_a gate passed=%s measured=%s Hz dev=%s %%" % (g.get("passed"), g.get("measured_f_notch_hz"), g.get("deviation_pct"))); [print("%-16s notch=%.4f GHz depth=%.2f dB | energy sum max: band=%.4f full=%.4f 0-1GHz=%.4f 1-2GHz=%.4f" % (k, a[k]["notch"]["refined_f_ghz"], a[k]["notch"]["depth_db"], a[k]["max_energy_sum_band"], a[k]["max_energy_sum_full"], a[k]["max_energy_sum_below_band"]["0_1_ghz"], a[k]["max_energy_sum_below_band"]["1_2_ghz"])) for k in ("stage_a","stage_b_coarse","stage_b_fine") if a.get(k)]' "$out/openems_tutorial.json" || true
+    "$PY" -c 'import json,sys; a=json.load(open(sys.argv[1])); g=a["meta"].get("stage_a_gate") or {}; print("stage_a gate passed=%s measured=%s Hz dev=%s %%" % (g.get("passed"), g.get("measured_f_notch_hz"), g.get("deviation_pct"))); [print("%-16s notch=%.4f GHz depth=%.2f dB | energy sum max: band=%.4f full=%.4f 0-1GHz=%.4f 1-2GHz=%.4f" % (k, a[k]["notch"]["refined_f_ghz"], a[k]["notch"]["depth_db"], a[k]["max_energy_sum_band"], a[k]["max_energy_sum_full"], a[k]["max_energy_sum_below_band"]["0_1_ghz"], a[k]["max_energy_sum_below_band"]["1_2_ghz"])) for k in ("stage_a","stage_b_coarse","stage_b_mid","stage_b_fine") if a.get(k)]' "$out/openems_tutorial.json" || true
   elif [ ! -f "$out/openems_tutorial_FAILED.json" ]; then
     echo "(no record written at all -- the run did not reach a stage)"
   fi
@@ -115,12 +174,20 @@ run: |-
   echo "artifacts persisted to (mounted, survives teardown): $out"
   echo "run_id is NOT in the record: VESSL does not export it into the pod, the submitter writes it"
 
+  # Evidence first: the record and the summary above are already written. Only now
+  # does the settling control get to change the verdict.
+  if [ "$rc" = "0" ] && [ "$settling_rc" != "0" ]; then
+    echo "SETTLING POSITIVE CONTROL FAILED: the stages ran and the record was written, but the control above did not hold, so no settling statement in it is supported."
+    rc=4
+  fi
+
   echo "=== verdict ==="
   case "$rc" in
     0) echo "PASS: the reproduce gate passed and both Stage B rungs were written. Read the stage plan's PML / measurement-plane lines before quoting a Stage B number." ;;
     1) echo "GATE FAILED: the reproduce gate or a sanity gate failed -- the log names which. No number from this run is usable." ;;
     2) echo "openEMS NOT IMPORTABLE despite the image probes passing -- investigate the bindings" ;;
-    3) echo "CONFIG ERROR in the maker script, not a physics finding" ;;
+    3) echo "CONFIG ERROR: a missing solver stamp, a failed self-check or dry run, or a layout bug in the maker -- not a physics finding" ;;
+    4) echo "SETTLING POSITIVE CONTROL FAILED: read $out/settling_control.rc and the per-log lines above. The record exists; its settling statements do not stand up." ;;
     124) echo "TIMEOUT: the 21600 s budget was exhausted -- report the wall clock, do NOT shorten the record to fit" ;;
     *) echo "ERROR: unexpected exit code $rc" ;;
   esac

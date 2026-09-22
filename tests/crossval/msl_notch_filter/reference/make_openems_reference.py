@@ -79,10 +79,26 @@ STAGE B -- the record this case needs: the tutorial's geometry, two mesh rungs
         10*resolution`` and ``MeasPlaneShift = MSL_length/3``.
 
     DELTA 2 (mesh rung): the tutorial's own ``resolution`` is multiplied by a
-        factor. The record carries two rungs -- factor 1.0 (``stage_b_coarse``,
-        the tutorial's own resolution) and factor 0.5 (``stage_b_fine``, half
-        the cell size) -- so it states its own mesh convergence instead of
-        asserting it.
+        factor -- 1.0 (``stage_b_coarse``), 1/sqrt(2) (``stage_b_mid``) and 0.5
+        (``stage_b_fine``). Three meshes, two refinements, which is the least a
+        mesh statement can be made of.
+
+        The factor scales the x lines, the y lines, the air above the board AND
+        the substrate's own z lines: ``linspace(0, h_sub, 5)`` becomes
+        ``linspace(0, h_sub, round(4/factor)+1)``, so the 254 um board carries
+        4, 6 and 8 cells. Refining x and y alone would leave the thickness
+        direction at 4 cells on every rung -- and that is the direction that
+        sets the effective permittivity, hence the notch frequency. A mesh
+        statement made with it frozen would say nothing about it.
+
+        TWO CONSEQUENCES follow, by the tutorial's own rules rather than by any
+        new choice, and the dry run lists both per rung:
+          * ``FeedShift = 10*resolution`` shrinks with the factor, so the
+            excitation plane moves towards the port face: 4.477, 3.166,
+            2.239 mm in from it.
+          * ``PML_8`` is eight CELLS, not a length, so the absorber thins with
+            the factor: about 3.58, 2.53, 1.79 mm.
+        ``MeasPlaneShift = MSL_length/3`` is a length and does not move.
 
 An earlier draft shortened the line arms to 10 000 um each side. It was dropped
 (leader decision, 2026-09-22) for a reason that is geometry, not taste: at
@@ -106,6 +122,38 @@ is not prose -- ``--self-check`` regenerates the Stage B builder's body from the
 Stage A builder's body by two declared textual substitutions, compares them
 character for character, and asserts that the ``msl_length_um`` parameter's
 DEFAULT is the tutorial's own 50 000 um (see ``_builder_body_after_kw``).
+
+DO-NOT-REPEAT, TICKED (the task recipe's 2026-08-03 addendum: quote the
+precedent's header IN FULL and tick each recorded failure BEFORE writing code)
+------------------------------------------------------------------------------
+From ``validation/crossval/20_msl_phase_referee.py``'s own DO-NOT-REPEAT block,
+which quotes ``build_msl_notch_openems_comparison.py``:
+
+    "at dx=80 um the substrate is only 3.175 cells (the 'mixed-cell danger zone'
+    rfx preflight warns about), where the openEMS MSL-port extraction is
+    NON-PHYSICAL (|S11|^2+|S21|^2 up to 8.9, passivity grossly violated). dx=50
+    um gives 5.08 substrate cells where BOTH solvers are passive, so it is the
+    only valid matched-mesh comparison."
+
+Facts about this script against it, no verdict:
+  * Neither stage lays a uniform dx across the substrate. The tutorial's z
+    recipe is an explicit ``linspace(0, 254, N+1)``, so the substrate top is
+    always ON a mesh line and the cell count is an integer by construction, not
+    a ratio that can land at 3.175.
+  * Substrate cells per rung: 4 (coarse, 63.5 um each), 6 (mid, 42.33 um),
+    8 (fine, 31.75 um). The recorded non-physical case had 3.175; the recorded
+    passive case had 5.08.
+  * The precedent's own header says the same about its Stage A: "Stage A's own
+    mesh is the tutorial's own dx, ~lambda/50, unrelated to this trap."
+  * The passivity witness is recorded and gated on every real pass here
+    (2-7 GHz, 1.05), so if a rung does land somewhere non-physical, the record
+    says so rather than the reader having to infer it.
+
+Other ticks from the same precedent header: MUR sits only on the y faces, where
+the tutorial's substrate spans the full y extent, so the y-face MUR sees a
+uniform dielectric cross-section and not the mixed air/substrate step that blew
+the coax lane up; ``ref_impedance`` is never passed to ``CalcPort``; the
+excitation guard has no absolute floor; no complex value reaches ``json.dump``.
 
 SANITY GATES PORTED, AND FROM WHERE
 -----------------------------------
@@ -250,6 +298,13 @@ STAGE_A_GATE = {
     "f_notch_hi_hz": 1.05 * float(F_NOTCH_AN_HZ),
 }
 
+# A frequency band alone does not say a notch is there. A through line with no
+# stub has a |S21| minimum somewhere in 2-7 GHz too, and it would sit inside the
+# band above. The gate therefore also requires the minimum to be a NOTCH: at
+# least 20 dB below unity -- the same deep-null level the case itself uses
+# (PI, 2026-09-22). A thru line fails it, which is what the self-check plants.
+STAGE_A_MIN_DEPTH_DB = -20.0
+
 # The band this record serves: 2-7 GHz, what the case's own test reads its
 # reference records over. ONE constant, used by both the notch estimator and the
 # passivity witness, so the number that is gated and the number that is reported
@@ -261,11 +316,25 @@ NOTCH_BAND_GHZ = (WITNESS_BAND_HZ[0] / 1e9, WITNESS_BAND_HZ[1] / 1e9)
 PASSIVITY_TOL = 0.05
 
 # ---------------------------------------------------------------------------
-# Stage B -- the tutorial's geometry, two mesh rungs. No geometry delta.
+# Stage B -- the tutorial's geometry on three meshes. No geometry delta.
+#
+# Three rungs, two refinements: 1.0, 1/sqrt(2), 0.5. The middle rung exists
+# because a mesh statement needs at least two refinements to have a trend.
 # ---------------------------------------------------------------------------
 B_MSL_LENGTH_UM = A_MSL_LENGTH_UM  # unchanged from the tutorial, by decision
 B_COARSE_RESOLUTION_FACTOR = 1.0
+B_MID_RESOLUTION_FACTOR = 1.0 / np.sqrt(2.0)
 B_FINE_RESOLUTION_FACTOR = 0.5
+
+# The tutorial's own substrate z recipe is linspace(0, h_sub, 5) -- 4 cells.
+# The rung factor scales it too (see DELTA 2).
+A_SUBSTRATE_Z_CELLS = 4
+
+
+def substrate_z_cells(resolution_factor: float) -> int:
+    """Substrate cells at a rung: round(4 / factor). 4, 6, 8 at 1.0, 1/sqrt2, 0.5."""
+    return max(1, int(round(A_SUBSTRATE_Z_CELLS / resolution_factor)))
+
 
 DELTA_LIST = [
     "DELTA 1 (geometry): NONE. MSL_length stays at the tutorial's 50000 um each "
@@ -276,9 +345,19 @@ DELTA_LIST = [
     "MeasPlaneShift lands inside the x PML at the tutorial's resolution, which is "
     "no longer the tutorial's port model. The shorter-arm question moves to rfx's "
     "own box.",
-    "DELTA 2 (mesh rung): the tutorial's own resolution is multiplied by a factor. "
-    "stage_b_coarse uses 1.0 (the tutorial's own resolution, so it IS Stage A's "
-    "model); stage_b_fine uses 0.5 (half the cell size).",
+    "DELTA 2 (mesh rung): the tutorial's own resolution is multiplied by a factor "
+    "-- 1.0 (stage_b_coarse, the tutorial's own mesh, so it IS Stage A's model), "
+    "1/sqrt(2) = 0.70711 (stage_b_mid) and 0.5 (stage_b_fine). The factor scales "
+    "the x lines, the y lines, the air above the board AND the substrate's own z "
+    "lines: linspace(0, h_sub, 5) becomes linspace(0, h_sub, round(4/factor)+1), "
+    "so the substrate carries 4, 6 and 8 cells across its 254 um. Scaling x and y "
+    "alone would leave the direction that sets the effective permittivity "
+    "unrefined, and the mesh statement would say nothing about it. TWO "
+    "CONSEQUENCES, by the tutorial's own rules and not by a new choice, listed "
+    "per rung in the dry run: FeedShift = 10*resolution shrinks with the factor, "
+    "so the excitation plane MOVES towards the port face (4.477, 3.166, 2.239 mm "
+    "from it); and PML_8 is eight CELLS, so the absorber thins with the factor "
+    "(about 3.58, 2.53, 1.79 mm). MeasPlaneShift = MSL_length/3 does not move.",
     "NOTHING ELSE: boundary ['PML_8','PML_8','MUR','MUR','PEC','MUR'], "
     "SetGaussExcite(f_max/2, f_max/2), the thirds-rule third_mesh refinement, the "
     "substrate/stub/trace dimensions, MSLPort with port0 excite=-1, the 1601-point "
@@ -286,12 +365,17 @@ DELTA_LIST = [
     "from Stage A.",
 ]
 
-# The two textual substitutions that turn the Stage A builder's body into the
-# Stage B builder's body. --self-check applies them and compares.
+# The THREE textual substitutions that turn the Stage A builder's body into the
+# Stage B builder's body. --self-check applies them and compares, character for
+# character, and counts each one's occurrences in the Stage A body.
 BUILDER_SUBSTITUTIONS = [
     ("A_MSL_LENGTH_UM", "msl_length_um"),
     ("/ A_UNIT / 50.0", "/ A_UNIT / 50.0 * resolution_factor"),
+    ("np.linspace(0.0, A_SUBSTRATE_THICKNESS_UM, 5)",
+     "np.linspace(0.0, A_SUBSTRATE_THICKNESS_UM, substrate_z_cells(resolution_factor) + 1)"),
 ]
+BUILDER_SUBSTITUTION_COUNTS = {"A_MSL_LENGTH_UM": 8, "/ A_UNIT / 50.0": 1,
+                               "np.linspace(0.0, A_SUBSTRATE_THICKNESS_UM, 5)": 1}
 
 
 # ---------------------------------------------------------------------------
@@ -631,7 +715,7 @@ def _build_notch_tutorial_at_rung(ContinuousStructure, openEMS, MSLPort, *,
     mesh.AddLine("y", (A_MSL_WIDTH_UM / 2.0 + A_STUB_LENGTH_UM) + third_mesh)
     mesh.SmoothMeshLines("y", resolution)
 
-    mesh.AddLine("z", np.linspace(0.0, A_SUBSTRATE_THICKNESS_UM, 5))
+    mesh.AddLine("z", np.linspace(0.0, A_SUBSTRATE_THICKNESS_UM, substrate_z_cells(resolution_factor) + 1))
     mesh.AddLine("z", [3000.0])
     mesh.SmoothMeshLines("z", resolution)
 
@@ -749,8 +833,9 @@ def _plan(label: str, msl_length_um: float, resolution_factor: float) -> dict:
         resolution,
     )
 
+    n_sub = substrate_z_cells(resolution_factor)
     z = _smooth_estimate(
-        np.concatenate([np.linspace(0.0, A_SUBSTRATE_THICKNESS_UM, 5), [3000.0]]),
+        np.concatenate([np.linspace(0.0, A_SUBSTRATE_THICKNESS_UM, n_sub + 1), [3000.0]]),
         resolution,
     )
 
@@ -789,7 +874,9 @@ def _plan(label: str, msl_length_um: float, resolution_factor: float) -> dict:
             "y_min": float(np.min(np.diff(y))), "y_max": float(np.max(np.diff(y))),
             "z_min": float(np.min(np.diff(z))), "z_max": float(np.max(np.diff(z))),
         },
-        "substrate_z_cells": 4,
+        "substrate_z_cells_estimate": int(np.sum(
+            (z >= -1e-9) & (z <= A_SUBSTRATE_THICKNESS_UM + 1e-9)) - 1),
+        "substrate_z_step_estimate_um": float(A_SUBSTRATE_THICKNESS_UM / n_sub),
         "port0_start_x_mm": -msl_length_um / 1e3,
         "port1_start_x_mm": msl_length_um / 1e3,
         "feed_shift_mm": feed_shift / 1e3,
@@ -801,20 +888,27 @@ def _plan(label: str, msl_length_um: float, resolution_factor: float) -> dict:
         "feed_inside_pml_estimate": bool(feed_x < pml_lo),
         "measplane_inside_pml_estimate": bool(measplane_x < pml_lo),
         "measplane_downstream_of_feed": bool(measplane_shift > feed_shift),
-        "port_x_on_explicit_mesh_line": True,
-        "trace_centre_on_explicit_mesh_line": True,
     }
+
+
+STAGE_RUNGS = {
+    "stage_a": ("stage_a", 1.0),
+    "stage_b_coarse": ("stage_b_coarse", B_COARSE_RESOLUTION_FACTOR),
+    "stage_b_mid": ("stage_b_mid", B_MID_RESOLUTION_FACTOR),
+    "stage_b_fine": ("stage_b_fine", B_FINE_RESOLUTION_FACTOR),
+}
 
 
 def _stage_plans(fine_factor: float) -> dict:
     return {
         "stage_a": _plan("stage_a", A_MSL_LENGTH_UM, 1.0),
         "stage_b_coarse": _plan("stage_b_coarse", B_MSL_LENGTH_UM, B_COARSE_RESOLUTION_FACTOR),
+        "stage_b_mid": _plan("stage_b_mid", B_MSL_LENGTH_UM, B_MID_RESOLUTION_FACTOR),
         "stage_b_fine": _plan("stage_b_fine", B_MSL_LENGTH_UM, fine_factor),
     }
 
 
-def _coarse_is_stage_a(fine_factor: float) -> bool:
+def _coarse_is_stage_a() -> bool:
     """True when stage_b_coarse is Stage A's model, geometry and mesh alike."""
     return bool(B_MSL_LENGTH_UM == A_MSL_LENGTH_UM
                 and B_COARSE_RESOLUTION_FACTOR == 1.0)
@@ -837,6 +931,8 @@ def _print_plan(plan: dict) -> None:
           f"-> cells >= {plan['cells_estimate']:,}")
     print(f"    cell size (estimate)    x {st['x_min']:.2f}-{st['x_max']:.2f}  "
           f"y {st['y_min']:.2f}-{st['y_max']:.2f}  z {st['z_min']:.2f}-{st['z_max']:.2f} um")
+    print(f"    substrate z cells       {plan['substrate_z_cells_estimate']} of "
+          f"{plan['substrate_z_step_estimate_um']:.2f} um across the 254 um board")
     print(f"    ports                   port0 start x {plan['port0_start_x_mm']:+.3f} mm, "
           f"port1 start x {plan['port1_start_x_mm']:+.3f} mm")
     print(f"    FeedShift               {plan['feed_shift_mm']:.3f} mm "
@@ -890,6 +986,9 @@ def _dry_run(stage: str, fine_factor: float) -> int:
           f"SAME {NOTCH_BAND_GHZ[0]:.1f}-{NOTCH_BAND_GHZ[1]:.1f} GHz band "
           f"(WITNESS_BAND_HZ), not over the whole 1 MHz-7 GHz grid; the energy sum "
           f"is recorded for every bin either way")
+    print(f"notch depth gate  the minimum must also be at least "
+          f"{abs(STAGE_A_MIN_DEPTH_DB):.0f} dB deep (STAGE_A_MIN_DEPTH_DB), so a thru "
+          f"line cannot pass the reproduce gate on frequency alone")
     print("on a failed gate   the record built so far, the four energy-sum numbers "
           "and failed_gate go to <output stem>_FAILED.json before the non-zero exit")
     print()
@@ -901,7 +1000,7 @@ def _dry_run(stage: str, fine_factor: float) -> int:
     for name in order:
         _print_plan(plans[name])
         print()
-    if _coarse_is_stage_a(fine_factor):
+    if _coarse_is_stage_a():
         print("NOTE: DELTA 1 is empty, so stage_b_coarse is Stage A's model -- same "
               "geometry, same mesh. With --stage both it is not solved twice: it "
               "carries Stage A's arrays and says so in its own 'source' field. With "
@@ -941,15 +1040,26 @@ def _self_check(fine_factor: float) -> int:
           "F_NOTCH_AN recomputes to the recorded analytic frequency",
           f"{F_NOTCH_AN_HZ:.4f} Hz vs {REPRODUCE_GATE_RECORD['analytic_f_notch_hz']:.4f} Hz")
 
-    print("the declared deltas (geometry: none; mesh rung: 0.5):")
+    print("the declared deltas (geometry: none; mesh rungs 1.0, 1/sqrt2, 0.5):")
     check(B_MSL_LENGTH_UM == A_MSL_LENGTH_UM,
           "Stage B's MSL_length IS the tutorial's",
           f"{B_MSL_LENGTH_UM:.0f} um")
     check(len(DELTA_LIST) == 3, "delta list has its three declared entries")
     check("DELTA 1 (geometry): NONE" in DELTA_LIST[0],
           "delta 1 declares no geometry change")
-    check(B_COARSE_RESOLUTION_FACTOR == 1.0 and B_FINE_RESOLUTION_FACTOR == 0.5,
-          "the two mesh rungs are 1.0 and 0.5")
+    check(B_COARSE_RESOLUTION_FACTOR == 1.0
+          and abs(B_MID_RESOLUTION_FACTOR - 2.0 ** -0.5) < 1e-12
+          and B_FINE_RESOLUTION_FACTOR == 0.5,
+          "the three mesh rungs are 1.0, 1/sqrt(2) and 0.5",
+          f"{B_COARSE_RESOLUTION_FACTOR:g}, {B_MID_RESOLUTION_FACTOR:.5f}, "
+          f"{B_FINE_RESOLUTION_FACTOR:g}")
+    check(0.0 < fine_factor < 1.0,
+          "--resolution-factor is in (0, 1)", f"{fine_factor}")
+    check((substrate_z_cells(1.0), substrate_z_cells(B_MID_RESOLUTION_FACTOR),
+           substrate_z_cells(0.5)) == (4, 6, 8),
+          "the rung factor gives 4, 6, 8 substrate cells",
+          f"{substrate_z_cells(1.0)}, {substrate_z_cells(B_MID_RESOLUTION_FACTOR)}, "
+          f"{substrate_z_cells(0.5)}")
 
     import inspect
     default = inspect.signature(_build_notch_tutorial_at_rung).parameters["msl_length_um"].default
@@ -962,34 +1072,66 @@ def _self_check(fine_factor: float) -> int:
     derived = a_body
     for old, new in BUILDER_SUBSTITUTIONS:
         derived = derived.replace(old, new)
-    check(a_body.count("A_MSL_LENGTH_UM") == 8,
-          "MSL_length appears 8 times in the tutorial builder's body "
-          "(the x mesh line pair, the substrate box's two x faces, both port "
-          "start planes and both MeasPlaneShift formulas)",
-          f"{a_body.count('A_MSL_LENGTH_UM')}")
-    check(a_body.count("/ A_UNIT / 50.0") == 1,
-          "the resolution formula appears once")
+    check(len(BUILDER_SUBSTITUTIONS) == 3, "three declared substitutions")
+    for old, expected in BUILDER_SUBSTITUTION_COUNTS.items():
+        check(a_body.count(old) == expected,
+              f"'{old}' appears {expected}x in the tutorial builder's body",
+              f"{a_body.count(old)}")
     check(derived == b_body,
           "the Stage B builder's body IS the tutorial builder's body with exactly "
-          "the two declared substitutions applied")
+          "the three declared substitutions applied")
     if derived != b_body:
         import difflib
         notes.append("\n".join(difflib.unified_diff(
             derived.splitlines(), b_body.splitlines(),
             "derived-from-stage-A", "stage-B-as-written", lineterm="")))
 
-    print("port and trace placement on explicitly added mesh lines:")
+    # P1-2: these read the BUILDER'S OWN SOURCE. Comparing a plan value with the
+    # constant the plan computed it from is a tautology -- both mutations of the
+    # builder stayed green under the old form. Mutating the builder now reddens
+    # these, because the statement they look for is no longer there.
+    print("the builder's own source says where the ports and the board are:")
+    check('mesh.AddLine("x", [-A_MSL_LENGTH_UM, A_MSL_LENGTH_UM])' in a_body,
+          "the tutorial builder adds +-MSL_length as EXPLICIT x lines, so both "
+          "port start planes are on a line by construction")
+    check('start=[-A_MSL_LENGTH_UM, -A_MSL_WIDTH_UM / 2.0, A_SUBSTRATE_THICKNESS_UM]' in a_body
+          and 'start=[A_MSL_LENGTH_UM, -A_MSL_WIDTH_UM / 2.0, A_SUBSTRATE_THICKNESS_UM]' in a_body,
+          "both MSLPort start planes in the source ARE +-MSL_length")
+    check('mesh.AddLine("x", [0.0])' in a_body and 'mesh.AddLine("y", [0.0])' in a_body,
+          "the trace centre lines x=0 and y=0 are explicit in the source")
+    check('np.linspace(0.0, A_SUBSTRATE_THICKNESS_UM, 5)' in a_body,
+          "the tutorial builder's substrate z recipe is linspace(0, h_sub, 5): the "
+          "substrate top is an explicit line and the board carries 4 cells")
+    check('np.linspace(0.0, A_SUBSTRATE_THICKNESS_UM, substrate_z_cells(resolution_factor) + 1)'
+          in b_body,
+          "the Stage B builder's substrate z recipe scales with the rung")
     for name, plan in _stage_plans(fine_factor).items():
-        ml = plan["msl_length_um"]
-        check(plan["port0_start_x_mm"] == -ml / 1e3 and plan["port1_start_x_mm"] == ml / 1e3,
-              f"{name}: both port start planes are at +-MSL_length, which the builder "
-              f"adds as explicit x lines")
         check(plan["stub_tip_to_substrate_edge_mm"] > 0.0,
               f"{name}: the stub tip stops short of the substrate's y edge",
               f"{plan['stub_tip_to_substrate_edge_mm']:.3f} mm")
-        check(plan["substrate_z_cells"] == 4,
-              f"{name}: the substrate top is an explicit z line "
-              f"(linspace(0, 254, 5) = 4 cells of 63.5 um)")
+
+    print("the reproduce gate rejects a curve with no notch:")
+    check(STAGE_A_MIN_DEPTH_DB == -20.0,
+          "the gate's minimum depth is the case's own deep-null level, -20 dB")
+    good = _stage_a_gate_verdict(REPRODUCE_GATE_RECORD["reproduced_f_notch_hz"], -53.16)
+    check(good["passed"],
+          "the recorded tutorial reproduction (3.6711 GHz, -53.16 dB) PASSES",
+          f"f_ok={good['f_notch_ok']} depth_ok={good['depth_ok']}")
+    # A thru line: |S21| flat at 1.0, so its shallowest-bin "notch" is 0 dB and
+    # lands wherever numerical ripple puts it -- inside the frequency band.
+    thru = _stage_a_gate_verdict(F_NOTCH_AN_HZ, -0.02)
+    check(not thru["passed"] and thru["f_notch_ok"] and not thru["depth_ok"],
+          "a THRU line (flat |S21|, minimum -0.02 dB, inside the frequency band) "
+          "is REJECTED on depth -- the band alone would have passed it",
+          f"f_ok={thru['f_notch_ok']} depth_ok={thru['depth_ok']} "
+          f"passed={thru['passed']}")
+    shallow = _stage_a_gate_verdict(F_NOTCH_AN_HZ, -19.9)
+    check(not shallow["passed"],
+          "a 19.9 dB dip is REJECTED too -- the threshold is exercised, not just "
+          "the extremes")
+    off_band = _stage_a_gate_verdict(1.5e9, -53.0)
+    check(not off_band["passed"] and not off_band["f_notch_ok"],
+          "a deep notch at 1.5 GHz is REJECTED on frequency")
 
     print("reported, not gated -- the port planes against the x PML_8 (estimate):")
     for name, plan in _stage_plans(fine_factor).items():
@@ -1040,12 +1182,17 @@ def _self_check(fine_factor: float) -> int:
         check(False, "refined_extremum loads by path", repr(exc))
 
     print()
-    print("WHAT THIS SELF-CHECK CANNOT DO: the mesh line layout is built by CSXCAD "
-          "(SmoothMeshLines, and MSLPort's own snap of FeedShift/MeasPlaneShift to "
-          "the nearest line). numpy can confirm the extents, the explicitly added "
-          "lines, the substrate's z lines and the delta list; it cannot confirm the "
-          "interior line positions, the exact line counts, or that the feed and "
-          "measurement planes land on lines. The run records the realized values.")
+    print("WHAT THIS SELF-CHECK CANNOT DO: every mesh line between the explicitly "
+          "added ones is placed by CSXCAD's SmoothMeshLines, and MSLPort snaps "
+          "FeedShift and MeasPlaneShift to the nearest line itself. Both are CSXCAD "
+          "calls. What is checked above is the BUILDER'S SOURCE -- which lines it "
+          "adds explicitly, and with what arguments -- plus arithmetic on the "
+          "declared numbers. It does NOT establish any interior line position, any "
+          "exact line count, or that the feed and measurement planes land on lines. "
+          "The run reads the realized x lines back from CSXCAD and records, per "
+          "port, the nearest line to each declared plane and the distance to it "
+          "(feed_plane_nearest_line_mm / meas_plane_nearest_line_mm and their "
+          "*_snap_um); that is the only place those questions are answered.")
     for note in notes:
         print(note)
     print()
@@ -1061,22 +1208,45 @@ _TIMESTEP_RE = re.compile(r"Timestep:\s*(\d+)")
 
 
 def _openems_version(log_text: str) -> dict:
-    m = _VERSION_RE.search(log_text)
-    if m:
-        return {"version": m.group(1), "source": "openEMS's own banner in the captured log"}
+    """The solver's version, or a loud failure.
+
+    Four sources, in this order, and the record names which one answered. A
+    record that cannot say which openEMS produced it is not a reference, so
+    "none of the four" raises instead of writing ``null``.
+    """
+    tried = []
+    try:
+        import openEMS as _pkg
+        v = getattr(_pkg, "__version__", None)
+        if v:
+            return {"version": str(v), "source": "openEMS.__version__"}
+        tried.append("openEMS.__version__ (attribute absent)")
+    except Exception as exc:
+        tried.append(f"openEMS.__version__ ({exc!r})")
+    try:
+        from openEMS.openEMS import openEMS as _cls
+        v = getattr(_cls, "__version__", None)
+        if v:
+            return {"version": str(v), "source": "openEMS.openEMS.openEMS.__version__"}
+        tried.append("openEMS.openEMS.openEMS.__version__ (attribute absent)")
+    except Exception as exc:
+        tried.append(f"openEMS.openEMS.openEMS.__version__ ({exc!r})")
     try:
         import importlib.metadata as md
         return {"version": md.version("openEMS"), "source": "importlib.metadata"}
-    except Exception:
-        pass
-    try:
-        import openEMS as _mod
-        v = getattr(_mod, "__version__", None)
-        if v:
-            return {"version": str(v), "source": "openEMS.__version__"}
-    except Exception:
-        pass
-    return {"version": None, "source": "not reported by the container"}
+    except Exception as exc:
+        tried.append(f"importlib.metadata.version('openEMS') ({exc!r})")
+    m = _VERSION_RE.search(log_text)
+    if m:
+        return {"version": m.group(1),
+                "source": "openEMS's own startup banner in the captured log"}
+    tried.append("the solver's startup banner in the captured log (no match)")
+    raise RuntimeError(
+        "the container reports NO openEMS version. Tried, in order: "
+        + "; ".join(tried)
+        + ". A reference record that cannot name the solver that produced it is "
+          "not a reference -- refusing to write one."
+    )
 
 
 def _timesteps_executed(log_text: str):
@@ -1084,41 +1254,85 @@ def _timesteps_executed(log_text: str):
     return max(hits) if hits else None
 
 
-def _mesh_realized(fdtd) -> dict:
-    """The mesh openEMS actually built, read back from CSXCAD."""
+def _mesh_lines(fdtd):
+    """The x/y/z lines CSXCAD actually built, in the CSX unit (um)."""
     try:
         grid = fdtd.GetCSX().GetGrid()
-        out: dict = {}
-        cells = 1
-        for ax in ("x", "y", "z"):
-            lines = np.asarray(grid.GetLines(ax), dtype=float)
-            steps = np.diff(lines)
-            out[ax] = {
-                "n_lines": int(lines.size),
-                "min_um": float(lines.min()), "max_um": float(lines.max()),
-                "step_min_um": float(steps.min()) if steps.size else None,
-                "step_max_um": float(steps.max()) if steps.size else None,
-            }
-            cells *= max(int(lines.size) - 1, 0)
-        out["n_cells"] = int(cells)
-        return out
-    except Exception as exc:
-        return {"error": repr(exc)}
+        return {ax: np.asarray(grid.GetLines(ax), dtype=float) for ax in ("x", "y", "z")}
+    except Exception:
+        return None
 
 
-def _port_realized(port, unit: float) -> dict:
-    out = {}
-    for attr, key in (("feed_shift", "feed_shift_mm"),
-                      ("measplane_shift", "measplane_shift_mm")):
+def _mesh_realized(lines) -> dict:
+    """Summary of the realized mesh. Every number here was read back, not declared."""
+    if lines is None:
+        return {"error": "CSXCAD did not return its grid lines"}
+    out: dict = {}
+    cells = 1
+    for ax in ("x", "y", "z"):
+        ln = lines[ax]
+        steps = np.diff(ln)
+        out[ax] = {
+            "n_lines": int(ln.size),
+            "min_um": float(ln.min()), "max_um": float(ln.max()),
+            "step_min_um": float(steps.min()) if steps.size else None,
+            "step_max_um": float(steps.max()) if steps.size else None,
+        }
+        cells *= max(int(ln.size) - 1, 0)
+    out["n_cells"] = int(cells)
+    z = lines["z"]
+    in_sub = z[(z >= -1e-9) & (z <= A_SUBSTRATE_THICKNESS_UM + 1e-9)]
+    out["substrate_z_cells_realized"] = int(in_sub.size - 1) if in_sub.size else 0
+    out["substrate_top_on_a_line"] = bool(
+        in_sub.size and abs(in_sub.max() - A_SUBSTRATE_THICKNESS_UM) < 1e-6)
+    return out
+
+
+def _nearest_line(lines_x, target_um: float) -> tuple:
+    """(nearest realized x line, |target - line|) in um."""
+    i = int(np.argmin(np.abs(lines_x - target_um)))
+    return float(lines_x[i]), float(abs(lines_x[i] - target_um))
+
+
+def _port_declared_and_snap(lines_x, *, start_x_um: float, direction: float,
+                            feed_shift_um: float, measplane_shift_um: float,
+                            port_obj=None) -> dict:
+    """What the script declared for this port, and where the grid put it.
+
+    The ``*_declared_mm`` fields are the declared numbers. The ``*_nearest_line_mm``
+    / ``*_snap_um`` fields are measured against the x lines CSXCAD built: the
+    distance is how far the plane had to move to reach a line.
+    """
+    feed_x = start_x_um + direction * feed_shift_um
+    meas_x = start_x_um + direction * measplane_shift_um
+    out = {
+        "start_x_declared_mm": start_x_um / 1e3,
+        "prop_direction": "+x" if direction > 0 else "-x",
+        "feed_shift_declared_mm": feed_shift_um / 1e3,
+        "meas_plane_shift_declared_mm": measplane_shift_um / 1e3,
+        "feed_plane_x_declared_mm": feed_x / 1e3,
+        "meas_plane_x_declared_mm": meas_x / 1e3,
+    }
+    if lines_x is not None and np.size(lines_x):
+        f_line, f_snap = _nearest_line(lines_x, feed_x)
+        m_line, m_snap = _nearest_line(lines_x, meas_x)
+        out.update({
+            "feed_plane_nearest_line_mm": f_line / 1e3,
+            "feed_plane_snap_um": f_snap,
+            "meas_plane_nearest_line_mm": m_line / 1e3,
+            "meas_plane_snap_um": m_snap,
+        })
+    else:
+        out.update({"feed_plane_nearest_line_mm": None, "feed_plane_snap_um": None,
+                    "meas_plane_nearest_line_mm": None, "meas_plane_snap_um": None})
+    # What MSLPort itself reports after its own snap, kept separate from both the
+    # declared numbers and the line measurement above.
+    for attr, key in (("feed_shift", "port_object_feed_shift_mm"),
+                      ("measplane_shift", "port_object_meas_plane_shift_mm")):
         try:
-            out[key] = float(getattr(port, attr)) * unit / 1e-3
+            out[key] = float(getattr(port_obj, attr)) * A_UNIT / 1e-3
         except Exception:
             out[key] = None
-    try:
-        out["start_mm"] = [float(v) * unit / 1e-3 for v in port.start]
-        out["stop_mm"] = [float(v) * unit / 1e-3 for v in port.stop]
-    except Exception:
-        out["start_mm"] = out["stop_mm"] = None
     return out
 
 
@@ -1162,6 +1376,26 @@ def _energy_summary(freqs_hz: np.ndarray, s11: np.ndarray, s21: np.ndarray) -> d
         },
         "witness_band_ghz": list(NOTCH_BAND_GHZ),
         "passivity_tol": 1.0 + PASSIVITY_TOL,
+    }
+
+
+def _stage_a_gate_verdict(f_notch_hz: float, depth_db: float) -> dict:
+    """The reproduce gate: the right frequency AND an actual notch.
+
+    Pure arithmetic so the self-check can plant curves at it.
+    """
+    f_ok = bool(STAGE_A_GATE["f_notch_lo_hz"] <= f_notch_hz <= STAGE_A_GATE["f_notch_hi_hz"])
+    depth_ok = bool(depth_db <= STAGE_A_MIN_DEPTH_DB)
+    return {
+        "measured_f_notch_hz": float(f_notch_hz),
+        "measured_depth_db": float(depth_db),
+        "analytic_f_notch_hz": float(F_NOTCH_AN_HZ),
+        "deviation_pct": abs(f_notch_hz - F_NOTCH_AN_HZ) / F_NOTCH_AN_HZ * 100.0,
+        "gate_band_hz": [STAGE_A_GATE["f_notch_lo_hz"], STAGE_A_GATE["f_notch_hi_hz"]],
+        "gate_min_depth_db": STAGE_A_MIN_DEPTH_DB,
+        "f_notch_ok": f_ok,
+        "depth_ok": depth_ok,
+        "passed": bool(f_ok and depth_ok),
     }
 
 
@@ -1214,7 +1448,8 @@ def _run_stage(*, label: str, sim_root: str, threads: int,
         _scan_stdout_for_bad_patterns(smoke_log, label + "_smoke")
 
         fdtd, port0, port1 = build(nrts=None, end_criteria=None)
-        mesh = _mesh_realized(fdtd)
+        lines = _mesh_lines(fdtd)
+        mesh = _mesh_realized(lines)
         meta["mesh_realized"] = mesh
 
         t0 = time.time()
@@ -1292,8 +1527,9 @@ def _run_stage(*, label: str, sim_root: str, threads: int,
     except RuntimeError as exc:
         raise fail(exc) from exc
 
+    resolution_um = _C0 / (A_F_MAX_HZ * np.sqrt(A_SUBSTRATE_EPR)) / A_UNIT / 50.0 * resolution_factor
     meta.update({
-        "resolution_um": _C0 / (A_F_MAX_HZ * np.sqrt(A_SUBSTRATE_EPR)) / A_UNIT / 50.0 * resolution_factor,
+        "resolution_um": resolution_um,
         "resolution_factor": float(resolution_factor),
         "msl_length_um": float(msl_length_um),
         "mesh_realized": mesh,
@@ -1303,11 +1539,17 @@ def _run_stage(*, label: str, sim_root: str, threads: int,
                   (15.0 * A_MSL_WIDTH_UM + A_STUB_LENGTH_UM) / 1e3],
             "z": [0.0, 3.0],
         },
-        "port0": _port_realized(port0, A_UNIT),
-        "port1": _port_realized(port1, A_UNIT),
-        "feed_shift_declared_mm": 10.0 * (_C0 / (A_F_MAX_HZ * np.sqrt(A_SUBSTRATE_EPR))
-                                          / A_UNIT / 50.0 * resolution_factor) / 1e3,
-        "measplane_shift_declared_mm": msl_length_um / 3.0 / 1e3,
+        "port0": _port_declared_and_snap(
+            None if lines is None else lines["x"],
+            start_x_um=-msl_length_um, direction=+1.0,
+            feed_shift_um=10.0 * resolution_um,
+            measplane_shift_um=msl_length_um / 3.0, port_obj=port0),
+        "port1": _port_declared_and_snap(
+            None if lines is None else lines["x"],
+            start_x_um=+msl_length_um, direction=-1.0,
+            feed_shift_um=10.0 * resolution_um,
+            measplane_shift_um=msl_length_um / 3.0, port_obj=port1),
+        "substrate_z_cells_declared": substrate_z_cells(resolution_factor),
         "timesteps_executed": _timesteps_executed(real_log),
         "end_criteria_reached": True,
         "excitation_energy_peak": inc_peak,
@@ -1331,6 +1573,14 @@ def _build_artifact(records: dict, stage_meta: dict, stage_a_gate: dict,
             "openems": (first_meta["openems"] if first_meta
                         else {"version": None, "source": "no stage reached the solver"}),
             "rfx_openems_commit": os.environ.get("RFX_OPENEMS_COMMIT"),
+            "rfx_openems_image": os.environ.get("RFX_OPENEMS_IMAGE"),
+            "comparability": (
+                "The S11/S21 PHASES are referenced at the tutorial's own measurement "
+                "planes, MeasPlaneShift = MSL_length/3 = 16.667 mm in from each port "
+                "face on the tutorial's 50 mm arms, and are NOT comparable with a "
+                "record taken on a different arm length; the MAGNITUDES are."
+            ),
+            "stage_a_min_depth_db": STAGE_A_MIN_DEPTH_DB,
             "tutorial_source": (
                 f"{REPRODUCE_GATE_RECORD['tutorial']['repo']}/"
                 f"{REPRODUCE_GATE_RECORD['tutorial']['path']} -- "
@@ -1367,8 +1617,14 @@ def _build_artifact(records: dict, stage_meta: dict, stage_a_gate: dict,
         },
         "stage_a": records.get("stage_a"),
         "stage_b_coarse": records.get("stage_b_coarse"),
+        "stage_b_mid": records.get("stage_b_mid"),
         "stage_b_fine": records.get("stage_b_fine"),
         "run_id": None,
+        "run_id_note": (
+            "null by design. VESSL does not export VESSL_RUN_ID into the pod, so the "
+            "job cannot write its own id; the submitter fills this field "
+            "(scripts/vessl_submit.sh drops run_id.txt beside the record)."
+        ),
     }
     if failed_gate is not None:
         artifact["failed_gate"] = failed_gate
@@ -1390,8 +1646,8 @@ def _stages_for(stage: str) -> list:
     if stage == "A":
         return ["stage_a"]
     if stage == "B":
-        return ["stage_b_coarse", "stage_b_fine"]
-    return ["stage_a", "stage_b_coarse", "stage_b_fine"]
+        return ["stage_b_coarse", "stage_b_mid", "stage_b_fine"]
+    return ["stage_a", "stage_b_coarse", "stage_b_mid", "stage_b_fine"]
 
 
 def main(argv=None) -> int:
@@ -1401,12 +1657,20 @@ def main(argv=None) -> int:
     p.add_argument("--sim-root", default="/tmp/msl_notch_openems")
     p.add_argument("--threads", type=int, default=8)
     p.add_argument("--resolution-factor", type=float, default=B_FINE_RESOLUTION_FACTOR,
-                   help="Stage B only: the FINE rung's factor on the tutorial's own "
-                        "resolution. The coarse rung is always 1.0, so a Stage B run "
-                        "always produces two rungs. Default 0.5.")
+                   help="Stage B only: the FINEST rung's factor on the tutorial's own "
+                        "resolution. The coarse rung is always 1.0 and the middle rung "
+                        "1/sqrt(2), so a Stage B run always produces three rungs. "
+                        "Default 0.5.")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--self-check", action="store_true")
     args = p.parse_args(argv)
+
+    # The range check runs on EVERY mode, not only a real run: a dry run or a
+    # self-check on an out-of-range factor would print a plan nothing can build.
+    if args.resolution_factor <= 0.0 or args.resolution_factor >= 1.0:
+        print(f"ERROR: --resolution-factor must be in (0, 1); got "
+              f"{args.resolution_factor}", file=sys.stderr)
+        return 3
 
     if args.self_check:
         return _self_check(args.resolution_factor)
@@ -1416,9 +1680,13 @@ def main(argv=None) -> int:
     if not args.output:
         print("ERROR: --output is required for a real run", file=sys.stderr)
         return 3
-    if args.resolution_factor <= 0.0 or args.resolution_factor >= 1.0:
-        print(f"ERROR: --resolution-factor must be in (0, 1); got "
-              f"{args.resolution_factor}", file=sys.stderr)
+    # P2-7: the image stamps the commit it built openEMS from. A record that
+    # cannot say which solver build produced it is not a reference.
+    if not os.environ.get("RFX_OPENEMS_COMMIT"):
+        print("ERROR: RFX_OPENEMS_COMMIT is not set. The record must name the "
+              "openEMS build it came from; the job file exports it from the image. "
+              "Refusing to produce a reference with no solver provenance.",
+              file=sys.stderr)
         return 3
 
     try:
@@ -1447,9 +1715,11 @@ def main(argv=None) -> int:
               "result in this run. The job file submits --stage both.", flush=True)
     factors = {"stage_a": (A_MSL_LENGTH_UM, 1.0),
                "stage_b_coarse": (B_MSL_LENGTH_UM, B_COARSE_RESOLUTION_FACTOR),
+               "stage_b_mid": (B_MSL_LENGTH_UM, B_MID_RESOLUTION_FACTOR),
                "stage_b_fine": (B_MSL_LENGTH_UM, args.resolution_factor)}
 
-    records: dict = {"stage_a": None, "stage_b_coarse": None, "stage_b_fine": None}
+    records: dict = {"stage_a": None, "stage_b_coarse": None,
+                     "stage_b_mid": None, "stage_b_fine": None}
     stage_meta: dict = {}
     stage_a_gate: dict = {}
 
@@ -1460,7 +1730,7 @@ def main(argv=None) -> int:
         # DELTA 1 is empty, so stage_b_coarse is Stage A's model on Stage A's
         # mesh. Solving it again would put two arrays in the record that a
         # reader could mistake for two measurements. Carry Stage A's and say so.
-        if (name == "stage_b_coarse" and _coarse_is_stage_a(args.resolution_factor)
+        if (name == "stage_b_coarse" and _coarse_is_stage_a()
                 and records["stage_a"] is not None):
             record = dict(records["stage_a"])
             record.pop("gate", None)
@@ -1503,28 +1773,30 @@ def main(argv=None) -> int:
               f"{meta['wall_time_s']} s", flush=True)
 
         if name == "stage_a":
-            passed = bool(STAGE_A_GATE["f_notch_lo_hz"] <= notch_hz <= STAGE_A_GATE["f_notch_hi_hz"])
-            stage_a_gate = {
-                "measured_f_notch_hz": notch_hz,
-                "analytic_f_notch_hz": float(F_NOTCH_AN_HZ),
-                "deviation_pct": abs(notch_hz - F_NOTCH_AN_HZ) / F_NOTCH_AN_HZ * 100.0,
-                "gate_band_hz": [STAGE_A_GATE["f_notch_lo_hz"], STAGE_A_GATE["f_notch_hi_hz"]],
-                "passed": passed,
-            }
+            stage_a_gate = _stage_a_gate_verdict(notch_hz, record["notch"]["depth_db"])
             record["gate"] = stage_a_gate
-            print(f"  reproduce gate: measured {notch_hz/1e9:.4f} GHz vs analytic "
-                  f"{F_NOTCH_AN_HZ/1e9:.4f} GHz ({stage_a_gate['deviation_pct']:.2f} %), "
+            print(f"  reproduce gate: measured {notch_hz/1e9:.4f} GHz "
+                  f"({stage_a_gate['measured_depth_db']:.2f} dB deep) vs analytic "
+                  f"{F_NOTCH_AN_HZ/1e9:.4f} GHz ({stage_a_gate['deviation_pct']:.2f} %); "
                   f"band {STAGE_A_GATE['f_notch_lo_hz']/1e9:.4f}-"
                   f"{STAGE_A_GATE['f_notch_hi_hz']/1e9:.4f} GHz -> "
-                  f"{'PASSED' if passed else 'FAILED'}", flush=True)
-            if not passed:
+                  f"{'ok' if stage_a_gate['f_notch_ok'] else 'RED'}, "
+                  f"depth <= {STAGE_A_MIN_DEPTH_DB:.0f} dB -> "
+                  f"{'ok' if stage_a_gate['depth_ok'] else 'RED'} => "
+                  f"{'PASSED' if stage_a_gate['passed'] else 'FAILED'}", flush=True)
+            if not stage_a_gate["passed"]:
+                why = []
+                if not stage_a_gate["f_notch_ok"]:
+                    why.append(f"frequency {notch_hz/1e9:.4f} GHz outside "
+                               f"{STAGE_A_GATE['f_notch_lo_hz']/1e9:.4f}-"
+                               f"{STAGE_A_GATE['f_notch_hi_hz']/1e9:.4f} GHz")
+                if not stage_a_gate["depth_ok"]:
+                    why.append(f"minimum only {stage_a_gate['measured_depth_db']:.2f} dB "
+                               f"deep, not a notch at the {STAGE_A_MIN_DEPTH_DB:.0f} dB level")
                 print("REPRODUCE GATE FAILED: no Stage B record is written.", file=sys.stderr)
                 failed = _build_artifact(
                     records, stage_meta, stage_a_gate, stages,
-                    failed_gate=(f"[stage_a] reproduce gate FAILED: measured "
-                                 f"{notch_hz/1e9:.4f} GHz is outside the band "
-                                 f"{STAGE_A_GATE['f_notch_lo_hz']/1e9:.4f}-"
-                                 f"{STAGE_A_GATE['f_notch_hi_hz']/1e9:.4f} GHz"))
+                    failed_gate="[stage_a] reproduce gate FAILED: " + "; ".join(why))
                 path = _failed_output_path(Path(args.output))
                 _write(failed, path)
                 print(f"evidence written to {path}", file=sys.stderr)
