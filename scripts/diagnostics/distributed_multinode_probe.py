@@ -199,6 +199,7 @@ def main():
                            "Scoped Python line observer adds overhead. No kernel cache replacement.",
             "environment": {k: os.environ.get(k) for k in
                             ("JAX_PLATFORMS", "XLA_FLAGS", "XLA_PYTHON_CLIENT_PREALLOCATE",
+                             "XLA_PYTHON_CLIENT_MEM_FRACTION",
                              "CUDA_VISIBLE_DEVICES", "RANK", "WORLD_SIZE", "MASTER_ADDR", "MASTER_PORT",
                              "RFX_NODE_NAME", "NODE_NAME", "RFX_TOOLING_SHA")}}
     write_json(path, data)

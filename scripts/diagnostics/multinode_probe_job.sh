@@ -17,7 +17,7 @@ case "$RFX_KIND" in
     ;;
   *) echo "Invalid RFX_KIND: $RFX_KIND"; exit 1 ;;
 esac
-job=${RFX_KIND}-${RFX_NX}
+job=${RFX_KIND}-${RFX_NX}${RFX_JOB_SUFFIX:-}
 echo "multinode worker start $(date -u +%Y-%m-%dT%H:%M:%SZ) rank=$rank world=$world host=$HOSTNAME coordinator=$coordinator"
 out=$RFX_RUNS_ROOT/multinode-$RFX_STAMP/$job
 mkdir -p "$out"
@@ -89,7 +89,8 @@ run_worker() {
   else
     printf 'unavailable\n' > "$out/node-product-uuid.rank$rank.txt"
   fi
-  set -- --nx-per-rank "$RFX_NX" --ny 116 --nz 116 --steps 200 --repeats 3 \
+  set -- --nx-per-rank "$RFX_NX" --ny "${RFX_NY:-116}" --nz "${RFX_NZ:-116}" \
+    --steps "${RFX_STEPS:-200}" --repeats "${RFX_REPEATS:-3}" \
     --process-count "$world" --process-id "$rank" --local-device-id 0 --output "$out" --tag "$job"
   if [ "$world" -gt 1 ]; then
     getent hosts "${coordinator%:*}"
