@@ -1011,6 +1011,45 @@ def fidelity_report(sim, print_report: bool = True):
                                "unintended"))
         report.append(item)
 
+    # Node-pinned sheets (add_pinned_sheet). They own no shape and no metres,
+    # so they have no declared bounds to compare a realization against; what
+    # the report owes is the other direction — where the node indices landed
+    # on THIS mesh, in input units. Realized values come from
+    # ``pinned_sheet_realized`` (the grid's own node line), never re-derived
+    # here, and the row carries ``realized_plane`` so the §1.7 cross-check
+    # below sees the same planes the assembly produced. Without these rows a
+    # pinned board reported a sheet-report-assembly-drift finding telling the
+    # reader to trust neither realization, on a model where the two agreed.
+    for j, ps in enumerate(getattr(sim_audit, "_pinned_sheets", ()) or ()):
+        from rfx.materials.thin_conductor import pinned_sheet_realized
+        info = pinned_sheet_realized(grid, ps)
+        a = int(info["normal_axis"])
+        k = int(info["plane_index"])
+        others = tuple(b for b in range(3) if b != a)
+        name = f"pinned_sheet[{j}]" + (f" '{ps.name}'" if ps.name else "")
+        item = dict(entity=name,
+                    material=dict(name="pec", eps_r=1.0, sigma=float("inf")),
+                    declared_node_plane=int(ps.plane_index),
+                    declared_node_ranges={
+                        _axis_names()[others[0]]: tuple(ps.i_range),
+                        _axis_names()[others[1]]: tuple(ps.j_range)},
+                    n_cells=0, findings=[])
+        item["realization"] = (
+            f"PEC sheet on node plane {_axis_names()[a]} = "
+            f"{info['plane_m'] * 1e6:.2f} um ({info['n_nodes']} nodes, "
+            "declared by node index, zero thickness, no cell; in-plane E "
+            "zeroed on that plane, normal E live)")
+        item["realized_plane"] = dict(axis=_axis_names()[a], index=k,
+                                      coordinate=info["plane_m"])
+        item["axes"] = [
+            dict(axis=_axis_names()[t],
+                 node_indices=info[f"{_axis_names()[t]}_node_indices"],
+                 realized_lo_um=info[f"{_axis_names()[t]}_edges_m"][0] * 1e6,
+                 realized_hi_um=info[f"{_axis_names()[t]}_edges_m"][1] * 1e6,
+                 realized_extent_um=info[f"{_axis_names()[t]}_span_m"] * 1e6)
+            for t in others]
+        report.append(item)
+
     # Report-vs-assembly cross-check (#931 §1.7: one source, every consumer).
     # A plane the SOLVE will realize but no report row names, or a row naming
     # a plane the assembly did not produce, means this report is describing a

@@ -139,7 +139,7 @@ from rfx.interop._materials import (
 from rfx.interop._shapes import shape_from_dict, shape_to_dict
 from rfx.interop._validate import check_number, check_text, check_vector
 from rfx.lumped import LumpedRLCSpec
-from rfx.materials.thin_conductor import ThinConductor
+from rfx.materials.thin_conductor import PinnedSheet, ThinConductor
 from rfx.sources.coaxial_port import CoaxialPort
 from rfx.sources.sources import CWSource, GaussianPulse, ModulatedGaussian
 
@@ -582,6 +582,22 @@ _THIN_CONDUCTOR_FIELDS: dict[str, _F] = {
     ),
 }
 
+# add_pinned_sheet(): a PEC sheet named by NODE INDEX, so nothing here is a
+# length. Every field is design state and round-trips verbatim; the loader
+# rebuilds it through the public builder, which re-applies its own refusals
+# (a single node line, a lossy sigma_bulk, an f0 sheet).
+_PINNED_SHEET_FIELDS: dict[str, _F] = {
+    "normal_axis": _INT,
+    "plane_index": _INT,
+    "i_range": _ivec(2),
+    "j_range": _ivec(2),
+    "sigma_bulk": _NUM,
+    "thickness": _NUM,
+    "eps_r": _NUM,
+    "surface_impedance_f0": _opt(_NUM),
+    "name": _opt(_STR),
+}
+
 _COAXIAL_PORT_FIELDS: dict[str, _F] = {
     "terminates": _TERMINATES,
     "position": _vec(3),
@@ -721,6 +737,7 @@ _PINNED_RECORDS: tuple[tuple[type, dict[str, _F]], ...] = (
     (_GeometryEntry, _GEOMETRY_FIELDS),
     (_ProbeEntry, _PROBE_FIELDS),
     (ThinConductor, _THIN_CONDUCTOR_FIELDS),
+    (PinnedSheet, _PINNED_SHEET_FIELDS),
     (CoaxialPort, _COAXIAL_PORT_FIELDS),
     (_TFSFEntry, _TFSF_FIELDS),
     (_DFTPlaneEntry, _DFT_PLANE_FIELDS),
@@ -833,6 +850,7 @@ EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
     "_solver",
     "_stencil_order",
     "_tfsf",
+    "_pinned_sheets",
     "_thin_conductors",
     "_waveguide_ports",
     # Issue #469: auto-offset lower edges. Accounted for by the dump via
@@ -1472,6 +1490,12 @@ def design_to_dict(sim: Any) -> dict[str, Any]:
             ThinConductor,
             what="_thin_conductors",
         ),
+        "pinned_sheets": _dump_list(
+            getattr(sim, "_pinned_sheets", []),
+            _PINNED_SHEET_FIELDS,
+            PinnedSheet,
+            what="_pinned_sheets",
+        ),
         "excitations": {
             "soft_sources": soft_sources,
             "lumped_ports": lumped_ports,
@@ -1563,6 +1587,7 @@ _TOP_LEVEL_KEYS = {
     "material_library",
     "geometry",
     "thin_conductors",
+    "pinned_sheets",
     "excitations",
     "observables",
     "refinement",
@@ -1776,6 +1801,16 @@ def simulation_from_design(document: Any) -> Any:
             payload, _THIN_CONDUCTOR_FIELDS, what=f"thin_conductors[{index}]"
         )
         sim.add_thin_conductor(values.pop("shape"), **values)
+
+    for index, payload in enumerate(
+        _entry_list(document, "pinned_sheets", what="design document")
+    ):
+        values = _load_entry(
+            payload, _PINNED_SHEET_FIELDS, what=f"pinned_sheets[{index}]"
+        )
+        values["i_range"] = tuple(values["i_range"])
+        values["j_range"] = tuple(values["j_range"])
+        sim.add_pinned_sheet(**values)
 
     for index, payload in enumerate(
         _entry_list(excitations, "coaxial_ports", what="excitations")

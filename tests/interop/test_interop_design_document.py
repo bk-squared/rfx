@@ -572,6 +572,7 @@ def test_every_builder_method_is_covered_by_the_document():
         "add_material",
         "add_msl_port",
         "add_ntff_box",
+        "add_pinned_sheet",
         "add_port",
         "add_probe",
         "add_refinement",

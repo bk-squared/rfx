@@ -670,7 +670,9 @@ def _port_realized_edges(self, grid):
     all has no interior walls by construction, so the assembly is
     skipped there rather than run to produce an all-False set.
     """
-    if not self._geometry and not getattr(self, "_thin_conductors", None):
+    if (not self._geometry
+            and not getattr(self, "_thin_conductors", None)
+            and not getattr(self, "_pinned_sheets", None)):
         return None
     try:
         realized = self._assemble_realized(grid, nonuniform=False)
@@ -709,15 +711,20 @@ def _campaign_ctx(self):
     the context runs the production assembly, which on a large model
     is the most expensive thing preflight does, and five checks each
     building their own would run it five times. The cache key is the
-    identity of every geometry / thin-conductor entry plus the mesh
-    parameters, so an ``add()`` after a preflight (a new entry object)
-    or a mesh change misses the cache and rebuilds — the staleness a
-    plain instance cache would have had.
+    identity of every geometry / thin-conductor / pinned-sheet entry
+    plus the mesh parameters, so an ``add()`` or ``add_pinned_sheet()``
+    after a preflight (a new entry object) or a mesh change misses the
+    cache and rebuilds — the staleness a plain instance cache would
+    have had.  EVERY declaration surface that reaches the assembly must
+    have a term here: a conductor the solve realizes and preflight's
+    cached context does not is a preflight reporting a different model
+    from the one that runs.
     """
     sim = self
     key = (
         tuple(id(e) for e in sim._geometry),
         tuple(id(tc) for tc in getattr(sim, "_thin_conductors", ())),
+        tuple(id(ps) for ps in getattr(sim, "_pinned_sheets", ())),
         id(sim._dx), id(sim._dx_profile), id(sim._dy_profile),
         id(sim._dz_profile), tuple(sim._domain),
         getattr(sim, "_periodic_axes", None), sim._cpml_layers,

@@ -385,6 +385,16 @@ def test_patch_edge_gradient_matches_a_central_difference(case):
     """
     kw = AD_CASES[case]
     d0 = 0.5 * DX
+    # The substrate deforms too, so a gradient alone does not prove the METAL
+    # is in this board: without this the test would pass on a bare dielectric.
+    board = _build_board(d0, **{k: v for k, v in kw.items() if k != "probe"},
+                         probe=kw["probe"])
+    patch = pinned_sheet_spec(board._build_nonuniform_grid(),
+                              board._pinned_sheets[-1])
+    n_edges = sum(int(np.asarray(m).sum())
+                  for m in realized_pec_edge_masks(None, sheets=(patch,)))
+    assert n_edges >= 1, f"{case}: the pinned patch realizes no PEC edge"
+
     value, grad_ad = jax.value_and_grad(lambda d: _loss(d, **kw))(
         jnp.float32(d0))
     grad_ad, value = float(grad_ad), float(value)
@@ -404,3 +414,111 @@ def test_patch_edge_gradient_matches_a_central_difference(case):
     assert rel < 1.5e-2, (
         f"{case}: AD {grad_ad:+.6e} vs central FD {grad_fd:+.6e} — "
         f"relative {rel:.3e}")
+
+
+# --------------------------------------------------------------------------
+# 5. the other consumers of the declaration list
+# --------------------------------------------------------------------------
+
+def _pinned_board():
+    sim = Simulation(freq_max=40e9, domain=(N_X * DX, N_Y * DX, N_Z * DX),
+                     dx=DX, cpml_layers=CPML, boundary="cpml")
+    sim.add_material("sub", eps_r=3.38)
+    sim.add(Box((2 * DX, 2 * DX, Z_GND), (22 * DX, 14 * DX, Z_PATCH)),
+            material="sub")
+    sim.add_source((3 * DX, 8 * DX, K_MID * DX), "ez",
+                   amplitude_kind="current")
+    sim.add_probe((20 * DX, 8 * DX, K_MID * DX), "ez")
+    return sim
+
+
+def test_preflight_sees_a_pinned_sheet_added_after_an_earlier_preflight():
+    """The campaign-statics cache is keyed on the identity of every
+    declaration that reaches the assembly. Without a term for the pinned
+    sheets, a patch added after one preflight stayed invisible to the next
+    while the solve realized it — preflight then audits a different model
+    from the one that runs.
+    """
+    sim = _pinned_board()
+    before = sim._campaign_ctx()
+    assert [int(sp.plane) for sp in before.realized().sheets] == []
+
+    sim.add_pinned_sheet(plane_index=K_PATCH, i_range=(I_LO, I_HI),
+                         j_range=(J_LO, J_HI), name="patch")
+    after = sim._campaign_ctx()
+    assert after is not before, "the cache key has no term for _pinned_sheets"
+    assert [int(sp.plane) for sp in after.realized().sheets] == [K_PATCH + CPML]
+
+
+def test_quick_convergence_refuses_a_node_pinned_conductor():
+    """A dx sweep rescales node-pinned geometry, so each rung is a different
+    antenna. Refused by name rather than run."""
+    from rfx.convergence import quick_convergence
+    sim = _pinned_board()
+    sim.add_pinned_sheet(plane_index=K_PATCH, i_range=(I_LO, I_HI),
+                         j_range=(J_LO, J_HI), name="patch")
+    with pytest.raises(ValueError, match="node-pinned sheet"):
+        quick_convergence(sim, n_steps=4)
+
+
+def test_fidelity_report_carries_a_row_per_pinned_sheet():
+    """The report's §1.7 cross-check compares the planes it names against the
+    planes the assembly built. A pinned board used to name none, so the
+    report told the reader to trust neither realization on a model where the
+    two agreed."""
+    sim = _pinned_board()
+    sim.add_pinned_sheet(plane_index=K_PATCH, i_range=(I_LO, I_HI),
+                         j_range=(J_LO, J_HI), name="patch")
+    report = sim.fidelity_report(print_report=False)
+    kinds = [f["kind"] for it in report for f in it["findings"]]
+    assert "sheet-report-assembly-drift" not in kinds, kinds
+    rows = [it for it in report if it["entity"].startswith("pinned_sheet")]
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["realized_plane"]["index"] == K_PATCH + CPML
+    assert row["realized_plane"]["coordinate"] == pytest.approx(Z_PATCH)
+    assert row["n_cells"] == 0          # a sheet owns no cell
+    spans = {a["axis"]: a["realized_extent_um"] for a in row["axes"]}
+    assert spans["x"] == pytest.approx((I_HI - I_LO) * DX * 1e6)
+    assert spans["y"] == pytest.approx((J_HI - J_LO) * DX * 1e6)
+
+
+def test_fidelity_report_cross_checks_a_pinned_and_a_metric_sheet_together():
+    sim = _pinned_board()
+    sim.add_pinned_sheet(plane_index=K_PATCH, i_range=(I_LO, I_HI),
+                         j_range=(J_LO, J_HI), name="patch")
+    sim.add_thin_conductor(Box((2 * DX, 2 * DX, Z_GND),
+                               (22 * DX, 14 * DX, Z_GND)))
+    report = sim.fidelity_report(print_report=False)
+    kinds = [f["kind"] for it in report for f in it["findings"]]
+    assert "sheet-report-assembly-drift" not in kinds, kinds
+    planes = sorted(it["realized_plane"]["index"] for it in report
+                    if "realized_plane" in it)
+    assert planes == [K_GND + CPML, K_PATCH + CPML]
+
+
+def test_pinned_sheets_reach_the_viewer_and_the_run_record():
+    from rfx.artifacts import build_scene_artifact
+    from rfx.visualize import _declared_entries
+    sim = _pinned_board()
+    sim.add_pinned_sheet(plane_index=K_PATCH, i_range=(I_LO, I_HI),
+                         j_range=(J_LO, J_HI), name="patch")
+    assert any(isinstance(e, PinnedSheet) for e in _declared_entries(sim))
+    scene = build_scene_artifact(sim, include_private=True)
+    assert scene["private_summary"]["pinned_sheets"]["count"] == 1
+
+
+def test_a_pinned_sheet_round_trips_through_the_design_document():
+    from rfx.interop import design_to_dict, simulation_from_design
+    sim = _pinned_board()
+    sim.add_pinned_sheet(plane_index=K_PATCH, i_range=(I_LO, I_HI),
+                         j_range=(J_LO, J_HI), name="patch")
+    doc = design_to_dict(sim)
+    assert len(doc["pinned_sheets"]) == 1
+    rebuilt = simulation_from_design(doc)
+    assert rebuilt._pinned_sheets == sim._pinned_sheets
+    assert np.array_equal(
+        np.asarray(pinned_sheet_spec(rebuilt._build_grid(),
+                                     rebuilt._pinned_sheets[0]).footprint),
+        np.asarray(pinned_sheet_spec(sim._build_grid(),
+                                     sim._pinned_sheets[0]).footprint))
