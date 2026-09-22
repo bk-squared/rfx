@@ -1073,10 +1073,79 @@ def rung_short_names(stage_names) -> list:
 
 
 ACCEPT_TRUNCATION_DEFAULT = False
+RECORD_LENGTH_WITNESS_DEFAULT = False
+
+# The witness compares two records of the SAME board on the SAME mesh, one
+# twice as long as the other, and reports how far apart they are. Bins where
+# either curve is below this floor are left out: a -40 dB null moves by several
+# dB for reasons that have nothing to do with record length, and including it
+# would make the witness a measure of the null rather than of the truncation.
+WITNESS_FLOOR_DB = -20.0
+WITNESS_ARRAY_KEYS = ("freqs_ghz", "s11_mag", "s11_deg", "s21_mag", "s21_deg",
+                      "energy_sum")
+
+
+def _db(mag) -> np.ndarray:
+    return 20.0 * np.log10(np.maximum(np.asarray(mag, dtype=float), 1e-30))
+
+
+def record_length_witness(record_n: dict, record_2n: dict, *,
+                          n_steps: int, n2_steps: int) -> dict:
+    """How much the curves move when the record is twice as long.
+
+    REPORTED, NOT GATED. The case's own test decides what the numbers mean; this
+    function measures them and says over which bins. The 2N arrays travel with
+    the numbers so a reader can plot both without a second file.
+    """
+    out = {k: record_2n[k] for k in WITNESS_ARRAY_KEYS if k in record_2n}
+    out["n_steps"] = int(n_steps)
+    out["n2_steps"] = int(n2_steps)
+    out["floor_db"] = WITNESS_FLOOR_DB
+    out["band_ghz"] = list(WITNESS_BAND_GHZ)
+    out["what_it_is"] = (
+        "the same rung solved twice, at n_steps and n2_steps timesteps. The "
+        "rung's own arrays are the n_steps run; these are the n2_steps run. "
+        "max_abs_delta_* is the largest |dB| difference between the two over "
+        f"{WITNESS_BAND_GHZ[0]:g}-{WITNESS_BAND_GHZ[1]:g} GHz, counting only "
+        f"bins where BOTH curves are above {WITNESS_FLOOR_DB:g} dB. Reported, "
+        "not gated."
+    )
+
+    f_n = np.asarray(record_n.get("freqs_ghz", []), dtype=float)
+    f_2n = np.asarray(record_2n.get("freqs_ghz", []), dtype=float)
+    if f_n.size == 0 or f_n.size != f_2n.size or not np.allclose(f_n, f_2n):
+        out["error"] = (
+            f"the two runs do not share a frequency grid ({f_n.size} vs "
+            f"{f_2n.size} bins); no difference is computed")
+        return out
+
+    band = (f_n >= WITNESS_BAND_GHZ[0]) & (f_n <= WITNESS_BAND_GHZ[1])
+    for key, tag in (("s21_mag", "s21"), ("s11_mag", "s11")):
+        a, b = record_n.get(key), record_2n.get(key)
+        if a is None or b is None:
+            out[f"max_abs_delta_{tag}_db"] = None
+            out[f"f_ghz_at_max_abs_delta_{tag}"] = None
+            out[f"{tag}_bins_compared"] = 0
+            continue
+        a_db, b_db = _db(a), _db(b)
+        mask = band & (a_db > WITNESS_FLOOR_DB) & (b_db > WITNESS_FLOOR_DB)
+        n_bins = int(np.count_nonzero(mask))
+        out[f"{tag}_bins_compared"] = n_bins
+        if n_bins == 0:
+            out[f"max_abs_delta_{tag}_db"] = None
+            out[f"f_ghz_at_max_abs_delta_{tag}"] = None
+            continue
+        delta = np.abs(a_db - b_db)
+        i = int(np.argmax(np.where(mask, delta, -np.inf)))
+        out[f"max_abs_delta_{tag}_db"] = float(delta[i])
+        out[f"f_ghz_at_max_abs_delta_{tag}"] = float(f_n[i])
+    return out
 
 
 def stop_criteria_note(real_end_criteria, real_nrts,
-                       accept_truncation: bool = ACCEPT_TRUNCATION_DEFAULT) -> str:
+                       accept_truncation: bool = ACCEPT_TRUNCATION_DEFAULT,
+                       record_length_witness: bool = RECORD_LENGTH_WITNESS_DEFAULT
+                       ) -> str:
     """What stopped the real passes in this record, and why, in one string.
 
     With no override this says the library defaults ran. With one it says which
@@ -1089,6 +1158,12 @@ def stop_criteria_note(real_end_criteria, real_nrts,
         "cap) instead of failing the end-criteria gate. A record made this way is "
         "as long as the cap, not as long as a decay level: what that costs the "
         "numbers in it is not decided here." if accept_truncation else "")
+    witnessed = (
+        " --record-length-witness was given, so every rung was solved TWICE, at "
+        "n_steps and 2 x n_steps, and stage_b_<rung>.witness_2n carries the "
+        "longer run's arrays and how far the two curves are apart. Reported, not "
+        "gated." if record_length_witness else "")
+    accepted = accepted + witnessed
     if real_end_criteria is None and real_nrts is None:
         return ("openEMS's own library defaults (~1e9 / 1e-5) on every real pass, "
                 "Stage A and Stage B alike. No override was given. This is the "
@@ -1348,6 +1423,7 @@ def _build_artifact(records: dict, stage_meta: dict, stage_a_gate: dict,
                     stages: list, *, failed_gate: str | None = None,
                     real_nrts=None, real_end_criteria=None,
                     accept_truncation: bool = ACCEPT_TRUNCATION_DEFAULT,
+                    record_length_witness: bool = RECORD_LENGTH_WITNESS_DEFAULT,
                     stage_names=None) -> dict:
     """This case's meta block, on the shared record writer.
 
@@ -1366,7 +1442,9 @@ def _build_artifact(records: dict, stage_meta: dict, stage_a_gate: dict,
             "rungs_in_this_record": [n for n in RUNG_ORDER
                                      if RUNG_KEYS[n] in names],
             "stop_criteria_note": stop_criteria_note(
-                real_end_criteria, real_nrts, accept_truncation),
+                real_end_criteria, real_nrts, accept_truncation,
+                record_length_witness),
+            "record_length_witness_ran": bool(record_length_witness),
             "structure": (
                 "the Sheen 1990 stepped-impedance microstrip low-pass filter: "
                 "RT/Duroid eps_r 2.2, h 0.794 mm; two 2.413 mm wide 50 ohm feeds "
@@ -1465,7 +1543,8 @@ def _stages_for(stage: str, rung_stages=None) -> list:
 
 def _dry_run(stage: str, fine_factor: float, rung_stages=None,
              real_nrts=None, real_end_criteria=None,
-             accept_truncation: bool = ACCEPT_TRUNCATION_DEFAULT) -> int:
+             accept_truncation: bool = ACCEPT_TRUNCATION_DEFAULT,
+             record_length_witness: bool = RECORD_LENGTH_WITNESS_DEFAULT) -> int:
     order = _stages_for(stage, rung_stages)
     order_rungs = [s for s in order if s in RUNG_ORDER_STAGES]
     print("=" * 78)
@@ -1505,7 +1584,19 @@ def _dry_run(stage: str, fine_factor: float, rung_stages=None,
           f"{SCRIPT_NRTS_CAP} / {SCRIPT_END_CRITERIA_CAP} cap is NOT carried "
           f"(delta 9)")
     print(f"  stop criteria   "
-          f"{stop_criteria_note(real_end_criteria, real_nrts, accept_truncation)}")
+          f"{stop_criteria_note(real_end_criteria, real_nrts, accept_truncation, record_length_witness)}")
+    if record_length_witness:
+        print(f"  record-length witness   ON: EVERY requested rung is solved "
+              f"TWICE, at {real_nrts} and {2 * int(real_nrts)} timesteps, so this "
+              f"job costs {2 * len(order_rungs)} Stage B solves for "
+              f"{len(order_rungs)} rung(s) plus Stage A. The 2N arrays and the "
+              f"dB differences go under stage_b_<rung>.witness_2n, over "
+              f"{WITNESS_BAND_GHZ[0]:g}-{WITNESS_BAND_GHZ[1]:g} GHz and only "
+              f"where both curves are above {WITNESS_FLOOR_DB:g} dB. Reported, "
+              f"not gated.")
+    else:
+        print(f"  record-length witness   off: {len(order_rungs)} Stage B solve(s) "
+              f"for {len(order_rungs)} rung(s) plus Stage A")
     print(f"  rungs requested {', '.join(rung_short_names(order_rungs)) or '(none)'}"
           f"   -- Stage A runs in every job that asks for it")
     print(f"  CalcPort grid   linspace({F_LO:.4g}, {F_MAX:.4g}, {B_N_FREQS}), TWO "
@@ -1641,6 +1732,46 @@ def _self_check(fine_factor: float) -> int:
           "Stage A's runner takes no such parameter at all -- the gate cannot be "
           "turned off for the reproduce stage even by mistake")
     del _insp
+
+    print("the record-length witness (reported, never gated):")
+    check(RECORD_LENGTH_WITNESS_DEFAULT is False,
+          "--record-length-witness is OFF by default: a rung is solved once",
+          f"{RECORD_LENGTH_WITNESS_DEFAULT!r}")
+    check(WITNESS_FLOOR_DB == -20.0,
+          "bins where either curve is below -20 dB are left out, so the witness "
+          "measures truncation and not how far a deep null moved")
+    f_w = np.linspace(F_LO / 1e9, F_MAX / 1e9, B_N_FREQS)
+    base = np.full_like(f_w, 0.5)
+    moved = base.copy()
+    i_in = int(np.argmin(np.abs(f_w - 6.0)))
+    moved[i_in] = base[i_in] * 10.0 ** (0.25 / 20.0)      # +0.25 dB, above the floor
+    i_null = int(np.argmin(np.abs(f_w - 8.0)))
+    base[i_null] = 10.0 ** (-60.0 / 20.0)                 # a deep null ...
+    moved[i_null] = 10.0 ** (-30.0 / 20.0)                # ... that moves 30 dB
+    i_out = int(np.argmin(np.abs(f_w - 18.0)))
+    moved[i_out] = base[i_out] * 10.0 ** (9.0 / 20.0)     # 9 dB, outside the band
+    w = record_length_witness(
+        {"freqs_ghz": f_w.tolist(), "s21_mag": base.tolist(),
+         "s11_mag": np.full_like(f_w, 0.3).tolist()},
+        {"freqs_ghz": f_w.tolist(), "s21_mag": moved.tolist(),
+         "s11_mag": np.full_like(f_w, 0.3).tolist()},
+        n_steps=60000, n2_steps=120000)
+    check(abs(w["max_abs_delta_s21_db"] - 0.25) < 1e-6,
+          "a planted 0.25 dB in-band move is what the witness reports -- not the "
+          "30 dB null and not the 9 dB bin above the band",
+          f"{w['max_abs_delta_s21_db']:.6f} dB at "
+          f"{w['f_ghz_at_max_abs_delta_s21']:.3f} GHz over "
+          f"{w['s21_bins_compared']} bins")
+    check(w["n_steps"] == 60000 and w["n2_steps"] == 120000,
+          "the two record lengths travel with the numbers")
+    check(not [k for k in w if k in ("passed", "ok", "gate", "verdict")],
+          "nothing the witness returns is a verdict")
+    check("error" in record_length_witness({"freqs_ghz": [1.0, 2.0]},
+                                           {"freqs_ghz": [1.0, 2.0, 3.0]},
+                                           n_steps=1, n2_steps=2),
+          "two runs on different frequency grids are refused, not differenced")
+    check(MERGE_RECORD_LENGTH_TOL == 0.05,
+          "--merge allows the rungs' record lengths to differ by 5 %, no more")
     check(B_BOUNDARY == ["PML_8", "PML_8", "MUR", "MUR", "PEC", "MUR"], "boundary")
     check(C0 == 2.99792458e8,
           "C0 is the Sheen script's own, not the tutorial gate's 2.998e8")
@@ -1957,6 +2088,12 @@ _STAGE_A_ARRAYS = ("freqs_ghz", "s11_mag", "s11_deg", "s21_mag", "s21_deg",
 _MERGE_META_MUST_AGREE = ("tutorial_source", "rfx_openems_image",
                           "rfx_openems_commit")
 
+# How far apart two rungs' record LENGTHS may be and still be one measurement.
+# The rungs are capped by step COUNT and dt shrinks with the cell, so the job
+# passes N = 60000 / factor per rung to keep the seconds equal; 5 % is the room
+# that leaves for the solver's own dt rounding, not a tolerance on physics.
+MERGE_RECORD_LENGTH_TOL = 0.05
+
 
 def _merge_refuse(msg: str) -> int:
     print(f"MERGE REFUSED: {msg}", file=sys.stderr)
@@ -2040,6 +2177,34 @@ def _merge(part_paths: list, output: str) -> int:
                              f"have fewer than the three rungs the mesh statement "
                              f"is made of")
 
+    # -- the rungs must be the same LENGTH of record, not the same step count --
+    lengths = {}
+    for stage, (path, a) in owner.items():
+        st = (a["meta"].get("stages") or {}).get(stage) or {}
+        lengths[stage] = (path, st.get("record_length_s"))
+    unknown = [f"{s} ({p.name})" for s, (p, v) in lengths.items() if v is None]
+    if unknown:
+        return _merge_refuse(
+            f"record_length_s is missing for {unknown}. A merged reference whose "
+            f"rungs might be different lengths of recorded time is not one "
+            f"measurement, so this refuses rather than assume. The usual cause is "
+            f"that the solver's timestep was not found in the captured stdout -- "
+            f"each part's meta.stages.<stage>.record_length_source says which, and "
+            f"the job now persists the stdout log beside the record.")
+    values = [v for _, v in lengths.values()]
+    lo, hi = min(values), max(values)
+    spread = (hi - lo) / hi if hi > 0 else 0.0
+    if spread > MERGE_RECORD_LENGTH_TOL:
+        detail = ", ".join(f"{s}={v:.6g} s ({p.name})"
+                           for s, (p, v) in sorted(lengths.items()))
+        return _merge_refuse(
+            f"the rungs recorded different lengths of time: {detail} -- a spread "
+            f"of {spread * 100:.2f} %, over the {MERGE_RECORD_LENGTH_TOL * 100:.0f} "
+            f"% these are allowed to differ by. A step cap is not a record length: "
+            f"dt shrinks with the cell, so each rung needs its own N (60000 / "
+            f"factor: coarse 60000, mid 84853, fine 120000) to record the same "
+            f"seconds.")
+
     merged = copy.deepcopy(first)
     stages_meta = dict(merged["meta"].get("stages") or {})
     for stage, (path, a) in owner.items():
@@ -2055,6 +2220,33 @@ def _merge(part_paths: list, output: str) -> int:
         "record does not claim they do")
     maker_commits = [a["meta"].get("rfx_commit") for _, a in parts]
     merged["meta"]["maker_commits_agree"] = bool(len(set(map(str, maker_commits))) == 1)
+    merged["meta"]["record_length_s_per_rung"] = {
+        short: lengths[RUNG_KEYS[short]][1] for short in RUNG_ORDER}
+    merged["meta"]["record_length_s_spread_pct"] = spread * 100.0
+    merged["meta"]["record_length_s_tolerance_pct"] = MERGE_RECORD_LENGTH_TOL * 100.0
+    # Each rung's own record-length witness, side by side, when the rung was
+    # solved twice. Reported; the case's test is what judges them.
+    witnesses = {}
+    for short in RUNG_ORDER:
+        stage = RUNG_KEYS[short]
+        block = merged.get(stage) or {}
+        w = block.get("witness_2n")
+        if not isinstance(w, dict):
+            continue
+        witnesses[short] = {
+            "n_steps": w.get("n_steps"),
+            "n2_steps": w.get("n2_steps"),
+            "record_length_s": lengths[stage][1],
+            "max_abs_delta_s21_db": w.get("max_abs_delta_s21_db"),
+            "f_ghz_at_max_abs_delta_s21": w.get("f_ghz_at_max_abs_delta_s21"),
+            "s21_bins_compared": w.get("s21_bins_compared"),
+            "max_abs_delta_s11_db": w.get("max_abs_delta_s11_db"),
+            "f_ghz_at_max_abs_delta_s11": w.get("f_ghz_at_max_abs_delta_s11"),
+            "s11_bins_compared": w.get("s11_bins_compared"),
+            "floor_db": w.get("floor_db"),
+            "band_ghz": w.get("band_ghz"),
+        }
+    merged["meta"]["record_length_witness"] = witnesses or None
     merged["meta"]["merged_from"] = [
         {
             "path": str(path),
@@ -2078,6 +2270,20 @@ def _merge(part_paths: list, output: str) -> int:
     for entry in merged["meta"]["merged_from"]:
         print(f"  {entry['path']}  rungs={','.join(entry['rungs']) or '-'}  "
               f"run_id={entry['run_id']}  maker_commit={entry['maker_commit']}")
+    print("  record length per rung (s): "
+          + ", ".join(f"{s}={merged['meta']['record_length_s_per_rung'][s]:.6g}"
+                      for s in RUNG_ORDER)
+          + f"  (spread {spread * 100:.2f} %, tolerance "
+            f"{MERGE_RECORD_LENGTH_TOL * 100:.0f} %)")
+    if witnesses:
+        for short, w in witnesses.items():
+            print(f"  record-length witness {short}: {w['n_steps']} vs "
+                  f"{w['n2_steps']} steps -> |S21| <= "
+                  f"{w['max_abs_delta_s21_db']} dB, |S11| <= "
+                  f"{w['max_abs_delta_s11_db']} dB. Reported, not gated.")
+    else:
+        print("  no rung carries a record-length witness (no part was made with "
+              "--record-length-witness)")
     if not merged["meta"]["maker_commits_agree"]:
         print("NOTE: the parts do not all name the same maker commit "
               f"({maker_commits!r}). Recorded in meta, not judged here.")
@@ -2131,6 +2337,15 @@ def main(argv=None) -> int:
                         "be made on purpose -- what such a record is good for is "
                         "the leader's to decide from the data, and this script "
                         "decides nothing about it. Stage A is never affected.")
+    p.add_argument("--record-length-witness", action="store_true",
+                   help="Stage B only: solve each requested rung TWICE, at "
+                        "--real-nrts N and at 2N, and record the longer run's "
+                        "arrays and how far the two curves are apart under "
+                        "stage_b_<rung>.witness_2n. Requires --real-nrts and "
+                        "--accept-truncation, because a declared record length "
+                        "is what it measures. It DOUBLES the solve cost of every "
+                        "rung. Reported, not gated: what the numbers mean is the "
+                        "case's test to decide.")
     p.add_argument("--merge", nargs="+", default=None, metavar="PART.json",
                    help="Combine per-rung records into one, written to --output. "
                         "Refuses unless every part's Stage A agrees bin for bin and "
@@ -2147,6 +2362,23 @@ def main(argv=None) -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 3
 
+    # The witness measures what a DECLARED record length costs. Without a
+    # declared length there are not two lengths to compare, and without
+    # --accept-truncation the N run would be a fired gate before the 2N run
+    # started -- so both are required rather than assumed.
+    if args.record_length_witness:
+        missing = []
+        if args.real_nrts is None:
+            missing.append("--real-nrts N")
+        if not args.accept_truncation:
+            missing.append("--accept-truncation")
+        if missing:
+            print(f"ERROR: --record-length-witness needs {' and '.join(missing)}: "
+                  f"it compares a record of N steps with one of 2N, which means N "
+                  f"has to be declared and a run that stops at N has to be "
+                  f"recordable.", file=sys.stderr)
+            return 3
+
     # The range check runs on EVERY mode, not only a real run: a dry run or a
     # self-check on an out-of-range factor would print a plan nothing can build.
     if args.resolution_factor <= 0.0 or args.resolution_factor >= 1.0:
@@ -2160,7 +2392,8 @@ def main(argv=None) -> int:
         return _dry_run(args.stage, args.resolution_factor, rung_stages,
                         real_nrts=args.real_nrts,
                         real_end_criteria=args.real_end_criteria,
-                        accept_truncation=args.accept_truncation)
+                        accept_truncation=args.accept_truncation,
+                        record_length_witness=args.record_length_witness)
 
     # --merge runs no solver and needs no image stamp: it reads records that
     # already carry their own.
@@ -2208,7 +2441,7 @@ def main(argv=None) -> int:
 
     stages = _stages_for(args.stage, rung_stages)
     stage_names = ["stage_a"] + [s for s in RUNG_ORDER_STAGES if s in stages]
-    print(f"stop criteria: {stop_criteria_note(args.real_end_criteria, args.real_nrts, args.accept_truncation)}")
+    print(f"stop criteria: {stop_criteria_note(args.real_end_criteria, args.real_nrts, args.accept_truncation, args.record_length_witness)}")
     print(f"rungs this job solves: "
           f"{', '.join(rung_short_names(stages)) or '(none)'}", flush=True)
     print()
@@ -2230,6 +2463,7 @@ def main(argv=None) -> int:
                                real_nrts=args.real_nrts,
                                real_end_criteria=args.real_end_criteria,
                                accept_truncation=args.accept_truncation,
+                               record_length_witness=args.record_length_witness,
                                stage_names=stage_names)
 
     def bail(name: str, exc) -> int:
@@ -2257,6 +2491,31 @@ def main(argv=None) -> int:
                     real_nrts=args.real_nrts,
                     real_end_criteria=args.real_end_criteria,
                     accept_truncation=args.accept_truncation)
+                if args.record_length_witness:
+                    n2 = 2 * int(args.real_nrts)
+                    print(f"  record-length witness: solving {name} again at "
+                          f"{n2} timesteps", flush=True)
+                    record2, meta2 = _run_stage_b(
+                        label=name + "_2n", sim_root=args.sim_root,
+                        threads=args.threads, resolution_factor=factors[name],
+                        sf=sf, real_nrts=n2,
+                        real_end_criteria=args.real_end_criteria,
+                        accept_truncation=args.accept_truncation)
+                    record["witness_2n"] = record_length_witness(
+                        record, record2, n_steps=int(args.real_nrts), n2_steps=n2)
+                    meta["witness_2n"] = meta2
+                    w = record["witness_2n"]
+                    print(f"  witness {int(args.real_nrts)} vs {n2} steps: "
+                          f"|S21| moves at most "
+                          f"{w.get('max_abs_delta_s21_db')} dB (at "
+                          f"{w.get('f_ghz_at_max_abs_delta_s21')} GHz, "
+                          f"{w.get('s21_bins_compared')} bins), |S11| at most "
+                          f"{w.get('max_abs_delta_s11_db')} dB (at "
+                          f"{w.get('f_ghz_at_max_abs_delta_s11')} GHz, "
+                          f"{w.get('s11_bins_compared')} bins). "
+                          f"Record length {meta.get('record_length_s')} s vs "
+                          f"{meta2.get('record_length_s')} s. Reported, not "
+                          f"gated.", flush=True)
         except _gate.StageFailure as exc:
             return bail(name, exc)
         records[name] = record
