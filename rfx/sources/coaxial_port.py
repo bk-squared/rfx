@@ -2040,6 +2040,50 @@ def stamp_coaxial_line(
         raise ValueError(
             f"shell_thickness_m must be positive and finite, got {shell_thickness_m}"
         )
+
+    # The wall is realized as shorted E edges, so it needs no depth to be a
+    # conductor -- one cell is as perfect as a hundred. What its thickness must
+    # not do is reach an absorber: PEC inside a CPML pad is unstable and the
+    # field diverges to NaN. Neither preflight check can catch that here,
+    # because both iterate the REGISTERED geometry and this wall is stamped,
+    # never registered. So the thickness is clamped against the room the board
+    # actually has, and refused outright when there is not a cell of it.
+    #
+    # Only faces that HAVE a pad constrain the wall; a PEC or periodic face has
+    # no absorber to run into. Physical coordinates put node i of an axis at
+    # ``(i - pad_lo) * dx``, so the pad's inner edge is 0 on the low side and
+    # ``(n - 1 - pad_lo - pad_hi) * dx`` on the high side.
+    cx, cy = float(center_xy[0]), float(center_xy[1])
+    nx, ny = int(grid.shape[0]), int(grid.shape[1])
+    pad_x_lo, pad_x_hi = int(grid.pad_x_lo), int(grid.pad_x_hi)
+    pad_y_lo, pad_y_hi = int(grid.pad_y_lo), int(grid.pad_y_hi)
+    span_x = (nx - 1 - pad_x_lo - pad_x_hi) * dz
+    span_y = (ny - 1 - pad_y_lo - pad_y_hi) * dz
+    room = []
+    if pad_x_lo:
+        room.append(("x-lo", pad_x_lo, cx))
+    if pad_x_hi:
+        room.append(("x-hi", pad_x_hi, span_x - cx))
+    if pad_y_lo:
+        room.append(("y-lo", pad_y_lo, cy))
+    if pad_y_hi:
+        room.append(("y-hi", pad_y_hi, span_y - cy))
+    if room:
+        pad_name, pad_cells, clearance = min(room, key=lambda t: t[2])
+        allowed = clearance - b - dz          # keep one cell clear of the pad
+        if allowed < dz:
+            raise ValueError(
+                f"the coaxial line at ({cx * 1e3:.4g}, {cy * 1e3:.4g}) mm with "
+                f"outer radius {b * 1e3:.4g} mm has no room for a wall before "
+                f"the {pad_name} absorber: its centre is {clearance * 1e3:.4g} mm "
+                f"from that pad's inner edge ({pad_cells} cells deep), which "
+                f"leaves {allowed / dz:.2f} cells outside the declared radius "
+                f"once one cell of clearance is kept. A conductor inside a CPML "
+                f"pad diverges. Move the line further from that face, shrink "
+                f"outer_radius, or enlarge the board."
+            )
+        thickness = min(thickness, allowed)
+
     shell_inner_radius = b
     shell_outer_radius = b + thickness
 

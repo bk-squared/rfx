@@ -3460,7 +3460,8 @@ def test_junction_coax_shell_contacts_ground(fixture):
     test_attempt3_ground_clearance_annulus_is_open."""
     sim = _JUNCTION_FIXTURES[fixture]()
     grid, materials, pec, i0, j0, kj = _assemble_junction_realized(sim)
-    _, shell_inner, _, _, _ = _stamp_like_method(sim, grid, materials)
+    _, shell_inner, coax_cells, z_stub_lo, z_stub_hi = _stamp_like_method(
+        sim, grid, materials)
     # ROOT CAUSE for this re-pin: the outer conductor's inner face moved from
     # one cell inside the declared outer radius (``b - min(dz, (b-a)/2)``) to
     # the declared ``b`` itself, with the wall thickness fixed in metres and
@@ -3476,12 +3477,35 @@ def test_junction_coax_shell_contacts_ground(fixture):
     assert shell_inner == pytest.approx(OUTER_R, rel=0.0, abs=1e-15), (
         f"wall inner face {shell_inner*1e6:.2f} um is not the declared outer "
         f"radius {OUTER_R*1e6:.2f} um")
-    shell = _lattice_ring_mask(grid, i0, j0, SHELL_INNER_CELLS, OUTER_R_CELLS)
-    lip = _lattice_ring_mask(grid, i0, j0, CLEAR_R_CELLS, SHELL_INNER_CELLS)
-    assert int(shell.sum()) == SHELL_CELLS_3 and int(lip.sum()) == LIP_CELLS_3
+
+    # The wall's footprint is READ FROM THE MASK the stamper returned, not cut
+    # at a literal cell count. A ring written as [SHELL_INNER_CELLS,
+    # OUTER_R_CELLS] used to be the wall and is now PTFE, because the inner
+    # face moved outward to the declared radius; and the wall's OUTER edge is
+    # no longer a fixed 1 mm either, since the thickness is clamped against the
+    # room the board leaves before its absorber. Reading the realized cells
+    # keeps this test measuring the shell wherever the shell actually is.
+    dx_m = float(grid.dx)
+    ii, jj = np.meshgrid(np.arange(coax_cells.shape[0]),
+                         np.arange(coax_cells.shape[1]), indexing="ij")
+    radius = np.hypot((ii - i0) * dx_m, (jj - j0) * dx_m)
+    z_mid = (z_stub_lo + z_stub_hi) // 2
+    shell = np.asarray(coax_cells)[:, :, z_mid] & (radius >= OUTER_R - 0.5 * dx_m)
+    n_wall = int(shell.sum())
+    assert n_wall > 0, "the stamper realized no outer conductor at all"
     n_shell = int((pec[:, :, kj] & shell).sum())
+    assert n_shell == n_wall, (
+        f"the outer conductor lands on ground at {n_shell}/{n_wall} of its "
+        f"footprint cells ({100.0 * n_shell / n_wall:.1f} %); the rest overhang "
+        f"the registered ground plane. Wall radii "
+        f"{radius[shell].min()*1e6:.0f}-{radius[shell].max()*1e6:.0f} um against "
+        f"a declared outer radius of {OUTER_R*1e6:.0f} um.")
+
+    # The predeclared 0.4 mm clearance still leaves a one-cell ground lip over
+    # the coax dielectric; that ring is geometric and unchanged.
+    lip = _lattice_ring_mask(grid, i0, j0, CLEAR_R_CELLS, SHELL_INNER_CELLS)
+    assert int(lip.sum()) == LIP_CELLS_3
     n_lip = int((pec[:, :, kj] & lip).sum())
-    assert n_shell == SHELL_CELLS_3, f"shell-ground contact {n_shell}/{SHELL_CELLS_3}"
     assert n_lip == LIP_CELLS_3, f"ground lip CLEAR_R<r<=shell_inner {n_lip}/{LIP_CELLS_3}"
 
 

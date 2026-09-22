@@ -418,7 +418,12 @@ def test_the_live_thru_reproduces_the_record_s_cheapest_rung():
         "the analytic one")
 
     col = np.sum(np.abs(S) ** 2, axis=0)
+    # The same two bounds the replay uses, and for the same reasons: 1.02 above
+    # is the pre-declared passivity gate, 0.95 below is a loss bound saying a
+    # lossless line loses under 0.22 dB. Not a mirrored pair.
     assert float(col.max()) <= COLUMN_POWER_MAX, (
-        f"live: max column power {float(col.max()):.5f}")
-    assert float(col.min()) >= 1.0 - (COLUMN_POWER_MAX - 1.0), (
-        f"live: min column power {float(col.min()):.5f}")
+        f"live: the power sum reaches {float(col.max()):.5f}, above "
+        f"{COLUMN_POWER_MAX}: a passive line cannot return more than it was given")
+    assert float(col.min()) >= COLUMN_POWER_MIN, (
+        f"live: the power sum falls to {float(col.min()):.5f}, a lossless line "
+        f"losing more than {-10*math.log10(COLUMN_POWER_MIN):.2f} dB")

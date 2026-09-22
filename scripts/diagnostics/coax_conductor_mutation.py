@@ -65,8 +65,8 @@ from rfx.sources.sources import GaussianPulse  # noqa: E402
 
 sys.path.insert(0, str(REPO / "tests" / "oracle"))
 from test_coax_conductor_realization import (  # noqa: E402
-    BETA_FRAC, COLUMN_POWER_MAX, C0, LIVE_DOMAIN, LIVE_FREQS, LIVE_PROBES,
-    LIVE_RUNG, LIVE_STEPS, _beta_from_s21_phase,
+    BETA_FRAC, COLUMN_POWER_MAX, COLUMN_POWER_MIN, C0, LIVE_DOMAIN, LIVE_FREQS,
+    LIVE_PROBES, LIVE_RUNG, LIVE_STEPS, _beta_from_s21_phase,
 )
 
 _ORIGINAL_STAMP = _cp.stamp_coaxial_line
@@ -174,7 +174,7 @@ def measure_live() -> dict:
         and pencil <= BETA_FRAC)
     out["column_power_within_bar"] = bool(
         out["max_column_power"] <= COLUMN_POWER_MAX
-        and out["min_column_power"] >= 1.0 - (COLUMN_POWER_MAX - 1.0))
+        and out["min_column_power"] >= COLUMN_POWER_MIN)
     return out
 
 
@@ -200,7 +200,8 @@ def main() -> int:
         "jax_devices": [str(d) for d in jax.devices()],
         "python": sys.version.split()[0], "platform": platform.platform(),
         "utc": _dt.datetime.now(_dt.timezone.utc).isoformat(),
-        "bars": {"beta_frac": BETA_FRAC, "column_power_max": COLUMN_POWER_MAX},
+        "bars": {"beta_frac": BETA_FRAC, "column_power_max": COLUMN_POWER_MAX,
+                 "column_power_min": COLUMN_POWER_MIN},
         "mutation": ("stamp_coaxial_line writes its conductor cells back into "
                      "materials.sigma as PEC_SIGMA, and _coax_pec_edge_masks "
                      "returns no masks; every helper the lane calls is "
