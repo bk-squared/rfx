@@ -240,3 +240,56 @@ def test_a_periodic_axis_wraps_and_a_non_periodic_one_replicates():
     # division by zero in e_update_coeffs.
     (_, ey_n, _), _ = edge_averaged_materials(eps, sigma, (False, False, False))
     assert float(np.asarray(ey_n)[0, 2, 3]) == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# lumped stamps are edge-owned: they are not averaged
+# ---------------------------------------------------------------------------
+
+def test_a_lumped_stamp_reaches_its_own_edge_undiluted():
+    """A 50 ohm port's conductance across one edge, not a quarter of it.
+
+    The stamp is recorded in ``sigma`` AND in ``sigma_lumped``.
+    ``component_e_materials`` averages ``sigma - sigma_lumped`` and adds the
+    stamp back at its own cell, so the cell sees the whole conductance on all
+    three components and its neighbours see none of it. Averaging the stamp
+    instead left a wire port reading |S11| = 0.20 against the closed-form 1/3.
+    """
+    from rfx.core.yee import component_e_materials
+
+    g = 1.0 / (50.0 * DX)          # the port_sigma of a 50 ohm cubic cell
+    cell = (2, 3, 4)
+    sigma = jnp.zeros(SHAPE, jnp.float32).at[cell].add(g)
+    lumped = jnp.zeros(SHAPE, jnp.float32).at[cell].add(g)
+    eps = jnp.ones(SHAPE, jnp.float32)
+
+    mats = MaterialArrays(eps, sigma, jnp.ones(SHAPE), sigma_lumped=lumped)
+    _, sig_c = component_e_materials(mats)
+    for name, arr in zip(("ex", "ey", "ez"), sig_c):
+        assert float(np.asarray(arr)[cell]) == pytest.approx(g, rel=1e-6), (
+            f"{name}: the lumped stamp arrived diluted at its own cell")
+    # and nowhere else
+    for arr in sig_c:
+        a = np.asarray(arr).copy()
+        a[cell] = 0.0
+        assert np.count_nonzero(a) == 0, (
+            "the lumped stamp leaked onto a neighbouring edge")
+
+    # Without the record, the same sigma array is averaged: a quarter here,
+    # a quarter on each of three neighbours. That is the defect.
+    plain = MaterialArrays(eps, sigma, jnp.ones(SHAPE))
+    _, sig_plain = component_e_materials(plain)
+    assert float(np.asarray(sig_plain[0])[cell]) == pytest.approx(g / 4, rel=1e-6)
+
+
+def test_no_lumped_record_is_bit_identical_to_the_plain_average():
+    from rfx.core.yee import component_e_materials
+
+    eps = _half_space_eps(1.0, 9.0, axis=2, cut=4)
+    idx = np.indices(SHAPE)[1]
+    sigma = jnp.asarray(np.where(idx < 3, 0.0, 7.0).astype(np.float32))
+    mats = MaterialArrays(eps, sigma, jnp.ones(SHAPE))
+    eps_c, sig_c = component_e_materials(mats)
+    eps_ref, sig_ref = edge_averaged_materials(eps, sigma)
+    for a, b in zip(eps_c + sig_c, eps_ref + sig_ref):
+        assert np.array_equal(np.asarray(a), np.asarray(b))
