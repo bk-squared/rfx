@@ -640,6 +640,68 @@ def _timesteps_executed(log_text: str):
     return max(hits) if hits else None
 
 
+# openEMS prints one progress line every few seconds while it timesteps. Its own
+# format (openems.cpp, DumpStatistics) is, with the widths it pads to:
+#
+#   [@       3m12s] Timestep:        12000 || Speed:   18.64 MC/s (1.234e-02 s/TS)
+#                   || Energy: ~1.234e-14 (-42.17dB)
+#
+# The dB figure is the box energy relative to the peak it reached after the
+# source switched off -- the same quantity this repository's ring-down rule is
+# written against -- and the minus sign is printed literally inside the
+# parentheses.
+#
+# ASSUMPTION, STATED BECAUSE IT IS NOT VERIFIED HERE: no captured log from a real
+# openEMS run was available on the machine this was written on (only stub
+# banners), so the pattern below was written from openEMS's own print statement
+# rather than matched against a capture. It is deliberately tolerant of the
+# things that vary between builds: the space ``setw`` can leave after the minus
+# sign, a space before ``dB``, and ``inf``/``nan`` on the first lines while the
+# peak is still zero. It is applied PER LINE, so ``.*?`` cannot run past a line
+# end and pair one line's timestep with another line's energy. If a build prints
+# something else, every field below comes back None or empty and nothing else in
+# the record changes -- this is reporting, not a gate.
+_PROGRESS_LINE_RE = re.compile(
+    r"Timestep:\s*(\d+)"
+    r".*?Energy:"
+    r".*?\(\s*(-?\s*(?:[0-9]*\.?[0-9]+|inf|nan))\s*dB\s*\)",
+    re.IGNORECASE,
+)
+
+
+def _energy_progress(log_text: str) -> dict:
+    """How far the run got, and how far the box energy had fallen when it did.
+
+    ``final_energy_db`` is the LAST dB figure openEMS printed. On a run that
+    reached its end criteria that is the criterion itself; on a run that hit its
+    NrTS cap it is how far the ring-down had actually got when the cap stopped
+    it, which is the number a record-length judgement needs and which nothing
+    recorded before.
+    """
+    trace = []
+    for line in log_text.splitlines():
+        m = _PROGRESS_LINE_RE.search(line)
+        if m is None:
+            continue
+        try:
+            db = float(m.group(2).replace(" ", ""))
+        except ValueError:  # pragma: no cover - "inf"/"nan" while the peak is 0
+            continue
+        if not np.isfinite(db):
+            continue
+        trace.append([int(m.group(1)), db])
+    return {
+        "final_timestep": trace[-1][0] if trace else None,
+        "final_energy_db": trace[-1][1] if trace else None,
+        "energy_db_trace": trace,
+        "energy_db_trace_points": len(trace),
+        "energy_db_source": (
+            "openEMS's own progress lines in the captured real-pass stdout, "
+            "matched with " + _PROGRESS_LINE_RE.pattern
+        ),
+    }
+
+
 def _mesh_lines(fdtd):
     """The x/y/z lines CSXCAD actually built, in the CSX unit."""
     try:
@@ -857,6 +919,7 @@ def run_stage(*, label: str, sim_root: str, threads: int, build,
               real_nrts, real_end_criteria,
               mesh_realized_fn, meta_extra_fn, features_fn,
               calcport_ref_impedance=None, record_deficit: bool = False,
+              accept_truncation: bool = False,
               smoke_nrts: int = 200, smoke_end_criteria: float = 0.0):
     """Smoke pass, real pass, CalcPort, the ported sanity gates, the features.
 
@@ -881,7 +944,20 @@ def run_stage(*, label: str, sim_root: str, threads: int, build,
       6. ``calcport_ref_impedance``, when a case passes one, adds the second
          ``CalcPort`` pass that references S to a system impedance, and the
          FIRST pass's ``Z_ref`` real part is recorded as ``re_z0``. A case that
-         passes nothing keeps the precedent's single unreferenced pass.
+         passes nothing keeps the precedent's single unreferenced pass;
+      7. the truncation gate fires AFTER the arrays, the energy summary, the
+         print block and the features have been computed, for the same reason
+         item 5 gives for the two guards below it: a run that is stopped by its
+         step cap is exactly the run whose arrays someone needs to look at, and
+         before this change its evidence file carried a null stage block. The
+         gate still blocks the record and still raises; only what the evidence
+         file holds changed. Measured 2026-09-22, VESSL 369367263382.
+
+    ``accept_truncation`` turns that gate off for the stages this runner is
+    handed -- the caller decides, per invocation, and the record then says
+    ``truncated: true``, carries ``final_energy_db``, and explains itself in
+    ``truncation_note``. It is off by default and no case enables it without
+    being asked to on the command line.
 
     ``record_deficit`` adds the band and whole-grid MINIMA of the energy sum, and
     its maximum and minimum above the band, to the record. A case whose structure
@@ -930,13 +1006,8 @@ def run_stage(*, label: str, sim_root: str, threads: int, build,
 
         inc_peak, n_samples = _check_excitation_and_trace(port0, sim_dir, label)
 
-        if _log_indicates_truncation(real_log):
-            raise RuntimeError(
-                f"[{label}] SANITY GATE 'end criteria reached' FAILED: openEMS's own "
-                f"'reached before the end-criteria of' warning is in this real pass's "
-                f"captured log -- the run hit its NrTS cap before the field decayed, so "
-                f"the spectrum is truncated and no record is written."
-            )
+        truncated = _log_indicates_truncation(real_log)
+        progress = _energy_progress(real_log)
 
         s11 = np.asarray(port0.uf_ref, dtype=np.complex128) / np.asarray(port0.uf_inc, dtype=np.complex128)
         s21 = np.asarray(port1.uf_ref, dtype=np.complex128) / np.asarray(port0.uf_inc, dtype=np.complex128)
@@ -985,6 +1056,34 @@ def run_stage(*, label: str, sim_root: str, threads: int, build,
 
         record.update(features_fn(freqs_ghz, s11, s21))
 
+        # Everything above is pure post-processing of what the solver produced,
+        # so it runs whether or not the run was cut short: a truncated pass is
+        # precisely the one whose arrays have to be inspectable. The gate itself
+        # is unchanged and still blocks the record.
+        if truncated:
+            record["truncated"] = True
+            record["final_energy_db"] = progress["final_energy_db"]
+            record["final_timestep"] = progress["final_timestep"]
+            if not accept_truncation:
+                raise RuntimeError(
+                    f"[{label}] SANITY GATE 'end criteria reached' FAILED: openEMS's own "
+                    f"'reached before the end-criteria of' warning is in this real pass's "
+                    f"captured log -- the run hit its NrTS cap before the field decayed, so "
+                    f"the spectrum is truncated and no record is written. The box energy "
+                    f"had reached {progress['final_energy_db']!r} dB at timestep "
+                    f"{progress['final_timestep']!r}; the arrays measured before this gate "
+                    f"fired are in the evidence file."
+                )
+            record["truncation_note"] = (
+                f"record length declared by --real-nrts {real_nrts}; the box energy "
+                f"had decayed to {progress['final_energy_db']} dB at the cap; see "
+                f"stop_criteria_note"
+            )
+            print(f"  ACCEPTED TRUNCATION: the run stopped at its cap "
+                  f"(timestep {progress['final_timestep']}) with the box energy at "
+                  f"{progress['final_energy_db']} dB. The record is written with "
+                  f"truncated: true.", flush=True)
+
         _non_physical_guard(np.abs(s11), label + "_s11")
         _non_physical_guard(np.abs(s21), label + "_s21")
         # The witness function is byte-identical to the precedent's; the band is
@@ -998,7 +1097,7 @@ def run_stage(*, label: str, sim_root: str, threads: int, build,
     meta.update({
         "mesh_realized": mesh,
         "timesteps_executed": _timesteps_executed(real_log),
-        "end_criteria_reached": True,
+        "end_criteria_reached": not truncated,
         "excitation_energy_peak": inc_peak,
         "port_trace_samples": n_samples,
         "wall_time_s": round(elapsed, 1),
@@ -1006,6 +1105,9 @@ def run_stage(*, label: str, sim_root: str, threads: int, build,
         "smoke_stdout_log_path": os.path.join(smoke_dir, "_openems_stdout.log"),
         "openems": openems_info,
     })
+    meta.update(progress)
+    if truncated:
+        meta["truncation_accepted"] = True
     return record, meta
 
 

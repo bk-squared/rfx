@@ -1072,17 +1072,28 @@ def rung_short_names(stage_names) -> list:
     return [back[s] for s in RUNG_ORDER_STAGES if s in stage_names]
 
 
-def stop_criteria_note(real_end_criteria, real_nrts) -> str:
+ACCEPT_TRUNCATION_DEFAULT = False
+
+
+def stop_criteria_note(real_end_criteria, real_nrts,
+                       accept_truncation: bool = ACCEPT_TRUNCATION_DEFAULT) -> str:
     """What stopped the real passes in this record, and why, in one string.
 
     With no override this says the library defaults ran. With one it says which
     override, and carries the measurement that motivated it -- so a reader of a
     record made with a looser criterion does not have to go and find out.
     """
+    accepted = (
+        " --accept-truncation was given, so a real pass that reached its NrTS cap "
+        "was RECORDED (truncated: true, with the box energy it had reached at the "
+        "cap) instead of failing the end-criteria gate. A record made this way is "
+        "as long as the cap, not as long as a decay level: what that costs the "
+        "numbers in it is not decided here." if accept_truncation else "")
     if real_end_criteria is None and real_nrts is None:
         return ("openEMS's own library defaults (~1e9 / 1e-5) on every real pass, "
                 "Stage A and Stage B alike. No override was given. This is the "
-                "declared design (delta 9); see B_REAL_NRTS / B_REAL_END_CRITERIA.")
+                "declared design (delta 9); see B_REAL_NRTS / B_REAL_END_CRITERIA."
+                + accepted)
     bits = []
     if real_end_criteria is not None:
         bits.append(f"--real-end-criteria {real_end_criteria!r}")
@@ -1092,7 +1103,7 @@ def stop_criteria_note(real_end_criteria, real_nrts) -> str:
             "over 107 minutes on the coarsest rung on 8 threads (runs "
             "369367263243, 369367263269); 1e-4 is the repository's own ring-down "
             "level (rfx CLAUDE.md: end-of-run energy below -40 dB of the "
-            "post-source peak)")
+            "post-source peak)" + accepted)
 
 
 STAGE_B_FACTORS = {
@@ -1224,8 +1235,15 @@ def _stage_b_features(sf):
 # ---------------------------------------------------------------------------
 def _run_stage_b(*, label: str, sim_root: str, threads: int,
                  resolution_factor: float, sf,
-                 real_nrts=None, real_end_criteria=None) -> tuple[dict, dict]:
+                 real_nrts=None, real_end_criteria=None,
+                 accept_truncation: bool = ACCEPT_TRUNCATION_DEFAULT
+                 ) -> tuple[dict, dict]:
     """The Sheen board at a rung, with the shared module's gates around it.
+
+    ``accept_truncation`` defaults to off: a real pass that hits its NrTS cap
+    is a fired gate, no record. Turned on (only by ``--accept-truncation``), such
+    a pass is recorded with ``truncated: true``, the box energy it had reached,
+    and a note. Stage A never sees it.
 
     ``real_nrts`` / ``real_end_criteria`` default to ``None``, which means the
     declared design: pass nothing, so openEMS's own ~1e9 / 1e-5 apply (delta 9).
@@ -1303,7 +1321,8 @@ def _run_stage_b(*, label: str, sim_root: str, threads: int,
                 if real_end_criteria is not None
                 else ("openEMS library default (1e-5) -- the retired script's cap "
                       f"of {SCRIPT_END_CRITERIA_CAP} is not carried")),
-            "stop_criteria_note": stop_criteria_note(real_end_criteria, real_nrts),
+            "stop_criteria_note": stop_criteria_note(
+                real_end_criteria, real_nrts, accept_truncation),
             "calcport_grid": f"linspace({F_LO}, {F_MAX}, {B_N_FREQS})",
             "calcport_passes": (
                 "two: pass 1 with no ref_impedance (re_z0 = Re(port.Z_ref)), then "
@@ -1321,12 +1340,14 @@ def _run_stage_b(*, label: str, sim_root: str, threads: int,
         mesh_realized_fn=mesh_realized_fn, meta_extra_fn=meta_extra_fn,
         features_fn=_stage_b_features(sf),
         calcport_ref_impedance=B_CALCPORT_REF_IMPEDANCE,
-        record_deficit=True)
+        record_deficit=True,
+        accept_truncation=accept_truncation)
 
 
 def _build_artifact(records: dict, stage_meta: dict, stage_a_gate: dict,
                     stages: list, *, failed_gate: str | None = None,
                     real_nrts=None, real_end_criteria=None,
+                    accept_truncation: bool = ACCEPT_TRUNCATION_DEFAULT,
                     stage_names=None) -> dict:
     """This case's meta block, on the shared record writer.
 
@@ -1344,7 +1365,8 @@ def _build_artifact(records: dict, stage_meta: dict, stage_a_gate: dict,
             "rfx_commit": os.environ.get("RFX_COMMIT"),
             "rungs_in_this_record": [n for n in RUNG_ORDER
                                      if RUNG_KEYS[n] in names],
-            "stop_criteria_note": stop_criteria_note(real_end_criteria, real_nrts),
+            "stop_criteria_note": stop_criteria_note(
+                real_end_criteria, real_nrts, accept_truncation),
             "structure": (
                 "the Sheen 1990 stepped-impedance microstrip low-pass filter: "
                 "RT/Duroid eps_r 2.2, h 0.794 mm; two 2.413 mm wide 50 ohm feeds "
@@ -1442,7 +1464,8 @@ def _stages_for(stage: str, rung_stages=None) -> list:
 
 
 def _dry_run(stage: str, fine_factor: float, rung_stages=None,
-             real_nrts=None, real_end_criteria=None) -> int:
+             real_nrts=None, real_end_criteria=None,
+             accept_truncation: bool = ACCEPT_TRUNCATION_DEFAULT) -> int:
     order = _stages_for(stage, rung_stages)
     order_rungs = [s for s in order if s in RUNG_ORDER_STAGES]
     print("=" * 78)
@@ -1481,7 +1504,8 @@ def _dry_run(stage: str, fine_factor: float, rung_stages=None,
           f"pass, as Stage A; 200 / 0.0 on the smoke pass. The retired script's "
           f"{SCRIPT_NRTS_CAP} / {SCRIPT_END_CRITERIA_CAP} cap is NOT carried "
           f"(delta 9)")
-    print(f"  stop criteria   {stop_criteria_note(real_end_criteria, real_nrts)}")
+    print(f"  stop criteria   "
+          f"{stop_criteria_note(real_end_criteria, real_nrts, accept_truncation)}")
     print(f"  rungs requested {', '.join(rung_short_names(order_rungs)) or '(none)'}"
           f"   -- Stage A runs in every job that asks for it")
     print(f"  CalcPort grid   linspace({F_LO:.4g}, {F_MAX:.4g}, {B_N_FREQS}), TWO "
@@ -1598,6 +1622,25 @@ def _self_check(fine_factor: float) -> int:
     both_over = stop_criteria_note(1e-4, 60000)
     check("--real-end-criteria" in both_over and "--real-nrts 60000" in both_over,
           "both overrides appear when both are given")
+    check(ACCEPT_TRUNCATION_DEFAULT is False,
+          "--accept-truncation is OFF by default: a real pass that hits its NrTS "
+          "cap is a FIRED GATE and no record, unless someone asks for one",
+          f"{ACCEPT_TRUNCATION_DEFAULT!r}")
+    check("--accept-truncation" not in stop_criteria_note(1e-4, 60000),
+          "a record made without the flag does not mention it")
+    accepted = stop_criteria_note(1e-4, 60000, True)
+    check("--accept-truncation was given" in accepted
+          and "truncated: true" in accepted,
+          "and a record made WITH it says so, and says what it means for the "
+          "record's length")
+    import inspect as _insp
+    check(_insp.signature(_run_stage_b).parameters["accept_truncation"].default
+          is ACCEPT_TRUNCATION_DEFAULT,
+          "the Stage B runner's own default is the same one")
+    check("accept_truncation" not in _insp.signature(_gate.run_stage_a).parameters,
+          "Stage A's runner takes no such parameter at all -- the gate cannot be "
+          "turned off for the reproduce stage even by mistake")
+    del _insp
     check(B_BOUNDARY == ["PML_8", "PML_8", "MUR", "MUR", "PEC", "MUR"], "boundary")
     check(C0 == 2.99792458e8,
           "C0 is the Sheen script's own, not the tutorial gate's 2.998e8")
@@ -2077,6 +2120,17 @@ def main(argv=None) -> int:
                         "pass nothing, so openEMS's own ~1e9 applies. Recorded the "
                         "same way as --real-end-criteria. Stage A is never "
                         "overridden.")
+    p.add_argument("--accept-truncation", action="store_true",
+                   help="Stage B only: record a real pass that reaches its NrTS "
+                        "cap instead of failing the end-criteria gate. OFF by "
+                        "default, and off is the declared design: a truncated "
+                        "spectrum is normally not a reference. With it, the stage "
+                        "records truncated: true and the box energy openEMS "
+                        "reported at the cap, and meta.stop_criteria_note names "
+                        "the flag. It exists so a record of DECLARED length can "
+                        "be made on purpose -- what such a record is good for is "
+                        "the leader's to decide from the data, and this script "
+                        "decides nothing about it. Stage A is never affected.")
     p.add_argument("--merge", nargs="+", default=None, metavar="PART.json",
                    help="Combine per-rung records into one, written to --output. "
                         "Refuses unless every part's Stage A agrees bin for bin and "
@@ -2105,7 +2159,8 @@ def main(argv=None) -> int:
     if args.dry_run:
         return _dry_run(args.stage, args.resolution_factor, rung_stages,
                         real_nrts=args.real_nrts,
-                        real_end_criteria=args.real_end_criteria)
+                        real_end_criteria=args.real_end_criteria,
+                        accept_truncation=args.accept_truncation)
 
     # --merge runs no solver and needs no image stamp: it reads records that
     # already carry their own.
@@ -2153,7 +2208,7 @@ def main(argv=None) -> int:
 
     stages = _stages_for(args.stage, rung_stages)
     stage_names = ["stage_a"] + [s for s in RUNG_ORDER_STAGES if s in stages]
-    print(f"stop criteria: {stop_criteria_note(args.real_end_criteria, args.real_nrts)}")
+    print(f"stop criteria: {stop_criteria_note(args.real_end_criteria, args.real_nrts, args.accept_truncation)}")
     print(f"rungs this job solves: "
           f"{', '.join(rung_short_names(stages)) or '(none)'}", flush=True)
     print()
@@ -2174,6 +2229,7 @@ def main(argv=None) -> int:
                                failed_gate=failed_gate,
                                real_nrts=args.real_nrts,
                                real_end_criteria=args.real_end_criteria,
+                               accept_truncation=args.accept_truncation,
                                stage_names=stage_names)
 
     def bail(name: str, exc) -> int:
@@ -2199,7 +2255,8 @@ def main(argv=None) -> int:
                     label=name, sim_root=args.sim_root, threads=args.threads,
                     resolution_factor=factors[name], sf=sf,
                     real_nrts=args.real_nrts,
-                    real_end_criteria=args.real_end_criteria)
+                    real_end_criteria=args.real_end_criteria,
+                    accept_truncation=args.accept_truncation)
         except _gate.StageFailure as exc:
             return bail(name, exc)
         records[name] = record
@@ -2261,7 +2318,10 @@ def main(argv=None) -> int:
               f"{pb.get('mean_db', float('nan')):+.3f} dB | -3 dB corner "
               f"{'n/a' if fc is None else f'{fc:.4f} GHz'} | "
               f"Re(Z0) median {record.get('re_z0_median_ohm', float('nan')):.2f} ohm "
-              f"| {meta['wall_time_s']} s", flush=True)
+              f"| {meta['wall_time_s']} s"
+              + (f" | TRUNCATED at timestep {record.get('final_timestep')} with the "
+                 f"box energy at {record.get('final_energy_db')} dB"
+                 if record.get("truncated") else ""), flush=True)
 
     out = Path(args.output)
     _gate.write_record(artifact(), out)

@@ -516,3 +516,218 @@ def test_merge_refuses_what_it_cannot_reconcile(tmp_path, what, build, bin17,
     )
     assert "MERGE REFUSED" in result.stderr
     assert not out.exists(), f"{what}: a refused merge still wrote a record"
+
+
+# ---------------------------------------------------------------------------
+# A run that is stopped by its step cap
+# ---------------------------------------------------------------------------
+def test_accept_truncation_is_off_by_default():
+    """A truncated spectrum is not a reference unless someone asks for one."""
+    m = _load_maker()
+    import inspect
+
+    assert m.ACCEPT_TRUNCATION_DEFAULT is False
+    assert inspect.signature(m._run_stage_b).parameters["accept_truncation"].default \
+        is False
+    # And the flag cannot reach Stage A even by mistake: its runner has no such
+    # parameter, so the reproduce gate's end-criteria check is not overridable.
+    assert "accept_truncation" not in inspect.signature(
+        m._gate.run_stage_a).parameters
+    # And a run that was not given the flag does not mention it.
+    result = _run("--dry-run", "--stage", "both")
+    assert result.returncode == 0
+    assert "--accept-truncation was given" not in result.stdout
+
+
+def test_the_stop_criteria_note_names_the_flag_when_it_is_used():
+    m = _load_maker()
+    off = m.stop_criteria_note(1e-4, 60000)
+    on = m.stop_criteria_note(1e-4, 60000, True)
+    assert "--accept-truncation" not in off
+    assert "--accept-truncation was given" in on
+    assert "truncated: true" in on
+    assert "not decided here" in on, (
+        "the note draws a conclusion about what a truncated record is worth"
+    )
+
+
+def test_openems_progress_lines_are_parsed(tmp_path):
+    """openEMS's own progress print is where the ring-down depth comes from.
+
+    The pattern is written against openEMS's print statement, not against a
+    capture -- no real log was available -- so the shapes it must tolerate are
+    pinned here: the space ``setw`` can leave after the minus sign, a space
+    before ``dB``, and ``inf`` while the peak is still zero.
+    """
+    gate = _load_maker()._gate
+    log = "\n".join([
+        "openEMS v0.0.36",
+        "[@   0s] Timestep:        0 || Speed: 0.0 MC/s || Energy: ~0.0e+00 (-infdB)",
+        "[@   4s] Timestep:     4000 || Speed: 25.5 MC/s (1e-4 s/TS) || Energy: ~1.1e-12 (-12.40dB)",
+        "[@1m40s] Timestep:    50000 || Speed: 25.1 MC/s (1e-4 s/TS) || Energy: ~9.9e-16 (-36.80 dB)",
+        "[@2m00s] Timestep:    60000 || Speed: 25.0 MC/s (1e-4 s/TS) || Energy: ~6.1e-16 (- 8.92dB)",
+        "RunFDTD: Warning: Max. number of timesteps was reached before the end-criteria of 0.0001 was reached",
+        "Timestep: 200",
+    ])
+    p = gate._energy_progress(log)
+    assert p["final_timestep"] == 60000
+    assert p["final_energy_db"] == pytest.approx(-8.92)
+    assert p["energy_db_trace"] == [[4000, -12.40], [50000, -36.80], [60000, -8.92]]
+    assert p["energy_db_trace_points"] == 3
+    assert "Timestep" in p["energy_db_source"]
+    # A log with no progress lines yields None, not a crash and not a number.
+    empty = gate._energy_progress("openEMS v0.0.36\nnothing to see here")
+    assert empty["final_timestep"] is None and empty["final_energy_db"] is None
+    assert empty["energy_db_trace"] == []
+
+
+def test_a_truncated_pass_still_leaves_its_arrays(tmp_path):
+    """The evidence file from a capped run carries what the solver produced.
+
+    Measured 2026-09-22 (VESSL 369367263382): the gate fired as designed but the
+    stage block in the evidence file was null, because the raise came before the
+    arrays were computed. It now comes after. The gate itself is unchanged --
+    it still raises and the record is still refused.
+    """
+    import numpy as np
+
+    m = _load_maker()
+    gate = m._gate
+    capped = "\n".join([
+        "openEMS v0.0.36",
+        "[@4s] Timestep: 4000 || Energy: ~1.1e-12 (-12.40dB)",
+        "[@2m] Timestep: 60000 || Energy: ~6.1e-16 (-38.92dB)",
+        "RunFDTD: Warning: Max. number of timesteps was reached before the end-criteria of 0.0001 was reached",
+    ])
+
+    class _Port:
+        def __init__(s, n, nf):
+            s.n, s.nf = n, nf
+            s.U_filenames = []
+            s.feed_shift = 0.0025
+            s.measplane_shift = 0.0056
+            s.Z_ref = np.full(nf, 50.5 + 0.1j)
+
+        def CalcPort(s, path, f, ref_impedance=None):
+            s.uf_inc = np.ones(s.nf, dtype=complex)
+            g = f / 1e9
+            mag = (np.where(g <= 5, 0.95, 0.95 / (1 + ((g - 5) / 0.8) ** 2))
+                   * (1 - 0.999 * np.exp(-((g - 7.9) / 0.06) ** 2))) \
+                if s.n == 1 else np.full(s.nf, 0.2)
+            s.uf_ref = mag * np.exp(-1j * np.linspace(0, 40, s.nf))
+
+    nf = m.B_N_FREQS
+    lines = {"x": np.linspace(0.0, m.LX, 140), "y": np.linspace(0.0, m.LY, 140),
+             "z": np.concatenate([np.linspace(0.0, m.H_SUB, 5),
+                                  np.linspace(m.H_SUB, m.LZ, 17)[1:]])}
+    ports = [_Port(0, nf), _Port(1, nf)]
+
+    class _Grid:
+        def __init__(s, l): s.l = l
+        def GetLines(s, a): return s.l[a]
+
+    class _CSX:
+        def __init__(s, l): s._g = _Grid(l)
+        def GetGrid(s): return s._g
+
+    class _FDTD:
+        def __init__(s, l): s._c = _CSX(l)
+        def GetCSX(s): return s._c
+
+    gate._import_openems = lambda: (object, object, object)
+    gate._run_openems_capturing_stdout = lambda fd, p, threads=0: capped
+    gate._openems_version = lambda log: {"version": "0.0.36", "source": "banner"}
+    gate._check_excitation_and_trace = lambda *a, **k: (1.2e-13, 4096)
+    m._build_sheen_board_at_rung = lambda *a, **k: (_FDTD(lines), ports[0], ports[1])
+
+    def solve(accept):
+        return m._run_stage_b(
+            label="stage_b_coarse", sim_root=str(tmp_path), threads=1,
+            resolution_factor=1.0, sf=gate.load_spectral_features(),
+            real_nrts=60000, real_end_criteria=1e-4, accept_truncation=accept)
+
+    # Gate ON (the default): it still raises, and the partial record is no
+    # longer empty.
+    with pytest.raises(gate.StageFailure) as excinfo:
+        solve(False)
+    partial = excinfo.value.partial
+    for key in ("freqs_ghz", "s11_mag", "s11_deg", "s21_mag", "s21_deg",
+                "energy_sum"):
+        assert key in partial, f"the evidence file still lost {key}"
+        assert len(partial[key]) == nf
+    assert partial["truncated"] is True
+    assert partial["final_energy_db"] == pytest.approx(-38.92)
+    assert partial["final_timestep"] == 60000
+    assert "null" in partial and "passband" in partial and "cutoff_3db" in partial
+    assert "max_energy_sum_band" in partial
+    assert "end-criteria" in str(excinfo.value)
+
+    # Gate ACCEPTED: no raise, and the record says what it is.
+    rec, meta = solve(True)
+    assert rec["truncated"] is True
+    assert rec["final_energy_db"] == pytest.approx(-38.92)
+    assert rec["truncation_note"] == (
+        "record length declared by --real-nrts 60000; the box energy had decayed "
+        "to -38.92 dB at the cap; see stop_criteria_note")
+    assert meta["end_criteria_reached"] is False
+    assert meta["truncation_accepted"] is True
+    assert meta["final_timestep"] == 60000
+    assert meta["energy_db_trace"] == [[4000, -12.40], [60000, -38.92]]
+    assert "--accept-truncation was given" in meta["stop_criteria_note"]
+
+
+def test_a_clean_run_is_untouched_by_all_of_this(tmp_path):
+    """No truncation warning: no truncated key, and end_criteria_reached True."""
+    import numpy as np
+
+    m = _load_maker()
+    gate = m._gate
+    clean = "\n".join([
+        "openEMS v0.0.36",
+        "[@4s] Timestep: 4000 || Energy: ~1.1e-12 (-12.40dB)",
+        "[@1m28s] Timestep: 44120 || Energy: ~1.0e-16 (-50.02dB)",
+    ])
+
+    class _Port:
+        def __init__(s, n, nf):
+            s.n, s.nf = n, nf
+            s.U_filenames = []
+            s.feed_shift = 0.0025
+            s.measplane_shift = 0.0056
+            s.Z_ref = np.full(nf, 50.5 + 0.1j)
+
+        def CalcPort(s, path, f, ref_impedance=None):
+            s.uf_inc = np.ones(s.nf, dtype=complex)
+            s.uf_ref = np.full(s.nf, 0.9 if s.n == 1 else 0.2, dtype=complex)
+
+    class _Grid:
+        def __init__(s, l): s.l = l
+        def GetLines(s, a): return s.l[a]
+
+    class _CSX:
+        def __init__(s, l): s._g = _Grid(l)
+        def GetGrid(s): return s._g
+
+    class _FDTD:
+        def __init__(s, l): s._c = _CSX(l)
+        def GetCSX(s): return s._c
+
+    nf = m.B_N_FREQS
+    lines = {"x": np.linspace(0.0, m.LX, 140), "y": np.linspace(0.0, m.LY, 140),
+             "z": np.concatenate([np.linspace(0.0, m.H_SUB, 5),
+                                  np.linspace(m.H_SUB, m.LZ, 17)[1:]])}
+    ports = [_Port(0, nf), _Port(1, nf)]
+    gate._import_openems = lambda: (object, object, object)
+    gate._run_openems_capturing_stdout = lambda fd, p, threads=0: clean
+    gate._openems_version = lambda log: {"version": "0.0.36", "source": "banner"}
+    gate._check_excitation_and_trace = lambda *a, **k: (1.2e-13, 4096)
+    m._build_sheen_board_at_rung = lambda *a, **k: (_FDTD(lines), ports[0], ports[1])
+
+    rec, meta = m._run_stage_b(
+        label="stage_b_coarse", sim_root=str(tmp_path), threads=1,
+        resolution_factor=1.0, sf=gate.load_spectral_features())
+    assert "truncated" not in rec
+    assert "truncation_note" not in rec
+    assert meta["end_criteria_reached"] is True
+    assert "truncation_accepted" not in meta
+    assert meta["final_energy_db"] == pytest.approx(-50.02)
