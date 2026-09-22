@@ -656,6 +656,17 @@ def _waveguide_port_axis_metrics(grid, cfg):
     Host reads, per #1190: a concrete axis is resolved to Python floats here,
     once, outside the scan. A traced axis keeps its tracer, the way the CPML
     z pair already does, so the mesh-as-design-variable path survives.
+
+    On a grid built by hand -- the ``NonUniformGrid`` constructor called
+    directly and then handed to ``run_nonuniform``, both public -- there is
+    no float64 cell spine, so ``cells`` and ``duals`` each widen the float32
+    store and each warn. Measured: two ``ExactNodeSpineMissingWarning`` per
+    port per call, and the metric comes back 8.692e-09 relative above the
+    spine's value (0.000750000006519258 against 0.00075 on the WR-90 band).
+    That is the pre-#802 float32 quantization reaching the injection
+    coefficient, far below anything a user reads, and it is the existing
+    degraded path rather than something this helper introduces. Build the
+    grid with ``make_nonuniform_grid`` and neither happens.
     """
     axis = cfg.direction[-1].lower()
     forward = cfg.direction.startswith("+")
@@ -2629,15 +2640,19 @@ def _build_nu_scan(
         # Waveguide-port injection + DFT probe accumulation. The dx
         # arg is unused by the per-cell-weighted integrals (cfg already
         # stores u_widths/v_widths), but kept in the function signature
-        # for back-compat.
+        # for back-compat. It is handed the port's own primal cell rather
+        # than the grid's boundary scalar so that nothing here reads a
+        # scalar the port does not sit on; because the callee ignores it,
+        # no recorded number moves either way.
         new_waveguide_port_accs = None
         if use_waveguide_ports:
             from rfx.sources.waveguide_port import (
                 update_waveguide_port_probe,
             )
             new_waveguide_port_accs = []
-            for accs, cfg_meta in zip(
-                carry["waveguide_port_accs"], waveguide_meta
+            for accs, cfg_meta, _m in zip(
+                carry["waveguide_port_accs"], waveguide_meta,
+                waveguide_port_metrics,
             ):
                 cfg = cfg_meta._replace(
                     v_probe_t=accs[0],
@@ -2648,7 +2663,7 @@ def _build_nu_scan(
                     n_steps_recorded=accs[5],
                 )
                 # TFSF-style corrections applied earlier at canonical slots.
-                cfg_updated = update_waveguide_port_probe(cfg, st, dt, grid.dx)
+                cfg_updated = update_waveguide_port_probe(cfg, st, dt, _m[0])
                 new_waveguide_port_accs.append((
                     cfg_updated.v_probe_t,
                     cfg_updated.v_ref_t,

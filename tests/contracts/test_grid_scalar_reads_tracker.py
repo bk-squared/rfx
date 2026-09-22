@@ -130,7 +130,7 @@ ALLOWED_SCALAR_READS: dict[str, int] = {
     "rfx/geometry/thin_wire.py": 1,
     "rfx/io.py": 1,
     "rfx/materials/thin_conductor.py": 2,
-    "rfx/nonuniform.py": 9,
+    "rfx/nonuniform.py": 8,
     "rfx/preflight/_common.py": 3,
     "rfx/preflight/msl.py": 2,
     "rfx/preflight/pec_geometry.py": 1,

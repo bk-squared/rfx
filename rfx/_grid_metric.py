@@ -106,12 +106,23 @@ node positions             ``geometry.rasterize_grid``                PRIMAL cum
 CPML sigma / kappa         ``boundaries.cpml._grid_spacings`` and     x and y: the ONE scalar each,
                            the ``CPMLAxisParams`` built beside it     on BOTH faces. z: the cell
                                                                       array's two ends (G11)
-waveguide-port injection   ``nonuniform.run_nonuniform``'s            scalar ``grid.dx`` today (G13)
-                           waveguide H/E apply steps
+waveguide-port injection   ``nonuniform``                            PRIMAL at the H plane, DUAL at
+                           ``._waveguide_port_axis_metrics``, used    the E plane, on the port's own
+                           by ``run_nonuniform``'s H/E apply steps    propagation axis
 =========================  =========================================  ==================================
 
-The last two rows are the open defects step 0b closes; they are listed as
-what the code does now, not as what it is entitled to.
+The CPML row is the one open defect left in this table; it is listed as what
+the code does now, not as what it is entitled to.
+
+The waveguide-port row moved in 0b: each half of the port's one-sided TFSF
+boundary now reads the plane it acts on (G13). One site of that gap is NOT
+closed and #810 should not be recorded as closed on its account: the
+half-cell reference shift stores the boundary scalar as ``cfg.dx``
+(``sources.waveguide_port``, at config build), so a port in a refined band
+shifts by half the boundary cell where its own half-cell is smaller. On the
+WR-90 band that is 2.16, 3.55 and 4.74 degrees of phase at 8.2, 10.3 and
+12.4 GHz. It does not reach a normalized S-parameter, and it is untouched
+here.
 
 The CPML row is the one worth reading twice, because the gap is narrower than
 "one scalar everywhere". Four of the six per-face slots are filled from two
