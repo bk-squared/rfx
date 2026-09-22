@@ -285,7 +285,7 @@ class Grid:
     # module before adding a formula at a call site; decision 3 is that a
     # consumer needing a third quantity adds a named accessor here instead.
     #
-    # ``NonUniformGrid`` carries the same six methods with the same meaning,
+    # ``NonUniformGrid`` carries the same seven methods with the same meaning,
     # so a consumer can hold either class and never branch on its type. On
     # THIS class every axis is constant by construction, so every array is
     # ``np.full(n, dx)`` and primal == dual bit-exactly.
@@ -343,7 +343,7 @@ class Grid:
         """Physical coordinate of the E node at padded index ``i``.
 
         ``(i - pad_lo) * dx`` -- the closed form ``_uniform_axis_nodes``
-        (``rfx/geometry/rasterize_grid.py:76-81``) evaluates for the whole
+        (``rfx.geometry.rasterize_grid._uniform_axis_nodes``) evaluates for the whole
         axis, so this equals ``coords_from_uniform_grid(grid).<axis>[i]`` bit
         for bit, and equals the bare ``i * dx`` on an axis with no pad.
         """

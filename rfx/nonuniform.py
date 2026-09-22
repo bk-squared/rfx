@@ -183,6 +183,12 @@ class NonUniformGrid(NamedTuple):
         overshoots the realized wall-to-wall extent by one cell. Read extents
         from ``node_of`` or ``interior_cells``.
 
+        A spine whose length disagrees with the axis is REFUSED rather than
+        returned: the spine and the float32 store are two views of one padded
+        profile, so a length mismatch means they are not, and every node
+        derived from it would sit at the wrong index. A MISSING spine is a
+        different case, handled below.
+
         A grid built by hand (the ``NonUniformGrid(...)`` constructor called
         directly, rather than ``make_nonuniform_grid``) may carry no spine.
         It then gets the float32 store widened back to float64 AND an
@@ -190,17 +196,27 @@ class NonUniformGrid(NamedTuple):
         warning ``coords_from_nonuniform_grid`` emits -- silently falling
         back is the #802 realization with no trace of why.
         """
-        store = self._axis_store(axis)
+        ax, n, _pad_lo, _pad_hi = self._axis_layout(axis)
+        store = self._axis_store(ax)
         if is_tracer(store):
             return store
-        exact = self._axis_exact(axis)
+        exact = self._axis_exact(ax)
+        if exact is not None and np.asarray(exact).shape != (n,):
+            raise ValueError(
+                f"axis {_axis_name(ax)!r} declares {n} cells but its float64 "
+                f"spine holds {np.asarray(exact).shape}. The spine and the "
+                "solver's float32 store are two views of one padded profile; "
+                "a length that disagrees with the axis means they are not, "
+                "and every node position derived from the spine would sit at "
+                "the wrong index. Rebuild the grid with make_nonuniform_grid."
+            )
         if exact is None or np.asarray(exact).dtype != np.float64:
             import warnings
             from rfx.geometry.rasterize_grid import (
                 ExactNodeSpineMissingWarning,
             )
             warnings.warn(
-                f"NonUniformGrid axis {_axis_name(axis)!r} has no float64 "
+                f"NonUniformGrid axis {_axis_name(ax)!r} has no float64 "
                 "cell spine; cells() widened the float32 store instead. Node "
                 "positions derived from it carry the pre-#802 quantization "
                 "(~1e-10 m), which flips half-open inclusion at node-aligned "

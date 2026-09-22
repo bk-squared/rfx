@@ -709,3 +709,110 @@ def test_the_legacy_lookup_still_clamps(name):
     assert all(isinstance(i, int) for i in far)
     with pytest.raises(ValueError, match="outside"):
         grid.index_of("z", 1e9)
+
+
+@pytest.mark.parametrize("name,axis", ALL)
+def test_a_constant_axis_takes_the_closed_form_not_a_running_sum(name, axis):
+    """The #807 lane-equality branch, pinned against arithmetic written here.
+
+    ``node_of`` and ``coords_from_nonuniform_grid`` both route through
+    ``_axis_node_positions``, so comparing them to each other cannot see a
+    change inside it. Deleting its constant-axis branch leaves every other
+    test in this file green; this one is what goes red.
+
+    The oracle is the closed form spelled out below, and the test also checks
+    that the running sum it replaces is a DIFFERENT float on this fixture --
+    otherwise the comparison would pass whichever branch ran.
+    """
+    grid = FIXTURES[name]()
+    if not grid.is_constant(axis):
+        pytest.skip("graded axis; the closed form does not apply")
+    n, pad_lo, _pad_hi = _layout(grid, axis)
+    cell = float(grid.cells(axis)[0])
+
+    for i in range(n):
+        assert grid.node_of(axis, i) == (float(i) - pad_lo) * cell, i
+
+    cells = grid.cells(axis)
+    edges = np.insert(np.cumsum(cells), 0, 0.0)
+    running_sum = edges[:-1] - edges[pad_lo]
+    closed_form = (np.arange(n, dtype=np.float64) - pad_lo) * cell
+    np.testing.assert_allclose(running_sum, closed_form, rtol=0, atol=1e-15)
+    assert not np.array_equal(running_sum, closed_form), (
+        "the running sum landed on the closed form's bits for every node of "
+        f"this {n}-node axis, so this fixture cannot tell the two branches "
+        "apart and the guard above is vacuous here"
+    )
+
+
+def test_index_of_resolves_on_the_spine_not_on_the_float32_store():
+    """Which array ``index_of`` measures against, made visible.
+
+    Halfway between two nodes the two neighbours are equidistant, so the
+    answer is decided entirely by the last bits of the edge list. On a
+    fixture whose float64 spine and widened float32 store differ, a midpoint
+    computed from the spine resolves to one index against the spine's edges
+    and to another against the store's. Reading the wrong array is otherwise
+    invisible: every test that places a coordinate ON a node agrees either
+    way.
+
+    This is a tie, not an error -- at an exact midpoint neither neighbour is
+    wrong. It is used here because a tie is the only place the choice of
+    array shows, which is what makes it a witness for the choice.
+    """
+    checked = 0
+    for name in sorted(FIXTURES):
+        grid = FIXTURES[name]()
+        for axis in AXES:
+            n, pad_lo, pad_hi = _layout(grid, axis)
+            spine = grid.cells(axis)
+            store = np.asarray(
+                (grid.dx_arr, grid.dy_arr, grid.dz)[AXES.index(axis)],
+                dtype=np.float64)
+            if np.array_equal(spine, store):
+                continue
+            from_spine = np.insert(
+                np.cumsum(interior_cells(spine, pad_lo, pad_hi)), 0, 0.0)
+            from_store = np.insert(
+                np.cumsum(interior_cells(store, pad_lo, pad_hi)), 0, 0.0)
+            for k in range(from_spine.size - 1):
+                midpoint = 0.5 * (from_spine[k] + from_spine[k + 1])
+                spine_says = int(np.argmin(np.abs(from_spine - midpoint)))
+                store_says = int(np.argmin(np.abs(from_store - midpoint)))
+                if spine_says == store_says:
+                    continue
+                assert grid.index_of(axis, midpoint) == spine_says + pad_lo, (
+                    f"{name}/{axis} midpoint {midpoint!r}: index_of resolved "
+                    "against the float32 store, not the float64 spine"
+                )
+                checked += 1
+
+    assert checked > 0, (
+        "no midpoint separated the spine from the store on any fixture, so "
+        "this test proved nothing. Either the two now agree everywhere, or "
+        "the fixture set lost the graded shapes that made them differ."
+    )
+
+
+@pytest.mark.parametrize("axis", AXES)
+def test_a_spine_whose_length_disagrees_with_the_axis_is_refused(axis):
+    """A wrong-LENGTH spine is a different fault from a missing one.
+
+    Missing, the accessor widens the float32 store and warns. Wrong length,
+    it has no honest fallback: the spine and the store are two views of one
+    padded profile, so a length that disagrees with the axis means they are
+    not, and every node read off it would sit at the wrong index. Nothing
+    else in the interface checks a shape, so without this a truncated spine
+    surfaces later as an off-by-one in a material plane.
+    """
+    grid = FIXTURES["api_source"]()
+    field = {"x": "dx_arr_f64", "y": "dy_arr_f64", "z": "dz_f64"}[axis]
+    full = np.asarray(getattr(grid, field), dtype=np.float64)
+
+    for wrong in (full[:-1], np.concatenate([full, full[-1:]])):
+        broken = grid._replace(**{field: wrong})
+        with pytest.raises(ValueError, match="spine holds"):
+            broken.cells(axis)
+
+    # the untruncated spine still passes, so the guard is not simply always red
+    assert grid.cells(axis).shape == full.shape

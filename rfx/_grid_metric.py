@@ -35,11 +35,19 @@ measured from that first interior NODE, the convention
 ``coords_from_uniform_grid`` and ``coords_from_nonuniform_grid`` both use::
 
     node_of(axis, pad_lo) == 0.0
-    index_of(axis, node_of(axis, i)) == i        (concrete axes)
+    index_of(axis, node_of(axis, i)) == i
 
-so ``node_of`` and ``index_of`` are inverses and ``node_of`` equals the
-corresponding entry of the coordinate spine. On an axis with no pad
-(``pad_lo == 0``) ``node_of(axis, i)`` is the bare closed form ``i * dx``.
+and ``node_of`` equals the corresponding entry of the coordinate spine. On an
+axis with no pad (``pad_lo == 0``) ``node_of(axis, i)`` is the bare closed
+form ``i * dx``.
+
+The round trip holds where both halves are defined, and that range differs
+between the two classes. ``Grid.index_of`` addresses the whole padded axis,
+so the identity holds for every ``i`` in ``[0, n)``. The graded class
+resolves a coordinate against the INTERIOR edge list, so it holds for ``i``
+in ``[pad_lo, n - pad_hi)`` -- a node inside an absorber pad has no interior
+edge to match. Outside that range both classes raise rather than answer;
+neither clamps. (The legacy ``position_to_index`` does clamp; 0b retires it.)
 
 The LAST entry of ``cells(axis)`` is a node-provider, not physical extent.
 ``NonUniformGrid`` appends one duplicate boundary cell so ``N`` cells are
@@ -78,42 +86,53 @@ Who is entitled to which metric
 -------------------------------
 Every row was read at the site named, not taken from the design note.
 
-===========================  ==========================================  =================================
-consumer                     site                                        metric
-===========================  ==========================================  =================================
-H update (``update_h_nu``)   ``rfx/core/yee.py`` via ``inv_d*_h``        PRIMAL on the difference axis
-E update (``update_e_nu``)   ``rfx/core/yee.py`` via ``inv_d*``          DUAL on the difference axis
-current-source ``dV``        ``rfx/nonuniform.py:1369-1403`` (#672)      PRIMAL on the component's own
-                                                                         axis, DUAL on the two transverse
-lumped port sigma            ``rfx/sources/sources.py:136-153`` (#691)   same mixed rule
-                                                                         (``port_d_parallel`` primal,
-                                                                         ``port_dual_transverse`` dual)
-lumped R / C material fold   ``rfx/lumped.py:287-298, 406-422``          same mixed rule
-surface-impedance sheet      ``rfx/materials/thin_conductor.py:374-396`` DUAL along the sheet NORMAL
-                             (#677)                                      (``sigma_sheet = G / d_dual``)
-node positions, rasterizing  ``rfx/geometry/rasterize_grid.py:102-125``  PRIMAL cumulative sum; a
-                             (#562, #807)                                 constant axis takes the closed
-                                                                         form ``(i - pad) * dx``
-CPML sigma / kappa           ``rfx/boundaries/cpml.py:192-206, 505-510`` PRIMAL boundary cell -- ONE
-                                                                         scalar filling all six per-face
-                                                                         slots today (G11)
-waveguide-port injection     ``rfx/nonuniform.py:2091, 2134, 2202``      scalar ``grid.dx`` today (G13)
-===========================  ==========================================  =================================
+=========================  =========================================  ==================================
+consumer                   site                                       metric
+=========================  =========================================  ==================================
+H update                   ``core/yee.update_h_nu`` via ``inv_d*_h``  PRIMAL on the difference axis
+E update                   ``core/yee.update_e_nu`` via ``inv_d*``    DUAL on the difference axis
+current-source ``dV``      ``nonuniform.make_current_source`` (#672)  PRIMAL on the component's own
+                                                                      axis, DUAL on the two transverse
+lumped port sigma          ``sources.sources.port_sigma`` (#691)      same mixed rule
+                                                                      (``port_d_parallel`` primal,
+                                                                      ``port_dual_transverse`` dual)
+lumped R / C fold          ``lumped.setup_rlc_materials`` and         same mixed rule
+                           ``setup_rlc_materials_traced``
+surface-impedance sheet    ``materials.thin_conductor``               DUAL along the sheet NORMAL
+                           ``.SheetImpedanceSpec`` (#677)             (``sigma_sheet = G / d_dual``)
+node positions             ``geometry.rasterize_grid``                PRIMAL cumulative sum; a
+                           ``._axis_node_positions`` (#562, #807)     constant axis takes the closed
+                                                                      form ``(i - pad) * dx``
+CPML sigma / kappa         ``boundaries.cpml._grid_spacings`` and     x and y: the ONE scalar each,
+                           the ``CPMLAxisParams`` built beside it     on BOTH faces. z: the cell
+                                                                      array's two ends (G11)
+waveguide-port injection   ``nonuniform.run_nonuniform``'s            scalar ``grid.dx`` today (G13)
+                           waveguide H/E apply steps
+=========================  =========================================  ==================================
 
 The last two rows are the open defects step 0b closes; they are listed as
 what the code does now, not as what it is entitled to.
+
+The CPML row is the one worth reading twice, because the gap is narrower than
+"one scalar everywhere". Four of the six per-face slots are filled from two
+numbers: ``dx_x_lo`` and ``dx_x_hi`` both take ``grid.dx``, ``dx_y_lo`` and
+``dx_y_hi`` both take ``grid.dy``. The z pair does NOT: ``dz_lo`` and
+``dz_hi`` are read from the first and last entries of the cell array, so the
+z faces are already calibrated on the cells that sit under them. G11 is
+therefore about x and y, and 0b fills those four slots from
+``boundary_cell(axis, side)``.
 
 Two places where a site differs from the design note's one-line summary of
 it. Recorded, not changed (0a moves no consumer):
 
 * The note's fact table says "source ``dV`` and RLC the primal". Both sites
   are MIXED, not primal: primal on the component's own axis and DUAL on the
-  two transverse axes (``rfx/nonuniform.py:1369-1403``, #672;
-  ``rfx/lumped.py:287-298``, #691). The primal half of that sentence is the
+  two transverse axes (``nonuniform.make_current_source``, #672;
+  ``lumped.setup_rlc_materials``, #691). The primal half of that sentence is the
   own-axis half.
 * Two consumers reach the dual rule through the float32 store widened back
-  to float64 (``rfx/sources/sources.py:31-41``,
-  ``rfx/sources/msl_port.py:446-453``) rather than through the float64 spine
+  to float64 (``sources.sources._nu_cell_arrays``,
+  ``sources.msl_port._axis_dual_size``) rather than through the float64 spine
   ``cells`` returns. On a graded fixture the two disagree at a few nodes in
   the last float32 bits; see the test module for the measured figure.
 """
