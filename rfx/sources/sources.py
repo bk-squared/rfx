@@ -165,7 +165,7 @@ def stamp_lumped_sigma(materials, cell, value):
     port inside a CPML dielectric read a non-physical |S11| = 1.86.
     """
     i, j, k = (int(c) for c in cell)
-    lumped = materials.sigma_lumped
+    lumped = getattr(materials, "sigma_lumped", None)
     if lumped is None:
         lumped = jnp.zeros_like(materials.sigma)
     return materials._replace(
@@ -180,7 +180,7 @@ def stamp_lumped_eps(materials, cell, value):
     element: a capacitor sits across one edge.
     """
     i, j, k = (int(c) for c in cell)
-    lumped = materials.eps_r_lumped
+    lumped = getattr(materials, "eps_r_lumped", None)
     if lumped is None:
         lumped = jnp.zeros_like(materials.eps_r)
     return materials._replace(
