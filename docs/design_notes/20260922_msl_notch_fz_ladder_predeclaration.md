@@ -204,19 +204,31 @@ read by the case's own estimator, not a number typed from section 1.
 
 One change, and it moves no window.  The rung table now holds a (substrate cells, cells
 across the metal) pair per rung with the two independent, which is what an FZ ladder at a
-fixed in-plane cell needs.  The five arms already recorded are rebuilt from the first
-record and compared against it (`tests/unit/nonuniform/test_msl_notch_graded_build.py`): every cell of every
-fine band, every cell of every coarse run, every profile sum, the fine cell, the substrate
-cell, the solved z tail cell, every declared coordinate and every segment length are
+fixed in-plane cell needs.  The arms already recorded are rebuilt from the first record and
+compared against it (`tests/unit/nonuniform/test_msl_notch_graded_build.py`): every cell of every fine
+band, every cell of every coarse run, every profile sum, the fine cell, the substrate cell,
+the solved z tail cell, every declared coordinate and every segment length are
 bit-identical.  What is not is the last bit of the cells inside a solved geometric ramp:
 those arms were solved in the GPU job's container (numpy on python 3.10) and the gate runs
 in the project venv (numpy 2.4 on python 3.11), and the two disagree in the last bit or two
 of `np.sum` and of the power ufunc, which is what the ramp's cell ratio is bisected on.
-Measured across the five arms: at most 6 of a profile's 8 to 27 ramp cells differ, by at
-most 6 ulp, which is 8e-16 of a cell's own size, on cells in the coarse transition away
-from the metal.  No cell touching the line, the stub or the substrate is among them, and
-every profile sums to the same domain to the last bit.  The gate refuses beyond 8 ulp; a
-rung changed by one cell moves these numbers by about 1e13 ulp.
+
+Measured by rebuilding all 5 of them against `msl_notch_graded.json`, on the machine that printed this
+table rather than from a sentence typed once:
+
+| arm | ramp cells in its three profiles | cells whose last bit moved | worst distance (ulp) | every profile sums to the same domain |
+|---|---|---|---|---|
+| A_off | 10 / 17 / 12 | 7 | 6 | True |
+| A_off_longarms | 10 / 17 / 12 | 1 | 2 | True |
+| A_on | 10 / 17 / 12 | 2 | 2 | True |
+| B_off | 8 / 20 / 13 | 3 | 1 | True |
+| C_off | 16 / 27 / 14 | 1 | 1 | True |
+
+So at most 4 cells of one profile and 7 of one arm, 14 across all 5,
+out of profiles carrying 8 to 27 ramp cells each; worst distance 6 ulp, which is
+about 1e-15 of a cell's own size, on cells in the coarse transition away from the metal.
+No cell touching the line, the stub or the substrate is among them.  The gate refuses beyond
+8 ulp; a rung changed by one cell moves these numbers by about 1e13 ulp.
 
 The second change is forced by one arm.  A node sits on the metal's centre line only when
 a whole number of fine cells reaches it, so only when the cell count across the 600 um
@@ -238,6 +250,7 @@ the cells the solver steps, interior plus the absorber pad.
 
 | arm | new or reused | in-plane fine cell F (um) | cells across the metal | substrate cell FZ (um) | substrate cells | placement | z tail cell (um) | band margin (fine cells) | grid nodes | grid cells | dt (fs) |
 |---|---|---|---|---|---|---|---|---|---|---|---|
+| C_off_re | new | 24.2915 | 24 | 21.1667 | 12 | offset | 109.6286 | 21 | 267x270x47 | 3,291,484 | 44.0446 |
 | F16Z6 | new | 35.9281 | 16 | 42.3333 | 6 | offset | 114.7303 | 14 | 241x230x33 | 1,758,720 | 71.9353 |
 | ON13 | new | 46.1538 | 13 | 42.3333 | 6 | on-node | 114.7303 | 11 | 232x212x33 | 1,559,712 | 85.3531 |
 | Z16 | new | 24.2915 | 24 | 15.8750 | 16 | offset | 107.7639 | 21 | 267x270x56 | 3,935,470 | 38.4993 |
@@ -251,6 +264,7 @@ the cells the solver steps, interior plus the absorber pad.
 
 | arm | sheet plane z (um) | PEC volume cells | line node rows | stub node cols | metal node span (um) | stub length (um) | declared offset (um) | worst residual (m) |
 |---|---|---|---|---|---|---|---|---|
+| C_off_re | 254.0000 | 0 | 25 | 25 | 582.9960 | 12000.0000 | 8.5020 | 3.64e-18 |
 | F16Z6 | 254.0000 | 0 | 17 | 17 | 574.8503 | 12000.0000 | 12.5749 | 6.49e-18 |
 | ON13 | 254.0000 | 0 | 14 | 14 | 600.0000 | 12000.0000 | 0.0000 | 6.94e-18 |
 | Z16 | 254.0000 | 0 | 25 | 25 | 582.9960 | 12000.0000 | 8.5020 | 3.64e-18 |
@@ -264,6 +278,7 @@ the cells the solver steps, interior plus the absorber pad.
 
 | arm | notch (GHz) | above the reference (%) | depth (dB) | -10 dB BW (MHz) | fitted Z0 (ohm) | worst settling (dB) | worst passivity excess | grid cells | wall (s) |
 |---|---|---|---|---|---|---|---|---|---|
+| C_off_re | 3.71663 | +1.1507 | -50.81 | 777.8 | 48.38 | -94.89 | 0.00443 | 3,291,484 | 1008.1 |
 | F16Z6 | 3.74828 | +2.0119 | -50.64 | 786.0 | 48.60 | -95.41 | 0.00432 | 1,758,720 | 160.8 |
 | ON13 | 3.73338 | +1.6065 | -47.76 | 771.5 | 47.09 | -93.14 | 0.00453 | 1,559,712 | 91.7 |
 | Z16 | 3.71039 | +0.9807 | -44.11 | 775.3 | 48.33 | -95.07 | 0.00447 | 3,935,470 | 1081.9 |
@@ -277,26 +292,95 @@ Bars, for the two witness columns: ring-down -40 dB, passivity excess 0.01.
 
 ### F.4 The frozen windows
 
-**W5 -- the FZ ladder is a ladder.**  Four arms at one in-plane cell, F = 24.2915 um; only the substrate cell moves.
+**W5 -- the FZ ladder is a ladder (as section 4 declares it).**  Four arms at one in-plane cell,
+F = 24.2915 um; only the substrate cell moves.  The four rungs were solved at 2 commits
+(d558382f3f5f, 827d5ecf6021), and the simulator itself -- the `rfx/` tree at each of them -- is NOT the same at all of them.
+A commit that touches only a note, a test or this instrument leaves the simulator alone, so
+what a ladder needs is one solver and not one label.
 
-| arm | substrate cells | FZ (um) | notch (GHz) | step from the rung above (MHz) |
-|---|---|---|---|---|
-| Z6 | 6 | 42.3333 | 3.74994 | n/a |
-| Z8 | 8 | 31.7500 | 3.73378 | -16.158 |
-| C_off | 12 | 21.1667 | 3.71663 | -17.145 |
-| Z16 | 16 | 15.8750 | 3.71039 | -6.246 |
+| arm | substrate cells | FZ (um) | z tail cell (um) | dt (fs) | notch (GHz) | step from the rung above (MHz) |
+|---|---|---|---|---|---|---|
+| Z6 | 6 | 42.3333 | 114.7303 | 52.5605 | 3.74994 | n/a |
+| Z8 | 8 | 31.7500 | 111.0135 | 49.8894 | 3.73378 | -16.158 |
+| C_off | 12 | 21.1667 | 109.6286 | 44.0446 | 3.71663 | -17.145 |
+| Z16 | 16 | 15.8750 | 107.7639 | 38.4993 | 3.71039 | -6.246 |
 
-| monotone | fitted order p_z | order window | limit (GHz) | reference (GHz) | Z16 from the reference (%) | limit from the reference (%) | verdict |
+Two things move down the ladder besides the substrate cell, and both are consequences of
+it rather than free choices.  The air column above the band is a fixed 1.246 mm and its
+nine-cell uniform tail is solved to fill it, so the tail cell shrinks as FZ does; and the
+time step is the Courant limit of the smallest cell, so it falls with FZ too.  Neither
+changes the board: the metal, the substrate and the in-plane cell are the same on all
+four rungs, which F.1 and F.2 show.
+
+| monotone | fitted order p_z | order window | limit (GHz) | reference (GHz) | finest rung from the reference (%) | limit from the reference (%) | verdict |
 |---|---|---|---|---|---|---|---|
 | True | 1.3713 | 0.5 to 2.5 | 3.69748 | 3.67436 | 0.9807 | 0.6292 | HELD |
 
-The order is a least-squares slope of log|step| against the midpoint of the two rungs' log FZ.
-Placing each step at the coarser rung of its pair instead gives 1.4448; the fit's three residuals are
--1.78e-01, +3.56e-01, -1.78e-01.
+Four rungs carry more than one way to read an order, and they do not have to agree.  The
+window is judged on the first row, which is what section 4 asks for; the rest are reported
+so the spread is in the record.
 
-**W6 -- attribution at the A_off to C_off step.**  A_off and Z6 share the substrate cell,
-so what separates them is the in-plane cell; Z6 and C_off share the in-plane cell, so what
-separates them is the substrate cell.
+| how the order is read | order | limit (GHz) |
+|---|---|---|
+| declared: least squares of the log step against the midpoint of each pair's log FZ | 1.3713 | 3.69748 |
+| the same, each step at the coarser rung of its pair | 1.4448 | n/a |
+| the ratio of two successive steps, rungs 42.333 / 31.750 / 21.167 um | 0.8258 | 3.67352 |
+| the ratio of two successive steps, rungs 31.750 / 21.167 / 15.875 um | 1.8888 | 3.70174 |
+| f_inf + A FZ^p fitted to all four notches at once | 1.1908 | 3.69189 |
+
+The three-parameter fit leaves 0.517 MHz rms on four points with three unknowns.  The
+declared fit's three residuals in the log step are -1.78e-01, +3.56e-01, -1.78e-01.
+
+**W5 -- the FZ ladder is a ladder (addendum A.2, one solver build).**  Four arms at one in-plane cell,
+F = 24.2915 um; only the substrate cell moves.  The four rungs were solved at 2 commits
+(d558382f3f5f, c4d6aee830e2), and the simulator itself -- the `rfx/` tree at each of them -- is the SAME at all of them.
+A commit that touches only a note, a test or this instrument leaves the simulator alone, so
+what a ladder needs is one solver and not one label.
+
+| arm | substrate cells | FZ (um) | z tail cell (um) | dt (fs) | notch (GHz) | step from the rung above (MHz) |
+|---|---|---|---|---|---|---|
+| Z6 | 6 | 42.3333 | 114.7303 | 52.5605 | 3.74994 | n/a |
+| Z8 | 8 | 31.7500 | 111.0135 | 49.8894 | 3.73378 | -16.158 |
+| C_off_re | 12 | 21.1667 | 109.6286 | 44.0446 | 3.71663 | -17.145 |
+| Z16 | 16 | 15.8750 | 107.7639 | 38.4993 | 3.71039 | -6.246 |
+
+Two things move down the ladder besides the substrate cell, and both are consequences of
+it rather than free choices.  The air column above the band is a fixed 1.246 mm and its
+nine-cell uniform tail is solved to fill it, so the tail cell shrinks as FZ does; and the
+time step is the Courant limit of the smallest cell, so it falls with FZ too.  Neither
+changes the board: the metal, the substrate and the in-plane cell are the same on all
+four rungs, which F.1 and F.2 show.
+
+| monotone | fitted order p_z | order window | limit (GHz) | reference (GHz) | finest rung from the reference (%) | limit from the reference (%) | verdict |
+|---|---|---|---|---|---|---|---|
+| True | 1.3713 | 0.5 to 2.5 | 3.69748 | 3.67436 | 0.9807 | 0.6292 | HELD |
+
+Four rungs carry more than one way to read an order, and they do not have to agree.  The
+window is judged on the first row, which is what section 4 asks for; the rest are reported
+so the spread is in the record.
+
+| how the order is read | order | limit (GHz) |
+|---|---|---|
+| declared: least squares of the log step against the midpoint of each pair's log FZ | 1.3713 | 3.69748 |
+| the same, each step at the coarser rung of its pair | 1.4448 | n/a |
+| the ratio of two successive steps, rungs 42.333 / 31.750 / 21.167 um | 0.8258 | 3.67352 |
+| the ratio of two successive steps, rungs 31.750 / 21.167 / 15.875 um | 1.8888 | 3.70174 |
+| f_inf + A FZ^p fitted to all four notches at once | 1.1908 | 3.69189 |
+
+The three-parameter fit leaves 0.517 MHz rms on four points with three unknowns.  The
+declared fit's three residuals in the log step are -1.78e-01, +3.56e-01, -1.78e-01.
+
+**W6 -- attribution at the A_off to C_off step (section 4's rung).**  A_off and Z6 share the
+substrate cell, so what separates them is the in-plane cell; Z6 and C_off share the in-plane
+cell, so what separates them is the substrate cell.
+
+| leg | commits | the `rfx/` tree at them |
+|---|---|---|
+| substrate, Z6 -> C_off | d558382f3f5f, 827d5ecf6021 | two different simulators |
+| in-plane, A_off -> Z6 | 827d5ecf6021, d558382f3f5f | two different simulators |
+
+A_off comes from the first record in both rows, so the in-plane leg is read across two
+simulators whichever rung the substrate leg uses.
 
 | step | what moves | from (um) | to (um) | notch shift (MHz) | share of the total |
 |---|---|---|---|---|---|
@@ -311,6 +395,34 @@ separates them is the substrate cell.
 The cross term T - dZ - dF is 0.000e+00 Hz and is zero by construction, not by
 measurement: A_off to Z6 to C_off is one path from A_off's corner of the (F, FZ) plane to
 C_off's, so its two legs telescope.  A cross term that could be non-zero needs the fourth
+corner, F = 47.244 um at FZ = 21.167 um, which is not an arm of this note.  The printed
+value is the float64 residue of the cancellation.
+
+**W6 -- attribution at the A_off to C_off_re step (addendum A.2's rung).**  A_off and Z6 share the
+substrate cell, so what separates them is the in-plane cell; Z6 and C_off_re share the in-plane
+cell, so what separates them is the substrate cell.
+
+| leg | commits | the `rfx/` tree at them |
+|---|---|---|
+| substrate, Z6 -> C_off_re | d558382f3f5f, c4d6aee830e2 | one simulator |
+| in-plane, A_off -> Z6 | 827d5ecf6021, d558382f3f5f | two different simulators |
+
+A_off comes from the first record in both rows, so the in-plane leg is read across two
+simulators whichever rung the substrate leg uses.
+
+| step | what moves | from (um) | to (um) | notch shift (MHz) | share of the total |
+|---|---|---|---|---|---|
+| A_off -> Z6 | in-plane cell F | 47.2441 | 24.2915 | -2.549 | -0.0829 |
+| Z6 -> C_off_re | substrate cell FZ | 42.3333 | 21.1667 | +33.303 | +1.0829 |
+| A_off -> C_off_re | both | | | +30.754 | 1.0000 |
+
+| abs(dZ) (MHz) | abs(dF) (MHz) | bar, two thirds of abs(T) (MHz) | classification |
+|---|---|---|---|
+| 33.303 | 2.549 | 20.503 | FZ dominant |
+
+The cross term T - dZ - dF is 0.000e+00 Hz and is zero by construction, not by
+measurement: A_off to Z6 to C_off_re is one path from A_off's corner of the (F, FZ) plane to
+C_off_re's, so its two legs telescope.  A cross term that could be non-zero needs the fourth
 corner, F = 47.244 um at FZ = 21.167 um, which is not an arm of this note.  The printed
 value is the float64 residue of the cancellation.
 
@@ -339,8 +451,8 @@ in-plane cell and the same substrate cell (42.3333 um).
 
 Reading, per the pre-declaration: the offset raises the notch on its own: the on-node arm at nearly the same in-plane cell reads lower.
 
-**W8 -- is z enough?**  Where the notch goes as the substrate cell goes to zero at
-F = 24.2915 um, against the reference.
+**W8 -- is z enough? (section 4's ladder)**  Where the notch goes as the substrate cell goes to
+zero at F = 24.2915 um, against the reference.  Two different simulators under the four rungs.
 
 | arm | substrate cells | FZ (um) | notch (GHz) | from the reference (%) |
 |---|---|---|---|---|
@@ -353,18 +465,76 @@ F = 24.2915 um, against the reference.
 |---|---|---|---|---|---|
 | 3.69748 | 3.67436 | 0.6292 | 1 | HELD | HELD |
 
-Derived, with its derivation: the fit puts the notch abs(A) FZ^p from its limit, so the
-cell that brings that inside the bar is FZ = (bar / abs(A))^(1/p) and the substrate rule is
-n_z = ceil(h / FZ).
+Derived, with its derivation: the fit puts the notch abs(A) FZ^p from its OWN limit, so
+the cell that brings that term inside the bar is
+FZ = (bar x limit / abs(A))^(1/p) and the substrate rule is n_z = ceil(h / FZ).  The bar
+is a fraction of the limit, not of the external reference: what is being bounded is how
+far the notch still has to fall on this ladder, and the ladder converges to its own limit.
 
-| abs(A) | p | FZ for the bar (um) | n_z for the bar |
-|---|---|---|---|
-| 4.9246e+13 | 1.3713 | 34.0311 | 8 |
+| abs(A) | p | bar, 1 % of the limit (MHz) | FZ for the bar (um) | n_z for the bar |
+|---|---|---|---|---|
+| 4.9246e+13 | 1.3713 | 36.975 | 34.1871 | 8 |
+
+**W8 -- is z enough? (addendum A.2's ladder)**  Where the notch goes as the substrate cell goes to
+zero at F = 24.2915 um, against the reference.  One simulator under the four rungs.
+
+| arm | substrate cells | FZ (um) | notch (GHz) | from the reference (%) |
+|---|---|---|---|---|
+| Z6 | 6 | 42.3333 | 3.74994 | 2.0570 |
+| Z8 | 8 | 31.7500 | 3.73378 | 1.6173 |
+| C_off_re | 12 | 21.1667 | 3.71663 | 1.1507 |
+| Z16 | 16 | 15.8750 | 3.71039 | 0.9807 |
+
+| ladder limit (GHz) | reference (GHz) | limit from the reference (%) | bar (%) | W5 | verdict |
+|---|---|---|---|---|---|
+| 3.69748 | 3.67436 | 0.6292 | 1 | HELD | HELD |
+
+Derived, with its derivation: the fit puts the notch abs(A) FZ^p from its OWN limit, so
+the cell that brings that term inside the bar is
+FZ = (bar x limit / abs(A))^(1/p) and the substrate rule is n_z = ceil(h / FZ).  The bar
+is a fraction of the limit, not of the external reference: what is being bounded is how
+far the notch still has to fall on this ladder, and the ladder converges to its own limit.
+
+| abs(A) | p | bar, 1 % of the limit (MHz) | FZ for the bar (um) | n_z for the bar |
+|---|---|---|---|---|
+| 4.9246e+13 | 1.3713 | 36.975 | 34.1871 | 8 |
+
+### F.4a The same rung solved twice, at two solver builds (addendum A.2)
+
+`C_off_re` and `C_off` declare the same mesh -- the same rung entry, so the same 12 substrate cells and
+24 cells across the metal, the same board and the same stub.  What differs is the commit of `rfx/`
+that solved them.  Whether their two meshes really were identical is checked rather than
+assumed, because a mesh that moved would make this comparison say nothing about the solver.
+
+| arm | commit | VESSL run | notch (GHz) | grid cells | dt (fs) | wall (s) |
+|---|---|---|---|---|---|---|
+| C_off_re | c4d6aee830e2 | 369367263518 | 3.716635 | 3,291,484 | 44.0446 | 1008.1 |
+| C_off | 827d5ecf6021 | 369367263283 | 3.716635 | 3,291,484 | 44.0446 | 1007.7 |
+
+| C_off_re minus C_off (MHz) | same (%) | notch equal to the last bit | whole S curve equal to the last bit | every declared mesh field equal | all three cell profiles bit-identical |
+|---|---|---|---|---|---|
+| +0.0000 | +0.00000 | True | True | True | True |
+
+The two commits differ in `rfx/`.  What the table above reports is what
+that difference did to this board, measured rather than argued.
+
+### F.4b Meshes costed but not solved
+
+Built through the same `build_graded` every arm uses and put through the same R1 and R3,
+so a mesh that could not be solved cannot be costed here either.  The time step is the
+grid's own Courant number read off the lattice, and the step count is the one a run would
+derive from it for the case's 20 periods.  No field is stepped and no S parameter exists for
+these rows.
+
+| cells across the metal | F (um) | substrate cells | FZ (um) | z tail cell (um) | grid nodes | grid cells | dt (fs) | time steps | what it is |
+|---|---|---|---|---|---|---|---|---|---|
+| 12 | 47.2441 | 16 | 15.8750 | 107.7639 | 231x211x56 | 2,656,500 | 47.3494 | 60,342 | the coarse in-plane band with a fine z band: A_off's 12 cells across the metal at Z16's 16 substrate cells |
 
 ### F.5 Provenance
 
 | arm | VESSL run | commit | dirty | GPU | jax | backend | started (UTC) |
 |---|---|---|---|---|---|---|---|
+| C_off_re | 369367263518 | c4d6aee830e2 | None | NVIDIA GeForce RTX 4090 | 0.4.33.dev20241023+e3c6d6430 | gpu | 2026-09-22T16:38:45+00:00 |
 | F16Z6 | 369367263366 | d558382f3f5f | None | NVIDIA GeForce RTX 4090 | 0.4.33.dev20241023+e3c6d6430 | gpu | 2026-09-22T09:22:04+00:00 |
 | ON13 | 369367263364 | d558382f3f5f | None | NVIDIA GeForce RTX 4090 | 0.4.33.dev20241023+e3c6d6430 | gpu | 2026-09-22T09:17:14+00:00 |
 | Z16 | 369367263368 | d558382f3f5f | None | NVIDIA GeForce RTX 4090 | 0.4.33.dev20241023+e3c6d6430 | gpu | 2026-09-22T09:28:13+00:00 |

@@ -508,12 +508,12 @@ def test_fz_verdicts_reports_only_the_windows_whose_arms_are_present():
 #: What the two records hold, transcribed from the committed files.  Pinned
 #: means pinned: a window that FIRED is pinned fired.
 #: The arms the committed FZ record holds.
-RECORDED_FZ_ARMS = ("F16Z6", "ON13", "Z16", "Z6", "Z8")
+RECORDED_FZ_ARMS = ("C_off_re", "F16Z6", "ON13", "Z16", "Z6", "Z8")
 #: Declared by the module but not yet solved.  A pre-declaration names its
 #: arms before they run, so this is the honest state between the declaration
 #: and the record, and it is asserted rather than left implicit: an arm that
 #: quietly stopped being owed would be an arm nobody noticed was missing.
-PENDING_ARMS = ("C_off_re",)
+PENDING_ARMS = ()
 RECORDED_NOTCH_GHZ = {
     "A_off": 3.747389,
     "A_on": 3.732318,
@@ -653,7 +653,14 @@ def test_every_new_arm_names_the_run_and_the_commit_that_made_it(fz_file):
         assert p["run_id"] not in runs, f"{key} reuses run {p['run_id']}"
         runs.add(p["run_id"])
         shas.add(p["git_sha"])
-    assert len(shas) == 1, f"the five arms span {len(shas)} commits"
+    # One SIMULATOR, not one commit label.  The five arms of section 2 ran at
+    # one commit; C_off_re was declared after the review and ran at a later
+    # one that changes a note, this instrument and its tests and leaves rfx/
+    # alone.  What would make two arms incomparable is a different solver, so
+    # that is what is asserted.
+    assert ins.solver_tree_equal(sorted(shas)) is True, (
+        f"the arms span {len(shas)} commits whose rfx/ trees differ")
+    assert len(shas) <= 2, f"the arms span {len(shas)} commits"
 
 
 def test_the_witnesses_and_the_refusals_are_recorded_for_every_new_arm(fz_file):
@@ -918,3 +925,218 @@ def test_the_substrate_rule_bar_is_a_fraction_of_the_ladders_own_limit(arms):
     assert r["substrate_cell_for_the_bar_m"] == pytest.approx(want, rel=1e-9)
     assert r["n_substrate_cells_for_the_bar"] == int(np.ceil(
         case.SUBSTRATE_THICKNESS_M / want - 1e-12))
+
+
+# ------------------------------- addendum A.2, on the records
+# --- addendum A.2: the re-measured rung and the one-commit ladder
+RECORDED_REMEASURE_DELTA_MHZ = 0.0000
+RECORDED_REMEASURE_DELTA_PCT = 0.00000
+RECORDED_REMEASURE_NOTCH_GHZ = 3.716635
+RECORDED_REMEASURE_MESH_IDENTICAL = True
+RECORDED_REMEASURE_PROFILES_BIT_IDENTICAL = True
+RECORDED_W5_ONE_COMMIT_ORDER = 1.3713
+RECORDED_W5_ONE_COMMIT_LIMIT_GHZ = 3.69748
+RECORDED_W5_ONE_COMMIT_LIMIT_PCT = 0.6292
+RECORDED_W5_ONE_COMMIT_FINEST_PCT = 0.9807
+RECORDED_W5_ONE_COMMIT_STEPS_MHZ = [16.158, 17.1453, 6.2457]
+RECORDED_W5_ONE_COMMIT_VERDICT = 'HELD'
+RECORDED_W8_ONE_COMMIT_VERDICT = 'HELD'
+RECORDED_W8_ONE_COMMIT_N_Z = 8
+RECORDED_W6_ONE_COMMIT_CLASS = 'FZ dominant'
+RECORDED_W6_ONE_COMMIT_DELTA_Z_MHZ = 33.3032
+RECORDED_W6_ONE_COMMIT_TOTAL_MHZ = 30.7541
+#: order read four ways: declared, coarse endpoint, the two adjacent
+#: triples, and the three-parameter fit -- for each ladder.
+RECORDED_ORDERS_MIXED = dict(
+    declared=1.3713, coarse_endpoint=1.4448,
+    triples=[0.8258, 1.8888],
+    three_parameter=1.1908,
+    three_parameter_limit_ghz=3.69189,
+    three_parameter_rms_mhz=0.5173)
+RECORDED_ORDERS_ONE_COMMIT = dict(
+    declared=1.3713, coarse_endpoint=1.4448,
+    triples=[0.8258, 1.8888],
+    three_parameter=1.1908,
+    three_parameter_limit_ghz=3.69189,
+    three_parameter_rms_mhz=0.5173)
+RECORDED_REMEASURE_NOTCH_BIT_IDENTICAL = True
+RECORDED_REMEASURE_CURVES_BIT_IDENTICAL = True
+
+
+
+def test_the_one_commit_ladder_was_solved_by_one_build(arms):
+    """Addendum A.2's reason for existing, read off the records.
+
+    W5 fits an order to the differences between four notches, so a rung solved
+    by another build of ``rfx/`` puts that build's difference into the order.
+    The declared ladder spans two commits; the A.2 ladder spans one. Both are
+    kept, and which is which has to be visible in the window itself.
+    """
+    mixed = ins.w5_fz_ladder(arms, ins.FZ_LADDER)
+    one = ins.w5_fz_ladder(arms, ins.FZ_LADDER_ONE_COMMIT)
+    # Both ladders carry two commit LABELS; only one of them carries two
+    # simulators.  The label is not the thing that matters and the window
+    # says so separately.
+    assert mixed["n_commits"] == 2 and one["n_commits"] == 2
+    assert mixed["solver_tree_equal"] is False
+    assert mixed["one_solver_build"] is False
+    assert one["solver_tree_equal"] is True
+    assert one["one_solver_build"] is True
+    # The commit C_off_re adds leaves rfx/ alone; C_off's does not.
+    assert ins.solver_tree_equal(one["commits"]) is True
+    assert ins.solver_tree_equal(mixed["commits"]) is False
+    assert arms["C_off"]["provenance"]["git_sha"] not in one["commits"]
+    assert arms["C_off_re"]["provenance"]["git_sha"] not in mixed["commits"]
+
+
+def test_the_re_measured_rung_solved_the_same_mesh(arms):
+    """C_off_re against C_off: same declared board, two solver builds.
+
+    If the meshes differed, the distance between the two notches would be a
+    distance between two boards and would say nothing about the solver. Both
+    checks are on the RECORDS, not on the rung table: the profiles each arm
+    wrote down are compared cell by cell.
+    """
+    r = ins.fz_verdicts(arms)["remeasurement"]
+    assert r["arms"] == ["C_off_re", "C_off"]
+    assert r["mesh_identical"] is RECORDED_REMEASURE_MESH_IDENTICAL
+    assert (r["profiles_bit_identical"]
+            is RECORDED_REMEASURE_PROFILES_BIT_IDENTICAL)
+    assert r["commits"][0] != r["commits"][1]
+    assert r["grid_cells"][0] == r["grid_cells"][1]
+    assert r["notch_new_ghz"] == pytest.approx(RECORDED_REMEASURE_NOTCH_GHZ,
+                                               abs=5e-6)
+    assert r["delta_mhz"] == pytest.approx(RECORDED_REMEASURE_DELTA_MHZ,
+                                           abs=1e-3)
+    assert r["delta_pct"] == pytest.approx(RECORDED_REMEASURE_DELTA_PCT,
+                                           abs=1e-5)
+    # Same rung entry, so the two records must also agree on every cell size.
+    for field in ("fine_cell_m", "substrate_cell_m", "z_tail_cell_m",
+                  "edge_offset_m", "n_across_metal", "n_substrate_cells",
+                  "margin_cells", "lateral_clearance_m"):
+        assert arms["C_off_re"][field] == arms["C_off"][field], field
+
+
+def test_w5_on_the_one_commit_ladder(arms):
+    r = ins.w5_fz_ladder(arms, ins.FZ_LADDER_ONE_COMMIT)
+    assert r["arms"] == ["Z6", "Z8", "C_off_re", "Z16"]
+    assert r["monotone"] is True
+    assert r["order"] == pytest.approx(RECORDED_W5_ONE_COMMIT_ORDER, abs=1e-4)
+    assert r["limit_ghz"] == pytest.approx(RECORDED_W5_ONE_COMMIT_LIMIT_GHZ,
+                                           abs=1e-5)
+    assert r["limit_distance_pct"] == pytest.approx(
+        RECORDED_W5_ONE_COMMIT_LIMIT_PCT, abs=1e-4)
+    assert r["finest_distance_pct"] == pytest.approx(
+        RECORDED_W5_ONE_COMMIT_FINEST_PCT, abs=1e-4)
+    assert r["differences_mhz"] == pytest.approx(
+        RECORDED_W5_ONE_COMMIT_STEPS_MHZ, abs=1e-3)
+    assert r["verdict"] == RECORDED_W5_ONE_COMMIT_VERDICT
+    # The declared ladder keeps its own verdict; A.2 adds a reading, it does
+    # not replace one.
+    assert ins.w5_fz_ladder(arms, ins.FZ_LADDER)["verdict"] == (
+        RECORDED_VERDICTS["W5"])
+
+
+def test_w6_and_w8_on_the_one_commit_rung(arms):
+    v = ins.fz_verdicts(arms)
+    w6 = v["W6_one_commit"]
+    assert w6["fine_rung"] == "C_off_re"
+    assert w6["classification"] == RECORDED_W6_ONE_COMMIT_CLASS
+    assert w6["delta_z_mhz"] == pytest.approx(RECORDED_W6_ONE_COMMIT_DELTA_Z_MHZ,
+                                              abs=1e-3)
+    assert w6["total_mhz"] == pytest.approx(RECORDED_W6_ONE_COMMIT_TOTAL_MHZ,
+                                            abs=1e-3)
+    # Its substrate leg is now one simulator; its in-plane leg still is not,
+    # because A_off comes from the first record either way.
+    assert w6["substrate_leg_solver_equal"] is True
+    assert w6["inplane_leg_solver_equal"] is False
+    assert v["W6"]["substrate_leg_solver_equal"] is False
+    w8 = v["W8_one_commit"]
+    assert w8["verdict"] == RECORDED_W8_ONE_COMMIT_VERDICT
+    assert w8["one_solver_build"] is True
+    assert w8["n_substrate_cells_for_the_bar"] == RECORDED_W8_ONE_COMMIT_N_Z
+    assert w8["bar_pct"] == case.FREQ_BAR * 100.0
+
+
+@pytest.mark.parametrize("ladder,pins", [
+    ("FZ_LADDER", "RECORDED_ORDERS_MIXED"),
+    ("FZ_LADDER_ONE_COMMIT", "RECORDED_ORDERS_ONE_COMMIT"),
+])
+def test_the_order_is_recorded_four_ways_for_each_ladder(arms, ladder, pins):
+    """Four rungs support several readings of one power; all of them are pinned.
+
+    They are not expected to agree on real rungs -- that spread is the point
+    of recording them -- so each is pinned separately. The window is judged on
+    ``declared`` and on nothing else, which the last assertion holds.
+    """
+    want = globals()[pins]
+    r = ins.w5_fz_ladder(arms, getattr(ins, ladder))
+    assert r["order"] == pytest.approx(want["declared"], abs=1e-4)
+    assert r["order_at_coarse_endpoint"] == pytest.approx(
+        want["coarse_endpoint"], abs=1e-4)
+    assert r["order_adjacent_triples"] == pytest.approx(want["triples"],
+                                                        abs=1e-4)
+    assert len(r["adjacent_triples"]) == 2
+    assert r["order_three_parameter"] == pytest.approx(
+        want["three_parameter"], abs=1e-3)
+    assert r["limit_three_parameter_ghz"] == pytest.approx(
+        want["three_parameter_limit_ghz"], abs=1e-4)
+    assert r["rms_three_parameter_mhz"] == pytest.approx(
+        want["three_parameter_rms_mhz"], abs=1e-3)
+    # The verdict follows the declared reading, whatever the others say.
+    lo, hi = r["order_window"]
+    assert r["verdict"] == ("HELD" if r["monotone"] and lo <= r["order"] <= hi
+                            else "FIRED")
+
+
+def test_the_tables_carry_both_ladders_and_the_re_measurement(arms):
+    """The note's Results section shows each window twice and says which is which."""
+    md = ins.fz_markdown_tables(arms)
+    assert "### F.4a The same rung solved twice" in md
+    for needle in ("as section 4 declares it", "addendum A.2, one solver build",
+                   "section 4's rung", "addendum A.2's rung",
+                   "section 4's ladder", "addendum A.2's ladder"):
+        assert needle in md, needle
+    assert md.count("**W5 -- the FZ ladder is a ladder") == 2
+    assert md.count("**W6 -- attribution at the A_off to") == 2
+    assert md.count("**W8 -- is z enough?") == 2
+    assert "| C_off_re |" in md
+    assert "how the order is read" in md
+    assert md.rstrip().endswith("Conclusions: leader fills.")
+
+
+def test_the_re_measurement_found_no_difference_at_all(arms):
+    """What the re-measured rung actually answers, pinned as measured.
+
+    The same board was solved by two simulators eleven files and 742 changed
+    lines apart, and the two agree to the last bit of a float64 -- not the
+    notch only, the whole S matrix on the whole frequency grid. That is a
+    stronger statement than "close enough", so it is pinned as bit equality
+    and not as a tolerance.
+    """
+    r = ins.fz_verdicts(arms)["remeasurement"]
+    assert r["solver_tree_equal"] is False, (
+        "the two commits must differ in rfx/ or this measures nothing")
+    assert r["notch_bit_identical"] is RECORDED_REMEASURE_NOTCH_BIT_IDENTICAL
+    assert r["curves_bit_identical"] is RECORDED_REMEASURE_CURVES_BIT_IDENTICAL
+    assert r["delta_mhz"] == 0.0
+    for field in ("s21_re", "s21_im", "s11_re", "s11_im", "freqs_hz"):
+        assert arms["C_off_re"][field] == arms["C_off"][field], field
+    # So every window reads the same on both ladders, and that is a result
+    # rather than a coincidence of rounding.
+    for key in ("order", "limit_ghz", "limit_distance_pct"):
+        assert ins.w5_fz_ladder(arms, ins.FZ_LADDER)[key] == pytest.approx(
+            ins.w5_fz_ladder(arms, ins.FZ_LADDER_ONE_COMMIT)[key], rel=1e-12)
+
+
+def test_the_solver_tree_check_tells_a_label_from_a_simulator():
+    """``solver_tree_equal`` asks git about rfx/, not about the commit string.
+
+    Two commits that differ only in a note or in this instrument leave the
+    simulator alone. If this compared labels it would call the A.2 ladder two
+    builds, which is the mistake the field exists to avoid.
+    """
+    assert ins.solver_tree_equal([]) is True
+    assert ins.solver_tree_equal(["a" * 40]) is True
+    # A sha git cannot resolve is "not checkable", not "equal".
+    assert ins.solver_tree_equal(["0" * 40, "1" * 40]) is None

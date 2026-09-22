@@ -1541,6 +1541,35 @@ def commits_of(arms: dict, keys) -> list[str]:
     return seen
 
 
+def solver_tree_equal(shas) -> bool | None:
+    """Is ``rfx/`` the same tree at every one of these commits?
+
+    Two arms can carry different commits and still have been solved by the
+    same simulator: a commit that only touches a note, a test or this
+    instrument leaves ``rfx/`` alone.  What a ladder needs is one SOLVER, not
+    one label, so this asks git about the tree instead of comparing strings.
+
+    ``None`` when git cannot answer -- outside a worktree, or with the commits
+    not present -- because "not checkable here" is not the same as "equal".
+    """
+    shas = [str(v) for v in shas]
+    if len(shas) <= 1:
+        return True
+    for other in shas[1:]:
+        try:
+            done = subprocess.run(
+                ["git", "-C", str(_REPO_ROOT), "diff", "--quiet",
+                 shas[0], other, "--", "rfx/"],
+                capture_output=True, text=True)
+        except Exception:
+            return None
+        if done.returncode == 1:
+            return False
+        if done.returncode != 0:
+            return None
+    return True
+
+
 def w5_fz_ladder(arms: dict, ladder: tuple[str, ...] = FZ_LADDER) -> dict:
     """W5: the four notches at one in-plane cell, against their substrate cell.
 
@@ -1576,10 +1605,12 @@ def w5_fz_ladder(arms: dict, ladder: tuple[str, ...] = FZ_LADDER) -> dict:
     held = bool(fit["monotone"] and np.isfinite(fit["order"])
                 and lo <= fit["order"] <= hi)
     shas = commits_of(arms, ladder)
+    same_solver = solver_tree_equal(shas)
     return dict(
         window="W5", arms=list(ladder),
         commits=shas, n_commits=len(shas),
-        one_solver_build=bool(len(shas) == 1),
+        solver_tree_equal=same_solver,
+        one_solver_build=bool(len(shas) == 1 or same_solver is True),
         fine_cell_m=float(min(fine.values())),
         substrate_cells_m=[float(v) for v in fz],
         n_substrate_cells=[int(arms[k]["n_substrate_cells"]) for k in ladder],
@@ -1639,17 +1670,22 @@ def w6_attribution(arms: dict, fine_rung: str = "C_off") -> dict:
     else:
         klass = "shared"
     shas = commits_of(arms, ("A_off", "Z6", fine_rung))
+    sub_leg = commits_of(arms, ("Z6", fine_rung))
+    in_leg = commits_of(arms, ("A_off", "Z6"))
     return dict(
         window="W6", arms=["A_off", "Z6", fine_rung],
         fine_rung=fine_rung,
         commits=shas, n_commits=len(shas),
-        substrate_leg_commits=commits_of(arms, ("Z6", fine_rung)),
+        solver_tree_equal=solver_tree_equal(shas),
+        substrate_leg_commits=sub_leg,
+        substrate_leg_solver_equal=solver_tree_equal(sub_leg),
+        inplane_leg_solver_equal=solver_tree_equal(in_leg),
         notches_ghz={k: facts[k]["f_hz"] / 1e9 for k in facts},
         substrate_step_m=[facts["Z6"]["substrate_cell_m"],
                           facts[fine_rung]["substrate_cell_m"]],
         inplane_step_m=[facts["A_off"]["fine_cell_m"],
                         facts["Z6"]["fine_cell_m"]],
-        inplane_leg_commits=commits_of(arms, ("A_off", "Z6")),
+        inplane_leg_commits=in_leg,
         delta_z_mhz=d_z / 1e6, delta_f_mhz=d_f / 1e6, total_mhz=total / 1e6,
         delta_z_fraction=d_z / total, delta_f_fraction=d_f / total,
         dominance_fraction=DOMINANCE_FRACTION,
@@ -1751,6 +1787,7 @@ def w8_is_z_enough(arms: dict,
     return dict(
         window="W8", arms=list(ladder),
         commits=w5["commits"], one_solver_build=w5["one_solver_build"],
+        solver_tree_equal=w5["solver_tree_equal"],
         fine_cell_m=w5["fine_cell_m"],
         limit_ghz=w5["limit_ghz"], reference_ghz=ref / 1e9,
         limit_distance_pct=pct, bar_pct=bar_pct,
@@ -1807,10 +1844,17 @@ def remeasurement(arms: dict) -> dict:
     profiles_identical = all(
         arms[new]["profiles"][a] == arms[old]["profiles"][a]
         for a in ("x", "y", "z"))
+    shas = [arms[new]["provenance"]["git_sha"],
+            arms[old]["provenance"]["git_sha"]]
+    curves_identical = all(
+        arms[new][k] == arms[old][k]
+        for k in ("s21_re", "s21_im", "s11_re", "s11_im", "freqs_hz"))
     return dict(
         arms=[new, old],
-        commits=[arms[new]["provenance"]["git_sha"],
-                 arms[old]["provenance"]["git_sha"]],
+        commits=shas,
+        solver_tree_equal=solver_tree_equal(shas),
+        notch_bit_identical=bool(f_new == f_old),
+        curves_bit_identical=bool(curves_identical),
         run_ids=[arms[new]["provenance"]["run_id"],
                  arms[old]["provenance"]["run_id"]],
         notch_new_ghz=f_new / 1e9, notch_old_ghz=f_old / 1e9,
@@ -2425,9 +2469,16 @@ def fz_markdown_tables(arms: dict, build_only: list | None = None) -> str:
           f"in-plane cell,")
         w(f"F = {r['fine_cell_m'] * 1e6:.4f} um; only the substrate cell "
           f"moves.  The four rungs were solved at "
-          f"{r['n_commits']} commit{'' if r['n_commits'] == 1 else 's'} of "
-          f"`rfx/`")
-        w("(" + ", ".join(sha[:12] for sha in r["commits"]) + ").")
+          f"{r['n_commits']} commit{'' if r['n_commits'] == 1 else 's'}")
+        w("(" + ", ".join(sha[:12] for sha in r["commits"]) + "), and the "
+          "simulator itself -- the `rfx/` tree at each of them -- "
+          + {True: "is the SAME at all of them.",
+             False: "is NOT the same at all of them.",
+             None: "could not be compared here (git could not answer)."}[
+                 r["solver_tree_equal"]])
+        w("A commit that touches only a note, a test or this instrument "
+          "leaves the simulator alone, so")
+        w("what a ladder needs is one solver and not one label.")
         w("")
         w("| arm | substrate cells | FZ (um) | z tail cell (um) | dt (fs) | "
           "notch (GHz) | step from the rung above (MHz) |")
@@ -2507,15 +2558,20 @@ def fz_markdown_tables(arms: dict, build_only: list | None = None) -> str:
           f"and {fine} share the in-plane")
         w("cell, so what separates them is the substrate cell.")
         w("")
-        w(f"The substrate leg was solved at "
-          f"{len(r['substrate_leg_commits'])} commit"
-          f"{'' if len(r['substrate_leg_commits']) == 1 else 's'} "
-          "(" + ", ".join(q[:12] for q in r["substrate_leg_commits"]) + ") "
-          "and the in-plane leg at")
-        w(f"{len(r['inplane_leg_commits'])} "
-          "(" + ", ".join(q[:12] for q in r["inplane_leg_commits"]) + "). "
-          "A_off comes from the first record either way, so the")
-        w("in-plane leg spans two builds in both rows.")
+        say = {True: "one simulator", False: "two different simulators",
+               None: "simulators that could not be compared here"}
+        w("| leg | commits | the `rfx/` tree at them |")
+        w("|---|---|---|")
+        w(f"| substrate, Z6 -> {fine} | "
+          + ", ".join(q[:12] for q in r["substrate_leg_commits"])
+          + f" | {say[r['substrate_leg_solver_equal']]} |")
+        w("| in-plane, A_off -> Z6 | "
+          + ", ".join(q[:12] for q in r["inplane_leg_commits"])
+          + f" | {say[r['inplane_leg_solver_equal']]} |")
+        w("")
+        w("A_off comes from the first record in both rows, so the in-plane "
+          "leg is read across two")
+        w("simulators whichever rung the substrate leg uses.")
         w("")
         w("| step | what moves | from (um) | to (um) | notch shift (MHz) | "
           "share of the total |")
@@ -2596,7 +2652,7 @@ def fz_markdown_tables(arms: dict, build_only: list | None = None) -> str:
           "substrate cell goes to")
         w(f"zero at F = {r['fine_cell_m'] * 1e6:.4f} um, against the "
           f"reference.  "
-          f"{'One solver build' if r['one_solver_build'] else 'Two solver builds'}"
+          f"{'One simulator' if r['one_solver_build'] else 'Two different simulators'}"
           f" under the four rungs.")
         w("")
         w("| arm | substrate cells | FZ (um) | notch (GHz) | from the "
@@ -2658,11 +2714,19 @@ def fz_markdown_tables(arms: dict, build_only: list | None = None) -> str:
               f"{r['grid_cells'][i]:,} | {r['dt_s'][i] * 1e15:.4f} | "
               f"{r['wall_s'][i]:.1f} |")
         w("")
-        w(f"| {new} minus {old} (MHz) | same (%) | every declared mesh field "
-          "equal | all three cell profiles bit-identical |")
-        w("|---|---|---|---|")
+        w(f"| {new} minus {old} (MHz) | same (%) | notch equal to the last "
+          "bit | whole S curve equal to the last bit | every declared mesh "
+          "field equal | all three cell profiles bit-identical |")
+        w("|---|---|---|---|---|---|")
         w(f"| {r['delta_mhz']:+.4f} | {r['delta_pct']:+.5f} | "
+          f"{r['notch_bit_identical']} | {r['curves_bit_identical']} | "
           f"{r['mesh_identical']} | {r['profiles_bit_identical']} |")
+        w("")
+        w("The two commits differ in `rfx/`"
+          + {True: " not at all.", False: ".",
+             None: ", or do not, git could not say."}[r["solver_tree_equal"]]
+          + "  What the table above reports is what")
+        w("that difference did to this board, measured rather than argued.")
         w("")
 
     if build_only:
