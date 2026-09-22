@@ -682,7 +682,10 @@ def _check_realized_fields(g: dict, b: dict) -> None:
     """
     f = b["fine_cell_m"]
     n = b["n_across_metal"]
-    draw = b["drawn_edge_offset_m"]
+    # What the ARM declares, not what the build happened to draw: an arm whose
+    # sheets were drawn to their nodes has to be refused, and it would agree
+    # with itself if the check read the drawn offset back.
+    draw = b["edge_offset_m"]
 
     if g["n_sheet_planes"] != 1:
         raise AssertionError(
@@ -1060,8 +1063,9 @@ def run_arm(arm_key: str, *, run_id: str | None = None, dry_run: bool = False,
                       for k, v in prof_report["intended_node_miss_m"].items()))
 
     g = assert_realized_graded(sim, b)
-    print(f"  R3 realized: grid {g['grid_shape']}, {g['n_cells']} cells, dt "
-          f"{g['dt_s']:.6e} s")
+    print(f"  R3 realized: grid {g['grid_shape']}, {g['n_cells']} cells with "
+          f"the absorber pad ({x.size} x {y.size} x {z.size} = "
+          f"{x.size * y.size * z.size} interior), dt {g['dt_s']:.6e} s")
     print(f"    sheet plane k={g['sheet_plane_k']} at "
           f"z={g['sheet_plane_z_m'] * 1e6:.4f} um; PEC volume cells "
           f"{g['n_volume_cells']}; declared sheets {g['n_declared_sheets']}")
@@ -1116,6 +1120,10 @@ def run_arm(arm_key: str, *, run_id: str | None = None, dry_run: bool = False,
         preflight=report,
         probe_planes_m=planes,
         n_cells=g["n_cells"], grid_shape=list(g["grid_shape"]),
+        # The padded grid the solver steps, and the interior the board owns
+        # (the note's section 3 counts the interior).
+        n_interior_cells=int(x.size * y.size * z.size),
+        interior_shape=[int(x.size), int(y.size), int(z.size)],
         dt_s=g["dt_s"],
         n_freqs=case.N_FREQS, num_periods=case.NUM_PERIODS,
         provenance=provenance(run_id),
