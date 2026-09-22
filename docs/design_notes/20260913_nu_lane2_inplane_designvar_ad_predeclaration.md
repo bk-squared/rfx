@@ -616,9 +616,10 @@ that no longer exists in any reachable ref, locally or on GitHub (checked
 2026-09-22; `git cat-file -t` and the commits API, 422 for all): the branch
 was rebased onto the AD-Q tip before PR #1034 was opened, and the runs had
 recorded the pre-rebase HEAD. Recorded as the interval it is: by
-`started_utc` the E6 runs (2026-09-14 06:18–06:30 UTC) sit between the
-rebased commits `52bbaa1c` (pre-declaration, 15:20 KST) and `50d073a8`
-(results, 15:33 KST), and the diagnostic arm (07:22 UTC) at `7fbd98f8`
+`started_utc` the zero-FDTD model arm (2026-09-14 06:18:03 UTC) started two minutes
+before the rebased pre-declaration commit `52bbaa1c` (06:20 UTC) and the
+measurement runs (06:25–06:30 UTC) sit between it and `50d073a8` (results,
+06:33 UTC), and the diagnostic arm (07:22 UTC) at `7fbd98f8`
 (16:24 KST) — the same diffs under new hashes. The file name
 `e6_diag_revert_cellwise_firstpass_4f2d22af.json` keeps the hash it was
 written under; it is a label, not a pointer. The replay test re-derives

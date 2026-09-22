@@ -44,7 +44,7 @@ ORPHANED = {
     "99b510b3a813ca01d7406db118a650c46e2c2f5b": "20260913_nu_lane2_inplane_designvar_ad_predeclaration.md",
 }
 
-_KEYS = ("git_sha", "sha", "commit")
+_KEY_SUFFIXES = ("git_sha", "sha", "commit")  # git_sha, firstpass_git_sha, e1_git_sha, old_commit, ...
 _MAX_DEPTH = 3
 
 
@@ -53,7 +53,7 @@ def collect_shas(obj, depth: int = 0) -> set:
     out: set = set()
     if isinstance(obj, dict):
         for k, v in obj.items():
-            if k in _KEYS and isinstance(v, str) and len(v) >= 7 and all(c in "0123456789abcdef" for c in v):
+            if isinstance(k, str) and k.endswith(_KEY_SUFFIXES) and isinstance(v, str) and len(v) >= 7 and all(c in "0123456789abcdef" for c in v):
                 out.add(v)
             elif isinstance(v, (dict, list)) and depth < _MAX_DEPTH:
                 out |= collect_shas(v, depth + 1)
@@ -98,11 +98,24 @@ def test_every_recorded_sha_resolves_or_is_recorded_as_orphaned(_git_checkout):
     assert audit(RESULTS, ORPHANED) == []
 
 
+def addendum(note: Path) -> str:
+    """The text from the note's provenance addendum heading to its end."""
+    text = note.read_text()
+    marker = "## Provenance addendum"
+    assert marker in text, note.name
+    return text[text.index(marker):]
+
+
 def test_every_orphaned_sha_is_named_in_its_note():
     for sha, note in ORPHANED.items():
-        text = (NOTES / note).read_text()
-        assert "Provenance addendum" in text, note
-        assert sha[:8] in text, f"{note} does not name {sha[:8]} in its provenance addendum"
+        assert sha[:8] in addendum(NOTES / note), (
+            f"{note} does not name {sha[:8]} in its provenance addendum (earlier sections do not count)")
+
+
+def test_audit_fires_on_a_listed_sha_no_record_carries(tmp_path, _git_checkout):
+    (tmp_path / "empty.json").write_text(json.dumps({"provenance": {}}))
+    assert audit(tmp_path, {"0123456789abcdef0123456789abcdef01234567": "x.md"}) == [
+        "ORPHANED lists 0123456789ab, which no record carries"]
 
 
 def test_audit_fires_on_an_unlisted_dangling_sha(tmp_path, _git_checkout):

@@ -1089,9 +1089,9 @@ any reachable ref, locally or on GitHub (checked 2026-09-22 with
 onto the AD-Q tip before PR #1034 was opened (PR body, "Verification"), and
 the one-shot FDTD runs had recorded the pre-rebase HEAD. The stamp is
 therefore an INTERVAL, not a line, and is recorded as one: by `started_utc`
-the model and measurement runs (2026-09-13 15:47–15:58 UTC) sit between the
-rebased commits `b6a023f2` (pre-declaration, 00:50 KST) and `b0951e7a`
-(results, 00:59 KST), and the window scan (17:03 UTC) at the rebased
+the zero-FDTD model arm (2026-09-13 15:47:56 UTC) started two minutes before
+the rebased pre-declaration commit `b6a023f2` (15:50 UTC) and the measurement
+runs (15:56–15:58 UTC) sit between it and `b0951e7a` (results, 15:59 UTC), and the window scan (17:03 UTC) at the rebased
 `1991118e` (02:03 KST) — the same diffs under new hashes. What the record
 still proves mechanically is unchanged: `test_e5_multilevel_replay.py`
 re-derives every `R_model`, window and verdict from the stored ladders with
