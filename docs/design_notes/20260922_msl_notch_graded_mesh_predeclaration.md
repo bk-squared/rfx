@@ -388,8 +388,10 @@ still 1.15 % high, so the case's 1 % bar fired (W2). Its 2 dB magnitude
 excess is only on the notch's two skirts (11 bins in 3.509–3.553 GHz and 13
 in 3.837–3.890 GHz, every one 121–216 MHz from the reference notch, passband
 maximum 0.64 dB — recomputed by the reviewer from the record, correcting the
-intervals first written here): the frequency offset counted a second time;
-passband and notch depth agree with the reference.
+intervals first written here): the frequency offset counted a second time.
+The passband agrees; the notch depth reads −50.8 dB against the reference's
+−53.4 dB, a 2.6 dB gap the bar does not judge (both curves are below the
+−20 dB null level there).
 
 **What the mesh buys.** At the substrate resolution of the uniform h/6 rung
 (42.3 µm) the graded mesh solves in 106 s instead of 661 s (0.16) with the
@@ -403,8 +405,12 @@ rung.
 
 **Where the residual is.** The edge-offset placement (a node 0.35 cell inside
 each metal edge) RAISED the notch by 0.40 % at rung A relative to the on-node
-placement (3.7474 vs 3.7323 GHz), i.e. away from the reference: the solved
-strip width is not what keeps the notch high. The first-order term that
+placement (3.7474 vs 3.7323 GHz), i.e. away from the reference. The two arms
+also differ in fine cell (47.2 vs 50.0 µm), band margin and the width the
+port's Laplace feed sees, and every one of those differences works in the
+opposite direction, so the sign stands and 0.40 % is a floor on the offset's
+own effect (reviewer's reading of the record): the solved strip width is not
+what keeps the notch high. The first-order term that
 remains sits elsewhere — the sheet on the substrate-top plane (the field
 singularity at a strip's edge in the plane normal to the sheet is resolved by
 FZ, and every rung cuts FZ and F together, so the ladder cannot separate the
