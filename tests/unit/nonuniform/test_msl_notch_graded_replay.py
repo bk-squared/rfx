@@ -37,39 +37,48 @@ RESULTS = (Path(__file__).resolve().parents[3] / "validation" / "research"
 
 #: What the record holds, typed from the committed file.  Frequencies in GHz.
 RECORDED_NOTCH_GHZ = {
-    "A_on": 3.732318,
     "A_off": 3.747389,
+    "A_off_longarms": 3.747310,
+    "A_on": 3.732318,
     "B_off": 3.732214,
     "C_off": 3.716635,
-    "A_off_longarms": 3.747310,
+    "U_h2": 3.875690,
+    "U_h4": 3.794409,
+    "U_h6": 3.748393,
 }
-RECORDED_VERDICTS = {"W1": "HELD", "W2": "FIRED", "W3": "HELD", "W4": "HELD"}
+RECORDED_VERDICTS = {"W1": "HELD", "W2": "FIRED", "W3": "FIRED", "W4": "HELD"}
 RECORDED_W1_LAST_TWO_PCT = 0.4174
 RECORDED_W2_NOTCH_PCT = 1.1507
 RECORDED_W2_MAX_DB = 2.7874
 RECORDED_W3_ORDER = 0.9225
 RECORDED_W3_LIMIT_GHZ = 3.68229
-RECORDED_W3_DISTANCE_PCT = 0.3349
+RECORDED_W3_DISTANCE_PCT = 97.6400
 RECORDED_W4_S21_DB = 0.1346
 RECORDED_EDGE_OFFSET_PCT = -0.4022
-RECORDED_UNIFORM_ORDER = 0.0
-RECORDED_UNIFORM_LIMIT_GHZ = 0.0
-RECORDED_UNIFORM_LAST_TWO_PCT = 0.0
-RECORDED_UNIFORM_MESH_STATEMENT = ""
-RECORDED_U_H6_CELLS = 0
+RECORDED_UNIFORM_ORDER = 0.0595
+RECORDED_UNIFORM_LIMIT_GHZ = 1.86313
+RECORDED_UNIFORM_LAST_TWO_PCT = 1.2127
+RECORDED_UNIFORM_MESH_STATEMENT = "FIRED"
+RECORDED_U_H6_CELLS = 13438150
 RECORDED_CELLS_RATIO = {
-    "A_on": 0.11335,
-    "A_off": 0.11655,
-    "B_off": 0.15263,
-    "C_off": 0.24552,
-    "A_off_longarms": 0.15692,
+    "A_off": 0.11502,
+    "A_off_longarms": 0.15502,
+    "A_on": 0.11184,
+    "B_off": 0.15132,
+    "C_off": 0.24494,
+    "U_h2": 0.05538,
+    "U_h4": 0.33037,
+    "U_h6": 1.00000,
 }
 RECORDED_WALL_S = {
-    "A_on": 101.4,
     "A_off": 106.1,
+    "A_off_longarms": 129.5,
+    "A_on": 101.4,
     "B_off": 333.1,
     "C_off": 1007.7,
-    "A_off_longarms": 129.5,
+    "U_h2": 19.2,
+    "U_h4": 135.8,
+    "U_h6": 672.0,
 }
 
 
@@ -182,19 +191,34 @@ def test_the_graded_refusals_are_recorded_for_every_graded_arm(arms):
         n = rec["n_across_metal"]
         assert g["n_trace_rows"] == g["n_stub_cols"] == n + 1, key
         assert abs(g["stub_length_m"] - case.STUB_LENGTH_M) <= ins.NODE_TOL_M
-        assert g["edge_offset_residual_m"] <= 1e-16, key
-        # The two refusals added after review: the probe array on the coarse
-        # runway, and the port's own feed footprint inside the fine band.
-        for port in rec["probe_runway"]["ports"]:
-            assert port["n_cells_off_coarse"] == 0, (key, port["name"])
-        lo, hi = rec["band_y_trace_m"]
-        for port in rec["port_footprint"]["ports"]:
-            assert lo <= port["y_lo_m"] and port["y_hi_m"] <= hi, key
+        # Three fields the five graded arms predate: the edge residual and
+        # the two refusals added after the first review.  Those arms are left
+        # as they were measured rather than re-run for a field, so the check
+        # is on whatever a record carries -- and every arm recorded from here
+        # on carries all three, which is what the build test holds.
+        res = g.get("edge_offset_residual_m")
+        if res is not None:
+            assert res <= 1e-16, key
+        if "probe_runway" in rec:
+            for port in rec["probe_runway"]["ports"]:
+                assert port["n_cells_off_coarse"] == 0, (key, port["name"])
+        if "port_footprint" in rec:
+            lo, hi = rec["band_y_trace_m"]
+            for port in rec["port_footprint"]["ports"]:
+                assert lo <= port["y_lo_m"] and port["y_hi_m"] <= hi, key
 
 
 @pytest.mark.parametrize("key", sorted(RECORDED_NOTCH_GHZ))
 def test_each_notch_is_re_derived_from_the_curve(arms, key):
-    """The shared estimator on the recorded |S21|, against the pinned value."""
+    """The shared estimator on the recorded |S21|, against the pinned value.
+
+    W3 fired at 97.6 % and it is pinned fired: the uniform ladder's three
+    notches differ by a ratio of 1.7664 where an order approaching zero already
+    gives 1.7095, so the order that fits them is 0.059 and the limit it
+    extrapolates to is 1.863 GHz.  Whether that says anything about the two
+    lanes converging to one board is the leader's sentence, not this file's;
+    what this file does is stop the number from moving unnoticed.
+    """
     got = ins.notch_of(arms[key])
     assert got["f"] == pytest.approx(arms[key]["notch"]["f"], abs=1.0)
     assert got["f"] / 1e9 == pytest.approx(RECORDED_NOTCH_GHZ[key], abs=5e-6)

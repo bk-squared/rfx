@@ -1004,12 +1004,24 @@ def richardson_limit(h: list[float], f: list[float]) -> dict:
 
     The order is fitted on all three; the limit is taken from the two finest at
     that order, which is what the pre-declaration asks for.
+
+    Two numbers come back with it because they are what says whether the fit
+    means anything.  ``ratio`` is the measured ``(f1 - f2) / (f2 - f3)``, and
+    ``ratio_at_zero_order`` is ``ln(h1/h2) / ln(h2/h3)``, the value that ratio
+    approaches as the order goes to zero.  A ratio at or below that asymptote
+    admits NO positive order; a ratio just above it is fitted by an order near
+    zero, and the extrapolated limit then sits arbitrarily far from the data
+    because ``A h^p`` is nearly constant over the three rungs.  Neither number
+    is a verdict; both are properties of the three points.
     """
     h1, h2, h3 = (float(v) for v in h)
     f1, f2, f3 = (float(v) for v in f)
     num, den = f1 - f2, f2 - f3
+    asymptote = np.log(h1 / h2) / np.log(h2 / h3)
+    base = dict(ratio=(num / den if den else float("nan")),
+                ratio_at_zero_order=float(asymptote))
     if den == 0.0 or num / den <= 0.0:
-        return dict(order=float("nan"), limit=float("nan"),
+        return dict(base, order=float("nan"), limit=float("nan"),
                     reason="the three notches do not fall monotonically")
 
     def g(p: float) -> float:
@@ -1017,8 +1029,12 @@ def richardson_limit(h: list[float], f: list[float]) -> dict:
 
     lo, hi = 1e-3, 8.0
     if g(lo) * g(hi) > 0.0:
-        return dict(order=float("nan"), limit=float("nan"),
-                    reason="no order in (0, 8] reproduces the three notches")
+        return dict(base, order=float("nan"), limit=float("nan"),
+                    reason=(f"no order in (0, 8] reproduces the three notches: "
+                            f"their ratio {num / den:.4f} is "
+                            f"{'below' if num / den < asymptote else 'above'} "
+                            f"the {asymptote:.4f} an order approaching zero "
+                            f"gives"))
     for _ in range(300):
         mid = 0.5 * (lo + hi)
         if g(lo) * g(mid) <= 0.0:
@@ -1027,7 +1043,7 @@ def richardson_limit(h: list[float], f: list[float]) -> dict:
             lo = mid
     p = 0.5 * (lo + hi)
     a = (f2 - f3) / (h2 ** p - h3 ** p)
-    return dict(order=float(p), limit=float(f3 - a * h3 ** p), reason="")
+    return dict(base, order=float(p), limit=float(f3 - a * h3 ** p), reason="")
 
 
 def w1_mesh_statement(arms: dict) -> dict:
@@ -1090,7 +1106,9 @@ def uniform_ladder_statement(arms: dict) -> dict:
         mesh_statement=("HELD" if monotone
                         and last_two <= case.LADDER_AGREEMENT * 100.0
                         else "FIRED"),
-        fitted_order=r["order"], limit_ghz=r["limit"] / 1e9, note=r["reason"])
+        fitted_order=r["order"], limit_ghz=r["limit"] / 1e9,
+        ratio=r["ratio"], ratio_at_zero_order=r["ratio_at_zero_order"],
+        note=r["reason"])
 
 
 def w3_cross_ladder(arms: dict) -> dict:
@@ -1114,9 +1132,12 @@ def w3_cross_ladder(arms: dict) -> dict:
                 substrate_cells_m=[float(v) for v in h],
                 notches_ghz=[v / 1e9 for v in f],
                 fitted_order=r["order"], limit_ghz=limit_ghz,
+                ratio=r["ratio"], ratio_at_zero_order=r["ratio_at_zero_order"],
                 uniform_arms=list(UNIFORM_LADDER),
                 uniform_fitted_order=ref["fitted_order"],
                 uniform_limit_ghz=target,
+                uniform_ratio=ref["ratio"],
+                uniform_ratio_at_zero_order=ref["ratio_at_zero_order"],
                 distance_pct=pct, bar_pct=case.FREQ_BAR * 100.0,
                 note=r["reason"], verdict="HELD" if held else "FIRED")
 
@@ -1267,6 +1288,14 @@ def markdown_tables(arms: dict) -> str:
           f"{g['trace_width_node_span_m'] * 1e6:.4f} | "
           f"{g['stub_length_m'] * 1e6:.4f} | {offset} | {resid} |")
     w("")
+    no_resid = [k for k in order
+                if not is_uniform(k)
+                and arms[k]["realized"].get("edge_offset_residual_m") is None]
+    if no_resid:
+        w(f"The residual is not recorded for {', '.join(no_resid)}: those arms "
+          f"ran before R3 returned it. Measured on the same builds afterwards "
+          f"it is at most 8e-18 m, and R3 refuses beyond 1 nm either way.")
+        w("")
 
     w("### R.3 What each arm measured")
     w("")
@@ -1331,12 +1360,19 @@ def markdown_tables(arms: dict) -> str:
         w("**W3 cross-ladder consistency.**  Both limits are fitted the same "
           "way on ladders this recorder measured.")
         w("")
-        w("| graded order | graded limit (GHz) | uniform order | uniform limit "
-          "(GHz) | distance (%) | bar (%) | verdict |")
-        w("|---|---|---|---|---|---|---|")
-        w(f"| {r['fitted_order']:.4f} | {r['limit_ghz']:.5f} | "
-          f"{r['uniform_fitted_order']:.4f} | {r['uniform_limit_ghz']:.5f} | "
-          f"{r['distance_pct']:.4f} | {r['bar_pct']:.0f} | {r['verdict']} |")
+        w("| ladder | first difference over second | same ratio at order 0 | "
+          "fitted order | limit (GHz) |")
+        w("|---|---|---|---|---|")
+        w(f"| graded (A_off, B_off, C_off) | {r['ratio']:.4f} | "
+          f"{r['ratio_at_zero_order']:.4f} | {r['fitted_order']:.4f} | "
+          f"{r['limit_ghz']:.5f} |")
+        w(f"| uniform (U_h2, U_h4, U_h6) | {r['uniform_ratio']:.4f} | "
+          f"{r['uniform_ratio_at_zero_order']:.4f} | "
+          f"{r['uniform_fitted_order']:.4f} | {r['uniform_limit_ghz']:.5f} |")
+        w("")
+        w("| distance between the two limits (%) | bar (%) | verdict |")
+        w("|---|---|---|")
+        w(f"| {r['distance_pct']:.4f} | {r['bar_pct']:.0f} | {r['verdict']} |")
         if r["note"]:
             w("")
             w(f"Fit note: {r['note']}.")

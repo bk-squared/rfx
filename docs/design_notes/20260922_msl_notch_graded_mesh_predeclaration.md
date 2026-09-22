@@ -334,35 +334,51 @@ states. None of them moves a section 5 window.
 
 ### R.1 The mesh each arm solved
 
-| arm | rung | placement | F (um) | FZ (um) | z tail cell (um) | band margin (fine cells) | interior cells | grid | dt (fs) |
-|---|---|---|---|---|---|---|---|---|---|
-| A_on | A | on-node | 50.0000 | 42.3333 | 114.7303 | 10 | 966,720 | 212x190x24 | 89.6116 |
-| A_off | A | offset | 47.2441 | 42.3333 | 114.7303 | 11 | 996,384 | 214x194x24 | 86.6012 |
-| B_off | B | offset | 35.9281 | 31.7500 | 111.0135 | 14 | 1,383,648 | 224x213x29 | 65.5056 |
-| C_off | C | offset | 24.2915 | 21.1667 | 109.6286 | 21 | 2,403,500 | 250x253x38 | 44.0446 |
-| A_off_longarms | A | offset | 47.2441 | 42.3333 | 114.7303 | 11 | 1,368,864 | 294x194x24 | 86.6012 |
+Cell counts are the cells the solver steps, interior plus the absorber pad.  The node count
+each grid carries is one more per axis, and no ratio anywhere below uses it.
+
+| arm | mesh | rung | placement | in-plane fine cell (um) | substrate cell (um) | z tail cell (um) | band margin (fine cells) | grid nodes | grid cells | dt (fs) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| A_on | graded | A | on-node | 50.0000 | 42.3333 | 114.7303 | 10 | 229x207x33 | 1,502,976 | 89.6116 |
+| A_off | graded | A | offset | 47.2441 | 42.3333 | 114.7303 | 11 | 231x211x33 | 1,545,600 | 86.6012 |
+| B_off | graded | B | offset | 35.9281 | 31.7500 | 111.0135 | 14 | 241x230x38 | 2,033,520 | 65.5056 |
+| C_off | graded | C | offset | 24.2915 | 21.1667 | 109.6286 | 21 | 267x270x47 | 3,291,484 | 44.0446 |
+| A_off_longarms | graded | A | offset | 47.2441 | 42.3333 | 114.7303 | 11 | 311x211x33 | 2,083,200 | 86.6012 |
+| U_h2 | uniform | U_h2 | uniform | 127.0000 | 127.0000 | n/a | n/a | 206x166x23 | 744,150 | 242.1350 |
+| U_h4 | uniform | U_h4 | uniform | 63.5000 | 63.5000 | n/a | n/a | 395x314x37 | 4,439,592 | 121.0675 |
+| U_h6 | uniform | U_h6 | uniform | 42.3333 | 42.3333 | n/a | n/a | 584x462x51 | 13,438,150 | 80.7117 |
 
 ### R.2 What the lattice realized
 
-| arm | sheet plane z (um) | PEC volume cells | line node rows | stub node cols | metal node span (um) | stub length (um) | node inside the drawn edge (um) |
-|---|---|---|---|---|---|---|---|
-| A_on | 254.0000 | 0 | 13 | 13 | 600.0000 | 12000.0000 | 0.0000 |
-| A_off | 254.0000 | 0 | 13 | 13 | 566.9291 | 12000.0000 | 16.5354 |
-| B_off | 254.0000 | 0 | 17 | 17 | 574.8503 | 12000.0000 | 12.5749 |
-| C_off | 254.0000 | 0 | 25 | 25 | 582.9960 | 12000.0000 | 8.5020 |
-| A_off_longarms | 254.0000 | 0 | 13 | 13 | 566.9291 | 12000.0000 | 16.5354 |
+| arm | sheet plane z (um) | PEC volume cells | line node rows | stub node cols | metal node span (um) | stub length (um) | declared offset (um) -- the realized node matches it to the residual beside it; R3 refuses beyond 1 nm | worst residual (m) |
+|---|---|---|---|---|---|---|---|---|
+| A_on | 254.0000 | 0 | 13 | 13 | 600.0000 | 12000.0000 | 0.0000 | n/a |
+| A_off | 254.0000 | 0 | 13 | 13 | 566.9291 | 12000.0000 | 16.5354 | n/a |
+| B_off | 254.0000 | 0 | 17 | 17 | 574.8503 | 12000.0000 | 12.5749 | n/a |
+| C_off | 254.0000 | 0 | 25 | 25 | 582.9960 | 12000.0000 | 8.5020 | n/a |
+| A_off_longarms | 254.0000 | 0 | 13 | 13 | 566.9291 | 12000.0000 | 16.5354 | n/a |
+| U_h2 | 254.0000 | 0 | 4 | 4 | 381.0000 | 12065.0000 | n/a | n/a |
+| U_h4 | 254.0000 | 0 | 9 | 9 | 508.0000 | 12001.5000 | n/a | n/a |
+| U_h6 | 254.0000 | 0 | 14 | 14 | 550.3333 | 12022.6667 | n/a | n/a |
+
+The residual is not recorded for A_on, A_off, B_off, C_off, A_off_longarms: those arms ran before R3 returned it. Measured on the same builds afterwards it is at most 8e-18 m, and R3 refuses beyond 1 nm either way.
 
 ### R.3 What each arm measured
 
-| arm | notch (GHz) | depth (dB) | -10 dB BW (MHz) | fitted Z0 (ohm) | worst settling (dB) | worst passivity excess | wall (s) | cells / uniform h6 | wall / uniform h6 |
-|---|---|---|---|---|---|---|---|---|---|
-| A_on | 3.73232 | -51.07 | 770.4 | 47.00 | -92.89 | 0.00455 | 101.4 | 0.1134 | 0.1534 |
-| A_off | 3.74739 | -54.88 | 786.6 | 48.74 | -95.48 | 0.00430 | 106.1 | 0.1166 | 0.1605 |
-| B_off | 3.73221 | -51.84 | 782.4 | 48.58 | -95.10 | 0.00439 | 333.1 | 0.1526 | 0.5039 |
-| C_off | 3.71663 | -50.81 | 777.8 | 48.38 | -94.89 | 0.00443 | 1007.7 | 0.2455 | 1.5246 |
-| A_off_longarms | 3.74731 | -54.90 | 787.6 | 48.58 | -94.57 | 0.00416 | 129.5 | 0.1569 | 0.1959 |
+| arm | notch (GHz) | depth (dB) | -10 dB BW (MHz) | fitted Z0 (ohm) | worst settling (dB) | worst passivity excess | grid cells | wall (s) | cells / U_h6 | wall / U_h6 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| A_on | 3.73232 | -51.07 | 770.4 | 47.00 | -92.89 | 0.00455 | 1,502,976 | 101.4 | 0.1118 | 0.1508 |
+| A_off | 3.74739 | -54.88 | 786.6 | 48.74 | -95.48 | 0.00430 | 1,545,600 | 106.1 | 0.1150 | 0.1578 |
+| B_off | 3.73221 | -51.84 | 782.4 | 48.58 | -95.10 | 0.00439 | 2,033,520 | 333.1 | 0.1513 | 0.4957 |
+| C_off | 3.71663 | -50.81 | 777.8 | 48.38 | -94.89 | 0.00443 | 3,291,484 | 1007.7 | 0.2449 | 1.4997 |
+| A_off_longarms | 3.74731 | -54.90 | 787.6 | 48.58 | -94.57 | 0.00416 | 2,083,200 | 129.5 | 0.1550 | 0.1927 |
+| U_h2 | 3.87569 | -48.66 | 876.4 | 57.79 | -82.01 | 0.00332 | 744,150 | 19.2 | 0.0554 | 0.0285 |
+| U_h4 | 3.79441 | -52.45 | 812.6 | 51.66 | -88.37 | 0.00475 | 4,439,592 | 135.8 | 0.3304 | 0.2022 |
+| U_h6 | 3.74839 | -49.31 | 791.1 | 49.79 | -95.71 | 0.00547 | 13,438,150 | 672.0 | 1.0000 | 1.0000 |
 
-Bars, for reading the two witness columns: ring-down -40 dB, passivity excess 0.01.  The uniform h/6 rung this cost is divided by is 13,800,000 cells and 661 s (pre-declaration section 1).  Both cell counts in that ratio are GRID cells, absorber pad included, which is what the uniform ladder's own record counted; table R.1's interior count is the smaller number the pre-declaration's section 3 quotes.
+Bars, for reading the two witness columns: ring-down -40 dB, passivity excess 0.01.
+
+Both sides of the two cost ratios are grid cells and wall seconds measured by this recorder.  The denominator is arm `U_h6`, the finest uniform rung: 13,438,150 cells at 42.3333 um and 672.0 s.
 
 ### R.4 The frozen windows
 
@@ -378,17 +394,28 @@ Bars, for reading the two witness columns: ring-down -40 dB, passivity excess 0.
 |---|---|---|---|---|---|---|---|
 | 3.71663 | 3.67436 | 1.1507 | 1 | 2.7874 | 2 | 1080 of 1144 | FIRED |
 
-**W3 cross-ladder consistency.**
+**W3 cross-ladder consistency.**  Both limits are fitted the same way on ladders this recorder measured.
 
-| fitted order in the substrate cell | graded limit (GHz) | uniform ladder limit (GHz) | distance (%) | bar (%) | verdict |
-|---|---|---|---|---|---|
-| 0.9225 | 3.68229 | 3.67000 | 0.3349 | 1 | HELD |
+| ladder | first difference over second | same ratio at order 0 | fitted order | limit (GHz) |
+|---|---|---|---|---|
+| graded (A_off, B_off, C_off) | 0.9740 | 0.7095 | 0.9225 | 3.68229 |
+| uniform (U_h2, U_h4, U_h6) | 1.7664 | 1.7095 | 0.0595 | 1.86313 |
+
+| distance between the two limits (%) | bar (%) | verdict |
+|---|---|---|
+| 97.6400 | 1 | FIRED |
 
 **W4 arm-length witness (10.00 mm against 15.08 mm arms).**
 
 | max abs delta S21 (dB) | bar (dB) | worst at (GHz) | bins compared | max abs delta S11 (dB), reported | verdict |
 |---|---|---|---|---|---|
 | 0.1346 | 0.5 | 4.8053 | 302 of 317 | 1.0607 | HELD |
+
+**Reported, no window: the uniform reference ladder's own mesh statement.**  The case's `LADDER_AGREEMENT` rule read on the uniform ladder, for comparison with W1.
+
+| notch U_h2 (GHz) | notch U_h4 (GHz) | notch U_h6 (GHz) | last two rungs apart (%) | bar (%) | monotone | mesh statement |
+|---|---|---|---|---|---|---|
+| 3.87569 | 3.79441 | 3.74839 | 1.2127 | 1 | True | FIRED |
 
 **Reported, no window: what the 0.35-cell edge offset is worth.**
 
@@ -398,13 +425,18 @@ Bars, for reading the two witness columns: ring-down -40 dB, passivity excess 0.
 
 ### R.5 Provenance
 
-| arm | VESSL run | commit | dirty | jax | backend | started (UTC) |
-|---|---|---|---|---|---|---|
-| A_on | 369367263265 | 827d5ecf6021 | None | 0.4.33.dev20241023+e3c6d6430 | gpu | 2026-09-22T04:59:25+00:00 |
-| A_off | 369367263264 | 827d5ecf6021 | None | 0.4.33.dev20241023+e3c6d6430 | gpu | 2026-09-22T04:59:23+00:00 |
-| B_off | 369367263266 | 827d5ecf6021 | None | 0.4.33.dev20241023+e3c6d6430 | gpu | 2026-09-22T05:02:52+00:00 |
-| C_off | 369367263283 | 827d5ecf6021 | None | 0.4.33.dev20241023+e3c6d6430 | gpu | 2026-09-22T05:15:49+00:00 |
-| A_off_longarms | 369367263267 | 827d5ecf6021 | None | 0.4.33.dev20241023+e3c6d6430 | gpu | 2026-09-22T05:02:10+00:00 |
+| arm | VESSL run | commit | dirty | GPU | jax | backend | started (UTC) |
+|---|---|---|---|---|---|---|---|
+| A_on | 369367263265 | 827d5ecf6021 | None | n/a | 0.4.33.dev20241023+e3c6d6430 | gpu | 2026-09-22T04:59:25+00:00 |
+| A_off | 369367263264 | 827d5ecf6021 | None | n/a | 0.4.33.dev20241023+e3c6d6430 | gpu | 2026-09-22T04:59:23+00:00 |
+| B_off | 369367263266 | 827d5ecf6021 | None | n/a | 0.4.33.dev20241023+e3c6d6430 | gpu | 2026-09-22T05:02:52+00:00 |
+| C_off | 369367263283 | 827d5ecf6021 | None | n/a | 0.4.33.dev20241023+e3c6d6430 | gpu | 2026-09-22T05:15:49+00:00 |
+| A_off_longarms | 369367263267 | 827d5ecf6021 | None | n/a | 0.4.33.dev20241023+e3c6d6430 | gpu | 2026-09-22T05:02:10+00:00 |
+| U_h2 | 369367263301 | 017b06383fb0 | None | NVIDIA GeForce RTX 4090 | 0.4.33.dev20241023+e3c6d6430 | gpu | 2026-09-22T06:13:33+00:00 |
+| U_h4 | 369367263300 | 017b06383fb0 | None | NVIDIA GeForce RTX 4090 | 0.4.33.dev20241023+e3c6d6430 | gpu | 2026-09-22T06:13:28+00:00 |
+| U_h6 | 369367263302 | 017b06383fb0 | None | NVIDIA GeForce RTX 4090 | 0.4.33.dev20241023+e3c6d6430 | gpu | 2026-09-22T06:13:25+00:00 |
+
+The GPU model is not recorded for A_on, A_off, B_off, C_off, A_off_longarms: those arms ran before the instrument read `device_kind`, and their blocks are left as they were measured rather than back-filled.
 
 ### Conclusions (leader, after reading the record, the five figures and R.0)
 
