@@ -240,11 +240,23 @@ class NonUniformGrid(NamedTuple):
 
         On a concrete axis this is the arithmetic ``_axis_position_to_index``
         already performs -- cumulative interior cell edges, nearest edge,
-        plus ``pad_lo`` -- evaluated on the float64 spine. Like that
-        function, and unlike ``Grid.index_of``, it CLAMPS: a coordinate
-        outside the domain returns the nearest face index rather than
-        raising. That asymmetry between the two lanes is inherited, not
-        introduced here.
+        plus ``pad_lo`` -- evaluated on the float64 spine.
+
+        A coordinate outside the interior span is REFUSED, as on the uniform
+        grid. ``_axis_position_to_index`` clamps instead: ``argmin`` over the
+        edge list always returns some index, so asking for a position a metre
+        outside a 6 mm domain silently gives the last face and the caller
+        stamps its material there. That legacy clamp stays where it is for
+        0a -- consumers still call ``position_to_index`` -- and 0b retires it
+        as each consumer moves onto this accessor.
+
+        The bound is the interior, ``[node_of(pad_lo), node_of(last interior
+        node)]``, because that is the range the edge list can represent; a
+        coordinate inside an absorber pad has no interior node to name. The
+        comparison carries ``DECLARED_SPAN_TOL_M`` of slack at each end,
+        which is the accuracy the grid claims for a node position in the
+        first place -- refusing a coordinate 1e-13 m past the face would be
+        refusing something the grid cannot tell apart from the face.
         """
         ax, _n, pad_lo, pad_hi = self._axis_layout(axis)
         if self.is_traced(ax):
@@ -260,7 +272,15 @@ class NonUniformGrid(NamedTuple):
         d = self.cells(ax)
         interior = interior_cells(d, pad_lo, pad_hi)
         edges = np.insert(np.cumsum(interior), 0, 0.0)
-        return int(np.argmin(np.abs(edges - float(x)))) + pad_lo
+        pos = float(x)
+        lo, hi = float(edges[0]), float(edges[-1])
+        if not (lo - DECLARED_SPAN_TOL_M <= pos <= hi + DECLARED_SPAN_TOL_M):
+            raise ValueError(
+                f"position {pos} on axis {_axis_name(ax)!r} lies outside "
+                f"this axis's interior span [{lo}, {hi}] m. Check the "
+                f"coordinate lies inside the simulation domain."
+            )
+        return int(np.argmin(np.abs(edges - pos))) + pad_lo
 
     def node_of(self, axis, i: int):
         """Physical coordinate of the E node at padded index ``i``.

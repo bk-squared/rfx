@@ -219,3 +219,20 @@ def test_mutation_cumsum_instead_of_the_closed_form_breaks_node_identity():
         "#807 defect on this fixture. Pick a longer axis or a dx whose "
         "running sum rounds."
     )
+
+
+@pytest.mark.parametrize("name", sorted(GRIDS))
+@pytest.mark.parametrize("axis", AXES)
+def test_index_of_refuses_a_coordinate_outside_the_domain(name, axis):
+    """The uniform half of the shared refusal contract.
+
+    The non-uniform accessor was made to match this in the same change; its
+    counterpart lives in tests/unit/nonuniform/test_grid_interface_0a.py.
+    """
+    grid = GRIDS[name]()
+    n, pad_lo = _extent(grid, axis)
+    for outside in (-1e6, 1e6):
+        with pytest.raises(ValueError):
+            grid.index_of(axis, outside)
+    assert grid.index_of(axis, grid.node_of(axis, 0)) == 0
+    assert grid.index_of(axis, grid.node_of(axis, n - 1)) == n - 1

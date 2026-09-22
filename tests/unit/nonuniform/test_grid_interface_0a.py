@@ -470,8 +470,23 @@ def test_mutation_b_duals_revived_to_the_primal_goes_red(monkeypatch):
     Leontovich sheet stamped on a 0.25/0.50 mm transition node measured an
     attenuation ratio of 1.2021 against the matched-mesh case, where a
     mesh-independent sheet must give 1.000.
+
+    The separation is asserted, not assumed, so a fixture change that made
+    the two rules nearly agree could not leave this test passing on a
+    coincidence. On the band-builder x axis, 14 of its 59 entries differ,
+    the largest by 109.08 um and the smallest by 23.77 um, against cells
+    that run 200 um to 1 mm.
     """
     grid = FIXTURES[GRADED_BAND]()
+    cells = grid.cells("x")
+    duals = grid.duals("x")
+    differ = duals != cells
+    gaps = np.abs(duals - cells)[differ]
+    assert cells.size == 59
+    assert int(differ.sum()) == 14
+    assert gaps.max() == pytest.approx(1.09077e-4, rel=1e-4)
+    assert gaps.min() == pytest.approx(2.37703e-5, rel=1e-4)
+
     _check_duals(grid, "x")          # green before the mutation
 
     monkeypatch.setattr("rfx.nonuniform._dual_spacings_from_cells",
@@ -553,6 +568,8 @@ def test_the_widened_float32_store_is_not_the_spine(name, axis):
     than against an assumption that they agree.
 
     The bound is generous on purpose: this is a measurement, not a contract.
+    The size of the gap is pinned in
+    ``test_the_spine_and_the_store_differ_by_the_recorded_amount``.
     """
     grid = FIXTURES[name]()
     store = np.asarray(
@@ -580,9 +597,9 @@ def test_the_inverse_arrays_cannot_tell_the_spine_from_the_store(name, axis):
     What pins the source is
     ``test_cells_is_the_float64_spine_over_the_padded_axis``, which compares
     against the grid's own float64 field directly, and the dual rule, which
-    is computed in float64 and does see the difference: 10 of the 900 node
-    entries across these 30 axes differ in float32, by up to 4.75e-11 m on
-    meshes whose cells run 50 um to 1 mm.
+    is computed in float64 and does see the difference. The size of that
+    difference is measured in
+    ``test_the_spine_and_the_store_differ_by_the_recorded_amount``.
 
     A red result here is not a regression. It means some fixture's two
     sources now round apart, the inverse judge has become discriminating, and
@@ -596,3 +613,99 @@ def test_the_inverse_arrays_cannot_tell_the_spine_from_the_store(name, axis):
     from_store_e, from_store_h = _profile_to_inv_arrays(store)
     assert np.array_equal(np.asarray(from_store_e), np.asarray(inv_e))
     assert np.array_equal(np.asarray(from_store_h), np.asarray(inv_h))
+
+
+def test_the_spine_and_the_store_differ_by_the_recorded_amount():
+    """How far apart the float64 spine and the widened float32 store are.
+
+    Two consumers reach the dual rule through the store rather than the
+    spine, so this is the figure 0b's bit-identity judges are read against.
+    It is measured over every entry of every fixture axis at once, because
+    per-axis it is a handful of last bits and the population is what makes
+    it meaningful.
+
+    Every one of the 1201 entries differs in float64 arithmetic; only 10 are
+    still apart once both spellings are rounded to the float32 the solver
+    stores. The largest float64 gap among those ten is 2.09e-11 m; 4.75e-11 m
+    is the largest over all 1201, on meshes whose cells run 50 um to 1 mm.
+    Relative to the smallest cell that is about 4e-7 -- far below anything a
+    user reads, and far above zero, which is why the dual judge sees the
+    source array and the inverse-metric judge does not.
+    """
+    total = 0
+    differ_in_f32 = 0
+    equal_in_f64 = 0
+    gaps_of_the_differing = []
+    gaps_overall = []
+    for name in sorted(FIXTURES):
+        grid = FIXTURES[name]()
+        for axis in AXES:
+            store = np.asarray(
+                (grid.dx_arr, grid.dy_arr, grid.dz)[AXES.index(axis)],
+                dtype=np.float64)
+            from_spine = grid.duals(axis)
+            from_store = np.array(
+                [float(e_node_dual_spacing_at(store, k))
+                 for k in range(store.size)])
+            gaps = np.abs(from_spine - from_store)
+            apart = (from_spine.astype(np.float32)
+                     != from_store.astype(np.float32))
+            total += store.size
+            differ_in_f32 += int(apart.sum())
+            equal_in_f64 += int((from_spine == from_store).sum())
+            gaps_overall.append(gaps.max())
+            if apart.any():
+                gaps_of_the_differing.append(gaps[apart].max())
+
+    assert total == 1201, (
+        f"the fixture population moved to {total} entries; the figures in "
+        "this docstring and in the PR body were measured over 1201"
+    )
+    assert equal_in_f64 == 0
+    assert differ_in_f32 == 10
+    assert max(gaps_of_the_differing) == pytest.approx(2.092e-11, rel=1e-3)
+    assert max(gaps_overall) == pytest.approx(4.750e-11, rel=1e-3)
+
+
+@pytest.mark.parametrize("name,axis", ALL)
+def test_index_of_refuses_a_coordinate_outside_the_domain(name, axis):
+    """A position the grid has no node for is an error, not the nearest face.
+
+    ``argmin`` over an edge list always returns something, so the legacy
+    ``position_to_index`` answers a coordinate a metre outside a 6 mm domain
+    with the last face index, and whatever the caller was placing lands
+    there. The accessor refuses instead, which is what the uniform grid has
+    always done.
+    """
+    grid = FIXTURES[name]()
+    n, pad_lo, pad_hi = _layout(grid, axis)
+    last = n - pad_hi - 1
+    span = grid.node_of(axis, last)
+
+    for outside in (-1.0, 1e9, span + span + 1e-3):
+        with pytest.raises(ValueError, match="outside"):
+            grid.index_of(axis, outside)
+
+    # Both ends inclusive, and float dust at a face is not "outside": the
+    # grid only claims to place a node to 1e-12 m, so it cannot tell a
+    # coordinate 5e-13 m past the face from the face.
+    assert grid.index_of(axis, 0.0) == pad_lo
+    assert grid.index_of(axis, span) == last
+    assert grid.index_of(axis, span + 5e-13) == last
+    assert grid.index_of(axis, -5e-13) == pad_lo
+
+
+@pytest.mark.parametrize("name", sorted(FIXTURES))
+def test_the_legacy_lookup_still_clamps(name):
+    """0a moves no consumer, so ``position_to_index`` keeps its clamp.
+
+    Pinned as a fact, not endorsed: this is the behaviour the accessor
+    replaces, and 0b retires it. If this test goes red because the clamp is
+    gone, the accessor's refusal is the replacement and this test should go
+    with it.
+    """
+    grid = FIXTURES[name]()
+    far = position_to_index(grid, (1e9, 1e9, 1e9))
+    assert all(isinstance(i, int) for i in far)
+    with pytest.raises(ValueError, match="outside"):
+        grid.index_of("z", 1e9)

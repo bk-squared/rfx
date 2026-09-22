@@ -40,6 +40,13 @@ syntactically grid-like:
 * an attribute access whose final component passes the same test --
   ``self.grid``, ``self._grid``, ``sim.grid``.
 
+The same read spelled ``getattr(grid, "dx")`` or ``getattr(grid, "dy", d)``
+counts too, with a LITERAL attribute name. It is the same scalar reaching the
+same consumer, and counting only the dotted form would let a module migrate
+its dotted reads, keep its getattr ones, and still show a lower number -- the
+ratchet would record progress that was not made. 14 of the sites below are
+this spelling.
+
 ``.dz`` is deliberately NOT counted. On ``NonUniformGrid`` ``dz`` is already
 the per-cell ARRAY, so a ``grid.dz`` read is usually the correct spelling;
 counting it would make this gate fire on code that is right.
@@ -56,8 +63,12 @@ does not look like a grid:
   helper whose parameter is called ``g2`` or ``obj``;
 * a grid reached through a subscript, call or unpacking --
   ``grids[0].dx``, ``sim.get_grid().dx``, ``(a, grid) = ...`` then ``a.dx``;
-* the string spelling, ``getattr(grid, "dx")``, which is a call and not an
-  attribute node;
+* ``getattr`` with a COMPUTED attribute name, such as
+  ``getattr(grid, axis if axis != "x" else "dx", grid.dx)``
+  (``rfx/sources/msl_port.py:426``): at parse time it names no particular
+  scalar, so the walker cannot say whether it reads one. That site's default
+  argument is a plain ``grid.dx``, which IS counted, so the module is not
+  invisible -- but the getattr itself is not;
 * the grid classes' reads of their OWN field through ``self`` --
   ``rfx/grid.py`` and ``rfx/nonuniform.py`` define the scalar, and counting
   their internal ``self.dx`` would count the definition as a consumer.
@@ -87,8 +98,8 @@ SCALAR_ATTRS = frozenset({"dx", "dy"})
 #:
 #: ``rfx/grid.py`` is absent because the uniform class reads its own field
 #: through ``self``, which the walker does not count. ``rfx/nonuniform.py``
-#: is present: its 11 reads are the module's own uses of the boundary scalar
-#: as a ``fallback_dx`` and as a CPML cell size, and they retire with the
+#: is present: its reads are the module's own uses of the boundary scalar as
+#: a ``fallback_dx`` and as a CPML cell size, and they retire with the
 #: fallback in 0b.
 ALLOWED_SCALAR_READS: dict[str, int] = {
     "rfx/amr.py": 2,
@@ -96,25 +107,26 @@ ALLOWED_SCALAR_READS: dict[str, int] = {
     "rfx/api/_compile.py": 11,
     "rfx/api/_execute.py": 10,
     "rfx/api/_mesh.py": 1,
-    "rfx/boundaries/cpml.py": 3,
+    "rfx/artifacts.py": 2,
+    "rfx/boundaries/cpml.py": 4,
     "rfx/boundaries/upml.py": 1,
     "rfx/checkpoint.py": 2,
-    "rfx/farfield.py": 2,
+    "rfx/farfield.py": 6,
     "rfx/fidelity.py": 1,
     "rfx/geometry/conformal.py": 2,
     "rfx/geometry/csg.py": 1,
     "rfx/geometry/rasterize_grid.py": 4,
-    "rfx/geometry/smoothing.py": 9,
+    "rfx/geometry/smoothing.py": 10,
     "rfx/geometry/thin_wire.py": 1,
     "rfx/io.py": 1,
     "rfx/materials/thin_conductor.py": 2,
     "rfx/nonuniform.py": 11,
-    "rfx/preflight/_common.py": 2,
+    "rfx/preflight/_common.py": 3,
     "rfx/preflight/msl.py": 2,
     "rfx/preflight/pec_geometry.py": 1,
     "rfx/preflight/ports.py": 1,
     "rfx/preflight/realization.py": 1,
-    "rfx/preflight/waveguide.py": 5,
+    "rfx/preflight/waveguide.py": 6,
     "rfx/probes/flux_region.py": 5,
     "rfx/probes/msl_wave_decomp.py": 1,
     "rfx/probes/probes.py": 7,
@@ -124,12 +136,12 @@ ALLOWED_SCALAR_READS: dict[str, int] = {
     "rfx/runners/distributed_v2.py": 1,
     "rfx/runners/nonuniform.py": 1,
     "rfx/runners/subgridded.py": 1,
-    "rfx/runners/uniform.py": 5,
-    "rfx/simulation.py": 5,
+    "rfx/runners/uniform.py": 6,
+    "rfx/simulation.py": 6,
     "rfx/sources/coaxial_port.py": 27,
     "rfx/sources/msl_eigenmode.py": 2,
     "rfx/sources/msl_port.py": 5,
-    "rfx/sources/sources.py": 2,
+    "rfx/sources/sources.py": 3,
     "rfx/sources/waveguide_port.py": 1,
     "rfx/sparams/_common.py": 5,
     "rfx/sparams/coax.py": 4,
@@ -138,7 +150,7 @@ ALLOWED_SCALAR_READS: dict[str, int] = {
     "rfx/sparams/waveguide.py": 4,
     "rfx/subgridding/validation.py": 3,
     "rfx/topology.py": 1,
-    "rfx/visualize.py": 1,
+    "rfx/visualize.py": 2,
     "rfx/visualize3d.py": 3,
     "rfx/vmap_sweep.py": 1,
 }
@@ -152,32 +164,54 @@ def _name_is_grid_like(name: str) -> bool:
             or lowered.startswith("grid"))
 
 
-def _receiver_is_grid_like(node: ast.Attribute) -> bool:
-    """Whether ``node``'s receiver is a grid-like name or attribute.
+def _expr_is_grid_like(node: ast.AST) -> bool:
+    """Whether an expression reads as "this holds a grid".
 
-    ``grid.dx`` (Name) and ``self.grid.dx`` / ``sim._grid.dx`` (Attribute).
-    A subscript, call or any other expression is not resolved -- see the
+    ``grid`` (Name) and ``self.grid`` / ``sim._grid`` (Attribute). A
+    subscript, call or any other expression is not resolved -- see the
     false-negative list in the module docstring.
     """
-    receiver = node.value
-    if isinstance(receiver, ast.Name):
-        return _name_is_grid_like(receiver.id)
-    if isinstance(receiver, ast.Attribute):
-        return _name_is_grid_like(receiver.attr)
+    if isinstance(node, ast.Name):
+        return _name_is_grid_like(node.id)
+    if isinstance(node, ast.Attribute):
+        return _name_is_grid_like(node.attr)
     return False
 
 
+def _is_getattr_scalar(node: ast.Call) -> bool:
+    """``getattr(grid, "dx")`` / ``getattr(grid, "dy", default)``.
+
+    The same read as ``grid.dx``, spelled so that no ``ast.Attribute``
+    appears. Only a LITERAL attribute name counts: a computed one
+    (``getattr(grid, axis, ...)``) names no particular scalar at parse time
+    and is the documented false negative.
+    """
+    if not isinstance(node.func, ast.Name) or node.func.id != "getattr":
+        return False
+    if len(node.args) < 2:
+        return False
+    if not _expr_is_grid_like(node.args[0]):
+        return False
+    name = node.args[1]
+    return isinstance(name, ast.Constant) and name.value in SCALAR_ATTRS
+
+
 def scalar_reads(tree: ast.Module) -> list[tuple[int, str]]:
-    """``(line, expression)`` for each scalar cell-size read in ``tree``."""
+    """``(line, expression)`` for each scalar cell-size read in ``tree``.
+
+    Two spellings, because they are one read: the attribute access, and
+    ``getattr`` with a literal name. Counting only the first let a module
+    migrate its dotted reads, keep the getattr ones, and still show a lower
+    number -- the ratchet would have recorded progress that was not made.
+    """
     found = []
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Attribute):
-            continue
-        if node.attr not in SCALAR_ATTRS:
-            continue
-        if not isinstance(node.ctx, ast.Load):
-            continue
-        if _receiver_is_grid_like(node):
+        if isinstance(node, ast.Attribute):
+            if (node.attr in SCALAR_ATTRS
+                    and isinstance(node.ctx, ast.Load)
+                    and _expr_is_grid_like(node.value)):
+                found.append((node.lineno, ast.unparse(node)))
+        elif isinstance(node, ast.Call) and _is_getattr_scalar(node):
             found.append((node.lineno, ast.unparse(node)))
     return sorted(found)
 
@@ -270,6 +304,9 @@ def test_the_walker_fires_on_the_shapes_it_claims_to_catch():
         "self_private_grid": "a = self._grid.dy\n",
         "inside_call": "f(grid.dx * 2)\n",
         "inside_function": "def h(grid):\n    return grid.dx\n",
+        "getattr_literal": "a = getattr(grid, 'dx')\n",
+        "getattr_literal_default": "a = getattr(grid, 'dy', 1.0)\n",
+        "getattr_on_self_grid": "a = getattr(self._grid, 'dx', None)\n",
     }
     for name, source in counted.items():
         assert scalar_reads(ast.parse(source)), f"walker missed {name}"
@@ -281,8 +318,10 @@ def test_the_walker_fires_on_the_shapes_it_claims_to_catch():
         "renamed_holder": "a = mesh.dx\n",
         "subscripted": "a = grids[0].dx\n",
         "called": "a = sim.get_grid().dx\n",
-        "getattr_string": "a = getattr(grid, 'dx')\n",
         "unrelated_dx": "a = spec.dx\n",
+        "getattr_computed_name": "a = getattr(grid, axis, grid_dx)\n",
+        "getattr_other_attr": "a = getattr(grid, 'dz', None)\n",
+        "getattr_on_non_grid": "a = getattr(mesh, 'dx', None)\n",
     }
     for name, source in uncounted.items():
         assert not scalar_reads(ast.parse(source)), (
