@@ -1,0 +1,5421 @@
+{
+  "metadata": {
+    "created_utc": "2026-09-22T02:07:14.424621+00:00",
+    "branch": "agent/distributed-exchange-interval",
+    "head": "cc282903b36df1a1d739ad2bdad930d164290152",
+    "origin_main": "cc282903b36df1a1d739ad2bdad930d164290152",
+    "initial_git_status": "?? scripts/diagnostics/measure_exchange_interval_error.py",
+    "script_sha256": "286ee87857f7f8f009a4b674f94298cb1f2b2ae0c131198fa1b746a316235438",
+    "environment": {
+      "python": "3.11.2 (v3.11.2:878ead1ac1, Feb  7 2023, 10:02:41) [Clang 13.0.0 (clang-1300.0.29.30)]",
+      "executable": "/Users/byungkwankim/Documents/rfx/.venv/bin/python",
+      "platform": "macOS-26.5.2-arm64-arm-64bit",
+      "cpu": "arm",
+      "logical_cpu_count": 10,
+      "JAX_PLATFORMS": "cpu",
+      "XLA_FLAGS": "--xla_force_host_platform_device_count=4",
+      "PYTHONPATH": "/Users/byungkwankim/Documents/rfx-worktrees/dist-exchange-interval",
+      "jax_version": "0.10.2",
+      "numpy_version": "2.4.6",
+      "jax_enable_x64": false,
+      "jax_devices": [
+        "cpu:0",
+        "cpu:1",
+        "cpu:2",
+        "cpu:3"
+      ],
+      "rfx_file": "/Users/byungkwankim/Documents/rfx-worktrees/dist-exchange-interval/rfx/__init__.py"
+    },
+    "commands": [
+      "JAX_PLATFORMS=cpu XLA_FLAGS=--xla_force_host_platform_device_count=4 PYTHONPATH=$PWD /Users/byungkwankim/Documents/rfx/.venv/bin/python scripts/diagnostics/measure_exchange_interval_error.py",
+      "JAX_PLATFORMS=cpu XLA_FLAGS=--xla_force_host_platform_device_count=4 PYTHONPATH=$PWD /Users/byungkwankim/Documents/rfx/.venv/bin/python scripts/diagnostics/measure_exchange_interval_error.py --case M3 --device-count 4"
+    ],
+    "runs": {
+      "M1_single": {
+        "case": "M1",
+        "device_count": 1,
+        "exchange_interval": 1,
+        "n_steps": 400,
+        "probe_x_mm": [
+          12,
+          24,
+          26,
+          36
+        ],
+        "timings_s": [
+          0.14051633374765515,
+          0.13772287499159575,
+          0.1741862501949072,
+          0.1997563331387937,
+          0.15188437467440963
+        ],
+        "warnings": [],
+        "status": "complete",
+        "dt_s": 1.9065748695310057e-12,
+        "grid_shape_nodes": [
+          49,
+          17,
+          17
+        ],
+        "field_dtype": "float32",
+        "trace_dtype": "float32",
+        "probe_indices": [
+          [
+            12,
+            8,
+            8
+          ],
+          [
+            24,
+            8,
+            8
+          ],
+          [
+            26,
+            8,
+            8
+          ],
+          [
+            36,
+            8,
+            8
+          ]
+        ],
+        "source_index": [
+          10,
+          8,
+          8
+        ],
+        "x_padding_nodes": 0,
+        "seam_first_owned_x_mm": [],
+        "warmup_s": 0.4286401248537004,
+        "median_wall_s": 0.15188437467440963,
+        "repeat_max_abs_diff_from_repeat1_V_per_m": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "M1_d2_K1": {
+        "case": "M1",
+        "device_count": 2,
+        "exchange_interval": 1,
+        "n_steps": 400,
+        "probe_x_mm": [
+          12,
+          24,
+          26,
+          36
+        ],
+        "timings_s": [
+          0.2804627502337098,
+          0.3763050828129053,
+          0.36471016705036163,
+          0.2836781251244247,
+          0.30526808416470885
+        ],
+        "warnings": [
+          "jax.experimental.shard_map is deprecated in v0.8.0. Used jax.shard_map instead."
+        ],
+        "status": "complete",
+        "dt_s": 1.9065748695310057e-12,
+        "grid_shape_nodes": [
+          49,
+          17,
+          17
+        ],
+        "field_dtype": "float32",
+        "trace_dtype": "float32",
+        "probe_indices": [
+          [
+            12,
+            8,
+            8
+          ],
+          [
+            24,
+            8,
+            8
+          ],
+          [
+            26,
+            8,
+            8
+          ],
+          [
+            36,
+            8,
+            8
+          ]
+        ],
+        "source_index": [
+          10,
+          8,
+          8
+        ],
+        "x_padding_nodes": 1,
+        "seam_first_owned_x_mm": [
+          25.0
+        ],
+        "warmup_s": 0.6925827502273023,
+        "median_wall_s": 0.30526808416470885,
+        "repeat_max_abs_diff_from_repeat1_V_per_m": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "M1_d2_K2": {
+        "case": "M1",
+        "device_count": 2,
+        "exchange_interval": 2,
+        "n_steps": 400,
+        "probe_x_mm": [
+          12,
+          24,
+          26,
+          36
+        ],
+        "timings_s": [
+          0.2607682500965893,
+          0.2742735417559743,
+          0.24022987531498075,
+          0.32060729106888175,
+          0.3336327080614865
+        ],
+        "warnings": [
+          "exchange_interval=2: ghost cells are stale for 1 steps between exchanges, introducing O(dt*2) boundary error. Use exchange_interval=1 for physically accurate results."
+        ],
+        "status": "complete",
+        "dt_s": 1.9065748695310057e-12,
+        "grid_shape_nodes": [
+          49,
+          17,
+          17
+        ],
+        "field_dtype": "float32",
+        "trace_dtype": "float32",
+        "probe_indices": [
+          [
+            12,
+            8,
+            8
+          ],
+          [
+            24,
+            8,
+            8
+          ],
+          [
+            26,
+            8,
+            8
+          ],
+          [
+            36,
+            8,
+            8
+          ]
+        ],
+        "source_index": [
+          10,
+          8,
+          8
+        ],
+        "x_padding_nodes": 1,
+        "seam_first_owned_x_mm": [
+          25.0
+        ],
+        "warmup_s": 0.24817912466824055,
+        "median_wall_s": 0.2742735417559743,
+        "repeat_max_abs_diff_from_repeat1_V_per_m": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "M1_d2_K4": {
+        "case": "M1",
+        "device_count": 2,
+        "exchange_interval": 4,
+        "n_steps": 400,
+        "probe_x_mm": [
+          12,
+          24,
+          26,
+          36
+        ],
+        "timings_s": [
+          0.2609606250189245,
+          0.4093277910724282,
+          0.21971795801073313,
+          0.25635979091748595,
+          0.2917347499169409
+        ],
+        "warnings": [
+          "exchange_interval=4: ghost cells are stale for 3 steps between exchanges, introducing O(dt*4) boundary error. Use exchange_interval=1 for physically accurate results."
+        ],
+        "status": "complete",
+        "dt_s": 1.9065748695310057e-12,
+        "grid_shape_nodes": [
+          49,
+          17,
+          17
+        ],
+        "field_dtype": "float32",
+        "trace_dtype": "float32",
+        "probe_indices": [
+          [
+            12,
+            8,
+            8
+          ],
+          [
+            24,
+            8,
+            8
+          ],
+          [
+            26,
+            8,
+            8
+          ],
+          [
+            36,
+            8,
+            8
+          ]
+        ],
+        "source_index": [
+          10,
+          8,
+          8
+        ],
+        "x_padding_nodes": 1,
+        "seam_first_owned_x_mm": [
+          25.0
+        ],
+        "warmup_s": 0.2473695408552885,
+        "median_wall_s": 0.2609606250189245,
+        "repeat_max_abs_diff_from_repeat1_V_per_m": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "M1_d4_K1": {
+        "case": "M1",
+        "device_count": 4,
+        "exchange_interval": 1,
+        "n_steps": 400,
+        "probe_x_mm": [
+          12,
+          24,
+          26,
+          36
+        ],
+        "timings_s": [
+          0.43242295924574137,
+          0.6722439588047564,
+          0.4492848329246044,
+          0.44604979176074266,
+          0.41811287496238947
+        ],
+        "warnings": [],
+        "status": "complete",
+        "dt_s": 1.9065748695310057e-12,
+        "grid_shape_nodes": [
+          49,
+          17,
+          17
+        ],
+        "field_dtype": "float32",
+        "trace_dtype": "float32",
+        "probe_indices": [
+          [
+            12,
+            8,
+            8
+          ],
+          [
+            24,
+            8,
+            8
+          ],
+          [
+            26,
+            8,
+            8
+          ],
+          [
+            36,
+            8,
+            8
+          ]
+        ],
+        "source_index": [
+          10,
+          8,
+          8
+        ],
+        "x_padding_nodes": 3,
+        "seam_first_owned_x_mm": [
+          13.000000000000002,
+          26.000000000000004,
+          39.0
+        ],
+        "warmup_s": 0.7713231253437698,
+        "median_wall_s": 0.44604979176074266,
+        "repeat_max_abs_diff_from_repeat1_V_per_m": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "M1_d4_K2": {
+        "case": "M1",
+        "device_count": 4,
+        "exchange_interval": 2,
+        "n_steps": 400,
+        "probe_x_mm": [
+          12,
+          24,
+          26,
+          36
+        ],
+        "timings_s": [
+          0.3404219578951597,
+          0.3804980833083391,
+          0.4287936254404485,
+          0.3280334169976413,
+          0.3198098340071738
+        ],
+        "warnings": [
+          "exchange_interval=2: ghost cells are stale for 1 steps between exchanges, introducing O(dt*2) boundary error. Use exchange_interval=1 for physically accurate results."
+        ],
+        "status": "complete",
+        "dt_s": 1.9065748695310057e-12,
+        "grid_shape_nodes": [
+          49,
+          17,
+          17
+        ],
+        "field_dtype": "float32",
+        "trace_dtype": "float32",
+        "probe_indices": [
+          [
+            12,
+            8,
+            8
+          ],
+          [
+            24,
+            8,
+            8
+          ],
+          [
+            26,
+            8,
+            8
+          ],
+          [
+            36,
+            8,
+            8
+          ]
+        ],
+        "source_index": [
+          10,
+          8,
+          8
+        ],
+        "x_padding_nodes": 3,
+        "seam_first_owned_x_mm": [
+          13.000000000000002,
+          26.000000000000004,
+          39.0
+        ],
+        "warmup_s": 0.3312259167432785,
+        "median_wall_s": 0.3404219578951597,
+        "repeat_max_abs_diff_from_repeat1_V_per_m": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "M1_d4_K4": {
+        "case": "M1",
+        "device_count": 4,
+        "exchange_interval": 4,
+        "n_steps": 400,
+        "probe_x_mm": [
+          12,
+          24,
+          26,
+          36
+        ],
+        "timings_s": [
+          0.3412881661206484,
+          0.28032979182899,
+          0.32211049972102046,
+          0.32454387471079826,
+          0.47187283355742693
+        ],
+        "warnings": [
+          "exchange_interval=4: ghost cells are stale for 3 steps between exchanges, introducing O(dt*4) boundary error. Use exchange_interval=1 for physically accurate results."
+        ],
+        "status": "complete",
+        "dt_s": 1.9065748695310057e-12,
+        "grid_shape_nodes": [
+          49,
+          17,
+          17
+        ],
+        "field_dtype": "float32",
+        "trace_dtype": "float32",
+        "probe_indices": [
+          [
+            12,
+            8,
+            8
+          ],
+          [
+            24,
+            8,
+            8
+          ],
+          [
+            26,
+            8,
+            8
+          ],
+          [
+            36,
+            8,
+            8
+          ]
+        ],
+        "source_index": [
+          10,
+          8,
+          8
+        ],
+        "x_padding_nodes": 3,
+        "seam_first_owned_x_mm": [
+          13.000000000000002,
+          26.000000000000004,
+          39.0
+        ],
+        "warmup_s": 0.2905953750014305,
+        "median_wall_s": 0.32454387471079826,
+        "repeat_max_abs_diff_from_repeat1_V_per_m": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "M2_single": {
+        "case": "M2",
+        "device_count": 1,
+        "exchange_interval": 1,
+        "n_steps": 800,
+        "probe_x_mm": [
+          12,
+          24,
+          26,
+          36
+        ],
+        "timings_s": [
+          0.14900708384811878,
+          0.18165220879018307,
+          0.1649707080796361,
+          0.174537125043571,
+          0.1568555417470634
+        ],
+        "warnings": [],
+        "status": "complete",
+        "dt_s": 1.9065748695310057e-12,
+        "grid_shape_nodes": [
+          49,
+          17,
+          17
+        ],
+        "field_dtype": "float32",
+        "trace_dtype": "float32",
+        "probe_indices": [
+          [
+            12,
+            8,
+            8
+          ],
+          [
+            24,
+            8,
+            8
+          ],
+          [
+            26,
+            8,
+            8
+          ],
+          [
+            36,
+            8,
+            8
+          ]
+        ],
+        "source_index": [
+          10,
+          8,
+          8
+        ],
+        "x_padding_nodes": 0,
+        "seam_first_owned_x_mm": [],
+        "warmup_s": 0.3622794160619378,
+        "median_wall_s": 0.1649707080796361,
+        "repeat_max_abs_diff_from_repeat1_V_per_m": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "M2_d2_K1": {
+        "case": "M2",
+        "device_count": 2,
+        "exchange_interval": 1,
+        "n_steps": 800,
+        "probe_x_mm": [
+          12,
+          24,
+          26,
+          36
+        ],
+        "timings_s": [
+          0.4201166667044163,
+          0.5413029999472201,
+          0.3957870416343212,
+          0.5910215419717133,
+          0.3851260831579566
+        ],
+        "warnings": [],
+        "status": "complete",
+        "dt_s": 1.9065748695310057e-12,
+        "grid_shape_nodes": [
+          49,
+          17,
+          17
+        ],
+        "field_dtype": "float32",
+        "trace_dtype": "float32",
+        "probe_indices": [
+          [
+            12,
+            8,
+            8
+          ],
+          [
+            24,
+            8,
+            8
+          ],
+          [
+            26,
+            8,
+            8
+          ],
+          [
+            36,
+            8,
+            8
+          ]
+        ],
+        "source_index": [
+          10,
+          8,
+          8
+        ],
+        "x_padding_nodes": 1,
+        "seam_first_owned_x_mm": [
+          25.0
+        ],
+        "warmup_s": 0.418783291708678,
+        "median_wall_s": 0.4201166667044163,
+        "repeat_max_abs_diff_from_repeat1_V_per_m": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "M2_d2_K2": {
+        "case": "M2",
+        "device_count": 2,
+        "exchange_interval": 2,
+        "n_steps": 800,
+        "probe_x_mm": [
+          12,
+          24,
+          26,
+          36
+        ],
+        "timings_s": [
+          0.3847645418718457,
+          0.4732927083969116,
+          0.36675095930695534,
+          0.30513349967077374,
+          0.3014775002375245
+        ],
+        "warnings": [
+          "exchange_interval=2: ghost cells are stale for 1 steps between exchanges, introducing O(dt*2) boundary error. Use exchange_interval=1 for physically accurate results."
+        ],
+        "status": "complete",
+        "dt_s": 1.9065748695310057e-12,
+        "grid_shape_nodes": [
+          49,
+          17,
+          17
+        ],
+        "field_dtype": "float32",
+        "trace_dtype": "float32",
+        "probe_indices": [
+          [
+            12,
+            8,
+            8
+          ],
+          [
+            24,
+            8,
+            8
+          ],
+          [
+            26,
+            8,
+            8
+          ],
+          [
+            36,
+            8,
+            8
+          ]
+        ],
+        "source_index": [
+          10,
+          8,
+          8
+        ],
+        "x_padding_nodes": 1,
+        "seam_first_owned_x_mm": [
+          25.0
+        ],
+        "warmup_s": 0.30740466713905334,
+        "median_wall_s": 0.36675095930695534,
+        "repeat_max_abs_diff_from_repeat1_V_per_m": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "M2_d2_K4": {
+        "case": "M2",
+        "device_count": 2,
+        "exchange_interval": 4,
+        "n_steps": 800,
+        "probe_x_mm": [
+          12,
+          24,
+          26,
+          36
+        ],
+        "timings_s": [
+          0.3478401666507125,
+          0.2658091667108238,
+          0.38738883286714554,
+          0.4810211667791009,
+          0.27665066672489047
+        ],
+        "warnings": [
+          "exchange_interval=4: ghost cells are stale for 3 steps between exchanges, introducing O(dt*4) boundary error. Use exchange_interval=1 for physically accurate results."
+        ],
+        "status": "complete",
+        "dt_s": 1.9065748695310057e-12,
+        "grid_shape_nodes": [
+          49,
+          17,
+          17
+        ],
+        "field_dtype": "float32",
+        "trace_dtype": "float32",
+        "probe_indices": [
+          [
+            12,
+            8,
+            8
+          ],
+          [
+            24,
+            8,
+            8
+          ],
+          [
+            26,
+            8,
+            8
+          ],
+          [
+            36,
+            8,
+            8
+          ]
+        ],
+        "source_index": [
+          10,
+          8,
+          8
+        ],
+        "x_padding_nodes": 1,
+        "seam_first_owned_x_mm": [
+          25.0
+        ],
+        "warmup_s": 0.3918900000862777,
+        "median_wall_s": 0.3478401666507125,
+        "repeat_max_abs_diff_from_repeat1_V_per_m": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "M3_single": {
+        "case": "M3",
+        "device_count": 1,
+        "exchange_interval": 1,
+        "n_steps": 2000,
+        "probe_x_mm": [
+          36
+        ],
+        "timings_s": [
+          0.23920108284801245,
+          0.2124479589983821,
+          0.20675345789641142,
+          0.26545070903375745,
+          0.21145104197785258
+        ],
+        "warnings": [],
+        "status": "complete",
+        "dt_s": 1.9065748695310057e-12,
+        "grid_shape_nodes": [
+          49,
+          17,
+          17
+        ],
+        "field_dtype": "float32",
+        "trace_dtype": "float32",
+        "probe_indices": [
+          [
+            36,
+            8,
+            8
+          ]
+        ],
+        "source_index": [
+          10,
+          8,
+          8
+        ],
+        "x_padding_nodes": 0,
+        "seam_first_owned_x_mm": [],
+        "warmup_s": 0.41078475024551153,
+        "median_wall_s": 0.2124479589983821,
+        "repeat_max_abs_diff_from_repeat1_V_per_m": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "M3_d2_K1": {
+        "case": "M3",
+        "device_count": 2,
+        "exchange_interval": 1,
+        "n_steps": 2000,
+        "probe_x_mm": [
+          36
+        ],
+        "timings_s": [
+          0.8124318341724575,
+          0.944011667277664,
+          0.8889751662500203,
+          0.7405283753760159,
+          0.5951998331584036
+        ],
+        "warnings": [],
+        "status": "complete",
+        "dt_s": 1.9065748695310057e-12,
+        "grid_shape_nodes": [
+          49,
+          17,
+          17
+        ],
+        "field_dtype": "float32",
+        "trace_dtype": "float32",
+        "probe_indices": [
+          [
+            36,
+            8,
+            8
+          ]
+        ],
+        "source_index": [
+          10,
+          8,
+          8
+        ],
+        "x_padding_nodes": 1,
+        "seam_first_owned_x_mm": [
+          25.0
+        ],
+        "warmup_s": 0.8571963747963309,
+        "median_wall_s": 0.8124318341724575,
+        "repeat_max_abs_diff_from_repeat1_V_per_m": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "M3_d2_K2": {
+        "case": "M3",
+        "device_count": 2,
+        "exchange_interval": 2,
+        "n_steps": 2000,
+        "probe_x_mm": [
+          36
+        ],
+        "timings_s": [
+          0.4944429583847523,
+          0.7738735000602901,
+          0.5248708329163492,
+          0.5034060827456415,
+          0.4434469169937074
+        ],
+        "warnings": [
+          "exchange_interval=2: ghost cells are stale for 1 steps between exchanges, introducing O(dt*2) boundary error. Use exchange_interval=1 for physically accurate results."
+        ],
+        "status": "complete",
+        "dt_s": 1.9065748695310057e-12,
+        "grid_shape_nodes": [
+          49,
+          17,
+          17
+        ],
+        "field_dtype": "float32",
+        "trace_dtype": "float32",
+        "probe_indices": [
+          [
+            36,
+            8,
+            8
+          ]
+        ],
+        "source_index": [
+          10,
+          8,
+          8
+        ],
+        "x_padding_nodes": 1,
+        "seam_first_owned_x_mm": [
+          25.0
+        ],
+        "warmup_s": 0.6271509998477995,
+        "median_wall_s": 0.5034060827456415,
+        "repeat_max_abs_diff_from_repeat1_V_per_m": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "M3_d2_K4": {
+        "case": "M3",
+        "device_count": 2,
+        "exchange_interval": 4,
+        "n_steps": 2000,
+        "probe_x_mm": [
+          36
+        ],
+        "timings_s": [
+          0.43037145771086216,
+          0.6097512082196772,
+          0.44507529214024544,
+          0.5609675827436149,
+          0.3717455826699734
+        ],
+        "warnings": [
+          "exchange_interval=4: ghost cells are stale for 3 steps between exchanges, introducing O(dt*4) boundary error. Use exchange_interval=1 for physically accurate results."
+        ],
+        "status": "complete",
+        "dt_s": 1.9065748695310057e-12,
+        "grid_shape_nodes": [
+          49,
+          17,
+          17
+        ],
+        "field_dtype": "float32",
+        "trace_dtype": "float32",
+        "probe_indices": [
+          [
+            36,
+            8,
+            8
+          ]
+        ],
+        "source_index": [
+          10,
+          8,
+          8
+        ],
+        "x_padding_nodes": 1,
+        "seam_first_owned_x_mm": [
+          25.0
+        ],
+        "warmup_s": 0.5462856250815094,
+        "median_wall_s": 0.44507529214024544,
+        "repeat_max_abs_diff_from_repeat1_V_per_m": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "M3_d4_K1": {
+        "case": "M3",
+        "device_count": 4,
+        "exchange_interval": 1,
+        "n_steps": 2000,
+        "probe_x_mm": [
+          36
+        ],
+        "timings_s": [
+          1.2291941670700908,
+          1.0653031668625772,
+          1.2314717080444098,
+          1.0796147496439517,
+          1.0707768751308322
+        ],
+        "warnings": [
+          "jax.experimental.shard_map is deprecated in v0.8.0. Used jax.shard_map instead."
+        ],
+        "status": "complete",
+        "dt_s": 1.9065748695310057e-12,
+        "grid_shape_nodes": [
+          49,
+          17,
+          17
+        ],
+        "field_dtype": "float32",
+        "trace_dtype": "float32",
+        "probe_indices": [
+          [
+            36,
+            8,
+            8
+          ]
+        ],
+        "source_index": [
+          10,
+          8,
+          8
+        ],
+        "x_padding_nodes": 3,
+        "seam_first_owned_x_mm": [
+          13.000000000000002,
+          26.000000000000004,
+          39.0
+        ],
+        "warmup_s": 1.9628775417804718,
+        "median_wall_s": 1.0796147496439517,
+        "repeat_max_abs_diff_from_repeat1_V_per_m": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "M3_d4_K2": {
+        "case": "M3",
+        "device_count": 4,
+        "exchange_interval": 2,
+        "n_steps": 2000,
+        "probe_x_mm": [
+          36
+        ],
+        "timings_s": [
+          0.8461550828069448,
+          0.7404442089609802,
+          0.6596349999308586,
+          0.8052165410481393,
+          0.7354556657373905
+        ],
+        "warnings": [
+          "exchange_interval=2: ghost cells are stale for 1 steps between exchanges, introducing O(dt*2) boundary error. Use exchange_interval=1 for physically accurate results."
+        ],
+        "status": "complete",
+        "dt_s": 1.9065748695310057e-12,
+        "grid_shape_nodes": [
+          49,
+          17,
+          17
+        ],
+        "field_dtype": "float32",
+        "trace_dtype": "float32",
+        "probe_indices": [
+          [
+            36,
+            8,
+            8
+          ]
+        ],
+        "source_index": [
+          10,
+          8,
+          8
+        ],
+        "x_padding_nodes": 3,
+        "seam_first_owned_x_mm": [
+          13.000000000000002,
+          26.000000000000004,
+          39.0
+        ],
+        "warmup_s": 0.960063916631043,
+        "median_wall_s": 0.7404442089609802,
+        "repeat_max_abs_diff_from_repeat1_V_per_m": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "M3_d4_K4": {
+        "case": "M3",
+        "device_count": 4,
+        "exchange_interval": 4,
+        "n_steps": 2000,
+        "probe_x_mm": [
+          36
+        ],
+        "timings_s": [
+          0.6136827496811748,
+          0.524163750000298,
+          0.603301458992064,
+          0.5548591250553727,
+          0.508342667017132
+        ],
+        "warnings": [
+          "exchange_interval=4: ghost cells are stale for 3 steps between exchanges, introducing O(dt*4) boundary error. Use exchange_interval=1 for physically accurate results."
+        ],
+        "status": "complete",
+        "dt_s": 1.9065748695310057e-12,
+        "grid_shape_nodes": [
+          49,
+          17,
+          17
+        ],
+        "field_dtype": "float32",
+        "trace_dtype": "float32",
+        "probe_indices": [
+          [
+            36,
+            8,
+            8
+          ]
+        ],
+        "source_index": [
+          10,
+          8,
+          8
+        ],
+        "x_padding_nodes": 3,
+        "seam_first_owned_x_mm": [
+          13.000000000000002,
+          26.000000000000004,
+          39.0
+        ],
+        "warmup_s": 0.5546430419199169,
+        "median_wall_s": 0.5548591250553727,
+        "repeat_max_abs_diff_from_repeat1_V_per_m": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "execution_order": [
+      {
+        "run": "M1_single",
+        "phase": "warmup",
+        "wall_s": 0.4286401248537004
+      },
+      {
+        "run": "M1_d2_K1",
+        "phase": "warmup",
+        "wall_s": 0.6925827502273023
+      },
+      {
+        "run": "M1_d2_K2",
+        "phase": "warmup",
+        "wall_s": 0.24817912466824055
+      },
+      {
+        "run": "M1_d2_K4",
+        "phase": "warmup",
+        "wall_s": 0.2473695408552885
+      },
+      {
+        "run": "M1_d4_K1",
+        "phase": "warmup",
+        "wall_s": 0.7713231253437698
+      },
+      {
+        "run": "M1_d4_K2",
+        "phase": "warmup",
+        "wall_s": 0.3312259167432785
+      },
+      {
+        "run": "M1_d4_K4",
+        "phase": "warmup",
+        "wall_s": 0.2905953750014305
+      },
+      {
+        "run": "M1_single",
+        "phase": "repeat1",
+        "wall_s": 0.14051633374765515
+      },
+      {
+        "run": "M1_d2_K1",
+        "phase": "repeat1",
+        "wall_s": 0.2804627502337098
+      },
+      {
+        "run": "M1_d2_K2",
+        "phase": "repeat1",
+        "wall_s": 0.2607682500965893
+      },
+      {
+        "run": "M1_d2_K4",
+        "phase": "repeat1",
+        "wall_s": 0.2609606250189245
+      },
+      {
+        "run": "M1_d4_K1",
+        "phase": "repeat1",
+        "wall_s": 0.43242295924574137
+      },
+      {
+        "run": "M1_d4_K2",
+        "phase": "repeat1",
+        "wall_s": 0.3404219578951597
+      },
+      {
+        "run": "M1_d4_K4",
+        "phase": "repeat1",
+        "wall_s": 0.3412881661206484
+      },
+      {
+        "run": "M1_d2_K1",
+        "phase": "repeat2",
+        "wall_s": 0.3763050828129053
+      },
+      {
+        "run": "M1_d2_K2",
+        "phase": "repeat2",
+        "wall_s": 0.2742735417559743
+      },
+      {
+        "run": "M1_d2_K4",
+        "phase": "repeat2",
+        "wall_s": 0.4093277910724282
+      },
+      {
+        "run": "M1_d4_K1",
+        "phase": "repeat2",
+        "wall_s": 0.6722439588047564
+      },
+      {
+        "run": "M1_d4_K2",
+        "phase": "repeat2",
+        "wall_s": 0.3804980833083391
+      },
+      {
+        "run": "M1_d4_K4",
+        "phase": "repeat2",
+        "wall_s": 0.28032979182899
+      },
+      {
+        "run": "M1_single",
+        "phase": "repeat2",
+        "wall_s": 0.13772287499159575
+      },
+      {
+        "run": "M1_d2_K2",
+        "phase": "repeat3",
+        "wall_s": 0.24022987531498075
+      },
+      {
+        "run": "M1_d2_K4",
+        "phase": "repeat3",
+        "wall_s": 0.21971795801073313
+      },
+      {
+        "run": "M1_d4_K1",
+        "phase": "repeat3",
+        "wall_s": 0.4492848329246044
+      },
+      {
+        "run": "M1_d4_K2",
+        "phase": "repeat3",
+        "wall_s": 0.4287936254404485
+      },
+      {
+        "run": "M1_d4_K4",
+        "phase": "repeat3",
+        "wall_s": 0.32211049972102046
+      },
+      {
+        "run": "M1_single",
+        "phase": "repeat3",
+        "wall_s": 0.1741862501949072
+      },
+      {
+        "run": "M1_d2_K1",
+        "phase": "repeat3",
+        "wall_s": 0.36471016705036163
+      },
+      {
+        "run": "M1_d2_K4",
+        "phase": "repeat4",
+        "wall_s": 0.25635979091748595
+      },
+      {
+        "run": "M1_d4_K1",
+        "phase": "repeat4",
+        "wall_s": 0.44604979176074266
+      },
+      {
+        "run": "M1_d4_K2",
+        "phase": "repeat4",
+        "wall_s": 0.3280334169976413
+      },
+      {
+        "run": "M1_d4_K4",
+        "phase": "repeat4",
+        "wall_s": 0.32454387471079826
+      },
+      {
+        "run": "M1_single",
+        "phase": "repeat4",
+        "wall_s": 0.1997563331387937
+      },
+      {
+        "run": "M1_d2_K1",
+        "phase": "repeat4",
+        "wall_s": 0.2836781251244247
+      },
+      {
+        "run": "M1_d2_K2",
+        "phase": "repeat4",
+        "wall_s": 0.32060729106888175
+      },
+      {
+        "run": "M1_d4_K1",
+        "phase": "repeat5",
+        "wall_s": 0.41811287496238947
+      },
+      {
+        "run": "M1_d4_K2",
+        "phase": "repeat5",
+        "wall_s": 0.3198098340071738
+      },
+      {
+        "run": "M1_d4_K4",
+        "phase": "repeat5",
+        "wall_s": 0.47187283355742693
+      },
+      {
+        "run": "M1_single",
+        "phase": "repeat5",
+        "wall_s": 0.15188437467440963
+      },
+      {
+        "run": "M1_d2_K1",
+        "phase": "repeat5",
+        "wall_s": 0.30526808416470885
+      },
+      {
+        "run": "M1_d2_K2",
+        "phase": "repeat5",
+        "wall_s": 0.3336327080614865
+      },
+      {
+        "run": "M1_d2_K4",
+        "phase": "repeat5",
+        "wall_s": 0.2917347499169409
+      },
+      {
+        "run": "M2_single",
+        "phase": "warmup",
+        "wall_s": 0.3622794160619378
+      },
+      {
+        "run": "M2_d2_K1",
+        "phase": "warmup",
+        "wall_s": 0.418783291708678
+      },
+      {
+        "run": "M2_d2_K2",
+        "phase": "warmup",
+        "wall_s": 0.30740466713905334
+      },
+      {
+        "run": "M2_d2_K4",
+        "phase": "warmup",
+        "wall_s": 0.3918900000862777
+      },
+      {
+        "run": "M2_single",
+        "phase": "repeat1",
+        "wall_s": 0.14900708384811878
+      },
+      {
+        "run": "M2_d2_K1",
+        "phase": "repeat1",
+        "wall_s": 0.4201166667044163
+      },
+      {
+        "run": "M2_d2_K2",
+        "phase": "repeat1",
+        "wall_s": 0.3847645418718457
+      },
+      {
+        "run": "M2_d2_K4",
+        "phase": "repeat1",
+        "wall_s": 0.3478401666507125
+      },
+      {
+        "run": "M2_d2_K1",
+        "phase": "repeat2",
+        "wall_s": 0.5413029999472201
+      },
+      {
+        "run": "M2_d2_K2",
+        "phase": "repeat2",
+        "wall_s": 0.4732927083969116
+      },
+      {
+        "run": "M2_d2_K4",
+        "phase": "repeat2",
+        "wall_s": 0.2658091667108238
+      },
+      {
+        "run": "M2_single",
+        "phase": "repeat2",
+        "wall_s": 0.18165220879018307
+      },
+      {
+        "run": "M2_d2_K2",
+        "phase": "repeat3",
+        "wall_s": 0.36675095930695534
+      },
+      {
+        "run": "M2_d2_K4",
+        "phase": "repeat3",
+        "wall_s": 0.38738883286714554
+      },
+      {
+        "run": "M2_single",
+        "phase": "repeat3",
+        "wall_s": 0.1649707080796361
+      },
+      {
+        "run": "M2_d2_K1",
+        "phase": "repeat3",
+        "wall_s": 0.3957870416343212
+      },
+      {
+        "run": "M2_d2_K4",
+        "phase": "repeat4",
+        "wall_s": 0.4810211667791009
+      },
+      {
+        "run": "M2_single",
+        "phase": "repeat4",
+        "wall_s": 0.174537125043571
+      },
+      {
+        "run": "M2_d2_K1",
+        "phase": "repeat4",
+        "wall_s": 0.5910215419717133
+      },
+      {
+        "run": "M2_d2_K2",
+        "phase": "repeat4",
+        "wall_s": 0.30513349967077374
+      },
+      {
+        "run": "M2_single",
+        "phase": "repeat5",
+        "wall_s": 0.1568555417470634
+      },
+      {
+        "run": "M2_d2_K1",
+        "phase": "repeat5",
+        "wall_s": 0.3851260831579566
+      },
+      {
+        "run": "M2_d2_K2",
+        "phase": "repeat5",
+        "wall_s": 0.3014775002375245
+      },
+      {
+        "run": "M2_d2_K4",
+        "phase": "repeat5",
+        "wall_s": 0.27665066672489047
+      },
+      {
+        "run": "M3_single",
+        "phase": "warmup",
+        "wall_s": 0.41078475024551153
+      },
+      {
+        "run": "M3_d2_K1",
+        "phase": "warmup",
+        "wall_s": 0.8571963747963309
+      },
+      {
+        "run": "M3_d2_K2",
+        "phase": "warmup",
+        "wall_s": 0.6271509998477995
+      },
+      {
+        "run": "M3_d2_K4",
+        "phase": "warmup",
+        "wall_s": 0.5462856250815094
+      },
+      {
+        "run": "M3_single",
+        "phase": "repeat1",
+        "wall_s": 0.23920108284801245
+      },
+      {
+        "run": "M3_d2_K1",
+        "phase": "repeat1",
+        "wall_s": 0.8124318341724575
+      },
+      {
+        "run": "M3_d2_K2",
+        "phase": "repeat1",
+        "wall_s": 0.4944429583847523
+      },
+      {
+        "run": "M3_d2_K4",
+        "phase": "repeat1",
+        "wall_s": 0.43037145771086216
+      },
+      {
+        "run": "M3_d2_K1",
+        "phase": "repeat2",
+        "wall_s": 0.944011667277664
+      },
+      {
+        "run": "M3_d2_K2",
+        "phase": "repeat2",
+        "wall_s": 0.7738735000602901
+      },
+      {
+        "run": "M3_d2_K4",
+        "phase": "repeat2",
+        "wall_s": 0.6097512082196772
+      },
+      {
+        "run": "M3_single",
+        "phase": "repeat2",
+        "wall_s": 0.2124479589983821
+      },
+      {
+        "run": "M3_d2_K2",
+        "phase": "repeat3",
+        "wall_s": 0.5248708329163492
+      },
+      {
+        "run": "M3_d2_K4",
+        "phase": "repeat3",
+        "wall_s": 0.44507529214024544
+      },
+      {
+        "run": "M3_single",
+        "phase": "repeat3",
+        "wall_s": 0.20675345789641142
+      },
+      {
+        "run": "M3_d2_K1",
+        "phase": "repeat3",
+        "wall_s": 0.8889751662500203
+      },
+      {
+        "run": "M3_d2_K4",
+        "phase": "repeat4",
+        "wall_s": 0.5609675827436149
+      },
+      {
+        "run": "M3_single",
+        "phase": "repeat4",
+        "wall_s": 0.26545070903375745
+      },
+      {
+        "run": "M3_d2_K1",
+        "phase": "repeat4",
+        "wall_s": 0.7405283753760159
+      },
+      {
+        "run": "M3_d2_K2",
+        "phase": "repeat4",
+        "wall_s": 0.5034060827456415
+      },
+      {
+        "run": "M3_single",
+        "phase": "repeat5",
+        "wall_s": 0.21145104197785258
+      },
+      {
+        "run": "M3_d2_K1",
+        "phase": "repeat5",
+        "wall_s": 0.5951998331584036
+      },
+      {
+        "run": "M3_d2_K2",
+        "phase": "repeat5",
+        "wall_s": 0.4434469169937074
+      },
+      {
+        "run": "M3_d2_K4",
+        "phase": "repeat5",
+        "wall_s": 0.3717455826699734
+      },
+      {
+        "run": "M3_d4_K1",
+        "phase": "warmup",
+        "wall_s": 1.9628775417804718
+      },
+      {
+        "run": "M3_d4_K2",
+        "phase": "warmup",
+        "wall_s": 0.960063916631043
+      },
+      {
+        "run": "M3_d4_K4",
+        "phase": "warmup",
+        "wall_s": 0.5546430419199169
+      },
+      {
+        "run": "M3_d4_K1",
+        "phase": "repeat1",
+        "wall_s": 1.2291941670700908
+      },
+      {
+        "run": "M3_d4_K2",
+        "phase": "repeat1",
+        "wall_s": 0.8461550828069448
+      },
+      {
+        "run": "M3_d4_K4",
+        "phase": "repeat1",
+        "wall_s": 0.6136827496811748
+      },
+      {
+        "run": "M3_d4_K2",
+        "phase": "repeat2",
+        "wall_s": 0.7404442089609802
+      },
+      {
+        "run": "M3_d4_K4",
+        "phase": "repeat2",
+        "wall_s": 0.524163750000298
+      },
+      {
+        "run": "M3_d4_K1",
+        "phase": "repeat2",
+        "wall_s": 1.0653031668625772
+      },
+      {
+        "run": "M3_d4_K4",
+        "phase": "repeat3",
+        "wall_s": 0.603301458992064
+      },
+      {
+        "run": "M3_d4_K1",
+        "phase": "repeat3",
+        "wall_s": 1.2314717080444098
+      },
+      {
+        "run": "M3_d4_K2",
+        "phase": "repeat3",
+        "wall_s": 0.6596349999308586
+      },
+      {
+        "run": "M3_d4_K1",
+        "phase": "repeat4",
+        "wall_s": 1.0796147496439517
+      },
+      {
+        "run": "M3_d4_K2",
+        "phase": "repeat4",
+        "wall_s": 0.8052165410481393
+      },
+      {
+        "run": "M3_d4_K4",
+        "phase": "repeat4",
+        "wall_s": 0.5548591250553727
+      },
+      {
+        "run": "M3_d4_K2",
+        "phase": "repeat5",
+        "wall_s": 0.7354556657373905
+      },
+      {
+        "run": "M3_d4_K4",
+        "phase": "repeat5",
+        "wall_s": 0.508342667017132
+      },
+      {
+        "run": "M3_d4_K1",
+        "phase": "repeat5",
+        "wall_s": 1.0707768751308322
+      }
+    ]
+  },
+  "measurements": {
+    "M1": {
+      "n_steps": 400,
+      "probe_x_mm": [
+        12,
+        24,
+        26,
+        36
+      ],
+      "runs": {
+        "M1_single": {
+          "case": "M1",
+          "device_count": 1,
+          "exchange_interval": 1,
+          "n_steps": 400,
+          "probe_x_mm": [
+            12,
+            24,
+            26,
+            36
+          ],
+          "timings_s": [
+            0.14051633374765515,
+            0.13772287499159575,
+            0.1741862501949072,
+            0.1997563331387937,
+            0.15188437467440963
+          ],
+          "warnings": [],
+          "status": "complete",
+          "dt_s": 1.9065748695310057e-12,
+          "grid_shape_nodes": [
+            49,
+            17,
+            17
+          ],
+          "field_dtype": "float32",
+          "trace_dtype": "float32",
+          "probe_indices": [
+            [
+              12,
+              8,
+              8
+            ],
+            [
+              24,
+              8,
+              8
+            ],
+            [
+              26,
+              8,
+              8
+            ],
+            [
+              36,
+              8,
+              8
+            ]
+          ],
+          "source_index": [
+            10,
+            8,
+            8
+          ],
+          "x_padding_nodes": 0,
+          "seam_first_owned_x_mm": [],
+          "warmup_s": 0.4286401248537004,
+          "median_wall_s": 0.15188437467440963,
+          "repeat_max_abs_diff_from_repeat1_V_per_m": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "M1_d2_K1": {
+          "case": "M1",
+          "device_count": 2,
+          "exchange_interval": 1,
+          "n_steps": 400,
+          "probe_x_mm": [
+            12,
+            24,
+            26,
+            36
+          ],
+          "timings_s": [
+            0.2804627502337098,
+            0.3763050828129053,
+            0.36471016705036163,
+            0.2836781251244247,
+            0.30526808416470885
+          ],
+          "warnings": [
+            "jax.experimental.shard_map is deprecated in v0.8.0. Used jax.shard_map instead."
+          ],
+          "status": "complete",
+          "dt_s": 1.9065748695310057e-12,
+          "grid_shape_nodes": [
+            49,
+            17,
+            17
+          ],
+          "field_dtype": "float32",
+          "trace_dtype": "float32",
+          "probe_indices": [
+            [
+              12,
+              8,
+              8
+            ],
+            [
+              24,
+              8,
+              8
+            ],
+            [
+              26,
+              8,
+              8
+            ],
+            [
+              36,
+              8,
+              8
+            ]
+          ],
+          "source_index": [
+            10,
+            8,
+            8
+          ],
+          "x_padding_nodes": 1,
+          "seam_first_owned_x_mm": [
+            25.0
+          ],
+          "warmup_s": 0.6925827502273023,
+          "median_wall_s": 0.30526808416470885,
+          "repeat_max_abs_diff_from_repeat1_V_per_m": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "comparisons": {
+            "vs_single": [
+              {
+                "probe_x_mm": 12,
+                "single_peak_V_per_m": 0.5731515288352966,
+                "single_rms_V_per_m": 0.20796858129715837,
+                "max_abs_diff_V_per_m": 6.131085683591664e-07,
+                "max_abs_diff_over_single_peak": 1.069714617363172e-06,
+                "max_abs_diff_over_single_peak_dB": -119.41464139275465,
+                "rms_diff_V_per_m": 1.6336803569336008e-07,
+                "rms_diff_over_single_rms": 7.855419057743618e-07,
+                "threshold_V_per_m": 0.0005731515288352967,
+                "first_exceeds_step_index_0based": null,
+                "first_exceeds_completed_step_1based": null,
+                "first_exceeds_time_s": null,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 24,
+                "single_peak_V_per_m": 0.00042177445720881224,
+                "single_rms_V_per_m": 0.0001472934809499467,
+                "max_abs_diff_V_per_m": 2.8826343623222783e-07,
+                "max_abs_diff_over_single_peak": 0.0006834539913580264,
+                "max_abs_diff_over_single_peak_dB": -63.30581431751536,
+                "rms_diff_V_per_m": 7.106015487147782e-08,
+                "rms_diff_over_single_rms": 0.00048243923908367336,
+                "threshold_V_per_m": 4.217744572088122e-07,
+                "first_exceeds_step_index_0based": null,
+                "first_exceeds_completed_step_1based": null,
+                "first_exceeds_time_s": null,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 26,
+                "single_peak_V_per_m": 0.0003008637286256999,
+                "single_rms_V_per_m": 0.00012198171823651594,
+                "max_abs_diff_V_per_m": 2.6034831535071135e-07,
+                "max_abs_diff_over_single_peak": 0.000865336331966446,
+                "max_abs_diff_over_single_peak_dB": -61.25630123273052,
+                "rms_diff_V_per_m": 7.322585274523034e-08,
+                "rms_diff_over_single_rms": 0.0006003018632943781,
+                "threshold_V_per_m": 3.008637286256999e-07,
+                "first_exceeds_step_index_0based": null,
+                "first_exceeds_completed_step_1based": null,
+                "first_exceeds_time_s": null,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 36,
+                "single_peak_V_per_m": 0.00017006462439894676,
+                "single_rms_V_per_m": 8.102150071878488e-05,
+                "max_abs_diff_V_per_m": 3.5301491152495146e-07,
+                "max_abs_diff_over_single_peak": 0.002075769212865987,
+                "max_abs_diff_over_single_peak_dB": -53.65641867302677,
+                "rms_diff_V_per_m": 8.862759186186504e-08,
+                "rms_diff_over_single_rms": 0.0010938774408718978,
+                "threshold_V_per_m": 1.7006462439894677e-07,
+                "first_exceeds_step_index_0based": 212,
+                "first_exceeds_completed_step_1based": 213,
+                "first_exceeds_time_s": 4.041938723405732e-10,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              }
+            ],
+            "vs_K1": [
+              {
+                "probe_x_mm": 12,
+                "single_peak_V_per_m": 0.5731515288352966,
+                "single_rms_V_per_m": 0.20796858129715837,
+                "max_abs_diff_V_per_m": 0.0,
+                "max_abs_diff_over_single_peak": 0.0,
+                "max_abs_diff_over_single_peak_dB": "-Infinity",
+                "rms_diff_V_per_m": 0.0,
+                "rms_diff_over_single_rms": 0.0,
+                "threshold_V_per_m": 0.0005731515288352967,
+                "first_exceeds_step_index_0based": null,
+                "first_exceeds_completed_step_1based": null,
+                "first_exceeds_time_s": null,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 24,
+                "single_peak_V_per_m": 0.00042177445720881224,
+                "single_rms_V_per_m": 0.0001472934809499467,
+                "max_abs_diff_V_per_m": 0.0,
+                "max_abs_diff_over_single_peak": 0.0,
+                "max_abs_diff_over_single_peak_dB": "-Infinity",
+                "rms_diff_V_per_m": 0.0,
+                "rms_diff_over_single_rms": 0.0,
+                "threshold_V_per_m": 4.217744572088122e-07,
+                "first_exceeds_step_index_0based": null,
+                "first_exceeds_completed_step_1based": null,
+                "first_exceeds_time_s": null,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 26,
+                "single_peak_V_per_m": 0.0003008637286256999,
+                "single_rms_V_per_m": 0.00012198171823651594,
+                "max_abs_diff_V_per_m": 0.0,
+                "max_abs_diff_over_single_peak": 0.0,
+                "max_abs_diff_over_single_peak_dB": "-Infinity",
+                "rms_diff_V_per_m": 0.0,
+                "rms_diff_over_single_rms": 0.0,
+                "threshold_V_per_m": 3.008637286256999e-07,
+                "first_exceeds_step_index_0based": null,
+                "first_exceeds_completed_step_1based": null,
+                "first_exceeds_time_s": null,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 36,
+                "single_peak_V_per_m": 0.00017006462439894676,
+                "single_rms_V_per_m": 8.102150071878488e-05,
+                "max_abs_diff_V_per_m": 0.0,
+                "max_abs_diff_over_single_peak": 0.0,
+                "max_abs_diff_over_single_peak_dB": "-Infinity",
+                "rms_diff_V_per_m": 0.0,
+                "rms_diff_over_single_rms": 0.0,
+                "threshold_V_per_m": 1.7006462439894677e-07,
+                "first_exceeds_step_index_0based": null,
+                "first_exceeds_completed_step_1based": null,
+                "first_exceeds_time_s": null,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              }
+            ]
+          },
+          "timing_ratio_to_single": 2.0098715540627774,
+          "timing_ratio_to_K1": 1.0
+        },
+        "M1_d2_K2": {
+          "case": "M1",
+          "device_count": 2,
+          "exchange_interval": 2,
+          "n_steps": 400,
+          "probe_x_mm": [
+            12,
+            24,
+            26,
+            36
+          ],
+          "timings_s": [
+            0.2607682500965893,
+            0.2742735417559743,
+            0.24022987531498075,
+            0.32060729106888175,
+            0.3336327080614865
+          ],
+          "warnings": [
+            "exchange_interval=2: ghost cells are stale for 1 steps between exchanges, introducing O(dt*2) boundary error. Use exchange_interval=1 for physically accurate results."
+          ],
+          "status": "complete",
+          "dt_s": 1.9065748695310057e-12,
+          "grid_shape_nodes": [
+            49,
+            17,
+            17
+          ],
+          "field_dtype": "float32",
+          "trace_dtype": "float32",
+          "probe_indices": [
+            [
+              12,
+              8,
+              8
+            ],
+            [
+              24,
+              8,
+              8
+            ],
+            [
+              26,
+              8,
+              8
+            ],
+            [
+              36,
+              8,
+              8
+            ]
+          ],
+          "source_index": [
+            10,
+            8,
+            8
+          ],
+          "x_padding_nodes": 1,
+          "seam_first_owned_x_mm": [
+            25.0
+          ],
+          "warmup_s": 0.24817912466824055,
+          "median_wall_s": 0.2742735417559743,
+          "repeat_max_abs_diff_from_repeat1_V_per_m": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "comparisons": {
+            "vs_single": [
+              {
+                "probe_x_mm": 12,
+                "single_peak_V_per_m": 0.5731515288352966,
+                "single_rms_V_per_m": 0.20796858129715837,
+                "max_abs_diff_V_per_m": 2.485317236278206e-05,
+                "max_abs_diff_over_single_peak": 4.336230667182601e-05,
+                "max_abs_diff_over_single_peak_dB": -87.25775246841542,
+                "rms_diff_V_per_m": 7.824018522521877e-06,
+                "rms_diff_over_single_rms": 3.7621156396419494e-05,
+                "threshold_V_per_m": 0.0005731515288352967,
+                "first_exceeds_step_index_0based": null,
+                "first_exceeds_completed_step_1based": null,
+                "first_exceeds_time_s": null,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 24,
+                "single_peak_V_per_m": 0.00042177445720881224,
+                "single_rms_V_per_m": 0.0001472934809499467,
+                "max_abs_diff_V_per_m": 3.5689445212483406e-05,
+                "max_abs_diff_over_single_peak": 0.08461736978731801,
+                "max_abs_diff_over_single_peak_dB": -21.450809564638806,
+                "rms_diff_V_per_m": 1.1601382491446755e-05,
+                "rms_diff_over_single_rms": 0.07876372000054191,
+                "threshold_V_per_m": 4.217744572088122e-07,
+                "first_exceeds_step_index_0based": 33,
+                "first_exceeds_completed_step_1based": 34,
+                "first_exceeds_time_s": 6.291697069452319e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 26,
+                "single_peak_V_per_m": 0.0003008637286256999,
+                "single_rms_V_per_m": 0.00012198171823651594,
+                "max_abs_diff_V_per_m": 2.9969291063025594e-05,
+                "max_abs_diff_over_single_peak": 0.09961084774133723,
+                "max_abs_diff_over_single_peak_dB": -20.03386727617029,
+                "rms_diff_V_per_m": 1.1259328043468093e-05,
+                "rms_diff_over_single_rms": 0.09230340584018391,
+                "threshold_V_per_m": 3.008637286256999e-07,
+                "first_exceeds_step_index_0based": 32,
+                "first_exceeds_completed_step_1based": 33,
+                "first_exceeds_time_s": 6.101039582499218e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 36,
+                "single_peak_V_per_m": 0.00017006462439894676,
+                "single_rms_V_per_m": 8.102150071878488e-05,
+                "max_abs_diff_V_per_m": 2.6849578716792166e-05,
+                "max_abs_diff_over_single_peak": 0.1578786817757406,
+                "max_abs_diff_over_single_peak_dB": -16.033530168954798,
+                "rms_diff_V_per_m": 8.21297213459755e-06,
+                "rms_diff_over_single_rms": 0.1013678105408552,
+                "threshold_V_per_m": 1.7006462439894677e-07,
+                "first_exceeds_step_index_0based": 50,
+                "first_exceeds_completed_step_1based": 51,
+                "first_exceeds_time_s": 9.532874347655028e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              }
+            ],
+            "vs_K1": [
+              {
+                "probe_x_mm": 12,
+                "single_peak_V_per_m": 0.5731515288352966,
+                "single_rms_V_per_m": 0.20796858129715837,
+                "max_abs_diff_V_per_m": 2.4704000679776073e-05,
+                "max_abs_diff_over_single_peak": 4.3102040973313225e-05,
+                "max_abs_diff_over_single_peak_dB": -87.31004329169893,
+                "rms_diff_V_per_m": 7.827891986207424e-06,
+                "rms_diff_over_single_rms": 3.7639781631353476e-05,
+                "threshold_V_per_m": 0.0005731515288352967,
+                "first_exceeds_step_index_0based": null,
+                "first_exceeds_completed_step_1based": null,
+                "first_exceeds_time_s": null,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 24,
+                "single_peak_V_per_m": 0.00042177445720881224,
+                "single_rms_V_per_m": 0.0001472934809499467,
+                "max_abs_diff_V_per_m": 3.562148776836693e-05,
+                "max_abs_diff_over_single_peak": 0.08445624707598505,
+                "max_abs_diff_over_single_peak_dB": -21.467364418535496,
+                "rms_diff_V_per_m": 1.1604775045497014e-05,
+                "rms_diff_over_single_rms": 0.07878675261562018,
+                "threshold_V_per_m": 4.217744572088122e-07,
+                "first_exceeds_step_index_0based": 33,
+                "first_exceeds_completed_step_1based": 34,
+                "first_exceeds_time_s": 6.291697069452319e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 26,
+                "single_peak_V_per_m": 0.0003008637286256999,
+                "single_rms_V_per_m": 0.00012198171823651594,
+                "max_abs_diff_V_per_m": 2.987364132422954e-05,
+                "max_abs_diff_over_single_peak": 0.09929293059249057,
+                "max_abs_diff_over_single_peak_dB": -20.061633421626013,
+                "rms_diff_V_per_m": 1.1259260229889886e-05,
+                "rms_diff_over_single_rms": 0.09230284990787546,
+                "threshold_V_per_m": 3.008637286256999e-07,
+                "first_exceeds_step_index_0based": 32,
+                "first_exceeds_completed_step_1based": 33,
+                "first_exceeds_time_s": 6.101039582499218e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 36,
+                "single_peak_V_per_m": 0.00017006462439894676,
+                "single_rms_V_per_m": 8.102150071878488e-05,
+                "max_abs_diff_V_per_m": 2.682280319277197e-05,
+                "max_abs_diff_over_single_peak": 0.15772123854429357,
+                "max_abs_diff_over_single_peak_dB": -16.042196423652637,
+                "rms_diff_V_per_m": 8.213753236055034e-06,
+                "rms_diff_over_single_rms": 0.10137745120969686,
+                "threshold_V_per_m": 1.7006462439894677e-07,
+                "first_exceeds_step_index_0based": 50,
+                "first_exceeds_completed_step_1based": 51,
+                "first_exceeds_time_s": 9.532874347655028e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              }
+            ]
+          },
+          "timing_ratio_to_single": 1.80580485875474,
+          "timing_ratio_to_K1": 0.8984677926828036
+        },
+        "M1_d2_K4": {
+          "case": "M1",
+          "device_count": 2,
+          "exchange_interval": 4,
+          "n_steps": 400,
+          "probe_x_mm": [
+            12,
+            24,
+            26,
+            36
+          ],
+          "timings_s": [
+            0.2609606250189245,
+            0.4093277910724282,
+            0.21971795801073313,
+            0.25635979091748595,
+            0.2917347499169409
+          ],
+          "warnings": [
+            "exchange_interval=4: ghost cells are stale for 3 steps between exchanges, introducing O(dt*4) boundary error. Use exchange_interval=1 for physically accurate results."
+          ],
+          "status": "complete",
+          "dt_s": 1.9065748695310057e-12,
+          "grid_shape_nodes": [
+            49,
+            17,
+            17
+          ],
+          "field_dtype": "float32",
+          "trace_dtype": "float32",
+          "probe_indices": [
+            [
+              12,
+              8,
+              8
+            ],
+            [
+              24,
+              8,
+              8
+            ],
+            [
+              26,
+              8,
+              8
+            ],
+            [
+              36,
+              8,
+              8
+            ]
+          ],
+          "source_index": [
+            10,
+            8,
+            8
+          ],
+          "x_padding_nodes": 1,
+          "seam_first_owned_x_mm": [
+            25.0
+          ],
+          "warmup_s": 0.2473695408552885,
+          "median_wall_s": 0.2609606250189245,
+          "repeat_max_abs_diff_from_repeat1_V_per_m": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "comparisons": {
+            "vs_single": [
+              {
+                "probe_x_mm": 12,
+                "single_peak_V_per_m": 0.5731515288352966,
+                "single_rms_V_per_m": 0.20796858129715837,
+                "max_abs_diff_V_per_m": 0.0001325467455899343,
+                "max_abs_diff_over_single_peak": 0.0002312595167621432,
+                "max_abs_diff_over_single_peak_dB": -72.71800772380098,
+                "rms_diff_V_per_m": 4.584025526707255e-05,
+                "rms_diff_over_single_rms": 0.0002204191372617634,
+                "threshold_V_per_m": 0.0005731515288352967,
+                "first_exceeds_step_index_0based": null,
+                "first_exceeds_completed_step_1based": null,
+                "first_exceeds_time_s": null,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 24,
+                "single_peak_V_per_m": 0.00042177445720881224,
+                "single_rms_V_per_m": 0.0001472934809499467,
+                "max_abs_diff_V_per_m": 0.0003441955996095203,
+                "max_abs_diff_over_single_peak": 0.8160655386466796,
+                "max_abs_diff_over_single_peak_dB": -1.7654992286082742,
+                "rms_diff_V_per_m": 8.66924529127034e-05,
+                "rms_diff_over_single_rms": 0.5885695168149583,
+                "threshold_V_per_m": 4.217744572088122e-07,
+                "first_exceeds_step_index_0based": 29,
+                "first_exceeds_completed_step_1based": 30,
+                "first_exceeds_time_s": 5.529067121639916e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 26,
+                "single_peak_V_per_m": 0.0003008637286256999,
+                "single_rms_V_per_m": 0.00012198171823651594,
+                "max_abs_diff_V_per_m": 0.00010198072777711786,
+                "max_abs_diff_over_single_peak": 0.3389598614726688,
+                "max_abs_diff_over_single_peak_dB": -9.397034529921122,
+                "rms_diff_V_per_m": 4.5029438756336186e-05,
+                "rms_diff_over_single_rms": 0.3691490774791887,
+                "threshold_V_per_m": 3.008637286256999e-07,
+                "first_exceeds_step_index_0based": 24,
+                "first_exceeds_completed_step_1based": 25,
+                "first_exceeds_time_s": 4.575779686874414e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 36,
+                "single_peak_V_per_m": 0.00017006462439894676,
+                "single_rms_V_per_m": 8.102150071878488e-05,
+                "max_abs_diff_V_per_m": 6.602112262044102e-05,
+                "max_abs_diff_over_single_peak": 0.3882119685606403,
+                "max_abs_diff_over_single_peak_dB": -8.218621589168661,
+                "rms_diff_V_per_m": 2.2622347451907118e-05,
+                "rms_diff_over_single_rms": 0.2792141252780092,
+                "threshold_V_per_m": 1.7006462439894677e-07,
+                "first_exceeds_step_index_0based": 43,
+                "first_exceeds_completed_step_1based": 44,
+                "first_exceeds_time_s": 8.198271938983325e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              }
+            ],
+            "vs_K1": [
+              {
+                "probe_x_mm": 12,
+                "single_peak_V_per_m": 0.5731515288352966,
+                "single_rms_V_per_m": 0.20796858129715837,
+                "max_abs_diff_V_per_m": 0.0001330161430814769,
+                "max_abs_diff_over_single_peak": 0.0002320784930152407,
+                "max_abs_diff_over_single_peak_dB": -72.68730208511526,
+                "rms_diff_V_per_m": 4.584658158303239e-05,
+                "rms_diff_over_single_rms": 0.00022044955683726074,
+                "threshold_V_per_m": 0.0005731515288352967,
+                "first_exceeds_step_index_0based": null,
+                "first_exceeds_completed_step_1based": null,
+                "first_exceeds_time_s": null,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 24,
+                "single_peak_V_per_m": 0.00042177445720881224,
+                "single_rms_V_per_m": 0.0001472934809499467,
+                "max_abs_diff_V_per_m": 0.00034422281169099733,
+                "max_abs_diff_over_single_peak": 0.8161300567345153,
+                "max_abs_diff_over_single_peak_dB": -1.7648125498885456,
+                "rms_diff_V_per_m": 8.669196722730808e-05,
+                "rms_diff_over_single_rms": 0.5885662194158325,
+                "threshold_V_per_m": 4.217744572088122e-07,
+                "first_exceeds_step_index_0based": 29,
+                "first_exceeds_completed_step_1based": 30,
+                "first_exceeds_time_s": 5.529067121639916e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 26,
+                "single_peak_V_per_m": 0.0003008637286256999,
+                "single_rms_V_per_m": 0.00012198171823651594,
+                "max_abs_diff_V_per_m": 0.00010198771269642748,
+                "max_abs_diff_over_single_peak": 0.338983077695314,
+                "max_abs_diff_over_single_peak_dB": -9.39643963163061,
+                "rms_diff_V_per_m": 4.502924376344605e-05,
+                "rms_diff_over_single_rms": 0.3691474789372682,
+                "threshold_V_per_m": 3.008637286256999e-07,
+                "first_exceeds_step_index_0based": 24,
+                "first_exceeds_completed_step_1based": 25,
+                "first_exceeds_time_s": 4.575779686874414e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 36,
+                "single_peak_V_per_m": 0.00017006462439894676,
+                "single_rms_V_per_m": 8.102150071878488e-05,
+                "max_abs_diff_V_per_m": 6.616883911192417e-05,
+                "max_abs_diff_over_single_peak": 0.38908055890978094,
+                "max_abs_diff_over_single_peak_dB": -8.199209378740846,
+                "rms_diff_V_per_m": 2.262412168301835e-05,
+                "rms_diff_over_single_rms": 0.2792360235531028,
+                "threshold_V_per_m": 1.7006462439894677e-07,
+                "first_exceeds_step_index_0based": 43,
+                "first_exceeds_completed_step_1based": 44,
+                "first_exceeds_time_s": 8.198271938983325e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              }
+            ]
+          },
+          "timing_ratio_to_single": 1.718153204227483,
+          "timing_ratio_to_K1": 0.8548572174945152
+        },
+        "M1_d4_K1": {
+          "case": "M1",
+          "device_count": 4,
+          "exchange_interval": 1,
+          "n_steps": 400,
+          "probe_x_mm": [
+            12,
+            24,
+            26,
+            36
+          ],
+          "timings_s": [
+            0.43242295924574137,
+            0.6722439588047564,
+            0.4492848329246044,
+            0.44604979176074266,
+            0.41811287496238947
+          ],
+          "warnings": [],
+          "status": "complete",
+          "dt_s": 1.9065748695310057e-12,
+          "grid_shape_nodes": [
+            49,
+            17,
+            17
+          ],
+          "field_dtype": "float32",
+          "trace_dtype": "float32",
+          "probe_indices": [
+            [
+              12,
+              8,
+              8
+            ],
+            [
+              24,
+              8,
+              8
+            ],
+            [
+              26,
+              8,
+              8
+            ],
+            [
+              36,
+              8,
+              8
+            ]
+          ],
+          "source_index": [
+            10,
+            8,
+            8
+          ],
+          "x_padding_nodes": 3,
+          "seam_first_owned_x_mm": [
+            13.000000000000002,
+            26.000000000000004,
+            39.0
+          ],
+          "warmup_s": 0.7713231253437698,
+          "median_wall_s": 0.44604979176074266,
+          "repeat_max_abs_diff_from_repeat1_V_per_m": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "comparisons": {
+            "vs_single": [
+              {
+                "probe_x_mm": 12,
+                "single_peak_V_per_m": 0.5731515288352966,
+                "single_rms_V_per_m": 0.20796858129715837,
+                "max_abs_diff_V_per_m": 6.131085683591664e-07,
+                "max_abs_diff_over_single_peak": 1.069714617363172e-06,
+                "max_abs_diff_over_single_peak_dB": -119.41464139275465,
+                "rms_diff_V_per_m": 1.6336803569336008e-07,
+                "rms_diff_over_single_rms": 7.855419057743618e-07,
+                "threshold_V_per_m": 0.0005731515288352967,
+                "first_exceeds_step_index_0based": null,
+                "first_exceeds_completed_step_1based": null,
+                "first_exceeds_time_s": null,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 24,
+                "single_peak_V_per_m": 0.00042177445720881224,
+                "single_rms_V_per_m": 0.0001472934809499467,
+                "max_abs_diff_V_per_m": 2.8826343623222783e-07,
+                "max_abs_diff_over_single_peak": 0.0006834539913580264,
+                "max_abs_diff_over_single_peak_dB": -63.30581431751536,
+                "rms_diff_V_per_m": 7.106015487147782e-08,
+                "rms_diff_over_single_rms": 0.00048243923908367336,
+                "threshold_V_per_m": 4.217744572088122e-07,
+                "first_exceeds_step_index_0based": null,
+                "first_exceeds_completed_step_1based": null,
+                "first_exceeds_time_s": null,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 26,
+                "single_peak_V_per_m": 0.0003008637286256999,
+                "single_rms_V_per_m": 0.00012198171823651594,
+                "max_abs_diff_V_per_m": 2.6034831535071135e-07,
+                "max_abs_diff_over_single_peak": 0.000865336331966446,
+                "max_abs_diff_over_single_peak_dB": -61.25630123273052,
+                "rms_diff_V_per_m": 7.322585274523034e-08,
+                "rms_diff_over_single_rms": 0.0006003018632943781,
+                "threshold_V_per_m": 3.008637286256999e-07,
+                "first_exceeds_step_index_0based": null,
+                "first_exceeds_completed_step_1based": null,
+                "first_exceeds_time_s": null,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 36,
+                "single_peak_V_per_m": 0.00017006462439894676,
+                "single_rms_V_per_m": 8.102150071878488e-05,
+                "max_abs_diff_V_per_m": 3.5301491152495146e-07,
+                "max_abs_diff_over_single_peak": 0.002075769212865987,
+                "max_abs_diff_over_single_peak_dB": -53.65641867302677,
+                "rms_diff_V_per_m": 8.862759186186504e-08,
+                "rms_diff_over_single_rms": 0.0010938774408718978,
+                "threshold_V_per_m": 1.7006462439894677e-07,
+                "first_exceeds_step_index_0based": 212,
+                "first_exceeds_completed_step_1based": 213,
+                "first_exceeds_time_s": 4.041938723405732e-10,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              }
+            ],
+            "vs_K1": [
+              {
+                "probe_x_mm": 12,
+                "single_peak_V_per_m": 0.5731515288352966,
+                "single_rms_V_per_m": 0.20796858129715837,
+                "max_abs_diff_V_per_m": 0.0,
+                "max_abs_diff_over_single_peak": 0.0,
+                "max_abs_diff_over_single_peak_dB": "-Infinity",
+                "rms_diff_V_per_m": 0.0,
+                "rms_diff_over_single_rms": 0.0,
+                "threshold_V_per_m": 0.0005731515288352967,
+                "first_exceeds_step_index_0based": null,
+                "first_exceeds_completed_step_1based": null,
+                "first_exceeds_time_s": null,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 24,
+                "single_peak_V_per_m": 0.00042177445720881224,
+                "single_rms_V_per_m": 0.0001472934809499467,
+                "max_abs_diff_V_per_m": 0.0,
+                "max_abs_diff_over_single_peak": 0.0,
+                "max_abs_diff_over_single_peak_dB": "-Infinity",
+                "rms_diff_V_per_m": 0.0,
+                "rms_diff_over_single_rms": 0.0,
+                "threshold_V_per_m": 4.217744572088122e-07,
+                "first_exceeds_step_index_0based": null,
+                "first_exceeds_completed_step_1based": null,
+                "first_exceeds_time_s": null,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 26,
+                "single_peak_V_per_m": 0.0003008637286256999,
+                "single_rms_V_per_m": 0.00012198171823651594,
+                "max_abs_diff_V_per_m": 0.0,
+                "max_abs_diff_over_single_peak": 0.0,
+                "max_abs_diff_over_single_peak_dB": "-Infinity",
+                "rms_diff_V_per_m": 0.0,
+                "rms_diff_over_single_rms": 0.0,
+                "threshold_V_per_m": 3.008637286256999e-07,
+                "first_exceeds_step_index_0based": null,
+                "first_exceeds_completed_step_1based": null,
+                "first_exceeds_time_s": null,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 36,
+                "single_peak_V_per_m": 0.00017006462439894676,
+                "single_rms_V_per_m": 8.102150071878488e-05,
+                "max_abs_diff_V_per_m": 0.0,
+                "max_abs_diff_over_single_peak": 0.0,
+                "max_abs_diff_over_single_peak_dB": "-Infinity",
+                "rms_diff_V_per_m": 0.0,
+                "rms_diff_over_single_rms": 0.0,
+                "threshold_V_per_m": 1.7006462439894677e-07,
+                "first_exceeds_step_index_0based": null,
+                "first_exceeds_completed_step_1based": null,
+                "first_exceeds_time_s": null,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              }
+            ]
+          },
+          "timing_ratio_to_single": 2.936772085455975,
+          "timing_ratio_to_K1": 1.0
+        },
+        "M1_d4_K2": {
+          "case": "M1",
+          "device_count": 4,
+          "exchange_interval": 2,
+          "n_steps": 400,
+          "probe_x_mm": [
+            12,
+            24,
+            26,
+            36
+          ],
+          "timings_s": [
+            0.3404219578951597,
+            0.3804980833083391,
+            0.4287936254404485,
+            0.3280334169976413,
+            0.3198098340071738
+          ],
+          "warnings": [
+            "exchange_interval=2: ghost cells are stale for 1 steps between exchanges, introducing O(dt*2) boundary error. Use exchange_interval=1 for physically accurate results."
+          ],
+          "status": "complete",
+          "dt_s": 1.9065748695310057e-12,
+          "grid_shape_nodes": [
+            49,
+            17,
+            17
+          ],
+          "field_dtype": "float32",
+          "trace_dtype": "float32",
+          "probe_indices": [
+            [
+              12,
+              8,
+              8
+            ],
+            [
+              24,
+              8,
+              8
+            ],
+            [
+              26,
+              8,
+              8
+            ],
+            [
+              36,
+              8,
+              8
+            ]
+          ],
+          "source_index": [
+            10,
+            8,
+            8
+          ],
+          "x_padding_nodes": 3,
+          "seam_first_owned_x_mm": [
+            13.000000000000002,
+            26.000000000000004,
+            39.0
+          ],
+          "warmup_s": 0.3312259167432785,
+          "median_wall_s": 0.3404219578951597,
+          "repeat_max_abs_diff_from_repeat1_V_per_m": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "comparisons": {
+            "vs_single": [
+              {
+                "probe_x_mm": 12,
+                "single_peak_V_per_m": 0.5731515288352966,
+                "single_rms_V_per_m": 0.20796858129715837,
+                "max_abs_diff_V_per_m": 0.004190564155578613,
+                "max_abs_diff_over_single_peak": 0.007311441991778814,
+                "max_abs_diff_over_single_peak_dB": -42.719939226060966,
+                "rms_diff_V_per_m": 0.001176470804578956,
+                "rms_diff_over_single_rms": 0.00565696413006704,
+                "threshold_V_per_m": 0.0005731515288352967,
+                "first_exceeds_step_index_0based": 66,
+                "first_exceeds_completed_step_1based": 67,
+                "first_exceeds_time_s": 1.2583394138904637e-10,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 24,
+                "single_peak_V_per_m": 0.00042177445720881224,
+                "single_rms_V_per_m": 0.0001472934809499467,
+                "max_abs_diff_V_per_m": 7.695305976085365e-05,
+                "max_abs_diff_over_single_peak": 0.18245073509218152,
+                "max_abs_diff_over_single_peak_dB": -14.777087650553938,
+                "rms_diff_V_per_m": 1.4747940304441364e-05,
+                "rms_diff_over_single_rms": 0.10012622560976077,
+                "threshold_V_per_m": 4.217744572088122e-07,
+                "first_exceeds_step_index_0based": 30,
+                "first_exceeds_completed_step_1based": 31,
+                "first_exceeds_time_s": 5.719724608593017e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 26,
+                "single_peak_V_per_m": 0.0003008637286256999,
+                "single_rms_V_per_m": 0.00012198171823651594,
+                "max_abs_diff_V_per_m": 8.39461135910824e-05,
+                "max_abs_diff_over_single_peak": 0.2790170618922247,
+                "max_abs_diff_over_single_peak_dB": -11.087384776170905,
+                "rms_diff_V_per_m": 2.629197978757499e-05,
+                "rms_diff_over_single_rms": 0.2155403298762874,
+                "threshold_V_per_m": 3.008637286256999e-07,
+                "first_exceeds_step_index_0based": 30,
+                "first_exceeds_completed_step_1based": 31,
+                "first_exceeds_time_s": 5.719724608593017e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 36,
+                "single_peak_V_per_m": 0.00017006462439894676,
+                "single_rms_V_per_m": 8.102150071878488e-05,
+                "max_abs_diff_V_per_m": 5.657572182826698e-05,
+                "max_abs_diff_over_single_peak": 0.3326719006273086,
+                "max_abs_diff_over_single_peak_dB": -9.559677611591082,
+                "rms_diff_V_per_m": 1.2678182526732677e-05,
+                "rms_diff_over_single_rms": 0.15647923593438492,
+                "threshold_V_per_m": 1.7006462439894677e-07,
+                "first_exceeds_step_index_0based": 48,
+                "first_exceeds_completed_step_1based": 49,
+                "first_exceeds_time_s": 9.151559373748827e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              }
+            ],
+            "vs_K1": [
+              {
+                "probe_x_mm": 12,
+                "single_peak_V_per_m": 0.5731515288352966,
+                "single_rms_V_per_m": 0.20796858129715837,
+                "max_abs_diff_V_per_m": 0.0041907429695129395,
+                "max_abs_diff_over_single_peak": 0.007311753975478289,
+                "max_abs_diff_over_single_peak_dB": -42.71956860174751,
+                "rms_diff_V_per_m": 0.0011765193298817886,
+                "rms_diff_over_single_rms": 0.0056571974600370285,
+                "threshold_V_per_m": 0.0005731515288352967,
+                "first_exceeds_step_index_0based": 66,
+                "first_exceeds_completed_step_1based": 67,
+                "first_exceeds_time_s": 1.2583394138904637e-10,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 24,
+                "single_peak_V_per_m": 0.00042177445720881224,
+                "single_rms_V_per_m": 0.0001472934809499467,
+                "max_abs_diff_V_per_m": 7.67704586905893e-05,
+                "max_abs_diff_over_single_peak": 0.1820177997468959,
+                "max_abs_diff_over_single_peak_dB": -14.797722794818892,
+                "rms_diff_V_per_m": 1.4750210536618317e-05,
+                "rms_diff_over_single_rms": 0.10014163859451958,
+                "threshold_V_per_m": 4.217744572088122e-07,
+                "first_exceeds_step_index_0based": 30,
+                "first_exceeds_completed_step_1based": 31,
+                "first_exceeds_time_s": 5.719724608593017e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 26,
+                "single_peak_V_per_m": 0.0003008637286256999,
+                "single_rms_V_per_m": 0.00012198171823651594,
+                "max_abs_diff_V_per_m": 8.394558972213417e-05,
+                "max_abs_diff_over_single_peak": 0.2790153206755263,
+                "max_abs_diff_over_single_peak_dB": -11.087438980968155,
+                "rms_diff_V_per_m": 2.629048830753617e-05,
+                "rms_diff_over_single_rms": 0.21552810279783352,
+                "threshold_V_per_m": 3.008637286256999e-07,
+                "first_exceeds_step_index_0based": 30,
+                "first_exceeds_completed_step_1based": 31,
+                "first_exceeds_time_s": 5.719724608593017e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 36,
+                "single_peak_V_per_m": 0.00017006462439894676,
+                "single_rms_V_per_m": 8.102150071878488e-05,
+                "max_abs_diff_V_per_m": 5.684213829226792e-05,
+                "max_abs_diff_over_single_peak": 0.3342384607802065,
+                "max_abs_diff_over_single_peak_dB": -9.518871547048068,
+                "rms_diff_V_per_m": 1.2684228427084952e-05,
+                "rms_diff_over_single_rms": 0.15655385687202047,
+                "threshold_V_per_m": 1.7006462439894677e-07,
+                "first_exceeds_step_index_0based": 48,
+                "first_exceeds_completed_step_1based": 49,
+                "first_exceeds_time_s": 9.151559373748827e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              }
+            ]
+          },
+          "timing_ratio_to_single": 2.241323102688561,
+          "timing_ratio_to_K1": 0.7631927291152266
+        },
+        "M1_d4_K4": {
+          "case": "M1",
+          "device_count": 4,
+          "exchange_interval": 4,
+          "n_steps": 400,
+          "probe_x_mm": [
+            12,
+            24,
+            26,
+            36
+          ],
+          "timings_s": [
+            0.3412881661206484,
+            0.28032979182899,
+            0.32211049972102046,
+            0.32454387471079826,
+            0.47187283355742693
+          ],
+          "warnings": [
+            "exchange_interval=4: ghost cells are stale for 3 steps between exchanges, introducing O(dt*4) boundary error. Use exchange_interval=1 for physically accurate results."
+          ],
+          "status": "complete",
+          "dt_s": 1.9065748695310057e-12,
+          "grid_shape_nodes": [
+            49,
+            17,
+            17
+          ],
+          "field_dtype": "float32",
+          "trace_dtype": "float32",
+          "probe_indices": [
+            [
+              12,
+              8,
+              8
+            ],
+            [
+              24,
+              8,
+              8
+            ],
+            [
+              26,
+              8,
+              8
+            ],
+            [
+              36,
+              8,
+              8
+            ]
+          ],
+          "source_index": [
+            10,
+            8,
+            8
+          ],
+          "x_padding_nodes": 3,
+          "seam_first_owned_x_mm": [
+            13.000000000000002,
+            26.000000000000004,
+            39.0
+          ],
+          "warmup_s": 0.2905953750014305,
+          "median_wall_s": 0.32454387471079826,
+          "repeat_max_abs_diff_from_repeat1_V_per_m": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "comparisons": {
+            "vs_single": [
+              {
+                "probe_x_mm": 12,
+                "single_peak_V_per_m": 0.5731515288352966,
+                "single_rms_V_per_m": 0.20796858129715837,
+                "max_abs_diff_V_per_m": 0.05166944861412048,
+                "max_abs_diff_over_single_peak": 0.09014971785754138,
+                "max_abs_diff_over_single_peak_dB": -20.900712563103273,
+                "rms_diff_V_per_m": 0.018351760866568242,
+                "rms_diff_over_single_rms": 0.08824294877670061,
+                "threshold_V_per_m": 0.0005731515288352967,
+                "first_exceeds_step_index_0based": 44,
+                "first_exceeds_completed_step_1based": 45,
+                "first_exceeds_time_s": 8.388929425936425e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 24,
+                "single_peak_V_per_m": 0.00042177445720881224,
+                "single_rms_V_per_m": 0.0001472934809499467,
+                "max_abs_diff_V_per_m": 0.009458087200982845,
+                "max_abs_diff_over_single_peak": 22.424513953675323,
+                "max_abs_diff_over_single_peak_dB": 27.014460771647567,
+                "rms_diff_V_per_m": 0.0017970150160486957,
+                "rms_diff_over_single_rms": 12.200234555250669,
+                "threshold_V_per_m": 4.217744572088122e-07,
+                "first_exceeds_step_index_0based": 23,
+                "first_exceeds_completed_step_1based": 24,
+                "first_exceeds_time_s": 4.3851221999213135e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 26,
+                "single_peak_V_per_m": 0.0003008637286256999,
+                "single_rms_V_per_m": 0.00012198171823651594,
+                "max_abs_diff_V_per_m": 0.0179036783229094,
+                "max_abs_diff_over_single_peak": 59.50759968538149,
+                "max_abs_diff_over_single_peak_dB": 35.491448655970565,
+                "rms_diff_V_per_m": 0.0030230477486355174,
+                "rms_diff_over_single_rms": 24.78279362136867,
+                "threshold_V_per_m": 3.008637286256999e-07,
+                "first_exceeds_step_index_0based": 26,
+                "first_exceeds_completed_step_1based": 27,
+                "first_exceeds_time_s": 4.957094660780615e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 36,
+                "single_peak_V_per_m": 0.00017006462439894676,
+                "single_rms_V_per_m": 8.102150071878488e-05,
+                "max_abs_diff_V_per_m": 0.014405576439457946,
+                "max_abs_diff_over_single_peak": 84.70648431660054,
+                "max_abs_diff_over_single_peak_dB": 38.55833314052886,
+                "rms_diff_V_per_m": 0.0026629526143485682,
+                "rms_diff_over_single_rms": 32.86723389130166,
+                "threshold_V_per_m": 1.7006462439894677e-07,
+                "first_exceeds_step_index_0based": 42,
+                "first_exceeds_completed_step_1based": 43,
+                "first_exceeds_time_s": 8.007614452030223e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              }
+            ],
+            "vs_K1": [
+              {
+                "probe_x_mm": 12,
+                "single_peak_V_per_m": 0.5731515288352966,
+                "single_rms_V_per_m": 0.20796858129715837,
+                "max_abs_diff_V_per_m": 0.05166974663734436,
+                "max_abs_diff_over_single_peak": 0.09015023783037383,
+                "max_abs_diff_over_single_peak_dB": -20.900662464071132,
+                "rms_diff_V_per_m": 0.018351834089520153,
+                "rms_diff_over_single_rms": 0.08824330086330645,
+                "threshold_V_per_m": 0.0005731515288352967,
+                "first_exceeds_step_index_0based": 44,
+                "first_exceeds_completed_step_1based": 45,
+                "first_exceeds_time_s": 8.388929425936425e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 24,
+                "single_peak_V_per_m": 0.00042177445720881224,
+                "single_rms_V_per_m": 0.0001472934809499467,
+                "max_abs_diff_V_per_m": 0.00945798944485432,
+                "max_abs_diff_over_single_peak": 22.424282180207644,
+                "max_abs_diff_over_single_peak_dB": 27.014370996271868,
+                "rms_diff_V_per_m": 0.0017970179455812606,
+                "rms_diff_over_single_rms": 12.200254444335684,
+                "threshold_V_per_m": 4.217744572088122e-07,
+                "first_exceeds_step_index_0based": 23,
+                "first_exceeds_completed_step_1based": 24,
+                "first_exceeds_time_s": 4.3851221999213135e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 26,
+                "single_peak_V_per_m": 0.0003008637286256999,
+                "single_rms_V_per_m": 0.00012198171823651594,
+                "max_abs_diff_V_per_m": 0.01790359763253946,
+                "max_abs_diff_over_single_peak": 59.50733148964281,
+                "max_abs_diff_over_single_peak_dB": 35.49140950930948,
+                "rms_diff_V_per_m": 0.003023040771890432,
+                "rms_diff_over_single_rms": 24.782736426362842,
+                "threshold_V_per_m": 3.008637286256999e-07,
+                "first_exceeds_step_index_0based": 26,
+                "first_exceeds_completed_step_1based": 27,
+                "first_exceeds_time_s": 4.957094660780615e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 36,
+                "single_peak_V_per_m": 0.00017006462439894676,
+                "single_rms_V_per_m": 8.102150071878488e-05,
+                "max_abs_diff_V_per_m": 0.014405842855921946,
+                "max_abs_diff_over_single_peak": 84.70805087675343,
+                "max_abs_diff_over_single_peak_dB": 38.55849377572565,
+                "rms_diff_V_per_m": 0.0026629702911915385,
+                "rms_diff_over_single_rms": 32.86745206601841,
+                "threshold_V_per_m": 1.7006462439894677e-07,
+                "first_exceeds_step_index_0based": 42,
+                "first_exceeds_completed_step_1based": 43,
+                "first_exceeds_time_s": 8.007614452030223e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              }
+            ]
+          },
+          "timing_ratio_to_single": 2.136782505814137,
+          "timing_ratio_to_K1": 0.7275956198290994
+        }
+      },
+      "dt_s": 1.9065748695310057e-12,
+      "record_length_s": 7.626299478124022e-10,
+      "last_sample_time_s": 7.607233729428713e-10
+    },
+    "M2": {
+      "n_steps": 800,
+      "probe_x_mm": [
+        12,
+        24,
+        26,
+        36
+      ],
+      "runs": {
+        "M2_single": {
+          "case": "M2",
+          "device_count": 1,
+          "exchange_interval": 1,
+          "n_steps": 800,
+          "probe_x_mm": [
+            12,
+            24,
+            26,
+            36
+          ],
+          "timings_s": [
+            0.14900708384811878,
+            0.18165220879018307,
+            0.1649707080796361,
+            0.174537125043571,
+            0.1568555417470634
+          ],
+          "warnings": [],
+          "status": "complete",
+          "dt_s": 1.9065748695310057e-12,
+          "grid_shape_nodes": [
+            49,
+            17,
+            17
+          ],
+          "field_dtype": "float32",
+          "trace_dtype": "float32",
+          "probe_indices": [
+            [
+              12,
+              8,
+              8
+            ],
+            [
+              24,
+              8,
+              8
+            ],
+            [
+              26,
+              8,
+              8
+            ],
+            [
+              36,
+              8,
+              8
+            ]
+          ],
+          "source_index": [
+            10,
+            8,
+            8
+          ],
+          "x_padding_nodes": 0,
+          "seam_first_owned_x_mm": [],
+          "warmup_s": 0.3622794160619378,
+          "median_wall_s": 0.1649707080796361,
+          "repeat_max_abs_diff_from_repeat1_V_per_m": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "M2_d2_K1": {
+          "case": "M2",
+          "device_count": 2,
+          "exchange_interval": 1,
+          "n_steps": 800,
+          "probe_x_mm": [
+            12,
+            24,
+            26,
+            36
+          ],
+          "timings_s": [
+            0.4201166667044163,
+            0.5413029999472201,
+            0.3957870416343212,
+            0.5910215419717133,
+            0.3851260831579566
+          ],
+          "warnings": [],
+          "status": "complete",
+          "dt_s": 1.9065748695310057e-12,
+          "grid_shape_nodes": [
+            49,
+            17,
+            17
+          ],
+          "field_dtype": "float32",
+          "trace_dtype": "float32",
+          "probe_indices": [
+            [
+              12,
+              8,
+              8
+            ],
+            [
+              24,
+              8,
+              8
+            ],
+            [
+              26,
+              8,
+              8
+            ],
+            [
+              36,
+              8,
+              8
+            ]
+          ],
+          "source_index": [
+            10,
+            8,
+            8
+          ],
+          "x_padding_nodes": 1,
+          "seam_first_owned_x_mm": [
+            25.0
+          ],
+          "warmup_s": 0.418783291708678,
+          "median_wall_s": 0.4201166667044163,
+          "repeat_max_abs_diff_from_repeat1_V_per_m": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "comparisons": {
+            "vs_single": [
+              {
+                "probe_x_mm": 12,
+                "single_peak_V_per_m": 0.5731515288352966,
+                "single_rms_V_per_m": 0.14705601612513336,
+                "max_abs_diff_V_per_m": 6.131085683591664e-07,
+                "max_abs_diff_over_single_peak": 1.069714617363172e-06,
+                "max_abs_diff_over_single_peak_dB": -119.41464139275465,
+                "rms_diff_V_per_m": 1.7531662735388778e-07,
+                "rms_diff_over_single_rms": 1.1921758250591177e-06,
+                "threshold_V_per_m": 0.0005731515288352967,
+                "first_exceeds_step_index_0based": null,
+                "first_exceeds_completed_step_1based": null,
+                "first_exceeds_time_s": null,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 24,
+                "single_peak_V_per_m": 0.00042177445720881224,
+                "single_rms_V_per_m": 0.00013286727565254877,
+                "max_abs_diff_V_per_m": 3.239401848986745e-07,
+                "max_abs_diff_over_single_peak": 0.0007680412584546297,
+                "max_abs_diff_over_single_peak_dB": -62.29230898900801,
+                "rms_diff_V_per_m": 8.12643079594391e-08,
+                "rms_diff_over_single_rms": 0.0006116201868392883,
+                "threshold_V_per_m": 4.217744572088122e-07,
+                "first_exceeds_step_index_0based": null,
+                "first_exceeds_completed_step_1based": null,
+                "first_exceeds_time_s": null,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 26,
+                "single_peak_V_per_m": 0.0003008637286256999,
+                "single_rms_V_per_m": 0.00011912050092435049,
+                "max_abs_diff_V_per_m": 4.134926712140441e-07,
+                "max_abs_diff_over_single_peak": 0.0013743520134607658,
+                "max_abs_diff_over_single_peak_dB": -57.23804033936344,
+                "rms_diff_V_per_m": 1.0162208723223643e-07,
+                "rms_diff_over_single_rms": 0.0008531032563133132,
+                "threshold_V_per_m": 3.008637286256999e-07,
+                "first_exceeds_step_index_0based": 512,
+                "first_exceeds_completed_step_1based": 513,
+                "first_exceeds_time_s": 9.76166333199875e-10,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 36,
+                "single_peak_V_per_m": 0.00017517118249088526,
+                "single_rms_V_per_m": 8.558195237084678e-05,
+                "max_abs_diff_V_per_m": 3.5301491152495146e-07,
+                "max_abs_diff_over_single_peak": 0.0020152567705782314,
+                "max_abs_diff_over_single_peak_dB": -53.913392221814746,
+                "rms_diff_V_per_m": 9.566089748034967e-08,
+                "rms_diff_over_single_rms": 0.0011177695160052956,
+                "threshold_V_per_m": 1.7517118249088526e-07,
+                "first_exceeds_step_index_0based": 212,
+                "first_exceeds_completed_step_1based": 213,
+                "first_exceeds_time_s": 4.041938723405732e-10,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              }
+            ],
+            "vs_K1": [
+              {
+                "probe_x_mm": 12,
+                "single_peak_V_per_m": 0.5731515288352966,
+                "single_rms_V_per_m": 0.14705601612513336,
+                "max_abs_diff_V_per_m": 0.0,
+                "max_abs_diff_over_single_peak": 0.0,
+                "max_abs_diff_over_single_peak_dB": "-Infinity",
+                "rms_diff_V_per_m": 0.0,
+                "rms_diff_over_single_rms": 0.0,
+                "threshold_V_per_m": 0.0005731515288352967,
+                "first_exceeds_step_index_0based": null,
+                "first_exceeds_completed_step_1based": null,
+                "first_exceeds_time_s": null,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 24,
+                "single_peak_V_per_m": 0.00042177445720881224,
+                "single_rms_V_per_m": 0.00013286727565254877,
+                "max_abs_diff_V_per_m": 0.0,
+                "max_abs_diff_over_single_peak": 0.0,
+                "max_abs_diff_over_single_peak_dB": "-Infinity",
+                "rms_diff_V_per_m": 0.0,
+                "rms_diff_over_single_rms": 0.0,
+                "threshold_V_per_m": 4.217744572088122e-07,
+                "first_exceeds_step_index_0based": null,
+                "first_exceeds_completed_step_1based": null,
+                "first_exceeds_time_s": null,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 26,
+                "single_peak_V_per_m": 0.0003008637286256999,
+                "single_rms_V_per_m": 0.00011912050092435049,
+                "max_abs_diff_V_per_m": 0.0,
+                "max_abs_diff_over_single_peak": 0.0,
+                "max_abs_diff_over_single_peak_dB": "-Infinity",
+                "rms_diff_V_per_m": 0.0,
+                "rms_diff_over_single_rms": 0.0,
+                "threshold_V_per_m": 3.008637286256999e-07,
+                "first_exceeds_step_index_0based": null,
+                "first_exceeds_completed_step_1based": null,
+                "first_exceeds_time_s": null,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 36,
+                "single_peak_V_per_m": 0.00017517118249088526,
+                "single_rms_V_per_m": 8.558195237084678e-05,
+                "max_abs_diff_V_per_m": 0.0,
+                "max_abs_diff_over_single_peak": 0.0,
+                "max_abs_diff_over_single_peak_dB": "-Infinity",
+                "rms_diff_V_per_m": 0.0,
+                "rms_diff_over_single_rms": 0.0,
+                "threshold_V_per_m": 1.7517118249088526e-07,
+                "first_exceeds_step_index_0based": null,
+                "first_exceeds_completed_step_1based": null,
+                "first_exceeds_time_s": null,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              }
+            ]
+          },
+          "timing_ratio_to_single": 2.546613708547665,
+          "timing_ratio_to_K1": 1.0
+        },
+        "M2_d2_K2": {
+          "case": "M2",
+          "device_count": 2,
+          "exchange_interval": 2,
+          "n_steps": 800,
+          "probe_x_mm": [
+            12,
+            24,
+            26,
+            36
+          ],
+          "timings_s": [
+            0.3847645418718457,
+            0.4732927083969116,
+            0.36675095930695534,
+            0.30513349967077374,
+            0.3014775002375245
+          ],
+          "warnings": [
+            "exchange_interval=2: ghost cells are stale for 1 steps between exchanges, introducing O(dt*2) boundary error. Use exchange_interval=1 for physically accurate results."
+          ],
+          "status": "complete",
+          "dt_s": 1.9065748695310057e-12,
+          "grid_shape_nodes": [
+            49,
+            17,
+            17
+          ],
+          "field_dtype": "float32",
+          "trace_dtype": "float32",
+          "probe_indices": [
+            [
+              12,
+              8,
+              8
+            ],
+            [
+              24,
+              8,
+              8
+            ],
+            [
+              26,
+              8,
+              8
+            ],
+            [
+              36,
+              8,
+              8
+            ]
+          ],
+          "source_index": [
+            10,
+            8,
+            8
+          ],
+          "x_padding_nodes": 1,
+          "seam_first_owned_x_mm": [
+            25.0
+          ],
+          "warmup_s": 0.30740466713905334,
+          "median_wall_s": 0.36675095930695534,
+          "repeat_max_abs_diff_from_repeat1_V_per_m": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "comparisons": {
+            "vs_single": [
+              {
+                "probe_x_mm": 12,
+                "single_peak_V_per_m": 0.5731515288352966,
+                "single_rms_V_per_m": 0.14705601612513336,
+                "max_abs_diff_V_per_m": 5.523306754184887e-05,
+                "max_abs_diff_over_single_peak": 9.6367303868295e-05,
+                "max_abs_diff_over_single_peak_dB": -80.32140582779377,
+                "rms_diff_V_per_m": 1.1988288484228677e-05,
+                "rms_diff_over_single_rms": 8.152191797462788e-05,
+                "threshold_V_per_m": 0.0005731515288352967,
+                "first_exceeds_step_index_0based": null,
+                "first_exceeds_completed_step_1based": null,
+                "first_exceeds_time_s": null,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 24,
+                "single_peak_V_per_m": 0.00042177445720881224,
+                "single_rms_V_per_m": 0.00013286727565254877,
+                "max_abs_diff_V_per_m": 8.252080442616716e-05,
+                "max_abs_diff_over_single_peak": 0.19565149813070054,
+                "max_abs_diff_over_single_peak_dB": -14.170336445947807,
+                "rms_diff_V_per_m": 1.949878394771199e-05,
+                "rms_diff_over_single_rms": 0.14675384779245262,
+                "threshold_V_per_m": 4.217744572088122e-07,
+                "first_exceeds_step_index_0based": 33,
+                "first_exceeds_completed_step_1based": 34,
+                "first_exceeds_time_s": 6.291697069452319e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 26,
+                "single_peak_V_per_m": 0.0003008637286256999,
+                "single_rms_V_per_m": 0.00011912050092435049,
+                "max_abs_diff_V_per_m": 8.162877929862589e-05,
+                "max_abs_diff_over_single_peak": 0.2713147898269221,
+                "max_abs_diff_over_single_peak_dB": -11.33053062936452,
+                "rms_diff_V_per_m": 1.8741923483715272e-05,
+                "rms_diff_over_single_rms": 0.15733583504335372,
+                "threshold_V_per_m": 3.008637286256999e-07,
+                "first_exceeds_step_index_0based": 32,
+                "first_exceeds_completed_step_1based": 33,
+                "first_exceeds_time_s": 6.101039582499218e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 36,
+                "single_peak_V_per_m": 0.00017517118249088526,
+                "single_rms_V_per_m": 8.558195237084678e-05,
+                "max_abs_diff_V_per_m": 6.724627746734768e-05,
+                "max_abs_diff_over_single_peak": 0.38388892802528596,
+                "max_abs_diff_over_single_peak_dB": -8.315888269080077,
+                "rms_diff_V_per_m": 1.2176044242902138e-05,
+                "rms_diff_over_single_rms": 0.1422735039993066,
+                "threshold_V_per_m": 1.7517118249088526e-07,
+                "first_exceeds_step_index_0based": 50,
+                "first_exceeds_completed_step_1based": 51,
+                "first_exceeds_time_s": 9.532874347655028e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              }
+            ],
+            "vs_K1": [
+              {
+                "probe_x_mm": 12,
+                "single_peak_V_per_m": 0.5731515288352966,
+                "single_rms_V_per_m": 0.14705601612513336,
+                "max_abs_diff_V_per_m": 5.50307086086832e-05,
+                "max_abs_diff_over_single_peak": 9.601424028391114e-05,
+                "max_abs_diff_over_single_peak_dB": -80.35328700210914,
+                "rms_diff_V_per_m": 1.198885065759451e-05,
+                "rms_diff_over_single_rms": 8.152574082649512e-05,
+                "threshold_V_per_m": 0.0005731515288352967,
+                "first_exceeds_step_index_0based": null,
+                "first_exceeds_completed_step_1based": null,
+                "first_exceeds_time_s": null,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 24,
+                "single_peak_V_per_m": 0.00042177445720881224,
+                "single_rms_V_per_m": 0.00013286727565254877,
+                "max_abs_diff_V_per_m": 8.266061922768131e-05,
+                "max_abs_diff_over_single_peak": 0.1959829899959012,
+                "max_abs_diff_over_single_peak_dB": -14.155632416900495,
+                "rms_diff_V_per_m": 1.9500884235603042e-05,
+                "rms_diff_over_single_rms": 0.1467696552053821,
+                "threshold_V_per_m": 4.217744572088122e-07,
+                "first_exceeds_step_index_0based": 33,
+                "first_exceeds_completed_step_1based": 34,
+                "first_exceeds_time_s": 6.291697069452319e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 26,
+                "single_peak_V_per_m": 0.0003008637286256999,
+                "single_rms_V_per_m": 0.00011912050092435049,
+                "max_abs_diff_V_per_m": 8.15944658825174e-05,
+                "max_abs_diff_over_single_peak": 0.2712007401331779,
+                "max_abs_diff_over_single_peak_dB": -11.334182591430134,
+                "rms_diff_V_per_m": 1.8735992615168818e-05,
+                "rms_diff_over_single_rms": 0.15728604622866244,
+                "threshold_V_per_m": 3.008637286256999e-07,
+                "first_exceeds_step_index_0based": 32,
+                "first_exceeds_completed_step_1based": 33,
+                "first_exceeds_time_s": 6.101039582499218e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 36,
+                "single_peak_V_per_m": 0.00017517118249088526,
+                "single_rms_V_per_m": 8.558195237084678e-05,
+                "max_abs_diff_V_per_m": 6.729336746502668e-05,
+                "max_abs_diff_over_single_peak": 0.38415775076775643,
+                "max_abs_diff_over_single_peak_dB": -8.309808001218444,
+                "rms_diff_V_per_m": 1.2173888298929128e-05,
+                "rms_diff_over_single_rms": 0.1422483124266294,
+                "threshold_V_per_m": 1.7517118249088526e-07,
+                "first_exceeds_step_index_0based": 50,
+                "first_exceeds_completed_step_1based": 51,
+                "first_exceeds_time_s": 9.532874347655028e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              }
+            ]
+          },
+          "timing_ratio_to_single": 2.223127751442481,
+          "timing_ratio_to_K1": 0.872974076900863
+        },
+        "M2_d2_K4": {
+          "case": "M2",
+          "device_count": 2,
+          "exchange_interval": 4,
+          "n_steps": 800,
+          "probe_x_mm": [
+            12,
+            24,
+            26,
+            36
+          ],
+          "timings_s": [
+            0.3478401666507125,
+            0.2658091667108238,
+            0.38738883286714554,
+            0.4810211667791009,
+            0.27665066672489047
+          ],
+          "warnings": [
+            "exchange_interval=4: ghost cells are stale for 3 steps between exchanges, introducing O(dt*4) boundary error. Use exchange_interval=1 for physically accurate results."
+          ],
+          "status": "complete",
+          "dt_s": 1.9065748695310057e-12,
+          "grid_shape_nodes": [
+            49,
+            17,
+            17
+          ],
+          "field_dtype": "float32",
+          "trace_dtype": "float32",
+          "probe_indices": [
+            [
+              12,
+              8,
+              8
+            ],
+            [
+              24,
+              8,
+              8
+            ],
+            [
+              26,
+              8,
+              8
+            ],
+            [
+              36,
+              8,
+              8
+            ]
+          ],
+          "source_index": [
+            10,
+            8,
+            8
+          ],
+          "x_padding_nodes": 1,
+          "seam_first_owned_x_mm": [
+            25.0
+          ],
+          "warmup_s": 0.3918900000862777,
+          "median_wall_s": 0.3478401666507125,
+          "repeat_max_abs_diff_from_repeat1_V_per_m": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "comparisons": {
+            "vs_single": [
+              {
+                "probe_x_mm": 12,
+                "single_peak_V_per_m": 0.5731515288352966,
+                "single_rms_V_per_m": 0.14705601612513336,
+                "max_abs_diff_V_per_m": 0.0007388345911749639,
+                "max_abs_diff_over_single_peak": 0.0012890737510137195,
+                "max_abs_diff_over_single_peak_dB": -57.79444469805174,
+                "rms_diff_V_per_m": 0.00013671212974230052,
+                "rms_diff_over_single_rms": 0.0009296602297859682,
+                "threshold_V_per_m": 0.0005731515288352967,
+                "first_exceeds_step_index_0based": 729,
+                "first_exceeds_completed_step_1based": 730,
+                "first_exceeds_time_s": 1.3898930798881033e-09,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 24,
+                "single_peak_V_per_m": 0.00042177445720881224,
+                "single_rms_V_per_m": 0.00013286727565254877,
+                "max_abs_diff_V_per_m": 0.001129770025727339,
+                "max_abs_diff_over_single_peak": 2.6786117708593533,
+                "max_abs_diff_over_single_peak_dB": 8.558195459237798,
+                "rms_diff_V_per_m": 0.00021951640092991132,
+                "rms_diff_over_single_rms": 1.6521479788894908,
+                "threshold_V_per_m": 4.217744572088122e-07,
+                "first_exceeds_step_index_0based": 29,
+                "first_exceeds_completed_step_1based": 30,
+                "first_exceeds_time_s": 5.529067121639916e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 26,
+                "single_peak_V_per_m": 0.0003008637286256999,
+                "single_rms_V_per_m": 0.00011912050092435049,
+                "max_abs_diff_V_per_m": 0.001000278803985566,
+                "max_abs_diff_over_single_peak": 3.3246905785376275,
+                "max_abs_diff_over_single_peak_dB": 10.43502465421573,
+                "rms_diff_V_per_m": 0.0001813240132160751,
+                "rms_diff_over_single_rms": 1.522189814591428,
+                "threshold_V_per_m": 3.008637286256999e-07,
+                "first_exceeds_step_index_0based": 24,
+                "first_exceeds_completed_step_1based": 25,
+                "first_exceeds_time_s": 4.575779686874414e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 36,
+                "single_peak_V_per_m": 0.00017517118249088526,
+                "single_rms_V_per_m": 8.558195237084678e-05,
+                "max_abs_diff_V_per_m": 0.0005729816475650296,
+                "max_abs_diff_over_single_peak": 3.2709812163016236,
+                "max_abs_diff_over_single_peak_dB": 10.293561003685953,
+                "rms_diff_V_per_m": 0.00012204306546862538,
+                "rms_diff_over_single_rms": 1.4260374072769921,
+                "threshold_V_per_m": 1.7517118249088526e-07,
+                "first_exceeds_step_index_0based": 43,
+                "first_exceeds_completed_step_1based": 44,
+                "first_exceeds_time_s": 8.198271938983325e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              }
+            ],
+            "vs_K1": [
+              {
+                "probe_x_mm": 12,
+                "single_peak_V_per_m": 0.5731515288352966,
+                "single_rms_V_per_m": 0.14705601612513336,
+                "max_abs_diff_V_per_m": 0.0007389001584670041,
+                "max_abs_diff_over_single_peak": 0.0012891881488452555,
+                "max_abs_diff_over_single_peak_dB": -57.79367390983953,
+                "rms_diff_V_per_m": 0.00013671004295999687,
+                "rms_diff_over_single_rms": 0.0009296460393954038,
+                "threshold_V_per_m": 0.0005731515288352967,
+                "first_exceeds_step_index_0based": 729,
+                "first_exceeds_completed_step_1based": 730,
+                "first_exceeds_time_s": 1.3898930798881033e-09,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 24,
+                "single_peak_V_per_m": 0.00042177445720881224,
+                "single_rms_V_per_m": 0.00013286727565254877,
+                "max_abs_diff_V_per_m": 0.0011298388490104116,
+                "max_abs_diff_over_single_peak": 2.6787749464189354,
+                "max_abs_diff_over_single_peak_dB": 8.558724569782694,
+                "rms_diff_V_per_m": 0.00021951539910916218,
+                "rms_diff_over_single_rms": 1.6521404388782712,
+                "threshold_V_per_m": 4.217744572088122e-07,
+                "first_exceeds_step_index_0based": 29,
+                "first_exceeds_completed_step_1based": 30,
+                "first_exceeds_time_s": 5.529067121639916e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 26,
+                "single_peak_V_per_m": 0.0003008637286256999,
+                "single_rms_V_per_m": 0.00011912050092435049,
+                "max_abs_diff_V_per_m": 0.001000246440526098,
+                "max_abs_diff_over_single_peak": 3.3245830100393716,
+                "max_abs_diff_over_single_peak_dB": 10.434743622583621,
+                "rms_diff_V_per_m": 0.00018132322418046198,
+                "rms_diff_over_single_rms": 1.5221831907474466,
+                "threshold_V_per_m": 3.008637286256999e-07,
+                "first_exceeds_step_index_0based": 24,
+                "first_exceeds_completed_step_1based": 25,
+                "first_exceeds_time_s": 4.575779686874414e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              },
+              {
+                "probe_x_mm": 36,
+                "single_peak_V_per_m": 0.00017517118249088526,
+                "single_rms_V_per_m": 8.558195237084678e-05,
+                "max_abs_diff_V_per_m": 0.0005731161218136549,
+                "max_abs_diff_over_single_peak": 3.271748889652418,
+                "max_abs_diff_over_single_peak_dB": 10.295599273926573,
+                "rms_diff_V_per_m": 0.00012204607134583515,
+                "rms_diff_over_single_rms": 1.4260725300701338,
+                "threshold_V_per_m": 1.7517118249088526e-07,
+                "first_exceeds_step_index_0based": 43,
+                "first_exceeds_completed_step_1based": 44,
+                "first_exceeds_time_s": 8.198271938983325e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              }
+            ]
+          },
+          "timing_ratio_to_single": 2.108496536747603,
+          "timing_ratio_to_K1": 0.8279608837690894
+        }
+      },
+      "dt_s": 1.9065748695310057e-12,
+      "record_length_s": 1.5252598956248045e-09,
+      "last_sample_time_s": 1.5233533207552736e-09
+    },
+    "M3": {
+      "n_steps": 2000,
+      "probe_x_mm": [
+        36
+      ],
+      "runs": {
+        "M3_single": {
+          "case": "M3",
+          "device_count": 1,
+          "exchange_interval": 1,
+          "n_steps": 2000,
+          "probe_x_mm": [
+            36
+          ],
+          "timings_s": [
+            0.23920108284801245,
+            0.2124479589983821,
+            0.20675345789641142,
+            0.26545070903375745,
+            0.21145104197785258
+          ],
+          "warnings": [],
+          "status": "complete",
+          "dt_s": 1.9065748695310057e-12,
+          "grid_shape_nodes": [
+            49,
+            17,
+            17
+          ],
+          "field_dtype": "float32",
+          "trace_dtype": "float32",
+          "probe_indices": [
+            [
+              36,
+              8,
+              8
+            ]
+          ],
+          "source_index": [
+            10,
+            8,
+            8
+          ],
+          "x_padding_nodes": 0,
+          "seam_first_owned_x_mm": [],
+          "warmup_s": 0.41078475024551153,
+          "median_wall_s": 0.2124479589983821,
+          "repeat_max_abs_diff_from_repeat1_V_per_m": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "spectrum": {
+            "status": "ok",
+            "lowest_three_peaks": [
+              {
+                "fft_bin": 38,
+                "bin_offset": -0.15826588028326816,
+                "frequency_Hz": 9924009469.668856,
+                "magnitude_V_per_m": 0.09158039616377425,
+                "bin_magnitude_V_per_m": 0.09032002745455253,
+                "prominence_V_per_m": 0.0902872711670492,
+                "nearest_analytic_modes": [
+                  "TE(1,0,1)",
+                  "TM(1,1,0)"
+                ],
+                "nearest_analytic_frequency_Hz": 9875281173.128824,
+                "offset_from_nearest_analytic_percent": 0.49343705445696884
+              },
+              {
+                "fft_bin": 43,
+                "bin_offset": -0.0537603663750189,
+                "frequency_Hz": 11262668023.152227,
+                "magnitude_V_per_m": 0.04482817199796531,
+                "bin_magnitude_V_per_m": 0.044715893800592446,
+                "prominence_V_per_m": 0.03468561007324904,
+                "nearest_analytic_modes": [
+                  "TE(2,0,1)",
+                  "TM(2,1,0)"
+                ],
+                "nearest_analytic_frequency_Hz": 11259552909.545671,
+                "offset_from_nearest_analytic_percent": 0.027666405865156563
+              },
+              {
+                "fft_bin": 51,
+                "bin_offset": 0.17139383436810118,
+                "frequency_Hz": 13419717906.739126,
+                "magnitude_V_per_m": 0.001268629775667725,
+                "bin_magnitude_V_per_m": 0.001247470568833489,
+                "prominence_V_per_m": 0.000997487206885525,
+                "nearest_analytic_modes": [
+                  "TE(0,1,1)",
+                  "TE(3,0,1)",
+                  "TM(3,1,0)"
+                ],
+                "nearest_analytic_frequency_Hz": 13249080000.023952,
+                "offset_from_nearest_analytic_percent": 1.2879226838004243
+              }
+            ],
+            "all_local_maxima_in_band": [
+              {
+                "fft_bin": 38,
+                "bin_offset": -0.15826588028326816,
+                "frequency_Hz": 9924009469.668856,
+                "magnitude_V_per_m": 0.09158039616377425,
+                "bin_magnitude_V_per_m": 0.09032002745455253,
+                "prominence_V_per_m": 0.0902872711670492,
+                "nearest_analytic_modes": [
+                  "TE(1,0,1)",
+                  "TM(1,1,0)"
+                ],
+                "nearest_analytic_frequency_Hz": 9875281173.128824,
+                "offset_from_nearest_analytic_percent": 0.49343705445696884
+              },
+              {
+                "fft_bin": 43,
+                "bin_offset": -0.0537603663750189,
+                "frequency_Hz": 11262668023.152227,
+                "magnitude_V_per_m": 0.04482817199796531,
+                "bin_magnitude_V_per_m": 0.044715893800592446,
+                "prominence_V_per_m": 0.03468561007324904,
+                "nearest_analytic_modes": [
+                  "TE(2,0,1)",
+                  "TM(2,1,0)"
+                ],
+                "nearest_analytic_frequency_Hz": 11259552909.545671,
+                "offset_from_nearest_analytic_percent": 0.027666405865156563
+              },
+              {
+                "fft_bin": 51,
+                "bin_offset": 0.17139383436810118,
+                "frequency_Hz": 13419717906.739126,
+                "magnitude_V_per_m": 0.001268629775667725,
+                "bin_magnitude_V_per_m": 0.001247470568833489,
+                "prominence_V_per_m": 0.000997487206885525,
+                "nearest_analytic_modes": [
+                  "TE(0,1,1)",
+                  "TE(3,0,1)",
+                  "TM(3,1,0)"
+                ],
+                "nearest_analytic_frequency_Hz": 13249080000.023952,
+                "offset_from_nearest_analytic_percent": 1.2879226838004243
+              }
+            ],
+            "fft_bin_spacing_Hz": 262250388.3747266
+          }
+        },
+        "M3_d2_K1": {
+          "case": "M3",
+          "device_count": 2,
+          "exchange_interval": 1,
+          "n_steps": 2000,
+          "probe_x_mm": [
+            36
+          ],
+          "timings_s": [
+            0.8124318341724575,
+            0.944011667277664,
+            0.8889751662500203,
+            0.7405283753760159,
+            0.5951998331584036
+          ],
+          "warnings": [],
+          "status": "complete",
+          "dt_s": 1.9065748695310057e-12,
+          "grid_shape_nodes": [
+            49,
+            17,
+            17
+          ],
+          "field_dtype": "float32",
+          "trace_dtype": "float32",
+          "probe_indices": [
+            [
+              36,
+              8,
+              8
+            ]
+          ],
+          "source_index": [
+            10,
+            8,
+            8
+          ],
+          "x_padding_nodes": 1,
+          "seam_first_owned_x_mm": [
+            25.0
+          ],
+          "warmup_s": 0.8571963747963309,
+          "median_wall_s": 0.8124318341724575,
+          "repeat_max_abs_diff_from_repeat1_V_per_m": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "comparisons": {
+            "vs_single": [
+              {
+                "probe_x_mm": 36,
+                "single_peak_V_per_m": 0.00017517118249088526,
+                "single_rms_V_per_m": 8.739497553609118e-05,
+                "max_abs_diff_V_per_m": 4.408830136526376e-07,
+                "max_abs_diff_over_single_peak": 0.0025168695408879726,
+                "max_abs_diff_over_single_peak_dB": -51.98278590071996,
+                "rms_diff_V_per_m": 1.0481322871128495e-07,
+                "rms_diff_over_single_rms": 0.0011993049722635442,
+                "threshold_V_per_m": 1.7517118249088526e-07,
+                "first_exceeds_step_index_0based": 212,
+                "first_exceeds_completed_step_1based": 213,
+                "first_exceeds_time_s": 4.041938723405732e-10,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              }
+            ],
+            "vs_K1": [
+              {
+                "probe_x_mm": 36,
+                "single_peak_V_per_m": 0.00017517118249088526,
+                "single_rms_V_per_m": 8.739497553609118e-05,
+                "max_abs_diff_V_per_m": 0.0,
+                "max_abs_diff_over_single_peak": 0.0,
+                "max_abs_diff_over_single_peak_dB": "-Infinity",
+                "rms_diff_V_per_m": 0.0,
+                "rms_diff_over_single_rms": 0.0,
+                "threshold_V_per_m": 1.7517118249088526e-07,
+                "first_exceeds_step_index_0based": null,
+                "first_exceeds_completed_step_1based": null,
+                "first_exceeds_time_s": null,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              }
+            ]
+          },
+          "timing_ratio_to_single": 3.824145160079625,
+          "timing_ratio_to_K1": 1.0,
+          "spectrum": {
+            "status": "ok",
+            "lowest_three_peaks": [
+              {
+                "fft_bin": 38,
+                "bin_offset": -0.15826572055298443,
+                "frequency_Hz": 9924009511.558186,
+                "magnitude_V_per_m": 0.09158046360480022,
+                "bin_magnitude_V_per_m": 0.09032009636671215,
+                "prominence_V_per_m": 0.09028743172152522,
+                "nearest_analytic_modes": [
+                  "TE(1,0,1)",
+                  "TM(1,1,0)"
+                ],
+                "nearest_analytic_frequency_Hz": 9875281173.128824,
+                "offset_from_nearest_analytic_percent": 0.493437478640657
+              },
+              {
+                "fft_bin": 43,
+                "bin_offset": -0.05376009109229337,
+                "frequency_Hz": 11262668095.34523,
+                "magnitude_V_per_m": 0.0448285106042598,
+                "bin_magnitude_V_per_m": 0.044716232665600396,
+                "prominence_V_per_m": 0.034685923355928655,
+                "nearest_analytic_modes": [
+                  "TE(2,0,1)",
+                  "TM(2,1,0)"
+                ],
+                "nearest_analytic_frequency_Hz": 11259552909.545671,
+                "offset_from_nearest_analytic_percent": 0.027667047036272763
+              },
+              {
+                "fft_bin": 51,
+                "bin_offset": 0.17128481169630422,
+                "frequency_Hz": 13419689315.501104,
+                "magnitude_V_per_m": 0.0012689474501188034,
+                "bin_magnitude_V_per_m": 0.0012478114630849356,
+                "prominence_V_per_m": 0.0009979348752698293,
+                "nearest_analytic_modes": [
+                  "TE(0,1,1)",
+                  "TE(3,0,1)",
+                  "TM(3,1,0)"
+                ],
+                "nearest_analytic_frequency_Hz": 13249080000.023952,
+                "offset_from_nearest_analytic_percent": 1.2877068858882623
+              }
+            ],
+            "all_local_maxima_in_band": [
+              {
+                "fft_bin": 38,
+                "bin_offset": -0.15826572055298443,
+                "frequency_Hz": 9924009511.558186,
+                "magnitude_V_per_m": 0.09158046360480022,
+                "bin_magnitude_V_per_m": 0.09032009636671215,
+                "prominence_V_per_m": 0.09028743172152522,
+                "nearest_analytic_modes": [
+                  "TE(1,0,1)",
+                  "TM(1,1,0)"
+                ],
+                "nearest_analytic_frequency_Hz": 9875281173.128824,
+                "offset_from_nearest_analytic_percent": 0.493437478640657
+              },
+              {
+                "fft_bin": 43,
+                "bin_offset": -0.05376009109229337,
+                "frequency_Hz": 11262668095.34523,
+                "magnitude_V_per_m": 0.0448285106042598,
+                "bin_magnitude_V_per_m": 0.044716232665600396,
+                "prominence_V_per_m": 0.034685923355928655,
+                "nearest_analytic_modes": [
+                  "TE(2,0,1)",
+                  "TM(2,1,0)"
+                ],
+                "nearest_analytic_frequency_Hz": 11259552909.545671,
+                "offset_from_nearest_analytic_percent": 0.027667047036272763
+              },
+              {
+                "fft_bin": 51,
+                "bin_offset": 0.17128481169630422,
+                "frequency_Hz": 13419689315.501104,
+                "magnitude_V_per_m": 0.0012689474501188034,
+                "bin_magnitude_V_per_m": 0.0012478114630849356,
+                "prominence_V_per_m": 0.0009979348752698293,
+                "nearest_analytic_modes": [
+                  "TE(0,1,1)",
+                  "TE(3,0,1)",
+                  "TM(3,1,0)"
+                ],
+                "nearest_analytic_frequency_Hz": 13249080000.023952,
+                "offset_from_nearest_analytic_percent": 1.2877068858882623
+              }
+            ],
+            "fft_bin_spacing_Hz": 262250388.3747266
+          },
+          "spectral_comparisons": {
+            "vs_single": [
+              {
+                "peak_rank": 1,
+                "frequency_shift_percent": 4.22100865371533e-07,
+                "peak_magnitude_change_dB": 6.396402696857864e-06
+              },
+              {
+                "peak_rank": 2,
+                "frequency_shift_percent": 6.409937913787189e-07,
+                "peak_magnitude_change_dB": 6.560797966861873e-05
+              },
+              {
+                "peak_rank": 3,
+                "frequency_shift_percent": -0.0002130539421218991,
+                "peak_magnitude_change_dB": 0.0021747399127607873
+              }
+            ],
+            "vs_K1": [
+              {
+                "peak_rank": 1,
+                "frequency_shift_percent": 0.0,
+                "peak_magnitude_change_dB": 0.0
+              },
+              {
+                "peak_rank": 2,
+                "frequency_shift_percent": 0.0,
+                "peak_magnitude_change_dB": 0.0
+              },
+              {
+                "peak_rank": 3,
+                "frequency_shift_percent": 0.0,
+                "peak_magnitude_change_dB": 0.0
+              }
+            ]
+          }
+        },
+        "M3_d2_K2": {
+          "case": "M3",
+          "device_count": 2,
+          "exchange_interval": 2,
+          "n_steps": 2000,
+          "probe_x_mm": [
+            36
+          ],
+          "timings_s": [
+            0.4944429583847523,
+            0.7738735000602901,
+            0.5248708329163492,
+            0.5034060827456415,
+            0.4434469169937074
+          ],
+          "warnings": [
+            "exchange_interval=2: ghost cells are stale for 1 steps between exchanges, introducing O(dt*2) boundary error. Use exchange_interval=1 for physically accurate results."
+          ],
+          "status": "complete",
+          "dt_s": 1.9065748695310057e-12,
+          "grid_shape_nodes": [
+            49,
+            17,
+            17
+          ],
+          "field_dtype": "float32",
+          "trace_dtype": "float32",
+          "probe_indices": [
+            [
+              36,
+              8,
+              8
+            ]
+          ],
+          "source_index": [
+            10,
+            8,
+            8
+          ],
+          "x_padding_nodes": 1,
+          "seam_first_owned_x_mm": [
+            25.0
+          ],
+          "warmup_s": 0.6271509998477995,
+          "median_wall_s": 0.5034060827456415,
+          "repeat_max_abs_diff_from_repeat1_V_per_m": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "comparisons": {
+            "vs_single": [
+              {
+                "probe_x_mm": 36,
+                "single_peak_V_per_m": 0.00017517118249088526,
+                "single_rms_V_per_m": 8.739497553609118e-05,
+                "max_abs_diff_V_per_m": 0.03590946401527617,
+                "max_abs_diff_over_single_peak": 204.99641267846474,
+                "max_abs_diff_over_single_peak_dB": 46.23492522427809,
+                "rms_diff_V_per_m": 0.005885475805509488,
+                "rms_diff_over_single_rms": 67.34341155664018,
+                "threshold_V_per_m": 1.7517118249088526e-07,
+                "first_exceeds_step_index_0based": 50,
+                "first_exceeds_completed_step_1based": 51,
+                "first_exceeds_time_s": 9.532874347655028e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              }
+            ],
+            "vs_K1": [
+              {
+                "probe_x_mm": 36,
+                "single_peak_V_per_m": 0.00017517118249088526,
+                "single_rms_V_per_m": 8.739497553609118e-05,
+                "max_abs_diff_V_per_m": 0.03590956054540584,
+                "max_abs_diff_over_single_peak": 204.99696374016503,
+                "max_abs_diff_over_single_peak_dB": 46.23494857324609,
+                "rms_diff_V_per_m": 0.005885471296955417,
+                "rms_diff_over_single_rms": 67.3433599683876,
+                "threshold_V_per_m": 1.7517118249088526e-07,
+                "first_exceeds_step_index_0based": 50,
+                "first_exceeds_completed_step_1based": 51,
+                "first_exceeds_time_s": 9.532874347655028e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              }
+            ]
+          },
+          "timing_ratio_to_single": 2.3695501012060802,
+          "timing_ratio_to_K1": 0.6196287018447654,
+          "spectrum": {
+            "status": "ok",
+            "lowest_three_peaks": [
+              {
+                "fft_bin": 38,
+                "bin_offset": -0.1933137747618697,
+                "frequency_Hz": 9914818145.730127,
+                "magnitude_V_per_m": 0.09786249293579087,
+                "bin_magnitude_V_per_m": 0.09586617780552027,
+                "prominence_V_per_m": 0.0897038038085578,
+                "nearest_analytic_modes": [
+                  "TE(1,0,1)",
+                  "TM(1,1,0)"
+                ],
+                "nearest_analytic_frequency_Hz": 9875281173.128824,
+                "offset_from_nearest_analytic_percent": 0.40036300646189016
+              },
+              {
+                "fft_bin": 43,
+                "bin_offset": 0.004971130345523823,
+                "frequency_Hz": 11278070380.977018,
+                "magnitude_V_per_m": 0.05176151995890772,
+                "bin_magnitude_V_per_m": 0.051760494663435394,
+                "prominence_V_per_m": 0.045155976651074264,
+                "nearest_analytic_modes": [
+                  "TE(2,0,1)",
+                  "TM(2,1,0)"
+                ],
+                "nearest_analytic_frequency_Hz": 11259552909.545671,
+                "offset_from_nearest_analytic_percent": 0.16446009517525617
+              },
+              {
+                "fft_bin": 51,
+                "bin_offset": 0.15073378436942944,
+                "frequency_Hz": 13414299800.603132,
+                "magnitude_V_per_m": 0.00690365641057297,
+                "bin_magnitude_V_per_m": 0.006898523737034658,
+                "prominence_V_per_m": 0.00025478532185643776,
+                "nearest_analytic_modes": [
+                  "TE(0,1,1)",
+                  "TE(3,0,1)",
+                  "TM(3,1,0)"
+                ],
+                "nearest_analytic_frequency_Hz": 13249080000.023952,
+                "offset_from_nearest_analytic_percent": 1.2470284772895912
+              }
+            ],
+            "all_local_maxima_in_band": [
+              {
+                "fft_bin": 38,
+                "bin_offset": -0.1933137747618697,
+                "frequency_Hz": 9914818145.730127,
+                "magnitude_V_per_m": 0.09786249293579087,
+                "bin_magnitude_V_per_m": 0.09586617780552027,
+                "prominence_V_per_m": 0.0897038038085578,
+                "nearest_analytic_modes": [
+                  "TE(1,0,1)",
+                  "TM(1,1,0)"
+                ],
+                "nearest_analytic_frequency_Hz": 9875281173.128824,
+                "offset_from_nearest_analytic_percent": 0.40036300646189016
+              },
+              {
+                "fft_bin": 43,
+                "bin_offset": 0.004971130345523823,
+                "frequency_Hz": 11278070380.977018,
+                "magnitude_V_per_m": 0.05176151995890772,
+                "bin_magnitude_V_per_m": 0.051760494663435394,
+                "prominence_V_per_m": 0.045155976651074264,
+                "nearest_analytic_modes": [
+                  "TE(2,0,1)",
+                  "TM(2,1,0)"
+                ],
+                "nearest_analytic_frequency_Hz": 11259552909.545671,
+                "offset_from_nearest_analytic_percent": 0.16446009517525617
+              },
+              {
+                "fft_bin": 51,
+                "bin_offset": 0.15073378436942944,
+                "frequency_Hz": 13414299800.603132,
+                "magnitude_V_per_m": 0.00690365641057297,
+                "bin_magnitude_V_per_m": 0.006898523737034658,
+                "prominence_V_per_m": 0.00025478532185643776,
+                "nearest_analytic_modes": [
+                  "TE(0,1,1)",
+                  "TE(3,0,1)",
+                  "TM(3,1,0)"
+                ],
+                "nearest_analytic_frequency_Hz": 13249080000.023952,
+                "offset_from_nearest_analytic_percent": 1.2470284772895912
+              },
+              {
+                "fft_bin": 56,
+                "bin_offset": -0.2607680156805955,
+                "frequency_Hz": 14617635235.596746,
+                "magnitude_V_per_m": 0.006665952266689911,
+                "bin_magnitude_V_per_m": 0.00666517152114048,
+                "prominence_V_per_m": 5.493512423445333e-06
+              },
+              {
+                "fft_bin": 59,
+                "bin_offset": 0.21949655509971228,
+                "frequency_Hz": 15530335970.930683,
+                "magnitude_V_per_m": 0.00664785508163063,
+                "bin_magnitude_V_per_m": 0.0066477217172225475,
+                "prominence_V_per_m": 1.5529330023786314e-06
+              }
+            ],
+            "fft_bin_spacing_Hz": 262250388.3747266
+          },
+          "spectral_comparisons": {
+            "vs_single": [
+              {
+                "peak_rank": 1,
+                "frequency_shift_percent": -0.09261704119509773,
+                "peak_magnitude_change_dB": 0.5762751366254439
+              },
+              {
+                "peak_rank": 2,
+                "frequency_shift_percent": 0.13675585388053246,
+                "peak_magnitude_change_dB": 1.249119823510426
+              },
+              {
+                "peak_rank": 3,
+                "frequency_shift_percent": -0.04037421780135331,
+                "peak_magnitude_change_dB": 14.714885367361454
+              }
+            ],
+            "vs_K1": [
+              {
+                "peak_rank": 1,
+                "frequency_shift_percent": -0.09261746290502026,
+                "peak_magnitude_change_dB": 0.5762687402227472
+              },
+              {
+                "peak_rank": 2,
+                "frequency_shift_percent": 0.1367552120101534,
+                "peak_magnitude_change_dB": 1.2490542155307565
+              },
+              {
+                "peak_rank": 3,
+                "frequency_shift_percent": -0.04016124942435306,
+                "peak_magnitude_change_dB": 14.712710627448695
+              }
+            ]
+          }
+        },
+        "M3_d2_K4": {
+          "case": "M3",
+          "device_count": 2,
+          "exchange_interval": 4,
+          "n_steps": 2000,
+          "probe_x_mm": [
+            36
+          ],
+          "timings_s": [
+            0.43037145771086216,
+            0.6097512082196772,
+            0.44507529214024544,
+            0.5609675827436149,
+            0.3717455826699734
+          ],
+          "warnings": [
+            "exchange_interval=4: ghost cells are stale for 3 steps between exchanges, introducing O(dt*4) boundary error. Use exchange_interval=1 for physically accurate results."
+          ],
+          "status": "complete",
+          "dt_s": 1.9065748695310057e-12,
+          "grid_shape_nodes": [
+            49,
+            17,
+            17
+          ],
+          "field_dtype": "float32",
+          "trace_dtype": "float32",
+          "probe_indices": [
+            [
+              36,
+              8,
+              8
+            ]
+          ],
+          "source_index": [
+            10,
+            8,
+            8
+          ],
+          "x_padding_nodes": 1,
+          "seam_first_owned_x_mm": [
+            25.0
+          ],
+          "warmup_s": 0.5462856250815094,
+          "median_wall_s": 0.44507529214024544,
+          "repeat_max_abs_diff_from_repeat1_V_per_m": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "comparisons": {
+            "vs_single": [
+              {
+                "probe_x_mm": 36,
+                "single_peak_V_per_m": 0.00017517118249088526,
+                "single_rms_V_per_m": 8.739497553609118e-05,
+                "max_abs_diff_V_per_m": 46.79207688370661,
+                "max_abs_diff_over_single_peak": 267122.00156633276,
+                "max_abs_diff_over_single_peak_dB": 108.53419320522973,
+                "rms_diff_V_per_m": 6.843594974070334,
+                "rms_diff_over_single_rms": 78306.50368732194,
+                "threshold_V_per_m": 1.7517118249088526e-07,
+                "first_exceeds_step_index_0based": 43,
+                "first_exceeds_completed_step_1based": 44,
+                "first_exceeds_time_s": 8.198271938983325e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              }
+            ],
+            "vs_K1": [
+              {
+                "probe_x_mm": 36,
+                "single_peak_V_per_m": 0.00017517118249088526,
+                "single_rms_V_per_m": 8.739497553609118e-05,
+                "max_abs_diff_V_per_m": 46.792076926809386,
+                "max_abs_diff_over_single_peak": 267122.0018123936,
+                "max_abs_diff_over_single_peak_dB": 108.53419321323076,
+                "rms_diff_V_per_m": 6.843594975673361,
+                "rms_diff_over_single_rms": 78306.50370566426,
+                "threshold_V_per_m": 1.7517118249088526e-07,
+                "first_exceeds_step_index_0based": 43,
+                "first_exceeds_completed_step_1based": 44,
+                "first_exceeds_time_s": 8.198271938983325e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              }
+            ]
+          },
+          "timing_ratio_to_single": 2.094985022396167,
+          "timing_ratio_to_K1": 0.5478309359868928,
+          "spectrum": {
+            "status": "fewer_than_three_peaks",
+            "lowest_three_peaks": [],
+            "all_local_maxima_in_band": [],
+            "fft_bin_spacing_Hz": 262250388.3747266
+          },
+          "spectral_comparisons": {
+            "vs_single": [],
+            "vs_K1": []
+          }
+        },
+        "M3_d4_K1": {
+          "case": "M3",
+          "device_count": 4,
+          "exchange_interval": 1,
+          "n_steps": 2000,
+          "probe_x_mm": [
+            36
+          ],
+          "timings_s": [
+            1.2291941670700908,
+            1.0653031668625772,
+            1.2314717080444098,
+            1.0796147496439517,
+            1.0707768751308322
+          ],
+          "warnings": [
+            "jax.experimental.shard_map is deprecated in v0.8.0. Used jax.shard_map instead."
+          ],
+          "status": "complete",
+          "dt_s": 1.9065748695310057e-12,
+          "grid_shape_nodes": [
+            49,
+            17,
+            17
+          ],
+          "field_dtype": "float32",
+          "trace_dtype": "float32",
+          "probe_indices": [
+            [
+              36,
+              8,
+              8
+            ]
+          ],
+          "source_index": [
+            10,
+            8,
+            8
+          ],
+          "x_padding_nodes": 3,
+          "seam_first_owned_x_mm": [
+            13.000000000000002,
+            26.000000000000004,
+            39.0
+          ],
+          "warmup_s": 1.9628775417804718,
+          "median_wall_s": 1.0796147496439517,
+          "repeat_max_abs_diff_from_repeat1_V_per_m": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "comparisons": {
+            "vs_single": [
+              {
+                "probe_x_mm": 36,
+                "single_peak_V_per_m": 0.00017517118249088526,
+                "single_rms_V_per_m": 8.739497553609118e-05,
+                "max_abs_diff_V_per_m": 4.408830136526376e-07,
+                "max_abs_diff_over_single_peak": 0.0025168695408879726,
+                "max_abs_diff_over_single_peak_dB": -51.98278590071996,
+                "rms_diff_V_per_m": 1.0481322871128495e-07,
+                "rms_diff_over_single_rms": 0.0011993049722635442,
+                "threshold_V_per_m": 1.7517118249088526e-07,
+                "first_exceeds_step_index_0based": 212,
+                "first_exceeds_completed_step_1based": 213,
+                "first_exceeds_time_s": 4.041938723405732e-10,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              }
+            ],
+            "vs_K1": [
+              {
+                "probe_x_mm": 36,
+                "single_peak_V_per_m": 0.00017517118249088526,
+                "single_rms_V_per_m": 8.739497553609118e-05,
+                "max_abs_diff_V_per_m": 0.0,
+                "max_abs_diff_over_single_peak": 0.0,
+                "max_abs_diff_over_single_peak_dB": "-Infinity",
+                "rms_diff_V_per_m": 0.0,
+                "rms_diff_over_single_rms": 0.0,
+                "threshold_V_per_m": 1.7517118249088526e-07,
+                "first_exceeds_step_index_0based": null,
+                "first_exceeds_completed_step_1based": null,
+                "first_exceeds_time_s": null,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              }
+            ]
+          },
+          "timing_ratio_to_single": 5.081784521413894,
+          "timing_ratio_to_K1": 1.0,
+          "spectrum": {
+            "status": "ok",
+            "lowest_three_peaks": [
+              {
+                "fft_bin": 38,
+                "bin_offset": -0.15826572055298443,
+                "frequency_Hz": 9924009511.558186,
+                "magnitude_V_per_m": 0.09158046360480022,
+                "bin_magnitude_V_per_m": 0.09032009636671215,
+                "prominence_V_per_m": 0.09028743172152522,
+                "nearest_analytic_modes": [
+                  "TE(1,0,1)",
+                  "TM(1,1,0)"
+                ],
+                "nearest_analytic_frequency_Hz": 9875281173.128824,
+                "offset_from_nearest_analytic_percent": 0.493437478640657
+              },
+              {
+                "fft_bin": 43,
+                "bin_offset": -0.05376009109229337,
+                "frequency_Hz": 11262668095.34523,
+                "magnitude_V_per_m": 0.0448285106042598,
+                "bin_magnitude_V_per_m": 0.044716232665600396,
+                "prominence_V_per_m": 0.034685923355928655,
+                "nearest_analytic_modes": [
+                  "TE(2,0,1)",
+                  "TM(2,1,0)"
+                ],
+                "nearest_analytic_frequency_Hz": 11259552909.545671,
+                "offset_from_nearest_analytic_percent": 0.027667047036272763
+              },
+              {
+                "fft_bin": 51,
+                "bin_offset": 0.17128481169630422,
+                "frequency_Hz": 13419689315.501104,
+                "magnitude_V_per_m": 0.0012689474501188034,
+                "bin_magnitude_V_per_m": 0.0012478114630849356,
+                "prominence_V_per_m": 0.0009979348752698293,
+                "nearest_analytic_modes": [
+                  "TE(0,1,1)",
+                  "TE(3,0,1)",
+                  "TM(3,1,0)"
+                ],
+                "nearest_analytic_frequency_Hz": 13249080000.023952,
+                "offset_from_nearest_analytic_percent": 1.2877068858882623
+              }
+            ],
+            "all_local_maxima_in_band": [
+              {
+                "fft_bin": 38,
+                "bin_offset": -0.15826572055298443,
+                "frequency_Hz": 9924009511.558186,
+                "magnitude_V_per_m": 0.09158046360480022,
+                "bin_magnitude_V_per_m": 0.09032009636671215,
+                "prominence_V_per_m": 0.09028743172152522,
+                "nearest_analytic_modes": [
+                  "TE(1,0,1)",
+                  "TM(1,1,0)"
+                ],
+                "nearest_analytic_frequency_Hz": 9875281173.128824,
+                "offset_from_nearest_analytic_percent": 0.493437478640657
+              },
+              {
+                "fft_bin": 43,
+                "bin_offset": -0.05376009109229337,
+                "frequency_Hz": 11262668095.34523,
+                "magnitude_V_per_m": 0.0448285106042598,
+                "bin_magnitude_V_per_m": 0.044716232665600396,
+                "prominence_V_per_m": 0.034685923355928655,
+                "nearest_analytic_modes": [
+                  "TE(2,0,1)",
+                  "TM(2,1,0)"
+                ],
+                "nearest_analytic_frequency_Hz": 11259552909.545671,
+                "offset_from_nearest_analytic_percent": 0.027667047036272763
+              },
+              {
+                "fft_bin": 51,
+                "bin_offset": 0.17128481169630422,
+                "frequency_Hz": 13419689315.501104,
+                "magnitude_V_per_m": 0.0012689474501188034,
+                "bin_magnitude_V_per_m": 0.0012478114630849356,
+                "prominence_V_per_m": 0.0009979348752698293,
+                "nearest_analytic_modes": [
+                  "TE(0,1,1)",
+                  "TE(3,0,1)",
+                  "TM(3,1,0)"
+                ],
+                "nearest_analytic_frequency_Hz": 13249080000.023952,
+                "offset_from_nearest_analytic_percent": 1.2877068858882623
+              }
+            ],
+            "fft_bin_spacing_Hz": 262250388.3747266
+          },
+          "spectral_comparisons": {
+            "vs_single": [
+              {
+                "peak_rank": 1,
+                "frequency_shift_percent": 4.22100865371533e-07,
+                "peak_magnitude_change_dB": 6.396402696857864e-06
+              },
+              {
+                "peak_rank": 2,
+                "frequency_shift_percent": 6.409937913787189e-07,
+                "peak_magnitude_change_dB": 6.560797966861873e-05
+              },
+              {
+                "peak_rank": 3,
+                "frequency_shift_percent": -0.0002130539421218991,
+                "peak_magnitude_change_dB": 0.0021747399127607873
+              }
+            ],
+            "vs_K1": [
+              {
+                "peak_rank": 1,
+                "frequency_shift_percent": 0.0,
+                "peak_magnitude_change_dB": 0.0
+              },
+              {
+                "peak_rank": 2,
+                "frequency_shift_percent": 0.0,
+                "peak_magnitude_change_dB": 0.0
+              },
+              {
+                "peak_rank": 3,
+                "frequency_shift_percent": 0.0,
+                "peak_magnitude_change_dB": 0.0
+              }
+            ]
+          }
+        },
+        "M3_d4_K2": {
+          "case": "M3",
+          "device_count": 4,
+          "exchange_interval": 2,
+          "n_steps": 2000,
+          "probe_x_mm": [
+            36
+          ],
+          "timings_s": [
+            0.8461550828069448,
+            0.7404442089609802,
+            0.6596349999308586,
+            0.8052165410481393,
+            0.7354556657373905
+          ],
+          "warnings": [
+            "exchange_interval=2: ghost cells are stale for 1 steps between exchanges, introducing O(dt*2) boundary error. Use exchange_interval=1 for physically accurate results."
+          ],
+          "status": "complete",
+          "dt_s": 1.9065748695310057e-12,
+          "grid_shape_nodes": [
+            49,
+            17,
+            17
+          ],
+          "field_dtype": "float32",
+          "trace_dtype": "float32",
+          "probe_indices": [
+            [
+              36,
+              8,
+              8
+            ]
+          ],
+          "source_index": [
+            10,
+            8,
+            8
+          ],
+          "x_padding_nodes": 3,
+          "seam_first_owned_x_mm": [
+            13.000000000000002,
+            26.000000000000004,
+            39.0
+          ],
+          "warmup_s": 0.960063916631043,
+          "median_wall_s": 0.7404442089609802,
+          "repeat_max_abs_diff_from_repeat1_V_per_m": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "comparisons": {
+            "vs_single": [
+              {
+                "probe_x_mm": 36,
+                "single_peak_V_per_m": 0.00017517118249088526,
+                "single_rms_V_per_m": 8.739497553609118e-05,
+                "max_abs_diff_V_per_m": 8102.933035748647,
+                "max_abs_diff_over_single_peak": 46257226.33441873,
+                "max_abs_diff_over_single_peak_dB": 153.30359176291142,
+                "rms_diff_V_per_m": 811.9324991691979,
+                "rms_diff_over_single_rms": 9290379.614945909,
+                "threshold_V_per_m": 1.7517118249088526e-07,
+                "first_exceeds_step_index_0based": 48,
+                "first_exceeds_completed_step_1based": 49,
+                "first_exceeds_time_s": 9.151559373748827e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              }
+            ],
+            "vs_K1": [
+              {
+                "probe_x_mm": 36,
+                "single_peak_V_per_m": 0.00017517118249088526,
+                "single_rms_V_per_m": 8.739497553609118e-05,
+                "max_abs_diff_V_per_m": 8102.933035652117,
+                "max_abs_diff_over_single_peak": 46257226.33386767,
+                "max_abs_diff_over_single_peak_dB": 153.30359176280797,
+                "rms_diff_V_per_m": 811.9324991718187,
+                "rms_diff_over_single_rms": 9290379.614975896,
+                "threshold_V_per_m": 1.7517118249088526e-07,
+                "first_exceeds_step_index_0based": 48,
+                "first_exceeds_completed_step_1based": 49,
+                "first_exceeds_time_s": 9.151559373748827e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              }
+            ]
+          },
+          "timing_ratio_to_single": 3.4852968814194116,
+          "timing_ratio_to_K1": 0.6858411384294006,
+          "spectrum": {
+            "status": "fewer_than_three_peaks",
+            "lowest_three_peaks": [],
+            "all_local_maxima_in_band": [],
+            "fft_bin_spacing_Hz": 262250388.3747266
+          },
+          "spectral_comparisons": {
+            "vs_single": [],
+            "vs_K1": []
+          }
+        },
+        "M3_d4_K4": {
+          "case": "M3",
+          "device_count": 4,
+          "exchange_interval": 4,
+          "n_steps": 2000,
+          "probe_x_mm": [
+            36
+          ],
+          "timings_s": [
+            0.6136827496811748,
+            0.524163750000298,
+            0.603301458992064,
+            0.5548591250553727,
+            0.508342667017132
+          ],
+          "warnings": [
+            "exchange_interval=4: ghost cells are stale for 3 steps between exchanges, introducing O(dt*4) boundary error. Use exchange_interval=1 for physically accurate results."
+          ],
+          "status": "complete",
+          "dt_s": 1.9065748695310057e-12,
+          "grid_shape_nodes": [
+            49,
+            17,
+            17
+          ],
+          "field_dtype": "float32",
+          "trace_dtype": "float32",
+          "probe_indices": [
+            [
+              36,
+              8,
+              8
+            ]
+          ],
+          "source_index": [
+            10,
+            8,
+            8
+          ],
+          "x_padding_nodes": 3,
+          "seam_first_owned_x_mm": [
+            13.000000000000002,
+            26.000000000000004,
+            39.0
+          ],
+          "warmup_s": 0.5546430419199169,
+          "median_wall_s": 0.5548591250553727,
+          "repeat_max_abs_diff_from_repeat1_V_per_m": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "comparisons": {
+            "vs_single": [
+              {
+                "probe_x_mm": 36,
+                "single_peak_V_per_m": 0.00017517118249088526,
+                "single_rms_V_per_m": 8.739497553609118e-05,
+                "max_abs_diff_V_per_m": 9252379610316800.0,
+                "max_abs_diff_over_single_peak": 5.28190737697294e+19,
+                "max_abs_diff_over_single_peak_dB": 394.45581562381625,
+                "rms_diff_V_per_m": 639462958537931.6,
+                "rms_diff_over_single_rms": 7.316930459850692e+18,
+                "threshold_V_per_m": 1.7517118249088526e-07,
+                "first_exceeds_step_index_0based": 42,
+                "first_exceeds_completed_step_1based": 43,
+                "first_exceeds_time_s": 8.007614452030223e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              }
+            ],
+            "vs_K1": [
+              {
+                "probe_x_mm": 36,
+                "single_peak_V_per_m": 0.00017517118249088526,
+                "single_rms_V_per_m": 8.739497553609118e-05,
+                "max_abs_diff_V_per_m": 9252379610316800.0,
+                "max_abs_diff_over_single_peak": 5.28190737697294e+19,
+                "max_abs_diff_over_single_peak_dB": 394.45581562381625,
+                "rms_diff_V_per_m": 639462958537931.6,
+                "rms_diff_over_single_rms": 7.316930459850692e+18,
+                "threshold_V_per_m": 1.7517118249088526e-07,
+                "first_exceeds_step_index_0based": 42,
+                "first_exceeds_completed_step_1based": 43,
+                "first_exceeds_time_s": 8.007614452030223e-11,
+                "trace_finite": true,
+                "first_nonfinite_step_index_0based": null
+              }
+            ]
+          },
+          "timing_ratio_to_single": 2.6117413773770277,
+          "timing_ratio_to_K1": 0.5139417789895524,
+          "spectrum": {
+            "status": "fewer_than_three_peaks",
+            "lowest_three_peaks": [],
+            "all_local_maxima_in_band": [],
+            "fft_bin_spacing_Hz": 262250388.3747266
+          },
+          "spectral_comparisons": {
+            "vs_single": [],
+            "vs_K1": []
+          }
+        }
+      },
+      "dt_s": 1.9065748695310057e-12,
+      "record_length_s": 3.813149739062012e-09,
+      "last_sample_time_s": 3.81124316419248e-09
+    }
+  },
+  "summary": [
+    {
+      "case": "M1",
+      "device_count": 2,
+      "exchange_interval": 1,
+      "comparison": "vs_single",
+      "worst_max_abs_diff_over_single_peak_dB": -53.65641867302677,
+      "worst_abs_frequency_shift_percent": null,
+      "worst_abs_peak_magnitude_change_dB": null,
+      "median_wall_s": 0.30526808416470885,
+      "timing_ratio_to_single": 2.0098715540627774,
+      "timing_ratio_to_K1": 1.0
+    },
+    {
+      "case": "M1",
+      "device_count": 2,
+      "exchange_interval": 1,
+      "comparison": "vs_K1",
+      "worst_max_abs_diff_over_single_peak_dB": "-Infinity",
+      "worst_abs_frequency_shift_percent": null,
+      "worst_abs_peak_magnitude_change_dB": null,
+      "median_wall_s": 0.30526808416470885,
+      "timing_ratio_to_single": 2.0098715540627774,
+      "timing_ratio_to_K1": 1.0
+    },
+    {
+      "case": "M1",
+      "device_count": 2,
+      "exchange_interval": 2,
+      "comparison": "vs_single",
+      "worst_max_abs_diff_over_single_peak_dB": -16.033530168954798,
+      "worst_abs_frequency_shift_percent": null,
+      "worst_abs_peak_magnitude_change_dB": null,
+      "median_wall_s": 0.2742735417559743,
+      "timing_ratio_to_single": 1.80580485875474,
+      "timing_ratio_to_K1": 0.8984677926828036
+    },
+    {
+      "case": "M1",
+      "device_count": 2,
+      "exchange_interval": 2,
+      "comparison": "vs_K1",
+      "worst_max_abs_diff_over_single_peak_dB": -16.042196423652637,
+      "worst_abs_frequency_shift_percent": null,
+      "worst_abs_peak_magnitude_change_dB": null,
+      "median_wall_s": 0.2742735417559743,
+      "timing_ratio_to_single": 1.80580485875474,
+      "timing_ratio_to_K1": 0.8984677926828036
+    },
+    {
+      "case": "M1",
+      "device_count": 2,
+      "exchange_interval": 4,
+      "comparison": "vs_single",
+      "worst_max_abs_diff_over_single_peak_dB": -1.7654992286082742,
+      "worst_abs_frequency_shift_percent": null,
+      "worst_abs_peak_magnitude_change_dB": null,
+      "median_wall_s": 0.2609606250189245,
+      "timing_ratio_to_single": 1.718153204227483,
+      "timing_ratio_to_K1": 0.8548572174945152
+    },
+    {
+      "case": "M1",
+      "device_count": 2,
+      "exchange_interval": 4,
+      "comparison": "vs_K1",
+      "worst_max_abs_diff_over_single_peak_dB": -1.7648125498885456,
+      "worst_abs_frequency_shift_percent": null,
+      "worst_abs_peak_magnitude_change_dB": null,
+      "median_wall_s": 0.2609606250189245,
+      "timing_ratio_to_single": 1.718153204227483,
+      "timing_ratio_to_K1": 0.8548572174945152
+    },
+    {
+      "case": "M1",
+      "device_count": 4,
+      "exchange_interval": 1,
+      "comparison": "vs_single",
+      "worst_max_abs_diff_over_single_peak_dB": -53.65641867302677,
+      "worst_abs_frequency_shift_percent": null,
+      "worst_abs_peak_magnitude_change_dB": null,
+      "median_wall_s": 0.44604979176074266,
+      "timing_ratio_to_single": 2.936772085455975,
+      "timing_ratio_to_K1": 1.0
+    },
+    {
+      "case": "M1",
+      "device_count": 4,
+      "exchange_interval": 1,
+      "comparison": "vs_K1",
+      "worst_max_abs_diff_over_single_peak_dB": "-Infinity",
+      "worst_abs_frequency_shift_percent": null,
+      "worst_abs_peak_magnitude_change_dB": null,
+      "median_wall_s": 0.44604979176074266,
+      "timing_ratio_to_single": 2.936772085455975,
+      "timing_ratio_to_K1": 1.0
+    },
+    {
+      "case": "M1",
+      "device_count": 4,
+      "exchange_interval": 2,
+      "comparison": "vs_single",
+      "worst_max_abs_diff_over_single_peak_dB": -9.559677611591082,
+      "worst_abs_frequency_shift_percent": null,
+      "worst_abs_peak_magnitude_change_dB": null,
+      "median_wall_s": 0.3404219578951597,
+      "timing_ratio_to_single": 2.241323102688561,
+      "timing_ratio_to_K1": 0.7631927291152266
+    },
+    {
+      "case": "M1",
+      "device_count": 4,
+      "exchange_interval": 2,
+      "comparison": "vs_K1",
+      "worst_max_abs_diff_over_single_peak_dB": -9.518871547048068,
+      "worst_abs_frequency_shift_percent": null,
+      "worst_abs_peak_magnitude_change_dB": null,
+      "median_wall_s": 0.3404219578951597,
+      "timing_ratio_to_single": 2.241323102688561,
+      "timing_ratio_to_K1": 0.7631927291152266
+    },
+    {
+      "case": "M1",
+      "device_count": 4,
+      "exchange_interval": 4,
+      "comparison": "vs_single",
+      "worst_max_abs_diff_over_single_peak_dB": 38.55833314052886,
+      "worst_abs_frequency_shift_percent": null,
+      "worst_abs_peak_magnitude_change_dB": null,
+      "median_wall_s": 0.32454387471079826,
+      "timing_ratio_to_single": 2.136782505814137,
+      "timing_ratio_to_K1": 0.7275956198290994
+    },
+    {
+      "case": "M1",
+      "device_count": 4,
+      "exchange_interval": 4,
+      "comparison": "vs_K1",
+      "worst_max_abs_diff_over_single_peak_dB": 38.55849377572565,
+      "worst_abs_frequency_shift_percent": null,
+      "worst_abs_peak_magnitude_change_dB": null,
+      "median_wall_s": 0.32454387471079826,
+      "timing_ratio_to_single": 2.136782505814137,
+      "timing_ratio_to_K1": 0.7275956198290994
+    },
+    {
+      "case": "M2",
+      "device_count": 2,
+      "exchange_interval": 1,
+      "comparison": "vs_single",
+      "worst_max_abs_diff_over_single_peak_dB": -53.913392221814746,
+      "worst_abs_frequency_shift_percent": null,
+      "worst_abs_peak_magnitude_change_dB": null,
+      "median_wall_s": 0.4201166667044163,
+      "timing_ratio_to_single": 2.546613708547665,
+      "timing_ratio_to_K1": 1.0
+    },
+    {
+      "case": "M2",
+      "device_count": 2,
+      "exchange_interval": 1,
+      "comparison": "vs_K1",
+      "worst_max_abs_diff_over_single_peak_dB": "-Infinity",
+      "worst_abs_frequency_shift_percent": null,
+      "worst_abs_peak_magnitude_change_dB": null,
+      "median_wall_s": 0.4201166667044163,
+      "timing_ratio_to_single": 2.546613708547665,
+      "timing_ratio_to_K1": 1.0
+    },
+    {
+      "case": "M2",
+      "device_count": 2,
+      "exchange_interval": 2,
+      "comparison": "vs_single",
+      "worst_max_abs_diff_over_single_peak_dB": -8.315888269080077,
+      "worst_abs_frequency_shift_percent": null,
+      "worst_abs_peak_magnitude_change_dB": null,
+      "median_wall_s": 0.36675095930695534,
+      "timing_ratio_to_single": 2.223127751442481,
+      "timing_ratio_to_K1": 0.872974076900863
+    },
+    {
+      "case": "M2",
+      "device_count": 2,
+      "exchange_interval": 2,
+      "comparison": "vs_K1",
+      "worst_max_abs_diff_over_single_peak_dB": -8.309808001218444,
+      "worst_abs_frequency_shift_percent": null,
+      "worst_abs_peak_magnitude_change_dB": null,
+      "median_wall_s": 0.36675095930695534,
+      "timing_ratio_to_single": 2.223127751442481,
+      "timing_ratio_to_K1": 0.872974076900863
+    },
+    {
+      "case": "M2",
+      "device_count": 2,
+      "exchange_interval": 4,
+      "comparison": "vs_single",
+      "worst_max_abs_diff_over_single_peak_dB": 10.43502465421573,
+      "worst_abs_frequency_shift_percent": null,
+      "worst_abs_peak_magnitude_change_dB": null,
+      "median_wall_s": 0.3478401666507125,
+      "timing_ratio_to_single": 2.108496536747603,
+      "timing_ratio_to_K1": 0.8279608837690894
+    },
+    {
+      "case": "M2",
+      "device_count": 2,
+      "exchange_interval": 4,
+      "comparison": "vs_K1",
+      "worst_max_abs_diff_over_single_peak_dB": 10.434743622583621,
+      "worst_abs_frequency_shift_percent": null,
+      "worst_abs_peak_magnitude_change_dB": null,
+      "median_wall_s": 0.3478401666507125,
+      "timing_ratio_to_single": 2.108496536747603,
+      "timing_ratio_to_K1": 0.8279608837690894
+    },
+    {
+      "case": "M3",
+      "device_count": 2,
+      "exchange_interval": 1,
+      "comparison": "vs_single",
+      "worst_max_abs_diff_over_single_peak_dB": -51.98278590071996,
+      "worst_abs_frequency_shift_percent": 0.0002130539421218991,
+      "worst_abs_peak_magnitude_change_dB": 0.0021747399127607873,
+      "median_wall_s": 0.8124318341724575,
+      "timing_ratio_to_single": 3.824145160079625,
+      "timing_ratio_to_K1": 1.0
+    },
+    {
+      "case": "M3",
+      "device_count": 2,
+      "exchange_interval": 1,
+      "comparison": "vs_K1",
+      "worst_max_abs_diff_over_single_peak_dB": "-Infinity",
+      "worst_abs_frequency_shift_percent": 0.0,
+      "worst_abs_peak_magnitude_change_dB": 0.0,
+      "median_wall_s": 0.8124318341724575,
+      "timing_ratio_to_single": 3.824145160079625,
+      "timing_ratio_to_K1": 1.0
+    },
+    {
+      "case": "M3",
+      "device_count": 2,
+      "exchange_interval": 2,
+      "comparison": "vs_single",
+      "worst_max_abs_diff_over_single_peak_dB": 46.23492522427809,
+      "worst_abs_frequency_shift_percent": 0.13675585388053246,
+      "worst_abs_peak_magnitude_change_dB": 14.714885367361454,
+      "median_wall_s": 0.5034060827456415,
+      "timing_ratio_to_single": 2.3695501012060802,
+      "timing_ratio_to_K1": 0.6196287018447654
+    },
+    {
+      "case": "M3",
+      "device_count": 2,
+      "exchange_interval": 2,
+      "comparison": "vs_K1",
+      "worst_max_abs_diff_over_single_peak_dB": 46.23494857324609,
+      "worst_abs_frequency_shift_percent": 0.1367552120101534,
+      "worst_abs_peak_magnitude_change_dB": 14.712710627448695,
+      "median_wall_s": 0.5034060827456415,
+      "timing_ratio_to_single": 2.3695501012060802,
+      "timing_ratio_to_K1": 0.6196287018447654
+    },
+    {
+      "case": "M3",
+      "device_count": 2,
+      "exchange_interval": 4,
+      "comparison": "vs_single",
+      "worst_max_abs_diff_over_single_peak_dB": 108.53419320522973,
+      "worst_abs_frequency_shift_percent": null,
+      "worst_abs_peak_magnitude_change_dB": null,
+      "median_wall_s": 0.44507529214024544,
+      "timing_ratio_to_single": 2.094985022396167,
+      "timing_ratio_to_K1": 0.5478309359868928
+    },
+    {
+      "case": "M3",
+      "device_count": 2,
+      "exchange_interval": 4,
+      "comparison": "vs_K1",
+      "worst_max_abs_diff_over_single_peak_dB": 108.53419321323076,
+      "worst_abs_frequency_shift_percent": null,
+      "worst_abs_peak_magnitude_change_dB": null,
+      "median_wall_s": 0.44507529214024544,
+      "timing_ratio_to_single": 2.094985022396167,
+      "timing_ratio_to_K1": 0.5478309359868928
+    },
+    {
+      "case": "M3",
+      "device_count": 4,
+      "exchange_interval": 1,
+      "comparison": "vs_single",
+      "worst_max_abs_diff_over_single_peak_dB": -51.98278590071996,
+      "worst_abs_frequency_shift_percent": 0.0002130539421218991,
+      "worst_abs_peak_magnitude_change_dB": 0.0021747399127607873,
+      "median_wall_s": 1.0796147496439517,
+      "timing_ratio_to_single": 5.081784521413894,
+      "timing_ratio_to_K1": 1.0
+    },
+    {
+      "case": "M3",
+      "device_count": 4,
+      "exchange_interval": 1,
+      "comparison": "vs_K1",
+      "worst_max_abs_diff_over_single_peak_dB": "-Infinity",
+      "worst_abs_frequency_shift_percent": 0.0,
+      "worst_abs_peak_magnitude_change_dB": 0.0,
+      "median_wall_s": 1.0796147496439517,
+      "timing_ratio_to_single": 5.081784521413894,
+      "timing_ratio_to_K1": 1.0
+    },
+    {
+      "case": "M3",
+      "device_count": 4,
+      "exchange_interval": 2,
+      "comparison": "vs_single",
+      "worst_max_abs_diff_over_single_peak_dB": 153.30359176291142,
+      "worst_abs_frequency_shift_percent": null,
+      "worst_abs_peak_magnitude_change_dB": null,
+      "median_wall_s": 0.7404442089609802,
+      "timing_ratio_to_single": 3.4852968814194116,
+      "timing_ratio_to_K1": 0.6858411384294006
+    },
+    {
+      "case": "M3",
+      "device_count": 4,
+      "exchange_interval": 2,
+      "comparison": "vs_K1",
+      "worst_max_abs_diff_over_single_peak_dB": 153.30359176280797,
+      "worst_abs_frequency_shift_percent": null,
+      "worst_abs_peak_magnitude_change_dB": null,
+      "median_wall_s": 0.7404442089609802,
+      "timing_ratio_to_single": 3.4852968814194116,
+      "timing_ratio_to_K1": 0.6858411384294006
+    },
+    {
+      "case": "M3",
+      "device_count": 4,
+      "exchange_interval": 4,
+      "comparison": "vs_single",
+      "worst_max_abs_diff_over_single_peak_dB": 394.45581562381625,
+      "worst_abs_frequency_shift_percent": null,
+      "worst_abs_peak_magnitude_change_dB": null,
+      "median_wall_s": 0.5548591250553727,
+      "timing_ratio_to_single": 2.6117413773770277,
+      "timing_ratio_to_K1": 0.5139417789895524
+    },
+    {
+      "case": "M3",
+      "device_count": 4,
+      "exchange_interval": 4,
+      "comparison": "vs_K1",
+      "worst_max_abs_diff_over_single_peak_dB": 394.45581562381625,
+      "worst_abs_frequency_shift_percent": null,
+      "worst_abs_peak_magnitude_change_dB": null,
+      "median_wall_s": 0.5548591250553727,
+      "timing_ratio_to_single": 2.6117413773770277,
+      "timing_ratio_to_K1": 0.5139417789895524
+    }
+  ],
+  "analysis_script_sha256": "40c38ead455a08fdb94b968d6dc516c77398ac516b333848602401af6e60ef06",
+  "analytic_modes": [
+    {
+      "family_to_z": "TE",
+      "m": 1,
+      "n": 0,
+      "p": 1,
+      "label": "TE(1,0,1)",
+      "frequency_Hz": 9875281173.128824,
+      "ideal_Ez_source_probe_product_dimensionless": 0.0,
+      "ideal_Ez_source_probe_nonzero": false
+    },
+    {
+      "family_to_z": "TM",
+      "m": 1,
+      "n": 1,
+      "p": 0,
+      "label": "TM(1,1,0)",
+      "frequency_Hz": 9875281173.128824,
+      "ideal_Ez_source_probe_product_dimensionless": 0.4304593345768796,
+      "ideal_Ez_source_probe_nonzero": true
+    },
+    {
+      "family_to_z": "TE",
+      "m": 2,
+      "n": 0,
+      "p": 1,
+      "label": "TE(2,0,1)",
+      "frequency_Hz": 11259552909.545671,
+      "ideal_Ez_source_probe_product_dimensionless": 0.0,
+      "ideal_Ez_source_probe_nonzero": false
+    },
+    {
+      "family_to_z": "TM",
+      "m": 2,
+      "n": 1,
+      "p": 0,
+      "label": "TM(2,1,0)",
+      "frequency_Hz": 11259552909.545671,
+      "ideal_Ez_source_probe_product_dimensionless": -0.9659258262890683,
+      "ideal_Ez_source_probe_nonzero": true
+    },
+    {
+      "family_to_z": "TE",
+      "m": 0,
+      "n": 1,
+      "p": 1,
+      "label": "TE(0,1,1)",
+      "frequency_Hz": 13249080000.023952,
+      "ideal_Ez_source_probe_product_dimensionless": 0.0,
+      "ideal_Ez_source_probe_nonzero": false
+    },
+    {
+      "family_to_z": "TE",
+      "m": 3,
+      "n": 0,
+      "p": 1,
+      "label": "TE(3,0,1)",
+      "frequency_Hz": 13249080000.023952,
+      "ideal_Ez_source_probe_product_dimensionless": 0.0,
+      "ideal_Ez_source_probe_nonzero": false
+    },
+    {
+      "family_to_z": "TM",
+      "m": 3,
+      "n": 1,
+      "p": 0,
+      "label": "TM(3,1,0)",
+      "frequency_Hz": 13249080000.023952,
+      "ideal_Ez_source_probe_product_dimensionless": 0.6532814824381881,
+      "ideal_Ez_source_probe_nonzero": true
+    },
+    {
+      "family_to_z": "TE",
+      "m": 1,
+      "n": 1,
+      "p": 1,
+      "label": "TE(1,1,1)",
+      "frequency_Hz": 13612135713.100643,
+      "ideal_Ez_source_probe_product_dimensionless": 0.0,
+      "ideal_Ez_source_probe_nonzero": false
+    },
+    {
+      "family_to_z": "TM",
+      "m": 1,
+      "n": 1,
+      "p": 1,
+      "label": "TM(1,1,1)",
+      "frequency_Hz": 13612135713.100643,
+      "ideal_Ez_source_probe_product_dimensionless": 1.613963995174472e-33,
+      "ideal_Ez_source_probe_nonzero": false
+    },
+    {
+      "family_to_z": "TE",
+      "m": 2,
+      "n": 1,
+      "p": 1,
+      "label": "TE(2,1,1)",
+      "frequency_Hz": 14647409059.160454,
+      "ideal_Ez_source_probe_product_dimensionless": 0.0,
+      "ideal_Ez_source_probe_nonzero": false
+    },
+    {
+      "family_to_z": "TM",
+      "m": 2,
+      "n": 1,
+      "p": 1,
+      "label": "TM(2,1,1)",
+      "frequency_Hz": 14647409059.160454,
+      "ideal_Ez_source_probe_product_dimensionless": -3.6216417682569207e-33,
+      "ideal_Ez_source_probe_nonzero": false
+    },
+    {
+      "family_to_z": "TE",
+      "m": 4,
+      "n": 0,
+      "p": 1,
+      "label": "TE(4,0,1)",
+      "frequency_Hz": 15614190520.833332,
+      "ideal_Ez_source_probe_product_dimensionless": 0.0,
+      "ideal_Ez_source_probe_nonzero": false
+    },
+    {
+      "family_to_z": "TM",
+      "m": 4,
+      "n": 1,
+      "p": 0,
+      "label": "TM(4,1,0)",
+      "frequency_Hz": 15614190520.833332,
+      "ideal_Ez_source_probe_product_dimensionless": 1.071875439572228e-15,
+      "ideal_Ez_source_probe_nonzero": false
+    }
+  ],
+  "did_not_run": [],
+  "unavailable_spectral_results": [
+    "M3_d2_K4: 0 local maxima in 8-16 GHz; missing peak frequencies and their shifts/magnitude changes are undefined",
+    "M3_d4_K2: 0 local maxima in 8-16 GHz; missing peak frequencies and their shifts/magnitude changes are undefined",
+    "M3_d4_K4: 0 local maxima in 8-16 GHz; missing peak frequencies and their shifts/magnitude changes are undefined"
+  ],
+  "spectrum_method": {
+    "band_Hz": [
+      8000000000.0,
+      16000000000.0
+    ],
+    "fft": "abs(numpy.fft.rfft(trace.astype(float64)))",
+    "window": "rectangular (all samples)",
+    "zero_padding": false,
+    "detrend": false,
+    "amplitude_normalization": "none",
+    "peak_rule": "lowest three local maxima in 8-16 GHz; no prominence cutoff",
+    "interpolation": "parabola on three linear-magnitude bins",
+    "comparison_pairing": "ascending frequency rank, not asserted mode identity",
+    "analytic_source_url": "https://engineering.purdue.edu/wcchew/ece604f20/Lecture%20Notes/Lect21.pdf"
+  }
+}

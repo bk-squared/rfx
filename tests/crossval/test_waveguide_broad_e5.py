@@ -624,8 +624,8 @@ def _live_build_sim(freqs_hz, *, pec_short_x=None):
         # the declaration says what the lattice can build.
         #
         # Two earlier readings of this anchor on the merged tree, both now
-        # ATTRIBUTED (2026-09-07, scripts/diagnostics/pec_short_lane_ab.py
-        # on cv11's identical case, per-bin dumps + port time records):
+        # ATTRIBUTED (2026-09-07, on the WR-90 waveguide-port case's
+        # identical set-up, per-bin dumps + port time records):
         #
         # 1. On the AUTO mesh (2.1414 mm) the one-cell volume read |S11| =
         #    [0.9663, 0.9572, 0.9741, 0.9827, 0.9847, 0.9836]. That mesh

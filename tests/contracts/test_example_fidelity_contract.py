@@ -125,13 +125,10 @@ importing it no longer solves).
 * ``builder_fused_with_solve`` (build and solve share one function with
   no separable build-only path) in that 47-set, i.e. the scripts this
   gate does NOT reach: examples/tutorials/cad_mesh_import_demo.py, cv09,
-  cv10, cv18. "Out of this snapshot" is not "unverified": cv09 is REBUILT
+  cv10. "Out of this snapshot" is not "unverified": cv09 is REBUILT
   build-only from its own constants and helpers in
   tests/crossval/test_cv09_cv10_body_contract_controls.py (cv10 only at
-  the spec level there, via ``_common_spec()``) and both solve weekly;
-  cv18's gates replay a frozen fixture
-  (tests/crossval/test_wr90_iris_modematch_gates.py) and its realized
-  geometry is checked build-time in test_wr90_iris_realized_is_shared.py.
+  the spec level there, via ``_common_spec()``) and both solve weekly.
   cad_mesh_import_demo is the one script of #737 item 2 that did NOT get a
   builder, and it is the one with no build or run coverage anywhere: its
   Simulation needs ``trimesh`` (the optional [cad] extra), which the lane
@@ -148,13 +145,12 @@ importing it no longer solves).
 
 WHAT THIS DOES NOT COVER. Against #722's own list of eight scripts that
 solved geometry other than what they declared (cv06b, cv20, cv11, cv16,
-cv17, cv07, cv09, cv15), this gate now reaches FOUR: cv06b, cv11, cv07
-and cv15 (the last two arrived with their build-only entry points).
+cv17, cv07, cv09, cv15), this gate now reaches THREE: cv06b, cv07 and
+cv15 (the last two arrived with their build-only entry points; the WR-90
+waveguide-port case left the table with its case on 2026-09-21).
 cv20/cv16/cv17 are ``no_simulation`` and cv09 is
 ``builder_fused_with_solve``, so a no-solve gate cannot see them as those
-scripts stand today. Nor does it reach cv21's fence-post error (#739, cv21
-is ``no_simulation``; that one is pinned against a rebuilt grid in
-tests/crossval/test_coax_two_port_referee_header.py instead). It DOES pin
+scripts stand today. It DOES pin
 differentiable_s11_design's two domain widths (#738); that script's third
 declared width, the port aperture, falls under fidelity_report's own
 out-of-scope port row. A green run here is not evidence that the #722
@@ -562,14 +558,14 @@ def test_no_reason_is_boilerplate_across_different_advisories() -> None:
 
     The thing worth blocking is one sentence pasted over unrelated rows, which
     is what a generic "intended, the example means it" looks like: it spans
-    codes. Repetition WITHIN a code is not that. Four pairs in this file share
-    a reason today and each is a sibling pair emitting the same advisory --
-    cv11's empty and pec_short variants (port_aperture_snap, then
-    port_evanescent), the two supraconvergence studies w4 and w4r
+    codes. Repetition WITHIN a code is not that. The pairs in this file that
+    share a reason today are each a sibling pair emitting the same advisory --
+    the off-diagonal adjudication study's two drive variants
+    (sheet_effective_size), the two supraconvergence studies w4 and w4r
     (mesh_resolution), and the thru fixture's band-pulse and insitu-refplane
-    variants (pec_faces_finite_pec). Forcing four artificial rewordings would
-    make the file worse, not more honest; a reason crossing codes stays a
-    failure.
+    variants (pec_faces_finite_pec, sheet_effective_size). Forcing artificial
+    rewordings would make the file worse, not more honest; a reason crossing
+    codes stays a failure.
     """
     by_reason: dict[str, set[str]] = {}
     where_by_reason: dict[str, list[str]] = {}

@@ -150,9 +150,9 @@ def test_film_matches_exact_slab(rta):
     print(f"[SHEET-RTA] film measured  T={T.round(4).tolist()}")
     print(f"[SHEET-RTA] film analytic  T={T_an.round(4).tolist()}")
     # Tolerances = the measurement chain's own committed floor, not this
-    # fixture's wish: the validated Fresnel crossval (04_multilayer_fresnel)
-    # gates this same TFSF+flux chain at mean error < 0.05 and per-bin
-    # |R+T-1| <= 0.06. Band means here land within 0.01 of analytic; the
+    # fixture's wish: the slab Fresnel cross-validation case (removed
+    # 2026-09-21) gated this same TFSF+flux chain at mean error < 0.05 and
+    # per-bin |R+T-1| <= 0.06. Band means here land within 0.01 of analytic; the
     # per-bin ripple is the chain's standing-artifact floor (settling-
     # invariant: identical to 4 decimals at 8k and 40k steps).
     assert abs(R.mean() - R_an.mean()) < 0.02, "film band-mean R off the exact slab solution"

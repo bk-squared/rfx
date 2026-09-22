@@ -446,8 +446,7 @@ def quick_convergence(
             # per refinement step the realized PMC mirror plane moves by
             # dx/2 too -- a dx sweep over a PMC-mirrored model is not a
             # fixed-structure sweep unless the caller re-declares `domain`
-            # per dx (REALIZE-DECLARED, plane + dx/2 per PMC face; see
-            # validation/crossval/09_half_symmetric_waveguide.py). Not
+            # per dx (REALIZE-DECLARED, plane + dx/2 per PMC face). Not
             # fixed here -- this factory clones what `sim` declared, and
             # that declaration is the caller's responsibility.
             boundary=sim._boundary_spec,

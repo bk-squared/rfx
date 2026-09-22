@@ -1,5 +1,7 @@
 # cv01 straight-guide flux self-check under `RFX_BOUNDARY=cpml` — pre-declaration
 
+> cv01 was removed on 2026-09-21; the artifacts cited here are at commit 66ed61c2.
+
 Issue #813. Written 2026-09-13, **before the run**, on branch
 `cv01-disposition-review` at base main `d56f68eb`.
 

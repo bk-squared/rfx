@@ -213,8 +213,7 @@ class Box:
     Under both conditions the realized opening equals the nominal one
     exactly (measured, 100% of ~50k even-parity combinations). Then still
     assert the realized footprint (count the occupied node planes) against
-    the intended one — see ``run_point`` in
-    ``validation/crossval/18_wr90_iris_modematch.py`` for the pattern.
+    the intended one.
 
     **Odd parity is a fork, not a dead end.** Symmetric fins can only realize
     apertures whose cell count has the parity of ``cells``, so when the
@@ -579,8 +578,7 @@ def rasterize(
     error — a nominal opening ``d`` between two facing boxes rasterizes to
     ``d + dx``. Read the :class:`Box` docstring before drawing an obstacle
     to a nominal physical size, and assert the realized footprint (this
-    function's ``sigma`` output is what the raster asserts in
-    ``validation/crossval/18_wr90_iris_modematch.py`` inspect).
+    function's ``sigma`` output is what a raster assert inspects).
 
     Parameters
     ----------

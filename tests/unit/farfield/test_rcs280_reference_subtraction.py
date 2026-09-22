@@ -75,7 +75,7 @@ def test_corrected_pattern_matches_exact_mie(fx):
     high correlation, small mean distance, clean backscatter."""
     mie = _db(fx["mie_bistatic_over_pi_a2"])
     corr = _db(fx["rfx_corrected_over_pi_a2"])
-    assert np.corrcoef(corr, mie)[0, 1] >= 0.95       # measured 0.977
+    assert np.corrcoef(corr, mie)[0, 1] >= 0.95       # measured 1.000 (0.977 before the second-order NTFF rule, #1159)
     # ONE BAR MOVED HERE, and it moved because the MEASUREMENT got worse, which
     # is the direction that needs the most evidence.
     #
@@ -97,8 +97,10 @@ def test_corrected_pattern_matches_exact_mie(fx):
     assert gate_from_envelope(CORRECTED_MEAN_MEASURED, quantum=100) == PATTERN_MEAN_BAR
     assert np.abs(corr - mie).mean() == pytest.approx(CORRECTED_MEAN_MEASURED, rel=0.05)
     assert np.abs(corr - mie).mean() <= PATTERN_MEAN_BAR
-    # backscatter: measured 0.185 dB on the converged rig (was 0.06 dB, on the
+    # backscatter: measured 0.102 dB on the converged rig with the second-order
+    # NTFF rule of #1159 (0.185 dB before it; 0.06 dB earlier still, on the
     # cancellation -- see the sibling rcs_sphere_mie fixture's CPML derivation).
+    # The pattern mean above did not move with #1159: 0.7048 -> 0.7036 dB.
     # The bar is UNCHANGED at 0.5.
     assert abs(corr[-1] - mie[-1]) <= 0.5
 
@@ -108,8 +110,9 @@ def test_the_pattern_bar_still_rejects_the_uncorrected_path(fx):
     the corrected pattern passes -- otherwise the bar is measuring nothing.
 
     The UNCORRECTED far field carries the spurious forward-oblique lobe: it
-    reads 3.10 dB mean, 2.9x the new bar, and correlates -0.09 with Mie, i.e.
-    the shape is gone, not merely offset.
+    reads 2.91 dB mean, 2.7x the bar, and correlates -0.06 with Mie (3.10 dB
+    and -0.09 before the second-order NTFF rule of #1159), i.e. the shape is
+    gone, not merely offset.
     """
     mie = _db(fx["mie_bistatic_over_pi_a2"])
     un = _db(fx["rfx_uncorrected_over_pi_a2"])

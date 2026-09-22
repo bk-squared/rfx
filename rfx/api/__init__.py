@@ -271,6 +271,18 @@ from rfx.api._execute import _ExecuteMixin  # noqa: E402
 from rfx.api._mesh import _MeshMixin  # noqa: E402
 from rfx.api._artifacts import _ArtifactsMixin  # noqa: E402
 
+# ---------------------------------------------------------------------------
+# Record-length witness for GRADIENTS, the companion to the -40 dB settling
+# witness for VALUES. A free function, not a Simulation method: it takes the
+# caller's differentiable objective and the run length it depends on, and
+# nothing about it needs this class.
+# ---------------------------------------------------------------------------
+
+from rfx.api._gradient_witness import (  # noqa: E402
+    GradientRecordLengthWitness,
+    gradient_record_length_witness,
+)
+
 
 _DebyeSpec = tuple[list[DebyePole], list[jnp.ndarray]]
 _LorentzSpec = tuple[list[LorentzPole], list[jnp.ndarray]]
@@ -4396,4 +4408,6 @@ __all__ = [
     "MSLProbeClearance",
     "MSLSMatrixResult",
     "MixedSMatrixResult",
+    "GradientRecordLengthWitness",
+    "gradient_record_length_witness",
 ]

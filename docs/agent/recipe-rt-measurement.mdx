@@ -180,22 +180,16 @@ is still preferred for its cleaner interface and decay-adaptive stopping.
 
 ## Known accuracy
 
-`validation/crossval/04_multilayer_fresnel.py` gates rfx against the analytic
-Fresnel / transfer-matrix result with a mean-error threshold of 0.05 (5%) for
-both T(f) and R(f), as well as energy conservation R+T within 5%. In practice
-rfx passes this gate with substantially lower error for well-resolved, lossless
-slabs.
+The cross-validation case that gated normal-incidence slab R(f) and T(f)
+against the analytic Fresnel / transfer-matrix result was removed on
+2026-09-21. The analytic slab comparisons that remain are in
+`tests/oracle/`.
 
-Do not read those mean thresholds as an accuracy statement about the fringe
+Do not read a band-mean threshold as an accuracy statement about the fringe
 structure: a band mean over an interference pattern is blind to every zero-mean
-shape error, and with the mean gates alone the case passed while the true slab
-permittivity was 12.33% away from what the FDTD built (issue #812). Since #812
-the script additionally gates each Fabry-Perot extremum of R(f) one at a time —
-position against a window derived from the spectral bin and the exact Yee
-dispersion relation (59/106/235 MHz at the 3.75/7.50/11.24 GHz fringes) and
-value against 0.04 — and, when Meep is importable, gates Meep's numbers rather
-than only its presence. If you need an accuracy figure for a slab, quote the
-per-fringe deviations the script prints, not the band means.
+shape error, and with mean gates alone that case passed while the true slab
+permittivity was 12.33% away from what the FDTD built (issue #812). If you need
+an accuracy figure for a slab, quote per-fringe deviations, not band means.
 
 For dispersive media there is currently **no tracked R(f)/T(f) accuracy oracle**
 in this repository — treat dispersive R/T results as unvalidated against
@@ -214,11 +208,6 @@ necessarily a usage error in either tool.
   + two-run field-level reference subtraction via the `Simulation` API, with an
   analytic Fresnel witness and an energy-conservation readout (on the coarse demo
   grid R+T sits slightly above 1; refine `dx` to tighten it). Start here.
-- `validation/crossval/04_multilayer_fresnel.py` — dispersionless Fresnel slab,
-  analytic comparison. Note: this script uses a raw Yee loop (`update_e` /
-  `update_h`) rather than the `Simulation` API. The raw-loop approach works for
-  dispersionless media because there is no group-velocity chirp; for dispersive
-  media use `add_flux_monitor` via the `Simulation` API.
 
 ## Companion primitives
 

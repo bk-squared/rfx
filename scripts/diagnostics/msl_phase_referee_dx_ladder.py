@@ -888,8 +888,11 @@ def main(argv: list[str] | None = None) -> int:
               f"num_periods={NUM_PERIODS}"
               + (f", n_steps={args.smoke_steps} [SMOKE])" if args.smoke
                  else ")") + " ===")
+        # the dump records S_raw / passivity_correction beside S, which exist
+        # only on the projected path; the committed summaries were taken so
         kwargs: dict = {"n_freqs": N_FREQS, "num_periods": NUM_PERIODS,
-                        "raw_3probe_dump_path": str(dump_path)}
+                        "raw_3probe_dump_path": str(dump_path),
+                        "enforce_passivity": True}
         if args.smoke:
             kwargs["n_steps"] = int(args.smoke_steps)
         t0 = time.time()

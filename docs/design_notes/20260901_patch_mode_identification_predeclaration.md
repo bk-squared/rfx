@@ -1,5 +1,7 @@
 # cv05 + cv15: replacing the self-confirming resonance selector with mode-resolved identification
 
+> cv05 was removed on 2026-09-21; the artifacts cited here are at commit 66ed61c2.
+
 > **SUPERSEDED IN PART by #931 (the lattice ownership contract), 2026-09-07.**
 > Kept as dated history and deliberately NOT rewritten.
 > Its `build_rfx_sim(two_plane=False/True)` arms and the `two_plane_ground`

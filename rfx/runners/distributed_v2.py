@@ -40,6 +40,8 @@ from __future__ import annotations
 
 from functools import partial
 
+from rfx.runners._exchange_interval import validate_exchange_interval
+
 import jax
 import jax.numpy as jnp
 from jax import lax
@@ -439,6 +441,72 @@ def _init_cpml_sharded(grid, nx_local, n_devices, mesh):
 # Public runner
 # ---------------------------------------------------------------------------
 
+def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
+    """Refuse periodic boundaries, extended or passive ports, and surface monitors.
+
+    Call after the TFSF and waveguide single-device fallbacks, before sharding.
+    ``bloch`` also accepts an explicit phase from a direct caller.
+    """
+    single_device_hint = (
+        "omit devices=... (use a single-device run() instead)"
+        if lane == "distributed multi-device run()"
+        else "call sim.run(...) without devices= instead of calling this runner"
+    )
+    periodic_axes = getattr(sim, "_periodic_axes", "") or ""
+    if bloch is None:
+        bloch = getattr(sim, "_bloch", None)
+    if periodic_axes or bloch is not None:
+        features = []
+        if periodic_axes:
+            features.append("periodic axes " + ", ".join(repr(a) for a in periodic_axes))
+        if bloch is not None:
+            features.append("a Bloch phase")
+        raise NotImplementedError(
+            f"{' and '.join(features)}: periodic / Bloch boundaries are not "
+            f"supported on the {lane} path; the lane would use the declared "
+            "non-periodic wall instead "
+            "(rfx.runners.distributed._update_h_local / _update_e_local). "
+            f"Remove the periodic axes / Bloch phase, or {single_device_hint}."
+        )
+
+    ports = getattr(sim, "_ports", ()) or ()
+    if any(pe.impedance > 0.0 and pe.extent is not None for pe in ports):
+        raise NotImplementedError(
+            "add_port(..., impedance>0, extent=...) (extended lumped port) "
+            f"is not supported on the {lane} path; the port would get "
+            "neither a source nor its resistive termination "
+            "(rfx.runners.distributed_v2.run_distributed / "
+            "rfx.runners.distributed.run_distributed port setup). "
+            "Remove extent=... to use a single-cell lumped port, or "
+            f"{single_device_hint}."
+        )
+
+    if any(not pe.excite for pe in ports):
+        raise NotImplementedError(
+            "add_port(..., excite=False) (passive port) is not supported "
+            f"on the {lane} path; the lane would drive the port with its "
+            "waveform (or raise in make_port_source for waveform=None) "
+            "(rfx.runners.distributed_v2.run_distributed / "
+            "rfx.runners.distributed.run_distributed port setup). "
+            "Remove the passive-port configuration (excite=True), or "
+            f"{single_device_hint}."
+        )
+
+    monitors = []
+    if getattr(sim, "_flux_monitors", None):
+        monitors.append("add_flux_monitor() (flux monitors)")
+    if getattr(sim, "_ntff", None) is not None:
+        monitors.append("add_ntff_box() (NTFF box)")
+    if monitors:
+        raise NotImplementedError(
+            f"{' / '.join(monitors)} is not supported on the {lane} path; "
+            "the corresponding result.flux_monitors / result.ntff_data "
+            "would be None (rfx.runners.distributed_v2.run_distributed / "
+            "rfx.runners.distributed.run_distributed result assembly). "
+            f"Remove the flux monitors / NTFF box, or {single_device_hint}."
+        )
+
+
 def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                     **kwargs):
     """Run FDTD simulation distributed across multiple devices.
@@ -460,27 +528,16 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     devices : list of jax.Device or None
         If None, use all available devices.
     exchange_interval : int, optional
-        How often (in timesteps) to perform ghost cell exchange.
-        Default is 1 (every step).  Setting to 2 or 4 reduces
-        synchronisation overhead at the cost of O(interval * dt)
-        boundary error from stale ghost data.
+        Ghost exchange interval in timesteps; only integer 1 is supported.
 
     Returns
     -------
     Result
     """
+    validate_exchange_interval(exchange_interval)
     from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
     _refuse_f0(sim._thin_conductors, "distributed (v2) runner")
     import warnings
-
-    if exchange_interval > 1:
-        warnings.warn(
-            f"exchange_interval={exchange_interval}: ghost cells are stale "
-            f"for {exchange_interval-1} steps between exchanges, introducing "
-            f"O(dt*{exchange_interval}) boundary error. Use exchange_interval=1 "
-            f"for physically accurate results.",
-            stacklevel=2,
-        )
 
     if sim._boundary == "upml":
         raise ValueError("boundary='upml' does not support distributed execution")
@@ -504,6 +561,9 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             stacklevel=2,
         )
         return sim.run(n_steps=n_steps)
+
+    refuse_unsupported_distributed_features(
+        sim, lane="distributed (v2) runner", bloch=kwargs.get("bloch"))
 
     from rfx.api import Result
 

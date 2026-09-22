@@ -1,0 +1,7 @@
+369367262440  (VESSL, remilab-c0, gpu-rtx4090; submitted 2026-09-21 02:26 UTC by the leader session; recorded by the submitter because the pod cannot know its own run id)
+369367262453  (VESSL; old-tree run on src-1fc9e38f, arms n2_pad0_cpml4 and n2_pad10_cpml4; submitted 2026-09-21 02:52 UTC by the leader session)
+369367262462  (VESSL; src-main with CEIL_SIZING=1, arm n2_pad0_cpml4; submitted 2026-09-21 02:54 UTC by the leader session)
+369367262552  (VESSL; full gpu suite on PR #1012 head de8e9326 via RFX_GPU_SUITE_REF, yaml vessl_gpu_suite_pr1012.yaml; submitted 2026-09-21 06:49 UTC by the leader session)
+369367262564  (VESSL, remilab-c0, gpu-rtx4090; #801 field dumps, five labels via dump_fields.py, yaml vessl_801_dump.yaml; submitted 2026-09-21 07:24 UTC by this session; FAILED at label 1 -- pip install line was missing `pytest`, which the oracle module imports; no dumps/ output produced; superseded by 369367262565)
+369367262565  (VESSL, remilab-c0, gpu-rtx4090; retry of 369367262564 with pytest added to the pip install line; #801 field dumps, yaml vessl_801_dump.yaml; submitted 2026-09-21 07:25 UTC by this session)
+369367262889  (VESSL; leader's one-off dump of n2_pad10_cpml4 on src-main-plus-1012 via leader_dump_n2_1012.py; submitted 2026-09-21 14:40 UTC)

@@ -1,5 +1,7 @@
 # The auxiliary-echo record invariant: a computed witness, and a gate on the record (#888)
 
+> cv04, cv22 and cv23 were removed on 2026-09-21; the artifacts cited here are at commit b4cf8f29.
+
 Branch `agent/aux-echo-invariant`, off `origin/main` @ `68c8c340`.
 
 Reads, and turns into an instrument, two diagnoses:

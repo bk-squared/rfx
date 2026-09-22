@@ -48,21 +48,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [1, 2, 3, 4]
+        group: [1, 2, 3, 4, 5]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
       - run: pip install -e ".[dev,cad]"
-      - name: Slow selection, shard ${{ matrix.group }} of 4, store durations
+      - name: Slow selection, shard ${{ matrix.group }} of 5, store durations
         env:
           RFX_WEEKLY_RSS: "1"
         run: >
           mkdir -p durations &&
           pytest -v -ra -p no:cacheprovider
           -m "not gpu and not highmem"
-          --splits 4 --group ${{ matrix.group }}
+          --splits 5 --group ${{ matrix.group }}
           --ignore=tests/crossval/test_meep_crossval.py
           --ignore=tests/crossval/test_meep_crossval_dielectric_cavity.py
           --ignore=tests/crossval/test_openems_crossval.py

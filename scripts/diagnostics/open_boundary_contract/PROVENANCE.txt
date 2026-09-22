@@ -1,0 +1,17 @@
+#801 measurement, 2026-09-21 (leader session rfx-waveguide, bk-workspace pod)
+
+src-main/            git archive of origin/main           df08175c
+src-main-plus-1012/  git archive of a LOCAL-ONLY merge    a0b79c87
+                     = origin/main df08175c + PR #1012 head 8473561c
+                       (branch agent/cpml-magnetic-half-cell)
+                     one conflict, tests/contracts/test_evidence_numeric_provenance.py,
+                     resolved by taking main's side; not part of the measurement.
+                     Never pushed. Worktree: bk-workspace/rfx-wt-801-measure (detached).
+
+The two trees differ under rfx/ in exactly three files:
+  rfx/boundaries/cpml.py, rfx/runners/distributed.py, rfx/runners/distributed_nu.py
+
+Driver: run_arms.py (this directory). It imports the ring-down oracle's own
+builder and metrics from each tree's
+tests/oracle/test_lossless_open_domain_ringdown_does_not_grow.py, so the arms
+are scored exactly as the committed gate scores them.

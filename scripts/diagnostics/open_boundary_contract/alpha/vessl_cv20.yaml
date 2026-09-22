@@ -1,0 +1,26 @@
+name: rfx-801-alpha-cv20
+description: "#801 cv20 continued, alpha factors 0.01 0.25 1 4."
+tags: [rfx, issue-801, diagnostic]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_ENABLE_X64: "0"
+  PYTHONDONTWRITEBYTECODE: "1"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  base=/root/workspace/bk-workspace/.801-measure
+  cat "$base/PROVENANCE.txt"
+  sha256sum "$base/alpha/driver.py" "$base/src-main/scripts/diagnostics/build_msl_thru_phase_dx50um_reference.py" "$base/src-main/rfx/boundaries/cpml.py"
+  python -m pip install -q "scipy>=1.11" pytest
+  python -B "$base/alpha/driver.py" cv20 f001 --factor 0.01 --require-gpu
+  python -B "$base/alpha/driver.py" cv20 f025 --factor 0.25 --require-gpu
+  python -B "$base/alpha/driver.py" cv20 f1 --factor 1 --require-gpu
+  python -B "$base/alpha/driver.py" cv20 f4 --factor 4 --require-gpu

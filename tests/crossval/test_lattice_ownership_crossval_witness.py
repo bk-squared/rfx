@@ -173,9 +173,6 @@ _ALLOWED = {
         "docstring history of the #740 ground patch (:65, :79, :112) and one "
         "line at :264 recording that the PREVIOUS version OR'd the base "
         "tangential_edge_masks with the extension; the live code calls neither",
-    "validation/crossval/18_wr90_iris_modematch.py":
-        "two docstring sentences (:516, :967) explaining that the far face was "
-        "never a wall and that the flag put it back for t = 1 only",
     "tests/crossval/test_patch_canonical_farfield_e4.py":
         "one comment (:147) citing the #740 arm's -4.7% as the prediction the "
         "post-#931 measurement was checked against",
@@ -185,24 +182,6 @@ _ALLOWED = {
     "tests/crossval/test_patch_mode_identification.py":
         "resolves two frozen #740 ring-down legs by role; the old key "
         "spelling is the fallback",
-    # --- group X-A (cv05). Prose only: both files name the retired flag to
-    # cite the 2026-08-28 A/B verdict that explains WHY cv05's agreement with
-    # openEMS is expected to move. Neither imports or re-implements anything;
-    # both read realized_pec_edge_masks / realized_wall_planes.
-    "tests/crossval/test_cv05_realized_sheet_planes.py":
-        "one docstring sentence contrasting a foil with the retired flag and "
-        "the one-cell PEC Box, which is what the test exists to distinguish",
-    "validation/crossval/05_patch_antenna.py":
-        "cites the 2026-08-28 two_plane A/B verdict in its header as the "
-        "recorded reason the openEMS agreement moves; no flag, no mechanism",
-    "tests/crossval/test_rcs_dielectric_sphere_mie_gates.py":
-        "asserts the three #702 helpers are GONE from "
-        "rfx.geometry.rasterize_grid (not hasattr) — it names them to "
-        "refuse them, which is this guard's own job one level down",
-    "tests/crossval/test_cv23_lossy_slab_gates.py":
-        "names resample_sheet_node_materials as the retired mechanism its "
-        "one-cell-lossy-body pin used to guard against; history in a "
-        "docstring, no call",
 }
 
 

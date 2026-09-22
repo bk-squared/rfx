@@ -1,5 +1,5 @@
 name: rfx-physics-gate-port-external-waveguide-broad
-description: "Broad-E5 external-reference shard: rectangular_waveguide_port WR90 comparison + readiness"
+description: "Broad-E5 external-reference shard: rectangular_waveguide_port dependency audit + readiness report (the WR-90 comparison step left with the waveguide-port case, 2026-09-21)"
 tags: [rfx, physics-gate, port-external, waveguide-broad, sparameter-validation]
 resources:
   cluster: remilab-c0
@@ -36,31 +36,10 @@ run: |-
   dependency_audit_rc=$?
   set -e
   echo "external_solver_dependency_audit_rc=$dependency_audit_rc"
-  echo "=== WR90 cv11 diagnostic run ==="
-  set +e
-  timeout "${RFX_WAVEGUIDE_WR90_TIMEOUT:-2400}" \
-    python validation/crossval/11_waveguide_port_wr90.py \
-      > "$out/cv11_waveguide_wr90.stdout.txt" \
-      2> "$out/cv11_waveguide_wr90.stderr.txt"
-  cv11_rc=$?
-  set -e
-  echo "$cv11_rc" > "$out/cv11_waveguide_wr90.rc"
-  echo "cv11_waveguide_wr90_rc=$cv11_rc"
-  if [ "$cv11_rc" -eq 0 ]; then
-    echo "=== WR90 external generic comparator ==="
-    set +e
-    python scripts/diagnostics/build_waveguide_wr90_external_sparameter_comparison.py \
-      --cv11-stdout "$out/cv11_waveguide_wr90.stdout.txt" \
-      --output-dir "$out/wr90_external_generic_comparison"
-    comparison_rc=$?
-    set -e
-    echo "wr90_external_comparison_rc=$comparison_rc"
-    if [ "$comparison_rc" -eq 0 ]; then
-      cat "$out/wr90_external_generic_comparison/wr90_external_generic_sparameter_comparison.json"
-    fi
-  else
-    echo "cv11 WR90 run failed or timed out; broad-E5 shard remains blocked"
-  fi
+  # 2026-09-21: the WR-90 waveguide-port case was removed, and with it this
+  # shard's diagnostic command (it ran that case and fed its stdout to the
+  # external generic comparator). What is left is the dependency audit above
+  # and the readiness report below, which read committed artifacts only.
   echo "=== broad-E5 readiness report ==="
   set +e
   python scripts/diagnostics/report_port_external_reference_shard.py \

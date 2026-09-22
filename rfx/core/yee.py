@@ -343,6 +343,79 @@ def curl_h_nu(hx, hy, hz, inv_dx, inv_dy, inv_dz):
     return curl_x, curl_y, curl_z
 
 
+def e_update_coeffs(eps_r, sigma, dt):
+    """``(Ca, Cb)`` of the lossy E update for a permittivity and conductivity.
+
+    Ca = (1 - σ·dt/(2ε)) / (1 + σ·dt/(2ε)),  Cb = (dt/ε) / (1 + σ·dt/(2ε)).
+
+    One spelling, shared by :func:`update_e` — which builds the pair over the
+    whole grid from ``materials`` — and :func:`update_e_box`, which builds it
+    over one box from arrays that need not come from ``materials`` (#1179).
+    The arguments are arrays of any shape (or scalars); nothing here is
+    grid-sized by construction.
+    """
+    eps = eps_r * EPS_0
+    sigma_dt_2eps = sigma * dt / (2.0 * eps)
+    ca = (1.0 - sigma_dt_2eps) / (1.0 + sigma_dt_2eps)
+    cb = (dt / eps) / (1.0 + sigma_dt_2eps)
+    return ca, cb
+
+
+def update_e_box(state: FDTDState, prev: FDTDState, box: tuple,
+                 ca, cb, dx: float,
+                 periodic: tuple = (False, False, False),
+                 stencil_order: int = 2,
+                 bloch: tuple | None = None) -> FDTDState:
+    """Redo the E update inside one index box with its own Ca/Cb (#1179).
+
+    ``prev`` is the state BEFORE the grid-wide E update of this timestep. It
+    carries the same H^{n+1/2} that update consumed (nothing between the two
+    touches H), so this recomputes ``E^{n+1} = Ca·E^n + Cb·curl(H^{n+1/2})``
+    at the box cells exactly as :func:`update_e` would — from coefficients
+    that do not have to come from ``materials``.
+
+    Why it exists: the Yee E update is LINEAR in the fields, so reverse-mode
+    AD needs the primal field only where a coefficient is a design variable.
+    With ``materials`` left constant and only this box recomputed from a
+    traced permittivity, every array the backward pass has to keep is
+    box-shaped — ``prev.E`` and ``curl(H)`` enter only through the sliced
+    products, and slicing and scatter are both linear (they save nothing).
+    The grid-sized alternative is a traced ``materials.eps_r``, which puts
+    six grid-sized arrays per step on the tape.
+
+    ``ca`` and ``cb`` are box-shaped (or scalar) and built once, outside the
+    time loop, by :func:`e_update_coeffs`.
+
+    Cost: one extra whole-grid ``curl_h`` per step, the same shared stencil
+    helper the E update and the #677 sheet operator use. Slicing H to the box
+    plus a halo would avoid it, at the price of a second spelling of the
+    stencil; measured on CPU the extra curl is repaid by the smaller tape.
+    """
+    i0, i1, j0, j1, k0, k1 = box
+    sl = (slice(i0, i1), slice(j0, j1), slice(k0, k1))
+
+    # Same compute/storage dtype policy as update_e -- the two results are
+    # compared cell-for-cell by the equality gate, so they must round alike.
+    _fdtype = state.ex.dtype
+    _cdtype = (
+        jnp.complex64 if jnp.iscomplexobj(state.ex)
+        else jnp.promote_types(state.ex.dtype, jnp.float32)
+    )
+    curl_x, curl_y, curl_z = curl_h(
+        prev.hx.astype(_cdtype), prev.hy.astype(_cdtype),
+        prev.hz.astype(_cdtype), dx, periodic, stencil_order, bloch)
+
+    ex = (ca * prev.ex[sl].astype(_cdtype) + cb * curl_x[sl]).astype(_fdtype)
+    ey = (ca * prev.ey[sl].astype(_cdtype) + cb * curl_y[sl]).astype(_fdtype)
+    ez = (ca * prev.ez[sl].astype(_cdtype) + cb * curl_z[sl]).astype(_fdtype)
+
+    return state._replace(
+        ex=state.ex.at[sl].set(ex),
+        ey=state.ey.at[sl].set(ey),
+        ez=state.ez.at[sl].set(ez),
+    )
+
+
 @partial(jax.jit, static_argnums=(4, 5, 6))
 def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
              periodic: tuple = (False, False, False),
@@ -384,13 +457,7 @@ def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
     hx = state.hx.astype(_cdtype)
     hy = state.hy.astype(_cdtype)
     hz = state.hz.astype(_cdtype)
-    eps = materials.eps_r * EPS_0
-    sigma = materials.sigma
-
-    # Lossy update coefficients
-    sigma_dt_2eps = sigma * dt / (2.0 * eps)
-    ca = (1.0 - sigma_dt_2eps) / (1.0 + sigma_dt_2eps)
-    cb = (dt / eps) / (1.0 + sigma_dt_2eps)
+    ca, cb = e_update_coeffs(materials.eps_r, materials.sigma, dt)
 
     curl_x, curl_y, curl_z = curl_h(hx, hy, hz, dx, periodic, so, bloch)
 

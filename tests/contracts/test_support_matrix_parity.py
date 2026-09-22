@@ -290,7 +290,7 @@ LANE_STATUS_ANCHORS_MD: dict[str, tuple[str, ...]] = {
 LANE_STATUS_ANCHORS_JSON: dict[str, tuple[str, ...]] = {
     "add_coaxial_port(...)": (
         "compute_coaxial_s_matrix(...) remains",
-        "validation/crossval/21_coax_two_port_referee.py, VESSL run-3 369367251629",
+        "an external openEMS referee (VESSL run-3 369367251629",
     ),
 }
 

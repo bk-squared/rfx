@@ -295,7 +295,7 @@ def test_cv15_builder_rejects_an_unknown_patch_kind():
 
 # ---------------------------------------------------------------------------
 # compare()'s stack-geometry gate: pinned with synthetic dicts (no solve),
-# following test_crossval_gate_logic.py's precedent for this directory.
+# the established precedent for this directory.
 # ---------------------------------------------------------------------------
 
 def _good_stack_check(cv15):
@@ -389,9 +389,10 @@ def test_cv15_declaring_the_sheets_changes_no_material(capsys):
     be BIT-IDENTICAL to the same build with the conductors removed, not merely
     "still two distinct values".
 
-    This is cv17's G17-B pattern (``17_dielectric_sphere_mie.py``:
-    ``check_realized_material``, exactly two eps values or the run is not about
-    the declared material) carried onto the sheet side, and it is the witness
+    This is the G17-B pattern of the former cv17 dielectric-sphere case,
+    removed 2026-09-21 (``check_realized_material``: exactly two eps values, or
+    the run is not about the declared material) carried onto the sheet side,
+    and it is the witness
     for the DELETED #702 family -- "re-sample a 1-node sheet's own cell at its
     live edge", which existed precisely because the old ground conductor DID
     own a cell whose material had to be patched afterwards.

@@ -98,7 +98,6 @@
       - any-glob-to-any-file:
           - "validation/crossval/**"
           - "tests/crossval/**"
-          - "scripts/crossval/**"
 
 "lane:ci-infra":
   - changed-files:

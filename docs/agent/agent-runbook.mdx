@@ -317,16 +317,12 @@ in the fast suite via in-file XLA host-device sentinels.
 
 ## External cross-validation
 
-Two lanes:
-
-1. **Weekly CI** — `crossval-external` in `validation.yml`, conda-forge Meep.
-   Exit-2 = visible SKIP, exit-1 = red.
-2. **On-demand source-built openEMS** — `scripts/vessl_crossval_external.yaml`
-   (cv05 + cv11) on the free `remilab-c0` cluster:
-   ```
-   vessl run create -f scripts/vessl_crossval_external.yaml
-   ```
-   Run it per release tag and after any change to the cv05/cv11 physics paths.
+Neither CI nor the repository runs an external solver: the weekly
+`crossval-external` Meep job left `validation.yml` on 2026-09-21 with the last
+scheduled case, and the on-demand openEMS lane left with the WR-90
+waveguide-port case. A cross-validation case now compares rfx against frozen
+reference data committed under `tests/fixtures/`; see
+`docs/design_notes/20260921_crossval_role_redesign.md`.
 
 Historical environment notes and green-baseline logs that are absent from a
 public clone are non-authoritative here. Treat the tracked harness, current

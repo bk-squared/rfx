@@ -56,17 +56,38 @@ each flux-face quadrature area is exactly (0.030 m)^2):
     endpoint=False (task-recipe pitfall 6: a sparse phi grid under-samples
     the P_rad integral and corrupts D by dB-level amounts)
 
-Measured baseline (R5 measure-before-gate; 2026-07-10 diagnostic lane +
-same-session base-rung remeasure, bit-reproducible on this CPU box):
+Measured baseline (R5 measure-before-gate). The directivity and flux-ratio
+numbers were RE-MEASURED on 2026-09-21 after the near-to-far-field transform
+was made second order in the cell size (face-cell collocation + midpoint
+rule) and its E field was stamped at (n+1)*dt instead of n*dt; the old
+values are kept beside them because the gates used to be set on those.
   base rung dx=3.0 mm, 400 steps (~2.3 s):
-    D = 1.8000060791 dBi   (theory 10*log10(1.5) = 1.7609; err +0.0391 dB)
-    P_ntff/P_flux = 0.4947778515   (predicted 0.5; off by -0.0052)
+    D = 1.7614298 dBi   (theory 10*log10(1.5) = 1.7609; err +0.00052 dB.
+      Was 1.8000060791 dBi, err +0.0391 dB, with the first-order rule)
+    P_ntff/P_flux = 0.5003207   (predicted 0.5; off by +0.00032.
+      Was 0.4947778515, off by -0.0052)
     bright-region [20,160] deg max |dev| vs sin^2(theta) = 0.0586 dB
     cross-pol max|E_phi|/max|E_theta| over the sphere = 0.003882
     jnp flux_spectrum vs float64 accumulator recompute: per-face rel
     difference <= 3.0e-7 (net 4.0e-9)
-  dx-ladder (slow_physics): err_db 0.0391 -> 0.0147 -> 0.0064 (monotone);
-    flux ratio 0.4948 / 0.5128 / 0.5215 (per-rung bands, see caveat 2)
+  base-rung slot mutations (what the re-pinned ratio band separates):
+    E stamped at n*dt -> ratio 0.4922200, D err 0.0101 dB
+    NTFF accumulate moved above the E update -> ratio 0.5062186,
+      D err 0.0107 dB
+  dx-ladder (slow_physics): err_db 0.00052 -> 0.00012 -> 0.00006
+    (monotone; was 0.0391 -> 0.0147 -> 0.0064);
+    flux ratio 0.5003 / 0.5150 / 0.5226 (was 0.4948 / 0.5128 / 0.5215;
+    per-rung bands, see caveat 2)
+  non-uniform lane, same fixture forced through the NU runner on a z
+    profile that REALIZES the same 33 x 33 x 33 grid (dz_profile = 20 x
+    3.0 mm): D = 1.761428040 dBi (err +0.000515 dB), P_ntff/P_flux =
+    0.500321038, ring-down settling -78.40 dB. The two lanes agree to
+    1.8e-06 dB and 3.4e-07. A profile with a different cell count moves
+    the +z absorber and the flux box one cell inside it: 28 cells realizes
+    33 x 33 x 41 and reads 0.4953, 21 cells reads 0.5039
+  box-size witness (slow_physics, 0.09 m domain, dx=1.5 mm, 800 steps):
+    |D err| 0.00013 / 0.00050 / 0.00204 dB at box half-width 9 / 18 / 27 mm
+    (was 0.0212 / 0.0677 / 0.1660 dB with the first-order rule)
   offset-dipole phase witness (delta_z = +2*dx = 6 mm, same base rung):
     bright-region slope of unwrapped arg(E_theta) vs cos(theta) =
     +0.380369 rad vs expected +k*delta_z = +0.377252 rad (+0.83% dev);
@@ -100,18 +121,22 @@ Known numerics caveats carried by this battery (documented, not patched):
       non-zero jnp value to <= 3e-7 rel). The ladder test therefore uses
       the float64 recompute helper for ALL rungs, and the fast suite pins
       recompute==jnp on the base rung where both are healthy.
-  (2) the measured ratio drifts away from 0.5 with refinement (0.4948 ->
-      0.5128 -> 0.5215); the E-time-label prediction
-      0.5*cos^2(omega*dt/2) = 0.4986 accounts for part of the
-      coarsest-rung offset (measured 0.4948). The finest-rung drift
-      mechanism is CONFIRMED as the fixed-cpml_layers absorber-thinning
-      confound: the absorber is cpml_layers*dx thick, so refining dx at
-      fixed cpml_layers thins the absorber (reviewer witness:
-      cpml_layers=12 at dx=1.5 mm restores ratio 0.4980). The ladder gate
-      is therefore a PER-RUNG band centred on the measured ratios
-      (+/-0.02 each), i.e. a stability lock, NOT a convergence-to-0.5
-      claim; a band exit at a NEW finer rung is the documented drift, not
-      automatically a regression.
+  (2) the measured ratio drifts away from 0.5 with refinement (0.5003 ->
+      0.5150 -> 0.5226). This block used to attribute part of the
+      coarsest-rung offset to an E-time-label term,
+      0.5*cos^2(omega*dt/2) = 0.4986: that term existed because the NTFF
+      accumulator stamped E a full step early, which was a DEFECT and was
+      fixed on 2026-09-21 (E is now stamped at (n+1)*dt, its own sample
+      time). With it gone the coarsest rung sits at 0.5003, 0.00032 from
+      the derived 0.5, and no time-label term is subtracted anywhere.
+      What remains is the drift with refinement, whose mechanism is
+      CONFIRMED as the fixed-cpml_layers absorber-thinning confound: the
+      absorber is cpml_layers*dx thick, so refining dx at fixed
+      cpml_layers thins the absorber (reviewer witness: cpml_layers=12 at
+      dx=1.5 mm restores ratio 0.4980). The ladder gate is therefore a
+      PER-RUNG band centred on the measured ratios (+/-0.02 each), i.e. a
+      stability lock, NOT a convergence-to-0.5 claim; a band exit at a NEW
+      finer rung is the documented drift, not automatically a regression.
 
 No network, no external solver; deterministic (fixed geometry, fixed step
 counts, rect DFT window). Tighten gates only with a fresh measured
@@ -161,18 +186,25 @@ PHI_GRID = np.linspace(0.0, 2.0 * np.pi, 48, endpoint=False)
 # ===========================================================================
 # Gate constants (R5: every gate = measured value + honest margin)
 # ===========================================================================
-# Measured base rung 2026-07-10: ratio = 0.4947778515 -> |off| = 0.0052.
-# Gate 0.05 (~10x measured). Predicted 0.5 derived from source (see module
-# docstring), not fitted.
+# Measured base rung (this tree, after the second-order NTFF fix):
+# ratio = 0.5003207 -> |off from the derived 0.5| = 0.00032. The old gate
+# was 0.05, which no defect in the transform's time register could reach.
+# Band 0.003 chosen from the two slot mutations measured on this fixture:
+# E stamped at n*dt gives 0.4922200 (|off| 0.0078, 2.6x the band) and
+# moving the NTFF accumulate above the E update gives 0.5062186 (|off|
+# 0.0062, 2.1x the band). The unmutated value sits 9x inside it. Predicted
+# 0.5 derived from source (see module docstring), not fitted.
 _RATIO_PREDICTED = 0.5
-_RATIO_TOL_BASE = 0.05
+_RATIO_TOL_BASE = 0.003
 
-# Measured base rung: D = 1.8000060791 dBi, |err| = 0.0391 dB vs theory.
-# Gate 0.25 dB (~6x measured) — tighter than the legacy +/-0.75 dB gate in
-# test_farfield.py (which is untouched); the base-rung measurement supports
-# the tighter bound, and the flux cross-check above pins the absolute scale
-# that D (a ratio) cannot see.
-_D_ERR_MAX_DB = 0.25
+# Measured base rung (this tree): D = 1.7614298 dBi, |err| = 0.00052 dB.
+# Old gate 0.25 dB, measured against the old rule's 0.0391 dB. Re-pinned to
+# 0.005 dB: ~10x the new measurement and ~8x BELOW the 0.0391 dB a full
+# revert of the second-order NTFF fix produces, so a revert cannot pass.
+# Both slot mutations also cross it (0.0101 and 0.0107 dB). Still not a
+# licence to widen: the flux cross-check above pins the absolute scale that
+# D (a ratio) cannot see.
+_D_ERR_MAX_DB = 0.005
 
 # Measured base rung: bright-region [20, 160] deg max |10*log10(U/sin^2)|
 # = 0.0586 dB (finest rung: 0.0056 dB). Gate 0.30 dB (~5x measured base).
@@ -208,20 +240,23 @@ _XPOL_SHAPE_DEV_MAX = 0.05
 # the E_phi channel carries co-pol-class magnitude (non-vacuous).
 _XPOL_PEAK_RATIO_BAND = (0.9, 1.1)
 
-# dx-ladder (slow_physics). Measured |err_db|: 0.0391, 0.0147, 0.0064.
-# Per-rung caps ~3-6x measured; plus a strict finest < coarsest witness
-# (6x apart in measurement, robust to cross-machine float noise).
-# Ratio bands: PER-RUNG, centred on the measured ratios 0.4948 / 0.5128 /
-# 0.5215, each +/-0.02 — a stability lock; the drift AWAY from 0.5 with
+# dx-ladder (slow_physics). Re-measured on this tree after the second-order
+# NTFF fix: |err_db| 0.00052 / 0.00012 / 0.00006 (was 0.0391 / 0.0147 /
+# 0.0064 with the first-order rule). Per-rung caps 0.005 / 0.002 / 0.001:
+# 10-17x the new measurement and 6-8x BELOW the old one, so a full revert of
+# the fix goes red on EVERY rung. At the old caps it stayed green on all
+# three, which is why they move.
+# Ratio bands: PER-RUNG, centred on the re-measured ratios 0.5003 / 0.5150 /
+# 0.5226, each +/-0.02 — a stability lock; the drift AWAY from 0.5 with
 # refinement is the CONFIRMED fixed-cpml_layers absorber-thinning confound
 # (module docstring caveat 2), so this deliberately does NOT assert
-# convergence to 0.5. The source-derived 0.5 +/- 0.05 gate lives ONLY on
+# convergence to 0.5. The source-derived 0.5 +/- 0.003 gate lives ONLY on
 # the base-rung fast test above.
 _LADDER_RUNGS = (
     # (dx_m, n_steps, err_cap_db, ratio_center)
-    (3.0e-3, 400, 0.15, 0.4948),
-    (1.5e-3, 800, 0.08, 0.5128),
-    (0.75e-3, 1600, 0.04, 0.5215),
+    (3.0e-3, 400, 0.005, 0.5003207),
+    (1.5e-3, 800, 0.002, 0.5150090),
+    (0.75e-3, 1600, 0.001, 0.5225705),
 )
 _RATIO_BAND_LADDER = 0.02
 
@@ -293,6 +328,20 @@ def _net_outward_power(face_flux: dict) -> float:
             - (face_flux["x_lo"] + face_flux["y_lo"] + face_flux["z_lo"]))
 
 
+def _realized_shape(grid) -> tuple:
+    """(nx, ny, nz) the run actually built, not what the fixture declared.
+
+    A ``Grid`` carries ``shape``; a ``NonUniformGrid`` is a NamedTuple with
+    nx/ny/nz. Both are read here so two lanes can be compared on what they
+    realized — the rule the repo repeats most often, and the one that
+    matters here because the absorber position follows the cell count.
+    """
+    shape = getattr(grid, "shape", None)
+    if shape is not None and len(shape) == 3:
+        return tuple(int(v) for v in shape)
+    return (int(grid.nx), int(grid.ny), int(grid.nz))
+
+
 def _run_rung(dx: float, n_steps: int, *, component: str = "ez",
               source_pos: tuple = None) -> dict:
     """Run one fixture rung; return the derived calibration observables."""
@@ -315,6 +364,7 @@ def _run_rung(dx: float, n_steps: int, *, component: str = "ez",
                            THETA_GRID, PHI_GRID)
     return {
         "dx": dx,
+        "shape": _realized_shape(res.grid),
         "tail_over_peak": tail_over_peak,
         "face_jnp": face_jnp,
         "face_f64": face_f64,
@@ -404,15 +454,21 @@ def test_flux_f64_recompute_matches_jnp_path(base_rung):
 
 
 def test_ntff_absolute_power_calibration_vs_flux_box(base_rung):
-    """P_ntff / P_flux pins the ABSOLUTE scale of the NTFF chain: 0.5 +/- 0.05.
+    """P_ntff / P_flux pins the ABSOLUTE scale of the NTFF chain: 0.5 +/- 0.003.
 
     The only test in the far-field suite sensitive to an overall NTFF scale
     error (directivity is a ratio and cancels it). Predicted 0.5 from
     source conventions (un-halved flux integrand vs |E|^2/(2*eta_0) far-
-    field intensity — module docstring); measured 0.4947778515 on the base
-    rung (off by 0.0052; gate ~10x that). A factor-2 or eta_0 slip anywhere
-    in farfield.py/antenna.py normalization moves this by 3 dB-class
-    amounts and fails loudly.
+    field intensity — module docstring); measured 0.5003207 on the base
+    rung, 0.00032 from the prediction.
+
+    It is also the end-to-end witness that the accumulator is handed the
+    fields from the SLOT it thinks it is: the flux box is independent of
+    the NTFF chain and does not move. Stamping E at n*dt instead of
+    (n+1)*dt puts the ratio at 0.4922200, and moving the NTFF accumulate
+    above the E update in the scan body puts it at 0.5062186 — 2.6x and
+    2.1x outside the band. A factor-2 or eta_0 slip anywhere in
+    farfield.py / antenna.py normalization moves it by 3 dB-class amounts.
     """
     p_ntff = base_rung["p_ntff"]
     p_flux = base_rung["p_flux_f64"]
@@ -421,23 +477,26 @@ def test_ntff_absolute_power_calibration_vs_flux_box(base_rung):
     ratio = p_ntff / p_flux
     assert abs(ratio - _RATIO_PREDICTED) < _RATIO_TOL_BASE, (
         f"P_ntff/P_flux = {ratio:.6f}, predicted {_RATIO_PREDICTED} "
-        f"(measured 0.494778, gate +/-{_RATIO_TOL_BASE}) — absolute-scale "
-        f"calibration of the NTFF chain has moved")
+        f"(measured 0.500321, gate +/-{_RATIO_TOL_BASE}) — the absolute "
+        f"scale of the NTFF chain, or the E/H time slot it is handed, "
+        f"has moved")
 
 
 def test_dipole_directivity_regression_lock(base_rung):
-    """Hertzian-dipole directivity: |D - 1.7609 dBi| < 0.25 dB.
+    """Hertzian-dipole directivity: |D - 1.7609 dBi| < 0.005 dB.
 
-    Measured 1.8000060791 dBi on the base rung (err +0.0391 dB); gate ~6x
-    the measured error, deliberately tighter than the legacy +/-0.75 dB
-    gate in test_farfield.py (untouched). The base-rung measurement
-    supports the tighter bound; treat a failure as a regression in the
-    NTFF transform or the sphere quadrature, not as licence to widen.
+    Measured 1.7614298 dBi on the base rung (err +0.00052 dB). The gate was
+    0.25 dB while the transform was first order and measured 0.0391 dB; at
+    that cap a full revert of the second-order fix stayed green, so it is
+    re-pinned to ~10x the new measurement and ~8x below the reverted value.
+    Still tighter than the legacy +/-0.75 dB gate in test_farfield.py
+    (untouched). Treat a failure as a regression in the NTFF transform or
+    the sphere quadrature, not as licence to widen.
     """
     err_db = abs(base_rung["d_dbi"] - D_THEORY_DBI)
     assert err_db < _D_ERR_MAX_DB, (
         f"D = {base_rung['d_dbi']:.4f} dBi vs theory {D_THEORY_DBI:.4f} "
-        f"(|err| {err_db:.4f} dB, measured 0.0391, gate {_D_ERR_MAX_DB})")
+        f"(|err| {err_db:.6f} dB, measured 0.00052, gate {_D_ERR_MAX_DB})")
 
 
 def test_bright_region_pattern_matches_sin2_theta(base_rung):
@@ -578,14 +637,16 @@ def test_xdipole_pattern_shapes_make_e_phi_non_vacuous(xdipole_rung):
 def test_dx_ladder_directivity_converges_and_ratio_stable(base_rung):
     """dx-ladder witness: D error shrinks with refinement; per-rung ratio bands.
 
-    Measured (2026-07-10): |err_db| 0.0391 -> 0.0147 -> 0.0064 dB across
-    dx = 3.0 / 1.5 / 0.75 mm (strictly monotone); per-rung caps 0.15 /
-    0.08 / 0.04 dB (~3-6x measured) plus a strict finest < coarsest
-    assertion (6x apart in measurement — robust to float noise).
+    Re-measured 2026-09-21 after the transform was made second order:
+    |err_db| 0.00052 -> 0.00012 -> 0.00006 dB across dx = 3.0 / 1.5 /
+    0.75 mm (strictly monotone; was 0.0391 -> 0.0147 -> 0.0064). Per-rung
+    caps 0.005 / 0.002 / 0.001 dB — 10-17x the new measurement and 6-8x
+    below the old one, so a full revert of the fix goes red on every rung;
+    plus a strict finest < coarsest assertion.
 
     Flux ratio uses the float64 recompute at EVERY rung because at
     dx=0.75 mm the jnp flux path measurably flushes to exactly 0.0
-    (float32, caveat 1). Measured ratios 0.4948 / 0.5128 / 0.5215; gate =
+    (float32, caveat 1). Measured ratios 0.5003 / 0.5150 / 0.5226; gate =
     PER-RUNG band centred on each measured ratio, +/-0.02. This is a
     STABILITY lock, not a convergence-to-0.5 claim: the drift AWAY from
     0.5 with refinement is CONFIRMED as the fixed-cpml_layers
@@ -595,7 +656,7 @@ def test_dx_ladder_directivity_converges_and_ratio_stable(base_rung):
     coarse-rung value). Consequence: a band exit at a NEW finer rung is
     the documented drift mechanism, not automatically a regression —
     measure the new rung (and its cpml_layers-scaled control) before
-    touching any band. The source-derived 0.5 +/- 0.05 gate lives ONLY on
+    touching any band. The source-derived 0.5 +/- 0.003 gate lives ONLY on
     the base-rung fast test. ~35 s CPU for the two finer rungs (the base
     rung is reused from the module fixture).
     """
@@ -612,8 +673,8 @@ def test_dx_ladder_directivity_converges_and_ratio_stable(base_rung):
               f"ratio={rung['p_ntff'] / rung['p_flux_f64']:.6f}, "
               f"tail/peak={rung['tail_over_peak']:.2e}")
         assert err_db < cap_db, (
-            f"dx={dx * 1e3:.2f} mm: |D err| {err_db:.4f} dB exceeds cap "
-            f"{cap_db} (measured 0.0391/0.0147/0.0064 across the ladder)")
+            f"dx={dx * 1e3:.2f} mm: |D err| {err_db:.6f} dB exceeds cap "
+            f"{cap_db} (measured 0.00052/0.00012/0.00006 across the ladder)")
 
         assert rung["tail_over_peak"] < 1e-3, (
             f"dx={dx * 1e3:.2f} mm: pulse not settled "
@@ -627,10 +688,202 @@ def test_dx_ladder_directivity_converges_and_ratio_stable(base_rung):
         assert abs(ratio - ratio_center) < _RATIO_BAND_LADDER, (
             f"dx={dx * 1e3:.2f} mm: P_ntff/P_flux = {ratio:.6f} outside "
             f"{ratio_center} +/- {_RATIO_BAND_LADDER} (per-rung band on the "
-            f"measured 0.4948/0.5128/0.5215; drift across rungs is the "
+            f"measured 0.5003/0.5150/0.5226; drift across rungs is the "
             f"documented fixed-cpml_layers confound, docstring caveat 2)")
 
     assert errs_db[-1] < errs_db[0], (
         f"directivity error did not shrink across the ladder: "
-        f"{errs_db[0]:.4f} dB (coarsest) -> {errs_db[-1]:.4f} dB (finest); "
-        f"measured 0.0391 -> 0.0064")
+        f"{errs_db[0]:.6f} dB (coarsest) -> {errs_db[-1]:.6f} dB (finest); "
+        f"measured 0.00052 -> 0.00006")
+
+
+# ===========================================================================
+# Non-uniform lane: the same fixture, forced through the NU runner
+# ===========================================================================
+# The z profile must REALIZE the uniform fixture's grid, not merely declare
+# the same cell size. 28 cells of 3.0 mm builds 33 x 33 x 41 against the
+# uniform rung's 33 x 33 x 33 — the +z absorber eight cells further out —
+# and the power ratio follows it (caveat 2 records the same sensitivity to
+# the absorber's thickness): 0.4953 at 28 cells and 0.5039 at 21, the NTFF
+# power unchanged to 1e-5 and the flux-box power moving. That is a different
+# structure, not a different lane. At 20 cells both lanes realize
+# 33 x 33 x 33 and the NU lane reproduces the uniform one.
+#
+# Measured on this tree (2026-09-21), dz_profile = 20 uniform 3.0 mm cells:
+#   realized 33 x 33 x 33, D = 1.761428040 dBi (|err| 0.000515 dB),
+#   P_ntff/P_flux = 0.500321038 (uniform rung: 0.500320703),
+#   ring-down settling -78.40 dB, probe tail/peak 1.30e-04.
+# The ratio is therefore gated against the DERIVED 0.5 with the same
+# tolerance as the uniform lane, not against a lane-specific centre.
+_NU_Z_CELLS = 20
+_NU_D_ERR_MAX_DB = 0.005
+_NU_SETTLING_MAX_DB = -40.0
+# Cross-lane agreement, measured: ratio 3.4e-07 apart, D 1.8e-06 dB apart.
+_NU_VS_UNIFORM_RATIO_MAX = 1e-4
+_NU_VS_UNIFORM_D_MAX_DB = 1e-4
+
+
+def _build_nu_sim(dx: float, nz_cells: int) -> Simulation:
+    """The base-rung fixture with an explicit dz profile (NU runner)."""
+    sim = Simulation(
+        freq_max=FREQ_MAX_HZ, domain=(DOMAIN_M,) * 3, dx=dx,
+        dz_profile=np.full(nz_cells, dx),
+        boundary="cpml", cpml_layers=CPML_LAYERS,
+    )
+    pos = (CENTER_M,) * 3
+    sim.add_source(pos, "ez", waveform=GaussianPulse(f0=F0_HZ, bandwidth=0.5))
+    sim.add_probe(pos, "ez")
+    sim.add_probe((NTFF_HI_M, CENTER_M, CENTER_M), "ez")
+    sim.add_ntff_box(corner_lo=(NTFF_LO_M,) * 3, corner_hi=(NTFF_HI_M,) * 3,
+                     freqs=jnp.array([F0_HZ]))
+    span = FLUX_HI_M - FLUX_LO_M
+    for ax in "xyz":
+        for coord, side in ((FLUX_LO_M, "lo"), (FLUX_HI_M, "hi")):
+            sim.add_flux_monitor(axis=ax, coordinate=coord,
+                                 freqs=jnp.array([F0_HZ]),
+                                 size=(span, span),
+                                 center=(CENTER_M, CENTER_M),
+                                 name=f"{ax}_{side}")
+    return sim
+
+
+@pytest.mark.slow_physics
+def test_nonuniform_lane_power_calibration_and_slot(base_rung):
+    """The NU runner must hand the accumulator the same E/H pair as the uniform one.
+
+    The non-uniform runner builds its NTFF box inline and calls
+    ``accumulate_ntff`` from its own scan body, so neither the uniform
+    lane's gates nor the box constructors' tests say anything about it.
+    The flux box is independent of the NTFF chain and does not move under
+    either slot mutation, which is what makes the ratio a slot witness
+    rather than a scale witness.
+
+    The realized grid shape is asserted first. The flux box sits one cell
+    from the absorber and its power follows where the absorber is, so a z
+    profile with a different cell count is a different STRUCTURE and its
+    ratio is not comparable: 28 cells realizes 33 x 33 x 41 and reads
+    0.4953, 21 cells reads 0.5039. On the 20-cell profile, which realizes
+    the uniform fixture's own 33 x 33 x 33, the two lanes agree.
+
+    Measured on this tree: D = 1.761428040 dBi against the uniform rung's
+    1.761429829, ratio 0.500321038 against 0.500320703, settling -78.40 dB.
+    Mutations, same fixture: E stamped at n*dt -> ratio 0.492221, D err
+    0.010 dB; NTFF accumulate moved above the NU E update -> ratio 0.506219,
+    D err 0.011 dB. Both cross the gates.
+    """
+    sim = _build_nu_sim(BASE_DX_M, _NU_Z_CELLS)
+    res = sim.run(n_steps=BASE_N_STEPS)
+    assert type(res.grid).__name__ == "NonUniformGrid", (
+        f"fixture did not take the NU lane (grid {type(res.grid).__name__})")
+    assert res.ntff_box.collocation == "face_centre", (
+        "NU runner built a legacy-collocation NTFF box")
+
+    shape = _realized_shape(res.grid)
+    assert shape == base_rung["shape"], (
+        f"NU fixture realized {shape} against the uniform rung's "
+        f"{base_rung['shape']}; a different cell count moves the absorber "
+        f"and the flux box with it, so the two are not the same structure "
+        f"and their power ratios are not comparable")
+
+    settling = getattr(res, "settling_db", None)
+    assert settling is not None and settling < _NU_SETTLING_MAX_DB, (
+        f"NU run not settled: settling_db={settling} "
+        f"(rule {_NU_SETTLING_MAX_DB} dB)")
+
+    face_f64 = {name: _flux_f64(mon) for name, mon in res.flux_monitors.items()}
+    p_flux = _net_outward_power(face_f64)
+    ff = compute_far_field(res.ntff_data, res.ntff_box, res.grid,
+                           THETA_GRID, PHI_GRID)
+    p_ntff = float(_total_radiated_power(ff)[0])
+    d_dbi = float(directivity(ff)[0])
+    ratio = p_ntff / p_flux
+    ratio_uniform = base_rung["p_ntff"] / base_rung["p_flux_f64"]
+    print(f"\n[ntff-battery NU lane] realized {shape}, D={d_dbi:.9f} dBi, "
+          f"ratio={ratio:.9f} (uniform {ratio_uniform:.9f}), "
+          f"settling={settling:.2f} dB")
+
+    err_db = abs(d_dbi - D_THEORY_DBI)
+    assert err_db < _NU_D_ERR_MAX_DB, (
+        f"NU lane D = {d_dbi:.6f} dBi vs theory {D_THEORY_DBI:.4f} "
+        f"(|err| {err_db:.6f} dB, measured 0.000515, gate {_NU_D_ERR_MAX_DB})")
+    assert abs(ratio - _RATIO_PREDICTED) < _RATIO_TOL_BASE, (
+        f"NU lane P_ntff/P_flux = {ratio:.7f}, predicted {_RATIO_PREDICTED} "
+        f"(measured 0.500321, gate +/-{_RATIO_TOL_BASE}) — the NU runner's "
+        f"NTFF slot, or the absolute scale of the transform, has moved")
+    assert abs(ratio - ratio_uniform) < _NU_VS_UNIFORM_RATIO_MAX, (
+        f"the two lanes disagree on the NTFF/flux power ratio: NU "
+        f"{ratio:.9f} vs uniform {ratio_uniform:.9f} (measured 3.4e-07 apart "
+        f"on the same realized grid, gate {_NU_VS_UNIFORM_RATIO_MAX})")
+    assert abs(d_dbi - base_rung["d_dbi"]) < _NU_VS_UNIFORM_D_MAX_DB, (
+        f"the two lanes disagree on directivity: NU {d_dbi:.9f} dBi vs "
+        f"uniform {base_rung['d_dbi']:.9f} dBi (measured 1.8e-06 dB apart, "
+        f"gate {_NU_VS_UNIFORM_D_MAX_DB} dB)")
+
+
+# ===========================================================================
+# Box-size witness: the error must stay small however large the box is drawn
+# ===========================================================================
+# Same dipole, same margins, the Huygens box drawn at three sizes. A
+# first-order surface rule integrates a larger surface with a larger
+# per-cell error and the pattern error reaches a sixth of a dB; the
+# second-order one grows too, from a base eighty times lower, and stays at
+# thousandths of a dB. Measured (this tree, 0.09 m domain, dx = 1.5 mm, 800 steps,
+# CPML 6): |D err| 0.00013 / 0.00050 / 0.00204 dB at half-width 9 / 18 /
+# 27 mm. The first-order rule on the same fixture: 0.0212 / 0.0677 /
+# 0.1660 dB. Cap 0.01 dB — ~5x the worst measurement here and below the
+# first-order value at EVERY box, so a revert goes red on all three.
+_BOX_SWEEP_DX_M = 1.5e-3
+_BOX_SWEEP_DOMAIN_M = 0.09
+_BOX_SWEEP_CENTER_M = 0.045
+_BOX_SWEEP_N_STEPS = 800
+_BOX_SWEEP_HALF_WIDTHS_M = (9.0e-3, 18.0e-3, 27.0e-3)
+_BOX_SWEEP_ERR_MAX_DB = 0.01
+
+
+@pytest.mark.slow_physics
+@pytest.mark.parametrize("half_width_m", _BOX_SWEEP_HALF_WIDTHS_M,
+                         ids=["hw9mm", "hw18mm", "hw27mm"])
+def test_directivity_error_stays_small_however_large_the_huygens_box(half_width_m):
+    """Drawing the box further from the radiator must not cost accuracy.
+
+    The equivalence principle says any closed surface round the source
+    gives the same far field, so the only reason the answer can depend on
+    the box is the surface rule. Measured |D err| 0.00013 / 0.00050 /
+    0.00204 dB at half-width 9 / 18 / 27 mm; with the first-order rule the
+    same fixture gave 0.0212 / 0.0677 / 0.1660 dB. Both grow with the box;
+    this gate is an absolute cap that the first-order rule fails at every
+    size, not a claim that the error is flat.
+    """
+    lo = _BOX_SWEEP_CENTER_M - half_width_m
+    hi = _BOX_SWEEP_CENTER_M + half_width_m
+    sim = Simulation(freq_max=FREQ_MAX_HZ,
+                     domain=(_BOX_SWEEP_DOMAIN_M,) * 3, dx=_BOX_SWEEP_DX_M,
+                     boundary="cpml", cpml_layers=CPML_LAYERS)
+    pos = (_BOX_SWEEP_CENTER_M,) * 3
+    sim.add_source(pos, "ez", waveform=GaussianPulse(f0=F0_HZ, bandwidth=0.5))
+    sim.add_probe(pos, "ez")
+    sim.add_ntff_box(corner_lo=(lo,) * 3, corner_hi=(hi,) * 3,
+                     freqs=jnp.array([F0_HZ]))
+    res = sim.run(n_steps=_BOX_SWEEP_N_STEPS)
+
+    ts = np.asarray(res.time_series)
+    tail = ts[int(0.9 * ts.shape[0]):]
+    tail_over_peak = float(np.max(
+        np.max(np.abs(tail), axis=0) / np.max(np.abs(ts), axis=0)))
+    assert tail_over_peak < 1e-3, (
+        f"pulse not settled (tail/peak {tail_over_peak:.3e}); the rect-window "
+        f"DFT says nothing about the surface rule on a cut transient")
+
+    ff = compute_far_field(res.ntff_data, res.ntff_box, res.grid,
+                           THETA_GRID, PHI_GRID)
+    d_dbi = float(directivity(ff)[0])
+    err_db = abs(d_dbi - D_THEORY_DBI)
+    print(f"\n[ntff-battery box sweep] half-width {half_width_m * 1e3:.1f} mm: "
+          f"D={d_dbi:.7f} dBi, err={d_dbi - D_THEORY_DBI:+.7f} dB, "
+          f"tail/peak={tail_over_peak:.2e}")
+    assert err_db < _BOX_SWEEP_ERR_MAX_DB, (
+        f"half-width {half_width_m * 1e3:.1f} mm: |D err| {err_db:.6f} dB "
+        f"exceeds cap {_BOX_SWEEP_ERR_MAX_DB} (measured 0.00013 / 0.00050 / "
+        f"0.00204 across the sweep) — the far field depends on how large the "
+        f"Huygens box was drawn")
+

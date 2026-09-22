@@ -8,10 +8,9 @@ not installed in THIS test environment, and
 this test does not need it -- it only loads the module and inspects
 Python-level data, plus exercises the openEMS-free pure-arithmetic helpers
 (``_stage_b_layout``, ``_self_consistency_witness``, ``_check_excitation_
-and_trace``, ``_passivity_witness``, ``_non_physical_guard``) directly,
-mirroring ``tests/crossval/test_coax_two_port_referee_header.py``'s design.
+and_trace``, ``_passivity_witness``, ``_non_physical_guard``) directly.
 
-Design (fail-loud-honest, per the coax referee's own precedent): the
+Design (fail-loud-honest, per the coax thru-line case's own precedent): the
 reproduce-gate-record tests pass on EITHER the never-run UNRUN placeholder
 OR a legitimately-filled state -- they check the record's CONTRACT shape,
 not one pinned finding.
@@ -199,8 +198,9 @@ def test_declared_question_and_governance_notes_present():
 
 def test_f_notch_an_matches_cv06b_closed_form():
     """Independently recompute the Hammerstad-Jensen quarter-wave-notch
-    closed form ``validation/crossval/06b_msl_notch_filter_uniform.py``
-    uses, on the DECLARED 600um/254um board, and check the two land on the
+    closed form the MSL notch filter case's retired script used (that
+    case is now ``tests/crossval/msl_notch_filter/``), on the DECLARED
+    600um/254um board, and check the two land on the
     same value (5 sig figs) -- a regression lock on the reproduce-gate's
     own oracle, and a cross-check that this script did not silently
     diverge from the repo's existing validated formula.
@@ -1067,9 +1067,9 @@ def test_build_stage_b_asserts_port_start_matches_feed_x():
 
 
 # ---------------------------------------------------------------------------
-# RUN-1 REGRESSION FIXTURE (2026-08-04, VESSL 369367251705): coax-lane
-# precedent (tests/crossval/test_coax_two_port_referee_header.py's own committed
-# run-3 forensics block), adapted here to load an ACTUAL committed JSON
+# RUN-1 REGRESSION FIXTURE (2026-08-04, VESSL 369367251705): the coax
+# thru-line case's precedent (its own committed run-3 forensics block),
+# adapted here to load an ACTUAL committed JSON
 # fixture (``validation/crossval/_20_msl_phase_referee_logs/
 # 20260804T055009Z_result.json``, the full run-1 artifact, copied verbatim
 # from the primary checkout) rather than re-typing arrays as Python

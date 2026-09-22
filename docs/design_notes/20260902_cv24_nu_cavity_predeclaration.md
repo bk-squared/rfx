@@ -1,5 +1,7 @@
 # cv24 — non-uniform (graded-z) PEC cavity eigenfrequencies vs the exact Pozar spectrum: pre-declaration
 
+> cv24 was removed on 2026-09-21; the artifacts cited here are at commit b4cf8f29.
+
 Date: 2026-09-02. Gap lane 3 of the cross-validation campaign (PI-approved 2026-09-02). Written and committed BEFORE any arm runs. Numbers here are derived from committed data and from an exact lattice model of the solver's own difference operators, never from a run of this case. Every constant lives once, in `validation/crossval/comparators/nu_cavity_gates.py`; the note quotes it.
 
 > **Historical timing scope (2026-09-08).** The dated measurement tables below

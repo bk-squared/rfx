@@ -1,0 +1,90 @@
+{
+ "label": "n3_pad10_main",
+ "out_label": "n3_pad10_main",
+ "tree": "src-main",
+ "tree_root": "/root/workspace/bk-workspace/.801-measure/src-main",
+ "arm": {
+  "n": 3,
+  "pad_h": 10,
+  "cpml_layers": 6,
+  "ceil_sizing": false
+ },
+ "grid_shape": [
+  187,
+  142,
+  61
+ ],
+ "dx": 0.00026233333333333333,
+ "dt": 5.001581407736339e-13,
+ "steps": 19994,
+ "n_steps_override": null,
+ "snapshot_steps": {
+  "85": {
+   "requested": 16995,
+   "actual": 16995
+  },
+  "90": {
+   "requested": 17995,
+   "actual": 17995
+  },
+  "95": {
+   "requested": 18994,
+   "actual": 18994
+  }
+ },
+ "face_pads": {
+  "x_lo": 6,
+  "x_hi": 6,
+  "y_lo": 6,
+  "y_hi": 6,
+  "z_lo": 6,
+  "z_hi": 6
+ },
+ "settling_db": 0.0,
+ "rates_per_step": [
+  0.0005821214589168685,
+  0.0005545025684043289,
+  0.0005719370752096752,
+  0.000584241689243745
+ ],
+ "worst_rate_per_step": 0.000584241689243745,
+ "pec_mask_blocks": [
+  {
+   "id": 1,
+   "n_cells": 22446,
+   "x": [
+    6,
+    179
+   ],
+   "y": [
+    6,
+    134
+   ],
+   "z": [
+    21,
+    21
+   ]
+  },
+  {
+   "id": 2,
+   "n_cells": 1287,
+   "x": [
+    84,
+    116
+   ],
+   "y": [
+    51,
+    89
+   ],
+   "z": [
+    25,
+    25
+   ]
+  }
+ ],
+ "pec_mask_note": null,
+ "eps_r_unique": [
+  1.0,
+  3.38
+ ]
+}
