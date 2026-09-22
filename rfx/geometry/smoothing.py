@@ -664,6 +664,12 @@ def continued_conductor_shape(sim, grid, shape, *, entry=None, unextendable=None
         return shape
     pads = [[getattr(grid, f"pad_{a}_lo"), getattr(grid, f"pad_{a}_hi")]
             for a in "xyz"]
+    # A shape without a bounding box has nothing to continue (no face to
+    # move), and rasterizing it here would raise before the assembler's own
+    # refusal of such a shape; the assembler keeps that message.
+    from rfx.geometry.csg import declared_bounds
+    if declared_bounds(shape) is None:
+        return shape
     lattice = _declared_conductor_lattice(sim, grid, shape, coords)
     occupied = _occupied_conductor_faces(lattice, grid)
     from rfx.geometry.port_termination import conductor_entries, held_conductor_entries
