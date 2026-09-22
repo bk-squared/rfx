@@ -650,6 +650,13 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # sheet as a volume did NOT help. Both statements are now false HERE
     # and both stay true of the pmap lane in ``distributed.py``, whose copy
     # of the message is a separate string and is out of #1053 scope (#1055).
+    # run()'s preflight memoizes the production assembly -- whole-domain
+    # materials and realized conductor masks -- on Simulation
+    # (rfx/preflight/realization.py::_campaign_ctx). Only preflight reads it,
+    # and its checks are done; drop it before this lane assembles its own
+    # copy, so neither copy is on the device when the slabs are staged and
+    # the time loop runs. A later preflight rebuilds it from the same key.
+    sim._pf_campaign_ctx = None
     _d_pec_sheets: list = []
     _d_pec_wires: list = []
     if is_nu:
@@ -865,13 +872,10 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         src_waveforms = jnp.zeros((n_steps, 0), dtype=jnp.float32)
 
     # ------------------------------------------------------------------
-    # Initialise state and split into per-device slabs with ghost cells,
-    # then shard along x.
+    # Create state directly on its owning devices and stage materials one
+    # addressable slab at a time, without whole-domain slab stacks.
     # ------------------------------------------------------------------
-    from rfx.core.yee import init_state
-    full_state = init_state((nx_padded, ny, nz))
-    state_slabs = _split_state(full_state, n_devices, ghost)
-    materials_slabs = _split_materials(materials, n_devices, ghost)
+    from rfx.runners._distributed_common import shard_x_slabs
 
     # #1053 leg 1: carry the realized-PEC cell mask into the sharded world.
     # ``pec_mask`` is the full-domain primal-cell occupancy of every declared
@@ -888,17 +892,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # first/last real cell see its true x neighbour under the four-incident-
     # cell rule.
     #
-    # ``split_array_x`` + ``shard_stacked`` reproduce
-    # ``distributed_nu.shard_pec_mask_x_slab`` BIT-IDENTICALLY -- verified on
-    # (nx, pad_x) in {(8,0), (7,1), (16,0)}, ny=nz=6, n_devices=2, random
-    # masks, jnp.array_equal True on every case. So this lane needs no sharder
-    # of its own, and the two lanes cannot disagree about slab layout.
-    pec_mask_slabs = (
-        None if pec_mask is None
-        else split_array_x(pec_mask, n_devices, ghost, pad_value=False))
-
-    # Shard the stacked slabs: shape (n_devices, nx_local, ny, nz) ->
-    # each device owns nx_local rows of the sharded (n_devices*nx_local, ny, nz) array.
+    # The direct sharder preserves the same ghost and alignment convention
+    # as split_array_x + shard_stacked, including False boundary mask ghosts.
     shd = _x_sharding(mesh)
     rep = _rep_sharding(mesh)
 
@@ -943,25 +938,18 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         merged = arr.reshape(n_dev * n_poles, nx_loc, ny_a, nz_a)
         return jax.device_put(merged, shd)
 
-    state_ex = _shard_stacked(state_slabs.ex)
-    state_ey = _shard_stacked(state_slabs.ey)
-    state_ez = _shard_stacked(state_slabs.ez)
-    state_hx = _shard_stacked(state_slabs.hx)
-    state_hy = _shard_stacked(state_slabs.hy)
-    state_hz = _shard_stacked(state_slabs.hz)
-    state_step = jax.device_put(jnp.int32(0), rep)
-
+    field_shape = (n_devices * nx_local, ny, nz)
     sharded_state = FDTDState(
-        ex=state_ex, ey=state_ey, ez=state_ez,
-        hx=state_hx, hy=state_hy, hz=state_hz,
-        step=state_step,
+        **{name: jnp.zeros(field_shape, dtype=jnp.float32, device=shd)
+           for name in ("ex", "ey", "ez", "hx", "hy", "hz")},
+        step=jax.device_put(jnp.int32(0), rep),
     )
 
-    mat_eps_r = _shard_stacked(materials_slabs.eps_r)
-    mat_sigma = _shard_stacked(materials_slabs.sigma)
-    mat_mu_r  = _shard_stacked(materials_slabs.mu_r)
     sharded_materials = MaterialArrays(
-        eps_r=mat_eps_r, sigma=mat_sigma, mu_r=mat_mu_r)
+        eps_r=shard_x_slabs(materials.eps_r, n_devices, nx_per, ghost, 1.0, shd),
+        sigma=shard_x_slabs(materials.sigma, n_devices, nx_per, ghost, 0.0, shd),
+        mu_r=shard_x_slabs(materials.mu_r, n_devices, nx_per, ghost, 1.0, shd),
+    )
 
     # #1053 leg 1. ``None`` whenever the model declares no PEC volume, which
     # is every fixture of the #1038 bit-identity lock -- so the stage leg 2
@@ -971,13 +959,23 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # forwarded only on the ``n_devices == 1`` fast path and is silently
     # discarded at exactly the device counts this stage exists for.
     sharded_pec_mask = (
-        None if pec_mask_slabs is None else _shard_stacked(pec_mask_slabs))
+        None if pec_mask is None
+        else shard_x_slabs(pec_mask, n_devices, nx_per, ghost, False, shd))
 
     # ------------------------------------------------------------------
     # Dispersive materials
     # ------------------------------------------------------------------
     _, debye_full, lorentz_full = sim._init_dispersion(
         materials, grid.dt, debye_spec, lorentz_spec)
+    # _init_dispersion's first result aliases materials. Drop it too, along
+    # with assembly inputs and any padded dispersion-mask aliases.
+    del _, base_materials, materials, pec_mask, pec_shapes
+    del debye_spec, lorentz_spec
+    if pad_x > 0:
+        if debye_full is not None:
+            del d_poles, d_masks
+        if lorentz_full is not None:
+            del l_poles, l_masks
 
     has_debye = debye_full is not None
     has_lorentz = lorentz_full is not None
@@ -1000,12 +998,13 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             py=_shard_stacked_5d(debye_state_slabs.py),
             pz=_shard_stacked_5d(debye_state_slabs.pz),
         )
+        del debye_coeffs_full, debye_state_full
+        del debye_coeffs_slabs, debye_state_slabs
     else:
-        _total_x = n_devices * nx_local
-        _dz = jnp.zeros((_total_x, ny, nz), dtype=jnp.float32)
-        # 5D dummy: (n_dev * 1_pole, nx_local, ny, nz) so P("x") gives
-        # each device (1, nx_local, ny, nz) matching (n_poles, nx_local, ny, nz) layout
-        _dz5 = jnp.zeros((n_devices, nx_local, ny, nz), dtype=jnp.float32)
+        # Absent dispersion is never read by the E update; its carry passes
+        # through unchanged. Keep ranks for shard_map, one scalar per device.
+        _dz = jnp.zeros((n_devices, 1, 1), dtype=jnp.float32, device=shd)
+        _dz5 = jnp.zeros((n_devices, 1, 1, 1), dtype=jnp.float32, device=shd)
         debye_coeffs_sharded = DebyeCoeffs(
             ca=jax.device_put(_dz, shd),
             cb=jax.device_put(_dz, shd),
@@ -1040,11 +1039,11 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             py_prev=_shard_stacked_5d(lorentz_state_slabs.py_prev),
             pz_prev=_shard_stacked_5d(lorentz_state_slabs.pz_prev),
         )
+        del lorentz_coeffs_full, lorentz_state_full
+        del lorentz_coeffs_slabs, lorentz_state_slabs
     else:
-        _total_x = n_devices * nx_local
-        _lz = jnp.zeros((_total_x, ny, nz), dtype=jnp.float32)
-        # 5D dummy: (n_dev * 1_pole, nx_local, ny, nz)
-        _lz5 = jnp.zeros((n_devices, nx_local, ny, nz), dtype=jnp.float32)
+        _lz = jnp.zeros((n_devices, 1, 1), dtype=jnp.float32, device=shd)
+        _lz5 = jnp.zeros((n_devices, 1, 1, 1), dtype=jnp.float32, device=shd)
         lorentz_coeffs_sharded = LorentzCoeffs(
             ca=jax.device_put(_lz, shd),
             cb=jax.device_put(_lz, shd),
@@ -1061,6 +1060,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             py_prev=jax.device_put(_lz5, shd),
             pz_prev=jax.device_put(_lz5, shd),
         )
+
+    del debye_full, lorentz_full
 
     # ------------------------------------------------------------------
     # CPML state

@@ -130,6 +130,35 @@ def split_array_x(arr, n_devices, ghost=1, pad_value=0.0):
     return jnp.stack(slabs)
 
 
+def shard_x_slabs(arr, n_devices, nx_per, ghost, pad_value, sharding):
+    """Place padded x slabs directly, constructing only addressable shards.
+
+    ``arr`` already includes any high-x alignment padding. Physical-boundary
+    ghosts use ``pad_value``; interior ghosts copy the adjacent slab's cells,
+    exactly as in ``shard_stacked(split_array_x(...))``. No device-axis stack
+    or whole-domain reshape is staged on the default device.
+    """
+    nx_local = nx_per + 2 * ghost
+    shape = (n_devices * nx_local,) + arr.shape[1:]
+
+    def slab(index):
+        rank = index[0].start // nx_local
+        want_lo = rank * nx_per - ghost
+        want_hi = (rank + 1) * nx_per + ghost
+        lo, hi = max(0, want_lo), min(arr.shape[0], want_hi)
+        data = arr[lo:hi]
+        if lo != want_lo or hi != want_hi:
+            data = jnp.pad(
+                data, ((lo - want_lo, want_hi - hi), (0, 0), (0, 0)),
+                constant_values=pad_value,
+            )
+        return data
+
+    # No ``dtype=`` argument: jax.make_array_from_callback gained it only after
+    # 0.5.0 (the VESSL image runs 0.4.33). Slicing and jnp.pad keep arr's dtype.
+    return jax.make_array_from_callback(shape, sharding, slab)
+
+
 def gather_array_x(slabs, ghost=1):
     """Gather slabs back into a single array, stripping ghost cells.
 
