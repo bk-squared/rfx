@@ -1773,6 +1773,37 @@ def _self_check(fine_factor: float) -> int:
     check(MERGE_RECORD_LENGTH_TOL == 0.05,
           "--merge allows the rungs' record lengths to differ by 5 %, no more")
 
+    print("Stage A across parts is reproducible, not bit-identical:")
+    check(MERGE_STAGE_A_MAG_TOL == 1.0e-3 and MERGE_STAGE_A_NOTCH_TOL_PCT == 0.01,
+          "--merge allows the parts' Stage A magnitudes to differ by 1e-3 linear "
+          "and their notches by 0.01 %",
+          f"{MERGE_STAGE_A_MAG_TOL:g} / {MERGE_STAGE_A_NOTCH_TOL_PCT:g} %")
+    check(tuple(MERGE_STAGE_A_BAND_GHZ) == tuple(STAGE_A_NOTCH_BAND_GHZ),
+          "over the band Stage A is read on, 2-7 GHz -- below it the bins are "
+          "excitation-starved", f"{list(MERGE_STAGE_A_BAND_GHZ)}")
+    # The measured spread, runs 369367263406/407/408: openEMS on 8 threads ended
+    # the tutorial at 14586 / 14688 / 12342 steps.
+    check(1.6e-4 < MERGE_STAGE_A_MAG_TOL and 1.3e-4 < MERGE_STAGE_A_MAG_TOL,
+          "the worst measured run-to-run spread (1.6e-4 in |S21|, 1.3e-4 in "
+          "|S11|) is inside that tolerance, with about an order of magnitude "
+          "to spare")
+    _notch_spread = (3.672277 - 3.672241) / 3.672241 * 100.0
+    check(_notch_spread < MERGE_STAGE_A_NOTCH_TOL_PCT,
+          "and so is the measured notch spread (3.672242 / 3.672241 / 3.672277 "
+          "GHz)", f"{_notch_spread:.5f} % against "
+          f"{MERGE_STAGE_A_NOTCH_TOL_PCT:g} %")
+    # Not a tautology: this reads _merge's OWN source, so adding a phase
+    # comparison to it reddens the line.
+    import inspect as _mi
+    _merge_src = _mi.getsource(_merge)
+    check("s11_deg" not in _merge_src and "s21_deg" not in _merge_src,
+          "phase is NOT compared -- _merge's source never names s11_deg or "
+          "s21_deg. At the null the runs sit either side of a 180 degree wrap "
+          "and differ by 358.6 degrees, which is a wrap, not a disagreement")
+    check(_merge_src.count('for key in ("s11_mag", "s21_mag")') == 1,
+          "the magnitudes, and only the magnitudes, are what it differences")
+    del _mi
+
     print("the solver's own log, as the container actually prints it "
           "(run 369367263401, lines 32-33, 61-63, 70-71 verbatim):")
     real_log = "\n".join([
@@ -2145,6 +2176,28 @@ _STAGE_A_ARRAYS = ("freqs_ghz", "s11_mag", "s11_deg", "s21_mag", "s21_deg",
 _MERGE_META_MUST_AGREE = ("tutorial_source", "rfx_openems_image",
                           "rfx_openems_commit")
 
+# HOW CLOSE TWO JOBS' STAGE A HAVE TO BE, AND WHY IT IS NOT BIT-IDENTICAL.
+# openEMS on 8 threads does not end the tutorial run at the same timestep twice:
+# the 1e-5 energy criterion is crossed at slightly different times, and runs
+# 369367263406/407/408 ended at 14586 / 14688 / 12342 steps. The spectra then
+# differ a little. Measured across those three parts, over the band Stage A is
+# read on:
+#
+#     max |d|S21||  1.4e-5 (coarse vs mid), 1.6e-4 (coarse vs fine)
+#     max |d|S11||  2.6e-6 (coarse vs mid), 1.3e-4 (coarse vs fine)
+#     notch         3.672242 / 3.672241 / 3.672277 GHz -- 1e-5 relative
+#
+# So the check is a tolerance on the MAGNITUDES over 2-7 GHz, not equality.
+# 1e-3 linear is about an order of magnitude above the worst measured spread and
+# still far below anything that would say two jobs ran different tutorials.
+# PHASE IS NOT CHECKED: at the null the two runs sit on opposite sides of a
+# +-180 degree wrap and differ by 358.6 degrees, which is a wrap, not a
+# disagreement. BELOW 2 GHz IS NOT CHECKED either: those bins are
+# excitation-starved, which is the same reason the witness band starts there.
+MERGE_STAGE_A_MAG_TOL = 1.0e-3
+MERGE_STAGE_A_NOTCH_TOL_PCT = 0.01
+MERGE_STAGE_A_BAND_GHZ = STAGE_A_NOTCH_BAND_GHZ  # 2-7 GHz, the tutorial's own
+
 # How far apart two rungs' record LENGTHS may be and still be one measurement.
 # The rungs are capped by step COUNT and dt shrinks with the cell, so the job
 # passes N = 60000 / factor per rung to keep the seconds equal; 5 % is the room
@@ -2200,17 +2253,97 @@ def _merge(part_paths: list, output: str) -> int:
             return _merge_refuse(f"{path}'s stage_a is missing {missing}")
 
     first_path, first = parts[0]
+    f_a = np.asarray(first["stage_a"]["freqs_ghz"], dtype=float)
+    band = ((f_a >= MERGE_STAGE_A_BAND_GHZ[0])
+            & (f_a <= MERGE_STAGE_A_BAND_GHZ[1]))
+    repro = {
+        "band_ghz": list(MERGE_STAGE_A_BAND_GHZ),
+        "magnitude_tol": MERGE_STAGE_A_MAG_TOL,
+        "notch_tol_pct": MERGE_STAGE_A_NOTCH_TOL_PCT,
+        "bins_compared": int(np.count_nonzero(band)),
+        "per_part": [],
+        "what_it_is": (
+            "openEMS with 8 threads does not end the tutorial run at the same "
+            "timestep twice -- the 1e-5 energy criterion is crossed at slightly "
+            "different times -- so each job's Stage A spectrum differs a little "
+            "from the others'. These are the measured maxima of that run-to-run "
+            "spread, over the band Stage A is read on, against the FIRST part "
+            "(whose arrays the merged record carries). Reported. The merge "
+            f"refuses above {MERGE_STAGE_A_MAG_TOL:g} linear in magnitude or "
+            f"{MERGE_STAGE_A_NOTCH_TOL_PCT:g} % in the notch. Phase is not "
+            "compared: at the null the runs sit either side of a 180 degree "
+            "wrap. Below the band the bins are excitation-starved."),
+    }
+    for path, a in parts:
+        st = a["stage_a"]
+        repro["per_part"].append({
+            "path": str(path),
+            "rungs": a["meta"].get("rungs_in_this_record"),
+            "run_id": a.get("run_id"),
+            "stage_a_timesteps_executed":
+                ((a["meta"].get("stages") or {}).get("stage_a") or {})
+                .get("timesteps_executed"),
+            "stage_a_notch_ghz": (st.get("notch") or {}).get("refined_f_ghz"),
+        })
+
+    worst = {"s11_mag": 0.0, "s21_mag": 0.0}
+    worst_at = {"s11_mag": None, "s21_mag": None}
     for path, a in parts[1:]:
-        for key in _STAGE_A_ARRAYS:
-            if a["stage_a"][key] != first["stage_a"][key]:
-                lhs, rhs = first["stage_a"][key], a["stage_a"][key]
-                where = "length" if len(lhs) != len(rhs) else next(
-                    (f"bin {i}" for i, (x, y) in enumerate(zip(lhs, rhs)) if x != y),
-                    "?")
+        for key in ("freqs_ghz",):
+            if len(a["stage_a"][key]) != len(first["stage_a"][key]):
                 return _merge_refuse(
-                    f"{path}'s stage_a.{key} differs from {first_path}'s at "
-                    f"{where} -- the two parts did not measure the same tutorial, "
-                    f"so their rungs are not one record")
+                    f"{path}'s stage_a.{key} has {len(a['stage_a'][key])} bins but "
+                    f"{first_path}'s has {len(first['stage_a'][key])} -- the two "
+                    f"parts did not run the tutorial on the same grid")
+        if not np.allclose(np.asarray(a["stage_a"]["freqs_ghz"], dtype=float), f_a):
+            return _merge_refuse(
+                f"{path}'s stage_a frequency grid is not {first_path}'s -- the two "
+                f"parts did not run the tutorial on the same grid")
+        for key in ("s11_mag", "s21_mag"):
+            d = np.abs(np.asarray(a["stage_a"][key], dtype=float)
+                       - np.asarray(first["stage_a"][key], dtype=float))
+            d_band = np.where(band, d, -np.inf)
+            i = int(np.argmax(d_band))
+            if float(d[i]) > worst[key]:
+                worst[key] = float(d[i])
+                worst_at[key] = {"f_ghz": float(f_a[i]), "part": str(path)}
+    notches = [p["stage_a_notch_ghz"] for p in repro["per_part"]
+               if p["stage_a_notch_ghz"] is not None]
+    notch_spread_pct = (
+        (max(notches) - min(notches)) / min(notches) * 100.0
+        if len(notches) == len(parts) and notches and min(notches) > 0 else None)
+    repro.update({
+        "max_abs_delta_s11_mag": worst["s11_mag"],
+        "max_abs_delta_s11_mag_at": worst_at["s11_mag"],
+        "max_abs_delta_s21_mag": worst["s21_mag"],
+        "max_abs_delta_s21_mag_at": worst_at["s21_mag"],
+        "notch_spread_pct": notch_spread_pct,
+        "phase_compared": False,
+    })
+    for key, label in (("s11_mag", "|S11|"), ("s21_mag", "|S21|")):
+        if worst[key] > MERGE_STAGE_A_MAG_TOL:
+            at = worst_at[key] or {}
+            return _merge_refuse(
+                f"the parts' Stage A {label} differ by {worst[key]:.3g} at "
+                f"{at.get('f_ghz')} GHz ({at.get('part')} vs {first_path}), over "
+                f"the {MERGE_STAGE_A_MAG_TOL:g} these are allowed to differ by "
+                f"across {MERGE_STAGE_A_BAND_GHZ[0]:g}-"
+                f"{MERGE_STAGE_A_BAND_GHZ[1]:g} GHz. openEMS ending the tutorial "
+                f"at a different timestep moves these by ~1e-4; a difference this "
+                f"size is a different tutorial, a different mesh or a different "
+                f"solver.")
+    if notch_spread_pct is None:
+        return _merge_refuse(
+            "at least one part's Stage A carries no notch frequency, so the parts "
+            "cannot be shown to have reproduced the same tutorial")
+    if notch_spread_pct > MERGE_STAGE_A_NOTCH_TOL_PCT:
+        return _merge_refuse(
+            f"the parts' Stage A notches span {notch_spread_pct:.4g} %, over the "
+            f"{MERGE_STAGE_A_NOTCH_TOL_PCT:g} % these are allowed to differ by: "
+            + ", ".join(f"{p['stage_a_notch_ghz']} GHz ({Path(p['path']).name})"
+                        for p in repro["per_part"]))
+
+    for path, a in parts[1:]:
         for key in _MERGE_META_MUST_AGREE:
             if a["meta"].get(key) != first["meta"].get(key):
                 return _merge_refuse(
@@ -2277,6 +2410,7 @@ def _merge(part_paths: list, output: str) -> int:
         "record does not claim they do")
     maker_commits = [a["meta"].get("rfx_commit") for _, a in parts]
     merged["meta"]["maker_commits_agree"] = bool(len(set(map(str, maker_commits))) == 1)
+    merged["meta"]["stage_a_reproducibility"] = repro
     merged["meta"]["record_length_s_per_rung"] = {
         short: lengths[RUNG_KEYS[short]][1] for short in RUNG_ORDER}
     merged["meta"]["record_length_s_spread_pct"] = spread * 100.0
@@ -2327,6 +2461,14 @@ def _merge(part_paths: list, output: str) -> int:
     for entry in merged["meta"]["merged_from"]:
         print(f"  {entry['path']}  rungs={','.join(entry['rungs']) or '-'}  "
               f"run_id={entry['run_id']}  maker_commit={entry['maker_commit']}")
+    print(f"  stage A across the parts: |S11| <= {repro['max_abs_delta_s11_mag']:.3g}, "
+          f"|S21| <= {repro['max_abs_delta_s21_mag']:.3g} over "
+          f"{MERGE_STAGE_A_BAND_GHZ[0]:g}-{MERGE_STAGE_A_BAND_GHZ[1]:g} GHz "
+          f"(tol {MERGE_STAGE_A_MAG_TOL:g}); notch spread "
+          f"{repro['notch_spread_pct']:.4g} % (tol "
+          f"{MERGE_STAGE_A_NOTCH_TOL_PCT:g} %); Stage A ended at "
+          + ", ".join(str(p["stage_a_timesteps_executed"]) for p in repro["per_part"])
+          + " timesteps. Reported.")
     print("  record length per rung (s): "
           + ", ".join(f"{s}={merged['meta']['record_length_s_per_rung'][s]:.6g}"
                       for s in RUNG_ORDER)
@@ -2405,7 +2547,7 @@ def main(argv=None) -> int:
                         "case's test to decide.")
     p.add_argument("--merge", nargs="+", default=None, metavar="PART.json",
                    help="Combine per-rung records into one, written to --output. "
-                        "Refuses unless every part's Stage A agrees bin for bin and "
+                        "Refuses unless every part's Stage A agrees within "
                         "their tutorial source, image and openEMS build commit "
                         "match; refuses on a duplicated or a missing rung. Runs no "
                         "solver.")
