@@ -1,5 +1,7 @@
 # Lattice-witness standardisation — pre-declaration (slab family: cv04, cv22, cv23)
 
+> cv04, cv22 and cv23 were removed on 2026-09-21; the artifacts cited here are at commit b4cf8f29.
+
 Date: 2026-09-03 · Lane: `agent/lattice-witness-standard` · Cases:
 `validation/crossval/04_multilayer_fresnel.py`,
 `validation/crossval/22_dispersive_slab_fresnel.py`,

@@ -105,8 +105,9 @@ def test_manifest_covers_every_crossval_script_exactly_once() -> None:
     assert (REPO_ROOT / manifest["evidence_rule"]).is_file()
     assert set(manifest["exit_codes"]) == {"0", "1", "2"}
 
-    # underscore-prefixed modules are shared helpers (e.g. _wr90_iris_realized.py,
-    # the cv18/cv19 realized-geometry reader, #931), not cases
+    # underscore-prefixed modules are shared helpers (e.g.
+    # _patch_feed_contract.py, the galvanic-feed contract the patch cases
+    # read), not cases
     actual_scripts = {
         path.relative_to(REPO_ROOT).as_posix() for path in CROSSVAL_DIR.glob("*.py")
         if not path.name.startswith("_")
@@ -313,36 +314,51 @@ def test_runner_derives_cpu_policy_from_manifest() -> None:
 
 
 def test_runner_exit_classification_matches_manifest_contract() -> None:
+    """Each arm names a script whose manifest entry carries the property it
+    exercises: 20_msl_phase_referee declares no failure sentinel (so exit 0 is
+    a clean PASS whatever the stdout says) and exit 3 is declared by no case
+    at all (so an undeclared code is a FAIL), and 07_sheen_lpf declares
+    [0, 1, 2] with openEMS/CSXCAD as external dependencies (so exit 2 is
+    inconclusive and an unimportable reference solver is an env skip) as well
+    as carrying the "SOME CHECKS FAILED" sentinel.
+
+    Until 2026-09-22 the first group of arms named the MSL notch filter's
+    script, the only case that declared exit codes [0, 1]; the case was
+    rebuilt as tests/crossval/msl_notch_filter/ and the script removed. Every
+    surviving case declares 2, so the arm that read exit 2 as an UNDECLARED
+    code left with it — exit 3 pins the same rule, and the declared-2 reading
+    is asserted on 07_sheen_lpf below.
+
+    No case declares ``pymeep`` any more, so the env-skip arm uses the
+    solver-agnostic packaging marker the runner recognises
+    (``ENV_BROKEN_REF_MARKERS``) rather than the meep import error.
+    """
     runner = _load_runner()
 
     assert (
-        runner.classify("10_pmc_cpml_half_symmetric.py", 0, "ALL CHECKS PASSED", False)[
+        # stdout carries no pass phrase on purpose: with no failure sentinel
+        # declared, exit 0 alone must classify as PASS.
+        runner.classify("20_msl_phase_referee.py", 0, "referee finished", False)[
             0
         ]
         == "PASS"
     )
     assert (
         runner.classify(
-            "10_pmc_cpml_half_symmetric.py", 1, "numeric gate failed", False
+            "20_msl_phase_referee.py", 1, "numeric gate failed", False
         )[0]
         == "FAIL"
     )
     assert (
-        runner.classify("01_waveguide_bend.py", 2, "reference unavailable", False)[0]
+        runner.classify("07_sheen_lpf.py", 2, "reference unavailable", False)[0]
         == "SELF-CHECK-ONLY"
     )
     assert (
-        runner.classify(
-            "11_waveguide_port_wr90.py", 2, "unexpected inconclusive", False
-        )[0]
-        == "FAIL"
-    )
-    assert (
-        runner.classify("10_pmc_cpml_half_symmetric.py", 124, "", True)[0] == "TIMEOUT"
+        runner.classify("20_msl_phase_referee.py", 124, "", True)[0] == "TIMEOUT"
     )
     assert (
         runner.classify(
-            "10_pmc_cpml_half_symmetric.py",
+            "20_msl_phase_referee.py",
             3,
             "unexpected process error",
             False,
@@ -351,7 +367,7 @@ def test_runner_exit_classification_matches_manifest_contract() -> None:
     )
     assert (
         runner.classify(
-            "01_waveguide_bend.py",
+            "07_sheen_lpf.py",
             0,
             "SOME CHECKS FAILED",
             False,
@@ -360,9 +376,9 @@ def test_runner_exit_classification_matches_manifest_contract() -> None:
     )
     assert (
         runner.classify(
-            "02_ring_resonator.py",
+            "07_sheen_lpf.py",
             1,
-            "ModuleNotFoundError: No module named 'meep'",
+            "A module that was compiled using NumPy 1.x cannot be run",
             False,
         )[0]
         == "ENV-SKIP"
@@ -447,7 +463,6 @@ def test_public_validation_docs_match_manifest() -> None:
     ).read_text(encoding="utf-8")
     canonical_paths = {
         "validation/crossval/manifest.json",
-        "validation/crossval/01_waveguide_bend.py",
         "scripts/run_crossval_cpu.py",
     }
     referenced_paths = set(
@@ -460,16 +475,17 @@ def test_public_validation_docs_match_manifest() -> None:
         assert (REPO_ROOT / referenced_path).exists(), referenced_path
 
 
-def test_scheduled_workflow_loads_manifest_instead_of_copying_case_list() -> None:
+def test_the_weekly_workflow_runs_no_crossval_script() -> None:
+    """Until 2026-09-21 validation.yml ran the scheduled cross-validation cases
+    with a live Meep and this test pinned that it read them from the manifest.
+    The job left with the last scheduled case: CI does not run external solvers
+    (docs/design_notes/20260921_crossval_role_redesign.md). What is pinned now is
+    that it does not come back as a hand-copied script list."""
     workflow_text = (REPO_ROOT / ".github" / "workflows" / "validation.yml").read_text(
         encoding="utf-8"
     )
-    assert "validation/crossval/manifest.json" in workflow_text
-    assert "scheduled_external_order" in workflow_text
-    assert "expected_exit_codes" in workflow_text
-    assert "could not load scheduled cases from crossval manifest" in workflow_text
-    assert "crossval manifest selected no scheduled cases" in workflow_text
     assert "scripts=(" not in workflow_text
+    assert "validation/crossval/" not in workflow_text
 
 
 def test_repo_map_defers_crossval_claims_to_manifest() -> None:
@@ -488,18 +504,23 @@ def test_repo_map_defers_crossval_claims_to_manifest() -> None:
 
 
 def test_vessl_external_lane_matches_manifest_classification() -> None:
+    """The on-demand external-solver lane left with the WR-90 waveguide-port
+    case on 2026-09-21: it was the only case the lane ran. The tier stays in
+    the manifest's vocabulary, so the pairing this test used to check is
+    "no case claims the tier AND no lane YAML claims a case" -- either half
+    alone would let a case declare a lane that cannot run it.
+    """
     manifest = _load_manifest()
     expected_cases = {
         case["id"]
         for case in manifest["cases"]
         if "vessl-external" in case["execution_tiers"]
     }
-    vessl_text = (REPO_ROOT / "scripts" / "vessl_crossval_external.yaml").read_text(
-        encoding="utf-8"
-    )
+    lane_yaml = REPO_ROOT / "scripts" / "vessl_crossval_external.yaml"
     configured_cases = set(
         re.findall(
-            r"validation/crossval/([0-9][0-9a-z]*_[A-Za-z0-9_]+)\.py", vessl_text
+            r"validation/crossval/([0-9][0-9a-z]*_[A-Za-z0-9_]+)\.py",
+            lane_yaml.read_text(encoding="utf-8") if lane_yaml.is_file() else "",
         )
     )
     assert configured_cases == expected_cases

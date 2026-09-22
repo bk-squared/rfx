@@ -143,8 +143,9 @@ def test_monostatic_backscatter_matches_exact_mie():
     delta_db = abs(mono_dbsm - mie_dbsm)
     assert delta_db <= 1.0, (
         f"Monostatic RCS {mono_dbsm:.2f} dBsm is {delta_db:.2f} dB from the "
-        f"exact Mie value {mie_dbsm:.2f} dBsm (gate 1.0 dB; measured 0.185 dB "
-        "at the 2026-09-13 regeneration, on the converged 24-cell absorber. The "
+        f"exact Mie value {mie_dbsm:.2f} dBsm (gate 1.0 dB; measured 0.102 dB "
+        "at the 2026-09-21 regeneration with the second-order NTFF rule (#1159), "
+        "0.185 dB before it, on the converged 24-cell absorber. The "
         "0.06 dB of the 2026-07-06 run was a CANCELLATION between the pre-#888 "
         "auxiliary echo and an 8-cell absorber -- see generate_fixture.py's "
         "CPML_LAYERS derivation). "

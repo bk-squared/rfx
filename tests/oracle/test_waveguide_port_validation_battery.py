@@ -132,8 +132,8 @@ def _build_sim(
         # (#931 §1.1) at 19.27 mm and leaves a 2.14 mm vacuum slot under
         # the top wall — a parallel-plate line for Ez straight past the
         # "short". That slot, not the lane, was the 0.9670 this test read
-        # after the redraw (adjudicated 2026-09-07 on cv11's identical
-        # case: scripts/diagnostics/pec_short_lane_ab.py).
+        # after the redraw (adjudicated 2026-09-07 on the WR-90
+        # waveguide-port case's identical set-up).
         # Finalize before placing a body from node coordinates: an ordinary
         # preview is invalidated by add(), and the new feature can refine it.
         grid = sim.freeze_mesh()
@@ -556,8 +556,8 @@ def test_pec_short_s11_magnitude():
     )
     # After the #931 redraw this test read min |S11| = 0.9670 and was left
     # RED with the gate untouched (migration rule 3). Adjudicated 2026-09-07
-    # on cv11's identical case (scripts/diagnostics/pec_short_lane_ab.py,
-    # per-bin dumps + port time records, both checkouts): NEITHER of the
+    # on the WR-90 waveguide-port case's identical set-up (per-bin dumps
+    # + port time records, both checkouts): NEITHER of the
     # two suspects — the thicker reflector, or the lane's switch from the
     # sigma = 1e10 cell fill to the realized PEC edges (stage C, 0184d64c)
     # — was it. The plug was drawn to DOMAIN[2] = 20 mm on a 2.1414 mm

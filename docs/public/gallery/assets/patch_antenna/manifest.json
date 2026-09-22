@@ -25,7 +25,7 @@
       "dx_m": 0.001,
       "cpml_layers": 8,
       "s_param_n_steps": 12000,
-      "notes": "The stored S11 setup does not pass current port/PEC preflight and is not the configuration in validation/crossval/05_patch_antenna.py."
+      "notes": "The stored S11 setup does not pass current port/PEC preflight."
     },
     "runtime_seconds": 5.41,
     "hostname": "run-execution-bomtddem7h6t-0",

@@ -65,8 +65,8 @@ EXPECTATIONS (predeclared; falsifiable, not adjusted after the run)
     witness: dx=60um (misaligned, n=4.233) vs dx=63.5um (aligned, n=4, i.e.
     coarser dx yet aligned).
 
-Both the enforce_passivity=False (raw) and enforce_passivity=True (default,
-passivity-projected) mean|S11| are recorded per point from ONE FDTD run per
+Both the enforce_passivity=False (raw, the default since 2026-09-21) and
+enforce_passivity=True (passivity-projected) mean|S11| are recorded per point from ONE FDTD run per
 mesh point (the projection in ``_project_passive`` is a post-hoc SVD clip of
 the already-computed raw S -- no second FDTD run needed). Z0 and beta are
 never projected (see ``compute_msl_s_matrix`` docstring), so Gamma_implied

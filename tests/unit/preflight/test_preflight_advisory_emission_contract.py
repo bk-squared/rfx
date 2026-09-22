@@ -8,10 +8,9 @@ is not on every path that produces a number. The direct S-parameter
 compute helpers in ``rfx/api/_sparams.py`` are the measured example --
 ``rfx/api/_sparams.py:1265`` states plainly that "the functional entry
 points run no ``sim.preflight()`` at all" (in
-``compute_waveguide_s_matrix``'s own docstring), and several committed
-fixture JSONs (``tests/fixtures/wr90_iris_modematch/fixture.json`` and
-siblings) carry a ``no_preflight_note`` provenance string acknowledging
-the gap.
+``compute_waveguide_s_matrix``'s own docstring), and committed
+cross-validation fixture JSONs carried a ``no_preflight_note`` provenance
+string acknowledging the gap.
 
 MEASURED CORRECTION to that framing: it does not generalize to every
 "direct S-parameter compute helper". Of the seven ``Simulation.compute_*``
@@ -533,7 +532,7 @@ EMISSION_CLASSIFICATION = {
         DIAGNOSTIC_ONLY,
         "rfx/api/_sparams.py:1265 -- \"the functional entry points run no "
         "sim.preflight() at all\" (issue #494); silent gap named in the "
-        "brief and in tests/fixtures/wr90_iris_modematch/fixture.json's "
+        "brief and in the WR-90 inductive iris case's own "
         "no_preflight_note. Measured: unlike compute_msl_s_matrix below, "
         "this method never calls self.run()/self.forward() -- it drives "
         "the scan directly -- so it has no path to _auto_preflight at all."),

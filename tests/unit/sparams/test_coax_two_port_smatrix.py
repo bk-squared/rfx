@@ -757,6 +757,38 @@ def test_default_domain_fits_the_default_layout():
     assert z_lo_coax_bot < z_hi_coax_top
 
 
+def test_default_coax_fixture_realizes_the_declared_mesh_and_absorber_depth():
+    """What lattice this coax fixture actually gets, in absolute numbers.
+
+    The declaration is a 8 x 8 x 60 mm domain driven to 40 GHz with an
+    absorbing boundary, and it names neither a cell size nor an absorber
+    depth; rfx chooses both. The cell comes out a twentieth of the shortest
+    free-space wavelength, 0.37474057 mm, and every one of the six faces
+    gets 16 CPML cells. That leaves 22 x 22 x 161 cells of clear interior
+    inside a grid of 55 x 55 x 194 nodes.
+
+    Pinned against literals rather than against the expressions that produce
+    them, so a change in the auto-mesh rule, in the default absorber depth
+    or in the node/cell fencepost moves this test. It came here from the
+    coax thru-line case's header suite when that case was removed
+    (2026-09-22) and is the only place these three defaults are asserted
+    together for a coaxial-port simulation; the values are unchanged.
+    """
+    grid = _sim()._build_grid()
+
+    assert grid.shape == (55, 55, 194)
+    assert grid.dx == pytest.approx(3.7474057249999997e-4, rel=1e-12)
+    # ...which is lambda_min / 20 at the declared freq_max, re-derived here.
+    assert grid.dx == pytest.approx(299792458.0 / 40.0e9 / 20.0, rel=1e-12)
+
+    assert (grid.pad_x_lo, grid.pad_x_hi) == (16, 16)
+    assert (grid.pad_y_lo, grid.pad_y_hi) == (16, 16)
+    assert (grid.pad_z_lo, grid.pad_z_hi) == (16, 16)
+
+    interior = tuple(grid.shape[a] - 1 - (16 + 16) for a in range(3))
+    assert interior == (22, 22, 161)
+
+
 # ---------------------------------------------------------------------------
 # FAST: passivity-advisory routing (design-note incidental defect 3 — the
 # 1-port result bypasses _finalize_sparam_result; this one must not).

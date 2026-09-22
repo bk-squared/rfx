@@ -1,5 +1,7 @@
 # cv23 lossy-slab Fresnel — pre-declaration (gap lane 2, dielectric loss)
 
+> cv23 was removed on 2026-09-21; the artifacts cited here are at commit b4cf8f29.
+
 Date: 2026-09-02 · Lane: `agent/gap2-lossy-slab` (stacked on
 `agent/gap1-dispersive-slab`, the cv22 lane) · Case:
 `validation/crossval/23_lossy_slab_fresnel.py` (new; id

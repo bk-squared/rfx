@@ -1,5 +1,7 @@
 # issue #812 P1 — self-referential phase gates (cv20, cv21): results
 
+> The coax thru-line case, the phase-identity evidence builder and the coax job files this note names were removed on 2026-09-21; they are at rfx commit 3883a836.
+
 Companion to `issue812_phase_identity_predeclaration.md`, which fixed every
 threshold below in the commit **preceding** the one that measured them.
 Measured: 2026-09-01, branch `agent/regate-phase-identity`.

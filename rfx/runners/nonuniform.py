@@ -1322,7 +1322,9 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     ntff_box = None
     ntff_data_init = None
     if sim._ntff is not None:
-        from rfx.farfield import NTFFBox, init_ntff_data
+        from rfx.farfield import (
+            NTFFBox, init_ntff_data, with_face_centre_collocation,
+        )
         corner_lo, corner_hi, ntff_freqs = sim._ntff
         lo_idx = pos_to_nu_index(grid, corner_lo)
         hi_idx = pos_to_nu_index(grid, corner_hi)
@@ -1343,6 +1345,11 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             cpml_lo_y=int(grid.pad_y_lo),
             cpml_lo_z=int(grid.pad_z_lo),
         )
+        # Accumulate at the centre of each face cell (second-order surface
+        # integral). The half-cell interpolation weights for the tangential
+        # H come from this grid's own cell widths, so a graded axis gets the
+        # right pair instead of a flat 1/2.
+        ntff_box = with_face_centre_collocation(ntff_box, grid)
         ntff_data_init = init_ntff_data(ntff_box)
 
     # #677: assemble the surface-impedance sheet ctx from the specs the

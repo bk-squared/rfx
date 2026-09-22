@@ -24,8 +24,8 @@ reactive load between two wire ports. Verify:
      reference-plane path.
 
 These are BASIC regression tests, not full validation — the
-claims-bearing MSL notch validation lives in
-`validation/crossval/06b_msl_notch_filter_uniform.py` (`add_msl_port`;
+claims-bearing MSL notch validation lives in the MSL notch filter case,
+`tests/crossval/msl_notch_filter/` (`add_msl_port`;
 the nonuniform wire-port crossval lane cv06 was retired as
 artifact-anchored, issue #339).
 """

@@ -591,8 +591,8 @@ def _validate_cfg_pec_face_short_of_domain_wall(self, _w, ctx) -> None:
     under a wall at 11.000 mm, and the one-cell gap between them is a
     parallel-plate line along the broad wall, open at both ends.
 
-    Measured on cv11 2026-09-07 (``scripts/diagnostics/
-    pec_short_lane_ab.py``): that slot passed |S21| 0.22-0.33 through
+    Measured on the WR-90 waveguide-port case, 2026-09-07: that slot
+    passed |S21| 0.22-0.33 through
     a "short" and took the pec-short |S11| deficit from 0.0146 to
     0.0560. Pre-#931 the node-half-open sampler included the top node
     by accident, so nothing in the repo had ever had to say this.

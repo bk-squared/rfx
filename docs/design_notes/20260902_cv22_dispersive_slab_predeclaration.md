@@ -1,5 +1,7 @@
 # cv22 dispersive-slab Fresnel — pre-declaration (gap lane 1, dispersive materials)
 
+> cv22 was removed on 2026-09-21; the artifacts cited here are at commit b4cf8f29.
+
 Date: 2026-09-02 · Lane: `agent/gap1-dispersive-slab` · Case:
 `validation/crossval/22_dispersive_slab_fresnel.py` (new; id
 `22_dispersive_slab_fresnel`; claims-bearing, E2 + E4).

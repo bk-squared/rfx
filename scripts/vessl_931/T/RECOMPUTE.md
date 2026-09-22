@@ -113,7 +113,7 @@ Five GPU re-runs the inventory asked for are unnecessary. Every one of these
 builds its metal with the low-level `rasterize(grid, [(shape, 1.0, sigma)])`
 CELL FILL, which design note §1.8 fences out of the ownership contract:
 
-* cv16 ka sweep (`validation/crossval/16_pec_sphere_mie_ka_sweep.py:283`)
+* cv16 ka sweep (that case was removed 2026-09-21)
 * RCS Mie reference (`tests/fixtures/rcs_mie_e4`)
 * RCS sphere three-way (`tests/fixtures/rcs_sphere_three_way`)
 * RCS cube vs Bempp (`tests/fixtures/rcs_cube_bem/generate.py:58`)

@@ -160,7 +160,7 @@ def emit_gradient(ad):
                          [("gradient.json", "gradient-json")])
     return grad
 
-# --- geometry (matches validation/crossval/05_patch_antenna.py) ---
+# --- geometry (matches the former cv05 patch case, removed 2026-09-21) ---
 EPS_R = 4.3
 TAN_D = 0.02
 H_SUB = 1.5e-3
@@ -188,8 +188,8 @@ DZ = DX                    #   S11 sweep, the Harminv ring-down and the field ma
 # contract now refuses outright (§1.5) and which the old rule quietly snapped
 # onto the nearest node. What actually ran was a board 2.0 mm thick (walls at
 # 8.0 and 10.0 mm, two FR4 cells) while every label in this file said 1.5 mm.
-# The declared geometry mirrors validation/crossval/05_patch_antenna.py, so the
-# board stays 1.5 mm and the mesh moves instead.
+# The declared geometry mirrors the former cv05 patch case (removed
+# 2026-09-21), so the board stays 1.5 mm and the mesh moves instead.
 #
 # Cost: 0.5 mm doubles every axis and halves dt, so a case is ~10x the 1 mm
 # run (~1 min -> ~10 min on CPU). Run the sweep on a batch machine.

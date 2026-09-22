@@ -17,8 +17,8 @@ The contract
 A document may cite a quantity by writing, inside a single-backtick code span,
 an **artifact reference**::
 
-    `validation/crossval/_18_wr90_iris_results/rfx.json::gates.fine_gate_abs`
-    `validation/crossval/_18_wr90_iris_results/rfx.json::gates.fine_gate_abs = 0.04`
+    `validation/crossval/_15_patch_results/openems.json::f_dip_hz`
+    `validation/crossval/_15_patch_results/openems.json::f_dip_hz = 2330000000`
     `validation/crossval/_15_patch_results/rfx.json::f_primary_hz = 2.3139 GHz`
 
 - the path is repo-relative and must name a committed JSON file;
@@ -370,6 +370,12 @@ TILT_RESULTS = (
 # provenance" section emits the citations from the artifact.
 NEAR_FIELD_RESULTS = (
     "docs/design_notes/waveguide_driven_plane_near_field_composition_results.md")
+# 2026-09-21: the open-boundary contract. It is a RULE, and the rule rests on a
+# before/after pair of measured numbers (a lossless patch that gains energy, and
+# settles once its ground plane is continued through the absorber). A rule whose
+# evidence could drift unnoticed is the shape this gate exists for, so its
+# "8. Numeric provenance" section cites the record JSONs by key.
+OPEN_BOUNDARY_CONTRACT = "docs/design_notes/20260921_open_boundary_contract.md"
 
 # Markdown documents, with the regex that cuts them into named sites.
 MARKDOWN_SITES: dict[str, str] = {
@@ -418,6 +424,7 @@ MARKDOWN_SITES: dict[str, str] = {
     ISSUE1043_PAD_CONTINUATION_NOTE: r"^#+\s+(.*\S)\s*$",
     TILT_RESULTS: r"^#+\s+(.*\S)\s*$",
     NEAR_FIELD_RESULTS: r"^#+\s+(.*\S)\s*$",
+    OPEN_BOUNDARY_CONTRACT: r"^#+\s+(.*\S)\s*$",
 }
 
 DOCUMENTS = (MANIFEST, *MARKDOWN_SITES)
@@ -426,26 +433,8 @@ DOCUMENTS = (MANIFEST, *MARKDOWN_SITES)
 # floor is a deliberate act that belongs in the same commit as the reason.
 REQUIRED_SITES: dict[tuple[str, str], int] = {
     ("docs/design_notes/20260911_harminv_record_support.md", "Actual FDTD records"): 3,
-    # 2026-09-14 (#813 Arm 1): the cv01 CPML note's result section states its
-    # verdict as a table and resolves every cell in "Numeric provenance". The
-    # floor is the reproduced count (26 of its 35 references carry a value),
-    # not a round number: a rewrite that drops the citations would leave the
-    # table's numbers with nothing behind them.
-    (CV01_CPML_NOTE, "Numeric provenance"): 26,
-    # 2026-09-14 (#813 round-1 review): the interior arm that splits the
-    # 40-layer residual. Its whole claim is the two halves of that split and
-    # the 10-layer pair they are compared against, so the floor is the
-    # reproduced count of value-carrying citations (19).
-    (CV01_CPML_NOTE, "Numeric provenance, residual split"): 19,
-    # 2026-09-15 (#813, cv01's committed record re-measured after #1057): the
-    # note's third result section states a before/after gate table -- including
-    # a gate that CHANGES verdict -- and resolves every cell of it against
-    # validation/crossval/_01_waveguide_bend_results/crossval_r2.json. The
-    # floor is the reproduced count of value-carrying citations (40 of its 56;
-    # raised from 31/45 by the PR #1080 review, which replaced one existence-only
-    # citation about upstream's tutorial geometry with twelve that resolve the
-    # bend arms' actual extents).
-    (CV01_CPML_NOTE, "Numeric provenance, after #1057"): 40,
+    # 2026-09-21: the cv01 CPML note's three floors (26, 19, 40) went with cv01 --
+    # every citation under them reaches an artifact in REMOVED_ARTIFACT_PREFIXES.
     # 2026-09-16 (#873 attempt 2): the transmission-tilt note's verdict rests on
     # six groups of measured numbers -- the observable and its ladder, the bound
     # that retires four candidates, the four-plane measurement that locates the
@@ -459,68 +448,42 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
     # DOES-NOT-CLOSE verdict with nothing behind it, and a negative result is
     # exactly the kind whose numbers nobody re-derives.
     (TILT_RESULTS, "7. Numeric provenance"): 54,
-    (MANIFEST, "11_waveguide_port_wr90"): 4,
+    # 2026-09-21: the WR-90 waveguide-port case and the five-iris band-pass
+    # filter case left the manifest and the validation README, so their four
+    # rows here have no site to measure.
+    # 2026-09-22: the WR-90 inductive iris case left the manifest and the
+    # validation README, so its two rows here have no site to measure.
     (MANIFEST, "15_patch_antenna_rt5880"): 3,
-    (MANIFEST, "17_dielectric_sphere_mie"): 2,
-    (MANIFEST, "18_wr90_iris_modematch"): 4,
-    (MANIFEST, "19_wr90_iris_filter_aghanim"): 4,
-    ("validation/README.md", "crossval/11_waveguide_port_wr90.py"): 4,
-    # 2026-09-03: floors for the cv15/cv18 README rows re-based to the rows that
-    # #847 / #846 rewrote after this gate was drafted (see the note, "Re-basing
-    # two floors"); those rows cite in the value-checked form and carry 2 each.
+    # 2026-09-03: the floor for the cv15 README row re-based to the row that
+    # #847 rewrote after this gate was drafted (see the note, "Re-basing
+    # two floors"); that row cites in the value-checked form and carries 2.
     ("validation/README.md", "crossval/15_patch_antenna_rt5880.py"): 2,
-    ("validation/README.md", "crossval/17_dielectric_sphere_mie.py"): 3,
-    ("validation/README.md", "crossval/18_wr90_iris_modematch.py"): 2,
-    ("validation/README.md", "crossval/19_wr90_iris_filter_aghanim.py"): 6,
     (CV11_NOTE, "7. Numeric provenance (appended 2026-09-01, #812 round 2 \u2014 no finding changed)"): 6,
-    # 2026-09-03, the lattice-witness standard. Section 5.3 is the one the review
-    # found reconstructed numbers in; its floor is the point of opting the note in.
-    (LATTICE_NOTE, "5.1 cv23 \u2014 nine committed entries, eight distinct meshes, all green"): 4,
-    (LATTICE_NOTE, "5.2 cv22 \u2014 three rungs, all green; the pole lattice predicts the residual a priori"): 8,
-    # 2026-09-10: cv04's settling-extension fix landed (PI override of this
-    # section's own 8.3, "no new physics" -- see the commit message). Two
-    # passes, both reproduced with this file's own parser rather than
-    # asserted:
-    #   Pass 1 (c9b86b5e): PRE-FIX the section carried 16 live citations.
-    #   `lattice_witness.json` was regenerated in place and no longer holds
-    #   the pre-fix 719-step values under those keys, so 10 were demoted to
-    #   plain historical text (6 stayed live, unaffected keys -- that 6 is
-    #   already inside the 16 - 10, not an addition to it) and 7 new live
-    #   citations to the POST-FIX 990-step record were added:
-    #   16 - 10 + 7 = 13 (the 6 that stayed live are the 16 - 10).
-    #   Pass 2 (PR #974 adversarial review): re-checked the 10 demotions and
-    #   found only 4 were forced -- W_witness,R/T and the worst-per-bin
-    #   ratios R/T have no other committed home, so they stay plain text
-    #   with a `git show e079b0b5:...` retrieval note. The other 6 were
-    #   re-lived by pointing them at sources the fix does not change: the
-    #   a-priori ceiling and \u0393 (ringdown rate) are geometry-derived and
-    #   numerically unchanged, so they now cite the CURRENT artifact (+2);
-    #   the four |rfx-lattice| gated-mean citations (dR, dT, each appearing
-    #   twice) now cite the IMMUTABLE r1 revision of `envelope.json`, which
-    #   archived them before the fix and does not move when the producer is
-    #   re-run (+4, previously plain text under the same keys). The section
-    #   also gained 2 live citations to the re-run F2/F3 falsifier
-    #   separations at the settled rung, which now discriminate where they
-    #   previously did not: 13 + 2 + 4 + 2 = 21.
-    # Floor set to the reproduced count (21), not a round number.
-    (LATTICE_NOTE, "5.3 cv04 \u2014 the witness was REPORTED, not gated; the derivation said why, and the settling-extension fix (2026-09-10) closed it"): 21,
-    (LATTICE_NOTE, "8.1 cv22 Debye at a 3e-4 settling bar (the only rung a claim requires)"): 3,
-    # 2026-09-03 (#884): the cv19 witness note's two load-bearing sections. §6.2
-    # cites the committed unitarity that U3's floor is compared against; §6.3
-    # cites the empty_s11 and r=2 anchor values it says were deliberately NOT
-    # changed. A "we changed nothing" claim is worth exactly as much as its
-    # numbers still resolving.
-    (CV19_WITNESS_NOTE, "6.2 The three checks, with the shipped measurements"): 1,
-    (CV19_WITNESS_NOTE, "6.3 What did NOT change"): 2,
-    # 2026-09-04 (#888): section 3 IS the finding -- 13 per-rung ratios plus
-    # cv04's arrival, record and fitted reflector index, every one of them read
-    # back out of the artifact the run wrote rather than retyped from a note.
-    (AUX_ECHO_NOTE, "3. The per-case ratios, read from the committed artifacts"): 18,
+    # 2026-09-21: the lattice-witness standard's four case sections (5.1 cv23,
+    # 5.2 cv22, 5.3 cv04, 8.1 cv22 Debye) left this table with the slab family.
+    # Every citation under them reaches an artifact in REMOVED_ARTIFACT_PREFIXES,
+    # so each section now carries zero checked references and its floor no longer
+    # holds. The note itself is unchanged apart from its removal header.
+    # 2026-09-21: the FDFD unitarity witness note's two load-bearing sections
+    # (§6.2, §6.3) left this table with the five-iris band-pass filter case.
+    # Every citation under them reaches an artifact in
+    # REMOVED_ARTIFACT_PREFIXES, so each section now carries zero checked
+    # references and its floor no longer holds. The note itself is unchanged
+    # apart from its removal header.
+    # 2026-09-21: the auxiliary-echo note's section 3 read its 18 per-rung
+    # ratios out of the slab family's committed artifacts. Those artifacts are
+    # in REMOVED_ARTIFACT_PREFIXES, the section carries zero checked references,
+    # and its floor no longer holds.
     # 2026-09-06 (#928): the public benchmarks table. This is the page a reader
     # takes "validated" from, so its measured numbers are the ones that must
-    # keep resolving. 93 references parse there; 91 of them carry a value,
-    # which is what this floor counts (the other two are existence-only).
-    (BENCHMARKS, "Reference cases"): 85,
+    # keep resolving.
+    # 2026-09-21: six rows left the table with their cases (cv04, cv17, cv22,
+    # cv23, cv24, cv26) and took 91 of its 100 checked citations. Floor lowered
+    # to the measured remainder, 9.
+    # 2026-09-22: the MSL notch filter's row left the table when the case was
+    # rebuilt as tests/crossval/msl_notch_filter/, and took 5 of the 9. Floor
+    # lowered to the measured remainder, 4.
+    (BENCHMARKS, "Reference cases"): 4,
 }
 
 # Anti-vacuity census. A green gate must mean the references are right, not that
@@ -582,9 +545,62 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
 # reason for an estimator swap that is false at one rung, and the reason that
 # does hold is three numbers already IN the artifact that nothing cited. A
 # number the argument leans on and the gate cannot see is the gap that catches.
-MIN_REFERENCES = 1412
-MIN_VALUE_CHECKED = 1333
-MIN_DISTINCT_ARTIFACTS = 79
+# 2026-09-21 (cv01/cv02/cv05/cv10 removed): their manifest entries, README rows
+# and benchmarks rows left the gated surface, and 163 citations in three dated
+# notes reach artifacts that went with cv01 and cv05 (REMOVED_ARTIFACT_PREFIXES,
+# skipped per citation; the 24 other citations in those notes stay checked).
+# Measured after the removal: 1386 references, 1338 value-checked, 82 artifacts.
+# Only the floor that no longer holds is lowered.
+# 2026-09-21 (cv04/cv17/cv22/cv23/cv24/cv26 removed): six benchmarks rows, the
+# cv17 manifest entry and README row left the gated surface, and 955 citations
+# across the lattice-witness standard, the auxiliary-echo note and the four slab
+# pre-declarations reach artifacts that went with those cases
+# (REMOVED_ARTIFACT_PREFIXES, skipped per citation). Measured after the removal:
+# 431 references, 401 value-checked, 33 artifacts. The floors are lowered to the
+# measured values.
+# 2026-09-21 (the WR-90 waveguide-port case and the five-iris band-pass filter
+# case removed): their manifest entries, README rows and benchmarks rows left
+# the gated surface, and the FDFD unitarity witness note's citations reach
+# artifacts that went with the filter case (REMOVED_ARTIFACT_PREFIXES, skipped
+# per citation). Measured after the removal: 403 references, 373 value-checked,
+# 31 artifacts. The floors are lowered to the measured values.
+# 2026-09-22 (the WR-90 inductive iris case removed): its manifest entry and
+# README row left the gated surface with their two REQUIRED_SITES floors, and
+# 11 citations in two dated notes (the #812 geometry-sensitivity predeclaration
+# and the chain-closure contract) reach artifacts that went with the case
+# (REMOVED_ARTIFACT_PREFIXES, skipped per citation; both notes carry the dated
+# removal header). Measured after the removal: 385 references, 356
+# value-checked, 28 artifacts. The floors are lowered to the measured values.
+# 2026-09-21 (open-boundary contract): +15 references, all value-checked, over +7
+# distinct artifacts (the patch ring-down records under
+# scripts/diagnostics/open_boundary_contract/). Raised by the delta, on top of
+# the iris removal above: 400 references, 371 value-checked, 35 artifacts.
+# 2026-09-22 (the coax thru-line case removed): its manifest entry and
+# validation README row left the gated surface, taking the 11 citations they
+# carried (10 value-checked). Every one of them reached
+# validation/crossval/_issue812_phase_identity/regate_evidence.json, which
+# STAYS -- the MSL thru-line phase case's own tests load it -- and is still
+# cited by that case's sites, so no artifact leaves the count. Measured after
+# both changes: 389 references, 361 value-checked, 35 artifacts.
+# 2026-09-22 (the MSL notch filter rebuilt as tests/crossval/msl_notch_filter/):
+# its manifest entry, validation README row and public benchmarks row left the
+# gated surface, and 35 citations in two sections of the estimator-resolution
+# re-gate note reach the case's committed falsifier summaries under
+# validation/crossval/_06b_msl_notch_results/ (REMOVED_ARTIFACT_PREFIXES,
+# skipped per citation; that note carries the dated removal header). Two
+# artifacts leave the distinct count with them. Measured after the removal:
+# 340 references, 319 value-checked, 33 artifacts. The floors are lowered to
+# the measured values.
+# 2026-09-22 (the MSL notch filter's leftovers): the estimator re-gate fixture
+# left with the removed stdout reporter's contract functions, and section 5 of
+# the estimator-resolution re-gate note cites it 15 times (14 value-checked);
+# those citations are skipped and that artifact leaves the distinct count. The
+# case's committed run logs left in the same pass and carried no citation.
+# Measured after the removal: 325 references, 305 value-checked, 32 artifacts.
+# The floors are lowered to the measured values.
+MIN_REFERENCES = 325
+MIN_VALUE_CHECKED = 305
+MIN_DISTINCT_ARTIFACTS = 32
 
 
 # --------------------------------------------------------------------------
@@ -683,8 +699,8 @@ CLASSIFICATION: dict[str, str] = {
     # `tests/_gate_policy.py::gate_from_envelope`) that this parser rejects by
     # construction. The note's own measurements are not quoted out of a
     # committed artifact -- they are the lane's raw readings, replayed by
-    # tests/unit/sources/test_tfsf_aux_absorber_reflection.py and
-    # tests/crossval/test_aux_echo_record_invariant.py.
+    # tests/unit/sources/test_tfsf_aux_absorber_reflection.py (its companion,
+    # the auxiliary-echo record invariant, was removed 2026-09-21).
     "docs/design_notes/20260904_aux_absorber_depth_derivation.md": SYMBOL_SPAN_PARSER_SCOPE,
     "docs/design_notes/20260905_post_merge_review_20_prs.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20260905_post_v18_plan_rasterization_preflight_cst.md": NO_ARTIFACT_REFERENCE,
@@ -888,6 +904,7 @@ CLASSIFICATION: dict[str, str] = {
     "docs/design_notes/waveguide_driven_plane_near_field_composition_predeclaration.md":
         NO_ARTIFACT_REFERENCE,
     NEAR_FIELD_RESULTS: GATED,
+    OPEN_BOUNDARY_CONTRACT: GATED,
     "docs/design_notes/waveguide_false_lane_column_power_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_false_lane_column_power_results.md": NO_ARTIFACT_REFERENCE,
     # 2026-09-16 (#873 attempt 2): the pre-declaration was written before any
@@ -899,6 +916,12 @@ CLASSIFICATION: dict[str, str] = {
     "docs/design_notes/waveguide_false_lane_transmission_tilt_predeclaration.md":
         NO_ARTIFACT_REFERENCE,
     TILT_RESULTS: GATED,
+    "docs/design_notes/20260921_crossval_role_redesign.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-21 (second-order NTFF): no `::` span at all. Its numbers are not
+    # quoted out of a committed JSON; each table names the test that replays
+    # it (tests/unit/farfield/test_ntff_second_order_oracle.py, the locks NTFF
+    # battery, tests/unit/farfield/test_farfield_nonuniform.py).
+    "docs/design_notes/20260921_ntff_second_order.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_vi_envelope_sweep_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_vi_envelope_sweep_results.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/wp4e_lumped_component_value_ad_spike.md": NO_ARTIFACT_REFERENCE,
@@ -945,11 +968,73 @@ def _sites(root: Path, doc: str) -> list[tuple[str, str]]:
     return out
 
 
+# 2026-09-21: artifacts that left the tree with a removed cross-validation case
+# (cv01, cv05). A dated note that cites them is not rewritten: its citations
+# under these prefixes are skipped and every other citation in the note stays
+# gated. `test_a_skipped_artifact_prefix_is_really_gone` keeps the list honest --
+# a prefix that exists again, or one added to silence a citation whose artifact
+# is still here, fails. The artifacts themselves are at commit 66ed61c2.
+REMOVED_ARTIFACT_PREFIXES: tuple[str, ...] = (
+    "scripts/diagnostics/_artifacts/cv01_cpml_813/",
+    "validation/crossval/_01_waveguide_bend_results/",
+    "validation/crossval/_05_patch_results/",
+    "tests/fixtures/patch_mode_identification/cv05_ringdown_spectra.json",
+    # 2026-09-21, the slab family (cv04, cv22, cv23, cv26), the graded-z
+    # cavity (cv24) and the dielectric sphere (cv17). Those artifacts are at
+    # commit b4cf8f29.
+    "validation/crossval/_04_fresnel_results/",
+    "validation/crossval/_04_fresnel_logs/",
+    "validation/crossval/_17_dielectric_results/",
+    "validation/crossval/_22_dispersive_results/",
+    "validation/crossval/_22_dispersive_diag/",
+    "validation/crossval/_23_lossy_results/",
+    "validation/crossval/_24_nu_cavity_results/",
+    "validation/crossval/_26_oblique_results/",
+    "tests/fixtures/golden_workflows/",
+    "tests/fixtures/rcs_dielectric_sphere_mie/",
+    "tests/fixtures/slab_family_windows_baseline.json",
+    # 2026-09-21, the WR-90 waveguide-port case and the five-iris band-pass
+    # filter case. Those artifacts are at commit df7ea62c.
+    "validation/crossval/_11_wr90_port_results/",
+    "validation/crossval/_19_iris_filter_results/",
+    "tests/fixtures/wr90_iris_filter/",
+    # 2026-09-22, the WR-90 inductive iris case: its comparison became the
+    # analytic test tests/oracle/test_wr90_inductive_iris_mode_matching.py and
+    # the frozen record went with the script. Those artifacts are at commit
+    # e367e7bf.
+    "validation/crossval/_18_wr90_iris_results/",
+    "tests/fixtures/wr90_iris_modematch/",
+    # 2026-09-22, the coax thru-line case: its openEMS referee and the two
+    # committed VESSL run records went with it. No citation in the opted-in
+    # surface reached this directory, so nothing is silenced by listing it --
+    # it is here so a citation added later cannot resolve against a tree that
+    # no longer holds the artifact. Those artifacts are at commit 3883a836.
+    "validation/crossval/_21_coax_two_port_referee_logs/",
+    # 2026-09-22, the MSL notch filter: the case was rebuilt as
+    # tests/crossval/msl_notch_filter/ and its script, committed run records
+    # and falsifier summaries went with it. Two opted-in sections of
+    # docs/design_notes/estimator_resolution_regate.md cited these summaries
+    # 35 times; those citations are skipped now and the note carries the dated
+    # removal header. Those artifacts are at commit 876b3408.
+    "validation/crossval/_06b_msl_notch_results/",
+    "tests/fixtures/msl_notch_e4/",
+    # 2026-09-22, the MSL notch filter's leftovers: the estimator re-gate
+    # fixture left with its only remaining reader, the contract functions that
+    # exercised the removed stdout reporter. The same note's section 5 cites it
+    # 15 times; those citations are skipped now. The case's committed run logs
+    # (validation/crossval/_06b_notch_uniform_logs/) went in the same pass but
+    # no opted-in citation ever reached them, so they need no prefix. Those
+    # artifacts are at commit 2ce4c28d.
+    "tests/fixtures/cv06b_estimator_regate/",
+)
+
+
 def collect(root: Path) -> list[Reference]:
     refs: list[Reference] = []
     for doc in DOCUMENTS:
         for site, text in _sites(root, doc):
-            refs.extend(parse_references(doc, site, text))
+            refs.extend(r for r in parse_references(doc, site, text)
+                        if not r.path.startswith(REMOVED_ARTIFACT_PREFIXES))
     return refs
 
 
@@ -979,6 +1064,20 @@ def test_the_cited_population_is_still_present() -> None:
     assert len(artifacts) >= MIN_DISTINCT_ARTIFACTS, (
         f"references reach only {len(artifacts)} distinct artifacts "
         f"({sorted(artifacts)}); expected at least {MIN_DISTINCT_ARTIFACTS}."
+    )
+
+
+@pytest.mark.parametrize("prefix", REMOVED_ARTIFACT_PREFIXES)
+def test_a_skipped_artifact_prefix_is_really_gone(prefix: str) -> None:
+    # The skip is a string prefix, so "is this path missing" is not enough: a
+    # string that is no path at all (``.../patch_mode_identification/cv15_``)
+    # would pass that and still silence citations to live files. What must hold
+    # is that NO tracked file starts with it.
+    live = sorted(t for t in _TRACKED() if t.startswith(prefix))
+    assert not live, (
+        f"{prefix} is listed in REMOVED_ARTIFACT_PREFIXES, so citations under it "
+        f"are skipped, but {len(live)} tracked file(s) start with it, e.g. "
+        f"{live[0]}. Remove or narrow the prefix so those citations are checked."
     )
 
 

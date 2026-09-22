@@ -194,12 +194,11 @@ def waveguide_slab_rt(
 
 ## Canonical example
 
-`validation/crossval/11_waveguide_port_wr90.py` — WR-90 waveguide with three
-canonical geometries (empty guide, PEC short, dielectric slab), compared
-against analytic Airy and Meep references. The script documents band-edge
-artifacts and analytic phase-convention caveats. Authoritative regression
-gates live in `tests/oracle/test_waveguide_port_validation_battery.py` and
-`tests/unit/sparams/test_waveguide_twoport_contract_v1.py`.
+The authoritative regression gates for the rectangular-waveguide port are
+`tests/oracle/test_waveguide_port_validation_battery.py` and
+`tests/unit/sparams/test_waveguide_twoport_contract_v1.py`. Read them for the
+canonical set-up: the battery builds the empty guide and the PEC short, the
+two-port contract the dielectric slab.
 
 ## References
 

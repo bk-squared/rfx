@@ -146,9 +146,10 @@ conductor sheets) that classification comes out matched on both legs: rfx
 poorly-defined quantity this section used to describe. The pre-#920/#931
 "shallow ~-3 dB rfx lumped port" text was a description of the floating
 post, not of rfx's port primitive; the
-shallow-dip caveats still standing in validation/crossval/05_patch_antenna.py
-and examples/tutorials/patch_antenna_demo.py are NOT re-validated here and
-carry their own feed geometry (cv05's post ends 1.5 cells above ground --
+shallow-dip caveats still standing in
+examples/tutorials/patch_antenna_demo.py are NOT re-validated here and
+carry their own feed geometry (the former cv05 patch case, removed
+2026-09-21, put its post 1.5 cells above ground --
 flagged in the #920 spot-check as its own follow-up, both solvers shallow
 there, so it is not this class).
 
@@ -186,13 +187,13 @@ HONEST SCOPE (PI penalises overclaiming)
   - dB is always recomputed from raw |S|. Deltas are rfx-centric. |S11|>1 is
     flagged as an extraction/passivity artifact, not physics.
 
-RELATIONSHIP TO CASE 05 (patch ACCURACY is NOT claimed here)
+RELATIONSHIP TO THE FORMER CASE 05 (patch ACCURACY is NOT claimed here)
 ------------------------------------------------------------
-`validation/crossval/05_patch_antenna.py` remains the registered patch case and
-authoritative patch-accuracy evidence stays DELEGATED to the committed tests it
-names (`tests/crossval/test_patch_canonical_farfield_e4.py` and friends). This case 15 is
+The former cv05 patch case was removed 2026-09-21; authoritative
+patch-accuracy evidence stays DELEGATED to the committed tests it
+named (`tests/crossval/test_patch_canonical_farfield_e4.py` and friends). This case 15 is
 a SEPARATE, differently-meshed integration study on a different laminate: it
-does not supersede id 05, does not reopen the #325/#378 demotion decision, and
+does not supersede that case, does not reopen the #325/#378 demotion decision, and
 adds no patch-accuracy claim of its own.
 
 Exit contract (crossval registry, validation/crossval/manifest.json)
@@ -249,8 +250,8 @@ FEED_OFFSET_X = -9.0e-3    # inset feed, 9 mm off centre along L
 N_SUB = 4
 # Distinct eps_r values the declared build may produce: vacuum (1.0) and the
 # laminate (EPS_R). #931: a PEC sheet owns no cell and writes no material, so
-# declaring the ground and the patch must not add a third -- cv17's G17-B
-# pattern (validation/crossval/17_dielectric_sphere_mie.py) applied to the
+# declaring the ground and the patch must not add a third -- the G17-B pattern
+# of the former cv17 dielectric-sphere case (removed 2026-09-21) applied to the
 # sheet side, and the witness for the deleted #702 own-cell resample.
 N_DISTINCT_EPS_EXPECTED = 2
 DX = H_SUB / N_SUB         # 793.75 um uniform (H_SUB == 4*DX exactly)
@@ -1207,8 +1208,7 @@ def _stack_check_ok(sc, tol=1e-9, eps_tol=1e-4):
 
     Pure function (synthetic dicts in, bool+detail out) so
     ``tests/crossval/test_crossval_cv15_wall_planes.py`` can pin the gate MATH
-    without a solve, following ``tests/crossval/test_crossval_gate_logic.py``'s
-    precedent for this crossval directory.
+    without a solve, the established precedent for this crossval directory.
     """
     if not sc:
         return False, "missing stack_check (leg predates the #740 wall-plane self-check)"

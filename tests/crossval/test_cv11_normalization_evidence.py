@@ -1,13 +1,19 @@
-"""A cv11 magnitude table cannot certify an unrecorded extractor."""
+"""A WR-90 magnitude table cannot certify an unrecorded extractor.
+
+The WR-90 waveguide-port case that produced the stdout was removed on
+2026-09-21. What is pinned here is the SURVIVING half of that chain: the
+committed broad-E4 comparison artifact under tests/fixtures/waveguide_broad_e5/
+and the builder that writes it, which refuses a stdout whose extractor record
+is invalid or self-contradictory. The one arm that drove the removed case's
+own ``run_rfx_*`` entry points went with the case; nothing else moved.
+"""
 from __future__ import annotations
 
 import importlib.util
 import hashlib
 import json
 from pathlib import Path
-from types import SimpleNamespace
 
-import numpy as np
 import pytest
 
 
@@ -25,31 +31,6 @@ def _load(name, path):
 def _builder(monkeypatch):
     monkeypatch.syspath_prepend(str(ROOT / "scripts/diagnostics"))
     return _load("cv11_evidence_builder", ROOT / "scripts/diagnostics/build_waveguide_wr90_rectangular_broad_e4_comparison.py")
-
-
-def test_actual_producer_modes_reach_the_artifact(monkeypatch, capsys, tmp_path):
-    producer = _load("cv11_modes", ROOT / "validation/crossval/11_waveguide_port_wr90.py")
-    calls = []
-
-    def solve(**kwargs):
-        calls.append(kwargs["normalize"])
-        return SimpleNamespace(s_params=np.zeros((2, 2, 1)),
-                               port_names=["left", "right"], freqs=np.array([1.]))
-
-    monkeypatch.setattr(producer, "_build_sim", lambda *a, **kw: SimpleNamespace(
-        compute_waveguide_s_matrix=solve))
-    monkeypatch.setattr(producer, "assert_realized_short", lambda sim: {
-        "planes_m": [0.145, 0.147], "n_cells": 1, "n_sheets": 0})
-    producer.run_rfx_empty()
-    producer.run_rfx_pec_short()
-    producer.run_rfx_slab(2., 0.01)
-    assert calls == [True, False, True]
-    output = tmp_path / "producer.stdout"
-    output.write_text(capsys.readouterr().out + STDOUT.read_text())
-    payload = _builder(monkeypatch).build_rectangular_broad_e4_comparison(
-        output, tmp_path / "artifact", reference_column="Palace_r_h2")
-    assert payload["normalization_by_geometry"] == {"empty": True, "pec_short": False, "slab": True}
-    assert "normalize='flux'" not in payload["claim"]
 
 
 def test_historical_tables_do_not_imply_flux_or_ad_coverage(monkeypatch, tmp_path):

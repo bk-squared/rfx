@@ -320,7 +320,8 @@ def test_the_coefficient_is_threaded_exactly_when_the_e_update_is_anisotropic(
     holds ``materials.eps_r = 12`` against ``aniso_eps = 1``, so its numbers
     move by design. cv01 Run 1 goes 0.9195301017439319 -> 0.9166511849380675;
     the measurement lives in
-    `scripts/diagnostics/cpml_subpixel_stability/cv01_control.py`.)
+    `scripts/diagnostics/cpml_subpixel_stability/cv01_control.py`, removed
+    with cv01 on 2026-09-21 and kept at commit 66ed61c2.)
     """
     import rfx.boundaries.cpml as _cpml
     from rfx.materials.lorentz import LorentzPole

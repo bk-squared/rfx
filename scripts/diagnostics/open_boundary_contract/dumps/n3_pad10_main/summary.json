@@ -1,0 +1,73 @@
+{
+ "label": "n3_pad10_main",
+ "tree": "src-main",
+ "arm": {
+  "n": 3,
+  "pad_h": 10,
+  "cpml_layers": 6,
+  "ceil_sizing": false
+ },
+ "grid_shape": [
+  187,
+  142,
+  61
+ ],
+ "settling_db": 0.0,
+ "worst_rate_per_step": 0.000584241689243745,
+ "note": "w = eps0*eps_r*|E|^2 + mu0*mu_r*|H|^2 per cell, components co-located by index, not interpolated. Region fractions, profiles and the max-|E| cell are all on the FINAL field.",
+ "region_fractions": {
+  "interior": 0.5081922626526508,
+  "x_lo": 0.01258709486769095,
+  "x_hi": 0.1816753622480264,
+  "y_lo": 0.015278950057598507,
+  "y_hi": 0.25877081100381844,
+  "z_lo": 0.001679381359788715,
+  "z_hi": 0.0006872121334891365,
+  "edge_overlap": 0.021081556902733133,
+  "corner_overlap": 4.736877420387035e-05,
+  "_sum_check": 1.0
+ },
+ "max_e_cell": {
+  "index": [
+   180,
+   135,
+   22
+  ],
+  "value": 56.31261805207765,
+  "region": "interior",
+  "dist_to_domain_face_cells": 6,
+  "dist_to_absorber_inner_boundary_cells": 0,
+  "dist_to_pec_cells": 1.7320508075688772
+ },
+ "profiles_length": {
+  "x": 187,
+  "y": 142,
+  "z": 61
+ },
+ "snapshot_pairs": {
+  "snap_85_to_snap_90": {
+   "correlation_normalized_w": 0.8615884457038875,
+   "total_w_ratio": 3.7351517931168536,
+   "steps_between": 1000,
+   "implied_growth_rate_per_step": 0.0013177884584863726
+  },
+  "snap_90_to_snap_95": {
+   "correlation_normalized_w": 0.7025604457590674,
+   "total_w_ratio": 3.896374164137243,
+   "steps_between": 999,
+   "implied_growth_rate_per_step": 0.0013614078270188582
+  },
+  "snap_95_to_final": {
+   "correlation_normalized_w": 0.41528197947226697,
+   "total_w_ratio": 3.5655638141301393,
+   "steps_between": 1000,
+   "implied_growth_rate_per_step": 0.0012713221939926254
+  }
+ },
+ "sign_alternation": {
+  "dominant_component": "ey",
+  "x": 0.08695652173913043,
+  "y": 0.3,
+  "z": 0.08620689655172414
+ }
+}

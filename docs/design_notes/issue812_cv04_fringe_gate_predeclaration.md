@@ -1,5 +1,7 @@
 # cv04 (multilayer Fresnel) — fringe-structure re-gate: threshold pre-declaration
 
+> cv04 was removed on 2026-09-21; the artifacts cited here are at commit b4cf8f29.
+
 Issue: #812 (crossval gate audit), cv04 row — "the E4 label is carried by an
 import, not by a verdict", plus audit pattern **P2** (band-mean collapse over an
 interference pattern).

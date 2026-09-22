@@ -186,8 +186,8 @@ def _is_solve_call(node: ast.AST) -> bool:
 
 def real_simulation_call_count(relpath: str) -> int:
     """AST count of real ``Simulation(...)`` calls (text/docstring mentions
-    do not count -- e.g. cv21's docstring mentions "Simulation" but the
-    script never constructs one)."""
+    do not count -- a script whose prose names "Simulation" may never
+    construct one)."""
     return sum(1 for n in ast.walk(_parse(relpath)) if _is_simulation_call(n))
 
 
@@ -366,145 +366,31 @@ CLASSIFICATION: dict[str, Entry] = {
     # ---- no_simulation: zero real Simulation() calls, AST-verified ------
     # (bucket sizes are not written here: they rot. Count them with a
     #  Counter over CLASSIFICATION, the way the two docstrings above say.)
-    "validation/crossval/16_pec_sphere_mie_ka_sweep.py": Entry(
-        "no_simulation",
-        "drives the functional rfx.rcs.compute_rcs entry point directly on "
-        "a hand-built Grid/MaterialArrays -- no Simulation object exists"),
-    "validation/crossval/17_dielectric_sphere_mie.py": Entry(
-        "no_simulation",
-        "drives the functional rfx.rcs.compute_rcs entry point directly on "
-        "a hand-built Grid/MaterialArrays -- no Simulation object exists"),
     "validation/crossval/20_msl_phase_referee.py": Entry(
         "no_simulation",
         "Stage A drives openEMS/ContinuousStructure and explicitly does NOT "
         "import rfx (own docstring); Stage B only reads a committed rfx-"
         "produced JSON record -- no Simulation is built by this script"),
-    "validation/crossval/21_coax_two_port_referee.py": Entry(
-        "no_simulation",
-        "same two-stage openEMS-referee shape as cv20: no rfx Simulation is "
-        "constructed by this script"),
-    "validation/crossval/_wr90_iris_realized.py": Entry(
-        "no_simulation",
-        "cv18/cv19's shared realized-geometry reader (#931 crossval-D): takes "
-        "a built Simulation and reads realized_pec_edge_masks / "
-        "realized_wall_planes -- constructs no Simulation"),
-    "validation/crossval/_exit_evidence.py": Entry(
-        "no_simulation",
-        "shared exit-code evidence helper (#946): persists a record and "
-        "amends its exit code if the process ends with a different status -- "
-        "json/atexit only, imports no rfx and constructs no Simulation"),
     "validation/crossval/_patch_feed_contract.py": Entry(
         "no_simulation",
         "cv05/cv15's explicit galvanic-feed contract (#929): reads the "
         "registered source span and realized conductor planes of a built "
         "Simulation; constructs no Simulation and performs no solve"),
-    "validation/crossval/_patch_external_geometry.py": Entry(
-        "no_simulation",
-        "cv05 external board/mesh/reference helpers (#959): consume realized "
-        "records and a supplied openEMS object; construct no rfx Simulation"),
     "validation/crossval/comparators/realized_conductors.py": Entry(
         "no_simulation",
         "crossval-side build-time realized-conductor gate (#931): takes a "
         "built Simulation and delegates to the shared realized-edge spelling "
         "-- constructs no Simulation"),
-    "validation/crossval/comparators/fdfd_hplane.py": Entry(
-        "no_simulation",
-        "plain numpy/scipy.sparse FDFD comparator -- no rfx import at all"),
-    "validation/crossval/comparators/nu_cavity_gates.py": Entry(
-        "no_simulation",
-        "pure-numpy Pozar spectrum, exact-lattice prediction, allowance, "
-        "windows and gates for cv24 -- no rfx import at all"),
-    "validation/crossval/22_dispersive_slab_fresnel.py": Entry(
-        "no_simulation",
-        "cv22 dispersive-slab case: drives cv04's low-level rig (Grid, "
-        "init_tfsf, update_e_debye/lorentz) directly under a main guard -- "
-        "no Simulation() call; the documented add_material path is stated "
-        "as NOT exercised in its manifest entry"),
-    "validation/crossval/comparators/cv22_dispersive_gates.py": Entry(
-        "no_simulation",
-        "pure-numpy windows, falsifiers and TMM/ADE evaluation for cv22 -- "
-        "no rfx Simulation"),
-    "validation/crossval/comparators/dispersive_eps.py": Entry(
-        "no_simulation",
-        "pure-numpy Debye/Lorentz/Drude eps(f) and the rfx->Meep material "
-        "mapping (unit-tested to 1e-9 before any FDTD) -- no rfx import"),
-    "validation/crossval/23_lossy_slab_fresnel.py": Entry(
-        "no_solve",
-        "cv23 lossy-slab case: two arms build a Simulation through the "
-        "documented add_material(sigma=) path and assemble its material "
-        "arrays (asserted bit-identical to the direct construction) but time "
-        "stepping is the low-level rig's -- Simulation.run() is never called"),
-    "validation/crossval/comparators/cv23_lossy_gates.py": Entry(
-        "no_simulation",
-        "pure-numpy windows, falsifiers and TMM evaluation for cv23 (R, T and "
-        "absorption A) -- no rfx Simulation"),
-    "validation/crossval/comparators/lattice_witness.py": Entry(
-        "no_simulation",
-        "pure-numpy exact-lattice witness gate for the slab family (cv04 / cv22 "
-        "/ cv23): the 1-D Yee-lattice prediction, the derived W_witness error "
-        "budget and the analytic falsifiers -- no rfx Simulation"),
-    "validation/crossval/comparators/slab_arm_windows.py": Entry(
-        "no_simulation",
-        "pure-numpy per-arm continuum window for the slab family's E2 gates "
-        "(#928): the arm's own lattice-continuum difference plus that record's "
-        "lattice-witness budget -- no rfx Simulation"),
-    "validation/crossval/comparators/slab_rig.py": Entry(
-        "no_simulation",
-        "shared quasi-1-D TFSF slab rig helpers (record-length derivation, "
-        "tail witness, envelope fit) factored out of cv22 -- no Simulation()"),
-    "validation/crossval/26_oblique_slab_fresnel.py": Entry(
-        "no_simulation",
-        "cv26 oblique-slab case: drives cv04's low-level rig (Grid, "
-        "init_tfsf_2d, update_e/update_h with the Bloch phase, CPML) "
-        "directly under a main guard -- no Simulation() call"),
-    "validation/crossval/comparators/oblique_fresnel.py": Entry(
-        "no_simulation",
-        "pure-numpy oblique Fresnel oracle, Meep k_point mapping, exact "
-        "2-D Yee-lattice / CPML model, windows and falsifiers for cv26 -- "
-        "no rfx Simulation (it imports tfsf_2d's auxiliary-grid constants, "
-        "#888, rather than restating them)"),
-    "validation/crossval/comparators/slab_family.py": Entry(
-        "no_simulation",
-        "the slab family's leaf declaration (#928): the cv04 rig constants, "
-        "the gated band, the incident-pulse and ring-down helpers, and the "
-        "calibration-envelope loader that resolves a consumer's adoption "
-        "record against the producer's artifact -- stdlib + numpy, no rfx"),
-    "validation/crossval/comparators/ring_mode_judge.py": Entry(
-        "no_simulation",
-        "plain numpy/scipy mode-list comparator for cv02 (#812) -- compares "
-        "two lists of extracted modes, no rfx import at all"),
-    "validation/crossval/comparators/slab_te_dispersion.py": Entry(
-        "no_simulation",
-        "plain-numpy closed-form slab TE0 oracle + two-wave n_eff estimator "
-        "for cv03 (#812) -- no rfx import at all"),
     "validation/crossval/comparators/spectral_features.py": Entry(
         "no_simulation",
-        "pure-numpy sub-bin spectral-feature estimators shared by cv06b/cv07 "
-        "and the Palace referee producers (#812 P3) -- no rfx import at all"),
+        "pure-numpy sub-bin spectral-feature estimators shared by the Sheen "
+        "low-pass filter and the Palace referee producers (#812 P3) -- no rfx "
+        "import at all"),
     "validation/crossval/comparators/patch_mode_identification.py": Entry(
         "no_simulation",
         "pure-math patch cavity mode identification (#812) -- closed-form "
         "TM_mn0 spectrum plus a frequency-list assignment; no rfx import at "
         "all"),
-    "validation/crossval/comparators/emit_aux_echo_witness.py": Entry(
-        "no_simulation",
-        "backfills the auxiliary-echo record invariant (#888) into the "
-        "committed slab-family lattice_witness.json documents -- pure geometry "
-        "and JSON editing, no solver, no rfx import at all"),
-    "validation/crossval/comparators/emit_cv26_lattice_witness_replay.py": Entry(
-        "no_simulation",
-        "recomputes cv26's derived lattice-witness window from the committed "
-        "per-arm records with the standard's own budget primitives -- arithmetic "
-        "on artifacts already on disk, no solver, no FDTD, no rfx import"),
-    "validation/crossval/comparators/emit_cv04_fringe_gate_evidence.py": Entry(
-        "no_simulation",
-        "emits cv04's fringe-gate evidence JSON from the committed R(f) "
-        "artifact with numpy/scipy only (issue #812) -- no solver, no rfx "
-        "import at all"),
-    "validation/crossval/comparators/fringe_gate.py": Entry(
-        "no_simulation",
-        "pure numpy/scipy fringe-extremum comparator for cv04's etalon R(f) "
-        "(issue #812) -- no rfx import at all"),
     "validation/crossval/palace/mesh_patch.py": Entry(
         "no_simulation",
         "gmsh mesh-generation utility for the Palace comparator -- no rfx "
@@ -676,35 +562,6 @@ CLASSIFICATION: dict[str, Entry] = {
         "eps column) -- no separable build-only path"),
 
     # ---- module_level_solve: solves at import time, no main guard -------
-    "validation/crossval/01_waveguide_bend.py": Entry(
-        "module_level_solve",
-        "builds and calls .run(...) at module scope with no "
-        "`if __name__ == '__main__':` guard -- importing this module solves"),
-    "validation/crossval/02_ring_resonator.py": Entry(
-        "module_level_solve",
-        "builds and calls .run(...) at module scope with no main guard"),
-    "validation/crossval/03_straight_waveguide_flux.py": Entry(
-        "module_level_solve",
-        "builds and calls .run(...) at module scope with no main guard"),
-    "validation/crossval/04_multilayer_fresnel.py": Entry(
-        "module_level_solve",
-        "builds and calls .run(...) at module scope with no main guard"),
-    "validation/crossval/05_patch_antenna.py": Entry(
-        "module_level_solve",
-        "builds and calls .run(...) at module scope with no main guard"),
-    # VENDORED UPSTREAM, NOT OURS. Meep's own python/examples/bend-flux.py,
-    # byte-identical to blob f56ab649 (see the sibling PROVENANCE.md); cv01's
-    # reproduce-gate runs it unmodified so the comparator is checked against
-    # upstream's own code rather than a transcription of it. Classified rather
-    # than excluded from discovery on purpose: the recursive-and-unfiltered
-    # sweep exists because a filter let a file land unclassified and green
-    # (2026-08-27 review), and re-adding a filter for this one would reopen it.
-    # It is `module_level_solve` because that is what upstream wrote, not a
-    # style we chose -- and it must not be "fixed" to add a main guard.
-    "validation/crossval/_01_waveguide_bend_upstream/bend-flux.py": Entry(
-        "module_level_solve",
-        "vendored upstream Meep tutorial, unmodified: builds and calls "
-        ".run(...) at module scope with no main guard. Do not edit."),
 
     # ---- builder_fused_with_solve: build+solve share one function -------
     "examples/tutorials/cad_mesh_import_demo.py": Entry(
@@ -730,14 +587,6 @@ CLASSIFICATION: dict[str, Entry] = {
         "realized-metal gate is exercised against the production builder); "
         "run_rfx() consumes it and solves",
         (Builder("build_rfx_sim", None, (_v("default", dx=200e-6),)),)),
-    "validation/crossval/09_half_symmetric_waveguide.py": Entry(
-        "builder_fused_with_solve",
-        "`_run_cavity()` builds and calls .run(...) in the same function"),
-    "validation/crossval/10_pmc_cpml_half_symmetric.py": Entry(
-        "builder_fused_with_solve",
-        "`_run_half()` (behind `run_uniform()`/`run_nonuniform()`) and "
-        "`run_full_image()` each build and call .run(...) in the same "
-        "function"),
     "validation/crossval/15_patch_antenna_rt5880.py": Entry(
         "audited",
         "`build_rfx_sim(...)` returns (sim, patch_shape, geom) with no solve "
@@ -749,10 +598,6 @@ CLASSIFICATION: dict[str, Entry] = {
         "the realized edge set itself, through realized_pec_edge_masks / "
         "realized_wall_planes",
         (Builder("build_rfx_sim", 0, (_v("default", do_gain=False),)),)),
-    "validation/crossval/18_wr90_iris_modematch.py": Entry(
-        "builder_fused_with_solve",
-        "`run_point()` builds and calls sim.compute_waveguide_s_matrix(...) "
-        "in the same function"),
     "validation/research/nu_cost/g4/cpml_baseline.py": Entry(
         "no_simulation",
         "G4 frozen low-level CPML reference; defines operators and state, "
@@ -980,48 +825,6 @@ CLASSIFICATION: dict[str, Entry] = {
         (Builder("build_sim", None, (
             _v("with_slab=False", with_slab=False),
             _v("with_slab=True", with_slab=True))),)),
-    "validation/crossval/06b_msl_notch_filter_uniform.py": Entry(
-        "audited", "`_build_sim()` returns Simulation with no solve call",
-        (Builder("_build_sim", None, (_v("default"),)),)),
-    "validation/crossval/11_waveguide_port_wr90.py": Entry(
-        "audited",
-        "`_build_sim(freqs, ...)` returns Simulation with no solve call; "
-        "main() drives it at the empty-guide and PEC-short configurations",
-        (Builder("_build_sim", None, (
-            _v_from("empty", lambda m: dict(freqs=m.FREQS_HZ)),
-            _v_from("pec_short", lambda m: dict(
-                freqs=m.FREQS_HZ, pec_short_x=m.PEC_SHORT_X)),
-        )),)),
-    "validation/crossval/14_rect_cavity_pozar.py": Entry(
-        "audited",
-        "`build_cavity(dx)` returns Simulation with no solve call; main() "
-        "drives it at the main gate leg and the convergence-witness cell size",
-        (Builder("build_cavity", None, (
-            _v("dx=1.0mm", dx=1.0e-3), _v("dx=0.5mm", dx=0.5e-3))),)),
-    "validation/crossval/24_nu_rect_cavity_pozar.py": Entry(
-        "audited",
-        "`build_cavity(lane, dxy, dz_profile)` returns Simulation with no "
-        "solve call; main() drives it once per arm (uniform / graded / "
-        "uniform-fine) through run_arm()",
-        (Builder("build_cavity", None, (
-            _v_from("uniform", lambda m: dict(
-                lane="uniform", dxy=m.G.DX_COARSE, dz_profile=m.G.PROFILES["uniform"])),
-            _v_from("single_band", lambda m: dict(
-                lane="nonuniform", dxy=m.G.DX_COARSE, dz_profile=m.G.PROFILES["single_band"])),
-            _v_from("multi_band", lambda m: dict(
-                lane="nonuniform", dxy=m.G.DX_COARSE, dz_profile=m.G.PROFILES["multi_band"])),
-            _v_from("uniform_fine", lambda m: dict(
-                lane="uniform", dxy=m.G.DZ_FINE, dz_profile=m.G.PROFILES["uniform_fine"])),
-        )),)),
-    "validation/crossval/19_wr90_iris_filter_aghanim.py": Entry(
-        "audited",
-        "`build(geo, ...)` returns (Simulation, cpml_cells, guide_length) "
-        "with no solve call; main()'s gated leg calls it on "
-        "rasterized_geometry(GATED_CELLS, allow_asymmetric=False)",
-        (Builder("build", 0, (
-            _v_from("gated", lambda m: dict(
-                geo=m.rasterized_geometry(m.GATED_CELLS, allow_asymmetric=False))),
-        )),)),
     "validation/research/subgrid/12_subgrid_disjoint_prototype.py": Entry(
         "audited",
         "`_build_disjoint_simulation()` returns Simulation with no solve call",

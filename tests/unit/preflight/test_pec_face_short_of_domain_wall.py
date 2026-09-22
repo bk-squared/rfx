@@ -10,8 +10,8 @@ the realized wall: the 10.16 mm face rounds DOWN to 10.000 mm while the
 wall is at 11.000 mm, and the cell between them is a vacuum slot along
 the broad wall — a parallel-plate line, open at both ends.
 
-Measured on cv11 2026-09-07 (``scripts/diagnostics/pec_short_lane_ab.py``):
-that slot passed |S21| 0.22-0.33 through what the fixture called a short,
+Measured on the WR-90 waveguide-port case, 2026-09-07: that slot passed
+|S21| 0.22-0.33 through what the fixture called a short,
 and took the pec-short |S11| deficit from 0.0146 to 0.0560. Nothing said
 so at build time; before #931 the node-half-open sampler happened to
 include the top node and the question never arose.

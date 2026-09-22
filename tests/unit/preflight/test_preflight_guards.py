@@ -9,7 +9,7 @@ This file replaces three entries of the ``guards-and-preflight`` PR lane
 
 1. **Issue #37: thresholds must be physics-based, not cell-count** — was
    ``test_preflight_physics_thresholds.py``. Validated configurations (e.g.
-   05_patch_antenna) must produce no false under-resolved warnings; only
+   the former cv05 patch case) must produce no false under-resolved warnings; only
    genuine under-resolution warns (thin PEC sheet silent, partial PEC
    volume warns, dielectric cells-per-lambda_eff thresholds 15 / 20 when
    S-parameter extraction is active, NU dispatch of

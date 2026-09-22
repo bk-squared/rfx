@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Build a broad geometry envelope artifact for the WR90 waveguide-port lane.
 
-This consumes the existing ``cv11_waveguide_port_wr90`` 4-way diagnostic stdout
-table and aggregates the rfx vs canonical-reference magnitude comparison across
+This consumes a committed 4-way diagnostic stdout table for the WR-90
+waveguide-port case (removed 2026-09-21) and aggregates the rfx vs
+canonical-reference magnitude comparison across
 the three published WR90 geometries:
 
 - ``empty``      : S11 + S21

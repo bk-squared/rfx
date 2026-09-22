@@ -1,5 +1,7 @@
 # E4 expansion: every crossval case × every external solver class — inventory and lane plan
 
+> cv04, cv17, cv22, cv23, cv24 and cv26 were removed on 2026-09-21; the artifacts cited here are at commit b4cf8f29.
+
 > **SUPERSEDED IN PART by #931 (the lattice ownership contract), 2026-09-07.**
 > Kept as dated history; its numeric citations describe the planning snapshot.
 > The appended 2026-09-08 artifact-pointer correction below identifies the

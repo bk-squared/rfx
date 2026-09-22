@@ -20,6 +20,13 @@ PR #539 flagged this explicitly -- be honest about it):
     committed data independently of whatever the case's own file claims,
     so a coherent in-file plant (relax the local check AND re-pin the
     constant to fit under it) is still caught.
+  * 2026-09-22: the two quantized-gate falsifiers now have NO population.
+    They run over cases discovered from committed ``fixture.json`` files
+    carrying a ``gates`` dict, and the WR-90 inductive iris fixture was the
+    last one; it left when that comparison became an analytic test. Both
+    skip, and the only load-bearing from-outside cross-derivation left in
+    this file is the bounded-margin one. Stated rather than papered over:
+    the surviving quantized lanes all derive their bar in-file.
   * The import-route test
     (``test_crossval_script_import_route_resolves_the_repo_gate_policy_module``)
     guards a DIFFERENT failure mode entirely: not a relaxed multiplier, but
@@ -48,14 +55,15 @@ GATE_POLICY = REPO / "tests" / "_gate_policy.py"
 # quantum`, hard-pinned in a test AND re-derived in the crossval script's
 # own --write-fixture self-check.
 _QUANTIZED_GATE_FILES = [
-    REPO / "tests" / "crossval" / "test_wr90_iris_modematch_gates.py",
-    REPO / "tests" / "crossval" / "test_rcs_mie_ka_sweep_gates.py",
-    REPO / "tests" / "crossval" / "test_rcs_dielectric_sphere_mie_gates.py",
-    REPO / "tests" / "crossval" / "test_wr90_iris_filter_gates.py",
-    REPO / "validation" / "crossval" / "16_pec_sphere_mie_ka_sweep.py",
-    REPO / "validation" / "crossval" / "17_dielectric_sphere_mie.py",
-    REPO / "validation" / "crossval" / "18_wr90_iris_modematch.py",
-    REPO / "validation" / "crossval" / "19_wr90_iris_filter_aghanim.py",
+    # 2026-09-22. The WR-90 inductive iris comparison became an analytic test
+    # and its frozen-fixture pair (the gate test and the cross-validation
+    # script) left with the case. What replaces them here derives its bar
+    # in-file, through the shared gate_from_envelope, from a MEASURED envelope
+    # pinned beside it -- the same shape as the rcs280 and aux-absorber lanes
+    # at the end of this list, and with the same limit: it carries no
+    # `tests/fixtures/**/fixture.json`, so the _REAL_CASES glob below does not
+    # reach it and nothing outside the file re-derives its bar.
+    REPO / "tests" / "oracle" / "test_wr90_inductive_iris_mode_matching.py",
     # #576 review F5. This lane is in the tripwire list but NOT in _REAL_CASES
     # below, and that is a real coverage gap, not an oversight: the mutation
     # falsifiers discover cases from `tests/fixtures/**/fixture.json` files
@@ -67,16 +75,6 @@ _QUANTIZED_GATE_FILES = [
     # `abs` key to 100. So the multiplier-mutation coverage here rests on the
     # test file's own derived-not-pinned tolerances, which is weaker than the
     # discovered lanes' from-outside check.
-    # #928 item 2. The slab family's per-bin windows are the one lane here that
-    # deliberately does NOT quantize -- rounding up to 1/1000 per bin would
-    # raise every sub-1e-3 bin to 1e-3, widening the gate where the derivation
-    # is tightest -- so it reads ENVELOPE_GATE_MULTIPLIER through the module
-    # object instead of calling gate_from_envelope. It is in this tripwire list
-    # because the `* 1.5 *` plant is exactly as available to it as to the
-    # others, and the from-outside check that the multiplier really moves its
-    # windows is tests/contracts/test_slab_arm_window_derivation.py::
-    # test_the_shared_multiplier_moves_every_derived_window.
-    (REPO / "validation" / "crossval" / "comparators" / "slab_arm_windows.py"),
     REPO / "tests" / "crossval" / "test_waveguide_nu_broad_e4_comparison_gates.py",
     (REPO / "scripts" / "diagnostics"
      / "build_waveguide_wr90_nu_flux_broad_e4_comparison.py"),
@@ -144,11 +142,18 @@ _MARGIN_CEIL_FILES = [
     REPO / "tests" / "oracle" / "test_waveguide_group_delay_tolerance_envelope.py",
 ]
 
-_CROSSVAL_SCRIPTS = [
-    REPO / "validation" / "crossval" / "16_pec_sphere_mie_ka_sweep.py",
-    REPO / "validation" / "crossval" / "17_dielectric_sphere_mie.py",
-    REPO / "validation" / "crossval" / "18_wr90_iris_modematch.py",
-    REPO / "validation" / "crossval" / "19_wr90_iris_filter_aghanim.py",
+# Scripts that are run as `python <script>` from an arbitrary cwd and reach
+# tests._gate_policy through their own `sys.path.insert(0, REPO)` prologue --
+# the import route the test at the end of this file probes. 2026-09-22: the
+# WR-90 inductive iris cross-validation script was the original entry and left
+# with its case; these two carry the identical prologue and the same
+# quantized-gate role, so the probe keeps a real population instead of an
+# empty parametrization.
+_PATH_INSERT_SCRIPTS = [
+    (REPO / "scripts" / "diagnostics"
+     / "build_waveguide_wr90_nu_flux_broad_e4_comparison.py"),
+    (REPO / "scripts" / "diagnostics"
+     / "build_waveguide_wr90_nu_flux_broad_e5_envelope.py"),
 ]
 
 _ENVELOPE_KEY_RE = re.compile(
@@ -162,21 +167,18 @@ def _discover_real_cases() -> list[tuple[str, tuple[str, str], tuple[str, str], 
     ``tests/fixtures/**/fixture.json`` -- derived from the glob rather than
     hand-maintained (#528 review MEDIUM 2), so a new quantized-gate case
     is picked up automatically instead of needing this file edited too --
-    modulo the suffix map: #499's case 19 (anticipated here before it
-    landed) gates in integer MHz, which required adding ``mhz`` -> 1 to
-    ``_QUANTUM_BY_SUFFIX`` in the same PR; a future case reusing an
-    existing suffix costs nothing.
+    modulo the suffix map: the integer-MHz suffix ``mhz`` -> 1 was added
+    for the five-iris band-pass filter case, which has since been removed;
+    a future case reusing an existing suffix costs nothing.
 
-    Descriptive, not authoritative: as of this writing this discovers
-    exactly 6 cases -- wr90_iris_modematch {fine, richardson},
-    rcs_mie_ka_sweep {coarse, fine}, rcs_dielectric_sphere_mie {coarse},
-    wr90_iris_filter {f0}.
-    Four OTHER committed fixture.json files exist
+    Descriptive, not authoritative: as of 2026-09-22 this discovers ZERO
+    cases. The WR-90 inductive iris fixture was the last one carrying a
+    ``gates`` dict, and it left when that comparison became an analytic
+    test. Five committed fixture.json files remain
     (rcs280_reference_subtraction, rcs_cube_bem, rcs_sphere_mie,
-    rcs_sphere_three_way) and are correctly excluded: none has a top-level
-    ``gates`` dict with a matching envelope/gate key pair. Dielectric's
-    ``fine_rung_witness_envelope_db`` is also correctly excluded -- it has
-    no ``fine_gate_db`` sibling (that rung is reported, never gated).
+    rcs_sphere_three_way, waveguide_chain_battery) and are correctly
+    excluded: none has a top-level ``gates`` dict with a matching
+    envelope/gate key pair.
     """
     cases: list[tuple[str, tuple[str, str], tuple[str, str], int]] = []
     for fixture_path in sorted(REPO.glob("tests/fixtures/**/fixture.json")):
@@ -261,28 +263,32 @@ def test_gate_policy_module_defines_exactly_one_multiplier():
 def test_real_cases_are_discovered_from_the_fixture_glob_not_hand_maintained():
     """#528 review MEDIUM 2: an empty or broken glob must not silently pass
     every other assertion in this file (they'd vacuously succeed over zero
-    cases) -- assert a floor AND that today's 6 known cases are all in it."""
-    assert len(_REAL_CASES) >= 6, (
-        f"only {len(_REAL_CASES)} real gated cases discovered via the "
-        f"fixture glob -- an empty or broken glob would silently pass "
-        f"every other case-driven assertion in this file"
+    cases) -- assert a floor AND that today's known cases are all in it.
+
+    2026-09-21: the floor drops from 4 to 3 when the dielectric-sphere
+    fixture left with its case, and to 2 when the five-iris band-pass
+    filter fixture left with its case -- the measured count.
+
+    2026-09-22: the WR-90 inductive iris fixture left with its case when
+    that comparison became an analytic test, and the case floor drops to
+    ZERO. The two mutation falsifiers below are skipped while it stands
+    there, so what is left of the anti-vacuity guard is the two halves
+    asserted here: the glob still REACHES committed fixtures (a broken
+    glob, which is what the floor was written against, would find none),
+    and no fixture it reaches carries a ``gates`` dict. Re-raise the floor
+    in the same commit as the next fixture that does."""
+    globbed = sorted(REPO.glob("tests/fixtures/**/fixture.json"))
+    assert len(globbed) >= 5, (
+        f"the fixture glob reaches only {len(globbed)} committed "
+        f"fixture.json files -- a broken glob would silently pass every "
+        f"case-driven assertion in this file"
     )
-    discovered = {(rel, env_key) for rel, env_key, _, _ in _REAL_CASES}
-    expected = {
-        ("tests/fixtures/wr90_iris_modematch/fixture.json",
-         ("gates", "fine_measured_envelope_abs")),
-        ("tests/fixtures/wr90_iris_modematch/fixture.json",
-         ("gates", "richardson_measured_envelope_abs")),
-        ("tests/fixtures/rcs_mie_ka_sweep/fixture.json",
-         ("gates", "coarse_measured_envelope_db")),
-        ("tests/fixtures/rcs_mie_ka_sweep/fixture.json",
-         ("gates", "fine_measured_envelope_db")),
-        ("tests/fixtures/rcs_dielectric_sphere_mie/fixture.json",
-         ("gates", "coarse_measured_envelope_db")),
-        ("tests/fixtures/wr90_iris_filter/fixture.json",
-         ("gates", "f0_measured_envelope_mhz")),
-    }
-    assert expected <= discovered
+    assert _REAL_CASES == [], (
+        f"a committed fixture carries a quantized gate again: {_REAL_CASES}. "
+        f"Add it to the expected set and raise the case floor -- the two "
+        f"mutation falsifiers below stop skipping once this list is "
+        f"non-empty."
+    )
 
 
 @pytest.mark.parametrize(
@@ -399,6 +405,15 @@ def test_margin_ceiling_plant_is_caught_by_the_from_outside_cross_check():
         assert re_pinned <= worst * ENVELOPE_GATE_MULTIPLIER
 
 
+@pytest.mark.skipif(
+    not _REAL_CASES,
+    reason="2026-09-22: no committed fixture carries a quantized gate since "
+           "the WR-90 inductive iris fixture left with its case. This "
+           "falsifier needs a fixture holding BOTH a measured envelope and "
+           "the gate a past run froze from it; a lane that derives its bar "
+           "in-file cannot stand in, because re-deriving it here calls the "
+           "same function. The load-bearing from-outside check that remains "
+           "is the bounded-margin one above.")
 def test_mutating_the_shared_multiplier_moves_every_gated_case_and_reverts():
     """Falsifier 1 of 2 (source-mutation shape): reproduce the EXACT
     adversarial edit named in the issue (a source-level find-replace of
@@ -463,6 +478,11 @@ def test_mutating_the_shared_multiplier_moves_every_gated_case_and_reverts():
         assert reverted == pytest.approx(pinned_gate, abs=1e-9)
 
 
+@pytest.mark.skipif(
+    not _REAL_CASES,
+    reason="2026-09-22: no committed fixture carries a quantized gate since "
+           "the WR-90 inductive iris fixture left with its case -- see the "
+           "reason on the source-mutation falsifier above.")
 def test_monkeypatching_the_live_shared_multiplier_moves_every_gated_case():
     """Falsifier 2 of 2 (live-module shape, #528 review L1): patches
     `ENVELOPE_GATE_MULTIPLIER` on the ALREADY-IMPORTED `tests._gate_policy`
@@ -529,14 +549,14 @@ print(gfe.__globals__.get("__file__", ""))
 
 
 @pytest.mark.parametrize(
-    "script", _CROSSVAL_SCRIPTS, ids=[p.name for p in _CROSSVAL_SCRIPTS])
+    "script", _PATH_INSERT_SCRIPTS, ids=[p.name for p in _PATH_INSERT_SCRIPTS])
 def test_crossval_script_import_route_resolves_the_repo_gate_policy_module(script):
     """#528 review L3: guards a DIFFERENT failure mode than the rest of
     this file -- not a relaxed multiplier, an import-route collision.
     `/root/.local/lib/python3.10/site-packages/tests/` is a REGULAR
     (non-namespace) package installed by `grcwa` (used by the Floquet-RCWA
-    referee lane). If anything resolves `import tests` before a crossval
-    script's own `sys.path.insert(0, _REPO_ROOT)` line runs, that binding
+    referee lane). If anything resolves `import tests` before one of these
+    scripts' own repo-root `sys.path.insert` line runs, that binding
     is cached in `sys.modules['tests']` for the rest of the process and the
     script's own insert cannot undo it -- confirmed by hand: pre-importing
     the site-packages `tests` package and then running one of these
@@ -555,7 +575,7 @@ def test_crossval_script_import_route_resolves_the_repo_gate_policy_module(scrip
     from a broken one. The subprocess starts with an empty
     `sys.modules` and a `cwd` outside the repo (so `''`/cwd cannot
     accidentally save it either), so passing here is real evidence the
-    script's own `sys.path.insert(0, _REPO_ROOT)` -> import ordering is
+    script's own repo-root `sys.path.insert` -> import ordering is
     what resolves `tests` correctly, not an artifact of the test
     environment.
     """

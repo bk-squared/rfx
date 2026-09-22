@@ -1,0 +1,35 @@
+name: rfx-801-field-dumps
+description: "#801: full final field state + three truncated-record states for five ring-down arms (dump_fields.py), sequential on one GPU. float32."
+tags: [rfx, issue-801, diagnostic]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_ENABLE_X64: "0"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  base=/root/workspace/bk-workspace/.801-measure
+  echo "=== provenance (the run aborts if any of this is missing) ==="
+  cat "$base/PROVENANCE.txt"
+  sha256sum "$base/dump_fields.py" \
+    "$base/src-main/rfx/boundaries/cpml.py" "$base/src-main/rfx/grid.py" \
+    "$base/src-main-plus-1012/rfx/boundaries/cpml.py" "$base/src-main-plus-1012/rfx/grid.py"
+  python -m pip install -q "scipy>=1.11" pytest
+  echo "=== label: n2_pad10_main ==="
+  python "$base/dump_fields.py" n2_pad10_main
+  echo "=== label: n2_pad0_main ==="
+  python "$base/dump_fields.py" n2_pad0_main
+  echo "=== label: n2_pad0_main_ceil ==="
+  python "$base/dump_fields.py" n2_pad0_main_ceil
+  echo "=== label: n3_pad10_main ==="
+  python "$base/dump_fields.py" n3_pad10_main
+  echo "=== label: n3_pad10_main1012 ==="
+  python "$base/dump_fields.py" n3_pad10_main1012
+  echo "=== done ==="

@@ -126,7 +126,7 @@ def build_report(gate_json: Path, cv11_stdout: Path, cv11_rc: int) -> dict[str, 
             {
                 "level": "E3",
                 "claim": "independent WR90 dump/projection diagnostic harness",
-                "artifact": "scripts/diagnostics/wr90_port/README.md and out_cross_tool_audit/cross_tool_half_step_audit_R1.json",
+                "artifact": "out_cross_tool_audit/cross_tool_half_step_audit_R1.json",
             },
             {
                 "level": "E4",

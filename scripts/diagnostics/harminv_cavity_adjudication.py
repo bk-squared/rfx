@@ -1,4 +1,8 @@
-"""Judge a stored estimator replay using cv24's existing mode/lattice gates."""
+"""Judge a stored estimator replay using the graded-z cavity mode/lattice gates.
+
+The gates are the ones the former cv24 case used, removed 2026-09-21; they live
+in ``tests/_nu_cavity_gates.py``.
+"""
 import argparse
 import hashlib
 import json
@@ -8,7 +12,7 @@ import sys
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from validation.crossval.comparators import nu_cavity_gates as G  # noqa: E402
+from tests import _nu_cavity_gates as G  # noqa: E402
 
 
 def main():

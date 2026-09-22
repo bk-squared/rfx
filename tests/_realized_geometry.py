@@ -149,8 +149,8 @@ def domain_wall_positions(grid, axis: int) -> tuple[float, float]:
     to THIS plane: a volume's face rounds to the nearest node (§1.1), so a
     plug drawn to the declared 10.16 mm realizes its top at 10.000 mm and
     leaves a one-cell vacuum slot under the wall at 11.000 mm. Measured
-    2026-09-07 on cv11 (``scripts/diagnostics/pec_short_lane_ab.py``): that
-    slot is the whole 0.0146 -> 0.0560 pec-short |S11| step.
+    2026-09-07 on the WR-90 waveguide-port case: that slot is the whole
+    0.0146 -> 0.0560 pec-short |S11| step.
 
     Read off the grid the run builds (``interior`` slices + the node line),
     never recomputed from ``dx`` by the caller.
