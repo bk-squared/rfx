@@ -281,6 +281,12 @@ def test_the_coarser_rungs_report_their_physics_numbers(fixture):
 # exception is visible here rather than hidden in a moved threshold.
 CLAIMS_RUNG_FREQUENCY_ALLOWANCE = 0.011
 
+# The measured envelope of the reference-plane rotation residual: moving both
+# observation planes 500 um leaves S11's phase within this of the 2*beta*Delta
+# the line's own fitted beta predicts. The opposite sign misses by 0.488 rad,
+# 220 times worse, which is what makes the sign assertion below a real check.
+PLANE_ROTATION_RESIDUAL_RAD = 0.005
+
 
 def test_the_notch_frequency_at_the_claims_rung_matches_the_quarter_wave_value(fixture):
     entry = _solve(fixture, CLAIMS_RUNG)
@@ -341,6 +347,50 @@ def test_the_notch_core_is_the_bins_the_finest_rung_puts_below_the_level(fixture
             assert row["excluded_core_bin_indices"] == expect, (name, row["rung"])
 
 
+def test_the_only_bins_the_extractor_declines_to_vouch_for_are_inside_the_null(fixture):
+    """At a transmission zero the voltage and current at the port plane are both
+    small by construction, so the extractor's low-signal mask fires there — and
+    only there. The mask is stored per bin and per port; this asserts it sits
+    inside the notch's own core on every mesh of the notch filter, and that the
+    thru line, which has no null, carries none at all.
+
+    What it protects: the notch frequency is the vertex of a parabola through
+    the minimum bin and its two shoulders, and the shoulders (-27.78 and
+    -27.03 dB at the finest mesh) are bins the extractor does vouch for. A mask
+    that spread beyond the core would mean the shoulders were in doubt too, and
+    with them the frequency this battery reports.
+    """
+    core = set(fixture["ladder"]["notch"]["notch_core"]["bin_indices"])
+    for key in ALL_SOLVES:
+        entry = fixture["solves"].get(key)
+        if entry is None:
+            continue
+        rel = np.asarray(entry["reliable"], dtype=bool)
+        freqs = np.asarray(entry["freqs_hz"], dtype=float)
+        flagged = [sorted(int(k) for k in np.flatnonzero(~rel[p]))
+                   for p in range(rel.shape[0])]
+        assert flagged[0] == flagged[1], (
+            f"{key}: the two ports disagree about which bins are low-signal, "
+            f"{flagged[0]} against {flagged[1]} — a null is symmetric in a "
+            "two-port measurement of a reciprocal structure")
+        union = set(flagged[0])
+        if entry["dut"] == "thru":
+            assert not union, (
+                f"{key}: the control line has no transmission zero, so no bin "
+                f"should read low-signal, yet "
+                f"{[round(freqs[i]/1e9, 4) for i in sorted(union)]} GHz does")
+            continue
+        assert union, (
+            f"{key}: no bin reads low-signal at all. The notch is a "
+            "transmission zero; if the extractor vouches for every bin through "
+            "it, the mask is no longer measuring what it used to.")
+        assert union <= core, (
+            f"{key}: bins "
+            f"{[round(freqs[i]/1e9, 4) for i in sorted(union - core)]} GHz read "
+            "low-signal outside the notch's -20 dB core, so the doubt is no "
+            "longer confined to the null")
+
+
 def test_the_notch_depth_is_recorded_and_compared_with_nothing(fixture):
     """PI 2026-09-21 (c). Inside the core the verdict is the frequency. The
     depth is evidence; it carries no threshold and no boolean."""
@@ -369,16 +419,44 @@ def test_the_ladder_converges_and_sets_a_recommended_cell_size(fixture):
     assert ratio is not None and ratio < 1.0, (
         f"successive notch-frequency differences {diffs} do not shrink (ratio "
         f"{ratio}); on a ladder that is not converging no cell size is recommended")
-    # The recommended cell size follows from the per-rung booleans, and each
-    # boolean follows from the stored curves.
+    # The recommended cell size is the deliverable of this ladder, so every
+    # boolean under it is recomputed here from the stored curves — not read
+    # back from the fixture and compared with itself. A row claiming a mesh is
+    # inside the bar while its own dB difference says otherwise must fail, and
+    # so must a ladder that recommends nothing.
     rows = lad["rung_within_bar_vs_finest"]
-    for row in rows:
+    bar_db = fixture["bar"]["magnitude_db"]
+    bar_frac = fixture["bar"]["frequency_frac"]
+    for i, row in enumerate(rows):
+        for name in ("s21", "s11"):
+            key = f"{name}_within_2dB"
+            if row.get(key) is None:
+                continue
+            worst = lad[f"{name}_vs_finest"][i]["max_db_diff_vs_finest_outside_notch_core"]
+            assert row[key] == bool(worst <= bar_db), (
+                f"{row['rung']}: {key} is {row[key]} but its own curve is "
+                f"{worst:.3f} dB from the finest mesh against a {bar_db} dB bar")
+        if row.get("notch_within_1pct") is not None:
+            assert row["notch_within_1pct"] == bool(
+                lad["notch_frac_vs_finest"][i] <= bar_frac), row["rung"]
+        if row.get("s11_floor_within_bound") is not None:
+            floor = lad["s11_reflection_floor"]
+            assert row["s11_floor_within_bound"] == bool(
+                floor["per_rung"][i]["max_s11_db"] <= floor["bound_db"]), row["rung"]
         flags = [row[k] for k in ("s21_within_2dB", "s11_within_2dB",
                                   "notch_within_1pct", "s11_floor_within_bound")
                  if row.get(k) is not None]
         assert row["all_inside_bar"] == all(flags), row
     qualifying = [r["rung"] for r in rows if r["all_inside_bar"]]
     assert lad["coarsest_rung_within_bar"] == (qualifying[0] if qualifying else None)
+    assert lad["coarsest_rung_within_bar"] is not None, (
+        "no mesh on this ladder sits inside the bar against the finest one, so "
+        "the battery recommends no cell size and the support matrix has nothing "
+        "to carry")
+    assert lad["coarsest_rung_within_bar"] == "notch_50um", (
+        "the recommended cell size moved from 50 um to "
+        f"{lad['coarsest_rung_within_bar']}; that is the number the support "
+        "matrix carries, so it does not change silently")
 
 
 def test_the_forward_identity_holds_on_the_eps_override_channel(fixture):
@@ -447,6 +525,27 @@ def test_the_plane_shift_rotates_the_phase_by_two_beta_delta(fixture):
         stored = pl[f"rotation_{name.lower()}_rad"]
         np.testing.assert_allclose(meas, stored, rtol=1e-9, atol=1e-12,
                                    err_msg=f"{name} rotation")
+
+    # The invariant itself, not just that two stored arrays agree with their
+    # own recomputation. Moving the observation plane Delta further down the
+    # line removes 2*beta*Delta of round-trip phase from S11, so the measured
+    # rotation must match +2*beta*Delta and must NOT match -2*beta*Delta. A
+    # flipped sign convention regenerates both stored arrays consistently and
+    # would otherwise ship green.
+    rot11 = np.angle(b[0, 0, :] * np.conj(a[0, 0, :]))
+    resid = np.abs(np.angle(np.exp(1j * (rot11 - pred))))
+    resid_flipped = np.abs(np.angle(np.exp(1j * (rot11 + pred))))
+    assert float(resid.max()) == pytest.approx(pl["max_rotation_residual_rad"], rel=1e-9)
+    assert float(resid_flipped.max()) == pytest.approx(
+        pl["max_rotation_residual_opposite_sign_rad"], rel=1e-9)
+    assert resid.max() <= PLANE_ROTATION_RESIDUAL_RAD, (
+        f"S11 rotates by {resid.max():.5f} rad away from the 2*beta*Delta the "
+        f"line's own fitted beta predicts over a {delta*1e6:.0f} um shift; the "
+        f"measured envelope is {PLANE_ROTATION_RESIDUAL_RAD} rad")
+    assert resid.max() < resid_flipped.max(), (
+        f"the measured rotation fits -2*beta*Delta ({resid_flipped.max():.5f} rad) "
+        f"at least as well as +2*beta*Delta ({resid.max():.5f} rad) — the sign "
+        "convention of the reference-plane shift is not what the fixture says")
 
 
 def test_perturbing_the_stored_s_breaks_its_own_summary(fixture):
