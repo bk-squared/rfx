@@ -22,6 +22,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.grid import Grid
+from rfx.runners._exchange_interval import validate_exchange_interval
 from rfx.core.yee import MaterialArrays
 from rfx.geometry.csg import Box  # noqa: F401  (referenced by moved docstrings/comments)
 from rfx.sources.sources import GaussianPulse  # noqa: F401  (local import in moved bodies)
@@ -3833,10 +3834,7 @@ class _ExecuteMixin:
             along the x-axis (via ``jax.pmap``).  Phase 1 supports PEC
             boundary, soft sources, and point probes.
         exchange_interval : int, optional
-            How often (in timesteps) to perform ghost cell exchange in
-            the distributed runner.  Default 1 (every step).  Higher
-            values (2-4) reduce synchronization overhead at the cost of
-            O(interval * dt) boundary error.
+            Ghost exchange interval in timesteps; only integer 1 is supported.
         report_every : int or None
             Issue #667 — progress reporting for long solves. When set,
             print one ``  [PROGRESS] ...`` line every *N* timesteps giving
@@ -3879,6 +3877,7 @@ class _ExecuteMixin:
         -------
         Result
         """
+        validate_exchange_interval(exchange_interval)
         fixed_num_periods = n_steps is None
 
         # Behaviour-neutral decay-parameter sanity advisories (post-#392

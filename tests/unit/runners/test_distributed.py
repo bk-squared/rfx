@@ -30,9 +30,8 @@ from rfx.core.yee import init_state, init_materials
 # a single-GPU pod exposes only 1 CUDA device (the host-device-count
 # sentinel only creates *virtual* devices on the CPU backend), so the
 # marker meant this file's whole 2-/4-device equivalence family ran in NO
-# lane at all — the #623 pad_x displacement (and the once-suspected
-# ``test_interval_monotonic_error_growth`` flake below) both went
-# undetected for exactly that reason. The module-level
+# lane at all — the #623 pad_x displacement went undetected for that reason.
+# The module-level
 # ``os.environ["XLA_FLAGS"] = ...`` line above was ALSO dead in practice
 # even before this fix: pytest always imports conftest.py (which sets 2
 # virtual devices via ``setdefault``, before any test module is
@@ -46,12 +45,7 @@ from rfx.core.yee import init_state, init_materials
 # 33/33 passed, 65-68 s wall, 1.74 GiB peak RSS — comparable to (and
 # below) the NU kernel file's precedent (62-66 s, 1.93 GiB) that #622
 # already accepted into the fast lane, and well under the ``highmem``
-# marker's 3-24 GB band (pyproject.toml). This measured run also
-# confirms ``test_interval_monotonic_error_growth`` — flagged in an
-# earlier version of this comment as a "pre-existing latent failure"
-# under genuine multi-device execution — passes cleanly today (its
-# trend-not-strict-monotonicity assertion, see the test body, already
-# absorbed that wobble); no follow-up needed.
+# marker's 3-24 GB band (pyproject.toml).
 #
 # Multi-device tests remain device-count-ADAPTIVE: they shard across
 # however many JAX devices are available (up to 4, `_N_MULTI`) instead of
@@ -787,16 +781,10 @@ class TestDistributedFallback:
         assert result.time_series.shape[0] == 50
 
 
-@requires_multidevice
 class TestExchangeInterval:
-    """Tests for configurable ghost exchange interval (reduced sync).
+    """Entry refusals and the every-step exchange control."""
 
-    Error from stale ghost data depends on the ratio of ghost cells to
-    slab size. Tests use CPML domains (nx=48) with 2 devices (slab=24
-    real cells) for realistic error levels, and 4 devices for the
-    monotonicity check.
-    """
-
+    @requires_multidevice
     def test_interval_1_matches_default_pec(self):
         """exchange_interval=1 should produce identical results to default."""
         sim = Simulation(
@@ -820,158 +808,75 @@ class TestExchangeInterval:
             ts_e, ts_d, atol=1e-6,
             err_msg="exchange_interval=1 differs from default")
 
-    def test_interval_2_cpml_acceptable_error(self):
-        """exchange_interval=2 with CPML 2-device should have <10% error.
+    @pytest.mark.parametrize("entry", ["public", "distributed_v2", "distributed"])
+    @pytest.mark.parametrize("interval", [2, 4])
+    def test_interval_refused(self, monkeypatch, entry, interval):
+        self._assert_refused(monkeypatch, entry, interval)
 
-        2 devices on nx=48 gives slab=24 real cells. Stale ghost for
-        1 step affects only 1 cell out of 24 -- measured ~3.4% error.
-        """
+    @pytest.mark.parametrize("entry", ["public", "distributed_v2", "distributed"])
+    @pytest.mark.parametrize("interval", [0, 1.5, -1, 1.0, True, "1", None])
+    def test_invalid_interval_rejected(self, monkeypatch, entry, interval):
+        self._assert_refused(monkeypatch, entry, interval)
+
+    @staticmethod
+    def _assert_refused(monkeypatch, entry, interval):
+        from rfx.runners import distributed, distributed_v2
+
+        sim = Simulation(freq_max=3e9, domain=(0.05, 0.02, 0.02), boundary="pec")
+
+        def unexpected_work(*args, **kwargs):
+            pytest.fail("exchange_interval must be checked before preflight or grid setup")
+
+        monkeypatch.setattr(sim, "_auto_preflight", unexpected_work)
+        monkeypatch.setattr(sim, "_build_grid", unexpected_work)
+        kwargs = dict(n_steps=1, devices=jax.devices()[:2], exchange_interval=interval)
+        with pytest.raises(ValueError) as exc:
+            if entry == "public":
+                sim.run(**kwargs)
+            else:
+                runner = distributed_v2 if entry == "distributed_v2" else distributed
+                runner.run_distributed(sim, **kwargs)
+        assert str(exc.value) == (
+            f"exchange_interval={interval!r} is refused: "
+            "each skipped exchange updates seam cells from stale neighbour values "
+            "and the field grows exponentially in a lossless box; "
+            "use exchange_interval=1."
+        )
+
+    @requires_multidevice
+    def test_pec_window_peak_invariant(self, monkeypatch, record_property):
+        """Compare first/last 50-step Ez peaks through the internal PEC scan."""
+        from rfx.runners import distributed_v2
+
         sim = Simulation(
-            freq_max=3e9,
-            domain=(0.13, 0.04, 0.04),
-            boundary="cpml",
+            freq_max=16e9, domain=(0.024, 0.008, 0.008), dx=0.001,
+            boundary="pec", cpml_layers=0, precision="float32",
         )
+        position = (0.012, 0.004, 0.004)
+        # A single initial impulse; no source input in either trailing window.
         sim.add_source(
-            position=(0.065, 0.02, 0.02),
-            component="ez",
-            waveform=GaussianPulse(f0=1.5e9, bandwidth=1.5e9),
+            position, "ez", waveform=lambda t: jnp.where(t == 0, 1.0, 0.0),
+            amplitude_kind="field",
         )
-        sim.add_probe(position=(0.065, 0.02, 0.02), component="ez")
-
-        n_steps = 200
-        devices = jax.devices()[:2]
-
-        result_1 = sim.run(n_steps=n_steps, devices=devices,
-                           exchange_interval=1)
-        result_2 = sim.run(n_steps=n_steps, devices=devices,
-                           exchange_interval=2)
-
-        ts_1 = np.array(result_1.time_series)
-        ts_2 = np.array(result_2.time_series)
-
-        peak = np.max(np.abs(ts_1)) + 1e-30
-        rel_err = np.max(np.abs(ts_1 - ts_2)) / peak
-        assert rel_err < 0.10, (
-            f"CPML exchange_interval=2 vs 1 relative error {rel_err:.2e} exceeds 10%")
-
-    def test_interval_4_cpml_2dev_acceptable_error(self):
-        """exchange_interval=4 with CPML 2-device should have <10% error.
-
-        Larger slabs (24 cells) tolerate interval=4 well -- measured ~3.3%.
-        """
-        sim = Simulation(
-            freq_max=3e9,
-            domain=(0.13, 0.04, 0.04),
-            boundary="cpml",
-        )
-        sim.add_source(
-            position=(0.065, 0.02, 0.02),
-            component="ez",
-            waveform=GaussianPulse(f0=1.5e9, bandwidth=1.5e9),
-        )
-        sim.add_probe(position=(0.065, 0.02, 0.02), component="ez")
-
-        n_steps = 200
-        devices = jax.devices()[:2]
-
-        result_1 = sim.run(n_steps=n_steps, devices=devices,
-                           exchange_interval=1)
-        result_4 = sim.run(n_steps=n_steps, devices=devices,
-                           exchange_interval=4)
-
-        ts_1 = np.array(result_1.time_series)
-        ts_4 = np.array(result_4.time_series)
-
-        peak = np.max(np.abs(ts_1)) + 1e-30
-        rel_err = np.max(np.abs(ts_1 - ts_4)) / peak
-        assert rel_err < 0.10, (
-            f"CPML exchange_interval=4 vs 1 relative error {rel_err:.2e} exceeds 10%")
-
-    def test_interval_4_cpml_4dev_bounded_error(self):
-        """exchange_interval=4 with CPML 4-device should have bounded error.
-
-        4 devices on nx=48 gives slab=12 real cells. Stale ghost for
-        3 steps affects 3 cells out of 12 -- measured ~15% error.
-        """
-        sim = Simulation(
-            freq_max=3e9,
-            domain=(0.13, 0.04, 0.04),
-            boundary="cpml",
-        )
-        sim.add_source(
-            position=(0.065, 0.02, 0.02),
-            component="ez",
-            waveform=GaussianPulse(f0=1.5e9, bandwidth=1.5e9),
-        )
-        sim.add_probe(position=(0.065, 0.02, 0.02), component="ez")
-
-        n_steps = 200
-        devices = jax.devices()[:_N_MULTI]
-
-        result_1 = sim.run(n_steps=n_steps, devices=devices,
-                           exchange_interval=1)
-        result_4 = sim.run(n_steps=n_steps, devices=devices,
-                           exchange_interval=4)
-
-        ts_1 = np.array(result_1.time_series)
-        ts_4 = np.array(result_4.time_series)
-
-        peak = np.max(np.abs(ts_1)) + 1e-30
-        rel_err = np.max(np.abs(ts_1 - ts_4)) / peak
-        assert rel_err < 0.25, (
-            f"CPML 4-dev exchange_interval=4 vs 1 relative error {rel_err:.2e} exceeds 25%")
-
-    def test_interval_monotonic_error_growth(self):
-        """Error should grow monotonically with exchange_interval.
-
-        Uses CPML with 4 devices where the effect is most visible.
-        """
-        sim = Simulation(
-            freq_max=3e9,
-            domain=(0.13, 0.04, 0.04),
-            boundary="cpml",
-        )
-        sim.add_source(
-            position=(0.065, 0.02, 0.02),
-            component="ez",
-            waveform=GaussianPulse(f0=1.5e9, bandwidth=1.5e9),
-        )
-        sim.add_probe(position=(0.065, 0.02, 0.02), component="ez")
-
-        n_steps = 200
-        devices = jax.devices()[:_N_MULTI]
-
-        result_ref = sim.run(n_steps=n_steps, devices=devices,
-                             exchange_interval=1)
-        ts_ref = np.array(result_ref.time_series)
-        peak = np.max(np.abs(ts_ref)) + 1e-30
-
-        errors = []
-        for interval in [1, 2, 4]:
-            result = sim.run(n_steps=n_steps, devices=devices,
-                             exchange_interval=interval)
-            ts = np.array(result.time_series)
-            err = np.max(np.abs(ts_ref - ts)) / peak
-            errors.append(err)
-
-        # Skipping halo exchanges accumulates error, so error grows with the
-        # exchange interval as a TREND: interval=1 reproduces the reference exactly
-        # (error 0), and larger intervals carry more error. The per-pair ordering can
-        # wiggle by a few % of the error scale (numerical) — strict per-pair
-        # monotonicity is physically too tight. Measured 2026-06-18 on 4 devices:
-        # [0.0, 0.0317, 0.0299] — interval-4 dips ~6% below interval-2 (a wiggle, not
-        # a trend reversal). So assert the trend, not strict monotonicity. (The
-        # earlier strict assert only "passed" because the suite never genuinely ran
-        # multi-device — gpu-marked on a 1-device pod, where exchange_interval is a
-        # no-op; issue #162.)
-        tol = 0.15 * (max(errors) + 1e-30)
-        assert errors[0] <= 1e-6, (
-            f"interval=1 must reproduce the reference exactly: {errors}")
-        assert max(errors[1:]) > errors[0], (
-            f"larger exchange intervals should accumulate error vs interval=1: {errors}")
-        for i in range(len(errors) - 1):
-            assert errors[i] <= errors[i + 1] + tol, (
-                f"error trend should be non-decreasing within {tol:.4f}: {errors}")
+        sim.add_probe(position, "ez")
+        # Bypass only entry validation, retaining the production scan and its
+        # one-cell ghost exchange. Do not route through Simulation.run().
+        monkeypatch.setattr(distributed_v2, "validate_exchange_interval", lambda value: None)
+        ratios = {}
+        for interval in (1, 2):
+            result = distributed_v2.run_distributed(
+                sim, n_steps=1000, devices=jax.devices()[:2],
+                exchange_interval=interval,
+            )
+            trace = np.asarray(result.time_series)
+            assert np.isfinite(trace).all()
+            first_peak = float(np.max(np.abs(trace[:50])))
+            last_peak = float(np.max(np.abs(trace[-50:])))
+            assert first_peak > 0
+            ratios[interval] = last_peak / first_peak
+            record_property(f"K{interval}_last50_over_first50", ratios[interval])
+        assert ratios[1] < 1.2, ratios
+        assert ratios[2] > 3.0, ratios
 
 
 @requires_multidevice

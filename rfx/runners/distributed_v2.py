@@ -40,6 +40,8 @@ from __future__ import annotations
 
 from functools import partial
 
+from rfx.runners._exchange_interval import validate_exchange_interval
+
 import jax
 import jax.numpy as jnp
 from jax import lax
@@ -526,27 +528,16 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     devices : list of jax.Device or None
         If None, use all available devices.
     exchange_interval : int, optional
-        How often (in timesteps) to perform ghost cell exchange.
-        Default is 1 (every step).  Setting to 2 or 4 reduces
-        synchronisation overhead at the cost of O(interval * dt)
-        boundary error from stale ghost data.
+        Ghost exchange interval in timesteps; only integer 1 is supported.
 
     Returns
     -------
     Result
     """
+    validate_exchange_interval(exchange_interval)
     from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
     _refuse_f0(sim._thin_conductors, "distributed (v2) runner")
     import warnings
-
-    if exchange_interval > 1:
-        warnings.warn(
-            f"exchange_interval={exchange_interval}: ghost cells are stale "
-            f"for {exchange_interval-1} steps between exchanges, introducing "
-            f"O(dt*{exchange_interval}) boundary error. Use exchange_interval=1 "
-            f"for physically accurate results.",
-            stacklevel=2,
-        )
 
     if sim._boundary == "upml":
         raise ValueError("boundary='upml' does not support distributed execution")
