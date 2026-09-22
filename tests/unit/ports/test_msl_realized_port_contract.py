@@ -375,9 +375,9 @@ def test_transition_readers_use_the_same_center_and_bounding_plane(lane, monkeyp
                      n_probe_offset=3, n_probe_spacing=2, n_probes=3)
     if lane == "coax":
         sim.add_coaxial_port(position=(10*DX, 12.9*DX, 16*DX), face="bottom",
-                             pin_radius=DX, outer_radius=5*DX)
+                             pin_radius=DX, outer_radius=5*DX, terminates=2)
     else:
-        sim.add_port(position=(5*DX, 12.9*DX, 18*DX), component="ez", impedance=50.)
+        sim.add_port(position=(5*DX, 12.9*DX, 18*DX), component="ez", impedance=50., terminates=2)
     grid = sim._build_grid()
     original = decomposition.realized_trace_planes_on_column
     seen = []
@@ -419,7 +419,7 @@ def test_coax_stub_cannot_overwrite_the_registered_junction_and_substrate(ground
     sim.add(Box((0, 0, ground*DX), (32*DX, 24*DX, ground*DX)), material="pec")
     sim.add(Box((0, 10*DX, top*DX), (32*DX, 14*DX, top*DX)), material="pec")
     sim.add_coaxial_port(position=(8*DX, 12*DX, ground*DX), face="bottom",
-                         pin_radius=DX, outer_radius=4.5*DX)
+                         pin_radius=DX, outer_radius=4.5*DX, terminates=2)
     sim.add_msl_port(position=(8*DX, 12*DX, ground*DX), width=4*DX,
                      height=4*DX, direction="+x", eps_r_sub=3.)
     grid = sim._build_grid()

@@ -93,6 +93,7 @@ class CoaxialPort(NamedTuple):
     outer_radius: float   # outer conductor radius (m), default 2.055 mm (SMA)
     impedance: float      # port impedance, default 50 ohm
     excitation: object    # waveform (GaussianPulse etc.)
+    terminates: tuple = ()
 
 
 class CoaxialTEMReferencePlaneVI(NamedTuple):

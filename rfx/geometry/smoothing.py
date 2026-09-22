@@ -633,207 +633,12 @@ def _conductor_reached_faces(sim, grid, shape, lattice, nodes):
     return reached
 
 
-def _port_terminal_pairs(sim, grid, nodes):
-    """Physical terminal pairs used by the existing port constructors."""
-    if hasattr(grid, "dx_arr"):
-        from rfx.nonuniform import position_to_index
-        index_of = lambda point: position_to_index(grid, point)
-    else:
-        index_of = grid.position_to_index
-    pairs = []
-    for port in getattr(sim, "_msl_ports", ()):
-        bottom = tuple(port.position)
-        top = (*bottom[:2], bottom[2] + port.height)
-        pairs.append((bottom, top))
-    for port in getattr(sim, "_ports", ()):
-        if port.impedance <= 0:
-            continue
-        axis = "xyz".index(port.component[-1])
-        if port.extent is not None:
-            start = tuple(port.position)
-            end = list(start)
-            end[axis] += port.extent
-        else:
-            index = index_of(port.position)
-            start = tuple(float(nodes[a][index[a]]) for a in range(3))
-            end = list(start)
-            end[axis] = float(nodes[axis][min(index[axis] + 1, len(nodes[axis])-1)])
-        pairs.append((start, tuple(end)))
-    if getattr(sim, "_coaxial_ports", ()):
-        from types import SimpleNamespace
-        from rfx.sources.coaxial_port import _coaxial_port_geometry
-        for port in sim._coaxial_ports:
-            tip = _coaxial_port_geometry(
-                SimpleNamespace(position_to_index=index_of), port)[4]
-            pairs.append((tuple(port.position), tuple(tip)))
-    return pairs
-
-
-def _terminal_on_lattice(point, lattice, nodes):
-    """Whether occupied cells/nodes/edges are within one local cell of the terminal.
-
-    One cell, not exact incidence: committed fixtures declare a port terminal one
-    node off the conductor it stands on (the coax-to-MSL transition: ground cell
-    layer z = 2.4..2.5 mm, MSL lower terminal z = 2.6 mm). Exact incidence lost
-    that ground as the strip's partner and let the strip continue into the
-    absorber beside it (review of PR #1178, measured on that fixture).
-    """
-    for mask, cell_axes in lattice:
-        indices = []
-        for axis, line in enumerate(nodes):
-            line = np.asarray(line)
-            k = int(np.clip(np.searchsorted(line, point[axis]), 1, len(line)-1))
-            width = float(line[k] - line[k-1])
-            lower = line
-            upper = (np.r_[line[1:], line[-1] + width]
-                     if cell_axes[axis] else line)
-            indices.append(np.flatnonzero((upper >= point[axis]-width)
-                                          & (lower <= point[axis]+width)))
-        if all(len(i) for i in indices) and mask[np.ix_(*indices)].any():
-            return True
-    return False
-
-
-def _conductor_face_area(lattice, grid, nodes, axis, side):
-    """Area of occupied lattice support on a face, in square metres.
-
-    A sheet/filament uses its node dual widths; a volume uses primal widths.
-    This compares the conducting support of the two port terminals on the
-    same solved lattice, including graded transverse cells.
-    """
-    others = [a for a in range(3) if a != axis]
-    area = 0.
-    for mask, cell_axes in lattice:
-        pad = int(getattr(grid, f"pad_{'xyz'[axis]}_{side}"))
-        index = pad if side == "lo" else grid.shape[axis]-1-pad-int(cell_axes[axis])
-        plane = np.take(mask, index, axis=axis)
-        widths = []
-        for a in others:
-            d = np.diff(np.asarray(nodes[a]))
-            widths.append(np.r_[d, d[-1]] if cell_axes[a]
-                          else np.r_[d[0]/2, (d[:-1]+d[1:])/2, d[-1]/2])
-        area += float(np.sum(plane * widths[0][:, None] * widths[1][None, :]))
-    return area
-
-
-def _terminal_support_distance(point, lattice, nodes, axis, *, slack=False):
-    """Axial support distance, with exact or one-cell transverse incidence."""
-    best = float("inf")
-    for mask, cell_axes in lattice:
-        indices, lower, upper = [], [], []
-        for a, values in enumerate(nodes):
-            line = np.asarray(values)
-            lo = line
-            hi = (np.r_[line[1:], line[-1] + line[-1]-line[-2]]
-                  if cell_axes[a] else line)
-            lower.append(lo)
-            upper.append(hi)
-            eps = 16*np.finfo(float).eps*max(np.max(np.abs(line)), np.min(np.diff(line)))
-            k = int(np.clip(np.searchsorted(line, point[a]), 1, len(line)-1))
-            width = float(line[k]-line[k-1]) if slack else 0.
-            indices.append(np.arange(len(line)) if a == axis else np.flatnonzero(
-                (hi >= point[a]-width-eps) & (lo <= point[a]+width+eps)))
-        if not all(len(i) for i in indices):
-            continue
-        occupied = np.argwhere(mask[np.ix_(*indices)])
-        if not len(occupied):
-            continue
-        along = indices[axis][occupied[:, axis]]
-        distance = np.maximum(np.maximum(lower[axis][along]-point[axis],
-                                         point[axis]-upper[axis][along]), 0.)
-        best = min(best, float(distance.min()))
-    return best
-
-
-def _port_terminal_owners(reference, signal, candidates, nodes, pec_faces):
-    """Reserve both exact contacts, then fill unowned ends within one cell.
-
-    Candidate indices name geometry entries; PEC face strings name boundary
-    references. If both ends touch the same conductor, the reference keeps it.
-    Each slack search excludes the other end's already assigned owner.
-    """
-    axis = int(np.argmax(np.abs(np.subtract(signal, reference))))
-    eligible, exact_owners = [], []
-    for point in (reference, signal):
-        line = np.asarray(nodes[axis])
-        k = int(np.clip(np.searchsorted(line, point[axis]), 1, len(line)-1))
-        width = float(line[k]-line[k-1])
-        eps = 16*np.finfo(float).eps*max(np.max(np.abs(line)), width)
-        distances = [(i, _terminal_support_distance(point, lattice, nodes, axis, slack=True))
-                     for i, (_, lattice) in enumerate(candidates)]
-        exact = [i for i, (_, lattice) in enumerate(candidates)
-                 if _terminal_support_distance(point, lattice, nodes, axis) <= eps]
-        for face in sorted(pec_faces):
-            a = "xyz".index(face[0])
-            boundary = float(nodes[a][0 if face.endswith("lo") else -1])
-            distance = abs(point[a]-boundary)
-            if a == axis or distance <= eps:
-                distances.append((face, distance))
-            if distance <= eps:
-                exact.append(face)
-        eligible.append(sorted([(owner, d) for owner, d in distances if d <= width+eps],
-                               key=lambda item: item[1]))
-        exact_owners.append(exact)
-    owners = [row[0] if row else None for row in exact_owners]
-    if owners[0] == owners[1]:
-        owners[1] = None
-    for end in (0, 1):
-        if owners[end] is None:
-            owners[end] = next((owner for owner, _ in eligible[end]
-                                if owner != owners[1-end]), None)
-    return tuple(owners)
-
-
-def _port_carrying_conductor(sim, grid, shape, lattice, coords):
-    """Hold the signal owner, and a reference no wider on a shared face."""
-    nodes = (coords.x, coords.y, coords.z)
-    pairs = _port_terminal_pairs(sim, grid, nodes)
-    touched = [(a, b) for a, b in pairs
-               if _terminal_on_lattice(a, lattice, nodes)
-               or _terminal_on_lattice(b, lattice, nodes)]
-    if not touched:
-        return set()
-    shapes = [e.shape for e in getattr(sim, "_geometry", ())
-              if sim._resolve_material(e.material_name).sigma >= sim._PEC_SIGMA_THRESHOLD]
-    shapes += [tc.shape for tc in getattr(sim, "_thin_conductors", ())]
-    if not any(other is shape for other in shapes):
-        shapes.append(shape)
-    candidates = []
-    for other in shapes:
-        if other is shape:
-            candidates.append((shape, lattice))
-            continue
-        try:
-            other_lattice = _declared_conductor_lattice(sim, grid, other, coords)
-        except (ValueError, TypeError, IndexError, NotImplementedError):
-            # A refused sibling has no realized terminal. Its own report
-            # site attributes the refusal; it is not this entry's error.
-            continue
-        candidates.append((other, other_lattice))
-    own_index = next(i for i, (candidate, _) in enumerate(candidates) if candidate is shape)
-    own_faces = _conductor_reached_faces(sim, grid, shape, lattice, nodes)
-    held = set()
-    for reference, signal in touched:
-        reference_owner, signal_owner = _port_terminal_owners(
-            reference, signal, candidates, nodes, getattr(sim, "_pec_faces", ()))
-        if signal_owner == own_index:
-            held.update(own_faces)
-        elif reference_owner == own_index and isinstance(signal_owner, int):
-            other, other_lattice = candidates[signal_owner]
-            common = own_faces & _conductor_reached_faces(
-                sim, grid, other, other_lattice, nodes)
-            held.update((a, s) for a, s in common
-                        if _conductor_face_area(lattice, grid, nodes, a, s)
-                        <= _conductor_face_area(other_lattice, grid, nodes, a, s))
-    return held
-
-
 def continued_conductor_shape(sim, grid, shape, *, unextendable=None):
     """Return the conducting geometry solved through absorbing faces (C2/C5).
 
     Reached declared faces and occupied outermost interior lattice layers
-    continue. The port's far-end owner stays declared on every reached face.
-    Its reference continues unless it is no wider on a shared reached face.
+    continue. Entries named by a port's ``terminates`` stay declared on
+    every reached face.
     Port-generated structures do not call this function.
     """
     from rfx.core.jax_utils import is_tracer
@@ -861,7 +666,9 @@ def continued_conductor_shape(sim, grid, shape, *, unextendable=None):
             for a in "xyz"]
     lattice = _declared_conductor_lattice(sim, grid, shape, coords)
     occupied = _occupied_conductor_faces(lattice, grid)
-    held = _port_carrying_conductor(sim, grid, shape, lattice, coords)
+    from rfx.geometry.port_termination import held_conductor_shapes
+    held = (_conductor_reached_faces(sim, grid, shape, lattice, nodes)
+            if any(other is shape for other in held_conductor_shapes(sim)) else set())
     pairs, findings = extend_shapes_into_cpml_pad(
         [(shape, 1.0)], nodes, pads,
         declared_domain=sim._unresolved_domain, occupied_faces=occupied,

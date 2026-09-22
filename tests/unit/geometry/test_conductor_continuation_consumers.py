@@ -88,7 +88,7 @@ def test_refused_sibling_does_not_refuse_the_two_bridged_sheets():
     sim.add(Box((0., 0., 0.), (8., 8., 0.)), material="pec")
     sim.add(Box((0., 3., 3.), (8., 5., 3.)), material="pec")
     sim.add(Box((.1, .1, 7.), (.2, .2, 7.)), material="pec")
-    sim.add_port((4., 4., 0.), component="ez", extent=3.)
+    sim.add_port((4., 4., 0.), component="ez", extent=3., terminates=1)
     report = sim.fidelity_report(print_report=False)
     for i, count in ((0, 81), (1, 27)):
         row = _row(report, i)

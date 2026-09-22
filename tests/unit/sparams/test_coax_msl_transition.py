@@ -751,6 +751,7 @@ def _build_coax_msl_transition_sim():
     sim.add_coaxial_port(
         position=(JUNCTION_X, Y_C, N_GND * DX), face="bottom",
         pin_radius=PIN_R, outer_radius=OUTER_R, impedance=50.0,
+        terminates=sim._geometry[-2].shape,
     )
     sim.add_msl_port(
         position=(FEED_X, Y_C, N_SUB_LO * DX), width=W_TRACE, height=H_SUB,
@@ -1554,6 +1555,7 @@ def _build_coax_msl_transition_sim_attempt2():
     sim.add_coaxial_port(
         position=(JUNCTION_X, Y_C, N_GND * DX), face="bottom",
         pin_radius=PIN_R, outer_radius=OUTER_R, impedance=50.0,
+        terminates=sim._geometry[-2].shape,
     )
     sim.add_msl_port(
         position=(FEED_X_2, Y_C, N_SUB_LO * DX), width=W_TRACE, height=H_SUB,
@@ -1739,6 +1741,7 @@ def _build_coax_msl_transition_sim_attempt2_wide():
     sim.add_coaxial_port(
         position=(JUNCTION_X_2W, Y_C_2W, N_GND * DX), face="bottom",
         pin_radius=PIN_R, outer_radius=OUTER_R, impedance=50.0,
+        terminates=sim._geometry[-2].shape,
     )
     sim.add_msl_port(
         position=(FEED_X_2W, Y_C_2W, N_SUB_LO * DX), width=W_TRACE, height=H_SUB,
@@ -2841,6 +2844,7 @@ def _build_coax_msl_transition_sim_attempt3():
     sim.add_coaxial_port(
         position=(JUNCTION_X, Y_C, N_GND * DX), face="bottom",
         pin_radius=PIN_R, outer_radius=OUTER_R, impedance=50.0,
+        terminates=sim._geometry[-2].shape,
     )
     sim.add_msl_port(
         position=(FEED_X_2, Y_C, N_SUB_LO * DX), width=W_TRACE, height=H_SUB,

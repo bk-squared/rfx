@@ -487,7 +487,7 @@ def _build_with_ladder(*, freq_max, n_probes, n_probe_offset,
     sim.add(Box((0.0, y_c - m._W_TRACE / 2, m._H_SUB),
                 (lx, y_c + m._W_TRACE / 2, m._H_SUB)), material="pec")
     sim.add_port(position=(m._X_FEED, y_c, 0.0), component="ez",
-                 impedance=50.0, extent=m._H_SUB, direction=m._FEED_DIRECTION)
+                 impedance=50.0, extent=m._H_SUB, direction=m._FEED_DIRECTION, terminates=1)
     sim.add_msl_port(position=(m._X_MSL, y_c, 0.0), width=m._W_TRACE,
                      height=m._H_SUB, direction="-x", impedance=50.0,
                      waveform=GaussianPulse(f0=freq_max / 2, bandwidth=0.5),

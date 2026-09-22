@@ -1171,6 +1171,7 @@ class _PortEntry:
     # contract and never set this. Defaulted so every non-add_source
     # _PortEntry construction site is untouched.
     amplitude_kind: str | None = None
+    terminates: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -1539,6 +1540,7 @@ class _MSLPortEntry:
     n_probes: int = 5
     mode: str = "eigenmode"
     eps_r_sub: float | None = None
+    terminates: tuple = ()
 
 
 @dataclass(frozen=True)

@@ -96,6 +96,7 @@ def _build_line(with_port2_excite: bool = False, with_direction: bool = True):
         extent=substrate_thickness,
         waveform=pulse,
         direction=direction_lo,
+        terminates=1,
     )
 
     # Port 2 — passive, at x = dom_x − port_margin
@@ -107,6 +108,7 @@ def _build_line(with_port2_excite: bool = False, with_direction: bool = True):
         extent=substrate_thickness,
         excite=with_port2_excite,
         direction=direction_hi,
+        terminates=1,
     )
     return sim
 

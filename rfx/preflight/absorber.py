@@ -1017,6 +1017,65 @@ def _validate_cfg_dielectric_at_absorber_seam(self, _w) -> None:
         )
 
 
+def _validate_cfg_port_conductor_continues(self, _w) -> None:
+    """Report exact terminal contacts of ports that name no termination."""
+    if self._boundary not in ("cpml", "upml") or self._cpml_layers <= 0:
+        return
+    from rfx.geometry.port_termination import (
+        conductor_entries, lattice_intersects_aperture, port_terminal_points,
+        registered_ports)
+    from rfx.geometry.rasterize_grid import (
+        coords_from_nonuniform_grid, coords_from_uniform_grid)
+    from rfx.geometry.smoothing import (
+        _conductor_reached_faces, _declared_conductor_lattice)
+
+    ports = [(collection, index, port) for collection, index, port in registered_ports(self)
+             if not port.terminates]
+    if not ports:
+        return
+    try:
+        grid = self._build_realized_grid()
+        coords = (coords_from_nonuniform_grid(grid) if hasattr(grid, "dx_arr")
+                  else coords_from_uniform_grid(grid))
+    except (ValueError, TypeError, IndexError, NotImplementedError):
+        return
+    nodes = (coords.x, coords.y, coords.z)
+    if any(is_tracer(line) for line in nodes):
+        return
+    for collection, index, port in ports:
+        terminals = port_terminal_points(collection, port, grid, nodes)
+        contacts = []
+        for ref, entry in conductor_entries(self):
+            try:
+                lattice = _declared_conductor_lattice(self, grid, entry.shape, coords)
+            except (ValueError, TypeError, IndexError, NotImplementedError):
+                continue
+            if not any(lattice_intersects_aperture(lattice, nodes, point, point)
+                       for point in terminals):
+                continue
+            faces = _conductor_reached_faces(self, grid, entry.shape, lattice, nodes)
+            if not faces:
+                continue
+            name = getattr(entry, "material_name", f"thin_conductor[{ref.index}]")
+            label = "entry" if ref.collection == "_geometry" else "thin conductor"
+            face_text = ", ".join("xyz"[a]+"-"+side for a in range(3)
+                                  for side in ("lo", "hi") if (a, side) in faces)
+            contacts.append(f"'{name}' ({label} {ref.index}) under its terminal "
+                            f"continues into the {face_text} absorber")
+        if contacts:
+            _w.warn(
+                PreflightWarning(
+                    f"port at {port.position} names no terminated conductor; "
+                    + "; ".join(contacts)
+                    + "; pass terminates= to end it at the port.",
+                    code="port_conductor_continues",
+                    loc=f"{collection}[{index}]",
+                    source="_validate_cfg_port_conductor_continues",
+                ),
+                stacklevel=3,
+            )
+
+
 def _validate_cfg_pec_boundary_open_structure(self, _w) -> None:
     """P0.4: PEC boundary on likely open structure."""
     if self._boundary == "pec" and self._ntff is not None:
@@ -1260,4 +1319,8 @@ def _validate_cfg_conductor_in_thin_absorber(self, _w, dx, absorber_label) -> No
 # ``_PreflightMixin.<name>``.
 _validate_cfg_conductor_in_thin_absorber.__qualname__ = (
     "_PreflightMixin._validate_cfg_conductor_in_thin_absorber"
+)
+
+_validate_cfg_port_conductor_continues.__qualname__ = (
+    "_PreflightMixin._validate_cfg_port_conductor_continues"
 )

@@ -404,7 +404,9 @@ def _enumerate_emission_sites():
 # measured edge offset at each free end) against its drawn size, in input
 # units; no existing site reported it, including for a sheet drawn exactly on
 # the lattice.
-_FROZEN_TOTAL_SITES = 119
+# 119 -> 120 (#801): a port naming no terminated conductor reports its
+# exact terminal contacts that reach an absorbing face. One absorber warning.
+_FROZEN_TOTAL_SITES = 120
 # 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
 # site emitting that code, and the check was deleted when its own tripwire
 # XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
@@ -415,7 +417,8 @@ _FROZEN_TOTAL_SITES = 119
 # ``conductor_in_thin_absorber``. A new code is a new advisory kind, which is
 # what this count is for.
 # 75 -> 76, 2026-09-20 (#1138): the new advisory kind ``sheet_effective_size``.
-_FROZEN_LITERAL_CODE_COUNT = 76
+# 76 -> 77 (#801): port_conductor_continues.
+_FROZEN_LITERAL_CODE_COUNT = 77
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site

@@ -1,5 +1,4 @@
 """Build-only checks of the conducting geometry at absorbing faces."""
-from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -11,6 +10,87 @@ from rfx.geometry.smoothing import continued_conductor_shape
 def _sim(domain=(8., 8., 8.)):
     return Simulation(domain=domain, dx=1., freq_max=1e6,
                       boundary="cpml", cpml_layers=2)
+
+
+@pytest.mark.parametrize("kind", ("wire", "lumped", "coax", "msl"))
+@pytest.mark.parametrize("selection", ("identity", "equal", "index", "pair", "thin"))
+def test_explicit_termination_resolves_registered_conductors(kind, selection):
+    sim = _sim()
+    ground = Box((0., 0., 1.), (8., 8., 1.))
+    strip = Box((0., 3., 4.), (8., 5., 4.))
+    sim.add(ground, material="pec")
+    if selection == "thin":
+        sim.add_thin_conductor(strip, sigma_bulk=5.8e7, thickness=.01)
+    else:
+        sim.add(strip, material="pec")
+    value = {"identity": strip, "equal": Box(strip.corner_lo, strip.corner_hi),
+             "index": 1, "pair": [ground, 1], "thin": strip}[selection]
+    if kind == "msl":
+        sim.add_msl_port((4., 4., 1.), width=2., height=3., terminates=value)
+        port = sim._msl_ports[-1]
+    elif kind == "coax":
+        sim.add_coaxial_port((4., 4., 1.), face="bottom", pin_length=3., terminates=value)
+        port = sim._coaxial_ports[-1]
+    else:
+        sim.add_port((4., 4., 1.), extent=3. if kind == "wire" else None, terminates=value)
+        port = sim._ports[-1]
+    assert [(ref.collection, ref.index) for ref in port.terminates] == (
+        [("_thin_conductors", 0)] if selection == "thin" else
+        [("_geometry", 0), ("_geometry", 1)] if selection == "pair" else
+        [("_geometry", 1)])
+    grid = sim._build_grid()
+    assert continued_conductor_shape(sim, grid, strip) is strip
+    solved_ground = continued_conductor_shape(sim, grid, ground)
+    assert (solved_ground is ground) == (selection == "pair")
+
+
+@pytest.mark.parametrize("kind", ("port", "coaxial_port", "msl_port"))
+@pytest.mark.parametrize("value", (-1, 4, Box((1., 1., 1.), (2., 2., 2.))))
+def test_unknown_termination_is_rejected_at_registration(kind, value):
+    sim = _sim()
+    sim.add(Box((0., 0., 0.), (8., 8., 1.)), material="pec")
+    kwargs = dict(width=2., height=3.) if kind == "msl_port" else {}
+    with pytest.raises(ValueError, match="add_"+kind+" at .*terminates="):
+        getattr(sim, "add_"+kind)((4., 4., 1.), terminates=value, **kwargs)
+    assert not sim._ports and not sim._msl_ports and not sim._coaxial_ports
+
+
+@pytest.mark.parametrize("direction", ("+x", "-x", "+y", "-y"))
+@pytest.mark.parametrize("nu", (False, True))
+def test_msl_default_uses_only_its_exact_signal_aperture(direction, nu):
+    sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
+                     boundary="cpml", cpml_layers=2,
+                     **({"dz_profile": np.ones(8)} if nu else {}))
+    # Ground and a neighbouring trace lie one node from the declared aperture.
+    ground = Box((0., 0., 3.), (8., 8., 3.))
+    strip = (Box((0., 3., 4.), (8., 5., 4.)) if direction[-1] == "x"
+             else Box((3., 0., 4.), (5., 8., 4.)))
+    neighbour = (Box((0., 6., 4.), (8., 7., 4.)) if direction[-1] == "x"
+                 else Box((6., 0., 4.), (7., 8., 4.)))
+    for shape in (ground, strip, neighbour):
+        sim.add(shape, material="pec")
+    sim.add_msl_port((4.25, 4.25, 1.), width=2., height=3., direction=direction)
+    assert sim._msl_ports[-1].terminates == (("_geometry", 1),)
+    sim.add_msl_port((4.25, 4.25, 1.), width=2., height=3.5, direction=direction)
+    assert sim._msl_ports[-1].terminates == ()
+    sim.add_msl_port((4.25, 4.25, 1.), width=2., height=3., direction=direction, terminates=[])
+    assert sim._msl_ports[-1].terminates == ()
+
+
+@pytest.mark.parametrize("kind", ("wire", "lumped", "coax"))
+def test_unnamed_non_msl_port_ends_nothing(kind):
+    sim = _sim()
+    strip = Box((0., 3., 4.), (8., 5., 4.))
+    sim.add(strip, material="pec")
+    if kind == "coax":
+        sim.add_coaxial_port((4., 4., 1.), face="bottom", pin_length=3.)
+        port = sim._coaxial_ports[-1]
+    else:
+        sim.add_port((4., 4., 3.), extent=1. if kind == "wire" else None)
+        port = sim._ports[-1]
+    assert port.terminates == ()
+    solved = continued_conductor_shape(sim, sim._build_grid(), strip)
+    assert solved.corner_lo[0] < 0. and solved.corner_hi[0] > 8.
 
 
 @pytest.mark.parametrize("axis", range(3))
@@ -86,28 +166,6 @@ def test_cylinder_axis_continues_and_cross_axis_is_reported(axis, side, cross_si
     assert "eps_r" not in str(caught[0].message)
 
 
-@pytest.mark.parametrize("direction", ("+x", "-x", "+y", "-y"))
-def test_port_signal_stays_declared_and_ground_continues(direction):
-    sim = _sim()
-    sim._msl_ports = [SimpleNamespace(position=(4., 4., 2.), width=2.,
-                                     height=1., direction=direction)]
-    grid = sim._build_grid()
-    signal = (Box((0., 3., 3.), (8., 5., 3.)) if direction[-1] == "x"
-              else Box((3., 0., 3.), (5., 8., 3.)))
-    ground = Box((0., 0., 2.), (8., 8., 2.))
-    sim.add(signal, material="pec")
-    sim.add(ground, material="pec")
-    strip = continued_conductor_shape(sim, grid, signal)
-    plane = continued_conductor_shape(sim, grid, ground)
-    axis = "xy".index(direction[-1])
-    if direction[0] == "+":
-        assert strip.corner_lo[axis] == 0.
-        assert plane.corner_lo[axis] < -2.
-    else:
-        assert strip.corner_hi[axis] == 8.
-        assert plane.corner_hi[axis] > 10.
-    assert strip is signal
-    assert plane.corner_lo[2] == plane.corner_hi[2] == 2.
 
 
 @pytest.mark.parametrize("axis", range(3))
@@ -182,79 +240,10 @@ def test_occupied_layer_reaches_without_a_declared_face(axis, side, kind):
     assert np.take(mask, 0 if side == 0 else -2, axis=axis).any()
 
 
-@pytest.mark.parametrize("nu", (False, True))
-@pytest.mark.parametrize("kind", ("wire", "lumped", "coax", "mixed"))
-def test_port_terminals_hold_signal_on_both_faces(kind, nu):
-    sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
-                     boundary="cpml", cpml_layers=2,
-                     **({"dz_profile": np.ones(8)} if nu else {}))
-    signal = Box((0., 3., 4.), (8., 5., 4.))
-    ground = Box((0., 0., 1.), (8., 8., 1.))
-    sim.add(signal, material="pec")
-    sim.add(ground, material="pec")
-    if kind in ("wire", "mixed"):
-        sim.add_port((4., 4., 1.), component="ez", extent=3.)
-    elif kind == "lumped":
-        sim.add_port((4., 4., 3.), component="ez")
-    else:
-        sim.add_coaxial_port((4., 4., 1.), face="bottom", pin_length=3.)
-    if kind == "mixed":
-        sim._msl_ports = [SimpleNamespace(position=(6., 4., 1.), width=2.,
-                                         height=3., direction="-x")]
-    grid = sim._build_nonuniform_grid() if nu else sim._build_grid()
-    assert continued_conductor_shape(sim, grid, signal) is signal
-    realized_ground = continued_conductor_shape(sim, grid, ground)
-    assert realized_ground.corner_lo[0] < -2.
-    assert realized_ground.corner_hi[0] > 10.
 
 
-@pytest.mark.parametrize("kind", ("equal", "wide_signal", "two_cell_lumped", "same_exact"))
-def test_terminal_ownership_keeps_the_signal_declared(kind):
-    sim = _sim()
-    if kind == "equal":
-        reference = Box((0., 1., 4.), (8., 2., 4.))
-        signal = Box((0., 5., 4.), (8., 6., 4.))
-        sim.add_port((4., 2., 4.), component="ey", extent=3.)
-    else:
-        reference = (Box((0., 3., 1.), (8., 5., 1.)) if kind == "wide_signal"
-                     else Box((0., 0., 0.), (8., 8., 1.)) if kind == "same_exact"
-                     else Box((0., 0., 1.), (8., 8., 1.)))
-        signal = (Box((0., 1., 4.), (8., 7., 4.)) if kind == "wide_signal"
-                  else Box((0., 3., 2.), (8., 5., 2.)) if kind == "same_exact"
-                  else Box((0., 3., 3.), (8., 5., 3.)))
-        sim.add_port((4., 4., 0. if kind == "same_exact" else 1.), component="ez",
-                     **({"extent": 3.} if kind == "wide_signal" else {}))
-    sim.add(reference, material="pec")
-    sim.add(signal, material="pec")
-    grid = sim._build_grid()
-    assert continued_conductor_shape(sim, grid, signal) is signal
-    solved_reference = continued_conductor_shape(sim, grid, reference)
-    if kind in ("equal", "wide_signal"):
-        assert solved_reference is reference
-    else:
-        assert solved_reference.corner_lo[0] < -2.
-        assert solved_reference.corner_hi[0] > 10.
 
 
-@pytest.mark.parametrize("offset", (0., .5, 1.))
-def test_pec_reference_slack_holds_post_on_its_terminal_axis(offset):
-    from rfx.geometry.rasterize_grid import coords_from_uniform_grid
-    from rfx.geometry.smoothing import _declared_conductor_lattice, _port_terminal_owners
-
-    sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
-                     boundary="cpml", cpml_layers=2, pec_faces={"z_lo"})
-    post = Box((3., 3., 2.), (5., 5., 8.))
-    sim.add(post, material="pec")
-    sim.add_port((4., 4., offset), component="ez", extent=2.-offset)
-    grid = sim._build_grid()
-    coords = coords_from_uniform_grid(grid)
-    candidates = [(post, _declared_conductor_lattice(sim, grid, post, coords))]
-    assert _port_terminal_owners((4., 4., offset), (4., 4., 2.), candidates,
-                                 (coords.x, coords.y, coords.z), sim._pec_faces) == ("z_lo", 0)
-    assert continued_conductor_shape(sim, grid, post) is post
-    cells = np.asarray(sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])[3])
-    assert cells[5:7, 5:7, 7].all()
-    assert not cells[:, :, 8:10].any()
 
 
 def test_one_traced_mesh_axis_keeps_every_conductor_face_declared():

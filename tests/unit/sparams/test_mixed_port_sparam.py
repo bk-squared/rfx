@@ -230,7 +230,7 @@ def _add_feed(sim, y_c, x=2e-3, extent=None):
     # sheet plane, which is galvanic contact (#929: a feed that reaches a
     # conductor is not "inside PEC").
     sim.add_port(position=(x, y_c, 0.0), component="ez",
-                 impedance=50.0, extent=_H_SUB if extent is None else extent)
+                 impedance=50.0, extent=_H_SUB if extent is None else extent, terminates=sim._geometry[-1].shape)
 
 
 def test_guard_requires_msl_port():

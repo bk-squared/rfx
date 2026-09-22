@@ -1955,3 +1955,29 @@ def test_a_stray_two_plane_key_is_refused_rather_than_ignored():
     doc["geometry"][0]["two_plane"] = False
     with pytest.raises(UnsupportedDesignFeature, match="two_plane"):
         simulation_from_design(doc)
+
+
+@pytest.mark.parametrize("thin", (False, True))
+def test_terminated_conductor_references_survive_the_design_round_trip(thin):
+    sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
+                     boundary="cpml", cpml_layers=2)
+    ground = Box((0., 0., 1.), (8., 8., 1.))
+    strip = Box((0., 3., 4.), (8., 5., 4.))
+    sim.add(ground, material="pec")
+    if thin:
+        sim.add_thin_conductor(strip, sigma_bulk=5.8e7, thickness=.01)
+    else:
+        sim.add(strip, material="pec")
+    sim.add_port((4., 4., 1.), extent=3., terminates=strip)
+    sim.add_coaxial_port((4., 4., 1.), face="bottom", terminates=strip)
+    sim.add_msl_port((4., 4., 1.), width=2., height=3., terminates=[])
+    rebuilt = simulation_from_design(design_to_dict(sim))
+    expected = (("_thin_conductors", 0),) if thin else (("_geometry", 1),)
+    assert rebuilt._ports[0].terminates == expected
+    assert rebuilt._coaxial_ports[0].terminates == expected
+    assert rebuilt._msl_ports[0].terminates == ()
+    sheets = []
+    rebuilt._assemble_materials(rebuilt._build_grid(), pec_sheets=sheets, pec_wires=[])
+    assert np.asarray(sheets[0].footprint)[:, :, 3].all()
+    assert not np.asarray(sheets[1].footprint)[:2].any()
+    assert not np.asarray(sheets[1].footprint)[-2:].any()

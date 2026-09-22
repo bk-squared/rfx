@@ -35,7 +35,7 @@ def _case(direction):
     sim.add_msl_port(position=(feed, 6 * U, 0), width=4 * U, height=2 * U,
                      direction=direction, mode="uniform", eps_r_sub=2.0,
                      n_probe_offset=10, n_probe_spacing=2, n_probes=3)
-    sim.add_port(position=(20 * U, 6 * U, U), component="ez", impedance=50.0)
+    sim.add_port(position=(20 * U, 6 * U, U), component="ez", impedance=50.0, terminates=2)
     # Independent hand coordinate: feed node 2+10 or 38-10.
     return sim, (12 if direction == "+x" else 28) * U
 
