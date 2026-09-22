@@ -1,0 +1,52 @@
+name: rfx-design-box-tape-bench
+description: "#1179 design_box gradient tape: GPU peak memory + value_and_grad time vs eps_override (plain and segmented remat), plus the design-box test file on a real GPU backend (fast-path exclusion)"
+tags: [rfx, autodiff, issue-1179]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  RFX_BENCH_REF: "origin/research/1179-design-slice-tape"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  primary=/root/workspace/byungkwan-workspace/research/rfx
+  cd "$primary"
+  git config --global --add safe.directory "$primary" || true
+  echo "=== provenance ==="
+  git fetch -q origin
+  ref="${RFX_BENCH_REF}"
+  sha=$(git rev-parse "$ref")
+  short=$(git rev-parse --short "$ref")
+  echo "bench ref: $ref = $sha"
+  src="/tmp/rfx-bench-$short"
+  rm -rf "$src" && mkdir -p "$src"
+  git archive --format=tar "$sha" | tar -xf - -C "$src"
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest pytest-timeout
+  export RFX_REPO_ROOT="$src"
+  export PYTHONPATH="$RFX_REPO_ROOT:${PYTHONPATH:-}"
+  cd "$src"
+  python -c "import jax, rfx; print('probe ok | jax', jax.__version__, '| devices', jax.devices(), '| from', rfx.__file__)"
+  out="$primary/.omx/design-box-bench/$(date -u +%Y%m%dT%H%M%SZ)-$short"
+  mkdir -p "$out"
+  echo "$sha" > "$out/commit.txt"
+  echo "$out" > "$primary/.omx/design-box-bench/.latest"
+  echo "=== design-box test file on the GPU backend ==="
+  rc=0
+  python -m pytest tests/unit/autodiff/test_design_box_tape.py -q -p no:cacheprovider --timeout=1800 --timeout-method=thread 2>&1 | tee "$out/pytest_design_box.log" || rc=$?
+  echo "pytest rc=$rc" | tee "$out/pytest_rc.txt"
+  echo "=== bench: 323k cells, 1000 steps, all three arms ==="
+  for arm in box override_remat override; do
+    python scripts/diagnostics/design_box_tape_bench.py --arm $arm --cells 60 --steps 1000 --out "$out" 2>&1 | tee -a "$out/bench.log" || true
+  done
+  echo "=== bench: 1.78M cells, 2000 steps ==="
+  for arm in box override_remat override; do
+    python scripts/diagnostics/design_box_tape_bench.py --arm $arm --cells 120 --steps 2000 --out "$out" 2>&1 | tee -a "$out/bench.log" || true
+  done
+  echo "=== done: $out ==="
+  ls -la "$out"
