@@ -167,6 +167,20 @@ def test_the_realized_line_is_the_declared_line(fixture, key):
     assert real["fill_eps_r_realized"] == pytest.approx(dec["fill_eps_r"], rel=1e-6), key
     assert real["pin_cells_cross_section"] >= 1, key
     assert real["shell_cells_cross_section"] >= 1, key
+    # The conductors are shorted E edges, not a conductivity (PR #1169). Three
+    # consequences the measurement checked before solving and the fixture has
+    # to carry: the wall's inner face is the DECLARED outer radius at every
+    # cell size, so the dielectric annulus no longer shrinks with the mesh;
+    # nothing is left carrying a conductivity where the conductor is; and the
+    # mask the stamper returned is the cross-section this driver replicated.
+    assert real["conductor_realization"] == "pec_edge_masks", key
+    assert real["shell_inner_radius_m"] == pytest.approx(dec["outer_radius_m"],
+                                                         rel=1e-12), key
+    assert real["shell_outer_radius_m"] > real["shell_inner_radius_m"], key
+    assert real["wall"]["thickness_cells"] >= 1.0, key
+    assert real["pec_mask_vs_replicated_mismatch_cells"] == 0, key
+    assert real["n_sigma_cells_at_probe_plane"] == 0, key
+    assert real["realized_fill_radius_max_m"] <= real["outer_radius_m"], key
     # The layout this driver replicated against the layout the extractor used.
     cc = entry["cross_check"]
     assert cc["annulus_cells_agree"] is True, key

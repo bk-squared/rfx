@@ -72,6 +72,7 @@ from rfx.api import Simulation  # noqa: E402
 from rfx.sources.sources import GaussianPulse  # noqa: E402
 from rfx.sources.coaxial_port import (  # noqa: E402
     PTFE_EPS_R,
+    SHELL_THICKNESS_M,
     coaxial_tem_characteristic_impedance,
     stamp_coaxial_annular_resistor,
     stamp_coaxial_line,
@@ -172,10 +173,31 @@ PLANE_SHIFT_CELLS = 4
 # channel are the battery's own. Every reduced value is recorded in the stage
 # JSON beside the estimate that forced it.
 AD_RUNG = 4
-AD_DOMAIN_TWOPORT = (0.008, 0.008, 0.022)
+# The two-port AD board. The leader's addendum (2026-09-23) asks for the
+# committed AD gate's board, 8 x 8 x 12 mm with three probes
+# (tests/unit/autodiff/test_coax_two_port_ad.py::_build_small_two_port_sim).
+# That board cannot carry this battery's DUT: at the AD rung its two probe
+# arrays are 9 cells apart (3.195 mm) and the 6 mm bead rasterizes to 17
+# cells, so the bead would straddle the probes the extractor fits its
+# travelling waves on. The committed gate does not hit this because its
+# design channel is a SCALAR eps_scale over the whole line, not a bead.
+# Measured fit, three probes at 4/2, rung 4 (driver --layout-only):
+#
+#     board      probe gap        6 mm bead      tape estimate
+#     12 mm      9 cells          17 cells       8.49 GiB   does not fit
+#     14 mm      15 cells         17 cells       11.35 GiB  does not fit
+#     16 mm      21 cells         17 cells       13.30 GiB  fits
+#
+# So 3(a) runs on the SHORTEST board that holds the battery's own bead
+# between the probe arrays: 16 mm, three probes, everything else the
+# committed gate's. The addendum's point stands unchanged — this is a
+# gradient check on a board whose three-probe phase span (0.22-0.47 rad
+# over 4-12 GHz) is far inside the bar for beta, so it says nothing about
+# the S of that board.
+AD_DOMAIN_TWOPORT = (0.008, 0.008, 0.016)
 AD_DOMAIN_ONEPORT = (0.008, 0.008, 0.020)   # the committed one-port AD fixture
 AD_FREQS = np.array([5.0e9, 8.0e9, 11.0e9])
-AD_PROBE_COUNT = 4
+AD_PROBE_COUNT = 3                          # the committed two-port AD gate's own
 AD_PROBE_START_CELLS = 4
 AD_PROBE_SPACING_CELLS = 2
 AD_ONE_PORT_PROBE_COUNT = 9                 # the committed one-port AD fixture
@@ -186,6 +208,9 @@ AD_TAPE_BUDGET_BYTES = 24 * 2 ** 30         # see AD_PRIOR_ATTEMPT
 # FAILED first attempt so the stage's memory is a recorded number and not
 # folklore: the board, the allocation, and the run.
 AD_PRIOR_ATTEMPT = {
+    "measured_on": ("the conductor realization BEFORE PR #1169; the board and the "
+                    "tape arithmetic are unchanged by that fix, the numbers below "
+                    "are quoted for why this stage runs on a short board at all"),
     "outcome": "RESOURCE_EXHAUSTED",
     "preset": "gpu-a6000-1",
     "device_memory_gb": 48,
@@ -531,23 +556,74 @@ def bead_indices(layout: dict, dx: float, *, shift_cells: int = 0) -> tuple[int,
     return z0, z0 + n_bead
 
 
+def wall_thickness(grid, center_xy, b: float) -> dict:
+    """The outer wall's realized thickness, replicated from the stamper's rule.
+
+    ``stamp_coaxial_line`` puts the wall's INNER face at the declared ``b`` and
+    grows it outward by ``SHELL_THICKNESS_M``, clamped so that one cell of
+    clearance is kept to the nearest absorbing face (PEC inside a CPML pad
+    diverges). The arithmetic is replicated here rather than imported so the
+    realized-geometry record has a second opinion; the mask the stamper
+    returns is compared against it cell for cell in ``realized_geometry``.
+    """
+    dx = float(grid.dx)
+    cx, cy = float(center_xy[0]), float(center_xy[1])
+    nx, ny = int(grid.shape[0]), int(grid.shape[1])
+    pad_x_lo, pad_x_hi = int(grid.pad_x_lo), int(grid.pad_x_hi)
+    pad_y_lo, pad_y_hi = int(grid.pad_y_lo), int(grid.pad_y_hi)
+    span_x = (nx - 1 - pad_x_lo - pad_x_hi) * dx
+    span_y = (ny - 1 - pad_y_lo - pad_y_hi) * dx
+    room = []
+    if pad_x_lo:
+        room.append(("x-lo", cx))
+    if pad_x_hi:
+        room.append(("x-hi", span_x - cx))
+    if pad_y_lo:
+        room.append(("y-lo", cy))
+    if pad_y_hi:
+        room.append(("y-hi", span_y - cy))
+    thickness = float(SHELL_THICKNESS_M)
+    face, clearance, allowed = None, None, None
+    if room:
+        face, clearance = min(room, key=lambda tpl: tpl[1])
+        allowed = clearance - b - dx
+        thickness = min(thickness, allowed)
+    return {
+        "thickness_m": float(thickness),
+        "thickness_cells": float(thickness / dx),
+        "declared_thickness_m": float(SHELL_THICKNESS_M),
+        "clamped_by_absorber": bool(allowed is not None and allowed < SHELL_THICKNESS_M),
+        "nearest_padded_face": face,
+        "clearance_to_pad_m": None if clearance is None else float(clearance),
+        "room_outside_declared_radius_m": None if allowed is None else float(allowed),
+    }
+
+
 def cross_section_masks(grid, center_xy, a: float, b: float) -> dict:
     """Radial masks in the x-y plane, on the same node convention the stamps
-    use (``x = (i - pad_x_lo) * dx``)."""
+    use (``x = (i - pad_x_lo) * dx``).
+
+    The annulus is ``(a, b]`` as drawn: since PR #1169 the outer conductor's
+    INNER face sits at the declared outer radius and the wall grows outward,
+    so the dielectric no longer loses its outermost ring to the wall and the
+    cross-section stops moving with the mesh.
+    """
     dx = float(grid.dx)
     i = np.arange(int(grid.shape[0]))
     j = np.arange(int(grid.shape[1]))
     x = (i - int(grid.pad_x_lo)) * dx - float(center_xy[0])
     y = (j - int(grid.pad_y_lo)) * dx - float(center_xy[1])
     r = np.hypot(x[:, None], y[None, :])
-    shell_thickness = min(dx, 0.5 * (b - a))
-    shell_inner = b - shell_thickness
+    wall = wall_thickness(grid, center_xy, b)
+    shell_outer = b + wall["thickness_m"]
     return {
         "r": r,
         "pin": r <= a,
-        "fill": (r <= shell_inner) & (r > a),
-        "shell": (r <= b) & (r > shell_inner),
-        "shell_inner_radius": shell_inner,
+        "fill": (r <= b) & (r > a),
+        "shell": (r <= shell_outer) & (r > b),
+        "shell_inner_radius": float(b),
+        "shell_outer_radius": float(shell_outer),
+        "wall": wall,
     }
 
 
@@ -583,7 +659,7 @@ def realized_geometry(sim: Simulation, rung: int, dut: str, *,
 
     materials, _, _ = sim._build_materials(grid)
     if lane == "two_port":
-        materials, shell_inner = stamp_coaxial_line(
+        materials, shell_inner, pec_cells = stamp_coaxial_line(
             grid, materials, center_xy=center_xy,
             z_lo_index=layout["z_lo_coax"], z_hi_index=layout["z_hi_coax"],
             pin_radius=a, outer_radius=b)
@@ -591,7 +667,7 @@ def realized_geometry(sim: Simulation, rung: int, dut: str, *,
             materials = stamp_coaxial_annular_resistor(
                 grid, materials, center_xy=center_xy, z_index=z, pin_radius=a,
                 outer_radius=b, target_impedance=coaxial_tem_characteristic_impedance(a, b),
-                shell_inner_radius=shell_inner)
+                shell_inner_radius=shell_inner, pec_cell_mask=pec_cells)
         ref_planes_m = [(layout["z_feed_top"] - grid.pad_z_lo) * dz,
                         (layout["z_feed_bot"] - grid.pad_z_lo) * dz]
         probe_planes_m = {
@@ -599,7 +675,7 @@ def realized_geometry(sim: Simulation, rung: int, dut: str, *,
             "top": [(z - grid.pad_z_lo) * dz for z in layout["probes_top"]],
         }
     else:
-        materials, shell_inner = stamp_coaxial_line(
+        materials, shell_inner, pec_cells = stamp_coaxial_line(
             grid, materials, center_xy=center_xy,
             z_lo_index=layout["z_dut"], z_hi_index=layout["z_hi_coax"],
             pin_radius=a, outer_radius=b)
@@ -607,22 +683,24 @@ def realized_geometry(sim: Simulation, rung: int, dut: str, *,
             grid, materials, center_xy=center_xy, z_index=layout["z_feed"],
             pin_radius=a, outer_radius=b,
             target_impedance=coaxial_tem_characteristic_impedance(a, b),
-            shell_inner_radius=shell_inner)
+            shell_inner_radius=shell_inner, pec_cell_mask=pec_cells)
         if dut == "short":
-            materials = stamp_coaxial_short_plane(
+            materials, short_cells = stamp_coaxial_short_plane(
                 grid, materials, center_xy=center_xy, z_index=layout["z_dut"],
                 outer_radius=b)
+            pec_cells = pec_cells | short_cells
         elif dut in ONE_PORT_LOAD_OHM:
             materials = stamp_coaxial_annular_resistor(
                 grid, materials, center_xy=center_xy, z_index=layout["z_dut"],
                 pin_radius=a, outer_radius=b,
                 target_impedance=ONE_PORT_LOAD_OHM[dut],
-                shell_inner_radius=shell_inner)
+                shell_inner_radius=shell_inner, pec_cell_mask=pec_cells)
         ref_planes_m = [(layout["z_dut"] - grid.pad_z_lo) * dz]
         probe_planes_m = {"line": [(z - grid.pad_z_lo) * dz for z in layout["probes"]]}
 
     eps = np.asarray(materials.eps_r)
     sig = np.asarray(materials.sigma)
+    pec = np.asarray(pec_cells, dtype=bool)
     masks = cross_section_masks(grid, center_xy, a, b)
     # A z index strictly inside the line and away from every stamped plane.
     z_probe = int(layout["probes_bot"][-1] if lane == "two_port" else layout["probes"][-1])
@@ -630,7 +708,14 @@ def realized_geometry(sim: Simulation, rung: int, dut: str, *,
     pin_cells = int(masks["pin"].sum())
     shell_cells = int(masks["shell"].sum())
     fill_cells = int(masks["fill"].sum())
-    pec_slice = sig[:, :, z_probe] > 1.0
+    # Since PR #1169 the conductor is a CELL MASK realized as shorted E edges,
+    # not a conductivity: reading `sigma > 1` here would now find nothing but
+    # the feed resistors. The mask the stamper returned is the realized truth;
+    # the radial masks above are this driver's own replication of the same
+    # geometry, and the two are compared rather than assumed equal.
+    pec_slice = pec[:, :, z_probe]
+    replicated_conductor = masks["pin"] | masks["shell"]
+    pec_mismatch = int(np.count_nonzero(pec_slice ^ replicated_conductor))
     fill_slice = masks["fill"]
     rec = {
         "grid_shape": [int(s) for s in grid.shape],
@@ -644,6 +729,9 @@ def realized_geometry(sim: Simulation, rung: int, dut: str, *,
         "pin_radius_m": a,
         "outer_radius_m": b,
         "shell_inner_radius_m": float(shell_inner),
+        "shell_outer_radius_m": masks["shell_outer_radius"],
+        "wall": masks["wall"],
+        "conductor_realization": "pec_edge_masks",
         # Rasterized counts in one cross-section, and the radii the raster
         # actually reaches — the declared radii are continuous, these are not.
         "pin_cells_cross_section": pin_cells,
@@ -657,6 +745,13 @@ def realized_geometry(sim: Simulation, rung: int, dut: str, *,
         "fill_eps_r_realized": float(np.median(eps[:, :, z_probe][fill_slice]))
         if fill_cells else None,
         "n_pec_cells_at_probe_plane": int(pec_slice.sum()),
+        "pec_mask_vs_replicated_mismatch_cells": pec_mismatch,
+        "realized_shell_radius_min_m": float(r[masks["shell"]].min()) if shell_cells else None,
+        "realized_shell_radius_max_m": float(r[masks["shell"]].max()) if shell_cells else None,
+        # The conductor carries no conductivity any more. Everything left with
+        # a sigma at this plane would be a stray stamp; the feed resistors and
+        # the matched DUT sit on their own z planes, not on this one.
+        "n_sigma_cells_at_probe_plane": int(np.count_nonzero(sig[:, :, z_probe] > 0.0)),
         "reference_planes_m": ref_planes_m,
         "probe_planes_m": probe_planes_m,
         "z_probe_index_used_for_cross_section": z_probe,
@@ -706,6 +801,30 @@ def assert_realized(sim: Simulation, rung: int, dut: str, **kw) -> dict:  # noqa
                         f"and {m['shell_cells_cross_section']} shell cells")
     if m["n_pec_cells_at_probe_plane"] < 1:
         problems.append("no PEC cell at the probe plane — the line is not conducting there")
+    # Since PR #1169 the conductors are shorted E edges. Three things that were
+    # true of the old sigma-fill line must now be false, and each is checked
+    # rather than assumed: the stamper's mask and this driver's replication of
+    # the same cross-section agree cell for cell; no conductivity is left where
+    # the conductor is; and the wall is at least one cell thick after the
+    # clamp that keeps it out of the absorber.
+    if m["pec_mask_vs_replicated_mismatch_cells"]:
+        problems.append(
+            f"the conductor mask the stamper returned differs from this driver's "
+            f"replication in {m['pec_mask_vs_replicated_mismatch_cells']} cells of the "
+            f"probe-plane cross-section")
+    if m["n_sigma_cells_at_probe_plane"]:
+        problems.append(
+            f"{m['n_sigma_cells_at_probe_plane']} cells carry a conductivity at the probe "
+            f"plane; the conductors are PEC edges and the resistors are on other planes")
+    if m["wall"]["thickness_cells"] < 1.0:
+        problems.append(
+            f"the outer wall realizes {m['wall']['thickness_cells']:.3f} cells "
+            f"(clamped by the {m['wall']['nearest_padded_face']} absorber)")
+    if m["realized_fill_radius_max_m"] is not None and (
+            m["realized_fill_radius_max_m"] > m["outer_radius_m"] + 1e-15):
+        problems.append(
+            f"the dielectric reaches {m['realized_fill_radius_max_m']*1e3:.5f} mm, outside "
+            f"the declared outer radius {m['outer_radius_m']*1e3:.5f} mm")
     lay = m["layout"]
     if m["layout"]["lane"] == "two_port":
         if lay["probe_gap_cells"] <= 0:
@@ -2064,11 +2183,14 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                     float(PTFE_EPS_R)) for k in have],
             "z_tem_on_declared_radii_ohm": coaxial_tem_characteristic_impedance(
                 a, b, float(PTFE_EPS_R)),
-            "what": ("stamp_coaxial_line makes the outer conductor one cell thick, so "
-                     "its inner radius is b - dx and moves with the mesh. These rows are "
-                     "the cross-section each rung actually built; a ladder whose rungs "
-                     "do not realize one line is refining the geometry as well as the "
-                     "mesh, which the contract's dx-ladder guard asks it not to."),
+            "what": ("the cross-section each rung actually built. Since PR #1169 the "
+                     "outer conductor's INNER face is the declared radius b and the wall "
+                     "grows outward by a thickness fixed in metres, so the dielectric "
+                     "annulus is (a, b] at every cell size and the rungs realize one "
+                     "guide; before that the wall ate the outermost cell of dielectric "
+                     "and the line's own impedance moved with the mesh. A ladder whose "
+                     "rungs do not realize one line is refining the geometry as well as "
+                     "the mesh, which the contract's dx-ladder guard asks it not to."),
         }
         lad["rung_within_bar_vs_finest"] = inside
         qualifying = [r for r in inside if r["all_inside_bar"]]
@@ -2210,6 +2332,17 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
             "rotation_s22_residual_rad": np.abs(
                 np.angle(np.exp(1j * (rot22 + pred)))).astype(float).tolist(),
             "rotation_s21_residual_rad": np.abs(rot21).astype(float).tolist(),
+            # The leader's addendum (2026-09-23, item 2) predicts angle(S21)
+            # rotating by beta*Delta. Translating the DUT with the ports fixed
+            # shortens port 1's run to the bead by Delta and lengthens port 2's
+            # by the same Delta, so the through path d1 + d_bead + d2 is
+            # conserved and this driver predicts 0. Both residuals are stored;
+            # the leader reads which one the measurement picks.
+            "rotation_s21_residual_vs_beta_delta_rad": np.abs(np.angle(np.exp(
+                1j * (rot21 - beta * delta)))).astype(float).tolist(),
+            "max_rotation_s21_residual_rad": float(np.max(np.abs(rot21))),
+            "max_rotation_s21_residual_vs_beta_delta_rad": float(np.max(np.abs(
+                np.angle(np.exp(1j * (rot21 - beta * delta)))))),
             # The same residuals against the opposite sign. Which one is small
             # says which phase convention the extractor carries; neither being
             # small is the finding.

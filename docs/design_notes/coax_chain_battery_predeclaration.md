@@ -85,3 +85,34 @@ one-port AD is recorded at +10.8 GB host memory: use the a6000 preset), and 3b. 
 its commit with no fallback and aborts on a dirty tree; a failed stage ships its partial JSON. An
 assembler joins the stage records into `tests/fixtures/coax_chain_battery/fixture.json`, which one
 replay test re-derives every assembled number from.
+
+## Addendum (leader, 2026-09-23, before the battery is re-run on the fixed conductors)
+
+Written after the conductor realization fix (PR 1169, `02ff8849`) and before any battery solve on
+it. Corrections to the text above, each a fact from the repository, not a change of bar:
+
+1. **The line is PTFE-filled, not air-filled.** The fixture line carries `eps_r = 2.1`; the
+   analytic `beta = omega sqrt(2.1) / c` and `Z_TEM = eta0 ln(b/a) / (2 pi sqrt(2.1))`
+   (48.591 ohm for the fixture radii). "air-filled" above is wrong and is superseded here.
+2. **Plane invariance (3b) is a DUT translation, not a probe move.** The lane has no probe
+   ladder offset for its TEM plane source; the test that stands in is the bead moved by
+   `Delta` cells along the axis with the ports fixed, so `angle(S11)` rotates by `2 beta Delta`
+   and `angle(S21)` by `beta Delta`, with the analytic beta. Both signs stored.
+3. **Settling witness.** Where the lane emits no `settling_db`, the contract's criterion-2
+   substitute applies: the record is doubled once and the change in |S| at every bin is stored;
+   a change above 0.1 dB anywhere in band means the record is not settled and is re-run longer.
+4. **AD (3a) runs on the short 8 x 8 x 12 mm board only**, because the two-port lane has no
+   checkpoint segments and the full board's tape does not fit any preset (622 GiB estimated).
+   The short board is inside the bar for beta on neither rung (its three-probe span is
+   0.17-0.41 rad), so 3a is a gradient check and says nothing about the S of that board;
+   this is stated in the record.
+5. **Bead mask.** The bead is an `eps_scale` array over the full cross-section between the
+   conductors; conductor cells are excluded by the PEC edge masks, not by the scale array.
+6. **Ladder reading.** A rung is "inside the bar against the finest" when the bead's
+   reflection-zero frequencies are within 1 % and |S21| / |S11| outside the -20 dB cores within
+   2 dB of the 9-cell rung. The recommended annulus cell count is the coarsest such rung; the
+   conductor fix put 3.789 cells inside for beta and Z0, so the bead is what decides.
+7. **Impedance.** The lane's load-derived Z0 is the closed form by construction (see
+   `coax_conductor_realization.md`); the battery does not report it as a measurement. The
+   thru's |S11| against the continuum `Z_TEM` is the impedance witness (bound
+   `|Z/Z_TEM - 1| <= 2 max|S11|`).
