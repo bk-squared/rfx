@@ -518,8 +518,11 @@ class _PreflightMixin:
                 # propagation axis: ``position[0]`` for a +x/-x port,
                 # ``position[1]`` for +y/-y.
                 _feed_coord = float(pe.position[_ax_i])
+                # A feed plane exactly on a node belongs to the cell on the
+                # side the probes are, which is the launch side.
                 _runway_dx = _profile_cell_at(
-                    self._dx or 0.0, _runway_profile, _feed_coord)
+                    self._dx or 0.0, _runway_profile, _feed_coord,
+                    toward="hi" if _prop_sign > 0 else "lo")
                 _nf_cells = msl_source_near_field_standoff_cells(
                     float(pe.height), _runway_dx)
                 # A count is only meaningful where the cells it counts are

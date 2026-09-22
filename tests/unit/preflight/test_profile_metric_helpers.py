@@ -111,3 +111,62 @@ def test_a_span_inside_one_zone_is_uniform_and_one_crossing_a_ramp_is_not():
         _DX_COARSE, profile, x_ramp - 0.002, 0.004) is False
     # no profile at all is one zone by definition
     assert profile_span_is_uniform(_DX_COARSE, None, 0.0, 1.0) is True
+
+
+# ---------------------------------------------------------------------------
+# Spans that end on a node, and spans that leave the declared profile
+# ---------------------------------------------------------------------------
+
+def _two_zone():
+    return np.array([_DX_COARSE] * 10 + [_DX_FINE] * 10 + [_DX_COARSE] * 10,
+                    float)
+
+
+def test_a_span_ending_on_a_node_stops_at_the_cell_below_it():
+    """A span that closes exactly on a node does not reach the cell above it.
+
+    Ten fine cells end at that node; the span covering them lies wholly
+    inside one zone. Counting the coarse cell on the far side made it read as
+    mixed, which refuses a port whose probes never leave the fine zone.
+    """
+    prof = _two_zone()
+    edges = np.concatenate([[0.0], np.cumsum(prof)])
+    node = float(edges[20])
+    span = float(np.sum(prof[10:20]))
+    assert profile_span_is_uniform(_DX_COARSE, prof, node, -span) is True
+    # one cell further back is still inside the zone; one cell further
+    # forward crosses into the coarse zone and is not
+    assert profile_span_is_uniform(
+        _DX_COARSE, prof, node, -(span - _DX_FINE)) is True
+    assert profile_span_is_uniform(
+        _DX_COARSE, prof, node, _DX_COARSE) is True
+    assert profile_span_is_uniform(
+        _DX_COARSE, prof, node - _DX_FINE, 2 * _DX_COARSE) is False
+
+
+def test_a_span_that_left_the_profile_is_not_called_uniform():
+    """Beyond the declared profile the cells are the absorber pad's, which
+    this function was not given. A guard that passes only because the span
+    ran off the board is not being told anything, so it gets False."""
+    prof = _two_zone()
+    total = float(np.sum(prof))
+    assert profile_span_is_uniform(_DX_COARSE, prof, total + 1e-3, 1e-3) is False
+    assert profile_span_is_uniform(_DX_COARSE, prof, -2e-3, 1e-3) is False
+    # a span still touching the profile is judged on the cells it does cover
+    assert profile_span_is_uniform(_DX_COARSE, prof, total - _DX_COARSE,
+                                   2 * _DX_COARSE) is True
+
+
+def test_the_cell_at_a_node_depends_on_which_way_you_look():
+    """A coordinate on a node belongs to two cells; ``toward`` picks one."""
+    prof = _two_zone()
+    edges = np.concatenate([[0.0], np.cumsum(prof)])
+    node = float(edges[20])
+    assert profile_cell_at(_DX_COARSE, prof, node, toward="lo") == pytest.approx(_DX_FINE)
+    assert profile_cell_at(_DX_COARSE, prof, node, toward="hi") == pytest.approx(_DX_COARSE)
+    # away from a node the two agree
+    mid = node - 0.5 * _DX_FINE
+    assert profile_cell_at(_DX_COARSE, prof, mid, toward="lo") == \
+        profile_cell_at(_DX_COARSE, prof, mid, toward="hi")
+    with pytest.raises(ValueError):
+        profile_cell_at(_DX_COARSE, prof, node, toward="up")

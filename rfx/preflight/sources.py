@@ -193,11 +193,10 @@ def _validate_cfg_source_on_reflector_plane(
             ax_i = "xyz".index(ax_name)
             _face_cell = profile_boundary_cell(
                 dx, _axis_profiles[ax_i], side)
-            _dx_axis = [_face_cell, _face_cell, _face_cell]
             face_kind = "PMC" if face in _pmc_faces_set else "PEC"
             d_ext = self._domain[ax_i] if ax_i < len(self._domain) else self._domain[-1]
             plane_coord = 0.0 if side == "lo" else float(d_ext)
-            tol = 0.5 * _dx_axis[ax_i]
+            tol = 0.5 * _face_cell
             for pe in self._ports:
                 pos = pe.position
                 coord = pos[ax_i]
@@ -216,7 +215,7 @@ def _validate_cfg_source_on_reflector_plane(
                             f"tangential H is zeroed every step by "
                             f"apply_pmc_faces, so no wave radiates — the "
                             f"probe records silent zero field. Offset by "
-                            f"one cell ({_dx_axis[ax_i]*1e3:.3g} mm) off "
+                            f"one cell ({_face_cell*1e3:.3g} mm) off "
                             f"the plane to let the Yee curl run normally."
                         )
                     elif comp_field == "e" and not is_tangential:
@@ -227,7 +226,7 @@ def _validate_cfg_source_on_reflector_plane(
                             f"on normal E (it must be zero at the plane), "
                             f"so the source fights the mirror image. Use a "
                             f"tangential E source offset by one cell "
-                            f"({_dx_axis[ax_i]*1e3:.3g} mm) off the plane."
+                            f"({_face_cell*1e3:.3g} mm) off the plane."
                         )
                     elif comp_field == "h" and is_tangential:
                         msg = (
@@ -256,7 +255,7 @@ def _validate_cfg_source_on_reflector_plane(
                             f"force to zero, which makes the result "
                             f"numerically inconsistent rather than silent. "
                             f"Use a normal E source at this face, or offset "
-                            f"by one cell ({_dx_axis[ax_i]*1e3:.3g} mm) off "
+                            f"by one cell ({_face_cell*1e3:.3g} mm) off "
                             f"the plane."
                         )
                     elif comp_field == "h" and not is_tangential:
@@ -266,7 +265,7 @@ def _validate_cfg_source_on_reflector_plane(
                             f"NORMAL H component. PEC imposes odd symmetry "
                             f"on normal H (it must be zero at the plane). "
                             f"Use a tangential H source or offset by one "
-                            f"cell ({_dx_axis[ax_i]*1e3:.3g} mm) off the plane."
+                            f"cell ({_face_cell*1e3:.3g} mm) off the plane."
                         )
                     else:
                         msg = None      # tangential H or normal E on PEC is legit

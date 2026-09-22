@@ -1156,7 +1156,9 @@ def _check_msl_port_geometry(
         # unprofiled axis, which is every axis of a uniform mesh.
         _prop_profile = (self._dx_profile, self._dy_profile,
                          self._dz_profile)[_ip]
-        _runway_cell = profile_cell_at(dx, _prop_profile, x_feed)
+        _runway_cell = profile_cell_at(
+            dx, _prop_profile, x_feed,
+            toward="hi" if _dir_sign > 0 else "lo")
         _abs_cell_lo = profile_boundary_cell(dx, _prop_profile, "lo")
         _abs_cell_hi = profile_boundary_cell(dx, _prop_profile, "hi")
         # Issue #823's invariant: checks 4, 4a and 5 and
@@ -1505,8 +1507,24 @@ def _check_msl_port_geometry(
             # pre-fix continuous extrapolation rather than skip
             # checks 4/4a/4b outright. Degeneracy cannot be
             # detected on this path (no real ladder to inspect).
-            x_deep = x_feed + sign * (n_off + (n_pr - 1) * n_sp) * dx
+            x_deep = x_feed + sign * (n_off + (n_pr - 1) * n_sp) * _runway_cell
             _ladder_dup_count = 0
+
+        # The interval endpoints below turn the WHOLE ladder into a cell
+        # count, not just the standoff, so the cells the LADDER occupies have
+        # to be equal as well. They need not be: a port can sit in a uniform
+        # runway and still send its deepest probe over a ramp, and the
+        # standoff guard alone would let that print an upper edge (G17).
+        _ladder_on_one_zone = profile_span_is_uniform(
+            dx, _prop_profile, x_feed, float(x_deep) - x_feed)
+        _offset_counts_one_distance = (
+            _standoff_on_one_zone and _ladder_on_one_zone)
+        _interval_ramp_txt = (
+            _ramp_txt if not _standoff_on_one_zone else
+            "the probe ladder crosses cells of more than one size on the "
+            f"{_prop_ax} runway, so a probe-offset in CELLS does not name "
+            "one distance here"
+        )
 
         if _ladder_dup_count > 0:
             # Issue #510 review (BLOCKING 2b): a ladder that runs
@@ -1590,7 +1608,8 @@ def _check_msl_port_geometry(
             # cleanly without its own re-derivation. Revisit with
             # the same walk-down technique if this interval is ever
             # found to mislead the same way.
-            d_feed_to_refl = nearest_d + (n_off + (n_pr - 1) * n_sp) * _runway_cell
+            # the ladder's realized extent, not a cell count re-multiplied
+            d_feed_to_refl = nearest_d + abs(float(x_deep) - x_feed)
             off_max = (int((d_feed_to_refl - min_probe_clear) / _runway_cell)
                        - (n_pr - 1) * n_sp)
             # Issue #823: the lower edge of the compliant interval IS
@@ -1600,7 +1619,7 @@ def _check_msl_port_geometry(
             # 5*h/dx)) this line spelled out before.
             _hsub_cells = _nf_std_cells
             interval_txt = (
-                _ramp_txt if not _standoff_on_one_zone
+                _interval_ramp_txt if not _offset_counts_one_distance
                 else f"compliant n_probe_offset interval ≈ "
                 f"[{_hsub_cells}, {off_max}] cells"
                 if off_max >= _hsub_cells
@@ -1690,7 +1709,7 @@ def _check_msl_port_geometry(
                 - (n_pr - 1) * n_sp
             )
         _abs_interval_txt = (
-            _ramp_txt if not _standoff_on_one_zone
+            _interval_ramp_txt if not _offset_counts_one_distance
             else f"compliant n_probe_offset interval ≈ "
             f"[{_abs_off_lo}, {_abs_off_max}] cells"
             if _abs_off_max is not None and _abs_off_max >= _abs_off_lo

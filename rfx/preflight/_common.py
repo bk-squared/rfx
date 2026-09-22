@@ -634,21 +634,32 @@ def profile_boundary_cell(scalar_dx: float, profile, side: str) -> float:
     return float(a[0] if side == "lo" else a[-1])
 
 
-def profile_cell_at(scalar_dx: float, profile, coord_m: float) -> float:
+def profile_cell_at(scalar_dx: float, profile, coord_m: float,
+                    *, toward: str = "hi") -> float:
     """The cell that CONTAINS ``coord_m``, measured from the first interior
     node: the grid's ``cells(axis)[index_of(axis, coord)]``.
+
+    A coordinate that lands exactly ON a node belongs to two cells, and which
+    one a caller means depends on which way it is looking. ``toward="hi"``
+    takes the cell above the node, ``toward="lo"`` the cell below. A port
+    launching backwards along the axis measures the cells its probes occupy,
+    which are the ones below its feed plane, so it asks for ``"lo"``. Away
+    from a node the two agree.
 
     Coordinates outside the profile clamp to the end cell, because a caller
     asking about a position beyond the declared span is asking about the
     absorber, whose cells are copies of that end.
     """
+    if toward not in ("lo", "hi"):
+        raise ValueError(f"toward must be 'lo' or 'hi', got {toward!r}")
     if profile is None or is_tracer(profile):
         return float(scalar_dx)
     a = np.asarray(profile, dtype=float)
     if a.size == 0:
         return float(scalar_dx)
     edges = np.concatenate([[0.0], np.cumsum(a)])
-    idx = int(np.searchsorted(edges, float(coord_m), side="right")) - 1
+    side = "left" if toward == "lo" else "right"
+    idx = int(np.searchsorted(edges, float(coord_m), side=side)) - 1
     return float(a[max(0, min(idx, a.size - 1))])
 
 
@@ -659,6 +670,17 @@ def profile_span_is_uniform(scalar_dx: float, profile,
     A check that converts a physical length into a cell count is only
     meaningful where the cells it counts are equal; across a grading ramp the
     count depends on where you start. Callers refuse rather than answer there.
+
+    ``length_m`` is signed: a negative length inspects the cells BELOW
+    ``start_m``, which is where a backward-launching port's probes sit. A span
+    that ends exactly on a node stops at the cell below that node -- including
+    the one above it made a span lying wholly inside one zone look mixed the
+    moment it touched the zone's far edge.
+
+    A span lying entirely beyond the declared profile gets ``False``. Those
+    cells are the absorber pad's, which this function was not given, and a
+    caller whose guard passes only because the span ran off the board is not
+    being told anything.
     """
     if profile is None or is_tracer(profile):
         return True
@@ -668,8 +690,12 @@ def profile_span_is_uniform(scalar_dx: float, profile,
     lo = min(float(start_m), float(start_m) + float(length_m))
     hi = max(float(start_m), float(start_m) + float(length_m))
     edges = np.concatenate([[0.0], np.cumsum(a)])
+    if hi <= 0.0 or lo >= float(edges[-1]):
+        return False
     i0 = max(0, int(np.searchsorted(edges, lo, side="right")) - 1)
-    i1 = max(0, int(np.searchsorted(edges, hi, side="right")) - 1)
-    i1 = min(i1, a.size - 1)
+    # the last cell the span touches: a span ending ON a node ends at the
+    # cell below it, so the upper endpoint takes the left-hand side
+    i1 = int(np.searchsorted(edges, hi, side="left")) - 1
+    i1 = min(max(i1, i0), a.size - 1)
     seg = a[i0:i1 + 1]
     return bool(seg.size == 0 or np.all(seg == seg[0]))

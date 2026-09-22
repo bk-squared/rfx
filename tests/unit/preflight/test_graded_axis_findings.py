@@ -437,23 +437,32 @@ def test_the_msl_interval_refuses_a_standoff_that_crosses_a_ramp():
     """The advertised compliant interval is a range of cell COUNTS, and a
     count names one distance only where the cells are equal.
 
-    With the feed two cells up the grading ramp the standoff runs over cells
-    of several sizes, so the advisory says so instead of printing a range.
-    Moved into the uniform runway, the same board advertises [10, 33] cells,
-    whose lower edge is the runway reading; the boundary scalar gave 5.
+    With the feed two cells up the grading ramp the standoff itself runs over
+    cells of several sizes, so the advisory says that instead of printing a
+    range.
     """
     on_ramp, _ = _notch_like_board(16, 60, tail=4)
-    texts = [str(i) for i in on_ramp.issues
-             if "past the domain edge" in str(i)]
-    assert texts, _codes(on_ramp)
-    assert "does not name one distance here" in texts[0], texts[0]
-    assert "compliant n_probe_offset interval" not in texts[0], texts[0]
+    text = _finding(on_ramp, "past the domain edge")
+    assert "source-fringing standoff crosses cells" in text, text
+    assert "compliant n_probe_offset interval" not in text, text
 
-    in_runway, n_ramp = _notch_like_board(14 + 20, 60, tail=4)
-    texts = [str(i) for i in in_runway.issues
-             if "past the domain edge" in str(i)]
-    assert texts, _codes(in_runway)
-    assert "compliant n_probe_offset interval ≈ [10," in texts[0], texts[0]
+
+def test_the_interval_refuses_a_ladder_that_leaves_the_runway():
+    """A port can sit in a uniform runway and still send its deepest probe
+    over a ramp, and the interval endpoints count the WHOLE ladder.
+
+    Here the feed is twenty cells inside the uniform 127 um runway, so the
+    1.270 mm standoff is on one cell size and the standoff guard is happy.
+    The ladder is not: at offset 60 the deepest probe runs out through the
+    trailing ramp into the coarse tail, so no single offset in cells names
+    one distance for it either, and the advisory names the ladder rather
+    than the standoff.
+    """
+    report, _ = _notch_like_board(14 + 20, 60, tail=4)
+    text = _finding(report, "past the domain edge")
+    assert "probe ladder crosses cells of more than one size" in text, text
+    assert "compliant n_probe_offset interval" not in text, text
+
 
 
 def _stub_board(feed_cells, gap_m=3.0e-3):
@@ -508,7 +517,10 @@ def test_the_reflector_interval_lower_edge_is_the_runway_reading():
     the fringing transient.
     """
     text = _stub_board(8 + 4 + 4)
-    assert "compliant n_probe_offset interval \u2248 [10," in text, text
+    # both endpoints: the lower is the standoff, the upper is the walked-down
+    # offset whose deepest probe still clears the reflector on the realized
+    # ladder, so a cell size read anywhere else moves one or the other
+    assert "compliant n_probe_offset interval \u2248 [10, 12] cells" in text, text
 
 
 def test_the_reflector_interval_refuses_a_feed_on_the_ramp():
@@ -673,3 +685,68 @@ def test_the_walk_down_endpoint_uses_the_face_cell_not_the_scalar():
     _, report = _y_graded_board(45)
     text = _finding(report, "domain edge, just")
     assert "compliant n_probe_offset interval ≈ [10, 43] cells" in text, text
+
+
+# ---------------------------------------------------------------------------
+# A feed plane exactly on a node: which of the two cells it belongs to
+# ---------------------------------------------------------------------------
+
+def _two_zone_board(direction, n_probe_offset):
+    """127 um in the middle, 254 um at both ends, and the feed plane exactly
+    on the node where the fine zone ends.
+
+    That node belongs to two cells. A port launching backwards measures the
+    cells its probes occupy, which are the 127 um ones below the node; the
+    254 um cell above it is on the other side of the port.
+    """
+    from rfx.geometry.csg import Box
+    coarse = 2 * _NOTCH_RUNWAY
+    prof = np.array([coarse] * 10 + [_NOTCH_RUNWAY] * 60 + [coarse] * 10,
+                    float)
+    edges = np.concatenate([[0.0], np.cumsum(prof)])
+    lx, h, w = float(prof.sum()), _NOTCH_H_SUB, 2 * _NOTCH_H_SUB
+    ly = 10 * h
+    sim = Simulation(
+        freq_max=5e9, domain=(lx, ly, h + 1.5e-3), dx=coarse, cpml_layers=8,
+        boundary=BoundarySpec(x="cpml", y="cpml",
+                              z=Boundary(lo="pec", hi="cpml")),
+        dx_profile=prof)
+    sim.add_material("sub", eps_r=3.66)
+    sim.add(Box((0, 0, 0), (lx, ly, h)), material="sub")
+    y_c = ly / 2.0
+    sim.add(Box((0, y_c - w / 2, h), (lx, y_c + w / 2, h + coarse)),
+            material="pec")
+    sim.add_msl_port(position=(float(edges[70]), y_c, 0), width=w, height=h,
+                     direction=direction, impedance=50.0,
+                     n_probe_offset=n_probe_offset, n_probe_spacing=3,
+                     n_probes=5)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return sim.preflight()
+
+
+def test_a_backward_port_on_a_node_is_measured_on_the_cells_it_uses():
+    """The standoff is counted on the cells the probes occupy.
+
+    This feed sits exactly where 127 um cells give way to 254 um ones, and
+    the port launches into the fine side. Read there, the 1.270 mm fringing
+    transient is 10 cells and an offset of 7 does not clear it. Read on the
+    254 um cell above the node -- cells this port never touches -- it is 5
+    cells and the same offset looks generous.
+    """
+    report = _two_zone_board("-x", 7)
+    text = _finding(report, "OWN feed plane")
+    assert "standoff of 10 cells" in text, text
+    assert "889µm" in text, text
+
+
+def test_that_backward_span_is_not_read_as_leaving_its_zone():
+    """The standoff ends exactly on the node the feed sits on, and every cell
+    it covers is 127 um, so nothing is refused here.
+
+    Counting the cell above the closing node made a span lying wholly inside
+    one zone look mixed the moment it touched the zone's far edge, which
+    refused a port that is perfectly placed.
+    """
+    report = _two_zone_board("-x", 7)
+    assert _RAMP_REFUSAL not in _finding(report, "OWN feed plane")
