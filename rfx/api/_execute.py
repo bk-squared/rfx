@@ -1997,6 +1997,47 @@ class _ExecuteMixin:
                     nk = min(max(ck + dk, 0), grid.nz - 1)
                     pec_occupancy_local = pec_occupancy_local.at[ni, nj, nk].set(0.0)
 
+        # #1183: a design occupancy box may not overlap the cells the port
+        # setup CLEARS. A port cell's occupancy is forced to 0 above — the
+        # cell itself, its six face neighbours, and an MSL port's in-plane
+        # diagonal owners — because the port drives that edge and the
+        # conductor around it would short the drive. The design box writes
+        # its own occupancy over its window AFTER that clearing is decided,
+        # so a box reaching those cells realizes metal the same run would
+        # have cleared through ``pec_occupancy_override``. Measured on a
+        # 50 ohm Ez port inside the box: the value moves 99 % and the
+        # gradient 98 %, with no error.
+        if design_occupancy is not None and _port_cleared_cells:
+            _cleared = set()
+            for _ci, _cj, _ck in _port_cleared_cells:
+                _cleared.add((_ci, _cj, _ck))
+                for _d in ((1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0),
+                           (0, 0, 1), (0, 0, -1),
+                           (-1, -1, 0)):  # the MSL in-plane diagonal owner
+                    _cleared.add((
+                        min(max(_ci + _d[0], 0), grid.nx - 1),
+                        min(max(_cj + _d[1], 0), grid.ny - 1),
+                        min(max(_ck + _d[2], 0), grid.nz - 1)))
+            _b = design_occupancy.bounds
+            # The WRITE window, which is the box grown one cell on the plus
+            # side (rfx.boundaries.pec.pec_occupancy_box_keep).
+            _w = tuple((_b[2 * d], min(_b[2 * d + 1] + 1, grid.shape[d]))
+                       for d in range(3))
+            _hits = sorted(
+                c for c in _cleared
+                if all(_w[d][0] <= c[d] < _w[d][1] for d in range(3)))
+            if _hits:
+                raise ValueError(
+                    f"the design occupancy box (cells {_b}) covers port-"
+                    f"cleared cell(s) {_hits[:6]}"
+                    + (f" and {len(_hits) - 6} more" if len(_hits) > 6 else "")
+                    + ". A port forces the occupancy to zero at its own "
+                    "cell and around it before the run, so the design "
+                    "values written there would realize metal the same "
+                    "occupancy handed to pec_occupancy_override would not "
+                    "(#1183). Move the box off the port, or use "
+                    "pec_occupancy_override.")
+
         # ``pec_occupancy_local`` is supplied, build an ``aniso_inv_eps``
         # tensor via Kottke's PEC limit ((1−f)/ε perpendicular, 0
         # parallel) using the gradient of the occupancy as the
@@ -2023,6 +2064,19 @@ class _ExecuteMixin:
                 aniso_inv_eps_baseline=inv_baseline,
             )
             pec_occupancy_for_run = None
+            if design_occupancy is not None:
+                raise NotImplementedError(
+                    "a design occupancy box (#1183) does not combine with "
+                    "the Kottke occupancy lane (RFX_PEC_OCC_KOTTKE=1). That "
+                    "lane turns the occupancy into an inverse-eps tensor "
+                    "inside the E update and sets pec_occupancy_for_run to "
+                    "None, so the design values never reach the update and "
+                    "the box's own 1 - M window then double-corrects the "
+                    "field the tensor already handled — the anti-pattern "
+                    "the comment above names. Measured: value 19x and "
+                    "gradient 2.8x off pec_occupancy_override, silently. "
+                    "Use pec_occupancy_override on that lane, or unset "
+                    "RFX_PEC_OCC_KOTTKE.")
             if os.environ.get("RFX_PEC_OCC_KOTTKE_DEBUG", "0") not in ("0", "", "false", "False"):
                 import sys as _sys
                 _ix, _iy, _iz = aniso_inv_eps_run
@@ -3293,17 +3347,22 @@ class _ExecuteMixin:
             first two write their own field or ``materials`` across a whole
             plane from the background permittivity.
 
-            Fenced, not degraded: ``distributed=True``, ``solver='adi'``,
-            ``boundary='upml'``, Debye/Lorentz dispersion, Kerr,
-            subpixel/anisotropic permittivity, ``pec_occupancy_override``,
-            ``stencil_order=4``, the oblique Bloch path, combining with
-            ``eps_override`` / ``sigma_override`` / ``mu_r_override``, a box
-            that reaches into the CPML absorber, and a box holding a source,
-            port, lumped-RLC or surface-impedance-sheet cell all RAISE. Each
-            of those either computes E by some other rule inside the box or
-            reads the background permittivity at a box cell, and a silently
-            dropped design variable is a zero gradient that reads like
-            convergence.
+            Fenced, not degraded — for a design PERMITTIVITY
+            (*design_eps_override*): ``distributed=True``,
+            ``solver='adi'``, ``boundary='upml'``, Debye/Lorentz
+            dispersion, Kerr, subpixel/anisotropic permittivity,
+            ``pec_occupancy_override``, ``stencil_order=4``, the oblique
+            Bloch path, combining with ``eps_override`` / ``sigma_override``
+            / ``mu_r_override``, a box that reaches into the CPML absorber,
+            and a box holding a source, port, lumped-RLC or
+            surface-impedance-sheet cell all RAISE. Each of those either
+            computes E by some other rule inside the box or reads the
+            background permittivity at a box cell, and a silently dropped
+            design variable is a zero gradient that reads like convergence.
+            A design OCCUPANCY has its own, shorter list — see
+            *design_occupancy_override*; in particular it does combine with
+            ``eps_override`` and with ``pec_occupancy_override``, because
+            it reads no material array.
         design_eps_override : jnp.ndarray or None
             Relative permittivity at the *design_box* cells, shaped like the
             realized box. Usually the traced quantity. Required with
@@ -3336,8 +3395,13 @@ class _ExecuteMixin:
             ``distributed=True`` and ``solver='adi'`` raise. So do a
             periodic axis (the incident rule wraps across the seam, so the
             box's window is no longer the whole set of cells its occupancy
-            can move) and combining it with *design_eps_override* in one
-            call.
+            can move), combining it with *design_eps_override* in one call,
+            a box covering a cell the port setup CLEARS the occupancy at
+            (the port cell, its six face neighbours, an MSL port's in-plane
+            diagonal owners), and the Kottke occupancy lane
+            (``RFX_PEC_OCC_KOTTKE=1``), where the occupancy becomes an
+            inverse-eps tensor inside the E update that the box's values
+            never reach.
         pec_mask_override : jnp.ndarray or None
             Additional hard PEC mask to merge with geometry-defined PEC.
         pec_occupancy_override : jnp.ndarray or None

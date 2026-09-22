@@ -727,6 +727,50 @@ def test_occupancy_fence_combined_with_a_design_permittivity():
                     n_steps=4, skip_preflight=True)
 
 
+def test_occupancy_fence_box_holding_a_port_cell():
+    """A port forces the occupancy to zero at and around its own cell.
+
+    The drive edge cannot stand inside a conductor, so the port setup
+    clears the occupancy at its cell, its six face neighbours and an MSL
+    port's in-plane diagonal owners. A design box writing over those cells
+    realizes metal the identical occupancy handed to
+    ``pec_occupancy_override`` would not have — measured before the fence:
+    a 50 ohm Ez port at (12, 10, 8) mm inside the box moved the objective
+    by 99 % and the gradient by 98 %, with no error raised.
+    """
+    sim = _sim()
+    sim.add_port(position=(12e-3, 10e-3, 8e-3), component="ez",
+                 impedance=50.0, excite=False)
+    _, shape = _box_cells(sim)
+    with pytest.raises(ValueError, match="port-cleared cell"):
+        sim.forward(design_box=(BOX_LO, BOX_HI),
+                    design_occupancy_override=jnp.ones(shape, jnp.float32) * 0.5,
+                    n_steps=4, skip_preflight=True)
+
+
+def test_occupancy_fence_kottke_occupancy_lane(monkeypatch):
+    """``RFX_PEC_OCC_KOTTKE=1`` moves the occupancy into the E update.
+
+    On that lane the occupancy becomes an inverse-eps tensor built from the
+    STATIC array and ``pec_occupancy_for_run`` is set to None, so the
+    design values never reach the update and the box's own ``1 - M``
+    window corrects a field the tensor already handled — the double
+    correction ``_forward_from_materials``'s own comment names. Measured
+    before the fence: value 19x and gradient 2.8x off
+    ``pec_occupancy_override``, silently.
+    """
+    monkeypatch.setenv("RFX_PEC_OCC_KOTTKE", "1")
+    sim = _sim()
+    grid = sim._build_grid()
+    _, shape = _box_cells(sim)
+    static = jnp.zeros(grid.shape, jnp.float32).at[6:9, 6:9, 6:9].set(0.7)
+    with pytest.raises(NotImplementedError, match="Kottke occupancy lane"):
+        sim.forward(design_box=(BOX_LO, BOX_HI),
+                    design_occupancy_override=jnp.ones(shape, jnp.float32) * 0.5,
+                    pec_occupancy_override=static,
+                    n_steps=4, skip_preflight=True)
+
+
 def test_occupancy_fence_one_argument_without_the_other():
     sim = _sim()
     _, shape = _box_cells(sim)

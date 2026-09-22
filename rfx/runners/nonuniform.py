@@ -676,14 +676,6 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         When provided, replace the assembled material arrays before
         source/port setup. Used by the differentiable ``forward()``
         path to inject optimisation variables.
-    design_box : DesignBoxSpec or None
-        Issue #1183. One static box whose E update is redone from its own
-        (usually traced) permittivity, so reverse-mode AD keeps box-shaped
-        arrays per timestep instead of grid-shaped ones. The graded-mesh
-        counterpart of the uniform lane's ``rfx.simulation.run(design_box=)``
-        (#1179); ``rfx.simulation._resolve_design_box``, called from
-        ``_build_nu_scan``, carries the fences that need the resolved step
-        context, and the ones below are this lane's own.
     pec_mask_override : jnp.ndarray or None
         Extra hard-PEC mask ORed into the geometry-derived pec_mask.
     strip_interior_pec : bool
@@ -705,6 +697,14 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         makes it bit-identical to the device → ``(device-reference)=0`` →
         ``S11=0`` for any reflector). Used ONLY by the NU two-run S-matrix
         vacuum reference; the device run leaves this False.
+    design_box : DesignBoxSpec or None
+        Issue #1183. One static box whose E update is redone from its own
+        (usually traced) permittivity, so reverse-mode AD keeps box-shaped
+        arrays per timestep instead of grid-shaped ones. The graded-mesh
+        counterpart of the uniform lane's ``rfx.simulation.run(design_box=)``
+        (#1179); ``rfx.simulation._resolve_design_box``, called from
+        ``_build_nu_scan``, carries the fences that need the resolved step
+        context, and the ones below are this lane's own.
 
     Returns
     -------
