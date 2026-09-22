@@ -1832,7 +1832,8 @@
         "report_every",
         "report_label",
         "sheet_impedance",
-        "design_box"
+        "design_box",
+        "design_occupancy"
       ]
     },
     "run_adi_2d": {
@@ -1931,7 +1932,8 @@
         "checkpoint_every",
         "n_warmup",
         "aniso_eps",
-        "sheet_impedance"
+        "sheet_impedance",
+        "design_box"
       ]
     },
     "run_until_decay": {
@@ -2700,6 +2702,7 @@
       "design_box",
       "design_eps_override",
       "design_sigma_override",
+      "design_occupancy_override",
       "pec_mask_override",
       "pec_occupancy_override",
       "n_steps",

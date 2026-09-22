@@ -27,6 +27,7 @@ from rfx.boundaries.pec import (
     apply_pec_edges,
     apply_pec_faces,
     apply_pec_occupancy,
+    apply_pec_occupancy_box,
     kottke_fenced_edge_masks,
     realized_pec_edge_masks,
 )
@@ -183,6 +184,34 @@ class _DesignBoxCoeffs(NamedTuple):
     bounds: tuple
     ca: Any
     cb: Any
+
+
+class DesignOccupancySpec(NamedTuple):
+    """One static box whose PEC occupancy is the design variable (#1183).
+
+    The relaxed-conductor rule scales every E component by ``1 - M``, ``M``
+    the noisy-OR of the component's incident cells' occupancy. With a traced
+    WHOLE-GRID occupancy that multiply keeps three grid-sized primal E arrays
+    per timestep; with the traced values confined to a box the arrays it
+    keeps are window-sized. Same physics — the window is recomputed from the
+    field before the grid-wide scaling, so it reproduces exactly what
+    ``apply_pec_occupancy`` would have written with the design occupancy in
+    the array.
+
+    bounds : (i0, i1, j0, j1, k0, k1)
+        Half-open cell index bounds of the box.
+    occupancy : box-shaped array (usually a tracer)
+        Occupancy in [0, 1] at the box cells; REPLACES the run's own static
+        occupancy there. Outside the box the static array is carried.
+    """
+    bounds: tuple
+    occupancy: Any
+
+
+class _DesignOccupancyKeep(NamedTuple):
+    """Resolved write window and ``1 - M`` factors, built once outside the scan."""
+    write: tuple
+    keep: tuple
 
 
 class SimResult(NamedTuple):
@@ -694,6 +723,62 @@ def resolve_periodic(grid, periodic):
     return periodic
 
 
+def _design_box_bounds(bounds, grid):
+    """``(bounds, realized cell counts)`` of a design box on this grid.
+
+    One spelling for the permittivity box (#1179) and the occupancy box
+    (#1183): the REALIZED cell counts are what a design array must match,
+    and a box that is empty or leaves the grid is an error, not a clamp.
+    """
+    i0, i1, j0, j1, k0, k1 = (int(v) for v in bounds)
+    bounds = (i0, i1, j0, j1, k0, k1)
+    box_shape = (i1 - i0, j1 - j0, k1 - k0)
+    if any(n <= 0 for n in box_shape):
+        raise ValueError(
+            f"design box {bounds} is empty (realized cell counts "
+            f"{box_shape}); it must span at least one cell per axis.")
+    for axis, (lo, hi, n) in enumerate(
+            zip((i0, j0, k0), (i1, j1, k1), grid.shape)):
+        if lo < 0 or hi > n:
+            raise ValueError(
+                f"design box {bounds} leaves the grid on axis "
+                f"{'xyz'[axis]}: cells [{lo}, {hi}) against {n} cells.")
+    return bounds, box_shape
+
+
+def _resolve_design_occupancy(
+    spec: "DesignOccupancySpec",
+    *,
+    grid,
+    periodic,
+    pec_occupancy,
+    field_dtype,
+) -> "_DesignOccupancyKeep":
+    """Check an occupancy design box against this run, then build ``1 - M`` (#1183).
+
+    Far fewer fences than :func:`_resolve_design_box`, and the reason is
+    physical: the occupancy scaling is a pure multiply applied AFTER the E
+    update and the absorber, and it reads no material array. Whatever the E
+    update was — dispersive, anisotropic, fourth-order — the step arrives at
+    this slot with the same field on both formulations, so the window redo
+    reproduces the grid-wide call. What it does need is that no cell outside
+    the window can see the design occupancy, which is the shift reach
+    :func:`pec_occupancy_box_keep` owns (and why it refuses periodic axes).
+    """
+    from rfx.boundaries.pec import pec_occupancy_box_keep
+
+    bounds, box_shape = _design_box_bounds(spec.bounds, grid)
+    occ = jnp.asarray(spec.occupancy)
+    if tuple(occ.shape) != box_shape:
+        raise ValueError(
+            f"design occupancy has shape {tuple(occ.shape)} but the design "
+            f"box {bounds} realizes {box_shape} cells.")
+    write, keep = pec_occupancy_box_keep(
+        bounds, occ, shape=tuple(grid.shape), dtype=field_dtype,
+        pec_occupancy=pec_occupancy, periodic=periodic)
+    return _DesignOccupancyKeep(write=write, keep=keep)
+
+
 def _resolve_design_box(
     spec: "DesignBoxSpec",
     *,
@@ -756,19 +841,8 @@ def _resolve_design_box(
             "these — it is exact on every path, at a grid-sized AD tape."
         )
 
-    i0, i1, j0, j1, k0, k1 = (int(v) for v in spec.bounds)
-    bounds = (i0, i1, j0, j1, k0, k1)
-    box_shape = (i1 - i0, j1 - j0, k1 - k0)
-    if any(n <= 0 for n in box_shape):
-        raise ValueError(
-            f"design box {bounds} is empty (realized cell counts "
-            f"{box_shape}); it must span at least one cell per axis.")
-    for axis, (lo, hi, n) in enumerate(
-            zip((i0, j0, k0), (i1, j1, k1), grid.shape)):
-        if lo < 0 or hi > n:
-            raise ValueError(
-                f"design box {bounds} leaves the grid on axis "
-                f"{'xyz'[axis]}: cells [{lo}, {hi}) against {n} cells.")
+    bounds, box_shape = _design_box_bounds(spec.bounds, grid)
+    i0, i1, j0, j1, k0, k1 = bounds
 
     # The absorber. apply_cpml_e's psi correction is written at the [:n] /
     # [-n:] face slabs, and its coefficient is dt/(eps_r*EPS_0) from
@@ -902,6 +976,7 @@ def _build_step_setup(
     wire_refplane_sparams: "list | None" = None,
     sheet_impedance: "object | None" = None,
     design_box: "DesignBoxSpec | None" = None,
+    design_occupancy: "DesignOccupancySpec | None" = None,
 ) -> "_SimSetup":
     """Build the shared setup artefacts used by both ``run`` and ``run_until_decay``.
 
@@ -1322,6 +1397,17 @@ def _build_step_setup(
             ),
         )
 
+    # ---- #1183 design occupancy: fence, then build its 1 - M once ----
+    design_occupancy_keep = None
+    if design_occupancy is not None:
+        design_occupancy_keep = _resolve_design_occupancy(
+            design_occupancy,
+            grid=grid,
+            periodic=periodic,
+            pec_occupancy=pec_occupancy,
+            field_dtype=_field_dtype,
+        )
+
     # ---- shared _StepContext keyword arguments ----
     # These are identical for both drivers.  Each driver extends this dict
     # with its own overrides before calling _StepContext(**ctx_kwargs).
@@ -1359,6 +1445,8 @@ def _build_step_setup(
         sheet_impedance=sheet_impedance,
         use_design_box=design_box_coeffs is not None,
         design_box=design_box_coeffs,
+        use_design_occupancy=design_occupancy_keep is not None,
+        design_occupancy=design_occupancy_keep,
         cpml_params=cpml_params,
         cpml_axes=cpml_axes,
         upml_coeffs=upml_coeffs,
@@ -1543,6 +1631,9 @@ class _StepContext:
     # caller byte-identical)
     use_design_box: bool = False
     design_box: Any = None
+    # issue #1183 design-box PEC occupancy (same default discipline)
+    use_design_occupancy: bool = False
+    design_occupancy: Any = None
 
     # ---- output extractors ----
     monitor_component: str = "ez"
@@ -1796,10 +1887,25 @@ def make_core_step(ctx: _StepContext):
                 # gate of 0.99, restored to 0.9942 by applying both.
                 st = apply_pec_edges(st, ctx.pec_edge_masks)
 
+            # #1183: the design occupancy REDOES the scaling at its window
+            # from the field BEFORE the grid-wide one, for the same reason
+            # the design box keeps the pre-update state -- the multiply is
+            # not invertible where the static factor is 0.
+            st_prev_occ = st if ctx.use_design_occupancy else None
+
             if ctx.use_pec_occupancy:
                 st = apply_pec_occupancy(
                     st, ctx.pec_occupancy, ctx.periodic,
                     sheet_edge_masks=ctx.pec_static_edge_masks)
+
+            # #1183 design occupancy: the traced 1 - M on its window, over
+            # a field the static occupancy has not scaled. Outside the
+            # window no design cell can reach, so the grid-wide factor
+            # there is already the right one.
+            if ctx.use_design_occupancy:
+                st = apply_pec_occupancy_box(
+                    st, st_prev_occ, ctx.design_occupancy.write,
+                    ctx.design_occupancy.keep)
 
             # #677 node-thin surface-impedance sheet operator. Contract slot:
             # AFTER apply_pec_mask/apply_pec_occupancy (PEC wins on overlap —
@@ -2215,6 +2321,7 @@ def run(
     report_label: str = "",
     sheet_impedance: object | None = None,
     design_box: DesignBoxSpec | None = None,
+    design_occupancy: DesignOccupancySpec | None = None,
 ) -> SimResult:
     """Run a compiled FDTD simulation via ``jax.lax.scan``.
 
@@ -2307,6 +2414,18 @@ def run(
         of ``materials.eps_r`` to the design dtype. Those are
         ``Simulation.forward``'s, in ``_resolve_design_box_override``; a
         caller reaching this function directly owns them.
+    design_occupancy : DesignOccupancySpec or None
+        Issue #1183. One static box whose PEC OCCUPANCY is the traced
+        quantity, for the same reason and with the same effect on the tape:
+        the ``1 - M`` scaling is redone on the box's window from the field
+        before the grid-wide ``apply_pec_occupancy``, so what the backward
+        pass keeps per step is window-shaped. ``None`` (default) is the
+        unchanged path. The box's occupancy REPLACES ``pec_occupancy`` at
+        the box cells; outside it, ``pec_occupancy`` is carried.
+
+        ``_resolve_design_occupancy`` rejects a periodic axis, an empty box
+        and a box off the grid. ``Simulation.forward`` owns the lane and the
+        collision with ``design_eps_override``.
 
     Returns
     -------
@@ -2359,6 +2478,7 @@ def run(
         stencil_order=stencil_order,
         sheet_impedance=sheet_impedance,
         design_box=design_box,
+        design_occupancy=design_occupancy,
     )
     carry_init = _setup.carry_init
     dt = _setup.dt
@@ -2415,6 +2535,10 @@ def run(
         # box stops carrying. A design box takes the standard path; that
         # costs GPU scatter kernels, nothing else.
         and not _ctx["use_design_box"]
+        # #1183: and the same for the design occupancy. The fast path has
+        # no occupancy slot at all -- it would drop the design variable and
+        # return an all-zero gradient, which reads like a converged design.
+        and not _ctx["use_design_occupancy"]
         and aniso_eps is None
         and periodic == (False, False, False)
     )

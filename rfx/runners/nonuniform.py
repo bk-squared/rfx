@@ -638,7 +638,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                         decay_max_steps: int = 50_000,
                         decay_energy_consecutive: int = 2,
                         radiated_flux_box: tuple | None = None,
-                        flux_env_checks: int = 4):
+                        flux_env_checks: int = 4,
+                        design_box=None):
     """Run simulation on non-uniform grid with graded dz.
 
     Parameters
@@ -675,6 +676,14 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         When provided, replace the assembled material arrays before
         source/port setup. Used by the differentiable ``forward()``
         path to inject optimisation variables.
+    design_box : DesignBoxSpec or None
+        Issue #1183. One static box whose E update is redone from its own
+        (usually traced) permittivity, so reverse-mode AD keeps box-shaped
+        arrays per timestep instead of grid-shaped ones. The graded-mesh
+        counterpart of the uniform lane's ``rfx.simulation.run(design_box=)``
+        (#1179); ``rfx.simulation._resolve_design_box``, called from
+        ``_build_nu_scan``, carries the fences that need the resolved step
+        context, and the ones below are this lane's own.
     pec_mask_override : jnp.ndarray or None
         Extra hard-PEC mask ORed into the geometry-derived pec_mask.
     strip_interior_pec : bool
@@ -707,6 +716,35 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
 
     _validate_interface_eps_nu(sim, subpixel_smoothing=subpixel_smoothing,
                                eps_override=eps_override)
+
+    # ---- #1183 design box: the fences only this lane can see ----
+    # Everything the resolved step context decides (the absorber, the
+    # source/wire-port/RLC cells, dispersion, subpixel eps, a sheet inside
+    # the box) is rfx.simulation._resolve_design_box's, from _build_nu_scan.
+    # These three are declarations that never reach it: a modal port writes
+    # its own E over a whole plane from a mode profile, and an MSL port
+    # REWRITES ``materials`` across its cross-section (_setup_msl_ports_nu)
+    # -- both from the background permittivity the box no longer carries.
+    if design_box is not None:
+        if sim._waveguide_ports:
+            raise NotImplementedError(
+                "a design box (#1183) does not combine with a waveguide "
+                "port on the non-uniform lane: the port injects and "
+                "extracts a modal field over its whole plane, built from "
+                "the background permittivity before the time loop. Use "
+                "eps_override.")
+        if getattr(sim, "_msl_ports", None):
+            raise NotImplementedError(
+                "a design box (#1183) does not combine with an MSL port on "
+                "the non-uniform lane: the port rewrites ``materials`` "
+                "across its cross-section at setup, which the design "
+                "permittivity would not reach. Use eps_override.")
+        if until_decay is not None:
+            raise NotImplementedError(
+                "a design box (#1183) does not combine with until_decay on "
+                "the non-uniform lane: the decay stop is a forward-only "
+                "host loop, so there is no gradient tape for the box to "
+                "keep small. Use a fixed n_steps run.")
 
     # Flux monitors: the NU scan body accumulates Poynting-flux DFTs (parity
     # with the uniform path). Full-plane AND finite-region (``size=``)
@@ -813,6 +851,17 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             sigma=sigma_override if sigma_override is not None else materials.sigma,
             mu_r=materials.mu_r,
         )
+    elif design_box is not None:
+        # #1183, the same rule at the same place: the design permittivity
+        # sets the precision of the material arithmetic, exactly as an
+        # ``eps_override`` array does one branch up. Without it the two
+        # halves of one grid step at two precisions -- the float32 rounding
+        # of ``eps_r * EPS_0`` alone moves the field by ~1e-7 relative.
+        _design_dtype = jnp.promote_types(
+            materials.eps_r.dtype, jnp.result_type(design_box.eps_r))
+        if _design_dtype != materials.eps_r.dtype:
+            materials = materials._replace(
+                eps_r=materials.eps_r.astype(_design_dtype))
 
     if pec_mask_override is not None:
         pec_mask = pec_mask_override if pec_mask is None else (pec_mask | pec_mask_override)
@@ -1379,6 +1428,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 "subpixel_smoothing or drop the f0 sheet.")
 
     _shared_run_kwargs = dict(
+        design_box=design_box,
         sheet_impedance=sheet_ctx,
         aniso_eps=aniso_eps,
         pec_mask=pec_mask,

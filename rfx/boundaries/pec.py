@@ -679,3 +679,94 @@ def apply_pec_occupancy(state, pec_occupancy, periodic=(False, False, False),
         ey=state.ey * (1.0 - m_ey),
         ez=state.ez * (1.0 - m_ez),
     )
+
+
+def pec_occupancy_box_keep(box, design_occupancy, *, shape, dtype,
+                           pec_occupancy=None,
+                           periodic=(False, False, False)):
+    """``(write slice, keep factors)`` for a traced occupancy in one box (#1183).
+
+    Built ONCE, outside the time loop: the occupancy is a design variable,
+    not a field, so ``1 - M`` does not change from step to step. The step
+    itself is then three multiplies and three scatters over the write
+    window, and what reverse-mode AD keeps per step is window-shaped —
+    :func:`apply_pec_occupancy` with a traced whole-grid occupancy keeps
+    three GRID-shaped arrays per step instead, because the E it multiplies
+    is what the cotangent of the occupancy needs.
+
+    Which cells the box can move, exactly: ``M`` for component ``c`` at cell
+    ``p`` is the noisy-OR of ``occ`` at ``p`` and at its BACKWARD neighbours
+    along the two transverse axes (:func:`_shift` with ``direction=+1``
+    returns ``arr[i-1]``). So an occupancy cell ``q`` reaches ``M`` at ``q``
+    and at ``q + e_t`` — one cell on the PLUS side. The write window is the
+    box grown by one cell there; the computation window is grown by one cell
+    on the minus side as well, because those backward neighbours are read.
+    Values on the minus-side context layer are wrong (its own backward
+    neighbour is outside the window and reads as the zero pad), which is why
+    it is computed and not written.
+
+    ``pec_occupancy`` is the run's own STATIC occupancy — the box cells of it
+    are REPLACED by ``design_occupancy``, everything else is carried. ``None``
+    means no static occupancy (an all-zero background).
+
+    No ``sheet_edge_masks`` argument, unlike :func:`apply_pec_occupancy`: a
+    declared PEC sheet or wire is hard-zeroed by :func:`apply_pec_edges`
+    EARLIER in the step, so the field this window rescales is already 0 at
+    those edges and the sheet term of the grid-wide max changes nothing here
+    (``0 * keep == 0``).
+
+    Periodic axes raise: the wrap makes the window's neighbours non-local, and
+    no lane exercises a periodic occupancy design today.
+    """
+    if any(periodic):
+        raise NotImplementedError(
+            "a design occupancy box (#1183) does not support periodic axes: "
+            f"periodic={tuple(bool(p) for p in periodic)}. The incident rule "
+            "wraps across the seam there, so the box's one-cell window is no "
+            "longer the whole set of cells its occupancy can move. Use "
+            "pec_occupancy_override (the whole-grid traced occupancy).")
+
+    i0, i1, j0, j1, k0, k1 = (int(v) for v in box)
+    lo = (i0, j0, k0)
+    hi = (i1, j1, k1)
+    # Computation window: one cell of context on the minus side.
+    c_lo = tuple(max(v - 1, 0) for v in lo)
+    # Write window: one cell of reach on the plus side. Also the window's
+    # upper bound -- nothing beyond it is computed or written.
+    c_hi = tuple(min(v + 1, n) for v, n in zip(hi, shape))
+    win = tuple(slice(a, b) for a, b in zip(c_lo, c_hi))
+    write = tuple(slice(a, b) for a, b in zip(lo, c_hi))
+    # The write window inside the computation window.
+    inner = tuple(slice(a - c, b - c)
+                  for a, b, c in zip(lo, c_hi, c_lo))
+
+    if pec_occupancy is None:
+        occ = jnp.zeros(tuple(b - a for a, b in zip(c_lo, c_hi)), dtype)
+    else:
+        occ = jnp.clip(jnp.asarray(pec_occupancy)[win].astype(dtype), 0.0, 1.0)
+    box_local = tuple(slice(a - c, b - c) for a, b, c in zip(lo, hi, c_lo))
+    occ = occ.at[box_local].set(
+        jnp.clip(jnp.asarray(design_occupancy).astype(dtype), 0.0, 1.0))
+
+    masks = _volume_occupancy_masks(occ, (False, False, False))
+    return write, tuple(1.0 - m[inner] for m in masks)
+
+
+def apply_pec_occupancy_box(state, prev, write, keep):
+    """Redo the occupancy scaling on one window with a traced ``1 - M`` (#1183).
+
+    ``prev`` is the state BEFORE the grid-wide :func:`apply_pec_occupancy` of
+    this timestep (or the state itself when the run has no static occupancy).
+    The scaling is a pure multiply, so redoing it at the window from the
+    pre-scaling field is exactly what the grid-wide call would have written
+    there with the design occupancy in place — no division, nothing undone.
+    Outside the window the static factor is already the right one, because
+    no design cell reaches that far (:func:`pec_occupancy_box_keep`).
+    """
+    sl = write
+    kx, ky, kz = keep
+    return state._replace(
+        ex=state.ex.at[sl].set(prev.ex[sl] * kx),
+        ey=state.ey.at[sl].set(prev.ey[sl] * ky),
+        ez=state.ez.at[sl].set(prev.ez[sl] * kz),
+    )

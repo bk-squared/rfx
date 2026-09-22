@@ -365,7 +365,8 @@ def update_e_box(state: FDTDState, prev: FDTDState, box: tuple,
                  ca, cb, dx: float,
                  periodic: tuple = (False, False, False),
                  stencil_order: int = 2,
-                 bloch: tuple | None = None) -> FDTDState:
+                 bloch: tuple | None = None,
+                 inv_d: tuple | None = None) -> FDTDState:
     """Redo the E update inside one index box with its own Ca/Cb (#1179).
 
     ``prev`` is the state BEFORE the grid-wide E update of this timestep. It
@@ -386,6 +387,15 @@ def update_e_box(state: FDTDState, prev: FDTDState, box: tuple,
     ``ca`` and ``cb`` are box-shaped (or scalar) and built once, outside the
     time loop, by :func:`e_update_coeffs`.
 
+    ``inv_d`` selects the GRADED-MESH curl (#1183). ``None`` (default) is the
+    uniform :func:`curl_h` at spacing ``dx``; a tuple
+    ``(inv_dx, inv_dy, inv_dz)`` of the E-update inverse spacings is
+    :func:`curl_h_nu` instead, the curl :func:`update_e_nu` uses — so the box
+    reproduces the non-uniform update the same way it reproduces the uniform
+    one. ``dx``, ``periodic``, ``stencil_order`` and ``bloch`` are then
+    unused: the non-uniform lane installs no periodic BC, has no
+    fourth-order stencil and no Bloch phase.
+
     Cost: one extra whole-grid ``curl_h`` per step, the same shared stencil
     helper the E update and the #677 sheet operator use. Slicing H to the box
     plus a halo would avoid it, at the price of a second spelling of the
@@ -396,14 +406,21 @@ def update_e_box(state: FDTDState, prev: FDTDState, box: tuple,
 
     # Same compute/storage dtype policy as update_e -- the two results are
     # compared cell-for-cell by the equality gate, so they must round alike.
+    # update_e_nu's policy is the same expression without the complex branch
+    # (it has no Bloch path), so one spelling serves both lanes.
     _fdtype = state.ex.dtype
     _cdtype = (
         jnp.complex64 if jnp.iscomplexobj(state.ex)
         else jnp.promote_types(state.ex.dtype, jnp.float32)
     )
-    curl_x, curl_y, curl_z = curl_h(
-        prev.hx.astype(_cdtype), prev.hy.astype(_cdtype),
-        prev.hz.astype(_cdtype), dx, periodic, stencil_order, bloch)
+    if inv_d is None:
+        curl_x, curl_y, curl_z = curl_h(
+            prev.hx.astype(_cdtype), prev.hy.astype(_cdtype),
+            prev.hz.astype(_cdtype), dx, periodic, stencil_order, bloch)
+    else:
+        curl_x, curl_y, curl_z = curl_h_nu(
+            prev.hx.astype(_cdtype), prev.hy.astype(_cdtype),
+            prev.hz.astype(_cdtype), *inv_d)
 
     ex = (ca * prev.ex[sl].astype(_cdtype) + cb * curl_x[sl]).astype(_fdtype)
     ey = (ca * prev.ey[sl].astype(_cdtype) + cb * curl_y[sl]).astype(_fdtype)
@@ -542,12 +559,12 @@ def update_e_nu(state: FDTDState, materials: MaterialArrays, dt: float,
     hx = state.hx.astype(_cdtype)
     hy = state.hy.astype(_cdtype)
     hz = state.hz.astype(_cdtype)
-    eps = materials.eps_r * EPS_0
-    sigma = materials.sigma
 
-    sigma_dt_2eps = sigma * dt / (2.0 * eps)
-    ca = (1.0 - sigma_dt_2eps) / (1.0 + sigma_dt_2eps)
-    cb = (dt / eps) / (1.0 + sigma_dt_2eps)
+    # One spelling with the uniform lane and with update_e_box, so a design
+    # box on a graded mesh builds the SAME Ca/Cb from its own permittivity
+    # (#1183). Byte-identical to the inline lines it replaces -- the same
+    # expression in the same order (tests/locks).
+    ca, cb = e_update_coeffs(materials.eps_r, materials.sigma, dt)
 
     # Backward differences with same shape (zero-pad via _shift_bwd)
     curl_x, curl_y, curl_z = curl_h_nu(hx, hy, hz, inv_dx, inv_dy, inv_dz)
