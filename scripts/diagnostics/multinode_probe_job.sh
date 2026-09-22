@@ -7,7 +7,7 @@ export XLA_PYTHON_CLIENT_PREALLOCATE=false MPLBACKEND=Agg JAX_PLATFORMS=cuda
 export MPLCONFIGDIR=/tmp/rfx-multinode-matplotlib
 RFX_RUNS_ROOT=${RFX_RUNS_ROOT:-/root/workspace/claude-workspace/rfx/runs}
 case "$RFX_KIND" in
-  oracle) rank=0; world=1; coordinator=unused ;;
+  oracle|local) rank=0; world=1; coordinator=unused ;;
   two)
     rank=${RANK:?}; world=${WORLD_SIZE:?}; port=${MASTER_PORT:?}
     [ "$world" -eq 2 ]
@@ -90,8 +90,10 @@ run_worker() {
     printf 'unavailable\n' > "$out/node-product-uuid.rank$rank.txt"
   fi
   set -- --nx-per-rank "$RFX_NX" --ny "${RFX_NY:-116}" --nz "${RFX_NZ:-116}" \
-    --steps "${RFX_STEPS:-200}" --repeats "${RFX_REPEATS:-3}" \
+    --steps "${RFX_STEPS:-200}" --repeats "${RFX_REPEATS:-3}" --model "${RFX_MODEL:-vacuum}" \
     --process-count "$world" --process-id "$rank" --local-device-id 0 --output "$out" --tag "$job"
+  # local: one process drives every GPU the preset gives it (e.g. gpu-a6000-2).
+  [ "$RFX_KIND" = local ] && set -- "$@" --local-devices
   if [ "$world" -gt 1 ]; then
     getent hosts "${coordinator%:*}"
     set -- "$@" --coordinator-address "$coordinator"

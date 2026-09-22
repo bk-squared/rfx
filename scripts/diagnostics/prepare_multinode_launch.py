@@ -31,6 +31,9 @@ def main():
     parser.add_argument("--stamp", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument("--oracle", action="append", metavar="PRESET:NX",
                         help="one-GPU plain-path job (repeatable); default gpu-rtx4090:200/400/800")
+    parser.add_argument("--local", action="append", metavar="PRESET:NX_PER_DEVICE",
+                        help="one process driving every GPU of a multi-GPU preset (repeatable)")
+    parser.add_argument("--model", choices=("vacuum", "loaded"), default="vacuum")
     parser.add_argument("--two", action="append", type=int, metavar="NX_PER_RANK",
                         help="two-worker job (repeatable); default 100/200/400")
     parser.add_argument("--two-preset", default="gpu-rtx4090")
@@ -53,7 +56,7 @@ def main():
     if args.job_suffix and not re.fullmatch(r"[A-Za-z0-9_-]+", args.job_suffix):
         parser.error("job-suffix must contain only letters, digits, underscores, hyphens")
     shape_env = {"RFX_NY": str(args.ny), "RFX_NZ": str(args.nz), "RFX_STEPS": str(args.steps),
-                 "RFX_REPEATS": str(args.repeats)}
+                 "RFX_REPEATS": str(args.repeats), "RFX_MODEL": args.model}
     if args.mem_fraction:
         shape_env["XLA_PYTHON_CLIENT_MEM_FRACTION"] = args.mem_fraction
     if not re.fullmatch(r"[0-9a-f]{40}", args.tooling_sha):
@@ -71,15 +74,23 @@ def main():
     # share as nobody, so open them or the oracle's own mkdir is refused.
     oracle_commands = ["#!/bin/sh", "set -eu", command(["mkdir", "-p", artifacts]),
                        command(["chmod", "777", artifacts])]
+    locals_ = []
+    for item in (args.local or []):
+        preset, _, nx_text = item.rpartition(":")
+        if not preset or not nx_text.isdigit():
+            parser.error(f"--local must be PRESET:NX_PER_DEVICE, got {item!r}")
+        locals_.append(("local", preset, int(nx_text)))
+    one_process_jobs = ([] if args.local and args.oracle is None else
+                        [("oracle", preset, nx) for preset, nx in oracles]) + locals_
     pids = []
-    for index, (preset, nx) in enumerate(oracles):
+    for index, (kind, preset, nx) in enumerate(one_process_jobs):
         short = preset.removeprefix("gpu-")
-        suffix = args.job_suffix + (f"-{short}" if explicit_oracles else "")
-        job = f"oracle-{nx}{suffix}"
+        suffix = args.job_suffix + (f"-{short}" if explicit_oracles or kind == "local" else "")
+        job = f"{kind}-{nx}{suffix}"
         template["name"] = f"rfx-multinode-{job}"
         template["resources"]["preset"] = preset
         template["env"].update(RFX_STAMP=args.stamp, RFX_NX=str(nx), RFX_EXPECTED_SHA=args.tooling_sha,
-                               RFX_JOB_SUFFIX=suffix, **shape_env)
+                               RFX_KIND=kind, RFX_JOB_SUFFIX=suffix, **shape_env)
         path = out / f"{job}.yaml"
         path.write_text(yaml.dump(template, sort_keys=False))
         oracle_commands.append(command(["sh", root / "scripts/vessl_submit.sh", path,

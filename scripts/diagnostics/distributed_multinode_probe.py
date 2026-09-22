@@ -165,6 +165,12 @@ def parse_args():
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--tag", default="probe")
+    parser.add_argument("--model", choices=("vacuum", "loaded"), default="vacuum",
+                        help="loaded: lossy substrate, a PEC block, a Debye and a Lorentz block, so the "
+                             "material arrays are not uniform")
+    parser.add_argument("--local-devices", action="store_true",
+                        help="one process drives every local device (e.g. a 2xA6000 node); "
+                             "--nx-per-rank is per device")
     args = parser.parse_args()
     if min(args.process_count, args.steps, args.repeats) < 1:
         parser.error("process-count, steps and repeats must be positive")
@@ -219,9 +225,17 @@ def main():
                                        local_device_ids=[args.local_device_id],
                                        initialization_timeout=900)
             initialized = True
-        assert len(jax.local_devices()) == 1, str(jax.local_devices())
-        assert len(jax.devices()) == args.process_count, str(jax.devices())
+        if args.local_devices:
+            assert args.process_count == 1, "--local-devices is a one-process mode"
+            n_ranks = len(jax.devices())
+        else:
+            assert len(jax.local_devices()) == 1, str(jax.local_devices())
+            assert len(jax.devices()) == args.process_count, str(jax.devices())
+            n_ranks = args.process_count
         assert jax.process_index() == args.process_id
+        nx = args.nx_per_rank * n_ranks
+        data["requested_shape"] = [nx, args.ny, args.nz]
+        data["n_ranks"] = n_ranks
         data["devices"] = memory_stats(jax.devices(), args.process_id)
         root = Path(__file__).resolve().parents[2]
         sys.path.insert(0, str(root))
@@ -237,6 +251,22 @@ def main():
         sim = Simulation(freq_max=15e9, domain=tuple((n - 1) * 1e-3 for n in (nx, args.ny, args.nz)),
                          dx=1e-3, boundary="pec", precision="float32")
         source = (nx * 0.5e-3, args.ny * 0.5e-3, args.nz * 0.5e-3)
+        if args.model == "loaded":
+            from rfx import Box, DebyePole
+            from rfx.materials.lorentz import lorentz_pole
+            lx, ly, lz = ((n - 1) * 1e-3 for n in (nx, args.ny, args.nz))
+            def box(x0, x1, y0, y1, z0, z1):
+                return Box((x0 * lx, y0 * ly, z0 * lz), (x1 * lx, y1 * ly, z1 * lz))
+            sim.add_material("substrate", eps_r=4.4, sigma=0.02)
+            sim.add(box(0, 1, 0, 1, 0, 0.3), material="substrate")
+            sim.add(box(0.1, 0.2, 0.2, 0.3, 0.4, 0.5), material="pec")
+            sim.add_material("debye_block", eps_r=2.0,
+                             debye_poles=[DebyePole(delta_eps=1.0, tau=1e-11)])
+            sim.add(box(0.6, 0.7, 0.6, 0.7, 0.6, 0.7), material="debye_block")
+            sim.add_material("lorentz_block", eps_r=2.0, lorentz_poles=[
+                lorentz_pole(delta_eps=1.0, omega_0=2 * np.pi * 3e9, delta=1e9)])
+            sim.add(box(0.3, 0.4, 0.6, 0.7, 0.6, 0.7), material="lorentz_block")
+        data["model"] = args.model
         sim.add_source(source, "ez", amplitude_kind="field")
         probes = [(nx * fraction * 1e-3, source[1], source[2]) for fraction in (0.25, 0.5, 0.75)]
         for position in probes:
@@ -248,10 +278,11 @@ def main():
                     waveform="default GaussianPulse(f0=7.5e9, bandwidth=0.8)",
                     domain_m=list(sim._domain))
         assert tuple(grid.shape) == (nx, args.ny, args.nz), str(grid.shape)
-        function = run_distributed if args.process_count > 1 else run_single
+        distributed = n_ranks > 1
+        function = run_distributed if distributed else run_single
         data["status"] = "running"
         for index in range(args.repeats + 1):
-            observer = ScanObserver(function, jax, args.process_count > 1)
+            observer = ScanObserver(function, jax, distributed)
             record, trace = measure(sim, args, jax, observer)
             record.update(index=index, warmup=index == 0)
             if trace is not None:
