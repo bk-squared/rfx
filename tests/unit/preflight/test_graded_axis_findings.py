@@ -303,3 +303,219 @@ def test_the_span_inspected_runs_the_way_the_port_launches():
     assert "crosses cells of more than one size" in back, back
     assert "crosses cells of more than one size" not in fwd, fwd
     assert "sits within the source fringing transient (10 cells" in fwd, fwd
+
+
+# ---------------------------------------------------------------------------
+# One absorber, one thickness; and a proximity band the width of its own cells
+# ---------------------------------------------------------------------------
+
+def test_the_two_preflight_numbers_for_one_z_absorber_agree():
+    """Preflight reports the z absorber's thickness twice, and on a graded
+    mesh the two used to disagree.
+
+    The per-face thickness that feeds the MSL and waveguide clearance
+    advisories summed the LEADING profile entries for both faces, so on this
+    board it called the z_hi absorber 8.000 mm where the grid allocates
+    1.600 mm, a factor of 5. The mesh advisory computed its own number a
+    different way. Both now come out of one function, and both match the
+    cells the pad actually holds.
+    """
+    prof = _z_graded_ends(_DX, 0.2 * _DX)
+    sim = _z_graded_sim(prof, 8)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        report = sim.preflight()
+    thick_lo, thick_hi, _ = sim._validate_cfg_compute_cpml_thickness(8 * _DX)
+    assert thick_lo[2] == pytest.approx(8 * float(prof[0]))
+    assert thick_hi[2] == pytest.approx(8 * float(prof[-1]))
+    assert thick_hi[2] == pytest.approx(1.600e-3)
+
+    texts = [str(i) for i in report.issues
+             if getattr(i, "code", None) == "nonuniform_cpml_thin"]
+    assert texts, _codes(report)
+    assert f"CPML z-thickness is {thick_hi[2] * 1e3:.1f}mm" in texts[0], texts[0]
+
+
+def _source_below_z_hi(prof, gap):
+    sim = _z_graded_sim(prof, 8)
+    sim.add_source((0.01, 0.01, float(prof.sum()) - gap), "ez",
+                   amplitude_kind="current")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return sim.preflight()
+
+
+def test_the_proximity_band_is_measured_in_the_cells_it_covers():
+    """The band is two cells wide, measured inward from where the absorber
+    begins, so the cells it covers are the ones at that face.
+
+    z_hi's cells are 200 um here and the boundary scalar is 1 mm. The band is
+    400 um, and a source 300 um below the top wall is inside it. The old read
+    called the band 2 mm and quoted that length for a face whose cells are a
+    fifth of it.
+    """
+    prof = _z_graded_ends(_DX, 0.2 * _DX)
+    report = _source_below_z_hi(prof, 0.3e-3)
+    texts = [str(i) for i in report.issues
+             if getattr(i, "code", None) == "absorber_proximity"]
+    assert texts, _codes(report)
+    assert "(400µm)" in texts[0], texts[0]
+    assert "(2mm)" not in texts[0], texts[0]
+
+
+def test_a_source_outside_the_fine_face_band_is_not_flagged():
+    """Same board, source 1.5 mm below the top wall: more than seven of that
+    face's cells away, and silent. The 2 mm band the old read used would have
+    reported it."""
+    prof = _z_graded_ends(_DX, 0.2 * _DX)
+    report = _source_below_z_hi(prof, 1.5e-3)
+    assert "absorber_proximity" not in _codes(report)
+
+
+# ---------------------------------------------------------------------------
+# The MSL-side standoff: the same number as the S path, on the same cells
+# ---------------------------------------------------------------------------
+
+def _notch_like_board(feed_cells, n_probe_offset, tail=14):
+    """A board whose port runway is refined 2x below the boundary cell.
+
+    ``feed_cells`` indexes the profile, so a caller can put the feed plane
+    inside the uniform runway or part way up the grading ramp.
+    """
+    from rfx.geometry.csg import Box
+    coarse = 2 * _NOTCH_RUNWAY
+    ramp, c = [], coarse
+    while c > _NOTCH_RUNWAY * 1.0001:
+        c = max(c / 1.25, _NOTCH_RUNWAY)
+        ramp.append(c)
+    prof = np.array([coarse] * 14 + ramp + [_NOTCH_RUNWAY] * 60
+                    + ramp[::-1] + [coarse] * tail, float)
+    h, w = _NOTCH_H_SUB, 2 * _NOTCH_H_SUB
+    lx, ly = float(prof.sum()), 10 * _NOTCH_H_SUB
+    sim = Simulation(
+        freq_max=5e9, domain=(lx, ly, h + 1.5e-3), dx=coarse,
+        cpml_layers=8, dx_profile=prof,
+        boundary=BoundarySpec(x="cpml", y="cpml",
+                              z=Boundary(lo="pec", hi="cpml")))
+    sim.add_material("sub", eps_r=3.66)
+    sim.add(Box((0, 0, 0), (lx, ly, h)), material="sub")
+    y_c = ly / 2.0
+    sim.add(Box((0, y_c - w / 2, h), (lx, y_c + w / 2, h + coarse)),
+            material="pec")
+    sim.add_msl_port(position=(float(np.sum(prof[:feed_cells])), y_c, 0),
+                     width=w, height=h, direction="+x", impedance=50.0,
+                     n_probe_offset=n_probe_offset, n_probe_spacing=3,
+                     n_probes=5)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return sim.preflight(), len(ramp)
+
+
+def test_the_msl_standoff_advisory_counts_the_runway_cell():
+    """The same port, judged by the microstrip check and by the S-parameter
+    routing check, must get the same answer (issue #823's invariant).
+
+    The S path moved to the runway's own cells; this one still read the
+    boundary scalar, so it asked for 5 cells where the physics asks for 10 and
+    passed an offset that puts probe 0 at 889 um from the feed, well inside
+    the 1.270 mm fringing transient.
+    """
+    report, n_ramp = _notch_like_board(14 + 20, 7)
+    texts = [str(i) for i in report.issues if "OWN feed plane" in str(i)]
+    assert texts, _codes(report)
+    assert "standoff of 10 cells" in texts[0], texts[0]
+    assert "889µm" in texts[0], texts[0]
+
+
+def test_a_generous_msl_offset_on_the_same_runway_is_not_flagged():
+    """The floor must not fire on an offset that clears it."""
+    report, _ = _notch_like_board(14 + 20, 14)
+    assert not [str(i) for i in report.issues if "OWN feed plane" in str(i)]
+
+
+def test_the_msl_interval_refuses_a_standoff_that_crosses_a_ramp():
+    """The advertised compliant interval is a range of cell COUNTS, and a
+    count names one distance only where the cells are equal.
+
+    With the feed two cells up the grading ramp the standoff runs over cells
+    of several sizes, so the advisory says so instead of printing a range.
+    Moved into the uniform runway, the same board advertises [10, 33] cells,
+    whose lower edge is the runway reading; the boundary scalar gave 5.
+    """
+    on_ramp, _ = _notch_like_board(16, 60, tail=4)
+    texts = [str(i) for i in on_ramp.issues
+             if "past the domain edge" in str(i)]
+    assert texts, _codes(on_ramp)
+    assert "does not name one distance here" in texts[0], texts[0]
+    assert "compliant n_probe_offset interval" not in texts[0], texts[0]
+
+    in_runway, n_ramp = _notch_like_board(14 + 20, 60, tail=4)
+    texts = [str(i) for i in in_runway.issues
+             if "past the domain edge" in str(i)]
+    assert texts, _codes(in_runway)
+    assert "compliant n_probe_offset interval ≈ [10," in texts[0], texts[0]
+
+
+def _stub_board(feed_cells, gap_m=3.0e-3):
+    """Through-line with an open stub branched off it, on a runway refined 2x
+    below the boundary cell. ``feed_cells`` indexes the profile, so the feed
+    can sit inside the uniform runway or one cell up the grading ramp."""
+    from rfx.geometry.csg import Box
+    coarse = 2 * _NOTCH_RUNWAY
+    ramp, c = [], coarse
+    while c > _NOTCH_RUNWAY * 1.0001:
+        c = max(c / 1.25, _NOTCH_RUNWAY)
+        ramp.append(c)
+    prof = np.array([coarse] * 8 + ramp + [_NOTCH_RUNWAY] * 110
+                    + ramp[::-1] + [coarse] * 8, float)
+    edges = np.concatenate([[0.0], np.cumsum(prof)])
+    lx, h, w = float(prof.sum()), _NOTCH_H_SUB, 2 * _NOTCH_H_SUB
+    stub = 8e-3
+    ly = w + 4 * (2 * h + 8 * coarse) + max(14e-3, stub + 2e-3)
+    sim = Simulation(
+        freq_max=9e9, domain=(lx, ly, h + 1.5e-3), dx=coarse, cpml_layers=8,
+        boundary=BoundarySpec(x="cpml", y="cpml",
+                              z=Boundary(lo="pec", hi="cpml")),
+        dx_profile=prof)
+    sim.add_material("ro", eps_r=3.66)
+    sim.add(Box((0, 0, 0), (lx, ly, h)), material="ro")
+    y_tr = (2 * h + 8 * coarse) + w / 2
+    sim.add(Box((0, y_tr - w / 2, h), (lx, y_tr + w / 2, h)), material="pec")
+    feed = float(edges[feed_cells])
+    x_stub = float(edges[min(feed_cells + 32, len(prof))]) + gap_m
+    sim.add(Box((x_stub - w / 2, y_tr + w / 2, h),
+                (x_stub + w / 2, y_tr + w / 2 + stub, h)), material="pec")
+    sim.add_msl_port(position=(feed, y_tr, 0), width=w, height=h,
+                     direction="+x", impedance=50.0, n_probe_offset=20,
+                     n_probe_spacing=3, n_probes=5)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        report = sim.preflight()
+    texts = [str(i) for i in report.issues
+             if "strong reflector candidate" in str(i)]
+    assert texts, _codes(report)
+    return texts[0]
+
+
+def test_the_reflector_interval_lower_edge_is_the_runway_reading():
+    """Check 4 advertises the same compliant interval check 4a does, and its
+    lower edge IS the source-fringing standoff (issue #823).
+
+    A stub branched off the line 3 mm past the deepest probe is inside the
+    quarter-guide-wavelength clearance, so the advisory fires and prints the
+    interval. On this runway the standoff is 10 cells of 127 um; the boundary
+    scalar would have advertised 5, an offset that puts probe 0 half way into
+    the fringing transient.
+    """
+    text = _stub_board(8 + 4 + 4)
+    assert "compliant n_probe_offset interval \u2248 [10," in text, text
+
+
+def test_the_reflector_interval_refuses_a_feed_on_the_ramp():
+    """Same board, feed one cell up the grading ramp: the standoff runs over
+    cells of several sizes, so no single offset in CELLS names the 1.27 mm the
+    physics asks for, and the advisory says that instead of printing a range.
+    """
+    text = _stub_board(9)
+    assert "does not name one distance here" in text, text
+    assert "compliant n_probe_offset interval" not in text, text

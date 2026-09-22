@@ -69,6 +69,9 @@ from rfx.preflight._common import (
     _ABSORBER_PROXIMITY_CELLS,
     _coord_near_absorber,
     PreflightWarning,
+    profile_boundary_cell,
+    profile_cell_at,
+    profile_span_is_uniform,
 )
 
 
@@ -723,7 +726,23 @@ def msl_absorber_compliant_offset_max(
     names, so the caller passes that axis's domain extent and CPML
     thicknesses.
     """
-    from rfx.sources.msl_port import msl_probe_x_coords_n as _probe_x_coords_n
+    from rfx.sources.msl_port import (
+        msl_axis_roles as _axis_roles,
+        msl_probe_x_coords_n as _probe_x_coords_n,
+    )
+
+    # The proximity band is measured inward from where the absorber begins,
+    # so its width is the cell AT THAT FACE -- the absorber pad replicates
+    # it -- and the two faces need not agree on a profiled axis. Read off
+    # the grid this function is already walking, through the step-0a
+    # accessor; ``dx`` is the answer on a uniform grid and the fallback for
+    # anything that cannot answer (G17).
+    _prop_axis = _axis_roles(port.direction)[0]
+    try:
+        _cell_lo = float(grid.boundary_cell(_prop_axis, "lo"))
+        _cell_hi = float(grid.boundary_cell(_prop_axis, "hi"))
+    except (AttributeError, TypeError, ValueError):
+        _cell_lo = _cell_hi = float(dx)
 
     off = guess_hi
     while off >= off_lo:
@@ -734,7 +753,10 @@ def msl_absorber_compliant_offset_max(
         x_deep_candidate = ladder[-1]
         if not (
             _coord_in_absorber(x_deep_candidate, domain_x, ct_lo, ct_hi)
-            or _coord_near_absorber(x_deep_candidate, domain_x, ct_lo, ct_hi, dx)
+            or _coord_near_absorber(x_deep_candidate, domain_x, ct_lo, 0.0,
+                                    _cell_lo)
+            or _coord_near_absorber(x_deep_candidate, domain_x, 0.0, ct_hi,
+                                    _cell_hi)
         ):
             return off
         off -= 1
@@ -1124,6 +1146,35 @@ def _check_msl_port_geometry(
         h_sub = float(pe.height)
         _declared_ground = float(pe.position[_inr])
         _declared_trace = _declared_ground + h_sub
+
+        # Every quantity below that counts cells, or turns a cell count back
+        # into a length, reads the cells AT ITS OWN SITE (G17). The
+        # source-fringing standoff is counted on the cell the feed plane
+        # sits in; the absorber proximity band is measured inward from where
+        # the absorber begins, so its width is the cell at THAT face, and
+        # the two faces need not agree. ``dx`` remains the answer on an
+        # unprofiled axis, which is every axis of a uniform mesh.
+        _prop_profile = (self._dx_profile, self._dy_profile,
+                         self._dz_profile)[_ip]
+        _runway_cell = profile_cell_at(dx, _prop_profile, x_feed)
+        _abs_cell_lo = profile_boundary_cell(dx, _prop_profile, "lo")
+        _abs_cell_hi = profile_boundary_cell(dx, _prop_profile, "hi")
+        # Issue #823's invariant: checks 4, 4a and 5 and
+        # ``_validate_forward_sparameter_request`` must not disagree about
+        # the same port, so all four read this one number.
+        _nf_std_cells = msl_source_near_field_standoff_cells(
+            h_sub, _runway_cell)
+        # A count in cells names one distance only where the cells it counts
+        # are equal. Across a grading ramp it does not, and the advertised
+        # interval says so instead of quoting a number.
+        _standoff_on_one_zone = profile_span_is_uniform(
+            dx, _prop_profile, x_feed,
+            _nf_std_cells * _runway_cell * float(_dir_sign))
+        _ramp_txt = (
+            "the source-fringing standoff crosses cells of more than one "
+            f"size on the {_prop_ax} runway, so a probe-offset in CELLS "
+            "does not name one distance here"
+        )
         _absolute_faces = (
             f"declared ground {_norm_ax}={_declared_ground*1e6:.1f}µm and "
             f"trace {_norm_ax}={_declared_trace*1e6:.1f}µm"
@@ -1539,16 +1590,18 @@ def _check_msl_port_geometry(
             # cleanly without its own re-derivation. Revisit with
             # the same walk-down technique if this interval is ever
             # found to mislead the same way.
-            d_feed_to_refl = nearest_d + (n_off + (n_pr - 1) * n_sp) * dx
-            off_max = int((d_feed_to_refl - min_probe_clear) / dx) - (n_pr - 1) * n_sp
+            d_feed_to_refl = nearest_d + (n_off + (n_pr - 1) * n_sp) * _runway_cell
+            off_max = (int((d_feed_to_refl - min_probe_clear) / _runway_cell)
+                       - (n_pr - 1) * n_sp)
             # Issue #823: the lower edge of the compliant interval IS
-            # the near-field standoff; one helper so checks 4, 4a, 5 and
+            # the near-field standoff; one number so checks 4, 4a, 5 and
             # _validate_forward_sparameter_request cannot disagree about
             # the same port. Numerically identical to the max(3, round(
             # 5*h/dx)) this line spelled out before.
-            _hsub_cells = msl_source_near_field_standoff_cells(h_sub, dx)
+            _hsub_cells = _nf_std_cells
             interval_txt = (
-                f"compliant n_probe_offset interval ≈ "
+                _ramp_txt if not _standoff_on_one_zone
+                else f"compliant n_probe_offset interval ≈ "
                 f"[{_hsub_cells}, {off_max}] cells"
                 if off_max >= _hsub_cells
                 else "no compliant n_probe_offset exists on this feed "
@@ -1602,11 +1655,13 @@ def _check_msl_port_geometry(
         # off the scalar ``dx`` parameter, so not a new limitation.
         _domain_x = float(domain[_ip])
         _deep_idx = n_pr - 1
-        _abs_margin = _ABSORBER_PROXIMITY_CELLS * dx
+        _abs_margin_lo = _ABSORBER_PROXIMITY_CELLS * _abs_cell_lo
+        _abs_margin_hi = _ABSORBER_PROXIMITY_CELLS * _abs_cell_hi
+        _abs_margin = _abs_margin_hi if _dir_sign > 0 else _abs_margin_lo
         _abs_headroom = (
             _domain_x - x_feed if _dir_sign > 0 else x_feed
         )
-        _abs_off_lo = msl_source_near_field_standoff_cells(h_sub, dx)
+        _abs_off_lo = _nf_std_cells
         if _msl_grid is not None:
             # Issue #510 review (BLOCKING 1): the advertised endpoint
             # is now VERIFIED against the real predicate via a
@@ -1617,7 +1672,8 @@ def _check_msl_port_geometry(
             # +4 cells of slack) -- only the walked-down RESULT
             # below is ever reported.
             _abs_guess_hi = (
-                int(math.ceil(_abs_headroom / dx)) - (n_pr - 1) * n_sp + 4
+                int(math.ceil(_abs_headroom / _runway_cell))
+                - (n_pr - 1) * n_sp + 4
             )
             _abs_off_max = msl_absorber_compliant_offset_max(
                 _msl_grid, _mp,
@@ -1630,10 +1686,12 @@ def _check_msl_port_geometry(
             # estimate -- imprecise (issue #510 review, BLOCKING 1)
             # but better than no guidance at all.
             _abs_off_max = (
-                int((_abs_headroom - _abs_margin) / dx) - (n_pr - 1) * n_sp
+                int((_abs_headroom - _abs_margin) / _runway_cell)
+                - (n_pr - 1) * n_sp
             )
         _abs_interval_txt = (
-            f"compliant n_probe_offset interval ≈ "
+            _ramp_txt if not _standoff_on_one_zone
+            else f"compliant n_probe_offset interval ≈ "
             f"[{_abs_off_lo}, {_abs_off_max}] cells"
             if _abs_off_max is not None and _abs_off_max >= _abs_off_lo
             else "no compliant n_probe_offset exists on this feed "
@@ -1656,8 +1714,11 @@ def _check_msl_port_geometry(
                 ),
                 stacklevel=3,
             )
-        elif _coord_near_absorber(
-            x_deep, _domain_x, cpml_thick_lo[_ip], cpml_thick_hi[_ip], dx
+        elif (
+            _coord_near_absorber(x_deep, _domain_x, cpml_thick_lo[_ip], 0.0,
+                                 _abs_cell_lo)
+            or _coord_near_absorber(x_deep, _domain_x, 0.0,
+                                    cpml_thick_hi[_ip], _abs_cell_hi)
         ):
             # Issue #510 review round-2 (nit B): this site was missed
             # when the "just past which" rephrasing (see the matching
@@ -1765,10 +1826,10 @@ def _check_msl_port_geometry(
         # REPORT-ONLY: no gate, no refusal. Same check family, same
         # ``code=`` slug as checks 1/2/2b/2c/3/4 (the check-2c / #752
         # precedent) — a new SITE, not a new advisory kind.
-        _nf_cells = msl_source_near_field_standoff_cells(h_sub, dx)
+        _nf_cells = _nf_std_cells
         _nf_off = pe.n_probe_offset
         if _nf_off is not None and int(_nf_off) < _nf_cells:
-            _nf_realized = int(_nf_off) * dx
+            _nf_realized = int(_nf_off) * _runway_cell
             _w.warn(
                 PreflightWarning(
                     f"MSL port '{pe.name}' (direction={pe.direction!r}): "
@@ -1777,7 +1838,8 @@ def _check_msl_port_geometry(
                     f"({_nf_realized / h_sub:.2f}·h_sub) from this port's "
                     f"OWN feed plane, inside the source near-field "
                     f"standoff of {_nf_cells} cells "
-                    f"({_fmt_len(_nf_cells * dx)} = 5·h_sub, the issue-#80 "
+                    f"({_fmt_len(_nf_cells * _runway_cell)} = 5·h_sub, "
+                    f"the issue-#80 "
                     f"Fix B constant add_msl_port's auto offset already "
                     f"floors to). Within a few substrate thicknesses of "
                     f"the feed the launched field is not the guided mode "

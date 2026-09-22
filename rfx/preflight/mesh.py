@@ -89,7 +89,6 @@ from rfx.core.jax_utils import is_tracer
 from rfx.geometry.csg import Box
 
 from rfx.preflight._common import (
-    profile_boundary_cell,
     _fmt_freq,
     _fmt_len,
     PreflightConfigError,
@@ -1070,21 +1069,21 @@ def _validate_cfg_nonuniform_limitations(
         if (self._boundary == "cpml"
                 and _z_layers > 0
                 and not is_tracer(self._dz_profile)):
-            # The absorber on a face sits on copies of THAT face's boundary
-            # cell -- ``_pad_profile`` fills each pad with the profile's own
-            # end -- so its thickness is that cell times the face's own layer
-            # count. This used to sum the first ``max(lo, hi)`` INTERIOR
-            # cells, which is neither face's absorber: wrong cells, and the
-            # hi face measured from the lo end. Thinnest face is reported,
-            # since that is the one whose absorption is worst (G17).
-            # A face that allocates no absorber (PEC/PMC/periodic) has no
-            # thickness to compare, and including its 0 would resurrect the
-            # #647 false positive. Only absorbing faces are measured.
+            # One absorber, one thickness: this reads the per-face numbers
+            # from ``_validate_cfg_compute_cpml_thickness`` rather than
+            # repeating the expression, so preflight cannot report two
+            # thicknesses for the same z absorber. It used to sum the first
+            # ``max(lo, hi)`` INTERIOR cells, which is neither face's
+            # absorber, and measured the hi face from the lo end (G17).
+            # The thinnest face is reported, since that is the one whose
+            # absorption is worst. A face that allocates no absorber
+            # (PEC/PMC/periodic) has no thickness to compare, and including
+            # its 0 would resurrect the #647 false positive.
+            _ct_lo, _ct_hi, _ = self._validate_cfg_compute_cpml_thickness(
+                cpml_thickness)
             _z_thick_by_face = {
-                _side: (_face_layers[f"z_{_side}"]
-                        * profile_boundary_cell(self._dx, self._dz_profile,
-                                                _side))
-                for _side in ("lo", "hi")
+                _side: _thick[2]
+                for _side, _thick in (("lo", _ct_lo), ("hi", _ct_hi))
                 if _face_layers[f"z_{_side}"] > 0
             }
             _thin_side = min(_z_thick_by_face, key=_z_thick_by_face.get)
