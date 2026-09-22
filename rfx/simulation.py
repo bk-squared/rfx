@@ -23,6 +23,7 @@ from rfx.core.yee import (
     precompute_coeffs, update_he_fast,
 )
 from rfx.boundaries.pec import (
+    apply_pec,  # noqa: F401 -- re-exported; tests import it from here (not used by the step since #1164)
     resolve_wall_faces,
     apply_pec_edges,
     apply_pec_faces,
