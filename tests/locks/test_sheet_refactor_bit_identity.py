@@ -63,6 +63,7 @@ from rfx.core.yee import (
     _shift_bwd,
     curl_h,
     curl_h_nu,
+    edge_averaged_materials,
     init_state,
     update_e,
     update_e_nu,
@@ -223,7 +224,17 @@ def test_update_kernels_bit_identity_via_curl_helpers():
     gate was run as a SHA-256 digest comparison of update_e / update_e_nu /
     apply_pec_mask outputs on fixed random fixtures before and after the
     #677 code motion — all seven digests unchanged (recorded in the #677 PR
-    body). The helper-level tests above stay byte-exact (eager vs eager)."""
+    body). The helper-level tests above stay byte-exact (eager vs eager).
+
+    RE-PINNED 2026-09-23, root cause #1210: the hand-run below used to build
+    ONE cell-centred (Ca, Cb) and apply it to all three components. That is
+    the defect #1210 fixed — a Yee E component lies on an edge shared by four
+    cells and takes the mean of their eps and sigma — and the fixture here is
+    a RANDOM material, so every cell is an interface and the lock moved by up
+    to 1.6x relative. The reference is now the per-component rule; the
+    coefficient formula it feeds (``e_update_coeffs``) is unchanged, which is
+    the part this lock exists to watch. On a homogeneous fixture the two
+    references are bit-identical, so nothing else in this file moved."""
     import jax
 
     rng = np.random.default_rng(681)
@@ -234,14 +245,19 @@ def test_update_kernels_bit_identity_via_curl_helpers():
 
     @jax.jit
     def ref_uniform(st, mats):
-        eps = mats.eps_r * EPS_0
-        loss = mats.sigma * dt / (2.0 * eps)
-        ca = (1.0 - loss) / (1.0 + loss)
-        cb = (dt / eps) / (1.0 + loss)
-        cx, cy, cz = curl_h(st.hx, st.hy, st.hz, dx, per, 2, None)
-        return (ca * st.ex + cb * cx,
-                ca * st.ey + cb * cy,
-                ca * st.ez + cb * cz)
+        (eps_x, eps_y, eps_z), (sig_x, sig_y, sig_z) = edge_averaged_materials(
+            mats.eps_r, mats.sigma, per)
+        out = []
+        for e_r, s_v, fld, curl in zip(
+                (eps_x, eps_y, eps_z), (sig_x, sig_y, sig_z),
+                (st.ex, st.ey, st.ez),
+                curl_h(st.hx, st.hy, st.hz, dx, per, 2, None)):
+            eps = e_r * EPS_0
+            loss = s_v * dt / (2.0 * eps)
+            ca = (1.0 - loss) / (1.0 + loss)
+            cb = (dt / eps) / (1.0 + loss)
+            out.append(ca * fld + cb * curl)
+        return tuple(out)
 
     ref = ref_uniform(st, mats)
     got = update_e(st, mats, dt, dx, periodic=per)
@@ -254,14 +270,20 @@ def test_update_kernels_bit_identity_via_curl_helpers():
 
     @jax.jit
     def ref_nu(st, mats, inv_dx, inv_dy, inv_dz):
-        eps = mats.eps_r * EPS_0
-        loss = mats.sigma * dt / (2.0 * eps)
-        ca = (1.0 - loss) / (1.0 + loss)
-        cb = (dt / eps) / (1.0 + loss)
-        cx, cy, cz = curl_h_nu(st.hx, st.hy, st.hz, inv_dx, inv_dy, inv_dz)
-        return (ca * st.ex + cb * cx,
-                ca * st.ey + cb * cy,
-                ca * st.ez + cb * cz)
+        # The graded-mesh lane installs no periodic BC (#1210 docstring).
+        (eps_x, eps_y, eps_z), (sig_x, sig_y, sig_z) = edge_averaged_materials(
+            mats.eps_r, mats.sigma, (False, False, False))
+        out = []
+        for e_r, s_v, fld, curl in zip(
+                (eps_x, eps_y, eps_z), (sig_x, sig_y, sig_z),
+                (st.ex, st.ey, st.ez),
+                curl_h_nu(st.hx, st.hy, st.hz, inv_dx, inv_dy, inv_dz)):
+            eps = e_r * EPS_0
+            loss = s_v * dt / (2.0 * eps)
+            ca = (1.0 - loss) / (1.0 + loss)
+            cb = (dt / eps) / (1.0 + loss)
+            out.append(ca * fld + cb * curl)
+        return tuple(out)
 
     ref = ref_nu(st, mats, *inv)
     got = jax.jit(update_e_nu)(st, mats, dt, *inv)
