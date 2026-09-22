@@ -35,6 +35,12 @@ from rfx.boundaries.pec import (
     realized_pec_edge_masks,
 )
 from rfx.core.jax_utils import is_tracer
+from rfx._grid_metric import (
+    DECLARED_SPAN_TOL_M,
+    axis_name as _axis_name,
+    dual_spacings_from_cells as _dual_spacings_from_cells,
+    normalize_axis as _normalize_axis,
+)
 
 C0 = 1.0 / np.sqrt(float(EPS_0) * float(MU_0))
 
@@ -116,6 +122,213 @@ class NonUniformGrid(NamedTuple):
         callers subtract from array indices to recover user coords."""
         return (self.pad_x_lo, self.pad_y_lo, self.pad_z_lo)
 
+    # ------------------------------------------------------------------
+    # Grid metric interface (step 0a, design note
+    # docs/design_notes/20260922_nu_grid_core_predeclaration.md decision 2).
+    #
+    # THE CONVENTION -- index origin, the primal/dual rule, the end entries
+    # of ``inv_d_e`` / ``inv_d_h``, and which consumer is entitled to which
+    # metric -- is written once, in ``rfx/_grid_metric.py``. Read that module
+    # before adding a metric formula at a call site.
+    #
+    # ``rfx.grid.Grid`` carries the same seven methods with the same meaning,
+    # so a consumer can hold either class and never branch on its type. 0a
+    # adds the interface only: no consumer moves onto it here, and the scalar
+    # ``dx`` / ``dy`` fields keep their present meaning (the BOUNDARY cell).
+    #
+    # Source of truth (decision 1): the float64 cell arrays
+    # ``dx_arr_f64`` / ``dy_arr_f64`` / ``dz_f64``. ``make_nonuniform_grid``
+    # fills all three for every CONCRETE axis, and re-checks that the cells
+    # it realized between the declared domain faces sum to the declared
+    # profile. Nodes, duals and both inverse-metric arrays are derived from
+    # the cells; none of them is stored independently.
+    # ------------------------------------------------------------------
+
+    def _axis_layout(self, axis) -> tuple[int, int, int, int]:
+        """``(axis_index, n, pad_lo, pad_hi)`` for a normalized axis."""
+        ax = _normalize_axis(axis)
+        n = (self.nx, self.ny, self.nz)[ax]
+        pad_lo = (self.pad_x_lo, self.pad_y_lo, self.pad_z_lo)[ax]
+        pad_hi = (self.pad_x_hi, self.pad_y_hi, self.pad_z_hi)[ax]
+        return ax, int(n), int(pad_lo), int(pad_hi)
+
+    def _axis_store(self, axis):
+        """The solver-facing float32 cell store for ``axis``."""
+        return (self.dx_arr, self.dy_arr, self.dz)[_normalize_axis(axis)]
+
+    def _axis_exact(self, axis):
+        """The float64 cell spine for ``axis``, or ``None`` if absent."""
+        return (self.dx_arr_f64, self.dy_arr_f64,
+                self.dz_f64)[_normalize_axis(axis)]
+
+    def is_traced(self, axis) -> bool:
+        """Whether ``axis``'s cell widths are a JAX tracer (decision 6).
+
+        True on the mesh-as-design-variable path, where the profile is a
+        trace leaf and has no host copy. A traced axis still steps the solver
+        and still differentiates; what it cannot do is answer a host-side
+        structural question, which is why ``index_of`` refuses on it.
+        """
+        return bool(is_tracer(self._axis_store(axis)))
+
+    def cells(self, axis) -> np.ndarray:
+        """PRIMAL cell widths along ``axis``, full padded length ``n``.
+
+        float64 on the host for a concrete axis -- the float64 spine, which
+        is the source of truth (decision 1), NOT the float32 solver store.
+        A traced axis returns its tracer unchanged, in jnp.
+
+        The last entry is the bounding-node duplicate (#562): it supplies the
+        ``N+1``-th E node and carries no physical extent, so ``sum(cells)``
+        overshoots the realized wall-to-wall extent by one cell. Read extents
+        from ``node_of`` or ``interior_cells``.
+
+        A grid built by hand (the ``NonUniformGrid(...)`` constructor called
+        directly, rather than ``make_nonuniform_grid``) may carry no spine.
+        It then gets the float32 store widened back to float64 AND an
+        ``ExactNodeSpineMissingWarning``, the same degraded line and the same
+        warning ``coords_from_nonuniform_grid`` emits -- silently falling
+        back is the #802 realization with no trace of why.
+        """
+        store = self._axis_store(axis)
+        if is_tracer(store):
+            return store
+        exact = self._axis_exact(axis)
+        if exact is None or np.asarray(exact).dtype != np.float64:
+            import warnings
+            from rfx.geometry.rasterize_grid import (
+                ExactNodeSpineMissingWarning,
+            )
+            warnings.warn(
+                f"NonUniformGrid axis {_axis_name(axis)!r} has no float64 "
+                "cell spine; cells() widened the float32 store instead. Node "
+                "positions derived from it carry the pre-#802 quantization "
+                "(~1e-10 m), which flips half-open inclusion at node-aligned "
+                "faces. Build the grid with make_nonuniform_grid.",
+                ExactNodeSpineMissingWarning, stacklevel=2)
+            return np.asarray(store, dtype=np.float64)
+        return np.asarray(exact, dtype=np.float64)
+
+    def duals(self, axis) -> np.ndarray:
+        """DUAL (E-node) spacings along ``axis``.
+
+        ``dual[0] = d[0]``, ``dual[k] = (d[k-1]+d[k])/2`` -- the control
+        volume an E node's material acts over, and the metric the NU E update
+        divides its curl by. float64 for a concrete axis; a traced axis goes
+        through ``e_node_dual_spacings`` so the gradient survives.
+
+        Reproduces ``e_node_dual_spacing_at(grid.cells(axis), k)`` for every
+        ``k`` bit for bit. Against the float32 solver store the two spellings
+        agree only to float32 roundoff -- that gap is the store's, not the
+        rule's, and it is why the accessor reads the spine.
+        """
+        d = self.cells(axis)
+        if is_tracer(d):
+            return e_node_dual_spacings(d)
+        return _dual_spacings_from_cells(d)
+
+    def index_of(self, axis, x: float) -> int:
+        """Padded index of the node nearest physical coordinate ``x``.
+
+        Refuses on a traced axis (decision 6, closes G9). The existing
+        ``position_to_index`` answers there by substituting a NOMINAL uniform
+        mesh of ``fallback_dx`` cells and returns an index for a mesh the
+        solver is not running -- silently the wrong cell whenever the traced
+        profile is graded. That fallback stays in ``position_to_index`` for
+        0a because consumers still call it; 0b retires it as each consumer
+        moves onto this accessor.
+
+        On a concrete axis this is the arithmetic ``_axis_position_to_index``
+        already performs -- cumulative interior cell edges, nearest edge,
+        plus ``pad_lo`` -- evaluated on the float64 spine. Like that
+        function, and unlike ``Grid.index_of``, it CLAMPS: a coordinate
+        outside the domain returns the nearest face index rather than
+        raising. That asymmetry between the two lanes is inherited, not
+        introduced here.
+        """
+        ax, _n, pad_lo, pad_hi = self._axis_layout(axis)
+        if self.is_traced(ax):
+            raise ValueError(
+                f"index_of: axis {_axis_name(ax)!r} carries a TRACED cell "
+                "profile (mesh-as-design-variable), so a physical coordinate "
+                "cannot be resolved to an index on the host. The nominal "
+                "uniform fallback the old position_to_index used returns an "
+                "index for a mesh the solver is not running (gap G9). "
+                "Resolve structural positions before tracing the mesh, or "
+                "pass the index directly."
+            )
+        d = self.cells(ax)
+        interior = interior_cells(d, pad_lo, pad_hi)
+        edges = np.insert(np.cumsum(interior), 0, 0.0)
+        return int(np.argmin(np.abs(edges - float(x)))) + pad_lo
+
+    def node_of(self, axis, i: int):
+        """Physical coordinate of the E node at padded index ``i``.
+
+        Origin at the first interior node, so ``node_of(axis, pad_lo) ==
+        0.0``. Derived from the cells by cumulative sum, except that a
+        CONSTANT axis takes the closed form ``(i - pad_lo) * d[0]`` -- which
+        is what keeps a uniform-valued NU axis bit-identical to the uniform
+        lane's own node line (#807). Both branches are
+        ``_axis_node_positions``, so this equals
+        ``coords_from_nonuniform_grid(grid).<axis>[i]`` bit for bit.
+
+        A traced axis returns a traced scalar (jnp cumulative sum), the same
+        arithmetic ``coords_from_nonuniform_grid`` runs in-trace.
+        """
+        ax, n, pad_lo, _pad_hi = self._axis_layout(axis)
+        idx = int(i)
+        if not (0 <= idx < n):
+            raise IndexError(
+                f"padded index {idx} is outside axis {_axis_name(ax)!r}, "
+                f"which has {n} entries"
+            )
+        d = self.cells(ax)
+        if is_tracer(d):
+            d_j = jnp.asarray(d)
+            cum = jnp.concatenate(
+                [jnp.zeros((1,), dtype=d_j.dtype), jnp.cumsum(d_j)])
+            return cum[idx] - cum[pad_lo]
+        from rfx.geometry.rasterize_grid import _axis_node_positions
+        return float(_axis_node_positions(d, pad_lo)[idx])
+
+    def boundary_cell(self, axis, side: str):
+        """The cell width at the ``"lo"`` or ``"hi"`` face of ``axis``.
+
+        The number a CPML profile is entitled to calibrate against, per face.
+        ``make_nonuniform_grid`` pins the first and last interior cells of x
+        and y to the scalar ``dx`` / ``dy`` and pads each face with copies of
+        them, so on a built grid both sides equal that scalar; z has no
+        scalar and this is the only way to ask.
+
+        ``cpml.py`` fills all six of its per-face slots from the ONE scalar
+        today (G11). 0b replaces that with this accessor.
+        """
+        if side not in ("lo", "hi"):
+            raise ValueError(f"side must be 'lo' or 'hi', got {side!r}")
+        d = self.cells(axis)
+        entry = d[0] if side == "lo" else d[-1]
+        return entry if is_tracer(d) else float(entry)
+
+    def is_constant(self, axis) -> bool:
+        """Whether every cell on ``axis`` has the same width.
+
+        The predicate decision 4 selects the uniform kernel on, instead of
+        "was a profile given" (``rfx/api/_mesh.py:152-156``).
+
+        A TRACED axis returns ``False``. Constancy is not decidable on the
+        host there, and ``False`` is the safe direction: it routes the axis
+        to the non-uniform kernel, which is correct for a constant mesh too,
+        whereas ``True`` would hand a possibly graded mesh to a kernel that
+        folds one scalar.
+        """
+        d = self._axis_store(axis)
+        if is_tracer(d):
+            return False
+        arr = self.cells(axis)
+        return bool(arr.size and np.all(arr == arr[0]))
+
+
 
 
 
@@ -187,6 +400,64 @@ def interior_cells(d_full, pad_lo: int, pad_hi: int):
     requested domain face.
     """
     return d_full[pad_lo : len(d_full) - pad_hi - 1]
+
+
+def assert_cells_span_declared_profile(d_full, pad_lo, pad_hi, profile,
+                                       axis: str = "?") -> None:
+    """Refuse a padded cell array whose interior does not add up to the
+    profile that was declared (step 0a, decision 1).
+
+    The realized interior of a padded array is
+    ``[lo pad | interior | hi pad | bounding-node duplicate]``, so the cells
+    that carry physical extent are ``interior_cells(d_full, pad_lo, pad_hi)``
+    and nothing else. Their count must equal the declared profile's, and
+    their sum must equal the declared profile's sum to
+    ``DECLARED_SPAN_TOL_M`` (1e-12 m).
+
+    That tolerance is the one ``make_band_profile`` already meets between any
+    two DECLARED LINES it was given: it returns float64 cells whose running
+    sum lands on every declared edge to 1e-12 m, and whose total equals
+    ``edges[-1] - edges[0]`` to the same figure. This grid-side check is the
+    re-check of that guarantee after padding and the bounding node have been
+    applied -- the step where the #562 class of error lives, and the step the
+    band builder cannot see.
+
+    ``make_nonuniform_grid`` takes a flat profile, not a set of declared
+    lines, so the per-LINE form of the check has no input here and this is
+    the strongest statement the constructor can make. The per-line check
+    belongs with whatever owns the lines, i.e. the mesher of step 1: when
+    ``GridSpec`` auto-meshing lands it carries the declared edges into the
+    grid and re-checks each interval, and that is where the mesher note
+    records it. Until then a caller holding declared lines gets the per-line
+    guarantee from ``make_band_profile`` itself.
+
+    Raises ``ValueError``; a traced profile is skipped by the caller, since
+    neither side of the comparison is a host number there.
+    """
+    interior = interior_cells(np.asarray(d_full, dtype=np.float64),
+                              int(pad_lo), int(pad_hi))
+    declared = np.asarray(profile, dtype=np.float64)
+    if interior.shape[0] != declared.shape[0]:
+        raise ValueError(
+            f"{axis} axis: the padded cell array realizes "
+            f"{interior.shape[0]} interior cells but {declared.shape[0]} "
+            "were declared. The interior of a padded array ends one entry "
+            "before len - pad_hi (the bounding-node duplicate, #562); a "
+            "count that disagrees means the padding or that duplicate was "
+            "applied differently than interior_cells reads it."
+        )
+    miss = float(interior.sum() - declared.sum())
+    if abs(miss) > DECLARED_SPAN_TOL_M:
+        raise ValueError(
+            f"{axis} axis: the realized interior cells span "
+            f"{float(interior.sum()):.12e} m but the declared profile spans "
+            f"{float(declared.sum()):.12e} m, a miss of {miss:.3e} m "
+            f"(tolerance {DECLARED_SPAN_TOL_M:.0e} m). Every declared "
+            "interface is placed by the running sum of these cells, so a "
+            "miss of one cell puts a material plane one cell away from the "
+            "face that declared it."
+        )
+
 
 
 def node_positions_from_profile(profile):
@@ -375,6 +646,9 @@ def make_nonuniform_grid(
                 f"dx={float(dx)}."
             )
     dx_full = _append_bounding_node(_pad_profile(dx_prof_phys, pad_x_lo, pad_x_hi))
+    if not is_tracer(dx_full):
+        assert_cells_span_declared_profile(
+            dx_full, pad_x_lo, pad_x_hi, dx_prof_phys, "x")
     nx = int(dx_full.shape[0])
 
     # --- y profile ---
@@ -398,10 +672,16 @@ def make_nonuniform_grid(
                 f"(got lo={dy_boundary}, hi={float(dy_prof_phys[-1])})."
             )
     dy_full = _append_bounding_node(_pad_profile(dy_prof_phys, pad_y_lo, pad_y_hi))
+    if not is_tracer(dy_full):
+        assert_cells_span_declared_profile(
+            dy_full, pad_y_lo, pad_y_hi, dy_prof_phys, "y")
     ny = int(dy_full.shape[0])
 
     # --- z profile ---
     dz_full = _append_bounding_node(_pad_profile(dz_profile, pad_z_lo, pad_z_hi))
+    if not is_tracer(dz_full):
+        assert_cells_span_declared_profile(
+            dz_full, pad_z_lo, pad_z_hi, dz_profile, "z")
     nz = int(dz_full.shape[0])
 
     # --- CFL from minimum cell size on every axis ---
