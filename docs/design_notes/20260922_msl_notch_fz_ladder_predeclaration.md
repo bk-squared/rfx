@@ -321,5 +321,55 @@ n_z = ceil(h / FZ).
 
 The GPU model is not recorded for A_on, A_off, C_off: those arms ran before the instrument read `device_kind`, and their blocks are left as they were measured rather than back-filled.
 
-Conclusions: leader fills.
+### Conclusions (leader, after reading F.0–F.5, the five figures and the two records)
 
+**The remaining first-order term is the substrate-normal cell at the sheet.** With the
+in-plane cell held at 24.29 µm, cutting only the substrate cell 42.3 → 31.75 → 21.2 →
+15.9 µm moves the notch 3.7499 → 3.7338 → 3.7166 → 3.7104 GHz, monotone, at a fitted
+order of 1.37 (W5 held). With the substrate cell held at 42.3 µm, cutting the in-plane
+cell 47.2 → 35.9 → 24.3 µm moves it 2.5 MHz, and upward. At the step the first note
+could not attribute (A_off → C_off, 30.8 MHz), the substrate leg carries 33.3 MHz and the
+in-plane leg −2.5 MHz (W6: FZ dominant, by a factor of thirteen). The in-plane cell is
+converged at 24 µm to 0.07 %; the T-junction and the open end are not where the
+first-order error lives. The order of 1.37, between one and two, is what a first-order
+edge-singularity term mixed with the second-order bulk dispersion of the substrate looks
+like on a four-rung ladder; the third step (6.2 MHz over 5.3 µm) falls faster than the
+first two (16–17 MHz over 10.6 µm each), so the first-order share shrinks as FZ shrinks.
+
+**Refining z alone reaches the case's 1 % bar, and stops 0.6 % above the reference.** The
+finest rung (FZ = 15.9 µm, 3.94 M cells, 1082 s on one RTX 4090) reads +0.98 %; the
+ladder's limit reads +0.63 % (W8 held by its rule). The FZ term therefore accounts for the
+notch coming down from +2.06 % to +0.63 %, and what it leaves is not in FZ and not in F.
+Three candidates remain, and this record bounds one of them: the edge-offset rule itself
+— the on-node arm reads 0.375 % lower than the offset arm at nearly the same in-plane
+cell (W7; the 2.4 % cell difference accounts for 0.3 MHz of the 14 MHz), so if the true
+electrical offset of this strip is smaller than 0.35 cell (the rule's own measurement
+spans 0.31–0.37 for a strip over ground), up to that 0.37 % of the residual is the
+rule's; the graded board's line sits 609 µm further from the y_lo absorber than the
+case's, unmeasured; and the reference's own convergence (its last two rungs 0.008 %
+apart) is far smaller than the residual. Which of the first two it is takes an arm at
+fixed F and FZ with the offset at 0.30 and 0.25 cell, and one on the case's own board
+with a fine y_lo runway once the CPML slots read per face (step 0b). Neither is run here.
+
+**What this gives the mesher.** The substrate rule: the notch's substrate term drops
+inside 1 % of its own limit at FZ ≤ 34 µm, i.e. n_z = 8 substrate cells (F.4, derived from
+the fit), and inside 1 % of the external reference only at n_z = 16 with the 0.6 %
+residual on top. The in-plane rule: the fine cell across a 600 µm strip need not go below
+about 47 µm (n = 12) for the notch — the F ladder is flat to 0.07 % from 47 to 24 µm — so
+the cheap path to the bar is a coarse in-plane band with a fine z band (n = 12, n_z = 16:
+about 2.6 M cells at dt 38 fs; not measured here, the next arm if the bar is wanted at
+lower cost). And the edge rule stays 0.35 cell by default with a per-sheet override, as
+the design review asked; its own effect on this structure is a 0.37 % notch shift per
+0.35 cell at F = 47 µm, which is what a mesher's override would be tuning.
+
+**The record's honesty items.** The five arms reused from the first record rebuild from
+it with every declared quantity bit-identical; the last bit of at most six solved
+ramp cells per profile differs between the GPU container's numpy and the project venv's
+(≤ 6 ulp, 8e-16 of a cell, none touching the metal or the substrate) — the gate admits
+8 ulp and would refuse a one-cell change by 1e13 ulp (F.0). The 13-cell on-node arm has
+no node on the strip's centre line, so its feed is placed on the metal's own centre with
+the two straddling rows one cell apart (F.0); no arm was re-run for it.
+
+**Not re-run.** The ladder's finest rung missed the reference by 0.98 %; the two arms
+that would place the remaining 0.6 % are new declarations with their own purpose, not a
+re-run of this one.
