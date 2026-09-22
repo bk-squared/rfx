@@ -33,6 +33,10 @@ DUTS = TWO_PORT_DUTS + ONE_PORT_DUTS
 
 RECORD_UNITS = 12.0
 DOUBLE_RECORD_UNITS = 24.0
+# The record length that puts the coarsest rung's two-port run at exactly the
+# 6000 steps the committed gate uses (measured with the driver's own
+# record_steps at rung 4: 13.6 -> 5900, 13.7 -> 6000).
+UNITS_FOR_6000_STEPS = 13.7
 
 TEMPLATE = """name: {name}
 description: "{description}"
@@ -77,7 +81,7 @@ run: |-
   WSHA=$(git -C "$WORK" rev-parse HEAD)
   test "$WSHA" = "$RFX_SHA" || {{ echo "FATAL: the work copy resolves $WSHA"; exit 3; }}
   "$PY" -c "import rfx, os; print('rfx from', os.path.dirname(rfx.__file__))"
-  {{ timeout 20000 "$PY" {driver} {cli} --out "$WORK/out" --run-id "{prefix}" 2>&1; echo "rc=$?"; }} | tee "$OUT/run.log" | tail -60
+  {{ timeout 20000 "$PY" {command} 2>&1; echo "rc=$?"; }} | tee "$OUT/run.log" | tail -80
   echo COAX_BATTERY_STAGE_DONE
 """
 
@@ -131,6 +135,34 @@ def jobs() -> list[dict]:
         description=("Coax chain battery: the same AD/FD comparison on the one-port "
                      "short. 48 GB preset."),
     ))
+    # Two controls that separate the record length from the cell size, and
+    # this tree from the committed gate. Both were hand-written YAMLs on the
+    # first round; they are generated here so the campaign regenerates whole.
+    out.append(dict(
+        key="control-steps6000", preset="gpu-rtx4090",
+        cli=(f"--stage solve --dut thru --rung {RUNGS[0]} "
+             f"--record-units {UNITS_FOR_6000_STEPS} --tag steps6000"),
+        description=("Control: the thru at the coarsest rung with n_steps = 6000, the "
+                     "step count the committed two-port gate uses, so the record length "
+                     "can be told apart from the cell size."),
+    ))
+    out.append(dict(
+        key="control-committed", preset="gpu-rtx4090", pytest=True,
+        cli=('-m pytest -p no:cacheprovider -o addopts="" -m slow_physics -s '
+             "tests/unit/sparams/test_coax_two_port_smatrix.py "
+             "-k test_matched_through_line_transmits_reciprocally -q"),
+        description=("Control: the repository's own committed thru gate on this tree, "
+                     "unchanged, so the battery's thru can be read beside it."),
+    ))
+    out.append(dict(
+        key="replay", preset="cpu-32-mem-64", pytest=True,
+        cli=('-m pytest -p no:cacheprovider -o addopts="" '
+             "tests/oracle/test_coax_chain_battery.py "
+             "tests/contracts/test_evidence_numeric_provenance.py -q"),
+        description=("The assembled fixture replayed: every stored number re-derived "
+                     "from the stored S and compared against the bar, plus the evidence "
+                     "provenance contract. Arithmetic only, no FDTD."),
+    ))
     out.append(dict(
         key="plane", preset="gpu-rtx4090",
         cli=f"--stage plane --rung 6 --record-units {RECORD_UNITS}",
@@ -156,7 +188,9 @@ def main() -> int:
         text = TEMPLATE.format(
             name=f"rfx-{prefix}", description=job["description"], tag=job["key"],
             cluster=CLUSTER, preset=job["preset"], image=IMAGE, sha=args.sha,
-            src=args.src, runs=RUNS, prefix=prefix, driver=DRIVER, cli=job["cli"])
+            src=args.src, runs=RUNS, prefix=prefix,
+            command=(job["cli"] if job.get("pytest") else
+                     f'{DRIVER} {job["cli"]} --out "$WORK/out" --run-id "{prefix}"'))
         path = dest / f"{job['key']}.yaml"
         path.write_text(text)
         written.append((path, prefix))

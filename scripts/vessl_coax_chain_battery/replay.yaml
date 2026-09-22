@@ -1,9 +1,9 @@
-name: rfx-coax-battery-solve-r25-double-r9
-description: "Coax chain battery: r25 at the claims rung with the record doubled — the contract's substitute for the energy witness this lane does not emit on the eps_scale path."
-tags: [rfx, coax-chain-battery, solve-r25-double-r9]
+name: rfx-coax-battery-replay
+description: "The assembled fixture replayed: every stored number re-derived from the stored S and compared against the bar, plus the evidence provenance contract. Arithmetic only, no FDTD."
+tags: [rfx, coax-chain-battery, replay]
 resources:
   cluster: remilab-c0
-  preset: gpu-rtx4090
+  preset: cpu-32-mem-64
 image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
 env:
   DEBIAN_FRONTEND: noninteractive
@@ -27,11 +27,11 @@ run: |-
   test "$SHA" = "$RFX_SHA" || { echo "FATAL: worktree moved: $SHA"; exit 3; }
   test -z "$(git -C "$SRC" status --porcelain)" || { echo "FATAL: dirty worktree"; exit 3; }
   RUNS=/root/workspace/claude-workspace/rfx/runs
-  OUT=$RUNS/coax-battery-solve-r25-double-r9-$(date -u +%Y%m%dT%H%M%SZ)
+  OUT=$RUNS/coax-battery-replay-$(date -u +%Y%m%dT%H%M%SZ)
   mkdir -p "$OUT"
   echo "$SHA" > "$OUT/commit.txt"
-  echo "$OUT" > "$RUNS/coax-battery-solve-r25-double-r9.latest"
-  WORK=/root/work/coax-battery-solve-r25-double-r9
+  echo "$OUT" > "$RUNS/coax-battery-replay.latest"
+  WORK=/root/work/coax-battery-replay
   rm -rf "$WORK"; mkdir -p "$WORK"; cp -a "$SRC/." "$WORK/"; cd "$WORK"
   mkdir -p "$WORK/out"
   trap 'rc=$?; echo "$rc" > "$OUT/job.rc"; cp -a "$WORK/out/." "$OUT/" 2>/dev/null || true; chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
@@ -41,5 +41,5 @@ run: |-
   WSHA=$(git -C "$WORK" rev-parse HEAD)
   test "$WSHA" = "$RFX_SHA" || { echo "FATAL: the work copy resolves $WSHA"; exit 3; }
   "$PY" -c "import rfx, os; print('rfx from', os.path.dirname(rfx.__file__))"
-  { timeout 20000 "$PY" scripts/diagnostics/coax_chain_battery_measure.py --stage solve --dut r25 --rung 9 --record-units 24.0 --tag double --out "$WORK/out" --run-id "coax-battery-solve-r25-double-r9" 2>&1; echo "rc=$?"; } | tee "$OUT/run.log" | tail -80
+  { timeout 20000 "$PY" -m pytest -p no:cacheprovider -o addopts="" tests/oracle/test_coax_chain_battery.py tests/contracts/test_evidence_numeric_provenance.py -q 2>&1; echo "rc=$?"; } | tee "$OUT/run.log" | tail -80
   echo COAX_BATTERY_STAGE_DONE

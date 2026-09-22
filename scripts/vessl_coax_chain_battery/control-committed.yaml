@@ -1,5 +1,5 @@
 name: rfx-coax-battery-control-committed
-description: "Control: the committed slow_physics two-port through-line gate at this commit, to say whether the lane still reproduces its own 2026-08-02 table."
+description: "Control: the repository's own committed thru gate on this tree, unchanged, so the battery's thru can be read beside it."
 tags: [rfx, coax-chain-battery, control-committed]
 resources:
   cluster: remilab-c0
@@ -12,7 +12,7 @@ env:
   HDF5_USE_FILE_LOCKING: "FALSE"
   LANG: "C.UTF-8"
   MPLBACKEND: "Agg"
-  RFX_SHA: "669c45cb59721955b5135056ad5c12b16e96b292"
+  RFX_SHA: "ca6da2b17e3f42a3ca50678c9f7eb662c88e53af"
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-

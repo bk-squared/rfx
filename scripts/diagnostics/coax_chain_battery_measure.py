@@ -1783,7 +1783,41 @@ def _load_stage(out: Path, name: str) -> dict | None:
     return json.loads(p.read_text())
 
 
+def _refuse_a_set_spanning_commits(out: Path) -> dict:
+    """Every stage JSON in ``out`` must name the same commit.
+
+    A fixture whose stages were measured on two trees describes no single
+    line: half its rows can carry a defect the other half has fixed, and the
+    ladder between them then reads as a mesh effect. The stage records stamp
+    their commit with no fallback, so this is decidable; a set that spans more
+    than one is refused here rather than assembled and explained later.
+    """
+    seen: dict[str, list[str]] = {}
+    for f in sorted(out.glob("*.json")):
+        try:
+            rec = json.loads(f.read_text())
+        except (ValueError, OSError):
+            continue
+        sha = (rec.get("provenance") or {}).get("commit")
+        if sha:
+            seen.setdefault(sha, []).append(f.name)
+    if len(seen) > 1:
+        lines = "; ".join(f"{sha[:12]} -> {sorted(names)}" for sha, names in sorted(seen.items()))
+        raise RuntimeError(
+            f"the stage records in {out} span {len(seen)} commits and cannot be one "
+            f"fixture: {lines}. Re-run the stages that are behind at the commit the "
+            "rest were measured at, or assemble them into a separate artifact.")
+    if not seen:
+        raise RuntimeError(
+            f"no stage record in {out} names a commit; this driver stamps every "
+            "record it writes and refuses to assemble records that are not its own.")
+    return seen
+
+
 def stage_assemble(args, out: Path, fixture_out: Path) -> None:
+    commits = _refuse_a_set_spanning_commits(out)
+    _log(f"assembling {sum(len(v) for v in commits.values())} stage records, all at "
+         f"{next(iter(commits))}")
     index = json.loads(Path(args.run_index).read_text()) if args.run_index else None
     a, b = port_radii()
     fix = {
