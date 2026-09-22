@@ -393,6 +393,15 @@ def assemble_materials_nu(
                 sigma=jnp.where(m, sigma_eff, materials.sigma),
                 mu_r=materials.mu_r,
             )
+    # Node-pinned PEC sheets (add_pinned_sheet): built from node indices, so
+    # they need no node POSITION and are the one sheet declaration a traced
+    # mesh can carry. Same helper as the uniform lane, so the two cannot
+    # disagree on what a pinned range realizes.
+    if getattr(sim, "_pinned_sheets", None):
+        from rfx.materials.thin_conductor import pinned_sheet_spec
+        for _ps in sim._pinned_sheets:
+            _pec_sheets.append(pinned_sheet_spec(grid, _ps))
+
     from rfx.materials.thin_conductor import (
         warn_sheet_planes_inside_dielectric,
     )

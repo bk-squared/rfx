@@ -429,6 +429,16 @@ class _CompileMixin:
                 if tc.is_pec:
                     pec_shapes.append(tc.shape)
 
+        # Node-pinned PEC sheets (add_pinned_sheet): built from node indices,
+        # so the same call gives the same footprint here and on the NU lane.
+        # Gated with the metric thin conductors so vmap_sweep's
+        # ``include_thin_conductors=False`` observation point still sees the
+        # state before EVERY sheet.
+        if include_thin_conductors:
+            from rfx.materials.thin_conductor import pinned_sheet_spec
+            for _ps in getattr(self, "_pinned_sheets", ()) or ():
+                _pec_sheets.append(pinned_sheet_spec(grid, _ps))
+
         # Stage 1 conformal PEC face-shift (issue: WR-90 mesh-conv xfail).
         # When an axis is declared ``Boundary(conformal=True)`` we promote
         # its boundary-face PEC into a half-space ``Box`` injected into

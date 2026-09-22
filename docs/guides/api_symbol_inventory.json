@@ -2484,6 +2484,17 @@
       "freqs",
       "n_freqs"
     ],
+    "add_pinned_sheet": [
+      "plane_index",
+      "i_range",
+      "j_range",
+      "normal_axis",
+      "sigma_bulk",
+      "thickness",
+      "eps_r",
+      "surface_impedance_f0",
+      "name"
+    ],
     "add_polarized_source": [
       "position",
       "polarization",
