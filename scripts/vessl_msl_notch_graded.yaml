@@ -85,7 +85,7 @@ run: |-
   # writes the status to a file and its stdout still reaches tee.
   set +e
   { timeout 1800 python validation/research/multiband_nu/msl_notch_graded.py \
-      --arm "$arm" --run-id "$run_id" \
+      --arm "$arm" --run-id "$run_id" --commit "$(cat "$out/commit.txt")" \
       --out "$out/msl_notch_graded.json" --fig-dir "$out" 2>&1
     echo "$?" > "$out/arm.rc"
   } | tee "$out/msl_notch_graded_$arm.log"

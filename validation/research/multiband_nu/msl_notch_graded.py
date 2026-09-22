@@ -78,6 +78,7 @@ import argparse
 import json
 import os
 import platform
+import re
 import subprocess
 import sys
 import time
@@ -1076,7 +1077,10 @@ def markdown_tables(arms: dict) -> str:
       f"{case.SETTLING_DB:.0f} dB, passivity excess "
       f"{case.PASSIVITY_EXCESS_BAR}.  The uniform h/6 rung this cost is "
       f"divided by is {UNIFORM_FINEST_CELLS:,} cells and "
-      f"{UNIFORM_FINEST_WALL_S:.0f} s (pre-declaration section 1).")
+      f"{UNIFORM_FINEST_WALL_S:.0f} s (pre-declaration section 1).  Both cell "
+      f"counts in that ratio are GRID cells, absorber pad included, which is "
+      f"what the uniform ladder's own record counted; table R.1's interior "
+      f"count is the smaller number the pre-declaration's section 3 quotes.")
     w("")
 
     w("### R.4 The frozen windows")
@@ -1157,23 +1161,60 @@ def markdown_tables(arms: dict) -> str:
     return "\n".join(out)
 
 
-def _git(args: list[str]) -> str:
+def _git(args: list[str]) -> str | None:
+    """A git answer, or ``None`` when git cannot answer here."""
     try:
         return subprocess.run(["git", "-C", str(_REPO_ROOT)] + args,
                               capture_output=True, text=True,
                               check=True).stdout.strip()
-    except Exception as exc:                                  # pragma: no cover
-        return f"<unavailable: {exc}>"
+    except Exception:
+        return None
 
 
-def provenance(run_id: str | None) -> dict:
+_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+
+
+def provenance(run_id: str | None, commit: str | None = None) -> dict:
+    """Who produced this record, refusing to guess any of it.
+
+    The commit comes from ``--commit`` (or ``RFX_NOTCH_SHA``) when the tree is
+    not a git worktree, which is the normal case on the GPU: the job exports
+    the pinned tree with ``git archive`` into scratch, so ``git rev-parse``
+    inside it has nothing to read.  A record that cannot name its commit is
+    refused here, before the solve, rather than written with a placeholder --
+    a placeholder looks like provenance and links to nothing.
+    """
     import jax
     import rfx
+
+    inside = _git(["rev-parse", "--is-inside-work-tree"]) == "true"
+    if commit:
+        sha = str(commit).strip()
+        source = ("supplied by the submitter; the job verified it with "
+                  "git rev-parse --verify in the source repository")
+        dirty = (_git(["status", "--porcelain"]) or "") != "" if inside else None
+        describe = _git(["describe", "--always", "--dirty"]) if inside else None
+    elif inside:
+        sha = _git(["rev-parse", "HEAD"]) or ""
+        source = "git rev-parse HEAD in this worktree"
+        dirty = (_git(["status", "--porcelain"]) or "") != ""
+        describe = _git(["describe", "--always", "--dirty"])
+    else:
+        raise SystemExit(
+            f"refusing to record an arm with no commit: {_REPO_ROOT} is not a "
+            "git worktree, so the instrument cannot read one. Pass --commit "
+            "<sha> (or set RFX_NOTCH_SHA); the GPU job takes it from the "
+            "commit.txt it wrote with git rev-parse --verify.")
+    if not _SHA_RE.match(sha):
+        raise SystemExit(
+            f"refusing to record an arm with commit {sha!r}: a commit is forty "
+            "hexadecimal characters, and anything else is a placeholder.")
     return dict(
         rfx_file=rfx.__file__,
-        git_sha=_git(["rev-parse", "HEAD"]),
-        git_dirty=bool(_git(["status", "--porcelain"])),
-        git_describe=_git(["describe", "--always", "--dirty"]),
+        git_sha=sha,
+        git_sha_source=source,
+        git_dirty=dirty,
+        git_describe=describe,
         argv=list(sys.argv),
         started_utc=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         jax_version=jax.__version__,
@@ -1185,7 +1226,8 @@ def provenance(run_id: str | None) -> dict:
     )
 
 
-def run_arm(arm_key: str, *, run_id: str | None = None, dry_run: bool = False,
+def run_arm(arm_key: str, *, run_id: str | None = None,
+            commit: str | None = None, dry_run: bool = False,
             n_steps_cap: int | None = None) -> dict:
     """Build, refuse, solve and record one arm.  Everything is printed too."""
     arm = ARMS[arm_key]
@@ -1283,7 +1325,7 @@ def run_arm(arm_key: str, *, run_id: str | None = None, dry_run: bool = False,
         interior_shape=[int(x.size), int(y.size), int(z.size)],
         dt_s=g["dt_s"],
         n_freqs=case.N_FREQS, num_periods=case.NUM_PERIODS,
-        provenance=provenance(run_id),
+        provenance=provenance(run_id, commit),
     )
 
     if dry_run:
@@ -1461,6 +1503,9 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--arm", choices=sorted(ARMS))
     ap.add_argument("--run-id", default=os.environ.get("RFX_RUN_ID"))
+    ap.add_argument("--commit", default=os.environ.get("RFX_NOTCH_SHA"),
+                    help="the commit this tree was exported from; required "
+                         "when the tree is not a git worktree")
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
     ap.add_argument("--fig-dir", type=Path, default=RESULTS_DIR)
     ap.add_argument("--dry-run", action="store_true",
@@ -1497,8 +1542,8 @@ def main(argv: list[str] | None = None) -> int:
                     f"arm {args.arm!r} is already in {args.out}; one attempt "
                     "per arm.")
 
-    record = run_arm(args.arm, run_id=args.run_id, dry_run=args.dry_run,
-                     n_steps_cap=args.n_steps_cap)
+    record = run_arm(args.arm, run_id=args.run_id, commit=args.commit,
+                     dry_run=args.dry_run, n_steps_cap=args.n_steps_cap)
     if args.dry_run:
         return 0
     if args.n_steps_cap is not None:
