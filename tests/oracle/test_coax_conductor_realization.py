@@ -245,11 +245,26 @@ def test_the_thru_keeps_its_power():
             f"Ladder: {trend}")
 
 
-def test_the_loads_read_the_declared_characteristic_impedance():
+def test_the_resistor_calibration_agrees_with_the_declared_annulus():
     """``Z0 = R (1 - Gamma) / (1 + Gamma)``, recomputed from the stored Gamma.
 
-    It is the second line constant: a realization that fixed ``beta`` by moving
-    the geometry would show up here.
+    **This does not measure the realized line, and the name says so.** ``R`` is
+    the DECLARED load and the annular resistor's conductivity is built from
+    ``ln(shell_inner / a)``, so the load's realized resistance and the line's
+    impedance carry the same discrete geometric factor and it cancels. The
+    blind review showed this directly: re-rasterizing the coax half a cell
+    off-node moved the realized line 3.7 % (40.36 -> 38.88 ohm by an
+    electrostatic solve on the edge masks) and moved this number 0.002 %.
+
+    What it DOES pin is worth keeping: that the resistor's sigma calibration and
+    the declared annulus agree, which is a real invariant and is exactly what
+    the wall's inner face feeds. Put the pre-fix wall placement back and this
+    goes red -- 40.78 ohm against a declared 48.59 -- because ``shell_inner``
+    enters that formula.
+
+    The realized cross-section's own impedance is measured by
+    ``tests/unit/sparams/test_coax_conductor_geometry.py``'s convergence check,
+    which shares nothing with this path.
     """
     rec = _record()
     cases = _load_cases(rec)

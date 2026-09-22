@@ -74,9 +74,40 @@ the realization causes both, and the lattice ownership rule shorts the edges
 around a corner contact so the ring is electrically closed whatever the cell mask
 looks like.
 
-`Z0` from the 25 and 100 ohm loads under the edge realization: **48.614** and
-**48.564 ohm** against the analytic `Z_TEM` on the declared radii, **48.591** —
-0.05 % and 0.06 %. Both line constants come back to the declared geometry.
+`Z0` from the 25 and 100 ohm loads under the edge realization reads **48.614**
+and **48.564 ohm** against the analytic `Z_TEM` on the declared radii, 48.591.
+**That number does not measure the realized line and is not evidence that it
+came back to the declared geometry.** `R` there is the declared load and the
+annular resistor's conductivity is built from `ln(shell_inner/a)`, so the same
+discrete geometric factor sits in the load's realized resistance and in the
+line's impedance, and cancels; a re-rasterization that moved the realized line
+3.7 % moved this number 0.002 %. It pins the resistor's calibration against the
+declared annulus, which the wall's inner face feeds, and nothing wider.
+
+`beta` is the constant that does come back, and that is the one this change is
+about. The impedance of the realized cross-section is a separate question with
+a separate witness (below), and a staircased coax is not expected to have the
+smooth line's `Z_TEM` — this note's own physics sentence says the staircase
+moves `Z_TEM` and leaves `beta` alone.
+
+## What the realized cross-section's impedance actually is
+
+Solving the 2-D electrostatic problem on the same lattice, with the conductors
+taken from the PEC edge masks the lane hands the solver
+(`scripts/diagnostics/coax_realized_impedance_static.py`):
+
+| annulus cells | geometric factor `G` | `G` vs continuum | realized `Z0` |
+|---|---|---|---|
+| 4 | 6.44143 | +20.40 % | 40.36 ohm |
+| 9 | 5.75431 | +7.56 % | 45.18 ohm |
+| 18 | 5.55595 | +3.85 % | 46.79 ohm |
+| 27 | 5.48734 | +2.57 % | 47.38 ohm |
+| 40 | 5.44295 | +1.74 % | 47.76 ohm |
+
+against a continuum `G = 2 pi / ln(b/a) = 5.35010` and `Z_TEM = 48.591 ohm`. It
+converges toward the smooth value as the mesh refines, which is what a
+convergent discretisation must do; no bar is put on the distance at any single
+mesh. **LEADER TO FILL** — what this means for the S a user receives.
 
 ## The second change: the wall's inner radius
 
@@ -143,7 +174,10 @@ the 60 mm board at 4 annulus cells through `compute_coaxial_two_port` gives
 
 The **pin**'s rasterized radius is unchanged by this and is not monotone in dx
 (519.7, 622.3, 560.6, 631.6 um at 2, 4, 6 and 9 annulus cells). Feeding it into
-a `Z_TEM` estimate gives up to 16.5 % — but the measured `Z0` above is within
-0.06 % of the declared value, so that estimate is a property of the proxy (an
-outermost cell CENTRE understates where the edge realization puts the wall) and
-not of the line. It is recorded here rather than gated.
+a `Z_TEM` estimate gives up to 16.5 %. That was previously dismissed here as a
+property of the proxy, on the grounds that the measured `Z0` is within 0.06 % of
+declared — **that argument is withdrawn**, because the number it rested on
+cancels the geometry it was supposed to certify. The electrostatic witness above
+puts the realized cross-section 20.4 % from the smooth value in `G` at 4 annulus
+cells, the same order as the proxy's figure, so the proxy may well be crude but
+nothing here establishes that. Recorded, not gated, and not explained away.

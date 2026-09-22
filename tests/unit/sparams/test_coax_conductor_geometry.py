@@ -23,9 +23,15 @@ Measured, not asserted in prose: `docs/design_notes/coax_conductor_realization.m
 from __future__ import annotations
 
 import math
+import pathlib
+
+import sys
 
 import numpy as np
 import pytest
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]
+                       / "scripts" / "diagnostics"))
 
 from rfx.api import Simulation
 from rfx.boundaries.pec import realized_pec_edge_masks
@@ -150,12 +156,16 @@ def test_the_wall_no_longer_contributes_to_the_impedance_s_mesh_dependence():
     ran 40.7 -> 45.3 ohm over that ladder.
 
     The pin's own rasterized radius is NOT in this figure and is NOT gated here.
-    Feeding it in gives up to 16.5 % at 2 annulus cells and 10.5 % at 6, and
-    that number is a property of the proxy rather than of the line: the measured
-    ``Z0`` of this lane at 6 annulus cells, from the 25 and 100 ohm loads, is
-    48.61 and 48.56 ohm, within 0.06 % of the declared value. An outermost cell
-    CENTRE understates where the PEC edge realization actually puts the wall.
-    Gating it would pin a bad estimator.
+    Feeding it in gives up to 16.5 % at 2 annulus cells and 10.5 % at 6. An
+    earlier version of this docstring dismissed that as a property of the proxy
+    because the lane's reported ``Z0`` is within 0.06 % of declared; **that
+    argument is withdrawn**. That number is built from the declared load and a
+    conductivity carrying the same geometric factor as the line, so it cancels
+    and cannot certify the geometry. The electrostatic witness in
+    ``test_the_realized_cross_section_converges_toward_the_declared_impedance``
+    puts the realized cross-section 20.4 % from the smooth value at 4 annulus
+    cells, the same order as the proxy's figure. The proxy may still be crude;
+    nothing here shows it.
     """
     declared = coaxial_tem_characteristic_impedance(
         SMA_PIN_RADIUS, SMA_OUTER_RADIUS, float(PTFE_EPS_R))
@@ -374,3 +384,46 @@ def test_the_lane_hands_the_runner_pec_edges_and_no_pec_sigma(monkeypatch, lane,
         assert bad == 0, (
             f"{bad} {name} edges are shorted strictly inside the dielectric "
             "annulus, more than a cell diagonal from either conductor")
+
+
+def test_the_realized_cross_section_converges_toward_the_declared_impedance():
+    """The impedance of the cross-section the lattice BUILDS, no solve.
+
+    A coaxial line's characteristic impedance is set by the shape of its two
+    conductors: ``Z0 = eta0 / (sqrt(eps_r) * G)`` with ``G = C/eps``, which for
+    smooth circles is ``2 pi / ln(b/a)``. A staircased pair at four cells across
+    its annulus genuinely does not have that impedance, and should not be
+    expected to -- the same physics sentence this change rests on says the
+    staircase moves ``Z_TEM`` and leaves ``beta`` alone.
+
+    This asserts only the thing that must be true of a convergent
+    discretisation: refining the mesh moves the realized geometric factor
+    TOWARD the continuum one, monotonically. It puts no bar on the distance at
+    any single mesh, because there is no basis for one.
+
+    It exists because the one-port ``Z0`` the oracle reports cannot see this.
+    That number is ``R_dut (1 - Gamma)/(1 + Gamma)`` with ``R_dut`` declared,
+    and the annular resistor's conductivity is built from
+    ``ln(shell_inner / a)``; the load's realized resistance and the line's
+    impedance carry the same discrete geometric factor and it cancels. The
+    blind review demonstrated that by re-rasterizing the coax half a cell
+    off-node: the realized line moved 3.7 % and the reported number moved
+    0.002 %. This estimator shares nothing with that path.
+    """
+    static = pytest.importorskip(
+        "coax_realized_impedance_static",
+        reason="the static witness lives in scripts/diagnostics")
+    rec = static.measure((4.0, 9.0, 18.0, 27.0))
+    g_cont = rec["geometric_factor_continuum"]
+    errs = [(r["rung_annulus_cells"],
+             abs(r["geometric_factor"] - g_cont) / g_cont,
+             r["z0_realized_ohm"]) for r in rec["rungs"]]
+    trend = "  ".join(f"{n:.0f} cells: G err {e*100:.2f} %, Z0 {z:.2f} ohm"
+                      for n, e, z in errs)
+    for (n_a, e_a, _), (n_b, e_b, _) in zip(errs, errs[1:]):
+        assert e_b < e_a, (
+            f"refining from {n_a:.0f} to {n_b:.0f} annulus cells moved the "
+            f"realized geometric factor AWAY from the continuum value "
+            f"({e_a*100:.2f} % -> {e_b*100:.2f} %). A convergent cross-section "
+            f"does not do that. Ladder: {trend}")
+    print(f"[coax static] {trend}")
