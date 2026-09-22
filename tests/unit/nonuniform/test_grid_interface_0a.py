@@ -565,3 +565,34 @@ def test_the_widened_float32_store_is_not_the_spine(name, axis):
                            for k in range(store.size)])
     np.testing.assert_allclose(from_store, grid.duals(axis), rtol=1e-6,
                                atol=0)
+
+
+@pytest.mark.parametrize("name,axis", ALL)
+def test_the_inverse_arrays_cannot_tell_the_spine_from_the_store(name, axis):
+    """A limit of the judge above, measured rather than assumed.
+
+    ``_profile_to_inv_arrays`` casts to float32 before it does anything else,
+    and on all ten fixture shapes the float64 spine and the widened float32
+    store round to the same float32 cells -- so the inverse-array half of
+    judge (ii) is BLIND to which of the two ``cells`` returns. It pins that
+    the derivation rule is right, not that the source array is.
+
+    What pins the source is
+    ``test_cells_is_the_float64_spine_over_the_padded_axis``, which compares
+    against the grid's own float64 field directly, and the dual rule, which
+    is computed in float64 and does see the difference: 10 of the 900 node
+    entries across these 30 axes differ in float32, by up to 4.75e-11 m on
+    meshes whose cells run 50 um to 1 mm.
+
+    A red result here is not a regression. It means some fixture's two
+    sources now round apart, the inverse judge has become discriminating, and
+    this docstring should say so.
+    """
+    grid = FIXTURES[name]()
+    store = np.asarray(
+        (grid.dx_arr, grid.dy_arr, grid.dz)[AXES.index(axis)],
+        dtype=np.float64)
+    inv_e, inv_h = _inv_pair(grid, axis)
+    from_store_e, from_store_h = _profile_to_inv_arrays(store)
+    assert np.array_equal(np.asarray(from_store_e), np.asarray(inv_e))
+    assert np.array_equal(np.asarray(from_store_h), np.asarray(inv_h))

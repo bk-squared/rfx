@@ -275,6 +275,12 @@ class NonUniformGrid(NamedTuple):
 
         A traced axis returns a traced scalar (jnp cumulative sum), the same
         arithmetic ``coords_from_nonuniform_grid`` runs in-trace.
+
+        Cost: this builds the whole axis to return one entry, because reusing
+        the spine producer is what makes the answer bit-identical to the
+        coordinate arrays. Nothing calls it in a loop in 0a. A consumer in 0b
+        that needs many nodes asks ``coords_from_nonuniform_grid`` once, or
+        this grows a cached array -- not a second spelling of the arithmetic.
         """
         ax, n, pad_lo, _pad_hi = self._axis_layout(axis)
         idx = int(i)
