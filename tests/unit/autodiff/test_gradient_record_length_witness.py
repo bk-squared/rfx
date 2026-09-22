@@ -236,6 +236,18 @@ def test_complex_observable_compares_the_whole_complex_sensitivity():
     assert witness.worst_value_rel_change == pytest.approx(0.01010, abs=1e-4)
     assert np.iscomplexobj(witness.value)
 
+    # The direction cosine is the HERMITIAN product. On the pole the two arms
+    # are the same purely imaginary vector: the plain product would call that
+    # a reversed direction (-1); the Hermitian one says +1.
+    hand = np.array([
+        float(np.real(np.vdot(np.atleast_1d(c_short[b]), np.atleast_1d(c_long[b])))
+              / (abs(c_short[b]) * abs(c_long[b])))
+        for b in range(len(c_short))
+    ])
+    np.testing.assert_allclose(witness.cosine_by_bin, hand, rtol=0.0, atol=1e-12)
+    assert witness.cosine_by_bin[1] == pytest.approx(1.0, abs=1e-12)
+    assert np.all(witness.cosine_by_bin > 0.99)
+
 
 def test_a_long_enough_record_passes_the_same_objective():
     """Same pole, a record 8x longer: the spin has decayed out of both arms."""
@@ -443,6 +455,44 @@ def test_the_verdict_is_norm_level_not_the_worst_element():
     assert witness.worst_elementwise == pytest.approx(2.0 / 3.0, rel=1e-6)
     assert witness.worst_elementwise > 10.0 * witness.worst
     assert witness.cosine_by_bin[0] > 0.999
+
+
+def test_the_verdict_concatenates_every_leaf_not_the_first():
+    """Two leaves; the first alone would pass, the pair does not.
+
+    Leaf ``a`` (one element) moves by 1 %; leaf ``b`` (three elements, each
+    as large as ``a``) moves by 40 %. Over the concatenated vector the change
+    is 26 %; over the first leaf alone it would be 1 %. A verdict that reads
+    one leaf reports the wrong number and a cosine of exactly 1.
+    """
+    from tests._x64_compat import enable_x64
+
+    n_short = 100
+    short_a, long_a = [[1.00]], [[1.01]]
+    short_b, long_b = [[1.0, 1.0, 1.0]], [[1.4, 1.4, 1.4]]
+
+    def objective(params, n_steps):
+        a = (short_a, short_b) if n_steps == n_short else (long_a, long_b)
+        return (jnp.asarray(np.asarray(a[0], dtype=np.float64)) @ params["a"]
+                + jnp.asarray(np.asarray(a[1], dtype=np.float64)) @ params["b"])
+
+    with enable_x64():
+        # Built inside the x64 scope: outside it a float64 request is
+        # silently float32 and the arithmetic below loses 8 digits.
+        params = {"a": jnp.zeros((1,), dtype=jnp.float64),
+                  "b": jnp.zeros((3,), dtype=jnp.float64)}
+        witness = gradient_record_length_witness(
+            objective, params, n_short, tol=0.05, factor=2.0)
+
+    g_s = np.concatenate([np.asarray(short_a)[0], np.asarray(short_b)[0]])
+    g_l = np.concatenate([np.asarray(long_a)[0], np.asarray(long_b)[0]])
+    expected = np.linalg.norm(g_l - g_s) / np.linalg.norm(g_l)
+    assert witness.worst == pytest.approx(expected, rel=1e-9)
+    assert witness.worst == pytest.approx(0.2638, abs=1e-3)
+    assert not witness.passed, witness.summary()
+    assert witness.cosine_by_bin[0] < 0.9999
+    assert witness.cosine_by_bin[0] == pytest.approx(
+        float(g_s @ g_l / (np.linalg.norm(g_s) * np.linalg.norm(g_l))), rel=1e-9)
 
 
 def test_a_gradient_that_vanishes_on_the_long_record_is_not_a_small_change():

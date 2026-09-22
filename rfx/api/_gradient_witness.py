@@ -37,6 +37,16 @@ arms' gradient vectors.
 The per-element table is still reported, floored against the dominant element
 so rounding does not dominate it, but it is there to LOCATE where a change sits
 once the verdict has already failed. It is not the verdict.
+
+Two cautions on reading the verdict. Each bin is normalised by its own norm, so
+a bin whose gradient is negligible against the other bins' -- a bin at a null,
+or one sitting exactly on a stationary point of the observable -- reads large on
+its own rounding; read the worst bin together with its absolute size. And the
+number is taken in the metric of the parameters handed in: the same two records
+read 11 % on (eps_global, eps_local) and 1.8 % on the 1936 per-cell leaf of the
+same board, because the projection onto two scalars concentrates the change.
+Witness the parameters you actually optimise; a finer parameterisation gives
+the more permissive answer.
 """
 
 from __future__ import annotations
