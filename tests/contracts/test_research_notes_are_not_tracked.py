@@ -182,16 +182,11 @@ REVIEWED = {
     # Reject-lists: these name the path so that a log_path may NOT start with it.
     "tests/crossval/test_msl_phase_referee_header.py":
         (1, "forbidden-prefix guard, not a read"),
-    "tests/crossval/test_sheen_lpf_header.py":
-        (1, "forbidden-prefix guard, not a read"),
-
     # Assertion / warning text that happens to cite a note. No path resolution.
     "tests/unit/api/test_api.py":
         (1, "prose inside an assertion message"),
     "tests/unit/ports/test_msl_port.py":
         (1, "prose inside a NotImplementedError message"),
-    "validation/crossval/07_sheen_lpf.py":
-        (1, "prose pointing a maintainer at a task recipe"),
     "validation/research/floquet/rcwa_referee.py":
         (1, "prose citing the known-issues ledger"),
     "scripts/capture_msl_replay_fixture.py":

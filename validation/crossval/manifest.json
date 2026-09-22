@@ -8,41 +8,6 @@
   },
   "cases": [
     {
-      "id": "07_sheen_lpf",
-      "script": "validation/crossval/07_sheen_lpf.py",
-      "role": "diagnostic-reporter",
-      "public_group": "B",
-      "execution_tiers": ["cpu-runner", "external-manual"],
-      "evidence_levels": ["E4"],
-      "references": [
-        {"kind": "external-solver", "name": "openEMS matched-geometry Sheen 1990 LPF run (committed leg validation/crossval/_07_sheen_results/openems.json; required for a full run, and the reference's own passivity plus Re(Z0) sanity IS gated comparator-first)", "required_for_script_pass": true},
-        {"kind": "external-solver", "name": "Palace-FEM conformal-mesh referee — COMMITTED fixture tests/fixtures/sheen_lpf_e4/sheen_lpf_palace_referee.json (three-solver verdict sides_with=openems; envelope-locked by tests/crossval/test_sheen_lpf_palace_referee_gates.py)", "required_for_script_pass": false}
-      ],
-      "claim_scope": "CHARACTERIZATION ONLY of the Sheen 1990 stepped-impedance LPF stopband — explicitly NOT an rfx accuracy claim. The Palace-FEM referee showed the stopband is a DOUBLE transmission zero (~7.0 and ~8.0 GHz): openEMS resolves both and matches Palace to ~0.7%; the referee records sides_with=openems. HISTORY: the original num_periods=20 default-offset rfx leg was non-passive (58/120 bins, worst column power 1794.5 at 17.05 GHz) and its argmin (7.218 GHz) sat 9.6% from openEMS. Root cause was MEASURED for the truncation half (settling witness -24.7/-24.3 dB; the probe near-field half is measured in PR #468) and the leg regenerated 2026-07-26 with num_periods=60 + n_probe_offset=30 (satisfies BOTH the 5*h_sub near-field clearance and the lambda_g/4 reflector clearance that offset=40 violated) + passivity-enforced S. REGENERATED AGAIN 2026-08-09 (issue #519) on the #511/#507-corrected extractor (PR #516, f95240f): witness -70.2/-71.3 dB, strict ||S||_2 <= 1 at every bin (max column power 0.9995), and the raw passivity excess COLLAPSED (0/120 bins > 0.05, worst 0.0145 at 17.38 GHz; the pre-#516 leg's 84/120 bins worst 0.365 was substantially the extractor defects, not a coarse-mesh envelope). With decontaminated probes the rfx argmin lands at 7.874 GHz — the ~8 GHz doublet member, 1.4% from openEMS — confirming the referee's doublet structure; sides_with=openems stands (structure distance 1.52% vs openEMS 0.66%, re-derived by build_sheen_lpf_palace_referee.py on the regenerated leg). Passband mean |S21| agrees with openEMS to 0.0014 (was 0.0156), and the old ~67 ohm passband Re(Z0) fit residual is gone (50.3 ohm passband, 52.4 ohm in-band). The argmin null POSITION and passband/stopband STRUCTURE are the readable outputs; any bin with correction > 0.05 (none on the current leg) is artifact-class for magnitude claims. Gates lock (A) openEMS reference sanity comparator-first, (B) comparison shape, (C) the committed argmin nulls + rfx passband mean + referee verdict, and (D) the evidence chain: strict bound, settling witness, and the passivity-correction footprint (fail-closed D0 if a leg lacks the witness/enforcement fields). RE-GATED 2026-09-01 (issue #812 mechanism P3, docs/design_notes/estimator_resolution_regate.md): C1's bin argmin was quantised at 2.081%/bin against a declared 1% window, so C4-C7 were added -- sub-bin log-parabolic locks on both doublet members for both solvers (+-0.50%, against the committed referee fixture's own fdtd_doublet_ghz), a transmission-zero COUNT gate (== 2 at <= -20 dB), a -3 dB corner-frequency lock (+-0.25%) on a quantity this case never gated, and an in-run half-grid resolution witness. Nothing was widened; C1 is kept unchanged. Criteria (A) and (B) both measured on the committed legs: tests/fixtures/cv07_estimator_regate/cv07_estimator_falsifiers.json (keys baseline, defects.erased_zero, defects.corner_m20, window_derivations). LATTICE OWNERSHIP CONTRACT (#931, 2026-09-07): the three conductors are SHEETS on one node plane instead of three one-cell Boxes (which the contract would realize as a 200 µm slab with two walls). Realized at dx = 200 µm: sheet plane z = 800 µm (= the realized laminate face; declared foil plane 794 µm, +6.0 µm, no vacuum slot), both 50-Ω feeds 2200 µm wide over 12 node rows, patch 20200 × 2400 µm. Pre-#931 the same board reported 2400 / 20400 / 2600 µm — one cell more on every in-plane extent, the rim edge the old rule zeroed. The strips' current-carrying row counts are unchanged, so their electrical widths are unchanged. The port mismatch recorded in the script is re-measured and still OPEN: each port spans 13 node rows while its feed metal realizes 12; closing it needs §1.9 core work (the port taking its cross-section from the realized sheet footprint), because passing the port the contract's realized extent would set the wave split's reference to HJ(2200, 800) = 54.22 Ω on a line this case measures at 50.30 Ω. Every rfx-leg figure recited above is re-read from the re-solved run (VESSL 369367259192) at ingest; C4 (±0.50 %) and C6 (±0.25 %) are not widened — both derive from the cell size, which did not change. Re-solved as VESSL run 369367259192; every COMMITTED rfx entry is re-pinned from its produced `rfx.json` with no gate window moved (argmin null 7.8739 -> 8.2017 GHz, doublet (6.943990, 7.925928) -> (7.233338, 8.244069), corner 5.5036 -> 5.7071, passband mean 0.9378 -> 0.9471). The Palace referee fixture was re-derived by its own producer; `sides_with` stays 'openems' and rfx's structure distance goes 1.52 % -> 2.87 %. QUOTABILITY, WORSE AND NOT ABSORBED: bins carrying a raw passivity correction > 0.05 went 0 -> 3 and the worst went 0.0145 @ 17.378 GHz -> 0.6572 @ 17.870 GHz. All three sit above 17 GHz and none inside the 5–15 GHz null band, so gate D5 and the in-band footprint are unchanged; no magnitude claim above 15 GHz is made or permitted. FOOTPRINT VS DOUBLET-MARGIN (2026-09-10, issue #964): two of the dimensions that set the LPF cutoff are realized off-lattice beyond a filter's tolerance under EITHER width convention -- patch propagation length declared 2540.0 um, realized 2400.0 um (geometric node span, -5.51%) or 2600.0 um (electrical n*dx, +2.36%); feed width declared 2413.0 um, realized 2200.0 um (-8.83%) or 2400.0 um (-0.54%); neither convention is settled (#729) and gcd(2540, 794, 2413, 20320) = 1 um (`validation/crossval/07_sheen_lpf.py`'s own docstring) means no practical dx lands every load-bearing dimension on-lattice. `assert_realized_metal` (`validation/crossval/07_sheen_lpf.py`) does not compare these to their declared values. The case's gate surface pins all four exactly, not merely printing them: `tests/crossval/test_cv07_realized_metal.py` (`test_sheet_sits_on_the_realized_laminate_face` pins plane_z, `test_both_50_ohm_feeds_realize_the_same_width` pins feed_w, `test_realized_patch_is_one_cell_under_declared_on_each_axis` pins patch_trv and patch_prop), each `pytest.approx(rel=1e-12)`, already in this case's gate_paths -- a dx change, a moved lattice origin, or an edited declaration fails that suite. MARGIN THE DOUBLET CLAIM ACTUALLY RESTS ON, measured not assumed: the Palace referee's two doublet members sit `tests/fixtures/sheen_lpf_e4/sheen_lpf_palace_referee.json::referee.palace_doublet_mid_ghz.lower = 7.031752` to `tests/fixtures/sheen_lpf_e4/sheen_lpf_palace_referee.json::referee.palace_doublet_mid_ghz.upper = 8.048223` GHz apart (1.016471 GHz, 12.63% of the upper member), and rfx's identified null (`tests/fixtures/sheen_lpf_e4/sheen_lpf_palace_referee.json::referee.fdtd_doublet_ghz.rfx.argmin_first_null_ghz = 8.244069`) differs from Palace's SAME (upper) member by 2.433% -- 19.3% of that spacing, roughly a 5.5x margin. A naive single-dimension estimate (f ~ 1/L applied to the -5.51% propagation-length error alone) predicts a ~5.8% shift, 46% of the spacing -- more than double the measured total, and the two DO NOT COMPOSE: the naive estimate and the measured total disagree by roughly 3.4 percentage points of unexplained cancellation, isolated by no leg in this record. The doublet-member identification holds on this board, by a real measured margin -- but that margin's own size is not explained by the one geometry defect this record names, and a future mesh or geometry change could remove whatever produces the current cancellation without touching the dimension the margin is attributed to -- the consequence would be a regression that fires for a reason nobody predicted. Read the 5.5x figure as an observation, not as headroom anyone has earned.",
-      "external_dependencies": ["openEMS", "CSXCAD"],
-      "expected_exit_codes": [0, 1, 2],
-      "gate_paths": [
-        "validation/crossval/07_sheen_lpf.py",
-        "tests/crossval/test_sheen_lpf_palace_referee_gates.py",
-        "validation/crossval/comparators/spectral_features.py",
-        "tests/crossval/test_spectral_feature_estimators.py",
-        "scripts/diagnostics/cv07_estimator_falsifiers.py",
-        "tests/crossval/test_cv07_realized_metal.py"
-      ],
-      "artifact_paths": [
-        "validation/crossval/_07_sheen_results/rfx.json",
-        "validation/crossval/_07_sheen_results/openems.json",
-        "tests/fixtures/sheen_lpf_e4/sheen_lpf_palace_referee.json",
-        "scripts/diagnostics/build_sheen_lpf_palace_referee.py",
-        "tests/fixtures/cv07_estimator_regate/cv07_estimator_falsifiers.json"
-      ],
-      "cpu_runner": {"order": 1},
-      "scheduled_external_order": null,
-      "evidence_status": "committed",
-      "evidence_producer": null,
-      "failure_sentinel": "SOME CHECKS FAILED"
-    },
-    {
       "id": "15_patch_antenna_rt5880",
       "script": "validation/crossval/15_patch_antenna_rt5880.py",
       "role": "diagnostic-reporter",
@@ -66,7 +31,7 @@
         "validation/crossval/_15_patch_results/rfx_decomposition_feed_pre931.json",
         "validation/crossval/_15_patch_results/rfx_decomposition_patchkind_volume_1cell.json"
       ],
-      "cpu_runner": {"order": 2},
+      "cpu_runner": {"order": 1},
       "scheduled_external_order": null,
       "evidence_status": "committed",
       "evidence_producer": null,
@@ -114,7 +79,7 @@
         "tests/fixtures/msl_phase_referee/msl_thru_rfx_dx50.json",
         "validation/crossval/_20_msl_phase_referee_logs/20260827T102342Z_result.json"
       ],
-      "cpu_runner": {"order": 3},
+      "cpu_runner": {"order": 2},
       "scheduled_external_order": null,
       "evidence_status": "committed",
       "evidence_producer": null,

@@ -42,7 +42,8 @@ the SAME commit as the regenerated fixture, with a written root cause. The
 cases that needed that (the figures here are the pre-#931 baselines, not
 the regenerated gates):
 
-  * cv05 / cv06b / cv07 / cv15 — foil becomes a sheet, so every measured
+  * cv05 / the MSL notch filter / the Sheen low-pass filter / cv15 — foil
+    becomes a sheet, so every measured
     envelope on those boards is measured on a different board.
 
 NOT on the list, measured rather than assumed: cv16 and cv17 build their

@@ -598,9 +598,17 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
 # case's committed run logs left in the same pass and carried no citation.
 # Measured after the removal: 325 references, 305 value-checked, 32 artifacts.
 # The floors are lowered to the measured values.
-MIN_REFERENCES = 325
-MIN_VALUE_CHECKED = 305
-MIN_DISTINCT_ARTIFACTS = 32
+# 2026-09-23 (the Sheen low-pass filter rebuilt as tests/crossval/sheen_lpf/):
+# its manifest entry and validation README row left the gated surface, and the
+# citations in two sections of the estimator-resolution re-gate note and one of
+# the 2026-09-08 docs truth audit reach the case's committed run records, its
+# estimator-falsifier summary and the old Palace fixture path (all in
+# REMOVED_ARTIFACT_PREFIXES, skipped per citation). Two artifacts leave the
+# distinct count with them. Measured after the removal: 303 references, 285
+# value-checked, 30 artifacts. The floors are lowered to the measured values.
+MIN_REFERENCES = 303
+MIN_VALUE_CHECKED = 285
+MIN_DISTINCT_ARTIFACTS = 30
 
 
 # --------------------------------------------------------------------------
@@ -1064,6 +1072,17 @@ REMOVED_ARTIFACT_PREFIXES: tuple[str, ...] = (
     # no opted-in citation ever reached them, so they need no prefix. Those
     # artifacts are at commit 2ce4c28d.
     "tests/fixtures/cv06b_estimator_regate/",
+    # 2026-09-23, the Sheen low-pass filter: the case was rebuilt as
+    # tests/crossval/sheen_lpf/ and its script, its two committed run records
+    # and its estimator-falsifier summary went with it; the Palace FEM record
+    # moved to tests/crossval/sheen_lpf/reference/palace_fem.json, so the old
+    # fixture path is gone too. Two sections of
+    # docs/design_notes/estimator_resolution_regate.md and one of
+    # docs/design_notes/20260908_docs_truth_audit.md cite these paths; those
+    # citations are skipped now. Those artifacts are at commit d902c8ea.
+    "validation/crossval/_07_sheen_results/",
+    "tests/fixtures/cv07_estimator_regate/",
+    "tests/fixtures/sheen_lpf_e4/",
 )
 
 

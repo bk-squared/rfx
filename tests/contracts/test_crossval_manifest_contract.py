@@ -317,17 +317,19 @@ def test_runner_exit_classification_matches_manifest_contract() -> None:
     """Each arm names a script whose manifest entry carries the property it
     exercises: 20_msl_phase_referee declares no failure sentinel (so exit 0 is
     a clean PASS whatever the stdout says) and exit 3 is declared by no case
-    at all (so an undeclared code is a FAIL), and 07_sheen_lpf declares
-    [0, 1, 2] with openEMS/CSXCAD as external dependencies (so exit 2 is
-    inconclusive and an unimportable reference solver is an env skip) as well
-    as carrying the "SOME CHECKS FAILED" sentinel.
+    at all (so an undeclared code is a FAIL), and 15_patch_antenna_rt5880
+    declares [0, 1, 2] with openEMS/CSXCAD as external dependencies (so exit 2
+    is inconclusive and an unimportable reference solver is an env skip) as
+    well as carrying the "SOME CHECKS FAILED" sentinel.
 
     Until 2026-09-22 the first group of arms named the MSL notch filter's
     script, the only case that declared exit codes [0, 1]; the case was
     rebuilt as tests/crossval/msl_notch_filter/ and the script removed. Every
     surviving case declares 2, so the arm that read exit 2 as an UNDECLARED
     code left with it — exit 3 pins the same rule, and the declared-2 reading
-    is asserted on 07_sheen_lpf below.
+    is asserted on 15_patch_antenna_rt5880 below. The Sheen low-pass filter's
+    script carried the sentinel arms until 2026-09-23; it left the same way,
+    and 15_patch_antenna_rt5880 is the surviving case that declares both.
 
     No case declares ``pymeep`` any more, so the env-skip arm uses the
     solver-agnostic packaging marker the runner recognises
@@ -350,7 +352,7 @@ def test_runner_exit_classification_matches_manifest_contract() -> None:
         == "FAIL"
     )
     assert (
-        runner.classify("07_sheen_lpf.py", 2, "reference unavailable", False)[0]
+        runner.classify("15_patch_antenna_rt5880.py", 2, "reference unavailable", False)[0]
         == "SELF-CHECK-ONLY"
     )
     assert (
@@ -367,7 +369,7 @@ def test_runner_exit_classification_matches_manifest_contract() -> None:
     )
     assert (
         runner.classify(
-            "07_sheen_lpf.py",
+            "15_patch_antenna_rt5880.py",
             0,
             "SOME CHECKS FAILED",
             False,
@@ -376,7 +378,7 @@ def test_runner_exit_classification_matches_manifest_contract() -> None:
     )
     assert (
         runner.classify(
-            "07_sheen_lpf.py",
+            "15_patch_antenna_rt5880.py",
             1,
             "A module that was compiled using NumPy 1.x cannot be run",
             False,

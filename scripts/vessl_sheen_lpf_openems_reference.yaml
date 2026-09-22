@@ -145,8 +145,6 @@ run: |-
   test -f "$DRV" || { echo "STALE CLONE: the reference maker is missing at $DRV"; exit 3; }
   GATE=tests/crossval/_openems_tutorial_gate.py
   test -f "$GATE" || { echo "STALE CLONE: the shared tutorial gate is missing at $GATE"; exit 3; }
-  SCRIPT=validation/crossval/07_sheen_lpf.py
-  test -f "$SCRIPT" || { echo "STALE CLONE: the script this builder is copied from is missing at $SCRIPT -- the copy proof cannot run"; exit 3; }
 
   # Pure-numpy checks first, seconds each: a constant, a drifted builder or a
   # layout bug must not burn a stage. `tee` returns ITS OWN status, so a failing
