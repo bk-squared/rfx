@@ -1,5 +1,6 @@
 """Topology selection preserves one-process bits and permits global JAX arrays."""
 
+from functools import partial
 import hashlib
 import inspect
 import os
@@ -9,9 +10,11 @@ import socket
 import subprocess
 import sys
 import time
-from types import SimpleNamespace
+from types import FunctionType, SimpleNamespace
+from unittest.mock import Mock
 
 import jax
+from jax.experimental import multihost_utils
 import jaxlib
 import numpy as np
 import pytest
@@ -45,10 +48,11 @@ _BASELINE = {
 }
 
 
-def _build_box(boundary):
+def _build_box(boundary, *, dz_profile=None):
     sim = Simulation(
         freq_max=15e9, domain=(15e-3, 7e-3, 7e-3), dx=1e-3,
         boundary=boundary, cpml_layers=2 if boundary == "cpml" else 0,
+        dz_profile=dz_profile,
     )
     # Preserve the legacy amplitude default used by the origin/main capture.
     sim.add_source((8e-3, 4e-3, 4e-3), "ez")
@@ -79,6 +83,141 @@ def _relative_error(actual, expected):
     assert peak > 0, "a zero fixture cannot bind the parity check"
     max_diff = float(np.max(np.abs(actual.astype(np.float64) - expected)))
     return max_diff / peak, max_diff
+
+
+def _scan_body_captures(monkeypatch, run):
+    """Run normally, then inspect every scan body seen through the runner's lax."""
+    bodies = []
+    scan = distributed_v2.lax.scan
+
+    def traced_scan(f, *args, **kwargs):
+        bodies.append(f)
+        return scan(f, *args, **kwargs)
+
+    # Replace only the runner's namespace; leave JAX's internal lax uses alone.
+    runner_lax = SimpleNamespace(**{**vars(distributed_v2.lax), "scan": traced_scan})
+    with monkeypatch.context() as patch:
+        patch.setattr(distributed_v2, "lax", runner_lax)
+        run()
+    assert bodies, "the run must trace a scan body for the capture check to bind"
+
+    captured = []
+
+    def walk(value, path, seen):
+        # A jit argument may also satisfy isinstance(value, jax.Array).
+        if isinstance(value, jax.core.Tracer):
+            return
+        if isinstance(value, jax.Array):
+            captured.append((path, value.shape, str(value.sharding)))
+            return
+        if id(value) in seen:
+            return
+        seen.add(id(value))
+        if isinstance(value, FunctionType):
+            for name, cell in zip(value.__code__.co_freevars, value.__closure__ or ()):
+                try:
+                    child = cell.cell_contents
+                except ValueError:
+                    continue
+                walk(child, f"{path}.{name}", seen)
+        if isinstance(value, (tuple, list)):
+            names = getattr(value, "_fields", range(len(value)))
+            for name, child in zip(names, value):
+                walk(child, f"{path}[{name}]", seen)
+        if isinstance(value, partial):
+            walk(value.func, f"{path}.func", seen)
+            walk(value.args, f"{path}.args", seen)
+            for name, child in (value.keywords or {}).items():
+                walk(child, f"{path}.keywords[{name}]", seen)
+        if hasattr(value, "__wrapped__"):
+            walk(value.__wrapped__, f"{path}.__wrapped__", seen)
+
+    for index, body in enumerate(bodies):
+        walk(body, f"scan[{index}]", set())
+    return captured
+
+
+@pytest.mark.parametrize("boundary", ["pec", "cpml"])
+def test_single_process_scan_body_captures_materials_by_closure(boundary, monkeypatch):
+    devices = _cpu_devices()
+    entries = []
+
+    def traced_jit(f, *args, **kwargs):
+        entry = Mock(wraps=jax.jit(f, *args, **kwargs))
+        entries.append(entry)
+        return entry
+
+    runner_jax = SimpleNamespace(**{**vars(jax), "jit": traced_jit})
+    monkeypatch.setattr(distributed_v2, "jax", runner_jax)
+    gather = Mock(wraps=multihost_utils.process_allgather)
+    monkeypatch.setattr(multihost_utils, "process_allgather", gather)
+    captured = _scan_body_captures(
+        monkeypatch, lambda: _build_box(boundary).run(n_steps=3, devices=devices),
+    )
+    assert captured, "single-process scan must keep its captured material arrays"
+    # Match the spec portion, not the mesh axis name (also present for P()).
+    assert any("'x'" in sharding.partition("spec=")[2].partition(")")[0]
+               for _, _, sharding in captured), captured
+    gather.assert_not_called()
+    assert len(entries) == 1
+    entries[0].assert_called_once()
+    assert len(entries[0].call_args.args) == 2
+    assert entries[0].call_args.kwargs == {}
+
+
+@pytest.mark.parametrize("boundary", ["pec", "cpml"])
+def test_multi_process_scan_body_has_no_concrete_captures(boundary, monkeypatch):
+    devices = _cpu_devices()
+    runner_jax = SimpleNamespace(**{**vars(jax), "process_index": lambda: 1})
+    monkeypatch.setattr(distributed_v2, "jax", runner_jax)
+    assert distributed_v2._spans_other_processes(devices)
+    gather = Mock(wraps=multihost_utils.process_allgather)
+    monkeypatch.setattr(multihost_utils, "process_allgather", gather)
+    captured = _scan_body_captures(
+        monkeypatch, lambda: _build_box(boundary).run(n_steps=3, devices=devices),
+    )
+    assert not captured, f"multi-process scan captured concrete arrays: {captured}"
+    gather.assert_called_once()
+    assert gather.call_args.kwargs == {"tiled": True}
+
+
+def test_multi_process_topology_is_decided_by_devices_not_process_count(monkeypatch):
+    with monkeypatch.context() as patch:
+        runner_jax = SimpleNamespace(**{**vars(jax), "process_index": lambda: 0})
+        patch.setattr(distributed_v2, "jax", runner_jax)
+        local = SimpleNamespace(process_index=0)
+        foreign = SimpleNamespace(process_index=1)
+        assert not distributed_v2._spans_other_processes([local, local])
+        assert distributed_v2._spans_other_processes([local, foreign])
+
+    devices = _cpu_devices()
+    # Only process_count changes: the mesh still contains this process's devices.
+    runner_jax = SimpleNamespace(**{**vars(jax), "process_count": lambda: 2})
+    monkeypatch.setattr(distributed_v2, "jax", runner_jax)
+    assert not distributed_v2._spans_other_processes(devices)
+    gather = Mock(wraps=multihost_utils.process_allgather)
+    monkeypatch.setattr(multihost_utils, "process_allgather", gather)
+    captured = _scan_body_captures(
+        monkeypatch, lambda: _build_box("pec").run(n_steps=3, devices=devices),
+    )
+    assert captured, "a mesh of local devices must keep the single-process scan"
+    gather.assert_not_called()
+
+
+def test_non_uniform_grid_is_refused_across_processes(monkeypatch):
+    devices = _cpu_devices()
+    runner_jax = SimpleNamespace(**{**vars(jax), "process_index": lambda: 1})
+    monkeypatch.setattr(distributed_v2, "jax", runner_jax)
+    assert distributed_v2._spans_other_processes(devices)
+    # Profiles are constructor arguments; Simulation has no set_dz_profile API.
+    sim = _build_box("pec", dz_profile=[1e-3] * 7)
+    scan = Mock(wraps=distributed_v2.lax.scan)
+    runner_lax = SimpleNamespace(**{**vars(distributed_v2.lax), "scan": scan})
+    monkeypatch.setattr(distributed_v2, "lax", runner_lax)
+    with pytest.raises(NotImplementedError, match="non-uniform grid") as exc:
+        sim.run(n_steps=3, devices=devices)
+    assert "more than one JAX process" in str(exc.value)
+    scan.assert_not_called()
 
 
 @pytest.mark.skipif(
@@ -116,12 +255,15 @@ def test_multi_process_variant_matches_single_within_parity(
 ):
     devices = _cpu_devices()
     expected = _snapshot(_build_box(boundary).run(n_steps=20, devices=devices))
-    # Override only the runner's topology query. JAX itself and process_allgather
-    # still see one real process, so this exercises both explicit-argument scan
-    # bodies and jit entries without starting a distributed runtime or mocking
-    # their numerical operations. The real multi-host collective is tested below.
-    runner_jax = SimpleNamespace(**{**vars(jax), "process_count": lambda: 2})
+    # Override only the runner's view of its own process index, so every local
+    # device looks like another process's and the runner selects the
+    # multi-process path. JAX itself and process_allgather still see one real
+    # process, so this exercises both explicit-argument scan bodies and jit
+    # entries without starting a distributed runtime or mocking their numerical
+    # operations. The real multi-host collective is tested below.
+    runner_jax = SimpleNamespace(**{**vars(jax), "process_index": lambda: 1})
     monkeypatch.setattr(distributed_v2, "jax", runner_jax)
+    assert distributed_v2._spans_other_processes(devices)
     actual = _snapshot(_build_box(boundary).run(n_steps=20, devices=devices))
     # Normalize the six-component field state by its common peak. In this ez
     # fixture hz is cancellation noise (~1e-12), so its own peak is not a useful
@@ -171,7 +313,9 @@ def test_two_processes_return_identical_global_results(tmp_path, record_property
     env = {key: value for key, value in env.items() if not key.lower().endswith("_proxy")}
     processes, logs = [], []
     timed_out = False
-    deadline = time.monotonic() + 50
+    # Two cold jax.distributed subprocesses on a small CI runner: the
+    # coordinator rendezvous alone can take tens of seconds.
+    deadline = time.monotonic() + 180
     try:
         for rank in range(2):
             log = (tmp_path / f"worker-{rank}.log").open("w")

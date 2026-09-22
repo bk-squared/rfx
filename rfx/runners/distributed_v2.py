@@ -104,6 +104,17 @@ def _make_mesh(devices):
     return Mesh(np.array(devices), axis_names=("x",))
 
 
+def _spans_other_processes(devices):
+    """True when a device in ``devices`` belongs to another JAX process.
+
+    Arrays sharded over such a mesh are not fully addressable here, so the
+    scan bodies must take them as jit arguments and the result needs a
+    cross-process gather. On one process this is always False.
+    """
+    me = jax.process_index()
+    return any(getattr(d, "process_index", me) != me for d in devices)
+
+
 def _x_sharding(mesh):
     """NamedSharding that distributes the leading (x) axis across devices."""
     return NamedSharding(mesh, P("x"))
@@ -534,7 +545,6 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     -------
     Result
     """
-    multi_process = jax.process_count() > 1
     validate_exchange_interval(exchange_interval)
     from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
     _refuse_f0(sim._thin_conductors, "distributed (v2) runner")
@@ -571,6 +581,14 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     if devices is None:
         devices = jax.devices()
     n_devices = len(devices)
+    # The multi-process path is needed only when the mesh holds a device
+    # this process cannot address: then the scan bodies may not close over
+    # sharded arrays and the final fields must be gathered across hosts.
+    # ``jax.process_count() > 1`` is the wrong predicate -- a multi-process
+    # job whose mesh is its own local devices is fully addressable, and
+    # ``process_allgather`` would concatenate such arrays across processes
+    # instead of replicating them.
+    multi_process = _spans_other_processes(devices)
 
     # Resolve PMC faces (T8, 2026-04). ``BoundarySpec.pmc_faces()`` returns
     # a set; freeze it so it is safely closed-over by the traced scan
@@ -722,6 +740,17 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         raise NotImplementedError(
             "Phase B does not support Lorentz dispersion on the NU "
             "distributed path yet."
+        )
+    if is_nu and multi_process:
+        # The NU update bodies (_distributed_common.update_{h,e}_nu_shmap)
+        # still close over the eight sharded/replicated spacing arrays
+        # (inv_dx*, inv_dy*, inv_dz*), which is illegal when the mesh spans
+        # another process. Refuse rather than fail inside the jitted scan.
+        raise NotImplementedError(
+            "A non-uniform grid (dx/dy/dz profile) is not supported on the "
+            "distributed path when the device mesh spans more than one JAX "
+            "process; only uniform grids run across processes. Use devices "
+            "of this process only, or a uniform grid."
         )
 
     dt = grid.dt
@@ -1546,8 +1575,12 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     if multi_process:
         from jax.experimental import multihost_utils
 
-        # Return the full global fields and trace on every process. This host
-        # gather is absent from the single-process path, which stays traceable.
+        # Return the full global fields and trace on every process. The
+        # arrays are not fully addressable here (that is what selected this
+        # path), so ``process_allgather`` replicates them rather than
+        # concatenating per-process copies. It returns host numpy: the
+        # multi-process result is not differentiable through this gather.
+        # The single-process path has no gather and stays traceable.
         final_state_sharded, probe_ts = multihost_utils.process_allgather(
             (final_state_sharded, probe_ts), tiled=True,
         )
