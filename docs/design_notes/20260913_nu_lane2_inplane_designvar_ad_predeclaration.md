@@ -607,3 +607,21 @@ change). Both files re-derive from their own arrays inside 1e-12
 test pins the arrays' bit-identity, the seven equal scalars, and the two
 share differences as measured (1 and 28 ulp). Nothing in any verdict or
 in the note's text depends on the digits beyond -1.47e-4 / 0.5884.
+
+## Provenance addendum (2026-09-22; sections above untouched)
+
+Every E6 record's `git_sha` (`847269a5`, `bd1ea262`, `60781ccc`,
+`fa2eae4d`, `17ece761`, `dd24ec3a`, `4f2d22af`, `99b510b3`) names a commit
+that no longer exists in any reachable ref, locally or on GitHub (checked
+2026-09-22; `git cat-file -t` and the commits API, 422 for all): the branch
+was rebased onto the AD-Q tip before PR #1034 was opened, and the runs had
+recorded the pre-rebase HEAD. Recorded as the interval it is: by
+`started_utc` the E6 runs (2026-09-14 06:18–06:30 UTC) sit between the
+rebased commits `52bbaa1c` (pre-declaration, 15:20 KST) and `50d073a8`
+(results, 15:33 KST), and the diagnostic arm (07:22 UTC) at `7fbd98f8`
+(16:24 KST) — the same diffs under new hashes. The file name
+`e6_diag_revert_cellwise_firstpass_4f2d22af.json` keeps the hash it was
+written under; it is a label, not a pointer. The replay test re-derives
+every fit, error bar, verdict and map check from the stored numbers with
+the instrument at HEAD; the exact source of the FDTD traces is bounded by
+the interval, not named.

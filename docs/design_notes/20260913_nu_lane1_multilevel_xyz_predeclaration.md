@@ -1077,3 +1077,23 @@ It is appended in the commit that stores the window scan, as a dated
 addendum after section 7 with sections 1-7 untouched; the program
 document keeps its no-artifact-reference classification (the addendum
 names the JSON file but carries no double-colon artifact-key span).
+
+## Provenance addendum (2026-09-22; sections above untouched)
+
+The `git_sha` every E5 record carries — `d6bc5dde` (`e5_model.json`),
+`ea208024` (`e5_z`, `e5_x`, `e5_y`, `e5_relabel`, `e5_pinbridge`),
+`554d4b0f` (`e5_window_scan`) — names a commit that no longer exists in
+any reachable ref, locally or on GitHub (checked 2026-09-22 with
+`git cat-file -t` and the commits API, 422 for all). The branch was rebased
+onto the AD-Q tip before PR #1034 was opened (PR body, "Verification"), and
+the one-shot FDTD runs had recorded the pre-rebase HEAD. The stamp is
+therefore an INTERVAL, not a line, and is recorded as one: by `started_utc`
+the model and measurement runs (2026-09-13 15:47–15:58 UTC) sit between the
+rebased commits `b6a023f2` (pre-declaration, 00:50 KST) and `b0951e7a`
+(results, 00:59 KST), and the window scan (17:03 UTC) at the rebased
+`1991118e` (02:03 KST) — the same diffs under new hashes. What the record
+still proves mechanically is unchanged: `test_e5_multilevel_replay.py`
+re-derives every `R_model`, window and verdict from the stored ladders with
+the instrument at HEAD. What it cannot prove is the exact source of the
+FDTD traces; a re-measurement on a resolvable commit is a separate
+declaration, not an edit to these files.
