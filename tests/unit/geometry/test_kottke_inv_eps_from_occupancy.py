@@ -1,18 +1,19 @@
 """Unit tests for `kottke_inv_eps_from_occupancy`.
 
-The new function maps a continuous-fill PEC occupancy field to a
-Stage 2 Kottke inv-eps tensor — the AD-traceable analogue of the
-``pec_shapes`` branch in ``compute_inv_eps_tensor_diag``.  These tests
-verify:
+The function maps a continuous-fill PEC occupancy field to an
+inverse-permittivity tensor for ``update_e_aniso_inv`` — the AD-traceable
+analogue of the ``pec_shapes`` branch in ``compute_inv_eps_tensor_diag``.
+Since #1197 it is the lattice ownership contract's own edge rule
+(``_volume_occupancy_masks``): an edge is conductor to the degree the
+cells sharing it are occupied. These tests verify:
 
   1. Limit cases — pure vacuum (occ=0) gives 1/ε background; pure PEC
      (occ=1) gives 0.
-  2. Half-fill with a clear normal direction gives the Kottke
-     PEC-limit signature (inv_par = 0, inv_perp = 0.5/ε on the
-     perpendicular axis).
-  3. Baseline integration — when an aniso_inv_eps_baseline is
-     provided, the PEC contribution is taken via elementwise min so
-     dielectric and PEC stack correctly.
+  2. Binary occupancy reproduces ``realized_pec_edge_masks`` exactly, and
+     a half-filled step cell sits strictly between the two binary answers
+     without touching the first air cell beyond it.
+  3. Baseline integration — an ``aniso_inv_eps_baseline`` is scaled by the
+     keep factor ``1 - M_c`` so dielectric and PEC stack.
   4. AD: gradient flows through occupancy without NaN.
 """
 
@@ -109,7 +110,7 @@ def test_half_fill_step_is_between_the_two_binary_answers():
     for comp in (inv_xx, inv_yy, inv_zz):
         a = np.asarray(comp)
         assert np.allclose(a[:, ny // 2 + 1:, :], 0.0)            # interior metal
-        assert np.allclose(a[:, :j - 1, :], 1.0)                    # air beyond the step
+        assert np.allclose(a[:, :j, :], 1.0)                        # air beyond the step, first plane included
         v = a[2:nx - 2, j, 2:nz - 2]
         assert np.all(v > 0.0) and np.all(v < 1.0), (float(v.min()), float(v.max()))
     # Ey edges of the half cell: four incident cells all 0.5 -> 1 - 0.5**4

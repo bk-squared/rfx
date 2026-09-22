@@ -1994,15 +1994,16 @@ class _ExecuteMixin:
                     comp = {"z": "ey", "x": "ez", "y": "ez"}[fpe.axis]
                 from rfx.simulation import make_source as _make_src
                 sources.append(_make_src(grid, tuple(center), comp, wf, n_steps))
-        # Stage 2 Kottke for AD-traceable PEC density (opt-in via env
-        # ``RFX_PEC_OCC_KOTTKE=1``).  When enabled and
-        # ── Port-aware Kottke dilation guard (issue #82) ──────────
-        # Kottke's ``occ_dilated = max(f, roll(f,±1,...))`` picks up
-        # non-zero occupancy from cells adjacent to each port cell.
-        # For a probe-fed patch (port 1 cell below the PEC sheet),
-        # the z+1 neighbor carries the patch occupancy into the port's
-        # inv_eps, causing 60x–223% AD gradient mismatch.  Fix: also
-        # zero the 6 face-neighbors of every port cell before Kottke.
+        # ── Port guard for the tensor lane (issue #82) ──────────
+        # The tensor lane (``RFX_PEC_OCC_KOTTKE=1``) used to dilate the
+        # occupancy by one cell on every face, so a probe-fed patch one
+        # cell above its port wrote the patch into the port's inv_eps
+        # (60x–223 % AD gradient mismatch); clearing the six face
+        # neighbours of every port cell matched that reach. Since #1197
+        # the lane uses the contract's incidence rule, whose reach is the
+        # four backward incident cells — the plain lane's reach all along,
+        # which this guard never covered (in-plane diagonals). Kept as is;
+        # the gap is one for the port lane, noted on #1197.
         if pec_occupancy_local is not None and _port_cleared_cells:
             for ci, cj, ck in _port_cleared_cells:
                 for di, dj, dk in ((1,0,0),(-1,0,0),(0,1,0),(0,-1,0),(0,0,1),(0,0,-1)):
@@ -2052,16 +2053,13 @@ class _ExecuteMixin:
                     "(#1183). Move the box off the port, or use "
                     "pec_occupancy_override.")
 
+        # Tensor lane (opt-in via ``RFX_PEC_OCC_KOTTKE=1``): when
         # ``pec_occupancy_local`` is supplied, build an ``aniso_inv_eps``
-        # tensor via Kottke's PEC limit ((1−f)/ε perpendicular, 0
-        # parallel) using the gradient of the occupancy as the
-        # interface normal.  This routes the override through the same
-        # subpixel machinery hard ``Box(material="pec")`` uses
-        # (``compute_inv_eps_tensor_diag``), eliminating the sub-β
-        # wiggle near high-Q resonances.  Bypasses the legacy
-        # ``apply_pec_occupancy`` E-zeroing path on this branch — the
-        # two would double-correct at sigmoid edges (cf. Stage 2
-        # design memo §R9 anti-pattern).
+        # tensor from the occupancy with the lattice contract's edge rule
+        # (#1197: ``inv_c = (1 - M_c) * baseline``) and run it through the
+        # same ``update_e_aniso_inv`` path hard ``Box(material="pec")``
+        # uses. Bypasses the ``apply_pec_occupancy`` E-scaling path on
+        # this branch — the two would double-correct at sigmoid edges.
         aniso_inv_eps_run = None
         pec_occupancy_for_run = pec_occupancy_local
         if (pec_occupancy_local is not None and
@@ -2076,6 +2074,7 @@ class _ExecuteMixin:
                 grid,
                 pec_occupancy_local,
                 aniso_inv_eps_baseline=inv_baseline,
+                periodic=periodic_bool,
             )
             pec_occupancy_for_run = None
             if design_occupancy is not None:

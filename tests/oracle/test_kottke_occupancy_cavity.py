@@ -28,7 +28,12 @@ def _strongest(ts, dt):
 
 
 def test_binary_pec_slab_leaves_tm110_at_the_analytic_frequency(monkeypatch):
+    import rfx.geometry.smoothing as _sm
     monkeypatch.setenv("RFX_PEC_OCC_KOTTKE", "1")
+    calls = []
+    _real = _sm.kottke_inv_eps_from_occupancy
+    monkeypatch.setattr(_sm, "kottke_inv_eps_from_occupancy",
+                        lambda *a, **k: (calls.append(1), _real(*a, **k))[1])
     sim = Simulation(freq_max=16e9, domain=(L, L, L), dx=DX, boundary="pec")
     sim.add_source((5.5e-3, 7.5e-3, 15.5e-3), "ez", amplitude_kind="field",
                    waveform=GaussianPulse(f0=8e9, bandwidth=0.9))
@@ -38,6 +43,7 @@ def test_binary_pec_slab_leaves_tm110_at_the_analytic_frequency(monkeypatch):
     occ[:, :, :6] = 1.0                                   # slab from z = 0 to 6 mm, edge on a cell boundary
     r = sim.forward(pec_occupancy_override=jnp.asarray(occ), n_steps=STEPS,
                     skip_preflight=True, checkpoint=False)
+    assert calls, "the tensor lane did not run; this oracle would be judging the plain lane"
     f = _strongest(np.asarray(r.time_series)[:, 0], float(r.grid.dt))
     f_an = C0 / 2 * np.sqrt(2) / L
     assert abs(f - f_an) / f_an < 2e-3, (f, f_an)

@@ -1420,26 +1420,21 @@ def kottke_inv_eps_from_occupancy(
     *,
     aniso_inv_eps_baseline: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray] | None = None,
     background_eps: float = 1.0,
-    grad_eps: float = 1e-12,
+    periodic: tuple[bool, bool, bool] = (False, False, False),
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    """Stage 2 Kottke inv-eps tensor from a continuous-fill PEC occupancy.
+    """Inverse-permittivity tensor from a continuous-fill PEC occupancy (#1197).
 
     The AD-traceable analogue of the ``pec_shapes`` branch in
-    :func:`compute_inv_eps_tensor_diag`.  ``pec_occupancy`` is a per-cell
-    fill fraction in ``[0, 1]``; ``f = occ`` plays the role of Kottke's
-    fill, and the interface normal is derived from ``∇occ / |∇occ|``.
-
-    For a sigmoid mask, ``∇occ`` is large only at the boundary cells
-    (occ ≈ 0.5 transition zone); interior PEC cells (occ ≈ 1) and
-    exterior vacuum cells (occ ≈ 0) have small ``|∇occ|`` but
-    Kottke's diagonal output is independent of the normal there
-    (``inv_perp = inv_par = (1−f)/ε`` reduces to a scalar at f → 0
-    or f → 1 in the PEC limit), so the small-norm regime is benign.
-
-    Yee staggering is approximated by applying the cell-centred Kottke
-    output to all three E-component positions of the cell.  The error
-    is O(dx) at the sigmoid edge — second-order to the staircase
-    error that the override path replaces.
+    :func:`compute_inv_eps_tensor_diag`, built from the lattice ownership
+    contract's own rule rather than from a cell-centred Kottke fill: each E
+    edge is conductor to the degree that the four cells sharing it are
+    occupied (``_volume_occupancy_masks``, #931 §1.2 hard / §1.6 relaxed),
+    ``inv_c = (1 - M_c) * baseline_c``. At binary occupancy the zeros are
+    ``realized_pec_edge_masks`` bit for bit; a fractional cell is a lossless
+    interpolation (a static high-permittivity cell), exact at 0 and 1 and a
+    continuation in between -- it still shifts a resonance (measured -3.6 %
+    on a cavity's TM110 with a slab edge at a cell centre). Feed the result
+    to ``update_e_aniso_inv``.
 
     Parameters
     ----------
@@ -1448,18 +1443,18 @@ def kottke_inv_eps_from_occupancy(
         Continuous-fill PEC field; values clipped to ``[0, 1]``.
     aniso_inv_eps_baseline : (inv_xx, inv_yy, inv_zz) tuple, optional
         Pre-computed inv-eps tensor with dielectric subpixel smoothing
-        already applied.  When supplied, the Kottke PEC limit is taken
-        as the elementwise minimum against this baseline (union of
-        PEC effects on top of dielectrics).  When ``None``, the
+        already applied.  When supplied, ``1 - M_c`` scales it -- the
+        same keep factor ``apply_pec_occupancy`` applies to E, so the two
+        lanes are one function of the occupancy.  When ``None``, the
         background uses ``background_eps``.
     background_eps : float
         Background permittivity used when ``aniso_inv_eps_baseline``
         is ``None``.  Default 1.0 (vacuum).
-    grad_eps : float
-        Numerical guard for ``|∇occ|`` normalisation.  Cells with
-        ``|∇occ| < grad_eps`` get a default normal direction (x̂);
-        the Kottke output is independent of the normal in those cells
-        (see docstring above).
+    periodic : (bool, bool, bool)
+        The run's periodic flags (``Simulation._periodic_flags()``): the
+        incident-cell shifts wrap on a periodic axis, exactly as the hard
+        rule's do. ``Grid`` carries no such attribute, so the caller passes
+        them.
 
     Returns
     -------
@@ -1489,16 +1484,15 @@ def kottke_inv_eps_from_occupancy(
     # with a binary PEC slab (TM110 is independent of the slab height):
     # analytic 8.833 GHz, ``apply_pec_occupancy`` 8.8305, this builder with
     # the dilation 8.5266 (-3.5 %), at a half-cell edge 8.3228 (-5.8 %). The
-    # dilation had been kept on an |S21| witness of one notch run (60939e0,
-    # 2026-05-10); that board had its stub a cell off the line (#1182), so
-    # the witness was not measuring what it seemed to.
+    # dilation had been kept (2026-05-31 panel) on the |S21| witness of one
+    # unnamed open-stub run in 60939e0's commit message; the fixture behind
+    # that number is not recorded, and the cavity oracle above supersedes it.
     from rfx.boundaries.pec import _volume_occupancy_masks
     f = jnp.clip(pec_occupancy.astype(jnp.float32), 0.0, 1.0)
     # Sigmoid-floor values (1e-30 ...) are vacuum, and their gradient is
     # pinned zero (2026-05-17 decision, kept).
     f = jnp.where(f < 1e-3, jnp.zeros_like(f), f)
-    periodic = tuple(bool(p) for p in getattr(grid, "periodic", (False, False, False)))
-    m_x, m_y, m_z = _volume_occupancy_masks(f, periodic)
+    m_x, m_y, m_z = _volume_occupancy_masks(f, tuple(bool(p) for p in periodic))
     if aniso_inv_eps_baseline is not None:
         inv_xx_b, inv_yy_b, inv_zz_b = aniso_inv_eps_baseline
     else:
