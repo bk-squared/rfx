@@ -30,6 +30,10 @@ No solve: the whole file is build-time work on a ~1 M cell grid.
 
 from __future__ import annotations
 
+import json
+import math
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -385,3 +389,135 @@ def test_the_crossval_case_is_imported_not_copied():
     for name in ("MAG_BAR_DB", "ARM_WITNESS_BAR_DB", "FREQ_BAR",
                  "LADDER_AGREEMENT", "PASSIVITY_EXCESS_BAR"):
         assert f"case.{name}" in src, f"the {name} bar must be read from the case"
+
+
+# -------------------------------------------------- the recorded arms' meshes
+RECORD = (Path(__file__).resolve().parents[3] / "validation" / "research"
+          / "multiband_nu" / "results" / "msl_notch_graded.json")
+RECORDED_GRADED_ARMS = ("A_on", "A_off", "A_off_longarms", "B_off", "C_off")
+
+#: How far a solved ramp cell may sit from the one the record holds, in units
+#: of the last bit of a float64 (``math.ulp``).  Not a tolerance on the mesh:
+#: the five graded arms were solved inside the GPU job's container (numpy on
+#: python 3.10) and this gate runs in the project venv (numpy 2.4 on python
+#: 3.11), and the two disagree in the last bit or two of ``np.sum`` and of the
+#: power ufunc, which is what the geometric ramp's ratio is bisected on.
+#: Measured across the five arms on 2026-09-22: at most 6 ulp, on at most 4 of
+#: a profile's 8-27 ramp cells; 8 leaves two bits of headroom.  Everything the
+#: mesh DECLARES -- the fine cell, the substrate cell, the solved z tail cell,
+#: every cell of every fine band, every cell of every coarse run, every
+#: declared coordinate, every node index and every segment length -- is
+#: compared with ``==`` below and is bit-identical.  In metres the worst cell
+#: disagreement is 8e-16 of its own size, on cells that sit in the coarse
+#: transition away from the metal; no cell that touches the line, the stub or
+#: the substrate is among them.
+RECORD_ULP_FLOOR = 8.0
+
+#: Fields the record holds that ``profiles`` or ``build_graded`` produces and
+#: that are exact float arithmetic on the case's constants -- no reduction, no
+#: bisection -- so the only honest bar is bit equality.
+EXACT_SCALARS = (
+    "rung", "placement", "arm_length_m", "fine_cell_m", "substrate_cell_m",
+    "coarse_cell_m", "z_tail_cell_m", "n_across_metal", "n_substrate_cells",
+    "margin_cells", "edge_offset_m", "lateral_clearance_m",
+    "drawn_stub_open_y_m", "drawn_sheet_z_m", "n_interior_cells",
+)
+EXACT_MAPPINGS = ("declared", "node_index", "segment_cells")
+#: Cumulative sums over the ramp cells: they inherit the ramp's last bit.
+NEAR_SEQUENCES = ("domain_m", "band_x_m", "band_y_trace_m",
+                  "band_y_stub_end_m", "band_z_m", "drawn_trace_y_m",
+                  "drawn_stub_x_m")
+
+
+def _ulps(a: float, b: float) -> float:
+    """Distance between two float64 in units of the last bit of the larger."""
+    a, b = float(a), float(b)
+    if a == b:
+        return 0.0
+    if not (np.isfinite(a) and np.isfinite(b)):
+        return float("inf")
+    return abs(a - b) / math.ulp(max(abs(a), abs(b)))
+
+
+@pytest.fixture(scope="module")
+def recorded_arms():
+    assert RECORD.is_file(), f"the record is missing: {RECORD}"
+    with RECORD.open() as fh:
+        return json.load(fh)["arms"]
+
+
+@pytest.mark.parametrize("key", RECORDED_GRADED_ARMS)
+def test_the_recorded_arms_meshes_are_rebuilt_from_the_record(recorded_arms,
+                                                              key):
+    """Every graded arm already in the record rebuilds to the mesh it recorded.
+
+    This is the regression the FZ pre-declaration requires before the rung
+    spec is generalized.  The five arms were solved on GPUs and their meshes
+    written into the record; a rung table, band arithmetic or runway solver
+    that moves any of them makes the record's notch frequencies unattributable
+    to a mesh, so it has to be red here.
+
+    The comparison is against STORED data, never against the same expression
+    evaluated twice.  It is split by what each number is: everything the mesh
+    declares is compared with ``==``, and only the cells whose size comes out
+    of a bisection on a numpy reduction are allowed the float64 last bit
+    (``RECORD_ULP_FLOOR``, whose comment carries the measurement).  A rung
+    changed by one cell moves these numbers by about 1e13 ulp.
+    """
+    rec = recorded_arms[key]
+    arm = ins.ARMS[key]
+    x, y, z, board = ins.profiles(arm.rung, arm.placement, arm.arm_length_m)
+    prof_report = ins.assert_profiles_graded((x, y, z), board)
+    sim, _prof, built = ins.build_graded(arm.rung, arm.placement,
+                                         arm.arm_length_m)
+    assert sim is not None
+    got = dict(built, rung=arm.rung, placement=arm.placement,
+               n_interior_cells=int(x.size * y.size * z.size),
+               lateral_clearance_m=ins.LATERAL_CLEARANCE_M)
+
+    for field in EXACT_SCALARS:
+        assert got[field] == rec[field], f"{key}: {field} moved"
+    for field in EXACT_MAPPINGS:
+        assert dict(got[field]) == dict(rec[field]), f"{key}: {field} moved"
+    assert [int(v) for v in rec["interior_shape"]] == [x.size, y.size, z.size]
+
+    worst = 0.0
+    for axis, p in zip("xyz", (x, y, z)):
+        stored = np.asarray(rec["profiles"][axis], dtype=float)
+        assert stored.size == p.size, f"{key}: d{axis}_profile changed length"
+        # Every cell the mesh DECLARES -- the fine band's own cell and the
+        # coarse cell -- bit-for-bit, and in the same places.
+        fine = board["substrate_cell_m"] if axis == "z" else board["fine_cell_m"]
+        for size, what in ((fine, "fine"), (ins.C_COARSE_M, "coarse")):
+            assert np.array_equal(p == size, stored == size), (
+                f"{key}: the {what} cells of d{axis}_profile are not where the "
+                f"record puts them")
+        ramp = ~((p == fine) | (p == ins.C_COARSE_M))
+        for a, b in zip(p[ramp].tolist(), stored[ramp].tolist()):
+            worst = max(worst, _ulps(a, b))
+        # The profile sum IS the domain the arm solved, and it closes exactly.
+        assert float(np.sum(p)) == float(np.sum(stored)), (key, axis)
+
+    for field in NEAR_SEQUENCES:
+        for a, b in zip(got[field], rec[field]):
+            worst = max(worst, _ulps(a, b))
+    for label, value in got["node"].items():
+        worst = max(worst, _ulps(value, rec["node"][label]))
+    for axis in "xyz":
+        for label, value in prof_report[axis].items():
+            if isinstance(value, float):
+                worst = max(worst,
+                            _ulps(value, rec["profile_summary"][axis][label]))
+            else:
+                assert value == rec["profile_summary"][axis][label], (key, axis,
+                                                                     label)
+    assert worst <= RECORD_ULP_FLOOR, (
+        f"{key}: a rebuilt mesh number is {worst:.1f} ulp from the record, "
+        f"past the {RECORD_ULP_FLOOR:.0f} ulp this machine's numpy explains")
+
+    # R1's own residues are round-off either way, and both sides are ten orders
+    # of magnitude inside the 1 nm the refusal allows.
+    for label, miss in prof_report["intended_node_miss_m"].items():
+        assert miss <= 1e-16 and rec["intended_node_miss_m"][label] <= 1e-16, (
+            key, label)
+        assert miss <= ins.NODE_TOL_M
