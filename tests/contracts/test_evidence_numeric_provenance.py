@@ -904,6 +904,12 @@ CLASSIFICATION: dict[str, str] = {
     # it (tests/unit/farfield/test_ntff_second_order_oracle.py, the locks NTFF
     # battery, tests/unit/farfield/test_farfield_nonuniform.py).
     "docs/design_notes/20260921_ntff_second_order.md": NO_ARTIFACT_REFERENCE,
+    # Pre-declaration plus a results section of fact tables. Every number in
+    # it is re-derived from validation/research/multiband_nu/results/
+    # msl_notch_graded.json by tests/unit/nonuniform/
+    # test_msl_notch_graded_replay.py, which pins the recorded verdicts
+    # (fired ones included) instead of quoting an artifact field by span.
+    "docs/design_notes/20260922_msl_notch_graded_mesh_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_vi_envelope_sweep_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_vi_envelope_sweep_results.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/wp4e_lumped_component_value_ad_spike.md": NO_ARTIFACT_REFERENCE,

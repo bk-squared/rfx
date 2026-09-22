@@ -897,6 +897,18 @@ CLASSIFICATION: dict[str, Entry] = {
     # ladder scale of each script (cheapest build, same declared geometry at
     # every scale by construction -- the alignment invariant in the design
     # note's section 1), multiband profile, which is the arm under test.
+    "validation/research/multiband_nu/msl_notch_graded.py": Entry(
+        "audited",
+        "`build_graded(rung, placement, arm_length_m)` returns "
+        "`(Simulation, profiles, board)` and calls no solve entrypoint; "
+        "`run_arm` does the solve and lives behind main(). The pinned variant "
+        "is the ladder's base rung (A_off: 6 substrate cells, 12 fine cells "
+        "across the 600 um metal, node 0.35 of a cell inside each free edge), "
+        "so the graded board's preflight text is the text the recorded arm "
+        "was built with",
+        (Builder("build_graded", 0, (
+            _v("A_off", rung="A", placement="offset"),
+        )),)),
     "validation/research/multiband_nu/w4_supraconvergence.py": Entry(
         "audited",
         "`build_sim(scale, dz_profile)` returns Simulation with no solve "
