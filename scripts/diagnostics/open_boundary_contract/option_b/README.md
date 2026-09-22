@@ -45,7 +45,7 @@ per-arm records with realized grid, pads, preflight text and energy witnesses: `
    with a caveat: every WR-90 record ends while the source is still running (no post-source window,
    `WITNESSES_2.csv`), the extraction is `extract_waveguide_s11` with no clean-guide subtraction, and
    the 4-layer arm of the same extractor returned +24 dB with column power 267
-   (`passivity_warning.txt`); the 8- and 16-layer arms pass the passivity guard (max |S| 0.20 / 0.08),
+   (`raw_3/diagnostic_waveguide/passivity_warning.txt`); the 8- and 16-layer arms pass the passivity guard (max |S| 0.20 / 0.08),
    which is the only check they have. The MSL numbers carry the conclusion; the WR-90 pair is
    corroboration with that caveat. Against the port's resistive termination (ring-down −98 dB on the
    same line, #1167 §5) the absorber is not a substitute. The criterion DESIGN.md asked for — the |S11|

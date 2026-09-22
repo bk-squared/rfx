@@ -1,0 +1,78 @@
+ [32mID[0m 369367263402
+ [32mName[0m rfx-801-B-sweep-msl
+ [32mDescription[0m Option B: msl, alpha scale and absorber depth; measurement only
+ [32mStatus[0m failed
+ [32mStatus reason[0m workload failed
+ [32mCreated[0m 2026-09-22 10:59:54+00:00
+ [32mCluster[0m remilab-c0
+ [32mResource[0m
+   [32mName[0m gpu-rtx4090
+   [32mCPU Type[0m 
+   [32mCPU Limit[0m 14.0
+   [32mMemory Limit[0m 48Gi
+   [32mGPU Type[0m NVIDIA-GeForce-RTX-4090
+   [32mGPU Limit[0m 1
+ [32mImage[0m
+   [32mName[0m nvcr.io/nvidia/jax:24.10-py3
+   [32mURL[0m nvcr.io/nvidia/jax:24.10-py3
+ [32mStart commands[0m
+ - [32mworkdir[0m /root
+   [32mcommand[0m set -eu
+base=/root/workspace/bk-workspace/.801-measure/B
+src=/root/workspace/bk-workspace/rfx-wt-B-sweep
+out="$base/jobs/msl"
+command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+git -c safe.directory="$src" -C "$src" rev-parse HEAD > "$out/commit.txt"
+test "$(cat "$out/commit.txt")" = e7f7e02704fd46ea7e21f127b19fc81cb66d6148
+test -z "$(git -c safe.directory="$src" -C "$src" status --porcelain)"
+printf "%s  %s\n" "30c2f2e057c2fc8b09235909eda323180118c749ce9bf8269f57ca1eb9513ad5" "$base/sweep_driver.py" | sha256sum -c -
+printf "%s  %s\n" "8129e3de11e2f72374a6639fae6959c1a6d212e710d2bd0193d6907d1a4a03c2" "$base/extra_rigs.py" | sha256sum -c -
+printf "%s  %s\n" "3cb4462c172330279d2eda117435391b140e66c160ad8a13718f8d5de42b63b1" "$base/instrument_check.py" | sha256sum -c -
+printf "%s  %s\n" "314f16d38af8df9dd469c71f57136d038b05fd346091d252a4b2866e715727c6" "$base/job_runner.py" | sha256sum -c -
+python -m pip install -q "scipy>=1.11" pytest "numpy<2"
+i=0
+while [ ! -s "$out/run_id.txt" ]; do
+  test "$i" -lt 12
+  sleep 5
+  i=$((i + 1))
+done
+trap 'test -f "$out/summary.json" && cat "$out/summary.json"' EXIT
+python -B "$base/job_runner.py" msl
+ [32mInteractive[0m False
+ [32mEnvironment variables[0m
+ - [32mkey[0m PYTHONUNBUFFERED
+   [32mvalue[0m None
+   [32msecret[0m None
+ - [32mkey[0m OPENBLAS_NUM_THREADS
+   [32mvalue[0m None
+   [32msecret[0m None
+ - [32mkey[0m MPLCONFIGDIR
+   [32mvalue[0m None
+   [32msecret[0m None
+ - [32mkey[0m HDF5_USE_FILE_LOCKING
+   [32mvalue[0m None
+   [32msecret[0m None
+ - [32mkey[0m LANG
+   [32mvalue[0m None
+   [32msecret[0m None
+ - [32mkey[0m XDG_CACHE_HOME
+   [32mvalue[0m None
+   [32msecret[0m None
+ - [32mkey[0m JAX_ENABLE_X64
+   [32mvalue[0m None
+   [32msecret[0m None
+ - [32mkey[0m XLA_PYTHON_CLIENT_PREALLOCATE
+   [32mvalue[0m None
+   [32msecret[0m None
+ - [32mkey[0m OMP_NUM_THREADS
+   [32mvalue[0m None
+   [32msecret[0m None
+ - [32mkey[0m PYTHONDONTWRITEBYTECODE
+   [32mvalue[0m None
+   [32msecret[0m None
+ [32mPorts[0m
+ - [32mname[0m ssh
+   [32mnumber[0m 0
+   [32mprotocol[0m tcp
+ [32mService account[0m None
+ [32mTermination protection[0m False
