@@ -243,6 +243,12 @@ def compute_coaxial_s_matrix(
 
     status = "passed"
 
+    # One scalar cell size for this lane, read once. It rejects non-uniform
+    # grids upstream, so the boundary cell IS the cell everywhere here; the
+    # reference planes below and the legacy wall radius above are the two
+    # places that want it.
+    _cell_size = float(grid.dx)
+
     for driven in range(n_ports):
         spec = build_coaxial_tem_plane_source_specs(
             grid=grid,
@@ -259,7 +265,7 @@ def compute_coaxial_s_matrix(
             # its own stamp uses rather than picking up the new default.
             shell_inner_radius=(
                 float(ports[driven].outer_radius)
-                - min(float(grid.dx),
+                - min(_cell_size,
                       0.5 * (float(ports[driven].outer_radius)
                              - float(ports[driven].pin_radius)))
             ),
@@ -361,7 +367,7 @@ def compute_coaxial_s_matrix(
     # note, incidental defect 1.
     reference_planes = np.asarray(
         [
-            (float(plane_indices[p_idx]) - float(grid.pad_z_lo)) * float(grid.dx)
+            (float(plane_indices[p_idx]) - float(grid.pad_z_lo)) * _cell_size
             for p_idx in range(n_ports)
         ],
         dtype=float,
