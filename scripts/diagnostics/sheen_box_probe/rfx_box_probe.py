@@ -85,9 +85,10 @@ Measured at h/3: A0 and A3 realize the same section-edge-to-inner-face distance
 therefore a thicker absorber at an UNCHANGED clearance, which is what the table
 above says it is.  (The z_lo face is PEC, so it takes no pad.)
 
-CLI: ``--dx``, ``--configs A0,A2``, ``--out DIR``, ``--dry-run`` (no solver, no
-GPU, no jax needed), ``--no-cell-snap``, ``--mutate-skip-patch ID`` (dry run
-only; see its help).
+CLI: ``--dx``, ``--configs A0,A2``, ``--out DIR``, ``--dry-run`` (solves
+nothing and needs no GPU; it still imports the case module, so jax has to be
+importable and the CPU build is enough), ``--no-cell-snap``,
+``--mutate-skip-patch ID`` (dry run only; see its help).
 """
 
 from __future__ import annotations
@@ -254,9 +255,10 @@ def _audit_definition_time_capture(m) -> dict:
 def _cells_spanning(length: float, dx: float) -> int:
     """``rfx.grid.cells_spanning`` when rfx imports, a copy of its rule when not.
 
-    The dry run has to state a cell count on a box with no jax and no GPU, and
-    the real run must not carry a second spelling of the rule that could drift
-    from the product's.
+    The product owns the rule; a second spelling here would drift from it, so
+    the import is tried first.  The copy is the fallback for a box where rfx
+    does not import at all -- checked to return the same counts as the
+    product's on this board (243 / 233 / 34 cells at h/7).
     """
     try:
         from rfx.grid import cells_spanning
