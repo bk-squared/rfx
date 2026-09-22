@@ -1951,9 +1951,32 @@ def fz_markdown_tables(arms: dict) -> str:
       "(substrate cells, cells")
     w("across the metal) pair per rung with the two independent, which is what "
       "an FZ ladder at a")
-    w("fixed in-plane cell needs; the five arms already recorded rebuild "
-      "bit-for-bit from the")
-    w("first record (`test_msl_notch_graded_build.py`).")
+    w("fixed in-plane cell needs.  The five arms already recorded are rebuilt "
+      "from the first")
+    w("record and compared against it "
+      "(`tests/unit/nonuniform/test_msl_notch_graded_build.py`): every cell of "
+      "every")
+    w("fine band, every cell of every coarse run, every profile sum, the fine "
+      "cell, the substrate")
+    w("cell, the solved z tail cell, every declared coordinate and every "
+      "segment length are")
+    w("bit-identical.  What is not is the last bit of the cells inside a "
+      "solved geometric ramp:")
+    w("those arms were solved in the GPU job's container (numpy on python "
+      "3.10) and the gate runs")
+    w("in the project venv (numpy 2.4 on python 3.11), and the two disagree in "
+      "the last bit or two")
+    w("of `np.sum` and of the power ufunc, which is what the ramp's cell ratio "
+      "is bisected on.")
+    w("Measured across the five arms: at most 6 of a profile's 8 to 27 ramp "
+      "cells differ, by at")
+    w("most 6 ulp, which is 8e-16 of a cell's own size, on cells in the coarse "
+      "transition away")
+    w("from the metal.  No cell touching the line, the stub or the substrate "
+      "is among them, and")
+    w("every profile sums to the same domain to the last bit.  The gate "
+      "refuses beyond 8 ulp; a")
+    w("rung changed by one cell moves these numbers by about 1e13 ulp.")
     w("")
     odd = [k for k in order if arms[k].get("centre_is_a_node") is False]
     if odd:
