@@ -598,10 +598,14 @@ def test_a_truncated_pass_still_leaves_its_arrays(tmp_path):
     gate = m._gate
     capped = "\n".join([
         "openEMS v0.0.36",
+        "FDTD timestep is: 0.00 s; Nyquist rate: 149 timesteps @20006339607.00 Hz",
+        "Max. number of timesteps: 60000 ( --> 35.1 * Excitation signal length)",
         "[@4s] Timestep: 4000 || Energy: ~1.1e-12 (-12.40dB)",
-        "[@2m] Timestep: 60000 || Energy: ~6.1e-16 (-38.92dB)",
+        # The last progress line is NOT the cap: openEMS prints every few seconds.
+        "[@2m] Timestep: 58120 || Energy: ~6.1e-16 (-38.92dB)",
         "RunFDTD: Warning: Max. number of timesteps was reached before the end-criteria of 0.0001 was reached",
     ])
+    dt = 1.0 / (2.0 * 20006339607.0 * 149)
 
     class _Port:
         def __init__(s, n, nf):
@@ -660,7 +664,7 @@ def test_a_truncated_pass_still_leaves_its_arrays(tmp_path):
         assert len(partial[key]) == nf
     assert partial["truncated"] is True
     assert partial["final_energy_db"] == pytest.approx(-38.92)
-    assert partial["final_timestep"] == 60000
+    assert partial["final_timestep"] == 58120
     assert "null" in partial and "passband" in partial and "cutoff_3db" in partial
     assert "max_energy_sum_band" in partial
     assert "end-criteria" in str(excinfo.value)
@@ -674,9 +678,22 @@ def test_a_truncated_pass_still_leaves_its_arrays(tmp_path):
         "to -38.92 dB at the cap; see stop_criteria_note")
     assert meta["end_criteria_reached"] is False
     assert meta["truncation_accepted"] is True
-    assert meta["final_timestep"] == 60000
-    assert meta["energy_db_trace"] == [[4000, -12.40], [60000, -38.92]]
+    assert meta["final_timestep"] == 58120
+    assert meta["energy_db_trace"] == [[4000, -12.40], [58120, -38.92]]
     assert "--accept-truncation was given" in meta["stop_criteria_note"]
+    # The record is as long as the CAP, not as long as the last progress line.
+    assert meta["timesteps_executed"] == 58120
+    assert meta["max_timesteps_declared"] == 60000
+    assert meta["record_length_steps"] == 60000, (
+        "a truncated run's record length came from the last progress line"
+    )
+    assert meta["record_length_s"] == pytest.approx(60000 * dt)
+    assert "the CAP" in meta["record_length_steps_basis"]
+    assert "58120" in meta["record_length_steps_basis"], (
+        "the basis does not say what the last progress line read"
+    )
+    assert meta["dt_s"] == pytest.approx(dt)
+    assert meta["dt_s_uncertainty_rel"] == pytest.approx(1.0 / 149)
 
 
 def test_a_clean_run_is_untouched_by_all_of_this(tmp_path):
@@ -687,6 +704,8 @@ def test_a_clean_run_is_untouched_by_all_of_this(tmp_path):
     gate = m._gate
     clean = "\n".join([
         "openEMS v0.0.36",
+        "FDTD timestep is: 0.00 s; Nyquist rate: 149 timesteps @20006339607.00 Hz",
+        "Max. number of timesteps: 60000 ( --> 35.1 * Excitation signal length)",
         "[@4s] Timestep: 4000 || Energy: ~1.1e-12 (-12.40dB)",
         "[@1m28s] Timestep: 44120 || Energy: ~1.0e-16 (-50.02dB)",
     ])
@@ -734,6 +753,13 @@ def test_a_clean_run_is_untouched_by_all_of_this(tmp_path):
     assert meta["end_criteria_reached"] is True
     assert "truncation_accepted" not in meta
     assert meta["final_energy_db"] == pytest.approx(-50.02)
+    # A run that reached its own end criterion stopped where the last progress
+    # line is, so THAT is the record length -- not the cap it never reached.
+    assert meta["record_length_steps"] == 44120
+    assert meta["max_timesteps_declared"] == 60000
+    assert "reached its end criterion" in meta["record_length_steps_basis"]
+    assert meta["record_length_s"] == pytest.approx(
+        44120 / (2.0 * 20006339607.0 * 149))
 
 
 # ---------------------------------------------------------------------------
@@ -817,8 +843,28 @@ def test_the_witness_says_so_when_the_grids_do_not_match():
     assert "max_abs_delta_s21_db" not in w
 
 
+# The lines the container actually prints, copied from the persisted log of run
+# 369367263401 (stage_b_coarse_real_openems_stdout.log, lines 32-33, 61-63,
+# 70-71) plus openEMS's own truncation warning. Every parser below is pinned
+# against THIS text, not against openEMS's source.
+REAL_LOG = "\n".join([
+    "Timestep (s)\t\t: 0.00",
+    "Timestep method name\t: Rennings_2",
+    "FDTD timestep is: 0.00 s; Nyquist rate: 149 timesteps @20006339607.00 Hz",
+    "Excitation signal length is: 1708 timesteps (0.00s)",
+    "Max. number of timesteps: 3000 ( --> 1.76 * Excitation signal length)",
+    "[@        4s] Timestep:         1110 || Speed:  122.2 MC/s "
+    "(3.632e-03 s/TS) || Energy: ~1.21e-14 (- 0.00dB)",
+    "[@        8s] Timestep:         2146 || Speed:  112.4 MC/s "
+    "(3.948e-03 s/TS) || Energy: ~3.11e-15 (- 5.91dB)",
+    "RunFDTD: Warning: Max. number of timesteps was reached before the "
+    "end-criteria of 0.0001 was reached",
+])
+
+
 def test_the_solver_timestep_is_read_from_its_own_banner():
     gate = _load_maker()._gate
+    # A build that prints enough digits is used as printed.
     assert gate._timestep_seconds("FDTD timestep is: 1.2345e-12 s; Nyquist rate: 3e-11 s") \
         == pytest.approx(1.2345e-12)
     assert gate._timestep_seconds("Used timestep: 4.567e-13 s") == pytest.approx(4.567e-13)
@@ -826,6 +872,76 @@ def test_the_solver_timestep_is_read_from_its_own_banner():
     assert gate._timestep_seconds(
         "[@ 4s] Timestep: 4000 || Energy: ~1e-12 (-12.4dB)") is None
     assert gate._timestep_seconds("openEMS v0.0.36\nnothing here") is None
+    # And THIS container prints two decimals, so its own line is unusable.
+    assert gate._timestep_seconds(REAL_LOG) is None
+
+
+def test_dt_is_derived_from_the_nyquist_line_when_the_print_is_too_coarse():
+    """openEMS prints "0.00 s" for a 1.7e-13 s timestep.
+
+    It also prints the Nyquist rate as an integer count of timesteps per half
+    period at f_max, N = floor(1 / (2 f dt)), which inverts to dt = 1 / (2 f N)
+    and is good to one step in N.
+    """
+    gate = _load_maker()._gate
+    s = gate._solver_setup(REAL_LOG)
+    assert s["nyquist_steps"] == 149
+    assert s["nyquist_f_hz"] == pytest.approx(20006339607.0)
+    assert s["dt_s"] == pytest.approx(1.0 / (2.0 * 20006339607.0 * 149))
+    assert s["dt_s"] == pytest.approx(1.677e-13, rel=1e-3)
+    assert s["dt_s_uncertainty_rel"] == pytest.approx(1.0 / 149)
+    assert "DERIVED" in s["dt_s_source"] and "Nyquist" in s["dt_s_source"]
+    assert s["excitation_length_steps"] == 1708
+    assert s["max_timesteps_declared"] == 3000
+    # The floor's bound is well inside what a merge allows between rungs.
+    assert s["dt_s_uncertainty_rel"] < _load_maker().MERGE_RECORD_LENGTH_TOL
+
+    # An exact print wins over the derivation, and says so.
+    exact = gate._solver_setup(
+        "FDTD timestep is: 1.6773e-13 s; Nyquist rate: 149 timesteps @2.0e10 Hz")
+    assert exact["dt_s"] == pytest.approx(1.6773e-13)
+    assert exact["dt_s_uncertainty_rel"] == 0.0
+    assert "read directly" in exact["dt_s_source"]
+    assert exact["nyquist_steps"] == 149, "the Nyquist numbers are recorded either way"
+
+    # Neither line present: None, and the source says what was tried.
+    none = gate._solver_setup("openEMS v0.0.36\nnothing useful")
+    assert none["dt_s"] is None and "UNAVAILABLE" in none["dt_s_source"]
+
+
+def test_the_truncation_warning_is_not_read_as_a_cap_declaration():
+    """"Max. number of timesteps: 3000" declares; "... was reached" warns."""
+    gate = _load_maker()._gate
+    warn = ("RunFDTD: Warning: Max. number of timesteps was reached before the "
+            "end-criteria of 0.0001 was reached")
+    assert gate._first_int(gate._MAX_TIMESTEPS_RE, warn) is None
+    assert gate._first_int(gate._MAX_TIMESTEPS_RE,
+                           "Max. number of timesteps: 3000 ( --> 1.76 * ...)") == 3000
+
+
+def test_the_progress_lines_parse_in_the_containers_own_form():
+    """"(- 5.91dB)": a space after the minus, none before dB."""
+    gate = _load_maker()._gate
+    p = gate._energy_progress(REAL_LOG)
+    assert p["final_timestep"] == 2146
+    assert p["final_energy_db"] == pytest.approx(-5.91)
+    assert p["energy_db_trace"] == [[1110, -0.0], [2146, -5.91]]
+    assert p["energy_db_trace_points"] == 2
+
+
+def test_a_truncated_runs_record_length_is_the_cap_not_the_last_print():
+    """openEMS prints a progress line every few seconds, not at the cap.
+
+    On the real log the last one says 2146 while the run was capped at 3000, so
+    a truncated pass's record is 3000 steps long and the field says which number
+    it used.
+    """
+    gate = _load_maker()._gate
+    assert gate._timesteps_executed(REAL_LOG) == 2146, (
+        "timesteps_executed is the largest PROGRESS count"
+    )
+    assert gate._solver_setup(REAL_LOG)["max_timesteps_declared"] == 3000
+    assert gate._log_indicates_truncation(REAL_LOG) is True
 
 
 def test_merge_refuses_rungs_of_different_record_lengths(tmp_path):
