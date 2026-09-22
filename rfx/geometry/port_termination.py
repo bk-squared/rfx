@@ -1,5 +1,6 @@
 """Declared port terminations and exact contact diagnostics."""
 from numbers import Integral
+from types import SimpleNamespace
 from typing import NamedTuple
 
 import numpy as np
@@ -96,24 +97,31 @@ def lattice_intersects_aperture(lattice, nodes, lower, upper):
 
 
 def default_msl_terminates(sim, *, position, width, height, direction):
-    """Name conductors exactly incident to the MSL signal aperture."""
+    """Name conductors exactly incident to the realized MSL signal aperture."""
     candidates = list(conductor_entries(sim))
     if not candidates:
         return ()
     from rfx.geometry.rasterize_grid import (
         coords_from_nonuniform_grid, coords_from_uniform_grid)
     from rfx.geometry.smoothing import _declared_conductor_lattice
+    from rfx.sources.msl_port import msl_cross_section_span, msl_port_from_entry
 
     grid = sim._build_realized_grid()
     coords = (coords_from_nonuniform_grid(grid) if hasattr(grid, "dx_arr")
               else coords_from_uniform_grid(grid))
     nodes = (coords.x, coords.y, coords.z)
-    lower = list(position)
-    lower[2] += height
+    port = msl_port_from_entry(SimpleNamespace(
+        position=position, width=width, height=height, direction=direction,
+        impedance=50.0, waveform=None))
+    span = msl_cross_section_span(grid, port)
+    indices = [0, 0, 0]
+    indices[span["prop_idx"]] = span["i_feed"]
+    indices[span["width_idx"]] = span["w_lo"]
+    indices[span["normal_idx"]] = span["n_hi"]
+    lower = [float(nodes[axis][index]) for axis, index in enumerate(indices)]
     upper = lower.copy()
-    transverse = 1 if direction[-1] == "x" else 0
-    lower[transverse] -= width/2
-    upper[transverse] += width/2
+    transverse = span["width_idx"]
+    upper[transverse] = float(nodes[transverse][span["w_hi"]])
     references = []
     for ref, entry in candidates:
         try:

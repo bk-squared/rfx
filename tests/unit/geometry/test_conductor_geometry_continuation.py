@@ -57,7 +57,7 @@ def test_unknown_termination_is_rejected_at_registration(kind, value):
 
 @pytest.mark.parametrize("direction", ("+x", "-x", "+y", "-y"))
 @pytest.mark.parametrize("nu", (False, True))
-def test_msl_default_uses_only_its_exact_signal_aperture(direction, nu):
+def test_msl_default_uses_only_its_exact_realized_signal_aperture(direction, nu):
     sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
                      boundary="cpml", cpml_layers=2,
                      **({"dz_profile": np.ones(8)} if nu else {}))
@@ -72,6 +72,8 @@ def test_msl_default_uses_only_its_exact_signal_aperture(direction, nu):
     sim.add_msl_port((4.25, 4.25, 1.), width=2., height=3., direction=direction)
     assert sim._msl_ports[-1].terminates == (("_geometry", 1),)
     sim.add_msl_port((4.25, 4.25, 1.), width=2., height=3.5, direction=direction)
+    assert sim._msl_ports[-1].terminates == (("_geometry", 1),)
+    sim.add_msl_port((4.25, 4.25, 1.), width=2., height=4., direction=direction)
     assert sim._msl_ports[-1].terminates == ()
     sim.add_msl_port((4.25, 4.25, 1.), width=2., height=3., direction=direction, terminates=[])
     assert sim._msl_ports[-1].terminates == ()
