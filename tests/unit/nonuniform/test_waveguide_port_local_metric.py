@@ -161,12 +161,37 @@ def test_mutation_reviving_the_boundary_scalar_is_visible():
                                                       rel=1e-9)
 
 
-def test_a_non_x_port_is_refused():
-    """The lane injects along x only; a y/z port would need its own axis."""
-    grid = _graded_grid()
-    for direction in ("+y", "-z"):
-        with pytest.raises(ValueError, match="along x only"):
-            _waveguide_port_axis_metrics(grid, _port(direction, 20))
+def test_a_port_reads_its_own_propagation_axis():
+    """``direction`` picks the axis; ``x_index`` is the plane along it.
+
+    ``tests/unit/nonuniform/test_nonuniform_api.py`` drives a ``+y`` port on
+    a non-uniform grid, so this is not hypothetical. Before the fix every
+    port took the x boundary scalar whatever it propagated along; on a
+    dz-only graded mesh that was the right number by coincidence, because dx
+    and dy are equal there. This pins that the y port now reads y.
+    """
+    grid = make_nonuniform_grid(
+        (_A_WG, _B_WG), np.full(10, 1.016e-3), _DX_COARSE,
+        cpml_layers=8, dx_profile=_wr90_profile(), pec_faces=_PEC_WALLS)
+
+    extent = {"x": grid.nx, "y": grid.ny, "z": grid.nz}
+    for direction, axis in (("+x", "x"), ("+y", "y"), ("-z", "z")):
+        n = extent[axis]
+        idx = min(12, n - 2)          # the narrow axes are only a few cells
+        dx_h, dx_e = _waveguide_port_axis_metrics(grid, _port(direction, idx))
+        cells, duals = grid.cells(axis), grid.duals(axis)
+        forward = direction.startswith("+")
+        h_plane = idx - 1 if forward else idx
+        e_plane = idx if forward else idx + 1
+        assert dx_h == float(cells[max(0, min(h_plane, n - 1))])
+        assert dx_e == float(duals[max(0, min(e_plane, n - 1))])
+
+    # x is graded here and y is not, so reading the wrong axis is visible:
+    # inside the band x gives 0.75 mm where y gives the 1.5 mm boundary cell
+    x_in_band = _waveguide_port_axis_metrics(grid, _port("+x", 47))
+    y_same_index = _waveguide_port_axis_metrics(grid, _port("+y", 47))
+    assert x_in_band[0] == pytest.approx(_DX_FINE, rel=1e-9)
+    assert y_same_index[0] == pytest.approx(_DX_COARSE, rel=1e-9)
 
 
 def test_a_traced_axis_keeps_its_tracer():

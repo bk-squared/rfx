@@ -643,6 +643,13 @@ def _waveguide_port_axis_metrics(grid, cfg):
       ``x_index + 1`` for ``-``, and sits ON a node, so it takes that node's
       DUAL spacing.
 
+    The axis is the port's own, read from ``direction``; ``x_index`` is the
+    plane index along it and the name is historical. A ``+y`` port reads the
+    y cells (``test_nonuniform_api`` has one). Before this, every port took
+    the x boundary scalar whatever it propagated along, which on a dz-only
+    graded mesh happened to be the right number because dx and dy are equal
+    there.
+
     On a uniform axis the two collapse to the same number and to
     ``grid.dx``, so nothing on the uniform lane moves.
 
@@ -651,22 +658,16 @@ def _waveguide_port_axis_metrics(grid, cfg):
     z pair already does, so the mesh-as-design-variable path survives.
     """
     axis = cfg.direction[-1].lower()
-    if axis != "x":
-        raise ValueError(
-            f"waveguide port direction {cfg.direction!r}: the non-uniform "
-            "lane injects along x only. A y- or z-propagating port would "
-            "need its own axis's cells here, and no fixture exercises one."
-        )
     forward = cfg.direction.startswith("+")
     h_plane = cfg.x_index - 1 if forward else cfg.x_index
     e_plane = cfg.x_index if forward else cfg.x_index + 1
 
-    n = int(grid.nx)
+    n = int((grid.nx, grid.ny, grid.nz)[("x", "y", "z").index(axis)])
     h_plane = max(0, min(int(h_plane), n - 1))
     e_plane = max(0, min(int(e_plane), n - 1))
 
-    cells = grid.cells("x")
-    duals = grid.duals("x")
+    cells = grid.cells(axis)
+    duals = grid.duals(axis)
     if is_tracer(cells):
         return cells[h_plane], duals[e_plane]
     return float(cells[h_plane]), float(duals[e_plane])
