@@ -3426,6 +3426,7 @@ class _ExecuteMixin:
         """
         if _removed_kwargs:
             _reject_removed_forward_kwargs(_removed_kwargs)
+        validate_exchange_interval(exchange_interval)
 
         # Phase 3 (issue #44 V3 §M6): one-shot UserWarning for the opt-in
         # distributed=True path so users know the path is opt-in / unstable

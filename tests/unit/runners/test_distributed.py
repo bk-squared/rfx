@@ -863,6 +863,11 @@ class TestExchangeInterval:
         # one-cell ghost exchange. Do not route through Simulation.run().
         monkeypatch.setattr(distributed_v2, "validate_exchange_interval", lambda value: None)
         ratios = {}
+        # n_steps=1000 is load-bearing: the K=2 last-50/first-50 ratio is
+        # 0.48 / 0.65 / 0.89 / 53 / 1.0e6 at 200 / 300 / 500 / 1000 / 2000
+        # steps (review measurement, 2026-09-22), so the > 3 bound is crossed
+        # only near 600 steps. Trimming the run for CI time turns this test
+        # red for the wrong reason.
         for interval in (1, 2):
             result = distributed_v2.run_distributed(
                 sim, n_steps=1000, devices=jax.devices()[:2],

@@ -26,6 +26,23 @@ import subprocess
 import sys
 import time
 import warnings
+from contextlib import contextmanager
+from unittest import mock
+
+
+@contextmanager
+def _validation_bypassed(k):
+    """No-op the exchange_interval entry validation while k > 1 runs."""
+    if k == 1:
+        yield
+        return
+    import rfx.api._execute as _execute
+    import rfx.runners.distributed as _v1
+    import rfx.runners.distributed_v2 as _v2
+    with mock.patch.object(_execute, "validate_exchange_interval", lambda v: None), \
+         mock.patch.object(_v2, "validate_exchange_interval", lambda v: None), \
+         mock.patch.object(_v1, "validate_exchange_interval", lambda v: None):
+        yield
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[2]
@@ -229,9 +246,15 @@ def measure(case, traces, manifest, out, device_count=None):
                 with warnings.catch_warnings(record=True) as caught:
                     warnings.simplefilter("always")
                     start = time.perf_counter()
-                    result = sim.run(n_steps=n_steps, skip_preflight=True,
-                                     devices=devices[:ndev] if ndev > 1 else None,
-                                     exchange_interval=k)
+                    # K > 1 is refused at every public entry since this
+                    # measurement was taken (the refusal is what it supports).
+                    # Bypass only the entry validation here, as the always-on
+                    # growth test does; the production scan and its one-cell
+                    # ghost exchange are untouched.
+                    with _validation_bypassed(k):
+                        result = sim.run(n_steps=n_steps, skip_preflight=True,
+                                         devices=devices[:ndev] if ndev > 1 else None,
+                                         exchange_interval=k)
                     jax.block_until_ready((result.state, result.time_series))
                     values = np.asarray(result.time_series).copy()
                     elapsed = time.perf_counter() - start
