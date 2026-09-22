@@ -5,13 +5,14 @@ Measure in a fresh process so arrays retained by unrelated tests cannot satisfy
 root conftest supplies two virtual CPU devices.
 """
 
+from functools import partial
 import inspect
 import json
 import os
 from pathlib import Path
 import subprocess
 import sys
-from types import SimpleNamespace
+from types import FunctionType, SimpleNamespace
 
 import jax
 import jax.numpy as jnp
@@ -56,7 +57,7 @@ def _build_box(case):
     return sim
 
 
-def _measure(case, explicit_args):
+def _measure(case, multi_process):
     sim = _build_box(case)
     devices = jax.devices("cpu")[:2]
     assert len(devices) == 2
@@ -64,8 +65,56 @@ def _measure(case, explicit_args):
     cells = int(np.prod(grid.shape))
     records = []
     scan = distributed_v2.lax.scan
+    boundary_ghosts_true = None
+
+    def traced_jit(f, *args, **kwargs):
+        entry = jax.jit(f, *args, **kwargs)
+
+        def run(*entry_args, **entry_kwargs):
+            nonlocal boundary_ghosts_true
+            # #931: inspect the actual PEC mask argument before it becomes a
+            # tracer. Physical-boundary ghost rows must remain False.
+            mask = inspect.signature(f).bind(*entry_args, **entry_kwargs).arguments.get("pec_mask_arg")
+            if mask is not None:
+                slabs = np.asarray(mask).reshape(len(devices), -1, *mask.shape[1:])
+                boundary_ghosts_true = int(slabs[0, 0].sum() + slabs[-1, -1].sum())
+            return entry(*entry_args, **entry_kwargs)
+
+        return run
 
     def traced_scan(body, carry, *args, **kwargs):
+        captured = []
+        seen = set()
+
+        def walk(value, path):
+            if isinstance(value, jax.core.Tracer) or id(value) in seen:
+                return
+            seen.add(id(value))
+            if isinstance(value, jax.Array):
+                if value.ndim >= 3:
+                    captured.append((path, value.shape, value.nbytes))
+                return
+            if isinstance(value, FunctionType):
+                for name, cell in zip(value.__code__.co_freevars, value.__closure__ or ()):
+                    try:
+                        child = cell.cell_contents
+                    except ValueError:
+                        continue
+                    walk(child, f"{path}.{name}")
+            if isinstance(value, (tuple, list)):
+                for name, child in zip(getattr(value, "_fields", range(len(value))), value):
+                    walk(child, f"{path}[{name}]")
+            if isinstance(value, partial):
+                walk(value.func, f"{path}.func")
+                walk(value.args, f"{path}.args")
+                for name, child in (value.keywords or {}).items():
+                    walk(child, f"{path}.keywords[{name}]")
+            if hasattr(value, "__wrapped__"):
+                walk(value.__wrapped__, f"{path}.__wrapped__")
+
+        # Per-cell captures become whole-domain compiled constants on every
+        # device. NU's one-dimensional spacing arrays are intentionally allowed.
+        walk(body, "scan")
         per_device = {str(d): 0 for d in devices}
         whole = []
         for arr in jax.live_arrays():
@@ -88,8 +137,7 @@ def _measure(case, explicit_args):
                 if (spatial if split else shard.data.size) >= cells:
                     whole.append((str(shard.device), arr.shape, str(arr.dtype),
                                   type(arr.sharding).__name__))
-        # Both scan entry variants capture the coefficient tuple directly;
-        # in the explicit-argument variant its leaves are JIT tracers.
+        # Both topologies capture coefficient tuples with JIT-tracer leaves.
         coeffs = {
             type(value).__name__: value
             for value in inspect.getclosurevars(body).nonlocals.values()
@@ -103,39 +151,33 @@ def _measure(case, explicit_args):
             for slot, value in (("state", carry[material]), ("coeffs", coeffs[coeff_type])):
                 for name, array in zip(value._fields, value):
                     placeholder_shapes[f"{material}.{slot}.{name}"] = array.shape
-        # #931: the physical-boundary ghost rows of the sharded PEC mask must be
-        # False (True puts metal on the whole x_lo / x_hi node plane). Read the
-        # mask the single-process scan body actually closes over, not a helper
-        # called with its own pad value.
-        boundary_ghosts_true = None
-        mask = inspect.getclosurevars(body).nonlocals.get("sharded_pec_mask")
-        if mask is not None and not isinstance(mask, jax.core.Tracer):
-            slabs = np.asarray(mask).reshape(len(devices), -1, *mask.shape[1:])
-            boundary_ghosts_true = int(slabs[0, 0].sum() + slabs[-1, -1].sum())
         records.append({"whole": whole, "bytes": per_device, "placeholders": placeholder_shapes,
+                        "captured": captured,
                         "pec_mask_boundary_ghosts_true": boundary_ghosts_true})
         return scan(body, carry, *args, **kwargs)
 
     distributed_v2.lax = SimpleNamespace(**{**vars(distributed_v2.lax), "scan": traced_scan})
-    if explicit_args:
-        # Exercise the multi-process argument path without starting jax.distributed.
-        distributed_v2.jax = SimpleNamespace(**{**vars(jax), "process_index": lambda: 1})
+    runner_jax = SimpleNamespace(**{**vars(jax), "jit": traced_jit})
+    if multi_process:
+        # Exercise the multi-process topology without starting jax.distributed.
+        runner_jax.process_index = lambda: 1
+    distributed_v2.jax = runner_jax
     result = sim.run(n_steps=3, devices=devices)
     jax.block_until_ready(result.time_series)
     assert records, "the memory gate must observe the time-stepping scan"
     print("MEMORY_STAGING " + json.dumps(records))
 
 
-@pytest.mark.parametrize("case,explicit_args", [
+@pytest.mark.parametrize("case,multi_process", [
     ("pec", False), ("cpml", False), ("pad", False), ("volume", False),
     ("nu", False), ("debye", False), ("debye2", False), ("lorentz", False),
     ("pec", True), ("cpml", True),
 ])
-def test_time_loop_holds_only_local_slabs(case, explicit_args):
+def test_time_loop_holds_only_local_slabs(case, multi_process):
     env = {**os.environ, "JAX_PLATFORMS": "cpu",
            "XLA_FLAGS": "--xla_force_host_platform_device_count=2"}
     run = subprocess.run(
-        [sys.executable, "-W", "ignore", str(Path(__file__).resolve()), case, str(int(explicit_args))],
+        [sys.executable, "-W", "ignore", str(Path(__file__).resolve()), case, str(int(multi_process))],
         env=env, text=True, capture_output=True, timeout=45,
     )
     assert run.returncode == 0, run.stdout + run.stderr
@@ -143,6 +185,7 @@ def test_time_loop_holds_only_local_slabs(case, explicit_args):
                for line in run.stdout.splitlines() if line.startswith("MEMORY_STAGING ")]
     assert len(records) == 1, run.stdout
     for record in records[0]:
+        assert not record["captured"], f"per-cell scan captures: {record['captured']}"
         assert not record["whole"], f"whole-domain single-device arrays: {record['whole']}"
         sizes = list(record["bytes"].values())
         assert len(sizes) == 2 and min(sizes) > 0
@@ -153,7 +196,7 @@ def test_time_loop_holds_only_local_slabs(case, explicit_args):
         assert len(shapes) == expected_slots
         for name, shape in shapes.items():
             assert np.prod(shape) <= 2, f"per-cell placeholder {name}: {shape}"
-        if case == "volume" and not explicit_args:
+        if case == "volume" and not multi_process:
             assert record["pec_mask_boundary_ghosts_true"] == 0, (
                 "PEC mask physical-boundary ghost rows must be False (#931): "
                 f"{record['pec_mask_boundary_ghosts_true']} True cells")
