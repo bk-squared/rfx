@@ -930,6 +930,14 @@ CLASSIFICATION: dict[str, str] = {
     # test_msl_notch_graded_replay.py, which pins the recorded verdicts
     # (fired ones included) instead of quoting an artifact field by span.
     "docs/design_notes/20260922_msl_notch_graded_mesh_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    # The NU grid core step 0 pre-declaration. No parseable artifact
+    # reference: its two `::` spans are the class names
+    # `rfx/grid.py::Grid` and `rfx/nonuniform.py::NonUniformGrid`, which
+    # this parser rejects by construction. It quotes no committed JSON
+    # key -- its numbers are read counts from grep, line citations, and
+    # timings from two scripts kept off-repo, each attributed in its own
+    # fact table to who checked it and how.
+    "docs/design_notes/20260922_nu_grid_core_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_vi_envelope_sweep_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_vi_envelope_sweep_results.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/wp4e_lumped_component_value_ad_spike.md": NO_ARTIFACT_REFERENCE,
