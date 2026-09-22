@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "measurement_revision": "cc282903b36df1a1d739ad2bdad930d164290152",
+  "working_directory": "/Users/byungkwankim/Documents/rfx-worktrees/dist-exchange-interval",
+  "commands": [
+    "JAX_PLATFORMS=cpu XLA_FLAGS=--xla_force_host_platform_device_count=4 PYTHONPATH=$PWD /Users/byungkwankim/Documents/rfx/.venv/bin/python scripts/diagnostics/measure_exchange_interval_error.py",
+    "JAX_PLATFORMS=cpu XLA_FLAGS=--xla_force_host_platform_device_count=4 PYTHONPATH=$PWD /Users/byungkwankim/Documents/rfx/.venv/bin/python scripts/diagnostics/measure_exchange_interval_error.py --case M3 --device-count 4"
+  ],
+  "analysis_command": "JAX_PLATFORMS=cpu XLA_FLAGS=--xla_force_host_platform_device_count=4 PYTHONPATH=$PWD /Users/byungkwankim/Documents/rfx/.venv/bin/python scripts/diagnostics/measure_exchange_interval_error.py --analyze-only --output /tmp/rfx-K",
+  "script": {
+    "path": "scripts/diagnostics/measure_exchange_interval_error.py",
+    "sha256": "40c38ead455a08fdb94b968d6dc516c77398ac516b333848602401af6e60ef06",
+    "measurement_script_sha256": "286ee87857f7f8f009a4b674f94298cb1f2b2ae0c131198fa1b746a316235438"
+  },
+  "artifacts": {
+    "REPORT.md": {
+      "sha256": "d25161d94b190da18f25ceb0b53f0f73fc1b88e244b20934841f646180486f75",
+      "committed": true
+    },
+    "results.json": {
+      "sha256": "94c715d297ae0d33bc3df6462070ba7244e7d3b117b9270afbbe21e42708b4b8",
+      "committed": true
+    },
+    "M3.png": {
+      "sha256": "41c5f1a663b4b9a8539ad27436849898428f999ca8c4e1f3125ed8e024768f38",
+      "committed": true
+    },
+    "traces.npz": {
+      "sha256": "50539e5c6bd2f15bc9068984dd51e48e67ea39216a3a21d4601df5077a6680bf",
+      "committed": false,
+      "source_path": "/tmp/rfx-K/traces.npz"
+    }
+  }
+}

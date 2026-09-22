@@ -157,6 +157,13 @@ cannot meet them is reported with its curve, not re-gated.
 A case that cannot be judged by the bar because of what it is (a deep null, a high-Q resonance, a
 phase-only quantity) is taken to the PI before another criterion is chosen.
 
+**Deep nulls (PI ruling, 2026-09-21).** A quantity that is near zero by construction — a matched
+line's |S11|, the bottom of a notch, a reflection zero — is not compared in dB from rung to rung or
+against a referee. It is held to an upper bound (-20 dB) and recorded as that structure's floor;
+inside the core of a null (bins where the finest rung or the closed form is at or below -20 dB) the
+verdict is the null's FREQUENCY against 1 %, and its depth is recorded without a comparison. The 2 dB
+comparison applies everywhere else.
+
 **Per family.**
 
 | family | chain scope | DUTs | dropped, and why | referee |

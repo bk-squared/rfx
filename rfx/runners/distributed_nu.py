@@ -360,7 +360,7 @@ def build_sharded_nu_grid(
     """
     if exchange_interval != 1:
         raise NotImplementedError(
-            "exchange_interval > 1 is reserved for Phase 2E; "
+            "exchange_interval > 1 is refused (a one-cell ghost layer with skipped exchanges grows exponentially in a lossless box; see tests/fixtures/distributed_exchange_interval); "
             "only exchange_interval=1 is supported in Phase 2A."
         )
 
@@ -1910,7 +1910,7 @@ def run_nonuniform_distributed_pec(
         )
     if exchange_interval != 1:
         raise NotImplementedError(
-            "exchange_interval > 1 reserved for Phase 2E; only 1 supported."
+            "exchange_interval > 1 is refused (see tests/fixtures/distributed_exchange_interval); only 1 supported."
         )
     # Phase 2D: Debye / Lorentz dispatch (was NotImplementedError before).
     use_debye = debye is not None

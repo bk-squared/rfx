@@ -16,6 +16,13 @@ not an accuracy guarantee, and a preflight pass is not a convergence study.
 
 ---
 
+## Distributed runs: reduced-frequency ghost exchange (exchange_interval > 1) is refused
+
+exchange_interval > 1 is refused. With a one-cell ghost layer and the exchange skipped for K-1 steps, each slab updates its seam cells from the neighbour's stale values and injects energy every skipped step.
+In a lossless 48x16x16 mm PEC box (dx = 1 mm, float32, 2000 steps) the probe amplitude, relative to the single-device peak, reaches 2.0e2 for K=2 and 2.7e5 for K=4 on two devices, 4.6e7 (K=2) and 5.3e19 (K=4) on four devices, growing exponentially from the first skipped exchange, while K=1 stays within 1.0 of the peak.
+This is a scheme instability, not an O(dt*K) boundary error; a K-cell overlap would be required to skip exchanges.
+Use `exchange_interval=1`.
+
 ## Ports and extraction
 
 **The coax→microstrip transition over-reads power by about a factor of three.**
