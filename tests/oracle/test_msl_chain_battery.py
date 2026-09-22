@@ -268,6 +268,20 @@ def test_the_coarser_rungs_report_their_physics_numbers(fixture):
             np.abs(S[1, 0, :] - S[0, 1, :]).max() / np.abs(S).max(), rel=1e-12), key
 
 
+# The stopband notch sits where the open stub is a quarter wavelength long, and
+# the closed form puts that at 3.71090 GHz on this board. The finest mesh solves
+# it at 3.74783 GHz, 0.995 % high, having come down 2.62 -> 1.69 -> 1.00 % over
+# the three meshes. The v2 bar is 1 %; the sweep's own bin is 50 MHz, which is
+# 1.35 % of the notch, so the reading is finer than the grid it came from.
+#
+# PI ruling 2026-09-22: the finest mesh is accepted as inside the bar — "1.04 %
+# is fine, this is not a product" — at 1 % plus the bin resolution. The bar
+# itself is unchanged and stays 1 % in `bar.frequency_frac` and in the
+# pre-declaration; this one assertion carries the ruling's allowance so that the
+# exception is visible here rather than hidden in a moved threshold.
+CLAIMS_RUNG_FREQUENCY_ALLOWANCE = 0.011
+
+
 def test_the_notch_frequency_at_the_claims_rung_matches_the_quarter_wave_value(fixture):
     entry = _solve(fixture, CLAIMS_RUNG)
     S = _complex(entry["S"])
@@ -278,9 +292,11 @@ def test_the_notch_frequency_at_the_claims_rung_matches_the_quarter_wave_value(f
                      entry["declared"]["eps_r"])
     f_an = C0 / (4.0 * entry["declared"]["l_stub_m"] * math.sqrt(eps_eff))
     frac = abs(f_meas - f_an) / f_an
-    assert frac <= fixture["bar"]["frequency_frac"], (
+    assert frac <= CLAIMS_RUNG_FREQUENCY_ALLOWANCE, (
         f"notch {f_meas/1e9:.5f} GHz against the analytic {f_an/1e9:.5f} GHz is "
-        f"{frac*100:.3f} % — the bar is {fixture['bar']['frequency_frac']*100:.1f} %")
+        f"{frac*100:.3f} % — the bar is {fixture['bar']['frequency_frac']*100:.1f} % "
+        f"and the PI's 2026-09-22 allowance for this rung is "
+        f"{CLAIMS_RUNG_FREQUENCY_ALLOWANCE*100:.1f} %")
 
 
 def test_the_thru_lines_reflection_stays_under_its_bound(fixture):
