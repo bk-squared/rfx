@@ -25,7 +25,7 @@
       {
         "code": "port_conductor_continues",
         "loc": "_ports[0]",
-        "message": "port at (0.02, 0.02, 0.02) names no terminated conductor; 'pec' (entry 0) under its terminal continues into the z-hi absorber; pass terminates= to end it at the port.",
+        "message": "port at (0.02, 0.02, 0.02) names no terminated conductor; 'pec' (entry 0) under its terminal continues into the z-hi absorber; if this conductor is a line the port ends, pass terminates= to end it there; a ground plane should continue.",
         "severity": "warning",
         "source": "_validate_cfg_port_conductor_continues"
       },

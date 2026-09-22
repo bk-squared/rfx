@@ -1070,7 +1070,8 @@ def _validate_cfg_port_conductor_continues(self, _w) -> None:
                 PreflightWarning(
                     f"port at {port.position} names no terminated conductor; "
                     + "; ".join(contacts)
-                    + "; pass terminates= to end it at the port.",
+                    + "; if this conductor is a line the port ends, pass terminates= "
+                    "to end it there; a ground plane should continue.",
                     code="port_conductor_continues",
                     loc=f"{collection}[{index}]",
                     source="_validate_cfg_port_conductor_continues",

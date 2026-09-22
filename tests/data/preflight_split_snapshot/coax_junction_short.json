@@ -74,7 +74,7 @@
       {
         "code": "port_conductor_continues",
         "loc": "_coaxial_ports[0]",
-        "message": "port at (0.001, 0.0017, 0.0025) names no terminated conductor; 'pec' (entry 0) under its terminal continues into the x-lo, x-hi, y-lo, y-hi absorber; pass terminates= to end it at the port.",
+        "message": "port at (0.001, 0.0017, 0.0025) names no terminated conductor; 'pec' (entry 0) under its terminal continues into the x-lo, x-hi, y-lo, y-hi absorber; if this conductor is a line the port ends, pass terminates= to end it there; a ground plane should continue.",
         "severity": "warning",
         "source": "_validate_cfg_port_conductor_continues"
       }
