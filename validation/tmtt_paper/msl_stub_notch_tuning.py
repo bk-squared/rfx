@@ -303,9 +303,7 @@ def realized_trace_y_hi(sim, y_trace: float) -> float:
     """Build-time (no solve): the +y edge the trace SHEET realizes, in metres.
 
     Read from the realized sheet footprint at the stub's x column
-    (``realized_conductors.realize``), never re-derived from W_TRACE. Must
-    sit within one cell of the drawn edge, else the board is not the one
-    this script describes.
+    (``realized_conductors.realize``), never re-derived from W_TRACE.
     """
     grid = sim._build_grid()
     rz = RC.realize(sim, grid)
@@ -320,6 +318,9 @@ def realized_trace_y_hi(sim, y_trace: float) -> float:
         raise AssertionError("the trace sheet has no node at the stub's x column")
     y_hi = float((int(js.max()) - pad_y) * DX)
     drawn = y_trace + W_TRACE / 2.0
+    # A sanity bound on "is this the board this script describes" (the
+    # realized node is at most one cell from the drawn edge); it does not
+    # pin the root -- assert_stub_rooted does.
     if abs(y_hi - drawn) > DX + 1e-12:
         raise AssertionError(
             f"realized trace +y edge {y_hi*1e6:.0f} um is more than one cell "
@@ -327,10 +328,10 @@ def realized_trace_y_hi(sim, y_trace: float) -> float:
     return y_hi
 
 
-def assert_stub_rooted(sim, y_root: float, label: str) -> None:
-    """Build-time (no solve): the Ey edge crossing ``y_root`` at the stub's
-    x column on the sheet plane is a conductor, i.e. the stub and the line
-    share metal (#1182). This is the edge that was missing."""
+def _root_edges(sim, y_root: float):
+    """The two Ey edges meeting at node ``y_root`` (stub x column, sheet
+    plane): the one below it belongs to the trace, the one above to the
+    stub. Returns ``(below, above)`` as bools."""
     grid = sim._build_grid()
     rz = RC.realize(sim, grid)
     _, ey, _ = (np.asarray(m) for m in rz.edge_masks)
@@ -338,11 +339,28 @@ def assert_stub_rooted(sim, y_root: float, label: str) -> None:
     i = int(round(LX / 2.0 / DX)) + pad_x
     j = int(round(y_root / DX)) + pad_y
     k = int(round(H_SUB / DX)) + pad_z
-    if not (ey[i, j - 1, k] and ey[i, j, k]):
+    return bool(ey[i, j - 1, k]), bool(ey[i, j, k]), j - pad_y
+
+
+def assert_stub_rooted(sim, sim_bare, y_root: float, label: str) -> None:
+    """Build-time (no solve): the stub's metal starts exactly where the
+    trace's ends (#1182). On ``sim`` (with the stub) both Ey edges meeting
+    at the root node conduct; on ``sim_bare`` (the same board without the
+    stub) the edge above the root does NOT — so the root sits at the
+    metal boundary, neither a cell short (a slot, the defect) nor a cell
+    inside the trace (a stub shortened by one cell)."""
+    below, above, node = _root_edges(sim, y_root)
+    if not (below and above):
         raise AssertionError(
             f"{label}: the Ey edges on either side of the stub root (node "
-            f"{j - pad_y}) are not both conductors ({bool(ey[i, j - 1, k])}, "
-            f"{bool(ey[i, j, k])}) — the stub is not connected to the line")
+            f"{node}) are not both conductors ({below}, {above}) — the stub "
+            "is not connected to the line")
+    _, above_bare, _ = _root_edges(sim_bare, y_root)
+    if above_bare:
+        raise AssertionError(
+            f"{label}: the Ey edge above the stub root (node {node}) already "
+            "conducts on the stubless board — the root is inside the trace, "
+            "not at its edge")
 
 
 def assert_trace_sheet(sim, label: str) -> dict:
@@ -358,7 +376,7 @@ def assert_trace_sheet(sim, label: str) -> dict:
         label=label, tol_m=1e-12)
 
 
-def assert_soft_pec_equals_hard(grid, sim) -> dict:
+def assert_soft_pec_equals_hard(grid, sim, y_trace: float) -> dict:
     """The soft PEC limit IS the hard realized edge set (no solve).
 
     ``apply_pec_occupancy`` at binary occupancy must produce exactly the
@@ -372,7 +390,7 @@ def assert_soft_pec_equals_hard(grid, sim) -> dict:
         apply_pec_occupancy, realized_pec_edge_masks)
     rz = RC.realize(sim, grid)
     edges, sheets, wires = rz.edge_masks, rz.sheets, rz.wires
-    y_root = realized_trace_y_hi(sim, (2 * H_SUB + 8 * DX) + W_TRACE / 2.0)
+    y_root = realized_trace_y_hi(sim, y_trace)
     occ_soft = build_stub_occ(grid, y_root, 7.0e-3)
     occ = (np.asarray(occ_soft) > 0.5)
     hard = realized_pec_edge_masks(
@@ -620,6 +638,9 @@ def main() -> int:
     sim, y_trace, trace_y_hi, d_set, p_set = build_sim(f_target_arr)
     grid = sim._build_grid()
     print(f"Grid {grid.shape}  ({np.prod(grid.shape):,d} cells)  dt={float(grid.dt)*1e12:.2f}ps")
+    # The differentiable stub, hardened, is the hard edge set and is rooted
+    # on the trace's realized edge (#931 §1.6, #1182). Build-time, 1 s.
+    print("soft-PEC limit == hard edge set:", assert_soft_pec_equals_hard(grid, sim, y_trace))
 
     # Preflight: surfaces MSL geometry warnings (lateral clearance, substrate
     # cells, x-CPML, reflector clearance — the last is what protects the
@@ -805,7 +826,8 @@ def main() -> int:
         sim_imp, 2, [float(H_SUB), float(H_SUB + DX)],
         at=(stub_x_centre, trace_y_hi_imp + 0.5 * L_opt),
         label="hard-PEC reference stub", tol_m=1e-12)
-    assert_stub_rooted(sim_imp, trace_y_hi_imp, "hard-PEC reference stub")
+    sim_bare, _, _, _, _ = build_sim(f_target_arr)
+    assert_stub_rooted(sim_imp, sim_bare, trace_y_hi_imp, "hard-PEC reference stub")
     # restore default both-port-driven for compute_msl_s_matrix
     object.__setattr__(sim_imp._msl_ports[1], "excite", True)
     t0 = time.time()
