@@ -519,3 +519,157 @@ def test_the_reflector_interval_refuses_a_feed_on_the_ramp():
     text = _stub_board(9)
     assert "does not name one distance here" in text, text
     assert "compliant n_probe_offset interval" not in text, text
+
+
+# ---------------------------------------------------------------------------
+# One port, one story: every site refuses a standoff that crosses a ramp
+# ---------------------------------------------------------------------------
+
+_RAMP_REFUSAL = "crosses cells of more than one size"
+
+
+def _ramp_feed_board(n_probe_offset, stub_gap_m=1.0e-3):
+    """The reviewer's board: 254 um substrate, a runway that ramps 254 -> 127
+    um at ratio 1.25, and the feed plane at the coarse end of that ramp.
+
+    A branch stub follows the probe ladder so the reflector advisory has
+    something to report; at a large offset the ladder reaches the absorber
+    instead and the stub falls outside the board.
+    """
+    from rfx.geometry.csg import Box
+    coarse = 2 * _NOTCH_RUNWAY
+    ramp, c = [], coarse
+    while c > _NOTCH_RUNWAY * 1.0001:
+        c = max(c / 1.25, _NOTCH_RUNWAY)
+        ramp.append(c)
+    prof = np.array([coarse] * 14 + ramp + [_NOTCH_RUNWAY] * 80
+                    + ramp[::-1] + [coarse] * 8, float)
+    edges = np.concatenate([[0.0], np.cumsum(prof)])
+    lx, h, w = float(prof.sum()), _NOTCH_H_SUB, 2 * _NOTCH_H_SUB
+    stub = 8e-3
+    ly = w + 4 * (2 * h + 8 * coarse) + max(14e-3, stub + 2e-3)
+    sim = Simulation(
+        freq_max=9e9, domain=(lx, ly, h + 1.5e-3), dx=coarse, cpml_layers=8,
+        boundary=BoundarySpec(x="cpml", y="cpml",
+                              z=Boundary(lo="pec", hi="cpml")),
+        dx_profile=prof)
+    sim.add_material("ro", eps_r=3.66)
+    sim.add(Box((0, 0, 0), (lx, ly, h)), material="ro")
+    y_tr = (2 * h + 8 * coarse) + w / 2
+    sim.add(Box((0, y_tr - w / 2, h), (lx, y_tr + w / 2, h)), material="pec")
+    x_stub = float(edges[min(14 + n_probe_offset + 12, len(prof))]) + stub_gap_m
+    if x_stub < lx:
+        sim.add(Box((x_stub - w / 2, y_tr + w / 2, h),
+                    (x_stub + w / 2, y_tr + w / 2 + stub, h)), material="pec")
+    sim.add_msl_port(position=(float(edges[14]), y_tr, 0), width=w, height=h,
+                     direction="+x", impedance=50.0,
+                     n_probe_offset=n_probe_offset, n_probe_spacing=3,
+                     n_probes=5)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return sim, sim.preflight()
+
+
+def _finding(report, mark):
+    hits = [str(i) for i in report.issues if mark in str(i)]
+    assert hits, f"{mark!r} not reported; codes={_codes(report)}"
+    return hits[0]
+
+
+def test_every_site_refuses_a_standoff_that_crosses_a_ramp():
+    """A feed plane sitting where the mesh changes cell size gets the same
+    answer from every check that turns the source-fringing standoff into a
+    cell count.
+
+    The standoff is about five substrate thicknesses, 1.270 mm here. Reading
+    the cell at the feed and multiplying gives numbers the grid does not
+    realize: at offset 4 that arithmetic says probe 0 is 812.8 um from the
+    feed and that 6 cells would clear the transient, while the grid puts
+    probe 0 at 622.8 um and 6 cells at 876.8 um, 31 % short. So none of these
+    checks prints a distance or a cell-count remedy here.
+    """
+    sim, report = _ramp_feed_board(4)
+    standoff = _finding(report, "fringing decays over about five")
+    assert _RAMP_REFUSAL in standoff
+    # the distance it does quote is the one the grid realizes, read off the
+    # ladder the extractor uses, not n_offset times the cell at the feed
+    assert "622.8\u00b5m" in standoff, standoff
+    assert "812.8\u00b5m" not in standoff, standoff
+    assert _RAMP_REFUSAL in _finding(report, "strong reflector candidate")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with pytest.raises(Exception) as exc:
+            sim.preflight_sparameters(calculator="forward", strict=True)
+    assert _RAMP_REFUSAL in str(exc.value), str(exc.value)
+
+    # the fourth site needs the ladder to reach the absorber, which takes an
+    # offset the stub cannot follow onto this board
+    _, deep = _ramp_feed_board(82)
+    assert _RAMP_REFUSAL in _finding(deep, "domain edge, just")
+
+
+def test_the_standoff_floor_still_reports_where_the_cells_are_equal():
+    """The refusal must not swallow the advisory it stands in for: on a feed
+    inside the uniform runway the floor is still reported as a count."""
+    report, _ = _notch_like_board(14 + 20, 7)
+    text = _finding(report, "OWN feed plane")
+    assert _RAMP_REFUSAL not in text, text
+    assert "standoff of 10 cells" in text, text
+
+
+# ---------------------------------------------------------------------------
+# The walk-down search reads the face cells off the grid it walks
+# ---------------------------------------------------------------------------
+
+def _y_graded_board(n_probe_offset):
+    """A +y microstrip on a y profile whose boundary cell is half the scalar.
+
+    ``make_nonuniform_grid`` ties a y profile's two ends to each other but not
+    to ``dx``, so 0.5 mm cells on a 1 mm scalar board is a legal mesh and the
+    only thing that separates the face cell from the scalar.
+    """
+    from rfx.geometry.csg import Box
+    dx, cy, h, w = 1.0e-3, 0.5e-3, 1.0e-3, 2.0e-3
+    prof = np.full(60, cy)
+    ly, lx, lz = float(prof.sum()), 12 * dx, h + 3 * dx
+    sim = Simulation(
+        freq_max=5e9, domain=(lx, ly, lz), dx=dx, cpml_layers=8,
+        boundary=BoundarySpec(x="cpml", y="cpml",
+                              z=Boundary(lo="pec", hi="cpml")),
+        dy_profile=prof)
+    sim.add_material("sub", eps_r=3.66)
+    sim.add(Box((0, 0, 0), (lx, ly, h)), material="sub")
+    x_c = lx / 2
+    sim.add(Box((x_c - w / 2, 0, h), (x_c + w / 2, ly, h + dx)), material="pec")
+    sim.add_msl_port(position=(x_c, 1.0e-3, 0), width=w, height=h,
+                     direction="+y", impedance=50.0,
+                     n_probe_offset=n_probe_offset, n_probe_spacing=3,
+                     n_probes=5)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return sim, sim.preflight()
+
+
+def test_the_absorber_y_thickness_follows_the_y_face_cell():
+    """The y absorber is eight copies of the y face cell, 4.0 mm, not eight
+    copies of the boundary scalar. The scalar reading called it 8.0 mm, which
+    is a quarter of this 30 mm board reported as absorber on each side."""
+    sim, _ = _y_graded_board(45)
+    thick_lo, thick_hi, _ = sim._validate_cfg_compute_cpml_thickness(8 * 1.0e-3)
+    assert thick_lo[1] == pytest.approx(4.0e-3)
+    assert thick_hi[1] == pytest.approx(4.0e-3)
+
+
+def test_the_walk_down_endpoint_uses_the_face_cell_not_the_scalar():
+    """The advertised endpoint is walked down until the real predicate clears,
+    and that predicate's proximity band is two cells of the face it is
+    measured from: 1.0 mm here, not the 2.0 mm the boundary scalar gives.
+
+    A wider band rejects offsets that are in fact clear, so the endpoint the
+    advisory advertises comes back short. On this port it reads 43 cells; on
+    the scalar band it read 41, and a user who took that number would place
+    the probes two cells inside the line for no reason.
+    """
+    _, report = _y_graded_board(45)
+    text = _finding(report, "domain edge, just")
+    assert "compliant n_probe_offset interval ≈ [10, 43] cells" in text, text

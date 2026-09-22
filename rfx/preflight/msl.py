@@ -1828,43 +1828,83 @@ def _check_msl_port_geometry(
         # precedent) — a new SITE, not a new advisory kind.
         _nf_cells = _nf_std_cells
         _nf_off = pe.n_probe_offset
-        if _nf_off is not None and int(_nf_off) < _nf_cells:
+        # ONE emission site, two readings of the same finding: how far this
+        # port's probe 0 sits from its own feed plane against the source
+        # fringing. The frozen emission surface (#737/#742) counts
+        # constructions, and this is one finding, not two.
+        _nf_msg = None
+        if not _standoff_on_one_zone:
+            # The standoff is a LENGTH and ``n_probe_offset`` is a COUNT, so
+            # the two say the same thing only where the cells the count runs
+            # over are equal. With the feed on a grading ramp they are not:
+            # this used to print ``n_off * cell-at-the-feed`` for the realized
+            # distance and a cell-count remedy derived the same way, and the
+            # grid put probe 0 somewhere else -- on a 254 um board whose
+            # runway ramps 254 -> 127 um at ratio 1.25, offset 4 read 812.8 um
+            # where the grid realizes 622.8 um, and the advertised remedy of
+            # 6 cells realizes 876.8 um, 31 % short of the 1.270 mm the
+            # fringing needs. The S-parameter routing check already refuses
+            # this port; one port gets one story, and the realized first-probe
+            # distance below is read off the ladder the extractor itself uses
+            # rather than recomputed from a cell size.
+            _nf_real = (abs(float(_probe_ladder[0]) - x_feed)
+                        if _probe_ladder else None)
+            _nf_msg = (
+                f"MSL port '{pe.name}' (direction={pe.direction!r}): "
+                f"the source fringing decays over about five substrate "
+                f"thicknesses, {_fmt_len(5.0 * h_sub)} on this board, and "
+                f"that is a LENGTH. This port's feed sits where the mesh "
+                f"changes cell size: {_ramp_txt}. Neither the distance an "
+                f"offset buys nor the offset that would clear the transient "
+                f"is one number here."
+                + (f" The grid puts probe 0 {_fmt_len(_nf_real)} "
+                   f"({_nf_real / h_sub:.2f}·h_sub) from the feed plane."
+                   if _nf_real is not None else "")
+                + " Put the port and its probes inside one uniform zone of "
+                "the profile, or extend that zone to hold the standoff. "
+                "REPORT-ONLY: nothing is refused."
+            )
+        elif _nf_off is not None and int(_nf_off) < _nf_cells:
             _nf_realized = int(_nf_off) * _runway_cell
+            _nf_msg = (
+                f"MSL port '{pe.name}' (direction={pe.direction!r}): "
+                f"n_probe_offset={int(_nf_off)} puts probe 0 "
+                f"{_fmt_len(_nf_realized)} "
+                f"({_nf_realized / h_sub:.2f}·h_sub) from this port's "
+                f"OWN feed plane, inside the source near-field "
+                f"standoff of {_nf_cells} cells "
+                f"({_fmt_len(_nf_cells * _runway_cell)} = 5·h_sub, "
+                f"the issue-#80 "
+                f"Fix B constant add_msl_port's auto offset already "
+                f"floors to). Within a few substrate thicknesses of "
+                f"the feed the launched field is not the guided mode "
+                f"yet: the evanescent content decays with the "
+                f"substrate's own transverse-resonance length "
+                f"2·h_sub/π = {_fmt_len(2.0 * h_sub / math.pi)} for "
+                f"THIS board (on the issue-#823 fixture, h_sub=300µm, "
+                f"that length measured 0.1932mm against a predicted "
+                f"0.19099mm — 1.1%). The decay LENGTH is a property of "
+                f"the substrate; the near-feed AMPLITUDE is not, so no "
+                f"error magnitude is predicted for your port here — "
+                f"read result diagnostics (the two-wave fit residual, "
+                f"and on the coax<->MSL lane the ladder-split witness) "
+                f"rather than trusting this offset. For reference, the "
+                f"#823 fixture's own measured amplitude (11.3 at the "
+                f"feed plane) put {5.0:.0f}·h_sub at 4.4e-3 against the "
+                f"0.02 two-wave residual bar this family holds itself "
+                f"to, and {_nf_realized / h_sub:.2f}·h_sub at "
+                f"{11.32 * math.exp(-_nf_realized / (2.0 * h_sub / math.pi)):.1e}. "
+                f"Set n_probe_offset >= {_nf_cells}, or leave it None "
+                f"for the safe default. REPORT-ONLY: nothing is "
+                f"refused, and the rule is derived from ONE fixture "
+                f"at W/h = 2 — a much wider trace may need more (the "
+                f"first higher-order microstrip mode scales with "
+                f"W + 2·h, which one fixture cannot separate from h)."
+            )
+        if _nf_msg is not None:
             _w.warn(
                 PreflightWarning(
-                    f"MSL port '{pe.name}' (direction={pe.direction!r}): "
-                    f"n_probe_offset={int(_nf_off)} puts probe 0 "
-                    f"{_fmt_len(_nf_realized)} "
-                    f"({_nf_realized / h_sub:.2f}·h_sub) from this port's "
-                    f"OWN feed plane, inside the source near-field "
-                    f"standoff of {_nf_cells} cells "
-                    f"({_fmt_len(_nf_cells * _runway_cell)} = 5·h_sub, "
-                    f"the issue-#80 "
-                    f"Fix B constant add_msl_port's auto offset already "
-                    f"floors to). Within a few substrate thicknesses of "
-                    f"the feed the launched field is not the guided mode "
-                    f"yet: the evanescent content decays with the "
-                    f"substrate's own transverse-resonance length "
-                    f"2·h_sub/π = {_fmt_len(2.0 * h_sub / math.pi)} for "
-                    f"THIS board (on the issue-#823 fixture, h_sub=300µm, "
-                    f"that length measured 0.1932mm against a predicted "
-                    f"0.19099mm — 1.1%). The decay LENGTH is a property of "
-                    f"the substrate; the near-feed AMPLITUDE is not, so no "
-                    f"error magnitude is predicted for your port here — "
-                    f"read result diagnostics (the two-wave fit residual, "
-                    f"and on the coax<->MSL lane the ladder-split witness) "
-                    f"rather than trusting this offset. For reference, the "
-                    f"#823 fixture's own measured amplitude (11.3 at the "
-                    f"feed plane) put {5.0:.0f}·h_sub at 4.4e-3 against the "
-                    f"0.02 two-wave residual bar this family holds itself "
-                    f"to, and {_nf_realized / h_sub:.2f}·h_sub at "
-                    f"{11.32 * math.exp(-_nf_realized / (2.0 * h_sub / math.pi)):.1e}. "
-                    f"Set n_probe_offset >= {_nf_cells}, or leave it None "
-                    f"for the safe default. REPORT-ONLY: nothing is "
-                    f"refused, and the rule is derived from ONE fixture "
-                    f"at W/h = 2 — a much wider trace may need more (the "
-                    f"first higher-order microstrip mode scales with "
-                    f"W + 2·h, which one fixture cannot separate from h).",
+                    _nf_msg,
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),
