@@ -114,8 +114,10 @@ DX_COARSEST_M = LADDER_M[0]
 # three-probe extractor sits a quarter guided wavelength back at the lowest
 # frequency it serves, 4.79 mm on this substrate, and it must be clear of the
 # stub.  PORT_MARGIN_M is the port plane to the x face, set by the upstream
-# probe offset max(λ/4π, 5·h) = 1.8 mm.  Both from the preflight text of run
-# 369367263038 at h/6.
+# probe offset max(λ/4π, 5·h) = 1.8 mm.  Both from the preflight text of the
+# 2026-09-22 ladder on the old 5 mm board (VESSL run 369367263038; its log is
+# on the lab share under research/rfx/.omx/msl-notch-ladder/20260921T193512Z-
+# 2ce4c28d/ and its numbers in the ledger's 2026-09-22 entry).
 ARM_LENGTH_M = 10e-3
 PORT_MARGIN_M = 2e-3
 # The same filter on longer arms; only the arm-length witness builds it.  The
@@ -167,11 +169,17 @@ DOMAIN_Y_M = (TRACE_WIDTH_M + 2.0 * LATERAL_CLEARANCE_M
 DOMAIN_Z_M = SUBSTRATE_THICKNESS_M + 1.5e-3                              # 1.754 mm
 
 # Record length in periods of freq_max — the value the retired script ran
-# with, kept because the ring-down witness (SETTLING_DB) confirms it: −109 to
-# −111 dB at every rung of a four-rung run h/2 … h/8 (VESSL run 369367263038;
-# the case's own ladder below stops at h/6).
+# with, kept because the ring-down witness (SETTLING_DB) confirms it on this
+# board: −82, −88 and −96 dB at h/2, h/4 and h/6 (VESSL run 369367263176,
+# 2026-09-22; log on the lab share under research/rfx/.omx/msl-notch-ladder/
+# 20260922T012225Z-9332ee87/).
 NUM_PERIODS = 20.0
-N_FREQS = 100
+# Frequency points of rfx's sweep (DFT bins; they cost nothing in time steps).
+# 400 over 0.7–7 GHz is a 15.8 MHz bin, under half the 1 % frequency bar at
+# the notch (36.7 MHz), so the three-point parabola's grid-phase spread stays
+# well inside the bar; at 100 points the bin (63.6 MHz) was wider than the
+# bar and the record's own curve, resampled that way, moved by up to 0.30 %.
+N_FREQS = 400
 # The band both references cover; the notch is searched inside it, never over
 # rfx's wider sweep.
 REFERENCE_BAND_HZ = (2.0e9, 7.0e9)
@@ -188,8 +196,8 @@ DEEP_NULL_DB = -20.0     # a bin where either curve is below this is judged by
 # rules): a record that has not rung down to −40 dB is truncation-suspect, and
 # a passive structure cannot scatter more power than it receives, so a raw
 # extraction more than one percent above the passive bound is a measurement
-# artefact — the rung stops instead of being compared.  Measured on the four
-# rungs of run 369367263038: settling −109 … −111 dB, excess 0.002 … 0.004.
+# artefact — the rung stops instead of being compared.  Measured on this
+# board (run 369367263176): settling −82 … −96 dB, excess 0.003 … 0.006.
 SETTLING_DB = -40.0
 PASSIVITY_EXCESS_BAR = 0.01
 
@@ -708,16 +716,18 @@ def _rungs() -> tuple[float, ...]:
 
 
 ARM_WITNESS_BAR_DB = 0.5   # see `_arm_length_witness`; applies to |S21|
-# The witness runs on the first two rungs of the ladder and is JUDGED on the
-# second (h/4); the coarsest rung is reported as the trend. Measured
-# 2026-09-22 at h/2: the realized strip is 508 µm, a 57 Ω line (fitted Z0)
-# against the 50 Ω port reference, and that mismatch makes the interference
-# between the port reflections and the stub's depend on the arm length —
-# |S21| moved 1.2 dB and |S11| up to 9 dB near its minima between 10 mm and
-# 15.08 mm arms. At h/4 the strip is 571.5 µm (about 51.5 Ω) and the effect
-# shrinks with the mismatch; at the judged rung (h/6, 592.7 µm) it is smaller
-# still. |S11| in dB is not judged: near its minima a small mismatch moves it
-# by many dB.
+# The bar is the leader's (2026-09-22): a quarter of the 2 dB magnitude bar,
+# so an arm-length dependence that passes it cannot by itself consume the
+# comparison's budget. The witness runs on the first two rungs of the ladder
+# and is JUDGED on the second (h/4); the coarsest rung is reported as the
+# trend. Measured on run 369367263176: at h/2 the realized strip is 508 µm, a
+# 57.8 Ω line (fitted Z0) against the 50 Ω port reference, and that mismatch
+# makes the interference between the port reflections and the stub's depend
+# on the arm length — |S21| moved 1.196 dB and |S11| up to 9.2 dB near its
+# minima between 10 mm and 15.08 mm arms; at h/4 (571.5 µm, 51.6 Ω) |S21|
+# moved 0.471 dB and |S11| 3.8 dB. The effect shrinks with the mismatch; at
+# the judged rung (h/6, 592.7 µm) it is smaller still. |S11| in dB is not
+# judged: near its minima a small mismatch moves it by many dB.
 ARM_WITNESS_RUNGS = 2
 
 
@@ -1089,6 +1099,18 @@ def test_the_reference_files_are_what_the_provenance_says():
         assert rec["freqs_ghz"][0] == pytest.approx(0.001)
         assert rec["freqs_ghz"][-1] == pytest.approx(7.0)
         assert tuple(rec["witness_band_ghz"]) == (2.0, 7.0)
+
+    # The sentence the magnitudes-only comparison rests on, and the mesh rungs
+    # PROVENANCE.md tabulates (substrate cells 4 / 6 / 8, half the cell size
+    # per rung pair), read from the record itself.
+    comparability = openems["meta"]["comparability"].lower()
+    assert "phase" in comparability and "magnitude" in comparability
+    stages = openems["meta"]["stages"]
+    assert [stages[n]["mesh_realized"]["substrate_z_cells_realized"]
+            for n in solved] == [4, 6, 8]
+    res = [stages[n]["resolution_um"] for n in solved]
+    assert res[2] == pytest.approx(res[0] / 2.0, rel=1e-6)
+    assert res[1] == pytest.approx(res[0] / 2.0 ** 0.5, rel=1e-6)
 
     # ``stage_b_coarse`` is not a second solve: the record says it carries
     # stage_a's arrays because the rung IS the tutorial's own mesh.

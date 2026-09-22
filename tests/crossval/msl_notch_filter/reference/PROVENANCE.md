@@ -154,7 +154,7 @@ except the removed record's "bin" row, which is the bare argmin.
 | (removed) openEMS dx 50 µm, bin argmin | 3.428571 | −41.293 | 0.9975 |
 | (removed) openEMS dx 50 µm, parabolic | 3.426456 | −41.293 | — |
 
-Distance between the two solvers that remain: Palace `mid` sits **1.177 %**
+Distance between the two solvers that remain: Palace `mid` sits **1.176 %**
 below the openEMS `stage_b_fine` notch.
 
 Palace's own mesh shift, `coarse` → `mid`: −0.005932 GHz, −0.163 %.
