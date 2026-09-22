@@ -459,10 +459,13 @@ three uniform reference arms this recorder measured (A.1) read 3.8757 /
 3.7944 / 3.7484 GHz at h/2, h/4, h/6. Their successive differences, 81 MHz
 then 46 MHz, are in the ratio 1.77, and on an h/2–h/4–h/6 ladder any
 positive convergence order gives at least 1.71 (order → 0) — so the fitted
-order is 0.06 and the Richardson limit runs away (1.86 GHz, 97.6 % from the
-graded limit: W3 FIRED by its frozen rule). The record shows why: the
+order is 0.06 and the Richardson limit runs away (1.86 GHz; the window's
+distance, normalized by that uniform limit as the rule states, is 97.6 %, or
+49.4 % of the graded limit: W3 FIRED by its frozen rule). The record shows why: the
 uniform mesh solves a different board at each rung. Its strip realizes 4, 9
-and 14 node rows (508, 571.5, 592.7 µm as a strip) and its stub 12065,
+and 14 node rows (node span 381.0 / 508.0 / 550.3 µm in R.2; as a strip of
+n cells, the case's `trace_width_strip_m`, 508 / 571.5 / 592.7 µm) and its
+stub 12065,
 12001.5 and 12022.7 µm — the open end lands wherever the nearest node is —
 so the notch is not a smooth function of the cell size and no order can be
 fitted to it. The graded ladder keeps the strip at 600 µm and the stub at
@@ -484,13 +487,16 @@ is the likelier cause, not measured here.
 (42.3 µm) the graded mesh solves in 106 s instead of the 672 s this recorder
 measured for h/6 (0.158 of the wall, 0.115 of the 13.44 M grid cells), with
 the same class of notch error (3.7474 vs the uniform rung's 3.7484 GHz, both
-2.0 % high). The graded C rung (21.2 µm substrate cell, 3.39 M grid cells,
+2.0 % high). The graded C rung (21.2 µm substrate cell, 3.29 M grid cells,
 1008 s, 1.50 of the h/6 wall) reaches a resolution the uniform mesh could not
 finish (h/8, 25 M cells, > 73 min in the case's own run) and brings the notch
 to 1.15 %. A microstrip stub notch is therefore reachable to about 1 % on
 this solver at 17 min on one RTX 4090, where the uniform mesh stops at 2 %
-after 11 min and does not finish the next rung. All eight arms ran at one
-commit on the same GPU model (R.5).
+after 11 min and does not finish the next rung. The five graded arms ran at
+one commit (827d5ecf) and the three uniform arms at another (017b0638), the
+instrument unchanged between them in what it solves; the GPU model is
+recorded for the uniform arms only (RTX 4090, the job preset for all eight;
+R.5 says which blocks lack it).
 
 **Where the residual is.** The edge-offset placement (a node 0.35 cell inside
 each metal edge) RAISED the notch by 0.40 % at rung A relative to the on-node
