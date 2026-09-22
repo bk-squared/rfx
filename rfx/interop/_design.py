@@ -849,6 +849,8 @@ EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
     "_refinement",
     "_solver",
     "_stencil_order",
+    "_dt_pin",
+    "_dt_min_cell",
     "_tfsf",
     "_pinned_sheets",
     "_thin_conductors",
@@ -1473,6 +1475,15 @@ def design_to_dict(sim: Any) -> dict[str, Any]:
             "solver": check_text(sim._solver, what="_solver"),
             "adi_cfl_factor": check_number(sim._adi_cfl_factor, what="_adi_cfl_factor"),
             "stencil_order": _integer(sim._stencil_order, what="_stencil_order"),
+            # A pinned time step (Simulation(dt=..., dt_min_cell=...)) is a design
+            # input: a rebuilt design without it would derive its own dt and
+            # solve a different record (mesh-as-design-variable families pin
+            # one dt across the family). None when not pinned.
+            "dt_pin": None if getattr(sim, "_dt_pin", None) is None else check_number(sim._dt_pin, what="_dt_pin"),
+            "dt_min_cell": (
+                None if getattr(sim, "_dt_min_cell", None) is None
+                else check_number(sim._dt_min_cell, what="_dt_min_cell")
+            ),
             # #949: the node-eps rule at dielectric interfaces on the NU lane
             # ("sampled" | "dual_average"). A design input: a rebuilt design
             # that silently fell back to "sampled" would solve a different
@@ -1716,7 +1727,8 @@ def simulation_from_design(document: Any) -> Any:
     solver = _section(document, "solver", what="design document")
     _require_exact_keys(
         solver,
-        {"precision", "solver", "adi_cfl_factor", "stencil_order", "interface_eps"},
+        {"precision", "solver", "adi_cfl_factor", "stencil_order", "interface_eps",
+         "dt_pin", "dt_min_cell"},
         what="solver",
     )
 
@@ -1762,6 +1774,11 @@ def simulation_from_design(document: Any) -> Any:
         adi_cfl_factor=check_number(solver["adi_cfl_factor"], what="solver.adi_cfl_factor"),
         stencil_order=_integer(solver["stencil_order"], what="solver.stencil_order"),
         interface_eps=check_text(solver["interface_eps"], what="solver.interface_eps"),
+        dt=None if solver["dt_pin"] is None else check_number(solver["dt_pin"], what="solver.dt_pin"),
+        dt_min_cell=(
+            None if solver["dt_min_cell"] is None
+            else check_number(solver["dt_min_cell"], what="solver.dt_min_cell")
+        ),
         **plan.kwargs,
     )
     if plan.set_periodic_axes is not None:
