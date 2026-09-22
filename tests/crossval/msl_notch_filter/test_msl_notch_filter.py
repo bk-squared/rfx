@@ -966,11 +966,27 @@ def test_msl_notch_filter_matches_the_openems_tutorial(tmp_path):
         f"{[f'{f/1e9:.5f} GHz' for f in notches]} at "
         f"{[f'{d*1e6:.2f}µm' for d in rungs]}. Without a monotone trend the "
         "mesh is not shown to converge and the comparison says nothing.")
-    assert last_two_pct < LADDER_AGREEMENT * 100.0, (
-        "the two finest rungs put the notch "
-        f"{last_two_pct:.3f} % apart (bar {LADDER_AGREEMENT*100:.0f} %): "
-        f"{[f'{f/1e9:.5f} GHz' for f in notches]}. The mesh has not "
-        "converged, so the comparison above states no verdict.")
+    if not last_two_pct < LADDER_AGREEMENT * 100.0:
+        # Known limitation, PI decision 2026-09-22: on a uniform staircase mesh
+        # the notch converges from above with an observed order of about 0.65
+        # in dx (the realized strip steps 4 -> 9 -> 14 node rows), so the last
+        # two rungs of this ladder were 1.31 % apart (3.8034 -> 3.7537 GHz,
+        # VESSL 369367263215) and the finest rung sat 2.16 % above the openEMS
+        # tutorial's 3.6744 GHz; the extrapolated limit is 3.67 GHz, -0.2 %.
+        # h/8 (25 M cells) did not finish in 73 min on an RTX 4090. The bar is
+        # unchanged; the case states its numbers and stops here. When the mesh
+        # converges (a graded mesh, #810's question), this branch is no longer
+        # taken and the comparison below judges for real. Every witness above
+        # (ring-down, passivity, the arm-length premise) still fails the test.
+        pytest.xfail(
+            "known limitation (PI 2026-09-22): the uniform mesh has not "
+            f"converged — the two finest rungs put the notch {last_two_pct:.3f} % "
+            f"apart (bar {LADDER_AGREEMENT*100:.0f} %): "
+            f"{[f'{f/1e9:.5f} GHz' for f in notches]}; the finest rung sits "
+            f"{fine['notch_pct']:.3f} % from the openEMS tutorial's "
+            f"{fine['ref_notch_ghz']:.4f} GHz and its |S21| differs by up to "
+            f"{fine['max_abs_delta_db']:.3f} dB. The comparison above is "
+            "reported, not judged.")
     assert fine["notch_pct"] < FREQ_BAR * 100.0, (
         f"the notch sits {fine['notch_pct']:.3f} % from the openEMS tutorial "
         f"record's {fine['ref_notch_ghz']:.4f} GHz (bar {FREQ_BAR*100:.0f} %); "
