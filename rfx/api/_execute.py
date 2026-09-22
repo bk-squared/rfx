@@ -1447,7 +1447,10 @@ class _ExecuteMixin:
         # cavity (measured: 5.091 GHz against the analytic and run() 8.831 GHz
         # TM110 of a 24 mm cube). With no absorber anywhere the walls are
         # every non-periodic axis, which is what run() defaults to.
-        if int(getattr(grid, "cpml_layers", 0) or 0) == 0 and not cpml_axes_run.strip("xyz"):
+        # ``_boundary`` reads "pec" for the string spelling and for any
+        # absorber-free BoundarySpec (all-PEC, PMC faces); on those the
+        # per-face masks already carry the walls and this is a no-op.
+        if int(getattr(grid, "cpml_layers", 0) or 0) == 0:
             if getattr(self, "_boundary", None) == "pec":
                 pec_axes_run = "".join(
                     a for a, p in zip("xyz", periodic_bool) if not p)
