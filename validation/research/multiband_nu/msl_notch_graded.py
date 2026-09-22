@@ -1000,6 +1000,163 @@ def verdicts(arms: dict) -> dict:
 
 
 # ------------------------------------------------------------------- recording
+def markdown_tables(arms: dict) -> str:
+    """The note's Results section, as tables only.
+
+    Every number is read from the record or computed from it by the functions
+    above; none is typed.  The interpreting sentences are not this function's
+    to write, so it ends with the line that says whose they are.
+    """
+    v = verdicts(arms)
+    order = [k for k in ("A_on", "A_off", "B_off", "C_off", "A_off_longarms")
+             if k in arms]
+    out: list[str] = []
+    w = out.append
+
+    w("## Results (facts)")
+    w("")
+    w("Appended after the runs; section 5 above is unchanged.  Every number "
+      "below is read from")
+    w("`validation/research/multiband_nu/results/msl_notch_graded.json` by "
+      "`markdown_tables()` in")
+    w("the instrument, and re-derived from the same file by "
+      "`tests/unit/nonuniform/test_msl_notch_graded_replay.py`.")
+    w("")
+
+    w("### R.1 The mesh each arm solved")
+    w("")
+    w("| arm | rung | placement | F (um) | FZ (um) | z tail cell (um) | "
+      "band margin (fine cells) | interior cells | grid | dt (fs) |")
+    w("|---|---|---|---|---|---|---|---|---|---|")
+    for k in order:
+        a = arms[k]
+        w(f"| {k} | {a['rung']} | {a['placement']} | "
+          f"{a['fine_cell_m'] * 1e6:.4f} | {a['substrate_cell_m'] * 1e6:.4f} | "
+          f"{a['z_tail_cell_m'] * 1e6:.4f} | {a['margin_cells']} | "
+          f"{a['n_interior_cells']:,} | "
+          f"{'x'.join(str(n) for n in a['interior_shape'])} | "
+          f"{a['dt_s'] * 1e15:.4f} |")
+    w("")
+
+    w("### R.2 What the lattice realized")
+    w("")
+    w("| arm | sheet plane z (um) | PEC volume cells | line node rows | "
+      "stub node cols | metal node span (um) | stub length (um) | "
+      "node inside the drawn edge (um) |")
+    w("|---|---|---|---|---|---|---|---|")
+    for k in order:
+        a = arms[k]
+        g = a["realized"]
+        w(f"| {k} | {g['sheet_plane_z_m'] * 1e6:.4f} | {g['n_volume_cells']} | "
+          f"{g['n_trace_rows']} | {g['n_stub_cols']} | "
+          f"{g['trace_width_node_span_m'] * 1e6:.4f} | "
+          f"{g['stub_length_m'] * 1e6:.4f} | "
+          f"{a['edge_offset_m'] * 1e6:.4f} |")
+    w("")
+
+    w("### R.3 What each arm measured")
+    w("")
+    w("| arm | notch (GHz) | depth (dB) | -10 dB BW (MHz) | fitted Z0 (ohm) | "
+      "worst settling (dB) | worst passivity excess | wall (s) | "
+      "cells / uniform h6 | wall / uniform h6 |")
+    w("|---|---|---|---|---|---|---|---|---|---|")
+    for k in order:
+        a = arms[k]
+        n = notch_of(a)
+        c = v["cost"][k]
+        excess = a["witnesses"]["worst_sigma_excess"]
+        w(f"| {k} | {n['f'] / 1e9:.5f} | {n['depth_db']:.2f} | "
+          f"{n['bw_10db'] / 1e6:.1f} | {a['z0_median_ohm']:.2f} | "
+          f"{a['witnesses']['worst_settling_db']:.2f} | "
+          f"{'n/a' if excess is None else f'{excess:.5f}'} | "
+          f"{a['wall_s']:.1f} | {c['cells_ratio']:.4f} | "
+          f"{c['wall_ratio']:.4f} |")
+    w("")
+    w(f"Bars, for reading the two witness columns: ring-down "
+      f"{case.SETTLING_DB:.0f} dB, passivity excess "
+      f"{case.PASSIVITY_EXCESS_BAR}.  The uniform h/6 rung this cost is "
+      f"divided by is {UNIFORM_FINEST_CELLS:,} cells and "
+      f"{UNIFORM_FINEST_WALL_S:.0f} s (pre-declaration section 1).")
+    w("")
+
+    w("### R.4 The frozen windows")
+    w("")
+    if "W1" in v:
+        r = v["W1"]
+        w(f"**W1 mesh statement ({' -> '.join(r['arms'])}).**")
+        w("")
+        w("| notch A_off (GHz) | notch B_off (GHz) | notch C_off (GHz) | "
+          "|f_C - f_B| / f_B (%) | bar (%) | monotone | verdict |")
+        w("|---|---|---|---|---|---|---|")
+        w(f"| {r['notches_ghz'][0]:.5f} | {r['notches_ghz'][1]:.5f} | "
+          f"{r['notches_ghz'][2]:.5f} | {r['last_two_pct']:.4f} | "
+          f"{r['bar_pct']:.0f} | {r['monotone']} | {r['verdict']} |")
+        w("")
+    if "W2" in v:
+        r = v["W2"]
+        w(f"**W2 comparison ({r['arm']} against the openEMS tutorial's "
+          f"{case.OPENEMS_JUDGED_STAGE}).**")
+        w("")
+        w("| rfx notch (GHz) | reference notch (GHz) | distance (%) | "
+          "bar (%) | max abs dB | bar (dB) | bins compared | verdict |")
+        w("|---|---|---|---|---|---|---|---|")
+        w(f"| {r['our_notch_ghz']:.5f} | {r['ref_notch_ghz']:.5f} | "
+          f"{r['notch_pct']:.4f} | {r['notch_bar_pct']:.0f} | "
+          f"{r['max_abs_delta_db']:.4f} | {r['mag_bar_db']:.0f} | "
+          f"{r['n_compared']} of {r['n_in_band']} | {r['verdict']} |")
+        w("")
+    if "W3" in v:
+        r = v["W3"]
+        w("**W3 cross-ladder consistency.**")
+        w("")
+        w("| fitted order in the substrate cell | graded limit (GHz) | "
+          "uniform ladder limit (GHz) | distance (%) | bar (%) | verdict |")
+        w("|---|---|---|---|---|---|")
+        w(f"| {r['fitted_order']:.4f} | {r['limit_ghz']:.5f} | "
+          f"{r['uniform_limit_ghz']:.5f} | {r['distance_pct']:.4f} | "
+          f"{r['bar_pct']:.0f} | {r['verdict']} |")
+        if r["note"]:
+            w("")
+            w(f"Fit note: {r['note']}.")
+        w("")
+    if "W4" in v:
+        r = v["W4"]
+        w(f"**W4 arm-length witness ({r['arm_length_m'][0] * 1e3:.2f} mm "
+          f"against {r['arm_length_m'][1] * 1e3:.2f} mm arms).**")
+        w("")
+        w("| max abs delta |S21| (dB) | bar (dB) | worst at (GHz) | "
+          "bins compared | max abs delta |S11| (dB), reported | verdict |")
+        w("|---|---|---|---|---|---|")
+        w(f"| {r['max_abs_delta_s21_db']:.4f} | {r['bar_db']} | "
+          f"{r['worst_f_s21_ghz']:.4f} | "
+          f"{r['n_compared_s21']} of {r['n_in_band']} | "
+          f"{r['max_abs_delta_s11_db']:.4f} | {r['verdict']} |")
+        w("")
+    if "edge_offset_worth" in v:
+        r = v["edge_offset_worth"]
+        w("**Reported, no window: what the 0.35-cell edge offset is worth.**")
+        w("")
+        w("| A_on notch (GHz) | A_off notch (GHz) | difference (GHz) | "
+          "difference (%) |")
+        w("|---|---|---|---|")
+        w(f"| {r['a_on_ghz']:.5f} | {r['a_off_ghz']:.5f} | "
+          f"{r['delta_ghz']:+.5f} | {r['delta_pct']:+.4f} |")
+        w("")
+
+    w("### R.5 Provenance")
+    w("")
+    w("| arm | VESSL run | commit | dirty | jax | backend | started (UTC) |")
+    w("|---|---|---|---|---|---|---|")
+    for k in order:
+        p = arms[k]["provenance"]
+        w(f"| {k} | {p['run_id']} | {p['git_sha'][:12]} | {p['git_dirty']} | "
+          f"{p['jax_version']} | {p['jax_backend']} | {p['started_utc']} |")
+    w("")
+    w("Conclusions: leader fills.")
+    w("")
+    return "\n".join(out)
+
+
 def _git(args: list[str]) -> str:
     try:
         return subprocess.run(["git", "-C", str(_REPO_ROOT)] + args,
@@ -1315,15 +1472,20 @@ def main(argv: list[str] | None = None) -> int:
                     help="fold these per-run files into --out")
     ap.add_argument("--verdicts", action="store_true",
                     help="print every window's arithmetic from --out")
+    ap.add_argument("--tables", action="store_true",
+                    help="print the note's Results section from --out")
     args = ap.parse_args(argv)
 
     if args.merge:
         merge_files(args.merge, args.out)
         return 0
-    if args.verdicts:
+    if args.verdicts or args.tables:
         with args.out.open() as fh:
             data = json.load(fh)
-        print(json.dumps(verdicts(data["arms"]), indent=1, sort_keys=True))
+        if args.tables:
+            print(markdown_tables(data["arms"]))
+        else:
+            print(json.dumps(verdicts(data["arms"]), indent=1, sort_keys=True))
         return 0
     if not args.arm:
         ap.error("--arm is required (or --merge / --verdicts)")
