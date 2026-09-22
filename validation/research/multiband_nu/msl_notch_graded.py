@@ -99,6 +99,7 @@ from rfx.boundaries.spec import Boundary, BoundarySpec             # noqa: E402
 from rfx.mesh_edges import EDGE_OFFSET                             # noqa: E402
 from rfx.nonuniform import node_positions_from_profile             # noqa: E402
 from rfx.sources.msl_port import (                                 # noqa: E402
+    compute_msl_mode_profile, msl_cell, msl_cross_section_span,
     msl_port_from_entry, msl_probe_x_coords_n,
 )
 
@@ -112,7 +113,10 @@ __all__ = [
     "profiles", "build_graded", "realized_graded",
     "assert_profiles_graded", "assert_preflight_graded",
     "assert_realized_graded", "assert_witnesses",
-    "run_arm", "write_result", "merge_files",
+    "assert_probes_on_the_uniform_runway", "assert_port_footprint_in_fine_band",
+    "grid_cells",
+    "run_arm", "run_uniform_arm", "write_result", "merge_files",
+    "uniform_ladder_statement",
     "notch_of", "richardson_limit",
     "w1_mesh_statement", "w2_comparison", "w3_cross_ladder",
     "w4_arm_length_witness", "verdicts",
@@ -152,15 +156,6 @@ N_PROBE_OFFSET = 14
 N_PROBE_SPACING = 6
 N_PROBES = 5
 
-#: The uniform ladder's extrapolated limit, the W3 comparison target.  A window
-#: value frozen by the pre-declaration (its section 1 table, from the ledger
-#: entry of 2026-09-22 and PR #1177), not a number this instrument measured.
-UNIFORM_LADDER_LIMIT_GHZ = 3.67
-#: The uniform h/6 rung's cost, the cost-ratio denominator.  Same source.
-UNIFORM_FINEST_CELLS = 13_800_000
-UNIFORM_FINEST_WALL_S = 661.0
-
-
 @dataclass(frozen=True)
 class Arm:
     """One solve: a rung (mesh density) and a node placement."""
@@ -182,6 +177,44 @@ ARMS: dict[str, Arm] = {
 }
 #: The offset ladder, coarse to fine -- W1 and W3 read it in this order.
 LADDER = ("A_off", "B_off", "C_off")
+
+#: The uniform reference ladder.  Declared after the first review (note A.1)
+#: because the cost denominator and W3's comparison target had been typed
+#: constants with no witness file in this repository.  Each arm is the case's
+#: own ``build(dx)`` at one of the case's own ``LADDER_M`` cell sizes, on the
+#: case's own board -- the line at its 1.55 mm clearance, the box 18.8 mm deep
+#: in y -- solved through this recorder so that both sides of every ratio are
+#: measured the same way.
+UNIFORM_ARMS: dict[str, float] = {
+    "U_h2": case.LADDER_M[0],
+    "U_h4": case.LADDER_M[1],
+    "U_h6": case.LADDER_M[2],
+}
+UNIFORM_LADDER = ("U_h2", "U_h4", "U_h6")
+#: The rung every cost ratio is divided by: the finest uniform rung.
+COST_REFERENCE_ARM = "U_h6"
+ALL_ARMS = tuple(sorted(ARMS)) + UNIFORM_LADDER
+
+
+def grid_cells(record: dict) -> int:
+    """Cells the solver steps for this arm: interior plus the absorber pad.
+
+    ``grid_shape`` counts NODES, and N cells are bounded by N+1 nodes, so the
+    cell count is the product of one less per axis.  Derived here for every
+    arm rather than read from a field, so the arms recorded before the field
+    existed carry the same convention as the rest (review P3: on a
+    250 x 253 x 38 node grid the node product overstates the cells by 3.3 %).
+    """
+    shape = [int(n) for n in record["grid_shape"]]
+    cells = 1
+    for n in shape:
+        cells *= n - 1
+    recorded = record.get("realized", {}).get("n_grid_cells")
+    if recorded is not None and int(recorded) != cells:
+        raise AssertionError(
+            f"{record.get('arm')}: the record holds n_grid_cells "
+            f"{int(recorded)} but its grid_shape {shape} gives {cells}")
+    return int(cells)
 
 RESULTS_DIR = _REPO_ROOT / "validation" / "research" / "multiband_nu" / "results"
 DEFAULT_OUT = RESULTS_DIR / "msl_notch_graded.json"
@@ -630,7 +663,12 @@ def realized_graded(sim: Simulation) -> dict:
     out: dict = {
         "sheet_planes": planes, "n_sheet_planes": len(planes),
         "n_declared_sheets": len(rz.sheets), "n_volume_cells": n_volume,
+        # grid_shape counts NODES; N cells are bounded by N+1 nodes, so the
+        # cells the solver steps (interior plus the absorber pad) are the
+        # product of one less per axis.  Both sides of every cost ratio use
+        # n_grid_cells, never the node product (review P3).
         "grid_shape": tuple(int(v) for v in (xs.size, ys.size, zs.size)),
+        "n_grid_cells": int((xs.size - 1) * (ys.size - 1) * (zs.size - 1)),
         "n_cells": int(xs.size * ys.size * zs.size),
         "n_ports": len(getattr(sim, "_msl_ports", []) or []),
         "dt_s": float(rz.grid.dt),
@@ -675,11 +713,14 @@ def realized_graded(sim: Simulation) -> dict:
     return out
 
 
-def _check_realized_fields(g: dict, b: dict) -> None:
+def _check_realized_fields(g: dict, b: dict) -> float:
     """The R3 statements themselves, on an already-measured dict.
 
     Split out so the build test can hand it a doctored measurement: a check
     that never raises on a wrong number is a check that is not there.
+
+    Returns the worst distance between a realized edge node and the offset the
+    arm declares, so R.2's claim about that distance carries its measurement.
     """
     f = b["fine_cell_m"]
     n = b["n_across_metal"]
@@ -750,8 +791,10 @@ def _check_realized_fields(g: dict, b: dict) -> None:
         ("stub x_hi", g["stub_x_m"][1], b["drawn_stub_x_m"][1], -1.0),
         ("stub open end", g["stub_open_y_m"], b["drawn_stub_open_y_m"], -1.0),
     )
+    worst = 0.0
     for label, node, drawn, inward in edges:
         got = inward * (node - drawn)
+        worst = max(worst, abs(got - draw))
         if abs(got - draw) > NODE_TOL_M:
             raise AssertionError(
                 f"R3: the outermost realized node of the {label} edge stands "
@@ -761,12 +804,13 @@ def _check_realized_fields(g: dict, b: dict) -> None:
                 f"{f * 1e6:.4f} um fine cell). A PEC sheet is solved about "
                 f"{EDGE_OFFSET} of a cell beyond its last node, so where that "
                 "node sits IS the arm.")
+    return float(worst)
 
 
 def assert_realized_graded(sim: Simulation, b: dict) -> dict:
     """R3: refuse to solve unless the lattice built the declared board."""
     g = realized_graded(sim)
-    _check_realized_fields(g, b)
+    g["edge_offset_residual_m"] = _check_realized_fields(g, b)
     return g
 
 
@@ -804,6 +848,19 @@ def assert_witnesses(settling_db, sigma_max_excess, freqs_hz) -> dict:
 
 
 # ------------------------------------------------------------------- the probes
+def _padded_cells(grid, axis: int) -> np.ndarray:
+    """The axis's per-cell sizes as the grid holds them, pad included.
+
+    The exact float64 spine (#802) when the grid carries it; the solver's
+    float32 store widened otherwise, which is enough to compare against a
+    coarse cell to 1e-12 relative.
+    """
+    exact = (grid.dx_arr_f64, grid.dy_arr_f64, grid.dz_f64)[axis]
+    if exact is not None:
+        return np.asarray(exact, dtype=float)
+    return np.asarray((grid.dx_arr, grid.dy_arr, grid.dz)[axis], dtype=float)
+
+
 def probe_planes(sim: Simulation) -> list[list[float]]:
     """Where each port's probe planes land, read from the library's own placer."""
     rz = realized(sim)
@@ -818,19 +875,101 @@ def probe_planes(sim: Simulation) -> list[list[float]]:
     return out
 
 
-def assert_probes_in_uniform_region(planes: list[list[float]], b: dict) -> None:
-    """Every probe plane sits in the uniform-C part of the propagation axis.
+def assert_probes_on_the_uniform_runway(sim: Simulation, coarse_m: float) -> dict:
+    """Every cell the probe array spans is the coarse cell, bit-exactly.
 
-    The extractor reads beta and Z0 from the spacing between these planes; a
-    plane inside the graded band would be read with the wrong spacing.
+    The N-probe extractor reads beta and Z0 from the SPACING between probe
+    planes, and it counts that spacing in cells.  Inside the band the cells are
+    fine and inside the ramp no two are the same size, so a probe array that
+    reaches either one is read with a spacing the mesh does not have.  Checking
+    only the band (the first version of this refusal) left the ramp open: the
+    ramp is where the cell size changes fastest.
+
+    The span checked runs from the feed plane to the deepest probe, which is
+    every cell whose size the extractor's arithmetic assumes.
     """
-    lo, hi = b["band_x_m"]
-    for i, xs in enumerate(planes):
-        for x in xs:
-            if lo <= x <= hi:
-                raise AssertionError(
-                    f"probe plane {x * 1e3:.4f} mm of port {i} lies inside the "
-                    f"x fine band [{lo * 1e3:.4f}, {hi * 1e3:.4f}] mm.")
+    rz = realized(sim)
+    prop_cells = _padded_cells(rz.grid, 0)
+    out: dict = {"coarse_m": float(coarse_m), "ports": []}
+    for pe in sim._msl_ports:
+        mp = msl_port_from_entry(pe)
+        span = msl_cross_section_span(rz.grid, mp)
+        i_feed = int(span["i_feed"])
+        sign = 1 if "+" in pe.direction else -1
+        deepest = i_feed + sign * (int(pe.n_probe_offset)
+                                   + (int(pe.n_probes) - 1)
+                                   * int(pe.n_probe_spacing))
+        lo, hi = sorted((i_feed, deepest))
+        cells = prop_cells[lo:hi]
+        off = np.flatnonzero(cells != coarse_m)
+        node = _node_line(rz.grid, 0)
+        out["ports"].append(dict(
+            name=pe.name, i_feed=i_feed, deepest_index=int(deepest),
+            feed_m=float(node[i_feed]), deepest_m=float(node[deepest]),
+            n_cells_spanned=int(cells.size),
+            n_cells_off_coarse=int(off.size)))
+        if off.size:
+            k = int(off[0])
+            raise AssertionError(
+                f"probe array of port {pe.name!r} crosses a cell that is not "
+                f"the coarse cell: cell {lo + k} is "
+                f"{cells[k] * 1e6:.6f} um against {coarse_m * 1e6:.3f} um, "
+                f"between x = {node[lo + k] * 1e3:.4f} and "
+                f"{node[lo + k + 1] * 1e3:.4f} mm. The extractor counts its "
+                f"probe spacing in cells, so every cell from the feed plane to "
+                f"the deepest probe must be that one size -- the band and its "
+                f"ramp are both out of bounds.")
+    return out
+
+
+def assert_port_footprint_in_fine_band(sim: Simulation, b: dict) -> dict:
+    """The port's own lateral footprint lies inside the fine y band.
+
+    The MSL feed drives Ez over the trace plus a lateral pad the PORT resolves
+    for itself (about one substrate thickness each side), and the band is what
+    makes those cells one size.  The footprint is read back from
+    ``compute_msl_mode_profile`` -- the same call the runner makes, with eps_r
+    taken from the assembled material array at the port's own mid cell, as
+    ``rfx/runners/nonuniform.py`` takes it -- so this is the port's number and
+    not a second guess at it.
+    """
+    rz = realized(sim)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        eps = np.asarray(
+            sim._assemble_materials_nu(rz.grid, pec_sheets=[],
+                                       pec_wires=[])[0].eps_r)
+    ys = _node_line(rz.grid, 1)
+    lo_m, hi_m = b["band_y_trace_m"]
+    out: dict = {"band_y_trace_m": [float(lo_m), float(hi_m)], "ports": []}
+    for pe in sim._msl_ports:
+        mp = msl_port_from_entry(pe)
+        span = msl_cross_section_span(rz.grid, mp)
+        k_mid = (span["n_lo"] + span["n_hi"]) // 2
+        cell = msl_cell(pe.direction, span["i_feed"], span["w_centre"], k_mid)
+        eps_r_sub = (float(pe.eps_r_sub) if pe.eps_r_sub is not None
+                     else float(eps[cell]))
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            profile = compute_msl_mode_profile(rz.grid, mp, eps_r_sub)
+        js = [c[span["width_idx"]] for c in profile["cell_indices"]]
+        j_lo, j_hi = int(min(js)), int(max(js))
+        y_lo, y_hi = float(ys[j_lo]), float(ys[j_hi])
+        out["ports"].append(dict(
+            name=pe.name, eps_r_sub=eps_r_sub, j_lo=j_lo, j_hi=j_hi,
+            y_lo_m=y_lo, y_hi_m=y_hi,
+            trace_j=(int(profile["trace_j_lo"]), int(profile["trace_j_hi"])),
+            pad_cells_lo=int(profile["trace_j_lo"]) - j_lo,
+            pad_cells_hi=j_hi - int(profile["trace_j_hi"])))
+        if y_lo < lo_m - NODE_TOL_M or y_hi > hi_m + NODE_TOL_M:
+            raise AssertionError(
+                f"the feed footprint of port {pe.name!r} reaches y = "
+                f"{y_lo * 1e3:.4f} .. {y_hi * 1e3:.4f} mm, outside the fine y "
+                f"band {lo_m * 1e3:.4f} .. {hi_m * 1e3:.4f} mm. The port pads "
+                f"its Ez source about one substrate thickness each side of the "
+                f"trace and resolves that pad in CELLS, so a footprint that "
+                f"leaves the band is driven on cells of several sizes.")
+    return out
 
 
 # ------------------------------------------------------------------- windows
@@ -921,21 +1060,55 @@ def w2_comparison(arms: dict) -> dict:
                 verdict="HELD" if held else "FIRED")
 
 
+def uniform_ladder_statement(arms: dict) -> dict:
+    """The uniform reference ladder, read the same way as the graded one.
+
+    Reported, not a section 5 window: the uniform ladder's own mesh statement
+    is the case's known limitation (its two finest rungs do not settle inside
+    ``LADDER_AGREEMENT``), and its Richardson limit is what W3 compares the
+    graded ladder's limit with.
+    """
+    h = [arms[k]["dx_m"] for k in UNIFORM_LADDER]
+    f = [notch_of(arms[k])["f"] for k in UNIFORM_LADDER]
+    r = richardson_limit(h, f)
+    last_two = 100.0 * abs(f[2] - f[1]) / f[1]
+    monotone = (all(b > a for a, b in zip(f, f[1:]))
+                or all(b < a for a, b in zip(f, f[1:])))
+    return dict(
+        arms=list(UNIFORM_LADDER), cells_m=[float(v) for v in h],
+        notches_ghz=[v / 1e9 for v in f],
+        last_two_pct=float(last_two), bar_pct=case.LADDER_AGREEMENT * 100.0,
+        monotone=bool(monotone),
+        mesh_statement=("HELD" if monotone
+                        and last_two <= case.LADDER_AGREEMENT * 100.0
+                        else "FIRED"),
+        fitted_order=r["order"], limit_ghz=r["limit"] / 1e9, note=r["reason"])
+
+
 def w3_cross_ladder(arms: dict) -> dict:
-    """W3: the graded ladder's Richardson limit against the uniform ladder's."""
+    """W3: the graded ladder's Richardson limit against the uniform ladder's.
+
+    Both limits are fitted the same way -- the order on all three rungs, the
+    limit from the two finest at that order -- and both ladders were solved by
+    this recorder, so the comparison is between two measurements rather than
+    between a measurement and a number quoted from a ledger.
+    """
     h = [arms[k]["substrate_cell_m"] for k in LADDER]
     f = [notch_of(arms[k])["f"] for k in LADDER]
     r = richardson_limit(h, f)
     limit_ghz = r["limit"] / 1e9
-    pct = (float("nan") if not np.isfinite(limit_ghz)
-           else 100.0 * abs(limit_ghz - UNIFORM_LADDER_LIMIT_GHZ)
-           / UNIFORM_LADDER_LIMIT_GHZ)
+    ref = uniform_ladder_statement(arms)
+    target = ref["limit_ghz"]
+    pct = (float("nan") if not (np.isfinite(limit_ghz) and np.isfinite(target))
+           else 100.0 * abs(limit_ghz - target) / target)
     held = bool(np.isfinite(pct) and pct <= case.FREQ_BAR * 100.0)
     return dict(window="W3", arms=list(LADDER),
                 substrate_cells_m=[float(v) for v in h],
                 notches_ghz=[v / 1e9 for v in f],
                 fitted_order=r["order"], limit_ghz=limit_ghz,
-                uniform_limit_ghz=UNIFORM_LADDER_LIMIT_GHZ,
+                uniform_arms=list(UNIFORM_LADDER),
+                uniform_fitted_order=ref["fitted_order"],
+                uniform_limit_ghz=target,
                 distance_pct=pct, bar_pct=case.FREQ_BAR * 100.0,
                 note=r["reason"], verdict="HELD" if held else "FIRED")
 
@@ -978,12 +1151,17 @@ def w4_arm_length_witness(arms: dict) -> dict:
 
 
 def verdicts(arms: dict) -> dict:
-    """Every window whose arms are present, with its arithmetic."""
+    """Every window and reported quantity whose arms are present."""
     out: dict = {}
-    if all(k in arms for k in LADDER):
+    graded = all(k in arms for k in LADDER)
+    uniform = all(k in arms for k in UNIFORM_LADDER)
+    if graded:
         out["W1"] = w1_mesh_statement(arms)
         out["W2"] = w2_comparison(arms)
+    if graded and uniform:
         out["W3"] = w3_cross_ladder(arms)
+    if uniform:
+        out["uniform_ladder"] = uniform_ladder_statement(arms)
     if "A_off" in arms and "A_off_longarms" in arms:
         out["W4"] = w4_arm_length_witness(arms)
     if "A_on" in arms and "A_off" in arms:
@@ -992,11 +1170,19 @@ def verdicts(arms: dict) -> dict:
         out["edge_offset_worth"] = dict(
             window=None, a_on_ghz=on, a_off_ghz=off, delta_ghz=on - off,
             delta_pct=100.0 * (on - off) / off)
-    out["cost"] = {
-        k: dict(n_cells=arms[k]["n_cells"], wall_s=arms[k]["wall_s"],
-                cells_ratio=arms[k]["n_cells"] / UNIFORM_FINEST_CELLS,
-                wall_ratio=arms[k]["wall_s"] / UNIFORM_FINEST_WALL_S)
-        for k in sorted(arms)}
+    cost: dict = {}
+    ref = arms.get(COST_REFERENCE_ARM)
+    for k in sorted(arms):
+        row = dict(n_grid_cells=grid_cells(arms[k]), wall_s=arms[k]["wall_s"])
+        if ref is not None:
+            row["cells_ratio"] = row["n_grid_cells"] / grid_cells(ref)
+            row["wall_ratio"] = row["wall_s"] / ref["wall_s"]
+        cost[k] = row
+    out["cost"] = cost
+    out["cost_reference"] = (
+        None if ref is None else
+        dict(arm=COST_REFERENCE_ARM, n_grid_cells=grid_cells(ref),
+             wall_s=ref["wall_s"], dx_m=ref["dx_m"]))
     return out
 
 
@@ -1009,8 +1195,13 @@ def markdown_tables(arms: dict) -> str:
     to write, so it ends with the line that says whose they are.
     """
     v = verdicts(arms)
-    order = [k for k in ("A_on", "A_off", "B_off", "C_off", "A_off_longarms")
-             if k in arms]
+    order = [k for k in ("A_on", "A_off", "B_off", "C_off", "A_off_longarms",
+                         "U_h2", "U_h4", "U_h6") if k in arms]
+    na = "n/a"
+
+    def is_uniform(k: str) -> bool:
+        return arms[k].get("kind") == "uniform"
+
     out: list[str] = []
     w = out.append
 
@@ -1026,61 +1217,79 @@ def markdown_tables(arms: dict) -> str:
 
     w("### R.1 The mesh each arm solved")
     w("")
-    w("| arm | rung | placement | F (um) | FZ (um) | z tail cell (um) | "
-      "band margin (fine cells) | interior cells | grid | dt (fs) |")
-    w("|---|---|---|---|---|---|---|---|---|---|")
+    w("Cell counts are the cells the solver steps, interior plus the absorber "
+      "pad.  The node count")
+    w("each grid carries is one more per axis, and no ratio anywhere below "
+      "uses it.")
+    w("")
+    w("| arm | mesh | rung | placement | in-plane fine cell (um) | substrate "
+      "cell (um) | z tail cell (um) | band margin (fine cells) | grid nodes | "
+      "grid cells | dt (fs) |")
+    w("|---|---|---|---|---|---|---|---|---|---|---|")
     for k in order:
         a = arms[k]
-        w(f"| {k} | {a['rung']} | {a['placement']} | "
-          f"{a['fine_cell_m'] * 1e6:.4f} | {a['substrate_cell_m'] * 1e6:.4f} | "
-          f"{a['z_tail_cell_m'] * 1e6:.4f} | {a['margin_cells']} | "
-          f"{a['n_interior_cells']:,} | "
-          f"{'x'.join(str(n) for n in a['interior_shape'])} | "
-          f"{a['dt_s'] * 1e15:.4f} |")
+        u = is_uniform(k)
+        dt = a.get("dt_s")
+        z_tail = na if u else f"{a['z_tail_cell_m'] * 1e6:.4f}"
+        margin = na if u else str(a["margin_cells"])
+        dt_s = na if dt is None else f"{dt * 1e15:.4f}"
+        nodes = "x".join(str(n) for n in a["grid_shape"])
+        w(f"| {k} | {'uniform' if u else 'graded'} | {a['rung']} | "
+          f"{a['placement']} | {a['fine_cell_m'] * 1e6:.4f} | "
+          f"{a['substrate_cell_m'] * 1e6:.4f} | {z_tail} | {margin} | "
+          f"{nodes} | {grid_cells(a):,} | {dt_s} |")
     w("")
 
     w("### R.2 What the lattice realized")
     w("")
     w("| arm | sheet plane z (um) | PEC volume cells | line node rows | "
       "stub node cols | metal node span (um) | stub length (um) | "
-      "node inside the drawn edge (um) |")
-    w("|---|---|---|---|---|---|---|---|")
+      "declared offset (um) -- the realized node matches it to the residual "
+      "beside it; R3 refuses beyond 1 nm | worst residual (m) |")
+    w("|---|---|---|---|---|---|---|---|---|")
     for k in order:
         a = arms[k]
         g = a["realized"]
+        u = is_uniform(k)
+        res = g.get("edge_offset_residual_m")
+        offset = na if u else f"{a['edge_offset_m'] * 1e6:.4f}"
+        resid = na if res is None else f"{res:.2e}"
         w(f"| {k} | {g['sheet_plane_z_m'] * 1e6:.4f} | {g['n_volume_cells']} | "
           f"{g['n_trace_rows']} | {g['n_stub_cols']} | "
           f"{g['trace_width_node_span_m'] * 1e6:.4f} | "
-          f"{g['stub_length_m'] * 1e6:.4f} | "
-          f"{a['edge_offset_m'] * 1e6:.4f} |")
+          f"{g['stub_length_m'] * 1e6:.4f} | {offset} | {resid} |")
     w("")
 
     w("### R.3 What each arm measured")
     w("")
+    ref = v.get("cost_reference")
     w("| arm | notch (GHz) | depth (dB) | -10 dB BW (MHz) | fitted Z0 (ohm) | "
-      "worst settling (dB) | worst passivity excess | wall (s) | "
-      "cells / uniform h6 | wall / uniform h6 |")
-    w("|---|---|---|---|---|---|---|---|---|---|")
+      "worst settling (dB) | worst passivity excess | grid cells | wall (s) | "
+      "cells / U_h6 | wall / U_h6 |")
+    w("|---|---|---|---|---|---|---|---|---|---|---|")
     for k in order:
         a = arms[k]
         n = notch_of(a)
         c = v["cost"][k]
         excess = a["witnesses"]["worst_sigma_excess"]
+        exc = na if excess is None else f"{excess:.5f}"
+        cr = f"{c['cells_ratio']:.4f}" if "cells_ratio" in c else na
+        wr = f"{c['wall_ratio']:.4f}" if "wall_ratio" in c else na
         w(f"| {k} | {n['f'] / 1e9:.5f} | {n['depth_db']:.2f} | "
           f"{n['bw_10db'] / 1e6:.1f} | {a['z0_median_ohm']:.2f} | "
-          f"{a['witnesses']['worst_settling_db']:.2f} | "
-          f"{'n/a' if excess is None else f'{excess:.5f}'} | "
-          f"{a['wall_s']:.1f} | {c['cells_ratio']:.4f} | "
-          f"{c['wall_ratio']:.4f} |")
+          f"{a['witnesses']['worst_settling_db']:.2f} | {exc} | "
+          f"{c['n_grid_cells']:,} | {a['wall_s']:.1f} | {cr} | {wr} |")
     w("")
     w(f"Bars, for reading the two witness columns: ring-down "
       f"{case.SETTLING_DB:.0f} dB, passivity excess "
-      f"{case.PASSIVITY_EXCESS_BAR}.  The uniform h/6 rung this cost is "
-      f"divided by is {UNIFORM_FINEST_CELLS:,} cells and "
-      f"{UNIFORM_FINEST_WALL_S:.0f} s (pre-declaration section 1).  Both cell "
-      f"counts in that ratio are GRID cells, absorber pad included, which is "
-      f"what the uniform ladder's own record counted; table R.1's interior "
-      f"count is the smaller number the pre-declaration's section 3 quotes.")
+      f"{case.PASSIVITY_EXCESS_BAR}.")
+    if ref is not None:
+        w("")
+        w(f"Both sides of the two cost ratios are grid cells and wall seconds "
+          f"measured by this recorder.  The denominator is arm "
+          f"`{ref['arm']}`, the finest uniform rung: "
+          f"{ref['n_grid_cells']:,} cells at "
+          f"{ref['dx_m'] * 1e6:.4f} um and {ref['wall_s']:.1f} s.")
     w("")
 
     w("### R.4 The frozen windows")
@@ -1089,7 +1298,6 @@ def markdown_tables(arms: dict) -> str:
         r = v["W1"]
         w(f"**W1 mesh statement ({' -> '.join(r['arms'])}).**")
         w("")
-        # No pipe characters inside a cell: "|f_C - f_B|" would split the row.
         w("| notch A_off (GHz) | notch B_off (GHz) | notch C_off (GHz) | "
           "last two rungs apart (%) | bar (%) | monotone | verdict |")
         w("|---|---|---|---|---|---|---|")
@@ -1112,14 +1320,15 @@ def markdown_tables(arms: dict) -> str:
         w("")
     if "W3" in v:
         r = v["W3"]
-        w("**W3 cross-ladder consistency.**")
+        w("**W3 cross-ladder consistency.**  Both limits are fitted the same "
+          "way on ladders this recorder measured.")
         w("")
-        w("| fitted order in the substrate cell | graded limit (GHz) | "
-          "uniform ladder limit (GHz) | distance (%) | bar (%) | verdict |")
-        w("|---|---|---|---|---|---|")
+        w("| graded order | graded limit (GHz) | uniform order | uniform limit "
+          "(GHz) | distance (%) | bar (%) | verdict |")
+        w("|---|---|---|---|---|---|---|")
         w(f"| {r['fitted_order']:.4f} | {r['limit_ghz']:.5f} | "
-          f"{r['uniform_limit_ghz']:.5f} | {r['distance_pct']:.4f} | "
-          f"{r['bar_pct']:.0f} | {r['verdict']} |")
+          f"{r['uniform_fitted_order']:.4f} | {r['uniform_limit_ghz']:.5f} | "
+          f"{r['distance_pct']:.4f} | {r['bar_pct']:.0f} | {r['verdict']} |")
         if r["note"]:
             w("")
             w(f"Fit note: {r['note']}.")
@@ -1129,7 +1338,6 @@ def markdown_tables(arms: dict) -> str:
         w(f"**W4 arm-length witness ({r['arm_length_m'][0] * 1e3:.2f} mm "
           f"against {r['arm_length_m'][1] * 1e3:.2f} mm arms).**")
         w("")
-        # No pipe characters inside a cell: "|S21|" would split the row.
         w("| max abs delta S21 (dB) | bar (dB) | worst at (GHz) | "
           "bins compared | max abs delta S11 (dB), reported | verdict |")
         w("|---|---|---|---|---|---|")
@@ -1137,6 +1345,19 @@ def markdown_tables(arms: dict) -> str:
           f"{r['worst_f_s21_ghz']:.4f} | "
           f"{r['n_compared_s21']} of {r['n_in_band']} | "
           f"{r['max_abs_delta_s11_db']:.4f} | {r['verdict']} |")
+        w("")
+    if "uniform_ladder" in v:
+        r = v["uniform_ladder"]
+        w("**Reported, no window: the uniform reference ladder's own mesh "
+          "statement.**  The case's `LADDER_AGREEMENT` rule read on the "
+          "uniform ladder, for comparison with W1.")
+        w("")
+        w("| notch U_h2 (GHz) | notch U_h4 (GHz) | notch U_h6 (GHz) | "
+          "last two rungs apart (%) | bar (%) | monotone | mesh statement |")
+        w("|---|---|---|---|---|---|---|")
+        w(f"| {r['notches_ghz'][0]:.5f} | {r['notches_ghz'][1]:.5f} | "
+          f"{r['notches_ghz'][2]:.5f} | {r['last_two_pct']:.4f} | "
+          f"{r['bar_pct']:.0f} | {r['monotone']} | {r['mesh_statement']} |")
         w("")
     if "edge_offset_worth" in v:
         r = v["edge_offset_worth"]
@@ -1151,13 +1372,24 @@ def markdown_tables(arms: dict) -> str:
 
     w("### R.5 Provenance")
     w("")
-    w("| arm | VESSL run | commit | dirty | jax | backend | started (UTC) |")
-    w("|---|---|---|---|---|---|---|")
+    w("| arm | VESSL run | commit | dirty | GPU | jax | backend | "
+      "started (UTC) |")
+    w("|---|---|---|---|---|---|---|---|")
+    missing = []
     for k in order:
-        p = arms[k]["provenance"]
-        w(f"| {k} | {p['run_id']} | {p['git_sha'][:12]} | {p['git_dirty']} | "
-          f"{p['jax_version']} | {p['jax_backend']} | {p['started_utc']} |")
+        pr = arms[k]["provenance"]
+        kind = pr.get("gpu_device_kind")
+        if kind is None:
+            missing.append(k)
+        w(f"| {k} | {pr['run_id']} | {pr['git_sha'][:12]} | {pr['git_dirty']} | "
+          f"{na if kind is None else kind} | {pr['jax_version']} | "
+          f"{pr['jax_backend']} | {pr['started_utc']} |")
     w("")
+    if missing:
+        w(f"The GPU model is not recorded for {', '.join(missing)}: those arms "
+          f"ran before the instrument read `device_kind`, and their blocks are "
+          f"left as they were measured rather than back-filled.")
+        w("")
     w("Conclusions: leader fills.")
     w("")
     return "\n".join(out)
@@ -1222,6 +1454,7 @@ def provenance(run_id: str | None, commit: str | None = None) -> dict:
         jax_version=jax.__version__,
         jax_backend=jax.default_backend(),
         jax_devices=[str(d) for d in jax.devices()],
+        gpu_device_kind=str(jax.devices()[0].device_kind),
         python=platform.python_version(),
         hostname=platform.node(),
         run_id=run_id,
@@ -1264,9 +1497,10 @@ def run_arm(arm_key: str, *, run_id: str | None = None,
                       for k, v in prof_report["intended_node_miss_m"].items()))
 
     g = assert_realized_graded(sim, b)
-    print(f"  R3 realized: grid {g['grid_shape']}, {g['n_cells']} cells with "
-          f"the absorber pad ({x.size} x {y.size} x {z.size} = "
-          f"{x.size * y.size * z.size} interior), dt {g['dt_s']:.6e} s")
+    print(f"  R3 realized: grid {g['grid_shape']} nodes = "
+          f"{g['n_grid_cells']} cells with the absorber pad "
+          f"({x.size} x {y.size} x {z.size} = {x.size * y.size * z.size} "
+          f"interior), dt {g['dt_s']:.6e} s")
     print(f"    sheet plane k={g['sheet_plane_k']} at "
           f"z={g['sheet_plane_z_m'] * 1e6:.4f} um; PEC volume cells "
           f"{g['n_volume_cells']}; declared sheets {g['n_declared_sheets']}")
@@ -1281,12 +1515,22 @@ def run_arm(arm_key: str, *, run_id: str | None = None,
           f"{g['stub_length_m'] * 1e6:.4f} um")
 
     planes = probe_planes(sim)
-    assert_probes_in_uniform_region(planes, b)
+    runway = assert_probes_on_the_uniform_runway(sim, C_COARSE_M)
+    footprint = assert_port_footprint_in_fine_band(sim, b)
     for i, xs in enumerate(planes):
         print(f"    port {i} probe planes (mm): "
-              + " ".join(f"{v * 1e3:.4f}" for v in xs))
+              + " ".join(f"{v * 1e3:.4f}" for v in xs)
+              + f"; {runway['ports'][i]['n_cells_spanned']} cells spanned, "
+              f"all {C_COARSE_M * 1e6:.3f} um")
+    for i, f in enumerate(footprint["ports"]):
+        print(f"    port {i} feed footprint y "
+              f"{f['y_lo_m'] * 1e3:.4f}..{f['y_hi_m'] * 1e3:.4f} mm "
+              f"({f['pad_cells_lo']}+{f['pad_cells_hi']} pad cells around the "
+              f"trace, eps_r {f['eps_r_sub']:.4g})")
     print(f"    x fine band {b['band_x_m'][0] * 1e3:.4f}"
-          f"..{b['band_x_m'][1] * 1e3:.4f} mm")
+          f"..{b['band_x_m'][1] * 1e3:.4f} mm; y trace band "
+          f"{b['band_y_trace_m'][0] * 1e3:.4f}"
+          f"..{b['band_y_trace_m'][1] * 1e3:.4f} mm")
 
     report = assert_preflight_graded(sim)
     print(f"  R2 preflight: {len(report)} finding(s)")
@@ -1319,7 +1563,8 @@ def run_arm(arm_key: str, *, run_id: str | None = None,
         realized={k: (list(v) if isinstance(v, tuple) else v)
                   for k, v in g.items()},
         preflight=report,
-        probe_planes_m=planes,
+        probe_planes_m=planes, probe_runway=runway,
+        port_footprint=footprint,
         n_cells=g["n_cells"], grid_shape=list(g["grid_shape"]),
         # The padded grid the solver steps, and the interior the board owns
         # (the note's section 3 counts the interior).
@@ -1393,6 +1638,118 @@ def run_arm(arm_key: str, *, run_id: str | None = None,
     return record
 
 
+def run_uniform_arm(arm_key: str, *, run_id: str | None = None,
+                    commit: str | None = None, dry_run: bool = False,
+                    n_steps_cap: int | None = None) -> dict:
+    """One rung of the uniform reference ladder, through this recorder.
+
+    The board and the build are the case's own ``build(dx)`` -- the line
+    1.55 mm from the y_lo face, the box 18.8 mm deep in y, the ports resolving
+    their own probe placement -- so this is the uniform ladder the note's
+    section 1 quotes, measured here instead of cited.  The refusals are the
+    case's ``assert_realized`` before the solve and R4 after it; the graded
+    mesh's R1, R2 and R3 do not apply to a board with no profile.
+    """
+    dx = UNIFORM_ARMS[arm_key]
+    print(f"\n=== arm {arm_key}: uniform reference, dx = {dx * 1e6:.4f} um ===")
+    sim = case.build(dx)
+    g = case.assert_realized(sim, dx)
+    case._print_realized(g, dx)
+    print(f"  board: the case's own -- lateral clearance "
+          f"{case.LATERAL_CLEARANCE_M * 1e3:.3f} mm, box "
+          f"{case.DOMAIN_X_M * 1e3:.3f} x {case.DOMAIN_Y_M * 1e3:.3f} x "
+          f"{case.DOMAIN_Z_M * 1e3:.3f} mm, arms "
+          f"{case.ARM_LENGTH_M * 1e3:.1f} mm each side")
+
+    report = [str(line) for line in sim.preflight()]
+    print(f"  preflight: {len(report)} finding(s)")
+    for i, line in enumerate(report):
+        print(f"    [{i}] {line}")
+
+    planes = probe_planes(sim)
+    for i, xs in enumerate(planes):
+        print(f"    port {i} probe planes (mm): "
+              + " ".join(f"{v * 1e3:.4f}" for v in xs))
+    pe = sim._msl_ports[0]
+    print(f"    probe placement resolved by the port: offset "
+          f"{pe.n_probe_offset}, spacing {pe.n_probe_spacing}, "
+          f"{pe.n_probes} probes")
+
+    shape = [int(n) for n in g["grid_shape"]]
+    realized_block = {k: (list(v) if isinstance(v, tuple) else v)
+                      for k, v in g.items()}
+    realized_block["n_grid_cells"] = (shape[0] - 1) * (shape[1] - 1) * (shape[2] - 1)
+    record: dict = dict(
+        arm=arm_key, kind="uniform", rung=arm_key, placement="uniform",
+        dx_m=dx, fine_cell_m=dx, substrate_cell_m=dx, coarse_cell_m=dx,
+        arm_length_m=case.ARM_LENGTH_M,
+        lateral_clearance_m=case.LATERAL_CLEARANCE_M,
+        domain_m=[case.DOMAIN_X_M, case.DOMAIN_Y_M, case.DOMAIN_Z_M],
+        n_substrate_cells=int(round(case.SUBSTRATE_THICKNESS_M / dx)),
+        realized=realized_block, preflight=report, probe_planes_m=planes,
+        n_probe_offset=int(pe.n_probe_offset),
+        n_probe_spacing=int(pe.n_probe_spacing), n_probes=int(pe.n_probes),
+        grid_shape=shape, n_cells=int(g["n_cells"]),
+        n_grid_cells=realized_block["n_grid_cells"],
+        dt_s=float(sim._build_grid().dt),
+        n_freqs=case.N_FREQS, num_periods=case.NUM_PERIODS,
+        provenance=provenance(run_id, commit),
+    )
+    print(f"  grid {tuple(shape)} nodes = {record['n_grid_cells']} cells "
+          f"with the absorber pad")
+
+    if dry_run:
+        print("  --dry-run: build and the case's assert_realized only; "
+              "no time step, nothing written.")
+        record["dry_run"] = True
+        return record
+
+    num_periods = case.NUM_PERIODS
+    if n_steps_cap is not None:
+        dt = float(realized(sim).grid.dt)
+        num_periods = float(n_steps_cap) * dt * case.FREQ_MAX_HZ
+        print(f"  SMOKE: --n-steps-cap {n_steps_cap} shortens the record to "
+              f"num_periods={num_periods:.6g}. Not a recordable arm.")
+    record["num_periods"] = num_periods
+    record["smoke"] = n_steps_cap is not None
+
+    t0 = time.perf_counter()
+    res = sim.compute_msl_s_matrix(n_freqs=case.N_FREQS,
+                                   num_periods=num_periods,
+                                   enforce_passivity=False)
+    wall_s = time.perf_counter() - t0
+    freqs = np.asarray(res.freqs, dtype=float)
+    sm = np.asarray(res.S)
+    z0 = np.asarray(res.Z0, dtype=complex).ravel()
+    record.update(
+        wall_s=float(wall_s), freqs_hz=freqs.tolist(),
+        s11_re=np.real(sm[0, 0, :]).tolist(), s11_im=np.imag(sm[0, 0, :]).tolist(),
+        s21_re=np.real(sm[1, 0, :]).tolist(), s21_im=np.imag(sm[1, 0, :]).tolist(),
+        s12_re=np.real(sm[0, 1, :]).tolist(), s12_im=np.imag(sm[0, 1, :]).tolist(),
+        s22_re=np.real(sm[1, 1, :]).tolist(), s22_im=np.imag(sm[1, 1, :]).tolist(),
+        z0_re=np.real(z0).tolist(), z0_im=np.imag(z0).tolist(),
+        z0_median_ohm=float(np.median(np.real(z0))),
+        sigma_max_excess=(None if res.sigma_max_excess is None
+                          else np.asarray(res.sigma_max_excess,
+                                          dtype=float).tolist()))
+    print(f"  wall time {wall_s:.1f} s, {record['n_grid_cells']} cells")
+    witness = assert_witnesses(res.settling_db, res.sigma_max_excess, freqs)
+    record["witnesses"] = witness
+    print(f"  R4 settling per driven run {witness['settling_db']} dB "
+          f"(bar {case.SETTLING_DB:.0f}); worst passivity excess "
+          f"{witness['worst_sigma_excess']} (bar {case.PASSIVITY_EXCESS_BAR})")
+    print(f"  fitted line Z0 median {record['z0_median_ohm']:.3f} ohm")
+    n = notch_of(record)
+    record["notch"] = {k: float(v) for k, v in n.items()}
+    print(f"  notch {n['f'] / 1e9:.6f} GHz, depth {n['depth_db']:.3f} dB, "
+          f"-10 dB bandwidth {n['bw_10db'] / 1e6:.2f} MHz")
+    print("  |S21| and |S11| on the rfx frequency grid -- f_GHz, S21 dB, S11 dB:")
+    for fv, a, c in zip(freqs, case._db(np.abs(sm[1, 0, :])),
+                        case._db(np.abs(sm[0, 0, :]))):
+        print(f"    {fv / 1e9:9.6f} {a:10.4f} {c:10.4f}")
+    return record
+
+
 def figure(record: dict, out_dir: Path) -> Path:
     import matplotlib
     matplotlib.use("Agg")
@@ -1437,7 +1794,8 @@ def _empty_file() -> dict:
             "W2_mag_bar_db": case.MAG_BAR_DB,
             "W2_reference": f"{case.OPENEMS_JUDGED_STAGE} of "
                             "reference/openems_tutorial.json",
-            "W3_uniform_limit_ghz": UNIFORM_LADDER_LIMIT_GHZ,
+            "W3_uniform_limit": "measured: the Richardson limit of the "
+                                "U_h2 / U_h4 / U_h6 arms in this file",
             "W4_arm_witness_bar_db": case.ARM_WITNESS_BAR_DB,
             "deep_null_db": case.DEEP_NULL_DB,
             "settling_db": case.SETTLING_DB,
@@ -1503,7 +1861,7 @@ def merge_files(paths: list[Path], out: Path) -> Path:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--arm", choices=sorted(ARMS))
+    ap.add_argument("--arm", choices=sorted(ALL_ARMS))
     ap.add_argument("--run-id", default=os.environ.get("RFX_RUN_ID"))
     ap.add_argument("--commit", default=os.environ.get("RFX_NOTCH_SHA"),
                     help="the commit this tree was exported from; required "
@@ -1544,8 +1902,9 @@ def main(argv: list[str] | None = None) -> int:
                     f"arm {args.arm!r} is already in {args.out}; one attempt "
                     "per arm.")
 
-    record = run_arm(args.arm, run_id=args.run_id, commit=args.commit,
-                     dry_run=args.dry_run, n_steps_cap=args.n_steps_cap)
+    runner = run_uniform_arm if args.arm in UNIFORM_ARMS else run_arm
+    record = runner(args.arm, run_id=args.run_id, commit=args.commit,
+                    dry_run=args.dry_run, n_steps_cap=args.n_steps_cap)
     if args.dry_run:
         return 0
     if args.n_steps_cap is not None:

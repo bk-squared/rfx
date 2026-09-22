@@ -234,6 +234,41 @@ every sentence that interprets a number. Review: a separate Opus instance,
 fresh eyes, one round; P1/P2 fixes back to the same reviewer. Documentation
 mismatches go to #1171.
 
+## A.1 Uniform reference arms (declared 2026-09-22 after review, before running)
+
+The first review found that two numbers this note leans on are typed constants
+with no witness file in this repository: the cost denominator (13.8 M cells and
+661 s for the uniform h/6 rung, section 1, from the ledger) and W3's comparison
+target (3.67 GHz, section 5). Both are now MEASURED here, by three more arms
+declared in this block and run before any of their numbers is read.
+
+**The arms.** `U_h2`, `U_h4`, `U_h6`: the case's own `build(dx)` at the case's
+own `LADDER_M`, that is 127, 63.5 and 42.33 um, on the case's own board -- the
+line 1.55 mm from the y_lo face, the box 24.0 x 18.8 x 1.754 mm, the ports
+resolving their own probe placement. The line does not move: this is the
+uniform ladder as the case runs it, not the graded arms' board at a uniform
+cell size. Each arm goes through this note's recorder and is refused by the
+case's own `assert_realized` before the solve and by R4 (ring-down -40 dB,
+passivity excess 0.01) after it. The graded mesh's R1, R2 and R3 do not apply
+to a board with no profile. One VESSL job per arm, all three at one commit, on
+the preset the five graded arms ran on.
+
+**What they are used for, and what they do not touch.** No section 5 window
+changes: W1, W2 and W4 are computed exactly as before, and W3 keeps its rule
+(the graded ladder's Richardson limit within 1 % of the uniform ladder's) with
+the target now fitted on `U_h2`, `U_h4`, `U_h6` the same way the graded limit is
+fitted -- the order on all three rungs, the limit from the two finest at that
+order. The cost ratios are recomputed against `U_h6` as measured. The case's
+`LADDER_AGREEMENT` rule is reported for the uniform ladder as well, beside W1,
+so the two ladders' mesh statements can be read together; it is a reported
+number, not a window.
+
+**Cells are counted as cells.** Every cell count and every ratio in the results
+below is the cells the solver steps, interior plus the absorber pad, on both
+sides. The earlier tables counted grid NODES, which is one more per axis and
+overstates the finest uniform rung by 2.4 % (13,760,208 nodes against
+13,438,150 cells).
+
 ## Results (facts)
 
 Appended after the runs; section 5 above is unchanged.  Every number below is read from
