@@ -39,10 +39,13 @@ def _build_box(case):
     )
     if case == "volume":
         sim.add(Box((5e-3, 2e-3, 2e-3), (7e-3, 3e-3, 5e-3)), material="pec")
-    elif case in ("debye", "lorentz"):
+    elif case in ("debye", "debye2", "lorentz"):
         poles = (
             {"debye_poles": [DebyePole(delta_eps=1.0, tau=1e-11)]}
             if case == "debye" else
+            {"debye_poles": [DebyePole(delta_eps=1.0, tau=1e-11),
+                             DebyePole(delta_eps=0.5, tau=3e-11)]}
+            if case == "debye2" else
             {"lorentz_poles": [lorentz_pole(
                 delta_eps=1.0, omega_0=2 * np.pi * 3e9, delta=1e9)]}
         )
@@ -71,7 +74,13 @@ def _measure(case, explicit_args):
                 # Per device, whatever the sharding: a whole-domain array kept
                 # on one device and one replicated onto every device (P())
                 # cost a device the same memory.
-                if shard.data.size >= cells:
+                # Judge the spatial extent (the last three axes): a per-device
+                # polarization shard (n_poles, nx_local, ny, nz) of a correct
+                # multi-pole model can hold more elements than the domain has
+                # cells without covering the domain.
+                spatial = (int(np.prod(shard.data.shape[-3:])) if shard.data.ndim >= 3
+                           else shard.data.size)
+                if spatial >= cells:
                     whole.append((str(shard.device), arr.shape, str(arr.dtype),
                                   type(arr.sharding).__name__))
         # Both scan entry variants capture the coefficient tuple directly;
@@ -84,12 +93,22 @@ def _measure(case, explicit_args):
         assert set(coeffs) == {"DebyeCoeffs", "LorentzCoeffs"}
         placeholder_shapes = {}
         for material, coeff_type in (("debye", "DebyeCoeffs"), ("lorentz", "LorentzCoeffs")):
-            if case == material:
+            if case.rstrip("2") == material:  # real arrays, not placeholders
                 continue
             for slot, value in (("state", carry[material]), ("coeffs", coeffs[coeff_type])):
                 for name, array in zip(value._fields, value):
                     placeholder_shapes[f"{material}.{slot}.{name}"] = array.shape
-        records.append({"whole": whole, "bytes": per_device, "placeholders": placeholder_shapes})
+        # #931: the physical-boundary ghost rows of the sharded PEC mask must be
+        # False (True puts metal on the whole x_lo / x_hi node plane). Read the
+        # mask the single-process scan body actually closes over, not a helper
+        # called with its own pad value.
+        boundary_ghosts_true = None
+        mask = inspect.getclosurevars(body).nonlocals.get("sharded_pec_mask")
+        if mask is not None and not isinstance(mask, jax.core.Tracer):
+            slabs = np.asarray(mask).reshape(len(devices), -1, *mask.shape[1:])
+            boundary_ghosts_true = int(slabs[0, 0].sum() + slabs[-1, -1].sum())
+        records.append({"whole": whole, "bytes": per_device, "placeholders": placeholder_shapes,
+                        "pec_mask_boundary_ghosts_true": boundary_ghosts_true})
         return scan(body, carry, *args, **kwargs)
 
     distributed_v2.lax = SimpleNamespace(**{**vars(distributed_v2.lax), "scan": traced_scan})
@@ -104,7 +123,7 @@ def _measure(case, explicit_args):
 
 @pytest.mark.parametrize("case,explicit_args", [
     ("pec", False), ("cpml", False), ("pad", False), ("volume", False),
-    ("nu", False), ("debye", False), ("lorentz", False),
+    ("nu", False), ("debye", False), ("debye2", False), ("lorentz", False),
     ("pec", True), ("cpml", True),
 ])
 def test_time_loop_holds_only_local_slabs(case, explicit_args):
@@ -124,10 +143,15 @@ def test_time_loop_holds_only_local_slabs(case, explicit_args):
         assert len(sizes) == 2 and min(sizes) > 0
         assert max(sizes) <= 1.25 * min(sizes), f"unbalanced device bytes: {record['bytes']}"
         shapes = record["placeholders"]
-        expected_slots = 12 if case == "debye" else 8 if case == "lorentz" else 20
+        expected_slots = (12 if case in ("debye", "debye2")
+                          else 8 if case == "lorentz" else 20)
         assert len(shapes) == expected_slots
         for name, shape in shapes.items():
             assert np.prod(shape) <= 2, f"per-cell placeholder {name}: {shape}"
+        if case == "volume" and not explicit_args:
+            assert record["pec_mask_boundary_ghosts_true"] == 0, (
+                "PEC mask physical-boundary ghost rows must be False (#931): "
+                f"{record['pec_mask_boundary_ghosts_true']} True cells")
 
 
 @pytest.mark.parametrize("nx", [8, 7])
@@ -154,6 +178,48 @@ def test_direct_slabs_are_bit_identical(nx, kind, pad_value):
         assert np.array_equal(np.asarray(got.data), np.asarray(want.data))
 
 
+_MANY_DEVICE_SLABS = """
+import itertools, numpy as np, jax, jax.numpy as jnp
+from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
+from rfx.runners._distributed_common import shard_stacked, shard_x_slabs, split_array_x
+devices = jax.devices("cpu")
+assert len(devices) == 4, devices
+rng = np.random.default_rng(931)
+checked = 0
+for n, nx, (kind, pad_value) in itertools.product(
+        (3, 4), (8, 9, 10, 11, 13),
+        (("eps_r", 1.0), ("sigma", 0.0), ("pec", False))):
+    mesh_devices = devices[:n][::-1] if nx % 2 else devices[:n]  # also a permuted mesh order
+    sharding = NamedSharding(Mesh(np.array(mesh_devices), ("x",)), P("x"))
+    values = rng.standard_normal((nx, 3, 4)).astype(np.float32)
+    if kind == "pec":
+        values = values > 0
+    pad_x = (-nx) % n
+    arr = jnp.asarray(values)
+    if pad_x:
+        arr = jnp.pad(arr, ((0, pad_x), (0, 0), (0, 0)),
+                      constant_values=True if kind == "pec" else pad_value)
+    nx_per = (nx + pad_x) // n
+    expected = shard_stacked(split_array_x(arr, n, 1, pad_value), sharding)
+    actual = shard_x_slabs(arr, n, nx_per, 1, pad_value, sharding)
+    assert actual.dtype == expected.dtype, (actual.dtype, expected.dtype)
+    for got, want in zip(actual.addressable_shards, expected.addressable_shards):
+        assert got.device == want.device and got.index == want.index
+        assert np.array_equal(np.asarray(got.data), np.asarray(want.data)), (n, nx, kind)
+    checked += 1
+print("MANY_DEVICE_SLABS_OK", checked)
+"""
+
+
+def test_direct_slabs_bit_identical_on_three_and_four_devices():
+    """Interior ranks (a slab with neighbours on both sides) exist only with 3+ devices."""
+    env = {**os.environ, "JAX_PLATFORMS": "cpu",
+           "XLA_FLAGS": "--xla_force_host_platform_device_count=4"}
+    run = subprocess.run([sys.executable, "-W", "ignore", "-c", _MANY_DEVICE_SLABS],
+                         env=env, text=True, capture_output=True, timeout=60)
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert "MANY_DEVICE_SLABS_OK 30" in run.stdout, run.stdout
+
 def test_direct_slabs_callback_only_builds_addressable_shards(monkeypatch):
     """Emulate rank 1's callback index; fail if rank 0 is staged as well."""
     values = jnp.arange(8 * 3 * 4, dtype=jnp.float32).reshape(8, 3, 4)
@@ -162,6 +228,7 @@ def test_direct_slabs_callback_only_builds_addressable_shards(monkeypatch):
 
     class ReadRecorder:
         shape = values.shape
+        ndim = values.ndim
         dtype = values.dtype
 
         def __getitem__(self, index):

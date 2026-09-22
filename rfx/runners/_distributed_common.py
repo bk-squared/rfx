@@ -138,11 +138,13 @@ def shard_x_slabs(arr, n_devices, nx_per, ghost, pad_value, sharding):
     exactly as in ``shard_stacked(split_array_x(...))``. No device-axis stack
     or whole-domain reshape is staged on the default device.
     """
+    if arr.ndim != 3:
+        raise ValueError(f"shard_x_slabs stages 3-D (x, y, z) arrays, got shape {arr.shape}")
     nx_local = nx_per + 2 * ghost
     shape = (n_devices * nx_local,) + arr.shape[1:]
 
     def slab(index):
-        rank = index[0].start // nx_local
+        rank = (index[0].start or 0) // nx_local
         want_lo = rank * nx_per - ghost
         want_hi = (rank + 1) * nx_per + ghost
         lo, hi = max(0, want_lo), min(arr.shape[0], want_hi)
