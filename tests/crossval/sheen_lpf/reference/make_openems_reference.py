@@ -349,6 +349,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
 import os
 import sys
 from pathlib import Path
@@ -545,8 +546,13 @@ DELTA_LIST = [
     "it costs instead: a real pass now runs until the energy has decayed 50 dB "
     "rather than until a step budget runs out, so it can take considerably "
     "longer than the 172 s the retired script recorded at the coarse mesh; the "
-    "job file's 21600 s timeout is the only bound on that. The smoke pass keeps "
-    "its 200 steps at EndCriteria 0.0.",
+    "job file's 21600 s timeout is the only bound on that -- measured since: the "
+    "coarse rung alone ran 107 minutes on 8 threads (VESSL 369367263243, "
+    "369367263269), so --real-end-criteria and --real-nrts exist to loosen the "
+    "stop criteria for a run that cannot afford them, Stage A is never "
+    "overridden, and any record made with an override says so in every Stage B "
+    "block and in meta.stop_criteria_note. The smoke pass keeps its 200 steps at "
+    "EndCriteria 0.0.",
     "DELTA 10 (mesh rule): res = min(c0 / (F_MAX sqrt(eps_r)) / 50, h_sub / 4) "
     "= 198.5 um at rung 1.0, so the substrate-thickness term decides it and not "
     "the wavelength term (202.1 um). The tutorial's rule has no h_sub/4 term and "
@@ -1033,12 +1039,69 @@ def _plan(label: str, resolution_factor: float) -> dict:
     }
 
 
+# The three rungs, by the short name the CLI and the job file use. One rung per
+# cluster job is the normal way to run this now: with openEMS's own EndCriteria
+# the coarse rung alone ran 107 minutes on 8 threads (VESSL 369367263243,
+# 369367263269), and the VESSL rule prefers parallel jobs over one long serial
+# one. `--merge` puts the parts back together.
+RUNG_KEYS = {"coarse": "stage_b_coarse", "mid": "stage_b_mid", "fine": "stage_b_fine"}
+RUNG_ORDER = ("coarse", "mid", "fine")
+DEFAULT_RUNGS = ",".join(RUNG_ORDER)
+
+
+def parse_rungs(spec: str) -> list:
+    """``"coarse,fine"`` -> ``["stage_b_coarse", "stage_b_fine"]``, in rung order."""
+    names = [s.strip() for s in str(spec).split(",") if s.strip()]
+    if not names:
+        raise ValueError("--rungs is empty; give at least one of "
+                         + ", ".join(RUNG_ORDER))
+    unknown = [n for n in names if n not in RUNG_KEYS]
+    if unknown:
+        raise ValueError(f"--rungs names {unknown!r}; known rungs are "
+                         + ", ".join(RUNG_ORDER))
+    seen = []
+    for n in RUNG_ORDER:
+        if n in names and n not in seen:
+            seen.append(n)
+    return [RUNG_KEYS[n] for n in seen]
+
+
+def rung_short_names(stage_names) -> list:
+    """The short names of the rungs in a list of stage names, in rung order."""
+    back = {v: k for k, v in RUNG_KEYS.items()}
+    return [back[s] for s in RUNG_ORDER_STAGES if s in stage_names]
+
+
+def stop_criteria_note(real_end_criteria, real_nrts) -> str:
+    """What stopped the real passes in this record, and why, in one string.
+
+    With no override this says the library defaults ran. With one it says which
+    override, and carries the measurement that motivated it -- so a reader of a
+    record made with a looser criterion does not have to go and find out.
+    """
+    if real_end_criteria is None and real_nrts is None:
+        return ("openEMS's own library defaults (~1e9 / 1e-5) on every real pass, "
+                "Stage A and Stage B alike. No override was given. This is the "
+                "declared design (delta 9); see B_REAL_NRTS / B_REAL_END_CRITERIA.")
+    bits = []
+    if real_end_criteria is not None:
+        bits.append(f"--real-end-criteria {real_end_criteria!r}")
+    if real_nrts is not None:
+        bits.append(f"--real-nrts {real_nrts!r}")
+    return ("made with " + " ".join(bits) + ": the tutorial's default 1e-5 took "
+            "over 107 minutes on the coarsest rung on 8 threads (runs "
+            "369367263243, 369367263269); 1e-4 is the repository's own ring-down "
+            "level (rfx CLAUDE.md: end-of-run energy below -40 dB of the "
+            "post-source peak)")
+
+
 STAGE_B_FACTORS = {
     "stage_b_coarse": B_COARSE_RESOLUTION_FACTOR,
     "stage_b_mid": B_MID_RESOLUTION_FACTOR,
     "stage_b_fine": B_FINE_RESOLUTION_FACTOR,
 }
 STAGE_NAMES = ("stage_a", "stage_b_coarse", "stage_b_mid", "stage_b_fine")
+RUNG_ORDER_STAGES = tuple(RUNG_KEYS[n] for n in RUNG_ORDER)
 
 
 def _stage_plans(fine_factor: float) -> dict:
@@ -1160,8 +1223,16 @@ def _stage_b_features(sf):
 # The run -- this case's Stage B, on the shared runner
 # ---------------------------------------------------------------------------
 def _run_stage_b(*, label: str, sim_root: str, threads: int,
-                 resolution_factor: float, sf) -> tuple[dict, dict]:
-    """The Sheen board at a rung, with the shared module's gates around it."""
+                 resolution_factor: float, sf,
+                 real_nrts=None, real_end_criteria=None) -> tuple[dict, dict]:
+    """The Sheen board at a rung, with the shared module's gates around it.
+
+    ``real_nrts`` / ``real_end_criteria`` default to ``None``, which means the
+    declared design: pass nothing, so openEMS's own ~1e9 / 1e-5 apply (delta 9).
+    A caller that overrides them is recorded doing so, per stage block and in
+    ``meta.stop_criteria_note``. STAGE A IS NEVER OVERRIDDEN -- it is the gate,
+    it runs the tutorial's own model, and it takes 44 s.
+    """
     res = resolution_m(resolution_factor)
     out_len = LX - PATCH_X1
 
@@ -1221,11 +1292,18 @@ def _run_stage_b(*, label: str, sim_root: str, threads: int,
             "substrate_z_cells_declared": substrate_z_cells(resolution_factor),
             "feed_edges_realized": _feed_edges_against_lines(y),
             "pml_realized": pml,
-            "nrts_declared": ("openEMS library default (~1e9) -- the retired "
-                              f"script's cap of {SCRIPT_NRTS_CAP} is not carried"),
-            "end_criteria_declared": ("openEMS library default (1e-5) -- the "
-                                      "retired script's cap of "
-                                      f"{SCRIPT_END_CRITERIA_CAP} is not carried"),
+            "nrts_declared": (
+                f"{real_nrts!r} -- given on the command line, NOT the declared "
+                f"design; see stop_criteria_note" if real_nrts is not None
+                else ("openEMS library default (~1e9) -- the retired script's cap "
+                      f"of {SCRIPT_NRTS_CAP} is not carried")),
+            "end_criteria_declared": (
+                f"{real_end_criteria!r} -- given on the command line, NOT the "
+                f"declared design; see stop_criteria_note"
+                if real_end_criteria is not None
+                else ("openEMS library default (1e-5) -- the retired script's cap "
+                      f"of {SCRIPT_END_CRITERIA_CAP} is not carried")),
+            "stop_criteria_note": stop_criteria_note(real_end_criteria, real_nrts),
             "calcport_grid": f"linspace({F_LO}, {F_MAX}, {B_N_FREQS})",
             "calcport_passes": (
                 "two: pass 1 with no ref_impedance (re_z0 = Re(port.Z_ref)), then "
@@ -1239,7 +1317,7 @@ def _run_stage_b(*, label: str, sim_root: str, threads: int,
         label=label, sim_root=sim_root, threads=threads, build=build,
         freqs_hz=np.linspace(F_LO, F_MAX, B_N_FREQS),
         witness_band_hz=WITNESS_BAND_HZ, passivity_tol=PASSIVITY_TOL,
-        real_nrts=B_REAL_NRTS, real_end_criteria=B_REAL_END_CRITERIA,
+        real_nrts=real_nrts, real_end_criteria=real_end_criteria,
         mesh_realized_fn=mesh_realized_fn, meta_extra_fn=meta_extra_fn,
         features_fn=_stage_b_features(sf),
         calcport_ref_impedance=B_CALCPORT_REF_IMPEDANCE,
@@ -1247,14 +1325,26 @@ def _run_stage_b(*, label: str, sim_root: str, threads: int,
 
 
 def _build_artifact(records: dict, stage_meta: dict, stage_a_gate: dict,
-                    stages: list, *, failed_gate: str | None = None) -> dict:
-    """This case's meta block, on the shared record writer."""
+                    stages: list, *, failed_gate: str | None = None,
+                    real_nrts=None, real_end_criteria=None,
+                    stage_names=None) -> dict:
+    """This case's meta block, on the shared record writer.
+
+    ``stage_names`` is which stage blocks the record carries. A job that solved
+    one rung passes that rung (plus Stage A), so the record has no null blocks
+    standing in for rungs nobody ran.
+    """
+    names = tuple(stage_names) if stage_names is not None else STAGE_NAMES
     return _gate.build_artifact(
         records, stage_meta, stage_a_gate, stages,
-        stage_names=STAGE_NAMES,
+        stage_names=names,
         produced_by="tests/crossval/sheen_lpf/reference/make_openems_reference.py",
         failed_gate=failed_gate,
         meta_common={
+            "rfx_commit": os.environ.get("RFX_COMMIT"),
+            "rungs_in_this_record": [n for n in RUNG_ORDER
+                                     if RUNG_KEYS[n] in names],
+            "stop_criteria_note": stop_criteria_note(real_end_criteria, real_nrts),
             "structure": (
                 "the Sheen 1990 stepped-impedance microstrip low-pass filter: "
                 "RT/Duroid eps_r 2.2, h 0.794 mm; two 2.413 mm wide 50 ohm feeds "
@@ -1336,11 +1426,25 @@ def _print_delta_list() -> None:
         print(f"  [{i}] {line}")
 
 
-def _stages_for(stage: str) -> list:
-    return _gate.stages_for(stage)
+def _stages_for(stage: str, rung_stages=None) -> list:
+    """Which stages this invocation runs.
+
+    ``rung_stages`` defaults to all three. Stage A is in every job that asks for
+    it: it is the reproduce gate, it runs the tutorial's own model, and it costs
+    44 s, so splitting the rungs across jobs does not make it optional.
+    """
+    rungs = list(RUNG_ORDER_STAGES) if rung_stages is None else list(rung_stages)
+    if stage == "A":
+        return ["stage_a"]
+    if stage == "B":
+        return rungs
+    return ["stage_a"] + rungs
 
 
-def _dry_run(stage: str, fine_factor: float) -> int:
+def _dry_run(stage: str, fine_factor: float, rung_stages=None,
+             real_nrts=None, real_end_criteria=None) -> int:
+    order = _stages_for(stage, rung_stages)
+    order_rungs = [s for s in order if s in RUNG_ORDER_STAGES]
     print("=" * 78)
     print("The Sheen low-pass filter -- openEMS reference maker, DRY RUN (no solver)")
     print("=" * 78)
@@ -1377,6 +1481,9 @@ def _dry_run(stage: str, fine_factor: float) -> int:
           f"pass, as Stage A; 200 / 0.0 on the smoke pass. The retired script's "
           f"{SCRIPT_NRTS_CAP} / {SCRIPT_END_CRITERIA_CAP} cap is NOT carried "
           f"(delta 9)")
+    print(f"  stop criteria   {stop_criteria_note(real_end_criteria, real_nrts)}")
+    print(f"  rungs requested {', '.join(rung_short_names(order_rungs)) or '(none)'}"
+          f"   -- Stage A runs in every job that asks for it")
     print(f"  CalcPort grid   linspace({F_LO:.4g}, {F_MAX:.4g}, {B_N_FREQS}), TWO "
           f"passes (Z_ref, then ref_impedance={B_CALCPORT_REF_IMPEDANCE})")
     print(f"  witness band    max(|S11|^2+|S21|^2) <= {1.0 + PASSIVITY_TOL:.2f} over "
@@ -1393,7 +1500,6 @@ def _dry_run(stage: str, fine_factor: float) -> int:
     print()
     _print_delta_list()
     print()
-    order = _stages_for(stage)
     plans = _stage_plans(fine_factor)
     print("STAGE PLAN -- the geometry each stage builds:")
     if "stage_a" in order:
@@ -1456,8 +1562,42 @@ def _self_check(fine_factor: float) -> int:
     check(PORT_MARGIN == 2.5e-3, "PORT_MARGIN 2.5 mm")
     check(B_REAL_NRTS is None and B_REAL_END_CRITERIA is None,
           "the real pass passes NO NrTS/EndCriteria, so openEMS's own defaults "
-          "(~1e9 / 1e-5) apply, exactly as Stage A runs",
+          "(~1e9 / 1e-5) apply, exactly as Stage A runs -- the DECLARED design, "
+          "which --real-end-criteria / --real-nrts override without changing",
           f"{B_REAL_NRTS!r} / {B_REAL_END_CRITERIA!r}")
+
+    print("the rung selector and the stop-criteria override:")
+    check(parse_rungs(DEFAULT_RUNGS) == list(RUNG_ORDER_STAGES),
+          "the default --rungs is all three, in rung order",
+          f"{parse_rungs(DEFAULT_RUNGS)}")
+    check(parse_rungs("fine,coarse") == ["stage_b_coarse", "stage_b_fine"],
+          "a subset comes back in rung order, whatever order it was given in")
+    bad = []
+    for spec in ("", "  ", "middle", "coarse,middle"):
+        try:
+            parse_rungs(spec)
+        except ValueError:
+            bad.append(spec)
+    check(len(bad) == 4, "an empty or unknown --rungs is refused, not silently "
+                         "dropped", f"refused {bad!r}")
+    check(_stages_for("both", parse_rungs("mid")) == ["stage_a", "stage_b_mid"],
+          "a one-rung job still runs Stage A -- it is the gate, and it costs 44 s")
+    check(_stages_for("B", parse_rungs("mid")) == ["stage_b_mid"],
+          "--stage B still skips the gate, whatever the rungs are")
+    default_note = stop_criteria_note(None, None)
+    check("No override was given" in default_note
+          and "library defaults" in default_note,
+          "with no override the note says the library defaults ran")
+    over = stop_criteria_note(1e-4, None)
+    check(over.startswith("made with --real-end-criteria "),
+          "an overridden record's note opens with what was given", over[:46])
+    check("107 minutes on the coarsest rung on 8 threads" in over
+          and "369367263243" in over and "369367263269" in over
+          and "-40 dB of the post-source peak" in over,
+          "and carries the measurement that motivated it, with its run ids")
+    both_over = stop_criteria_note(1e-4, 60000)
+    check("--real-end-criteria" in both_over and "--real-nrts 60000" in both_over,
+          "both overrides appear when both are given")
     check(B_BOUNDARY == ["PML_8", "PML_8", "MUR", "MUR", "PEC", "MUR"], "boundary")
     check(C0 == 2.99792458e8,
           "C0 is the Sheen script's own, not the tutorial gate's 2.998e8")
@@ -1767,6 +1907,141 @@ def _self_check(fine_factor: float) -> int:
 
 
 # ---------------------------------------------------------------------------
+# --merge: one record out of per-rung parts
+# ---------------------------------------------------------------------------
+_STAGE_A_ARRAYS = ("freqs_ghz", "s11_mag", "s11_deg", "s21_mag", "s21_deg",
+                   "energy_sum")
+_MERGE_META_MUST_AGREE = ("tutorial_source", "rfx_openems_image",
+                          "rfx_openems_commit")
+
+
+def _merge_refuse(msg: str) -> int:
+    print(f"MERGE REFUSED: {msg}", file=sys.stderr)
+    return 3
+
+
+def _merge(part_paths: list, output: str) -> int:
+    """Combine per-rung records into one, or refuse and say why.
+
+    The parts were solved in separate cluster jobs, so nothing guarantees they
+    are the same measurement -- a different image, a different openEMS build or a
+    different tutorial port would each make the merged record a mixture. Stage A
+    is the check that costs nothing: every job runs it, on the same tutorial, on
+    the same mesh and grid, so if two parts disagree bin for bin on Stage A they
+    did not come from the same solver and the merge refuses. Nothing is averaged
+    or reconciled here; each rung block is carried across whole, from the one
+    part that has it.
+    """
+    import copy
+
+    if not part_paths:
+        return _merge_refuse("no parts given")
+    parts = []
+    for raw in part_paths:
+        path = Path(raw)
+        if not path.is_file():
+            return _merge_refuse(f"{path} is not a file")
+        try:
+            with open(path) as fh:
+                parts.append((path, json.load(fh)))
+        except Exception as exc:
+            return _merge_refuse(f"{path} is not readable JSON: {exc!r}")
+
+    # -- every part must carry a Stage A, and they must be the same one --------
+    for path, a in parts:
+        if not isinstance(a.get("meta"), dict):
+            return _merge_refuse(f"{path} has no meta block")
+        if a.get("failed_gate") is not None:
+            return _merge_refuse(f"{path} is a FAILED-gate evidence file "
+                                 f"({a['failed_gate']!r}), not a record")
+        if not isinstance(a.get("stage_a"), dict):
+            return _merge_refuse(f"{path} carries no stage_a: every part runs the "
+                                 f"reproduce gate, so a part without it cannot be "
+                                 f"shown to be the same measurement")
+        missing = [k for k in _STAGE_A_ARRAYS if k not in a["stage_a"]]
+        if missing:
+            return _merge_refuse(f"{path}'s stage_a is missing {missing}")
+
+    first_path, first = parts[0]
+    for path, a in parts[1:]:
+        for key in _STAGE_A_ARRAYS:
+            if a["stage_a"][key] != first["stage_a"][key]:
+                lhs, rhs = first["stage_a"][key], a["stage_a"][key]
+                where = "length" if len(lhs) != len(rhs) else next(
+                    (f"bin {i}" for i, (x, y) in enumerate(zip(lhs, rhs)) if x != y),
+                    "?")
+                return _merge_refuse(
+                    f"{path}'s stage_a.{key} differs from {first_path}'s at "
+                    f"{where} -- the two parts did not measure the same tutorial, "
+                    f"so their rungs are not one record")
+        for key in _MERGE_META_MUST_AGREE:
+            if a["meta"].get(key) != first["meta"].get(key):
+                return _merge_refuse(
+                    f"{path}'s meta.{key} is {a['meta'].get(key)!r} but "
+                    f"{first_path}'s is {first['meta'].get(key)!r}")
+
+    # -- each rung comes from exactly one part --------------------------------
+    owner: dict = {}
+    for path, a in parts:
+        for short in RUNG_ORDER:
+            stage = RUNG_KEYS[short]
+            if isinstance(a.get(stage), dict):
+                if stage in owner:
+                    return _merge_refuse(
+                        f"{stage} is in both {owner[stage][0]} and {path}; a merge "
+                        f"does not choose between two measurements of one rung")
+                owner[stage] = (path, a)
+    absent = [s for s in RUNG_ORDER_STAGES if s not in owner]
+    if absent:
+        return _merge_refuse(f"no part carries {absent}; the merged record would "
+                             f"have fewer than the three rungs the mesh statement "
+                             f"is made of")
+
+    merged = copy.deepcopy(first)
+    stages_meta = dict(merged["meta"].get("stages") or {})
+    for stage, (path, a) in owner.items():
+        merged[stage] = copy.deepcopy(a[stage])
+        src_meta = (a["meta"].get("stages") or {}).get(stage)
+        if src_meta is not None:
+            stages_meta[stage] = copy.deepcopy(src_meta)
+    merged["meta"]["stages"] = stages_meta
+    merged["meta"]["rungs_in_this_record"] = list(RUNG_ORDER)
+    merged["meta"]["stages_requested"] = ["stage_a"] + list(RUNG_ORDER_STAGES)
+    merged["meta"]["stop_criteria_note"] = (
+        "per part -- see meta.merged_from; the parts need not share one, and this "
+        "record does not claim they do")
+    maker_commits = [a["meta"].get("rfx_commit") for _, a in parts]
+    merged["meta"]["maker_commits_agree"] = bool(len(set(map(str, maker_commits))) == 1)
+    merged["meta"]["merged_from"] = [
+        {
+            "path": str(path),
+            "run_id": a.get("run_id"),
+            "maker_commit": a["meta"].get("rfx_commit"),
+            "rungs": [s for s in RUNG_ORDER
+                      if owner.get(RUNG_KEYS[s], (None, None))[0] == path],
+            "stop_criteria_note": a["meta"].get("stop_criteria_note"),
+        }
+        for path, a in parts
+    ]
+    merged["run_id"] = None
+    merged["run_id_note"] = (
+        "null by design on a merged record: there is no single run. Each part's "
+        "own run id is in meta.merged_from."
+    )
+
+    out = Path(output)
+    _gate.write_record(merged, out)
+    print(f"merged {len(parts)} part(s) into {out}")
+    for entry in merged["meta"]["merged_from"]:
+        print(f"  {entry['path']}  rungs={','.join(entry['rungs']) or '-'}  "
+              f"run_id={entry['run_id']}  maker_commit={entry['maker_commit']}")
+    if not merged["meta"]["maker_commits_agree"]:
+        print("NOTE: the parts do not all name the same maker commit "
+              f"({maker_commits!r}). Recorded in meta, not judged here.")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
 def main(argv=None) -> int:
@@ -1778,11 +2053,45 @@ def main(argv=None) -> int:
     p.add_argument("--resolution-factor", type=float, default=B_FINE_RESOLUTION_FACTOR,
                    help="Stage B only: the FINEST rung's factor on this board's own "
                         "resolution. The coarse rung is always 1.0 and the middle "
-                        "rung 1/sqrt(2), so a Stage B run always produces three "
-                        "rungs. Default 0.5.")
+                        "rung 1/sqrt(2). Default 0.5. Which of the three a given "
+                        "invocation solves is --rungs; each rung block records the "
+                        "factor it was built with, so a part made with a "
+                        "non-default one says so.")
+    p.add_argument("--rungs", default=DEFAULT_RUNGS, metavar="LIST",
+                   help="Stage B only: which mesh rungs this invocation solves, "
+                        "comma separated, from coarse,mid,fine. Default all three. "
+                        "One rung per cluster job is the normal way to run this: "
+                        "with openEMS's own EndCriteria the coarse rung alone ran "
+                        "107 minutes on 8 threads. The record then carries only the "
+                        "rungs it solved, and meta.rungs_in_this_record lists them; "
+                        "--merge puts the parts back together. Stage A runs in every "
+                        "job.")
+    p.add_argument("--real-end-criteria", type=float, default=None, metavar="FLOAT",
+                   help="Stage B only: openEMS EndCriteria for the REAL pass. "
+                        "Default: pass nothing, so openEMS's own 1e-5 applies -- "
+                        "that is the declared design (delta 9). Giving a value is "
+                        "recorded in every Stage B block and in "
+                        "meta.stop_criteria_note. Stage A is never overridden.")
+    p.add_argument("--real-nrts", type=int, default=None, metavar="INT",
+                   help="Stage B only: openEMS NrTS for the REAL pass. Default: "
+                        "pass nothing, so openEMS's own ~1e9 applies. Recorded the "
+                        "same way as --real-end-criteria. Stage A is never "
+                        "overridden.")
+    p.add_argument("--merge", nargs="+", default=None, metavar="PART.json",
+                   help="Combine per-rung records into one, written to --output. "
+                        "Refuses unless every part's Stage A agrees bin for bin and "
+                        "their tutorial source, image and openEMS build commit "
+                        "match; refuses on a duplicated or a missing rung. Runs no "
+                        "solver.")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--self-check", action="store_true")
     args = p.parse_args(argv)
+
+    try:
+        rung_stages = parse_rungs(args.rungs)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 3
 
     # The range check runs on EVERY mode, not only a real run: a dry run or a
     # self-check on an out-of-range factor would print a plan nothing can build.
@@ -1794,7 +2103,17 @@ def main(argv=None) -> int:
     if args.self_check:
         return _self_check(args.resolution_factor)
     if args.dry_run:
-        return _dry_run(args.stage, args.resolution_factor)
+        return _dry_run(args.stage, args.resolution_factor, rung_stages,
+                        real_nrts=args.real_nrts,
+                        real_end_criteria=args.real_end_criteria)
+
+    # --merge runs no solver and needs no image stamp: it reads records that
+    # already carry their own.
+    if args.merge:
+        if not args.output:
+            print("ERROR: --merge needs --output", file=sys.stderr)
+            return 3
+        return _merge(args.merge, args.output)
 
     if not args.output:
         print("ERROR: --output is required for a real run", file=sys.stderr)
@@ -1832,7 +2151,12 @@ def main(argv=None) -> int:
     _print_delta_list()
     print()
 
-    stages = _stages_for(args.stage)
+    stages = _stages_for(args.stage, rung_stages)
+    stage_names = ["stage_a"] + [s for s in RUNG_ORDER_STAGES if s in stages]
+    print(f"stop criteria: {stop_criteria_note(args.real_end_criteria, args.real_nrts)}")
+    print(f"rungs this job solves: "
+          f"{', '.join(rung_short_names(stages)) or '(none)'}", flush=True)
+    print()
     if "stage_a" not in stages:
         print("WARNING: --stage B does not run the reproduce gate. The record this "
               "invocation writes carries stage_a: null and reproduce_gate_ran: false, "
@@ -1845,12 +2169,18 @@ def main(argv=None) -> int:
     stage_meta: dict = {}
     stage_a_gate: dict = {}
 
+    def artifact(failed_gate=None) -> dict:
+        return _build_artifact(records, stage_meta, stage_a_gate, stages,
+                               failed_gate=failed_gate,
+                               real_nrts=args.real_nrts,
+                               real_end_criteria=args.real_end_criteria,
+                               stage_names=stage_names)
+
     def bail(name: str, exc) -> int:
         print(f"SANITY GATE FAILED [{name}]: {exc}", file=sys.stderr)
         records[name] = exc.partial or None
         stage_meta[name] = exc.meta
-        failed = _build_artifact(records, stage_meta, stage_a_gate, stages,
-                                 failed_gate=str(exc))
+        failed = artifact(failed_gate=str(exc))
         path = _gate.failed_output_path(Path(args.output))
         _gate.write_record(failed, path)
         print(f"evidence written to {path} -- the arrays measured before the gate "
@@ -1867,7 +2197,9 @@ def main(argv=None) -> int:
             else:
                 record, meta = _run_stage_b(
                     label=name, sim_root=args.sim_root, threads=args.threads,
-                    resolution_factor=factors[name], sf=sf)
+                    resolution_factor=factors[name], sf=sf,
+                    real_nrts=args.real_nrts,
+                    real_end_criteria=args.real_end_criteria)
         except _gate.StageFailure as exc:
             return bail(name, exc)
         records[name] = record
@@ -1878,10 +2210,9 @@ def main(argv=None) -> int:
             if "refined_f_ghz" not in notch:
                 print(f"REPRODUCE GATE CANNOT BE READ: the Stage A notch estimate is "
                       f"{notch!r}. No Stage B record is written.", file=sys.stderr)
-                failed = _build_artifact(
-                    records, stage_meta, stage_a_gate, stages,
-                    failed_gate="[stage_a] the notch estimator produced no frequency: "
-                                f"{notch!r}")
+                failed = artifact(
+                    failed_gate="[stage_a] the notch estimator produced no "
+                                f"frequency: {notch!r}")
                 path = _gate.failed_output_path(Path(args.output))
                 _gate.write_record(failed, path)
                 print(f"evidence written to {path}", file=sys.stderr)
@@ -1913,8 +2244,7 @@ def main(argv=None) -> int:
                                f"{STAGE_A_MIN_DEPTH_DB:.0f} dB level")
                 print("REPRODUCE GATE FAILED: no Stage B record is written.",
                       file=sys.stderr)
-                failed = _build_artifact(
-                    records, stage_meta, stage_a_gate, stages,
+                failed = artifact(
                     failed_gate="[stage_a] reproduce gate FAILED: " + "; ".join(why))
                 path = _gate.failed_output_path(Path(args.output))
                 _gate.write_record(failed, path)
@@ -1933,9 +2263,8 @@ def main(argv=None) -> int:
               f"Re(Z0) median {record.get('re_z0_median_ohm', float('nan')):.2f} ohm "
               f"| {meta['wall_time_s']} s", flush=True)
 
-    artifact = _build_artifact(records, stage_meta, stage_a_gate, stages)
     out = Path(args.output)
-    _gate.write_record(artifact, out)
+    _gate.write_record(artifact(), out)
     print(f"\n=== written to {out} ===")
     print("run_id is null by design: VESSL does not export the run id into the pod, "
           "so the submitter records it.")

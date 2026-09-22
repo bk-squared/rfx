@@ -1,5 +1,5 @@
 name: rfx-sheen-lpf-openems-reference
-description: "The Sheen low-pass filter -- regenerate its openEMS reference WITH provenance. On RT/Duroid (eps_r 2.2, h 0.794 mm) two 2.413 mm wide 50 ohm feeds are joined by one wide 20.320 x 2.540 mm low-impedance section; the wide section is a shunt capacitance, so the board passes up to about 5 GHz and then falls away into a deep stopband. That is the classic Sheen 1990 FDTD benchmark (IEEE Trans. MTT 38(7):849-857), and its committed openEMS record carries no provenance at all: no solver version, no build, no run id, no mesh statement beyond one number, and an EMPTY reproduce_gate_record while the script's own gate record still says UNRUN. STAGE A is the reproduce gate and is openEMS's OWN python/Tutorials/MSL_NotchFilter.py, verbatim, solved in the same invocation: the measured notch must land inside 0.80-1.05 x the analytic quarter-wave frequency (3.6872 GHz) AND be at least 20 dB deep. It is a DIFFERENT structure on a different substrate -- it proves the solver and the port model reproduce a published result, nothing about the Sheen board. If it fails, the job exits 1 and no Stage B record is written. STAGE B is the Sheen board on THREE meshes -- resolution factors 1.0, 1/sqrt(2) and 0.5 -- so the record carries its own mesh statement with two refinements. The factor scales the substrate's own z lines too (4, 6, 8 cells across the 794 um board, 198.5 / 132.3 / 99.25 um), because that is the direction that sets the effective permittivity and therefore where the stopband sits. The builder is copied from validation/crossval/07_sheen_lpf.py's run_openems and is proved to be that builder, character for character, by --self-check before any solver starts; the fourteen declared deltas are in the record's meta and in the stage plan. The stop criteria are the ONE thing NOT taken from that script: every real pass runs at openEMS's own library defaults (~1e9 / 1e-5), exactly as Stage A does, because the script's NrTS=30000 cap was a cost choice on one mesh and halving the cell halves the timestep -- a cap that just reached 1e-4 on the coarse board would stop the fine board mid-ring-down, which this job correctly reports as a FAILED gate for a wasted hour. The smoke pass keeps its 200 steps. The cost is that a real pass runs until the energy has decayed 50 dB rather than until a step budget runs out, so it can take considerably longer than the 172 s the retired script recorded at the coarse mesh; the 21600 s timeout below is the bound. Every real pass carries the sanity gates ported from validation/crossval/20_msl_phase_referee.py: the stdout/stderr scan for unused primitives and off-mesh ports, nonzero excitation energy and non-empty port traces, |S| finite and <= 2, and passivity max(|S11|^2+|S21|^2) <= 1.05 over 2-12 GHz. 12 GHz is where the band stops because the committed record's own energy sum runs 0.78-1.00 there and falls to 0.41 by 20 GHz; the witness bounds the EXCESS above unity only, and the deficit is recorded per bin rather than judged. The deepest minimum in 5-10 GHz, the passband mean over 1-4 GHz and the -3 dB corner are REPORTED and gated on nothing. When a gate fires the record built so far goes to openems_sheen_FAILED.json before the non-zero exit, so a failed cycle still leaves numbers. The job clones the pinned commit itself into /tmp and refuses to measure anything else. Env: EXPECT (the commit, placeholder FILL_BEFORE_SUBMIT refuses). CPU lane, remilab-c0. Submit with scripts/vessl_submit.sh so the run id is recorded -- the record's run_id field is null by design, VESSL does not export the id into the pod."
+description: "The Sheen low-pass filter -- regenerate its openEMS reference WITH provenance. On RT/Duroid (eps_r 2.2, h 0.794 mm) two 2.413 mm wide 50 ohm feeds are joined by one wide 20.320 x 2.540 mm low-impedance section; the wide section is a shunt capacitance, so the board passes up to about 5 GHz and then falls away into a deep stopband. That is the classic Sheen 1990 FDTD benchmark (IEEE Trans. MTT 38(7):849-857), and its committed openEMS record carries no provenance at all: no solver version, no build, no run id, no mesh statement beyond one number, and an EMPTY reproduce_gate_record while the script's own gate record still says UNRUN. STAGE A is the reproduce gate and is openEMS's OWN python/Tutorials/MSL_NotchFilter.py, verbatim, solved in the same invocation: the measured notch must land inside 0.80-1.05 x the analytic quarter-wave frequency (3.6872 GHz) AND be at least 20 dB deep. It is a DIFFERENT structure on a different substrate -- it proves the solver and the port model reproduce a published result, nothing about the Sheen board. If it fails, the job exits 1 and no Stage B record is written. STAGE B is the Sheen board on THREE meshes -- resolution factors 1.0, 1/sqrt(2) and 0.5 -- so the record carries its own mesh statement with two refinements. The factor scales the substrate's own z lines too (4, 6, 8 cells across the 794 um board, 198.5 / 132.3 / 99.25 um), because that is the direction that sets the effective permittivity and therefore where the stopband sits. The builder is copied from validation/crossval/07_sheen_lpf.py's run_openems and is proved to be that builder, character for character, by --self-check before any solver starts; the fourteen declared deltas are in the record's meta and in the stage plan. The stop criteria are the ONE thing NOT taken from that script: every real pass runs at openEMS's own library defaults (~1e9 / 1e-5), exactly as Stage A does, because the script's NrTS=30000 cap was a cost choice on one mesh and halving the cell halves the timestep -- a cap that just reached 1e-4 on the coarse board would stop the fine board mid-ring-down, which this job correctly reports as a FAILED gate for a wasted hour. The smoke pass keeps its 200 steps. The cost is that a real pass runs until the energy has decayed 50 dB rather than until a step budget runs out, and that has now been measured: the COARSE rung alone ran 107 minutes on 8 threads (VESSL 369367263243, 369367263269) while Stage A took 44 s, so the three rungs do not fit one six-hour job. Two knobs answer that, and both leave a mark in the record. RUNGS (default coarse,mid,fine) picks which rungs this job solves, so each rung can be its own job as the VESSL rule prefers; the record then carries only those rungs, names them in meta.rungs_in_this_record, and its file is openems_sheen.<rungs>.json. REAL_END_CRITERIA and REAL_NRTS (both empty by default, meaning not passed) loosen the stop criteria; every Stage B block and meta.stop_criteria_note then say what was given and carry the 107-minute measurement that motivated it. Stage A is never overridden -- it is the gate. Put the parts back together afterwards with --merge PART.json ... --output FULL.json, which refuses unless every part's Stage A agrees bin for bin and their tutorial source, image and openEMS build match. Every real pass carries the sanity gates ported from validation/crossval/20_msl_phase_referee.py: the stdout/stderr scan for unused primitives and off-mesh ports, nonzero excitation energy and non-empty port traces, |S| finite and <= 2, and passivity max(|S11|^2+|S21|^2) <= 1.05 over 2-12 GHz. 12 GHz is where the band stops because the committed record's own energy sum runs 0.78-1.00 there and falls to 0.41 by 20 GHz; the witness bounds the EXCESS above unity only, and the deficit is recorded per bin rather than judged. The deepest minimum in 5-10 GHz, the passband mean over 1-4 GHz and the -3 dB corner are REPORTED and gated on nothing. When a gate fires the record built so far goes to openems_sheen_FAILED.json before the non-zero exit, so a failed cycle still leaves numbers. The job clones the pinned commit itself into /tmp and refuses to measure anything else. Env: EXPECT (the commit, placeholder FILL_BEFORE_SUBMIT refuses). CPU lane, remilab-c0. Submit with scripts/vessl_submit.sh so the run id is recorded -- the record's run_id field is null by design, VESSL does not export the id into the pod."
 tags: [rfx, crossval, sheen-lpf, openems, reference]
 resources:
   cluster: remilab-c0
@@ -24,6 +24,19 @@ env:
   # openEMS build commit the image stamps into RFX_OPENEMS_COMMIT. Keep it equal
   # to `image:` above; the run block prints both.
   RFX_OPENEMS_IMAGE: "ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8"
+  # Which mesh rungs THIS job solves, comma separated, from coarse,mid,fine.
+  # One rung per job is the normal way to run this: with openEMS's own
+  # EndCriteria the coarse rung alone ran 107 minutes on 8 threads (VESSL
+  # 369367263243, 369367263269). Stage A (44 s) runs in every job -- it is the
+  # reproduce gate. The record's file name carries the rungs; --merge joins them.
+  RUNGS: "coarse,mid,fine"
+  # Stop-criteria overrides for the REAL pass, Stage B only. EMPTY means not
+  # passed at all, so openEMS's own ~1e9 / 1e-5 apply -- that is the declared
+  # design (delta 9), and a record made without these says so. Set
+  # REAL_END_CRITERIA to 1e-4 to stop at the repository's own ring-down level
+  # (-40 dB of the post-source peak) when a rung cannot afford 1e-5.
+  REAL_END_CRITERIA: ""
+  REAL_NRTS: ""
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
@@ -81,6 +94,20 @@ run: |-
   fi
   "$PY" -c "import numpy; print('numpy', numpy.__version__)"
 
+  # What this job solves, and how it stops. An empty override is NOT passed:
+  # the maker's default is the declared design, and an empty string on the
+  # command line would be a parse error rather than a default.
+  RUNGS_ARG=${RUNGS:-coarse,mid,fine}
+  RUNG_TAG=$(echo "$RUNGS_ARG" | tr ',' '-')
+  STOP_ARGS=""
+  if [ -n "${REAL_END_CRITERIA:-}" ]; then
+    STOP_ARGS="$STOP_ARGS --real-end-criteria $REAL_END_CRITERIA"
+  fi
+  if [ -n "${REAL_NRTS:-}" ]; then
+    STOP_ARGS="$STOP_ARGS --real-nrts $REAL_NRTS"
+  fi
+  echo "rungs: $RUNGS_ARG   stop-criteria args:${STOP_ARGS:- (none -- openEMS defaults)}"
+
   primary=/root/workspace/byungkwan-workspace/research/rfx
   out="$primary/.omx/sheen-lpf-openems/$(date -u +%Y%m%dT%H%M%SZ)-$short"
   mkdir -p "$out"
@@ -89,7 +116,7 @@ run: |-
 
   # A killed, evicted or timed-out job still leaves its exit code and the
   # one-line summary. `rc` is unset until the solve runs, hence the default.
-  trap 'st=$?; rc_now=${rc:-$st}; echo "$rc_now" > "$out/exit_code"; { echo "sheen_lpf_openems_reference_rc=$rc_now"; echo "commit=$sha"; echo "image=${RFX_OPENEMS_IMAGE:-unset}"; echo "openems_build=$RFX_OPENEMS_COMMIT"; echo "record=$out/openems_sheen.json"; echo "failed_record=$out/openems_sheen_FAILED.json"; ls -la "$out"; } > "$out/summary.txt" 2>&1; cat "$out/summary.txt"' EXIT INT TERM
+  trap 'st=$?; rc_now=${rc:-$st}; echo "$rc_now" > "$out/exit_code"; { echo "sheen_lpf_openems_reference_rc=$rc_now"; echo "commit=$sha"; echo "image=${RFX_OPENEMS_IMAGE:-unset}"; echo "openems_build=$RFX_OPENEMS_COMMIT"; echo "rungs=$RUNGS_ARG"; echo "record=$out/openems_sheen.$RUNG_TAG.json"; echo "failed_record=$out/openems_sheen.${RUNG_TAG}_FAILED.json"; ls -la "$out"; } > "$out/summary.txt" 2>&1; cat "$out/summary.txt"' EXIT INT TERM
 
   DRV=tests/crossval/sheen_lpf/reference/make_openems_reference.py
   test -f "$DRV" || { echo "STALE CLONE: the reference maker is missing at $DRV"; exit 3; }
@@ -108,7 +135,7 @@ run: |-
     echo "FATAL: --self-check exited $sc_rc -- see $out/self_check.log. Not starting the solver."
     exit 3
   fi
-  ( set +e; "$PY" -u "$DRV" --dry-run --stage both; echo $? > "$out/dry_run.rc" ) | tee "$out/stage_plan.log"
+  ( set +e; "$PY" -u "$DRV" --dry-run --stage both --rungs "$RUNGS_ARG" $STOP_ARGS; echo $? > "$out/dry_run.rc" ) | tee "$out/stage_plan.log"
   dr_rc=$(cat "$out/dry_run.rc")
   if [ "$dr_rc" != "0" ]; then
     echo "FATAL: --dry-run exited $dr_rc -- see $out/stage_plan.log. Not starting the solver."
@@ -120,7 +147,8 @@ run: |-
   # subshell that writes its own rc to a file; the file is read back after.
   ( set +e
     timeout 21600 "$PY" -u "$DRV" --stage both \
-      --output "$out/openems_sheen.json" \
+      --rungs "$RUNGS_ARG" $STOP_ARGS \
+      --output "$out/openems_sheen.$RUNG_TAG.json" \
       --sim-root /tmp/sheen_lpf_openems --threads 8 2>&1
     echo $? > "$out/exit_code"
   ) | tee "$out/run.log"
@@ -166,13 +194,13 @@ run: |-
   echo "$settling_rc" > "$out/settling_control.rc"
 
   echo "===== record summary ====="
-  if [ -f "$out/openems_sheen_FAILED.json" ]; then
-    echo "A GATE FIRED. Its evidence is $out/openems_sheen_FAILED.json -- the arrays measured before the gate, the energy-sum numbers and failed_gate."
-    "$PY" -c 'import json,sys; a=json.load(open(sys.argv[1])); print("failed_gate:", a.get("failed_gate")); [print("%-16s energy sum band max=%.4f min=%.4f | grid max=%.4f min=%.4f" % (k, a[k].get("max_energy_sum_band",float("nan")), a[k].get("min_energy_sum_band",float("nan")), a[k].get("max_energy_sum_full",float("nan")), a[k].get("min_energy_sum_full",float("nan")))) for k in ("stage_a","stage_b_coarse","stage_b_mid","stage_b_fine") if a.get(k)]' "$out/openems_sheen_FAILED.json" || true
+  if [ -f "$out/openems_sheen.${RUNG_TAG}_FAILED.json" ]; then
+    echo "A GATE FIRED. Its evidence is $out/openems_sheen.${RUNG_TAG}_FAILED.json -- the arrays measured before the gate, the energy-sum numbers and failed_gate."
+    "$PY" -c 'import json,sys; a=json.load(open(sys.argv[1])); print("failed_gate:", a.get("failed_gate")); [print("%-16s energy sum band max=%.4f min=%.4f | grid max=%.4f min=%.4f" % (k, a[k].get("max_energy_sum_band",float("nan")), a[k].get("min_energy_sum_band",float("nan")), a[k].get("max_energy_sum_full",float("nan")), a[k].get("min_energy_sum_full",float("nan")))) for k in ("stage_a","stage_b_coarse","stage_b_mid","stage_b_fine") if a.get(k)]' "$out/openems_sheen.${RUNG_TAG}_FAILED.json" || true
   fi
-  if [ -f "$out/openems_sheen.json" ]; then
-    "$PY" -c 'import json,sys; nan=float("nan"); a=json.load(open(sys.argv[1])); g=a["meta"].get("stage_a_gate") or {}; ms=a["meta"]["stages"]; m=lambda k: ((ms.get(k) or {}).get("mesh_realized") or {}); d=lambda k,f: (a[k].get(f) or {}); print("stage_a reproduce gate passed=%s measured=%s Hz dev=%s %%" % (g.get("passed"), g.get("measured_f_notch_hz"), g.get("deviation_pct"))); [print("%-16s %s | %s substrate cells, %s cells | energy sum: band max=%.4f min=%.4f | grid max=%.4f min=%.4f | 0-1GHz=%.4f | 1-2GHz=%.4f | above band max=%.4f min=%.4f" % (k, ("TUTORIAL notch=%.4f GHz depth=%.2f dB" % (d(k,"notch").get("refined_f_ghz",nan), d(k,"notch").get("depth_db",nan))) if k=="stage_a" else ("deepest min 5-10 GHz=%.4f GHz depth=%.2f dB | passband mean=%.3f dB | -3 dB corner=%s GHz | Re(Z0) median=%.2f ohm" % (d(k,"null").get("refined_f_ghz",nan), d(k,"null").get("depth_db",nan), d(k,"passband").get("mean_db",nan), d(k,"cutoff_3db").get("f_ghz"), a[k].get("re_z0_median_ohm",nan))), m(k).get("substrate_z_cells_realized"), m(k).get("n_cells"), a[k].get("max_energy_sum_band",nan), a[k].get("min_energy_sum_band",nan), a[k].get("max_energy_sum_full",nan), a[k].get("min_energy_sum_full",nan), d(k,"max_energy_sum_below_band").get("0_1_ghz",nan), d(k,"max_energy_sum_below_band").get("1_2_ghz",nan), a[k].get("max_energy_sum_above_band",nan), a[k].get("min_energy_sum_above_band",nan))) for k in ("stage_a","stage_b_coarse","stage_b_mid","stage_b_fine") if a.get(k)]' "$out/openems_sheen.json" || true
-  elif [ ! -f "$out/openems_sheen_FAILED.json" ]; then
+  if [ -f "$out/openems_sheen.$RUNG_TAG.json" ]; then
+    "$PY" -c 'import json,sys; nan=float("nan"); a=json.load(open(sys.argv[1])); g=a["meta"].get("stage_a_gate") or {}; ms=a["meta"]["stages"]; m=lambda k: ((ms.get(k) or {}).get("mesh_realized") or {}); d=lambda k,f: (a[k].get(f) or {}); print("stage_a reproduce gate passed=%s measured=%s Hz dev=%s %%" % (g.get("passed"), g.get("measured_f_notch_hz"), g.get("deviation_pct"))); [print("%-16s %s | %s substrate cells, %s cells | energy sum: band max=%.4f min=%.4f | grid max=%.4f min=%.4f | 0-1GHz=%.4f | 1-2GHz=%.4f | above band max=%.4f min=%.4f" % (k, ("TUTORIAL notch=%.4f GHz depth=%.2f dB" % (d(k,"notch").get("refined_f_ghz",nan), d(k,"notch").get("depth_db",nan))) if k=="stage_a" else ("deepest min 5-10 GHz=%.4f GHz depth=%.2f dB | passband mean=%.3f dB | -3 dB corner=%s GHz | Re(Z0) median=%.2f ohm" % (d(k,"null").get("refined_f_ghz",nan), d(k,"null").get("depth_db",nan), d(k,"passband").get("mean_db",nan), d(k,"cutoff_3db").get("f_ghz"), a[k].get("re_z0_median_ohm",nan))), m(k).get("substrate_z_cells_realized"), m(k).get("n_cells"), a[k].get("max_energy_sum_band",nan), a[k].get("min_energy_sum_band",nan), a[k].get("max_energy_sum_full",nan), a[k].get("min_energy_sum_full",nan), d(k,"max_energy_sum_below_band").get("0_1_ghz",nan), d(k,"max_energy_sum_below_band").get("1_2_ghz",nan), a[k].get("max_energy_sum_above_band",nan), a[k].get("min_energy_sum_above_band",nan))) for k in ("stage_a","stage_b_coarse","stage_b_mid","stage_b_fine") if a.get(k)]' "$out/openems_sheen.$RUNG_TAG.json" || true
+  elif [ ! -f "$out/openems_sheen.${RUNG_TAG}_FAILED.json" ]; then
     echo "(no record written at all -- the run did not reach a stage)"
   fi
 
@@ -189,7 +217,7 @@ run: |-
 
   echo "=== verdict ==="
   case "$rc" in
-    0) echo "PASS: the reproduce gate passed and all three Stage B rungs were written. Read the stage plan's PML / measurement-plane / feed-edge lines before quoting a Stage B number, and read the energy-sum deficit before quoting a magnitude." ;;
+    0) echo "PASS: the reproduce gate passed and the requested rungs ($RUNGS_ARG) were written. Join the per-rung parts with --merge before the case reads them. Read the stage plan's PML / measurement-plane / feed-edge lines before quoting a Stage B number, and read the energy-sum deficit before quoting a magnitude." ;;
     1) echo "GATE FAILED: the reproduce gate or a sanity gate failed -- the log names which. No number from this run is usable." ;;
     2) echo "openEMS NOT IMPORTABLE despite the image probes passing -- investigate the bindings" ;;
     3) echo "CONFIG ERROR: a missing solver stamp, a failed self-check or dry run, a drifted builder, or a layout bug in the maker -- not a physics finding" ;;
