@@ -1440,20 +1440,13 @@ class _ExecuteMixin:
         # so does the waveguide compute path (see _sparams.py).
         cpml_axes_run = grid.cpml_axes
         pec_axes_run = "".join(a for a in "xyz" if a not in cpml_axes_run)
-        # A closed box (boundary="pec": no absorber at all, cpml_layers == 0)
-        # still reports cpml_axes == "xyz", so the line above handed the
-        # scan pec_axes == "" and the walls were never applied: the
-        # differentiable path solved an open box while run() solved the
-        # cavity (measured: 5.091 GHz against the analytic and run() 8.831 GHz
-        # TM110 of a 24 mm cube). With no absorber anywhere the walls are
-        # every non-periodic axis, which is what run() defaults to.
-        # ``_boundary`` reads "pec" for the string spelling and for any
-        # absorber-free BoundarySpec (all-PEC, PMC faces); on those the
-        # per-face masks already carry the walls and this is a no-op.
-        if int(getattr(grid, "cpml_layers", 0) or 0) == 0:
-            if getattr(self, "_boundary", None) == "pec":
-                pec_axes_run = "".join(
-                    a for a, p in zip("xyz", periodic_bool) if not p)
+        # The walls themselves come from the grid's per-face declaration
+        # (``resolve_wall_faces`` in the scan setup, #1164): a closed box
+        # (boundary="pec") declares six PEC faces and gets them on this
+        # lane as on run() (#1193); a magnetic face is never overwritten
+        # by an axis wall (#1194's regression). ``pec_axes_run`` only
+        # withholds the PEC backing on absorber axes, as this lane always
+        # has.
 
         # Differentiable TFSF plane-wave (#404): build the 2D/1D-aux TFSF cfg and
         # force its boundary (transverse-periodic + CPML on the propagation axis),

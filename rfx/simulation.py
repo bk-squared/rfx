@@ -24,6 +24,7 @@ from rfx.core.yee import (
 )
 from rfx.boundaries.pec import (
     apply_pec,
+    resolve_wall_faces,
     apply_pec_edges,
     apply_pec_faces,
     apply_pec_occupancy,
@@ -703,6 +704,7 @@ class _SimSetup(NamedTuple):
     dx: float
     periodic: tuple
     pec_axes: str
+    pec_faces: frozenset
 
 
 def resolve_periodic(grid, periodic):
@@ -995,24 +997,23 @@ def _build_step_setup(
     for axis_name, is_periodic in zip(axis_names, periodic):
         if is_periodic:
             cpml_axes = cpml_axes.replace(axis_name, "")
-    default_pec_axes = "".join(
-        axis_name for axis_name, is_periodic in zip(axis_names, periodic)
-        if not is_periodic
-    )
-    if pec_axes is None:
-        pec_axes = default_pec_axes
-    else:
-        pec_axes = "".join(axis for axis in pec_axes if axis in default_pec_axes)
-
-    # ---- per-face PEC from grid.pec_faces ----
-    _pec_faces = getattr(grid, "pec_faces", None) or set()
-    use_pec_faces = bool(_pec_faces)
-    _pec_faces_frozen = frozenset(_pec_faces) if use_pec_faces else frozenset()
-
-    # ---- per-face PMC from grid.pmc_faces (T7 Phase 2 PR3) ----
-    _pmc_faces = getattr(grid, "pmc_faces", None) or set()
-    use_pmc_faces = bool(_pmc_faces)
-    _pmc_faces_frozen = frozenset(_pmc_faces) if use_pmc_faces else frozenset()
+    # ---- the walls, per face, from the grid's declaration (#1164) ----
+    # ``resolve_wall_faces`` is the one rule every entry point shares:
+    # periodic -> none; a magnetic face is never an electric wall; a
+    # declared PEC face is one; any other face is PEC-backed unless the
+    # legacy ``pec_axes`` string withholds that default for its axis.
+    # The scan applies these per face only; the axis-wide ``apply_pec``
+    # is gone from the step (an axis wall over a PMC face shorted a port
+    # on that plane through run(), and through forward() after #1194).
+    _pec_faces_frozen, _pmc_faces_frozen = resolve_wall_faces(
+        grid, periodic, pec_axes)
+    use_pec_faces = bool(_pec_faces_frozen)
+    use_pmc_faces = bool(_pmc_faces_frozen)
+    # Axes with an electric wall on BOTH faces, for the GPU fast path's
+    # coefficient bake (``precompute_coeffs``) and for callers reading it.
+    pec_axes = "".join(
+        a for a in "xyz"
+        if f"{a}_lo" in _pec_faces_frozen and f"{a}_hi" in _pec_faces_frozen)
 
     # ---- subsystem flags (resolved at Python trace time) ----
     use_cpml = boundary == "cpml" and grid.cpml_layers > 0
@@ -1508,6 +1509,7 @@ def _build_step_setup(
         dx=dx,
         periodic=periodic,
         pec_axes=pec_axes,
+        pec_faces=_pec_faces_frozen,
     )
 
 
@@ -1671,7 +1673,6 @@ def make_core_step(ctx: _StepContext):
     dx = ctx.dx
     periodic = ctx.periodic
     grid = ctx.grid
-    pec_axes = ctx.pec_axes
     aniso_eps = ctx.aniso_eps
     aniso_inv_eps = ctx.aniso_inv_eps
 
@@ -1860,8 +1861,6 @@ def make_core_step(ctx: _StepContext):
                     ez=jnp.where(_inv_zz_r < _PEC_INV_THRESHOLD, 0.0, st.ez),
                 )
 
-            if pec_axes:
-                st = apply_pec(st, axes=pec_axes)
             if ctx.use_pec_faces:
                 st = apply_pec_faces(st, ctx.pec_faces_frozen)
 
@@ -2551,7 +2550,7 @@ def run(
     # produce a 2nd-order result. Gate it on order==2.
     use_fast_he = _fast_eligible and _on_gpu and stencil_order == 2
     _fast_coeffs = (
-        precompute_coeffs(materials, dt, dx, pec_axes=_setup.pec_axes)
+        precompute_coeffs(materials, dt, dx, pec_faces=_setup.pec_faces)
         if use_fast_he else None
     )
 

@@ -607,6 +607,7 @@ def precompute_coeffs(
     dx: float,
     *,
     pec_axes: str = "",
+    pec_faces=(),
 ) -> UpdateCoeffs:
     """Pre-compute all FDTD update coefficients.
 
@@ -615,9 +616,13 @@ def precompute_coeffs(
     materials : MaterialArrays
     dt, dx : float
     pec_axes : str
-        Axes on which to bake PEC (zero tangential E) into the
-        coefficients.  For example ``"xyz"`` zeros Ca/Cb at all 6
-        boundary faces so that ``apply_pec()`` is no longer needed.
+        Legacy spelling: axes on which to bake PEC (zero tangential E)
+        into the coefficients on BOTH faces.
+    pec_faces : iterable of str
+        Face labels (``"x_lo"`` ...) to bake, the per-face spelling that
+        ``resolve_wall_faces`` produces (#1164); a magnetic face is not in
+        it. Union with ``pec_axes``. With these baked, ``apply_pec_faces``
+        is no longer needed for those faces.
 
     Returns
     -------
@@ -640,28 +645,32 @@ def precompute_coeffs(
     cb_ey = cb_over_dx
     cb_ez = cb_over_dx
 
-    # Bake PEC boundary enforcement into the coefficients by zeroing
-    # Ca and Cb at boundary faces for tangential E components.
-    if pec_axes:
-        nx, ny, nz = materials.eps_r.shape
-        if "x" in pec_axes:
-            # Ey, Ez tangential on x-faces
-            ca_ey = ca_ey.at[0, :, :].set(0.0).at[-1, :, :].set(0.0)
-            ca_ez = ca_ez.at[0, :, :].set(0.0).at[-1, :, :].set(0.0)
-            cb_ey = cb_ey.at[0, :, :].set(0.0).at[-1, :, :].set(0.0)
-            cb_ez = cb_ez.at[0, :, :].set(0.0).at[-1, :, :].set(0.0)
-        if "y" in pec_axes:
-            # Ex, Ez tangential on y-faces
-            ca_ex = ca_ex.at[:, 0, :].set(0.0).at[:, -1, :].set(0.0)
-            ca_ez = ca_ez.at[:, 0, :].set(0.0).at[:, -1, :].set(0.0)
-            cb_ex = cb_ex.at[:, 0, :].set(0.0).at[:, -1, :].set(0.0)
-            cb_ez = cb_ez.at[:, 0, :].set(0.0).at[:, -1, :].set(0.0)
-        if "z" in pec_axes:
-            # Ex, Ey tangential on z-faces
-            ca_ex = ca_ex.at[:, :, 0].set(0.0).at[:, :, -1].set(0.0)
-            ca_ey = ca_ey.at[:, :, 0].set(0.0).at[:, :, -1].set(0.0)
-            cb_ex = cb_ex.at[:, :, 0].set(0.0).at[:, :, -1].set(0.0)
-            cb_ey = cb_ey.at[:, :, 0].set(0.0).at[:, :, -1].set(0.0)
+    # Bake the electric walls into the coefficients by zeroing Ca and Cb
+    # of the tangential E components on each wall face -- the same planes
+    # ``apply_pec_faces`` zeroes.
+    faces = set(pec_faces)
+    for a in pec_axes:
+        faces.update({f"{a}_lo", f"{a}_hi"})
+    if faces:
+        lo, hi = 0, -1
+        if "x_lo" in faces:
+            ca_ey = ca_ey.at[lo, :, :].set(0.0); ca_ez = ca_ez.at[lo, :, :].set(0.0)
+            cb_ey = cb_ey.at[lo, :, :].set(0.0); cb_ez = cb_ez.at[lo, :, :].set(0.0)
+        if "x_hi" in faces:
+            ca_ey = ca_ey.at[hi, :, :].set(0.0); ca_ez = ca_ez.at[hi, :, :].set(0.0)
+            cb_ey = cb_ey.at[hi, :, :].set(0.0); cb_ez = cb_ez.at[hi, :, :].set(0.0)
+        if "y_lo" in faces:
+            ca_ex = ca_ex.at[:, lo, :].set(0.0); ca_ez = ca_ez.at[:, lo, :].set(0.0)
+            cb_ex = cb_ex.at[:, lo, :].set(0.0); cb_ez = cb_ez.at[:, lo, :].set(0.0)
+        if "y_hi" in faces:
+            ca_ex = ca_ex.at[:, hi, :].set(0.0); ca_ez = ca_ez.at[:, hi, :].set(0.0)
+            cb_ex = cb_ex.at[:, hi, :].set(0.0); cb_ez = cb_ez.at[:, hi, :].set(0.0)
+        if "z_lo" in faces:
+            ca_ex = ca_ex.at[:, :, lo].set(0.0); ca_ey = ca_ey.at[:, :, lo].set(0.0)
+            cb_ex = cb_ex.at[:, :, lo].set(0.0); cb_ey = cb_ey.at[:, :, lo].set(0.0)
+        if "z_hi" in faces:
+            ca_ex = ca_ex.at[:, :, hi].set(0.0); ca_ey = ca_ey.at[:, :, hi].set(0.0)
+            cb_ex = cb_ex.at[:, :, hi].set(0.0); cb_ey = cb_ey.at[:, :, hi].set(0.0)
 
     return UpdateCoeffs(
         ch=ch,
