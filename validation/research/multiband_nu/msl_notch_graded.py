@@ -1128,8 +1128,9 @@ def markdown_tables(arms: dict) -> str:
         w(f"**W4 arm-length witness ({r['arm_length_m'][0] * 1e3:.2f} mm "
           f"against {r['arm_length_m'][1] * 1e3:.2f} mm arms).**")
         w("")
-        w("| max abs delta |S21| (dB) | bar (dB) | worst at (GHz) | "
-          "bins compared | max abs delta |S11| (dB), reported | verdict |")
+        # No pipe characters inside a cell: "|S21|" would split the row.
+        w("| max abs delta S21 (dB) | bar (dB) | worst at (GHz) | "
+          "bins compared | max abs delta S11 (dB), reported | verdict |")
         w("|---|---|---|---|---|---|")
         w(f"| {r['max_abs_delta_s21_db']:.4f} | {r['bar_db']} | "
           f"{r['worst_f_s21_ghz']:.4f} | "
