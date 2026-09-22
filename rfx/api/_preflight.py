@@ -514,8 +514,12 @@ class _PreflightMixin:
                 _ax_i = "xyz".index(_prop_axis)
                 _runway_profile = (self._dx_profile, self._dy_profile,
                                    self._dz_profile)[_ax_i]
+                # The feed plane is the port position ON ITS OWN
+                # propagation axis: ``position[0]`` for a +x/-x port,
+                # ``position[1]`` for +y/-y.
+                _feed_coord = float(pe.position[_ax_i])
                 _runway_dx = _profile_cell_at(
-                    self._dx or 0.0, _runway_profile, float(pe.feed_x))
+                    self._dx or 0.0, _runway_profile, _feed_coord)
                 _nf_cells = msl_source_near_field_standoff_cells(
                     float(pe.height), _runway_dx)
                 # A count is only meaningful where the cells it counts are
@@ -525,7 +529,7 @@ class _PreflightMixin:
                 _standoff_len = _nf_cells * _runway_dx
                 if not _profile_span_is_uniform(
                         self._dx or 0.0, _runway_profile,
-                        float(pe.feed_x), _standoff_len):
+                        _feed_coord, _standoff_len):
                     messages.append(
                         f"MSL port {pe.name!r}: the source-fringing standoff "
                         f"({_standoff_len*1e3:.3g} mm from the feed plane) "

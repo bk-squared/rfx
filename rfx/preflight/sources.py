@@ -54,7 +54,6 @@ import math
 
 import numpy as np
 
-from rfx.core.jax_utils import is_tracer
 from rfx.preflight._common import profile_boundary_cell
 from rfx.core.yee import MaterialArrays
 from rfx.grid import C0

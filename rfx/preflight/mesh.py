@@ -1074,18 +1074,24 @@ def _validate_cfg_nonuniform_limitations(
             # cells, which is neither face's absorber: wrong cells, and the
             # hi face measured from the lo end. Thinnest face is reported,
             # since that is the one whose absorption is worst (G17).
+            # A face that allocates no absorber (PEC/PMC/periodic) has no
+            # thickness to compare, and including its 0 would resurrect the
+            # #647 false positive. Only absorbing faces are measured.
             _z_thick_by_face = {
                 _side: (_face_layers[f"z_{_side}"]
                         * profile_boundary_cell(self._dx, self._dz_profile,
                                                 _side))
                 for _side in ("lo", "hi")
+                if _face_layers[f"z_{_side}"] > 0
             }
-            cpml_z_thick = min(_z_thick_by_face.values())
+            _thin_side = min(_z_thick_by_face, key=_z_thick_by_face.get)
+            cpml_z_thick = _z_thick_by_face[_thin_side]
+            _z_cells_reported = _face_layers[f"z_{_thin_side}"]
             if cpml_z_thick < cpml_thickness * 0.3:
                 _w.warn(
                     PreflightWarning(
                         f"CPML z-thickness is {cpml_z_thick*1e3:.1f}mm "
-                        f"({_z_layers} cells), much thinner than "
+                        f"({_z_cells_reported} cells), much thinner than "
                         f"xy-thickness {cpml_thickness*1e3:.1f}mm. "
                         f"Absorbing performance may be asymmetric. "
                         f"Consider more z cells or fewer CPML layers.",
