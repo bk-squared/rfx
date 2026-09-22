@@ -158,13 +158,91 @@ def test_the_metal_is_solved_at_its_drawn_size(built, key):
 
 
 @pytest.mark.parametrize("key", ARMS_BUILT)
-def test_every_probe_plane_is_in_the_uniform_coarse_region(built, key):
-    sim, _prof, board = built[key]
+def test_every_cell_the_probe_array_spans_is_the_coarse_cell(built, key):
+    """The extractor counts its probe spacing in cells, so every cell from the
+    feed plane to the deepest probe has to be that one size."""
+    sim, _prof, _board = built[key]
     planes = ins.probe_planes(sim)
-    ins.assert_probes_in_uniform_region(planes, board)
-    assert len(planes) == 2
-    for xs in planes:
+    runway = ins.assert_probes_on_the_uniform_runway(sim, ins.C_COARSE_M)
+    assert len(planes) == 2 and len(runway["ports"]) == 2
+    for xs, port in zip(planes, runway["ports"]):
         assert len(xs) == ins.N_PROBES
+        assert port["n_cells_off_coarse"] == 0
+        assert port["n_cells_spanned"] == (
+            ins.N_PROBE_OFFSET + (ins.N_PROBES - 1) * ins.N_PROBE_SPACING)
+
+
+@pytest.mark.parametrize("key", ARMS_BUILT)
+def test_the_port_feed_footprint_lies_inside_the_fine_band(built, key):
+    """The port pads its Ez source about one substrate thickness each side of
+    the trace and resolves that pad in cells, so the pad must be inside the
+    band that makes those cells one size."""
+    sim, _prof, board = built[key]
+    got = ins.assert_port_footprint_in_fine_band(sim, board)
+    lo, hi = board["band_y_trace_m"]
+    for port in got["ports"]:
+        assert lo <= port["y_lo_m"] and port["y_hi_m"] <= hi
+        assert port["pad_cells_lo"] >= 1 and port["pad_cells_hi"] >= 1
+        assert port["eps_r_sub"] == pytest.approx(case.EPS_R_SUBSTRATE)
+
+
+def test_mutation_a2_a_probe_array_that_reaches_the_ramp_is_refused():
+    """The ramp is where the cell size changes fastest, and the first version
+    of this refusal checked only the band.  The mesh is untouched: only the
+    probe offset moves, so nothing but the probe check can see it."""
+    arm = ins.ARMS["A_off"]
+    sim, prof, board = ins.build_graded(
+        arm.rung, arm.placement, arm.arm_length_m, _mutate_probe_offset=47)
+    ins.assert_profiles_graded(prof, board)
+    ins.assert_realized_graded(sim, board)
+    ins.assert_port_footprint_in_fine_band(sim, board)   # still inside
+    with pytest.raises(AssertionError, match="not the coarse cell"):
+        ins.assert_probes_on_the_uniform_runway(sim, ins.C_COARSE_M)
+
+
+def test_mutation_b2_a_band_too_narrow_for_the_feed_is_refused():
+    """A band of two fine cells beyond each metal edge still carries the metal
+    and still passes R1 and R3; what it no longer carries is the port's own
+    lateral pad."""
+    arm = ins.ARMS["A_off"]
+    sim, prof, board = ins.build_graded(
+        arm.rung, arm.placement, arm.arm_length_m, _mutate_margin_cells=2)
+    ins.assert_profiles_graded(prof, board)
+    ins.assert_realized_graded(sim, board)
+    ins.assert_probes_on_the_uniform_runway(sim, ins.C_COARSE_M)   # still coarse
+    with pytest.raises(AssertionError, match="outside the fine y band"):
+        ins.assert_port_footprint_in_fine_band(sim, board)
+
+
+def test_the_uniform_reference_arms_build_on_the_cases_own_board():
+    """A.1: U_h2, U_h4 and U_h6 are the case's build at the case's LADDER_M.
+
+    The line does not move for them -- that is the whole point of a reference
+    ladder -- so this pins the one thing that would silently invalidate the
+    cost ratios and W3's target: the uniform arms running on the graded arms'
+    board instead of the case's.
+    """
+    assert ins.UNIFORM_LADDER == ("U_h2", "U_h4", "U_h6")
+    assert [ins.UNIFORM_ARMS[k] for k in ins.UNIFORM_LADDER] == list(case.LADDER_M)
+    assert ins.COST_REFERENCE_ARM == "U_h6"
+    sim = case.build(ins.UNIFORM_ARMS["U_h2"])
+    g = case.assert_realized(sim, ins.UNIFORM_ARMS["U_h2"])
+    assert g["n_ports"] == 2
+    # The case's board, not this note's: the line sits where the case puts it.
+    assert case.LATERAL_CLEARANCE_M < ins.LATERAL_CLEARANCE_M
+    ys = [e.position[1] for e in sim._msl_ports]
+    assert ys == [case.TRACE_CENTRE_Y_M, case.TRACE_CENTRE_Y_M]
+
+
+def test_grid_cells_counts_cells_and_not_nodes():
+    """Both sides of every cost ratio count the cells the solver steps."""
+    rec = {"grid_shape": [584, 462, 51]}
+    assert ins.grid_cells(rec) == 583 * 461 * 50 == 13_438_150
+    rec["realized"] = {"n_grid_cells": 13_438_150}
+    assert ins.grid_cells(rec) == 13_438_150
+    rec["realized"]["n_grid_cells"] = 13_760_208          # the node product
+    with pytest.raises(AssertionError, match="n_grid_cells"):
+        ins.grid_cells(rec)
 
 
 # ------------------------------------------------------- mutation (a) the check

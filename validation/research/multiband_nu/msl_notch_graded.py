@@ -387,7 +387,8 @@ def board(rung: str, placement: str, arm_length_m: float) -> dict:
 
 
 def profiles(rung: str, placement: str,
-             arm_length_m: float = case.ARM_LENGTH_M
+             arm_length_m: float = case.ARM_LENGTH_M,
+             *, _mutate_margin_cells: int | None = None
              ) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict]:
     """The three cell-size profiles of one arm, and the board they are cut to.
 
@@ -402,6 +403,8 @@ def profiles(rung: str, placement: str,
     above the trace plane).
     """
     b = board(rung, placement, arm_length_m)
+    if _mutate_margin_cells is not None:
+        b = dict(b, margin_cells=int(_mutate_margin_cells))
     f, m = b["fine_cell_m"], b["margin_cells"]
     n = b["n_across_metal"]
     n_z = b["n_substrate_cells"]
@@ -468,7 +471,9 @@ def profiles(rung: str, placement: str,
 def build_graded(rung: str, placement: str,
                  arm_length_m: float = case.ARM_LENGTH_M,
                  *, _mutate_draw_offset: float | None = None,
-                 _mutate_stub_short_m: float = 0.0
+                 _mutate_stub_short_m: float = 0.0,
+                 _mutate_probe_offset: int | None = None,
+                 _mutate_margin_cells: int | None = None
                  ) -> tuple[Simulation, tuple[np.ndarray, ...], dict]:
     """The notch filter on this arm's graded mesh.
 
@@ -483,10 +488,11 @@ def build_graded(rung: str, placement: str,
     the 31.75 um cell above the trace plane: the board solved carries 285.75 um
     of dielectric and the trace sheet is buried half a cell inside it.
 
-    The two ``_mutate_*`` arguments exist for the build test's deliberate
-    defects and are never used by :func:`run_arm`.
+    The ``_mutate_*`` arguments exist for the build test's deliberate defects
+    and are never used by :func:`run_arm`.
     """
-    x, y, z, b = profiles(rung, placement, arm_length_m)
+    x, y, z, b = profiles(rung, placement, arm_length_m,
+                          _mutate_margin_cells=_mutate_margin_cells)
     domain = tuple(float(node_positions_from_profile(p)[-1]) for p in (x, y, z))
     nd = b["node"]
 
@@ -516,7 +522,9 @@ def build_graded(rung: str, placement: str,
         sim.add_msl_port(position=(x_feed, nd["trace_y_centre_node"], 0.0),
                          width=_W, height=z_sheet, direction=direction,
                          impedance=case.PORT_IMPEDANCE_OHM,
-                         n_probe_offset=N_PROBE_OFFSET,
+                         n_probe_offset=(N_PROBE_OFFSET
+                                         if _mutate_probe_offset is None
+                                         else int(_mutate_probe_offset)),
                          n_probe_spacing=N_PROBE_SPACING, n_probes=N_PROBES)
     b = dict(b, domain_m=domain,
              drawn_trace_y_m=(y_lo_draw, y_hi_draw),
