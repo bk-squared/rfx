@@ -21,6 +21,8 @@ HELD_FACES = {
     "validation/crossval/06b_msl_notch_filter_uniform.py": [(1, "x-lo"), (1, "x-hi")],
     "validation/crossval/07_sheen_lpf.py": [(1, "x-lo"), (3, "x-hi")],
     "validation/tmtt_paper/msl_stub_notch_tuning.py": [(1, "x-lo"), (1, "x-hi")],
+    # Graded-mesh twin of the notch filter (#1191): trace entry 1, MSL ports at both ends.
+    "validation/research/multiband_nu/msl_notch_graded.py": [(1, "x-lo"), (1, "x-hi")],
 }
 
 

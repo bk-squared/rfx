@@ -122,6 +122,14 @@ def violations(sim, grid, arrays, poles, nodes, *, held_faces=()):
                     from rfx.geometry.smoothing import compute_inv_eps_tensor_diag
                     tensor = compute_inv_eps_tensor_diag(grid, dielectric_shapes=[],
                                                         pec_shapes=[shape], background_eps=1.)
+                smoothed = None
+                if any(key.startswith("smoothed_") for key in arrays):
+                    # The NU smoothed lane carries a conducting entry as an
+                    # eps_r = 1 shape; its influence footprint is where that
+                    # shape alone moves a background that is not 1.
+                    from rfx.geometry.smoothing import compute_smoothed_eps_nonuniform
+                    smoothed = compute_smoothed_eps_nonuniform(
+                        grid, [(shape, 1.0)], background_eps=2.)
                 counts = {}
                 for key in arrays:
                     support = None
@@ -133,6 +141,8 @@ def violations(sim, grid, arrays, poles, nodes, *, held_faces=()):
                         support = np.asarray(sheet.footprint)
                     elif key.startswith("tensor_") and tensor is not None:
                         support = np.asarray(tensor["xyz".index(key[-1])]) != 1.
+                    elif key.startswith("smoothed_") and smoothed is not None:
+                        support = np.asarray(smoothed["xyz".index(key[-1])]) != 2.
                     elif name.startswith("thin[") and key in ("eps_r", "sigma"):
                         tc = sim._thin_conductors[int(name[5:-1])]
                         if not tc.is_pec:
