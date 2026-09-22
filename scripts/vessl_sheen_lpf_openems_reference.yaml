@@ -221,6 +221,25 @@ run: |-
   echo "===== settling positive control (openEMS's own max-timesteps warning) ====="
   PHRASE="reached before the end-criteria of"
   settling_rc=0
+  # WHICH RULE APPLIES TO A REAL PASS DEPENDS ON WHAT THIS JOB ASKED FOR.
+  # Without ACCEPT_TRUNCATION a real pass must reach its end criterion, so the
+  # warning in a real log is a red. WITH it the record's length is DECLARED and
+  # a real pass is meant to stop at the cap, so the warning is what proves the
+  # cap was reached -- and its absence means that pass decayed early, which is
+  # not wrong, only shorter than declared. Runs 369367263406/407 wrote their
+  # records and then exited 4 on the old rule, which contradicted the flag they
+  # were submitted with. The `_2n` witness passes are real passes and are
+  # judged by the same rule. Smoke passes are unaffected either way: 200 steps
+  # at EndCriteria 0.0 can never converge, so their warning is what shows the
+  # phrase this control greps for is still the phrase openEMS prints.
+  if [ -n "${ACCEPT_TRUNCATION:-}" ]; then
+    REAL_RULE="must-carry (ACCEPT_TRUNCATION is set: a declared record length stops at the cap by design)"
+    REAL_RULE_TAG="must-carry"
+  else
+    REAL_RULE="must-not-carry (no ACCEPT_TRUNCATION: a real pass has to reach its end criterion)"
+    REAL_RULE_TAG="must-not-carry"
+  fi
+  echo "  rule: smoke passes must-carry; real passes $REAL_RULE"
   smoke_logs=$(find /tmp/sheen_lpf_openems -name "_openems_stdout.log" -path "*_smoke/*" 2>/dev/null || true)
   real_logs=$(find /tmp/sheen_lpf_openems -name "_openems_stdout.log" -not -path "*_smoke/*" 2>/dev/null || true)
   if [ -z "$smoke_logs" ]; then
@@ -236,15 +255,29 @@ run: |-
     fi
   done
   for f in $real_logs; do
-    if grep -q "$PHRASE" "$f"; then
-      echo "  RED  real    $f carries the max-timesteps warning -- that real pass was truncated"
-      settling_rc=4
+    if [ "$REAL_RULE_TAG" = "must-carry" ]; then
+      if grep -q "$PHRASE" "$f"; then
+        echo "  ok   real    $f was stopped by its declared cap, which is what --accept-truncation asked for"
+      else
+        case "$f" in
+          */stage_a/*)
+            echo "  note real    $f reached its end criterion -- EXPECTED: Stage A is the reproduce gate, it runs the tutorial at openEMS's own defaults and --accept-truncation never reaches it." ;;
+          *)
+            echo "  note real    $f reached its end criterion BEFORE the cap -- that record is SHORTER than declared, not wrong. Read its record_length_steps_basis and record_length_s." ;;
+        esac
+      fi
     else
-      echo "  ok   real    $f reached its end criteria"
+      if grep -q "$PHRASE" "$f"; then
+        echo "  RED  real    $f carries the max-timesteps warning -- that real pass was truncated"
+        settling_rc=4
+      else
+        echo "  ok   real    $f reached its end criteria"
+      fi
     fi
   done
-  echo "settling_positive_control_rc=$settling_rc"
+  echo "settling_positive_control_rc=$settling_rc (real-pass rule: $REAL_RULE_TAG, smoke-pass rule: must-carry)"
   echo "$settling_rc" > "$out/settling_control.rc"
+  echo "$REAL_RULE_TAG" > "$out/settling_control.real_rule"
 
   echo "===== record summary ====="
   if [ -f "$out/openems_sheen.${RUNG_TAG}_FAILED.json" ]; then
