@@ -1,0 +1,35 @@
+{
+  "status": "verified",
+  "source_commit": "e7f7e02704fd46ea7e21f127b19fc81cb66d6148",
+  "run_ids": {
+    "patch": "369367263411",
+    "waveguide": "369367263410",
+    "msl": "369367263409",
+    "plane": "369367263412"
+  },
+  "configurations_by_rig": {
+    "msl": 21,
+    "msl_low": 21,
+    "waveguide": 21,
+    "patch": 28,
+    "plane": 21
+  },
+  "sweep_solves": 196,
+  "sweep_timesteps": 3962714,
+  "plane_reference_solves": 2,
+  "plane_reference_timesteps": 8192,
+  "instrument_check_solves": 8,
+  "instrument_check_timesteps": 768,
+  "reflection_csvs": 21,
+  "frequencies_per_reflection_csv": 291,
+  "drivers_match_manifest": true,
+  "prior_report_unchanged": true,
+  "prior_report_sha256": "79334fc715bd866e056e07de9577d8206d6393c51f31718a8d27f17a76bad514",
+  "report_lines": 74,
+  "report_links_exist": true,
+  "worktree_absent": true,
+  "source_export_has_no_git": true,
+  "witnessed_dtype": "float32",
+  "field_probe_identity_checks": 4,
+  "energy_recomputation_absolute_tolerance_db": 1e-10
+}

@@ -56,7 +56,9 @@ Tables contain the recorded headline quantities. Linked tables additionally cont
 | 16 | -46.76 | -46.76 | -46.76 | -46.76 | -46.77 | -46.8 | -46.87 |
 | 6 | -44.94 | -44.94 | -44.94 | -44.92 | -44.89 | -44.8 | -44.67 |
 
-[Normal-incidence plane-wave box, 0.2–6 GHz — Maximum clean-reference |R| (dB)](TABLE_plane.md)
+LEADER'S NOTE (2026-09-22): the table below is the first-launch VARIANT instrument, superseded by REPORT_3.md item 1; its numbers are not cited (see `failed_instrument/`).
+
+[Normal-incidence plane-wave box, 0.2–6 GHz — Maximum clean-reference |R| (dB)](failed_instrument/TABLE_plane.md)
 
 | N \ s | 0 | 0.01 | 0.03 | 0.1 | 0.3 | 1 | 3 |
 |---|---|---|---|---|---|---|---|
@@ -65,7 +67,7 @@ Tables contain the recorded headline quantities. Linked tables additionally cont
 | 16 | -24.06 | -24.07 | -24.08 | -24.15 | -24.33 | -24.96 | -26.24 |
 
 **Energy witnesses.** Counts of configurations with at least one truncation-suspect drive: msl: 21/21; msl_low: 21/21; waveguide: 21/21; patch: 0/28; plane: 1/21. Every WR-90 source-end index equals the 6884-sample record length, so its post-source peak is undefined; end energy in joules and modal settling remain recorded. [All per-drive witnesses](WITNESSES_2.csv).
-**Plane frequencies.** [CROSSINGS_plane.csv](CROSSINGS_plane.csv) gives every interpolated −40/−60 dB crossing, sampled values below each threshold, and 0.05 s/(2π ε0). All 21 −60 dB crossing lists are empty; no sampled R is at or below −60 dB. Per-arm reflection CSVs each contain 291 frequencies (20 MHz spacing). A unique f_alpha is not assigned.
+**Plane frequencies.** [CROSSINGS_plane.csv](failed_instrument/CROSSINGS_plane.csv) gives every interpolated −40/−60 dB crossing, sampled values below each threshold, and 0.05 s/(2π ε0). All 21 −60 dB crossing lists are empty; no sampled R is at or below −60 dB. Per-arm reflection CSVs each contain 291 frequencies (20 MHz spacing). A unique f_alpha is not assigned.
 **Counts and checks.** 112/112 configurations returned complete records; 196 sweep solves, 3962714 sweep timesteps, plus 2×4096 plane-reference timesteps and 8×96 identity-check timesteps. All four GPU instrument checks report identical final field arrays and probe records with/without energy recording. Requested/received dtype: float32. CPML arrays and realized grids, pads and apertures are stored per solve; preflight text is verbatim. No CPU FDTD solve or repository test suite ran.
 **Commands and last lines.** [COMMANDS_2.md](COMMANDS_2.md). Four launches only; short provider reads; full available logs retained. The four first-launch runs remain referenced by `REPORT.md` and were retained under the reference-run exception. No runs were deleted.
 **Commit list and cleanup.** No commits created. The source export has no `.git`; the former worktree remains absent. The first-launch empty commit list remains in [commit_list.txt](commit_list.txt). Driver hash, provenance, 112-result, 21-spectrum, report-link and prior-report checks are recorded in [verification_2.json](verification_2.json).
