@@ -170,11 +170,19 @@ PORT_MARGIN = 2.5e-3        # port plane distance from the x boundary (> 2 h)
 # inside the feed's near field and dragged the argmin onto a spurious dip at
 # 7.22 GHz.  But 6 mm puts the deepest probe 953 µm (p1) and 874 µm (p2) from
 # the wide section's first step, against the λ_g/4 = 1676 µm the port preflight
-# asks for at 20 GHz — measured at h/2, where the preflight prints its own
-# compliant interval as 10-13 cells for p1 and 10-12 for p2, i.e. 3.97-5.16 mm.
-# 5.0 mm is inside that and still clear of the feed near field.  The realized
-# offset and every remaining probe-clearance finding are printed per rung; if a
-# finer rung's interval excludes 5.0 mm the run says so rather than tuning it.
+# asks for at 20 GHz, and the preflight warns on BOTH ports at h/2.
+#
+# What 5.0 mm does, measured, ON EACH RUNG — the realized offset and every
+# remaining probe-clearance finding are printed per rung, and a rung whose
+# window excludes 5.0 mm is reported rather than tuned:
+#
+#   * on the LADDER (h/3, h/5, h/7, h/12 = 19, 31, 44, 76 cells = 5.03, 4.92,
+#     4.99, 5.03 mm) the preflight leaves ZERO probe-clearance findings;
+#   * at h/2 — which is NOT a ladder rung — 5.0 mm rounds to 13 cells =
+#     5.161 mm and ONE finding is left, on p2 only: its deepest probe sits
+#     1668 µm from the wide section against the recommended 1676 µm, 8 µm
+#     short.  The preflight then prints a window for p2 only, [10, 12] cells =
+#     3.970-4.764 mm, and 13 cells is OUTSIDE it.  No window is printed for p1.
 PROBE_OFFSET_M = 5.0e-3
 
 
@@ -216,6 +224,24 @@ def probe_offset_cells(dx: float) -> int:
 # them; n = 2 is not, because two cells across the substrate is half what the
 # MSL port's own preflight asks for.
 #
+# THE RUNG CRITERION IS TRANSVERSE ROW EQUALITY, AND ONLY THAT.  Along x the
+# two feeds are not congruent on the two coarsest rungs, and rfx's own
+# preflight names it — "1 congruent-conductor group(s) realize to UNEQUAL PEC
+# edge sets on this lattice … 807 vs 790 edges … slide the lattice origin by
+# 80 µm".  Measured node COLUMNS and x strips, input / output feed (both
+# declared 12466.0 µm long):
+#
+#     h/3   48 / 47 columns   12704.0 / 12439.3 µm
+#     h/5   79 / 78 columns   12545.2 / 12386.4 µm
+#     h/7  110 / 110 columns  12477.1 / 12477.1 µm
+#     h/12 189 / 189 columns  12505.5 / 12505.5 µm
+#
+# So the judged rung (h/12) and its neighbour (h/7) are congruent on BOTH axes,
+# and the two coarsest rungs are asymmetric by one column along the direction
+# of propagation.  Every deviation above is inside one cell, which is what
+# ``assert_realized`` holds the feed length to; the column counts and x strips
+# are printed per rung beside the rows.  Nothing here is judged.
+#
 # h/3 IS below the documented MSL minimum too — the port preflight asks for at
 # least 4 normal intervals between ground and trace, and 3 is 3.  It is here as
 # the COARSEST RUNG OF A LADDER, the end a trend is measured from; nothing is
@@ -238,16 +264,19 @@ SWEEP_HZ = (FREQ_MIN_HZ, FREQ_MAX_HZ)
 
 # --- the record length ----------------------------------------------------
 # ``num_periods`` is in periods of ``freq_max`` (50 ps here).  MEASURED on this
-# board at h/2 on CPU, ring-down settling per driven run and the stopband null:
+# board at h/2 on CPU AT THE 5.0 mm PROBE OFFSET THIS CASE HOLDS (13 cells at
+# that rung), ring-down settling per driven run and the stopband null:
 #
-#     num_periods = 20   −22.14 / −22.26 dB   null 7.7654 GHz
-#     num_periods = 60   −61.84 / −62.38 dB   null 8.5350 GHz
-#     num_periods = 120  −108.21 / −108.70 dB null 8.5358 GHz
+#     num_periods = 20   −23.34 / −23.28 dB    null 7.7725 GHz
+#     num_periods = 60   −62.53 / −63.19 dB    null 8.5607 GHz
+#     num_periods = 120  −109.68 / −110.57 dB  null 8.5592 GHz
 #
 # 20 (the MSL notch filter case's value) does not ring this board down — the
-# retired script recorded the same thing, −24.7 / −24.3 dB — so it is raised to
-# the script's own 60, which meets the −40 dB rule with 22 dB to spare and puts
-# the null within 0.8 MHz of the doubled record.
+# retired script recorded the same thing at its own 6 mm offset, −24.7 /
+# −24.3 dB — so it is raised to the script's own 60, which meets the −40 dB
+# rule with 22 dB to spare and puts the null within 1.5 MHz of the doubled
+# record.  h/2 is not a ladder rung; it is the cheapest board on which this
+# question can be asked.
 NUM_PERIODS = 60.0
 
 # ------------------------------------------------------------ thresholds
@@ -261,12 +290,13 @@ DEEP_NULL_DB = -20.0     # a bin where either curve is below this is judged by
 # Witnesses on rfx's own record, not comparisons (rfx CLAUDE.md, Validation
 # rules): a record that has not rung down to −40 dB is truncation-suspect, and
 # a passive structure cannot scatter more power than it receives.  MEASURED at
-# h/2 with NUM_PERIODS = 60: settling −61.8 dB, excess 0.0053 inside the judged
-# band.  The excess is read over the JUDGED BAND, for the reason the record
-# gives for its own passivity witness (``meta.passivity_witness``): outside it
-# the record accounts for less than half the power it receives and rfx's own
-# raw extraction runs to 0.12 excess at 18.3 GHz, which is not a statement
-# about the band either curve is read on.
+# h/2 with NUM_PERIODS = 60 and the 5.0 mm probe offset: settling −62.53 /
+# −63.19 dB, excess 0.0039 inside the judged band.  The excess is read over the
+# JUDGED BAND, for the reason the record gives for its own passivity witness
+# (``meta.passivity_witness``): outside it the record accounts for less than
+# half the power it receives, and rfx's own raw extraction on the same run runs
+# to 0.787 excess (worst sigma_max 1.787) at 18.64 GHz — which is not a
+# statement about the band either curve is read on.
 SETTLING_DB = -40.0
 PASSIVITY_EXCESS_BAR = 0.01
 # The openEMS record is truncated by design and carries its own N/2N witness
@@ -391,6 +421,26 @@ def _build_input_feed_lifted(dx: float, cells: int) -> Simulation:
     sim.add(Box((-cells * dx, IN_FEED_YC - W_FEED / 2, tz),
                 (PATCH_X0 - cells * dx, IN_FEED_YC + W_FEED / 2, tz)),
             material="pec")
+    sim.add(Box((PATCH_X0, PATCH_Y_LO, tz),
+                (PATCH_X1, PATCH_Y_HI, tz)), material="pec")
+    sim.add(Box((PATCH_X1, OUT_FEED_YC - W_FEED / 2, tz),
+                (LX, OUT_FEED_YC + W_FEED / 2, tz)), material="pec")
+    _add_ports(sim, dx)
+    return sim
+
+
+def _build_input_feed_short(dx: float, cells: int) -> Simulation:
+    """The input feed started ``cells`` cells inside the board, its far end at
+    the wide section where :func:`build` puts it.
+
+    The joint is intact and the width is right; only the length is wrong, and
+    the port then drives a line that is not there for the first ``cells``·dx
+    of its run.
+    """
+    sim = _sim(dx)
+    tz = H_SUB
+    sim.add(Box((cells * dx, IN_FEED_YC - W_FEED / 2, tz),
+                (PATCH_X0, IN_FEED_YC + W_FEED / 2, tz)), material="pec")
     sim.add(Box((PATCH_X0, PATCH_Y_LO, tz),
                 (PATCH_X1, PATCH_Y_HI, tz)), material="pec")
     sim.add(Box((PATCH_X1, OUT_FEED_YC - W_FEED / 2, tz),
@@ -572,6 +622,25 @@ def assert_realized(sim: Simulation, dx: float) -> dict:
                 f"({dx*1e6:.2f}µm) from the declared {W_FEED*1e6:.0f}µm "
                 f"(node span {feed['y_node_span_m']*1e6:.1f}µm over "
                 f"{feed['n_rows']} rows).")
+    # And each feed's LENGTH along x. Without this a feed that starts well
+    # inside the board — past its own port plane — realizes the right width,
+    # joins the wide section and passes everything above, while the port drives
+    # a line that is not there for the first several millimetres.
+    for name, feed, declared in (
+        ("input", g["in_feed"], PATCH_X0),
+        ("output", g["out_feed"], LX - PATCH_X1),
+    ):
+        if abs(feed["x_strip_m"] - declared) > dx:
+            raise AssertionError(
+                f"dx={dx*1e6:.2f}µm: the {name} feed's realized length "
+                f"{feed['x_strip_m']*1e6:.1f}µm is more than one cell "
+                f"({dx*1e6:.2f}µm) from the declared {declared*1e6:.1f}µm "
+                f"(node span {feed['x_node_span_m']*1e6:.1f}µm over "
+                f"{feed['n_cols']} columns, x "
+                f"{feed['x_m'][0]*1e3:.4f}–{feed['x_m'][1]*1e3:.4f} mm). The "
+                "feed length is the matched 50 Ω line between the port plane "
+                "and the first step; a short one leaves the port driving a "
+                "line that is not there.")
     for name, got, declared in (
         ("x (propagation)", g["patch"]["x_strip_m"], PATCH_LEN_PROP),
         ("y (transverse)", g["patch"]["y_strip_m"], PATCH_TRV_LEN),
@@ -621,6 +690,18 @@ def _print_realized(g: dict, dx: float) -> None:
               f"{dec_x*1e6:9.1f}); y strip {s['y_strip_m']*1e6:9.1f} µm "
               f"(node span {s['y_node_span_m']*1e6:9.1f}, declared "
               f"{dec_y*1e6:9.1f})")
+    i, o = g.get("in_feed"), g.get("out_feed")
+    if i and o:
+        # The two feeds are one declared object. Row equality is what the rung
+        # criterion holds; the column counts are printed beside it because on
+        # some rungs they differ by one and rfx's own preflight names that as a
+        # congruent-conductor group realizing unequal PEC edge sets.
+        print(f"    the two 50 Ω feeds: rows {i['n_rows']} / {o['n_rows']} "
+              f"({'equal' if i['n_rows'] == o['n_rows'] else 'DIFFER'}); "
+              f"columns {i['n_cols']} / {o['n_cols']} "
+              f"({'equal' if i['n_cols'] == o['n_cols'] else 'differ'}); "
+              f"x strips {i['x_strip_m']*1e6:.1f} / {o['x_strip_m']*1e6:.1f} µm "
+              f"(declared {PATCH_X0*1e6:.1f} / {(LX-PATCH_X1)*1e6:.1f})")
     for name, key in (("input", "in"), ("output", "out")):
         if f"{key}_feed_joined" in g:
             on, total = g[f"{key}_feed_joint_edges"]
@@ -1041,7 +1122,9 @@ def test_sheen_lpf_matches_the_openems_tutorial_reference(tmp_path):
     # the distances below are still printed — they are the diagnostic the env
     # override exists for — and the test skips at the end instead of passing
     # or failing.
-    partial = len(rungs) < len(LADDER_M)
+    # Any rung set that is not the ladder itself, in order: a SUBSET is
+    # partial, and so is a same-length set of other cell sizes.
+    partial = tuple(rungs) != LADDER_M
     monotone = (all(b > a for a, b in zip(nulls, nulls[1:]))
                 or all(b < a for a, b in zip(nulls, nulls[1:])))
 
@@ -1215,6 +1298,16 @@ def test_the_lattice_builds_the_declared_board():
     print(f"\n  wide section drawn one cell short in x: {short.value}")
     assert "wide section's realized x" in str(short.value)
 
+    # The width, the joint and the wide section are all right here; only the
+    # length of the matched line between the port plane and the first step is
+    # wrong. 30 cells is 7.94 mm at this rung, so the feed starts well past its
+    # own port plane at 2.5 mm.
+    with pytest.raises(AssertionError) as feed_len:
+        assert_realized(_build_input_feed_short(dx, 30), dx)
+    print(f"\n  input feed started 30 cells inside the board edge, joint "
+          f"intact: {feed_len.value}")
+    assert "feed's realized length" in str(feed_len.value)
+
     with pytest.raises(AssertionError) as narrow:
         assert_realized(_build_input_feed_narrow(dx, 1), dx)
     print(f"\n  input feed drawn one cell narrower: {narrow.value}")
@@ -1374,7 +1467,13 @@ def test_the_reference_files_are_what_the_provenance_says():
               f"{rec['doublet']['lower']['parabolic_f_ghz']:.5f} / "
               f"{rec['doublet']['upper']['parabolic_f_ghz']:.5f} GHz")
         assert rec["max_energy_sum"] == pytest.approx(float(e.max()), abs=1e-9)
-        assert float(e.max()) < 0.8
+        # The record's own frozen maxima, the numbers PROVENANCE.md tabulates:
+        # 0.755176 on coarse and 0.660265 on mid. Pinned as values, so a
+        # re-derived or swapped record that conserves more power is caught
+        # rather than sliding under a round bound.
+        assert rec["max_energy_sum"] == pytest.approx(
+            {"coarse": 0.755176, "mid": 0.660265}[mesh], abs=1e-6)
+        assert rec["max_energy_sum"] < 1.0
         got = stopband_null(np.asarray(rec["freqs_ghz"], float) * 1e9,
                             rec["s21_mag"])
         assert got["f"] / 1e9 == pytest.approx(rec["null"]["parabolic_f_ghz"],
