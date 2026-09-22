@@ -1340,7 +1340,9 @@
         "dy_profile",
         "pec_faces",
         "pmc_faces",
-        "cpml_axes"
+        "cpml_axes",
+        "dt",
+        "dt_min_cell"
       ]
     },
     "make_ntff_box": {

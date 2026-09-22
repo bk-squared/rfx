@@ -714,6 +714,15 @@ CLASSIFICATION: dict[str, Entry] = {
         "in `run_pre()`/`run_post()`); the flip-acceptance script "
         "(issue683_flip_acceptance.py) imports this same builder",
         (Builder("build", None, (_v("nu-matched", nu=True, r_load=50.0),)),)),
+    "validation/research/metal_edge/m6_wire_port_ad.py": Entry(
+        "audited",
+        "M6 wire-port-on-a-traced-mesh oracle: `build(delta, pin_dt)` "
+        "returns the deformed patch Simulation with no solve call (the "
+        "solves live in `s11()` and in the AD/central-difference arms of "
+        "`run()`); the variant pinned here is the base point the derivative "
+        "is taken at",
+        (Builder("build", None, (
+            _v_from("delta_half_cell", lambda m: dict(delta=m.DELTA_0)),)),)),
     "validation/research/issue764_wireport_norm_falsifiers.py": Entry(
         "audited",
         "issue #764 falsifier battery: `build_fix_a()` returns Simulation "

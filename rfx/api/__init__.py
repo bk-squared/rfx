@@ -317,6 +317,28 @@ class Simulation(
     mode : str
         ``"3d"`` (default), ``"2d_tmz"`` (Ez, Hx, Hy), or
         ``"2d_tez"`` (Hz, Ex, Ey).
+    dt : float or None
+        Concrete time step (s) for the NON-UNIFORM lane, used instead of
+        the Courant step derived from the smallest cell. ``None`` (the
+        default) keeps the derived step and is byte-identical to before;
+        passing it without any of ``dz_profile`` / ``dx_profile`` /
+        ``dy_profile`` is refused, because the uniform lane derives its own
+        step in ``Grid.courant_dt``.
+
+        Why it exists: the derived step is a function of ``min(cell)``, so a
+        mesh that is a design variable moves ``dt`` as it deforms and every
+        observable read off the run carries the step change alongside the
+        geometry change. One pinned step makes a deformation sweep one board
+        at one step. A step above the Courant limit of the REALIZED cells is
+        refused, never clipped.
+    dt_min_cell : float or None
+        Smallest cell size (m) the caller's TRACED axes reach anywhere in
+        the family they will run. Required with ``dt`` when a profile is a
+        JAX tracer, because a tracer carries no host cell size for the
+        limit to be measured against at build time. Concrete axes are always
+        measured from their realized profile; a traced axis is measured
+        against this declared floor when the run builds its mesh, and the
+        run is refused if the realized cells fall below it.
     precision : str
         ``"float32"`` (default), ``"mixed"``, or ``"float64"``.  When
         ``"mixed"``, field arrays (E, H) use float16 for ~2x memory
@@ -412,6 +434,8 @@ class Simulation(
         dz_profile: np.ndarray | None = None,
         dx_profile: np.ndarray | None = None,
         dy_profile: np.ndarray | None = None,
+        dt: float | None = None,
+        dt_min_cell: float | None = None,
         precision: str = "float32",
         solver: str = "yee",
         adi_cfl_factor: float = 5.0,
@@ -610,6 +634,23 @@ class Simulation(
         self._dz_profile = dz_profile
         self._dx_profile = dx_profile
         self._dy_profile = dy_profile
+        # Pinned time step (non-uniform lane only). The Courant step is a
+        # function of the smallest cell, so a mesh that is a design variable
+        # moves the step with the deformation and every observable then
+        # carries the step change as well as the geometry change. Pinning one
+        # concrete step makes a deformation sweep one antenna at one step.
+        # None keeps the derived step, byte-identical.
+        if dt is not None and dz_profile is None and dx_profile is None \
+                and dy_profile is None:
+            raise ValueError(
+                "dt= pins the non-uniform lane's time step and needs at least "
+                "one of dz_profile / dx_profile / dy_profile; the uniform "
+                "lane derives its step in Grid.courant_dt."
+            )
+        if dt is None and dt_min_cell is not None:
+            raise ValueError("dt_min_cell= has no effect without dt=")
+        self._dt_pin = dt
+        self._dt_min_cell = dt_min_cell
         self._precision = precision
         self._solver = solver
         self._adi_cfl_factor = adi_cfl_factor

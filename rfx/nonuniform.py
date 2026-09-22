@@ -617,6 +617,43 @@ def e_node_dual_spacing_at(profile_full, k: int):
     return 0.5 * (profile_full[k - 1] + profile_full[k])
 
 
+def port_metric_axes(grid):
+    """The three cell-size arrays a port sizes itself on, each with a flag
+    saying whether it has a host value.
+
+    Returns ``((dx, x_host), (dy, y_host), (dz, z_host))``.
+
+    A CONCRETE x/y axis comes back as the float64 host copy — the same
+    numbers :func:`_build_wp_meta` reads — so the termination conductance,
+    the Ampere-loop weights and the gap-voltage line integral are sized on
+    one set of numbers rather than three roundings of it. z is never
+    converted: ``grid.dz`` is already the float32 array both sites index,
+    and a float64 round trip would move the last bits of every shipped
+    non-uniform port.
+
+    A TRACED axis comes back untouched, so the cell sizes at the port's own
+    cells keep their gradient. That is the whole point: when the mesh is the
+    design variable, the port's cells change size with the deformation, and
+    a port sized on a host copy of the nominal mesh drops that term out of
+    the derivative while the physics keeps it.
+    """
+    dx_arr = grid.dx_arr
+    dy_arr = grid.dy_arr
+    x_traced, y_traced = is_tracer(dx_arr), is_tracer(dy_arr)
+    return (
+        (dx_arr if x_traced else np.asarray(dx_arr, dtype=np.float64),
+         not x_traced),
+        (dy_arr if y_traced else np.asarray(dy_arr, dtype=np.float64),
+         not y_traced),
+        (grid.dz, not is_tracer(grid.dz)),
+    )
+
+
+def port_metric(value, host):
+    """``float(value)`` on an axis with a host value, the tracer itself
+    otherwise. Keeps the concrete spelling byte-for-byte what it was."""
+    return float(value) if host else value
+
 
 def _waveguide_port_axis_metrics(grid, cfg):
     """``(dx_h, dx_e)`` for one waveguide port: the metric each half of its
@@ -684,6 +721,112 @@ def _waveguide_port_axis_metrics(grid, cfg):
     return float(cells[h_plane]), float(duals[e_plane])
 
 
+def _pinned_dt(dt_pin, dt_min_cell, profiles, axis_names,
+               where="make_nonuniform_grid") -> float:
+    """Validate a caller-pinned time step against the REALIZED Courant limit.
+
+    The limit is ``1 / (c0 * sqrt(sum_a 1/d_a_min^2))`` with ``d_a_min`` the
+    smallest cell on axis ``a``. Every axis whose profile is concrete
+    contributes its realized minimum, measured off the padded profile the
+    grid actually carries. A traced axis has no host value at trace time, so
+    it contributes ``dt_min_cell`` — the caller's declared floor for that
+    axis — and ``dt_min_cell`` is REQUIRED as soon as one axis is traced.
+
+    The step is refused, not clipped: a silently shortened step would run a
+    different physics problem from the one the caller pinned, and the whole
+    point of pinning is that every member of a deformation family shares one
+    step.
+    """
+    if is_tracer(dt_pin):
+        raise ValueError(
+            f"{where}(dt=...) must be a concrete float; a traced "
+            "dt puts the time step itself into the derivative, which is the "
+            "thing pinning it is meant to remove."
+        )
+    dt_val = float(dt_pin)
+    if not np.isfinite(dt_val) or dt_val <= 0.0:
+        raise ValueError(
+            f"{where}(dt=...) must be finite and positive, got "
+            f"{dt_pin!r}."
+        )
+    traced_axes = [n for n, p in zip(axis_names, profiles) if is_tracer(p)]
+    if traced_axes and dt_min_cell is None:
+        raise ValueError(
+            f"{where}(dt={dt_val:.6e}) with a traced "
+            f"{'/'.join(traced_axes)} profile also needs dt_min_cell=: a "
+            "tracer carries no host cell size, so the Courant limit of the "
+            "realized mesh cannot be measured here. Pass the smallest cell "
+            "the traced axes reach anywhere in the family you will run."
+        )
+    if dt_min_cell is not None:
+        if is_tracer(dt_min_cell) or not np.isfinite(float(dt_min_cell)) \
+                or float(dt_min_cell) <= 0.0:
+            raise ValueError(
+                f"{where}(dt_min_cell=...) must be a concrete "
+                f"positive float (m), got {dt_min_cell!r}."
+            )
+    inv_sq = 0.0
+    realized = {}
+    for name, prof in zip(axis_names, profiles):
+        if is_tracer(prof):
+            d_min = float(dt_min_cell)
+            realized[name] = (d_min, "declared")
+        else:
+            d_min = float(np.min(np.asarray(prof, dtype=np.float64)))
+            realized[name] = (d_min, "realized")
+        inv_sq += 1.0 / d_min ** 2
+    limit = 1.0 / (C0 * np.sqrt(inv_sq))
+    if dt_val > limit:
+        detail = ", ".join(
+            f"{n} {realized[n][0] * 1e3:.6g} mm ({realized[n][1]})"
+            for n in axis_names)
+        raise ValueError(
+            f"{where}(dt={dt_val:.6e} s) exceeds the Courant "
+            f"limit {limit:.6e} s of the smallest cells [{detail}] — the run "
+            f"would diverge. Ratio dt/limit = {dt_val / limit:.4f}."
+        )
+    # A DECLARED floor is a claim about cells nobody has measured yet. Declare
+    # it too large and the check above passes on a mesh whose smallest cell is
+    # actually below the pinned step: the fields then diverge to NaN with
+    # nothing said, while the same profile handed over concretely is refused
+    # here. Measure the claim against the realized cells when they arrive.
+    for name, prof in zip(axis_names, profiles):
+        if is_tracer(prof):
+            _assert_declared_floor_at_runtime(prof, float(dt_min_cell), name,
+                                              dt_val, limit)
+    return dt_val
+
+
+def _assert_declared_floor_at_runtime(profile_full, declared_min, axis,
+                                      dt_val, limit) -> None:
+    """Check a traced axis's REALIZED smallest cell against the floor the
+    caller declared, at the moment the values exist.
+
+    A tracer carries no value at trace time, so the host-side check in
+    :func:`_pinned_dt` can only compare the caller's number with itself. This
+    stages a host callback that runs when the mesh does, reads
+    ``min(realized cells)`` and raises if it is below the declared floor. The
+    message names both numbers and the step they were checked against; under
+    ``jax.jit`` it arrives wrapped in the runtime's callback error, which is
+    still the message rather than a silent NaN.
+    """
+    def _check(realized_min):
+        realized = float(realized_min)
+        if realized < declared_min * (1.0 - 1e-9):
+            raise ValueError(
+                f"dt_min_cell={declared_min * 1e3:.6g} mm was declared for "
+                f"the traced {axis} profile, but the mesh this run built has "
+                f"a smallest {axis} cell of {realized * 1e3:.6g} mm. The "
+                f"pinned dt={dt_val:.6e} s was checked against the declared "
+                f"floor (Courant limit {limit:.6e} s there) and is not "
+                f"guaranteed stable on the realized mesh — the fields would "
+                "diverge with nothing said. Declare the smallest cell the "
+                "deformation family actually reaches, or shorten dt."
+            )
+
+    jax.debug.callback(_check, jnp.min(jnp.asarray(profile_full)))
+
+
 def make_nonuniform_grid(
     domain_xy: tuple[float, float],
     dz_profile: np.ndarray,
@@ -695,6 +838,9 @@ def make_nonuniform_grid(
     pec_faces: set[str] | None = None,
     pmc_faces: set[str] | None = None,
     cpml_axes: str = "xyz",
+    dt: float | None = None,
+    dt_min_cell: float | None = None,
+    dt_caller: str | None = None,
 ) -> NonUniformGrid:
     """Create a non-uniform Yee grid.
 
@@ -724,6 +870,25 @@ def make_nonuniform_grid(
         Axes that participate in CPML allocation (default ``"xyz"``).
         Per-face allocation still applies; an axis absent from
         ``cpml_axes`` gets pad=0 on both faces.
+    dt : float or None
+        Concrete time step (s) to use INSTEAD of the Courant step this
+        builder derives from ``min(cell)``. ``None`` (default) keeps the
+        derived step and is byte-identical to the historical behaviour.
+
+        Why it exists: the derived step is a function of the smallest
+        cell, so a mesh that is a design variable moves ``dt`` with the
+        deformation, and every observable read off the run then carries
+        the step change as well as the geometry change. Pinning one step
+        across a deformation family makes the sweep one antenna at one
+        step. The value must be CONCRETE — a traced ``dt`` would put the
+        step itself in the derivative.
+    dt_min_cell : float or None
+        Smallest cell size (m) the caller's TRACED axes reach anywhere in
+        the family they will run. Required with ``dt`` when any profile is
+        a tracer, because a tracer carries no host value to measure the
+        realized Courant limit against. Concrete axes are always measured
+        from their realized profile; this declared number is used only for
+        the axes that cannot be.
     """
     _pec = pec_faces or set()
     _pmc = pmc_faces or set()
@@ -806,6 +971,8 @@ def make_nonuniform_grid(
     nz = int(dz_full.shape[0])
 
     # --- CFL from minimum cell size on every axis ---
+    dt_pin = dt
+
     def _axis_min(d_full):
         return jnp.min(d_full) if is_tracer(d_full) else float(np.min(d_full))
 
@@ -821,6 +988,10 @@ def make_nonuniform_grid(
         dt = float(
             0.99 / (C0 * np.sqrt(1 / dx_min ** 2 + 1 / dy_min ** 2 + 1 / dz_min ** 2))
         )
+    if dt_pin is not None:
+        dt = _pinned_dt(dt_pin, dt_min_cell,
+                        (dx_full, dy_full, dz_full), ("x", "y", "z"),
+                        where=dt_caller or "make_nonuniform_grid")
 
     # --- Per-cell arrays + inverse spacings ---
     dx_arr = jnp.asarray(dx_full, dtype=jnp.float32)
@@ -908,6 +1079,54 @@ def _nominal_edges_or_actual(
     return _interior_line_positions(np.asarray(d_arr), pad_lo, pad_hi)
 
 
+def _assert_traced_index_matches_realized(
+    d_arr, total_pad: int, pad_lo: int, pos: float, nominal_idx: int,
+    axis: str,
+) -> None:
+    """The node a coordinate names must be the same node on the mesh the run
+    actually builds.
+
+    On a traced axis the index above is resolved against a UNIFORM reference
+    mesh of the boundary cell size, because a tracer has no host node line to
+    measure against. That reference is the realized mesh only where the
+    declared nominal profile is itself uniform up to the queried coordinate.
+    Where it is not — a graded band, a fine window — the same declared
+    position names one node concretely and a different node under tracing, so
+    the traced run feeds or probes a different point of the board than the
+    concrete run of the same script. Silently.
+
+    A tracer has values at RUN time, so the comparison is made there: the
+    realized cumulative edges pick their own nearest node and the callback
+    refuses when the two disagree, naming both. Nothing is raised while the
+    two agree, which is the case a deformation that keeps its outer node
+    lines fixed (the mesh-as-design-variable pattern) is in.
+    """
+    n_total = int(d_arr.shape[0])
+    pad_hi = total_pad - pad_lo
+    if n_total - total_pad <= 0:
+        return
+    interior = jnp.asarray(d_arr)[pad_lo:n_total - pad_hi]
+    edges = jnp.concatenate(
+        [jnp.zeros((1,), dtype=interior.dtype), jnp.cumsum(interior)])
+    realized_idx = jnp.argmin(jnp.abs(edges - float(pos)))
+
+    def _check(realized):
+        realized = int(realized)
+        if realized != int(nominal_idx):
+            raise ValueError(
+                f"position {pos:.9g} m on the traced {axis} axis resolves to "
+                f"interior node {nominal_idx} on the nominal uniform mesh "
+                f"this lane must use for a structural index, but to node "
+                f"{realized} on the mesh the run built. The two runs would "
+                f"place this source / probe / port at different points of the "
+                f"board. Declare the {axis} deformation so the node lines "
+                "outside it do not move (stretch and shrink inside a window), "
+                "or give the position by node index."
+            )
+
+    jax.debug.callback(_check, realized_idx)
+
+
 def z_position_to_index(grid: NonUniformGrid, z_phys: float) -> int:
     """Convert physical z-coordinate to (cpml-offset) grid index."""
     edges = _nominal_edges_or_actual(
@@ -915,6 +1134,10 @@ def z_position_to_index(grid: NonUniformGrid, z_phys: float) -> int:
         pad_lo=grid.pad_z_lo, fallback_dx=float(grid.dx),
     )
     idx = int(np.argmin(np.abs(edges - float(z_phys))))
+    if is_tracer(grid.dz):
+        _assert_traced_index_matches_realized(
+            grid.dz, grid.pad_z_lo + grid.pad_z_hi, grid.pad_z_lo,
+            float(z_phys), idx, "z")
     return idx + grid.pad_z_lo
 
 
@@ -924,6 +1147,7 @@ def _axis_position_to_index(
     pad_hi: int,
     pos: float,
     fallback_dx: float | None = None,
+    axis: str = "this",
 ) -> int:
     """Generic non-uniform axis lookup.
 
@@ -935,6 +1159,9 @@ def _axis_position_to_index(
         d_arr, pad_lo + pad_hi, pad_lo=pad_lo, fallback_dx=fallback_dx,
     )
     idx = int(np.argmin(np.abs(edges - float(pos))))
+    if is_tracer(d_arr):
+        _assert_traced_index_matches_realized(
+            d_arr, pad_lo + pad_hi, pad_lo, float(pos), idx, axis)
     return idx + pad_lo
 
 
@@ -948,11 +1175,11 @@ def position_to_index(grid: NonUniformGrid, pos: tuple[float, float, float]) -> 
     """
     i = _axis_position_to_index(
         grid.dx_arr, grid.pad_x_lo, grid.pad_x_hi, pos[0],
-        fallback_dx=float(grid.dx),
+        fallback_dx=float(grid.dx), axis="x",
     )
     j = _axis_position_to_index(
         grid.dy_arr, grid.pad_y_lo, grid.pad_y_hi, pos[1],
-        fallback_dx=float(grid.dy),
+        fallback_dx=float(grid.dy), axis="y",
     )
     k = z_position_to_index(grid, pos[2])
     return (i, j, k)
@@ -1858,11 +2085,15 @@ def _build_wp_meta(wire_ports, grid):
       DUAL    (d[idx-1]+d[idx])/2    -> the Ampere-loop legs, each weighted
                                         by the dual spacing on that H
                                         component's own axis.
-    x/y stay float() as before (np.asarray already refuses a traced xy
-    profile here); the z metrics are indexed without np.asarray so a traced
-    dz_profile keeps its gradient through the extractor. `excite` and
-    `direction` are carried for the post-processing; `direction` no longer
-    enters the wave split (issue #673).
+    A CONCRETE x/y axis stays float() as before; a TRACED one keeps its
+    tracer, so the V and I the scan records are weighted by the port cells'
+    own sizes on the mesh being solved rather than by a host copy of the
+    nominal one. The z metrics were already indexed without np.asarray for
+    the same reason. Which axis is which comes from
+    :func:`port_metric_axes`, the same decision the assembly makes for the
+    termination conductance — the two must agree or V/I does not close.
+    `excite` and `direction` are carried for the post-processing;
+    `direction` no longer enters the wave split (issue #673).
 
     Slot order (guarded by
     tests/unit/nonuniform/test_nonuniform_source_port_dual_spacing.py):
@@ -1882,18 +2113,18 @@ def _build_wp_meta(wire_ports, grid):
     Slots 13/14 feed the whole-port gap voltage
     V_port = sum_live(-E_c * d_par,c) — the #672 PRIMAL family, per cell.
     """
-    _dx_arr_np = np.asarray(grid.dx_arr, dtype=np.float64)
-    _dy_arr_np = np.asarray(grid.dy_arr, dtype=np.float64)
+    (_dx_arr_np, _x_host), (_dy_arr_np, _y_host), (_dz_m, _z_host) = \
+        port_metric_axes(grid)
 
     def _d_par(cell, comp):
         ci, cj, ck = cell
         if comp == "ex":
-            return float(_dx_arr_np[ci])
+            return port_metric(_dx_arr_np[ci], _x_host)
         if comp == "ey":
-            return float(_dy_arr_np[cj])
+            return port_metric(_dy_arr_np[cj], _y_host)
         # ez: index grid.dz WITHOUT np.asarray so a traced dz_profile
         # keeps its gradient through the extractor.
-        return grid.dz[ck]
+        return _dz_m[ck]
 
     meta = []
     for wp in wire_ports:
@@ -1906,14 +2137,16 @@ def _build_wp_meta(wire_ports, grid):
         meta.append((
             wp['mid_i'], wp['mid_j'], wp['mid_k'],
             comp, wp['impedance'],
-            float(_dx_arr_np[wp['mid_i']]),
-            float(_dy_arr_np[wp['mid_j']]),
+            port_metric(_dx_arr_np[wp['mid_i']], _x_host),
+            port_metric(_dy_arr_np[wp['mid_j']], _y_host),
             bool(wp.get('excite', True)),
             str(wp.get('direction', '-x')),
-            float(e_node_dual_spacing_at(_dx_arr_np, wp['mid_i'])),
-            float(e_node_dual_spacing_at(_dy_arr_np, wp['mid_j'])),
-            grid.dz[wp['mid_k']],
-            e_node_dual_spacing_at(grid.dz, wp['mid_k']),
+            port_metric(e_node_dual_spacing_at(_dx_arr_np, wp['mid_i']),
+                        _x_host),
+            port_metric(e_node_dual_spacing_at(_dy_arr_np, wp['mid_j']),
+                        _y_host),
+            _dz_m[wp['mid_k']],
+            e_node_dual_spacing_at(_dz_m, wp['mid_k']),
             live_cells,
             tuple(_d_par(c, comp) for c in live_cells),
         ))

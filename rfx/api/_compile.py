@@ -868,6 +868,9 @@ class _CompileMixin:
                 ax for ax in "xyz"
                 if ax not in (self._periodic_axes or "")
             ),
+            dt=getattr(self, "_dt_pin", None),
+            dt_min_cell=getattr(self, "_dt_min_cell", None),
+            dt_caller="Simulation",
         )
 
     def _assemble_materials_nu(

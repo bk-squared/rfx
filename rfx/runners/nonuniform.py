@@ -22,6 +22,8 @@ from rfx.nonuniform import (
     e_node_dual_spacings,
     interior_cells,
     make_nonuniform_grid,
+    port_metric,
+    port_metric_axes,
     run_nonuniform,
     run_nonuniform_until_decay,
     make_current_source,
@@ -109,6 +111,9 @@ def build_nonuniform_grid(
     pec_faces: set[str] | None = None,
     pmc_faces: set[str] | None = None,
     cpml_axes: str = "xyz",
+    dt: float | None = None,
+    dt_min_cell: float | None = None,
+    dt_caller: str | None = None,
 ) -> NonUniformGrid:
     """Build a NonUniformGrid from per-axis profiles.
 
@@ -116,6 +121,8 @@ def build_nonuniform_grid(
     corresponding axis is uniform with spacing ``dx`` across
     ``domain``. ``pec_faces`` / ``pmc_faces`` force per-face pad=0 on
     the listed faces (PMC+CPML composition fix on the NU path, 2026-04).
+    ``dt`` / ``dt_min_cell`` pin a concrete time step across a mesh
+    deformation family — see :func:`rfx.nonuniform.make_nonuniform_grid`.
     """
     if dx is None:
         dx = C0 / freq_max / 20.0
@@ -139,6 +146,7 @@ def build_nonuniform_grid(
             domain_xy, dz_profile, dx, cpml_layers,
             dx_profile=dx_profile, dy_profile=dy_profile,
             pec_faces=pec_faces, pmc_faces=pmc_faces, cpml_axes=cpml_axes,
+            dt=dt, dt_min_cell=dt_min_cell, dt_caller=dt_caller,
         )
 
 
@@ -828,6 +836,9 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             ax for ax in "xyz"
             if ax not in (sim._periodic_axes or "")
         ),
+        dt=getattr(sim, "_dt_pin", None),
+        dt_min_cell=getattr(sim, "_dt_min_cell", None),
+        dt_caller="Simulation",
     )
     _sheet_specs: list = []
     _pec_sheets: list = []
@@ -1046,15 +1057,19 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             # float64 so these are the SAME numbers the extractor reads at
             # rfx/nonuniform.py (`_dx_arr_np`/`_dy_arr_np`, both float64).
             # sigma and I must be sized on one set of metrics. Bit-identical
-            # on a uniform profile.
-            _dx_np = np.asarray(grid.dx_arr, dtype=np.float64)
-            _dy_np = np.asarray(grid.dy_arr, dtype=np.float64)
+            # on a uniform profile. A TRACED axis stays a tracer instead —
+            # ``port_metric_axes`` is the one place that decides which.
+            (_dx_np, _x_host), (_dy_np, _y_host), (_dz_m, _z_host) = \
+                port_metric_axes(grid)
             for (ci, cj, ck), live in zip(_cells_ijk, live_flags):
-                dxi = float(_dx_np[ci])
-                dyj = float(_dy_np[cj])
-                dual_xi = float(e_node_dual_spacing_at(_dx_np, ci))
-                dual_yj = float(e_node_dual_spacing_at(_dy_np, cj))
-                dual_zk = float(e_node_dual_spacing_at(grid.dz, ck))
+                dxi = port_metric(_dx_np[ci], _x_host)
+                dyj = port_metric(_dy_np[cj], _y_host)
+                dual_xi = port_metric(
+                    e_node_dual_spacing_at(_dx_np, ci), _x_host)
+                dual_yj = port_metric(
+                    e_node_dual_spacing_at(_dy_np, cj), _y_host)
+                dual_zk = port_metric(
+                    e_node_dual_spacing_at(_dz_m, ck), _z_host)
                 # 3D wire port: σ = n_live * d_parallel / (Z0 * d_perp1 * d_perp2)
                 # Each LIVE cell in the wire carries 1/n_live of total
                 # impedance Z0 (issue #318 — dead cells excluded).
@@ -1071,7 +1086,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 # too small a conductance on a 2:1 step on both).
                 if live:
                     if axis == 2:
-                        d_cell = float(grid.dz[ck])
+                        d_cell = port_metric(_dz_m[ck], _z_host)
                         dp1, dp2 = dual_xi, dual_yj
                     elif axis == 1:
                         d_cell = dyj
@@ -1113,8 +1128,14 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                     src = make_current_source(
                         grid, cell_ijk, pe.component,
                         pe.waveform, sizing_n, materials_concrete)
-                    # Scale by 1/n_live for distributed excitation
-                    scaled_wf = np.array(src[4]) / n_live
+                    # Scale by 1/n_live for distributed excitation. A traced
+                    # source table stays traced: on a mesh design variable
+                    # the injected current moment is normalized by the port
+                    # cell's own control volume (#672), so the table carries
+                    # a real term of the derivative.
+                    _wf = src[4]
+                    scaled_wf = (_wf if is_tracer(_wf) else np.array(_wf)) \
+                        / n_live
                     sources.append(
                         (src[0], src[1], src[2], src[3], scaled_wf))
 
@@ -1137,13 +1158,13 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         else:
             # Single-cell lumped port
             i, j, k = idx
-            _dx_np = np.asarray(grid.dx_arr, dtype=np.float64)
-            _dy_np = np.asarray(grid.dy_arr, dtype=np.float64)
-            dxi = float(_dx_np[i])
-            dyj = float(_dy_np[j])
-            dual_xi = float(e_node_dual_spacing_at(_dx_np, i))
-            dual_yj = float(e_node_dual_spacing_at(_dy_np, j))
-            dual_zk = float(e_node_dual_spacing_at(grid.dz, k))
+            (_dx_np, _x_host), (_dy_np, _y_host), (_dz_m, _z_host) = \
+                port_metric_axes(grid)
+            dxi = port_metric(_dx_np[i], _x_host)
+            dyj = port_metric(_dy_np[j], _y_host)
+            dual_xi = port_metric(e_node_dual_spacing_at(_dx_np, i), _x_host)
+            dual_yj = port_metric(e_node_dual_spacing_at(_dy_np, j), _y_host)
+            dual_zk = port_metric(e_node_dual_spacing_at(_dz_m, k), _z_host)
             # 3D lumped port: σ = d_parallel / (Z0 * d_perp1 * d_perp2)
             # This ensures correct power dissipation P = V²/Z0 in
             # anisotropic cells where dz ≠ dx.  The old formula
@@ -1161,7 +1182,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             axis_map = {"ex": 0, "ey": 1, "ez": 2}
             port_axis = axis_map[pe.component]
             if port_axis == 2:
-                d_parallel = float(grid.dz[k])
+                d_parallel = port_metric(_dz_m[k], _z_host)
                 d_perp1, d_perp2 = dual_xi, dual_yj
             elif port_axis == 1:
                 d_parallel = dyj
