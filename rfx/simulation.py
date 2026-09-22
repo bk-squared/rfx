@@ -23,7 +23,6 @@ from rfx.core.yee import (
     precompute_coeffs, update_he_fast,
 )
 from rfx.boundaries.pec import (
-    apply_pec,
     resolve_wall_faces,
     apply_pec_edges,
     apply_pec_faces,
@@ -2511,6 +2510,9 @@ def run(
     _fast_eligible = (
         not _ctx["use_cpml"]
         and not _ctx["use_upml"]
+        # the baked step applies no per-face masks after its H update, so a
+        # magnetic wall would be neither electric nor magnetic there (#1164)
+        and not _ctx["use_pmc_faces"]
         and not _ctx["use_tfsf"]
         and not _ctx["use_debye"]
         and not _ctx["use_lorentz"]

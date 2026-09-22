@@ -18,6 +18,8 @@ per-axis inverse spacing arrays. Fully JIT-compiled via jax.lax.scan.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from typing import NamedTuple
 
 import jax
@@ -29,7 +31,7 @@ from rfx.core.yee import (
     update_h_nu, update_e_nu, EPS_0, MU_0,
 )
 from rfx.boundaries.pec import (
-    apply_pec,
+    apply_pec_faces,
     apply_pec_edges,
     apply_pec_occupancy,
     realized_pec_edge_masks,
@@ -2303,8 +2305,15 @@ def _build_nu_scan(
     # that relied on the mirror plane was running with an effectively
     # free boundary. Frozen set gives JIT cache a stable hash; empty
     # set short-circuits the apply to a no-op.
-    use_pmc_faces = bool(pmc_faces)
-    _pmc_faces_frozen = frozenset(pmc_faces) if pmc_faces else frozenset()
+    # The electric walls, per face, by the one rule the uniform scan uses
+    # (#1164): the NU grid carries no face attributes, so the declared sets
+    # threaded in from the caller stand in for them. With no magnetic face
+    # this is the six faces ``apply_pec`` zeroed before, plane for plane.
+    from rfx.boundaries.pec import resolve_wall_faces as _resolve_walls
+    _pec_faces_frozen, _pmc_faces_frozen = _resolve_walls(
+        SimpleNamespace(pec_faces=set(pec_faces or ()), pmc_faces=set(pmc_faces or ())),
+        (False, False, False), None)
+    use_pmc_faces = bool(_pmc_faces_frozen)
 
     # #931 §1.7: realize the PEC edges ONCE here.  The NU stepper installs
     # no periodic BC at all and NU grids are 3-D, so the non-periodic #689
@@ -2598,8 +2607,8 @@ def _build_nu_scan(
                                          materials=materials,
                                          inv_eps_r_update=_cpml_inv_eps_r)
 
-        # PEC
-        st = apply_pec(st)
+        # PEC, per face (#1164)
+        st = apply_pec_faces(st, _pec_faces_frozen)
         if use_pec_edges:
             st = apply_pec_edges(st, pec_edge_masks)
         if use_pec_occupancy:

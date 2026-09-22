@@ -870,10 +870,19 @@ def _build_full_scan_fn(
         for axis_name, is_periodic in zip(axis_names, periodic):
             if is_periodic:
                 cpml_axes = cpml_axes.replace(axis_name, "")
+        # The walls by the one per-face rule (#1164). These scan bodies have
+        # no H-side hook for a magnetic face, so a PMC declaration is refused
+        # here rather than shorted by an axis wall.
+        from rfx.boundaries.pec import resolve_wall_faces as _resolve_walls
+        pec_faces_vm, pmc_faces_vm = _resolve_walls(grid, periodic, None)
+        if pmc_faces_vm:
+            raise NotImplementedError(
+                "vmap_sweep: a magnetic (pmc) boundary face is not supported on "
+                f"the vmapped lane (faces {sorted(pmc_faces_vm)}); use run() or "
+                "forward() per design, or declare the face pec/cpml.")
         pec_axes = "".join(
-            axis_name for axis_name, is_periodic in zip(axis_names, periodic)
-            if not is_periodic
-        )
+            a for a in "xyz"
+            if f"{a}_lo" in pec_faces_vm and f"{a}_hi" in pec_faces_vm)
 
         if boundary == "cpml":
             # CPML requires its own state management.  For the vmapped path,

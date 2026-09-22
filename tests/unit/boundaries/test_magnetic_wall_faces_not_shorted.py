@@ -117,3 +117,66 @@ def test_axis_string_cannot_put_an_electric_wall_over_a_magnetic_face():
     raw = Grid(freq_max=10e9, domain=(4e-3, 2e-3, 2e-3), dx=DX, cpml_layers=0)
     pec, pmc = resolve_wall_faces(raw, (False, False, False), None)
     assert len(pec) == 6 and not pmc
+
+
+# ---------------------------------------------------------------------------
+# Port-free witness on every lane that carries the rule
+# ---------------------------------------------------------------------------
+
+def _plane_source_box(**kwargs):
+    """A one-cell-wide channel (magnetic y faces) with an Ez source and an Ez
+    probe ON the y = 0 node plane. A magnetic wall leaves E_tan on its plane
+    alive; an axis-wide electric wall zeroes it every step and the probe
+    reads exactly 0.0 for the whole run (measured on main: 0.0 on all three
+    lanes; 6.75 / 6.75 / 7.36 V/m with the per-face rule)."""
+    sim = Simulation(freq_max=10e9, domain=(6 * DX, DX, DX), dx=DX,
+                     boundary=BoundarySpec(x=Boundary(lo="pmc", hi="pmc"),
+                                           y=Boundary(lo="pmc", hi="pmc"),
+                                           z=Boundary(lo="pec", hi="pec")),
+                     **kwargs)
+    sim.add_source((2 * DX, 0.0, 0.5 * DX), "ez", amplitude_kind="field",
+                   waveform=GaussianPulse(f0=5e9, bandwidth=1.0))
+    sim.add_probe((4 * DX, 0.0, 0.5 * DX), "ez")
+    return sim
+
+
+@pytest.mark.parametrize("lane", ["forward", "run", "nonuniform"])
+def test_a_source_on_a_magnetic_wall_plane_is_not_zeroed(lane):
+    if lane == "nonuniform":
+        sim = _plane_source_box(dx_profile=np.array([1.0, 1.1, 1.0, 0.9, 1.0, 1.0]) * DX)
+        res = sim.forward(n_steps=200, skip_preflight=True)
+    elif lane == "forward":
+        res = _plane_source_box().forward(n_steps=200, skip_preflight=True)
+    else:
+        res = _plane_source_box().run(n_steps=200, skip_preflight=True)
+    peak = float(np.abs(np.asarray(res.time_series)).max())
+    assert peak > 1.0, peak
+
+
+def test_two_spellings_of_a_closed_2d_box_agree():
+    """In 2-D TMz the z axis is one cell and Ez IS the field; on main an
+    all-PEC BoundarySpec put z_hi in ``grid.pec_faces`` and the per-face
+    mask wiped the whole field every step (probe 0.0), while the string
+    spelling ran. The per-face rule skips the (forced-periodic) z axis for
+    both, so the two spellings are one run."""
+    def box(b):
+        sim = Simulation(freq_max=16e9, domain=(20e-3, 16e-3, 1e-3), dx=DX,
+                         boundary=b, mode="2d_tmz")
+        sim.add_source((6.5e-3, 5.5e-3, 0.5e-3), "ez", amplitude_kind="field",
+                       waveform=GaussianPulse(f0=8e9, bandwidth=0.9))
+        sim.add_probe((13.5e-3, 9.5e-3, 0.5e-3), "ez")
+        return np.asarray(sim.forward(n_steps=300, skip_preflight=True).time_series)
+    a = box("pec")
+    b = box(BoundarySpec(x="pec", y="pec", z="pec"))
+    assert float(np.abs(a).max()) > 1e-3
+    assert np.array_equal(a, b)
+
+
+def test_vmap_sweep_refuses_a_magnetic_face_instead_of_shorting_it():
+    from rfx import Box
+    from rfx.vmap_sweep import vmap_material_sweep
+    sim = _plane_source_box()
+    sim.add_material("sub", eps_r=2.0)
+    sim.add(Box((0.0, 0.0, 0.0), (2 * DX, DX, DX)), material="sub")
+    with pytest.raises(NotImplementedError, match="magnetic"):
+        vmap_material_sweep(sim, "sub.eps_r", np.array([2.0, 3.0]), n_steps=20)
