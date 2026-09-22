@@ -57,7 +57,10 @@ class ScanObserver:
                 called = ast.unparse(node.value.func)
                 if called == ("run_fn" if distributed else "jax.lax.scan"):
                     self.lines.add(first + node.lineno - 1)
-        if len(self.lines) != (2 if distributed else 1):
+        # Distributed: one assignment per boundary type on main; since #1202
+        # each boundary type has a single-process and a multi-process
+        # assignment (four). Only the executed one fires the timer.
+        if len(self.lines) not in ({2, 4} if distributed else {1}):
             raise RuntimeError("Runner scan instrumentation anchor changed")
         self.output_name = "probe_ts" if distributed else "outputs"
         self.scan_seconds = None
