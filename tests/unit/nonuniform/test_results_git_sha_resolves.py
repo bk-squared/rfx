@@ -12,7 +12,8 @@ the note that records the interval it falls in; the listing is tied to the
 record both ways (an unlisted dangling hash fails, a listed hash that resolves
 again fails, a listed hash whose note does not mention it fails). Outside a
 git checkout (a ``git archive`` export, the GPU suite) the test skips: there
-is nothing to resolve against.
+is nothing to resolve against, and so does a shallow (depth-1) CI clone; the
+gate lives in the full clone a developer or ``scripts/ci/local.sh`` runs on.
 """
 from __future__ import annotations
 
@@ -88,10 +89,24 @@ def audit(results_dir: Path, orphaned: dict, repo: Path = REPO) -> list:
     return problems
 
 
+#: The commit that created ``results/`` (#785, 2026-08-31). Every hash a record
+#: can legitimately cite is younger, so a clone whose history reaches this commit
+#: can resolve them all; a clone that cannot (the pull-request CI checkout is a
+#: depth-1 clone, and ``rev-parse --is-shallow-repository`` is also true of a
+#: deep-but-shallow development clone) has nothing to audit against.
+RESULTS_DIR_CREATED = "5c3e658c656bff4f7c900c7522d9bae476dff1ce"
+
+
+def history_available(repo: Path = REPO) -> bool:
+    """A checkout whose history reaches the commit that created ``results/``."""
+    return (repo / ".git").exists() and resolves(RESULTS_DIR_CREATED, repo)
+
+
 @pytest.fixture(scope="module")
 def _git_checkout():
-    if not (REPO / ".git").exists():
-        pytest.skip("not a git checkout (archive export): nothing to resolve against")
+    if not history_available():
+        pytest.skip(f"history does not reach {RESULTS_DIR_CREATED[:8]} (archive export or "
+                    "shallow CI clone): nothing to resolve against; a development clone runs this")
 
 
 def test_every_recorded_sha_resolves_or_is_recorded_as_orphaned(_git_checkout):
