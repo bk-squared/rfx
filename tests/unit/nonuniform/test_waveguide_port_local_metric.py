@@ -18,9 +18,31 @@ What each half is entitled to comes from the interface's metric table
 the H correction differences two E nodes across one cell and takes the PRIMAL
 width there; the E correction sits on a node and takes that node's DUAL
 spacing. On a uniform axis the two collapse to ``grid.dx`` and nothing moves.
+
+Which test here is the gate
+---------------------------
+``test_launched_amplitude_does_not_depend_on_the_local_cell`` is. It runs the
+real scan twice and compares what the port actually launched, so it covers
+the WIRING -- which number reaches ``apply_waveguide_port_h/e`` -- and not
+just the helper's arithmetic.
+
+The helper tests below are a secondary check and cannot replace it. They call
+``_waveguide_port_axis_metrics`` and compare it against the same grid
+accessors the helper itself calls, which is two values out of one source.
+Measured: reviving the defect at the CALL SITES, spelled
+``grid.boundary_cell("x", "lo")`` so the helper is still called and its result
+still computed, leaves every helper test in this file green. Only the
+end-to-end gate turns red.
+
+Why the reference-plane voltage and not the probe one: the two blocks put the
+probe plane at different transit times from the source, so ``v_probe_t``
+mixes the launched amplitude with when the wave arrives. Under the same
+mutation it reads 0.9876, which looks correct. ``v_ref_t`` reads 0.5322
+against 1.0643 fixed -- a clean factor 2.0000.
 """
 from __future__ import annotations
 
+import warnings
 from types import SimpleNamespace
 
 import numpy as np
@@ -28,7 +50,9 @@ import jax
 import jax.numpy as jnp
 import pytest
 
+from rfx.api import Simulation
 from rfx.auto_config import smooth_grading
+from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.nonuniform import (
     _waveguide_port_axis_metrics,
     make_nonuniform_grid,
@@ -64,6 +88,86 @@ def _uniform_x_grid():
 def _port(direction, index):
     return SimpleNamespace(direction=direction, x_index=index)
 
+
+
+# ---------------------------------------------------------------------------
+# The gate: what the port actually launched, through the real scan
+# ---------------------------------------------------------------------------
+
+_GATE_FREQS = jnp.linspace(8.2e9, 11.5e9, 3)
+
+
+def _y_graded_profile():
+    """coarse | fine | coarse along the PROPAGATION axis.
+
+    The port travels +y here, so the grading is on y and the port can be put
+    in either block of the axis it propagates along. That is the arrangement
+    the defect needs: a port whose own cell differs from the boundary cell.
+    """
+    raw = np.concatenate([
+        np.full(20, _DX_COARSE),
+        np.full(54, _DX_FINE),
+        np.full(20, _DX_COARSE),
+    ])
+    return smooth_grading(raw, max_ratio=1.3)
+
+
+_GATE_PROFILE = _y_graded_profile()
+_GATE_LY = float(np.sum(_GATE_PROFILE))
+
+
+def _peak_modal_voltage_at_reference(port_y: float) -> float:
+    """Run the real NU scan and return peak |v_ref_t| for one port position."""
+    sim = Simulation(
+        freq_max=12e9, domain=(_A_WG, _GATE_LY, _B_WG), dx=_DX_COARSE,
+        boundary=BoundarySpec(x=Boundary(lo="pec", hi="pec"),
+                              y=Boundary(lo="cpml", hi="cpml"),
+                              z=Boundary(lo="pec", hi="pec")),
+        cpml_layers=8, dy_profile=_GATE_PROFILE)
+    sim.add_waveguide_port(
+        port_y, direction="+y", mode=(1, 0), mode_type="TE",
+        x_range=(0.0, _A_WG), z_range=(0.0, _B_WG),
+        freqs=_GATE_FREQS, f0=10.0e9, bandwidth=0.5, name="p1")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        result = sim.run(n_steps=260, compute_s_params=False)
+    cfg = next(iter(result.waveguide_ports.values()))
+    return float(np.max(np.abs(np.asarray(cfg.v_ref_t))))
+
+
+def test_launched_amplitude_does_not_depend_on_the_local_cell():
+    """A mode launched through a one-sided TFSF pair carries the amplitude the
+    source asked for, whatever the cell under the port happens to be.
+
+    Two runs of the same guide, same port, same reference-plane offset; only
+    the block the port sits in differs. The launched amplitude is read at the
+    reference plane, where both runs measure the same distance from their own
+    source, so the comparison is of what was launched and not of when it
+    arrived.
+
+    Measured on this host: 1.0643 with each half reading its own plane's
+    metric, 0.5322 with both reading the boundary cell -- a factor of exactly
+    2.0000. The 6.4 % the correct case sits above unity is not the defect: it
+    is the physical difference between launching a mode into 0.75 mm cells
+    and into 1.5 mm ones, numerical dispersion and the discretized mode
+    profile. The band admits that and rejects a factor of two with room.
+
+    This is the test that covers the wiring. Every helper test below stays
+    green when the defect is revived at the call sites.
+    """
+    coarse = _peak_modal_voltage_at_reference(0.015)
+    fine = _peak_modal_voltage_at_reference(0.045)
+    ratio = fine / coarse
+
+    assert ratio == pytest.approx(1.0, abs=0.15), (
+        f"the port in the {_DX_FINE * 1e3:.2f} mm block launched {ratio:.4f} "
+        f"of what the same port launched in the {_DX_COARSE * 1e3:.2f} mm "
+        f"block (coarse {coarse:.6e}, fine {fine:.6e}). A one-sided TFSF pair "
+        "must not change the launched amplitude with the local cell size. "
+        "About 0.5 means both corrections divided by the boundary cell "
+        "instead of their own plane's, which is G13; about 2.0 means the "
+        "reverse. Measured 1.0643 correct, 0.5322 with the defect revived."
+    )
 
 @pytest.mark.parametrize("direction", ["+x", "-x"])
 def test_a_port_in_a_boundary_sized_cell_still_gets_the_boundary_cell(direction):
@@ -143,14 +247,14 @@ def test_each_half_reads_the_plane_it_acts_on():
     )
 
 
-def test_mutation_reviving_the_boundary_scalar_is_visible():
-    """(b) The defect revived with the helper call kept.
+def test_the_helper_and_the_boundary_scalar_are_distinguishable():
+    """The helper's own output differs from the boundary cell. NOT the gate.
 
-    ``rfx/nonuniform.py`` calls this helper and passes what it returns. A
-    revert that makes it hand back ``grid.dx`` again is the pre-fix
-    behaviour exactly; this records that the two are distinguishable on the
-    fixture the suite runs, which is what makes the tests above a gate and
-    not a restatement.
+    This says only that the two numbers are not equal on this fixture. It
+    cannot see which one reaches the solver, so it stays green when the
+    defect is revived at the call sites. The end-to-end gate above is what
+    catches that; this is here to show the separation is real and large
+    rather than a last-bit difference.
     """
     grid = _graded_grid()
     inside = grid.index_of("x", 0.045)
