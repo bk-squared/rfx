@@ -1,24 +1,50 @@
-"""The MSL open-stub notch filter — cross-validated against two external solvers.
+"""The MSL open-stub notch filter — cross-validated against openEMS's own tutorial.
 
 A 50 Ω microstrip line 600 µm wide on 254 µm of lossless εr = 3.66 carries a
 12 mm open-circuit stub of the same width, branching off at the middle of the
-5 mm port-to-port line.  The stub is a quarter wavelength near 3.6 GHz, where
-its open end transforms into a short across the line, so |S21| has a deep
-transmission minimum whose FREQUENCY is set by the stub's electrical length and
-whose SHAPE (the −10 dB bandwidth) is set by the stub-to-line impedance ratio.
-The T-junction has no closed form, so rfx's |S21| curve is compared with two
-frozen external results instead of with an analytic expression.
+line.  The stub is a quarter wavelength near 3.6 GHz, where its open end
+transforms into a short across the line, so |S21| has a deep transmission
+minimum whose FREQUENCY is set by the stub's electrical length and whose SHAPE
+(the −10 dB bandwidth) is set by the stub-to-line impedance ratio.  The
+T-junction has no closed form, so rfx's |S21| curve is compared with frozen
+external results instead of with an analytic expression.
+
+The three boards
+----------------
+Substrate, trace and stub are the same in all three; only the length of the
+line either side of the stub differs.
+
+* the openEMS tutorial record — 50 mm of line each side of the stub centre,
+  the tutorial's own arms;
+* the Palace FEM record — 2.5 mm each side (5 mm port plane to port plane);
+* rfx here — ``ARM_LENGTH_M`` = 10 mm each side, in rfx's own box.
+
+rfx does not reproduce the tutorial's 100 mm-long box because at h/6 it would
+cost the weekly lane about an hour.  A lossless line's |S21| and |S11|
+MAGNITUDES do not depend on how long the line is beyond the ripple the port
+mismatch leaves, so the magnitudes stay comparable; the PHASES do not, and the
+record says so itself (``meta.comparability``: its phases are referenced at the
+tutorial's measurement planes on 50 mm arms).  This case compares magnitudes
+only, and measures the length premise once on rfx itself — the arm-length
+witness at the coarsest rung rebuilds the same filter on 15.08 mm arms and
+reports how far the two curves move apart.
 
 References (``reference/``, provenance in ``reference/PROVENANCE.md``):
 
+* ``openems_tutorial.json`` — openEMS 0.37.0, FDTD, the tool's own
+  ``MSL_NotchFilter`` tutorial reproduced and then re-run at finer cell sizes.
+  1601 points, 0.001–7 GHz, LINEAR magnitude and degrees.  Three rungs:
+  ``stage_a`` (= ``stage_b_coarse``, the tutorial's own mesh, 447.7 µm, 4 cells
+  across the substrate), ``stage_b_mid`` (316.6 µm, 6 cells) and
+  ``stage_b_fine`` (223.9 µm, 8 cells).  **JUDGED against ``stage_b_fine``**;
+  ``stage_a`` is printed as the reference's own mesh statement.
 * ``palace_fem.json`` — Palace, frequency-domain FEM on conformal tetrahedra,
-  order 2, the same geometry, lossless, first-order absorbing far box.  Two
+  order 2, lossless, first-order absorbing far box, on the 5 mm board.  Two
   meshes: ``coarse`` (lc 0.12 mm, 101 points, 2–7 GHz) and ``mid``
   (lc 0.085 mm, 33 points, 3.2–4.0 GHz).  Arrays are LINEAR magnitude.
-  The finest rung is JUDGED against ``mid``.
-* ``openems_dx50um.json`` — openEMS, FDTD, dx 50 µm, 50 points 2–7 GHz.
-  REPORTED, never judged: no reproduction of an openEMS tutorial result is
-  recorded for it.
+  REPORTED, never judged: the record conserves 22–86 % of the power it
+  receives, so its magnitudes cannot be held to a 2 dB bar; its notch
+  frequency is printed beside its ``max_energy_sum``.
 
 The ladder is dx = h_sub/n so the substrate top always lands on a node plane
 (issue #723): 127 µm (n = 2), 63.5 µm (n = 4), 42.33 µm (n = 6).  The
@@ -63,19 +89,13 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 from tests._realized_geometry import _node_line, realized
 
 # ---------------------------------------------------------------- geometry
-# Every length in metres, every frequency in hertz.  These ARE the numbers the
-# two references were made with (their `meta` blocks carry the same values).
+# Every length in metres, every frequency in hertz.  Substrate, trace and stub
+# are the numbers both references were made with (their `meta` blocks carry the
+# same values); the box and the arms are rfx's own — see the module docstring.
 EPS_R_SUBSTRATE = 3.66
 SUBSTRATE_THICKNESS_M = 254e-6
 TRACE_WIDTH_M = 600e-6
 STUB_LENGTH_M = 12e-3
-LINE_LENGTH_M = 5e-3          # port plane to port plane
-PORT_MARGIN_M = 1e-3          # feed plane to the x domain face
-DOMAIN_X_M = 7.0e-3
-DOMAIN_Y_M = 16.232e-3
-DOMAIN_Z_M = 1.754e-3
-TRACE_CENTRE_Y_M = 1.208e-3
-STUB_CENTRE_X_M = 3.5e-3
 PORT_IMPEDANCE_OHM = 50.0
 FREQ_MAX_HZ = 7e9
 CPML_LAYERS = 8
@@ -86,6 +106,65 @@ LADDER_M = (
     SUBSTRATE_THICKNESS_M / 4,   # 63.5 µm
     SUBSTRATE_THICKNESS_M / 6,   # 42.33 µm
 )
+DX_COARSEST_M = LADDER_M[0]
+
+# --- along the line ------------------------------------------------------
+# ARM_LENGTH_M is the port plane to the stub centre, each side.  It is set by
+# what the MSL port needs downstream of the feed: the deepest probe of the
+# three-probe extractor sits a quarter guided wavelength back at the lowest
+# frequency it serves, 4.79 mm on this substrate, and it must be clear of the
+# stub.  PORT_MARGIN_M is the port plane to the x face, set by the upstream
+# probe offset max(λ/4π, 5·h) = 1.8 mm.  Both from the preflight text of run
+# 369367263038 at h/6.
+ARM_LENGTH_M = 10e-3
+PORT_MARGIN_M = 2e-3
+# The same filter on longer arms; only the arm-length witness builds it.  The
+# arm grows by 5.08 mm rather than 5 mm because lengthening the arm moves the
+# stub with it: 5.08 mm is a whole number of coarsest cells (40 × 127 µm, and
+# so also 80 × 63.5 µm and 120 × 42.33 µm), which leaves the stub at the same
+# place inside a cell and the longer board realizes the SAME filter.  A 5 mm
+# move puts the stub's 600 µm footprint on five node columns instead of four
+# at the coarsest rung, and the witness would then be measuring a stub that
+# got wider, not an arm that got longer.
+WITNESS_ARM_LENGTH_M = 15.08e-3
+assert abs((WITNESS_ARM_LENGTH_M - ARM_LENGTH_M) / DX_COARSEST_M
+           - round((WITNESS_ARM_LENGTH_M - ARM_LENGTH_M) / DX_COARSEST_M)) < 1e-9
+
+
+def _x_geometry(arm_length_m: float) -> tuple[float, float]:
+    """``(domain x extent, stub centre x)`` for arms of ``arm_length_m``.
+
+    The two port planes sit at ``PORT_MARGIN_M`` and
+    ``PORT_MARGIN_M + 2·arm_length_m``; the stub centre is halfway between.
+    """
+    return 2.0 * (arm_length_m + PORT_MARGIN_M), arm_length_m + PORT_MARGIN_M
+
+
+DOMAIN_X_M, STUB_CENTRE_X_M = _x_geometry(ARM_LENGTH_M)   # 24.0 mm, 12.0 mm
+
+# --- across the line -----------------------------------------------------
+# The metal must stay clear of the CPML by the port's lateral requirement,
+# 2·h_sub plus eight cells.  "Eight cells" is a physical length only once a
+# cell size is named, so it is evaluated at the COARSEST rung and HELD for
+# every rung: the board a finer rung solves is then the same board, not a
+# smaller one.
+LATERAL_CLEARANCE_MIN_M = 2.0 * SUBSTRATE_THICKNESS_M + 8.0 * DX_COARSEST_M  # 1.524 mm
+# That minimum is exactly twelve coarsest cells, and every finer rung's cell
+# size divides it too, so putting the line's near edge there puts it exactly on
+# a node line at all three rungs while the stub's edge (11.7 mm) falls inside a
+# cell.  A 600 µm footprint then realizes five node rows for the line and four
+# node columns for the stub at 127 µm — a 635 µm line beside a 508 µm stub,
+# which is not the board either reference solved, and `assert_realized` refuses
+# it (measured: rows 5/10/15 against columns 4/9/14 down the ladder).  The
+# clearance is a MINIMUM, so it is rounded up to the next 50 µm; that puts the
+# line's edge inside a cell at every rung and both footprints realize the same
+# width.
+LATERAL_CLEARANCE_M = 1.55e-3
+assert LATERAL_CLEARANCE_M >= LATERAL_CLEARANCE_MIN_M
+TRACE_CENTRE_Y_M = LATERAL_CLEARANCE_M + TRACE_WIDTH_M / 2.0             # 1.850 mm
+DOMAIN_Y_M = (TRACE_WIDTH_M + 2.0 * LATERAL_CLEARANCE_M
+              + STUB_LENGTH_M + 2.0 * LATERAL_CLEARANCE_M)               # 18.800 mm
+DOMAIN_Z_M = SUBSTRATE_THICKNESS_M + 1.5e-3                              # 1.754 mm
 
 # Record length in periods of freq_max — the value the retired script ran
 # with, kept because the ring-down witness (SETTLING_DB) confirms it: −109 to
@@ -117,41 +196,51 @@ PASSIVITY_EXCESS_BAR = 0.01
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _REFERENCE_DIR = Path(__file__).resolve().parent / "reference"
 _PALACE_JSON = _REFERENCE_DIR / "palace_fem.json"
-_OPENEMS_JSON = _REFERENCE_DIR / "openems_dx50um.json"
+_OPENEMS_JSON = _REFERENCE_DIR / "openems_tutorial.json"
+# The rung of the openEMS record this case is judged against, and the rung that
+# is its own mesh statement.
+OPENEMS_JUDGED_STAGE = "stage_b_fine"
+OPENEMS_COARSE_STAGE = "stage_b_coarse"
 
 
 # ------------------------------------------------------------------ build
-def build(dx: float) -> Simulation:
+def build(dx: float, arm_length_m: float = ARM_LENGTH_M) -> Simulation:
     """The reference structure on a uniform ``dx`` mesh.
 
     Substrate is a lossless dielectric slab filling the board; the trace and
     the stub are zero-thickness PEC SHEETS on the substrate-top node plane
     (both z corners equal — a Box drawn ``h -> h + dx`` would be a one-cell
     VOLUME with a wall on each face, #931).  The ground is the z_lo PEC face.
+
+    ``arm_length_m`` lengthens the line either side of the stub and the box
+    with it; nothing else moves.  Only the arm-length witness passes anything
+    but the default.
     """
+    domain_x, stub_centre_x = _x_geometry(arm_length_m)
     sim = Simulation(
         freq_max=FREQ_MAX_HZ,
-        domain=(DOMAIN_X_M, DOMAIN_Y_M, DOMAIN_Z_M),
+        domain=(domain_x, DOMAIN_Y_M, DOMAIN_Z_M),
         dx=dx,
         cpml_layers=CPML_LAYERS,
         boundary=BoundarySpec(x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml")),
     )
     sim.add_material("substrate", eps_r=EPS_R_SUBSTRATE)
-    sim.add(Box((0.0, 0.0, 0.0), (DOMAIN_X_M, DOMAIN_Y_M, SUBSTRATE_THICKNESS_M)),
+    sim.add(Box((0.0, 0.0, 0.0), (domain_x, DOMAIN_Y_M, SUBSTRATE_THICKNESS_M)),
             material="substrate")
 
     y_lo = TRACE_CENTRE_Y_M - TRACE_WIDTH_M / 2.0
     y_hi = TRACE_CENTRE_Y_M + TRACE_WIDTH_M / 2.0
     sim.add(Box((0.0, y_lo, SUBSTRATE_THICKNESS_M),
-                (DOMAIN_X_M, y_hi, SUBSTRATE_THICKNESS_M)), material="pec")
-    sim.add(Box((STUB_CENTRE_X_M - TRACE_WIDTH_M / 2.0, y_hi, SUBSTRATE_THICKNESS_M),
-                (STUB_CENTRE_X_M + TRACE_WIDTH_M / 2.0, y_hi + STUB_LENGTH_M,
+                (domain_x, y_hi, SUBSTRATE_THICKNESS_M)), material="pec")
+    sim.add(Box((stub_centre_x - TRACE_WIDTH_M / 2.0, y_hi, SUBSTRATE_THICKNESS_M),
+                (stub_centre_x + TRACE_WIDTH_M / 2.0, y_hi + STUB_LENGTH_M,
                  SUBSTRATE_THICKNESS_M)), material="pec")
 
     sim.add_msl_port(position=(PORT_MARGIN_M, TRACE_CENTRE_Y_M, 0.0),
                      width=TRACE_WIDTH_M, height=SUBSTRATE_THICKNESS_M,
                      direction="+x", impedance=PORT_IMPEDANCE_OHM)
-    sim.add_msl_port(position=(PORT_MARGIN_M + LINE_LENGTH_M, TRACE_CENTRE_Y_M, 0.0),
+    sim.add_msl_port(position=(PORT_MARGIN_M + 2.0 * arm_length_m,
+                               TRACE_CENTRE_Y_M, 0.0),
                      width=TRACE_WIDTH_M, height=SUBSTRATE_THICKNESS_M,
                      direction="-x", impedance=PORT_IMPEDANCE_OHM)
     return sim
@@ -183,7 +272,8 @@ def _build_trace_as_volume(dx: float) -> Simulation:
     sim.add_msl_port(position=(PORT_MARGIN_M, TRACE_CENTRE_Y_M, 0.0),
                      width=TRACE_WIDTH_M, height=SUBSTRATE_THICKNESS_M,
                      direction="+x", impedance=PORT_IMPEDANCE_OHM)
-    sim.add_msl_port(position=(PORT_MARGIN_M + LINE_LENGTH_M, TRACE_CENTRE_Y_M, 0.0),
+    sim.add_msl_port(position=(PORT_MARGIN_M + 2.0 * ARM_LENGTH_M,
+                               TRACE_CENTRE_Y_M, 0.0),
                      width=TRACE_WIDTH_M, height=SUBSTRATE_THICKNESS_M,
                      direction="-x", impedance=PORT_IMPEDANCE_OHM)
     return sim
@@ -219,7 +309,8 @@ def _build_short_stub(dx: float, cells_short: int, lift_cells: int = 0) -> Simul
     sim.add_msl_port(position=(PORT_MARGIN_M, TRACE_CENTRE_Y_M, 0.0),
                      width=TRACE_WIDTH_M, height=SUBSTRATE_THICKNESS_M,
                      direction="+x", impedance=PORT_IMPEDANCE_OHM)
-    sim.add_msl_port(position=(PORT_MARGIN_M + LINE_LENGTH_M, TRACE_CENTRE_Y_M, 0.0),
+    sim.add_msl_port(position=(PORT_MARGIN_M + 2.0 * ARM_LENGTH_M,
+                               TRACE_CENTRE_Y_M, 0.0),
                      width=TRACE_WIDTH_M, height=SUBSTRATE_THICKNESS_M,
                      direction="-x", impedance=PORT_IMPEDANCE_OHM)
     return sim
@@ -396,10 +487,12 @@ def _print_realized(g: dict, dx: float) -> None:
 
 
 # ------------------------------------------------------------------- solve
-def run_rung(dx: float) -> dict:
+def run_rung(dx: float, arm_length_m: float = ARM_LENGTH_M) -> dict:
     """Preflight, solve, and hand back the curve with its two witnesses."""
-    sim = build(dx)
+    sim = build(dx, arm_length_m)
     g = assert_realized(sim, dx)
+    print(f"  arms {arm_length_m*1e3:.2f} mm each side, box x "
+          f"{_x_geometry(arm_length_m)[0]*1e3:.3f} mm")
     _print_realized(g, dx)
 
     print(f"  preflight at dx = {dx*1e6:.3f} µm:")
@@ -421,7 +514,8 @@ def run_rung(dx: float) -> dict:
               if res.sigma_max_excess is not None else None)
 
     out = dict(
-        dx_m=dx, freqs_hz=freqs, s11=s[0, 0, :], s21=s[1, 0, :],
+        dx_m=dx, arm_length_m=arm_length_m,
+        freqs_hz=freqs, s11=s[0, 0, :], s21=s[1, 0, :],
         z0=np.asarray(res.Z0), settling_db=settling,
         sigma_max_excess=excess, wall_s=wall_s,
         n_cells=g["n_cells"], grid_shape=g["grid_shape"], realized=g,
@@ -543,44 +637,66 @@ def _interp_db(freqs_hz, s21_db, ref_f_ghz) -> np.ndarray:
 
 
 def _compare(label: str, rung: dict, ref_f_ghz, ref_s21_mag) -> dict:
-    """ΔdB of rfx − reference at every reference frequency where BOTH curves
-    are above the deep-null level, plus the notch-frequency distance.
+    """ΔdB of rfx − reference at every reference frequency inside the band
+    both curves cover where BOTH are above the deep-null level, plus the
+    notch-frequency distance.
 
-    The exclusion is two-sided on purpose: a bin where one curve is in its
-    null and the other is not is the two notches sitting at different
+    The deep-null exclusion is two-sided on purpose: a bin where one curve is
+    in its null and the other is not is the two notches sitting at different
     frequencies, which the frequency bar already judges; counting it again
     as a magnitude error would score one offset twice."""
+    ref_f_hz = np.asarray(ref_f_ghz, dtype=float) * 1e9
     ref_db = _db(ref_s21_mag)
     ours = _interp_db(rung["freqs_hz"], _db(np.abs(rung["s21"])), ref_f_ghz)
-    keep = (ref_db >= DEEP_NULL_DB) & (ours >= DEEP_NULL_DB) & np.isfinite(ours)
-    delta = ours - ref_db
     lo, hi = REFERENCE_BAND_HZ
-    ref_notch = notch_frequency(np.asarray(ref_f_ghz, float) * 1e9, ref_s21_mag,
-                                lo, hi)
+    in_band = (ref_f_hz >= lo) & (ref_f_hz <= hi)
+    keep = (in_band & (ref_db >= DEEP_NULL_DB) & (ours >= DEEP_NULL_DB)
+            & np.isfinite(ours))
+    delta = ours - ref_db
+    ref_notch = notch_frequency(ref_f_hz, ref_s21_mag, lo, hi)
     our_notch = notch_frequency(rung["freqs_hz"], np.abs(rung["s21"]), lo, hi)
     max_abs = float(np.max(np.abs(delta[keep]))) if keep.any() else float("nan")
+    worst = int(np.argmax(np.where(keep, np.abs(delta), -np.inf))) if keep.any() else -1
     out = dict(
         label=label, ref_f_ghz=np.asarray(ref_f_ghz, float), ref_db=ref_db,
-        ours_db=ours, delta_db=delta, compared=keep,
-        n_compared=int(keep.sum()), max_abs_delta_db=max_abs,
+        ours_db=ours, delta_db=delta, compared=keep, in_band=in_band,
+        n_in_band=int(in_band.sum()),
+        n_compared=int(keep.sum()), max_abs_delta_db=max_abs, worst_index=worst,
         ref_notch_ghz=ref_notch["f"] / 1e9, our_notch_ghz=our_notch["f"] / 1e9,
+        ref_notch_depth_db=ref_notch["depth_db"],
+        our_notch_depth_db=our_notch["depth_db"],
         notch_pct=100.0 * abs(our_notch["f"] - ref_notch["f"]) / ref_notch["f"],
     )
     return out
 
 
+_MAX_TABLE_ROWS = 80
+
+
 def _print_comparison(c: dict) -> None:
+    lo, hi = REFERENCE_BAND_HZ
     print(f"  --- {c['label']} ---")
-    print(f"    notch: rfx {c['our_notch_ghz']:.4f} GHz vs reference "
-          f"{c['ref_notch_ghz']:.4f} GHz -> {c['notch_pct']:.3f} %")
-    print(f"    |S21| dB compared at {c['n_compared']} of "
-          f"{c['ref_f_ghz'].size} reference frequencies "
-          f"(both curves above {DEEP_NULL_DB:.0f} dB); "
-          f"max |ΔdB| = {c['max_abs_delta_db']:.3f} dB")
+    print(f"    notch: rfx {c['our_notch_ghz']:.4f} GHz ({c['our_notch_depth_db']:.2f} dB) "
+          f"vs reference {c['ref_notch_ghz']:.4f} GHz "
+          f"({c['ref_notch_depth_db']:.2f} dB) -> {c['notch_pct']:.3f} %")
+    print(f"    |S21| dB compared at {c['n_compared']} of the {c['n_in_band']} "
+          f"reference frequencies inside {lo/1e9:.0f}–{hi/1e9:.0f} GHz "
+          f"({c['ref_f_ghz'].size} in the record; both curves above "
+          f"{DEEP_NULL_DB:.0f} dB); max |ΔdB| = {c['max_abs_delta_db']:.3f} dB")
+    idx = np.flatnonzero(c["in_band"])
+    stride = max(1, int(np.ceil(idx.size / _MAX_TABLE_ROWS)))
+    shown = set(idx[::stride].tolist())
+    if c["worst_index"] >= 0:
+        shown.add(c["worst_index"])
+    if stride > 1:
+        print(f"    (in-band table printed every {stride} reference bins, plus "
+              "the worst compared bin marked *)")
     print("    f_GHz, ref_dB, rfx_dB, delta_dB, compared")
-    for f, r, o, d, k in zip(c["ref_f_ghz"], c["ref_db"], c["ours_db"],
-                             c["delta_db"], c["compared"]):
-        print(f"      {f:8.4f} {r:10.3f} {o:10.3f} {d:9.3f}  {bool(k)}")
+    for i in sorted(shown):
+        mark = "*" if i == c["worst_index"] else " "
+        print(f"     {mark}{c['ref_f_ghz'][i]:8.4f} {c['ref_db'][i]:10.3f} "
+              f"{c['ours_db'][i]:10.3f} {c['delta_db'][i]:9.3f}  "
+              f"{bool(c['compared'][i])}")
 
 
 # ------------------------------------------------------------------ ladder
@@ -591,14 +707,120 @@ def _rungs() -> tuple[float, ...]:
     return tuple(float(v) for v in raw.split(",") if v.strip())
 
 
+ARM_WITNESS_BAR_DB = 0.5   # see `_arm_length_witness`; applies to |S21|
+# The witness runs on the first two rungs of the ladder and is JUDGED on the
+# second (h/4); the coarsest rung is reported as the trend. Measured
+# 2026-09-22 at h/2: the realized strip is 508 µm, a 57 Ω line (fitted Z0)
+# against the 50 Ω port reference, and that mismatch makes the interference
+# between the port reflections and the stub's depend on the arm length —
+# |S21| moved 1.2 dB and |S11| up to 9 dB near its minima between 10 mm and
+# 15.08 mm arms. At h/4 the strip is 571.5 µm (about 51.5 Ω) and the effect
+# shrinks with the mismatch; at the judged rung (h/6, 592.7 µm) it is smaller
+# still. |S11| in dB is not judged: near its minima a small mismatch moves it
+# by many dB.
+ARM_WITNESS_RUNGS = 2
+
+
+def _arm_length_witness(base: dict, dx: float) -> dict:
+    """Build the same filter on longer arms, solve it at the same cell size,
+    and report how far its |S21| and |S11| move.
+
+    This is a witness on rfx's own record, not a comparison with a reference.
+    The openEMS record is taken on 50 mm arms and rfx runs on 10 mm arms, and
+    the magnitudes are only comparable because a lossless line's transmission
+    and reflection magnitudes do not depend on the line's length.  Here that
+    premise is measured on the structure itself.
+    """
+    print(f"\n  --- arm-length witness at dx = {dx*1e6:.3f} µm ---")
+    print(f"  the same filter on {WITNESS_ARM_LENGTH_M*1e3:.2f} mm arms "
+          f"(box x {_x_geometry(WITNESS_ARM_LENGTH_M)[0]*1e3:.2f} mm instead of "
+          f"{_x_geometry(ARM_LENGTH_M)[0]*1e3:.2f} mm; nothing else changes)")
+    other = run_rung(dx, arm_length_m=WITNESS_ARM_LENGTH_M)
+
+    f = np.asarray(base["freqs_hz"], float)
+    assert np.allclose(f, np.asarray(other["freqs_hz"], float)), (
+        "the two arm lengths were sampled on different frequency grids; the "
+        "difference below would mix a frequency shift into a magnitude one.")
+    lo, hi = REFERENCE_BAND_HZ
+    in_band = (f >= lo) & (f <= hi)
+
+    out: dict = {"dx_m": dx, "freqs_hz": f,
+                 "arm_length_m": WITNESS_ARM_LENGTH_M,
+                 "n_cells": other["n_cells"], "wall_s": other["wall_s"]}
+    n_witness = notch_frequency(f, np.abs(other["s21"]), lo, hi)
+    print(f"  notch on the long arms {n_witness['f']/1e9:.5f} GHz, depth "
+          f"{n_witness['depth_db']:.2f} dB (short arms "
+          f"{base['notch']['f']/1e9:.5f} GHz, {base['notch']['depth_db']:.2f} dB)")
+    out["notch_ghz"] = n_witness["f"] / 1e9
+    for label, rec in (("short", base), ("long", other)):
+        z0 = np.asarray(rec["z0"], dtype=complex).ravel()
+        out[f"z0_median_{label}_ohm"] = float(np.median(z0.real))
+    print(f"    fitted line Z0 (median over the band): short arms "
+          f"{out['z0_median_short_ohm']:.1f} Ω, long arms "
+          f"{out['z0_median_long_ohm']:.1f} Ω, port reference "
+          f"{PORT_IMPEDANCE_OHM:.0f} Ω")
+
+    for key in ("s21", "s11"):
+        a = _db(np.abs(base[key]))
+        b = _db(np.abs(other[key]))
+        keep = in_band & (a >= DEEP_NULL_DB) & (b >= DEEP_NULL_DB)
+        d = b - a
+        worst = int(np.argmax(np.where(keep, np.abs(d), -np.inf)))
+        out[f"max_abs_delta_{key}_db"] = float(np.max(np.abs(d[keep])))
+        out[f"n_compared_{key}"] = int(keep.sum())
+        out[f"worst_f_{key}_ghz"] = float(f[worst] / 1e9)
+        print(f"    |{key.upper()}|: max |Δ| = {out[f'max_abs_delta_{key}_db']:.3f} dB "
+              f"over {out[f'n_compared_{key}']} of the "
+              f"{int(in_band.sum())} rfx bins in {lo/1e9:.0f}–{hi/1e9:.0f} GHz "
+              f"where both curves are above {DEEP_NULL_DB:.0f} dB; worst at "
+              f"{out[f'worst_f_{key}_ghz']:.4f} GHz")
+    print(f"    f_GHz, {WITNESS_ARM_LENGTH_M*1e3:.2f}mm |S21| dB, "
+          f"{ARM_LENGTH_M*1e3:.0f}mm |S21| dB, Δ, "
+          f"{WITNESS_ARM_LENGTH_M*1e3:.2f}mm |S11| dB, "
+          f"{ARM_LENGTH_M*1e3:.0f}mm |S11| dB, Δ")
+    a21, b21 = _db(np.abs(base["s21"])), _db(np.abs(other["s21"]))
+    a11, b11 = _db(np.abs(base["s11"])), _db(np.abs(other["s11"]))
+    for i in np.flatnonzero(in_band):
+        print(f"      {f[i]/1e9:8.5f} {b21[i]:10.3f} {a21[i]:10.3f} "
+              f"{b21[i]-a21[i]:8.3f} {b11[i]:10.3f} {a11[i]:10.3f} "
+              f"{b11[i]-a11[i]:8.3f}")
+
+    return out
+
+
+def _assert_arm_length_witness(out: dict) -> None:
+    """The witness's verdict on |S21|, held back until the block is printed."""
+    assert out["max_abs_delta_s21_db"] <= ARM_WITNESS_BAR_DB, (
+        f"at dx = {out['dx_m']*1e6:.2f} µm, lengthening each arm from "
+        f"{ARM_LENGTH_M*1e3:.0f} mm to {WITNESS_ARM_LENGTH_M*1e3:.2f} mm moved "
+        f"|S21| by {out['max_abs_delta_s21_db']:.3f} dB at "
+        f"{out['worst_f_s21_ghz']:.4f} GHz (bar {ARM_WITNESS_BAR_DB} dB; fitted "
+        f"line Z0 {out['z0_median_short_ohm']:.1f} Ω against the "
+        f"{PORT_IMPEDANCE_OHM:.0f} Ω reference). A lossless line's transmission "
+        "magnitude does not depend on its length; the residual is the port "
+        "mismatch interference, which shrinks as the realized strip approaches "
+        "600 µm. A larger move means this board's magnitudes still depend on "
+        "its arms and may not be compared with a record taken on other arms.")
+
+
 @pytest.mark.gpu
 @pytest.mark.slow
-def test_msl_notch_filter_matches_the_fem_reference(tmp_path):
+def test_msl_notch_filter_matches_the_openems_tutorial(tmp_path):
     """The mesh ladder, the convergence statement, then the comparison."""
     rungs = _rungs()
     print(f"\nThe MSL notch filter — ladder {[f'{d*1e6:.2f}µm' for d in rungs]}")
+    print(f"  board: arms {ARM_LENGTH_M*1e3:.1f} mm each side of the stub "
+          f"centre, port margin {PORT_MARGIN_M*1e3:.1f} mm, box "
+          f"{DOMAIN_X_M*1e3:.3f} × {DOMAIN_Y_M*1e3:.3f} × {DOMAIN_Z_M*1e3:.3f} mm, "
+          f"trace centre y {TRACE_CENTRE_Y_M*1e3:.3f} mm, stub centre x "
+          f"{STUB_CENTRE_X_M*1e3:.3f} mm, lateral clearance "
+          f"{LATERAL_CLEARANCE_M*1e3:.3f} mm (the port's minimum 2·h + "
+          f"8·{DX_COARSEST_M*1e6:.1f} µm = {LATERAL_CLEARANCE_MIN_M*1e3:.3f} mm, "
+          "rounded up to the next 50 µm so the line's edge does not land on a "
+          "node line)")
 
     results = []
+    arm_witnesses: list = []
     for dx in rungs:
         print(f"\n=== rung dx = {dx*1e6:.3f} µm ===")
         r = run_rung(dx)
@@ -616,13 +838,20 @@ def test_msl_notch_filter_matches_the_fem_reference(tmp_path):
         for f, a, b in zip(r["freqs_hz"], s21_db, s11_db):
             print(f"    {f/1e9:8.5f} {a:10.3f} {b:10.3f}")
         results.append(r)
+        # The premise the comparison rests on — the arms this board carries do
+        # not set its magnitudes — measured on the first two rungs: the
+        # coarsest is the trend, the second is judged (see ARM_WITNESS_RUNGS).
+        if len(results) <= ARM_WITNESS_RUNGS:
+            arm_witnesses.append(_arm_length_witness(r, dx))
 
     palace = _load(_PALACE_JSON)
     openems = _load(_OPENEMS_JSON)
+    judged_stage = openems[OPENEMS_JUDGED_STAGE]
+    coarse_stage = openems[OPENEMS_COARSE_STAGE]
 
     # ---- (b) mesh statement: the notch must settle along the ladder --------
     notches = [r["notch"]["f"] for r in results]
-    print("\n  mesh statement — notch frequency along the ladder:")
+    print("\n  mesh statement — notch frequency along the rfx ladder:")
     for r in results:
         print(f"    dx {r['dx_m']*1e6:8.3f} µm  {r['notch']['f']/1e9:.5f} GHz  "
               f"{r['n_cells']} cells  {r['wall_s']:.1f} s")
@@ -633,6 +862,23 @@ def test_msl_notch_filter_matches_the_fem_reference(tmp_path):
     else:
         last_two_pct = float("nan")
 
+    # The reference's own mesh statement, read off its record: the tutorial's
+    # own mesh, then the same structure at finer cell sizes.
+    ref_coarse_f = coarse_stage["notch"]["refined_f_ghz"]
+    ref_fine_f = judged_stage["notch"]["refined_f_ghz"]
+    print("\n  the openEMS record's own mesh statement:")
+    for name in ("stage_a", "stage_b_mid", "stage_b_fine"):
+        st = openems[name]
+        ms = openems["meta"]["stages"][name]
+        print(f"    {name:14s} {ms['resolution_um']:7.1f} µm  "
+              f"{ms['mesh_realized']['substrate_z_cells_realized']} substrate "
+              f"cells  {ms['mesh_realized']['n_cells']:9d} cells  "
+              f"{st['notch']['refined_f_ghz']:.5f} GHz  "
+              f"{st['notch']['depth_db']:7.2f} dB  "
+              f"max energy sum {st['max_energy_sum_band']:.4f}")
+    print(f"    coarse ({OPENEMS_COARSE_STAGE}) -> fine ({OPENEMS_JUDGED_STAGE}): "
+          f"{100.0*(ref_fine_f-ref_coarse_f)/ref_coarse_f:+.3f} %")
+
     # A partial ladder shows no convergence trend, so it states no verdict:
     # the distances below are still printed — they are the diagnostic the
     # env override exists for — and the test skips at the end instead of
@@ -641,28 +887,60 @@ def test_msl_notch_filter_matches_the_fem_reference(tmp_path):
     monotone = (all(b > a for a, b in zip(notches, notches[1:]))
                 or all(b < a for a, b in zip(notches, notches[1:])))
 
-    # ---- (c) the comparison: finest rung against the FEM mid mesh ----------
+    # ---- (c) the comparison: finest rung against the openEMS fine rung -----
     # Every distance and the figure are printed BEFORE any verdict, so a run
     # that fails the mesh statement still leaves the whole curve in the log.
     finest = results[-1]
-    print("\n  Palace FEM (judged)")
-    mid = _compare("Palace FEM, mid mesh (lc 0.085 mm) — JUDGED",
-                   finest, palace["mid"]["freqs_ghz"], palace["mid"]["s21_mag"])
-    _print_comparison(mid)
-    coarse = _compare("Palace FEM, coarse mesh (lc 0.12 mm) — reported",
-                      finest, palace["coarse"]["freqs_ghz"],
-                      palace["coarse"]["s21_mag"])
-    _print_comparison(coarse)
+    print("\n  openEMS tutorial (judged)")
+    fine = _compare(
+        f"openEMS tutorial, {OPENEMS_JUDGED_STAGE} "
+        f"({openems['meta']['stages'][OPENEMS_JUDGED_STAGE]['resolution_um']:.1f} µm)"
+        " — JUDGED",
+        finest, judged_stage["freqs_ghz"], judged_stage["s21_mag"])
+    _print_comparison(fine)
+    ref_coarse = _compare(
+        f"openEMS tutorial, {OPENEMS_COARSE_STAGE} = stage_a, the tutorial's own "
+        f"mesh ({openems['meta']['stages'][OPENEMS_COARSE_STAGE]['resolution_um']:.1f} µm)"
+        " — the reference's mesh statement, reported",
+        finest, coarse_stage["freqs_ghz"], coarse_stage["s21_mag"])
+    _print_comparison(ref_coarse)
 
-    # ---- (d) openEMS: reported, never judged ------------------------------
-    print("\n  openEMS dx 50 µm (reported, not judged)")
-    oe = _compare("openEMS, dx 50 µm — REPORTED, NOT JUDGED",
-                  finest, openems["freqs_ghz"], openems["s21_mag"])
-    _print_comparison(oe)
+    # ---- (d) Palace: reported, never judged -------------------------------
+    print("\n  Palace FEM (reported, not judged — it does not conserve power)")
+    for mesh, lc in (("mid", 0.085), ("coarse", 0.12)):
+        rec = palace[mesh]
+        print(f"    Palace {mesh} (lc {lc} mm): max energy sum "
+              f"{rec['max_energy_sum']:.6f} over its own {len(rec['freqs_ghz'])} "
+              f"points; notch {rec['notch']['parabolic_f_ghz']:.5f} GHz, depth "
+              f"{rec['notch']['depth_db']:.2f} dB")
+    pal_mid = _compare("Palace FEM, mid mesh (lc 0.085 mm) — REPORTED, NOT JUDGED",
+                       finest, palace["mid"]["freqs_ghz"],
+                       palace["mid"]["s21_mag"])
+    _print_comparison(pal_mid)
+    pal_coarse = _compare("Palace FEM, coarse mesh (lc 0.12 mm) — REPORTED, NOT JUDGED",
+                          finest, palace["coarse"]["freqs_ghz"],
+                          palace["coarse"]["s21_mag"])
+    _print_comparison(pal_coarse)
 
     # ---- (e) the figure ---------------------------------------------------
     fig_path = _write_figure(results, palace, openems, tmp_path)
     print(f"\n  figure: {fig_path}")
+    for w in arm_witnesses:
+        judged = w is arm_witnesses[-1] and len(arm_witnesses) >= ARM_WITNESS_RUNGS
+        print(f"  arm-length witness at {w['dx_m']*1e6:.3f} µm: "
+              f"|S21| {w['max_abs_delta_s21_db']:.3f} dB, |S11| "
+              f"{w['max_abs_delta_s11_db']:.3f} dB (reported), fitted Z0 "
+              f"{w['z0_median_short_ohm']:.1f} Ω — "
+              + ("JUDGED against " if judged else "trend, not judged; bar ")
+              + f"{ARM_WITNESS_BAR_DB} dB on |S21|")
+
+    # ---- the premise before the comparison ---------------------------------
+    # Judged on the second witnessed rung whether or not the rest of the
+    # ladder ran: if the magnitudes on this board depend on its arm length,
+    # comparing them with a record taken on other arms says nothing. A ladder
+    # restricted to one rung leaves the witness reported, not judged.
+    if len(arm_witnesses) >= ARM_WITNESS_RUNGS:
+        _assert_arm_length_witness(arm_witnesses[-1])
 
     if partial:
         pytest.skip(
@@ -683,14 +961,15 @@ def test_msl_notch_filter_matches_the_fem_reference(tmp_path):
         f"{last_two_pct:.3f} % apart (bar {LADDER_AGREEMENT*100:.0f} %): "
         f"{[f'{f/1e9:.5f} GHz' for f in notches]}. The mesh has not "
         "converged, so the comparison above states no verdict.")
-    assert mid["notch_pct"] < FREQ_BAR * 100.0, (
-        f"the notch sits {mid['notch_pct']:.3f} % from the FEM reference's "
-        f"{mid['ref_notch_ghz']:.4f} GHz (bar {FREQ_BAR*100:.0f} %); rfx reads "
-        f"{mid['our_notch_ghz']:.4f} GHz on the {finest['dx_m']*1e6:.2f} µm mesh.")
-    assert mid["max_abs_delta_db"] <= MAG_BAR_DB, (
-        f"|S21| differs from the FEM reference by up to "
-        f"{mid['max_abs_delta_db']:.3f} dB (bar {MAG_BAR_DB:.0f} dB) over the "
-        f"{mid['n_compared']} reference frequencies where both curves are above "
+    assert fine["notch_pct"] < FREQ_BAR * 100.0, (
+        f"the notch sits {fine['notch_pct']:.3f} % from the openEMS tutorial "
+        f"record's {fine['ref_notch_ghz']:.4f} GHz (bar {FREQ_BAR*100:.0f} %); "
+        f"rfx reads {fine['our_notch_ghz']:.4f} GHz on the "
+        f"{finest['dx_m']*1e6:.2f} µm mesh.")
+    assert fine["max_abs_delta_db"] <= MAG_BAR_DB, (
+        f"|S21| differs from the openEMS tutorial record by up to "
+        f"{fine['max_abs_delta_db']:.3f} dB (bar {MAG_BAR_DB:.0f} dB) over the "
+        f"{fine['n_compared']} reference frequencies where both curves are above "
         f"{DEEP_NULL_DB:.0f} dB.")
 
 
@@ -704,16 +983,31 @@ def _write_figure(results, palace, openems, tmp_path) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / "msl_notch_filter.png"
 
-    fig, ax = plt.subplots(figsize=(7.0, 4.2))
+    stages = openems["meta"]["stages"]
+    fig, ax = plt.subplots(figsize=(7.4, 4.4))
     for r in results:
         ax.plot(np.asarray(r["freqs_hz"]) / 1e9, r["s21_db"],
-                label=f"rfx dx {r['dx_m']*1e6:.2f} µm")
-    ax.plot(palace["coarse"]["freqs_ghz"], _db(palace["coarse"]["s21_mag"]),
-            "--", label="Palace FEM coarse (lc 0.12 mm)")
+                label=f"rfx dx {r['dx_m']*1e6:.2f} µm "
+                      f"({r['arm_length_m']*1e3:.0f} mm arms)")
+    # Coarse first, JUDGED on top: the two rungs agree to within a line width
+    # over most of the band, and the one being judged against must be the one
+    # the eye reads there.
+    ax.plot(openems[OPENEMS_COARSE_STAGE]["freqs_ghz"],
+            _db(openems[OPENEMS_COARSE_STAGE]["s21_mag"]), "-", lw=2.4,
+            alpha=0.45, color="tab:green",
+            label=f"openEMS tutorial {OPENEMS_COARSE_STAGE} = stage_a "
+                  f"({stages[OPENEMS_COARSE_STAGE]['resolution_um']:.0f} µm, "
+                  "the tutorial's own mesh)")
+    ax.plot(openems[OPENEMS_JUDGED_STAGE]["freqs_ghz"],
+            _db(openems[OPENEMS_JUDGED_STAGE]["s21_mag"]), "-", lw=1.0,
+            color="k",
+            label=f"openEMS tutorial {OPENEMS_JUDGED_STAGE} "
+                  f"({stages[OPENEMS_JUDGED_STAGE]['resolution_um']:.0f} µm) — JUDGED")
     ax.plot(palace["mid"]["freqs_ghz"], _db(palace["mid"]["s21_mag"]),
-            "--", label="Palace FEM mid (lc 0.085 mm)")
-    ax.plot(openems["freqs_ghz"], _db(openems["s21_mag"]),
-            ":", label="openEMS dx 50 µm")
+            "--", label="Palace FEM mid (lc 0.085 mm) — reported")
+    ax.plot(palace["coarse"]["freqs_ghz"], _db(palace["coarse"]["s21_mag"]),
+            "--", label="Palace FEM coarse (lc 0.12 mm) — reported")
+    ax.set_xlim(*(f / 1e9 for f in REFERENCE_BAND_HZ))
     ax.set_xlabel("frequency (GHz)")
     ax.set_ylabel("|S21| (dB)")
     ax.grid(True, alpha=0.3)
@@ -728,11 +1022,22 @@ def _write_figure(results, palace, openems, tmp_path) -> Path:
 def test_the_lattice_builds_the_declared_board():
     """Build-time only: the board realizes as declared, and the three defects
     ``assert_realized`` exists for are refused."""
+    print(f"\n  declared board: arms {ARM_LENGTH_M*1e3:.1f} mm each side, port "
+          f"margin {PORT_MARGIN_M*1e3:.1f} mm, box {DOMAIN_X_M*1e3:.3f} × "
+          f"{DOMAIN_Y_M*1e3:.3f} × {DOMAIN_Z_M*1e3:.3f} mm, trace centre y "
+          f"{TRACE_CENTRE_Y_M*1e3:.3f} mm, stub centre x {STUB_CENTRE_X_M*1e3:.3f} mm, "
+          f"lateral clearance {LATERAL_CLEARANCE_M*1e3:.3f} mm")
     for dx in (SUBSTRATE_THICKNESS_M / 2, SUBSTRATE_THICKNESS_M / 4):
         g = assert_realized(build(dx), dx)
         _print_realized(g, dx)
 
+    # The arm-length witness builds a longer board; it must realize too, or the
+    # witness would fail for the wrong reason.
     dx = SUBSTRATE_THICKNESS_M / 2
+    g = assert_realized(build(dx, WITNESS_ARM_LENGTH_M), dx)
+    print(f"  witness board, arms {WITNESS_ARM_LENGTH_M*1e3:.2f} mm, box x "
+          f"{_x_geometry(WITNESS_ARM_LENGTH_M)[0]*1e3:.2f} mm:")
+    _print_realized(g, dx)
 
     # One cell short is inside the one-cell tolerance BY DESIGN: a 12 mm stub
     # cannot land on a node at every cell size, so the check must not refuse a
@@ -763,20 +1068,72 @@ def test_the_lattice_builds_the_declared_board():
 
 
 def test_the_reference_files_are_what_the_provenance_says():
-    """The two frozen references load, carry the bands and point counts
-    PROVENANCE.md states, and the shared notch estimator reproduces the
-    ``parabolic_f_ghz`` frozen in the Palace record.  That number was computed
-    from the record's own arrays with the same log-parabolic vertex rule by
-    the retired producer, so this is a regression pin of the estimator on a
-    frozen value (to 1 kHz), not an independent check of it and not of rfx."""
+    """The two frozen references load, carry the bands, point counts and mesh
+    rungs PROVENANCE.md states, conserve power on the band they serve, and the
+    shared notch estimator reproduces the notch frequency each record froze.
+    Those numbers were computed from the records' own arrays with the same
+    log-parabolic vertex rule by their producers, so this is a regression pin
+    of the estimator on frozen values (to 1 kHz), not an independent check of
+    it and not of rfx."""
     palace = _load(_PALACE_JSON)
     openems = _load(_OPENEMS_JSON)
 
-    assert openems["meta"]["solver"] == "openEMS"
-    assert len(openems["freqs_ghz"]) == 50 == len(openems["s21_mag"])
-    assert openems["freqs_ghz"][0] == pytest.approx(2.0)
-    assert openems["freqs_ghz"][-1] == pytest.approx(7.0)
+    # --- the openEMS tutorial record ------------------------------------
+    assert openems["meta"]["tool"] == "openEMS"
+    solved = ("stage_a", "stage_b_mid", "stage_b_fine")
+    for name in solved + (OPENEMS_COARSE_STAGE,):
+        rec = openems[name]
+        assert len(rec["freqs_ghz"]) == 1601
+        for key in ("s11_mag", "s11_deg", "s21_mag", "s21_deg", "energy_sum"):
+            assert len(rec[key]) == 1601, (name, key)
+        assert rec["freqs_ghz"][0] == pytest.approx(0.001)
+        assert rec["freqs_ghz"][-1] == pytest.approx(7.0)
+        assert tuple(rec["witness_band_ghz"]) == (2.0, 7.0)
 
+    # ``stage_b_coarse`` is not a second solve: the record says it carries
+    # stage_a's arrays because the rung IS the tutorial's own mesh.
+    assert "reused_from" in openems["meta"]["stages"][OPENEMS_COARSE_STAGE]
+    for key in ("freqs_ghz", "s11_mag", "s21_mag"):
+        assert openems[OPENEMS_COARSE_STAGE][key] == openems["stage_a"][key]
+
+    # A passive board cannot scatter more power than it receives.  The witness
+    # the record defines is over the band it serves: below 2 GHz both port
+    # voltages sit at the numerical floor and their ratio is not an
+    # S-parameter the structure produced (``meta.passivity_witness``).
+    tol = openems["meta"]["passivity_tol"]
+    assert tol == 1.05
+    for name in solved:
+        rec = openems[name]
+        band = np.asarray(rec["s11_mag"], float) ** 2 + np.asarray(rec["s21_mag"], float) ** 2
+        f = np.asarray(rec["freqs_ghz"], float)
+        in_band = (f >= 2.0) & (f <= 7.0)
+        print(f"  openEMS {name}: max energy sum over 2–7 GHz "
+              f"{rec['max_energy_sum_band']:.6f} (recomputed "
+              f"{float(band[in_band].max()):.6f}), over the whole 0.001–7 GHz "
+              f"grid {rec['max_energy_sum_full']:.6f}")
+        assert rec["max_energy_sum_band"] == pytest.approx(
+            float(band[in_band].max()), abs=1e-9)
+        assert rec["max_energy_sum_band"] <= tol
+
+    # The Stage A gate is the tutorial reproduction: the notch the maker
+    # measured, reproduced here from the record's own arrays.
+    for name in solved:
+        rec = openems[name]
+        got = notch_frequency(np.asarray(rec["freqs_ghz"], float) * 1e9,
+                              rec["s21_mag"], *REFERENCE_BAND_HZ)
+        print(f"  openEMS {name}: estimator {got['f']/1e9:.6f} GHz, record "
+              f"{rec['notch']['refined_f_ghz']:.6f} GHz, depth "
+              f"{got['depth_db']:.4f} dB vs {rec['notch']['depth_db']:.4f} dB")
+        assert got["f"] == pytest.approx(rec["notch"]["refined_f_ghz"] * 1e9,
+                                         abs=1e3)
+        assert got["depth_db"] == pytest.approx(rec["notch"]["depth_db"], abs=1e-6)
+
+    gate = openems["meta"]["stage_a_gate"]
+    assert gate["passed"] is True
+    assert openems["stage_a"]["notch"]["refined_f_ghz"] * 1e9 == pytest.approx(
+        gate["measured_f_notch_hz"], abs=1e3)
+
+    # --- the Palace FEM record -------------------------------------------
     assert palace["meta"]["solver"] == "palace"
     assert len(palace["coarse"]["freqs_ghz"]) == 101 == len(palace["coarse"]["s21_mag"])
     assert palace["coarse"]["freqs_ghz"][0] == pytest.approx(2.0)
