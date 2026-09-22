@@ -32,6 +32,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.core.yee import EPS_0, MU_0
+from rfx.sources.sources import stamp_lumped_sigma as _stamp_lumped_sigma
 
 
 # Speed of light (used for static-Z0 closed form)
@@ -1005,7 +1006,6 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
         ax_w = span["width_axis"]
         ax_n = span["normal_axis"]
         ip, iw, inr = span["prop_idx"], span["width_idx"], span["normal_idx"]
-        sigma = materials.sigma
         for cell in cells:
             i, j, k = cell
             # #691: the two axes TRANSVERSE to the port component (which is
@@ -1025,8 +1025,11 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
             sigma_cell = (
                 (n_z * d_norm) / (port.impedance * n_y * d_prop * d_width)
             )
-            sigma = sigma.at[i, j, k].add(sigma_cell)
-        return materials._replace(sigma=sigma)
+            # #1210: the port's termination is a lumped load across the
+            # port edges, not a cell volume property, so it is recorded as
+            # an edge-owned stamp and kept out of the edge average.
+            materials = _stamp_lumped_sigma(materials, (i, j, k), sigma_cell)
+        return materials
 
     # Laplace-profile termination: uniform σ across the (extended) port
     # cross-section. For real Ez = ez_w * V on this support, its added
@@ -1082,7 +1085,6 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
         return materials
     sigma_uniform = 1.0 / (port.impedance * dx_feed * integrand)
 
-    sigma = materials.sigma
     for cell in cell_indices:
         i, j, k = cell
         j_loc = cell[iw] - j_box_lo
@@ -1095,8 +1097,8 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
         # an amplitude threshold or a propagating/evanescent-mode filter.
         if float(ez_profile[j_loc, k_loc]) == 0.0:
             continue
-        sigma = sigma.at[i, j, k].add(sigma_uniform)
-    return materials._replace(sigma=sigma)
+        materials = _stamp_lumped_sigma(materials, (i, j, k), sigma_uniform)
+    return materials
 
 
 # ---------------------------------------------------------------------------

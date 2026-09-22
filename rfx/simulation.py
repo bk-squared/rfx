@@ -19,8 +19,8 @@ from rfx.grid import Grid
 from rfx.core.yee import (
     FDTDState, MaterialArrays, init_state,
     update_e, update_e_aniso, update_e_aniso_inv, update_e_box, update_h,
-    e_update_coeffs, edge_averaged_materials,
-    edge_averaged_e_update_coeffs, EPS_0, MU_0, _shift_bwd,
+    e_update_coeffs, edge_averaged_materials, component_e_materials,
+    e_component_coeffs, EPS_0, MU_0, _shift_bwd,
     precompute_coeffs, update_he_fast,
 )
 from rfx.boundaries.pec import (
@@ -835,7 +835,19 @@ def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape):
     sig = sig.astype(jnp.promote_types(sig.dtype, sig_box.dtype))
     eps = eps.at[box_local].set(eps_box)
     sig = sig.at[box_local].set(sig_box)
-    ca, cb = edge_averaged_e_update_coeffs(eps, sig, dt, (False, False, False))
+    # A lumped stamp in the window's context layer is edge-owned, not a cell
+    # volume, so it is removed before the average and added back at its cell —
+    # the same rule ``component_e_materials`` applies grid-wide (#1210). The
+    # design box itself is fenced off port and source cells.
+    eps_l = getattr(materials, "eps_r_lumped", None)
+    sig_l = getattr(materials, "sigma_lumped", None)
+    win_mats = MaterialArrays(
+        eps_r=eps, sigma=sig, mu_r=None,
+        eps_r_lumped=(None if eps_l is None
+                      else jnp.asarray(eps_l)[win].astype(eps.dtype)),
+        sigma_lumped=(None if sig_l is None
+                      else jnp.asarray(sig_l)[win].astype(sig.dtype)))
+    ca, cb = e_component_coeffs(win_mats, dt, (False, False, False))
     return (write_bounds,
             tuple(c[inner] for c in ca),
             tuple(c[inner] for c in cb))
@@ -1775,8 +1787,7 @@ def make_core_step(ctx: _StepContext):
     elif _aniso_is_live and aniso_eps is not None:
         cpml_inv_eps_r = tuple(1.0 / e for e in aniso_eps)
     elif _aniso_is_live:
-        _eps_edge, _ = edge_averaged_materials(
-            materials.eps_r, materials.sigma, periodic)
+        _eps_edge, _ = component_e_materials(materials, periodic)
         cpml_inv_eps_r = tuple(1.0 / e for e in _eps_edge)
     else:
         cpml_inv_eps_r = None

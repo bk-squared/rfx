@@ -29,7 +29,26 @@ class FDTDState(NamedTuple):
 
 
 class MaterialArrays(NamedTuple):
-    """Material property arrays on the grid."""
+    """Material property arrays on the grid.
+
+    ``eps_r`` and ``sigma`` are VOLUME properties of the cell, and since #1210
+    an E component takes the mean of them over the four cells its edge touches.
+    A lumped element is not a volume: a port's 50 ohm load, an RLC resistor or
+    capacitor is a device across ONE edge, folded into the cell's sigma / eps_r
+    as an equivalent so that the old cell-owned update produced the right edge
+    conductance. Averaging it would divide it among four cells and spread it
+    over twelve edges (measured: a 50 ohm wire port then read |S11| = 0.20
+    instead of 1/3, and a lumped port in a CPML dielectric read |S11| = 1.86,
+    non-physical).
+
+    So the stamp is recorded twice: inside ``eps_r`` / ``sigma``, where every
+    reader that wants the total still finds it, and again in the two
+    ``*_lumped`` arrays. :func:`component_e_materials` averages
+    ``eps_r - eps_r_lumped`` and adds the stamp back at its own cell, for all
+    three components — exactly where the cell-owned rule put it. ``None`` means
+    no lumped stamp anywhere, and is bit-identical to averaging ``eps_r`` and
+    ``sigma`` outright.
+    """
 
     # Relative permittivity (Nx, Ny, Nz) — used in E update
     eps_r: jnp.ndarray
@@ -37,6 +56,9 @@ class MaterialArrays(NamedTuple):
     sigma: jnp.ndarray
     # Relative permeability (Nx, Ny, Nz) — used in H update
     mu_r: jnp.ndarray
+    # The edge-owned part of ``sigma`` / ``eps_r`` (lumped stamps), or None
+    sigma_lumped: object = None
+    eps_r_lumped: object = None
 
 
 def init_state(shape: tuple[int, int, int], *, field_dtype=jnp.float32) -> FDTDState:
@@ -415,6 +437,44 @@ def edge_averaged_materials(eps_r, sigma, periodic=(False, False, False)):
     return eps, sig
 
 
+def component_e_materials(materials, periodic=(False, False, False)):
+    """Per-component ``(eps_r, sigma)`` of a :class:`MaterialArrays` (#1210).
+
+    The volume part is edge-averaged; the lumped stamps
+    (``sigma_lumped`` / ``eps_r_lumped``, see :class:`MaterialArrays`) are
+    removed before the average and added back at their own cell, because a
+    lumped device lives on an edge and not in a cell volume.
+
+    With no stamps this is :func:`edge_averaged_materials` on
+    ``materials.eps_r`` and ``materials.sigma`` and nothing else.
+    """
+    eps_v = materials.eps_r
+    sig_v = materials.sigma
+    eps_l = getattr(materials, "eps_r_lumped", None)
+    sig_l = getattr(materials, "sigma_lumped", None)
+    if eps_l is not None:
+        eps_v = eps_v - eps_l
+    if sig_l is not None:
+        sig_v = sig_v - sig_l
+    eps_c, sig_c = edge_averaged_materials(eps_v, sig_v, periodic)
+    if eps_l is not None:
+        eps_c = tuple(e + eps_l for e in eps_c)
+    if sig_l is not None:
+        sig_c = tuple(s + sig_l for s in sig_c)
+    return eps_c, sig_c
+
+
+def e_component_coeffs(materials, dt, periodic=(False, False, False)):
+    """``((ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z))`` for a MaterialArrays.
+
+    :func:`component_e_materials` then :func:`e_update_coeffs`. This is the
+    entry every grid-wide E update uses.
+    """
+    eps, sig = component_e_materials(materials, periodic)
+    pairs = [e_update_coeffs(e, s, dt) for e, s in zip(eps, sig)]
+    return tuple(p[0] for p in pairs), tuple(p[1] for p in pairs)
+
+
 def edge_averaged_e_update_coeffs(eps_r, sigma, dt,
                                   periodic=(False, False, False)):
     """``((ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z))`` for the edge-averaged rule.
@@ -575,8 +635,8 @@ def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
     hz = state.hz.astype(_cdtype)
     # #1210: the coefficients are per COMPONENT, from the mean of eps_r and
     # sigma over the four cells incident to that component's edge.
-    (ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z) = edge_averaged_e_update_coeffs(
-        materials.eps_r, materials.sigma, dt, periodic)
+    (ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z) = e_component_coeffs(
+        materials, dt, periodic)
 
     curl_x, curl_y, curl_z = curl_h(hx, hy, hz, dx, periodic, so, bloch)
 
@@ -668,8 +728,8 @@ def update_e_nu(state: FDTDState, materials: MaterialArrays, dt: float,
     # incident to the edge. Non-periodic: the graded-mesh lane installs no
     # periodic BC (``curl_h_nu`` has no wrap), the same assumption
     # ``update_e_box``'s ``inv_d`` branch documents.
-    (ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z) = edge_averaged_e_update_coeffs(
-        materials.eps_r, materials.sigma, dt, (False, False, False))
+    (ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z) = e_component_coeffs(
+        materials, dt, (False, False, False))
 
     # Backward differences with same shape (zero-pad via _shift_bwd)
     curl_x, curl_y, curl_z = curl_h_nu(hx, hy, hz, inv_dx, inv_dy, inv_dz)
@@ -743,8 +803,7 @@ def precompute_coeffs(
     # #1210: per-component eps/sigma, the mean over the four cells incident
     # to each component's edge. The arithmetic below is unchanged, so a
     # homogeneous grid bakes the same bits it baked before.
-    _eps_c, _sig_c = edge_averaged_materials(
-        materials.eps_r, materials.sigma, periodic)
+    _eps_c, _sig_c = component_e_materials(materials, periodic)
 
     def _bake(eps_r_c, sigma_c):
         eps = eps_r_c * jnp.float32(EPS_0)

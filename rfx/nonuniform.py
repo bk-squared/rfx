@@ -2762,9 +2762,8 @@ def _build_nu_scan(
     if not (use_debye or use_lorentz) and aniso_eps is not None:
         _cpml_inv_eps_r = tuple(1.0 / e for e in aniso_eps)
     elif not (use_debye or use_lorentz):
-        from rfx.core.yee import edge_averaged_materials as _edge_avg_mats
-        _eps_edge_nu, _ = _edge_avg_mats(
-            materials.eps_r, materials.sigma, (False, False, False))
+        from rfx.core.yee import component_e_materials as _comp_mats
+        _eps_edge_nu, _ = _comp_mats(materials, (False, False, False))
         _cpml_inv_eps_r = tuple(1.0 / e for e in _eps_edge_nu)
     else:
         _cpml_inv_eps_r = None

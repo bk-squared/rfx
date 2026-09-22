@@ -667,11 +667,10 @@ def setup_coaxial_port(grid: Grid, port: CoaxialPort, materials):
     materials = materials._replace(eps_r=eps_r, sigma=sigma)
 
     # ---- 4. Fold port impedance into gap cell conductivity ----
-    from rfx.sources.sources import port_sigma as _port_sigma
-    i, j, k = gap_idx
+    from rfx.sources.sources import (
+        port_sigma as _port_sigma, stamp_lumped_sigma as _stamp_sigma)
     sp = _port_sigma(grid, gap_idx, component, port.impedance)
-    new_sigma = materials.sigma.at[i, j, k].add(sp)
-    materials = materials._replace(sigma=new_sigma)
+    materials = _stamp_sigma(materials, gap_idx, sp)
 
     return materials
 

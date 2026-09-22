@@ -396,10 +396,9 @@ def assemble_materials_nu(
                 continue
             m = tc.shape.mask_on_coords(coords.x, coords.y, coords.z)
             sigma_eff = tc.sigma_bulk * (tc.thickness / d_norm.reshape(bshape))
-            materials = MaterialArrays(
+            materials = materials._replace(
                 eps_r=jnp.where(m, tc.eps_r, materials.eps_r),
                 sigma=jnp.where(m, sigma_eff, materials.sigma),
-                mu_r=materials.mu_r,
             )
     # Node-pinned PEC sheets (add_pinned_sheet): built from node indices, so
     # they need no node POSITION and are the one sheet declaration a traced
@@ -883,10 +882,16 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     # port-sigma updates and the scan launch.
     materials_concrete = materials
     if eps_override is not None or sigma_override is not None:
-        materials = MaterialArrays(
+        # A whole-grid override REPLACES the array, so any lumped stamp that
+        # was folded into it is gone; its #1210 record goes with it, or the
+        # E update would add back a load the override does not carry.
+        materials = materials._replace(
             eps_r=eps_override if eps_override is not None else materials.eps_r,
             sigma=sigma_override if sigma_override is not None else materials.sigma,
-            mu_r=materials.mu_r,
+            eps_r_lumped=(None if eps_override is not None
+                          else materials.eps_r_lumped),
+            sigma_lumped=(None if sigma_override is not None
+                          else materials.sigma_lumped),
         )
     elif design_box is not None:
         # #1183, the same rule at the same place: the design permittivity
