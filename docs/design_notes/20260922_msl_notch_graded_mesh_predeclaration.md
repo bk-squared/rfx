@@ -379,12 +379,17 @@ ladder 42.3 → 31.75 → 21.2 µm: 3.7474 → 3.7322 → 3.7166 GHz, the last t
 rungs 0.42 % apart (W1 held). The convergence is FIRST order in the cell
 (fitted 0.92), not second, and its limit is 3.682 GHz — 0.22 % above the
 openEMS tutorial's 3.6744 GHz and 0.33 % from the uniform ladder's own
-extrapolated 3.67 GHz (W3 held): the graded and the uniform mesh solve the
-same board and converge to the same answer. What the finest rung actually
-reads is still 1.15 % high, so the case's 1 % bar fired (W2). Its 2 dB
-magnitude excess is only on the notch's two skirts (3.42–3.55 GHz and
-3.84–3.87 GHz, read from the record): the frequency offset counted a second
-time; passband and notch depth agree with the reference.
+extrapolated 3.67 GHz (W3 held). The two ladders were not run on one board:
+the graded board's line sits 2.159 mm from the y_lo absorber instead of the
+case's 1.55 mm (R.0 item 1), and nothing here measures what that 609 µm does
+to the notch; what the record supports is that the two ladders extrapolate
+to limits 0.33 % (12 MHz) apart. What the finest rung actually reads is
+still 1.15 % high, so the case's 1 % bar fired (W2). Its 2 dB magnitude
+excess is only on the notch's two skirts (11 bins in 3.509–3.553 GHz and 13
+in 3.837–3.890 GHz, every one 121–216 MHz from the reference notch, passband
+maximum 0.64 dB — recomputed by the reviewer from the record, correcting the
+intervals first written here): the frequency offset counted a second time;
+passband and notch depth agree with the reference.
 
 **What the mesh buys.** At the substrate resolution of the uniform h/6 rung
 (42.3 µm) the graded mesh solves in 106 s instead of 661 s (0.16) with the
