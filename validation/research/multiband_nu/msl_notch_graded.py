@@ -1089,8 +1089,9 @@ def markdown_tables(arms: dict) -> str:
         r = v["W1"]
         w(f"**W1 mesh statement ({' -> '.join(r['arms'])}).**")
         w("")
+        # No pipe characters inside a cell: "|f_C - f_B|" would split the row.
         w("| notch A_off (GHz) | notch B_off (GHz) | notch C_off (GHz) | "
-          "|f_C - f_B| / f_B (%) | bar (%) | monotone | verdict |")
+          "last two rungs apart (%) | bar (%) | monotone | verdict |")
         w("|---|---|---|---|---|---|---|")
         w(f"| {r['notches_ghz'][0]:.5f} | {r['notches_ghz'][1]:.5f} | "
           f"{r['notches_ghz'][2]:.5f} | {r['last_two_pct']:.4f} | "

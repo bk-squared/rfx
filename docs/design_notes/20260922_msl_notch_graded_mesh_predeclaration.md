@@ -233,3 +233,143 @@ JSON, the figure and the preflight text, and writes the Results section and
 every sentence that interprets a number. Review: a separate Opus instance,
 fresh eyes, one round; P1/P2 fixes back to the same reviewer. Documentation
 mismatches go to #1171.
+
+## Results (facts)
+
+Appended after the runs; section 5 above is unchanged.  Every number below is read from
+`validation/research/multiband_nu/results/msl_notch_graded.json` by `markdown_tables()` in
+the instrument, and re-derived from the same file by `tests/unit/nonuniform/test_msl_notch_graded_replay.py`.
+
+### R.0 What the instrument had to change, and why
+
+Five facts, recorded because each one changed something section 3 or section 4
+states. None of them moves a section 5 window.
+
+1. **The line sits 2.159 mm from the y_lo face, not the case's 1.55 mm, and the
+   box is 19.409 mm deep in y instead of 18.800 mm.** Section 3 asks for at
+   least nine cells of exactly 127 um against each in-plane absorber face and
+   for a fine band reaching 500 um beyond each metal edge. On the case's board
+   the y band starts 500 um below the line, at 1.05 mm, and nine coarse cells
+   need 1.143 mm: the runway does not fit under the band. A fine y_lo runway is
+   not available either, because `make_nonuniform_grid` refuses a y profile
+   whose two end cells differ (`rfx/nonuniform.py`, the CPML boundary-cell
+   contract). 17 x 127 um = 2.159 mm leaves room for the runway plus the
+   longest transition any rung needs (C_off: 9 x 127 um + 336 um). Trace width,
+   stub length, arm length, port margin, the 4.65 mm above the stub's open end,
+   the substrate and the box height are the case's, unchanged.
+2. **The z column above 2h holds nine cells of one SOLVED size, not of 127 um.**
+   The 1.246 mm of air above the fine z band cannot hold nine 127 um cells plus
+   a ratio-1.4 transition down to the substrate cell at any rung: B_off needs at
+   least 235 um for the transition and has 230 um. The tail cell is solved per
+   rung instead (table R.1). Every one is below the declared coarse cell and the
+   nine are bit-identical, so the z_hi absorber still stands on a uniform
+   runway, which is what the absorber's own preflight check asks for.
+3. **The fine band's margin is the smallest whole number of fine cells that
+   covers the declared 500 um**, so the realized margin is 500.0 um at A_on and
+   519.7, 503.0 and 510.1 um at the three offset rungs (table R.1). A band is a
+   whole number of fine cells laid down from the node the metal must own; a
+   margin of exactly 500 um would put the band edge off the node line.
+4. **Every face is drawn to the node the profile produced, not to the
+   arithmetic that asked for it.** On rung B the substrate top's node lands
+   5e-20 m below 254 um -- float dust in a cumulative sum of eight equal cells
+   -- and a box drawn to 254 um exactly then swallows the 31.75 um cell above
+   the trace plane: the board solved carries 285.75 um of dielectric and the
+   trace sheet is buried half a cell inside it. rfx's preflight names that
+   condition, and it now joins the R2 refusal list alongside the two the note
+   declares.
+5. **The first attempt recorded no commit, and every arm was re-run.** VESSL
+   run 369367263251 produced a valid A_off measurement whose provenance block
+   carried the string `<unavailable: ... exit status 128>` where the commit
+   should be: the job exports the pinned tree with `git archive` into scratch,
+   so `git rev-parse` inside it has nothing to read. The instrument now takes
+   the commit from the submitter and REFUSES an arm it cannot name a commit
+   for, before the solve. The five arms in the tables below are the second
+   attempt, all at one commit. Four arms have a first attempt, and it read the
+   same notch to every printed digit:
+
+   | arm | attempt 1 (GHz) | VESSL run | attempt 2 (GHz) | VESSL run |
+   |---|---|---|---|---|
+   | A_on | 3.732318 | 369367263257 | 3.732318 | 369367263265 |
+   | A_off | 3.747389 | 369367263251 | 3.747389 | 369367263264 |
+   | B_off | 3.732214 | 369367263258 | 3.732214 | 369367263266 |
+   | C_off | 3.716635 | 369367263261 | 3.716635 | 369367263283 |
+
+   The first attempt's logs, curves and figures are kept off-repo under
+   `rfx-nu/runs/attempt1-*`.
+
+### R.1 The mesh each arm solved
+
+| arm | rung | placement | F (um) | FZ (um) | z tail cell (um) | band margin (fine cells) | interior cells | grid | dt (fs) |
+|---|---|---|---|---|---|---|---|---|---|
+| A_on | A | on-node | 50.0000 | 42.3333 | 114.7303 | 10 | 966,720 | 212x190x24 | 89.6116 |
+| A_off | A | offset | 47.2441 | 42.3333 | 114.7303 | 11 | 996,384 | 214x194x24 | 86.6012 |
+| B_off | B | offset | 35.9281 | 31.7500 | 111.0135 | 14 | 1,383,648 | 224x213x29 | 65.5056 |
+| C_off | C | offset | 24.2915 | 21.1667 | 109.6286 | 21 | 2,403,500 | 250x253x38 | 44.0446 |
+| A_off_longarms | A | offset | 47.2441 | 42.3333 | 114.7303 | 11 | 1,368,864 | 294x194x24 | 86.6012 |
+
+### R.2 What the lattice realized
+
+| arm | sheet plane z (um) | PEC volume cells | line node rows | stub node cols | metal node span (um) | stub length (um) | node inside the drawn edge (um) |
+|---|---|---|---|---|---|---|---|
+| A_on | 254.0000 | 0 | 13 | 13 | 600.0000 | 12000.0000 | 0.0000 |
+| A_off | 254.0000 | 0 | 13 | 13 | 566.9291 | 12000.0000 | 16.5354 |
+| B_off | 254.0000 | 0 | 17 | 17 | 574.8503 | 12000.0000 | 12.5749 |
+| C_off | 254.0000 | 0 | 25 | 25 | 582.9960 | 12000.0000 | 8.5020 |
+| A_off_longarms | 254.0000 | 0 | 13 | 13 | 566.9291 | 12000.0000 | 16.5354 |
+
+### R.3 What each arm measured
+
+| arm | notch (GHz) | depth (dB) | -10 dB BW (MHz) | fitted Z0 (ohm) | worst settling (dB) | worst passivity excess | wall (s) | cells / uniform h6 | wall / uniform h6 |
+|---|---|---|---|---|---|---|---|---|---|
+| A_on | 3.73232 | -51.07 | 770.4 | 47.00 | -92.89 | 0.00455 | 101.4 | 0.1134 | 0.1534 |
+| A_off | 3.74739 | -54.88 | 786.6 | 48.74 | -95.48 | 0.00430 | 106.1 | 0.1166 | 0.1605 |
+| B_off | 3.73221 | -51.84 | 782.4 | 48.58 | -95.10 | 0.00439 | 333.1 | 0.1526 | 0.5039 |
+| C_off | 3.71663 | -50.81 | 777.8 | 48.38 | -94.89 | 0.00443 | 1007.7 | 0.2455 | 1.5246 |
+| A_off_longarms | 3.74731 | -54.90 | 787.6 | 48.58 | -94.57 | 0.00416 | 129.5 | 0.1569 | 0.1959 |
+
+Bars, for reading the two witness columns: ring-down -40 dB, passivity excess 0.01.  The uniform h/6 rung this cost is divided by is 13,800,000 cells and 661 s (pre-declaration section 1).  Both cell counts in that ratio are GRID cells, absorber pad included, which is what the uniform ladder's own record counted; table R.1's interior count is the smaller number the pre-declaration's section 3 quotes.
+
+### R.4 The frozen windows
+
+**W1 mesh statement (A_off -> B_off -> C_off).**
+
+| notch A_off (GHz) | notch B_off (GHz) | notch C_off (GHz) | last two rungs apart (%) | bar (%) | monotone | verdict |
+|---|---|---|---|---|---|---|
+| 3.74739 | 3.73221 | 3.71663 | 0.4174 | 1 | True | HELD |
+
+**W2 comparison (C_off against the openEMS tutorial's stage_b_fine).**
+
+| rfx notch (GHz) | reference notch (GHz) | distance (%) | bar (%) | max abs dB | bar (dB) | bins compared | verdict |
+|---|---|---|---|---|---|---|---|
+| 3.71663 | 3.67436 | 1.1507 | 1 | 2.7874 | 2 | 1080 of 1144 | FIRED |
+
+**W3 cross-ladder consistency.**
+
+| fitted order in the substrate cell | graded limit (GHz) | uniform ladder limit (GHz) | distance (%) | bar (%) | verdict |
+|---|---|---|---|---|---|
+| 0.9225 | 3.68229 | 3.67000 | 0.3349 | 1 | HELD |
+
+**W4 arm-length witness (10.00 mm against 15.08 mm arms).**
+
+| max abs delta S21 (dB) | bar (dB) | worst at (GHz) | bins compared | max abs delta S11 (dB), reported | verdict |
+|---|---|---|---|---|---|
+| 0.1346 | 0.5 | 4.8053 | 302 of 317 | 1.0607 | HELD |
+
+**Reported, no window: what the 0.35-cell edge offset is worth.**
+
+| A_on notch (GHz) | A_off notch (GHz) | difference (GHz) | difference (%) |
+|---|---|---|---|
+| 3.73232 | 3.74739 | -0.01507 | -0.4022 |
+
+### R.5 Provenance
+
+| arm | VESSL run | commit | dirty | jax | backend | started (UTC) |
+|---|---|---|---|---|---|---|
+| A_on | 369367263265 | 827d5ecf6021 | None | 0.4.33.dev20241023+e3c6d6430 | gpu | 2026-09-22T04:59:25+00:00 |
+| A_off | 369367263264 | 827d5ecf6021 | None | 0.4.33.dev20241023+e3c6d6430 | gpu | 2026-09-22T04:59:23+00:00 |
+| B_off | 369367263266 | 827d5ecf6021 | None | 0.4.33.dev20241023+e3c6d6430 | gpu | 2026-09-22T05:02:52+00:00 |
+| C_off | 369367263283 | 827d5ecf6021 | None | 0.4.33.dev20241023+e3c6d6430 | gpu | 2026-09-22T05:15:49+00:00 |
+| A_off_longarms | 369367263267 | 827d5ecf6021 | None | 0.4.33.dev20241023+e3c6d6430 | gpu | 2026-09-22T05:02:10+00:00 |
+
+Conclusions: leader fills.
+
