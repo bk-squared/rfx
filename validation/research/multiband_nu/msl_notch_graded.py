@@ -1421,7 +1421,16 @@ def _fit_at_order(h: np.ndarray, f: np.ndarray, p: float) -> dict:
                 rms_hz=float(np.sqrt(np.mean(resid ** 2))))
 
 
-def three_parameter_fit(h, f, lo: float = 1e-2, hi: float = 8.0) -> dict:
+#: The bracket the three-parameter fit searches its order in, and how finely
+#: it sweeps it before refining.  The bracket is wider than W5's own window on
+#: purpose: a fit that can only return an order inside the window cannot say
+#: the data want one outside it.
+TP_ORDER_BRACKET = (0.05, 8.0)
+TP_ORDER_SWEEP = 512
+
+
+def three_parameter_fit(h, f, lo: float | None = None,
+                        hi: float | None = None) -> dict:
     """The plain fit of ``f = f_inf + A h^p`` to ALL the rungs at once.
 
     Three unknowns on four points, so it is over-determined by one and the
@@ -1434,7 +1443,9 @@ def three_parameter_fit(h, f, lo: float = 1e-2, hi: float = 8.0) -> dict:
     """
     h = np.asarray(h, dtype=float)
     f = np.asarray(f, dtype=float)
-    grid = np.linspace(lo, hi, 400)
+    lo = TP_ORDER_BRACKET[0] if lo is None else float(lo)
+    hi = TP_ORDER_BRACKET[1] if hi is None else float(hi)
+    grid = np.linspace(lo, hi, TP_ORDER_SWEEP)
     rms = np.array([_fit_at_order(h, f, p)["rms_hz"] for p in grid])
     k = int(np.argmin(rms))
     a = grid[max(k - 1, 0)]
