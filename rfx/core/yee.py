@@ -385,7 +385,16 @@ def update_e_box(state: FDTDState, prev: FDTDState, box: tuple,
     six grid-sized arrays per step on the tape.
 
     ``ca`` and ``cb`` are box-shaped (or scalar) and built once, outside the
-    time loop, by :func:`e_update_coeffs`.
+    time loop, by :func:`e_update_coeffs`. Each may instead be a 3-TUPLE
+    (or list) of box-shaped arrays, one per E component in x, y, z order:
+    component ``c`` is then updated with ``ca[c]``/``cb[c]``. That is what a
+    conducting SHEET needs — its current runs along the two in-plane edges
+    only, so the third component must keep the background coefficient while
+    the other two carry the design conductivity. ``(v, v, v)`` is the
+    scalar/array form cell for cell. Both sequence types are accepted here
+    because :func:`rfx.simulation._resolve_design_box` accepts either for
+    ``DesignBoxSpec.sigma``; it normalises what it builds to a tuple, so a
+    list reaches this kernel only from a direct call.
 
     ``inv_d`` selects the GRADED-MESH curl (#1183). ``None`` (default) is the
     uniform :func:`curl_h` at spacing ``dx``; a tuple
@@ -422,9 +431,16 @@ def update_e_box(state: FDTDState, prev: FDTDState, box: tuple,
             prev.hx.astype(_cdtype), prev.hy.astype(_cdtype),
             prev.hz.astype(_cdtype), *inv_d)
 
-    ex = (ca * prev.ex[sl].astype(_cdtype) + cb * curl_x[sl]).astype(_fdtype)
-    ey = (ca * prev.ey[sl].astype(_cdtype) + cb * curl_y[sl]).astype(_fdtype)
-    ez = (ca * prev.ez[sl].astype(_cdtype) + cb * curl_z[sl]).astype(_fdtype)
+    def _comp(v, c):
+        """``v`` for every component, or the c-th entry of a 3-sequence."""
+        return v[c] if isinstance(v, (tuple, list)) else v
+
+    ex = (_comp(ca, 0) * prev.ex[sl].astype(_cdtype)
+          + _comp(cb, 0) * curl_x[sl]).astype(_fdtype)
+    ey = (_comp(ca, 1) * prev.ey[sl].astype(_cdtype)
+          + _comp(cb, 1) * curl_y[sl]).astype(_fdtype)
+    ez = (_comp(ca, 2) * prev.ez[sl].astype(_cdtype)
+          + _comp(cb, 2) * curl_z[sl]).astype(_fdtype)
 
     return state._replace(
         ex=state.ex.at[sl].set(ex),

@@ -1663,6 +1663,25 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             flux_spectrum(m) for m in wg_final
         )
 
+    # The per-port raw DFT accumulators (v, i, v_inc, v_port), the same
+    # diagnostic channel the uniform lane fills. ``run_nonuniform`` already
+    # builds them (#764); dropping them here left a caller that needs the
+    # port's INCIDENT wave -- absorbed power as a fraction of what the port
+    # delivered, say -- with only the S-parameter RATIO, which is
+    # load-independent by construction and carries no level.
+    #
+    # Paired with the port metadata so the field has the SAME shape as the
+    # uniform lane's (rfx/simulation.py, ``final_wire_sparams``): a tuple of
+    # ``(meta, accs)``, so ``for spec, accs in result.wire_port_sparams``
+    # runs unchanged on either lane. The first entry differs in TYPE between
+    # the lanes -- see ``Result.wire_port_sparams`` in rfx/api/_spec.py.
+    wire_port_sparams_result = None
+    _wire_raw = r.get("wire_sparams_raw")
+    if _wire_raw is not None:
+        wire_port_sparams_result = tuple(
+            zip(r.get("wire_sparams_meta", ()), _wire_raw)
+        )
+
     return Result(
         state=r["state"],
         time_series=r["time_series"],
@@ -1671,6 +1690,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         ntff_data=r.get("ntff_data"),
         ntff_box=ntff_box,
         dft_planes=dft_planes_dict,
+        wire_port_sparams=wire_port_sparams_result,
         flux_monitors=flux_monitors_dict,
         waveguide_ports=waveguide_ports_result,
         waveguide_sparams=waveguide_sparams_result,

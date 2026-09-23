@@ -743,6 +743,24 @@ class Result(NamedTuple):
     freq_range: tuple | None = None
     settling_db: float | None = None
     settling_witness: dict | None = None
+    #: Per-wire-port ``(meta, accs)`` pairs, one per wire port in
+    #: declaration order, where ``accs`` holds the raw DFT accumulators
+    #: ``(v, i, v_inc, v_port)`` in that order. The diagnostic channel
+    #: ``ForwardResult`` already carries: S-parameters are a RATIO and carry
+    #: no level, so a caller asking what fraction of the port's INCIDENT
+    #: power a structure absorbed needs these. ``None`` on lanes that never
+    #: attach them.
+    #:
+    #: Both lanes use this PAIR shape, so ``for meta, accs in
+    #: result.wire_port_sparams`` runs on either, but the entries differ.
+    #: ``meta`` is the wire-port S-param spec object on the uniform lane
+    #: (rfx/simulation.py — ``.freqs``, ``.excite``, ``.impedance``) and the
+    #: runner's static metadata tuple on the graded-mesh one
+    #: (``rfx.nonuniform._build_wp_meta`` — impedance at slot 4, ``excite``
+    #: at slot 7). ``accs`` carries a fifth slot, the pre-injection drive
+    #: reference ``v_ref`` (#683), on the uniform lane only; the first four
+    #: are the same channels on both.
+    wire_port_sparams: tuple | None = None
 
     def find_resonances(self, freq_range=None, probe_idx=0,
                          source_decay_time=None, bandpass=None,

@@ -178,10 +178,19 @@ class DesignBoxSpec(NamedTuple):
         corners against the grid the solve builds.
     eps_r : box-shaped array (usually a tracer)
         Relative permittivity at the box cells.
-    sigma : box-shaped array or None
+    sigma : box-shaped array, a 3-tuple of them, or None
         Conductivity at the box cells. ``None`` (default) takes the run's own
         ``materials.sigma`` slice, so a lossy background inside the box is
         carried exactly rather than silently dropped.
+
+        A single array is the one conductivity every E component in the box
+        sees, exactly as ``materials.sigma`` is read by ``update_e``. A
+        3-tuple ``(sigma_x, sigma_y, sigma_z)`` of box-shaped arrays gives
+        each component its OWN conductivity, and therefore its own Ca/Cb.
+        What needs it: a conducting SHEET has current only along its two
+        in-plane edges, so a design variable per in-plane edge must not
+        also load the edge through the sheet. ``(s, s, s)`` reproduces the
+        single-array result bit for bit.
     """
     bounds: tuple
     eps_r: Any
@@ -189,7 +198,11 @@ class DesignBoxSpec(NamedTuple):
 
 
 class _DesignBoxCoeffs(NamedTuple):
-    """Resolved ``(Ca, Cb)`` for a design box, built once outside the scan."""
+    """Resolved ``(Ca, Cb)`` for a design box, built once outside the scan.
+
+    ``ca``/``cb`` are box-shaped arrays (one conductivity for all three E
+    components) or 3-tuples of them (one per component, in x, y, z order).
+    """
     bounds: tuple
     ca: Any
     cb: Any
@@ -943,7 +956,28 @@ def _resolve_design_box(
         raise ValueError(
             f"design permittivity has shape {tuple(eps_r.shape)} but the "
             f"design box {bounds} realizes {box_shape} cells.")
-    sigma = materials.sigma[sl] if spec.sigma is None else jnp.asarray(spec.sigma)
+    sigma = materials.sigma[sl] if spec.sigma is None else spec.sigma
+    if isinstance(sigma, (tuple, list)):
+        # Per-component conductivity: one (Ca, Cb) pair per E component, in
+        # x, y, z order. The permittivity stays shared — a design SHEET is
+        # one material whose current is anisotropic, not three materials.
+        if len(sigma) != 3:
+            raise ValueError(
+                f"a per-component design conductivity is a 3-tuple "
+                f"(sigma_x, sigma_y, sigma_z); got {len(sigma)} entries.")
+        ca, cb = [], []
+        for name, s in zip("xyz", sigma):
+            s = jnp.asarray(s)
+            if tuple(jnp.shape(s)) != box_shape:
+                raise ValueError(
+                    f"design conductivity sigma_{name} has shape "
+                    f"{tuple(jnp.shape(s))} but the design box {bounds} "
+                    f"realizes {box_shape} cells.")
+            a, b = e_update_coeffs(eps_r, s, dt)
+            ca.append(a)
+            cb.append(b)
+        return _DesignBoxCoeffs(bounds=bounds, ca=tuple(ca), cb=tuple(cb))
+    sigma = jnp.asarray(sigma)
     if tuple(jnp.shape(sigma)) != box_shape:
         raise ValueError(
             f"design conductivity has shape {tuple(jnp.shape(sigma))} but "

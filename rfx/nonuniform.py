@@ -3610,6 +3610,15 @@ def _assemble_nu_result(setup: _NUScanSetup, final: dict, time_series) -> dict:
         # (issue #764; mirrors the uniform lane's raw-acc access via
         # forward()'s wire_port_sparams).
         result["wire_sparams_raw"] = final["wire_sparams"]
+        # The static per-port metadata those accumulators were recorded
+        # with, in the same order (:func:`_build_wp_meta` slots). The
+        # accumulators alone say nothing about which port they came from
+        # or at what impedance; ``run_nonuniform_path`` zips the two into
+        # the ``(meta, accs)`` pairs the uniform lane's
+        # ``Result.wire_port_sparams`` already carries. The existing
+        # ``wire_sparams_raw`` shape is unchanged — validation harnesses
+        # index it per port.
+        result["wire_sparams_meta"] = tuple(wp_meta)
 
     return result
 
