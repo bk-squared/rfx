@@ -366,6 +366,48 @@ def _shift(rec_a: dict, rec_b: dict) -> float:
     return float(np.max(np.abs(np.abs(ga) - np.abs(gb))))
 
 
+def line_witness(rec: dict) -> dict:
+    """What the lane's own matrix-pencil fit says about the line and about the
+    two waves at the probes. Derived from the record; nothing is re-solved.
+
+    ``gamma = alpha + j beta`` is fitted from the modal voltage's shape along z;
+    ``measured_beta`` (the battery's) turns beta into the permittivity a uniform
+    TEM line would need. The lane reports Gamma at its reference plane by
+    carrying the two fitted waves from the probe centroid down to that plane
+    (``coaxial_line_reflection_from_plane_voltages``), so
+    ``|Gamma_ref| = |B/A| exp(2 alpha d)`` with ``d`` the centroid-to-plane
+    distance, and ``|B/A| = |S11| exp(-2 alpha d)`` is the ratio of the two
+    fitted waves at the centroid itself. Both are DERIVED numbers.
+    """
+    res = rec["result"]
+    f = np.asarray(res["freqs_hz"], dtype=float)
+    g = battery._S(res["gamma"])
+    s = battery._S(res["S11"])
+    lay = rec["realized"]["layout"]
+    dx = float(rec["realized"]["dx_m"])
+    d = (float(np.mean(lay["probes"])) - float(lay["z_dut"])) * dx
+    alpha = np.real(g)
+    gain = np.exp(2.0 * alpha * d)
+    b_over_a = np.abs(s) / gain
+    mb = battery.measured_beta(res["gamma"], f, float(battery.PTFE_EPS_R))
+    return {
+        "derived": True,
+        "formula": ("extrapolation_gain = exp(2 alpha d); abs_b_over_a = |S11| / "
+                    "extrapolation_gain; d = (mean(probe nodes) - z_dut) * dx"),
+        "centroid_to_reference_plane_m": d,
+        "alpha_np_per_m": alpha.astype(float).tolist(),
+        "max_alpha_np_per_m": float(alpha.max()),
+        "extrapolation_gain": gain.astype(float).tolist(),
+        "max_extrapolation_gain": float(gain.max()),
+        "abs_b_over_a": b_over_a.astype(float).tolist(),
+        "max_abs_b_over_a": float(b_over_a.max()),
+        "eps_eff_fitted_mean": mb["mean_eps_eff_fitted"],
+        "eps_eff_analytic": mb["eps_eff_analytic"],
+        "beta_ratio_min": mb["min_beta_ratio"],
+        "beta_ratio_max": mb["max_beta_ratio"],
+    }
+
+
 def stage_assemble(args, out: Path, artifact_out: Path) -> None:
     commits = battery._refuse_a_set_spanning_commits(out)
     index = json.loads(Path(args.run_index).read_text()) if args.run_index else None
@@ -443,16 +485,39 @@ def stage_assemble(args, out: Path, artifact_out: Path) -> None:
             "warnings": rec["warnings"], "wall_s": rec["wall_s"],
             "peak_memory": rec["peak_memory"], "provenance": prov,
             "result": rec["result"], "summary": rec["summary"],
+            "line_witness": line_witness(rec),
         }
 
     def rec_of(arm, rung, units):
         return records.get(f"{arm}_rung{rung}_u{units:g}")
+
+    # A0 is the battery's own open at 9 cells, run again on this campaign's
+    # backend: the difference is what the backend and this driver's plumbing
+    # change, before any arm moves the geometry.
+    bat9 = battery_fix["solves"]["open_rung9"]
+    battery_s = {12.0: battery._S(bat9["S11"]),
+                 24.0: battery._S(battery_fix["record_length_invariance"]["open"]["S_doubled"])}
+    art["a0_against_battery"] = {}
+    for units, ref in battery_s.items():
+        r = rec_of("A0", 9, units)
+        if r is None:
+            continue
+        s = battery._S(r["result"]["S11"])
+        art["a0_against_battery"][f"u{units:g}"] = {
+            "max_abs_complex_diff": float(np.max(np.abs(s - ref))),
+            "max_abs_magnitude_diff": float(np.max(np.abs(np.abs(s) - np.abs(ref)))),
+            "battery_max_abs_s11": float(np.max(np.abs(ref))),
+            "this_max_abs_s11": float(np.max(np.abs(s))),
+            "battery_backend": bat9["provenance"].get("jax_default_backend"),
+            "this_backend": r["provenance"].get("jax_default_backend"),
+        }
 
     for arm, rung, units in CAMPAIGN:
         rec = rec_of(arm, rung, units)
         if rec is None:
             continue
         s, bg = rec["summary"], rec["boundary_geometry"]
+        lw = art["records"][f"{arm}_rung{rung}_u{units:g}"]["line_witness"]
         half = rec_of(arm, rung, units / 2.0)
         art["table"].append({
             "arm": arm, "rung_annulus_cells": rung, "record_units": units,
@@ -469,6 +534,12 @@ def stage_assemble(args, out: Path, artifact_out: Path) -> None:
             "min_abs_s11": s["min_abs_s11"], "argmin_hz": s["argmin_hz"],
             "max_recurrence_residual": s["max_recurrence_residual"],
             "max_fit_residual": s["max_fit_residual"],
+            "max_abs_b_over_a_derived": lw["max_abs_b_over_a"],
+            "max_alpha_np_per_m": lw["max_alpha_np_per_m"],
+            "eps_eff_fitted_mean": lw["eps_eff_fitted_mean"],
+            "n_bins": len(s["abs_s11"]),
+            "n_bins_abs_s11_above_1": int(np.sum(np.asarray(s["abs_s11"]) > 1.0)),
+            "n_bins_power_above_bar": int(np.sum(np.asarray(s["abs_s11"]) ** 2 > POWER_MAX)),
             "status": rec["result"]["status"],
             "shift_from_half_record": None if half is None else _shift(half, rec),
             "power_within_bar": bool(s["max_abs_s11_sq"] <= POWER_MAX),
