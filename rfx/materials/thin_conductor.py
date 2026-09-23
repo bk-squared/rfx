@@ -506,7 +506,7 @@ def apply_thin_conductor(
     eps_r = jnp.where(mask, conductor.eps_r, materials.eps_r)
     sigma = jnp.where(mask, sigma_eff, materials.sigma)
 
-    return materials._replace(eps_r=eps_r, sigma=sigma), pec_mask
+    return MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=materials.mu_r), pec_mask
 
 
 # ---------------------------------------------------------------------------

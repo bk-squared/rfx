@@ -37,9 +37,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.core.yee import (MaterialArrays, cell_component_e_coeffs,
-                          component_e_materials, init_state,
-                          update_e, update_h, EPS_0)
+from rfx.core.yee import MaterialArrays, init_state, update_e, update_h, EPS_0
 from rfx.geometry.rasterize_grid import extend_cpml_pad_materials
 from rfx.materials.thin_conductor import apply_thin_conductor
 from rfx.probes.probes import DFTPlaneProbe, init_dft_plane_probe
@@ -585,9 +583,11 @@ def _build_vmap_scan_fn(
         if j_source_raw_info:
             j_cb_scales = []
             for si, sj, sk, sc in j_src_meta:
-                # #1210: the E update's own per-component Cb at that node.
-                j_cb_scales.append(cell_component_e_coeffs(
-                    materials, (si, sj, sk), sc, dt)[1])
+                eps = materials.eps_r[si, sj, sk] * EPS_0
+                sigma_val = materials.sigma[si, sj, sk]
+                loss = sigma_val * dt / (2.0 * eps)
+                cb = (dt / eps) / (1.0 + loss)
+                j_cb_scales.append(cb)
             j_cb_arr = jnp.stack(j_cb_scales)  # (n_j_sources,)
             # Scale raw waveforms: (n_steps, n_j_sources) * (n_j_sources,)
             j_src_waveforms = j_src_raw_waveforms * j_cb_arr[None, :]
@@ -619,17 +619,9 @@ def _build_vmap_scan_fn(
             # E update
             st = update_e(st, materials, dt, dx, periodic=periodic)
             if use_cpml:
-                # #1043 + #1210: the absorber's psi coefficient must take its
-                # permittivity from the array the Yee half used, and since
-                # #1210 that is the per-component edge average, not
-                # ``materials.eps_r``. Without this the two halves of one
-                # timestep integrate different media wherever an interface
-                # crosses the pad, and this lane stops reproducing ``run()``.
-                _eps_c, _ = component_e_materials(materials, periodic)
                 st, cpml_st = apply_cpml_e(
                     st, cpml_params, cpml_st, grid, cpml_axes,
-                    materials=materials,
-                    inv_eps_r_update=tuple(1.0 / e for e in _eps_c))
+                    materials=materials)
 
             # PEC boundaries
             if pec_axes:

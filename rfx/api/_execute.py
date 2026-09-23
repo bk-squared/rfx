@@ -2636,7 +2636,7 @@ class _ExecuteMixin:
         # runner's ``materials_concrete`` pattern in run_nonuniform_path).
         materials_concrete = materials
         if eps_override is not None or sigma_override is not None:
-            materials = materials._replace(
+            materials = MaterialArrays(
                 eps_r=(
                     eps_override if eps_override is not None
                     else materials.eps_r
@@ -2645,10 +2645,7 @@ class _ExecuteMixin:
                     sigma_override if sigma_override is not None
                     else materials.sigma
                 ),
-                eps_r_lumped=(None if eps_override is not None
-                              else materials.eps_r_lumped),
-                sigma_lumped=(None if sigma_override is not None
-                              else materials.sigma_lumped),
+                mu_r=materials.mu_r,
             )
         if pec_mask_override is not None:
             pec_mask = (
@@ -3842,14 +3839,10 @@ class _ExecuteMixin:
             pec_sheets=_fwd_pec_sheets, pec_wires=_fwd_pec_wires)
 
         if eps_override is not None or sigma_override is not None or mu_r_override is not None:
-            materials = materials._replace(
+            materials = MaterialArrays(
                 eps_r=eps_override if eps_override is not None else materials.eps_r,
                 sigma=sigma_override if sigma_override is not None else materials.sigma,
                 mu_r=mu_r_override if mu_r_override is not None else materials.mu_r,
-                eps_r_lumped=(None if eps_override is not None
-                              else materials.eps_r_lumped),
-                sigma_lumped=(None if sigma_override is not None
-                              else materials.sigma_lumped),
             )
 
         if pec_mask_override is not None:
@@ -3940,8 +3933,11 @@ class _ExecuteMixin:
             _design_dtype = jnp.promote_types(
                 materials.eps_r.dtype, jnp.result_type(_design_spec.eps_r))
             if _design_dtype != materials.eps_r.dtype:
-                materials = materials._replace(
-                    eps_r=materials.eps_r.astype(_design_dtype))
+                materials = MaterialArrays(
+                    eps_r=materials.eps_r.astype(_design_dtype),
+                    sigma=materials.sigma,
+                    mu_r=materials.mu_r,
+                )
 
         _res = self._forward_from_materials(
             grid,

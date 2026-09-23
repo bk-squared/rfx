@@ -1974,26 +1974,15 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
     # TracerArrayConversionError. Stay in jnp when traced so the gradient
     # propagates into the waveform normalisation; keep the exact ``float()``
     # path otherwise so non-traced output stays bit-identical.
-    # #1210: the drive coefficient is the update's own PER-COMPONENT Cb --
-    # ``update_e_nu`` multiplies each component by the mean of eps and sigma
-    # over the four cells its edge touches, and this coefficient exists to
-    # equal it. ``cell_component_e_materials`` indexes four cells, so the
-    # tracer branch below is the same branch it always was.
-    from rfx.core.yee import cell_component_e_materials as _cell_comp_mats
-    if str(component).lower() not in ("ex", "ey", "ez"):
-        raise ValueError(
-            f"unknown component {component!r}: a current source injects an "
-            f"electric field component, one of 'ex', 'ey', 'ez'.")
     materials_traced = (
         is_tracer(materials.eps_r) or is_tracer(materials.sigma)
     )
-    _eps_r_c, _sigma_c = _cell_comp_mats(materials, (i, j, k), component)
     if materials_traced:
-        eps = jnp.asarray(_eps_r_c) * EPS_0
-        sigma = jnp.asarray(_sigma_c)
+        eps = jnp.asarray(materials.eps_r[i, j, k]) * EPS_0
+        sigma = jnp.asarray(materials.sigma[i, j, k])
     else:
-        eps = float(_eps_r_c) * EPS_0
-        sigma = float(_sigma_c)
+        eps = float(materials.eps_r[i, j, k]) * EPS_0
+        sigma = float(materials.sigma[i, j, k])
     loss = sigma * grid.dt / (2.0 * eps)
 
     # Cb = dt / (eps * (1 + loss))
@@ -2766,16 +2755,8 @@ def _build_nu_scan(
     # is the same condition that selects ``update_e_nu_aniso`` below, so a
     # dispersive run — which ignores ``aniso_eps`` — keeps ``materials.eps_r``
     # and stays byte-identical, as does every run with no anisotropic array.
-    # #1210: the plain graded-mesh update ``update_e_nu`` is per-component too
-    # now (the mean of eps_r over each edge's four incident cells), so it gets
-    # the same threading. Homogeneous pads keep their bytes — the mean of four
-    # equal floats is that float exactly.
     if not (use_debye or use_lorentz) and aniso_eps is not None:
         _cpml_inv_eps_r = tuple(1.0 / e for e in aniso_eps)
-    elif not (use_debye or use_lorentz):
-        from rfx.core.yee import component_e_materials as _comp_mats
-        _eps_edge_nu, _ = _comp_mats(materials, (False, False, False))
-        _cpml_inv_eps_r = tuple(1.0 / e for e in _eps_edge_nu)
     else:
         _cpml_inv_eps_r = None
 
