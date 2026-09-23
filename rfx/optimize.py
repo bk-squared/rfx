@@ -369,8 +369,10 @@ def optimize(
 
         The jitted loss and gradient can differ from the eager ones in the
         last float32 bits, because XLA compiles the whole step as one
-        program. Measured on CPU: a few ULP in the value (up to ~150 on a
-        waveguide-port model) and 1e-7 to 5e-5 of the peak gradient. The
+        program. Measured on CPU in float32 ULP at the peak of each array
+        (``max|eager - jitted|`` over the spacing at ``max|eager|``): 0 to 9
+        in the loss and up to ~20 in a design-region gradient on the models
+        tested, and ~150 in the loss of a waveguide-port model. The
         optimisation path can therefore drift from an eager run's at that
         level.
 
