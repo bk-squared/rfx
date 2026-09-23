@@ -5,7 +5,13 @@ resources:
   cluster: remilab-c0
   cpu: 8
   memory: 16Gi
-image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+# The image is pinned by DIGEST, not by the tag 5b423bdfe0c8: one remilab-c0 node
+# caches an older build under that tag with no RFX_OPENEMS_COMMIT stamp, and a job
+# landing there refuses in its first second (VESSL 369367263390, 703, 705). The
+# digest is the registry's current build of the tag (created 2026-09-21T17:45Z,
+# RFX_OPENEMS_COMMIT=5b423bdfe0c84064cf9028167bb759007c33b182); run 706 pulled it
+# onto that node and passed.
+image: ghcr.io/bk-squared/rfx-openems@sha256:ea8df42dbf1bdcbc93479cfe0618c33695dc5266363b4873d392d10f813264ff
 env:
   DEBIAN_FRONTEND: noninteractive
   PYTHONUNBUFFERED: "1"
@@ -23,7 +29,7 @@ env:
   # The image tag this job runs, recorded into the record's meta beside the
   # openEMS build commit the image stamps into RFX_OPENEMS_COMMIT. Keep it equal
   # to `image:` above; the run block prints both.
-  RFX_OPENEMS_IMAGE: "ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8"
+  RFX_OPENEMS_IMAGE: "ghcr.io/bk-squared/rfx-openems@sha256:ea8df42dbf1bdcbc93479cfe0618c33695dc5266363b4873d392d10f813264ff"
   # Which mesh rungs THIS job solves, comma separated, from coarse,mid,fine.
   # One rung per job is the normal way to run this: with openEMS's own
   # EndCriteria the coarse rung alone ran 107 minutes on 8 threads (VESSL

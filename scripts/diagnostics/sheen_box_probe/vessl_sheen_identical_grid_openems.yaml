@@ -5,7 +5,13 @@ resources:
   cluster: remilab-c0
   cpu: 8
   memory: 16Gi
-image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+# The image is pinned by DIGEST, not by the tag 5b423bdfe0c8: one remilab-c0 node
+# caches an older build under that tag with no RFX_OPENEMS_COMMIT stamp, and a job
+# landing there refuses in its first second (VESSL 369367263390, 703, 705). The
+# digest is the registry's current build of the tag (created 2026-09-21T17:45Z,
+# RFX_OPENEMS_COMMIT=5b423bdfe0c84064cf9028167bb759007c33b182); run 706 pulled it
+# onto that node and passed.
+image: ghcr.io/bk-squared/rfx-openems@sha256:ea8df42dbf1bdcbc93479cfe0618c33695dc5266363b4873d392d10f813264ff
 env:
   DEBIAN_FRONTEND: noninteractive
   PYTHONUNBUFFERED: "1"
@@ -21,7 +27,7 @@ env:
   EXPECT: "FILL_BEFORE_SUBMIT"
   # Keep equal to `image:` above; the run block prints both beside the openEMS
   # build commit the image stamps into RFX_OPENEMS_COMMIT.
-  RFX_OPENEMS_IMAGE: "ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8"
+  RFX_OPENEMS_IMAGE: "ghcr.io/bk-squared/rfx-openems@sha256:ea8df42dbf1bdcbc93479cfe0618c33695dc5266363b4873d392d10f813264ff"
   # Which rungs dx = h_sub/n this job solves, from 3,5,7,12. h/12 (11.8 M
   # openEMS cells) has its own job file, vessl_sheen_identical_grid_openems_h12.yaml.
   RUNGS: "3,5,7"
