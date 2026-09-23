@@ -574,6 +574,118 @@ def test_the_openems_record_is_carried_as_context_only(fixture):
             "it as context and compares nothing against it")
 
 
+def test_the_port_kind_ab_block_is_internally_consistent(fixture):
+    """The A/B the lumped leg turns on: one cell of one line declared two ways,
+    in front of three loads whose reflection is an exact number.
+
+    This checks the block says what its own numbers say — the closed-form
+    column is |Gamma_L| for each load, and each port kind's distance from it is
+    the distance its stored curve actually has. It asserts no verdict: which
+    port kind is inside the bar is decided by the battery's own gates on the
+    battery's own solves, not here.
+    """
+    ab = fixture.get("port_kind_ab")
+    assert ab is not None, "the fixture carries no port-kind A/B block"
+    assert ab["present"] is True, (
+        "the A/B record was not produced; run its producer with no arguments")
+    assert ab["producer"].endswith("lumped_port_known_load_line.py")
+    assert len(ab["commit"]) == 40, "the A/B record names no resolvable commit"
+    zc = ab["channel"]["zc_ohm"]
+    assert ab["channel"]["zref_ohm"] == pytest.approx(zc, rel=1e-12), (
+        "the A/B only collapses to |Gamma_L| when Zref is the line's own Zc")
+    assert set(ab["loads"]) == {"half_zc", "matched", "double_zc"}, sorted(ab["loads"])
+    for name, row in ab["loads"].items():
+        r = row["r_over_zc"]
+        assert row["r_ohm"] == pytest.approx(r * zc, rel=1e-12), name
+        assert row["closed_form_abs_s11"] == pytest.approx(
+            abs((r - 1.0) / (r + 1.0)), rel=1e-12), name
+        for kind in ("lumped", "wire"):
+            side = row[kind]
+            worst = max(abs(v - row["closed_form_abs_s11"]) for v in side["abs_s11"])
+            assert side["max_abs_from_closed_form"] == pytest.approx(worst, rel=1e-9), (
+                f"{name}/{kind}")
+            assert len(side["abs_s11"]) == len(ab["freqs_hz"]), f"{name}/{kind}"
+
+
+def test_the_not_in_chain_block_gates_nothing(fixture):
+    """``run(compute_s_params=True)`` is not in the v2.0 chain for this family.
+
+    The block is carried because the two paths disagree on this channel and a
+    number nobody wrote down gets measured again. What is checked is that its
+    derived statement follows from its own stored arrays, and that it is not
+    quietly being used as a gate: it carries no bar and no pass/fail.
+    """
+    obs = fixture.get("not_in_chain_observations")
+    if not obs:
+        pytest.skip("no not-in-chain observations are assembled")
+    for kind, block in obs.items():
+        assert "not in the v2.0 chain" in block["scope"].lower(), kind
+        blob = json.dumps(block).lower()
+        for word in ("bar", "within_bar", "pass", "fail"):
+            assert f'"{word}"' not in blob, (
+                f"{kind}: the not-in-chain block carries a {word!r} key, which "
+                "would make an observation into a gate")
+        li = block["run_path_load_independence"]
+        runs = {c["dut"]: _complex(c["run_s11"]) for c in block["cases"]}
+        ref = next(iter(runs.values()))
+        for dut, v in runs.items():
+            assert li["identical_to_first_dut"][dut] == bool(np.array_equal(v, ref)), dut
+        assert li["all_identical"] == all(li["identical_to_first_dut"].values())
+        assert li["run_abs_max"] == pytest.approx(
+            max(float(np.abs(v).max()) for v in runs.values()), rel=1e-12)
+
+
+def test_the_degenerate_objective_evidence_follows_from_the_records(fixture):
+    """The ULP-span floor is computed on the two LOSS values, so it passes on an
+    objective whose derivative is zero and whose loss difference is round-off.
+
+    The block states that with the numbers beside it. This checks the numbers
+    are the ones in the records, and that every row it lists really is an
+    objective the driver marked degenerate — a block that quietly listed a
+    healthy leg would be an excuse rather than evidence.
+    """
+    ev = fixture.get("degenerate_objective_evidence")
+    if ev is None or not ev["rows"]:
+        pytest.skip("no degenerate objective was measured")
+    for row in ev["rows"]:
+        block = fixture["adfd"][row["leg"]]
+        assert block["objectives"]["band_mean_s11_sq"]["degenerate_on_this_dut"] is True, (
+            f"{row['leg']} is listed as degenerate but its own record does not "
+            "say so")
+        case = [c for c in block["cases"] if c["objective"] == "band_mean_s11_sq"][0]
+        assert row["ulp_span"] == pytest.approx(case["fd"]["ulp_span"], rel=1e-12)
+        assert row["span_above_floor"] == bool(
+            case["fd"]["ulp_span"] >= block["min_fd_ulp_span"])
+        assert row["closed_form_grad"] == pytest.approx(
+            case["closed_form"]["grad"], rel=1e-12, abs=1e-30)
+
+
+def test_the_fitted_electrical_length_follows_from_its_own_short(fixture):
+    """Every AD leg fits the line's own electrical length from a short it solved
+    at that rung. This re-derives the fit from the stored short and checks the
+    stated length is the one that fit gives."""
+    legs = [(n, b) for n, b in fixture.get("adfd", {}).items()
+            if b.get("fitted_electrical_length")]
+    if not legs:
+        pytest.skip("no AD leg carries a fitted electrical length")
+    for name, block in legs:
+        fit = block["fitted_electrical_length"]
+        s11 = _complex(fit["s11_short"])
+        freqs = np.asarray(fixture["freqs_hz"], dtype=float)
+        slope, intercept = np.polyfit(freqs, np.unwrap(np.angle(s11)), 1)
+        assert fit["slope_rad_per_hz"] == pytest.approx(float(slope), rel=1e-9), name
+        length = -float(slope) * C0 / (4.0 * math.pi * math.sqrt(fit["eps_r"]))
+        assert fit["length_m"] == pytest.approx(length, rel=1e-9), name
+        assert fit["frac_from_declared"] == pytest.approx(
+            abs(fit["length_m"] - fit["declared_length_m"]) / fit["declared_length_m"],
+            rel=1e-9), name
+        # The fit's own residual has to be carried: a straight line is an
+        # assumption about the record, and the lattice's dispersion is not
+        # linear in frequency.
+        assert fit["rms_residual_rad"] > 0.0, name
+        assert "least squares" in fit["fit"], name
+
+
 def test_perturbing_the_stored_s11_breaks_its_own_summary(fixture):
     """The mutation that revives the defect these checks exist for: a summary
     that no longer follows from the S11 beside it. Only the stored complex
