@@ -29,7 +29,7 @@ import sys
 import numpy as np
 from scipy.optimize import brentq
 
-sys.path.insert(0, "/Users/byungkwankim/Documents/rfx-worktrees/edge-avg-opus")
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[2]))  # the repo root, wherever it is checked out
 import jax                                              # noqa: E402
 import jax.numpy as jnp                                 # noqa: E402
 import rfx.core.yee as Y                                # noqa: E402
