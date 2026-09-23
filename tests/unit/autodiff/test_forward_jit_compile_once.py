@@ -106,8 +106,27 @@ def _board():
     return sim
 
 
+def _graded_lumped_board():
+    """The graded substrate on its ground plane, fed by a 50 ohm LUMPED port.
+
+    One cell in the middle of the substrate, no extent; a probe at the same
+    height 5 mm away records the field the objective reads.
+    """
+    sim = Simulation(freq_max=2 * F0, domain=(18e-3, 16e-3, float(DZ.sum())),
+                     dx=DX, boundary="cpml", cpml_layers=5, dz_profile=DZ)
+    sim.add_material("sub", eps_r=3.0)
+    sim.add(Box((2e-3, 2e-3, Z_GND), (16e-3, 14e-3, Z_GND + SUB_H)),
+            material="sub")
+    sim.add(Box((2e-3, 2e-3, Z_GND - 0.5e-3), (16e-3, 14e-3, Z_GND)),
+            material="pec")
+    sim.add_port(position=(7e-3, 8e-3, Z_GND + 0.75e-3), component="ez",
+                 impedance=50.0, waveform=GaussianPulse(f0=F0, bandwidth=0.8))
+    sim.add_probe((12e-3, 8e-3, Z_GND + 0.75e-3), "ez")
+    return sim
+
+
 def _uniform_board():
-    """The same board on the uniform lane: PEC ground and patch, 3 mm substrate."""
+    """The wire-port board on the uniform lane: PEC ground and patch, 3 mm substrate."""
     sim = Simulation(freq_max=2 * F0, domain=(18e-3, 16e-3, 12e-3), dx=DX,
                      boundary="cpml", cpml_layers=5)
     sim.add_material("sub", eps_r=3.0)
@@ -123,13 +142,13 @@ def _uniform_board():
 UNIFORM_BOX = ((10e-3, 7e-3, 5e-3), (11e-3, 9e-3, 6e-3))
 
 
-def _uniform_s11_loss(sim):
+def _uniform_s11_loss(sim, checkpoint=False):
     freqs = jnp.asarray([6e9, 8e9, 10e9], jnp.float32)
 
     def loss(eps_box):
         r = sim.forward(design_box=UNIFORM_BOX, design_eps_override=eps_box,
-                        n_steps=N_STEPS, checkpoint=False, skip_preflight=True,
-                        port_s11_freqs=freqs)
+                        n_steps=N_STEPS, checkpoint=checkpoint,
+                        skip_preflight=True, port_s11_freqs=freqs)
         return jnp.sum(jnp.abs(r.s_params) ** 2)
     return loss
 
@@ -152,12 +171,31 @@ def _box_eps(sim, seed=4):
                        jnp.float32)
 
 
-def _s11_loss(sim):
+def _s11_loss(sim, checkpoint=False):
     def loss(eps_box):
         r = sim.forward(design_box=BOX, design_eps_override=eps_box,
-                        n_steps=N_STEPS, checkpoint=False, skip_preflight=True)
+                        n_steps=N_STEPS, checkpoint=checkpoint,
+                        skip_preflight=True)
         return jnp.sum(jnp.abs(r.s_params[0, 0, 3:8]) ** 2)
     return loss
+
+
+def _probe_energy_loss(sim, checkpoint=False):
+    def loss(eps_box):
+        r = sim.forward(design_box=BOX, design_eps_override=eps_box,
+                        n_steps=N_STEPS, checkpoint=checkpoint,
+                        skip_preflight=True)
+        return jnp.sum(r.time_series ** 2)
+    return loss
+
+
+# The models that could not be traced under jax.jit before #1225:
+# name -> (builder, objective(sim, checkpoint), design-box permittivity(sim)).
+BOARDS = {
+    "graded wire port": (_board, _s11_loss, _box_eps),
+    "uniform wire port": (_uniform_board, _uniform_s11_loss, _uniform_box_eps),
+    "graded lumped port": (_graded_lumped_board, _probe_energy_loss, _box_eps),
+}
 
 
 def test_the_board_realizes_the_conductors_the_port_reads():
@@ -173,14 +211,17 @@ def test_the_board_realizes_the_conductors_the_port_reads():
     assert pec_mask is not None and int(np.asarray(pec_mask).sum()) > 0
 
 
-def test_graded_board_with_a_wire_port_lowers_under_jit():
-    """``jax.jit(jax.value_and_grad(|S11|^2))`` traces and lowers on the board.
+@pytest.mark.parametrize("board", sorted(BOARDS))
+def test_a_board_with_a_loaded_port_lowers_under_jit(board):
+    """``jax.jit(jax.value_and_grad(objective))`` traces and lowers.
 
-    Before #1225 this raised TracerArrayConversionError from the wire port's
-    live-edge test on the realized PEC edge mask.
+    Before #1225 the wire-port boards raised TracerArrayConversionError from
+    the port's live-edge test on the realized PEC edge mask, and the graded
+    lumped-port board ConcretizationTypeError from the port's cell sizes.
     """
-    sim = _board()
-    lowered = jax.jit(jax.value_and_grad(_s11_loss(sim))).lower(_box_eps(sim))
+    build, objective, design = BOARDS[board]
+    sim = build()
+    lowered = jax.jit(jax.value_and_grad(objective(sim))).lower(design(sim))
     assert lowered is not None
 
 
@@ -200,8 +241,8 @@ def test_repeat_calls_of_the_jitted_gradient_do_not_compile():
     assert float(jnp.max(jnp.abs(g0))) > 0.0
 
 
-def _conductor_without_a_wire_port():
-    """A PEC block, a 50 ohm lumped port (no extent) and a probe."""
+def _conductor_and_uniform_lumped_port():
+    """A PEC block, a 50 ohm lumped port (no extent) and a probe, uniform mesh."""
     sim = Simulation(freq_max=2 * F0, domain=(16e-3, 14e-3, 12e-3), dx=DX,
                      boundary="cpml", cpml_layers=5)
     sim.add(Box((9e-3, 5e-3, 4e-3), (10e-3, 9e-3, 8e-3)), material="pec")
@@ -211,14 +252,31 @@ def _conductor_without_a_wire_port():
     return sim
 
 
-def test_trace_time_setup_is_used_only_for_a_model_with_a_wire_port(monkeypatch):
-    """A model without a wire port traces exactly as before #1225.
+def _graded_source_without_a_port():
+    """The graded substrate and ground driven by a plain source, no port."""
+    sim = Simulation(freq_max=2 * F0, domain=(18e-3, 16e-3, float(DZ.sum())),
+                     dx=DX, boundary="cpml", cpml_layers=5, dz_profile=DZ)
+    sim.add_material("sub", eps_r=3.0)
+    sim.add(Box((2e-3, 2e-3, Z_GND), (16e-3, 14e-3, Z_GND + SUB_H)),
+            material="sub")
+    sim.add(Box((2e-3, 2e-3, Z_GND - 0.5e-3), (16e-3, 14e-3, Z_GND)),
+            material="pec")
+    sim.add_source((7e-3, 8e-3, Z_GND + 0.75e-3), "ez", amplitude_kind="current",
+                   waveform=GaussianPulse(f0=F0, bandwidth=0.8))
+    sim.add_probe((12e-3, 8e-3, Z_GND + 0.75e-3), "ez")
+    return sim
+
+
+def test_trace_time_setup_is_used_only_where_the_trace_failed(monkeypatch):
+    """Models that traced before #1225 trace exactly as before.
 
     ``forward()`` asks ``_forward_needs_trace_time_setup`` whether to evaluate
-    its set-up at trace time. Under ``jax.jit`` the answer must be False for a
-    model with a conductor and a lumped port but no wire port, and True for
-    the wire-port board (positive control, so a spy that saw no call cannot
-    pass).
+    its set-up at trace time. Under ``jax.jit`` it must answer False for a
+    uniform-mesh model with a conductor and a lumped port and for a graded
+    model with no port, and True for the graded wire-port and lumped-port
+    boards — the staged call; the re-call inside the trace-time context then
+    answers False and runs the plain body. The positive controls keep a spy
+    that saw no call from passing.
     """
     import rfx.api._execute as ex
 
@@ -231,46 +289,29 @@ def test_trace_time_setup_is_used_only_for_a_model_with_a_wire_port(monkeypatch)
 
     monkeypatch.setattr(ex, "_forward_needs_trace_time_setup", spy)
 
-    sim = _conductor_without_a_wire_port()
-    eps = jnp.ones(tuple(sim._build_grid().shape), jnp.float32)
+    for build in (_conductor_and_uniform_lumped_port,
+                  _graded_source_without_a_port):
+        sim = build()
+        grid = sim._build_realized_grid()
+        eps = jnp.ones(tuple(grid.shape), jnp.float32)
 
-    def loss(e):
-        r = sim.forward(eps_override=e, n_steps=10, checkpoint=False,
-                        skip_preflight=True)
-        return jnp.sum(r.time_series ** 2)
+        def loss(e, sim=sim):
+            r = sim.forward(eps_override=e, n_steps=10, checkpoint=False,
+                            skip_preflight=True)
+            return jnp.sum(r.time_series ** 2)
 
-    jax.jit(jax.value_and_grad(loss)).lower(eps)
-    assert answers == [False], (
-        f"a model without a wire port: predicate answered {answers}")
+        answers.clear()
+        jax.jit(jax.value_and_grad(loss)).lower(eps)
+        assert answers == [False], (
+            f"{build.__name__}: predicate answered {answers}")
 
-    answers.clear()
-    board = _board()
-    jax.jit(jax.value_and_grad(_s11_loss(board))).lower(_box_eps(board))
-    # The staged call answers True; the re-call inside the trace-time
-    # context answers False and runs the plain body.
-    assert answers == [True, False], (
-        f"the wire-port board: predicate answered {answers}")
-
-
-@pytest.mark.parametrize("lane", ["graded", "uniform"])
-def test_jitted_step_equals_the_plain_call_within_single_digit_ulp(lane):
-    """|S11|^2 and its design-box gradient: jitted vs plain, <= 9 ULP at peak."""
-    if lane == "graded":
-        sim = _board()
-        loss, eps = _s11_loss(sim), _box_eps(sim)
-    else:
-        sim = _uniform_board()
-        loss, eps = _uniform_s11_loss(sim), _uniform_box_eps(sim)
-
-    v, g = jax.value_and_grad(loss)(eps)
-    vj, gj = jax.jit(jax.value_and_grad(loss))(eps)
-    assert float(v) > 0.0 and float(jnp.max(jnp.abs(g))) > 0.0
-    du_v, du_g = _ulp_at_peak(v, vj), _ulp_at_peak(g, gj)
-    print(f"{lane} board, jitted vs plain: value {du_v:.1f}, gradient "
-          f"{du_g:.1f} ULP at peak")
-    assert du_v <= MAX_ULP_AT_PEAK and du_g <= MAX_ULP_AT_PEAK, (
-        f"{lane} board: jitted value {du_v:.1f} and gradient {du_g:.1f} ULP "
-        f"at peak from the plain call (allowed {MAX_ULP_AT_PEAK})")
+    for board in ("graded wire port", "graded lumped port"):
+        build, objective, design = BOARDS[board]
+        sim = build()
+        answers.clear()
+        jax.jit(jax.value_and_grad(objective(sim))).lower(design(sim))
+        assert answers == [True, False], (
+            f"{board}: predicate answered {answers}")
 
 
 def test_a_trace_time_context_that_cannot_make_constants_does_not_recurse(
@@ -290,3 +331,24 @@ def test_a_trace_time_context_that_cannot_make_constants_does_not_recurse(
     r = sim.forward(design_box=BOX, design_eps_override=_box_eps(sim),
                     n_steps=5, checkpoint=False, skip_preflight=True)
     assert np.all(np.isfinite(np.asarray(r.s_params)))
+
+
+@pytest.mark.parametrize("checkpoint", [False, True])
+@pytest.mark.parametrize("board", sorted(BOARDS))
+def test_jitted_step_equals_the_plain_call_within_single_digit_ulp(board,
+                                                                   checkpoint):
+    """Objective and design-box gradient: jitted vs plain, <= 9 ULP at peak."""
+    build, objective, design = BOARDS[board]
+    sim = build()
+    loss, eps = objective(sim, checkpoint=checkpoint), design(sim)
+
+    v, g = jax.value_and_grad(loss)(eps)
+    vj, gj = jax.jit(jax.value_and_grad(loss))(eps)
+    assert float(v) > 0.0 and float(jnp.max(jnp.abs(g))) > 0.0
+    du_v, du_g = _ulp_at_peak(v, vj), _ulp_at_peak(g, gj)
+    print(f"{board}, checkpoint={checkpoint}, jitted vs plain: value "
+          f"{du_v:.1f}, gradient {du_g:.1f} ULP at peak")
+    assert du_v <= MAX_ULP_AT_PEAK and du_g <= MAX_ULP_AT_PEAK, (
+        f"{board} (checkpoint={checkpoint}): jitted value {du_v:.1f} and "
+        f"gradient {du_g:.1f} ULP at peak from the plain call "
+        f"(allowed {MAX_ULP_AT_PEAK})")

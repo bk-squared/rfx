@@ -114,28 +114,39 @@ def _staged_by_an_outer_trace() -> bool:
 def _forward_needs_trace_time_setup(sim, *, distributed: bool) -> bool:
     """Whether ``forward()`` must evaluate its set-up while being traced (#1225).
 
-    A wire port (``add_port(..., extent=...)`` with a nonzero impedance)
-    reads the model on the host while it is set up: which of its edges are
-    live, from the realized PEC edge mask (uniform lane,
-    ``rfx.sources.sources._wire_port_live_cells``, whenever the model has a
-    conductor; graded lane, ``rfx.runners.nonuniform.run_nonuniform_path``),
-    and on the graded lane its cell sizes as Python floats
-    (``rfx.nonuniform.port_metric_axes``). Under an outer ``jax.jit`` those
-    arrays are tracers and the reads fail, so for such a model the set-up is
-    evaluated at trace time instead. Every other model keeps exactly the
-    code path it had before — its jitted program is unchanged — and so does
-    the distributed lane, whose ``shard_map`` step cannot run its
-    constant-operand collectives outside the mesh.
+    A port with a load (``add_port(..., impedance=...)``, nonzero) reads the
+    model on the host while it is set up, and under an outer ``jax.jit``
+    those arrays are tracers, so the read fails:
 
-    The ports are checked first, so a model without a wire port never runs
-    the staging probe either.
+    * a wire port (``extent=...``) asks the realized PEC edge mask which of
+      its edges are live — on the uniform lane whenever the model has a
+      conductor (``rfx.sources.sources._wire_port_live_cells``), on the
+      graded lane always (``rfx.runners.nonuniform.run_nonuniform_path``);
+    * on the graded lane every loaded port, wire or lumped, takes its cell
+      sizes as Python floats (``rfx.nonuniform.port_metric_axes``).
+
+    For those models the set-up is evaluated at trace time instead. Every
+    other model — no loaded port, or only lumped ports on the uniform lane —
+    keeps exactly the code path it had before, so its jitted program is
+    unchanged; so does the distributed lane, whose ``shard_map`` step cannot
+    run its constant-operand collectives outside the mesh. The lane test is
+    the one ``forward()`` dispatches on (``_dispatch_plan``: not distributed
+    and ``_uses_nonuniform_mesh``).
+
+    The ports are checked first and the staging probe second, so a model
+    without a loaded port runs neither the probe nor the mesh resolution,
+    and a plain call never reaches the lane test.
     """
     if distributed:
         return False
-    if not any(pe.impedance != 0.0 and getattr(pe, "extent", None) is not None
-               for pe in sim._ports):
+    loaded = [pe for pe in sim._ports if pe.impedance != 0.0]
+    if not loaded:
         return False
-    return _staged_by_an_outer_trace()
+    if not _staged_by_an_outer_trace():
+        return False
+    if any(getattr(pe, "extent", None) is not None for pe in loaded):
+        return True
+    return bool(sim._uses_nonuniform_mesh)
 
 
 def _refplane_conductor_mask(pec_mask, sheet_ctx, pec_sheets=()):
@@ -3632,10 +3643,11 @@ class _ExecuteMixin:
         step compiles once: ``step = jax.jit(jax.value_and_grad(loss))``
         compiles on its first call and reuses the program afterwards, while
         an un-jitted ``jax.value_and_grad(loss)`` compiles the whole solve
-        again on every call (#1225). A model with a wire port
-        (``add_port(..., extent=...)``) could not be traced under ``jax.jit``
-        before #1225 (on the uniform lane only when it also had a
-        conductor); its set-up is now evaluated while tracing. The jitted value and gradient agree with a plain call to
+        again on every call (#1225). Two kinds of model could not be traced
+        under ``jax.jit`` before #1225: one with a wire port
+        (``add_port(..., extent=...)``; on the uniform lane only when it also
+        had a conductor), and one on a graded mesh with any port that carries
+        an impedance. Their set-up is now evaluated while tracing. The jitted value and gradient agree with a plain call to
         float32 rounding, not necessarily bit for bit: XLA compiles the whole
         step as one program.
         """
