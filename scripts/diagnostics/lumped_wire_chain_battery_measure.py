@@ -1660,6 +1660,9 @@ def _solve_entry(rec: dict) -> dict:
             "cells_along_line": d["length_cells_realized"],
         },
         "record_doubling": {
+            # The doubled record's own S11 is kept, so the shift below can be
+            # recomputed from the two curves rather than trusted as a number.
+            "s11": rec["doubled"]["s11"],
             "max_abs_diff": rec["doubled"]["max_abs_diff"],
             "max_abs_db_shift": rec["doubled"]["max_abs_db_shift"],
             "n_steps": rec["doubled"]["n_steps"],
@@ -1932,9 +1935,12 @@ def openems_context() -> dict:
 
 
 KNOWN_LOAD_RECORD = "scripts/diagnostics/lumped_port_known_load_line.json"
+# The name the known-load record carries when a battery job re-runs its
+# producer and copies the output into the run directory.
+KNOWN_LOAD_REPRODUCTION = "lumped_port_known_load_line.json"
 
 
-def port_kind_ab() -> dict:
+def port_kind_ab(out_dir: Path | None = None, index: dict | None = None) -> dict:
     """The A/B the lumped leg turns on, read from the record its own script
     wrote rather than recomputed here.
 
@@ -1942,8 +1948,15 @@ def port_kind_ab() -> dict:
     ONE line two ways — a lumped port and a wire port, differing by `extent=dx`
     on `add_port` — in front of three loads whose reflection is an exact number.
     Nothing in this function solves anything or changes a digit; it lifts the
-    three loads, five bins, both port kinds and both `V/(Zc I)` columns into the
-    artifact so a reader of the fixture does not have to run the script.
+    three loads, five bins, both port kinds, their complex S11 and both
+    `V/(Zc I)` columns into the artifact so a reader of the fixture does not
+    have to run the script.
+
+    The committed record names the commit it was written at, which need not be
+    the battery's. When the battery's own job re-ran the producer, that output
+    sits in ``out_dir`` under ``KNOWN_LOAD_REPRODUCTION`` and is lifted beside the
+    record as ``reproduction``, complex S11 and commit included, so the record
+    is carried together with a run at the battery's commit that reproduced it.
     """
     path = REPO / KNOWN_LOAD_RECORD
     out = {"producer": "scripts/diagnostics/lumped_port_known_load_line.py",
@@ -1970,6 +1983,8 @@ def port_kind_ab() -> dict:
         for kind, m in e["ports"].items():
             row[kind] = {
                 "abs_s11": m["abs_s11"],
+                "s11_real": m["s11_real"],
+                "s11_imag": m["s11_imag"],
                 "v_over_zc_i_real": m["v_over_zc_i_real"],
                 "v_over_zc_i_imag": m["v_over_zc_i_imag"],
                 "nonpassive_warning": m["nonpassive_warning"],
@@ -1977,6 +1992,25 @@ def port_kind_ab() -> dict:
                     np.asarray(m["abs_s11"]) - e["closed_form_abs_s11"]))),
             }
         out["loads"][name] = row
+
+    rep_path = None if out_dir is None else Path(out_dir) / KNOWN_LOAD_REPRODUCTION
+    if rep_path is not None and rep_path.exists():
+        r = json.loads(rep_path.read_text())
+        entry = (index or {}).get(KNOWN_LOAD_REPRODUCTION, {})
+        out["reproduction"] = {
+            "commit": r.get("commit"),
+            "rfx_resolved_inside_this_tree": r.get("rfx_resolved_inside_this_tree"),
+            "compute_run_id": entry.get("vessl_run_id"),
+            "compute_run_dir": entry.get("run_dir"),
+            "freqs_hz": r.get("freqs_hz"),
+            "loads": {name: {kind: {"s11_real": m["s11_real"],
+                                    "s11_imag": m["s11_imag"]}
+                             for kind, m in e["ports"].items()}
+                      for name, e in r.get("loads", {}).items()},
+            "what": ("the same producer, run with no arguments by a battery job "
+                     "at the battery's commit, lifted as written. The record "
+                     "above is carried because this run reproduced it."),
+        }
     return out
 
 
@@ -2061,7 +2095,7 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
         "adfd": {},
         "pilot": None,
         "openems_context": openems_context(),
-        "port_kind_ab": port_kind_ab(),
+        "port_kind_ab": port_kind_ab(out, index),
         "not_in_chain_observations": {},
     }
 
