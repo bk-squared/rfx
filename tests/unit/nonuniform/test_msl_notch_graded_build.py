@@ -462,8 +462,16 @@ def test_the_recorded_arms_meshes_are_rebuilt_from_the_record(recorded_arms,
     (``RECORD_ULP_FLOOR``, whose comment carries the measurement).  A rung
     changed by one cell moves these numbers by about 1e13 ulp.
     """
-    rec = recorded_arms[key]
-    arm = ins.ARMS[key]
+    _assert_rebuilds_to(recorded_arms[key], ins.ARMS[key], key)
+
+
+def _assert_rebuilds_to(rec: dict, arm, key: str) -> None:
+    """The rebuild comparison itself, against one stored arm record.
+
+    Shared by the first record's arms and by the third note's arms, which are
+    compared against their namesakes in the second record: one comparison, so
+    the two gates cannot drift apart in what they call identical.
+    """
     x, y, z, board = ins.profiles(arm.rung, arm.placement, arm.arm_length_m)
     prof_report = ins.assert_profiles_graded((x, y, z), board)
     sim, _prof, built = ins.build_graded(arm.rung, arm.placement,
@@ -519,6 +527,72 @@ def test_the_recorded_arms_meshes_are_rebuilt_from_the_record(recorded_arms,
         assert miss <= 1e-16 and rec["intended_node_miss_m"][label] <= 1e-16, (
             key, label)
         assert miss <= ins.NODE_TOL_M
+
+
+# ------------------------------- the third note's arms against their namesakes
+FZ_RECORD = RECORD.parent / "msl_notch_graded_fz.json"
+
+
+@pytest.fixture(scope="module")
+def recorded_fz_arms():
+    assert FZ_RECORD.is_file(), f"the record is missing: {FZ_RECORD}"
+    with FZ_RECORD.open() as fh:
+        return json.load(fh)["arms"]
+
+
+@pytest.mark.parametrize("key", sorted(ins.AFTER_1213_ARMS))
+def test_the_after_1213_arms_rebuild_to_their_r2_namesakes_meshes(
+        recorded_fz_arms, key):
+    """Each of the third note's arms builds the mesh its R2 namesake solved.
+
+    ``docs/design_notes/20260923_msl_notch_fz_after_1213_predeclaration.md``
+    section 2: the only intended difference between an arm and its namesake
+    is the ``rfx/`` tree, and this is shown before anything is submitted.
+    The arm IS the namesake's Arm object, and its rebuild on this tree is
+    compared with the profiles and fields the namesake's GPU job stored, by
+    the same comparison the first record's arms go through.  Run on the
+    revert branch, the ``Z6r`` row is the same statement for that tree.
+    """
+    namesake = ins.AFTER_1213_NAMESAKES[key]
+    arm = ins.AFTER_1213_ARMS[key]
+    assert arm is ins.FZ_ARMS[namesake]
+    _assert_rebuilds_to(recorded_fz_arms[namesake], arm,
+                        f"{key} against {namesake}")
+
+
+def test_the_rebuild_comparison_refuses_a_mesh_one_ramp_cell_off(
+        recorded_fz_arms):
+    """The comparison above, handed a stored mesh it must not accept.
+
+    One ramp cell of Z6's stored y profile moved by 1e-12 of itself -- about
+    4500 ulp, a thousand times the floor and nothing like a rung change -- and
+    the comparison has to refuse.  An emptied comparison passes every arm and
+    this record alike, so this is the case that makes it red.
+    """
+    rec = json.loads(json.dumps(recorded_fz_arms["Z6"]))
+    arm = ins.AFTER_1213_ARMS["Z6m"]
+    y = rec["profiles"]["y"]
+    board = ins.profiles(arm.rung, arm.placement, arm.arm_length_m)[3]
+    ramp = [i for i, c in enumerate(y)
+            if c not in (board["fine_cell_m"], ins.C_COARSE_M)]
+    y[ramp[0]] *= 1.0 + 1e-12
+    with pytest.raises(AssertionError):
+        _assert_rebuilds_to(rec, arm, "Z6m against a doctored Z6")
+
+
+def test_the_after_1213_arms_are_their_own_record_kind():
+    """Which file each of the third note's arms lands in, and no overlap."""
+    assert sorted(ins.AFTER_1213_ARMS) == ["Cm", "Z16m", "Z6m", "Z6r", "Z8m"]
+    assert ins.AFTER_1213_NAMESAKES == {"Z6m": "Z6", "Z8m": "Z8",
+                                        "Cm": "C_off_re", "Z16m": "Z16",
+                                        "Z6r": "Z6"}
+    assert set(ins.AFTER_1213_ARMS) & (set(ins.ARMS) | set(ins.FZ_ARMS)
+                                       | set(ins.UNIFORM_ARMS)) == set()
+    for key in ins.AFTER_1213_ARMS:
+        assert ins.record_kind(key) == "after_1213"
+        assert ins.default_out(key) == ins.DEFAULT_AFTER_1213_OUT
+        assert ins.ARM_TABLE[key] is ins.AFTER_1213_ARMS[key]
+    assert ins.DEFAULT_AFTER_1213_OUT.name == "msl_notch_graded_fz_after_1213.json"
 
 
 # ------------------------------------------------------- the FZ ladder's rungs

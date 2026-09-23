@@ -31,6 +31,17 @@ A_on, A_off and C_off are reused by the second note's windows W5 to W8, not
 re-run.  ``--verdicts`` and ``--tables`` read whichever windows the named
 record declares.
 
+A third declaration,
+``docs/design_notes/20260923_msl_notch_fz_after_1213_predeclaration.md``,
+solves the second one's substrate-cell ladder again on a tree that contains
+#1213 (a tangential E component multiplies by the mean permittivity of the four
+cells sharing its edge), plus one rung on that tree with #1213's ``rfx/``
+change reverted.  Each of its five arms is the SAME rung entry as its namesake
+in the second record, so the mesh is the one already solved and only the
+``rfx/`` tree moves.  They are recorded in
+``results/msl_notch_graded_fz_after_1213.json``; the second record is read,
+never edited.
+
 Mesh
 ----
 Coarse cell ``C_COARSE_M`` = 127 um (the case's h/2) outside the bands.  Fine
@@ -142,6 +153,11 @@ __all__ = [
     "TRANSFORMS", "substrate_rule", "commits_absent", "order_readings",
     "least_squares_parabola", "synthetic_zero_bias", "load_first_ladder",
     "estimator_comparison", "f6_markdown",
+    "AFTER_1213_ARMS", "AFTER_1213_NAMESAKES", "AFTER_1213_LADDER",
+    "ALL_AFTER_1213_ARMS", "R2_LADDER", "load_after_1213_arms",
+    "mesh_against_namesake", "w9_board_moved", "w10_new_ladder",
+    "w11_one_limit", "w12_substrate_rule", "after_1213_verdicts",
+    "after_1213_markdown_tables",
 ]
 
 # --------------------------------------------------------------- mesh constants
@@ -262,8 +278,28 @@ FZ_LADDER_ONE_COMMIT = ("Z6", "Z8", "C_off_re", "Z16")
 FZ_REMEASURED = ("C_off_re", "C_off")
 #: The arms W5-W8 take from the first record rather than solving again.
 FZ_REUSED_ARMS = ("A_on", "A_off", "C_off")
+#: The third note's arms
+#: (``docs/design_notes/20260923_msl_notch_fz_after_1213_predeclaration.md``),
+#: each mapped to its namesake in the second record.  Every one IS that
+#: namesake's Arm object, so the rung entry, the placement and the arm length
+#: cannot drift from the mesh already solved; what is meant to differ is the
+#: ``rfx/`` tree the job reads.  ``Z6r`` is Z6 once more, solved on a branch
+#: whose ``rfx/`` is main's with #1213's change reverted.
+AFTER_1213_NAMESAKES: dict[str, str] = {
+    "Z6m": "Z6", "Z8m": "Z8", "Cm": "C_off_re", "Z16m": "Z16", "Z6r": "Z6",
+}
+AFTER_1213_ARMS: dict[str, Arm] = {
+    k: FZ_ARMS[v] for k, v in AFTER_1213_NAMESAKES.items()}
+ALL_AFTER_1213_ARMS = tuple(sorted(AFTER_1213_ARMS))
+#: The new ladder, coarse FZ to fine, and the second record's ladder it is
+#: read against: the one-build ladder, which is the one the third note's
+#: section 1 quotes.
+AFTER_1213_LADDER = ("Z6m", "Z8m", "Cm", "Z16m")
+R2_LADDER = FZ_LADDER_ONE_COMMIT
+#: The attribution arm: Z6's mesh on main with #1213's rfx/ change reverted.
+AFTER_1213_REVERT_ARM = "Z6r"
 #: Every arm this module can run, whichever record it lands in.
-ARM_TABLE: dict[str, Arm] = {**ARMS, **FZ_ARMS}
+ARM_TABLE: dict[str, Arm] = {**ARMS, **FZ_ARMS, **AFTER_1213_ARMS}
 
 #: The uniform reference ladder.  Declared after the first review (note A.1)
 #: because the cost denominator and W3's comparison target had been typed
@@ -312,6 +348,10 @@ NOTE_PATH = ("docs/design_notes/"
              "20260922_msl_notch_graded_mesh_predeclaration.md")
 FZ_NOTE_PATH = ("docs/design_notes/"
                 "20260922_msl_notch_fz_ladder_predeclaration.md")
+#: The third note's record.  The second record is read, never written.
+DEFAULT_AFTER_1213_OUT = RESULTS_DIR / "msl_notch_graded_fz_after_1213.json"
+AFTER_1213_NOTE_PATH = ("docs/design_notes/"
+                        "20260923_msl_notch_fz_after_1213_predeclaration.md")
 
 
 # ------------------------------------------------------------------- profiles
@@ -3385,6 +3425,546 @@ def fz_markdown_tables(arms: dict, build_only: list | None = None,
     return "\n".join(out)
 
 
+# ------------------------------ the third note: the FZ ladder after #1213
+#: Section 3 of the third note: every window is judged on the |S21|^2 vertex.
+#: The log vertex is printed beside it and judges nothing.
+AFTER_1213_PRIMARY = "power"
+#: W9: the board moved if Z6 moved by at least this much.
+W9_MOVED_BAR_HZ = 1.0e6
+#: W9's attribution: Z6r this close to R2's Z6 says the rest of the rfx/
+#: diff moved Z6 by nothing.
+W9_ATTRIBUTION_BAR_HZ = 0.05e6
+#: W10: "the interface was the substrate term" needs a span of at most this
+#: fraction of R2's AND a declared-rule order of at least the next number.
+W10_INTERFACE_SPAN_FRACTION = 0.5
+W10_INTERFACE_MIN_ORDER = 1.5
+#: W10: "not the interface" if the span is at least this fraction of R2's.
+W10_NOT_INTERFACE_SPAN_FRACTION = 0.8
+#: W11: the two declared-rule limits within this percentage of the reference.
+W11_BAR_PCT = 0.20
+#: What a record says the MESH was, as opposed to what the solve measured: the
+#: rung entry, the board drawn on it, and the grid the solver stepped.  An arm
+#: and its namesake agree on every one of these or they solved two boards.
+MESH_BLOCK_FIELDS = (
+    "rung", "placement", "arm_length_m", "fine_cell_m", "substrate_cell_m",
+    "coarse_cell_m", "z_tail_cell_m", "n_across_metal", "n_substrate_cells",
+    "centre_is_a_node", "centre_straddle", "port_centre_y_m", "margin_cells",
+    "edge_offset_m", "domain_m", "lateral_clearance_m", "band_x_m",
+    "band_y_trace_m", "band_y_stub_end_m", "band_z_m", "declared", "node",
+    "node_index", "segment_cells", "drawn_trace_y_m", "drawn_stub_x_m",
+    "drawn_stub_open_y_m", "drawn_sheet_z_m", "profile_summary",
+    "intended_node_miss_m", "grid_shape", "interior_shape", "n_cells",
+    "n_interior_cells", "dt_s", "probe_planes_m", "probe_runway",
+    "port_footprint",
+)
+
+
+def load_after_1213_arms(path: Path | None = None,
+                         fz_path: Path | None = None) -> dict:
+    """The third note's arms and the four R2 rungs they are read against.
+
+    Two files, because the second record is not edited and its rungs are not
+    re-run.  A key in both is refused rather than silently resolved.
+    """
+    path = DEFAULT_AFTER_1213_OUT if path is None else Path(path)
+    fz_path = DEFAULT_FZ_OUT if fz_path is None else Path(fz_path)
+    with fz_path.open() as fh:
+        r2 = json.load(fh)["arms"]
+    with path.open() as fh:
+        new = json.load(fh)["arms"]
+    clash = sorted(set(r2) & set(new))
+    if clash:
+        raise SystemExit(
+            f"the two records both hold {clash}; an arm belongs to one file. "
+            f"{fz_path.name} is not edited by the third note.")
+    out = {k: r2[k] for k in R2_LADDER if k in r2}
+    out.update(new)
+    return out
+
+
+def mesh_against_namesake(arms: dict, key: str) -> dict:
+    """Whether one arm solved exactly the mesh its R2 namesake solved.
+
+    Read off the two RECORDS, both written by the GPU job's own build, so the
+    comparison is bit for bit and machine-independent: no mesh is rebuilt
+    here.  ``profiles`` is every cell of the three profiles; ``fields`` is
+    every entry of :data:`MESH_BLOCK_FIELDS`; ``realized`` is the lattice
+    measurement R3 took (sheet plane, node rows, the permittivity either side
+    of the sheet), reported apart because it is rfx's reading of the mesh and
+    the two arms ran different ``rfx/`` trees.
+    """
+    new, old = arms[key], arms[AFTER_1213_NAMESAKES[key]]
+    fields = {f: bool(new.get(f) == old.get(f)) for f in MESH_BLOCK_FIELDS}
+    profiles_equal = all(new["profiles"][a] == old["profiles"][a]
+                         for a in ("x", "y", "z"))
+    realized_equal = bool(new["realized"] == old["realized"])
+    return dict(arm=key, namesake=AFTER_1213_NAMESAKES[key],
+                profiles_bit_identical=bool(profiles_equal),
+                fields=fields, fields_equal=bool(all(fields.values())),
+                fields_differing=sorted(f for f, ok in fields.items()
+                                        if not ok),
+                realized_equal=realized_equal,
+                mesh_identical=bool(profiles_equal and all(fields.values())))
+
+
+def _ladder_reading(arms: dict, ladder, transform: str) -> dict:
+    """One four-rung FZ ladder read one way: notches, steps and every order.
+
+    The same arithmetic R2's F.6 prints -- :func:`order_readings` on the
+    rungs' substrate cells -- with each reading's limit measured from the
+    reference read the same way.  The premise W5 asserted is asserted here
+    too: the four rungs share one in-plane cell.
+    """
+    ladder = tuple(ladder)
+    fine = [float(arms[k]["fine_cell_m"]) for k in ladder]
+    if max(fine) - min(fine) > NODE_TOL_M:
+        raise AssertionError(
+            f"the ladder {ladder} must share one in-plane cell and carries "
+            f"{[v * 1e6 for v in fine]} um")
+    h = [float(arms[k]["substrate_cell_m"]) for k in ladder]
+    f = [float(notch_of(arms[k], transform)["f"]) for k in ladder]
+    ref = reference_notch_hz(transform)
+    fit = fit_order_on_successive_differences(h, f)
+    readings = order_readings(h, f)
+    for r in readings:
+        r["limit_from_reference_hz"] = float(r["limit_hz"] - ref)
+        r["limit_from_reference_pct"] = float(
+            100.0 * (r["limit_hz"] - ref) / ref)
+    return dict(
+        arms=list(ladder), transform=transform, fine_cell_m=min(fine),
+        substrate_cells_m=h,
+        n_substrate_cells=[int(arms[k]["n_substrate_cells"]) for k in ladder],
+        notches_hz=f, steps_hz=[b - a for a, b in zip(f, f[1:])],
+        span_hz=float(f[0] - f[-1]), monotone=fit["monotone"],
+        reference_hz=ref,
+        finest_from_reference_pct=float(100.0 * (f[-1] - ref) / ref),
+        readings=readings,
+        declared={r["key"]: r for r in readings}["declared"])
+
+
+def w9_board_moved(arms: dict) -> dict:
+    """W9: did the board move, and was it #1213?
+
+    Per rung, the new notch minus its R2 namesake's, both estimators.  The
+    verdict reads Z6 alone under the primary estimator.  With Z6r present, Z6
+    is split in two on the same mesh: R2's tree to main-without-#1213 (the
+    rest of the ``rfx/`` diff) and main-without-#1213 to main (#1213's own
+    change).  The two parts add to the whole by construction.
+    """
+    p = AFTER_1213_PRIMARY
+    rows = []
+    for key in AFTER_1213_LADDER:
+        old = AFTER_1213_NAMESAKES[key]
+        f_new = {t: notch_of(arms[key], t)["f"] for t in TRANSFORMS}
+        f_old = {t: notch_of(arms[old], t)["f"] for t in TRANSFORMS}
+        rows.append(dict(
+            arm=key, namesake=old,
+            substrate_cell_m=float(arms[key]["substrate_cell_m"]),
+            n_substrate_cells=int(arms[key]["n_substrate_cells"]),
+            notch_new_hz=f_new, notch_r2_hz=f_old,
+            delta_hz={t: float(f_new[t] - f_old[t]) for t in TRANSFORMS}))
+    d_z6 = rows[0]["delta_hz"][p]
+    moved = bool(abs(d_z6) >= W9_MOVED_BAR_HZ)
+    out = dict(window="W9", transform=p, rows=rows,
+               delta_z6_hz=float(d_z6), moved_bar_hz=W9_MOVED_BAR_HZ,
+               verdict="moved" if moved else "did not move",
+               attribution_bar_hz=W9_ATTRIBUTION_BAR_HZ,
+               revert_arm=AFTER_1213_REVERT_ARM)
+    rev = AFTER_1213_REVERT_ARM
+    if rev not in arms:
+        return dict(out, revert_present=False, attribution="no attribution")
+    old = AFTER_1213_NAMESAKES[rev]
+    f_r2 = {t: notch_of(arms[old], t)["f"] for t in TRANSFORMS}
+    f_rev = {t: notch_of(arms[rev], t)["f"] for t in TRANSFORMS}
+    f_main = {t: notch_of(arms["Z6m"], t)["f"] for t in TRANSFORMS}
+    rest = {t: float(f_rev[t] - f_r2[t]) for t in TRANSFORMS}
+    own = {t: float(f_main[t] - f_rev[t]) for t in TRANSFORMS}
+    alone = bool(abs(rest[p]) <= W9_ATTRIBUTION_BAR_HZ)
+    return dict(out, revert_present=True,
+                notch_r2_z6_hz=f_r2, notch_revert_hz=f_rev,
+                notch_main_z6_hz=f_main,
+                rest_of_diff_hz=rest, change_1213_hz=own,
+                attribution=("#1213 alone" if alone
+                             else "not #1213 alone"))
+
+
+def w10_new_ladder(arms: dict) -> dict:
+    """W10: the new ladder Z6m -> Z8m -> Cm -> Z16m against R2's.
+
+    Both ladders are read by :func:`_ladder_reading` under both estimators;
+    the verdict reads the primary one.  The span is the coarsest rung minus
+    the finest, and the verdict compares MAGNITUDES of the two ladders'
+    spans, which is the only reading of "at most half of R2's" that does not
+    depend on which way a ladder falls; the signed spans are reported.
+    """
+    p = AFTER_1213_PRIMARY
+    new = {t: _ladder_reading(arms, AFTER_1213_LADDER, t) for t in TRANSFORMS}
+    r2 = {t: _ladder_reading(arms, R2_LADDER, t) for t in TRANSFORMS}
+    span, span_r2 = new[p]["span_hz"], r2[p]["span_hz"]
+    order = new[p]["declared"]["order"]
+    half = W10_INTERFACE_SPAN_FRACTION * abs(span_r2)
+    most = W10_NOT_INTERFACE_SPAN_FRACTION * abs(span_r2)
+    if abs(span) <= half and np.isfinite(order) \
+            and order >= W10_INTERFACE_MIN_ORDER:
+        verdict = "the interface was the substrate term"
+    elif abs(span) >= most:
+        verdict = "not the interface"
+    else:
+        verdict = "partly"
+    return dict(window="W10", transform=p, new=new, r2=r2,
+                span_hz=float(span), span_r2_hz=float(span_r2),
+                span_ratio=float(span / span_r2),
+                declared_order=float(order),
+                interface_span_bar_hz=float(half),
+                interface_min_order=W10_INTERFACE_MIN_ORDER,
+                not_interface_span_bar_hz=float(most),
+                verdict=verdict)
+
+
+def w11_one_limit(arms: dict) -> dict:
+    """W11: the two ladders' declared-rule limits, primary estimator.
+
+    The bar is section 4's 0.20 % of the reference.  R2's own spread -- its
+    five readings' limits, largest minus smallest -- is computed and printed
+    beside it, since that is where the note says the bar comes from.
+    """
+    p = AFTER_1213_PRIMARY
+    new = _ladder_reading(arms, AFTER_1213_LADDER, p)
+    r2 = _ladder_reading(arms, R2_LADDER, p)
+    l_new = new["declared"]["limit_hz"]
+    l_r2 = r2["declared"]["limit_hz"]
+    ref = new["reference_hz"]
+    diff = abs(l_new - l_r2)
+    bar = W11_BAR_PCT / 100.0 * ref
+    lims = [r["limit_hz"] for r in r2["readings"]]
+    held = bool(np.isfinite(diff) and diff <= bar)
+    return dict(window="W11", transform=p,
+                limit_new_hz=float(l_new), limit_r2_hz=float(l_r2),
+                difference_hz=float(diff),
+                difference_pct=float(100.0 * diff / ref),
+                reference_hz=float(ref), bar_pct=W11_BAR_PCT,
+                bar_hz=float(bar),
+                r2_readings_spread_hz=float(max(lims) - min(lims)),
+                r2_readings_spread_pct=float(
+                    100.0 * (max(lims) - min(lims)) / ref),
+                verdict="HELD" if held else "FIRED")
+
+
+def w12_substrate_rule(arms: dict) -> dict:
+    """W12: W8's derivation on the new ladder, per reading.  No verdict.
+
+    Every row of :func:`order_readings` already carries the substrate rule:
+    the cell that puts ``|A| FZ^p`` inside ``FREQ_BAR`` of that reading's own
+    limit, and ``n_z = ceil(h / FZ)``.  The finest rung's distance from the
+    reference is reported beside it.
+    """
+    new = {t: _ladder_reading(arms, AFTER_1213_LADDER, t) for t in TRANSFORMS}
+    return dict(window="W12", transform=AFTER_1213_PRIMARY,
+                bar_pct=case.FREQ_BAR * 100.0,
+                readings={t: new[t]["readings"] for t in TRANSFORMS},
+                finest_arm=AFTER_1213_LADDER[-1],
+                finest_from_reference_pct={
+                    t: new[t]["finest_from_reference_pct"] for t in TRANSFORMS},
+                verdict=None)
+
+
+def after_1213_verdicts(arms: dict) -> dict:
+    """W9-W12, the mesh check and the cost, for whatever arms are present."""
+    out: dict = {}
+    have = set(arms)
+    ladders = set(AFTER_1213_LADDER) | set(R2_LADDER)
+    if ladders <= have:
+        out["W9"] = w9_board_moved(arms)
+        out["W10"] = w10_new_ladder(arms)
+        out["W11"] = w11_one_limit(arms)
+        out["W12"] = w12_substrate_rule(arms)
+    out["mesh"] = {k: mesh_against_namesake(arms, k)
+                   for k in ALL_AFTER_1213_ARMS
+                   if k in have and AFTER_1213_NAMESAKES[k] in have}
+    out["cost"] = {k: dict(n_grid_cells=grid_cells(arms[k]),
+                           wall_s=arms[k]["wall_s"]) for k in sorted(arms)}
+    return out
+
+
+def after_1213_markdown_tables(arms: dict) -> str:
+    """The third note's Results section, as tables only.
+
+    Same contract as :func:`fz_markdown_tables`: every number is read from a
+    record or computed from one, none is typed, and the interpreting
+    sentences are not this function's to write.  Unlike the second note's
+    section it asks git nothing and rebuilds no mesh, so it prints the same
+    bytes on every machine and in every checkout.
+    """
+    v = after_1213_verdicts(arms)
+    p = AFTER_1213_PRIMARY
+    ghz, mhz = 1e9, 1e6
+    new_keys = [k for k in AFTER_1213_LADDER + (AFTER_1213_REVERT_ARM,)
+                if k in arms]
+    r2_keys = [k for k in R2_LADDER if k in arms]
+    ref = {t: reference_notch_hz(t) for t in TRANSFORMS}
+
+    out: list[str] = []
+    w = out.append
+    w("## Results (facts)")
+    w("")
+    w("Appended after the runs; sections 0-7 above are unchanged.  Every "
+      "number below is read")
+    w("from `validation/research/multiband_nu/results/"
+      "msl_notch_graded_fz_after_1213.json` and, for R2's four")
+    w("rungs, from `msl_notch_graded_fz.json`, by "
+      "`after_1213_markdown_tables()` in the instrument.")
+    w("`tests/unit/nonuniform/test_msl_notch_fz_after_1213_replay.py` "
+      "re-derives the same numbers from")
+    w("the same two files.  Every notch is the |S21|^2 vertex (section 3) "
+      "unless a column says `log`;")
+    w(f"the log vertex judges nothing.  The reference is the openEMS "
+      f"tutorial's `{case.OPENEMS_JUDGED_STAGE}` read the")
+    w(f"same way: {ref['power'] / ghz:.6f} GHz (|S21|^2), "
+      f"{ref['log'] / ghz:.6f} GHz (log).")
+    w("")
+
+    w("### G.1 The mesh each arm solved, against its R2 namesake")
+    w("")
+    w("Both sides of every comparison are the profiles and fields the GPU "
+      "job's own build wrote into")
+    w("its record; nothing is rebuilt here.  \"Declared mesh fields\" is "
+      "every field of")
+    w("`MESH_BLOCK_FIELDS`: the rung, the board drawn on it, the probe and "
+      "feed placement, the grid")
+    w("shape and the time step.  \"Realized block\" is R3's reading of the "
+      "lattice (sheet plane, node")
+    w("rows, permittivity either side of the sheet), which each `rfx/` tree "
+      "takes for itself.")
+    w("")
+    w("| arm | R2 namesake | F (um) | FZ (um) | substrate cells | z tail "
+      "cell (um) | grid nodes | grid cells | dt (fs) | three profiles equal, "
+      "bit for bit | declared mesh fields equal | realized block equal |")
+    w("|---|---|---|---|---|---|---|---|---|---|---|---|")
+    for k in new_keys:
+        a = arms[k]
+        m = v["mesh"].get(k)
+        nodes = "x".join(str(n) for n in a["grid_shape"])
+        fields = ("n/a" if m is None else
+                  str(m["fields_equal"]) if m["fields_equal"] else
+                  "False: " + ", ".join(m["fields_differing"]))
+        w(f"| {k} | {AFTER_1213_NAMESAKES[k]} | "
+          f"{a['fine_cell_m'] * 1e6:.4f} | {a['substrate_cell_m'] * 1e6:.4f} | "
+          f"{a['n_substrate_cells']} | {a['z_tail_cell_m'] * 1e6:.4f} | "
+          f"{nodes} | {grid_cells(a):,} | {a['dt_s'] * 1e15:.4f} | "
+          f"{'n/a' if m is None else m['profiles_bit_identical']} | "
+          f"{fields} | {'n/a' if m is None else m['realized_equal']} |")
+    w("")
+
+    w("### G.2 What each arm measured")
+    w("")
+    w("| arm | record | notch (GHz) | log (GHz) | above the reference (%) | "
+      "depth (dB) | worst settling (dB) | worst passivity excess | grid "
+      "cells | wall (s) |")
+    w("|---|---|---|---|---|---|---|---|---|---|")
+    for k in new_keys + r2_keys:
+        a = arms[k]
+        f_p = notch_of(a, p)
+        f_l = notch_of(a, "log")
+        excess = a["witnesses"]["worst_sigma_excess"]
+        w(f"| {k} | {'new' if k in AFTER_1213_ARMS else 'R2'} | "
+          f"{f_p['f'] / ghz:.6f} | {f_l['f'] / ghz:.6f} | "
+          f"{100.0 * (f_p['f'] - ref[p]) / ref[p]:+.4f} | "
+          f"{f_p['depth_db']:.2f} | "
+          f"{a['witnesses']['worst_settling_db']:.2f} | "
+          f"{'n/a' if excess is None else f'{excess:.5f}'} | "
+          f"{grid_cells(a):,} | {a['wall_s']:.1f} |")
+    w("")
+    w(f"Bars, for the two witness columns: ring-down {case.SETTLING_DB:.0f} "
+      f"dB, passivity excess {case.PASSIVITY_EXCESS_BAR}.")
+    w("")
+
+    w("### G.3 Provenance")
+    w("")
+    w("`rfx/ tree` is `git rev-parse <commit>:rfx`, read by the job in the "
+      "source repository.")
+    w("`exported tree matches` compares it with the same hash taken of the "
+      "`rfx/` the job exported and")
+    w("imported, before anything imported it.  R2's arms carry neither "
+      "field: they were recorded before")
+    w("the instrument read them, and their blocks are left as measured.")
+    w("")
+    w("| arm | VESSL run | commit | rfx/ tree | exported tree matches | GPU | "
+      "jax | started (UTC) |")
+    w("|---|---|---|---|---|---|---|---|")
+    for k in new_keys + r2_keys:
+        pr = arms[k]["provenance"]
+        tree = pr.get("rfx_tree")
+        match = pr.get("rfx_tree_exported_matches")
+        w(f"| {k} | {pr['run_id']} | {pr['git_sha'][:12]} | "
+          f"{'n/a' if tree is None else tree[:12]} | "
+          f"{'n/a' if match is None else match} | "
+          f"{pr.get('gpu_device_kind') or 'n/a'} | {pr['jax_version']} | "
+          f"{pr['started_utc']} |")
+    w("")
+
+    if "W9" not in v:
+        w("Conclusions: leader fills.")
+        w("")
+        return "\n".join(out)
+
+    w("### G.4 The frozen windows")
+    w("")
+    r = v["W9"]
+    w("**W9 -- did the board move, and was it #1213?**  Each rung against "
+      "its R2 namesake: the same")
+    w("mesh (G.1), a different `rfx/` tree (G.3).")
+    w("")
+    w("| rung | R2 namesake | FZ (um) | R2 (GHz) | new (GHz) | new minus R2 "
+      "(MHz) | R2, log (GHz) | new, log (GHz) | new minus R2, log (MHz) |")
+    w("|---|---|---|---|---|---|---|---|---|")
+    for row in r["rows"]:
+        w(f"| {row['arm']} | {row['namesake']} | "
+          f"{row['substrate_cell_m'] * 1e6:.4f} | "
+          f"{row['notch_r2_hz'][p] / ghz:.6f} | "
+          f"{row['notch_new_hz'][p] / ghz:.6f} | "
+          f"{row['delta_hz'][p] / mhz:+.4f} | "
+          f"{row['notch_r2_hz']['log'] / ghz:.6f} | "
+          f"{row['notch_new_hz']['log'] / ghz:.6f} | "
+          f"{row['delta_hz']['log'] / mhz:+.4f} |")
+    w("")
+    w("| Z6m minus Z6 (MHz) | bar (MHz) | verdict |")
+    w("|---|---|---|")
+    w(f"| {r['delta_z6_hz'] / mhz:+.4f} | {r['moved_bar_hz'] / mhz:.2f} | "
+      f"{r['verdict']} |")
+    w("")
+    if r["revert_present"]:
+        w(f"Attribution.  {r['revert_arm']} is Z6's mesh on main with "
+          "#1213's `rfx/` change reverted, so on one")
+        w("mesh the step from R2's Z6 to Z6m splits into the rest of the "
+          "`rfx/` diff (R2's Z6 to Z6r)")
+        w("and #1213's own change (Z6r to Z6m).")
+        w("")
+        w("| estimator | R2's Z6 (GHz) | Z6r (GHz) | Z6m (GHz) | Z6r minus "
+          "R2's Z6 (MHz) | Z6m minus Z6r (MHz) |")
+        w("|---|---|---|---|---|---|")
+        for t in (p, "log"):
+            w(f"| {t} | {r['notch_r2_z6_hz'][t] / ghz:.6f} | "
+              f"{r['notch_revert_hz'][t] / ghz:.6f} | "
+              f"{r['notch_main_z6_hz'][t] / ghz:.6f} | "
+              f"{r['rest_of_diff_hz'][t] / mhz:+.4f} | "
+              f"{r['change_1213_hz'][t] / mhz:+.4f} |")
+        w("")
+        w("| abs(Z6r minus R2's Z6) (MHz) | bar (MHz) | attribution |")
+        w("|---|---|---|")
+        w(f"| {abs(r['rest_of_diff_hz'][p]) / mhz:.4f} | "
+          f"{r['attribution_bar_hz'] / mhz:.2f} | {r['attribution']} |")
+        w("")
+    else:
+        w(f"{r['revert_arm']} is not in the record: no attribution.")
+        w("")
+
+    r = v["W10"]
+    w("**W10 -- the new ladder.**  Z6m -> Z8m -> Cm -> Z16m against R2's "
+      "Z6 -> Z8 -> C_off_re -> Z16, at")
+    w(f"F = {r['new'][p]['fine_cell_m'] * 1e6:.4f} um.  Each step is from "
+      "the rung above.")
+    w("")
+    w("| FZ (um) | substrate cells | R2 rung | R2 (GHz) | step (MHz) | new "
+      "rung | new (GHz) | step (MHz) | new, log (GHz) | step, log (MHz) |")
+    w("|---|---|---|---|---|---|---|---|---|---|")
+    nw, old, lg = r["new"][p], r["r2"][p], r["new"]["log"]
+
+    def step(lad: dict, i: int) -> str:
+        return "n/a" if i == 0 else f"{lad['steps_hz'][i - 1] / mhz:+.4f}"
+
+    for i in range(len(nw["arms"])):
+        w(f"| {nw['substrate_cells_m'][i] * 1e6:.4f} | "
+          f"{nw['n_substrate_cells'][i]} | {old['arms'][i]} | "
+          f"{old['notches_hz'][i] / ghz:.6f} | {step(old, i)} | "
+          f"{nw['arms'][i]} | {nw['notches_hz'][i] / ghz:.6f} | "
+          f"{step(nw, i)} | {lg['notches_hz'][i] / ghz:.6f} | "
+          f"{step(lg, i)} |")
+    w("")
+    w("Every reading of the order, both ladders, each with its limit and "
+      "the limit's distance from")
+    w("the reference.  The first four take the limit from the finest two "
+      "rungs the reading covers, at")
+    w("its order; the three-parameter fit carries its own.  The declared "
+      "rule is the first row.")
+    w("")
+    w("| how the order is read | ladder | order | limit (GHz) | limit minus "
+      "the reference (MHz) | same (%) |")
+    w("|---|---|---|---|---|---|")
+    for i in range(len(nw["readings"])):
+        for name, lad in (("R2", old), ("new", nw)):
+            q = lad["readings"][i]
+            w(f"| {q['label']} | {name} | {q['order']:.4f} | "
+              f"{q['limit_hz'] / ghz:.6f} | "
+              f"{q['limit_from_reference_hz'] / mhz:+.4f} | "
+              f"{q['limit_from_reference_pct']:+.4f} |")
+    w("")
+    tp = {name: lad["readings"][-1]["rms_hz"] / mhz
+          for name, lad in (("R2", old), ("new", nw))}
+    w(f"The three-parameter fit leaves {tp['R2']:.4f} MHz rms on R2's "
+      f"ladder and {tp['new']:.4f} MHz rms on the new")
+    w("one, four points and three unknowns each.")
+    w("")
+    w("| ladder | estimator | monotone | span, coarsest minus finest (MHz) | "
+      "declared-rule order | declared-rule limit (GHz) |")
+    w("|---|---|---|---|---|---|")
+    for name, side in (("R2", r["r2"]), ("new", r["new"])):
+        for t in (p, "log"):
+            lad = side[t]
+            w(f"| {name} | {t} | {lad['monotone']} | "
+              f"{lad['span_hz'] / mhz:+.4f} | "
+              f"{lad['declared']['order']:.4f} | "
+              f"{lad['declared']['limit_hz'] / ghz:.6f} |")
+    w("")
+    w("| new span over R2's | half of R2's span (MHz) | order bar | 0.8 of "
+      "R2's span (MHz) | verdict |")
+    w("|---|---|---|---|---|")
+    w(f"| {r['span_ratio']:.4f} | {r['interface_span_bar_hz'] / mhz:.4f} | "
+      f"{r['interface_min_order']} | "
+      f"{r['not_interface_span_bar_hz'] / mhz:.4f} | {r['verdict']} |")
+    w("")
+
+    r = v["W11"]
+    w("**W11 -- one limit.**  Both limits by the declared rule, under "
+      "|S21|^2.")
+    w("")
+    w("| new ladder's limit (GHz) | R2's limit (GHz) | abs difference (MHz) "
+      "| same, % of the reference | bar (%) | bar (MHz) | R2's five "
+      "readings' spread (%) | verdict |")
+    w("|---|---|---|---|---|---|---|---|")
+    w(f"| {r['limit_new_hz'] / ghz:.6f} | {r['limit_r2_hz'] / ghz:.6f} | "
+      f"{r['difference_hz'] / mhz:.4f} | {r['difference_pct']:.4f} | "
+      f"{r['bar_pct']:.2f} | {r['bar_hz'] / mhz:.4f} | "
+      f"{r['r2_readings_spread_pct']:.4f} | {r['verdict']} |")
+    w("")
+
+    r = v["W12"]
+    w("**W12 -- the substrate rule for the current solver.**  Reported, no "
+      "verdict.  W8's derivation")
+    w("on the new ladder, per reading: FZ = (bar x limit / abs(A))^(1/p) and "
+      "n_z = ceil(h / FZ),")
+    w(f"the bar {r['bar_pct']:.0f} % of that reading's OWN limit.")
+    w("")
+    w("| how the order is read | estimator | order | limit (GHz) | abs(A) | "
+      "FZ for the bar (um) | n_z for the bar |")
+    w("|---|---|---|---|---|---|---|")
+    for i in range(len(r["readings"][p])):
+        for t in (p, "log"):
+            q = r["readings"][t][i]
+            n_z = q["n_substrate_cells_for_the_bar"]
+            w(f"| {q['label']} | {t} | {q['order']:.4f} | "
+              f"{q['limit_hz'] / ghz:.6f} | {abs(q['amplitude']):.4e} | "
+              f"{q['substrate_cell_for_the_bar_m'] * 1e6:.4f} | "
+              f"{'n/a' if n_z is None else n_z} |")
+    w("")
+    fin = r["finest_from_reference_pct"]
+    w(f"The finest rung, {r['finest_arm']}, from the reference: "
+      f"{fin[p]:+.4f} % (|S21|^2), {fin['log']:+.4f} % (log).")
+    w("")
+    w("Conclusions: leader fills.")
+    w("")
+    return "\n".join(out)
+
+
 def _git(args: list[str]) -> str | None:
     """A git answer, or ``None`` when git cannot answer here."""
     try:
@@ -3398,7 +3978,9 @@ def _git(args: list[str]) -> str | None:
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
-def provenance(run_id: str | None, commit: str | None = None) -> dict:
+def provenance(run_id: str | None, commit: str | None = None,
+               rfx_tree: str | None = None,
+               rfx_tree_exported: str | None = None) -> dict:
     """Who produced this record, refusing to guess any of it.
 
     The commit comes from ``--commit`` (or ``RFX_NOTCH_SHA``) when the tree is
@@ -3407,6 +3989,14 @@ def provenance(run_id: str | None, commit: str | None = None) -> dict:
     inside it has nothing to read.  A record that cannot name its commit is
     refused here, before the solve, rather than written with a placeholder --
     a placeholder looks like provenance and links to nothing.
+
+    ``rfx_tree`` is the simulator's own identity, ``git rev-parse
+    <commit>:rfx``: two commits with one ``rfx/`` tree ran one solver.  The
+    job reads it in the source repository and passes it in; inside a worktree
+    it is read here.  ``rfx_tree_exported`` is the same hash taken of the
+    ``rfx/`` the job actually exported and imports, before anything imported
+    it, so the two agreeing is the measured form of "the solver was not
+    dirty" for a tree that has no worktree to ask.
     """
     import jax
     import rfx
@@ -3433,12 +4023,33 @@ def provenance(run_id: str | None, commit: str | None = None) -> dict:
         raise SystemExit(
             f"refusing to record an arm with commit {sha!r}: a commit is forty "
             "hexadecimal characters, and anything else is a placeholder.")
+    if rfx_tree:
+        tree = str(rfx_tree).strip()
+        tree_source = ("supplied by the job: git rev-parse <commit>:rfx in the "
+                       "source repository")
+    elif inside:
+        tree = _git(["rev-parse", "--verify", f"{sha}:rfx"])
+        tree_source = "git rev-parse <commit>:rfx in this worktree"
+    else:
+        tree, tree_source = None, None
+    exported = None if rfx_tree_exported is None else str(
+        rfx_tree_exported).strip()
+    for label, value in (("rfx/ tree", tree), ("exported rfx/ tree", exported)):
+        if value is not None and not _SHA_RE.match(value):
+            raise SystemExit(
+                f"refusing to record an arm with {label} {value!r}: a tree "
+                "hash is forty hexadecimal characters.")
     return dict(
         rfx_file=rfx.__file__,
         git_sha=sha,
         git_sha_source=source,
         git_dirty=dirty,
         git_describe=describe,
+        rfx_tree=tree,
+        rfx_tree_source=tree_source,
+        rfx_tree_exported=exported,
+        rfx_tree_exported_matches=(None if exported is None or tree is None
+                                   else bool(exported == tree)),
         argv=list(sys.argv),
         started_utc=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         jax_version=jax.__version__,
@@ -3453,9 +4064,22 @@ def provenance(run_id: str | None, commit: str | None = None) -> dict:
 
 def run_arm(arm_key: str, *, run_id: str | None = None,
             commit: str | None = None, dry_run: bool = False,
-            n_steps_cap: int | None = None) -> dict:
+            n_steps_cap: int | None = None, rfx_tree: str | None = None,
+            rfx_tree_exported: str | None = None) -> dict:
     """Build, refuse, solve and record one arm.  Everything is printed too."""
     arm = ARM_TABLE[arm_key]
+    prov = provenance(run_id, commit, rfx_tree, rfx_tree_exported)
+    # The third note's arms exist to compare rfx/ trees, so an arm that cannot
+    # name its tree is refused before anything is built, not recorded blank.
+    if (record_kind(arm_key) == "after_1213" and not dry_run
+            and (prov["rfx_tree"] is None
+                 or prov["rfx_tree_exported_matches"] is False)):
+        raise SystemExit(
+            f"refusing to solve {arm_key}: its rfx/ tree is "
+            f"{prov['rfx_tree']!r} and the exported tree "
+            f"{prov['rfx_tree_exported']!r}. The third note compares solvers "
+            "by their rfx/ tree, so the job must pass --rfx-tree, and the "
+            "tree it exported must be that tree.")
     print(f"\n=== arm {arm_key}: rung {arm.rung}, {arm.placement}, arms "
           f"{arm.arm_length_m * 1e3:.2f} mm ===")
     sim, prof, b = build_graded(arm.rung, arm.placement, arm.arm_length_m)
@@ -3567,8 +4191,11 @@ def run_arm(arm_key: str, *, run_id: str | None = None,
         interior_shape=[int(x.size), int(y.size), int(z.size)],
         dt_s=g["dt_s"],
         n_freqs=case.N_FREQS, num_periods=case.NUM_PERIODS,
-        provenance=provenance(run_id, commit),
+        provenance=prov,
     )
+    print(f"  provenance: commit {prov['git_sha']}, rfx/ tree "
+          f"{prov['rfx_tree']}, exported rfx/ tree {prov['rfx_tree_exported']} "
+          f"(matches: {prov['rfx_tree_exported_matches']})")
 
     if dry_run:
         print("  --dry-run: build, R1, R2, R3 and the probe check only; "
@@ -3786,6 +4413,8 @@ def record_kind(arm_key: str) -> str:
     """Which record an arm belongs in.  An arm belongs to exactly one."""
     if arm_key in FZ_ARMS:
         return "fz"
+    if arm_key in AFTER_1213_ARMS:
+        return "after_1213"
     if arm_key in ARMS or arm_key in UNIFORM_ARMS:
         return "graded"
     raise SystemExit(f"no record holds an arm called {arm_key!r}.")
@@ -3795,7 +4424,8 @@ def default_out(arm_key: str | None) -> Path:
     """The file an arm is recorded in, or the first record when none is named."""
     if arm_key is None:
         return DEFAULT_OUT
-    return DEFAULT_FZ_OUT if record_kind(arm_key) == "fz" else DEFAULT_OUT
+    return {"fz": DEFAULT_FZ_OUT, "after_1213": DEFAULT_AFTER_1213_OUT}.get(
+        record_kind(arm_key), DEFAULT_OUT)
 
 
 #: The mesh constants every record carries, identical in both files.
@@ -3811,6 +4441,35 @@ _MESH_BLOCK = {
 
 
 def _empty_file(kind: str = "graded") -> dict:
+    if kind == "after_1213":
+        return {
+            "schema": "msl_notch_graded_fz_after_1213/1",
+            "note": AFTER_1213_NOTE_PATH,
+            "reused_from": "msl_notch_graded_fz.json",
+            "reused_arms": list(R2_LADDER),
+            "namesakes": dict(AFTER_1213_NAMESAKES),
+            "windows": {
+                "primary_transform": AFTER_1213_PRIMARY,
+                "W9_moved_bar_hz": W9_MOVED_BAR_HZ,
+                "W9_attribution_bar_hz": W9_ATTRIBUTION_BAR_HZ,
+                "W9_revert_arm": AFTER_1213_REVERT_ARM,
+                "W10_ladder": list(AFTER_1213_LADDER),
+                "W10_r2_ladder": list(R2_LADDER),
+                "W10_interface_span_fraction": W10_INTERFACE_SPAN_FRACTION,
+                "W10_interface_min_order": W10_INTERFACE_MIN_ORDER,
+                "W10_not_interface_span_fraction":
+                    W10_NOT_INTERFACE_SPAN_FRACTION,
+                "W11_bar_pct": W11_BAR_PCT,
+                "W12_freq_bar_pct": case.FREQ_BAR * 100.0,
+                "reference": f"{case.OPENEMS_JUDGED_STAGE} of "
+                             "reference/openems_tutorial.json",
+                "settling_db": case.SETTLING_DB,
+                "passivity_excess_bar": case.PASSIVITY_EXCESS_BAR,
+                "reference_band_hz": list(case.REFERENCE_BAND_HZ),
+            },
+            "mesh": dict(_MESH_BLOCK),
+            "arms": {},
+        }
     if kind == "fz":
         return {
             "schema": "msl_notch_graded_fz/1",
@@ -3910,11 +4569,21 @@ def merge_files(paths: list[Path], out: Path) -> Path:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--arm", choices=sorted(set(ALL_ARMS) | set(ALL_FZ_ARMS)))
+    ap.add_argument("--arm", choices=sorted(set(ALL_ARMS) | set(ALL_FZ_ARMS)
+                                            | set(ALL_AFTER_1213_ARMS)))
     ap.add_argument("--run-id", default=os.environ.get("RFX_RUN_ID"))
     ap.add_argument("--commit", default=os.environ.get("RFX_NOTCH_SHA"),
                     help="the commit this tree was exported from; required "
                          "when the tree is not a git worktree")
+    ap.add_argument("--rfx-tree", default=None,
+                    help="git rev-parse <commit>:rfx, read by the job in the "
+                         "source repository")
+    ap.add_argument("--rfx-tree-exported", default=None,
+                    help="the same hash of the rfx/ the job exported, taken "
+                         "before anything imported it")
+    ap.add_argument("--fz-out", type=Path, default=DEFAULT_FZ_OUT,
+                    help="the second record, whose rungs the third note's "
+                         "windows read")
     ap.add_argument("--out", type=Path, default=None,
                     help="the record to write or read; defaults to the file "
                          "the arm belongs in, and to the first record when no "
@@ -3967,7 +4636,15 @@ def main(argv: list[str] | None = None) -> int:
         # the FZ record names its schema and the arms it reuses, and the
         # reused arms come from the first record because that file is not
         # edited by the FZ note.
-        if str(data.get("schema", "")).startswith("msl_notch_graded_fz/"):
+        schema = str(data.get("schema", ""))
+        if schema.startswith("msl_notch_graded_fz_after_1213/"):
+            arms = load_after_1213_arms(out, args.fz_out)
+            if args.tables:
+                print(after_1213_markdown_tables(arms))
+            else:
+                print(json.dumps(after_1213_verdicts(arms), indent=1,
+                                 sort_keys=True))
+        elif schema.startswith("msl_notch_graded_fz/"):
             arms = load_fz_arms(out, args.base_out)
             if args.tables:
                 print(fz_markdown_tables(arms, data.get("build_only"),
@@ -3991,9 +4668,15 @@ def main(argv: list[str] | None = None) -> int:
                     f"arm {args.arm!r} is already in {out}; one attempt "
                     "per arm.")
 
-    runner = run_uniform_arm if args.arm in UNIFORM_ARMS else run_arm
-    record = runner(args.arm, run_id=args.run_id, commit=args.commit,
-                    dry_run=args.dry_run, n_steps_cap=args.n_steps_cap)
+    if args.arm in UNIFORM_ARMS:
+        record = run_uniform_arm(args.arm, run_id=args.run_id,
+                                 commit=args.commit, dry_run=args.dry_run,
+                                 n_steps_cap=args.n_steps_cap)
+    else:
+        record = run_arm(args.arm, run_id=args.run_id, commit=args.commit,
+                         dry_run=args.dry_run, n_steps_cap=args.n_steps_cap,
+                         rfx_tree=args.rfx_tree,
+                         rfx_tree_exported=args.rfx_tree_exported)
     if args.dry_run:
         return 0
     if args.n_steps_cap is not None:
