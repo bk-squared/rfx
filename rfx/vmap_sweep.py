@@ -37,7 +37,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.core.yee import (MaterialArrays, component_e_materials, init_state,
+from rfx.core.yee import (MaterialArrays, cell_component_e_coeffs,
+                          component_e_materials, init_state,
                           update_e, update_h, EPS_0)
 from rfx.geometry.rasterize_grid import extend_cpml_pad_materials
 from rfx.materials.thin_conductor import apply_thin_conductor
@@ -584,11 +585,9 @@ def _build_vmap_scan_fn(
         if j_source_raw_info:
             j_cb_scales = []
             for si, sj, sk, sc in j_src_meta:
-                eps = materials.eps_r[si, sj, sk] * EPS_0
-                sigma_val = materials.sigma[si, sj, sk]
-                loss = sigma_val * dt / (2.0 * eps)
-                cb = (dt / eps) / (1.0 + loss)
-                j_cb_scales.append(cb)
+                # #1210: the E update's own per-component Cb at that node.
+                j_cb_scales.append(cell_component_e_coeffs(
+                    materials, (si, sj, sk), sc, dt)[1])
             j_cb_arr = jnp.stack(j_cb_scales)  # (n_j_sources,)
             # Scale raw waveforms: (n_steps, n_j_sources) * (n_j_sources,)
             j_src_waveforms = j_src_raw_waveforms * j_cb_arr[None, :]

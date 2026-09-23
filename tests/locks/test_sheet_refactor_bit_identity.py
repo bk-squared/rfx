@@ -216,7 +216,7 @@ def test_curl_h_nu_bit_identity_with_inline_stencil():
         assert np.asarray(g).tobytes() == np.asarray(r).tobytes()
 
 
-def test_update_kernels_bit_identity_via_curl_helpers():
+def test_update_kernels_equal_the_shared_curl_and_coefficient_helpers():
     """The refactored kernels equal a jit'd hand-run of coeffs + shared
     curls to a few float32 ULP. Two *different* jitted graphs are not
     byte-comparable (XLA fuses ca*E+cb*curl differently per graph), so this
@@ -226,15 +226,21 @@ def test_update_kernels_bit_identity_via_curl_helpers():
     #677 code motion — all seven digests unchanged (recorded in the #677 PR
     body). The helper-level tests above stay byte-exact (eager vs eager).
 
-    RE-PINNED 2026-09-23, root cause #1210: the hand-run below used to build
-    ONE cell-centred (Ca, Cb) and apply it to all three components. That is
-    the defect #1210 fixed — a Yee E component lies on an edge shared by four
-    cells and takes the mean of their eps and sigma — and the fixture here is
-    a RANDOM material, so every cell is an interface and the lock moved by up
-    to 1.6x relative. The reference is now the per-component rule; the
-    coefficient formula it feeds (``e_update_coeffs``) is unchanged, which is
-    the part this lock exists to watch. On a homogeneous fixture the two
-    references are bit-identical, so nothing else in this file moved."""
+    WHAT THIS PINS, after #1210. The kernels are assembled from the shared
+    ``curl_h`` / ``curl_h_nu`` stencils and the shared coefficient formula
+    ``e_update_coeffs``; that assembly is what moves this test. It does NOT
+    pin the material-to-edge rule any more — the reference below calls
+    ``edge_averaged_materials`` itself, so a change INSIDE that helper moves
+    both sides together. The rule is pinned by
+    ``tests/unit/core/test_edge_averaged_materials.py``, whose face test goes
+    red under a mutation that returns the owning cell.
+
+    RE-PINNED AND RENAMED 2026-09-23, root cause #1210: the hand-run below
+    used to build ONE cell-centred (Ca, Cb) and apply it to all three
+    components. That is the defect #1210 fixed, and the fixture here is a
+    RANDOM material, so every cell is an interface and the old reference was
+    up to 1.6x away. On a homogeneous fixture the two references are
+    bit-identical, so nothing else in this file moved."""
     import jax
 
     rng = np.random.default_rng(681)

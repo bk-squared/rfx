@@ -12,7 +12,7 @@ import math
 import jax.numpy as jnp
 
 from rfx.grid import Grid
-from rfx.core.yee import EPS_0
+from rfx.core.yee import EPS_0, cell_component_e_coeffs
 
 
 _PORT_AXIS = {"ex": 0, "ey": 1, "ez": 2}
@@ -398,11 +398,9 @@ def apply_lumped_port(state, grid: Grid, port: LumpedPort, t: float, materials) 
     d_par = port_d_parallel(grid, idx, port.component)
     dt = grid.dt
 
-    eps = float(materials.eps_r[i, j, k]) * EPS_0
-    sigma = float(materials.sigma[i, j, k])
-
-    loss = sigma * dt / (2.0 * eps)
-    cb = (dt / eps) / (1.0 + loss)
+    # #1210: the drive coefficient is the E update's own per-component Cb.
+    cb = float(cell_component_e_coeffs(
+        materials, idx, port.component, dt)[1])
 
     v_src = port.excitation(t)
 
@@ -624,10 +622,9 @@ def apply_wire_port(state, grid, port, t, materials, pec_edge_masks=None):
             continue
         i, j, k = cell
         d_par = port_d_parallel(grid, (i, j, k), port.component)
-        eps = float(materials.eps_r[i, j, k]) * EPS_0
-        sigma = float(materials.sigma[i, j, k])
-        loss = sigma * dt / (2.0 * eps)
-        cb = (dt / eps) / (1.0 + loss)
+        # #1210: the drive coefficient is the E update's own per-component Cb.
+        cb = float(cell_component_e_coeffs(
+            materials, (i, j, k), port.component, dt)[1])
         field = field.at[i, j, k].add(cb * v_src / d_par)
 
     return state._replace(**{port.component: field})

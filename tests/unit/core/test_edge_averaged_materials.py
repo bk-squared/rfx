@@ -418,3 +418,138 @@ def test_a_lumped_stamp_is_edge_owned_on_a_periodic_axis_too():
             assert a[wrapped] - base[wrapped] == pytest.approx(0.0, abs=1e-3), (
                 f"{name}: the stamp wrapped onto the far face "
                 f"(periodic={periodic})")
+
+
+# ---------------------------------------------------------------------------
+# the subpixel (Kottke) lane's sigma is per-component too
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("mutate", [False, True],
+                         ids=["per-component", "mutation-cell-owned-sigma"])
+def test_the_aniso_updates_decay_with_the_edge_averaged_sigma(monkeypatch,
+                                                              mutate):
+    """A lossy sigma step under the Kottke inverse-eps update.
+
+    The subpixel lane gives eps a per-component value by construction, but its
+    sigma came from the owning cell. sigma is a VOLUME conductivity: the four
+    cells' conduction paths lie in parallel along the edge, so it takes the
+    same mean. Every committed subpixel fixture is LOSSLESS, so reverting the
+    three ``*_aniso*`` lines stays green without this test.
+
+    Measured on Ex at the interface plane of a sigma = 0 / sigma = 2e4 S/m
+    step along z: the edge sees 1e4 S/m, the owning cell 2e4, and Ca
+    (the decay factor, with E^n the only term) differs by the ratio below.
+    """
+    import jax
+    import rfx.core.yee as _yee
+    from rfx.core.yee import update_e_aniso_inv, update_e_nu_aniso
+
+    # Both arms compile fresh: update_e_aniso_inv is jitted, and a cached
+    # trace would hand the second arm the first arm's coefficients.
+    jax.clear_caches()
+    if mutate:
+        monkeypatch.setattr(
+            _yee, "component_e_materials",
+            lambda m, periodic=(False, False, False): (
+                (m.eps_r,) * 3, (m.sigma,) * 3))
+
+    idx = np.indices(SHAPE)[2]
+    sigma = jnp.asarray(np.where(idx < 4, 0.0, 2e4).astype(np.float32))
+    eps = jnp.ones(SHAPE, jnp.float32)
+    mats = MaterialArrays(eps, sigma, jnp.ones(SHAPE, jnp.float32))
+    cell = (2, 3, 4)
+
+    # H = 0, so E^{n+1} = Ca * E^n and Ca is read directly off the field.
+    one = jnp.ones(SHAPE, jnp.float32)
+    zero = jnp.zeros(SHAPE, jnp.float32)
+    st = FDTDState(ex=one, ey=one, ez=one, hx=zero, hy=zero, hz=zero,
+                   step=jnp.array(0, jnp.int32))
+    inv = jnp.ones(SHAPE, jnp.float32)      # inv_eps = 1 -> eps_r = 1
+
+    def ca_of(sig_value):
+        """Ca = (1 - s*dt/2e) / (1 + s*dt/2e) at eps_r = 1."""
+        return float(e_update_coeffs(jnp.float32(1.0),
+                                     jnp.float32(sig_value), DT)[0])
+
+    ca_edge, ca_owned = ca_of(1e4), ca_of(2e4)
+    assert abs(ca_edge - ca_owned) > 1e-3, "the fixture cannot separate the two"
+
+    out = update_e_aniso_inv(st, mats, inv, inv, inv, DT, DX)
+    jax.clear_caches()
+    got = float(np.asarray(out.ex)[cell])
+    nu_inv = jnp.ones(SHAPE[0], jnp.float32)
+    out_nu = update_e_nu_aniso(st, mats, eps, eps, eps, DT,
+                               nu_inv, jnp.ones(SHAPE[1], jnp.float32),
+                               jnp.ones(SHAPE[2], jnp.float32))
+    got_nu = float(np.asarray(out_nu.ex)[cell])
+
+    expect = ca_owned if mutate else ca_edge
+    other = ca_edge if mutate else ca_owned
+    for name, value in (("update_e_aniso_inv", got), ("update_e_nu_aniso", got_nu)):
+        assert value == pytest.approx(expect, rel=1e-5), (
+            f"{name}: Ex on the sigma = 0 / sigma = 2e4 face decayed by "
+            f"{value:.6f}; the edge sees the mean 1e4 S/m (Ca = {ca_edge:.6f}), "
+            f"the owning cell 2e4 (Ca = {other if mutate else ca_owned:.6f})")
+
+
+@pytest.mark.parametrize("mutate", [False, True],
+                         ids=["per-component", "mutation-owning-cell"])
+def test_the_applied_port_drives_use_the_update_s_own_coefficient(monkeypatch,
+                                                                  mutate):
+    """``apply_lumped_port`` / ``apply_wire_port``, the S-parameter drives.
+
+    The same port reaches the fields through two spellings: pre-baked, via
+    ``make_port_source`` / ``make_wire_port_sources``, and per step, via these
+    two. Until #1210 the second pair read the owning cell, so a lumped port on
+    a material step transverse to its component drove 1.80x harder through one
+    path than the other (eps 1|9 along y, Ez port: owning cell 9 against the
+    mean 5).
+    """
+    import rfx.sources.sources as _src
+    from rfx.core.yee import e_component_coeffs, init_state
+    from rfx.grid import Grid
+    from rfx.sources.sources import (LumpedPort, WirePort, apply_lumped_port,
+                                     apply_wire_port)
+
+    if mutate:
+        monkeypatch.setattr(
+            _src, "cell_component_e_coeffs",
+            lambda m, cell, comp, dt, periodic=(False, False, False):
+                e_update_coeffs(m.eps_r[tuple(cell)], m.sigma[tuple(cell)], dt))
+
+    grid = Grid(freq_max=1e10, domain=(9e-3, 9e-3, 9e-3), dx=1e-3,
+                cpml_layers=0, cpml_axes="")
+    shape = tuple(grid.shape)
+    idx = np.indices(shape)[1]
+    eps = jnp.asarray(np.where(idx < 4, 1.0, 9.0).astype(np.float32))
+    sigma = jnp.zeros(shape, jnp.float32)
+    mats = MaterialArrays(eps, sigma, jnp.ones(shape, jnp.float32))
+    cell = (4, 4, 4)
+    pos = tuple((c + 0.5) * 1e-3 for c in cell)
+
+    update_cb = float(np.asarray(e_component_coeffs(mats, grid.dt)[1][2])[cell])
+    owning_cb = float(e_update_coeffs(eps, sigma, grid.dt)[1][cell])
+    expect = owning_cb if mutate else update_cb
+    assert update_cb / owning_cb == pytest.approx(1.8, rel=1e-2)
+
+    st = init_state(shape)
+    lp = LumpedPort(position=pos, component="ez", impedance=50.0,
+                    excitation=lambda t: 1.0)
+    out = apply_lumped_port(st, grid, lp, 0.0, mats)
+    drive = float(np.asarray(out.ez)[cell]) * 1e-3          # undo 1/d_par
+    assert drive == pytest.approx(expect, rel=1e-5), (
+        f"apply_lumped_port drove with {drive:.6e}; the E update multiplies "
+        f"Ez at that node by {update_cb:.6e} "
+        f"({owning_cb:.6e}, {owning_cb / update_cb:.3f}x, is the owning cell)")
+
+    wp = WirePort(start=pos, end=(pos[0], pos[1], pos[2] + 1e-3),
+                  component="ez", impedance=50.0,
+                  excitation=lambda t: 1.0)
+    from rfx.sources.sources import _wire_port_live_cells
+    _, _, n_live = _wire_port_live_cells(grid, wp, None)
+    out_w = apply_wire_port(init_state(shape), grid, wp, 0.0, mats)
+    # apply_wire_port splits the drive over the live cells and divides by
+    # d_par; undo both so what is compared is the coefficient itself.
+    drive_w = float(np.asarray(out_w.ez)[cell]) * 1e-3 * n_live
+    assert drive_w == pytest.approx(expect, rel=1e-5), (
+        f"apply_wire_port drove with {drive_w:.6e} against {update_cb:.6e}")

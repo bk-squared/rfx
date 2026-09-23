@@ -1305,10 +1305,10 @@ def make_msl_port_sources_jm(
         hy_w = float(em.hy[j_loc, k_loc])
         hz_w = float(em.hz[j_loc, k_loc])
 
-        eps = float(materials.eps_r[i, j, k]) * EPS_0
-        sigma = float(materials.sigma[i, j, k])
-        loss = sigma * dt / (2.0 * eps)
-        coeff_E = (dt / (eps * dx)) / (1.0 + loss)
+        # #1210: the drive coefficient is the E update's own per-component Cb. The component driven here is
+        # "ez" (both e_specs below write ez); dx is folded in as before.
+        coeff_E = float(_cell_component_e_coeffs(
+            materials, (i, j, k), "ez", dt)[1]) / dx
 
         i_h = int(i) + h_i_offset  # H correction cell index
 
