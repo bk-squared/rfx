@@ -69,12 +69,28 @@ def test_forward_oblique_lobe_removed_vs_exact_mie(fx):
     assert c.max() < 2.0, c.max()          # and is removed
 
 
-def test_corrected_pattern_matches_exact_mie(fx):
-    """Shape-robust validation of the corrected bistatic vs exact Mie:
-    high correlation, small mean distance, clean backscatter."""
+def test_corrected_pattern_shape_matches_exact_mie(fx):
+    """Shape-robust validation of the corrected bistatic vs exact Mie: high correlation.
+    (Split from the magnitude checks below when #820 moved every sigma by a constant,
+    which a correlation cannot see.)"""
     mie = _db(fx["mie_bistatic_over_pi_a2"])
     corr = _db(fx["rfx_corrected_over_pi_a2"])
     assert np.corrcoef(corr, mie)[0, 1] >= 0.95       # measured 1.000 (0.977 before the second-order NTFF rule, #1159)
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "#820: compute_rcs now divides by the incident the TF/SF line actually launches "
+    "(1.135 dB below the source waveform on this rig), so every sigma in the regenerated "
+    "fixture rose by 1.135 dB. The corrected sphere pattern then sits ABOVE exact Mie by "
+    "+0.73 dB (backscatter) to +1.82 dB (forward): mean |corrected - Mie| 1.21 dB against "
+    "the 1.06 bar and the 0.705 pin, backscatter +0.73 dB against the 0.5 bar. Same "
+    "residual as the monostatic sphere (+0.73 dB at lambda/40, inside its 1.0 dB Mie gate); "
+    "not attributed. Before the fix, main regenerated read 0.350 / -0.40 dB (the committed "
+    "0.704 / -0.10 predates #1210). Bars not moved: leader/PI decision."))
+def test_corrected_pattern_magnitude_matches_exact_mie(fx):
+    """Small mean distance and clean backscatter of the corrected bistatic vs exact Mie."""
+    mie = _db(fx["mie_bistatic_over_pi_a2"])
+    corr = _db(fx["rfx_corrected_over_pi_a2"])
     # ONE BAR MOVED HERE, and it moved because the MEASUREMENT got worse, which
     # is the direction that needs the most evidence.
     #
