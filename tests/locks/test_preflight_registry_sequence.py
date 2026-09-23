@@ -74,9 +74,10 @@ LOCK_PROVENANCE = {
     # between the two returned 0 -- identical trees, hashes only. The durable
     # reference is therefore the BRANCH in "generator", or after the stack
     # lands, the parent of this leg's first commit. Re-deriving from any of
-    # them gives the same 37 rows; the tuple below is now 36, being those 37
-    # less the two deleted checks (#1047 ``_validate_cfg_conformal_fine_dx``,
-    # #1030 ``_validate_cfg_ntff_min_steps``, both commented in place) plus the
+    # them gives the same 37 rows; the tuple below is now 35, being those 37
+    # less the three deleted checks (#1047 ``_validate_cfg_conformal_fine_dx``,
+    # #1030 ``_validate_cfg_ntff_min_steps``, #1163
+    # ``_validate_cfg_tfsf_with_lumped_rlc``, all commented in place) plus the
     # one appended after them (#1043 stage B).
     "fixture": "none",
     "generator": (
@@ -103,8 +104,8 @@ _REPO = _HERE.parents[2]
 
 #: The checks ``_validate_simulation_config`` calls, in body order, with the
 #: CONTEXT FIELD each positional argument became. 37 rows at the leg-7 tip;
-#: 36 now -- two deleted (#1047, #1030) and left commented in place, one
-#: appended (#1043 stage B). See the module docstring for how this was
+#: 35 now -- three deleted (#1047, #1030, #1163) and left commented in place,
+#: one appended (#1043 stage B). See the module docstring for how this was
 #: derived and for why the argument lists are pinned here rather than left to
 #: the report snapshots.
 _CALL_SEQUENCE_AT_LEG7_TIP = (
@@ -137,7 +138,18 @@ _CALL_SEQUENCE_AT_LEG7_TIP = (
     ("_validate_cfg_floating_single_cell_port", ("warn",)),
     ("_validate_cfg_pec_boundary_open_structure", ("warn",)),
     ("_validate_cfg_no_sources", ("warn",)),
-    ("_validate_cfg_tfsf_with_lumped_rlc", ("warn",)),
+    # 2026-09-23 (#1163): ``_validate_cfg_tfsf_with_lumped_rlc`` ("warn",)
+    # stood HERE and was DELETED -- the third removal from this sequence,
+    # commented out rather than erased for the reason the #1047 row below
+    # gives. Its ``tfsf_lumped_rlc_unstable`` warning ("TFSF plus a lumped RLC
+    # diverges, C-independent, the TFSF<->lumped-ADE coupling") described the
+    # series RLC element's own edge coupling, which #1163 replaces: the element
+    # took its current from the field before that current had acted and so
+    # realized R - d/(D0*A), a negative resistance below ~215 ohm. On the
+    # check's own fixture the series R+C and R+L+C pairings now decay, and the
+    # parallel pairing it also warned about was stable before and after.
+    # A removal shortens the sequence and reorders nothing; its one snapshot
+    # fixture (``tfsf_lumped_rlc``, which emitted only this code) went with it.
     ("_validate_cfg_unresolved_pulse", ("warn", "dx")),
     ("_validate_cfg_thin_conductor_surface_impedance", ("warn",)),
     ("_validate_cfg_thin_conductor_graded_node", ("warn",)),

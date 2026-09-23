@@ -406,7 +406,15 @@ def _enumerate_emission_sites():
 # the lattice.
 # 119 -> 120 (#801): a port naming no terminated conductor reports its
 # exact terminal contacts that reach an absorbing face. One absorber warning.
-_FROZEN_TOTAL_SITES = 120
+# 120 -> 119, 2026-09-23 (#1163): ``tfsf_lumped_rlc_unstable`` DELETED with
+# ``_validate_cfg_tfsf_with_lumped_rlc`` (rfx/preflight/ports.py). The
+# divergence it warned about ("TFSF plus a lumped RLC", C-independent) was the
+# series RLC element's own edge coupling -- R - d/(D0*A), a negative
+# resistance below ~215 ohm -- which #1163 replaces; on the check's own
+# fixture the series pairings now decay and the parallel one it also warned
+# on was always stable. Measured with the walk above: 120 -> 119 sites,
+# 77 -> 76 literal codes, dynamic sites unchanged.
+_FROZEN_TOTAL_SITES = 119
 # 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
 # site emitting that code, and the check was deleted when its own tripwire
 # XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
@@ -418,7 +426,9 @@ _FROZEN_TOTAL_SITES = 120
 # what this count is for.
 # 75 -> 76, 2026-09-20 (#1138): the new advisory kind ``sheet_effective_size``.
 # 76 -> 77 (#801): port_conductor_continues.
-_FROZEN_LITERAL_CODE_COUNT = 77
+# 77 -> 76, 2026-09-23 (#1163): ``tfsf_lumped_rlc_unstable`` deleted -- see
+# the note on _FROZEN_TOTAL_SITES above.
+_FROZEN_LITERAL_CODE_COUNT = 76
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site

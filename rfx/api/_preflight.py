@@ -1419,15 +1419,8 @@ class _PreflightMixin:
                 source="_validate_cfg_precision_x64",
             ))
 
-    # ------------------------------------------------------------------
-    # #980 Phase 3 leg 6: the #425 TFSF-plus-lumped-RLC refusal moved
-    # VERBATIM to ``rfx/preflight/ports.py``, bound back at its original
-    # position for the reason the block above gives. The split inventory
-    # filed it under ports_lumped rather than sources because what it
-    # refuses is the LUMPED ELEMENT under that illumination, not the TFSF
-    # source itself.
-    # ------------------------------------------------------------------
-    from rfx.preflight.ports import _validate_cfg_tfsf_with_lumped_rlc
+    # (#980 Phase 3 leg 6 bound the #425 TFSF-plus-lumped-RLC warning here;
+    # #1163 deleted it with the series-element coupling it was about.)
 
     # ------------------------------------------------------------------
     # #980 Phase 3 leg 5: the graded-Box rasterization check moved VERBATIM

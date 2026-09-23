@@ -28,7 +28,9 @@ What is here
 * :data:`CORE_CONFIG_CHECKS` -- the 37 entries in the EXACT order the
   pre-registry hub called them. 37 at leg 8; issue #1030 deleted
   ``_validate_cfg_ntff_min_steps``, a check with no emission site whose only
-  effect was an instance attribute nothing read.
+  effect was an instance attribute nothing read; issue #1163 deleted
+  ``_validate_cfg_tfsf_with_lumped_rlc``, whose warning described the series
+  RLC edge-coupling defect that issue fixes.
 * :data:`EXTRA_CONFIG_CHECKS` / :func:`register_config_check` -- the extension
   point, so a new check never needs an edit to the facade.
 * :func:`run_config_checks` -- core sequence, then extras.
@@ -260,9 +262,10 @@ CORE_CONFIG_CHECKS: tuple[ConfigCheck, ...] = (
     ConfigCheck("_validate_cfg_no_sources",
                 lambda sim, c: sim._validate_cfg_no_sources(c.warn),
                 "sources"),
-    ConfigCheck("_validate_cfg_tfsf_with_lumped_rlc",
-                lambda sim, c: sim._validate_cfg_tfsf_with_lumped_rlc(c.warn),
-                "ports"),
+    # 2026-09-23 (#1163): ``_validate_cfg_tfsf_with_lumped_rlc`` stood here
+    # and was DELETED -- the divergence it warned about was the series RLC
+    # element's own edge coupling, which #1163 fixes (rfx/preflight/ports.py
+    # records the measurement).
     ConfigCheck("_validate_cfg_unresolved_pulse",
                 lambda sim, c: sim._validate_cfg_unresolved_pulse(
                     c.warn, c.dx),
