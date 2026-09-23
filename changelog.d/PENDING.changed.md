@@ -5,15 +5,14 @@
   non-uniform one as a whole-domain constant on every device (ten copies for a model with
   a lossy block, a PEC block, soft PEC occupancy, Debye and Lorentz poles and CPML). They
   are now jit arguments, as `sim.run(devices=...)` has done since #1211.
-- The value of a plain call and the primal of `jax.jvp` through it now agree bit for bit
-  (they differed by up to 4 float32 ULP, because the compiler folded the captured arrays
-  differently in the two traces). Exception, unchanged from before: a model with a Lorentz
-  pole and no Debye pole still differs by up to 3 ULP. The forward trace recorded under
-  `jax.value_and_grad` still differs from a plain call by up to 3 ULP, as before.
-- Models whose permittivity varies anywhere give bit-identical values. A uniform vacuum box
-  can move by float32 rounding, at most 4 ULP (1 ULP at the probe-trace peak), because the
-  compiler no longer simplifies arithmetic on the uniform array. Reverse-mode permittivity
-  gradients are bit-identical; `jax.jvp` tangents move by compiler rounding in three
-  models, at most 4.5e-6 of the tangent peak.
+- Models whose permittivity varies anywhere give bit-identical values (JAX 0.10.2, 0.6.2
+  and 0.4.33). A uniform vacuum box can move by float32 rounding, at most 4 ULP (1 ULP at
+  the probe-trace peak), because the compiler no longer simplifies arithmetic on the
+  uniform array. Reverse-mode permittivity gradients are bit-identical on JAX 0.10.2 and
+  0.4.33; on 0.6.2 they move by float32 rounding (at most 2.2e-7 of the gradient peak).
+- No value that agreed bit for bit between a plain call and the same call under
+  `jax.jvp`, `jax.value_and_grad`, `vmap` or checkpointing stops agreeing. On JAX 0.10.2
+  the plain call and the `jax.jvp` primal now agree for uniform and lossy models; several
+  such pairs on this lane still differ by a few ULP, as before.
 - Unchanged: setup still builds the whole-domain materials and Debye/Lorentz arrays on the
   first device before the loop starts.
