@@ -2478,10 +2478,8 @@ class _ExecuteMixin:
             init_cpml_for_sharded_nu,
             run_nonuniform_distributed_pec,
             shard_cpml_state_x_slab,
-            shard_debye_coeffs_x_slab,
-            shard_debye_state_x_slab,
-            shard_lorentz_coeffs_x_slab,
-            shard_lorentz_state_x_slab,
+            stage_forward_array_x_slab,
+            stage_forward_dispersion_x_slab,
             shard_pec_mask_x_slab,
             shard_pec_occupancy_x_slab,
         )
@@ -2629,129 +2627,6 @@ class _ExecuteMixin:
                 "Draw the conductor as a volume (a Box at least one cell "
                 "thick) or run the single-device non-uniform lane.")
 
-        # ``eps_override`` / ``sigma_override`` may be JAX tracers (the
-        # caller is differentiating w.r.t. eps/sigma).  Keep the original
-        # concrete materials for ``make_current_source`` so source
-        # normalisation stays Python-float (matches the single-device NU
-        # runner's ``materials_concrete`` pattern in run_nonuniform_path).
-        materials_concrete = materials
-        if eps_override is not None or sigma_override is not None:
-            materials = materials._replace(
-                eps_r=(
-                    eps_override if eps_override is not None
-                    else materials.eps_r
-                ),
-                sigma=(
-                    sigma_override if sigma_override is not None
-                    else materials.sigma
-                ),
-                eps_r_lumped=(None if eps_override is not None
-                              else materials.eps_r_lumped),
-                sigma_lumped=(None if sigma_override is not None
-                              else materials.sigma_lumped),
-            )
-        if pec_mask_override is not None:
-            pec_mask = (
-                pec_mask_override if pec_mask is None
-                else (pec_mask | pec_mask_override)
-            )
-
-        # ---- Initialise Debye / Lorentz state on the full domain BEFORE
-        # sharding (distributed_nu shard helpers expect the full-domain
-        # arrays produced by init_debye / init_lorentz). ----
-        debye = None
-        if debye_spec is not None:
-            debye_poles, debye_masks = debye_spec
-            debye = init_debye(
-                debye_poles, materials, grid.dt, mask=debye_masks,
-            )
-        lorentz = None
-        if lorentz_spec is not None:
-            lorentz_poles, lorentz_masks = lorentz_spec
-            lorentz = init_lorentz(
-                lorentz_poles, materials, grid.dt, mask=lorentz_masks,
-            )
-
-        # ---- Build sharded grid + mesh ----
-        sharded_grid = build_sharded_nu_grid(
-            grid, n_devices, exchange_interval=exchange_interval,
-        )
-        from jax.sharding import Mesh
-        mesh = Mesh(np.array(devices), axis_names=("x",))
-
-        # ---- Shard materials.  ``_split_materials`` lives in
-        # rfx.runners.distributed and pads the high-x end before slabbing. ----
-        from rfx.runners.distributed import _split_materials
-        from jax.sharding import NamedSharding, PartitionSpec as _P
-        shd = NamedSharding(mesh, _P("x"))
-        nx = grid.nx
-        pad_x = sharded_grid.pad_x
-        if pad_x > 0:
-            _pad_widths = ((0, pad_x), (0, 0), (0, 0))
-            materials_padded = MaterialArrays(
-                eps_r=jnp.pad(materials.eps_r, _pad_widths,
-                              constant_values=1.0),
-                sigma=jnp.pad(materials.sigma, _pad_widths,
-                              constant_values=0.0),
-                mu_r=jnp.pad(materials.mu_r, _pad_widths,
-                             constant_values=1.0),
-            )
-        else:
-            materials_padded = materials
-
-        ghost = sharded_grid.ghost_width
-        materials_slabs = _split_materials(
-            materials_padded, n_devices, ghost,
-        )
-
-        def _shard_3d_stacked(arr):
-            n_dev = arr.shape[0]
-            rest = arr.shape[1:]
-            return jax.device_put(
-                arr.reshape(n_dev * rest[0], *rest[1:]), shd,
-            )
-
-        sharded_materials = MaterialArrays(
-            eps_r=_shard_3d_stacked(materials_slabs.eps_r),
-            sigma=_shard_3d_stacked(materials_slabs.sigma),
-            mu_r=_shard_3d_stacked(materials_slabs.mu_r),
-        )
-
-        # ---- Shard PEC mask / occupancy via Phase 2 helpers. ----
-        sharded_pec_mask = shard_pec_mask_x_slab(pec_mask, sharded_grid)
-        sharded_pec_occupancy = shard_pec_occupancy_x_slab(
-            pec_occupancy_override, sharded_grid,
-        )
-
-        # ---- CPML init + sharding (Phase 2C). ----
-        cpml_params = None
-        cpml_state_sharded = None
-        cpml_layers = int(getattr(self, "_cpml_layers", 0) or 0)
-        if self._boundary == "cpml" and cpml_layers > 0:
-            cpml_params, cpml_state_stacked = init_cpml_for_sharded_nu(
-                sharded_grid, n_devices,
-                pec_faces=getattr(self, "_pec_faces", None),
-            )
-            cpml_state_sharded = shard_cpml_state_x_slab(
-                cpml_state_stacked, sharded_grid, mesh,
-            )
-
-        # ---- Shard Debye / Lorentz dispersion (Phase 2D). ----
-        sharded_debye = None
-        if debye is not None:
-            db_coeffs, db_state = debye
-            sharded_debye = (
-                shard_debye_coeffs_x_slab(db_coeffs, sharded_grid, mesh),
-                shard_debye_state_x_slab(db_state, sharded_grid, mesh),
-            )
-        sharded_lorentz = None
-        if lorentz is not None:
-            lr_coeffs, lr_state = lorentz
-            sharded_lorentz = (
-                shard_lorentz_coeffs_x_slab(lr_coeffs, sharded_grid, mesh),
-                shard_lorentz_state_x_slab(lr_state, sharded_grid, mesh),
-            )
-
         # ---- Sources / probes (lumped/wire/coax ports unsupported here). ----
         if self._lumped_rlc:
             raise NotImplementedError(
@@ -2774,12 +2649,84 @@ class _ExecuteMixin:
             # both for the source-cell normalisation).
             si, sj, sk, sc, wf = _nu_make_current_source(
                 grid, idx, pe.component, pe.waveform, n_steps,
-                materials_concrete, amplitude_kind=pe.amplitude_kind,
+                materials, amplitude_kind=pe.amplitude_kind,
             )
             sources.append(SourceSpec(
                 i=int(si), j=int(sj), k=int(sk),
                 component=sc, waveform=jnp.asarray(wf),
             ))
+
+        if eps_override is not None or sigma_override is not None:
+            materials = materials._replace(
+                eps_r=(
+                    eps_override if eps_override is not None
+                    else materials.eps_r
+                ),
+                sigma=(
+                    sigma_override if sigma_override is not None
+                    else materials.sigma
+                ),
+                eps_r_lumped=(None if eps_override is not None
+                              else materials.eps_r_lumped),
+                sigma_lumped=(None if sigma_override is not None
+                              else materials.sigma_lumped),
+            )
+        if pec_mask_override is not None:
+            pec_mask = (
+                pec_mask_override if pec_mask is None
+                else (pec_mask | pec_mask_override)
+            )
+
+        # Stage one input at a time. In particular, the source normalization
+        # above has consumed concrete cell scalars; no second MaterialArrays
+        # may keep the original whole-domain eps/sigma alive during the scan.
+        sharded_grid = build_sharded_nu_grid(
+            grid, n_devices, exchange_interval=exchange_interval,
+        )
+        from jax.sharding import Mesh, NamedSharding, PartitionSpec as _P
+        mesh = Mesh(np.array(devices), axis_names=("x",))
+        shd = NamedSharding(mesh, _P("x"))
+        staged = []
+        for name, pad_value in (("eps_r", 1.0), ("sigma", 0.0), ("mu_r", 1.0)):
+            staged.append(stage_forward_array_x_slab(
+                getattr(materials, name), sharded_grid, mesh, pad_value,
+            ))
+            materials = materials._replace(**{name: None})
+        sharded_materials = MaterialArrays(*staged)
+        del materials, staged
+
+        sharded_pec_mask = shard_pec_mask_x_slab(pec_mask, sharded_grid)
+        if sharded_pec_mask is not None:
+            sharded_pec_mask = jax.device_put(sharded_pec_mask, shd)
+        del pec_mask
+        sharded_pec_occupancy = shard_pec_occupancy_x_slab(
+            pec_occupancy_override, sharded_grid,
+        )
+        if sharded_pec_occupancy is not None:
+            sharded_pec_occupancy = jax.device_put(sharded_pec_occupancy, shd)
+
+        sharded_debye = stage_forward_dispersion_x_slab(
+            sharded_materials, grid.dt, debye_spec, sharded_grid, mesh, "debye",
+        )
+        del debye_spec
+        sharded_lorentz = stage_forward_dispersion_x_slab(
+            sharded_materials, grid.dt, lorentz_spec, sharded_grid, mesh, "lorentz",
+        )
+        del lorentz_spec
+
+        # ---- CPML init + sharding (Phase 2C). ----
+        cpml_params = None
+        cpml_state_sharded = None
+        cpml_layers = int(getattr(self, "_cpml_layers", 0) or 0)
+        if self._boundary == "cpml" and cpml_layers > 0:
+            cpml_params, cpml_state_stacked = init_cpml_for_sharded_nu(
+                sharded_grid, n_devices,
+                pec_faces=getattr(self, "_pec_faces", None),
+            )
+            cpml_state_sharded = shard_cpml_state_x_slab(
+                cpml_state_stacked, sharded_grid, mesh,
+            )
+            del cpml_state_stacked
 
         probes: list[ProbeSpec] = []
         for pe in self._probes:

@@ -919,6 +919,66 @@ def shard_cpml_state_x_slab(cpml_state_stacked, sharded_grid: ShardedNUGrid,
 # the polarisation update is a no-op there, which matches single-device
 # behaviour for cells that have no Debye/Lorentz pole.
 
+def stage_forward_array_x_slab(arr, sharded_grid, mesh, pad_value=0.0):
+    """Traceable, one-array-at-a-time placement for differentiable forward."""
+    from jax.sharding import NamedSharding
+    from rfx.runners._distributed_common import split_array_x
+
+    if sharded_grid.pad_x:
+        arr = jnp.pad(arr, ((0, sharded_grid.pad_x), (0, 0), (0, 0)),
+                      constant_values=pad_value)
+    return shard_stacked(
+        split_array_x(arr, sharded_grid.n_devices, sharded_grid.ghost_width,
+                      pad_value), NamedSharding(mesh, P("x")),
+    )
+
+
+def stage_forward_dispersion_x_slab(materials, dt, spec, sharded_grid, mesh, kind):
+    """Initialize ADE on placed slabs, retaining the legacy ghost/pad values.
+
+    Do not jit this setup: the eager elementwise operation boundaries are part
+    of forward's bitwise contract, including its transformed primals.
+    """
+    if spec is None:
+        return None
+    from jax.sharding import NamedSharding
+    from rfx.materials.debye import init_debye
+    from rfx.materials.lorentz import init_lorentz
+
+    poles, masks = spec
+    masks = jax.tree.map(
+        lambda mask: stage_forward_array_x_slab(mask, sharded_grid, mesh, False),
+        masks,
+    )
+    # Only an O(nx) predicate is needed. A neighbour's alignment-pad row is
+    # padding too; interior ghosts representing real cells keep their values.
+    indices = np.concatenate([
+        np.arange(rank * sharded_grid.nx_per_rank - sharded_grid.ghost_width,
+                  (rank + 1) * sharded_grid.nx_per_rank + sharded_grid.ghost_width)
+        for rank in range(sharded_grid.n_devices)
+    ])
+    valid = jax.device_put(
+        ((indices >= 0) & (indices < sharded_grid.nx))[:, None, None],
+        NamedSharding(mesh, P("x")),
+    )
+    init = init_debye if kind == "debye" else init_lorentz
+
+    def local(mat, mask, real):
+        coeffs, state = init(poles, mat, dt, mask=mask)
+        # Vacuum material padding keeps both branches finite for autodiff.
+        coeffs = type(coeffs)(*(
+            jnp.where(real, arr, float(1.0 / EPS_0)
+                      if kind == "lorentz" and name == "cc" else 0.0)
+            for name, arr in zip(coeffs._fields, coeffs)
+        ))
+        return coeffs, state
+
+    # Pole-axis outputs concatenate rank then pole, exactly like the legacy
+    # splitters; the runner's shard_map sees (n_poles, nx_local, ny, nz).
+    return shard_map(local, mesh=mesh, in_specs=(P("x"), P("x"), P("x")),
+                     out_specs=P("x"), check_rep=False)(materials, masks, valid)
+
+
 def shard_debye_coeffs_x_slab(debye_coeffs, sharded_grid: ShardedNUGrid,
                               mesh):
     """Slab-shard a full-domain ``DebyeCoeffs`` along x.
@@ -2019,6 +2079,7 @@ def run_nonuniform_distributed_pec(
         hz=_shard_stacked(state_slabs.hz),
         step=jax.device_put(jnp.int32(0), rep),
     )
+    del full_state, state_slabs
 
     # ------------------------------------------------------------------
     # Source / probe routing — V3 bullet (Phase 2A coordinate convention)

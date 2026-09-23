@@ -1,0 +1,14 @@
+### Fixed — `forward(distributed=True)` kept its whole-domain setup arrays on the first device for the whole run, so that device filled up about 3× before the others (#PENDING)
+
+- The differentiable multi-device forward assembled the materials, computed the
+  Debye/Lorentz coefficients on the whole domain and built stacked slab copies on the first
+  device, and kept all of them alive while the time loop ran. On two devices (CPU; a lossy
+  block with Debye and Lorentz poles, a PEC block and CPML) the first device held 232 B
+  per global cell against 68 on the second — 284 against 68 under `jax.grad` — including
+  40 to 53 whole-domain arrays.
+- Each input is now placed slab by slab and released, and the Debye/Lorentz coefficients
+  are computed on each device's own slab with the same ghost and padding values as before.
+  The first device now holds 73 B/cell against 69 (118 against 114 under `jax.grad`); the
+  only whole-domain array left is the caller's own `eps_override`.
+- Probe values and permittivity gradients are bit-identical to before (CPU; JAX 0.10.2,
+  0.6.2 and 0.4.33; six models on 2, 3 and 4 devices).
