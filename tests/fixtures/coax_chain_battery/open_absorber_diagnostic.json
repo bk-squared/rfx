@@ -7,8 +7,8 @@
  "artifact": "tests/fixtures/coax_chain_battery/open_absorber_diagnostic.json",
  "battery_artifact": "tests/fixtures/coax_chain_battery/fixture.json",
  "predeclaration": "the leader's pre-declaration, a local note that is not committed; the arms and thresholds it declares are restated in this artifact's 'predeclared' block",
- "assembled_utc": "2026-09-23T04:11:23.377365+00:00",
- "assembler_commit": "3e287a3b993c6cc82a8a0f0bae0c4a043138389a",
+ "assembled_utc": "2026-09-23T04:48:03.360973+00:00",
+ "assembler_commit": "54dce9bb0078665d9950717a2236a81a6d3686b2",
  "measured_at_commit": "4e008494b7ae19f8558ad43fb68ad8c3199311e1",
  "missing_records": [],
  "arms": {
@@ -25,7 +25,7 @@
   "A2": {
    "offset": "battery",
    "lateral_m": 0.016,
-   "what": "open end 4 cells above the -z absorber, 16 x 16 mm"
+   "what": "control: open end 4 cells above the -z absorber, 16 x 16 mm. This lane absorbs on z only, so the wider board moves the PEC walls of the closed region around the shell from about 3.5 mm to about 7.4 mm from the shell's outer surface and moves no absorber"
   },
   "A3": {
    "offset": "two_b",
@@ -1789,6 +1789,31 @@
     "eps_eff_analytic": 2.1,
     "beta_ratio_min": 1.0002069552671577,
     "beta_ratio_max": 1.0021669385624992
+   },
+   "z_ends": {
+    "lower_end_node": 19,
+    "lower_end_z_m": 0.0004733333333333333,
+    "upper_end_node": 271,
+    "upper_end_z_m": 0.04023333333333333,
+    "minus_z_pad_face_node": 16,
+    "minus_z_pad_face_z_m": 0.0,
+    "plus_z_pad_face_node": 270,
+    "plus_z_pad_face_z_m": 0.04007555555555555,
+    "minus_z_slab_nodes": [
+     0,
+     15
+    ],
+    "plus_z_slab_nodes": [
+     271,
+     286
+    ],
+    "lower_end_to_minus_z_pad_face_cells": 3,
+    "lower_end_to_minus_z_pad_face_m": 0.0004733333333333333,
+    "upper_end_to_plus_z_pad_face_cells": -1,
+    "upper_end_to_plus_z_pad_face_m": -0.00015777777777777776,
+    "upper_end_is_first_plus_z_slab_node": true,
+    "reference_plane_node": 20,
+    "reference_plane_minus_lower_end_cells": 1
    }
   },
   "A0_rung9_u24": {
@@ -3340,6 +3365,31 @@
     "eps_eff_analytic": 2.1,
     "beta_ratio_min": 0.9998419147037695,
     "beta_ratio_max": 1.0027279940563294
+   },
+   "z_ends": {
+    "lower_end_node": 19,
+    "lower_end_z_m": 0.0004733333333333333,
+    "upper_end_node": 271,
+    "upper_end_z_m": 0.04023333333333333,
+    "minus_z_pad_face_node": 16,
+    "minus_z_pad_face_z_m": 0.0,
+    "plus_z_pad_face_node": 270,
+    "plus_z_pad_face_z_m": 0.04007555555555555,
+    "minus_z_slab_nodes": [
+     0,
+     15
+    ],
+    "plus_z_slab_nodes": [
+     271,
+     286
+    ],
+    "lower_end_to_minus_z_pad_face_cells": 3,
+    "lower_end_to_minus_z_pad_face_m": 0.0004733333333333333,
+    "upper_end_to_plus_z_pad_face_cells": -1,
+    "upper_end_to_plus_z_pad_face_m": -0.00015777777777777776,
+    "upper_end_is_first_plus_z_slab_node": true,
+    "reference_plane_node": 20,
+    "reference_plane_minus_lower_end_cells": 1
    }
   },
   "A0_rung9_u48": {
@@ -4891,6 +4941,31 @@
     "eps_eff_analytic": 2.1,
     "beta_ratio_min": 0.9997675810972682,
     "beta_ratio_max": 1.0022798053845516
+   },
+   "z_ends": {
+    "lower_end_node": 19,
+    "lower_end_z_m": 0.0004733333333333333,
+    "upper_end_node": 271,
+    "upper_end_z_m": 0.04023333333333333,
+    "minus_z_pad_face_node": 16,
+    "minus_z_pad_face_z_m": 0.0,
+    "plus_z_pad_face_node": 270,
+    "plus_z_pad_face_z_m": 0.04007555555555555,
+    "minus_z_slab_nodes": [
+     0,
+     15
+    ],
+    "plus_z_slab_nodes": [
+     271,
+     286
+    ],
+    "lower_end_to_minus_z_pad_face_cells": 3,
+    "lower_end_to_minus_z_pad_face_m": 0.0004733333333333333,
+    "upper_end_to_plus_z_pad_face_cells": -1,
+    "upper_end_to_plus_z_pad_face_m": -0.00015777777777777776,
+    "upper_end_is_first_plus_z_slab_node": true,
+    "reference_plane_node": 20,
+    "reference_plane_minus_lower_end_cells": 1
    }
   },
   "A1_rung9_u12": {
@@ -6442,6 +6517,31 @@
     "eps_eff_analytic": 2.1,
     "beta_ratio_min": 1.000021166935617,
     "beta_ratio_max": 1.002766963315424
+   },
+   "z_ends": {
+    "lower_end_node": 41,
+    "lower_end_z_m": 0.003944444444444444,
+    "upper_end_node": 271,
+    "upper_end_z_m": 0.04023333333333333,
+    "minus_z_pad_face_node": 16,
+    "minus_z_pad_face_z_m": 0.0,
+    "plus_z_pad_face_node": 270,
+    "plus_z_pad_face_z_m": 0.04007555555555555,
+    "minus_z_slab_nodes": [
+     0,
+     15
+    ],
+    "plus_z_slab_nodes": [
+     271,
+     286
+    ],
+    "lower_end_to_minus_z_pad_face_cells": 25,
+    "lower_end_to_minus_z_pad_face_m": 0.003944444444444444,
+    "upper_end_to_plus_z_pad_face_cells": -1,
+    "upper_end_to_plus_z_pad_face_m": -0.00015777777777777776,
+    "upper_end_is_first_plus_z_slab_node": true,
+    "reference_plane_node": 42,
+    "reference_plane_minus_lower_end_cells": 1
    }
   },
   "A1_rung9_u24": {
@@ -7993,6 +8093,31 @@
     "eps_eff_analytic": 2.1,
     "beta_ratio_min": 0.9979190741188915,
     "beta_ratio_max": 1.00517519758942
+   },
+   "z_ends": {
+    "lower_end_node": 41,
+    "lower_end_z_m": 0.003944444444444444,
+    "upper_end_node": 271,
+    "upper_end_z_m": 0.04023333333333333,
+    "minus_z_pad_face_node": 16,
+    "minus_z_pad_face_z_m": 0.0,
+    "plus_z_pad_face_node": 270,
+    "plus_z_pad_face_z_m": 0.04007555555555555,
+    "minus_z_slab_nodes": [
+     0,
+     15
+    ],
+    "plus_z_slab_nodes": [
+     271,
+     286
+    ],
+    "lower_end_to_minus_z_pad_face_cells": 25,
+    "lower_end_to_minus_z_pad_face_m": 0.003944444444444444,
+    "upper_end_to_plus_z_pad_face_cells": -1,
+    "upper_end_to_plus_z_pad_face_m": -0.00015777777777777776,
+    "upper_end_is_first_plus_z_slab_node": true,
+    "reference_plane_node": 42,
+    "reference_plane_minus_lower_end_cells": 1
    }
   },
   "A2_rung9_u12": {
@@ -9544,6 +9669,31 @@
     "eps_eff_analytic": 2.1,
     "beta_ratio_min": 0.9999838995441243,
     "beta_ratio_max": 1.0019070956018883
+   },
+   "z_ends": {
+    "lower_end_node": 19,
+    "lower_end_z_m": 0.0004733333333333333,
+    "upper_end_node": 271,
+    "upper_end_z_m": 0.04023333333333333,
+    "minus_z_pad_face_node": 16,
+    "minus_z_pad_face_z_m": 0.0,
+    "plus_z_pad_face_node": 270,
+    "plus_z_pad_face_z_m": 0.04007555555555555,
+    "minus_z_slab_nodes": [
+     0,
+     15
+    ],
+    "plus_z_slab_nodes": [
+     271,
+     286
+    ],
+    "lower_end_to_minus_z_pad_face_cells": 3,
+    "lower_end_to_minus_z_pad_face_m": 0.0004733333333333333,
+    "upper_end_to_plus_z_pad_face_cells": -1,
+    "upper_end_to_plus_z_pad_face_m": -0.00015777777777777776,
+    "upper_end_is_first_plus_z_slab_node": true,
+    "reference_plane_node": 20,
+    "reference_plane_minus_lower_end_cells": 1
    }
   },
   "A2_rung9_u24": {
@@ -11095,6 +11245,31 @@
     "eps_eff_analytic": 2.1,
     "beta_ratio_min": 1.0001447665516705,
     "beta_ratio_max": 1.00148390093581
+   },
+   "z_ends": {
+    "lower_end_node": 19,
+    "lower_end_z_m": 0.0004733333333333333,
+    "upper_end_node": 271,
+    "upper_end_z_m": 0.04023333333333333,
+    "minus_z_pad_face_node": 16,
+    "minus_z_pad_face_z_m": 0.0,
+    "plus_z_pad_face_node": 270,
+    "plus_z_pad_face_z_m": 0.04007555555555555,
+    "minus_z_slab_nodes": [
+     0,
+     15
+    ],
+    "plus_z_slab_nodes": [
+     271,
+     286
+    ],
+    "lower_end_to_minus_z_pad_face_cells": 3,
+    "lower_end_to_minus_z_pad_face_m": 0.0004733333333333333,
+    "upper_end_to_plus_z_pad_face_cells": -1,
+    "upper_end_to_plus_z_pad_face_m": -0.00015777777777777776,
+    "upper_end_is_first_plus_z_slab_node": true,
+    "reference_plane_node": 20,
+    "reference_plane_minus_lower_end_cells": 1
    }
   },
   "A3_rung9_u12": {
@@ -12646,6 +12821,31 @@
     "eps_eff_analytic": 2.1,
     "beta_ratio_min": 1.0000097828482148,
     "beta_ratio_max": 1.002067738802878
+   },
+   "z_ends": {
+    "lower_end_node": 41,
+    "lower_end_z_m": 0.003944444444444444,
+    "upper_end_node": 271,
+    "upper_end_z_m": 0.04023333333333333,
+    "minus_z_pad_face_node": 16,
+    "minus_z_pad_face_z_m": 0.0,
+    "plus_z_pad_face_node": 270,
+    "plus_z_pad_face_z_m": 0.04007555555555555,
+    "minus_z_slab_nodes": [
+     0,
+     15
+    ],
+    "plus_z_slab_nodes": [
+     271,
+     286
+    ],
+    "lower_end_to_minus_z_pad_face_cells": 25,
+    "lower_end_to_minus_z_pad_face_m": 0.003944444444444444,
+    "upper_end_to_plus_z_pad_face_cells": -1,
+    "upper_end_to_plus_z_pad_face_m": -0.00015777777777777776,
+    "upper_end_is_first_plus_z_slab_node": true,
+    "reference_plane_node": 42,
+    "reference_plane_minus_lower_end_cells": 1
    }
   },
   "A3_rung9_u24": {
@@ -14197,6 +14397,31 @@
     "eps_eff_analytic": 2.1,
     "beta_ratio_min": 0.999567690650935,
     "beta_ratio_max": 1.0023797533564993
+   },
+   "z_ends": {
+    "lower_end_node": 41,
+    "lower_end_z_m": 0.003944444444444444,
+    "upper_end_node": 271,
+    "upper_end_z_m": 0.04023333333333333,
+    "minus_z_pad_face_node": 16,
+    "minus_z_pad_face_z_m": 0.0,
+    "plus_z_pad_face_node": 270,
+    "plus_z_pad_face_z_m": 0.04007555555555555,
+    "minus_z_slab_nodes": [
+     0,
+     15
+    ],
+    "plus_z_slab_nodes": [
+     271,
+     286
+    ],
+    "lower_end_to_minus_z_pad_face_cells": 25,
+    "lower_end_to_minus_z_pad_face_m": 0.003944444444444444,
+    "upper_end_to_plus_z_pad_face_cells": -1,
+    "upper_end_to_plus_z_pad_face_m": -0.00015777777777777776,
+    "upper_end_is_first_plus_z_slab_node": true,
+    "reference_plane_node": 42,
+    "reference_plane_minus_lower_end_cells": 1
    }
   },
   "A3_rung9_u48": {
@@ -15748,6 +15973,31 @@
     "eps_eff_analytic": 2.1,
     "beta_ratio_min": 0.9963517064208204,
     "beta_ratio_max": 1.0043903504673948
+   },
+   "z_ends": {
+    "lower_end_node": 41,
+    "lower_end_z_m": 0.003944444444444444,
+    "upper_end_node": 271,
+    "upper_end_z_m": 0.04023333333333333,
+    "minus_z_pad_face_node": 16,
+    "minus_z_pad_face_z_m": 0.0,
+    "plus_z_pad_face_node": 270,
+    "plus_z_pad_face_z_m": 0.04007555555555555,
+    "minus_z_slab_nodes": [
+     0,
+     15
+    ],
+    "plus_z_slab_nodes": [
+     271,
+     286
+    ],
+    "lower_end_to_minus_z_pad_face_cells": 25,
+    "lower_end_to_minus_z_pad_face_m": 0.003944444444444444,
+    "upper_end_to_plus_z_pad_face_cells": -1,
+    "upper_end_to_plus_z_pad_face_m": -0.00015777777777777776,
+    "upper_end_is_first_plus_z_slab_node": true,
+    "reference_plane_node": 42,
+    "reference_plane_minus_lower_end_cells": 1
    }
   },
   "A3_rung4_u12": {
@@ -17299,6 +17549,31 @@
     "eps_eff_analytic": 2.1,
     "beta_ratio_min": 0.9998149573623335,
     "beta_ratio_max": 1.0006156593501156
+   },
+   "z_ends": {
+    "lower_end_node": 27,
+    "lower_end_z_m": 0.0039049999999999996,
+    "upper_end_node": 130,
+    "upper_end_z_m": 0.04046999999999999,
+    "minus_z_pad_face_node": 16,
+    "minus_z_pad_face_z_m": 0.0,
+    "plus_z_pad_face_node": 129,
+    "plus_z_pad_face_z_m": 0.040115,
+    "minus_z_slab_nodes": [
+     0,
+     15
+    ],
+    "plus_z_slab_nodes": [
+     130,
+     145
+    ],
+    "lower_end_to_minus_z_pad_face_cells": 11,
+    "lower_end_to_minus_z_pad_face_m": 0.0039049999999999996,
+    "upper_end_to_plus_z_pad_face_cells": -1,
+    "upper_end_to_plus_z_pad_face_m": -0.00035499999999999996,
+    "upper_end_is_first_plus_z_slab_node": true,
+    "reference_plane_node": 28,
+    "reference_plane_minus_lower_end_cells": 1
    }
   },
   "A3_rung4_u24": {
@@ -18850,6 +19125,31 @@
     "eps_eff_analytic": 2.1,
     "beta_ratio_min": 0.9996774492222124,
     "beta_ratio_max": 1.0006855847226637
+   },
+   "z_ends": {
+    "lower_end_node": 27,
+    "lower_end_z_m": 0.0039049999999999996,
+    "upper_end_node": 130,
+    "upper_end_z_m": 0.04046999999999999,
+    "minus_z_pad_face_node": 16,
+    "minus_z_pad_face_z_m": 0.0,
+    "plus_z_pad_face_node": 129,
+    "plus_z_pad_face_z_m": 0.040115,
+    "minus_z_slab_nodes": [
+     0,
+     15
+    ],
+    "plus_z_slab_nodes": [
+     130,
+     145
+    ],
+    "lower_end_to_minus_z_pad_face_cells": 11,
+    "lower_end_to_minus_z_pad_face_m": 0.0039049999999999996,
+    "upper_end_to_plus_z_pad_face_cells": -1,
+    "upper_end_to_plus_z_pad_face_m": -0.00035499999999999996,
+    "upper_end_is_first_plus_z_slab_node": true,
+    "reference_plane_node": 28,
+    "reference_plane_minus_lower_end_cells": 1
    }
   },
   "A3_rung6_u12": {
@@ -20401,6 +20701,31 @@
     "eps_eff_analytic": 2.1,
     "beta_ratio_min": 1.0000767240217348,
     "beta_ratio_max": 1.0005042956681547
+   },
+   "z_ends": {
+    "lower_end_node": 32,
+    "lower_end_z_m": 0.003786666666666666,
+    "upper_end_node": 186,
+    "upper_end_z_m": 0.04023333333333333,
+    "minus_z_pad_face_node": 16,
+    "minus_z_pad_face_z_m": 0.0,
+    "plus_z_pad_face_node": 186,
+    "plus_z_pad_face_z_m": 0.04023333333333333,
+    "minus_z_slab_nodes": [
+     0,
+     15
+    ],
+    "plus_z_slab_nodes": [
+     187,
+     202
+    ],
+    "lower_end_to_minus_z_pad_face_cells": 16,
+    "lower_end_to_minus_z_pad_face_m": 0.003786666666666666,
+    "upper_end_to_plus_z_pad_face_cells": 0,
+    "upper_end_to_plus_z_pad_face_m": 0.0,
+    "upper_end_is_first_plus_z_slab_node": false,
+    "reference_plane_node": 33,
+    "reference_plane_minus_lower_end_cells": 1
    }
   },
   "A3_rung6_u24": {
@@ -21952,6 +22277,31 @@
     "eps_eff_analytic": 2.1,
     "beta_ratio_min": 0.9996157065542304,
     "beta_ratio_max": 1.000929907570149
+   },
+   "z_ends": {
+    "lower_end_node": 32,
+    "lower_end_z_m": 0.003786666666666666,
+    "upper_end_node": 186,
+    "upper_end_z_m": 0.04023333333333333,
+    "minus_z_pad_face_node": 16,
+    "minus_z_pad_face_z_m": 0.0,
+    "plus_z_pad_face_node": 186,
+    "plus_z_pad_face_z_m": 0.04023333333333333,
+    "minus_z_slab_nodes": [
+     0,
+     15
+    ],
+    "plus_z_slab_nodes": [
+     187,
+     202
+    ],
+    "lower_end_to_minus_z_pad_face_cells": 16,
+    "lower_end_to_minus_z_pad_face_m": 0.003786666666666666,
+    "upper_end_to_plus_z_pad_face_cells": 0,
+    "upper_end_to_plus_z_pad_face_m": 0.0,
+    "upper_end_is_first_plus_z_slab_node": false,
+    "reference_plane_node": 33,
+    "reference_plane_minus_lower_end_cells": 1
    }
   }
  },
@@ -21973,6 +22323,11 @@
    "open_end_above_z_pad_m": 0.0004733333333333333,
    "shell_to_pad_face_m": 0.000946666666666666,
    "shell_to_pec_wall_m": 0.0034711111111111097,
+   "lower_end_node": 19,
+   "lower_end_to_minus_z_pad_face_m": 0.0004733333333333333,
+   "upper_end_node": 271,
+   "upper_end_to_plus_z_pad_face_cells": -1,
+   "upper_end_is_first_plus_z_slab_node": true,
    "max_abs_s11": 1.0184750531556972,
    "argmax_bin": 63,
    "argmax_hz": 10300000256.0,
@@ -22009,6 +22364,11 @@
    "open_end_above_z_pad_m": 0.0004733333333333333,
    "shell_to_pad_face_m": 0.000946666666666666,
    "shell_to_pec_wall_m": 0.0034711111111111097,
+   "lower_end_node": 19,
+   "lower_end_to_minus_z_pad_face_m": 0.0004733333333333333,
+   "upper_end_node": 271,
+   "upper_end_to_plus_z_pad_face_cells": -1,
+   "upper_end_is_first_plus_z_slab_node": true,
    "max_abs_s11": 1.0461463592363842,
    "argmax_bin": 61,
    "argmax_hz": 10099999744.0,
@@ -22045,6 +22405,11 @@
    "open_end_above_z_pad_m": 0.0004733333333333333,
    "shell_to_pad_face_m": 0.000946666666666666,
    "shell_to_pec_wall_m": 0.0034711111111111097,
+   "lower_end_node": 19,
+   "lower_end_to_minus_z_pad_face_m": 0.0004733333333333333,
+   "upper_end_node": 271,
+   "upper_end_to_plus_z_pad_face_cells": -1,
+   "upper_end_is_first_plus_z_slab_node": true,
    "max_abs_s11": 1.057578729282611,
    "argmax_bin": 59,
    "argmax_hz": 9900000256.0,
@@ -22081,6 +22446,11 @@
    "open_end_above_z_pad_m": 0.003944444444444444,
    "shell_to_pad_face_m": 0.000946666666666666,
    "shell_to_pec_wall_m": 0.0034711111111111097,
+   "lower_end_node": 41,
+   "lower_end_to_minus_z_pad_face_m": 0.003944444444444444,
+   "upper_end_node": 271,
+   "upper_end_to_plus_z_pad_face_cells": -1,
+   "upper_end_is_first_plus_z_slab_node": true,
    "max_abs_s11": 1.0267733844165157,
    "argmax_bin": 69,
    "argmax_hz": 10899999744.0,
@@ -22117,6 +22487,11 @@
    "open_end_above_z_pad_m": 0.003944444444444444,
    "shell_to_pad_face_m": 0.000946666666666666,
    "shell_to_pec_wall_m": 0.0034711111111111097,
+   "lower_end_node": 41,
+   "lower_end_to_minus_z_pad_face_m": 0.003944444444444444,
+   "upper_end_node": 271,
+   "upper_end_to_plus_z_pad_face_cells": -1,
+   "upper_end_is_first_plus_z_slab_node": true,
    "max_abs_s11": 1.153457598108222,
    "argmax_bin": 68,
    "argmax_hz": 10800000000.0,
@@ -22153,6 +22528,11 @@
    "open_end_above_z_pad_m": 0.0004733333333333333,
    "shell_to_pad_face_m": 0.00489111111111111,
    "shell_to_pec_wall_m": 0.007415555555555554,
+   "lower_end_node": 19,
+   "lower_end_to_minus_z_pad_face_m": 0.0004733333333333333,
+   "upper_end_node": 271,
+   "upper_end_to_plus_z_pad_face_cells": -1,
+   "upper_end_is_first_plus_z_slab_node": true,
    "max_abs_s11": 1.0113973181054212,
    "argmax_bin": 54,
    "argmax_hz": 9400000512.0,
@@ -22189,6 +22569,11 @@
    "open_end_above_z_pad_m": 0.0004733333333333333,
    "shell_to_pad_face_m": 0.00489111111111111,
    "shell_to_pec_wall_m": 0.007415555555555554,
+   "lower_end_node": 19,
+   "lower_end_to_minus_z_pad_face_m": 0.0004733333333333333,
+   "upper_end_node": 271,
+   "upper_end_to_plus_z_pad_face_cells": -1,
+   "upper_end_is_first_plus_z_slab_node": true,
    "max_abs_s11": 1.0232471595750106,
    "argmax_bin": 24,
    "argmax_hz": 6400000000.0,
@@ -22225,6 +22610,11 @@
    "open_end_above_z_pad_m": 0.003944444444444444,
    "shell_to_pad_face_m": 0.00489111111111111,
    "shell_to_pec_wall_m": 0.007415555555555554,
+   "lower_end_node": 41,
+   "lower_end_to_minus_z_pad_face_m": 0.003944444444444444,
+   "upper_end_node": 271,
+   "upper_end_to_plus_z_pad_face_cells": -1,
+   "upper_end_is_first_plus_z_slab_node": true,
    "max_abs_s11": 1.0151498068417049,
    "argmax_bin": 59,
    "argmax_hz": 9900000256.0,
@@ -22261,6 +22651,11 @@
    "open_end_above_z_pad_m": 0.003944444444444444,
    "shell_to_pad_face_m": 0.00489111111111111,
    "shell_to_pec_wall_m": 0.007415555555555554,
+   "lower_end_node": 41,
+   "lower_end_to_minus_z_pad_face_m": 0.003944444444444444,
+   "upper_end_node": 271,
+   "upper_end_to_plus_z_pad_face_cells": -1,
+   "upper_end_is_first_plus_z_slab_node": true,
    "max_abs_s11": 1.0351533037977199,
    "argmax_bin": 28,
    "argmax_hz": 6800000000.0,
@@ -22297,6 +22692,11 @@
    "open_end_above_z_pad_m": 0.003944444444444444,
    "shell_to_pad_face_m": 0.00489111111111111,
    "shell_to_pec_wall_m": 0.007415555555555554,
+   "lower_end_node": 41,
+   "lower_end_to_minus_z_pad_face_m": 0.003944444444444444,
+   "upper_end_node": 271,
+   "upper_end_to_plus_z_pad_face_cells": -1,
+   "upper_end_is_first_plus_z_slab_node": true,
    "max_abs_s11": 1.1403760933754965,
    "argmax_bin": 26,
    "argmax_hz": 6600000000.0,
@@ -22333,6 +22733,11 @@
    "open_end_above_z_pad_m": 0.0039049999999999996,
    "shell_to_pad_face_m": 0.004969999999999999,
    "shell_to_pec_wall_m": 0.01065,
+   "lower_end_node": 27,
+   "lower_end_to_minus_z_pad_face_m": 0.0039049999999999996,
+   "upper_end_node": 130,
+   "upper_end_to_plus_z_pad_face_cells": -1,
+   "upper_end_is_first_plus_z_slab_node": true,
    "max_abs_s11": 1.00527955971903,
    "argmax_bin": 26,
    "argmax_hz": 6600000000.0,
@@ -22369,6 +22774,11 @@
    "open_end_above_z_pad_m": 0.0039049999999999996,
    "shell_to_pad_face_m": 0.004969999999999999,
    "shell_to_pec_wall_m": 0.01065,
+   "lower_end_node": 27,
+   "lower_end_to_minus_z_pad_face_m": 0.0039049999999999996,
+   "upper_end_node": 130,
+   "upper_end_to_plus_z_pad_face_cells": -1,
+   "upper_end_is_first_plus_z_slab_node": true,
    "max_abs_s11": 1.006675901747333,
    "argmax_bin": 21,
    "argmax_hz": 6099999744.0,
@@ -22405,6 +22815,11 @@
    "open_end_above_z_pad_m": 0.003786666666666666,
    "shell_to_pad_face_m": 0.004969999999999999,
    "shell_to_pec_wall_m": 0.008756666666666666,
+   "lower_end_node": 32,
+   "lower_end_to_minus_z_pad_face_m": 0.003786666666666666,
+   "upper_end_node": 186,
+   "upper_end_to_plus_z_pad_face_cells": 0,
+   "upper_end_is_first_plus_z_slab_node": false,
    "max_abs_s11": 1.005248596897876,
    "argmax_bin": 29,
    "argmax_hz": 6899999744.0,
@@ -22441,6 +22856,11 @@
    "open_end_above_z_pad_m": 0.003786666666666666,
    "shell_to_pad_face_m": 0.004969999999999999,
    "shell_to_pec_wall_m": 0.008756666666666666,
+   "lower_end_node": 32,
+   "lower_end_to_minus_z_pad_face_m": 0.003786666666666666,
+   "upper_end_node": 186,
+   "upper_end_to_plus_z_pad_face_cells": 0,
+   "upper_end_is_first_plus_z_slab_node": false,
    "max_abs_s11": 1.0043692413046414,
    "argmax_bin": 28,
    "argmax_hz": 6800000000.0,
@@ -22574,5 +22994,193 @@
    "battery_backend": "gpu",
    "this_backend": "cpu"
   }
+ },
+ "facts": {
+  "what": "realized geometry read from the stored records, no interpretation",
+  "absorbing_axes": [
+   "z"
+  ],
+  "lateral_pads": "vacuum with the PEC grid faces behind them: the lane's run applies no CPML correction on x or y",
+  "upper_end_lane_text": [
+   {
+    "where": "rfx/sparams/coax.py:453-454",
+    "text": "The conductors deliberately stop ~2 cells short of the +z PML \u2014 running PEC into CPML is numerically unstable."
+   },
+   {
+    "where": "rfx/sparams/coax.py:645-646",
+    "text": "# Axial layout: DUT just above the -z PML; coax runs up to ~2 cells short # of the +z PML; matched feed one cell below the coax top; source below it."
+   },
+   {
+    "where": "rfx/sources/coaxial_port.py:2023-2026",
+    "text": "The conductors must NOT extend into a CPML region: running PEC into the PML is numerically unstable (verified: max|E| diverges to NaN). Stop the line at least ~2 cells short of the absorbing boundary and terminate the feed with :func:`stamp_coaxial_annular_resistor`."
+   }
+  ],
+  "per_geometry": {
+   "A0_rung9": {
+    "absorbing_axes": "z",
+    "dut_offset_cells_as_run": 4,
+    "reference_plane_node": 20,
+    "lower_end_node": 19,
+    "lower_end_to_minus_z_pad_face_cells": 3,
+    "lower_end_to_minus_z_pad_face_m": 0.0004733333333333333,
+    "upper_end_node": 271,
+    "first_plus_z_slab_node": 271,
+    "upper_end_to_plus_z_pad_face_cells": -1,
+    "upper_end_to_plus_z_pad_face_m": -0.00015777777777777776,
+    "upper_end_is_first_plus_z_slab_node": true,
+    "min_shell_to_pad_face_m": 0.000946666666666666,
+    "min_shell_to_pec_wall_m": 0.0034711111111111097
+   },
+   "A1_rung9": {
+    "absorbing_axes": "z",
+    "dut_offset_cells_as_run": 26,
+    "reference_plane_node": 42,
+    "lower_end_node": 41,
+    "lower_end_to_minus_z_pad_face_cells": 25,
+    "lower_end_to_minus_z_pad_face_m": 0.003944444444444444,
+    "upper_end_node": 271,
+    "first_plus_z_slab_node": 271,
+    "upper_end_to_plus_z_pad_face_cells": -1,
+    "upper_end_to_plus_z_pad_face_m": -0.00015777777777777776,
+    "upper_end_is_first_plus_z_slab_node": true,
+    "min_shell_to_pad_face_m": 0.000946666666666666,
+    "min_shell_to_pec_wall_m": 0.0034711111111111097
+   },
+   "A2_rung9": {
+    "absorbing_axes": "z",
+    "dut_offset_cells_as_run": 4,
+    "reference_plane_node": 20,
+    "lower_end_node": 19,
+    "lower_end_to_minus_z_pad_face_cells": 3,
+    "lower_end_to_minus_z_pad_face_m": 0.0004733333333333333,
+    "upper_end_node": 271,
+    "first_plus_z_slab_node": 271,
+    "upper_end_to_plus_z_pad_face_cells": -1,
+    "upper_end_to_plus_z_pad_face_m": -0.00015777777777777776,
+    "upper_end_is_first_plus_z_slab_node": true,
+    "min_shell_to_pad_face_m": 0.00489111111111111,
+    "min_shell_to_pec_wall_m": 0.007415555555555554
+   },
+   "A3_rung9": {
+    "absorbing_axes": "z",
+    "dut_offset_cells_as_run": 26,
+    "reference_plane_node": 42,
+    "lower_end_node": 41,
+    "lower_end_to_minus_z_pad_face_cells": 25,
+    "lower_end_to_minus_z_pad_face_m": 0.003944444444444444,
+    "upper_end_node": 271,
+    "first_plus_z_slab_node": 271,
+    "upper_end_to_plus_z_pad_face_cells": -1,
+    "upper_end_to_plus_z_pad_face_m": -0.00015777777777777776,
+    "upper_end_is_first_plus_z_slab_node": true,
+    "min_shell_to_pad_face_m": 0.00489111111111111,
+    "min_shell_to_pec_wall_m": 0.007415555555555554
+   },
+   "A3_rung4": {
+    "absorbing_axes": "z",
+    "dut_offset_cells_as_run": 12,
+    "reference_plane_node": 28,
+    "lower_end_node": 27,
+    "lower_end_to_minus_z_pad_face_cells": 11,
+    "lower_end_to_minus_z_pad_face_m": 0.0039049999999999996,
+    "upper_end_node": 130,
+    "first_plus_z_slab_node": 130,
+    "upper_end_to_plus_z_pad_face_cells": -1,
+    "upper_end_to_plus_z_pad_face_m": -0.00035499999999999996,
+    "upper_end_is_first_plus_z_slab_node": true,
+    "min_shell_to_pad_face_m": 0.004969999999999999,
+    "min_shell_to_pec_wall_m": 0.01065
+   },
+   "A3_rung6": {
+    "absorbing_axes": "z",
+    "dut_offset_cells_as_run": 17,
+    "reference_plane_node": 33,
+    "lower_end_node": 32,
+    "lower_end_to_minus_z_pad_face_cells": 16,
+    "lower_end_to_minus_z_pad_face_m": 0.003786666666666666,
+    "upper_end_node": 186,
+    "first_plus_z_slab_node": 187,
+    "upper_end_to_plus_z_pad_face_cells": 0,
+    "upper_end_to_plus_z_pad_face_m": 0.0,
+    "upper_end_is_first_plus_z_slab_node": false,
+    "min_shell_to_pad_face_m": 0.004969999999999999,
+    "min_shell_to_pec_wall_m": 0.008756666666666666
+   }
+  }
+ },
+ "revision_after_the_run": {
+  "received": "2026-09-23, after all 14 jobs had finished at 4e008494 and the results had been reported; the campaign ran under the original declaration",
+  "hypothesis": "the open end's fringing field reaches the -z absorber, which sits 3 cells below the REALIZED open end at every rung (about 1.07 / 0.71 / 0.47 mm at 4 / 6 / 9 annulus cells); an absorber inside a near field returns more than it receives and keeps ringing. Predictions and the falsifier stay as declared, now judged on A1 (offset 2b from the realized end, i.e. set the offset so the realized end is 2b = 4.11 mm above the pad face) and A3.",
+  "a2_role": "A2 is now a control, not a test of H: widening the lateral domain to 16 mm moves the PEC walls of the closed region around the shell from ~3.5 mm to ~7.5 mm from the shell's outer surface; it moves no absorber.",
+  "arms_as_run_against_the_revision": {
+   "A1_rung9": {
+    "realized_end_cells_as_run": 25,
+    "realized_end_m_as_run": 0.003944444444444444,
+    "dut_offset_cells_as_run": 26,
+    "realized_end_cells_revision": 26,
+    "realized_end_m_revision": 0.0041022222222222215,
+    "dut_offset_cells_revision": 27
+   },
+   "A3_rung9": {
+    "realized_end_cells_as_run": 25,
+    "realized_end_m_as_run": 0.003944444444444444,
+    "dut_offset_cells_as_run": 26,
+    "realized_end_cells_revision": 26,
+    "realized_end_m_revision": 0.0041022222222222215,
+    "dut_offset_cells_revision": 27
+   },
+   "A3_rung4": {
+    "realized_end_cells_as_run": 11,
+    "realized_end_m_as_run": 0.0039049999999999996,
+    "dut_offset_cells_as_run": 12,
+    "realized_end_cells_revision": 12,
+    "realized_end_m_revision": 0.00426,
+    "dut_offset_cells_revision": 13
+   },
+   "A3_rung6": {
+    "realized_end_cells_as_run": 16,
+    "realized_end_m_as_run": 0.003786666666666666,
+    "dut_offset_cells_as_run": 17,
+    "realized_end_cells_revision": 17,
+    "realized_end_m_revision": 0.004023333333333333,
+    "dut_offset_cells_revision": 18
+   }
+  },
+  "predictions_on_the_arms_as_run": [
+   {
+    "id": "A3_all_rungs",
+    "per_rung": {
+     "4": {
+      "max_abs_s11_sq_12u": 1.010586993188887,
+      "shift_12_24": 0.01601863472017806,
+      "holds": true
+     },
+     "6": {
+      "max_abs_s11_sq_12u": 1.0105247415651482,
+      "shift_12_24": 0.009211822447587115,
+      "holds": true
+     },
+     "9": {
+      "max_abs_s11_sq_12u": 1.0305291303307507,
+      "shift_12_24": 0.05126527829134997,
+      "holds": false
+     }
+    },
+    "holds": false
+   },
+   {
+    "id": "A1_rung9",
+    "max_abs_s11_sq_12u": 1.0542635829461457,
+    "shift_12_24": 0.1538217631375357,
+    "holds": false
+   },
+   {
+    "id": "falsifier_A3_rung9",
+    "max_abs_s11_sq_12u": 1.0305291303307507,
+    "shift_12_24": 0.05126527829134997,
+    "fired": true
+   }
+  ],
+  "read_with": "these judge A1 and A3 as run, whose realized open ends sit the number of cells given in arms_as_run_against_the_revision short of the revision's 2b; A2 is the control"
  }
 }
