@@ -35,9 +35,12 @@ from rfx.core.yee import (
     MU_0,
     FDTDState,
     MaterialArrays,
+    ade_state_dtype,
     _shift_fwd,
     _shift_bwd,
 )
+from rfx.materials.debye import DebyeState, init_debye
+from rfx.materials.lorentz import LorentzState, init_lorentz
 
 __all__ = [
     "cpml_coeff_e_vacuum",
@@ -128,6 +131,116 @@ def split_array_x(arr, n_devices, ghost=1, pad_value=0.0):
 
         slabs.append(slab_data)
     return jnp.stack(slabs)
+
+
+def shard_x_slabs(arr, n_devices, nx_per, ghost, pad_value, sharding):
+    """Place padded x slabs directly, constructing only addressable shards.
+
+    ``arr`` already includes any high-x alignment padding. Physical-boundary
+    ghosts use ``pad_value``; interior ghosts copy the adjacent slab's cells,
+    exactly as in ``shard_stacked(split_array_x(...))``. No device-axis stack
+    or whole-domain reshape is staged on the default device.
+    """
+    if arr.ndim != 3:
+        raise ValueError(f"shard_x_slabs stages 3-D (x, y, z) arrays, got shape {arr.shape}")
+    nx_local = nx_per + 2 * ghost
+    shape = (n_devices * nx_local,) + arr.shape[1:]
+
+    def slab(index):
+        rank = (index[0].start or 0) // nx_local
+        want_lo = rank * nx_per - ghost
+        want_hi = (rank + 1) * nx_per + ghost
+        lo, hi = max(0, want_lo), min(arr.shape[0], want_hi)
+        data = arr[lo:hi]
+        if lo != want_lo or hi != want_hi:
+            data = jnp.pad(
+                data, ((lo - want_lo, want_hi - hi), (0, 0), (0, 0)),
+                constant_values=pad_value,
+            )
+        return data
+
+    # No ``dtype=`` argument: jax.make_array_from_callback gained it only after
+    # 0.5.0 (the VESSL image runs 0.4.33). Slicing and jnp.pad keep arr's dtype.
+    return jax.make_array_from_callback(shape, sharding, slab)
+
+
+def stage_dispersion_slabs(materials, dt, debye_spec, lorentz_spec,
+                           n_devices, nx_per, ghost, sharding):
+    """Initialize ADE data one addressable x slab at a time.
+
+    Interior ghosts use neighbouring cells, just like ``shard_x_slabs``.
+    Physical ghosts are padded *after* initialization: their coefficients
+    must match the legacy splitters, not coefficients of vacuum materials.
+    No whole-domain dispersion array or device-axis stack is constructed.
+    """
+    nx, ny, nz = materials.eps_r.shape
+    nx_local = nx_per + 2 * ghost
+    shape = (n_devices * nx_local, ny, nz)
+    specs = (debye_spec, lorentz_spec)
+    coefficient_slabs = ([], [])
+
+    def stage_slab(device, index):
+        rank = (index[0].start or 0) // nx_local
+        want_lo = rank * nx_per - ghost
+        want_hi = (rank + 1) * nx_per + ghost
+        lo, hi = max(0, want_lo), min(nx, want_hi)
+        padding = ((lo - want_lo, want_hi - hi), (0, 0), (0, 0))
+        # Move only the clipped inputs. Coefficients and temporary ADE zeros
+        # are then built on their destination, including on remote-process
+        # meshes where only this process's addressable devices are visited.
+        # The lumped-stamp records (#1210) default to None: carry them as None.
+        local_materials = MaterialArrays(*(
+            None if arr is None else jax.device_put(arr[lo:hi], device)
+            for arr in materials))
+        for spec, init, slabs in zip(
+                specs, (init_debye, init_lorentz), coefficient_slabs):
+            if spec is None:
+                continue
+            poles, masks = spec
+            local_masks = jax.tree.map(
+                lambda mask: jax.device_put(mask[lo:hi], device), masks)
+            # Slice before changing the default device, so an uncommitted
+            # whole-domain input cannot migrate just to execute its slice.
+            with jax.default_device(device):
+                # Keep the runner's existing field_dtype=None policy.
+                coeffs, state = init(poles, local_materials, dt, mask=local_masks)
+                del state  # the global carry is allocated directly sharded below
+
+                def place(name, arr):
+                    pad_value = float(1.0 / EPS_0) if init is init_lorentz and name == "cc" else 0.0
+                    if lo != want_lo or hi != want_hi:
+                        widths = padding if arr.ndim == 3 else ((0, 0),) + padding
+                        arr = jnp.pad(arr, widths, constant_values=pad_value)
+                    return jax.device_put(arr, device)
+
+                placed = type(coeffs)(*(place(name, arr) for name, arr in
+                                       zip(coeffs._fields, coeffs)))
+                # Finish the handoff before dropping slab temporaries and
+                # starting another slab; asynchronous dispatch must not pile
+                # up setup buffers on the source device.
+                jax.block_until_ready(placed)
+                slabs.append(placed)
+                del coeffs, placed, local_masks
+
+    if any(spec is not None for spec in specs):
+        for device, index in sharding.addressable_devices_indices_map(shape).items():
+            stage_slab(device, index)
+
+    def assemble(spec, slabs, state_type):
+        if spec is None:
+            return None
+        coeffs = type(slabs[0])(*(
+            jax.make_array_from_single_device_arrays(
+                (n_devices * parts[0].shape[0],) + parts[0].shape[1:],
+                sharding, list(parts))
+            for parts in zip(*slabs)))
+        state_shape = (n_devices * len(spec[0]), nx_local, ny, nz)
+        state = state_type(*(jnp.zeros(state_shape, dtype=ade_state_dtype(), device=sharding)
+                             for _ in state_type._fields))
+        return coeffs, state
+
+    return (assemble(debye_spec, coefficient_slabs[0], DebyeState),
+            assemble(lorentz_spec, coefficient_slabs[1], LorentzState))
 
 
 def gather_array_x(slabs, ghost=1):
@@ -353,6 +466,55 @@ def exchange_component_shmap(field, mesh, n_devices):
         return f
 
     return _exchange(field)
+
+
+def exchange_h_yee_shmap(state, mesh, n_devices):
+    """Send packed Hy/Hz last-real rows right into the live LEFT ghosts.
+
+    The second-order Yee E curl reads only these two x-neighbours. Keep
+    physical-boundary ghosts verbatim; there is no wraparound on this lane.
+    """
+    if n_devices == 1:
+        return state
+
+    @partial(shard_map, mesh=mesh, in_specs=(P("x"), P("x")),
+             out_specs=(P("x"), P("x")), check_rep=False)
+    def _exchange(hy, hz):
+        packed = jnp.stack((hy[-2], hz[-2]))
+        received = lax.ppermute(
+            packed, "x", perm=[(i, i + 1) for i in range(n_devices - 1)])
+        interior = lax.axis_index("x") > 0
+        hy = hy.at[0].set(jnp.where(interior, received[0], hy[0]))
+        hz = hz.at[0].set(jnp.where(interior, received[1], hz[0]))
+        return hy, hz
+
+    hy, hz = _exchange(state.hy, state.hz)
+    return state._replace(hy=hy, hz=hz)
+
+
+def exchange_e_yee_shmap(state, mesh, n_devices):
+    """Send packed Ey/Ez first-real rows left into the live RIGHT ghosts.
+
+    The second-order Yee H curl reads only these two x-neighbours. Ex/Hx
+    and the opposite ghosts are dead: local ghost updates are overwritten
+    by the next live exchange before a real cell can consume them.
+    """
+    if n_devices == 1:
+        return state
+
+    @partial(shard_map, mesh=mesh, in_specs=(P("x"), P("x")),
+             out_specs=(P("x"), P("x")), check_rep=False)
+    def _exchange(ey, ez):
+        packed = jnp.stack((ey[1], ez[1]))
+        received = lax.ppermute(
+            packed, "x", perm=[(i, i - 1) for i in range(1, n_devices)])
+        interior = lax.axis_index("x") < n_devices - 1
+        ey = ey.at[-1].set(jnp.where(interior, received[0], ey[-1]))
+        ez = ez.at[-1].set(jnp.where(interior, received[1], ez[-1]))
+        return ey, ez
+
+    ey, ez = _exchange(state.ey, state.ez)
+    return state._replace(ey=ey, ez=ez)
 
 
 # ---------------------------------------------------------------------------
@@ -826,7 +988,8 @@ def inject_sources_shmap(st, src_vals_step, mesh, n_src,
     return st._replace(ex=ex, ey=ey, ez=ez)
 
 
-def sample_probes_shmap(st, mesh, n_prb, prb_local_specs, prb_device_ids):
+def sample_probes_shmap(st, mesh, n_prb, prb_local_specs, prb_device_ids,
+                        *, reduce_devices=True):
     """Sample probes on their owning devices, then sum across devices.
 
     Mirror of :func:`inject_sources_shmap` on the read side: every device
@@ -834,22 +997,25 @@ def sample_probes_shmap(st, mesh, n_prb, prb_local_specs, prb_device_ids):
     identity, and ``lax.psum`` over ``"x"`` leaves exactly the owner's
     value.  ``out_specs=P()`` because the psum result is replicated.
 
-    Returns an empty ``float32`` vector when there are no probes, which is
-    what keeps the caller's scan carry shape stable.
+    With ``reduce_devices=False``, return masked samples of global shape
+    ``(n_devices, n_prb)`` on ``P("x")`` without a collective. A scan can
+    stack these and sum its device axis once after the time loop. The
+    default retains the per-step replicated result for the NU runner.
 
     Extracted verbatim from
     ``distributed_nu.py::run_nonuniform_distributed_pec._sample_probes_shmap``
     and ``distributed_v2.py::run_distributed._sample_probes_shmap``.
     """
     if n_prb == 0:
-        return jnp.zeros(0, dtype=jnp.float32)
+        shape = (0,) if reduce_devices else (mesh.size, 0)
+        return jnp.zeros(shape, dtype=jnp.float32)
 
     @partial(
         shard_map,
         mesh=mesh,
         in_specs=(P("x"), P("x"), P("x"),
                   P("x"), P("x"), P("x")),
-        out_specs=P(),
+        out_specs=P() if reduce_devices else P("x"),
         check_rep=False,
     )
     def _sample(ex, ey, ez, hx, hy, hz):
@@ -872,7 +1038,8 @@ def sample_probes_shmap(st, mesh, n_prb, prb_local_specs, prb_device_ids):
                 raw = hz[li, lj, lk]
             val = jnp.where(device_idx == dev_id, raw, 0.0)
             samples.append(val)
-        return lax.psum(jnp.stack(samples), "x")
+        samples = jnp.stack(samples)
+        return lax.psum(samples, "x") if reduce_devices else samples[None, :]
 
     return _sample(st.ex, st.ey, st.ez, st.hx, st.hy, st.hz)
 

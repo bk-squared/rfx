@@ -803,10 +803,9 @@ class TestVmapBatchedPadByteIdentity:
         of the matrix above is, and it writes nothing at all -- which is
         why the two rows need separate controls.
 
-        Asserts the two halves separately so a future failure says which
-        one moved: the conductor IS at the x-lo interior edge (so the old
-        code had something to replicate), and the x-lo pad is NOT the
-        conductor (so the new code does not replicate it)."""
+        The conductor has sigma_eff = 175 S/m at the interior face and
+        through the x-lo pad. Individual assembly and the material sweep
+        must realize the same continued conductor."""
         def sim_fn(eps_r):
             sim = _matrix_sim((0.0, 0.0, 0.0), (0.02, 0.02, 0.02),
                               eps_r=eps_r)
@@ -842,15 +841,16 @@ class TestVmapBatchedPadByteIdentity:
                 f"fixture no longer exercises #642 and the equality test "
                 f"above is vacuous")
             assert eps[plx, jy, kz] == pytest.approx(1.0)
-            # Half 2: and the pad is the background material anyway.
+            # The declared conducting bar continues through the pad.
             npt.assert_array_equal(
-                sig[:plx, jy, kz], np.zeros(plx, dtype=sig.dtype),
-                err_msg="conductor sigma leaked into the x-lo pad (#642)")
+                sig[:plx, jy, kz], np.full(plx, sigma_eff, dtype=sig.dtype),
+                err_msg="continued conductor is absent from the x-lo pad")
             npt.assert_array_equal(
-                eps[:plx, jy, kz], np.full(plx, v, dtype=eps.dtype),
-                err_msg=("x-lo pad does not carry the swept slab eps_r -- "
-                         "either the conductor leaked (#642) or the pad "
-                         "extension regressed (#637/#643)"))
+                eps[:plx, jy, kz], np.ones(plx, dtype=eps.dtype))
+            individual = sim_fn(float(v))._assemble_materials(grid)[0]
+            for name in ("eps_r", "sigma", "mu_r"):
+                npt.assert_array_equal(np.asarray(getattr(batched, name)[idx]),
+                                       np.asarray(getattr(individual, name)))
 
     def test_matrix_is_not_vacuous_swept_value_reaches_the_pad(self):
         """Control for the whole matrix above: at least one row must have

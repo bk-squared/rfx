@@ -107,6 +107,9 @@ def _case_metadata(case: LumpedSweepCase, grid: Grid, n_steps: int) -> PortDumpM
             "cpml_layers": 0,
         },
         boundaries={"x": "pec", "y": "pec", "z": "pec"},
+        # rfx's lumped production diagonal is the driven terminal
+        # reflection, so the replay must read the dump in that frame.
+        diagonal_frame="driven_terminal",
         port_definitions=(
             {
                 "name": "port_0",

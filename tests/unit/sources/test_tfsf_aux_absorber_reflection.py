@@ -1,7 +1,8 @@
 """The auxiliary absorber's reflection, as a gate (#888).
 
-THE ABSENCE THIS FILLS. ``tests/crossval/test_aux_echo_record_invariant.py``
-(#892) bounds WHEN the auxiliary echo arrives and says so in its own words:
+THE ABSENCE THIS FILLS. The auxiliary-echo record invariant (#892, removed
+2026-09-21 with the slab family it ran on) bounded WHEN the auxiliary echo
+arrives and said so in its own words:
 "it does not bound HOW LARGE the echo is ... this guard would pass a rig whose
 absorber was ten times worse". Nothing measured the amplitude, so an absorber
 reflecting 4 to 6 percent shipped on both TF/SF paths and set the injected

@@ -7,11 +7,10 @@ Build and run an rfx :class:`~rfx.api.Simulation` from a YAML file or a plain
 >>> sim = simulation_from_yaml("sim.yaml")
 >>> result = run_and_save("sim.yaml", "result.h5")
 
-The canonical Studio/agent contract is now ``rfx-experiment/v2`` in
-``rfx.experiments``. This package remains stable for existing YAML and CLI
-users, translating the legacy uniform-grid microstrip/patch subset directly to
-the public builder API. It is deliberately not extended with new Studio
-variants; unsupported features raise a clear ``NotImplementedError``.
+This package remains stable for existing YAML and CLI users, translating the
+legacy uniform-grid microstrip/patch subset directly to the public builder API.
+It is deliberately not extended with new variants; unsupported features raise a
+clear ``NotImplementedError``.
 """
 
 from __future__ import annotations

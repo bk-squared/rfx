@@ -376,6 +376,10 @@ CORE_CONFIG_CHECKS: tuple[ConfigCheck, ...] = (
                 lambda sim, c: sim._validate_cfg_conductor_in_thin_absorber(
                     c.warn, c.dx, c.absorber_label),
                 "absorber"),
+    # #801: append the explicit port-termination diagnostic.
+    ConfigCheck("_validate_cfg_port_conductor_continues",
+                lambda sim, c: sim._validate_cfg_port_conductor_continues(c.warn),
+                "absorber"),
 )
 
 

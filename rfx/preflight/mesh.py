@@ -483,7 +483,7 @@ def _validate_thin_metal_on_nu_mesh(self) -> None:
         d = ctx.spacings[axis_idx]
         if d.size < 3:
             continue
-        for e in ctx.pec_entries():
+        for e in ctx.interior_pec_entries():
             if e.kind == "wire":
                 continue
             planes = e.wall_planes(axis_idx, ctx.periodic, shape)

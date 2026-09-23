@@ -1,7 +1,11 @@
-"""Actual cv24 inputs against the exact lattice spectrum; no new FDTD solve.
+"""Retained graded-z cavity records against the exact lattice spectrum; no new
+FDTD solve.
 
-The existing cv24 mode-count, lattice and stationarity windows are unchanged.
-This is an estimator regression, not a replacement for cv24's energy audit.
+The records under ``tests/fixtures/harminv_decimation/`` were captured from the
+former cv24 graded-z cavity case, removed 2026-09-21; the mode-count, lattice
+and stationarity windows they are judged on are unchanged, and live in
+``tests/_nu_cavity_gates.py``. This is an estimator regression, not an energy
+audit.
 """
 import hashlib
 import json
@@ -11,7 +15,7 @@ import numpy as np
 import pytest
 
 from rfx.harminv import harminv
-from validation.crossval.comparators import nu_cavity_gates as G
+from tests import _nu_cavity_gates as G
 
 ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "harminv_decimation"
 

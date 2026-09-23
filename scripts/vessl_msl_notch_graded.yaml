@@ -1,0 +1,97 @@
+name: rfx-msl-notch-graded
+description: "MSL open-stub notch filter on a band-graded mesh: ONE arm per job (docs/design_notes/20260922_msl_notch_graded_mesh_predeclaration.md). Submit with scripts/vessl_submit.sh after substituting RFX_NOTCH_ARM and RFX_NOTCH_SHA; the submitter records the run id."
+tags: [rfx, nu-mesh, msl-notch, issue-810]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  # Substituted per submission. RFX_NOTCH_SHA pins ONE commit for all five
+  # arms; a branch name here would let two arms run different code.
+  RFX_NOTCH_ARM: "A_off"
+  RFX_NOTCH_SHA: "REPLACE_WITH_COMMIT_SHA"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  # POSIX sh only: no arrays, no [[ ]], no ${PIPESTATUS[n]}, no heredocs.
+  # VESSL re-indents this block, which moves a heredoc terminator off column 0
+  # and kills the job at parse time before any work runs.
+  repo=/root/workspace/bk-workspace/rfx-nu/notch
+  gitdir=/root/workspace/bk-workspace/rfx/.git
+  runs=/root/workspace/bk-workspace/rfx-nu/runs
+  arm="$RFX_NOTCH_ARM"
+  sha="$RFX_NOTCH_SHA"
+  # The trailing hyphen keeps "msl-notch-A_off-" from prefix-matching
+  # "msl-notch-A_off_longarms-" when the submitter claims a directory.
+  out="$runs/msl-notch-$arm-$(date -u +%Y%m%dT%H%M%SZ)"
+  mkdir -p "$out"
+  echo "=== rfx MSL notch filter, graded mesh: arm $arm ==="
+  echo "artifacts: $out"
+
+  # Collect whatever exists even if the job is killed, evicted or times out.
+  trap 'rc=$?; echo "$rc" > "$out/rc.txt"; echo "collected into $out"; ls -la "$out"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  git config --global --add safe.directory "$repo" || true
+  git config --global --add safe.directory "$gitdir" || true
+
+  # Provenance first and with no fallback: a run that cannot name the commit it
+  # read produces no artifact at all.
+  echo "=== provenance ==="
+  git -C "$repo" rev-parse --verify "$sha^{commit}" > "$out/commit.txt"
+  cat "$out/commit.txt"
+  git -C "$repo" log -1 --format='%H %ci %s' "$sha"
+
+  # The run id is the submitter's to record (VESSL does not export it into the
+  # pod). scripts/vessl_submit.sh drops run_id.txt into the newest matching
+  # output directory; wait for it rather than writing a placeholder.
+  i=0
+  while [ "$i" -lt 120 ]; do
+    if [ -f "$out/run_id.txt" ]; then break; fi
+    i=$((i + 1)); sleep 5
+  done
+  if [ ! -f "$out/run_id.txt" ]; then
+    echo "FATAL: no run_id.txt after 10 minutes; the submitter did not record"
+    echo "this run's id, so the artifact would carry no run identity."
+    exit 3
+  fi
+  run_id=$(cat "$out/run_id.txt")
+  echo "run id: $run_id"
+
+  # Export the pinned tree into scratch: the PI's checkouts are never the thing
+  # under test, and no worktree metadata is touched.
+  src="/tmp/rfx-msl-notch-graded-$arm"
+  rm -rf "$src" && mkdir -p "$src"
+  git -C "$repo" archive --format=tar "$sha" | tar -xf - -C "$src"
+
+  echo "=== runtime dependencies the image lacks ==="
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest
+
+  export RFX_REPO_ROOT="$src"
+  export PYTHONPATH="$src:${PYTHONPATH:-}"
+  cd "$src"
+  python -c "import jax, rfx; print('probe ok | jax', jax.__version__, '| devices', jax.devices(), '| rfx', rfx.__file__)" 2>&1 | tee "$out/env.txt"
+
+  echo "=== arm $arm ==="
+  # The status has to come out of the pipeline, and ${PIPESTATUS[0]} is a
+  # bashism that has already killed a job on this runner. The brace group
+  # writes the status to a file and its stdout still reaches tee.
+  set +e
+  { timeout 1800 python validation/research/multiband_nu/msl_notch_graded.py \
+      --arm "$arm" --run-id "$run_id" --commit "$(cat "$out/commit.txt")" \
+      --out "$out/msl_notch_graded.json" --fig-dir "$out" 2>&1
+    echo "$?" > "$out/arm.rc"
+  } | tee "$out/msl_notch_graded_$arm.log"
+  set -e
+  rc=$(cat "$out/arm.rc")
+  echo "=== tail ==="
+  tail -n 40 "$out/msl_notch_graded_$arm.log"
+  echo "arm=$arm rc=$rc artifacts=$out"
+  exit "$rc"

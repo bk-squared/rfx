@@ -36,9 +36,9 @@ pattern and passes.
 
 3. Neither of the above, because no statement in the file does it: a test
    module that IMPORTS something which does it.
-   `tests/crossval/test_crossval_cv09_mirror_plane_gate.py` executed
-   `validation/crossval/09_half_symmetric_waveguide.py` at module scope, and
-   that script sets the same environment key. Measured in a fresh interpreter,
+   The cv09 mirror-plane gate test (removed 2026-09-21) executed the cv09
+   half-symmetric-waveguide case at module scope, and that script sets the
+   same environment key. Measured in a fresh interpreter,
    importing the test module alone gave `env=1 jax_imported=True x64=True`. No
    AST rule over `tests/` can see that, so
    `test_importing_a_test_module_does_not_set_the_env_flag` imports every test
@@ -409,9 +409,9 @@ def test_importing_a_test_module_does_not_flip_x64():
 
     A module can flip x64 without containing a single statement that does —
     by importing, or `exec_module`-ing, something that does. That is what
-    cv09's gate did through
-    `validation/crossval/09_half_symmetric_waveguide.py`, and why removing the
-    test module's own duplicate of the env line changed nothing measurable.
+    the cv09 mirror-plane gate did through the cv09
+    half-symmetric-waveguide case (both removed 2026-09-21), and why removing
+    the test module's own duplicate of the env line changed nothing measurable.
 
     Three readings after each import, because one alone is a hole someone has
     already fallen into — twice, in this file's own history.
@@ -461,8 +461,7 @@ def test_importing_a_test_module_does_not_flip_x64():
         "BOTH the environment clean and the flag True. Restoring the variable "
         "hides the write; it does not undo the latch. Nothing in the module need "
         "say so — importing or exec'ing a validation script runs ITS module-level "
-        "env line. Load the script lazily, so nothing runs at import: see "
-        "tests/crossval/test_crossval_cv09_mirror_plane_gate.py."
+        "env line. Load the script lazily, so nothing runs at import."
     )
     assert not report["x64_offenders"], (
         "importing these test module(s) left jax_enable_x64 True in a fresh "
@@ -471,8 +470,7 @@ def test_importing_a_test_module_does_not_flip_x64():
         "environment, so restoring the variable afterwards does NOT undo it. "
         "Nothing in the module need say so — importing or exec'ing a validation "
         "script runs ITS module-level env line before it imports rfx. Load the "
-        "script lazily, so nothing runs at import: see "
-        "tests/crossval/test_crossval_cv09_mirror_plane_gate.py."
+        "script lazily, so nothing runs at import."
     )
     assert not report["env_offenders"], (
         "importing these test module(s) left JAX_ENABLE_X64 set in the process: "

@@ -110,17 +110,26 @@ def _entity_mask(entry, sim, grid, nonuniform, *, pec_volume: bool = False):
     Dielectrics keep the node sampler, because that is what the assembly
     writes their ``eps_r`` / ``sigma`` with.
     """
+    from rfx.geometry.smoothing import continued_conductor_shape
+    from rfx.geometry.rasterize_grid import interior_lattice_mask
+    shape = entry.shape
+    if pec_volume or hasattr(entry, "sigma_bulk"):
+        shape = continued_conductor_shape(sim, grid, shape, entry=entry)
     if pec_volume:
         from rfx.geometry.rasterize_grid import (
             cell_centres_from_nodes, pec_volume_cell_mask)
         coords, sizes = _contract_coords(sim, grid, nonuniform)
         centres = cell_centres_from_nodes(coords, sizes)
-        return np.asarray(pec_volume_cell_mask(entry.shape, centres), dtype=bool)
+        return interior_lattice_mask(pec_volume_cell_mask(shape, centres), grid,
+                                     cell_axes=(True, True, True))
     if nonuniform:
         from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
         c = coords_from_nonuniform_grid(grid)
-        return np.asarray(entry.shape.mask_on_coords(c.x, c.y, c.z), dtype=bool)
-    return np.asarray(entry.shape.mask(grid), dtype=bool)
+        mask = np.asarray(shape.mask_on_coords(c.x, c.y, c.z), dtype=bool)
+    else:
+        mask = np.asarray(shape.mask(grid), dtype=bool)
+    return (interior_lattice_mask(mask, grid)
+            if hasattr(entry, "sigma_bulk") else mask)
 
 
 def _declared_material(sim, name):
@@ -167,7 +176,7 @@ def _pec_sheet_spec(sim, entry, kind_src, grid, nonuniform):
     """The :class:`SheetSpec` this entry realizes as under #931, or None
     when the entry is not a sheet declaration (a PEC volume, a dielectric,
     a lossy sheet)."""
-    from rfx.geometry.rasterize_grid import sheet_spec_from_shape
+    from rfx.geometry.rasterize_grid import interior_lattice_mask, sheet_spec_from_shape
     if kind_src == "thin_conductor":
         if not getattr(entry, "is_pec", False):
             return None
@@ -185,9 +194,14 @@ def _pec_sheet_spec(sim, entry, kind_src, grid, nonuniform):
         normal = zero[0]
     coords, sizes = _contract_coords(sim, grid, nonuniform)
     try:
-        return sheet_spec_from_shape(
-            entry.shape, coords, sizes, normal_axis=normal,
+        from dataclasses import replace
+        from rfx.geometry.smoothing import continued_conductor_shape
+        sheet = sheet_spec_from_shape(
+            continued_conductor_shape(sim, grid, entry.shape, entry=entry), coords, sizes, normal_axis=normal,
+            name=getattr(entry, "material_name", kind_src),
             refuse_thick=(kind_src == "thin_conductor"))
+        return replace(sheet, footprint=jnp.asarray(
+            interior_lattice_mask(sheet.footprint, grid)))
     except ValueError:
         return None
 
@@ -206,6 +220,8 @@ def _contract_refusals(sim, grid, nonuniform):
         if not _assembled_as_pec(sim, entry):
             continue
         try:
+            # Continuation first classifies the declaration too; refusal is
+            # owned by this entry, before any port-partner lookup.
             classify_pec_entry(entry.shape, coords, centres, sizes,
                                name=entry.material_name)
         except ValueError as exc:
@@ -572,6 +588,16 @@ def fidelity_report(sim, print_report: bool = True):
                     declared_lo=tuple(float(v) for v in lo),
                     declared_hi=tuple(float(v) for v in hi),
                     n_cells=int(mask.sum()), findings=[])
+        if (pec_assembled and i not in refused) or kind_src == "thin_conductor":
+            from rfx.geometry.csg import declared_bounds
+            from rfx.geometry.smoothing import continued_conductor_shape
+            declared = declared_bounds(entry.shape)
+            solved = declared_bounds(continued_conductor_shape(sim, grid, entry.shape, entry=entry))
+            if declared is not None and solved is not None:
+                item["continued_faces"] = [
+                    f"{'xyz'[a]}-{'hi' if side else 'lo'}"
+                    for a in range(3) for side in (0, 1)
+                    if solved[side][a] != declared[side][a]]
         if sheet_fp is not None:
             item["n_cells"] = 0
             item["n_sheet_nodes"] = int(sheet_fp.sum())
@@ -733,7 +759,12 @@ def fidelity_report(sim, print_report: bool = True):
         pad_hit = []
         for a in range(3):
             idx = np.where(mask.any(axis=tuple(x for x in range(3) if x != a)))[0]
-            if len(idx) and (nodes[a][idx.min()] < -1e-12
+            drawn_in_pad = (
+                (float(lo[a]) < -1e-12 and getattr(grid, f"pad_{'xyz'[a]}_lo") > 0)
+                or (float(hi[a]) > domain[a] + 1e-12
+                    and getattr(grid, f"pad_{'xyz'[a]}_hi") > 0))
+            if len(idx) and (drawn_in_pad
+                             or nodes[a][idx.min()] < -1e-12
                              or nodes[a][idx.max() + 1] > domain[a] + 1e-12):
                 pad_hit.append(_axis_names()[a])
         if pad_hit:
@@ -980,6 +1011,45 @@ def fidelity_report(sim, print_report: bool = True):
                                "unintended"))
         report.append(item)
 
+    # Node-pinned sheets (add_pinned_sheet). They own no shape and no metres,
+    # so they have no declared bounds to compare a realization against; what
+    # the report owes is the other direction — where the node indices landed
+    # on THIS mesh, in input units. Realized values come from
+    # ``pinned_sheet_realized`` (the grid's own node line), never re-derived
+    # here, and the row carries ``realized_plane`` so the §1.7 cross-check
+    # below sees the same planes the assembly produced. Without these rows a
+    # pinned board reported a sheet-report-assembly-drift finding telling the
+    # reader to trust neither realization, on a model where the two agreed.
+    for j, ps in enumerate(getattr(sim_audit, "_pinned_sheets", ()) or ()):
+        from rfx.materials.thin_conductor import pinned_sheet_realized
+        info = pinned_sheet_realized(grid, ps)
+        a = int(info["normal_axis"])
+        k = int(info["plane_index"])
+        others = tuple(b for b in range(3) if b != a)
+        name = f"pinned_sheet[{j}]" + (f" '{ps.name}'" if ps.name else "")
+        item = dict(entity=name,
+                    material=dict(name="pec", eps_r=1.0, sigma=float("inf")),
+                    declared_node_plane=int(ps.plane_index),
+                    declared_node_ranges={
+                        _axis_names()[others[0]]: tuple(ps.i_range),
+                        _axis_names()[others[1]]: tuple(ps.j_range)},
+                    n_cells=0, findings=[])
+        item["realization"] = (
+            f"PEC sheet on node plane {_axis_names()[a]} = "
+            f"{info['plane_m'] * 1e6:.2f} um ({info['n_nodes']} nodes, "
+            "declared by node index, zero thickness, no cell; in-plane E "
+            "zeroed on that plane, normal E live)")
+        item["realized_plane"] = dict(axis=_axis_names()[a], index=k,
+                                      coordinate=info["plane_m"])
+        item["axes"] = [
+            dict(axis=_axis_names()[t],
+                 node_indices=info[f"{_axis_names()[t]}_node_indices"],
+                 realized_lo_um=info[f"{_axis_names()[t]}_edges_m"][0] * 1e6,
+                 realized_hi_um=info[f"{_axis_names()[t]}_edges_m"][1] * 1e6,
+                 realized_extent_um=info[f"{_axis_names()[t]}_span_m"] * 1e6)
+            for t in others]
+        report.append(item)
+
     # Report-vs-assembly cross-check (#931 §1.7: one source, every consumer).
     # A plane the SOLVE will realize but no report row names, or a row naming
     # a plane the assembly did not produce, means this report is describing a
@@ -1055,6 +1125,9 @@ def _print(report):
         if "realization" in it:
             head += f" — {it['realization']}"
         print(f"  {head}")
+        if it.get("continued_faces"):
+            print("    continues through absorber faces: "
+                  + ", ".join(it["continued_faces"]))
         if "n_sheet_nodes" in it:
             print(f"    sheet nodes: {it['n_sheet_nodes']} (owns no cell)")
         elif "n_cells" in it:

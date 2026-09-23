@@ -342,7 +342,11 @@ def main(argv: list[str] | None = None) -> int:
     ref_geom = _reference_plane_geometry(sim)
 
     t0 = time.time()
-    result = sim.compute_msl_s_matrix(n_freqs=N_FREQS, num_periods=NUM_PERIODS)
+    # record taken under the projected default; kept explicit until the v2.0
+    # MSL battery re-measures on raw S (this artifact is the committed rfx
+    # leg that validation/crossval/20_msl_phase_referee.py reads)
+    result = sim.compute_msl_s_matrix(n_freqs=N_FREQS, num_periods=NUM_PERIODS,
+                                      enforce_passivity=True)
     elapsed = time.time() - t0
 
     S = np.asarray(jax.device_get(result.S))

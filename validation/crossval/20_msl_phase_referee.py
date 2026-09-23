@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """External openEMS referee for rfx issue #490 lane 2 (MSL de-embedded phase).
 
-SCOPE FENCE (matches ``validation/crossval/21_coax_two_port_referee.py``
-(formerly ``validation/research/coax_two_port/
-openems_coax_two_port_referee.py``, moved on promotion 2026-08-04) and
-``scripts/diagnostics/openems_thru_referee/thru_openems.py`` precedent): this is a
+SCOPE FENCE (matches the coax thru-line case's referee, removed 2026-09-22,
+and the ``scripts/diagnostics/openems_thru_referee/thru_openems.py``
+precedent): this is a
 COMPARATOR-LEG referee. It builds and runs an INDEPENDENT openEMS model
 and reports its own S-parameters; it does NOT run any rfx simulation
 and does NOT import rfx. Stage B reads ONE committed, rfx-produced JSON
@@ -386,9 +385,10 @@ current MSL evidence and are corrected in this change too:
 ``validation/README.md`` (cv06b row), ``docs/guides/sparameter_support_
 matrix.md`` + ``.json`` (MSL section's analytic-notch bullet /
 ``numeric_metrics``), and ``docs/agent/port-selection.mdx`` (MSL row).
-``tests/crossval/test_msl_notch_public_carriers.py`` now couples all four to
-cv06b's own ``DX`` constant and its committed run log, so the next mesh
-change reds a test instead of silently rotting the contract.
+``tests/crossval/test_msl_notch_public_carriers.py`` coupled all four to the
+MSL notch filter's own ``DX`` constant and its committed run log; that test
+left with the case when it was rebuilt on 2026-09-22 as
+``tests/crossval/msl_notch_filter/``, and the carriers no longer quote it.
 
 ============================================================================
 PRECEDENT TICK-LIST (2026-08-03 addendum to ``external_solver_
@@ -423,10 +423,9 @@ was read (not summarized) before this script was written. Ticks:
      against openEMS's ``MSLPort`` -- a TIGHTER match than the
      precedent's own comparison, not a looser one.
 
-``matlab/examples/waveguide/Coax.m`` via ``validation/crossval/
-21_coax_two_port_referee.py`` (formerly ``validation/research/
-coax_two_port/openems_coax_two_port_referee.py``; #489 stage 3, 5
-review rounds, PRs #540/#546/#547/#548) -- relevant lessons ticked:
+``matlab/examples/waveguide/Coax.m`` via the coax thru-line case's own
+referee (removed 2026-09-22; #489 stage 3, 5 review rounds, PRs
+#540/#546/#547/#548) -- relevant lessons ticked:
   5. "MUR-on-dielectric is unstable (exponential energy blow-up)." This
      script never uses MUR anywhere -- Stage A uses the MSL tutorial's
      own PML_8/MUR mix VERBATIM (MUR only on the Y faces, which carry
@@ -824,8 +823,8 @@ DOCUMENTED CHECK (per ``external_solver_comparator.md`` step 2 -- the
 tutorial's own documented result, not a number invented for this
 script): the tutorial's stub is a quarter-wave open-circuit notch. Its
 analytic notch frequency, using the closed form THIS REPO ALREADY
-VALIDATES for the identical substrate/trace/stub combination
-(``validation/crossval/06b_msl_notch_filter_uniform.py``:
+VALIDATES for the identical substrate/trace/stub combination (the MSL
+notch filter case's retired script:
 ``F_NOTCH_AN = C0 / (4*STUB_LEN*sqrt(EPS_EFF))``, Hammerstad-Jensen
 ``EPS_EFF``), is independently recomputed here as
 ``F_NOTCH_AN_HZ`` (a regression-locked constant, see the header test)

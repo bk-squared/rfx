@@ -1,5 +1,9 @@
 # issue #812 — cv17 / cv18 re-gate: gate windows derived from geometry sensitivity
 
+> cv17 was removed on 2026-09-21; the artifacts cited here are at commit b4cf8f29.
+
+> The WR-90 inductive iris case was removed on 2026-09-22; the artifacts cited here are at commit e367e7bf.
+
 > **Historical cv18 snapshot; current-path correction (2026-09-08).**
 > The cv18 measurement tables and old under-aperture blind spot below record
 > the pre-#931 thickness-deficit geometry. The regenerated

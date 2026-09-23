@@ -507,8 +507,16 @@ def test_compute_coaxial_two_port_drive_index_matches_physical_port(monkeypatch)
     DRIVE_PORT1, DRIVE_PORT2 = 1.0, 2.0
     ARRAY_BOT, ARRAY_TOP = 10.0, 20.0
 
+    # The signature is spelled out rather than swallowing **kwargs, so that a
+    # new argument at the real call site lands here as a TypeError instead of
+    # being silently absorbed. ``pec_edge_masks`` arrived that way: the coax
+    # conductors are realized as shorted E edges now, and the lane passes them
+    # to the runner. The stub takes it and ignores it -- what this test is
+    # about is which physical port each drive excited, and that is read below
+    # from the z-index of the source cells, not from anything here.
     def _fake_run(grid_, materials, n_steps, *, boundary, cpml_axes, sources,
-                 mag_sources, probes, dft_planes, return_state):
+                 mag_sources, probes, dft_planes, return_state,
+                 pec_edge_masks=None):
         # Identify the PHYSICAL port purely from source z-location -- NOT
         # from any call-order assumption.
         k0 = float(sources[0].k)
@@ -755,6 +763,38 @@ def test_default_domain_fits_the_default_layout():
     probes_bot = sorted(z_src_bot + 8 + 4 * k for k in range(12))
     assert probes_bot[-1] < probes_top[0]
     assert z_lo_coax_bot < z_hi_coax_top
+
+
+def test_default_coax_fixture_realizes_the_declared_mesh_and_absorber_depth():
+    """What lattice this coax fixture actually gets, in absolute numbers.
+
+    The declaration is a 8 x 8 x 60 mm domain driven to 40 GHz with an
+    absorbing boundary, and it names neither a cell size nor an absorber
+    depth; rfx chooses both. The cell comes out a twentieth of the shortest
+    free-space wavelength, 0.37474057 mm, and every one of the six faces
+    gets 16 CPML cells. That leaves 22 x 22 x 161 cells of clear interior
+    inside a grid of 55 x 55 x 194 nodes.
+
+    Pinned against literals rather than against the expressions that produce
+    them, so a change in the auto-mesh rule, in the default absorber depth
+    or in the node/cell fencepost moves this test. It came here from the
+    coax thru-line case's header suite when that case was removed
+    (2026-09-22) and is the only place these three defaults are asserted
+    together for a coaxial-port simulation; the values are unchanged.
+    """
+    grid = _sim()._build_grid()
+
+    assert grid.shape == (55, 55, 194)
+    assert grid.dx == pytest.approx(3.7474057249999997e-4, rel=1e-12)
+    # ...which is lambda_min / 20 at the declared freq_max, re-derived here.
+    assert grid.dx == pytest.approx(299792458.0 / 40.0e9 / 20.0, rel=1e-12)
+
+    assert (grid.pad_x_lo, grid.pad_x_hi) == (16, 16)
+    assert (grid.pad_y_lo, grid.pad_y_hi) == (16, 16)
+    assert (grid.pad_z_lo, grid.pad_z_hi) == (16, 16)
+
+    interior = tuple(grid.shape[a] - 1 - (16 + 16) for a in range(3))
+    assert interior == (22, 22, 161)
 
 
 # ---------------------------------------------------------------------------

@@ -239,6 +239,10 @@ def _declared_entries(sim):
     """
     out = list(getattr(sim, "_geometry", []) or [])
     out += list(getattr(sim, "_thin_conductors", []) or [])
+    # add_pinned_sheet() is the THIRD conductor surface: a sheet named by
+    # node index, with no shape and no metres. A viewer that walks only the
+    # first two omits a patch that is in the solve.
+    out += list(getattr(sim, "_pinned_sheets", []) or [])
     return out
 
 

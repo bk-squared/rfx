@@ -1,0 +1,4009 @@
+"""The MSL open-stub notch filter on a three-axis band-graded mesh.
+
+A 50 ohm microstrip line 600 um wide on 254 um of lossless eps_r 3.66 carries a
+12 mm open stub at its middle.  The stub is a quarter wave near 3.67 GHz and
+shorts the line there, so |S21| has a deep minimum whose frequency is set by the
+stub's electrical length.  On a UNIFORM staircase mesh rfx reads that minimum
+about 2 % high at any affordable cell size, because the 600 um metal realizes 4,
+9 and 14 node rows down the h/2, h/4, h/6 ladder.  This module solves the SAME
+board on a mesh that is fine only across the metal edges and through the
+substrate, and coarse everywhere else.
+
+The board, the estimator, the comparison and every threshold come from the case
+module ``tests.crossval.msl_notch_filter.test_msl_notch_filter``; nothing is
+re-typed here.  What this module adds is the mesh, the refusals that must pass
+before a solve, and a recorder.
+
+The declaration this instrument implements is
+``docs/design_notes/20260922_msl_notch_graded_mesh_predeclaration.md``.  Its
+section 5 windows are frozen; this module computes their arithmetic and records
+HELD / FIRED.  It writes no sentence that interprets a measurement.
+
+A second declaration follows it,
+``docs/design_notes/20260922_msl_notch_fz_ladder_predeclaration.md``, and asks
+which cell carries the first-order error the first one left: the substrate cell
+FZ at the strip's edge, the in-plane cell F, or the edge offset.  Separating
+them needs meshes that move one cell at a time, so a rung here is a
+``(n_z, n)`` pair with the two independent, and the five arms it adds -- Z6,
+Z8, Z16, F16Z6 and ON13 -- are recorded in their OWN file,
+``results/msl_notch_graded_fz.json``.  The first record is not edited: its
+A_on, A_off and C_off are reused by the second note's windows W5 to W8, not
+re-run.  ``--verdicts`` and ``--tables`` read whichever windows the named
+record declares.
+
+Mesh
+----
+Coarse cell ``C_COARSE_M`` = 127 um (the case's h/2) outside the bands.  Fine
+bands, uniform inside and containing the whole of the declared margin:
+
+* x: the stub's two x edges +- ``BAND_MARGIN_M``;
+* y: the line's two y edges +- ``BAND_MARGIN_M``, and the stub's open end
+  +- ``BAND_MARGIN_M``;
+* z: 0 -> 2h at ``FZ = h / n_z`` (the substrate plus as much air again).
+
+Every in-plane profile starts and ends with ``RUNWAY_CELLS`` = 9 cells of
+exactly ``C_COARSE_M``, so no grading transition stands in the absorber's own
+runway.  Ratio cap 1.3 in plane, 1.4 along z.
+
+Two node placements at a metal edge, each an arm:
+
+* ``"on-node"`` -- a node ON each drawn edge, ``F = W / n``;
+* ``"offset"`` -- a node ``EDGE_OFFSET`` (0.35) of a fine cell INSIDE the metal
+  at each free in-plane edge, the sheet drawn at its true 600 um, so its SOLVED
+  edge lands on the drawn edge.  ``F = W / (n + 2*EDGE_OFFSET)``.
+
+Two board numbers differ from the case's, and both are recorded per arm
+-----------------------------------------------------------------------
+1. ``LATERAL_CLEARANCE_M`` = 17 * C = 2.159 mm, where the case draws the line
+   1.55 mm from the y_lo face.  Arithmetic: the declared y band starts 500 um
+   below the line's lower edge, at 1.05 mm, and nine cells of 127 um need
+   1.143 mm -- the runway does not fit under the band on the case's board, and
+   ``make_nonuniform_grid`` additionally requires both ends of a y profile to
+   carry the SAME cell size, so a fine y_lo runway is not available either.
+   17 * C leaves room for the runway plus the widest transition any rung needs
+   (C_off: 9*C + 336 um).  Everything else about the board -- trace width, stub
+   length, arm length, port margin, the 4.65 mm above the stub's open end, the
+   substrate and the box height -- is the case's, unchanged.
+2. ``DOMAIN_Y`` follows: 19.409 mm instead of 18.800 mm.
+
+The z column above 2h holds ``RUNWAY_CELLS`` cells of ONE solved size
+``cz <= C``, not of C: 1.246 mm of air cannot hold nine 127 um cells plus a
+ratio-1.4 transition down to FZ.  ``cz`` is solved per rung and recorded.  This
+is what ``rfx.nonuniform.make_band_profile`` does with a free segment.
+
+Running it
+----------
+One arm per invocation::
+
+    python validation/research/multiband_nu/msl_notch_graded.py \
+        --arm A_off --run-id <vessl run id>
+
+The record the arm belongs to is chosen for it; ``--out`` overrides.
+
+``--dry-run`` builds, runs R1-R3 and preflight, and stops before the solve.
+``--n-steps-cap N`` shortens the record to N steps; it is a smoke option and
+refuses to write the results file.  ``--merge a.json b.json ...`` folds
+per-run files into one, refusing a duplicate arm key.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import os
+import platform
+import re
+import subprocess
+import sys
+import time
+import warnings
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+
+import numpy as np
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from rfx import Box, Simulation                                    # noqa: E402
+from rfx.boundaries.pec import realized_wall_planes                # noqa: E402
+from rfx.boundaries.spec import Boundary, BoundarySpec             # noqa: E402
+from rfx.mesh_edges import EDGE_OFFSET                             # noqa: E402
+from rfx.nonuniform import node_positions_from_profile             # noqa: E402
+from rfx.sources.msl_port import (                                 # noqa: E402
+    compute_msl_mode_profile, msl_cell, msl_cross_section_span,
+    msl_port_from_entry, msl_probe_x_coords_n,
+)
+
+from tests._realized_geometry import _node_line, realized          # noqa: E402
+from tests.crossval.msl_notch_filter import (                      # noqa: E402
+    test_msl_notch_filter as case,
+)
+
+__all__ = [
+    "ARMS", "RUNGS", "LADDER", "Arm", "rung_spec",
+    "FZ_ARMS", "FZ_LADDER", "ALL_FZ_ARMS", "ARM_TABLE",
+    "profiles", "build_graded", "realized_graded",
+    "assert_profiles_graded", "assert_preflight_graded",
+    "assert_realized_graded", "assert_witnesses",
+    "assert_probes_on_the_uniform_runway", "assert_port_footprint_in_fine_band",
+    "grid_cells",
+    "run_arm", "run_uniform_arm", "write_result", "merge_files",
+    "uniform_ladder_statement",
+    "notch_of", "richardson_limit",
+    "w1_mesh_statement", "w2_comparison", "w3_cross_ladder",
+    "w4_arm_length_witness", "verdicts",
+    "reference_notch_hz", "fit_order_on_successive_differences",
+    "limit_at_order", "w5_fz_ladder", "w6_attribution", "w7_offset_sign",
+    "w8_is_z_enough", "fz_verdicts", "fz_markdown_tables", "load_fz_arms",
+    "TRANSFORMS", "substrate_rule", "commits_absent", "order_readings",
+    "least_squares_parabola", "synthetic_zero_bias", "load_first_ladder",
+    "estimator_comparison", "f6_markdown",
+]
+
+# --------------------------------------------------------------- mesh constants
+#: Coarse cell outside every band -- the case's coarsest uniform rung.
+C_COARSE_M = case.DX_COARSEST_M
+#: In-plane and z adjacent-cell ratio caps (the two validated caps; rfx's
+#: preflight reads the same two numbers from its own module constants).
+CAP_XY = 1.3
+CAP_Z = 1.4
+#: Uniform coarse cells against every in-plane absorber face.  Eight is what
+#: the absorber's runway check asks for; the ninth keeps the transition's first
+#: cell out of it.
+RUNWAY_CELLS = 9
+#: Declared half-width of the fine band beyond each metal edge.
+BAND_MARGIN_M = 500e-6
+#: Node tolerance for "this coordinate is a node" (R1) and for every realized
+#: length this module judges (R3).
+NODE_TOL_M = 1e-9
+#: How far a cell rebuilt from a committed record may sit from the one the
+#: record holds, in units of the last bit of a float64 (``math.ulp``).  Not a
+#: tolerance on the mesh: everything the mesh DECLARES is compared for exact
+#: equality, and this covers only the cells inside a solved geometric ramp,
+#: whose ratio is bisected on ``np.sum`` and the power ufunc.  Those differ in
+#: their last bit between the GPU job's container and the project venv.
+#: ``rebuild_report()`` measures what the difference actually is.
+RECORD_ULP_FLOOR = 8.0
+
+_H = case.SUBSTRATE_THICKNESS_M
+_W = case.TRACE_WIDTH_M
+
+#: Line's lower edge to the y_lo face.  See the module docstring: the case's
+#: 1.55 mm cannot hold nine cells of C under the declared band.
+LATERAL_CLEARANCE_M = 17.0 * C_COARSE_M
+#: Stub's open end to the y_hi face -- the case's own number, unchanged.
+TOP_CLEARANCE_M = case.DOMAIN_Y_M - (
+    case.TRACE_CENTRE_Y_M + _W / 2.0 + case.STUB_LENGTH_M)
+
+#: Probe placement, set explicitly on both ports because the propagation axis
+#: is graded and the auto-solve skips a graded axis.  These are the values the
+#: uniform case resolves at C (127 um cells: 1.778 mm offset, 0.762 mm spacing).
+N_PROBE_OFFSET = 14
+N_PROBE_SPACING = 6
+N_PROBES = 5
+
+@dataclass(frozen=True)
+class Arm:
+    """One solve: a rung (mesh density) and a node placement."""
+
+    rung: str
+    placement: str
+    arm_length_m: float
+
+
+#: rung -> (substrate cells n_z, cells across the 600 um metal n).  A rung
+#: names a pair and nothing else: any (n_z, n) is a rung, and the two are
+#: independent, which is what the FZ ladder needs.  The first three are the
+#: previous note's, and their pairs may not move -- the arms already recorded
+#: were cut from them (``test_msl_notch_graded_build`` rebuilds all five from
+#: the record).  The five below them are the FZ note's, one per arm.
+RUNGS: dict[str, tuple[int, int]] = {
+    "A": (6, 12), "B": (8, 16), "C": (12, 24),
+    # FZ ladder at C's in-plane cell: only the substrate cell moves.
+    "Z6": (6, 24), "Z8": (8, 24), "Z16": (16, 24),
+    # F ladder at A's substrate cell: only the in-plane cell moves.
+    "F16Z6": (6, 16),
+    # On-node at nearly A_off's in-plane cell, same substrate cell.
+    "ON13": (6, 13),
+}
+
+
+def rung_spec(rung) -> tuple[int, int]:
+    """``(n_z, n)`` for a rung name, or for an explicit pair.
+
+    The pair is the whole rung spec: ``n_z`` cells through the 254 um
+    substrate and ``n`` cells across the 600 um metal.  Taking a pair as well
+    as a name is what lets a caller ask for a mesh the table does not name.
+    """
+    if isinstance(rung, str):
+        return RUNGS[rung]
+    n_z, n = rung
+    return int(n_z), int(n)
+
+
+ARMS: dict[str, Arm] = {
+    "A_on": Arm("A", "on-node", case.ARM_LENGTH_M),
+    "A_off": Arm("A", "offset", case.ARM_LENGTH_M),
+    "A_off_longarms": Arm("A", "offset", case.WITNESS_ARM_LENGTH_M),
+    "B_off": Arm("B", "offset", case.ARM_LENGTH_M),
+    "C_off": Arm("C", "offset", case.ARM_LENGTH_M),
+}
+#: The offset ladder, coarse to fine -- W1 and W3 read it in this order.
+LADDER = ("A_off", "B_off", "C_off")
+
+#: The FZ ladder's new arms
+#: (``docs/design_notes/20260922_msl_notch_fz_ladder_predeclaration.md``).
+#: They are NOT in :data:`ARMS`: they are recorded in their own file and the
+#: first record's arms are reused, not re-run.  ``C_off_re`` is the addendum
+#: A.2 arm, declared after the independent review: it is the rung C mesh again
+#: -- the SAME rung object, so the same 12 substrate cells and 24 in-plane
+#: cells -- solved at this branch's instrument commit, because the first
+#: record's C_off was solved at 827d5ecf and rfx/ moved between the two.
+FZ_ARMS: dict[str, Arm] = {
+    "Z6": Arm("Z6", "offset", case.ARM_LENGTH_M),
+    "Z8": Arm("Z8", "offset", case.ARM_LENGTH_M),
+    "Z16": Arm("Z16", "offset", case.ARM_LENGTH_M),
+    "F16Z6": Arm("F16Z6", "offset", case.ARM_LENGTH_M),
+    "ON13": Arm("ON13", "on-node", case.ARM_LENGTH_M),
+    "C_off_re": Arm("C", "offset", case.ARM_LENGTH_M),
+}
+ALL_FZ_ARMS = tuple(sorted(FZ_ARMS))
+#: The substrate-cell ladder as section 4 declares it, coarse FZ to fine.  Its
+#: third rung is the first record's C_off, which was solved at another commit.
+FZ_LADDER = ("Z6", "Z8", "C_off", "Z16")
+#: The same ladder with the re-measured rung in place of it: four arms, one
+#: solver build.  Addendum A.2.
+FZ_LADDER_ONE_COMMIT = ("Z6", "Z8", "C_off_re", "Z16")
+#: The arm the addendum re-measures, and the arm it replaces.
+FZ_REMEASURED = ("C_off_re", "C_off")
+#: The arms W5-W8 take from the first record rather than solving again.
+FZ_REUSED_ARMS = ("A_on", "A_off", "C_off")
+#: Every arm this module can run, whichever record it lands in.
+ARM_TABLE: dict[str, Arm] = {**ARMS, **FZ_ARMS}
+
+#: The uniform reference ladder.  Declared after the first review (note A.1)
+#: because the cost denominator and W3's comparison target had been typed
+#: constants with no witness file in this repository.  Each arm is the case's
+#: own ``build(dx)`` at one of the case's own ``LADDER_M`` cell sizes, on the
+#: case's own board -- the line at its 1.55 mm clearance, the box 18.8 mm deep
+#: in y -- solved through this recorder so that both sides of every ratio are
+#: measured the same way.
+UNIFORM_ARMS: dict[str, float] = {
+    "U_h2": case.LADDER_M[0],
+    "U_h4": case.LADDER_M[1],
+    "U_h6": case.LADDER_M[2],
+}
+UNIFORM_LADDER = ("U_h2", "U_h4", "U_h6")
+#: The rung every cost ratio is divided by: the finest uniform rung.
+COST_REFERENCE_ARM = "U_h6"
+ALL_ARMS = tuple(sorted(ARMS)) + UNIFORM_LADDER
+
+
+def grid_cells(record: dict) -> int:
+    """Cells the solver steps for this arm: interior plus the absorber pad.
+
+    ``grid_shape`` counts NODES, and N cells are bounded by N+1 nodes, so the
+    cell count is the product of one less per axis.  Derived here for every
+    arm rather than read from a field, so the arms recorded before the field
+    existed carry the same convention as the rest (review P3: on a
+    250 x 253 x 38 node grid the node product overstates the cells by 3.3 %).
+    """
+    shape = [int(n) for n in record["grid_shape"]]
+    cells = 1
+    for n in shape:
+        cells *= n - 1
+    recorded = record.get("realized", {}).get("n_grid_cells")
+    if recorded is not None and int(recorded) != cells:
+        raise AssertionError(
+            f"{record.get('arm')}: the record holds n_grid_cells "
+            f"{int(recorded)} but its grid_shape {shape} gives {cells}")
+    return int(cells)
+
+RESULTS_DIR = _REPO_ROOT / "validation" / "research" / "multiband_nu" / "results"
+DEFAULT_OUT = RESULTS_DIR / "msl_notch_graded.json"
+#: The FZ ladder writes its own file.  The first record is never edited: its
+#: arms are reused by W5-W8 and not re-run.
+DEFAULT_FZ_OUT = RESULTS_DIR / "msl_notch_graded_fz.json"
+NOTE_PATH = ("docs/design_notes/"
+             "20260922_msl_notch_graded_mesh_predeclaration.md")
+FZ_NOTE_PATH = ("docs/design_notes/"
+                "20260922_msl_notch_fz_ladder_predeclaration.md")
+
+
+# ------------------------------------------------------------------- profiles
+def _geom_sum(fine: float, r: float, k: int) -> float:
+    """Sum of ``k`` geometric cells ``fine*r, fine*r^2, ... fine*r^k``."""
+    return float(fine * np.sum(r ** np.arange(1, k + 1)))
+
+
+def _min_ramp_cells(fine: float, coarse: float, cap: float) -> int:
+    """Fewest geometric cells that bridge ``fine`` to ``coarse`` under ``cap``."""
+    return max(0, int(np.ceil(np.log(coarse / fine) / np.log(cap) - 1e-12)) - 1)
+
+
+def _solve_run(fine: float, coarse: float, length: float, cap: float,
+               *, mirrored: bool = False, k_extra: int = 12,
+               p_max: int = 8000) -> np.ndarray:
+    """A coarse run that meets a fine band, summing to ``length`` exactly.
+
+    The run is ``p`` cells of exactly ``coarse`` plus a geometric ramp of ``k``
+    cells down to (not including) ``fine``; with ``mirrored`` the ramp is
+    repeated on the far side and the coarse cells sit between them.  Returned
+    coarse-first.  The fewest ramp cells win, then the fewest coarse cells, so
+    the answer is a function of the inputs alone.
+    """
+    ratio = coarse / fine
+    k_min = _min_ramp_cells(fine, coarse, cap)
+    sides = 2 if mirrored else 1
+    for k in range(max(k_min, 1), max(k_min, 1) + k_extra):
+        lo_r = (ratio / cap) ** (1.0 / k)
+        hi_r = min(cap, ratio ** (1.0 / k))
+        if lo_r > hi_r * (1.0 + 1e-12):
+            continue
+        lo_s = sides * _geom_sum(fine, lo_r, k)
+        hi_s = sides * _geom_sum(fine, hi_r, k)
+        for p in range(0, p_max):
+            rest = length - p * coarse
+            if rest < lo_s - 1e-15:
+                break
+            if rest > hi_s + 1e-15:
+                continue
+            a, b = lo_r, hi_r
+            for _ in range(200):
+                mid = 0.5 * (a + b)
+                if sides * _geom_sum(fine, mid, k) < rest:
+                    a = mid
+                else:
+                    b = mid
+            r = 0.5 * (a + b)
+            cells = fine * r ** np.arange(1, k + 1)
+            # Close the sum on the ramp's coarsest cell so the profile lands on
+            # the declared length to the last bit, not to the bisection's.
+            cells[-1] += (rest / sides) - float(cells.sum())
+            if mirrored:
+                # Fine band on both sides: rise, hold, fall.
+                return np.concatenate([cells, np.full(p, coarse), cells[::-1]])
+            return np.concatenate([np.full(p, coarse), cells[::-1]])
+    raise ValueError(
+        f"no ratio<={cap} run from {fine * 1e6:.4f} um to {coarse * 1e6:.4f} um "
+        f"fits in {length * 1e6:.4f} um"
+        + (" (two ramps)" if mirrored else ""))
+
+
+def _lo_face_run(length: float, fine: float, cap: float) -> np.ndarray:
+    """Cells from a lo absorber face up to (not including) a fine band."""
+    return np.concatenate([
+        np.full(RUNWAY_CELLS, C_COARSE_M),
+        _solve_run(fine, C_COARSE_M, length - RUNWAY_CELLS * C_COARSE_M, cap),
+    ])
+
+
+def _hi_face_run(length: float, fine: float, cap: float) -> np.ndarray:
+    """Cells from a fine band up to a hi absorber face."""
+    return np.concatenate([
+        _solve_run(fine, C_COARSE_M, length - RUNWAY_CELLS * C_COARSE_M,
+                   cap)[::-1],
+        np.full(RUNWAY_CELLS, C_COARSE_M),
+    ])
+
+
+def _mid_run(length: float, fine: float, cap: float) -> np.ndarray:
+    """Coarse run between two fine bands of the same cell size."""
+    return _solve_run(fine, C_COARSE_M, length, cap, mirrored=True)
+
+
+def _z_profile(n_z: int) -> tuple[np.ndarray, float]:
+    """``2*n_z`` cells of ``FZ`` over 0 -> 2h, then a ramp and a uniform tail.
+
+    The tail cell ``cz`` is SOLVED, not set to C: the air column above 2h is
+    1.246 mm and cannot hold nine 127 um cells plus a ratio-1.4 transition down
+    to FZ at any rung.  ``cz <= C`` and the tail is at least ``RUNWAY_CELLS``
+    cells long, so the z_hi absorber still stands on a uniform runway.
+    """
+    fz = _H / n_z
+    length = case.DOMAIN_Z_M - 2.0 * _H
+    k = max(1, _min_ramp_cells(fz, C_COARSE_M, CAP_Z))
+
+    def total(cz: float, p: int) -> float:
+        r = (cz / fz) ** (1.0 / (k + 1))
+        return _geom_sum(fz, r, k) + p * cz
+
+    for p in range(RUNWAY_CELLS, RUNWAY_CELLS + 80):
+        if total(C_COARSE_M, p) < length:
+            continue
+        lo, hi = fz, C_COARSE_M
+        for _ in range(200):
+            mid = 0.5 * (lo + hi)
+            if total(mid, p) < length:
+                lo = mid
+            else:
+                hi = mid
+        cz = 0.5 * (lo + hi)
+        r = (cz / fz) ** (1.0 / (k + 1))
+        ramp = fz * r ** np.arange(1, k + 1)
+        tail = np.full(p, cz)
+        ramp[-1] += length - float(ramp.sum()) - float(tail.sum())
+        return np.concatenate([np.full(2 * n_z, fz), ramp, tail]), float(cz)
+    raise ValueError(f"z tail: no compliant profile for n_z={n_z}")
+
+
+def fine_cell(rung: str, placement: str) -> float:
+    """The in-plane fine cell.  ``n`` cells span the metal on the on-node arm,
+    ``n + 2*EDGE_OFFSET`` on the offset arm (the metal then reaches
+    ``EDGE_OFFSET`` of a cell past its outermost node at each free edge)."""
+    _n_z, n = rung_spec(rung)
+    if placement == "on-node":
+        return _W / n
+    if placement == "offset":
+        return _W / (n + 2.0 * EDGE_OFFSET)
+    raise ValueError(f"placement must be 'on-node' or 'offset', got {placement!r}")
+
+
+def board(rung: str, placement: str, arm_length_m: float) -> dict:
+    """Every DECLARED coordinate of the board this arm draws.
+
+    Declared, not realized: these are the numbers the note states, computed
+    from the case's constants.  :func:`profiles` reads the matching node off
+    the profile's own cumulative sum and R1 compares the two.
+    """
+    n_z, n = rung_spec(rung)
+    f = fine_cell(rung, placement)
+    off = 0.0 if placement == "on-node" else EDGE_OFFSET * f
+    margin_cells = int(np.ceil(BAND_MARGIN_M / f - 1e-9))
+    y_lo = LATERAL_CLEARANCE_M
+    y_hi = y_lo + _W
+    y_open = y_hi + case.STUB_LENGTH_M
+    stub_x = arm_length_m + case.PORT_MARGIN_M
+    # The metal's centre line is a node only when a whole number of fine
+    # cells reaches it, which is to say only when n is EVEN.  ON13 lays 13
+    # cells across the 600 um metal, so its centre falls half a cell between
+    # two node rows; the declared-node list below drops the two centre
+    # entries for that arm and R1 checks the straddle instead.
+    centre_is_a_node = (n % 2 == 0)
+    declared = dict(
+        trace_y_lo_node=y_lo + off, trace_y_hi_node=y_hi - off,
+        stub_open_node=y_open - off,
+        stub_x_lo_node=stub_x - _W / 2.0 + off,
+        stub_x_hi_node=stub_x + _W / 2.0 - off,
+        substrate_top=_H, z_band_top=2.0 * _H,
+    )
+    if centre_is_a_node:
+        declared["trace_y_centre_node"] = y_lo + _W / 2.0
+        declared["stub_x_centre_node"] = stub_x
+    return dict(
+        fine_cell_m=f, substrate_cell_m=_H / n_z,
+        n_across_metal=n, n_substrate_cells=n_z,
+        centre_is_a_node=centre_is_a_node,
+        edge_offset_m=off, margin_cells=margin_cells,
+        trace_y_lo_m=y_lo, trace_y_hi_m=y_hi, trace_centre_y_m=y_lo + _W / 2.0,
+        stub_open_y_m=y_open, stub_centre_x_m=stub_x,
+        arm_length_m=arm_length_m,
+        domain_y_m=y_open + TOP_CLEARANCE_M,
+        port_x_m=(case.PORT_MARGIN_M, case.PORT_MARGIN_M + 2.0 * arm_length_m),
+        # The nodes the metal's free in-plane edges must own, and the substrate
+        # top, as the board DECLARES them.
+        declared=declared,
+    )
+
+
+def profiles(rung: str, placement: str,
+             arm_length_m: float = case.ARM_LENGTH_M,
+             *, _mutate_margin_cells: int | None = None
+             ) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict]:
+    """The three cell-size profiles of one arm, and the board they are cut to.
+
+    Returns ``(dx_profile, dy_profile, dz_profile, board)``.  A band is a whole
+    number of ``F`` cells laid down from the node the metal must own, so every
+    declared metal-edge node, the substrate top and every band edge falls on a
+    node of the profile's cumulative sum.  The board dict carries both the
+    DECLARED coordinate and the node the profile actually produced; R1 compares
+    them and :func:`build_graded` draws to the NODE, because a face drawn to a
+    coordinate 1e-19 m off its node is on the wrong side of the rasterizer's
+    inclusion test (measured on rung B: one extra 31.75 um cell of substrate
+    above the trace plane).
+    """
+    b = board(rung, placement, arm_length_m)
+    if _mutate_margin_cells is not None:
+        b = dict(b, margin_cells=int(_mutate_margin_cells))
+    f, m = b["fine_cell_m"], b["margin_cells"]
+    n = b["n_across_metal"]
+    n_z = b["n_substrate_cells"]
+    d = b["declared"]
+
+    half_band = (n / 2.0 + m) * f
+    x_lo_run = _lo_face_run(b["stub_centre_x_m"] - half_band, f, CAP_XY)
+    x_band = np.full(n + 2 * m, f)
+    x_hi_run = _hi_face_run(b["stub_centre_x_m"] - half_band, f, CAP_XY)
+    x = np.concatenate([x_lo_run, x_band, x_hi_run])
+
+    b1_lo = d["trace_y_lo_node"] - m * f
+    b1_hi = d["trace_y_hi_node"] + m * f
+    b2_lo = d["stub_open_node"] - m * f
+    b2_hi = d["stub_open_node"] + m * f
+    y_lo_run = _lo_face_run(b1_lo, f, CAP_XY)
+    y_band1 = np.full(n + 2 * m, f)
+    y_mid = _mid_run(b2_lo - b1_hi, f, CAP_XY)
+    y_band2 = np.full(2 * m, f)
+    y_hi_run = _hi_face_run(b["domain_y_m"] - b2_hi, f, CAP_XY)
+    y = np.concatenate([y_lo_run, y_band1, y_mid, y_band2, y_hi_run])
+
+    z, cz = _z_profile(n_z)
+
+    nx, ny, nz = (node_positions_from_profile(p) for p in (x, y, z))
+    ix = int(x_lo_run.size)
+    iy1 = int(y_lo_run.size)
+    iy2 = iy1 + int(y_band1.size) + int(y_mid.size)
+    axis_of = dict(
+        stub_x_lo_node=(nx, ix + m),
+        stub_x_hi_node=(nx, ix + m + n),
+        trace_y_lo_node=(ny, iy1 + m),
+        trace_y_hi_node=(ny, iy1 + m + n),
+        stub_open_node=(ny, iy2 + m),
+        substrate_top=(nz, n_z),
+        z_band_top=(nz, 2 * n_z),
+    )
+    # Odd n: the metal's centre line falls between two node rows, so there is
+    # no centre node to compare a declared coordinate with.  The two rows that
+    # straddle it are recorded instead, and R1 asks that they be one fine cell
+    # apart with the declared centre exactly halfway -- a band laid one cell
+    # off moves that midpoint by a whole cell.
+    straddle = {}
+    if b["centre_is_a_node"]:
+        axis_of["stub_x_centre_node"] = (nx, ix + m + n // 2)
+        axis_of["trace_y_centre_node"] = (ny, iy1 + m + n // 2)
+    else:
+        for label, arr, base, centre in (
+                ("stub_x_centre", nx, ix + m, b["stub_centre_x_m"]),
+                ("trace_y_centre", ny, iy1 + m, b["trace_centre_y_m"])):
+            lo, hi = base + (n - 1) // 2, base + (n + 1) // 2
+            straddle[label] = dict(
+                nodes_m=(float(arr[lo]), float(arr[hi])),
+                node_index=(int(lo), int(hi)), declared_centre_m=float(centre))
+    index = {k: int(i) for k, (_a, i) in axis_of.items()}
+    node = {k: float(a[i]) for k, (a, i) in axis_of.items()}
+
+    b = dict(
+        b, node=node, node_index=index, centre_straddle=straddle,
+        band_x_m=(float(nx[ix]), float(nx[ix + x_band.size])),
+        band_y_trace_m=(float(ny[iy1]), float(ny[iy1 + y_band1.size])),
+        band_y_stub_end_m=(float(ny[iy2]), float(ny[iy2 + y_band2.size])),
+        band_z_m=(0.0, float(nz[2 * n_z])),
+        z_tail_cell_m=cz, coarse_cell_m=C_COARSE_M,
+        declared_band_x_m=(b["stub_centre_x_m"] - half_band,
+                           b["stub_centre_x_m"] + half_band),
+        declared_band_y_trace_m=(b1_lo, b1_hi),
+        declared_band_y_stub_end_m=(b2_lo, b2_hi),
+        segment_cells=dict(x_lo=int(x_lo_run.size), x_band=int(x_band.size),
+                           x_hi=int(x_hi_run.size), y_lo=int(y_lo_run.size),
+                           y_band1=int(y_band1.size), y_mid=int(y_mid.size),
+                           y_band2=int(y_band2.size),
+                           y_hi=int(y_hi_run.size), z=int(z.size)),
+    )
+    return x, y, z, b
+
+
+# ---------------------------------------------------------------------- build
+def build_graded(rung: str, placement: str,
+                 arm_length_m: float = case.ARM_LENGTH_M,
+                 *, _mutate_draw_offset: float | None = None,
+                 _mutate_stub_short_m: float = 0.0,
+                 _mutate_probe_offset: int | None = None,
+                 _mutate_margin_cells: int | None = None
+                 ) -> tuple[Simulation, tuple[np.ndarray, ...], dict]:
+    """The notch filter on this arm's graded mesh.
+
+    Substrate is a lossless slab filling the board; the line and the stub are
+    zero-thickness PEC SHEETS on the substrate-top node plane; the ground is
+    the z_lo PEC face -- the case's declaration, on a different mesh.
+
+    Every face that must land on a node is drawn to the NODE the profile
+    produced, never to the arithmetic that asked for it.  On rung B the
+    substrate top's node sits 5e-20 m below 254 um (float dust in a cumulative
+    sum of eight equal cells), and a box drawn to 254 um exactly then swallows
+    the 31.75 um cell above the trace plane: the board solved carries 285.75 um
+    of dielectric and the trace sheet is buried half a cell inside it.
+
+    The ``_mutate_*`` arguments exist for the build test's deliberate defects
+    and are never used by :func:`run_arm`.
+    """
+    x, y, z, b = profiles(rung, placement, arm_length_m,
+                          _mutate_margin_cells=_mutate_margin_cells)
+    domain = tuple(float(node_positions_from_profile(p)[-1]) for p in (x, y, z))
+    nd = b["node"]
+
+    draw_off = b["edge_offset_m"] if _mutate_draw_offset is None \
+        else float(_mutate_draw_offset)
+    z_sheet = nd["substrate_top"]
+    y_lo_draw = nd["trace_y_lo_node"] - draw_off
+    y_hi_draw = nd["trace_y_hi_node"] + draw_off
+    x_lo_draw = nd["stub_x_lo_node"] - draw_off
+    x_hi_draw = nd["stub_x_hi_node"] + draw_off
+    y_open_draw = nd["stub_open_node"] + draw_off - _mutate_stub_short_m
+
+    # The MSL port lays its width span at ``position +- W/2``, so what it is
+    # given has to be the metal's CENTRE line or the feed drives the strip
+    # off-centre.  Where a node sits on that line (n even) the node is passed,
+    # for the reason the docstring gives; where none does (ON13, n = 13) the
+    # declared centre is passed, half a fine cell from either row.
+    port_y = (nd["trace_y_centre_node"] if b["centre_is_a_node"]
+              else b["trace_centre_y_m"])
+
+    sim = Simulation(
+        freq_max=case.FREQ_MAX_HZ, domain=domain, dx=C_COARSE_M,
+        cpml_layers=case.CPML_LAYERS,
+        boundary=BoundarySpec(x="cpml", y="cpml",
+                              z=Boundary(lo="pec", hi="cpml")),
+        dx_profile=x, dy_profile=y, dz_profile=z)
+    sim.add_material("substrate", eps_r=case.EPS_R_SUBSTRATE)
+    sim.add(Box((0.0, 0.0, 0.0), (domain[0], domain[1], z_sheet)),
+            material="substrate")
+    sim.add(Box((0.0, y_lo_draw, z_sheet), (domain[0], y_hi_draw, z_sheet)),
+            material="pec")
+    sim.add(Box((x_lo_draw, y_hi_draw, z_sheet),
+                (x_hi_draw, y_open_draw, z_sheet)), material="pec")
+    for x_feed, direction in zip(b["port_x_m"], ("+x", "-x")):
+        sim.add_msl_port(position=(x_feed, port_y, 0.0),
+                         width=_W, height=z_sheet, direction=direction,
+                         impedance=case.PORT_IMPEDANCE_OHM,
+                         n_probe_offset=(N_PROBE_OFFSET
+                                         if _mutate_probe_offset is None
+                                         else int(_mutate_probe_offset)),
+                         n_probe_spacing=N_PROBE_SPACING, n_probes=N_PROBES)
+    b = dict(b, domain_m=domain, port_centre_y_m=float(port_y),
+             drawn_trace_y_m=(y_lo_draw, y_hi_draw),
+             drawn_stub_x_m=(x_lo_draw, x_hi_draw),
+             drawn_stub_open_y_m=y_open_draw,
+             drawn_sheet_z_m=z_sheet,
+             drawn_edge_offset_m=draw_off)
+    return sim, (x, y, z), b
+
+
+# ------------------------------------------------------------------ refusal R1
+def profile_summary(p: np.ndarray, cap: float) -> dict:
+    r = np.asarray(p[1:], dtype=float) / np.asarray(p[:-1], dtype=float)
+    return dict(
+        n_cells=int(p.size), min_m=float(p.min()), max_m=float(p.max()),
+        worst_ratio=float(max(r.max(), (1.0 / r).max())), cap=float(cap),
+        sum_m=float(np.sum(p)),
+        first_cell_m=float(p[0]), last_cell_m=float(p[-1]))
+
+
+def assert_profiles_graded(prof: tuple[np.ndarray, ...], b: dict) -> dict:
+    """R1: nodes, ratios and runways -- before anything is built.
+
+    Every intended node (the metal's free-edge nodes, the substrate top, the
+    band edges) is a node of the profile's own cumulative sum to
+    ``NODE_TOL_M``; every adjacent ratio obeys its axis cap; the first and last
+    ``RUNWAY_CELLS`` cells of x and of y are ``C_COARSE_M`` to the bit, and the
+    last ``RUNWAY_CELLS`` cells of z are one solved size to the bit.
+    """
+    x, y, z = prof
+    out = {"x": profile_summary(x, CAP_XY), "y": profile_summary(y, CAP_XY),
+           "z": profile_summary(z, CAP_Z)}
+    for name, p, cap in (("x", x, CAP_XY), ("y", y, CAP_XY), ("z", z, CAP_Z)):
+        if out[name]["worst_ratio"] > cap * (1.0 + 1e-9):
+            raise AssertionError(
+                f"R1: d{name}_profile worst adjacent cell ratio "
+                f"{out[name]['worst_ratio']:.6f} exceeds the {cap} cap.")
+
+    for name, p in (("x", x), ("y", y)):
+        head, tail = p[:RUNWAY_CELLS], p[-RUNWAY_CELLS:]
+        if not (np.all(head == C_COARSE_M) and np.all(tail == C_COARSE_M)):
+            raise AssertionError(
+                f"R1: the first and last {RUNWAY_CELLS} cells of d{name}_profile "
+                f"must equal C = {C_COARSE_M * 1e6:.3f} um bit-exactly; got "
+                f"{head[0] * 1e6:.6f} / {tail[-1] * 1e6:.6f} um. A grading "
+                "transition standing in the absorber's runway changes the "
+                "discrete medium in the boundary-normal direction exactly where "
+                "the absorber starts.")
+    z_tail = z[-RUNWAY_CELLS:]
+    if not np.all(z_tail == z_tail[0]):
+        raise AssertionError(
+            f"R1: the last {RUNWAY_CELLS} cells of dz_profile are not one size "
+            f"({np.unique(z_tail).size} distinct values).")
+    if z_tail[0] > C_COARSE_M * (1.0 + 1e-12):
+        raise AssertionError(
+            f"R1: the z tail cell {float(z_tail[0]) * 1e6:.4f} um is coarser "
+            f"than C = {C_COARSE_M * 1e6:.3f} um.")
+
+    misses = {}
+    for label, declared in b["declared"].items():
+        got = b["node"][label]
+        miss = abs(got - declared)
+        misses[label] = float(miss)
+        if miss > NODE_TOL_M:
+            raise AssertionError(
+                f"R1: the board declares {label} at {declared * 1e6:.6f} um and "
+                f"the profile puts the node at {got * 1e6:.6f} um, "
+                f"{miss * 1e9:.4f} nm away (tolerance "
+                f"{NODE_TOL_M * 1e9:.1f} nm).")
+    for label, declared, got in (
+            ("x band lo", b["declared_band_x_m"][0], b["band_x_m"][0]),
+            ("x band hi", b["declared_band_x_m"][1], b["band_x_m"][1]),
+            ("trace band lo", b["declared_band_y_trace_m"][0],
+             b["band_y_trace_m"][0]),
+            ("trace band hi", b["declared_band_y_trace_m"][1],
+             b["band_y_trace_m"][1]),
+            ("stub-end band lo", b["declared_band_y_stub_end_m"][0],
+             b["band_y_stub_end_m"][0]),
+            ("stub-end band hi", b["declared_band_y_stub_end_m"][1],
+             b["band_y_stub_end_m"][1])):
+        miss = abs(got - declared)
+        misses[label] = float(miss)
+        if miss > NODE_TOL_M:
+            raise AssertionError(
+                f"R1: {label} is declared at {declared * 1e6:.6f} um and the "
+                f"profile puts it at {got * 1e6:.6f} um, {miss * 1e9:.4f} nm "
+                f"away.")
+    # b["centre_straddle"], not b.get(...): a board that does not carry the
+    # key is a board this refusal cannot judge, and .get() turned that into an
+    # empty loop -- the check would pass by being absent.  ``profiles`` always
+    # sets it, to {} when the metal's centre IS a node, so a missing key means
+    # the board came from somewhere else.
+    if "centre_straddle" not in b:
+        raise AssertionError(
+            "R1: this board carries no 'centre_straddle' entry, so whether "
+            "the metal's centre line is straddled symmetrically cannot be "
+            "judged. profiles() always sets it -- empty when the centre is a "
+            "node. A board without it did not come from profiles().")
+    for label, st in b["centre_straddle"].items():
+        lo, hi = st["nodes_m"]
+        f = b["fine_cell_m"]
+        centre = st["declared_centre_m"]
+        misses[f"{label} (straddled)"] = float(abs(0.5 * (lo + hi) - centre))
+        if abs(hi - lo - f) > NODE_TOL_M:
+            raise AssertionError(
+                f"R1: the two node rows that straddle {label} are "
+                f"{(hi - lo) * 1e6:.6f} um apart and this arm's fine cell is "
+                f"{f * 1e6:.6f} um. They are adjacent rows of the fine band or "
+                "the band is not where the metal is.")
+        if abs(0.5 * (lo + hi) - centre) > NODE_TOL_M:
+            raise AssertionError(
+                f"R1: the board declares {label} at {centre * 1e6:.6f} um and "
+                f"the two node rows that straddle it, "
+                f"{lo * 1e6:.6f} and {hi * 1e6:.6f} um, have their midpoint "
+                f"{0.5 * (lo + hi) * 1e6:.6f} um, "
+                f"{abs(0.5 * (lo + hi) - centre) * 1e9:.4f} nm away "
+                f"(tolerance {NODE_TOL_M * 1e9:.1f} nm). An odd number of fine "
+                "cells across the metal puts no node on its centre line, but "
+                "the two rows either side must still be symmetric about it.")
+    out["intended_node_miss_m"] = misses
+    return out
+
+
+# ------------------------------------------------------------------ refusal R2
+#: The two preflight codes R2 refuses.  A graded transition inside the
+#: absorber's runway, and geometry standing inside the absorber.
+R2_FORBIDDEN = (
+    # nu_grading_reaches_absorber -- a transition inside the absorber's runway.
+    "is not uniform within the",
+    # geometry_in_absorber -- a body standing inside the absorbing medium.
+    "extends into CPML region",
+    # A sheet with the same dielectric on both sides of its plane: the board
+    # solved is not the board drawn.  Not in the note's R2 list because the
+    # note's feasibility build never produced it; rung B does, when the
+    # substrate box is drawn to 254 um instead of to its node.
+    "buried half a cell inside the dielectric",
+)
+
+
+def assert_preflight_graded(sim: Simulation) -> list[str]:
+    """R2: preflight draws no absorber-runway and no geometry-in-absorber line.
+
+    Every line is returned verbatim for the record, refusal or not.
+    """
+    report = [str(line) for line in sim.preflight()]
+    for line in report:
+        for needle in R2_FORBIDDEN:
+            if needle in line:
+                raise AssertionError(
+                    "R2: preflight reports a finding this mesh is declared not "
+                    f"to produce:\n  {line}")
+    return report
+
+
+# ------------------------------------------------------------------ refusal R3
+def realized_graded(sim: Simulation) -> dict:
+    """What the lattice built, read off the graded grid's own node lines.
+
+    The same statement as the case's ``realized_geometry`` -- one sheet plane,
+    the line's node rows, the stub's node columns, the joint and the open end --
+    except that every length is a difference of NODE COORDINATES.  ``xs[1] -
+    xs[0]`` is a cell size only on a uniform mesh; here it is the first cell of
+    the x_lo runway and has nothing to do with the metal.
+    """
+    rz = realized(sim)
+    mx, my, _mz = (np.asarray(e) for e in rz.edge_masks)
+    xs, ys, zs = (_node_line(rz.grid, a) for a in (0, 1, 2))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        eps = np.asarray(
+            sim._assemble_materials_nu(rz.grid, pec_sheets=[],
+                                       pec_wires=[])[0].eps_r)
+
+    planes = [int(p) for p in realized_wall_planes(rz.edge_masks, 2)]
+    n_volume = 0 if rz.pec_mask is None else int(np.asarray(rz.pec_mask).sum())
+    out: dict = {
+        "sheet_planes": planes, "n_sheet_planes": len(planes),
+        "n_declared_sheets": len(rz.sheets), "n_volume_cells": n_volume,
+        # grid_shape counts NODES; N cells are bounded by N+1 nodes, so the
+        # cells the solver steps (interior plus the absorber pad) are the
+        # product of one less per axis.  Both sides of every cost ratio use
+        # n_grid_cells, never the node product (review P3).
+        "grid_shape": tuple(int(v) for v in (xs.size, ys.size, zs.size)),
+        "n_grid_cells": int((xs.size - 1) * (ys.size - 1) * (zs.size - 1)),
+        "n_cells": int(xs.size * ys.size * zs.size),
+        "n_ports": len(getattr(sim, "_msl_ports", []) or []),
+        "dt_s": float(rz.grid.dt),
+    }
+    if len(planes) != 1:
+        return out
+    k = planes[0]
+    out["sheet_plane_k"] = k
+    out["sheet_plane_z_m"] = float(zs[k])
+    # The two cells the sheet plane separates, at the board's centre column.
+    # A dielectric on both sides means the substrate reached past the trace.
+    ic, jc = eps.shape[0] // 2, eps.shape[1] // 2
+    out["eps_below_sheet"] = float(eps[ic, jc, k - 1])
+    out["eps_above_sheet"] = float(eps[ic, jc, k])
+
+    ex_per_row = mx[:, :, k].sum(axis=0)
+    if not ex_per_row.any():
+        return out
+    rows = np.flatnonzero(ex_per_row == ex_per_row.max())
+    j0, j1 = int(rows.min()), int(rows.max())
+    out.update(trace_rows=(j0, j1), n_trace_rows=int(rows.size),
+               trace_y_m=(float(ys[j0]), float(ys[j1])),
+               trace_width_node_span_m=float(ys[j1] - ys[j0]))
+
+    stub_cols = np.flatnonzero(my[:, j1:, k].any(axis=1))
+    if stub_cols.size == 0:
+        return out
+    i0, i1 = int(stub_cols.min()), int(stub_cols.max())
+    above = np.flatnonzero(my[i0:i1 + 1, j1:, k].any(axis=0)) + j1
+    first_j, last_j = int(above.min()), int(above.max())
+    open_j = last_j + 1
+    out.update(
+        stub_cols=(i0, i1), n_stub_cols=int(stub_cols.size),
+        stub_x_m=(float(xs[i0]), float(xs[i1])),
+        stub_width_node_span_m=float(xs[i1] - xs[i0]),
+        stub_first_edge_row=first_j, stub_gap_rows=first_j - j1,
+        stub_contiguous=bool((last_j - first_j + 1) == int(above.size)),
+        stub_attached=bool(first_j == j1
+                           and (last_j - first_j + 1) == int(above.size)),
+        stub_open_row=open_j, stub_open_y_m=float(ys[open_j]),
+        stub_length_m=float(ys[open_j] - ys[j1]))
+    return out
+
+
+def _check_realized_fields(g: dict, b: dict) -> float:
+    """The R3 statements themselves, on an already-measured dict.
+
+    Split out so the build test can hand it a doctored measurement: a check
+    that never raises on a wrong number is a check that is not there.
+
+    Returns the worst distance between a realized edge node and the offset the
+    arm declares, so R.2's claim about that distance carries its measurement.
+    """
+    f = b["fine_cell_m"]
+    n = b["n_across_metal"]
+    # What the ARM declares, not what the build happened to draw: an arm whose
+    # sheets were drawn to their nodes has to be refused, and it would agree
+    # with itself if the check read the drawn offset back.
+    draw = b["edge_offset_m"]
+
+    if g["n_sheet_planes"] != 1:
+        raise AssertionError(
+            f"R3: the conductor realizes {g['n_sheet_planes']} tangential wall "
+            f"planes along z ({g['sheet_planes']}), not one sheet plane.")
+    if g["n_volume_cells"] != 0:
+        raise AssertionError(
+            f"R3: {g['n_volume_cells']} PEC VOLUME cell(s) realized; this board "
+            "declares sheets only.")
+    dz = abs(g["sheet_plane_z_m"] - _H)
+    if dz > NODE_TOL_M:
+        raise AssertionError(
+            f"R3: the sheet plane is at z={g['sheet_plane_z_m'] * 1e6:.6f} um, "
+            f"{dz * 1e9:.4f} nm off the substrate top "
+            f"{_H * 1e6:.3f} um.")
+    if g.get("eps_above_sheet") is not None and g["eps_above_sheet"] != 1.0:
+        raise AssertionError(
+            f"R3: the cells immediately above the sheet plane carry eps_r "
+            f"{g['eps_above_sheet']:.4f}, not air. The substrate reaches past "
+            "the trace plane, so the board solved is thicker than the board "
+            "drawn.")
+    if g["n_ports"] != 2:
+        raise AssertionError(f"R3: {g['n_ports']} MSL port(s), expected 2.")
+    if g["n_trace_rows"] != n + 1 or g["n_stub_cols"] != n + 1:
+        raise AssertionError(
+            f"R3: the line realizes {g['n_trace_rows']} node rows and the stub "
+            f"{g['n_stub_cols']} node columns; this rung lays {n} fine cells "
+            f"across the 600 um metal, so both must be {n + 1}.")
+    for what, span in (("line", g["trace_width_node_span_m"]),
+                       ("stub", g["stub_width_node_span_m"])):
+        if abs(span - n * f) > NODE_TOL_M:
+            raise AssertionError(
+                f"R3: the {what}'s realized node span "
+                f"{span * 1e6:.6f} um is not {n} fine cells "
+                f"({n * f * 1e6:.6f} um).")
+    if not g["stub_attached"]:
+        raise AssertionError(
+            f"R3: the stub is not joined to the line: its first transverse PEC "
+            f"edge is at node row {g['stub_first_edge_row']}, "
+            f"{g['stub_gap_rows']} row(s) above the line's far row "
+            f"{g['trace_rows'][1]}"
+            + ("" if g["stub_contiguous"] else ", and its edges are not "
+               "contiguous")
+            + ". A floating strip beside a through line is not a shunt stub.")
+    if abs(g["stub_length_m"] - case.STUB_LENGTH_M) > NODE_TOL_M:
+        raise AssertionError(
+            f"R3: realized stub length {g['stub_length_m'] * 1e6:.4f} um is "
+            f"{abs(g['stub_length_m'] - case.STUB_LENGTH_M) * 1e6:.4f} um from "
+            f"the declared {case.STUB_LENGTH_M * 1e6:.1f} um. On this mesh the "
+            "open end sits on a node, so the length is exact or the board is "
+            "not the declared one.")
+
+    # The placement itself: the outermost realized node of every free in-plane
+    # edge stands `draw` inside the DRAWN edge.  Stated against the drawn
+    # coordinates, so an arm whose sheets were drawn to the nodes instead of to
+    # their true size is refused here and not somewhere downstream.
+    edges = (
+        ("line y_lo", g["trace_y_m"][0], b["drawn_trace_y_m"][0], +1.0),
+        ("line y_hi", g["trace_y_m"][1], b["drawn_trace_y_m"][1], -1.0),
+        ("stub x_lo", g["stub_x_m"][0], b["drawn_stub_x_m"][0], +1.0),
+        ("stub x_hi", g["stub_x_m"][1], b["drawn_stub_x_m"][1], -1.0),
+        ("stub open end", g["stub_open_y_m"], b["drawn_stub_open_y_m"], -1.0),
+    )
+    worst = 0.0
+    for label, node, drawn, inward in edges:
+        got = inward * (node - drawn)
+        worst = max(worst, abs(got - draw))
+        if abs(got - draw) > NODE_TOL_M:
+            raise AssertionError(
+                f"R3: the outermost realized node of the {label} edge stands "
+                f"{got * 1e6:+.6f} um inside the drawn edge at "
+                f"{drawn * 1e6:.4f} um; this arm declares "
+                f"{draw * 1e6:+.6f} um ({draw / f if f else 0:.3f} of a "
+                f"{f * 1e6:.4f} um fine cell). A PEC sheet is solved about "
+                f"{EDGE_OFFSET} of a cell beyond its last node, so where that "
+                "node sits IS the arm.")
+    return float(worst)
+
+
+def assert_realized_graded(sim: Simulation, b: dict) -> dict:
+    """R3: refuse to solve unless the lattice built the declared board."""
+    g = realized_graded(sim)
+    g["edge_offset_residual_m"] = _check_realized_fields(g, b)
+    return g
+
+
+# ------------------------------------------------------------------ refusal R4
+def assert_witnesses(settling_db, sigma_max_excess, freqs_hz) -> dict:
+    """R4: the case's two witnesses on rfx's own record, after the solve."""
+    if settling_db is None:
+        raise AssertionError(
+            "R4: the result carries no settling witness; the ring-down cannot "
+            "be judged and no S value may be quoted.")
+    settling = np.asarray(settling_db, dtype=float)
+    worst_settling = float(np.max(settling))
+    excess = (None if sigma_max_excess is None
+              else np.asarray(sigma_max_excess, dtype=float))
+    worst_excess = None if excess is None else float(np.max(excess))
+    out = dict(settling_db=settling.tolist(), worst_settling_db=worst_settling,
+               worst_sigma_excess=worst_excess,
+               settling_bar_db=case.SETTLING_DB,
+               passivity_excess_bar=case.PASSIVITY_EXCESS_BAR)
+    if worst_settling > case.SETTLING_DB:
+        raise AssertionError(
+            f"R4: worst ring-down settling {worst_settling:.2f} dB is above "
+            f"{case.SETTLING_DB:.0f} dB (per driven run "
+            f"{np.round(settling, 3).tolist()}). The record ended before the "
+            "stub rang down; this arm's S is truncation-suspect.")
+    if worst_excess is not None and worst_excess > case.PASSIVITY_EXCESS_BAR:
+        k = int(np.argmax(excess))
+        f = np.asarray(freqs_hz, dtype=float)
+        raise AssertionError(
+            f"R4: the raw extraction exceeds the passive bound by "
+            f"{worst_excess:.4f} at {f[k] / 1e9:.4f} GHz (bar "
+            f"{case.PASSIVITY_EXCESS_BAR}). A passive board cannot scatter more "
+            "power than it receives.")
+    return out
+
+
+# ------------------------------------------------------------------- the probes
+def _padded_cells(grid, axis: int) -> np.ndarray:
+    """The axis's per-cell sizes as the grid holds them, pad included.
+
+    The exact float64 spine (#802) when the grid carries it; the solver's
+    float32 store widened otherwise, which is enough to compare against a
+    coarse cell to 1e-12 relative.
+    """
+    exact = (grid.dx_arr_f64, grid.dy_arr_f64, grid.dz_f64)[axis]
+    if exact is not None:
+        return np.asarray(exact, dtype=float)
+    return np.asarray((grid.dx_arr, grid.dy_arr, grid.dz)[axis], dtype=float)
+
+
+def probe_planes(sim: Simulation) -> list[list[float]]:
+    """Where each port's probe planes land, read from the library's own placer."""
+    rz = realized(sim)
+    out = []
+    for pe in sim._msl_ports:
+        mp = msl_port_from_entry(pe)
+        xs = msl_probe_x_coords_n(
+            rz.grid, mp, n_probes=int(pe.n_probes),
+            n_offset_cells=int(pe.n_probe_offset),
+            n_spacing_cells=int(pe.n_probe_spacing))
+        out.append([float(v) for v in np.asarray(xs).ravel()])
+    return out
+
+
+def assert_probes_on_the_uniform_runway(sim: Simulation, coarse_m: float) -> dict:
+    """Every cell the probe array spans is the coarse cell, bit-exactly.
+
+    The N-probe extractor reads beta and Z0 from the SPACING between probe
+    planes, and it counts that spacing in cells.  Inside the band the cells are
+    fine and inside the ramp no two are the same size, so a probe array that
+    reaches either one is read with a spacing the mesh does not have.  Checking
+    only the band (the first version of this refusal) left the ramp open: the
+    ramp is where the cell size changes fastest.
+
+    The span checked runs from the feed plane to the deepest probe, which is
+    every cell whose size the extractor's arithmetic assumes.
+    """
+    rz = realized(sim)
+    prop_cells = _padded_cells(rz.grid, 0)
+    out: dict = {"coarse_m": float(coarse_m), "ports": []}
+    for pe in sim._msl_ports:
+        mp = msl_port_from_entry(pe)
+        span = msl_cross_section_span(rz.grid, mp)
+        i_feed = int(span["i_feed"])
+        sign = 1 if "+" in pe.direction else -1
+        deepest = i_feed + sign * (int(pe.n_probe_offset)
+                                   + (int(pe.n_probes) - 1)
+                                   * int(pe.n_probe_spacing))
+        lo, hi = sorted((i_feed, deepest))
+        cells = prop_cells[lo:hi]
+        off = np.flatnonzero(cells != coarse_m)
+        node = _node_line(rz.grid, 0)
+        out["ports"].append(dict(
+            name=pe.name, i_feed=i_feed, deepest_index=int(deepest),
+            feed_m=float(node[i_feed]), deepest_m=float(node[deepest]),
+            n_cells_spanned=int(cells.size),
+            n_cells_off_coarse=int(off.size)))
+        if off.size:
+            k = int(off[0])
+            raise AssertionError(
+                f"probe array of port {pe.name!r} crosses a cell that is not "
+                f"the coarse cell: cell {lo + k} is "
+                f"{cells[k] * 1e6:.6f} um against {coarse_m * 1e6:.3f} um, "
+                f"between x = {node[lo + k] * 1e3:.4f} and "
+                f"{node[lo + k + 1] * 1e3:.4f} mm. The extractor counts its "
+                f"probe spacing in cells, so every cell from the feed plane to "
+                f"the deepest probe must be that one size -- the band and its "
+                f"ramp are both out of bounds.")
+    return out
+
+
+def assert_port_footprint_in_fine_band(sim: Simulation, b: dict) -> dict:
+    """The port's own lateral footprint lies inside the fine y band.
+
+    The MSL feed drives Ez over the trace plus a lateral pad the PORT resolves
+    for itself (about one substrate thickness each side), and the band is what
+    makes those cells one size.  The footprint is read back from
+    ``compute_msl_mode_profile`` -- the same call the runner makes, with eps_r
+    taken from the assembled material array at the port's own mid cell, as
+    ``rfx/runners/nonuniform.py`` takes it -- so this is the port's number and
+    not a second guess at it.
+    """
+    rz = realized(sim)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        eps = np.asarray(
+            sim._assemble_materials_nu(rz.grid, pec_sheets=[],
+                                       pec_wires=[])[0].eps_r)
+    ys = _node_line(rz.grid, 1)
+    lo_m, hi_m = b["band_y_trace_m"]
+    out: dict = {"band_y_trace_m": [float(lo_m), float(hi_m)], "ports": []}
+    for pe in sim._msl_ports:
+        mp = msl_port_from_entry(pe)
+        span = msl_cross_section_span(rz.grid, mp)
+        k_mid = (span["n_lo"] + span["n_hi"]) // 2
+        cell = msl_cell(pe.direction, span["i_feed"], span["w_centre"], k_mid)
+        eps_r_sub = (float(pe.eps_r_sub) if pe.eps_r_sub is not None
+                     else float(eps[cell]))
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            profile = compute_msl_mode_profile(rz.grid, mp, eps_r_sub)
+        js = [c[span["width_idx"]] for c in profile["cell_indices"]]
+        j_lo, j_hi = int(min(js)), int(max(js))
+        y_lo, y_hi = float(ys[j_lo]), float(ys[j_hi])
+        out["ports"].append(dict(
+            name=pe.name, eps_r_sub=eps_r_sub, j_lo=j_lo, j_hi=j_hi,
+            y_lo_m=y_lo, y_hi_m=y_hi,
+            trace_j=(int(profile["trace_j_lo"]), int(profile["trace_j_hi"])),
+            pad_cells_lo=int(profile["trace_j_lo"]) - j_lo,
+            pad_cells_hi=j_hi - int(profile["trace_j_hi"])))
+        if y_lo < lo_m - NODE_TOL_M or y_hi > hi_m + NODE_TOL_M:
+            raise AssertionError(
+                f"the feed footprint of port {pe.name!r} reaches y = "
+                f"{y_lo * 1e3:.4f} .. {y_hi * 1e3:.4f} mm, outside the fine y "
+                f"band {lo_m * 1e3:.4f} .. {hi_m * 1e3:.4f} mm. The port pads "
+                f"its Ez source about one substrate thickness each side of the "
+                f"trace and resolves that pad in CELLS, so a footprint that "
+                f"leaves the band is driven on cells of several sizes.")
+    return out
+
+
+# ------------------------------------------------------------------- windows
+#: The two domains the shared ``refined_extremum`` can fit its three-point
+#: parabola in.  ``"log"`` is log|S21|, the case's own estimator, and every
+#: window W1-W8 is judged on it.  ``"power"`` is |S21|^2, which near a simple
+#: lossy zero is ``((f - f0) / B)^2 + floor`` and so IS a parabola in f; F.6
+#: reads the FZ arms again with it, beside the log reading and not instead of
+#: it.
+TRANSFORMS = ("log", "power")
+
+
+def _notch_on(freqs_hz, mag, transform: str) -> dict:
+    """The notch of one |S21| curve in the reference band, read one way."""
+    if transform == "log":
+        return case.notch_frequency(freqs_hz, mag, *case.REFERENCE_BAND_HZ)
+    if transform == "power":
+        ext = case._refined_extremum(freqs_hz, mag, *case.REFERENCE_BAND_HZ,
+                                     transform="power")
+        return dict(ext, f=ext["refined_f"])
+    raise ValueError(f"transform must be one of {TRANSFORMS}; got "
+                     f"{transform!r}")
+
+
+def notch_of(record: dict, transform: str = "log") -> dict:
+    """The case's own notch estimator on a recorded arm's |S21|.
+
+    ``transform="power"`` reads the same curve with the same shared
+    ``refined_extremum``, its parabola fitted in |S21|^2 instead.
+    """
+    f = np.asarray(record["freqs_hz"], dtype=float)
+    s21 = np.asarray(record["s21_re"], dtype=float) + \
+        1j * np.asarray(record["s21_im"], dtype=float)
+    return _notch_on(f, np.abs(s21), transform)
+
+
+def _as_rung(record: dict) -> dict:
+    """A recorded arm in the shape the case's ``_compare`` reads."""
+    return dict(
+        freqs_hz=np.asarray(record["freqs_hz"], dtype=float),
+        s21=np.asarray(record["s21_re"], float) + 1j * np.asarray(
+            record["s21_im"], float),
+        s11=np.asarray(record["s11_re"], float) + 1j * np.asarray(
+            record["s11_im"], float))
+
+
+def richardson_limit(h: list[float], f: list[float]) -> dict:
+    """Observed order and the limit of ``f = f_inf + A h^p`` on three rungs.
+
+    The order is fitted on all three; the limit is taken from the two finest at
+    that order, which is what the pre-declaration asks for.
+
+    Two numbers come back with it because they are what says whether the fit
+    means anything.  ``ratio`` is the measured ``(f1 - f2) / (f2 - f3)``, and
+    ``ratio_at_zero_order`` is ``ln(h1/h2) / ln(h2/h3)``, the value that ratio
+    approaches as the order goes to zero.  A ratio at or below that asymptote
+    admits NO positive order; a ratio just above it is fitted by an order near
+    zero, and the extrapolated limit then sits arbitrarily far from the data
+    because ``A h^p`` is nearly constant over the three rungs.  Neither number
+    is a verdict; both are properties of the three points.
+    """
+    h1, h2, h3 = (float(v) for v in h)
+    f1, f2, f3 = (float(v) for v in f)
+    num, den = f1 - f2, f2 - f3
+    asymptote = np.log(h1 / h2) / np.log(h2 / h3)
+    base = dict(ratio=(num / den if den else float("nan")),
+                ratio_at_zero_order=float(asymptote))
+    if den == 0.0 or num / den <= 0.0:
+        return dict(base, order=float("nan"), limit=float("nan"),
+                    reason="the three notches do not fall monotonically")
+
+    def g(p: float) -> float:
+        return (h1 ** p - h2 ** p) / (h2 ** p - h3 ** p) - num / den
+
+    lo, hi = 1e-3, 8.0
+    if g(lo) * g(hi) > 0.0:
+        return dict(base, order=float("nan"), limit=float("nan"),
+                    reason=(f"no order in (0, 8] reproduces the three notches: "
+                            f"their ratio {num / den:.4f} is "
+                            f"{'below' if num / den < asymptote else 'above'} "
+                            f"the {asymptote:.4f} an order approaching zero "
+                            f"gives"))
+    for _ in range(300):
+        mid = 0.5 * (lo + hi)
+        if g(lo) * g(mid) <= 0.0:
+            hi = mid
+        else:
+            lo = mid
+    p = 0.5 * (lo + hi)
+    a = (f2 - f3) / (h2 ** p - h3 ** p)
+    return dict(base, order=float(p), limit=float(f3 - a * h3 ** p), reason="")
+
+
+def w1_mesh_statement(arms: dict) -> dict:
+    """W1: the offset ladder's last two rungs within 1 %, three rungs monotone."""
+    notches = [notch_of(arms[k])["f"] for k in LADDER]
+    last_two_pct = 100.0 * abs(notches[2] - notches[1]) / notches[1]
+    monotone = (all(b > a for a, b in zip(notches, notches[1:]))
+                or all(b < a for a, b in zip(notches, notches[1:])))
+    held = bool(monotone and last_two_pct <= case.LADDER_AGREEMENT * 100.0)
+    return dict(window="W1", arms=list(LADDER),
+                notches_ghz=[v / 1e9 for v in notches],
+                last_two_pct=float(last_two_pct),
+                bar_pct=case.LADDER_AGREEMENT * 100.0,
+                monotone=bool(monotone),
+                verdict="HELD" if held else "FIRED")
+
+
+def w2_comparison(arms: dict) -> dict:
+    """W2: the finest offset rung against the openEMS tutorial's judged stage."""
+    openems = case._load(case._OPENEMS_JSON)
+    stage = openems[case.OPENEMS_JUDGED_STAGE]
+    c = case._compare(f"graded {LADDER[-1]} vs openEMS "
+                      f"{case.OPENEMS_JUDGED_STAGE}",
+                      _as_rung(arms[LADDER[-1]]),
+                      stage["freqs_ghz"], stage["s21_mag"])
+    held = bool(c["notch_pct"] <= case.FREQ_BAR * 100.0
+                and c["max_abs_delta_db"] <= case.MAG_BAR_DB)
+    return dict(window="W2", arm=LADDER[-1],
+                our_notch_ghz=float(c["our_notch_ghz"]),
+                ref_notch_ghz=float(c["ref_notch_ghz"]),
+                notch_pct=float(c["notch_pct"]),
+                notch_bar_pct=case.FREQ_BAR * 100.0,
+                max_abs_delta_db=float(c["max_abs_delta_db"]),
+                mag_bar_db=case.MAG_BAR_DB,
+                n_compared=int(c["n_compared"]), n_in_band=int(c["n_in_band"]),
+                our_notch_depth_db=float(c["our_notch_depth_db"]),
+                ref_notch_depth_db=float(c["ref_notch_depth_db"]),
+                verdict="HELD" if held else "FIRED")
+
+
+def uniform_ladder_statement(arms: dict) -> dict:
+    """The uniform reference ladder, read the same way as the graded one.
+
+    Reported, not a section 5 window: the uniform ladder's own mesh statement
+    is the case's known limitation (its two finest rungs do not settle inside
+    ``LADDER_AGREEMENT``), and its Richardson limit is what W3 compares the
+    graded ladder's limit with.
+    """
+    h = [arms[k]["dx_m"] for k in UNIFORM_LADDER]
+    f = [notch_of(arms[k])["f"] for k in UNIFORM_LADDER]
+    r = richardson_limit(h, f)
+    last_two = 100.0 * abs(f[2] - f[1]) / f[1]
+    monotone = (all(b > a for a, b in zip(f, f[1:]))
+                or all(b < a for a, b in zip(f, f[1:])))
+    return dict(
+        arms=list(UNIFORM_LADDER), cells_m=[float(v) for v in h],
+        notches_ghz=[v / 1e9 for v in f],
+        last_two_pct=float(last_two), bar_pct=case.LADDER_AGREEMENT * 100.0,
+        monotone=bool(monotone),
+        mesh_statement=("HELD" if monotone
+                        and last_two <= case.LADDER_AGREEMENT * 100.0
+                        else "FIRED"),
+        fitted_order=r["order"], limit_ghz=r["limit"] / 1e9,
+        ratio=r["ratio"], ratio_at_zero_order=r["ratio_at_zero_order"],
+        note=r["reason"])
+
+
+def w3_cross_ladder(arms: dict) -> dict:
+    """W3: the graded ladder's Richardson limit against the uniform ladder's.
+
+    Both limits are fitted the same way -- the order on all three rungs, the
+    limit from the two finest at that order -- and both ladders were solved by
+    this recorder, so the comparison is between two measurements rather than
+    between a measurement and a number quoted from a ledger.
+    """
+    h = [arms[k]["substrate_cell_m"] for k in LADDER]
+    f = [notch_of(arms[k])["f"] for k in LADDER]
+    r = richardson_limit(h, f)
+    limit_ghz = r["limit"] / 1e9
+    ref = uniform_ladder_statement(arms)
+    target = ref["limit_ghz"]
+    pct = (float("nan") if not (np.isfinite(limit_ghz) and np.isfinite(target))
+           else 100.0 * abs(limit_ghz - target) / target)
+    held = bool(np.isfinite(pct) and pct <= case.FREQ_BAR * 100.0)
+    return dict(window="W3", arms=list(LADDER),
+                substrate_cells_m=[float(v) for v in h],
+                notches_ghz=[v / 1e9 for v in f],
+                fitted_order=r["order"], limit_ghz=limit_ghz,
+                ratio=r["ratio"], ratio_at_zero_order=r["ratio_at_zero_order"],
+                uniform_arms=list(UNIFORM_LADDER),
+                uniform_fitted_order=ref["fitted_order"],
+                uniform_limit_ghz=target,
+                uniform_ratio=ref["ratio"],
+                uniform_ratio_at_zero_order=ref["ratio_at_zero_order"],
+                distance_pct=pct, bar_pct=case.FREQ_BAR * 100.0,
+                note=r["reason"], verdict="HELD" if held else "FIRED")
+
+
+def w4_arm_length_witness(arms: dict) -> dict:
+    """W4: |S21| between 10 mm and 15.08 mm arms at the coarsest offset rung.
+
+    The same arithmetic the case's own arm-length witness runs, on two records
+    instead of two solves in one process: the deep-null exclusion is two-sided
+    and the band is the reference band.
+    """
+    short, long = arms["A_off"], arms["A_off_longarms"]
+    f = np.asarray(short["freqs_hz"], dtype=float)
+    f_long = np.asarray(long["freqs_hz"], dtype=float)
+    if not np.allclose(f, f_long):
+        raise AssertionError(
+            "W4: the two arm lengths were sampled on different frequency "
+            "grids; their difference would mix a frequency shift into a "
+            "magnitude one.")
+    lo, hi = case.REFERENCE_BAND_HZ
+    in_band = (f >= lo) & (f <= hi)
+    out = dict(window="W4", arms=["A_off", "A_off_longarms"],
+               arm_length_m=[short["arm_length_m"], long["arm_length_m"]],
+               bar_db=case.ARM_WITNESS_BAR_DB,
+               n_in_band=int(in_band.sum()))
+    for key in ("s21", "s11"):
+        a = case._db(np.abs(np.asarray(short[f"{key}_re"], float)
+                            + 1j * np.asarray(short[f"{key}_im"], float)))
+        b = case._db(np.abs(np.asarray(long[f"{key}_re"], float)
+                            + 1j * np.asarray(long[f"{key}_im"], float)))
+        keep = in_band & (a >= case.DEEP_NULL_DB) & (b >= case.DEEP_NULL_DB)
+        d = b - a
+        worst = int(np.argmax(np.where(keep, np.abs(d), -np.inf)))
+        out[f"max_abs_delta_{key}_db"] = float(np.max(np.abs(d[keep])))
+        out[f"n_compared_{key}"] = int(keep.sum())
+        out[f"worst_f_{key}_ghz"] = float(f[worst] / 1e9)
+    out["verdict"] = ("HELD" if out["max_abs_delta_s21_db"]
+                      <= case.ARM_WITNESS_BAR_DB else "FIRED")
+    return out
+
+
+# --------------------------------------------------- the FZ ladder's windows
+#: W5's order window.  Outside it the four notches are not a power law in FZ
+#: alone, which the pre-declaration calls the finding rather than a failure.
+P_Z_WINDOW = (0.5, 2.5)
+#: W6 calls one cell's step dominant when it carries this much of the total.
+DOMINANCE_FRACTION = 2.0 / 3.0
+
+
+def reference_notch_hz(transform: str = "log") -> float:
+    """The judged openEMS stage's own notch, by the case's estimator.
+
+    Read from the reference file every time rather than typed: the note quotes
+    3.67436 GHz and a number quoted into an instrument is a number nothing
+    checks.  ``transform`` reads it the other way too, so an arm read in
+    |S21|^2 is measured against a reference read in |S21|^2.
+    """
+    return float(_notch_on(*_reference_curve(), transform)["f"])
+
+
+def _reference_curve() -> tuple[np.ndarray, np.ndarray]:
+    """The judged openEMS stage's frequency grid (Hz) and |S21|."""
+    stage = case._load(case._OPENEMS_JSON)[case.OPENEMS_JUDGED_STAGE]
+    return (np.asarray(stage["freqs_ghz"], dtype=float) * 1e9,
+            np.asarray(stage["s21_mag"], dtype=float))
+
+
+def fit_order_on_successive_differences(h, f) -> dict:
+    """W5's order: least squares of ``log|df|`` against ``log h``.
+
+    Four rungs give three successive differences
+    ``d_i = f(h_i) - f(h_{i+1})``, and for ``f = f_inf + A h^p``
+
+        d_i = A (h_i^p - h_{i+1}^p)
+            = A (h_i h_{i+1})^(p/2) * 2 sinh((p/2) ln(h_i / h_{i+1})).
+
+    So ``ln|d_i|`` is exactly ``p`` times the MIDPOINT of the two rungs' logs,
+    plus a term that depends only on their RATIO.  The pre-declaration says
+    "log FZ" without saying which of the pair, and the midpoint is the choice
+    this instrument makes, for a reason that is checkable rather than tidy:
+    on this ladder (ratios 4/3, 3/2, 4/3) the middle difference sits exactly
+    at the mean abscissa, so it cannot pull the slope, and the outer two share
+    a ratio, so their ratio terms are equal and cancel out of it.  The fitted
+    order is therefore exact for any true ``p`` on this ladder -- verified in
+    the tests on synthetic ladders at p = 0.5, 1, 2 and 3.
+
+    ``order_at_coarse_endpoint`` is the same fit with each difference placed
+    at the COARSER rung of its pair instead.  It is reported beside the order,
+    not used: on this ladder a true p = 1 reads 1.046 that way, and a reader
+    who assumed the other choice should be able to see what it would have
+    given.
+    """
+    h = np.asarray(h, dtype=float)
+    f = np.asarray(f, dtype=float)
+    if h.size != f.size or h.size < 3:
+        raise AssertionError(
+            f"the order is fitted on successive differences and needs at "
+            f"least three rungs; got {h.size}")
+    if not np.all(np.diff(h) < 0.0):
+        raise AssertionError(
+            f"the rungs must be given coarse to fine; got "
+            f"{[float(v) for v in h]}")
+    d = f[:-1] - f[1:]
+    lh = np.log(h)
+    out: dict = {
+        "cells_m": [float(v) for v in h], "values": [float(v) for v in f],
+        "differences": [float(v) for v in d],
+        "monotone": bool(np.all(d > 0.0) or np.all(d < 0.0)),
+    }
+    if not out["monotone"]:
+        return dict(out, order=float("nan"),
+                    order_at_coarse_endpoint=float("nan"),
+                    residuals=[], reason="the rungs do not fall monotonically")
+
+    def _slope(x: np.ndarray, y: np.ndarray) -> tuple[float, float]:
+        dx, dy = x - x.mean(), y - y.mean()
+        m = float(np.sum(dx * dy) / np.sum(dx * dx))
+        return m, float(y.mean() - m * x.mean())
+
+    y = np.log(np.abs(d))
+    x_mid = 0.5 * (lh[:-1] + lh[1:])
+    p, c = _slope(x_mid, y)
+    p_end, _c_end = _slope(lh[:-1], y)
+    return dict(out, order=p, order_at_coarse_endpoint=p_end,
+                residuals=[float(v) for v in (y - (p * x_mid + c))],
+                reason="")
+
+
+def limit_at_order(h2: float, h3: float, f2: float, f3: float,
+                   p: float) -> dict:
+    """``f_inf`` and ``A`` of ``f = f_inf + A h^p`` through the two finest.
+
+    The same construction the previous note's W3 uses -- the order is fitted
+    on the whole ladder, the limit is taken from the two finest rungs at that
+    order -- so the two notes' limits are read the same way.
+    """
+    h2, h3, f2, f3, p = (float(v) for v in (h2, h3, f2, f3, p))
+    if not np.isfinite(p) or h2 ** p == h3 ** p:
+        return dict(limit=float("nan"), amplitude=float("nan"))
+    a = (f2 - f3) / (h2 ** p - h3 ** p)
+    return dict(limit=float(f3 - a * h3 ** p), amplitude=float(a))
+
+
+def _fit_at_order(h: np.ndarray, f: np.ndarray, p: float) -> dict:
+    """``f_inf`` and ``A`` of ``f = f_inf + A h^p`` by least squares at fixed p."""
+    basis = np.column_stack([np.ones_like(h), h ** p])
+    coef, *_ = np.linalg.lstsq(basis, f, rcond=None)
+    resid = f - basis @ coef
+    return dict(limit=float(coef[0]), amplitude=float(coef[1]),
+                rms_hz=float(np.sqrt(np.mean(resid ** 2))))
+
+
+#: The bracket the three-parameter fit searches its order in, and how finely
+#: it sweeps it before refining.  The bracket is wider than W5's own window on
+#: purpose: a fit that can only return an order inside the window cannot say
+#: the data want one outside it.
+TP_ORDER_BRACKET = (0.05, 8.0)
+TP_ORDER_SWEEP = 512
+
+
+def three_parameter_fit(h, f, lo: float | None = None,
+                        hi: float | None = None) -> dict:
+    """The plain fit of ``f = f_inf + A h^p`` to ALL the rungs at once.
+
+    Three unknowns on four points, so it is over-determined by one and the
+    residual means something.  For a fixed ``p`` the other two are ordinary
+    linear least squares, so only ``p`` is searched: a coarse sweep of the
+    bracket, then bisection on the derivative of the residual.  This is a
+    DIFFERENT estimator from the one section 4 declares, and it is reported
+    beside it rather than in place of it -- the declared order is the one the
+    window is judged on.
+    """
+    h = np.asarray(h, dtype=float)
+    f = np.asarray(f, dtype=float)
+    lo = TP_ORDER_BRACKET[0] if lo is None else float(lo)
+    hi = TP_ORDER_BRACKET[1] if hi is None else float(hi)
+    grid = np.linspace(lo, hi, TP_ORDER_SWEEP)
+    rms = np.array([_fit_at_order(h, f, p)["rms_hz"] for p in grid])
+    k = int(np.argmin(rms))
+    a = grid[max(k - 1, 0)]
+    b = grid[min(k + 1, grid.size - 1)]
+    for _ in range(200):
+        m1 = a + (b - a) / 3.0
+        m2 = b - (b - a) / 3.0
+        if _fit_at_order(h, f, m1)["rms_hz"] <= _fit_at_order(h, f, m2)["rms_hz"]:
+            b = m2
+        else:
+            a = m1
+    p = 0.5 * (a + b)
+    out = _fit_at_order(h, f, p)
+    return dict(out, order=float(p), n_points=int(h.size))
+
+
+def order_estimates(h, f) -> dict:
+    """Every order these rungs support, so the spread is in the record.
+
+    Four rungs carry more than one way to read an order, and they do not have
+    to agree.  All of them are computed and recorded; which one the window is
+    judged on is section 4's to say, not this function's.
+
+    * ``declared`` -- the least-squares slope of ``log|df|`` against the
+      MIDPOINT of each pair's ``log FZ``, which is what section 4 asks for.
+    * ``at_coarse_endpoint`` -- the same slope with each difference placed at
+      the coarser rung of its pair.
+    * ``adjacent_triples`` -- the order that exactly reproduces the ratio of
+      two successive differences, one per consecutive triple.  With four rungs
+      there are two of them, a coarse one and a fine one, and their spread is
+      the honest width of a single-power reading of this ladder.
+    * ``three_parameter`` -- ``f_inf``, ``A`` and ``p`` fitted to all four
+      notches at once, with the residual that fit leaves.
+    """
+    h = np.asarray(h, dtype=float)
+    f = np.asarray(f, dtype=float)
+    fit = fit_order_on_successive_differences(h, f)
+    triples = []
+    for i in range(h.size - 2):
+        r = richardson_limit(h[i:i + 3].tolist(), f[i:i + 3].tolist())
+        triples.append(dict(
+            rungs=[float(v) for v in h[i:i + 3]],
+            index=i, order=r["order"], limit_ghz=r["limit"] / 1e9,
+            ratio=r["ratio"], ratio_at_zero_order=r["ratio_at_zero_order"],
+            note=r["reason"]))
+    tp = three_parameter_fit(h, f)
+    return dict(
+        declared=fit["order"], at_coarse_endpoint=fit["order_at_coarse_endpoint"],
+        residuals=fit["residuals"], monotone=fit["monotone"],
+        differences=fit["differences"], reason=fit["reason"],
+        adjacent_triples=triples,
+        three_parameter_order=tp["order"],
+        three_parameter_limit_ghz=tp["limit"] / 1e9,
+        three_parameter_amplitude=tp["amplitude"],
+        three_parameter_rms_mhz=tp["rms_hz"] / 1e6)
+
+
+def _fz_arm_facts(arms: dict, keys, transform: str = "log") -> dict:
+    """Notch, in-plane cell and substrate cell of each named arm."""
+    return {k: dict(f_hz=notch_of(arms[k], transform)["f"],
+                    fine_cell_m=float(arms[k]["fine_cell_m"]),
+                    substrate_cell_m=float(arms[k]["substrate_cell_m"]))
+            for k in keys}
+
+
+def commits_of(arms: dict, keys) -> list[str]:
+    """The distinct commits the named arms were solved at, in ladder order."""
+    seen: list[str] = []
+    for k in keys:
+        sha = arms[k]["provenance"]["git_sha"]
+        if sha not in seen:
+            seen.append(sha)
+    return seen
+
+
+def solver_tree_equal(shas) -> bool | None:
+    """Is ``rfx/`` the same tree at every one of these commits?
+
+    Two arms can carry different commits and still have been solved by the
+    same simulator: a commit that only touches a note, a test or this
+    instrument leaves ``rfx/`` alone.  What a ladder needs is one SOLVER, not
+    one label, so this asks git about the tree instead of comparing strings.
+
+    ``None`` when git cannot answer -- outside a worktree, or with the commits
+    not present -- because "not checkable here" is not the same as "equal".
+    """
+    shas = [str(v) for v in shas]
+    if len(shas) <= 1:
+        return True
+    for other in shas[1:]:
+        try:
+            done = subprocess.run(
+                ["git", "-C", str(_REPO_ROOT), "diff", "--quiet",
+                 shas[0], other, "--", "rfx/"],
+                capture_output=True, text=True)
+        except Exception:
+            return None
+        if done.returncode == 1:
+            return False
+        if done.returncode != 0:
+            return None
+    return True
+
+
+def commits_absent(shas) -> list[str]:
+    """The named commits git cannot find in this checkout.
+
+    A shallow clone carries only its tip, and a squash merge leaves a branch's
+    commits off main altogether, so the commits the arms were solved at need
+    not be in the checkout that reads the record.  :func:`solver_tree_equal`
+    then answers ``None``; this names the commits it could not see.
+    """
+    out: list[str] = []
+    for sha in dict.fromkeys(str(v) for v in shas):
+        if _git(["cat-file", "-e", f"{sha}^{{commit}}"]) is None:
+            out.append(sha)
+    return out
+
+
+def w5_fz_ladder(arms: dict, ladder: tuple[str, ...] = FZ_LADDER,
+                 transform: str = "log") -> dict:
+    """W5: the four notches at one in-plane cell, against their substrate cell.
+
+    The rungs are the same board with the same 24.292 um in-plane cell and the
+    substrate cut into 6, 8, 12 and 16 cells.  Anything that moves between
+    them is the substrate-normal resolution at the strip's edge and nothing
+    else, which is what makes a power-law fit in FZ meaningful here.  The
+    premise is asserted, not assumed.
+
+    ``ladder`` picks which third rung is used: :data:`FZ_LADDER`, the one
+    section 4 declares, whose C_off comes from the first record and another
+    solver build; or :data:`FZ_LADDER_ONE_COMMIT`, whose C_off_re is the same
+    mesh solved at this branch's commit (addendum A.2).  Both are computed and
+    both are recorded.  The commits the rungs were solved at come back in
+    ``commits``, so a reader can see whether a ladder spans one build or two
+    without going to the provenance table.
+
+    ``transform`` is the notch estimator's domain (:data:`TRANSFORMS`).  The
+    window is judged on ``"log"``; F.6 runs the same arithmetic on
+    ``"power"`` and prints no verdict for it.
+    """
+    facts = _fz_arm_facts(arms, ladder, transform)
+    fine = {k: v["fine_cell_m"] for k, v in facts.items()}
+    if max(fine.values()) - min(fine.values()) > NODE_TOL_M:
+        raise AssertionError(
+            f"W5: the FZ ladder's four arms must share one in-plane cell and "
+            f"carry {sorted((k, v * 1e6) for k, v in fine.items())} um. A "
+            "ladder whose in-plane cell also moves measures both cells at "
+            "once, which is the thing the previous note could not separate.")
+    fz = [facts[k]["substrate_cell_m"] for k in ladder]
+    notches = [facts[k]["f_hz"] for k in ladder]
+    est = order_estimates(fz, notches)
+    fit = fit_order_on_successive_differences(fz, notches)
+    lim = limit_at_order(fz[2], fz[3], notches[2], notches[3], fit["order"])
+    ref = reference_notch_hz(transform)
+    lo, hi = P_Z_WINDOW
+    held = bool(fit["monotone"] and np.isfinite(fit["order"])
+                and lo <= fit["order"] <= hi)
+    shas = commits_of(arms, ladder)
+    same_solver = solver_tree_equal(shas)
+    return dict(
+        window="W5", arms=list(ladder),
+        commits=shas, n_commits=len(shas),
+        solver_tree_equal=same_solver,
+        one_solver_build=bool(len(shas) == 1 or same_solver is True),
+        fine_cell_m=float(min(fine.values())),
+        substrate_cells_m=[float(v) for v in fz],
+        n_substrate_cells=[int(arms[k]["n_substrate_cells"]) for k in ladder],
+        notches_ghz=[v / 1e9 for v in notches],
+        differences_mhz=[v / 1e6 for v in fit["differences"]],
+        monotone=fit["monotone"], order=fit["order"],
+        order_at_coarse_endpoint=fit["order_at_coarse_endpoint"],
+        order_adjacent_triples=[t["order"] for t in est["adjacent_triples"]],
+        adjacent_triples=est["adjacent_triples"],
+        order_three_parameter=est["three_parameter_order"],
+        limit_three_parameter_ghz=est["three_parameter_limit_ghz"],
+        rms_three_parameter_mhz=est["three_parameter_rms_mhz"],
+        fit_residuals=fit["residuals"], order_window=list(P_Z_WINDOW),
+        limit_ghz=lim["limit"] / 1e9, amplitude=lim["amplitude"],
+        reference_ghz=ref / 1e9,
+        finest_arm=ladder[-1],
+        finest_distance_pct=100.0 * abs(notches[3] - ref) / ref,
+        limit_distance_pct=(float("nan") if not np.isfinite(lim["limit"])
+                            else 100.0 * abs(lim["limit"] - ref) / ref),
+        note=fit["reason"], verdict="HELD" if held else "FIRED")
+
+
+def w6_attribution(arms: dict, fine_rung: str = "C_off",
+                   transform: str = "log") -> dict:
+    """W6: how the A_off -> C_off step divides between the two cells.
+
+    A_off and Z6 share the substrate cell, so what separates them is the
+    in-plane cell; Z6 and C_off share the in-plane cell, so what separates
+    them is the substrate cell.  A classification, not a pass or fail.
+
+    The cross term the pre-declaration asks for is reported and is zero by
+    construction, not by measurement: A_off -> Z6 -> C_off is one path
+    through the (F, FZ) plane from A_off's corner to C_off's, so its two legs
+    telescope and ``T - dZ - dF`` cancels algebraically.  A cross term that
+    could be non-zero needs the FOURTH corner (F = 47.244 um at FZ =
+    21.167 um), which is not an arm of this note.  What is printed is the
+    float64 residue of the cancellation, in hertz.  ``transform`` as in
+    :func:`w5_fz_ladder`.
+    """
+    facts = _fz_arm_facts(arms, ("A_off", "Z6", fine_rung), transform)
+    if abs(facts["A_off"]["substrate_cell_m"]
+           - facts["Z6"]["substrate_cell_m"]) > NODE_TOL_M:
+        raise AssertionError(
+            "W6: A_off and Z6 must share the substrate cell or the step "
+            "between them is not an in-plane step.")
+    if abs(facts["Z6"]["fine_cell_m"]
+           - facts[fine_rung]["fine_cell_m"]) > NODE_TOL_M:
+        raise AssertionError(
+            f"W6: Z6 and {fine_rung} must share the in-plane cell or the step "
+            "between them is not a substrate step.")
+    f_a, f_z6, f_c = (facts[k]["f_hz"] for k in ("A_off", "Z6", fine_rung))
+    d_z, d_f = f_z6 - f_c, f_a - f_z6
+    total = f_a - f_c
+    bar = DOMINANCE_FRACTION * abs(total)
+    if abs(d_z) >= bar:
+        klass = "FZ dominant"
+    elif abs(d_f) >= bar:
+        klass = "F dominant"
+    else:
+        klass = "shared"
+    shas = commits_of(arms, ("A_off", "Z6", fine_rung))
+    sub_leg = commits_of(arms, ("Z6", fine_rung))
+    in_leg = commits_of(arms, ("A_off", "Z6"))
+    return dict(
+        window="W6", arms=["A_off", "Z6", fine_rung],
+        fine_rung=fine_rung,
+        commits=shas, n_commits=len(shas),
+        solver_tree_equal=solver_tree_equal(shas),
+        substrate_leg_commits=sub_leg,
+        substrate_leg_solver_equal=solver_tree_equal(sub_leg),
+        inplane_leg_solver_equal=solver_tree_equal(in_leg),
+        notches_ghz={k: facts[k]["f_hz"] / 1e9 for k in facts},
+        substrate_step_m=[facts["Z6"]["substrate_cell_m"],
+                          facts[fine_rung]["substrate_cell_m"]],
+        inplane_step_m=[facts["A_off"]["fine_cell_m"],
+                        facts["Z6"]["fine_cell_m"]],
+        inplane_leg_commits=in_leg,
+        delta_z_mhz=d_z / 1e6, delta_f_mhz=d_f / 1e6, total_mhz=total / 1e6,
+        delta_z_fraction=d_z / total, delta_f_fraction=d_f / total,
+        dominance_fraction=DOMINANCE_FRACTION,
+        bar_mhz=bar / 1e6,
+        cross_term_hz=float(total - d_z - d_f),
+        cross_term_is_algebraically_zero=True,
+        classification=klass)
+
+
+def w7_offset_sign(arms: dict, transform: str = "log") -> dict:
+    """W7: what the 0.35-cell edge offset does on its own.
+
+    ON13 puts its nodes ON the metal edges at 46.154 um; A_off puts them
+    0.35 of a cell inside at 47.244 um.  The two in-plane cells are 2.3 %
+    apart, so the difference between the arms is the offset plus that much F.
+    The F slope at the same substrate cell comes from the two ON-NODE arms,
+    A_on at 50.0 um and ON13 at 46.154 um, and is reported so the reader can
+    take the F part out.  All three arms share FZ = 42.333 um, which is
+    asserted.  ``transform`` as in :func:`w5_fz_ladder`.
+    """
+    facts = _fz_arm_facts(arms, ("A_on", "A_off", "ON13"), transform)
+    fz = {k: v["substrate_cell_m"] for k, v in facts.items()}
+    if max(fz.values()) - min(fz.values()) > NODE_TOL_M:
+        raise AssertionError(
+            f"W7: its three arms must share one substrate cell and carry "
+            f"{sorted((k, v * 1e6) for k, v in fz.items())} um.")
+    f_on13, f_aoff, f_aon = (facts[k]["f_hz"] for k in ("ON13", "A_off",
+                                                        "A_on"))
+    F_on13, F_aoff, F_aon = (facts[k]["fine_cell_m"] for k in ("ON13", "A_off",
+                                                               "A_on"))
+    slope = (f_aon - f_on13) / (F_aon - F_on13)
+    lower = bool(f_on13 < f_aoff)
+    return dict(
+        window="W7", arms=["A_off", "ON13", "A_on"],
+        notch_a_off_ghz=f_aoff / 1e9, notch_on13_ghz=f_on13 / 1e9,
+        notch_a_on_ghz=f_aon / 1e9,
+        fine_cell_a_off_m=F_aoff, fine_cell_on13_m=F_on13,
+        fine_cell_a_on_m=F_aon,
+        substrate_cell_m=float(min(fz.values())),
+        fine_cell_gap_pct=100.0 * (F_aoff - F_on13) / F_on13,
+        delta_mhz=(f_aoff - f_on13) / 1e6,
+        delta_pct=100.0 * (f_aoff - f_on13) / f_on13,
+        f_slope_mhz_per_um=(slope / 1e6) * 1e-6,
+        f_slope_span_um=[F_on13 * 1e6, F_aon * 1e6],
+        # What the F gap between A_off and ON13 alone would move the notch by,
+        # at the on-node slope: the part of delta that is not the offset.
+        f_part_of_delta_mhz=(slope * (F_aoff - F_on13)) / 1e6,
+        # And delta with that part taken out.
+        delta_less_f_part_mhz=((f_aoff - f_on13)
+                               - slope * (F_aoff - F_on13)) / 1e6,
+        on_node_reads_lower=lower,
+        reading=("the offset raises the notch on its own: the on-node arm at "
+                 "nearly the same in-plane cell reads lower"
+                 if lower else
+                 "the offset's own effect is below the F slope: the on-node "
+                 "arm does not read lower than the offset arm"))
+
+
+def substrate_rule(limit_hz: float, amplitude: float, order: float) -> dict:
+    """The substrate cell, and the n_z, that one reading of a ladder asks for.
+
+    A reading of ``f = f_inf + A FZ^p`` puts the notch ``|A| FZ^p`` from its
+    own limit, so the cell that brings that term inside ``FREQ_BAR`` of that
+    limit is ``FZ = (FREQ_BAR * limit / |A|)^(1/p)`` and the rule is
+    ``n_z = ceil(h / FZ)``.  :func:`w8_is_z_enough` applies it to the declared
+    order; F.6 applies it to every order the ladder supports, under both
+    estimators.  ``None`` where the reading has no finite positive order.
+    """
+    bar_hz = case.FREQ_BAR * abs(limit_hz)
+    n_z = None
+    fz_for_bar = float("nan")
+    if (np.isfinite(order) and np.isfinite(amplitude) and order > 0.0
+            and amplitude != 0.0 and np.isfinite(limit_hz)):
+        fz_for_bar = float((bar_hz / abs(amplitude)) ** (1.0 / order))
+        n_z = int(np.ceil(_H / fz_for_bar - 1e-12))
+    return dict(substrate_rule_bar_hz=float(bar_hz),
+                substrate_cell_for_the_bar_m=fz_for_bar,
+                n_substrate_cells_for_the_bar=n_z)
+
+
+def w8_is_z_enough(arms: dict,
+                   ladder: tuple[str, ...] = FZ_LADDER,
+                   transform: str = "log") -> dict:
+    """W8: does refining the substrate alone reach the case's 1 % bar?
+
+    The FZ ladder's extrapolated limit is where the notch goes as the
+    substrate cell goes to zero AT this in-plane cell.  If that limit is
+    inside the bar, everything left over at 24.292 um in plane is substrate
+    resolution and the mesher's substrate rule can close the case on its own;
+    if it is outside, the remainder is in the plane -- the T-junction and the
+    open end -- and no n_z closes it.
+
+    ``n_substrate_cells_for_the_bar`` is DERIVED, and here is the derivation:
+    the fit says the notch stands ``|A| FZ^p`` from its own limit, so the cell
+    that puts that term inside ``FREQ_BAR`` OF THAT LIMIT is
+    ``FZ = (FREQ_BAR * limit / |A|)^(1/p)`` and the rule is
+    ``n_z = ceil(h / FZ)``.  The bar is a fraction of the limit and not of the
+    external reference: the quantity being bounded is how far the notch still
+    has to fall on THIS ladder, and the ladder converges to its own limit, not
+    to the reference.  Taking 1 % of the reference instead would bound a
+    different thing and, where the two differ, by a different amount.  It is
+    reported whatever the verdict, because a rule read off a ladder that did
+    not reach the bar is still the number that ladder implies.
+    """
+    w5 = w5_fz_ladder(arms, ladder, transform)
+    ref = reference_notch_hz(transform)
+    bar_pct = case.FREQ_BAR * 100.0
+    pct = w5["limit_distance_pct"]
+    held = bool(w5["verdict"] == "HELD" and np.isfinite(pct) and pct <= bar_pct)
+    p, a = w5["order"], w5["amplitude"]
+    rule = substrate_rule(w5["limit_ghz"] * 1e9, a, p)
+    rungs = [dict(arm=k, n_substrate_cells=int(arms[k]["n_substrate_cells"]),
+                  substrate_cell_m=float(arms[k]["substrate_cell_m"]),
+                  notch_ghz=notch_of(arms[k], transform)["f"] / 1e9,
+                  distance_from_reference_pct=100.0 * abs(
+                      notch_of(arms[k], transform)["f"] - ref) / ref)
+             for k in ladder]
+    return dict(
+        window="W8", arms=list(ladder),
+        commits=w5["commits"], one_solver_build=w5["one_solver_build"],
+        solver_tree_equal=w5["solver_tree_equal"],
+        fine_cell_m=w5["fine_cell_m"],
+        limit_ghz=w5["limit_ghz"], reference_ghz=ref / 1e9,
+        limit_distance_pct=pct, bar_pct=bar_pct,
+        w5_verdict=w5["verdict"], order=p, amplitude=a,
+        substrate_cell_for_the_bar_m=rule["substrate_cell_for_the_bar_m"],
+        n_substrate_cells_for_the_bar=rule["n_substrate_cells_for_the_bar"],
+        substrate_rule_bar_hz=rule["substrate_rule_bar_hz"],
+        substrate_rule_bar_is="FREQ_BAR of this ladder's own fitted limit",
+        rungs=rungs, verdict="HELD" if held else "FIRED")
+
+
+def load_fz_arms(fz_path: Path | None = None,
+                 base_path: Path | None = None) -> dict:
+    """Every arm W5-W8 read: the five new ones and the three reused.
+
+    Two files, because the first record is not edited and its arms are not
+    re-run.  A key in both is refused rather than silently resolved: the two
+    records would then disagree about what an arm is.
+    """
+    fz_path = DEFAULT_FZ_OUT if fz_path is None else Path(fz_path)
+    base_path = DEFAULT_OUT if base_path is None else Path(base_path)
+    with base_path.open() as fh:
+        base = json.load(fh)["arms"]
+    with fz_path.open() as fh:
+        fz = json.load(fh)["arms"]
+    clash = sorted(set(base) & set(fz))
+    if clash:
+        raise SystemExit(
+            f"the two records both hold {clash}; an arm belongs to one file. "
+            f"{base_path.name} is not edited by this note.")
+    out = {k: base[k] for k in FZ_REUSED_ARMS if k in base}
+    out.update(fz)
+    return out
+
+
+def remeasurement(arms: dict) -> dict:
+    """Addendum A.2: the same rung solved twice, at two solver builds.
+
+    C_off and C_off_re declare the same mesh -- the same rung entry, so 12
+    substrate cells and 24 in-plane cells, the same board and the same
+    900 um of stub -- and were solved by two commits of ``rfx/``.  What comes
+    back is the distance between their two notches and whether the two meshes
+    really were identical, because a mesh that moved would make the comparison
+    say nothing about the solver.
+    """
+    new, old = FZ_REMEASURED
+    f_new = notch_of(arms[new])["f"]
+    f_old = notch_of(arms[old])["f"]
+    same_mesh = {}
+    for field in ("fine_cell_m", "substrate_cell_m", "z_tail_cell_m",
+                  "edge_offset_m", "n_across_metal", "n_substrate_cells",
+                  "margin_cells", "lateral_clearance_m"):
+        same_mesh[field] = bool(arms[new][field] == arms[old][field])
+    profiles_identical = all(
+        arms[new]["profiles"][a] == arms[old]["profiles"][a]
+        for a in ("x", "y", "z"))
+    shas = [arms[new]["provenance"]["git_sha"],
+            arms[old]["provenance"]["git_sha"]]
+    curves_identical = all(
+        arms[new][k] == arms[old][k]
+        for k in ("s21_re", "s21_im", "s11_re", "s11_im", "freqs_hz"))
+    return dict(
+        arms=[new, old],
+        commits=shas,
+        solver_tree_equal=solver_tree_equal(shas),
+        notch_bit_identical=bool(f_new == f_old),
+        curves_bit_identical=bool(curves_identical),
+        run_ids=[arms[new]["provenance"]["run_id"],
+                 arms[old]["provenance"]["run_id"]],
+        notch_new_ghz=f_new / 1e9, notch_old_ghz=f_old / 1e9,
+        delta_mhz=(f_new - f_old) / 1e6,
+        delta_pct=100.0 * (f_new - f_old) / f_old,
+        grid_cells=[grid_cells(arms[new]), grid_cells(arms[old])],
+        wall_s=[arms[new]["wall_s"], arms[old]["wall_s"]],
+        dt_s=[arms[new]["dt_s"], arms[old]["dt_s"]],
+        mesh_fields_equal=same_mesh,
+        mesh_identical=bool(all(same_mesh.values())),
+        profiles_bit_identical=bool(profiles_identical))
+
+
+def fz_verdicts(arms: dict) -> dict:
+    """W5-W8 and the cost of the new arms, for whatever arms are present.
+
+    Each window that reads the ladder's third rung is computed twice: once on
+    the rung section 4 names, and once on the rung addendum A.2 re-measured at
+    this branch's commit.  Both go in the record; neither replaces the other.
+    """
+    out: dict = {}
+    have = set(arms)
+    if set(FZ_LADDER) <= have:
+        out["W5"] = w5_fz_ladder(arms, FZ_LADDER)
+        out["W8"] = w8_is_z_enough(arms, FZ_LADDER)
+    if set(FZ_LADDER_ONE_COMMIT) <= have:
+        out["W5_one_commit"] = w5_fz_ladder(arms, FZ_LADDER_ONE_COMMIT)
+        out["W8_one_commit"] = w8_is_z_enough(arms, FZ_LADDER_ONE_COMMIT)
+    if set(FZ_REMEASURED) <= have:
+        out["remeasurement"] = remeasurement(arms)
+    if {"A_off", "Z6", "C_off"} <= have:
+        out["W6"] = w6_attribution(arms, "C_off")
+    if {"A_off", "Z6", "C_off_re"} <= have:
+        out["W6_one_commit"] = w6_attribution(arms, "C_off_re")
+    if {"A_on", "A_off", "ON13"} <= have:
+        out["W7"] = w7_offset_sign(arms)
+    if {"A_off", "Z6", "F16Z6"} <= have:
+        # Reported, no window: three in-plane cells at one substrate cell.
+        # The F ladder the note says W6's dF is one step of.
+        keys = ["A_off", "F16Z6", "Z6"]
+        facts = _fz_arm_facts(arms, keys)
+        out["f_ladder_at_fz_42um"] = dict(
+            arms=keys,
+            fine_cells_m=[facts[k]["fine_cell_m"] for k in keys],
+            substrate_cell_m=facts["Z6"]["substrate_cell_m"],
+            notches_ghz=[facts[k]["f_hz"] / 1e9 for k in keys],
+            monotone=bool(facts["A_off"]["f_hz"] > facts["F16Z6"]["f_hz"]
+                          > facts["Z6"]["f_hz"]
+                          or facts["A_off"]["f_hz"] < facts["F16Z6"]["f_hz"]
+                          < facts["Z6"]["f_hz"]))
+    cost = {k: dict(n_grid_cells=grid_cells(arms[k]), wall_s=arms[k]["wall_s"])
+            for k in sorted(arms)}
+    out["cost"] = cost
+    return out
+
+
+# ------------------------------- F.6: the arms read with |S21|^2 as well
+#: The ladder F.6 reads: the one-build ladder of addendum A.2.  Its C_off_re
+#: and the declared ladder's C_off carry bit-identical curves, and F.6 prints
+#: whether they still read the same under both estimators rather than
+#: assuming it.
+F6_LADDER = FZ_LADDER_ONE_COMMIT
+#: The three arms at FZ = h/6 whose in-plane cell differs.
+F6_INPLANE = ("A_off", "F16Z6", "Z6")
+#: Stencil sizes of the least-squares diagnostic.  Three is the shared
+#: estimator's own stencil.
+F6_STENCILS = (3, 5, 7)
+#: Where the synthetic zero is put, in bins above an arm's deepest bin: one
+#: bin crossed in tenths.
+F6_SYNTHETIC_POSITIONS = tuple(i / 10.0 for i in range(10))
+
+
+def least_squares_parabola(freqs_hz, mag, n_points: int,
+                           transform: str) -> dict:
+    """DIAGNOSTIC: a least-squares parabola over ``n_points`` samples.
+
+    Not an estimator any window or reading uses.  It asks whether the domain a
+    vertex is fitted in stays a parabola beyond the three samples the shared
+    estimator uses: widen the stencil, and a curve that is a parabola in that
+    domain keeps its vertex while one that is not moves it.
+
+    The stencil is centred on the deepest bin the shared ``refined_extremum``
+    picks in the reference band, and the abscissa is the bin index, the same
+    evenly spaced one that estimator assumes, so at three samples this returns
+    its vertex.  The domains are the two ``refined_extremum`` fits in: log|S21|
+    (floored at 1e-300 the same way) and |S21|^2.
+    """
+    f = np.asarray(freqs_hz, dtype=float)
+    s = np.asarray(mag, dtype=float)
+    if transform not in TRANSFORMS:
+        raise ValueError(f"transform must be one of {TRANSFORMS}; got "
+                         f"{transform!r}")
+    if n_points < 3 or n_points % 2 == 0:
+        raise ValueError(f"an odd stencil of at least three; got {n_points}")
+    ext = case._refined_extremum(f, s, *case.REFERENCE_BAND_HZ,
+                                 transform=transform)
+    i, h, k = int(ext["index"]), float(ext["bin_width"]), n_points // 2
+    if i - k < 0 or i + k >= f.size:
+        raise ValueError(f"a {n_points}-sample stencil at bin {i} leaves the "
+                         f"{f.size}-bin sweep")
+    x = np.arange(-k, k + 1, dtype=float)
+    seg = s[i - k:i + k + 1]
+    y = np.log(np.maximum(seg, 1e-300)) if transform == "log" else seg ** 2
+    c2, c1, c0 = (float(v) for v in np.polyfit(x, y, 2))
+    shift = -c1 / (2.0 * c2)
+    return dict(n_points=int(n_points), transform=transform, index=i,
+                bin_width_hz=h, vertex_hz=float(f[i]) + shift * h,
+                shift_bins=float(shift),
+                # Curvature and value at the vertex, per bin^2 and in the
+                # fitted domain.
+                curvature_per_bin2=c2, vertex_value=c0 - c1 * c1 / (4.0 * c2))
+
+
+def synthetic_zero_bias(record: dict,
+                        positions=F6_SYNTHETIC_POSITIONS) -> dict:
+    """DIAGNOSTIC: both estimators on a lossy zero of this arm's own shape.
+
+    The zero is ``|S21|^2 = ((f - f0) / B)^2 + floor``, a simple zero moved
+    off the real frequency axis by loss.  B and the floor are read off the
+    arm by the three-sample |S21|^2 parabola at its own notch (curvature
+    ``(h / B)^2`` per bin^2, value at the vertex), and the curve is sampled on
+    the arm's own frequency grid.  ``f0`` is then put at each of ``positions``
+    bins above the arm's deepest bin, and each estimator's error, estimate
+    minus ``f0``, is returned in hertz.
+
+    |S21|^2 is a parabola in f here by construction, so the power error is not
+    a property of the zero.  The recorded grid is not exactly even (its
+    spacing is returned as ``grid_spacing_spread_hz``) and the shared
+    estimator takes it as even, so the same zero is also sampled on an evenly
+    spaced grid of the same bin width, and the power error there is returned
+    beside it as the control.
+    """
+    f = np.asarray(record["freqs_hz"], dtype=float)
+    s21 = np.asarray(record["s21_re"], float) + 1j * np.asarray(
+        record["s21_im"], float)
+    fit = least_squares_parabola(f, np.abs(s21), 3, "power")
+    if not (fit["curvature_per_bin2"] > 0.0 and fit["vertex_value"] > 0.0):
+        raise AssertionError(
+            f"the |S21|^2 parabola at this arm's notch has curvature "
+            f"{fit['curvature_per_bin2']:.3e} and vertex value "
+            f"{fit['vertex_value']:.3e}; a lossy zero needs both positive")
+    h = fit["bin_width_hz"]
+    b_hz = h / math.sqrt(fit["curvature_per_bin2"])
+    floor = fit["vertex_value"]
+    i = fit["index"]
+    even = float(f[i]) + h * (np.arange(f.size, dtype=float) - i)
+    rows = []
+    for t in positions:
+        f0 = float(f[i]) + float(t) * h
+        mag = np.sqrt(((f - f0) / b_hz) ** 2 + floor)
+        got = {tr: _notch_on(f, mag, tr) for tr in TRANSFORMS}
+        on_even = _notch_on(even, np.sqrt(((even - f0) / b_hz) ** 2 + floor),
+                            "power")
+        rows.append(dict(
+            position_bins=float(t), f0_hz=f0,
+            deepest_bin_db=float(got["power"]["depth_db"]),
+            error_power_even_grid_hz=float(on_even["f"] - f0),
+            **{f"error_{tr}_hz": float(got[tr]["f"] - f0)
+               for tr in TRANSFORMS}))
+    spacing = np.diff(f)
+    return dict(bin_width_hz=h, b_hz=float(b_hz),
+                floor_db=float(10.0 * np.log10(floor)),
+                grid_spacing_spread_hz=float(spacing.max() - spacing.min()),
+                rows=rows)
+
+
+def order_readings(h, f) -> list[dict]:
+    """The five readings of the order F.4 prints, each carried to n_z.
+
+    Each reading gets a limit, an amplitude and the substrate rule
+    :func:`substrate_rule` derives from them.  The declared reading, the
+    coarse-endpoint one and the two adjacent triples take the limit the way
+    W5 does, from the finest two rungs the reading covers at its order --
+    F.4 prints no limit for the coarse-endpoint reading, and this is the one
+    it would have.  The three-parameter fit carries its own.
+    """
+    h = np.asarray(h, dtype=float)
+    f = np.asarray(f, dtype=float)
+    est = order_estimates(h, f)
+    tp = three_parameter_fit(h, f)
+    parts = [
+        ("declared", "declared: least squares of the log step against the "
+         "midpoint of each pair's log FZ", est["declared"], h.size - 2),
+        ("coarse_endpoint", "the same, each step at the coarser rung of its "
+         "pair", est["at_coarse_endpoint"], h.size - 2),
+    ]
+    for t in est["adjacent_triples"]:
+        cells = " / ".join(f"{q * 1e6:.3f}" for q in t["rungs"])
+        parts.append((f"triple_{t['index']}",
+                      f"the ratio of two successive steps, rungs {cells} um",
+                      t["order"], t["index"] + 1))
+    rows = []
+    for key, label, p, j in parts:
+        lim = limit_at_order(h[j], h[j + 1], f[j], f[j + 1], p)
+        rows.append(dict(key=key, label=label, order=float(p),
+                         limit_hz=lim["limit"], amplitude=lim["amplitude"],
+                         **substrate_rule(lim["limit"], lim["amplitude"], p)))
+    rows.append(dict(key="three_parameter",
+                     label="f_inf + A FZ^p fitted to all four notches at once",
+                     order=tp["order"], limit_hz=tp["limit"],
+                     amplitude=tp["amplitude"], rms_hz=tp["rms_hz"],
+                     **substrate_rule(tp["limit"], tp["amplitude"],
+                                      tp["order"])))
+    return rows
+
+
+def load_first_ladder(base_path: Path | None = None) -> dict:
+    """The first record's graded ladder A_off, B_off, C_off, read-only."""
+    base_path = DEFAULT_OUT if base_path is None else Path(base_path)
+    with base_path.open() as fh:
+        base = json.load(fh)["arms"]
+    return {k: base[k] for k in LADDER if k in base}
+
+
+def estimator_comparison(arms: dict, first_ladder: dict | None = None) -> dict:
+    """F.6: every FZ number again, under both estimators.  No window.
+
+    W5-W8 are frozen on the log estimator and are judged on it; nothing here
+    changes a verdict or is one.  What is computed is the same arithmetic,
+    through the same functions, with the notch read in |S21|^2 as well, plus
+    two diagnostics of the estimator itself (:func:`least_squares_parabola`,
+    :func:`synthetic_zero_bias`) and the first record's graded ladder read
+    both ways.  Each block is present only when its arms are.
+    """
+    have = set(arms)
+    keys = ([k for k in ALL_FZ_ARMS if k in arms]
+            + [k for k in FZ_REUSED_ARMS if k in arms])
+    out: dict = dict(transforms=list(TRANSFORMS), arms=keys)
+    out["notches"] = {
+        k: {t: dict(f_hz=n["f"], shift_bins=float(n["sub_bin_shift"]),
+                    depth_db=float(n["depth_db"]))
+            for t in TRANSFORMS for n in [notch_of(arms[k], t)]}
+        for k in keys}
+    ref = {t: reference_notch_hz(t) for t in TRANSFORMS}
+    out["reference_hz"] = ref
+    out["reference_shift_bins"] = {
+        t: float(_notch_on(*_reference_curve(), t)["sub_bin_shift"])
+        for t in TRANSFORMS}
+    if set(F6_LADDER) <= have:
+        ladder = {}
+        for t in TRANSFORMS:
+            w5 = w5_fz_ladder(arms, F6_LADDER, t)
+            facts = _fz_arm_facts(arms, F6_LADDER, t)
+            fz = [facts[k]["substrate_cell_m"] for k in F6_LADDER]
+            f = [facts[k]["f_hz"] for k in F6_LADDER]
+            readings = order_readings(fz, f)
+            for r in readings:
+                r["limit_from_reference_pct"] = (
+                    100.0 * (r["limit_hz"] - ref[t]) / ref[t])
+            ladder[t] = dict(
+                arms=list(F6_LADDER), fine_cell_m=w5["fine_cell_m"],
+                substrate_cells_m=fz, notches_hz=f,
+                steps_hz=[b - a for a, b in zip(f, f[1:])],
+                monotone=w5["monotone"],
+                finest_from_reference_pct=100.0 * (f[-1] - ref[t]) / ref[t],
+                readings=readings)
+        out["ladder"] = ladder
+        if set(FZ_LADDER) <= have:
+            out["declared_ladder_reads_the_same"] = all(
+                notch_of(arms[a], t)["f"] == notch_of(arms[b], t)["f"]
+                for a, b in zip(FZ_LADDER, F6_LADDER) for t in TRANSFORMS)
+        out["stencils"] = {
+            k: {t: {n: least_squares_parabola(
+                arms[k]["freqs_hz"],
+                np.abs(np.asarray(arms[k]["s21_re"], float)
+                       + 1j * np.asarray(arms[k]["s21_im"], float)),
+                n, t)["vertex_hz"] for n in F6_STENCILS}
+                for t in TRANSFORMS}
+            for k in F6_LADDER}
+        out["synthetic"] = {k: synthetic_zero_bias(arms[k]) for k in F6_LADDER}
+    fine = F6_LADDER[2]
+    if {"A_off", "Z6", fine} <= have:
+        out["w6"] = {t: w6_attribution(arms, fine, t) for t in TRANSFORMS}
+    if set(F6_INPLANE) <= have:
+        out["inplane"] = {t: _fz_arm_facts(arms, F6_INPLANE, t)
+                          for t in TRANSFORMS}
+    if {"A_on", "A_off", "ON13"} <= have:
+        out["w7"] = {t: w7_offset_sign(arms, t) for t in TRANSFORMS}
+    if first_ladder is not None and set(LADDER) <= set(first_ladder):
+        first = {}
+        for t in TRANSFORMS:
+            h = [float(first_ladder[k]["substrate_cell_m"]) for k in LADDER]
+            f = [notch_of(first_ladder[k], t)["f"] for k in LADDER]
+            r = richardson_limit(h, f)
+            first[t] = dict(
+                arms=list(LADDER), substrate_cells_m=h,
+                fine_cells_m=[float(first_ladder[k]["fine_cell_m"])
+                              for k in LADDER],
+                notches_hz=f, order=r["order"], limit_hz=r["limit"],
+                ratio=r["ratio"], ratio_at_zero_order=r["ratio_at_zero_order"],
+                limit_from_reference_pct=100.0 * (r["limit"] - ref[t]) / ref[t],
+                note=r["reason"])
+        out["first_ladder"] = first
+    return out
+
+
+def verdicts(arms: dict) -> dict:
+    """Every window and reported quantity whose arms are present."""
+    out: dict = {}
+    graded = all(k in arms for k in LADDER)
+    uniform = all(k in arms for k in UNIFORM_LADDER)
+    if graded:
+        out["W1"] = w1_mesh_statement(arms)
+        out["W2"] = w2_comparison(arms)
+    if graded and uniform:
+        out["W3"] = w3_cross_ladder(arms)
+    if uniform:
+        out["uniform_ladder"] = uniform_ladder_statement(arms)
+    if "A_off" in arms and "A_off_longarms" in arms:
+        out["W4"] = w4_arm_length_witness(arms)
+    if "A_on" in arms and "A_off" in arms:
+        on = notch_of(arms["A_on"])["f"] / 1e9
+        off = notch_of(arms["A_off"])["f"] / 1e9
+        out["edge_offset_worth"] = dict(
+            window=None, a_on_ghz=on, a_off_ghz=off, delta_ghz=on - off,
+            delta_pct=100.0 * (on - off) / off)
+    cost: dict = {}
+    ref = arms.get(COST_REFERENCE_ARM)
+    for k in sorted(arms):
+        row = dict(n_grid_cells=grid_cells(arms[k]), wall_s=arms[k]["wall_s"])
+        if ref is not None:
+            row["cells_ratio"] = row["n_grid_cells"] / grid_cells(ref)
+            row["wall_ratio"] = row["wall_s"] / ref["wall_s"]
+        cost[k] = row
+    out["cost"] = cost
+    out["cost_reference"] = (
+        None if ref is None else
+        dict(arm=COST_REFERENCE_ARM, n_grid_cells=grid_cells(ref),
+             wall_s=ref["wall_s"], dx_m=ref["dx_m"]))
+    return out
+
+
+# ------------------------------------------------------------------- recording
+def markdown_tables(arms: dict) -> str:
+    """The note's Results section, as tables only.
+
+    Every number is read from the record or computed from it by the functions
+    above; none is typed.  The interpreting sentences are not this function's
+    to write, so it ends with the line that says whose they are.
+    """
+    v = verdicts(arms)
+    order = [k for k in ("A_on", "A_off", "B_off", "C_off", "A_off_longarms",
+                         "U_h2", "U_h4", "U_h6") if k in arms]
+    na = "n/a"
+
+    def is_uniform(k: str) -> bool:
+        return arms[k].get("kind") == "uniform"
+
+    out: list[str] = []
+    w = out.append
+
+    w("## Results (facts)")
+    w("")
+    w("Appended after the runs; section 5 above is unchanged.  Every number "
+      "below is read from")
+    w("`validation/research/multiband_nu/results/msl_notch_graded.json` by "
+      "`markdown_tables()` in")
+    w("the instrument, and re-derived from the same file by "
+      "`tests/unit/nonuniform/test_msl_notch_graded_replay.py`.")
+    w("")
+
+    w("### R.1 The mesh each arm solved")
+    w("")
+    w("Cell counts are the cells the solver steps, interior plus the absorber "
+      "pad.  The node count")
+    w("each grid carries is one more per axis, and no ratio anywhere below "
+      "uses it.")
+    w("")
+    w("| arm | mesh | rung | placement | in-plane fine cell (um) | substrate "
+      "cell (um) | z tail cell (um) | band margin (fine cells) | grid nodes | "
+      "grid cells | dt (fs) |")
+    w("|---|---|---|---|---|---|---|---|---|---|---|")
+    for k in order:
+        a = arms[k]
+        u = is_uniform(k)
+        dt = a.get("dt_s")
+        z_tail = na if u else f"{a['z_tail_cell_m'] * 1e6:.4f}"
+        margin = na if u else str(a["margin_cells"])
+        dt_s = na if dt is None else f"{dt * 1e15:.4f}"
+        nodes = "x".join(str(n) for n in a["grid_shape"])
+        w(f"| {k} | {'uniform' if u else 'graded'} | {a['rung']} | "
+          f"{a['placement']} | {a['fine_cell_m'] * 1e6:.4f} | "
+          f"{a['substrate_cell_m'] * 1e6:.4f} | {z_tail} | {margin} | "
+          f"{nodes} | {grid_cells(a):,} | {dt_s} |")
+    w("")
+
+    w("### R.2 What the lattice realized")
+    w("")
+    w("| arm | sheet plane z (um) | PEC volume cells | line node rows | "
+      "stub node cols | metal node span (um) | stub length (um) | "
+      "declared offset (um) -- the realized node matches it to the residual "
+      "beside it; R3 refuses beyond 1 nm | worst residual (m) |")
+    w("|---|---|---|---|---|---|---|---|---|")
+    for k in order:
+        a = arms[k]
+        g = a["realized"]
+        u = is_uniform(k)
+        res = g.get("edge_offset_residual_m")
+        offset = na if u else f"{a['edge_offset_m'] * 1e6:.4f}"
+        resid = na if res is None else f"{res:.2e}"
+        w(f"| {k} | {g['sheet_plane_z_m'] * 1e6:.4f} | {g['n_volume_cells']} | "
+          f"{g['n_trace_rows']} | {g['n_stub_cols']} | "
+          f"{g['trace_width_node_span_m'] * 1e6:.4f} | "
+          f"{g['stub_length_m'] * 1e6:.4f} | {offset} | {resid} |")
+    w("")
+    no_resid = [k for k in order
+                if not is_uniform(k)
+                and arms[k]["realized"].get("edge_offset_residual_m") is None]
+    if no_resid:
+        w(f"The residual is not recorded for {', '.join(no_resid)}: those arms "
+          f"ran before R3 returned it. Measured on the same builds afterwards "
+          f"it is at most 8e-18 m, and R3 refuses beyond 1 nm either way.")
+        w("")
+
+    w("### R.3 What each arm measured")
+    w("")
+    ref = v.get("cost_reference")
+    w("| arm | notch (GHz) | depth (dB) | -10 dB BW (MHz) | fitted Z0 (ohm) | "
+      "worst settling (dB) | worst passivity excess | grid cells | wall (s) | "
+      "cells / U_h6 | wall / U_h6 |")
+    w("|---|---|---|---|---|---|---|---|---|---|---|")
+    for k in order:
+        a = arms[k]
+        n = notch_of(a)
+        c = v["cost"][k]
+        excess = a["witnesses"]["worst_sigma_excess"]
+        exc = na if excess is None else f"{excess:.5f}"
+        cr = f"{c['cells_ratio']:.4f}" if "cells_ratio" in c else na
+        wr = f"{c['wall_ratio']:.4f}" if "wall_ratio" in c else na
+        w(f"| {k} | {n['f'] / 1e9:.5f} | {n['depth_db']:.2f} | "
+          f"{n['bw_10db'] / 1e6:.1f} | {a['z0_median_ohm']:.2f} | "
+          f"{a['witnesses']['worst_settling_db']:.2f} | {exc} | "
+          f"{c['n_grid_cells']:,} | {a['wall_s']:.1f} | {cr} | {wr} |")
+    w("")
+    w(f"Bars, for reading the two witness columns: ring-down "
+      f"{case.SETTLING_DB:.0f} dB, passivity excess "
+      f"{case.PASSIVITY_EXCESS_BAR}.")
+    if ref is not None:
+        w("")
+        w(f"Both sides of the two cost ratios are grid cells and wall seconds "
+          f"measured by this recorder.  The denominator is arm "
+          f"`{ref['arm']}`, the finest uniform rung: "
+          f"{ref['n_grid_cells']:,} cells at "
+          f"{ref['dx_m'] * 1e6:.4f} um and {ref['wall_s']:.1f} s.")
+    w("")
+
+    w("### R.4 The frozen windows")
+    w("")
+    if "W1" in v:
+        r = v["W1"]
+        w(f"**W1 mesh statement ({' -> '.join(r['arms'])}).**")
+        w("")
+        w("| notch A_off (GHz) | notch B_off (GHz) | notch C_off (GHz) | "
+          "last two rungs apart (%) | bar (%) | monotone | verdict |")
+        w("|---|---|---|---|---|---|---|")
+        w(f"| {r['notches_ghz'][0]:.5f} | {r['notches_ghz'][1]:.5f} | "
+          f"{r['notches_ghz'][2]:.5f} | {r['last_two_pct']:.4f} | "
+          f"{r['bar_pct']:.0f} | {r['monotone']} | {r['verdict']} |")
+        w("")
+    if "W2" in v:
+        r = v["W2"]
+        w(f"**W2 comparison ({r['arm']} against the openEMS tutorial's "
+          f"{case.OPENEMS_JUDGED_STAGE}).**")
+        w("")
+        w("| rfx notch (GHz) | reference notch (GHz) | distance (%) | "
+          "bar (%) | max abs dB | bar (dB) | bins compared | verdict |")
+        w("|---|---|---|---|---|---|---|---|")
+        w(f"| {r['our_notch_ghz']:.5f} | {r['ref_notch_ghz']:.5f} | "
+          f"{r['notch_pct']:.4f} | {r['notch_bar_pct']:.0f} | "
+          f"{r['max_abs_delta_db']:.4f} | {r['mag_bar_db']:.0f} | "
+          f"{r['n_compared']} of {r['n_in_band']} | {r['verdict']} |")
+        w("")
+    if "W3" in v:
+        r = v["W3"]
+        w("**W3 cross-ladder consistency.**  Both limits are fitted the same "
+          "way on ladders this recorder measured.")
+        w("")
+        w("| ladder | first difference over second | same ratio at order 0 | "
+          "fitted order | limit (GHz) |")
+        w("|---|---|---|---|---|")
+        w(f"| graded (A_off, B_off, C_off) | {r['ratio']:.4f} | "
+          f"{r['ratio_at_zero_order']:.4f} | {r['fitted_order']:.4f} | "
+          f"{r['limit_ghz']:.5f} |")
+        w(f"| uniform (U_h2, U_h4, U_h6) | {r['uniform_ratio']:.4f} | "
+          f"{r['uniform_ratio_at_zero_order']:.4f} | "
+          f"{r['uniform_fitted_order']:.4f} | {r['uniform_limit_ghz']:.5f} |")
+        w("")
+        w("| distance between the two limits (%) | bar (%) | verdict |")
+        w("|---|---|---|")
+        w(f"| {r['distance_pct']:.4f} | {r['bar_pct']:.0f} | {r['verdict']} |")
+        if r["note"]:
+            w("")
+            w(f"Fit note: {r['note']}.")
+        w("")
+    if "W4" in v:
+        r = v["W4"]
+        w(f"**W4 arm-length witness ({r['arm_length_m'][0] * 1e3:.2f} mm "
+          f"against {r['arm_length_m'][1] * 1e3:.2f} mm arms).**")
+        w("")
+        w("| max abs delta S21 (dB) | bar (dB) | worst at (GHz) | "
+          "bins compared | max abs delta S11 (dB), reported | verdict |")
+        w("|---|---|---|---|---|---|")
+        w(f"| {r['max_abs_delta_s21_db']:.4f} | {r['bar_db']} | "
+          f"{r['worst_f_s21_ghz']:.4f} | "
+          f"{r['n_compared_s21']} of {r['n_in_band']} | "
+          f"{r['max_abs_delta_s11_db']:.4f} | {r['verdict']} |")
+        w("")
+    if "uniform_ladder" in v:
+        r = v["uniform_ladder"]
+        w("**Reported, no window: the uniform reference ladder's own mesh "
+          "statement.**  The case's `LADDER_AGREEMENT` rule read on the "
+          "uniform ladder, for comparison with W1.")
+        w("")
+        w("| notch U_h2 (GHz) | notch U_h4 (GHz) | notch U_h6 (GHz) | "
+          "last two rungs apart (%) | bar (%) | monotone | mesh statement |")
+        w("|---|---|---|---|---|---|---|")
+        w(f"| {r['notches_ghz'][0]:.5f} | {r['notches_ghz'][1]:.5f} | "
+          f"{r['notches_ghz'][2]:.5f} | {r['last_two_pct']:.4f} | "
+          f"{r['bar_pct']:.0f} | {r['monotone']} | {r['mesh_statement']} |")
+        w("")
+    if "edge_offset_worth" in v:
+        r = v["edge_offset_worth"]
+        w("**Reported, no window: what the 0.35-cell edge offset is worth.**")
+        w("")
+        w("| A_on notch (GHz) | A_off notch (GHz) | difference (GHz) | "
+          "difference (%) |")
+        w("|---|---|---|---|")
+        w(f"| {r['a_on_ghz']:.5f} | {r['a_off_ghz']:.5f} | "
+          f"{r['delta_ghz']:+.5f} | {r['delta_pct']:+.4f} |")
+        w("")
+
+    w("### R.5 Provenance")
+    w("")
+    w("| arm | VESSL run | commit | dirty | GPU | jax | backend | "
+      "started (UTC) |")
+    w("|---|---|---|---|---|---|---|---|")
+    missing = []
+    for k in order:
+        pr = arms[k]["provenance"]
+        kind = pr.get("gpu_device_kind")
+        if kind is None:
+            missing.append(k)
+        w(f"| {k} | {pr['run_id']} | {pr['git_sha'][:12]} | {pr['git_dirty']} | "
+          f"{na if kind is None else kind} | {pr['jax_version']} | "
+          f"{pr['jax_backend']} | {pr['started_utc']} |")
+    w("")
+    if missing:
+        w(f"The GPU model is not recorded for {', '.join(missing)}: those arms "
+          f"ran before the instrument read `device_kind`, and their blocks are "
+          f"left as they were measured rather than back-filled.")
+        w("")
+    w("Conclusions: leader fills.")
+    w("")
+    return "\n".join(out)
+
+
+#: Meshes the record costs without solving them.  A cost quoted for a mesh
+#: nobody built is a guess; these are built, put through R1 and R3, and their
+#: time step read off the grid the solver would step.  They are NOT arms: no
+#: field is stepped and no S parameter exists for them.
+BUILD_ONLY_MESHES: tuple[tuple[tuple[int, int], str, str], ...] = (
+    ((16, 12), "offset",
+     "the coarse in-plane band with a fine z band: A_off's 12 cells across "
+     "the metal at Z16's 16 substrate cells"),
+)
+
+
+def build_only_row(n_z: int, n: int, placement: str,
+                   note: str = "") -> dict:
+    """Cost one mesh without solving it: cells, time step, steps to the record.
+
+    Built through the same ``build_graded`` every arm uses and put through the
+    same R1 and R3, so a mesh that could not be solved cannot be costed here
+    either.  The time step is the grid's own Courant number, read off the
+    lattice rather than recomputed, and the step count is the one
+    :func:`run_arm` would derive from it for the case's ``NUM_PERIODS``.
+    """
+    sim, prof, b = build_graded((n_z, n), placement)
+    report = assert_profiles_graded(prof, b)
+    g = assert_realized_graded(sim, b)
+    dt = float(g["dt_s"])
+    return dict(
+        n_substrate_cells=int(n_z), n_across_metal=int(n),
+        placement=placement, note=note,
+        fine_cell_m=b["fine_cell_m"], substrate_cell_m=b["substrate_cell_m"],
+        z_tail_cell_m=b["z_tail_cell_m"], margin_cells=b["margin_cells"],
+        grid_shape=[int(v) for v in g["grid_shape"]],
+        n_grid_cells=int(g["n_grid_cells"]), dt_s=dt,
+        n_time_steps_derived=int(np.ceil(
+            case.NUM_PERIODS / case.FREQ_MAX_HZ / dt)),
+        num_periods=case.NUM_PERIODS,
+        worst_ratio={a: report[a]["worst_ratio"] for a in ("x", "y", "z")},
+        solved=False)
+
+
+def build_only_rows() -> list[dict]:
+    """Every mesh :data:`BUILD_ONLY_MESHES` names, costed."""
+    return [build_only_row(n_z, n, placement, note)
+            for (n_z, n), placement, note in BUILD_ONLY_MESHES]
+
+
+def rebuild_report(record_path: Path | None = None) -> dict:
+    """Rebuild every graded arm of the FIRST record and measure the difference.
+
+    The five arms were solved inside the GPU job's container and this runs in
+    whatever interpreter reads the record, so the two can disagree in the last
+    bit of ``np.sum`` and of the power ufunc -- which is what a geometric
+    ramp's cell ratio is bisected on.  Everything the mesh DECLARES is
+    compared for exact equality; the ramp cells are counted and their distance
+    measured in units of the last bit (``math.ulp``).
+
+    Counting rather than asserting: the numbers this returns are what the
+    note's F.0 prints, so they come from the record on the day it is read
+    instead of from a sentence somebody typed once.
+    """
+    path = DEFAULT_OUT if record_path is None else Path(record_path)
+    with path.open() as fh:
+        recorded = json.load(fh)["arms"]
+    out: dict = {"arms": {}, "record": path.name}
+    for key in sorted(ARMS):
+        if key not in recorded:
+            continue
+        arm = ARMS[key]
+        prof = profiles(arm.rung, arm.placement, arm.arm_length_m)[:3]
+        b = profiles(arm.rung, arm.placement, arm.arm_length_m)[3]
+        per_axis = {}
+        for axis, p in zip("xyz", prof):
+            stored = np.asarray(recorded[key]["profiles"][axis], dtype=float)
+            fine = b["substrate_cell_m"] if axis == "z" else b["fine_cell_m"]
+            ramp = ~((p == fine) | (p == C_COARSE_M))
+            moved, worst = 0, 0.0
+            for got, want in zip(p[ramp].tolist(), stored[ramp].tolist()):
+                if got != want:
+                    moved += 1
+                    worst = max(worst, abs(got - want)
+                                / math.ulp(max(abs(got), abs(want))))
+            per_axis[axis] = dict(n_ramp_cells=int(ramp.sum()),
+                                  n_cells_moved=moved, worst_ulp=float(worst),
+                                  n_cells=int(p.size),
+                                  sum_equal=bool(float(np.sum(p))
+                                                 == float(np.sum(stored))))
+        out["arms"][key] = dict(
+            per_axis=per_axis,
+            n_cells_moved=sum(v["n_cells_moved"] for v in per_axis.values()),
+            worst_ulp=max(v["worst_ulp"] for v in per_axis.values()),
+            worst_per_profile=max(v["n_cells_moved"] for v in per_axis.values()),
+            ramp_cells=[v["n_ramp_cells"] for v in per_axis.values()],
+            all_sums_equal=all(v["sum_equal"] for v in per_axis.values()))
+    per_arm = [v["n_cells_moved"] for v in out["arms"].values()]
+    per_profile = [v["worst_per_profile"] for v in out["arms"].values()]
+    ramps = [n for v in out["arms"].values() for n in v["ramp_cells"]]
+    out.update(
+        n_arms=len(out["arms"]),
+        worst_cells_moved_per_profile=max(per_profile) if per_profile else 0,
+        worst_cells_moved_per_arm=max(per_arm) if per_arm else 0,
+        total_cells_moved=sum(per_arm),
+        worst_ulp=max((v["worst_ulp"] for v in out["arms"].values()),
+                      default=0.0),
+        ramp_cells_min=min(ramps) if ramps else 0,
+        ramp_cells_max=max(ramps) if ramps else 0,
+        all_sums_equal=all(v["all_sums_equal"] for v in out["arms"].values()))
+    return out
+
+
+def f6_markdown(c: dict) -> list[str]:
+    """F.6's lines, from :func:`estimator_comparison`'s dict and nothing else.
+
+    Its own function so the replay can compare the note's F.6 with it byte for
+    byte: unlike F.0 (which rebuilds meshes on the reading machine) and F.4
+    (which asks git), nothing here depends on where it is read.
+    """
+    out: list[str] = []
+    w = out.append
+    ghz, mhz = 1e9, 1e6
+    ref = c["reference_hz"]
+    bar_pct = case.FREQ_BAR * 100.0
+    w("### F.6 The same arms read with an estimator that is exact at a "
+      "transmission zero")
+    w("")
+    w("Reported, no window.  W5 to W8 above are frozen on the case's "
+      "estimator and are judged on it;")
+    w("nothing below changes a verdict or is one.  Every notch here is read "
+      "again from the same")
+    w("recorded curves by the same shared `refined_extremum` "
+      "(`validation/crossval/comparators/spectral_features.py`):")
+    w("the deepest bin in the reference band and the vertex of the parabola "
+      "through it and its two")
+    w("neighbours.  Only the domain of that parabola differs between the two "
+      "columns.  `log` fits it")
+    w("in the log of the magnitude of S21; that is the case's estimator, the "
+      "one F.3 and F.4 print.")
+    w("`power` fits it in the squared magnitude of S21.  Near a simple zero "
+      "moved off the real")
+    w("frequency axis by loss, the squared magnitude is ((f - f0) / B)^2 + "
+      "floor, a parabola in f,")
+    w("so that vertex is exact there wherever the zero falls inside its bin.  "
+      "Every distance below")
+    w("is from the reference read with the same estimator.")
+    w("")
+
+    w("**Every arm's notch, both ways.**  The last two columns are where each "
+      "vertex falls from the")
+    w("deepest bin, in bins.")
+    w("")
+    w("| arm | log (GHz) | power (GHz) | power minus log (MHz) | log vertex "
+      "from the deepest bin (bins) | power vertex from the deepest bin "
+      "(bins) |")
+    w("|---|---|---|---|---|---|")
+    for k in c["arms"]:
+        n = c["notches"][k]
+        w(f"| {k} | {n['log']['f_hz'] / ghz:.6f} | "
+          f"{n['power']['f_hz'] / ghz:.6f} | "
+          f"{(n['power']['f_hz'] - n['log']['f_hz']) / mhz:+.3f} | "
+          f"{n['log']['shift_bins']:+.4f} | {n['power']['shift_bins']:+.4f} |")
+    sh = c["reference_shift_bins"]
+    w(f"| openEMS `{case.OPENEMS_JUDGED_STAGE}`, the reference | "
+      f"{ref['log'] / ghz:.6f} | {ref['power'] / ghz:.6f} | "
+      f"{(ref['power'] - ref['log']) / mhz:+.3f} | {sh['log']:+.4f} | "
+      f"{sh['power']:+.4f} |")
+    w("")
+
+    if "ladder" in c:
+        lad = c["ladder"]
+        lg, pw = lad["log"], lad["power"]
+        w("**The FZ ladder, both ways.**  Addendum A.2's one-build ladder at "
+          f"F = {lg['fine_cell_m'] * 1e6:.4f} um; only the")
+        w("substrate cell moves.  Each step is from the rung above.")
+        w("")
+        w("| arm | FZ (um) | log (GHz) | step (MHz) | power (GHz) | step "
+          "(MHz) |")
+        w("|---|---|---|---|---|---|")
+        for i, k in enumerate(lg["arms"]):
+            st_l = "n/a" if i == 0 else f"{lg['steps_hz'][i - 1] / mhz:+.3f}"
+            st_p = "n/a" if i == 0 else f"{pw['steps_hz'][i - 1] / mhz:+.3f}"
+            w(f"| {k} | {lg['substrate_cells_m'][i] * 1e6:.4f} | "
+              f"{lg['notches_hz'][i] / ghz:.6f} | {st_l} | "
+              f"{pw['notches_hz'][i] / ghz:.6f} | {st_p} |")
+        w("")
+        if "declared_ladder_reads_the_same" in c:
+            w("The declared ladder, with C_off in C_off_re's place, reads the "
+              "same to the last bit under")
+            w(f"both estimators: {c['declared_ladder_reads_the_same']}.  "
+              "Monotone: log "
+              f"{lg['monotone']}, power {pw['monotone']}.  The finest rung "
+              "from the reference: log")
+            w(f"{lg['finest_from_reference_pct']:+.4f} %, power "
+              f"{pw['finest_from_reference_pct']:+.4f} %.")
+            w("")
+        w("**Every reading of the order, both ways,** each with its limit and "
+          "the substrate rule it")
+        w("implies.  The first four readings take the limit the way W5 does, "
+          "from the finest two rungs")
+        w("the reading covers, at its order; F.4 prints no limit for the "
+          "coarse-endpoint reading, and")
+        w("this is the one it would have.  The substrate rule is W8's "
+          "derivation applied to each reading:")
+        w("FZ = (bar x limit / abs(A))^(1/p) and n_z = ceil(h / FZ), the bar "
+          f"{bar_pct:.0f} % of that reading's OWN limit.")
+        w("")
+        w("| how the order is read | estimator | order | limit (GHz) | limit "
+          "from the reference (%) | abs(A) | FZ for the bar (um) | n_z for "
+          "the bar |")
+        w("|---|---|---|---|---|---|---|---|")
+        for i in range(len(lg["readings"])):
+            for t in c["transforms"]:
+                r = lad[t]["readings"][i]
+                n_z = r["n_substrate_cells_for_the_bar"]
+                w(f"| {r['label']} | {t} | {r['order']:.4f} | "
+                  f"{r['limit_hz'] / ghz:.5f} | "
+                  f"{r['limit_from_reference_pct']:+.4f} | "
+                  f"{abs(r['amplitude']):.4e} | "
+                  f"{r['substrate_cell_for_the_bar_m'] * 1e6:.4f} | "
+                  f"{'n/a' if n_z is None else n_z} |")
+        w("")
+        tp = {t: lad[t]["readings"][-1] for t in c["transforms"]}
+        w("The three-parameter fit leaves "
+          f"{tp['log']['rms_hz'] / mhz:.3f} MHz rms (log) and "
+          f"{tp['power']['rms_hz'] / mhz:.3f} MHz rms (power) on four "
+          "points with")
+        w("three unknowns.")
+        w("")
+
+    if "w6" in c:
+        r6 = c["w6"]
+        fine = r6["log"]["fine_rung"]
+        w(f"**W6's three numbers, both ways** (A_off -> Z6 -> {fine}).")
+        w("")
+        w(f"| estimator | T, A_off -> {fine} (MHz) | dZ, Z6 -> {fine} (MHz) | "
+          "dF, A_off -> Z6 (MHz) |")
+        w("|---|---|---|---|")
+        for t in c["transforms"]:
+            w(f"| {t} | {r6[t]['total_mhz']:+.3f} | "
+              f"{r6[t]['delta_z_mhz']:+.3f} | {r6[t]['delta_f_mhz']:+.3f} |")
+        w("")
+
+    if "inplane" in c:
+        ip = c["inplane"]
+        keys = list(F6_INPLANE)
+        w("**The three in-plane points, both ways,** at FZ = "
+          f"{ip['log'][keys[0]]['substrate_cell_m'] * 1e6:.4f} um.  Each step "
+          "is from the row above.")
+        w("")
+        w("| arm | F (um) | log (GHz) | step (MHz) | power (GHz) | step "
+          "(MHz) |")
+        w("|---|---|---|---|---|---|")
+        for i, k in enumerate(keys):
+            cells = []
+            for t in c["transforms"]:
+                f_k = ip[t][k]["f_hz"]
+                st = ("n/a" if i == 0
+                      else f"{(f_k - ip[t][keys[i - 1]]['f_hz']) / mhz:+.3f}")
+                cells.append(f"{f_k / ghz:.6f} | {st}")
+            w(f"| {k} | {ip['log'][k]['fine_cell_m'] * 1e6:.4f} | "
+              + " | ".join(cells) + " |")
+        w("")
+
+    if "w7" in c:
+        r7 = c["w7"]
+        w("**W7's row, both ways.**")
+        w("")
+        w("| estimator | A_off minus ON13 (MHz) | F slope on the two on-node "
+          "arms (MHz/um) | what that slope makes of the F gap (MHz) | A_off "
+          "minus ON13 without that part (MHz) |")
+        w("|---|---|---|---|---|")
+        for t in c["transforms"]:
+            w(f"| {t} | {r7[t]['delta_mhz']:+.3f} | "
+              f"{r7[t]['f_slope_mhz_per_um']:+.4f} | "
+              f"{r7[t]['f_part_of_delta_mhz']:+.3f} | "
+              f"{r7[t]['delta_less_f_part_mhz']:+.3f} |")
+        w("")
+
+    if "stencils" in c:
+        w("**Instrument evidence (a), a diagnostic: the vertex from wider "
+          "stencils.**  Least-squares")
+        w("parabolas over "
+          + ", ".join(str(n) for n in F6_STENCILS[:-1])
+          + f" and {F6_STENCILS[-1]} samples centred on the deepest bin, on "
+          "the bin-index abscissa the shared")
+        w(f"estimator assumes; at {F6_STENCILS[0]} samples this is the shared "
+          "estimator's own vertex.  No window and no")
+        w("reading above uses the wider stencils.")
+        w("")
+        w("| arm | estimator | "
+          + " | ".join(f"{n} samples (GHz)" for n in F6_STENCILS)
+          + " | largest minus smallest (kHz) |")
+        w("|---|---|" + "---|" * len(F6_STENCILS) + "---|")
+        for k, per in c["stencils"].items():
+            for t in c["transforms"]:
+                vals = [per[t][n] for n in F6_STENCILS]
+                w(f"| {k} | {t} | "
+                  + " | ".join(f"{q / ghz:.6f}" for q in vals)
+                  + f" | {(max(vals) - min(vals)) / 1e3:.1f} |")
+        w("")
+
+    if "synthetic" in c:
+        syn = c["synthetic"]
+        keys = list(syn)
+        w("**Instrument evidence (b), a diagnostic: a synthetic lossy zero at "
+          "each ladder arm's own")
+        w("bins.**  The squared magnitude is ((f - f0) / B)^2 + floor, B and "
+          "the floor read off the arm by")
+        w(f"the {F6_STENCILS[0]}-sample power parabola at its notch, sampled "
+          "on the arm's own frequency grid.  f0 is put at")
+        w("tenths of a bin above the arm's deepest bin, and each error is the "
+          "estimate minus f0.  The")
+        w("power column is a parabola in f by construction.  The recorded grid "
+          "is not exactly even and")
+        w("the shared estimator takes it as even, so the power error is also "
+          "given on an evenly spaced")
+        w("grid of the same bin width, as the control.")
+        w("")
+        w("| arm | bin width (MHz) | spacing spread over the sweep (Hz) | B "
+          "(GHz) | floor (dB) | the synthetic's deepest bin across the sweep "
+          "(dB) | the arm's own deepest bin (dB) |")
+        w("|---|---|---|---|---|---|---|")
+        for k in keys:
+            z = syn[k]
+            d = [r["deepest_bin_db"] for r in z["rows"]]
+            own = c["notches"][k]["log"]
+            w(f"| {k} | {z['bin_width_hz'] / mhz:.6f} | "
+              f"{z['grid_spacing_spread_hz']:.0f} | {z['b_hz'] / ghz:.4f} "
+              f"| {z['floor_db']:.2f} | {max(d):.2f} to {min(d):.2f} | "
+              f"{own['depth_db']:.2f} |")
+        w("")
+        w("| f0 above the deepest bin (bins) | "
+          + " | ".join(f"{k} log error (MHz)" for k in keys)
+          + " | largest abs power error of the four, recorded grid (Hz) | "
+          "the same, evenly spaced grid (Hz) |")
+        w("|---|" + "---|" * len(keys) + "---|---|")
+        for i, t in enumerate(syn[keys[0]]["rows"]):
+            errs = [syn[k]["rows"][i]["error_log_hz"] for k in keys]
+            worst = max(abs(syn[k]["rows"][i]["error_power_hz"])
+                        for k in keys)
+            worst_even = max(abs(syn[k]["rows"][i]["error_power_even_grid_hz"])
+                             for k in keys)
+            w(f"| {t['position_bins']:.1f} | "
+              + " | ".join(f"{e / mhz:+.3f}" for e in errs)
+              + f" | {worst:.1e} | {worst_even:.1e} |")
+        w("")
+        rows = [r for k in keys for r in syn[k]["rows"]]
+        all_log = [r["error_log_hz"] for r in rows]
+        w(f"Across the sweep and the four arms the log error runs from "
+          f"{min(all_log) / mhz:+.3f} to {max(all_log) / mhz:+.3f} MHz; the "
+          f"largest power error is "
+          f"{max(abs(r['error_power_hz']) for r in rows):.1e} Hz on the "
+          "recorded grid and")
+        w(f"{max(abs(r['error_power_even_grid_hz']) for r in rows):.1e} Hz "
+          "on the evenly spaced one.")
+        w("")
+
+    if "first_ladder" in c:
+        fl = c["first_ladder"]
+        w("**The first record's graded ladder, both ways.**  "
+          + ", ".join(fl["log"]["arms"][:-1]) + f" and {fl['log']['arms'][-1]}"
+          + " cut both cells together.  Read")
+        w("the way W3 reads it: the order from all three rungs, the limit from "
+          "the finest two at that order.")
+        w("")
+        w("| arm | F (um) | FZ (um) | log (GHz) | power (GHz) |")
+        w("|---|---|---|---|---|")
+        for i, k in enumerate(fl["log"]["arms"]):
+            w(f"| {k} | {fl['log']['fine_cells_m'][i] * 1e6:.4f} | "
+              f"{fl['log']['substrate_cells_m'][i] * 1e6:.4f} | "
+              f"{fl['log']['notches_hz'][i] / ghz:.6f} | "
+              f"{fl['power']['notches_hz'][i] / ghz:.6f} |")
+        w("")
+        w("| estimator | ratio of the two steps | the ratio an order near zero "
+          "gives | order | limit (GHz) | limit from the reference (%) |")
+        w("|---|---|---|---|---|---|")
+        for t in c["transforms"]:
+            r = fl[t]
+            w(f"| {t} | {r['ratio']:.4f} | {r['ratio_at_zero_order']:.4f} | "
+              f"{r['order']:.4f} | {r['limit_hz'] / ghz:.5f} | "
+              f"{r['limit_from_reference_pct']:+.4f} |")
+        w("")
+        for t in c["transforms"]:
+            if fl[t]["note"]:
+                w(f"Fit note ({t}): {fl[t]['note']}.")
+                w("")
+    return out
+
+
+def fz_markdown_tables(arms: dict, build_only: list | None = None,
+                       first_ladder: dict | None = None) -> str:
+    """The FZ note's Results section, as tables only.
+
+    Same contract as :func:`markdown_tables`: every number is read from a
+    record or computed from one by the functions above, none is typed, and the
+    interpreting sentences are not this function's to write.
+
+    ``first_ladder`` is the first record's A_off, B_off and C_off, which F.6
+    reads both ways; left out, it is read from :data:`DEFAULT_OUT`.
+    """
+    v = fz_verdicts(arms)
+    new_arms = [k for k in ALL_FZ_ARMS if k in arms]
+    reused = [k for k in FZ_REUSED_ARMS if k in arms]
+    order = new_arms + reused
+    ref_ghz = reference_notch_hz() / 1e9
+
+    out: list[str] = []
+    w = out.append
+    w("## Results (facts)")
+    w("")
+    w("Appended after the runs; sections 0-7 above are unchanged.  Every "
+      "number below is read")
+    w("from `validation/research/multiband_nu/results/msl_notch_graded_fz.json` "
+      "and, for the three")
+    w("reused arms, from `msl_notch_graded.json`, by `fz_markdown_tables()` in "
+      "the instrument.")
+    w("`tests/unit/nonuniform/test_msl_notch_fz_replay.py` re-derives the same "
+      "numbers from the")
+    w("same two files.  The reference notch, "
+      f"{ref_ghz:.5f} GHz, is the openEMS tutorial's "
+      f"`{case.OPENEMS_JUDGED_STAGE}`")
+    w("read by the case's own estimator, not a number typed from section 1.")
+    w("")
+
+    w("### F.0 What the instrument had to change, and why")
+    w("")
+    w("One change, and it moves no window.  The rung table now holds a "
+      "(substrate cells, cells")
+    w("across the metal) pair per rung with the two independent, which is what "
+      "an FZ ladder at a")
+    w("fixed in-plane cell needs.  The arms already recorded are rebuilt from "
+      "the first record and")
+    w("compared against it "
+      "(`tests/unit/nonuniform/test_msl_notch_graded_build.py`): every cell of "
+      "every fine")
+    w("band, every cell of every coarse run, every profile sum, the fine cell, "
+      "the substrate cell,")
+    w("the solved z tail cell, every declared coordinate and every segment "
+      "length are")
+    w("bit-identical.  What is not is the last bit of the cells inside a "
+      "solved geometric ramp:")
+    w("those arms were solved in the GPU job's container (numpy on python "
+      "3.10) and the gate runs")
+    w("in the project venv (numpy 2.4 on python 3.11), and the two disagree in "
+      "the last bit or two")
+    w("of `np.sum` and of the power ufunc, which is what the ramp's cell ratio "
+      "is bisected on.")
+    w("")
+    rb = rebuild_report()
+    w(f"Measured by rebuilding all {rb['n_arms']} of them against "
+      f"`{rb['record']}`, on the machine that printed this")
+    w("table rather than from a sentence typed once:")
+    w("")
+    w("| arm | ramp cells in its three profiles | cells whose last bit moved | "
+      "worst distance (ulp) | every profile sums to the same domain |")
+    w("|---|---|---|---|---|")
+    for k in sorted(rb["arms"]):
+        # NOT `v`: that name holds the verdicts this whole function reads, and
+        # shadowing it here silently emptied every window block below.
+        row = rb["arms"][k]
+        w(f"| {k} | {' / '.join(str(n) for n in row['ramp_cells'])} | "
+          f"{row['n_cells_moved']} | {row['worst_ulp']:.0f} | "
+          f"{row['all_sums_equal']} |")
+    w("")
+    w(f"So at most {rb['worst_cells_moved_per_profile']} cells of one profile "
+      f"and {rb['worst_cells_moved_per_arm']} of one arm, "
+      f"{rb['total_cells_moved']} across all {rb['n_arms']},")
+    w(f"out of profiles carrying {rb['ramp_cells_min']} to "
+      f"{rb['ramp_cells_max']} ramp cells each; worst distance "
+      f"{rb['worst_ulp']:.0f} ulp, which is")
+    w("about 1e-15 of a cell's own size, on cells in the coarse transition "
+      "away from the metal.")
+    w("No cell touching the line, the stub or the substrate is among them.  "
+      "The gate refuses beyond")
+    w(f"{RECORD_ULP_FLOOR:.0f} ulp; a rung changed by one cell moves these "
+      "numbers by about 1e13 ulp.")
+    w("")
+    odd = [k for k in order if arms[k].get("centre_is_a_node") is False]
+    if odd:
+        w("The second change is forced by one arm.  A node sits on the metal's "
+          "centre line only when")
+        w("a whole number of fine cells reaches it, so only when the cell "
+          "count across the 600 um")
+        w("metal is even.  The arms below lay an odd number, their centre "
+          "falls half a fine cell")
+        w("between two node rows, and the feed is placed on the metal's own "
+          "centre rather than on a")
+        w("node: the MSL port lays its width span at the coordinate it is "
+          "given plus and minus half")
+        w("the trace width, so a node half a cell off would drive the strip "
+          "off-centre.  R1 asks")
+        w("instead that the two rows straddling the centre be one fine cell "
+          "apart with the centre")
+        w("exactly halfway.")
+        w("")
+        w("| arm | cells across the metal | fine cell (um) | node rows either "
+          "side of the centre (um) | centre declared at (um) | midpoint minus "
+          "centre (m) |")
+        w("|---|---|---|---|---|---|")
+        for k in odd:
+            a = arms[k]
+            st = a["centre_straddle"]["trace_y_centre"]
+            lo, hi = st["nodes_m"]
+            c = st["declared_centre_m"]
+            w(f"| {k} | {a['n_across_metal']} | "
+              f"{a['fine_cell_m'] * 1e6:.4f} | {lo * 1e6:.4f} / "
+              f"{hi * 1e6:.4f} | {c * 1e6:.4f} | "
+              f"{abs(0.5 * (lo + hi) - c):.2e} |")
+        w("")
+
+    w("### F.1 The mesh each arm solved")
+    w("")
+    w("The five new arms first, then the three arms reused from the first "
+      "record.  Cell counts are")
+    w("the cells the solver steps, interior plus the absorber pad.")
+    w("")
+    w("| arm | new or reused | in-plane fine cell F (um) | cells across the "
+      "metal | substrate cell FZ (um) | substrate cells | placement | z tail "
+      "cell (um) | band margin (fine cells) | grid nodes | grid cells | "
+      "dt (fs) |")
+    w("|---|---|---|---|---|---|---|---|---|---|---|---|")
+    for k in order:
+        a = arms[k]
+        nodes = "x".join(str(n) for n in a["grid_shape"])
+        w(f"| {k} | {'new' if k in FZ_ARMS else 'reused'} | "
+          f"{a['fine_cell_m'] * 1e6:.4f} | {a['n_across_metal']} | "
+          f"{a['substrate_cell_m'] * 1e6:.4f} | {a['n_substrate_cells']} | "
+          f"{a['placement']} | {a['z_tail_cell_m'] * 1e6:.4f} | "
+          f"{a['margin_cells']} | {nodes} | {grid_cells(a):,} | "
+          f"{a['dt_s'] * 1e15:.4f} |")
+    w("")
+
+    w("### F.2 What the lattice realized")
+    w("")
+    w("| arm | sheet plane z (um) | PEC volume cells | line node rows | stub "
+      "node cols | metal node span (um) | stub length (um) | declared offset "
+      "(um) | worst residual (m) |")
+    w("|---|---|---|---|---|---|---|---|---|")
+    for k in order:
+        g = arms[k]["realized"]
+        res = g.get("edge_offset_residual_m")
+        w(f"| {k} | {g['sheet_plane_z_m'] * 1e6:.4f} | "
+          f"{g['n_volume_cells']} | {g['n_trace_rows']} | "
+          f"{g['n_stub_cols']} | "
+          f"{g['trace_width_node_span_m'] * 1e6:.4f} | "
+          f"{g['stub_length_m'] * 1e6:.4f} | "
+          f"{arms[k]['edge_offset_m'] * 1e6:.4f} | "
+          f"{'n/a' if res is None else f'{res:.2e}'} |")
+    w("")
+
+    w("### F.3 What each arm measured")
+    w("")
+    w("| arm | notch (GHz) | above the reference (%) | depth (dB) | "
+      "-10 dB BW (MHz) | fitted Z0 (ohm) | worst settling (dB) | worst "
+      "passivity excess | grid cells | wall (s) |")
+    w("|---|---|---|---|---|---|---|---|---|---|")
+    for k in order:
+        a = arms[k]
+        n = notch_of(a)
+        excess = a["witnesses"]["worst_sigma_excess"]
+        w(f"| {k} | {n['f'] / 1e9:.5f} | "
+          f"{100.0 * (n['f'] / 1e9 - ref_ghz) / ref_ghz:+.4f} | "
+          f"{n['depth_db']:.2f} | {n['bw_10db'] / 1e6:.1f} | "
+          f"{a['z0_median_ohm']:.2f} | "
+          f"{a['witnesses']['worst_settling_db']:.2f} | "
+          f"{'n/a' if excess is None else f'{excess:.5f}'} | "
+          f"{grid_cells(a):,} | {a['wall_s']:.1f} |")
+    w("")
+    w(f"Bars, for the two witness columns: ring-down {case.SETTLING_DB:.0f} dB, "
+      f"passivity excess {case.PASSIVITY_EXCESS_BAR}.")
+    w("")
+
+    w("### F.4 The frozen windows")
+    w("")
+    for key, title in (("W5", "as section 4 declares it"),
+                       ("W5_one_commit", "addendum A.2, one solver build")):
+        if key not in v:
+            continue
+        r = v[key]
+        w(f"**W5 -- the FZ ladder is a ladder ({title}).**  Four arms at one "
+          f"in-plane cell,")
+        w(f"F = {r['fine_cell_m'] * 1e6:.4f} um; only the substrate cell "
+          f"moves.  The four rungs were solved at "
+          f"{r['n_commits']} commit{'' if r['n_commits'] == 1 else 's'}")
+        w("(" + ", ".join(sha[:12] for sha in r["commits"]) + "), and the "
+          "simulator itself -- the `rfx/` tree at each of them -- "
+          + {True: "is the SAME at all of them.",
+             False: "is NOT the same at all of them.",
+             None: "could not be compared here (git could not answer)."}[
+                 r["solver_tree_equal"]])
+        w("A commit that touches only a note, a test or this instrument "
+          "leaves the simulator alone, so")
+        w("what a ladder needs is one solver and not one label.")
+        w("")
+        w("| arm | substrate cells | FZ (um) | z tail cell (um) | dt (fs) | "
+          "notch (GHz) | step from the rung above (MHz) |")
+        w("|---|---|---|---|---|---|---|")
+        for i, k in enumerate(r["arms"]):
+            # differences[j] is f(rung j) - f(rung j+1), so the step INTO a
+            # rung from the coarser one above it is the negative of it.
+            st = ("n/a" if i == 0
+                  else f"{-r['differences_mhz'][i - 1]:+.3f}")
+            w(f"| {k} | {r['n_substrate_cells'][i]} | "
+              f"{r['substrate_cells_m'][i] * 1e6:.4f} | "
+              f"{arms[k]['z_tail_cell_m'] * 1e6:.4f} | "
+              f"{arms[k]['dt_s'] * 1e15:.4f} | "
+              f"{r['notches_ghz'][i]:.5f} | {st} |")
+        w("")
+        w("Two things move down the ladder besides the substrate cell, and "
+          "both are consequences of")
+        w("it rather than free choices.  The air column above the band is a "
+          "fixed 1.246 mm and its")
+        w("nine-cell uniform tail is solved to fill it, so the tail cell "
+          "shrinks as FZ does; and the")
+        w("time step is the Courant limit of the smallest cell, so it falls "
+          "with FZ too.  Neither")
+        w("changes the board: the metal, the substrate and the in-plane cell "
+          "are the same on all")
+        w("four rungs, which F.1 and F.2 show.")
+        w("")
+        w("| monotone | fitted order p_z | order window | limit (GHz) | "
+          "reference (GHz) | finest rung from the reference (%) | limit from "
+          "the reference (%) | verdict |")
+        w("|---|---|---|---|---|---|---|---|")
+        w(f"| {r['monotone']} | {r['order']:.4f} | "
+          f"{r['order_window'][0]} to {r['order_window'][1]} | "
+          f"{r['limit_ghz']:.5f} | {r['reference_ghz']:.5f} | "
+          f"{r['finest_distance_pct']:.4f} | "
+          f"{r['limit_distance_pct']:.4f} | {r['verdict']} |")
+        w("")
+        w("Four rungs carry more than one way to read an order, and they do "
+          "not have to agree.  The")
+        w("window is judged on the first row, which is what section 4 asks "
+          "for; the rest are reported")
+        w("so the spread is in the record.")
+        w("")
+        w("| how the order is read | order | limit (GHz) |")
+        w("|---|---|---|")
+        # No pipe characters inside a cell: "log|step|" would end the cell.
+        w(f"| declared: least squares of the log step against the midpoint of "
+          f"each pair's log FZ | {r['order']:.4f} | {r['limit_ghz']:.5f} |")
+        w(f"| the same, each step at the coarser rung of its pair | "
+          f"{r['order_at_coarse_endpoint']:.4f} | n/a |")
+        for t in r["adjacent_triples"]:
+            cells = " / ".join(f"{q * 1e6:.3f}" for q in t["rungs"])
+            w(f"| the ratio of two successive steps, rungs {cells} um | "
+              f"{t['order']:.4f} | {t['limit_ghz']:.5f} |")
+        w(f"| f_inf + A FZ^p fitted to all four notches at once | "
+          f"{r['order_three_parameter']:.4f} | "
+          f"{r['limit_three_parameter_ghz']:.5f} |")
+        w("")
+        w(f"The three-parameter fit leaves "
+          f"{r['rms_three_parameter_mhz']:.3f} MHz rms on four points with "
+          f"three unknowns.  The")
+        w("declared fit's three residuals in the log step are "
+          + ", ".join(f"{q:+.2e}" for q in r["fit_residuals"]) + ".")
+        if r["note"]:
+            w("")
+            w(f"Fit note: {r['note']}.")
+        w("")
+    for key, title in (("W6", "section 4's rung"),
+                       ("W6_one_commit", "addendum A.2's rung")):
+        if key not in v:
+            continue
+        r = v[key]
+        fine = r["fine_rung"]
+        w(f"**W6 -- attribution at the A_off to {fine} step ({title}).**  "
+          f"A_off and Z6 share the")
+        w("substrate cell, so what separates them is the in-plane cell; Z6 "
+          f"and {fine} share the in-plane")
+        w("cell, so what separates them is the substrate cell.")
+        w("")
+        say = {True: "one simulator", False: "two different simulators",
+               None: "simulators that could not be compared here"}
+        w("| leg | commits | the `rfx/` tree at them |")
+        w("|---|---|---|")
+        w(f"| substrate, Z6 -> {fine} | "
+          + ", ".join(q[:12] for q in r["substrate_leg_commits"])
+          + f" | {say[r['substrate_leg_solver_equal']]} |")
+        w("| in-plane, A_off -> Z6 | "
+          + ", ".join(q[:12] for q in r["inplane_leg_commits"])
+          + f" | {say[r['inplane_leg_solver_equal']]} |")
+        w("")
+        w("A_off comes from the first record in both rows, so the in-plane "
+          "leg is read across two")
+        w("simulators whichever rung the substrate leg uses.")
+        w("")
+        w("| step | what moves | from (um) | to (um) | notch shift (MHz) | "
+          "share of the total |")
+        w("|---|---|---|---|---|---|")
+        w(f"| A_off -> Z6 | in-plane cell F | "
+          f"{r['inplane_step_m'][0] * 1e6:.4f} | "
+          f"{r['inplane_step_m'][1] * 1e6:.4f} | {r['delta_f_mhz']:+.3f} | "
+          f"{r['delta_f_fraction']:+.4f} |")
+        w(f"| Z6 -> {fine} | substrate cell FZ | "
+          f"{r['substrate_step_m'][0] * 1e6:.4f} | "
+          f"{r['substrate_step_m'][1] * 1e6:.4f} | {r['delta_z_mhz']:+.3f} | "
+          f"{r['delta_z_fraction']:+.4f} |")
+        w(f"| A_off -> {fine} | both | | | {r['total_mhz']:+.3f} | 1.0000 |")
+        w("")
+        w("| abs(dZ) (MHz) | abs(dF) (MHz) | bar, two thirds of abs(T) (MHz) "
+          "| classification |")
+        w("|---|---|---|---|")
+        w(f"| {abs(r['delta_z_mhz']):.3f} | {abs(r['delta_f_mhz']):.3f} | "
+          f"{r['bar_mhz']:.3f} | {r['classification']} |")
+        w("")
+        w(f"The cross term T - dZ - dF is {r['cross_term_hz']:.3e} Hz and is "
+          "zero by construction, not by")
+        w(f"measurement: A_off to Z6 to {fine} is one path from A_off's "
+          "corner of the (F, FZ) plane to")
+        w(f"{fine}'s, so its two legs telescope.  A cross term that could be "
+          "non-zero needs the fourth")
+        w("corner, F = 47.244 um at FZ = 21.167 um, which is not an arm of "
+          "this note.  The printed")
+        w("value is the float64 residue of the cancellation.")
+        w("")
+    if "f_ladder_at_fz_42um" in v:
+        r = v["f_ladder_at_fz_42um"]
+        w("**Reported, no window: three in-plane cells at one substrate "
+          f"cell** (FZ = {r['substrate_cell_m'] * 1e6:.4f} um).  W6's dF is "
+          "the first and last of these.")
+        w("")
+        w("| arm | F (um) | notch (GHz) |")
+        w("|---|---|---|")
+        for k, f_m, n_ghz in zip(r["arms"], r["fine_cells_m"],
+                                 r["notches_ghz"]):
+            w(f"| {k} | {f_m * 1e6:.4f} | {n_ghz:.5f} |")
+        w("")
+        w(f"Monotone in F: {r['monotone']}.")
+        w("")
+    if "W7" in v:
+        r = v["W7"]
+        w("**W7 -- the offset's own sign.**  ON13 puts its nodes ON the metal "
+          "edges at nearly A_off's")
+        w("in-plane cell and the same substrate cell "
+          f"({r['substrate_cell_m'] * 1e6:.4f} um).")
+        w("")
+        w("| arm | placement | F (um) | notch (GHz) |")
+        w("|---|---|---|---|")
+        w(f"| A_off | offset | {r['fine_cell_a_off_m'] * 1e6:.4f} | "
+          f"{r['notch_a_off_ghz']:.5f} |")
+        w(f"| ON13 | on-node | {r['fine_cell_on13_m'] * 1e6:.4f} | "
+          f"{r['notch_on13_ghz']:.5f} |")
+        w(f"| A_on | on-node | {r['fine_cell_a_on_m'] * 1e6:.4f} | "
+          f"{r['notch_a_on_ghz']:.5f} |")
+        w("")
+        w("| A_off minus ON13 (MHz) | same (%) | their F gap (%) | F slope on "
+          "the two on-node arms (MHz/um) | what that slope makes of the F gap "
+          "(MHz) | on-node reads lower |")
+        w("|---|---|---|---|---|---|")
+        w(f"| {r['delta_mhz']:+.3f} | {r['delta_pct']:+.4f} | "
+          f"{r['fine_cell_gap_pct']:+.4f} | "
+          f"{r['f_slope_mhz_per_um']:+.4f} | "
+          f"{r['f_part_of_delta_mhz']:+.3f} | {r['on_node_reads_lower']} |")
+        w("")
+        w(f"Reading, per the pre-declaration: {r['reading']}.")
+        w("")
+    for key, title in (("W8", "section 4's ladder"),
+                       ("W8_one_commit", "addendum A.2's ladder")):
+        if key not in v:
+            continue
+        r = v[key]
+        w(f"**W8 -- is z enough? ({title})**  Where the notch goes as the "
+          "substrate cell goes to")
+        # When git cannot answer (a shallow clone, or history squashed away)
+        # the ladder is not ONE build as far as this checkout can tell, and it
+        # is not two different ones either.
+        sims = ("One simulator" if r["one_solver_build"]
+                else "Simulators that could not be compared here"
+                if r["solver_tree_equal"] is None
+                else "Two different simulators")
+        w(f"zero at F = {r['fine_cell_m'] * 1e6:.4f} um, against the "
+          f"reference.  {sims} under the four rungs.")
+        w("")
+        w("| arm | substrate cells | FZ (um) | notch (GHz) | from the "
+          "reference (%) |")
+        w("|---|---|---|---|---|")
+        for row in r["rungs"]:
+            w(f"| {row['arm']} | {row['n_substrate_cells']} | "
+              f"{row['substrate_cell_m'] * 1e6:.4f} | {row['notch_ghz']:.5f} | "
+              f"{row['distance_from_reference_pct']:.4f} |")
+        w("")
+        w("| ladder limit (GHz) | reference (GHz) | limit from the reference "
+          "(%) | bar (%) | W5 | verdict |")
+        w("|---|---|---|---|---|---|")
+        w(f"| {r['limit_ghz']:.5f} | {r['reference_ghz']:.5f} | "
+          f"{r['limit_distance_pct']:.4f} | {r['bar_pct']:.0f} | "
+          f"{r['w5_verdict']} | {r['verdict']} |")
+        w("")
+        w("Derived, with its derivation: the fit puts the notch abs(A) FZ^p "
+          "from its OWN limit, so")
+        w("the cell that brings that term inside the bar is")
+        w("FZ = (bar x limit / abs(A))^(1/p) and the substrate rule is "
+          "n_z = ceil(h / FZ).  The bar")
+        w("is a fraction of the limit, not of the external reference: what is "
+          "being bounded is how")
+        w("far the notch still has to fall on this ladder, and the ladder "
+          "converges to its own limit.")
+        w("")
+        w("| abs(A) | p | bar, "
+          f"{r['bar_pct']:.0f} % of the limit (MHz) | FZ for the bar (um) | "
+          "n_z for the bar |")
+        w("|---|---|---|---|---|")
+        w(f"| {abs(r['amplitude']):.4e} | {r['order']:.4f} | "
+          f"{r['substrate_rule_bar_hz'] / 1e6:.3f} | "
+          f"{r['substrate_cell_for_the_bar_m'] * 1e6:.4f} | "
+          f"{r['n_substrate_cells_for_the_bar']} |")
+        w("")
+
+    if "remeasurement" in v:
+        r = v["remeasurement"]
+        new, old = r["arms"]
+        w("### F.4a The same rung solved twice, at two solver builds "
+          "(addendum A.2)")
+        w("")
+        w(f"`{new}` and `{old}` declare the same mesh -- the same rung entry, "
+          f"so the same {arms[new]['n_substrate_cells']} substrate cells and")
+        w(f"{arms[new]['n_across_metal']} cells across the metal, the same "
+          "board and the same stub.  What differs is the commit of `rfx/`")
+        w("that solved them.  Whether their two meshes really were identical "
+          "is checked rather than")
+        w("assumed, because a mesh that moved would make this comparison say "
+          "nothing about the solver.")
+        w("")
+        w("| arm | commit | VESSL run | notch (GHz) | grid cells | dt (fs) | "
+          "wall (s) |")
+        w("|---|---|---|---|---|---|---|")
+        for i, k in enumerate(r["arms"]):
+            w(f"| {k} | {r['commits'][i][:12]} | {r['run_ids'][i]} | "
+              f"{(r['notch_new_ghz'] if i == 0 else r['notch_old_ghz']):.6f} | "
+              f"{r['grid_cells'][i]:,} | {r['dt_s'][i] * 1e15:.4f} | "
+              f"{r['wall_s'][i]:.1f} |")
+        w("")
+        w(f"| {new} minus {old} (MHz) | same (%) | notch equal to the last "
+          "bit | whole S curve equal to the last bit | every declared mesh "
+          "field equal | all three cell profiles bit-identical |")
+        w("|---|---|---|---|---|---|")
+        w(f"| {r['delta_mhz']:+.4f} | {r['delta_pct']:+.5f} | "
+          f"{r['notch_bit_identical']} | {r['curves_bit_identical']} | "
+          f"{r['mesh_identical']} | {r['profiles_bit_identical']} |")
+        w("")
+        w("The two commits differ in `rfx/`"
+          + {True: " not at all.", False: ".",
+             None: ", or do not, git could not say."}[r["solver_tree_equal"]]
+          + "  What the table above reports is what")
+        w("that difference did to this board, measured rather than argued.")
+        w("")
+
+    if build_only:
+        w("### F.4b Meshes costed but not solved")
+        w("")
+        w("Built through the same `build_graded` every arm uses and put "
+          "through the same R1 and R3,")
+        w("so a mesh that could not be solved cannot be costed here either.  "
+          "The time step is the")
+        w("grid's own Courant number read off the lattice, and the step count "
+          "is the one a run would")
+        w("derive from it for the case's "
+          f"{case.NUM_PERIODS:.0f} periods.  No field is stepped and no S "
+          "parameter exists for")
+        w("these rows.")
+        w("")
+        w("| cells across the metal | F (um) | substrate cells | FZ (um) | "
+          "z tail cell (um) | grid nodes | grid cells | dt (fs) | time steps | "
+          "what it is |")
+        w("|---|---|---|---|---|---|---|---|---|---|")
+        for r in build_only:
+            nodes = "x".join(str(v) for v in r["grid_shape"])
+            w(f"| {r['n_across_metal']} | {r['fine_cell_m'] * 1e6:.4f} | "
+              f"{r['n_substrate_cells']} | "
+              f"{r['substrate_cell_m'] * 1e6:.4f} | "
+              f"{r['z_tail_cell_m'] * 1e6:.4f} | {nodes} | "
+              f"{r['n_grid_cells']:,} | {r['dt_s'] * 1e15:.4f} | "
+              f"{r['n_time_steps_derived']:,} | {r['note']} |")
+        w("")
+
+    w("### F.5 Provenance")
+    w("")
+    w("| arm | VESSL run | commit | dirty | GPU | jax | backend | "
+      "started (UTC) |")
+    w("|---|---|---|---|---|---|---|---|")
+    for k in order:
+        pr = arms[k]["provenance"]
+        kind = pr.get("gpu_device_kind")
+        w(f"| {k} | {pr['run_id']} | {pr['git_sha'][:12]} | "
+          f"{pr['git_dirty']} | {'n/a' if kind is None else kind} | "
+          f"{pr['jax_version']} | {pr['jax_backend']} | "
+          f"{pr['started_utc']} |")
+    w("")
+    missing = [k for k in order
+               if arms[k]["provenance"].get("gpu_device_kind") is None]
+    if missing:
+        w(f"The GPU model is not recorded for {', '.join(missing)}: those arms "
+          f"ran before the instrument read `device_kind`, and their blocks are "
+          f"left as they were measured rather than back-filled.")
+        w("")
+    out.extend(f6_markdown(estimator_comparison(
+        arms, load_first_ladder() if first_ladder is None else first_ladder)))
+    w("Conclusions: leader fills.")
+    w("")
+    return "\n".join(out)
+
+
+def _git(args: list[str]) -> str | None:
+    """A git answer, or ``None`` when git cannot answer here."""
+    try:
+        return subprocess.run(["git", "-C", str(_REPO_ROOT)] + args,
+                              capture_output=True, text=True,
+                              check=True).stdout.strip()
+    except Exception:
+        return None
+
+
+_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+
+
+def provenance(run_id: str | None, commit: str | None = None) -> dict:
+    """Who produced this record, refusing to guess any of it.
+
+    The commit comes from ``--commit`` (or ``RFX_NOTCH_SHA``) when the tree is
+    not a git worktree, which is the normal case on the GPU: the job exports
+    the pinned tree with ``git archive`` into scratch, so ``git rev-parse``
+    inside it has nothing to read.  A record that cannot name its commit is
+    refused here, before the solve, rather than written with a placeholder --
+    a placeholder looks like provenance and links to nothing.
+    """
+    import jax
+    import rfx
+
+    inside = _git(["rev-parse", "--is-inside-work-tree"]) == "true"
+    if commit:
+        sha = str(commit).strip()
+        source = ("supplied by the submitter; the job verified it with "
+                  "git rev-parse --verify in the source repository")
+        dirty = (_git(["status", "--porcelain"]) or "") != "" if inside else None
+        describe = _git(["describe", "--always", "--dirty"]) if inside else None
+    elif inside:
+        sha = _git(["rev-parse", "HEAD"]) or ""
+        source = "git rev-parse HEAD in this worktree"
+        dirty = (_git(["status", "--porcelain"]) or "") != ""
+        describe = _git(["describe", "--always", "--dirty"])
+    else:
+        raise SystemExit(
+            f"refusing to record an arm with no commit: {_REPO_ROOT} is not a "
+            "git worktree, so the instrument cannot read one. Pass --commit "
+            "<sha> (or set RFX_NOTCH_SHA); the GPU job takes it from the "
+            "commit.txt it wrote with git rev-parse --verify.")
+    if not _SHA_RE.match(sha):
+        raise SystemExit(
+            f"refusing to record an arm with commit {sha!r}: a commit is forty "
+            "hexadecimal characters, and anything else is a placeholder.")
+    return dict(
+        rfx_file=rfx.__file__,
+        git_sha=sha,
+        git_sha_source=source,
+        git_dirty=dirty,
+        git_describe=describe,
+        argv=list(sys.argv),
+        started_utc=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        jax_version=jax.__version__,
+        jax_backend=jax.default_backend(),
+        jax_devices=[str(d) for d in jax.devices()],
+        gpu_device_kind=str(jax.devices()[0].device_kind),
+        python=platform.python_version(),
+        hostname=platform.node(),
+        run_id=run_id,
+    )
+
+
+def run_arm(arm_key: str, *, run_id: str | None = None,
+            commit: str | None = None, dry_run: bool = False,
+            n_steps_cap: int | None = None) -> dict:
+    """Build, refuse, solve and record one arm.  Everything is printed too."""
+    arm = ARM_TABLE[arm_key]
+    print(f"\n=== arm {arm_key}: rung {arm.rung}, {arm.placement}, arms "
+          f"{arm.arm_length_m * 1e3:.2f} mm ===")
+    sim, prof, b = build_graded(arm.rung, arm.placement, arm.arm_length_m)
+    x, y, z = prof
+
+    print(f"  fine cell F {b['fine_cell_m'] * 1e6:.6f} um "
+          f"({b['n_across_metal']} across the 600 um metal), substrate cell "
+          f"{b['substrate_cell_m'] * 1e6:.6f} um "
+          f"({b['n_substrate_cells']} cells), coarse cell "
+          f"{C_COARSE_M * 1e6:.3f} um, z tail cell "
+          f"{b['z_tail_cell_m'] * 1e6:.4f} um")
+    print(f"  edge offset drawn {b['edge_offset_m'] * 1e6:.6f} um, band margin "
+          f"{b['margin_cells']} fine cells "
+          f"({b['margin_cells'] * b['fine_cell_m'] * 1e6:.3f} um, declared "
+          f"{BAND_MARGIN_M * 1e6:.0f})")
+    print(f"  domain {tuple(round(v * 1e3, 9) for v in b['domain_m'])} mm; "
+          f"lateral clearance {LATERAL_CLEARANCE_M * 1e3:.4f} mm "
+          f"(the case draws {case.LATERAL_CLEARANCE_M * 1e3:.3f} mm)")
+
+    prof_report = assert_profiles_graded(prof, b)
+    for axis in ("x", "y", "z"):
+        s = prof_report[axis]
+        print(f"  d{axis}_profile: {s['n_cells']} cells "
+              f"{s['min_m'] * 1e6:.4f}-{s['max_m'] * 1e6:.4f} um, worst ratio "
+              f"{s['worst_ratio']:.6f} (cap {s['cap']}), sum "
+              f"{s['sum_m'] * 1e3:.9f} mm")
+    print("  R1 declared coordinate vs the profile's node (nm apart): "
+          + ", ".join(f"{k} {v * 1e9:.4f}"
+                      for k, v in prof_report["intended_node_miss_m"].items()))
+
+    g = assert_realized_graded(sim, b)
+    print(f"  R3 realized: grid {g['grid_shape']} nodes = "
+          f"{g['n_grid_cells']} cells with the absorber pad "
+          f"({x.size} x {y.size} x {z.size} = {x.size * y.size * z.size} "
+          f"interior), dt {g['dt_s']:.6e} s")
+    print(f"    sheet plane k={g['sheet_plane_k']} at "
+          f"z={g['sheet_plane_z_m'] * 1e6:.4f} um; PEC volume cells "
+          f"{g['n_volume_cells']}; declared sheets {g['n_declared_sheets']}")
+    print(f"    line rows {g['trace_rows']} n={g['n_trace_rows']}, node span "
+          f"{g['trace_width_node_span_m'] * 1e6:.4f} um, y "
+          f"{g['trace_y_m'][0] * 1e6:.4f}..{g['trace_y_m'][1] * 1e6:.4f}")
+    print(f"    stub cols {g['stub_cols']} n={g['n_stub_cols']}, node span "
+          f"{g['stub_width_node_span_m'] * 1e6:.4f} um, x "
+          f"{g['stub_x_m'][0] * 1e6:.4f}..{g['stub_x_m'][1] * 1e6:.4f}")
+    print(f"    stub attached {g['stub_attached']}, open end "
+          f"{g['stub_open_y_m'] * 1e3:.6f} mm, length "
+          f"{g['stub_length_m'] * 1e6:.4f} um")
+
+    planes = probe_planes(sim)
+    runway = assert_probes_on_the_uniform_runway(sim, C_COARSE_M)
+    footprint = assert_port_footprint_in_fine_band(sim, b)
+    for i, xs in enumerate(planes):
+        print(f"    port {i} probe planes (mm): "
+              + " ".join(f"{v * 1e3:.4f}" for v in xs)
+              + f"; {runway['ports'][i]['n_cells_spanned']} cells spanned, "
+              f"all {C_COARSE_M * 1e6:.3f} um")
+    for i, f in enumerate(footprint["ports"]):
+        print(f"    port {i} feed footprint y "
+              f"{f['y_lo_m'] * 1e3:.4f}..{f['y_hi_m'] * 1e3:.4f} mm "
+              f"({f['pad_cells_lo']}+{f['pad_cells_hi']} pad cells around the "
+              f"trace, eps_r {f['eps_r_sub']:.4g})")
+    print(f"    x fine band {b['band_x_m'][0] * 1e3:.4f}"
+          f"..{b['band_x_m'][1] * 1e3:.4f} mm; y trace band "
+          f"{b['band_y_trace_m'][0] * 1e3:.4f}"
+          f"..{b['band_y_trace_m'][1] * 1e3:.4f} mm")
+
+    report = assert_preflight_graded(sim)
+    print(f"  R2 preflight: {len(report)} finding(s)")
+    for i, line in enumerate(report):
+        print(f"    [{i}] {line}")
+
+    record: dict = dict(
+        arm=arm_key, rung=arm.rung, placement=arm.placement,
+        arm_length_m=arm.arm_length_m,
+        fine_cell_m=b["fine_cell_m"], substrate_cell_m=b["substrate_cell_m"],
+        coarse_cell_m=C_COARSE_M, z_tail_cell_m=b["z_tail_cell_m"],
+        n_across_metal=b["n_across_metal"],
+        n_substrate_cells=b["n_substrate_cells"],
+        centre_is_a_node=b["centre_is_a_node"],
+        centre_straddle={k: {kk: (list(vv) if isinstance(vv, tuple) else vv)
+                             for kk, vv in v.items()}
+                         for k, v in b["centre_straddle"].items()},
+        port_centre_y_m=b["port_centre_y_m"],
+        margin_cells=b["margin_cells"], edge_offset_m=b["edge_offset_m"],
+        domain_m=list(b["domain_m"]),
+        lateral_clearance_m=LATERAL_CLEARANCE_M,
+        band_x_m=list(b["band_x_m"]), band_y_trace_m=list(b["band_y_trace_m"]),
+        band_y_stub_end_m=list(b["band_y_stub_end_m"]),
+        band_z_m=list(b["band_z_m"]),
+        declared=dict(b["declared"]), node=dict(b["node"]),
+        node_index=dict(b["node_index"]),
+        segment_cells=dict(b["segment_cells"]),
+        drawn_trace_y_m=list(b["drawn_trace_y_m"]),
+        drawn_stub_x_m=list(b["drawn_stub_x_m"]),
+        drawn_stub_open_y_m=b["drawn_stub_open_y_m"],
+        drawn_sheet_z_m=b["drawn_sheet_z_m"],
+        profiles={"x": x.tolist(), "y": y.tolist(), "z": z.tolist()},
+        profile_summary={a: prof_report[a] for a in ("x", "y", "z")},
+        intended_node_miss_m=prof_report["intended_node_miss_m"],
+        realized={k: (list(v) if isinstance(v, tuple) else v)
+                  for k, v in g.items()},
+        preflight=report,
+        probe_planes_m=planes, probe_runway=runway,
+        port_footprint=footprint,
+        n_cells=g["n_cells"], grid_shape=list(g["grid_shape"]),
+        # The padded grid the solver steps, and the interior the board owns
+        # (the note's section 3 counts the interior).
+        n_interior_cells=int(x.size * y.size * z.size),
+        interior_shape=[int(x.size), int(y.size), int(z.size)],
+        dt_s=g["dt_s"],
+        n_freqs=case.N_FREQS, num_periods=case.NUM_PERIODS,
+        provenance=provenance(run_id, commit),
+    )
+
+    if dry_run:
+        print("  --dry-run: build, R1, R2, R3 and the probe check only; "
+              "no time step, nothing written.")
+        record["dry_run"] = True
+        return record
+
+    num_periods = case.NUM_PERIODS
+    if n_steps_cap is not None:
+        num_periods = float(n_steps_cap) * g["dt_s"] * case.FREQ_MAX_HZ
+        print(f"  SMOKE: --n-steps-cap {n_steps_cap} shortens the record to "
+              f"num_periods={num_periods:.6g} (the case runs "
+              f"{case.NUM_PERIODS}). Not a recordable arm.")
+    record["num_periods"] = num_periods
+    record["n_time_steps_derived"] = int(
+        np.ceil(num_periods / case.FREQ_MAX_HZ / g["dt_s"]))
+    record["smoke"] = n_steps_cap is not None
+
+    t0 = time.perf_counter()
+    res = sim.compute_msl_s_matrix(n_freqs=case.N_FREQS,
+                                   num_periods=num_periods,
+                                   enforce_passivity=False)
+    wall_s = time.perf_counter() - t0
+
+    freqs = np.asarray(res.freqs, dtype=float)
+    s = np.asarray(res.S)
+    z0 = np.asarray(res.Z0, dtype=complex).ravel()
+    record.update(
+        wall_s=float(wall_s), freqs_hz=freqs.tolist(),
+        s11_re=np.real(s[0, 0, :]).tolist(), s11_im=np.imag(s[0, 0, :]).tolist(),
+        s21_re=np.real(s[1, 0, :]).tolist(), s21_im=np.imag(s[1, 0, :]).tolist(),
+        s12_re=np.real(s[0, 1, :]).tolist(), s12_im=np.imag(s[0, 1, :]).tolist(),
+        s22_re=np.real(s[1, 1, :]).tolist(), s22_im=np.imag(s[1, 1, :]).tolist(),
+        z0_re=np.real(z0).tolist(), z0_im=np.imag(z0).tolist(),
+        z0_median_ohm=float(np.median(np.real(z0))),
+        sigma_max_excess=(None if res.sigma_max_excess is None
+                          else np.asarray(res.sigma_max_excess,
+                                          dtype=float).tolist()),
+    )
+    print(f"  wall time {wall_s:.1f} s, {g['n_cells']} cells, "
+          f"{record['n_time_steps_derived']} time steps (derived from dt), "
+          f"n_freqs={case.N_FREQS}, num_periods={num_periods}")
+
+    witness = assert_witnesses(res.settling_db, res.sigma_max_excess, freqs)
+    record["witnesses"] = witness
+    print(f"  R4 settling per driven run {witness['settling_db']} dB "
+          f"(bar {case.SETTLING_DB:.0f}); worst passivity excess "
+          f"{witness['worst_sigma_excess']} (bar {case.PASSIVITY_EXCESS_BAR})")
+    print(f"  fitted line Z0 median {record['z0_median_ohm']:.3f} ohm "
+          f"(port reference {case.PORT_IMPEDANCE_OHM:.0f})")
+
+    n = notch_of(record)
+    record["notch"] = {k: float(v) for k, v in n.items()}
+    print(f"  notch {n['f'] / 1e9:.6f} GHz (bin {n['bin_f'] / 1e9:.6f}, sub-bin "
+          f"shift {n['sub_bin_shift']:+.4f}), depth {n['depth_db']:.3f} dB, "
+          f"-10 dB bandwidth {n['bw_10db'] / 1e6:.2f} MHz")
+    print("  |S21| and |S11| on the rfx frequency grid -- f_GHz, S21 dB, S11 dB:")
+    s21_db = case._db(np.abs(s[1, 0, :]))
+    s11_db = case._db(np.abs(s[0, 0, :]))
+    for fv, a, c in zip(freqs, s21_db, s11_db):
+        print(f"    {fv / 1e9:9.6f} {a:10.4f} {c:10.4f}")
+    return record
+
+
+def run_uniform_arm(arm_key: str, *, run_id: str | None = None,
+                    commit: str | None = None, dry_run: bool = False,
+                    n_steps_cap: int | None = None) -> dict:
+    """One rung of the uniform reference ladder, through this recorder.
+
+    The board and the build are the case's own ``build(dx)`` -- the line
+    1.55 mm from the y_lo face, the box 18.8 mm deep in y, the ports resolving
+    their own probe placement -- so this is the uniform ladder the note's
+    section 1 quotes, measured here instead of cited.  The refusals are the
+    case's ``assert_realized`` before the solve and R4 after it; the graded
+    mesh's R1, R2 and R3 do not apply to a board with no profile.
+    """
+    dx = UNIFORM_ARMS[arm_key]
+    print(f"\n=== arm {arm_key}: uniform reference, dx = {dx * 1e6:.4f} um ===")
+    sim = case.build(dx)
+    g = case.assert_realized(sim, dx)
+    case._print_realized(g, dx)
+    print(f"  board: the case's own -- lateral clearance "
+          f"{case.LATERAL_CLEARANCE_M * 1e3:.3f} mm, box "
+          f"{case.DOMAIN_X_M * 1e3:.3f} x {case.DOMAIN_Y_M * 1e3:.3f} x "
+          f"{case.DOMAIN_Z_M * 1e3:.3f} mm, arms "
+          f"{case.ARM_LENGTH_M * 1e3:.1f} mm each side")
+
+    report = [str(line) for line in sim.preflight()]
+    print(f"  preflight: {len(report)} finding(s)")
+    for i, line in enumerate(report):
+        print(f"    [{i}] {line}")
+
+    planes = probe_planes(sim)
+    for i, xs in enumerate(planes):
+        print(f"    port {i} probe planes (mm): "
+              + " ".join(f"{v * 1e3:.4f}" for v in xs))
+    pe = sim._msl_ports[0]
+    print(f"    probe placement resolved by the port: offset "
+          f"{pe.n_probe_offset}, spacing {pe.n_probe_spacing}, "
+          f"{pe.n_probes} probes")
+
+    shape = [int(n) for n in g["grid_shape"]]
+    realized_block = {k: (list(v) if isinstance(v, tuple) else v)
+                      for k, v in g.items()}
+    realized_block["n_grid_cells"] = (shape[0] - 1) * (shape[1] - 1) * (shape[2] - 1)
+    record: dict = dict(
+        arm=arm_key, kind="uniform", rung=arm_key, placement="uniform",
+        dx_m=dx, fine_cell_m=dx, substrate_cell_m=dx, coarse_cell_m=dx,
+        arm_length_m=case.ARM_LENGTH_M,
+        lateral_clearance_m=case.LATERAL_CLEARANCE_M,
+        domain_m=[case.DOMAIN_X_M, case.DOMAIN_Y_M, case.DOMAIN_Z_M],
+        n_substrate_cells=int(round(case.SUBSTRATE_THICKNESS_M / dx)),
+        realized=realized_block, preflight=report, probe_planes_m=planes,
+        n_probe_offset=int(pe.n_probe_offset),
+        n_probe_spacing=int(pe.n_probe_spacing), n_probes=int(pe.n_probes),
+        grid_shape=shape, n_cells=int(g["n_cells"]),
+        n_grid_cells=realized_block["n_grid_cells"],
+        dt_s=float(sim._build_grid().dt),
+        n_freqs=case.N_FREQS, num_periods=case.NUM_PERIODS,
+        provenance=provenance(run_id, commit),
+    )
+    print(f"  grid {tuple(shape)} nodes = {record['n_grid_cells']} cells "
+          f"with the absorber pad")
+
+    if dry_run:
+        print("  --dry-run: build and the case's assert_realized only; "
+              "no time step, nothing written.")
+        record["dry_run"] = True
+        return record
+
+    num_periods = case.NUM_PERIODS
+    if n_steps_cap is not None:
+        dt = float(realized(sim).grid.dt)
+        num_periods = float(n_steps_cap) * dt * case.FREQ_MAX_HZ
+        print(f"  SMOKE: --n-steps-cap {n_steps_cap} shortens the record to "
+              f"num_periods={num_periods:.6g}. Not a recordable arm.")
+    record["num_periods"] = num_periods
+    record["smoke"] = n_steps_cap is not None
+
+    t0 = time.perf_counter()
+    res = sim.compute_msl_s_matrix(n_freqs=case.N_FREQS,
+                                   num_periods=num_periods,
+                                   enforce_passivity=False)
+    wall_s = time.perf_counter() - t0
+    freqs = np.asarray(res.freqs, dtype=float)
+    sm = np.asarray(res.S)
+    z0 = np.asarray(res.Z0, dtype=complex).ravel()
+    record.update(
+        wall_s=float(wall_s), freqs_hz=freqs.tolist(),
+        s11_re=np.real(sm[0, 0, :]).tolist(), s11_im=np.imag(sm[0, 0, :]).tolist(),
+        s21_re=np.real(sm[1, 0, :]).tolist(), s21_im=np.imag(sm[1, 0, :]).tolist(),
+        s12_re=np.real(sm[0, 1, :]).tolist(), s12_im=np.imag(sm[0, 1, :]).tolist(),
+        s22_re=np.real(sm[1, 1, :]).tolist(), s22_im=np.imag(sm[1, 1, :]).tolist(),
+        z0_re=np.real(z0).tolist(), z0_im=np.imag(z0).tolist(),
+        z0_median_ohm=float(np.median(np.real(z0))),
+        sigma_max_excess=(None if res.sigma_max_excess is None
+                          else np.asarray(res.sigma_max_excess,
+                                          dtype=float).tolist()))
+    print(f"  wall time {wall_s:.1f} s, {record['n_grid_cells']} cells")
+    witness = assert_witnesses(res.settling_db, res.sigma_max_excess, freqs)
+    record["witnesses"] = witness
+    print(f"  R4 settling per driven run {witness['settling_db']} dB "
+          f"(bar {case.SETTLING_DB:.0f}); worst passivity excess "
+          f"{witness['worst_sigma_excess']} (bar {case.PASSIVITY_EXCESS_BAR})")
+    print(f"  fitted line Z0 median {record['z0_median_ohm']:.3f} ohm")
+    n = notch_of(record)
+    record["notch"] = {k: float(v) for k, v in n.items()}
+    print(f"  notch {n['f'] / 1e9:.6f} GHz, depth {n['depth_db']:.3f} dB, "
+          f"-10 dB bandwidth {n['bw_10db'] / 1e6:.2f} MHz")
+    print("  |S21| and |S11| on the rfx frequency grid -- f_GHz, S21 dB, S11 dB:")
+    for fv, a, c in zip(freqs, case._db(np.abs(sm[1, 0, :])),
+                        case._db(np.abs(sm[0, 0, :]))):
+        print(f"    {fv / 1e9:9.6f} {a:10.4f} {c:10.4f}")
+    return record
+
+
+def figure(record: dict, out_dir: Path) -> Path:
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    openems = case._load(case._OPENEMS_JSON)
+    stage = openems[case.OPENEMS_JUDGED_STAGE]
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"msl_notch_graded_{record['arm']}.png"
+    f = np.asarray(record["freqs_hz"], dtype=float) / 1e9
+    s21 = np.asarray(record["s21_re"], float) + 1j * np.asarray(
+        record["s21_im"], float)
+    s11 = np.asarray(record["s11_re"], float) + 1j * np.asarray(
+        record["s11_im"], float)
+    fig, ax = plt.subplots(figsize=(7.4, 4.4))
+    if record.get("kind") == "uniform":
+        mesh = f"uniform {record['dx_m'] * 1e6:.2f} um"
+    else:
+        mesh = (f"graded -- F {record['fine_cell_m'] * 1e6:.2f} um, "
+                f"FZ {record['substrate_cell_m'] * 1e6:.2f} um")
+    ax.plot(f, case._db(np.abs(s21)), label=(
+        f"rfx {record['arm']}, {mesh}, "
+        f"{grid_cells(record) / 1e6:.2f} M cells"))
+    ax.plot(f, case._db(np.abs(s11)), lw=0.8, alpha=0.6, label="rfx |S11|")
+    ax.plot(stage["freqs_ghz"], case._db(stage["s21_mag"]), "k-", lw=1.0,
+            label=f"openEMS tutorial {case.OPENEMS_JUDGED_STAGE} -- JUDGED")
+    ax.set_xlim(*(v / 1e9 for v in case.REFERENCE_BAND_HZ))
+    ax.set_xlabel("frequency (GHz)")
+    ax.set_ylabel("dB")
+    ax.grid(True, alpha=0.3)
+    ax.legend(fontsize=7)
+    fig.tight_layout()
+    fig.savefig(path, dpi=130)
+    plt.close(fig)
+    return path
+
+
+def record_kind(arm_key: str) -> str:
+    """Which record an arm belongs in.  An arm belongs to exactly one."""
+    if arm_key in FZ_ARMS:
+        return "fz"
+    if arm_key in ARMS or arm_key in UNIFORM_ARMS:
+        return "graded"
+    raise SystemExit(f"no record holds an arm called {arm_key!r}.")
+
+
+def default_out(arm_key: str | None) -> Path:
+    """The file an arm is recorded in, or the first record when none is named."""
+    if arm_key is None:
+        return DEFAULT_OUT
+    return DEFAULT_FZ_OUT if record_kind(arm_key) == "fz" else DEFAULT_OUT
+
+
+#: The mesh constants every record carries, identical in both files.
+_MESH_BLOCK = {
+    "coarse_cell_m": C_COARSE_M, "cap_xy": CAP_XY, "cap_z": CAP_Z,
+    "runway_cells": RUNWAY_CELLS, "band_margin_m": BAND_MARGIN_M,
+    "edge_offset_cells": EDGE_OFFSET,
+    "lateral_clearance_m": LATERAL_CLEARANCE_M,
+    "case_lateral_clearance_m": case.LATERAL_CLEARANCE_M,
+    "n_probe_offset": N_PROBE_OFFSET,
+    "n_probe_spacing": N_PROBE_SPACING, "n_probes": N_PROBES,
+}
+
+
+def _empty_file(kind: str = "graded") -> dict:
+    if kind == "fz":
+        return {
+            "schema": "msl_notch_graded_fz/1",
+            "note": FZ_NOTE_PATH,
+            "reused_from": "msl_notch_graded.json",
+            "reused_arms": list(FZ_REUSED_ARMS),
+            "windows": {
+                "W5_order_window": list(P_Z_WINDOW),
+                "W5_ladder": list(FZ_LADDER),
+                "W6_dominance_fraction": DOMINANCE_FRACTION,
+                "W6_arms": ["A_off", "Z6", "C_off"],
+                "W7_arms": ["A_off", "ON13", "A_on"],
+                "W8_freq_bar_pct": case.FREQ_BAR * 100.0,
+                "reference": f"{case.OPENEMS_JUDGED_STAGE} of "
+                             "reference/openems_tutorial.json",
+                "settling_db": case.SETTLING_DB,
+                "passivity_excess_bar": case.PASSIVITY_EXCESS_BAR,
+                "reference_band_hz": list(case.REFERENCE_BAND_HZ),
+            },
+            "mesh": dict(_MESH_BLOCK),
+            "build_only": [],
+            "arms": {},
+        }
+    return {
+        "schema": "msl_notch_graded/1",
+        "note": NOTE_PATH,
+        "windows": {
+            "W1_ladder_agreement_pct": case.LADDER_AGREEMENT * 100.0,
+            "W2_freq_bar_pct": case.FREQ_BAR * 100.0,
+            "W2_mag_bar_db": case.MAG_BAR_DB,
+            "W2_reference": f"{case.OPENEMS_JUDGED_STAGE} of "
+                            "reference/openems_tutorial.json",
+            "W3_uniform_limit": "measured: the Richardson limit of the "
+                                "U_h2 / U_h4 / U_h6 arms in this file",
+            "W4_arm_witness_bar_db": case.ARM_WITNESS_BAR_DB,
+            "deep_null_db": case.DEEP_NULL_DB,
+            "settling_db": case.SETTLING_DB,
+            "passivity_excess_bar": case.PASSIVITY_EXCESS_BAR,
+            "reference_band_hz": list(case.REFERENCE_BAND_HZ),
+        },
+        "mesh": dict(_MESH_BLOCK),
+        "arms": {},
+    }
+
+
+def write_result(record: dict, out: Path) -> Path:
+    """Fold one arm into the results file, refusing an arm that is already in it."""
+    if record.get("smoke"):
+        raise SystemExit(
+            "refusing to write a --n-steps-cap record: the cap is a smoke "
+            "option and its S is not the declared record length.")
+    data = _empty_file(record_kind(record["arm"]))
+    if out.exists():
+        with out.open() as fh:
+            data = json.load(fh)
+    if record["arm"] in data.get("arms", {}):
+        raise SystemExit(
+            f"refusing to overwrite arm {record['arm']!r}, already present in "
+            f"{out}. One attempt per arm (R2 of the note): record the failure, "
+            "do not re-run with a changed mesh.")
+    data.setdefault("arms", {})[record["arm"]] = record
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("w") as fh:
+        json.dump(data, fh, indent=1, sort_keys=True)
+        fh.write("\n")
+    return out
+
+
+def merge_files(paths: list[Path], out: Path) -> Path:
+    incoming: list[tuple[Path, str, dict]] = []
+    for p in paths:
+        with Path(p).open() as fh:
+            other = json.load(fh)
+        for key, rec in other.get("arms", {}).items():
+            incoming.append((Path(p), key, rec))
+    kinds = {record_kind(k) for _p, k, _r in incoming}
+    if len(kinds) > 1:
+        raise SystemExit(
+            f"refusing to merge arms of {sorted(kinds)} into one file: the FZ "
+            "ladder and the first note keep separate records.")
+    data = _empty_file(kinds.pop() if kinds else "graded")
+    if out.exists():
+        with out.open() as fh:
+            data = json.load(fh)
+    for p, key, rec in incoming:
+        if key in data["arms"]:
+            raise SystemExit(f"refusing to overwrite arm {key!r} from {p}.")
+        data["arms"][key] = rec
+        print(f"  merged {key} from {p}")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("w") as fh:
+        json.dump(data, fh, indent=1, sort_keys=True)
+        fh.write("\n")
+    print(f"  wrote {out} with arms {sorted(data['arms'])}")
+    return out
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--arm", choices=sorted(set(ALL_ARMS) | set(ALL_FZ_ARMS)))
+    ap.add_argument("--run-id", default=os.environ.get("RFX_RUN_ID"))
+    ap.add_argument("--commit", default=os.environ.get("RFX_NOTCH_SHA"),
+                    help="the commit this tree was exported from; required "
+                         "when the tree is not a git worktree")
+    ap.add_argument("--out", type=Path, default=None,
+                    help="the record to write or read; defaults to the file "
+                         "the arm belongs in, and to the first record when no "
+                         "arm is named")
+    ap.add_argument("--base-out", type=Path, default=DEFAULT_OUT,
+                    help="the first record, whose arms the FZ windows reuse")
+    ap.add_argument("--fig-dir", type=Path, default=RESULTS_DIR)
+    ap.add_argument("--dry-run", action="store_true",
+                    help="build, R1-R3 and preflight only; no time step")
+    ap.add_argument("--n-steps-cap", type=int, default=None,
+                    help="smoke only: shorten the record to this many steps; "
+                         "the result may not be written")
+    ap.add_argument("--merge", nargs="+", type=Path, default=None,
+                    help="fold these per-run files into --out")
+    ap.add_argument("--verdicts", action="store_true",
+                    help="print every window's arithmetic from --out")
+    ap.add_argument("--tables", action="store_true",
+                    help="print the note's Results section from --out")
+    ap.add_argument("--record-build-only", action="store_true",
+                    help="build the meshes BUILD_ONLY_MESHES names, cost them "
+                         "and store the rows in --out; solves nothing")
+    args = ap.parse_args(argv)
+    out = default_out(args.arm) if args.out is None else args.out
+
+    if args.merge:
+        merge_files(args.merge, out)
+        return 0
+    if args.record_build_only:
+        if not out.exists():
+            raise SystemExit(f"{out} does not exist; there is nothing to add "
+                             "a costed mesh to.")
+        with out.open() as fh:
+            data = json.load(fh)
+        rows = build_only_rows()
+        for r in rows:
+            print(f"  costed n_z={r['n_substrate_cells']} "
+                  f"n={r['n_across_metal']} {r['placement']}: "
+                  f"{r['n_grid_cells']:,} cells, dt {r['dt_s'] * 1e15:.4f} fs, "
+                  f"{r['n_time_steps_derived']:,} steps")
+        data["build_only"] = rows
+        with out.open("w") as fh:
+            json.dump(data, fh, indent=1, sort_keys=True)
+            fh.write("\n")
+        print(f"  wrote {len(rows)} costed mesh(es) into {out}")
+        return 0
+    if args.verdicts or args.tables:
+        with out.open() as fh:
+            data = json.load(fh)
+        # Which windows a file carries is a property of the file, not a flag:
+        # the FZ record names its schema and the arms it reuses, and the
+        # reused arms come from the first record because that file is not
+        # edited by the FZ note.
+        if str(data.get("schema", "")).startswith("msl_notch_graded_fz/"):
+            arms = load_fz_arms(out, args.base_out)
+            if args.tables:
+                print(fz_markdown_tables(arms, data.get("build_only"),
+                                         load_first_ladder(args.base_out)))
+            else:
+                v = dict(fz_verdicts(arms))
+                v["build_only"] = data.get("build_only")
+                print(json.dumps(v, indent=1, sort_keys=True))
+        elif args.tables:
+            print(markdown_tables(data["arms"]))
+        else:
+            print(json.dumps(verdicts(data["arms"]), indent=1, sort_keys=True))
+        return 0
+    if not args.arm:
+        ap.error("--arm is required (or --merge / --verdicts)")
+
+    if not args.dry_run and args.n_steps_cap is None and out.exists():
+        with out.open() as fh:
+            if args.arm in json.load(fh).get("arms", {}):
+                raise SystemExit(
+                    f"arm {args.arm!r} is already in {out}; one attempt "
+                    "per arm.")
+
+    runner = run_uniform_arm if args.arm in UNIFORM_ARMS else run_arm
+    record = runner(args.arm, run_id=args.run_id, commit=args.commit,
+                    dry_run=args.dry_run, n_steps_cap=args.n_steps_cap)
+    if args.dry_run:
+        return 0
+    if args.n_steps_cap is not None:
+        print("  smoke run complete; nothing written.")
+        return 0
+    path = write_result(record, out)
+    print(f"  wrote {path}")
+    print(f"  figure: {figure(record, args.fig_dir)}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

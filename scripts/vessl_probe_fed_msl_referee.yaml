@@ -49,7 +49,7 @@ run: |-
   command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
   "$PY" --version
   echo "RFX_OPENEMS_COMMIT=${RFX_OPENEMS_COMMIT:-unset(pre-stamp image)}"
-  # The working probe from scripts/vessl_crossval_external.yaml, verbatim:
+  # The working probe from the former on-demand external-solver lane, verbatim:
   # if the image's bindings are not importable, fail here and not 40
   # minutes into a stage.
   "$PY" -c "from openEMS.openEMS import openEMS; print('openEMS from image: OK')"

@@ -286,7 +286,7 @@ def test_mixed_result_contains_only_msl_records_in_registration_order(monkeypatc
     sim.add_msl_port(position=(37.75 * U, 6 * U, 0), width=4 * U, height=2 * U,
                      direction="-x", name="sense_b", mode="uniform", eps_r_sub=2.0,
                      n_probe_offset=10, n_probe_spacing=2, n_probes=3)
-    sim.add_port(position=(4 * U, 6 * U, U), component="ez", impedance=50.0)
+    sim.add_port(position=(4 * U, 6 * U, U), component="ez", impedance=50.0, terminates=2)
     fake = _fake_forward_mixed_z_profile({k: 1.0 for k in range(grid.nz)}, 1)
     monkeypatch.setattr(sim, "_forward_from_materials", MethodType(fake, sim))
     result = sim.compute_mixed_s_matrix(freqs=np.array([0.8e9, 1.2e9]), n_steps=1,

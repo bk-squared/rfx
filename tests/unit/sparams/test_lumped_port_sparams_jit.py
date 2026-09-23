@@ -16,6 +16,7 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
 from rfx.api import Simulation
 from rfx.sources.sources import GaussianPulse
@@ -40,7 +41,16 @@ def _build_cavity_sim():
 
 
 def test_pec_cavity_s11_magnitude_near_one():
-    """Closed PEC cavity → all power reflected → |S11| ≈ 1 in band."""
+    """Closed PEC cavity → all power reflected → |S11| ≈ 1 in band.
+
+    A lossless box seen through a port has a purely reactive input impedance,
+    so |S11| = 1 at every frequency. Before the lumped S-matrix became the
+    wire decomposition at one live cell (PR 1162) this port read 0.93 at
+    3 GHz, off resonance, independent of record length (#1196). Measured on
+    the fixed extraction (VESSL 369367263684): 0.979 ... 0.9996 over the band
+    at the test's 60 periods, 0.9931 ... 0.9994 at 960 (the 4.125 GHz point
+    sits next to the TM110 at 4.24 GHz and needs the longer record).
+    """
     sim = _build_cavity_sim()
     freqs = jnp.linspace(1.5e9, 4.5e9, 9, dtype=jnp.float32)
 
@@ -64,7 +74,8 @@ def test_jit_path_matches_python_loop_extractor():
     from rfx.boundaries.pec import apply_pec
     from rfx.sources.sources import LumpedPort, setup_lumped_port, apply_lumped_port
     from rfx.probes.probes import (
-        init_sparam_probe, update_sparam_probe, extract_s11,
+        init_sparam_probe, update_lumped_drive_ref_probe,
+        update_sparam_probe, extract_s11,
     )
 
     a, b, d = 0.05, 0.05, 0.025
@@ -90,8 +101,15 @@ def test_jit_path_matches_python_loop_extractor():
         state = update_h(state, materials, dt, dx)
         state = update_e(state, materials, dt, dx)
         state = apply_pec(state)
-        sprobe = update_sparam_probe(sprobe, state, grid, port, dt)
+        # The eager loop must use the same two slots the JIT scan uses:
+        # the PRE-injection drive sample into v_ref, the PHYSICAL V/I after
+        # injection (scripts/diagnostics/lumped_port_known_load_line.py).
+        # Sampling only before injection, as this loop did, compares the JIT
+        # path against a different measurement rather than a different
+        # implementation of the same one.
+        sprobe = update_lumped_drive_ref_probe(sprobe, state, grid, port, dt)
         state = apply_lumped_port(state, grid, port, t, materials)
+        sprobe = update_sparam_probe(sprobe, state, grid, port, dt)
 
     s11_loop = np.array(extract_s11(sprobe, z0=50.0))
 

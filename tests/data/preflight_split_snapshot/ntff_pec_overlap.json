@@ -23,6 +23,13 @@
         "source": "_validate_cfg_off_lattice_design_edges"
       },
       {
+        "code": "port_conductor_continues",
+        "loc": "_ports[0]",
+        "message": "port at (0.02, 0.02, 0.02) names no terminated conductor; 'pec' (entry 0) under its terminal continues into the z-hi absorber; if this conductor is a line the port ends, pass terminates= to end it there; a ground plane should continue.",
+        "severity": "warning",
+        "source": "_validate_cfg_port_conductor_continues"
+      },
+      {
         "code": "ntff_near_field",
         "loc": null,
         "message": "NTFF face z_lo is 4.00mm from port/source at (0.02, 0.02, 0.02) \u2014 below \u03bb/4 = 14.99mm at f_max=5.00GHz. NTFF will integrate reactive near-field; directivity / pattern likely corrupted. Move NTFF box \u2265 \u03bb/2 from any radiating/scattering structure (Huygens-equivalence rule).",
@@ -38,7 +45,7 @@
       }
     ],
     "n_errors": 0,
-    "n_issues": 5,
+    "n_issues": 6,
     "ok": true
   }
 }

@@ -61,15 +61,16 @@ rfx already has four setup serialisers and every one of them is box-level:
   provenance/report summary that self-declares it is "not a CAD export";
 - ``rfx/config/_shapes.py`` — the YAML config CLI, ``_SUPPORTED_SHAPES =
   ("box",)``;
-- ``rfx/experiments/canonical.py`` (``rfx-experiment/v1``) — "P0 supports box
-  geometry", geometry carried as ``bounds_m``.
+- the experiment document of the former studio layer (``rfx-experiment/v1``,
+  box-only, geometry carried as ``bounds_m``) — moved out of this package with
+  studio; named here because this module was shaped to fold into its successor.
 
 This module is deliberately **not** a fifth independent vocabulary.  The
 ``geometry`` and ``materials`` sections are shaped so they can be folded into
 a future ``rfx-experiment/v2`` mechanically: shapes use the ``{"kind":
 "<snake_case>", "params": {...}}`` discriminated union of
-``rfx/interop/_shapes.py`` — the same ``kind`` spelling the config layer and
-``canonical.py`` already use for a box — and materials use the
+``rfx/interop/_shapes.py`` — the same spelling the config layer already uses
+for a box — and materials use the
 ``rfx/interop/_materials.py`` payload verbatim.  A consumer that wants
 box-only geometry can filter on ``kind == "box"``; it does not need a second
 shape decoder.
@@ -101,7 +102,7 @@ whose ``non_portable`` list has been edited is refused.  A downstream tool
 cannot strip the annotation to make rfx-only state look portable.
 
 Status: **provisional**.  Round-trip fidelity is gated by
-``tests/studio/test_interop_design_document.py``; no external emitter exists yet.
+``tests/interop/test_interop_design_document.py``; no external emitter exists yet.
 """
 
 from __future__ import annotations
@@ -138,7 +139,7 @@ from rfx.interop._materials import (
 from rfx.interop._shapes import shape_from_dict, shape_to_dict
 from rfx.interop._validate import check_number, check_text, check_vector
 from rfx.lumped import LumpedRLCSpec
-from rfx.materials.thin_conductor import ThinConductor
+from rfx.materials.thin_conductor import PinnedSheet, ThinConductor
 from rfx.sources.coaxial_port import CoaxialPort
 from rfx.sources.sources import CWSource, GaussianPulse, ModulatedGaussian
 
@@ -502,7 +503,55 @@ _SOFT_SOURCE_FIELDS: dict[str, _F] = {
     "amplitude_kind": _opt(_STR),
 }
 
+def _termination_references(value, what):
+    if not isinstance(value, (list, tuple)):
+        raise _refuse(f"{what}: terminated conductors must be a list")
+    refs = []
+    for item in value:
+        if (not isinstance(item, (list, tuple)) or len(item) != 2
+                or item[0] not in ("_geometry", "_thin_conductors")):
+            raise _refuse(f"{what}: invalid conductor reference {item!r}")
+        index = _integer(item[1], what=what)
+        if index < 0:
+            raise _refuse(f"{what}: negative conductor index {index}")
+        refs.append((item[0], index))
+    return refs
+
+
+_TERMINATES = _F(
+    dump=lambda v, w: [list(ref) for ref in _termination_references(v, w)],
+    load=_termination_references,
+)
+
+
+def _termination_inputs(sim, references):
+    from rfx.geometry.port_termination import ConductorReference
+    if references is None:
+        return None
+    values = []
+    for collection, index in references:
+        entries = getattr(sim, collection)
+        if index >= len(entries):
+            raise _refuse(f"terminates: unknown {collection} entry {index}")
+        values.append(ConductorReference(collection, entries[index]))
+    return values
+
+
+def _ports_with_termination_indices(sim, ports):
+    """Serialize current positions, preserving a lazy MSL default as null."""
+    for port in ports:
+        references = None if port.terminates is None else []
+        for ref in port.terminates or ():
+            index = next((i for i, entry in enumerate(getattr(sim, ref.collection))
+                          if entry is ref.entry), None)
+            if index is not None:
+                references.append((ref.collection, index))
+        yield (dataclasses.replace(port, terminates=references)
+               if dataclasses.is_dataclass(port) else port._replace(terminates=references))
+
+
 _LUMPED_PORT_FIELDS: dict[str, _F] = {
+    "terminates": _TERMINATES,
     "position": _vec(3),
     "component": _STR,
     "impedance": _NUM,
@@ -533,7 +582,24 @@ _THIN_CONDUCTOR_FIELDS: dict[str, _F] = {
     ),
 }
 
+# add_pinned_sheet(): a PEC sheet named by NODE INDEX, so nothing here is a
+# length. Every field is design state and round-trips verbatim; the loader
+# rebuilds it through the public builder, which re-applies its own refusals
+# (a single node line, a lossy sigma_bulk, an f0 sheet).
+_PINNED_SHEET_FIELDS: dict[str, _F] = {
+    "normal_axis": _INT,
+    "plane_index": _INT,
+    "i_range": _ivec(2),
+    "j_range": _ivec(2),
+    "sigma_bulk": _NUM,
+    "thickness": _NUM,
+    "eps_r": _NUM,
+    "surface_impedance_f0": _opt(_NUM),
+    "name": _opt(_STR),
+}
+
 _COAXIAL_PORT_FIELDS: dict[str, _F] = {
+    "terminates": _TERMINATES,
     "position": _vec(3),
     "face": _STR,
     "pin_length": _NUM,
@@ -624,6 +690,7 @@ _FLOQUET_PORT_FIELDS: dict[str, _F] = {
 }
 
 _MSL_PORT_FIELDS: dict[str, _F] = {
+    "terminates": _opt(_TERMINATES),
     "name": _STR,
     "position": _vec(3),
     "width": _NUM,
@@ -670,6 +737,7 @@ _PINNED_RECORDS: tuple[tuple[type, dict[str, _F]], ...] = (
     (_GeometryEntry, _GEOMETRY_FIELDS),
     (_ProbeEntry, _PROBE_FIELDS),
     (ThinConductor, _THIN_CONDUCTOR_FIELDS),
+    (PinnedSheet, _PINNED_SHEET_FIELDS),
     (CoaxialPort, _COAXIAL_PORT_FIELDS),
     (_TFSFEntry, _TFSF_FIELDS),
     (_DFTPlaneEntry, _DFT_PLANE_FIELDS),
@@ -742,7 +810,7 @@ def _dump_list(
 # Exported / excluded attribute inventory
 # ---------------------------------------------------------------------------
 #
-# Anti-drift ledger.  ``tests/studio/test_interop_design_document.py`` asserts that
+# Anti-drift ledger.  ``tests/interop/test_interop_design_document.py`` asserts that
 # every ``self._*`` attribute a fresh ``Simulation`` carries appears in exactly
 # one of these two tuples, so a new builder field cannot slip into rfx without
 # a decision being recorded here.
@@ -751,6 +819,8 @@ EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
     "_adi_cfl_factor",
     "_boundary",
     "_boundary_spec",
+    # B1 descriptor derived from the exported boundary and feature entries.
+    "_boundary_model",
     "_coaxial_open_terminations",
     "_coaxial_pec_end_caps",
     "_coaxial_ports",
@@ -781,7 +851,10 @@ EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
     "_refinement",
     "_solver",
     "_stencil_order",
+    "_dt_pin",
+    "_dt_min_cell",
     "_tfsf",
+    "_pinned_sheets",
     "_thin_conductors",
     "_waveguide_ports",
     # Issue #469: auto-offset lower edges. Accounted for by the dump via
@@ -1024,6 +1097,7 @@ _SOFT_SOURCE_PINNED_DEFAULTS: dict[str, Any] = {
     "excite": True,
     "direction": None,
     "reference_plane_cells": None,
+    "terminates": (),
 }
 
 
@@ -1079,6 +1153,7 @@ def _dump_ports(sim: Any) -> tuple[list[dict], list[dict]]:
                     f"field, so the entry was not built through the public "
                     f"API and cannot be rebuilt through it"
                 )
+            entry = next(_ports_with_termination_indices(sim, [entry]))
             lumped.append(
                 {
                     name: field.dump(getattr(entry, name), f"{what}.{name}")
@@ -1402,6 +1477,15 @@ def design_to_dict(sim: Any) -> dict[str, Any]:
             "solver": check_text(sim._solver, what="_solver"),
             "adi_cfl_factor": check_number(sim._adi_cfl_factor, what="_adi_cfl_factor"),
             "stencil_order": _integer(sim._stencil_order, what="_stencil_order"),
+            # A pinned time step (Simulation(dt=..., dt_min_cell=...)) is a design
+            # input: a rebuilt design without it would derive its own dt and
+            # solve a different record (mesh-as-design-variable families pin
+            # one dt across the family). None when not pinned.
+            "dt_pin": None if getattr(sim, "_dt_pin", None) is None else check_number(sim._dt_pin, what="_dt_pin"),
+            "dt_min_cell": (
+                None if getattr(sim, "_dt_min_cell", None) is None
+                else check_number(sim._dt_min_cell, what="_dt_min_cell")
+            ),
             # #949: the node-eps rule at dielectric interfaces on the NU lane
             # ("sampled" | "dual_average"). A design input: a rebuilt design
             # that silently fell back to "sampled" would solve a different
@@ -1419,11 +1503,17 @@ def design_to_dict(sim: Any) -> dict[str, Any]:
             ThinConductor,
             what="_thin_conductors",
         ),
+        "pinned_sheets": _dump_list(
+            getattr(sim, "_pinned_sheets", []),
+            _PINNED_SHEET_FIELDS,
+            PinnedSheet,
+            what="_pinned_sheets",
+        ),
         "excitations": {
             "soft_sources": soft_sources,
             "lumped_ports": lumped_ports,
             "msl_ports": _dump_list(
-                _msl_ports_with_resolved_offsets(sim),
+                _ports_with_termination_indices(sim, _msl_ports_with_resolved_offsets(sim)),
                 _MSL_PORT_FIELDS,
                 _MSLPortEntry,
                 what="_msl_ports",
@@ -1435,7 +1525,7 @@ def design_to_dict(sim: Any) -> dict[str, Any]:
                 what="_waveguide_ports",
             ),
             "coaxial_ports": _dump_list(
-                sim._coaxial_ports,
+                _ports_with_termination_indices(sim, sim._coaxial_ports),
                 _COAXIAL_PORT_FIELDS,
                 CoaxialPort,
                 what="_coaxial_ports",
@@ -1510,6 +1600,7 @@ _TOP_LEVEL_KEYS = {
     "material_library",
     "geometry",
     "thin_conductors",
+    "pinned_sheets",
     "excitations",
     "observables",
     "refinement",
@@ -1638,7 +1729,8 @@ def simulation_from_design(document: Any) -> Any:
     solver = _section(document, "solver", what="design document")
     _require_exact_keys(
         solver,
-        {"precision", "solver", "adi_cfl_factor", "stencil_order", "interface_eps"},
+        {"precision", "solver", "adi_cfl_factor", "stencil_order", "interface_eps",
+         "dt_pin", "dt_min_cell"},
         what="solver",
     )
 
@@ -1684,6 +1776,11 @@ def simulation_from_design(document: Any) -> Any:
         adi_cfl_factor=check_number(solver["adi_cfl_factor"], what="solver.adi_cfl_factor"),
         stencil_order=_integer(solver["stencil_order"], what="solver.stencil_order"),
         interface_eps=check_text(solver["interface_eps"], what="solver.interface_eps"),
+        dt=None if solver["dt_pin"] is None else check_number(solver["dt_pin"], what="solver.dt_pin"),
+        dt_min_cell=(
+            None if solver["dt_min_cell"] is None
+            else check_number(solver["dt_min_cell"], what="solver.dt_min_cell")
+        ),
         **plan.kwargs,
     )
     if plan.set_periodic_axes is not None:
@@ -1725,6 +1822,16 @@ def simulation_from_design(document: Any) -> Any:
         sim.add_thin_conductor(values.pop("shape"), **values)
 
     for index, payload in enumerate(
+        _entry_list(document, "pinned_sheets", what="design document")
+    ):
+        values = _load_entry(
+            payload, _PINNED_SHEET_FIELDS, what=f"pinned_sheets[{index}]"
+        )
+        values["i_range"] = tuple(values["i_range"])
+        values["j_range"] = tuple(values["j_range"])
+        sim.add_pinned_sheet(**values)
+
+    for index, payload in enumerate(
         _entry_list(excitations, "coaxial_ports", what="excitations")
     ):
         values = _load_entry(
@@ -1740,6 +1847,7 @@ def simulation_from_design(document: Any) -> Any:
             outer_radius=values["outer_radius"],
             impedance=values["impedance"],
             waveform=values["excitation"],
+            terminates=_termination_inputs(sim, values["terminates"]),
         )
 
     for index, payload in enumerate(
@@ -1812,6 +1920,7 @@ def simulation_from_design(document: Any) -> Any:
             _LUMPED_PORT_FIELDS,
             what=f"excitations.lumped_ports[{index}]",
         )
+        values["terminates"] = _termination_inputs(sim, values["terminates"])
         sim.add_port(
             values.pop("position"),
             values.pop("component"),
@@ -1824,6 +1933,7 @@ def simulation_from_design(document: Any) -> Any:
         values = _load_entry(
             payload, _MSL_PORT_FIELDS, what=f"excitations.msl_ports[{index}]"
         )
+        values["terminates"] = _termination_inputs(sim, values["terminates"])
         sim.add_msl_port(values.pop("position"), **values)
 
     for index, payload in enumerate(

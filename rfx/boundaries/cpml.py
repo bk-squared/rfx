@@ -204,6 +204,14 @@ def _get_axis_cell_sizes(grid):
 
     On the mesh-as-design-variable path, ``dz_arr`` may be a JAX tracer;
     indexed reads are preserved in-trace (no ``float()`` cast).
+
+    A CONCRETE ``dz_arr`` is read on the host through ``np.asarray`` first.
+    ``dz_arr[0]`` on a concrete ``jnp`` array is itself a jnp op, so under
+    ``jax.jit`` / ``jax.make_jaxpr`` / ``saved_residuals`` it returned a
+    tracer and the ``float()`` raised ``ConcretizationTypeError`` — which
+    made every non-uniform run untraceable as a whole, while eager
+    ``jax.grad`` (which never wraps the setup) worked. The array is not a
+    tracer, so reading it on the host is exactly what the eager path did.
     """
     dx = float(grid.dx)
     dy = float(getattr(grid, 'dy', dx))
@@ -213,8 +221,9 @@ def _get_axis_cell_sizes(grid):
             dz_lo = dz_arr[0]
             dz_hi = dz_arr[-1]
         else:
-            dz_lo = float(dz_arr[0])
-            dz_hi = float(dz_arr[-1])
+            dz_host = np.asarray(dz_arr)
+            dz_lo = float(dz_host[0])
+            dz_hi = float(dz_host[-1])
     else:
         dz_lo = dx
         dz_hi = dx

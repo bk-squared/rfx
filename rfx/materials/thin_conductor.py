@@ -236,6 +236,148 @@ class ThinConductor:
         return 1.0 / (self.sigma_bulk * self.thickness)
 
 
+@dataclass(frozen=True)
+class PinnedSheet:
+    """A thin conductor named by NODE INDICES, not by metres.
+
+    A metric declaration ("the patch runs from x = 4.0 mm to x = 7.0 mm")
+    has to be re-read on whatever node line the grid actually has, so the
+    same corner names different node lines once the mesh moves, and on a
+    mesh that is a JAX tracer it cannot be read at all. This declaration
+    names the node lines directly: the conductor is FIXED on the lattice
+    and its physical length is whatever the cells between those nodes add
+    up to. Stretch those cells and the metal gets longer, on the same node
+    indices, with no metal inside a cell and nothing to snap — which is how
+    ``jax.grad`` reaches a patch edge through ``dx_profile``.
+
+    Indices are INTERIOR (unpadded) node indices, the same coordinates the
+    rest of the public API resolves a position to: interior node ``i`` on a
+    uniform mesh sits at ``i * dx`` from the domain origin, and absorber
+    padding is added when the spec is built.  ``i_range`` / ``j_range`` are
+    INCLUSIVE ``(lo, hi)`` pairs on the two axes other than ``normal_axis``,
+    in increasing axis order.
+
+    Only the PEC sheet is supported here (``sigma_bulk >= 1e6``, no
+    ``surface_impedance_f0``): the lossy and Leontovich sheets fold a
+    conductivity that is read per cell from the mesh, which is a separate
+    piece of work — declare those with ``add_thin_conductor``.
+    """
+    normal_axis: int
+    plane_index: int
+    i_range: tuple[int, int]
+    j_range: tuple[int, int]
+    sigma_bulk: float = 5.8e7
+    thickness: float = 35e-6
+    eps_r: float = 1.0
+    surface_impedance_f0: float | jnp.ndarray | None = None
+    name: str | None = None
+
+    def __post_init__(self):
+        a = int(self.normal_axis)
+        if a not in (0, 1, 2):
+            raise ValueError(
+                f"PinnedSheet.normal_axis must be 0/1/2, got "
+                f"{self.normal_axis!r}")
+        object.__setattr__(self, "normal_axis", a)
+        object.__setattr__(self, "plane_index", int(self.plane_index))
+        for field in ("i_range", "j_range"):
+            lo, hi = (int(v) for v in getattr(self, field))
+            object.__setattr__(self, field, (min(lo, hi), max(lo, hi)))
+        if self.surface_impedance_f0 is not None:
+            raise ValueError(
+                "PinnedSheet: surface_impedance_f0 (Leontovich loss) is not "
+                "supported on the node-pinned declaration — its sheet "
+                "conductivity is folded per cell from the local mesh "
+                "spacing. Declare that sheet with add_thin_conductor(shape, "
+                "surface_impedance_f0=...) on a pinned mesh.")
+        if not (self.sigma_bulk >= _PEC_SIGMA_THRESHOLD):
+            raise ValueError(
+                f"PinnedSheet: sigma_bulk={self.sigma_bulk:.3g} S/m is below "
+                f"the {_PEC_SIGMA_THRESHOLD:.0e} S/m PEC threshold. A lossy "
+                "sheet folds sigma_bulk*thickness into the cell it sits in, "
+                "which the node-pinned declaration does not carry; declare it "
+                "with add_thin_conductor(shape, sigma_bulk=...).")
+
+    @property
+    def is_pec(self) -> bool:
+        return True
+
+
+def _axis_pads(grid) -> tuple[int, int, int]:
+    pads = getattr(grid, "axis_pads", None)
+    if pads is None:
+        raise ValueError(
+            "a node-pinned sheet needs the grid's per-axis leading pad "
+            "(grid.axis_pads) to turn interior node indices into array "
+            "indices; this grid has none.")
+    return tuple(int(p) for p in pads)
+
+
+def pinned_sheet_spec(grid, sheet: PinnedSheet):
+    """The :class:`~rfx.boundaries.pec.SheetSpec` of a node-pinned sheet.
+
+    Interior node index ``i`` is array index ``i + pad_lo`` on that axis —
+    one mapping, here, for every lane. Nothing is read off the grid's node
+    POSITIONS, so this is the same spec whether the mesh is concrete or a
+    tracer, and the same spec on the uniform and non-uniform lanes.
+    """
+    from rfx.boundaries.pec import SheetSpec
+    pads = _axis_pads(grid)
+    a = int(sheet.normal_axis)
+    others = tuple(b for b in range(3) if b != a)
+    plane = int(sheet.plane_index) + pads[a]
+    ranges = []
+    for t, rng in zip(others, (sheet.i_range, sheet.j_range)):
+        ranges.append((int(rng[0]) + pads[t], int(rng[1]) + pads[t]))
+    return SheetSpec.from_node_ranges(
+        tuple(grid.shape), normal_axis=a, plane=plane,
+        in_plane_ranges=tuple(ranges),
+        name=sheet.name or "pinned_sheet")
+
+
+def pinned_sheet_realized(grid, sheet: PinnedSheet) -> dict:
+    """What the grid actually built for a node-pinned sheet, in metres.
+
+    The plane's position and the two in-plane edge positions are read from
+    the grid's OWN node line — the realized profile, not the declaration —
+    so a caller can state what it solved rather than what it asked for.
+    Returns ``None`` for any position on an axis whose node line is a
+    tracer: there is no host position to report there, and the physical
+    length is then a traced quantity the caller differentiates, not a
+    number to print.
+    """
+    from rfx.core.jax_utils import is_tracer
+    from rfx.geometry.rasterize_grid import (
+        coords_from_nonuniform_grid, coords_from_uniform_grid)
+    coords = (coords_from_nonuniform_grid(grid) if hasattr(grid, "dx_arr")
+              else coords_from_uniform_grid(grid))
+    lines = (coords.x, coords.y, coords.z)
+    spec = pinned_sheet_spec(grid, sheet)
+    pads = _axis_pads(grid)
+    a = int(sheet.normal_axis)
+    others = tuple(b for b in range(3) if b != a)
+
+    def _at(axis, idx):
+        line = lines[axis]
+        return None if is_tracer(line) else float(np.asarray(line)[idx])
+
+    out = {
+        "normal_axis": a,
+        "plane_index": int(spec.plane),
+        "plane_m": _at(a, int(spec.plane)),
+        "n_nodes": int(np.asarray(spec.footprint, dtype=bool).sum()),
+    }
+    for t, rng in zip(others, (sheet.i_range, sheet.j_range)):
+        lo = int(rng[0]) + pads[t]
+        hi = int(rng[1]) + pads[t]
+        a_lo, a_hi = _at(t, lo), _at(t, hi)
+        out[f"{'xyz'[t]}_node_indices"] = (lo, hi)
+        out[f"{'xyz'[t]}_edges_m"] = (a_lo, a_hi)
+        out[f"{'xyz'[t]}_span_m"] = (None if a_lo is None or a_hi is None
+                                     else a_hi - a_lo)
+    return out
+
+
 def _pec_sheet_spec(conductor, grid, *, lane: str):
     """The :class:`SheetSpec` of a thin conductor on a uniform Grid (#931)."""
     from rfx.geometry.csg import _grid_coords
@@ -364,7 +506,7 @@ def apply_thin_conductor(
     eps_r = jnp.where(mask, conductor.eps_r, materials.eps_r)
     sigma = jnp.where(mask, sigma_eff, materials.sigma)
 
-    return MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=materials.mu_r), pec_mask
+    return materials._replace(eps_r=eps_r, sigma=sigma), pec_mask
 
 
 # ---------------------------------------------------------------------------

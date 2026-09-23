@@ -1,5 +1,7 @@
 # #1043 stage B — the pad continuation on the smoothed lane, and what it moved
 
+> cv01 was removed on 2026-09-21; the artifacts cited here are at commit 66ed61c2.
+
 Stage A (PR #1047) made the two halves of a CPML timestep read the same
 permittivity. It said, in its own memory entry, that cv01's and cv03's numbers
 stayed **facet-dominated until stage B**. This note is stage B: the pad

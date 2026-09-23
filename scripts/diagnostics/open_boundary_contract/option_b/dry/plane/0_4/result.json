@@ -1,0 +1,730 @@
+{
+  "rig": "plane",
+  "scale": 0.0,
+  "layers": 4,
+  "commit": "e7f7e02704fd46ea7e21f127b19fc81cb66d6148",
+  "run_id": null,
+  "dtype": "float32",
+  "devices": [
+    "cpu:0"
+  ],
+  "driver_sha256": "96e0dfc794fff3f89e477dcec74f3752ba1a7ed6379c76f500678af88b667da0",
+  "alpha_max_S_per_m": 0.0,
+  "f_alpha_formula_Hz": 0.0,
+  "measurements": {
+    "grid": {
+      "shape": [
+        33,
+        5,
+        5
+      ],
+      "dx_m": 0.0025,
+      "dt_s": 4.766437173827515e-12,
+      "pads": {
+        "x_lo": 4,
+        "x_hi": 4,
+        "y_lo": 0,
+        "y_hi": 0,
+        "z_lo": 0,
+        "z_hi": 0
+      },
+      "axes": {
+        "x": {
+          "nodes": 33,
+          "interior_cells": 24,
+          "face_lo_m": 0.0,
+          "face_hi_m": 0.06,
+          "allocated_lo_m": -0.01,
+          "allocated_hi_m": 0.07
+        },
+        "y": {
+          "nodes": 5,
+          "interior_cells": 4,
+          "face_lo_m": 0.0,
+          "face_hi_m": 0.01,
+          "allocated_lo_m": 0.0,
+          "allocated_hi_m": 0.01
+        },
+        "z": {
+          "nodes": 5,
+          "interior_cells": 4,
+          "face_lo_m": 0.0,
+          "face_hi_m": 0.01,
+          "allocated_lo_m": 0.0,
+          "allocated_hi_m": 0.01
+        }
+      }
+    },
+    "source_node": 16,
+    "source_plane_m": 0.03,
+    "source_aperture_nodes": [
+      5,
+      5
+    ],
+    "probes_x_nodes": [
+      19,
+      13
+    ],
+    "pulse": {
+      "f0": 4000000000.0,
+      "bandwidth": 1.0,
+      "amplitude": 1.0,
+      "cutoff": 5
+    },
+    "record_steps": 4096,
+    "window_s": [
+      0,
+      1.9518560226823674e-08
+    ],
+    "window_definition": "full-record rectangular DFT",
+    "transverse_boundaries": "periodic",
+    "shortest_reference_wall_roundtrip_steps": null,
+    "preflight_text": "  [PREFLIGHT] All checks passed.\n",
+    "status": "build-only: stopped before stepping",
+    "solves": [
+      {
+        "n_steps": 4096,
+        "source_end_step": 151,
+        "received_grid": {
+          "shape": [
+            33,
+            5,
+            5
+          ],
+          "dx_m": 0.0025,
+          "dt_s": 4.766437173827515e-12,
+          "pads": {
+            "x_lo": 4,
+            "x_hi": 4,
+            "y_lo": 0,
+            "y_hi": 0,
+            "z_lo": 0,
+            "z_hi": 0
+          },
+          "axes": {
+            "x": {
+              "nodes": 33,
+              "interior_cells": 24,
+              "face_lo_m": 0.0,
+              "face_hi_m": 0.06,
+              "allocated_lo_m": -0.01,
+              "allocated_hi_m": 0.07
+            },
+            "y": {
+              "nodes": 5,
+              "interior_cells": 4,
+              "face_lo_m": 0.0,
+              "face_hi_m": 0.01,
+              "allocated_lo_m": 0.0,
+              "allocated_hi_m": 0.01
+            },
+            "z": {
+              "nodes": 5,
+              "interior_cells": 4,
+              "face_lo_m": 0.0,
+              "face_hi_m": 0.01,
+              "allocated_lo_m": 0.0,
+              "allocated_hi_m": 0.01
+            }
+          }
+        },
+        "field_dtype": "float32",
+        "cpml": {
+          "x_lo_sigma": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32",
+            "min": 0.0,
+            "max": 18.336074829101562,
+            "finite": true,
+            "sha256": "f3e770201bcf0a8322f3309463778acb6a90e47543a556e9fab86040a7063863"
+          },
+          "x_lo_kappa": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32",
+            "min": 1.0,
+            "max": 1.0,
+            "finite": true,
+            "sha256": "f6bb1294da2f78cd935b01c7656280df5eaa0439e9d97bc03775825a41a508e4"
+          },
+          "x_lo_alpha": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32",
+            "min": 0.0,
+            "max": 0.0,
+            "finite": true,
+            "sha256": "374708fff7719dd5979ec875d56cd2286f6d3cf7ec317a3b25632aab28ec37bb"
+          },
+          "x_lo_b": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32",
+            "min": 5.1662362238857895e-05,
+            "max": 1.0,
+            "finite": true,
+            "sha256": "dd93d5f55cd47c7c061d43a5e787cd4c1889b1de10cc6fe3f5fcfe82ec5030eb"
+          },
+          "x_lo_c": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32",
+            "min": -0.9999483227729797,
+            "max": 0.0,
+            "finite": true,
+            "sha256": "4f234c18da81936ab637ca7fe94ce20affbfffbde469d53ce3d833aa014444cb"
+          },
+          "x_hi_sigma": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32",
+            "min": 0.0,
+            "max": 18.336074829101562,
+            "finite": true,
+            "sha256": "a26f91afdecb81120dceb71704220642f249b8fd636cef3faab176f29b9283a2"
+          },
+          "x_hi_kappa": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32",
+            "min": 1.0,
+            "max": 1.0,
+            "finite": true,
+            "sha256": "f6bb1294da2f78cd935b01c7656280df5eaa0439e9d97bc03775825a41a508e4"
+          },
+          "x_hi_alpha": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32",
+            "min": 0.0,
+            "max": 0.0,
+            "finite": true,
+            "sha256": "374708fff7719dd5979ec875d56cd2286f6d3cf7ec317a3b25632aab28ec37bb"
+          },
+          "x_hi_b": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32",
+            "min": 5.1662362238857895e-05,
+            "max": 1.0,
+            "finite": true,
+            "sha256": "06877fd391c5a40fbb71f4ebcb4203c10809498c6391c1917e3c99630ff9332e"
+          },
+          "x_hi_c": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32",
+            "min": -0.9999483227729797,
+            "max": 0.0,
+            "finite": true,
+            "sha256": "3b4640f46ac556d38d70378c3d48697b7e99058509545d2b8f4e4b3d0060f48d"
+          },
+          "y_lo_sigma": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32",
+            "min": 0.0,
+            "max": 18.336074829101562,
+            "finite": true,
+            "sha256": "f3e770201bcf0a8322f3309463778acb6a90e47543a556e9fab86040a7063863"
+          },
+          "y_lo_kappa": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32",
+            "min": 1.0,
+            "max": 1.0,
+            "finite": true,
+            "sha256": "f6bb1294da2f78cd935b01c7656280df5eaa0439e9d97bc03775825a41a508e4"
+          },
+          "y_lo_alpha": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32",
+            "min": 0.0,
+            "max": 0.0,
+            "finite": true,
+            "sha256": "374708fff7719dd5979ec875d56cd2286f6d3cf7ec317a3b25632aab28ec37bb"
+          },
+          "y_lo_b": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32",
+            "min": 5.1662362238857895e-05,
+            "max": 1.0,
+            "finite": true,
+            "sha256": "dd93d5f55cd47c7c061d43a5e787cd4c1889b1de10cc6fe3f5fcfe82ec5030eb"
+          },
+          "y_lo_c": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32",
+            "min": -0.9999483227729797,
+            "max": 0.0,
+            "finite": true,
+            "sha256": "4f234c18da81936ab637ca7fe94ce20affbfffbde469d53ce3d833aa014444cb"
+          },
+          "y_hi_sigma": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32",
+            "min": 0.0,
+            "max": 18.336074829101562,
+            "finite": true,
+            "sha256": "a26f91afdecb81120dceb71704220642f249b8fd636cef3faab176f29b9283a2"
+          },
+          "y_hi_kappa": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32",
+            "min": 1.0,
+            "max": 1.0,
+            "finite": true,
+            "sha256": "f6bb1294da2f78cd935b01c7656280df5eaa0439e9d97bc03775825a41a508e4"
+          },
+          "y_hi_alpha": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32",
+            "min": 0.0,
+            "max": 0.0,
+            "finite": true,
+            "sha256": "374708fff7719dd5979ec875d56cd2286f6d3cf7ec317a3b25632aab28ec37bb"
+          },
+          "y_hi_b": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32",
+            "min": 5.1662362238857895e-05,
+            "max": 1.0,
+            "finite": true,
+            "sha256": "06877fd391c5a40fbb71f4ebcb4203c10809498c6391c1917e3c99630ff9332e"
+          },
+          "y_hi_c": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32",
+            "min": -0.9999483227729797,
+            "max": 0.0,
+            "finite": true,
+            "sha256": "3b4640f46ac556d38d70378c3d48697b7e99058509545d2b8f4e4b3d0060f48d"
+          },
+          "z_lo_sigma": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32",
+            "min": 0.0,
+            "max": 18.336074829101562,
+            "finite": true,
+            "sha256": "f3e770201bcf0a8322f3309463778acb6a90e47543a556e9fab86040a7063863"
+          },
+          "z_lo_kappa": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32",
+            "min": 1.0,
+            "max": 1.0,
+            "finite": true,
+            "sha256": "f6bb1294da2f78cd935b01c7656280df5eaa0439e9d97bc03775825a41a508e4"
+          },
+          "z_lo_alpha": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32",
+            "min": 0.0,
+            "max": 0.0,
+            "finite": true,
+            "sha256": "374708fff7719dd5979ec875d56cd2286f6d3cf7ec317a3b25632aab28ec37bb"
+          },
+          "z_lo_b": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32",
+            "min": 5.1662362238857895e-05,
+            "max": 1.0,
+            "finite": true,
+            "sha256": "dd93d5f55cd47c7c061d43a5e787cd4c1889b1de10cc6fe3f5fcfe82ec5030eb"
+          },
+          "z_lo_c": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32",
+            "min": -0.9999483227729797,
+            "max": 0.0,
+            "finite": true,
+            "sha256": "4f234c18da81936ab637ca7fe94ce20affbfffbde469d53ce3d833aa014444cb"
+          },
+          "z_hi_sigma": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32",
+            "min": 0.0,
+            "max": 18.336074829101562,
+            "finite": true,
+            "sha256": "a26f91afdecb81120dceb71704220642f249b8fd636cef3faab176f29b9283a2"
+          },
+          "z_hi_kappa": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32",
+            "min": 1.0,
+            "max": 1.0,
+            "finite": true,
+            "sha256": "f6bb1294da2f78cd935b01c7656280df5eaa0439e9d97bc03775825a41a508e4"
+          },
+          "z_hi_alpha": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32",
+            "min": 0.0,
+            "max": 0.0,
+            "finite": true,
+            "sha256": "374708fff7719dd5979ec875d56cd2286f6d3cf7ec317a3b25632aab28ec37bb"
+          },
+          "z_hi_b": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32",
+            "min": 5.1662362238857895e-05,
+            "max": 1.0,
+            "finite": true,
+            "sha256": "06877fd391c5a40fbb71f4ebcb4203c10809498c6391c1917e3c99630ff9332e"
+          },
+          "z_hi_c": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32",
+            "min": -0.9999483227729797,
+            "max": 0.0,
+            "finite": true,
+            "sha256": "3b4640f46ac556d38d70378c3d48697b7e99058509545d2b8f4e4b3d0060f48d"
+          }
+        },
+        "realized_source_apertures": [
+          [
+            16,
+            0,
+            0,
+            "ez"
+          ],
+          [
+            16,
+            0,
+            1,
+            "ez"
+          ],
+          [
+            16,
+            0,
+            2,
+            "ez"
+          ],
+          [
+            16,
+            0,
+            3,
+            "ez"
+          ],
+          [
+            16,
+            0,
+            4,
+            "ez"
+          ],
+          [
+            16,
+            1,
+            0,
+            "ez"
+          ],
+          [
+            16,
+            1,
+            1,
+            "ez"
+          ],
+          [
+            16,
+            1,
+            2,
+            "ez"
+          ],
+          [
+            16,
+            1,
+            3,
+            "ez"
+          ],
+          [
+            16,
+            1,
+            4,
+            "ez"
+          ],
+          [
+            16,
+            2,
+            0,
+            "ez"
+          ],
+          [
+            16,
+            2,
+            1,
+            "ez"
+          ],
+          [
+            16,
+            2,
+            2,
+            "ez"
+          ],
+          [
+            16,
+            2,
+            3,
+            "ez"
+          ],
+          [
+            16,
+            2,
+            4,
+            "ez"
+          ],
+          [
+            16,
+            3,
+            0,
+            "ez"
+          ],
+          [
+            16,
+            3,
+            1,
+            "ez"
+          ],
+          [
+            16,
+            3,
+            2,
+            "ez"
+          ],
+          [
+            16,
+            3,
+            3,
+            "ez"
+          ],
+          [
+            16,
+            3,
+            4,
+            "ez"
+          ],
+          [
+            16,
+            4,
+            0,
+            "ez"
+          ],
+          [
+            16,
+            4,
+            1,
+            "ez"
+          ],
+          [
+            16,
+            4,
+            2,
+            "ez"
+          ],
+          [
+            16,
+            4,
+            3,
+            "ez"
+          ],
+          [
+            16,
+            4,
+            4,
+            "ez"
+          ]
+        ],
+        "realized_waveguide_apertures": []
+      }
+    ],
+    "reference_grid": {
+      "grid": {
+        "shape": [
+          4161,
+          5,
+          5
+        ],
+        "dx_m": 0.0025,
+        "dt_s": 4.766437173827515e-12,
+        "pads": {
+          "x_lo": 0,
+          "x_hi": 0,
+          "y_lo": 0,
+          "y_hi": 0,
+          "z_lo": 0,
+          "z_hi": 0
+        },
+        "axes": {
+          "x": {
+            "nodes": 4161,
+            "interior_cells": 4160,
+            "face_lo_m": 0.0,
+            "face_hi_m": 10.4,
+            "allocated_lo_m": 0.0,
+            "allocated_hi_m": 10.4
+          },
+          "y": {
+            "nodes": 5,
+            "interior_cells": 4,
+            "face_lo_m": 0.0,
+            "face_hi_m": 0.01,
+            "allocated_lo_m": 0.0,
+            "allocated_hi_m": 0.01
+          },
+          "z": {
+            "nodes": 5,
+            "interior_cells": 4,
+            "face_lo_m": 0.0,
+            "face_hi_m": 0.01,
+            "allocated_lo_m": 0.0,
+            "allocated_hi_m": 0.01
+          }
+        }
+      },
+      "source_node": 2080,
+      "source_plane_m": 5.2,
+      "source_aperture_nodes": [
+        5,
+        5
+      ],
+      "probes_x_nodes": [
+        2083,
+        2077
+      ],
+      "pulse": {
+        "f0": 4000000000.0,
+        "bandwidth": 1.0,
+        "amplitude": 1.0,
+        "cutoff": 5
+      },
+      "record_steps": 4096,
+      "window_s": [
+        0,
+        1.9518560226823674e-08
+      ],
+      "window_definition": "full-record rectangular DFT",
+      "transverse_boundaries": "periodic",
+      "shortest_reference_wall_roundtrip_steps": 4157
+    },
+    "reference_check_grid": {
+      "grid": {
+        "shape": [
+          4289,
+          5,
+          5
+        ],
+        "dx_m": 0.0025,
+        "dt_s": 4.766437173827515e-12,
+        "pads": {
+          "x_lo": 0,
+          "x_hi": 0,
+          "y_lo": 0,
+          "y_hi": 0,
+          "z_lo": 0,
+          "z_hi": 0
+        },
+        "axes": {
+          "x": {
+            "nodes": 4289,
+            "interior_cells": 4288,
+            "face_lo_m": 0.0,
+            "face_hi_m": 10.72,
+            "allocated_lo_m": 0.0,
+            "allocated_hi_m": 10.72
+          },
+          "y": {
+            "nodes": 5,
+            "interior_cells": 4,
+            "face_lo_m": 0.0,
+            "face_hi_m": 0.01,
+            "allocated_lo_m": 0.0,
+            "allocated_hi_m": 0.01
+          },
+          "z": {
+            "nodes": 5,
+            "interior_cells": 4,
+            "face_lo_m": 0.0,
+            "face_hi_m": 0.01,
+            "allocated_lo_m": 0.0,
+            "allocated_hi_m": 0.01
+          }
+        }
+      },
+      "source_node": 2144,
+      "source_plane_m": 5.36,
+      "source_aperture_nodes": [
+        5,
+        5
+      ],
+      "probes_x_nodes": [
+        2147,
+        2141
+      ],
+      "pulse": {
+        "f0": 4000000000.0,
+        "bandwidth": 1.0,
+        "amplitude": 1.0,
+        "cutoff": 5
+      },
+      "record_steps": 4096,
+      "window_s": [
+        0,
+        1.9518560226823674e-08
+      ],
+      "window_definition": "full-record rectangular DFT",
+      "transverse_boundaries": "periodic",
+      "shortest_reference_wall_roundtrip_steps": 4285
+    }
+  },
+  "status": "build-only",
+  "wall_s": 1.841343613981735
+}

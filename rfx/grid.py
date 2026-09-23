@@ -4,6 +4,12 @@ from __future__ import annotations
 
 import numpy as np
 
+from rfx._grid_metric import (
+    axis_name as _axis_name,
+    dual_spacings_from_cells as _dual_spacings_from_cells,
+    normalize_axis as _normalize_axis,
+)
+
 # Speed of light in vacuum (m/s)
 C0 = 299_792_458.0
 
@@ -268,6 +274,117 @@ class Grid:
                 f"position lies inside the simulation domain."
             )
         return (i, j, k)
+
+    # ------------------------------------------------------------------
+    # Grid metric interface (step 0a, design note
+    # docs/design_notes/20260922_nu_grid_core_predeclaration.md decision 2).
+    #
+    # THE CONVENTION -- index origin, the primal/dual rule, the end entries
+    # of the two inverse-metric arrays, and which consumer is entitled to
+    # which metric -- is written once, in ``rfx/_grid_metric.py``. Read that
+    # module before adding a formula at a call site; decision 3 is that a
+    # consumer needing a third quantity adds a named accessor here instead.
+    #
+    # ``NonUniformGrid`` carries the same seven methods with the same meaning,
+    # so a consumer can hold either class and never branch on its type. On
+    # THIS class every axis is constant by construction, so every array is
+    # ``np.full(n, dx)`` and primal == dual bit-exactly.
+    # ------------------------------------------------------------------
+
+    def _axis_extent(self, axis) -> tuple[int, int]:
+        """``(n, pad_lo)`` for a normalized axis index."""
+        ax = _normalize_axis(axis)
+        n = (self.nx, self.ny, self.nz)[ax]
+        pad_lo = (self.pad_x_lo, self.pad_y_lo, self.pad_z_lo)[ax]
+        return int(n), int(pad_lo)
+
+    def cells(self, axis) -> np.ndarray:
+        """PRIMAL cell widths along ``axis``, float64, full padded length.
+
+        Constant by construction: ``np.full(n, dx)``. The last entry is the
+        fence-post node-provider (see ``rfx/_grid_metric.py``), so the sum
+        overshoots the realized extent by one cell -- use ``node_of``.
+        """
+        n, _ = self._axis_extent(axis)
+        return np.full(n, float(self.dx), dtype=np.float64)
+
+    def duals(self, axis) -> np.ndarray:
+        """DUAL (E-node) spacings along ``axis``, float64.
+
+        On a constant axis ``dual[k] = (d[k-1]+d[k])/2 = d[k]`` exactly, and
+        ``dual[0] = d[0]`` by the same rule, so this equals ``cells`` bit for
+        bit. Spelled through the shared helper anyway so the two classes
+        cannot drift apart in how the rule is written.
+        """
+        return _dual_spacings_from_cells(self.cells(axis))
+
+    def index_of(self, axis, x: float) -> int:
+        """Padded index of the node nearest physical coordinate ``x``.
+
+        Same arithmetic as the ``axis`` component of ``position_to_index``:
+        ``round(x/dx) + pad_lo``, with the same out-of-grid refusal. In 2-D
+        mode the z axis holds one cell and the answer is always 0, which is
+        what ``position_to_index`` returns there.
+        """
+        ax = _normalize_axis(axis)
+        n, pad_lo = self._axis_extent(ax)
+        if ax == 2 and self.is_2d:
+            return 0
+        idx = int(round(float(x) / self.dx)) + pad_lo
+        if not (0 <= idx < n):
+            raise ValueError(
+                f"position {float(x)} on axis {_axis_name(ax)!r} maps to "
+                f"padded index {idx}, outside this axis's {n} entries. Check "
+                f"the coordinate lies inside the simulation domain."
+            )
+        return idx
+
+    def node_of(self, axis, i: int) -> float:
+        """Physical coordinate of the E node at padded index ``i``.
+
+        ``(i - pad_lo) * dx`` -- the closed form ``_uniform_axis_nodes``
+        (``rfx.geometry.rasterize_grid._uniform_axis_nodes``) evaluates for the whole
+        axis, so this equals ``coords_from_uniform_grid(grid).<axis>[i]`` bit
+        for bit, and equals the bare ``i * dx`` on an axis with no pad.
+        """
+        ax = _normalize_axis(axis)
+        n, pad_lo = self._axis_extent(ax)
+        idx = int(i)
+        if not (0 <= idx < n):
+            raise IndexError(
+                f"padded index {idx} is outside axis {_axis_name(ax)!r}, "
+                f"which has {n} entries"
+            )
+        return (float(idx) - pad_lo) * self.dx
+
+    def boundary_cell(self, axis, side: str) -> float:
+        """The cell width at the ``"lo"`` or ``"hi"`` face of ``axis``.
+
+        The number a CPML profile is entitled to calibrate against. Constant
+        here, so both sides give ``dx``.
+        """
+        if side not in ("lo", "hi"):
+            raise ValueError(f"side must be 'lo' or 'hi', got {side!r}")
+        cells = self.cells(axis)
+        return float(cells[0] if side == "lo" else cells[-1])
+
+    def is_constant(self, axis) -> bool:
+        """Whether every cell on ``axis`` has the same width.
+
+        Always ``True`` on this class. Decision 4 selects the uniform kernel
+        on this predicate rather than on "was a profile given", so that the
+        kernel and the metric have one source.
+        """
+        _normalize_axis(axis)
+        return True
+
+    def is_traced(self, axis) -> bool:
+        """Whether ``axis``'s cell widths are a JAX tracer (decision 6).
+
+        Always ``False`` here: a uniform ``Grid`` holds a Python float.
+        """
+        _normalize_axis(axis)
+        return False
 
     def __repr__(self) -> str:
         return (

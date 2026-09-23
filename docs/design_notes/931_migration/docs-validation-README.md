@@ -13,8 +13,9 @@ these as text once each owner's numbers land.
 
 **APPLIED 2026-09-07 (ingest).** The wording below landed with the merge; the
 numbers landed after it, from crossval-B's run 369367259191 — 2.16 % / −39.4 dB
-/ 48.2 Ω, with the run log committed as
-`_06b_notch_uniform_logs/20260907T124851Z_run.log`. The width convention is NOT
+/ 48.2 Ω, with the run log committed under `validation/crossval/` (removed on
+2026-09-22 with the case, which is now
+`tests/crossval/msl_notch_filter/`; the log is at rfx commit 2ce4c28d). The width convention is NOT
 settled by that run (Z0 median 48.2 Ω against a pre-declared 46.48 ± 1.0 Ω) and
 the carriers say so; the regenerated falsifier summary and estimator fixture are
 still crossval-B's to commit.

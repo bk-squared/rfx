@@ -31,7 +31,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.core.yee import EPS_0, MU_0
+from rfx.core.yee import (EPS_0, MU_0,
+                          cell_component_e_coeffs as _cell_component_e_coeffs)
+from rfx.sources.sources import stamp_lumped_sigma as _stamp_lumped_sigma
 
 
 # Speed of light (used for static-Z0 closed form)
@@ -1005,7 +1007,6 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
         ax_w = span["width_axis"]
         ax_n = span["normal_axis"]
         ip, iw, inr = span["prop_idx"], span["width_idx"], span["normal_idx"]
-        sigma = materials.sigma
         for cell in cells:
             i, j, k = cell
             # #691: the two axes TRANSVERSE to the port component (which is
@@ -1025,8 +1026,11 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
             sigma_cell = (
                 (n_z * d_norm) / (port.impedance * n_y * d_prop * d_width)
             )
-            sigma = sigma.at[i, j, k].add(sigma_cell)
-        return materials._replace(sigma=sigma)
+            # #1210: the port's termination is a lumped load across the
+            # port edges, not a cell volume property, so it is recorded as
+            # an edge-owned stamp and kept out of the edge average.
+            materials = _stamp_lumped_sigma(materials, (i, j, k), sigma_cell)
+        return materials
 
     # Laplace-profile termination: uniform σ across the (extended) port
     # cross-section. For real Ez = ez_w * V on this support, its added
@@ -1082,7 +1086,6 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
         return materials
     sigma_uniform = 1.0 / (port.impedance * dx_feed * integrand)
 
-    sigma = materials.sigma
     for cell in cell_indices:
         i, j, k = cell
         j_loc = cell[iw] - j_box_lo
@@ -1095,8 +1098,8 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
         # an amplitude threshold or a propagating/evanescent-mode filter.
         if float(ez_profile[j_loc, k_loc]) == 0.0:
             continue
-        sigma = sigma.at[i, j, k].add(sigma_uniform)
-    return materials._replace(sigma=sigma)
+        materials = _stamp_lumped_sigma(materials, (i, j, k), sigma_uniform)
+    return materials
 
 
 # ---------------------------------------------------------------------------
@@ -1158,10 +1161,9 @@ def make_msl_port_sources(grid, port: MSLPort, materials, n_steps,
         specs = []
         for cell in cells:
             i, j, k = cell
-            eps = materials.eps_r[i, j, k] * EPS_0
-            sigma = materials.sigma[i, j, k]
-            loss = sigma * grid.dt / (2.0 * eps)
-            cb = (grid.dt / eps) / (1.0 + loss)
+            # #1210: the update's own per-component Cb at this cell.
+            cb = _cell_component_e_coeffs(
+                materials, (i, j, k), "ez", grid.dt)[1]
             # d_par is the cell size along the SUBSTRATE NORMAL (always z,
             # the axis "ez" points along) -- not the propagation axis.
             d_par = _axis_cell_size(grid, ax_n, cell[inr])
@@ -1191,10 +1193,8 @@ def make_msl_port_sources(grid, port: MSLPort, materials, n_steps,
         ez_w = float(ez_profile[j_loc, k_loc])
         if ez_w == 0.0:
             continue
-        eps = materials.eps_r[i, j, k] * EPS_0
-        sigma = materials.sigma[i, j, k]
-        loss = sigma * grid.dt / (2.0 * eps)
-        cb = (grid.dt / eps) / (1.0 + loss)
+        cb = _cell_component_e_coeffs(      # #1210
+            materials, (i, j, k), "ez", grid.dt)[1]
         # Add Cb * ez_w * u after the electric update. There is no extra
         # sigma_port factor or negative sign in this force. This equals
         # the uniform branch when ez_w = 1/H_sub and dz is uniform.
@@ -1305,10 +1305,10 @@ def make_msl_port_sources_jm(
         hy_w = float(em.hy[j_loc, k_loc])
         hz_w = float(em.hz[j_loc, k_loc])
 
-        eps = float(materials.eps_r[i, j, k]) * EPS_0
-        sigma = float(materials.sigma[i, j, k])
-        loss = sigma * dt / (2.0 * eps)
-        coeff_E = (dt / (eps * dx)) / (1.0 + loss)
+        # #1210: the drive coefficient is the E update's own per-component Cb. The component driven here is
+        # "ez" (both e_specs below write ez); dx is folded in as before.
+        coeff_E = float(_cell_component_e_coeffs(
+            materials, (i, j, k), "ez", dt)[1]) / dx
 
         i_h = int(i) + h_i_offset  # H correction cell index
 

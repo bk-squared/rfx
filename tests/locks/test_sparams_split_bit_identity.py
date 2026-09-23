@@ -233,7 +233,7 @@ def _mixed_result():
     sim.add(Box((0.0, y_c - _MIXED_W_TRACE / 2, _MIXED_H_SUB),
                 (lx, y_c + _MIXED_W_TRACE / 2, _MIXED_H_SUB)), material="pec")
     sim.add_port(position=(2e-3, y_c, 0.0), component="ez",
-                 impedance=50.0, extent=_MIXED_H_SUB)
+                 impedance=50.0, extent=_MIXED_H_SUB, terminates=1)
     sim.add_msl_port(position=(5.5e-3, y_c, 0.0), width=_MIXED_W_TRACE,
                      height=_MIXED_H_SUB, direction="-x", impedance=50.0,
                      waveform=GaussianPulse(f0=2.5e9, bandwidth=0.5),
@@ -295,9 +295,17 @@ _LEGS = (
     ("waveguide_flux", lambda: _waveguide_result("flux"),
      ("s_params", "freqs", "reference_planes", "settling_db",
       "s21_phase_residual_deg_rms")),
+    # sigma_max_excess joined MSLSMatrixResult when enforce_passivity stopped
+    # being the default (PI, 2026-09-21): a numeric field the dataclass
+    # carries, so the witness has to name it. On this leg's own record the
+    # projection was active only in the float32 noise around a passive
+    # |S21| = 1 thru (raw sigma_max 1.000000003 to 1.000000119), so S_raw and
+    # passivity_correction were set and now are not -- both legs' baselines
+    # predate that and this lock skips without one.
     ("msl", _msl_result,
      ("S", "freqs", "Z0", "beta", "reliable", "settling_db", "S_raw",
-      "passivity_correction", "cond_a", "reference_impedances")),
+      "passivity_correction", "sigma_max_excess", "cond_a",
+      "reference_impedances")),
     ("mixed", _mixed_result,
      ("S", "freqs", "z0_ref", "settling_db", "s21_power_witness", "reliable",
       "S_raw", "passivity_correction", "S_wave")),

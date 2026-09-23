@@ -19,6 +19,7 @@ import warnings
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
 from rfx import Box, Simulation
 from rfx.sources.sources import GaussianPulse
@@ -44,7 +45,20 @@ def _warned_nonpassive(recorded):
 
 
 def test_forward_lumped_s11_passivity_warns_on_gross_violation():
-    """forward() must warn when the eager extractor returns |S11| >> 1."""
+    """forward() must warn when the eager extractor returns |S11| >> 1.
+
+    The overshoot sits where the pulse carries no energy: f0 = 4 GHz,
+    bandwidth 0.7 puts 9.8 and 12 GHz 88 and 140 dB below the spectrum's
+    peak, so the incident wave the port divides by is numerical noise there.
+    Measured (VESSL 369367263684, lumped S = wire decomposition, PR 1162):
+    1.560 at 9.8 GHz and 1.552 at 12 GHz with the default record; every bin
+    within 20 dB of the peak reads 0.89 ... 0.996.
+
+    With the edge-averaged material coefficients of #1210 on top of #1162
+    (CPU, default record): 1.571 at 9.8 GHz and 1.374 at 12 GHz, the bins up
+    to 7.6 GHz 0.996 ... 0.821 and 8.7 GHz 0.326 -- still the band-edge bins,
+    still above this test's 1.10 line. The vacuum control reads 1.000 at most.
+    """
     sim = _cavity(eps_r=10.0)
     with warnings.catch_warnings(record=True) as rec:
         warnings.simplefilter("always")

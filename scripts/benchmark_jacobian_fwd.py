@@ -75,8 +75,9 @@ from rfx import Simulation
 from rfx.observables import dft_field, jacobian_fwd
 
 _DX = 1.0e-3
-# FORBIDDEN honesty-label terms (tests/unit/autodiff/test_estimate_ad_memory.py's
-# _FORBIDDEN_RECOMMENDATION_TERMS / _FORBIDDEN_CURRENT_EVIDENCE_FIELDS):
+# FORBIDDEN honesty-label terms (the field names are enforced by
+# tests/unit/autodiff/test_estimate_ad_memory.py's _FORBIDDEN_CURRENT_EVIDENCE_FIELDS; the
+# wording rule below is a convention, no longer a test, since #1127):
 # never call this a "profile", "runtime peak", "guaranteed", or
 # "certified" number, and never name a field observed_peak_gb /
 # profile_peak_gb / peak_bound_gb. This script's field names below are

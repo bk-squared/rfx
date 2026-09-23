@@ -1,0 +1,179 @@
+{
+  "original_verification_failure": "assert measured==r[reflectivity_db]",
+  "local_numpy_version": "2.4.6",
+  "maximum_absolute_difference_dB": 7.105427357601002e-15,
+  "rows": [
+    {
+      "case": "exact_2GHz_0_16",
+      "stored_db": -47.41969709913696,
+      "local_numpy_recompute_db": -47.41969709913696,
+      "difference_db": 0.0,
+      "math_log10_difference_db": 0.0,
+      "peak_difference_equal": true,
+      "peak_reference_equal": true
+    },
+    {
+      "case": "exact_2GHz_0_4",
+      "stored_db": -47.34667567991157,
+      "local_numpy_recompute_db": -47.34667567991157,
+      "difference_db": 0.0,
+      "math_log10_difference_db": 0.0,
+      "peak_difference_equal": true,
+      "peak_reference_equal": true
+    },
+    {
+      "case": "exact_2GHz_0_8",
+      "stored_db": -47.5636758632286,
+      "local_numpy_recompute_db": -47.5636758632286,
+      "difference_db": 0.0,
+      "math_log10_difference_db": 0.0,
+      "peak_difference_equal": true,
+      "peak_reference_equal": true
+    },
+    {
+      "case": "exact_2GHz_1_16",
+      "stored_db": -47.322360958944465,
+      "local_numpy_recompute_db": -47.32236095894446,
+      "difference_db": 7.105427357601002e-15,
+      "math_log10_difference_db": 0.0,
+      "peak_difference_equal": true,
+      "peak_reference_equal": true
+    },
+    {
+      "case": "exact_2GHz_1_4",
+      "stored_db": -47.35157361587685,
+      "local_numpy_recompute_db": -47.35157361587685,
+      "difference_db": 0.0,
+      "math_log10_difference_db": 0.0,
+      "peak_difference_equal": true,
+      "peak_reference_equal": true
+    },
+    {
+      "case": "exact_2GHz_1_8",
+      "stored_db": -47.33125912466618,
+      "local_numpy_recompute_db": -47.33125912466618,
+      "difference_db": 0.0,
+      "math_log10_difference_db": 0.0,
+      "peak_difference_equal": true,
+      "peak_reference_equal": true
+    },
+    {
+      "case": "exact_2GHz_3_16",
+      "stored_db": -47.319560305197214,
+      "local_numpy_recompute_db": -47.319560305197214,
+      "difference_db": 0.0,
+      "math_log10_difference_db": 0.0,
+      "peak_difference_equal": true,
+      "peak_reference_equal": true
+    },
+    {
+      "case": "exact_2GHz_3_4",
+      "stored_db": -47.44145602726544,
+      "local_numpy_recompute_db": -47.44145602726544,
+      "difference_db": 0.0,
+      "math_log10_difference_db": 0.0,
+      "peak_difference_equal": true,
+      "peak_reference_equal": true
+    },
+    {
+      "case": "exact_2GHz_3_8",
+      "stored_db": -47.298866909659296,
+      "local_numpy_recompute_db": -47.298866909659296,
+      "difference_db": 0.0,
+      "math_log10_difference_db": 0.0,
+      "peak_difference_equal": true,
+      "peak_reference_equal": true
+    },
+    {
+      "case": "frequency_1GHz_0_8",
+      "stored_db": -64.51638741733744,
+      "local_numpy_recompute_db": -64.51638741733744,
+      "difference_db": 0.0,
+      "math_log10_difference_db": 0.0,
+      "peak_difference_equal": true,
+      "peak_reference_equal": true
+    },
+    {
+      "case": "frequency_1GHz_1_8",
+      "stored_db": -68.58678811225087,
+      "local_numpy_recompute_db": -68.58678811225087,
+      "difference_db": 0.0,
+      "math_log10_difference_db": 0.0,
+      "peak_difference_equal": true,
+      "peak_reference_equal": true
+    },
+    {
+      "case": "frequency_1GHz_3_8",
+      "stored_db": -71.28695053104518,
+      "local_numpy_recompute_db": -71.28695053104518,
+      "difference_db": 0.0,
+      "math_log10_difference_db": 0.0,
+      "peak_difference_equal": true,
+      "peak_reference_equal": true
+    },
+    {
+      "case": "frequency_2GHz_0_8",
+      "stored_db": -66.24516504458494,
+      "local_numpy_recompute_db": -66.24516504458494,
+      "difference_db": 0.0,
+      "math_log10_difference_db": 0.0,
+      "peak_difference_equal": true,
+      "peak_reference_equal": true
+    },
+    {
+      "case": "frequency_2GHz_1_8",
+      "stored_db": -68.25129399141206,
+      "local_numpy_recompute_db": -68.25129399141206,
+      "difference_db": 0.0,
+      "math_log10_difference_db": 0.0,
+      "peak_difference_equal": true,
+      "peak_reference_equal": true
+    },
+    {
+      "case": "frequency_2GHz_3_8",
+      "stored_db": -70.35443430121354,
+      "local_numpy_recompute_db": -70.35443430121354,
+      "difference_db": 0.0,
+      "math_log10_difference_db": 0.0,
+      "peak_difference_equal": true,
+      "peak_reference_equal": true
+    },
+    {
+      "case": "frequency_4GHz_0_8",
+      "stored_db": -61.43262904490694,
+      "local_numpy_recompute_db": -61.43262904490694,
+      "difference_db": 0.0,
+      "math_log10_difference_db": 0.0,
+      "peak_difference_equal": true,
+      "peak_reference_equal": true
+    },
+    {
+      "case": "frequency_4GHz_1_8",
+      "stored_db": -62.47223899580712,
+      "local_numpy_recompute_db": -62.47223899580712,
+      "difference_db": 0.0,
+      "math_log10_difference_db": 0.0,
+      "peak_difference_equal": true,
+      "peak_reference_equal": true
+    },
+    {
+      "case": "frequency_4GHz_3_8",
+      "stored_db": -63.69197738525052,
+      "local_numpy_recompute_db": -63.69197738525052,
+      "difference_db": 0.0,
+      "math_log10_difference_db": 0.0,
+      "peak_difference_equal": true,
+      "peak_reference_equal": true
+    },
+    {
+      "case": "patch_source_2GHz_1_8",
+      "stored_db": -36.02974735693668,
+      "local_numpy_recompute_db": -36.02974735693668,
+      "difference_db": 0.0,
+      "math_log10_difference_db": 0.0,
+      "peak_difference_equal": true,
+      "peak_reference_equal": true
+    }
+  ],
+  "GPU_result_files_modified": false
+}

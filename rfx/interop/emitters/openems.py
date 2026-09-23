@@ -127,8 +127,7 @@ docs/design_notes/geometry_setup_interop.md):
         structure therefore compares rfx's realized wall (declared - dx/2
         per PMC face) against openEMS's wall at the declared mesh line
         unless the rfx side is declared REALIZE-DECLARED (plane + dx/2 per
-        PMC face, the convention decided in
-        ``validation/crossval/09_half_symmetric_waveguide.py``). Not
+        PMC face). Not
         translated here: this is a projection-fidelity NOTE about a
         difference the emitter faithfully carries over, not a refusal.
 

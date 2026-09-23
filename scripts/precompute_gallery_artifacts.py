@@ -208,9 +208,9 @@ class CaseResult:
 def _build_multilayer_fresnel(quick: bool) -> CaseResult:
     """Normal-incidence dielectric slab R/T vs the exact transfer matrix.
 
-    Replicates the rfx-only path of ``validation/crossval/04_multilayer_fresnel.py``
-    (2D TMz TFSF plane wave, single-run scattered/total field measurement) and
-    maps the lossless-reciprocal-slab physics onto a 2-port S-matrix:
+    A 2D TMz TFSF plane wave with a single-run scattered/total field
+    measurement, which maps the lossless-reciprocal-slab physics onto a 2-port
+    S-matrix:
     ``|S11|^2 = R``, ``|S21|^2 = T``. The complex analytic ``(r, t)`` from the
     transfer matrix is exported so the Touchstone carries phase, and the gallery
     plot compares rfx |S| against the analytic curve.
@@ -429,9 +429,8 @@ def _build_waveguide_wr90(quick: bool) -> CaseResult:
     """Empty WR-90 waveguide port: matched-load reference (|S11|=0, |S21|=1).
 
     Reuses the canonical ``add_waveguide_port`` + ``compute_waveguide_s_matrix``
-    pipeline from ``validation/crossval/11_waveguide_port_wr90.py`` for the
-    empty-guide geometry. The matched-load analytic reference is exact, so this
-    is an E5 case.
+    pipeline for the empty-guide geometry. The matched-load analytic reference
+    is exact, so this is an E5 case.
     """
     import jax.numpy as jnp
 

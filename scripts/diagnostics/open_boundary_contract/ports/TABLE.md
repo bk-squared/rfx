@@ -1,0 +1,283 @@
+ΔdB = abs(20 log10(abs(S_cont)) − 20 log10(abs(S_base))). Δphase = abs(arg(S_cont × conj(S_base))), principal angle.
+
+Band: every returned frequency bin. Minimum frequencies: sampled bins; interpolation count 0. Interior local minima: strict left, non-strict right; paired by ascending-frequency index.
+
+Reduction floating-point bits: 64. NA: no value.
+
+| lane | fixture | quantity | baseline | continued | difference / comparison | unit |
+| --- | --- | --- | --- | --- | --- | --- |
+| msl_two_port | 62 | S11.max_abs_magnitude_db_difference | NA | NA | 14.4335138752 | dB |
+| msl_two_port | 62 | S11.mean_abs_magnitude_db_difference | NA | NA | 5.61638719909 | dB |
+| msl_two_port | 62 | S11.max_abs_phase_difference_deg | NA | NA | 165.290554724 | deg |
+| msl_two_port | 62 | S11.mean_abs_phase_difference_deg | NA | NA | 78.0076277357 | deg |
+| msl_two_port | 62 | S11.max_abs_linear_magnitude_difference | NA | NA | 1.63648213021e-09 | 1 |
+| msl_two_port | 62 | S11.mean_abs_linear_magnitude_difference | NA | NA | 7.73054642285e-10 | 1 |
+| msl_two_port | 62 | S11.db_of_max_abs_linear_magnitude_difference | NA | NA | -175.721774653 | dB |
+| msl_two_port | 62 | S11.db_of_mean_abs_linear_magnitude_difference | NA | NA | -182.23579615 | dB |
+| msl_two_port | 62 | S12.max_abs_magnitude_db_difference | NA | NA | 0 | dB |
+| msl_two_port | 62 | S12.mean_abs_magnitude_db_difference | NA | NA | 0 | dB |
+| msl_two_port | 62 | S12.max_abs_phase_difference_deg | NA | NA | 1.16447437843e-06 | deg |
+| msl_two_port | 62 | S12.mean_abs_phase_difference_deg | NA | NA | 4.90899654769e-07 | deg |
+| msl_two_port | 62 | S12.max_abs_linear_magnitude_difference | NA | NA | 0 | 1 |
+| msl_two_port | 62 | S12.mean_abs_linear_magnitude_difference | NA | NA | 0 | 1 |
+| msl_two_port | 62 | S12.db_of_max_abs_linear_magnitude_difference | NA | NA | -inf | dB |
+| msl_two_port | 62 | S12.db_of_mean_abs_linear_magnitude_difference | NA | NA | -inf | dB |
+| msl_two_port | 62 | S21.max_abs_magnitude_db_difference | NA | NA | 0 | dB |
+| msl_two_port | 62 | S21.mean_abs_magnitude_db_difference | NA | NA | 0 | dB |
+| msl_two_port | 62 | S21.max_abs_phase_difference_deg | NA | NA | 1.02750412008e-06 | deg |
+| msl_two_port | 62 | S21.mean_abs_phase_difference_deg | NA | NA | 4.81149711265e-07 | deg |
+| msl_two_port | 62 | S21.max_abs_linear_magnitude_difference | NA | NA | 0 | 1 |
+| msl_two_port | 62 | S21.mean_abs_linear_magnitude_difference | NA | NA | 0 | 1 |
+| msl_two_port | 62 | S21.db_of_max_abs_linear_magnitude_difference | NA | NA | -inf | dB |
+| msl_two_port | 62 | S21.db_of_mean_abs_linear_magnitude_difference | NA | NA | -inf | dB |
+| msl_two_port | 62 | S22.max_abs_magnitude_db_difference | NA | NA | 14.4335130504 | dB |
+| msl_two_port | 62 | S22.mean_abs_magnitude_db_difference | NA | NA | 5.61638729886 | dB |
+| msl_two_port | 62 | S22.max_abs_phase_difference_deg | NA | NA | 165.290554759 | deg |
+| msl_two_port | 62 | S22.mean_abs_phase_difference_deg | NA | NA | 78.0076259815 | deg |
+| msl_two_port | 62 | S22.max_abs_linear_magnitude_difference | NA | NA | 1.63648223991e-09 | 1 |
+| msl_two_port | 62 | S22.mean_abs_linear_magnitude_difference | NA | NA | 7.73054606918e-10 | 1 |
+| msl_two_port | 62 | S22.db_of_max_abs_linear_magnitude_difference | NA | NA | -175.721774071 | dB |
+| msl_two_port | 62 | S22.db_of_mean_abs_linear_magnitude_difference | NA | NA | -182.235796547 | dB |
+| msl_two_port | 62 | max_column_power | 0.999984741269 | 0.999984741269 | NA | 1 |
+| msl_two_port | 62 | max_column_power.port1 | 0.999984741269 | 0.999984741269 | NA | 1 |
+| msl_two_port | 62 | max_column_power.port2 | 0.999984741269 | 0.999984741269 | NA | 1 |
+| msl_two_port | 62 | max_abs_S12_minus_S21 | 1.14515438243e-08 | 1.47018668351e-08 | NA | 1 |
+| msl_two_port | 62 | S11.global_minimum_frequency | 6571428864 | 2000000000 | -69.5652187463 | Hz; delta % |
+| msl_two_port | 62 | S11.interior_local_minimum_count | 2 | 1 | NA | 1 |
+| msl_two_port | 62 | S11.interior_local_minimum_frequency[0] | 6571428864 | 11142856704 | 69.5652031637 | Hz; delta % |
+| msl_two_port | 62 | S11.interior_local_minimum_frequency[1] | 15714285568 | NA | NA | Hz; delta % |
+| msl_two_port | 62 | returned_resonance_frequency_fields | 0 | 0 | NA | 1 |
+| msl_two_port | 62 | wall_time | 9.69177904911 | 5.6015251088 | NA | s |
+| msl_two_port | 62 | frequency_bins | 8 | 8 | NA | 1 |
+| msl_two_port | 62 | frequency_low | 2000000000 | 2000000000 | NA | Hz |
+| msl_two_port | 62 | frequency_high | 17999998976 | 17999998976 | NA | Hz |
+| msl_two_port | 62 | S_raw.max_column_power | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.Z0[0][0].imag | -416.49822998 | -412.897796631 | NA | ohm |
+| msl_two_port | 62 | diagnostic.Z0[0][0].real | 10.4243068695 | 11.2374343872 | NA | ohm |
+| msl_two_port | 62 | diagnostic.Z0[0][1].imag | -188.524642944 | -186.794921875 | NA | ohm |
+| msl_two_port | 62 | diagnostic.Z0[0][1].real | 10.2894630432 | 11.093378067 | NA | ohm |
+| msl_two_port | 62 | diagnostic.Z0[0][2].imag | -116.368041992 | -115.179840088 | NA | ohm |
+| msl_two_port | 62 | diagnostic.Z0[0][2].real | 10.0390796661 | 10.8246517181 | NA | ohm |
+| msl_two_port | 62 | diagnostic.Z0[0][3].imag | -79.4149932861 | -78.4651412964 | NA | ohm |
+| msl_two_port | 62 | diagnostic.Z0[0][3].real | 9.64977931976 | 10.4036340714 | NA | ohm |
+| msl_two_port | 62 | diagnostic.Z0[0][4].imag | -56.0547904968 | -55.2267456055 | NA | ohm |
+| msl_two_port | 62 | diagnostic.Z0[0][4].real | 9.11094093323 | 9.81524276733 | NA | ohm |
+| msl_two_port | 62 | diagnostic.Z0[0][5].imag | -39.4304618835 | -38.6717338562 | NA | ohm |
+| msl_two_port | 62 | diagnostic.Z0[0][5].real | 8.43619632721 | 9.07026386261 | NA | ohm |
+| msl_two_port | 62 | diagnostic.Z0[0][6].imag | -26.6958217621 | -25.9845695496 | NA | ohm |
+| msl_two_port | 62 | diagnostic.Z0[0][6].real | 7.67082643509 | 8.21371078491 | NA | ohm |
+| msl_two_port | 62 | diagnostic.Z0[0][7].imag | -16.4439849854 | -15.7756843567 | NA | ohm |
+| msl_two_port | 62 | diagnostic.Z0[0][7].real | 6.87421989441 | 7.30596113205 | NA | ohm |
+| msl_two_port | 62 | diagnostic.Z0[1][0].imag | -415.7734375 | -407.169464111 | NA | ohm |
+| msl_two_port | 62 | diagnostic.Z0[1][0].real | 10.4493150711 | 12.0058193207 | NA | ohm |
+| msl_two_port | 62 | diagnostic.Z0[1][1].imag | -188.184494019 | -184.040740967 | NA | ohm |
+| msl_two_port | 62 | diagnostic.Z0[1][1].real | 10.3147506714 | 11.8691482544 | NA | ohm |
+| msl_two_port | 62 | diagnostic.Z0[1][2].imag | -116.144042969 | -113.285385132 | NA | ohm |
+| msl_two_port | 62 | diagnostic.Z0[1][2].real | 10.0623006821 | 11.6082525253 | NA | ohm |
+| msl_two_port | 62 | diagnostic.Z0[1][3].imag | -79.2465209961 | -76.9455337524 | NA | ohm |
+| msl_two_port | 62 | diagnostic.Z0[1][3].real | 9.67228984833 | 11.1958665848 | NA | ohm |
+| msl_two_port | 62 | diagnostic.Z0[1][4].imag | -55.9186096191 | -53.8893470764 | NA | ohm |
+| msl_two_port | 62 | diagnostic.Z0[1][4].real | 9.13219928741 | 10.6103963852 | NA | ohm |
+| msl_two_port | 62 | diagnostic.Z0[1][5].imag | -39.3152427673 | -37.4194526672 | NA | ohm |
+| msl_two_port | 62 | diagnostic.Z0[1][5].real | 8.45600700378 | 9.85771083832 | NA | ohm |
+| msl_two_port | 62 | diagnostic.Z0[1][6].imag | -26.5953655243 | -24.7637252808 | NA | ohm |
+| msl_two_port | 62 | diagnostic.Z0[1][6].real | 7.68871068954 | 8.97919845581 | NA | ohm |
+| msl_two_port | 62 | diagnostic.Z0[1][7].imag | -16.354593277 | -14.5569601059 | NA | ohm |
+| msl_two_port | 62 | diagnostic.Z0[1][7].real | 6.88980674744 | 8.0340719223 | NA | ohm |
+| msl_two_port | 62 | diagnostic.beta[0].imag | 0 | 0 | NA | rad/m |
+| msl_two_port | 62 | diagnostic.beta[0].real | 36.5543251038 | 36.5543251038 | NA | rad/m |
+| msl_two_port | 62 | diagnostic.beta[1].imag | 0 | 0 | NA | rad/m |
+| msl_two_port | 62 | diagnostic.beta[1].real | 78.330696106 | 78.330696106 | NA | rad/m |
+| msl_two_port | 62 | diagnostic.beta[2].imag | 0 | 0 | NA | rad/m |
+| msl_two_port | 62 | diagnostic.beta[2].real | 120.107070923 | 120.107070923 | NA | rad/m |
+| msl_two_port | 62 | diagnostic.beta[3].imag | 0 | 0 | NA | rad/m |
+| msl_two_port | 62 | diagnostic.beta[3].real | 161.88343811 | 161.88343811 | NA | rad/m |
+| msl_two_port | 62 | diagnostic.beta[4].imag | 0 | 0 | NA | rad/m |
+| msl_two_port | 62 | diagnostic.beta[4].real | 203.659805298 | 203.659805298 | NA | rad/m |
+| msl_two_port | 62 | diagnostic.beta[5].imag | 0 | 0 | NA | rad/m |
+| msl_two_port | 62 | diagnostic.beta[5].real | 245.436172485 | 245.436172485 | NA | rad/m |
+| msl_two_port | 62 | diagnostic.beta[6].imag | 0 | 0 | NA | rad/m |
+| msl_two_port | 62 | diagnostic.beta[6].real | 287.212554932 | 287.212554932 | NA | rad/m |
+| msl_two_port | 62 | diagnostic.beta[7].imag | 0 | 0 | NA | rad/m |
+| msl_two_port | 62 | diagnostic.beta[7].real | 328.988891602 | 328.988891602 | NA | rad/m |
+| msl_two_port | 62 | diagnostic.beta_railed[0][0] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.beta_railed[0][1] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.beta_railed[0][2] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.beta_railed[0][3] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.beta_railed[0][4] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.beta_railed[0][5] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.beta_railed[0][6] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.beta_railed[0][7] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.beta_railed[1][0] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.beta_railed[1][1] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.beta_railed[1][2] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.beta_railed[1][3] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.beta_railed[1][4] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.beta_railed[1][5] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.beta_railed[1][6] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.beta_railed[1][7] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.cond_a[0] | 1.09583287476 | 1.11673342136 | NA | 1 |
+| msl_two_port | 62 | diagnostic.cond_a[1] | 1.09665512222 | 1.11802449635 | NA | 1 |
+| msl_two_port | 62 | diagnostic.cond_a[2] | 1.09813058018 | 1.120347314 | NA | 1 |
+| msl_two_port | 62 | diagnostic.cond_a[3] | 1.10031335312 | 1.12380128819 | NA | 1 |
+| msl_two_port | 62 | diagnostic.cond_a[4] | 1.10320242405 | 1.12841657886 | NA | 1 |
+| msl_two_port | 62 | diagnostic.cond_a[5] | 1.10668281093 | 1.13405354961 | NA | 1 |
+| msl_two_port | 62 | diagnostic.cond_a[6] | 1.1105103186 | 1.14037345819 | NA | 1 |
+| msl_two_port | 62 | diagnostic.cond_a[7] | 1.11439649564 | 1.14695012746 | NA | 1 |
+| msl_two_port | 62 | diagnostic.passivity_correction[0] | 2.24229768087e-09 | 1.08968389867e-09 | NA | 1 |
+| msl_two_port | 62 | diagnostic.passivity_correction[1] | 9.60907797776e-10 | 7.99203592194e-10 | NA | 1 |
+| msl_two_port | 62 | diagnostic.passivity_correction[2] | 1.50670365073e-10 | 1.31840893758e-09 | NA | 1 |
+| msl_two_port | 62 | diagnostic.passivity_correction[3] | 2.12811990252e-11 | 1.30065402892e-09 | NA | 1 |
+| msl_two_port | 62 | diagnostic.passivity_correction[4] | 1.17637855013e-09 | 1.09408548887e-09 | NA | 1 |
+| msl_two_port | 62 | diagnostic.passivity_correction[5] | 1.89705318121e-09 | 7.00679958499e-10 | NA | 1 |
+| msl_two_port | 62 | diagnostic.passivity_correction[6] | 1.04085784436e-09 | 1.53940127312e-09 | NA | 1 |
+| msl_two_port | 62 | diagnostic.passivity_correction[7] | 9.50124867671e-10 | 2.34605979088e-09 | NA | 1 |
+| msl_two_port | 62 | diagnostic.probe_clearance[0].deepest_probe_m | 0.0084 | 0.0084 | NA | m |
+| msl_two_port | 62 | diagnostic.probe_clearance[0].first_probe_m | 0.006 | 0.006 | NA | m |
+| msl_two_port | 62 | diagnostic.probe_clearance[0].recommended_gap_m | 0.00167593294914 | 0.00167593294914 | NA | m |
+| msl_two_port | 62 | diagnostic.probe_clearance[0].rule_frequency_hz | 20000000000 | 20000000000 | NA | 1 |
+| msl_two_port | 62 | diagnostic.probe_clearance[1].deepest_probe_m | 0.0036 | 0.0036 | NA | m |
+| msl_two_port | 62 | diagnostic.probe_clearance[1].first_probe_m | 0.006 | 0.006 | NA | m |
+| msl_two_port | 62 | diagnostic.probe_clearance[1].recommended_gap_m | 0.00167593294914 | 0.00167593294914 | NA | m |
+| msl_two_port | 62 | diagnostic.probe_clearance[1].rule_frequency_hz | 20000000000 | 20000000000 | NA | 1 |
+| msl_two_port | 62 | diagnostic.reference_impedances[0] | 77.7682160415 | 77.7682160415 | NA | ohm |
+| msl_two_port | 62 | diagnostic.reference_impedances[1] | 77.7682160415 | 77.7682160415 | NA | ohm |
+| msl_two_port | 62 | diagnostic.reliable[0][0] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.reliable[0][1] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.reliable[0][2] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.reliable[0][3] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.reliable[0][4] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.reliable[0][5] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.reliable[0][6] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.reliable[0][7] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.reliable[1][0] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.reliable[1][1] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.reliable[1][2] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.reliable[1][3] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.reliable[1][4] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.reliable[1][5] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.reliable[1][6] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.reliable[1][7] | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | diagnostic.settling_db[0] | -0.47337104966 | -0.216971492825 | NA | dB |
+| msl_two_port | 62 | diagnostic.settling_db[1] | -0.472422241777 | -0.122038920143 | NA | dB |
+| msl_two_port | 62 | returned_field_present.S | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | returned_field_present.S_raw | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | returned_field_present.Z0 | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | returned_field_present.assembly | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | returned_field_present.beta | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | returned_field_present.beta_railed | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | returned_field_present.cond_a | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | returned_field_present.freqs | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | returned_field_present.passivity_correction | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | returned_field_present.port_names | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | returned_field_present.probe_clearance | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | returned_field_present.reference_impedances | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | returned_field_present.reliable | 1 | 1 | NA | 1 |
+| msl_two_port | 62 | returned_field_present.settling_db | 1 | 1 | NA | 1 |
+| mixed | 81 | S11.max_abs_magnitude_db_difference | NA | NA | 2.85014697693 | dB |
+| mixed | 81 | S11.mean_abs_magnitude_db_difference | NA | NA | 2.15041298016 | dB |
+| mixed | 81 | S11.max_abs_phase_difference_deg | NA | NA | 9.33706427171 | deg |
+| mixed | 81 | S11.mean_abs_phase_difference_deg | NA | NA | 6.97345766112 | deg |
+| mixed | 81 | S11.max_abs_linear_magnitude_difference | NA | NA | 0.0919368098883 | 1 |
+| mixed | 81 | S11.mean_abs_linear_magnitude_difference | NA | NA | 0.0736445119412 | 1 |
+| mixed | 81 | S11.db_of_max_abs_linear_magnitude_difference | NA | NA | -20.7302113978 | dB |
+| mixed | 81 | S11.db_of_mean_abs_linear_magnitude_difference | NA | NA | -22.657192233 | dB |
+| mixed | 81 | S12.max_abs_magnitude_db_difference | NA | NA | 2.34645098474 | dB |
+| mixed | 81 | S12.mean_abs_magnitude_db_difference | NA | NA | 2.27023722587 | dB |
+| mixed | 81 | S12.max_abs_phase_difference_deg | NA | NA | 7.68259554989 | deg |
+| mixed | 81 | S12.mean_abs_phase_difference_deg | NA | NA | 4.0930109509 | deg |
+| mixed | 81 | S12.max_abs_linear_magnitude_difference | NA | NA | 0.212870618907 | 1 |
+| mixed | 81 | S12.mean_abs_linear_magnitude_difference | NA | NA | 0.206906354975 | 1 |
+| mixed | 81 | S12.db_of_max_abs_linear_magnitude_difference | NA | NA | -13.4376855431 | dB |
+| mixed | 81 | S12.db_of_mean_abs_linear_magnitude_difference | NA | NA | -13.6845234019 | dB |
+| mixed | 81 | S21.max_abs_magnitude_db_difference | NA | NA | 2.24888287265 | dB |
+| mixed | 81 | S21.mean_abs_magnitude_db_difference | NA | NA | 1.66184728031 | dB |
+| mixed | 81 | S21.max_abs_phase_difference_deg | NA | NA | 16.1245174239 | deg |
+| mixed | 81 | S21.mean_abs_phase_difference_deg | NA | NA | 11.3111953893 | deg |
+| mixed | 81 | S21.max_abs_linear_magnitude_difference | NA | NA | 0.188750837889 | 1 |
+| mixed | 81 | S21.mean_abs_linear_magnitude_difference | NA | NA | 0.151330005138 | 1 |
+| mixed | 81 | S21.db_of_max_abs_linear_magnitude_difference | NA | NA | -14.4822222361 | dB |
+| mixed | 81 | S21.db_of_mean_abs_linear_magnitude_difference | NA | NA | -16.4014990636 | dB |
+| mixed | 81 | S22.max_abs_magnitude_db_difference | NA | NA | 8.25916976009 | dB |
+| mixed | 81 | S22.mean_abs_magnitude_db_difference | NA | NA | 6.92827786027 | dB |
+| mixed | 81 | S22.max_abs_phase_difference_deg | NA | NA | 160.566659809 | deg |
+| mixed | 81 | S22.mean_abs_phase_difference_deg | NA | NA | 138.691969014 | deg |
+| mixed | 81 | S22.max_abs_linear_magnitude_difference | NA | NA | 0.125343797485 | 1 |
+| mixed | 81 | S22.mean_abs_linear_magnitude_difference | NA | NA | 0.111277992727 | 1 |
+| mixed | 81 | S22.db_of_max_abs_linear_magnitude_difference | NA | NA | -18.0379430362 | dB |
+| mixed | 81 | S22.db_of_mean_abs_linear_magnitude_difference | NA | NA | -19.0718143382 | dB |
+| mixed | 81 | max_column_power | 0.863076198827 | 0.679447208479 | NA | 1 |
+| mixed | 81 | max_column_power.port1 | 0.863076198827 | 0.679447208479 | NA | 1 |
+| mixed | 81 | max_column_power.port2 | 0.861332704973 | 0.548455027759 | NA | 1 |
+| mixed | 81 | max_abs_S12_minus_S21 | 0.181141834163 | 0.0608341306329 | NA | 1 |
+| mixed | 81 | S11.global_minimum_frequency | 1000000000 | 1000000000 | 0 | Hz; delta % |
+| mixed | 81 | S11.interior_local_minimum_count | 0 | 0 | NA | 1 |
+| mixed | 81 | returned_resonance_frequency_fields | 0 | 0 | NA | 1 |
+| mixed | 81 | wall_time | 10.484669462 | 6.33164469 | NA | s |
+| mixed | 81 | frequency_bins | 5 | 5 | NA | 1 |
+| mixed | 81 | frequency_low | 1000000000 | 1000000000 | NA | Hz |
+| mixed | 81 | frequency_high | 4000000000 | 4000000000 | NA | Hz |
+| mixed | 81 | S_raw.max_column_power | 1.01864308476 | 0.764861783072 | NA | 1 |
+| mixed | 81 | S_wave.max_column_power | 1.98421635208 | 0.831924167971 | NA | 1 |
+| mixed | 81 | diagnostic.beta_railed[0][0] | 0 | 0 | NA | 1 |
+| mixed | 81 | diagnostic.beta_railed[0][1] | 0 | 0 | NA | 1 |
+| mixed | 81 | diagnostic.beta_railed[0][2] | 0 | 1 | NA | 1 |
+| mixed | 81 | diagnostic.beta_railed[0][3] | 1 | 1 | NA | 1 |
+| mixed | 81 | diagnostic.beta_railed[0][4] | 1 | 1 | NA | 1 |
+| mixed | 81 | diagnostic.passivity_correction[0] | 0.136342749 | 0.0802990049124 | NA | 1 |
+| mixed | 81 | diagnostic.passivity_correction[1] | 0.131897866726 | 0.0695642381907 | NA | 1 |
+| mixed | 81 | diagnostic.passivity_correction[2] | 0.124618306756 | 0.0492519140244 | NA | 1 |
+| mixed | 81 | diagnostic.passivity_correction[3] | 0.104260310531 | 0.0049112024717 | NA | 1 |
+| mixed | 81 | diagnostic.passivity_correction[4] | 0.0464861430228 | 0 | NA | 1 |
+| mixed | 81 | diagnostic.probe_clearance[0].deepest_probe_m | 0.003302 | 0.003302 | NA | m |
+| mixed | 81 | diagnostic.probe_clearance[0].first_probe_m | 0.00465666666667 | 0.00465666666667 | NA | m |
+| mixed | 81 | diagnostic.probe_clearance[0].recommended_gap_m | 0.00670373179654 | 0.00670373179654 | NA | m |
+| mixed | 81 | diagnostic.probe_clearance[0].rule_frequency_hz | 5000000000 | 5000000000 | NA | 1 |
+| mixed | 81 | diagnostic.reliable[0][0] | 1 | 1 | NA | 1 |
+| mixed | 81 | diagnostic.reliable[0][1] | 1 | 1 | NA | 1 |
+| mixed | 81 | diagnostic.reliable[0][2] | 1 | 1 | NA | 1 |
+| mixed | 81 | diagnostic.reliable[0][3] | 1 | 1 | NA | 1 |
+| mixed | 81 | diagnostic.reliable[0][4] | 1 | 1 | NA | 1 |
+| mixed | 81 | diagnostic.s21_power_witness[0][0][0] | 1.33668923378 | 0.750589370728 | NA | 1 |
+| mixed | 81 | diagnostic.s21_power_witness[0][0][1] | 1.30744111538 | 0.761813223362 | NA | 1 |
+| mixed | 81 | diagnostic.s21_power_witness[0][0][2] | 1.24471020699 | 0.778687059879 | NA | 1 |
+| mixed | 81 | diagnostic.s21_power_witness[0][0][3] | 1.11799621582 | 0.791477262974 | NA | 1 |
+| mixed | 81 | diagnostic.s21_power_witness[0][0][4] | 0.952034473419 | 0.736132621765 | NA | 1 |
+| mixed | 81 | diagnostic.settling_db[0] | -9.42222447939 | -12.2800615154 | NA | dB |
+| mixed | 81 | diagnostic.settling_db[1] | -9.95538110374 | -12.5513044105 | NA | dB |
+| mixed | 81 | diagnostic.z0_ref[0] | 50 | 50 | NA | ohm |
+| mixed | 81 | diagnostic.z0_ref[1] | 47.8947999629 | 47.8947999629 | NA | ohm |
+| mixed | 81 | returned_field_present.S | 1 | 1 | NA | 1 |
+| mixed | 81 | returned_field_present.S_raw | 1 | 1 | NA | 1 |
+| mixed | 81 | returned_field_present.S_wave | 1 | 1 | NA | 1 |
+| mixed | 81 | returned_field_present.beta_railed | 1 | 1 | NA | 1 |
+| mixed | 81 | returned_field_present.freqs | 1 | 1 | NA | 1 |
+| mixed | 81 | returned_field_present.magnitude_channel | 1 | 1 | NA | 1 |
+| mixed | 81 | returned_field_present.passivity_correction | 1 | 1 | NA | 1 |
+| mixed | 81 | returned_field_present.port_families | 1 | 1 | NA | 1 |
+| mixed | 81 | returned_field_present.port_names | 1 | 1 | NA | 1 |
+| mixed | 81 | returned_field_present.probe_clearance | 1 | 1 | NA | 1 |
+| mixed | 81 | returned_field_present.reliable | 1 | 1 | NA | 1 |
+| mixed | 81 | returned_field_present.s21_power_witness | 1 | 1 | NA | 1 |
+| mixed | 81 | returned_field_present.settling_db | 1 | 1 | NA | 1 |
+| mixed | 81 | returned_field_present.z0_ref | 1 | 1 | NA | 1 |
+| coax_two_port | 77 | dry_readback_calls.baseline | 1 | NA | NA | count |
+| coax_two_port | 77 | FDTD_steps.baseline | 0 | NA | NA | count |
+| coax_two_port | 77 | dry_readback_calls.continued | 0 | NA | NA | count |
+| coax_two_port | 77 | FDTD_steps.continued | 0 | NA | NA | count |
+
+Coax continuation, verbatim:
+
+```text
+Traceback (most recent call last):
+  File "/root/workspace/bk-workspace/.801-measure/ports/coax_run.py", line 97, in execute
+    result=sim.compute_coaxial_two_port(n_steps=6000,freqs=mod.BAND)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/workspace/bk-workspace/.801-measure/src-main/rfx/sparams/coax.py", line 1127, in compute_coaxial_two_port
+    materials, shell_inner = stamp_coaxial_line(
+                             ^^^^^^^^^^^^^^^^^^^
+  File "/root/workspace/bk-workspace/.801-measure/ports/coax_run.py", line 66, in stamp
+    assert np.array_equal(old[:,:,:stop],new[:,:,:stop])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError
+```

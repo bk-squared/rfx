@@ -202,11 +202,10 @@ def measure_aux_echo_1d(*, nx: int = 640, pad: int = 6000, n_steps: int = 16000,
                         probe_rel=(300, 340), dt: float = DT_2D, bw: float = 0.5,
                         f_lo_hz: float = 3e9, f_hi_hz: float = 15e9,
                         inc_power_frac: float = 0.02, **aux) -> dict:
-    """The 1-D auxiliary echo relative to the incident, on cv04's own rig and
-    band.
+    """The 1-D auxiliary echo relative to the incident, on the rig and
+    band of the former cv04 slab Fresnel case, removed 2026-09-21.
 
-    Defaults ARE cv04's (``validation/crossval/04_multilayer_fresnel.py``):
-    ``nx = 600 + 2*20``, the 2-D TMz timestep, ``bw = 0.5``, the default
+    Defaults ARE that case's: ``nx = 600 + 2*20``, the 2-D TMz timestep, ``bw = 0.5``, the default
     differentiated-Gaussian waveform, and the band mask
     ``(f > 3 GHz) & (f < 15 GHz) & (inc_power > 0.02 max)``. The band is not
     optional bookkeeping: that waveform's spectrum peaks near 3.5 GHz, not at

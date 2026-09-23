@@ -87,6 +87,42 @@ def is_tfsf_methodB(cfg) -> bool:
     return isinstance(cfg, MethodBConfig)
 
 
+def tfsf_injection_planes(cfg) -> "dict[str, tuple[int, int]]":
+    """The node planes that bound the total-field region, per injected axis.
+
+    Every config uses the same correction structure on every axis it drives:
+    E is corrected at the low plane and one node past the high plane, H at
+    one plane below the low plane and at the high plane. Reading the signs
+    off those four, the E node at index i and the H half-plane at index i
+    both carry incident + scattered for ``lo <= i <= hi`` and scattered only
+    outside — one membership test for both fields, on every axis.
+
+    * 1-D normal incidence (:class:`TFSFConfig`, ``x_lo``/``x_hi``) and the
+      2-D Bloch ``TFSF2DConfig`` inject on x only. Their slab is infinite in
+      y and z, so there are no y or z planes to clear.
+    * Open-domain oblique ``MethodBConfig``
+      (``rfx/sources/tfsf_oblique_open.py``) injects on a RECTANGLE: x and y
+      both. ``apply_methodB_e`` corrects ``Ez[x_lo]`` / ``Ez[x_hi+1]`` and
+      ``Ez[., y_lo]`` / ``Ez[., y_hi+1]``; ``apply_methodB_h`` corrects
+      ``Hy[x_lo-1]`` / ``Hy[x_hi]`` and ``Hx[., y_lo-1]`` / ``Hx[., y_hi]``.
+      Measured in an empty domain at theta = 20 deg: max|Ez| is 7.8e-01
+      inside ``y_lo <= j <= y_hi`` and 3.5e-03 outside, with max|Hx|
+      switching at the same two indices.
+
+    Returns an empty mapping for a config that injects on no axis this
+    function knows, so a caller can skip a placement check rather than fail
+    on a missing attribute.
+    """
+    planes: dict = {}
+    x_lo = getattr(cfg, "x_lo", None)
+    x_hi = getattr(cfg, "x_hi", None)
+    if x_lo is not None and x_hi is not None:
+        planes["x"] = (int(x_lo), int(x_hi))
+    if is_tfsf_methodB(cfg):
+        planes["y"] = (int(cfg.y_lo), int(cfg.y_hi))
+    return planes
+
+
 class TFSFState(NamedTuple):
     """1D auxiliary FDTD state for TFSF plane-wave generation."""
     e1d: jnp.ndarray   # Ez incident (n_1d,)

@@ -259,6 +259,37 @@ def compute_mixed_s_matrix(
             "compute_lumped_wire_s_matrix_via_scan)."
         )
     wire_mode = all(is_wire)
+    if not wire_mode:
+        # This lane keeps the PRE-decision lumped driven diagonal — the
+        # passive port-branch algebra, which on a known load is the
+        # reciprocal of the physical reflection
+        # (scripts/diagnostics/lumped_port_known_load_line.py).  Correcting
+        # it is cross-family work the PI deferred on 2026-09-15, so the
+        # algebra stays; saying nothing about it does not.
+        #
+        # Its drive reference reads the pre-injection channel explicitly, so
+        # the sample the #488 algebra was calibrated against did not move.
+        # What did move is the current, which now carries the Yee half-step
+        # phase: measured on a lumped-feed variant of the committed fixture,
+        # max |dS| = 1.8e-05 and max |d|S|| = 1.7e-07.  The committed
+        # fixtures drive a WIRE feed and are bit-identical (max |dS| = 0.0).
+        import warnings as _w
+        from rfx.probes.probes import PreDecisionLumpedDiagonalWarning as _W
+        _w.warn(
+            "compute_mixed_s_matrix: the LUMPED driven diagonal in this lane "
+            "is on the pre-decision convention (the passive port-branch "
+            "algebra applied to a driven port), which on a known load reads "
+            "the reciprocal of the physical reflection — see "
+            "scripts/diagnostics/lumped_port_known_load_line.py. The uniform "
+            "single-family lumped lane was corrected on 2026-09-21; this "
+            "cross-family lane is fenced experimental and was deliberately "
+            "not. Its numbers also shifted by the Yee half-step current "
+            "phase (max |dS| = 1.8e-05 measured on a lumped-feed fixture). "
+            "Use compute_lumped_wire_s_matrix_via_scan for a lumped-only "
+            "set; do not report this diagonal as physics.",
+            _W,
+            stacklevel=2,
+        )
     if any(getattr(pe, "reference_plane_cells", None) for pe in lw_entries):
         raise NotImplementedError(
             "compute_mixed_s_matrix() v1 does not support "
@@ -713,6 +744,16 @@ def compute_mixed_s_matrix(
                     # reference — not a pre-injection sample.
                     vref_lw[run_idx, i_port, :] = np.asarray(
                         vi[4] if len(vi) > 4 else vi[0])
+                else:
+                    # Same reason on the lumped family, whose physical
+                    # channels moved post-injection on 2026-09-21
+                    # (scripts/diagnostics/lumped_port_known_load_line.py):
+                    # vi[2] is its pre-injection drive sample, bit-identical
+                    # to the pre-decision vi[0] this lane was calibrated
+                    # against. A shorter tuple is pre-decision data, where
+                    # vi[0] IS that sample.
+                    vref_lw[run_idx, i_port, :] = np.asarray(
+                        vi[2] if len(vi) > 2 else vi[0])
 
             planes = raw.get("dft_planes")
             if not planes:
@@ -810,7 +851,7 @@ def compute_mixed_s_matrix(
             np.asarray([pe.impedance for pe in lw_entries]),
             n_live_lw, np.asarray(z0_hj_per_port),
             wire_mode, drive_plan,
-            v_ref_lw=(vref_lw if wire_mode else None),
+            v_ref_lw=vref_lw,
         )
         S = jnp.asarray(S, dtype=_complex_dtype)
 

@@ -13,8 +13,7 @@ Current evidence level: Recommended for the documented WR-style rectangular-guid
 cases. The main gates are in `tests/oracle/test_waveguide_port_validation_battery.py`
 (empty-guide max `|S11| < 0.02`, passivity `< 1.02`, PEC-short
 `0.99 <= min(|S11|)` and `max(|S11|) < 1.03`) and
-`validation/crossval/11_waveguide_port_wr90.py` (analytic Airy/reference-plane
-gates, with external references reported as available or skipped).
+`tests/unit/sparams/test_waveguide_twoport_contract_v1.py`.
 
 The port aperture defines the guide cross-section — you do not add PEC side
 walls. Measured on a 100 mm WR-90-like thru with `boundary="cpml"` and the

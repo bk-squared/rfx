@@ -51,13 +51,52 @@ class NTFFBox(NamedTuple):
     cpml_hi_y: int = 0
     cpml_lo_z: int = 0
     cpml_hi_z: int = 0
+    # Where on a face cell the four stored tangential components live.
+    #
+    # True — the accumulator holds E and H already moved to the CENTRE of the
+    #   face cell, so the surface integral is a midpoint rule and the
+    #   transform is second order in the cell size. Every path that builds a
+    #   box for a NEW run sets this.
+    # False — the legacy layout: each component is stored exactly where the
+    #   Yee lattice puts it and the integral places all four at the cell's
+    #   lower-corner node. First order, and the tangential H is half a cell
+    #   off the face along the normal. Kept as the DEFAULT so accumulators
+    #   dumped by an earlier run are read back with the geometry they were
+    #   accumulated with instead of being silently reinterpreted.
+    #
+    # This is a bool and not the readable string, because every field of this
+    # NamedTuple is a JAX PYTREE LEAF: a str leaf makes the whole box an
+    # invalid argument to ``jax.jit``/``vmap``/``tree_map``, which it was not
+    # before this field existed. Read ``box.collocation`` for the name.
+    face_centre: bool = False
+    # Linear weight on the H sample at the LOWER-INDEX side of the face
+    # (index ``idx-1``) when the tangential H is interpolated across the face
+    # onto the node plane. ``w = d[idx] / (d[idx-1] + d[idx])`` from the two
+    # cell widths adjacent to the face; 0.5 on a uniform axis. Unused when
+    # ``face_centre`` is False.
+    w_x_lo: float = 0.5
+    w_x_hi: float = 0.5
+    w_y_lo: float = 0.5
+    w_y_hi: float = 0.5
+    w_z_lo: float = 0.5
+    w_z_hi: float = 0.5
+
+    @property
+    def collocation(self) -> str:
+        """Readable name of the face-cell layout: face_centre or node."""
+        return "face_centre" if self.face_centre else "node"
 
     @classmethod
-    def from_grid(cls, grid, *, i_lo, i_hi, j_lo, j_hi, k_lo, k_hi, freqs):
+    def from_grid(cls, grid, *, i_lo, i_hi, j_lo, j_hi, k_lo, k_hi, freqs,
+                  collocation: str = "face_centre"):
         """Build an NTFFBox with per-face CPML thicknesses pulled from
         ``grid.face_layers``. Under symmetric face_layers (all six equal
         grid.cpml_layers), the box is numerically identical to the legacy
-        scalar-cpml construction."""
+        scalar-cpml construction.
+
+        The box is built for face-centre collocation by default (the
+        second-order layout); pass ``collocation="node"`` to reproduce the
+        pre-second-order geometry."""
         fl = getattr(grid, "face_layers", None)
         if fl is None:
             # Grid types without face_layers (e.g. older NU grids) fall back
@@ -66,7 +105,7 @@ class NTFFBox(NamedTuple):
             faces = {k: scalar for k in ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")}
         else:
             faces = fl
-        return cls(
+        box = cls(
             i_lo=i_lo, i_hi=i_hi, j_lo=j_lo, j_hi=j_hi, k_lo=k_lo, k_hi=k_hi,
             freqs=freqs,
             cpml_lo_x=int(faces["x_lo"]),
@@ -76,6 +115,9 @@ class NTFFBox(NamedTuple):
             cpml_lo_z=int(faces["z_lo"]),
             cpml_hi_z=int(faces["z_hi"]),
         )
+        if collocation == "face_centre":
+            return with_face_centre_collocation(box, grid)
+        return box
 
 
 class NTFFData(NamedTuple):
@@ -124,21 +166,181 @@ class FarFieldResult(NamedTuple):
 # Initialization
 # ---------------------------------------------------------------------------
 
+def _cell_widths(grid, axis: int):
+    """Per-cell widths along ``axis`` as a NumPy float64 array, or None.
+
+    Returns None when the axis is uniform (a plain ``Grid``), in which case
+    the half-cell interpolation weights are 1/2 and nothing has to be read
+    off the grid at all. JIT safety: this runs at box-construction time, on
+    the host, and its output reaches the scan as Python floats.
+    """
+    name = ("dx_arr", "dy_arr", "dz")[axis]
+    arr = getattr(grid, name, None)
+    if arr is None:
+        return None
+    return np.asarray(arr, dtype=np.float64)
+
+
+def _normal_weight(widths, idx: int) -> float:
+    """Weight on the LOWER-INDEX H sample when interpolating onto node ``idx``.
+
+    The tangential H of a face at node plane ``idx`` is stored at the two
+    neighbouring CELL CENTRES, ``idx-1`` (the lower-index side) and ``idx``
+    (the higher-index side). The node sits ``d[idx-1]/2`` from the first and
+    ``d[idx]/2`` from the second, so the linear weight on the lower-index
+    sample is ``d[idx] / (d[idx-1] + d[idx])`` — exactly 1/2 when the two
+    cells are the same width.
+    """
+    if widths is None:
+        return 0.5
+    if idx < 1 or idx >= len(widths):
+        # Python would wrap idx-1 to the last cell and return a plausible
+        # number for a face that has no cell on one side of it. A box at
+        # index 0 is refused later with a message; do not invent a weight
+        # for it here.
+        return 0.5
+    d_lo = float(widths[idx - 1])
+    d_hi = float(widths[idx])
+    total = d_lo + d_hi
+    if total <= 0.0:
+        return 0.5
+    return d_hi / total
+
+
+_AXIS_NAMES = ("x", "y", "z")
+
+
+def _grid_axis_counts(grid):
+    """(nx, ny, nz) off a grid object, or None when it does not say."""
+    shape = getattr(grid, "shape", None)
+    if shape is not None and len(shape) == 3:
+        return tuple(int(v) for v in shape)
+    n = [getattr(grid, name, None) for name in ("nx", "ny", "nz")]
+    if all(v is not None for v in n):
+        return tuple(int(v) for v in n)
+    return None
+
+
+def _axis_node_positions(grid, axis: int, cpml_lo: int, n: int):
+    """Node coordinates on ``axis`` in metres, in the transform's own frame.
+
+    Physical zero sits at the inner edge of the lo-face CPML, the same
+    convention ``_face_positions`` uses, so these are the numbers a caller
+    passed to ``corner_lo`` / ``corner_hi``.
+    """
+    widths = _cell_widths(grid, axis)
+    if widths is not None:
+        edges = np.concatenate([[0.0], np.cumsum(widths)])
+        return edges[:n + 1] - edges[min(cpml_lo, len(edges) - 1)]
+    dx = float(getattr(grid, "dx", 0.0) or 0.0)
+    d = float(getattr(grid, "dy", dx)) if axis == 1 else dx
+    return (np.arange(n + 1, dtype=np.float64) - cpml_lo) * d
+
+
+def _face_centre_margin_failures(box: NTFFBox, counts):
+    """Axes whose faces have no room for the half-cell averages.
+
+    Returns a list of ``(axis_index, lo, hi, n)``.
+    """
+    bounds = ((box.i_lo, box.i_hi), (box.j_lo, box.j_hi), (box.k_lo, box.k_hi))
+    bad = []
+    for axis, ((lo, hi), n) in enumerate(zip(bounds, counts)):
+        if lo < 1 or hi > n - 1 or hi <= lo:
+            bad.append((axis, int(lo), int(hi), int(n)))
+    return bad
+
+
+def _raise_face_centre_margin(box: NTFFBox, counts, grid=None):
+    """Refuse a box with no room, naming the axis in cells and in metres."""
+    bad = _face_centre_margin_failures(box, counts)
+    if not bad:
+        return
+    cpml = ((box.cpml_lo_x, box.cpml_lo_y, box.cpml_lo_z))
+    lines = []
+    flat = False
+    for axis, lo, hi, n in bad:
+        name = _AXIS_NAMES[axis]
+        if n < 3:
+            flat = True
+            lines.append(
+                f"  {name}: the grid is {n} cell(s) deep, so no box can have "
+                f"a cell on both sides of both {name} faces")
+            continue
+        detail = f"  {name}: faces at index {lo} and {hi} of {n} cells"
+        if grid is not None:
+            pos = _axis_node_positions(grid, axis, int(cpml[axis]), n)
+            detail += (
+                f" ({pos[lo]:.6g} m and {pos[hi]:.6g} m); this axis can carry "
+                f"a face anywhere in [{pos[1]:.6g} m, {pos[n - 1]:.6g} m]")
+        lines.append(detail)
+    remedy = (
+        "the far-field transform needs a 3-D box: give every axis at least "
+        "three cells" if flat else
+        "move each face at least one cell further inside the domain")
+    raise ValueError(
+        "NTFF box has no room for the face-centre half-cell averages. "
+        "Moving a face sample to the centre of its cell reads one index "
+        "further out than the face itself, so every face must sit at least "
+        "one cell inside the array bounds (1 <= lo < hi <= n-1).\n"
+        + "\n".join(lines)
+        + f"\nRemedy: {remedy}. The corners come from "
+          "Simulation.add_ntff_box(corner_lo=..., corner_hi=...) "
+          "(rfx.farfield.make_ntff_box)."
+    )
+
+
+def with_face_centre_collocation(box: NTFFBox, grid) -> NTFFBox:
+    """Return ``box`` set up to accumulate at the centre of each face cell.
+
+    Fills in ``face_centre=True`` and the six half-cell
+    interpolation weights read off this grid's cell widths. Any grid whose
+    axes are uniform gets 1/2 on every face.
+
+    Refuses here, where the grid is still in hand and the offending face can
+    be named in metres, rather than leaving it to the index-only backstop in
+    ``accumulate_ntff``.
+    """
+    counts = _grid_axis_counts(grid)
+    if counts is not None:
+        _raise_face_centre_margin(box, counts, grid)
+    wx = _cell_widths(grid, 0)
+    wy = _cell_widths(grid, 1)
+    wz = _cell_widths(grid, 2)
+    return box._replace(
+        face_centre=True,
+        w_x_lo=_normal_weight(wx, box.i_lo),
+        w_x_hi=_normal_weight(wx, box.i_hi),
+        w_y_lo=_normal_weight(wy, box.j_lo),
+        w_y_hi=_normal_weight(wy, box.j_hi),
+        w_z_lo=_normal_weight(wz, box.k_lo),
+        w_z_hi=_normal_weight(wz, box.k_hi),
+    )
+
+
 def make_ntff_box(
     grid: Grid,
     corner_lo: tuple[float, float, float],
     corner_hi: tuple[float, float, float],
     freqs,
+    *,
+    collocation: str = "face_centre",
 ) -> NTFFBox:
-    """Create an NTFF box from physical coordinates."""
+    """Create an NTFF box from physical coordinates.
+
+    The box is built for face-centre collocation (the second-order layout);
+    pass ``collocation="node"`` for the pre-second-order geometry.
+    """
     lo = grid.position_to_index(corner_lo)
     hi = grid.position_to_index(corner_hi)
-    return NTFFBox(
+    box = NTFFBox(
         i_lo=lo[0], i_hi=hi[0],
         j_lo=lo[1], j_hi=hi[1],
         k_lo=lo[2], k_hi=hi[2],
         freqs=jnp.asarray(freqs, dtype=jnp.float32),
     )
+    if collocation == "face_centre":
+        return with_face_centre_collocation(box, grid)
+    return box
 
 
 def ntff_accum_dtype(field_dtype=jnp.float32):
@@ -205,6 +407,211 @@ def init_ntff_data(box: NTFFBox, *, field_dtype=jnp.float32) -> NTFFData:
 # DFT accumulation (runs inside jax.lax.scan)
 # ---------------------------------------------------------------------------
 
+def _require_face_centre_margin(box: NTFFBox, shape) -> None:
+    """Refuse a box that has no room for the half-cell averages.
+
+    Moving a face sample to the centre of its face cell reads one index
+    further out than the face itself: the tangential H needs the cell on the
+    LOWER-INDEX side of every face (``lo-1`` at the low face) and the
+    in-plane averages need the node one past the high face (``hi``, and
+    ``hi+1`` never — the half-open range stops at ``hi``). So every box face
+    must be at least one cell away from the array boundary. Nothing upstream
+    guarantees it (``make_ntff_box`` just rounds the requested corners), so
+    this is the backstop — the one point all three runners pass through.
+    ``with_face_centre_collocation`` refuses earlier, with the grid still in
+    hand, so a user gets the offending face in metres.
+    """
+    counts = (int(shape[0]), int(shape[1]), int(shape[2]))
+    _raise_face_centre_margin(box, counts, grid=None)
+
+
+# ---------------------------------------------------------------------------
+# TFSF injection planes vs the box faces parallel to them
+# ---------------------------------------------------------------------------
+
+_AXIS_FACE_ATTRS = {"x": ("i_lo", "i_hi"), "y": ("j_lo", "j_hi"),
+                    "z": ("k_lo", "k_hi")}
+_AXIS_INDEX = {"x": 0, "y": 1, "z": 2}
+
+
+class NTFFBoxPlacementError(ValueError):
+    """A box face parallel to a TFSF injection plane reads injected field.
+
+    Carries the offending face and the nearest index that satisfies the
+    invariant, so a caller can act on it without parsing the message.
+    """
+
+    def __init__(self, message, *, axis, face, index, required_index,
+                 plane_lo, plane_hi):
+        super().__init__(message)
+        self.axis = axis
+        self.face = face
+        self.index = index
+        self.required_index = required_index
+        self.plane_lo = plane_lo
+        self.plane_hi = plane_hi
+
+
+def _face_sample_offsets(box: NTFFBox) -> tuple[int, int]:
+    """Lowest and highest offset, relative to the face node, that a box face
+    reads out of the state arrays along its own normal.
+
+    ``face_centre`` interpolates the tangential H across the face from the two
+    half-cell planes that straddle it — the one at ``idx-1`` and the one at
+    ``idx`` — while E stays on the face node ``idx``: offsets -1 and 0. The
+    legacy ``node`` layout takes E and H both at ``idx``: offset 0 only. All
+    three of ``_x_face`` / ``_y_face`` / ``_z_face`` in ``accumulate_ntff``
+    use the same pair, so one rule covers every axis.
+    """
+    if bool(getattr(box, "face_centre", False)):
+        return -1, 0
+    return 0, 0
+
+
+def _sample_names(off: int, idx: int) -> tuple:
+    """The stored samples a face at ``idx`` reads at offset ``off``."""
+    if off == 0:
+        return (f"E[{idx}]", f"H[{idx}]")
+    return (f"H[{idx + off}]",)
+
+
+def _listed(names) -> str:
+    """``a``, ``a and b``, ``a, b and c`` — with the matching verb."""
+    names = list(names)
+    verb = " is" if len(names) == 1 else " are"
+    if len(names) == 1:
+        return names[0] + verb
+    return ", ".join(names[:-1]) + " and " + names[-1] + verb
+
+
+def require_box_encloses_injected_region(
+    box: NTFFBox,
+    planes: "dict[str, tuple[int, int]]",
+    *,
+    context: "str | None" = None,
+    shape=None,
+) -> None:
+    """Refuse a Huygens box that does not enclose the injected region.
+
+    INVARIANT: every sample that a box face PARALLEL to an injection plane
+    reads lies in the scattered-field region.
+
+    A total-field/scattered-field source injects a plane wave between two
+    node planes on each axis it drives (``planes`` maps that axis to the
+    pair). Between them the grid carries incident + scattered field; outside,
+    scattered only. The far-field integral is a surface integral of the
+    SCATTERED field, and it is only that when the box surrounds the whole
+    injected region: then the incident wave enters and leaves through the
+    box and cancels in the sum. Two ways to break it, both silent:
+
+    * a face that reads samples from both regions — the full incident H
+      lands on a face that should carry scattered field only;
+    * a face wholly inside the injected region while the opposite face is
+      outside it — no single face mixes, but the incident wave no longer
+      cancels around the box.
+
+    Measured on an 18 mm eps_r=4 cube at 9/10/11 GHz, against a clean box
+    (1.2049e-03 m^2 band backscatter): the mixed high face gives
+    1.4405e-01 m^2 (+20.8 dB), and the split box (low face one cell inside
+    the low plane, high face correctly outside) 4.9577e-03 m^2 (+6.1 dB).
+    A box wholly inside the injected region reports 1.94e-03 m^2 of
+    backscatter from an EMPTY domain, so it measures the source, not a
+    scatterer.
+
+    Which samples a face reads depends on its collocation, so the required
+    indices are derived from ``box.face_centre`` rather than written down as
+    a number of cells. The node layout is NOT exempt: the split box under
+    ``collocation="node"`` measures +16.2 dB.
+
+    Axes the source does not inject on are not checked. rfx's normal-
+    incidence source is two x planes and its slab is infinite in y and z, so
+    every closed box crosses it there; that is a different matter, handled by
+    ``compute_rcs(..., subtract_incident_reference=True)``.
+
+    ``context`` is appended verbatim — a caller that owns the levers (domain
+    size, margins, offsets) uses it to say which of them to move. ``shape``
+    lets the message say the domain is too small instead of naming an index
+    the array cannot hold.
+
+    Raises :class:`NTFFBoxPlacementError` (a ``ValueError``). Runs on Python
+    ints at trace time — no JAX arrays, so it is safe to call from a runner
+    before the scan is built.
+    """
+    if not planes:
+        return
+    lo_off, hi_off = _face_sample_offsets(box)
+    for axis in ("x", "y", "z"):
+        if axis not in planes:
+            continue
+        p_lo, p_hi = (int(v) for v in planes[axis])
+        lo_attr, hi_attr = _AXIS_FACE_ATTRS[axis]
+        lo, hi = int(getattr(box, lo_attr)), int(getattr(box, hi_attr))
+        # Every sample the low face reads must sit below p_lo, every sample
+        # the high face reads above p_hi.
+        lo_required = p_lo - 1 - hi_off
+        hi_required = p_hi + 1 - lo_off
+        if lo > lo_required:
+            _raise_face_inside_injected_region(
+                box, axis, lo_attr, lo, lo_required, p_lo, p_hi,
+                lo_off, hi_off, context, shape)
+        if hi < hi_required:
+            _raise_face_inside_injected_region(
+                box, axis, hi_attr, hi, hi_required, p_lo, p_hi,
+                lo_off, hi_off, context, shape)
+
+
+def _raise_face_inside_injected_region(box, axis, face, idx, required,
+                                       p_lo, p_hi, lo_off, hi_off,
+                                       context, shape):
+    """Name the face, the samples that are not scattered, and where to move."""
+    offsets = list(range(lo_off, hi_off + 1))
+    reads = ", ".join(n for off in offsets for n in _sample_names(off, idx))
+    inside = [n for off in offsets if p_lo <= idx + off <= p_hi
+              for n in _sample_names(off, idx)]
+    if inside:
+        where = f"{_listed(inside)} inside the injected region"
+    else:
+        # The face sits beyond the FAR plane: nothing it reads is
+        # total-field, the box simply lies to one side of the injected
+        # region and does not enclose it.
+        side = "below" if idx < p_lo else "above"
+        where = (f"all of them lie {side} the injected region, on the wrong "
+                 "side of it, so the box does not enclose it")
+    direction = ">=" if required > idx else "<="
+    remedy = f"move {face} from {idx} to {direction} {required}"
+    if shape is not None:
+        n = int(shape[_AXIS_INDEX[axis]])
+        # The face-centre averages already need 1 <= face <= n-1
+        # (_face_centre_margin_failures); an index outside that is not a
+        # placement the caller can reach on this grid.
+        if not (1 <= required <= n - 1):
+            remedy = (
+                f"no {face} works on this grid: the box would have to reach "
+                f"index {required}, and the {axis} axis is {n} cells with "
+                f"faces limited to [1, {n - 1}]. Enlarge the domain along "
+                f"{axis}, or move the injection planes inward"
+            )
+    message = (
+        f"NTFF box {axis} face {face}={idx} does not clear the TFSF "
+        f"injection planes. The wave is injected between {axis} index "
+        f"{p_lo} and {p_hi}: E and H stored at index i carry incident + "
+        f"scattered there and scattered only outside. A Huygens box has to "
+        f"enclose the whole injected region — otherwise the incident wave "
+        f"does not cancel around the box — so every sample a face parallel "
+        f"to an injection plane reads must be scattered-field. With "
+        f"{box.collocation} collocation this face reads {reads}; "
+        f"{where}.\n"
+        "Invariant: every sample a box face parallel to an injection plane "
+        "reads lies in the scattered-field region.\n"
+        f"Remedy: {remedy}."
+    )
+    if context:
+        message += f"\n{context}"
+    raise NTFFBoxPlacementError(
+        message, axis=axis, face=face, index=idx, required_index=required,
+        plane_lo=p_lo, plane_hi=p_hi)
+
+
 def accumulate_ntff(
     ntff_data: NTFFData,
     state,
@@ -215,6 +622,24 @@ def accumulate_ntff(
     """Accumulate one timestep of tangential field DFTs on all 6 faces.
 
     Called from the scan body.  ``step_idx`` comes from the scan xs.
+
+    On a Yee lattice the four tangential components of a face do not sit on
+    top of each other: the two E components straddle the face cell along
+    different in-plane edges, and the two H components sit half a cell OFF
+    the face along its normal. With ``box.collocation == "face_centre"``
+    each one is moved to the centre of its face cell before it enters the
+    running DFT — an exact midpoint average between two nodes in the plane,
+    and a linear interpolation across the face along the normal — so the
+    surface integral downstream is a midpoint rule and the transform is
+    second order in the cell size. ``"node"`` keeps the legacy layout: every
+    component taken where the lattice stores it and treated as if it sat at
+    the cell's lower-corner node.
+
+    Time stamps: the runners call this after the E update, so the state
+    holds E at ``(n+1)*dt`` and H at ``(n+1/2)*dt``. Each field is stamped
+    with its own sample time, which makes the half-step register between
+    them exact. (Before this was fixed E was stamped at ``n*dt`` — a full
+    step early, so E ran half a step BEHIND H instead of half a step ahead.)
     """
     # Phase arithmetic is pinned to the ACCUMULATOR's dtype (issue #646), not
     # to a literal float32/complex64. ``dt`` arrives as a numpy float64 scalar
@@ -224,9 +649,6 @@ def accumulate_ntff(
     # accumulator's real dtype is a no-op with x64 off (JAX already clamped
     # float64 -> float32 there), so the default path stays bit-identical.
     # Kahan summation still supplies the precision, as before.
-    # E is at time step n, H at n+1/2 in Yee leapfrog.
-    # Apply half-step phase correction to H components (indices 2,3)
-    # so that E and H DFTs are co-located in time.
     _cdtype = ntff_data.x_lo.dtype
     _rdtype = jnp.finfo(_cdtype).dtype
     _dt = jnp.asarray(dt, dtype=_rdtype)
@@ -234,7 +656,9 @@ def accumulate_ntff(
     freqs_hi = jnp.asarray(box.freqs, dtype=_rdtype)
     omega = jnp.asarray(2 * jnp.pi, dtype=_rdtype) * freqs_hi
     _mj = jnp.asarray(-1j, dtype=_cdtype)
-    phase_e = jnp.exp(_mj * omega * t) * _dt
+    # The state handed to this function is post-E-update: E is the field at
+    # (n+1)*dt, H the half-step behind it at (n+1/2)*dt.
+    phase_e = jnp.exp(_mj * omega * (t + _dt)) * _dt
     phase_h = jnp.exp(_mj * omega * (t + _dt * 0.5)) * _dt
     # Stack [E_phase, E_phase, H_phase, H_phase] for the 4 tangential components
     ph = jnp.stack([phase_e, phase_e, phase_h, phase_h], axis=-1)
@@ -243,29 +667,106 @@ def accumulate_ntff(
     i0, i1 = box.i_lo, box.i_hi
     j0, j1 = box.j_lo, box.j_hi
     k0, k1 = box.k_lo, box.k_hi
+    face_centre = bool(getattr(box, "face_centre", False))
+    if face_centre:
+        _require_face_centre_margin(box, state.ex.shape)
 
-    def _x_face(idx):
+    def _x_face(idx, w_lo):
+        if not face_centre:
+            return jnp.stack([
+                state.ey[idx, j0:j1, k0:k1],
+                state.ez[idx, j0:j1, k0:k1],
+                state.hy[idx, j0:j1, k0:k1],
+                state.hz[idx, j0:j1, k0:k1],
+            ], axis=-1)  # (nj, nk, 4)
+        # The lower-index H plane. It cannot wrap to the far side of the
+        # array: _require_face_centre_margin above refuses any face with
+        # idx < 1 before a face-centre box reaches this point.
+        below = idx - 1
+        # Face-cell centre (x_node[idx], y_centre[j], z_centre[k]).
+        # ey sits at y_centre already and needs half a cell in z; ez sits at
+        # z_centre and needs half a cell in y; hy and hz sit half a cell off
+        # the face in x — at the centres of cells idx-1 (lower-index side)
+        # and idx (higher-index side) — and each need one in-plane half
+        # cell as well.
+        ey = 0.5 * (state.ey[idx, j0:j1, k0:k1]
+                    + state.ey[idx, j0:j1, k0 + 1:k1 + 1])
+        ez = 0.5 * (state.ez[idx, j0:j1, k0:k1]
+                    + state.ez[idx, j0 + 1:j1 + 1, k0:k1])
+        hy_lo = 0.5 * (state.hy[below, j0:j1, k0:k1]
+                       + state.hy[below, j0 + 1:j1 + 1, k0:k1])
+        hy_hi = 0.5 * (state.hy[idx, j0:j1, k0:k1]
+                        + state.hy[idx, j0 + 1:j1 + 1, k0:k1])
+        hz_lo = 0.5 * (state.hz[below, j0:j1, k0:k1]
+                       + state.hz[below, j0:j1, k0 + 1:k1 + 1])
+        hz_hi = 0.5 * (state.hz[idx, j0:j1, k0:k1]
+                        + state.hz[idx, j0:j1, k0 + 1:k1 + 1])
         return jnp.stack([
-            state.ey[idx, j0:j1, k0:k1],
-            state.ez[idx, j0:j1, k0:k1],
-            state.hy[idx, j0:j1, k0:k1],
-            state.hz[idx, j0:j1, k0:k1],
-        ], axis=-1)  # (nj, nk, 4)
-
-    def _y_face(idx):
-        return jnp.stack([
-            state.ex[i0:i1, idx, k0:k1],
-            state.ez[i0:i1, idx, k0:k1],
-            state.hx[i0:i1, idx, k0:k1],
-            state.hz[i0:i1, idx, k0:k1],
+            ey, ez,
+            w_lo * hy_lo + (1.0 - w_lo) * hy_hi,
+            w_lo * hz_lo + (1.0 - w_lo) * hz_hi,
         ], axis=-1)
 
-    def _z_face(idx):
+    def _y_face(idx, w_lo):
+        if not face_centre:
+            return jnp.stack([
+                state.ex[i0:i1, idx, k0:k1],
+                state.ez[i0:i1, idx, k0:k1],
+                state.hx[i0:i1, idx, k0:k1],
+                state.hz[i0:i1, idx, k0:k1],
+            ], axis=-1)
+        # The lower-index H plane. It cannot wrap to the far side of the
+        # array: _require_face_centre_margin above refuses any face with
+        # idx < 1 before a face-centre box reaches this point.
+        below = idx - 1
+        # Face-cell centre (x_centre[i], y_node[idx], z_centre[k]).
+        ex = 0.5 * (state.ex[i0:i1, idx, k0:k1]
+                    + state.ex[i0:i1, idx, k0 + 1:k1 + 1])
+        ez = 0.5 * (state.ez[i0:i1, idx, k0:k1]
+                    + state.ez[i0 + 1:i1 + 1, idx, k0:k1])
+        hx_lo = 0.5 * (state.hx[i0:i1, below, k0:k1]
+                       + state.hx[i0 + 1:i1 + 1, below, k0:k1])
+        hx_hi = 0.5 * (state.hx[i0:i1, idx, k0:k1]
+                        + state.hx[i0 + 1:i1 + 1, idx, k0:k1])
+        hz_lo = 0.5 * (state.hz[i0:i1, below, k0:k1]
+                       + state.hz[i0:i1, below, k0 + 1:k1 + 1])
+        hz_hi = 0.5 * (state.hz[i0:i1, idx, k0:k1]
+                        + state.hz[i0:i1, idx, k0 + 1:k1 + 1])
         return jnp.stack([
-            state.ex[i0:i1, j0:j1, idx],
-            state.ey[i0:i1, j0:j1, idx],
-            state.hx[i0:i1, j0:j1, idx],
-            state.hy[i0:i1, j0:j1, idx],
+            ex, ez,
+            w_lo * hx_lo + (1.0 - w_lo) * hx_hi,
+            w_lo * hz_lo + (1.0 - w_lo) * hz_hi,
+        ], axis=-1)
+
+    def _z_face(idx, w_lo):
+        if not face_centre:
+            return jnp.stack([
+                state.ex[i0:i1, j0:j1, idx],
+                state.ey[i0:i1, j0:j1, idx],
+                state.hx[i0:i1, j0:j1, idx],
+                state.hy[i0:i1, j0:j1, idx],
+            ], axis=-1)
+        # The lower-index H plane. It cannot wrap to the far side of the
+        # array: _require_face_centre_margin above refuses any face with
+        # idx < 1 before a face-centre box reaches this point.
+        below = idx - 1
+        # Face-cell centre (x_centre[i], y_centre[j], z_node[idx]).
+        ex = 0.5 * (state.ex[i0:i1, j0:j1, idx]
+                    + state.ex[i0:i1, j0 + 1:j1 + 1, idx])
+        ey = 0.5 * (state.ey[i0:i1, j0:j1, idx]
+                    + state.ey[i0 + 1:i1 + 1, j0:j1, idx])
+        hx_lo = 0.5 * (state.hx[i0:i1, j0:j1, below]
+                       + state.hx[i0 + 1:i1 + 1, j0:j1, below])
+        hx_hi = 0.5 * (state.hx[i0:i1, j0:j1, idx]
+                        + state.hx[i0 + 1:i1 + 1, j0:j1, idx])
+        hy_lo = 0.5 * (state.hy[i0:i1, j0:j1, below]
+                       + state.hy[i0:i1, j0 + 1:j1 + 1, below])
+        hy_hi = 0.5 * (state.hy[i0:i1, j0:j1, idx]
+                        + state.hy[i0:i1, j0 + 1:j1 + 1, idx])
+        return jnp.stack([
+            ex, ey,
+            w_lo * hx_lo + (1.0 - w_lo) * hx_hi,
+            w_lo * hy_lo + (1.0 - w_lo) * hy_hi,
         ], axis=-1)
 
     # Kahan compensated summation: maintains near-float64 precision in float32.
@@ -277,12 +778,12 @@ def accumulate_ntff(
         new_c = (t - s) - y
         return t, new_c
 
-    xl_val = ph * _x_face(i0)[None]
-    xh_val = ph * _x_face(i1)[None]
-    yl_val = ph * _y_face(j0)[None]
-    yh_val = ph * _y_face(j1)[None]
-    zl_val = ph * _z_face(k0)[None]
-    zh_val = ph * _z_face(k1)[None]
+    xl_val = ph * _x_face(i0, box.w_x_lo)[None]
+    xh_val = ph * _x_face(i1, box.w_x_hi)[None]
+    yl_val = ph * _y_face(j0, box.w_y_lo)[None]
+    yh_val = ph * _y_face(j1, box.w_y_hi)[None]
+    zl_val = ph * _z_face(k0, box.w_z_lo)[None]
+    zh_val = ph * _z_face(k1, box.w_z_hi)[None]
 
     # Get compensation arrays (default to zeros for backward compat)
     c_xl = ntff_data.c_x_lo if ntff_data.c_x_lo is not None else jnp.zeros_like(ntff_data.x_lo)
@@ -341,8 +842,24 @@ def _surface_currents(fields, axis, sign):
     return J, M
 
 
+def _scalar_face_dS(axis, dx, dy, dz):
+    """Area of one face cell: the product of the two widths that SPAN it.
+
+    An x face is spanned by y and z, a y face by x and z, a z face by x and
+    y. This used to be written as ``dx*dy`` for all three, which is right by
+    coincidence for the x and z faces of a cubic grid and wrong for the y
+    face of any grid whose y cells differ from its z cells.
+    """
+    if axis == 0:
+        return dy * dz
+    if axis == 1:
+        return dx * dz
+    return dx * dy
+
+
 def _face_positions(axis, idx, other_ranges, dx, cpml_lo_x, cpml_lo_y, cpml_lo_z,
-                    dy=None, z_edges=None, x_edges=None, y_edges=None):
+                    dy=None, z_edges=None, x_edges=None, y_edges=None,
+                    centre=False):
     """Build (n1, n2, 3) position array for a face.
 
     Parameters
@@ -356,6 +873,12 @@ def _face_positions(axis, idx, other_ranges, dx, cpml_lo_x, cpml_lo_y, cpml_lo_z
         Y cell size. If None, uses dx (cubic cells).
     z_edges : (nz+1,) array or None
         Cumulative z positions at cell boundaries. If None, uses uniform dx.
+    centre : bool
+        True places each sample at the CENTRE of its face cell (the two
+        in-plane coordinates are cell-edge midpoints; the normal coordinate
+        stays on the face's node plane) — the midpoint rule that goes with
+        ``collocation="face_centre"``. False keeps the legacy lower-corner
+        node of the cell.
     """
     if dy is None:
         dy = dx
@@ -375,24 +898,30 @@ def _face_positions(axis, idx, other_ranges, dx, cpml_lo_x, cpml_lo_y, cpml_lo_z
             return y_edges[j]
         return (j - cpml_lo_y) * dy
 
+    def _inplane(pos_fn, lo, hi):
+        if centre:
+            return np.array([0.5 * (pos_fn(n) + pos_fn(n + 1))
+                             for n in range(lo, hi)])
+        return np.array([pos_fn(n) for n in range(lo, hi)])
+
     if axis == 0:
         j_range, k_range = other_ranges
         x_fixed = _x_pos(idx)
-        y = np.array([_y_pos(j) for j in range(j_range[0], j_range[1])])
-        z = np.array([_z_pos(k) for k in range(k_range[0], k_range[1])])
+        y = _inplane(_y_pos, j_range[0], j_range[1])
+        z = _inplane(_z_pos, k_range[0], k_range[1])
         Y, Z = np.meshgrid(y, z, indexing="ij")
         X = np.full_like(Y, x_fixed)
     elif axis == 1:
         i_range, k_range = other_ranges
         y_fixed = _y_pos(idx)
-        x = np.array([_x_pos(i) for i in range(i_range[0], i_range[1])])
-        z = np.array([_z_pos(k) for k in range(k_range[0], k_range[1])])
+        x = _inplane(_x_pos, i_range[0], i_range[1])
+        z = _inplane(_z_pos, k_range[0], k_range[1])
         X, Z = np.meshgrid(x, z, indexing="ij")
         Y = np.full_like(X, y_fixed)
     else:
         i_range, j_range = other_ranges
-        x = np.array([_x_pos(i) for i in range(i_range[0], i_range[1])])
-        y = np.array([_y_pos(j) for j in range(j_range[0], j_range[1])])
+        x = _inplane(_x_pos, i_range[0], i_range[1])
+        y = _inplane(_y_pos, j_range[0], j_range[1])
         X, Y = np.meshgrid(x, y, indexing="ij")
         Z = np.full_like(X, _z_pos(idx))
 
@@ -407,6 +936,16 @@ def compute_far_field(
     phi: np.ndarray,
 ) -> FarFieldResult:
     """Compute far-field radiation pattern from NTFF DFT data.
+
+    Every face cell contributes one sample of the equivalent surface
+    currents J = n x H and M = -n x E, weighted by the cell's area and
+    phased by its position. Where that sample is taken is what decides the
+    order of the rule: with ``box.collocation == "face_centre"`` it sits at
+    the centre of the cell, matching what ``accumulate_ntff`` stored there,
+    and the sum is a midpoint rule — second order in the cell size. With
+    ``"node"`` (the legacy layout, and the default for a hand-built box) it
+    sits at the cell's lower-corner node, which is a left-endpoint
+    rectangle rule — first order.
 
     Automatically dispatches to the JAX-differentiable implementation
     when called inside ``jax.grad`` or other JAX tracing contexts.
@@ -460,6 +999,7 @@ def compute_far_field(
     i0, i1 = box.i_lo, box.i_hi
     j0, j1 = box.j_lo, box.j_hi
     k0, k1 = box.k_lo, box.k_hi
+    face_centre = bool(getattr(box, "face_centre", False))
 
     # Build edge positions for graded axes (physical origin at the inner edge
     # of the lo-face CPML, matching the uniform formula (idx - cpml_lo) * d).
@@ -499,7 +1039,9 @@ def compute_far_field(
             dz_face = np.asarray(dz_arr[k_lo:k_hi], dtype=np.float64)
             d_perp = dy if axis == 0 else dx
             return d_perp * dz_face  # (nk,)
-        return dx * dy  # scalar for z-faces or uniform grid
+        # A uniform Grid is cubic in z (see _face_positions, which measures
+        # z in units of dx), so dz == dx here.
+        return _scalar_face_dS(axis, dx, dy, dx)
 
     # Observation direction unit vectors
     TH, PH = np.meshgrid(theta, phi, indexing="ij")
@@ -537,7 +1079,8 @@ def compute_far_field(
         pos = _face_positions(axis, face_idx, other_ranges, dx,
                               cpml_lo_x, cpml_lo_y, cpml_lo_z,
                               dy=dy, z_edges=z_edges,
-                              x_edges=x_edges, y_edges=y_edges)
+                              x_edges=x_edges, y_edges=y_edges,
+                              centre=face_centre)
         pos_flat = pos.reshape(-1, 3)     # (nc, 3)
         fields_flat = face_np.reshape(nf, -1, 4)  # (nf, nc, 4)
 
@@ -619,12 +1162,15 @@ def _surface_currents_jax(fields, axis, sign):
 
 
 def _face_positions_jax(axis, idx, other_ranges, dx, cpml_lo_x, cpml_lo_y, cpml_lo_z,
-                        dy=None, z_edges=None, x_edges=None, y_edges=None):
+                        dy=None, z_edges=None, x_edges=None, y_edges=None,
+                        centre=False):
     """JAX version of _face_positions with non-uniform z support.
 
     ``cpml_lo_*`` are per-axis low-face CPML thicknesses (see the numpy
     twin ``_face_positions`` for semantics). Under symmetric face_layers
-    they all equal ``grid.cpml_layers``.
+    they all equal ``grid.cpml_layers``. ``centre`` places each sample at
+    the centre of its face cell (the midpoint rule) instead of the cell's
+    lower-corner node.
     """
     if dy is None:
         dy = dx
@@ -646,8 +1192,11 @@ def _face_positions_jax(axis, idx, other_ranges, dx, cpml_lo_x, cpml_lo_y, cpml_
 
     def _axis_pos(lo, hi, edges, cpml_lo, d):
         if edges is not None:
+            if centre:
+                return 0.5 * (edges[lo:hi] + edges[lo + 1:hi + 1])
             return edges[lo:hi]
-        return (jnp.arange(lo, hi) - cpml_lo) * d
+        base = (jnp.arange(lo, hi) - cpml_lo) * d
+        return base + 0.5 * d if centre else base
 
     if axis == 0:
         j_range, k_range = other_ranges
@@ -683,8 +1232,11 @@ def compute_far_field_jax(
 ):
     """JAX-differentiable far-field computation for use inside jax.grad.
 
-    Same physics as ``compute_far_field`` but uses ``jnp`` throughout,
-    enabling end-to-end differentiation for far-field optimization.
+    Same physics as ``compute_far_field`` — including its face-cell sample
+    placement, which is the midpoint rule when the box says
+    ``collocation="face_centre"`` and the legacy corner-node rule when it
+    says ``"node"`` — but uses ``jnp`` throughout, enabling end-to-end
+    differentiation for far-field optimization.
 
     ``max_phase_bytes`` bounds the (n_freqs, n_directions, n_cells) phase
     array the transform materializes per face; the direction grid is
@@ -763,6 +1315,7 @@ def compute_far_field_jax(
     i0, i1 = box.i_lo, box.i_hi
     j0, j1 = box.j_lo, box.j_hi
     k0, k1 = box.k_lo, box.k_hi
+    face_centre = bool(getattr(box, "face_centre", False))
 
     # Edge positions for graded axes (#743: x and y were previously read as
     # the boundary scalar, so a graded in-plane mesh was integrated with the
@@ -795,13 +1348,13 @@ def compute_far_field_jax(
             d1, d2 = _cells_j(dx_arr, dx, a0, a1), _cells_j(dy_arr, dy, b0, b1)
         return d1[:, None] * d2[None, :]
 
-    # Per-face dS helper
+    # Per-face dS helper — the same axis-aware area element as the numpy twin.
     def _face_dS_jax(axis, k_lo, k_hi):
         if dz_arr is not None and axis in (0, 1):
             dz_face = dz_jnp[k_lo:k_hi]
             d_perp = dy if axis == 0 else dx
             return d_perp * dz_face  # (nk,)
-        return dx * dy  # scalar
+        return _scalar_face_dS(axis, dx, dy, dx)
 
     TH, PH = jnp.meshgrid(theta, phi, indexing="ij")
     sth, cth = jnp.sin(TH), jnp.cos(TH)
@@ -836,7 +1389,8 @@ def compute_far_field_jax(
         pos = _face_positions_jax(axis, face_idx, other_ranges, dx,
                                   cpml_lo_x, cpml_lo_y, cpml_lo_z,
                                   dy=dy, z_edges=z_edges,
-                                  x_edges=x_edges, y_edges=y_edges)
+                                  x_edges=x_edges, y_edges=y_edges,
+                                  centre=face_centre)
         pos_flat = pos.reshape(-1, 3)
         fields_flat = face.reshape(nf, -1, 4)
 

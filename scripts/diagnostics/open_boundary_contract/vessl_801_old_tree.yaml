@@ -1,0 +1,27 @@
+name: rfx-801-pad0-on-old-tree
+description: "#801: the pad-0 and pad-10h four-layer arms on the tree the ring-down oracle was committed on (1fc9e38f), same builder and metrics, to separate 'harness built it differently' from 'something merged since changed it'. float32."
+tags: [rfx, issue-801, diagnostic]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_ENABLE_X64: "0"
+  ARMS: "n2_pad0_cpml4,n2_pad10_cpml4"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  base=/root/workspace/bk-workspace/.801-measure
+  echo "=== provenance (the run aborts if any of this is missing) ==="
+  test -d "$base/src-1fc9e38f/rfx"
+  sha256sum "$base/src-1fc9e38f/rfx/boundaries/cpml.py" "$base/src-1fc9e38f/rfx/grid.py" "$base/run_arms.py"
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest
+  echo "=== tree: src-1fc9e38f (git archive of 1fc9e38f) ==="
+  cd "$base/src-1fc9e38f"
+  python "$base/run_arms.py" "$base/src-1fc9e38f" "$base/result_1fc9e38f.json"
+  echo "=== done ==="

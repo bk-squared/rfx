@@ -743,6 +743,24 @@ class Result(NamedTuple):
     freq_range: tuple | None = None
     settling_db: float | None = None
     settling_witness: dict | None = None
+    #: Per-wire-port ``(meta, accs)`` pairs, one per wire port in
+    #: declaration order, where ``accs`` holds the raw DFT accumulators
+    #: ``(v, i, v_inc, v_port)`` in that order. The diagnostic channel
+    #: ``ForwardResult`` already carries: S-parameters are a RATIO and carry
+    #: no level, so a caller asking what fraction of the port's INCIDENT
+    #: power a structure absorbed needs these. ``None`` on lanes that never
+    #: attach them.
+    #:
+    #: Both lanes use this PAIR shape, so ``for meta, accs in
+    #: result.wire_port_sparams`` runs on either, but the entries differ.
+    #: ``meta`` is the wire-port S-param spec object on the uniform lane
+    #: (rfx/simulation.py — ``.freqs``, ``.excite``, ``.impedance``) and the
+    #: runner's static metadata tuple on the graded-mesh one
+    #: (``rfx.nonuniform._build_wp_meta`` — impedance at slot 4, ``excite``
+    #: at slot 7). ``accs`` carries a fifth slot, the pre-injection drive
+    #: reference ``v_ref`` (#683), on the uniform lane only; the first four
+    #: are the same channels on both.
+    wire_port_sparams: tuple | None = None
 
     def find_resonances(self, freq_range=None, probe_idx=0,
                          source_decay_time=None, bandpass=None,
@@ -1059,15 +1077,22 @@ class ForwardResult(NamedTuple):
     ``settling_probe_info`` preserves the selected columns, component
     labels and the #1090 source-dominated flag as integers, without
     inserting strings into a JAX result tree. These lazy properties are
-    not stored fields in ``_asdict()``.
+    not stored fields in ``_asdict()``. ``wire_port_sparams`` is a tuple of
+    ``(meta, accs)`` pairs on both lanes; the lane-specific type of ``meta``
+    and the accumulator channels are documented on :class:`Result`.
 
-    ``lumped_port_sparams`` exposes the raw per-port (V_dft, I_dft) tuples
-    accumulated inside the JIT scan body when ``forward(port_s11_freqs=...)``
-    is used.  Single-port objectives can keep using ``s_params`` (which is
-    populated with per-port |S11| via :func:`extract_lumped_s11`).  Multi-
-    port AD objectives (e.g. 2-port |S21| topology optimisation) read raw
-    V/I from this field and compose their own wave decomposition, since
-    ``extract_lumped_s11`` collapses each port to its self-reflection only.
+    ``lumped_port_sparams`` exposes the raw per-port
+    ``(V_dft, I_dft, V_ref_dft)`` tuples accumulated inside the JIT scan body
+    when ``forward(port_s11_freqs=...)`` is used.  V and I are the
+    POST-injection physical channels (I carrying the Yee half-step phase);
+    ``V_ref`` is the PRE-injection drive sample, which only the N-port
+    off-diagonal incident wave consumes.  Single-port objectives can keep
+    using ``s_params`` (per-port S11: the driven terminal reflection
+    :func:`rfx.probes.probes.driven_port_reflection` at an excited port, the
+    port-branch :func:`extract_lumped_s11` at a passive one).  Multi-port AD
+    objectives (e.g. 2-port |S21| topology optimisation) read the raw
+    channels from this field and compose their own wave decomposition, since
+    a diagonal collapses each port to its self-reflection only.
 
     ``dft_planes`` exposes the JIT-scan-accumulated complex DFT plane
     probes registered via :meth:`Simulation.add_dft_plane_probe`.  Each
@@ -1171,6 +1196,7 @@ class _PortEntry:
     # contract and never set this. Defaulted so every non-add_source
     # _PortEntry construction site is untouched.
     amplitude_kind: str | None = None
+    terminates: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -1392,8 +1418,7 @@ class CoaxialTwoPortResult:
     twin). The EXPERIMENTAL label held through three legs closing in
     sequence — wiring pin, mesh-refinement convergence witness, and an
     ``eps_scale`` AD gate — and lifted once a fourth, an external referee,
-    also closed. Evidence chain: an external openEMS referee (crossval 21,
-    ``validation/crossval/21_coax_two_port_referee.py``, VESSL run-3
+    also closed. Evidence chain: an external openEMS referee (VESSL run-3
     ``369367251629`` and the first default-scale green promoted-lane run
     VESSL ``369367252220``) brackets — it does not judge — this method's own
     ``|S21|`` on the through-line class, and, via the port's own measured
@@ -1540,6 +1565,7 @@ class _MSLPortEntry:
     n_probes: int = 5
     mode: str = "eigenmode"
     eps_r_sub: float | None = None
+    terminates: tuple | None = None
 
 
 @dataclass(frozen=True)
@@ -1667,15 +1693,33 @@ class MSLSMatrixResult:
         any S value from this result.
     S_raw : (n_ports, n_ports, n_freqs) complex, optional
         The S-matrix exactly as extracted, BEFORE passivity projection.
-        Stored whenever the projection changed anything, so no information
-        is discarded by enforcing the bound.
+        ``None`` on the default path, where ``S`` already IS that matrix;
+        set only when ``enforce_passivity=True`` clipped something, so no
+        information is discarded by enforcing the bound.
     passivity_correction : (n_freqs,) float, optional
         Per-frequency amount clipped by the passivity projection:
-        ``max(sigma_max(S_raw(f)) - 1, 0)``. Zero where the extraction was
-        already passive. This is the honesty metric — a bin with a large
-        correction is a measurement artifact (check ``reliable`` and
-        ``settling_db`` for the cause), and its projected value inherits
-        that uncertainty.
+        ``max(sigma_max(S_raw(f)) - 1, 0)``. ``None`` unless
+        ``enforce_passivity=True`` actually clipped a bin — it records
+        what the projection REMOVED, so on the default path there is
+        nothing for it to record and ``sigma_max_excess`` is the field to
+        read.
+    sigma_max_excess : (n_freqs,) float, optional
+        Per-frequency ``max(sigma_max(S(f)) - 1, 0)`` of the RAW
+        extraction, measured before any opt-in projection and filled on
+        every concrete call (``None`` only while tracing, which has no
+        value to take singular values of). Zero where the extraction was
+        already passive. This is the honesty metric, and it does not
+        depend on ``enforce_passivity``: a bin with a large excess is a
+        measurement artifact (check ``reliable`` and ``settling_db`` for
+        the cause), whether the returned ``S`` carries that excess or a
+        projection clipped it away. Where a projection did clip,
+        ``passivity_correction`` equals this on the touched bins.
+
+        Near neighbour, different quantity: the ``passivity_excess`` key of
+        :func:`rfx.io.network_quality_metrics` is a single SCALAR over the
+        whole sweep, measured in POWER (``max(sigma_max^2 - 1, 0)``). This
+        field is per frequency and in amplitude. The two names differ so
+        the numbers are not read as interchangeable; do not compare them.
     port_names : tuple[str, ...]
     assembly : str, optional
         Which rule produced ``S`` — ``"multi_drive_solve"`` (normal:
@@ -1687,11 +1731,13 @@ class MSLSMatrixResult:
         that port is not matched.
 
         **Read this before trusting a fallback result.** The fallback's
-        characteristic symptom is column power above 1, and with the default
-        ``enforce_passivity=True`` that symptom is clipped out of ``S`` — but
-        it is not erased from the result: ``passivity_correction`` records
-        how much was clipped and ``S_raw`` keeps the unprojected matrix, and
-        the run also emits both a fallback warning and a passivity-guard
+        characteristic symptom is column power above 1, which the default
+        ``enforce_passivity=False`` leaves standing in ``S`` and
+        ``sigma_max_excess`` measures. Under ``enforce_passivity=True``
+        the symptom is clipped out of ``S`` — but it is not erased from
+        the result: ``passivity_correction`` records how much was clipped
+        and ``S_raw`` keeps the unprojected matrix, and the run also emits
+        both a fallback warning and a passivity-guard
         warning. So a fallback is not silent; this field is simply the
         *specific* signal. Column power above 1 has several causes (an
         under-settled record, a standing-wave null, a mis-scaled current) and
@@ -1737,6 +1783,7 @@ class MSLSMatrixResult:
     # Same order as port_names; independent of the frequency-wise signal mask.
     probe_clearance: tuple[MSLProbeClearance, ...] | None = None
     reference_impedances: np.ndarray | None = None
+    sigma_max_excess: np.ndarray | None = None
 
 
 @dataclass

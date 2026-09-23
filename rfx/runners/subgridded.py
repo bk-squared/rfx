@@ -9,7 +9,10 @@ import jax
 import jax.numpy as jnp
 
 from rfx.core.yee import EPS_0, MU_0
+from rfx.probes.probes import PreDecisionLumpedDiagonalWarning
 from rfx.grid import Grid
+from rfx.sources.sources import stamp_lumped_sigma as _stamp_lumped_sigma
+from rfx.core.yee import cell_component_e_coeffs as _cell_component_e_coeffs
 
 
 def _run_subgridded_once(
@@ -383,10 +386,9 @@ def _run_subgridded_once(
             raw_waveform = jax.vmap(pe.waveform)(times)
             native = "cb" if sim._boundary in ("cpml", "upml") else "raw"
             if native == "cb" or needs_scale(pe.amplitude_kind, native):
-                eps = float(mats_f.eps_r[i, j, k]) * EPS_0
-                sigma_val = float(mats_f.sigma[i, j, k])
-                loss = sigma_val * dt / (2.0 * eps)
-                cb = (dt / eps) / (1.0 + loss)
+                # #1210: the drive coefficient is the E update's own per-component Cb.
+                cb = float(_cell_component_e_coeffs(
+                    mats_f, idx, pe.component, dt)[1])
             else:
                 cb = None  # not needed on the raw no-conversion path
             waveform = cb * raw_waveform if native == "cb" else raw_waveform
@@ -430,8 +432,8 @@ def _run_subgridded_once(
             sigma_port_per_cell = n_cells / (pe.impedance * dx_f)
             for cell in cells:
                 i, j, k = cell
-                mats_f = mats_f._replace(
-                    sigma=mats_f.sigma.at[i, j, k].add(sigma_port_per_cell))
+                mats_f = _stamp_lumped_sigma(      # #1210
+                    mats_f, (i, j, k), sigma_port_per_cell)
                 if pec_mask_f is not None:
                     pec_mask_f = pec_mask_f.at[i, j, k].set(False)
 
@@ -439,10 +441,9 @@ def _run_subgridded_once(
             if pe.excite and pe.waveform is not None:
                 for cell in cells:
                     i, j, k = cell
-                    eps = float(mats_f.eps_r[i, j, k]) * EPS_0
-                    sigma_val = float(mats_f.sigma[i, j, k])
-                    loss = sigma_val * dt / (2.0 * eps)
-                    cb = (dt / eps) / (1.0 + loss)
+                    # #1210: the drive coefficient is the E update's own per-component Cb.
+                    cb = float(_cell_component_e_coeffs(
+                        mats_f, (i, j, k), pe.component, dt)[1])
                     waveform = (cb / dx_f) * jax.vmap(pe.waveform)(times) / n_cells
                     sources_f.append((i, j, k, pe.component, np.array(waveform)))
         else:
@@ -450,16 +451,14 @@ def _run_subgridded_once(
             idx = _pos_to_fine_idx(pe.position)
             i, j, k = idx
             sigma_port = 1.0 / (pe.impedance * dx_f)
-            mats_f = mats_f._replace(
-                sigma=mats_f.sigma.at[i, j, k].add(sigma_port))
+            mats_f = _stamp_lumped_sigma(mats_f, (i, j, k), sigma_port)  # #1210
             if pec_mask_f is not None:
                 pec_mask_f = pec_mask_f.at[i, j, k].set(False)
 
             if pe.excite and pe.waveform is not None:
-                eps = float(mats_f.eps_r[i, j, k]) * EPS_0
-                sigma_val = float(mats_f.sigma[i, j, k])
-                loss = sigma_val * dt / (2.0 * eps)
-                cb = (dt / eps) / (1.0 + loss)
+                # #1210: the drive coefficient is the E update's own per-component Cb.
+                cb = float(_cell_component_e_coeffs(
+                    mats_f, idx, pe.component, dt)[1])
                 waveform = (cb / dx_f) * jax.vmap(pe.waveform)(times)
                 sources_f.append((i, j, k, pe.component, np.array(waveform)))
 
@@ -474,7 +473,9 @@ def _run_subgridded_once(
     ntff_box_f = None
     ntff_data_f = None
     if sim._ntff is not None:
-        from rfx.farfield import NTFFBox, init_ntff_data
+        from rfx.farfield import (
+            NTFFBox, init_ntff_data, _raise_face_centre_margin,
+        )
 
         corner_lo, corner_hi, ntff_freqs = sim._ntff
         lo_idx = _pos_to_fine_idx(corner_lo)
@@ -492,7 +493,17 @@ def _run_subgridded_once(
             k_lo=lo_idx[2],
             k_hi=hi_idx[2],
             freqs=jnp.asarray(ntff_freqs, dtype=jnp.float32),
+            # Accumulate at the centre of each face cell (second-order
+            # surface integral). The fine grid is uniform, so the half-cell
+            # interpolation weights for the tangential H are the default 1/2
+            # on every face.
+            face_centre=True,
         )
+        # A face flush with the fine-grid boundary has no cell on one side
+        # of it, so the half-cell averages cannot be formed. Refuse here,
+        # beside the non-empty-box check and before the scan, rather than
+        # inside the traced body.
+        _raise_face_centre_margin(ntff_box_f, (nx_f, ny_f, nz_f))
         ntff_data_f = init_ntff_data(ntff_box_f)
 
     diagnostic_lumped_sparam_freqs = diagnostic_lumped_sparam_freqs_override
@@ -617,6 +628,30 @@ def _run_subgridded_once(
     s_params = None
     freqs = None
     if result.lumped_sparam_v_dft_f is not None and result.lumped_sparam_i_dft_f is not None:
+        # This experimental subgrid lane is the one lumped lane the
+        # known-load decision run did NOT move
+        # (scripts/diagnostics/lumped_port_known_load_line.py).  Its
+        # sampling slot is not fixed — whether the accumulation block runs
+        # before or after injection depends on the runtime
+        # ``inject_sources_before_e_coupling`` flag — so neither the
+        # post-injection slot nor the dt/2 current phase the correction
+        # rests on is derivable here.  Say so rather than return a number
+        # on a convention the uniform lane no longer uses.
+        import warnings as _w
+        _w.warn(
+            "run_subgridded: the diagnostic lumped-port S-matrix is on the "
+            "PRE-decision convention (pre-injection V, passive port-branch "
+            "diagonal, no Yee half-step current phase). On a known 50-ohm-"
+            "class load the uniform lane read that convention's driven "
+            "diagonal as the reciprocal of the physical reflection "
+            "(|S11| 4.757 where the closed form is 0.333) — see "
+            "scripts/diagnostics/lumped_port_known_load_line.py. This lane's "
+            "sampling slot depends on inject_sources_before_e_coupling, so "
+            "the correction is not derivable here. Diagnostic only; do not "
+            "report these S-parameters as physics.",
+            PreDecisionLumpedDiagonalWarning,
+            stacklevel=2,
+        )
         v_dft = result.lumped_sparam_v_dft_f
         i_dft = result.lumped_sparam_i_dft_f
         impedances = result.lumped_sparam_impedances_f

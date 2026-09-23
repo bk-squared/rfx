@@ -45,10 +45,6 @@ waveguide_report = _load_module(
     "report_waveguide_envelope",
     DIAGNOSTICS_DIR / "report_waveguide_envelope.py",
 )
-msl_report = _load_module(
-    "report_msl_envelope",
-    DIAGNOSTICS_DIR / "report_msl_envelope.py",
-)
 coaxial_tem_report = _load_module(
     "report_coaxial_tem_oracles",
     DIAGNOSTICS_DIR / "report_coaxial_tem_oracles.py",
@@ -383,140 +379,6 @@ def test_waveguide_report_parser_captures_cv11_gates_and_refs():
     assert parsed["metrics"]["slab S21"]["complex_max"] == 0.0156
 
 
-def test_msl_report_parser_captures_notch_demo_gates():
-    """The cv06b stdout contract, including the #812-P3 estimator-resolution
-    lines. The frequency window was TIGHTENED 15% -> 4.0% with that re-gate
-    (derivation: docs/design_notes/estimator_resolution_regate.md), so the
-    old 6.2% sample no longer passes -- locked below."""
-    parsed = msl_report.parse_cv06b_stdout(
-        "\n".join(
-            [
-                "Notch frequency error = 1.4%",
-                "Notch depth |S21| = -17.4 dB",
-                "Re(Z0) median = 51.8 Ω",
-                "  half-grid witness spread   = 0.6037 bin (bare argmin on "
-                "the same two sub-grids: 1.0000 bin)",
-                "  -10 dB stopband            = 3.2898 – 4.0184 GHz, "
-                "fractional 0.20001 (12 bins), ratio to ideal r=1 stub 0.9512",
-            ]
-        ),
-        rc=0,
-    )
-
-    assert parsed["status"] == "passed"
-    assert parsed["metrics"]["notch_frequency_error_pct"] == 1.4
-    assert parsed["metrics"]["notch_depth_db"] == -17.4
-    assert parsed["metrics"]["z0_median_ohm"] == 51.8
-    assert parsed["metrics"]["stopband_bw_ratio"] == 0.9512
-    assert parsed["metrics"]["half_grid_witness_bins"] == 0.6037
-    assert parsed["gates"]["stopband_bw_ratio_in_window"] is True
-    assert parsed["gates"]["half_grid_witness_sub_bin"] is True
-    assert parsed["estimator_resolution_gates_measured"] is True
-    assert parsed["gate_set"] == "post-812-P3"
-
-
-def test_msl_report_marks_a_pre_812_stdout_as_partial_coverage():
-    """The committed 2026-08-27 cv06b GPU log predates the stopband-width and
-    half-grid-witness gates, so a reader must not take its "passed" as
-    coverage of the current gate set."""
-    parsed = msl_report.parse_cv06b_stdout(
-        "\n".join(["Notch frequency error = 1.40%",
-                    "Notch depth |S21| = -43.3 dB",
-                    "Re(Z0) median = 46.5 Ω"]), rc=0)
-    assert parsed["status"] == "passed"
-    assert parsed["estimator_resolution_gates_measured"] is False
-    assert parsed["gate_set"].startswith("pre-812-P3")
-    assert "stopband_bw_ratio_in_window" not in parsed["gates"]
-    assert "half_grid_witness_sub_bin" not in parsed["gates"]
-
-
-def test_msl_report_parser_holds_the_tightened_cv06b_windows():
-    """Falsifier coverage for the re-gate: the numbers the OLD windows let
-    through must now come back failed, each for its own gate."""
-    base = ["Notch depth |S21| = -17.4 dB", "Re(Z0) median = 51.8 Ω",
-            "  half-grid witness spread   = 0.6037 bin",
-            "  ratio to ideal r=1 stub 0.9512"]
-    # 6.2% passed the retired 15% window; it must not pass 4.0%.
-    p1 = msl_report.parse_cv06b_stdout(
-        "\n".join(["Notch frequency error = 6.2%"] + base), rc=0)
-    assert p1["gates"]["notch_freq_error_lt_4pct"] is False
-    assert p1["status"] == "failed"
-    # A shallow/narrow notch: the depth witness still passes, the width gate
-    # does not -- the blindness #812 measured. The ratio and depth below are
-    # the 6-cell row of tests/fixtures/cv06b_estimator_regate/
-    # cv06b_estimator_falsifiers.json::case_C_shallow_notch_from_geometry.rows,
-    # re-read from that artifact by the assertion under this block.
-    p2 = msl_report.parse_cv06b_stdout(
-        "\n".join(["Notch frequency error = 1.4%",
-                    "Notch depth |S21| = -28.97 dB",
-                    "Re(Z0) median = 51.8 Ω",
-                    "  half-grid witness spread   = 0.6037 bin",
-                    "  ratio to ideal r=1 stub 0.6893"]), rc=0)
-    assert p2["gates"]["notch_depth_lt_minus_10db_WITNESS"] is True
-    assert p2["gates"]["stopband_bw_ratio_in_window"] is False
-    assert p2["status"] == "failed"
-    # A bin-quantised estimator scores exactly 1.0000 on the witness.
-    p3 = msl_report.parse_cv06b_stdout(
-        "\n".join(["Notch frequency error = 1.4%", "Notch depth |S21| = -17.4 dB",
-                    "Re(Z0) median = 51.8 Ω",
-                    "  half-grid witness spread   = 1.0000 bin",
-                    "  ratio to ideal r=1 stub 0.9512"]), rc=0)
-    assert p3["gates"]["half_grid_witness_sub_bin"] is False
-    assert p3["status"] == "failed"
-
-
-def test_cv06b_shallow_row_used_above_is_the_committed_artifact_row():
-    """Numeric provenance (#812 round 2): the shallow-notch numbers this file
-    types into a synthetic stdout must BE a row of the committed falsifier
-    artifact, not a remembered one."""
-    art = json.loads(
-        (REPO_ROOT / "tests/fixtures/cv06b_estimator_regate"
-                     "/cv06b_estimator_falsifiers.json").read_text())
-    rows = art["case_C_shallow_notch_from_geometry"]["rows"]
-    row = next(r for r in rows if r["stub_cells"] == 6)
-    assert round(row["bw_ratio"], 4) == 0.6893
-    assert round(row["notch_depth_db"], 2) == -28.97
-    assert row["G2_pass"] is False
-    assert row["depth_witness_pass"] is True
-
-
-def test_report_mirrored_cv06b_windows_match_the_case_that_owns_them():
-    """report_msl_envelope parses stdout instead of importing cv06b, so it
-    RESTATES three windows. A restated number is a number that can rot: pin it
-    to the case that owns it."""
-    spec = importlib.util.spec_from_file_location(
-        "_cv06b_case",
-        REPO_ROOT / "validation/crossval/06b_msl_notch_filter_uniform.py")
-    cv = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(cv)
-    assert msl_report._CV06B_FREQ_TOL_PCT == cv.NOTCH_FREQ_TOL_PCT
-    assert msl_report._CV06B_BW_RATIO_WINDOW == cv.STOPBAND_BW_RATIO_WINDOW
-    assert msl_report._CV06B_WITNESS_BINS == cv.HALF_GRID_WITNESS_BINS
-
-
-def test_msl_report_infers_legacy_xfail_count_from_stdout(tmp_path: Path):
-    stdout = tmp_path / "slow_msl.stdout.txt"
-    stdout.write_text(
-        "\n".join(
-            [
-                "=========================== short test summary info ============================",
-                "XFAIL tests/unit/sparams/test_msl_port_integration.py::test_msl_thru_line_eigenmode_gate - planned",
-                "1 passed, 1 xfailed, 18 warnings in 15.22s",
-            ]
-        ),
-        encoding="utf-8",
-    )
-    result_json = tmp_path / "physics_gate_results.json"
-
-    assert (
-        msl_report.infer_strict_xfail_count(
-            {"stdout_path": str(stdout), "status": "passed"},
-            base_json=result_json,
-        )
-        == 1
-    )
-
-
 def test_sparameter_claim_audit_expected_family_levels_are_current():
     assert (
         sparameter_claim_audit.EXPECTED_FAMILY_LEVELS["lumped_port"]
@@ -800,7 +662,13 @@ def test_port_external_reference_audit_blocks_until_every_family_has_broad_e5(tm
     assert audit["surface_coverage_status"] == "passed"
     assert audit["vessl_yaml_contract_status"] == "passed"
     assert audit["vessl_yaml_contract_launchable_family_count"] == 7
-    assert audit["vessl_yaml_contract_diagnostic_command_family_count"] == 7
+    # 2026-09-21: wire_port's only diagnostic command compared the JSON written
+    # by the cv05 patch case, which was removed. rectangular_waveguide_port's
+    # only diagnostic command ran the WR-90 waveguide-port case and fed its
+    # stdout to the external generic comparator; that case was removed too and
+    # the step left its shard YAML, which still carries the dependency audit and
+    # the family readiness report. Five families carry a diagnostic command now.
+    assert audit["vessl_yaml_contract_diagnostic_command_family_count"] == 5
     assert audit["comparison_artifact_coverage_status"] == "blocked"
     # broad-E5 envelope coverage stays "blocked" on a clean checkout: although
     # rectangular_waveguide_port's envelopes are now committed (see below), the
@@ -1391,8 +1259,14 @@ def test_port_external_shard_execution_manifest_covers_all_required_families():
     assert manifest["status"] == "passed"
     assert manifest["required_family_count"] == 7
     assert manifest["launchable_family_count"] == 7
-    assert manifest["diagnostic_command_family_count"] == 7
-    assert manifest["missing_diagnostic_command_families"] == []
+    # 2026-09-21: wire_port's only diagnostic command compared the JSON written
+    # by the cv05 patch case, and rectangular_waveguide_port's ran the WR-90
+    # waveguide-port case; both cases were removed with their commands. Their
+    # shard YAMLs stay launchable -- each still emits its family readiness
+    # report -- so only the diagnostic-command count moves.
+    assert manifest["diagnostic_command_family_count"] == 5
+    assert sorted(manifest["missing_diagnostic_command_families"]) == [
+        "rectangular_waveguide_port", "wire_port"]
     for row in manifest["shards"]:
         assert row["has_launchable_yaml"] is True
         assert row["expected_result_json"].endswith(

@@ -55,6 +55,45 @@ def apply_pec(state, axes: str = "xyz") -> object:
     return state._replace(ex=ex, ey=ey, ez=ez)
 
 
+_FACES = ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")
+
+
+def resolve_wall_faces(grid, periodic, pec_axes=None):
+    """The electric and magnetic wall faces of a run, from the grid's own
+    boundary declaration (#1164, #1193, #1194).
+
+    One rule for every entry point, decided per FACE, not per axis:
+
+    * a face on a periodic axis is no wall;
+    * a face in ``grid.pmc_faces`` is a magnetic wall and never an
+      electric one -- zeroing E_tan on its node plane turns an open-ended
+      line into a short (a port on that plane read ``|S11| = 1``, #1164);
+    * a face in ``grid.pec_faces`` is an electric wall;
+    * any other face (an absorber face, or a raw ``Grid`` with no
+      declaration) is PEC-backed -- E_tan = 0 on the outermost node plane,
+      the standard termination of a PML and the bare-box default -- unless
+      the legacy ``pec_axes`` string leaves that AXIS out. ``pec_axes`` can
+      only withhold that default; it can neither remove a declared PEC face
+      nor put an electric wall over a magnetic one.
+
+    Returns ``(pec_faces, pmc_faces)`` as frozensets of face labels.
+    """
+    declared_pec = set(getattr(grid, "pec_faces", None) or ())
+    declared_pmc = set(getattr(grid, "pmc_faces", None) or ())
+    pec, pmc = set(), set()
+    for axis, is_periodic in zip("xyz", periodic):
+        if is_periodic:
+            continue
+        axis_default = pec_axes is None or axis in pec_axes
+        for side in ("lo", "hi"):
+            face = f"{axis}_{side}"
+            if face in declared_pmc:
+                pmc.add(face)
+            elif face in declared_pec or axis_default:
+                pec.add(face)
+    return frozenset(pec), frozenset(pmc)
+
+
 def apply_pec_faces(state, faces: set[str]) -> object:
     """Apply PEC (E_tan = 0) on specific boundary faces.
 
@@ -148,6 +187,83 @@ class SheetSpec:
     plane: int
     footprint: object
     name: str | None = None
+
+    @classmethod
+    def from_node_ranges(cls, grid_shape, *, normal_axis: int, plane: int,
+                         in_plane_ranges, name=None) -> "SheetSpec":
+        """A sheet named by NODE INDICES instead of by metres.
+
+        ``plane`` and ``in_plane_ranges`` are PADDED array indices — the
+        indices of ``footprint`` itself. ``in_plane_ranges`` gives the two
+        axes other than ``normal_axis``, in increasing axis order, as
+        INCLUSIVE ``(lo, hi)`` node index pairs: ``(4, 9)`` is six node
+        lines, ``4`` through ``9``.
+
+        A conductor declared this way is mesh-independent by construction.
+        A metric declaration has to be re-read on whatever node line the
+        grid happens to have, so the same corner names different nodes once
+        the mesh moves; these indices name the same nodes on every mesh, and
+        the metal's LENGTH is then whatever the cells between those nodes
+        add up to. That is what makes a moving mesh a design variable: the
+        conductor is fixed on the lattice, the lattice carries the length.
+
+        Refuses a range that spans fewer than two node lines on either
+        in-plane axis: one node line carries no E edge between two adjacent
+        nodes, so the metal would carry no current and vanish silently (the
+        #369 class, the same rule :func:`refuse_vaporized_sheets` applies to
+        metric sheets).
+        """
+        a = int(normal_axis)
+        if a not in (0, 1, 2):
+            raise ValueError(
+                f"SheetSpec.from_node_ranges: normal_axis must be 0/1/2, got "
+                f"{normal_axis!r}")
+        shape3 = tuple(int(v) for v in grid_shape)
+        if len(shape3) != 3:
+            raise ValueError(
+                f"SheetSpec.from_node_ranges: grid_shape must be (nx, ny, nz), "
+                f"got {grid_shape!r}")
+        others = tuple(b for b in range(3) if b != a)
+        ranges = tuple(in_plane_ranges)
+        if len(ranges) != 2:
+            raise ValueError(
+                f"SheetSpec.from_node_ranges: in_plane_ranges must give the "
+                f"two axes other than {'xyz'[a]} ({'xyz'[others[0]]}, "
+                f"{'xyz'[others[1]]}), got {len(ranges)} range(s)")
+        plane = int(plane)
+        if not (0 <= plane < shape3[a]):
+            raise ValueError(
+                f"sheet {name!r}: plane index {plane} is outside the grid "
+                f"along {'xyz'[a]} (0..{shape3[a] - 1})")
+        axes = []
+        for t in range(3):
+            if t == a:
+                m = np.zeros((shape3[t],), dtype=bool)
+                m[plane] = True
+                axes.append(m)
+                continue
+            lo, hi = (int(v) for v in ranges[others.index(t)])
+            if hi < lo:
+                lo, hi = hi, lo
+            if hi - lo < 1:
+                raise ValueError(
+                    f"sheet {name!r}: the node range on {'xyz'[t]} is "
+                    f"({lo}, {hi}) — a single node line, which has no E edge "
+                    "between two adjacent nodes, so the metal would carry no "
+                    "current and vanish silently (#369 class). A sheet needs "
+                    "at least two adjacent node lines on BOTH in-plane axes; "
+                    "widen the range or refine the mesh.")
+            if lo < 0 or hi >= shape3[t]:
+                raise ValueError(
+                    f"sheet {name!r}: the node range ({lo}, {hi}) on "
+                    f"{'xyz'[t]} is outside the grid (0..{shape3[t] - 1}). "
+                    "Indices are node indices on this grid, not metres.")
+            m = np.zeros((shape3[t],), dtype=bool)
+            m[lo:hi + 1] = True
+            axes.append(m)
+        fp = axes[0][:, None, None] & axes[1][None, :, None] & axes[2][None, None, :]
+        return cls(normal_axis=a, plane=plane, footprint=jnp.asarray(fp),
+                   name=name)
 
     def __post_init__(self):
         a = int(self.normal_axis)
@@ -678,4 +794,95 @@ def apply_pec_occupancy(state, pec_occupancy, periodic=(False, False, False),
         ex=state.ex * (1.0 - m_ex),
         ey=state.ey * (1.0 - m_ey),
         ez=state.ez * (1.0 - m_ez),
+    )
+
+
+def pec_occupancy_box_keep(box, design_occupancy, *, shape, dtype,
+                           pec_occupancy=None,
+                           periodic=(False, False, False)):
+    """``(write slice, keep factors)`` for a traced occupancy in one box (#1183).
+
+    Built ONCE, outside the time loop: the occupancy is a design variable,
+    not a field, so ``1 - M`` does not change from step to step. The step
+    itself is then three multiplies and three scatters over the write
+    window, and what reverse-mode AD keeps per step is window-shaped —
+    :func:`apply_pec_occupancy` with a traced whole-grid occupancy keeps
+    three GRID-shaped arrays per step instead, because the E it multiplies
+    is what the cotangent of the occupancy needs.
+
+    Which cells the box can move, exactly: ``M`` for component ``c`` at cell
+    ``p`` is the noisy-OR of ``occ`` at ``p`` and at its BACKWARD neighbours
+    along the two transverse axes (:func:`_shift` with ``direction=+1``
+    returns ``arr[i-1]``). So an occupancy cell ``q`` reaches ``M`` at ``q``
+    and at ``q + e_t`` — one cell on the PLUS side. The write window is the
+    box grown by one cell there; the computation window is grown by one cell
+    on the minus side as well, because those backward neighbours are read.
+    Values on the minus-side context layer are wrong (its own backward
+    neighbour is outside the window and reads as the zero pad), which is why
+    it is computed and not written.
+
+    ``pec_occupancy`` is the run's own STATIC occupancy — the box cells of it
+    are REPLACED by ``design_occupancy``, everything else is carried. ``None``
+    means no static occupancy (an all-zero background).
+
+    No ``sheet_edge_masks`` argument, unlike :func:`apply_pec_occupancy`: a
+    declared PEC sheet or wire is hard-zeroed by :func:`apply_pec_edges`
+    EARLIER in the step, so the field this window rescales is already 0 at
+    those edges and the sheet term of the grid-wide max changes nothing here
+    (``0 * keep == 0``).
+
+    Periodic axes raise: the wrap makes the window's neighbours non-local, and
+    no lane exercises a periodic occupancy design today.
+    """
+    if any(periodic):
+        raise NotImplementedError(
+            "a design occupancy box (#1183) does not support periodic axes: "
+            f"periodic={tuple(bool(p) for p in periodic)}. The incident rule "
+            "wraps across the seam there, so the box's one-cell window is no "
+            "longer the whole set of cells its occupancy can move. Use "
+            "pec_occupancy_override (the whole-grid traced occupancy).")
+
+    i0, i1, j0, j1, k0, k1 = (int(v) for v in box)
+    lo = (i0, j0, k0)
+    hi = (i1, j1, k1)
+    # Computation window: one cell of context on the minus side.
+    c_lo = tuple(max(v - 1, 0) for v in lo)
+    # Write window: one cell of reach on the plus side. Also the window's
+    # upper bound -- nothing beyond it is computed or written.
+    c_hi = tuple(min(v + 1, n) for v, n in zip(hi, shape))
+    win = tuple(slice(a, b) for a, b in zip(c_lo, c_hi))
+    write = tuple(slice(a, b) for a, b in zip(lo, c_hi))
+    # The write window inside the computation window.
+    inner = tuple(slice(a - c, b - c)
+                  for a, b, c in zip(lo, c_hi, c_lo))
+
+    if pec_occupancy is None:
+        occ = jnp.zeros(tuple(b - a for a, b in zip(c_lo, c_hi)), dtype)
+    else:
+        occ = jnp.clip(jnp.asarray(pec_occupancy)[win].astype(dtype), 0.0, 1.0)
+    box_local = tuple(slice(a - c, b - c) for a, b, c in zip(lo, hi, c_lo))
+    occ = occ.at[box_local].set(
+        jnp.clip(jnp.asarray(design_occupancy).astype(dtype), 0.0, 1.0))
+
+    masks = _volume_occupancy_masks(occ, (False, False, False))
+    return write, tuple(1.0 - m[inner] for m in masks)
+
+
+def apply_pec_occupancy_box(state, prev, write, keep):
+    """Redo the occupancy scaling on one window with a traced ``1 - M`` (#1183).
+
+    ``prev`` is the state BEFORE the grid-wide :func:`apply_pec_occupancy` of
+    this timestep (or the state itself when the run has no static occupancy).
+    The scaling is a pure multiply, so redoing it at the window from the
+    pre-scaling field is exactly what the grid-wide call would have written
+    there with the design occupancy in place — no division, nothing undone.
+    Outside the window the static factor is already the right one, because
+    no design cell reaches that far (:func:`pec_occupancy_box_keep`).
+    """
+    sl = write
+    kx, ky, kz = keep
+    return state._replace(
+        ex=state.ex.at[sl].set(prev.ex[sl] * kx),
+        ey=state.ey.at[sl].set(prev.ey[sl] * ky),
+        ez=state.ez.at[sl].set(prev.ez[sl] * kz),
     )

@@ -1,0 +1,74 @@
+name: rfx-gpu-suite
+description: "W2.4 maintained GPU harness: full gpu-marked pytest suite on origin/main (or RFX_GPU_SUITE_REF), exported with git archive so the primary checkout is never the thing under test (run per release tag + after GPU-touching merges)"
+tags: [rfx, gpu-suite, ci-trust, w24]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  RFX_GPU_SUITE_REF: "de8e9326"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -euo pipefail
+  primary=/root/workspace/byungkwan-workspace/research/rfx
+  cd "$primary"
+  git config --global --add safe.directory "$primary" || true
+  echo "=== rfx GPU suite (W2.4 maintained harness) ==="
+  echo "=== provenance ==="
+  # The suite tests the REF it is asked for (default origin/main), never
+  # whatever the primary checkout happens to have checked out. Measured
+  # 2026-09-15 (run 369367261080): the primary checkout sat 6 commits behind
+  # main after the #1038 runner merges, so a "post-merge" GPU run silently
+  # tested pre-merge code. The tree is exported with `git archive` into a
+  # scratch dir, so the PI's checkout is not touched (no checkout, no worktree
+  # metadata, no detached HEAD). Override with RFX_GPU_SUITE_REF=<sha|branch>.
+  git fetch -q origin
+  ref="${RFX_GPU_SUITE_REF:-origin/main}"
+  sha=$(git rev-parse "$ref")
+  short=$(git rev-parse --short "$ref")
+  echo "suite ref: $ref = $sha"
+  echo "primary checkout HEAD: $(git rev-parse HEAD) (informational; the suite runs $ref, not this HEAD)"
+  git status --short || true
+  src="/tmp/rfx-gpu-suite-$short"
+  rm -rf "$src" && mkdir -p "$src"
+  git archive --format=tar "$sha" | tar -xf - -C "$src"
+  echo "=== install runtime dependencies (exported tree, no editable install) ==="
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest
+  export RFX_REPO_ROOT="$src"
+  export PYTHONPATH="$RFX_REPO_ROOT:${PYTHONPATH:-}"
+  cd "$src"
+  python -c "import jax, rfx; print('probe ok | jax', jax.__version__, '| devices', jax.devices(), '| rfx', getattr(rfx, '__version__', '?'), '| from', rfx.__file__)"
+  out="$primary/.omx/gpu-suite/$(date -u +%Y%m%dT%H%M%SZ)-$short"
+  mkdir -p "$out"
+  echo "=== gpu-marked suite (249 tests at authoring time) ==="
+  # NOTE: the 'distributed' pytest marker is declared but currently has ZERO
+  # tests — distributed coverage lives in regular test files that set their
+  # own XLA --xla_force_host_platform_device_count sentinel and run in the
+  # fast suite (test_distributed_nu_composition.py always did; as of #622
+  # test_distributed_nu_kernel.py's 2-device family joined it there too, and
+  # as of #623 test_distributed.py's 2-/4-device family joined it as well —
+  # both used to carry the 'gpu' marker below, which meant their two-device
+  # tests ran in NO lane at all: this 1-GPU pod only creates *virtual*
+  # devices on the CPU backend, so '-m gpu' here always skipped them, and
+  # every CPU lane deselects 'gpu'). Re-add a '-m distributed' step here if
+  # the marker gains tests.
+  # POSIX-safe rc capture (the VESSL runner shell is busybox-ash:
+  # ${PIPESTATUS[0]} is a bashism and died with 'bad substitution' on
+  # proof run 369367242339 — pytest itself completed fine).
+  set +e
+  timeout 13800 python -m pytest -m gpu -q -ra -p no:cacheprovider \
+    > "$out/gpu_suite.log" 2>&1
+  rc=$?
+  set -e
+  tail -n 60 "$out/gpu_suite.log"
+  echo "$rc" > "$out/gpu_suite.rc"
+  echo "=== summary ==="
+  tail -n 30 "$out/gpu_suite.log" | grep -E "passed|failed|error|skipped" || true
+  echo "gpu_suite_rc=$rc"
+  echo "artifacts: $out"
+  exit "$rc"

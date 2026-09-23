@@ -115,6 +115,9 @@
     "GradientCheckResult": {
       "kind": "class"
     },
+    "GradientRecordLengthWitness": {
+      "kind": "class"
+    },
     "Grid": {
       "kind": "class"
     },
@@ -477,7 +480,8 @@
         "field_scale",
         "magnetic_ratio",
         "reference_plane_axial_index_offset",
-        "eps_r"
+        "eps_r",
+        "shell_inner_radius"
       ]
     },
     "build_runtime_report": {
@@ -1088,6 +1092,18 @@
         "num_periods"
       ]
     },
+    "gradient_record_length_witness": {
+      "kind": "function",
+      "params": [
+        "objective",
+        "params",
+        "n_steps",
+        "tol",
+        "factor",
+        "has_aux",
+        "floor_frac"
+      ]
+    },
     "half_power_beamwidth": {
       "kind": "function",
       "params": [
@@ -1324,7 +1340,10 @@
         "dy_profile",
         "pec_faces",
         "pmc_faces",
-        "cpml_axes"
+        "cpml_axes",
+        "dt",
+        "dt_min_cell",
+        "dt_caller"
       ]
     },
     "make_ntff_box": {
@@ -1333,7 +1352,8 @@
         "grid",
         "corner_lo",
         "corner_hi",
-        "freqs"
+        "freqs",
+        "collocation"
       ]
     },
     "make_port_source": {
@@ -1760,6 +1780,7 @@
         "port_names",
         "driven_port_indices",
         "current_convention",
+        "diagonal_frame",
         "reference_plane_offsets_m",
         "propagation_constants",
         "source"
@@ -1815,7 +1836,9 @@
         "stencil_order",
         "report_every",
         "report_label",
-        "sheet_impedance"
+        "sheet_impedance",
+        "design_box",
+        "design_occupancy"
       ]
     },
     "run_adi_2d": {
@@ -1914,7 +1937,8 @@
         "checkpoint_every",
         "n_warmup",
         "aniso_eps",
-        "sheet_impedance"
+        "sheet_impedance",
+        "design_box"
       ]
     },
     "run_until_decay": {
@@ -2390,7 +2414,8 @@
       "pin_radius",
       "outer_radius",
       "impedance",
-      "waveform"
+      "waveform",
+      "terminates"
     ],
     "add_dft_plane_probe": [
       "axis",
@@ -2455,13 +2480,25 @@
       "n_probes",
       "name",
       "mode",
-      "eps_r_sub"
+      "eps_r_sub",
+      "terminates"
     ],
     "add_ntff_box": [
       "corner_lo",
       "corner_hi",
       "freqs",
       "n_freqs"
+    ],
+    "add_pinned_sheet": [
+      "plane_index",
+      "i_range",
+      "j_range",
+      "normal_axis",
+      "sigma_bulk",
+      "thickness",
+      "eps_r",
+      "surface_impedance_f0",
+      "name"
     ],
     "add_polarized_source": [
       "position",
@@ -2477,7 +2514,8 @@
       "extent",
       "excite",
       "direction",
-      "reference_plane_cells"
+      "reference_plane_cells",
+      "terminates"
     ],
     "add_probe": [
       "position",
@@ -2544,6 +2582,9 @@
     "artifact_report": [
       "result",
       "kwargs"
+    ],
+    "boundary_model": [
+      "rcs"
     ],
     "compute_coax_msl_transition": [
       "junction_x",
@@ -2680,6 +2721,10 @@
       "eps_override",
       "sigma_override",
       "mu_r_override",
+      "design_box",
+      "design_eps_override",
+      "design_sigma_override",
+      "design_occupancy_override",
       "pec_mask_override",
       "pec_occupancy_override",
       "n_steps",

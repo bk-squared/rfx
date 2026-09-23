@@ -24,8 +24,8 @@ reactive load between two wire ports. Verify:
      reference-plane path.
 
 These are BASIC regression tests, not full validation — the
-claims-bearing MSL notch validation lives in
-`validation/crossval/06b_msl_notch_filter_uniform.py` (`add_msl_port`;
+claims-bearing MSL notch validation lives in the MSL notch filter case,
+`tests/crossval/msl_notch_filter/` (`add_msl_port`;
 the nonuniform wire-port crossval lane cv06 was retired as
 artifact-anchored, issue #339).
 """
@@ -96,6 +96,7 @@ def _build_line(with_port2_excite: bool = False, with_direction: bool = True):
         extent=substrate_thickness,
         waveform=pulse,
         direction=direction_lo,
+        terminates=1,
     )
 
     # Port 2 — passive, at x = dom_x − port_margin
@@ -107,6 +108,7 @@ def _build_line(with_port2_excite: bool = False, with_direction: bool = True):
         extent=substrate_thickness,
         excite=with_port2_excite,
         direction=direction_hi,
+        terminates=1,
     )
     return sim
 

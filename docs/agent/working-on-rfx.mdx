@@ -226,14 +226,13 @@ pull request, and whether it blocks a merge:
 | `changes` | yes, for the reason below |
 | `pr-body-contract`, `changelog-fragment` | yes |
 | `lane-label`, `agent-docs-hygiene`, `public-docs-source`, `api-reference` | no |
-| `quality-gates`, `clean-wheel-smoke` on ubuntu, macos and windows | no |
 
 A first documentation pull request runs under `agent-docs-hygiene`, which greps for a
 fixed list of known internal paths that a public clone does not carry, and
 `public-docs-source`, which checks that the published site still resolves to its
 source pages. Both are fast, and `bash scripts/ci/local.sh` runs the hygiene one.
 
-The checks in the bottom two rows of that table are outside the eleven, so a red run on
+The checks in the bottom row of that table are outside the eleven, so a red run on
 one of them is visible and blocks nothing. **`changes` is required for a reason the
 other ten do not share.** The heavy jobs declare `needs: changes`, so if that job dies
 of a runner fault they are skipped by dependency instead of failing, and a skipped

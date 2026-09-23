@@ -81,7 +81,11 @@ def test_tmz_between_pec_walls_runs_and_equals_the_three_d_box():
 
 
 def test_the_way_out_named_in_the_message_carries_tez_fields():
-    """Two cells between magnetic z walls; one cell holds nothing."""
+    """One or two cells between magnetic z walls both carry the TEz field:
+    it is uniform in z and lives as in-plane E on the node planes, which a
+    magnetic wall leaves alive. Until #1164 the axis-wide PEC wall zeroed
+    those planes over the magnetic declaration, one cell read exactly 0.0,
+    and this test pinned that short as "one cell holds nothing"."""
     def solve(cells):
         sim = Simulation(
             freq_max=30e9, domain=(A, B, cells * DX), dx=DX, mode="3d",
@@ -96,7 +100,7 @@ def test_the_way_out_named_in_the_message_carries_tez_fields():
             return np.asarray(sim.run(n_steps=200, compute_s_params=False)
                               .time_series)[:, 0]
     assert np.max(np.abs(solve(2))) > 0.0
-    assert np.max(np.abs(solve(1))) == 0.0
+    assert np.max(np.abs(solve(1))) > 0.0
 
 
 def test_a_two_d_mode_on_a_uniform_mesh_is_untouched():

@@ -243,19 +243,13 @@ def test_pad_fill_shortfall_is_a_value_error() -> None:
 
 # --- the two pad predicates differ on purpose (review of PR #1136, B) ------
 
-def test_the_smoothing_predicate_and_this_one_disagree_by_design() -> None:
+def test_the_smoothing_lane_continues_a_corner_at_the_declared_face() -> None:
     """Same rig, two questions, two answers -- and which fires is the point.
 
-    ``smoothed_shape_pairs`` asks whether to CONTINUE a shape into a pad and
-    scores the DECLARED corner against the REALIZED interior-edge node. On the
-    defect rig that node sits beyond the declared face, so it says "does not
-    reach" and continues nothing: correct for its own lane, and silent about
-    the defect.
-
-    This check asks whether a shortfall is a DEFECT and scores against the
-    DECLARED face, which the box does reach by construction. So it fires where
-    the other is silent. Scoring this one against the realized edge would
-    compare the realized model with itself and could never fail.
+    ``smoothed_shape_pairs`` continues a declared face even when the
+    realized interior-edge node lies beyond it. The material-array lane's
+    independent shortfall check still refuses this deliberately oversized
+    grid before material replication.
     """
     import math as _math
 
@@ -276,10 +270,9 @@ def test_the_smoothing_predicate_and_this_one_disagree_by_design() -> None:
     assert unextendable == [], unextendable
     box = sim._geometry[0].shape
     continued = pairs[0][0]
-    assert continued.corner_hi[0] == box.corner_hi[0], (
-        "the smoothing lane continued the x-hi face; on this rig it is "
-        "supposed to decline, because the realized interior edge lies beyond "
-        "the declared corner")
+    assert box.corner_hi[0] == sim._unresolved_domain[0]
+    assert continued.corner_hi[0] > box.corner_hi[0], (
+        "the smoothing lane must continue a corner at the declared x-hi face")
 
 
 def test_a_lo_face_shortfall_is_silent_and_that_is_the_documented_scope(

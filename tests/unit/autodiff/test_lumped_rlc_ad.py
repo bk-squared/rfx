@@ -44,19 +44,37 @@ from rfx import GaussianPulse, Simulation
 
 _FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "fixtures")
 
-# Lumped-port + co-located series R+C fixture.  CPML keeps the port V/I
-# well-conditioned (see tests/unit/sparams/test_run_forward_s11_contract.py); the co-located
-# series R+C exercises the ADE carry (capacitor charge updates each step through
-# the traced meta.R / meta.dt_over_C_dx) so the scoped-x64 dtype threading is
-# genuinely tested.  Freqs are pinned in-band (source f0=5 GHz, bw=0.9) where
-# the incident wave is strong — below-cutoff / weak-incident bins would NaN the
-# gradient silently.
+# Lumped-port + series R+C fixture, the element ONE CELL from the port.  CPML
+# keeps the port V/I well-conditioned (see
+# tests/unit/sparams/test_run_forward_s11_contract.py); the series R+C exercises
+# the ADE carry (capacitor charge updates each step through the traced meta.R /
+# meta.dt_over_C_dx) so the scoped-x64 dtype threading is genuinely tested.
+# Freqs are pinned in-band (source f0=5 GHz, bw=0.9) where the incident wave is
+# strong — below-cutoff / weak-incident bins would NaN the gradient silently.
+#
+# WHY THE ELEMENT IS NOT AT THE PORT CELL (2026-09-21): a driven port reads its
+# S11 from the terminal V/I pair, and the Ampere-loop current I is the current
+# leaving the port cell into the surrounding field.  An element sitting INSIDE
+# that cell is in parallel with the source, not in the external network, so it
+# changes the drive level and not the external impedance.  Measured on this
+# fixture: co-located, R = 50 and R = 500 move |S11| by 1.8e-07 and 2.4e-07 —
+# the float32 floor, R-independent — and dS11^2/dR collapses to -1.15e-10.  One
+# cell away at R = 500 the same quantities are 8.7e-03 and -8.16e-05.  The old
+# co-located fixture could only see the element because the pre-2026-09-21
+# extractor read a pre-injection sample at the driven cell, which carries the
+# drive level; that sample is not the terminal voltage of the circuit
+# (scripts/diagnostics/lumped_port_known_load_line.py).
+#
+# R0 is 500, not 50: a series R+C off the port cell with R = 50 NaNs the run,
+# on this commit and on the commit before it — a pre-existing behaviour of
+# add_lumped_rlc away from a port cell, unrelated to the extractor.
 _POS = (0.0093, 0.0093, 0.0093)
 _F0 = 5e9
 _FREQS = np.array([4.5, 5.0, 5.5]) * 1e9
-_R0 = 50.0
+_R0 = 500.0
 _C0 = 0.20e-12
 _N_STEPS = 1600
+_RLC_OFFSET_CELLS = 1
 
 # Central-difference relative step, DERIVED — not tuned to this fixture.
 # The total error of (f(x+h)-f(x-h))/2h is (h^2/6)|f'''| + eps_solve*|f|/h,
@@ -82,15 +100,30 @@ _N_STEPS = 1600
 _FD_REL_STEP = float((3.0 * np.finfo(np.float32).eps) ** (1.0 / 3.0))
 
 
+_DX = 0.02 / 15
+_RLC_POS = (_POS[0] + _RLC_OFFSET_CELLS * _DX, _POS[1], _POS[2])
+
+
 def _fixture_sim():
     sim = Simulation(
-        freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=0.02 / 15,
+        freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=_DX,
         boundary="cpml", cpml_layers=6,
     )
     sim.add_port(position=_POS, component="ez", impedance=50.0,
                  waveform=GaussianPulse(f0=_F0, bandwidth=0.9))
-    sim.add_lumped_rlc(position=_POS, component="ez",
+    sim.add_lumped_rlc(position=_RLC_POS, component="ez",
                        R=_R0, C=_C0, topology="series")
+    return sim
+
+
+def _bare_port_sim():
+    """The same fixture with no lumped element registered."""
+    sim = Simulation(
+        freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=_DX,
+        boundary="cpml", cpml_layers=6,
+    )
+    sim.add_port(position=_POS, component="ez", impedance=50.0,
+                 waveform=GaussianPulse(f0=_F0, bandwidth=0.9))
     return sim
 
 
@@ -105,7 +138,14 @@ def _s11_sq_sum(R, C):
 
 
 def test_dS11_dR_dC_ad_matches_fd():
-    """grad(|S11|^2) w.r.t. R and C is finite, nonzero and FD-consistent."""
+    """grad(|S11|^2) w.r.t. R and C is finite, nonzero and FD-consistent.
+
+    Measured on the committed fixture 2026-09-21: dR AD -8.156e-05 vs FD
+    -8.155e-05 (rel 0.005%), dC AD -7.3377e+10 vs FD -7.3375e+10 (rel 0.002%),
+    against the unchanged 5% gate. With the element at the port cell instead,
+    dS11^2/dR is -1.15e-10 — no signal for either side to agree on — which is
+    why the fixture moves it one cell out; see the fixture note above.
+    """
     with _enable_x64(True):
         R = jnp.asarray(_R0, dtype=jnp.float64)
         C = jnp.asarray(_C0, dtype=jnp.float64)
@@ -177,28 +217,27 @@ def test_forward_no_rlc_byte_identity():
 
 
 def test_forward_with_rlc_is_not_noop():
-    """A registered RLC element now affects forward() (was a silent no-op).
+    """A registered RLC element reaches forward() (was a silent no-op).
 
     GREP note: no pre-existing test combined add_lumped_rlc with forward(), so
     no test locked the old no-op behaviour — this is a pure fix, not a
     contract change.
+
+    The gate is 1e-3 against a measured 8.68e-3; a silent no-op reads 1.8e-7,
+    four orders below it, so noise cannot pass this. The element must sit off
+    the port cell to be visible at all — see the fixture note above.
     """
     freqs = np.array([4.5, 5.0, 5.5]) * 1e9  # in-band, well-conditioned
     with_rlc = np.abs(np.asarray(
         _fixture_sim().forward(port_s11_freqs=freqs, n_steps=1200).s_params
     ).reshape(-1))
-
-    sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=0.02 / 15,
-                     boundary="cpml", cpml_layers=6)
-    sim.add_port(position=_POS, component="ez", impedance=50.0,
-                 waveform=GaussianPulse(f0=_F0, bandwidth=0.9))
     without = np.abs(np.asarray(
-        sim.forward(port_s11_freqs=freqs, n_steps=1200).s_params
+        _bare_port_sim().forward(port_s11_freqs=freqs, n_steps=1200).s_params
     ).reshape(-1))
 
-    assert np.max(np.abs(with_rlc - without)) > 1e-2, (
+    assert np.max(np.abs(with_rlc - without)) > 1e-3, (
         "add_lumped_rlc had ~zero effect through forward() — the silent no-op "
-        "was not fixed"
+        f"was not fixed (with {with_rlc}, without {without})"
     )
 
 
@@ -209,23 +248,21 @@ def test_run_compute_s_params_reflects_rlc():
     so threading ``lumped_rlc`` fixes both. Before WP 4-E, run(compute_s_params=
     True) was byte-identical with/without a co-located RLC (max|Δ|=0.0 on main);
     now it differs, locking the broader no-op fix so it can't silently regress.
+
+    Same gate and same measured separation as the forward() sibling above
+    (8.68e-3 measured, 1e-3 gate, 1.8e-7 no-op floor).
     """
     freqs = np.array([4.5, 5.0, 5.5]) * 1e9  # in-band, well-conditioned
     with_rlc = np.abs(np.asarray(
         _fixture_sim().run(n_steps=1200, compute_s_params=True,
                            s_param_freqs=freqs).s_params
     ).reshape(-1))
-
-    sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=0.02 / 15,
-                     boundary="cpml", cpml_layers=6)
-    sim.add_port(position=_POS, component="ez", impedance=50.0,
-                 waveform=GaussianPulse(f0=_F0, bandwidth=0.9))
     without = np.abs(np.asarray(
-        sim.run(n_steps=1200, compute_s_params=True,
-                s_param_freqs=freqs).s_params
+        _bare_port_sim().run(n_steps=1200, compute_s_params=True,
+                             s_param_freqs=freqs).s_params
     ).reshape(-1))
 
-    assert np.max(np.abs(with_rlc - without)) > 1e-2, (
+    assert np.max(np.abs(with_rlc - without)) > 1e-3, (
         "add_lumped_rlc had ~zero effect through run(compute_s_params=True) — "
         "the S-param extraction path still drops the RLC"
     )

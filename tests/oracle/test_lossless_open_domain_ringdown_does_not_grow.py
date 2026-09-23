@@ -6,6 +6,17 @@ envelope can only decay.  A run whose envelope turns and climbs is not a resonan
 a truncated transient -- it is the update operator with an eigenvalue outside the unit circle,
 and the only question is how long you have to wait to see it.
 
+THE RIG THIS GATE RUNS NOW (#801, PR #1178, 2026-09-22).  Both tests build ``_build(n=3, pad_h=10,
+cpml=6)``: dx = h/3, six absorber layers, grid (187, 142, 61), 19994 steps.  It is the rig that GREW
+while conductors stopped at the absorber entrance, which is why it replaced the n = 4, eight-layer
+rig: that one settled at -43.30 dB even then, so nothing about the ground plane could turn it red,
+and a gate whose own rig has no red state is not known to measure anything.  Measured, 150 periods,
+float32, rtx4090 (VESSL 369367263099): with the ground continued through the absorber, settling
+-44.80 dB and worst log rate -2.655e-04 per step; with the continuation switched off, 0.00 dB and
++5.842e-04 per step.  Thresholds and record length are unchanged.  Every paragraph below that speaks
+of ``n = 4``, eight layers, 26659 steps or the pre-#931 edge rule is the DATED RECORD of the rig and
+the falsifier this replaced, kept because its numbers are why the record is 150 periods long.
+
 WHY THIS FIXTURE.  An isolated patch on a grounded substrate with the lateral domain padded and
 a thin absorber is the configuration that produced rfx's longest unexplained growth record.  The
 diagnosis (branch ``diag/801-patch-ringdown-padding``, artifacts under
@@ -62,6 +73,17 @@ state has never been observed is not known to measure anything (this repo has be
 exactly that; see the "a physics gate can bind an artifact" lesson).  Keep the two together: if
 the mutation test stops being red, this gate has stopped discriminating and the green one means
 nothing.
+
+SINCE #801 (2026-09-21) THE FALSIFIER IS A DIFFERENT MODEL, and everything below this paragraph
+about the pre-#931 edge rule is the dated record of the falsifier it replaced.  What made this rig
+grow was never the edge rule alone: the ground plane stopped at the absorber entrance, so inside
+the absorber the substrate had no ground under it and a wave ran along the absorber faces.  With
+the ground continued through the absorber the pre-#931 edge rule settles at -50.33 dB (VESSL
+369367262956) and shows nothing.  ``test_the_gate_is_red_without_conductor_continuation`` therefore
+switches the continuation OFF (the shared helper returns the declared shape) on the six-layer arm,
+n = 3, pad 10h, grid (187, 142, 61), 19994 steps: settling 0.00 dB, worst log rate +5.842e-04 per
+step, red through both halves of the predicate (VESSL 369367262982).  The eight-layer arm with
+the continuation read -44.82 dB and -1.992e-04 per step (VESSL 369367262981).
 
 WHAT THE MUTATION DOES NOW, AND WHAT IT DID (measured 2026-09-20, VESSL 369367262373, rtx4090,
 float32, this file's ``__main__`` run unchanged at two commits; logs
@@ -263,11 +285,12 @@ def _settling_db(time_series):
                for t, p, bad in zip(tail, peak, blown))
 
 
-def _run_rates(monkeypatch=None, legacy=False):
-    sim = _build()
-    if legacy:
-        from rfx.boundaries import pec
-        monkeypatch.setattr(pec, "_volume_edge_masks", _legacy_volume_edge_masks)
+def _run_rates(monkeypatch=None, continuation_off=False):
+    sim = _build(n=3, pad_h=10, cpml=6)
+    if continuation_off:
+        from rfx.geometry import smoothing
+        monkeypatch.setattr(smoothing, "continued_conductor_shape",
+                            lambda sim, grid, shape, **kwargs: shape)
     # The preflight is part of the result, so it is READ rather than skipped blind: this
     # fixture is a deliberate anti-pattern (one-cell PEC volumes, a lossless dielectric in an
     # open domain, a thin absorber) and must keep saying so. An empty preflight here would mean
@@ -307,25 +330,23 @@ def test_lossless_open_domain_ringdown_decays_on_every_probe():
 
 @pytest.mark.gpu
 @pytest.mark.slow_physics
-def test_the_gate_is_red_under_the_pre_931_edge_rule(monkeypatch):
-    """The falsifier: with the pre-#931 edge rule the gate above must be RED.
+def test_the_gate_is_red_without_conductor_continuation(monkeypatch):
+    """The falsifier: without conductor continuation the gate above must be RED.
 
-    One mutation, and it is the one the bisect landed on. It asserts the gate's own predicate,
-    not growth: since #1136 the mutated arm decays, slowly, and misses the settling bar by
-    4.59 dB (module docstring, 2026-09-20 table). If this ever passes quietly, the gate above
-    has stopped discriminating and its green tells you nothing.
+    One mutation: the shared helper returns the declared shape, so the ground plane ends at the
+    absorber entrance as it did before #801, on the six-layer arm that grew on main. Measured
+    red: settling 0.00 dB, worst log rate +5.842e-04 per step (module docstring). If this ever
+    passes quietly, the gate above has stopped discriminating and its green tells you nothing.
     """
-    rates, settling, _preflight = _run_rates(monkeypatch=monkeypatch, legacy=True)
+    rates, settling, _preflight = _run_rates(monkeypatch=monkeypatch, continuation_off=True)
     gate_green = settling <= SETTLING_DB_BAR and max(rates) < MAX_LOG_RATE_PER_STEP
     assert not gate_green, (
-        f"the pre-#931 edge rule no longer turns the gate red: per-probe log rates {rates} per "
+        f"the uncontinued six-layer model no longer turns the gate red: log rates {rates} per "
         f"step (worst {max(rates):.3e} against {MAX_LOG_RATE_PER_STEP:.1e}), settling "
         f"{settling:.2f} dB against {SETTLING_DB_BAR:.0f} dB. Recorded red state on the "
-        f"(249, 189, 81) grid: worst -8.379e-05, settling -35.41 dB. Either the mutation stopped "
-        f"reaching the solve (check that rfx.boundaries.pec._volume_edge_masks is still what "
-        f"realized_pec_edge_masks calls), or the realized fixture moved again, or NUM_PERIODS "
-        f"was raised (the mutated arm decays and is derived to cross the bar at about 170-187 "
-        f"periods) -- in every case the companion gate is no longer known to measure anything.")
+        f"(187, 142, 61) grid: worst +5.84241689243745e-4, settling 0.00 dB. "
+        f"Check that the shared conductor helper returns the declared shape and that the "
+        f"builder and NUM_PERIODS retain the measured six-layer model.")
 
 
 if __name__ == "__main__":  # measurement helper, not part of the suite
@@ -333,24 +354,25 @@ if __name__ == "__main__":  # measurement helper, not part of the suite
     from contextlib import contextmanager
 
     @contextmanager
-    def _patched(legacy):
-        from rfx.boundaries import pec
-        original = pec._volume_edge_masks
-        if legacy:
-            pec._volume_edge_masks = _legacy_volume_edge_masks
+    def _patched(continuation_off):
+        from rfx.geometry import smoothing
+        original = smoothing.continued_conductor_shape
+        if continuation_off:
+            smoothing.continued_conductor_shape = lambda sim, grid, shape, **kwargs: shape
         try:
             yield
         finally:
-            pec._volume_edge_masks = original
+            smoothing.continued_conductor_shape = original
 
-    for use_legacy in (False, True):
-        with _patched(use_legacy):
-            sim_ = _build()
+    for continuation_off in (False, True):
+        with _patched(continuation_off):
+            sim_ = _build(n=3, pad_h=10, cpml=6)
             res_ = sim_.run(num_periods=NUM_PERIODS, skip_preflight=True)
             ts_ = np.asarray(res_.time_series)
         r = _late_time_log_rate_per_step(ts_)
         settle = _settling_db(ts_)
-        print(f"n={N_CELLS_PER_H} pad={PAD_H} periods={NUM_PERIODS} steps={ts_.shape[0]} "
-              f"legacy={use_legacy!s:5s} -> rates {[f'{v:+.3e}' for v in r]} "
+        print(f"n={3} pad={PAD_H} "
+              f"periods={NUM_PERIODS} steps={ts_.shape[0]} "
+              f"continuation_off={continuation_off!s:5s} -> rates {[f'{v:+.3e}' for v in r]} "
               f"worst {max(r):+.3e} settling {settle:.2f} dB", flush=True)
     sys.exit(0)

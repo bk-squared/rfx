@@ -1,0 +1,386 @@
+{
+ "schema": "rfx.lumped_port_known_load_line",
+ "schema_version": 1,
+ "what": "a lumped port and a wire port on the same single cell of a line whose reflection is an exact number at every frequency",
+ "script": "scripts/diagnostics/lumped_port_known_load_line.py",
+ "commit": "018225e6ad07857eb4540d1df071ece38e8949eb",
+ "rfx_import_tail": "rfx/__init__.py",
+ "rfx_resolved_inside_this_tree": true,
+ "jax_version": "0.6.2",
+ "numpy_version": "2.2.6",
+ "jax_devices": [
+  "TFRT_CPU_0"
+ ],
+ "python": "3.10.12",
+ "platform": "Linux-5.15.0-187-generic-x86_64-with-glibc2.35",
+ "utc": "2026-09-21T12:59:51.615418+00:00",
+ "channel": {
+  "dx_m": 0.001,
+  "n_nodes_x": 5,
+  "port_node": 1,
+  "load_node": 3,
+  "length_m": 0.002,
+  "gap_cells": 1,
+  "width_cells": 1,
+  "zc_ohm": 376.730313668,
+  "zref_ohm": 376.730313668,
+  "boundaries": {
+   "x": [
+    "pmc",
+    "pmc"
+   ],
+   "y": [
+    "pmc",
+    "pmc"
+   ],
+   "z": [
+    "pec",
+    "pec"
+   ]
+  },
+  "num_periods": 20.0,
+  "drive": {
+   "f0_hz": 5000000000.0,
+   "bandwidth": 1.6
+  }
+ },
+ "freqs_hz": [
+  1000000000.0,
+  2500000000.0,
+  5000000000.0,
+  7500000000.0,
+  10000000000.0
+ ],
+ "loads": {
+  "half_zc": {
+   "r_over_zc": 0.5,
+   "r_ohm": 188.365156834,
+   "closed_form_abs_s11": 0.3333333333333333,
+   "closed_form_note": "|S11| = |Gamma_L| at every bin, because Zref is the line's own Zc",
+   "ports": {
+    "lumped": {
+     "port_kind": "lumped",
+     "grid_shape_nodes": [
+      5,
+      2,
+      2
+     ],
+     "dt_s": 1.9065748695310057e-12,
+     "s11_real": [
+      -0.3325447738170624,
+      -0.3284188210964203,
+      -0.3138655722141266,
+      -0.2902255952358246,
+      -0.25836774706840515
+     ],
+     "s11_imag": [
+      0.027925092726945877,
+      0.06956152617931366,
+      0.13734430074691772,
+      0.2016681581735611,
+      0.26103928685188293
+     ],
+     "abs_s11": [
+      0.3337152302265167,
+      0.33570483326911926,
+      0.34260040521621704,
+      0.35341328382492065,
+      0.36728110909461975
+     ],
+     "v_over_zc_i_real": [
+      0.500228762626648,
+      0.5014323592185974,
+      0.5057714581489563,
+      0.5131485462188721,
+      0.5237881541252136
+     ],
+     "v_over_zc_i_imag": [
+      0.03143910691142082,
+      0.07862122356891632,
+      0.1574050784111023,
+      0.23651206493377686,
+      0.3160988390445709
+     ],
+     "warnings": [
+      {
+       "warning": "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.",
+       "count": 3
+      }
+     ],
+     "nonpassive_warning": false
+    },
+    "wire": {
+     "port_kind": "wire",
+     "grid_shape_nodes": [
+      5,
+      2,
+      2
+     ],
+     "dt_s": 1.9065748695310057e-12,
+     "s11_real": [
+      -0.3325447738170624,
+      -0.3284188210964203,
+      -0.3138655722141266,
+      -0.2902255952358246,
+      -0.25836774706840515
+     ],
+     "s11_imag": [
+      0.027925092726945877,
+      0.06956152617931366,
+      0.13734430074691772,
+      0.2016681581735611,
+      0.26103928685188293
+     ],
+     "abs_s11": [
+      0.3337152302265167,
+      0.33570483326911926,
+      0.34260040521621704,
+      0.35341328382492065,
+      0.36728110909461975
+     ],
+     "v_over_zc_i_real": [
+      0.500228762626648,
+      0.5014323592185974,
+      0.5057714581489563,
+      0.5131485462188721,
+      0.5237881541252136
+     ],
+     "v_over_zc_i_imag": [
+      0.03143910691142082,
+      0.07862122356891632,
+      0.1574050784111023,
+      0.23651206493377686,
+      0.3160988390445709
+     ],
+     "warnings": [
+      {
+       "warning": "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.",
+       "count": 3
+      }
+     ],
+     "nonpassive_warning": false
+    }
+   }
+  },
+  "matched": {
+   "r_over_zc": 1.0,
+   "r_ohm": 376.730313668,
+   "closed_form_abs_s11": 0.0,
+   "closed_form_note": "|S11| = |Gamma_L| at every bin, because Zref is the line's own Zc",
+   "ports": {
+    "lumped": {
+     "port_kind": "lumped",
+     "grid_shape_nodes": [
+      5,
+      2,
+      2
+     ],
+     "dt_s": 1.9065748695310057e-12,
+     "s11_real": [
+      -0.0004298795247450471,
+      -0.0026712226681411266,
+      -0.010472779162228107,
+      -0.02276882342994213,
+      -0.03851957619190216
+     ],
+     "s11_imag": [
+      1.777808938641101e-05,
+      0.00027518405113369226,
+      0.0021835491061210632,
+      0.007267185486853123,
+      0.016880327835679054
+     ],
+     "abs_s11": [
+      0.00043024696060456336,
+      0.002685359911993146,
+      0.010697989724576473,
+      0.02390044555068016,
+      0.04205595329403877
+     ],
+     "v_over_zc_i_real": [
+      0.9991406798362732,
+      0.9946717023849487,
+      0.9792623519897461,
+      0.9553773403167725,
+      0.9253097176551819
+     ],
+     "v_over_zc_i_imag": [
+      3.551509144017473e-05,
+      0.000547443050891161,
+      0.004277053754776716,
+      0.013893716968595982,
+      0.03129439428448677
+     ],
+     "warnings": [
+      {
+       "warning": "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.",
+       "count": 3
+      }
+     ],
+     "nonpassive_warning": false
+    },
+    "wire": {
+     "port_kind": "wire",
+     "grid_shape_nodes": [
+      5,
+      2,
+      2
+     ],
+     "dt_s": 1.9065748695310057e-12,
+     "s11_real": [
+      -0.0004298795247450471,
+      -0.0026712226681411266,
+      -0.010472779162228107,
+      -0.02276882342994213,
+      -0.03851957619190216
+     ],
+     "s11_imag": [
+      1.777808938641101e-05,
+      0.00027518405113369226,
+      0.0021835491061210632,
+      0.007267185486853123,
+      0.016880327835679054
+     ],
+     "abs_s11": [
+      0.00043024696060456336,
+      0.002685359911993146,
+      0.010697989724576473,
+      0.02390044555068016,
+      0.04205595329403877
+     ],
+     "v_over_zc_i_real": [
+      0.9991406798362732,
+      0.9946717023849487,
+      0.9792623519897461,
+      0.9553773403167725,
+      0.9253097176551819
+     ],
+     "v_over_zc_i_imag": [
+      3.551509144017473e-05,
+      0.000547443050891161,
+      0.004277053754776716,
+      0.013893716968595982,
+      0.03129439428448677
+     ],
+     "warnings": [
+      {
+       "warning": "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.",
+       "count": 3
+      }
+     ],
+     "nonpassive_warning": false
+    }
+   }
+  },
+  "double_zc": {
+   "r_over_zc": 2.0,
+   "r_ohm": 753.460627336,
+   "closed_form_abs_s11": 0.3333333333333333,
+   "closed_form_note": "|S11| = |Gamma_L| at every bin, because Zref is the line's own Zc",
+   "ports": {
+    "lumped": {
+     "port_kind": "lumped",
+     "grid_shape_nodes": [
+      5,
+      2,
+      2
+     ],
+     "dt_s": 1.9065748695310057e-12,
+     "s11_real": [
+      0.3317801356315613,
+      0.3236430287361145,
+      0.29483485221862793,
+      0.24776211380958557,
+      0.1840566247701645
+     ],
+     "s11_imag": [
+      -0.027902068570256233,
+      -0.0691971704363823,
+      -0.1343853920698166,
+      -0.19146126508712769,
+      -0.23620137572288513
+     ],
+     "abs_s11": [
+      0.3329513370990753,
+      0.3309577703475952,
+      0.3240169882774353,
+      0.31311896443367004,
+      0.2994460463523865
+     ],
+     "v_over_zc_i_real": [
+      1.9878175258636475,
+      1.9263877868652344,
+      1.7368191480636597,
+      1.4969754219055176,
+      1.2616260051727295
+     ],
+     "v_over_zc_i_imag": [
+      -0.12475873529911041,
+      -0.299394816160202,
+      -0.5215635895729065,
+      -0.6355358362197876,
+      -0.6547012329101562
+     ],
+     "warnings": [
+      {
+       "warning": "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.",
+       "count": 3
+      }
+     ],
+     "nonpassive_warning": false
+    },
+    "wire": {
+     "port_kind": "wire",
+     "grid_shape_nodes": [
+      5,
+      2,
+      2
+     ],
+     "dt_s": 1.9065748695310057e-12,
+     "s11_real": [
+      0.3317801356315613,
+      0.3236430287361145,
+      0.29483485221862793,
+      0.24776211380958557,
+      0.1840566247701645
+     ],
+     "s11_imag": [
+      -0.027902068570256233,
+      -0.0691971704363823,
+      -0.1343853920698166,
+      -0.19146126508712769,
+      -0.23620137572288513
+     ],
+     "abs_s11": [
+      0.3329513370990753,
+      0.3309577703475952,
+      0.3240169882774353,
+      0.31311896443367004,
+      0.2994460463523865
+     ],
+     "v_over_zc_i_real": [
+      1.9878175258636475,
+      1.9263877868652344,
+      1.7368191480636597,
+      1.4969754219055176,
+      1.2616260051727295
+     ],
+     "v_over_zc_i_imag": [
+      -0.12475873529911041,
+      -0.299394816160202,
+      -0.5215635895729065,
+      -0.6355358362197876,
+      -0.6547012329101562
+     ],
+     "warnings": [
+      {
+       "warning": "UserWarning: Explicitly requested dtype <class 'jax.numpy.float64'> requested in astype is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.",
+       "count": 3
+      }
+     ],
+     "nonpassive_warning": false
+    }
+   }
+  }
+ }
+}

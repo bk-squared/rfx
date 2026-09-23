@@ -1,0 +1,503 @@
+[
+  {
+    "drive": "msl/two_port/drive1",
+    "regions": {
+      "interior_under_port": {
+        "E_J": 3.980368362940391e-29,
+        "H_J": 2.371037128690046e-27,
+        "energy_J": 2.41084081231945e-27,
+        "nodes": 156,
+        "fraction_of_all_energy": 0.0002468436282832798
+      },
+      "interior_elsewhere": {
+        "E_J": 2.3587162804333563e-25,
+        "H_J": 8.100235398026215e-24,
+        "energy_J": 8.33610702606955e-24,
+        "nodes": 519694,
+        "fraction_of_all_energy": 0.8535258294773261
+      },
+      "absorber": {
+        "E_J": 2.7234313708306907e-26,
+        "H_J": 1.4009200608044804e-24,
+        "energy_J": 1.428154374512788e-24,
+        "nodes": 362240,
+        "fraction_of_all_energy": 0.1462273268943907
+      }
+    },
+    "energy_witness": {
+      "definition": "0.5*dx^3*sum_interior(eps0*eps_r*sum(E_i^2)+mu0*mu_r*sum(H_i^2)); same-step Yee samples",
+      "source_end_definition": "last source-table sample > 1e-6 of that source peak, then one step",
+      "post_source_start_step": 11698,
+      "post_source_start_s": 1.1151556411886853e-09,
+      "end_energy_J": 8.338517725702102e-24,
+      "post_source_peak_energy_J": 2.153256955432801e-21,
+      "end_vs_post_peak_db": -24.1200700244309,
+      "last_5pct_max_energy_J": 1.4747118801217208e-23,
+      "last_5pct_vs_post_peak_db": -21.64388679851689,
+      "status": "truncation-suspect"
+    },
+    "settling_db": [
+      -82.37141009551742,
+      -81.70924470435017
+    ],
+    "maxima": {
+      "ex": {
+        "value": -0.0005534141091629863,
+        "ijk": [
+          247,
+          21,
+          5
+        ],
+        "coordinate_m": [
+          0.01195,
+          0.0006500000000000001,
+          0.00025
+        ],
+        "region": "interior_elsewhere"
+      },
+      "ey": {
+        "value": -0.0012075734557583928,
+        "ijk": [
+          248,
+          38,
+          5
+        ],
+        "coordinate_m": [
+          0.012,
+          0.0015,
+          0.00025
+        ],
+        "region": "interior_under_port"
+      },
+      "ez": {
+        "value": 0.00141632417216897,
+        "ijk": [
+          48,
+          21,
+          6
+        ],
+        "coordinate_m": [
+          0.002,
+          0.0006500000000000001,
+          0.00030000000000000003
+        ],
+        "region": "interior_elsewhere"
+      },
+      "hx": {
+        "value": -2.910497278207913e-05,
+        "ijk": [
+          7,
+          58,
+          37
+        ],
+        "coordinate_m": [
+          -5e-05,
+          0.0025,
+          0.00185
+        ],
+        "region": "absorber"
+      },
+      "hy": {
+        "value": -4.336928031989373e-05,
+        "ijk": [
+          289,
+          6,
+          38
+        ],
+        "coordinate_m": [
+          0.01405,
+          -0.0001,
+          0.0019
+        ],
+        "region": "absorber"
+      },
+      "hz": {
+        "value": -8.660907951707486e-06,
+        "ijk": [
+          289,
+          25,
+          6
+        ],
+        "coordinate_m": [
+          0.01405,
+          0.0008500000000000001,
+          0.00030000000000000003
+        ],
+        "region": "absorber"
+      }
+    }
+  },
+  {
+    "drive": "msl/two_port/drive2",
+    "regions": {
+      "interior_under_port": {
+        "E_J": 4.219834039539818e-29,
+        "H_J": 1.752736548632684e-27,
+        "energy_J": 1.794934889028082e-27,
+        "nodes": 156,
+        "fraction_of_all_energy": 0.00019345943708769933
+      },
+      "interior_elsewhere": {
+        "E_J": 2.4822403048641693e-25,
+        "H_J": 7.531845352414481e-24,
+        "energy_J": 7.7800693829009e-24,
+        "nodes": 519694,
+        "fraction_of_all_energy": 0.8385417501880786
+      },
+      "absorber": {
+        "E_J": 2.7887800703306485e-26,
+        "H_J": 1.4683421220808172e-24,
+        "energy_J": 1.4962299227841234e-24,
+        "nodes": 362240,
+        "fraction_of_all_energy": 0.16126479037483332
+      }
+    },
+    "energy_witness": {
+      "definition": "0.5*dx^3*sum_interior(eps0*eps_r*sum(E_i^2)+mu0*mu_r*sum(H_i^2)); same-step Yee samples",
+      "source_end_definition": "last source-table sample > 1e-6 of that source peak, then one step",
+      "post_source_start_step": 11698,
+      "post_source_start_s": 1.1151556411886853e-09,
+      "end_energy_J": 7.781863549959232e-24,
+      "post_source_peak_energy_J": 1.0831150600589794e-21,
+      "end_vs_post_peak_db": -21.435909830217376,
+      "last_5pct_max_energy_J": 1.4068616381192994e-23,
+      "last_5pct_vs_post_peak_db": -18.864232068911797,
+      "status": "truncation-suspect"
+    },
+    "settling_db": [
+      -82.37141009551742,
+      -81.70924470435017
+    ],
+    "maxima": {
+      "ex": {
+        "value": -0.0005564519669860601,
+        "ijk": [
+          247,
+          21,
+          5
+        ],
+        "coordinate_m": [
+          0.01195,
+          0.0006500000000000001,
+          0.00025
+        ],
+        "region": "interior_elsewhere"
+      },
+      "ey": {
+        "value": -0.0012062928872182965,
+        "ijk": [
+          48,
+          38,
+          5
+        ],
+        "coordinate_m": [
+          0.002,
+          0.0015,
+          0.00025
+        ],
+        "region": "interior_under_port"
+      },
+      "ez": {
+        "value": 0.0014416053891181946,
+        "ijk": [
+          248,
+          21,
+          6
+        ],
+        "coordinate_m": [
+          0.012,
+          0.0006500000000000001,
+          0.00030000000000000003
+        ],
+        "region": "interior_elsewhere"
+      },
+      "hx": {
+        "value": 4.0391230868408456e-05,
+        "ijk": [
+          7,
+          6,
+          38
+        ],
+        "coordinate_m": [
+          -5e-05,
+          -0.0001,
+          0.0019
+        ],
+        "region": "absorber"
+      },
+      "hy": {
+        "value": -3.3221869671251625e-05,
+        "ijk": [
+          80,
+          6,
+          38
+        ],
+        "coordinate_m": [
+          0.0036000000000000003,
+          -0.0001,
+          0.0019
+        ],
+        "region": "absorber"
+      },
+      "hz": {
+        "value": -7.1207009568752255e-06,
+        "ijk": [
+          129,
+          59,
+          38
+        ],
+        "coordinate_m": [
+          0.006050000000000001,
+          0.00255,
+          0.0019
+        ],
+        "region": "absorber"
+      }
+    }
+  },
+  {
+    "drive": "msl/one_port/drive1",
+    "regions": {
+      "interior_under_port": {
+        "E_J": 5.46059116046287e-29,
+        "H_J": 6.576624761500498e-28,
+        "energy_J": 7.122683877546785e-28,
+        "nodes": 78,
+        "fraction_of_all_energy": 0.00011302116795848124
+      },
+      "interior_elsewhere": {
+        "E_J": 4.0582749649689786e-25,
+        "H_J": 4.960585418313015e-24,
+        "energy_J": 5.3664129148099124e-24,
+        "nodes": 519772,
+        "fraction_of_all_energy": 0.8515304986246178
+      },
+      "absorber": {
+        "E_J": 4.614638609756327e-26,
+        "H_J": 8.888079492630348e-25,
+        "energy_J": 9.349543353605984e-25,
+        "nodes": 362240,
+        "fraction_of_all_energy": 0.1483564802074235
+      }
+    },
+    "energy_witness": {
+      "definition": "0.5*dx^3*sum_interior(eps0*eps_r*sum(E_i^2)+mu0*mu_r*sum(H_i^2)); same-step Yee samples",
+      "source_end_definition": "last source-table sample > 1e-6 of that source peak, then one step",
+      "post_source_start_step": 11698,
+      "post_source_start_s": 1.1151556411886853e-09,
+      "end_energy_J": 5.367125214767432e-24,
+      "post_source_peak_energy_J": 1.3450645404128052e-21,
+      "end_vs_post_peak_db": -23.990013961748108,
+      "last_5pct_max_energy_J": 8.986868304206958e-24,
+      "last_5pct_vs_post_peak_db": -21.751347461705386,
+      "status": "truncation-suspect"
+    },
+    "settling_db": [
+      -81.01848632986267
+    ],
+    "maxima": {
+      "ex": {
+        "value": -0.0007293682429008186,
+        "ijk": [
+          47,
+          21,
+          5
+        ],
+        "coordinate_m": [
+          0.0019500000000000001,
+          0.0006500000000000001,
+          0.00025
+        ],
+        "region": "interior_elsewhere"
+      },
+      "ey": {
+        "value": 0.0016869452083483338,
+        "ijk": [
+          48,
+          25,
+          5
+        ],
+        "coordinate_m": [
+          0.002,
+          0.0008500000000000001,
+          0.00025
+        ],
+        "region": "interior_elsewhere"
+      },
+      "ez": {
+        "value": 0.0018707779236137867,
+        "ijk": [
+          48,
+          22,
+          6
+        ],
+        "coordinate_m": [
+          0.002,
+          0.0007,
+          0.00030000000000000003
+        ],
+        "region": "interior_elsewhere"
+      },
+      "hx": {
+        "value": -2.0776258679688908e-05,
+        "ijk": [
+          7,
+          58,
+          37
+        ],
+        "coordinate_m": [
+          -5e-05,
+          0.0025,
+          0.00185
+        ],
+        "region": "absorber"
+      },
+      "hy": {
+        "value": -3.8972637412371114e-05,
+        "ijk": [
+          289,
+          6,
+          38
+        ],
+        "coordinate_m": [
+          0.01405,
+          -0.0001,
+          0.0019
+        ],
+        "region": "absorber"
+      },
+      "hz": {
+        "value": -8.179092219506856e-06,
+        "ijk": [
+          289,
+          25,
+          6
+        ],
+        "coordinate_m": [
+          0.01405,
+          0.0008500000000000001,
+          0.00030000000000000003
+        ],
+        "region": "absorber"
+      }
+    }
+  },
+  {
+    "drive": "waveguide/waveguide/drive1",
+    "regions": {
+      "interior_under_port": {
+        "E_J": 5.586790565493842e-19,
+        "H_J": 1.45721014084412e-18,
+        "energy_J": 2.0158891973935044e-18,
+        "nodes": 3731,
+        "fraction_of_all_energy": 0.005204164246685615
+      },
+      "interior_elsewhere": {
+        "E_J": 7.850665137331272e-17,
+        "H_J": 3.028222887663129e-16,
+        "energy_J": 3.813289401396258e-16,
+        "nodes": 1764763,
+        "fraction_of_all_energy": 0.9844283302212581
+      },
+      "absorber": {
+        "E_J": 1.038106407069903e-18,
+        "H_J": 2.9778587729879274e-18,
+        "energy_J": 4.01596518005783e-18,
+        "nodes": 29848,
+        "fraction_of_all_energy": 0.010367505532057108
+      }
+    },
+    "energy_witness": {
+      "status": "truncation-suspect",
+      "reason": "source has not ended",
+      "post_source_start_step": 6884
+    },
+    "settling_db": -27.291651177636243,
+    "maxima": {
+      "ex": {
+        "value": 9.722365939524025e-05,
+        "ijk": [
+          444,
+          27,
+          32
+        ],
+        "coordinate_m": [
+          0.11176,
+          0.0068579999999999995,
+          0.008128
+        ],
+        "region": "interior_elsewhere"
+      },
+      "ey": {
+        "value": -9.028324711835012e-05,
+        "ijk": [
+          58,
+          51,
+          12
+        ],
+        "coordinate_m": [
+          0.013715999999999999,
+          0.012954,
+          0.003048
+        ],
+        "region": "interior_elsewhere"
+      },
+      "ez": {
+        "value": -2.9559946060180664,
+        "ijk": [
+          21,
+          45,
+          6
+        ],
+        "coordinate_m": [
+          0.004318,
+          0.01143,
+          0.001524
+        ],
+        "region": "interior_elsewhere"
+      },
+      "hx": {
+        "value": 0.009637447074055672,
+        "ijk": [
+          3,
+          89,
+          6
+        ],
+        "coordinate_m": [
+          -0.000254,
+          0.022606,
+          0.001524
+        ],
+        "region": "absorber"
+      },
+      "hy": {
+        "value": -0.008900025859475136,
+        "ijk": [
+          40,
+          45,
+          2
+        ],
+        "coordinate_m": [
+          0.009144,
+          0.01143,
+          0.000508
+        ],
+        "region": "interior_elsewhere"
+      },
+      "hz": {
+        "value": 3.6652784274338046e-07,
+        "ijk": [
+          479,
+          31,
+          24
+        ],
+        "coordinate_m": [
+          0.12065,
+          0.007873999999999999,
+          0.006096
+        ],
+        "region": "absorber"
+      }
+    }
+  }
+]

@@ -1571,6 +1571,7 @@ class _PreflightMixin:
         # puts it there. Defined in the family module like the eleven above,
         # never in this class body.
         _validate_cfg_dielectric_at_absorber_seam,
+        _validate_cfg_port_conductor_continues,
         # #801: the measured conjunction -- a conductor realizing within two
         # cells of an absorbing face that carries six layers or fewer. Defined
         # in the family module like the twelve above, never in this class body.

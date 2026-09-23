@@ -92,12 +92,6 @@ checks required before reporting RF results — follow the
 Beyond the Python API:
 
 - **Dashboard** — `pip install "rfx-fdtd[dashboard]" && rfx-dashboard`: browser GUI for building, running, and inspecting a simulation.
-- **Experiment CLI** — `rfx experiment run <spec.json>`: versioned CPU runs from a strict JSON spec, with `submit`/`status`/`cancel`.
-- **Studio + MCP** — `pip install "rfx-fdtd[studio]" && rfx studio`: local app with append-only experiment revisions, approval-gated MCP actions, and an optional LLM Design Copilot.
-
-The Experiment CLI and Studio/MCP share the same `ExperimentSpec` format.
-Details, safety model, and remote deployment:
-[Studio, CLI, and MCP Experiments](docs/public/guide/studio-experiments.mdx).
 
 ## Differentiable Design
 

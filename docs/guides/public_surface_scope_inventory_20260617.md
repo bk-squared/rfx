@@ -31,7 +31,7 @@ A repository surface should stay out of public user guides until it has a public
 | Deprecated coaxial S-matrix path | `Simulation.compute_coaxial_s_matrix(...)`, `CoaxialSMatrixResult`, low-level coaxial plane helpers | outside coaxial claim surface | keep public coaxial claims on `compute_coaxial_line_reflection(...)` unless a new envelope is validated |
 | Generalized planar ports | stripline/CPW/microstrip-to-coax planning diagnostics and support-matrix future-family entries | outside public support scope | implement public APIs and external validation per family |
 | AMR and surrogate export | `rfx/amr.py`, `rfx/surrogate.py` | outside public guide scope | add a supported user workflow and examples |
-| Streamlit dashboard | `rfx/dashboard/**`, `docs/public/guide/studio-experiments.mdx` | public experimental Studio workflow | maintain the optional install/test path and keep solver/physics claims inside the normal support contracts |
+| Streamlit dashboard | `rfx/dashboard/**` | public experimental workflow | maintain the optional install/test path and keep solver/physics claims inside the normal support contracts |
 | Diagnostic/archive scripts and local validation artifacts | `scripts/diagnostics/**`, `scripts/archive/**`, local validation artifact paths | maintainer evidence only | summarize outcomes in support docs without exposing run-log detail |
 
 ## Admission guardrails

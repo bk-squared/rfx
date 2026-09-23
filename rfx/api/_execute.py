@@ -22,6 +22,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.grid import Grid
+from rfx.runners._exchange_interval import validate_exchange_interval
 from rfx.core.yee import MaterialArrays
 from rfx.geometry.csg import Box  # noqa: F401  (referenced by moved docstrings/comments)
 from rfx.sources.sources import GaussianPulse  # noqa: F401  (local import in moved bodies)
@@ -1329,6 +1330,8 @@ class _ExecuteMixin:
         _sparam_drive_idx: int | None = None,
         _return_raw_port_sparams: bool = False,
         sheet_impedance: object | None = None,
+        design_box: object | None = None,
+        design_occupancy: object | None = None,
     ) -> ForwardResult | dict:
         """Run a minimal differentiable forward path from explicit materials.
 
@@ -1437,6 +1440,13 @@ class _ExecuteMixin:
         # so does the waveguide compute path (see _sparams.py).
         cpml_axes_run = grid.cpml_axes
         pec_axes_run = "".join(a for a in "xyz" if a not in cpml_axes_run)
+        # The walls themselves come from the grid's per-face declaration
+        # (``resolve_wall_faces`` in the scan setup, #1164): a closed box
+        # (boundary="pec") declares six PEC faces and gets them on this
+        # lane as on run() (#1193); a magnetic face is never overwritten
+        # by an axis wall (#1194's regression). ``pec_axes_run`` only
+        # withholds the PEC backing on absorber axes, as this lane always
+        # has.
 
         # Differentiable TFSF plane-wave (#404): build the 2D/1D-aux TFSF cfg and
         # force its boundary (transverse-periodic + CPML on the propagation axis),
@@ -1744,6 +1754,7 @@ class _ExecuteMixin:
                     component=pe.component,
                     freqs=_s11_freqs_arr,
                     impedance=float(pe.impedance),
+                    excite=bool(_drive_this_port),
                 ))
 
         # MSL ports — full cross-section distributed feed; built like the
@@ -1977,15 +1988,16 @@ class _ExecuteMixin:
                     comp = {"z": "ey", "x": "ez", "y": "ez"}[fpe.axis]
                 from rfx.simulation import make_source as _make_src
                 sources.append(_make_src(grid, tuple(center), comp, wf, n_steps))
-        # Stage 2 Kottke for AD-traceable PEC density (opt-in via env
-        # ``RFX_PEC_OCC_KOTTKE=1``).  When enabled and
-        # ── Port-aware Kottke dilation guard (issue #82) ──────────
-        # Kottke's ``occ_dilated = max(f, roll(f,±1,...))`` picks up
-        # non-zero occupancy from cells adjacent to each port cell.
-        # For a probe-fed patch (port 1 cell below the PEC sheet),
-        # the z+1 neighbor carries the patch occupancy into the port's
-        # inv_eps, causing 60x–223% AD gradient mismatch.  Fix: also
-        # zero the 6 face-neighbors of every port cell before Kottke.
+        # ── Port guard on the occupancy (issue #82; runs on both lanes) ──
+        # The tensor lane (``RFX_PEC_OCC_KOTTKE=1``) used to dilate the
+        # occupancy by one cell on every face, so a probe-fed patch one
+        # cell above its port wrote the patch into the port's inv_eps
+        # (60x–223 % AD gradient mismatch); clearing the six face
+        # neighbours of every port cell matched that reach. Since #1197
+        # the lane uses the contract's incidence rule, whose reach is the
+        # four backward incident cells — the plain lane's reach all along,
+        # which this guard never covered (in-plane diagonals). Kept as is;
+        # the gap is one for the port lane, noted on #1197.
         if pec_occupancy_local is not None and _port_cleared_cells:
             for ci, cj, ck in _port_cleared_cells:
                 for di, dj, dk in ((1,0,0),(-1,0,0),(0,1,0),(0,-1,0),(0,0,1),(0,0,-1)):
@@ -1994,16 +2006,54 @@ class _ExecuteMixin:
                     nk = min(max(ck + dk, 0), grid.nz - 1)
                     pec_occupancy_local = pec_occupancy_local.at[ni, nj, nk].set(0.0)
 
+        # #1183: a design occupancy box may not overlap the cells the port
+        # setup CLEARS. A port cell's occupancy is forced to 0 above — the
+        # cell itself, its six face neighbours, and an MSL port's in-plane
+        # diagonal owners — because the port drives that edge and the
+        # conductor around it would short the drive. The design box writes
+        # its own occupancy over its window AFTER that clearing is decided,
+        # so a box reaching those cells realizes metal the same run would
+        # have cleared through ``pec_occupancy_override``. Measured on a
+        # 50 ohm Ez port inside the box: the value moves 99 % and the
+        # gradient 98 %, with no error.
+        if design_occupancy is not None and _port_cleared_cells:
+            _cleared = set()
+            for _ci, _cj, _ck in _port_cleared_cells:
+                _cleared.add((_ci, _cj, _ck))
+                for _d in ((1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0),
+                           (0, 0, 1), (0, 0, -1),
+                           (-1, -1, 0)):  # the MSL in-plane diagonal owner
+                    _cleared.add((
+                        min(max(_ci + _d[0], 0), grid.nx - 1),
+                        min(max(_cj + _d[1], 0), grid.ny - 1),
+                        min(max(_ck + _d[2], 0), grid.nz - 1)))
+            _b = design_occupancy.bounds
+            # The WRITE window, which is the box grown one cell on the plus
+            # side (rfx.boundaries.pec.pec_occupancy_box_keep).
+            _w = tuple((_b[2 * d], min(_b[2 * d + 1] + 1, grid.shape[d]))
+                       for d in range(3))
+            _hits = sorted(
+                c for c in _cleared
+                if all(_w[d][0] <= c[d] < _w[d][1] for d in range(3)))
+            if _hits:
+                raise ValueError(
+                    f"the design occupancy box (cells {_b}) covers port-"
+                    f"cleared cell(s) {_hits[:6]}"
+                    + (f" and {len(_hits) - 6} more" if len(_hits) > 6 else "")
+                    + ". A port forces the occupancy to zero at its own "
+                    "cell and around it before the run, so the design "
+                    "values written there would realize metal the same "
+                    "occupancy handed to pec_occupancy_override would not "
+                    "(#1183). Move the box off the port, or use "
+                    "pec_occupancy_override.")
+
+        # Tensor lane (opt-in via ``RFX_PEC_OCC_KOTTKE=1``): when
         # ``pec_occupancy_local`` is supplied, build an ``aniso_inv_eps``
-        # tensor via Kottke's PEC limit ((1−f)/ε perpendicular, 0
-        # parallel) using the gradient of the occupancy as the
-        # interface normal.  This routes the override through the same
-        # subpixel machinery hard ``Box(material="pec")`` uses
-        # (``compute_inv_eps_tensor_diag``), eliminating the sub-β
-        # wiggle near high-Q resonances.  Bypasses the legacy
-        # ``apply_pec_occupancy`` E-zeroing path on this branch — the
-        # two would double-correct at sigmoid edges (cf. Stage 2
-        # design memo §R9 anti-pattern).
+        # tensor from the occupancy with the lattice contract's edge rule
+        # (#1197: ``inv_c = (1 - M_c) * baseline``) and run it through the
+        # same ``update_e_aniso_inv`` path hard ``Box(material="pec")``
+        # uses. Bypasses the ``apply_pec_occupancy`` E-scaling path on
+        # this branch — the two would double-correct at sigmoid edges.
         aniso_inv_eps_run = None
         pec_occupancy_for_run = pec_occupancy_local
         if (pec_occupancy_local is not None and
@@ -2018,8 +2068,22 @@ class _ExecuteMixin:
                 grid,
                 pec_occupancy_local,
                 aniso_inv_eps_baseline=inv_baseline,
+                periodic=periodic_bool,
             )
             pec_occupancy_for_run = None
+            if design_occupancy is not None:
+                raise NotImplementedError(
+                    "a design occupancy box (#1183) does not combine with "
+                    "the Kottke occupancy lane (RFX_PEC_OCC_KOTTKE=1). That "
+                    "lane turns the occupancy into an inverse-eps tensor "
+                    "inside the E update and sets pec_occupancy_for_run to "
+                    "None, so the design values never reach the update and "
+                    "the box's own 1 - M window then double-corrects the "
+                    "field the tensor already handled — the anti-pattern "
+                    "the comment above names. Measured: value 19x and "
+                    "gradient 2.8x off pec_occupancy_override, silently. "
+                    "Use pec_occupancy_override on that lane, or unset "
+                    "RFX_PEC_OCC_KOTTKE.")
             if os.environ.get("RFX_PEC_OCC_KOTTKE_DEBUG", "0") not in ("0", "", "false", "False"):
                 import sys as _sys
                 _ix, _iy, _iz = aniso_inv_eps_run
@@ -2082,6 +2146,8 @@ class _ExecuteMixin:
             return_state=False,
             stencil_order=self._stencil_order,
             sheet_impedance=sheet_impedance,
+            design_box=design_box,
+            design_occupancy=design_occupancy,
             field_dtype=self._resolve_field_dtype(),
         )
 
@@ -2134,11 +2200,31 @@ class _ExecuteMixin:
         s_params_out = getattr(result, "s_params", None)
         freqs_out = getattr(result, "freqs", None)
         if result.lumped_port_sparams:
-            from rfx.probes.probes import extract_lumped_s11
+            # A GENUINELY driven one-cell lumped port uses the driven
+            # terminal reflection S_kk = (V - Z0*I)/(V + Z0*I) on the
+            # POST-injection V/I pair.  The historical
+            # extract_lumped_s11 here was the PASSIVE port-branch
+            # convention applied to a driven port (the reciprocal class)
+            # on a pre-injection sample: on the known-load line
+            # (scripts/diagnostics/lumped_port_known_load_line.py) it read
+            # |S11| 0.714 / 1.248 / 4.757 where the closed form is
+            # 0.333 / 0 / 0.333.  Same correction the wire family made in
+            # #764/#683; the one-cell gap IS the whole gap, so the
+            # single-cell V is the KVL-constrained V_port here.  A passive
+            # port keeps the load-independent port-branch reading.
+            from rfx.probes.probes import (
+                driven_port_reflection,
+                extract_lumped_s11,
+            )
             s_list = []
             for spec, accs in result.lumped_port_sparams:
-                v_dft, i_dft = accs
-                s_list.append(extract_lumped_s11(v_dft, i_dft, z0=spec.impedance))
+                v_dft, i_dft = accs[0], accs[1]
+                if getattr(spec, "excite", True):
+                    s_list.append(
+                        driven_port_reflection(v_dft, i_dft, spec.impedance))
+                else:
+                    s_list.append(
+                        extract_lumped_s11(v_dft, i_dft, z0=spec.impedance))
             s_params_out = s_list[0] if len(s_list) == 1 else jnp.stack(s_list, axis=0)
             freqs_out = result.lumped_port_sparams[0][0].freqs
         elif result.wire_port_sparams:
@@ -2159,17 +2245,17 @@ class _ExecuteMixin:
             # measurement 2026-08-29 and landed with the decomposer
             # recalibration), so the driven diagonal here is the
             # validated terminal reading (Gamma_L-exact class).
-            from rfx.probes.probes import extract_lumped_s11
+            from rfx.probes.probes import (
+                driven_port_reflection,
+                extract_lumped_s11,
+            )
             w_list = []
             for spec, accs in result.wire_port_sparams:
                 v_dft, i_dft = accs[0], accs[1]
                 v_port_dft = accs[3]
                 if spec.excite:
-                    denom = v_port_dft + spec.impedance * i_dft
-                    safe_denom = jnp.where(jnp.abs(denom) > 0, denom,
-                                           jnp.ones_like(denom))
-                    w_list.append(
-                        (v_port_dft - spec.impedance * i_dft) / safe_denom)
+                    w_list.append(driven_port_reflection(
+                        v_port_dft, i_dft, spec.impedance))
                 else:
                     w_list.append(
                         extract_lumped_s11(v_dft, i_dft, z0=spec.impedance))
@@ -2221,6 +2307,7 @@ class _ExecuteMixin:
         s_params=None,
         freqs=None,
         dft_planes=None,
+        wire_port_sparams=None,
     ) -> ForwardResult:
         """Assemble the minimal ``ForwardResult`` for both NU forward lanes.
 
@@ -2234,6 +2321,10 @@ class _ExecuteMixin:
         parameters — there is no closure capture of caller locals, matching
         the W6.1 ``_StepContext`` / W6.6 builder precedents. Centralising the
         constructor keeps the two lanes' output schema from drifting apart.
+
+        ``wire_port_sparams`` is the per-port ``(meta, accs)`` pair tuple
+        the single-device lane's ``Result`` carries; the distributed lane
+        has no wire-port accumulators and leaves it ``None``.
         """
         return ForwardResult(
             time_series=time_series,
@@ -2243,6 +2334,7 @@ class _ExecuteMixin:
             s_params=s_params,
             freqs=freqs,
             dft_planes=dft_planes,
+            wire_port_sparams=wire_port_sparams,
         )
 
     def _forward_nonuniform_from_materials(
@@ -2252,6 +2344,7 @@ class _ExecuteMixin:
         sigma_override: jnp.ndarray | None = None,
         pec_mask_override: jnp.ndarray | None = None,
         pec_occupancy_override: jnp.ndarray | None = None,
+        design_box: object | None = None,
         n_steps: int,
         checkpoint: bool = True,
         emit_time_series: bool = True,
@@ -2308,6 +2401,7 @@ class _ExecuteMixin:
             sigma_override=sigma_override,
             pec_mask_override=pec_mask_override,
             pec_occupancy_override=pec_occupancy_override,
+            design_box=design_box,
             checkpoint=checkpoint,
             emit_time_series=emit_time_series,
             checkpoint_every=checkpoint_every,
@@ -2321,6 +2415,7 @@ class _ExecuteMixin:
             s_params=getattr(result, "s_params", None),
             freqs=getattr(result, "freqs", None),
             dft_planes=getattr(result, "dft_planes", None),
+            wire_port_sparams=getattr(result, "wire_port_sparams", None),
         )
 
     def _forward_distributed_nonuniform_from_materials(
@@ -2541,7 +2636,7 @@ class _ExecuteMixin:
         # runner's ``materials_concrete`` pattern in run_nonuniform_path).
         materials_concrete = materials
         if eps_override is not None or sigma_override is not None:
-            materials = MaterialArrays(
+            materials = materials._replace(
                 eps_r=(
                     eps_override if eps_override is not None
                     else materials.eps_r
@@ -2550,7 +2645,10 @@ class _ExecuteMixin:
                     sigma_override if sigma_override is not None
                     else materials.sigma
                 ),
-                mu_r=materials.mu_r,
+                eps_r_lumped=(None if eps_override is not None
+                              else materials.eps_r_lumped),
+                sigma_lumped=(None if sigma_override is not None
+                              else materials.sigma_lumped),
             )
         if pec_mask_override is not None:
             pec_mask = (
@@ -2729,6 +2827,7 @@ class _ExecuteMixin:
             freqs=None,
             dft_planes=result.get("dft_planes")
                 if hasattr(result, "get") else None,
+            wire_port_sparams=None,
         )
 
     # ---- unified lane dispatch (W6.3) ----
@@ -3012,12 +3111,219 @@ class _ExecuteMixin:
 
     # ---- forward (differentiable) ----
 
+    def _resolve_design_box_override(
+        self,
+        grid,
+        *,
+        design_box,
+        design_eps_override,
+        design_sigma_override,
+        design_occupancy_override,
+        eps_override,
+        sigma_override,
+        mu_r_override,
+        pec_occupancy_override,
+        debye_spec,
+        lorentz_spec,
+        kerr_chi3,
+    ):
+        """Turn the ``forward(design_box=...)`` arguments into specs (#1179/#1183).
+
+        Resolves the declared corners against the grid the solve builds and
+        rejects every combination this lane does not carry. The checks that
+        need the RESOLVED step context — the absorber depth, the port and
+        source cells, the anisotropy flags — belong to
+        ``rfx.simulation._resolve_design_box`` /
+        ``_resolve_design_occupancy`` and run there; these are the ones that
+        can be decided from the call itself.
+
+        Returns ``(box spec or None, occupancy spec or None)``: one design
+        box, and the design variable it carries — a permittivity (#1179) or
+        a PEC occupancy (#1183).
+        """
+        from rfx.simulation import DesignBoxSpec, DesignOccupancySpec
+
+        _want_eps = design_eps_override is not None
+        _want_occ = design_occupancy_override is not None
+        if design_box is None or not (_want_eps or _want_occ):
+            raise ValueError(
+                "forward(design_box=...) and one of "
+                "forward(design_eps_override=...) / "
+                "forward(design_occupancy_override=...) are used together "
+                "(#1179/#1183): the box says WHICH cells and the array says "
+                "what the design variable is there. Got design_box="
+                f"{'set' if design_box is not None else 'None'}, "
+                f"design_eps_override={'set' if _want_eps else 'None'}, "
+                f"design_occupancy_override={'set' if _want_occ else 'None'}.")
+        if _want_eps and _want_occ:
+            raise NotImplementedError(
+                "forward(design_eps_override=...) and "
+                "forward(design_occupancy_override=...) in one call are not "
+                "supported (#1183). Each is exact on its own against its "
+                "whole-grid counterpart; the two together have no equality "
+                "gate, and the permittivity box is fenced against an "
+                "occupancy anyway. Differentiate one at a time, or use "
+                "eps_override / pec_occupancy_override.")
+        if design_sigma_override is not None and not _want_eps:
+            raise ValueError(
+                "forward(design_sigma_override=...) is the conductivity of a "
+                "PERMITTIVITY design box (#1179) and needs "
+                "design_eps_override with it.")
+
+        if not _want_eps:
+            # The occupancy box reads no material array and runs after the
+            # E update and the absorber, so the material-path fences below
+            # do not apply to it: whatever computed E, both formulations
+            # arrive at this slot with the same field.
+            bounds = self._design_box_bounds_from_corners(grid, design_box)
+            return None, DesignOccupancySpec(
+                bounds=bounds, occupancy=design_occupancy_override)
+
+        _collides = [
+            name for name, value in (
+                ("eps_override", eps_override),
+                ("sigma_override", sigma_override),
+                ("mu_r_override", mu_r_override),
+            ) if value is not None
+        ]
+        if _collides:
+            raise ValueError(
+                "forward(design_box=...) does not combine with "
+                + " / ".join(_collides) + " (#1179). The design box exists to "
+                "keep the whole-grid material arrays CONSTANT; a traced "
+                "override puts them back on the AD tape, which is the cost "
+                "the box removes. Put the design values in "
+                "design_eps_override, or drop the box and use the whole-grid "
+                "override alone.")
+
+        if debye_spec is not None or lorentz_spec is not None:
+            raise NotImplementedError(
+                "forward(design_box=...) does not support Debye/Lorentz "
+                "dispersive materials (#1179): the dispersive E update runs "
+                "its own ADE coefficients, which the box redo would "
+                "overwrite. Use eps_override.")
+        if kerr_chi3 is not None:
+            raise NotImplementedError(
+                "forward(design_box=...) does not support Kerr chi3 "
+                "materials (#1179): the reactive Kerr correction rescales "
+                "the E increment using the background eps_r. Use "
+                "eps_override.")
+        if pec_occupancy_override is not None:
+            raise NotImplementedError(
+                "forward(design_box=...) does not combine with "
+                "pec_occupancy_override (#1179): the relaxed-conductor lane "
+                "can route the E update through a Kottke inverse-eps tensor "
+                "built from the background permittivity. Use eps_override "
+                "for a design region that is itself the conductor.")
+
+        bounds = self._design_box_bounds_from_corners(grid, design_box)
+
+        # A port whose cells are in the box. The step-level check
+        # (``rfx.simulation._resolve_design_box``) sees only the ports that
+        # left a source or an S-param accumulator behind, so a PASSIVE load
+        # port — which folds its impedance into sigma at its own cells and
+        # leaves neither — would pass it. Checked here from the
+        # declarations, where every port is visible whatever it does later.
+        #
+        # A port's cells are its EDGES, not its end NODES. An extent from
+        # node n0 to node n1 drives the edges n0 .. n1 - 1, so node n1 is
+        # only the far terminal and the plane it sits on carries no port
+        # cell. Comparing against n1 refused a design box on the port's end
+        # plane — exactly where a patch fed by a via lives. The edge span is
+        # read from ``rfx.sources.sources.wire_port_edge_span`` (the ONE
+        # spelling both runners rasterize with) rather than re-derived here:
+        # a sub-cell extent whose two ends snap to one node drives the edge
+        # on the side the extent occupies, which ``hi - 1`` cannot know. The
+        # step-level fence (``rfx.simulation._resolve_design_box``) reads the
+        # port's ``live_cells`` on the uniform lane and, on the graded lane,
+        # the mid cell plus the excited edges through its ``sources`` entry.
+        from rfx.sources.sources import wire_port_edge_span
+        _axis_of = {"ex": 0, "ey": 1, "ez": 2}
+        for _pe in self._ports:
+            if _pe.impedance == 0.0:
+                continue  # a plain soft source; caught as a source cell
+            _lo = list(self._design_box_index_of(grid, _pe.position))
+            _cell_lo = list(_lo)
+            _cell_hi = list(_lo)
+            if getattr(_pe, "extent", None) is not None:
+                _axis = _axis_of[_pe.component]
+                _end = list(_pe.position)
+                _end[_axis] += _pe.extent
+                _n_end = self._design_box_index_of(grid, _end)[_axis]
+                _n0, _n1 = sorted((_lo[_axis], _n_end))
+                _cell_lo[_axis], _cell_hi[_axis] = wire_port_edge_span(
+                    grid, _axis, _n0, _n1, _pe.position[_axis], _end[_axis])
+            if all(bounds[2 * d] <= _cell_hi[d]
+                   and _cell_lo[d] < bounds[2 * d + 1]
+                   for d in range(3)):
+                raise ValueError(
+                    f"the design box (cells {bounds}) holds port cells "
+                    f"(component {_pe.component!r} at {_pe.position}). A "
+                    f"port's impedance fold and its drive coefficient are "
+                    f"built from the background permittivity before the time "
+                    f"loop starts, so the design permittivity would not reach "
+                    f"them (#1179). Move the box off the port, or use "
+                    f"eps_override.")
+
+        return DesignBoxSpec(
+            bounds=bounds,
+            eps_r=design_eps_override,
+            sigma=design_sigma_override,
+        ), None
+
+    @staticmethod
+    def _design_box_index_of(grid, position):
+        """Cell index of a position, on the uniform or the graded grid.
+
+        ``Grid`` carries the method; ``NonUniformGrid`` is a pytree-registered
+        NamedTuple and its resolver is a module function that walks the
+        cumulative cell edges (#1183).
+        """
+        if hasattr(grid, "position_to_index"):
+            return grid.position_to_index(tuple(float(v) for v in position))
+        from rfx.nonuniform import position_to_index as _nu_pos_to_idx
+        return _nu_pos_to_idx(grid, tuple(float(v) for v in position))
+
+    def _design_box_bounds_from_corners(self, grid, design_box):
+        """Half-open cell bounds of a declared design box (#1179).
+
+        Same index resolution topology_optimize uses (rfx/topology.py):
+        nearest index of each corner, both ends inclusive, so a corner pair
+        inside the interior selects the same cells through either entry
+        point. The two differ on a corner OUTSIDE it: topology_optimize
+        CLAMPS to the interior and runs the clamped region, this path
+        raises (the absorber fence in the step-level resolver). The REALIZED
+        cell counts are what the arrays must match -- the declared extent is
+        not it at any dx.
+        """
+        corner_lo = getattr(design_box, "corner_lo", None)
+        corner_hi = getattr(design_box, "corner_hi", None)
+        if corner_lo is None or corner_hi is None:
+            try:
+                corner_lo, corner_hi = design_box
+            except (TypeError, ValueError):
+                raise ValueError(
+                    "forward(design_box=...) takes a (corner_lo, corner_hi) "
+                    "pair of (x, y, z) positions in metres, or an object "
+                    "carrying corner_lo/corner_hi (DesignRegion, "
+                    f"TopologyDesignRegion). Got {design_box!r}.") from None
+        lo_idx = self._design_box_index_of(grid, corner_lo)
+        hi_idx = self._design_box_index_of(grid, corner_hi)
+        return tuple(
+            v for axis in range(3)
+            for v in (int(lo_idx[axis]), int(hi_idx[axis]) + 1)
+        )
+
     def forward(
         self,
         *,
         eps_override: jnp.ndarray | None = None,
         sigma_override: jnp.ndarray | None = None,
         mu_r_override: jnp.ndarray | None = None,
+        design_box: tuple | object | None = None,
+        design_eps_override: jnp.ndarray | None = None,
+        design_sigma_override: jnp.ndarray | None = None,
+        design_occupancy_override: jnp.ndarray | None = None,
         pec_mask_override: jnp.ndarray | None = None,
         pec_occupancy_override: jnp.ndarray | None = None,
         n_steps: int | None = None,
@@ -3054,6 +3360,108 @@ class _ExecuteMixin:
             magnetic-RAM inverse design). Uniform single-device lane only; a
             non-uniform mesh or ``distributed=True`` raises (it would otherwise be
             silently dropped — a zero-gradient no-op).
+        design_box : (corner_lo, corner_hi) or a DesignRegion, or None
+            Issue #1179. Bounding box, in metres, of a design region whose
+            permittivity is handed in separately as *design_eps_override*
+            instead of being written into a whole-grid ``eps_override``.
+            Accepts a ``(corner_lo, corner_hi)`` pair or any object carrying
+            ``corner_lo`` / ``corner_hi`` (``DesignRegion``,
+            ``TopologyDesignRegion``). Corners resolve to cells the way
+            ``topology_optimize`` resolves them — ``grid.position_to_index``
+            on each corner, both ends INCLUSIVE — and the realized cell
+            counts, not the declared extent, are what
+            *design_eps_override* must match. One difference: a corner
+            outside the interior is CLAMPED by ``topology_optimize`` and
+            RAISES here, so a region that reaches into the absorber is a
+            smaller design region there and an error on this path.
+
+            What it buys: the Yee E update is linear in the fields, so the
+            backward pass needs the primal field only where a coefficient is
+            a design variable. With the grid-wide coefficients left constant
+            and only this box recomputed from the traced permittivity,
+            reverse-mode AD stores box-shaped arrays per timestep where
+            ``eps_override`` stores grid-shaped ones. The gradient is the
+            same gradient (measured to 2.5e-14 relative in float64 against
+            ``eps_override`` on a 57x57x41 open-domain fixture); this is a
+            change of formulation, not an approximation, and it needs
+            neither ``checkpoint_segments`` nor any recompute.
+
+            **Pass ``checkpoint=False`` with it.** ``checkpoint=True`` (this
+            method's default) remats every step, which saves the scan CARRY
+            — the six grid-sized field arrays — once per step no matter what
+            the coefficients are. Measured on a 23x21x19 grid over 80 steps
+            with a 3x3x3 box: 0.59 MB of residuals at ``checkpoint=False``
+            against 26.2 MB at ``checkpoint=True``. The box removes the
+            coefficient term; only turning the per-step remat off removes
+            the carry term with it.
+
+            The GRADED MESH carries it too (#1183): the corners resolve
+            against the non-uniform grid's own cell edges and the box redo
+            uses the graded curl, so a thin substrate meshed with a
+            ``dz_profile`` gets the same box-shaped tape. On that lane a
+            waveguide port, an MSL port and ``until_decay`` raise — the
+            first two write their own field or ``materials`` across a whole
+            plane from the background permittivity.
+
+            Fenced, not degraded — for a design PERMITTIVITY
+            (*design_eps_override*): ``distributed=True``,
+            ``solver='adi'``, ``boundary='upml'``, Debye/Lorentz
+            dispersion, Kerr, subpixel/anisotropic permittivity,
+            ``pec_occupancy_override``, ``stencil_order=4``, the oblique
+            Bloch path, combining with ``eps_override`` / ``sigma_override``
+            / ``mu_r_override``, a box that reaches into the CPML absorber,
+            and a box holding a source, port, lumped-RLC or
+            surface-impedance-sheet cell all RAISE. Each of those either
+            computes E by some other rule inside the box or reads the
+            background permittivity at a box cell, and a silently dropped
+            design variable is a zero gradient that reads like convergence.
+            A design OCCUPANCY has its own, shorter list — see
+            *design_occupancy_override*; in particular it does combine with
+            ``eps_override`` and with ``pec_occupancy_override``, because
+            it reads no material array.
+        design_eps_override : jnp.ndarray or None
+            Relative permittivity at the *design_box* cells, shaped like the
+            realized box. Usually the traced quantity. Required with
+            *design_box* unless *design_occupancy_override* is given
+            instead, and rejected without a box.
+        design_sigma_override : jnp.ndarray, 3-tuple of them, or None
+            Conductivity at the *design_box* cells, same shape. ``None``
+            (default) keeps the run's own conductivity there, so a lossy
+            background inside the box is carried exactly rather than
+            silently replaced by a lossless one. A 3-tuple
+            ``(sigma_x, sigma_y, sigma_z)`` gives each E component its own
+            conductivity — what a conducting SHEET needs, whose current runs
+            along its two in-plane edges only. See
+            :class:`~rfx.simulation.DesignBoxSpec`.
+        design_occupancy_override : jnp.ndarray or None
+            Issue #1183. Relaxed-conductor occupancy in ``[0, 1]`` at the
+            *design_box* cells — metal-shape design (a notch stub, topology
+            optimisation) rather than a dielectric one. It REPLACES
+            ``pec_occupancy_override`` at those cells and carries it
+            everywhere else, and the gradient is the same gradient
+            ``pec_occupancy_override`` gives with the same values written
+            into it.
+
+            What it buys is the same trade: ``apply_pec_occupancy`` scales
+            every E component by ``1 - M``, so a traced whole-grid occupancy
+            makes the backward pass keep three GRID-sized primal E arrays
+            per timestep. Confined to a box, the arrays it keeps cover the
+            box plus one cell — the reach of the incident-cell rule — and
+            ``1 - M`` itself is built once outside the time loop, because an
+            occupancy is a design variable and not a field. Pass
+            ``checkpoint=False`` with it, for the reason above.
+
+            Uniform single-device Yee lane only; a graded mesh,
+            ``distributed=True`` and ``solver='adi'`` raise. So do a
+            periodic axis (the incident rule wraps across the seam, so the
+            box's window is no longer the whole set of cells its occupancy
+            can move), combining it with *design_eps_override* in one call,
+            a box covering a cell the port setup CLEARS the occupancy at
+            (the port cell, its six face neighbours, an MSL port's in-plane
+            diagonal owners), and the Kottke occupancy lane
+            (``RFX_PEC_OCC_KOTTKE=1``), where the occupancy becomes an
+            inverse-eps tensor inside the E update that the box's values
+            never reach.
         pec_mask_override : jnp.ndarray or None
             Additional hard PEC mask to merge with geometry-defined PEC.
         pec_occupancy_override : jnp.ndarray or None
@@ -3231,6 +3639,7 @@ class _ExecuteMixin:
         """
         if _removed_kwargs:
             _reject_removed_forward_kwargs(_removed_kwargs)
+        validate_exchange_interval(exchange_interval)
 
         # Phase 3 (issue #44 V3 §M6): one-shot UserWarning for the opt-in
         # distributed=True path so users know the path is opt-in / unstable
@@ -3334,6 +3743,32 @@ class _ExecuteMixin:
                 f"the uniform single-device forward lane, not {plan.lane!r}."
             )
 
+        # #1179/#1183 design box: the lanes that carry it. The distributed
+        # and ADI runners never see ``design_box``, so without this they
+        # would run the BACKGROUND design variable and return a zero
+        # gradient — a silent wrong answer.
+        _design_requested = (design_box is not None
+                             or design_eps_override is not None
+                             or design_sigma_override is not None
+                             or design_occupancy_override is not None)
+        if _design_requested:
+            _design_lanes = (("fwd_uniform", "fwd_nonuniform")
+                             if design_occupancy_override is None
+                             else ("fwd_uniform",))
+            if plan.lane not in _design_lanes:
+                raise NotImplementedError(
+                    "forward(design_box=...) is supported on the "
+                    + " / ".join(_design_lanes)
+                    + f" forward lane(s), not {plan.lane!r} "
+                    "(#1179 permittivity, #1183 graded mesh and occupancy). "
+                    "Use eps_override / pec_occupancy_override there.")
+            if self._solver != "yee":
+                raise NotImplementedError(
+                    "forward(design_box=...) is supported only on the Yee "
+                    f"solver, not solver={self._solver!r} (#1179): the ADI "
+                    "lane builds its own implicit update coefficients from "
+                    "``materials``. Use eps_override there.")
+
         if plan.lane == "fwd_distributed_nu" and self._interface_eps == "dual_average":
             raise ValueError("interface_eps='dual_average' cannot combine with forward eps_override or distributed NU")
         if plan.lane == "fwd_distributed_nu":
@@ -3359,11 +3794,33 @@ class _ExecuteMixin:
                 context="forward")
 
         if plan.lane == "fwd_nonuniform":
+            _nu_design_spec = None
+            if _design_requested:
+                # #1183: the corners resolve against the GRADED grid, whose
+                # z cell edges are not a multiple of any dx. Everything the
+                # resolved step context decides is
+                # ``rfx.simulation._resolve_design_box``'s, from
+                # ``_build_nu_scan``.
+                _nu_design_spec, _ = self._resolve_design_box_override(
+                    self._build_nonuniform_grid(),
+                    design_box=design_box,
+                    design_eps_override=design_eps_override,
+                    design_sigma_override=design_sigma_override,
+                    design_occupancy_override=design_occupancy_override,
+                    eps_override=eps_override,
+                    sigma_override=sigma_override,
+                    mu_r_override=mu_r_override,
+                    pec_occupancy_override=pec_occupancy_override,
+                    debye_spec=None,
+                    lorentz_spec=None,
+                    kerr_chi3=None,
+                )
             result = self._forward_nonuniform_from_materials(
                 eps_override=eps_override,
                 sigma_override=sigma_override,
                 pec_mask_override=pec_mask_override,
                 pec_occupancy_override=pec_occupancy_override,
+                design_box=_nu_design_spec,
                 n_steps=plan.n_steps,
                 checkpoint=checkpoint,
                 emit_time_series=emit_time_series,
@@ -3385,10 +3842,14 @@ class _ExecuteMixin:
             pec_sheets=_fwd_pec_sheets, pec_wires=_fwd_pec_wires)
 
         if eps_override is not None or sigma_override is not None or mu_r_override is not None:
-            materials = MaterialArrays(
+            materials = materials._replace(
                 eps_r=eps_override if eps_override is not None else materials.eps_r,
                 sigma=sigma_override if sigma_override is not None else materials.sigma,
                 mu_r=mu_r_override if mu_r_override is not None else materials.mu_r,
+                eps_r_lumped=(None if eps_override is not None
+                              else materials.eps_r_lumped),
+                sigma_lumped=(None if sigma_override is not None
+                              else materials.sigma_lumped),
             )
 
         if pec_mask_override is not None:
@@ -3449,6 +3910,39 @@ class _ExecuteMixin:
                 "not supported (#677 v1): the sheet operator would "
                 "silently override the ADE dispersion update at its edges.")
 
+        _design_spec = None
+        _design_occ_spec = None
+        if _design_requested:
+            _design_spec, _design_occ_spec = self._resolve_design_box_override(
+                grid,
+                design_box=design_box,
+                design_eps_override=design_eps_override,
+                design_sigma_override=design_sigma_override,
+                design_occupancy_override=design_occupancy_override,
+                eps_override=eps_override,
+                sigma_override=sigma_override,
+                mu_r_override=mu_r_override,
+                pec_occupancy_override=pec_occupancy_override,
+                debye_spec=debye_spec,
+                lorentz_spec=lorentz_spec,
+                kerr_chi3=kerr_chi3,
+            )
+        if _design_spec is not None:
+            # The design permittivity sets the precision of the material
+            # arithmetic, exactly as an ``eps_override`` array does — that
+            # path replaces ``eps_r`` outright, so a float64 override makes
+            # the whole grid's coefficients float64. Without this the two
+            # halves of one grid would be stepped at two precisions: the
+            # float32 rounding of ``eps_r * EPS_0`` alone moves the field by
+            # ~1e-7 relative, which is 1e9 x the difference between the two
+            # formulations. ``_assemble_materials`` pins float32 (#646
+            # promote-never-pin), so the promotion belongs here.
+            _design_dtype = jnp.promote_types(
+                materials.eps_r.dtype, jnp.result_type(_design_spec.eps_r))
+            if _design_dtype != materials.eps_r.dtype:
+                materials = materials._replace(
+                    eps_r=materials.eps_r.astype(_design_dtype))
+
         _res = self._forward_from_materials(
             grid,
             materials,
@@ -3465,6 +3959,8 @@ class _ExecuteMixin:
             port_s11_freqs=port_s11_freqs,
             rlc_values_override=rlc_values_override,
             sheet_impedance=_fwd_sheet_ctx,
+            design_box=_design_spec,
+            design_occupancy=_design_occ_spec,
         )
         _warn_if_nonfinite_result(_res, context="forward")
         return self._attach_run_settling_witness(
@@ -3534,8 +4030,7 @@ class _ExecuteMixin:
             *instantaneous* single-cell field; that fallback keeps the original
             limitation (valid only for lossy / radiating ring-down, not flux /
             S-param / transmission gating on guided / low-loss closed geometries
-            — use a fixed ``n_steps`` there, see
-            ``validation/crossval/03_straight_waveguide_flux.py`` and the
+            — use a fixed ``n_steps`` there, see the
             :func:`rfx.simulation.run_until_decay` note).
             **Non-uniform (dx/dy/dz-profile) meshes (issue #383):** the same
             interior-energy stop runs on absorbing (``cpml``/``upml``)
@@ -3586,10 +4081,7 @@ class _ExecuteMixin:
             along the x-axis (via ``jax.pmap``).  Phase 1 supports PEC
             boundary, soft sources, and point probes.
         exchange_interval : int, optional
-            How often (in timesteps) to perform ghost cell exchange in
-            the distributed runner.  Default 1 (every step).  Higher
-            values (2-4) reduce synchronization overhead at the cost of
-            O(interval * dt) boundary error.
+            Ghost exchange interval in timesteps; only integer 1 is supported.
         report_every : int or None
             Issue #667 — progress reporting for long solves. When set,
             print one ``  [PROGRESS] ...`` line every *N* timesteps giving
@@ -3632,6 +4124,7 @@ class _ExecuteMixin:
         -------
         Result
         """
+        validate_exchange_interval(exchange_interval)
         fixed_num_periods = n_steps is None
 
         # Behaviour-neutral decay-parameter sanity advisories (post-#392
@@ -3719,6 +4212,13 @@ class _ExecuteMixin:
                     "DFT plane probes or omit devices=... (use a "
                     "single-device run() instead)."
                 )
+            # Leave TFSF and waveguide models to the runner's single-device fallbacks.
+            if self._tfsf is None and not self._waveguide_ports:
+                from rfx.runners.distributed_v2 import (
+                    refuse_unsupported_distributed_features,
+                )
+                refuse_unsupported_distributed_features(
+                    self, lane="distributed multi-device run()")
             self._warn_unsupported_run_kwargs("distributed multi-device", {
                 "subpixel_smoothing": subpixel_smoothing,
                 "checkpoint": checkpoint,

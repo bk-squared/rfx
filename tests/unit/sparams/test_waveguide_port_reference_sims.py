@@ -357,7 +357,7 @@ def test_tj_walls_are_realized_where_they_are_drawn():
     sim = _tj_ref_horizontal(freqs, 5.5e9)
     rz = realized(sim)
     pad = rz.grid.axis_pads[1]
-    expected = list(range(pad, pad + 21)) + list(range(pad + 40, pad + 61))
+    expected = list(range(pad + 21)) + list(range(pad + 40, rz.grid.shape[1]))
     assert_wall_planes(sim, 1, expected_planes=expected,
                        what="T-junction guide walls")
     inner_lo, inner_hi = pad + 20, pad + 40

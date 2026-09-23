@@ -104,7 +104,7 @@ def _mixed_sim() -> Simulation:
     sim.add(Box((0.0, y_c - _MIXED_W_TRACE / 2, _MIXED_H_SUB),
                 (lx, y_c + _MIXED_W_TRACE / 2, _MIXED_H_SUB)), material="pec")
     sim.add_port(position=(2e-3, y_c, 0.0), component="ez",
-                 impedance=50.0, extent=_MIXED_H_SUB)
+                 impedance=50.0, extent=_MIXED_H_SUB, terminates=1)
     sim.add_msl_port(position=(5.5e-3, y_c, 0.0), width=_MIXED_W_TRACE,
                      height=_MIXED_H_SUB, direction="-x", impedance=50.0,
                      waveform=GaussianPulse(f0=2.5e9, bandwidth=0.5),

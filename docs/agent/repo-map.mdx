@@ -97,9 +97,8 @@ here, and do not cite this lane as a validated transition result.
 dispersive slabs. Time-window truncation produces artifacts that make the result
 unreliable.
 
-Use `add_flux_monitor` + two-run reference subtraction instead. The canonical
-demonstration is `validation/crossval/03_straight_waveguide_flux.py`, which shows
-the two-monitor flux pattern explicitly. Do the subtraction with
+Use `add_flux_monitor` + two-run reference subtraction instead. Do the
+subtraction with
 `subtract_flux_monitors(sample, ref)`, not by differencing two `flux_spectrum`
 results: flux is bilinear in E and H, so the flux difference keeps the
 incident/scattered cross terms. That helper's docstring and

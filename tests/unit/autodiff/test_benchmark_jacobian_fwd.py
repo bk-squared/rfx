@@ -106,8 +106,8 @@ def test_benchmark_table_relations():
     )
 
     # Honesty-label discipline: the table's own field names must not use
-    # the repo's forbidden AD-memory vocabulary (tests/unit/autodiff/test_estimate_ad_memory.py
-    # _FORBIDDEN_CURRENT_EVIDENCE_FIELDS / _FORBIDDEN_RECOMMENDATION_TERMS).
+    # the repo's forbidden AD-memory field names (tests/unit/autodiff/test_estimate_ad_memory.py
+    # _FORBIDDEN_CURRENT_EVIDENCE_FIELDS).
     forbidden_fields = {
         "observed_peak_gb", "profile_peak_gb", "peak_bound_gb",
         "compiler_memory_gb", "certificate_status",

@@ -1,8 +1,7 @@
 """Lorentz and Drude dispersive materials via ADE.
 
 Time convention e^{+jωt} throughout (Im ε < 0 for loss), matching the ADE
-this module discretizes and the rfx convention in
-validation/crossval/comparators/dispersive_eps.py (convention 1).
+this module discretizes.
 
 Lorentz model: ε(ω) = ε_∞ + Σ_p κ_p / (ω₀_p² - ω² + 2jδ_pω)
 

@@ -26,6 +26,7 @@ is, so the branch must be committed before submitting.
 ## R1 — `golden_msl_sheet_thread_{s,freqs}_13de212.npy` (**DONE — INGESTED**)
 
 * Consumer: `tests/unit/sparams/test_msl_sheet_threading.py::test_o1_no_sheet_identity_vs_931_golden`
+  (consumer and the two `_931.npy` files removed 2026-09-21 under #1022: the golden went stale with every deliberate MSL change; this record stays as history)
   (renamed from `..._vs_13de212_golden` at ingest)
   (byte identity, `@pytest.mark.slow`).
 * Why: the golden records a board this tree no longer builds. The trace was a

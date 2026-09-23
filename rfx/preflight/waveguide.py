@@ -970,7 +970,7 @@ def _check_waveguide_port_evanescent(self) -> None:
         # checks below: fall back to the DECLARED width, which is the
         # pre-#738 behavior and is always defined. Measured
         # regression: without this fallback, the committed fixture
-        # tests/studio/test_interop_design_document.py::
+        # tests/interop/test_interop_design_document.py::
         # _waveguide_with_dispersive_slab LOST its port_evanescent /
         # port_source_below_cutoff findings entirely.
         ap = [spans[ax]["aperture"] if spans[ax]["aperture"] is not None

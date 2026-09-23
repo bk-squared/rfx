@@ -1,8 +1,10 @@
 """Dispersive-Fresnel validation oracle (roadmap W3.1).
 
 Validates FDTD normal-incidence broadband reflection ``R(f)`` of a **dispersive**
-dielectric slab against a rigorous analytic oracle, for a single-Debye-pole and a
-single-Lorentz-pole material. This is the tracked dispersive R/T oracle called
+dielectric slab against a rigorous analytic oracle, for a single-Debye-pole, a
+single-Lorentz-pole and a single-Drude-pole material (the Drude arm is the
+closed-form comparison that used to live only in a cross-validation case). This
+is the tracked dispersive R/T oracle called
 for by ``docs/agent-memory/task_recipes/rt_measurement.md`` (the old
 ``crossval/08_material_dispersion.py`` numbers became unreproducible once that
 script was removed).
@@ -40,9 +42,10 @@ import pytest
 
 from rfx import Box, Simulation
 from rfx.materials.debye import DebyePole
-from rfx.materials.lorentz import lorentz_pole
+from rfx.materials.lorentz import drude_pole, lorentz_pole
 from rfx.material_fit import eval_debye, eval_lorentz
 from rfx.probes.probes import flux_spectrum
+from tests._gate_policy import gate_from_envelope
 
 C0 = 299_792_458.0
 
@@ -70,7 +73,35 @@ LOR_DELTA_EPS = 1.0
 LOR_W0 = 2.0 * np.pi * 10e9  # resonance at 10 GHz (in-band)
 LOR_DELTA = 0.1 * LOR_W0  # damping; Q = w0/(2*delta) = 5
 
+# Drude (omega_0 = 0). The plasma frequency sits INSIDE the band, so the pole
+# carries most of eps across it: eps = 0.777 - 1.282j at 6 GHz, 1.838 - 0.345j at
+# 10 GHz, 2.228 - 0.135j at 14 GHz (|eps| 1.50 -> 2.23, tan_d 1.650 -> 0.061).
+# eps' stays positive over 6-14 GHz — its zero crossing,
+# sqrt(omega_p^2/eps_inf - gamma^2)/2pi, is at 4.59 GHz, below the band edge — so
+# the slab is lossy but nowhere a negative-eps total reflector, and it is not
+# opaque (|n| 1.22 at 6 GHz, one-pass amplitude 0.55 through 8 mm).
+#
+# f_p was 6 GHz until 2026-09-21. There the pole moved R(f) so little that
+# replacing the analytic eps(w) with a flat eps_inf = 2.7 slab still passed:
+# the arm could not tell a Drude slab from a dispersionless one. At f_p = 10 GHz
+# that substitution measures mean |dR| = 0.0556 and reds (see the arm's
+# docstring for the four measured numbers).
+#
+# eps_inf is kept below 2.77 so the slab clears the >=20 cells/lambda_eff
+# preflight advisory at FREQ_MAX (33.31/sqrt(eps_inf) cells; 20.3 here) — the
+# Debye and Lorentz arms raise 2 advisories each and this arm raises the same 2.
+DRUDE_EPS_INF = 2.7
+DRUDE_WP = 2.0 * np.pi * 10e9  # plasma frequency (rad/s)
+DRUDE_GAMMA = 2.0 * np.pi * 4e9  # collision rate gamma (rad/s); pole delta = gamma/2
+
 GATE = 0.05  # mean |R_fdtd - R_analytic| over the band
+
+# The Drude arm's own gate, from its own measurement by the shared envelope rule
+# (tests/_gate_policy.py): mean |dR| measured 0.0060 on CPU 2026-09-21 -> 0.01.
+# Under the inherited 0.05 the arm rejected a dispersionless slab by only 1.1x
+# and could not see a halved collision rate at all; under 0.01 it rejects both.
+_DRUDE_MEASURED_MEAN = 0.0060
+DRUDE_GATE = gate_from_envelope(_DRUDE_MEASURED_MEAN, quantum=100)
 
 
 def _tmm_slab_R(freqs, eps_complex, d):
@@ -104,6 +135,9 @@ def _build_sim(kind, with_slab):
         if kind == "debye":
             sim.add_material("slab", eps_r=DEBYE_EPS_INF,
                              debye_poles=[DebyePole(DEBYE_DELTA_EPS, DEBYE_TAU)])
+        elif kind == "drude":
+            sim.add_material("slab", eps_r=DRUDE_EPS_INF,
+                             lorentz_poles=[drude_pole(DRUDE_WP, DRUDE_GAMMA)])
         else:
             sim.add_material("slab", eps_r=LOR_EPS_INF,
                              lorentz_poles=[lorentz_pole(LOR_DELTA_EPS, LOR_W0, LOR_DELTA)])
@@ -118,6 +152,30 @@ def _build_sim(kind, with_slab):
     sim.add_flux_monitor(axis="x", coordinate=REFL_X, freqs=FREQS_RT, name="refl")
     sim.add_flux_monitor(axis="x", coordinate=TRANS_X, freqs=FREQS_RT, name="trans")
     return sim
+
+
+@pytest.mark.parametrize("kind", ["debye", "lorentz", "drude"])
+def test_the_slab_the_grid_builds_is_the_slab_the_oracle_assumes(kind):
+    """Realized, not declared. The closed form is evaluated at ``D_SLAB``; the
+    FDTD run sees whatever the rasterizer built. One cell more or less (8.5 or
+    7.5 mm for 8.0) moves the Drude arm's mean error only to 0.0097 / 0.0081,
+    inside its 0.01 gate (reviewer's measurement, 2026-09-21), so the reflection
+    gates cannot see it and the cell count is asserted here instead: exactly
+    ``D_SLAB / DX`` cells along x in one block, the same in every transverse
+    row (the Box is oversized in y on purpose). No FDTD fields are stepped.
+    Faces drawn off the lattice show up here as a lost cell: this path fills
+    cells all-or-nothing (reviewer's probe at DX/4 and DX/2: 15 cells)."""
+    sim = _build_sim(kind, with_slab=True)
+    grid = sim._build_grid()
+    eps = np.asarray(sim._assemble_materials(grid)[0].eps_r)
+    row = eps[:, eps.shape[1] // 2, 0]
+    filled = np.flatnonzero(np.abs(row - 1.0) > 1e-6)
+    assert len(filled) == int(round(D_SLAB / DX)), (
+        f"{kind}: slab realizes {len(filled)} cells = {len(filled) * DX * 1e3:.2f} mm, "
+        f"the oracle uses {D_SLAB * 1e3:.2f} mm")
+    assert np.all(np.diff(filled) == 1), f"{kind}: the realized slab is not one block"
+    assert (eps == eps[:, :1, :]).all(), (
+        f"{kind}: the realized slab is not the same in every transverse row")
 
 
 def _measure_R(kind):
@@ -160,6 +218,28 @@ def test_eval_lorentz_matches_closed_form():
     assert np.max(np.abs(got - closed_form)) < 1e-6
 
 
+def test_drude_pole_matches_closed_form():
+    """Witness the Drude oracle: ``eval_lorentz`` on the pole ``drude_pole``
+    builds equals ε_∞ − ω_p²/(ω² − jγω), this repo's e^{+jωt} Drude form.
+
+    It checks two things at once: ``drude_pole``'s (ω₀, δ, κ) = (0, γ/2, ω_p²)
+    mapping, and that ``eval_lorentz`` evaluates an ω₀ = 0 pole at all. Until
+    2026-09-21 it did not — it returned a dispersionless ``eps_inf``, which at
+    this arm's parameters is off the closed form by up to 2.31 over this band.
+    That is what this test now pins.
+    """
+    pole = drude_pole(DRUDE_WP, DRUDE_GAMMA)
+    assert pole.omega_0 == 0.0
+    w = 2.0 * np.pi * FREQS_RT
+    closed_form = DRUDE_EPS_INF - DRUDE_WP ** 2 / (w ** 2 - 1j * DRUDE_GAMMA * w)
+    got = eval_lorentz(FREQS_RT, DRUDE_EPS_INF, [pole])
+    assert np.max(np.abs(got - closed_form)) < 1e-6
+
+    # Lossy in the e^{+jωt} convention, and nowhere a negative-eps reflector.
+    assert np.all(closed_form.imag < 0.0)
+    assert np.all(closed_form.real > 0.0)
+
+
 @pytest.mark.slow_physics
 def test_dispersive_fresnel_debye():
     """FDTD R(f) of a single-Debye-pole slab vs the transfer-matrix oracle."""
@@ -192,4 +272,53 @@ def test_dispersive_fresnel_lorentz():
     mean_err = float(np.mean(np.abs(R_fdtd - R_analytic)))
     assert mean_err < GATE, (
         f"Lorentz slab mean|R_fdtd - R_analytic| = {mean_err:.4f} exceeds {GATE}"
+    )
+
+
+@pytest.mark.slow_physics
+def test_dispersive_fresnel_drude():
+    """FDTD R(f) of a single-Drude-pole slab (omega_0 = 0) vs the same oracle.
+
+    Same rig and same band as the Debye/Lorentz arms; only the pole changes, and
+    the gate is this arm's own (``DRUDE_GATE`` = 0.01, from its measured 0.0060 by
+    the shared envelope rule). Measured 2026-09-21 on CPU, mean
+    |R_fdtd - R_analytic| over the 17-bin band:
+
+        unmutated                                      0.0060   (max 0.0150)
+        pole dropped from the ANALYTIC side            0.0556   RED
+        pole dropped from the FDTD side (eps_r only)   0.0585   RED
+        FDTD built with gamma/2, oracle keeps gamma    0.0132   RED
+
+    The first two are what make the arm a Drude test rather than a slab test: a
+    flat eps_inf = 2.7 slab on either side of the comparison is rejected. The
+    third is why the gate is not the siblings' 0.05: halving gamma moves eps' at
+    6 GHz from 0.777 to 0.200 and eps'' from -1.282 to -0.833, but the mean error
+    only reaches 0.0132 — inside 0.05, outside 0.01.
+
+    Against the project's fixed 2 dB magnitude bar: over the 13 bins where
+    R_analytic > -20 dB, |R_fdtd - R_analytic| in dB reaches 2.59 dB (14.0 GHz)
+    and 2.34 dB (11.5 GHz); the other 11 bins are within 1.3 dB. The gate is on
+    the linear mean, not on dB, so those two bins do not move it.
+    """
+    pole = drude_pole(DRUDE_WP, DRUDE_GAMMA)
+    eps_c = eval_lorentz(FREQS_RT, DRUDE_EPS_INF, [pole])
+    R_analytic = _tmm_slab_R(FREQS_RT, eps_c, D_SLAB)
+    R_fdtd = _measure_R("drude")
+
+    # R5: the curve, not the headline.
+    print("\n[drude] f (GHz)   : "
+          + " ".join(f"{f/1e9:8.3f}" for f in FREQS_RT))
+    print("[drude] eps_real  : " + " ".join(f"{v:8.4f}" for v in eps_c.real))
+    print("[drude] eps_imag  : " + " ".join(f"{v:8.4f}" for v in eps_c.imag))
+    print("[drude] R_analytic: " + " ".join(f"{v:8.5f}" for v in R_analytic))
+    print("[drude] R_fdtd    : " + " ".join(f"{v:8.5f}" for v in R_fdtd))
+    print("[drude] |dR|      : " + " ".join(f"{v:8.5f}"
+                                            for v in np.abs(R_fdtd - R_analytic)))
+
+    assert np.all(np.isfinite(R_fdtd)), "R_fdtd has non-finite entries"
+    assert np.all(R_analytic <= 1.0 + 1e-9), "oracle R>1 — wrong sqrt branch"
+
+    mean_err = float(np.mean(np.abs(R_fdtd - R_analytic)))
+    assert mean_err < DRUDE_GATE, (
+        f"Drude slab mean|R_fdtd - R_analytic| = {mean_err:.4f} exceeds {DRUDE_GATE}"
     )

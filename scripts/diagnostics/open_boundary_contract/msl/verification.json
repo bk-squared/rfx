@@ -1,0 +1,200 @@
+{
+  "cv06b": {
+    "source_hash_equal": {
+      "msl/measure.py": 1,
+      "src-main/validation/crossval/06b_msl_notch_filter_uniform.py": 1,
+      "src-main/rfx/sparams/msl.py": 1,
+      "src-main/rfx/simulation.py": 1,
+      "src-main/rfx/boundaries/pec.py": 1,
+      "src-main/rfx/boundaries/cpml.py": 1
+    },
+    "dry_time_stepping_calls": 0,
+    "variants": {
+      "baseline": {
+        "S_shape": [
+          2,
+          2,
+          100
+        ],
+        "S_finite_count": 400,
+        "frequency_count": 100,
+        "frequency_first_hz": 700000000.0,
+        "frequency_last_hz": 7000000000.0,
+        "diagnostic_field_count": 14,
+        "expected_diagnostic_field_count": 14,
+        "solve_calls": 2,
+        "mask_hash_equal": [
+          {
+            "eps_r": 1,
+            "mu_r": 1,
+            "sigma": 1,
+            "pec_mask": 1,
+            "pec_edge_x": 1,
+            "pec_edge_y": 1,
+            "pec_edge_z": 1
+          },
+          {
+            "eps_r": 1,
+            "mu_r": 1,
+            "sigma": 1,
+            "pec_mask": 1,
+            "pec_edge_x": 1,
+            "pec_edge_y": 1,
+            "pec_edge_z": 1
+          }
+        ],
+        "source_x_indices_received": [
+          [
+            39
+          ],
+          [
+            512
+          ]
+        ],
+        "ringdown_max_abs_recompute_difference_db": 0.0
+      },
+      "continued": {
+        "S_shape": [
+          2,
+          2,
+          100
+        ],
+        "S_finite_count": 400,
+        "frequency_count": 100,
+        "frequency_first_hz": 700000000.0,
+        "frequency_last_hz": 7000000000.0,
+        "diagnostic_field_count": 14,
+        "expected_diagnostic_field_count": 14,
+        "solve_calls": 2,
+        "mask_hash_equal": [
+          {
+            "eps_r": 1,
+            "mu_r": 1,
+            "sigma": 1,
+            "pec_mask": 1,
+            "pec_edge_x": 1,
+            "pec_edge_y": 1,
+            "pec_edge_z": 1
+          },
+          {
+            "eps_r": 1,
+            "mu_r": 1,
+            "sigma": 1,
+            "pec_mask": 1,
+            "pec_edge_x": 1,
+            "pec_edge_y": 1,
+            "pec_edge_z": 1
+          }
+        ],
+        "source_x_indices_received": [
+          [
+            39
+          ],
+          [
+            512
+          ]
+        ],
+        "ringdown_max_abs_recompute_difference_db": 0.0
+      }
+    }
+  },
+  "cv20": {
+    "source_hash_equal": {
+      "msl/measure.py": 1,
+      "src-main/scripts/diagnostics/build_msl_thru_phase_dx50um_reference.py": 1,
+      "src-main/rfx/sparams/msl.py": 1,
+      "src-main/rfx/simulation.py": 1,
+      "src-main/rfx/boundaries/pec.py": 1,
+      "src-main/rfx/boundaries/cpml.py": 1
+    },
+    "dry_time_stepping_calls": 0,
+    "variants": {
+      "baseline": {
+        "S_shape": [
+          2,
+          2,
+          30
+        ],
+        "S_finite_count": 120,
+        "frequency_count": 30,
+        "frequency_first_hz": 500000000.0,
+        "frequency_last_hz": 5000000000.0,
+        "diagnostic_field_count": 14,
+        "expected_diagnostic_field_count": 14,
+        "solve_calls": 2,
+        "mask_hash_equal": [
+          {
+            "eps_r": 1,
+            "mu_r": 1,
+            "sigma": 1,
+            "pec_mask": 1,
+            "pec_edge_x": 1,
+            "pec_edge_y": 1,
+            "pec_edge_z": 1
+          },
+          {
+            "eps_r": 1,
+            "mu_r": 1,
+            "sigma": 1,
+            "pec_mask": 1,
+            "pec_edge_x": 1,
+            "pec_edge_y": 1,
+            "pec_edge_z": 1
+          }
+        ],
+        "source_x_indices_received": [
+          [
+            48
+          ],
+          [
+            248
+          ]
+        ],
+        "ringdown_max_abs_recompute_difference_db": 0.0
+      },
+      "continued": {
+        "S_shape": [
+          2,
+          2,
+          30
+        ],
+        "S_finite_count": 120,
+        "frequency_count": 30,
+        "frequency_first_hz": 500000000.0,
+        "frequency_last_hz": 5000000000.0,
+        "diagnostic_field_count": 14,
+        "expected_diagnostic_field_count": 14,
+        "solve_calls": 2,
+        "mask_hash_equal": [
+          {
+            "eps_r": 1,
+            "mu_r": 1,
+            "sigma": 1,
+            "pec_mask": 1,
+            "pec_edge_x": 1,
+            "pec_edge_y": 1,
+            "pec_edge_z": 1
+          },
+          {
+            "eps_r": 1,
+            "mu_r": 1,
+            "sigma": 1,
+            "pec_mask": 1,
+            "pec_edge_x": 1,
+            "pec_edge_y": 1,
+            "pec_edge_z": 1
+          }
+        ],
+        "source_x_indices_received": [
+          [
+            48
+          ],
+          [
+            248
+          ]
+        ],
+        "ringdown_max_abs_recompute_difference_db": 0.0
+      }
+    }
+  }
+}

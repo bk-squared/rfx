@@ -29,8 +29,8 @@ Two geometries, because they answer different questions:
     actually reports, and the strongest reflector in its matrix. Lossless, so
     column power |S11|^2 + |S21|^2 must be 1.
 
-Settling witness: the OBSERVABLE-INVARIANCE form (case 19's idiom, `ring_down_witness`
-in validation/crossval/19_wr90_iris_filter_aghanim.py), not an energy-dB
+Settling witness: the OBSERVABLE-INVARIANCE form (the `ring_down_witness` idiom of
+the five-iris band-pass filter case, removed 2026-09-21), not an energy-dB
 reading — rfx exposes no total-energy monitor, and on a lossless structure
 truncation announces itself first as non-passive column power (case 19: colpow
 1.58 at np = 100 on a Q~87 cavity) and then as a moved observable. Both are

@@ -134,7 +134,7 @@ def _validate_ntff_inverse_design(
         ctx = self._campaign_ctx()
         if ctx.error is None:
             shape = tuple(ctx.grid.shape)
-            for e in ctx.pec_entries():
+            for e in ctx.interior_pec_entries():
                 if e.kind == "wire" or e.lo is None:
                     continue
                 walls = []

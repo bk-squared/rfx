@@ -1,0 +1,23 @@
+name: rfx-801-port-impact-msl
+description: "#801 port measurement: fixture 062, baseline and continued."
+tags: [rfx, issue-801, diagnostic]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_ENABLE_X64: "0"
+  PYTHONDONTWRITEBYTECODE: "1"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  base=/root/workspace/bk-workspace/.801-measure
+  cat "$base/PROVENANCE.txt"
+  sha256sum "$base/ports/port_run.py" "$base/ports/measure_common.py" "$base/ports/census_driver.py" "$base/ports/census_v2.py" "$base/src-main/rfx/boundaries/cpml.py"
+  python -m pip install -q "scipy>=1.11" pytest
+  python -B "$base/ports/port_run.py" 62 --require-gpu

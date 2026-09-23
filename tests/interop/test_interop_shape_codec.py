@@ -6,8 +6,7 @@ existing setup-serialisation layer in rfx is bbox-or-box-level:
 
 - ``rfx.artifacts.build_scene_artifact`` keeps ``shape_type`` + bounding box;
 - ``rfx.io.export_geometry_json`` keeps the class name + bounding box;
-- ``rfx.config._shapes`` supports ``("box",)`` only;
-- ``rfx.experiments.canonical`` fails any geometry ``kind`` other than ``box``.
+- ``rfx.config._shapes`` supports ``("box",)`` only.
 
 So none of them can tell a cylinder from a box with the same bounds.
 """
@@ -16,7 +15,6 @@ from __future__ import annotations
 
 import dataclasses
 import json
-from pathlib import Path
 
 import pytest
 
@@ -64,10 +62,10 @@ def test_kind_vocabulary_agrees_with_the_layers_it_claims_to_follow():
     """Bind the vocabulary claim to the other layers instead of asserting a
     literal written in this file.
 
-    ``rfx/config/_shapes.py`` names shapes under the key ``shape`` and
-    ``rfx/experiments/canonical.py`` under the key ``kind``; both spell the box
-    ``"box"``. The codec follows those *values*, so its own name for a box must
-    be importable-equal to theirs, not merely lowercase.
+    ``rfx/config/_shapes.py`` names shapes under the key ``shape`` and spells
+    the box ``"box"``. The codec follows that *value*, so its own name for a box
+    must be importable-equal to it, not merely lowercase. (The experiment
+    document this test also read left the package with studio.)
     """
     from rfx.config._shapes import _SUPPORTED_SHAPES
 
@@ -75,14 +73,6 @@ def test_kind_vocabulary_agrees_with_the_layers_it_claims_to_follow():
         "the config layer names a shape the codec cannot express"
     )
     assert "box" in _SUPPORTED_SHAPES and "box" in SUPPORTED_SHAPE_KINDS
-
-    # The canonical experiment layer rejects any geometry kind other than box;
-    # read its refusal rather than trusting a comment about it.
-    repo_root = Path(__file__).resolve().parents[2]
-    canonical = (repo_root / "rfx/experiments/canonical.py").read_text()
-    assert 'P0 supports box geometry' in canonical, (
-        "canonical.py's box-only fence moved; re-check the shared vocabulary"
-    )
 
 
 @pytest.mark.parametrize("kind", sorted(SHAPES))

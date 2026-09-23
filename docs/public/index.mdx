@@ -19,7 +19,6 @@ documented workflows and their limits:
 | **Lumped, wire, and microstrip-line port workflows** | available through their matching calculators; validation scope follows the support matrix |
 | **Coaxial line reflection** | float32 precision, nonperiodic 3D second-order uniform Yee grid, CPML on all six boundary faces with positive thickness on both z faces, `cpml_axes="z"`, and exactly one `face="top"` coaxial port; see [Sources and Ports](api/sources-ports/) for the self-contained calculator limits |
 | **Differentiable design loops** | use proxy objectives, gradient checks, and documented validation before treating a design result as evidence |
-| **Studio, CLI, and MCP experiments** | versioned local CPU runs, append-only revisions, replay bundles, and server-approved MCP actions; see the guide for the current UI scope |
 
 A capability listed neither here nor on [Support Boundaries](/rfx/api/support-boundaries/) is outside the documented support scope.
 
@@ -95,7 +94,6 @@ the checks required before reporting resonance or Q.
 - [Installation](guide/installation/) — Python/JAX install, GPU notes, dev setup
 - [Quick Start](guide/quickstart/) — first simulation with the current high-level API
 - [Your First Patch Antenna](guide/first-patch/) — build a model, run a short check, and learn what is required before reporting RF results
-- [Studio, CLI, and MCP Experiments](guide/studio-experiments/) — local UI, versioned CPU runs, replay, and MCP approvals
 
 ### Modeling & Setup
 
