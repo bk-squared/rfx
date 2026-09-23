@@ -1494,7 +1494,8 @@
         "n_starts",
         "best_iterate",
         "step_clamp",
-        "seed"
+        "seed",
+        "jit"
       ]
     },
     "parametric_sweep": {
