@@ -1,0 +1,114 @@
+{
+  "head": "c2dbf922bc9230cd6fa4054a7b6d84d118768bde",
+  "backend": "cpu",
+  "shared_uniform_image": [
+    {
+      "eps_r": 1.0,
+      "sigma_S_per_m": 0.0,
+      "uniform_max_error_V_per_m": 0.0
+    },
+    {
+      "eps_r": 4.0,
+      "sigma_S_per_m": 0.0,
+      "uniform_max_error_V_per_m": 0.0
+    },
+    {
+      "eps_r": 4.0,
+      "sigma_S_per_m": 0.2,
+      "uniform_max_error_V_per_m": 0.0
+    }
+  ],
+  "unmigrated_material_consumers": [
+    {
+      "family": "debye",
+      "helper_only_error_lo_V_per_m": -0.05500549077987671,
+      "helper_only_error_hi_V_per_m": 0.0,
+      "all_consumers_migrated_max_error_V_per_m": 0.0
+    },
+    {
+      "family": "lorentz",
+      "helper_only_error_lo_V_per_m": -0.056311458349227905,
+      "helper_only_error_hi_V_per_m": 0.0,
+      "all_consumers_migrated_max_error_V_per_m": 0.0
+    },
+    {
+      "family": "mixed",
+      "helper_only_error_lo_V_per_m": -0.05500549077987671,
+      "helper_only_error_hi_V_per_m": 0.0,
+      "all_consumers_migrated_max_error_V_per_m": 0.0
+    }
+  ],
+  "jax_static_rules": {
+    "diff": [
+      0.004000000189989805,
+      0.0009999999310821295,
+      -0.001999999862164259,
+      -0.003000000026077032,
+      0.006000000052154064,
+      -0.007000000216066837,
+      0.004000000189989805,
+      0.003999999724328518,
+      -0.009999999776482582
+    ],
+    "vmap_shape": [
+      2,
+      9
+    ],
+    "gradient": [
+      0.014000000432133675,
+      0.005999999586492777,
+      0.0020000003278255463,
+      -0.017999999225139618,
+      0.026000000536441803,
+      -0.02199999988079071,
+      9.313225746154785e-10,
+      0.04800000041723251,
+      0.0
+    ]
+  },
+  "graded_image": {
+    "max_curl_error_A_per_m2": 1.1367457251054702e-06,
+    "lo_derivative_A_per_m2": 4.0,
+    "hi_derivative_A_per_m2": -14.285715103149414,
+    "half_dual_would_double_endpoint_curl": true
+  },
+  "fourth_order_ribbon": {
+    "width": 2,
+    "lo_diff": 0.0,
+    "hi_diff": -1.600000023841858,
+    "expected_hi_diff": -1.600000023841858
+  },
+  "period_and_index": [
+    {
+      "declared_L_mm": 24.0,
+      "stored_nodes": 25,
+      "old_roll_period_mm": 25.0,
+      "remove_fencepost_nodes": 24,
+      "period_after_just_removing_fencepost_mm": 24.0,
+      "target_c_over_L_GHz": 12.491352416666667,
+      "c_over_proposed_quantized_period_GHz": 12.491352416666667,
+      "current_index_at_L": 24,
+      "would_be_out_of_range": true
+    },
+    {
+      "declared_L_mm": 24.299999999999997,
+      "stored_nodes": 26,
+      "old_roll_period_mm": 26.000000000000004,
+      "remove_fencepost_nodes": 25,
+      "period_after_just_removing_fencepost_mm": 25.0,
+      "target_c_over_L_GHz": 12.337138189300413,
+      "c_over_proposed_quantized_period_GHz": 11.99169832,
+      "current_index_at_L": 24,
+      "would_be_out_of_range": false
+    }
+  ],
+  "current_bloch_vmap": "ValueError: Non-hashable static arguments are not supported. An error occurred while trying to hash an object of type <class 'tuple'>, (VmapTracer(aval=complex64[], batched=complex64[2]), (1+0j), (1+0j)). The error was:\nTypeError: unhashable type: 'BatchTracer'\n",
+  "ris_fallback_synthetic": {
+    "native_s_params": null,
+    "peak_reported_magnitude": 1.0,
+    "100x_input_scaling_max_output_difference": 2.482534153247273e-16,
+    "scope": "extractor diagnostic, not a scattering experiment"
+  },
+  "wall_seconds": 27.00509296398377,
+  "process_cpu_seconds": 6.280851999999999
+}

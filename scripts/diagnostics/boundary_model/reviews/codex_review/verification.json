@@ -1,0 +1,20 @@
+{
+  "input_sha256": {
+    "BRIEF_review_codex.md": "5ef61978fec717472fd1842370967a88aed5ee9ade14dcec0c3d0dcbed03cf24",
+    "DESIGN_DRAFT.md": "a32a333193eb9d9b018a12978dd58462db7ee803cd8be6c3aef3efde5ed02bd4",
+    "design_review_boundary.md": "b2ce3c32b0059c223cb9324618e837032b031934396dcaeda43db9a532ce7e60",
+    "B0/REPORT.md": "7959341be70c6e540407944acbd0c236cc4554f0ffc46d0b5ffaa223f8a93ee8",
+    "B0/MATRIX.md": "9751a47f48808b5289788adbb8f216abb734b06caa94f5087f753328c6824457",
+    "B0/WITNESS.md": "eb4130ace5a6970ec29d4afe5fdd4e7028e2fa3afdc0d1a0b0dc2e5216299821",
+    "B0/INVENTORY.md": "1a7f210ecb08ac9441e638c3b1a59820bb04b9df3c4856cd6b8451446603efac",
+    "B0b/REPORT.md": "38fb87bfec6bf3b3448b010709249a25adc5e6995f4a03d6f4c3c0500e189171",
+    "B0c/REPORT.md": "cb00d679759f748a8c495026b1a0b70fa59e5373be84d5c3353e05063df92429"
+  },
+  "artifacts_complete": true,
+  "decisions": 7,
+  "cavity_records": 5,
+  "successful_final_cpu_seconds": 15.035509999999999,
+  "executed_head": "c2dbf922bc9230cd6fa4054a7b6d84d118768bde",
+  "head_at_verification": "c2dbf922bc9230cd6fa4054a7b6d84d118768bde",
+  "status": "?? cst/\n?? docs/plans/\n"
+}

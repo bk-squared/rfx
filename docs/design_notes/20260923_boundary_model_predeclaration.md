@@ -5,9 +5,10 @@
 reviews before this text: a design review (Opus, separate instance, 4 P1 / 9 P2 / 4 P3, seven CPU
 reproductions), then the leader's recommendations reviewed by Codex and by a second Opus instance, each
 independently (both SOUND WITH CHANGES; their conditions are folded in below and named where they
-decided something). The review texts and their scripts are kept off-repo under
-`bk-workspace/.boundary-model/`; the measurements are committed under
-`scripts/diagnostics/boundary_model/`. Written by the absorber-lane leader. Model for the shape: the
+decided something). Both then rechecked this text (ACCEPT WITH CHANGES each); their changes are in it.
+The review texts are kept off-repo under `bk-workspace/.boundary-model/`; the measurements are
+committed under `scripts/diagnostics/boundary_model/`, and the reviews' scripts with the output they
+printed under its `reviews/` (its README says how they were kept). Written by the absorber-lane leader. Model for the shape: the
 NU grid-core note (`20260922_nu_grid_core_predeclaration.md`).
 **Lane:** absorber. **Order (PI):** this campaign, then PR #1012; after that the PI chooses #952 or a
 periodic unit-cell campaign.
@@ -58,16 +59,16 @@ faces. What it left, and what this note is about:
   where a requirement turns an absorber into a periodic face the pads are wrapped too (2·pad + 1 cells).
   A declared 24 mm periodic parallel-plate ring resonates at 11.970 GHz at dx = 1 mm, −4.2 % against
   c/24 mm (the continuum shift to c/25 mm is −4.0 %, the rest is dispersion); a `RISUnitCell` 10 mm cell
-  at dx = 0.5 mm is a 10.5 mm cell (first design review, CPU, off-repo; B0b's records show the same
+  at dx = 0.5 mm is a 10.5 mm cell (`reviews/opus_review1/`, CPU; B0b's records show the same
   extra node for its own 7.4948 mm cell).
 - **A Floquet port's scan angle never reaches the fields**: at 0 / 15 / 30 / 45° the recorded fields
   are bit-identical, the port's own injection and S-parameter functions have no callers, and
   `rfx.RISUnitCell.sweep_angle` returns a peak-normalized probe spectrum labelled as reflection
   (`B0b/REPORT.md`; the normalization makes the output independent of the field amplitude to 2.5e-16 —
-  a synthetic check in the Codex review, off-repo). No calibrated reflection comes out of that path at any angle.
+  a synthetic check, `reviews/codex_review/checks.json`). No calibrated reflection comes out of that path at any angle.
 - **An oblique Bloch plane wave with subpixel smoothing drops the Bloch phase in its E update** and is
-  accepted; with a Debye slab the same run crashes on a scan-carry dtype (second Opus review,
-  reproduced off-repo; the size of the error was not measured). The Bloch rule lives in one difference
+  accepted; with a Debye slab the same run crashes on a scan-carry dtype
+  (`reviews/opus_review2/bloch_branches.py`, CPU; the size of the error was not measured). The Bloch rule lives in one difference
   operator and the smoothing branch has its own curl.
 - The subgridded and ADI lanes still apply an axis-wide wall and no magnetic operation; the distributed
   lanes consume the magnetic faces but compose them with an electric wall on the face plane, or with an
@@ -84,8 +85,8 @@ each a separate discretization choice: a magnetic face has no image, so the near
 (half a cell in) is zeroed instead (`rfx/boundaries/pmc.py`: "0.5·dx inside the wall"); and a periodic
 axis has no periodic topology, so the fence-post node lengthens the period. Where no wall operation runs
 at all, the zero-padded shift is itself a wall: a magnetic wall half a cell outside the lo face and an
-electric wall one cell beyond the hi face (second Opus review, exact on rfx's kernels: L + 1.5 dx,
-quarter-wave family). The missing Floquet k_t and the per-kernel flags are separate data-flow defects.
+electric wall one cell beyond the hi face (`reviews/opus_review2/`, 1-D eigenvalue maps of rfx's
+kernels: L + 1.5 dx, quarter-wave family). The missing Floquet k_t and the per-kernel flags are separate data-flow defects.
 The half-cell offset was known (#722's "ninth surface", 2026-08-28) and answered with documentation
 (`tests/unit/boundaries/test_pmc_plane_convention.py`), while the PMC physics gates (10 % and 3 %
 tolerances) cannot see a one-cell shift and #1164's cavity check used the (0,1) mode, which does not
@@ -100,11 +101,11 @@ depend on the wall separation. Declared and realized were not compared.
 | the realized-boundary matrix at 798ec64e (66 measured, 30 refused) | Codex, `B0/MATRIX.md`, `B0/MATRIX.json`, VESSL 369367263554–561 |
 | magnetic cavity: CPU at a4aaa862, GPU relaunch (electric walls on GPU: no (0,1), separation 24.02 / 24.005 / 24.001 mm) | Codex, `B0c/REPORT.md`, `B0c/RESULTS.json`, `B0c/gpu_relaunch/`, VESSL 369367263573–579 |
 | PEC cube W1, PMC line W3, backing W4 | Codex, `B0/WITNESS.md`, `B0/witness/*.json`, VESSL 369367263562–564 |
-| Floquet scan angle has no effect; RIS output is a normalized spectrum | Codex, `B0b/REPORT.md`, `B0b/angle_equalities.json`; Codex review (normalization) |
+| Floquet scan angle has no effect; RIS output is a normalized spectrum | Codex, `B0b/REPORT.md`, `B0b/angle_equalities.json`; `reviews/codex_review/checks.json` (normalization) |
 | what #1205 changed | leader read PR #1205 and `rfx/boundaries/pec.py` `resolve_wall_faces` at c2dbf922 |
-| the image wall on rfx's kernels: second order on uniform and graded axes, with a dielectric face node, with the (2,4) ribbon; a post-step correction with vacuum coefficients is first order | prototypes in the three reviews, OFF-REPO (1-D eigenvalue maps; a two-spacing 3-D cavity); Codex: a mirrored-domain comparison gives 0 V/m for vacuum, εr = 4 and εr = 4 with σ, and −0.0550 / −0.0563 / −0.0550 V/m on the Debye / Lorentz / mixed E updates unless each migrates — prototypes, not production-kernel validation |
+| the image wall on rfx's kernels: second order on uniform and graded axes and with a dielectric face node; with the (2,4) ribbon its error equals the electric-wall ribbon's at two meshes; a post-step correction with vacuum coefficients is first order | prototypes in the three reviews, `reviews/` (1-D eigenvalue maps; a two-spacing 3-D cavity); Codex: a mirrored-domain comparison gives 0 V/m for vacuum, εr = 4 and εr = 4 with σ, and −0.0550 / −0.0563 / −0.0550 V/m on the Debye / Lorentz / mixed E updates unless each migrates — prototypes, not production-kernel validation |
 | the curl is spelled in at least ten places (smoothing/anisotropic, Debye, Lorentz, mixed ADE, UPML, fast path, graded kernels, port current loops, distributed, subgrid) | second Opus review, read with file:line |
-| periodic L + dx; RIS 10 → 10.5 mm; index map has no node in [L − dx/2, L] once the fence post goes | reviews, OFF-REPO (first review R6/R7, second Opus review R7); mechanism read by the leader at `rfx/grid.py:212-227`, `rfx/core/yee.py:171-218` |
+| periodic L + dx; RIS 10 → 10.5 mm; index map has no node in [L − dx/2, L] once the fence post goes | `reviews/opus_review1/periodic_period.py`, `ris_grid.py`; `reviews/opus_review2/d2_index.py`; mechanism read by the leader at `rfx/grid.py:212-227`, `rfx/core/yee.py:171-218` |
 | `add_tfsf_source` requires `boundary='cpml'` and refuses periodic overrides | second Opus review, `rfx/api/__init__.py:2301-2310` (leader read) |
 
 ## 2. Decisions
@@ -124,9 +125,10 @@ depend on the wall separation. Declared and realized were not compared.
    Registration order does not change the solved geometry.
 2. **The object drives three mechanisms and nothing else applies a boundary.** (i) Boundary-aware
    neighbour and sample operations, staggering- and direction-aware, used by every derivative AND every
-   boundary sample: tangential H odd and tangential E even across a magnetic face (low face:
-   D_H[0] = 2H[0]/d[0]; high face: D_H[N] = −2H[N−1]/d[N−1] with the stored ghost refreshed or
-   canonicalized), periodic, Bloch (the existing per-neighbour envelope phase exp(−j·k·d), not a
+   boundary sample: tangential H odd and tangential E even across a magnetic face (N = cells on the
+   axis: E nodes 0…N, H samples 0…N−1, stored ghost H[N]; rfx arrays are indexed by stored length, so
+   the implementation states its map; low face: D_H[0] = 2H[0]/d[0]; high face: D_H[N] = −2H[N−1]/d[N−1]
+   with the stored ghost refreshed or canonicalized), periodic, Bloch (the existing per-neighbour envelope phase exp(−j·k·d), not a
    seam-only phase). (ii) The absorber's auxiliary update (CPML ψ; UPML coefficients; ADI's conductivity
    layer inside its implicit operator), parameters from the object, the kernel choosing the structure.
    (iii) Electric zeroing after the E update on PEC faces and absorber backings. `resolve_wall_faces`
@@ -135,20 +137,27 @@ depend on the wall separation. Declared and realized were not compared.
    `rfx/nonuniform.py:2546-2548`, and so solves periodic faces as electric walls), no `pec_axes` argument
    and no default branch. No axis-level wall, no `pec_axes`, no `cpml_axes`. What each
    stored ghost cell holds under each kind is written down, and ghosts are masked from energy, flux,
-   DFT and far-field sums.
+   DFT and far-field sums. A sum over a plane or volume that meets a magnetic face counts the
+   face-node samples with half their dual-cell weight, so every sum is the half domain's value; a
+   consumer that reports a full-model quantity (decision 6) multiplies by 2 per mirror face and
+   records that it did.
 3. **The step order is pinned and tested.** H: update → TFSF/waveguide H → absorber H → Kottke H mask →
    magnetic sources, with magnetic images evaluated at consumption (after every H change). E: update →
    design box / Kerr → TFSF/waveguide E → absorber E → electric zeroing → conformal / PEC edges /
    occupancy → sheet → RLC → pre-injection DFT → soft sources → wire V/I. TFSF auxiliary grids update in
    their own slot. Distributed: walls before the E ghost exchange (#1041). Subgrid: walls after
    coupling. Tests: an edge where an electric and a magnetic face meet keeps E = 0 after every later
-   operator; a soft source on an electric face.
+   operator; a soft source on an electric face; a magnetic source on the H sample next to a magnetic
+   face, and a perpendicular CPML touching that face, each against a mirrored-domain reference (these
+   two see a stale stored ghost; the first two cannot).
 4. **Features state admissible sets; the declaration is authoritative.** Each feature gives, per face,
    the kinds it can work with (a 1-D plane wave along x with E along z: y ∈ {PERIODIC, PMC},
    z ∈ {PERIODIC, PEC}, x ∈ {ABSORBER}; the open-domain oblique method: y ∈ {ABSORBER}, z ∈ {PERIODIC};
    an oblique Bloch cell: BLOCH on the transverse axes; `compute_rcs` at normal incidence: absorbers;
    a waveguide port: ABSORBER on its axis and, when its REALIZED aperture equals the realized cross
-   section, PEC on the transverse faces; TMz: z PEC; TEz: z PMC). The resolver intersects all features'
+   section, PEC on the transverse faces; the 2-D modes: z INVARIANT whatever scalar token the model was
+   given, so a legacy `boundary='cpml', mode='2d_tmz'` keeps working, and an explicit per-face z
+   declaration is accepted only as the mode's equivalent wall, PEC for TMz and PMC for TEz). The resolver intersects all features'
    sets; a declared face inside the intersection is kept; an empty intersection or a declared PEC/PMC
    outside it is refused, naming every feature involved. A declared ABSORBER pair outside it is turned into
    the PERIODIC (or Bloch) pair only when (1) that replacement, with its phase, belongs to EVERY active
@@ -158,7 +167,8 @@ depend on the wall separation. Declared and realized were not compared.
    plane wave is the case this admits); a preflight finding names the face. Otherwise refused. A
    full-aperture waveguide declared with absorbing transverse faces is refused and asked to declare PEC:
    its admissible set is {PEC}, and its TE10 profile is not transversely constant even when the
-   material is. The add-time guards of `add_tfsf_source` are
+   material is. `Simulation`'s default is `boundary='cpml'`, so this refuses the commonest spelling of a
+   waveguide run; the refusal gives the PEC declaration to write, and B5 converts the committed scripts. The add-time guards of `add_tfsf_source` are
    lifted so that the admissible declarations can be written. (Codex disagreed with any rewrite and, on
    recheck, accepted the bounded rule with conditions (1) and (2); the second Opus review agreed under
    the invariance condition; the leader takes the bounded rule because it is exact where it applies and
@@ -186,7 +196,7 @@ depend on the wall separation. Declared and realized were not compared.
 7. **A periodic axis has the declared period (D2).** L/dx nodes; `position_to_index`/`index_of` wrap
    modulo N on a periodic axis (L maps to 0); a DFT plane at L and at 0 are the same plane (for Bloch
    fields they differ by the period phase, stated); full-period sums count N cells. Commensurability:
-   an automatically chosen dx is snapped to L/round(L/dx) (reported); an explicit dx that does not
+   an automatically chosen dx is snapped to L/ceil(L/dx), never coarser than asked (reported); an explicit dx that does not
    divide L within tolerance is refused with the nearest dividing dx; two periodic axes need a common
    dx or are refused with a suggestion. The metric table gets a periodic row (coordinated with the NU
    lane's step 0c, which owns `grid.py`).
@@ -222,24 +232,43 @@ depend on the wall separation. Declared and realized were not compared.
   Bloch plane wave with subpixel smoothing or a dispersive material; a waveguide port with magnetic
   transverse faces; a declared 'cpml' on ADI (until B4 names the conductivity layer). Each raises its OWN refusal (face, feature and kernel named) with
   preflight enabled and bypassed; an unrelated exception (a scan-carry dtype error) does not count. The PR lists every committed test that flips from "accepts" to "raises" and
-  converts it. `known_limitations.md` entries for the periodic period and the half-cell magnetic wall
+  converts it; four of the seven tests that pin H_t = 0 at Yee index 0 are distributed-lane tests
+  (`test_boundary_pmc_distributed` ×3, `test_distributed::test_apply_pmc_local_pad_x_targets_real_face`)
+  and flip here. `known_limitations.md` entries for the periodic period and the half-cell magnetic wall
   until they land. Does not touch `boundaries/cpml.py`.
 - **B2 — the periodic period.** Judges: the periodic ring at c/L (a commensurate fixture), first order
   gone, and the fence-post node restored → red; the index-wrap test; a seam probe and a seam flux case;
-  the normal-incidence invariant (a transversely constant broadside field is independent of the period).
+  the normal-incidence invariant (a transversely constant broadside field is independent of the period);
+  a non-commensurate case that exercises decision 7's snap and its refusal.
 - **B3 — the curl spellings consolidated, then the image and the electric zeroing from the object, in the
   uniform scan and `forward()`.** Every uniform E-update branch goes through one boundary-aware curl (the
   graded branches through `curl_h_nu`); the port loops read a boundary-aware neighbour accessor. Judges
   (quantitative, not detection windows): f(0,1) = 7.4948 GHz within a stated tolerance and f(1,1)'s
-  derived separation → 24 mm at second order over three dx; a dielectric face node with subpixel
-  smoothing and a Debye face node against a mirrored-domain reference. Two mutations: (i) the image
-  disabled (the free termination: a mode near 8.05 GHz, which a window would have passed); (ii) electric
-  zeroing restored on the x faces with every image call intact → the (0,1) mode disappears. #1205's
-  tests that encode the half-cell / dead-slab realization are rewritten here with the physics reason:
-  `test_magnetic_wall_faces_not_shorted.py` (its one-cell line measured a line of width dx centred on
-  the face, half of it outside the domain, which a closed form happens to fit), the six tests pinning
-  H_t = 0 at Yee index 0, and the TEz thin-box test (kept, re-judged under "full"). The fast-path arm
-  records whether the fused kernel ran.
+  derived separation → 24 mm at second order over three dx; a dielectric face node and a Debye face
+  node against a mirrored-domain reference, the dielectric arm with subpixel smoothing on a Box that
+  extends at least one cell beyond the face (the face node is then interior, so the arm tests the curl
+  and not the smoothing); a flux plane crossing a magnetic face against the mirrored-domain reference
+  (half the full flux, decision 2's half weight). Mutations: (i) the image disabled (the free
+  termination: a mode near 8.05 GHz, which a window would have passed); (ii) electric zeroing restored
+  on the x faces with every image call intact → the (0,1) mode disappears; (iii) the half-cell wall
+  revived — H_t zeroed at the first and last physical H samples with the image calls intact: f(0,1)
+  stays at 7.49 GHz and only the separation judge turns red (23.02 mm at dx = 1 mm); (iv) the face node
+  counted at full weight in the crossing flux plane → a first-order excess. B3 also lands a refusal:
+  subpixel smoothing with a smoothed material surface within half a cell of a magnetic face plane.
+  Under the image that face column becomes live, and a Box ending on the plane gets the fill fraction
+  clip(0.5 − sdf/cell, 0, 1) = 0.5 there (`rfx/geometry/smoothing.py`), so its tangential E column
+  carries (ε + 1)/2 instead of the mirrored model's ε — a first-order error where a bisected
+  microstrip's field is strongest. The refusal lifts when the even extension is designed (§4).
+  Tests that encode the half-cell / dead-slab realization are rewritten here with the physics reason:
+  #1205's `test_magnetic_wall_faces_not_shorted.py` (its one-cell line measured a line of width dx
+  centred on the face, half of it outside the domain, which a closed form happens to fit); the three
+  non-distributed tests of the seven pinning H_t = 0 at Yee index 0 (`test_boundary_pmc_runtime` ×2 and
+  the composition test oq8; the other four flip at B1.5); the TEz thin-box test (kept, re-judged under
+  "full"); and #1162's `tests/unit/ports/test_lumped_port_known_load_line.py` (closed form ± 0.05,
+  passivity, lumped == wire, three loads) and `test_lumped_two_port_matched_line.py` (the matched
+  two-port, the S21 closed form and a 1° S21 phase gate), whose port sits on the same y = 0 magnetic
+  face plane. The image moves that line's x-end walls out by half a cell each, so B3 re-measures these
+  and the ports lane re-judges the phase gate. The fast-path arm records whether the fused kernel ran.
 - **B4 — the other kernels, one per PR,** each with B1's seeded backing-plane assertion and the mini-battery arms relevant to it; an
   unsupported configuration refuses rather than being skipped as supported (graded, sweep,
   subgrid, distributed ×3 with `restrict`, ADI with its named conductivity layer, the probe reference
@@ -248,11 +277,20 @@ depend on the wall separation. Declared and realized were not compared.
 - **B5 — requirements as admissible sets.** Lift the TFSF add-time guards; the invariance-gated rewrite;
   the waveguide realized-aperture predicate (behaviour changes listed: an aperture port inside a larger
   absorbing domain stops being solved in an electric box; the graded lane's waveguide runs with
-  CPML-declared transverse faces move); Floquet with k_t; RCS; the INVARIANT 2-D axis. Judges: an
+  CPML-declared transverse faces move; every uniform-lane full-aperture waveguide script that relies on
+  the default `boundary='cpml'` flips from accepted to refused, among them the rectangular-waveguide
+  port's authoritative gate `tests/unit/sparams/test_waveguide_twoport_contract_v1.py` and
+  `tests/crossval/test_waveguide_broad_e5.py` — a heuristic `git grep` finds 17 test and example files
+  that call `add_waveguide_port` without declaring PEC; the PR lists and converts each to a PEC
+  declaration, and their results must not move); Floquet with k_t (with `tfsf_2d`'s `complex(...)`
+  phase helper under a traced angle); RCS; the INVARIANT 2-D axis; `add_waveguide_port`'s grid and
+  plane resolution move from registration to dispatch, and a boundary-changing `add_*` after
+  `freeze_mesh` invalidates the derived setup or is refused. Judges: an
   admissible invariant slab accepted and a noninvariant finite scatterer refused; an invariant-material
   full-aperture guide whose set excludes PERIODIC refused; a compatible explicitly declared guide keeps
   its faces; each refusal with preflight enabled and bypassed; an independently referenced oblique Bloch
-  slab (magnitude and phase). Mutations, helpers kept: the invariance predicate made unconditional, and
+  slab (magnitude and phase); a plane wave spanning PMC transverse faces (the parallel-plate
+  arrangement decision 4 admits) against its closed form. Mutations, helpers kept: the invariance predicate made unconditional, and
   a replacement outside the admissible set allowed — each must turn a judge red.
 - **B6 — the legacy views go**; the legacy-use allow-list actually empty, and every earlier physical
   judge still green (the tracker's count is accounting, not the physics).
@@ -275,7 +313,7 @@ separate Opus instance reviews each PR, two directions over 200 lines of `rfx/` 
 Measurements and implementation: Codex from written briefs; judgments, this note and every interpreting
 sentence: the leader. The NU lane owns `boundaries/cpml.py`'s metric (its 0b) and `grid.py` (its 0c): B2
 and B3 onwards follow it module by module. #1205 was done in this lane by another session; its rule is
-this design's seed, and its tests are rewritten in B3 with the reason. The ports lane's one-cell PMC
-line (`test_magnetic_wall_faces_not_shorted.py`, #1162's fixture) is rebuilt in B3 as a line whose port
-and load sit at least two cells from any magnetic face, or on the face under the "full" convention with
-a migrated current loop.
+this design's seed, and its tests are rewritten in B3 with the reason. The one-cell PMC line —
+#1205's `test_magnetic_wall_faces_not_shorted.py` and the ports lane's two #1162 tests on the same
+line (`lane:coax-mixed-port`) — is rebuilt in B3 as a line whose port and load sit at least two cells
+from any magnetic face, or on the face under the "full" convention with a migrated current loop.
