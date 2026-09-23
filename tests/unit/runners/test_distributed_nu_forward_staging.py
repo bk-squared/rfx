@@ -19,7 +19,7 @@ import numpy as np
 import pytest
 
 from rfx import Box, DebyePole, Simulation
-from rfx.core.yee import EPS_0, MaterialArrays
+from rfx.core.yee import EPS_0, MaterialArrays, init_state
 from rfx.materials.debye import init_debye
 from rfx.materials.lorentz import init_lorentz, lorentz_pole
 from rfx.nonuniform import make_current_source, position_to_index
@@ -240,12 +240,16 @@ def _memory(mode, mutation="none", legacy=False):
     eps = jnp.full(grid.shape, 1.5, dtype=jnp.float32)
     devices = jax.devices("cpu")
     nx_local = nu.build_sharded_nu_grid(grid, len(devices)).nx_local
-    records, extents, retained = [], {"debye": [], "lorentz": []}, []
+    records, extents, retained = [], {"debye": [], "lorentz": [], "state": []}, []
     scan = jax.lax.scan
-    codes = {init_debye.__code__: "debye", init_lorentz.__code__: "lorentz"}
+    codes = {init_debye.__code__: "debye", init_lorentz.__code__: "lorentz",
+             init_state.__code__: "state"}
 
     def profile(frame, event, arg):
-        if event == "call" and frame.f_code in codes:
+        if event == "call" and frame.f_code is init_state.__code__:
+            # A whole padded domain of zeros used to set device 0's setup peak.
+            extents["state"].append(int(frame.f_locals["shape"][0]))
+        elif event == "call" and frame.f_code in codes:
             arrays = (frame.f_locals["materials"], frame.f_locals["mask"])
             for arr in jax.tree.leaves(arrays):
                 if isinstance(arr, jax.core.Tracer):
@@ -262,10 +266,12 @@ def _memory(mode, mutation="none", legacy=False):
             for arr in jax.live_arrays():
                 for shard in arr.addressable_shards:
                     per_device[str(shard.device)] += shard.data.nbytes
-                if len(arr.sharding.device_set) == 1 and arr.size >= cells:
-                    whole.append({"device": str(arr.addressable_shards[0].device),
-                                  "shape": arr.shape, "dtype": str(arr.dtype),
-                                  "caller": arr is eps})
+                    # Any whole-domain buffer on a device, single-device or
+                    # replicated (review: a replicated copy passed the old check).
+                    if shard.data.size >= cells:
+                        whole.append({"device": str(shard.device),
+                                      "shape": arr.shape, "dtype": str(arr.dtype),
+                                      "caller": arr is eps})
             records.append({"bytes": per_device, "whole": whole, "cells": cells,
                             "grid": grid.shape, "extents": extents, "nx_local": nx_local})
         return scan(*args, **kwargs)
@@ -279,6 +285,11 @@ def _memory(mode, mutation="none", legacy=False):
             retained.append(init_debye(db[0], materials, dt, mask=db[1]))
         if mutation == "retain" and kind == "debye":
             retained.append(jnp.full(grid.shape, 2., dtype=jnp.float32))
+        if mutation == "replicated" and kind == "debye":
+            retained.append(jax.device_put(jnp.full(grid.shape, 2., dtype=jnp.float32),
+                                           NamedSharding(mesh, P())))
+        if mutation == "whole_state" and kind == "debye":
+            init_state((sg.nx_padded, *grid.shape[1:]))
         return stage(mat, dt, spec, sg, mesh, kind)
 
     with pytest.MonkeyPatch.context() as patch:
@@ -301,7 +312,8 @@ def _memory(mode, mutation="none", legacy=False):
     if legacy:
         return
     for kind, seen in extents.items():
-        assert seen and max(seen) <= nx_local, f"whole-domain {kind} initialization: {seen} > {nx_local}"
+        assert seen or kind == "state", f"{kind} initialization was not observed"
+        assert all(e <= nx_local for e in seen), f"whole-domain {kind} initialization: {seen} > {nx_local}"
     unexpected = [a for a in record["whole"] if not a["caller"]]
     assert not unexpected, f"whole-domain setup arrays: {unexpected}"
     sizes = list(record["bytes"].values())
@@ -442,6 +454,8 @@ def test_cross_trace_pattern(transform):
 @pytest.mark.parametrize("mutation,error", [
     ("whole_init", "whole-domain debye initialization"),
     ("retain", "whole-domain setup arrays"),
+    ("replicated", "whole-domain setup arrays"),
+    ("whole_state", "whole-domain state initialization"),
 ])
 def test_mutations_trip_gate(mutation, error):
     _child("memory", "plain", mutation, expected_error=error)

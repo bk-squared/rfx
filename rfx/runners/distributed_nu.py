@@ -2034,7 +2034,6 @@ def run_nonuniform_distributed_pec(
     ghost = sharded_grid.ghost_width
     ny = sharded_grid.ny
     nz = sharded_grid.nz
-    nx_padded = sharded_grid.nx_padded
     pad_x = sharded_grid.pad_x
     dt = sharded_grid.dt
 
@@ -2059,27 +2058,20 @@ def run_nonuniform_distributed_pec(
     inv_dz_h_rep = jax.device_put(sharded_grid.inv_dz_h, rep)
 
     # ------------------------------------------------------------------
-    # Initial state — full padded domain, then slab-split + shard
+    # Initial state — zeros created directly on the slab sharding
     # ------------------------------------------------------------------
-    from rfx.core.yee import init_state
-    from rfx.runners.distributed import _split_state
-
-    full_state = init_state((nx_padded, ny, nz))
-    state_slabs = _split_state(full_state, n_devices, ghost)
-
-    def _shard_stacked(arr):
-        return shard_stacked(arr, shd)
+    # Building the whole padded domain and its stacked slab copies on the
+    # first device set that device's setup peak (six whole-domain buffers);
+    # every value is +0.0, so creating each slab in place is bit-identical.
+    def _zeros():
+        return jnp.zeros((n_devices * nx_local, ny, nz), dtype=jnp.float32,
+                         device=shd)
 
     sharded_state = FDTDState(
-        ex=_shard_stacked(state_slabs.ex),
-        ey=_shard_stacked(state_slabs.ey),
-        ez=_shard_stacked(state_slabs.ez),
-        hx=_shard_stacked(state_slabs.hx),
-        hy=_shard_stacked(state_slabs.hy),
-        hz=_shard_stacked(state_slabs.hz),
+        ex=_zeros(), ey=_zeros(), ez=_zeros(),
+        hx=_zeros(), hy=_zeros(), hz=_zeros(),
         step=jax.device_put(jnp.int32(0), rep),
     )
-    del full_state, state_slabs
 
     # ------------------------------------------------------------------
     # Source / probe routing — V3 bullet (Phase 2A coordinate convention)
