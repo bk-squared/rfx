@@ -660,12 +660,13 @@ def _init_cpml_distributed(grid, nx_local, n_devices):
 
     kappa_max = getattr(grid, "kappa_max", None) or 1.0
     n = grid.cpml_layers
-    electric = _cpml_profile(n, grid.dt, grid.dx, kappa_max=kappa_max)
-    magnetic_lo = _cpml_profile(n, grid.dt, grid.dx, kappa_max=kappa_max, sample_offset=.5)
+    dx = grid.dx
+    electric = _cpml_profile(n, grid.dt, dx, kappa_max=kappa_max)
+    magnetic_lo = _cpml_profile(n, grid.dt, dx, kappa_max=kappa_max, sample_offset=.5)
     magnetic_hi = _flip_profile(
-        _cpml_profile(n, grid.dt, grid.dx, kappa_max=kappa_max, sample_offset=-.5))
-    sizes = dict(dx_x_lo=grid.dx, dx_x_hi=grid.dx, dx_y_lo=grid.dx,
-                 dx_y_hi=grid.dx, dz_lo=grid.dx, dz_hi=grid.dx)
+        _cpml_profile(n, grid.dt, dx, kappa_max=kappa_max, sample_offset=-.5))
+    sizes = dict(dx_x_lo=dx, dx_x_hi=dx, dx_y_lo=dx,
+                 dx_y_hi=dx, dz_lo=dx, dz_hi=dx)
     params = CPMLAxisParams(
         electric, _flip_profile(electric), electric, _flip_profile(electric),
         electric, _flip_profile(electric), **sizes,

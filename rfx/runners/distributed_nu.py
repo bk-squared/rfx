@@ -2337,11 +2337,19 @@ def run_nonuniform_distributed_pec(
     from rfx.boundaries.cpml import CPMLAxisParams
 
     cpml_spacings = {}
+    magnetic_cpml_spacings = {}
     if isinstance(cpml_params, CPMLAxisParams):
         cpml_spacings = {name: getattr(cpml_params, name) for name in (
             "dx_x_lo", "dx_x_hi", "dx_y_lo", "dx_y_hi", "dz_lo", "dz_hi",
         )}
         cpml_params = cpml_params._replace(**dict.fromkeys(cpml_spacings))
+        if cpml_params.magnetic is not None:
+            magnetic_cpml_spacings = {
+                name: getattr(cpml_params.magnetic, name) for name in cpml_spacings
+            }
+            cpml_params = cpml_params._replace(
+                magnetic=cpml_params.magnetic._replace(
+                    **dict.fromkeys(magnetic_cpml_spacings)))
 
     def _apply_cpml_h_shmap(st, cs, cpml_params, mu_r):
         @partial(
@@ -2490,6 +2498,9 @@ def run_nonuniform_distributed_pec(
          debye_coeffs, lorentz_coeffs, cpml_params) = invariants
         if cpml_spacings:
             cpml_params = cpml_params._replace(**cpml_spacings)
+        if magnetic_cpml_spacings:
+            cpml_params = cpml_params._replace(
+                magnetic=cpml_params.magnetic._replace(**magnetic_cpml_spacings))
         _step_idx, src_vals = xs
         st = carry["fdtd"]
         cs = carry.get("cpml")
